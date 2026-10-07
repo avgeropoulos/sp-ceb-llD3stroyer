@@ -1,0 +1,24 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Crown -->
+    <path
+        android:fillColor="#FFFFD54F"
+        android:strokeColor="#FFE6A800"
+        android:strokeWidth="2"
+        android:pathData="M34,68 L30,40 L43,52 L54,34 L65,52 L78,40 L74,68 Z" />
+    <path
+        android:fillColor="#FFFFD54F"
+        android:strokeColor="#FFE6A800"
+        android:strokeWidth="2"
+        android:pathData="M33,70 L75,70 L75,76 L33,76 Z" />
+    <!-- Jewels -->
+    <path
+        android:fillColor="#FFE91E63"
+        android:pathData="M54,58 m-4,0 a4,4 0,1 1,8 0 a4,4 0,1 1,-8 0" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M30,40 m-3,0 a3,3 0,1 1,6 0 a3,3 0,1 1,-6 0 M54,34 m-3,0 a3,3 0,1 1,6 0 a3,3 0,1 1,-6 0 M78,40 m-3,0 a3,3 0,1 1,6 0 a3,3 0,1 1,-6 0" />
+</vector>
