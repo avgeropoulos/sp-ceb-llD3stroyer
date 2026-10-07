@@ -12,6 +12,7 @@ class Song(
     bass: List<Note>,
     chords: List<Chord>,
     val drums: IntArray,
+    val leadWave: Wave = Wave.SQUARE25,
 ) {
     val leadAt = arrayOfNulls<Note>(steps).also { a -> lead.forEach { if (it.step < steps) a[it.step] = it } }
     val bassAt = arrayOfNulls<Note>(steps).also { a -> bass.forEach { if (it.step < steps) a[it.step] = it } }
@@ -62,7 +63,13 @@ object Music {
     private val CMAJ = intArrayOf(60, 64, 67)
     private val BB = intArrayOf(62, 65, 70)
 
-    val main: Song by lazy { buildMain() }
+    /** One theme per difficulty tier; each is the same tune, darker and heavier than the last. */
+    private val themes: List<Song> by lazy { (0 until 4).map { buildMain(it) } }
+    val themeNames = listOf("Brat March", "Rising Tension", "Dark Prince", "Final Rage")
+    val main: Song get() = themes[0]
+
+    fun tier(level: Int) = (level - 1).coerceIn(0, 3)
+    fun themeFor(level: Int): Song = themes[tier(level)]
     val clear: Song by lazy { buildClear() }
     val gameOver: Song by lazy { buildGameOver() }
     val star: Song by lazy { buildStar() }
@@ -98,7 +105,19 @@ object Music {
         return Song(180f, 96, false, lead, bass, chords, drums)
     }
 
-    private fun buildMain(): Song {
+    /** Diminished triad on [root], voiced in the arp's register. */
+    private fun dim(root: Int): IntArray {
+        var b = root
+        while (b < 57) b += 12
+        return intArrayOf(b, b + 3, b + 6)
+    }
+
+    /**
+     * Variant 0: the cocky original. 1: four-on-the-floor drive. 2 (the purple prince):
+     * slower, an octave lower, Phrygian melody, tritone bass and diminished stabs.
+     * 3: the same darkness at full speed with a 16th-note chug.
+     */
+    private fun buildMain(variant: Int): Song {
         val bars = listOf(
             // A
             "G4:2 C5:2 D#5:2 C5:2 G5:3 F#5:1 G5:2 -:2",
@@ -130,32 +149,79 @@ object Music {
         val chordList = ArrayList<Chord>()
         val drums = IntArray(16 * 16)
 
+        val dark = variant >= 2
         for (b in 0 until 16) {
             val s = b * 16
-            lead += seq(s, bars[b])
+            for (n in seq(s, bars[b])) {
+                var m = n.midi
+                if (dark) {
+                    val pc = m % 12
+                    if (pc == 2) m -= 1 // D -> Db: Phrygian menace
+                    if (variant == 2 && pc == 11) m -= 1 // B -> Bb: no bright leading tone
+                    if (variant == 2) m -= 12 // growl an octave lower
+                }
+                lead += Note(n.step, m, n.len)
+            }
 
             val r = roots[b]
-            val pattern = when (b) {
-                7 -> intArrayOf(43, 55, 50, 55, 36, 48, 43, 48) // V -> i
-                11, 15 -> intArrayOf(43, 55, 43, 55, 43, 45, 47, 50) // walk up
-                else -> intArrayOf(r, r + 12, r + 7, r + 12, r, r + 12, r + 7, r + 12)
+            val fill = b == 7 || b == 15
+            when (variant) {
+                0 -> {
+                    val pattern = when (b) {
+                        7 -> intArrayOf(43, 55, 50, 55, 36, 48, 43, 48) // V -> i
+                        11, 15 -> intArrayOf(43, 55, 43, 55, 43, 45, 47, 50) // walk up
+                        else -> intArrayOf(r, r + 12, r + 7, r + 12, r, r + 12, r + 7, r + 12)
+                    }
+                    pattern.forEachIndexed { i, m -> bass += Note(s + i * 2, m, 2) }
+                    for (o in intArrayOf(2, 6, 10, 14)) chordList += Chord(s + o, chords[b], 2)
+                }
+                1 -> {
+                    intArrayOf(r, r, r + 12, r, r, r + 12, r + 7, r).forEachIndexed { i, m -> bass += Note(s + i * 2, m, 2) }
+                    for (o in intArrayOf(2, 3, 6, 10, 11, 14)) chordList += Chord(s + o, chords[b], 1)
+                }
+                2 -> {
+                    intArrayOf(r, r, r + 1, r, r, r + 6, r + 1, r).forEachIndexed { i, m -> bass += Note(s + i * 2, m, 2) }
+                    for (o in intArrayOf(2, 10)) chordList += Chord(s + o, dim(r), 4)
+                }
+                else -> {
+                    for (i in 0 until 16) {
+                        val m = when (i) { 6, 14 -> r + 1; 10 -> r + 12; else -> r }
+                        bass += Note(s + i, m, 1)
+                    }
+                    for (o in intArrayOf(2, 6, 10, 14)) chordList += Chord(s + o, dim(r), 1)
+                }
             }
-            pattern.forEachIndexed { i, m -> bass += Note(s + i * 2, m, 2) }
-
-            // Offbeat "brass" stabs.
-            for (o in intArrayOf(2, 6, 10, 14)) chordList += Chord(s + o, chords[b], 2)
 
             for (i in 0 until 16) {
                 var d = 0
-                if (i % 2 == 0) d = d or Song.HAT
-                if (i == 0 || i == 8) d = d or Song.KICK
-                if (b >= 8 && i == 10) d = d or Song.KICK
-                if (i == 4 || i == 12) d = d or Song.SNARE
-                if ((b == 7 || b == 15) && i >= 12) d = d or Song.SNARE
+                when (variant) {
+                    0 -> {
+                        if (i % 2 == 0) d = d or Song.HAT
+                        if (i == 0 || i == 8 || (b >= 8 && i == 10)) d = d or Song.KICK
+                        if (i == 4 || i == 12 || (fill && i >= 12)) d = d or Song.SNARE
+                    }
+                    1 -> {
+                        if (i % 2 == 0 || b >= 8) d = d or Song.HAT
+                        if (i % 4 == 0) d = d or Song.KICK
+                        if (i == 4 || i == 12 || (fill && i >= 12)) d = d or Song.SNARE
+                    }
+                    2 -> { // half-time stomp
+                        if (i % 4 == 0) d = d or Song.HAT
+                        if (i == 0 || i == 6 || i == 8) d = d or Song.KICK
+                        if (i == 12 || (fill && i >= 8 && i % 2 == 0)) d = d or Song.SNARE
+                    }
+                    else -> {
+                        d = d or Song.HAT
+                        if (i % 4 == 0 || i == 14) d = d or Song.KICK
+                        if (i == 4 || i == 12 || (fill && i >= 8)) d = d or Song.SNARE
+                    }
+                }
                 drums[s + i] = d
             }
         }
-        return Song(148f, 256, true, lead, bass, chordList, drums)
+        val bpm = floatArrayOf(148f, 154f, 136f, 164f)[variant]
+        val wave = if (variant == 2) Wave.SQUARE50 else Wave.SQUARE25
+        return Song(bpm, 256, true, lead, bass, chordList, drums, wave)
     }
 
     private fun buildClear(): Song {

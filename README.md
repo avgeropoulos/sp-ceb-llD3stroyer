@@ -24,21 +24,30 @@ win the round, and every round gets faster and meaner.
 
 ## Power-ups
 
-Every 13–21 seconds a power-up appears on the ground or a platform. Grab it before it
+Every 11–17 seconds a power-up appears on the ground or a platform. Grab it before it
 blinks out.
 
 | Power-up | What it does |
 | --- | --- |
 | 🔥 **Fire Flower** | Throw bouncing fireballs. They burn up spikes (+20). Four fireball hits on the boss knock off one HP. |
+| 🪃 **Boomerang Flower** | Throw a boomerang that flies out, curves back to you, and slices through every spike in its path both ways. It also clips a swooping boss's propeller, so floor throws hit him. Two hits knock off one boss HP. |
+| 🐚 **Blue Shell** | Wear a spiny blue shell. Press the action button to tuck in and slide across the floor for 2.2s. You smash spikes, bounce off walls, can still jump, and hit a swooping boss. |
 | ❄️ **Ice Flower** | Throw ice balls that skate along the floor. Frozen spikes turn into **ice blocks you can stand on** (they melt after 6s). Hit the boss to freeze him solid for 2.6s: he can't move or throw. |
 | ⭐ **Star** | 8 seconds of rainbow invincibility with its own fast theme song. Run faster, smash spikes by touching them, and ram the boss to hurt him. |
 | ⛏️ **Drill** | Press the action button on the floor to dig under it. You're untouchable underground and can move around for up to 3s. Press again to burst out, which smashes spikes above you and hits a swooping boss from below. |
 
-Fire, Ice and Drill stay until you get hit. As in the classics, a hit **costs the power-up
+Fire, Ice, Boomerang, Shell and Drill stay until you get hit. As in the classics, a hit **costs the power-up
 instead of a life**. Tip: shots skim the floor, so jump before shooting to hit a swooping boss.
 
 ![Power-ups](docs/screenshot-powerups.png)
 ![Frozen boss](docs/screenshot-ice.png)
+
+## The Dark Prince
+
+From **round 3** the prince turns purple, with a green scarf and glowing green eyes. He rides a
+purple pod with a dark aura, and the arena turns to a green-moon night.
+
+![Dark Prince](docs/screenshot-dark-prince.png)
 
 ## Boss attacks
 
@@ -57,7 +66,18 @@ Everything is synthesized in real time (`Synth.kt`), with no audio files. The so
 (`Music.kt`) is an original chiptune boss march in C minor in the style of a cocky "villain
 kid" theme:
 square-wave lead with vibrato, fast arpeggiated offbeat "brass" stabs, an oom-pah triangle
-bass and noise drums, plus a sneaky chromatic bridge (Fm → Cm → D♭ → G7). There are also
+bass and noise drums, plus a sneaky chromatic bridge (Fm → Cm → D♭ → G7).
+
+The theme comes in four variations that get more ominous as the rounds get harder:
+
+| Rounds | Theme | Sound |
+| --- | --- | --- |
+| 1 | **Brat March** | The cocky original, 148 BPM |
+| 2 | **Rising Tension** | Four-on-the-floor kick, pumping bass, syncopated stabs, 154 BPM |
+| 3 | **Dark Prince** | Half-time stomp at 136 BPM: melody an octave lower in a hollow tone, Phrygian (♭2) notes, tritone bass and diminished stabs |
+| 4+ | **Final Rage** | The dark version at 164 BPM with a 16th-note bass chug, nonstop hats and longer fills; it keeps speeding up each round |
+
+There are also
 round-clear and game-over jingles, an 8-second F-major star theme, and retro sound
 effects.
 

@@ -31,6 +31,8 @@ private const val BOSS_LOW_Y = 515f
 private const val ICE_HALF = 24f
 private const val DRILL_MAX = 3f
 private const val STAR_TIME = 8f
+private const val SLIDE_TIME = 2.2f
+private const val SLIDE_SPEED = 720f
 
 class Platform(val x: Float, val y: Float, val w: Float, val ground: Boolean = false) {
     fun under(px: Float, margin: Float = 0f) = px >= x - margin && px <= x + w + margin
@@ -55,6 +57,8 @@ class Hero {
     var drillTime = 0f
     var drillCooldown = 0f
     var shootCooldown = 0f
+    var sliding = 0f
+    var slideCooldown = 0f
     val halfW = 17f
     val height = 62f
 
@@ -62,6 +66,7 @@ class Hero {
         x = 200f; y = GROUND_Y; vx = 0f; vy = 0f; onGround = true; facing = 1
         invuln = 0f; knock = 0f; dead = false; coyote = 0f; jumpBuffer = 0f
         power = null; star = 0f; drilling = false; drillTime = 0f; drillCooldown = 0f; shootCooldown = 0f
+        sliding = 0f; slideCooldown = 0f
     }
 }
 
@@ -81,7 +86,9 @@ class Spike(var x: Float, var y: Float, var vx: Float, var vy: Float, val rolls:
 }
 
 /** Power-ups. FIRE, ICE and DRILL are held until you get hit; STAR is a timed invincibility. */
-enum class Power(val label: String) { FIRE("FIRE FLOWER"), ICE("ICE FLOWER"), DRILL("DRILL"), STAR("STAR") }
+enum class Power(val label: String) {
+    FIRE("FIRE FLOWER"), ICE("ICE FLOWER"), BOOMERANG("BOOMERANG FLOWER"), SHELL("BLUE SHELL"), DRILL("DRILL"), STAR("STAR")
+}
 
 class Item(var x: Float, var y: Float, val type: Power) {
     var vx = 0f
@@ -91,8 +98,13 @@ class Item(var x: Float, var y: Float, val type: Power) {
     var dead = false
 }
 
-class Shot(var x: Float, var y: Float, var vx: Float, var vy: Float, val ice: Boolean) {
-    var life = 1.6f
+class Shot(
+    var x: Float, var y: Float, var vx: Float, var vy: Float, val ice: Boolean, val boomerang: Boolean = false,
+) {
+    var life = if (boomerang) 3.5f else 1.6f
+    var t = 0f
+    var returning = false
+    var hitBoss = false
     var spin = 0f
     var dead = false
 }
@@ -208,10 +220,11 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         state = State.PLAYING
         paused = false
         coinTimer = 5f
-        audio.playSong(Music.main, tempoForLevel())
+        audio.playSong(Music.themeFor(level), tempoForLevel())
     }
 
-    private fun tempoForLevel(lv: Int = level) = min(1.25f, 1f + (lv - 1) * 0.05f)
+    /** Each tier has its own theme; past the last one the music just keeps speeding up a little. */
+    private fun tempoForLevel(lv: Int = level) = min(1.15f, 1f + maxOf(0, lv - 4) * 0.03f)
 
     private fun setupBoss() {
         boss.x = WORLD_W / 2
@@ -234,6 +247,10 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         shots.clear()
         setupBoss()
         state = State.PLAYING
+        if (level == 3) floatText("THE DARK PRINCE ARRIVES!", WORLD_W / 2, 300f, Color.rgb(190, 120, 255))
+        if (Music.tier(level) != Music.tier(level - 1)) {
+            floatText("~ " + Music.themeNames[Music.tier(level)] + " ~", WORLD_W / 2, 350f, Color.rgb(200, 220, 255))
+        }
     }
 
     private fun gameOver() {
@@ -327,6 +344,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         }
         if (h.drillCooldown > 0f) h.drillCooldown -= dt
         if (h.shootCooldown > 0f) h.shootCooldown -= dt
+        if (h.slideCooldown > 0f) h.slideCooldown -= dt
 
         var move = 0
         if (inLeft) move -= 1
@@ -336,9 +354,24 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
             updateDrilling(dt, move, jumpEdge || actionEdge)
             return
         }
-        if (actionEdge && h.knock <= 0f) usePower()
+        if (h.sliding > 0f) {
+            h.sliding -= dt
+            if (actionEdge && h.sliding < SLIDE_TIME - 0.2f) h.sliding = 0f
+            if (h.sliding <= 0f) {
+                h.sliding = 0f
+                h.slideCooldown = 0.6f
+                h.vx *= 0.4f
+            }
+        } else if (actionEdge && h.knock <= 0f) {
+            usePower()
+        }
 
-        if (h.knock <= 0f) {
+        if (h.sliding > 0f) {
+            // Tucked in the blue shell: zoom along, steering only flips direction.
+            if (move != 0) h.facing = move
+            h.vx = h.facing * SLIDE_SPEED
+            if (rnd.nextFloat() < dt * 30f && h.onGround) dust(h.x - h.facing * 20f, h.y, 1)
+        } else if (h.knock <= 0f) {
             val target = move * RUN_SPEED * (if (h.star > 0f) 1.25f else 1f)
             val accel = if (h.onGround) 16f else 9f
             h.vx += (target - h.vx) * min(1f, dt * accel)
@@ -363,6 +396,10 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         val prevY = h.y
         h.x = (h.x + h.vx * dt).coerceIn(h.halfW, WORLD_W - h.halfW)
         h.y += h.vy * dt
+        if (h.sliding > 0f && (h.x <= h.halfW + 0.5f || h.x >= WORLD_W - h.halfW - 0.5f)) {
+            h.facing = -h.facing
+            audio.play(Sfx.PLANT)
+        }
 
         val wasGround = h.onGround
         h.onGround = false
@@ -406,6 +443,17 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
                 shots += if (ice) Shot(h.x + dir * 22f, h.y - 36f, dir * 560f, 60f, true)
                 else Shot(h.x + dir * 22f, h.y - 36f, dir * 640f, 150f, false)
                 audio.play(if (ice) Sfx.ICE_SHOT else Sfx.FIRE_SHOT)
+            }
+            Power.BOOMERANG -> {
+                if (shots.any { it.boomerang }) return
+                val dir = h.facing.toFloat()
+                shots += Shot(h.x + dir * 20f, h.y - 36f, dir * 900f, 0f, ice = false, boomerang = true)
+                audio.play(Sfx.BOOMERANG)
+            }
+            Power.SHELL -> {
+                if (!h.onGround || h.slideCooldown > 0f) return
+                h.sliding = SLIDE_TIME
+                audio.play(Sfx.SHELL)
             }
             Power.DRILL -> {
                 if (!h.onGround || h.y < GROUND_Y - 0.5f || h.drillCooldown > 0f) return
@@ -490,7 +538,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
                 b.y = BOSS_HIGH_Y + sin(b.bob * 2.2f) * 12f
                 b.attackTimer -= dt
                 if (b.attackTimer <= 0f) {
-                    if (b.attacks >= 5) startSwoop() else attack()
+                    if (b.attacks >= 4) startSwoop() else attack()
                 }
             }
             BossState.CARPET_PREP -> {
@@ -525,7 +573,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
                 b.y += (BOSS_LOW_Y - b.y) * min(1f, dt * 3.2f)
                 if (abs(b.y - BOSS_LOW_Y) < 6f) {
                     b.state = BossState.LOW
-                    b.timer = 3.2f
+                    b.timer = 3.7f
                 }
             }
             BossState.LOW -> {
@@ -563,8 +611,8 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         }
     }
 
-    private fun attackInterval() = (2.3f - (level - 1) * 0.22f).coerceAtLeast(0.7f)
-    private fun plantLife() = min(10f, 4.4f + level * 0.8f)
+    private fun attackInterval() = (2.5f - (level - 1) * 0.2f).coerceAtLeast(0.8f)
+    private fun plantLife() = min(9f, 4.0f + level * 0.7f)
 
     private fun attack() {
         val b = boss
@@ -578,10 +626,10 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         when (options[rnd.nextInt(options.size)]) {
             0 -> { // aimed lob
                 val lead = hero.vx * 0.45f
-                lob(hero.x + lead + rnd.nextFloat() * 80f - 40f, 1.05f - min(0.3f, level * 0.04f))
+                lob(hero.x + lead + rnd.nextFloat() * 80f - 40f, 1.15f - min(0.3f, level * 0.04f))
             }
             1 -> { // spread of three
-                for (o in intArrayOf(-170, 0, 170)) lob(hero.x + o, 1.15f)
+                for (o in intArrayOf(-170, 0, 170)) lob(hero.x + o, 1.25f)
             }
             2 -> { // carpet: fly across laying a row of spikes with a safe gap
                 b.carpetDir = if (b.x < WORLD_W / 2) 1 else -1
@@ -742,6 +790,10 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         for (sh in shots) {
             sh.life -= dt
             sh.spin += dt * 18f
+            if (sh.boomerang) {
+                updateBoomerang(sh, dt)
+                continue
+            }
             val py = sh.y
             sh.vy += (if (sh.ice) 900f else 1900f) * dt
             sh.x += sh.vx * dt
@@ -796,15 +848,60 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         shots.removeAll { it.dead }
     }
 
+    /** Flies out, slows, then homes back to the hero, slicing through every spike on the way. */
+    private fun updateBoomerang(sh: Shot, dt: Float) {
+        val h = hero
+        sh.t += dt
+        if (!sh.returning) {
+            sh.vx *= (1f - 1.2f * dt)
+            sh.x += sh.vx * dt
+            if (sh.t > 0.5f || sh.x < 15f || sh.x > WORLD_W - 15f) sh.returning = true
+        } else {
+            val dx = h.x - sh.x
+            val dy = (h.y - 36f) - sh.y
+            val d = sqrt(dx * dx + dy * dy)
+            if (d < 34f) { sh.dead = true; return }
+            sh.vx = dx / d * 760f
+            sh.vy = dy / d * 760f
+            sh.x += sh.vx * dt
+            sh.y += sh.vy * dt
+        }
+        if (sh.life <= 0f) { sh.dead = true; return }
+        for (s in spikes) {
+            if (s.dead) continue
+            val dx = s.x - sh.x
+            val dy = s.y - sh.y
+            if (dx * dx + dy * dy < (s.r + 18f) * (s.r + 18f)) smashSpike(s)
+        }
+        val b = boss
+        if (sh.hitBoss || b.state == BossState.HURT || b.state == BossState.DEFEATED || b.state == BossState.ENTER) return
+        // Big and spinning: it also clips the propeller, so a throw from the floor hits a swooping boss.
+        val hit = (abs(sh.x - b.x) < 78f && sh.y > b.y - 40f && sh.y < b.y + 80f) ||
+            (abs(sh.x - b.x) < 38f && sh.y > b.y - 140f && sh.y <= b.y - 40f)
+        if (hit) {
+            sh.hitBoss = true
+            b.burn += 2
+            b.flash = 0.18f
+            audio.play(Sfx.PLANT)
+            if (b.burn >= 4) {
+                b.burn = 0
+                floatText("BONK!", b.x, b.y - 175f, Color.rgb(140, 200, 255))
+                damageBoss(stomp = false)
+            }
+        }
+    }
+
     private fun updateItems(dt: Float) {
         powerTimer -= dt
         if (powerTimer <= 0f && items.isEmpty()) {
-            powerTimer = 13f + rnd.nextFloat() * 8f
+            powerTimer = 11f + rnd.nextFloat() * 6f
             val roll = rnd.nextFloat()
             val type = when {
-                roll < 0.28f -> Power.FIRE
-                roll < 0.56f -> Power.ICE
-                roll < 0.84f -> Power.DRILL
+                roll < 0.18f -> Power.FIRE
+                roll < 0.36f -> Power.ICE
+                roll < 0.54f -> Power.BOOMERANG
+                roll < 0.72f -> Power.SHELL
+                roll < 0.88f -> Power.DRILL
                 else -> Power.STAR
             }
             val p = platforms[rnd.nextInt(platforms.size)]
@@ -846,9 +943,10 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         floatText(type.label + "!", h.x, h.y - 90f, Color.rgb(255, 240, 120))
         if (type == Power.STAR) {
             h.star = STAR_TIME
-            audio.playSong(Music.star, 1f, then = Music.main, thenTempo = tempoForLevel())
+            audio.playSong(Music.star, 1f, then = Music.themeFor(level), thenTempo = tempoForLevel())
         } else {
             if (h.drilling && type != Power.DRILL) surface()
+            if (type != Power.SHELL) h.sliding = 0f
             h.power = type
             audio.play(Sfx.POWER_UP)
         }
@@ -884,6 +982,20 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         val top = h.y - h.height + 8f
         val bottom = h.y
         if (h.drilling) return
+        if (h.sliding > 0f) {
+            for (s in spikes) {
+                if (!s.dead && abs(s.x - h.x) < s.r + 26f && s.y > h.y - 50f && s.y < h.y + 10f) smashSpike(s)
+            }
+            val b = boss
+            if ((b.state == BossState.LOW || b.state == BossState.SWOOP_DOWN || b.state == BossState.SWOOP_UP) &&
+                abs(b.x - h.x) < 85f && abs(b.y - h.y) < 140f
+            ) {
+                floatText("SHELL SMASH!", b.x, b.y - 180f, Color.rgb(120, 180, 255))
+                damageBoss(stomp = false)
+                h.facing = -h.facing
+            }
+            return
+        }
         val starred = h.star > 0f
 
         if (h.invuln <= 0f || starred) {
@@ -929,7 +1041,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
 
     private fun hurtHero(fromX: Float) {
         val h = hero
-        if (h.invuln > 0f || h.star > 0f || h.drilling) return
+        if (h.invuln > 0f || h.star > 0f || h.drilling || h.sliding > 0f) return
         if (h.power != null) {
             // Like the classics: a hit costs you the power-up, not a life.
             h.power = null
@@ -944,7 +1056,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
             return
         }
         lives--
-        h.invuln = 2f
+        h.invuln = 2.3f
         h.knock = 0.35f
         val dir = if (h.x >= fromX) 1f else -1f
         h.vx = dir * 380f
@@ -990,7 +1102,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
                 audio.play(Sfx.LIFE)
                 floatText("1UP!", h.x, h.y - 90f, Color.rgb(120, 255, 120))
             }
-            audio.playSong(Music.clear, 1f, then = Music.main, thenTempo = tempoForLevel(level + 1))
+            audio.playSong(Music.clear, 1f, then = Music.themeFor(level + 1), thenTempo = tempoForLevel(level + 1))
         } else {
             b.state = BossState.HURT
             b.timer = 0.9f
@@ -1080,12 +1192,13 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
     }
     private val rect = RectF()
     private val path = Path()
-    private val background: Bitmap by lazy { buildBackground() }
+    private val background: Bitmap by lazy { buildBackground(false) }
+    private val darkBackground: Bitmap by lazy { buildBackground(true) }
 
     fun render(c: Canvas) {
         c.save()
         if (shake > 0f) c.translate(rnd.nextFloat() * 12f - 6f, rnd.nextFloat() * 12f - 6f)
-        c.drawBitmap(background, 0f, 0f, null)
+        c.drawBitmap(if (state != State.TITLE && level >= 3) darkBackground else background, 0f, 0f, null)
 
         for (s in spikes) if (!s.markX.isNaN()) drawMarker(c, s.markX, s.markY)
         for (co in coins) drawCoin(c, co)
@@ -1094,6 +1207,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
 
         if (state != State.TITLE) {
             if (hero.drilling) drawDrillMound(c, hero)
+            else if (hero.sliding > 0f) drawSlidingHero(c, hero)
             else if (hero.star > 0f || !(hero.invuln > 0f && !hero.dead && (time * 14f).toInt() % 2 == 0)) drawHero(c, hero)
         }
         drawBoss(c, boss)
@@ -1156,7 +1270,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         drawText(c, "SPIKE RUSH", WORLD_W / 2, 120f + wob, 96f, Color.rgb(255, 210, 50))
         drawText(c, "JR.", WORLD_W / 2 + 280f, 165f + wob, 54f, Color.rgb(255, 110, 70))
         drawText(c, "Dodge the spikes. Stomp the brat when he swoops low!", WORLD_W / 2, 440f, 30f, Color.WHITE)
-        var ix = WORLD_W / 2 - 150f
+        var ix = WORLD_W / 2 - 250f
         for (p in Power.values()) {
             drawPowerIcon(c, p, ix, 482f, 0.8f, time)
             ix += 100f
@@ -1192,7 +1306,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         if (boss.burn > 0) {
             text.textAlign = Paint.Align.RIGHT
             textStroke.textAlign = Paint.Align.RIGHT
-            drawText(c, "BURN " + "|".repeat(boss.burn) + ".".repeat(4 - boss.burn), WORLD_W - 30f, 84f, 22f,
+            drawText(c, "BOSS DMG " + "|".repeat(boss.burn) + ".".repeat(4 - boss.burn), WORLD_W - 30f, 84f, 22f,
                 Color.rgb(255, 160, 60))
             text.textAlign = Paint.Align.CENTER
             textStroke.textAlign = Paint.Align.CENTER
@@ -1305,7 +1419,9 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         c.save()
         c.translate(sh.x, sh.y)
         c.rotate(sh.spin * 57.3f)
-        if (sh.ice) {
+        if (sh.boomerang) {
+            drawBoomerang(c, 1.2f)
+        } else if (sh.ice) {
             paint.color = Color.rgb(120, 200, 255)
             path.reset()
             path.moveTo(0f, -13f); path.lineTo(10f, 0f); path.lineTo(0f, 13f); path.lineTo(-10f, 0f); path.close()
@@ -1319,6 +1435,76 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
             c.drawCircle(2f, -2f, 7f, paint)
             paint.color = Color.rgb(255, 245, 160)
             c.drawCircle(3f, -3f, 3.5f, paint)
+        }
+        c.restore()
+    }
+
+    /** A V-shaped boomerang centered on the canvas origin. */
+    private fun drawBoomerang(c: Canvas, scale: Float) {
+        path.reset()
+        path.moveTo(-16f * scale, -10f * scale)
+        path.lineTo(0f, 6f * scale)
+        path.lineTo(16f * scale, -10f * scale)
+        path.lineTo(16f * scale, -2f * scale)
+        path.lineTo(0f, 14f * scale)
+        path.lineTo(-16f * scale, -2f * scale)
+        path.close()
+        stroke.color = Color.rgb(25, 15, 20)
+        stroke.strokeWidth = 2.5f
+        c.drawPath(path, stroke)
+        paint.color = Color.rgb(255, 200, 50)
+        c.drawPath(path, paint)
+        paint.color = Color.rgb(60, 110, 230)
+        c.drawCircle(-12f * scale, -5f * scale, 2.5f * scale, paint)
+        c.drawCircle(12f * scale, -5f * scale, 2.5f * scale, paint)
+    }
+
+    /** The blue spiny shell, as a dome sitting on y=0. [spin] scrolls its stripes while sliding. */
+    private fun drawBlueShell(c: Canvas, w: Float, h: Float, spin: Float) {
+        rect.set(-w, -h, w, h)
+        stroke.color = Color.rgb(25, 15, 20)
+        stroke.strokeWidth = 3f
+        c.drawArc(rect, 180f, 180f, true, stroke)
+        paint.color = Color.rgb(40, 90, 220)
+        c.drawArc(rect, 180f, 180f, true, paint)
+        // hexagon plates that scroll as it spins
+        paint.color = Color.rgb(90, 150, 255)
+        for (k in -2..2) {
+            val px = ((k * 0.45f + spin) % 2.25f - 1.1f) * w * 0.9f
+            if (abs(px) < w * 0.75f) {
+                rect.set(px - w * 0.18f, -h * 0.75f, px + w * 0.18f, -h * 0.35f)
+                c.drawOval(rect, paint)
+            }
+        }
+        // white spikes on top
+        paint.color = Color.WHITE
+        for (k in -1..1) {
+            val sx = k * w * 0.45f
+            val base = -h * (if (k == 0) 0.98f else 0.8f)
+            path.reset()
+            path.moveTo(sx - 5f, base + 4f); path.lineTo(sx, base - 10f); path.lineTo(sx + 5f, base + 4f); path.close()
+            c.drawPath(path, paint)
+        }
+        rect.set(-w - 2f, -h * 0.22f, w + 2f, 2f)
+        c.drawRoundRect(rect, 4f, 4f, stroke)
+        paint.color = Color.rgb(245, 240, 225)
+        c.drawRoundRect(rect, 4f, 4f, paint)
+    }
+
+    private fun drawSlidingHero(c: Canvas, h: Hero) {
+        c.save()
+        c.translate(h.x, h.y)
+        if (h.star > 0f) {
+            paint.color = Color.argb(90, 255, 250, 160)
+            c.drawCircle(0f, -20f, 40f, paint)
+        }
+        drawBlueShell(c, 26f, 34f, time * 8f * h.facing)
+        // speed lines
+        stroke.color = Color.argb(160, 255, 255, 255)
+        stroke.strokeWidth = 3f
+        for (k in 0 until 3) {
+            val ly = -8f - k * 9f
+            c.drawLine(-h.facing * 32f, ly, -h.facing * (46f + k * 6f), ly, stroke)
         }
         c.restore()
     }
@@ -1340,9 +1526,17 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         stroke.color = Color.rgb(25, 15, 20)
         stroke.strokeWidth = 3f
         when (type) {
-            Power.FIRE, Power.ICE -> {
-                val petal = if (type == Power.FIRE) Color.rgb(255, 110, 30) else Color.rgb(110, 190, 255)
-                val inner = if (type == Power.FIRE) Color.rgb(255, 225, 60) else Color.rgb(235, 250, 255)
+            Power.FIRE, Power.ICE, Power.BOOMERANG -> {
+                val petal = when (type) {
+                    Power.FIRE -> Color.rgb(255, 110, 30)
+                    Power.ICE -> Color.rgb(110, 190, 255)
+                    else -> Color.rgb(45, 85, 225)
+                }
+                val inner = when (type) {
+                    Power.FIRE -> Color.rgb(255, 225, 60)
+                    Power.ICE -> Color.rgb(235, 250, 255)
+                    else -> Color.rgb(255, 255, 255)
+                }
                 paint.color = Color.rgb(40, 160, 60)
                 c.drawRect(-2.5f, 4f, 2.5f, 22f, paint)
                 rect.set(-16f, 10f, -2f, 18f); c.drawOval(rect, paint)
@@ -1357,6 +1551,17 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
                 paint.color = Color.rgb(25, 15, 20)
                 c.drawRect(-5f, -6f, -2.5f, 1f, paint)
                 c.drawRect(2.5f, -6f, 5f, 1f, paint)
+                if (type == Power.BOOMERANG) {
+                    c.save()
+                    c.translate(14f, -18f)
+                    c.rotate(t * 200f)
+                    drawBoomerang(c, 0.55f)
+                    c.restore()
+                }
+            }
+            Power.SHELL -> {
+                c.translate(0f, 14f)
+                drawBlueShell(c, 22f, 30f, t * 2f)
             }
             Power.STAR -> {
                 c.rotate(sin(t * 6f) * 12f)
@@ -1439,12 +1644,14 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
             starring -> Color.HSVToColor(floatArrayOf((time * 600f) % 360f, 0.75f, 1f))
             h.power == Power.FIRE -> Color.rgb(250, 248, 240)
             h.power == Power.ICE -> Color.rgb(120, 200, 255)
+            h.power == Power.BOOMERANG -> Color.rgb(45, 95, 230)
             else -> Color.rgb(225, 30, 40)
         }
         val blue = when {
             starring -> Color.HSVToColor(floatArrayOf((time * 600f + 180f) % 360f, 0.75f, 0.9f))
             h.power == Power.FIRE -> Color.rgb(225, 30, 40)
             h.power == Power.ICE -> Color.rgb(30, 60, 160)
+            h.power == Power.BOOMERANG -> Color.rgb(245, 245, 250)
             else -> Color.rgb(40, 70, 200)
         }
         val brown = Color.rgb(110, 60, 20)
@@ -1463,6 +1670,14 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
             c.drawRoundRect(rect, 4f, 4f, paint)
         }
         if (airborne) { leg(-8f, 2f); leg(9f, 8f) } else { leg(-7f - swing, 0f); leg(7f + swing, 0f) }
+
+        if (h.power == Power.SHELL) {
+            c.save()
+            c.translate(-13f, -16f)
+            c.rotate(-15f)
+            drawBlueShell(c, 15f, 24f, 0f)
+            c.restore()
+        }
 
         // back arm
         paint.color = red
@@ -1546,10 +1761,23 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         c.scale(b.facing.toFloat(), 1f)
 
         val outline = Color.rgb(25, 15, 20)
-        val skin = Color.rgb(250, 205, 80)
-        val belly = Color.rgb(255, 240, 180)
+        // From round 3 the prince turns purple, with a green scarf, green eyes and a purple pod.
+        val dark = state != State.TITLE && level >= 3
+        val skin = if (dark) Color.rgb(160, 95, 215) else Color.rgb(250, 205, 80)
+        val belly = if (dark) Color.rgb(215, 180, 245) else Color.rgb(255, 240, 180)
+        val shellColor = if (dark) Color.rgb(55, 30, 80) else Color.rgb(40, 150, 60)
+        val hair = if (dark) Color.rgb(120, 40, 160) else Color.rgb(240, 90, 30)
+        val bib = if (dark) Color.rgb(40, 190, 90) else Color.WHITE
+        val podColor = if (dark) Color.rgb(165, 110, 215) else Color.rgb(235, 235, 245)
+        val rimColor = if (dark) Color.rgb(95, 55, 140) else Color.rgb(160, 160, 175)
         stroke.color = outline
         stroke.strokeWidth = 4f
+
+        if (dark) {
+            // menacing aura
+            paint.color = Color.argb(60, 170, 80, 255)
+            c.drawCircle(0f, -40f, 110f + sin(time * 4f) * 6f, paint)
+        }
 
         // propeller
         val blade = abs(cos(time * 30f)) * 46f + 6f
@@ -1560,7 +1788,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         c.drawOval(rect, paint)
 
         // shell on his back
-        paint.color = Color.rgb(40, 150, 60)
+        paint.color = shellColor
         c.drawCircle(-20f, -68f, 30f, stroke)
         c.drawCircle(-20f, -68f, 30f, paint)
         paint.color = Color.WHITE
@@ -1607,7 +1835,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         paint.color = outline
         c.drawCircle(36f, -96f, 2.5f, paint)
         // fiery hair tuft
-        paint.color = Color.rgb(240, 90, 30)
+        paint.color = hair
         path.reset()
         path.moveTo(-20f, -122f)
         path.lineTo(-14f, -150f)
@@ -1625,14 +1853,19 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         c.drawOval(rect, paint)
         rect.set(20f, -122f, 32f, -104f)
         c.drawOval(rect, paint)
+        if (dark) {
+            paint.color = Color.rgb(60, 220, 90)
+            c.drawCircle(16f, -112f, 5.5f, paint)
+            c.drawCircle(28f, -111f, 5.5f, paint)
+        }
         paint.color = outline
         c.drawCircle(16f, -112f, 3.5f, paint)
         c.drawCircle(28f, -111f, 3.5f, paint)
         stroke.strokeWidth = 4f
         c.drawLine(4f, -130f, 20f, -122f, stroke)
         c.drawLine(34f, -128f, 22f, -122f, stroke)
-        // bib with a toothy grin doodled on it
-        paint.color = Color.WHITE
+        // bib (a green scarf on the dark prince) with a toothy grin doodled on it
+        paint.color = bib
         path.reset()
         path.moveTo(-22f, -82f)
         path.lineTo(30f, -82f)
@@ -1650,7 +1883,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         // pod bowl
         rect.set(-70f, -86f, 70f, 46f)
         c.drawArc(rect, 0f, 180f, true, stroke)
-        paint.color = Color.rgb(235, 235, 245)
+        paint.color = podColor
         c.drawArc(rect, 0f, 180f, true, paint)
         // painted angry face on the pod
         paint.color = outline
@@ -1660,7 +1893,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         path.reset()
         path.moveTo(36f, -6f); path.lineTo(12f, 0f); path.lineTo(14f, 10f); path.lineTo(34f, 6f); path.close()
         c.drawPath(path, paint)
-        paint.color = Color.rgb(220, 40, 50)
+        paint.color = if (dark) Color.rgb(40, 190, 90) else Color.rgb(220, 40, 50)
         rect.set(-30f, 8f, 30f, 36f)
         c.drawArc(rect, 0f, 180f, true, paint)
         paint.color = Color.WHITE
@@ -1669,7 +1902,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         // rim
         rect.set(-76f, -30f, 76f, -14f)
         c.drawRoundRect(rect, 8f, 8f, stroke)
-        paint.color = Color.rgb(160, 160, 175)
+        paint.color = rimColor
         c.drawRoundRect(rect, 8f, 8f, paint)
 
         if (b.state == BossState.LOW) {
@@ -1701,18 +1934,23 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         }
     }
 
-    private fun buildBackground(): Bitmap {
+    private fun buildBackground(dark: Boolean): Bitmap {
         val bmp = Bitmap.createBitmap(WORLD_W.toInt(), WORLD_H.toInt(), Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
         val p = Paint(Paint.ANTI_ALIAS_FLAG)
-        p.shader = LinearGradient(0f, 0f, 0f, GROUND_Y, Color.rgb(30, 12, 55), Color.rgb(170, 60, 40), Shader.TileMode.CLAMP)
+        p.shader = LinearGradient(
+            0f, 0f, 0f, GROUND_Y,
+            if (dark) Color.rgb(12, 4, 28) else Color.rgb(30, 12, 55),
+            if (dark) Color.rgb(95, 25, 110) else Color.rgb(170, 60, 40),
+            Shader.TileMode.CLAMP,
+        )
         c.drawRect(0f, 0f, WORLD_W, WORLD_H, p)
         p.shader = null
 
         val r = Random(7)
         p.color = Color.argb(200, 255, 255, 230)
         repeat(60) { c.drawCircle(r.nextFloat() * WORLD_W, r.nextFloat() * 300f, r.nextFloat() * 1.8f + 0.5f, p) }
-        p.color = Color.argb(230, 255, 230, 180)
+        p.color = if (dark) Color.argb(230, 140, 255, 160) else Color.argb(230, 255, 230, 180)
         c.drawCircle(1080f, 120f, 46f, p)
 
         // castle silhouette
@@ -1724,7 +1962,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
             for (k in 0 until 4) c.drawRect(tx + k * 24f, GROUND_Y - th - 18f, tx + k * 24f + 14f, GROUND_Y - th, p)
         }
         c.drawRect(0f, GROUND_Y - 160f, WORLD_W, GROUND_Y, p)
-        p.color = Color.argb(180, 255, 170, 60)
+        p.color = if (dark) Color.argb(200, 120, 255, 140) else Color.argb(180, 255, 170, 60)
         for ((i, tx) in towers.withIndex()) {
             val th = 220f + (i % 3) * 60f
             c.drawRoundRect(RectF(tx + 35f, GROUND_Y - th + 40f, tx + 55f, GROUND_Y - th + 75f), 10f, 10f, p)

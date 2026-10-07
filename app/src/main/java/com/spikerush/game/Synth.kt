@@ -36,6 +36,9 @@ enum class Sfx(vararg val segments: SfxSegment) {
     ICE_SHOT(SfxSegment(1800f, 2600f, 0.08f, Wave.TRIANGLE, 0.4f), SfxSegment(2600f, 1500f, 0.08f, Wave.TRIANGLE, 0.3f)),
     FREEZE(SfxSegment(2200f, 3200f, 0.06f, Wave.SQUARE50, 0.2f), SfxSegment(3200f, 1800f, 0.14f, Wave.TRIANGLE, 0.4f)),
     SHATTER(SfxSegment(5000f, 2000f, 0.15f, Wave.NOISE, 0.25f)),
+    BOOMERANG(SfxSegment(500f, 900f, 0.07f, Wave.TRIANGLE, 0.45f), SfxSegment(900f, 500f, 0.07f, Wave.TRIANGLE, 0.45f),
+        SfxSegment(500f, 900f, 0.07f, Wave.TRIANGLE, 0.35f)),
+    SHELL(SfxSegment(200f, 700f, 0.1f, Wave.SQUARE50, 0.4f), SfxSegment(1500f, 400f, 0.25f, Wave.NOISE, 0.25f)),
     DRILL(SfxSegment(90f, 140f, 0.3f, Wave.SQUARE25, 0.35f), SfxSegment(600f, 200f, 0.12f, Wave.NOISE, 0.3f)),
     LIFE(SfxSegment(660f, 660f, 0.08f, Wave.SQUARE50, 0.4f), SfxSegment(880f, 880f, 0.08f, Wave.SQUARE50, 0.4f),
         SfxSegment(1320f, 1320f, 0.2f, Wave.SQUARE50, 0.4f)),
@@ -164,6 +167,7 @@ class Synth {
     private fun startSong(s: Song?, t: Float) {
         song = s
         tempo = t
+        if (s != null) lead.wave = s.leadWave
         step = 0
         stepCounter = 0.0
         lead.release(); arp.release(); bass.release()
@@ -311,7 +315,7 @@ class Synth {
         return w * env * s.volume
     }
 
-    private class Voice(val wave: Wave) {
+    private class Voice(var wave: Wave) {
         var freq = 0f
         var phase = 0.0
         var gate = 0
