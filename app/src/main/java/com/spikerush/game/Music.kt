@@ -70,6 +70,7 @@ object Music {
 
     fun tier(level: Int) = (level - 1).coerceIn(0, 3)
     fun themeFor(level: Int): Song = themes[tier(level)]
+    fun theme(tier: Int): Song = themes[tier.coerceIn(0, 3)]
     val clear: Song by lazy { buildClear() }
     val gameOver: Song by lazy { buildGameOver() }
     val star: Song by lazy { buildStar() }

@@ -20,7 +20,7 @@ win the round, and every round gets faster and meaner.
 - **Coins** (+100) pop up on the platforms.
 - **Swoop:** after a few throws the prince dives down and sweats. Stomp him for +500,
   but touching the pod or the propeller from the side hurts.
-- Clearing a round gives a bonus and an extra life (max 5). The music speeds up each round.
+- Clearing a round gives a bonus. The music speeds up slightly each round.
 
 ## Power-ups
 
@@ -42,12 +42,35 @@ instead of a life**. Tip: shots skim the floor, so jump before shooting to hit a
 ![Power-ups](docs/screenshot-powerups.png)
 ![Frozen boss](docs/screenshot-ice.png)
 
-## The Dark Prince
+## Bosses and Wonder rounds
 
-From **round 3** the prince turns purple, with a green scarf and glowing green eyes. He rides a
-purple pod with a dark aura, and the arena turns to a green-moon night.
+Each boss fights you for one normal round, then comes back in a **Wonder** form for one round:
+new colors, a glowing aura, a tinted arena, one extra HP, and noticeably harder attacks that use
+its signature move much more often. After a Wonder round the difficulty drops back to a slow,
+steady climb. Every round is a little harder than the one two rounds before it.
 
-![Dark Prince](docs/screenshot-dark-prince.png)
+| Rounds | Boss | Look | Signature attack | Wonder form |
+| --- | --- | --- | --- | --- |
+| 1–2, 3 | **The Brat Prince** | Orange tuft, bib with a doodled grin | Carpet-bomb rows | Purple, green scarf and eyes |
+| 4, 5 | **Larkin** | Tall blue mohawk, cyan shell | Double throw: one quick, one leading your run | Storm: teal, golden shell, white crest |
+| 6, 7 | **Lemmo** | Rainbow mohawk, circus colors | Bouncing balls that hop before they stick | Neon: black, hot pink and green |
+| 8, 9 | **Wanda** | Pink polka-dot bow, lashes | Spike rings rolling in from both sides | Frost Queen: icy blues |
+| 10, 11 | **Royce** | Bald, pink shades | Heavy ball whose landing sends **shockwaves** along the floor (jump them!) | Molten: red-orange, black shell |
+| 12, 13 | **Ludo** | Wild swept-back blue hair | Five-spike fan | Phantom: ghostly grey, white hair |
+
+After round 13 the lineup repeats, harder every time. The boss's name shows in the top-right corner.
+
+![Boss roster](docs/boss-roster.png)
+
+## Helpers
+
+- **1-UP mushroom:** a green-spotted mushroom slides around and gives an extra life (up to 9).
+  It's rare: at most once a round, in about 1 of 3 normal rounds and 3 of 5 Wonder rounds.
+  Beating a Wonder boss also gives a life.
+- **Gino, the green brother:** once every 3rd round, when the floor gets crowded, the
+  taller brother hops across the arena and crushes the spikes on the floor.
+
+![Gino to the rescue](docs/screenshot-brother.png)
 
 ## Boss attacks
 
@@ -73,9 +96,9 @@ The theme comes in four variations that get more ominous as the rounds get harde
 | Rounds | Theme | Sound |
 | --- | --- | --- |
 | 1 | **Brat March** | The cocky original, 148 BPM |
-| 2 | **Rising Tension** | Four-on-the-floor kick, pumping bass, syncopated stabs, 154 BPM |
-| 3 | **Dark Prince** | Half-time stomp at 136 BPM: melody an octave lower in a hollow tone, Phrygian (♭2) notes, tritone bass and diminished stabs |
-| 4+ | **Final Rage** | The dark version at 164 BPM with a 16th-note bass chug, nonstop hats and longer fills; it keeps speeding up each round |
+| Normal rounds 2–6 | **Rising Tension** | Four-on-the-floor kick, pumping bass, syncopated stabs, 154 BPM |
+| Wonder rounds 3–5, normal rounds 8+ | **Dark Prince** | Half-time stomp at 136 BPM: melody an octave lower in a hollow tone, Phrygian (♭2) notes, tritone bass and diminished stabs |
+| Wonder rounds 7+ | **Final Rage** | The dark version at 164 BPM with a 16th-note bass chug, nonstop hats and longer fills |
 
 There are also
 round-clear and game-over jingles, an 8-second F-major star theme, and retro sound
@@ -104,6 +127,7 @@ Requires Android 7.0 (API 24) or newer. Landscape only.
 | --- | --- |
 | `MainActivity.kt` | Full-screen immersive activity, lifecycle |
 | `GameView.kt` | Game loop thread (fixed 120 Hz step), screen scaling, multi-touch and key input |
-| `Game.kt` | Hero physics, boss AI and attacks, spikes, coins, collisions, all drawing |
+| `Game.kt` | Hero physics, boss AI and attacks, spikes, power-ups, helpers, collisions, all drawing |
+| `Bosses.kt` | Boss roster: looks, Wonder palettes, signature attacks, which boss each round |
 | `Synth.kt` | Real-time chiptune synthesizer and sound effects (AudioTrack) |
 | `Music.kt` | Song data and compositions |

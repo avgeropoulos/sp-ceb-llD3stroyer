@@ -82,12 +82,19 @@ class Spike(var x: Float, var y: Float, var vx: Float, var vy: Float, val rolls:
     var markX = Float.NaN
     var markY = 0f
     var frozen = false
+    var bounces = 0
+    var quake = false
     var dead = false
 }
 
 /** Power-ups. FIRE, ICE and DRILL are held until you get hit; STAR is a timed invincibility. */
 enum class Power(val label: String) {
-    FIRE("FIRE FLOWER"), ICE("ICE FLOWER"), BOOMERANG("BOOMERANG FLOWER"), SHELL("BLUE SHELL"), DRILL("DRILL"), STAR("STAR")
+    FIRE("FIRE FLOWER"), ICE("ICE FLOWER"), BOOMERANG("BOOMERANG FLOWER"), SHELL("BLUE SHELL"), DRILL("DRILL"), STAR("STAR"),
+    ONE_UP("1-UP"), // the rare extra-life mushroom; never held as a power
+}
+
+class Shockwave(var x: Float, val dir: Float) {
+    var dead = false
 }
 
 class Item(var x: Float, var y: Float, val type: Power) {
@@ -177,6 +184,21 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
     private val items = ArrayList<Item>()
     private val shots = ArrayList<Shot>()
     private var powerTimer = 9f
+    private val shockwaves = ArrayList<Shockwave>()
+
+    // Who we're fighting this round, and how hard.
+    private var bossKind = BossKind.PRINCE
+    private var wonder = false
+    private var diff = 1f
+    private val look get() = if (wonder) bossKind.wonder else bossKind.normal
+
+    // Per-round events: the green brother (every 3rd round) and the rare 1-UP mushroom.
+    private var levelTime = 0f
+    private var broUsed = false
+    private var broActive = false
+    private var broT = 0f
+    private val bro = Hero()
+    private var oneUpAt = -1f
 
     val platforms = listOf(
         Platform(0f, GROUND_Y, WORLD_W, ground = true),
@@ -217,21 +239,33 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         spikes.clear(); coins.clear(); particles.clear(); texts.clear(); items.clear(); shots.clear()
         powerTimer = 9f
         setupBoss()
+        shockwaves.clear()
         state = State.PLAYING
         paused = false
         coinTimer = 5f
-        audio.playSong(Music.themeFor(level), tempoForLevel())
+        audio.playSong(Music.theme(themeTier(level)), tempoForLevel())
     }
 
-    /** Each tier has its own theme; past the last one the music just keeps speeding up a little. */
-    private fun tempoForLevel(lv: Int = level) = min(1.15f, 1f + maxOf(0, lv - 4) * 0.03f)
+    /** On top of the theme changes, the music picks up a little speed every round. */
+    private fun tempoForLevel(lv: Int = level) = min(1.15f, 1f + (lv - 1) * 0.012f)
 
     private fun setupBoss() {
         boss.x = WORLD_W / 2
         boss.y = -170f
         boss.state = BossState.ENTER
-        boss.maxHp = min(6, 3 + (level - 1) / 2)
+        val (kind, w) = BossKind.forLevel(level)
+        bossKind = kind
+        wonder = w
+        // A slow, steady climb each round, plus a one-round spike for a Wonder boss.
+        diff = 1f + (level - 1) * 0.45f + (if (wonder) 2.2f else 0f)
+        boss.maxHp = min(6, 3 + (level - 1) / 4) + (if (wonder) 1 else 0)
         boss.hp = boss.maxHp
+        levelTime = 0f
+        broUsed = level % 3 != 0
+        broActive = false
+        // The 1-UP mushroom shows up sparingly: some rounds, at a random moment.
+        oneUpAt = if (rnd.nextFloat() < (if (wonder) 0.6f else 0.3f)) 15f + rnd.nextFloat() * 25f else -1f
+        shockwaves.clear()
         boss.attacks = 0
         boss.attackTimer = 1.6f
         boss.spin = 0f
@@ -245,12 +279,30 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         spikes.forEach { poof(it.x, it.y) }
         spikes.clear()
         shots.clear()
+        items.removeAll { it.type == Power.ONE_UP }
+        val oldTier = themeTier(level - 1)
         setupBoss()
         state = State.PLAYING
-        if (level == 3) floatText("THE DARK PRINCE ARRIVES!", WORLD_W / 2, 300f, Color.rgb(190, 120, 255))
-        if (Music.tier(level) != Music.tier(level - 1)) {
-            floatText("~ " + Music.themeNames[Music.tier(level)] + " ~", WORLD_W / 2, 350f, Color.rgb(200, 220, 255))
+        announceBoss()
+        if (themeTier(level) != oldTier) {
+            floatText("~ " + Music.themeNames[themeTier(level)] + " ~", WORLD_W / 2, 360f, Color.rgb(200, 220, 255))
         }
+    }
+
+    private fun announceBoss() {
+        if (wonder) {
+            floatText("WONDER " + bossKind.title + "!", WORLD_W / 2, 280f, look.iris ?: Color.rgb(255, 230, 120))
+            floatText("Powered up for this round only!", WORLD_W / 2, 320f, Color.rgb(230, 230, 255))
+        } else if (level > 1) {
+            floatText(bossKind.title + " APPEARS!", WORLD_W / 2, 290f, Color.rgb(255, 220, 140))
+        }
+    }
+
+    /** Harder rounds get more ominous music; Wonder rounds always step it up. */
+    private fun themeTier(lv: Int): Int {
+        if (lv <= 1) return 0
+        val w = BossKind.forLevel(lv).second
+        return if (w) (if (lv <= 5) 2 else 3) else (if (lv <= 6) 1 else 2)
     }
 
     private fun gameOver() {
@@ -302,6 +354,8 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
                 updateShots(dt)
                 updateCoins(dt)
                 updateItems(dt)
+                updateRoundEvents(dt)
+                updateShockwaves(dt)
                 checkCollisions()
                 scoreClock += dt
                 while (scoreClock >= 1f) { scoreClock -= 1f; score += 10 }
@@ -549,7 +603,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
             }
             BossState.CARPET -> {
                 b.facing = b.carpetDir
-                b.x += b.carpetDir * (330f + level * 20f) * dt
+                b.x += b.carpetDir * (330f + diff * 20f) * dt
                 b.y = BOSS_HIGH_Y - 20f + sin(b.bob * 8f) * 4f
                 val drops = b.carpetDrops.iterator()
                 while (drops.hasNext()) {
@@ -611,8 +665,8 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         }
     }
 
-    private fun attackInterval() = (2.5f - (level - 1) * 0.2f).coerceAtLeast(0.8f)
-    private fun plantLife() = min(9f, 4.0f + level * 0.7f)
+    private fun attackInterval() = (2.5f - (diff - 1f) * 0.2f).coerceAtLeast(0.8f)
+    private fun plantLife() = min(9f, 4.0f + diff * 0.7f)
 
     private fun attack() {
         val b = boss
@@ -620,14 +674,18 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         b.attackTimer = attackInterval()
         val options = ArrayList<Int>()
         options += 0; options += 0; options += 1
-        if (level >= 2) { options += 2; options += 3 }
-        if (level >= 3) { options += 4; options += 1 }
-        if (level >= 4) options += 2
+        if (diff >= 1.4f) { options += 2; options += 3 }
+        if (diff >= 2.8f) { options += 4; options += 1 }
+        if (diff >= 3.5f) options += 2
+        // Each sibling leans on its signature move, a Wonder boss even more so.
+        val sig = if (bossKind.signature == Signature.NONE) 2 else 5
+        repeat(if (wonder) 4 else if (bossKind.signature == Signature.NONE) 0 else 2) { options += sig }
         when (options[rnd.nextInt(options.size)]) {
             0 -> { // aimed lob
                 val lead = hero.vx * 0.45f
-                lob(hero.x + lead + rnd.nextFloat() * 80f - 40f, 1.15f - min(0.3f, level * 0.04f))
+                lob(hero.x + lead + rnd.nextFloat() * 80f - 40f, 1.15f - min(0.3f, diff * 0.04f))
             }
+            5 -> signatureAttack()
             1 -> { // spread of three
                 for (o in intArrayOf(-170, 0, 170)) lob(hero.x + o, 1.25f)
             }
@@ -650,7 +708,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
                 lob(tx, 0.9f, rolls = true, groundOnly = true)
             }
             4 -> { // spike rain
-                repeat(4 + level / 2) {
+                repeat(4 + (diff / 2f).toInt()) {
                     val s = Spike(80f + rnd.nextFloat() * (WORLD_W - 160f), -40f - rnd.nextFloat() * 200f, 0f, 80f)
                     predictLanding(s)
                     spikes += s
@@ -662,7 +720,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
     }
 
     /** Throws a spike ball in an arc so it reaches [tx] after [t] seconds. */
-    private fun lob(tx0: Float, t: Float, rolls: Boolean = false, groundOnly: Boolean = false) {
+    private fun lob(tx0: Float, t: Float, rolls: Boolean = false, groundOnly: Boolean = false): Spike {
         val b = boss
         val tx = tx0.coerceIn(30f, WORLD_W - 30f)
         val sx = b.x + b.facing * 30f
@@ -676,6 +734,30 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         predictLanding(s, ignorePlatforms = groundOnly)
         spikes += s
         audio.play(Sfx.THROW)
+        return s
+    }
+
+    private fun signatureAttack() {
+        when (bossKind.signature) {
+            Signature.DOUBLE_LOB -> { // Larkin: a quick throw, then a second one aimed where you're running
+                lob(hero.x, 0.95f)
+                lob(hero.x + hero.vx * 0.9f + rnd.nextFloat() * 120f - 60f, 1.4f)
+            }
+            Signature.BOUNCERS -> { // Lemmo: circus balls that bounce before they stick
+                for (o in intArrayOf(-140, 140)) lob(hero.x + o, 1.0f).bounces = if (wonder) 3 else 2
+            }
+            Signature.RINGS -> { // Wanda: spike rings rolling in from both sides
+                lob(hero.x - 340f, 0.9f, rolls = true, groundOnly = true).rollTime = 4f
+                lob(hero.x + 340f, 0.9f, rolls = true, groundOnly = true).rollTime = 4f
+            }
+            Signature.QUAKE -> { // Royce: a heavy ball whose landing sends shockwaves along the floor
+                lob(hero.x + rnd.nextFloat() * 200f - 100f, 1.1f, groundOnly = true).quake = true
+            }
+            Signature.SONATA -> { // Ludo: a five-note fan of spikes
+                for ((i, o) in intArrayOf(-320, -160, 0, 160, 320).withIndex()) lob(hero.x + o, 1.0f + i * 0.1f)
+            }
+            Signature.NONE -> {}
+        }
     }
 
     private fun supportY(x: Float, y: Float): Float {
@@ -717,14 +799,28 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
                     if (s.x < s.r) { s.x = s.r; s.vx = -s.vx * 0.6f }
                     if (s.x > WORLD_W - s.r) { s.x = WORLD_W - s.r; s.vx = -s.vx * 0.6f }
                     for (p in platforms) {
-                        if (s.rolls && !p.ground) continue
+                        if ((s.rolls || s.quake) && !p.ground) continue // these always aim for the floor
                         if (s.vy > 0f && p.under(s.x) && py + s.r <= p.y + 0.5f && s.y + s.r >= p.y) {
                             s.y = p.y - s.r + 3f
                             s.vy = 0f
                             s.markX = Float.NaN
+                            if (s.bounces > 0 && !s.frozen) {
+                                s.bounces--
+                                s.y = p.y - s.r
+                                s.vy = -620f
+                                s.vx *= 0.8f
+                                predictLanding(s)
+                                audio.play(Sfx.PLANT)
+                                break
+                            }
+                            if (s.quake && p.ground && !s.frozen) {
+                                shockwaves += Shockwave(s.x, -1f)
+                                shockwaves += Shockwave(s.x, 1f)
+                                shake = 0.3f
+                            }
                             if (s.rolls) {
                                 s.state = SpikeState.ROLLING
-                                s.vx = sign(hero.x - s.x) * (270f + level * 18f)
+                                s.vx = sign(hero.x - s.x) * (270f + diff * 18f)
                             } else {
                                 plant(s)
                             }
@@ -928,7 +1024,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
                 }
             }
             if (it.y > WORLD_H + 40f) it.dead = true
-            if (!it.dead && abs(it.x - h.x) < 36f && it.y > h.y - h.height - 10f && it.y - 40f < h.y) {
+            if (!it.dead && state == State.PLAYING && abs(it.x - h.x) < 36f && it.y > h.y - h.height - 10f && it.y - 40f < h.y) {
                 it.dead = true
                 collect(it.type)
             }
@@ -936,14 +1032,82 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         items.removeAll { it.dead }
     }
 
+    private fun updateRoundEvents(dt: Float) {
+        levelTime += dt
+        // 1-UP mushroom: at most once a round, and not every round.
+        if (oneUpAt >= 0f && levelTime >= oneUpAt) {
+            oneUpAt = -1f
+            val p = platforms[1 + rnd.nextInt(platforms.size - 1)]
+            val m = Item(p.x + p.w / 2, p.y - 20f, Power.ONE_UP)
+            m.vx = if (rnd.nextBoolean()) 150f else -150f
+            m.life = 9f
+            items += m
+            sparkle(m.x, m.y)
+            audio.play(Sfx.ITEM_APPEAR)
+            floatText("1-UP MUSHROOM!", m.x, m.y - 60f, Color.rgb(120, 255, 120))
+        }
+        // The green brother: once on every 3rd round, when the floor is getting crowded.
+        if (!broUsed) {
+            val floorSpikes = spikes.count { it.state == SpikeState.PLANTED && it.y > GROUND_Y - 40f }
+            if ((levelTime > 12f && floorSpikes >= 3) || levelTime > 35f) {
+                broUsed = true
+                broActive = true
+                broT = 0f
+                bro.reset()
+                bro.x = -50f
+                bro.facing = 1
+                audio.play(Sfx.BRO)
+                floatText("GINO TO THE RESCUE!", WORLD_W / 2, 260f, Color.rgb(90, 230, 90))
+            }
+        }
+        if (broActive) {
+            broT += dt
+            bro.x += 520f * dt
+            bro.vx = 520f
+            // big floaty hops along the floor
+            val hop = abs(sin(broT * 6f))
+            bro.y = GROUND_Y - hop * 90f
+            bro.onGround = hop < 0.15f
+            bro.anim += dt * 18f
+            for (s in spikes) {
+                if (!s.dead && abs(s.x - bro.x) < 46f && s.y > GROUND_Y - 130f) {
+                    smashSpike(s)
+                    sparkle(s.x, s.y)
+                }
+            }
+            if (bro.x > WORLD_W + 60f) broActive = false
+        }
+    }
+
+    private fun updateShockwaves(dt: Float) {
+        val h = hero
+        for (w in shockwaves) {
+            w.x += w.dir * 470f * dt
+            if (rnd.nextFloat() < dt * 40f) dust(w.x, GROUND_Y, 1)
+            if (w.x < -40f || w.x > WORLD_W + 40f) w.dead = true
+            if (!w.dead && h.onGround && h.y >= GROUND_Y - 1f && abs(h.x - w.x) < 24f && !h.drilling) {
+                if (h.star > 0f || h.sliding > 0f) continue
+                hurtHero(w.x)
+            }
+        }
+        shockwaves.removeAll { it.dead }
+    }
+
     private fun collect(type: Power) {
         val h = hero
+        if (type == Power.ONE_UP) {
+            lives = min(9, lives + 1)
+            audio.play(Sfx.LIFE)
+            floatText("1-UP!", h.x, h.y - 90f, Color.rgb(120, 255, 120))
+            sparkle(h.x, h.y - 40f)
+            return
+        }
         score += 200
         sparkle(h.x, h.y - 40f)
         floatText(type.label + "!", h.x, h.y - 90f, Color.rgb(255, 240, 120))
         if (type == Power.STAR) {
             h.star = STAR_TIME
-            audio.playSong(Music.star, 1f, then = Music.themeFor(level), thenTempo = tempoForLevel())
+            audio.playSong(Music.star, 1f, then = Music.theme(themeTier(level)), thenTempo = tempoForLevel())
         } else {
             if (h.drilling && type != Power.DRILL) surface()
             if (type != Power.SHELL) h.sliding = 0f
@@ -1097,12 +1261,12 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
             spikes.clear()
             state = State.CLEAR
             stateTimer = 4.2f
-            if (lives < 5) {
+            if (wonder && lives < 9) {
                 lives++
                 audio.play(Sfx.LIFE)
                 floatText("1UP!", h.x, h.y - 90f, Color.rgb(120, 255, 120))
             }
-            audio.playSong(Music.clear, 1f, then = Music.themeFor(level + 1), thenTempo = tempoForLevel(level + 1))
+            audio.playSong(Music.clear, 1f, then = Music.theme(themeTier(level + 1)), thenTempo = tempoForLevel(level + 1))
         } else {
             b.state = BossState.HURT
             b.timer = 0.9f
@@ -1193,12 +1357,24 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
     private val rect = RectF()
     private val path = Path()
     private val background: Bitmap by lazy { buildBackground(false) }
-    private val darkBackground: Bitmap by lazy { buildBackground(true) }
+    private var wonderBackground: Bitmap? = null
+    private var wonderBackgroundLook: BossLook? = null
+
+    /** Wonder rounds tint the whole arena in the boss's colors (built once per boss and reused). */
+    private fun arenaBackground(): Bitmap {
+        if (state == State.TITLE || !wonder) return background
+        if (wonderBackgroundLook !== look) {
+            wonderBackground?.recycle()
+            wonderBackground = buildBackground(true, look)
+            wonderBackgroundLook = look
+        }
+        return wonderBackground!!
+    }
 
     fun render(c: Canvas) {
         c.save()
         if (shake > 0f) c.translate(rnd.nextFloat() * 12f - 6f, rnd.nextFloat() * 12f - 6f)
-        c.drawBitmap(if (state != State.TITLE && level >= 3) darkBackground else background, 0f, 0f, null)
+        c.drawBitmap(arenaBackground(), 0f, 0f, null)
 
         for (s in spikes) if (!s.markX.isNaN()) drawMarker(c, s.markX, s.markY)
         for (co in coins) drawCoin(c, co)
@@ -1211,6 +1387,8 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
             else if (hero.star > 0f || !(hero.invuln > 0f && !hero.dead && (time * 14f).toInt() % 2 == 0)) drawHero(c, hero)
         }
         drawBoss(c, boss)
+        for (w in shockwaves) drawShockwave(c, w)
+        if (broActive) drawHero(c, bro, greenBro = true)
         for (s in spikes) if (s.state != SpikeState.PLANTED && !s.dead) drawSpike(c, s)
         for (sh in shots) drawShot(c, sh)
 
@@ -1271,7 +1449,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         drawText(c, "JR.", WORLD_W / 2 + 280f, 165f + wob, 54f, Color.rgb(255, 110, 70))
         drawText(c, "Dodge the spikes. Stomp the brat when he swoops low!", WORLD_W / 2, 440f, 30f, Color.WHITE)
         var ix = WORLD_W / 2 - 250f
-        for (p in Power.values()) {
+        for (p in Power.values().filter { it != Power.ONE_UP }) {
             drawPowerIcon(c, p, ix, 482f, 0.8f, time)
             ix += 100f
         }
@@ -1315,7 +1493,8 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         // Boss health pips.
         text.textAlign = Paint.Align.RIGHT
         textStroke.textAlign = Paint.Align.RIGHT
-        drawText(c, "BOSS", WORLD_W - 30f - boss.maxHp * 34f, 48f, 26f, Color.rgb(255, 160, 120))
+        val bossName = (if (wonder) "WONDER " else "") + bossKind.title.removePrefix("THE ")
+        drawText(c, bossName, WORLD_W - 30f - boss.maxHp * 34f, 48f, 24f, look.iris ?: Color.rgb(255, 160, 120))
         text.textAlign = Paint.Align.CENTER
         textStroke.textAlign = Paint.Align.CENTER
         for (i in 0 until boss.maxHp) {
@@ -1563,6 +1742,24 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
                 c.translate(0f, 14f)
                 drawBlueShell(c, 22f, 30f, t * 2f)
             }
+            Power.ONE_UP -> {
+                // green-spotted extra-life mushroom
+                rect.set(-12f, -2f, 12f, 20f)
+                c.drawRoundRect(rect, 6f, 6f, stroke)
+                paint.color = Color.rgb(250, 235, 200)
+                c.drawRoundRect(rect, 6f, 6f, paint)
+                paint.color = Color.rgb(25, 15, 20)
+                c.drawRect(-6f, 4f, -3f, 12f, paint)
+                c.drawRect(3f, 4f, 6f, 12f, paint)
+                rect.set(-24f, -24f, 24f, 16f)
+                c.drawArc(rect, 180f, 180f, true, stroke)
+                paint.color = Color.rgb(40, 190, 70)
+                c.drawArc(rect, 180f, 180f, true, paint)
+                paint.color = Color.WHITE
+                c.drawCircle(0f, -14f, 6.5f, paint)
+                c.drawCircle(-15f, -6f, 4.5f, paint)
+                c.drawCircle(15f, -6f, 4.5f, paint)
+            }
             Power.STAR -> {
                 c.rotate(sin(t * 6f) * 12f)
                 paint.color = Color.rgb(25, 15, 20)
@@ -1593,6 +1790,91 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
             }
         }
         c.restore()
+    }
+
+    private fun drawBossHair(c: Canvas, lk: BossLook) {
+        when (lk.hairStyle) {
+            HairStyle.TUFT -> {
+                paint.color = lk.hair
+                path.reset()
+                path.moveTo(-20f, -122f)
+                path.lineTo(-14f, -150f)
+                path.lineTo(-4f, -132f)
+                path.lineTo(4f, -156f)
+                path.lineTo(10f, -132f)
+                path.lineTo(20f, -146f)
+                path.lineTo(20f, -124f)
+                path.close()
+                c.drawPath(path, stroke)
+                c.drawPath(path, paint)
+            }
+            HairStyle.MOHAWK, HairStyle.RAINBOW -> {
+                val rainbow = intArrayOf(
+                    Color.rgb(255, 70, 70), Color.rgb(255, 160, 40), Color.rgb(255, 230, 60),
+                    Color.rgb(80, 210, 90), Color.rgb(70, 140, 255),
+                )
+                for (i in 0 until 5) {
+                    val bx = -22f + i * 10f
+                    val tall = if (lk.hairStyle == HairStyle.MOHAWK) 44f - abs(i - 2) * 6f else 30f - abs(i - 2) * 3f
+                    path.reset()
+                    path.moveTo(bx - 7f, -126f)
+                    path.lineTo(bx - 4f, -126f - tall)
+                    path.lineTo(bx + 7f, -126f)
+                    path.close()
+                    paint.color = if (lk.hairStyle == HairStyle.RAINBOW) rainbow[i] else lk.hair
+                    c.drawPath(path, stroke)
+                    c.drawPath(path, paint)
+                }
+            }
+            HairStyle.BOW -> {
+                paint.color = lk.hair
+                path.reset()
+                path.moveTo(4f, -136f); path.lineTo(-24f, -158f); path.lineTo(-26f, -122f); path.close()
+                c.drawPath(path, stroke); c.drawPath(path, paint)
+                path.reset()
+                path.moveTo(4f, -136f); path.lineTo(30f, -160f); path.lineTo(34f, -124f); path.close()
+                c.drawPath(path, stroke); c.drawPath(path, paint)
+                c.drawCircle(4f, -136f, 8f, stroke)
+                c.drawCircle(4f, -136f, 8f, paint)
+                paint.color = Color.WHITE
+                c.drawCircle(-14f, -140f, 3.5f, paint)
+                c.drawCircle(22f, -142f, 3.5f, paint)
+                c.drawCircle(-18f, -130f, 2.5f, paint)
+                c.drawCircle(26f, -132f, 2.5f, paint)
+            }
+            HairStyle.SHADES -> {} // bald and proud; the shades go on with the eyes
+            HairStyle.WILD -> {
+                paint.color = lk.hair
+                // big swept-back conductor's mane
+                path.reset()
+                path.moveTo(-12f, -146f); path.lineTo(-62f, -158f); path.lineTo(-40f, -132f)
+                path.lineTo(-70f, -126f); path.lineTo(-36f, -112f); path.close()
+                c.drawPath(path, stroke)
+                c.drawPath(path, paint)
+                for (i in 0 until 6) {
+                    val a = 3.3f + i * 0.3f
+                    c.drawCircle(-4f + cos(a) * 32f, -122f + sin(a) * 26f, 19f - i * 1.5f, stroke)
+                }
+                for (i in 0 until 6) {
+                    val a = 3.3f + i * 0.3f
+                    c.drawCircle(-4f + cos(a) * 32f, -122f + sin(a) * 26f, 19f - i * 1.5f, paint)
+                }
+                c.drawPath(path, paint)
+            }
+        }
+    }
+
+    private fun drawShockwave(c: Canvas, w: Shockwave) {
+        val pulse = sin(time * 30f) * 3f
+        paint.color = Color.argb(200, 255, 200, 120)
+        rect.set(w.x - 22f, GROUND_Y - 26f - pulse, w.x + 22f, GROUND_Y + 6f)
+        c.drawArc(rect, 180f, 180f, true, paint)
+        paint.color = Color.argb(220, 255, 240, 200)
+        rect.inset(8f, 8f)
+        c.drawArc(rect, 180f, 180f, true, paint)
+        stroke.color = Color.argb(200, 255, 160, 60)
+        stroke.strokeWidth = 3f
+        c.drawLine(w.x - w.dir * 30f, GROUND_Y - 6f, w.x - w.dir * 50f, GROUND_Y - 6f, stroke)
     }
 
     private fun drawDrillMound(c: Canvas, h: Hero) {
@@ -1626,9 +1908,10 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
     }
 
     // ---- the plumber hero (drawn facing right; mirrored for left) ----
-    private fun drawHero(c: Canvas, h: Hero) {
+    private fun drawHero(c: Canvas, h: Hero, greenBro: Boolean = false) {
         c.save()
         c.translate(h.x, h.y)
+        if (greenBro) c.scale(0.95f, 1.15f) // the taller, lankier brother
         if (h.dead) c.scale(1f, -1f, 0f, -32f)
         c.scale(h.facing.toFloat(), 1f)
         val airborne = !h.onGround
@@ -1641,6 +1924,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
             c.drawCircle(0f, -34f, 46f + sin(time * 20f) * 4f, paint)
         }
         val red = when {
+            greenBro -> Color.rgb(40, 170, 70)
             starring -> Color.HSVToColor(floatArrayOf((time * 600f) % 360f, 0.75f, 1f))
             h.power == Power.FIRE -> Color.rgb(250, 248, 240)
             h.power == Power.ICE -> Color.rgb(120, 200, 255)
@@ -1648,6 +1932,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
             else -> Color.rgb(225, 30, 40)
         }
         val blue = when {
+            greenBro -> Color.rgb(30, 40, 130)
             starring -> Color.HSVToColor(floatArrayOf((time * 600f + 180f) % 360f, 0.75f, 0.9f))
             h.power == Power.FIRE -> Color.rgb(225, 30, 40)
             h.power == Power.ICE -> Color.rgb(30, 60, 160)
@@ -1761,22 +2046,20 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         c.scale(b.facing.toFloat(), 1f)
 
         val outline = Color.rgb(25, 15, 20)
-        // From round 3 the prince turns purple, with a green scarf, green eyes and a purple pod.
-        val dark = state != State.TITLE && level >= 3
-        val skin = if (dark) Color.rgb(160, 95, 215) else Color.rgb(250, 205, 80)
-        val belly = if (dark) Color.rgb(215, 180, 245) else Color.rgb(255, 240, 180)
-        val shellColor = if (dark) Color.rgb(55, 30, 80) else Color.rgb(40, 150, 60)
-        val hair = if (dark) Color.rgb(120, 40, 160) else Color.rgb(240, 90, 30)
-        val bib = if (dark) Color.rgb(40, 190, 90) else Color.WHITE
-        val podColor = if (dark) Color.rgb(165, 110, 215) else Color.rgb(235, 235, 245)
-        val rimColor = if (dark) Color.rgb(95, 55, 140) else Color.rgb(160, 160, 175)
+        // Each sibling has its own colors; a Wonder boss swaps to its powered-up palette and glows.
+        val lk = if (state == State.TITLE) BossKind.PRINCE.normal else look
+        val skin = lk.skin
+        val belly = lk.belly
         stroke.color = outline
         stroke.strokeWidth = 4f
 
-        if (dark) {
-            // menacing aura
-            paint.color = Color.argb(60, 170, 80, 255)
+        lk.aura?.let {
+            paint.color = it
             c.drawCircle(0f, -40f, 110f + sin(time * 4f) * 6f, paint)
+            if (rnd.nextFloat() < 0.15f) {
+                particles += Particle(b.x + rnd.nextFloat() * 160f - 80f, b.y - rnd.nextFloat() * 160f, 0f, -60f, 0.6f,
+                    Color.argb(220, Color.red(it), Color.green(it), Color.blue(it)), 5f, 0f, star = true)
+            }
         }
 
         // propeller
@@ -1788,7 +2071,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         c.drawOval(rect, paint)
 
         // shell on his back
-        paint.color = shellColor
+        paint.color = lk.shell
         c.drawCircle(-20f, -68f, 30f, stroke)
         c.drawCircle(-20f, -68f, 30f, paint)
         paint.color = Color.WHITE
@@ -1834,27 +2117,15 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         c.drawOval(rect, paint)
         paint.color = outline
         c.drawCircle(36f, -96f, 2.5f, paint)
-        // fiery hair tuft
-        paint.color = hair
-        path.reset()
-        path.moveTo(-20f, -122f)
-        path.lineTo(-14f, -150f)
-        path.lineTo(-4f, -132f)
-        path.lineTo(4f, -156f)
-        path.lineTo(10f, -132f)
-        path.lineTo(20f, -146f)
-        path.lineTo(20f, -124f)
-        path.close()
-        c.drawPath(path, stroke)
-        c.drawPath(path, paint)
+        drawBossHair(c, lk)
         // eyes + angry brows
         paint.color = Color.WHITE
         rect.set(6f, -124f, 20f, -104f)
         c.drawOval(rect, paint)
         rect.set(20f, -122f, 32f, -104f)
         c.drawOval(rect, paint)
-        if (dark) {
-            paint.color = Color.rgb(60, 220, 90)
+        lk.iris?.let {
+            paint.color = it
             c.drawCircle(16f, -112f, 5.5f, paint)
             c.drawCircle(28f, -111f, 5.5f, paint)
         }
@@ -1864,26 +2135,46 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         stroke.strokeWidth = 4f
         c.drawLine(4f, -130f, 20f, -122f, stroke)
         c.drawLine(34f, -128f, 22f, -122f, stroke)
-        // bib (a green scarf on the dark prince) with a toothy grin doodled on it
-        paint.color = bib
-        path.reset()
-        path.moveTo(-22f, -82f)
-        path.lineTo(30f, -82f)
-        path.lineTo(4f, -54f)
-        path.close()
-        c.drawPath(path, stroke)
-        c.drawPath(path, paint)
-        stroke.strokeWidth = 2.5f
-        path.reset()
-        path.moveTo(-10f, -76f)
-        for (i in 0..5) path.lineTo(-6f + i * 6f, if (i % 2 == 0) -70f else -76f)
-        c.drawPath(path, stroke)
-        stroke.strokeWidth = 4f
+        if (lk.hairStyle == HairStyle.BOW) {
+            // lashes
+            stroke.strokeWidth = 2.5f
+            c.drawLine(8f, -122f, 3f, -127f, stroke)
+            c.drawLine(31f, -120f, 36f, -124f, stroke)
+            stroke.strokeWidth = 4f
+        }
+        if (lk.hairStyle == HairStyle.SHADES) {
+            // cool pink shades
+            paint.color = Color.rgb(25, 15, 20)
+            c.drawRect(2f, -117f, 36f, -114f, paint)
+            paint.color = lk.hair
+            rect.set(5f, -121f, 19f, -105f); c.drawRoundRect(rect, 5f, 5f, paint)
+            rect.set(21f, -120f, 35f, -105f); c.drawRoundRect(rect, 5f, 5f, paint)
+            paint.color = Color.argb(200, 255, 255, 255)
+            c.drawRect(7f, -118f, 10f, -114f, paint)
+            c.drawRect(23f, -117f, 26f, -113f, paint)
+        }
+        lk.bib?.let { bibColor ->
+            // bib (a green scarf on the dark prince) with a toothy grin doodled on it
+            paint.color = bibColor
+            path.reset()
+            path.moveTo(-22f, -82f)
+            path.lineTo(30f, -82f)
+            path.lineTo(4f, -54f)
+            path.close()
+            c.drawPath(path, stroke)
+            c.drawPath(path, paint)
+            stroke.strokeWidth = 2.5f
+            path.reset()
+            path.moveTo(-10f, -76f)
+            for (i in 0..5) path.lineTo(-6f + i * 6f, if (i % 2 == 0) -70f else -76f)
+            c.drawPath(path, stroke)
+            stroke.strokeWidth = 4f
+        }
 
         // pod bowl
         rect.set(-70f, -86f, 70f, 46f)
         c.drawArc(rect, 0f, 180f, true, stroke)
-        paint.color = podColor
+        paint.color = lk.pod
         c.drawArc(rect, 0f, 180f, true, paint)
         // painted angry face on the pod
         paint.color = outline
@@ -1893,7 +2184,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         path.reset()
         path.moveTo(36f, -6f); path.lineTo(12f, 0f); path.lineTo(14f, 10f); path.lineTo(34f, 6f); path.close()
         c.drawPath(path, paint)
-        paint.color = if (dark) Color.rgb(40, 190, 90) else Color.rgb(220, 40, 50)
+        paint.color = lk.mouth
         rect.set(-30f, 8f, 30f, 36f)
         c.drawArc(rect, 0f, 180f, true, paint)
         paint.color = Color.WHITE
@@ -1902,7 +2193,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         // rim
         rect.set(-76f, -30f, 76f, -14f)
         c.drawRoundRect(rect, 8f, 8f, stroke)
-        paint.color = rimColor
+        paint.color = lk.rim
         c.drawRoundRect(rect, 8f, 8f, paint)
 
         if (b.state == BossState.LOW) {
@@ -1934,14 +2225,14 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         }
     }
 
-    private fun buildBackground(dark: Boolean): Bitmap {
+    private fun buildBackground(dark: Boolean, lk: BossLook = BossKind.PRINCE.wonder): Bitmap {
         val bmp = Bitmap.createBitmap(WORLD_W.toInt(), WORLD_H.toInt(), Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
         val p = Paint(Paint.ANTI_ALIAS_FLAG)
         p.shader = LinearGradient(
             0f, 0f, 0f, GROUND_Y,
             if (dark) Color.rgb(12, 4, 28) else Color.rgb(30, 12, 55),
-            if (dark) Color.rgb(95, 25, 110) else Color.rgb(170, 60, 40),
+            if (dark) lk.sky else Color.rgb(170, 60, 40),
             Shader.TileMode.CLAMP,
         )
         c.drawRect(0f, 0f, WORLD_W, WORLD_H, p)
@@ -1950,7 +2241,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         val r = Random(7)
         p.color = Color.argb(200, 255, 255, 230)
         repeat(60) { c.drawCircle(r.nextFloat() * WORLD_W, r.nextFloat() * 300f, r.nextFloat() * 1.8f + 0.5f, p) }
-        p.color = if (dark) Color.argb(230, 140, 255, 160) else Color.argb(230, 255, 230, 180)
+        p.color = if (dark) lk.moon else Color.argb(230, 255, 230, 180)
         c.drawCircle(1080f, 120f, 46f, p)
 
         // castle silhouette
@@ -1962,7 +2253,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
             for (k in 0 until 4) c.drawRect(tx + k * 24f, GROUND_Y - th - 18f, tx + k * 24f + 14f, GROUND_Y - th, p)
         }
         c.drawRect(0f, GROUND_Y - 160f, WORLD_W, GROUND_Y, p)
-        p.color = if (dark) Color.argb(200, 120, 255, 140) else Color.argb(180, 255, 170, 60)
+        p.color = if (dark) lk.moon else Color.argb(180, 255, 170, 60)
         for ((i, tx) in towers.withIndex()) {
             val th = 220f + (i % 3) * 60f
             c.drawRoundRect(RectF(tx + 35f, GROUND_Y - th + 40f, tx + 55f, GROUND_Y - th + 75f), 10f, 10f, p)
