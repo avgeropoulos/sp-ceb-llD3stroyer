@@ -65,6 +65,38 @@ object Music {
     val main: Song by lazy { buildMain() }
     val clear: Song by lazy { buildClear() }
     val gameOver: Song by lazy { buildGameOver() }
+    val star: Song by lazy { buildStar() }
+
+    /** Fast major-key invincibility romp. Exactly 8 seconds long so it ends with the star. */
+    private fun buildStar(): Song {
+        val barA = "F5:1 A5:1 C6:2 A5:1 F5:1 G5:2 A5:1 G5:1 F5:2 D5:2 C5:2"
+        val barB = "D5:1 F5:1 A#5:2 A5:1 G5:1 A5:2 C6:4 E5:2 G5:2"
+        val lead = ArrayList<Note>()
+        val bass = ArrayList<Note>()
+        val chords = ArrayList<Chord>()
+        val drums = IntArray(96)
+        val fMaj = intArrayOf(60, 65, 69)
+        val bbMaj = intArrayOf(62, 65, 70)
+        val cMaj = intArrayOf(60, 64, 67)
+        for (rep in 0 until 3) {
+            val s = rep * 32
+            lead += seq(s, barA)
+            lead += seq(s + 16, barB)
+            intArrayOf(41, 53, 41, 53, 41, 53, 48, 53).forEachIndexed { i, m -> bass += Note(s + i * 2, m, 2) }
+            intArrayOf(46, 58, 46, 58, 48, 60, 48, 52).forEachIndexed { i, m -> bass += Note(s + 16 + i * 2, m, 2) }
+            for (o in intArrayOf(0, 4, 8, 12)) chords += Chord(s + o, fMaj, 3)
+            for (o in intArrayOf(0, 4)) chords += Chord(s + 16 + o, bbMaj, 3)
+            for (o in intArrayOf(8, 12)) chords += Chord(s + 16 + o, cMaj, 3)
+            for (i in 0 until 32) {
+                var d = Song.HAT
+                if (i % 8 == 0) d = d or Song.KICK
+                if (i % 8 == 4) d = d or Song.SNARE
+                if (i == 30 || i == 31) d = d or Song.SNARE
+                drums[s + i] = d
+            }
+        }
+        return Song(180f, 96, false, lead, bass, chords, drums)
+    }
 
     private fun buildMain(): Song {
         val bars = listOf(

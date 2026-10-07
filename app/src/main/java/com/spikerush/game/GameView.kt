@@ -28,6 +28,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     private var keyLeft = false
     private var keyRight = false
     private var keyJump = false
+    private var keyAction = false
 
     private val btnFill = Paint(Paint.ANTI_ALIAS_FLAG)
     private val btnRing = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
@@ -109,6 +110,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
     private fun buttonRadius(w: Int, h: Int) = min(w, h) * 0.105f
     private fun leftCenterX(r: Float) = r * 1.35f
     private fun rightCenterX(r: Float) = r * 3.75f
+    private fun actionCenterX(w: Int, r: Float) = w - r * 3.9f
 
     private fun drawFrame(c: Canvas) {
         val w = c.width
@@ -128,6 +130,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             drawButton(c, leftCenterX(r), cy, r, game.inLeft, 0)
             drawButton(c, rightCenterX(r), cy, r, game.inRight, 1)
             drawButton(c, w - r * 1.45f, cy, r * 1.1f, game.inJump, 2)
+            if (game.actionAvailable) drawButton(c, actionCenterX(w, r), cy, r * 0.9f, game.inAction, 3)
         }
     }
 
@@ -143,7 +146,17 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         when (kind) {
             0 -> { arrow.moveTo(x - s, y); arrow.lineTo(x + s * 0.6f, y - s); arrow.lineTo(x + s * 0.6f, y + s) }
             1 -> { arrow.moveTo(x + s, y); arrow.lineTo(x - s * 0.6f, y - s); arrow.lineTo(x - s * 0.6f, y + s) }
-            else -> { arrow.moveTo(x, y - s); arrow.lineTo(x + s, y + s * 0.6f); arrow.lineTo(x - s, y + s * 0.6f) }
+            2 -> { arrow.moveTo(x, y - s); arrow.lineTo(x + s, y + s * 0.6f); arrow.lineTo(x - s, y + s * 0.6f) }
+            else -> {
+                // action button: a burst/star shape
+                for (i in 0 until 10) {
+                    val a = -1.5708f + i * 0.6283f
+                    val rr = if (i % 2 == 0) s * 1.1f else s * 0.5f
+                    val px = x + kotlin.math.cos(a) * rr
+                    val py = y + kotlin.math.sin(a) * rr
+                    if (i == 0) arrow.moveTo(px, py) else arrow.lineTo(px, py)
+                }
+            }
         }
         arrow.close()
         c.drawPath(arrow, btnFill)
@@ -173,11 +186,15 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         var l = keyLeft
         var r = keyRight
         var j = keyJump
+        var a = keyAction
         if (width > 0) {
             val rad = buttonRadius(width, height)
             val split = (leftCenterX(rad) + rightCenterX(rad)) / 2f
+            // With a power-up, the right half splits: inner part = action, outer part = jump.
+            val actionSplit = if (game.actionAvailable) (actionCenterX(width, rad) + width - rad * 1.45f) / 2f else -1f
             for (t in touches.values) {
                 when {
+                    t[0] >= width / 2f && t[0] < actionSplit -> a = true
                     t[0] >= width / 2f -> j = true
                     t[0] < split -> l = true
                     else -> r = true
@@ -187,6 +204,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
         game.inLeft = l
         game.inRight = r
         game.inJump = j
+        game.inAction = a
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
@@ -204,6 +222,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_D -> keyRight = down
             KeyEvent.KEYCODE_SPACE, KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_W,
             KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER -> keyJump = down
+            KeyEvent.KEYCODE_J, KeyEvent.KEYCODE_X, KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.KEYCODE_BUTTON_B,
+            KeyEvent.KEYCODE_BUTTON_X -> keyAction = down
             else -> return false
         }
         updateInput()

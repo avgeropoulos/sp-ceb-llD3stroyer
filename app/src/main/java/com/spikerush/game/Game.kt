@@ -28,6 +28,9 @@ private const val RUN_SPEED = 430f
 private const val JUMP_V = 1090f
 private const val BOSS_HIGH_Y = 185f
 private const val BOSS_LOW_Y = 515f
+private const val ICE_HALF = 24f
+private const val DRILL_MAX = 3f
+private const val STAR_TIME = 8f
 
 class Platform(val x: Float, val y: Float, val w: Float, val ground: Boolean = false) {
     fun under(px: Float, margin: Float = 0f) = px >= x - margin && px <= x + w + margin
@@ -46,12 +49,19 @@ class Hero {
     var coyote = 0f
     var jumpBuffer = 0f
     var dead = false
+    var power: Power? = null
+    var star = 0f
+    var drilling = false
+    var drillTime = 0f
+    var drillCooldown = 0f
+    var shootCooldown = 0f
     val halfW = 17f
     val height = 62f
 
     fun reset() {
         x = 200f; y = GROUND_Y; vx = 0f; vy = 0f; onGround = true; facing = 1
         invuln = 0f; knock = 0f; dead = false; coyote = 0f; jumpBuffer = 0f
+        power = null; star = 0f; drilling = false; drillTime = 0f; drillCooldown = 0f; shootCooldown = 0f
     }
 }
 
@@ -66,6 +76,24 @@ class Spike(var x: Float, var y: Float, var vx: Float, var vy: Float, val rolls:
     var spin = 0f
     var markX = Float.NaN
     var markY = 0f
+    var frozen = false
+    var dead = false
+}
+
+/** Power-ups. FIRE, ICE and DRILL are held until you get hit; STAR is a timed invincibility. */
+enum class Power(val label: String) { FIRE("FIRE FLOWER"), ICE("ICE FLOWER"), DRILL("DRILL"), STAR("STAR") }
+
+class Item(var x: Float, var y: Float, val type: Power) {
+    var vx = 0f
+    var vy = -420f
+    var life = 11f
+    var t = 0f
+    var dead = false
+}
+
+class Shot(var x: Float, var y: Float, var vx: Float, var vy: Float, val ice: Boolean) {
+    var life = 1.6f
+    var spin = 0f
     var dead = false
 }
 
@@ -104,6 +132,9 @@ class Boss {
     var carpetDrops = ArrayList<Float>()
     var bob = 0f
     var vy = 0f
+    var frozen = 0f
+    var burn = 0
+    var flash = 0f
 }
 
 class Game(private val audio: Synth, private val prefs: SharedPreferences) {
@@ -119,8 +150,10 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
     @Volatile var inLeft = false
     @Volatile var inRight = false
     @Volatile var inJump = false
+    @Volatile var inAction = false
     @Volatile var tapped = false
     private var prevJump = false
+    private var prevAction = false
 
     private val rnd = Random(System.nanoTime())
     private val hero = Hero()
@@ -129,6 +162,9 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
     private val coins = ArrayList<Coin>()
     private val particles = ArrayList<Particle>()
     private val texts = ArrayList<FloatText>()
+    private val items = ArrayList<Item>()
+    private val shots = ArrayList<Shot>()
+    private var powerTimer = 9f
 
     val platforms = listOf(
         Platform(0f, GROUND_Y, WORLD_W, ground = true),
@@ -150,6 +186,9 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
 
     val showControls get() = state == State.PLAYING || state == State.CLEAR
 
+    /** True when the hero holds a power that uses the action button. */
+    val actionAvailable get() = showControls && hero.power != null
+
     init {
         audio.playSong(Music.main, 0.92f)
     }
@@ -163,7 +202,8 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
     private fun startGame() {
         score = 0; lives = 3; level = 1; newHi = false
         hero.reset()
-        spikes.clear(); coins.clear(); particles.clear(); texts.clear()
+        spikes.clear(); coins.clear(); particles.clear(); texts.clear(); items.clear(); shots.clear()
+        powerTimer = 9f
         setupBoss()
         state = State.PLAYING
         paused = false
@@ -183,12 +223,15 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         boss.attackTimer = 1.6f
         boss.spin = 0f
         boss.targetX = WORLD_W / 2
+        boss.frozen = 0f
+        boss.burn = 0
     }
 
     private fun nextRound() {
         level++
         spikes.forEach { poof(it.x, it.y) }
         spikes.clear()
+        shots.clear()
         setupBoss()
         state = State.PLAYING
     }
@@ -217,6 +260,9 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         val jumpHeld = inJump
         val jumpEdge = jumpHeld && !prevJump
         prevJump = jumpHeld
+        val actionHeld = inAction
+        val actionEdge = actionHeld && !prevAction
+        prevAction = actionHeld
 
         updateParticles(dt)
 
@@ -233,17 +279,20 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
                     if (tap) paused = false
                     return
                 }
-                updateHero(dt, jumpEdge, jumpHeld)
+                updateHero(dt, jumpEdge, jumpHeld, actionEdge)
                 updateBoss(dt)
                 updateSpikes(dt)
+                updateShots(dt)
                 updateCoins(dt)
+                updateItems(dt)
                 checkCollisions()
                 scoreClock += dt
                 while (scoreClock >= 1f) { scoreClock -= 1f; score += 10 }
             }
             State.CLEAR -> {
-                updateHero(dt, jumpEdge, jumpHeld)
+                updateHero(dt, jumpEdge, jumpHeld, actionEdge)
                 updateBoss(dt)
+                updateShots(dt)
                 updateCoins(dt)
                 stateTimer -= dt
                 if (stateTimer <= 0f) nextRound()
@@ -258,23 +307,39 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
                 updateSpikes(dt)
                 if (tap && stateTimer > 1.5f) {
                     state = State.TITLE
-                    spikes.clear(); coins.clear()
+                    spikes.clear(); coins.clear(); items.clear(); shots.clear()
                     audio.playSong(Music.main, 0.92f)
                 }
             }
         }
     }
 
-    private fun updateHero(dt: Float, jumpEdge: Boolean, jumpHeld: Boolean) {
+    private fun updateHero(dt: Float, jumpEdge: Boolean, jumpHeld: Boolean, actionEdge: Boolean) {
         val h = hero
         if (h.knock > 0f) h.knock -= dt
         if (h.invuln > 0f) h.invuln -= dt
+        if (h.star > 0f) {
+            h.star -= dt
+            if (rnd.nextFloat() < dt * 25f) {
+                particles += Particle(h.x + rnd.nextFloat() * 40f - 20f, h.y - rnd.nextFloat() * 60f, 0f, -40f, 0.4f,
+                    Color.HSVToColor(floatArrayOf(rnd.nextFloat() * 360f, 0.6f, 1f)), 5f, 0f, star = true)
+            }
+        }
+        if (h.drillCooldown > 0f) h.drillCooldown -= dt
+        if (h.shootCooldown > 0f) h.shootCooldown -= dt
 
         var move = 0
         if (inLeft) move -= 1
         if (inRight) move += 1
+
+        if (h.drilling) {
+            updateDrilling(dt, move, jumpEdge || actionEdge)
+            return
+        }
+        if (actionEdge && h.knock <= 0f) usePower()
+
         if (h.knock <= 0f) {
-            val target = move * RUN_SPEED
+            val target = move * RUN_SPEED * (if (h.star > 0f) 1.25f else 1f)
             val accel = if (h.onGround) 16f else 9f
             h.vx += (target - h.vx) * min(1f, dt * accel)
             if (move != 0) h.facing = move
@@ -314,11 +379,91 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
                 }
             }
         }
+        // Frozen spikes are ice blocks you can stand on.
+        if (h.vy >= 0f && !h.onGround) {
+            for (s in spikes) {
+                if (!s.frozen || s.state != SpikeState.PLANTED) continue
+                val top = s.y - ICE_HALF
+                if (abs(h.x - s.x) < ICE_HALF + h.halfW * 0.6f && prevY <= top + 0.5f && h.y >= top) {
+                    h.y = top
+                    h.vy = 0f
+                    h.onGround = true
+                    break
+                }
+            }
+        }
         if (h.onGround) h.anim += dt * abs(h.vx) / 28f
+    }
+
+    private fun usePower() {
+        val h = hero
+        when (h.power) {
+            Power.FIRE, Power.ICE -> {
+                val ice = h.power == Power.ICE
+                if (h.shootCooldown > 0f || shots.size >= 3) return
+                h.shootCooldown = 0.28f
+                val dir = h.facing.toFloat()
+                shots += if (ice) Shot(h.x + dir * 22f, h.y - 36f, dir * 560f, 60f, true)
+                else Shot(h.x + dir * 22f, h.y - 36f, dir * 640f, 150f, false)
+                audio.play(if (ice) Sfx.ICE_SHOT else Sfx.FIRE_SHOT)
+            }
+            Power.DRILL -> {
+                if (!h.onGround || h.y < GROUND_Y - 0.5f || h.drillCooldown > 0f) return
+                h.drilling = true
+                h.drillTime = 0f
+                h.vy = 0f
+                audio.play(Sfx.DRILL)
+                dirt(h.x, 10)
+            }
+            else -> {}
+        }
+    }
+
+    private fun updateDrilling(dt: Float, move: Int, surfacePressed: Boolean) {
+        val h = hero
+        h.drillTime += dt
+        val target = move * RUN_SPEED * 0.75f
+        h.vx += (target - h.vx) * min(1f, dt * 12f)
+        if (move != 0) h.facing = move
+        h.x = (h.x + h.vx * dt).coerceIn(h.halfW, WORLD_W - h.halfW)
+        h.y = GROUND_Y
+        h.vy = 0f
+        h.onGround = true
+        if (rnd.nextFloat() < dt * (if (abs(h.vx) > 40f) 40f else 10f)) dirt(h.x, 1)
+        if ((surfacePressed && h.drillTime > 0.25f) || h.drillTime > DRILL_MAX) surface()
+    }
+
+    /** Burst out of the ground, smashing whatever is right above. */
+    private fun surface() {
+        val h = hero
+        h.drilling = false
+        h.drillCooldown = 0.5f
+        h.vy = -980f
+        h.onGround = false
+        h.invuln = maxOf(h.invuln, 0.45f)
+        audio.play(Sfx.STOMP)
+        dirt(h.x, 14)
+        shake = 0.15f
+        for (s in spikes) {
+            if (abs(s.x - h.x) < 70f && s.y > GROUND_Y - 80f) smashSpike(s)
+        }
+        val b = boss
+        if ((b.state == BossState.LOW || b.state == BossState.SWOOP_DOWN || b.state == BossState.SWOOP_UP) &&
+            abs(b.x - h.x) < 95f && b.y > GROUND_Y - 220f
+        ) {
+            floatText("DRILL ATTACK!", b.x, b.y - 180f, Color.rgb(255, 200, 120))
+            damageBoss(stomp = false)
+        }
     }
 
     private fun updateBoss(dt: Float) {
         val b = boss
+        if (b.flash > 0f) b.flash -= dt
+        if (b.frozen > 0f) {
+            b.frozen -= dt
+            if (b.state != BossState.DEFEATED && b.state != BossState.HURT && b.state != BossState.ENTER) return
+            b.frozen = 0f
+        }
         b.bob += dt
         if (b.throwAnim > 0f) b.throwAnim -= dt
         if (b.state != BossState.DEFEATED && b.state != BossState.CARPET && b.state != BossState.CARPET_PREP) {
@@ -543,6 +688,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
                     if (s.y > WORLD_H + 80f) s.dead = true
                 }
                 SpikeState.ROLLING -> {
+                    if (s.frozen) { plant(s); continue }
                     s.x += s.vx * dt
                     s.spin += s.vx * dt / s.r
                     if (s.x < s.r || s.x > WORLD_W - s.r) {
@@ -556,7 +702,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
                     s.life -= dt
                     if (s.life <= 0f) {
                         s.dead = true
-                        poof(s.x, s.y)
+                        if (s.frozen) shatter(s.x, s.y) else poof(s.x, s.y)
                         if (state == State.PLAYING) score += 5
                     }
                 }
@@ -568,8 +714,144 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
     private fun plant(s: Spike) {
         s.state = SpikeState.PLANTED
         s.vx = 0f
-        s.maxLife = plantLife()
+        s.maxLife = if (s.frozen) 6f else plantLife()
         s.life = s.maxLife
+    }
+
+    private fun freeze(s: Spike) {
+        if (s.frozen) return
+        s.frozen = true
+        s.markX = Float.NaN
+        if (s.state == SpikeState.PLANTED) { s.maxLife = 6f; s.life = 6f }
+        if (s.state == SpikeState.FLYING) { s.vx *= 0.3f; s.vy = maxOf(s.vy, 0f) }
+        if (s.state == SpikeState.ROLLING) plant(s)
+        score += 10
+        audio.play(Sfx.FREEZE)
+    }
+
+    private fun smashSpike(s: Spike) {
+        if (s.dead) return
+        s.dead = true
+        if (s.frozen) shatter(s.x, s.y) else poof(s.x, s.y)
+        score += 20
+        floatText("+20", s.x, s.y - 30f, Color.WHITE)
+    }
+
+    private fun updateShots(dt: Float) {
+        val b = boss
+        for (sh in shots) {
+            sh.life -= dt
+            sh.spin += dt * 18f
+            val py = sh.y
+            sh.vy += (if (sh.ice) 900f else 1900f) * dt
+            sh.x += sh.vx * dt
+            sh.y += sh.vy * dt
+            if (sh.life <= 0f || sh.x < -20f || sh.x > WORLD_W + 20f || sh.y > WORLD_H) {
+                sh.dead = true
+                if (sh.ice) shatter(sh.x.coerceIn(0f, WORLD_W), sh.y, 4)
+            }
+            if (!sh.ice && rnd.nextFloat() < dt * 40f) {
+                particles += Particle(sh.x, sh.y, 0f, -30f, 0.25f, Color.rgb(255, 160, 40), 5f, 0f)
+            }
+            for (p in platforms) {
+                if (sh.vy > 0f && p.under(sh.x) && py + 9f <= p.y + 0.5f && sh.y + 9f >= p.y) {
+                    sh.y = p.y - 9f
+                    // Fireballs bounce low enough to hit spikes on the floor; ice balls skate along it.
+                    sh.vy = if (sh.ice) 0f else -330f
+                }
+            }
+            if (sh.dead) continue
+            for (s in spikes) {
+                if (s.dead) continue
+                val dx = s.x - sh.x
+                val dy = s.y - sh.y
+                if (dx * dx + dy * dy < (s.r + 16f) * (s.r + 16f)) {
+                    if (sh.ice) { if (s.frozen) continue; freeze(s) } else smashSpike(s)
+                    sh.dead = true
+                    break
+                }
+            }
+            if (sh.dead) continue
+            if (b.state == BossState.HURT || b.state == BossState.DEFEATED || b.state == BossState.ENTER) continue
+            val hit = (abs(sh.x - b.x) < 74f && sh.y > b.y - 40f && sh.y < b.y + 50f) ||
+                (abs(sh.x - b.x) < 36f && sh.y > b.y - 140f && sh.y <= b.y - 40f)
+            if (hit) {
+                sh.dead = true
+                if (sh.ice) {
+                    b.frozen = 2.6f
+                    audio.play(Sfx.FREEZE)
+                    floatText("FROZEN!", b.x, b.y - 225f, Color.rgb(170, 230, 255))
+                } else {
+                    b.burn++
+                    b.flash = 0.18f
+                    audio.play(Sfx.PLANT)
+                    if (b.burn >= 4) {
+                        b.burn = 0
+                        floatText("BURNED!", b.x, b.y - 175f, Color.rgb(255, 160, 60))
+                        damageBoss(stomp = false)
+                    }
+                }
+            }
+        }
+        shots.removeAll { it.dead }
+    }
+
+    private fun updateItems(dt: Float) {
+        powerTimer -= dt
+        if (powerTimer <= 0f && items.isEmpty()) {
+            powerTimer = 13f + rnd.nextFloat() * 8f
+            val roll = rnd.nextFloat()
+            val type = when {
+                roll < 0.28f -> Power.FIRE
+                roll < 0.56f -> Power.ICE
+                roll < 0.84f -> Power.DRILL
+                else -> Power.STAR
+            }
+            val p = platforms[rnd.nextInt(platforms.size)]
+            val it = Item(p.x + 40f + rnd.nextFloat() * (p.w - 80f), p.y - 20f, type)
+            if (type == Power.STAR) it.vx = if (rnd.nextBoolean()) 170f else -170f
+            items += it
+            sparkle(it.x, it.y)
+            audio.play(Sfx.ITEM_APPEAR)
+        }
+        val h = hero
+        for (it in items) {
+            it.t += dt
+            it.life -= dt
+            if (it.life <= 0f) it.dead = true
+            val py = it.y
+            it.vy = min(it.vy + 1400f * dt, 900f)
+            it.x += it.vx * dt
+            it.y += it.vy * dt
+            if (it.x < 20f || it.x > WORLD_W - 20f) { it.x = it.x.coerceIn(20f, WORLD_W - 20f); it.vx = -it.vx }
+            for (p in platforms) {
+                if (it.vy > 0f && p.under(it.x) && py <= p.y + 0.5f && it.y >= p.y) {
+                    it.y = p.y
+                    it.vy = if (it.type == Power.STAR) -720f else 0f
+                }
+            }
+            if (it.y > WORLD_H + 40f) it.dead = true
+            if (!it.dead && abs(it.x - h.x) < 36f && it.y > h.y - h.height - 10f && it.y - 40f < h.y) {
+                it.dead = true
+                collect(it.type)
+            }
+        }
+        items.removeAll { it.dead }
+    }
+
+    private fun collect(type: Power) {
+        val h = hero
+        score += 200
+        sparkle(h.x, h.y - 40f)
+        floatText(type.label + "!", h.x, h.y - 90f, Color.rgb(255, 240, 120))
+        if (type == Power.STAR) {
+            h.star = STAR_TIME
+            audio.playSong(Music.star, 1f, then = Music.main, thenTempo = tempoForLevel())
+        } else {
+            if (h.drilling && type != Power.DRILL) surface()
+            h.power = type
+            audio.play(Sfx.POWER_UP)
+        }
     }
 
     private fun updateCoins(dt: Float) {
@@ -601,15 +883,19 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         val right = h.x + h.halfW * 0.8f
         val top = h.y - h.height + 8f
         val bottom = h.y
+        if (h.drilling) return
+        val starred = h.star > 0f
 
-        if (h.invuln <= 0f) {
+        if (h.invuln <= 0f || starred) {
             for (s in spikes) {
+                if (s.frozen || s.dead) continue
                 val rr = s.r * 0.72f
                 val cx = s.x.coerceIn(left, right)
                 val cy = s.y.coerceIn(top, bottom)
                 val dx = s.x - cx
                 val dy = s.y - cy
                 if (dx * dx + dy * dy < rr * rr) {
+                    if (starred) { smashSpike(s); continue }
                     hurtHero(s.x)
                     break
                 }
@@ -620,18 +906,43 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         if (b.state == BossState.HURT || b.state == BossState.DEFEATED || b.state == BossState.ENTER) return
         val headTop = b.y - 130f
         if (h.vy > 0f && abs(h.x - b.x) < 58f && h.y >= headTop - 10f && h.y <= headTop + 30f) {
-            stompBoss()
+            h.vy = -880f
+            h.y = b.y - 132f
+            audio.play(Sfx.STOMP)
+            damageBoss(stomp = true)
             return
         }
-        if (h.invuln > 0f) return
+        if (h.invuln > 0f && !starred) return
         val hitPod = right > b.x - 66f && left < b.x + 66f && bottom > b.y - 38f && top < b.y + 56f
         val hitBody = right > b.x - 30f && left < b.x + 30f && bottom > b.y - 118f && top < b.y - 38f
-        if (hitPod || hitBody) hurtHero(b.x)
+        if (hitPod || hitBody) {
+            if (starred) {
+                h.vx = (if (h.x >= b.x) 1f else -1f) * 420f
+                h.vy = -500f
+                floatText("STAR POWER!", b.x, b.y - 175f, Color.rgb(255, 240, 120))
+                damageBoss(stomp = false)
+            } else {
+                hurtHero(b.x)
+            }
+        }
     }
 
     private fun hurtHero(fromX: Float) {
         val h = hero
-        if (h.invuln > 0f) return
+        if (h.invuln > 0f || h.star > 0f || h.drilling) return
+        if (h.power != null) {
+            // Like the classics: a hit costs you the power-up, not a life.
+            h.power = null
+            h.invuln = 2f
+            h.knock = 0.3f
+            h.vx = (if (h.x >= fromX) 1f else -1f) * 320f
+            h.vy = -480f
+            h.onGround = false
+            shake = 0.25f
+            audio.play(Sfx.POWER_DOWN)
+            floatText("POWER LOST", h.x, h.y - 90f, Color.rgb(255, 150, 150))
+            return
+        }
         lives--
         h.invuln = 2f
         h.knock = 0.35f
@@ -648,17 +959,17 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         if (lives <= 0) gameOver()
     }
 
-    private fun stompBoss() {
+    private fun damageBoss(stomp: Boolean) {
         val b = boss
         val h = hero
-        h.vy = -880f
-        h.y = b.y - 132f
+        if (b.state == BossState.HURT || b.state == BossState.DEFEATED) return
         b.hp--
-        score += 500
+        b.frozen = 0f
+        b.burn = 0
+        score += if (stomp) 500 else 300
         shake = 0.25f
-        audio.play(Sfx.STOMP)
         audio.play(Sfx.BOSS_HIT)
-        floatText("+500", b.x, b.y - 160f, Color.WHITE)
+        floatText(if (stomp) "+500" else "+300", b.x, b.y - 150f, Color.WHITE)
         repeat(8) {
             val a = it / 8f * 6.283f
             particles += Particle(b.x, b.y - 120f, cos(a) * 260f, sin(a) * 260f, 0.6f,
@@ -706,6 +1017,21 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         repeat(6) {
             particles += Particle(x, y, rnd.nextFloat() * 120f - 60f, -rnd.nextFloat() * 120f,
                 0.45f, Color.argb(220, 200, 200, 210), 6f + rnd.nextFloat() * 4f, -60f)
+        }
+    }
+
+    private fun dirt(x: Float, n: Int) {
+        repeat(n) {
+            particles += Particle(x + rnd.nextFloat() * 30f - 15f, GROUND_Y - 2f, rnd.nextFloat() * 300f - 150f,
+                -150f - rnd.nextFloat() * 350f, 0.5f, Color.rgb(130, 75, 45), 4f + rnd.nextFloat() * 4f, 1400f)
+        }
+    }
+
+    private fun shatter(x: Float, y: Float, n: Int = 8) {
+        audio.play(Sfx.SHATTER)
+        repeat(n) {
+            particles += Particle(x, y, rnd.nextFloat() * 300f - 150f, -rnd.nextFloat() * 300f, 0.5f,
+                Color.argb(230, 190, 235, 255), 4f + rnd.nextFloat() * 3f, 1200f)
         }
     }
 
@@ -763,13 +1089,16 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
 
         for (s in spikes) if (!s.markX.isNaN()) drawMarker(c, s.markX, s.markY)
         for (co in coins) drawCoin(c, co)
-        for (s in spikes) if (s.state == SpikeState.PLANTED) drawSpike(c, s)
+        for (it in items) drawItem(c, it)
+        for (s in spikes) if (s.state == SpikeState.PLANTED && !s.dead) drawSpike(c, s)
 
         if (state != State.TITLE) {
-            if (!(hero.invuln > 0f && !hero.dead && (time * 14f).toInt() % 2 == 0)) drawHero(c, hero)
+            if (hero.drilling) drawDrillMound(c, hero)
+            else if (hero.star > 0f || !(hero.invuln > 0f && !hero.dead && (time * 14f).toInt() % 2 == 0)) drawHero(c, hero)
         }
         drawBoss(c, boss)
-        for (s in spikes) if (s.state != SpikeState.PLANTED) drawSpike(c, s)
+        for (s in spikes) if (s.state != SpikeState.PLANTED && !s.dead) drawSpike(c, s)
+        for (sh in shots) drawShot(c, sh)
 
         for (p in particles) {
             val a = (p.life / p.maxLife).coerceIn(0f, 1f)
@@ -826,9 +1155,14 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         val wob = sin(time * 3f) * 4f
         drawText(c, "SPIKE RUSH", WORLD_W / 2, 120f + wob, 96f, Color.rgb(255, 210, 50))
         drawText(c, "JR.", WORLD_W / 2 + 280f, 165f + wob, 54f, Color.rgb(255, 110, 70))
-        drawText(c, "Dodge the spikes. Stomp the brat when he swoops low!", WORLD_W / 2, 450f, 30f, Color.WHITE)
-        if ((time * 2f).toInt() % 2 == 0) drawText(c, "TAP TO START", WORLD_W / 2, 530f, 48f, Color.rgb(140, 255, 140))
-        drawText(c, "HIGH SCORE  $hiScore", WORLD_W / 2, 590f, 30f, Color.rgb(255, 220, 120))
+        drawText(c, "Dodge the spikes. Stomp the brat when he swoops low!", WORLD_W / 2, 440f, 30f, Color.WHITE)
+        var ix = WORLD_W / 2 - 150f
+        for (p in Power.values()) {
+            drawPowerIcon(c, p, ix, 482f, 0.8f, time)
+            ix += 100f
+        }
+        if ((time * 2f).toInt() % 2 == 0) drawText(c, "TAP TO START", WORLD_W / 2, 560f, 48f, Color.rgb(140, 255, 140))
+        drawText(c, "HIGH SCORE  $hiScore", WORLD_W / 2, 604f, 30f, Color.rgb(255, 220, 120))
     }
 
     private fun drawHud(c: Canvas) {
@@ -841,6 +1175,28 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         drawText(c, "ROUND $level", WORLD_W / 2, 44f, 30f, Color.rgb(200, 220, 255))
 
         for (i in 0 until lives) drawHeart(c, 330f + i * 40f, 36f, 15f)
+
+        // Current power-up (and star timer) under the hearts.
+        var px = 340f
+        hero.power?.let {
+            drawPowerIcon(c, it, px, 84f, 0.7f, time)
+            px += 44f
+        }
+        if (hero.star > 0f) {
+            drawPowerIcon(c, Power.STAR, px, 84f, 0.7f, time)
+            paint.color = Color.argb(160, 0, 0, 0)
+            c.drawRect(px + 22f, 78f, px + 102f, 90f, paint)
+            paint.color = Color.rgb(255, 230, 80)
+            c.drawRect(px + 23f, 79f, px + 23f + 78f * (hero.star / STAR_TIME), 89f, paint)
+        }
+        if (boss.burn > 0) {
+            text.textAlign = Paint.Align.RIGHT
+            textStroke.textAlign = Paint.Align.RIGHT
+            drawText(c, "BURN " + "|".repeat(boss.burn) + ".".repeat(4 - boss.burn), WORLD_W - 30f, 84f, 22f,
+                Color.rgb(255, 160, 60))
+            text.textAlign = Paint.Align.CENTER
+            textStroke.textAlign = Paint.Align.CENTER
+        }
 
         // Boss health pips.
         text.textAlign = Paint.Align.RIGHT
@@ -933,6 +1289,135 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         paint.color = Color.rgb(150, 150, 170)
         c.drawCircle(-r * 0.35f, -r * 0.35f, r * 0.28f, paint)
         c.restore()
+        if (s.frozen) {
+            rect.set(s.x - ICE_HALF, s.y - ICE_HALF, s.x + ICE_HALF, s.y + ICE_HALF)
+            paint.color = Color.argb(170, 150, 215, 255)
+            c.drawRoundRect(rect, 6f, 6f, paint)
+            stroke.color = Color.rgb(230, 250, 255)
+            stroke.strokeWidth = 3f
+            c.drawRoundRect(rect, 6f, 6f, stroke)
+            c.drawLine(s.x - 14f, s.y - 16f, s.x - 4f, s.y - 16f, stroke)
+            c.drawLine(s.x - 16f, s.y - 14f, s.x - 16f, s.y - 6f, stroke)
+        }
+    }
+
+    private fun drawShot(c: Canvas, sh: Shot) {
+        c.save()
+        c.translate(sh.x, sh.y)
+        c.rotate(sh.spin * 57.3f)
+        if (sh.ice) {
+            paint.color = Color.rgb(120, 200, 255)
+            path.reset()
+            path.moveTo(0f, -13f); path.lineTo(10f, 0f); path.lineTo(0f, 13f); path.lineTo(-10f, 0f); path.close()
+            c.drawPath(path, paint)
+            paint.color = Color.WHITE
+            c.drawCircle(0f, 0f, 4f, paint)
+        } else {
+            paint.color = Color.rgb(230, 70, 20)
+            c.drawCircle(0f, 0f, 11f, paint)
+            paint.color = Color.rgb(255, 170, 40)
+            c.drawCircle(2f, -2f, 7f, paint)
+            paint.color = Color.rgb(255, 245, 160)
+            c.drawCircle(3f, -3f, 3.5f, paint)
+        }
+        c.restore()
+    }
+
+    private fun drawItem(c: Canvas, it: Item) {
+        if (it.life < 2.5f && (it.t * 10f).toInt() % 2 == 0) return
+        val bob = if (it.type == Power.STAR) 0f else sin(it.t * 4f) * 3f
+        drawPowerIcon(c, it.type, it.x, it.y - 22f + bob, 1f, it.t)
+    }
+
+    /** Draws a power-up icon centered at (x, y). */
+    private fun drawPowerIcon(c: Canvas, type: Power, x: Float, y: Float, scale: Float, t: Float) {
+        c.save()
+        c.translate(x, y)
+        c.scale(scale, scale)
+        // soft glow so items stand out against the dusk
+        paint.color = Color.argb(70, 255, 255, 200)
+        c.drawCircle(0f, 0f, 30f, paint)
+        stroke.color = Color.rgb(25, 15, 20)
+        stroke.strokeWidth = 3f
+        when (type) {
+            Power.FIRE, Power.ICE -> {
+                val petal = if (type == Power.FIRE) Color.rgb(255, 110, 30) else Color.rgb(110, 190, 255)
+                val inner = if (type == Power.FIRE) Color.rgb(255, 225, 60) else Color.rgb(235, 250, 255)
+                paint.color = Color.rgb(40, 160, 60)
+                c.drawRect(-2.5f, 4f, 2.5f, 22f, paint)
+                rect.set(-16f, 10f, -2f, 18f); c.drawOval(rect, paint)
+                rect.set(2f, 10f, 16f, 18f); c.drawOval(rect, paint)
+                rect.set(-20f, -14f, 20f, 10f)
+                c.drawOval(rect, stroke)
+                paint.color = petal
+                c.drawOval(rect, paint)
+                rect.set(-13f, -9f, 13f, 5f)
+                paint.color = inner
+                c.drawOval(rect, paint)
+                paint.color = Color.rgb(25, 15, 20)
+                c.drawRect(-5f, -6f, -2.5f, 1f, paint)
+                c.drawRect(2.5f, -6f, 5f, 1f, paint)
+            }
+            Power.STAR -> {
+                c.rotate(sin(t * 6f) * 12f)
+                paint.color = Color.rgb(25, 15, 20)
+                drawStar(c, 0f, 0f, 23f, 11f)
+                paint.color = Color.HSVToColor(floatArrayOf(45f + sin(t * 8f) * 10f, 0.8f, 1f))
+                drawStar(c, 0f, 0f, 19f, 9f)
+                paint.color = Color.rgb(25, 15, 20)
+                c.drawRect(-5f, -5f, -2.5f, 2f, paint)
+                c.drawRect(2.5f, -5f, 5f, 2f, paint)
+            }
+            Power.DRILL -> {
+                c.rotate(sin(t * 3f) * 8f)
+                path.reset()
+                path.moveTo(-15f, 6f); path.lineTo(15f, 6f); path.lineTo(0f, -24f); path.close()
+                c.drawPath(path, stroke)
+                paint.color = Color.rgb(190, 195, 210)
+                c.drawPath(path, paint)
+                stroke.strokeWidth = 2.5f
+                val off = (t * 30f) % 8f
+                for (k in 0 until 3) {
+                    val yy = -16f + k * 8f + off * 0.5f
+                    val hw = (yy + 24f) / 30f * 15f
+                    c.drawLine(-hw, yy + 3f, hw, yy - 1f, stroke)
+                }
+                rect.set(-18f, 5f, 18f, 15f)
+                paint.color = Color.rgb(220, 50, 50)
+                c.drawRoundRect(rect, 4f, 4f, paint)
+            }
+        }
+        c.restore()
+    }
+
+    private fun drawDrillMound(c: Canvas, h: Hero) {
+        val wob = sin(time * 30f) * 2f
+        rect.set(h.x - 34f, GROUND_Y - 22f + wob, h.x + 34f, GROUND_Y + 12f)
+        paint.color = Color.rgb(90, 50, 30)
+        c.drawArc(rect, 180f, 180f, true, paint)
+        rect.inset(6f, 6f)
+        paint.color = Color.rgb(140, 85, 50)
+        c.drawArc(rect, 180f, 180f, true, paint)
+        // spinning drill tip poking out
+        val tip = h.x + h.facing * 6f
+        path.reset()
+        path.moveTo(tip - 10f, GROUND_Y - 16f)
+        path.lineTo(tip + 10f, GROUND_Y - 16f)
+        path.lineTo(tip, GROUND_Y - 44f + wob)
+        path.close()
+        paint.color = Color.rgb(200, 205, 220)
+        c.drawPath(path, paint)
+        stroke.color = Color.rgb(25, 15, 20)
+        stroke.strokeWidth = 2.5f
+        c.drawPath(path, stroke)
+        val spiral = (time * 40f) % 7f
+        c.drawLine(tip - 6f, GROUND_Y - 22f - spiral, tip + 6f, GROUND_Y - 26f - spiral, stroke)
+        // remaining dig time
+        val left = 1f - h.drillTime / DRILL_MAX
+        paint.color = Color.argb(160, 0, 0, 0)
+        c.drawRect(h.x - 26f, GROUND_Y + 18f, h.x + 26f, GROUND_Y + 26f, paint)
+        paint.color = Color.rgb(255, 210, 80)
+        c.drawRect(h.x - 25f, GROUND_Y + 19f, h.x - 25f + 50f * left, GROUND_Y + 25f, paint)
     }
 
     // ---- the plumber hero (drawn facing right; mirrored for left) ----
@@ -945,8 +1430,23 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         val swing = if (!airborne && abs(h.vx) > 30f) sin(h.anim) * 7f else 0f
 
         val skin = Color.rgb(255, 200, 150)
-        val red = Color.rgb(225, 30, 40)
-        val blue = Color.rgb(40, 70, 200)
+        val starring = h.star > 0f
+        if (starring) {
+            paint.color = Color.argb(90, 255, 250, 160)
+            c.drawCircle(0f, -34f, 46f + sin(time * 20f) * 4f, paint)
+        }
+        val red = when {
+            starring -> Color.HSVToColor(floatArrayOf((time * 600f) % 360f, 0.75f, 1f))
+            h.power == Power.FIRE -> Color.rgb(250, 248, 240)
+            h.power == Power.ICE -> Color.rgb(120, 200, 255)
+            else -> Color.rgb(225, 30, 40)
+        }
+        val blue = when {
+            starring -> Color.HSVToColor(floatArrayOf((time * 600f + 180f) % 360f, 0.75f, 0.9f))
+            h.power == Power.FIRE -> Color.rgb(225, 30, 40)
+            h.power == Power.ICE -> Color.rgb(30, 60, 160)
+            else -> Color.rgb(40, 70, 200)
+        }
         val brown = Color.rgb(110, 60, 20)
         val outline = Color.rgb(25, 15, 20)
         stroke.color = outline
@@ -1023,6 +1523,17 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         paint.color = Color.rgb(50, 25, 10)
         rect.set(4f, -46f, 18f, -41f)
         c.drawRoundRect(rect, 3f, 3f, paint)
+        if (h.power == Power.DRILL) {
+            // drill helmet
+            path.reset()
+            path.moveTo(-12f, -62f); path.lineTo(16f, -62f); path.lineTo(2f, -92f); path.close()
+            stroke.strokeWidth = 2.5f
+            c.drawPath(path, stroke)
+            paint.color = Color.rgb(195, 200, 215)
+            c.drawPath(path, paint)
+            c.drawLine(-6f, -70f, 10f, -74f, stroke)
+            c.drawLine(-2f, -78f, 7f, -81f, stroke)
+        }
         c.restore()
     }
 
@@ -1168,6 +1679,21 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
             c.drawCircle(-22f, -128f + dy, 6f, paint)
         }
         c.restore()
+
+        if (b.frozen > 0f) {
+            rect.set(b.x - 82f, b.y - 165f, b.x + 82f, b.y + 62f)
+            paint.color = Color.argb(120, 140, 210, 255)
+            c.drawRoundRect(rect, 16f, 16f, paint)
+            stroke.color = Color.argb(220, 230, 250, 255)
+            stroke.strokeWidth = 4f
+            c.drawRoundRect(rect, 16f, 16f, stroke)
+            c.drawLine(b.x - 60f, b.y - 140f, b.x - 30f, b.y - 140f, stroke)
+            c.drawLine(b.x - 66f, b.y - 130f, b.x - 66f, b.y - 100f, stroke)
+        }
+        if (b.flash > 0f) {
+            paint.color = Color.argb(110, 255, 140, 30)
+            c.drawCircle(b.x, b.y - 50f, 95f, paint)
+        }
 
         if (b.state == BossState.LOW && state == State.PLAYING) {
             val bounce = abs(sin(time * 6f)) * 10f

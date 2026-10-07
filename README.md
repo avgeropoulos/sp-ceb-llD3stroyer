@@ -13,6 +13,7 @@ win the round, and every round gets faster and meaner.
 | --- | --- | --- |
 | Move | ◀ ▶ buttons (bottom-left) | ← → or A / D |
 | Jump (hold for higher) | ▲ button (bottom-right half of the screen) | Space, ↑, W, or gamepad A |
+| Use power-up | ✸ button (appears left of jump when you hold a power) | J, X, Left Shift, or gamepad B / X |
 
 - **Red `!` markers** show where a thrown spike is about to land.
 - **Planted spikes** blink right before they vanish. You get +5 for each one you outlast.
@@ -20,6 +21,26 @@ win the round, and every round gets faster and meaner.
 - **Swoop:** after a few throws the prince dives down and sweats. Stomp him for +500,
   but touching the pod or the propeller from the side hurts.
 - Clearing a round gives a bonus and an extra life (max 5). The music speeds up each round.
+
+## Power-ups
+
+Every 13–21 seconds a power-up appears on the ground or a platform. Grab it before it
+blinks out.
+
+| Power-up | What it does |
+| --- | --- |
+| 🔥 **Fire Flower** | Throw bouncing fireballs. They burn up spikes (+20). Four fireball hits on the boss knock off one HP. |
+| ❄️ **Ice Flower** | Throw ice balls that skate along the floor. Frozen spikes turn into **ice blocks you can stand on** (they melt after 6s). Hit the boss to freeze him solid for 2.6s: he can't move or throw. |
+| ⭐ **Star** | 8 seconds of rainbow invincibility with its own fast theme song. Run faster, smash spikes by touching them, and ram the boss to hurt him. |
+| ⛏️ **Drill** | Press the action button on the floor to dig under it. You're untouchable underground and can move around for up to 3s. Press again to burst out, which smashes spikes above you and hits a swooping boss from below. |
+
+Fire, Ice and Drill stay until you get hit. As in the classics, a hit **costs the power-up
+instead of a life**. Tip: shots skim the floor, so jump before shooting to hit a swooping boss.
+
+![Power-ups](docs/screenshot-powerups.png)
+![Frozen boss](docs/screenshot-ice.png)
+
+## Boss attacks
 
 Attack patterns unlock as you progress:
 
@@ -37,7 +58,8 @@ Everything is synthesized in real time (`Synth.kt`), with no audio files. The so
 kid" theme:
 square-wave lead with vibrato, fast arpeggiated offbeat "brass" stabs, an oom-pah triangle
 bass and noise drums, plus a sneaky chromatic bridge (Fm → Cm → D♭ → G7). There are also
-round-clear and game-over jingles and retro sound effects.
+round-clear and game-over jingles, an 8-second F-major star theme, and retro sound
+effects.
 
 ## Building
 
