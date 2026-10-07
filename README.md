@@ -9,8 +9,13 @@ giant mushrooms.
 - **Tap** to jump.
 - **Tap again in the air** to double jump.
 - Catch the floating golden stars for **+10 bonus points**.
-- The princess speeds up the longer she runs. Giant mushrooms appear later on.
-- Your best score is saved on the phone.
+- Travel through 5 lands: Flower Meadow, Enchanted Forest, Sunset Hills,
+  Candy Clouds and Starry Night. Each level is faster, with giant mushrooms
+  from level 2 and double obstacles from level 3. After Starry Night the lands
+  repeat, still getting faster.
+- A music-box waltz plays while you run, with chimes for jumps, stars and
+  level-ups. Tap the music note in the top-left corner to mute.
+- Your top 5 scores, and the level each one reached, are saved on the phone.
 
 ## Getting the APK
 
@@ -32,9 +37,11 @@ Or open the folder in Android Studio and press **Run**.
 
 ## Code
 
-The whole game is drawn in code with no image files:
+The whole game is drawn and composed in code, with no image or audio files:
 
 - `app/src/main/java/com/princessjump/game/GameView.kt`: game loop, physics,
   obstacles, and drawing of the princess and the world
+- `app/src/main/java/com/princessjump/game/Sound.kt`: the music and sound
+  effects, synthesized in code
 - `app/src/main/java/com/princessjump/game/MainActivity.kt`: full-screen
   landscape activity

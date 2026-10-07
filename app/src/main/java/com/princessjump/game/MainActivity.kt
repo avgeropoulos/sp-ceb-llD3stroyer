@@ -11,11 +11,13 @@ import android.view.WindowManager
 class MainActivity : Activity() {
 
     private lateinit var gameView: GameView
+    private lateinit var sound: Sound
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        gameView = GameView(this)
+        sound = Sound(this)
+        gameView = GameView(this, sound)
         setContentView(gameView)
     }
 
@@ -23,11 +25,18 @@ class MainActivity : Activity() {
         super.onResume()
         hideSystemBars()
         gameView.resume()
+        sound.onResume()
     }
 
     override fun onPause() {
         gameView.pause()
+        sound.onPause()
         super.onPause()
+    }
+
+    override fun onDestroy() {
+        sound.release()
+        super.onDestroy()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

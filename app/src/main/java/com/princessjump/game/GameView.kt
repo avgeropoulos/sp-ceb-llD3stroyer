@@ -26,8 +26,11 @@ import kotlin.random.Random
  * The world is drawn in "units" where 1 unit = 1% of the screen height, so the
  * game looks and plays the same on every phone. Tap to jump, tap again while
  * in the air to double jump.
+ *
+ * Every level is a new land with its own colours, and gets a little faster
+ * and trickier. The top five scores are saved on the phone.
  */
-class GameView(context: Context) : View(context) {
+class GameView(context: Context, private val sound: Sound) : View(context) {
 
     private enum class State { READY, PLAYING, GAME_OVER }
 
@@ -35,6 +38,16 @@ class GameView(context: Context) : View(context) {
     private class Star(var x: Float, val y: Float)
     private class Sparkle(var x: Float, var y: Float, val vx: Float, val vy: Float, var life: Float, val color: Int)
     private class Cloud(var x: Float, val y: Float, val size: Float)
+    private class Entry(val score: Int, val level: Int)
+
+    /** The look of one land. Colours are ARGB. */
+    private class Theme(
+        val name: String,
+        val skyTop: Long, val skyMid: Long, val skyBottom: Long,
+        val hill: Long, val castle: Long,
+        val grass: Long, val grassDark: Long, val dirt: Long,
+        val night: Boolean,
+    )
 
     private companion object {
         const val GROUND = 80f
@@ -49,11 +62,48 @@ class GameView(context: Context) : View(context) {
         const val BUSH = 1
         const val PUMPKIN = 2
         const val MUSHROOM = 3
+
+        // Distance needed to finish one level (about 190 points)
+        const val LEVEL_LENGTH = 1500f
+        const val TOP_SCORES = 5
+
+        val THEMES = arrayOf(
+            Theme("Flower Meadow", 0xFFA9D8FF, 0xFFE7D4FF, 0xFFFFD6EC,
+                0xFFB9E6B0, 0xFFD9C2F0, 0xFF7BCB72, 0xFF5DAE57, 0xFFE2B98F, false),
+            Theme("Enchanted Forest", 0xFF8FD3C9, 0xFFC4EBD3, 0xFFF1F8D8,
+                0xFF6FB57E, 0xFFB8D8C8, 0xFF4E9F59, 0xFF3D8648, 0xFFB98C66, false),
+            Theme("Sunset Hills", 0xFFFF9F80, 0xFFFFC594, 0xFFFFE6B8,
+                0xFFE9B784, 0xFFF2B8C6, 0xFF9CC96B, 0xFF7FAE55, 0xFFD9A273, false),
+            Theme("Candy Clouds", 0xFFFFB8DD, 0xFFFFD6EE, 0xFFFFF2FA,
+                0xFFF9C8E2, 0xFFFFFFFF, 0xFFF59AC8, 0xFFE57FB4, 0xFFFFE0EF, false),
+            Theme("Starry Night", 0xFF1C1846, 0xFF3A2D78, 0xFF7957A8,
+                0xFF3F3878, 0xFF5A4E96, 0xFF3E7C5A, 0xFF2E6447, 0xFF6A5040, true),
+        )
+
+        fun themeFor(level: Int) = THEMES[(level - 1) % THEMES.size]
+
+        fun lerpColor(a: Long, b: Long, t: Float): Int {
+            fun ch(c: Long, shift: Int) = ((c shr shift) and 0xFFL).toFloat()
+            fun mix(shift: Int) = (ch(a, shift) + (ch(b, shift) - ch(a, shift)) * t).toInt() shl shift
+            return mix(24) or mix(16) or mix(8) or mix(0)
+        }
     }
 
     private val prefs = context.getSharedPreferences("princess_jump", Context.MODE_PRIVATE)
-    private var highScore = prefs.getInt("high_score", 0)
+    private val topScores = loadTopScores()
+    private var highScore = topScores.firstOrNull()?.score ?: 0
     private var newBest = false
+    private var newEntry: Entry? = null
+
+    // Levels and the colour change between lands
+    private var level = 1
+    private var themeFrom = THEMES[0]
+    private var themeTo = THEMES[0]
+    private var themeBlend = 1f
+    private var appliedBlend = -1f
+    private var night = 0f
+    private var levelBanner = 0f
+    private val skyDots = ArrayList<FloatArray>()
 
     private var state = State.READY
     private var unit = 1f
@@ -153,6 +203,14 @@ class GameView(context: Context) : View(context) {
 
     private val shadowPaint = fill(0x33000000)
     private val overlayPaint = fill(0x88FFFFFF.toInt())
+    private val moonPaint = fill(0xFFFFF6D5.toInt())
+    private val craterPaint = fill(0xFFEDE0B8.toInt())
+    private val skyDotPaint = fill(Color.WHITE)
+    private val buttonPaint = fill(0x99FFFFFF.toInt())
+    private val notePaint = fill(0xFFE0408F.toInt())
+    private val noteStemPaint = stroke(0xFFE0408F.toInt(), 0.5f)
+    private val noteBeamPaint = stroke(0xFFE0408F.toInt(), 0.9f)
+    private val mutePaint = stroke(0xFF9C3D6B.toInt(), 0.7f)
 
     private val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = 0xFFE0408F.toInt()
@@ -164,6 +222,12 @@ class GameView(context: Context) : View(context) {
         color = 0xFF6A3D7A.toInt()
         textAlign = Paint.Align.CENTER
         typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    }
+    private val hudLeftPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.WHITE
+        textAlign = Paint.Align.LEFT
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        setShadowLayer(4f, 0f, 2f, 0x88B0306F.toInt())
     }
     private val scorePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
@@ -206,15 +270,15 @@ class GameView(context: Context) : View(context) {
         super.onSizeChanged(w, h, oldw, oldh)
         unit = h / 100f
         worldW = w / unit
-        skyPaint.shader = LinearGradient(
-            0f, 0f, 0f, GROUND,
-            intArrayOf(0xFFA9D8FF.toInt(), 0xFFE7D4FF.toInt(), 0xFFFFD6EC.toInt()),
-            floatArrayOf(0f, 0.6f, 1f),
-            Shader.TileMode.CLAMP
-        )
         titlePaint.textSize = 12f * unit
         textPaint.textSize = 5f * unit
         scorePaint.textSize = 6f * unit
+        hudLeftPaint.textSize = 4.5f * unit
+        appliedBlend = -1f
+        skyDots.clear()
+        repeat(45) {
+            skyDots.add(floatArrayOf(Random.nextFloat() * worldW, 2f + Random.nextFloat() * 50f, Random.nextFloat() * 6f))
+        }
         if (clouds.isEmpty()) {
             var x = 10f
             while (x < worldW + 40f) {
@@ -228,6 +292,10 @@ class GameView(context: Context) : View(context) {
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            if (event.x < 14f * unit && event.y < 15f * unit) {
+                sound.toggleMute()
+                return true
+            }
             when (state) {
                 State.READY -> {
                     resetGame()
@@ -252,6 +320,7 @@ class GameView(context: Context) : View(context) {
         if (jumpsUsed >= 2) return
         velocity = if (jumpsUsed == 0) JUMP_VELOCITY else JUMP_VELOCITY * 0.85f
         if (jumpsUsed == 1) burst(PRINCESS_X, GROUND - jumpHeight, 8, 0xFFFFC1E3.toInt())
+        sound.play(if (jumpsUsed == 0) Sound.Sfx.JUMP else Sound.Sfx.DOUBLE_JUMP)
         jumpsUsed++
     }
 
@@ -268,7 +337,18 @@ class GameView(context: Context) : View(context) {
         bonus = 0
         nextSpawn = 60f
         newBest = false
+        newEntry = null
         paused = false
+        level = 1
+        levelBanner = 2.5f
+        changeTheme(THEMES[0])
+    }
+
+    private fun changeTheme(target: Theme) {
+        if (target === themeTo) return
+        themeFrom = themeTo
+        themeTo = target
+        themeBlend = 0f
     }
 
     // ---------- Game loop ----------
@@ -281,6 +361,8 @@ class GameView(context: Context) : View(context) {
             State.READY -> 25f
             State.GAME_OVER -> 0f
         }
+        themeBlend = min(1f, themeBlend + dt / 1.5f)
+        levelBanner -= dt
         groundScroll += scroll * dt
         hillScroll += scroll * 0.25f * dt
         for (c in clouds) {
@@ -298,9 +380,18 @@ class GameView(context: Context) : View(context) {
 
     private fun updatePlaying(dt: Float) {
         playTime += dt
-        speed = min(MAX_SPEED, START_SPEED + playTime * SPEED_GAIN)
+        speed = min(MAX_SPEED, START_SPEED + (level - 1) * 6f + playTime * SPEED_GAIN)
         val move = speed * dt
         distance += move
+
+        val reached = 1 + (distance / LEVEL_LENGTH).toInt()
+        if (reached > level) {
+            level = reached
+            levelBanner = 2.5f
+            changeTheme(themeFor(level))
+            sound.play(Sound.Sfx.LEVEL_UP)
+            burst(PRINCESS_X, GROUND - jumpHeight - 10f, 24, 0xFFFFE27A.toInt())
+        }
 
         // Princess physics
         velocity -= GRAVITY * dt
@@ -342,6 +433,7 @@ class GameView(context: Context) : View(context) {
             if (s.x + 3f > pl && s.x - 3f < pr && s.y + 3f > pt && s.y - 3f < feet) {
                 starIter.remove()
                 bonus += 10
+                sound.play(Sound.Sfx.STAR)
                 burst(s.x, s.y, 14, 0xFFFFE27A.toInt())
             }
         }
@@ -349,7 +441,7 @@ class GameView(context: Context) : View(context) {
 
     private fun spawnObstacle() {
         val type = when {
-            playTime > 25f && Random.nextFloat() < 0.25f -> MUSHROOM
+            level >= 2 && Random.nextFloat() < 0.15f + 0.05f * min(level, 5) -> MUSHROOM
             else -> Random.nextInt(3)
         }
         val (w, h) = when (type) {
@@ -368,24 +460,50 @@ class GameView(context: Context) : View(context) {
         }
 
         // Occasionally a pair of obstacles close together
-        if (playTime > 15f && type != MUSHROOM && Random.nextFloat() < 0.2f) {
+        if (level >= 3 && type != MUSHROOM && Random.nextFloat() < 0.2f) {
             val w2 = 6f + Random.nextFloat() * 2f
             obstacles.add(Obstacle(x + w + 4f, ROCK, w2, 4.5f + Random.nextFloat() * 1.5f))
         }
 
         val minGap = speed * 0.85f + 18f
-        nextSpawn = minGap + Random.nextFloat() * 50f
+        nextSpawn = minGap + Random.nextFloat() * (50f - 5f * min(level - 1, 5))
     }
 
     private fun crash() {
         state = State.GAME_OVER
         deadTimer = 0f
         burst(PRINCESS_X, GROUND - jumpHeight - 10f, 20, 0xFFFF8FC8.toInt())
-        if (score > highScore) {
-            highScore = score
-            newBest = true
-            prefs.edit().putInt("high_score", highScore).apply()
+        sound.play(Sound.Sfx.CRASH)
+        newBest = score > highScore
+        recordScore(Entry(score, level))
+    }
+
+    // ---------- High scores ----------
+    private fun loadTopScores(): MutableList<Entry> {
+        val list = ArrayList<Entry>()
+        prefs.getString("top_scores", null)?.split(",")?.forEach { item ->
+            val parts = item.split(":")
+            val sc = parts.getOrNull(0)?.toIntOrNull()
+            val lv = parts.getOrNull(1)?.toIntOrNull()
+            if (sc != null && lv != null) list.add(Entry(sc, lv))
         }
+        // Keep the best score from the first version of the game
+        val old = prefs.getInt("high_score", 0)
+        if (list.isEmpty() && old > 0) list.add(Entry(old, 0))
+        return list
+    }
+
+    private fun recordScore(entry: Entry) {
+        if (entry.score <= 0) return
+        topScores.add(entry)
+        topScores.sortByDescending { it.score }
+        while (topScores.size > TOP_SCORES) topScores.removeAt(topScores.size - 1)
+        if (entry in topScores) newEntry = entry
+        highScore = topScores.first().score
+        prefs.edit()
+            .putString("top_scores", topScores.joinToString(",") { "${it.score}:${it.level}" })
+            .putInt("high_score", highScore)
+            .apply()
     }
 
     private fun burst(x: Float, y: Float, count: Int, color: Int) {
@@ -433,12 +551,52 @@ class GameView(context: Context) : View(context) {
         if (running) postInvalidateOnAnimation()
     }
 
+    private fun applyTheme() {
+        if (themeBlend == appliedBlend) return
+        appliedBlend = themeBlend
+        val a = themeFrom
+        val b = themeTo
+        val t = themeBlend
+        skyPaint.shader = LinearGradient(
+            0f, 0f, 0f, GROUND,
+            intArrayOf(lerpColor(a.skyTop, b.skyTop, t), lerpColor(a.skyMid, b.skyMid, t), lerpColor(a.skyBottom, b.skyBottom, t)),
+            floatArrayOf(0f, 0.6f, 1f),
+            Shader.TileMode.CLAMP
+        )
+        hillPaint.color = lerpColor(a.hill, b.hill, t)
+        castlePaint.color = lerpColor(a.castle, b.castle, t)
+        grassPaint.color = lerpColor(a.grass, b.grass, t)
+        grassDarkPaint.color = lerpColor(a.grassDark, b.grassDark, t)
+        dirtPaint.color = lerpColor(a.dirt, b.dirt, t)
+        night = (if (a.night) 1f else 0f) * (1f - t) + (if (b.night) 1f else 0f) * t
+        // castle windows light up at night
+        castleWindowPaint.color = lerpColor(0xFFB79AD9, 0xFFFFE38A, night)
+        sunPaint.alpha = ((1f - night) * 255).toInt()
+        sunGlowPaint.alpha = ((1f - night) * 0x55).toInt()
+        moonPaint.alpha = (night * 255).toInt()
+        craterPaint.alpha = (night * 255).toInt()
+        cloudPaint.alpha = ((1f - 0.7f * night) * 255).toInt()
+    }
+
     private fun drawBackground(c: Canvas) {
+        applyTheme()
         c.drawRect(0f, 0f, worldW, GROUND, skyPaint)
 
         val sunX = worldW * 0.82f
-        c.drawCircle(sunX, 16f, 10f + sin(time * 2f) * 0.6f, sunGlowPaint)
-        c.drawCircle(sunX, 16f, 7f, sunPaint)
+        if (night < 1f) {
+            c.drawCircle(sunX, 16f, 10f + sin(time * 2f) * 0.6f, sunGlowPaint)
+            c.drawCircle(sunX, 16f, 7f, sunPaint)
+        }
+        if (night > 0f) {
+            for (d in skyDots) {
+                val twinkle = 0.55f + 0.45f * sin(time * 3f + d[2])
+                skyDotPaint.alpha = (night * twinkle * 255).toInt()
+                c.drawCircle(d[0], d[1], 0.35f, skyDotPaint)
+            }
+            c.drawCircle(sunX, 16f, 6f, moonPaint)
+            c.drawCircle(sunX - 2f, 14.5f, 1.2f, craterPaint)
+            c.drawCircle(sunX + 1.8f, 17.5f, 0.9f, craterPaint)
+        }
 
         for (cl in clouds) {
             val s = cl.size
@@ -723,8 +881,10 @@ class GameView(context: Context) : View(context) {
         val h = height.toFloat()
         val u = unit
 
+        drawMuteButton(c)
         if (state != State.READY) {
             c.drawText("$score", w - 4f * u, 9f * u, scorePaint)
+            c.drawText("Level $level", 14f * u, 8.5f * u, hudLeftPaint)
         }
         if (highScore > 0) {
             val old = scorePaint.textSize
@@ -738,28 +898,65 @@ class GameView(context: Context) : View(context) {
                 c.drawRect(0f, 0f, w, h, overlayPaint)
                 c.drawText("Princess Jump", w / 2f, h * 0.36f, titlePaint)
                 c.drawText("Tap to jump  •  Tap again in the air to double jump", w / 2f, h * 0.5f, textPaint)
-                c.drawText("Leap over the obstacles and catch the stars!", w / 2f, h * 0.58f, textPaint)
+                c.drawText("Catch the stars and travel through ${THEMES.size} magical lands!", w / 2f, h * 0.58f, textPaint)
                 if ((time * 2f).toInt() % 2 == 0) {
                     c.drawText("Tap to start", w / 2f, h * 0.7f, titlePaint.withSize(7f * u))
                 }
             }
             State.GAME_OVER -> {
                 c.drawRect(0f, 0f, w, h, overlayPaint)
-                c.drawText("Oh no!", w / 2f, h * 0.34f, titlePaint)
-                c.drawText("Score: $score", w / 2f, h * 0.46f, textPaint)
+                val left = w * 0.3f
+                val right = w * 0.7f
+                c.drawText("Oh no!", left, h * 0.3f, titlePaint)
+                c.drawText("Score: $score", left, h * 0.44f, textPaint)
+                c.drawText("Level $level: ${themeFor(level).name}", left, h * 0.52f, textPaint)
                 if (newBest) {
-                    c.drawText("New best score!", w / 2f, h * 0.54f, titlePaint.withSize(6f * u))
+                    c.drawText("New best score!", left, h * 0.63f, titlePaint.withSize(6f * u))
                 }
+
+                c.drawText("Top Scores", right, h * 0.24f, titlePaint.withSize(6.5f * u))
+                topScores.forEachIndexed { i, e ->
+                    val line = "${i + 1}.  ${e.score}" + if (e.level > 0) "   (Level ${e.level})" else ""
+                    val y = h * (0.35f + i * 0.08f)
+                    if (e === newEntry) {
+                        c.drawText(line, right, y, titlePaint.withSize(5f * u))
+                    } else {
+                        c.drawText(line, right, y, textPaint)
+                    }
+                }
+
                 if (deadTimer > 0.7f) {
-                    c.drawText("Tap to try again", w / 2f, h * 0.66f, textPaint)
+                    c.drawText("Tap to try again", w / 2f, h * 0.88f, textPaint)
                 }
             }
             State.PLAYING -> if (paused) {
                 c.drawRect(0f, 0f, w, h, overlayPaint)
                 c.drawText("Paused", w / 2f, h * 0.45f, titlePaint)
                 c.drawText("Tap to continue", w / 2f, h * 0.58f, textPaint)
+            } else if (levelBanner > 0f) {
+                val alpha = (min(1f, levelBanner / 0.5f) * 255).toInt()
+                val big = titlePaint.withSize(11f * u)
+                big.alpha = alpha
+                c.drawText("Level $level", w / 2f, h * 0.3f, big)
+                val small = textPaint.withSize(5.5f * u)
+                small.alpha = alpha
+                c.drawText(themeFor(level).name, w / 2f, h * 0.4f, small)
             }
         }
+    }
+
+    /** A music-note button in the top-left corner; a line through it means muted. */
+    private fun drawMuteButton(c: Canvas) {
+        c.save()
+        c.scale(unit, unit)
+        c.drawCircle(6.5f, 7f, 4.5f, buttonPaint)
+        c.drawOval(3.9f, 8.4f, 5.7f, 9.8f, notePaint)
+        c.drawOval(6.9f, 7.6f, 8.7f, 9.0f, notePaint)
+        c.drawLine(5.5f, 9f, 5.5f, 4.6f, noteStemPaint)
+        c.drawLine(8.5f, 8.2f, 8.5f, 3.8f, noteStemPaint)
+        c.drawLine(5.5f, 4.6f, 8.5f, 3.8f, noteBeamPaint)
+        if (sound.muted) c.drawLine(3.5f, 4f, 9.5f, 10f, mutePaint)
+        c.restore()
     }
 
     private val sizedPaint = Paint()
