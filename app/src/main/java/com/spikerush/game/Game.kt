@@ -326,7 +326,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
     private fun setupBoss() {
         round = Rounds.forLevel(level)
         // A slow, steady climb each round, plus a one-round spike for a Wonder round.
-        diff = 1f + (level - 1) * 0.45f + (if (wonder) 2.2f else 0f)
+        diff = 1f + (level - 1) * 0.4f + (if (wonder) 2.0f else 0f)
         val n = round.kinds.size
         val hp = min(6, 3 + (level - 1) / 4) + (if (wonder) 1 else 0)
         bosses.clear()
@@ -782,11 +782,11 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         }
     }
 
-    private fun attackInterval() = (2.5f - (diff - 1f) * 0.2f).coerceAtLeast(0.8f)
+    private fun attackInterval() = (2.7f - (diff - 1f) * 0.2f).coerceAtLeast(0.9f)
 
     /** Each boss in a team throws less often, so the total pressure rises but doesn't double. */
     private fun teamSlowdown() = 1f + 0.65f * (bosses.size - 1)
-    private fun plantLife() = min(9f, 4.0f + diff * 0.7f)
+    private fun plantLife() = min(8.5f, 3.8f + diff * 0.65f)
 
     private fun attack(b: Boss) {
         b.attacks++
@@ -1245,7 +1245,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         if (level >= 8) {
             meteorTimer -= dt
             if (meteorTimer <= 0f) {
-                meteorTimer = (8f - diff * 0.35f).coerceAtLeast(2.8f) + rnd.nextFloat() * 2f
+                meteorTimer = (9f - diff * 0.35f).coerceAtLeast(3.2f) + rnd.nextFloat() * 2f
                 val count = (1f + (diff - 3f) / 2.5f).toInt().coerceIn(1, 4)
                 repeat(count) { i ->
                     val x = if (rnd.nextFloat() < 0.5f) hero.x + rnd.nextFloat() * 300f - 150f
@@ -1675,7 +1675,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
             return
         }
         lives--
-        h.invuln = 2.3f
+        h.invuln = 2.5f
         h.knock = 0.35f
         val dir = if (h.x >= fromX) 1f else -1f
         h.vx = dir * 380f
