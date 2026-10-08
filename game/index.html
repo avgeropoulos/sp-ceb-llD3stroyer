@@ -50,6 +50,14 @@ body {
 .hudbtn:focus-visible { outline: 3px solid var(--leash-yellow); }
 
 #stage { position: relative; flex: 1; min-height: 0; }
+.leapbtn {
+  position: absolute; right: 18px; bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  width: 86px; height: 86px; border-radius: 50%; border: 5px solid var(--leash-yellow);
+  background: var(--leash-red); color: #fff; font-family: var(--display); font-size: 22px;
+  box-shadow: 0 5px 0 #a52a1c; touch-action: none; opacity: .92;
+}
+.leapbtn.cool { opacity: .45; }
+.leapbtn:active { transform: translateY(3px); box-shadow: 0 2px 0 #a52a1c; }
 canvas { touch-action: none; position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 
 /* Overlays */
@@ -155,25 +163,27 @@ kbd { font-family: var(--body); font-weight: 800; background: #eef2ec; border-ra
     <div class="stat"><span class="lab">Caught</span><span id="caught">0/5</span><div id="goalbar"><div id="goalfill"></div></div></div>
     <div class="stat"><span class="lab">Time</span><span id="time">60</span></div>
     <div class="stat" title="Catch 3 critters to call the Giant Bird"><span class="lab">Bird</span><span class="pips" id="birdpips"></span></div>
+    <div class="stat" id="boostStat" hidden><span class="lab">Boost</span><span id="boost">7</span></div>
     <div class="stat" title="Three splashes and it's bath time"><span class="lab">Splash</span><span class="pips" id="splashpips"></span></div>
     <span class="grow"></span>
     <span class="btns"><button class="hudbtn" id="musicBtn" type="button">Music on</button><button class="hudbtn" id="soundBtn" type="button">Sounds on</button><button class="hudbtn" id="pauseBtn" type="button">Pause</button></span>
   </div>
   <div id="stage">
     <canvas id="cv"></canvas>
+    <button class="leapbtn" id="leapBtn" type="button" hidden>Leap!</button>
 
     <div class="overlay" id="titleScreen">
       <div class="card">
         <h1>Backyard Boop<small>starring Hercules &amp; Apollo</small></h1>
-        <p>Squirrels and bunnies are loose in the yard. Run over and give them a friendly <b>boop</b> on the nose. Every 3 boops calls in the <b>Giant Golden Goose</b> for big bonus points.</p>
+        <p>Squirrels and bunnies are loose in the yard. Run over and give them a friendly <b>boop</b> on the nose. Every 3 boops calls in the <b>Giant Golden Goose</b> for big bonus points. Both dogs score the same.</p>
         <div class="pick">
           <button class="dogbtn" type="button" data-pick="hercules" style="--c:#e3402d">
             <img src="hercules.jpg" alt="Hercules">
-            <div><b>Hercules</b><span>Black curls, white beard, red collar</span></div>
+            <div><b>Hercules</b><span>Fastest paws, super quick turns</span></div>
           </button>
           <button class="dogbtn" type="button" data-pick="apollo" style="--c:#2f86d6">
             <img src="apollo.jpg" alt="Apollo">
-            <div><b>Apollo</b><span>Brown curls, smoky face, blue collar</span></div>
+            <div><b>Apollo</b><span>Big bouncy leaps over trouble</span></div>
           </button>
           <button class="dogbtn both" type="button" data-pick="both" style="--c:#f7c531">
             <span class="faces"><img src="hercules.jpg" alt=""><img src="apollo.jpg" alt=""></span>
@@ -186,9 +196,10 @@ kbd { font-family: var(--body); font-weight: 800; background: #eef2ec; border-ra
           <div><i>🪿</i><span><b>Giant Goose</b> 100+ pts. Appears after 3 boops.</span></div>
           <div><i>💦</i><span><b>Sprinklers &amp; Mr. Bubbles</b> the rolling bathtub. 3 splashes means bath time!</span></div>
           <div><i>🟤</i><span><b>Mud</b> slows you down.</span></div>
+          <div><i>🦴</i><span><b>Treats</b> fall from the sky. Grab one for a 7-second boost.</span></div>
           <div><i>⏱️</i><span>Reach the goal before the clock runs out, or it's nap time.</span></div>
         </div>
-        <p class="keys">Move with <kbd>WASD</kbd> or arrow keys, or touch and drag. In team mode Hercules uses <kbd>WASD</kbd>, Apollo uses the arrows, or each player drags a dog. <kbd>P</kbd> pauses.</p>
+        <p class="keys">Move with <kbd>WASD</kbd> or arrow keys, or touch and drag. Apollo leaps with <kbd>Space</kbd> or the <b>Leap</b> button, and sails right over mud, spray and bathtubs. In team mode Hercules uses <kbd>WASD</kbd>, Apollo uses the arrows and <kbd>Enter</kbd> to leap, or each player drags a dog. <kbd>P</kbd> pauses.</p>
         <div class="scorebox"><h3 class="sbTitle">High scores</h3><div class="sbBody"></div></div>
       </div>
     </div>
@@ -242,7 +253,14 @@ const DOGS = {
   hercules: { name: "Hercules", fur: "#1b1a1f", curl: "#3b3842", head: "#1b1a1f", ear: "#121115", muzzle: "#2a282e", chin: "#f2f0ea", collar: "#e3402d", photo: "hercules.jpg" },
   apollo:   { name: "Apollo",   fur: "#b27b47", curl: "#d29c64", head: "#6f6258", ear: "#3a302b", muzzle: "#c58b52", chin: "#e9dccb", collar: "#2f86d6", photo: "apollo.jpg" },
 };
-const PTS = { squirrel: 10, bunny: 15 };
+const PTS = { squirrel: 10, bunny: 15 };   // the same for both dogs
+// Hercules has the fastest paws and snappiest turns. Apollo is slower on the
+// ground but leaps, and while airborne he sails over mud, spray and bathtubs.
+const STATS = {
+  hercules: { speed: 290, grip: 24, boostSpeed: 1.4 },
+  apollo:   { speed: 225, grip: 9,  boostSpeed: 1.2 },
+};
+const BOOST_TIME = 7;
 const MAX_SPLASH = 3;
 const LEVEL_NAMES = ["Backyard Romp", "Sprinkler Lane", "Mr. Bubbles Rolls In", "Squirrel Rush Hour", "Bunny Meadow", "The Big Park", "Splash Zone", "Golden Goose Grove", "Speedy Sunday", "Top Dog Trail"];
 
@@ -283,6 +301,8 @@ const sfx = {
   birdArrive: () => { tone(300, 600, 0.2, "square", 0.05); tone(600, 300, 0.2, "square", 0.05, 0.2); },
   splash: () => { splashSound(); tone(400, 150, 0.3, "sine", 0.1); },
   level: () => [392, 523, 659, 784, 1047].forEach((f, i) => tone(f, f, 0.18, "triangle", 0.12, i * 0.09)),
+  leap: () => { tone(200, 640, 0.16, "sine", 0.14); tone(400, 1280, 0.12, "triangle", 0.05, 0.03); },
+  treat: () => [660, 880, 1320, 1760].forEach((f, i) => tone(f, f, 0.1, "triangle", 0.12, i * 0.05)),
   over: () => [523, 440, 349, 262].forEach((f, i) => tone(f, f * 0.98, 0.25, "sine", 0.12, i * 0.16)),
 };
 function syncSoundBtn() { $("soundBtn").textContent = soundOn ? "Sounds on" : "Sounds off"; }
@@ -477,7 +497,7 @@ let screen = "title";  // title | intro | play | pause | over
 let lastSaved = null;
 
 function makeDog(id, x, y) {
-  return { id, x, y, r: 22, vx: 0, vy: 0, face: 1, speed: 235, inv: 0, step: 0, caught: 0, ptr: null };
+  return { id, x, y, r: 22, vx: 0, vy: 0, face: 1, speed: STATS[id].speed, inv: 0, step: 0, caught: 0, ptr: null, leap: null, leapCd: 0, boost: 0, z: 0, lastDir: [1, 0] };
 }
 function newGame() {
   G = { level: 1, score: 0, splashes: 0, birdMeter: 0, birdsCaught: 0, totals: { squirrel: 0, bunny: 0 }, dogs: [] };
@@ -488,7 +508,8 @@ function newGame() {
 function setupLevel() {
   const c = G.cfg = levelCfg(G.level);
   G.caught = 0; G.time = c.time; G.critters = []; G.particles = []; G.floaters = []; G.tubs = []; G.sprinklers = []; G.muds = []; G.bird = null; G.spawnT = 0; G.shake = 0;
-  G.dogs.forEach((d, i) => { d.x = W / 2 + (G.dogs.length > 1 ? (i ? 50 : -50) : 0); d.y = H / 2; d.vx = d.vy = 0; d.inv = 1.5; d.ptr = null; });
+  G.dogs.forEach((d, i) => { d.x = W / 2 + (G.dogs.length > 1 ? (i ? 50 : -50) : 0); d.y = H / 2; d.vx = d.vy = 0; d.inv = 1.5; d.ptr = null; d.leap = null; d.leapCd = 0; d.boost = 0; d.z = 0; });
+  G.treats = []; G.treatT = rnd(5, 8);
   // decorations (flowers) and hazards placed away from the start spot
   G.flowers = Array.from({ length: 26 }, () => ({ x: rnd(0, 1), y: rnd(0, 1), c: ["#fff", "#ffd84a", "#ff8fb1", "#c9a7ff"][Math.floor(rnd(0, 4))], s: rnd(0.7, 1.2) }));
   const farFromCenter = (minD) => { for (let t = 0; t < 40; t++) { const p = { x: rnd(70, W - 70), y: rnd(70, H - 70) }; if (Math.hypot(p.x - W / 2, p.y - H / 2) > minD) return p; } return { x: rnd(70, W - 70), y: rnd(70, H - 70) }; };
@@ -526,11 +547,14 @@ window.addEventListener("keydown", (e) => {
   if (KEYMAP[e.code]) { keys.add(KEYMAP[e.code]); e.preventDefault(); }
   if (e.code === "KeyP" || e.code === "Escape") { if (screen === "play") pause(); else if (screen === "pause") resume(); }
   if ((e.code === "Space" || e.code === "Enter") && screen === "intro") { e.preventDefault(); startLevel(); }
+  else if (["Space", "Enter", "NumpadEnter", "ShiftRight"].includes(e.code) && screen === "play" && !e.repeat) { e.preventDefault(); leap(G.dogs.find((d) => d.id === "apollo")); }
 });
 window.addEventListener("keyup", (e) => { if (KEYMAP[e.code]) keys.delete(KEYMAP[e.code]); });
 window.addEventListener("blur", () => { keys.clear(); if (screen === "play") pause(); });
 document.addEventListener("visibilitychange", () => { if (document.hidden && screen === "play") pause(); });
 
+const isTouch = (window.matchMedia && matchMedia("(pointer: coarse)").matches) || "ontouchstart" in window;
+$("leapBtn").addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); if (G) leap(G.dogs.find((d) => d.id === "apollo")); });
 function toWorld(e) { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / k, y: (e.clientY - r.top) / k }; }
 cv.addEventListener("pointerdown", (e) => {
   if (screen !== "play") return;
@@ -565,16 +589,34 @@ function update(dt) {
 
   // dogs
   G.dogs.forEach((d, i) => {
+    const S = STATS[d.id], boosted = d.boost > 0;
+    d.boost = Math.max(0, d.boost - dt);
+    d.leapCd = Math.max(0, d.leapCd - dt);
+    d.inv = Math.max(0, d.inv - dt);
+    if (boosted && Math.random() < dt * 22) G.particles.push({ x: d.x + rnd(-14, 14), y: d.y - d.z + rnd(-20, 10), vx: rnd(-20, 20), vy: rnd(-50, -10), life: 0.6, max: 0.6, kind: "star", s: rnd(3, 5), g: 0 });
+    if (d.leap) {
+      const L = d.leap; L.t += dt;
+      const p = Math.min(1, L.t / L.dur);
+      d.x += L.dx * L.spd * dt; d.y += L.dy * L.spd * dt; clampIn(d);
+      d.z = Math.sin(p * Math.PI) * L.h; d.step += dt * 3;
+      if (p >= 1) {
+        d.leap = null; d.z = 0; d.leapCd = boosted ? 0.35 : 0.8;
+        d.vx = L.dx * d.speed * 0.6; d.vy = L.dy * d.speed * 0.6;
+        for (let k = 0; k < 8; k++) G.particles.push({ x: d.x + rnd(-16, 16), y: d.y + 16, vx: rnd(-60, 60), vy: rnd(-50, -10), life: 0.4, max: 0.4, col: "#cfe7b4", s: rnd(2, 4), g: 120 });
+      }
+      return;
+    }
     const [ix, iy] = dogInput(d, i);
+    if (ix || iy) d.lastDir = [ix, iy];
     const inMud = G.muds.some((m) => ((d.x - m.x) / m.rx) ** 2 + ((d.y - m.y) / m.ry) ** 2 < 1);
-    const sp = d.speed * (inMud ? 0.48 : 1);
-    d.vx += (ix * sp - d.vx) * Math.min(1, dt * 12);
-    d.vy += (iy * sp - d.vy) * Math.min(1, dt * 12);
+    const sp = d.speed * (boosted ? S.boostSpeed : 1) * (inMud ? 0.48 : 1);
+    const grip = Math.min(1, dt * S.grip * (boosted ? 1.3 : 1));
+    d.vx += (ix * sp - d.vx) * grip;
+    d.vy += (iy * sp - d.vy) * grip;
     d.x += d.vx * dt; d.y += d.vy * dt; clampIn(d);
     const v = Math.hypot(d.vx, d.vy);
     if (Math.abs(d.vx) > 15) d.face = d.vx > 0 ? 1 : -1;
     d.step += v * dt * 0.06;
-    d.inv = Math.max(0, d.inv - dt);
     if (inMud && v > 60 && Math.random() < dt * 10) G.particles.push({ x: d.x + rnd(-8, 8), y: d.y + 14, vx: rnd(-30, 30), vy: rnd(-60, -20), life: 0.5, max: 0.5, col: "#6b4a2b", s: 4, g: 200 });
   });
   if (G.dogs.length > 1) { const [a, b] = G.dogs, dd = dist(a, b), min = a.r + b.r - 8; if (dd < min && dd > 0.01) { const push = (min - dd) / 2, nx = (b.x - a.x) / dd, ny = (b.y - a.y) / dd; a.x -= nx * push; a.y -= ny * push; b.x += nx * push; b.y += ny * push; } }
@@ -590,7 +632,7 @@ function update(dt) {
   for (const q of G.critters) {
     if (q.state === "boop" || q.state === "enter") continue;
     for (const d of G.dogs) {
-      if (dist(d, q) < d.r + q.r * 0.85) { boop(q, d); break; }
+      if (dist(d, q) < reach(d) + q.r * 0.85) { boop(q, d); break; }
     }
   }
 
@@ -605,7 +647,7 @@ function update(dt) {
       const ang = s.ang + a * Math.PI;
       if (Math.random() < dt * 40) { const l = rnd(20, s.len); G.particles.push({ x: s.x + Math.cos(ang) * l, y: s.y + Math.sin(ang) * l, vx: rnd(-15, 15), vy: rnd(-15, 15), life: 0.35, max: 0.35, col: "#9fd4ff", s: rnd(2, 4), g: 0 }); }
       for (const d of G.dogs) {
-        if (d.inv > 0) continue;
+        if (d.inv > 0 || d.z > 12) continue;
         const dd = dist(d, s);
         if (dd < s.len + d.r * 0.5 && dd > 14 && Math.abs(angDiff(Math.atan2(d.y - s.y, d.x - s.x), ang)) < s.width / 2 + d.r / Math.max(dd, 30) * 0.6) splash(d, "Sprinkler splash!");
       }
@@ -620,8 +662,10 @@ function update(dt) {
       else { t.vx *= 0.95; t.vy *= 0.95; }
     }
     t.x += t.vx * dt; t.y += t.vy * dt; clampIn(t);
-    for (const d of G.dogs) if (d.inv <= 0 && dist(d, t) < d.r + t.r - 6) { splash(d, "Mr. Bubbles got you!"); t.pause = 2; t.vx = -t.vx * 0.5; t.vy = -t.vy * 0.5; }
+    for (const d of G.dogs) if (d.inv <= 0 && d.z <= 12 && dist(d, t) < d.r + t.r - 6) { splash(d, "Mr. Bubbles got you!"); t.pause = 2; t.vx = -t.vx * 0.5; t.vy = -t.vy * 0.5; }
   }
+
+  updateTreats(dt);
 
   // fx
   for (const p of G.particles) { p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += (p.g || 0) * dt; }
@@ -682,6 +726,42 @@ function updateCritter(q, dt, c) {
   if (Math.abs(q.vx) > 5) q.face = q.vx > 0 ? 1 : -1;
 }
 
+const reach = (d) => d.r + (d.leap ? 12 : 0);   // a pounce reaches a little further
+
+function leap(d) {
+  if (!d || d.id !== "apollo" || d.leap || d.leapCd > 0 || screen !== "play") return;
+  const boosted = d.boost > 0;
+  const [ix, iy] = dogInput(d, G.dogs.indexOf(d));   // the direction held right now wins
+  let [dx, dy] = ix || iy ? [ix, iy] : d.lastDir; const m = Math.hypot(dx, dy) || 1; dx /= m; dy /= m;
+  const distance = boosted ? 310 : 200, dur = boosted ? 0.62 : 0.5;
+  d.leap = { t: 0, dur, dx, dy, spd: distance / dur, h: boosted ? 72 : 48 };
+  if (Math.abs(dx) > 0.1) d.face = dx > 0 ? 1 : -1;
+  sfx.leap();
+}
+
+function updateTreats(dt) {
+  G.treatT -= dt;
+  if (G.treatT <= 0) {
+    if (G.treats.length < 2) G.treats.push({ x: rnd(60, W - 60), y: rnd(70, H - 50), z: 420, state: "fall", life: 9, spin: rnd(0, 6) });
+    G.treatT = rnd(10, 15);
+  }
+  for (const tr of G.treats) {
+    if (tr.state === "fall") {
+      tr.z -= 280 * dt; tr.spin += dt * 7;
+      if (tr.z <= 0) { tr.z = 0; tr.state = "ground"; for (let k = 0; k < 6; k++) G.particles.push({ x: tr.x, y: tr.y, vx: rnd(-50, 50), vy: rnd(-70, -20), life: 0.4, max: 0.4, col: "#e0b070", s: 2.5, g: 200 }); }
+    } else tr.life -= dt;
+    if (tr.z > 24) continue;
+    for (const d of G.dogs) {
+      if (d.z > 30 || dist(d, tr) > d.r + 16) continue;
+      d.boost = BOOST_TIME; tr.gone = true;
+      G.floaters.push({ x: d.x, y: d.y - 48, text: d.id === "hercules" ? "Treat! ZOOMIES!" : "Treat! SUPER LEAPS!", life: 1.4, col: "#ffe680", big: true });
+      for (let k = 0; k < 14; k++) G.particles.push({ x: d.x, y: d.y - 10, vx: rnd(-120, 120), vy: rnd(-150, -20), life: 0.8, max: 0.8, kind: "star", s: rnd(4, 7), g: 80 });
+      sfx.treat(); break;
+    }
+  }
+  G.treats = G.treats.filter((tr) => !tr.gone && tr.life > 0);
+}
+
 function boop(q, d) {
   q.state = "boop"; q.boopT = 0.45;
   q.dir = [0, Math.PI, Math.PI / 2, -Math.PI / 2].reduce((best, a) => { const ex = (a === 0 ? W - q.x : a === Math.PI ? q.x : a > 0 ? H - q.y : q.y); return ex < best[1] ? [a, ex] : best; }, [0, 1e9])[0];
@@ -718,7 +798,7 @@ function updateBird(b, dt) {
   if (b.x < b.r + 20 || b.x > W - b.r - 20) b.dir = Math.PI - b.dir; if (b.y < b.r + 20 || b.y > H - b.r - 20) b.dir = -b.dir;
   b.x = clamp(b.x, b.r, W - b.r); b.y = clamp(b.y, b.r, H - b.r);
   if (Math.abs(Math.cos(a)) > 0.2) b.face = Math.cos(a) > 0 ? 1 : -1;
-  for (const dg of G.dogs) if (dist(dg, b) < dg.r + b.r * 0.8) {
+  for (const dg of G.dogs) if (dist(dg, b) < reach(dg) + b.r * 0.8) {
     const bonus = 100 + (G.level - 1) * 25;
     G.score += bonus; G.birdsCaught++; dg.caught++;
     G.floaters.push({ x: b.x, y: b.y - 50, text: `GIANT BOOP! +${bonus}`, life: 1.6, col: "#ffe680", big: true });
@@ -758,8 +838,13 @@ function drawDog(d, t) {
   const L = DOGS[d.id];
   const moving = Math.hypot(d.vx, d.vy) > 20;
   if (d.inv > 0 && Math.floor(t * 12) % 2 === 0 && screen === "play") ctx.globalAlpha = 0.45;
-  shadow(d.x, d.y + 18, 26, 7);
-  ctx.save(); ctx.translate(d.x, d.y); ctx.scale(d.face, 1);
+  if (d.boost > 0) {
+    ctx.strokeStyle = "rgba(255,226,110,.9)"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.ellipse(d.x, d.y + 18, 30, 9, 0, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (d.boost / BOOST_TIME)); ctx.stroke();
+  }
+  shadow(d.x, d.y + 18, 26 - d.z * 0.12, 7 - d.z * 0.04);
+  ctx.save(); ctx.translate(d.x, d.y - d.z); ctx.scale(d.face, 1);
+  if (d.leap) ctx.rotate(-0.3 * Math.cos(Math.min(1, d.leap.t / d.leap.dur) * Math.PI));
   const bounce = moving ? Math.abs(Math.sin(d.step * 2)) * 3 : 0;
   // legs
   ctx.fillStyle = L.fur;
@@ -790,7 +875,7 @@ function drawDog(d, t) {
   ctx.fillStyle = "#ffd34d"; ctx.beginPath(); ctx.arc(13, 5, 2.4, 0, 7); ctx.fill();
   ctx.restore();
   ctx.globalAlpha = 1;
-  if (G.dogs.length > 1) { ctx.font = "13px 'Lilita One', sans-serif"; ctx.textAlign = "center"; ctx.fillStyle = "rgba(29,51,36,.75)"; ctx.fillText(L.name, d.x, d.y - 42); }
+  if (G.dogs.length > 1) { ctx.font = "13px 'Lilita One', sans-serif"; ctx.textAlign = "center"; ctx.fillStyle = "rgba(29,51,36,.75)"; ctx.fillText(L.name, d.x, d.y - d.z - 42); }
 }
 function fluff(x, y, r, col, curl) {
   ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
@@ -890,6 +975,22 @@ function drawSprinkler(s) {
   ctx.fillStyle = "#2e7d4f"; ctx.beginPath(); ctx.arc(s.x, s.y, 11, 0, 7); ctx.fill();
   ctx.fillStyle = "#ffd23f"; ctx.beginPath(); ctx.arc(s.x, s.y, 5, 0, 7); ctx.fill();
 }
+function drawTreat(tr, t) {
+  if (tr.state === "ground" && tr.life < 2 && Math.floor(t * 8) % 2 === 0) return;
+  const k2 = 1 - Math.min(tr.z, 400) / 600;
+  shadow(tr.x, tr.y + 6, 12 * k2 + 2, 4 * k2 + 1);
+  const hop = tr.state === "ground" ? Math.abs(Math.sin(t * 4)) * 3 : 0;
+  ctx.save(); ctx.translate(tr.x, tr.y - tr.z - hop); ctx.rotate(tr.state === "fall" ? tr.spin : -0.3);
+  const g = ctx.createRadialGradient(0, 0, 4, 0, 0, 26); g.addColorStop(0, "rgba(255,230,120,.55)"); g.addColorStop(1, "rgba(255,230,120,0)");
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 26, 0, 7); ctx.fill();
+  ctx.fillStyle = "#d99a4e";
+  for (const [x, y] of [[-10, -4], [-10, 4], [10, -4], [10, 4]]) { ctx.beginPath(); ctx.arc(x, y, 5.5, 0, 7); ctx.fill(); }
+  ctx.fillRect(-10, -4.5, 20, 9);
+  ctx.fillStyle = "#b8783a"; for (const x of [-4, 1, 6]) { ctx.beginPath(); ctx.arc(x, 0, 1.2, 0, 7); ctx.fill(); }
+  ctx.fillStyle = "rgba(255,255,255,.35)"; ctx.fillRect(-8, -4, 14, 2);
+  ctx.restore();
+}
+function drawStar(x, y, s) { ctx.beginPath(); for (let i = 0; i < 10; i++) { const r = i % 2 ? s * 0.45 : s, a = i * Math.PI / 5 - Math.PI / 2; ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); } ctx.closePath(); ctx.fill(); }
 function drawHeart(x, y, s) { ctx.beginPath(); ctx.moveTo(x, y + s * 0.35); ctx.bezierCurveTo(x - s, y - s * 0.4, x - s * 0.4, y - s, x, y - s * 0.45); ctx.bezierCurveTo(x + s * 0.4, y - s, x + s, y - s * 0.4, x, y + s * 0.35); ctx.fill(); }
 
 function draw(t) {
@@ -899,12 +1000,15 @@ function draw(t) {
   if (!G) return;
   for (const s of G.sprinklers) drawSprinkler(s);
   const list = [...G.critters.map((q) => ({ y: q.y, f: () => (q.type === "bunny" ? drawBunny(q) : drawSquirrel(q, t)) })), ...G.dogs.map((d) => ({ y: d.y, f: () => drawDog(d, t) })), ...G.tubs.map((tb) => ({ y: tb.y, f: () => drawTub(tb, t) }))];
+  for (const tr of G.treats) if (tr.state === "ground") list.push({ y: tr.y, f: () => drawTreat(tr, t) });
   if (G.bird && G.bird.state === "ground") list.push({ y: G.bird.y, f: () => drawBird(G.bird, t) });
   list.sort((a, b) => a.y - b.y).forEach((o) => o.f());
+  for (const tr of G.treats) if (tr.state === "fall") drawTreat(tr, t);
   if (G.bird && G.bird.state !== "ground") drawBird(G.bird, t);
   for (const p of G.particles) {
     ctx.globalAlpha = Math.max(0, p.life / p.max);
     if (p.kind === "heart") { ctx.fillStyle = "#ff6f91"; drawHeart(p.x, p.y, p.s); }
+    else if (p.kind === "star") { ctx.fillStyle = "#ffe066"; drawStar(p.x, p.y, p.s); }
     else if (p.kind === "feather") { ctx.save(); ctx.translate(p.x, p.y); ctx.rotate((p.rot += 0.1)); ctx.fillStyle = "#ffe27a"; ctx.beginPath(); ctx.ellipse(0, 0, p.s, p.s * 0.35, 0, 0, 7); ctx.fill(); ctx.restore(); }
     else { ctx.fillStyle = p.col; ctx.beginPath(); ctx.arc(p.x, p.y, p.s, 0, 7); ctx.fill(); }
   }
@@ -930,13 +1034,18 @@ function hud() {
   $("goalfill").style.width = Math.min(100, G.caught / G.cfg.goal * 100) + "%";
   const bp = G.bird ? "bird" : "m" + G.birdMeter;
   if (hudCache.bp !== bp) { hudCache.bp = bp; $("birdpips").innerHTML = [0, 1, 2].map((i) => `<span class="pip ${G.bird || i < G.birdMeter ? "on" : ""}">🪶</span>`).join(""); }
+  const boostLeft = Math.ceil(Math.max(...G.dogs.map((d) => d.boost)));
+  $("boostStat").hidden = boostLeft <= 0; setText("boost", boostLeft + "s");
+  const apollo = G.dogs.find((d) => d.id === "apollo");
+  $("leapBtn").hidden = !(isTouch && apollo && screen === "play");
+  if (apollo) $("leapBtn").classList.toggle("cool", !!apollo.leap || apollo.leapCd > 0);
   const sp = "s" + G.splashes;
   if (hudCache.sp !== sp) { hudCache.sp = sp; $("splashpips").innerHTML = [0, 1, 2].map((i) => `<span class="pip ${i < G.splashes ? "on" : ""}">💧</span>`).join(""); }
 }
 
 // ---------- Screens ----------
 const overlays = ["titleScreen", "levelScreen", "pauseScreen", "overScreen"];
-function show(id) { overlays.forEach((o) => ($(o).hidden = o !== id)); }
+function show(id) { overlays.forEach((o) => ($(o).hidden = o !== id)); if (id) $("leapBtn").hidden = true; }
 function dogLabel() { return mode === "both" ? "Hercules & Apollo" : DOGS[mode].name; }
 
 function intro(cleared) {
@@ -945,6 +1054,8 @@ function intro(cleared) {
   $("lsTitle").textContent = cleared ? `Level ${n - 1} cleared!` : `Level ${n}: ${LEVEL_NAMES[(n - 1) % LEVEL_NAMES.length]}`;
   const notes = [];
   if (n === 1) notes.push("Chase squirrels and bunnies around the yard. Get close and they get a boop.");
+  if (n <= 2) notes.push(`Treats fall from the sky. Grab one for a ${BOOST_TIME}-second boost${mode === "both" ? "" : mode === "hercules" ? ": ZOOMIES" : ": SUPER LEAPS"}!`);
+  if (n <= 2 && mode !== "hercules") notes.push(mode === "both" ? "Apollo leaps with Enter and jumps right over hazards." : `Leap with Space${isTouch ? " or the Leap button" : ""} to jump right over hazards.`);
   if (c.mud && n === 2) notes.push("New: mud puddles slow your paws.");
   if (c.sprinklers && levelCfg(n - 1).sprinklers < c.sprinklers) notes.push(c.sprinklers === 1 ? "New: a sprinkler! Stay out of the spray." : "One more sprinkler joins the yard.");
   if (c.tubs && levelCfg(n - 1).tubs < c.tubs) notes.push(c.tubs === 1 ? "New: Mr. Bubbles the bathtub rolls after you. Don't let it catch you!" : "Another bathtub is on the loose!");
@@ -1002,7 +1113,7 @@ function gameOver(reason) {
   setTimeout(() => { (G.score > 0 ? $("nameIn") : $("againBtn")).focus(); }, 50);
 }
 function toTitle() { Music.stop(); screen = "title"; G = null; hudCache = {}; resetHud(); renderScores(); show("titleScreen"); }
-function resetHud() { ["lvl", "score", "caught", "time"].forEach((id) => ($(id).textContent = id === "lvl" ? "1" : id === "caught" ? "0/5" : id === "time" ? levelCfg(1).time : "0")); $("goalfill").style.width = "0"; $("birdpips").innerHTML = "<span class='pip'>🪶</span>".repeat(3); $("splashpips").innerHTML = "<span class='pip'>💧</span>".repeat(3); }
+function resetHud() { ["lvl", "score", "caught", "time"].forEach((id) => ($(id).textContent = id === "lvl" ? "1" : id === "caught" ? "0/5" : id === "time" ? levelCfg(1).time : "0")); $("goalfill").style.width = "0"; $("boostStat").hidden = true; $("birdpips").innerHTML = "<span class='pip'>🪶</span>".repeat(3); $("splashpips").innerHTML = "<span class='pip'>💧</span>".repeat(3); }
 $("againBtn").onclick = () => { newGame(); intro(false); };
 $("menuBtn").onclick = toTitle;
 document.querySelectorAll("[data-pick]").forEach((b) => (b.onclick = () => { ac(); mode = b.dataset.pick; newGame(); intro(false); }));
