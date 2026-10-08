@@ -1,0 +1,51 @@
+name: Android app
+
+on:
+  push:
+    paths:
+      - "game/**"
+      - "android/**"
+      - ".github/workflows/android.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build the APK
+        working-directory: android
+        run: gradle assembleRelease --no-daemon
+
+      - name: Name the APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk BackyardBoop.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BackyardBoop-apk
+          path: BackyardBoop.apk
+
+      - name: Publish a download link
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-v${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: Backyard Boop for Android (build ${{ github.run_number }})
+          body: |
+            Open this page on your Android phone and tap **BackyardBoop.apk** to download it.
+            Android will ask you to allow installing apps from your browser the first time.
+          files: BackyardBoop.apk
+          make_latest: true

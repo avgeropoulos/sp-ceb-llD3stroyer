@@ -1,0 +1,52 @@
+plugins {
+    id "com.android.application"
+}
+
+// The game lives in ../../game; copy it into the app's assets on every build.
+def gameAssets = layout.buildDirectory.dir("generated/gameAssets").get().asFile
+tasks.register("copyGame", Copy) {
+    from("$rootDir/../game") {
+        include "index.html", "*.jpg"
+    }
+    into(new File(gameAssets, "game"))
+}
+preBuild.dependsOn("copyGame")
+
+android {
+    namespace "com.backyardboop.game"
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.backyardboop.game"
+        minSdk 24
+        targetSdk 34
+        versionCode((System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger())
+        versionName "1.0." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
+    }
+
+    // A fixed key so each new APK installs as an update over the last one.
+    signingConfigs {
+        boop {
+            storeFile file("backyardboop.keystore")
+            storePassword "boopboop"
+            keyAlias "boop"
+            keyPassword "boopboop"
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.boop
+        }
+    }
+
+    sourceSets {
+        main.assets.srcDir(gameAssets)
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
