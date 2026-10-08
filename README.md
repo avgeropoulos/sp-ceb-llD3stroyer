@@ -15,4 +15,4 @@ Each dog has a theme song, made live in the browser with no audio files. Hercule
 
 ## Android
 
-`android/` holds a small app that runs the game full screen. Every push that changes the game makes GitHub Actions build a new APK and publish it on the repo's [Releases page](../../releases/latest). To install it, open that page on an Android phone, tap `BackyardBoop.apk`, and allow your browser to install apps when Android asks. Each new build is signed with the same key, so it installs as an update over the last one.
+`android/` holds a small app that runs the game full screen. Every push that changes the game makes GitHub Actions build a new APK. It is attached to each run on the Actions tab as `BackyardBoop-apk`. If the repo's workflow permissions are set to "Read and write" (Settings > Actions > General), it is also published on the [Releases page](../../releases/latest). To install it, open the Releases page on an Android phone, tap `BackyardBoop.apk`, and allow your browser to install apps when Android asks. Each new build is signed with the same key, so it installs as an update over the last one.
