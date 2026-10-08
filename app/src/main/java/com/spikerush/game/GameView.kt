@@ -167,6 +167,10 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                 val i = e.actionIndex
                 touches[e.getPointerId(i)] = floatArrayOf(e.getX(i), e.getY(i))
+                // Remember where the tap landed in world coordinates (for on-screen buttons).
+                val (scale, ox, oy) = layout(width, height)
+                game.tapX = (e.getX(i) - ox) / scale
+                game.tapY = (e.getY(i) - oy) / scale
                 game.tapped = true
             }
             MotionEvent.ACTION_MOVE -> {
@@ -209,7 +213,11 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback 
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         if (!setKey(keyCode, true)) return super.onKeyDown(keyCode, event)
-        if (event.repeatCount == 0) game.tapped = true
+        if (event.repeatCount == 0) {
+            game.tapX = -1f
+            game.tapY = -1f
+            game.tapped = true
+        }
         return true
     }
 

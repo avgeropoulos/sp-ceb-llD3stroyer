@@ -34,8 +34,24 @@ private const val STAR_TIME = 8f
 private const val SLIDE_TIME = 2.2f
 private const val SLIDE_SPEED = 720f
 
-class Platform(val x: Float, val y: Float, val w: Float, val ground: Boolean = false) {
+/** A floor or floating platform. Floating ones sway slowly on a sine path (scaled by [Game.platformAmp]). */
+class Platform(
+    val baseX: Float, val baseY: Float, val w: Float, val ground: Boolean = false,
+    val swayX: Float = 0f, val swayY: Float = 0f, val period: Float = 10f, val phase: Float = 0f,
+) {
+    var x = baseX
+    var y = baseY
+    var dx = 0f
+    var dy = 0f
     fun under(px: Float, margin: Float = 0f) = px >= x - margin && px <= x + w + margin
+    fun xAt(t: Float, amp: Float) = baseX + swayX * amp * sin(t * 6.2832f / period + phase)
+    fun yAt(t: Float, amp: Float) = baseY + swayY * amp * sin(t * 6.2832f / period + phase)
+    fun move(t: Float, amp: Float) {
+        val nx = xAt(t, amp)
+        val ny = yAt(t, amp)
+        dx = nx - x; dy = ny - y
+        x = nx; y = ny
+    }
 }
 
 class Hero {
@@ -52,6 +68,8 @@ class Hero {
     var jumpBuffer = 0f
     var dead = false
     var power: Power? = null
+    var shield = false
+    var platform: Platform? = null
     var star = 0f
     var drilling = false
     var drillTime = 0f
@@ -66,7 +84,7 @@ class Hero {
         x = 200f; y = GROUND_Y; vx = 0f; vy = 0f; onGround = true; facing = 1
         invuln = 0f; knock = 0f; dead = false; coyote = 0f; jumpBuffer = 0f
         power = null; star = 0f; drilling = false; drillTime = 0f; drillCooldown = 0f; shootCooldown = 0f
-        sliding = 0f; slideCooldown = 0f
+        sliding = 0f; slideCooldown = 0f; shield = false; platform = null
     }
 }
 
@@ -82,6 +100,9 @@ class Spike(var x: Float, var y: Float, var vx: Float, var vy: Float, val rolls:
     var markX = Float.NaN
     var markY = 0f
     var frozen = false
+    var platform: Platform? = null
+    var markPlat: Platform? = null
+    var markOff = 0f
     var bounces = 0
     var quake = false
     var dead = false
@@ -97,7 +118,40 @@ class Shockwave(var x: Float, val dir: Float) {
     var dead = false
 }
 
+/** Fire falling from the sky (from round 8). Leaves a short-lived flame where it lands. */
+class Meteor(var x: Float, var y: Float, val vx: Float, var vy: Float) {
+    var markX = Float.NaN
+    var markY = 0f
+    var dead = false
+}
+
+class Flame(var x: Float, var y: Float, var life: Float, val platform: Platform?)
+
+enum class AllyKind(val title: String, val joinLevel: Int, val color: Int) {
+    GINO("GINO", 4, Color.rgb(90, 230, 90)),
+    KINO("KINO", 8, Color.rgb(255, 130, 130)),
+    ROSA("PRINCESS ROSA", 11, Color.rgb(255, 150, 210)),
+}
+
+/** A teammate who fights alongside the hero. Allies can't be beaten, only dazed for a moment. */
+class Ally(val kind: AllyKind) {
+    var x = 0f
+    var y = GROUND_Y
+    var vx = 0f
+    var vy = 0f
+    var onGround = true
+    var facing = 1
+    var anim = 0f
+    var dazed = 0f
+    var act = 3f
+    var stompCd = 0f
+    var t = 0f
+    var blessingUsed = false
+    var platform: Platform? = null
+}
+
 class Item(var x: Float, var y: Float, val type: Power) {
+    var platform: Platform? = null
     var vx = 0f
     var vy = -420f
     var life = 11f
@@ -107,11 +161,12 @@ class Item(var x: Float, var y: Float, val type: Power) {
 
 class Shot(
     var x: Float, var y: Float, var vx: Float, var vy: Float, val ice: Boolean, val boomerang: Boolean = false,
+    val turnip: Boolean = false,
 ) {
     var life = if (boomerang) 3.5f else 1.6f
     var t = 0f
     var returning = false
-    var hitBoss = false
+    val bossesHit = HashSet<Any>()
     var spin = 0f
     var dead = false
 }
@@ -154,6 +209,12 @@ class Boss {
     var frozen = 0f
     var burn = 0
     var flash = 0f
+    var kind = BossKind.PRINCE
+    var wonder = false
+    var slot = 0
+    val look get() = if (wonder) kind.wonder else kind.normal
+    val active get() = state != BossState.HURT && state != BossState.DEFEATED && state != BossState.ENTER
+    val low get() = state == BossState.LOW || state == BossState.SWOOP_DOWN || state == BossState.SWOOP_UP
 }
 
 class Game(private val audio: Synth, private val prefs: SharedPreferences) {
@@ -176,7 +237,8 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
 
     private val rnd = Random(System.nanoTime())
     private val hero = Hero()
-    private val boss = Boss()
+    private val bosses = ArrayList<Boss>()
+    private val titleBoss = Boss()
     private val spikes = ArrayList<Spike>()
     private val coins = ArrayList<Coin>()
     private val particles = ArrayList<Particle>()
@@ -185,12 +247,24 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
     private val shots = ArrayList<Shot>()
     private var powerTimer = 9f
     private val shockwaves = ArrayList<Shockwave>()
+    private val meteors = ArrayList<Meteor>()
+    private val flames = ArrayList<Flame>()
+    private var meteorTimer = 6f
+    private val allies = ArrayList<Ally>()
+    private val allyBody = Hero()
+    private var arenaT = 0f
+    var platformAmp = 0f
+        private set
+
+    // Where the last tap landed, in world coordinates (-1 = keyboard/unknown).
+    @Volatile var tapX = -1f
+    @Volatile var tapY = -1f
 
     // Who we're fighting this round, and how hard.
-    private var bossKind = BossKind.PRINCE
-    private var wonder = false
+    private var round = Rounds.forLevel(1)
+    private val wonder get() = round.wonder
     private var diff = 1f
-    private val look get() = if (wonder) bossKind.wonder else bossKind.normal
+    private val look get() = bosses.firstOrNull()?.look ?: BossKind.PRINCE.normal
 
     // Per-round events: the green brother (every 3rd round) and the rare 1-UP mushroom.
     private var levelTime = 0f
@@ -202,9 +276,9 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
 
     val platforms = listOf(
         Platform(0f, GROUND_Y, WORLD_W, ground = true),
-        Platform(140f, 455f, 250f),
-        Platform(890f, 455f, 250f),
-        Platform(530f, 315f, 220f),
+        Platform(140f, 455f, 250f, swayY = 45f, period = 9f),
+        Platform(890f, 455f, 250f, swayY = 45f, period = 9f, phase = 3.1416f),
+        Platform(530f, 315f, 220f, swayX = 160f, period = 12f),
     )
 
     private var score = 0
@@ -250,28 +324,38 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
     private fun tempoForLevel(lv: Int = level) = min(1.15f, 1f + (lv - 1) * 0.012f)
 
     private fun setupBoss() {
-        boss.x = WORLD_W / 2
-        boss.y = -170f
-        boss.state = BossState.ENTER
-        val (kind, w) = BossKind.forLevel(level)
-        bossKind = kind
-        wonder = w
-        // A slow, steady climb each round, plus a one-round spike for a Wonder boss.
+        round = Rounds.forLevel(level)
+        // A slow, steady climb each round, plus a one-round spike for a Wonder round.
         diff = 1f + (level - 1) * 0.45f + (if (wonder) 2.2f else 0f)
-        boss.maxHp = min(6, 3 + (level - 1) / 4) + (if (wonder) 1 else 0)
-        boss.hp = boss.maxHp
+        val n = round.kinds.size
+        val hp = min(6, 3 + (level - 1) / 4) + (if (wonder) 1 else 0)
+        bosses.clear()
+        for ((i, kind) in round.kinds.withIndex()) {
+            val b = Boss()
+            b.kind = kind
+            b.wonder = wonder
+            b.slot = i
+            b.x = WORLD_W * (i + 1) / (n + 1)
+            b.y = -170f - i * 60f
+            b.state = BossState.ENTER
+            // In a team each sibling is a bit less sturdy.
+            b.maxHp = if (n > 1) maxOf(2, hp - 1) else hp
+            b.hp = b.maxHp
+            b.attackTimer = 1.6f + i * 1.1f
+            b.targetX = b.x
+            bosses += b
+        }
         levelTime = 0f
-        broUsed = level % 3 != 0
+        broUsed = level != 3 // Gino's one-off dash, before he joins for good at round 4
         broActive = false
         // The 1-UP mushroom shows up sparingly: some rounds, at a random moment.
         oneUpAt = if (rnd.nextFloat() < (if (wonder) 0.6f else 0.3f)) 15f + rnd.nextFloat() * 25f else -1f
         shockwaves.clear()
-        boss.attacks = 0
-        boss.attackTimer = 1.6f
-        boss.spin = 0f
-        boss.targetX = WORLD_W / 2
-        boss.frozen = 0f
-        boss.burn = 0
+        meteors.clear()
+        flames.clear()
+        meteorTimer = 6f
+        platformAmp = if (level >= 2) 1f else 0f
+        setupAllies()
     }
 
     private fun nextRound() {
@@ -290,19 +374,30 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
     }
 
     private fun announceBoss() {
-        if (wonder) {
-            floatText("WONDER " + bossKind.title + "!", WORLD_W / 2, 280f, look.iris ?: Color.rgb(255, 230, 120))
+        val names = round.kinds.joinToString(" & ") { it.title.removePrefix("THE ") }
+        if (round.team) {
+            floatText((if (wonder) "WONDER " else "") + "TEAM-UP!", WORLD_W / 2, 270f, look.iris ?: Color.rgb(255, 160, 120))
+            floatText(names, WORLD_W / 2, 310f, Color.rgb(255, 220, 140))
+        } else if (wonder) {
+            floatText("WONDER " + names + "!", WORLD_W / 2, 280f, look.iris ?: Color.rgb(255, 230, 120))
             floatText("Powered up for this round only!", WORLD_W / 2, 320f, Color.rgb(230, 230, 255))
         } else if (level > 1) {
-            floatText(bossKind.title + " APPEARS!", WORLD_W / 2, 290f, Color.rgb(255, 220, 140))
+            floatText(names + " APPEARS!", WORLD_W / 2, 290f, Color.rgb(255, 220, 140))
+        }
+        if (level == 8) floatText("Fire is falling from the sky!", WORLD_W / 2, 400f, Color.rgb(255, 150, 60))
+        for (k in AllyKind.values()) {
+            if (k.joinLevel == level) {
+                floatText(k.title + " JOINS YOUR TEAM!", WORLD_W / 2, 440f, k.color)
+                audio.play(Sfx.BRO)
+            }
         }
     }
 
     /** Harder rounds get more ominous music; Wonder rounds always step it up. */
     private fun themeTier(lv: Int): Int {
         if (lv <= 1) return 0
-        val w = BossKind.forLevel(lv).second
-        return if (w) (if (lv <= 5) 2 else 3) else (if (lv <= 6) 1 else 2)
+        val r = Rounds.forLevel(lv)
+        return if (r.wonder || r.team) (if (lv <= 5) 2 else 3) else (if (lv <= 6) 1 else 2)
     }
 
     private fun gameOver() {
@@ -337,10 +432,10 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
 
         when (state) {
             State.TITLE -> {
-                boss.x = WORLD_W / 2 + sin(time * 0.9f) * 330f
-                boss.y = 330f + sin(time * 2.1f) * 14f
-                boss.facing = if (cos(time * 0.9f) > 0f) 1 else -1
-                boss.spin = 0f
+                titleBoss.x = WORLD_W / 2 + sin(time * 0.9f) * 330f
+                titleBoss.y = 330f + sin(time * 2.1f) * 14f
+                titleBoss.facing = if (cos(time * 0.9f) > 0f) 1 else -1
+                titleBoss.state = BossState.HOVER
                 if (tap) startGame()
             }
             State.PLAYING -> {
@@ -348,9 +443,12 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
                     if (tap) paused = false
                     return
                 }
+                updatePlatforms(dt)
                 updateHero(dt, jumpEdge, jumpHeld, actionEdge)
                 updateBoss(dt)
                 updateSpikes(dt)
+                updateMeteors(dt)
+                updateAllies(dt)
                 updateShots(dt)
                 updateCoins(dt)
                 updateItems(dt)
@@ -361,7 +459,9 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
                 while (scoreClock >= 1f) { scoreClock -= 1f; score += 10 }
             }
             State.CLEAR -> {
+                updatePlatforms(dt)
                 updateHero(dt, jumpEdge, jumpHeld, actionEdge)
+                updateAllies(dt)
                 updateBoss(dt)
                 updateShots(dt)
                 updateCoins(dt)
@@ -377,9 +477,16 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
                 updateBoss(dt)
                 updateSpikes(dt)
                 if (tap && stateTimer > 1.5f) {
-                    state = State.TITLE
-                    spikes.clear(); coins.clear(); items.clear(); shots.clear()
-                    audio.playSong(Music.main, 0.92f)
+                    val tx = tapX
+                    val ty = tapY
+                    if (tx < 0f || (ty > 470f && ty < 610f && tx < WORLD_W / 2)) {
+                        continueGame()
+                    } else if (ty > 470f && ty < 610f) {
+                        state = State.TITLE
+                        spikes.clear(); coins.clear(); items.clear(); shots.clear(); allies.clear()
+                        meteors.clear(); flames.clear()
+                        audio.playSong(Music.main, 0.92f)
+                    }
                 }
             }
         }
@@ -457,14 +564,16 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
 
         val wasGround = h.onGround
         h.onGround = false
+        h.platform = null
         if (h.vy >= 0f) {
             for (p in platforms) {
                 if (h.x + h.halfW * 0.6f > p.x && h.x - h.halfW * 0.6f < p.x + p.w &&
-                    prevY <= p.y + 0.5f && h.y >= p.y
+                    prevY <= p.y + 0.5f + abs(p.dy) && h.y >= p.y
                 ) {
                     h.y = p.y
                     h.vy = 0f
                     h.onGround = true
+                    h.platform = p
                     if (!wasGround) dust(h.x, h.y, 3)
                     break
                 }
@@ -491,7 +600,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         when (h.power) {
             Power.FIRE, Power.ICE -> {
                 val ice = h.power == Power.ICE
-                if (h.shootCooldown > 0f || shots.size >= 3) return
+                if (h.shootCooldown > 0f || shots.count { !it.turnip } >= 3) return
                 h.shootCooldown = 0.28f
                 val dir = h.facing.toFloat()
                 shots += if (ice) Shot(h.x + dir * 22f, h.y - 36f, dir * 560f, 60f, true)
@@ -549,17 +658,19 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         for (s in spikes) {
             if (abs(s.x - h.x) < 70f && s.y > GROUND_Y - 80f) smashSpike(s)
         }
-        val b = boss
-        if ((b.state == BossState.LOW || b.state == BossState.SWOOP_DOWN || b.state == BossState.SWOOP_UP) &&
-            abs(b.x - h.x) < 95f && b.y > GROUND_Y - 220f
-        ) {
-            floatText("DRILL ATTACK!", b.x, b.y - 180f, Color.rgb(255, 200, 120))
-            damageBoss(stomp = false)
+        for (b in bosses) {
+            if (b.low && abs(b.x - h.x) < 95f && b.y > GROUND_Y - 220f) {
+                floatText("DRILL ATTACK!", b.x, b.y - 180f, Color.rgb(255, 200, 120))
+                damageBoss(b, stomp = false)
+            }
         }
     }
 
     private fun updateBoss(dt: Float) {
-        val b = boss
+        for (b in bosses) updateBoss(b, dt)
+    }
+
+    private fun updateBoss(b: Boss, dt: Float) {
         if (b.flash > 0f) b.flash -= dt
         if (b.frozen > 0f) {
             b.frozen -= dt
@@ -584,7 +695,12 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
                 b.retarget -= dt
                 if (b.retarget <= 0f) {
                     b.retarget = 1.2f + rnd.nextFloat() * 1.4f
-                    b.targetX = if (rnd.nextFloat() < 0.5f) hero.x + rnd.nextFloat() * 300f - 150f
+                    val n = bosses.size
+                    b.targetX = if (n > 1) {
+                        // teammates keep to their own stretch of sky
+                        val lane = WORLD_W / n
+                        lane * b.slot + 90f + rnd.nextFloat() * (lane - 180f)
+                    } else if (rnd.nextFloat() < 0.5f) hero.x + rnd.nextFloat() * 300f - 150f
                     else 150f + rnd.nextFloat() * (WORLD_W - 300f)
                     b.targetX = b.targetX.coerceIn(120f, WORLD_W - 120f)
                 }
@@ -592,7 +708,8 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
                 b.y = BOSS_HIGH_Y + sin(b.bob * 2.2f) * 12f
                 b.attackTimer -= dt
                 if (b.attackTimer <= 0f) {
-                    if (b.attacks >= 4) startSwoop() else attack()
+                    // Only one boss swoops down at a time.
+                    if (b.attacks >= 4 && bosses.none { it !== b && it.low }) startSwoop(b) else attack(b)
                 }
             }
             BossState.CARPET_PREP -> {
@@ -619,7 +736,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
                 }
                 if (b.x < 60f || b.x > WORLD_W - 60f) {
                     b.state = BossState.HOVER
-                    b.attackTimer = attackInterval() + 0.6f
+                    b.attackTimer = attackInterval() * teamSlowdown() + 0.6f
                 }
             }
             BossState.SWOOP_DOWN -> {
@@ -666,28 +783,33 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
     }
 
     private fun attackInterval() = (2.5f - (diff - 1f) * 0.2f).coerceAtLeast(0.8f)
+
+    /** Each boss in a team throws less often, so the total pressure rises but doesn't double. */
+    private fun teamSlowdown() = 1f + 0.65f * (bosses.size - 1)
     private fun plantLife() = min(9f, 4.0f + diff * 0.7f)
 
-    private fun attack() {
-        val b = boss
+    private fun attack(b: Boss) {
         b.attacks++
-        b.attackTimer = attackInterval()
+        b.attackTimer = attackInterval() * teamSlowdown()
         val options = ArrayList<Int>()
         options += 0; options += 0; options += 1
         if (diff >= 1.4f) { options += 2; options += 3 }
         if (diff >= 2.8f) { options += 4; options += 1 }
         if (diff >= 3.5f) options += 2
         // Each sibling leans on its signature move, a Wonder boss even more so.
-        val sig = if (bossKind.signature == Signature.NONE) 2 else 5
-        repeat(if (wonder) 4 else if (bossKind.signature == Signature.NONE) 0 else 2) { options += sig }
-        when (options[rnd.nextInt(options.size)]) {
+        val sig = if (b.kind.signature == Signature.NONE) 2 else 5
+        repeat(if (b.wonder) 4 else if (b.kind.signature == Signature.NONE) 0 else 2) { options += sig }
+        var pick = options[rnd.nextInt(options.size)]
+        // only one carpet run at a time
+        if (pick == 2 && bosses.any { it !== b && (it.state == BossState.CARPET || it.state == BossState.CARPET_PREP) }) pick = 0
+        when (pick) {
             0 -> { // aimed lob
                 val lead = hero.vx * 0.45f
-                lob(hero.x + lead + rnd.nextFloat() * 80f - 40f, 1.15f - min(0.3f, diff * 0.04f))
+                lob(b, hero.x + lead + rnd.nextFloat() * 80f - 40f, 1.15f - min(0.3f, diff * 0.04f))
             }
-            5 -> signatureAttack()
+            5 -> signatureAttack(b)
             1 -> { // spread of three
-                for (o in intArrayOf(-170, 0, 170)) lob(hero.x + o, 1.25f)
+                for (o in intArrayOf(-170, 0, 170)) lob(b, hero.x + o, 1.25f)
             }
             2 -> { // carpet: fly across laying a row of spikes with a safe gap
                 b.carpetDir = if (b.x < WORLD_W / 2) 1 else -1
@@ -705,7 +827,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
             3 -> { // roller: lands away from the hero and rolls toward them
                 val side = if (hero.x < WORLD_W / 2) 1 else -1
                 val tx = (hero.x + side * 380f).coerceIn(60f, WORLD_W - 60f)
-                lob(tx, 0.9f, rolls = true, groundOnly = true)
+                lob(b, tx, 0.9f, rolls = true, groundOnly = true)
             }
             4 -> { // spike rain
                 repeat(4 + (diff / 2f).toInt()) {
@@ -720,8 +842,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
     }
 
     /** Throws a spike ball in an arc so it reaches [tx] after [t] seconds. */
-    private fun lob(tx0: Float, t: Float, rolls: Boolean = false, groundOnly: Boolean = false): Spike {
-        val b = boss
+    private fun lob(b: Boss, tx0: Float, t: Float, rolls: Boolean = false, groundOnly: Boolean = false): Spike {
         val tx = tx0.coerceIn(30f, WORLD_W - 30f)
         val sx = b.x + b.facing * 30f
         val sy = b.y - 100f
@@ -737,24 +858,24 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         return s
     }
 
-    private fun signatureAttack() {
-        when (bossKind.signature) {
+    private fun signatureAttack(b: Boss) {
+        when (b.kind.signature) {
             Signature.DOUBLE_LOB -> { // Larkin: a quick throw, then a second one aimed where you're running
-                lob(hero.x, 0.95f)
-                lob(hero.x + hero.vx * 0.9f + rnd.nextFloat() * 120f - 60f, 1.4f)
+                lob(b, hero.x, 0.95f)
+                lob(b, hero.x + hero.vx * 0.9f + rnd.nextFloat() * 120f - 60f, 1.4f)
             }
             Signature.BOUNCERS -> { // Lemmo: circus balls that bounce before they stick
-                for (o in intArrayOf(-140, 140)) lob(hero.x + o, 1.0f).bounces = if (wonder) 3 else 2
+                for (o in intArrayOf(-140, 140)) lob(b, hero.x + o, 1.0f).bounces = if (b.wonder) 3 else 2
             }
             Signature.RINGS -> { // Wanda: spike rings rolling in from both sides
-                lob(hero.x - 340f, 0.9f, rolls = true, groundOnly = true).rollTime = 4f
-                lob(hero.x + 340f, 0.9f, rolls = true, groundOnly = true).rollTime = 4f
+                lob(b, hero.x - 340f, 0.9f, rolls = true, groundOnly = true).rollTime = 4f
+                lob(b, hero.x + 340f, 0.9f, rolls = true, groundOnly = true).rollTime = 4f
             }
             Signature.QUAKE -> { // Royce: a heavy ball whose landing sends shockwaves along the floor
-                lob(hero.x + rnd.nextFloat() * 200f - 100f, 1.1f, groundOnly = true).quake = true
+                lob(b, hero.x + rnd.nextFloat() * 200f - 100f, 1.1f, groundOnly = true).quake = true
             }
             Signature.SONATA -> { // Ludo: a five-note fan of spikes
-                for ((i, o) in intArrayOf(-320, -160, 0, 160, 320).withIndex()) lob(hero.x + o, 1.0f + i * 0.1f)
+                for ((i, o) in intArrayOf(-320, -160, 0, 160, 320).withIndex()) lob(b, hero.x + o, 1.0f + i * 0.1f)
             }
             Signature.NONE -> {}
         }
@@ -770,17 +891,22 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
     private fun predictLanding(s: Spike, ignorePlatforms: Boolean = false) {
         var x = s.x; var y = s.y; var vx = s.vx; var vy = s.vy
         val dt = 1f / 120f
-        repeat(600) {
+        s.markPlat = null
+        for (step in 1..600) {
             val py = y
             vy += SPIKE_GRAVITY * dt
             x += vx * dt
             y += vy * dt
             if (x < s.r || x > WORLD_W - s.r) vx = -vx * 0.6f
+            val t = arenaT + step * dt // platforms keep moving while the spike flies
             for (p in platforms) {
                 if (ignorePlatforms && !p.ground) continue
-                if (vy > 0f && p.under(x) && py + s.r <= p.y + 0.5f && y + s.r >= p.y) {
+                val px = p.xAt(t, platformAmp)
+                val ppy = p.yAt(t, platformAmp)
+                if (vy > 0f && x >= px && x <= px + p.w && py + s.r <= ppy + 2f && y + s.r >= ppy) {
                     s.markX = x
-                    s.markY = p.y
+                    s.markY = ppy
+                    if (!p.ground) { s.markPlat = p; s.markOff = x - px }
                     return
                 }
             }
@@ -800,8 +926,9 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
                     if (s.x > WORLD_W - s.r) { s.x = WORLD_W - s.r; s.vx = -s.vx * 0.6f }
                     for (p in platforms) {
                         if ((s.rolls || s.quake) && !p.ground) continue // these always aim for the floor
-                        if (s.vy > 0f && p.under(s.x) && py + s.r <= p.y + 0.5f && s.y + s.r >= p.y) {
+                        if (s.vy > 0f && p.under(s.x) && py + s.r <= p.y + 0.5f + abs(p.dy) && s.y + s.r >= p.y) {
                             s.y = p.y - s.r + 3f
+                            s.platform = p
                             s.vy = 0f
                             s.markX = Float.NaN
                             if (s.bounces > 0 && !s.frozen) {
@@ -881,8 +1008,24 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         floatText("+20", s.x, s.y - 30f, Color.WHITE)
     }
 
+    /** The boss (if any) whose pod or body covers (x, y); [below] extends the pod hitbox downward. */
+    private fun bossAt(x: Float, y: Float, below: Float = 50f): Boss? = bosses.firstOrNull { b ->
+        b.active && ((abs(x - b.x) < 74f && y > b.y - 40f && y < b.y + below) ||
+            (abs(x - b.x) < 36f && y > b.y - 140f && y <= b.y - 40f))
+    }
+
+    private fun burnBoss(b: Boss, amount: Int, label: String, color: Int) {
+        b.burn += amount
+        b.flash = 0.18f
+        audio.play(Sfx.PLANT)
+        if (b.burn >= 4) {
+            b.burn = 0
+            floatText(label, b.x, b.y - 175f, color)
+            damageBoss(b, stomp = false)
+        }
+    }
+
     private fun updateShots(dt: Float) {
-        val b = boss
         for (sh in shots) {
             sh.life -= dt
             sh.spin += dt * 18f
@@ -891,18 +1034,19 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
                 continue
             }
             val py = sh.y
-            sh.vy += (if (sh.ice) 900f else 1900f) * dt
+            sh.vy += (if (sh.turnip) 1500f else if (sh.ice) 900f else 1900f) * dt
             sh.x += sh.vx * dt
             sh.y += sh.vy * dt
             if (sh.life <= 0f || sh.x < -20f || sh.x > WORLD_W + 20f || sh.y > WORLD_H) {
                 sh.dead = true
                 if (sh.ice) shatter(sh.x.coerceIn(0f, WORLD_W), sh.y, 4)
             }
-            if (!sh.ice && rnd.nextFloat() < dt * 40f) {
+            if (!sh.ice && !sh.turnip && rnd.nextFloat() < dt * 40f) {
                 particles += Particle(sh.x, sh.y, 0f, -30f, 0.25f, Color.rgb(255, 160, 40), 5f, 0f)
             }
             for (p in platforms) {
-                if (sh.vy > 0f && p.under(sh.x) && py + 9f <= p.y + 0.5f && sh.y + 9f >= p.y) {
+                if (sh.turnip) break // turnips arc straight through to the boss
+                if (sh.vy > 0f && p.under(sh.x) && py + 9f <= p.y + 0.5f + abs(p.dy) && sh.y + 9f >= p.y) {
                     sh.y = p.y - 9f
                     // Fireballs bounce low enough to hit spikes on the floor; ice balls skate along it.
                     sh.vy = if (sh.ice) 0f else -330f
@@ -920,25 +1064,27 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
                 }
             }
             if (sh.dead) continue
-            if (b.state == BossState.HURT || b.state == BossState.DEFEATED || b.state == BossState.ENTER) continue
-            val hit = (abs(sh.x - b.x) < 74f && sh.y > b.y - 40f && sh.y < b.y + 50f) ||
-                (abs(sh.x - b.x) < 36f && sh.y > b.y - 140f && sh.y <= b.y - 40f)
-            if (hit) {
-                sh.dead = true
-                if (sh.ice) {
-                    b.frozen = 2.6f
-                    audio.play(Sfx.FREEZE)
-                    floatText("FROZEN!", b.x, b.y - 225f, Color.rgb(170, 230, 255))
-                } else {
-                    b.burn++
-                    b.flash = 0.18f
-                    audio.play(Sfx.PLANT)
-                    if (b.burn >= 4) {
-                        b.burn = 0
-                        floatText("BURNED!", b.x, b.y - 175f, Color.rgb(255, 160, 60))
-                        damageBoss(stomp = false)
+            if (sh.ice) {
+                // ice also puts out falling fire
+                for (m in meteors) {
+                    if (!m.dead && abs(m.x - sh.x) < 30f && abs(m.y - sh.y) < 30f) {
+                        m.dead = true; sh.dead = true; score += 50
+                        shatter(m.x, m.y); floatText("+50", m.x, m.y - 30f, Color.WHITE)
                     }
                 }
+                for (f in flames) {
+                    if (f.life > 0f && abs(f.x - sh.x) < 34f && abs(f.y - sh.y) < 30f) { f.life = 0f; sh.dead = true; shatter(f.x, f.y, 4) }
+                }
+                if (sh.dead) continue
+            }
+            val b = bossAt(sh.x, sh.y) ?: continue
+            sh.dead = true
+            if (sh.ice) {
+                b.frozen = 2.6f
+                audio.play(Sfx.FREEZE)
+                floatText("FROZEN!", b.x, b.y - 225f, Color.rgb(170, 230, 255))
+            } else {
+                burnBoss(b, 1, if (sh.turnip) "TURNIP TOSS!" else "BURNED!", Color.rgb(255, 160, 60))
             }
         }
         shots.removeAll { it.dead }
@@ -969,22 +1115,14 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
             val dy = s.y - sh.y
             if (dx * dx + dy * dy < (s.r + 18f) * (s.r + 18f)) smashSpike(s)
         }
-        val b = boss
-        if (sh.hitBoss || b.state == BossState.HURT || b.state == BossState.DEFEATED || b.state == BossState.ENTER) return
-        // Big and spinning: it also clips the propeller, so a throw from the floor hits a swooping boss.
-        val hit = (abs(sh.x - b.x) < 78f && sh.y > b.y - 40f && sh.y < b.y + 80f) ||
-            (abs(sh.x - b.x) < 38f && sh.y > b.y - 140f && sh.y <= b.y - 40f)
-        if (hit) {
-            sh.hitBoss = true
-            b.burn += 2
-            b.flash = 0.18f
-            audio.play(Sfx.PLANT)
-            if (b.burn >= 4) {
-                b.burn = 0
-                floatText("BONK!", b.x, b.y - 175f, Color.rgb(140, 200, 255))
-                damageBoss(stomp = false)
-            }
+        for (m in meteors) {
+            if (!m.dead && abs(m.x - sh.x) < 32f && abs(m.y - sh.y) < 32f) { m.dead = true; poof(m.x, m.y); score += 50 }
         }
+        // Big and spinning: it also clips the propeller, so a throw from the floor hits a swooping boss.
+        // It can hit each boss in a team once per throw.
+        val b = bossAt(sh.x, sh.y, below = 80f) ?: return
+        if (!sh.bossesHit.add(b)) return
+        burnBoss(b, 2, "BONK!", Color.rgb(140, 200, 255))
     }
 
     private fun updateItems(dt: Float) {
@@ -1018,8 +1156,9 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
             it.y += it.vy * dt
             if (it.x < 20f || it.x > WORLD_W - 20f) { it.x = it.x.coerceIn(20f, WORLD_W - 20f); it.vx = -it.vx }
             for (p in platforms) {
-                if (it.vy > 0f && p.under(it.x) && py <= p.y + 0.5f && it.y >= p.y) {
+                if (it.vy > 0f && p.under(it.x) && py <= p.y + 0.5f + abs(p.dy) && it.y >= p.y) {
                     it.y = p.y
+                    it.platform = p
                     it.vy = if (it.type == Power.STAR) -720f else 0f
                 }
             }
@@ -1077,6 +1216,297 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
             }
             if (bro.x > WORLD_W + 60f) broActive = false
         }
+    }
+
+    private fun updatePlatforms(dt: Float) {
+        arenaT += dt
+        for (p in platforms) if (!p.ground) p.move(arenaT, platformAmp)
+        // Whatever rests on a platform rides along with it.
+        hero.platform?.let { if (hero.onGround && !hero.drilling) { hero.x += it.dx; hero.y += it.dy } }
+        for (s in spikes) {
+            val p = s.platform ?: continue
+            if (s.state != SpikeState.FLYING) { s.x += p.dx; s.y += p.dy }
+        }
+        for (it in items) {
+            val p = it.platform ?: continue
+            if (it.vy == 0f) { it.x += p.dx; it.y += p.dy }
+        }
+        for (a in allies) {
+            val p = a.platform ?: continue
+            if (a.onGround) { a.x += p.dx; a.y += p.dy }
+        }
+        for (f in flames) {
+            val p = f.platform ?: continue
+            f.x += p.dx; f.y += p.dy
+        }
+    }
+
+    private fun updateMeteors(dt: Float) {
+        if (level >= 8) {
+            meteorTimer -= dt
+            if (meteorTimer <= 0f) {
+                meteorTimer = (8f - diff * 0.35f).coerceAtLeast(2.8f) + rnd.nextFloat() * 2f
+                val count = (1f + (diff - 3f) / 2.5f).toInt().coerceIn(1, 4)
+                repeat(count) { i ->
+                    val x = if (rnd.nextFloat() < 0.5f) hero.x + rnd.nextFloat() * 300f - 150f
+                    else 60f + rnd.nextFloat() * (WORLD_W - 120f)
+                    val m = Meteor(x.coerceIn(40f, WORLD_W - 40f), -40f - i * 110f, rnd.nextFloat() * 80f - 40f, 240f)
+                    predictMeteor(m)
+                    meteors += m
+                }
+                audio.play(Sfx.FIRE_SHOT)
+            }
+        }
+        for (m in meteors) {
+            if (m.dead) continue
+            val py = m.y
+            m.vy += 420f * dt
+            m.x += m.vx * dt
+            m.y += m.vy * dt
+            if (rnd.nextFloat() < dt * 60f) {
+                particles += Particle(m.x, m.y - 10f, rnd.nextFloat() * 40f - 20f, -60f, 0.35f,
+                    if (rnd.nextBoolean()) Color.rgb(255, 120, 30) else Color.rgb(255, 210, 60), 6f, 0f)
+            }
+            for (p in platforms) {
+                if (m.vy > 0f && p.under(m.x) && py <= p.y + 0.5f + abs(p.dy) && m.y >= p.y) {
+                    m.dead = true
+                    flames += Flame(m.x, p.y, 1.6f, if (p.ground) null else p)
+                    repeat(8) {
+                        particles += Particle(m.x, p.y - 6f, rnd.nextFloat() * 300f - 150f, -rnd.nextFloat() * 250f, 0.45f,
+                            Color.rgb(255, 150 + rnd.nextInt(80), 40), 5f, 700f)
+                    }
+                    audio.play(Sfx.PLANT)
+                    break
+                }
+            }
+            if (m.y > WORLD_H + 40f) m.dead = true
+        }
+        meteors.removeAll { it.dead }
+        for (f in flames) {
+            f.life -= dt
+            if (f.life > 0f && rnd.nextFloat() < dt * 20f) {
+                particles += Particle(f.x + rnd.nextFloat() * 30f - 15f, f.y - 10f, 0f, -90f, 0.4f,
+                    Color.rgb(255, 170, 40), 4f, 0f)
+            }
+        }
+        flames.removeAll { it.life <= 0f }
+    }
+
+    private fun predictMeteor(m: Meteor) {
+        var x = m.x; var y = m.y; var vy = m.vy
+        val dt = 1f / 60f
+        for (step in 1..400) {
+            val py = y
+            vy += 420f * dt
+            x += m.vx * dt
+            y += vy * dt
+            val t = arenaT + step * dt
+            for (p in platforms) {
+                val px = p.xAt(t, platformAmp)
+                val ppy = p.yAt(t, platformAmp)
+                if (x >= px && x <= px + p.w && py <= ppy + 2f && y >= ppy) {
+                    m.markX = x; m.markY = ppy
+                    return
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ allies
+
+    private fun setupAllies() {
+        allies.clear()
+        for (k in AllyKind.values()) {
+            if (level < k.joinLevel) continue
+            val a = Ally(k)
+            when (k) {
+                AllyKind.GINO -> a.x = 220f
+                AllyKind.KINO -> a.x = 1060f
+                AllyKind.ROSA -> { a.x = 640f; a.y = 300f; a.act = 6f }
+            }
+            allies += a
+        }
+    }
+
+    private fun updateAllies(dt: Float) {
+        val fighting = state == State.PLAYING
+        for (a in allies) {
+            a.t += dt
+            if (a.stompCd > 0f) a.stompCd -= dt
+            when (a.kind) {
+                AllyKind.ROSA -> updateRosa(a, dt, fighting)
+                AllyKind.GINO -> updateGino(a, dt, fighting)
+                AllyKind.KINO -> updateKino(a, dt, fighting)
+            }
+        }
+    }
+
+    private fun allyPhysics(a: Ally, dt: Float, gravityScale: Float) {
+        a.vy = min(a.vy + GRAVITY * gravityScale * dt, 1400f)
+        val prevY = a.y
+        a.x = (a.x + a.vx * dt).coerceIn(20f, WORLD_W - 20f)
+        a.y += a.vy * dt
+        a.onGround = false
+        a.platform = null
+        if (a.vy >= 0f) {
+            for (p in platforms) {
+                if (p.under(a.x, 6f) && prevY <= p.y + 0.5f + abs(p.dy) && a.y >= p.y) {
+                    a.y = p.y; a.vy = 0f; a.onGround = true; a.platform = p
+                    break
+                }
+            }
+        }
+        if (a.onGround) a.anim += dt * abs(a.vx) / 28f
+        if (a.vx > 1f) a.facing = 1 else if (a.vx < -1f) a.facing = -1
+    }
+
+    /** Spikes, falling fire, flames and shockwaves knock an ally dizzy for a few seconds. */
+    private fun allyHazards(a: Ally) {
+        if (a.dazed > 0f) return
+        var hit = false
+        for (s in spikes) {
+            if (!s.dead && !s.frozen && abs(s.x - a.x) < 24f && s.y > a.y - 60f && s.y < a.y + 10f) { hit = true; break }
+        }
+        if (!hit) hit = meteors.any { !it.dead && abs(it.x - a.x) < 26f && it.y > a.y - 60f && it.y < a.y }
+        if (!hit) hit = flames.any { it.life > 0f && abs(it.x - a.x) < 24f && abs(it.y - a.y) < 12f }
+        if (!hit && a.onGround && a.y >= GROUND_Y - 1f) hit = shockwaves.any { abs(it.x - a.x) < 24f }
+        if (hit) {
+            a.dazed = 3f
+            a.vy = -380f
+            a.onGround = false
+            audio.play(Sfx.POOF)
+            floatText("OUCH!", a.x, a.y - 90f, Color.rgb(255, 200, 200))
+        }
+    }
+
+    /** Gino hunts floor spikes and jumps on them, and leaps onto a swooping boss's head. */
+    private fun updateGino(a: Ally, dt: Float, fighting: Boolean) {
+        if (a.dazed > 0f) {
+            a.dazed -= dt
+            a.vx *= 0.9f
+            allyPhysics(a, dt, 0.75f)
+            return
+        }
+        val lowBoss = if (fighting) bosses.firstOrNull { it.low && it.active } else null
+        val spike = if (fighting) spikes.filter {
+            it.state == SpikeState.PLANTED && !it.frozen && !it.dead && it.y > GROUND_Y - 40f
+        }.minByOrNull { abs(it.x - a.x) } else null
+        val tx = lowBoss?.x ?: spike?.x ?: (hero.x - 170f * hero.facing).coerceIn(80f, WORLD_W - 80f)
+        val dx = tx - a.x
+        a.vx = if (a.onGround) (if (abs(dx) > 14f) sign(dx) * 300f else 0f) else (dx * 2f).coerceIn(-300f, 300f)
+        if (a.onGround && fighting) {
+            if (lowBoss != null && abs(lowBoss.x - a.x) < 110f && a.stompCd <= 0f) {
+                a.vy = -1250f
+                audio.play(Sfx.JUMP)
+            } else if (spike != null && abs(spike.x - a.x) < 80f) {
+                a.vy = -820f
+            }
+        }
+        allyPhysics(a, dt, 0.75f)
+        if (a.vy > 0f && !a.onGround) {
+            for (s in spikes) {
+                if (!s.dead && !s.frozen && abs(s.x - a.x) < 32f && a.y >= s.y - s.r - 14f && a.y <= s.y + 8f) {
+                    smashSpike(s)
+                    a.vy = -600f
+                }
+            }
+            if (a.stompCd <= 0f) {
+                for (b in bosses) {
+                    if (b.active && abs(a.x - b.x) < 60f && a.y >= b.y - 142f && a.y <= b.y - 98f) {
+                        a.vy = -800f
+                        a.stompCd = 5f
+                        audio.play(Sfx.STOMP)
+                        floatText("GINO STOMP!", b.x, b.y - 200f, AllyKind.GINO.color)
+                        damageBoss(b, stomp = true)
+                        break
+                    }
+                }
+            }
+        } else {
+            allyHazards(a)
+        }
+    }
+
+    /** Kino stays near the hero, hops over spikes and lobs turnips at the bosses. */
+    private fun updateKino(a: Ally, dt: Float, fighting: Boolean) {
+        if (a.dazed > 0f) {
+            a.dazed -= dt
+            a.vx *= 0.9f
+            allyPhysics(a, dt, 1f)
+            return
+        }
+        val tx = (hero.x + (if (hero.x < WORLD_W / 2) 170f else -170f)).coerceIn(60f, WORLD_W - 60f)
+        val dx = tx - a.x
+        a.vx = if (abs(dx) > 24f) sign(dx) * 360f else 0f
+        if (a.onGround) {
+            val dir = if (a.vx != 0f) sign(a.vx) else a.facing.toFloat()
+            val ahead = spikes.any {
+                !it.dead && !it.frozen && it.state != SpikeState.FLYING && (it.x - a.x) * dir in 0f..90f && abs(it.y - (a.y - 15f)) < 30f
+            }
+            if (ahead) a.vy = -950f
+        }
+        if (fighting) {
+            a.act -= dt
+            if (a.act <= 0f) {
+                val target = bosses.filter { it.active }.minByOrNull { abs(it.x - a.x) }
+                if (target != null) {
+                    a.act = 3f
+                    val t = 0.85f
+                    val sx = a.x
+                    val sy = a.y - 40f
+                    val vx = (target.x - sx) / t
+                    val vy = (target.y - 20f - sy - 0.5f * 1500f * t * t) / t
+                    shots += Shot(sx, sy, vx, vy, ice = false, turnip = true)
+                    a.facing = if (vx >= 0f) 1 else -1
+                    audio.play(Sfx.THROW)
+                }
+            }
+        }
+        allyPhysics(a, dt, 1f)
+        allyHazards(a)
+    }
+
+    /** Princess Rosa floats overhead: she shields the hero, and once a round saves them with an extra life. */
+    private fun updateRosa(a: Ally, dt: Float, fighting: Boolean) {
+        val tx = (hero.x + (if (hero.x < WORLD_W / 2) 130f else -130f)).coerceIn(80f, WORLD_W - 80f)
+        a.x += (tx - a.x) * min(1f, dt * 1.3f)
+        a.y = 290f + sin(a.t * 2f) * 16f
+        a.facing = if (hero.x >= a.x) 1 else -1
+        if (rnd.nextFloat() < dt * 6f) {
+            particles += Particle(a.x + rnd.nextFloat() * 40f - 20f, a.y + 10f, 0f, 40f, 0.6f,
+                Color.rgb(255, 170, 220), 5f, 0f, star = true)
+        }
+        if (!fighting) return
+        a.act -= dt
+        if (a.act <= 0f && !hero.shield) {
+            a.act = 15f
+            hero.shield = true
+            audio.play(Sfx.POWER_UP)
+            floatText("ROSA'S SHIELD!", hero.x, hero.y - 100f, AllyKind.ROSA.color)
+            sparkle(hero.x, hero.y - 40f)
+        }
+        if (lives == 1 && !a.blessingUsed) {
+            a.blessingUsed = true
+            lives++
+            audio.play(Sfx.LIFE)
+            floatText("ROSA'S BLESSING! +1 LIFE", WORLD_W / 2, 250f, AllyKind.ROSA.color)
+        }
+    }
+
+    private fun continueGame() {
+        lives = 3
+        score = 0
+        newHi = false
+        hero.reset()
+        spikes.clear(); coins.clear(); particles.clear(); texts.clear(); items.clear(); shots.clear()
+        powerTimer = 9f
+        coinTimer = 5f
+        setupBoss()
+        state = State.PLAYING
+        paused = false
+        floatText("CONTINUE - ROUND $level", WORLD_W / 2, 230f, Color.rgb(140, 255, 140))
+        announceBoss()
+        audio.playSong(Music.theme(themeTier(level)), tempoForLevel())
     }
 
     private fun updateShockwaves(dt: Float) {
@@ -1150,13 +1580,12 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
             for (s in spikes) {
                 if (!s.dead && abs(s.x - h.x) < s.r + 26f && s.y > h.y - 50f && s.y < h.y + 10f) smashSpike(s)
             }
-            val b = boss
-            if ((b.state == BossState.LOW || b.state == BossState.SWOOP_DOWN || b.state == BossState.SWOOP_UP) &&
-                abs(b.x - h.x) < 85f && abs(b.y - h.y) < 140f
-            ) {
-                floatText("SHELL SMASH!", b.x, b.y - 180f, Color.rgb(120, 180, 255))
-                damageBoss(stomp = false)
-                h.facing = -h.facing
+            for (b in bosses) {
+                if (b.low && b.active && abs(b.x - h.x) < 85f && abs(b.y - h.y) < 140f) {
+                    floatText("SHELL SMASH!", b.x, b.y - 180f, Color.rgb(120, 180, 255))
+                    damageBoss(b, stomp = false)
+                    h.facing = -h.facing
+                }
             }
             return
         }
@@ -1178,27 +1607,44 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
             }
         }
 
-        val b = boss
-        if (b.state == BossState.HURT || b.state == BossState.DEFEATED || b.state == BossState.ENTER) return
-        val headTop = b.y - 130f
-        if (h.vy > 0f && abs(h.x - b.x) < 58f && h.y >= headTop - 10f && h.y <= headTop + 30f) {
-            h.vy = -880f
-            h.y = b.y - 132f
-            audio.play(Sfx.STOMP)
-            damageBoss(stomp = true)
-            return
+        for (m in meteors) {
+            if (m.dead) continue
+            val cx = m.x.coerceIn(left, right)
+            val cy = m.y.coerceIn(top, bottom)
+            if ((m.x - cx) * (m.x - cx) + (m.y - cy) * (m.y - cy) < 18f * 18f) {
+                m.dead = true
+                if (starred) poof(m.x, m.y) else hurtHero(m.x)
+            }
         }
-        if (h.invuln > 0f && !starred) return
-        val hitPod = right > b.x - 66f && left < b.x + 66f && bottom > b.y - 38f && top < b.y + 56f
-        val hitBody = right > b.x - 30f && left < b.x + 30f && bottom > b.y - 118f && top < b.y - 38f
-        if (hitPod || hitBody) {
-            if (starred) {
-                h.vx = (if (h.x >= b.x) 1f else -1f) * 420f
-                h.vy = -500f
-                floatText("STAR POWER!", b.x, b.y - 175f, Color.rgb(255, 240, 120))
-                damageBoss(stomp = false)
-            } else {
-                hurtHero(b.x)
+        if (!starred && h.invuln <= 0f) {
+            for (f in flames) {
+                if (f.life > 0f && abs(h.x - f.x) < 26f && h.y >= f.y - 14f && h.y <= f.y + 4f) { hurtHero(f.x); break }
+            }
+        }
+
+        for (b in bosses) {
+            if (!b.active) continue
+            val headTop = b.y - 130f
+            if (h.vy > 0f && abs(h.x - b.x) < 58f && h.y >= headTop - 10f && h.y <= headTop + 30f) {
+                h.vy = -880f
+                h.y = b.y - 132f
+                audio.play(Sfx.STOMP)
+                damageBoss(b, stomp = true)
+                return
+            }
+            if (h.invuln > 0f && !starred) continue
+            val hitPod = right > b.x - 66f && left < b.x + 66f && bottom > b.y - 38f && top < b.y + 56f
+            val hitBody = right > b.x - 30f && left < b.x + 30f && bottom > b.y - 118f && top < b.y - 38f
+            if (hitPod || hitBody) {
+                if (starred) {
+                    h.vx = (if (h.x >= b.x) 1f else -1f) * 420f
+                    h.vy = -500f
+                    floatText("STAR POWER!", b.x, b.y - 175f, Color.rgb(255, 240, 120))
+                    damageBoss(b, stomp = false)
+                } else {
+                    hurtHero(b.x)
+                }
+                return
             }
         }
     }
@@ -1206,6 +1652,15 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
     private fun hurtHero(fromX: Float) {
         val h = hero
         if (h.invuln > 0f || h.star > 0f || h.drilling || h.sliding > 0f) return
+        if (h.shield) {
+            h.shield = false
+            h.invuln = 1.6f
+            h.vy = -420f
+            h.onGround = false
+            shatter(h.x, h.y - 30f)
+            floatText("SHIELD BLOCK!", h.x, h.y - 90f, Color.rgb(255, 170, 220))
+            return
+        }
         if (h.power != null) {
             // Like the classics: a hit costs you the power-up, not a life.
             h.power = null
@@ -1235,8 +1690,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         if (lives <= 0) gameOver()
     }
 
-    private fun damageBoss(stomp: Boolean) {
-        val b = boss
+    private fun damageBoss(b: Boss, stomp: Boolean) {
         val h = hero
         if (b.state == BossState.HURT || b.state == BossState.DEFEATED) return
         b.hp--
@@ -1254,7 +1708,11 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         if (b.hp <= 0) {
             b.state = BossState.DEFEATED
             b.vy = -700f
-            val bonus = 2000 * level
+            if (bosses.any { it.state != BossState.DEFEATED }) {
+                floatText(b.kind.title.removePrefix("THE ") + " IS OUT!", b.x, b.y - 200f, Color.rgb(255, 220, 140))
+                return
+            }
+            val bonus = 2000 * level * bosses.size
             score += bonus
             floatText("ROUND BONUS +$bonus", WORLD_W / 2, 260f, Color.rgb(255, 220, 60))
             spikes.forEach { poof(it.x, it.y) }
@@ -1273,8 +1731,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         }
     }
 
-    private fun startSwoop() {
-        val b = boss
+    private fun startSwoop(b: Boss) {
         b.state = BossState.SWOOP_DOWN
         b.targetX = hero.x.coerceIn(140f, WORLD_W - 140f)
     }
@@ -1375,8 +1832,16 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         c.save()
         if (shake > 0f) c.translate(rnd.nextFloat() * 12f - 6f, rnd.nextFloat() * 12f - 6f)
         c.drawBitmap(arenaBackground(), 0f, 0f, null)
+        drawPlatforms(c)
+        for (f in flames) drawFlame(c, f)
 
-        for (s in spikes) if (!s.markX.isNaN()) drawMarker(c, s.markX, s.markY)
+        for (s in spikes) {
+            if (s.markX.isNaN()) continue
+            // a marker on a moving platform rides along with it
+            val mp = s.markPlat
+            if (mp != null) drawMarker(c, mp.x + s.markOff, mp.y) else drawMarker(c, s.markX, s.markY)
+        }
+        for (m in meteors) if (!m.markX.isNaN()) drawMarker(c, m.markX, m.markY)
         for (co in coins) drawCoin(c, co)
         for (it in items) drawItem(c, it)
         for (s in spikes) if (s.state == SpikeState.PLANTED && !s.dead) drawSpike(c, s)
@@ -1386,9 +1851,19 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
             else if (hero.sliding > 0f) drawSlidingHero(c, hero)
             else if (hero.star > 0f || !(hero.invuln > 0f && !hero.dead && (time * 14f).toInt() % 2 == 0)) drawHero(c, hero)
         }
-        drawBoss(c, boss)
+        if (state == State.TITLE) drawBoss(c, titleBoss) else for (b in bosses) drawBoss(c, b)
         for (w in shockwaves) drawShockwave(c, w)
         if (broActive) drawHero(c, bro, greenBro = true)
+        if (state != State.TITLE) for (a in allies) drawAlly(c, a)
+        for (m in meteors) drawMeteor(c, m)
+        if (state != State.TITLE && hero.shield && !hero.drilling) {
+            val wob = sin(time * 6f) * 3f
+            paint.color = Color.argb(60, 255, 150, 220)
+            c.drawCircle(hero.x, hero.y - 32f, 46f + wob, paint)
+            stroke.color = Color.argb(200, 255, 190, 235)
+            stroke.strokeWidth = 3f
+            c.drawCircle(hero.x, hero.y - 32f, 46f + wob, stroke)
+        }
         for (s in spikes) if (s.state != SpikeState.PLANTED && !s.dead) drawSpike(c, s)
         for (sh in shots) drawShot(c, sh)
 
@@ -1425,8 +1900,9 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
                 drawText(c, "GAME OVER", WORLD_W / 2, 300f, 90f, Color.rgb(255, 80, 70))
                 drawText(c, "Score  $score", WORLD_W / 2, 375f, 40f, Color.WHITE)
                 if (newHi) drawText(c, "NEW HIGH SCORE!", WORLD_W / 2, 425f, 34f, Color.rgb(255, 220, 60))
-                if (stateTimer > 1.5f && (time * 2f).toInt() % 2 == 0) {
-                    drawText(c, "Tap to continue", WORLD_W / 2, 490f, 32f, Color.rgb(220, 220, 255))
+                if (stateTimer > 1.5f) {
+                    drawButton(c, WORLD_W / 2 - 270f, 500f, 250f, "CONTINUE", "from round $level", Color.rgb(60, 150, 70))
+                    drawButton(c, WORLD_W / 2 + 20f, 500f, 250f, "NEW GAME", "back to title", Color.rgb(90, 70, 140))
                 }
             }
         }
@@ -1466,7 +1942,16 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         textStroke.textAlign = Paint.Align.CENTER
         drawText(c, "ROUND $level", WORLD_W / 2, 44f, 30f, Color.rgb(200, 220, 255))
 
-        for (i in 0 until lives) drawHeart(c, 330f + i * 40f, 36f, 15f)
+        if (lives <= 5) {
+            for (i in 0 until lives) drawHeart(c, 330f + i * 40f, 36f, 15f)
+        } else {
+            drawHeart(c, 330f, 36f, 15f)
+            text.textAlign = Paint.Align.LEFT
+            textStroke.textAlign = Paint.Align.LEFT
+            drawText(c, "x$lives", 352f, 48f, 32f, Color.WHITE)
+            text.textAlign = Paint.Align.CENTER
+            textStroke.textAlign = Paint.Align.CENTER
+        }
 
         // Current power-up (and star timer) under the hearts.
         var px = 340f
@@ -1481,28 +1966,28 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
             paint.color = Color.rgb(255, 230, 80)
             c.drawRect(px + 23f, 79f, px + 23f + 78f * (hero.star / STAR_TIME), 89f, paint)
         }
-        if (boss.burn > 0) {
+        // One row per boss: name, health pips, and small dots for chip damage (fire/boomerang/turnips).
+        for ((row, b) in bosses.withIndex()) {
+            val y = 39f + row * 40f
+            val pipsW = b.maxHp * 30f
             text.textAlign = Paint.Align.RIGHT
             textStroke.textAlign = Paint.Align.RIGHT
-            drawText(c, "BOSS DMG " + "|".repeat(boss.burn) + ".".repeat(4 - boss.burn), WORLD_W - 30f, 84f, 22f,
-                Color.rgb(255, 160, 60))
+            val name = (if (b.wonder) "WONDER " else "") + b.kind.title.removePrefix("THE ")
+            val alpha = if (b.state == BossState.DEFEATED) 0.35f else 1f
+            drawText(c, name, WORLD_W - 34f - pipsW, y + 9f, 22f, b.look.iris ?: Color.rgb(255, 160, 120), alpha)
             text.textAlign = Paint.Align.CENTER
             textStroke.textAlign = Paint.Align.CENTER
-        }
-
-        // Boss health pips.
-        text.textAlign = Paint.Align.RIGHT
-        textStroke.textAlign = Paint.Align.RIGHT
-        val bossName = (if (wonder) "WONDER " else "") + bossKind.title.removePrefix("THE ")
-        drawText(c, bossName, WORLD_W - 30f - boss.maxHp * 34f, 48f, 24f, look.iris ?: Color.rgb(255, 160, 120))
-        text.textAlign = Paint.Align.CENTER
-        textStroke.textAlign = Paint.Align.CENTER
-        for (i in 0 until boss.maxHp) {
-            val x = WORLD_W - 30f - (boss.maxHp - i) * 34f + 17f
-            paint.color = Color.rgb(30, 10, 30)
-            c.drawCircle(x, 39f, 13f, paint)
-            paint.color = if (i < boss.hp) Color.rgb(240, 70, 60) else Color.rgb(80, 60, 70)
-            c.drawCircle(x, 39f, 10f, paint)
+            for (i in 0 until b.maxHp) {
+                val x = WORLD_W - 30f - (b.maxHp - i) * 30f + 15f
+                paint.color = Color.rgb(30, 10, 30)
+                c.drawCircle(x, y, 12f, paint)
+                paint.color = if (i < b.hp) Color.rgb(240, 70, 60) else Color.rgb(80, 60, 70)
+                c.drawCircle(x, y, 9f, paint)
+            }
+            for (i in 0 until b.burn) {
+                paint.color = Color.rgb(255, 160, 60)
+                c.drawCircle(WORLD_W - 40f - i * 12f, y + 17f, 4f, paint)
+            }
         }
     }
 
@@ -1600,6 +2085,20 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         c.rotate(sh.spin * 57.3f)
         if (sh.boomerang) {
             drawBoomerang(c, 1.2f)
+        } else if (sh.turnip) {
+            paint.color = Color.rgb(60, 170, 60)
+            path.reset()
+            path.moveTo(-3f, -8f); path.lineTo(-12f, -24f); path.lineTo(0f, -14f); path.lineTo(10f, -24f); path.lineTo(3f, -8f)
+            path.close()
+            c.drawPath(path, paint)
+            stroke.color = Color.rgb(25, 15, 20); stroke.strokeWidth = 2.5f
+            rect.set(-11f, -10f, 11f, 12f)
+            c.drawOval(rect, stroke)
+            paint.color = Color.rgb(250, 245, 235)
+            c.drawOval(rect, paint)
+            paint.color = Color.rgb(200, 120, 200)
+            rect.set(-11f, -10f, 11f, 0f)
+            c.drawArc(rect, 180f, 180f, true, paint)
         } else if (sh.ice) {
             paint.color = Color.rgb(120, 200, 255)
             path.reset()
@@ -1864,6 +2363,149 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
         }
     }
 
+    private fun drawButton(c: Canvas, x: Float, y: Float, w: Float, label: String, sub: String, color: Int) {
+        rect.set(x, y, x + w, y + 90f)
+        paint.color = color
+        c.drawRoundRect(rect, 16f, 16f, paint)
+        stroke.color = Color.WHITE
+        stroke.strokeWidth = 4f
+        c.drawRoundRect(rect, 16f, 16f, stroke)
+        drawText(c, label, x + w / 2, y + 44f, 34f, Color.WHITE)
+        drawText(c, sub, x + w / 2, y + 74f, 20f, Color.rgb(230, 230, 230))
+    }
+
+    private fun drawPlatforms(c: Canvas) {
+        val p = paint
+        // floating stone platforms
+        for (pl in platforms) {
+            if (pl.ground) continue
+            p.color = Color.rgb(30, 15, 25)
+            rect.set(pl.x - 3f, pl.y - 3f, pl.x + pl.w + 3f, pl.y + 27f)
+            c.drawRoundRect(rect, 8f, 8f, p)
+            p.color = Color.rgb(130, 120, 140)
+            rect.set(pl.x, pl.y, pl.x + pl.w, pl.y + 24f)
+            c.drawRoundRect(rect, 6f, 6f, p)
+            p.color = Color.rgb(175, 165, 185)
+            c.drawRect(pl.x + 4f, pl.y + 2f, pl.x + pl.w - 4f, pl.y + 7f, p)
+            p.color = Color.rgb(90, 80, 100)
+            var bx = pl.x + 40f
+            while (bx < pl.x + pl.w) {
+                c.drawRect(bx, pl.y + 8f, bx + 3f, pl.y + 24f, p)
+                bx += 50f
+            }
+        }
+    }
+
+    private fun drawMeteor(c: Canvas, m: Meteor) {
+        val flick = sin(time * 40f) * 2f
+        paint.color = Color.argb(120, 255, 120, 30)
+        c.drawCircle(m.x, m.y - 8f, 24f + flick, paint)
+        paint.color = Color.rgb(230, 70, 20)
+        c.drawCircle(m.x, m.y, 16f, paint)
+        paint.color = Color.rgb(255, 170, 40)
+        c.drawCircle(m.x - 2f, m.y + 2f, 10f, paint)
+        paint.color = Color.rgb(255, 240, 160)
+        c.drawCircle(m.x - 3f, m.y + 4f, 5f, paint)
+    }
+
+    private fun drawFlame(c: Canvas, f: Flame) {
+        val a = (f.life / 1.6f).coerceIn(0f, 1f)
+        for (k in -1..1) {
+            val h = (28f + sin(time * 25f + k * 2f) * 8f) * (0.4f + 0.6f * a)
+            path.reset()
+            path.moveTo(f.x + k * 12f - 10f, f.y)
+            path.lineTo(f.x + k * 12f, f.y - h)
+            path.lineTo(f.x + k * 12f + 10f, f.y)
+            path.close()
+            paint.color = Color.argb((230 * a).toInt(), 255, 110 + (k + 1) * 50, 30)
+            c.drawPath(path, paint)
+        }
+    }
+
+    private fun drawAlly(c: Canvas, a: Ally) {
+        when (a.kind) {
+            AllyKind.GINO -> {
+                val b = allyBody
+                b.x = a.x; b.y = a.y; b.vx = a.vx; b.onGround = a.onGround; b.facing = a.facing; b.anim = a.anim
+                drawHero(c, b, greenBro = true)
+            }
+            AllyKind.KINO -> drawKino(c, a)
+            AllyKind.ROSA -> drawRosa(c, a)
+        }
+        if (a.dazed > 0f) {
+            for (k in 0 until 3) {
+                val ang = time * 6f + k * 2.09f
+                paint.color = Color.rgb(255, 235, 90)
+                drawStar(c, a.x + cos(ang) * 22f, a.y - 82f + sin(ang) * 6f, 7f, 3f)
+            }
+        }
+    }
+
+    /** A little mushroom-capped helper with a vest. */
+    private fun drawKino(c: Canvas, a: Ally) {
+        c.save()
+        c.translate(a.x, a.y)
+        c.scale(a.facing.toFloat(), 1f)
+        val swing = if (a.onGround && abs(a.vx) > 30f) sin(a.anim) * 5f else 0f
+        stroke.color = Color.rgb(25, 15, 20)
+        stroke.strokeWidth = 3f
+        paint.color = Color.rgb(110, 60, 20)
+        rect.set(-12f - swing, -7f, 0f - swing, 0f); c.drawRoundRect(rect, 3f, 3f, paint)
+        rect.set(2f + swing, -7f, 14f + swing, 0f); c.drawRoundRect(rect, 3f, 3f, paint)
+        paint.color = Color.WHITE
+        rect.set(-10f, -18f, 10f, -6f); c.drawRect(rect, paint)
+        paint.color = Color.rgb(50, 90, 210)
+        rect.set(-12f, -32f, 12f, -16f); c.drawRoundRect(rect, 5f, 5f, stroke); c.drawRoundRect(rect, 5f, 5f, paint)
+        paint.color = Color.rgb(255, 215, 170)
+        c.drawCircle(2f, -40f, 10f, stroke); c.drawCircle(2f, -40f, 10f, paint)
+        paint.color = Color.rgb(25, 15, 20)
+        c.drawRect(4f, -45f, 6.5f, -38f, paint); c.drawRect(9f, -45f, 11.5f, -38f, paint)
+        // the cap
+        rect.set(-22f, -70f, 26f, -36f)
+        c.drawOval(rect, stroke)
+        paint.color = Color.WHITE
+        c.drawOval(rect, paint)
+        paint.color = Color.rgb(220, 40, 50)
+        c.drawCircle(2f, -62f, 7f, paint)
+        c.drawCircle(-14f, -52f, 5f, paint)
+        c.drawCircle(18f, -52f, 5f, paint)
+        c.restore()
+    }
+
+    /** The floating princess: pink gown, golden hair and crown. */
+    private fun drawRosa(c: Canvas, a: Ally) {
+        c.save()
+        c.translate(a.x, a.y)
+        c.scale(a.facing.toFloat(), 1f)
+        paint.color = Color.argb(70, 255, 180, 230)
+        c.drawCircle(0f, -30f, 50f, paint)
+        stroke.color = Color.rgb(25, 15, 20)
+        stroke.strokeWidth = 3f
+        // gown
+        path.reset()
+        path.moveTo(-8f, -38f); path.lineTo(8f, -38f); path.lineTo(26f, 10f); path.lineTo(-26f, 10f); path.close()
+        c.drawPath(path, stroke)
+        paint.color = Color.rgb(250, 130, 190)
+        c.drawPath(path, paint)
+        paint.color = Color.rgb(255, 180, 220)
+        c.drawRect(-22f, 0f, 22f, 6f, paint)
+        // hair, face, crown
+        paint.color = Color.rgb(255, 220, 90)
+        rect.set(-18f, -66f, 14f, -26f); c.drawOval(rect, paint)
+        paint.color = Color.rgb(255, 220, 190)
+        c.drawCircle(4f, -52f, 11f, stroke); c.drawCircle(4f, -52f, 11f, paint)
+        paint.color = Color.rgb(60, 110, 220)
+        c.drawCircle(8f, -54f, 2.5f, paint)
+        paint.color = Color.rgb(255, 200, 40)
+        path.reset()
+        path.moveTo(-6f, -62f); path.lineTo(-6f, -74f); path.lineTo(-1f, -68f); path.lineTo(4f, -76f)
+        path.lineTo(9f, -68f); path.lineTo(14f, -74f); path.lineTo(14f, -62f); path.close()
+        c.drawPath(path, paint)
+        paint.color = Color.rgb(60, 140, 255)
+        c.drawCircle(4f, -66f, 2.5f, paint)
+        c.restore()
+    }
+
     private fun drawShockwave(c: Canvas, w: Shockwave) {
         val pulse = sin(time * 30f) * 3f
         paint.color = Color.argb(200, 255, 200, 120)
@@ -2047,7 +2689,7 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
 
         val outline = Color.rgb(25, 15, 20)
         // Each sibling has its own colors; a Wonder boss swaps to its powered-up palette and glows.
-        val lk = if (state == State.TITLE) BossKind.PRINCE.normal else look
+        val lk = if (state == State.TITLE) BossKind.PRINCE.normal else b.look
         val skin = lk.skin
         val belly = lk.belly
         stroke.color = outline
@@ -2278,22 +2920,6 @@ class Game(private val audio: Synth, private val prefs: SharedPreferences) {
             row++
         }
 
-        // floating stone platforms
-        for (pl in platforms) {
-            if (pl.ground) continue
-            p.color = Color.rgb(30, 15, 25)
-            c.drawRoundRect(RectF(pl.x - 3f, pl.y - 3f, pl.x + pl.w + 3f, pl.y + 27f), 8f, 8f, p)
-            p.color = Color.rgb(130, 120, 140)
-            c.drawRoundRect(RectF(pl.x, pl.y, pl.x + pl.w, pl.y + 24f), 6f, 6f, p)
-            p.color = Color.rgb(175, 165, 185)
-            c.drawRect(pl.x + 4f, pl.y + 2f, pl.x + pl.w - 4f, pl.y + 7f, p)
-            p.color = Color.rgb(90, 80, 100)
-            var bx = pl.x + 40f
-            while (bx < pl.x + pl.w) {
-                c.drawRect(bx, pl.y + 8f, bx + 3f, pl.y + 24f, p)
-                bx += 50f
-            }
-        }
         return bmp
     }
 }

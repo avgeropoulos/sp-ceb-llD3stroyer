@@ -21,6 +21,7 @@ win the round, and every round gets faster and meaner.
 - **Swoop:** after a few throws the prince dives down and sweats. Stomp him for +500,
   but touching the pod or the propeller from the side hurts.
 - Clearing a round gives a bonus. The music speeds up slightly each round.
+- **Game over?** Tap **Continue** to retry from the same round (with a fresh score) or **New Game**.
 
 ## Power-ups
 
@@ -58,17 +59,47 @@ steady climb. Every round is a little harder than the one two rounds before it.
 | 10, 11 | **Royce** | Bald, pink shades | Heavy ball whose landing sends **shockwaves** along the floor (jump them!) | Molten: red-orange, black shell |
 | 12, 13 | **Ludo** | Wild swept-back blue hair | Five-spike fan | Phantom: ghostly grey, white hair |
 
-After round 13 the lineup repeats, harder every time. The boss's name shows in the top-right corner.
+### Team-ups
+
+Sometimes the siblings gang up. **Round 8** is the first double (Larkin & Lemmo), **round 13** brings
+Wanda & Royce, and **round 16** is a triple (Larkin, Wanda & Ludo). After that it's endless mixed
+teams of two or three, every other team in Wonder form. Teammates keep to their own stretch of sky,
+take turns swooping (only one comes down at a time), and each is a little less sturdy than when
+fighting alone. The round is won when every boss is knocked out. Each boss has its own row of
+health pips in the top-right corner.
+
+![Team-up](docs/screenshot-team-up.png)
 
 ![Boss roster](docs/boss-roster.png)
+
+## Your team
+
+As the siblings arrive, friends join you for good:
+
+| From round | Ally | What they do |
+| --- | --- | --- |
+| 4 | **Gino** (the tall green brother) | Hunts down spikes on the floor and jumps on them; leaps onto a swooping boss's head for a full stomp hit (every 5s at most). |
+| 8 | **Kino** (mushroom-cap helper) | Stays near you, hops over spikes, and lobs a turnip at the nearest boss every 3s. Turnips smash spikes in their path and add boss damage like fireballs (4 = 1 HP). |
+| 11 | **Princess Rosa** | Floats overhead. Every 15s she gives you a pink **shield bubble** that blocks one hit, and once a round, when you're down to your last life, her **blessing** gives you one back. |
+
+Allies can't be beaten. Spikes, fire and shockwaves just knock Gino and Kino dizzy for 3 seconds.
+
+## Arena hazards
+
+- **Moving platforms (from round 2):** the side platforms slowly rise and fall and the middle one
+  glides side to side. They carry you, spikes, items and allies along, and warning markers ride
+  with them.
+- **Fire from the sky (from round 8):** meteors fall with a warning marker and leave a flame
+  burning for about 1.5s where they land. More fall as the rounds get harder. Ice balls put out
+  meteors and flames (+50), and the boomerang knocks meteors away.
 
 ## Helpers
 
 - **1-UP mushroom:** a green-spotted mushroom slides around and gives an extra life (up to 9).
   It's rare: at most once a round, in about 1 of 3 normal rounds and 3 of 5 Wonder rounds.
   Beating a Wonder boss also gives a life.
-- **Gino, the green brother:** once every 3rd round, when the floor gets crowded, the
-  taller brother hops across the arena and crushes the spikes on the floor.
+- **Gino's first visit:** in round 3, when the floor gets crowded, the green brother hops
+  across the arena once and crushes the floor spikes, before joining your team in round 4.
 
 ![Gino to the rescue](docs/screenshot-brother.png)
 

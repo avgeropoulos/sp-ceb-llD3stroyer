@@ -107,14 +107,44 @@ enum class BossKind(val title: String, val signature: Signature, val normal: Bos
         ),
     );
 
-    companion object {
-        private val ORDER = listOf(LARKIN, LEMMO, WANDA, ROYCE, LUDO, PRINCE)
+}
 
-        /** Rounds 1-3: the prince (3 = his Wonder form). Then each sibling gets a normal round + a Wonder round. */
-        fun forLevel(level: Int): Pair<BossKind, Boolean> {
-            if (level <= 3) return PRINCE to (level == 3)
-            val k = level - 4
-            return ORDER[(k / 2) % ORDER.size] to (k % 2 == 1)
+/** Who shows up in a round. More than one boss at once is a "team" round. */
+class RoundSpec(val kinds: List<BossKind>, val wonder: Boolean) {
+    val team get() = kinds.size > 1
+}
+
+object Rounds {
+    private val SIBLINGS = listOf(BossKind.LARKIN, BossKind.LEMMO, BossKind.WANDA, BossKind.ROYCE, BossKind.LUDO)
+
+    /**
+     * 1-3 the prince (3 = Wonder), then each sibling gets a normal + Wonder round, with team-ups
+     * mixed in: round 8 is the first double, 13 another, 16 a triple. After that it's endless
+     * mixed teams of two or three, every other one in Wonder form.
+     */
+    fun forLevel(level: Int): RoundSpec {
+        return when (level) {
+            1, 2 -> RoundSpec(listOf(BossKind.PRINCE), false)
+            3 -> RoundSpec(listOf(BossKind.PRINCE), true)
+            4 -> RoundSpec(listOf(BossKind.LARKIN), false)
+            5 -> RoundSpec(listOf(BossKind.LARKIN), true)
+            6 -> RoundSpec(listOf(BossKind.LEMMO), false)
+            7 -> RoundSpec(listOf(BossKind.LEMMO), true)
+            8 -> RoundSpec(listOf(BossKind.LARKIN, BossKind.LEMMO), false)
+            9 -> RoundSpec(listOf(BossKind.WANDA), false)
+            10 -> RoundSpec(listOf(BossKind.WANDA), true)
+            11 -> RoundSpec(listOf(BossKind.ROYCE), false)
+            12 -> RoundSpec(listOf(BossKind.ROYCE), true)
+            13 -> RoundSpec(listOf(BossKind.WANDA, BossKind.ROYCE), false)
+            14 -> RoundSpec(listOf(BossKind.LUDO), false)
+            15 -> RoundSpec(listOf(BossKind.LUDO), true)
+            16 -> RoundSpec(listOf(BossKind.LARKIN, BossKind.WANDA, BossKind.LUDO), false)
+            else -> {
+                val n = level - 17
+                val size = if (n % 3 == 2) 3 else 2
+                val start = (n * 2) % SIBLINGS.size
+                RoundSpec((0 until size).map { SIBLINGS[(start + it) % SIBLINGS.size] }, n % 2 == 1)
+            }
         }
     }
 }
