@@ -1,0 +1,912 @@
+<title>Backyard Boop</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@600;800&display=swap">
+<style>
+/* Layout: one full-screen backyard. A slim scoreboard sits above the lawn; menus float over it on cards trimmed like the dogs' braided red-and-yellow leash. */
+:root {
+  --lawn: #5fa843;
+  --lawn-dark: #2f6b2a;
+  --ink: #1d3324;
+  --card: #fffdf7;
+  --leash-red: #e3402d;
+  --leash-yellow: #f7c531;
+  --water: #4aa6e8;
+  --muted: #5d7266;
+  --display: "Lilita One", "Arial Rounded MT Bold", "Trebuchet MS", sans-serif;
+  --body: "Nunito", "Segoe UI", system-ui, sans-serif;
+  --leash: repeating-linear-gradient(135deg, var(--leash-red) 0 10px, var(--leash-yellow) 10px 20px);
+}
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body {
+  margin: 0; background: var(--lawn-dark); color: var(--ink);
+  font-family: var(--body); font-weight: 600; overflow: hidden;
+  -webkit-user-select: none; user-select: none; touch-action: none;
+}
+#app { position: relative; height: 100%; display: flex; flex-direction: column; }
+
+/* Scoreboard */
+#hud {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
+  padding: 8px 16px; background: var(--ink); color: #fff;
+  font-family: var(--display); font-size: 18px; letter-spacing: .02em;
+  font-variant-numeric: tabular-nums; border-bottom: 5px solid transparent;
+  border-image: var(--leash) 1;
+}
+#hud .stat { display: flex; align-items: baseline; gap: 6px; }
+#hud .lab { font-family: var(--body); font-weight: 800; font-size: 11px; text-transform: uppercase; letter-spacing: .1em; opacity: .7; }
+#hud .grow { flex: 1; }
+#hud .btns { display: flex; gap: 6px; }
+#goalbar { width: 90px; height: 10px; border-radius: 6px; background: rgba(255,255,255,.2); overflow: hidden; align-self: center; }
+#goalfill { height: 100%; width: 0; background: var(--leash-yellow); transition: width .2s; }
+.pips { display: flex; gap: 3px; font-size: 16px; }
+.pip { opacity: .25; }
+.pip.on { opacity: 1; }
+#time.low { color: var(--leash-yellow); }
+.hudbtn {
+  font: inherit; font-size: 14px; color: #fff; background: rgba(255,255,255,.12);
+  border: 0; border-radius: 8px; padding: 4px 10px; cursor: pointer;
+}
+.hudbtn:focus-visible { outline: 3px solid var(--leash-yellow); }
+
+#stage { position: relative; flex: 1; min-height: 0; }
+canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+/* Overlays */
+.overlay {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  padding: 16px; background: rgba(20, 45, 25, .45); overflow-y: auto;
+}
+.card {
+  position: relative; background: var(--card); color: var(--ink);
+  border-radius: 22px; padding: 26px 24px 22px; width: min(640px, 100%);
+  box-shadow: 0 14px 40px rgba(0,0,0,.3); margin: auto;
+  display: flex; flex-direction: column; gap: 16px;
+}
+.card::before {
+  content: ""; position: absolute; left: 22px; right: 22px; top: -7px; height: 14px;
+  border-radius: 7px; background: var(--leash);
+}
+h1, h2 { font-family: var(--display); font-weight: 400; margin: 0; line-height: 1.05; text-wrap: balance; }
+h1 { font-size: clamp(34px, 7vw, 54px); color: var(--leash-red); }
+h1 small { display: block; font-size: .42em; color: var(--ink); margin-top: 6px; }
+h2 { font-size: clamp(28px, 5vw, 40px); color: var(--leash-red); }
+p { margin: 0; line-height: 1.45; max-width: 60ch; }
+.muted { color: var(--muted); }
+
+.pick { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.dogbtn {
+  font: inherit; color: inherit; cursor: pointer; text-align: left;
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+  background: #fff; border: 3px solid #dfe7dc; border-radius: 16px;
+  transition: transform .12s, border-color .12s;
+}
+.dogbtn:hover { transform: translateY(-2px); border-color: var(--leash-yellow); }
+.dogbtn:focus-visible { outline: 3px solid var(--water); outline-offset: 2px; }
+.dogbtn img { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; border: 4px solid var(--c); flex: none; }
+.dogbtn b { font-family: var(--display); font-weight: 400; font-size: 22px; display: block; }
+.dogbtn span { font-size: 13px; color: var(--muted); }
+.dogbtn.both .faces { display: flex; flex: none; }
+.dogbtn.both img { width: 48px; height: 48px; }
+.dogbtn.both img + img { margin-left: -14px; }
+
+.rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px 16px; font-size: 14px; }
+.rules div { display: flex; gap: 8px; align-items: flex-start; }
+.rules i { font-style: normal; font-size: 20px; line-height: 1.1; flex: none; width: 24px; text-align: center; }
+
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.btn {
+  font-family: var(--display); font-size: 20px; letter-spacing: .02em;
+  border: 0; border-radius: 14px; padding: 10px 20px; cursor: pointer;
+  background: var(--leash-red); color: #fff; box-shadow: 0 4px 0 #a52a1c;
+}
+.btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #a52a1c; }
+.btn.alt { background: #e6ede3; color: var(--ink); box-shadow: 0 4px 0 #bccbb8; }
+.btn:focus-visible { outline: 3px solid var(--water); outline-offset: 2px; }
+
+.scores { width: 100%; border-collapse: collapse; font-size: 15px; font-variant-numeric: tabular-nums; }
+.scores th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); padding: 4px 6px; }
+.scores td { padding: 5px 6px; border-top: 1px solid #e8ece4; }
+.scores td.n { text-align: right; font-family: var(--display); font-weight: 400; font-size: 17px; }
+.scores tr.me td { background: #fff4c7; }
+.scores .who { display: flex; align-items: center; gap: 6px; }
+.scores .who img { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; }
+.scorebox { display: flex; flex-direction: column; gap: 6px; }
+.scorebox h3 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 20px; }
+.empty { font-size: 14px; color: var(--muted); }
+
+.portrait { position: relative; width: 150px; height: 120px; margin: 0 auto; }
+.portrait img { position: absolute; left: 50%; top: 4px; width: 84px; height: 84px; margin-left: -42px; border-radius: 50%; object-fit: cover; border: 4px solid #fff; box-shadow: 0 3px 10px rgba(0,0,0,.2); }
+.portrait.pair img { margin-left: -78px; }
+.portrait.pair img + img { margin-left: -6px; }
+.tub { position: absolute; left: 0; right: 0; bottom: 0; height: 50px; background: #fff; border: 4px solid #cfd9e0; border-radius: 6px 6px 40px 40px; }
+.bubble { position: absolute; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff, #cfeaff); border: 2px solid #bfe0f7; animation: bob 2.4s ease-in-out infinite; }
+.zzz { position: absolute; right: 2px; top: -6px; font-family: var(--display); font-size: 30px; color: var(--water); animation: bob 2.4s ease-in-out infinite; }
+.blanket { position: absolute; left: 6px; right: 6px; bottom: 0; height: 46px; border-radius: 20px 20px 10px 10px; background: var(--leash); opacity: .95; }
+@keyframes bob { 50% { transform: translateY(-6px); } }
+
+.big { font-family: var(--display); font-size: 44px; color: var(--ink); line-height: 1; }
+.tally { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+.tally div { background: #f1f5ef; border-radius: 12px; padding: 8px 10px; }
+.tally b { display: block; font-family: var(--display); font-weight: 400; font-size: 24px; font-variant-numeric: tabular-nums; }
+.tally span { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+label { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+input[type=text] {
+  font: inherit; font-size: 18px; padding: 8px 12px; border-radius: 10px;
+  border: 3px solid #dfe7dc; background: #fff; color: var(--ink); width: 12em; max-width: 100%;
+}
+input[type=text]:focus { outline: none; border-color: var(--leash-yellow); }
+.keys { font-size: 13px; color: var(--muted); }
+kbd { font-family: var(--body); font-weight: 800; background: #eef2ec; border-radius: 5px; padding: 1px 6px; border: 1px solid #d3dccf; }
+@media (prefers-reduced-motion: reduce) { .bubble, .zzz { animation: none; } .dogbtn { transition: none; } }
+@media (max-width: 520px) {
+  #hud { font-size: 15px; gap: 4px 12px; }
+  #goalbar { width: 70px; }
+  .card { padding: 22px 16px 18px; }
+}
+</style>
+
+<div id="app">
+  <div id="hud">
+    <div class="stat"><span class="lab">Level</span><span id="lvl">1</span></div>
+    <div class="stat"><span class="lab">Score</span><span id="score">0</span></div>
+    <div class="stat"><span class="lab">Caught</span><span id="caught">0/5</span><div id="goalbar"><div id="goalfill"></div></div></div>
+    <div class="stat"><span class="lab">Time</span><span id="time">60</span></div>
+    <div class="stat" title="Catch 3 critters to call the Giant Bird"><span class="lab">Bird</span><span class="pips" id="birdpips"></span></div>
+    <div class="stat" title="Three splashes and it's bath time"><span class="lab">Splash</span><span class="pips" id="splashpips"></span></div>
+    <span class="grow"></span>
+    <span class="btns"><button class="hudbtn" id="soundBtn" type="button">Sound on</button><button class="hudbtn" id="pauseBtn" type="button">Pause</button></span>
+  </div>
+  <div id="stage">
+    <canvas id="cv"></canvas>
+
+    <div class="overlay" id="titleScreen">
+      <div class="card">
+        <h1>Backyard Boop<small>starring Hercules &amp; Apollo</small></h1>
+        <p>Squirrels and bunnies are loose in the yard. Run over and give them a friendly <b>boop</b> on the nose. Every 3 boops calls in the <b>Giant Golden Goose</b> for big bonus points.</p>
+        <div class="pick">
+          <button class="dogbtn" type="button" data-pick="hercules" style="--c:#e3402d">
+            <img src="hercules.jpg" alt="Hercules">
+            <div><b>Hercules</b><span>Black curls, white beard, red collar</span></div>
+          </button>
+          <button class="dogbtn" type="button" data-pick="apollo" style="--c:#2f86d6">
+            <img src="apollo.jpg" alt="Apollo">
+            <div><b>Apollo</b><span>Brown curls, smoky face, blue collar</span></div>
+          </button>
+          <button class="dogbtn both" type="button" data-pick="both" style="--c:#f7c531">
+            <span class="faces"><img src="hercules.jpg" alt=""><img src="apollo.jpg" alt=""></span>
+            <div><b>Team walk</b><span>2 players, one keyboard</span></div>
+          </button>
+        </div>
+        <div class="rules">
+          <div><i>🐿️</i><span><b>Squirrel</b> 10 pts. Fast and zig-zaggy.</span></div>
+          <div><i>🐰</i><span><b>Bunny</b> 15 pts. Hops in big bursts.</span></div>
+          <div><i>🪿</i><span><b>Giant Goose</b> 100+ pts. Appears after 3 boops.</span></div>
+          <div><i>💦</i><span><b>Sprinklers &amp; Mr. Bubbles</b> the rolling bathtub. 3 splashes means bath time!</span></div>
+          <div><i>🟤</i><span><b>Mud</b> slows you down.</span></div>
+          <div><i>⏱️</i><span>Reach the goal before the clock runs out, or it's nap time.</span></div>
+        </div>
+        <p class="keys">Move with <kbd>WASD</kbd> or arrow keys, or touch and drag. In team mode Hercules uses <kbd>WASD</kbd>, Apollo uses the arrows, or each player drags a dog. <kbd>P</kbd> pauses.</p>
+        <div class="scorebox"><h3 class="sbTitle">High scores</h3><div class="sbBody"></div></div>
+      </div>
+    </div>
+
+    <div class="overlay" id="levelScreen" hidden>
+      <div class="card">
+        <h2 id="lsTitle">Level 1</h2>
+        <p id="lsText"></p>
+        <div class="tally" id="lsTally"></div>
+        <div class="row"><button class="btn" id="lsGo" type="button">Let's go!</button><span class="keys">or press <kbd>Space</kbd></span></div>
+      </div>
+    </div>
+
+    <div class="overlay" id="pauseScreen" hidden>
+      <div class="card">
+        <h2>Paused</h2>
+        <p>The squirrels are waiting very politely.</p>
+        <div class="row"><button class="btn" id="resumeBtn" type="button">Keep playing</button><button class="btn alt" id="quitBtn" type="button">Quit to menu</button></div>
+      </div>
+    </div>
+
+    <div class="overlay" id="overScreen" hidden>
+      <div class="card">
+        <div id="goArt"></div>
+        <h2 id="goTitle">Bath time!</h2>
+        <p id="goText"></p>
+        <div class="tally" id="goTally"></div>
+        <form id="saveForm" class="row">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <label for="nameIn">Name for the high score list</label>
+            <input type="text" id="nameIn" maxlength="14" autocomplete="off" placeholder="Your name">
+          </div>
+          <button class="btn" type="submit" id="saveBtn" style="align-self:flex-end">Save score</button>
+        </form>
+        <div class="scorebox"><h3 class="sbTitle">High scores</h3><div class="sbBody"></div></div>
+        <div class="row"><button class="btn" id="againBtn" type="button">Play again</button><button class="btn alt" id="menuBtn" type="button">Pick a dog</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+"use strict";
+// ---------- Setup ----------
+const cv = document.getElementById("cv");
+const ctx = cv.getContext("2d");
+const $ = (id) => document.getElementById(id);
+const DOGS = {
+  hercules: { name: "Hercules", fur: "#1b1a1f", curl: "#3b3842", head: "#1b1a1f", ear: "#121115", muzzle: "#2a282e", chin: "#f2f0ea", collar: "#e3402d", photo: "hercules.jpg" },
+  apollo:   { name: "Apollo",   fur: "#b27b47", curl: "#d29c64", head: "#6f6258", ear: "#3a302b", muzzle: "#c58b52", chin: "#e9dccb", collar: "#2f86d6", photo: "apollo.jpg" },
+};
+const PTS = { squirrel: 10, bunny: 15 };
+const MAX_SPLASH = 3;
+const LEVEL_NAMES = ["Backyard Romp", "Sprinkler Lane", "Mr. Bubbles Rolls In", "Squirrel Rush Hour", "Bunny Meadow", "The Big Park", "Splash Zone", "Golden Goose Grove", "Speedy Sunday", "Top Dog Trail"];
+
+let W = 900, H = 560, k = 1, dpr = 1;
+function resize() {
+  const r = cv.getBoundingClientRect();
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = Math.max(1, Math.round(r.width * dpr));
+  cv.height = Math.max(1, Math.round(r.height * dpr));
+  k = Math.max(0.45, Math.min(r.width, r.height) / 560);
+  W = r.width / k; H = r.height / k;
+  if (G) for (const e of [...G.dogs, ...G.critters, ...G.tubs]) clampIn(e);
+}
+window.addEventListener("resize", resize);
+
+// ---------- Sound ----------
+let actx = null, soundOn = true;
+try { soundOn = localStorage.getItem("bb_sound") !== "off"; } catch (e) {}
+function ac() { if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } return actx; }
+function tone(f1, f2, dur, type = "sine", vol = 0.15, delay = 0) {
+  if (!soundOn) return; const a = ac(); if (!a) return;
+  const t = a.currentTime + delay, o = a.createOscillator(), g = a.createGain();
+  o.type = type; o.frequency.setValueAtTime(f1, t); o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(g).connect(a.destination); o.start(t); o.stop(t + dur + 0.02);
+}
+function splashSound() {
+  if (!soundOn) return; const a = ac(); if (!a) return;
+  const n = a.sampleRate * 0.35, b = a.createBuffer(1, n, a.sampleRate), d = b.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n) ** 2;
+  const s = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
+  f.type = "bandpass"; f.frequency.value = 1400; g.gain.value = 0.35;
+  s.buffer = b; s.connect(f).connect(g).connect(a.destination); s.start();
+}
+const sfx = {
+  boop: () => { tone(520, 1040, 0.12, "sine", 0.18); tone(780, 1560, 0.1, "triangle", 0.08, 0.05); },
+  bird: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, f, 0.14, "triangle", 0.12, i * 0.07)),
+  birdArrive: () => { tone(300, 600, 0.2, "square", 0.05); tone(600, 300, 0.2, "square", 0.05, 0.2); },
+  splash: () => { splashSound(); tone(400, 150, 0.3, "sine", 0.1); },
+  level: () => [392, 523, 659, 784, 1047].forEach((f, i) => tone(f, f, 0.18, "triangle", 0.12, i * 0.09)),
+  over: () => [523, 440, 349, 262].forEach((f, i) => tone(f, f * 0.98, 0.25, "sine", 0.12, i * 0.16)),
+};
+function syncSoundBtn() { $("soundBtn").textContent = soundOn ? "Sound on" : "Sound off"; }
+$("soundBtn").onclick = () => { soundOn = !soundOn; try { localStorage.setItem("bb_sound", soundOn ? "on" : "off"); } catch (e) {} syncSoundBtn(); if (soundOn) ac(); };
+syncSoundBtn();
+
+// ---------- Helpers ----------
+const rnd = (a, b) => a + Math.random() * (b - a);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+function clampIn(e) { e.x = clamp(e.x, e.r, W - e.r); e.y = clamp(e.y, e.r, H - e.r); }
+function angDiff(a, b) { let d = (a - b) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; }
+
+// ---------- Level design ----------
+function levelCfg(n) {
+  const goal = Math.min(5 + (n - 1) * 2, 25);
+  return {
+    goal,
+    time: Math.round(40 + goal * 4 - Math.min(n - 1, 8) * 1.5),
+    speed: Math.min(1 + (n - 1) * 0.08, 1.8),
+    fleeR: Math.min(110 + n * 10, 230),
+    pop: Math.min(4 + Math.floor(n / 2), 9),
+    sprinklers: Math.min(Math.floor(n / 2), 4),
+    sprinkSpin: 0.7 + n * 0.1,
+    doubleArm: n >= 6,
+    tubs: n >= 3 ? (n >= 7 ? 3 : n >= 5 ? 2 : 1) : 0,
+    tubSpeed: Math.min(60 + n * 9, 150),
+    mud: n >= 2 ? Math.min(1 + Math.floor(n / 2), 4) : 0,
+    bunnyShare: Math.min(0.3 + n * 0.04, 0.55),
+  };
+}
+
+// ---------- Game state ----------
+let G = null;
+let mode = "hercules"; // hercules | apollo | both
+let screen = "title";  // title | intro | play | pause | over
+let lastSaved = null;
+
+function makeDog(id, x, y) {
+  return { id, x, y, r: 22, vx: 0, vy: 0, face: 1, speed: 235, inv: 0, step: 0, caught: 0, ptr: null };
+}
+function newGame() {
+  G = { level: 1, score: 0, splashes: 0, birdMeter: 0, birdsCaught: 0, totals: { squirrel: 0, bunny: 0 }, dogs: [] };
+  const ids = mode === "both" ? ["hercules", "apollo"] : [mode];
+  ids.forEach((id, i) => G.dogs.push(makeDog(id, 0, 0)));
+  setupLevel();
+}
+function setupLevel() {
+  const c = G.cfg = levelCfg(G.level);
+  G.caught = 0; G.time = c.time; G.critters = []; G.particles = []; G.floaters = []; G.tubs = []; G.sprinklers = []; G.muds = []; G.bird = null; G.spawnT = 0; G.shake = 0;
+  G.dogs.forEach((d, i) => { d.x = W / 2 + (G.dogs.length > 1 ? (i ? 50 : -50) : 0); d.y = H / 2; d.vx = d.vy = 0; d.inv = 1.5; d.ptr = null; });
+  // decorations (flowers) and hazards placed away from the start spot
+  G.flowers = Array.from({ length: 26 }, () => ({ x: rnd(0, 1), y: rnd(0, 1), c: ["#fff", "#ffd84a", "#ff8fb1", "#c9a7ff"][Math.floor(rnd(0, 4))], s: rnd(0.7, 1.2) }));
+  const farFromCenter = (minD) => { for (let t = 0; t < 40; t++) { const p = { x: rnd(70, W - 70), y: rnd(70, H - 70) }; if (Math.hypot(p.x - W / 2, p.y - H / 2) > minD) return p; } return { x: rnd(70, W - 70), y: rnd(70, H - 70) }; };
+  for (let i = 0; i < c.mud; i++) { const p = farFromCenter(110); G.muds.push({ x: p.x, y: p.y, rx: rnd(45, 70), ry: rnd(28, 40), seed: Math.random() * 10 }); }
+  for (let i = 0; i < c.sprinklers; i++) {
+    let p, ok = false;
+    for (let t = 0; t < 40 && !ok; t++) { p = farFromCenter(170); ok = G.sprinklers.every((s) => dist(s, p) > 220); }
+    G.sprinklers.push({ x: p.x, y: p.y, ang: rnd(0, 6.28), spin: c.sprinkSpin * (Math.random() < 0.5 ? 1 : -1), len: 130, width: 0.32, arms: c.doubleArm ? 2 : 1 });
+  }
+  for (let i = 0; i < c.tubs; i++) { const corner = [[60, 60], [W - 60, H - 60], [W - 60, 60]][i]; G.tubs.push({ x: corner[0], y: corner[1], r: 28, vx: 0, vy: 0, pause: 2 + i, wob: Math.random() * 6 }); }
+  for (let i = 0; i < Math.min(c.pop, 4); i++) spawnCritter(true);
+}
+
+function spawnCritter(inside) {
+  const c = G.cfg;
+  const type = Math.random() < c.bunnyShare ? "bunny" : "squirrel";
+  let x, y;
+  if (inside) { const p = { x: rnd(60, W - 60), y: rnd(60, H - 60) }; if (Math.hypot(p.x - W / 2, p.y - H / 2) < 160) { p.x = p.x < W / 2 ? 60 : W - 60; } x = p.x; y = p.y; }
+  else { const side = Math.floor(rnd(0, 4)); x = side === 0 ? -20 : side === 1 ? W + 20 : rnd(40, W - 40); y = side === 2 ? -20 : side === 3 ? H + 20 : rnd(40, H - 40); }
+  const a = Math.atan2(H / 2 - y, W / 2 - x) + rnd(-0.6, 0.6);
+  G.critters.push({ type, x, y, r: type === "bunny" ? 14 : 12, dir: a, vx: 0, vy: 0, state: inside ? "wander" : "enter", t: 0, turnT: 0, stamina: 2.2, tired: 0, hop: 0, hopPhase: 0, face: 1, bob: 0, enterT: 1.2, fur: type === "bunny" ? (Math.random() < 0.5 ? "#c9a07a" : "#a9a4a0") : (Math.random() < 0.6 ? "#8b6a52" : "#7d7d82") });
+}
+
+function nearestDog(e, skipInv) {
+  let best = null, bd = 1e9;
+  for (const d of G.dogs) { if (skipInv && d.inv > 0) continue; const dd = dist(d, e); if (dd < bd) { bd = dd; best = d; } }
+  return [best, bd];
+}
+
+// ---------- Input ----------
+const keys = new Set();
+const KEYMAP = { KeyW: "u1", KeyA: "l1", KeyS: "d1", KeyD: "r1", ArrowUp: "u2", ArrowLeft: "l2", ArrowDown: "d2", ArrowRight: "r2" };
+window.addEventListener("keydown", (e) => {
+  if (e.target && e.target.tagName === "INPUT") return;
+  if (KEYMAP[e.code]) { keys.add(KEYMAP[e.code]); e.preventDefault(); }
+  if (e.code === "KeyP" || e.code === "Escape") { if (screen === "play") pause(); else if (screen === "pause") resume(); }
+  if ((e.code === "Space" || e.code === "Enter") && screen === "intro") { e.preventDefault(); startLevel(); }
+});
+window.addEventListener("keyup", (e) => { if (KEYMAP[e.code]) keys.delete(KEYMAP[e.code]); });
+window.addEventListener("blur", () => { keys.clear(); if (screen === "play") pause(); });
+document.addEventListener("visibilitychange", () => { if (document.hidden && screen === "play") pause(); });
+
+function toWorld(e) { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / k, y: (e.clientY - r.top) / k }; }
+cv.addEventListener("pointerdown", (e) => {
+  if (screen !== "play") return;
+  ac();
+  const p = toWorld(e);
+  let dog = null, bd = 1e9;
+  for (const d of G.dogs) { if (d.ptr && d.ptr.id !== e.pointerId) continue; const dd = Math.hypot(d.x - p.x, d.y - p.y); if (dd < bd) { bd = dd; dog = d; } }
+  if (!dog) return;
+  dog.ptr = { id: e.pointerId, x: p.x, y: p.y };
+  try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+});
+cv.addEventListener("pointermove", (e) => { if (!G) return; const d = G.dogs.find((d) => d.ptr && d.ptr.id === e.pointerId); if (d) { const p = toWorld(e); d.ptr.x = p.x; d.ptr.y = p.y; } });
+const endPtr = (e) => { if (!G) return; const d = G.dogs.find((d) => d.ptr && d.ptr.id === e.pointerId); if (d) d.ptr = null; };
+cv.addEventListener("pointerup", endPtr); cv.addEventListener("pointercancel", endPtr);
+
+function dogInput(d, idx) {
+  let set = [];
+  if (G.dogs.length === 1) set = ["1", "2"]; else set = [idx === 0 ? "1" : "2"];
+  let x = 0, y = 0;
+  for (const s of set) { if (keys.has("l" + s)) x -= 1; if (keys.has("r" + s)) x += 1; if (keys.has("u" + s)) y -= 1; if (keys.has("d" + s)) y += 1; }
+  if (x || y) { const m = Math.hypot(x, y); return [x / m, y / m]; }
+  if (d.ptr) { const dx = d.ptr.x - d.x, dy = d.ptr.y - d.y, m = Math.hypot(dx, dy); if (m > 6) { const s = Math.min(1, m / 50); return [dx / m * s, dy / m * s]; } }
+  return [0, 0];
+}
+
+// ---------- Update ----------
+function update(dt) {
+  const c = G.cfg;
+  G.time -= dt;
+  if (G.time <= 0) { G.time = 0; return gameOver("nap"); }
+  G.shake = Math.max(0, G.shake - dt * 3);
+
+  // dogs
+  G.dogs.forEach((d, i) => {
+    const [ix, iy] = dogInput(d, i);
+    const inMud = G.muds.some((m) => ((d.x - m.x) / m.rx) ** 2 + ((d.y - m.y) / m.ry) ** 2 < 1);
+    const sp = d.speed * (inMud ? 0.48 : 1);
+    d.vx += (ix * sp - d.vx) * Math.min(1, dt * 12);
+    d.vy += (iy * sp - d.vy) * Math.min(1, dt * 12);
+    d.x += d.vx * dt; d.y += d.vy * dt; clampIn(d);
+    const v = Math.hypot(d.vx, d.vy);
+    if (Math.abs(d.vx) > 15) d.face = d.vx > 0 ? 1 : -1;
+    d.step += v * dt * 0.06;
+    d.inv = Math.max(0, d.inv - dt);
+    if (inMud && v > 60 && Math.random() < dt * 10) G.particles.push({ x: d.x + rnd(-8, 8), y: d.y + 14, vx: rnd(-30, 30), vy: rnd(-60, -20), life: 0.5, max: 0.5, col: "#6b4a2b", s: 4, g: 200 });
+  });
+  if (G.dogs.length > 1) { const [a, b] = G.dogs, dd = dist(a, b), min = a.r + b.r - 8; if (dd < min && dd > 0.01) { const push = (min - dd) / 2, nx = (b.x - a.x) / dd, ny = (b.y - a.y) / dd; a.x -= nx * push; a.y -= ny * push; b.x += nx * push; b.y += ny * push; } }
+
+  // critters
+  G.spawnT -= dt;
+  const live = G.critters.filter((q) => q.state !== "boop").length;
+  if (live < c.pop && G.spawnT <= 0) { spawnCritter(false); G.spawnT = rnd(0.6, 1.4); }
+  for (const q of G.critters) updateCritter(q, dt, c);
+  G.critters = G.critters.filter((q) => !q.gone);
+
+  // catching
+  for (const q of G.critters) {
+    if (q.state === "boop" || q.state === "enter") continue;
+    for (const d of G.dogs) {
+      if (dist(d, q) < d.r + q.r * 0.85) { boop(q, d); break; }
+    }
+  }
+
+  // giant bird
+  if (G.bird) updateBird(G.bird, dt);
+  else if (G.birdMeter >= 3) { G.birdMeter = 0; spawnBird(); }
+
+  // hazards
+  for (const s of G.sprinklers) {
+    s.ang += s.spin * dt;
+    for (let a = 0; a < s.arms; a++) {
+      const ang = s.ang + a * Math.PI;
+      if (Math.random() < dt * 40) { const l = rnd(20, s.len); G.particles.push({ x: s.x + Math.cos(ang) * l, y: s.y + Math.sin(ang) * l, vx: rnd(-15, 15), vy: rnd(-15, 15), life: 0.35, max: 0.35, col: "#9fd4ff", s: rnd(2, 4), g: 0 }); }
+      for (const d of G.dogs) {
+        if (d.inv > 0) continue;
+        const dd = dist(d, s);
+        if (dd < s.len + d.r * 0.5 && dd > 14 && Math.abs(angDiff(Math.atan2(d.y - s.y, d.x - s.x), ang)) < s.width / 2 + d.r / Math.max(dd, 30) * 0.6) splash(d, "Sprinkler splash!");
+      }
+    }
+  }
+  for (const t of G.tubs) {
+    t.wob += dt * 3;
+    if (t.pause > 0) { t.pause -= dt; t.vx *= 0.9; t.vy *= 0.9; }
+    else {
+      const [d] = nearestDog(t, true);
+      if (d) { const dx = d.x - t.x, dy = d.y - t.y, m = Math.hypot(dx, dy) || 1; t.vx += (dx / m * c.tubSpeed - t.vx) * Math.min(1, dt * 2); t.vy += (dy / m * c.tubSpeed - t.vy) * Math.min(1, dt * 2); }
+      else { t.vx *= 0.95; t.vy *= 0.95; }
+    }
+    t.x += t.vx * dt; t.y += t.vy * dt; clampIn(t);
+    for (const d of G.dogs) if (d.inv <= 0 && dist(d, t) < d.r + t.r - 6) { splash(d, "Mr. Bubbles got you!"); t.pause = 2; t.vx = -t.vx * 0.5; t.vy = -t.vy * 0.5; }
+  }
+
+  // fx
+  for (const p of G.particles) { p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += (p.g || 0) * dt; }
+  G.particles = G.particles.filter((p) => p.life > 0);
+  for (const f of G.floaters) { f.life -= dt; f.y -= 40 * dt; }
+  G.floaters = G.floaters.filter((f) => f.life > 0);
+
+  if (G.caught >= c.goal && screen === "play") levelClear();
+}
+
+function updateCritter(q, dt, c) {
+  q.t += dt; q.bob += dt;
+  if (q.state === "boop") {
+    q.boopT -= dt;
+    if (q.boopT < 0) { q.x += Math.cos(q.dir) * 260 * dt; q.y += Math.sin(q.dir) * 260 * dt; q.face = Math.cos(q.dir) >= 0 ? 1 : -1; }
+    if (q.x < -40 || q.x > W + 40 || q.y < -40 || q.y > H + 40) q.gone = true;
+    return;
+  }
+  if (q.state === "enter") {
+    q.enterT -= dt; q.x += Math.cos(q.dir) * 120 * dt; q.y += Math.sin(q.dir) * 120 * dt; q.face = Math.cos(q.dir) >= 0 ? 1 : -1;
+    if (q.enterT <= 0 && q.x > q.r && q.x < W - q.r && q.y > q.r && q.y < H - q.r) q.state = "wander";
+    return;
+  }
+  const [d, dd] = nearestDog(q, false);
+  const fleeing = d && dd < c.fleeR;
+  const base = (q.type === "bunny" ? 200 : 185) * c.speed;
+  // stamina: critters tire after a long chase, so a persistent pup always wins
+  if (fleeing) { q.stamina -= dt; if (q.stamina <= 0) { q.tired = 1.6; q.stamina = 2.2; } }
+  else q.stamina = Math.min(2.2, q.stamina + dt * 0.7);
+  q.tired = Math.max(0, q.tired - dt);
+
+  let tx, ty, speed;
+  if (fleeing) {
+    tx = q.x - d.x; ty = q.y - d.y; const m = Math.hypot(tx, ty) || 1; tx /= m; ty /= m;
+    // steer away from walls
+    const edge = 70;
+    if (q.x < edge) tx += (edge - q.x) / edge * 1.4; if (q.x > W - edge) tx -= (q.x - (W - edge)) / edge * 1.4;
+    if (q.y < edge) ty += (edge - q.y) / edge * 1.4; if (q.y > H - edge) ty -= (q.y - (H - edge)) / edge * 1.4;
+    let a = Math.atan2(ty, tx);
+    if (q.type === "squirrel") { q.turnT -= dt; if (q.turnT <= 0) { q.jit = rnd(-0.7, 0.7); q.turnT = rnd(0.2, 0.45); } a += q.jit || 0; }
+    q.dir = a; speed = base;
+  } else {
+    q.turnT -= dt; if (q.turnT <= 0) { q.dir += rnd(-1.2, 1.2); q.turnT = rnd(0.8, 2); }
+    if (q.x < 50) q.dir = 0; if (q.x > W - 50) q.dir = Math.PI; if (q.y < 50) q.dir = Math.PI / 2; if (q.y > H - 50) q.dir = -Math.PI / 2;
+    speed = base * 0.3;
+  }
+  if (q.tired > 0) speed *= 0.4;
+  if (q.type === "bunny") {
+    // bunnies move in hops: a quick burst, then a pause
+    q.hopPhase += dt;
+    const hopLen = 0.28, rest = fleeing ? 0.16 : 0.5;
+    if (q.hopPhase > hopLen + rest) q.hopPhase = 0;
+    q.hop = q.hopPhase < hopLen ? Math.sin(q.hopPhase / hopLen * Math.PI) : 0;
+    speed = q.hopPhase < hopLen ? speed * 1.75 : 0;
+  }
+  q.vx = Math.cos(q.dir) * speed; q.vy = Math.sin(q.dir) * speed;
+  q.x += q.vx * dt; q.y += q.vy * dt; clampIn(q);
+  if (Math.abs(q.vx) > 5) q.face = q.vx > 0 ? 1 : -1;
+}
+
+function boop(q, d) {
+  q.state = "boop"; q.boopT = 0.45;
+  q.dir = [0, Math.PI, Math.PI / 2, -Math.PI / 2].reduce((best, a) => { const ex = (a === 0 ? W - q.x : a === Math.PI ? q.x : a > 0 ? H - q.y : q.y); return ex < best[1] ? [a, ex] : best; }, [0, 1e9])[0];
+  const pts = PTS[q.type];
+  G.score += pts; G.caught++; G.totals[q.type]++; d.caught++;
+  if (!G.bird) G.birdMeter = Math.min(3, G.birdMeter + 1);
+  G.floaters.push({ x: q.x, y: q.y - 20, text: `Boop! +${pts}`, life: 1, col: "#fff" });
+  for (let i = 0; i < 8; i++) G.particles.push({ x: q.x, y: q.y - 10, vx: rnd(-70, 70), vy: rnd(-110, -30), life: 0.8, max: 0.8, kind: "heart", s: rnd(6, 10), g: 60 });
+  sfx.boop();
+}
+
+function spawnBird() {
+  const tx = rnd(120, W - 120), ty = rnd(110, H - 110);
+  G.bird = { x: tx < W / 2 ? W + 60 : -60, y: ty - 120, tx, ty, r: 34, state: "flyin", t: 0, life: 9, face: tx < W / 2 ? -1 : 1, flap: 0, dir: 0, turnT: 0 };
+  G.floaters.push({ x: W / 2, y: 70, text: "The Giant Golden Goose is here!", life: 2.2, col: "#ffe680", big: true });
+  sfx.birdArrive();
+}
+function updateBird(b, dt) {
+  b.t += dt; b.flap += dt * (b.state === "ground" ? 4 : 14);
+  if (b.state === "flyin") {
+    const dx = b.tx - b.x, dy = b.ty - b.y, m = Math.hypot(dx, dy);
+    if (m < 8) { b.state = "ground"; b.t = 0; }
+    else { const s = Math.min(m, 320 * dt); b.x += dx / m * s; b.y += dy / m * s; b.face = dx > 0 ? 1 : -1; }
+    return;
+  }
+  if (b.state === "flyout") { b.x += b.face * 260 * dt; b.y -= 160 * dt; if (b.y < -80) G.bird = null; return; }
+  b.life -= dt;
+  if (b.life <= 0) { b.state = "flyout"; G.floaters.push({ x: b.x, y: b.y - 40, text: "Honk! Bye!", life: 1.2, col: "#fff" }); return; }
+  const [d, dd] = nearestDog(b, false);
+  let a, sp;
+  if (d && dd < 170) { a = Math.atan2(b.y - d.y, b.x - d.x); sp = 120 + G.level * 4; }
+  else { b.turnT -= dt; if (b.turnT <= 0) { b.dir = rnd(0, 6.28); b.turnT = rnd(1, 2); } a = b.dir; sp = 50; }
+  b.x += Math.cos(a) * sp * dt; b.y += Math.sin(a) * sp * dt;
+  if (b.x < b.r + 20 || b.x > W - b.r - 20) b.dir = Math.PI - b.dir; if (b.y < b.r + 20 || b.y > H - b.r - 20) b.dir = -b.dir;
+  b.x = clamp(b.x, b.r, W - b.r); b.y = clamp(b.y, b.r, H - b.r);
+  if (Math.abs(Math.cos(a)) > 0.2) b.face = Math.cos(a) > 0 ? 1 : -1;
+  for (const dg of G.dogs) if (dist(dg, b) < dg.r + b.r * 0.8) {
+    const bonus = 100 + (G.level - 1) * 25;
+    G.score += bonus; G.birdsCaught++; dg.caught++;
+    G.floaters.push({ x: b.x, y: b.y - 50, text: `GIANT BOOP! +${bonus}`, life: 1.6, col: "#ffe680", big: true });
+    for (let i = 0; i < 26; i++) G.particles.push({ x: b.x, y: b.y - 10, vx: rnd(-160, 160), vy: rnd(-200, -40), life: 1.2, max: 1.2, kind: "feather", s: rnd(6, 11), g: 140, rot: rnd(0, 6) });
+    b.state = "flyout"; sfx.bird(); break;
+  }
+}
+
+function splash(d, msg) {
+  d.inv = 1.8; G.splashes++; G.shake = 1;
+  G.floaters.push({ x: d.x, y: d.y - 34, text: msg, life: 1.3, col: "#d6efff" });
+  for (let i = 0; i < 22; i++) G.particles.push({ x: d.x, y: d.y - 6, vx: rnd(-150, 150), vy: rnd(-180, 20), life: 0.7, max: 0.7, col: "#7cc4ff", s: rnd(3, 6), g: 300 });
+  sfx.splash();
+  if (G.splashes >= MAX_SPLASH) setTimeout(() => { if (screen === "play") gameOver("bath"); }, 450);
+}
+
+// ---------- Drawing ----------
+function drawLawn(t) {
+  ctx.fillStyle = "#5fa843"; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "rgba(255,255,255,0.06)";
+  const band = 70; for (let x = 0; x < W + band; x += band * 2) ctx.fillRect(x, 0, band, H);
+  if (!G) return;
+  for (const f of G.flowers) {
+    const x = f.x * W, y = f.y * H;
+    ctx.fillStyle = f.c; for (let i = 0; i < 5; i++) { const a = i * 1.2566; ctx.beginPath(); ctx.arc(x + Math.cos(a) * 3.2 * f.s, y + Math.sin(a) * 3.2 * f.s, 2.4 * f.s, 0, 7); ctx.fill(); }
+    ctx.fillStyle = "#f2a516"; ctx.beginPath(); ctx.arc(x, y, 1.8 * f.s, 0, 7); ctx.fill();
+  }
+  for (const m of G.muds) {
+    ctx.fillStyle = "#7a5534"; ctx.beginPath(); ctx.ellipse(m.x, m.y, m.rx, m.ry, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = "#5e3f25"; for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.ellipse(m.x + Math.cos(m.seed + i * 2) * m.rx * 0.5, m.y + Math.sin(m.seed + i * 1.3) * m.ry * 0.5, 9, 5, 0, 0, 7); ctx.fill(); }
+    ctx.fillStyle = "rgba(255,255,255,0.18)"; ctx.beginPath(); ctx.ellipse(m.x - m.rx * 0.3, m.y - m.ry * 0.35, m.rx * 0.25, 4, 0, 0, 7); ctx.fill();
+  }
+}
+function shadow(x, y, rx, ry) { ctx.fillStyle = "rgba(0,0,0,0.18)"; ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, 7); ctx.fill(); }
+
+function drawDog(d, t) {
+  const L = DOGS[d.id];
+  const moving = Math.hypot(d.vx, d.vy) > 20;
+  if (d.inv > 0 && Math.floor(t * 12) % 2 === 0 && screen === "play") ctx.globalAlpha = 0.45;
+  shadow(d.x, d.y + 18, 26, 7);
+  ctx.save(); ctx.translate(d.x, d.y); ctx.scale(d.face, 1);
+  const bounce = moving ? Math.abs(Math.sin(d.step * 2)) * 3 : 0;
+  // legs
+  ctx.fillStyle = L.fur;
+  const legs = [[-16, 0], [-8, Math.PI], [8, Math.PI / 2], [15, Math.PI * 1.5]];
+  for (const [lx, ph] of legs) { const sw = moving ? Math.sin(d.step * 2 + ph) * 5 : 0; roundRect(lx - 4 + sw, 4, 8, 15, 4); ctx.fill(); }
+  ctx.translate(0, -bounce);
+  // tail pom
+  const wag = Math.sin(t * (moving ? 18 : 8)) * 0.4;
+  ctx.save(); ctx.translate(-24, -6); ctx.rotate(-0.6 + wag); fluff(0, -8, 8, L.fur, L.curl); ctx.restore();
+  // body (curly)
+  ctx.fillStyle = L.fur; ctx.beginPath(); ctx.ellipse(-3, 0, 24, 14, 0, 0, 7); ctx.fill();
+  for (let i = 0; i < 9; i++) { const a = i / 9 * Math.PI * 2; ctx.beginPath(); ctx.arc(-3 + Math.cos(a) * 21, Math.sin(a) * 11.5, 6, 0, 7); ctx.fill(); }
+  curls(-3, -2, 18, 9, L.curl);
+  // head
+  ctx.save(); ctx.translate(17, -13);
+  ctx.fillStyle = L.ear; ctx.beginPath(); ctx.ellipse(-9, 6, 7, 13, 0.25, 0, 7); ctx.fill();
+  fluff(0, 0, 14, L.head, L.curl);
+  ctx.fillStyle = L.muzzle; ctx.beginPath(); ctx.ellipse(10, 4, 9, 7, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = L.chin; ctx.beginPath(); ctx.ellipse(10, 10, 6, 4, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = "#0b0a0c"; ctx.beginPath(); ctx.ellipse(17, 2, 4, 3.2, 0, 0, 7); ctx.fill();
+  // eyes
+  ctx.fillStyle = "#24160f"; ctx.beginPath(); ctx.arc(3, -4, 3.4, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(11, -5, 3, 0, 7); ctx.fill();
+  ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(4, -5.2, 1.2, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(11.8, -6, 1, 0, 7); ctx.fill();
+  ctx.fillStyle = L.ear; ctx.beginPath(); ctx.ellipse(-4, 4, 6, 12, 0.15, 0, 7); ctx.fill(); // near ear
+  ctx.restore();
+  // collar
+  ctx.strokeStyle = L.collar; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(14, -4, 9, 0.9, 2.4); ctx.stroke();
+  ctx.fillStyle = "#ffd34d"; ctx.beginPath(); ctx.arc(13, 5, 2.4, 0, 7); ctx.fill();
+  ctx.restore();
+  ctx.globalAlpha = 1;
+  if (G.dogs.length > 1) { ctx.font = "13px 'Lilita One', sans-serif"; ctx.textAlign = "center"; ctx.fillStyle = "rgba(29,51,36,.75)"; ctx.fillText(L.name, d.x, d.y - 42); }
+}
+function fluff(x, y, r, col, curl) {
+  ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+  for (let i = 0; i < 7; i++) { const a = i / 7 * Math.PI * 2; ctx.beginPath(); ctx.arc(x + Math.cos(a) * r * 0.85, y + Math.sin(a) * r * 0.85, r * 0.38, 0, 7); ctx.fill(); }
+  ctx.strokeStyle = curl; ctx.lineWidth = 1.5;
+  for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.arc(x + Math.cos(i * 1.7) * r * 0.45, y + Math.sin(i * 1.7) * r * 0.45 - 2, r * 0.18, 0.5, 4); ctx.stroke(); }
+}
+function curls(x, y, rx, ry, col) {
+  ctx.strokeStyle = col; ctx.lineWidth = 1.6;
+  for (let i = 0; i < 9; i++) { const a = i * 2.39; const cx = x + Math.cos(a) * rx * ((i % 3) / 3 + 0.2), cy = y + Math.sin(a) * ry * ((i % 3) / 3 + 0.2); ctx.beginPath(); ctx.arc(cx, cy, 3, 0.3, 4.2); ctx.stroke(); }
+}
+function roundRect(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+
+function drawSquirrel(q, t) {
+  const run = Math.hypot(q.vx, q.vy) > 30;
+  const hop = run ? Math.abs(Math.sin(q.t * 18)) * 4 : 0;
+  shadow(q.x, q.y + 10, 13, 4);
+  ctx.save(); ctx.translate(q.x, q.y - hop); ctx.scale(q.face, 1);
+  // tail
+  ctx.fillStyle = q.fur; ctx.beginPath(); ctx.ellipse(-13, -10, 8, 15, -0.4 + Math.sin(t * 6 + q.x) * 0.15, 0, 7); ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,.25)"; ctx.beginPath(); ctx.ellipse(-14, -12, 4, 10, -0.4, 0, 7); ctx.fill();
+  ctx.fillStyle = q.fur; ctx.beginPath(); ctx.ellipse(0, 0, 11, 8, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = "#e9d8c4"; ctx.beginPath(); ctx.ellipse(3, 3, 6, 4.5, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = q.fur; ctx.beginPath(); ctx.arc(9, -6, 6.5, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(6, -13, 2.2, 4, -0.2, 0, 7); ctx.fill();
+  ctx.fillStyle = "#1a1210"; ctx.beginPath(); ctx.arc(11, -7.5, 1.6, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(15.3, -5.4, 1.2, 0, 7); ctx.fill();
+  ctx.restore();
+  tiredMark(q);
+}
+function drawBunny(q) {
+  const hy = q.hop * 10;
+  shadow(q.x, q.y + 10, 13 - q.hop * 3, 4);
+  ctx.save(); ctx.translate(q.x, q.y - hy); ctx.scale(q.face, 1);
+  ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(-12, -2, 5, 0, 7); ctx.fill();
+  ctx.fillStyle = q.fur; ctx.beginPath(); ctx.ellipse(-1, 0, 12, 9, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(9, -6, 7, 0, 7); ctx.fill();
+  ctx.save(); ctx.translate(6, -12); ctx.rotate(-0.35 - q.hop * 0.4); ctx.beginPath(); ctx.ellipse(0, -8, 3, 9, 0, 0, 7); ctx.fill(); ctx.fillStyle = "#f3b9c4"; ctx.beginPath(); ctx.ellipse(0, -8, 1.4, 6, 0, 0, 7); ctx.fill(); ctx.restore();
+  ctx.save(); ctx.fillStyle = q.fur; ctx.translate(10, -12); ctx.rotate(-0.05 - q.hop * 0.4); ctx.beginPath(); ctx.ellipse(0, -8, 3, 9, 0, 0, 7); ctx.fill(); ctx.fillStyle = "#f3b9c4"; ctx.beginPath(); ctx.ellipse(0, -8, 1.4, 6, 0, 0, 7); ctx.fill(); ctx.restore();
+  ctx.fillStyle = "#1a1210"; ctx.beginPath(); ctx.arc(12, -7, 1.6, 0, 7); ctx.fill();
+  ctx.fillStyle = "#e88a9b"; ctx.beginPath(); ctx.arc(16, -5, 1.4, 0, 7); ctx.fill();
+  ctx.restore();
+  tiredMark(q);
+}
+function tiredMark(q) {
+  if (q.state === "boop") { ctx.font = "16px sans-serif"; ctx.textAlign = "center"; ctx.fillText("💕", q.x, q.y - 22); return; }
+  if (q.tired > 0) { ctx.fillStyle = "#bfe6ff"; ctx.beginPath(); ctx.ellipse(q.x + 10, q.y - 20 + Math.sin(q.t * 8) * 1.5, 2.5, 4, 0, 0, 7); ctx.fill(); }
+}
+function drawBird(b, t) {
+  const flying = b.state !== "ground";
+  if (!flying) shadow(b.x, b.y + 28, 34, 9); else shadow(b.x, Math.min(H - 20, b.y + 90), 28, 7);
+  ctx.save(); ctx.translate(b.x, b.y); ctx.scale(b.face, 1);
+  // glow
+  const g = ctx.createRadialGradient(0, 0, 10, 0, 0, 60); g.addColorStop(0, "rgba(255,230,120,.45)"); g.addColorStop(1, "rgba(255,230,120,0)"); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 60, 0, 7); ctx.fill();
+  // legs
+  ctx.strokeStyle = "#f08a1c"; ctx.lineWidth = 4; const st = flying ? 0 : Math.sin(b.flap) * 5;
+  ctx.beginPath(); ctx.moveTo(-6, 16); ctx.lineTo(-6 + st, 30); ctx.moveTo(6, 16); ctx.lineTo(6 - st, 30); ctx.stroke();
+  // body
+  ctx.fillStyle = "#fff6d8"; ctx.beginPath(); ctx.ellipse(0, 0, 34, 24, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = "#f4cf55"; ctx.beginPath(); ctx.ellipse(-30, -6, 10, 7, -0.5, 0, 7); ctx.fill();
+  // wing
+  const wf = flying ? Math.sin(b.flap) * 0.9 : Math.sin(b.flap) * 0.15;
+  ctx.save(); ctx.translate(-4, -4); ctx.rotate(-0.2 - wf); ctx.fillStyle = "#f7d76b"; ctx.beginPath(); ctx.ellipse(-8, -6, 22, 11, -0.3, 0, 7); ctx.fill(); ctx.restore();
+  // neck + head
+  ctx.fillStyle = "#fff6d8"; roundRect(18, -40, 13, 38, 6); ctx.fill();
+  ctx.beginPath(); ctx.arc(27, -40, 12, 0, 7); ctx.fill();
+  ctx.fillStyle = "#f08a1c"; ctx.beginPath(); ctx.moveTo(36, -44); ctx.lineTo(52, -38); ctx.lineTo(36, -34); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#1a1210"; ctx.beginPath(); ctx.arc(30, -43, 2.4, 0, 7); ctx.fill();
+  ctx.fillStyle = "#f6c531"; ctx.beginPath(); ctx.moveTo(18, -50); ctx.lineTo(21, -60); ctx.lineTo(25, -53); ctx.lineTo(29, -62); ctx.lineTo(32, -52); ctx.lineTo(36, -58); ctx.lineTo(36, -48); ctx.closePath(); ctx.fill();
+  ctx.restore();
+  if (b.state === "ground") { // countdown ring
+    ctx.strokeStyle = "rgba(255,255,255,.85)"; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(b.x, b.y - 74, 9, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (b.life / 9)); ctx.stroke();
+  }
+}
+function drawTub(tb, t) {
+  shadow(tb.x, tb.y + 22, 32, 7);
+  ctx.save(); ctx.translate(tb.x, tb.y + Math.sin(tb.wob * 2) * 1.5);
+  ctx.fillStyle = "#c7a24a"; [-20, 20].forEach((x) => { ctx.beginPath(); ctx.arc(x, 18, 5, 0, 7); ctx.fill(); });
+  ctx.fillStyle = "#fbfdff"; roundRect(-32, -10, 64, 30, 14); ctx.fill();
+  ctx.strokeStyle = "#c9d6e0"; ctx.lineWidth = 3; ctx.stroke();
+  for (let i = 0; i < 8; i++) { const x = -26 + i * 7.5, y = -12 - Math.abs(Math.sin(tb.wob + i)) * 5; ctx.fillStyle = "#e4f4ff"; ctx.beginPath(); ctx.arc(x, y, 7, 0, 7); ctx.fill(); ctx.strokeStyle = "#b8ddf7"; ctx.lineWidth = 1.5; ctx.stroke(); }
+  // rubber duck
+  ctx.fillStyle = "#ffd23f"; ctx.beginPath(); ctx.ellipse(12, -20, 7, 5, 0, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(17, -26, 4, 0, 7); ctx.fill();
+  ctx.fillStyle = "#f08a1c"; ctx.beginPath(); ctx.moveTo(20, -27); ctx.lineTo(25, -25); ctx.lineTo(20, -24); ctx.fill();
+  // friendly face
+  ctx.fillStyle = "#26323a"; ctx.beginPath(); ctx.arc(-8, 3, 2.6, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(8, 3, 2.6, 0, 7); ctx.fill();
+  ctx.strokeStyle = "#26323a"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 8, 5, 0.2, Math.PI - 0.2); ctx.stroke();
+  ctx.fillStyle = "rgba(255,140,160,.5)"; ctx.beginPath(); ctx.arc(-15, 8, 3.5, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(15, 8, 3.5, 0, 7); ctx.fill();
+  ctx.restore();
+}
+function drawSprinkler(s) {
+  for (let a = 0; a < s.arms; a++) {
+    const ang = s.ang + a * Math.PI;
+    ctx.fillStyle = "rgba(140,205,255,0.28)"; ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.arc(s.x, s.y, s.len, ang - s.width / 2, ang + s.width / 2); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = "rgba(220,240,255,.9)"; ctx.lineWidth = 3; ctx.setLineDash([6, 8]); ctx.lineDashOffset = -performance.now() / 20;
+    ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(s.x + Math.cos(ang) * s.len, s.y + Math.sin(ang) * s.len); ctx.stroke(); ctx.setLineDash([]);
+  }
+  ctx.fillStyle = "#2e7d4f"; ctx.beginPath(); ctx.arc(s.x, s.y, 11, 0, 7); ctx.fill();
+  ctx.fillStyle = "#ffd23f"; ctx.beginPath(); ctx.arc(s.x, s.y, 5, 0, 7); ctx.fill();
+}
+function drawHeart(x, y, s) { ctx.beginPath(); ctx.moveTo(x, y + s * 0.35); ctx.bezierCurveTo(x - s, y - s * 0.4, x - s * 0.4, y - s, x, y - s * 0.45); ctx.bezierCurveTo(x + s * 0.4, y - s, x + s, y - s * 0.4, x, y + s * 0.35); ctx.fill(); }
+
+function draw(t) {
+  ctx.setTransform(dpr * k, 0, 0, dpr * k, 0, 0);
+  if (G && G.shake > 0) ctx.translate(rnd(-1, 1) * G.shake * 5, rnd(-1, 1) * G.shake * 5);
+  drawLawn(t);
+  if (!G) return;
+  for (const s of G.sprinklers) drawSprinkler(s);
+  const list = [...G.critters.map((q) => ({ y: q.y, f: () => (q.type === "bunny" ? drawBunny(q) : drawSquirrel(q, t)) })), ...G.dogs.map((d) => ({ y: d.y, f: () => drawDog(d, t) })), ...G.tubs.map((tb) => ({ y: tb.y, f: () => drawTub(tb, t) }))];
+  if (G.bird && G.bird.state === "ground") list.push({ y: G.bird.y, f: () => drawBird(G.bird, t) });
+  list.sort((a, b) => a.y - b.y).forEach((o) => o.f());
+  if (G.bird && G.bird.state !== "ground") drawBird(G.bird, t);
+  for (const p of G.particles) {
+    ctx.globalAlpha = Math.max(0, p.life / p.max);
+    if (p.kind === "heart") { ctx.fillStyle = "#ff6f91"; drawHeart(p.x, p.y, p.s); }
+    else if (p.kind === "feather") { ctx.save(); ctx.translate(p.x, p.y); ctx.rotate((p.rot += 0.1)); ctx.fillStyle = "#ffe27a"; ctx.beginPath(); ctx.ellipse(0, 0, p.s, p.s * 0.35, 0, 0, 7); ctx.fill(); ctx.restore(); }
+    else { ctx.fillStyle = p.col; ctx.beginPath(); ctx.arc(p.x, p.y, p.s, 0, 7); ctx.fill(); }
+  }
+  ctx.globalAlpha = 1;
+  ctx.textAlign = "center";
+  for (const f of G.floaters) {
+    ctx.globalAlpha = Math.min(1, f.life * 2);
+    ctx.font = (f.big ? "26px" : "18px") + " 'Lilita One', sans-serif";
+    ctx.lineWidth = 5; ctx.strokeStyle = "rgba(29,51,36,.85)"; ctx.strokeText(f.text, f.x, f.y);
+    ctx.fillStyle = f.col; ctx.fillText(f.text, f.x, f.y);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ---------- HUD ----------
+let hudCache = {};
+function setText(id, v) { if (hudCache[id] !== v) { hudCache[id] = v; $(id).textContent = v; } }
+function hud() {
+  if (!G) return;
+  setText("lvl", String(G.level)); setText("score", String(G.score));
+  setText("caught", `${Math.min(G.caught, G.cfg.goal)}/${G.cfg.goal}`);
+  const tm = Math.ceil(G.time); setText("time", String(tm)); $("time").classList.toggle("low", tm <= 10);
+  $("goalfill").style.width = Math.min(100, G.caught / G.cfg.goal * 100) + "%";
+  const bp = G.bird ? "bird" : "m" + G.birdMeter;
+  if (hudCache.bp !== bp) { hudCache.bp = bp; $("birdpips").innerHTML = [0, 1, 2].map((i) => `<span class="pip ${G.bird || i < G.birdMeter ? "on" : ""}">🪶</span>`).join(""); }
+  const sp = "s" + G.splashes;
+  if (hudCache.sp !== sp) { hudCache.sp = sp; $("splashpips").innerHTML = [0, 1, 2].map((i) => `<span class="pip ${i < G.splashes ? "on" : ""}">💧</span>`).join(""); }
+}
+
+// ---------- Screens ----------
+const overlays = ["titleScreen", "levelScreen", "pauseScreen", "overScreen"];
+function show(id) { overlays.forEach((o) => ($(o).hidden = o !== id)); }
+function dogLabel() { return mode === "both" ? "Hercules & Apollo" : DOGS[mode].name; }
+
+function intro(cleared) {
+  screen = "intro";
+  const c = G.cfg, n = G.level;
+  $("lsTitle").textContent = cleared ? `Level ${n - 1} cleared!` : `Level ${n}: ${LEVEL_NAMES[(n - 1) % LEVEL_NAMES.length]}`;
+  const notes = [];
+  if (n === 1) notes.push("Chase squirrels and bunnies around the yard. Get close and they get a boop.");
+  if (c.mud && n === 2) notes.push("New: mud puddles slow your paws.");
+  if (c.sprinklers && levelCfg(n - 1).sprinklers < c.sprinklers) notes.push(c.sprinklers === 1 ? "New: a sprinkler! Stay out of the spray." : "One more sprinkler joins the yard.");
+  if (c.tubs && levelCfg(n - 1).tubs < c.tubs) notes.push(c.tubs === 1 ? "New: Mr. Bubbles the bathtub rolls after you. Don't let it catch you!" : "Another bathtub is on the loose!");
+  if (c.doubleArm && n === 6) notes.push("Sprinklers now spray both ways.");
+  if (n > 1) notes.push("The critters are a little quicker now. Chase them into corners, they get tired!");
+  if (cleared) notes.unshift(`Next up, level ${n}: ${LEVEL_NAMES[(n - 1) % LEVEL_NAMES.length]}.`);
+  notes.push(`Boop ${c.goal} critters in ${c.time} seconds.`);
+  $("lsText").textContent = notes.join(" ");
+  $("lsTally").innerHTML = cleared ? tally([["Score", G.score], ["Time bonus", "+" + G.lastBonus], ["Splash meter", G.splashes + " / " + MAX_SPLASH]]) : tally([["Goal", c.goal], ["Seconds", c.time], ["Score", G.score]]);
+  $("lsGo").textContent = cleared ? "Next level" : "Let's go!";
+  show("levelScreen"); $("lsGo").focus();
+}
+function tally(rows) { return rows.map(([l, v]) => `<div><b>${v}</b><span>${l}</span></div>`).join(""); }
+function startLevel() { screen = "play"; show(null); hudCache = {}; ac(); last = performance.now(); }
+function pause() { screen = "pause"; show("pauseScreen"); $("pauseBtn").textContent = "Resume"; $("resumeBtn").focus(); }
+function resume() { screen = "play"; show(null); $("pauseBtn").textContent = "Pause"; last = performance.now(); }
+$("pauseBtn").onclick = () => { if (screen === "play") pause(); else if (screen === "pause") resume(); };
+$("resumeBtn").onclick = resume;
+$("quitBtn").onclick = () => { $("pauseBtn").textContent = "Pause"; toTitle(); };
+$("lsGo").onclick = startLevel;
+
+function levelClear() {
+  const bonus = Math.ceil(G.time) * 5;
+  G.score += bonus; G.lastBonus = bonus;
+  G.splashes = Math.max(0, G.splashes - 1);
+  sfx.level();
+  G.level++; setupLevel(); hud();
+  intro(true);
+}
+
+function gameOver(reason) {
+  screen = "over"; sfx.over();
+  const who = dogLabel(), plural = mode === "both";
+  const ids = mode === "both" ? ["hercules", "apollo"] : [mode];
+  const imgs = ids.map((id) => `<img src="${DOGS[id].photo}" alt="">`).join("");
+  if (reason === "bath") {
+    $("goTitle").textContent = "Bath time!";
+    $("goText").textContent = `${who} ${plural ? "got" : "got"} too soggy from all that splashing. Into the bubble bath ${plural ? "they go" : "for a scrub"}, then a cozy towel and a treat.`;
+    $("goArt").innerHTML = `<div class="portrait ${plural ? "pair" : ""}">${imgs}<div class="tub"></div>${[[8, 70, 22], [30, 60, 18], [96, 64, 20], [118, 72, 16], [60, 78, 14]].map(([x, y, s], i) => `<span class="bubble" style="left:${x}px;top:${y}px;width:${s}px;height:${s}px;animation-delay:${i * 0.3}s"></span>`).join("")}</div>`;
+  } else {
+    $("goTitle").textContent = "Nap time!";
+    $("goText").textContent = `The clock ran out and ${who} ${plural ? "are" : "is"} all tuckered out. Time for a snooze on the couch. The squirrels will be back tomorrow.`;
+    $("goArt").innerHTML = `<div class="portrait ${plural ? "pair" : ""}">${imgs}<div class="blanket"></div><span class="zzz">Zzz</span></div>`;
+  }
+  const rows = [["Final score", G.score], ["Level reached", G.level], ["Squirrels", G.totals.squirrel], ["Bunnies", G.totals.bunny], ["Giant geese", G.birdsCaught]];
+  if (plural) G.dogs.forEach((d) => rows.push([DOGS[d.id].name + " boops", d.caught]));
+  $("goTally").innerHTML = tally(rows);
+  $("saveForm").hidden = G.score <= 0;
+  $("saveBtn").disabled = false; $("saveBtn").textContent = "Save score";
+  try { $("nameIn").value = localStorage.getItem("bb_name") || ""; } catch (e) {}
+  lastSaved = null; renderScores();
+  show("overScreen");
+  setTimeout(() => { (G.score > 0 ? $("nameIn") : $("againBtn")).focus(); }, 50);
+}
+function toTitle() { screen = "title"; G = null; hudCache = {}; resetHud(); renderScores(); show("titleScreen"); }
+function resetHud() { ["lvl", "score", "caught", "time"].forEach((id) => ($(id).textContent = id === "lvl" ? "1" : id === "caught" ? "0/5" : id === "time" ? levelCfg(1).time : "0")); $("goalfill").style.width = "0"; $("birdpips").innerHTML = "<span class='pip'>🪶</span>".repeat(3); $("splashpips").innerHTML = "<span class='pip'>💧</span>".repeat(3); }
+$("againBtn").onclick = () => { newGame(); intro(false); };
+$("menuBtn").onclick = toTitle;
+document.querySelectorAll("[data-pick]").forEach((b) => (b.onclick = () => { ac(); mode = b.dataset.pick; newGame(); intro(false); }));
+
+// ---------- High scores ----------
+let db = null, remote = null;
+function localScores() { try { return JSON.parse(localStorage.getItem("bb_scores") || "[]"); } catch (e) { return []; } }
+function saveLocal(s) { try { const l = localScores(); l.push(s); l.sort((a, b) => b.score - a.score); localStorage.setItem("bb_scores", JSON.stringify(l.slice(0, 10))); } catch (e) {} }
+function renderScores() {
+  const list = (remote || localScores()).slice(0, 10);
+  document.querySelectorAll(".sbTitle").forEach((h) => (h.textContent = remote ? "Family high scores" : "High scores"));
+  document.querySelectorAll(".sbBody").forEach((box) => {
+    box.textContent = "";
+    if (!list.length) { const p = document.createElement("p"); p.className = "empty"; p.textContent = "No scores yet. Be the first top dog!"; box.append(p); return; }
+    const tb = document.createElement("table"); tb.className = "scores";
+    tb.innerHTML = "<thead><tr><th>#</th><th>Player</th><th>Dog</th><th>Level</th><th style='text-align:right'>Score</th></tr></thead>";
+    const body = document.createElement("tbody");
+    list.forEach((s, i) => {
+      const tr = document.createElement("tr");
+      if (lastSaved && s.at === lastSaved.at && s.name === lastSaved.name) tr.className = "me";
+      const td = (txt, cls) => { const c = document.createElement("td"); if (cls) c.className = cls; c.textContent = txt; tr.append(c); return c; };
+      td(String(i + 1)); td(String(s.name || "Pup").slice(0, 14));
+      const w = td(""); const span = document.createElement("span"); span.className = "who";
+      (s.dog === "both" ? ["hercules", "apollo"] : [s.dog]).forEach((id) => { if (DOGS[id]) { const im = document.createElement("img"); im.src = DOGS[id].photo; im.alt = DOGS[id].name; span.append(im); } });
+      w.append(span);
+      td(String(s.level || 1)); td(String(s.score || 0), "n");
+      body.append(tr);
+    });
+    tb.append(body); box.append(tb);
+  });
+}
+$("saveForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!G || $("saveBtn").disabled) return;
+  const name = ($("nameIn").value.trim() || "Pup").slice(0, 14);
+  try { localStorage.setItem("bb_name", name); } catch (err) {}
+  const entry = { name, dog: mode, score: G.score, level: G.level, at: Date.now() };
+  lastSaved = entry; saveLocal(entry);
+  $("saveBtn").disabled = true; $("saveBtn").textContent = "Saved!";
+  if (db) { try { await db.collection("scores").add(entry); } catch (err) { $("saveBtn").textContent = "Saved on this device"; } }
+  renderScores();
+});
+(async () => {
+  try {
+    if (!window.claude || !window.claude.use) return;
+    db = await window.claude.use("db");
+    if (!db) return;
+    db.collection("scores").orderBy("score", "desc").limit(10).onSnapshot(
+      (snap) => { remote = snap.docs.map((d) => d.data()); renderScores(); },
+      () => { db = null; remote = null; renderScores(); }
+    );
+  } catch (e) { db = null; }
+})();
+
+// ---------- Loop ----------
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const t = now / 1000;
+  if (screen === "play" && G) { update(dt); hud(); }
+  draw(t);
+  requestAnimationFrame(frame);
+}
+resize(); resetHud(); renderScores(); show("titleScreen");
+requestAnimationFrame(frame);
+})();
+</script>
