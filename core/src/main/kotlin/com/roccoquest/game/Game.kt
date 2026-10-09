@@ -687,7 +687,7 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
             if (t == T.EMPTY || tx < 0 || tx >= level.w) continue
             val s = tileSprite(t, tx, ty) ?: continue
             var dy = 0f
-            for (b in bumps) if (b.tx == tx && b.ty == ty) dy = -sin(b.t / 0.2f * Math.PI.toFloat()) * 5f
+            for (b in bumps) if (b.tx == tx && b.ty == ty) dy = -sin(b.t / 0.2f * kotlin.math.PI.toFloat()) * 5f
             gfx.sprite(s, tx * TILE - cam, ty * TILE + dy, flipX = t == T.LAVA && lavaFlip)
         }
     }

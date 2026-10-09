@@ -1,5 +1,7 @@
 package com.roccoquest.game
 
+import kotlin.concurrent.Volatile
+
 /**
  * Platform-neutral drawing surface. All coordinates are in virtual game pixels
  * (the view is always [VIEW_H] pixels tall); implementations scale to the screen.
