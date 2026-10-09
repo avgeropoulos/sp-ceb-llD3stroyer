@@ -3,6 +3,7 @@ package com.roccoquest.game
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sign
 import kotlin.math.sin
 
 /**
@@ -43,6 +44,10 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
     var bossDefeated = false
         private set
     private var bossBannerTime = 0f
+    private var bannerTitle = ""
+    private var bannerSub = ""
+    /** While Krag Jr. is attacking, the camera is locked so the fight stays on one screen. */
+    private var camLock: Float? = null
 
     private var flagX = -1f
     private var flagTopY = 0f
@@ -56,6 +61,10 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
     private var prevJump = false
     private var prevFire = false
     private var prevPause = false
+    private var prevDown = false
+    private var prevDir = 0
+    private var lastTapDir = 0
+    private var lastTapTime = -10f
     private var prevMusicToggle = false
     var musicOn = true
         private set
@@ -67,6 +76,12 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
     fun sfx(s: Sound) = sound.play(s)
     fun spawn(e: Entity) { pending += e }
     fun puff(x: Float, y: Float) { particles += Puff(x, y) }
+    fun debris(x: Float, y: Float, c: Int) {
+        particles += Debris(x, y, -60f, -320f, c)
+        particles += Debris(x + 8, y, 60f, -320f, c)
+        particles += Debris(x, y + 8, -60f, -220f, c)
+        particles += Debris(x + 8, y + 8, 60f, -220f, c)
+    }
     fun addScore(n: Int, x: Float, y: Float) {
         score += n
         particles += FloatText(x, y, n.toString())
@@ -100,6 +115,7 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         castleX = -1f
         bossDefeated = false
         bossBannerTime = 0f
+        camLock = null
         camX = 0f
         for (ty in 0 until level.h) for (tx in 0 until level.w) {
             val px = tx * TILE.toFloat()
@@ -114,6 +130,7 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
                 'c' -> entities += Coin(px, py)
                 'p' -> entities += Podoboo(px, py)
                 'K' -> entities += Krag(px, bottom, level.def.bossHp)
+                'J' -> entities += KragJr(px, bottom)
                 'R' -> entities += Princess(px, bottom)
                 'A' -> entities += Axe(px, bottom)
                 'E' -> entities += Door(px, bottom)
@@ -147,6 +164,8 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         val jumpPressed = input.jump && !prevJump
         val firePressed = input.fire && !prevFire
         val pausePressed = input.pause && !prevPause
+        val downPressed = input.down && !prevDown
+        prevDown = input.down
         if (input.musicToggle && !prevMusicToggle) musicOn = !musicOn
         prevMusicToggle = input.musicToggle
         prevJump = input.jump
@@ -165,7 +184,7 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
             State.TITLE -> if (tap && stateTime > 0.3f) newGame()
             State.INTRO -> if (stateTime > 2.2f) setState(State.PLAYING)
             State.PLAYING -> {
-                updateHero(dt, jumpPressed, firePressed)
+                updateHero(dt, jumpPressed, firePressed, downPressed)
                 updateWorld(dt)
                 if (state == State.PLAYING) interact(dt)
                 updateCamera()
@@ -198,56 +217,171 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         updateMusic()
     }
 
-    private fun updateHero(dt: Float, jumpPressed: Boolean, firePressed: Boolean) {
+    private fun updateHero(dt: Float, jumpPressed: Boolean, firePressed: Boolean, downPressed: Boolean) {
         val h = hero
-        val dir = (if (input.right) 1 else 0) - (if (input.left) 1 else 0)
-        if (dir != 0) {
-            val acc = if (h.onGround) 600f else 420f
+        val mini = h.power == Power.MINI
+        var dir = (if (input.right) 1 else 0) - (if (input.left) 1 else 0)
+
+        // Double-tap a direction (and keep holding it) to run.
+        if (dir != 0 && dir != prevDir) {
+            h.running = dir == lastTapDir && time - lastTapTime < 0.35f
+            lastTapDir = dir
+            lastTapTime = time
+        }
+        if (dir == 0) h.running = false
+        prevDir = dir
+        val running = h.running || input.run
+
+        // Hold down on the ground to crouch (big Rocco stays down under low ceilings).
+        val wantCrouch = input.down && h.onGround && !h.slamming
+        if (wantCrouch && !h.crouching) h.crouching = true
+        if (!wantCrouch && h.crouching && !(h.power.isBig && ceilingAbove(h))) h.crouching = false
+        if (h.crouching && h.onGround) dir = 0
+
+        // Swipe down in mid-air for a butt slam.
+        if (downPressed && !h.onGround && !h.slamming) {
+            h.slamming = true
+            h.slamPause = 0.18f
+            h.crouching = false
+            h.vx = 0f
+            h.vy = 0f
+        }
+
+        val slippery = level.def.theme.slippery && h.onGround
+        if (h.slamming) {
+            h.vx = 0f
+        } else if (dir != 0) {
+            val acc = if (!h.onGround) 420f else if (slippery) 260f else 600f
             h.vx += dir * acc * dt
             if (h.onGround && h.vx * dir < 0) h.vx += dir * acc * dt // skid
             h.facing = dir
         } else {
-            h.vx = approach(h.vx, 0f, (if (h.onGround) 520f else 120f) * dt)
+            val friction = when {
+                !h.onGround -> 120f
+                slippery -> 110f
+                h.crouching -> 300f
+                else -> 520f
+            }
+            h.vx = approach(h.vx, 0f, friction * dt)
         }
-        h.vx = h.vx.coerceIn(-Hero.MAX_SPEED, Hero.MAX_SPEED)
+        val maxV = if (running) Hero.RUN_SPEED else Hero.MAX_SPEED
+        if (abs(h.vx) > maxV) h.vx = approach(h.vx, sign(h.vx) * maxV, 400f * dt)
 
         h.coyote = if (h.onGround) 0.1f else h.coyote - dt
         h.jumpBuffer = if (jumpPressed) 0.12f else h.jumpBuffer - dt
-        if (h.jumpBuffer > 0 && h.coyote > 0) {
-            h.vy = Hero.JUMP_V - abs(h.vx) * 0.15f
+        if (h.jumpBuffer > 0 && h.coyote > 0 && !h.slamming) {
+            h.vy = (if (mini) -300f else Hero.JUMP_V) - abs(h.vx) * 0.15f
             h.jumpBuffer = 0f
             h.coyote = 0f
             h.onGround = false
             sfx(Sound.JUMP)
         }
         h.jumpHeld = input.jump
-        val grav = if (h.vy < 0 && h.jumpHeld) 600f else 1500f
-        h.vy = min(h.vy + grav * dt, 420f)
+        if (h.slamming) {
+            if (h.slamPause > 0) { h.slamPause -= dt; h.vy = 0f } else h.vy = 480f
+        } else {
+            var grav = if (h.vy < 0 && h.jumpHeld) 600f else 1500f
+            var maxFall = 420f
+            if (mini) { grav *= 0.55f; maxFall = 200f } // Mini Rocco floats
+            h.vy = min(h.vy + grav * dt, maxFall)
+        }
 
         heroPrevBottom = h.bottom
         if (level.moveX(h, h.vx * dt)) h.vx = 0f
         if (h.x < camX) { h.x = camX; if (h.vx < 0) h.vx = 0f }
+        if (camLock != null && h.x + h.w > camX + viewW) { h.x = camX + viewW - h.w; if (h.vx > 0) h.vx = 0f }
         val ceilX = level.moveY(h, h.vy * dt)
-        if (ceilX != null) {
+        if (ceilX != null && !h.slamming) {
             h.vy = 30f
             hitBlock(ceilX, tileOf(h.y - 1))
         }
+        landOnFrozenBlocks(h)
+        if (h.slamming && h.onGround) slamImpact(h)
         h.walkAnim += abs(h.vx) * dt / 7f
 
-        if (firePressed && h.power == Power.FIRE && entities.count { it is Fireball } + pending.count { it is Fireball } < 2) {
+        if (firePressed && h.power.canThrow && !h.crouching && !h.slamming) {
             val fx = if (h.facing > 0) h.x + h.w else h.x - 8
-            spawn(Fireball(fx, h.y + 6, h.facing))
+            val shots = entities.count { it is Fireball } + pending.count { it is Fireball }
+            val booms = entities.count { it is Boomerang } + pending.count { it is Boomerang }
+            when {
+                h.power == Power.BOOM && booms == 0 -> { spawn(Boomerang(fx, h.y + 5, h.facing)); sfx(Sound.KICK) }
+                h.power != Power.BOOM && shots < 2 -> {
+                    spawn(Fireball(fx, h.y + 6, h.facing, ice = h.power == Power.ICE))
+                    sfx(Sound.FIRE)
+                }
+            }
             h.throwAnim = 0.15f
-            sfx(Sound.FIRE)
         }
         h.throwAnim -= dt
         h.invuln -= dt
         h.flash -= dt
+        h.starTime -= dt
 
         if (level.isLavaAt(h.cx, h.bottom - 3) || h.y > level.h * TILE + 8) die()
     }
 
-    private fun hitBlock(tx: Int, ty: Int) {
+    /** True if there is no room for big Rocco to stand up. */
+    private fun ceilingAbove(h: Hero): Boolean {
+        val top = tileOf(h.bottom - Hero.BIG_H)
+        val bot = tileOf(h.y - 0.01f)
+        for (ty in top..bot) for (tx in tileOf(h.x)..tileOf(h.x + h.w - 0.01f)) if (level.solid(tx, ty)) return true
+        return false
+    }
+
+    /** Frozen enemies are platforms; a butt slam shatters them. */
+    private fun landOnFrozenBlocks(h: Hero) {
+        if (h.vy < 0) return
+        for (e in entities) {
+            if (e !is FrozenBlock || e.removed) continue
+            if (h.x + h.w <= e.x || h.x >= e.x + e.w || heroPrevBottom > e.y + 0.5f || h.bottom < e.y) continue
+            if (h.slamming && h.slamPause <= 0) {
+                e.shatter(this)
+                addScore(100, e.cx, e.y)
+                continue
+            }
+            h.y = e.y - h.h
+            h.vy = 0f
+            h.onGround = true
+        }
+    }
+
+    /** A butt slam smashes bricks (and keeps going), opens ? blocks and shakes enemies loose. */
+    private fun slamImpact(h: Hero) {
+        val row = tileOf(h.bottom + 1)
+        var broke = false
+        for (tx in tileOf(h.x)..tileOf(h.x + h.w - 0.01f)) {
+            when (level[tx, row]) {
+                T.BRICK -> if (h.power != Power.MINI) { breakBrick(tx, row); broke = true }
+                T.QCOIN, T.QPOWER -> hitBlock(tx, row, fromAbove = true)
+            }
+        }
+        if (broke) {
+            h.onGround = false
+            return
+        }
+        h.slamming = false
+        puff(h.cx - 8, h.bottom - 2)
+        puff(h.cx + 8, h.bottom - 2)
+        sfx(Sound.STOMP)
+        for (e in entities) {
+            if (e is Enemy && !e.dying && e.active && !e.spiky && e !is KragJr &&
+                abs(e.bottom - h.bottom) < 4f && abs(e.cx - h.cx) < 44f
+            ) {
+                e.knockOut(this)
+                addScore(100, e.cx, e.y)
+            }
+        }
+    }
+
+    private fun breakBrick(tx: Int, ty: Int) {
+        level[tx, ty] = T.EMPTY
+        val c = if (level.def.theme == Theme.UNDERGROUND) 0xFF2C64B8.toInt() else 0xFFC84C0C.toInt()
+        debris(tx * TILE.toFloat(), ty * TILE.toFloat(), c)
+        score += 50
+        sfx(Sound.BREAK)
+    }
+
+    private fun hitBlock(tx: Int, ty: Int, fromAbove: Boolean = false) {
         when (level[tx, ty]) {
             T.QCOIN -> {
                 level[tx, ty] = T.USED
@@ -256,23 +390,15 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
                 collectCoin(tx * TILE + 8f, ty * TILE - 20f)
             }
             T.QPOWER -> {
+                val item = level.itemAt(tx, ty)
                 level[tx, ty] = T.USED
                 bumps += Bump(tx, ty)
-                spawn(Blossom(tx * TILE.toFloat(), ty * TILE.toFloat()))
+                spawn(PowerItem(tx * TILE.toFloat(), ty * TILE.toFloat(), item))
                 sfx(Sound.BUMP)
             }
             T.BRICK -> {
-                if (hero.power != Power.SMALL) {
-                    level[tx, ty] = T.EMPTY
-                    val bx = tx * TILE.toFloat()
-                    val by = ty * TILE.toFloat()
-                    val c = if (level.def.theme == Theme.UNDERGROUND) 0xFF2C64B8.toInt() else 0xFFC84C0C.toInt()
-                    particles += Debris(bx, by, -60f, -320f, c)
-                    particles += Debris(bx + 8, by, 60f, -320f, c)
-                    particles += Debris(bx, by + 8, -60f, -220f, c)
-                    particles += Debris(bx + 8, by + 8, 60f, -220f, c)
-                    score += 50
-                    sfx(Sound.BREAK)
+                if (hero.power.isBig) {
+                    breakBrick(tx, ty)
                 } else {
                     bumps += Bump(tx, ty)
                     sfx(Sound.BUMP)
@@ -280,6 +406,7 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
             }
             else -> sfx(Sound.BUMP)
         }
+        if (fromAbove) return
         // Enemies standing on a bumped block get knocked out.
         val top = ty * TILE.toFloat()
         for (e in entities) {
@@ -292,7 +419,7 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         }
     }
 
-    private fun collectCoin(x: Float, y: Float) {
+    fun collectCoin(x: Float, y: Float) {
         coins++
         score += 200
         if (coins >= 100) {
@@ -309,7 +436,7 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         for (e in entities) {
             if (!e.active && e.x < camX + viewW + 48 && e.x + e.w > camX - 48) e.active = true
             if (e.active && !e.removed) e.update(this, dt)
-            if (e is Enemy && e !is Krag && e.x + e.w < camX - 96) e.removed = true
+            if (e is Enemy && e !is Krag && e !is KragJr && e.x + e.w < camX - 96) e.removed = true
         }
         entities += pending
         pending.clear()
@@ -331,20 +458,31 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
             when (e) {
                 is Enemy -> {
                     if (e.dying || (e is Grumbler && e.isSquashed)) continue
-                    if (e.stompable && h.vy > 0 && heroPrevBottom <= e.y + 6) {
+                    if (h.starTime > 0) { e.starHit(this); continue }
+                    val fromAbove = h.vy > 0 && heroPrevBottom <= e.y + 6
+                    if (fromAbove && h.slamming && !e.spiky) {
+                        if (e is KragJr) {
+                            e.damage(this, 3)
+                            h.slamming = false
+                            h.vy = -320f
+                            h.y = e.y - h.h
+                        } else {
+                            // The slam ploughs straight through.
+                            e.knockOut(this)
+                            addScore(200, e.cx, e.y)
+                        }
+                    } else if (fromAbove && e.stompable) {
                         e.stomp(this)
+                        h.slamming = false
                         h.vy = if (input.jump) -340f else -210f
                         h.y = e.y - h.h
                     } else {
                         e.touchHero(this)
                     }
                 }
-                is Blossom -> if (e.ready) {
+                is PowerItem -> if (e.ready) {
                     e.removed = true
-                    if (h.power == Power.SMALL) h.power = Power.FIRE
-                    h.flash = 0.6f
-                    addScore(1000, e.cx, e.y)
-                    sfx(Sound.POWERUP)
+                    collectItem(e)
                 }
                 is Coin -> { e.removed = true; collectCoin(e.cx, e.y) }
                 is Axe -> { e.removed = true; startCollapse() }
@@ -385,20 +523,39 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         }
     }
 
+    private fun collectItem(item: PowerItem) {
+        val h = hero
+        when (item.kind) {
+            Item.MUSHROOM -> if (!h.power.isBig) h.power = Power.BIG
+            Item.FIRE -> h.power = Power.FIRE
+            Item.ICE -> h.power = Power.ICE
+            Item.BOOM -> h.power = Power.BOOM
+            Item.MINI -> h.power = Power.MINI
+            Item.STAR -> h.starTime = Hero.STAR_TIME
+        }
+        h.flash = 0.6f
+        addScore(1000, item.cx, item.y)
+        sfx(Sound.POWERUP)
+    }
+
+    /** Flower powers drop back to big Rocco, big Rocco to small; small or mini Rocco loses a life. */
     fun hurtHero() {
         val h = hero
-        if (h.invuln > 0 || state != State.PLAYING) return
-        if (h.power == Power.FIRE) {
-            h.power = Power.SMALL
-            h.invuln = 2f
-            sfx(Sound.HURT)
-        } else {
-            die()
+        if (h.invuln > 0 || h.starTime > 0 || state != State.PLAYING) return
+        when {
+            h.power.canThrow -> h.power = Power.BIG
+            h.power == Power.BIG -> h.power = Power.SMALL
+            else -> { die(); return }
         }
+        h.invuln = 2f
+        sfx(Sound.HURT)
     }
 
     private fun die() {
         if (state != State.PLAYING) return
+        hero.crouching = false
+        hero.slamming = false
+        hero.starTime = 0f
         hero.power = Power.SMALL
         hero.vy = -330f
         hero.invuln = 0f
@@ -406,9 +563,24 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         setState(State.DYING)
     }
 
+    fun onJrEngaged() {
+        camLock = camX
+    }
+
+    fun onJrDefeated() {
+        camLock = null
+        for (e in entities) if (e is SpikeBall) e.knockOut(this)
+        bannerTitle = "KRAG JR. RETREATS!"
+        bannerSub = "Onward, Rocco!"
+        bossBannerTime = 3f
+        sfx(Sound.CLEAR)
+    }
+
     fun onBossDefeated() {
         if (bossDefeated) return
         bossDefeated = true
+        bannerTitle = "KING KRAG IS DEFEATED!"
+        bannerSub = if (level.def.rows.any { 'R' in it }) "Go to Princess Rosalie!" else "Go see what Pip has to say!"
         bossBannerTime = 3.5f
         for (e in entities) if (e is KragFlame) e.removed = true
         sfx(Sound.CLEAR)
@@ -420,7 +592,12 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
             State.TITLE -> Music.OVERWORLD
             State.PLAYING, State.AXE -> {
                 val krag = entities.firstOrNull { it is Krag }
-                if (krag != null && krag.active && !bossDefeated) Music.BOSS else level.def.theme.music
+                when {
+                    hero.starTime > 0 -> Music.STAR
+                    entities.any { it is KragJr && it.engaged } -> Music.BOSS
+                    krag != null && krag.active && !bossDefeated -> Music.BOSS
+                    else -> level.def.theme.music
+                }
             }
             else -> Music.NONE
         }
@@ -436,7 +613,9 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
 
     private fun updateCamera() {
         val target = hero.cx - viewW * 0.4f
-        camX = max(camX, target).coerceIn(0f, max(0f, level.pixelW - viewW))
+        var maxCam = max(0f, level.pixelW - viewW)
+        camLock?.let { maxCam = min(maxCam, it) }
+        camX = max(camX, target).coerceIn(0f, maxCam)
         camX = camX.toInt().toFloat()
     }
 
@@ -501,14 +680,14 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
                     State.WORLD_CLEAR -> renderWorldClear(gfx)
                     else -> {
                         if (state == State.PLAYING || state == State.AXE || state == State.DYING) {
-                            Controls.draw(gfx, input, viewW, hero.power == Power.FIRE)
+                            Controls.draw(gfx, input, viewW, hero.power.canThrow)
                         }
                         Controls.drawPause(gfx, viewW, musicOn)
                     }
                 }
                 if (bossBannerTime > 0) {
-                    gfx.shadowText("KING KRAG IS DEFEATED!", viewW / 2, 80f, 14f, 0xFFFFD21F.toInt(), 1)
-                    gfx.shadowText("Go to Princess Rosalie!", viewW / 2, 98f, 10f, 0xFFFFB8DC.toInt(), 1)
+                    gfx.shadowText(bannerTitle, viewW / 2, 80f, 14f, 0xFFFFD21F.toInt(), 1)
+                    gfx.shadowText(bannerSub, viewW / 2, 98f, 10f, 0xFFFFB8DC.toInt(), 1)
                 }
                 if (paused) {
                     gfx.rect(0f, 0f, viewW, VIEW_H, 0x99000000.toInt())
@@ -545,6 +724,29 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
                     val cy = 40f + (i * 37 % 3) * 18f
                     cloud(gfx, cx, cy)
                     i++
+                }
+            }
+            Theme.SNOW -> {
+                gfx.rect(0f, 0f, viewW, VIEW_H, 0xFFBFE1FF.toInt())
+                gfx.rect(0f, 120f, viewW, 120f, 0xFFDDEEFF.toInt())
+                layer(cam, 0.25f, 300f) { i, x ->
+                    val hgt = 90f + (i * 17 % 3) * 25f
+                    gfx.poly(floatArrayOf(x, x + 110, x + 220), floatArrayOf(210f, 210f - hgt, 210f), 0xFF8FA8C8.toInt())
+                    gfx.poly(
+                        floatArrayOf(x + 110 - 30, x + 110, x + 110 + 30, x + 110 + 10, x + 110 - 8),
+                        floatArrayOf(210f - hgt + 30, 210f - hgt, 210f - hgt + 30, 210f - hgt + 24, 210f - hgt + 32),
+                        0xFFFFFFFF.toInt(),
+                    )
+                }
+                layer(cam, 0.5f, 180f) { i, x ->
+                    gfx.poly(floatArrayOf(x + 20, x + 35, x + 50), floatArrayOf(208f, 160f, 208f), 0xFF2E6E4A.toInt())
+                    gfx.poly(floatArrayOf(x + 24, x + 35, x + 46), floatArrayOf(178f, 156f, 178f), 0xFFFFFFFF.toInt())
+                }
+                // Falling snow
+                for (k in 0 until 40) {
+                    val sx = ((k * 97f + time * 12f + sin(time + k) * 10f) % (viewW + 20f) + viewW + 20f) % (viewW + 20f) - 10f
+                    val sy = (k * 53f + time * (20f + k % 5 * 6f)) % VIEW_H
+                    gfx.rect(sx, sy, 2f, 2f, 0xDDFFFFFF.toInt())
                 }
             }
             Theme.SKY -> {
@@ -656,6 +858,7 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
             T.GROUND -> when (theme) {
                 Theme.OVERWORLD, Theme.SKY, Theme.NIGHT -> if (!level.solid(tx, ty - 1)) Sprites.grassTop else Sprites.dirt
                 Theme.DESERT -> if (!level.solid(tx, ty - 1)) Sprites.sandTop else Sprites.sandstone
+                Theme.SNOW -> if (!level.solid(tx, ty - 1)) Sprites.snowTop else Sprites.frozenDirt
                 Theme.UNDERGROUND -> Sprites.hardBlue
                 Theme.CASTLE -> Sprites.stone
             }
@@ -723,15 +926,15 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
     private fun renderWorld(gfx: Gfx) {
         val cam = camX
         renderBackground(gfx, cam)
-        for (e in entities) if (e is Blossom && !e.ready) e.draw(this, gfx, -cam)
+        for (e in entities) if (e is PowerItem && !e.ready) e.draw(this, gfx, -cam)
         renderFlagAndCastle(gfx, -cam)
         renderTiles(gfx, cam)
         for (e in entities) {
-            if (e is Blossom && !e.ready) continue
+            if (e is PowerItem && !e.ready) continue
             if (e.x + e.w < cam - 32 || e.x > cam + viewW + 32) continue
             e.draw(this, gfx, -cam)
         }
-        if (state != State.DOOR || hero.visible) hero.draw(gfx, -cam, state == State.DYING)
+        if (state != State.DOOR || hero.visible) hero.draw(gfx, -cam, state == State.DYING, time)
         for (p in particles) p.draw(this, gfx, -cam)
     }
 
@@ -781,7 +984,8 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
 
         gfx.shadowText("Save Princess Rosalie from King Krag!", cx, 130f, 10f, 0xFFFFFFFF.toInt(), 1)
         if ((time * 2).toInt() % 2 == 0) gfx.shadowText("TAP TO START", cx, 152f, 14f, 0xFFFFFFFF.toInt(), 1)
-        gfx.shadowText("Left side: move   Right side: JUMP / FIRE", cx, 232f, 8f, 0xFFFFFFFF.toInt(), 1)
+        gfx.shadowText("Left side: move (double-tap to run)   Right side: JUMP / FIRE", cx, 222f, 7f, 0xFFFFFFFF.toInt(), 1)
+        gfx.shadowText("Swipe down: crouch, or butt slam in mid-air", cx, 233f, 7f, 0xFFFFFFFF.toInt(), 1)
     }
 
     private val titleKrag = Krag(0f, 13f * TILE).also { it.onGround = true }
@@ -792,9 +996,18 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         val cx = viewW / 2
         gfx.text("WORLD ${level.def.world}-${level.def.num}", cx, 96f, 16f, 0xFFFFFFFF.toInt(), 1)
         gfx.text(level.def.name, cx, 116f, 11f, 0xFFFFD21F.toInt(), 1)
-        val s = if (hero.power == Power.FIRE) Sprites.fireStand else Sprites.smallStand
+        val s = when (hero.power) {
+            Power.FIRE -> Sprites.fireStand
+            Power.ICE -> Sprites.iceStand
+            Power.BOOM -> Sprites.boomStand
+            Power.BIG -> Sprites.bigStand
+            else -> Sprites.smallStand
+        }
         gfx.sprite(s, cx - 28, 150f - s.h)
         gfx.text("x  $lives", cx + 4, 146f, 12f, 0xFFFFFFFF.toInt())
+        if (level.def.rows.any { 'J' in it }) {
+            gfx.text("Watch the skies... Krag Jr. is coming!", cx, 196f, 9f, 0xFFFFD93D.toInt(), 1)
+        }
         if (level.def.rows.any { 'K' in it }) {
             gfx.text("King Krag awaits... Use the Blaze Blossom's fire!", cx, 180f, 9f, 0xFFFF8A8A.toInt(), 1)
         }
@@ -814,8 +1027,12 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         gfx.sprite(Sprites.pip, viewW / 2 - 8, 60f)
         gfx.shadowText("THANK YOU, ROCCO!", viewW / 2, 94f, 16f, 0xFFFFD93D.toInt(), 1)
         gfx.shadowText("But Princess Rosalie isn't here...", viewW / 2, 112f, 10f, 0xFFFFFFFF.toInt(), 1)
-        gfx.shadowText("Krag's minions took her to KRAG'S VOLCANO!", viewW / 2, 128f, 10f, 0xFFFFB8DC.toInt(), 1)
-        if (stateTime > 2f) gfx.shadowText("Tap to continue to WORLD 2", viewW / 2, 148f, 9f, 0xFFFFFFFF.toInt(), 1)
+        val where = if (level.def.world == 1) "Krag's minions took her to KRAG'S VOLCANO!"
+        else "Krag fled with her to his LAST STAND!"
+        gfx.shadowText(where, viewW / 2, 128f, 10f, 0xFFFFB8DC.toInt(), 1)
+        if (stateTime > 2f) {
+            gfx.shadowText("Tap to continue to WORLD ${level.def.world + 1}", viewW / 2, 148f, 9f, 0xFFFFFFFF.toInt(), 1)
+        }
     }
 
     private fun renderVictory(gfx: Gfx) {

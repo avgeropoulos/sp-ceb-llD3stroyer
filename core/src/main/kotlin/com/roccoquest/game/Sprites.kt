@@ -525,6 +525,110 @@ object Sprites {
         "....OOO.OOO.....",
     )
 
+    // ---------------------------------------------------------------- Extra power-up outfits
+    private val iceMap = mapOf(RED to 0xFF6FD3FF.toInt(), WHITE to 0xFF1E5FD8.toInt(), BLUE to 0xFFF4F8FF.toInt())
+    val iceStand = bigStand.recolor(iceMap)
+    val iceWalk = bigWalk.recolor(iceMap)
+    val iceJump = bigJump.recolor(iceMap)
+    private val boomMap = mapOf(RED to 0xFFFF9A1E.toInt(), WHITE to 0xFF1E7A3A.toInt(), BLUE to 0xFF1E7A3A.toInt())
+    val boomStand = bigStand.recolor(boomMap)
+    val boomWalk = bigWalk.recolor(boomMap)
+    val boomJump = bigJump.recolor(boomMap)
+
+    // ---------------------------------------------------------------- More items
+    private val shroomPal = mapOf(
+        'R' to RED, 'W' to WHITE, 'S' to 0xFFF6DDB0.toInt(), 'K' to K,
+    )
+    val mushroom = pixelArt(shroomPal,
+        ".....RRRRRR.....",
+        "...RRRWWRRRRR...",
+        "..RRRWWWWRRRRR..",
+        ".RRRRWWWWRRWWRR.",
+        ".RRRRRWWRRWWWWR.",
+        "RRWWRRRRRRWWWWRR",
+        "RWWWWRRRRRRWWRRR",
+        "RWWWWRRRRRRRRRRR",
+        "RRWWRRRRRRRRWWRR",
+        ".RRRRRRRRRRWWWR.",
+        "...SSSSSSSSSS...",
+        "..SSSKSSSSKSSS..",
+        "..SSSKSSSSKSSS..",
+        "..SSSSSSSSSSSS..",
+        "...SSSSSSSSSS...",
+        "....SSSSSSSS....",
+    )
+    val miniMushroom = mushroom.recolor(mapOf(RED to 0xFF2E7BE6.toInt()))
+
+    private val starPal = mapOf('Y' to 0xFFFFE14D.toInt(), 'O' to 0xFFE08A00.toInt(), 'K' to K)
+    val star1 = pixelArt(starPal,
+        ".......OO.......",
+        "......OYYO......",
+        "......OYYO......",
+        ".....OYYYYO.....",
+        "OOOOOOYYYYOOOOOO",
+        "OYYYYYYYYYYYYYYO",
+        ".OYYYYKYYKYYYYO.",
+        "..OYYYKYYKYYYO..",
+        "...OYYYYYYYYO...",
+        "...OYYYYYYYYO...",
+        "..OYYYYYYYYYYO..",
+        "..OYYYYOOYYYYO..",
+        ".OYYYOO..OOYYYO.",
+        ".OYYO......OYYO.",
+        "OYOO........OOYO",
+        "OO............OO",
+    )
+    val star2 = star1.recolor(mapOf(0xFFFFE14D.toInt() to 0xFFFFF8D0.toInt()))
+
+    val iceFlower = blossom1.recolor(mapOf(
+        0xFFFF8A00.toInt() to 0xFF6FD3FF.toInt(), RED to 0xFF1E8BE6.toInt(), 0xFFFFE14D.toInt() to 0xFFE8FBFF.toInt(),
+    ))
+    val boomFlower = blossom1.recolor(mapOf(
+        0xFFFF8A00.toInt() to 0xFFFFB347.toInt(), RED to 0xFF1E7A3A.toInt(), 0xFFFFE14D.toInt() to 0xFFFFF2B0.toInt(),
+    ))
+    val iceball = fireball.recolor(mapOf(
+        0xFFFF8A00.toInt() to 0xFF1E8BE6.toInt(), 0xFFFFE14D.toInt() to 0xFF9FE6FF.toInt(),
+    ))
+
+    private val boomerangPal = mapOf('O' to 0xFFFFB347.toInt(), 'D' to 0xFF8A4E1B.toInt())
+    val boomerang = pixelArt(boomerangPal,
+        "DDDD........",
+        "DOOOD.......",
+        "DOOOOD......",
+        ".DOOOOD.....",
+        "..DOOOOD....",
+        "...DOOOODDDD",
+        "....DOOOOOOD",
+        ".....DOOOOOD",
+        "......DDDDDD",
+    )
+
+    private val spikePal = mapOf(
+        'S' to 0xFFF4F4F4.toInt(), 'G' to 0xFF5A5A6A.toInt(), 'L' to 0xFF9A9AAE.toInt(), 'D' to 0xFF2A2A36.toInt(),
+    )
+    val spikeBall = pixelArt(spikePal,
+        ".....SS.....",
+        "..S..GG..S..",
+        "...GGGGGG...",
+        "..GGLLGGGG..",
+        ".GGLLGGGGGG.",
+        "SGGGGGGGGGGS",
+        "SGGGGGGGGGGS",
+        ".GGGGGGGGDG.",
+        "..GGGGGGDD..",
+        "...GGGGGG...",
+        "..S..GG..S..",
+        ".....SS.....",
+    )
+
+    private val snowMap = mapOf(
+        0xFF9BE15D.toInt() to 0xFFFFFFFF.toInt(), 0xFF4CB531.toInt() to 0xFFEAF6FF.toInt(),
+        0xFF2E7D1F.toInt() to 0xFFB8D8F0.toInt(), 0xFFC2762E.toInt() to 0xFF8FA8C8.toInt(),
+        0xFF8A4E1B.toInt() to 0xFF5E7898.toInt(), 0xFFE0A060.toInt() to 0xFFC8DAF0.toInt(),
+    )
+    val snowTop = grassTop.recolor(snowMap)
+    val frozenDirt = dirt.recolor(snowMap)
+
     // ---------------------------------------------------------------- Princess Rosalie
     private val princessPal = mapOf(
         'O' to 0xFFFFB000.toInt(), 'C' to 0xFF3CE0FF.toInt(), 'H' to 0xFFFFE070.toInt(),

@@ -20,9 +20,19 @@ object Controls {
         music.cx = viewW - 42f
     }
 
-    /** Maps the currently held touch points onto [input]. */
-    fun apply(input: Input, xs: FloatArray, ys: FloatArray, count: Int, viewW: Float) {
+    /** Where each finger first touched down, to detect a downward swipe. */
+    private val startY = HashMap<Int, Float>()
+    private const val SWIPE = 14f
+
+    /**
+     * Maps the currently held touch points onto [input]. [ids] identify fingers
+     * across calls; dragging a finger down by [SWIPE] pixels means "down"
+     * (crouch on the ground, butt slam in the air).
+     */
+    fun apply(input: Input, ids: IntArray, xs: FloatArray, ys: FloatArray, count: Int, viewW: Float) {
         layout(viewW)
+        startY.keys.retainAll((0 until count).map { ids[it] }.toSet())
+        var d = false
         var l = false
         var r = false
         var j = false
@@ -35,6 +45,8 @@ object Controls {
             if (hypot(x - pause.cx, y - pause.cy) < pause.r * 1.3f) { p = true; continue }
             if (hypot(x - music.cx, y - music.cy) < music.r * 1.3f) { m = true; continue }
             if (y < 120f) continue
+            val swiped = y - startY.getOrPut(ids[i]) { y } > SWIPE
+            if (swiped) { d = true; continue }
             if (x < viewW / 2) {
                 // Whole bottom-left area acts as a d-pad so a sliding thumb works.
                 if (x < (left.cx + right.cx) / 2) l = true else r = true
@@ -50,6 +62,7 @@ object Controls {
         input.fire = f
         input.pause = p
         input.musicToggle = m
+        input.down = d
     }
 
     fun draw(gfx: Gfx, input: Input, viewW: Float, showFire: Boolean) {
@@ -63,6 +76,7 @@ object Controls {
         gfx.poly(floatArrayOf(left.cx - 9, left.cx + 6, left.cx + 6), floatArrayOf(left.cy, left.cy - 9, left.cy + 9), c)
         gfx.poly(floatArrayOf(right.cx + 9, right.cx - 6, right.cx - 6), floatArrayOf(right.cy, right.cy - 9, right.cy + 9), c)
         gfx.text("JUMP", jump.cx, jump.cy + 3, 8f, c, 1)
+        gfx.text("swipe \u2193 crouch/slam", (left.cx + right.cx) / 2, 236f, 6f, if (input.down) c else 0x88FFFFFF.toInt(), 1)
         if (showFire) gfx.text("FIRE", fire.cx, fire.cy + 3, 7f, c, 1)
     }
 

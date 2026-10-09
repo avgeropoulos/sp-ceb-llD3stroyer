@@ -4,6 +4,7 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sign
+import kotlin.math.sin
 import kotlin.random.Random
 
 open class Body(var x: Float, var y: Float, var w: Float, var h: Float) {
@@ -29,23 +30,44 @@ abstract class Entity(x: Float, y: Float, w: Float, h: Float) : Body(x, y, w, h)
 
 // ======================================================================== Hero
 
-enum class Power { SMALL, FIRE }
+enum class Power {
+    SMALL, BIG, FIRE, ICE, BOOM, MINI;
+
+    /** Big Rocco: breaks bricks and survives one hit. */
+    val isBig get() = this == BIG || this == FIRE || this == ICE || this == BOOM
+    val canThrow get() = this == FIRE || this == ICE || this == BOOM
+}
 
 class Hero(x: Float, y: Float) : Body(x, y, 12f, SMALL_H) {
     companion object {
         const val SMALL_H = 15f
         const val BIG_H = 23f
+        const val MINI_H = 8f
         const val MAX_SPEED = 115f
+        const val RUN_SPEED = 175f
         const val JUMP_V = -310f
+        const val STAR_TIME = 10f
     }
 
     var power = Power.SMALL
-        set(value) {
-            val newH = if (value == Power.SMALL) SMALL_H else BIG_H
-            y += h - newH
-            h = newH
-            field = value
+        set(value) { field = value; resize() }
+    var crouching = false
+        set(value) { field = value; resize() }
+
+    /** Keeps the feet (and horizontal centre) in place when the hitbox changes size. */
+    private fun resize() {
+        val newW = if (power == Power.MINI) 7f else 12f
+        val newH = when {
+            power == Power.MINI -> MINI_H
+            !power.isBig || crouching -> SMALL_H
+            else -> BIG_H
         }
+        x += (w - newW) / 2
+        y += h - newH
+        w = newW
+        h = newH
+    }
+
     var facing = 1
     var invuln = 0f
     var walkAnim = 0f
@@ -55,22 +77,48 @@ class Hero(x: Float, y: Float) : Body(x, y, 12f, SMALL_H) {
     var jumpHeld = false
     var visible = true
     var flash = 0f
+    var running = false
+    var slamming = false
+    var slamPause = 0f
+    var starTime = 0f
 
-    fun draw(gfx: Gfx, ox: Float, dead: Boolean) {
+    private fun skin(p: Power): Triple<Sprite, Sprite, Sprite> = when (p) {
+        Power.SMALL, Power.MINI -> Triple(Sprites.smallStand, Sprites.smallWalk, Sprites.smallJump)
+        Power.BIG -> Triple(Sprites.bigStand, Sprites.bigWalk, Sprites.bigJump)
+        Power.FIRE -> Triple(Sprites.fireStand, Sprites.fireWalk, Sprites.fireJump)
+        Power.ICE -> Triple(Sprites.iceStand, Sprites.iceWalk, Sprites.iceJump)
+        Power.BOOM -> Triple(Sprites.boomStand, Sprites.boomWalk, Sprites.boomJump)
+    }
+
+    fun draw(gfx: Gfx, ox: Float, dead: Boolean, time: Float) {
         if (!visible) return
         if (invuln > 0 && ((invuln * 20).toInt() % 2 == 0)) return
-        val small = power == Power.SMALL
+        // With a star, Rocco flashes through all his outfits.
+        val look = if (starTime > 0 && power.isBig) {
+            listOf(Power.BIG, Power.FIRE, Power.ICE, Power.BOOM)[(time * 14).toInt() % 4]
+        } else power
+        val (stand, walk, jump) = skin(look)
         val frame = when {
             dead -> Sprites.smallJump
-            !onGround -> if (small) Sprites.smallJump else Sprites.fireJump
-            abs(vx) > 5f && (walkAnim.toInt() % 2 == 1) -> if (small) Sprites.smallWalk else Sprites.fireWalk
-            else -> if (small) Sprites.smallStand else Sprites.fireStand
+            slamming -> stand
+            !onGround -> jump
+            abs(vx) > 5f && (walkAnim.toInt() % 2 == 1) && !crouching -> walk
+            else -> stand
         }
-        val sx = x - 2 + ox
-        val sy = y + h - frame.h
-        gfx.sprite(frame, sx, sy, flipX = facing < 0)
+        val mini = power == Power.MINI
+        val dw = if (mini) 8f else frame.w.toFloat()
+        var dh = if (mini) 8f else frame.h.toFloat()
+        if (crouching && !mini) dh = if (power.isBig) 16f else 11f
+        val sx = cx - dw / 2 + ox
+        val sy = y + h - dh
+        if (starTime > 0) {
+            val glow = listOf(0xFFFFE14D, 0xFFFF6FB5, 0xFF6FD3FF, 0xFF7ED957)[(time * 10).toInt() % 4].toInt()
+            gfx.oval(sx - 3, sy - 3, dw + 6, dh + 6, argb(110, glow))
+        }
+        val spin = slamming && slamPause > 0 && (time * 24).toInt() % 2 == 0
+        gfx.sprite(frame, sx, sy, flipX = (facing < 0) != spin, w = dw, h = dh)
         if (flash > 0) {
-            gfx.oval(sx - 2, sy - 2, frame.w + 4f, frame.h + 4f, argb((flash * 300).toInt().coerceIn(0, 200), 0xFFF3A0))
+            gfx.oval(sx - 2, sy - 2, dw + 4f, dh + 4f, argb((flash * 300).toInt().coerceIn(0, 200), 0xFFF3A0))
         }
     }
 }
@@ -82,10 +130,31 @@ abstract class Enemy(x: Float, y: Float, w: Float, h: Float) : Entity(x, y, w, h
     var dying = false
     open val stompable = true
 
+    /** Enemies a star or slam can't hurt and that hurt Rocco when he lands on them. */
+    open val spiky = false
+    /** Ice turns these enemies into ice blocks. */
+    open val freezable = true
+
     open fun stomp(g: Game) { knockOut(g) }
     open fun touchHero(g: Game) { g.hurtHero() }
     /** Called when a hero fireball hits; return true if the fireball is used up. */
     open fun fireHit(g: Game): Boolean { knockOut(g); g.addScore(200, cx, y); return true }
+
+    /** Called when an iceball hits; by default the enemy is frozen solid. */
+    open fun iceHit(g: Game): Boolean {
+        if (!freezable) return fireHit(g)
+        removed = true
+        g.spawn(FrozenBlock(x - 1, bottom, w + 2, max(h, 14f)))
+        g.addScore(200, cx, y)
+        g.sfx(Sound.BUMP)
+        return true
+    }
+
+    /** Called when the boomerang hits; return true if it actually hurt the enemy. */
+    open fun boomHit(g: Game): Boolean { fireHit(g); return true }
+
+    /** A star-powered Rocco bowls enemies over just by touching them. */
+    open fun starHit(g: Game) { knockOut(g); g.addScore(200, cx, y) }
 
     fun knockOut(g: Game) {
         if (dying) return
@@ -278,7 +347,12 @@ class Podoboo(x: Float, y: Float) : Enemy(x + 2, y, 12f, 13f) {
         }
     }
 
+    override val spiky = true
+    override val freezable = false
     override fun fireHit(g: Game) = true
+    override fun iceHit(g: Game) = true
+    override fun boomHit(g: Game) = false
+    override fun starHit(g: Game) {}
 
     override fun touchHero(g: Game) { if (wait <= 0) g.hurtHero() }
 
@@ -346,9 +420,16 @@ class Krag(x: Float, y: Float, val maxHp: Int = 10) : Enemy(x - 10, y - 40, 36f,
         }
     }
 
-    override fun fireHit(g: Game): Boolean {
+    override val spiky = true
+    override val freezable = false
+    override fun iceHit(g: Game) = damage(g, 1)
+    override fun boomHit(g: Game) = damage(g, 1)
+    override fun starHit(g: Game) {}
+    override fun fireHit(g: Game) = damage(g, 1)
+
+    fun damage(g: Game, n: Int): Boolean {
         if (dying) return true
-        hp--
+        hp -= n
         hurtFlash = 0.2f
         g.sfx(Sound.BOSS_HIT)
         if (hp <= 0) {
@@ -438,8 +519,14 @@ class KragFlame(x: Float, y: Float, dir: Int, private val targetY: Float) : Enem
         if (x + w < g.camX - 32 || x > g.camX + g.viewW + 32) removed = true
     }
 
+    override val spiky = true
+    override val freezable = false
+
     /** Hero fireballs fizzle out against the boss's flames. */
     override fun fireHit(g: Game): Boolean = true
+    override fun iceHit(g: Game): Boolean { removed = true; g.puff(cx, cy); return true }
+    override fun boomHit(g: Game) = false
+    override fun starHit(g: Game) {}
 
     override fun draw(g: Game, gfx: Gfx, ox: Float) {
         val m = Mirror(gfx, x + ox, y, w, flip = vx > 0)
@@ -468,35 +555,38 @@ class Mirror(
 
 // ======================================================================== Hero projectiles & items
 
-class Fireball(x: Float, y: Float, dir: Int) : Entity(x, y, 8f, 8f) {
+/** A bouncing shot: a fireball, or an iceball (with [ice]) that freezes enemies. */
+class Fireball(x: Float, y: Float, dir: Int, val ice: Boolean = false) : Entity(x, y, 8f, 8f) {
     private var anim = 0f
-    init { vx = dir * 230f; vy = 60f; active = true }
+    init { vx = dir * (if (ice) 190f else 230f); vy = 60f; active = true }
 
     override fun update(g: Game, dt: Float) {
         anim += dt
         vy = min(vy + 1000f * dt, 300f)
         if (g.level.moveX(this, vx * dt)) { removed = true; g.puff(cx, cy); return }
         g.level.moveY(this, vy * dt)
-        if (onGround) vy = -190f
+        if (onGround) vy = if (ice) -150f else -190f
         if (x + w < g.camX - 8 || x > g.camX + g.viewW + 8 || y > g.level.h * TILE) removed = true
         if (g.level.isLavaAt(cx, cy)) { removed = true; g.puff(cx, cy) }
         if (removed) return
         for (e in g.entities) {
             if (e is Enemy && !e.dying && e.active && e.overlaps(this)) {
                 if (e is Grumbler && e.isSquashed) continue
-                if (e.fireHit(g)) { removed = true; g.puff(cx, cy); return }
+                if (if (ice) e.iceHit(g) else e.fireHit(g)) { removed = true; g.puff(cx, cy); return }
             }
         }
     }
 
     override fun draw(g: Game, gfx: Gfx, ox: Float) {
         val f = (anim * 16).toInt() % 4
-        gfx.sprite(Sprites.fireball, x + ox, y, flipX = f % 2 == 1, flipY = f >= 2)
+        gfx.sprite(if (ice) Sprites.iceball else Sprites.fireball, x + ox, y, flipX = f % 2 == 1, flipY = f >= 2)
     }
 }
 
-/** The Blaze Blossom power-up: rises out of a block, then waits to be collected. */
-class Blossom(x: Float, y: Float) : Entity(x, y, 16f, 16f) {
+enum class Item { MUSHROOM, FIRE, ICE, BOOM, STAR, MINI }
+
+/** A power-up that rises out of a ? block. Mushrooms slide along and stars bounce. */
+class PowerItem(x: Float, y: Float, val kind: Item) : Entity(x + 1, y, 14f, 16f) {
     private val startY = y
     private var rise = 0f
     private var anim = 0f
@@ -509,13 +599,262 @@ class Blossom(x: Float, y: Float) : Entity(x, y, 16f, 16f) {
         if (rise < 1f) {
             rise = min(1f, rise + dt * 1.6f)
             y = startY - 16f * rise
+            if (ready) vx = when (kind) {
+                Item.MUSHROOM, Item.MINI -> if (g.hero.cx < cx) -55f else 55f
+                Item.STAR -> if (g.hero.cx < cx) -75f else 75f
+                else -> 0f
+            }
+            return
         }
+        if (vx == 0f) return
+        vy = min(vy + 900f * dt, 400f)
+        if (g.level.moveX(this, vx * dt)) vx = -vx
+        g.level.moveY(this, vy * dt)
+        if (kind == Item.STAR && onGround) vy = -300f
+        if (y > g.level.h * TILE + 16) removed = true
     }
 
     override fun draw(g: Game, gfx: Gfx, ox: Float) {
         // While emerging it is drawn behind the tiles, so the block hides its lower part.
-        val s = if ((anim * 8).toInt() % 2 == 0) Sprites.blossom1 else Sprites.blossom2
-        gfx.sprite(s, x + ox, y)
+        val alt = (anim * 8).toInt() % 2 == 0
+        val s = when (kind) {
+            Item.MUSHROOM -> Sprites.mushroom
+            Item.MINI -> Sprites.miniMushroom
+            Item.FIRE -> if (alt) Sprites.blossom1 else Sprites.blossom2
+            Item.ICE -> Sprites.iceFlower
+            Item.BOOM -> Sprites.boomFlower
+            Item.STAR -> if (alt) Sprites.star1 else Sprites.star2
+        }
+        if (kind == Item.MINI) gfx.sprite(s, x - 1 + ox + 4, y + 8, w = 8f, h = 8f)
+        else gfx.sprite(s, x - 1 + ox, y)
+    }
+}
+
+/** Rocco's boomerang: flies out, curves back to him, and grabs coins on the way. */
+class Boomerang(x: Float, y: Float, private val dir: Int) : Entity(x, y, 12f, 9f) {
+    private var t = 0f
+    private val hit = HashSet<Entity>()
+    init { vx = dir * 280f; active = true }
+
+    override fun update(g: Game, dt: Float) {
+        t += dt
+        val h = g.hero
+        if (t < 0.45f) {
+            vx -= dir * 520f * dt
+            vy = (h.cy - 6 - y) * 2f
+        } else {
+            // Home back in on Rocco.
+            val dx = h.cx - cx
+            val dy = h.cy - cy
+            val d = kotlin.math.sqrt(dx * dx + dy * dy).coerceAtLeast(1f)
+            val speed = 260f
+            vx = dx / d * speed
+            vy = dy / d * speed
+            if (d < 10f || t > 3f) { removed = true; return }
+        }
+        x += vx * dt
+        y += vy * dt
+        for (e in g.entities) {
+            if (e === this || !e.active || e.removed || !e.overlaps(this) || e in hit) continue
+            if (e is Coin) { e.removed = true; g.collectCoin(e.cx, e.y) }
+            if (e is Enemy && !e.dying && !(e is Grumbler && e.isSquashed)) {
+                if (e.boomHit(g)) hit += e
+            }
+        }
+    }
+
+    override fun draw(g: Game, gfx: Gfx, ox: Float) {
+        val f = (t * 20).toInt() % 4
+        gfx.sprite(Sprites.boomerang, x + ox, y, flipX = f == 1 || f == 2, flipY = f >= 2)
+    }
+}
+
+/** An enemy frozen by an iceball. Rocco can stand on it; it shatters after a while. */
+class FrozenBlock(x: Float, bottom: Float, w: Float, h: Float) : Entity(x, bottom - h, w, h) {
+    private var life = 0f
+    init { active = true }
+
+    override fun update(g: Game, dt: Float) {
+        life += dt
+        if (life > 7f) shatter(g)
+    }
+
+    fun shatter(g: Game) {
+        if (removed) return
+        removed = true
+        g.debris(x, y, 0xFF9FE6FF.toInt())
+        g.sfx(Sound.BREAK)
+    }
+
+    override fun draw(g: Game, gfx: Gfx, ox: Float) {
+        val shake = if (life > 6f && (life * 30).toInt() % 2 == 0) 1f else 0f
+        gfx.rect(x + ox + shake, y, w, h, 0xFF1E8BE6.toInt())
+        gfx.rect(x + ox + 1 + shake, y + 1, w - 2, h - 2, 0xCC9FE6FF.toInt())
+        gfx.rect(x + ox + 3 + shake, y + 3, 3f, h - 8, 0xEEFFFFFF.toInt())
+        gfx.rect(x + ox + 3 + shake, y + 3, w - 8, 2f, 0xEEFFFFFF.toInt())
+    }
+}
+
+/** Spiked balls dropped by Krag Jr. They bounce once, then roll toward Rocco. */
+class SpikeBall(x: Float, y: Float) : Enemy(x, y, 12f, 12f) {
+    private var life = 0f
+    private var bounced = false
+    override val stompable = false
+    override val spiky = true
+
+    override fun update(g: Game, dt: Float) {
+        if (updateDying(g, dt)) return
+        life += dt
+        if (life > 8f) { removed = true; g.puff(cx, cy); return }
+        walk(g, dt)
+        if (onGround && !bounced) {
+            bounced = true
+            vy = -170f
+            vx = if (g.hero.cx < cx) -70f else 70f
+        }
+    }
+
+    override fun draw(g: Game, gfx: Gfx, ox: Float) {
+        val f = (life * 10).toInt() % 2 == 0
+        gfx.sprite(Sprites.spikeBall, x + ox, y, flipX = f, flipY = dying)
+    }
+}
+
+/** Krag's son, who harasses Rocco from his flying clown car in the later levels. */
+class KragJr(x: Float, y: Float, val maxHp: Int = 6) : Enemy(x, y - 34, 30f, 34f) {
+    enum class Mode { WAIT, FLY, SWOOP, HURT, BEATEN }
+
+    var hp = maxHp
+        private set
+    var mode = Mode.WAIT
+        private set
+    private var t = 0f
+    private var modeTime = 0f
+    private var throwTimer = 2f
+    private var swoopTimer = 5f
+    private var swoopX = 0f
+    private var swoopY = 0f
+    private val minY = 50f
+
+    val engaged get() = mode != Mode.WAIT && mode != Mode.BEATEN
+
+    private fun setMode(m: Mode) { mode = m; modeTime = 0f }
+
+    override fun update(g: Game, dt: Float) {
+        t += dt
+        modeTime += dt
+        val h = g.hero
+        when (mode) {
+            Mode.WAIT -> {
+                y += sin(t * 3) * 0.3f
+                if (h.cx > x - g.viewW * 0.55f) {
+                    setMode(Mode.FLY)
+                    g.onJrEngaged()
+                }
+            }
+            Mode.FLY -> {
+                val tx = h.cx + sin(t * 0.9f) * 90f - w / 2
+                val ty = (h.y - 80f).coerceIn(minY, 140f)
+                x += (tx - x).coerceIn(-85f * dt, 85f * dt)
+                y += (ty - y).coerceIn(-70f * dt, 70f * dt)
+                throwTimer -= dt
+                if (throwTimer <= 0) {
+                    g.spawn(SpikeBall(cx - 6, bottom - 6).also { it.active = true })
+                    g.sfx(Sound.KICK)
+                    throwTimer = 2.2f + Random.nextFloat()
+                }
+                swoopTimer -= dt
+                if (swoopTimer <= 0) {
+                    swoopX = h.cx - w / 2
+                    swoopY = h.y - 6
+                    setMode(Mode.SWOOP)
+                }
+            }
+            Mode.SWOOP -> {
+                val dx = swoopX - x
+                val dy = swoopY - y
+                val d = kotlin.math.sqrt(dx * dx + dy * dy)
+                if (d < 6f || modeTime > 1.3f) {
+                    swoopTimer = 4f + Random.nextFloat() * 2f
+                    setMode(Mode.FLY)
+                } else {
+                    x += dx / d * 200f * dt
+                    y += dy / d * 200f * dt
+                }
+            }
+            Mode.HURT -> {
+                y = max(minY, y - 90f * dt)
+                if (modeTime > 1.3f) setMode(Mode.FLY)
+            }
+            Mode.BEATEN -> {
+                x += 110f * dt
+                y -= 100f * dt
+                if (y < -80f) removed = true
+            }
+        }
+    }
+
+    /** Stomps do 2 damage, a butt slam 3, shots and boomerangs 1. */
+    fun damage(g: Game, n: Int): Boolean {
+        if (mode == Mode.HURT || mode == Mode.BEATEN || mode == Mode.WAIT) return mode != Mode.WAIT
+        hp -= n
+        g.sfx(Sound.BOSS_HIT)
+        if (hp <= 0) {
+            setMode(Mode.BEATEN)
+            dying = true
+            g.addScore(3000, cx, y)
+            g.onJrDefeated()
+        } else {
+            setMode(Mode.HURT)
+        }
+        return true
+    }
+
+    override val freezable = false
+    override fun stomp(g: Game) { damage(g, 2) }
+    override fun fireHit(g: Game) = damage(g, 1)
+    override fun iceHit(g: Game) = damage(g, 1)
+    override fun boomHit(g: Game) = damage(g, 1)
+    override fun starHit(g: Game) { damage(g, 2) }
+    override fun touchHero(g: Game) { if (mode == Mode.FLY || mode == Mode.SWOOP) g.hurtHero() }
+
+    override fun draw(g: Game, gfx: Gfx, ox: Float) {
+        val px = x + ox
+        val flash = mode == Mode.HURT && (modeTime * 20).toInt() % 2 == 0
+        val spin = mode == Mode.BEATEN
+        val tilt = if (spin) sin(t * 20) * 3f else 0f
+        // Krag Jr. pokes out of the top of the car.
+        val skin = if (flash) 0xFFFFFFFF.toInt() else 0xFFF2B33D.toInt()
+        gfx.oval(px + 7, y - 2 + tilt, 16f, 15f, skin)
+        gfx.poly(floatArrayOf(px + 10, px + 15, px + 20), floatArrayOf(y + 1 + tilt, y - 8 + tilt, y + 1 + tilt), 0xFFE53A1E.toInt())
+        gfx.poly(floatArrayOf(px + 8, px + 6, px + 11), floatArrayOf(y + 2 + tilt, y - 4 + tilt, y + tilt), 0xFFFFF2C8.toInt())
+        gfx.poly(floatArrayOf(px + 22, px + 24, px + 19), floatArrayOf(y + 2 + tilt, y - 4 + tilt, y + tilt), 0xFFFFF2C8.toInt())
+        gfx.oval(px + 10, y + 3 + tilt, 4f, 5f, 0xFFFFFFFF.toInt())
+        gfx.oval(px + 16, y + 3 + tilt, 4f, 5f, 0xFFFFFFFF.toInt())
+        gfx.rect(px + 11, y + 5 + tilt, 2f, 3f, 0xFF101010.toInt())
+        gfx.rect(px + 17, y + 5 + tilt, 2f, 3f, 0xFF101010.toInt())
+        gfx.rect(px + 12, y + 9 + tilt, 6f, 2f, 0xFF8A1010.toInt())
+        gfx.poly(floatArrayOf(px + 13, px + 14, px + 15), floatArrayOf(y + 9 + tilt, y + 12 + tilt, y + 9 + tilt), 0xFFFFFFFF.toInt())
+        // The clown car: a white bowl with a painted face and a propeller underneath.
+        val car = if (flash) 0xFFFFD0D0.toInt() else 0xFFF4F4F4.toInt()
+        val cy = y + 10
+        gfx.oval(px - 1, cy - 2, 32f, 7f, 0xFFB8B8C8.toInt())
+        gfx.oval(px, cy, 30f, 22f, car)
+        gfx.rect(px, cy, 30f, 6f, car)
+        gfx.oval(px + 6, cy + 7, 6f, 6f, 0xFF101010.toInt())
+        gfx.oval(px + 18, cy + 7, 6f, 6f, 0xFF101010.toInt())
+        gfx.oval(px + 7, cy + 8, 2f, 2f, 0xFFFFFFFF.toInt())
+        gfx.oval(px + 19, cy + 8, 2f, 2f, 0xFFFFFFFF.toInt())
+        gfx.oval(px + 12, cy + 11, 6f, 5f, 0xFFE53A1E.toInt())
+        gfx.poly(floatArrayOf(px + 6, px + 15, px + 24, px + 15), floatArrayOf(cy + 15, cy + 20, cy + 15, cy + 17), 0xFFE53A1E.toInt())
+        gfx.oval(px + 2, cy + 2, 5f, 4f, 0x88FFFFFF.toInt())
+        val prop = 4f + kotlin.math.abs(sin(t * 30)) * 14f
+        gfx.rect(px + 14, cy + 21, 2f, 4f, 0xFF606070.toInt())
+        gfx.oval(px + 15 - prop / 2, cy + 24, prop, 3f, 0xFF606070.toInt())
+        if (hp in 1 until maxHp && mode != Mode.BEATEN) {
+            gfx.rect(px, y - 14, 30f, 3f, 0xFF000000.toInt())
+            gfx.rect(px, y - 14, 30f * hp / maxHp, 3f, 0xFFE53A1E.toInt())
+        }
     }
 }
 

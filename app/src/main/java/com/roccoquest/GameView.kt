@@ -27,6 +27,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
     private val touchX = FloatArray(10)
     private val touchY = FloatArray(10)
+    private val touchId = IntArray(10)
 
     init {
         holder.addCallback(this)
@@ -118,12 +119,13 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             for (i in 0 until e.pointerCount) {
                 if (action == MotionEvent.ACTION_POINTER_UP && i == e.actionIndex) continue
                 if (n >= touchX.size) break
+                touchId[n] = e.getPointerId(i)
                 touchX[n] = e.getX(i) / scale
                 touchY[n] = e.getY(i) / scale
                 n++
             }
         }
-        Controls.apply(input, touchX, touchY, n, game.viewW)
+        Controls.apply(input, touchId, touchX, touchY, n, game.viewW)
         if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) input.tap = true
         return true
     }
@@ -142,6 +144,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         when (keyCode) {
             KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_A -> input.left = down
             KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_D -> input.right = down
+            KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_S -> input.down = down
+            KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.KEYCODE_SHIFT_RIGHT, KeyEvent.KEYCODE_BUTTON_Y -> input.run = down
             KeyEvent.KEYCODE_SPACE, KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_W,
             KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> input.jump = down
             KeyEvent.KEYCODE_X, KeyEvent.KEYCODE_J, KeyEvent.KEYCODE_BUTTON_B,

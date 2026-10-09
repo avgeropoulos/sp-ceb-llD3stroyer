@@ -50,7 +50,7 @@ fun argb(a: Int, rgb: Int): Int = (a shl 24) or (rgb and 0xFFFFFF)
 
 enum class Sound { JUMP, COIN, FIRE, STOMP, KICK, POWERUP, HURT, BUMP, BREAK, BOSS_HIT, BOSS_FIRE, DIE, CLEAR, VICTORY, ONEUP }
 
-enum class Music { NONE, OVERWORLD, UNDERGROUND, SKY, CASTLE, BOSS }
+enum class Music { NONE, OVERWORLD, UNDERGROUND, SKY, CASTLE, BOSS, STAR }
 
 fun interface SoundSink {
     fun play(s: Sound)
@@ -65,6 +65,10 @@ class Input {
     @Volatile var right = false
     @Volatile var jump = false
     @Volatile var fire = false
+    /** Crouch on the ground, butt slam in the air (swipe down / down arrow). */
+    @Volatile var down = false
+    /** Keyboard run button; on touch screens, double-tap a direction instead. */
+    @Volatile var run = false
     @Volatile var pause = false
     @Volatile var musicToggle = false
     /** Set on any new touch / key press; consumed by menus. */

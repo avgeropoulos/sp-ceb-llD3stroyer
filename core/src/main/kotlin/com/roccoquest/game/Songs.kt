@@ -162,6 +162,24 @@ object Songs {
         drums = "k.hsk.hsk.hsk.ss",
     )
 
+    // ------------------------------------------------------------------ Super Star (F major, fast)
+    private val starLead = """
+        F5/2 A5/2 C6/2 A5/2 F5/2 A5/2 C6/4
+        Bb5/2 G5/2 E5/2 G5/2 Bb5/2 D6/2 C6/4
+        F5/2 A5/2 C6/2 F6/2 E6/2 C6/2 A5/4
+        G5/2 Bb5/2 A5/2 G5/2 F5/4 -/4
+    """
+    private val starChords = listOf("F2 C3 A4 C5", "C2 G2 G4 Bb4", "F2 C3 A4 C5", "C2 G2 E4 G4")
+
+    val star = Song(
+        bpm = 196,
+        lead = starLead + starLead,
+        harmony = offbeats(starChords + starChords),
+        bass = drivingBass(starChords + starChords),
+        drums = "k.hsk.hsk.hsk.hs",
+        leadDuty = 0.5f,
+    )
+
     fun of(m: Music): Song? = when (m) {
         Music.NONE -> null
         Music.OVERWORLD -> overworld
@@ -169,5 +187,6 @@ object Songs {
         Music.SKY -> sky
         Music.CASTLE -> castle
         Music.BOSS -> boss
+        Music.STAR -> star
     }
 }
