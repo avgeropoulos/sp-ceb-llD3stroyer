@@ -3,6 +3,7 @@ package com.roccoquest
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.SoundPool
+import com.roccoquest.game.Music
 import com.roccoquest.game.Sound
 import com.roccoquest.game.SoundSink
 import java.io.File
@@ -15,6 +16,7 @@ import kotlin.random.Random
 /**
  * Retro sound effects synthesized at startup (no audio assets needed), written to
  * small WAV files in the cache directory and played through a [SoundPool].
+ * Background music is handled by [MusicPlayer].
  */
 class SoundFx(context: Context) : SoundSink {
     private val pool = SoundPool.Builder()
@@ -27,6 +29,7 @@ class SoundFx(context: Context) : SoundSink {
         )
         .build()
     private val ids = IntArray(Sound.entries.size)
+    private val musicPlayer = MusicPlayer()
 
     init {
         val dir = context.cacheDir
@@ -48,7 +51,14 @@ class SoundFx(context: Context) : SoundSink {
         if (id != 0) pool.play(id, 0.55f, 0.55f, 1, 0, 1f)
     }
 
-    fun release() = pool.release()
+    override fun music(m: Music) = musicPlayer.play(m)
+
+    fun setForeground(on: Boolean) = musicPlayer.setForeground(on)
+
+    fun release() {
+        pool.release()
+        musicPlayer.release()
+    }
 
     // ------------------------------------------------------------------ synthesis
 

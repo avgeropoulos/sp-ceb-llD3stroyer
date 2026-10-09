@@ -10,7 +10,7 @@ import kotlin.math.sin
  * Call [update] at a fixed 60 Hz and [render] once per frame.
  */
 class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
-    enum class State { TITLE, INTRO, PLAYING, DYING, FLAG, DOOR, AXE, GAME_OVER, VICTORY }
+    enum class State { TITLE, INTRO, PLAYING, DYING, FLAG, DOOR, AXE, WORLD_CLEAR, GAME_OVER, VICTORY }
 
     var state = State.TITLE
         private set
@@ -56,6 +56,10 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
     private var prevJump = false
     private var prevFire = false
     private var prevPause = false
+    private var prevMusicToggle = false
+    var musicOn = true
+        private set
+    private var currentMusic = Music.NONE
     private var heroPrevBottom = 0f
 
     private class Bump(val tx: Int, val ty: Int) { var t = 0f }
@@ -71,13 +75,16 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
 
     // ==================================================================== Flow
 
-    fun newGame() {
+    fun newGame(fromLevel: Int = 0) {
         score = 0
         coins = 0
         lives = 3
         hero = Hero(0f, 0f)
-        startLevel(0)
+        startLevel(fromLevel)
     }
+
+    /** Index of the first level in the current world (where a continue restarts). */
+    private fun worldStart(): Int = Levels.all.indexOfFirst { it.world == level.def.world }
 
     private fun setState(s: State) {
         state = s
@@ -101,10 +108,12 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
             when (level.def.rows[ty][tx]) {
                 '@' -> hero = Hero(px + 2, bottom - Hero.SMALL_H).also { it.power = power }
                 'g' -> entities += Grumbler(px, bottom)
+                'w' -> entities += Grumbler(px, bottom, winged = true)
+                'M' -> entities += Pip(px, bottom)
                 'k' -> entities += Shellback(px, bottom)
                 'c' -> entities += Coin(px, py)
                 'p' -> entities += Podoboo(px, py)
-                'K' -> entities += Krag(px, bottom)
+                'K' -> entities += Krag(px, bottom, level.def.bossHp)
                 'R' -> entities += Princess(px, bottom)
                 'A' -> entities += Axe(px, bottom)
                 'E' -> entities += Door(px, bottom)
@@ -138,6 +147,8 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         val jumpPressed = input.jump && !prevJump
         val firePressed = input.fire && !prevFire
         val pausePressed = input.pause && !prevPause
+        if (input.musicToggle && !prevMusicToggle) musicOn = !musicOn
+        prevMusicToggle = input.musicToggle
         prevJump = input.jump
         prevFire = input.fire
         prevPause = input.pause
@@ -147,7 +158,7 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         val inPlay = state == State.PLAYING || state == State.DYING || state == State.FLAG ||
             state == State.DOOR || state == State.AXE
         if (inPlay && pausePressed) paused = !paused
-        if (paused) return
+        if (paused) { updateMusic(); return }
         stateTime += dt
 
         when (state) {
@@ -173,13 +184,18 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
                 if (stateTime > 1.6f) startLevel(levelIndex + 1)
             }
             State.AXE -> updateAxe(dt)
-            State.GAME_OVER -> if (stateTime > 2f && tap) { hero = Hero(0f, 0f); setState(State.TITLE) }
+            State.WORLD_CLEAR -> {
+                updateParticles(dt)
+                if (stateTime > 6f || (stateTime > 2f && tap)) startLevel(levelIndex + 1)
+            }
+            State.GAME_OVER -> if (stateTime > 2f && tap) newGame(worldStart())
             State.VICTORY -> {
                 updateParticles(dt)
                 if (stateTime > 3f && tap) { hero = Hero(0f, 0f); level = Level(Levels.all[0]); camX = 0f; setState(State.TITLE) }
             }
         }
         if (bossBannerTime > 0) bossBannerTime -= dt
+        updateMusic()
     }
 
     private fun updateHero(dt: Float, jumpPressed: Boolean, firePressed: Boolean) {
@@ -332,6 +348,11 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
                 }
                 is Coin -> { e.removed = true; collectCoin(e.cx, e.y) }
                 is Axe -> { e.removed = true; startCollapse() }
+                is Pip -> if (bossDefeated) {
+                    h.vx = 0f
+                    sfx(Sound.CLEAR)
+                    setState(State.WORLD_CLEAR)
+                }
                 is Princess -> if (bossDefeated) {
                     h.vx = 0f
                     h.facing = if (e.cx > h.cx) 1 else -1
@@ -391,6 +412,26 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         bossBannerTime = 3.5f
         for (e in entities) if (e is KragFlame) e.removed = true
         sfx(Sound.CLEAR)
+    }
+
+    private fun desiredMusic(): Music {
+        if (!musicOn || paused) return Music.NONE
+        return when (state) {
+            State.TITLE -> Music.OVERWORLD
+            State.PLAYING, State.AXE -> {
+                val krag = entities.firstOrNull { it is Krag }
+                if (krag != null && krag.active && !bossDefeated) Music.BOSS else level.def.theme.music
+            }
+            else -> Music.NONE
+        }
+    }
+
+    private fun updateMusic() {
+        val m = desiredMusic()
+        if (m != currentMusic) {
+            currentMusic = m
+            sound.music(m)
+        }
     }
 
     private fun updateCamera() {
@@ -457,11 +498,12 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
                 when (state) {
                     State.GAME_OVER -> renderGameOver(gfx)
                     State.VICTORY -> renderVictory(gfx)
+                    State.WORLD_CLEAR -> renderWorldClear(gfx)
                     else -> {
                         if (state == State.PLAYING || state == State.AXE || state == State.DYING) {
                             Controls.draw(gfx, input, viewW, hero.power == Power.FIRE)
                         }
-                        Controls.drawPause(gfx, viewW)
+                        Controls.drawPause(gfx, viewW, musicOn)
                     }
                 }
                 if (bossBannerTime > 0) {
@@ -472,7 +514,7 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
                     gfx.rect(0f, 0f, viewW, VIEW_H, 0x99000000.toInt())
                     gfx.shadowText("PAUSED", viewW / 2, 110f, 20f, 0xFFFFFFFF.toInt(), 1)
                     gfx.shadowText("Tap the pause button to resume", viewW / 2, 132f, 9f, 0xFFDDDDDD.toInt(), 1)
-                    Controls.drawPause(gfx, viewW)
+                    Controls.drawPause(gfx, viewW, musicOn)
                 }
             }
         }
@@ -503,6 +545,47 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
                     val cy = 40f + (i * 37 % 3) * 18f
                     cloud(gfx, cx, cy)
                     i++
+                }
+            }
+            Theme.SKY -> {
+                gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF8FD0FF.toInt())
+                gfx.rect(0f, 120f, viewW, 120f, 0xFFB4E2FF.toInt())
+                layer(cam, 0.2f, 260f) { i, x -> bigCloud(gfx, x, 150f + (i * 29 % 3) * 14f, 0xFFE6F5FF.toInt()) }
+                layer(cam, 0.35f, 340f) { i, x -> island(gfx, x + 40, 90f + (i * 31 % 3) * 26f) }
+                layer(cam, 0.5f, 200f) { i, x -> cloud(gfx, x, 30f + (i * 37 % 4) * 22f) }
+            }
+            Theme.NIGHT -> {
+                gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF0E1433.toInt())
+                gfx.rect(0f, 140f, viewW, 100f, 0xFF1A2350.toInt())
+                layer(cam, 0.05f, 37f) { i, x ->
+                    val y = 30f + (i * 71 % 11) * 13f
+                    val tw = if (sin(time * 3 + i * 1.7f) > 0.6f) 2f else 1f
+                    gfx.rect(x, y, tw, tw, 0xFFFFFFE0.toInt())
+                }
+                val mx = viewW * 0.8f - cam * 0.02f
+                gfx.oval(mx, 34f, 30f, 30f, 0xFFFFF4C0.toInt())
+                gfx.oval(mx + 9, 30f, 26f, 26f, 0xFF0E1433.toInt())
+                layer(cam, 0.35f, 340f) { i, x -> island(gfx, x + 40, 100f + (i * 31 % 3) * 26f) }
+                layer(cam, 0.5f, 240f) { i, x -> bigCloud(gfx, x, 60f + (i * 37 % 4) * 24f, 0x55AFC0FF) }
+            }
+            Theme.DESERT -> {
+                gfx.rect(0f, 0f, viewW, VIEW_H, 0xFFFF9E5E.toInt())
+                gfx.rect(0f, 60f, viewW, 60f, 0xFFFFB877.toInt())
+                gfx.rect(0f, 120f, viewW, 120f, 0xFFFFD39A.toInt())
+                gfx.oval(viewW * 0.7f - cam * 0.03f, 60f, 54f, 54f, 0xFFFFF0B0.toInt())
+                layer(cam, 0.25f, 380f) { i, x ->
+                    val h = 70f + (i * 13 % 3) * 20f
+                    gfx.poly(floatArrayOf(x, x + h, x + h * 2), floatArrayOf(208f, 208f - h, 208f), 0xFFE0A060.toInt())
+                    gfx.poly(floatArrayOf(x + h, x + h * 2, x + h * 1.3f), floatArrayOf(208f - h, 208f, 208f), 0xFFC48446.toInt())
+                }
+                layer(cam, 0.5f, 260f) { i, x ->
+                    gfx.oval(x, 170f, 220f, 90f, 0xFFF2C46E.toInt())
+                    val cx = x + 70 + (i * 41 % 3) * 30
+                    gfx.rect(cx, 160f, 6f, 30f, 0xFF3E9A3A.toInt())
+                    gfx.rect(cx - 7, 168f, 6f, 4f, 0xFF3E9A3A.toInt())
+                    gfx.rect(cx - 7, 160f, 4f, 10f, 0xFF3E9A3A.toInt())
+                    gfx.rect(cx + 6, 172f, 6f, 4f, 0xFF3E9A3A.toInt())
+                    gfx.rect(cx + 8, 164f, 4f, 10f, 0xFF3E9A3A.toInt())
                 }
             }
             Theme.UNDERGROUND -> {
@@ -536,6 +619,29 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         }
     }
 
+    /** Calls [draw] for each repeat of a parallax layer that is on screen. */
+    private inline fun layer(cam: Float, factor: Float, spacing: Float, draw: (Int, Float) -> Unit) {
+        val p = cam * factor
+        var i = (p / spacing).toInt() - 1
+        while (i * spacing - p < viewW + spacing) {
+            draw(i, i * spacing - p)
+            i++
+        }
+    }
+
+    private fun bigCloud(gfx: Gfx, x: Float, y: Float, c: Int) {
+        gfx.oval(x, y, 70f, 30f, c)
+        gfx.oval(x + 30, y - 14, 60f, 40f, c)
+        gfx.oval(x + 70, y - 2, 60f, 30f, c)
+    }
+
+    private fun island(gfx: Gfx, x: Float, y: Float) {
+        gfx.poly(floatArrayOf(x, x + 60, x + 30), floatArrayOf(y + 8, y + 8, y + 40), 0xFF9A6A3A.toInt())
+        gfx.oval(x - 4, y, 68f, 14f, 0xFF4CB531.toInt())
+        gfx.oval(x + 12, y - 14, 18f, 18f, 0xFF2E7D1F.toInt())
+        gfx.rect(x + 19, y - 2, 4f, 6f, 0xFF6A3A12.toInt())
+    }
+
     private fun cloud(gfx: Gfx, x: Float, y: Float) {
         val c = 0xFFFFFFFF.toInt()
         gfx.oval(x, y + 6, 30f, 18f, c)
@@ -548,7 +654,8 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         val theme = level.def.theme
         return when (t) {
             T.GROUND -> when (theme) {
-                Theme.OVERWORLD -> if (!level.solid(tx, ty - 1)) Sprites.grassTop else Sprites.dirt
+                Theme.OVERWORLD, Theme.SKY, Theme.NIGHT -> if (!level.solid(tx, ty - 1)) Sprites.grassTop else Sprites.dirt
+                Theme.DESERT -> if (!level.solid(tx, ty - 1)) Sprites.sandTop else Sprites.sandstone
                 Theme.UNDERGROUND -> Sprites.hardBlue
                 Theme.CASTLE -> Sprites.stone
             }
@@ -556,9 +663,9 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
             T.QCOIN, T.QPOWER -> if ((time * 3).toInt() % 3 == 0) Sprites.question2 else Sprites.question1
             T.USED -> Sprites.used
             T.HARD -> when (theme) {
-                Theme.OVERWORLD -> Sprites.hard
                 Theme.UNDERGROUND -> Sprites.hardBlue
                 Theme.CASTLE -> Sprites.hardGrey
+                else -> Sprites.hard
             }
             T.PIPE_TL -> Sprites.pipeTL
             T.PIPE_TR -> Sprites.pipeTR
@@ -566,6 +673,7 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
             T.PIPE_R -> Sprites.pipeR
             T.LAVA -> if (level[tx, ty - 1] == T.LAVA) Sprites.lava else Sprites.lavaTop
             T.BRIDGE -> Sprites.bridge
+            T.CLOUD -> Sprites.cloud
             else -> null
         }
     }
@@ -636,7 +744,7 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         gfx.shadowText("x" + coins.toString().padStart(2, '0'), cx + 8, 20f, 9f, white)
         val wx = viewW * 0.52f
         gfx.shadowText("WORLD", wx, 13f, 9f, white, 1)
-        gfx.shadowText("1-${levelIndex + 1}", wx, 25f, 9f, white, 1)
+        gfx.shadowText("${level.def.world}-${level.def.num}", wx, 25f, 9f, white, 1)
         val lx = viewW * 0.72f
         gfx.sprite(Sprites.smallStand, lx - 6, 8f, w = 12f, h = 12f)
         gfx.shadowText("x$lives", lx + 8, 20f, 9f, white)
@@ -647,7 +755,7 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
             val bx = viewW / 2 - bw / 2
             gfx.shadowText("KING KRAG", viewW / 2, 40f, 8f, 0xFFFFB0A0.toInt(), 1)
             gfx.rect(bx - 1, 43f, bw + 2, 7f, 0xFF000000.toInt())
-            gfx.rect(bx, 44f, bw * krag.hp / Krag.MAX_HP, 5f, 0xFFE53A1E.toInt())
+            gfx.rect(bx, 44f, bw * krag.hp / krag.maxHp, 5f, 0xFFE53A1E.toInt())
         }
     }
 
@@ -682,12 +790,12 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF000000.toInt())
         renderHud(gfx)
         val cx = viewW / 2
-        gfx.text("WORLD 1-${levelIndex + 1}", cx, 96f, 16f, 0xFFFFFFFF.toInt(), 1)
+        gfx.text("WORLD ${level.def.world}-${level.def.num}", cx, 96f, 16f, 0xFFFFFFFF.toInt(), 1)
         gfx.text(level.def.name, cx, 116f, 11f, 0xFFFFD21F.toInt(), 1)
         val s = if (hero.power == Power.FIRE) Sprites.fireStand else Sprites.smallStand
         gfx.sprite(s, cx - 28, 150f - s.h)
         gfx.text("x  $lives", cx + 4, 146f, 12f, 0xFFFFFFFF.toInt())
-        if (levelIndex == Levels.all.size - 1) {
+        if (level.def.rows.any { 'K' in it }) {
             gfx.text("King Krag awaits... Use the Blaze Blossom's fire!", cx, 180f, 9f, 0xFFFF8A8A.toInt(), 1)
         }
     }
@@ -696,7 +804,18 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         gfx.rect(0f, 0f, viewW, VIEW_H, 0xCC000000.toInt())
         gfx.shadowText("GAME OVER", viewW / 2, 110f, 22f, 0xFFFFFFFF.toInt(), 1)
         gfx.shadowText("Score: $score", viewW / 2, 134f, 11f, 0xFFFFD21F.toInt(), 1)
-        if (stateTime > 2f) gfx.shadowText("Tap to continue", viewW / 2, 160f, 10f, 0xFFFFFFFF.toInt(), 1)
+        if (stateTime > 2f) {
+            gfx.shadowText("Tap to continue from WORLD ${level.def.world}-1", viewW / 2, 160f, 10f, 0xFFFFFFFF.toInt(), 1)
+        }
+    }
+
+    private fun renderWorldClear(gfx: Gfx) {
+        gfx.rect(0f, 54f, viewW, 104f, 0xAA000000.toInt())
+        gfx.sprite(Sprites.pip, viewW / 2 - 8, 60f)
+        gfx.shadowText("THANK YOU, ROCCO!", viewW / 2, 94f, 16f, 0xFFFFD93D.toInt(), 1)
+        gfx.shadowText("But Princess Rosalie isn't here...", viewW / 2, 112f, 10f, 0xFFFFFFFF.toInt(), 1)
+        gfx.shadowText("Krag's minions took her to KRAG'S VOLCANO!", viewW / 2, 128f, 10f, 0xFFFFB8DC.toInt(), 1)
+        if (stateTime > 2f) gfx.shadowText("Tap to continue to WORLD 2", viewW / 2, 148f, 9f, 0xFFFFFFFF.toInt(), 1)
     }
 
     private fun renderVictory(gfx: Gfx) {

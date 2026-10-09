@@ -11,11 +11,13 @@ object Controls {
     val fire = Button("FIRE", 0f, 212f, 20f)
     val jump = Button("JUMP", 0f, 194f, 26f)
     val pause = Button("II", 0f, 14f, 10f)
+    val music = Button("M", 0f, 14f, 10f)
 
     fun layout(viewW: Float) {
         fire.cx = viewW - 96f
         jump.cx = viewW - 36f
         pause.cx = viewW - 16f
+        music.cx = viewW - 42f
     }
 
     /** Maps the currently held touch points onto [input]. */
@@ -26,10 +28,12 @@ object Controls {
         var j = false
         var f = false
         var p = false
+        var m = false
         for (i in 0 until count) {
             val x = xs[i]
             val y = ys[i]
-            if (hypot(x - pause.cx, y - pause.cy) < pause.r * 2f) { p = true; continue }
+            if (hypot(x - pause.cx, y - pause.cy) < pause.r * 1.3f) { p = true; continue }
+            if (hypot(x - music.cx, y - music.cy) < music.r * 1.3f) { m = true; continue }
             if (y < 120f) continue
             if (x < viewW / 2) {
                 // Whole bottom-left area acts as a d-pad so a sliding thumb works.
@@ -45,6 +49,7 @@ object Controls {
         input.jump = j
         input.fire = f
         input.pause = p
+        input.musicToggle = m
     }
 
     fun draw(gfx: Gfx, input: Input, viewW: Float, showFire: Boolean) {
@@ -61,11 +66,28 @@ object Controls {
         if (showFire) gfx.text("FIRE", fire.cx, fire.cy + 3, 7f, c, 1)
     }
 
-    fun drawPause(gfx: Gfx, viewW: Float) {
+    /** Pause button plus the music on/off toggle beside it. */
+    fun drawPause(gfx: Gfx, viewW: Float, musicOn: Boolean) {
         layout(viewW)
+        val c = 0xDDFFFFFF.toInt()
         gfx.oval(pause.cx - pause.r, pause.cy - pause.r, pause.r * 2, pause.r * 2, 0x66000000)
-        gfx.rect(pause.cx - 4, pause.cy - 5, 3f, 10f, 0xDDFFFFFF.toInt())
-        gfx.rect(pause.cx + 1, pause.cy - 5, 3f, 10f, 0xDDFFFFFF.toInt())
+        gfx.rect(pause.cx - 4, pause.cy - 5, 3f, 10f, c)
+        gfx.rect(pause.cx + 1, pause.cy - 5, 3f, 10f, c)
+
+        val x = music.cx
+        val y = music.cy
+        gfx.oval(x - music.r, y - music.r, music.r * 2, music.r * 2, 0x66000000)
+        gfx.oval(x - 5, y + 1, 5f, 4f, c)
+        gfx.oval(x + 1, y, 5f, 4f, c)
+        gfx.rect(x - 1, y - 6, 1.5f, 9f, c)
+        gfx.rect(x + 5, y - 7, 1.5f, 9f, c)
+        gfx.poly(floatArrayOf(x - 1, x + 6.5f, x + 6.5f, x - 1), floatArrayOf(y - 6, y - 7, y - 5, y - 4), c)
+        if (!musicOn) {
+            gfx.poly(
+                floatArrayOf(x - 7, x - 5.5f, x + 7, x + 5.5f), floatArrayOf(y - 6, y - 7.5f, y + 6, y + 7.5f),
+                0xFFE53A1E.toInt(),
+            )
+        }
     }
 
     private fun button(gfx: Gfx, b: Button, pressed: Boolean) {

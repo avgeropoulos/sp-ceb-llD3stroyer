@@ -48,8 +48,13 @@ fun argb(a: Int, rgb: Int): Int = (a shl 24) or (rgb and 0xFFFFFF)
 
 enum class Sound { JUMP, COIN, FIRE, STOMP, KICK, POWERUP, HURT, BUMP, BREAK, BOSS_HIT, BOSS_FIRE, DIE, CLEAR, VICTORY, ONEUP }
 
+enum class Music { NONE, OVERWORLD, UNDERGROUND, SKY, CASTLE, BOSS }
+
 fun interface SoundSink {
     fun play(s: Sound)
+
+    /** Switches the looping background track; [Music.NONE] silences it. */
+    fun music(m: Music) {}
 }
 
 /** Held-button state written by the platform layer, read by the game loop. */
@@ -59,6 +64,7 @@ class Input {
     @Volatile var jump = false
     @Volatile var fire = false
     @Volatile var pause = false
+    @Volatile var musicToggle = false
     /** Set on any new touch / key press; consumed by menus. */
     @Volatile var tap = false
 }

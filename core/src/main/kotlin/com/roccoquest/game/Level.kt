@@ -20,21 +20,40 @@ object T {
     const val PIPE_R = 10
     const val LAVA = 11
     const val BRIDGE = 12
+    /** Cloud platform: you can jump up through it and land on top. */
+    const val CLOUD = 13
 
-    fun solid(t: Int) = t != EMPTY && t != LAVA
+    fun solid(t: Int) = t != EMPTY && t != LAVA && t != CLOUD
 }
 
-enum class Theme { OVERWORLD, UNDERGROUND, CASTLE }
+enum class Theme(val music: Music) {
+    OVERWORLD(Music.OVERWORLD),
+    DESERT(Music.OVERWORLD),
+    UNDERGROUND(Music.UNDERGROUND),
+    SKY(Music.SKY),
+    NIGHT(Music.SKY),
+    CASTLE(Music.CASTLE),
+}
 
 /** Immutable description of a level: a character grid plus metadata. */
-class LevelDef(val name: String, val theme: Theme, val rows: List<String>)
+class LevelDef(
+    val name: String,
+    val theme: Theme,
+    val rows: List<String>,
+    val world: Int,
+    val num: Int,
+    /** King Krag's hit points, for castle levels. */
+    val bossHp: Int = 10,
+)
 
 /**
  * Character legend:
  *  '#' ground   'B' brick   '?' coin block   'P' power block   'X' hard block
  *  '[' ']' pipe top   '{' '}' pipe body   'L' lava   '=' bridge
  *  '@' hero start   'g' grumbler   'k' shellback   'c' coin   'p' lava bubble
- *  'K' King Krag   'R' Princess Rosalie   'A' axe   'F' flagpole (top)   'C' castle   'E' exit door
+ *  'O' cloud platform   'w' winged grumbler
+ *  'K' King Krag   'R' Princess Rosalie   'M' Pip the messenger   'A' axe
+ *  'F' flagpole (top)   'C' castle   'E' exit door
  */
 class LevelBuilder(private val w: Int) {
     private val g = Array(LEVEL_ROWS) { CharArray(w) { '.' } }
@@ -52,11 +71,17 @@ class LevelBuilder(private val w: Int) {
     }
     fun stairsUp(x: Int, n: Int, base: Int = 13) = apply { for (i in 0 until n) fill(x + i, x + i, base - 1 - i, base - 1, 'X') }
     fun stairsDown(x: Int, n: Int, base: Int = 13) = apply { for (i in 0 until n) fill(x + i, x + i, base - n + i, base - 1, 'X') }
-    fun build(name: String, theme: Theme) = LevelDef(name, theme, g.map { String(it) })
+    fun clouds(x0: Int, x1: Int, y: Int) = fill(x0, x1, y, y, 'O')
+    fun lava(x0: Int, x1: Int) = fill(x0, x1, 13, LEVEL_ROWS - 1, 'L')
+    fun flagAndCastle(x: Int) = at(x, 12, 'X').at(x, 3, 'F').at(x + 4, 12, 'C')
+    fun build(name: String, theme: Theme, world: Int, num: Int, bossHp: Int = 10) =
+        LevelDef(name, theme, g.map { String(it) }, world, num, bossHp)
 }
 
 object Levels {
-    val all: List<LevelDef> by lazy { listOf(meadow(), caverns(), castle()) }
+    val all: List<LevelDef> by lazy {
+        listOf(meadow(), caverns(), cloudtop(), fortress(), dunes(), deepCaverns(), skyway(), volcano())
+    }
 
     private fun meadow(): LevelDef = LevelBuilder(212)
         .ground(0, 68).ground(71, 85).ground(89, 150).ground(153, 211)
@@ -83,7 +108,7 @@ object Levels {
         .stairsUp(182, 8).fill(190, 190, 5, 12, 'X')
         .at(199, 12, 'X').at(199, 3, 'F')
         .at(203, 12, 'C')
-        .build("MEADOW HILLS", Theme.OVERWORLD)
+        .build("MEADOW HILLS", Theme.OVERWORLD, 1, 1)
 
     private fun caverns(): LevelDef = LevelBuilder(176)
         .ground(0, 79).ground(83, 119).ground(123, 175)
@@ -109,9 +134,9 @@ object Levels {
         .stairsUp(156, 4).stairsDown(160, 3)
         .fill(164, 175, 2, 9, 'X').fill(170, 170, 10, 12, '.').at(170, 12, 'E')
         .fill(171, 175, 10, 12, 'X')
-        .build("CRYSTAL CAVERNS", Theme.UNDERGROUND)
+        .build("CRYSTAL CAVERNS", Theme.UNDERGROUND, 1, 2)
 
-    private fun castle(): LevelDef = LevelBuilder(132)
+    private fun fortress(): LevelDef = LevelBuilder(132)
         // Ceiling and floor
         .fill(0, 131, 2, 2, '#').fill(0, 15, 3, 5, '#')
         .ground(0, 15, 10)
@@ -133,9 +158,114 @@ object Levels {
         .at(99, 9, 'K')
         .ground(105, 131, 10).at(105, 9, 'A')
         .fill(105, 107, 3, 7, '#')
-        .at(122, 9, 'R')
+        .at(122, 9, 'M')
         .fill(131, 131, 3, 9, '#')
-        .build("KRAG'S CASTLE", Theme.CASTLE)
+        .build("KRAG'S FORTRESS", Theme.CASTLE, 1, 4, bossHp = 6)
+
+    private fun cloudtop(): LevelDef = LevelBuilder(190)
+        .ground(0, 12).at(3, 12, '@')
+        .clouds(16, 20, 11).row(16, 9, "c c c")
+        .ground(23, 28, 10).at(26, 9, 'g')
+        .clouds(31, 34, 8).row(31, 6, "cccc")
+        .clouds(37, 41, 10).at(39, 9, 'w')
+        .ground(44, 52, 12).row(46, 8, "?P?").at(50, 11, 'k')
+        .clouds(55, 58, 10).clouds(61, 64, 8).clouds(67, 70, 6).row(67, 4, "cccc")
+        .ground(73, 80, 9).at(76, 8, 'g').at(78, 8, 'g')
+        .clouds(82, 83, 11)
+        .ground(86, 95, 10).pipe(90, 2, base = 10).at(93, 9, 'w')
+        .clouds(98, 103, 9).row(99, 5, "B?B")
+        .clouds(106, 108, 11).clouds(111, 113, 9).clouds(116, 118, 7).row(111, 7, "ccc")
+        .ground(121, 130, 9).at(125, 8, 'k').at(128, 8, 'g')
+        .ground(134, 136, 11).ground(140, 142, 9).row(140, 7, "ccc")
+        .clouds(146, 150, 10).at(148, 9, 'w')
+        .ground(153, 189).row(156, 9, "B?B")
+        .stairsUp(160, 5).fill(165, 165, 8, 12, 'X')
+        .flagAndCastle(175)
+        .build("CLOUDTOP HEIGHTS", Theme.SKY, 1, 3)
+
+    private fun dunes(): LevelDef = LevelBuilder(200)
+        .ground(0, 40).ground(44, 70).ground(73, 110).ground(115, 150).ground(154, 199)
+        .at(3, 12, '@')
+        .row(14, 9, "B?P?B").row(16, 5, "?")
+        .at(20, 12, 'g').at(24, 12, 'k').pipe(28, 3).at(33, 12, 'g')
+        .stairsUp(36, 3).fill(39, 40, 10, 12, 'X')
+        .row(48, 9, "BBBBB").row(48, 8, "ccccc").at(52, 12, 'k').at(55, 12, 'g').at(57, 12, 'g')
+        .pipe(60, 4).pipe(66, 3).at(64, 12, 'w')
+        .row(76, 9, "?").row(80, 9, "B?B").row(80, 5, "BBBBBB").at(84, 4, 'w').at(88, 12, 'g').at(90, 12, 'g')
+        .pipe(94, 2).at(98, 12, 'k').row(100, 9, "BPB")
+        .stairsUp(105, 4).fill(109, 110, 9, 12, 'X').row(112, 9, "XX")
+        .at(120, 12, 'w').at(124, 12, 'w').row(122, 9, "B?B?B").at(128, 12, 'g')
+        .pipe(132, 3).at(137, 12, 'k')
+        .stairsUp(142, 5).fill(147, 150, 8, 12, 'X')
+        .stairsDown(154, 4)
+        .at(162, 12, 'g').at(164, 12, 'g').row(166, 9, "?c?").pipe(170, 2)
+        .stairsUp(176, 8).fill(184, 184, 5, 12, 'X')
+        .flagAndCastle(190)
+        .build("SUNSET DUNES", Theme.DESERT, 2, 1)
+
+    private fun deepCaverns(): LevelDef = LevelBuilder(170)
+        .ground(0, 30).ground(34, 60).ground(65, 95).ground(99, 125).ground(129, 169)
+        .fill(0, 0, 2, 12, 'B').fill(6, 150, 2, 2, 'B')
+        .at(3, 12, '@')
+        .row(8, 9, "?P?").at(14, 12, 'g').at(16, 12, 'g').at(22, 12, 'k').pipe(26, 2)
+        .fill(36, 39, 9, 9, 'B').row(36, 8, "cccc").at(38, 8, 'w').row(41, 9, "B")
+        .row(44, 5, "BBBBBBB").row(44, 4, "ccccccc")
+        .at(48, 12, 'g').at(50, 12, 'g').at(54, 12, 'k').pipe(57, 3)
+        .row(62, 9, "BB")
+        .stairsUp(66, 3).stairsDown(70, 3)
+        .at(76, 12, 'w').at(80, 12, 'w').row(78, 9, "B?B?B").row(79, 5, "c?c")
+        .pipe(86, 4).at(90, 12, 'g').at(92, 12, 'g')
+        .fill(101, 104, 10, 12, 'X').fill(105, 108, 8, 12, 'X').at(103, 9, 'g').at(107, 7, 'w')
+        .row(112, 8, "cccccc").at(115, 12, 'k').at(118, 12, 'g').pipe(121, 2)
+        .stairsUp(131, 4).row(137, 6, "BBBB").row(137, 5, "cccc")
+        .at(140, 12, 'g').at(142, 12, 'g').at(146, 12, 'w')
+        .stairsUp(150, 4).stairsDown(154, 3)
+        .fill(158, 169, 2, 9, 'X').at(164, 12, 'E').fill(165, 169, 10, 12, 'X')
+        .build("DEEP CAVERNS", Theme.UNDERGROUND, 2, 2)
+
+    private fun skyway(): LevelDef = LevelBuilder(200)
+        .ground(0, 10).at(3, 12, '@')
+        .clouds(13, 15, 11).clouds(18, 20, 9)
+        .ground(23, 30, 9).row(25, 5, "?P?").at(28, 8, 'w')
+        .clouds(33, 36, 11).clouds(39, 42, 9).clouds(45, 48, 7).row(45, 5, "cccc")
+        .clouds(51, 54, 9).at(52, 8, 'w').clouds(57, 60, 11)
+        .ground(63, 70, 10).at(66, 9, 'k').at(68, 9, 'g')
+        .ground(74, 80, 10).at(77, 9, 'w')
+        .clouds(83, 85, 8).clouds(88, 90, 6).clouds(93, 95, 8).at(94, 7, 'w').clouds(98, 100, 10)
+        .ground(103, 112, 11).at(106, 10, 'g').at(108, 10, 'g').pipe(110, 2, base = 11)
+        .clouds(115, 117, 9).clouds(120, 122, 7).row(120, 5, "ccc")
+        .clouds(125, 128, 9).at(127, 8, 'w').clouds(131, 133, 11)
+        .ground(136, 142, 10).at(139, 9, 'k')
+        .ground(147, 150, 10).row(147, 6, "B?B")
+        .clouds(153, 156, 8).clouds(159, 162, 10).at(161, 9, 'w')
+        .ground(165, 199).at(168, 12, 'g')
+        .stairsUp(170, 6).fill(176, 176, 7, 12, 'X')
+        .flagAndCastle(188)
+        .build("STARLIGHT SKYWAY", Theme.NIGHT, 2, 3)
+
+    private fun volcano(): LevelDef = LevelBuilder(170)
+        .fill(0, 169, 2, 2, '#').fill(0, 12, 3, 5, '#')
+        .ground(0, 12, 10).at(2, 9, '@').row(8, 6, "P")
+        .lava(13, 16).at(15, 13, 'p')
+        .ground(17, 22, 10).at(20, 9, 'g')
+        .lava(23, 26).at(24, 13, 'p')
+        .ground(27, 29, 8)
+        .lava(30, 33).at(31, 13, 'p')
+        .ground(34, 36, 7)
+        .lava(37, 40).at(38, 13, 'p').at(40, 13, 'p')
+        .ground(41, 52, 10).fill(45, 48, 3, 6, '#').at(44, 9, 'k').at(47, 9, 'g').at(49, 9, 'g')
+        .lava(53, 60).row(55, 8, "X").row(58, 8, "X").at(56, 13, 'p').at(60, 13, 'p')
+        .ground(61, 72, 10).row(64, 6, "B?B").at(67, 9, 'w').at(70, 9, 'k')
+        .lava(73, 76).at(74, 13, 'p')
+        .ground(77, 79, 8)
+        .lava(80, 83).at(82, 13, 'p')
+        .ground(84, 90, 10).at(87, 9, 'g').row(86, 6, "P")
+        // Final battle on the bridge
+        .lava(91, 114).fill(91, 114, 10, 10, '=')
+        .at(108, 9, 'K')
+        .ground(115, 169, 10).at(115, 9, 'A').fill(115, 117, 3, 7, '#')
+        .at(150, 9, 'R').fill(169, 169, 3, 9, '#')
+        .build("KRAG'S VOLCANO", Theme.CASTLE, 2, 4, bossHp = 12)
 }
 
 /** Mutable runtime tile map. */
@@ -158,6 +288,7 @@ class Level(val def: LevelDef) {
                 '{' -> T.PIPE_L
                 '}' -> T.PIPE_R
                 'L', 'p' -> T.LAVA
+                'O' -> T.CLOUD
                 '=' -> T.BRIDGE
                 else -> T.EMPTY
             }
@@ -204,7 +335,8 @@ class Level(val def: LevelDef) {
         val right = tileOf(b.x + b.w - 0.01f)
         if (dy > 0) {
             val ty = tileOf(b.y + b.h - 0.01f)
-            for (tx in left..right) if (solid(tx, ty)) {
+            val wasAbove = b.y + b.h - dy <= ty * TILE + 0.01f
+            for (tx in left..right) if (solid(tx, ty) || (wasAbove && this[tx, ty] == T.CLOUD)) {
                 b.y = ty * TILE - b.h; b.onGround = true; return null
             }
         } else if (dy < 0) {

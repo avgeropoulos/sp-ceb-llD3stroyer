@@ -36,11 +36,13 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
     fun resume() {
         resumed = true
+        sound.setForeground(true)
         startLoop()
     }
 
     fun pause() {
         resumed = false
+        sound.setForeground(false)
         stopLoop()
     }
 
@@ -145,6 +147,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             KeyEvent.KEYCODE_X, KeyEvent.KEYCODE_J, KeyEvent.KEYCODE_BUTTON_B,
             KeyEvent.KEYCODE_BUTTON_X, KeyEvent.KEYCODE_CTRL_LEFT -> input.fire = down
             KeyEvent.KEYCODE_P, KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_ESCAPE -> input.pause = down
+            KeyEvent.KEYCODE_M, KeyEvent.KEYCODE_BUTTON_SELECT -> input.musicToggle = down
             else -> return false
         }
         return true

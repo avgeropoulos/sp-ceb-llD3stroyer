@@ -113,7 +113,10 @@ abstract class Enemy(x: Float, y: Float, w: Float, h: Float) : Entity(x, y, w, h
     }
 }
 
-class Grumbler(x: Float, y: Float) : Enemy(x + 1, y - 14, 14f, 14f) {
+class Grumbler(x: Float, y: Float, winged: Boolean = false) : Enemy(x + 1, y - 14, 14f, 14f) {
+    /** Winged grumblers hop along; stomping one clips its wings. */
+    var winged = winged
+        private set
     private var squashed = -1f
     private var anim = 0f
     init { vx = -30f }
@@ -127,9 +130,17 @@ class Grumbler(x: Float, y: Float) : Enemy(x + 1, y - 14, 14f, 14f) {
         }
         anim += dt
         walk(g, dt)
+        if (winged && onGround) vy = -290f
     }
 
     override fun stomp(g: Game) {
+        if (winged) {
+            winged = false
+            vy = 0f
+            g.sfx(Sound.STOMP)
+            g.addScore(100, cx, y)
+            return
+        }
         squashed = 0f
         dying = false
         vx = 0f
@@ -144,8 +155,21 @@ class Grumbler(x: Float, y: Float) : Enemy(x + 1, y - 14, 14f, 14f) {
         if (squashed >= 0) {
             gfx.sprite(s, x - 1 + ox, bottom - 7, h = 7f)
         } else {
+            val flap = (anim * 10).toInt() % 2 == 0
+            if (winged && !dying) wing(gfx, x + ox - 5, flap, true)
             gfx.sprite(s, x - 1 + ox, bottom - 16, flipX = (anim * 6).toInt() % 2 == 0, flipY = dying)
+            if (winged && !dying) wing(gfx, x + ox + 13, flap, false)
         }
+    }
+
+    private fun wing(gfx: Gfx, wx: Float, up: Boolean, left: Boolean) {
+        val wy = bottom - 16 + if (up) -2f else 3f
+        val tip = if (left) wx - 2 else wx + 8
+        gfx.poly(
+            floatArrayOf(wx + 3, tip, wx + 3), floatArrayOf(wy + 2, wy + if (up) -6f else 9f, wy + 9),
+            0xFF5A5A5A.toInt(),
+        )
+        gfx.oval(wx, wy, 7f, 9f, 0xFFFFFFFF.toInt())
     }
 }
 
@@ -266,10 +290,8 @@ class Podoboo(x: Float, y: Float) : Enemy(x + 2, y, 12f, 13f) {
 
 // ======================================================================== King Krag (boss)
 
-class Krag(x: Float, y: Float) : Enemy(x - 10, y - 40, 36f, 40f) {
-    companion object { const val MAX_HP = 10 }
-
-    var hp = MAX_HP
+class Krag(x: Float, y: Float, val maxHp: Int = 10) : Enemy(x - 10, y - 40, 36f, 40f) {
+    var hp = maxHp
     private val homeX = x - 10
     private var facing = -1
     private var walkDir = -1
@@ -535,6 +557,15 @@ class Princess(x: Float, y: Float) : Entity(x, y - 24, 16f, 24f) {
         gfx.rect(cx - 16, by - 14, 32f, 12f, 0xFFFFFFFF.toInt())
         gfx.poly(floatArrayOf(cx - 3, cx + 3, cx), floatArrayOf(by - 2, by - 2, by + 2), 0xFFFFFFFF.toInt())
         gfx.text(s, cx, by - 5, 8f, 0xFFD02060.toInt(), 1)
+    }
+}
+
+/** Pip, who waits in the first castle with news of where Rosalie was taken. */
+class Pip(x: Float, y: Float) : Entity(x, y - 16, 16f, 16f) {
+    override fun update(g: Game, dt: Float) {}
+    override fun draw(g: Game, gfx: Gfx, ox: Float) {
+        val hop = if (g.bossDefeated && (g.time * 4).toInt() % 2 == 0) -2f else 0f
+        gfx.sprite(Sprites.pip, x + ox, y + hop, flipX = g.hero.cx < cx)
     }
 }
 

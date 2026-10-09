@@ -32,9 +32,14 @@ class GameTest {
             assertTrue(def.rows.all { it.length == def.rows[0].length })
             assertTrue(def.rows.any { '@' in it }, "${def.name} has a start")
         }
-        assertTrue(Levels.all[0].rows.any { 'F' in it })
-        assertTrue(Levels.all[1].rows.any { 'E' in it })
-        assertTrue(Levels.all[2].rows.any { 'K' in it } && Levels.all[2].rows.any { 'R' in it })
+        assertEquals(8, Levels.all.size)
+        // Every level must have a way to finish it.
+        for (def in Levels.all) {
+            assertTrue(def.rows.any { r -> r.any { it in "FEMR" } }, "${def.name} has an exit")
+        }
+        assertTrue(Levels.all[3].rows.any { 'K' in it } && Levels.all[3].rows.any { 'M' in it })
+        assertTrue(Levels.all[7].rows.any { 'K' in it } && Levels.all[7].rows.any { 'R' in it })
+        assertEquals(listOf("1-1", "1-2", "1-3", "1-4", "2-1", "2-2", "2-3", "2-4"), Levels.all.map { "${it.world}-${it.num}" })
     }
 
     @Test fun heroWalksAndJumps() {
@@ -88,12 +93,13 @@ class GameTest {
 
     @Test fun bossFightAndRescue() {
         val g = newGame()
-        g.startLevel(2)
+        g.startLevel(7)
         run(g, 2.5f)
         val krag = g.entities.first { it is Krag } as Krag
+        assertEquals(12, krag.maxHp)
         // Walk up to the bridge with fire power.
         g.hero.power = Power.FIRE
-        g.hero.x = 86f * TILE
+        g.hero.x = 89f * TILE
         g.hero.y = 10f * TILE - g.hero.h
         run(g, 0.5f)
         assertTrue(krag.active)
@@ -101,20 +107,20 @@ class GameTest {
         run(g, 3f)
         // Touch the axe, then the princess.
         g.hero.invuln = 10f
-        g.hero.x = 105f * TILE
+        g.hero.x = 115f * TILE
         g.hero.y = 10f * TILE - g.hero.h
         run(g, 0.1f)
         assertEquals(Game.State.AXE, g.state)
         run(g, 5f)
         assertEquals(Game.State.PLAYING, g.state)
-        g.hero.x = 121.5f * TILE
+        g.hero.x = 149.5f * TILE
         run(g, 0.2f)
         assertEquals(Game.State.VICTORY, g.state)
     }
 
     @Test fun axeDropsKragIntoLava() {
         val g = newGame()
-        g.startLevel(2)
+        g.startLevel(3)
         run(g, 2.5f)
         g.hero.invuln = 100f
         g.hero.x = 90f * TILE
@@ -126,6 +132,83 @@ class GameTest {
         assertEquals(Game.State.AXE, g.state)
         run(g, 6f)
         assertTrue(g.bossDefeated)
+        // Pip is waiting at the end of the first castle and sends Rocco on to World 2.
+        g.hero.x = 121.5f * TILE
+        g.hero.y = 10f * TILE - g.hero.h
+        run(g, 0.2f)
+        assertEquals(Game.State.WORLD_CLEAR, g.state)
+        run(g, 6.1f)
+        assertEquals(4, g.levelIndex)
+        assertEquals(Game.State.INTRO, g.state)
+    }
+
+    @Test fun cloudsAreJumpThroughPlatforms() {
+        val g = newGame()
+        g.startLevel(2)
+        run(g, 2.5f)
+        g.entities.removeAll { it is Enemy }
+        // Clouds at columns 16-20, row 11. Jump up through them from below...
+        g.hero.x = 17f * TILE
+        g.hero.y = 12f * TILE
+        g.hero.vy = -400f
+        run(g, 0.6f)
+        // ...and land on top.
+        assertTrue(g.hero.onGround)
+        assertEquals(11f * TILE, g.hero.bottom, 0.5f)
+    }
+
+    @Test fun musicFollowsTheGame() {
+        val played = ArrayList<Music>()
+        val g = Game(Input(), object : SoundSink {
+            override fun play(s: Sound) {}
+            override fun music(m: Music) { played += m }
+        })
+        g.viewW = 427f
+        g.update(dt)
+        assertEquals(Music.OVERWORLD, played.last()) // title
+        repeat(30) { g.update(dt) }
+        g.input.tap = true
+        g.update(dt)
+        assertEquals(Music.NONE, played.last()) // level intro
+        repeat(140) { g.update(dt) }
+        assertEquals(Music.OVERWORLD, played.last())
+        g.startLevel(1); run(g, 2.5f)
+        assertEquals(Music.UNDERGROUND, played.last())
+        g.startLevel(2); run(g, 2.5f)
+        assertEquals(Music.SKY, played.last())
+        g.startLevel(3); run(g, 2.5f)
+        assertEquals(Music.CASTLE, played.last())
+        g.hero.invuln = 100f
+        g.hero.x = 88f * TILE
+        g.hero.y = 10f * TILE - g.hero.h
+        run(g, 0.5f)
+        assertEquals(Music.BOSS, played.last())
+        // Music button toggles it off and on.
+        g.input.musicToggle = true; g.update(dt); g.input.musicToggle = false; g.update(dt)
+        assertEquals(Music.NONE, played.last())
+        g.input.musicToggle = true; g.update(dt); g.input.musicToggle = false; g.update(dt)
+        assertEquals(Music.BOSS, played.last())
+    }
+
+    @Test fun songsRender() {
+        val dir = File("build/music").apply { mkdirs() }
+        for (m in Music.entries) {
+            val song = Songs.of(m) ?: continue
+            val pcm = Chiptune.render(song)
+            val seconds = pcm.size / Chiptune.RATE.toFloat()
+            assertTrue(seconds > 8f, "$m loop is ${seconds}s")
+            assertTrue(pcm.count { kotlin.math.abs(it.toInt()) > 2000 } > pcm.size / 4, "$m is audible")
+            val bytes = java.nio.ByteBuffer.allocate(pcm.size * 2).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+            pcm.forEach { bytes.putShort(it) }
+            javax.sound.sampled.AudioSystem.write(
+                javax.sound.sampled.AudioInputStream(
+                    java.io.ByteArrayInputStream(bytes.array()),
+                    javax.sound.sampled.AudioFormat(Chiptune.RATE.toFloat(), 16, 1, true, false),
+                    pcm.size.toLong(),
+                ),
+                javax.sound.sampled.AudioFileFormat.Type.WAVE, File(dir, "${m.name.lowercase()}.wav"),
+            )
+        }
     }
 
     @Test fun flagpoleAdvancesLevel() {
@@ -175,7 +258,16 @@ class GameTest {
         g.hero.y = 12f * TILE
         run(g, 0.3f)
         shot(g, "2-end")
-        g.startLevel(2)
+        for ((idx, col) in listOf(2 to 60, 4 to 78, 5 to 100, 6 to 84)) {
+            g.startLevel(idx)
+            run(g, 2.5f)
+            g.hero.invuln = 100f
+            g.hero.x = col.toFloat() * TILE
+            g.hero.y = 2f * TILE
+            run(g, 0.6f)
+            shot(g, "new-${Levels.all[idx].world}-${Levels.all[idx].num}")
+        }
+        g.startLevel(3)
         run(g, 2.5f)
         g.hero.power = Power.FIRE
         shot(g, "3-castle")

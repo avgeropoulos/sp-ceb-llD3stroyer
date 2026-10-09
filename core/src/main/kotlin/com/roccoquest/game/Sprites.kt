@@ -480,6 +480,51 @@ object Sprites {
         handle, handle, handle, handle, handle, handle, handle, handle, handle,
     )
 
+    private val cloudPal = mapOf('W' to 0xFFFFFFFF.toInt(), 'L' to 0xFFB8D8F0.toInt())
+    val cloud = pixelArt(cloudPal,
+        "..WWWW....WWWW..",
+        ".WWWWWW..WWWWWW.",
+        "WWWWWWWWWWWWWWWW",
+        "WWWWWWWWWWWWWWWW",
+        "WWWWWWWWWWWWWWWW",
+        "LWWWWWWWWWWWWWWL",
+        ".LLWWWWWWWWWWLL.",
+        "...LLLLLLLLLL...",
+        empty16, empty16, empty16, empty16, empty16, empty16, empty16, empty16,
+    )
+
+    private val sandMap = mapOf(
+        0xFF9BE15D.toInt() to 0xFFFFEDB0.toInt(), 0xFF4CB531.toInt() to 0xFFF5D27A.toInt(),
+        0xFF2E7D1F.toInt() to 0xFFD9A441.toInt(), 0xFFC2762E.toInt() to 0xFFE3A95C.toInt(),
+        0xFF8A4E1B.toInt() to 0xFFB97A3A.toInt(), 0xFFE0A060.toInt() to 0xFFF2C888.toInt(),
+    )
+    val sandTop = grassTop.recolor(sandMap)
+    val sandstone = dirt.recolor(sandMap)
+
+    // ---------------------------------------------------------------- Pip the messenger
+    private val pipPal = mapOf(
+        'Y' to 0xFFFFD93D.toInt(), 'K' to K, 'O' to 0xFFFF8A1E.toInt(), 'B' to 0xFF3A8EE8.toInt(),
+        'W' to WHITE,
+    )
+    val pip = pixelArt(pipPal,
+        "................",
+        ".....YYYYY......",
+        "....YYYYYYY.....",
+        "...YYYKYYKYY....",
+        "...YYYKYYKYY....",
+        "...YYYYOOYYY....",
+        "...YYYYOOYYY....",
+        "...BBBBBBBBB....",
+        "..YYBBBBBBBYY...",
+        "..YYYYYYYYYYY...",
+        "...YYYYYYYYY....",
+        "...YYYWWWYYY....",
+        "....YYYYYYY.....",
+        ".....YYYYY......",
+        ".....OO.OO......",
+        "....OOO.OOO.....",
+    )
+
     // ---------------------------------------------------------------- Princess Rosalie
     private val princessPal = mapOf(
         'O' to 0xFFFFB000.toInt(), 'C' to 0xFF3CE0FF.toInt(), 'H' to 0xFFFFE070.toInt(),
