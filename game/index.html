@@ -199,7 +199,7 @@ kbd { font-family: var(--body); font-weight: 800; background: #eef2ec; border-ra
           <div><i>🦴</i><span><b>Treats</b> fall from the sky. Grab one for a 7-second boost.</span></div>
           <div><i>⏱️</i><span>Reach the goal before the clock runs out, or it's nap time.</span></div>
         </div>
-        <p class="keys">Move with <kbd>WASD</kbd> or arrow keys, or touch and drag. Apollo leaps with <kbd>Space</kbd> or the <b>Leap</b> button, and sails right over mud, spray and bathtubs. In team mode Hercules uses <kbd>WASD</kbd>, Apollo uses the arrows and <kbd>Enter</kbd> to leap, or each player drags a dog. <kbd>P</kbd> pauses.</p>
+        <p class="keys">Move with <kbd>WASD</kbd> or arrow keys. On a phone or tablet, put your thumb down anywhere and slide it like a joystick. Apollo leaps with <kbd>Space</kbd> or the <b>Leap</b> button, and sails right over mud, spray and bathtubs. In team mode Hercules uses <kbd>WASD</kbd>, Apollo uses the arrows and <kbd>Enter</kbd> to leap. On a tablet the left half of the screen steers Hercules and the right half steers Apollo, and a quick tap makes Apollo leap. <kbd>P</kbd> pauses.</p>
         <div class="scorebox"><h3 class="sbTitle">High scores</h3><div class="sbBody"></div></div>
       </div>
     </div>
@@ -508,7 +508,7 @@ function newGame() {
 function setupLevel() {
   const c = G.cfg = levelCfg(G.level);
   G.caught = 0; G.time = c.time; G.critters = []; G.particles = []; G.floaters = []; G.tubs = []; G.sprinklers = []; G.muds = []; G.bird = null; G.spawnT = 0; G.shake = 0;
-  G.dogs.forEach((d, i) => { d.x = W / 2 + (G.dogs.length > 1 ? (i ? 50 : -50) : 0); d.y = H / 2; d.vx = d.vy = 0; d.inv = 1.5; d.ptr = null; d.leap = null; d.leapCd = 0; d.boost = 0; d.z = 0; });
+  G.dogs.forEach((d, i) => { d.x = W / 2 + (G.dogs.length > 1 ? (i ? 50 : -50) : 0); d.y = H / 2; d.vx = d.vy = 0; d.inv = 1.5; d.ptr = null; d.leap = null; d.leapCd = 0; d.boost = 0; d.z = 0; d.stick = null; });
   G.treats = []; G.treatT = rnd(5, 8);
   // decorations (flowers) and hazards placed away from the start spot
   G.flowers = Array.from({ length: 26 }, () => ({ x: rnd(0, 1), y: rnd(0, 1), c: ["#fff", "#ffd84a", "#ff8fb1", "#c9a7ff"][Math.floor(rnd(0, 4))], s: rnd(0.7, 1.2) }));
@@ -556,18 +556,55 @@ document.addEventListener("visibilitychange", () => { if (document.hidden && scr
 const isTouch = (window.matchMedia && matchMedia("(pointer: coarse)").matches) || "ontouchstart" in window;
 $("leapBtn").addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); if (G) leap(G.dogs.find((d) => d.id === "apollo")); });
 function toWorld(e) { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / k, y: (e.clientY - r.top) / k }; }
+// Touch: a floating joystick. Put a thumb down anywhere and slide it; the dog
+// runs that way, so your finger never covers the dog. In team mode the left half
+// of the screen steers Hercules and the right half steers Apollo. A quick tap
+// makes Apollo leap. A mouse still works by pointing where the dog should go.
+const STICK_R = 56;   // CSS px the thumb travels for full speed
+function toCss(e) { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+function toWorld(e) { const c = toCss(e); return { x: c.x / k, y: c.y / k }; }
 cv.addEventListener("pointerdown", (e) => {
   if (screen !== "play") return;
-  ac();
-  const p = toWorld(e);
-  let dog = null, bd = 1e9;
-  for (const d of G.dogs) { if (d.ptr && d.ptr.id !== e.pointerId) continue; const dd = Math.hypot(d.x - p.x, d.y - p.y); if (dd < bd) { bd = dd; dog = d; } }
-  if (!dog) return;
-  dog.ptr = { id: e.pointerId, x: p.x, y: p.y };
+  ac(); e.preventDefault();
+  if (e.pointerType === "mouse") {
+    const p = toWorld(e);
+    let dog = null, bd = 1e9;
+    for (const d of G.dogs) { const dd = Math.hypot(d.x - p.x, d.y - p.y); if (dd < bd) { bd = dd; dog = d; } }
+    if (dog) dog.ptr = { id: e.pointerId, x: p.x, y: p.y };
+  } else {
+    const c = toCss(e);
+    const dog = G.dogs.length === 1 ? G.dogs[0] : G.dogs[c.x < cv.clientWidth / 2 ? 0 : 1];
+    if (dog.stick) return;   // that dog already has a thumb on it
+    dog.stick = { id: e.pointerId, ox: c.x, oy: c.y, x: c.x, y: c.y, t0: performance.now(), travel: 0 };
+  }
   try { cv.setPointerCapture(e.pointerId); } catch (err) {}
 });
-cv.addEventListener("pointermove", (e) => { if (!G) return; const d = G.dogs.find((d) => d.ptr && d.ptr.id === e.pointerId); if (d) { const p = toWorld(e); d.ptr.x = p.x; d.ptr.y = p.y; } });
-const endPtr = (e) => { if (!G) return; const d = G.dogs.find((d) => d.ptr && d.ptr.id === e.pointerId); if (d) d.ptr = null; };
+cv.addEventListener("pointermove", (e) => {
+  if (!G) return;
+  for (const d of G.dogs) {
+    if (d.ptr && d.ptr.id === e.pointerId) { const p = toWorld(e); d.ptr.x = p.x; d.ptr.y = p.y; }
+    const st = d.stick;
+    if (st && st.id === e.pointerId) {
+      const c = toCss(e);
+      st.travel += Math.hypot(c.x - st.x, c.y - st.y);
+      st.x = c.x; st.y = c.y;
+      // drag past the rim and the base follows, so turning around stays quick
+      const dx = st.x - st.ox, dy = st.y - st.oy, m = Math.hypot(dx, dy);
+      if (m > STICK_R) { st.ox += dx / m * (m - STICK_R); st.oy += dy / m * (m - STICK_R); }
+    }
+  }
+});
+const endPtr = (e) => {
+  if (!G) return;
+  for (const d of G.dogs) {
+    if (d.ptr && d.ptr.id === e.pointerId) d.ptr = null;
+    const st = d.stick;
+    if (st && st.id === e.pointerId) {
+      d.stick = null;
+      if (e.type === "pointerup" && d.id === "apollo" && performance.now() - st.t0 < 220 && st.travel < 14) leap(d);
+    }
+  }
+};
 cv.addEventListener("pointerup", endPtr); cv.addEventListener("pointercancel", endPtr);
 
 function dogInput(d, idx) {
@@ -576,6 +613,12 @@ function dogInput(d, idx) {
   let x = 0, y = 0;
   for (const s of set) { if (keys.has("l" + s)) x -= 1; if (keys.has("r" + s)) x += 1; if (keys.has("u" + s)) y -= 1; if (keys.has("d" + s)) y += 1; }
   if (x || y) { const m = Math.hypot(x, y); return [x / m, y / m]; }
+  if (d.stick) {
+    const dx = d.stick.x - d.stick.ox, dy = d.stick.y - d.stick.oy, m = Math.hypot(dx, dy);
+    if (m < 8) return [0, 0];
+    const s = Math.min(1, (m - 4) / (STICK_R * 0.7));
+    return [dx / m * s, dy / m * s];
+  }
   if (d.ptr) { const dx = d.ptr.x - d.x, dy = d.ptr.y - d.y, m = Math.hypot(dx, dy); if (m > 6) { const s = Math.min(1, m / 50); return [dx / m * s, dy / m * s]; } }
   return [0, 0];
 }
@@ -1021,6 +1064,34 @@ function draw(t) {
     ctx.fillStyle = f.col; ctx.fillText(f.text, f.x, f.y);
   }
   ctx.globalAlpha = 1;
+  drawSticks();
+}
+
+// joysticks are drawn in screen pixels, on top of everything
+function drawSticks() {
+  if (screen !== "play") return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const cw = cv.clientWidth, ch = cv.clientHeight;
+  const hint = isTouch && G.time > G.cfg.time - 5;
+  G.dogs.forEach((d, i) => {
+    let st = d.stick, ghost = false;
+    if (!st) {
+      if (!hint) return;
+      const x = G.dogs.length === 1 || i === 0 ? 90 : cw - 90;
+      const wig = Math.sin(performance.now() / 300) * 22;
+      st = { ox: x, oy: ch - 100, x: x + wig, y: ch - 100 }; ghost = true;
+    }
+    const col = DOGS[d.id].collar;
+    const dx = st.x - st.ox, dy = st.y - st.oy, m = Math.hypot(dx, dy), lim = Math.min(m, STICK_R);
+    const tx = m ? st.ox + dx / m * lim : st.ox, ty = m ? st.oy + dy / m * lim : st.oy;
+    ctx.globalAlpha = ghost ? 0.35 : 0.7;
+    ctx.fillStyle = "rgba(255,255,255,.18)"; ctx.strokeStyle = "rgba(255,255,255,.75)"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(st.ox, st.oy, STICK_R, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = col; ctx.beginPath(); ctx.arc(tx, ty, 26, 0, 7); ctx.fill();
+    ctx.strokeStyle = "#fff"; ctx.stroke();
+    if (ghost) { ctx.globalAlpha = 0.8; ctx.fillStyle = "#fff"; ctx.font = "15px 'Lilita One', sans-serif"; ctx.textAlign = "center"; ctx.fillText(G.dogs.length > 1 ? DOGS[d.id].name : "Slide to run", st.ox, st.oy - STICK_R - 10); }
+  });
+  ctx.globalAlpha = 1;
 }
 
 // ---------- HUD ----------
@@ -1055,7 +1126,7 @@ function intro(cleared) {
   const notes = [];
   if (n === 1) notes.push("Chase squirrels and bunnies around the yard. Get close and they get a boop.");
   if (n <= 2) notes.push(`Treats fall from the sky. Grab one for a ${BOOST_TIME}-second boost${mode === "both" ? "" : mode === "hercules" ? ": ZOOMIES" : ": SUPER LEAPS"}!`);
-  if (n <= 2 && mode !== "hercules") notes.push(mode === "both" ? "Apollo leaps with Enter and jumps right over hazards." : `Leap with Space${isTouch ? " or the Leap button" : ""} to jump right over hazards.`);
+  if (n <= 2 && mode !== "hercules") notes.push(mode === "both" ? `Apollo leaps with ${isTouch ? "a quick tap on the right half" : "Enter"} and jumps right over hazards.` : `Leap with ${isTouch ? "the Leap button or a quick tap" : "Space"} to jump right over hazards.`);
   if (c.mud && n === 2) notes.push("New: mud puddles slow your paws.");
   if (c.sprinklers && levelCfg(n - 1).sprinklers < c.sprinklers) notes.push(c.sprinklers === 1 ? "New: a sprinkler! Stay out of the spray." : "One more sprinkler joins the yard.");
   if (c.tubs && levelCfg(n - 1).tubs < c.tubs) notes.push(c.tubs === 1 ? "New: Mr. Bubbles the bathtub rolls after you. Don't let it catch you!" : "Another bathtub is on the loose!");
@@ -1073,7 +1144,7 @@ function intro(cleared) {
 function tally(rows) { return rows.map(([l, v]) => `<div><b>${v}</b><span>${l}</span></div>`).join(""); }
 function startLevel() { screen = "play"; show(null); hudCache = {}; ac(); last = performance.now(); }
 function pause() { Music.stop(); screen = "pause"; show("pauseScreen"); $("pauseBtn").textContent = "Resume"; $("resumeBtn").focus(); }
-function resume() { if (G) Music.start(styleFor(G.level), G.level, false); screen = "play"; show(null); $("pauseBtn").textContent = "Pause"; last = performance.now(); }
+function resume() { if (G) G.dogs.forEach((d) => { d.stick = null; d.ptr = null; }); if (G) Music.start(styleFor(G.level), G.level, false); screen = "play"; show(null); $("pauseBtn").textContent = "Pause"; last = performance.now(); }
 $("pauseBtn").onclick = () => { if (screen === "play") pause(); else if (screen === "pause") resume(); };
 $("resumeBtn").onclick = resume;
 $("quitBtn").onclick = () => { $("pauseBtn").textContent = "Pause"; toTitle(); };

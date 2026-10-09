@@ -9,7 +9,7 @@ Open `game/index.html` in a browser to play (no build step).
 - Each level raises the goal and adds faster critters and more hazards. Critters get tired after a long chase, so if you keep after them you'll catch them.
 - Hercules has the fastest paws and the quickest turns. Apollo is slower on the ground but leaps (Space, Enter, or the Leap button on touchscreens). While he's in the air he sails over mud, sprinklers and bathtubs, and he can pounce on critters from a little further away. Both dogs score the same points.
 - Treats fall from the sky every 10 to 15 seconds. Grabbing one gives that dog a 7-second boost: Hercules gets zoomies (even faster, even snappier turns) and Apollo gets super leaps (longer, higher, quicker to recharge).
-- Play solo as either dog, or as a team on one keyboard: WASD moves Hercules and the arrow keys move Apollo. Touch and drag also works.
+- Play solo as either dog, or as a team on one keyboard: WASD moves Hercules and the arrow keys move Apollo. On phones and tablets, put a thumb down anywhere and slide it like a joystick. In team mode the left half of the screen steers Hercules and the right half steers Apollo.
 
 ## Music
 
