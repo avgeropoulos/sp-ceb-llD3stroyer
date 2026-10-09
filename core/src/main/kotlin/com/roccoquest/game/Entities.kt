@@ -31,7 +31,7 @@ abstract class Entity(x: Float, y: Float, w: Float, h: Float) : Body(x, y, w, h)
 // ======================================================================== Hero
 
 enum class Power {
-    SMALL, BIG, FIRE, ICE, BOOM, SHELL, CANNON, MINI;
+    SMALL, BIG, FIRE, ICE, BOOM, SHELL, CANNON, HAMMER, MINI;
 
     /** Big Rocco: breaks bricks and survives one hit. */
     val isBig get() = this != SMALL && this != MINI
@@ -81,6 +81,8 @@ class Hero(x: Float, y: Float) : Body(x, y, 12f, SMALL_H) {
     var slamming = false
     var slamPause = 0f
     var starTime = 0f
+    /** Spinning King Krag around by the tail. */
+    var grabbing = false
 
     private fun skin(p: Power): Triple<Sprite, Sprite, Sprite> = when (p) {
         Power.SMALL, Power.MINI -> Triple(Sprites.smallStand, Sprites.smallWalk, Sprites.smallJump)
@@ -90,6 +92,7 @@ class Hero(x: Float, y: Float) : Body(x, y, 12f, SMALL_H) {
         Power.BOOM -> Triple(Sprites.boomStand, Sprites.boomWalk, Sprites.boomJump)
         Power.SHELL -> Triple(Sprites.shellStand, Sprites.shellWalk, Sprites.shellJump)
         Power.CANNON -> Triple(Sprites.cannonStand, Sprites.cannonWalk, Sprites.cannonJump)
+        Power.HAMMER -> Triple(Sprites.builderStand, Sprites.builderWalk, Sprites.builderJump)
     }
 
     /** Blue Shell Rocco tucks into his shell and spins along when running. */
@@ -100,7 +103,7 @@ class Hero(x: Float, y: Float) : Body(x, y, 12f, SMALL_H) {
         if (invuln > 0 && ((invuln * 20).toInt() % 2 == 0)) return
         // With a star, Rocco flashes through all his outfits.
         val look = if (starTime > 0 && power.isBig) {
-            listOf(Power.BIG, Power.FIRE, Power.ICE, Power.BOOM, Power.SHELL, Power.CANNON)[(time * 14).toInt() % 6]
+            listOf(Power.BIG, Power.FIRE, Power.ICE, Power.BOOM, Power.SHELL, Power.CANNON, Power.HAMMER)[(time * 14).toInt() % 7]
         } else power
         val (stand, walk, jump) = skin(look)
         val frame = when {
@@ -129,8 +132,17 @@ class Hero(x: Float, y: Float) : Body(x, y, 12f, SMALL_H) {
         if (power == Power.SHELL && !crouching) {
             gfx.sprite(Sprites.blueShell, cx - 6 - facing * 4 + ox, sy + 8, w = 12f, h = 12f)
         }
-        val spin = slamming && slamPause > 0 && (time * 24).toInt() % 2 == 0
+        val spin = (slamming && slamPause > 0 || grabbing) && (time * 24).toInt() % 2 == 0
         gfx.sprite(frame, sx, sy, flipX = (facing < 0) != spin, w = dw, h = dh)
+        if (power == Power.HAMMER && !crouching) {
+            if (throwAnim > 0f) {
+                // Smash! The hammer comes down in front of Rocco.
+                val hx = if (facing > 0) x + w + ox else x - 10 + ox
+                gfx.sprite(Sprites.hammer, hx, y + h - 12, flipX = facing < 0, flipY = true)
+            } else {
+                gfx.sprite(Sprites.hammer, cx - 4 - facing * 6 + ox, sy - 6, flipX = facing < 0)
+            }
+        }
         if (flash > 0) {
             gfx.oval(sx - 2, sy - 2, dw + 4f, dh + 4f, argb((flash * 300).toInt().coerceIn(0, 200), 0xFFF3A0))
         }
@@ -383,7 +395,14 @@ class Podoboo(x: Float, y: Float) : Enemy(x + 2, y, 12f, 13f) {
 class Krag(x: Float, y: Float, val maxHp: Int = 10) : Enemy(x - 10, y - 40, 36f, 40f) {
     var hp = maxHp
     private val homeX = x - 10
-    private var facing = -1
+    var facing = -1
+        private set
+    private var turnTimer = 0f
+    /** Rocco has him by the tail. */
+    var grabbed = false
+    /** Thrown into the sky! */
+    var thrown = false
+        private set
     private var walkDir = -1
     private var jumpTimer = 2.5f
     private var fireTimer = 1.8f
@@ -395,13 +414,29 @@ class Krag(x: Float, y: Float, val maxHp: Int = 10) : Enemy(x - 10, y - 40, 36f,
     override fun update(g: Game, dt: Float) {
         anim += dt
         hurtFlash -= dt
+        if (thrown) {
+            vy += 250f * dt
+            x += vx * dt
+            y += vy * dt
+            if (y < -80f) {
+                removed = true
+                g.onKragThrown(this)
+            }
+            return
+        }
         if (dying) {
             vy += 700f * dt
             y += vy * dt
             if (y > g.level.h * TILE + 64) removed = true
             return
         }
-        facing = if (g.hero.cx < cx) -1 else 1
+        if (grabbed) return
+        // Krag is slow to turn around, so Rocco can sneak behind him and grab his tail.
+        val want = if (g.hero.cx < cx) -1 else 1
+        if (want != facing) {
+            turnTimer += dt
+            if (turnTimer > 0.9f) { facing = want; turnTimer = 0f }
+        } else turnTimer = 0f
 
         // Pace back and forth on the bridge.
         vx = walkDir * 22f
@@ -457,8 +492,20 @@ class Krag(x: Float, y: Float, val maxHp: Int = 10) : Enemy(x - 10, y - 40, 36f,
         return true
     }
 
+    /** Where his tail is, for grabbing. */
+    val tailX get() = if (facing < 0) x + w + 6 else x - 6
+
+    fun throwToSky(dir: Int) {
+        grabbed = false
+        thrown = true
+        dying = true
+        vx = dir * 160f
+        vy = -620f
+    }
+
     override fun draw(g: Game, gfx: Gfx, ox: Float) {
-        val m = Mirror(gfx, x + ox, y, w, flip = facing > 0, flipY = dying && vy > 0)
+        val spinning = (grabbed || thrown) && (anim * 14).toInt() % 2 == 0
+        val m = Mirror(gfx, x + ox, y, w, flip = (facing > 0) != spinning, flipY = dying && vy > 0 && !thrown)
         val flash = hurtFlash > 0 && (hurtFlash * 30).toInt() % 2 == 0
         val skin = if (flash) 0xFFFFFFFF.toInt() else 0xFFF2B33D.toInt()
         val belly = if (flash) 0xFFFFFFFF.toInt() else 0xFFFFE8A0.toInt()
@@ -599,7 +646,7 @@ class Fireball(x: Float, y: Float, dir: Int, val ice: Boolean = false) : Entity(
     }
 }
 
-enum class Item { MUSHROOM, FIRE, ICE, BOOM, STAR, MINI, SHELL, CANNON }
+enum class Item { MUSHROOM, FIRE, ICE, BOOM, STAR, MINI, SHELL, CANNON, HAMMER, ONEUP }
 
 /** A power-up that rises out of a ? block. Mushrooms slide along and stars bounce. */
 class PowerItem(x: Float, y: Float, val kind: Item) : Entity(x + 1, y, 14f, 16f) {
@@ -616,7 +663,7 @@ class PowerItem(x: Float, y: Float, val kind: Item) : Entity(x + 1, y, 14f, 16f)
             rise = min(1f, rise + dt * 1.6f)
             y = startY - 16f * rise
             if (ready) vx = when (kind) {
-                Item.MUSHROOM, Item.MINI -> if (g.hero.cx < cx) -55f else 55f
+                Item.MUSHROOM, Item.MINI, Item.ONEUP -> if (g.hero.cx < cx) -55f else 55f
                 Item.STAR -> if (g.hero.cx < cx) -75f else 75f
                 else -> 0f
             }
@@ -642,6 +689,8 @@ class PowerItem(x: Float, y: Float, val kind: Item) : Entity(x + 1, y, 14f, 16f)
             Item.STAR -> if (alt) Sprites.star1 else Sprites.star2
             Item.SHELL -> Sprites.blueShell
             Item.CANNON -> Sprites.blaster
+            Item.HAMMER -> Sprites.hammer
+            Item.ONEUP -> Sprites.oneUp
         }
         if (kind == Item.MINI) gfx.sprite(s, x - 1 + ox + 4, y + 8, w = 8f, h = 8f)
         else gfx.sprite(s, x - 1 + ox, y)

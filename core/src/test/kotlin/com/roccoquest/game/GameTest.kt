@@ -33,20 +33,24 @@ class GameTest {
             assertTrue(def.rows.all { it.length == def.rows[0].length })
             assertTrue(def.rows.any { '@' in it }, "${def.name} has a start")
         }
-        assertEquals(14, Levels.all.size)
+        assertEquals(16, Levels.all.size)
         // Every level must have a way to finish it.
         for (def in Levels.all) {
             assertTrue(def.rows.any { r -> r.any { it in "FEMR" } }, "${def.name} has an exit")
         }
         assertTrue(Levels.all[3].rows.any { 'K' in it } && Levels.all[3].rows.any { 'M' in it })
         assertTrue(Levels.all[7].rows.any { 'K' in it } && Levels.all[7].rows.any { 'M' in it })
-        assertTrue(Levels.all[11].rows.any { 'K' in it } && Levels.all[11].rows.any { 'R' in it })
+        assertTrue(Levels.all[13].rows.any { 'K' in it } && Levels.all[13].rows.any { 'R' in it })
         assertEquals(
-            listOf("1-1", "1-2", "1-3", "1-4", "2-1", "2-2", "2-3", "2-4", "3-1", "3-2", "3-3", "3-4", "\u2605-1", "\u2605-2"),
+            listOf(
+                "1-1", "1-2", "1-3", "1-4", "2-1", "2-2", "2-3", "2-4",
+                "3-1", "3-2", "3-3", "3-4", "3-5", "3-6", "\u2605-1", "\u2605-2",
+            ),
             Levels.all.map { it.label },
         )
-        for (i in listOf(12, 13)) assertTrue(Levels.all[i].rows.any { 'W' in it } && Levels.all[i].rows.any { 'Z' in it })
-        for (i in listOf(6, 9, 10, 11, 13)) assertTrue(Levels.all[i].rows.any { 'J' in it }, "Krag Jr. in ${Levels.all[i].name}")
+        assertEquals(3, Levels.all.count { it.theme == Theme.SNOW })
+        for (i in listOf(14, 15)) assertTrue(Levels.all[i].rows.any { 'W' in it } && Levels.all[i].rows.any { 'Z' in it })
+        for (i in listOf(6, 11, 12, 13, 15)) assertTrue(Levels.all[i].rows.any { 'J' in it }, "Krag Jr. in ${Levels.all[i].name}")
     }
 
     @Test fun heroWalksAndJumps() {
@@ -214,7 +218,7 @@ class GameTest {
 
     @Test fun wonderModeStartsAndEnds() {
         val g = newGame()
-        g.startLevel(12)
+        g.startLevel(14)
         run(g, 2.5f)
         g.hero.invuln = 1000f
         g.hero.x = 84f * TILE
@@ -237,28 +241,119 @@ class GameTest {
         repeat(30) { g.update(dt) }
         g.input.tap = true; g.update(dt)
         repeat(140) { g.update(dt) }
-        g.startLevel(11); run(g, 2.5f)
+        g.startLevel(13); run(g, 2.5f)
         g.entities.removeAll { it is Enemy }
         g.hero.invuln = 1000f
         g.hero.x = 123f * TILE; g.hero.y = 10f * TILE - g.hero.h
         run(g, 6f) // axe: bridge collapses, Krag falls
-        g.hero.x = 179.5f * TILE; g.hero.y = 10f * TILE - g.hero.h
+        g.hero.x = 155.5f * TILE; g.hero.y = 10f * TILE - g.hero.h
         run(g, 0.2f)
         assertEquals(Game.State.VICTORY, g.state)
         assertTrue(g.wonderUnlocked)
         run(g, 3.2f)
         g.input.tap = true; g.update(dt)
-        assertEquals(12, g.levelIndex)
+        assertEquals(14, g.levelIndex)
         // A new game remembers the unlock; tapping the right half starts Wonder World.
         val g2 = Game(Input(), storage = storage).apply { viewW = 427f }
         repeat(30) { g2.update(dt) }
-        g2.input.tapX = 300f; g2.input.tap = true; g2.update(dt)
-        assertEquals(12, g2.levelIndex)
+        g2.input.tapX = 360f; g2.input.tap = true; g2.update(dt)
+        assertEquals(14, g2.levelIndex)
+    }
+
+    @Test fun saveSlotsRememberProgress() {
+        val storage = Storage.Memory()
+        val g = Game(Input(), storage = storage).apply { viewW = 427f }
+        repeat(30) { g.update(dt) }
+        // Tap slot 2 (the middle of three buttons).
+        g.input.tapX = 213f; g.input.tap = true; g.update(dt)
+        assertEquals(2, g.slot)
+        g.startLevel(5)
+        assertEquals(5, g.slotLevel(2))
+        assertEquals(-1, g.slotLevel(1))
+        val g2 = Game(Input(), storage = storage).apply { viewW = 427f }
+        repeat(30) { g2.update(dt) }
+        g2.input.tapX = 213f; g2.input.tap = true; g2.update(dt)
+        assertEquals(5, g2.levelIndex, "slot 2 continues at 2-2")
+    }
+
+    @Test fun hammerSmashesSilverBlocksAndOneUpGivesALife() {
+        val g = newGame()
+        val lives = g.lives
+        collectFromBlock(g, 16) // 1-Up mushroom
+        assertEquals(lives + 1, g.lives)
+
+        g.entities.removeAll { it is Enemy }
+        g.hero.power = Power.HAMMER
+        // Stand next to the hard-block staircase at column 135 in 1-1.
+        g.hero.x = 135f * TILE - g.hero.w - 2
+        g.hero.y = 13f * TILE - g.hero.h
+        g.hero.facing = 1
+        run(g, 0.3f)
+        assertEquals(T.HARD, g.level[135, 12])
+        g.input.fire = true; g.update(dt); g.input.fire = false
+        assertEquals(T.EMPTY, g.level[135, 12], "hammer smashed the silver block")
+    }
+
+    @Test fun grabKragByTheTailAndThrowHimIntoTheSky() {
+        val g = newGame()
+        g.startLevel(3)
+        run(g, 2.5f)
+        g.hero.invuln = 1000f
+        val krag = g.entities.first { it is Krag } as Krag
+        g.hero.x = 92f * TILE
+        g.hero.y = 10f * TILE - g.hero.h
+        run(g, 0.5f)
+        // Teleport behind him (by his tail) before he turns around.
+        g.hero.x = krag.tailX - g.hero.w / 2 + (if (krag.facing < 0) 4f else -4f)
+        g.hero.y = krag.bottom - g.hero.h
+        g.update(dt)
+        g.input.fire = true; g.update(dt); g.input.fire = false
+        assertTrue(krag.grabbed, "grabbed the tail")
+        run(g, 1.6f)
+        assertTrue(krag.thrown)
+        run(g, 3f)
+        assertTrue(g.bossDefeated)
+    }
+
+    @Test fun toiletWarpsAhead() {
+        val g = newGame()
+        g.entities.removeAll { it is Enemy }
+        val t = g.entities.first { it is Toilet && it.entry } as Toilet
+        g.hero.x = t.cx - g.hero.w / 2
+        g.hero.y = t.y - g.hero.h - 4
+        run(g, 0.3f)
+        g.input.down = true; g.update(dt); g.input.down = false
+        assertEquals(Game.State.WARP, g.state)
+        run(g, 1.3f)
+        assertEquals(Game.State.PLAYING, g.state)
+        assertTrue(g.hero.x > 90f * TILE, "came out of the exit toilet")
+    }
+
+    @Test fun guestStarsShowUp() {
+        val g = newGame()
+        g.startLevel(1) // odd levels get Ring-Ding Frog
+        run(g, 2.5f)
+        g.hero.invuln = 1000f
+        run(g, 6.2f)
+        assertTrue(g.frogSinging)
+        // Captain Zap arrives after 20 seconds if there's a bad guy on screen.
+        repeat(20) { if (g.entities.none { it is CaptainZap }) run(g, 1f) }
+        assertTrue(g.entities.any { it is CaptainZap } || g.state != Game.State.PLAYING)
+    }
+
+    @Test fun boomadaboomTakesThreeStomps() {
+        val g = newGame()
+        g.startLevel(10)
+        run(g, 2.5f)
+        val b = g.entities.first { it is Boomadaboom } as Boomadaboom
+        b.active = true
+        repeat(3) { b.damage(g, 1); run(g, 0.7f) }
+        assertTrue(b.dying || b.removed)
     }
 
     @Test fun kragJrLocksTheCameraUntilBeaten() {
         val g = newGame()
-        g.startLevel(9)
+        g.startLevel(11)
         run(g, 2.5f)
         g.entities.removeAll { it is Enemy && it !is KragJr }
         val jr = g.entities.first { it is KragJr } as KragJr
@@ -292,7 +387,7 @@ class GameTest {
 
     @Test fun bossFightAndRescue() {
         val g = newGame()
-        g.startLevel(11)
+        g.startLevel(13)
         run(g, 2.5f)
         g.entities.removeAll { it is KragJr }
         val krag = g.entities.first { it is Krag } as Krag
@@ -313,7 +408,8 @@ class GameTest {
         assertEquals(Game.State.AXE, g.state)
         run(g, 5f)
         assertEquals(Game.State.PLAYING, g.state)
-        g.hero.x = 179.5f * TILE
+        assertEquals(T.EMPTY, g.level[146, 9], "Zoom the Hedgehog smashed the wall")
+        g.hero.x = 155.5f * TILE
         run(g, 0.2f)
         assertEquals(Game.State.VICTORY, g.state)
     }
@@ -338,6 +434,8 @@ class GameTest {
         run(g, 0.2f)
         assertEquals(Game.State.WORLD_CLEAR, g.state)
         run(g, 6.1f)
+        assertEquals(Game.State.DONUT, g.state) // snack break cutscene
+        run(g, 5.6f)
         assertEquals(4, g.levelIndex)
         assertEquals(Game.State.INTRO, g.state)
     }
@@ -458,7 +556,7 @@ class GameTest {
         g.hero.y = 12f * TILE
         run(g, 0.3f)
         shot(g, "2-end")
-        for ((idx, col) in listOf(2 to 60, 4 to 78, 5 to 100, 6 to 84, 8 to 108, 9 to 60, 10 to 100)) {
+        for ((idx, col) in listOf(2 to 60, 4 to 78, 5 to 100, 6 to 84, 8 to 108, 9 to 40, 10 to 26, 11 to 60, 12 to 100)) {
             g.startLevel(idx)
             run(g, 2.5f)
             g.hero.invuln = 100f
@@ -481,7 +579,7 @@ class GameTest {
         run(g, 0.1f)
         shot(g, "3-boss")
         // Krag Jr. and the new power-ups
-        g.startLevel(9)
+        g.startLevel(11)
         run(g, 2.5f)
         g.hero.power = Power.ICE
         g.hero.invuln = 1000f
@@ -499,7 +597,7 @@ class GameTest {
         g.input.fire = true; g.update(dt); g.input.fire = false
         run(g, 0.3f)
         shot(g, "cannon")
-        g.startLevel(13)
+        g.startLevel(15)
         run(g, 2.5f)
         g.hero.power = Power.SHELL
         g.hero.invuln = 1000f
@@ -507,6 +605,30 @@ class GameTest {
         g.hero.y = 9f * TILE
         run(g, 3f)
         shot(g, "wonder")
+        g.startLevel(0)
+        run(g, 2.5f)
+        g.hero.power = Power.HAMMER
+        g.hero.x = 30f * TILE
+        run(g, 0.3f)
+        g.input.fire = true; g.update(dt); g.input.fire = false
+        shot(g, "hammer-toilet")
+        g.startLevel(3)
+        run(g, 2.5f)
+        g.entities.removeAll { it is KragFlame }
+        val worldClear = Game(Input()).apply { viewW = 427f }
+        worldClear.startLevel(3)
+        // Donut cutscene
+        val d = Game(Input()).apply { viewW = 427f }
+        d.startLevel(3); repeat(140) { d.update(dt) }
+        val k = d.entities.first { it is Krag } as Krag
+        d.hero.invuln = 1000f
+        d.hero.x = 105f * TILE; d.hero.y = 10f * TILE - d.hero.h
+        repeat(400) { d.update(dt) }
+        d.hero.x = 121.5f * TILE; d.hero.y = 10f * TILE - d.hero.h
+        repeat(30) { d.update(dt) }
+        repeat(370) { d.update(dt) }
+        repeat(170) { d.update(dt) }
+        shot(d, "donut")
         g.hero.x = 117f * TILE
         g.hero.y = 10f * TILE - g.hero.h
         run(g, 0.5f)

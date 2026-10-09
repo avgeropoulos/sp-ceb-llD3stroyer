@@ -48,15 +48,18 @@ fun Gfx.shadowText(s: String, x: Float, y: Float, size: Float, color: Int, align
 
 fun argb(a: Int, rgb: Int): Int = (a shl 24) or (rgb and 0xFFFFFF)
 
-enum class Sound { JUMP, COIN, FIRE, STOMP, KICK, POWERUP, HURT, BUMP, BREAK, BOSS_HIT, BOSS_FIRE, DIE, CLEAR, VICTORY, ONEUP }
+enum class Sound { JUMP, COIN, FIRE, STOMP, KICK, POWERUP, HURT, BUMP, BREAK, BOSS_HIT, BOSS_FIRE, DIE, CLEAR, VICTORY, ONEUP, FLUSH, ZAP, CHOMP }
 
-enum class Music { NONE, OVERWORLD, UNDERGROUND, SKY, CASTLE, BOSS, STAR, WONDER }
+enum class Music { NONE, OVERWORLD, UNDERGROUND, SKY, CASTLE, BOSS, STAR, WONDER, FROG }
 
 fun interface SoundSink {
     fun play(s: Sound)
 
     /** Switches the looping background track; [Music.NONE] silences it. */
     fun music(m: Music) {}
+
+    /** Speaks a line out loud (Rocco's voice) where the platform supports it. */
+    fun say(text: String) {}
 }
 
 /** Held-button state written by the platform layer, read by the game loop. */

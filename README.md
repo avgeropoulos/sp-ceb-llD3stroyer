@@ -24,9 +24,11 @@ There are three worlds with four levels each:
 | 2-3 | | ...and Krag Jr. attacks in his flying clown car! |
 | 2-4 | Krag's Volcano | A long lava castle and a tougher fight with King Krag. |
 | 3-1 | Frosty Peaks | Slippery snow and ice. Bring the Ice Flower! |
-| 3-2 | Pipe Gorge | Pipes, flyers and a Krag Jr. ambush. |
-| 3-3 | Sky Armada | A sky level that ends in a Krag Jr. battle. |
-| 3-4 | Krag's Last Stand | Krag Jr. in the great hall, then the final battle. Rescue Princess Rosalie! |
+| 3-2 | Glacier Grotto | More snow, a Skip-a-Doo Toilet and Boomadaboom. |
+| 3-3 | Blizzard Pass | Icy ledges and two Boomadabooms. |
+| 3-4 | Pipe Gorge | Pipes, flyers and a Krag Jr. ambush. |
+| 3-5 | Sky Armada | A sky level that ends in a Krag Jr. battle. |
+| 3-6 | Krag's Last Stand | Krag Jr. in the great hall, then the final battle. Zoom the Hedgehog smashes the wall and you rescue Princess Rosalie! |
 | ★-1 | Wonder Meadow | **Bonus**, unlocked by rescuing the princess. Harder, with a Wonder Flower. |
 | ★-2 | Wonder Skies | **Bonus** sky level with Wonder mode, and a last showdown with Krag Jr. |
 
@@ -48,6 +50,9 @@ Power-ups come out of `?` blocks:
 * **Bullet Blaster**: a cannon outfit. FIRE shoots big bullets that fly straight through walls
   and bowl over every enemy in their path (2 damage to bosses).
 
+* **Builder Hammer**: a yellow hard hat. SMASH breaks bricks *and* silver blocks, and bonks bad guys.
+* **1-Up Mushroom** (green): an extra life.
+
 If you get hit with a flower power, you drop back to big Rocco. Big Rocco shrinks to small Rocco.
 
 Moves:
@@ -65,6 +70,17 @@ Moves:
 * **Krag Jr.**: flies a clown car, drops spiked balls and swoops at Rocco. He shakes and shows a
   red **!** before each dive. The screen locks until you beat him (4 damage). Stomp the car
   (2 damage), butt slam it (3), or use a power-up. Each of his arenas has a Super Mushroom block.
+* **Grab Krag's tail**: Krag is slow to turn around. Jump over him, and while his back is turned
+  a **GRAB** button appears. Rocco spins him around and throws him into the sky!
+* **Boomadaboom**: Krag's big cousin. He leaps at Rocco and lands with a smash that breaks bricks
+  and hurts Rocco if he's standing nearby. Takes 3 stomps.
+* **Friends**: Zoom the Hedgehog smashes the wall in front of the princess, Captain Zap (a space
+  ranger) jets in now and then to zap a bad guy, and Ring-Ding Frog scoots by every couple of levels
+  singing his crazy song. A bouncing **Puzzle Cube** is friendly: bounce on it for a super jump and a coin.
+* **Skip-a-Doo Toilet**: crouch on it to flush yourself ahead to the next one.
+* **Snack break**: between worlds, Rocco eats a donut and says "That's-a great!" out loud, using
+  the phone's own text-to-speech with an Italian voice.
+* **Save slots**: three save slots on the title screen. Progress is saved at the start of each level.
 * **Wonder mode** (bonus levels): touch the Wonder Flower and the level goes wild. The sky turns
   rainbow, the ground wobbles, Rocco floats, and spike balls, coins and flyers rain down. Grab
   the **Wonder Seed** to end it and get 5000 points.

@@ -63,6 +63,9 @@ object SoundSynth {
                 floatArrayOf(784f, 784f, 784f, 1047f, 0f, 988f, 1047f, 1175f, 1319f, 1568f), 0.14f, 0.28f, lastHold = 0.9f,
             )
             Sound.ONEUP -> notes(floatArrayOf(659f, 784f, 1319f, 1047f, 1175f, 1568f), 0.08f)
+            Sound.FLUSH -> { noise(0.25f, 0.35f, 0.6f); noise(0.6f, 0.4f, 0.92f); tone(300f, 120f, 0.3f, 0.2f, square = false) }
+            Sound.ZAP -> { tone(1400f, 300f, 0.18f, 0.3f); tone(900f, 200f, 0.15f, 0.25f) }
+            Sound.CHOMP -> { noise(0.05f, 0.5f, 0.5f); tone(180f, 120f, 0.05f, 0.3f); noise(0.06f, 0.4f, 0.5f) }
         }
     }.samples.toFloatArray()
 }

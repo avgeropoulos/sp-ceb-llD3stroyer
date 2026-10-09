@@ -15,7 +15,7 @@ class Game(
     private val sound: SoundSink = SoundSink {},
     private val storage: Storage = Storage.Memory(),
 ) {
-    enum class State { TITLE, INTRO, PLAYING, DYING, FLAG, DOOR, AXE, WORLD_CLEAR, GAME_OVER, VICTORY, ALL_CLEAR }
+    enum class State { TITLE, INTRO, PLAYING, DYING, FLAG, DOOR, AXE, WARP, WORLD_CLEAR, DONUT, GAME_OVER, VICTORY, ALL_CLEAR }
 
     var state = State.TITLE
         private set
@@ -67,6 +67,40 @@ class Game(
     private fun saveBest() {
         if (score > bestScore) storage.save("best", score)
     }
+
+    // ---------------------------------------------------------------- Save slots
+    /** The save slot (1-3) being played. Progress is saved at the start of every level. */
+    var slot = 1
+        private set
+    fun slotLevel(n: Int) = storage.load("slot${n}_level") - 1
+    private fun saveSlot() {
+        if (slot == 0) return // Wonder World from the title screen isn't tied to a slot
+        storage.save("slot${slot}_level", levelIndex + 1)
+        storage.save("slot${slot}_score", score)
+        storage.save("slot${slot}_lives", lives)
+    }
+
+    private fun startSlot(n: Int) {
+        slot = n
+        val saved = slotLevel(n)
+        if (saved < 0) {
+            newGame(0)
+        } else {
+            newGame(saved)
+            score = storage.load("slot${n}_score")
+            lives = storage.load("slot${n}_lives").coerceAtLeast(3)
+        }
+    }
+
+    // ---------------------------------------------------------------- Guest stars & gags
+    private var zapTimer = 20f
+    private var frogTimer = -1f
+    private var grabTimer = 0f
+    private var grabbed: Krag? = null
+    private var warpTarget: Toilet? = null
+    private var saidDonutLine = false
+
+    fun say(x: Float, y: Float, text: String, dur: Float = 1.8f) { particles += Speech(x, y, text, dur) }
 
     private var flagX = -1f
     private var flagTopY = 0f
@@ -141,6 +175,10 @@ class Game(
         camLock = null
         wonderMode = false
         camX = 0f
+        zapTimer = 20f
+        frogTimer = if (index % 2 == 1) 6f else -1f
+        grabbed = null
+        grabTimer = 0f
         for (ty in 0 until level.h) for (tx in 0 until level.w) {
             val px = tx * TILE.toFloat()
             val py = ty * TILE.toFloat()
@@ -156,6 +194,10 @@ class Game(
                 'K' -> entities += Krag(px, bottom, level.def.bossHp)
                 'J' -> entities += KragJr(px, bottom)
                 'W' -> entities += WonderFlower(px, bottom)
+                'b' -> entities += Boomadaboom(px, bottom)
+                'q' -> entities += PuzzleCube(px, bottom)
+                'T' -> entities += Toilet(px, bottom, entry = true)
+                'U' -> entities += Toilet(px, bottom, entry = false)
                 'Z' -> entities += WonderSeed(px, bottom)
                 'R' -> entities += Princess(px, bottom)
                 'A' -> entities += Axe(px, bottom)
@@ -170,6 +212,7 @@ class Game(
                 'C' -> { castleX = px; castleBase = bottom }
             }
         }
+        saveSlot()
         setState(State.INTRO)
     }
 
@@ -220,12 +263,15 @@ class Game(
 
         when (state) {
             State.TITLE -> if (tap && stateTime > 0.3f) {
-                newGame(if (wonderUnlocked && tapX > viewW / 2) bonusStart else 0)
+                val buttons = if (wonderUnlocked) 4 else 3
+                val i = if (tapX < 0) 0 else ((tapX - titleButtonsX()) / titleButtonW()).toInt().coerceIn(0, buttons - 1)
+                if (i == 3) { slot = 0; newGame(bonusStart) } else startSlot(i + 1)
             }
             State.INTRO -> if (stateTime > 2.2f) setState(State.PLAYING)
             State.PLAYING -> {
                 updateHero(dt, jumpPressed, firePressed, downPressed)
                 if (wonderMode) updateWonder(dt)
+                updateGuests(dt)
                 updateWorld(dt)
                 if (state == State.PLAYING) interact(dt)
                 updateCamera()
@@ -246,7 +292,20 @@ class Game(
             State.AXE -> updateAxe(dt)
             State.WORLD_CLEAR -> {
                 updateParticles(dt)
-                if (stateTime > 6f || (stateTime > 2f && tap)) advance()
+                if (stateTime > 6f || (stateTime > 2f && tap)) { saidDonutLine = false; setState(State.DONUT) }
+            }
+            State.DONUT -> {
+                // Snack time! Rocco munches a donut between worlds.
+                if (stateTime > 2.6f && !saidDonutLine) {
+                    saidDonutLine = true
+                    sound.say("That's-a great!")
+                }
+                if ((stateTime in 0.8f..0.82f) || (stateTime in 1.4f..1.42f) || (stateTime in 2.0f..2.02f)) sfx(Sound.CHOMP)
+                if (stateTime > 5.5f || (stateTime > 3f && tap)) advance()
+            }
+            State.WARP -> {
+                updateParticles(dt)
+                if (stateTime > 1.1f) finishWarp()
             }
             State.GAME_OVER -> if (stateTime > 2f && tap) newGame(worldStart())
             State.VICTORY -> {
@@ -261,8 +320,94 @@ class Game(
         updateMusic()
     }
 
+    /** King Krag, if Rocco is right behind him and can grab his tail. */
+    private fun grabbableKrag(): Krag? {
+        val h = hero
+        if (!h.onGround || h.power == Power.MINI) return null
+        for (e in entities) {
+            if (e !is Krag || !e.active || e.dying || e.grabbed) continue
+            val behind = (h.cx - e.cx) * e.facing < 0
+            if (behind && abs(h.cx - e.tailX) < 26f && abs(h.bottom - e.bottom) < 12f) return e
+        }
+        return null
+    }
+
+    private fun updateGrab(dt: Float) {
+        val k = grabbed ?: return
+        val h = hero
+        grabTimer += dt
+        // Swing him round and round...
+        val ang = grabTimer * (6f + grabTimer * 10f)
+        k.x = h.cx + kotlin.math.cos(ang) * 34f - k.w / 2
+        k.y = h.cy - k.h / 2 - 8f + sin(ang) * 6f
+        h.facing = if (kotlin.math.cos(ang) > 0) 1 else -1
+        if (grabTimer > 1.5f) {
+            // ...and throw him into the sky!
+            k.throwToSky(h.facing)
+            h.grabbing = false
+            grabbed = null
+            sfx(Sound.BOSS_HIT)
+            say(h.cx, h.y - 6, "Bye-bye, Krag!")
+        }
+    }
+
+    private fun toiletUnder(h: Hero): Toilet? = entities.firstOrNull {
+        it is Toilet && it.entry && h.onGround && abs(h.bottom - it.y) < 1f && h.cx > it.x && h.cx < it.x + it.w
+    } as Toilet?
+
+    private fun startWarp(t: Toilet) {
+        val exit = entities.filterIsInstance<Toilet>().filter { !it.entry && it.x > t.x }.minByOrNull { it.x } ?: return
+        warpTarget = exit
+        t.flush = 1f
+        hero.visible = false
+        hero.vx = 0f
+        sfx(Sound.FLUSH)
+        say(t.cx, t.y - 18, "Skip-a-doo!")
+        setState(State.WARP)
+    }
+
+    private fun finishWarp() {
+        val exit = warpTarget ?: return
+        val h = hero
+        h.x = exit.cx - h.w / 2
+        h.y = exit.y - h.h
+        h.vy = -260f
+        h.visible = true
+        exit.flush = 1f
+        camX = max(camX, (h.cx - viewW * 0.4f).coerceAtMost(max(0f, level.pixelW - viewW))).toInt().toFloat()
+        sfx(Sound.FLUSH)
+        setState(State.PLAYING)
+    }
+
+    /** Builder Rocco's hammer smashes blocks (even silver ones) and bad guys in front of him. */
+    private fun swingHammer(h: Hero) {
+        val x0 = if (h.facing > 0) h.x + h.w else h.x - 18f
+        val area = Body(x0, h.y - 4f, 18f, h.h + 4f)
+        var hit = false
+        for (ty in tileOf(area.y)..tileOf(area.bottom - 0.01f)) for (tx in tileOf(area.x)..tileOf(area.x + area.w - 0.01f)) {
+            when (level[tx, ty]) {
+                T.BRICK, T.HARD, T.USED -> if (tx in 0 until level.w) { smashTile(tx, ty); hit = true }
+                T.QCOIN, T.QPOWER -> { hitBlock(tx, ty, fromAbove = true); hit = true }
+            }
+        }
+        for (e in entities) {
+            if (e !is Enemy || e.dying || !e.active || !e.overlaps(area)) continue
+            when (e) {
+                is Krag -> e.damage(this, 1)
+                is KragJr -> e.damage(this, 2)
+                is Boomadaboom -> e.damage(this, 2)
+                is Podoboo -> {}
+                else -> { e.knockOut(this); addScore(200, e.cx, e.y) }
+            }
+            hit = true
+        }
+        sfx(if (hit) Sound.BREAK else Sound.KICK)
+    }
+
     private fun updateHero(dt: Float, jumpPressed: Boolean, firePressed: Boolean, downPressed: Boolean) {
         val h = hero
+        if (grabbed != null) { updateGrab(dt); return }
+        if (downPressed) toiletUnder(h)?.let { startWarp(it); return }
         val mini = h.power == Power.MINI
         var dir = (if (input.right) 1 else 0) - (if (input.left) 1 else 0)
 
@@ -349,13 +494,26 @@ class Game(
         if (h.slamming && h.onGround) slamImpact(h)
         h.walkAnim += abs(h.vx) * dt / 7f
 
-        if (firePressed && h.power.canThrow && !h.crouching && !h.slamming) {
+        val grab = if (firePressed) grabbableKrag() else null
+        if (grab != null) {
+            grabbed = grab
+            grab.grabbed = true
+            grabTimer = 0f
+            h.grabbing = true
+            h.vx = 0f
+            sfx(Sound.KICK)
+            say(h.cx, h.y - 6, "Gotcha!")
+        } else if (firePressed && h.power == Power.HAMMER && !h.slamming && h.throwAnim <= 0) {
+            swingHammer(h)
+            h.throwAnim = 0.3f
+        } else if (firePressed && h.power.canThrow && !h.crouching && !h.slamming) {
             val fx = if (h.facing > 0) h.x + h.w else h.x - 8
             val shots = entities.count { it is Fireball } + pending.count { it is Fireball }
             fun count(pred: (Entity) -> Boolean) = entities.count(pred) + pending.count(pred)
             when (h.power) {
                 Power.BOOM -> if (count { it is Boomerang } == 0) { spawn(Boomerang(fx, h.y + 5, h.facing)); sfx(Sound.KICK) }
                 Power.SHELL -> if (count { it is HomingShell } == 0) { spawn(HomingShell(fx, h.y, h.facing)); sfx(Sound.KICK) }
+                Power.HAMMER -> {}
                 Power.CANNON -> if (count { it is BlasterBullet } < 2 && h.throwAnim <= 0) {
                     spawn(BlasterBullet(if (h.facing > 0) h.x + h.w else h.x - 16, h.y + 4, h.facing))
                     sfx(Sound.BOSS_HIT)
@@ -366,7 +524,7 @@ class Game(
                     sfx(Sound.FIRE)
                 }
             }
-            if (h.power != Power.CANNON) h.throwAnim = 0.15f
+            if (h.power != Power.CANNON && h.power != Power.HAMMER) h.throwAnim = 0.15f
         }
         h.throwAnim -= dt
         h.invuln -= dt
@@ -399,9 +557,9 @@ class Game(
     private fun landOnFrozenBlocks(h: Hero) {
         if (h.vy < 0) return
         for (e in entities) {
-            if (e !is FrozenBlock || e.removed) continue
+            if ((e !is FrozenBlock && e !is Toilet) || e.removed) continue
             if (h.x + h.w <= e.x || h.x >= e.x + e.w || heroPrevBottom > e.y + 0.5f || h.bottom < e.y) continue
-            if (h.slamming && h.slamPause <= 0) {
+            if (e is FrozenBlock && h.slamming && h.slamPause <= 0) {
                 e.shatter(this)
                 addScore(100, e.cx, e.y)
                 continue
@@ -438,6 +596,15 @@ class Game(
                 addScore(100, e.cx, e.y)
             }
         }
+    }
+
+    /** Smashes a brick or (with a hammer or Zoom) a silver block. */
+    fun smashTile(tx: Int, ty: Int) {
+        if (level[tx, ty] == T.BRICK) { breakBrick(tx, ty); return }
+        level[tx, ty] = T.EMPTY
+        debris(tx * TILE.toFloat(), ty * TILE.toFloat(), 0xFF9A9AAE.toInt())
+        score += 50
+        sfx(Sound.BREAK)
     }
 
     private fun breakBrick(tx: Int, ty: Int) {
@@ -520,6 +687,7 @@ class Game(
 
     private fun interact(dt: Float) {
         val h = hero
+        if (grabbed != null) return
         for (e in entities) {
             if (!e.active || e.removed || !e.overlaps(h)) continue
             when (e) {
@@ -533,11 +701,11 @@ class Game(
                     }
                     val fromAbove = h.vy > 0 && heroPrevBottom <= e.y + 6
                     if (fromAbove && h.slamming && !e.spiky) {
-                        if (e is KragJr) {
-                            e.damage(this, 3)
+                        if (e is KragJr || e is Boomadaboom) {
+                            if (e is KragJr) e.damage(this, 3) else (e as Boomadaboom).damage(this, 2)
                             h.slamming = false
                             h.vy = -320f
-                            h.y = e.y - h.h
+                            placeAbove(h, e.y)
                         } else {
                             // The slam ploughs straight through.
                             e.knockOut(this)
@@ -547,7 +715,7 @@ class Game(
                         e.stomp(this)
                         h.slamming = false
                         h.vy = if (input.jump) -340f else -210f
-                        h.y = e.y - h.h
+                        placeAbove(h, e.y)
                     } else {
                         e.touchHero(this)
                     }
@@ -557,6 +725,11 @@ class Game(
                     collectItem(e)
                 }
                 is Coin -> { e.removed = true; collectCoin(e.cx, e.y) }
+                is PuzzleCube -> if (h.vy > 0 && heroPrevBottom <= e.y + 6) {
+                    e.bounced(this)
+                    h.vy = -470f
+                    placeAbove(h, e.y)
+                }
                 is WonderFlower -> { e.removed = true; startWonder() }
                 is WonderSeed -> {
                     e.removed = true
@@ -603,8 +776,23 @@ class Game(
         }
     }
 
+    /** Puts Rocco on top of something he bounced on, unless that would push him into blocks. */
+    private fun placeAbove(h: Hero, top: Float) {
+        val newY = top - h.h
+        for (ty in tileOf(newY)..tileOf(newY + h.h - 0.01f)) {
+            for (tx in tileOf(h.x)..tileOf(h.x + h.w - 0.01f)) if (level.solid(tx, ty)) return
+        }
+        h.y = newY
+    }
+
     private fun collectItem(item: PowerItem) {
         val h = hero
+        if (item.kind == Item.ONEUP) {
+            lives++
+            particles += FloatText(item.cx, item.y, "1UP")
+            sfx(Sound.ONEUP)
+            return
+        }
         when (item.kind) {
             Item.MUSHROOM -> if (!h.power.isBig) h.power = Power.BIG
             Item.FIRE -> h.power = Power.FIRE
@@ -614,6 +802,8 @@ class Game(
             Item.STAR -> h.starTime = Hero.STAR_TIME
             Item.SHELL -> h.power = Power.SHELL
             Item.CANNON -> h.power = Power.CANNON
+            Item.HAMMER -> h.power = Power.HAMMER
+            Item.ONEUP -> {}
         }
         h.flash = 0.6f
         addScore(1000, item.cx, item.y)
@@ -680,6 +870,36 @@ class Game(
         }
     }
 
+    /** Captain Zap and Ring-Ding Frog drop in every now and then. */
+    private fun updateGuests(dt: Float) {
+        zapTimer -= dt
+        if (zapTimer <= 0) {
+            zapTimer = 30f
+            val target = entities.filterIsInstance<Enemy>().firstOrNull {
+                it.active && !it.dying && isOnScreen(it) && it !is Krag && it !is KragJr && it !is KragFlame && it !is Podoboo
+            }
+            if (target != null) {
+                spawn(CaptainZap(target, camX - 30f))
+                bannerTitle = "CAPTAIN ZAP!"
+                bannerSub = "Space ranger to the rescue!"
+                bossBannerTime = 2f
+            } else zapTimer = 5f
+        }
+        if (frogTimer > 0) {
+            frogTimer -= dt
+            if (frogTimer <= 0) spawn(RingDingFrog(camX - 30f, hero.bottom - 50f))
+        }
+    }
+
+    val frogSinging get() = entities.any { it is RingDingFrog }
+
+    fun onKragThrown(k: Krag) {
+        particles += Twinkle(k.cx, 30f)
+        addScore(10000, k.cx, 40f)
+        onBossDefeated()
+        bannerTitle = "KRAG WAS THROWN INTO THE SKY!"
+    }
+
     fun onJrEngaged() {
         camLock = camX
     }
@@ -699,6 +919,12 @@ class Game(
         bannerTitle = "KING KRAG IS DEFEATED!"
         bannerSub = if (level.def.rows.any { 'R' in it }) "Go to Princess Rosalie!" else "Go see what Pip has to say!"
         bossBannerTime = 3.5f
+        // A wall still blocks the princess... here comes Zoom the Hedgehog!
+        val princess = entities.firstOrNull { it is Princess }
+        if (princess != null) {
+            spawn(Zoomer(camX - 40f, princess.y + princess.h, princess.x - 60f))
+            bannerSub = "Here comes ZOOM THE HEDGEHOG!"
+        }
         for (e in entities) if (e is KragFlame) e.removed = true
         sfx(Sound.CLEAR)
     }
@@ -711,6 +937,7 @@ class Game(
                 val krag = entities.firstOrNull { it is Krag }
                 when {
                     hero.starTime > 0 -> Music.STAR
+                    frogSinging -> Music.FROG
                     wonderMode -> Music.WONDER
                     entities.any { it is KragJr && it.engaged } -> Music.BOSS
                     krag != null && krag.active && !bossDefeated -> Music.BOSS
@@ -796,10 +1023,19 @@ class Game(
                     State.GAME_OVER -> renderGameOver(gfx)
                     State.VICTORY -> renderVictory(gfx)
                     State.ALL_CLEAR -> renderAllClear(gfx)
+                    State.DONUT -> renderDonut(gfx)
                     State.WORLD_CLEAR -> renderWorldClear(gfx)
                     else -> {
                         if (state == State.PLAYING || state == State.AXE || state == State.DYING) {
-                            Controls.draw(gfx, input, viewW, hero.power.canThrow)
+                            val canGrab = grabbableKrag() != null
+                            Controls.draw(
+                                gfx, input, viewW, hero.power.canThrow || canGrab,
+                                when {
+                                    canGrab -> "GRAB"
+                                    hero.power == Power.HAMMER -> "SMASH"
+                                    else -> "FIRE"
+                                },
+                            )
                         }
                         Controls.drawPause(gfx, viewW, musicOn)
                     }
@@ -1045,10 +1281,16 @@ class Game(
     private fun renderWorld(gfx: Gfx) {
         val cam = camX
         renderBackground(gfx, cam)
+        if (level.def.world == Levels.BONUS_WORLD) {
+            // Wonder World is tinted purple above and green below.
+            gfx.rect(0f, 0f, viewW, 120f, 0x406A2FBF)
+            gfx.rect(0f, 120f, viewW, 120f, 0x402FBF6A)
+        }
         if (wonderMode) {
+            val purpleGreen = intArrayOf(0x8A3FFF, 0xB05CFF, 0x5CFF9A, 0x2FBF6A, 0x7B3FBF, 0x3FFFB0, 0x9A4FE0, 0x4CE07A)
             for (i in 0 until 8) {
                 val by = (i * 30f + time * 25f) % VIEW_H - 30f
-                gfx.rect(0f, by, viewW, 30f, argb(55, rainbow(time, i / 8f)))
+                gfx.rect(0f, by, viewW, 30f, argb(60, purpleGreen[(i + (time * 2).toInt()) % 8]))
             }
             for (k in 0 until 14) {
                 val sx = (k * 61f + time * 30f) % viewW
@@ -1113,13 +1355,24 @@ class Game(
         gfx.text("♥", cx + 108, ground - 30 - (time * 10) % 10, 10f, 0xFFFF6FB5.toInt(), 1)
 
         gfx.shadowText("Save Princess Rosalie from King Krag!", cx, 130f, 10f, 0xFFFFFFFF.toInt(), 1)
-        if (wonderUnlocked) {
-            gfx.rect(cx - 150, 136f, 140f, 24f, 0xCC3A1A08.toInt())
-            gfx.shadowText("\u25B6 START", cx - 80, 153f, 12f, 0xFFFFFFFF.toInt(), 1)
-            gfx.rect(cx + 10, 136f, 140f, 24f, argb(210, rainbow(time)))
-            gfx.shadowText("\u2605 WONDER WORLD", cx + 80, 153f, 11f, 0xFFFFFFFF.toInt(), 1)
-        } else if ((time * 2).toInt() % 2 == 0) {
-            gfx.shadowText("TAP TO START", cx, 152f, 14f, 0xFFFFFFFF.toInt(), 1)
+        // Save slots (and Wonder World once unlocked)
+        val n = if (wonderUnlocked) 4 else 3
+        val bw = titleButtonW()
+        val x0 = titleButtonsX()
+        for (i in 0 until n) {
+            val bx = x0 + i * bw
+            if (i == 3) {
+                gfx.rect(bx + 3, 134f, bw - 6, 30f, argb(220, rainbow(time)))
+                gfx.shadowText("\u2605 WONDER", bx + bw / 2, 146f, 9f, 0xFFFFFFFF.toInt(), 1)
+                gfx.shadowText("WORLD", bx + bw / 2, 158f, 9f, 0xFFFFFFFF.toInt(), 1)
+                continue
+            }
+            gfx.rect(bx + 3, 134f, bw - 6, 30f, 0xDD3A1A08.toInt())
+            gfx.rect(bx + 5, 136f, bw - 10, 26f, 0xDDC84C0C.toInt())
+            gfx.shadowText("SLOT ${i + 1}", bx + bw / 2, 146f, 9f, 0xFFFFD21F.toInt(), 1)
+            val lv = slotLevel(i + 1)
+            val label = if (lv < 0) "NEW GAME" else "WORLD ${Levels.all[lv.coerceAtMost(Levels.all.size - 1)].label}"
+            gfx.shadowText(label, bx + bw / 2, 158f, 8f, 0xFFFFFFFF.toInt(), 1)
         }
         if (bestScore > 0) gfx.shadowText("BEST ${bestScore.toString().padStart(6, '0')}", cx, 174f, 8f, 0xFFFFD21F.toInt(), 1)
         gfx.shadowText("Left side: move (double-tap to run)   Right side: JUMP / FIRE", cx, 222f, 7f, 0xFFFFFFFF.toInt(), 1)
@@ -1127,6 +1380,9 @@ class Game(
     }
 
     private val titleKrag = Krag(0f, 13f * TILE).also { it.onGround = true }
+
+    private fun titleButtonW() = 86f
+    private fun titleButtonsX() = viewW / 2 - (if (wonderUnlocked) 4 else 3) * titleButtonW() / 2
 
     private fun renderIntro(gfx: Gfx) {
         gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF000000.toInt())
@@ -1176,6 +1432,52 @@ class Game(
         if (stateTime > 2f) {
             gfx.shadowText("Tap to continue to WORLD ${level.def.world + 1}", viewW / 2, 148f, 9f, 0xFFFFFFFF.toInt(), 1)
         }
+    }
+
+    private fun renderDonut(gfx: Gfx) {
+        val t = stateTime
+        val cx = viewW / 2
+        gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF2A1438.toInt())
+        gfx.rect(0f, 170f, viewW, 70f, 0xFF4A2A58.toInt())
+        // Rocco, big and happy
+        val s = when (hero.power) {
+            Power.SMALL, Power.MINI -> Sprites.smallStand
+            else -> Sprites.bigStand
+        }
+        gfx.sprite(s, cx - 24, 170f - s.h * 2f, w = s.w * 2f, h = s.h * 2f)
+        // The donut floats up to his mouth and gets eaten, one bite at a time.
+        val bites = when {
+            t < 0.8f -> 0
+            t < 1.4f -> 1
+            t < 2.0f -> 2
+            else -> 3
+        }
+        if (bites < 3) {
+            val dy = if (t < 0.6f) (0.6f - t) * 80f else 0f
+            val dx = cx + 10
+            val dyy = 170f - s.h * 2f + 14 + dy
+            gfx.oval(dx, dyy, 26f, 20f, 0xFFD89A4A.toInt())
+            gfx.oval(dx + 2, dyy + 1, 22f, 15f, 0xFFFF7FC8.toInt())
+            gfx.oval(dx + 9, dyy + 6, 8f, 6f, 0xFF2A1438.toInt())
+            for (k in 0 until 6) {
+                gfx.rect(dx + 4 + k * 3.3f, dyy + 3 + (k % 2) * 7f, 2f, 1f, rainbow(k / 6f) or 0xFF000000.toInt())
+            }
+            for (b in 0 until bites) gfx.oval(dx - 6 + b * 4f, dyy - 2 + b * 4f, 12f, 12f, 0xFF2A1438.toInt())
+        }
+        // Crumbs
+        if (t in 0.8f..2.6f) for (k in 0 until 5) {
+            gfx.rect(cx + 8 + k * 3f, 170f - s.h * 2f + 30 + ((t * 60 + k * 7) % 40), 2f, 2f, 0xFFD89A4A.toInt())
+        }
+        if (t > 2.4f) {
+            val bx = cx + 30
+            val by = 70f
+            gfx.rect(bx - 2, by - 22, 124f, 26f, 0xFF101010.toInt())
+            gfx.rect(bx, by - 20, 120f, 22f, 0xFFFFFFFF.toInt())
+            gfx.poly(floatArrayOf(bx + 4, bx + 16, bx - 10), floatArrayOf(by + 2, by + 2, by + 14), 0xFFFFFFFF.toInt())
+            gfx.text("That's-a great!", bx + 60, by - 5, 11f, 0xFFE52521.toInt(), 1)
+        }
+        gfx.shadowText("Snack break!", cx, 30f, 12f, 0xFFFFB8DC.toInt(), 1)
+        if (t > 3f) gfx.shadowText("Tap to continue", cx, 228f, 8f, 0xFFFFFFFF.toInt(), 1)
     }
 
     private fun renderAllClear(gfx: Gfx) {
