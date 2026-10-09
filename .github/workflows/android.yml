@@ -1,0 +1,52 @@
+name: Build Android APK
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Run game logic tests
+        run: ./gradlew :core:test --console=plain
+
+      - name: Build APK
+        run: ./gradlew :app:assembleDebug --console=plain
+
+      - name: Rename APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk RoccosQuest.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RoccosQuest-apk
+          path: RoccosQuest.apk
+
+      - name: Publish downloadable build
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest-${{ github.ref_name }}
+          name: "Rocco's Quest (latest ${{ github.ref_name }} build)"
+          prerelease: true
+          body: |
+            Install on Android: download **RoccosQuest.apk** on your phone, open it,
+            and allow "install unknown apps" for your browser if asked.
+
+            Built from ${{ github.sha }}.
+          files: RoccosQuest.apk
