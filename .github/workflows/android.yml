@@ -40,8 +40,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-${{ github.ref_name }}
-          name: "Rocco's Quest (latest ${{ github.ref_name }} build)"
-          prerelease: true
+          name: "Rocco's Quest - Download for Android"
+          prerelease: false
+          make_latest: true
           body: |
             Install on Android: download **RoccosQuest.apk** on your phone, open it,
             and allow "install unknown apps" for your browser if asked.

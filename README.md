@@ -52,9 +52,9 @@ waves, a triangle bass and noise drums, so there are no audio files. Tap the **â
 
 Every push builds an APK with GitHub Actions (see `.github/workflows/android.yml`):
 
-1. Open the repository's **Releases** page on your phone and find the
-   *"Rocco's Quest (latest â€¦ build)"* pre-release. You can also download the
-   `RoccosQuest-apk` artifact from the workflow run.
+1. On your phone, open
+   **https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/RoccosQuest.apk**
+   in Chrome. It's also the latest release on the repository page.
 2. Download `RoccosQuest.apk` and open it. If Android asks, allow your browser to install unknown apps.
 
 ## Building it yourself
