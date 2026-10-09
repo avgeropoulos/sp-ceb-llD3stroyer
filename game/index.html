@@ -57,6 +57,8 @@ body {
   box-shadow: 0 5px 0 #a52a1c; touch-action: none; opacity: .92;
 }
 .leapbtn.cool { opacity: .45; }
+.leapbtn.herc { background: #1b1a1f; border-color: var(--leash-red); box-shadow: 0 5px 0 #000; }
+.leapbtn.left { right: auto; left: 18px; }
 .leapbtn:active { transform: translateY(3px); box-shadow: 0 2px 0 #a52a1c; }
 canvas { touch-action: none; position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 
@@ -171,6 +173,7 @@ kbd { font-family: var(--body); font-weight: 800; background: #eef2ec; border-ra
   <div id="stage">
     <canvas id="cv"></canvas>
     <button class="leapbtn" id="leapBtn" type="button" hidden>Leap!</button>
+    <button class="leapbtn herc" id="dashBtn" type="button" hidden>Zoom!</button>
 
     <div class="overlay" id="titleScreen">
       <div class="card">
@@ -179,7 +182,7 @@ kbd { font-family: var(--body); font-weight: 800; background: #eef2ec; border-ra
         <div class="pick">
           <button class="dogbtn" type="button" data-pick="hercules" style="--c:#e3402d">
             <img src="hercules.jpg" alt="Hercules">
-            <div><b>Hercules</b><span>Fastest paws, super quick turns</span></div>
+            <div><b>Hercules</b><span>Fastest paws and a turbo Zoom dash</span></div>
           </button>
           <button class="dogbtn" type="button" data-pick="apollo" style="--c:#2f86d6">
             <img src="apollo.jpg" alt="Apollo">
@@ -199,7 +202,7 @@ kbd { font-family: var(--body); font-weight: 800; background: #eef2ec; border-ra
           <div><i>🦴</i><span><b>Treats</b> fall from the sky. Grab one for a 7-second boost.</span></div>
           <div><i>⏱️</i><span>Reach the goal before the clock runs out, or it's nap time.</span></div>
         </div>
-        <p class="keys">Move with <kbd>WASD</kbd> or arrow keys. On a phone or tablet, put your thumb down anywhere and slide it like a joystick. Apollo leaps with <kbd>Space</kbd> or the <b>Leap</b> button, and sails right over mud, spray and bathtubs. In team mode Hercules uses <kbd>WASD</kbd>, Apollo uses the arrows and <kbd>Enter</kbd> to leap. On a tablet the left half of the screen steers Hercules and the right half steers Apollo, and a quick tap makes Apollo leap. <kbd>P</kbd> pauses.</p>
+        <p class="keys">Move with <kbd>WASD</kbd> or arrow keys. On a phone or tablet, put your thumb down anywhere and slide it like a joystick. Each dog has a power: press <kbd>Space</kbd>, tap its button, or give the screen a quick tap. Hercules <b>zooms</b> so fast he stays dry, and Apollo <b>leaps</b> over mud, spray and bathtubs. In team mode Hercules uses <kbd>WASD</kbd> and <kbd>Space</kbd>, Apollo uses the arrows and <kbd>Enter</kbd>. On a tablet the left half of the screen steers Hercules and the right half steers Apollo. <kbd>P</kbd> pauses.</p>
         <div class="scorebox"><h3 class="sbTitle">High scores</h3><div class="sbBody"></div></div>
       </div>
     </div>
@@ -305,6 +308,49 @@ const sfx = {
   treat: () => [660, 880, 1320, 1760].forEach((f, i) => tone(f, f, 0.1, "triangle", 0.12, i * 0.05)),
   over: () => [523, 440, 349, 262].forEach((f, i) => tone(f, f * 0.98, 0.25, "sine", 0.12, i * 0.16)),
 };
+// Barks: Hercules says a deep "gav!", Apollo a higher "arp!". A buzzy sawtooth
+// "voice" goes through vowel formant filters, with a little consonant on each end.
+function barkSound(id) {
+  if (!soundOn) return; const a = ac(); if (!a) return;
+  const t = a.currentTime + 0.005, herc = id === "hercules";
+  const dur = herc ? 0.19 : 0.13, j = rnd(0.93, 1.07);
+  const o = a.createOscillator(); o.type = "sawtooth";
+  if (herc) { o.frequency.setValueAtTime(170 * j, t); o.frequency.linearRampToValueAtTime(240 * j, t + 0.03); o.frequency.exponentialRampToValueAtTime(130 * j, t + dur); }
+  else { o.frequency.setValueAtTime(480 * j, t); o.frequency.linearRampToValueAtTime(660 * j, t + 0.025); o.frequency.linearRampToValueAtTime(540 * j, t + 0.06); o.frequency.exponentialRampToValueAtTime(420 * j, t + dur); }
+  const voice = a.createGain();
+  voice.gain.setValueAtTime(0.0001, t); voice.gain.exponentialRampToValueAtTime(1, t + 0.012);
+  voice.gain.setValueAtTime(1, t + dur * 0.6); voice.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  const out = a.createGain(); out.gain.value = herc ? 1.1 : 1.5; out.connect(a.destination);
+  o.connect(voice);
+  for (const [f, q, g] of herc ? [[650, 5, 1], [1100, 7, 0.7], [2400, 9, 0.25]] : [[950, 5, 1], [1700, 7, 0.6], [3200, 9, 0.2]]) {
+    const bp = a.createBiquadFilter(), gg = a.createGain();
+    bp.type = "bandpass"; bp.frequency.value = f; bp.Q.value = q; gg.gain.value = g;
+    voice.connect(bp).connect(gg).connect(out);
+  }
+  o.start(t); o.stop(t + dur + 0.02);
+  const burst = (start, len, type, freq, vol) => {
+    const n = Math.floor(a.sampleRate * len), b = a.createBuffer(1, n, a.sampleRate), d = b.getChannelData(0);
+    for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
+    const src = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
+    src.buffer = b; f.type = type; f.frequency.value = freq; g.gain.value = vol;
+    src.connect(f).connect(g).connect(a.destination); src.start(start);
+  };
+  if (herc) {
+    burst(t, 0.02, "lowpass", 1200, 0.5);   // "g"
+    const v = a.createOscillator(), vf = a.createBiquadFilter(), vg = a.createGain();   // "v"
+    v.type = "sawtooth"; v.frequency.value = 125 * j; vf.type = "lowpass"; vf.frequency.value = 500;
+    vg.gain.setValueAtTime(0.0001, t + dur - 0.02); vg.gain.exponentialRampToValueAtTime(0.25, t + dur + 0.01); vg.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.08);
+    v.connect(vf).connect(vg).connect(a.destination); v.start(t + dur - 0.02); v.stop(t + dur + 0.1);
+  } else burst(t + dur + 0.035, 0.012, "bandpass", 1500, 0.6);   // "p"
+}
+function whoosh() {
+  if (!soundOn) return; const a = ac(); if (!a) return;
+  const n = Math.floor(a.sampleRate * 0.35), b = a.createBuffer(1, n, a.sampleRate), d = b.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.sin(Math.PI * i / n);
+  const src = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain(), t = a.currentTime;
+  f.type = "bandpass"; f.Q.value = 2; f.frequency.setValueAtTime(400, t); f.frequency.exponentialRampToValueAtTime(3000, t + 0.3);
+  g.gain.value = 0.5; src.buffer = b; src.connect(f).connect(g).connect(a.destination); src.start(t);
+}
 function syncSoundBtn() { $("soundBtn").textContent = soundOn ? "Sounds on" : "Sounds off"; }
 $("soundBtn").onclick = () => { soundOn = !soundOn; try { localStorage.setItem("bb_sound", soundOn ? "on" : "off"); } catch (e) {} syncSoundBtn(); if (soundOn) ac(); };
 syncSoundBtn();
@@ -497,7 +543,7 @@ let screen = "title";  // title | intro | play | pause | over
 let lastSaved = null;
 
 function makeDog(id, x, y) {
-  return { id, x, y, r: 22, vx: 0, vy: 0, face: 1, speed: STATS[id].speed, inv: 0, step: 0, caught: 0, ptr: null, leap: null, leapCd: 0, boost: 0, z: 0, lastDir: [1, 0] };
+  return { id, x, y, r: 22, vx: 0, vy: 0, face: 1, speed: STATS[id].speed, inv: 0, step: 0, caught: 0, ptr: null, leap: null, leapCd: 0, dash: null, dashCd: 0, boost: 0, z: 0, lastDir: [1, 0], idleT: 1, runT: 0, barkEvery: 3.5 };
 }
 function newGame() {
   G = { level: 1, score: 0, splashes: 0, birdMeter: 0, birdsCaught: 0, totals: { squirrel: 0, bunny: 0 }, dogs: [] };
@@ -508,7 +554,7 @@ function newGame() {
 function setupLevel() {
   const c = G.cfg = levelCfg(G.level);
   G.caught = 0; G.time = c.time; G.critters = []; G.particles = []; G.floaters = []; G.tubs = []; G.sprinklers = []; G.muds = []; G.bird = null; G.spawnT = 0; G.shake = 0;
-  G.dogs.forEach((d, i) => { d.x = W / 2 + (G.dogs.length > 1 ? (i ? 50 : -50) : 0); d.y = H / 2; d.vx = d.vy = 0; d.inv = 1.5; d.ptr = null; d.leap = null; d.leapCd = 0; d.boost = 0; d.z = 0; d.stick = null; });
+  G.dogs.forEach((d, i) => { d.x = W / 2 + (G.dogs.length > 1 ? (i ? 50 : -50) : 0); d.y = H / 2; d.vx = d.vy = 0; d.inv = 1.5; d.ptr = null; d.leap = null; d.leapCd = 0; d.dash = null; d.dashCd = 0; d.boost = 0; d.z = 0; d.stick = null; d.idleT = 1; d.runT = 0; });
   G.treats = []; G.treatT = rnd(5, 8);
   // decorations (flowers) and hazards placed away from the start spot
   G.flowers = Array.from({ length: 26 }, () => ({ x: rnd(0, 1), y: rnd(0, 1), c: ["#fff", "#ffd84a", "#ff8fb1", "#c9a7ff"][Math.floor(rnd(0, 4))], s: rnd(0.7, 1.2) }));
@@ -547,7 +593,12 @@ window.addEventListener("keydown", (e) => {
   if (KEYMAP[e.code]) { keys.add(KEYMAP[e.code]); e.preventDefault(); }
   if (e.code === "KeyP" || e.code === "Escape") { if (screen === "play") pause(); else if (screen === "pause") resume(); }
   if ((e.code === "Space" || e.code === "Enter") && screen === "intro") { e.preventDefault(); startLevel(); }
-  else if (["Space", "Enter", "NumpadEnter", "ShiftRight"].includes(e.code) && screen === "play" && !e.repeat) { e.preventDefault(); leap(G.dogs.find((d) => d.id === "apollo")); }
+  else if (screen === "play" && !e.repeat) {
+    const byId = (id) => G.dogs.find((d) => d.id === id);
+    if (G.dogs.length === 1 && ["Space", "Enter", "NumpadEnter", "ShiftRight", "ShiftLeft"].includes(e.code)) { e.preventDefault(); power(G.dogs[0]); }
+    else if (G.dogs.length > 1 && ["Space", "ShiftLeft", "KeyQ", "KeyE"].includes(e.code)) { e.preventDefault(); dash(byId("hercules")); }
+    else if (G.dogs.length > 1 && ["Enter", "NumpadEnter", "ShiftRight"].includes(e.code)) { e.preventDefault(); leap(byId("apollo")); }
+  }
 });
 window.addEventListener("keyup", (e) => { if (KEYMAP[e.code]) keys.delete(KEYMAP[e.code]); });
 window.addEventListener("blur", () => { keys.clear(); if (screen === "play") pause(); });
@@ -555,11 +606,12 @@ document.addEventListener("visibilitychange", () => { if (document.hidden && scr
 
 const isTouch = (window.matchMedia && matchMedia("(pointer: coarse)").matches) || "ontouchstart" in window;
 $("leapBtn").addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); if (G) leap(G.dogs.find((d) => d.id === "apollo")); });
+$("dashBtn").addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); if (G) dash(G.dogs.find((d) => d.id === "hercules")); });
 function toWorld(e) { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / k, y: (e.clientY - r.top) / k }; }
 // Touch: a floating joystick. Put a thumb down anywhere and slide it; the dog
 // runs that way, so your finger never covers the dog. In team mode the left half
 // of the screen steers Hercules and the right half steers Apollo. A quick tap
-// makes Apollo leap. A mouse still works by pointing where the dog should go.
+// uses that dog's power. A mouse still works by pointing where the dog should go.
 const STICK_R = 56;   // CSS px the thumb travels for full speed
 function toCss(e) { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
 function toWorld(e) { const c = toCss(e); return { x: c.x / k, y: c.y / k }; }
@@ -601,7 +653,7 @@ const endPtr = (e) => {
     const st = d.stick;
     if (st && st.id === e.pointerId) {
       d.stick = null;
-      if (e.type === "pointerup" && d.id === "apollo" && performance.now() - st.t0 < 220 && st.travel < 14) leap(d);
+      if (e.type === "pointerup" && performance.now() - st.t0 < 220 && st.travel < 14) power(d);
     }
   }
 };
@@ -635,6 +687,7 @@ function update(dt) {
     const S = STATS[d.id], boosted = d.boost > 0;
     d.boost = Math.max(0, d.boost - dt);
     d.leapCd = Math.max(0, d.leapCd - dt);
+    d.dashCd = Math.max(0, d.dashCd - dt);
     d.inv = Math.max(0, d.inv - dt);
     if (boosted && Math.random() < dt * 22) G.particles.push({ x: d.x + rnd(-14, 14), y: d.y - d.z + rnd(-20, 10), vx: rnd(-20, 20), vy: rnd(-50, -10), life: 0.6, max: 0.6, kind: "star", s: rnd(3, 5), g: 0 });
     if (d.leap) {
@@ -649,17 +702,26 @@ function update(dt) {
       }
       return;
     }
-    const [ix, iy] = dogInput(d, i);
+    if (d.dash) { d.dash.t += dt; if (d.dash.t >= d.dash.dur) { d.dash = null; d.dashCd = boosted ? 0.6 : 1.4; } }
+    let [ix, iy] = dogInput(d, i);
     if (ix || iy) d.lastDir = [ix, iy];
-    const inMud = G.muds.some((m) => ((d.x - m.x) / m.rx) ** 2 + ((d.y - m.y) / m.ry) ** 2 < 1);
-    const sp = d.speed * (boosted ? S.boostSpeed : 1) * (inMud ? 0.48 : 1);
-    const grip = Math.min(1, dt * S.grip * (boosted ? 1.3 : 1));
+    else if (d.dash) { const m = Math.hypot(...d.lastDir) || 1; [ix, iy] = [d.lastDir[0] / m, d.lastDir[1] / m]; }   // a zoom keeps going
+    const inMud = !d.dash && G.muds.some((m) => ((d.x - m.x) / m.rx) ** 2 + ((d.y - m.y) / m.ry) ** 2 < 1);
+    const sp = d.speed * (boosted ? S.boostSpeed : 1) * (inMud ? 0.48 : 1) * (d.dash ? 1.9 : 1);
+    const grip = d.dash ? 1 : Math.min(1, dt * S.grip * (boosted ? 1.3 : 1));
     d.vx += (ix * sp - d.vx) * grip;
     d.vy += (iy * sp - d.vy) * grip;
     d.x += d.vx * dt; d.y += d.vy * dt; clampIn(d);
     const v = Math.hypot(d.vx, d.vy);
     if (Math.abs(d.vx) > 15) d.face = d.vx > 0 ? 1 : -1;
     d.step += v * dt * 0.06;
+    if (d.dash) G.particles.push({ x: d.x - d.vx * 0.04 + rnd(-6, 6), y: d.y + rnd(-14, 10), vx: -d.vx * 0.2, vy: 0, life: 0.25, max: 0.25, col: "rgba(255,255,255,.8)", s: rnd(2, 4), g: 0 });
+    // a bark whenever a dog sets off running, and now and then on a long run
+    if (v > 70) {
+      d.runT += dt;
+      if (d.idleT > 0.4 || d.runT > d.barkEvery) { bark(d); d.runT = 0; d.barkEvery = rnd(3, 4.5); }
+      d.idleT = 0;
+    } else { d.idleT += dt; d.runT = 0; }
     if (inMud && v > 60 && Math.random() < dt * 10) G.particles.push({ x: d.x + rnd(-8, 8), y: d.y + 14, vx: rnd(-30, 30), vy: rnd(-60, -20), life: 0.5, max: 0.5, col: "#6b4a2b", s: 4, g: 200 });
   });
   if (G.dogs.length > 1) { const [a, b] = G.dogs, dd = dist(a, b), min = a.r + b.r - 8; if (dd < min && dd > 0.01) { const push = (min - dd) / 2, nx = (b.x - a.x) / dd, ny = (b.y - a.y) / dd; a.x -= nx * push; a.y -= ny * push; b.x += nx * push; b.y += ny * push; } }
@@ -690,7 +752,7 @@ function update(dt) {
       const ang = s.ang + a * Math.PI;
       if (Math.random() < dt * 40) { const l = rnd(20, s.len); G.particles.push({ x: s.x + Math.cos(ang) * l, y: s.y + Math.sin(ang) * l, vx: rnd(-15, 15), vy: rnd(-15, 15), life: 0.35, max: 0.35, col: "#9fd4ff", s: rnd(2, 4), g: 0 }); }
       for (const d of G.dogs) {
-        if (d.inv > 0 || d.z > 12) continue;
+        if (d.inv > 0 || safe(d)) continue;
         const dd = dist(d, s);
         if (dd < s.len + d.r * 0.5 && dd > 14 && Math.abs(angDiff(Math.atan2(d.y - s.y, d.x - s.x), ang)) < s.width / 2 + d.r / Math.max(dd, 30) * 0.6) splash(d, "Sprinkler splash!");
       }
@@ -705,7 +767,7 @@ function update(dt) {
       else { t.vx *= 0.95; t.vy *= 0.95; }
     }
     t.x += t.vx * dt; t.y += t.vy * dt; clampIn(t);
-    for (const d of G.dogs) if (d.inv <= 0 && d.z <= 12 && dist(d, t) < d.r + t.r - 6) { splash(d, "Mr. Bubbles got you!"); t.pause = 2; t.vx = -t.vx * 0.5; t.vy = -t.vy * 0.5; }
+    for (const d of G.dogs) if (d.inv <= 0 && !safe(d) && dist(d, t) < d.r + t.r - 6) { splash(d, "Mr. Bubbles got you!"); t.pause = 2; t.vx = -t.vx * 0.5; t.vy = -t.vy * 0.5; }
   }
 
   updateTreats(dt);
@@ -769,7 +831,21 @@ function updateCritter(q, dt, c) {
   if (Math.abs(q.vx) > 5) q.face = q.vx > 0 ? 1 : -1;
 }
 
-const reach = (d) => d.r + (d.leap ? 12 : 0);   // a pounce reaches a little further
+const reach = (d) => d.r + (d.leap || d.dash ? 12 : 0);   // a pounce or zoom reaches a little further
+const safe = (d) => d.z > 12 || !!d.dash;   // leaping over hazards, or zooming too fast to get wet
+
+function bark(d) {
+  barkSound(d.id);
+  G.floaters.push({ x: d.x + d.face * 26, y: d.y - d.z - 36, text: d.id === "hercules" ? "Gav!" : "Arp!", life: 0.6, col: "#fff" });
+}
+function power(d) { if (d) (d.id === "apollo" ? leap : dash)(d); }
+function dash(d) {
+  if (!d || d.id !== "hercules" || d.dash || d.dashCd > 0 || screen !== "play") return;
+  const [ix, iy] = dogInput(d, G.dogs.indexOf(d));
+  if (ix || iy) d.lastDir = [ix, iy];
+  d.dash = { t: 0, dur: d.boost > 0 ? 0.75 : 0.55 };
+  whoosh(); bark(d); d.idleT = 0; d.runT = 0;
+}
 
 function leap(d) {
   if (!d || d.id !== "apollo" || d.leap || d.leapCd > 0 || screen !== "play") return;
@@ -887,6 +963,7 @@ function drawDog(d, t) {
   }
   shadow(d.x, d.y + 18, 26 - d.z * 0.12, 7 - d.z * 0.04);
   ctx.save(); ctx.translate(d.x, d.y - d.z); ctx.scale(d.face, 1);
+  if (d.dash) ctx.scale(1.18, 0.9);
   if (d.leap) ctx.rotate(-0.3 * Math.cos(Math.min(1, d.leap.t / d.leap.dur) * Math.PI));
   const bounce = moving ? Math.abs(Math.sin(d.step * 2)) * 3 : 0;
   // legs
@@ -1079,7 +1156,8 @@ function drawSticks() {
       if (!hint) return;
       const x = G.dogs.length === 1 || i === 0 ? 90 : cw - 90;
       const wig = Math.sin(performance.now() / 300) * 22;
-      st = { ox: x, oy: ch - 100, x: x + wig, y: ch - 100 }; ghost = true;
+      const y = ch - (G.dogs.length > 1 ? 220 : 100);   // stay clear of the power buttons
+      st = { ox: x, oy: y, x: x + wig, y }; ghost = true;
     }
     const col = DOGS[d.id].collar;
     const dx = st.x - st.ox, dy = st.y - st.oy, m = Math.hypot(dx, dy), lim = Math.min(m, STICK_R);
@@ -1110,13 +1188,17 @@ function hud() {
   const apollo = G.dogs.find((d) => d.id === "apollo");
   $("leapBtn").hidden = !(isTouch && apollo && screen === "play");
   if (apollo) $("leapBtn").classList.toggle("cool", !!apollo.leap || apollo.leapCd > 0);
+  const herc = G.dogs.find((d) => d.id === "hercules");
+  $("dashBtn").hidden = !(isTouch && herc && screen === "play");
+  $("dashBtn").classList.toggle("left", G.dogs.length > 1);
+  if (herc) $("dashBtn").classList.toggle("cool", !!herc.dash || herc.dashCd > 0);
   const sp = "s" + G.splashes;
   if (hudCache.sp !== sp) { hudCache.sp = sp; $("splashpips").innerHTML = [0, 1, 2].map((i) => `<span class="pip ${i < G.splashes ? "on" : ""}">💧</span>`).join(""); }
 }
 
 // ---------- Screens ----------
 const overlays = ["titleScreen", "levelScreen", "pauseScreen", "overScreen"];
-function show(id) { overlays.forEach((o) => ($(o).hidden = o !== id)); if (id) $("leapBtn").hidden = true; }
+function show(id) { overlays.forEach((o) => ($(o).hidden = o !== id)); if (id) { $("leapBtn").hidden = true; $("dashBtn").hidden = true; } }
 function dogLabel() { return mode === "both" ? "Hercules & Apollo" : DOGS[mode].name; }
 
 function intro(cleared) {
@@ -1126,7 +1208,10 @@ function intro(cleared) {
   const notes = [];
   if (n === 1) notes.push("Chase squirrels and bunnies around the yard. Get close and they get a boop.");
   if (n <= 2) notes.push(`Treats fall from the sky. Grab one for a ${BOOST_TIME}-second boost${mode === "both" ? "" : mode === "hercules" ? ": ZOOMIES" : ": SUPER LEAPS"}!`);
-  if (n <= 2 && mode !== "hercules") notes.push(mode === "both" ? `Apollo leaps with ${isTouch ? "a quick tap on the right half" : "Enter"} and jumps right over hazards.` : `Leap with ${isTouch ? "the Leap button or a quick tap" : "Space"} to jump right over hazards.`);
+  if (n <= 2) notes.push(mode === "both"
+    ? (isTouch ? "Each dog has a power: tap Zoom! or Leap!, or give your side a quick tap." : "Hercules zooms with Space and Apollo leaps with Enter. Both dodge sprinklers and bathtubs.")
+    : mode === "hercules" ? `Zoom with ${isTouch ? "the Zoom! button or a quick tap" : "Space"}. Hercules goes so fast he stays dry!`
+    : `Leap with ${isTouch ? "the Leap! button or a quick tap" : "Space"} to jump right over hazards.`);
   if (c.mud && n === 2) notes.push("New: mud puddles slow your paws.");
   if (c.sprinklers && levelCfg(n - 1).sprinklers < c.sprinklers) notes.push(c.sprinklers === 1 ? "New: a sprinkler! Stay out of the spray." : "One more sprinkler joins the yard.");
   if (c.tubs && levelCfg(n - 1).tubs < c.tubs) notes.push(c.tubs === 1 ? "New: Mr. Bubbles the bathtub rolls after you. Don't let it catch you!" : "Another bathtub is on the loose!");
