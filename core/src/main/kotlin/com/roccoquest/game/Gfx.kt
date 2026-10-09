@@ -50,7 +50,7 @@ fun argb(a: Int, rgb: Int): Int = (a shl 24) or (rgb and 0xFFFFFF)
 
 enum class Sound { JUMP, COIN, FIRE, STOMP, KICK, POWERUP, HURT, BUMP, BREAK, BOSS_HIT, BOSS_FIRE, DIE, CLEAR, VICTORY, ONEUP }
 
-enum class Music { NONE, OVERWORLD, UNDERGROUND, SKY, CASTLE, BOSS, STAR }
+enum class Music { NONE, OVERWORLD, UNDERGROUND, SKY, CASTLE, BOSS, STAR, WONDER }
 
 fun interface SoundSink {
     fun play(s: Sound)
@@ -73,4 +73,19 @@ class Input {
     @Volatile var musicToggle = false
     /** Set on any new touch / key press; consumed by menus. */
     @Volatile var tap = false
+    /** Horizontal position (virtual pixels) of the last tap, for on-screen menu buttons. */
+    @Volatile var tapX = -1f
+}
+
+/** Tiny key/value store so progress (best score, Wonder World unlock) survives restarts. */
+interface Storage {
+    fun load(key: String): Int
+    fun save(key: String, value: Int)
+
+    /** In-memory storage (used by tests and as a fallback). */
+    class Memory : Storage {
+        private val mem = HashMap<String, Int>()
+        override fun load(key: String) = mem[key] ?: 0
+        override fun save(key: String, value: Int) { mem[key] = value }
+    }
 }

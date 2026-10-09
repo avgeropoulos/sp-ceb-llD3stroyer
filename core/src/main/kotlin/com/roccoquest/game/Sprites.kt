@@ -621,6 +621,48 @@ object Sprites {
         ".....SS.....",
     )
 
+    // ---------------------------------------------------------------- Blue Shell & Bullet Blaster
+    private val shellSuitMap = mapOf(RED to 0xFF2E6BE6.toInt(), WHITE to 0xFFFFFFFF.toInt(), BLUE to 0xFF0E2E7A.toInt())
+    val shellStand = bigStand.recolor(shellSuitMap)
+    val shellWalk = bigWalk.recolor(shellSuitMap)
+    val shellJump = bigJump.recolor(shellSuitMap)
+    val blueShell = shell.recolor(mapOf(0xFF1E9E3A.toInt() to 0xFF2E6BE6.toInt(), 0xFF8EE07A.toInt() to 0xFF9FD0FF.toInt()))
+
+    private val cannonSuitMap = mapOf(RED to 0xFF3A3A44.toInt(), WHITE to 0xFFFFD21F.toInt(), BLUE to 0xFF8A8A9A.toInt())
+    val cannonStand = bigStand.recolor(cannonSuitMap)
+    val cannonWalk = bigWalk.recolor(cannonSuitMap)
+    val cannonJump = bigJump.recolor(cannonSuitMap)
+
+    private val blasterPal = mapOf(
+        'K' to 0xFF101018.toInt(), 'D' to 0xFF4A4A5A.toInt(), 'G' to 0xFF2A2A34.toInt(), 'W' to WHITE,
+    )
+    val blaster = pixelArt(blasterPal,
+        "................",
+        "....KKKKKKKK....",
+        "...KDDDDDDDDK...",
+        "..KDDKKKKKKDDK..",
+        "..KDKKKKKKKKDK..",
+        "..KDKKKKKKKKDK..",
+        "..KDDKKKKKKDDK..",
+        "...KDDDDDDDDK...",
+        "..KKKKKKKKKKKK..",
+        "..KGGGGGGGGGGK..",
+        "..KGGWWGGWWGGK..",
+        "..KGGWWGGWWGGK..",
+        "..KGGGGWWGGGGK..",
+        "..KGGGWGWGWGGK..",
+        "..KGGGGGGGGGGK..",
+        "..KKKKKKKKKKKK..",
+    )
+
+    // ---------------------------------------------------------------- Wonder World
+    val wonderFlower1 = blossom1.recolor(mapOf(
+        0xFFFF8A00.toInt() to 0xFFFF4FD8.toInt(), RED to 0xFF8A3FFF.toInt(), 0xFFFFE14D.toInt() to 0xFF6FFFE0.toInt(),
+    ))
+    val wonderFlower2 = blossom1.recolor(mapOf(
+        0xFFFF8A00.toInt() to 0xFF6FFFE0.toInt(), RED to 0xFFFF4FD8.toInt(), 0xFFFFE14D.toInt() to 0xFFFFF6A0.toInt(),
+    ))
+
     private val snowMap = mapOf(
         0xFF9BE15D.toInt() to 0xFFFFFFFF.toInt(), 0xFF4CB531.toInt() to 0xFFEAF6FF.toInt(),
         0xFF2E7D1F.toInt() to 0xFFB8D8F0.toInt(), 0xFFC2762E.toInt() to 0xFF8FA8C8.toInt(),

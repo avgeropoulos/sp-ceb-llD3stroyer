@@ -45,13 +45,18 @@ class LevelDef(
     val num: Int,
     /** King Krag's hit points, for castle levels. */
     val bossHp: Int = 10,
-)
+) {
+    /** Bonus Wonder World levels are shown as world "★". */
+    val worldLabel get() = if (world == Levels.BONUS_WORLD) "\u2605" else world.toString()
+    val label get() = "$worldLabel-$num"
+}
 
 /**
  * Character legend:
  *  '#' ground   'B' brick   '?' coin block   'X' hard block
  *  Item blocks: 'P' Blaze Blossom   '1' mushroom   '3' ice flower   '4' boomerang flower
- *               '5' super star   '6' mini mushroom
+ *               '5' super star   '6' mini mushroom   '7' blue shell   '8' bullet blaster
+ *  'W' Wonder Flower   'Z' Wonder Seed
  *  '[' ']' pipe top   '{' '}' pipe body   'L' lava   '=' bridge
  *  '@' hero start   'g' grumbler   'k' shellback   'c' coin   'p' lava bubble
  *  'O' cloud platform   'w' winged grumbler   'J' Krag Jr. in his clown car
@@ -82,11 +87,14 @@ class LevelBuilder(private val w: Int) {
 }
 
 object Levels {
+    const val BONUS_WORLD = 4
+
     val all: List<LevelDef> by lazy {
         listOf(
             meadow(), caverns(), cloudtop(), fortress(),
             dunes(), deepCaverns(), skyway(), volcano(),
             frostyPeaks(), pipeGorge(), skyArmada(), lastStand(),
+            wonderMeadow(), wonderSkies(),
         )
     }
 
@@ -100,7 +108,7 @@ object Levels {
         .at(42, 12, 'g').at(51, 12, 'g').at(53, 12, 'g')
         .row(62, 9, "cccc").at(65, 12, 'k')
         .row(77, 9, "B?B").row(80, 5, "BBBBBBBB").at(82, 4, 'g').at(85, 4, 'g')
-        .row(91, 5, "BBB?").row(94, 9, "B").row(91, 4, "ccc")
+        .row(91, 5, "BBB7").row(94, 9, "B").row(91, 4, "ccc")
         .at(97, 12, 'g').at(99, 12, 'g')
         .row(100, 9, "BP").row(106, 9, "?").row(109, 9, "?").row(109, 5, "5").row(112, 9, "?")
         .at(107, 12, 'k').at(114, 12, 'g').at(116, 12, 'g')
@@ -198,7 +206,7 @@ object Levels {
         .stairsUp(36, 3).fill(39, 40, 10, 12, 'X')
         .row(48, 9, "BBBBB").row(48, 8, "ccccc").at(52, 12, 'k').at(55, 12, 'g').at(57, 12, 'g')
         .pipe(60, 4).pipe(66, 3).at(64, 12, 'w')
-        .row(76, 9, "?").row(80, 9, "B?B").row(80, 5, "BBBBBB").at(84, 4, 'w').at(88, 12, 'g').at(90, 12, 'g')
+        .row(76, 9, "?").row(80, 9, "B8B").row(80, 5, "BBBBBB").at(84, 4, 'w').at(88, 12, 'g').at(90, 12, 'g')
         .pipe(94, 2).at(98, 12, 'k').row(100, 9, "B4B")
         .stairsUp(105, 4).fill(109, 110, 9, 12, 'X').row(112, 9, "XX")
         .at(120, 12, 'w').at(124, 12, 'w').row(122, 9, "B?5?B").at(128, 12, 'g')
@@ -246,7 +254,7 @@ object Levels {
         .ground(147, 150, 10).row(147, 6, "B5B")
         .clouds(153, 156, 8).clouds(159, 162, 10).at(161, 9, 'w')
         .ground(165, 199).at(168, 12, 'g')
-        .at(178, 6, 'J').row(171, 9, "XX")
+        .at(178, 6, 'J').row(171, 9, "X1")
         .stairsUp(181, 3).flagAndCastle(190)
         .build("STARLIGHT SKYWAY", Theme.NIGHT, 2, 3)
 
@@ -285,7 +293,7 @@ object Levels {
         .pipe(84, 2).pipe(90, 3).at(95, 12, 'k')
         .stairsUp(96, 4).fill(100, 100, 9, 12, 'X').clouds(102, 103, 11)
         .row(108, 9, "?5?").at(112, 12, 'g').at(114, 12, 'g').at(116, 12, 'g').at(118, 12, 'g')
-        .at(122, 12, 'k').row(126, 9, "BBBBBB").row(126, 8, "cccccc").at(130, 12, 'w').pipe(134, 4)
+        .at(122, 12, 'k').row(126, 9, "BB7BBB").row(126, 8, "cc ccc").at(130, 12, 'w').pipe(134, 4)
         .stairsUp(146, 3).at(152, 12, 'g').at(156, 12, 'k').at(160, 12, 'g')
         .row(164, 9, "B?B").stairsUp(176, 8).fill(184, 184, 5, 12, 'X')
         .flagAndCastle(190)
@@ -302,7 +310,7 @@ object Levels {
         .stairsUp(87, 4)
         .row(98, 9, "?1?").at(102, 12, 'w').at(106, 12, 'w').pipe(110, 3).at(116, 12, 'k').row(118, 9, "BBB")
         // Krag Jr. arena
-        .row(134, 9, "XX").row(142, 8, "XX").at(150, 6, 'J')
+        .row(134, 9, "X1").row(142, 8, "XX").at(150, 6, 'J')
         .stairsUp(176, 8).fill(184, 184, 5, 12, 'X')
         .flagAndCastle(190)
         .build("PIPE GORGE", Theme.OVERWORLD, 3, 2)
@@ -320,7 +328,7 @@ object Levels {
         .ground(118, 124, 10).at(121, 9, 'k')
         .clouds(127, 129, 9).clouds(132, 134, 11)
         // Krag Jr. arena on the last island
-        .ground(137, 199, 12).clouds(143, 146, 8).clouds(154, 157, 8).at(162, 5, 'J')
+        .ground(137, 199, 12).clouds(143, 146, 8).clouds(154, 157, 8).at(162, 5, 'J').row(140, 8, "1")
         .stairsUp(176, 6, base = 12).fill(182, 182, 5, 11, 'X')
         .at(190, 11, 'X').at(190, 3, 'F').at(194, 11, 'C')
         .build("SKY ARMADA", Theme.SKY, 3, 3)
@@ -337,7 +345,7 @@ object Levels {
         .lava(39, 42).at(40, 13, 'p')
         .ground(43, 56, 10).fill(47, 50, 3, 6, '#').at(45, 9, 'g').at(49, 9, 'w').at(53, 9, 'g').row(54, 6, "?3?")
         // Krag Jr. ambush in the great hall
-        .ground(57, 85, 10).row(64, 7, "XX").row(74, 7, "XX").at(80, 5, 'J')
+        .ground(57, 85, 10).row(64, 7, "X1").row(74, 7, "XX").at(80, 5, 'J')
         .lava(86, 89).at(87, 13, 'p')
         .ground(90, 96, 10).row(92, 6, "5")
         // Final battle
@@ -346,6 +354,44 @@ object Levels {
         .ground(123, 199, 10).at(123, 9, 'A').fill(123, 125, 3, 7, '#')
         .at(180, 9, 'R').fill(199, 199, 3, 9, '#')
         .build("KRAG'S LAST STAND", Theme.CASTLE, 3, 4, bossHp = 14)
+
+    // ---------------------------------------------------------------- Bonus: Wonder World
+    private fun wonderMeadow(): LevelDef = LevelBuilder(210)
+        .ground(0, 40).ground(44, 75).ground(80, 120).ground(124, 209)
+        .at(3, 12, '@')
+        .row(8, 9, "?1?").at(14, 12, 'k').at(18, 12, 'w').at(22, 12, 'w').at(26, 12, 'g').at(28, 12, 'g')
+        .at(32, 12, 'k').pipe(36, 3)
+        .row(48, 9, "B?B?B?B").row(50, 5, "BB8BB")
+        .at(52, 12, 'w').at(56, 12, 'w').at(60, 12, 'k').at(64, 12, 'w').pipe(68, 4).at(72, 12, 'g')
+        // Wonder section
+        .at(84, 12, 'W')
+        .row(90, 9, "BBBBBB").row(90, 8, "cccccc").row(100, 8, "B?B").pipe(106, 3).row(110, 9, "cccc")
+        .at(116, 12, 'Z')
+        .row(130, 9, "?7?").at(136, 12, 'k').at(140, 12, 'w').at(144, 12, 'w').at(148, 12, 'g').at(150, 12, 'g')
+        .at(154, 12, 'k')
+        .stairsUp(160, 4).stairsDown(166, 4).at(172, 12, 'w').pipe(176, 3)
+        .stairsUp(184, 8).fill(192, 192, 5, 12, 'X')
+        .flagAndCastle(200)
+        .build("WONDER MEADOW", Theme.OVERWORLD, BONUS_WORLD, 1)
+
+    private fun wonderSkies(): LevelDef = LevelBuilder(210)
+        .ground(0, 10).at(3, 12, '@').row(5, 9, "?8?")
+        .clouds(13, 15, 10).clouds(18, 20, 8).clouds(23, 25, 10).at(24, 9, 'w')
+        .ground(28, 34, 9).at(31, 8, 'k')
+        .clouds(37, 39, 7).clouds(42, 44, 9).at(43, 8, 'w').clouds(47, 49, 11)
+        .ground(52, 60, 10).row(54, 6, "?1?").at(57, 9, 'g').at(59, 9, 'g')
+        // Wonder section over the clouds
+        .clouds(62, 64, 10).at(63, 9, 'W')
+        .clouds(67, 69, 9).clouds(72, 74, 7).row(72, 5, "ccc").clouds(77, 79, 9).clouds(82, 84, 11)
+        .clouds(87, 89, 9).clouds(92, 94, 7).row(92, 5, "ccc")
+        .ground(97, 104, 9).at(102, 8, 'Z')
+        .clouds(107, 109, 10).clouds(112, 114, 8).at(113, 7, 'w').clouds(117, 119, 10)
+        .ground(122, 130, 11).at(126, 10, 'k').row(124, 7, "?7?")
+        .clouds(133, 135, 9).clouds(138, 140, 7).clouds(143, 145, 9).at(144, 8, 'w').clouds(148, 150, 11)
+        // Krag Jr.'s last stand
+        .ground(153, 209).row(160, 9, "X1").at(178, 6, 'J')
+        .stairsUp(188, 5).flagAndCastle(200)
+        .build("WONDER SKIES", Theme.SKY, BONUS_WORLD, 2)
 }
 
 /** Mutable runtime tile map. */
@@ -365,7 +411,7 @@ class Level(val def: LevelDef) {
                 '#' -> T.GROUND
                 'B' -> T.BRICK
                 '?' -> T.QCOIN
-                'P', '1', '3', '4', '5', '6' -> T.QPOWER
+                'P', '1', '3', '4', '5', '6', '7', '8' -> T.QPOWER
                 'X' -> T.HARD
                 '[' -> T.PIPE_TL
                 ']' -> T.PIPE_TR
@@ -387,6 +433,8 @@ class Level(val def: LevelDef) {
         '4' -> Item.BOOM
         '5' -> Item.STAR
         '6' -> Item.MINI
+        '7' -> Item.SHELL
+        '8' -> Item.CANNON
         else -> null
     }
 

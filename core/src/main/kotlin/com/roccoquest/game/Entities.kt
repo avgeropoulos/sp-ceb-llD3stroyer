@@ -31,11 +31,11 @@ abstract class Entity(x: Float, y: Float, w: Float, h: Float) : Body(x, y, w, h)
 // ======================================================================== Hero
 
 enum class Power {
-    SMALL, BIG, FIRE, ICE, BOOM, MINI;
+    SMALL, BIG, FIRE, ICE, BOOM, SHELL, CANNON, MINI;
 
     /** Big Rocco: breaks bricks and survives one hit. */
-    val isBig get() = this == BIG || this == FIRE || this == ICE || this == BOOM
-    val canThrow get() = this == FIRE || this == ICE || this == BOOM
+    val isBig get() = this != SMALL && this != MINI
+    val canThrow get() = isBig && this != BIG
 }
 
 class Hero(x: Float, y: Float) : Body(x, y, 12f, SMALL_H) {
@@ -88,14 +88,19 @@ class Hero(x: Float, y: Float) : Body(x, y, 12f, SMALL_H) {
         Power.FIRE -> Triple(Sprites.fireStand, Sprites.fireWalk, Sprites.fireJump)
         Power.ICE -> Triple(Sprites.iceStand, Sprites.iceWalk, Sprites.iceJump)
         Power.BOOM -> Triple(Sprites.boomStand, Sprites.boomWalk, Sprites.boomJump)
+        Power.SHELL -> Triple(Sprites.shellStand, Sprites.shellWalk, Sprites.shellJump)
+        Power.CANNON -> Triple(Sprites.cannonStand, Sprites.cannonWalk, Sprites.cannonJump)
     }
+
+    /** Blue Shell Rocco tucks into his shell and spins along when running. */
+    var shellDash = false
 
     fun draw(gfx: Gfx, ox: Float, dead: Boolean, time: Float) {
         if (!visible) return
         if (invuln > 0 && ((invuln * 20).toInt() % 2 == 0)) return
         // With a star, Rocco flashes through all his outfits.
         val look = if (starTime > 0 && power.isBig) {
-            listOf(Power.BIG, Power.FIRE, Power.ICE, Power.BOOM)[(time * 14).toInt() % 4]
+            listOf(Power.BIG, Power.FIRE, Power.ICE, Power.BOOM, Power.SHELL, Power.CANNON)[(time * 14).toInt() % 6]
         } else power
         val (stand, walk, jump) = skin(look)
         val frame = when {
@@ -114,6 +119,15 @@ class Hero(x: Float, y: Float) : Body(x, y, 12f, SMALL_H) {
         if (starTime > 0) {
             val glow = listOf(0xFFFFE14D, 0xFFFF6FB5, 0xFF6FD3FF, 0xFF7ED957)[(time * 10).toInt() % 4].toInt()
             gfx.oval(sx - 3, sy - 3, dw + 6, dh + 6, argb(110, glow))
+        }
+        if (shellDash) {
+            val f = (time * 24).toInt() % 2 == 0
+            gfx.sprite(Sprites.blueShell, cx - 8 + ox, y + h - 16, flipX = f)
+            return
+        }
+        // The Blue Shell is worn on Rocco's back.
+        if (power == Power.SHELL && !crouching) {
+            gfx.sprite(Sprites.blueShell, cx - 6 - facing * 4 + ox, sy + 8, w = 12f, h = 12f)
         }
         val spin = slamming && slamPause > 0 && (time * 24).toInt() % 2 == 0
         gfx.sprite(frame, sx, sy, flipX = (facing < 0) != spin, w = dw, h = dh)
@@ -186,6 +200,8 @@ class Grumbler(x: Float, y: Float, winged: Boolean = false) : Enemy(x + 1, y - 1
     /** Winged grumblers hop along; stomping one clips its wings. */
     var winged = winged
         private set
+
+    fun giveWings() { if (!dying && squashed < 0) winged = true }
     private var squashed = -1f
     private var anim = 0f
     init { vx = -30f }
@@ -583,7 +599,7 @@ class Fireball(x: Float, y: Float, dir: Int, val ice: Boolean = false) : Entity(
     }
 }
 
-enum class Item { MUSHROOM, FIRE, ICE, BOOM, STAR, MINI }
+enum class Item { MUSHROOM, FIRE, ICE, BOOM, STAR, MINI, SHELL, CANNON }
 
 /** A power-up that rises out of a ? block. Mushrooms slide along and stars bounce. */
 class PowerItem(x: Float, y: Float, val kind: Item) : Entity(x + 1, y, 14f, 16f) {
@@ -624,6 +640,8 @@ class PowerItem(x: Float, y: Float, val kind: Item) : Entity(x + 1, y, 14f, 16f)
             Item.ICE -> Sprites.iceFlower
             Item.BOOM -> Sprites.boomFlower
             Item.STAR -> if (alt) Sprites.star1 else Sprites.star2
+            Item.SHELL -> Sprites.blueShell
+            Item.CANNON -> Sprites.blaster
         }
         if (kind == Item.MINI) gfx.sprite(s, x - 1 + ox + 4, y + 8, w = 8f, h = 8f)
         else gfx.sprite(s, x - 1 + ox, y)
@@ -705,7 +723,7 @@ class SpikeBall(x: Float, y: Float) : Enemy(x, y, 12f, 12f) {
     override fun update(g: Game, dt: Float) {
         if (updateDying(g, dt)) return
         life += dt
-        if (life > 8f) { removed = true; g.puff(cx, cy); return }
+        if (life > 5f) { removed = true; g.puff(cx, cy); return }
         walk(g, dt)
         if (onGround && !bounced) {
             bounced = true
@@ -721,8 +739,8 @@ class SpikeBall(x: Float, y: Float) : Enemy(x, y, 12f, 12f) {
 }
 
 /** Krag's son, who harasses Rocco from his flying clown car in the later levels. */
-class KragJr(x: Float, y: Float, val maxHp: Int = 6) : Enemy(x, y - 34, 30f, 34f) {
-    enum class Mode { WAIT, FLY, SWOOP, HURT, BEATEN }
+class KragJr(x: Float, y: Float, val maxHp: Int = 4) : Enemy(x, y - 34, 30f, 34f) {
+    enum class Mode { WAIT, FLY, WINDUP, SWOOP, HURT, BEATEN }
 
     var hp = maxHp
         private set
@@ -730,8 +748,8 @@ class KragJr(x: Float, y: Float, val maxHp: Int = 6) : Enemy(x, y - 34, 30f, 34f
         private set
     private var t = 0f
     private var modeTime = 0f
-    private var throwTimer = 2f
-    private var swoopTimer = 5f
+    private var throwTimer = 3.5f
+    private var swoopTimer = 6f
     private var swoopX = 0f
     private var swoopY = 0f
     private val minY = 50f
@@ -753,18 +771,22 @@ class KragJr(x: Float, y: Float, val maxHp: Int = 6) : Enemy(x, y - 34, 30f, 34f
                 }
             }
             Mode.FLY -> {
-                val tx = h.cx + sin(t * 0.9f) * 90f - w / 2
-                val ty = (h.y - 80f).coerceIn(minY, 140f)
-                x += (tx - x).coerceIn(-85f * dt, 85f * dt)
-                y += (ty - y).coerceIn(-70f * dt, 70f * dt)
+                val tx = h.cx + sin(t * 0.8f) * 100f - w / 2
+                val ty = (h.y - 100f).coerceIn(minY, 120f)
+                x += (tx - x).coerceIn(-65f * dt, 65f * dt)
+                y += (ty - y).coerceIn(-60f * dt, 60f * dt)
                 throwTimer -= dt
                 if (throwTimer <= 0) {
                     g.spawn(SpikeBall(cx - 6, bottom - 6).also { it.active = true })
                     g.sfx(Sound.KICK)
-                    throwTimer = 2.2f + Random.nextFloat()
+                    throwTimer = 3.2f + Random.nextFloat() * 1.2f
                 }
                 swoopTimer -= dt
-                if (swoopTimer <= 0) {
+                if (swoopTimer <= 0) setMode(Mode.WINDUP)
+            }
+            Mode.WINDUP -> {
+                // Shakes and flashes "!" before diving, so Rocco has time to get out of the way.
+                if (modeTime > 0.8f) {
                     swoopX = h.cx - w / 2
                     swoopY = h.y - 6
                     setMode(Mode.SWOOP)
@@ -774,12 +796,12 @@ class KragJr(x: Float, y: Float, val maxHp: Int = 6) : Enemy(x, y - 34, 30f, 34f
                 val dx = swoopX - x
                 val dy = swoopY - y
                 val d = kotlin.math.sqrt(dx * dx + dy * dy)
-                if (d < 6f || modeTime > 1.3f) {
-                    swoopTimer = 4f + Random.nextFloat() * 2f
+                if (d < 6f || modeTime > 1.5f) {
+                    swoopTimer = 6f + Random.nextFloat() * 2f
                     setMode(Mode.FLY)
                 } else {
-                    x += dx / d * 200f * dt
-                    y += dy / d * 200f * dt
+                    x += dx / d * 150f * dt
+                    y += dy / d * 150f * dt
                 }
             }
             Mode.HURT -> {
@@ -816,11 +838,14 @@ class KragJr(x: Float, y: Float, val maxHp: Int = 6) : Enemy(x, y - 34, 30f, 34f
     override fun iceHit(g: Game) = damage(g, 1)
     override fun boomHit(g: Game) = damage(g, 1)
     override fun starHit(g: Game) { damage(g, 2) }
-    override fun touchHero(g: Game) { if (mode == Mode.FLY || mode == Mode.SWOOP) g.hurtHero() }
+    override fun touchHero(g: Game) {
+        if (mode == Mode.FLY || mode == Mode.SWOOP || mode == Mode.WINDUP) g.hurtHero()
+    }
 
     override fun draw(g: Game, gfx: Gfx, ox: Float) {
-        val px = x + ox
+        val px = x + ox + if (mode == Mode.WINDUP) sin(t * 60) * 2f else 0f
         val flash = mode == Mode.HURT && (modeTime * 20).toInt() % 2 == 0
+        if (mode == Mode.WINDUP) gfx.shadowText("!", px + 15, y - 18, 16f, 0xFFFF3A3A.toInt(), 1)
         val spin = mode == Mode.BEATEN
         val tilt = if (spin) sin(t * 20) * 3f else 0f
         // Krag Jr. pokes out of the top of the car.
@@ -858,8 +883,14 @@ class KragJr(x: Float, y: Float, val maxHp: Int = 6) : Enemy(x, y - 34, 30f, 34f
     }
 }
 
-class Coin(x: Float, y: Float) : Entity(x + 4, y + 2, 8f, 12f) {
-    override fun update(g: Game, dt: Float) {}
+class Coin(x: Float, y: Float, private val falling: Boolean = false) : Entity(x + 4, y + 2, 8f, 12f) {
+    init { if (falling) { active = true; vy = 60f } }
+
+    override fun update(g: Game, dt: Float) {
+        if (!falling) return
+        y += vy * dt
+        if (y > g.level.h * TILE) removed = true
+    }
     override fun draw(g: Game, gfx: Gfx, ox: Float) {
         val phase = (g.time * 4f) % 4f
         val sw = when {
@@ -918,6 +949,138 @@ class Door(x: Float, y: Float) : Entity(x, y - 32, 16f, 32f) {
         gfx.oval(x + ox + 11, y + 16, 3f, 3f, 0xFFFFD21F.toInt())
         gfx.text("EXIT", x + ox + 8, y - 5, 7f, 0xFFFFFFFF.toInt(), 1)
     }
+}
+
+// ======================================================================== Blue Shell & Bullet Blaster
+
+/** A winged blue shell that hunts down the nearest enemy and explodes. */
+class HomingShell(x: Float, y: Float, private val dir: Int) : Entity(x, y, 14f, 12f) {
+    private var t = 0f
+    init { vx = dir * 120f; vy = -120f; active = true }
+
+    private fun target(g: Game): Enemy? = g.entities
+        .filterIsInstance<Enemy>()
+        .filter { it.active && !it.dying && !it.removed && it !is KragFlame && g.isOnScreen(it) }
+        .minByOrNull { (it.cx - cx) * (it.cx - cx) + (it.cy - cy) * (it.cy - cy) }
+
+    override fun update(g: Game, dt: Float) {
+        t += dt
+        val tgt = if (t > 0.25f) target(g) else null
+        if (tgt != null) {
+            val dx = tgt.cx - cx
+            val dy = tgt.cy - cy
+            val d = kotlin.math.sqrt(dx * dx + dy * dy).coerceAtLeast(1f)
+            vx += (dx / d * 230f - vx) * min(1f, dt * 4f)
+            vy += (dy / d * 230f - vy) * min(1f, dt * 4f)
+            if (d < 12f) { explode(g); return }
+        } else if (t > 0.25f) {
+            vx = dir * 200f
+            vy *= 0.9f
+        }
+        x += vx * dt
+        y += vy * dt
+        if (t > 4f || !g.isOnScreen(this)) explode(g)
+    }
+
+    private fun explode(g: Game) {
+        removed = true
+        g.explosion(cx, cy)
+        for (e in g.entities) {
+            if (e !is Enemy || e.dying || !e.active) continue
+            val dx = e.cx - cx
+            val dy = e.cy - cy
+            if (dx * dx + dy * dy > 44f * 44f) continue
+            when (e) {
+                is Krag -> e.damage(g, 2)
+                is KragJr -> e.damage(g, 2)
+                is Podoboo, is KragFlame -> {}
+                else -> { e.knockOut(g); g.addScore(200, e.cx, e.y) }
+            }
+        }
+    }
+
+    override fun draw(g: Game, gfx: Gfx, ox: Float) {
+        val flap = (t * 16).toInt() % 2 == 0
+        gfx.oval(x + ox - 4, y - (if (flap) 6 else 1), 9f, 8f, 0xFFFFFFFF.toInt())
+        gfx.oval(x + ox + 9, y - (if (flap) 6 else 1), 9f, 8f, 0xFFFFFFFF.toInt())
+        gfx.sprite(Sprites.blueShell, x + ox - 1, y - 4, flipX = flap)
+    }
+}
+
+/** A cannon bullet: flies straight through walls and bowls over every enemy it meets. */
+class BlasterBullet(x: Float, y: Float, private val dir: Int) : Entity(x, y, 16f, 12f) {
+    private var t = 0f
+    init { vx = dir * 250f; active = true }
+
+    override fun update(g: Game, dt: Float) {
+        t += dt
+        x += vx * dt
+        if (x + w < g.camX - 16 || x > g.camX + g.viewW + 16) { removed = true; return }
+        for (e in g.entities) {
+            if (e !is Enemy || e.dying || !e.active || !e.overlaps(this)) continue
+            when (e) {
+                is Krag -> { e.damage(g, 2); g.explosion(cx, cy); removed = true; return }
+                is KragJr -> { if (e.damage(g, 2)) { g.explosion(cx, cy); removed = true; return } }
+                is Podoboo -> {}
+                is KragFlame -> { e.removed = true; g.puff(e.cx, e.cy) }
+                else -> { e.knockOut(g); g.addScore(200, e.cx, e.y) }
+            }
+        }
+    }
+
+    override fun draw(g: Game, gfx: Gfx, ox: Float) {
+        val m = Mirror(gfx, x + ox, y, w, flip = dir < 0, h = 12f)
+        // Flame puffs out of the back
+        if ((t * 20).toInt() % 2 == 0) m.oval(-6f, 3f, 7f, 6f, 0xFFFFB347.toInt())
+        m.rect(0f, 0f, 4f, 12f, 0xFF4A4A5A.toInt())
+        m.rect(3f, 0f, 7f, 12f, 0xFF101018.toInt())
+        m.oval(4f, 0f, 12f, 12f, 0xFF101018.toInt())
+        m.oval(9f, 2f, 5f, 6f, 0xFFFFFFFF.toInt())
+        m.rect(11f, 4f, 2f, 3f, 0xFF101018.toInt())
+        m.poly(floatArrayOf(4f, 9f, 4f), floatArrayOf(7f, 9f, 13f), 0xFFFFFFFF.toInt())
+    }
+}
+
+// ======================================================================== Wonder World
+
+/** Touching the Wonder Flower turns the level into Wonder mode until the Wonder Seed is found. */
+class WonderFlower(x: Float, y: Float) : Entity(x, y - 16, 16f, 16f) {
+    override fun update(g: Game, dt: Float) {}
+    override fun draw(g: Game, gfx: Gfx, ox: Float) {
+        val s = if ((g.time * 6).toInt() % 2 == 0) Sprites.wonderFlower1 else Sprites.wonderFlower2
+        gfx.oval(x + ox - 4, y - 4, 24f, 24f, argb(90, rainbow(g.time)))
+        gfx.sprite(s, x + ox, y + sin(g.time * 4) * 1.5f)
+    }
+}
+
+/** Ends Wonder mode. */
+class WonderSeed(x: Float, y: Float) : Entity(x + 2, y - 14, 12f, 14f) {
+    override fun update(g: Game, dt: Float) {}
+    override fun draw(g: Game, gfx: Gfx, ox: Float) {
+        val bob = sin(g.time * 3) * 2f
+        val glow = 18f + sin(g.time * 6) * 3f
+        gfx.oval(cx + ox - glow / 2, cy + bob - glow / 2, glow, glow, argb(110, 0xFFF3A0))
+        gfx.oval(x + ox + 1, y + bob + 2, 10f, 12f, 0xFFE0A800.toInt())
+        gfx.oval(x + ox + 2, y + bob + 3, 8f, 10f, 0xFFFFD84A.toInt())
+        gfx.oval(x + ox + 3, y + bob + 4, 3f, 4f, 0xFFFFFFFF.toInt())
+        gfx.oval(x + ox + 6, y + bob - 3, 7f, 5f, 0xFF4CB531.toInt())
+    }
+}
+
+/** Cycles smoothly through the rainbow; returns an RGB colour (no alpha). */
+fun rainbow(t: Float, offset: Float = 0f): Int {
+    val h = ((t * 0.25f + offset) % 1f + 1f) % 1f * 6f
+    val i = h.toInt()
+    val f = h - i
+    val (r, g, b) = when (i) {
+        0 -> Triple(1f, f, 0f)
+        1 -> Triple(1 - f, 1f, 0f)
+        2 -> Triple(0f, 1f, f)
+        3 -> Triple(0f, 1 - f, 1f)
+        4 -> Triple(f, 0f, 1f)
+        else -> Triple(1f, 0f, 1 - f)
+    }
+    return ((r * 255).toInt() shl 16) or ((g * 255).toInt() shl 8) or (b * 255).toInt()
 }
 
 // ======================================================================== Particles
@@ -985,3 +1148,18 @@ internal fun approach(v: Float, target: Float, step: Float): Float =
     if (v < target) min(v + step, target) else max(v - step, target)
 
 internal fun signOf(v: Float) = sign(v).toInt()
+
+class Explosion(x: Float, y: Float) : Particle(x, y) {
+    override fun update(dt: Float) {
+        life += dt
+        if (life > 0.35f) removed = true
+    }
+
+    override fun draw(g: Game, gfx: Gfx, ox: Float) {
+        val k = life / 0.35f
+        val r = 10f + k * 60f
+        val a = ((1 - k) * 220).toInt().coerceIn(0, 255)
+        gfx.oval(x + ox - r / 2, y - r / 2, r, r, argb(a, 0xFFB347))
+        gfx.oval(x + ox - r / 4, y - r / 4, r / 2, r / 2, argb(a, 0xFFF6C0))
+    }
+}

@@ -27,6 +27,8 @@ There are three worlds with four levels each:
 | 3-2 | Pipe Gorge | Pipes, flyers and a Krag Jr. ambush. |
 | 3-3 | Sky Armada | A sky level that ends in a Krag Jr. battle. |
 | 3-4 | Krag's Last Stand | Krag Jr. in the great hall, then the final battle. Rescue Princess Rosalie! |
+| ★-1 | Wonder Meadow | **Bonus**, unlocked by rescuing the princess. Harder, with a Wonder Flower. |
+| ★-2 | Wonder Skies | **Bonus** sky level with Wonder mode, and a last showdown with Krag Jr. |
 
 Power-ups come out of `?` blocks:
 
@@ -40,6 +42,11 @@ Power-ups come out of `?` blocks:
   special music.
 * **Mini Mushroom**: Rocco shrinks to tiny size and can float high into the sky. One hit and
   he's out, though!
+* **Blue Shell**: Rocco wears a blue shell. FIRE launches a winged blue shell that hunts down
+  the nearest enemy and explodes. Run, and he tucks into his shell and spins along, smashing
+  enemies and bricks.
+* **Bullet Blaster**: a cannon outfit. FIRE shoots big bullets that fly straight through walls
+  and bowl over every enemy in their path (2 damage to bosses).
 
 If you get hit with a flower power, you drop back to big Rocco. Big Rocco shrinks to small Rocco.
 
@@ -55,8 +62,12 @@ Moves:
 * **King Krag**: breathes fire and jumps. Hit him with fireballs, iceballs or the boomerang
   (6 hits in the fortress, 10 in the volcano, 14 at the last stand), or get past him and touch
   the **axe** to drop the bridge into the lava.
-* **Krag Jr.**: flies a clown car, drops spiked balls and swoops at Rocco. The screen locks until
-  you beat him. Stomp the car (2 damage), butt slam it (3), or hit it with your power-up's shots or boomerang (1 each).
+* **Krag Jr.**: flies a clown car, drops spiked balls and swoops at Rocco. He shakes and shows a
+  red **!** before each dive. The screen locks until you beat him (4 damage). Stomp the car
+  (2 damage), butt slam it (3), or use a power-up. Each of his arenas has a Super Mushroom block.
+* **Wonder mode** (bonus levels): touch the Wonder Flower and the level goes wild. The sky turns
+  rainbow, the ground wobbles, Rocco floats, and spike balls, coins and flyers rain down. Grab
+  the **Wonder Seed** to end it and get 5000 points.
 * You start with 3 lives, and 100 coins gives you an extra one. After a Game Over you continue
   from the start of the current world.
 

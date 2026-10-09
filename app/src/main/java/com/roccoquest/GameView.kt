@@ -10,6 +10,7 @@ import android.view.SurfaceView
 import com.roccoquest.game.Controls
 import com.roccoquest.game.Game
 import com.roccoquest.game.Input
+import com.roccoquest.game.Storage
 import com.roccoquest.game.VIEW_H
 
 /** Hosts the game loop on its own thread and feeds it touch and key input. */
@@ -17,7 +18,11 @@ import com.roccoquest.game.VIEW_H
 class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback, Runnable {
     private val input = Input()
     private val sound = SoundFx(context)
-    private val game = Game(input, sound)
+    private val prefs = context.getSharedPreferences("rocco", Context.MODE_PRIVATE)
+    private val game = Game(input, sound, object : Storage {
+        override fun load(key: String) = prefs.getInt(key, 0)
+        override fun save(key: String, value: Int) { prefs.edit().putInt(key, value).apply() }
+    })
     private val gfx = CanvasGfx()
 
     @Volatile private var running = false
@@ -126,12 +131,16 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             }
         }
         Controls.apply(input, touchId, touchX, touchY, n, game.viewW)
-        if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) input.tap = true
+        if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
+            input.tapX = e.getX(e.actionIndex) / scale
+            input.tap = true
+        }
         return true
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         if (!setKey(keyCode, true)) return super.onKeyDown(keyCode, event)
+        input.tapX = -1f
         input.tap = true
         return true
     }
