@@ -56,7 +56,9 @@ class LevelDef(
  *  '#' ground   'B' brick   '?' coin block   'X' hard block
  *  Item blocks: 'P' Blaze Blossom   '1' mushroom   '3' ice flower   '4' boomerang flower
  *               '5' super star   '6' mini mushroom   '7' blue shell   '8' bullet blaster
- *  'W' Wonder Flower   'Z' Wonder Seed
+ *               '2' builder hammer   '9' 1-Up mushroom
+ *  'W' Wonder Flower   'Z' Wonder Seed   'b' Boomadaboom   'q' puzzle cube
+ *  'T' Skip-a-Doo toilet (entry)   'U' toilet (exit)
  *  '[' ']' pipe top   '{' '}' pipe body   'L' lava   '=' bridge
  *  '@' hero start   'g' grumbler   'k' shellback   'c' coin   'p' lava bubble
  *  'O' cloud platform   'w' winged grumbler   'J' Krag Jr. in his clown car
@@ -93,7 +95,7 @@ object Levels {
         listOf(
             meadow(), caverns(), cloudtop(), fortress(),
             dunes(), deepCaverns(), skyway(), volcano(),
-            frostyPeaks(), pipeGorge(), skyArmada(), lastStand(),
+            frostyPeaks(), glacierGrotto(), blizzardPass(), pipeGorge(), skyArmada(), lastStand(),
             wonderMeadow(), wonderSkies(),
         )
     }
@@ -101,10 +103,10 @@ object Levels {
     private fun meadow(): LevelDef = LevelBuilder(212)
         .ground(0, 68).ground(71, 85).ground(89, 150).ground(153, 211)
         .at(3, 12, '@')
-        .row(16, 9, "?")
+        .row(16, 9, "9")
         .row(20, 9, "B1B?B").row(22, 5, "?")
         .at(24, 12, 'g')
-        .pipe(28, 2).pipe(38, 3).pipe(46, 4).pipe(57, 4)
+        .pipe(28, 2).pipe(38, 3).pipe(46, 4).pipe(57, 4).at(33, 12, 'T').at(92, 12, 'U').at(62, 7, 'q')
         .at(42, 12, 'g').at(51, 12, 'g').at(53, 12, 'g')
         .row(62, 9, "cccc").at(65, 12, 'k')
         .row(77, 9, "B?B").row(80, 5, "BBBBBBBB").at(82, 4, 'g').at(85, 4, 'g')
@@ -137,11 +139,11 @@ object Levels {
         .pipe(60, 3).pipe(66, 2).at(64, 12, 'g')
         .row(71, 9, "BBBB").row(71, 5, "c?cc").at(74, 12, 'k')
         .row(80, 9, "BB").row(80, 8, "cc")
-        .row(86, 9, "B?B?B").at(88, 12, 'g').at(91, 12, 'g')
+        .row(86, 9, "B?B9B").at(88, 12, 'g').at(91, 12, 'g')
         .fill(95, 97, 6, 6, 'B').fill(100, 103, 9, 9, 'B').row(100, 8, "cccc")
         .at(106, 12, 'g').at(108, 12, 'g').at(110, 12, 'g')
         .pipe(113, 4)
-        .row(117, 9, "BB").row(124, 9, "BBB").row(124, 5, "BPB")
+        .row(117, 9, "BB").row(124, 9, "BBB").row(124, 5, "B2B")
         .at(128, 12, 'k').at(131, 12, 'g')
         .stairsUp(134, 4).stairsDown(140, 4).row(135, 6, "ccccccc")
         .at(147, 12, 'g').at(149, 12, 'g')
@@ -193,7 +195,7 @@ object Levels {
         .ground(121, 130, 9).at(125, 8, 'k').at(128, 8, 'g')
         .ground(134, 136, 11).ground(140, 142, 9).row(140, 7, "ccc")
         .clouds(146, 150, 10).at(148, 9, 'w')
-        .ground(153, 189).row(156, 9, "B?B")
+        .ground(153, 189).row(156, 9, "B9B")
         .stairsUp(160, 5).fill(165, 165, 8, 12, 'X')
         .flagAndCastle(175)
         .build("CLOUDTOP HEIGHTS", Theme.SKY, 1, 3)
@@ -201,7 +203,7 @@ object Levels {
     private fun dunes(): LevelDef = LevelBuilder(200)
         .ground(0, 40).ground(44, 70).ground(73, 110).ground(115, 150).ground(154, 199)
         .at(3, 12, '@')
-        .row(14, 9, "B?P?B").row(16, 5, "?")
+        .row(14, 9, "B?P?B").row(16, 5, "2").at(31, 12, 'T').at(56, 12, 'U').at(72, 8, 'q')
         .at(20, 12, 'g').at(24, 12, 'k').pipe(28, 3).at(33, 12, 'g')
         .stairsUp(36, 3).fill(39, 40, 10, 12, 'X')
         .row(48, 9, "BBBBB").row(48, 8, "ccccc").at(52, 12, 'k').at(55, 12, 'g').at(57, 12, 'g')
@@ -254,7 +256,7 @@ object Levels {
         .ground(147, 150, 10).row(147, 6, "B5B")
         .clouds(153, 156, 8).clouds(159, 162, 10).at(161, 9, 'w')
         .ground(165, 199).at(168, 12, 'g')
-        .at(178, 6, 'J').row(171, 9, "X1")
+        .at(178, 6, 'J').row(171, 9, "B1")
         .stairsUp(181, 3).flagAndCastle(190)
         .build("STARLIGHT SKYWAY", Theme.NIGHT, 2, 3)
 
@@ -270,7 +272,7 @@ object Levels {
         .lava(37, 40).at(38, 13, 'p').at(40, 13, 'p')
         .ground(41, 52, 10).fill(45, 48, 3, 6, '#').at(44, 9, 'k').at(47, 9, 'g').at(49, 9, 'g')
         .lava(53, 60).row(55, 8, "X").row(58, 8, "X").at(56, 13, 'p').at(60, 13, 'p')
-        .ground(61, 72, 10).row(64, 6, "B3B").at(67, 9, 'w').at(70, 9, 'k')
+        .ground(61, 72, 10).row(64, 6, "B3B").at(67, 9, 'w').at(70, 9, 'k').at(65, 9, 'b')
         .lava(73, 76).at(74, 13, 'p')
         .ground(77, 79, 8)
         .lava(80, 83).at(82, 13, 'p')
@@ -289,31 +291,61 @@ object Levels {
         .stairsUp(26, 4).fill(30, 30, 9, 12, 'X')
         .row(38, 9, "BBBB").row(38, 5, "?6?").row(36, 3, "cccccc")
         .at(44, 12, 'g').at(46, 12, 'g').at(50, 12, 'k').pipe(54, 3).at(58, 12, 'w')
-        .row(68, 9, "B?B?B").row(70, 5, "BBB").at(74, 12, 'g').at(76, 12, 'g').at(80, 12, 'w')
+        .row(68, 9, "B?B9B").row(70, 5, "BBB").at(72, 8, 'q').at(74, 12, 'g').at(76, 12, 'g').at(80, 12, 'w')
         .pipe(84, 2).pipe(90, 3).at(95, 12, 'k')
         .stairsUp(96, 4).fill(100, 100, 9, 12, 'X').clouds(102, 103, 11)
         .row(108, 9, "?5?").at(112, 12, 'g').at(114, 12, 'g').at(116, 12, 'g').at(118, 12, 'g')
         .at(122, 12, 'k').row(126, 9, "BB7BBB").row(126, 8, "cc ccc").at(130, 12, 'w').pipe(134, 4)
-        .stairsUp(146, 3).at(152, 12, 'g').at(156, 12, 'k').at(160, 12, 'g')
+        .stairsUp(146, 3).at(152, 12, 'g').at(156, 12, 'k').at(160, 12, 'b')
         .row(164, 9, "B?B").stairsUp(176, 8).fill(184, 184, 5, 12, 'X')
         .flagAndCastle(190)
         .build("FROSTY PEAKS", Theme.SNOW, 3, 1)
 
+    private fun glacierGrotto(): LevelDef = LevelBuilder(190)
+        .ground(0, 24).ground(28, 55).ground(59, 95).ground(100, 130).ground(134, 189)
+        .at(3, 12, '@')
+        .row(7, 9, "?1?").at(12, 12, 'w').at(15, 12, 'g').at(17, 12, 'g').at(20, 8, 'q')
+        .stairsUp(21, 3).fill(24, 24, 10, 12, 'X')
+        .row(31, 9, "BBB9BBB").row(33, 5, "?2?").at(36, 12, 'k').at(44, 12, 'b').pipe(50, 3)
+        .at(61, 12, 'T').at(117, 12, 'U')
+        .row(64, 9, "B?B").at(68, 12, 'w').at(72, 12, 'w').at(75, 12, 'g').at(77, 12, 'g')
+        .row(80, 8, "cccccc").pipe(86, 2).at(90, 12, 'k').stairsUp(92, 4)
+        .clouds(97, 98, 11)
+        .row(104, 9, "?5?").at(108, 12, 'g').at(110, 12, 'g').at(112, 12, 'g').at(114, 12, 'g')
+        .at(120, 12, 'b').pipe(126, 3)
+        .stairsUp(136, 3).at(144, 8, 'q').at(148, 12, 'w').at(152, 12, 'k')
+        .stairsUp(166, 8).fill(174, 174, 5, 12, 'X')
+        .flagAndCastle(180)
+        .build("GLACIER GROTTO", Theme.SNOW, 3, 2)
+
+    private fun blizzardPass(): LevelDef = LevelBuilder(200)
+        .ground(0, 14).at(3, 12, '@').row(6, 9, "?3?")
+        .clouds(17, 19, 11)
+        .ground(22, 34, 10).at(30, 9, 'b').row(25, 6, "B9B")
+        .clouds(37, 39, 9).clouds(42, 44, 11)
+        .ground(47, 60, 12).at(50, 11, 'w').at(54, 11, 'w').at(57, 11, 'k').row(52, 8, "?2?")
+        .ground(64, 90).at(66, 12, 'T').row(70, 9, "BBBB").at(76, 12, 'b').at(80, 12, 'g').at(82, 12, 'g').pipe(85, 3)
+        .ground(94, 120).at(98, 8, 'q').row(102, 9, "?5?").at(106, 12, 'w').at(108, 12, 'w').at(114, 12, 'b')
+        .ground(124, 199).at(127, 12, 'U').stairsUp(130, 4).at(140, 12, 'k').at(146, 12, 'g').at(156, 12, 'b')
+        .stairsUp(176, 8).fill(184, 184, 5, 12, 'X')
+        .flagAndCastle(190)
+        .build("BLIZZARD PASS", Theme.SNOW, 3, 3)
+
     private fun pipeGorge(): LevelDef = LevelBuilder(200)
         .ground(0, 50).ground(54, 90).ground(94, 199)
         .at(3, 12, '@')
-        .row(10, 9, "?P?").pipe(16, 2).pipe(22, 3).pipe(28, 4).at(19, 12, 'g').at(25, 12, 'g')
+        .row(10, 9, "9P?").pipe(16, 2).pipe(22, 3).pipe(28, 4).at(19, 12, 'g').at(25, 12, 'g')
         .at(32, 12, 'w').at(36, 12, 'w').row(40, 9, "B4B").at(44, 12, 'k')
         .stairsUp(46, 3).fill(49, 50, 10, 12, 'X')
         .pipe(58, 3).pipe(64, 4).pipe(70, 2).at(62, 12, 'g').at(68, 12, 'g')
         .row(74, 9, "BBBBBB").row(74, 5, "B?B5BB").at(80, 12, 'k').at(84, 12, 'g').at(86, 12, 'g')
         .stairsUp(87, 4)
-        .row(98, 9, "?1?").at(102, 12, 'w').at(106, 12, 'w').pipe(110, 3).at(116, 12, 'k').row(118, 9, "BBB")
+        .row(98, 9, "?1?").at(102, 12, 'w').at(106, 12, 'w').pipe(110, 3).at(116, 12, 'b').row(118, 9, "B2B")
         // Krag Jr. arena
-        .row(134, 9, "X1").row(142, 8, "XX").at(150, 6, 'J')
+        .row(134, 9, "B1").row(142, 8, "BB").at(150, 6, 'J')
         .stairsUp(176, 8).fill(184, 184, 5, 12, 'X')
         .flagAndCastle(190)
-        .build("PIPE GORGE", Theme.OVERWORLD, 3, 2)
+        .build("PIPE GORGE", Theme.OVERWORLD, 3, 4)
 
     private fun skyArmada(): LevelDef = LevelBuilder(200)
         .ground(0, 10).at(3, 12, '@')
@@ -331,7 +363,7 @@ object Levels {
         .ground(137, 199, 12).clouds(143, 146, 8).clouds(154, 157, 8).at(162, 5, 'J').row(140, 8, "1")
         .stairsUp(176, 6, base = 12).fill(182, 182, 5, 11, 'X')
         .at(190, 11, 'X').at(190, 3, 'F').at(194, 11, 'C')
-        .build("SKY ARMADA", Theme.SKY, 3, 3)
+        .build("SKY ARMADA", Theme.SKY, 3, 5)
 
     private fun lastStand(): LevelDef = LevelBuilder(200)
         .fill(0, 199, 2, 2, '#').fill(0, 12, 3, 5, '#')
@@ -343,17 +375,17 @@ object Levels {
         .lava(32, 35).at(33, 13, 'p')
         .ground(36, 38, 7)
         .lava(39, 42).at(40, 13, 'p')
-        .ground(43, 56, 10).fill(47, 50, 3, 6, '#').at(45, 9, 'g').at(49, 9, 'w').at(53, 9, 'g').row(54, 6, "?3?")
+        .ground(43, 56, 10).fill(47, 50, 3, 6, '#').at(45, 9, 'g').at(49, 9, 'w').at(52, 9, 'b').row(54, 6, "?2?")
         // Krag Jr. ambush in the great hall
-        .ground(57, 85, 10).row(64, 7, "X1").row(74, 7, "XX").at(80, 5, 'J')
+        .ground(57, 85, 10).row(64, 7, "B1").row(74, 7, "BB").at(80, 5, 'J')
         .lava(86, 89).at(87, 13, 'p')
         .ground(90, 96, 10).row(92, 6, "5")
         // Final battle
         .lava(97, 122).fill(97, 122, 10, 10, '=')
         .at(116, 9, 'K')
         .ground(123, 199, 10).at(123, 9, 'A').fill(123, 125, 3, 7, '#')
-        .at(180, 9, 'R').fill(199, 199, 3, 9, '#')
-        .build("KRAG'S LAST STAND", Theme.CASTLE, 3, 4, bossHp = 14)
+        .fill(146, 147, 3, 9, 'X').at(156, 9, 'R').fill(199, 199, 3, 9, '#')
+        .build("KRAG'S LAST STAND", Theme.CASTLE, 3, 6, bossHp = 14)
 
     // ---------------------------------------------------------------- Bonus: Wonder World
     private fun wonderMeadow(): LevelDef = LevelBuilder(210)
@@ -361,13 +393,13 @@ object Levels {
         .at(3, 12, '@')
         .row(8, 9, "?1?").at(14, 12, 'k').at(18, 12, 'w').at(22, 12, 'w').at(26, 12, 'g').at(28, 12, 'g')
         .at(32, 12, 'k').pipe(36, 3)
-        .row(48, 9, "B?B?B?B").row(50, 5, "BB8BB")
+        .row(48, 9, "B?B9B?B").row(50, 5, "BB8BB").at(46, 8, 'q')
         .at(52, 12, 'w').at(56, 12, 'w').at(60, 12, 'k').at(64, 12, 'w').pipe(68, 4).at(72, 12, 'g')
         // Wonder section
         .at(84, 12, 'W')
         .row(90, 9, "BBBBBB").row(90, 8, "cccccc").row(100, 8, "B?B").pipe(106, 3).row(110, 9, "cccc")
         .at(116, 12, 'Z')
-        .row(130, 9, "?7?").at(136, 12, 'k').at(140, 12, 'w').at(144, 12, 'w').at(148, 12, 'g').at(150, 12, 'g')
+        .row(130, 9, "?7?").at(136, 12, 'k').at(140, 12, 'w').at(144, 12, 'w').at(148, 12, 'b').at(150, 12, 'g')
         .at(154, 12, 'k')
         .stairsUp(160, 4).stairsDown(166, 4).at(172, 12, 'w').pipe(176, 3)
         .stairsUp(184, 8).fill(192, 192, 5, 12, 'X')
@@ -386,10 +418,10 @@ object Levels {
         .clouds(87, 89, 9).clouds(92, 94, 7).row(92, 5, "ccc")
         .ground(97, 104, 9).at(102, 8, 'Z')
         .clouds(107, 109, 10).clouds(112, 114, 8).at(113, 7, 'w').clouds(117, 119, 10)
-        .ground(122, 130, 11).at(126, 10, 'k').row(124, 7, "?7?")
+        .ground(122, 130, 11).at(126, 10, 'k').row(124, 7, "?2?")
         .clouds(133, 135, 9).clouds(138, 140, 7).clouds(143, 145, 9).at(144, 8, 'w').clouds(148, 150, 11)
         // Krag Jr.'s last stand
-        .ground(153, 209).row(160, 9, "X1").at(178, 6, 'J')
+        .ground(153, 209).row(160, 9, "B1").at(178, 6, 'J')
         .stairsUp(188, 5).flagAndCastle(200)
         .build("WONDER SKIES", Theme.SKY, BONUS_WORLD, 2)
 }
@@ -411,7 +443,7 @@ class Level(val def: LevelDef) {
                 '#' -> T.GROUND
                 'B' -> T.BRICK
                 '?' -> T.QCOIN
-                'P', '1', '3', '4', '5', '6', '7', '8' -> T.QPOWER
+                'P', '1', '2', '3', '4', '5', '6', '7', '8', '9' -> T.QPOWER
                 'X' -> T.HARD
                 '[' -> T.PIPE_TL
                 ']' -> T.PIPE_TR
@@ -435,6 +467,8 @@ class Level(val def: LevelDef) {
         '6' -> Item.MINI
         '7' -> Item.SHELL
         '8' -> Item.CANNON
+        '2' -> Item.HAMMER
+        '9' -> Item.ONEUP
         else -> null
     }
 

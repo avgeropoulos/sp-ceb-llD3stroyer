@@ -205,6 +205,24 @@ object Songs {
         leadDuty = 0.125f,
     )
 
+    // ------------------------------------------------------------------ Ring-Ding Frog's crazy song
+    private val frogLead = """
+        A4/1 A5/1 -/1 A4/1 A5/1 -/1 G5/1 E5/1 -/2 C5/2 D5/2 E5/2
+        F5/1 F5/1 -/1 F5/1 A5/2 G5/2 F5/1 E5/1 -/2 D5/4
+        A4/1 A5/1 -/1 A4/1 A5/1 -/1 C6/1 B5/1 -/2 A5/2 G5/2 E5/2
+        D5/2 E5/2 G5/2 A5/2 A5/1 -/1 A5/1 -/1 A5/4
+    """
+    private val frogChords = listOf("A2 E3 C4 E4", "D2 A2 D4 F4", "A2 E3 C4 E4", "E2 B2 B3 E4")
+
+    val frog = Song(
+        bpm = 172,
+        lead = frogLead + frogLead,
+        harmony = offbeats(frogChords + frogChords),
+        bass = drivingBass(frogChords + frogChords),
+        drums = "k.k.s.k.k.k.s.hs",
+        leadDuty = 0.25f,
+    )
+
     fun of(m: Music): Song? = when (m) {
         Music.NONE -> null
         Music.OVERWORLD -> overworld
@@ -214,5 +232,6 @@ object Songs {
         Music.BOSS -> boss
         Music.STAR -> star
         Music.WONDER -> wonder
+        Music.FROG -> frog
     }
 }

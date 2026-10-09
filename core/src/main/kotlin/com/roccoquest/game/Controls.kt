@@ -65,7 +65,7 @@ object Controls {
         input.down = d
     }
 
-    fun draw(gfx: Gfx, input: Input, viewW: Float, showFire: Boolean) {
+    fun draw(gfx: Gfx, input: Input, viewW: Float, showFire: Boolean, fireLabel: String = "FIRE") {
         layout(viewW)
         button(gfx, left, input.left)
         button(gfx, right, input.right)
@@ -77,7 +77,7 @@ object Controls {
         gfx.poly(floatArrayOf(right.cx + 9, right.cx - 6, right.cx - 6), floatArrayOf(right.cy, right.cy - 9, right.cy + 9), c)
         gfx.text("JUMP", jump.cx, jump.cy + 3, 8f, c, 1)
         gfx.text("swipe \u2193 crouch/slam", (left.cx + right.cx) / 2, 236f, 6f, if (input.down) c else 0x88FFFFFF.toInt(), 1)
-        if (showFire) gfx.text("FIRE", fire.cx, fire.cy + 3, 7f, c, 1)
+        if (showFire) gfx.text(fireLabel, fire.cx, fire.cy + 3, 7f, c, 1)
     }
 
     /** Pause button plus the music on/off toggle beside it. */

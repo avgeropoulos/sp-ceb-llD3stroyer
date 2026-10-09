@@ -655,6 +655,29 @@ object Sprites {
         "..KKKKKKKKKKKK..",
     )
 
+    // ---------------------------------------------------------------- Builder hammer & 1-Up
+    private val builderMap = mapOf(RED to 0xFFFFC21F.toInt(), WHITE to 0xFFE07A1E.toInt())
+    val builderStand = bigStand.recolor(builderMap)
+    val builderWalk = bigWalk.recolor(builderMap)
+    val builderJump = bigJump.recolor(builderMap)
+
+    private val hammerPal = mapOf(
+        'G' to 0xFF6A6A7A.toInt(), 'L' to 0xFFC8C8D8.toInt(), 'N' to 0xFF9A5A2A.toInt(), 'D' to 0xFF5A3010.toInt(),
+    )
+    val hammer = pixelArt(hammerPal,
+        "GGGGGGGG..",
+        "GLLLLLLG..",
+        "GLLLLLLG..",
+        "GGGGGGGG..",
+        "...NN.....",
+        "...NN.....",
+        "...NN.....",
+        "...NN.....",
+        "...NN.....",
+        "...DD.....",
+    )
+    val oneUp = mushroom.recolor(mapOf(RED to 0xFF2EB84A.toInt()))
+
     // ---------------------------------------------------------------- Wonder World
     val wonderFlower1 = blossom1.recolor(mapOf(
         0xFFFF8A00.toInt() to 0xFFFF4FD8.toInt(), RED to 0xFF8A3FFF.toInt(), 0xFFFFE14D.toInt() to 0xFF6FFFE0.toInt(),

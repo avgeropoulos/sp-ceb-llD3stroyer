@@ -3,6 +3,8 @@ package com.roccoquest
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.SoundPool
+import android.speech.tts.TextToSpeech
+import java.util.Locale
 import com.roccoquest.game.Chiptune
 import com.roccoquest.game.Music
 import com.roccoquest.game.Sound
@@ -32,6 +34,25 @@ class SoundFx(context: Context) : SoundSink {
     private val ids = IntArray(Sound.entries.size)
     private val musicPlayer = MusicPlayer()
 
+    /** Rocco's voice: the phone's text-to-speech, with an Italian accent where available. */
+    @Volatile private var ttsReady = false
+    private var tts: TextToSpeech? = null
+
+    init {
+        tts = TextToSpeech(context.applicationContext) { status ->
+            val t = tts ?: return@TextToSpeech
+            if (status == TextToSpeech.SUCCESS) {
+                val italian = t.setLanguage(Locale.ITALY)
+                if (italian == TextToSpeech.LANG_MISSING_DATA || italian == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    t.setLanguage(Locale.US)
+                }
+                t.setPitch(1.25f)
+                t.setSpeechRate(0.95f)
+                ttsReady = true
+            }
+        }
+    }
+
     init {
         val dir = context.cacheDir
         thread(name = "sfx-synth") {
@@ -54,11 +75,16 @@ class SoundFx(context: Context) : SoundSink {
 
     override fun music(m: Music) = musicPlayer.play(m)
 
+    override fun say(text: String) {
+        if (ttsReady) tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "rocco")
+    }
+
     fun setForeground(on: Boolean) = musicPlayer.setForeground(on)
 
     fun release() {
         pool.release()
         musicPlayer.release()
+        tts?.shutdown()
     }
 
     private fun writeWav(file: File, samples: FloatArray) {
