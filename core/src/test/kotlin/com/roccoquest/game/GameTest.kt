@@ -33,7 +33,7 @@ class GameTest {
             assertTrue(def.rows.all { it.length == def.rows[0].length })
             assertTrue(def.rows.any { '@' in it }, "${def.name} has a start")
         }
-        assertEquals(12, Levels.all.size)
+        assertEquals(14, Levels.all.size)
         // Every level must have a way to finish it.
         for (def in Levels.all) {
             assertTrue(def.rows.any { r -> r.any { it in "FEMR" } }, "${def.name} has an exit")
@@ -42,10 +42,11 @@ class GameTest {
         assertTrue(Levels.all[7].rows.any { 'K' in it } && Levels.all[7].rows.any { 'M' in it })
         assertTrue(Levels.all[11].rows.any { 'K' in it } && Levels.all[11].rows.any { 'R' in it })
         assertEquals(
-            listOf("1-1", "1-2", "1-3", "1-4", "2-1", "2-2", "2-3", "2-4", "3-1", "3-2", "3-3", "3-4"),
-            Levels.all.map { "${it.world}-${it.num}" },
+            listOf("1-1", "1-2", "1-3", "1-4", "2-1", "2-2", "2-3", "2-4", "3-1", "3-2", "3-3", "3-4", "\u2605-1", "\u2605-2"),
+            Levels.all.map { it.label },
         )
-        for (i in listOf(6, 9, 10, 11)) assertTrue(Levels.all[i].rows.any { 'J' in it }, "Krag Jr. in ${Levels.all[i].name}")
+        for (i in listOf(12, 13)) assertTrue(Levels.all[i].rows.any { 'W' in it } && Levels.all[i].rows.any { 'Z' in it })
+        for (i in listOf(6, 9, 10, 11, 13)) assertTrue(Levels.all[i].rows.any { 'J' in it }, "Krag Jr. in ${Levels.all[i].name}")
     }
 
     @Test fun heroWalksAndJumps() {
@@ -184,6 +185,75 @@ class GameTest {
         repeat(80) { g.update(dt); peak = min(peak, g.hero.y) }
         g.input.jump = false
         assertTrue(ground - peak > 90f, "mini jumps high: ${ground - peak}")
+    }
+
+    @Test fun blueShellHomesInAndCannonFiresThroughWalls() {
+        val g = newGame()
+        g.hero.power = Power.SHELL
+        val e = g.entities.first { it is Grumbler && it.y > 180f } as Grumbler
+        g.hero.x = e.x - 120
+        g.hero.facing = 1
+        run(g, 0.05f)
+        g.input.fire = true; g.update(dt); g.input.fire = false
+        assertTrue(g.entities.any { it is HomingShell })
+        run(g, 1.5f)
+        assertTrue(e.dying || e.removed, "blue shell got the grumbler")
+
+        // Bullet Blaster: the bullet passes through pipes and knocks out what's behind them.
+        g.hero.power = Power.CANNON
+        val behind = g.entities.first { it is Grumbler && it.x > 40f * TILE && it.y > 180f } as Grumbler
+        g.hero.x = 35f * TILE
+        g.hero.y = 13f * TILE - g.hero.h
+        g.hero.facing = 1
+        run(g, 0.05f)
+        g.input.fire = true; g.update(dt); g.input.fire = false
+        assertTrue(g.entities.any { it is BlasterBullet })
+        run(g, 1.2f)
+        assertTrue(behind.dying || behind.removed, "bullet went through the pipe")
+    }
+
+    @Test fun wonderModeStartsAndEnds() {
+        val g = newGame()
+        g.startLevel(12)
+        run(g, 2.5f)
+        g.hero.invuln = 1000f
+        g.hero.x = 84f * TILE
+        g.hero.y = 13f * TILE - g.hero.h
+        run(g, 0.1f)
+        assertTrue(g.wonderMode)
+        run(g, 3f)
+        assertTrue(g.entities.any { it is SpikeBall }, "spike balls rain down")
+        g.hero.x = 116f * TILE
+        g.hero.y = 13f * TILE - g.hero.h
+        run(g, 0.1f)
+        assertTrue(!g.wonderMode)
+    }
+
+    @Test fun rescuingThePrincessUnlocksWonderWorld() {
+        val storage = Storage.Memory()
+        val g = Game(Input(), storage = storage).apply { viewW = 427f }
+        assertTrue(!g.wonderUnlocked)
+        g.update(dt)
+        repeat(30) { g.update(dt) }
+        g.input.tap = true; g.update(dt)
+        repeat(140) { g.update(dt) }
+        g.startLevel(11); run(g, 2.5f)
+        g.entities.removeAll { it is Enemy }
+        g.hero.invuln = 1000f
+        g.hero.x = 123f * TILE; g.hero.y = 10f * TILE - g.hero.h
+        run(g, 6f) // axe: bridge collapses, Krag falls
+        g.hero.x = 179.5f * TILE; g.hero.y = 10f * TILE - g.hero.h
+        run(g, 0.2f)
+        assertEquals(Game.State.VICTORY, g.state)
+        assertTrue(g.wonderUnlocked)
+        run(g, 3.2f)
+        g.input.tap = true; g.update(dt)
+        assertEquals(12, g.levelIndex)
+        // A new game remembers the unlock; tapping the right half starts Wonder World.
+        val g2 = Game(Input(), storage = storage).apply { viewW = 427f }
+        repeat(30) { g2.update(dt) }
+        g2.input.tapX = 300f; g2.input.tap = true; g2.update(dt)
+        assertEquals(12, g2.levelIndex)
     }
 
     @Test fun kragJrLocksTheCameraUntilBeaten() {
@@ -424,6 +494,19 @@ class GameTest {
         g.input.fire = true; g.update(dt); g.input.fire = false
         run(g, 0.2f)
         shot(g, "boomerang-star")
+        g.hero.starTime = 0f
+        g.hero.power = Power.CANNON
+        g.input.fire = true; g.update(dt); g.input.fire = false
+        run(g, 0.3f)
+        shot(g, "cannon")
+        g.startLevel(13)
+        run(g, 2.5f)
+        g.hero.power = Power.SHELL
+        g.hero.invuln = 1000f
+        g.hero.x = 63f * TILE
+        g.hero.y = 9f * TILE
+        run(g, 3f)
+        shot(g, "wonder")
         g.hero.x = 117f * TILE
         g.hero.y = 10f * TILE - g.hero.h
         run(g, 0.5f)

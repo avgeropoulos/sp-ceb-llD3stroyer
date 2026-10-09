@@ -180,6 +180,31 @@ object Songs {
         leadDuty = 0.5f,
     )
 
+    // ------------------------------------------------------------------ Wonder (dreamy, augmented chords)
+    private val wonderLead = """
+        C5/2 E5/2 G#5/2 C6/2 G#5/2 E5/2 C5/4
+        D5/2 F#5/2 A#5/2 D6/2 A#5/2 F#5/2 D5/4
+        E5/4 G5/2 B5/2 E6/4 D6/2 B5/2
+        C6/6 B5/2 G5/4 -/4
+        C5/2 E5/2 G#5/2 C6/2 G#5/2 E5/2 C5/4
+        D5/2 F#5/2 A#5/2 D6/2 A#5/2 F#5/2 D5/4
+        F5/2 A5/2 C6/2 F6/2 E6/2 C6/2 A5/2 G5/2
+        C6/8 -/8
+    """
+    private val wonderChords = listOf(
+        "C3 G3 E4 G#4", "D3 A3 F#4 A#4", "E3 B3 G4 B4", "C3 G3 E4 G4",
+        "C3 G3 E4 G#4", "D3 A3 F#4 A#4", "F2 C3 A4 C5", "C3 G3 E4 G4",
+    )
+
+    val wonder = Song(
+        bpm = 140,
+        lead = wonderLead,
+        harmony = offbeats(wonderChords),
+        bass = oomPahBass(wonderChords),
+        drums = "k..hs.h.k.hhs..h",
+        leadDuty = 0.125f,
+    )
+
     fun of(m: Music): Song? = when (m) {
         Music.NONE -> null
         Music.OVERWORLD -> overworld
@@ -188,5 +213,6 @@ object Songs {
         Music.CASTLE -> castle
         Music.BOSS -> boss
         Music.STAR -> star
+        Music.WONDER -> wonder
     }
 }

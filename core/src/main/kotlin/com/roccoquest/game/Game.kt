@@ -10,8 +10,12 @@ import kotlin.math.sin
  * Rocco's Quest: the whole game simulation and its rendering, independent of Android.
  * Call [update] at a fixed 60 Hz and [render] once per frame.
  */
-class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
-    enum class State { TITLE, INTRO, PLAYING, DYING, FLAG, DOOR, AXE, WORLD_CLEAR, GAME_OVER, VICTORY }
+class Game(
+    val input: Input,
+    private val sound: SoundSink = SoundSink {},
+    private val storage: Storage = Storage.Memory(),
+) {
+    enum class State { TITLE, INTRO, PLAYING, DYING, FLAG, DOOR, AXE, WORLD_CLEAR, GAME_OVER, VICTORY, ALL_CLEAR }
 
     var state = State.TITLE
         private set
@@ -49,6 +53,21 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
     /** While Krag Jr. is attacking, the camera is locked so the fight stays on one screen. */
     private var camLock: Float? = null
 
+    /** Wonder mode: the level goes wild until Rocco finds the Wonder Seed. */
+    var wonderMode = false
+        private set
+    private var spikeRain = 0f
+    private var coinRain = 0f
+    private var flyerRain = 0f
+
+    val bestScore get() = storage.load("best")
+    val wonderUnlocked get() = storage.load("wonder") == 1
+    private val bonusStart get() = Levels.all.indexOfFirst { it.world == Levels.BONUS_WORLD }
+
+    private fun saveBest() {
+        if (score > bestScore) storage.save("best", score)
+    }
+
     private var flagX = -1f
     private var flagTopY = 0f
     private var flagBaseY = 0f
@@ -76,6 +95,10 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
     fun sfx(s: Sound) = sound.play(s)
     fun spawn(e: Entity) { pending += e }
     fun puff(x: Float, y: Float) { particles += Puff(x, y) }
+    fun explosion(x: Float, y: Float) {
+        particles += Explosion(x, y)
+        sfx(Sound.BREAK)
+    }
     fun debris(x: Float, y: Float, c: Int) {
         particles += Debris(x, y, -60f, -320f, c)
         particles += Debris(x + 8, y, 60f, -320f, c)
@@ -116,6 +139,7 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         bossDefeated = false
         bossBannerTime = 0f
         camLock = null
+        wonderMode = false
         camX = 0f
         for (ty in 0 until level.h) for (tx in 0 until level.w) {
             val px = tx * TILE.toFloat()
@@ -131,6 +155,8 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
                 'p' -> entities += Podoboo(px, py)
                 'K' -> entities += Krag(px, bottom, level.def.bossHp)
                 'J' -> entities += KragJr(px, bottom)
+                'W' -> entities += WonderFlower(px, bottom)
+                'Z' -> entities += WonderSeed(px, bottom)
                 'R' -> entities += Princess(px, bottom)
                 'A' -> entities += Axe(px, bottom)
                 'E' -> entities += Door(px, bottom)
@@ -147,9 +173,20 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         setState(State.INTRO)
     }
 
+    /** Goes to the next level, or to the final screen after the last one. */
+    private fun advance() {
+        if (levelIndex + 1 >= Levels.all.size) {
+            saveBest()
+            setState(State.ALL_CLEAR)
+        } else {
+            startLevel(levelIndex + 1)
+        }
+    }
+
     private fun loseLife() {
         lives--
         if (lives <= 0) {
+            saveBest()
             setState(State.GAME_OVER)
         } else {
             hero.power = Power.SMALL
@@ -173,6 +210,7 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         prevPause = input.pause
         val tap = input.tap
         input.tap = false
+        val tapX = input.tapX
 
         val inPlay = state == State.PLAYING || state == State.DYING || state == State.FLAG ||
             state == State.DOOR || state == State.AXE
@@ -181,10 +219,13 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         stateTime += dt
 
         when (state) {
-            State.TITLE -> if (tap && stateTime > 0.3f) newGame()
+            State.TITLE -> if (tap && stateTime > 0.3f) {
+                newGame(if (wonderUnlocked && tapX > viewW / 2) bonusStart else 0)
+            }
             State.INTRO -> if (stateTime > 2.2f) setState(State.PLAYING)
             State.PLAYING -> {
                 updateHero(dt, jumpPressed, firePressed, downPressed)
+                if (wonderMode) updateWonder(dt)
                 updateWorld(dt)
                 if (state == State.PLAYING) interact(dt)
                 updateCamera()
@@ -200,17 +241,20 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
             State.DOOR -> {
                 hero.visible = stateTime < 0.4f
                 updateParticles(dt)
-                if (stateTime > 1.6f) startLevel(levelIndex + 1)
+                if (stateTime > 1.6f) advance()
             }
             State.AXE -> updateAxe(dt)
             State.WORLD_CLEAR -> {
                 updateParticles(dt)
-                if (stateTime > 6f || (stateTime > 2f && tap)) startLevel(levelIndex + 1)
+                if (stateTime > 6f || (stateTime > 2f && tap)) advance()
             }
             State.GAME_OVER -> if (stateTime > 2f && tap) newGame(worldStart())
             State.VICTORY -> {
                 updateParticles(dt)
-                if (stateTime > 3f && tap) { hero = Hero(0f, 0f); level = Level(Levels.all[0]); camX = 0f; setState(State.TITLE) }
+                if (stateTime > 3f && tap) startLevel(bonusStart) // on to the bonus Wonder World
+            }
+            State.ALL_CLEAR -> if (stateTime > 3f && tap) {
+                hero = Hero(0f, 0f); level = Level(Levels.all[0]); camX = 0f; setState(State.TITLE)
             }
         }
         if (bossBannerTime > 0) bossBannerTime -= dt
@@ -231,6 +275,7 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         if (dir == 0) h.running = false
         prevDir = dir
         val running = h.running || input.run
+        h.shellDash = h.power == Power.SHELL && running && h.onGround && abs(h.vx) > 140f && !h.crouching
 
         // Hold down on the ground to crouch (big Rocco stays down under low ceilings).
         val wantCrouch = input.down && h.onGround && !h.slamming
@@ -283,11 +328,16 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
             var grav = if (h.vy < 0 && h.jumpHeld) 600f else 1500f
             var maxFall = 420f
             if (mini) { grav *= 0.55f; maxFall = 200f } // Mini Rocco floats
+            if (wonderMode) grav *= 0.75f
             h.vy = min(h.vy + grav * dt, maxFall)
         }
 
         heroPrevBottom = h.bottom
-        if (level.moveX(h, h.vx * dt)) h.vx = 0f
+        val vxBefore = h.vx
+        if (level.moveX(h, h.vx * dt)) {
+            // A spinning Blue Shell smashes the bricks it runs into.
+            h.vx = if (h.shellDash && breakSide(h, sign(vxBefore).toInt())) vxBefore else 0f
+        }
         if (h.x < camX) { h.x = camX; if (h.vx < 0) h.vx = 0f }
         if (camLock != null && h.x + h.w > camX + viewW) { h.x = camX + viewW - h.w; if (h.vx > 0) h.vx = 0f }
         val ceilX = level.moveY(h, h.vy * dt)
@@ -302,15 +352,21 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         if (firePressed && h.power.canThrow && !h.crouching && !h.slamming) {
             val fx = if (h.facing > 0) h.x + h.w else h.x - 8
             val shots = entities.count { it is Fireball } + pending.count { it is Fireball }
-            val booms = entities.count { it is Boomerang } + pending.count { it is Boomerang }
-            when {
-                h.power == Power.BOOM && booms == 0 -> { spawn(Boomerang(fx, h.y + 5, h.facing)); sfx(Sound.KICK) }
-                h.power != Power.BOOM && shots < 2 -> {
+            fun count(pred: (Entity) -> Boolean) = entities.count(pred) + pending.count(pred)
+            when (h.power) {
+                Power.BOOM -> if (count { it is Boomerang } == 0) { spawn(Boomerang(fx, h.y + 5, h.facing)); sfx(Sound.KICK) }
+                Power.SHELL -> if (count { it is HomingShell } == 0) { spawn(HomingShell(fx, h.y, h.facing)); sfx(Sound.KICK) }
+                Power.CANNON -> if (count { it is BlasterBullet } < 2 && h.throwAnim <= 0) {
+                    spawn(BlasterBullet(if (h.facing > 0) h.x + h.w else h.x - 16, h.y + 4, h.facing))
+                    sfx(Sound.BOSS_HIT)
+                    h.throwAnim = 0.45f
+                }
+                else -> if (shots < 2) {
                     spawn(Fireball(fx, h.y + 6, h.facing, ice = h.power == Power.ICE))
                     sfx(Sound.FIRE)
                 }
             }
-            h.throwAnim = 0.15f
+            if (h.power != Power.CANNON) h.throwAnim = 0.15f
         }
         h.throwAnim -= dt
         h.invuln -= dt
@@ -318,6 +374,17 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         h.starTime -= dt
 
         if (level.isLavaAt(h.cx, h.bottom - 3) || h.y > level.h * TILE + 8) die()
+    }
+
+    /** Breaks bricks directly beside Rocco; returns true if any broke. */
+    private fun breakSide(h: Hero, dir: Int): Boolean {
+        val tx = if (dir > 0) tileOf(h.x + h.w + 1) else tileOf(h.x - 1)
+        var broke = false
+        for (ty in tileOf(h.y)..tileOf(h.y + h.h - 0.01f)) {
+            if (level[tx, ty] == T.BRICK) { breakBrick(tx, ty); broke = true }
+            else if (level[tx, ty] == T.QCOIN || level[tx, ty] == T.QPOWER) hitBlock(tx, ty, fromAbove = true)
+        }
+        return broke
     }
 
     /** True if there is no room for big Rocco to stand up. */
@@ -459,6 +526,11 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
                 is Enemy -> {
                     if (e.dying || (e is Grumbler && e.isSquashed)) continue
                     if (h.starTime > 0) { e.starHit(this); continue }
+                    if (h.shellDash && !e.spiky && e !is KragJr) {
+                        e.knockOut(this)
+                        addScore(200, e.cx, e.y)
+                        continue
+                    }
                     val fromAbove = h.vy > 0 && heroPrevBottom <= e.y + 6
                     if (fromAbove && h.slamming && !e.spiky) {
                         if (e is KragJr) {
@@ -485,6 +557,12 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
                     collectItem(e)
                 }
                 is Coin -> { e.removed = true; collectCoin(e.cx, e.y) }
+                is WonderFlower -> { e.removed = true; startWonder() }
+                is WonderSeed -> {
+                    e.removed = true
+                    endWonder()
+                    addScore(5000, e.cx, e.y)
+                }
                 is Axe -> { e.removed = true; startCollapse() }
                 is Pip -> if (bossDefeated) {
                     h.vx = 0f
@@ -495,6 +573,8 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
                     h.vx = 0f
                     h.facing = if (e.cx > h.cx) 1 else -1
                     sfx(Sound.VICTORY)
+                    storage.save("wonder", 1)
+                    saveBest()
                     setState(State.VICTORY)
                 }
                 is Door -> if (h.onGround) {
@@ -532,6 +612,8 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
             Item.BOOM -> h.power = Power.BOOM
             Item.MINI -> h.power = Power.MINI
             Item.STAR -> h.starTime = Hero.STAR_TIME
+            Item.SHELL -> h.power = Power.SHELL
+            Item.CANNON -> h.power = Power.CANNON
         }
         h.flash = 0.6f
         addScore(1000, item.cx, item.y)
@@ -561,6 +643,41 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         hero.invuln = 0f
         sfx(Sound.DIE)
         setState(State.DYING)
+    }
+
+    private fun startWonder() {
+        wonderMode = true
+        spikeRain = 2.5f
+        coinRain = 0f
+        flyerRain = 4f
+        bannerTitle = "WONDER!"
+        bannerSub = "Find the Wonder Seed!"
+        bossBannerTime = 2.5f
+        sfx(Sound.POWERUP)
+        for (e in entities) if (e is Grumbler && isOnScreen(e)) e.giveWings()
+    }
+
+    private fun endWonder() {
+        wonderMode = false
+        for (e in entities) if (e is SpikeBall) e.knockOut(this)
+        bannerTitle = "WONDER SEED GET!"
+        bannerSub = "+5000"
+        bossBannerTime = 2.5f
+        sfx(Sound.ONEUP)
+    }
+
+    /** While in Wonder mode, spike balls, coins and flyers rain down. */
+    private fun updateWonder(dt: Float) {
+        spikeRain -= dt
+        coinRain -= dt
+        flyerRain -= dt
+        val rx = camX + 24 + kotlin.random.Random.nextFloat() * (viewW - 48)
+        if (spikeRain <= 0) { spawn(SpikeBall(rx, -14f).also { it.active = true }); spikeRain = 1.5f }
+        if (coinRain <= 0) { spawn(Coin(rx, -16f, falling = true)); coinRain = 0.4f }
+        if (flyerRain <= 0) {
+            spawn(Grumbler(camX + viewW + 4, 80f, winged = true).also { it.active = true })
+            flyerRain = 3.5f
+        }
     }
 
     fun onJrEngaged() {
@@ -594,6 +711,7 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
                 val krag = entities.firstOrNull { it is Krag }
                 when {
                     hero.starTime > 0 -> Music.STAR
+                    wonderMode -> Music.WONDER
                     entities.any { it is KragJr && it.engaged } -> Music.BOSS
                     krag != null && krag.active && !bossDefeated -> Music.BOSS
                     else -> level.def.theme.music
@@ -677,6 +795,7 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
                 when (state) {
                     State.GAME_OVER -> renderGameOver(gfx)
                     State.VICTORY -> renderVictory(gfx)
+                    State.ALL_CLEAR -> renderAllClear(gfx)
                     State.WORLD_CLEAR -> renderWorldClear(gfx)
                     else -> {
                         if (state == State.PLAYING || state == State.AXE || state == State.DYING) {
@@ -889,7 +1008,7 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
             val t = level[tx, ty]
             if (t == T.EMPTY || tx < 0 || tx >= level.w) continue
             val s = tileSprite(t, tx, ty) ?: continue
-            var dy = 0f
+            var dy = if (wonderMode) sin(time * 5f + tx * 0.7f) * 2f else 0f
             for (b in bumps) if (b.tx == tx && b.ty == ty) dy = -sin(b.t / 0.2f * kotlin.math.PI.toFloat()) * 5f
             gfx.sprite(s, tx * TILE - cam, ty * TILE + dy, flipX = t == T.LAVA && lavaFlip)
         }
@@ -926,6 +1045,17 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
     private fun renderWorld(gfx: Gfx) {
         val cam = camX
         renderBackground(gfx, cam)
+        if (wonderMode) {
+            for (i in 0 until 8) {
+                val by = (i * 30f + time * 25f) % VIEW_H - 30f
+                gfx.rect(0f, by, viewW, 30f, argb(55, rainbow(time, i / 8f)))
+            }
+            for (k in 0 until 14) {
+                val sx = (k * 61f + time * 30f) % viewW
+                val sy = (k * 37f + sin(time * 2 + k) * 30f + 120f) % VIEW_H
+                gfx.text("\u2726", sx, sy, 8f, argb(200, rainbow(time, k / 14f)), 1)
+            }
+        }
         for (e in entities) if (e is PowerItem && !e.ready) e.draw(this, gfx, -cam)
         renderFlagAndCastle(gfx, -cam)
         renderTiles(gfx, cam)
@@ -947,7 +1077,7 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         gfx.shadowText("x" + coins.toString().padStart(2, '0'), cx + 8, 20f, 9f, white)
         val wx = viewW * 0.52f
         gfx.shadowText("WORLD", wx, 13f, 9f, white, 1)
-        gfx.shadowText("${level.def.world}-${level.def.num}", wx, 25f, 9f, white, 1)
+        gfx.shadowText(level.def.label, wx, 25f, 9f, white, 1)
         val lx = viewW * 0.72f
         gfx.sprite(Sprites.smallStand, lx - 6, 8f, w = 12f, h = 12f)
         gfx.shadowText("x$lives", lx + 8, 20f, 9f, white)
@@ -983,7 +1113,15 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         gfx.text("♥", cx + 108, ground - 30 - (time * 10) % 10, 10f, 0xFFFF6FB5.toInt(), 1)
 
         gfx.shadowText("Save Princess Rosalie from King Krag!", cx, 130f, 10f, 0xFFFFFFFF.toInt(), 1)
-        if ((time * 2).toInt() % 2 == 0) gfx.shadowText("TAP TO START", cx, 152f, 14f, 0xFFFFFFFF.toInt(), 1)
+        if (wonderUnlocked) {
+            gfx.rect(cx - 150, 136f, 140f, 24f, 0xCC3A1A08.toInt())
+            gfx.shadowText("\u25B6 START", cx - 80, 153f, 12f, 0xFFFFFFFF.toInt(), 1)
+            gfx.rect(cx + 10, 136f, 140f, 24f, argb(210, rainbow(time)))
+            gfx.shadowText("\u2605 WONDER WORLD", cx + 80, 153f, 11f, 0xFFFFFFFF.toInt(), 1)
+        } else if ((time * 2).toInt() % 2 == 0) {
+            gfx.shadowText("TAP TO START", cx, 152f, 14f, 0xFFFFFFFF.toInt(), 1)
+        }
+        if (bestScore > 0) gfx.shadowText("BEST ${bestScore.toString().padStart(6, '0')}", cx, 174f, 8f, 0xFFFFD21F.toInt(), 1)
         gfx.shadowText("Left side: move (double-tap to run)   Right side: JUMP / FIRE", cx, 222f, 7f, 0xFFFFFFFF.toInt(), 1)
         gfx.shadowText("Swipe down: crouch, or butt slam in mid-air", cx, 233f, 7f, 0xFFFFFFFF.toInt(), 1)
     }
@@ -994,12 +1132,17 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF000000.toInt())
         renderHud(gfx)
         val cx = viewW / 2
-        gfx.text("WORLD ${level.def.world}-${level.def.num}", cx, 96f, 16f, 0xFFFFFFFF.toInt(), 1)
+        gfx.text("WORLD ${level.def.label}", cx, 96f, 16f, 0xFFFFFFFF.toInt(), 1)
+        if (level.def.world == Levels.BONUS_WORLD) {
+            gfx.text("BONUS: WONDER WORLD", cx, 70f, 11f, argb(255, rainbow(time)), 1)
+        }
         gfx.text(level.def.name, cx, 116f, 11f, 0xFFFFD21F.toInt(), 1)
         val s = when (hero.power) {
             Power.FIRE -> Sprites.fireStand
             Power.ICE -> Sprites.iceStand
             Power.BOOM -> Sprites.boomStand
+            Power.SHELL -> Sprites.shellStand
+            Power.CANNON -> Sprites.cannonStand
             Power.BIG -> Sprites.bigStand
             else -> Sprites.smallStand
         }
@@ -1018,7 +1161,7 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         gfx.shadowText("GAME OVER", viewW / 2, 110f, 22f, 0xFFFFFFFF.toInt(), 1)
         gfx.shadowText("Score: $score", viewW / 2, 134f, 11f, 0xFFFFD21F.toInt(), 1)
         if (stateTime > 2f) {
-            gfx.shadowText("Tap to continue from WORLD ${level.def.world}-1", viewW / 2, 160f, 10f, 0xFFFFFFFF.toInt(), 1)
+            gfx.shadowText("Tap to continue from WORLD ${level.def.worldLabel}-1", viewW / 2, 160f, 10f, 0xFFFFFFFF.toInt(), 1)
         }
     }
 
@@ -1035,6 +1178,14 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         }
     }
 
+    private fun renderAllClear(gfx: Gfx) {
+        gfx.rect(0f, 54f, viewW, 104f, 0xAA000000.toInt())
+        gfx.shadowText("WONDER WORLD CLEARED!", viewW / 2, 86f, 18f, argb(255, rainbow(time)), 1)
+        gfx.shadowText("Rocco is a true superstar!", viewW / 2, 106f, 11f, 0xFFFFFFFF.toInt(), 1)
+        gfx.shadowText("Final score: $score   Best: $bestScore", viewW / 2, 126f, 10f, 0xFFFFD21F.toInt(), 1)
+        if (stateTime > 3f) gfx.shadowText("Tap to return to the title", viewW / 2, 146f, 9f, 0xFFFFFFFF.toInt(), 1)
+    }
+
     private fun renderVictory(gfx: Gfx) {
         gfx.rect(0f, 54f, viewW, 100f, 0xAA000000.toInt())
         for (i in 0 until 12) {
@@ -1046,6 +1197,8 @@ class Game(val input: Input, private val sound: SoundSink = SoundSink {}) {
         gfx.shadowText("THANK YOU, ROCCO!", viewW / 2, 84f, 18f, 0xFFFF6FB5.toInt(), 1)
         gfx.shadowText("You saved Princess Rosalie!", viewW / 2, 104f, 11f, 0xFFFFFFFF.toInt(), 1)
         gfx.shadowText("Final score: $score", viewW / 2, 124f, 11f, 0xFFFFD21F.toInt(), 1)
-        if (stateTime > 3f) gfx.shadowText("Tap to play again", viewW / 2, 144f, 9f, 0xFFFFFFFF.toInt(), 1)
+        if (stateTime > 3f) {
+            gfx.shadowText("WONDER WORLD unlocked! Tap for the bonus levels", viewW / 2, 144f, 9f, argb(255, rainbow(time)), 1)
+        }
     }
 }
