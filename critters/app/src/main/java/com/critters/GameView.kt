@@ -85,7 +85,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-        measure(width, height)
+        fitToSurface(width, height)
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
@@ -94,7 +94,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     }
 
     /** Picks a whole-number scale when possible so every game pixel is the same size. */
-    private fun measure(width: Int, height: Int) {
+    private fun fitToSurface(width: Int, height: Int) {
         if (width <= 0 || height <= 0) return
         val fit = min(width / Shell.MIN_W, height / Shell.MIN_H)
         scale = if (fit >= 2f) floor(fit) else fit
@@ -125,7 +125,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                 continue
             }
             try {
-                measure(canvas.width, canvas.height)
+                fitToSurface(canvas.width, canvas.height)
                 draw.begin(canvas, scale)
                 synchronized(game) { game.draw(draw, viewW, viewH) }
             } finally {
