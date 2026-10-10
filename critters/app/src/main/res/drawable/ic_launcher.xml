@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- App icon: a red and white capsule on the handheld's grape purple. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#6A48B0" android:pathData="M0,0h108v108h-108z" />
+    <path android:fillColor="#282030" android:pathData="M54,22a32,32 0,1 1,-0.1,0z" />
+    <path android:fillColor="#E83838" android:pathData="M25,52 A29,29 0,0 1,83 52 Z" />
+    <path android:fillColor="#F8F8F0" android:pathData="M25,56 A29,29 0,0 0,83 56 Z" />
+    <path android:fillColor="#282030" android:pathData="M25,51h58v6h-58z" />
+    <path android:fillColor="#282030" android:pathData="M54,44a10,10 0,1 1,-0.1,0z" />
+    <path android:fillColor="#F8F8F0" android:pathData="M54,48a6,6 0,1 1,-0.1,0z" />
+    <path android:fillColor="#F89090" android:pathData="M36,36a5,4 0,1 1,-0.1,0z" />
+</vector>

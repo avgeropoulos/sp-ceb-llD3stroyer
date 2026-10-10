@@ -1,4 +1,10 @@
-# Rocco's Quest
+# Rocco's Quest and Pocket Critters
+
+Two retro games for Android:
+
+* **Rocco's Quest**: a side-scrolling platformer (below).
+* **Pocket Critters Color**: a monster-catching RPG in the style of the old handheld color
+  games. See [Pocket Critters](#pocket-critters-color).
 
 A retro side-scrolling platformer for Android.
 
@@ -105,14 +111,46 @@ waves, a triangle bass and noise drums, so there are no audio files. Tap the **â
 * Keyboards and game controllers also work: arrow keys or WASD, Shift to run,
   Down or S to crouch/slam, Space to jump, X to fire, M for music.
 
+## Pocket Critters Color
+
+![Pocket Critters](docs/critters.png)
+
+An original critter-catching adventure that plays in portrait mode on a handheld console drawn on
+your screen. It has a 160 x 144 pixel screen, a D-pad and A / B / START / SELECT buttons.
+
+* **Pick a starter** in Prof. Hazel's lab: **Embit** (fire), **Drizzlet** (water) or
+  **Sproutle** (grass). Your rival Ryder takes the one that's strong against yours.
+* **22 critters** to find, with 9 types (Normal, Fire, Water, Grass, Electric, Rock, Flying, Bug
+  and Ghost) and a full type chart. Most of them evolve.
+* **Wild critters** live in tall grass and caves. Weaken them, then throw a **Capsule** to catch
+  them. Sleep and paralysis make catching easier.
+* **Turn-based battles** with 40+ moves, PP, stat changes, critical hits, burn / poison /
+  paralysis / sleep, XP, level ups, learning moves and evolution.
+* **Trainers** spot you when you walk into their line of sight. There are three **Gyms**: Granita
+  (Rock) in Maple City, Marina (Water) in Tideport and Volta (Electric) in Sparkton.
+* Earn all three badges to enter **Summit Cave**. At the peak you'll face Ryder one last time
+  and meet the legendary **Solaris**.
+* **Critter Centers** heal your team, and their PC stores extra critters. **Marts** sell
+  Capsules and Potions. You also get a Critterdex, a Trainer Card and a save game.
+* Every town and route has its own chiptune music, and every critter has its own cry. All of it is
+  synthesized on the phone.
+
+Controls: the on-screen D-pad moves; **A** talks, reads signs and confirms; **B** cancels (hold it
+to run); **START** opens the menu; **SELECT** turns the music on or off. The phone's back button
+also works as B. Keyboards and controllers work too (arrows / WASD, Z = A, X = B,
+Enter = START, Shift = SELECT).
+
+The game autosaves when you leave the app, and you can save any time from the START menu.
+
 ## Installing on your phone
 
 Every push builds an APK with GitHub Actions (see `.github/workflows/android.yml`):
 
 1. On your phone, open
    **https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/RoccosQuest.apk**
-   in Chrome. It's also the latest release on the repository page.
-2. Download `RoccosQuest.apk` and open it. If Android asks, allow your browser to install unknown apps.
+   or **https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/PocketCritters.apk**
+   in Chrome. Both are also in the latest release on the repository page.
+2. Download the APK and open it. If Android asks, allow your browser to install unknown apps.
 
 ## Building it yourself
 
@@ -122,6 +160,8 @@ You need JDK 17 and the Android SDK (Android Studio installs both).
 ./gradlew :app:assembleDebug     # APK at app/build/outputs/apk/debug/app-debug.apk
 ./gradlew :core:test             # game-logic tests; also renders screenshots to core/build/screens
                                  # and the music to core/build/music/*.wav
+./gradlew :critters-app:assembleDebug   # Pocket Critters APK in critters/app/build/outputs/apk/debug/
+./gradlew :critters-core:test           # its tests; screenshots go to critters/core/build/critter-shots
 ```
 
 You can also open the folder in Android Studio and press Run.
@@ -136,3 +176,17 @@ You can also open the folder in Android Studio and press Run.
   renderer, sound effects that are synthesized at startup, and a streaming music player.
 
 Levels are built in `core/.../Level.kt` with a small builder, so adding a new one is a few lines.
+
+Pocket Critters lives in `critters/`:
+
+* `critters/core/`: the whole game in plain Kotlin. It draws into a 160 x 144 frame buffer in
+  software (`Gfx.kt`), so it looks pixel-perfect on any phone.
+  * `Data.kt` has types, moves, species and items, and `Battle.kt` has the battle rules.
+  * `Maps.kt` has the towns, routes, NPCs and story scripts.
+  * `Game.kt` runs the overworld and scripts. `BattleScene.kt` and `Ui.kt` are the battle
+    screen and menus.
+  * Critter pictures are painted from shapes in `CritterArt.kt`; tiles and people are pixel art
+    in `Art.kt`.
+  * It reuses Rocco's Quest's chiptune synthesizer for its own songs (`Audio.kt`).
+* `critters/app/`: the Android layer: a portrait `SurfaceView`, touch controls on the drawn
+  console, sound and music.
