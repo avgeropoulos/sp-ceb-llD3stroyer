@@ -22,7 +22,7 @@ class ArtTest {
             val one = BufferedImage(540, 960, BufferedImage.TYPE_INT_ARGB)
             val q = AwtPainter(one)
             q.rect(0f, 0f, VW, VH, rgb(0xFF, 0xF0, 0xF5))
-            Bella.draw(q, lv.outfit, VW / 2, 1200f, 1.2f, Pose(mood = i / 6f, time = 1f, wave = i == 2, talking = i == 4))
+            Bella.draw(q, lv.outfit, VW / 2, 1200f, 1.2f, Pose(mood = i / 6f, time = 1f, wave = i == 1, face = if (i == 5) 4 else if (i % 2 == 0) 3 else 0, hip = i >= 2))
             ImageIO.write(one, "png", File(dir, "bella_$i.png"))
         }
     }

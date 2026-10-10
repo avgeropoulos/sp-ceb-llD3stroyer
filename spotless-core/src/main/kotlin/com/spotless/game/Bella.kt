@@ -9,9 +9,11 @@ class Pose(
     /** Seconds; drives breathing, sway, blinking and sparkle twinkles. */
     var time: Float = 0f,
     var talking: Boolean = false,
-    /** 0 = normal, 1 = delighted (eyes closed), 2 = pouty. */
+    /** 0 = normal, 1 = delighted (eyes closed), 2 = pouty, 3 = wink, 4 = blowing a kiss. */
     var face: Int = 0,
     var wave: Boolean = false,
+    /** A confident hand on her hip. */
+    var hip: Boolean = false,
 )
 
 /**
@@ -25,7 +27,7 @@ object Bella {
     private val HAIR_LIGHT = rgb(0xFF, 0xEC, 0xB0)
     private val HAIR_DARK = rgb(0xD6, 0xA9, 0x4C)
     private val BROW = rgb(0xB8, 0x8A, 0x3E)
-    private val EYE = rgb(0x3B, 0x86, 0xD8)
+    private val EYE = rgb(0x2E, 0xB0, 0x5C)
     private val LASH = rgb(0x3A, 0x26, 0x28)
 
     const val HEIGHT = 890f
@@ -224,7 +226,12 @@ object Bella {
             // Brows: raised and soft when happy, angled when pouty.
             val browTilt = if (pose.face == 2) 6f else -2f
             p.stroke(shape { moveTo(ex - s * 16f, ey - 26f + browTilt); quadTo(ex, ey - 34f, ex + s * 16f, ey - 26f - browTilt * 0.3f) }, BROW, 4f)
-            if (blink || pose.face == 1) {
+            if (m > 0.3f) {
+                // Smoky eyeshadow once she starts dressing up for you.
+                p.oval(ex + s * 3f, ey - 10f, 19f, 11f, alpha(rgb(0xB0, 0x5A, 0x8A), 0.12f + 0.3f * m))
+            }
+            val winking = (pose.face == 3 || pose.face == 4) && s > 0
+            if (blink || pose.face == 1 || winking) {
                 // Closed, smiling eyes.
                 p.stroke(shape { moveTo(ex - 15f, ey + 2f); quadTo(ex, ey - 12f, ex + 15f, ey + 2f) }, LASH, 4.5f)
                 p.line(ex + s * 15f, ey + 1f, ex + s * 21f, ey - 4f, LASH, 3f)
@@ -236,6 +243,10 @@ object Bella {
             p.oval(ex, ey + 3f, 5.5f, 7f, rgb(0x1E, 0x2A, 0x44))
             p.oval(ex + 4f, ey - 4f, 4f, 4.5f, WHITE)
             p.oval(ex - 4f, ey + 8f, 2f, 2f, alpha(WHITE, 0.8f))
+            if (m > 0.3f) {
+                // Heavy-lidded, sultry look.
+                p.fill(shape { moveTo(ex - 17f, ey - 4f); quadTo(ex, ey - 26f, ex + 17f, ey - 4f); quadTo(ex, ey - 8f + 4f * m, ex - 17f, ey - 4f); close() }, SKIN)
+            }
             // Upper lash line with a little flick at the outer corner.
             p.stroke(shape { moveTo(ex - 16f, ey - 3f); quadTo(ex, ey - 22f, ex + 16f, ey - 3f) }, LASH, 4.5f)
             p.fill(shape {
@@ -244,6 +255,8 @@ object Bella {
                 quadTo(ex + s * 22f, ey - 5f, ex + s * 15f, ey - 3f)
                 close()
             }, LASH)
+            // Long lashes.
+            for (k in 0..2) p.line(ex + s * (4f + k * 5f), ey - 13f + k * 2f, ex + s * (7f + k * 7f), ey - 21f + k * 2f, LASH, 2.5f)
             if (m > 0.55f) {
                 // Hearts in her eyes once she's really into you.
                 p.fill(heart(ex + 5f, ey - 4f, 4f), alpha(rgb(0xFF, 0x9E, 0xC0), (m - 0.55f) * 2.2f))
@@ -259,6 +272,15 @@ object Bella {
                 p.oval(0f, 151f, 10f, 8f, rgb(0x9A, 0x2E, 0x40))
                 p.oval(0f, 155f, 6f, 3f, rgb(0xFF, 0x8A, 0x9A))
                 p.stroke(shape { moveTo(-11f, 148f); quadTo(0f, 141f, 11f, 148f) }, lipColor, 3.5f)
+            }
+            pose.face == 4 -> {
+                // Puckered up, blowing a kiss.
+                p.oval(4f, 150f, 7f, 7f, lipColor)
+                p.oval(4f, 150f, 2.5f, 3f, darker(lipColor, 0.35f))
+            }
+            pose.face == 3 -> {
+                // A playful smirk.
+                p.fill(shape { moveTo(-12f, 147f); quadTo(4f, 156f, 16f, 142f); quadTo(4f, 151f, -12f, 147f); close() }, lipColor)
             }
             pose.face == 2 -> {
                 p.fill(shape { moveTo(-8f, 152f); quadTo(0f, 146f, 8f, 152f); quadTo(0f, 156f, -8f, 152f); close() }, lipColor)
@@ -365,9 +387,9 @@ object Bella {
             }
             Cut.TEE_JEANS -> {
                 sym(p, o.second) { s ->
-                    moveTo(-s * 2f, 372f)
-                    lineTo(s * 56f, 372f)
-                    quadTo(s * 60f, 420f, s * 92f, 466f)
+                    moveTo(-s * 2f, 404f)
+                    lineTo(s * 66f, 404f)
+                    quadTo(s * 74f, 432f, s * 92f, 466f)
                     quadTo(s * 92f, 600f, s * 64f, 690f)
                     quadTo(s * 64f, 780f, s * 48f, 856f)
                     lineTo(s * 16f, 856f)
@@ -379,10 +401,12 @@ object Bella {
                 val seam = lighter(o.second, 0.25f)
                 p.stroke(shape { moveTo(-60f, 470f); quadTo(-40f, 640f, -42f, 850f) }, seam, 2f)
                 p.stroke(shape { moveTo(60f, 470f); quadTo(40f, 640f, 42f, 850f) }, seam, 2f)
-                p.line(0f, 400f, 0f, 520f, darker(o.second, 0.2f), 2f)
+                p.line(0f, 420f, 0f, 520f, darker(o.second, 0.2f), 2f)
                 // Belt.
-                p.rect(-58f, 372f, 116f, 14f, rgb(0x6B, 0x45, 0x2A))
-                p.roundRect(-10f, 370f, 20f, 18f, 3f, rgb(0xE8, 0xC4, 0x5C))
+                p.rect(-68f, 404f, 136f, 14f, rgb(0x6B, 0x45, 0x2A))
+                p.roundRect(-10f, 402f, 20f, 18f, 3f, rgb(0xE8, 0xC4, 0x5C))
+                // Belly button peeking out under the crop top.
+                p.oval(0f, 384f, 2.5f, 4f, SKIN_SHADE)
             }
             Cut.BLOUSE_SKIRT -> {
                 sym(p, o.second) { s ->
@@ -427,25 +451,25 @@ object Bella {
             }
             Cut.TEE_JEANS -> {
                 sym(p, c) { s ->
-                    moveTo(-s * 2f, 236f)
-                    quadTo(s * 24f, 236f, s * 30f, 196f)
-                    quadTo(s * 40f, 214f, s * 76f, 216f)
+                    moveTo(-s * 2f, 256f)
+                    quadTo(s * 30f, 256f, s * 38f, 200f)
+                    quadTo(s * 46f, 214f, s * 76f, 216f)
                     quadTo(s * 92f, 222f, s * 88f, 254f)
                     quadTo(s * 96f, 300f, s * 66f, 326f)
-                    quadTo(s * 54f, 345f, s * 56f, 384f)
-                    lineTo(-s * 2f, 384f)
+                    quadTo(s * 58f, 340f, s * 58f, 352f)
+                    lineTo(-s * 2f, 356f)
                     close()
                 }
-                p.stroke(shape { moveTo(-30f, 196f); quadTo(-24f, 236f, 0f, 236f); quadTo(24f, 236f, 30f, 196f) }, rgb(0xE4, 0xE4, 0xEE), 4f)
-                p.heartIcon(-40f, 250f, 10f, PINK)
+                p.stroke(shape { moveTo(-38f, 200f); quadTo(-30f, 256f, 0f, 256f); quadTo(30f, 256f, 38f, 200f) }, PINK, 4f)
+                p.heartIcon(-46f, 290f, 9f, PINK)
             }
             Cut.SUNDRESS -> {
                 bodice(p, c, 248f, straps = true, strapW = 9f)
             }
             Cut.BLOUSE_SKIRT -> {
                 sym(p, c) { s ->
-                    moveTo(-s * 2f, 268f)
-                    lineTo(s * 30f, 200f)
+                    moveTo(-s * 2f, 290f)
+                    lineTo(s * 32f, 200f)
                     quadTo(s * 40f, 214f, s * 76f, 216f)
                     quadTo(s * 92f, 222f, s * 88f, 254f)
                     quadTo(s * 96f, 300f, s * 66f, 326f)
@@ -454,9 +478,9 @@ object Bella {
                     close()
                 }
                 // Collar and buttons.
-                p.fill(poly(-30f, 200f, -2f, 268f, -22f, 236f, -46f, 214f), lighter(c, 0.3f))
-                p.fill(poly(30f, 200f, 2f, 268f, 22f, 236f, 46f, 214f), lighter(c, 0.3f))
-                for (i in 0..2) p.oval(0f, 290f + i * 30f, 3.5f, 3.5f, WHITE)
+                p.fill(poly(-32f, 200f, -12f, 262f, -26f, 240f, -48f, 214f), lighter(c, 0.3f))
+                p.fill(poly(32f, 200f, 12f, 262f, 26f, 240f, 48f, 214f), lighter(c, 0.3f))
+                for (i in 0..1) p.oval(0f, 314f + i * 30f, 3.5f, 3.5f, WHITE)
             }
             Cut.COCKTAIL -> bodice(p, c, 256f, straps = true, strapW = 5f)
             Cut.GOWN -> bodice(p, c, 256f, straps = true, strapW = 4f)
@@ -522,17 +546,17 @@ object Bella {
                     moveTo(-56f, 372f)
                     lineTo(56f, 372f)
                     quadTo(80f, 420f, 96f, 470f)
-                    quadTo(112f, 560f, 118f, 618f)
-                    quadTo(0f, 640f, -118f, 618f)
-                    quadTo(-112f, 560f, -96f, 470f)
+                    quadTo(104f, 520f, 98f, 566f)
+                    quadTo(0f, 584f, -98f, 566f)
+                    quadTo(-104f, 520f, -96f, 470f)
                     quadTo(-80f, 420f, -56f, 372f)
                     close()
                 }, c)
                 val ruche = darker(c, 0.2f)
                 p.stroke(shape { moveTo(-50f, 390f); quadTo(0f, 420f, 60f, 400f) }, ruche, 3f)
                 p.stroke(shape { moveTo(-70f, 440f); quadTo(0f, 470f, 76f, 444f) }, ruche, 3f)
-                p.stroke(shape { moveTo(-40f, 520f); quadTo(-60f, 580f, -70f, 620f) }, ruche, 3f)
-                p.stroke(shape { moveTo(30f, 520f); quadTo(50f, 580f, 60f, 624f) }, ruche, 3f)
+                p.stroke(shape { moveTo(-40f, 500f); quadTo(-52f, 540f, -60f, 570f) }, ruche, 3f)
+                p.stroke(shape { moveTo(30f, 500f); quadTo(44f, 540f, 52f, 572f) }, ruche, 3f)
                 // Waist bow.
                 p.fill(poly(0f, 378f, -26f, 364f, -26f, 394f), o.second)
                 p.fill(poly(0f, 378f, 26f, 364f, 26f, 394f), o.second)
@@ -555,8 +579,10 @@ object Bella {
                 p.stroke(shape { moveTo(-20f, 500f); quadTo(-30f, 720f, -90f, 890f) }, fold, 4f)
                 p.stroke(shape { moveTo(24f, 520f); quadTo(36f, 720f, 70f, 890f) }, fold, 4f)
                 p.stroke(shape { moveTo(0f, 640f); quadTo(4f, 760f, 0f, 896f) }, fold, 3f)
-                // A thigh slit, demure but fancy.
-                p.fill(shape { moveTo(40f, 720f); quadTo(54f, 820f, 76f, 892f); lineTo(36f, 896f); quadTo(36f, 800f, 40f, 720f); close() }, darker(c, 0.25f))
+                // A high thigh slit, with her leg stepping out of it.
+                p.fill(shape { moveTo(44f, 560f); quadTo(70f, 720f, 92f, 892f); lineTo(26f, 896f); quadTo(26f, 720f, 44f, 560f); close() }, darker(c, 0.3f))
+                p.fill(shape { moveTo(46f, 600f); quadTo(66f, 720f, 62f, 856f); lineTo(36f, 856f); quadTo(30f, 720f, 46f, 600f); close() }, SKIN)
+                p.fill(shape { moveTo(32f, 852f); lineTo(66f, 852f); quadTo(70f, 878f, 54f, 894f); lineTo(44f, 894f); quadTo(30f, 878f, 32f, 852f); close() }, o.shoes)
                 p.rect(-56f, 368f, 112f, 12f, rgb(0xE8, 0xC8, 0x6A))
             }
             Cut.GALA -> {
@@ -629,6 +655,13 @@ object Bella {
                 val w = sin(pose.time * 8f) * 14f
                 ex = 150f; ey = 260f
                 hx = 158f + w; hy = 140f
+            } else if (pose.hip && s < 0) {
+                ex = -138f; ey = 330f
+                hx = -78f; hy = 400f
+            } else if (pose.face == 4 && s > 0) {
+                // Hand raised to her lips for a blown kiss.
+                ex = 120f; ey = 330f
+                hx = 30f; hy = 170f
             } else {
                 ex = s * 104f; ey = 368f
                 hx = s * 112f; hy = 486f
@@ -649,7 +682,8 @@ object Bella {
                 }
             }
             // Hand.
-            p.oval(hx, hy + (if (pose.wave && s > 0) -8f else 14f), 15f, 19f, SKIN)
+            val raised = (pose.wave && s > 0) || (pose.face == 4 && s > 0) || (pose.hip && s < 0)
+            p.oval(hx, hy + (if (raised) -8f else 14f), 15f, 19f, SKIN)
             if (o.cut == Cut.GALA || o.cut == Cut.GOWN) {
                 // A bracelet.
                 p.line(hx - 12f, hy - 6f, hx + 12f, hy - 6f, rgb(0xEC, 0xC8, 0x5C), 5f)

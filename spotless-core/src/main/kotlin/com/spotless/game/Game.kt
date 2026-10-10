@@ -204,8 +204,8 @@ class Game(private val sound: SoundSink, private val store: Storage) {
         if (stars > 0) day++
         save()
         val lv = Story.levels[levelBefore]
-        say(if (stars >= 2) lv.thanks.random(rnd) else lv.meh.random(rnd))
         face = if (stars >= 2) 1 else if (stars == 0) 2 else 0
+        say(if (stars >= 2) lv.thanks.random(rnd) else lv.meh.random(rnd))
         go(Screen.REACT)
         repeat(heartsGain) { i -> spawnHeart(360f + (i - heartsGain / 2f) * 60f, 700f, delay = i * 0.25f) }
         if (heartsGain > 0) sound.play(Sound.HEART)
@@ -225,6 +225,11 @@ class Game(private val sound: SoundSink, private val store: Storage) {
     private fun say(s: String) {
         speech = s
         speechT = 0f
+        // Her face matches what she says.
+        when {
+            "kiss" in s || "mwah" in s -> face = 4
+            "wink" in s -> face = 3
+        }
     }
 
     // ================================================================ input
@@ -291,9 +296,14 @@ class Game(private val sound: SoundSink, private val store: Storage) {
         val lines = Story.levels[level].chat
         var line = lines.random(rnd)
         if (line == speech && lines.size > 1) line = lines.first { it != speech }
+        face = when {
+            level >= 4 && rnd.nextInt(3) == 0 -> 4
+            level >= 1 && rnd.nextBoolean() -> 3
+            level >= 2 -> 1
+            else -> 0
+        }
         say(line)
-        face = if (level >= 2) 1 else 0
-        waveT = 1.6f
+        waveT = if (face == 4) 0f else 1.6f
         spawnHeart(x, y, delay = 0f, small = true)
         sound.play(Sound.HEART)
     }
@@ -310,7 +320,7 @@ class Game(private val sound: SoundSink, private val store: Storage) {
             id == "aww" -> {
                 seenLevel = level
                 save()
-                face = 1
+                face = 3
                 say(Story.levels[level].chat.random(rnd))
                 go(Screen.HOME)
             }
@@ -603,7 +613,8 @@ class Game(private val sound: SoundSink, private val store: Storage) {
     }
 
     private fun pose(wave: Boolean = false, talking: Boolean = false) =
-        Pose(mood = mood, time = t, talking = talking, face = face, wave = wave)
+        Pose(mood = mood, time = t, talking = talking && face != 4, face = face, wave = wave && face != 4,
+            hip = level >= 2)
 
     private fun talking() = speechT < speech.length / 45f && (t * 8f).toInt() % 2 == 0
 
@@ -808,7 +819,7 @@ class Game(private val sound: SoundSink, private val store: Storage) {
         p.oval(VW / 2, 1150f, 280f, 40f, alpha(WHITE, 0.15f))
         val lv = Story.levels[level]
         val pop = (screenT * 2.5f).coerceAtMost(1f)
-        Bella.draw(p, lv.outfit, VW / 2, 1150f, 0.78f * (0.85f + 0.15f * pop), Pose(mood = mood, time = t, face = 1, wave = screenT < 2.5f))
+        Bella.draw(p, lv.outfit, VW / 2, 1150f, 0.78f * (0.85f + 0.15f * pop), Pose(mood = mood, time = t, face = if (screenT < 2.5f) 1 else 3, wave = screenT < 2.5f, hip = level >= 2))
         p.outlinedText(lv.title + "!", VW / 2, 80f, 60f, WHITE, PINK)
         p.text("New outfit: ${lv.outfit.name}", VW / 2, 130f, 30f, rgb(0xFF, 0xE0, 0xEC), ALIGN_CENTER)
         bubble(p, lv.revealLine, 40f, 170f, VW - 80f, VW / 2 + 40f)

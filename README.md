@@ -145,19 +145,22 @@ A second game in this repository: a cosy house-cleaning game for Android (portra
 
 ![Spotless](docs/spotless.png)
 
-You've moved in with **Bella**, a blonde who isn't impressed with you at first. Clean the house
+You've moved in with **Bella**, a flirty blonde who isn't impressed with you at first. Clean the house
 room by room. The better you clean, the more hearts you earn and the more she falls for you.
 Every new affection level she goes to change, comes back in a nicer outfit and gives you a reward.
 
 | Hearts | Bella is... | She wears | Reward |
 |---|---|---|---|
 | 0 | New Roommate | A comfy hoodie and sweatpants | |
-| 3 | Friendly | A tee and jeans | Lemonade: +5 seconds in every room |
-| 7 | Fond of You | A yellow summer sundress | Cookies: +25% coins |
-| 12 | Crushing on You | A pink blouse and pencil skirt | Dinner: +20% cleaning power |
-| 18 | Sweetheart | A red cocktail dress | A dinner date: an extra heart for 3-star rooms |
-| 25 | In Love | An emerald evening gown | A slow dance: +50% more coins |
-| 33 | Soulmates | A golden gala gown and tiara | Her date to the Royal Gala: double coins |
+| 2 | Flirty | A crop top and low-rise jeans | Lemonade: +5 seconds in every room |
+| 4 | Fond of You | A yellow summer sundress | Cookies: +25% coins |
+| 6 | Crushing on You | A low-cut blouse and pencil skirt | Dinner: +20% cleaning power |
+| 9 | Sweetheart | A little red dress | A dinner date: an extra heart for 3-star rooms |
+| 12 | In Love | An emerald gown with a high slit | A slow dance: +50% more coins |
+| 16 | Soulmates | A golden gala gown and tiara | Her date to the Royal Gala: double coins |
+
+Bella has green eyes. Once she likes you, she flirts: she winks, blows kisses, poses with a hand on her
+hip and wears smoky eyeshadow.
 
 How to play:
 
