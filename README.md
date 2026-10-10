@@ -152,14 +152,14 @@ Every new affection level she goes to change, comes back in a nicer outfit and g
 | Hearts | Bella is... | She wears | Reward |
 |---|---|---|---|
 | 0 | New Roommate | A comfy hoodie and sweatpants | |
-| 2 | Flirty | A crop top and low-rise jeans | Lemonade: +5 seconds in every room |
-| 4 | Fond of You | A yellow summer sundress | Cookies: +25% coins |
-| 6 | Crushing on You | A low-cut blouse and pencil skirt | Dinner: +20% cleaning power |
-| 9 | Sweetheart | A little red dress | A dinner date: an extra heart for 3-star rooms |
-| 12 | In Love | An emerald gown with a high slit | A slow dance: +50% more coins |
-| 16 | Soulmates | A golden gala gown and tiara | Her date to the Royal Gala: double coins |
+| 2 | Flirty | A crop top and denim cut-offs | Lemonade: +5 seconds in every room |
+| 4 | Fond of You | A short yellow sundress | Cookies: +25% coins |
+| 6 | Crushing on You | A knotted, unbuttoned blouse and a mini skirt | Dinner: +20% cleaning power |
+| 9 | Sweetheart | A strapless red mini dress | A dinner date: an extra heart for 3-star rooms |
+| 12 | In Love | A pink bikini and sarong | A pool party for two: +50% more coins |
+| 16 | Soulmates | A golden gown with a high slit, and a tiara | Her date to the Royal Gala: double coins |
 
-Bella has green eyes. Once she likes you, she flirts: she winks, blows kisses, poses with a hand on her
+Bella has green eyes and a curvy figure. Once she likes you, she flirts: she winks, blows kisses, poses with a hand on her
 hip and wears smoky eyeshadow.
 
 How to play:

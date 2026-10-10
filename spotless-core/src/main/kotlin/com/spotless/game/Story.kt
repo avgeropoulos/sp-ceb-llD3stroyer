@@ -2,7 +2,7 @@ package com.spotless.game
 
 enum class Hair { BUN, PONYTAIL, DOWN, WAVY, UPDO }
 
-enum class Cut { HOODIE, TEE_JEANS, SUNDRESS, BLOUSE_SKIRT, COCKTAIL, GOWN, GALA }
+enum class Cut { HOODIE, TEE_JEANS, SUNDRESS, BLOUSE_SKIRT, COCKTAIL, BIKINI, GOWN, GALA }
 
 /** One of Bella's outfits. Each new affection level unlocks a nicer one. */
 class Outfit(
@@ -52,7 +52,7 @@ object Story {
         ),
         Level(
             title = "Flirty", hearts = 2,
-            outfit = Outfit("Crop Top & Jeans", Cut.TEE_JEANS, Hair.PONYTAIL,
+            outfit = Outfit("Crop Top & Cutoffs", Cut.TEE_JEANS, Hair.PONYTAIL,
                 rgb(0xFF, 0xFF, 0xFF), rgb(0x4A, 0x6F, 0xB5), rgb(0xFF, 0x7A, 0x9C), rgb(0xE8, 0x80, 0x8A)),
             reward = "Fresh lemonade!", perk = "+5 seconds in every room",
             revealLine = "I made us some lemonade! You've earned it.",
@@ -66,7 +66,7 @@ object Story {
         ),
         Level(
             title = "Fond of You", hearts = 4,
-            outfit = Outfit("Summer Sundress", Cut.SUNDRESS, Hair.DOWN,
+            outfit = Outfit("Short Sundress", Cut.SUNDRESS, Hair.DOWN,
                 rgb(0xFF, 0xD9, 0x4F), rgb(0xFF, 0xFF, 0xFF), rgb(0xC9, 0x8E, 0x5A), rgb(0xF0, 0x6E, 0x80)),
             reward = "Homemade cookies!", perk = "+25% coins",
             revealLine = "I baked cookies just for you. And this dress... do you like it? *twirls*",
@@ -80,7 +80,7 @@ object Story {
         ),
         Level(
             title = "Crushing on You", hearts = 6,
-            outfit = Outfit("Blouse & Pencil Skirt", Cut.BLOUSE_SKIRT, Hair.WAVY,
+            outfit = Outfit("Knotted Blouse & Mini", Cut.BLOUSE_SKIRT, Hair.WAVY,
                 rgb(0xFF, 0x9E, 0xBE), rgb(0x2E, 0x2A, 0x38), rgb(0x2E, 0x2A, 0x38), rgb(0xE8, 0x4A, 0x6A),
                 earrings = true),
             reward = "She cooks you dinner!", perk = "Bella helps: +20% cleaning power",
@@ -95,7 +95,7 @@ object Story {
         ),
         Level(
             title = "Sweetheart", hearts = 9,
-            outfit = Outfit("Little Red Dress", Cut.COCKTAIL, Hair.WAVY,
+            outfit = Outfit("Strapless Red Mini", Cut.COCKTAIL, Hair.WAVY,
                 rgb(0xD8, 0x1B, 0x3C), rgb(0xA0, 0x10, 0x2A), rgb(0xD8, 0x1B, 0x3C), rgb(0xC8, 0x10, 0x30),
                 necklace = true, earrings = true),
             reward = "A dinner date!", perk = "+1 extra heart for 3-star rooms",
@@ -110,11 +110,11 @@ object Story {
         ),
         Level(
             title = "In Love", hearts = 12,
-            outfit = Outfit("Emerald Evening Gown", Cut.GOWN, Hair.UPDO,
-                rgb(0x0E, 0x8A, 0x6A), rgb(0x0A, 0x5E, 0x4A), rgb(0xE8, 0xC8, 0x6A), rgb(0xC4, 0x2A, 0x4E),
-                sparkles = true, necklace = true, earrings = true),
-            reward = "A slow dance and a kiss on the cheek", perk = "+50% more coins",
-            revealLine = "Dance with me, nice and slow... I think I'm falling in love with you.",
+            outfit = Outfit("Pool Party Bikini", Cut.BIKINI, Hair.WAVY,
+                rgb(0xFF, 0x3E, 0x8A), rgb(0xFF, 0xB8, 0xD8), rgb(0xFF, 0x3E, 0x8A), rgb(0xD8, 0x20, 0x50),
+                necklace = true, earrings = true),
+            reward = "A pool party for two", perk = "+50% more coins",
+            revealLine = "Pool party, just you and me. Rub some sunscreen on my back? ...I think I'm falling for you.",
             chat = listOf(
                 "I love you. There, I said it!",
                 "Feel how fast my heart is beating? That's all you.",
@@ -125,8 +125,8 @@ object Story {
         ),
         Level(
             title = "Soulmates", hearts = 16,
-            outfit = Outfit("Golden Gala Gown", Cut.GALA, Hair.UPDO,
-                rgb(0xF2, 0xD8, 0x8C), rgb(0xFF, 0xF4, 0xD6), rgb(0xF2, 0xD8, 0x8C), rgb(0xD0, 0x30, 0x58),
+            outfit = Outfit("Golden Slit Gown", Cut.GOWN, Hair.UPDO,
+                rgb(0xE8, 0xB8, 0x48), rgb(0xC0, 0x90, 0x30), rgb(0xE8, 0xB8, 0x48), rgb(0xD0, 0x20, 0x48),
                 sparkles = true, necklace = true, earrings = true, tiara = true),
             reward = "Her date to the Royal Gala", perk = "Double coins!",
             revealLine = "Will you be my date to the Royal Gala? Forever and always.",

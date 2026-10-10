@@ -71,9 +71,9 @@ object Bella {
         moveTo(-s * 2f, 190f)
         lineTo(s * 18f, 190f)
         quadTo(s * 28f, 212f, s * 76f, 216f)
-        quadTo(s * 92f, 222f, s * 88f, 254f)
-        quadTo(s * 96f, 300f, s * 66f, 326f)
-        quadTo(s * 54f, 345f, s * 54f, 376f)
+        quadTo(s * 92f, 222f, s * 90f, 254f)
+        quadTo(s * 102f, 306f, s * 66f, 334f)
+        quadTo(s * 54f, 350f, s * 54f, 376f)
         quadTo(s * 58f, 422f, s * 92f, 466f)
         quadTo(s * 98f, 500f, s * 86f, 528f)
         lineTo(-s * 2f, 528f)
@@ -208,7 +208,7 @@ object Bella {
             close()
         }, SKIN)
         if (o.earrings) {
-            val c = if (o.cut == Cut.GOWN) rgb(0x2C, 0xD8, 0x9A) else rgb(0xFF, 0xE6, 0x8A)
+            val c = if (o.cut == Cut.GOWN) rgb(0xD8, 0xF4, 0xFF) else rgb(0xFF, 0xE6, 0x8A)
             p.line(-64f, 122f, -64f, 136f, rgb(0xE8, 0xC0, 0x5A), 2.5f)
             p.line(64f, 122f, 64f, 136f, rgb(0xE8, 0xC0, 0x5A), 2.5f)
             p.oval(-64f, 142f, 6f, 8f, c)
@@ -314,7 +314,7 @@ object Bella {
     }
 
     private fun legs(p: Painter, o: Outfit) {
-        val skinLegs = o.cut != Cut.HOODIE && o.cut != Cut.TEE_JEANS && o.cut != Cut.GOWN && o.cut != Cut.GALA
+        val skinLegs = o.cut != Cut.HOODIE && o.cut != Cut.GOWN && o.cut != Cut.GALA
         if (skinLegs) {
             sym(p, SKIN) { s ->
                 moveTo(s * 2f, 500f)
@@ -343,7 +343,7 @@ object Bella {
                     p.roundRect(fx - 25f, 852f, 50f, 34f, 14f, o.shoes)
                     p.rect(fx - 25f, 877f, 50f, 8f, WHITE)
                 }
-                Cut.SUNDRESS -> {
+                Cut.SUNDRESS, Cut.BIKINI -> {
                     p.oval(fx, 872f, 16f, 15f, SKIN)
                     p.roundRect(fx - 18f, 880f, 36f, 8f, 4f, darker(o.shoes, 0.2f))
                     p.line(fx - 14f, 866f, fx + 14f, 866f, o.shoes, 5f)
@@ -386,39 +386,67 @@ object Bella {
                 p.line(8f, 560f, 12f, 820f, darker(o.second, 0.15f), 2f)
             }
             Cut.TEE_JEANS -> {
+                // Denim cut-off shorts.
                 sym(p, o.second) { s ->
                     moveTo(-s * 2f, 404f)
                     lineTo(s * 66f, 404f)
                     quadTo(s * 74f, 432f, s * 92f, 466f)
-                    quadTo(s * 92f, 600f, s * 64f, 690f)
-                    quadTo(s * 64f, 780f, s * 48f, 856f)
-                    lineTo(s * 16f, 856f)
-                    quadTo(s * 12f, 770f, s * 16f, 690f)
-                    quadTo(s * 6f, 600f, s * 4f, 548f)
-                    lineTo(-s * 2f, 540f)
+                    quadTo(s * 96f, 510f, s * 90f, 546f)
+                    lineTo(s * 14f, 552f)
+                    lineTo(s * 4f, 526f)
+                    lineTo(-s * 2f, 524f)
                     close()
                 }
-                val seam = lighter(o.second, 0.25f)
-                p.stroke(shape { moveTo(-60f, 470f); quadTo(-40f, 640f, -42f, 850f) }, seam, 2f)
-                p.stroke(shape { moveTo(60f, 470f); quadTo(40f, 640f, 42f, 850f) }, seam, 2f)
+                val fray = lighter(o.second, 0.45f)
+                for (k in 0 until 6) {
+                    p.line(-86f + k * 13f, 546f, -84f + k * 13f, 556f, fray, 2.5f)
+                    p.line(20f + k * 13f, 548f, 22f + k * 13f, 558f, fray, 2.5f)
+                }
                 p.line(0f, 420f, 0f, 520f, darker(o.second, 0.2f), 2f)
+                p.stroke(shape { moveTo(-60f, 420f); quadTo(-40f, 440f, -24f, 420f) }, darker(o.second, 0.2f), 2f)
+                p.stroke(shape { moveTo(60f, 420f); quadTo(40f, 440f, 24f, 420f) }, darker(o.second, 0.2f), 2f)
                 // Belt.
                 p.rect(-68f, 404f, 136f, 14f, rgb(0x6B, 0x45, 0x2A))
                 p.roundRect(-10f, 402f, 20f, 18f, 3f, rgb(0xE8, 0xC4, 0x5C))
-                // Belly button peeking out under the crop top.
                 p.oval(0f, 384f, 2.5f, 4f, SKIN_SHADE)
             }
             Cut.BLOUSE_SKIRT -> {
+                // A tight mini skirt sitting low on the hips.
                 sym(p, o.second) { s ->
-                    moveTo(-s * 2f, 366f)
-                    lineTo(s * 56f, 366f)
-                    quadTo(s * 62f, 420f, s * 94f, 468f)
-                    quadTo(s * 96f, 560f, s * 82f, 664f)
-                    lineTo(-s * 2f, 664f)
+                    moveTo(-s * 2f, 400f)
+                    lineTo(s * 64f, 400f)
+                    quadTo(s * 76f, 432f, s * 94f, 468f)
+                    quadTo(s * 100f, 510f, s * 96f, 548f)
+                    lineTo(-s * 2f, 552f)
                     close()
                 }
-                p.line(46f, 600f, 46f, 664f, darker(o.second, 0.5f), 3f)
-                p.rect(-56f, 366f, 112f, 14f, darker(o.second, 0.3f))
+                p.rect(-64f, 400f, 128f, 14f, darker(o.second, 0.3f))
+                p.oval(0f, 384f, 2.5f, 4f, SKIN_SHADE)
+            }
+            Cut.BIKINI -> {
+                // Bikini bottoms with side ties.
+                p.fill(shape {
+                    moveTo(-84f, 476f)
+                    quadTo(0f, 492f, 84f, 476f)
+                    quadTo(60f, 508f, 16f, 540f)
+                    lineTo(-16f, 540f)
+                    quadTo(-60f, 508f, -84f, 476f)
+                    close()
+                }, o.main)
+                for (sd in floatArrayOf(-1f, 1f)) {
+                    p.line(sd * 84f, 478f, sd * 96f, 470f, o.main, 4f)
+                    p.line(sd * 90f, 478f, sd * 96f, 500f, o.main, 3f)
+                }
+                p.oval(0f, 410f, 2.5f, 4f, SKIN_SHADE)
+                // A sheer sarong knotted on one hip.
+                p.fill(shape {
+                    moveTo(70f, 470f)
+                    quadTo(120f, 560f, 110f, 660f)
+                    lineTo(30f, 640f)
+                    quadTo(40f, 560f, 70f, 470f)
+                    close()
+                }, alpha(o.second, 0.55f))
+                p.oval(78f, 474f, 10f, 9f, o.second)
             }
             else -> {}
         }
@@ -443,10 +471,6 @@ object Bella {
                     moveTo(-60f, 440f); lineTo(60f, 440f); lineTo(76f, 512f); lineTo(-76f, 512f); close()
                 }, darker(c, 0.07f))
                 p.stroke(shape { moveTo(-60f, 440f); lineTo(60f, 440f); lineTo(76f, 512f); lineTo(-76f, 512f); close() }, darker(c, 0.18f), 2f)
-                p.line(-14f, 200f, -18f, 290f, WHITE, 4f)
-                p.line(14f, 200f, 18f, 290f, WHITE, 4f)
-                p.oval(-18f, 294f, 4f, 5f, rgb(0xDD, 0xDD, 0xDD))
-                p.oval(18f, 294f, 4f, 5f, rgb(0xDD, 0xDD, 0xDD))
                 p.text("SPOTLESS", 0f, 380f, 20f, darker(c, 0.18f), ALIGN_CENTER)
             }
             Cut.TEE_JEANS -> {
@@ -460,30 +484,28 @@ object Bella {
                     lineTo(-s * 2f, 356f)
                     close()
                 }
-                p.stroke(shape { moveTo(-38f, 200f); quadTo(-30f, 256f, 0f, 256f); quadTo(30f, 256f, 38f, 200f) }, PINK, 4f)
-                p.heartIcon(-46f, 290f, 9f, PINK)
             }
             Cut.SUNDRESS -> {
                 bodice(p, c, 248f, straps = true, strapW = 9f)
             }
             Cut.BLOUSE_SKIRT -> {
+                // Unbuttoned and knotted under the bust.
                 sym(p, c) { s ->
-                    moveTo(-s * 2f, 290f)
-                    lineTo(s * 32f, 200f)
-                    quadTo(s * 40f, 214f, s * 76f, 216f)
+                    moveTo(s * 6f, 330f)
+                    lineTo(s * 34f, 200f)
+                    quadTo(s * 42f, 214f, s * 76f, 216f)
                     quadTo(s * 92f, 222f, s * 88f, 254f)
                     quadTo(s * 96f, 300f, s * 66f, 326f)
-                    quadTo(s * 54f, 345f, s * 56f, 374f)
-                    lineTo(-s * 2f, 374f)
+                    quadTo(s * 60f, 340f, s * 58f, 346f)
+                    lineTo(s * 6f, 340f)
                     close()
                 }
-                // Collar and buttons.
-                p.fill(poly(-32f, 200f, -12f, 262f, -26f, 240f, -48f, 214f), lighter(c, 0.3f))
-                p.fill(poly(32f, 200f, 12f, 262f, 26f, 240f, 48f, 214f), lighter(c, 0.3f))
-                for (i in 0..1) p.oval(0f, 314f + i * 30f, 3.5f, 3.5f, WHITE)
+                p.fill(poly(-34f, 200f, -20f, 248f, -30f, 236f, -50f, 214f), lighter(c, 0.3f))
+                p.fill(poly(34f, 200f, 20f, 248f, 30f, 236f, 50f, 214f), lighter(c, 0.3f))
             }
-            Cut.COCKTAIL -> bodice(p, c, 256f, straps = true, strapW = 5f)
-            Cut.GOWN -> bodice(p, c, 256f, straps = true, strapW = 4f)
+            Cut.COCKTAIL -> bodice(p, c, 268f, straps = false, strapW = 0f)
+            Cut.GOWN -> bodice(p, c, 262f, straps = true, strapW = 4f)
+            Cut.BIKINI -> {}
             Cut.GALA -> {
                 bodice(p, c, 256f, straps = false, strapW = 0f)
                 // Off-shoulder puff sleeves.
@@ -514,6 +536,10 @@ object Bella {
         val c = o.main
         when (o.cut) {
             Cut.SUNDRESS -> {
+                p.save()
+                p.translate(0f, 372f)
+                p.scale(1f, 0.68f)
+                p.translate(0f, -372f)
                 val sway = sin(t * 1.8f) * 6f
                 p.fill(shape {
                     moveTo(-56f, 372f)
@@ -540,23 +566,23 @@ object Bella {
                     p.oval(fx, fy, 3f, 3f, rgb(0xFF, 0xA0, 0x30))
                     i += 2
                 }
+                p.restore()
             }
             Cut.COCKTAIL -> {
                 p.fill(shape {
                     moveTo(-56f, 372f)
                     lineTo(56f, 372f)
                     quadTo(80f, 420f, 96f, 470f)
-                    quadTo(104f, 520f, 98f, 566f)
-                    quadTo(0f, 584f, -98f, 566f)
-                    quadTo(-104f, 520f, -96f, 470f)
+                    quadTo(102f, 500f, 96f, 532f)
+                    quadTo(0f, 548f, -96f, 532f)
+                    quadTo(-102f, 500f, -96f, 470f)
                     quadTo(-80f, 420f, -56f, 372f)
                     close()
                 }, c)
                 val ruche = darker(c, 0.2f)
                 p.stroke(shape { moveTo(-50f, 390f); quadTo(0f, 420f, 60f, 400f) }, ruche, 3f)
                 p.stroke(shape { moveTo(-70f, 440f); quadTo(0f, 470f, 76f, 444f) }, ruche, 3f)
-                p.stroke(shape { moveTo(-40f, 500f); quadTo(-52f, 540f, -60f, 570f) }, ruche, 3f)
-                p.stroke(shape { moveTo(30f, 500f); quadTo(44f, 540f, 52f, 572f) }, ruche, 3f)
+                p.stroke(shape { moveTo(-70f, 490f); quadTo(0f, 516f, 74f, 494f) }, ruche, 3f)
                 // Waist bow.
                 p.fill(poly(0f, 378f, -26f, 364f, -26f, 394f), o.second)
                 p.fill(poly(0f, 378f, 26f, 364f, 26f, 394f), o.second)
@@ -614,23 +640,76 @@ object Bella {
         }
     }
 
-    /** Soft shading so her figure reads under the clothes. */
+    /** Her full bust, with cleavage showing above low necklines. */
     private fun chest(p: Painter, o: Outfit) {
         val c = o.main
-        val shade = alpha(darker(c, 0.35f), 0.55f)
-        val shine = alpha(lighter(c, 0.5f), 0.35f)
-        val y = if (o.cut == Cut.HOODIE) 304f else 300f
-        p.stroke(shape { moveTo(-74f, y - 8f); quadTo(-46f, y + 26f, -10f, y + 2f) }, shade, 3f)
-        p.stroke(shape { moveTo(74f, y - 8f); quadTo(46f, y + 26f, 10f, y + 2f) }, shade, 3f)
-        p.oval(-44f, y - 26f, 18f, 11f, shine)
-        p.oval(44f, y - 26f, 18f, 11f, shine)
+        val shade = alpha(darker(c, 0.4f), 0.5f)
+        val shine = alpha(lighter(c, 0.55f), 0.4f)
+        val lowCut = when (o.cut) {
+            Cut.HOODIE -> null
+            Cut.TEE_JEANS -> 262f
+            Cut.SUNDRESS -> 256f
+            Cut.BLOUSE_SKIRT -> 270f
+            Cut.COCKTAIL -> 270f
+            Cut.BIKINI -> 268f
+            else -> 266f
+        }
+        if (lowCut == null) {
+            // Covered up, but still curvy.
+            sym(p, c) { s -> moveTo(s * 2f, 252f); quadTo(s * 84f, 236f, s * 88f, 296f); quadTo(s * 80f, 342f, s * 2f, 326f); close() }
+            p.stroke(shape { moveTo(-82f, 300f); quadTo(-46f, 346f, -6f, 318f) }, shade, 3f)
+            p.stroke(shape { moveTo(82f, 300f); quadTo(46f, 346f, 6f, 318f) }, shade, 3f)
+            p.oval(-44f, 272f, 20f, 12f, shine)
+            p.oval(44f, 272f, 20f, 12f, shine)
+            p.line(-14f, 200f, -18f, 300f, WHITE, 4f)
+            p.line(14f, 200f, 18f, 300f, WHITE, 4f)
+            return
+        }
+        val y = lowCut
+        // Skin above the neckline...
+        p.oval(-38f, y + 18f, 44f, 36f, SKIN)
+        p.oval(38f, y + 18f, 44f, 36f, SKIN)
+        p.stroke(shape { moveTo(-4f, y - 18f); quadTo(2f, y - 2f, 0f, y + 14f) }, SKIN_SHADE, 3f)
+        p.stroke(shape { moveTo(-30f, y - 14f); quadTo(-12f, y - 20f, -4f, y - 10f) }, alpha(SKIN_SHADE, 0.6f), 2f)
+        p.stroke(shape { moveTo(30f, y - 14f); quadTo(12f, y - 20f, 4f, y - 10f) }, alpha(SKIN_SHADE, 0.6f), 2f)
+        // ...and the fabric cups below it.
+        sym(p, c) { s ->
+            moveTo(s * 2f, y + 12f)
+            quadTo(s * 36f, y - 8f, s * 84f, y + 2f)
+            quadTo(s * 96f, y + 50f, s * 70f, y + 70f)
+            quadTo(s * 30f, y + 84f, s * 2f, y + 60f)
+            close()
+        }
+        p.stroke(shape { moveTo(-80f, y + 46f); quadTo(-44f, y + 88f, -4f, y + 58f) }, shade, 3f)
+        p.stroke(shape { moveTo(80f, y + 46f); quadTo(44f, y + 88f, 4f, y + 58f) }, shade, 3f)
+        p.oval(-46f, y + 18f, 18f, 9f, shine)
+        p.oval(46f, y + 18f, 18f, 9f, shine)
+        when (o.cut) {
+            Cut.BIKINI -> {
+                // Halter strings and a centre ring.
+                p.line(-40f, y - 4f, -16f, 196f, c, 3.5f)
+                p.line(40f, y - 4f, 16f, 196f, c, 3.5f)
+                p.line(-84f, y + 20f, -92f, y + 30f, c, 3.5f)
+                p.line(84f, y + 20f, 92f, y + 30f, c, 3.5f)
+                p.oval(0f, y + 24f, 7f, 7f, rgb(0xEC, 0xC8, 0x5C))
+                p.oval(0f, y + 24f, 4f, 4f, SKIN)
+            }
+            Cut.BLOUSE_SKIRT -> {
+                // The knot.
+                p.fill(poly(0f, 340f, -26f, 330f, -20f, 356f), darker(c, 0.1f))
+                p.fill(poly(0f, 340f, 26f, 330f, 20f, 356f), darker(c, 0.1f))
+                p.oval(0f, 340f, 9f, 8f, c)
+            }
+            Cut.TEE_JEANS -> p.heartIcon(-46f, y + 40f, 9f, PINK)
+            else -> {}
+        }
     }
 
     private fun necklace(p: Painter, o: Outfit, t: Float) {
         val gold = rgb(0xEC, 0xC8, 0x5C)
         p.stroke(shape { moveTo(-26f, 196f); quadTo(0f, 238f, 26f, 196f) }, gold, 2.5f)
         val gem = when (o.cut) {
-            Cut.GOWN -> rgb(0x3A, 0xE0, 0xA8)
+            Cut.GOWN -> rgb(0xB8, 0xEC, 0xFF)
             Cut.GALA -> rgb(0x9C, 0xE4, 0xFF)
             else -> rgb(0xFF, 0x40, 0x70)
         }
