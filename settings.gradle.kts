@@ -17,3 +17,5 @@ dependencyResolutionManagement {
 rootProject.name = "RoccosQuest"
 include(":core")
 include(":app")
+include(":team")
+include(":teamapp")

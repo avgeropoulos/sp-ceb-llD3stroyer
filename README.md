@@ -105,6 +105,48 @@ waves, a triangle bass and noise drums, so there are no audio files. Tap the **â
 * Keyboards and game controllers also work: arrow keys or WASD, Shift to run,
   Down or S to crouch/slam, Space to jump, X to fire, M for music.
 
+## New game: Rocco & Blocky: Team Up!
+
+A second game in the same repository. **Rocco** the plumber and **Blocky** the miner team up
+to stop **Krag Jr.** and **King Krag**. **Sparky** the electric mouse follows them around and
+zaps bad guys, and **Ring-Ding Frog** scoots by on his scooter singing his crazy song
+(out loud, with the phone's voice).
+
+![Team Up! title screen](docs/teamup-title.png)
+
+* You control one hero and the other follows you. Tap **SWAP** to switch.
+* **Blocky** swings his pickaxe (**MINE**) to dig stone, **iron**, **gold**, **diamond** and
+  **emerald** out of the rocks. Swipe down to dig straight down.
+* **Rocco** jumps higher and **THROWS** whatever flower power the team has crafted.
+* Tap **CRAFT** to open the crafting table. The CRAFT button glows when you can make something new:
+
+| Recipe | Costs | What it does |
+|---|---|---|
+| Boomerang Flower | 3 iron | Iron is the weakest metal: 1 damage, but the boomerang comes back |
+| Fire Flower | 3 gold | Gold is stronger: bouncing fireballs, 2 damage |
+| Ice Flower | 3 diamond | Diamond is the strongest: 3 damage, freezes bad guys |
+| Grass Flower | 3 emerald | **Green armor** that blocks 3 hits, and Rocco throws sharp leaves |
+| Iron / Gold / Diamond Pickaxe | 3 of that metal | Mines faster and hits harder. You need an iron pickaxe to mine diamond! |
+| Heart | 5 stone | Heals one heart |
+
+  Make the same flower again to power it up to **Lv2** and **Lv3** (Lv3 throws two at once).
+  Switching back to a flower you've already made is free.
+
+![Crafting table](docs/teamup-craft.png)
+
+| Level | Name | What's there |
+|---|---|---|
+| 1 | Grassy Hills | Grumblers, Shellbacks and lots of iron to get started |
+| 2 | Diamond Cave | Diamonds and emeralds, lava pits and winged Grumblers |
+| 3 | Wonder Skies | Cloud jumping, then the **Wonder Krag Jr.** fight: the sky turns rainbow, the ground wobbles and everyone floats |
+| 4 | Krag's Castle | Lava, then the **King Krag** battle. He's slow to turn around, so jump over him! |
+
+It's easy but not too easy: the team has 5 hearts, there are checkpoints, and if you run out
+of hearts you go back to the last checkpoint and keep all your ore. Every 50 coins gives a heart back.
+
+Keyboard: arrows/WASD to move, Space to jump, X to mine/throw, Q to swap, C to craft
+(then 1-6 to pick a recipe), P to pause, M for music.
+
 ## Installing on your phone
 
 Every push builds an APK with GitHub Actions (see `.github/workflows/android.yml`):
@@ -114,6 +156,10 @@ Every push builds an APK with GitHub Actions (see `.github/workflows/android.yml
    in Chrome. It's also the latest release on the repository page.
 2. Download `RoccosQuest.apk` and open it. If Android asks, allow your browser to install unknown apps.
 
+For **Team Up!**, do the same with
+**https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/TeamUp.apk**.
+It installs as a separate app, so you can have both games.
+
 ## Building it yourself
 
 You need JDK 17 and the Android SDK (Android Studio installs both).
@@ -122,6 +168,9 @@ You need JDK 17 and the Android SDK (Android Studio installs both).
 ./gradlew :app:assembleDebug     # APK at app/build/outputs/apk/debug/app-debug.apk
 ./gradlew :core:test             # game-logic tests; also renders screenshots to core/build/screens
                                  # and the music to core/build/music/*.wav
+./gradlew :teamapp:assembleDebug # Team Up! APK at teamapp/build/outputs/apk/debug/teamapp-debug.apk
+./gradlew :team:test             # Team Up! tests, including a bot that runs every level;
+                                 # screenshots go to team/build/screens
 ```
 
 You can also open the folder in Android Studio and press Run.
@@ -136,3 +185,8 @@ You can also open the folder in Android Studio and press Run.
   renderer, sound effects that are synthesized at startup, and a streaming music player.
 
 Levels are built in `core/.../Level.kt` with a small builder, so adding a new one is a few lines.
+
+* `team/`: Team Up!, also plain Kotlin. It reuses the drawing interface, Rocco's pixel art, the
+  sound effects and the music from `core/`. Its levels are in `TeamLevel.kt`, the heroes,
+  bosses and friends in `Actors.kt`, and the crafting table in `TeamGame.kt`.
+* `teamapp/`: the Android layer for Team Up!, a copy of `app/` wired to the new game.
