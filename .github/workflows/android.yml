@@ -22,30 +22,46 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Run game logic tests
-        run: ./gradlew :core:test --console=plain
+        run: ./gradlew :core:test :critters-core:test --console=plain
 
-      - name: Build APK
-        run: ./gradlew :app:assembleDebug --console=plain
+      - name: Build APKs
+        run: ./gradlew :app:assembleDebug :critters-app:assembleDebug --console=plain
 
-      - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk RoccosQuest.apk
+      - name: Rename APKs
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk RoccosQuest.apk
+          cp critters/app/build/outputs/apk/debug/critters-app-debug.apk PocketCritters.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: RoccosQuest-apk
           path: RoccosQuest.apk
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PocketCritters-apk
+          path: PocketCritters.apk
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: critter-screenshots
+          path: critters/core/build/critter-shots
+
       - name: Publish downloadable build
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-${{ github.ref_name }}
-          name: "Rocco's Quest - Download for Android"
+          name: "Rocco's Quest and Pocket Critters - Download for Android"
           prerelease: false
           make_latest: true
           body: |
-            Install on Android: download **RoccosQuest.apk** on your phone, open it,
+            Install on Android: download **RoccosQuest.apk** (the platformer) or
+            **PocketCritters.apk** (the critter-catching RPG) on your phone, open it,
             and allow "install unknown apps" for your browser if asked.
 
             Built from ${{ github.sha }}.
-          files: RoccosQuest.apk
+          files: |
+            RoccosQuest.apk
+            PocketCritters.apk
