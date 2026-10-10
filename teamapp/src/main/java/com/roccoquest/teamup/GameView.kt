@@ -140,7 +140,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        if (keyCode in KeyEvent.KEYCODE_1..KeyEvent.KEYCODE_6) {
+        if (keyCode in KeyEvent.KEYCODE_1..KeyEvent.KEYCODE_9) {
             input.numberKey = keyCode - KeyEvent.KEYCODE_0
             return true
         }
@@ -163,6 +163,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             KeyEvent.KEYCODE_Q, KeyEvent.KEYCODE_TAB, KeyEvent.KEYCODE_BUTTON_Y,
             KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_R1 -> input.swap = down
             KeyEvent.KEYCODE_C, KeyEvent.KEYCODE_BUTTON_SELECT -> input.craft = down
+            KeyEvent.KEYCODE_E, KeyEvent.KEYCODE_V, KeyEvent.KEYCODE_BUTTON_L2, KeyEvent.KEYCODE_BUTTON_R2 -> input.superMove = down
             KeyEvent.KEYCODE_SPACE, KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_W,
             KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> input.jump = down
             KeyEvent.KEYCODE_X, KeyEvent.KEYCODE_J, KeyEvent.KEYCODE_BUTTON_B,

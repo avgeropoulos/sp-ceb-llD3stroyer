@@ -23,14 +23,20 @@ object Tile {
     const val EMERALD = 12
     const val LAVA = 13
     const val CLOUD = 14
+    const val COPPER = 15
+    const val AMETHYST = 16
+    /** Hides a Super Star. */
+    const val QSTAR = 17
+    /** A rainbow mystery block: a random surprise. */
+    const val QMYSTERY = 18
 
     fun solid(t: Int) = t != EMPTY && t != LAVA && t != CLOUD
 
     /** How many pickaxe points it takes to mine a tile; 0 means it can't be mined. */
     fun toughness(t: Int) = when (t) {
         GROUND, DIRT, BRICK -> 2
-        STONE, IRON -> 4
-        GOLD, EMERALD -> 6
+        STONE, IRON, COPPER -> 4
+        GOLD, EMERALD, AMETHYST -> 6
         DIAMOND -> 8
         else -> 0
     }
@@ -41,17 +47,21 @@ object Tile {
         GOLD -> Ore.GOLD
         DIAMOND -> Ore.DIAMOND
         EMERALD -> Ore.EMERALD
+        COPPER -> Ore.COPPER
+        AMETHYST -> Ore.AMETHYST
         else -> null
     }
 }
 
-/** Things Blocky can dig up. Iron is the weakest metal, then gold, then diamond. */
+/** Things Blocky can dig up. Iron is the weakest metal, then gold, then diamond. Copper and amethyst come later. */
 enum class Ore(val label: String, val color: Int, val dark: Int) {
     STONE("STONE", 0xFFA8A8A8.toInt(), 0xFF6E6E6E.toInt()),
     IRON("IRON", 0xFFE8C0A0.toInt(), 0xFFB07850.toInt()),
     GOLD("GOLD", 0xFFFFD82A.toInt(), 0xFFC89A10.toInt()),
     DIAMOND("DIAMOND", 0xFF7FF4F0.toInt(), 0xFF20B8C0.toInt()),
     EMERALD("EMERALD", 0xFF3CE070.toInt(), 0xFF128A3A.toInt()),
+    COPPER("COPPER", 0xFFF0904A.toInt(), 0xFFA0501E.toInt()),
+    AMETHYST("AMETHYST", 0xFFC890FF.toInt(), 0xFF7A3AC0.toInt()),
 }
 
 enum class Place(val music: Music) {
@@ -59,6 +69,10 @@ enum class Place(val music: Music) {
     CAVE(Music.UNDERGROUND),
     SKY(Music.SKY),
     CASTLE(Music.CASTLE),
+    DESERT(Music.OVERWORLD),
+    SNOW(Music.SKY),
+    JUNGLE(Music.OVERWORLD),
+    VOLCANO(Music.CASTLE),
 }
 
 /**
@@ -66,9 +80,11 @@ enum class Place(val music: Music) {
  *
  *  '#' ground   'd' dirt   'B' brick   '?' coin block   'h' heart block   'X' hard block
  *  's' stone   'i' iron ore   'o' gold ore   'D' diamond ore   'e' emerald ore
+ *  'u' copper ore   'a' amethyst ore   '*' star block   'm' mystery block
  *  'L' lava   'O' cloud   '@' start   'c' coin   'g' grumbler   'w' winged grumbler
- *  'k' shellback   '|' checkpoint   'F' goal flag   'r' Ring-Ding Frog drives by here
- *  'J' Wonder Krag Jr.   'K' King Krag
+ *  'k' shellback   'b' bonehead   'v' flapper bat
+ *  '|' checkpoint   'F' goal flag   'r' Ring-Ding Frog drives by here
+ *  'J' Krag Jr.   'K' King Krag   'W' Wonder Krag Jr.   'Q' Wonder King Krag
  */
 class LevelDef(val name: String, val place: Place, val rows: List<String>, val tip: String) {
     val w get() = rows[0].length
@@ -91,7 +107,13 @@ class Builder(private val w: Int) {
 }
 
 object Levels {
-    val all: List<LevelDef> by lazy { listOf(hills(), cave(), wonderSky(), castle()) }
+    val all: List<LevelDef> by lazy {
+        listOf(
+            hills(), cave(), cloudSky(), castle(),
+            copperCanyon(), frostyPeaks(), amethystMines(), wonderFortress(),
+            mushroomJungle(), lavaLake(), wonderCastle(),
+        )
+    }
 
     private fun hills() = Builder(170)
         .ground(0, 52).ground(56, 96).ground(100, 169)
@@ -160,7 +182,7 @@ object Levels {
             "Diamonds are tough! Craft an IRON PICKAXE first.",
         )
 
-    private fun wonderSky() = Builder(150)
+    private fun cloudSky() = Builder(150)
         .ground(0, 14)
         .at(3, 12, '@')
         .rock(8, 12, "oe", "ss")
@@ -180,8 +202,8 @@ object Levels {
         .fill(119, 149, 12, 14, '#')
         .at(130, 11, 'F')
         .build(
-            "WONDER SKIES", Place.SKY,
-            "Wonder Krag Jr. is waiting above the clouds!",
+            "CLOUD SKIES", Place.SKY,
+            "Krag Jr. is waiting above the clouds in his clown car!",
         )
 
     private fun castle() = Builder(150)
@@ -205,6 +227,185 @@ object Levels {
         .build(
             "KRAG'S CASTLE", Place.CASTLE,
             "Craft your strongest flower and stop King Krag!",
+        )
+
+    private fun copperCanyon() = Builder(180)
+        .ground(0, 40).ground(44, 90).ground(94, 140).ground(143, 179)
+        .at(3, 12, '@')
+        .rock(7, 12, "uuu", "sus")
+        .row(13, 9, "?m?").at(18, 12, 'b')
+        .rock(22, 12, " su ", "suus", "ssss")
+        .at(28, 12, 'k').at(31, 12, 'g').at(35, 12, 'b')
+        .row(37, 8, "cccc")
+        .rock(47, 12, "oiu", "sss")
+        .at(53, 12, 'b').at(56, 12, 'w')
+        .at(58, 12, 'r').at(61, 12, '|')
+        .fill(64, 65, 10, 12, 'X')
+        .rock(68, 12, "  u", "uuo", "sss")
+        .at(74, 12, 'k').at(77, 12, 'b').at(80, 12, 'g')
+        .row(83, 9, "B*B")
+        .rock(97, 12, "ue", "ss")
+        .at(102, 12, 'b').at(105, 12, 'b').at(108, 12, 'w')
+        .at(112, 12, '|')
+        .rock(116, 12, " i ", "uiu", "sss")
+        .at(122, 12, 'k').at(126, 12, 'g').at(128, 12, 'g')
+        .row(131, 9, "?m?")
+        .rock(146, 12, "Duu", "sss")
+        .at(152, 12, 'b').at(155, 12, 'w')
+        .fill(158, 158, 12, 12, 'X').fill(159, 159, 11, 12, 'X').fill(160, 160, 10, 12, 'X')
+        .at(170, 12, 'F')
+        .build(
+            "COPPER CANYON", Place.DESERT,
+            "Copper makes the THUNDER FLOWER! Boneheads get back up...",
+        )
+
+    private fun frostyPeaks() = Builder(180)
+        .ground(0, 30).ground(33, 60, 11).ground(64, 90).ground(93, 120, 11).ground(124, 179)
+        .at(3, 12, '@')
+        .rock(8, 12, "aa", "ss")
+        .row(12, 9, "?h?").at(17, 12, 'g').at(20, 12, 'w').at(24, 12, 'k')
+        .rock(26, 12, "sa", "ss")
+        .at(36, 10, 'w').at(40, 10, 'g').rock(44, 10, "ai", "ss")
+        .row(48, 6, "cccc").at(50, 10, 'k')
+        .at(57, 10, 'r')
+        .at(66, 12, '|').rock(70, 12, " D ", "aoa", "sss")
+        .at(76, 12, 'w').at(79, 12, 'w').at(83, 12, 'b').row(85, 9, "m?m")
+        .at(96, 10, 'g').at(99, 10, 'k').rock(103, 10, "eae", "sss")
+        .at(110, 10, 'w').at(114, 10, '|')
+        .at(128, 12, 'b').at(131, 12, 'g').at(134, 12, 'g').rock(138, 12, "aD", "ss")
+        .at(144, 12, 'k').at(148, 12, 'w').row(150, 9, "*")
+        .at(165, 12, 'F')
+        .build(
+            "FROSTY PEAKS", Place.SNOW,
+            "Purple AMETHYST makes the CRYSTAL FLOWER!",
+        )
+
+    private fun amethystMines() = Builder(190)
+        .ground(0, 50).ground(54, 100).ground(104, 150).ground(154, 189)
+        .fill(0, 189, 0, 1, 's')
+        .fill(0, 0, 2, 12, 'X')
+        .at(3, 12, '@')
+        .rock(7, 12, "aDa", "sss")
+        .at(14, 8, 'v').at(18, 12, 'b').row(20, 9, "?m?")
+        .fill(26, 32, 2, 4, 's').row(27, 4, "aauaa")
+        .rock(28, 12, "  a  ", " saas", "ssssss")
+        .at(36, 12, 'k').at(40, 8, 'v').at(44, 12, 'b')
+        .fill(51, 53, 13, 14, 'L')
+        .at(57, 12, 'r').at(60, 12, '|')
+        .rock(64, 12, "DaD", "sss").at(70, 8, 'v').at(72, 12, 'b').at(75, 12, 'w')
+        .row(78, 8, "BBBBB").row(78, 7, "ccccc")
+        .rock(86, 12, "ueu", "sss").at(92, 12, 'k').at(95, 8, 'v')
+        .fill(101, 103, 13, 14, 'L')
+        .at(107, 12, '|').rock(111, 12, "oao", "sss")
+        .at(117, 12, 'b').at(120, 12, 'b').at(123, 8, 'v').at(126, 8, 'v')
+        .row(130, 9, "?*?")
+        .rock(136, 12, "aDe", "sss").at(142, 12, 'k').at(146, 12, 'w')
+        .fill(151, 153, 13, 14, 'L')
+        .at(158, 12, 'b').at(161, 8, 'v').rock(164, 12, "aa", "ss")
+        .at(180, 12, 'F')
+        .build(
+            "AMETHYST MINES", Place.CAVE,
+            "Watch out for Flapper bats in the dark!",
+        )
+
+    private fun wonderFortress() = Builder(160)
+        .ground(0, 16)
+        .at(3, 12, '@')
+        .rock(8, 12, "aD", "uo", "ss")
+        .row(19, 11, "OOOO").row(25, 9, "OOOO").at(27, 8, 'w')
+        .row(31, 11, "OOOOO").row(32, 10, "cccc")
+        .ground(37, 48, 12).rock(40, 11, "aue", "sss").at(46, 11, 'k')
+        .row(51, 10, "OOO").row(56, 8, "OOOO").at(58, 7, 'w')
+        .row(61, 11, "OOOOO").at(63, 10, 'g')
+        .ground(67, 80, 12).at(70, 11, 'r').at(68, 11, '|').row(71, 8, "m*m")
+        .rock(77, 11, "DD", "ss")
+        .row(83, 10, "OOOO").row(89, 9, "OOOO").at(91, 8, 'w')
+        .row(95, 11, "OOO")
+        .ground(99, 159, 12)
+        .row(107, 7, "OOOO").row(118, 7, "OOOO").row(112, 4, "OOOO")
+        .row(114, 3, "h")
+        .at(116, 6, 'W')
+        .fill(125, 159, 12, 14, '#')
+        .at(140, 11, 'F')
+        .build(
+            "WONDER FORTRESS", Place.SKY,
+            "WONDER KRAG JR. has gone purple and green!",
+        )
+
+    private fun mushroomJungle() = Builder(190)
+        .ground(0, 44).ground(47, 80).ground(84, 130, 12).ground(133, 189)
+        .at(3, 12, '@')
+        .rock(7, 12, "ee", "ss")
+        .row(12, 9, "?m?").at(16, 12, 'g').at(18, 12, 'g').at(20, 12, 'g')
+        .rock(24, 12, " e ", "eie", "sss")
+        .at(30, 12, 'k').at(33, 12, 'w').at(36, 12, 'w').row(38, 8, "BhB")
+        .rock(41, 12, "uo", "ss")
+        .at(50, 12, 'b').at(53, 12, 'g').at(55, 12, 'g')
+        .at(58, 12, 'r').at(61, 12, '|')
+        .rock(64, 12, "  a ", " eDe", "ssss")
+        .at(70, 12, 'k').at(73, 12, 'k').at(76, 12, 'w')
+        .at(88, 11, 'g').at(90, 11, 'g').at(92, 11, 'b').row(94, 8, "?*?")
+        .rock(99, 11, "eoe", "sss")
+        .at(104, 11, 'w').at(107, 11, 'k').at(110, 11, 'v')
+        .at(114, 11, '|')
+        .rock(118, 11, "ua", "ss")
+        .at(124, 11, 'g').at(126, 11, 'g').at(128, 11, 'b')
+        .rock(137, 12, "DeD", "sss")
+        .at(143, 12, 'w').at(146, 12, 'w').at(149, 12, 'k').row(151, 9, "m?m")
+        .at(156, 12, 'b').at(159, 12, 'g')
+        .fill(164, 164, 12, 12, 'X').fill(165, 165, 11, 12, 'X').fill(166, 166, 10, 12, 'X')
+        .at(178, 12, 'F')
+        .build(
+            "MUSHROOM JUNGLE", Place.JUNGLE,
+            "Lots of bad guys here. Good time for a Pokemon SUPER move!",
+        )
+
+    private fun lavaLake() = Builder(190)
+        .ground(0, 34).ground(38, 70).ground(74, 110).ground(115, 150).ground(154, 189)
+        .fill(35, 37, 13, 14, 'L').fill(71, 73, 13, 14, 'L').fill(111, 114, 13, 14, 'L').fill(151, 153, 13, 14, 'L')
+        .at(3, 12, '@')
+        .rock(7, 12, "oDo", "sss")
+        .row(13, 9, "?h?").at(18, 12, 'b').at(22, 12, 'g').at(25, 8, 'v')
+        .rock(28, 12, "uau", "sss")
+        .at(42, 12, 'b').at(45, 12, 'k').at(48, 8, 'v')
+        .fill(52, 53, 10, 12, 'X').row(56, 8, "cccc")
+        .at(60, 12, 'r').at(63, 12, '|')
+        .rock(66, 12, "Da", "ss")
+        .at(78, 12, 'b').at(81, 12, 'b').at(84, 8, 'v').row(86, 9, "m*m")
+        .rock(92, 12, " a ", "eDe", "sss")
+        .at(99, 12, 'k').at(103, 12, 'w').at(106, 12, 'b')
+        .at(118, 12, '|')
+        .rock(122, 12, "ooo", "sss").at(128, 8, 'v').at(131, 12, 'b').at(134, 12, 'k')
+        .row(138, 9, "?m?").at(143, 12, 'w').at(146, 12, 'b')
+        .rock(158, 12, "aDa", "sss")
+        .at(164, 12, 'b').at(167, 8, 'v')
+        .at(180, 12, 'F')
+        .build(
+            "LAVA LAKE", Place.VOLCANO,
+            "Hot hot hot! Jump over the lava pits.",
+        )
+
+    private fun wonderCastle() = Builder(160)
+        .ground(0, 159)
+        .fill(0, 159, 0, 1, 'X')
+        .at(3, 12, '@')
+        .rock(7, 12, "aDuo", "eDaD", "ssss")
+        .row(14, 9, "?h?")
+        .fill(19, 22, 13, 14, 'L').at(25, 12, 'b').at(28, 12, 'k').at(31, 8, 'v')
+        .fill(34, 37, 13, 14, 'L')
+        .row(34, 9, "cccc").at(41, 12, 'w').at(44, 12, 'b')
+        .rock(47, 12, "aaD", "ooe", "sss")
+        .at(53, 12, 'r').at(56, 12, '|')
+        .row(59, 9, "m*m")
+        .fill(63, 66, 13, 14, 'L').at(69, 12, 'k').at(72, 12, 'b').at(75, 8, 'v')
+        .rock(80, 12, "DuD", "sss")
+        .at(86, 12, '|')
+        .row(98, 8, "h").row(118, 8, "h").row(108, 9, "m")
+        .fill(133, 133, 2, 12, 'X')
+        .at(120, 12, 'Q')
+        .build(
+            "WONDER CASTLE", Place.CASTLE,
+            "WONDER KING KRAG! Use EVERYTHING: flowers, TNT, stars and SUPER moves!",
         )
 }
 
@@ -232,6 +433,10 @@ class Level(val def: LevelDef) {
                 'e' -> Tile.EMERALD
                 'L' -> Tile.LAVA
                 'O' -> Tile.CLOUD
+                'u' -> Tile.COPPER
+                'a' -> Tile.AMETHYST
+                '*' -> Tile.QSTAR
+                'm' -> Tile.QMYSTERY
                 else -> Tile.EMPTY
             }
         }

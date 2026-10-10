@@ -40,20 +40,22 @@ class TeamGameTest {
     }
 
     private fun startPlaying(level: Int = 0) {
-        game.newGame()
+        game.newGame(0, Mon.SPARKY)
         if (level > 0) game.startLevel(level)
         run(3.2f)
         assertEquals(TeamGame.State.PLAY, game.state)
     }
 
     @Test fun levelsAreWellFormed() {
-        assertEquals(4, Levels.all.size)
+        assertEquals(11, Levels.all.size)
         for (def in Levels.all) {
             assertTrue(def.rows.all { it.length == def.w }, def.name)
             assertEquals(1, def.rows.sumOf { r -> r.count { it == '@' } }, "${def.name} needs one start")
         }
-        assertTrue(Levels.all[2].rows.any { 'J' in it }, "Wonder Krag Jr. lives in the sky level")
+        assertTrue(Levels.all[2].rows.any { 'J' in it }, "Krag Jr. lives in the sky level")
         assertTrue(Levels.all[3].rows.any { 'K' in it }, "King Krag lives in the castle")
+        assertTrue(Levels.all[7].rows.any { 'W' in it }, "Wonder Krag Jr.")
+        assertTrue(Levels.all.last().rows.any { 'Q' in it }, "Wonder King Krag is the final boss")
         // Every level has Ring-Ding Frog and ore to mine.
         for (def in Levels.all) {
             assertTrue(def.rows.any { 'r' in it }, "${def.name} frog")
@@ -100,7 +102,7 @@ class TeamGameTest {
         repeat(10) { game.mine(dx, dy) }
         assertEquals(Tile.DIAMOND, lv[dx, dy], "a wooden pickaxe can't break diamond")
         game.inventory[Ore.IRON.ordinal] = 3
-        game.craft(game.recipes().indexOfFirst { it.title.endsWith("PICKAXE") })
+        game.craft(0, tab = 1)
         assertEquals(2, game.pickTier)
         repeat(4) { game.mine(dx, dy) }
         assertEquals(Tile.EMPTY, lv[dx, dy])
@@ -120,6 +122,11 @@ class TeamGameTest {
         game.craft(row(Power.FIRE))
         assertEquals(3, game.flowerLevel[Power.FIRE.ordinal])
         assertEquals(0, game.inventory[Ore.GOLD.ordinal])
+        // Flowers go all the way to Lv5.
+        game.inventory[Ore.GOLD.ordinal] = 30
+        repeat(5) { game.craft(row(Power.FIRE)) }
+        assertEquals(MAX_FLOWER_LV, game.flowerLevel[Power.FIRE.ordinal])
+        assertEquals(24, game.inventory[Ore.GOLD.ordinal], "upgrades stop costing once maxed")
         // Grass Flower gives green armor that soaks up hits before hearts.
         game.inventory[Ore.EMERALD.ordinal] = 3
         game.craft(row(Power.GRASS))
@@ -143,7 +150,7 @@ class TeamGameTest {
         game.inventory[Ore.IRON.ordinal] = 3
         // Tap the first row (the Boomerang Flower).
         run(0.3f)
-        tap(game.viewW / 2, 32f + 22f + 15f)
+        tap(game.viewW / 2, 72f + 13f)
         assertEquals(Power.BOOM, game.power)
         input.craft = true; game.update(dt); input.craft = false; game.update(dt)
         assertEquals(TeamGame.State.PLAY, game.state)
@@ -205,13 +212,17 @@ class TeamGameTest {
         return false
     }
 
-    @Test fun grassyHillsCanBeFinished() = assertTrue(botRun(0, 90f), "stuck at x=${game.leader.x / TILE}")
-
-    @Test fun diamondCaveCanBeFinished() = assertTrue(botRun(1, 90f), "stuck at x=${game.leader.x / TILE}")
+    /** Every level without a boss at the end can be run from start to flag. */
+    @Test fun everyFlagLevelCanBeFinished() {
+        for (i in Levels.all.indices) {
+            if (Levels.all[i].rows.any { r -> r.any { it in "JWKQ" } }) continue
+            assertTrue(botRun(i, 100f), "${Levels.all[i].name}: stuck at x=${game.leader.x / TILE}")
+        }
+    }
 
     /** The bot can walk and jump all the way to each boss arena. */
     @Test fun bossArenasCanBeReached() {
-        for (level in 2..3) {
+        for (level in listOf(2, 3, 7, 10)) {
             startPlaying(level)
             var reached = false
             repeat((90f / dt).toInt()) {
@@ -233,70 +244,202 @@ class TeamGameTest {
         assertTrue(ears.said.any { "Ring ding" in it }, "frog sang: ${ears.said}")
     }
 
-    @Test fun wonderKragJrFight() {
-        startPlaying(2)
+    private fun fightJr(level: Int, wonderStyle: Boolean) {
+        startPlaying(level)
         val jr = game.foes.filterIsInstance<KragJr>().single()
+        assertEquals(wonderStyle, jr.wonderStyle)
         val h = game.leader
-        // Walk up to the arena.
         h.x = jr.homeX - 150f; h.y = 100f
         run(3.5f) { game.hurtProof() }
         assertTrue(jr.engaged, "Krag Jr. noticed the team")
-        assertTrue(game.wonder, "the sky went Wonder")
-        // (Ring-Ding Frog may still be singing on his way past.)
-        assertTrue(ears.music == Music.WONDER || ears.music == Music.FROG, "music: ${ears.music}")
-        // Hit him with level 3 ice until he gives up.
+        assertEquals(wonderStyle, game.wonder, "only the Wonder version turns the sky Wonder")
         game.inventory[Ore.DIAMOND.ordinal] = 9
-        repeat(3) { game.craft(game.recipes().indexOfFirst { it.icon == Power.ICE }) }
+        repeat(3) { game.craft(game.recipes(0).indexOfFirst { it.icon == Power.ICE }, tab = 0) }
         var t = 0f
-        while (jr.hp > 0 && t < 60f) {
+        while (jr.hp > 0 && t < 90f) {
             game.hurtProof()
             val l = game.leader
             l.facing = if (jr.cx > l.cx) 1 else -1
             input.action = true
             game.update(dt)
             t += dt
-            // Keep Rocco level with Krag Jr. so the shots connect.
             l.y = (jr.cy - l.h / 2).coerceAtMost(200f - l.h); l.vy = 0f
         }
         input.action = false
-        assertEquals(0, jr.hp, "beat Wonder Krag Jr. in ${t}s")
+        assertEquals(0, jr.hp, "beat Krag Jr. in ${t}s")
         run(3f)
         assertTrue(!game.wonder)
     }
 
-    @Test fun kingKragFightEndsTheGame() {
-        startPlaying(3)
+    @Test fun kragJrFight() = fightJr(2, wonderStyle = false)
+
+    @Test fun wonderKragJrFight() = fightJr(7, wonderStyle = true)
+
+    private fun fightKrag(level: Int): KingKrag {
+        startPlaying(level)
         val krag = game.foes.filterIsInstance<KingKrag>().single()
         game.foes.retainAll(listOf(krag))
         val r = game.rocco
         r.x = krag.homeX - 150f; r.y = 160f
         run(3.5f) { game.hurtProof() }
         assertTrue(krag.awake, "King Krag woke up")
-        game.inventory[Ore.GOLD.ordinal] = 9
-        repeat(3) { game.craft(game.recipes().indexOfFirst { it.icon == Power.FIRE }) }
+        game.inventory[Ore.GOLD.ordinal] = 15
+        repeat(5) { game.craft(game.recipes(0).indexOfFirst { it.icon == Power.FIRE }, tab = 0) }
         var t = 0f
-        while (game.state != TeamGame.State.VICTORY && t < 90f) {
+        while (game.state == TeamGame.State.PLAY && t < 120f) {
             game.hurtProof()
-            game.foes.removeAll { it is Flame }
+            game.foes.removeAll { it is Flame || it is SpikeBall }
             r.facing = if (krag.cx > r.cx) 1 else -1
             input.action = true
             game.update(dt)
             t += dt
         }
         input.action = false
-        assertEquals(TeamGame.State.VICTORY, game.state, "King Krag hp ${krag.hp}")
+        return krag
+    }
+
+    @Test fun kingKragIsNotTheEnd() {
+        val krag = fightKrag(3)
+        assertEquals(0, krag.hp)
+        assertEquals(TeamGame.State.CLEAR, game.state, "on to the next world")
+        run(4f)
+        assertEquals(4, game.levelIndex)
+    }
+
+    @Test fun wonderKingKragEndsTheGame() {
+        val krag = fightKrag(Levels.all.lastIndex)
+        assertTrue(krag.wonderStyle)
+        assertEquals(TeamGame.State.VICTORY, game.state, "Wonder King Krag hp ${krag.hp}")
         assertEquals(Music.FROG, ears.music, "Ring-Ding Frog sings at the end")
     }
 
-    @Test fun progressIsSaved() {
-        startPlaying(2)
+    @Test fun enemiesHaveHealthBars() {
+        startPlaying()
+        val g = game.foes.filterIsInstance<Grumbler>().first()
+        assertEquals(2, g.maxHp)
+        g.hit(game, 1)
+        assertEquals(1, g.hp)
+        assertTrue(!g.dying)
+        g.hit(game, 1)
+        assertTrue(g.dying)
+    }
+
+    @Test fun swapCyclesThroughTheWholeTeam() {
+        startPlaying()
+        val seen = ArrayList<Who>()
+        repeat(3) {
+            seen += game.leaderWho
+            input.swap = true; game.update(dt); input.swap = false; game.update(dt)
+        }
+        assertEquals(listOf(Who.ROCCO, Who.BLOCKY, Who.MON), seen)
+        assertEquals(Who.ROCCO, game.leaderWho)
+    }
+
+    @Test fun pokemonSuperMoveIsABigBoost() {
+        for (m in Mon.entries) {
+            game.newGame(0, m)
+            run(3.2f)
+            val g = game.foes.filterIsInstance<Shellback>().first()
+            game.foes.retainAll(listOf(g))
+            val r = game.rocco
+            r.x = g.x - 60f; r.y = g.y; r.facing = 1
+            game.partner.x = r.x - 10; game.partner.y = r.y; game.partner.facing = 1
+            run(1.5f) { game.hurtProof() }
+            g.active = true
+            assertTrue(game.superCharge < 1f, "starts uncharged")
+            game.chargeSuper()
+            input.superMove = true; game.update(dt); input.superMove = false; game.update(dt)
+            assertTrue(g.dying || g.removed, "${m.superName} knocked out a 3-hp Shellback")
+            assertTrue(game.superCharge < 0.01f, "${m.superName} has to recharge")
+        }
+    }
+
+    @Test fun megaTntAndStar() {
+        startPlaying()
+        game.foes.forEach { it.active = true }
+        val onScreen = game.foes.filter { it.x < game.camX + game.viewW }
+        game.inventory[Ore.STONE.ordinal] = 6
+        game.inventory[Ore.IRON.ordinal] = 2
+        game.craft(game.recipes(1).indexOfFirst { it.title == "MEGA TNT" }, tab = 1)
+        assertTrue(onScreen.all { it.dying || it.hp < it.maxHp }, "TNT hit everything on screen")
+        game.inventory[Ore.AMETHYST.ordinal] = 2
+        game.inventory[Ore.DIAMOND.ordinal] = 1
+        game.craft(game.recipes(1).indexOfFirst { it.title == "SUPER STAR" }, tab = 1)
+        assertTrue(game.starT > 0)
+        val hearts = game.hearts
+        game.hurt()
+        assertEquals(hearts, game.hearts, "stars make you invincible")
+    }
+
+    @Test fun pickYourPokemonFromTheMenus() {
+        run(0.5f)
+        tap(); assertEquals(TeamGame.State.SLOTS, game.state)
+        run(0.4f)
+        tap(game.slotCardXForTest(1) + 10f, 120f)
+        assertEquals(TeamGame.State.PICK, game.state)
+        run(0.4f)
+        tap(game.pickCardXForTest(2) + 10f, 100f)
+        assertEquals(TeamGame.State.INTRO, game.state)
+        assertEquals(Mon.HYDRO, game.mon)
+        assertEquals(1, game.slot)
+        assertTrue(ears.said.any { "HYDRO" in it }, "I choose you!")
+    }
+
+    @Test fun saveFilesAreSeparate() {
+        game.newGame(0, Mon.SPARKY)
         game.inventory[Ore.GOLD.ordinal] = 4
         game.startLevel(2)
+        game.newGame(2, Mon.BLOOM)
+        game.startLevel(5)
         val g2 = TeamGame(TeamInput(), ears, storage)
-        assertEquals(2, g2.savedLevel)
-        g2.continueGame()
+        assertEquals(2, g2.slotLevel(0))
+        assertEquals(-1, g2.slotLevel(1))
+        assertEquals(5, g2.slotLevel(2))
+        assertEquals(Mon.BLOOM, g2.slotMon(2))
+        g2.continueGame(0)
         assertEquals(2, g2.levelIndex)
+        assertEquals(Mon.SPARKY, g2.mon)
         assertEquals(4, g2.inventory[Ore.GOLD.ordinal])
+        g2.eraseSlot(2)
+        assertEquals(-1, g2.slotLevel(2))
+    }
+
+    @Test fun buildAHouseAndSleepToSave() {
+        game.newGame(1, Mon.BLAZE)
+        run(3.2f)
+        game.foes.clear()
+        repeat(60 * 5) { botStep() }
+        input.right = false; input.jump = false
+        run(1f)
+        val homeTab = 2
+        game.inventory[Ore.STONE.ordinal] = 14
+        game.inventory[Ore.IRON.ordinal] = 2
+        game.coins = 10
+        // Walk to flat ground first if needed.
+        var tries = 0
+        while (!game.recipes(homeTab)[0].enabled && tries++ < 200) { input.right = true; game.update(dt) }
+        input.right = false
+        run(0.5f)
+        game.craft(0, homeTab)
+        game.craft(1, homeTab)
+        assertEquals(0, game.inventory[Ore.STONE.ordinal])
+        assertEquals(0, game.coins)
+        val bed = game.bedForTest()!!
+        val l = game.leader
+        l.x = bed.cx - l.w / 2; l.y = bed.bottom - l.h - 1
+        run(0.3f)
+        input.action = true; game.update(dt); input.action = false
+        assertEquals(TeamGame.State.SLEEP, game.state)
+        run(3f)
+        assertEquals(TeamGame.State.PLAY, game.state)
+        assertTrue(game.slotSlept(1))
+        // Load the file again: the house and bed are still there and you wake up by the bed.
+        val g2 = TeamGame(TeamInput(), ears, storage)
+        g2.continueGame(1)
+        val bed2 = g2.bedForTest()
+        assertNotNull(bed2)
+        assertTrue(kotlin.math.abs(g2.rocco.x - bed2.x) < 40f, "woke up next to the bed")
+        assertEquals(Mon.BLAZE, g2.mon)
     }
 
     /** Renders a few frames to build/screens for eyeballing. */
@@ -310,36 +453,66 @@ class TeamGameTest {
         }
         run(0.5f)
         shot("title")
-        game.newGame()
-        run(0.5f)
-        shot("intro")
-        run(3f)
+        game.newGame(0, Mon.SPARKY)
+        game.startLevel(4)
+        game.newGame(2, Mon.BLOOM)
+        tap(); run(0.2f)
+        // Back to the title to show the save files and the Pokemon picker.
+        val menu = TeamGame(input, ears, storage)
+        menu.update(0.5f); input.tapX = 10f; input.tapY = 10f; input.tap = true; menu.update(dt)
+        val img = { name: String, g: TeamGame ->
+            val i = BufferedImage((g.viewW * 3).toInt(), 720, BufferedImage.TYPE_INT_ARGB)
+            g.render(AwtGfx(i, 3f)); ImageIO.write(i, "png", File(dir, "$name.png"))
+        }
+        img("slots", menu)
+        menu.update(0.5f); input.tapX = menu.slotCardXForTest(1) + 10f; input.tapY = 120f; input.tap = true; menu.update(dt)
+        menu.update(1f)
+        img("pick", menu)
+
+        game.newGame(0, Mon.BLAZE)
+        run(3.2f)
         run(1.2f) { input.right = true }
         input.right = false
         shot("hills")
         input.swap = true; game.update(dt); input.swap = false
         game.inventory[Ore.IRON.ordinal] = 4
         game.inventory[Ore.GOLD.ordinal] = 3
-        game.inventory[Ore.STONE.ordinal] = 7
+        game.inventory[Ore.STONE.ordinal] = 20
+        game.coins = 12
         run(0.3f) { input.action = true }
         input.action = false
         shot("blocky-mining")
         input.craft = true; game.update(dt); input.craft = false; game.update(dt)
         shot("craft")
-        game.craft(1)
+        input.numberKey = 8; game.update(dt)
+        shot("craft-supplies")
+        input.numberKey = 9; game.update(dt)
+        shot("craft-home")
+        input.numberKey = 1; game.update(dt)
+        input.numberKey = 2; game.update(dt)
         input.craft = true; game.update(dt); input.craft = false; game.update(dt)
-        game.startLevel(1); run(3.5f); run(2f) { input.right = true }; input.right = false
-        shot("cave")
-        game.startLevel(2); run(3.5f)
+        run(0.5f)
+        shot("house")
+        input.swap = true; game.update(dt); input.swap = false; game.update(dt)
+        game.chargeSuper()
+        run(0.2f)
+        input.superMove = true; game.update(dt); input.superMove = false
+        run(0.3f)
+        shot("super-flamethrower")
+        game.startLevel(4); run(3.5f); run(2f) { input.right = true }; input.right = false
+        shot("copper-canyon")
+        game.startLevel(6); run(3.5f); run(3f) { input.right = true }; input.right = false
+        shot("amethyst-mines")
+        game.startLevel(7); run(3.5f)
         val jr = game.foes.filterIsInstance<KragJr>().single()
         game.leader.x = jr.homeX - 150f; game.leader.y = 100f
         run(4.5f) { game.hurtProof() }
         shot("wonder-krag-jr")
-        game.startLevel(3); run(3.5f)
+        game.startLevel(Levels.all.lastIndex); run(3.5f)
         val krag = game.foes.filterIsInstance<KingKrag>().single()
         game.leader.x = krag.homeX - 150f; game.leader.y = 160f
         run(4f) { game.hurtProof() }
-        shot("king-krag")
+        shot("wonder-king-krag")
         assertNotNull(krag)
     }
 }

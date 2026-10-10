@@ -10,7 +10,6 @@ import com.roccoquest.game.Storage
 import com.roccoquest.game.TILE
 import com.roccoquest.game.VIEW_H
 import com.roccoquest.game.argb
-import com.roccoquest.game.rainbow
 import com.roccoquest.game.shadowText
 import com.roccoquest.game.tileOf
 import kotlin.math.abs
@@ -23,17 +22,23 @@ import kotlin.random.Random
 /**
  * Rocco & Blocky: Team Up!
  *
- * Rocco the plumber and Blocky the miner team up (with Sparky the electric mouse) to stop
- * King Krag. You control one hero at a time and the other follows; SWAP switches. Blocky
- * mines ore, and the crafting table turns ore into flower powers and better pickaxes.
+ * Rocco the plumber, Blocky the miner and a Pokemon partner team up to stop King Krag.
+ * You control one of them and the others follow; SWAP switches. Blocky mines ore, the
+ * crafting table turns ore into flower powers, pickaxes, supplies, a house and a bed,
+ * and sleeping in the bed saves the game into one of three save slots.
  */
 class TeamGame(private val input: TeamInput, private val sound: SoundSink, private val storage: Storage = Storage.Memory()) {
-    enum class State { TITLE, INTRO, PLAY, CRAFT, OUCH, CLEAR, VICTORY }
+    enum class State { TITLE, SLOTS, PICK, INTRO, PLAY, CRAFT, SLEEP, OUCH, CLEAR, VICTORY }
 
     companion object {
         const val MAX_HEARTS = 5
+        const val MAX_ARMOR = 5
         const val COST = 3
-        const val HEART_COST = 5
+        const val SLOTS = 3
+        /** Seconds for the Pokemon's SUPER move to recharge. */
+        const val SUPER_TIME = 25f
+        const val STAR_TIME = 10f
+        val TABS = listOf("FLOWERS", "SUPPLIES", "HOME")
     }
 
     var viewW = 427f
@@ -43,6 +48,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         private set
     private var stateT = 0f
 
+    var slot = 0
+        private set
     var levelIndex = 0
         private set
     var level = Level(Levels.all[0])
@@ -50,10 +57,15 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     val rocco = Hero(Who.ROCCO, 0f, 0f)
     val blocky = Hero(Who.BLOCKY, 0f, 0f)
+    val partner = Hero(Who.MON, 0f, 0f)
+    val team = listOf(rocco, blocky, partner)
+    var mon: Mon
+        get() = partner.mon
+        private set(value) { partner.mon = value }
     var leaderWho = Who.ROCCO
         private set
-    val leader get() = if (leaderWho == Who.ROCCO) rocco else blocky
-    val follower get() = if (leaderWho == Who.ROCCO) blocky else rocco
+    val leader get() = team.first { it.who == leaderWho }
+    val followers get() = team.filter { it.who != leaderWho }
 
     val foes = ArrayList<Foe>()
     private val things = ArrayList<Thing>()
@@ -68,6 +80,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         private set
     var invuln = 0f
         private set
+    var starT = 0f
+        private set
     var coins = 0
     var score = 0
         private set
@@ -78,14 +92,16 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         private set
     val flowerLevel = IntArray(Power.entries.size)
 
-    // Sparky
-    var sparkyX = 0f
+    // Pokemon SUPER move
+    var superCharge = 0f
         private set
-    var sparkyY = 0f
+    var superFlash = 0f
         private set
-    private var sparkyFacing = 1
-    private var zapTimer = 3f
-    private var zapFlash = 0f
+    private var followZap = 3f
+
+    // House and bed, for the current level only
+    private var house: House? = null
+    private var bed: Bed? = null
 
     // Camera, bosses and Wonder
     var camX = 0f
@@ -102,6 +118,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private var bannerTitle = ""
     private var bannerSub = ""
     private var frog: Frog? = null
+    private var clearNote = ""
 
     private var respawnX = 0f
     private var respawnY = 0f
@@ -116,14 +133,19 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private var musicOn = true
     var paused = false
         private set
-    private var prev = BooleanArray(6)
+    private var craftTab = 0
+    private var eraseArmed = -1
+    private var eraseT = 0f
+    private var pickChoice = Mon.SPARKY
+    private val prev = BooleanArray(7)
 
     fun sfx(s: Sound) = sound.play(s)
     fun spawn(t: Thing) { pending += t }
+    fun addParticle(p: Particle) { particles += p }
     fun puff(x: Float, y: Float) { particles += Puff(x, y) }
     fun say(x: Float, y: Float, text: String, dur: Float = 1.8f) { particles += Speech(x, y, text, dur) }
     fun addScore(n: Int, x: Float, y: Float) { score += n; particles += FloatText(x, y, n.toString()) }
-    private fun toast(s: String) { toast = s; toastT = 2.2f }
+    private fun toast(s: String) { toast = s; toastT = 2.4f }
 
     fun iceBurst(x: Float, y: Float) {
         repeat(8) {
@@ -138,58 +160,100 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         repeat(n) { particles += Bit(x, y, Random.nextFloat() * 160 - 80, -Random.nextFloat() * 220 - 60, color) }
     }
 
-    // ======================================================================== Saving
+    // ======================================================================== Save slots
 
-    val savedLevel get() = storage.load("team_level") - 1
+    private fun key(name: String, s: Int = slot) = "slot${s}_$name"
+
+    /** The level a save slot is on, or -1 if it's empty. */
+    fun slotLevel(s: Int) = storage.load(key("level", s)) - 1
+    fun slotMon(s: Int): Mon = Mon.entries.getOrElse(storage.load(key("mon", s)) - 1) { Mon.SPARKY }
+    fun slotSlept(s: Int) = storage.load(key("bedLevel", s)) > 0
+
+    /** Kept for older callers: the level of the most recently played slot. */
+    val savedLevel get() = slotLevel(slot)
 
     private fun save() {
-        storage.save("team_level", levelIndex + 1)
-        Ore.entries.forEach { storage.save("team_ore_${it.name}", inventory[it.ordinal]) }
-        Power.entries.forEach { storage.save("team_flower_${it.name}", flowerLevel[it.ordinal]) }
-        storage.save("team_pick", pickTier)
-        storage.save("team_power", power.ordinal)
-        storage.save("team_coins", coins)
+        storage.save(key("level"), levelIndex + 1)
+        storage.save(key("mon"), mon.ordinal + 1)
+        Ore.entries.forEach { storage.save(key("ore_${it.name}"), inventory[it.ordinal]) }
+        Power.entries.forEach { storage.save(key("flower_${it.name}"), flowerLevel[it.ordinal]) }
+        storage.save(key("pick"), pickTier)
+        storage.save(key("power"), power.ordinal)
+        storage.save(key("coins"), coins)
+        storage.save(key("armor"), armor)
+        // The house (and bed) belong to the level they were built in.
+        val h = house
+        storage.save(key("houseLevel"), if (h != null) levelIndex + 1 else 0)
+        storage.save(key("houseX"), h?.x?.toInt() ?: 0)
+        storage.save(key("houseY"), h?.bottom?.toInt() ?: 0)
+        storage.save(key("bed"), if (bed != null) 1 else 0)
     }
 
-    private fun loadSave() {
-        Ore.entries.forEach { inventory[it.ordinal] = storage.load("team_ore_${it.name}") }
-        Power.entries.forEach { flowerLevel[it.ordinal] = storage.load("team_flower_${it.name}") }
-        pickTier = storage.load("team_pick").coerceIn(1, 4)
-        power = Power.entries.getOrElse(storage.load("team_power")) { Power.NONE }
+    /** Sleeping in the bed remembers exactly where you were. */
+    private fun saveAtBed() {
+        save()
+        storage.save(key("bedLevel"), levelIndex + 1)
+    }
+
+    private fun loadSlot() {
+        Ore.entries.forEach { inventory[it.ordinal] = storage.load(key("ore_${it.name}")) }
+        Power.entries.forEach { flowerLevel[it.ordinal] = storage.load(key("flower_${it.name}")) }
+        pickTier = storage.load(key("pick")).coerceIn(1, 5)
+        power = Power.entries.getOrElse(storage.load(key("power"))) { Power.NONE }
         if (flowerLevel[power.ordinal] == 0) power = Power.NONE
-        coins = storage.load("team_coins")
+        coins = storage.load(key("coins"))
+        armor = storage.load(key("armor"))
+        mon = slotMon(slot)
     }
 
-    fun newGame() {
+    fun eraseSlot(s: Int) {
+        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "houseLevel", "houseX", "houseY", "bed", "bedLevel")) {
+            storage.save(key(name, s), 0)
+        }
+        Ore.entries.forEach { storage.save(key("ore_${it.name}", s), 0) }
+        Power.entries.forEach { storage.save(key("flower_${it.name}", s), 0) }
+    }
+
+    fun newGame(slot: Int = 0, mon: Mon = Mon.SPARKY) {
+        this.slot = slot
+        eraseSlot(slot)
+        this.mon = mon
         inventory.fill(0)
         flowerLevel.fill(0)
         pickTier = 1
         power = Power.NONE
         coins = 0
         score = 0
+        armor = 0
         startLevel(0)
     }
 
-    fun continueGame() {
-        loadSave()
+    fun continueGame(slot: Int = this.slot) {
+        this.slot = slot
+        loadSlot()
         score = 0
-        startLevel(savedLevel.coerceIn(0, Levels.all.lastIndex))
+        val lv = slotLevel(slot).coerceIn(0, Levels.all.lastIndex)
+        startLevel(lv, restoreHome = true)
     }
 
     // ======================================================================== Levels
 
     private fun setState(s: State) { state = s; stateT = 0f }
 
-    fun startLevel(index: Int, fromCheckpoint: Boolean = false) {
+    fun startLevel(index: Int, fromCheckpoint: Boolean = false, restoreHome: Boolean = false) {
         val keepX = respawnX
         val keepY = respawnY
+        val keepHouse = if (index == levelIndex) house else null
+        val keepBed = if (index == levelIndex) bed else null
         levelIndex = index
         level = Level(Levels.all[index])
         foes.clear(); things.clear(); pending.clear(); particles.clear(); frogSpots.clear()
         boss = null; bossDone = false; wonder = false; camLock = null; frog = null; goal = null
+        house = null; bed = null
         hearts = MAX_HEARTS
         if (power == Power.GRASS) armor = max(armor, 2)
         invuln = 0f
+        starT = 0f
         leaderWho = Who.ROCCO
         for (ty in 0 until ROWS) for (tx in 0 until level.w) {
             val px = tx * TILE.toFloat()
@@ -199,8 +263,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 'g' -> foes += Grumbler(px, bottom, false)
                 'w' -> foes += Grumbler(px, bottom, true)
                 'k' -> foes += Shellback(px, bottom)
+                'b' -> foes += Bonehead(px, bottom)
+                'v' -> foes += Flapper(px, bottom)
                 'J' -> foes += KragJr(px, bottom)
+                'W' -> foes += KragJr(px, bottom, wonderStyle = true)
                 'K' -> foes += KingKrag(px, bottom)
+                'Q' -> foes += KingKrag(px, bottom, wonderStyle = true)
                 'c' -> things += Coin(px, ty * TILE.toFloat())
                 '|' -> things += Checkpoint(px, bottom)
                 'F' -> things += Goal(px, bottom).also { goal = it }
@@ -211,19 +279,37 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             respawnX = keepX
             respawnY = keepY
             things.filterIsInstance<Checkpoint>().forEach { if (it.x <= keepX + 1) it.reached = true }
+            keepHouse?.let { house = House(it.x, it.bottom); things += house!! }
+            keepBed?.let { bed = Bed(it.x, it.bottom); things += bed!! }
+        }
+        if (restoreHome && storage.load(key("houseLevel")) == index + 1) {
+            val hx = storage.load(key("houseX")).toFloat()
+            val hb = storage.load(key("houseY")).toFloat()
+            house = House(hx, hb).also { things += it }
+            if (storage.load(key("bed")) == 1) bed = Bed(hx + 34, hb).also { things += it }
+            // Wake up next to the bed if that's where you saved.
+            if (storage.load(key("bedLevel")) == index + 1 && bed != null) {
+                respawnX = hx + 30
+                respawnY = hb
+                things.filterIsInstance<Checkpoint>().forEach { if (it.x <= respawnX) it.reached = true }
+            }
         }
         placeTeam(respawnX, respawnY)
         camX = (leader.cx - viewW * 0.4f).coerceIn(0f, max(0f, level.w * TILE - viewW))
-        save()
+        if (!fromCheckpoint) {
+            storage.save(key("bedLevel"), if (restoreHome && storage.load(key("bedLevel")) == index + 1) index + 1 else 0)
+            save()
+        }
         setState(State.INTRO)
     }
 
     private fun placeTeam(x: Float, bottom: Float) {
-        rocco.x = x + 2; rocco.y = bottom - rocco.h; rocco.vx = 0f; rocco.vy = 0f; rocco.facing = 1
-        blocky.x = x - 18; blocky.y = bottom - blocky.h; blocky.vx = 0f; blocky.vy = 0f; blocky.facing = 1
-        if (blocky.x < 0) blocky.x = x + 2
+        for ((i, h) in team.withIndex()) {
+            h.x = (x + 2 - i * 18f).coerceAtLeast(2f)
+            h.y = bottom - h.h
+            h.vx = 0f; h.vy = 0f; h.facing = 1; h.stuck = 0f
+        }
         safeX = x; safeY = bottom
-        sparkyX = x - 30; sparkyY = bottom - 50
     }
 
     // ======================================================================== Update
@@ -242,24 +328,38 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val craftE = edge(2, input.craft)
         val pauseE = edge(3, input.pause)
         if (edge(4, input.musicToggle)) musicOn = !musicOn
+        val superE = edge(5, input.superMove)
+        val actionE = edge(6, input.action)
         val tapped = input.tap
         input.tap = false
         val num = input.numberKey
         input.numberKey = 0
+        if (toastT > 0) toastT -= dt
+        if (eraseT > 0) eraseT -= dt else eraseArmed = -1
 
         when (state) {
-            State.TITLE -> if (tapped && stateT > 0.4f) {
-                // Keyboard presses (tapX < 0) continue a saved game.
-                if (savedLevel > 0 && (input.tapX > viewW / 2 || input.tapX < 0)) continueGame() else newGame()
-            }
+            State.TITLE -> if ((tapped || num > 0) && stateT > 0.4f) setState(State.SLOTS)
+            State.SLOTS -> updateSlots(tapped, num)
+            State.PICK -> updatePick(tapped, num)
             State.INTRO -> if (stateT > 3f || (tapped && stateT > 0.6f)) setState(State.PLAY)
             State.PLAY -> {
                 if (pauseE) paused = !paused
                 if (!paused) {
-                    if (craftE) { setState(State.CRAFT); sfx(Sound.BUMP) } else play(dt, jumpE, swapE)
+                    if (craftE) { setState(State.CRAFT); sfx(Sound.BUMP) } else play(dt, jumpE, swapE, superE, actionE)
                 }
             }
             State.CRAFT -> updateCraft(tapped, craftE || pauseE, num)
+            State.SLEEP -> {
+                updateParticles(dt)
+                if (stateT > 2.6f) {
+                    hearts = MAX_HEARTS
+                    bed?.let { respawnX = it.x - 4; respawnY = it.bottom }
+                    saveAtBed()
+                    toast("Good morning! Game saved in SLOT ${slot + 1}.")
+                    sfx(Sound.ONEUP)
+                    setState(State.PLAY)
+                }
+            }
             State.OUCH -> {
                 updateParticles(dt)
                 if (stateT > 2.2f) startLevel(levelIndex, fromCheckpoint = true)
@@ -267,7 +367,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             State.CLEAR -> {
                 updateParticles(dt)
                 goal?.let { it.flagY = min(it.h - 30f, it.flagY + 120f * dt) }
-                if (stateT > 3.2f) {
+                if (stateT > 3.4f) {
+                    clearNote = ""
                     if (levelIndex + 1 < Levels.all.size) startLevel(levelIndex + 1) else setState(State.VICTORY)
                 }
             }
@@ -276,24 +377,90 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 if (Random.nextFloat() < dt * 12) {
                     particles += Sparkle(Random.nextFloat() * viewW + camX, -4f, 0f, 60f + Random.nextFloat() * 60, solidRainbow(time, Random.nextFloat()))
                 }
-                if (tapped && stateT > 3f) { save(); setState(State.TITLE) }
+                if (tapped && stateT > 3f) setState(State.TITLE)
             }
         }
         updateMusic()
     }
 
-    private fun play(dt: Float, jumpE: Boolean, swapE: Boolean) {
+    // ---------------------------------------------------------------- Title menus
+
+    private fun slotCardW() = min(130f, (viewW - 40f) / SLOTS)
+    private fun slotCardX(i: Int) = viewW / 2 - SLOTS * (slotCardW() + 8f) / 2 + i * (slotCardW() + 8f) + 4f
+
+    private fun updateSlots(tapped: Boolean, num: Int) {
+        if (num in 1..SLOTS) { chooseSlot(num - 1); return }
+        if (!tapped || stateT < 0.3f) return
+        val x = input.tapX
+        val y = input.tapY
+        for (i in 0 until SLOTS) {
+            val cx = slotCardX(i)
+            if (x < cx || x > cx + slotCardW()) continue
+            // The ERASE strip at the bottom of a used card.
+            if (slotLevel(i) >= 0 && y > 176f && y < 200f) {
+                if (eraseArmed == i) {
+                    eraseSlot(i)
+                    eraseArmed = -1
+                    sfx(Sound.BREAK)
+                } else {
+                    eraseArmed = i
+                    eraseT = 3f
+                    sfx(Sound.BUMP)
+                }
+                return
+            }
+            if (y in 60f..176f) chooseSlot(i)
+        }
+    }
+
+    private fun chooseSlot(i: Int) {
+        slot = i
+        sfx(Sound.COIN)
+        if (slotLevel(i) >= 0) continueGame(i) else { pickChoice = Mon.SPARKY; setState(State.PICK) }
+    }
+
+    private fun pickCardW() = min(100f, (viewW - 40f) / 4)
+    private fun pickCardX(i: Int) = viewW / 2 - 4 * (pickCardW() + 6f) / 2 + i * (pickCardW() + 6f) + 3f
+
+    private fun updatePick(tapped: Boolean, num: Int) {
+        if (num in 1..4) { newGame(slot, Mon.entries[num - 1]); return }
+        if (!tapped || stateT < 0.3f) return
+        for (i in 0 until 4) {
+            val cx = pickCardX(i)
+            if (input.tapX in cx..(cx + pickCardW()) && input.tapY in 50f..210f) {
+                val m = Mon.entries[i]
+                sound.say("${m.label}! I choose you!")
+                newGame(slot, m)
+                return
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------- Playing
+
+    private fun play(dt: Float, jumpE: Boolean, swapE: Boolean, superE: Boolean, actionE: Boolean) {
         if (invuln > 0) invuln -= dt
-        if (toastT > 0) toastT -= dt
         if (bannerT > 0) bannerT -= dt
         if (shake > 0) shake -= dt
+        if (superFlash > 0) superFlash -= dt
+        if (starT > 0) {
+            starT -= dt
+            invuln = max(invuln, 0.1f)
+        }
+        superCharge = min(1f, superCharge + dt / SUPER_TIME)
         if (swapE) swap()
+        if (superE) useSuper()
 
         val grav = if (wonder) 0.75f else 1f
         updateLeader(leader, dt, jumpE, grav)
-        updateFollower(follower, dt, grav)
-        if (input.action && leader.cooldown <= 0f) action(leader)
-        for (h in arrayOf(rocco, blocky)) {
+        for ((i, f) in followers.withIndex()) updateFollower(f, dt, grav, i)
+        val l = leader
+        if (actionE && bed?.overlaps(l) == true && l.onGround) {
+            sleep()
+            return
+        }
+        if (input.action && l.cooldown <= 0f) action(l)
+        for (h in team) {
             h.anim += dt
             if (h.swing > 0) h.swing -= dt
             if (h.cooldown > 0) h.cooldown -= dt
@@ -313,7 +480,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         updateParticles(dt)
 
         interact()
-        updateSparky(dt)
+        updatePartnerZap(dt)
         updateFrog()
         updateBoss(dt)
         updateCamera(dt)
@@ -322,20 +489,18 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     private fun swap() {
         val old = leader
-        leaderWho = if (leaderWho == Who.ROCCO) Who.BLOCKY else Who.ROCCO
+        leaderWho = when (leaderWho) { Who.ROCCO -> Who.BLOCKY; Who.BLOCKY -> Who.MON; Who.MON -> Who.ROCCO }
         val h = leader
-        if (hypot(h.cx - old.cx, h.cy - old.cy) > 140f || !h.onGround && h.y > level.h * TILE) {
-            teleport(h, old)
-        }
+        if (hypot(h.cx - old.cx, h.cy - old.cy) > 140f || h.y > level.h * TILE) teleport(h, old)
         h.vx = 0f
         sfx(Sound.KICK)
-        particles += FloatText(h.cx, h.y - 6, h.who.label + "!", if (h.who == Who.ROCCO) 0xFFFF8A80.toInt() else 0xFF7FF4F0.toInt())
+        particles += FloatText(h.cx, h.y - 6, h.label + "!", h.color)
     }
 
     private fun teleport(h: Hero, to: Hero) {
         puff(h.cx, h.cy)
         h.x = to.x - to.facing * 4
-        h.y = to.y
+        h.y = to.bottom - h.h
         h.vx = 0f
         h.vy = 0f
         h.stuck = 0f
@@ -350,9 +515,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             h.vy = h.jumpV
             sfx(Sound.JUMP)
         }
-        // Let go of JUMP early for a short hop.
         if (!input.jump && h.vy < -130f) h.vy = -130f
         h.vy = min(h.vy + GRAVITY * grav * dt, MAX_FALL)
+        // Blaze glides when you hold JUMP on the way down.
+        if (h.who == Who.MON && mon == Mon.BLAZE && input.jump && h.vy > 55f) h.vy = 55f
         moveHero(h, dt)
         if (h.onGround && level.solidAt(h.x + 1, h.bottom + 1) && level.solidAt(h.x + h.w - 1, h.bottom + 1)) {
             safeX = h.x
@@ -360,10 +526,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
     }
 
-    /** The hero you're not controlling follows along, hopping over walls and gaps. */
-    private fun updateFollower(f: Hero, dt: Float, grav: Float) {
+    /** The heroes you're not controlling follow along, hopping over walls and gaps. */
+    private fun updateFollower(f: Hero, dt: Float, grav: Float, place: Int) {
         val l = leader
-        val targetX = l.cx - l.facing * 22f
+        val targetX = l.cx - l.facing * (22f + place * 20f)
         val dx = targetX - f.cx
         val want = if (abs(dx) > 12f) (if (dx > 0) 1f else -1f) * min(f.speed * 1.15f, abs(dx) * 4f) else 0f
         f.facing = when {
@@ -399,17 +565,36 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     private fun bump(tx: Int, ty: Int) {
+        val px = tx * TILE.toFloat()
+        val above = ty * TILE - 14f
         when (level[tx, ty]) {
             Tile.QCOIN -> {
                 level[tx, ty] = Tile.USED
-                spawn(Coin(tx * TILE.toFloat(), ty * TILE - 16f, popping = true))
+                spawn(Coin(px, ty * TILE - 16f, popping = true))
                 sfx(Sound.COIN)
                 score += 100
             }
             Tile.QHEART -> {
                 level[tx, ty] = Tile.USED
-                spawn(HeartItem(tx * TILE.toFloat(), ty * TILE - 14f))
+                spawn(HeartItem(px, above))
                 sfx(Sound.POWERUP)
+            }
+            Tile.QSTAR -> {
+                level[tx, ty] = Tile.USED
+                spawn(StarItem(px, above))
+                sfx(Sound.POWERUP)
+            }
+            Tile.QMYSTERY -> {
+                level[tx, ty] = Tile.USED
+                sfx(Sound.POWERUP)
+                // A surprise every time!
+                when (Random.nextInt(5)) {
+                    0 -> spawn(StarItem(px, above))
+                    1 -> spawn(HeartItem(px, above))
+                    2 -> repeat(5) { i -> spawn(Coin(px + (i - 2) * 6f, ty * TILE - 16f, popping = true)) }
+                    else -> spawn(GiftBox(px, above))
+                }
+                particles += FloatText(px + 8, above, "SURPRISE!", solidRainbow(time))
             }
             Tile.BRICK -> {
                 level[tx, ty] = Tile.EMPTY
@@ -419,23 +604,25 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
             else -> sfx(Sound.BUMP)
         }
-        // Bonk foes standing on the block.
         for (f in foes) {
-            if (!f.dying && !f.boss && abs(f.bottom - ty * TILE) < 2 && f.cx > tx * TILE - 4 && f.cx < tx * TILE + TILE + 4) f.hit(this, 1)
+            if (!f.dying && !f.boss && abs(f.bottom - ty * TILE) < 2 && f.cx > tx * TILE - 4 && f.cx < tx * TILE + TILE + 4) f.hit(this, 99)
         }
     }
 
-    // ======================================================================== Mining and throwing
+    // ======================================================================== Mining, throwing and Pokemon moves
 
     private fun action(h: Hero) {
-        if (h.who == Who.BLOCKY) swingPick(h) else throwPower(h)
+        when (h.who) {
+            Who.BLOCKY -> swingPick(h)
+            Who.ROCCO -> throwPower(h)
+            Who.MON -> monAttack(h)
+        }
     }
 
     private fun swingPick(h: Hero) {
         h.swing = 0.22f
         h.cooldown = 0.24f
         digDown = input.down
-        // The pickaxe is a weapon too: stronger pickaxes hit harder.
         val reach = Body(if (h.facing > 0) h.x + h.w - 2 else h.x - 16, h.y - 4, 18f, h.h + 4)
         var hitFoe = false
         for (f in foes) if (!f.dying && f.active && f.overlaps(reach)) { if (f.hit(this, pickTier)) hitFoe = true }
@@ -467,7 +654,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     fun mine(tx: Int, ty: Int) {
         val t = level[tx, ty]
-        if (t == Tile.QCOIN || t == Tile.QHEART) { bump(tx, ty); return }
+        if (t == Tile.QCOIN || t == Tile.QHEART || t == Tile.QSTAR || t == Tile.QMYSTERY) { bump(tx, ty); return }
         val tough = level.toughness(tx, ty)
         if (tough == 0) {
             sfx(Sound.BUMP)
@@ -504,7 +691,6 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         h.cooldown = 0.3f
         h.swing = 0.15f
         if (power == Power.NONE) {
-            // No flower yet: Rocco can still punch.
             val reach = Body(if (h.facing > 0) h.x + h.w - 2 else h.x - 10, h.y + 4, 12f, 12f)
             for (f in foes) if (!f.dying && f.active && f.overlaps(reach)) f.hit(this, 1)
             sfx(Sound.KICK)
@@ -514,100 +700,298 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val lvl = flowerLevel[power.ordinal].coerceAtLeast(1)
         val mine = things.count { it is Shot }
         if (mine >= 1 + lvl) return
+        // Every level adds 1 damage. Lv3+ throws two, Lv5 throws three, Lv4+ go through bad guys.
         val dmg = power.damage + lvl - 1
+        val pierce = if (lvl >= 4) 2 else 0
         val sx = if (h.facing > 0) h.x + h.w else h.x - 9
-        spawn(Shot(sx, h.y + 8, h.facing, power, dmg, h))
-        if (lvl >= 3) spawn(Shot(sx, h.y - 1, h.facing, power, dmg, h))
-        sfx(Sound.FIRE)
+        val spread = if (power == Power.CRYSTAL) 70f else 0f
+        spawn(Shot(sx, h.y + 8, h.facing, power, dmg, h, pierce))
+        if (power == Power.CRYSTAL) {
+            // Crystal always fans out three shards.
+            spawn(Shot(sx, h.y + 8, h.facing, power, dmg, h, pierce, -spread))
+            spawn(Shot(sx, h.y + 8, h.facing, power, dmg, h, pierce, spread))
+        } else {
+            if (lvl >= 3) spawn(Shot(sx, h.y - 1, h.facing, power, dmg, h, pierce))
+            if (lvl >= 5) spawn(Shot(sx, h.y + 16, h.facing, power, dmg, h, pierce))
+        }
+        sfx(if (power == Power.THUNDER) Sound.ZAP else Sound.FIRE)
+    }
+
+    private fun monAttack(h: Hero) {
+        h.cooldown = 0.45f
+        h.swing = 0.2f
+        val sx = if (h.facing > 0) h.x + h.w else h.x - 8
+        if (mon == Mon.BLOOM) {
+            // Vine whip: a short-range lash that hits harder.
+            particles += Vine(h.cx, h.y + 8, h.facing)
+            val reach = Body(if (h.facing > 0) h.x + h.w else h.x - 34, h.y - 2, 34f, h.h + 4)
+            for (f in foes) if (!f.dying && f.active && f.overlaps(reach)) f.hit(this, 2)
+            sfx(Sound.KICK)
+            return
+        }
+        spawn(MonShot(sx, h.y + 4, h.facing, mon))
+        sfx(if (mon == Mon.SPARKY) Sound.ZAP else Sound.FIRE)
+    }
+
+    /** The Pokemon's huge SUPER move. It takes [SUPER_TIME] seconds to charge again. */
+    private fun useSuper() {
+        if (superCharge < 1f) {
+            sfx(Sound.BUMP)
+            toast("${mon.superName} is still charging...")
+            return
+        }
+        superCharge = 0f
+        superFlash = 1f
+        val m = partner
+        if (m !== leader && hypot(m.cx - leader.cx, m.cy - leader.cy) > 60f) teleport(m, leader)
+        val dir = m.facing
+        val mx = m.cx
+        val my = m.cy
+        sound.say("${mon.label}! ${mon.superName.lowercase()}!")
+        bannerTitle = mon.superName + "!"
+        bannerSub = ""
+        bannerT = 1.2f
+        shake = 0.4f
+        fun onScreen(f: Foe) = f.active && !f.dying && f.x + f.w > camX && f.x < camX + viewW
+        when (mon) {
+            Mon.SPARKY -> {
+                particles += SuperFx(mx, my, mon, dir, 0f)
+                for (f in foes.filter(::onScreen)) {
+                    particles += Bolt(f.cx, -10f, f.cx, f.cy, 0xFFFFF27A.toInt(), 3f)
+                    f.hit(this, 6)
+                }
+                sfx(Sound.ZAP)
+            }
+            Mon.BLAZE -> {
+                val w = 190f
+                particles += SuperFx(mx, my, mon, dir, w)
+                val zone = Body(if (dir > 0) mx else mx - w, my - 30f, w, 60f)
+                for (f in foes.filter { onScreen(it) && it.overlaps(zone) }) f.hit(this, 9)
+                sfx(Sound.BOSS_FIRE)
+            }
+            Mon.HYDRO -> {
+                val w = viewW * 0.6f
+                particles += SuperFx(mx, my, mon, dir, w)
+                val zone = Body(mx - w, my - 26f, w * 2, 52f)
+                for (f in foes.filter { onScreen(it) && it.overlaps(zone) }) {
+                    f.hit(this, 8)
+                    f.vx += if (f.cx > mx) 120f else -120f
+                }
+                sfx(Sound.BREAK)
+            }
+            Mon.BLOOM -> {
+                val w = viewW
+                particles += SuperFx(mx, my, mon, dir, w)
+                val zone = Body(if (dir > 0) mx else mx - w, my - 20f, w, 40f)
+                for (f in foes.filter { onScreen(it) && it.overlaps(zone) }) f.hit(this, 10)
+                sfx(Sound.BOSS_HIT)
+            }
+        }
     }
 
     // ======================================================================== Crafting
 
-    class Recipe(val title: String, val note: String, val ore: Ore, val cost: Int, val button: String, val enabled: Boolean, val icon: Power?)
+    enum class Kind { FLOWER, PICK, HEART, APPLE, TNT, STAR, HOUSE, BED }
 
-    fun recipes(): List<Recipe> {
-        val list = ArrayList<Recipe>()
-        for (p in listOf(Power.BOOM, Power.FIRE, Power.ICE, Power.GRASS)) {
+    class Recipe(
+        val title: String, val note: String, val costs: List<Pair<Ore, Int>>, val coinCost: Int,
+        val button: String, val enabled: Boolean, val icon: Power?, val kind: Kind,
+    )
+
+    private fun has(costs: List<Pair<Ore, Int>>, coinCost: Int) =
+        costs.all { (o, n) -> inventory[o.ordinal] >= n } && coins >= coinCost
+
+    /** The recipes on one tab of the crafting table. */
+    fun recipes(tab: Int = craftTab): List<Recipe> = when (tab) {
+        0 -> listOf(Power.BOOM, Power.FIRE, Power.ICE, Power.GRASS, Power.THUNDER, Power.CRYSTAL).map { p ->
             val lvl = flowerLevel[p.ordinal]
             val ore = p.ore!!
             val note = when (p) {
                 Power.BOOM -> "Iron: weakest. Comes back!"
                 Power.FIRE -> "Gold: strong bouncing fire"
                 Power.ICE -> "Diamond: the strongest!"
-                else -> "Emerald: GREEN ARMOR + leaves"
+                Power.GRASS -> "Emerald: GREEN ARMOR + leaves"
+                Power.THUNDER -> "Copper: zaps jump to more bad guys"
+                else -> "Amethyst: three crystal shards"
             }
+            val costs = listOf(ore to COST)
             val (button, enabled) = when {
-                lvl == 0 -> "MAKE" to (inventory[ore.ordinal] >= COST)
+                lvl == 0 -> "MAKE" to has(costs, 0)
                 power != p -> "EQUIP" to true
-                lvl >= 3 -> "MAX" to false
-                else -> "Lv${lvl + 1}" to (inventory[ore.ordinal] >= COST)
+                lvl >= MAX_FLOWER_LV -> "MAX" to false
+                else -> "Lv${lvl + 1}" to has(costs, 0)
             }
             val title = if (lvl > 0) "${p.label} Lv$lvl" else p.label
-            list += Recipe(title, note, ore, if (button == "EQUIP" || button == "MAX") 0 else COST, button, enabled, p)
+            Recipe(title, note, if (button == "EQUIP" || button == "MAX") emptyList() else costs, 0, button, enabled, p, Kind.FLOWER)
         }
-        val next = pickTier + 1
-        val pickOre = when (next) { 2 -> Ore.IRON; 3 -> Ore.GOLD; else -> Ore.DIAMOND }
-        list += if (pickTier >= 4) {
-            Recipe("DIAMOND PICKAXE", "The best pickaxe there is!", Ore.DIAMOND, 0, "MAX", false, null)
-        } else {
-            Recipe("${TeamArt.pickName(next)} PICKAXE", "Mines faster, hits harder", pickOre, COST, "MAKE", inventory[pickOre.ordinal] >= COST, null)
+        1 -> {
+            val next = pickTier + 1
+            val pickOre = when (next) { 2 -> Ore.IRON; 3 -> Ore.GOLD; 4 -> Ore.DIAMOND; else -> Ore.AMETHYST }
+            val pick = if (pickTier >= 5) {
+                Recipe("AMETHYST PICKAXE", "The best pickaxe there is!", emptyList(), 0, "MAX", false, null, Kind.PICK)
+            } else {
+                val c = listOf(pickOre to COST)
+                Recipe("${TeamArt.pickName(next)} PICKAXE", "Mines faster, hits harder", c, 0, "MAKE", has(c, 0), null, Kind.PICK)
+            }
+            val heart = listOf(Ore.STONE to 5)
+            val apple = listOf(Ore.GOLD to 2)
+            val tnt = listOf(Ore.STONE to 6, Ore.IRON to 2)
+            val star = listOf(Ore.AMETHYST to 2, Ore.DIAMOND to 1)
+            listOf(
+                pick,
+                Recipe("HEART", "Heals one heart", heart, 0, "MAKE", has(heart, 0) && hearts < MAX_HEARTS, null, Kind.HEART),
+                Recipe("GOLDEN APPLE", "All hearts back + 1 armor", apple, 0, "MAKE", has(apple, 0), null, Kind.APPLE),
+                Recipe("MEGA TNT", "BOOM! Hits every bad guy on screen", tnt, 0, "MAKE", has(tnt, 0), null, Kind.TNT),
+                Recipe("SUPER STAR", "10 seconds of invincibility!", star, 0, "MAKE", has(star, 0), null, Kind.STAR),
+            )
         }
-        list += Recipe("HEART", "Heals one heart", Ore.STONE, HEART_COST, "MAKE", inventory[Ore.STONE.ordinal] >= HEART_COST && hearts < MAX_HEARTS, null)
-        return list
+        else -> {
+            val houseCost = listOf(Ore.STONE to 10, Ore.IRON to 2)
+            val bedCost = listOf(Ore.STONE to 4)
+            val l = leader
+            val canBuild = l.onGround && boss == null && level.solidAt(l.cx - 34, l.bottom + 2) && level.solidAt(l.cx + 34, l.bottom + 2)
+            listOf(
+                Recipe(
+                    if (house == null) "HOUSE" else "MOVE HOUSE HERE", "Built right where you stand",
+                    houseCost, 0, "BUILD", has(houseCost, 0) && canBuild, null, Kind.HOUSE,
+                ),
+                Recipe(
+                    "BED", if (house == null) "Build a house first!" else "Sleep in it to SAVE the game",
+                    bedCost, 10, if (bed == null) "BUILD" else "DONE", has(bedCost, 10) && house != null && bed == null, null, Kind.BED,
+                ),
+            )
+        }
     }
 
     /** True when the crafting table has something new to make (the CRAFT button glows). */
-    val canCraftSomething get() = recipes().any { it.enabled && it.button != "EQUIP" && it.title != "HEART" }
+    val canCraftSomething get() =
+        recipes(0).any { it.enabled && it.button != "EQUIP" } || recipes(1).first().enabled
 
-    fun craft(i: Int) {
-        val r = recipes().getOrNull(i) ?: return
+    fun craft(i: Int, tab: Int = craftTab) {
+        val r = recipes(tab).getOrNull(i) ?: return
         if (!r.enabled) {
             sfx(Sound.BUMP)
-            toast(if (r.button == "MAX") "That's already the best!" else if (r.title == "HEART" && hearts >= MAX_HEARTS) "Hearts are full!" else "Need ${r.cost} ${r.ore.label}!")
+            toast(
+                when {
+                    r.button == "MAX" -> "That's already the best!"
+                    r.kind == Kind.HEART && hearts >= MAX_HEARTS -> "Hearts are full!"
+                    r.kind == Kind.BED && house == null -> "Build a HOUSE first!"
+                    r.kind == Kind.BED && bed != null -> "You already have a bed here."
+                    r.kind == Kind.HOUSE && has(r.costs, 0) -> "Stand on flat ground (not in a boss fight)."
+                    else -> "Need " + (r.costs.map { "${it.second} ${it.first.label}" } +
+                        (if (r.coinCost > 0) listOf("${r.coinCost} COINS") else emptyList())).joinToString(" + ") + "!"
+                },
+            )
             return
         }
-        inventory[r.ore.ordinal] -= r.cost
+        for ((o, n) in r.costs) inventory[o.ordinal] -= n
+        coins -= r.coinCost
         val p = r.icon
-        when {
-            p != null && r.button == "EQUIP" -> {
-                power = p
+        var color = r.costs.firstOrNull()?.first?.color ?: 0xFFFFFFFF.toInt()
+        when (r.kind) {
+            Kind.FLOWER -> if (r.button == "EQUIP") {
+                power = p!!
                 toast("${p.label} ready!")
-            }
-            p != null -> {
-                flowerLevel[p.ordinal] = min(3, flowerLevel[p.ordinal] + 1)
+            } else {
+                flowerLevel[p!!.ordinal] = min(MAX_FLOWER_LV, flowerLevel[p.ordinal] + 1)
                 power = p
-                if (p == Power.GRASS) armor = flowerLevel[p.ordinal] + 2
+                if (p == Power.GRASS) armor = min(MAX_ARMOR, flowerLevel[p.ordinal] + 2)
                 toast("${p.label} Lv${flowerLevel[p.ordinal]}!")
             }
-            r.title == "HEART" -> { hearts++; toast("+1 HEART") }
-            else -> { pickTier++; toast("${TeamArt.pickName(pickTier)} PICKAXE!") }
+            Kind.PICK -> { pickTier++; toast("${TeamArt.pickName(pickTier)} PICKAXE!") }
+            Kind.HEART -> { hearts++; toast("+1 HEART") }
+            Kind.APPLE -> {
+                hearts = MAX_HEARTS
+                armor = min(MAX_ARMOR, armor + 1)
+                toast("Crunch! All hearts back!")
+            }
+            Kind.TNT -> { megaTnt(); setState(State.PLAY); return }
+            Kind.STAR -> { startStar(); setState(State.PLAY); return }
+            Kind.HOUSE -> {
+                house?.let { it.removed = true }
+                bed?.let { it.removed = true }
+                bed = null
+                val hx = leader.cx - 36
+                house = House(hx, leader.bottom).also { things += it }
+                toast("Home sweet home! Now build a BED.")
+                color = 0xFFD8603A.toInt()
+            }
+            Kind.BED -> {
+                val h = house!!
+                bed = Bed(h.x + 34, h.bottom).also { things += it }
+                toast("Stand on the bed and press the action button to sleep and SAVE.")
+                color = 0xFFE52521.toInt()
+            }
         }
         sfx(Sound.POWERUP)
-        for (h in arrayOf(rocco, blocky)) repeat(6) {
-            particles += Sparkle(h.cx, h.cy, Random.nextFloat() * 120 - 60, -Random.nextFloat() * 90, r.ore.color)
+        for (h in team) repeat(6) {
+            particles += Sparkle(h.cx, h.cy, Random.nextFloat() * 120 - 60, -Random.nextFloat() * 90, color)
         }
     }
 
+    private fun megaTnt() {
+        shake = 0.8f
+        sfx(Sound.BOSS_FIRE)
+        sfx(Sound.BREAK)
+        repeat(8) { particles += Boom(camX + Random.nextFloat() * viewW, 40f + Random.nextFloat() * 160f, 24f + Random.nextFloat() * 20f) }
+        for (f in foes) if (f.active && !f.dying && f.x + f.w > camX && f.x < camX + viewW) f.hit(this, 6)
+        toast("KA-BOOM!")
+    }
+
+    fun startStar() {
+        starT = STAR_TIME
+        sfx(Sound.ONEUP)
+        toast("SUPER STAR! You can't be hurt!")
+    }
+
+    fun healHeart() {
+        if (hearts < MAX_HEARTS) hearts++ else score += 1000
+        particles += FloatText(leader.cx, leader.y, "+1 HEART", 0xFFFF8080.toInt())
+        sfx(Sound.ONEUP)
+    }
+
+    /** A gift box holds a handful of random ore. */
+    fun openGift(x: Float, y: Float) {
+        val pool = Ore.entries.filter { it != Ore.STONE }
+        repeat(2) {
+            val o = pool.random()
+            inventory[o.ordinal]++
+            particles += FloatText(x, y - it * 9f, "+1 ${o.label}", o.color)
+        }
+        inventory[Ore.STONE.ordinal] += 3
+        sfx(Sound.POWERUP)
+    }
+
     private fun panelX() = viewW / 2 - panelW() / 2
-    private fun panelW() = min(viewW - 24f, 400f)
+    private fun panelW() = min(viewW - 24f, 410f)
     private val panelTop = 32f
-    private val rowH = 30f
+    private val tabTop = 52f
+    private val rowsTop = 72f
+    private val rowH = 27f
 
     private fun updateCraft(tapped: Boolean, close: Boolean, num: Int) {
-        if (toastT > 0) toastT -= 1f / 60f
-        if (num in 1..6) craft(num - 1)
+        when (num) {
+            in 1..6 -> craft(num - 1)
+            in 7..9 -> craftTab = num - 7
+        }
         if (close) { setState(State.PLAY); return }
-        if (!tapped || stateT < 0.15f) return
+        if (!tapped || stateT < 0.15f || state != State.CRAFT) return
         val x = input.tapX
         val y = input.tapY
         val px = panelX()
-        val closeX = px + panelW() - 14
-        if (hypot(x - closeX, y - (panelTop + 11)) < 14f || x < px || x > px + panelW() || y < panelTop) {
+        val pw = panelW()
+        val closeX = px + pw - 14
+        if (hypot(x - closeX, y - (panelTop + 10)) < 14f || x < px || x > px + pw || y < panelTop) {
             setState(State.PLAY)
             return
         }
-        val i = ((y - panelTop - 22f) / rowH).toInt()
-        if (y >= panelTop + 22f && i in 0 until 6) craft(i)
+        if (y in tabTop..(tabTop + 18f)) {
+            craftTab = ((x - px) / (pw / TABS.size)).toInt().coerceIn(0, TABS.lastIndex)
+            sfx(Sound.KICK)
+            return
+        }
+        val i = ((y - rowsTop) / rowH).toInt()
+        if (y >= rowsTop && i in recipes().indices) craft(i)
     }
 
     // ======================================================================== Interactions
@@ -615,30 +999,32 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun interact() {
         for (f in foes) {
             if (!f.active || f.dying || f.removed) continue
-            for (h in arrayOf(leader, follower)) {
+            for (h in team) {
                 if (!f.overlaps(h)) continue
                 val falling = h.vy > 0 && h.bottom - f.y < 10f
                 if (falling && f.stompable) {
                     f.stomp(this, h)
+                    // Hydro is heavy: his stomps hurt bosses more.
+                    if (h.who == Who.MON && mon == Mon.HYDRO && f.boss) f.hit(this, 2)
                     h.vy = if (h === leader && input.jump) -340f else -240f
                     break
                 }
-                if (h === leader) f.touch(this)
+                if (h === leader) {
+                    if (starT > 0) f.hit(this, 3) else f.touch(this)
+                }
             }
         }
         for (t in things) {
             if (t.removed) continue
-            val hit = t.overlaps(leader) || t.overlaps(follower)
+            val hit = team.any { t.overlaps(it) }
             when (t) {
                 is Coin -> if (hit) {
                     t.removed = true
                     collectCoin()
                 }
-                is HeartItem -> if (hit) {
+                is Pickup -> if (hit) {
                     t.removed = true
-                    if (hearts < MAX_HEARTS) hearts++ else score += 1000
-                    particles += FloatText(t.cx, t.y, "+1 HEART", 0xFFFF8080.toInt())
-                    sfx(Sound.ONEUP)
+                    t.collect(this)
                 }
                 is Checkpoint -> if (!t.reached && t.overlaps(leader)) {
                     t.reached = true
@@ -668,7 +1054,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     fun hurt() {
-        if (invuln > 0 || state != State.PLAY) return
+        if (invuln > 0 || starT > 0 || state != State.PLAY) return
         if (armor > 0) {
             armor--
             particles += FloatText(leader.cx, leader.y - 4, "ARMOR!", 0xFF3CE070.toInt())
@@ -686,16 +1072,29 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         hearts = MAX_HEARTS
     }
 
+    /** For tests: the SUPER move is ready right now. */
+    internal fun chargeSuper() { superCharge = 1f }
+
+    internal fun slotCardXForTest(i: Int) = slotCardX(i)
+    internal fun pickCardXForTest(i: Int) = pickCardX(i)
+    internal fun bedForTest() = bed
+
     private fun knockedOut() {
         hearts = 0
         setState(State.OUCH)
         sfx(Sound.DIE)
     }
 
+    private fun sleep() {
+        setState(State.SLEEP)
+        sfx(Sound.CLEAR)
+        sound.say("Good night!")
+    }
+
     private fun checkFalls() {
         val h = leader
         if (h.y > level.h * TILE + 8 || level.inLava(h)) {
-            hearts--
+            if (starT <= 0) hearts--
             sfx(Sound.HURT)
             if (hearts <= 0) { knockedOut(); return }
             toast(if (level.inLava(h)) "Hot hot hot! Watch out for lava!" else "Whoops! Mind the gap!")
@@ -704,34 +1103,35 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
     }
 
-    // ======================================================================== Sparky, the frog and bosses
+    // ======================================================================== Partner, frog and bosses
 
-    private fun updateSparky(dt: Float) {
-        val l = leader
-        val tx = l.cx - l.facing * 36f - 8f
-        val ty = l.y - 14f
-        sparkyX += (tx - sparkyX) * min(1f, dt * 4f)
-        sparkyY += (ty - sparkyY) * min(1f, dt * 4f)
-        sparkyFacing = if (l.cx > sparkyX + 8) 1 else -1
-        if (zapFlash > 0) zapFlash -= dt
-        zapTimer -= dt
-        if (zapTimer > 0) return
-        val sx = sparkyX + 8
-        val sy = sparkyY + 6
+    /** While following, the Pokemon zaps a nearby bad guy every few seconds. */
+    private fun updatePartnerZap(dt: Float) {
+        if (partner === leader) return
+        followZap -= dt
+        if (followZap > 0) return
+        val sx = partner.cx
+        val sy = partner.cy
         val target = foes.filter {
             it.active && !it.dying && it.x + it.w > camX && it.x < camX + viewW &&
                 (it !is KragJr || it.engaged) && (it !is KingKrag || it.awake)
         }.minByOrNull { hypot(it.cx - sx, it.cy - sy) }
         if (target == null || hypot(target.cx - sx, target.cy - sy) > 180f) {
-            zapTimer = 0.4f
+            followZap = 0.4f
             return
         }
-        particles += Bolt(sx, sy, target.cx, target.cy)
+        val color = when (mon) {
+            Mon.SPARKY -> 0xFFFFF27A.toInt()
+            Mon.BLAZE -> 0xFFFF8A00.toInt()
+            Mon.HYDRO -> 0xFF8AC8FF.toInt()
+            Mon.BLOOM -> 0xFF3CE070.toInt()
+        }
+        particles += Bolt(sx, sy, target.cx, target.cy, color)
         target.hit(this, 1)
         sfx(Sound.ZAP)
-        zapFlash = 0.4f
-        zapTimer = if (boss != null && !bossDone) 3.5f else 4.5f
-        if (Random.nextInt(3) == 0) say(sx, sparkyY - 12, listOf("Spark spark!", "Zzzap!", "Sparky!").random(), 1.2f)
+        partner.swing = 0.4f
+        followZap = 5f
+        if (Random.nextInt(3) == 0) say(sx, partner.y - 12, "${mon.label}!", 1.1f)
     }
 
     private fun updateFrog() {
@@ -742,7 +1142,6 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val fr = Frog(camX - 30f, leader.bottom - 26f)
         frog = fr
         spawn(fr)
-        // Ring-Ding Frog sings out loud with the phone's voice.
         sound.say("Ring ding ding ding ding ding! Bing bong a dong!")
     }
 
@@ -752,15 +1151,29 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val home = when (f) { is KragJr -> f.homeX; is KingKrag -> f.homeX; else -> f.x }
         camLock = (home + 16f - viewW / 2).coerceIn(0f, max(0f, level.w * TILE - viewW))
         bannerT = 3f
-        if (f is KragJr) {
-            wonder = true
-            bannerTitle = "WONDER KRAG JR.!"
-            bannerSub = "The sky goes Wonder! Stomp him or zap him!"
-            sfx(Sound.POWERUP)
-        } else {
-            bannerTitle = "KING KRAG!"
-            bannerSub = "Jump over the fire, hit him with everything!"
-            sfx(Sound.BOSS_FIRE)
+        when {
+            f is KragJr && f.wonderStyle -> {
+                wonder = true
+                bannerTitle = "WONDER KRAG JR.!"
+                bannerSub = "Purple and green and twice as tough! The sky goes Wonder!"
+                sfx(Sound.POWERUP)
+            }
+            f is KragJr -> {
+                bannerTitle = "KRAG JR.!"
+                bannerSub = "Stomp his clown car or hit him with your flowers!"
+                sfx(Sound.KICK)
+            }
+            f is KingKrag && f.wonderStyle -> {
+                wonder = true
+                bannerTitle = "WONDER KING KRAG!"
+                bannerSub = "He's HUGE! Rainbow fire and spike ball rain!"
+                sfx(Sound.BOSS_FIRE)
+            }
+            else -> {
+                bannerTitle = "KING KRAG!"
+                bannerSub = "Jump over the fire, hit him with everything!"
+                sfx(Sound.BOSS_FIRE)
+            }
         }
     }
 
@@ -773,20 +1186,25 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     private fun updateBoss(dt: Float) {
-        if (wonder && !bossDone) {
-            // Wonder rain: rainbow sparkles fall all over the arena.
-            if (Random.nextFloat() < dt * 10) {
-                particles += Sparkle(camX + Random.nextFloat() * viewW, -4f, Random.nextFloat() * 20 - 10, 70f, solidRainbow(time, Random.nextFloat()))
-            }
+        if (wonder && !bossDone && Random.nextFloat() < dt * 10) {
+            particles += Sparkle(camX + Random.nextFloat() * viewW, -4f, Random.nextFloat() * 20 - 10, 70f, solidRainbow(time, Random.nextFloat()))
         }
         if (!bossDone) return
         bossDoneT += dt
         if (bossDoneT > 2f) {
             wonder = false
             camLock = null
-            if (boss is KingKrag && state == State.PLAY && bossDoneT > 3f) {
-                setState(State.VICTORY)
-                sound.say("Ring ding ding ding! You did it! Ding ding!")
+            val b = boss
+            if (b is KingKrag && state == State.PLAY && bossDoneT > 3f) {
+                if (levelIndex == Levels.all.lastIndex) {
+                    setState(State.VICTORY)
+                    sound.say("Ring ding ding ding! You did it! Ding ding!")
+                } else {
+                    // Beating King Krag the first time isn't the end...
+                    clearNote = "...but King Krag found a WONDER FLOWER!"
+                    setState(State.CLEAR)
+                    sfx(Sound.CLEAR)
+                }
             }
         }
     }
@@ -807,9 +1225,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun updateMusic() {
         val m = when {
             !musicOn -> Music.NONE
-            state == State.TITLE -> Music.OVERWORLD
+            state == State.TITLE || state == State.SLOTS || state == State.PICK -> Music.OVERWORLD
             state == State.VICTORY -> Music.FROG
-            state == State.OUCH || state == State.CLEAR -> Music.NONE
+            state == State.OUCH || state == State.CLEAR || state == State.SLEEP -> Music.NONE
+            starT > 0 -> Music.STAR
             frog?.singing == true -> Music.FROG
             wonder -> Music.WONDER
             boss != null && !bossDone -> Music.BOSS
@@ -820,48 +1239,69 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     // ======================================================================== Rendering
 
+    private val white = 0xFFFFFFFF.toInt()
+
     fun render(gfx: Gfx) {
         when (state) {
             State.TITLE -> renderTitle(gfx)
+            State.SLOTS -> renderSlots(gfx)
+            State.PICK -> renderPick(gfx)
             State.INTRO -> renderIntro(gfx)
             else -> {
                 renderWorld(gfx)
                 renderHud(gfx)
                 when (state) {
                     State.PLAY -> {
-                        TeamControls.draw(
-                            gfx, input, viewW,
-                            if (leaderWho == Who.BLOCKY) "MINE" else if (power == Power.NONE) "PUNCH" else "THROW",
-                            follower.who.label,
-                            if (follower.who == Who.ROCCO) 0xFFE52521.toInt() else 0xFF2AA7A7.toInt(),
-                        )
+                        val l = leader
+                        val label = when {
+                            bed?.overlaps(l) == true -> "SLEEP"
+                            l.who == Who.BLOCKY -> "MINE"
+                            l.who == Who.MON -> if (mon == Mon.BLOOM) "VINE" else "ATTACK"
+                            power == Power.NONE -> "PUNCH"
+                            else -> "THROW"
+                        }
+                        val next = team[(team.indexOf(l) + 1) % team.size]
+                        TeamControls.draw(gfx, input, viewW, label, next.label, next.color, superCharge, mon.color, time)
                         TeamControls.drawTop(gfx, viewW, musicOn, canCraftSomething, time)
                     }
                     State.CRAFT -> renderCraft(gfx)
+                    State.SLEEP -> {
+                        val a = (minOf(1f, stateT / 0.6f, (2.6f - stateT) / 0.6f) * 230).toInt().coerceIn(0, 230)
+                        gfx.rect(0f, 0f, viewW, VIEW_H, argb(a, 0x0A0A2A))
+                        gfx.oval(viewW - 80, 30f, 30f, 30f, argb(a, 0xFFF2C8))
+                        gfx.oval(viewW - 72, 26f, 30f, 30f, argb(a, 0x0A0A2A))
+                        for (i in 0 until 3) {
+                            val zt = (stateT * 0.8f + i * 0.33f) % 1f
+                            gfx.text("Z", viewW / 2 + i * 14f + zt * 10, 120f - zt * 30, 10f + i * 4, argb((a * (1 - zt)).toInt(), 0xFFFFFF), 1)
+                        }
+                        gfx.shadowText("Sleeping... saving your game", viewW / 2, 160f, 10f, argb(a, 0xFFFFFF), 1)
+                    }
                     State.OUCH -> {
                         gfx.rect(0f, 0f, viewW, VIEW_H, 0x88000000.toInt())
                         gfx.shadowText("OH NO!", viewW / 2, 106f, 22f, 0xFFFF8080.toInt(), 1)
-                        gfx.shadowText("Back to the checkpoint. You keep your ore!", viewW / 2, 128f, 9f, 0xFFFFFFFF.toInt(), 1)
+                        gfx.shadowText("Back to the checkpoint. You keep your ore!", viewW / 2, 128f, 9f, white, 1)
                     }
                     State.CLEAR -> {
                         gfx.shadowText("LEVEL CLEAR!", viewW / 2, 96f, 22f, 0xFFFFD21F.toInt(), 1)
-                        gfx.shadowText("SCORE $score", viewW / 2, 118f, 10f, 0xFFFFFFFF.toInt(), 1)
+                        gfx.shadowText("SCORE $score", viewW / 2, 118f, 10f, white, 1)
+                        if (clearNote.isNotEmpty()) gfx.shadowText(clearNote, viewW / 2, 138f, 10f, solidRainbow(time), 1)
                     }
                     State.VICTORY -> renderVictory(gfx)
                     else -> {}
                 }
                 if (bannerT > 0 && state == State.PLAY) {
                     gfx.shadowText(bannerTitle, viewW / 2, 74f, 16f, if (wonder) solidRainbow(time) else 0xFFFF6A3A.toInt(), 1)
-                    gfx.shadowText(bannerSub, viewW / 2, 90f, 8f, 0xFFFFFFFF.toInt(), 1)
+                    if (bannerSub.isNotEmpty()) gfx.shadowText(bannerSub, viewW / 2, 90f, 8f, white, 1)
                 }
-                if (toastT > 0 && state == State.PLAY) {
+                if (toastT > 0 && (state == State.PLAY || state == State.CRAFT)) {
                     val w = toast.length * 5.4f + 16
-                    gfx.rect(viewW / 2 - w / 2, 46f, w, 16f, 0xAA000000.toInt())
-                    gfx.text(toast, viewW / 2, 58f, 9f, 0xFFFFFFFF.toInt(), 1)
+                    val ty = if (state == State.CRAFT) VIEW_H - 18 else 46f
+                    gfx.rect(viewW / 2 - w / 2, ty, w, 16f, 0xCC000000.toInt())
+                    gfx.text(toast, viewW / 2, ty + 12, 9f, white, 1)
                 }
                 if (paused && state == State.PLAY) {
                     gfx.rect(0f, 0f, viewW, VIEW_H, 0x99000000.toInt())
-                    gfx.shadowText("PAUSED", viewW / 2, 110f, 20f, 0xFFFFFFFF.toInt(), 1)
+                    gfx.shadowText("PAUSED", viewW / 2, 110f, 20f, white, 1)
                     gfx.shadowText("Tap the pause button to keep playing", viewW / 2, 132f, 9f, 0xFFDDDDDD.toInt(), 1)
                     TeamControls.drawTop(gfx, viewW, musicOn, false, time)
                 }
@@ -875,18 +1315,20 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         renderBackground(gfx, cam)
         renderTiles(gfx, cam)
         val ox = -cam
-        for (t in things) if (t !is Shot && t !is Frog) t.draw(this, gfx, ox)
-        for (f in foes) if (f.x + f.w > cam - 40 && f.x < cam + viewW + 40) f.draw(this, gfx, ox)
-        follower.draw(this, gfx, ox)
+        for (t in things) if (t is House) t.draw(this, gfx, ox)
+        for (t in things) if (t !is Shot && t !is MonShot && t !is Frog && t !is House) t.draw(this, gfx, ox)
+        for (f in foes) if (f.x + f.w > cam - 40 && f.x < cam + viewW + 40) {
+            f.draw(this, gfx, ox)
+            f.drawHealth(gfx, ox)
+        }
+        for (h in followers) h.draw(this, gfx, ox)
         leader.draw(this, gfx, ox)
-        TeamArt.sparky(gfx, sparkyX + ox, sparkyY, time, sparkyFacing, zapFlash > 0)
-        for (t in things) if (t is Shot || t is Frog) t.draw(this, gfx, ox)
+        for (t in things) if (t is Shot || t is MonShot || t is Frog) t.draw(this, gfx, ox)
         for (p in particles) p.draw(gfx, ox)
-        // A little arrow over the hero you control
         val l = leader
         if (state == State.PLAY) {
             val ay = l.y - 10 + sin(time * 6) * 1.5f
-            gfx.poly(floatArrayOf(l.cx + ox - 4, l.cx + ox + 4, l.cx + ox), floatArrayOf(ay, ay, ay + 5), 0xFFFFFFFF.toInt())
+            gfx.poly(floatArrayOf(l.cx + ox - 4, l.cx + ox + 4, l.cx + ox), floatArrayOf(ay, ay, ay + 5), white)
         }
     }
 
@@ -894,29 +1336,63 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (wonder || state == State.VICTORY) {
             val bands = 7
             for (i in 0 until bands) {
-                gfx.rect(0f, i * VIEW_H / bands, viewW, VIEW_H / bands + 1, argb(255, rainbow(time * 0.2f, i / bands.toFloat())))
+                gfx.rect(0f, i * VIEW_H / bands, viewW, VIEW_H / bands + 1, solidRainbow(time * 0.2f, i / bands.toFloat()))
             }
-            gfx.rect(0f, 0f, viewW, VIEW_H, 0x66FFFFFF)
+            // Wonder bosses tint the sky purple and green.
+            val b = boss
+            val wonderBoss = (b is KragJr && b.wonderStyle) || (b is KingKrag && b.wonderStyle)
+            gfx.rect(0f, 0f, viewW, VIEW_H, if (wonderBoss) argb(90, if ((time * 2).toInt() % 2 == 0) 0x8A3AD8 else 0x2EB84A) else 0x66FFFFFF)
             return
         }
         when (level.def.place) {
-            Place.HILLS -> {
-                gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF6FB6FF.toInt())
+            Place.HILLS, Place.JUNGLE -> {
+                val jungle = level.def.place == Place.JUNGLE
+                gfx.rect(0f, 0f, viewW, VIEW_H, if (jungle) 0xFF8FD8A0.toInt() else 0xFF6FB6FF.toInt())
                 layer(cam, 0.2f, 260f) { i, x ->
-                    gfx.oval(x, 150f - (i % 3) * 18f, 220f, 160f, 0xFF7FCB6A.toInt())
+                    gfx.oval(x, 150f - (i % 3) * 18f, 220f, 160f, if (jungle) 0xFF3E8A4A.toInt() else 0xFF7FCB6A.toInt())
                 }
                 layer(cam, 0.35f, 180f) { i, x ->
-                    // Blocky little trees in the distance
-                    gfx.rect(x + 40, 170f, 10f, 40f, 0xFF6B4423.toInt())
-                    gfx.rect(x + 25, 140f - (i % 2) * 10, 40f, 34f, 0xFF3E9A3A.toInt())
+                    if (jungle) {
+                        // Giant mushrooms
+                        gfx.rect(x + 40, 150f, 12f, 60f, 0xFFF0E0C0.toInt())
+                        gfx.oval(x + 16, 128f - (i % 2) * 12, 60f, 34f, if (i % 2 == 0) 0xFFE53A3A.toInt() else 0xFF8A3AD8.toInt())
+                        gfx.oval(x + 30, 136f - (i % 2) * 12, 8f, 6f, white)
+                    } else {
+                        gfx.rect(x + 40, 170f, 10f, 40f, 0xFF6B4423.toInt())
+                        gfx.rect(x + 25, 140f - (i % 2) * 10, 40f, 34f, 0xFF3E9A3A.toInt())
+                    }
                 }
                 layer(cam, 0.1f, 200f) { i, x -> cloud(gfx, x + 30, 30f + (i % 3) * 22f) }
+            }
+            Place.DESERT -> {
+                gfx.rect(0f, 0f, viewW, VIEW_H, 0xFFFFB870.toInt())
+                gfx.oval(viewW * 0.7f, 30f, 40f, 40f, 0xFFFFF0A0.toInt())
+                layer(cam, 0.2f, 240f) { i, x ->
+                    gfx.poly(floatArrayOf(x, x + 70, x + 140), floatArrayOf(200f, 120f - (i % 2) * 20, 200f), 0xFFD88A4A.toInt())
+                }
+                layer(cam, 0.4f, 170f) { _, x ->
+                    gfx.rect(x + 60, 160f, 8f, 50f, 0xFF3E9A3A.toInt())
+                    gfx.rect(x + 52, 172f, 8f, 4f, 0xFF3E9A3A.toInt())
+                    gfx.rect(x + 50, 160f, 4f, 16f, 0xFF3E9A3A.toInt())
+                }
+            }
+            Place.SNOW -> {
+                gfx.rect(0f, 0f, viewW, VIEW_H, 0xFFB8D8F8.toInt())
+                layer(cam, 0.2f, 220f) { i, x ->
+                    gfx.poly(floatArrayOf(x, x + 90, x + 180), floatArrayOf(210f, 90f - (i % 3) * 15, 210f), 0xFF8AA8C8.toInt())
+                    gfx.poly(floatArrayOf(x + 70, x + 90, x + 110), floatArrayOf(110f - (i % 3) * 15, 90f - (i % 3) * 15, 110f - (i % 3) * 15), white)
+                }
+                for (i in 0 until 30) {
+                    val fx = (i * 73f + time * 15f - cam * 0.5f) % viewW
+                    val fy = (i * 37f + time * 30f) % VIEW_H
+                    gfx.oval((fx + viewW) % viewW, fy, 2f, 2f, white)
+                }
             }
             Place.CAVE -> {
                 gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF1E1A2E.toInt())
                 layer(cam, 0.3f, 90f) { i, x ->
                     gfx.poly(floatArrayOf(x, x + 18, x + 9), floatArrayOf(32f, 32f, 60f + (i % 4) * 14f), 0xFF2E2840.toInt())
-                    if (i % 3 == 0) gfx.oval(x + 40, 120f + (i % 5) * 12f, 3f, 3f, Ore.entries[i % 5].color)
+                    if (i % 3 == 0) gfx.oval(x + 40, 120f + (i % 5) * 12f, 3f, 3f, Ore.entries[i % Ore.entries.size].color)
                 }
             }
             Place.SKY -> {
@@ -925,11 +1401,20 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 layer(cam, 0.15f, 150f) { i, x -> cloud(gfx, x, 40f + (i % 4) * 30f) }
                 layer(cam, 0.3f, 210f) { i, x -> cloud(gfx, x + 20, 170f + (i % 2) * 20f) }
             }
-            Place.CASTLE -> {
-                gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF2A0E12.toInt())
-                layer(cam, 0.3f, 120f) { i, x ->
-                    gfx.rect(x + 20, 60f, 30f, 60f, 0xFF3A1A1E.toInt())
-                    gfx.rect(x + 30, 75f, 10f, 16f, if (i % 2 == 0) 0xFFFF8A00.toInt() else 0xFF5A2A20.toInt())
+            Place.CASTLE, Place.VOLCANO -> {
+                val volcano = level.def.place == Place.VOLCANO
+                gfx.rect(0f, 0f, viewW, VIEW_H, if (volcano) 0xFF3A1208.toInt() else 0xFF2A0E12.toInt())
+                if (volcano) {
+                    layer(cam, 0.2f, 260f) { _, x ->
+                        gfx.poly(floatArrayOf(x, x + 100, x + 200), floatArrayOf(220f, 90f, 220f), 0xFF5A2A18.toInt())
+                        gfx.oval(x + 88, 84f, 24f, 12f, 0xFFFF6A00.toInt())
+                    }
+                    gfx.rect(0f, 200f, viewW, 40f, 0x55FF6A00)
+                } else {
+                    layer(cam, 0.3f, 120f) { i, x ->
+                        gfx.rect(x + 20, 60f, 30f, 60f, 0xFF3A1A1E.toInt())
+                        gfx.rect(x + 30, 75f, 10f, 16f, if (i % 2 == 0) 0xFFFF8A00.toInt() else 0xFF5A2A20.toInt())
+                    }
                 }
             }
         }
@@ -943,8 +1428,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     private fun cloud(gfx: Gfx, x: Float, y: Float) {
-        gfx.oval(x, y, 50f, 20f, 0xFFFFFFFF.toInt())
-        gfx.oval(x + 12, y - 10, 28f, 22f, 0xFFFFFFFF.toInt())
+        gfx.oval(x, y, 50f, 20f, white)
+        gfx.oval(x + 12, y - 10, 28f, 22f, white)
     }
 
     private fun renderTiles(gfx: Gfx, cam: Float) {
@@ -955,17 +1440,21 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (tx < 0 || tx >= level.w) continue
             val t = level[tx, ty]
             if (t == Tile.EMPTY) continue
+            val under = level[tx, ty - 1].let { it == Tile.GROUND || it == Tile.DIRT }
             val s = when (t) {
                 Tile.GROUND -> when (place) {
                     Place.CAVE -> Sprites.stone
-                    Place.CASTLE -> Sprites.hardGrey
-                    else -> if (level[tx, ty - 1].let { it == Tile.GROUND || it == Tile.DIRT }) Sprites.dirt else Sprites.grassTop
+                    Place.CASTLE, Place.VOLCANO -> Sprites.hardGrey
+                    Place.DESERT -> if (under) Sprites.sandstone else Sprites.sandTop
+                    Place.SNOW -> if (under) Sprites.frozenDirt else Sprites.snowTop
+                    else -> if (under) Sprites.dirt else Sprites.grassTop
                 }
                 Tile.DIRT -> Sprites.dirt
                 Tile.BRICK -> if (place == Place.CAVE) Sprites.brickBlue else Sprites.brick
-                Tile.QCOIN, Tile.QHEART -> if ((time * 3).toInt() % 3 == 0) Sprites.question2 else Sprites.question1
+                Tile.QCOIN, Tile.QHEART, Tile.QSTAR -> if ((time * 3).toInt() % 3 == 0) Sprites.question2 else Sprites.question1
+                Tile.QMYSTERY -> Sprites.question1
                 Tile.USED -> Sprites.used
-                Tile.HARD -> if (place == Place.CASTLE) Sprites.hardGrey else Sprites.hard
+                Tile.HARD -> if (place == Place.CASTLE || place == Place.VOLCANO) Sprites.hardGrey else Sprites.hard
                 Tile.LAVA -> if (level[tx, ty - 1] == Tile.LAVA) Sprites.lava else Sprites.lavaTop
                 Tile.CLOUD -> Sprites.cloud
                 else -> Tile.ore(t)?.let { TeamArt.ores[it] }
@@ -974,6 +1463,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             val px = tx * TILE - cam
             val py = ty * TILE + wob
             gfx.sprite(s, px, py)
+            // Mystery blocks shimmer in rainbow colors.
+            if (t == Tile.QMYSTERY) gfx.rect(px, py, 16f, 16f, argb(110, com.roccoquest.game.rainbow(time, tx * 0.1f)))
             val crack = level.cracks[ty * level.w + tx]
             if (crack != null) {
                 val f = crack.toFloat() / Tile.toughness(t).coerceAtLeast(1)
@@ -986,36 +1477,38 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     private fun renderHud(gfx: Gfx) {
-        val white = 0xFFFFFFFF.toInt()
         gfx.rect(0f, 0f, viewW, 30f, 0x55000000)
         for (i in 0 until MAX_HEARTS) {
-            TeamArt.heart(gfx, 8f + i * 13f, 4f, 11f, if (i < hearts) 0xFFE52521.toInt() else 0x66000000)
+            TeamArt.heart(gfx, 6f + i * 12f, 4f, 10f, if (i < hearts) 0xFFE52521.toInt() else 0x66000000)
         }
-        for (i in 0 until armor) TeamArt.shield(gfx, 8f + MAX_HEARTS * 13f + i * 11f, 3f, 10f)
-        gfx.sprite(Sprites.coin, 8f, 17f, w = 8f, h = 11f)
-        gfx.shadowText("x$coins", 18f, 26f, 8f, white)
-        // Ore bag
-        var x = max(118f, viewW * 0.26f)
+        for (i in 0 until armor) TeamArt.shield(gfx, 6f + MAX_HEARTS * 12f + i * 9f, 3f, 8f)
+        gfx.sprite(Sprites.coin, 6f, 17f, w = 8f, h = 11f)
+        gfx.shadowText("x$coins", 16f, 26f, 8f, white)
+        gfx.shadowText(mon.label, 46f, 26f, 7f, mon.color)
+        var x = max(112f, viewW * 0.25f)
         for (o in Ore.entries) {
-            TeamArt.oreIcon(gfx, o, x, 5f, 11f)
-            gfx.shadowText(inventory[o.ordinal].toString(), x + 14, 14f, 8f, white)
-            x += 30f
+            TeamArt.oreIcon(gfx, o, x, 5f, 10f)
+            gfx.shadowText(inventory[o.ordinal].toString(), x + 12, 13f, 7f, white)
+            x += 25f
         }
         val powerText = if (power == Power.NONE) "NO FLOWER" else "${power.label} Lv${flowerLevel[power.ordinal]}"
-        gfx.shadowText("${TeamArt.pickName(pickTier)} PICK  •  $powerText", max(118f, viewW * 0.26f), 26f, 7f, 0xFFDDEEFF.toInt())
+        val starText = if (starT > 0) "  •  STAR ${starT.toInt() + 1}" else ""
+        gfx.shadowText("${TeamArt.pickName(pickTier)} PICK  •  $powerText$starText", max(112f, viewW * 0.25f), 26f, 7f, 0xFFDDEEFF.toInt())
 
         val b = boss
         if (b != null && !bossDone && (b !is KragJr || b.engaged)) {
-            val (hp, max, name) = when (b) {
-                is KragJr -> Triple(b.hp, b.maxHp, "WONDER KRAG JR.")
-                is KingKrag -> Triple(b.hp, b.maxHp, "KING KRAG")
-                else -> Triple(0, 1, "")
+            val name = when {
+                b is KragJr && b.wonderStyle -> "WONDER KRAG JR."
+                b is KragJr -> "KRAG JR."
+                b is KingKrag && b.wonderStyle -> "WONDER KING KRAG"
+                else -> "KING KRAG"
             }
-            val bw = 120f
+            val wonderBoss = (b is KragJr && b.wonderStyle) || (b is KingKrag && b.wonderStyle)
+            val bw = 140f
             val bx = viewW / 2 - bw / 2
-            gfx.shadowText(name, viewW / 2, 40f, 8f, 0xFFFFB0A0.toInt(), 1)
+            gfx.shadowText("$name  ${b.hp}/${b.maxHp}", viewW / 2, 40f, 8f, 0xFFFFB0A0.toInt(), 1)
             gfx.rect(bx - 1, 43f, bw + 2, 7f, 0xFF000000.toInt())
-            gfx.rect(bx, 44f, bw * hp / max, 5f, if (b is KragJr) solidRainbow(time) else 0xFFE53A1E.toInt())
+            gfx.rect(bx, 44f, bw * b.hp / b.maxHp, 5f, if (wonderBoss) solidRainbow(time) else 0xFFE53A1E.toInt())
         }
     }
 
@@ -1023,30 +1516,58 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         gfx.rect(0f, 30f, viewW, VIEW_H - 30f, 0x88000000.toInt())
         val px = panelX()
         val pw = panelW()
-        gfx.rect(px - 2, panelTop - 2, pw + 4, 22f + rowH * 6 + 6, 0xFF3A2410.toInt())
-        gfx.rect(px, panelTop, pw, 22f + rowH * 6 + 2, 0xFFB98A52.toInt())
-        // Wood-grain lines, like a crafting table
-        for (i in 0 until 6) gfx.rect(px, panelTop + 22 + i * rowH + rowH - 1, pw, 1f, 0x55000000)
-        gfx.shadowText("CRAFTING TABLE", px + pw / 2, panelTop + 15, 11f, 0xFFFFF2C8.toInt(), 1)
-        gfx.oval(px + pw - 24, panelTop + 2, 18f, 18f, 0xFF8A1010.toInt())
-        gfx.text("X", px + pw - 15, panelTop + 15, 10f, white(), 1)
-        recipes().forEachIndexed { i, r ->
-            val y = panelTop + 22 + i * rowH
-            // Icon
+        val rows = recipes()
+        val ph = rowsTop - panelTop + rowH * 6 + 2
+        gfx.rect(px - 2, panelTop - 2, pw + 4, ph + 4, 0xFF3A2410.toInt())
+        gfx.rect(px, panelTop, pw, ph, 0xFFB98A52.toInt())
+        gfx.shadowText("CRAFTING TABLE", px + pw / 2, panelTop + 14, 11f, 0xFFFFF2C8.toInt(), 1)
+        gfx.oval(px + pw - 23, panelTop + 1, 18f, 18f, 0xFF8A1010.toInt())
+        gfx.text("X", px + pw - 14, panelTop + 14, 10f, white, 1)
+        // Tabs
+        val tw = pw / TABS.size
+        TABS.forEachIndexed { i, name ->
+            val tx = px + i * tw
+            gfx.rect(tx + 2, tabTop, tw - 4, 17f, if (i == craftTab) 0xFF7A4A20.toInt() else 0xFF9A6A3A.toInt())
+            gfx.text(name, tx + tw / 2, tabTop + 12, 8f, if (i == craftTab) 0xFFFFF2C8.toInt() else 0xFFE0C8A0.toInt(), 1)
+        }
+        rows.forEachIndexed { i, r ->
+            val y = rowsTop + i * rowH
+            gfx.rect(px, y + rowH - 1, pw, 1f, 0x55000000)
             when {
-                r.icon != null -> gfx.sprite(TeamArt.flowerSprite(r.icon), px + 6, y + 6, w = 18f, h = 18f)
-                r.title == "HEART" -> TeamArt.heart(gfx, px + 8, y + 8, 14f, 0xFFE52521.toInt())
-                else -> TeamArt.pickaxe(gfx, px + 9, y + 23, -0.9f, min(4, pickTier + 1))
+                r.icon != null -> gfx.sprite(TeamArt.flowerSprite(r.icon), px + 6, y + 5, w = 17f, h = 17f)
+                r.kind == Kind.HEART -> TeamArt.heart(gfx, px + 8, y + 7, 13f, 0xFFE52521.toInt())
+                r.kind == Kind.APPLE -> {
+                    gfx.oval(px + 7, y + 7, 14f, 14f, 0xFFFFD21F.toInt())
+                    gfx.rect(px + 13, y + 3, 2f, 5f, 0xFF7A4A20.toInt())
+                    gfx.oval(px + 15, y + 3, 5f, 3f, 0xFF2EB84A.toInt())
+                }
+                r.kind == Kind.TNT -> {
+                    gfx.rect(px + 6, y + 6, 16f, 15f, 0xFFE53A1E.toInt())
+                    gfx.rect(px + 6, y + 11, 16f, 5f, white)
+                    gfx.text("TNT", px + 14, y + 15.5f, 5f, 0xFF101010.toInt(), 1)
+                }
+                r.kind == Kind.STAR -> gfx.sprite(Sprites.star1, px + 6, y + 5, w = 17f, h = 17f)
+                r.kind == Kind.HOUSE -> {
+                    gfx.poly(floatArrayOf(px + 4, px + 14, px + 24), floatArrayOf(y + 12, y + 3, y + 12), 0xFFD8603A.toInt())
+                    gfx.rect(px + 7, y + 12, 14f, 10f, 0xFF8A8A8A.toInt())
+                    gfx.rect(px + 12, y + 15, 4f, 7f, 0xFF7A4A20.toInt())
+                }
+                r.kind == Kind.BED -> TeamArt.bed(gfx, px + 2, y + 20)
+                else -> TeamArt.pickaxe(gfx, px + 9, y + 22, -0.9f, min(5, pickTier + 1))
             }
-            gfx.text(r.title, px + 30, y + 13, 8f, 0xFF2A1808.toInt())
-            gfx.text(r.note, px + 30, y + 23, 6f, 0xFF4A3018.toInt())
-            // Cost
-            if (r.cost > 0) {
-                val cx = px + pw - 104
-                TeamArt.oreIcon(gfx, r.ore, cx, y + 9, 11f)
-                val have = inventory[r.ore.ordinal]
-                gfx.text("${r.cost}", cx + 14, y + 18, 8f, if (have >= r.cost) 0xFF1E5A1E.toInt() else 0xFF8A1010.toInt())
-                gfx.text("(${have})", cx + 23, y + 18, 6f, 0xFF4A3018.toInt())
+            gfx.text(r.title, px + 30, y + 12, 8f, 0xFF2A1808.toInt())
+            gfx.text(r.note, px + 30, y + 22, 6f, 0xFF4A3018.toInt())
+            // Costs, right to left before the button
+            var cx = px + pw - 60f
+            if (r.coinCost > 0) {
+                cx -= 30f
+                gfx.sprite(Sprites.coin, cx, y + 8, w = 8f, h = 11f)
+                gfx.text("${r.coinCost}", cx + 10, y + 17, 7f, if (coins >= r.coinCost) 0xFF1E5A1E.toInt() else 0xFF8A1010.toInt())
+            }
+            for ((o, n) in r.costs.reversed()) {
+                cx -= 30f
+                TeamArt.oreIcon(gfx, o, cx, y + 8, 10f)
+                gfx.text("$n", cx + 12, y + 17, 7f, if (inventory[o.ordinal] >= n) 0xFF1E5A1E.toInt() else 0xFF8A1010.toInt())
             }
             val bx = px + pw - 52
             val color = when {
@@ -1054,19 +1575,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 r.button == "EQUIP" -> 0xFF2E6BE6.toInt()
                 else -> 0xFF2EB84A.toInt()
             }
-            gfx.rect(bx, y + 5, 46f, 20f, 0xFF2A1808.toInt())
-            gfx.rect(bx + 1.5f, y + 6.5f, 43f, 17f, color)
-            gfx.text(r.button, bx + 23, y + 18, 8f, white(), 1)
-            gfx.text("${i + 1}", px + 3, y + 10, 5f, 0x88000000.toInt())
-        }
-        if (toastT > 0) {
-            val w = toast.length * 5.4f + 16
-            gfx.rect(viewW / 2 - w / 2, VIEW_H - 18, w, 16f, 0xDD000000.toInt())
-            gfx.text(toast, viewW / 2, VIEW_H - 6, 9f, 0xFFFFFFFF.toInt(), 1)
+            gfx.rect(bx, y + 4, 46f, 19f, 0xFF2A1808.toInt())
+            gfx.rect(bx + 1.5f, y + 5.5f, 43f, 16f, color)
+            gfx.text(r.button, bx + 23, y + 17, 8f, white, 1)
+            gfx.text("${i + 1}", px + 2, y + 9, 5f, 0x88000000.toInt())
         }
     }
-
-    private fun white() = 0xFFFFFFFF.toInt()
 
     private fun renderTitle(gfx: Gfx) {
         if (level.def !== Levels.all[0]) level = Level(Levels.all[0])
@@ -1076,50 +1590,98 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         gfx.rect(0f, 0f, viewW, VIEW_H, 0x44000000)
         gfx.shadowText("ROCCO & BLOCKY", viewW / 2, 52f, 24f, 0xFFFFD21F.toInt(), 1)
         gfx.shadowText("TEAM UP!", viewW / 2, 78f, 18f, solidRainbow(time * 0.3f), 1)
-        gfx.shadowText("Mine ore • Craft flowers • Stop King Krag", viewW / 2, 94f, 8f, 0xFFFFFFFF.toInt(), 1)
+        gfx.shadowText("Mine • Craft • Build • Stop Wonder King Krag", viewW / 2, 94f, 8f, white, 1)
         val bob = abs(sin(time * 4)) * 3f
-        gfx.sprite(TeamArt.rocco(Power.NONE, 0), viewW / 2 - 40, 186f - 24 - bob)
-        gfx.sprite(TeamArt.blocky(Power.NONE, false), viewW / 2 - 12, 186f - 24)
-        TeamArt.pickaxe(gfx, viewW / 2 - 4 + 2, 186f - 11, -2.3f, 4)
-        TeamArt.sparky(gfx, viewW / 2 + 14, 186f - 18, time, -1, false)
-        TeamArt.frog(gfx, viewW / 2 + 40, 186f - 26 - abs(sin(time * 9)) * 4, time)
-        val hasSave = savedLevel > 0
-        if (hasSave) {
-            button(gfx, viewW * 0.25f, 214f, "NEW GAME", 0xFF2E6BE6.toInt())
-            button(gfx, viewW * 0.75f, 214f, "CONTINUE ${savedLevel + 1}", 0xFF2EB84A.toInt())
-        } else if ((time * 2).toInt() % 2 == 0) {
-            gfx.shadowText("TAP TO START", viewW / 2, 218f, 12f, 0xFFFFFFFF.toInt(), 1)
-        }
+        val base = 190f
+        gfx.sprite(TeamArt.rocco(Power.NONE, 0), viewW / 2 - 84, base - 24 - bob)
+        gfx.sprite(TeamArt.blocky(Power.NONE, false), viewW / 2 - 60, base - 24)
+        TeamArt.pickaxe(gfx, viewW / 2 - 52, base - 11, -2.3f, 4)
+        Mon.entries.forEachIndexed { i, m -> TeamArt.mon(gfx, m, viewW / 2 - 18 + i * 24f, base, time + i, -1, false) }
+        TeamArt.frog(gfx, viewW / 2 + 82, base - 26 - abs(sin(time * 9)) * 4, time)
+        if ((time * 2).toInt() % 2 == 0) gfx.shadowText("TAP TO START", viewW / 2, 222f, 12f, white, 1)
     }
 
-    private fun button(gfx: Gfx, cx: Float, cy: Float, label: String, color: Int) {
-        val w = 120f
-        gfx.rect(cx - w / 2 - 2, cy - 14, w + 4, 26f, 0xFF101010.toInt())
-        gfx.rect(cx - w / 2, cy - 12, w, 22f, color)
-        gfx.text(label, cx, cy + 3, 10f, 0xFFFFFFFF.toInt(), 1)
+    private fun renderSlots(gfx: Gfx) {
+        gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF1A2A4A.toInt())
+        gfx.shadowText("CHOOSE A SAVE FILE", viewW / 2, 40f, 14f, 0xFFFFD21F.toInt(), 1)
+        for (i in 0 until SLOTS) {
+            val x = slotCardX(i)
+            val w = slotCardW()
+            val lv = slotLevel(i)
+            gfx.rect(x - 2, 58f, w + 4, 144f, 0xFF0A1428.toInt())
+            gfx.rect(x, 60f, w, 140f, if (lv >= 0) 0xFF2E6BE6.toInt() else 0xFF3A4A6A.toInt())
+            gfx.shadowText("FILE ${i + 1}", x + w / 2, 76f, 11f, white, 1)
+            if (lv < 0) {
+                gfx.shadowText("NEW GAME", x + w / 2, 130f, 10f, 0xFFDDEEFF.toInt(), 1)
+                gfx.shadowText("+", x + w / 2, 160f, 22f, 0xFFDDEEFF.toInt(), 1)
+            } else {
+                val m = slotMon(i)
+                gfx.shadowText("LEVEL ${lv + 1}", x + w / 2, 94f, 9f, white, 1)
+                gfx.shadowText(Levels.all[lv].name, x + w / 2, 106f, 6f, 0xFFDDEEFF.toInt(), 1)
+                TeamArt.mon(gfx, m, x + w / 2, 146f, time + i, 1, false)
+                gfx.shadowText(m.label, x + w / 2, 160f, 7f, m.color, 1)
+                if (slotSlept(i)) gfx.shadowText("Saved in bed ♥", x + w / 2, 170f, 6f, 0xFFFFC8D8.toInt(), 1)
+                val armed = eraseArmed == i
+                gfx.rect(x + 8, 180f, w - 16, 16f, if (armed) 0xFFE53A1E.toInt() else 0x66000000)
+                gfx.text(if (armed) "TAP AGAIN TO ERASE" else "ERASE", x + w / 2, 191f, 6f, white, 1)
+            }
+        }
+        gfx.shadowText("Tap a file to play", viewW / 2, 222f, 9f, 0xFFDDDDDD.toInt(), 1)
+    }
+
+    private fun renderPick(gfx: Gfx) {
+        gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF1A3A2A.toInt())
+        gfx.shadowText("CHOOSE YOUR POKEMON!", viewW / 2, 34f, 14f, 0xFFFFD21F.toInt(), 1)
+        Mon.entries.forEachIndexed { i, m ->
+            val x = pickCardX(i)
+            val w = pickCardW()
+            gfx.rect(x - 2, 48f, w + 4, 164f, 0xFF0A1A10.toInt())
+            gfx.rect(x, 50f, w, 160f, argb(255, m.color))
+            gfx.rect(x + 3, 53f, w - 6, 154f, 0xEEFFFFFF.toInt())
+            gfx.oval(x + w / 2 - 24, 64f, 48f, 48f, argb(80, m.color))
+            TeamArt.mon(gfx, m, x + w / 2, 102f, time * 1.5f + i, 1, (time * 2).toInt() % 4 == i, true)
+            gfx.text(m.label, x + w / 2, 124f, 10f, 0xFF202020.toInt(), 1)
+            gfx.text("SUPER:", x + w / 2, 138f, 6f, 0xFF606060.toInt(), 1)
+            gfx.text(m.superName, x + w / 2, 147f, 7f, argb(255, m.color) and 0xFF7F7F7F.toInt() or 0xFF000000.toInt(), 1)
+            // Word-wrap the blurb
+            val words = m.blurb.split(' ')
+            var line = ""
+            var ly = 160f
+            val maxChars = (w / 3.6f).toInt()
+            for (word in words) {
+                if ((line + " " + word).trim().length > maxChars) {
+                    gfx.text(line.trim(), x + w / 2, ly, 5.5f, 0xFF303030.toInt(), 1)
+                    ly += 8
+                    line = ""
+                }
+                line += " $word"
+            }
+            gfx.text(line.trim(), x + w / 2, ly, 5.5f, 0xFF303030.toInt(), 1)
+        }
+        gfx.shadowText("FILE ${slot + 1}  •  Tap your partner!", viewW / 2, 228f, 9f, 0xFFDDDDDD.toInt(), 1)
     }
 
     private fun renderIntro(gfx: Gfx) {
         gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF101018.toInt())
-        gfx.shadowText("LEVEL ${levelIndex + 1}", viewW / 2, 70f, 12f, 0xFFDDDDDD.toInt(), 1)
+        gfx.shadowText("LEVEL ${levelIndex + 1} of ${Levels.all.size}", viewW / 2, 70f, 12f, 0xFFDDDDDD.toInt(), 1)
         gfx.shadowText(level.def.name, viewW / 2, 96f, 20f, 0xFFFFD21F.toInt(), 1)
-        gfx.sprite(TeamArt.rocco(power, 0), viewW / 2 - 30, 112f)
-        gfx.sprite(TeamArt.blocky(power, false), viewW / 2 - 8, 112f)
-        TeamArt.sparky(gfx, viewW / 2 + 16, 118f, time, -1, false)
-        gfx.shadowText(level.def.tip, viewW / 2, 162f, 8f, 0xFFFFFFFF.toInt(), 1)
-        gfx.shadowText("Hearts: $MAX_HEARTS   Pickaxe: ${TeamArt.pickName(pickTier)}", viewW / 2, 180f, 8f, 0xFFAADDFF.toInt(), 1)
+        gfx.sprite(TeamArt.rocco(power, 0), viewW / 2 - 36, 112f)
+        gfx.sprite(TeamArt.blocky(power, false), viewW / 2 - 14, 112f)
+        TeamArt.mon(gfx, mon, viewW / 2 + 18, 136f, time, -1, false)
+        gfx.shadowText(level.def.tip, viewW / 2, 162f, 8f, white, 1)
+        gfx.shadowText("FILE ${slot + 1}   Hearts: $MAX_HEARTS   Pickaxe: ${TeamArt.pickName(pickTier)}", viewW / 2, 180f, 8f, 0xFFAADDFF.toInt(), 1)
     }
 
     private fun renderVictory(gfx: Gfx) {
         gfx.rect(0f, 0f, viewW, VIEW_H, 0x55000000)
-        gfx.shadowText("YOU BEAT KING KRAG!", viewW / 2, 70f, 18f, solidRainbow(time * 0.5f), 1)
-        gfx.shadowText("Rocco + Blocky + Sparky = BEST TEAM EVER!", viewW / 2, 90f, 9f, 0xFFFFFFFF.toInt(), 1)
+        gfx.shadowText("YOU BEAT WONDER KING KRAG!", viewW / 2, 70f, 16f, solidRainbow(time * 0.5f), 1)
+        gfx.shadowText("Rocco + Blocky + ${mon.label} = BEST TEAM EVER!", viewW / 2, 90f, 9f, white, 1)
         gfx.shadowText("SCORE $score", viewW / 2, 106f, 10f, 0xFFFFD21F.toInt(), 1)
         val dance = abs(sin(time * 6)) * 6f
         val base = 170f
         gfx.sprite(TeamArt.rocco(power, 2), viewW / 2 - 60, base - 24 - dance)
         gfx.sprite(TeamArt.blocky(power, (time * 4).toInt() % 2 == 0), viewW / 2 - 30, base - 24 - (6 - dance))
-        TeamArt.sparky(gfx, viewW / 2, base - 18 - dance, time, 1, true)
+        TeamArt.mon(gfx, mon, viewW / 2 + 8, base - dance, time, 1, true)
         TeamArt.frog(gfx, viewW / 2 + 30, base - 26 - (6 - dance), time)
         if (stateT > 3f) gfx.shadowText("Tap to play again", viewW / 2, 206f, 9f, 0xFFDDDDDD.toInt(), 1)
     }

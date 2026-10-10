@@ -107,45 +107,91 @@ waves, a triangle bass and noise drums, so there are no audio files. Tap the **â
 
 ## New game: Rocco & Blocky: Team Up!
 
-A second game in the same repository. **Rocco** the plumber and **Blocky** the miner team up
-to stop **Krag Jr.** and **King Krag**. **Sparky** the electric mouse follows them around and
-zaps bad guys, and **Ring-Ding Frog** scoots by on his scooter singing his crazy song
-(out loud, with the phone's voice).
+A second game in the same repository. **Rocco** the plumber, **Blocky** the miner and a
+Pokemon partner team up to stop **Krag Jr.** and **King Krag**, and then their purple-and-green
+**Wonder** versions. **Ring-Ding Frog** scoots by on his scooter in every level, singing his
+crazy song out loud (with the phone's voice), bowling over bad guys and dropping a present.
 
 ![Team Up! title screen](docs/teamup-title.png)
 
-* You control one hero and the other follows you. Tap **SWAP** to switch.
-* **Blocky** swings his pickaxe (**MINE**) to dig stone, **iron**, **gold**, **diamond** and
-  **emerald** out of the rocks. Swipe down to dig straight down.
-* **Rocco** jumps higher and **THROWS** whatever flower power the team has crafted.
-* Tap **CRAFT** to open the crafting table. The CRAFT button glows when you can make something new:
+### Save files and picking your Pokemon
 
-| Recipe | Costs | What it does |
+There are **three save files**. Tap an empty one to start a new game, then **pick your Pokemon**:
+
+| Pokemon | Plays like | SUPER move |
 |---|---|---|
-| Boomerang Flower | 3 iron | Iron is the weakest metal: 1 damage, but the boomerang comes back |
-| Fire Flower | 3 gold | Gold is stronger: bouncing fireballs, 2 damage |
-| Ice Flower | 3 diamond | Diamond is the strongest: 3 damage, freezes bad guys |
-| Grass Flower | 3 emerald | **Green armor** that blocks 3 hits, and Rocco throws sharp leaves |
-| Iron / Gold / Diamond Pickaxe | 3 of that metal | Mines faster and hits harder. You need an iron pickaxe to mine diamond! |
-| Heart | 5 stone | Heals one heart |
+| **Sparky** (electric mouse) | Fast, jumps high, shoots sparks | **Thunderbolt**: lightning hits every bad guy on screen |
+| **Blaze** (fire dragon) | Glides if you hold JUMP | **Flamethrower**: burns everything in front |
+| **Hydro** (water turtle) | Slow and heavy, stomps hurt bosses more | **Hydro Cannon**: blasts left and right at once |
+| **Bloom** (flower dino) | Slow, strong short vine whip | **Solar Beam**: a giant beam across the whole screen |
 
-  Make the same flower again to power it up to **Lv2** and **Lv3** (Lv3 throws two at once).
-  Switching back to a flower you've already made is free.
+![Choose your Pokemon](docs/teamup-pick.png)
+
+The SUPER button fills up slowly (25 seconds), so it's a big boost now and then, not something to
+use all the time. When the Pokemon isn't the one you're playing, it follows the team and zaps a
+nearby bad guy every few seconds. Tap **ERASE** twice on a file to delete it.
+
+### Playing
+
+* You control one hero and the others follow you. **SWAP** goes Rocco, then Blocky, then your Pokemon.
+* **Blocky** swings his pickaxe (**MINE**) to dig stone, **iron**, **gold**, **diamond**, **emerald**,
+  **copper** and **amethyst** out of the rocks. Swipe down to dig straight down.
+* **Rocco** jumps higher and **THROWS** whatever flower power the team has crafted.
+* Every bad guy has a **health bar**. Stomping still works on most of them!
+* New bad guys: **Boneheads** fall apart when stomped and then get back up, and **Flapper** bats
+  wake up in caves and chase you.
+* `?` blocks can hide a heart or a **Super Star**, and rainbow **mystery blocks** hold a surprise.
+
+### The crafting table
+
+Tap **CRAFT**. It glows green when there's something new you can make. It has three tabs:
+
+**Flowers**: make one with 3 of its ore, then make it again to power it up, all the way to **Lv5**.
+Every level adds damage. Lv3 throws two at once, Lv4 shots go through bad guys, and Lv5 throws three.
+
+| Flower | Ore | What it does |
+|---|---|---|
+| Boomerang | iron | Weakest metal, but it comes back |
+| Fire | gold | Stronger bouncing fireballs |
+| Ice | diamond | The strongest one |
+| Grass | emerald | **Green armor** that soaks up hits, plus sharp leaves |
+| Thunder | copper | Lightning that jumps to the next bad guy |
+| Crystal | amethyst | Fires three crystal shards in a fan |
+
+**Supplies**: better pickaxes (iron, gold, diamond, then amethyst), **Heart** (5 stone),
+**Golden Apple** (2 gold: all hearts back plus 1 armor), **Mega TNT** (6 stone + 2 iron: blows up every
+bad guy on screen) and **Super Star** (2 amethyst + 1 diamond: 10 seconds of invincibility).
+
+**Home**: build a **House** (10 stone + 2 iron) where you're standing, then a **Bed** inside it
+(4 stone + 10 coins). Stand on the bed and press the action button to **sleep**. That heals you and
+**saves your game** right there, and when you load the file you wake up next to your bed.
+(The game also saves at the start of every level.)
+
+### Levels
+
+| # | Name | What's there |
+|---|---|---|
+| 1 | Grassy Hills | Lots of iron to get started |
+| 2 | Diamond Cave | Diamonds, emeralds and lava pits |
+| 3 | Cloud Skies | Cloud jumping and **Krag Jr.** in his clown car |
+| 4 | Krag's Castle | **King Krag**... but he finds a Wonder Flower! |
+| 5 | Copper Canyon | Desert, copper and Boneheads |
+| 6 | Frosty Peaks | Snowy hills and amethyst |
+| 7 | Amethyst Mines | Dark caves full of Flapper bats |
+| 8 | Wonder Fortress | **Wonder Krag Jr.**, purple and green, in a rainbow sky |
+| 9 | Mushroom Jungle | Giant mushrooms and lots of bad guys |
+| 10 | Lava Lake | Lava pits everywhere |
+| 11 | Wonder Castle | **Wonder King Krag**: huge, purple and green, rainbow fire and spike ball rain |
+
+![Wonder King Krag](docs/teamup-wonder-king-krag.png)
+
+It's easy but not too easy: 5 hearts, checkpoints, and if you run out of hearts you go back to the
+last checkpoint (or your bed) and keep all your ore. Every 50 coins gives a heart back.
+
+Keyboard: arrows/WASD to move, Space to jump, X to mine/throw/sleep, Q to swap, E for SUPER,
+C to craft (1-6 picks a recipe, 7/8/9 switch tabs), P to pause, M for music.
 
 ![Crafting table](docs/teamup-craft.png)
-
-| Level | Name | What's there |
-|---|---|---|
-| 1 | Grassy Hills | Grumblers, Shellbacks and lots of iron to get started |
-| 2 | Diamond Cave | Diamonds and emeralds, lava pits and winged Grumblers |
-| 3 | Wonder Skies | Cloud jumping, then the **Wonder Krag Jr.** fight: the sky turns rainbow, the ground wobbles and everyone floats |
-| 4 | Krag's Castle | Lava, then the **King Krag** battle. He's slow to turn around, so jump over him! |
-
-It's easy but not too easy: the team has 5 hearts, there are checkpoints, and if you run out
-of hearts you go back to the last checkpoint and keep all your ore. Every 50 coins gives a heart back.
-
-Keyboard: arrows/WASD to move, Space to jump, X to mine/throw, Q to swap, C to craft
-(then 1-6 to pick a recipe), P to pause, M for music.
 
 ## Installing on your phone
 
@@ -187,6 +233,7 @@ You can also open the folder in Android Studio and press Run.
 Levels are built in `core/.../Level.kt` with a small builder, so adding a new one is a few lines.
 
 * `team/`: Team Up!, also plain Kotlin. It reuses the drawing interface, Rocco's pixel art, the
-  sound effects and the music from `core/`. Its levels are in `TeamLevel.kt`, the heroes,
-  bosses and friends in `Actors.kt`, and the crafting table in `TeamGame.kt`.
+  sound effects and the music from `core/`. Its levels are in `TeamLevel.kt`, the heroes and
+  Pokemon in `Actors.kt`, the bad guys and bosses in `Foes.kt`, shots, items and effects in
+  `Items.kt`, and the crafting table, save files and menus in `TeamGame.kt`.
 * `teamapp/`: the Android layer for Team Up!, a copy of `app/` wired to the new game.

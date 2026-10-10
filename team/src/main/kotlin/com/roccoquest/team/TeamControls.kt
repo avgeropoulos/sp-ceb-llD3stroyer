@@ -14,6 +14,8 @@ class TeamInput {
     /** Swipe down: Blocky digs straight down. */
     @Volatile var down = false
     @Volatile var swap = false
+    /** The Pokemon's SUPER move. */
+    @Volatile var superMove = false
     @Volatile var craft = false
     @Volatile var pause = false
     @Volatile var musicToggle = false
@@ -21,7 +23,7 @@ class TeamInput {
     @Volatile var tap = false
     @Volatile var tapX = -1f
     @Volatile var tapY = -1f
-    /** A number key 1-6 pressed in the crafting menu, or 0. */
+    /** A number key 1-9 pressed in a menu, or 0. */
     @Volatile var numberKey = 0
 }
 
@@ -34,6 +36,7 @@ object TeamControls {
     val jump = Button(0f, 194f, 26f)
     val action = Button(0f, 212f, 20f)
     val swap = Button(0f, 150f, 17f)
+    val superB = Button(0f, 160f, 16f)
     val pause = Button(0f, 14f, 10f)
     val music = Button(0f, 14f, 10f)
     /** The CRAFT button is a pill [CRAFT_W] wide. */
@@ -44,6 +47,7 @@ object TeamControls {
         jump.cx = viewW - 36f
         action.cx = viewW - 96f
         swap.cx = viewW - 70f
+        superB.cx = viewW - 124f
         pause.cx = viewW - 16f
         music.cx = viewW - 42f
         craft.cx = viewW - 82f
@@ -63,6 +67,7 @@ object TeamControls {
         var a = false
         var d = false
         var s = false
+        var sup = false
         var c = false
         var p = false
         var m = false
@@ -81,7 +86,9 @@ object TeamControls {
                 val dj = hypot(x - jump.cx, y - jump.cy) / jump.r
                 val da = hypot(x - action.cx, y - action.cy) / action.r
                 val ds = hypot(x - swap.cx, y - swap.cy) / swap.r
+                val dsu = hypot(x - superB.cx, y - superB.cy) / superB.r
                 when {
+                    dsu < 1.25f && dsu <= dj && dsu <= da && dsu <= ds -> sup = true
                     ds < 1.25f && ds <= dj && ds <= da -> s = true
                     dj <= da -> j = true
                     else -> {
@@ -98,12 +105,16 @@ object TeamControls {
         input.action = a
         input.down = d
         input.swap = s
+        input.superMove = sup
         input.craft = c
         input.pause = p
         input.musicToggle = m
     }
 
-    fun draw(gfx: Gfx, input: TeamInput, viewW: Float, actionLabel: String, swapLabel: String, swapColor: Int) {
+    fun draw(
+        gfx: Gfx, input: TeamInput, viewW: Float, actionLabel: String, swapLabel: String, swapColor: Int,
+        superCharge: Float, superColor: Int, t: Float,
+    ) {
         layout(viewW)
         val c = 0xDDFFFFFF.toInt()
         button(gfx, left, input.left)
@@ -120,6 +131,19 @@ object TeamControls {
         gfx.oval(swap.cx - swap.r, swap.cy - swap.r, swap.r * 2, swap.r * 2, sf)
         gfx.text("SWAP", swap.cx, swap.cy, 6f, c, 1)
         gfx.text(swapLabel, swap.cx, swap.cy + 8, 5f, c, 1)
+        // SUPER fills up from the bottom while it recharges and pulses when it's ready.
+        val ready = superCharge >= 1f
+        val b = superB
+        gfx.oval(b.cx - b.r - 1, b.cy - b.r - 1, b.r * 2 + 2, b.r * 2 + 2, 0x55000000)
+        gfx.oval(b.cx - b.r, b.cy - b.r, b.r * 2, b.r * 2, 0x33FFFFFF)
+        val fillH = b.r * 2 * superCharge.coerceIn(0f, 1f)
+        gfx.rect(b.cx - b.r * 0.7f, b.cy + b.r - fillH, b.r * 1.4f, fillH, (superColor and 0x00FFFFFF) or 0x88000000.toInt())
+        if (ready) {
+            val pulse = 2f + kotlin.math.abs(kotlin.math.sin(t * 6)) * 3f
+            gfx.oval(b.cx - b.r - pulse, b.cy - b.r - pulse, (b.r + pulse) * 2, (b.r + pulse) * 2, (superColor and 0x00FFFFFF) or 0x55000000)
+            gfx.oval(b.cx - b.r, b.cy - b.r, b.r * 2, b.r * 2, if (input.superMove) 0xCCFFFFFF.toInt() else superColor)
+        }
+        gfx.text("SUPER", b.cx, b.cy + 2, 6f, c, 1)
         gfx.text("swipe ↓ = dig down", (left.cx + right.cx) / 2, 236f, 6f, if (input.down) c else 0x88FFFFFF.toInt(), 1)
     }
 
