@@ -136,3 +136,33 @@ You can also open the folder in Android Studio and press Run.
   renderer, sound effects that are synthesized at startup, and a streaming music player.
 
 Levels are built in `core/.../Level.kt` with a small builder, so adding a new one is a few lines.
+
+---
+
+# Super Pritz Man
+
+A second game in this repo: a tap-to-fly game where **Super Pritz Man** flies with his red cape
+by farting. Every tap is a fart, and every fart makes its own sound (squeakers, toots, rumblers,
+wet ones and flutters, all synthesized live, so no two sound quite the same). A blonde lady in
+pink pops up every few seconds to yell **"STOP THAT!!!"**. The phone's text-to-speech does her voice.
+
+* **Levels**: five worlds, each one longer and faster than the last.
+  1. Backyard Blast-Off: fences and seagulls.
+  2. Toot Town: skyscrapers and pigeons.
+  3. Thunder Gust Skies: radio towers that slide up and down, plus lightning balls.
+  4. Outer Space Gas: low gravity and flying saucers.
+  5. The Bean Factory: stacks of bean cans and flying cans.
+
+  Beat all five to unlock **Endless** mode, which cycles through every world and keeps a best score.
+* **Atomic Fart power-up** (the glowing radiation symbol): 7 seconds of glowing green nuclear farts.
+  Pritz Man goes faster, can't be hurt, and smashes straight through obstacles and enemies.
+* **Beans** are worth points. **Chili peppers** give back a lost heart. You have 3 hearts per level,
+  and you earn 1 to 3 stars for the hearts you have left at the finish line.
+* Controls: tap anywhere (or Space / Up) to fart. P pauses, M mutes.
+
+Install it on Android from
+**https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/SuperPritzMan.apk**.
+
+The whole game is one HTML file, `pritzman/src/main/assets/game.html`, with canvas drawing and
+Web Audio. The `pritzman/` Android module shows it in a full-screen WebView and gives it the phone's
+text-to-speech. You can also open the file in any browser.
