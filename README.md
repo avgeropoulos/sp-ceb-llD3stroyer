@@ -136,3 +136,49 @@ You can also open the folder in Android Studio and press Run.
   renderer, sound effects that are synthesized at startup, and a streaming music player.
 
 Levels are built in `core/.../Level.kt` with a small builder, so adding a new one is a few lines.
+
+---
+
+# Spotless
+
+A second game in this repository: a cosy house-cleaning game for Android (portrait).
+
+![Spotless](docs/spotless.png)
+
+You've moved in with **Bella**, a blonde who isn't impressed with you at first. Clean the house
+room by room. The better you clean, the more hearts you earn and the more she falls for you.
+Every new affection level she goes to change, comes back in a nicer outfit and gives you a reward.
+
+| Hearts | Bella is... | She wears | Reward |
+|---|---|---|---|
+| 0 | New Roommate | A comfy hoodie and sweatpants | |
+| 3 | Friendly | A tee and jeans | Lemonade: +5 seconds in every room |
+| 7 | Fond of You | A yellow summer sundress | Cookies: +25% coins |
+| 12 | Crushing on You | A pink blouse and pencil skirt | Dinner: +20% cleaning power |
+| 18 | Sweetheart | A red cocktail dress | A dinner date: an extra heart for 3-star rooms |
+| 25 | In Love | An emerald evening gown | A slow dance: +50% more coins |
+| 33 | Soulmates | A golden gala gown and tiara | Her date to the Royal Gala: double coins |
+
+How to play:
+
+* Every day there's a room to clean (living room, kitchen, bedroom, bathroom, study) before the timer runs out.
+* Pick the right tool at the bottom and rub the mess away with your finger:
+  * **Broom**: dust bunnies and crumbs
+  * **Sponge**: spills, muddy footprints and smudges on windows and mirrors
+  * **Pick Up**: tap clothes and trash to toss them in the basket
+  * **Duster**: cobwebs (and their spiders) near the ceiling
+* Clean quickly to build a combo for extra coins. Finish with time to spare for 3 stars.
+* Stars become hearts. Clean less than 75% and you get no hearts and have to redo the room.
+* **Shop**: spend coins on a bigger broom, elbow grease (faster scrubbing) or a stopwatch (more
+  time), or buy Bella roses (+1 heart) and chocolates (+3 hearts).
+* **Wardrobe**: choose which of her unlocked outfits Bella wears.
+* Tap Bella at home to chat. Progress is saved automatically.
+
+Install it from **https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/Spotless.apk**
+the same way as Rocco's Quest. To build it yourself, run `./gradlew :spotless:assembleDebug`. The APK
+is at `spotless/build/outputs/apk/debug/spotless-debug.apk`. `./gradlew :spotless-core:test` renders
+screenshots to `spotless-core/build/screens`.
+
+The code follows the same layout. `spotless-core/` is the whole game in plain Kotlin, and Bella,
+the rooms and the tools are all vector shapes drawn in code (`Bella.kt`, `Rooms.kt`). `spotless/`
+is the Android layer.
