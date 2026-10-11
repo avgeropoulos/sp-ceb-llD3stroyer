@@ -984,7 +984,7 @@ private class Warp(private val p: Painter) : Painter {
     private fun pinch(y0: Float): Float {
         val y = hy(y0)
         val d = (y - 372f) / 58f
-        return 1f - 0.17f * kotlin.math.exp(-d * d)
+        return 1f - 0.08f * kotlin.math.exp(-d * d)
     }
 
     fun mapX(x0: Float, y0: Float) = hx(x0) * pinch(y0)
@@ -1029,11 +1029,11 @@ private class Warp(private val p: Painter) : Painter {
     override fun rotate(degrees: Float) = p.rotate(degrees)
 
     companion object {
-        const val HEAD = 0.76f
+        const val HEAD = 0.86f
         const val CHIN = 176f
         // Original heights of chin, shoulders, bust, waist, hips, crotch, knees, ankles and soles,
         // and where they end up.
         val KY = floatArrayOf(178f, 216f, 290f, 376f, 466f, 540f, 690f, 856f, 892f)
-        val NY = floatArrayOf(178f, 210f, 270f, 336f, 406f, 464f, 668f, 858f, 892f)
+        val NY = floatArrayOf(178f, 212f, 278f, 348f, 424f, 492f, 692f, 860f, 892f)
     }
 }
