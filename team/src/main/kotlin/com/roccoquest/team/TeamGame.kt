@@ -307,6 +307,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 'Z' -> foes += EnderDragon(px, ty * TILE.toFloat())
                 'n' -> foes += Enderman(px, bottom)
                 'f' -> foes += Fish(px, bottom)
+                'p' -> foes += BombBomb(px, bottom)
                 'C' -> foes += EndCrystal(px, bottom)
                 'V' -> things += Villager(px, bottom, tx + index * 7)
                 'M' -> things += Minecart(px, bottom)
@@ -1224,6 +1225,28 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
         val zone = Body((tx - r) * TILE.toFloat(), (ty - r) * TILE.toFloat(), (2 * r + 1) * TILE.toFloat(), (2 * r + 1) * TILE.toFloat())
         for (f in foes) if (!f.dying && f.active && f.overlaps(zone)) f.hit(this, 8)
+    }
+
+    /** A bomb-bomb goes off: bad guys nearby get hit, bricks and stone crumble, and the team gets hurt if they're too close. */
+    fun bombBlast(x: Float, y: Float, hurtsTeam: Boolean) {
+        particles += Boom(x, y, 34f)
+        shake = 0.4f
+        sfx(Sound.BOSS_FIRE)
+        val tx0 = tileOf(x)
+        val ty0 = tileOf(y)
+        for (ty in ty0 - 1..ty0 + 1) for (tx in tx0 - 1..tx0 + 1) {
+            val t = level[tx, ty]
+            if (t == Tile.BRICK || (level.toughness(tx, ty) > 0 && t != Tile.GROUND)) {
+                val ore = Tile.ore(t)
+                level[tx, ty] = Tile.EMPTY
+                debris(tx, ty, ore?.dark ?: 0xFFB4501C.toInt(), 3)
+                if (ore != null) inventory[ore.ordinal]++
+            }
+        }
+        for (f in foes) if (f.active && !f.dying && f !is BombBomb && hypot(f.cx - x, f.cy - y) < 44f) f.hit(this, 6)
+        // Chain reaction!
+        for (f in foes) if (f is BombBomb && !f.dying && !f.removed && hypot(f.cx - x, f.cy - y) < 44f) f.hit(this, 1)
+        if (hurtsTeam && hypot(leader.cx - x, leader.cy - y) < 32f) hurt()
     }
 
     private fun callPoseidon() {

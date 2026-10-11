@@ -697,3 +697,97 @@ class EnderDragon(x: Float, y: Float) : Foe(x, y, 64f, 30f, 90) {
         if (mode == Mode.PERCH) gfx.shadowText("HIT IT NOW!", cx0, y - 14, 8f, 0xFFFFD21F.toInt(), 1)
     }
 }
+
+/**
+ * Bomb-bomb: a walking bomb with a wind-up key. When the team comes close it lights
+ * its fuse and runs at them, then explodes. Stomp it to stop it, then kick it into
+ * other bad guys before it goes off. Hitting it with a power sets it off right away.
+ */
+class BombBomb(x: Float, bottom: Float) : Foe(x + 2, bottom - 13, 12f, 13f, 1) {
+    private var t = Random.nextFloat() * 3
+    /** Seconds until it explodes, or -1 while the fuse isn't lit. */
+    private var fuse = -1f
+    private var stunned = false
+    private var kicked = false
+    override val showBar = false
+    init { vx = -22f }
+
+    override val stompable get() = !stunned
+
+    override fun update(g: TeamGame, dt: Float) {
+        if (updateDying(g, dt)) return
+        t += dt
+        val l = g.leader
+        if (fuse < 0 && !stunned && abs(l.cx - cx) < 90f && abs(l.cy - cy) < 50f) {
+            fuse = 2.6f
+            g.sfx(Sound.KICK)
+        }
+        if (fuse >= 0) {
+            fuse -= dt
+            if (!stunned && !kicked) vx = if (l.cx < cx) -55f else 55f
+            if (kicked) {
+                // A kicked bomb blows up as soon as it hits another bad guy.
+                if (g.foes.any { it !== this && !it.dying && it.active && it.overlaps(this) }) fuse = 0f
+            }
+            if (fuse <= 0f) { explode(g); return }
+        }
+        if (stunned && !kicked) vx = approach(vx, 0f, 300f * dt)
+        walk(g, dt)
+    }
+
+    private fun explode(g: TeamGame) {
+        removed = true
+        g.bombBlast(cx, cy, hurtsTeam = !kicked)
+    }
+
+    override fun stomp(g: TeamGame, stomper: Hero) {
+        // Stomping stops it, but the fuse keeps burning!
+        stunned = true
+        vx = 0f
+        if (fuse < 0) fuse = 2.2f
+        g.sfx(Sound.STOMP)
+    }
+
+    override fun touch(g: TeamGame) {
+        if (stunned && !kicked) {
+            kicked = true
+            vx = if (g.leader.cx < cx) 200f else -200f
+            g.sfx(Sound.KICK)
+        } else if (!stunned) g.hurt()
+    }
+
+    override fun hit(g: TeamGame, dmg: Int): Boolean {
+        if (dying || removed) return false
+        kicked = true
+        explode(g)
+        return true
+    }
+
+    override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
+        val px = x + ox
+        val lit = fuse >= 0
+        val flash = lit && (fuse * (if (fuse < 1f) 16 else 6)).toInt() % 2 == 0
+        val body = if (flash) 0xFFE52521.toInt() else 0xFF202028.toInt()
+        val step = if (!stunned && (t * 8).toInt() % 2 == 0) 1f else 0f
+        val f = vx >= 0
+        // Feet
+        gfx.oval(px + 1, bottom - 3 + step, 5f, 3f, 0xFFF2B33D.toInt())
+        gfx.oval(px + 7, bottom - 3 - step, 5f, 3f, 0xFFF2B33D.toInt())
+        // Round body
+        gfx.oval(px, y, 12f, 11f, body)
+        gfx.oval(px + 2, y + 2, 3f, 2f, 0x66FFFFFF)
+        // Eyes
+        val ex = if (f) px + 6 else px + 2
+        gfx.rect(ex, y + 3, 1.5f, 3f, 0xFFFFFFFF.toInt())
+        gfx.rect(ex + 2.5f, y + 3, 1.5f, 3f, 0xFFFFFFFF.toInt())
+        // Wind-up key on the back
+        val kx = if (f) px - 3 else px + 12
+        val turn = if ((t * 6).toInt() % 2 == 0) 3f else 1.5f
+        gfx.rect(kx, y + 5, 3f, 1.5f, 0xFFC8C8D8.toInt())
+        gfx.rect(kx + (if (f) -1f else 2f), y + 5.75f - turn / 2, 1.5f, turn, 0xFFC8C8D8.toInt())
+        // Fuse on top, sparking when lit
+        gfx.rect(px + 5.5f, y - 3, 1.5f, 3f, 0xFFD8C8A0.toInt())
+        if (lit && (t * 20).toInt() % 2 == 0) gfx.oval(px + 4.5f, y - 6, 4f, 4f, 0xFFFFD21F.toInt())
+        if (stunned && fuse >= 0) gfx.shadowText(String.format("%.0f", fuse + 0.5f), cx + ox, y - 8, 7f, 0xFFFF6060.toInt(), 1)
+    }
+}

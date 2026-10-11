@@ -645,6 +645,31 @@ class TeamGameTest {
         assertEquals(hearts, game.hearts)
     }
 
+    @Test fun bombBombsChaseExplodeAndCanBeKicked() {
+        val lvl = Levels.all.indexOfFirst { d -> d.rows.any { 'p' in it } }
+        assertTrue(Levels.all.count { d -> d.rows.any { 'p' in it } } >= 8, "bomb-bombs in lots of levels")
+        startPlaying(lvl)
+        val bomb = game.foes.filterIsInstance<BombBomb>().first()
+        game.foes.retainAll(listOf(bomb))
+        val r = game.rocco
+        r.x = bomb.x - 60f; r.y = bomb.bottom - r.h
+        run(4f) { game.hurtProof() }
+        assertTrue(bomb.removed, "it lit its fuse and blew up")
+        // Stomp one, then kick it into a grumbler.
+        startPlaying(lvl)
+        val b2 = game.foes.filterIsInstance<BombBomb>().first()
+        val g = Grumbler(b2.x + 60f, b2.bottom, false).also { it.active = true }
+        game.foes.retainAll(listOf(b2))
+        game.foes += g
+        b2.active = true
+        b2.stomp(game, game.rocco)
+        game.rocco.x = b2.x - 14f; game.rocco.y = b2.bottom - game.rocco.h
+        b2.touch(game)
+        run(1.5f) { game.hurtProof() }
+        assertTrue(b2.removed, "the kicked bomb exploded")
+        assertTrue(g.dying || g.removed, "and took the grumbler with it")
+    }
+
     @Test fun enemiesHaveHealthBars() {
         startPlaying()
         val g = game.foes.filterIsInstance<Grumbler>().first()
@@ -884,5 +909,10 @@ class TeamGameTest {
         game.dogForTest()
         run(1.2f)
         shot("dennis")
+        game.startLevel(Levels.all.indexOfFirst { it.name == "COPPER CANYON" }); run(3.5f)
+        val bomb = game.foes.filterIsInstance<BombBomb>().first()
+        game.leader.x = bomb.x - 70f; game.leader.y = bomb.bottom - 24f
+        run(1.2f) { game.hurtProof() }
+        shot("bomb-bomb")
     }
 }

@@ -92,7 +92,7 @@ enum class Place(val music: Music) {
  *  's' stone   'i' iron ore   'o' gold ore   'D' diamond ore   'e' emerald ore
  *  'u' copper ore   'a' amethyst ore   '*' star block   'm' mystery block
  *  'L' lava   'O' cloud   '@' start   'c' coin   'g' grumbler   'w' winged grumbler
- *  'k' shellback   'b' bonehead   'v' flapper bat
+ *  'k' shellback   'b' bonehead   'v' flapper bat   'p' bomb-bomb
  *  '|' checkpoint   'F' goal flag   'r' Ring-Ding Frog drives by here
  *  'J' Krag Jr.   'K' King Krag   'W' Wonder Krag Jr.   'Q' Wonder King Krag
  *  'V' villager   'n' enderman   'f' fish   'G' the Warden   'Y' Dry Bones King Krag   'Z' Ender Dragon
@@ -116,6 +116,14 @@ class Builder(private val w: Int) {
     /** A little hill of stone with ore veins: each string is one row from the top. */
     fun rock(x: Int, bottom: Int, vararg rows: String) = apply {
         rows.forEachIndexed { i, s -> row(x, bottom - rows.size + 1 + i, s) }
+    }
+
+    /** Puts a foe [c] standing on the ground in each of the columns [xs] (skipping columns with no room). */
+    fun onGround(c: Char, vararg xs: Int) = apply {
+        for (x in xs) {
+            val y = (ROWS - 2 downTo 1).firstOrNull { g[it][x] == '.' && g[it + 1][x] in "#sdXBiouaDe" } ?: continue
+            g[y][x] = c
+        }
     }
 
     fun build(name: String, place: Place, tip: String) = LevelDef(name, place, g.map { String(it) }, tip)
@@ -194,6 +202,7 @@ object Levels {
         .rock(148, 12, "DeD", "sss")
         .at(154, 12, 'g').at(156, 12, 'w').at(158, 12, 'g')
         .at(170, 12, 'F')
+        .onGround('p', 66, 96, 120)
         .build(
             "DIAMOND CAVE", Place.CAVE,
             "Diamonds are tough! Craft an IRON PICKAXE first.",
@@ -271,6 +280,7 @@ object Levels {
         .at(152, 12, 'b').at(155, 12, 'w')
         .fill(158, 158, 12, 12, 'X').fill(159, 159, 11, 12, 'X').fill(160, 160, 10, 12, 'X')
         .at(170, 12, 'F')
+        .onGround('p', 26, 88, 134)
         .build(
             "COPPER CANYON", Place.DESERT,
             "Copper makes the THUNDER FLOWER! Boneheads get back up...",
@@ -372,6 +382,7 @@ object Levels {
         .at(156, 12, 'b').at(159, 12, 'g')
         .fill(164, 164, 12, 12, 'X').fill(165, 165, 11, 12, 'X').fill(166, 166, 10, 12, 'X')
         .at(178, 12, 'F')
+        .onGround('p', 46, 86, 140)
         .build(
             "MUSHROOM JUNGLE", Place.JUNGLE,
             "Lots of bad guys here. Good time for a Pokemon SUPER move!",
@@ -397,6 +408,7 @@ object Levels {
         .rock(158, 12, "aDa", "sss")
         .at(164, 12, 'b').at(167, 8, 'v')
         .at(180, 12, 'F')
+        .onGround('p', 52, 96, 136)
         .build(
             "LAVA LAKE", Place.VOLCANO,
             "Hot hot hot! Jump over the lava pits.",
@@ -444,6 +456,7 @@ object Levels {
         .at(152, 12, 'g').at(155, 12, 'g')
         .fill(160, 160, 12, 12, 'X').fill(161, 161, 11, 12, 'X').fill(162, 162, 10, 12, 'X')
         .at(175, 12, 'V').at(185, 12, 'F')
+        .onGround('p', 40, 96, 142)
         .build(
             "VILLAGER VALLEY", Place.HILLS,
             "Talk to VILLAGERS to trade! Hop in a MINECART and ride!",
@@ -486,6 +499,7 @@ object Levels {
         .at(174, 12, '|').rock(178, 12, "aea", "sss").at(186, 12, 'b').at(190, 8, 'v')
         .fill(196, 196, 12, 12, 'X').fill(197, 197, 11, 12, 'X')
         .at(210, 12, 'F')
+        .onGround('p', 102, 180)
         .build(
             "MINECART MINE", Place.CAVE,
             "Ride the minecarts! They smash right through bad guys.",
@@ -501,6 +515,7 @@ object Levels {
         .at(118, 12, '^').at(119, 12, '^').at(124, 12, 'k')
         .at(138, 12, '|').at(146, 12, 'n').rock(152, 12, "aoa", "sss").at(160, 12, 'b').at(166, 12, 'n')
         .fill(172, 172, 12, 12, 'X').fill(173, 173, 11, 12, 'X').at(185, 12, 'V').at(190, 12, 'F')
+        .onGround('p', 58, 114, 156)
         .build(
             "ENDER PLAINS", Place.NIGHT,
             "ENDERMEN! They teleport and they're tough. Team up on them!",
@@ -556,6 +571,7 @@ object Levels {
         .rock(166, 12, "eDe", "sss")
         .fill(172, 172, 12, 12, 'X').fill(173, 173, 11, 12, 'X').fill(174, 174, 10, 12, 'X')
         .at(190, 12, 'F')
+        .onGround('p', 46, 128, 170)
         .build(
             "SPIKE TEMPLE", Place.DESERT,
             "Watch out for SPIKE TRAPS! Jump over them.",
@@ -572,6 +588,7 @@ object Levels {
         .at(124, 12, '|').at(128, 12, 'n').at(134, 12, '^').at(135, 12, '^')
         .at(150, 12, 'b').at(156, 12, 'n').rock(162, 12, "aoa", "sss").at(170, 12, 'b')
         .fill(176, 176, 12, 12, 'X').fill(177, 177, 11, 12, 'X').at(190, 12, 'F')
+        .onGround('p', 46, 100, 166)
         .build(
             "FIRE FORTRESS", Place.VOLCANO,
             "Endermen, Boneheads AND lava. Throw TNT to clear the way!",

@@ -152,6 +152,9 @@ nearby bad guy every few seconds. Tap **ERASE** twice on a file to delete it.
 * New bad guys: **Boneheads** fall apart when stomped and then get back up, and **Flapper** bats
   wake up in caves and chase you.
 * `?` blocks can hide a heart or a **Super Star**, and rainbow **mystery blocks** hold a surprise.
+* **Bomb-bombs** are walking bombs with wind-up keys. Get close and they light their fuse and run
+  at you! Stomp one to stop it (the fuse keeps burning), then kick it into other bad guys. Hitting one
+  with a power sets it off right away, and bombs set each other off in a chain reaction.
 * **Endermen** are tall, tough mini-bosses. They teleport around, and sometimes they dodge your shots!
 * **Villagers** talk to you out loud and trade. Walk up and press the action button (**TALK**).
   They swap coins and stone for iron, gold, diamonds, TNT, golden apples and even stars.
