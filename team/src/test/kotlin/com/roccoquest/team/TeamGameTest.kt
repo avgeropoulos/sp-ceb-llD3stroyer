@@ -328,7 +328,41 @@ class TeamGameTest {
         assertEquals(0, krag.hp)
         assertEquals(TeamGame.State.CLEAR, game.state, "on to the next world")
         run(4f)
+        assertEquals(TeamGame.State.STICKER, game.state, "pick a sticker first")
+        assertTrue(game.stickerChoices.contains(Stickers.forBoss('K')), "King Krag's shiny sticker is on offer")
+        game.pickSticker(0)
+        run(3f)
         assertEquals(4, game.levelIndex)
+    }
+
+    @Test fun stickersAfterEveryLevel() {
+        assertEquals(40, Stickers.all.size)
+        assertTrue(botRun(0, 100f))
+        run(4f)
+        assertEquals(TeamGame.State.STICKER, game.state)
+        assertEquals(3, game.stickerChoices.size)
+        assertEquals(3, game.stickerChoices.distinct().size)
+        // Tap the middle card.
+        tap(game.viewW / 2, 120f)
+        val got = game.stickerChoices[1]
+        assertTrue(game.hasSticker(got))
+        assertEquals(1, game.stickerCount)
+        assertTrue(ears.said.last().contains("sticker"), "it says which sticker you got")
+        run(3f)
+        assertEquals(1, game.levelIndex, "then on to the next level")
+        // Stickers are saved with the file.
+        val g2 = TeamGame(TeamInput(), ears, storage)
+        g2.continueGame(0)
+        assertTrue(g2.hasSticker(got))
+        // The sticker book opens from the pause screen.
+        run(3.5f)
+        input.pause = true; game.update(dt); input.pause = false; game.update(dt)
+        assertTrue(game.paused)
+        tap(game.viewW / 2, 164f)
+        assertEquals(TeamGame.State.BOOK, game.state)
+        run(0.5f)
+        tap()
+        assertEquals(TeamGame.State.PLAY, game.state)
     }
 
     private fun levelWith(c: Char) = Levels.all.indexOfFirst { d -> d.rows.any { c in it } }
@@ -407,6 +441,10 @@ class TeamGameTest {
         }
         input.action = false
         assertEquals(0, d.hp, "beat the dragon in ${t}s")
+        assertEquals(TeamGame.State.STICKER, game.state, "one last sticker")
+        assertTrue(game.stickerChoices.contains(Stickers.forBoss('Z')))
+        game.pickSticker(game.stickerChoices.indexOf(Stickers.forBoss('Z')))
+        run(3f)
         assertEquals(TeamGame.State.VICTORY, game.state)
         assertEquals(Music.FROG, ears.music, "Ring-Ding Frog sings at the end")
     }
@@ -1006,5 +1044,16 @@ class TeamGameTest {
         run(0.3f)
         input.action = true; repeat(4) { game.update(dt) }; input.action = false
         shot("blocky-sword")
+        game.startLevel(Levels.all.indexOfFirst { d -> d.rows.any { 'Q' in it } }); run(3.5f)
+        game.pickStickerScreenForTest()
+        run(1f)
+        shot("stickers")
+        game.pickSticker(1)
+        run(0.6f)
+        shot("sticker-picked")
+        repeat(25) { game.giveStickerForTest(it * 3 % 40) }
+        game.openBookForTest()
+        run(0.2f)
+        shot("sticker-book")
     }
 }

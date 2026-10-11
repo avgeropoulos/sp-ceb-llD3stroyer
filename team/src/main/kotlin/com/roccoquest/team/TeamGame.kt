@@ -29,7 +29,7 @@ import kotlin.random.Random
  * and sleeping in the bed saves the game into one of three save slots.
  */
 class TeamGame(private val input: TeamInput, private val sound: SoundSink, private val storage: Storage = Storage.Memory()) {
-    enum class State { TITLE, SLOTS, PICK, INTRO, PLAY, CRAFT, TRADE, SLEEP, OUCH, CLEAR, VICTORY }
+    enum class State { TITLE, SLOTS, PICK, INTRO, PLAY, CRAFT, TRADE, SLEEP, OUCH, CLEAR, STICKER, BOOK, VICTORY }
 
     companion object {
         const val MAX_HEARTS = 5
@@ -167,6 +167,16 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private var dogT = 10f
     private val ventT = HashMap<Int, Float>()
     private var spikeT = 0f
+
+    // Stickers: one bit per sticker you own, the three on offer, and what comes next.
+    private var stickerBits = 0L
+    var stickerChoices: List<Int> = emptyList()
+        private set
+    var stickerPicked = -1
+        private set
+    private var afterSticker = 0
+    fun hasSticker(i: Int) = stickerBits and (1L shl i) != 0L
+    val stickerCount get() = Stickers.all.indices.count { hasSticker(it) }
     /** Seconds left of Mini Rocco. */
     var miniT = 0f
         private set
@@ -214,6 +224,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         storage.save(key("coins"), coins)
         storage.save(key("armor"), armor)
         storage.save(key("tnt"), tnt)
+        storage.save(key("stickersLo"), (stickerBits and 0xFFFFFFFFL).toInt())
+        storage.save(key("stickersHi"), (stickerBits ushr 32).toInt())
         storage.save(key("swords"), swordsOwned)
         storage.save(key("sword"), sword.ordinal)
         // The house (and bed) belong to the level they were built in.
@@ -239,6 +251,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         coins = storage.load(key("coins"))
         armor = storage.load(key("armor"))
         tnt = storage.load(key("tnt"))
+        stickerBits = (storage.load(key("stickersLo")).toLong() and 0xFFFFFFFFL) or (storage.load(key("stickersHi")).toLong() shl 32)
         swordsOwned = storage.load(key("swords"))
         sword = Sword.entries.getOrElse(storage.load(key("sword"))) { Sword.NONE }
         if (!hasSword(sword)) sword = Sword.NONE
@@ -246,7 +259,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     fun eraseSlot(s: Int) {
-        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "houseLevel", "houseX", "houseY", "bed", "bedLevel")) {
+        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "stickersLo", "stickersHi", "houseLevel", "houseX", "houseY", "bed", "bedLevel")) {
             storage.save(key(name, s), 0)
         }
         Ore.entries.forEach { storage.save(key("ore_${it.name}", s), 0) }
@@ -265,6 +278,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         score = 0
         armor = 0
         tnt = 0
+        stickerBits = 0L
         swordsOwned = 0
         sword = Sword.NONE
         startLevel(0)
@@ -402,6 +416,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             State.INTRO -> if (stateT > 3f || (tapped && stateT > 0.6f)) setState(State.PLAY)
             State.PLAY -> {
                 if (pauseE) paused = !paused
+                // The STICKER BOOK button on the pause screen.
+                if (paused && tapped && input.tapY in 150f..178f && abs(input.tapX - viewW / 2) < 70f) { setState(State.BOOK); return }
                 if (!paused) {
                     if (craftE) { setState(State.CRAFT); sfx(Sound.BUMP) } else {
                         if (tntE) throwTnt()
@@ -432,9 +448,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 goal?.let { it.flagY = min(it.h - 30f, it.flagY + 120f * dt) }
                 if (stateT > 3.4f) {
                     clearNote = ""
-                    if (levelIndex + 1 < Levels.all.size) startLevel(levelIndex + 1) else setState(State.VICTORY)
+                    offerStickers(if (levelIndex + 1 < Levels.all.size) levelIndex + 1 else -1)
                 }
             }
+            State.STICKER -> updateStickers(tapped, num)
+            State.BOOK -> if ((tapped || pauseE || num > 0) && stateT > 0.3f) setState(State.PLAY)
             State.VICTORY -> {
                 updateParticles(dt)
                 if (Random.nextFloat() < dt * 12) {
@@ -444,6 +462,101 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
         }
         updateMusic()
+    }
+
+    // ---------------------------------------------------------------- Stickers
+
+    /** After a level: offer three stickers to pick from. [next] is the next level, or -1 for the ending. */
+    private fun offerStickers(next: Int) {
+        afterSticker = next
+        stickerPicked = -1
+        val missing = Stickers.all.indices.filter { !hasSticker(it) }.shuffled()
+        val pool = if (missing.size >= 3) missing else (missing + Stickers.all.indices.shuffled()).distinct()
+        // Beating a boss always offers that boss's shiny sticker.
+        val bossChar = level.def.rows.firstNotNullOfOrNull { r -> r.firstOrNull { it in "JWKQGYZ" } }
+        val bossSticker = bossChar?.let { Stickers.forBoss(it) }?.takeIf { it >= 0 && !hasSticker(it) }
+        stickerChoices = (listOfNotNull(bossSticker) + pool).distinct().take(3).shuffled()
+        setState(State.STICKER)
+        sfx(Sound.ONEUP)
+    }
+
+    fun pickSticker(n: Int) {
+        if (stickerPicked >= 0 || n !in stickerChoices.indices) return
+        val i = stickerChoices[n]
+        stickerPicked = i
+        stickerBits = stickerBits or (1L shl i)
+        stateT = 0f
+        sfx(Sound.POWERUP)
+        sound.sayAs("You got the ${Stickers.all[i].name.lowercase()} sticker!", Voice.HERO)
+        save()
+    }
+
+    private fun stickerCardW() = min(110f, (viewW - 60f) / 3)
+    private fun stickerCardX(n: Int) = viewW / 2 - 3 * (stickerCardW() + 14f) / 2 + n * (stickerCardW() + 14f) + 7f
+
+    private fun updateStickers(tapped: Boolean, num: Int) {
+        if (stickerPicked < 0) {
+            if (num in 1..3) pickSticker(num - 1)
+            if (tapped && stateT > 0.5f) {
+                for (n in stickerChoices.indices) {
+                    val x = stickerCardX(n)
+                    if (input.tapX in x..(x + stickerCardW()) && input.tapY in 56f..196f) pickSticker(n)
+                }
+            }
+            return
+        }
+        if (stateT > 2.5f || ((tapped || num > 0) && stateT > 0.8f)) {
+            if (afterSticker >= 0) startLevel(afterSticker) else {
+                setState(State.VICTORY)
+                sound.say("Ring ding ding ding! You did it! Ding ding!")
+            }
+        }
+    }
+
+    private fun renderStickers(gfx: Gfx) {
+        gfx.rect(0f, 0f, viewW, VIEW_H, 0xEE1A1438.toInt())
+        for (i in 0 until 30) {
+            val sx = (i * 61f + time * 20f) % viewW
+            gfx.oval(sx, (i * 37f) % VIEW_H, 2f, 2f, 0x66FFFFFF)
+        }
+        val title = if (stickerPicked < 0) "PICK A STICKER!" else "NEW STICKER!"
+        gfx.shadowText(title, viewW / 2, 32f, 16f, solidRainbow(time * 0.4f), 1)
+        gfx.shadowText("Sticker book: $stickerCount / ${Stickers.all.size}", viewW / 2, 47f, 8f, 0xFFDDDDDD.toInt(), 1)
+        val w = stickerCardW()
+        stickerChoices.forEachIndexed { n, i ->
+            val picked = stickerPicked == i
+            if (stickerPicked >= 0 && !picked) {
+                // The ones you didn't pick fade away.
+                val x = stickerCardX(n)
+                gfx.rect(x, 62f, w, 130f, 0x33FFFFFF)
+                return@forEachIndexed
+            }
+            val bob = if (stickerPicked < 0) sin(time * 3 + n) * 3f else 0f
+            val grow = if (picked) min(1f, stateT * 3) * 10f else 0f
+            val x = stickerCardX(n) - grow / 2
+            Stickers.drawCard(this, gfx, i, x, 62f + bob - grow / 2, w + grow, 130f + grow)
+            val st = Stickers.all[i]
+            gfx.shadowText(st.rarity.label, x + (w + grow) / 2, 206f + bob, 7f, argb(255, st.rarity.color), 1)
+            if (stickerPicked < 0) gfx.text("${n + 1}", x + 6, 74f + bob, 7f, 0xAAFFFFFF.toInt())
+        }
+        val hint = if (stickerPicked < 0) "Tap the one you want!" else "Added to your sticker book! Tap to keep going."
+        gfx.shadowText(hint, viewW / 2, 228f, 9f, white, 1)
+    }
+
+    private fun renderBook(gfx: Gfx) {
+        gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF2A1A10.toInt())
+        gfx.rect(6f, 6f, viewW - 12f, VIEW_H - 12f, 0xFFE8D8B0.toInt())
+        gfx.shadowText("STICKER BOOK  $stickerCount / ${Stickers.all.size}", viewW / 2, 22f, 11f, 0xFFFFD21F.toInt(), 1)
+        val cols = 8
+        val cw = min(46f, (viewW - 24f) / cols)
+        val ch = 50f
+        val gx = viewW / 2 - cols * cw / 2
+        Stickers.all.indices.forEach { i ->
+            val c = i % cols
+            val r = i / cols
+            Stickers.drawCard(this, gfx, i, gx + c * cw + 2, 28f + r * (ch - 8f), cw - 4, ch - 12, hasSticker(i))
+        }
+        gfx.text("Tap to close", viewW - 12f, 22f, 6f, 0xFF4A3018.toInt(), 2)
     }
 
     // ---------------------------------------------------------------- Title menus
@@ -1671,6 +1784,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     internal fun pickCardYForTest(i: Int) = pickCardY(i)
     internal fun thingsForTest(): List<Thing> = things + pending
     internal fun dogForTest() { dogT = 0f }
+    internal fun pickStickerScreenForTest() = offerStickers(levelIndex + 1)
+    internal fun giveStickerForTest(i: Int) { stickerBits = stickerBits or (1L shl i) }
+    internal fun openBookForTest() = setState(State.BOOK)
     internal fun bedForTest() = bed
 
     private fun knockedOut() {
@@ -1813,8 +1929,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             // Boss levels without a flag end when the boss is beaten.
             if (goal == null && state == State.PLAY && bossDoneT > 3f) {
                 if (levelIndex == Levels.all.lastIndex) {
-                    setState(State.VICTORY)
-                    sound.say("Ring ding ding ding! You did it! Ding ding!")
+                    offerStickers(-1)
                 } else {
                     clearNote = when {
                         b is KingKrag && b.dry -> "Only one enemy left... THE ENDER DRAGON!"
@@ -1848,6 +1963,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             !musicOn -> Music.NONE
             state == State.TITLE || state == State.SLOTS || state == State.PICK -> Music.OVERWORLD
             state == State.VICTORY -> Music.FROG
+            state == State.STICKER -> Music.STAR
             state == State.OUCH || state == State.CLEAR || state == State.SLEEP -> Music.NONE
             starT > 0 -> Music.STAR
             // King Krag gets his own crazy music, and the Warden his spooky one.
@@ -1872,6 +1988,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             State.SLOTS -> renderSlots(gfx)
             State.PICK -> renderPick(gfx)
             State.INTRO -> renderIntro(gfx)
+            State.STICKER -> renderStickers(gfx)
+            State.BOOK -> renderBook(gfx)
             else -> {
                 renderWorld(gfx)
                 renderHud(gfx)
@@ -1936,6 +2054,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     gfx.rect(0f, 0f, viewW, VIEW_H, 0x99000000.toInt())
                     gfx.shadowText("PAUSED", viewW / 2, 110f, 20f, white, 1)
                     gfx.shadowText("Tap the pause button to keep playing", viewW / 2, 132f, 9f, 0xFFDDDDDD.toInt(), 1)
+                    gfx.rect(viewW / 2 - 70, 150f, 140f, 28f, 0xFF7A4A20.toInt())
+                    gfx.rect(viewW / 2 - 68, 152f, 136f, 24f, 0xFFB98A52.toInt())
+                    gfx.text("STICKER BOOK  $stickerCount/${Stickers.all.size}", viewW / 2, 168f, 9f, white, 1)
                     TeamControls.drawTop(gfx, viewW, musicOn, false, time)
                 }
             }

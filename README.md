@@ -173,6 +173,17 @@ nearby bad guy every few seconds. Tap **ERASE** twice on a file to delete it.
   so it's not too hard. Swim all the way to the shore!
 * **Boss music**: King Krag gets his own crazy fast music, and the Warden a creepy heartbeat one.
 
+### Stickers
+
+After every level you get to **pick one of three stickers**. There are **40** to collect: Rocco, Blocky,
+all nine Pokemon, Ring-Ding Frog, Dennis, villagers, Poseidon, every kind of bad guy, items, and a
+**shiny** sticker for every boss (beat a boss and its shiny sticker is always one of the choices).
+Open your **Sticker Book** from the pause screen to see your collection. Stickers are saved in your
+save file.
+
+![Pick a sticker](docs/teamup-stickers.png)
+![Sticker book](docs/teamup-sticker-book.png)
+
 ### The crafting table
 
 Tap **CRAFT**. It glows green when there's something new you can make. It has four tabs:

@@ -265,6 +265,8 @@ class Bonehead(x: Float, y: Float) : Foe(x + 1, y - 20, 14f, 20f, 4) {
 /** A cave bat: hangs from the ceiling until the team comes close, then flaps after them. */
 class Flapper(x: Float, y: Float) : Foe(x + 2, y - 12, 12f, 10f, 2) {
     private var awake = false
+    /** For the sticker picture: show it flapping. */
+    fun wakeForSticker() { awake = true }
     private var t = 0f
     private val baseY = y - 12
 
