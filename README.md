@@ -114,12 +114,33 @@ Every push builds an APK with GitHub Actions (see `.github/workflows/android.yml
    in Chrome. It's also the latest release on the repository page.
 2. Download `RoccosQuest.apk` and open it. If Android asks, allow your browser to install unknown apps.
 
+## Whack the Chicken Man
+
+A second game in this repository: a whack-a-mole game for Android phones (portrait).
+A man dressed as a chicken, with a mustache, keeps popping out of nine holes in a farm
+field. Tap him before he ducks back down.
+
+<img src="docs/whack.png" width="240" alt="Bonking the Chicken Man">
+
+* Each round lasts **60 seconds**, and the Chicken Man pops up faster as time runs out.
+* Every bonk is 10 points. The **Golden Chicken Man** is quicker and worth 50.
+* Hit him 4 times in a row for a **x2 combo**, 8 for x3, and so on up to x5. Missing,
+  or letting him get away, resets the combo.
+* **Don't bonk the real chickens!** Each one costs you 5 seconds.
+* The **top 5 high scores** are saved on the phone and shown on the title screen.
+
+Download it on your phone from
+**https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/WhackTheChickenMan.apk**.
+
+The game logic and drawing are in `core/.../chicken/WhackGame.kt`, and the Android app is in `chicken/`.
+
 ## Building it yourself
 
 You need JDK 17 and the Android SDK (Android Studio installs both).
 
 ```sh
 ./gradlew :app:assembleDebug     # APK at app/build/outputs/apk/debug/app-debug.apk
+./gradlew :chicken:assembleDebug # Whack the Chicken Man, at chicken/build/outputs/apk/debug/chicken-debug.apk
 ./gradlew :core:test             # game-logic tests; also renders screenshots to core/build/screens
                                  # and the music to core/build/music/*.wav
 ```

@@ -66,6 +66,7 @@ object SoundSynth {
             Sound.FLUSH -> { noise(0.25f, 0.35f, 0.6f); noise(0.6f, 0.4f, 0.92f); tone(300f, 120f, 0.3f, 0.2f, square = false) }
             Sound.ZAP -> { tone(1400f, 300f, 0.18f, 0.3f); tone(900f, 200f, 0.15f, 0.25f) }
             Sound.CHOMP -> { noise(0.05f, 0.5f, 0.5f); tone(180f, 120f, 0.05f, 0.3f); noise(0.06f, 0.4f, 0.5f) }
+            Sound.BAWK -> { tone(520f, 980f, 0.05f, 0.3f, decay = false); tone(1100f, 420f, 0.16f, 0.35f) }
         }
     }.samples.toFloatArray()
 }

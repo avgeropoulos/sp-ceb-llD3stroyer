@@ -24,28 +24,38 @@ jobs:
       - name: Run game logic tests
         run: ./gradlew :core:test --console=plain
 
-      - name: Build APK
-        run: ./gradlew :app:assembleDebug --console=plain
+      - name: Build APKs
+        run: ./gradlew :app:assembleDebug :chicken:assembleDebug --console=plain
 
-      - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk RoccosQuest.apk
+      - name: Rename APKs
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk RoccosQuest.apk
+          cp chicken/build/outputs/apk/debug/chicken-debug.apk WhackTheChickenMan.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: RoccosQuest-apk
           path: RoccosQuest.apk
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WhackTheChickenMan-apk
+          path: WhackTheChickenMan.apk
+
       - name: Publish downloadable build
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-${{ github.ref_name }}
-          name: "Rocco's Quest - Download for Android"
+          name: "Rocco's Quest and Whack the Chicken Man - Download for Android"
           prerelease: false
           make_latest: true
           body: |
-            Install on Android: download **RoccosQuest.apk** on your phone, open it,
+            Install on Android: download **RoccosQuest.apk** (the platformer) or
+            **WhackTheChickenMan.apk** (the whack-a-mole game) on your phone, open it,
             and allow "install unknown apps" for your browser if asked.
 
             Built from ${{ github.sha }}.
-          files: RoccosQuest.apk
+          files: |
+            RoccosQuest.apk
+            WhackTheChickenMan.apk
