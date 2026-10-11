@@ -29,8 +29,14 @@ object Tile {
     const val QSTAR = 17
     /** A rainbow mystery block: a random surprise. */
     const val QMYSTERY = 18
+    /** Minecart track: you can walk through it. */
+    const val RAIL = 19
+    /** A spike trap on the floor. */
+    const val SPIKES = 20
+    /** Underwater bubble vent: a solid block that puffs out air bubbles. */
+    const val VENT = 21
 
-    fun solid(t: Int) = t != EMPTY && t != LAVA && t != CLOUD
+    fun solid(t: Int) = t != EMPTY && t != LAVA && t != CLOUD && t != RAIL && t != SPIKES
 
     /** How many pickaxe points it takes to mine a tile; 0 means it can't be mined. */
     fun toughness(t: Int) = when (t) {
@@ -73,6 +79,10 @@ enum class Place(val music: Music) {
     SNOW(Music.SKY),
     JUNGLE(Music.OVERWORLD),
     VOLCANO(Music.CASTLE),
+    WATER(Music.SKY),
+    NIGHT(Music.UNDERGROUND),
+    DEEP(Music.UNDERGROUND),
+    END(Music.UNDERGROUND),
 }
 
 /**
@@ -85,9 +95,14 @@ enum class Place(val music: Music) {
  *  'k' shellback   'b' bonehead   'v' flapper bat
  *  '|' checkpoint   'F' goal flag   'r' Ring-Ding Frog drives by here
  *  'J' Krag Jr.   'K' King Krag   'W' Wonder Krag Jr.   'Q' Wonder King Krag
+ *  'V' villager   'n' enderman   'f' fish   'G' the Warden   'Y' Dry Bones King Krag   'Z' Ender Dragon
+ *  'M' minecart   '=' rail   '^' spike trap   '~' bubble vent   'C' end crystal
+ *  'S' (any row) marks the shore: everything left of that column is underwater
  */
 class LevelDef(val name: String, val place: Place, val rows: List<String>, val tip: String) {
     val w get() = rows[0].length
+    /** Column where the water ends, or -1 if this isn't an underwater level. */
+    val shoreX: Int = rows.map { it.indexOf('S') }.filter { it >= 0 }.minOrNull() ?: -1
 }
 
 class Builder(private val w: Int) {
@@ -112,6 +127,8 @@ object Levels {
             hills(), cave(), cloudSky(), castle(),
             copperCanyon(), frostyPeaks(), amethystMines(), wonderFortress(),
             mushroomJungle(), lavaLake(), wonderCastle(),
+            villagerValley(), coralReef(), minecartMine(), enderPlains(), deepDark(),
+            treasureLagoon(), spikeTemple(), fireFortress(), boneCastle(), theEnd(),
         )
     }
 
@@ -232,7 +249,7 @@ object Levels {
     private fun copperCanyon() = Builder(180)
         .ground(0, 40).ground(44, 90).ground(94, 140).ground(143, 179)
         .at(3, 12, '@')
-        .rock(7, 12, "uuu", "sus")
+        .rock(7, 12, "uuu", "sus").at(11, 12, 'V')
         .row(13, 9, "?m?").at(18, 12, 'b')
         .rock(22, 12, " su ", "suus", "ssss")
         .at(28, 12, 'k').at(31, 12, 'g').at(35, 12, 'b')
@@ -335,7 +352,7 @@ object Levels {
     private fun mushroomJungle() = Builder(190)
         .ground(0, 44).ground(47, 80).ground(84, 130, 12).ground(133, 189)
         .at(3, 12, '@')
-        .rock(7, 12, "ee", "ss")
+        .rock(7, 12, "ee", "ss").at(10, 12, 'V')
         .row(12, 9, "?m?").at(16, 12, 'g').at(18, 12, 'g').at(20, 12, 'g')
         .rock(24, 12, " e ", "eie", "sss")
         .at(30, 12, 'k').at(33, 12, 'w').at(36, 12, 'w').row(38, 8, "BhB")
@@ -407,6 +424,190 @@ object Levels {
             "WONDER CASTLE", Place.CASTLE,
             "WONDER KING KRAG! Use EVERYTHING: flowers, TNT, stars and SUPER moves!",
         )
+
+    private fun villagerValley() = Builder(200)
+        .ground(0, 199)
+        .at(3, 12, '@')
+        .at(10, 12, 'V').rock(15, 12, "si", "ss")
+        .row(20, 9, "?m?").at(24, 12, 'g').at(27, 12, 'g')
+        .at(32, 12, '^').at(33, 12, '^')
+        .rock(37, 12, "eio", "sss")
+        .at(44, 12, 'k').at(47, 12, 'V')
+        .at(52, 12, 'r').at(55, 12, '|')
+        .fill(58, 100, 12, 12, '=').at(58, 12, 'M')
+        .at(66, 12, 'g').at(70, 12, 'g').at(74, 12, 'k').at(78, 12, 'g').at(84, 12, 'b').at(90, 12, 'g')
+        .at(104, 12, 'V').rock(108, 12, "oDo", "sss")
+        .at(115, 12, '^').at(116, 12, '^').at(117, 12, '^')
+        .at(122, 12, 'w').at(126, 12, 'b')
+        .at(130, 12, '|').row(134, 9, "*").at(140, 12, 'k')
+        .rock(145, 12, "uea", "sss")
+        .at(152, 12, 'g').at(155, 12, 'g')
+        .fill(160, 160, 12, 12, 'X').fill(161, 161, 11, 12, 'X').fill(162, 162, 10, 12, 'X')
+        .at(175, 12, 'V').at(185, 12, 'F')
+        .build(
+            "VILLAGER VALLEY", Place.HILLS,
+            "Talk to VILLAGERS to trade! Hop in a MINECART and ride!",
+        )
+
+    private fun coralReef() = Builder(170)
+        .ground(0, 169)
+        .at(3, 12, '@')
+        .at(8, 12, '~').rock(12, 12, "sD", "ss")
+        .at(18, 8, 'f').at(24, 11, 'f').fill(28, 30, 9, 12, 's').row(28, 9, "eoe")
+        .at(34, 12, '~').at(38, 6, 'f').row(40, 6, "cccc").at(44, 10, 'f')
+        .fill(48, 49, 7, 12, 'X')
+        .at(52, 12, '~').at(56, 9, 'f').at(60, 5, 'f').rock(64, 12, "aDa", "sss")
+        .at(70, 12, '|').at(74, 12, '~').at(78, 7, 'f').at(82, 11, 'f').fill(86, 88, 4, 7, 's').row(86, 6, "ouo")
+        .at(92, 12, '~').at(96, 8, 'f').at(100, 10, 'f').at(104, 6, 'f')
+        .at(110, 12, '~').rock(114, 12, "DeD", "sss").at(120, 9, 'f').at(124, 5, 'f')
+        .at(128, 12, '~').at(132, 10, 'f').at(136, 7, 'f')
+        .at(142, 12, '~')
+        .at(150, 0, 'S')
+        .fill(150, 169, 11, 12, '#')
+        .at(153, 10, 'r').at(160, 10, 'F')
+        .build(
+            "CORAL REEF", Place.WATER,
+            "Underwater! Tap JUMP to swim. Grab BUBBLES so you don't run out of air!",
+        )
+
+    private fun minecartMine() = Builder(220)
+        .ground(0, 219)
+        .fill(0, 219, 0, 1, 's')
+        .fill(0, 0, 2, 12, 'X')
+        .at(3, 12, '@').at(8, 12, 'V')
+        .rock(12, 12, "uau", "sss")
+        .fill(18, 90, 12, 12, '=').at(18, 12, 'M')
+        .at(30, 12, 'g').at(38, 12, 'b').at(46, 12, 'k').at(54, 12, 'b').at(62, 12, 'g').at(70, 12, 'k').at(80, 12, 'b')
+        .at(30, 8, 'v').at(60, 8, 'v')
+        .at(94, 12, '|').rock(98, 12, "DoD", "sss")
+        .at(104, 12, 'r').at(108, 12, '^').at(109, 12, '^')
+        .fill(114, 170, 12, 12, '=').at(114, 12, 'M')
+        .at(126, 12, 'b').at(136, 12, 'n').at(146, 12, 'b').at(156, 12, 'k').at(140, 8, 'v')
+        .at(174, 12, '|').rock(178, 12, "aea", "sss").at(186, 12, 'b').at(190, 8, 'v')
+        .fill(196, 196, 12, 12, 'X').fill(197, 197, 11, 12, 'X')
+        .at(210, 12, 'F')
+        .build(
+            "MINECART MINE", Place.CAVE,
+            "Ride the minecarts! They smash right through bad guys.",
+        )
+
+    private fun enderPlains() = Builder(200)
+        .ground(0, 60).ground(64, 130).ground(134, 199)
+        .at(3, 12, '@').at(8, 12, 'V').rock(13, 12, "aDa", "sss")
+        .at(20, 12, 'g').at(24, 12, 'w').row(28, 9, "?m?")
+        .at(36, 12, 'n').rock(42, 12, "eue", "sss").at(50, 12, 'b').at(55, 12, 'k')
+        .at(68, 12, 'r').at(72, 12, '|').at(80, 12, 'n').row(86, 9, "*")
+        .rock(90, 12, "DaD", "sss").at(98, 12, 'b').at(104, 12, 'w').at(110, 12, 'n')
+        .at(118, 12, '^').at(119, 12, '^').at(124, 12, 'k')
+        .at(138, 12, '|').at(146, 12, 'n').rock(152, 12, "aoa", "sss").at(160, 12, 'b').at(166, 12, 'n')
+        .fill(172, 172, 12, 12, 'X').fill(173, 173, 11, 12, 'X').at(185, 12, 'V').at(190, 12, 'F')
+        .build(
+            "ENDER PLAINS", Place.NIGHT,
+            "ENDERMEN! They teleport and they're tough. Team up on them!",
+        )
+
+    private fun deepDark() = Builder(170)
+        .ground(0, 169)
+        .fill(0, 169, 0, 1, 's')
+        .fill(0, 0, 2, 12, 'X')
+        .at(3, 12, '@').rock(8, 12, "DaD", "sss").row(14, 9, "?h?")
+        .at(20, 12, 'b').at(24, 8, 'v').at(28, 12, 'n').rock(34, 12, "aea", "sss")
+        .at(40, 12, 'r').at(44, 12, '|').at(48, 12, '^').at(49, 12, '^').at(54, 12, 'b').at(58, 8, 'v')
+        .rock(62, 12, "oDo", "sss").at(68, 12, 'n').at(74, 12, '|').row(78, 9, "m*m")
+        .row(96, 8, "h").row(116, 8, "h")
+        .fill(131, 131, 2, 12, 'X')
+        .at(115, 12, 'G')
+        .build(
+            "THE DEEP DARK", Place.DEEP,
+            "Shhh... THE WARDEN hears you when you run and jump!",
+        )
+
+    private fun treasureLagoon() = Builder(180)
+        .ground(0, 179)
+        .at(3, 12, '@').at(7, 12, '~').rock(11, 12, "oo", "ss")
+        .at(16, 9, 'f').at(20, 6, 'f').at(24, 11, 'f').at(28, 12, '~')
+        .fill(32, 34, 7, 12, 's').row(32, 7, "DuD")
+        .at(38, 8, 'f').at(42, 4, 'f').at(46, 12, '~').row(48, 5, "ccccc")
+        .at(52, 10, 'f').at(56, 7, 'f').at(60, 11, 'f').at(64, 12, '~').at(66, 12, '|')
+        .fill(70, 71, 3, 8, 'X')
+        .at(76, 9, 'f').at(80, 5, 'f').rock(84, 12, "aea", "sss").at(90, 12, '~')
+        .at(94, 8, 'f').at(98, 11, 'f').at(102, 6, 'f').at(106, 12, '~')
+        .fill(110, 112, 9, 12, 's').row(110, 9, "DoD").at(116, 7, 'f').at(120, 10, 'f').at(124, 12, '~')
+        .at(128, 6, 'f').at(132, 9, 'f').at(136, 11, 'f').at(140, 12, '~')
+        .at(146, 5, 'f').at(150, 8, 'f').at(154, 12, '~')
+        .at(160, 0, 'S').fill(160, 179, 11, 12, '#').at(163, 10, 'r').at(172, 10, 'F')
+        .build(
+            "TREASURE LAGOON", Place.WATER,
+            "More swimming! Lots of treasure down here.",
+        )
+
+    private fun spikeTemple() = Builder(200)
+        .ground(0, 199)
+        .at(3, 12, '@').at(8, 12, 'V')
+        .rock(12, 12, "uuo", "sss")
+        .at(18, 12, '^').at(19, 12, '^').at(20, 12, '^').row(18, 8, "ccc")
+        .at(26, 12, 'b').at(30, 12, 'k').fill(34, 35, 10, 12, 'X')
+        .at(40, 12, '^').at(41, 12, '^').at(44, 12, 'n')
+        .at(50, 12, 'r').at(53, 12, '|')
+        .fill(56, 110, 12, 12, '=').at(56, 12, 'M').at(66, 12, 'b').at(76, 12, 'b').at(86, 12, 'k').at(96, 12, 'b')
+        .rock(114, 12, "DaD", "sss").at(120, 12, '^').at(121, 12, '^').at(122, 12, '^').at(126, 12, 'n')
+        .at(132, 12, '|').at(136, 12, 'V').row(140, 9, "m*m")
+        .at(146, 12, 'b').at(150, 12, 'b').at(154, 12, '^').at(155, 12, '^').at(160, 12, 'n')
+        .rock(166, 12, "eDe", "sss")
+        .fill(172, 172, 12, 12, 'X').fill(173, 173, 11, 12, 'X').fill(174, 174, 10, 12, 'X')
+        .at(190, 12, 'F')
+        .build(
+            "SPIKE TEMPLE", Place.DESERT,
+            "Watch out for SPIKE TRAPS! Jump over them.",
+        )
+
+    private fun fireFortress() = Builder(200)
+        .ground(0, 40).ground(44, 90).ground(94, 140).ground(145, 199)
+        .fill(41, 43, 13, 14, 'L').fill(91, 93, 13, 14, 'L').fill(141, 144, 13, 14, 'L')
+        .at(3, 12, '@').rock(7, 12, "oDa", "sss").row(14, 9, "?h?")
+        .at(20, 12, 'b').at(24, 8, 'v').at(28, 12, 'n').at(34, 12, '^').at(35, 12, '^')
+        .at(48, 12, 'b').at(52, 12, 'k').rock(56, 12, "aua", "sss").at(62, 12, 'n')
+        .at(68, 12, 'r').at(72, 12, '|').at(76, 8, 'v').at(80, 12, 'b').row(84, 9, "m*m")
+        .at(98, 12, 'n').at(104, 12, 'b').rock(108, 12, "DeD", "sss").at(114, 8, 'v').at(118, 12, 'k')
+        .at(124, 12, '|').at(128, 12, 'n').at(134, 12, '^').at(135, 12, '^')
+        .at(150, 12, 'b').at(156, 12, 'n').rock(162, 12, "aoa", "sss").at(170, 12, 'b')
+        .fill(176, 176, 12, 12, 'X').fill(177, 177, 11, 12, 'X').at(190, 12, 'F')
+        .build(
+            "FIRE FORTRESS", Place.VOLCANO,
+            "Endermen, Boneheads AND lava. Throw TNT to clear the way!",
+        )
+
+    private fun boneCastle() = Builder(160)
+        .ground(0, 159)
+        .fill(0, 159, 0, 1, 'X')
+        .at(3, 12, '@').rock(7, 12, "DaDo", "ssss").row(14, 9, "?h?")
+        .fill(19, 22, 13, 14, 'L').at(25, 12, 'b').at(28, 12, 'b').at(31, 8, 'v')
+        .at(36, 12, 'n').fill(40, 43, 13, 14, 'L').row(40, 9, "cccc")
+        .at(48, 12, 'b').rock(52, 12, "aDe", "sss").at(58, 12, 'r').at(61, 12, '|')
+        .row(64, 9, "m*m").at(70, 12, 'b').at(74, 12, 'b').at(78, 8, 'v')
+        .at(84, 12, '|')
+        .row(98, 8, "h").row(118, 8, "h").row(108, 9, "m")
+        .fill(133, 133, 2, 12, 'X')
+        .at(120, 12, 'Y')
+        .build(
+            "BONE CASTLE", Place.CASTLE,
+            "DRY BONES KING KRAG! Knock him down... and then do it again!",
+        )
+
+    private fun theEnd() = Builder(140)
+        .ground(0, 139)
+        .at(3, 12, '@').rock(7, 12, "DaD", "sss").row(13, 9, "?h?")
+        .at(20, 12, 'n').at(28, 12, 'n').at(34, 12, 'r').at(38, 12, '|')
+        .rock(42, 12, "aaD", "sss").row(48, 9, "m*m")
+        .fill(76, 77, 10, 12, 'X').at(76, 9, 'C')
+        .fill(104, 105, 10, 12, 'X').at(104, 9, 'C')
+        .row(90, 6, "h")
+        .fill(131, 131, 2, 12, 'X')
+        .at(90, 4, 'Z')
+        .build(
+            "THE END", Place.END,
+            "THE ENDER DRAGON! Break the purple crystals first, they heal it!",
+        )
 }
 
 /** A playable copy of a [LevelDef] whose tiles can be mined away. */
@@ -437,8 +638,21 @@ class Level(val def: LevelDef) {
                 'a' -> Tile.AMETHYST
                 '*' -> Tile.QSTAR
                 'm' -> Tile.QMYSTERY
+                '=', 'M' -> Tile.RAIL
+                '^' -> Tile.SPIKES
+                '~' -> Tile.VENT
                 else -> Tile.EMPTY
             }
+        }
+    }
+
+    init {
+        // A bad guy standing on the rails still has rails under him.
+        for (y in 0 until h) for (x in 1 until w - 1) {
+            val c = def.rows[y][x]
+            if (c != '.' && tiles[y * w + x] == Tile.EMPTY &&
+                tiles[y * w + x - 1] == Tile.RAIL && def.rows[y][x + 1] in "=M"
+            ) tiles[y * w + x] = Tile.RAIL
         }
     }
 

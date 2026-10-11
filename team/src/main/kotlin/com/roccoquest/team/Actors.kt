@@ -37,7 +37,18 @@ enum class Mon(val label: String, val color: Int, val superName: String, val blu
     BLAZE("BLAZE", 0xFFFF8A3A.toInt(), "FLAMETHROWER", "Fire dragon. Glides when you hold JUMP. SUPER burns everything in front!"),
     HYDRO("HYDRO", 0xFF4A8AE8.toInt(), "HYDRO CANNON", "Water turtle with cannons. SUPER blasts both ways at once!"),
     BLOOM("BLOOM", 0xFF3CB878.toInt(), "SOLAR BEAM", "Flower dino. Strong vine whip. SUPER fires a giant beam across the screen!"),
+    EMBER("EMBER", 0xFFFF9A4A.toInt(), "FIRE SPIN", "Little fire lizard. SUPER spins a ring of fire all around!"),
+    SPLASHY("SPLASHY", 0xFF6AB8F0.toInt(), "BUBBLE BEAM", "Tiny turtle. Holds its breath longer underwater. SUPER blasts bubbles!"),
+    MYSTIC("MYSTIC", 0xFFFF9AD0.toInt(), "PSYCHIC", "Pink mystery cat. Floats when you hold JUMP. SUPER hits everyone AND heals!"),
+    PUNCHO("PUNCHO", 0xFF8A9AB8.toInt(), "DYNAMIC PUNCH", "Super strong. Punches hard up close. SUPER is the biggest hit in the game!"),
+    SPOOKY("SPOOKY", 0xFF7A4AA8.toInt(), "NIGHT SHADE", "Floaty ghost. Glides when you hold JUMP. SUPER scares every bad guy on screen!"),
 }
+
+/** Pokemon that are happy in the water: the team's air lasts twice as long. */
+val Mon.swimmer get() = this == Mon.HYDRO || this == Mon.SPLASHY
+
+/** Pokemon that float down slowly while JUMP is held. */
+val Mon.floaty get() = this == Mon.BLAZE || this == Mon.MYSTIC || this == Mon.SPOOKY
 
 enum class Who { ROCCO, BLOCKY, MON }
 
@@ -85,14 +96,14 @@ class Hero(val who: Who, x: Float, y: Float) :
     val speed get() = when (who) {
         Who.ROCCO -> 120f
         Who.BLOCKY -> 108f
-        Who.MON -> when (mon) { Mon.SPARKY -> 128f; Mon.BLAZE -> 115f; else -> 100f }
+        Who.MON -> when (mon) { Mon.SPARKY, Mon.EMBER -> 128f; Mon.BLAZE, Mon.MYSTIC, Mon.SPOOKY -> 115f; else -> 100f }
     }
 
     /** Rocco jumps higher; Blocky is the strong one. */
     val jumpV get() = when (who) {
         Who.ROCCO -> -335f
         Who.BLOCKY -> -305f
-        Who.MON -> when (mon) { Mon.SPARKY -> -340f; Mon.BLAZE -> -300f; else -> -295f }
+        Who.MON -> when (mon) { Mon.SPARKY, Mon.EMBER, Mon.MYSTIC -> -340f; Mon.BLAZE, Mon.PUNCHO -> -310f; else -> -295f }
     }
 
     fun draw(g: TeamGame, gfx: Gfx, ox: Float) {

@@ -223,6 +223,49 @@ object Songs {
         leadDuty = 0.25f,
     )
 
+    // ------------------------------------------------------------------ King Krag storms in (crazy, very fast, E minor)
+    private val kragLead = """
+        E5/1 F5/1 E5/1 D#5/1 E5/2 B4/2 E5/1 F5/1 E5/1 D#5/1 E5/2 G5/2
+        A5/1 G5/1 F5/1 E5/1 D5/2 E5/2 F5/4 E5/4
+        E5/1 F5/1 E5/1 D#5/1 E5/2 B4/2 E5/1 F5/1 E5/1 D#5/1 E5/2 C6/2
+        B5/2 A5/2 G#5/2 A5/2 B5/4 -/4
+        E6/1 D6/1 C6/1 B5/1 A5/1 G5/1 F5/1 E5/1 D#5/2 E5/2 F#5/2 G#5/2
+        A5/4 C6/2 A5/2 E5/4 A4/4
+        F5/1 F5/1 F5/1 F5/1 E5/2 E5/2 D#5/2 D#5/2 D5/2 D5/2
+        E5/4 E6/4 E5/2 -/2 E5/1 E5/1 -/2
+    """
+    private val kragChords = listOf(
+        "E2 B2 E4 G4", "D2 A2 F4 A4", "E2 B2 E4 G4", "E2 B2 G#4 B4",
+        "C2 G2 E4 G4", "A2 E3 C4 E4", "F2 C3 A4 C5", "E2 B2 G#4 B4",
+    )
+
+    val krag = Song(
+        bpm = 208,
+        lead = kragLead,
+        harmony = offbeats(kragChords),
+        bass = drivingBass(kragChords),
+        drums = "kkhskkhskkhskshs",
+        leadDuty = 0.5f,
+    )
+
+    // ------------------------------------------------------------------ The Warden (slow, dark, heartbeat drums)
+    private val wardenLead = """
+        C4/4 -/4 C#4/4 -/4
+        C4/2 G3/2 -/4 F#3/8
+        C4/4 -/4 D#4/4 D4/4
+        C4/12 -/4
+    """
+    private val wardenChords = listOf("C2 G2 C3 D#3", "C2 F#2 C3 F#3", "C2 G2 C3 D#3", "C2 G2 C3 C3")
+
+    val warden = Song(
+        bpm = 96,
+        lead = wardenLead + wardenLead,
+        harmony = sustained(wardenChords + wardenChords),
+        bass = List(8) { "C2/1 -/1 C2/1 -/13" }.joinToString(" "),
+        drums = "k.k.........h...",
+        leadDuty = 0.5f,
+    )
+
     fun of(m: Music): Song? = when (m) {
         Music.NONE -> null
         Music.OVERWORLD -> overworld
@@ -233,5 +276,7 @@ object Songs {
         Music.STAR -> star
         Music.WONDER -> wonder
         Music.FROG -> frog
+        Music.KRAG -> krag
+        Music.WARDEN -> warden
     }
 }

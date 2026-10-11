@@ -512,13 +512,20 @@ class KragJr(x: Float, y: Float, val wonderStyle: Boolean = false) :
  * Wonder King Krag is bigger, purple and green, breathes rainbow fire and makes
  * spike balls rain from the sky when he lands.
  */
-class KingKrag(x: Float, y: Float, val wonderStyle: Boolean = false) :
-    Foe(x - 10, y - 40 * scaleOf(wonderStyle), 36f * scaleOf(wonderStyle), 40f * scaleOf(wonderStyle), if (wonderStyle) 32 else 16) {
+class KingKrag(x: Float, y: Float, val wonderStyle: Boolean = false, val dry: Boolean = false) :
+    Foe(
+        x - 10, y - 40 * scaleOf(wonderStyle || dry), 36f * scaleOf(wonderStyle || dry), 40f * scaleOf(wonderStyle || dry),
+        if (wonderStyle) 32 else if (dry) 36 else 16,
+    ) {
     companion object {
         fun scaleOf(wonder: Boolean) = if (wonder) 1.35f else 1f
     }
 
-    private val s = scaleOf(wonderStyle)
+    private val s = scaleOf(wonderStyle || dry)
+    /** Dry Bones King Krag falls into a pile of bones once, then gets back up. */
+    private var revived = false
+    private var bonesT = -1f
+    val inBones get() = bonesT >= 0
     var awake = false
         private set
     private var t = 0f
@@ -538,6 +545,19 @@ class KingKrag(x: Float, y: Float, val wonderStyle: Boolean = false) :
         hurtFlash -= dt
         mouth -= dt
         if (updateDying(g, dt)) return
+        if (bonesT >= 0) {
+            bonesT += dt
+            vx = 0f
+            walk(g, dt)
+            if (bonesT > 3.5f) {
+                bonesT = -1f
+                hp = maxHp / 2
+                g.say(cx, y - 10, "DRY BONES NEVER GIVE UP!", 2f)
+                g.sfx(Sound.BOSS_FIRE)
+                g.shake = 0.5f
+            }
+            return
+        }
         val h = g.leader
         if (!awake) {
             if (h.cx > homeX - g.viewW * 0.45f) {
@@ -558,13 +578,13 @@ class KingKrag(x: Float, y: Float, val wonderStyle: Boolean = false) :
         if (fireTimer <= 0) {
             mouth = 0.5f
             val fx = if (facing < 0) x - 18 else x + w - 2
-            if (wonderStyle && angry) {
+            if ((wonderStyle || dry) && angry) {
                 // Two flames at once, low and high: stand in the gap or jump!
                 g.spawn(Flame(fx, bottom - 10, facing, true))
                 g.spawn(Flame(fx, bottom - 44, facing, true))
             } else {
                 val fy = if (Random.nextBoolean()) bottom - 10 else bottom - 26 * s
-                g.spawn(Flame(fx, fy, facing, wonderStyle))
+                g.spawn(Flame(fx, fy, facing, wonderStyle || dry))
             }
             g.sfx(Sound.BOSS_FIRE)
             fireTimer = if (angry) 1.8f else 2.6f
@@ -579,22 +599,30 @@ class KingKrag(x: Float, y: Float, val wonderStyle: Boolean = false) :
         if (onGround && !wasGround) {
             g.shake = 0.3f
             g.sfx(Sound.BUMP)
-            if (wonderStyle) repeat(2) {
+            if (wonderStyle || dry) repeat(2) {
                 g.spawn(SpikeBall(g.camX + 30f + Random.nextFloat() * (g.viewW - 60f), 20f))
             }
         }
     }
 
     override fun hit(g: TeamGame, dmg: Int): Boolean {
-        if (!awake || dying) return false
+        if (!awake || dying || bonesT >= 0) return false
         if (hurtFlash > 0 && dmg < 5) return true
         hp -= dmg
         hurtFlash = 0.35f
         g.sfx(Sound.BOSS_HIT)
+        if (hp <= 0 && dry && !revived) {
+            hp = 0
+            revived = true
+            bonesT = 0f
+            g.sfx(Sound.BREAK)
+            g.say(cx, y - 10, "Rattle rattle...", 1.5f)
+            return true
+        }
         if (hp <= 0) {
             hp = 0
             knockOut(g)
-            g.addScore(if (wonderStyle) 20000 else 10000, cx, y)
+            g.addScore(if (wonderStyle || dry) 20000 else 10000, cx, y)
             g.onBossBeaten(this)
         }
         return true
@@ -606,6 +634,15 @@ class KingKrag(x: Float, y: Float, val wonderStyle: Boolean = false) :
     override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
         val flash = hurtFlash > 0 && (hurtFlash * 30).toInt() % 2 == 0
         val f = facing < 0
+        if (bonesT >= 0) {
+            // A pile of bones that shakes before he gets back up.
+            val shakeX = if (bonesT > 2.5f) sin(bonesT * 60) * 2f else 0f
+            gfx.oval(x + ox + shakeX, bottom - 14, w, 14f, 0xFF4A4A44.toInt())
+            for (i in 0 until 5) gfx.rect(x + ox + 4 + i * w / 6 + shakeX, bottom - 10 - (i % 2) * 4, w / 5, 3f, 0xFFF0F0E0.toInt())
+            gfx.oval(x + ox + w * 0.6f + shakeX, bottom - 22, 16f, 12f, 0xFFF0F0E0.toInt())
+            gfx.rect(x + ox + w * 0.6f + 4 + shakeX, bottom - 18, 3f, 3f, 0xFF101010.toInt())
+            return
+        }
         // Local coordinates are for a 36x40 Krag facing left; scale and mirror them.
         fun mx(lx: Float) = if (f) x + ox + lx * s else x + ox + w - lx * s
         fun r(lx: Float, ly: Float, lw: Float, lh: Float, c: Int) {
@@ -626,11 +663,11 @@ class KingKrag(x: Float, y: Float, val wonderStyle: Boolean = false) :
             }
         }
         val white = 0xFFFFFFFF.toInt()
-        val skin = if (flash) white else if (wonderStyle) 0xFF5AD05A.toInt() else 0xFFF2B33D.toInt()
-        val belly = if (flash) white else if (wonderStyle) 0xFFD8F5B0.toInt() else 0xFFFFE8A0.toInt()
-        val shell = if (flash) white else if (wonderStyle) 0xFF8A3AD8.toInt() else 0xFF2E9E3A.toInt()
-        val shellDark = if (wonderStyle) 0xFF4A1A80.toInt() else 0xFF16602A.toInt()
-        val spike = if (wonderStyle) 0xFF3CE070.toInt() else 0xFFF4F4F4.toInt()
+        val skin = if (flash) white else if (dry) 0xFFF0F0E0.toInt() else if (wonderStyle) 0xFF5AD05A.toInt() else 0xFFF2B33D.toInt()
+        val belly = if (flash) white else if (dry) 0xFFC8C8B8.toInt() else if (wonderStyle) 0xFFD8F5B0.toInt() else 0xFFFFE8A0.toInt()
+        val shell = if (flash) white else if (dry) 0xFF7A7A70.toInt() else if (wonderStyle) 0xFF8A3AD8.toInt() else 0xFF2E9E3A.toInt()
+        val shellDark = if (dry) 0xFF4A4A44.toInt() else if (wonderStyle) 0xFF4A1A80.toInt() else 0xFF16602A.toInt()
+        val spike = if (dry) 0xFFF0F0E0.toInt() else if (wonderStyle) 0xFF3CE070.toInt() else 0xFFF4F4F4.toInt()
         val horn = 0xFFFFF2C8.toInt()
         val hair = if (wonderStyle) 0xFFC060FF.toInt() else 0xFFE53A1E.toInt()
         val step = if (onGround && (t * 4).toInt() % 2 == 0) 2f else 0f
@@ -656,7 +693,7 @@ class KingKrag(x: Float, y: Float, val wonderStyle: Boolean = false) :
         p(floatArrayOf(-3f, -1f, 1f), floatArrayOf(11f, 14f + jaw, 11f), horn)
         p(floatArrayOf(3f, 5f, 7f), floatArrayOf(11f, 14f + jaw, 11f), horn)
         o(6f, 0f, 7f, 7f, white)
-        r(7f, 2f, 3f, 4f, if (wonderStyle) 0xFF8A3AD8.toInt() else 0xFF101010.toInt())
+        r(7f, 2f, 3f, 4f, if (dry) 0xFFFF3A3A.toInt() else if (wonderStyle) 0xFF8A3AD8.toInt() else 0xFF101010.toInt())
         p(floatArrayOf(4f, 14f, 14f), floatArrayOf(-2f, 0f, 2f), hair)
         p(floatArrayOf(8f, 11f, 6f), floatArrayOf(-1f, -9f, -2f), horn)
         p(floatArrayOf(15f, 20f, 13f), floatArrayOf(-1f, -10f, -2f), horn)

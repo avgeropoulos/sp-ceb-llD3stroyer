@@ -312,7 +312,113 @@ object TeamArt {
             Mon.BLAZE -> blaze(gfx, cx, bottom, t, facing, walking)
             Mon.HYDRO -> hydro(gfx, cx, bottom, t, facing, walking)
             Mon.BLOOM -> bloom(gfx, cx, bottom, t, facing, walking)
+            Mon.EMBER -> ember(gfx, cx, bottom, t, facing, walking)
+            Mon.SPLASHY -> splashy(gfx, cx, bottom, t, facing, walking)
+            Mon.MYSTIC -> mystic(gfx, cx, bottom, t, facing)
+            Mon.PUNCHO -> puncho(gfx, cx, bottom, t, facing, walking)
+            Mon.SPOOKY -> spooky(gfx, cx, bottom, t, facing)
         }
+    }
+
+    /** Ember: a small orange lizard with a flame on the end of its tail. */
+    private fun ember(gfx: Gfx, cx: Float, bottom: Float, t: Float, facing: Int, walking: Boolean) {
+        val f = facing.toFloat()
+        val orange = 0xFFFF9A4A.toInt()
+        val cream = 0xFFFFE8A0.toInt()
+        val step = if (walking) 1.5f else 0f
+        val tx = cx - f * 10
+        gfx.poly(floatArrayOf(cx - f * 2, tx, tx + f * 2), floatArrayOf(bottom - 5, bottom - 12, bottom - 3), orange)
+        gfx.oval(tx - 3, bottom - 19 + sin(t * 20), 6f, 8f, 0xFFFF6A00.toInt())
+        gfx.oval(tx - 1.5f, bottom - 16 + sin(t * 20), 3f, 4f, 0xFFFFE14D.toInt())
+        gfx.oval(cx - 5, bottom - 4 + step, 4f, 4f, orange)
+        gfx.oval(cx + 1, bottom - 4 - step, 4f, 4f, orange)
+        gfx.oval(cx - 5, bottom - 13, 10f, 11f, orange)
+        gfx.oval(cx - 2 + f, bottom - 10, 5f, 7f, cream)
+        gfx.oval(cx - 5 + f * 3, bottom - 21, 11f, 10f, orange)
+        gfx.oval(cx + f * 5 - 1, bottom - 18, 3f, 3.5f, 0xFF101010.toInt())
+        gfx.oval(cx + f * 5 - 0.5f, bottom - 18, 1f, 1f, WHITE)
+        gfx.rect(cx + f * 6 - 1, bottom - 14, 3f, 1f, 0xFF7A2A10.toInt())
+    }
+
+    /** Splashy: a little blue turtle with a curly tail. */
+    private fun splashy(gfx: Gfx, cx: Float, bottom: Float, t: Float, facing: Int, walking: Boolean) {
+        val f = facing.toFloat()
+        val blue = 0xFF6AB8F0.toInt()
+        val step = if (walking) 1.5f else 0f
+        gfx.oval(cx - f * 11 - 3, bottom - 12, 7f, 7f, blue)
+        gfx.oval(cx - f * 11 - 1, bottom - 10, 3f, 3f, 0xFF4A8AC8.toInt())
+        gfx.oval(cx - 6, bottom - 4 + step, 5f, 4f, blue)
+        gfx.oval(cx + 1, bottom - 4 - step, 5f, 4f, blue)
+        gfx.oval(cx - 8 - f, bottom - 15, 15f, 13f, 0xFFA0602A.toInt())
+        gfx.oval(cx - 4 + f * 2, bottom - 13, 9f, 10f, 0xFFF8E0A0.toInt())
+        gfx.oval(cx - 4 + f * 5, bottom - 22, 10f, 10f, blue)
+        gfx.oval(cx + f * 7 - 1.5f, bottom - 19, 3.5f, 4f, 0xFF101010.toInt())
+        gfx.oval(cx + f * 7 - 0.5f, bottom - 19, 1.2f, 1.2f, WHITE)
+        gfx.rect(cx + f * 7 - 1, bottom - 15, 3f, 1f, 0xFF2A4A7A.toInt())
+        if (sin(t * 2) > 0.9f) gfx.oval(cx + f * 10, bottom - 26 - (t * 20 % 6), 3f, 3f, 0x99BFE8FF.toInt())
+    }
+
+    /** Mystic: a small pink cat with a long thin tail that floats in the air. */
+    private fun mystic(gfx: Gfx, cx: Float, bottom: Float, t: Float, facing: Int) {
+        val f = facing.toFloat()
+        val pink = 0xFFFF9AD0.toInt()
+        val hover = sin(t * 3) * 2f - 3f
+        val by = bottom + hover
+        gfx.oval(cx - 8, bottom - 2, 16f, 3f, 0x33000000)
+        // Long curly tail
+        for (i in 0 until 6) {
+            val a = i * 0.5f + t * 2
+            gfx.oval(cx - f * (5 + i * 2.5f) - 1.5f, by - 8 - i * 2 + sin(a) * 2, 3f, 3f, pink)
+        }
+        gfx.oval(cx - f * 21 - 2.5f, by - 22 + sin(t * 2) * 2, 5f, 5f, pink)
+        gfx.oval(cx - 5, by - 13, 10f, 10f, pink)
+        gfx.oval(cx - 4, by - 5, 3f, 4f, pink)
+        gfx.oval(cx + 1, by - 5, 3f, 4f, pink)
+        gfx.oval(cx - 6 + f * 2, by - 23, 12f, 11f, pink)
+        gfx.poly(floatArrayOf(cx - 5 + f * 2, cx - 6 + f * 2, cx - 2 + f * 2), floatArrayOf(by - 20, by - 26, by - 22), pink)
+        gfx.poly(floatArrayOf(cx + 5 + f * 2, cx + 6 + f * 2, cx + 2 + f * 2), floatArrayOf(by - 20, by - 26, by - 22), pink)
+        gfx.oval(cx + f * 5 - 1.5f, by - 20, 4f, 5f, 0xFF3A6AD8.toInt())
+        gfx.oval(cx + f * 5 - 0.5f, by - 19.5f, 1.5f, 1.5f, WHITE)
+    }
+
+    /** Puncho: a strong grey-blue fighter with three ridges on its head. */
+    private fun puncho(gfx: Gfx, cx: Float, bottom: Float, t: Float, facing: Int, walking: Boolean) {
+        val f = facing.toFloat()
+        val skin = 0xFF8A9AB8.toInt()
+        val dark = 0xFF5A6A88.toInt()
+        val step = if (walking) 1.5f else 0f
+        gfx.rect(cx - 5, bottom - 7 + step, 4f, 7f - step, skin)
+        gfx.rect(cx + 1, bottom - 7 - step, 4f, 7f + step, skin)
+        gfx.rect(cx - 5, bottom - 2, 4f, 2f, dark)
+        gfx.rect(cx + 1, bottom - 2, 4f, 2f, dark)
+        gfx.oval(cx - 7, bottom - 18, 14f, 13f, skin)
+        gfx.rect(cx - 4, bottom - 9, 8f, 2f, 0xFFD8D8E8.toInt())
+        // Big arms (one punching forward)
+        gfx.oval(cx - f * 9 - 3, bottom - 16, 6f, 9f, skin)
+        gfx.oval(cx + f * 8 - 3, bottom - 16, 7f, 6f, skin)
+        gfx.oval(cx + f * 11 - 3, bottom - 17, 6f, 6f, dark)
+        gfx.oval(cx - 5 + f * 1.5f, bottom - 26, 10f, 10f, skin)
+        for (i in -1..1) gfx.poly(floatArrayOf(cx + i * 3 - 1.5f, cx + i * 3, cx + i * 3 + 1.5f), floatArrayOf(bottom - 25, bottom - 30, bottom - 25), dark)
+        gfx.oval(cx + f * 4 - 1.5f, bottom - 23, 3f, 3f, 0xFFE52521.toInt())
+        gfx.rect(cx + f * 3 - 1.5f, bottom - 19, 3f, 1f, 0xFF2A3A58.toInt())
+    }
+
+    /** Spooky: a purple ball of ghost gas with a big grin. */
+    private fun spooky(gfx: Gfx, cx: Float, bottom: Float, t: Float, facing: Int) {
+        val f = facing.toFloat()
+        val by = bottom - 13 + sin(t * 2.5f) * 2f
+        for (i in 0 until 7) {
+            val a = i * 0.9f + t * 2
+            gfx.oval(cx + cos(a) * 9 - 4, by + sin(a) * 8 - 4, 8f, 8f, argb(110, 0x8A4AC8))
+        }
+        gfx.oval(cx - 8, by - 8, 16f, 16f, 0xFF2A1A3A.toInt())
+        gfx.oval(cx - 3 + f * 2, by - 5, 5f, 5f, WHITE)
+        gfx.oval(cx + 2 + f * 2, by - 5, 5f, 5f, WHITE)
+        gfx.oval(cx - 1.5f + f * 3, by - 3.5f, 2f, 2f, 0xFF101010.toInt())
+        gfx.oval(cx + 3.5f + f * 3, by - 3.5f, 2f, 2f, 0xFF101010.toInt())
+        gfx.rect(cx - 3 + f * 2, by + 2, 8f, 2.5f, 0xFFE07AB0.toInt())
+        gfx.poly(floatArrayOf(cx - 2 + f * 2, cx - 1 + f * 2, cx + f * 2), floatArrayOf(by + 2, by + 4.5f, by + 2), WHITE)
+        gfx.poly(floatArrayOf(cx + 3 + f * 2, cx + 4 + f * 2, cx + 5 + f * 2), floatArrayOf(by + 2, by + 4.5f, by + 2), WHITE)
     }
 
     /** Blaze: an orange fire dragon with teal wings and a flame on its tail. */
@@ -396,6 +502,83 @@ object TeamArt {
         gfx.oval(cx + f * 9 - 1.5f, bottom - 15, 3f, 3f, 0xFFFFFFFF.toInt())
         gfx.oval(cx + f * 9 - 1, bottom - 14.5f, 1.5f, 1.5f, 0xFFE52521.toInt())
         gfx.rect(cx + f * 8 - 2, bottom - 11, 4f, 1f, 0xFF1A5A4A.toInt())
+    }
+
+    // ---------------------------------------------------------------- New blocks
+
+    /** Pale yellow end stone for THE END. */
+    val endStone: Sprite = Sprites.sandstone.recolor(mapOf()).let { base ->
+        Sprite(base.w, base.h, IntArray(base.pixels.size) { i ->
+            val p = base.pixels[i]
+            if (p ushr 24 == 0) p else {
+                val l = ((p shr 16 and 0xFF) + (p shr 8 and 0xFF) + (p and 0xFF)) / 3
+                argb(255, ((l * 1.05f).toInt().coerceAtMost(255) shl 16) or ((l * 1.02f).toInt().coerceAtMost(255) shl 8) or (l * 0.75f).toInt())
+            }
+        })
+    }
+
+    /** Recolors a sprite by brightness into shades of one color. */
+    private fun tint(base: Sprite, r: Float, g: Float, b: Float): Sprite = Sprite(base.w, base.h, IntArray(base.pixels.size) { i ->
+        val p = base.pixels[i]
+        if (p ushr 24 == 0) p else {
+            val l = ((p shr 16 and 0xFF) + (p shr 8 and 0xFF) + (p and 0xFF)) / 3f
+            argb(255, ((l * r).toInt().coerceIn(0, 255) shl 16) or ((l * g).toInt().coerceIn(0, 255) shl 8) or (l * b).toInt().coerceIn(0, 255))
+        }
+    })
+
+    /** Dark purple-black obsidian. */
+    val obsidian: Sprite = tint(Sprites.hard, 0.35f, 0.22f, 0.5f)
+
+    /** Dark teal stone for the Deep Dark. */
+    val deepStone: Sprite = tint(Sprites.stone, 0.18f, 0.32f, 0.38f)
+
+    /** A bubble vent: blue stone with a hole that puffs air. */
+    val vent: Sprite = tint(Sprites.stone, 0.4f, 0.6f, 0.9f)
+
+    // ---------------------------------------------------------------- Traps, rails and Poseidon
+
+    /** A row of metal spikes sitting on the floor at [bottom]. */
+    fun spikes(gfx: Gfx, x: Float, bottom: Float, color: Int = 0xFFB8B8C8.toInt()) {
+        gfx.rect(x, bottom - 2, 16f, 2f, 0xFF5A5A68.toInt())
+        for (i in 0 until 4) {
+            val sx = x + i * 4f
+            gfx.poly(floatArrayOf(sx, sx + 2, sx + 4), floatArrayOf(bottom - 2, bottom - 9, bottom - 2), color)
+            gfx.poly(floatArrayOf(sx + 1.5f, sx + 2, sx + 2.5f), floatArrayOf(bottom - 4, bottom - 9, bottom - 4), WHITE)
+        }
+    }
+
+    /** Minecart rails across one tile whose bottom is [bottom]. */
+    fun rail(gfx: Gfx, x: Float, bottom: Float) {
+        for (i in 0 until 3) gfx.rect(x + 1 + i * 5.5f, bottom - 4, 3f, 4f, 0xFF7A4A20.toInt())
+        gfx.rect(x, bottom - 4, 16f, 1.5f, 0xFF9A9AA8.toInt())
+    }
+
+    /** Poseidon rising from the waves with his golden trident. [cx] is his middle, [baseY] the water line. */
+    fun poseidon(gfx: Gfx, cx: Float, baseY: Float, t: Float) {
+        val skin = 0xFFE8C8A0.toInt()
+        val beard = 0xFFF0F0F8.toInt()
+        val gold = 0xFFFFD21F.toInt()
+        val sea = 0xFF2E8AC8.toInt()
+        // Body rising out of the water
+        gfx.oval(cx - 26, baseY - 70, 52f, 80f, sea)
+        gfx.oval(cx - 18, baseY - 64, 36f, 44f, skin)
+        // Beard and hair
+        gfx.oval(cx - 22, baseY - 112, 44f, 40f, beard)
+        gfx.oval(cx - 16, baseY - 108, 32f, 30f, skin)
+        gfx.oval(cx - 20, baseY - 96, 40f, 34f, beard)
+        gfx.rect(cx - 9, baseY - 98, 6f, 4f, 0xFF2A5A8A.toInt())
+        gfx.rect(cx + 3, baseY - 98, 6f, 4f, 0xFF2A5A8A.toInt())
+        gfx.rect(cx - 6, baseY - 86, 12f, 2f, 0xFFA05040.toInt())
+        // Crown
+        for (i in 0 until 5) gfx.poly(floatArrayOf(cx - 18 + i * 8, cx - 14 + i * 8, cx - 10 + i * 8), floatArrayOf(baseY - 110, baseY - 124, baseY - 110), gold)
+        gfx.rect(cx - 18, baseY - 112, 36f, 5f, gold)
+        // Arm holding the trident up high
+        val tx = cx + 34
+        gfx.oval(cx + 12, baseY - 70, 12f, 22f, skin)
+        gfx.rect(tx - 1.5f, baseY - 150, 3f, 110f, gold)
+        for (i in -1..1) gfx.poly(floatArrayOf(tx + i * 9 - 2, tx + i * 9, tx + i * 9 + 2), floatArrayOf(baseY - 145, baseY - 162, baseY - 145), gold)
+        gfx.rect(tx - 11, baseY - 147, 22f, 3f, gold)
+        if ((t * 6).toInt() % 2 == 0) gfx.oval(tx - 6, baseY - 168, 12f, 12f, 0x88FFFFFF.toInt())
     }
 
     // ---------------------------------------------------------------- House and bed

@@ -9,6 +9,7 @@ import com.roccoquest.game.tileOf
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
+import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -47,7 +48,7 @@ class TeamGameTest {
     }
 
     @Test fun levelsAreWellFormed() {
-        assertEquals(11, Levels.all.size)
+        assertTrue(Levels.all.size >= 21, "a nice long game: ${Levels.all.size} levels")
         for (def in Levels.all) {
             assertTrue(def.rows.all { it.length == def.w }, def.name)
             assertEquals(1, def.rows.sumOf { r -> r.count { it == '@' } }, "${def.name} needs one start")
@@ -55,7 +56,11 @@ class TeamGameTest {
         assertTrue(Levels.all[2].rows.any { 'J' in it }, "Krag Jr. lives in the sky level")
         assertTrue(Levels.all[3].rows.any { 'K' in it }, "King Krag lives in the castle")
         assertTrue(Levels.all[7].rows.any { 'W' in it }, "Wonder Krag Jr.")
-        assertTrue(Levels.all.last().rows.any { 'Q' in it }, "Wonder King Krag is the final boss")
+        assertTrue(Levels.all.any { d -> d.rows.any { 'Q' in it } }, "Wonder King Krag")
+        assertTrue(Levels.all.any { d -> d.rows.any { 'G' in it } }, "the Warden")
+        assertTrue(Levels.all.any { d -> d.rows.any { 'Y' in it } }, "Dry Bones King Krag")
+        assertTrue(Levels.all.last().rows.any { 'Z' in it }, "the Ender Dragon is the final boss")
+        assertTrue(Levels.all.any { it.place == Place.WATER && it.shoreX > 0 }, "an underwater level")
         // Every level has Ring-Ding Frog and ore to mine.
         for (def in Levels.all) {
             assertTrue(def.rows.any { 'r' in it }, "${def.name} frog")
@@ -193,6 +198,21 @@ class TeamGameTest {
             val t = lv[tileOf(ahead + 8), tileOf(h.bottom + 4 + i * TILE)]
             Tile.solid(t) || t == Tile.CLOUD
         }
+        if (game.inWater(h)) {
+            // Swim: aim for the open rows in the column just ahead.
+            val col = tileOf(h.x + h.w + 20)
+            val row = tileOf(h.cy)
+            val open = (3 until ROWS - 1).filter { r -> !Tile.solid(lv[col, r]) && !Tile.solid(lv[col, r - 1]) }
+            val target = open.minByOrNull { abs(it - row) } ?: row
+            val ty = target * TILE.toFloat()
+            input.right = true
+            input.down = h.cy < ty - 10
+            // Tap JUMP to swim up.
+            input.jump = h.cy > ty + 2 && (game.time * 4).toInt() % 2 == 0
+            game.update(dt)
+            input.down = false
+            return
+        }
         if (h.onGround && (wall || gap) && held <= 0f) held = 0.45f
         input.right = true
         input.jump = held > 0f
@@ -204,7 +224,8 @@ class TeamGameTest {
     private fun botRun(level: Int, maxSeconds: Float): Boolean {
         startPlaying(level)
         repeat((maxSeconds / dt).toInt()) {
-            game.foes.removeAll { it !is KragJr && it !is KingKrag }
+            game.foes.removeAll { !it.boss && it !is EndCrystal }
+            game.hurtProof()
             botStep()
             if (game.state == TeamGame.State.CLEAR) { input.right = false; input.jump = false; return true }
         }
@@ -215,18 +236,22 @@ class TeamGameTest {
     /** Every level without a boss at the end can be run from start to flag. */
     @Test fun everyFlagLevelCanBeFinished() {
         for (i in Levels.all.indices) {
-            if (Levels.all[i].rows.any { r -> r.any { it in "JWKQ" } }) continue
-            assertTrue(botRun(i, 100f), "${Levels.all[i].name}: stuck at x=${game.leader.x / TILE}")
+            if (Levels.all[i].rows.any { r -> r.any { it in BOSSES } }) continue
+            assertTrue(botRun(i, 120f), "${Levels.all[i].name}: stuck at x=${game.leader.x / TILE}")
         }
     }
 
     /** The bot can walk and jump all the way to each boss arena. */
+    private val BOSSES = "JWKQGYZ"
+
     @Test fun bossArenasCanBeReached() {
-        for (level in listOf(2, 3, 7, 10)) {
+        val bossLevels = Levels.all.indices.filter { i -> Levels.all[i].rows.any { r -> r.any { it in BOSSES } } }
+        assertTrue(bossLevels.size >= 7)
+        for (level in bossLevels) {
             startPlaying(level)
             var reached = false
             repeat((90f / dt).toInt()) {
-                game.foes.removeAll { it !is KragJr && it !is KingKrag }
+                game.foes.removeAll { !it.boss && it !is EndCrystal }
                 game.hurtProof()
                 if (!reached) botStep()
                 if (game.boss != null) reached = true
@@ -306,11 +331,199 @@ class TeamGameTest {
         assertEquals(4, game.levelIndex)
     }
 
-    @Test fun wonderKingKragEndsTheGame() {
-        val krag = fightKrag(Levels.all.lastIndex)
+    private fun levelWith(c: Char) = Levels.all.indexOfFirst { d -> d.rows.any { c in it } }
+
+    @Test fun wonderKingKragLeadsToTheDeepDark() {
+        val krag = fightKrag(levelWith('Q'))
         assertTrue(krag.wonderStyle)
-        assertEquals(TeamGame.State.VICTORY, game.state, "Wonder King Krag hp ${krag.hp}")
+        assertEquals(TeamGame.State.CLEAR, game.state, "Wonder King Krag hp ${krag.hp}")
+    }
+
+    @Test fun kingKragGetsCrazyMusic() {
+        startPlaying(levelWith('K'))
+        val krag = game.foes.filterIsInstance<KingKrag>().single()
+        game.rocco.x = krag.homeX - 150f; game.rocco.y = 160f
+        run(3.5f) { game.hurtProof() }
+        assertEquals(Music.KRAG, ears.music)
+    }
+
+    @Test fun dryBonesKragGetsBackUpOnce() {
+        val krag = fightKrag(levelWith('Y'))
+        assertTrue(krag.dry)
+        assertEquals(0, krag.hp)
+        assertEquals(TeamGame.State.CLEAR, game.state, "beat Dry Bones King Krag (twice)")
+    }
+
+    @Test fun theWardenFight() {
+        startPlaying(levelWith('G'))
+        val w = game.foes.filterIsInstance<Warden>().single()
+        game.foes.retainAll(listOf(w))
+        val r = game.rocco
+        r.x = w.homeX - 150f; r.y = 160f
+        run(3.5f) { game.hurtProof() }
+        assertTrue(w.awake)
+        assertEquals(Music.WARDEN, ears.music, "the Warden has his own music")
+        game.inventory[Ore.DIAMOND.ordinal] = 15
+        repeat(5) { game.craft(game.recipes(0).indexOfFirst { it.icon == Power.ICE }, tab = 0) }
+        var t = 0f
+        var sawBoom = false
+        while (game.state == TeamGame.State.PLAY && t < 120f) {
+            game.hurtProof()
+            if (game.foes.any { it is SonicBoom }) sawBoom = true
+            game.foes.removeAll { it is SonicBoom }
+            r.facing = if (w.cx > r.cx) 1 else -1
+            input.action = true
+            game.update(dt)
+            t += dt
+        }
+        input.action = false
+        assertEquals(0, w.hp)
+        assertTrue(sawBoom, "the Warden used his sonic boom")
+        assertEquals(TeamGame.State.CLEAR, game.state)
+    }
+
+    @Test fun enderDragonEndsTheGame() {
+        startPlaying(Levels.all.lastIndex)
+        val d = game.foes.filterIsInstance<EnderDragon>().single()
+        val r = game.rocco
+        r.x = d.homeX - 120f; r.y = 160f
+        run(3.5f) { game.hurtProof() }
+        assertTrue(d.engaged, "the dragon woke up")
+        // Break the end crystals first.
+        val crystals = game.foes.filterIsInstance<EndCrystal>()
+        assertEquals(2, crystals.size)
+        crystals.forEach { while (!it.dying) it.hit(game, 2) }
+        game.inventory[Ore.DIAMOND.ordinal] = 15
+        repeat(5) { game.craft(game.recipes(0).indexOfFirst { it.icon == Power.ICE }, tab = 0) }
+        var t = 0f
+        while (game.state == TeamGame.State.PLAY && t < 180f) {
+            game.hurtProof()
+            game.foes.removeAll { it is DragonBall || it is Enderman }
+            r.facing = if (d.cx > r.cx) 1 else -1
+            input.action = true
+            game.update(dt)
+            t += dt
+            r.y = (d.cy - r.h / 2).coerceIn(40f, 208f - r.h); r.vy = 0f
+        }
+        input.action = false
+        assertEquals(0, d.hp, "beat the dragon in ${t}s")
+        assertEquals(TeamGame.State.VICTORY, game.state)
         assertEquals(Music.FROG, ears.music, "Ring-Ding Frog sings at the end")
+    }
+
+    @Test fun villagersTalkAndTrade() {
+        startPlaying(levelWith('V').let { i -> Levels.all.indexOfFirst { d -> d.name == "VILLAGER VALLEY" } })
+        val v = game.thingsForTest().filterIsInstance<Villager>().first()
+        val l = game.leader
+        l.x = v.cx - l.w / 2; l.y = v.bottom - l.h - 1
+        game.coins = 30
+        game.inventory[Ore.STONE.ordinal] = 20
+        game.inventory[Ore.EMERALD.ordinal] = 5
+        game.inventory[Ore.IRON.ordinal] = 5
+        run(0.3f)
+        input.action = true; game.update(dt); input.action = false
+        assertEquals(TeamGame.State.TRADE, game.state)
+        assertTrue(ears.said.any { "trade" in it.lowercase() || "hello" in it.lowercase() || "hi" in it.lowercase() }, "villager greets: ${ears.said}")
+        val before = game.inventory.sum() + game.coins + game.tnt
+        game.tradeForTest(0)
+        assertTrue(game.inventory.sum() + game.coins + game.tnt != before, "the trade happened")
+        assertTrue(ears.said.last().isNotBlank())
+        input.pause = true; game.update(dt); input.pause = false; game.update(dt)
+        assertEquals(TeamGame.State.PLAY, game.state)
+        assertTrue(ears.said.last().startsWith("Goodbye"))
+    }
+
+    @Test fun minecartRidesAndSmashes() {
+        startPlaying(Levels.all.indexOfFirst { it.name == "MINECART MINE" })
+        val cart = game.thingsForTest().filterIsInstance<Minecart>().first()
+        val l = game.leader
+        l.x = cart.cx - l.w / 2; l.y = cart.bottom - l.h - 1
+        run(0.5f) { game.hurtProof() }
+        val startX = cart.x
+        input.action = true; game.update(dt); input.action = false
+        assertNotNull(game.riding)
+        run(3f) { game.hurtProof() }
+        assertTrue(cart.x > startX + 300f, "the cart rolled along the rails: ${cart.x - startX}")
+        assertTrue(abs(game.leader.cx - cart.cx) < 4f, "the leader rides in the cart")
+        run(5f) { game.hurtProof() }
+        assertEquals(null, game.riding, "the ride ends at the end of the rails")
+    }
+
+    @Test fun throwTntBlowsUpAGrid() {
+        startPlaying()
+        game.inventory[Ore.STONE.ordinal] = 6
+        game.inventory[Ore.IRON.ordinal] = 2
+        game.craft(game.recipes(1).indexOfFirst { it.title == "TNT x2" }, tab = 1)
+        assertEquals(2, game.tnt)
+        // Stand next to the iron hill and throw.
+        val lv = game.level
+        val hillX = (0 until lv.w).first { tx -> (0 until ROWS).any { lv[tx, it] == Tile.STONE } }
+        val r = game.rocco
+        r.x = hillX * TILE - 50f; r.facing = 1
+        run(0.5f)
+        val blocks = (0 until lv.w).sumOf { x -> (0 until ROWS).count { y -> lv.toughness(x, y) > 0 } }
+        input.tnt = true; game.update(dt); input.tnt = false
+        assertEquals(1, game.tnt)
+        run(0.6f)
+        assertTrue(game.thingsForTest().any { it is ThrownTnt && it.landed }, "the TNT landed and shows its grid")
+        run(1.5f)
+        val after = (0 until lv.w).sumOf { x -> (0 until ROWS).count { y -> lv.toughness(x, y) > 0 } }
+        assertTrue(after < blocks, "blocks were blown up: $blocks -> $after")
+    }
+
+    @Test fun poseidonFloodsTheScreen() {
+        startPlaying()
+        game.coins = 49
+        game.foes.forEach { it.active = true; it.x = game.camX + 200f }
+        input.poseidon = true; game.update(dt); input.poseidon = false; game.update(dt)
+        assertTrue(game.floodT <= 0f, "49 coins isn't enough")
+        game.coins = 55
+        input.poseidon = true; game.update(dt); input.poseidon = false
+        assertTrue(game.floodT > 0f)
+        assertEquals(5, game.coins)
+        assertTrue(game.foes.all { it.dying || it.boss }, "simple bad guys were washed away")
+        assertTrue(ears.said.any { "Poseidon" in it })
+    }
+
+    @Test fun underwaterAirAndBubbles() {
+        startPlaying(Levels.all.indexOfFirst { it.place == Place.WATER })
+        game.foes.clear()
+        assertTrue(game.inWater(game.leader))
+        val full = game.air
+        run(5f)
+        assertTrue(game.air < full - 4f, "air goes down underwater")
+        // A bubble from a vent fills it back up.
+        run(2f)
+        val b = game.thingsForTest().filterIsInstance<Bubble>().firstOrNull()
+        assertNotNull(b, "vents make bubbles")
+        val l = game.leader
+        val low = game.air
+        l.x = b.x; l.y = b.y
+        game.update(dt)
+        assertTrue(game.air > low, "bubbles give air")
+        // Running out of air costs a heart but gives you more air: not too hard.
+        repeat((40f / dt).toInt()) {
+            l.x = 20f * TILE; l.y = 60f; l.vy = 0f
+            game.update(dt)
+        }
+        assertTrue(game.hearts < TeamGame.MAX_HEARTS)
+    }
+
+    @Test fun dennisBarksAndPointsTheWay() {
+        startPlaying()
+        game.foes.clear()
+        run(12f)
+        assertTrue(ears.played.contains(Sound.BARK), "woof!")
+    }
+
+    @Test fun endermenTeleportAndAreTough() {
+        startPlaying(Levels.all.indexOfFirst { it.name == "ENDER PLAINS" })
+        val e = game.foes.filterIsInstance<Enderman>().first()
+        assertTrue(e.maxHp >= 15)
+        e.active = true
+        var dodged = 0
+        repeat(40) { if (!e.hit(game, 1)) dodged++ }
+        assertTrue(dodged > 0, "endermen dodge sometimes")
     }
 
     @Test fun enemiesHaveHealthBars() {
@@ -358,10 +571,7 @@ class TeamGameTest {
         startPlaying()
         game.foes.forEach { it.active = true }
         val onScreen = game.foes.filter { it.x < game.camX + game.viewW }
-        game.inventory[Ore.STONE.ordinal] = 6
-        game.inventory[Ore.IRON.ordinal] = 2
-        game.craft(game.recipes(1).indexOfFirst { it.title == "MEGA TNT" }, tab = 1)
-        assertTrue(onScreen.all { it.dying || it.hp < it.maxHp }, "TNT hit everything on screen")
+        assertTrue(onScreen.isNotEmpty())
         game.inventory[Ore.AMETHYST.ordinal] = 2
         game.inventory[Ore.DIAMOND.ordinal] = 1
         game.craft(game.recipes(1).indexOfFirst { it.title == "SUPER STAR" }, tab = 1)
@@ -378,7 +588,10 @@ class TeamGameTest {
         tap(game.slotCardXForTest(1) + 10f, 120f)
         assertEquals(TeamGame.State.PICK, game.state)
         run(0.4f)
-        tap(game.pickCardXForTest(2) + 10f, 100f)
+        tap(game.pickCardXForTest(2) + 10f, game.pickCardYForTest(2) + 20f)
+        assertEquals(TeamGame.State.PICK, game.state, "first tap just looks")
+        run(0.5f)
+        tap(game.pickCardXForTest(2) + 10f, game.pickCardYForTest(2) + 20f)
         assertEquals(TeamGame.State.INTRO, game.state)
         assertEquals(Mon.HYDRO, game.mon)
         assertEquals(1, game.slot)
@@ -508,11 +721,49 @@ class TeamGameTest {
         game.leader.x = jr.homeX - 150f; game.leader.y = 100f
         run(4.5f) { game.hurtProof() }
         shot("wonder-krag-jr")
-        game.startLevel(Levels.all.lastIndex); run(3.5f)
-        val krag = game.foes.filterIsInstance<KingKrag>().single()
-        game.leader.x = krag.homeX - 150f; game.leader.y = 160f
-        run(4f) { game.hurtProof() }
-        shot("wonder-king-krag")
-        assertNotNull(krag)
+        fun bossShot(c: Char, name: String, y: Float = 160f, secs: Float = 4f) {
+            game.startLevel(levelWith(c)); run(3.5f)
+            val b = game.foes.first { it.boss }
+            val home = when (b) { is KingKrag -> b.homeX; is Warden -> b.homeX; is EnderDragon -> b.homeX; else -> b.x }
+            game.leader.x = home - 150f; game.leader.y = y
+            run(secs) { game.hurtProof() }
+            shot(name)
+        }
+        bossShot('Q', "wonder-king-krag")
+        bossShot('G', "warden")
+        bossShot('Y', "dry-bones-krag")
+        bossShot('Z', "ender-dragon", secs = 6f)
+
+        game.startLevel(Levels.all.indexOfFirst { it.place == Place.WATER }); run(3.5f)
+        run(2.5f) { input.right = true; input.jump = (game.time * 3).toInt() % 2 == 0 }
+        input.right = false; input.jump = false
+        shot("coral-reef")
+
+        game.startLevel(Levels.all.indexOfFirst { it.name == "VILLAGER VALLEY" }); run(3.5f)
+        game.coins = 60
+        val v = game.thingsForTest().filterIsInstance<Villager>().first()
+        game.leader.x = v.cx - 6; game.leader.y = v.bottom - 24
+        run(0.3f)
+        shot("villager")
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        shot("trade")
+        input.pause = true; game.update(dt); input.pause = false; game.update(dt)
+        val cart = game.thingsForTest().filterIsInstance<Minecart>().first()
+        game.leader.x = cart.cx - 6; game.leader.y = cart.bottom - 24
+        run(0.3f)
+        input.action = true; game.update(dt); input.action = false
+        run(1.5f) { game.hurtProof() }
+        shot("minecart")
+        input.poseidon = true; game.update(dt); input.poseidon = false
+        run(1.2f)
+        shot("poseidon")
+        game.tnt = 3
+        run(2f)
+        input.tnt = true; game.update(dt); input.tnt = false
+        run(0.8f)
+        shot("tnt-grid")
+        game.dogForTest()
+        run(1.2f)
+        shot("dennis")
     }
 }

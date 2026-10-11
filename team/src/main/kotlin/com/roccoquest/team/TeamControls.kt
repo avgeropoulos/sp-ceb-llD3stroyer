@@ -16,6 +16,10 @@ class TeamInput {
     @Volatile var swap = false
     /** The Pokemon's SUPER move. */
     @Volatile var superMove = false
+    /** Throw a stick of TNT. */
+    @Volatile var tnt = false
+    /** Call Poseidon (costs 50 coins). */
+    @Volatile var poseidon = false
     @Volatile var craft = false
     @Volatile var pause = false
     @Volatile var musicToggle = false
@@ -37,6 +41,8 @@ object TeamControls {
     val action = Button(0f, 212f, 20f)
     val swap = Button(0f, 150f, 17f)
     val superB = Button(0f, 160f, 16f)
+    val tntB = Button(0f, 210f, 14f)
+    val poseidonB = Button(30f, 150f, 17f)
     val pause = Button(0f, 14f, 10f)
     val music = Button(0f, 14f, 10f)
     /** The CRAFT button is a pill [CRAFT_W] wide. */
@@ -48,6 +54,7 @@ object TeamControls {
         action.cx = viewW - 96f
         swap.cx = viewW - 70f
         superB.cx = viewW - 124f
+        tntB.cx = viewW - 150f
         pause.cx = viewW - 16f
         music.cx = viewW - 42f
         craft.cx = viewW - 82f
@@ -68,6 +75,8 @@ object TeamControls {
         var d = false
         var s = false
         var sup = false
+        var tn = false
+        var po = false
         var c = false
         var p = false
         var m = false
@@ -77,6 +86,7 @@ object TeamControls {
             if (hypot(x - pause.cx, y - pause.cy) < pause.r * 1.3f) { p = true; continue }
             if (hypot(x - music.cx, y - music.cy) < music.r * 1.3f) { m = true; continue }
             if (inCraft(x, y)) { c = true; continue }
+            if (hypot(x - poseidonB.cx, y - poseidonB.cy) < poseidonB.r * 1.2f) { po = true; continue }
             if (y < 110f) continue
             val swiped = y - startY.getOrPut(ids[i]) { y } > SWIPE
             if (swiped && x < viewW / 2) { d = true; continue }
@@ -87,7 +97,9 @@ object TeamControls {
                 val da = hypot(x - action.cx, y - action.cy) / action.r
                 val ds = hypot(x - swap.cx, y - swap.cy) / swap.r
                 val dsu = hypot(x - superB.cx, y - superB.cy) / superB.r
+                val dt = hypot(x - tntB.cx, y - tntB.cy) / tntB.r
                 when {
+                    dt < 1.2f && dt <= dj && dt <= da && dt <= dsu -> tn = true
                     dsu < 1.25f && dsu <= dj && dsu <= da && dsu <= ds -> sup = true
                     ds < 1.25f && ds <= dj && ds <= da -> s = true
                     dj <= da -> j = true
@@ -106,6 +118,8 @@ object TeamControls {
         input.down = d
         input.swap = s
         input.superMove = sup
+        input.tnt = tn
+        input.poseidon = po
         input.craft = c
         input.pause = p
         input.musicToggle = m
@@ -113,7 +127,7 @@ object TeamControls {
 
     fun draw(
         gfx: Gfx, input: TeamInput, viewW: Float, actionLabel: String, swapLabel: String, swapColor: Int,
-        superCharge: Float, superColor: Int, t: Float,
+        superCharge: Float, superColor: Int, t: Float, tntCount: Int = 0, poseidonReady: Boolean = false,
     ) {
         layout(viewW)
         val c = 0xDDFFFFFF.toInt()
@@ -144,6 +158,26 @@ object TeamControls {
             gfx.oval(b.cx - b.r, b.cy - b.r, b.r * 2, b.r * 2, if (input.superMove) 0xCCFFFFFF.toInt() else superColor)
         }
         gfx.text("SUPER", b.cx, b.cy + 2, 6f, c, 1)
+        if (tntCount > 0) {
+            val tb = tntB
+            gfx.oval(tb.cx - tb.r - 1, tb.cy - tb.r - 1, tb.r * 2 + 2, tb.r * 2 + 2, 0x55000000)
+            gfx.oval(tb.cx - tb.r, tb.cy - tb.r, tb.r * 2, tb.r * 2, if (input.tnt) 0xCCFFFFFF.toInt() else 0x99E53A1E.toInt())
+            gfx.text("TNT", tb.cx, tb.cy + 1, 6f, c, 1)
+            gfx.text("x$tntCount", tb.cx, tb.cy + 8, 5f, c, 1)
+        }
+        if (poseidonReady) {
+            val pb = poseidonB
+            val pulse = kotlin.math.abs(kotlin.math.sin(t * 4)) * 3f
+            gfx.oval(pb.cx - pb.r - pulse, pb.cy - pb.r - pulse, (pb.r + pulse) * 2, (pb.r + pulse) * 2, 0x552E8AC8)
+            gfx.oval(pb.cx - pb.r, pb.cy - pb.r, pb.r * 2, pb.r * 2, if (input.poseidon) 0xCCFFFFFF.toInt() else 0xCC2E8AC8.toInt())
+            // Little trident
+            val gold = 0xFFFFD21F.toInt()
+            gfx.rect(pb.cx - 0.75f, pb.cy - 9, 1.5f, 13f, gold)
+            gfx.rect(pb.cx - 5, pb.cy - 6, 10f, 1.5f, gold)
+            gfx.rect(pb.cx - 5, pb.cy - 10, 1.5f, 4f, gold)
+            gfx.rect(pb.cx + 3.5f, pb.cy - 10, 1.5f, 4f, gold)
+            gfx.text("50", pb.cx, pb.cy + 11, 5f, c, 1)
+        }
         gfx.text("swipe ↓ = dig down", (left.cx + right.cx) / 2, 236f, 6f, if (input.down) c else 0x88FFFFFF.toInt(), 1)
     }
 

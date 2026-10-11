@@ -108,8 +108,8 @@ waves, a triangle bass and noise drums, so there are no audio files. Tap the **â
 ## New game: Rocco & Blocky: Team Up!
 
 A second game in the same repository. **Rocco** the plumber, **Blocky** the miner and a
-Pokemon partner team up to stop **Krag Jr.** and **King Krag**, and then their purple-and-green
-**Wonder** versions. **Ring-Ding Frog** scoots by on his scooter in every level, singing his
+Pokemon partner team up to stop **Krag Jr.**, **King Krag**, their purple-and-green **Wonder**
+versions, **the Warden**, **Dry Bones King Krag** and finally **the Ender Dragon**, across 21 levels. **Ring-Ding Frog** scoots by on his scooter in every level, singing his
 crazy song out loud (with the phone's voice), bowling over bad guys and dropping a present.
 
 ![Team Up! title screen](docs/teamup-title.png)
@@ -124,6 +124,13 @@ There are **three save files**. Tap an empty one to start a new game, then **pic
 | **Blaze** (fire dragon) | Glides if you hold JUMP | **Flamethrower**: burns everything in front |
 | **Hydro** (water turtle) | Slow and heavy, stomps hurt bosses more | **Hydro Cannon**: blasts left and right at once |
 | **Bloom** (flower dino) | Slow, strong short vine whip | **Solar Beam**: a giant beam across the whole screen |
+| **Ember** (little fire lizard) | Fast | **Fire Spin**: a ring of fire all around |
+| **Splashy** (tiny turtle) | Air lasts twice as long underwater | **Bubble Beam**: bubbles blast forward and refill your air |
+| **Mystic** (pink mystery cat) | Floats if you hold JUMP | **Psychic**: hits every bad guy on screen AND heals 2 hearts |
+| **Puncho** (super strong fighter) | Strong punches up close | **Dynamic Punch**: the biggest single hit in the game |
+| **Spooky** (ghost) | Floats if you hold JUMP | **Night Shade**: scares every bad guy on screen |
+
+Tap a Pokemon once to see what it does, then tap it again (or **GO!**) to pick it.
 
 ![Choose your Pokemon](docs/teamup-pick.png)
 
@@ -141,6 +148,22 @@ nearby bad guy every few seconds. Tap **ERASE** twice on a file to delete it.
 * New bad guys: **Boneheads** fall apart when stomped and then get back up, and **Flapper** bats
   wake up in caves and chase you.
 * `?` blocks can hide a heart or a **Super Star**, and rainbow **mystery blocks** hold a surprise.
+* **Endermen** are tall, tough mini-bosses. They teleport around, and sometimes they dodge your shots!
+* **Villagers** talk to you out loud and trade. Walk up and press the action button (**TALK**).
+  They swap coins and stone for iron, gold, diamonds, TNT, golden apples and even stars.
+* **Dennis the dog** runs up every now and then, barks "WOOF!" and points the way with a big arrow.
+* **Minecarts**: stand next to one and press **RIDE**. It zooms along the rails and smashes bad guys.
+  JUMP hops out.
+* **Traps**: watch out for **spike traps** on the floor (they hurt bad guys too!), and craft your own
+  **Spike Trap** to set down in front of you.
+* **TNT**: craft it, then press the **TNT** button to throw it. A red **5x5 grid** shows what will blow up,
+  and about one second later... BOOM! Blocks break (you keep the ore) and bad guys get hit hard.
+* **Poseidon**: once you have **50 coins**, a trident button appears. Tap it and Poseidon rises from the
+  sea, floods the screen and washes away all the simple bad guys (and hurts bosses).
+* **Underwater levels**: tap JUMP to swim. Watch the **AIR** bubbles under the hearts and swim through
+  **bubbles** from the bubble vents to fill up. If you run out you lose one heart and get more air,
+  so it's not too hard. Swim all the way to the shore!
+* **Boss music**: King Krag gets his own crazy fast music, and the Warden a creepy heartbeat one.
 
 ### The crafting table
 
@@ -159,8 +182,8 @@ Every level adds damage. Lv3 throws two at once, Lv4 shots go through bad guys, 
 | Crystal | amethyst | Fires three crystal shards in a fan |
 
 **Supplies**: better pickaxes (iron, gold, diamond, then amethyst), **Heart** (5 stone),
-**Golden Apple** (2 gold: all hearts back plus 1 armor), **Mega TNT** (6 stone + 2 iron: blows up every
-bad guy on screen) and **Super Star** (2 amethyst + 1 diamond: 10 seconds of invincibility).
+**Golden Apple** (2 gold: all hearts back plus 1 armor), **TNT x2** (6 stone + 2 iron), **Spike Trap**
+(3 iron) and **Super Star** (2 amethyst + 1 diamond: 10 seconds of invincibility).
 
 **Home**: build a **House** (10 stone + 2 iron) where you're standing, then a **Bed** inside it
 (4 stone + 10 coins). Stand on the bed and press the action button to **sleep**. That heals you and
@@ -182,14 +205,27 @@ bad guy on screen) and **Super Star** (2 amethyst + 1 diamond: 10 seconds of inv
 | 9 | Mushroom Jungle | Giant mushrooms and lots of bad guys |
 | 10 | Lava Lake | Lava pits everywhere |
 | 11 | Wonder Castle | **Wonder King Krag**: huge, purple and green, rainbow fire and spike ball rain |
+| 12 | Villager Valley | Villagers to trade with, your first minecart and spike traps |
+| 13 | Coral Reef | **Underwater!** Fish, bubble vents and treasure. Swim to the shore |
+| 14 | Minecart Mine | Two long minecart rides through a cave full of bad guys |
+| 15 | Ender Plains | Night time, and lots of **Endermen** |
+| 16 | The Deep Dark | **THE WARDEN**: he's blind but hears you run and jump. Sonic booms! |
+| 17 | Treasure Lagoon | More swimming and more treasure |
+| 18 | Spike Temple | Spike traps everywhere, plus a minecart ride |
+| 19 | Fire Fortress | Endermen, Boneheads and lava |
+| 20 | Bone Castle | **DRY BONES KING KRAG**: knock him down and he gets back up once! |
+| 21 | The End | **THE ENDER DRAGON**: break the healing crystals, then hit it when it lands |
 
 ![Wonder King Krag](docs/teamup-wonder-king-krag.png)
+![Poseidon](docs/teamup-poseidon.png)
+![The Ender Dragon](docs/teamup-ender-dragon.png)
+![Villager trades](docs/teamup-trade.png)
 
 It's easy but not too easy: 5 hearts, checkpoints, and if you run out of hearts you go back to the
-last checkpoint (or your bed) and keep all your ore. Every 50 coins gives a heart back.
+last checkpoint (or your bed) and keep all your ore. Beaten bosses leave diamonds, gold and TNT behind.
 
-Keyboard: arrows/WASD to move, Space to jump, X to mine/throw/sleep, Q to swap, E for SUPER,
-C to craft (1-6 picks a recipe, 7/8/9 switch tabs), P to pause, M for music.
+Keyboard: arrows/WASD to move, Space to jump, X to mine/throw/talk/ride/sleep, Q to swap, E for SUPER,
+T to throw TNT, G for Poseidon, C to craft (1-6 picks a recipe, 7/8/9 switch tabs), P to pause, M for music.
 
 ![Crafting table](docs/teamup-craft.png)
 
@@ -234,6 +270,6 @@ Levels are built in `core/.../Level.kt` with a small builder, so adding a new on
 
 * `team/`: Team Up!, also plain Kotlin. It reuses the drawing interface, Rocco's pixel art, the
   sound effects and the music from `core/`. Its levels are in `TeamLevel.kt`, the heroes and
-  Pokemon in `Actors.kt`, the bad guys and bosses in `Foes.kt`, shots, items and effects in
-  `Items.kt`, and the crafting table, save files and menus in `TeamGame.kt`.
+  Pokemon in `Actors.kt`, the bad guys and bosses in `Foes.kt`, villagers, Dennis, minecarts, TNT,
+  Endermen, the Warden and the Ender Dragon in `Extras.kt`, shots, items and effects in `Items.kt`, and the crafting table, save files and menus in `TeamGame.kt`.
 * `teamapp/`: the Android layer for Team Up!, a copy of `app/` wired to the new game.

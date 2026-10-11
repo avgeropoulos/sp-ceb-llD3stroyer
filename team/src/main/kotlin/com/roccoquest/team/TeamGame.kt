@@ -7,6 +7,7 @@ import com.roccoquest.game.Sound
 import com.roccoquest.game.SoundSink
 import com.roccoquest.game.Sprites
 import com.roccoquest.game.Storage
+import com.roccoquest.game.Voice
 import com.roccoquest.game.TILE
 import com.roccoquest.game.VIEW_H
 import com.roccoquest.game.argb
@@ -28,7 +29,7 @@ import kotlin.random.Random
  * and sleeping in the bed saves the game into one of three save slots.
  */
 class TeamGame(private val input: TeamInput, private val sound: SoundSink, private val storage: Storage = Storage.Memory()) {
-    enum class State { TITLE, SLOTS, PICK, INTRO, PLAY, CRAFT, SLEEP, OUCH, CLEAR, VICTORY }
+    enum class State { TITLE, SLOTS, PICK, INTRO, PLAY, CRAFT, TRADE, SLEEP, OUCH, CLEAR, VICTORY }
 
     companion object {
         const val MAX_HEARTS = 5
@@ -38,6 +39,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         /** Seconds for the Pokemon's SUPER move to recharge. */
         const val SUPER_TIME = 25f
         const val STAR_TIME = 10f
+        /** Seconds of air underwater before the team starts losing hearts. */
+        const val AIR_MAX = 30f
+        const val POSEIDON_COST = 50
         val TABS = listOf("FLOWERS", "SUPPLIES", "HOME")
     }
 
@@ -137,7 +141,20 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private var eraseArmed = -1
     private var eraseT = 0f
     private var pickChoice = Mon.SPARKY
-    private val prev = BooleanArray(7)
+    private val prev = BooleanArray(9)
+
+    // TNT, Poseidon, swimming, minecarts, villagers and Dennis
+    var tnt = 0
+    var air = AIR_MAX
+        private set
+    var riding: Minecart? = null
+        private set
+    var floodT = 0f
+        private set
+    private var trader: Villager? = null
+    private var dogT = 10f
+    private val ventT = HashMap<Int, Float>()
+    private var spikeT = 0f
 
     fun sfx(s: Sound) = sound.play(s)
     fun spawn(t: Thing) { pending += t }
@@ -181,6 +198,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         storage.save(key("power"), power.ordinal)
         storage.save(key("coins"), coins)
         storage.save(key("armor"), armor)
+        storage.save(key("tnt"), tnt)
         // The house (and bed) belong to the level they were built in.
         val h = house
         storage.save(key("houseLevel"), if (h != null) levelIndex + 1 else 0)
@@ -203,11 +221,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (flowerLevel[power.ordinal] == 0) power = Power.NONE
         coins = storage.load(key("coins"))
         armor = storage.load(key("armor"))
+        tnt = storage.load(key("tnt"))
         mon = slotMon(slot)
     }
 
     fun eraseSlot(s: Int) {
-        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "houseLevel", "houseX", "houseY", "bed", "bedLevel")) {
+        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "houseLevel", "houseX", "houseY", "bed", "bedLevel")) {
             storage.save(key(name, s), 0)
         }
         Ore.entries.forEach { storage.save(key("ore_${it.name}", s), 0) }
@@ -225,6 +244,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         coins = 0
         score = 0
         armor = 0
+        tnt = 0
         startLevel(0)
     }
 
@@ -250,6 +270,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         foes.clear(); things.clear(); pending.clear(); particles.clear(); frogSpots.clear()
         boss = null; bossDone = false; wonder = false; camLock = null; frog = null; goal = null
         house = null; bed = null
+        riding = null; trader = null; floodT = 0f; air = AIR_MAX; dogT = 10f; ventT.clear()
         hearts = MAX_HEARTS
         if (power == Power.GRASS) armor = max(armor, 2)
         invuln = 0f
@@ -269,6 +290,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 'W' -> foes += KragJr(px, bottom, wonderStyle = true)
                 'K' -> foes += KingKrag(px, bottom)
                 'Q' -> foes += KingKrag(px, bottom, wonderStyle = true)
+                'Y' -> foes += KingKrag(px, bottom, dry = true)
+                'G' -> foes += Warden(px, bottom)
+                'Z' -> foes += EnderDragon(px, ty * TILE.toFloat())
+                'n' -> foes += Enderman(px, bottom)
+                'f' -> foes += Fish(px, bottom)
+                'C' -> foes += EndCrystal(px, bottom)
+                'V' -> things += Villager(px, bottom, tx + index * 7)
+                'M' -> things += Minecart(px, bottom)
                 'c' -> things += Coin(px, ty * TILE.toFloat())
                 '|' -> things += Checkpoint(px, bottom)
                 'F' -> things += Goal(px, bottom).also { goal = it }
@@ -330,6 +359,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (edge(4, input.musicToggle)) musicOn = !musicOn
         val superE = edge(5, input.superMove)
         val actionE = edge(6, input.action)
+        val tntE = edge(7, input.tnt)
+        val poseidonE = edge(8, input.poseidon)
         val tapped = input.tap
         input.tap = false
         val num = input.numberKey
@@ -345,10 +376,15 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             State.PLAY -> {
                 if (pauseE) paused = !paused
                 if (!paused) {
-                    if (craftE) { setState(State.CRAFT); sfx(Sound.BUMP) } else play(dt, jumpE, swapE, superE, actionE)
+                    if (craftE) { setState(State.CRAFT); sfx(Sound.BUMP) } else {
+                        if (tntE) throwTnt()
+                        if (poseidonE) callPoseidon()
+                        play(dt, jumpE, swapE, superE, actionE)
+                    }
                 }
             }
             State.CRAFT -> updateCraft(tapped, craftE || pauseE, num)
+            State.TRADE -> updateTrade(tapped, pauseE || craftE, num)
             State.SLEEP -> {
                 updateParticles(dt)
                 if (stateT > 2.6f) {
@@ -419,21 +455,42 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (slotLevel(i) >= 0) continueGame(i) else { pickChoice = Mon.SPARKY; setState(State.PICK) }
     }
 
-    private fun pickCardW() = min(100f, (viewW - 40f) / 4)
-    private fun pickCardX(i: Int) = viewW / 2 - 4 * (pickCardW() + 6f) / 2 + i * (pickCardW() + 6f) + 3f
+    private val pickRows = listOf(0..4, 5..8)
+    private fun pickCardW() = min(78f, (viewW - 30f) / 5 - 6f)
+    private val pickCardH = 74f
+    private fun pickCardX(i: Int): Float {
+        val row = if (i < 5) 0 else 1
+        val n = pickRows[row].count()
+        val k = i - pickRows[row].first
+        return viewW / 2 - n * (pickCardW() + 6f) / 2 + k * (pickCardW() + 6f) + 3f
+    }
+    private fun pickCardY(i: Int) = if (i < 5) 46f else 46f + pickCardH + 6f
+    private fun goButtonX() = viewW - 70f
 
     private fun updatePick(tapped: Boolean, num: Int) {
-        if (num in 1..4) { newGame(slot, Mon.entries[num - 1]); return }
+        if (num in 1..Mon.entries.size) { choose(Mon.entries[num - 1]); return }
         if (!tapped || stateT < 0.3f) return
-        for (i in 0 until 4) {
+        val x = input.tapX
+        val y = input.tapY
+        if (x > goButtonX() - 30 && y > 206f) { choose(pickChoice); return }
+        for (i in Mon.entries.indices) {
             val cx = pickCardX(i)
-            if (input.tapX in cx..(cx + pickCardW()) && input.tapY in 50f..210f) {
+            val cy = pickCardY(i)
+            if (x in cx..(cx + pickCardW()) && y in cy..(cy + pickCardH)) {
                 val m = Mon.entries[i]
-                sound.say("${m.label}! I choose you!")
-                newGame(slot, m)
+                // Tap once to look, tap the same one again (or GO) to pick it.
+                if (pickChoice == m && stateT > 0.6f) { choose(m); return }
+                pickChoice = m
+                sound.sayAs(m.label, Voice.MON)
+                sfx(Sound.KICK)
                 return
             }
         }
+    }
+
+    private fun choose(m: Mon) {
+        sound.sayAs("${m.label}! I choose you!", Voice.HERO)
+        newGame(slot, m)
     }
 
     // ---------------------------------------------------------------- Playing
@@ -451,15 +508,32 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (swapE) swap()
         if (superE) useSuper()
 
+        if (floodT > 0) floodT -= dt
         val grav = if (wonder) 0.75f else 1f
-        updateLeader(leader, dt, jumpE, grav)
+        val cart = riding
+        if (cart != null) {
+            // Riding a minecart: the leader sits in the cart, JUMP hops out.
+            val l = leader
+            l.x = cart.cx - l.w / 2
+            l.y = cart.y - l.h + 6
+            l.vx = cart.vx; l.vy = 0f; l.onGround = true
+            if (jumpE) { leaveCart(cart, false); l.vy = l.jumpV; sfx(Sound.JUMP) }
+        } else updateLeader(leader, dt, jumpE, grav)
         for ((i, f) in followers.withIndex()) updateFollower(f, dt, grav, i)
         val l = leader
-        if (actionE && bed?.overlaps(l) == true && l.onGround) {
-            sleep()
-            return
+        if (actionE && riding == null) {
+            val v = things.firstOrNull { it is Villager && abs(it.cx - l.cx) < 22f && abs(it.bottom - l.bottom) < 20f } as Villager?
+            val mc = things.firstOrNull { it is Minecart && it.rider == null && abs(it.cx - l.cx) < 24f && abs(it.bottom - l.bottom) < 20f } as Minecart?
+            when {
+                bed?.overlaps(l) == true && l.onGround -> { sleep(); return }
+                v != null -> { startTrade(v); return }
+                mc != null -> { rideCart(mc); return }
+            }
         }
-        if (input.action && l.cooldown <= 0f) action(l)
+        if (input.action && l.cooldown <= 0f && riding == null) action(l)
+        updateWater(dt)
+        updateSpikes(dt)
+        updateDog(dt)
         for (h in team) {
             h.anim += dt
             if (h.swing > 0) h.swing -= dt
@@ -507,9 +581,23 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         puff(h.cx, h.cy)
     }
 
+    /** Underwater levels: everything left of the shore is water. */
+    fun inWater(h: Body) = level.def.shoreX >= 0 && h.cx < level.def.shoreX * TILE
+
     private fun updateLeader(h: Hero, dt: Float, jumpE: Boolean, grav: Float) {
         val dir = (if (input.right) 1 else 0) - (if (input.left) 1 else 0)
         if (dir != 0) h.facing = dir
+        if (inWater(h)) {
+            // Swimming: slow sinking, and every tap of JUMP is a swim stroke.
+            h.vx = approach(h.vx, dir * h.speed * 0.85f, 500f * dt)
+            if (jumpE) { h.vy = -170f; sfx(Sound.SPLASH) }
+            if (input.down) h.vy = approach(h.vy, 120f, 400f * dt)
+            h.vy = min(h.vy + GRAVITY * 0.3f * dt, 80f)
+            moveHero(h, dt)
+            if (h.y < 34f) { h.y = 34f; h.vy = max(h.vy, 0f) }
+            if (h.onGround) { safeX = h.x; safeY = h.bottom }
+            return
+        }
         h.vx = approach(h.vx, dir * h.speed, (if (h.onGround) 800f else 520f) * dt)
         if (jumpE && h.onGround) {
             h.vy = h.jumpV
@@ -517,8 +605,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
         if (!input.jump && h.vy < -130f) h.vy = -130f
         h.vy = min(h.vy + GRAVITY * grav * dt, MAX_FALL)
-        // Blaze glides when you hold JUMP on the way down.
-        if (h.who == Who.MON && mon == Mon.BLAZE && input.jump && h.vy > 55f) h.vy = 55f
+        // Floaty Pokemon (Blaze, Mystic, Spooky) glide when you hold JUMP on the way down.
+        if (h.who == Who.MON && mon.floaty && input.jump && h.vy > 55f) h.vy = 55f
         moveHero(h, dt)
         if (h.onGround && level.solidAt(h.x + 1, h.bottom + 1) && level.solidAt(h.x + h.w - 1, h.bottom + 1)) {
             safeX = h.x
@@ -530,6 +618,16 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun updateFollower(f: Hero, dt: Float, grav: Float, place: Int) {
         val l = leader
         val targetX = l.cx - l.facing * (22f + place * 20f)
+        if (inWater(f)) {
+            // Followers just swim after the leader.
+            val ty = l.y - place * 6f
+            f.vx = approach(f.vx, (targetX - f.cx).coerceIn(-110f, 110f), 400f * dt)
+            f.vy = approach(f.vy, (ty - f.y).coerceIn(-90f, 90f), 400f * dt)
+            f.facing = if (l.cx > f.cx) 1 else -1
+            moveHero(f, dt)
+            if (hypot(l.cx - f.cx, l.cy - f.cy) > 200f) teleport(f, l)
+            return
+        }
         val dx = targetX - f.cx
         val want = if (abs(dx) > 12f) (if (dx > 0) 1f else -1f) * min(f.speed * 1.15f, abs(dx) * 4f) else 0f
         f.facing = when {
@@ -721,6 +819,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         h.cooldown = 0.45f
         h.swing = 0.2f
         val sx = if (h.facing > 0) h.x + h.w else h.x - 8
+        if (mon == Mon.PUNCHO) {
+            // A strong punch right in front.
+            val reach = Body(if (h.facing > 0) h.x + h.w else h.x - 22, h.y, 22f, h.h)
+            for (f in foes) if (!f.dying && f.active && f.overlaps(reach)) f.hit(this, 3)
+            particles += FloatText(h.cx + h.facing * 16, h.y, "POW", 0xFFFFD21F.toInt())
+            sfx(Sound.KICK)
+            return
+        }
         if (mon == Mon.BLOOM) {
             // Vine whip: a short-range lash that hits harder.
             particles += Vine(h.cx, h.y + 8, h.facing)
@@ -743,11 +849,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         superCharge = 0f
         superFlash = 1f
         val m = partner
-        if (m !== leader && hypot(m.cx - leader.cx, m.cy - leader.cy) > 60f) teleport(m, leader)
+        // The Pokemon jumps in next to whoever you're playing to do its move.
+        if (m !== leader) { teleport(m, leader); m.facing = leader.facing }
         val dir = m.facing
         val mx = m.cx
         val my = m.cy
-        sound.say("${mon.label}! ${mon.superName.lowercase()}!")
+        sound.sayAs("${mon.label}! ${mon.superName.lowercase()}!", Voice.MON)
+        // Water Pokemon refill the team's air too.
+        if (mon.swimmer) air = AIR_MAX
         bannerTitle = mon.superName + "!"
         bannerSub = ""
         bannerT = 1.2f
@@ -786,12 +895,43 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 for (f in foes.filter { onScreen(it) && it.overlaps(zone) }) f.hit(this, 10)
                 sfx(Sound.BOSS_HIT)
             }
+            Mon.EMBER -> {
+                particles += SuperFx(mx, my, mon, dir, 0f)
+                for (f in foes.filter { onScreen(it) && hypot(it.cx - mx, it.cy - my) < 140f }) f.hit(this, 9)
+                sfx(Sound.BOSS_FIRE)
+            }
+            Mon.SPLASHY -> {
+                val w = 230f
+                particles += SuperFx(mx, my, mon, dir, w)
+                val zone = Body(if (dir > 0) mx else mx - w, my - 30f, w, 60f)
+                for (f in foes.filter { onScreen(it) && it.overlaps(zone) }) f.hit(this, 8)
+                sfx(Sound.SPLASH)
+            }
+            Mon.MYSTIC -> {
+                particles += SuperFx(mx, my, mon, dir, 0f)
+                for (f in foes.filter(::onScreen)) f.hit(this, 6)
+                hearts = min(MAX_HEARTS, hearts + 2)
+                particles += FloatText(mx, my - 20, "+2 HEARTS", 0xFFFF9AD0.toInt())
+                sfx(Sound.ONEUP)
+            }
+            Mon.PUNCHO -> {
+                val w = 110f
+                particles += SuperFx(mx, my, mon, dir, w)
+                val zone = Body(if (dir > 0) mx else mx - w, my - 30f, w, 60f)
+                for (f in foes.filter { onScreen(it) && it.overlaps(zone) }) f.hit(this, 16)
+                sfx(Sound.BOSS_HIT)
+            }
+            Mon.SPOOKY -> {
+                particles += SuperFx(mx, my, mon, dir, 0f)
+                for (f in foes.filter(::onScreen)) f.hit(this, 6)
+                sfx(Sound.ZAP)
+            }
         }
     }
 
     // ======================================================================== Crafting
 
-    enum class Kind { FLOWER, PICK, HEART, APPLE, TNT, STAR, HOUSE, BED }
+    enum class Kind { FLOWER, PICK, HEART, APPLE, TNT, TRAP, STAR, HOUSE, BED }
 
     class Recipe(
         val title: String, val note: String, val costs: List<Pair<Ore, Int>>, val coinCost: Int,
@@ -835,13 +975,15 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
             val heart = listOf(Ore.STONE to 5)
             val apple = listOf(Ore.GOLD to 2)
-            val tnt = listOf(Ore.STONE to 6, Ore.IRON to 2)
+            val tntCost = listOf(Ore.STONE to 6, Ore.IRON to 2)
+            val trapCost = listOf(Ore.IRON to 3)
             val star = listOf(Ore.AMETHYST to 2, Ore.DIAMOND to 1)
             listOf(
                 pick,
                 Recipe("HEART", "Heals one heart", heart, 0, "MAKE", has(heart, 0) && hearts < MAX_HEARTS, null, Kind.HEART),
                 Recipe("GOLDEN APPLE", "All hearts back + 1 armor", apple, 0, "MAKE", has(apple, 0), null, Kind.APPLE),
-                Recipe("MEGA TNT", "BOOM! Hits every bad guy on screen", tnt, 0, "MAKE", has(tnt, 0), null, Kind.TNT),
+                Recipe("TNT x2", "Throw it! Blows up a 5x5 area. You have $tnt", tntCost, 0, "MAKE", has(tntCost, 0), null, Kind.TNT),
+                Recipe("SPIKE TRAP", "Set it down: bad guys walk into it", trapCost, 0, "MAKE", has(trapCost, 0) && leader.onGround, null, Kind.TRAP),
                 Recipe("SUPER STAR", "10 seconds of invincibility!", star, 0, "MAKE", has(star, 0), null, Kind.STAR),
             )
         }
@@ -905,7 +1047,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 armor = min(MAX_ARMOR, armor + 1)
                 toast("Crunch! All hearts back!")
             }
-            Kind.TNT -> { megaTnt(); setState(State.PLAY); return }
+            Kind.TNT -> { tnt += 2; toast("You have $tnt TNT. Press the TNT button to throw!") }
+            Kind.TRAP -> {
+                val l = leader
+                things += SpikeTrap(if (l.facing > 0) l.x + l.w + 4 else l.x - 20, l.bottom)
+                toast("Spike trap set!")
+            }
             Kind.STAR -> { startStar(); setState(State.PLAY); return }
             Kind.HOUSE -> {
                 house?.let { it.removed = true }
@@ -929,13 +1076,203 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
     }
 
-    private fun megaTnt() {
-        shake = 0.8f
+    // ======================================================================== TNT, Poseidon, water, spikes, Dennis
+
+    private fun throwTnt() {
+        if (tnt <= 0 || riding != null) return
+        tnt--
+        val l = leader
+        spawn(ThrownTnt(l.cx - 5, l.y, l.facing))
+        sfx(Sound.KICK)
+    }
+
+    /** The TNT goes off: every block (except the very bottom) and every bad guy in the grid is hit. */
+    fun tntBlast(tx: Int, ty: Int) {
+        val r = ThrownTnt.RADIUS
+        shake = 0.6f
         sfx(Sound.BOSS_FIRE)
         sfx(Sound.BREAK)
-        repeat(8) { particles += Boom(camX + Random.nextFloat() * viewW, 40f + Random.nextFloat() * 160f, 24f + Random.nextFloat() * 20f) }
-        for (f in foes) if (f.active && !f.dying && f.x + f.w > camX && f.x < camX + viewW) f.hit(this, 6)
-        toast("KA-BOOM!")
+        for (dy in -r..r) for (dx in -r..r) {
+            val x = tx + dx
+            val y = ty + dy
+            if (Random.nextInt(3) == 0) particles += Boom(x * TILE + 8f, y * TILE + 8f, 16f + Random.nextFloat() * 10f)
+            if (level.toughness(x, y) > 0) {
+                val ore = Tile.ore(level[x, y])
+                level[x, y] = Tile.EMPTY
+                debris(x, y, ore?.dark ?: 0xFF8A5A2A.toInt(), 2)
+                if (ore != null) inventory[ore.ordinal]++
+            }
+        }
+        val zone = Body((tx - r) * TILE.toFloat(), (ty - r) * TILE.toFloat(), (2 * r + 1) * TILE.toFloat(), (2 * r + 1) * TILE.toFloat())
+        for (f in foes) if (!f.dying && f.active && f.overlaps(zone)) f.hit(this, 8)
+    }
+
+    private fun callPoseidon() {
+        if (coins < POSEIDON_COST) {
+            toast("Poseidon needs $POSEIDON_COST coins. You have $coins.")
+            return
+        }
+        coins -= POSEIDON_COST
+        floodT = 3f
+        shake = 0.8f
+        sfx(Sound.SPLASH)
+        sound.sayAs("I am Poseidon! Waves, wash them away!", Voice.GOD)
+        bannerTitle = "POSEIDON!"
+        bannerSub = "The sea washes the bad guys away!"
+        bannerT = 2.5f
+        for (f in foes) if (f.active && !f.dying && f.x + f.w > camX && f.x < camX + viewW) f.hit(this, if (f.boss) 6 else 99)
+    }
+
+    private fun updateWater(dt: Float) {
+        if (level.def.shoreX < 0) return
+        val l = leader
+        if (inWater(l)) {
+            air -= dt * (if (mon.swimmer) 0.5f else 1f)
+            if (air <= 0f) {
+                air = 10f
+                if (starT <= 0) hearts--
+                sfx(Sound.HURT)
+                toast("Out of air! Find the BUBBLES!")
+                if (hearts <= 0) { knockedOut(); return }
+            }
+        } else air = AIR_MAX
+        // Bubble vents puff out a bubble every so often.
+        val first = (camX / TILE).toInt() - 1
+        val last = ((camX + viewW) / TILE).toInt() + 1
+        for (ty in 0 until ROWS) for (tx in first..last) {
+            if (level[tx, ty] != Tile.VENT) continue
+            val k = ty * level.w + tx
+            val t = (ventT[k] ?: Random.nextFloat()) - dt
+            if (t <= 0) {
+                spawn(Bubble(tx * TILE + 3f, ty * TILE - 10f))
+                ventT[k] = 1.6f
+            } else ventT[k] = t
+        }
+    }
+
+    private fun updateSpikes(dt: Float) {
+        if (spikeT > 0) spikeT -= dt
+        val l = leader
+        val ty = tileOf(l.bottom - 2)
+        if (level[tileOf(l.x + 2), ty] == Tile.SPIKES || level[tileOf(l.x + l.w - 2), ty] == Tile.SPIKES) {
+            hurt()
+            l.vy = -260f
+        }
+        // Spike traps hurt bad guys too.
+        if (spikeT <= 0) {
+            spikeT = 0.5f
+            for (f in foes) {
+                if (f.dying || f.boss || !f.active) continue
+                val fy = tileOf(f.bottom - 2)
+                if (level[tileOf(f.cx), fy] == Tile.SPIKES) f.hit(this, 1)
+            }
+        }
+    }
+
+    private fun updateDog(dt: Float) {
+        if (boss != null || level.def.shoreX >= 0 || things.any { it is Dennis }) return
+        dogT -= dt
+        if (dogT > 0) return
+        dogT = 40f + Random.nextFloat() * 15f
+        val l = leader
+        if (!l.onGround) { dogT = 2f; return }
+        spawn(Dennis(camX - 30f, l.bottom))
+    }
+
+    private fun rideCart(c: Minecart) {
+        c.rider = leader
+        riding = c
+        c.vx = 60f
+        sfx(Sound.POWERUP)
+        toast("Wheee! JUMP to hop out.")
+    }
+
+    fun leaveCart(c: Minecart, end: Boolean) {
+        c.rider = null
+        c.vx = 0f
+        if (riding === c) {
+            riding = null
+            val l = leader
+            l.y = c.y - l.h - 2
+            l.vy = if (end) -220f else l.vy
+        }
+    }
+
+    // ======================================================================== Villagers
+
+    private class Trade(
+        val title: String, val costs: List<Pair<Ore, Int>>, val coinCost: Int,
+        val thanks: String, val give: TeamGame.() -> Unit,
+    )
+
+    private val allTrades: List<Trade> = listOf(
+        Trade("2 IRON", emptyList(), 5, "Here is some iron. Thank you!") { inventory[Ore.IRON.ordinal] += 2 },
+        Trade("1 DIAMOND", emptyList(), 8, "A shiny diamond, just for you!") { inventory[Ore.DIAMOND.ordinal] += 1 },
+        Trade("1 EMERALD", listOf(Ore.STONE to 6), 0, "Thank you for the stone. Here is an emerald!") { inventory[Ore.EMERALD.ordinal] += 1 },
+        Trade("2 TNT", listOf(Ore.EMERALD to 2), 0, "Two TNT! Be careful with those!") { tnt += 2 },
+        Trade("2 GOLD", listOf(Ore.IRON to 3), 0, "Gold for iron. A good trade!") { inventory[Ore.GOLD.ordinal] += 2 },
+        Trade("2 AMETHYST", emptyList(), 10, "Purple amethyst. So pretty!") { inventory[Ore.AMETHYST.ordinal] += 2 },
+        Trade("GOLDEN APPLE", listOf(Ore.EMERALD to 1), 4, "A golden apple. Eat it to feel great!") {
+            hearts = MAX_HEARTS; armor = min(MAX_ARMOR, armor + 1)
+        },
+        Trade("3 COPPER", listOf(Ore.STONE to 4), 0, "Copper for your thunder flower!") { inventory[Ore.COPPER.ordinal] += 3 },
+        Trade("SUPER STAR", listOf(Ore.EMERALD to 2), 5, "A super star! Now go and win!") { startStar() },
+    )
+
+    private val greetings = listOf(
+        "Hello, friend! Do you want to trade?",
+        "Welcome to our village! Take a look at my trades.",
+        "Hi there! I have some good stuff for you.",
+        "Oh, hello! Are you here to stop King Krag?",
+    )
+
+    private fun tradesOf(v: Villager) = (0 until 4).map { allTrades[(v.seed + it * 3) % allTrades.size] }.distinctBy { it.title }
+
+    private fun startTrade(v: Villager) {
+        trader = v
+        setState(State.TRADE)
+        sound.sayAs(greetings[v.seed % greetings.size], Voice.VILLAGER)
+        sfx(Sound.COIN)
+    }
+
+    private fun updateTrade(tapped: Boolean, close: Boolean, num: Int) {
+        val v = trader ?: run { setState(State.PLAY); return }
+        val trades = tradesOf(v)
+        if (num in 1..trades.size) doTrade(trades[num - 1])
+        if (close) { endTrade(); return }
+        if (!tapped || stateT < 0.2f) return
+        val px = panelX()
+        val pw = panelW()
+        val x = input.tapX
+        val y = input.tapY
+        if (hypot(x - (px + pw - 14), y - (panelTop + 10)) < 14f || x < px || x > px + pw || y < panelTop) { endTrade(); return }
+        val i = ((y - rowsTop) / rowH).toInt()
+        if (y >= rowsTop && i in trades.indices) doTrade(trades[i])
+    }
+
+    /** For tests and keyboards: trade with whoever we're talking to. */
+    internal fun tradeForTest(i: Int) = trader?.let { doTrade(tradesOf(it)[i]) }
+
+    private fun doTrade(t: Trade) {
+        if (!has(t.costs, t.coinCost)) {
+            sfx(Sound.BUMP)
+            sound.sayAs("Hmm. You don't have enough for that one.", Voice.VILLAGER)
+            toast("Need " + (t.costs.map { "${it.second} ${it.first.label}" } +
+                (if (t.coinCost > 0) listOf("${t.coinCost} COINS") else emptyList())).joinToString(" + ") + "!")
+            return
+        }
+        for ((o, n) in t.costs) inventory[o.ordinal] -= n
+        coins -= t.coinCost
+        t.give(this)
+        sfx(Sound.POWERUP)
+        sound.sayAs(t.thanks, Voice.VILLAGER)
+        toast("Got ${t.title}!")
+    }
+
+    private fun endTrade() {
+        sound.sayAs("Goodbye! Come back any time!", Voice.VILLAGER)
+        trader = null
+        setState(State.PLAY)
     }
 
     fun startStar() {
@@ -1022,6 +1359,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     t.removed = true
                     collectCoin()
                 }
+                is Bubble -> if (hit) {
+                    t.removed = true
+                    air = min(AIR_MAX, air + 10f)
+                    particles += FloatText(t.cx, t.y, "+AIR", 0xFFBFE8FF.toInt())
+                    sfx(Sound.COIN)
+                }
                 is Pickup -> if (hit) {
                     t.removed = true
                     t.collect(this)
@@ -1046,11 +1389,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         coins++
         score += 50
         sfx(Sound.COIN)
-        if (coins % 50 == 0) {
-            if (hearts < MAX_HEARTS) hearts++
-            toast("50 COINS: +1 HEART!")
-            sfx(Sound.ONEUP)
-        }
+        if (coins == POSEIDON_COST) toast("50 COINS! Tap the trident to call POSEIDON!")
     }
 
     fun hurt() {
@@ -1077,6 +1416,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     internal fun slotCardXForTest(i: Int) = slotCardX(i)
     internal fun pickCardXForTest(i: Int) = pickCardX(i)
+    internal fun pickCardYForTest(i: Int) = pickCardY(i)
+    internal fun thingsForTest(): List<Thing> = things + pending
+    internal fun dogForTest() { dogT = 0f }
     internal fun bedForTest() = bed
 
     private fun knockedOut() {
@@ -1114,18 +1456,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val sy = partner.cy
         val target = foes.filter {
             it.active && !it.dying && it.x + it.w > camX && it.x < camX + viewW &&
-                (it !is KragJr || it.engaged) && (it !is KingKrag || it.awake)
+                (it !is KragJr || it.engaged) && (it !is KingKrag || it.awake) &&
+                (it !is Warden || it.awake) && (it !is EnderDragon || it.engaged)
         }.minByOrNull { hypot(it.cx - sx, it.cy - sy) }
         if (target == null || hypot(target.cx - sx, target.cy - sy) > 180f) {
             followZap = 0.4f
             return
         }
-        val color = when (mon) {
-            Mon.SPARKY -> 0xFFFFF27A.toInt()
-            Mon.BLAZE -> 0xFFFF8A00.toInt()
-            Mon.HYDRO -> 0xFF8AC8FF.toInt()
-            Mon.BLOOM -> 0xFF3CE070.toInt()
-        }
+        val color = mon.color
         particles += Bolt(sx, sy, target.cx, target.cy, color)
         target.hit(this, 1)
         sfx(Sound.ZAP)
@@ -1148,7 +1486,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     fun onBossEngaged(f: Foe) {
         if (boss != null) return
         boss = f
-        val home = when (f) { is KragJr -> f.homeX; is KingKrag -> f.homeX; else -> f.x }
+        val home = when (f) {
+            is KragJr -> f.homeX
+            is KingKrag -> f.homeX
+            is Warden -> f.homeX
+            is EnderDragon -> f.homeX + f.w / 2 - 16f
+            else -> f.x
+        }
         camLock = (home + 16f - viewW / 2).coerceIn(0f, max(0f, level.w * TILE - viewW))
         bannerT = 3f
         when {
@@ -1162,6 +1506,21 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 bannerTitle = "KRAG JR.!"
                 bannerSub = "Stomp his clown car or hit him with your flowers!"
                 sfx(Sound.KICK)
+            }
+            f is KingKrag && f.dry -> {
+                bannerTitle = "DRY BONES KING KRAG!"
+                bannerSub = "Knock him into a pile of bones... and then do it again!"
+                sfx(Sound.BREAK)
+            }
+            f is Warden -> {
+                bannerTitle = "THE WARDEN!"
+                bannerSub = "Walk slowly, he follows noise! Dodge his sonic booms!"
+                sfx(Sound.BOSS_FIRE)
+            }
+            f is EnderDragon -> {
+                bannerTitle = "THE ENDER DRAGON!"
+                bannerSub = "Break the crystals, then hit it hard when it lands!"
+                sfx(Sound.BOSS_FIRE)
             }
             f is KingKrag && f.wonderStyle -> {
                 wonder = true
@@ -1183,6 +1542,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         shake = 0.5f
         sfx(Sound.VICTORY)
         say(leader.cx, leader.y - 10, if (f is KragJr) "Teamwork!" else "We did it!!", 2f)
+        // Defeated bosses leave a pile of treasure behind.
+        inventory[Ore.DIAMOND.ordinal] += 2
+        inventory[Ore.GOLD.ordinal] += 3
+        tnt += 1
     }
 
     private fun updateBoss(dt: Float) {
@@ -1195,13 +1558,19 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             wonder = false
             camLock = null
             val b = boss
-            if (b is KingKrag && state == State.PLAY && bossDoneT > 3f) {
+            // Boss levels without a flag end when the boss is beaten.
+            if (goal == null && state == State.PLAY && bossDoneT > 3f) {
                 if (levelIndex == Levels.all.lastIndex) {
                     setState(State.VICTORY)
                     sound.say("Ring ding ding ding! You did it! Ding ding!")
                 } else {
-                    // Beating King Krag the first time isn't the end...
-                    clearNote = "...but King Krag found a WONDER FLOWER!"
+                    clearNote = when {
+                        b is KingKrag && b.dry -> "Only one enemy left... THE ENDER DRAGON!"
+                        b is KingKrag && b.wonderStyle -> "...but something stirs in the DEEP DARK!"
+                        b is KingKrag -> "...but King Krag found a WONDER FLOWER!"
+                        b is Warden -> "The Warden is beaten! On to new lands!"
+                        else -> "Great job, team!"
+                    }
                     setState(State.CLEAR)
                     sfx(Sound.CLEAR)
                 }
@@ -1229,9 +1598,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             state == State.VICTORY -> Music.FROG
             state == State.OUCH || state == State.CLEAR || state == State.SLEEP -> Music.NONE
             starT > 0 -> Music.STAR
+            // King Krag gets his own crazy music, and the Warden his spooky one.
+            boss is KingKrag && !bossDone -> Music.KRAG
+            boss is Warden && !bossDone -> Music.WARDEN
             frog?.singing == true -> Music.FROG
             wonder -> Music.WONDER
             boss != null && !bossDone -> Music.BOSS
+            level.def.place == Place.DEEP -> Music.WARDEN
             else -> level.def.place.music
         }
         sound.music(m)
@@ -1254,17 +1627,25 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     State.PLAY -> {
                         val l = leader
                         val label = when {
+                            riding != null -> "RIDING"
                             bed?.overlaps(l) == true -> "SLEEP"
+                            things.any { it is Villager && abs(it.cx - l.cx) < 22f && abs(it.bottom - l.bottom) < 20f } -> "TALK"
+                            things.any { it is Minecart && abs(it.cx - l.cx) < 24f && abs(it.bottom - l.bottom) < 20f } -> "RIDE"
+                            l.who == Who.MON && mon == Mon.PUNCHO -> "PUNCH"
                             l.who == Who.BLOCKY -> "MINE"
                             l.who == Who.MON -> if (mon == Mon.BLOOM) "VINE" else "ATTACK"
                             power == Power.NONE -> "PUNCH"
                             else -> "THROW"
                         }
                         val next = team[(team.indexOf(l) + 1) % team.size]
-                        TeamControls.draw(gfx, input, viewW, label, next.label, next.color, superCharge, mon.color, time)
+                        TeamControls.draw(
+                            gfx, input, viewW, label, next.label, next.color, superCharge, mon.color, time,
+                            tnt, coins >= POSEIDON_COST,
+                        )
                         TeamControls.drawTop(gfx, viewW, musicOn, canCraftSomething, time)
                     }
                     State.CRAFT -> renderCraft(gfx)
+                    State.TRADE -> renderTrade(gfx)
                     State.SLEEP -> {
                         val a = (minOf(1f, stateT / 0.6f, (2.6f - stateT) / 0.6f) * 230).toInt().coerceIn(0, 230)
                         gfx.rect(0f, 0f, viewW, VIEW_H, argb(a, 0x0A0A2A))
@@ -1293,9 +1674,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     gfx.shadowText(bannerTitle, viewW / 2, 74f, 16f, if (wonder) solidRainbow(time) else 0xFFFF6A3A.toInt(), 1)
                     if (bannerSub.isNotEmpty()) gfx.shadowText(bannerSub, viewW / 2, 90f, 8f, white, 1)
                 }
-                if (toastT > 0 && (state == State.PLAY || state == State.CRAFT)) {
+                if (toastT > 0 && (state == State.PLAY || state == State.CRAFT || state == State.TRADE)) {
                     val w = toast.length * 5.4f + 16
-                    val ty = if (state == State.CRAFT) VIEW_H - 18 else 46f
+                    val ty = if (state != State.PLAY) VIEW_H - 18 else 46f
                     gfx.rect(viewW / 2 - w / 2, ty, w, 16f, 0xCC000000.toInt())
                     gfx.text(toast, viewW / 2, ty + 12, 9f, white, 1)
                 }
@@ -1325,6 +1706,32 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         leader.draw(this, gfx, ox)
         for (t in things) if (t is Shot || t is MonShot || t is Frog) t.draw(this, gfx, ox)
         for (p in particles) p.draw(gfx, ox)
+        // Underwater tint up to the shore, with a wavy surface line.
+        if (level.def.shoreX >= 0) {
+            val sx0 = level.def.shoreX * TILE + ox
+            if (sx0 > 0) {
+                val wEnd = min(viewW, sx0)
+                gfx.rect(0f, 32f, wEnd, VIEW_H - 32f, 0x442E8AC8)
+                var wx = 0f
+                while (wx < wEnd) {
+                    gfx.rect(wx, 32f + sin(time * 3 + (wx - ox) * 0.08f) * 2f, 8f, 2f, 0xAABFE8FF.toInt())
+                    wx += 8f
+                }
+            }
+        }
+        if (floodT > 0) {
+            // Poseidon's flood: the water rises over everything, then drains away.
+            val p = 3f - floodT
+            val rise = if (p < 1f) p else if (p < 2f) 1f else (3f - p)
+            val top = VIEW_H - rise * (VIEW_H - 40f)
+            gfx.rect(0f, top, viewW, VIEW_H - top, 0xAA2E7AC8.toInt())
+            var wx = 0f
+            while (wx < viewW) {
+                gfx.oval(wx - 6, top - 6 + sin(time * 8 + wx * 0.1f) * 4f, 20f, 12f, 0xCCBFE8FF.toInt())
+                wx += 16f
+            }
+            TeamArt.poseidon(gfx, viewW / 2, top + 150f, time)
+        }
         val l = leader
         if (state == State.PLAY) {
             val ay = l.y - 10 + sin(time * 6) * 1.5f
@@ -1401,6 +1808,44 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 layer(cam, 0.15f, 150f) { i, x -> cloud(gfx, x, 40f + (i % 4) * 30f) }
                 layer(cam, 0.3f, 210f) { i, x -> cloud(gfx, x + 20, 170f + (i % 2) * 20f) }
             }
+            Place.WATER -> {
+                gfx.rect(0f, 0f, viewW, 32f, 0xFF8ED0FF.toInt())
+                gfx.rect(0f, 32f, viewW, VIEW_H - 32f, 0xFF1E5A9A.toInt())
+                gfx.rect(0f, 140f, viewW, 100f, 0xFF184A82.toInt())
+                layer(cam, 0.3f, 110f) { i, x ->
+                    // Swaying seaweed and coral
+                    for (k in 0 until 4) gfx.oval(x + 20 + sin(time * 2 + k + i) * 3, 200f - k * 12, 6f, 14f, 0xFF2E9E5A.toInt())
+                    gfx.oval(x + 60, 196f, 22f, 16f, if (i % 2 == 0) 0xFFE86A8A.toInt() else 0xFFFF9A4A.toInt())
+                }
+                layer(cam, 0.15f, 70f) { i, x ->
+                    val by = (200f - (time * 25f + i * 37f) % 170f)
+                    gfx.oval(x, by, 4f, 4f, 0x66BFE8FF)
+                }
+            }
+            Place.NIGHT -> {
+                gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF141838.toInt())
+                for (i in 0 until 40) gfx.rect((i * 97f - cam * 0.05f).mod(viewW), (i * 53f) % 150f, 1.5f, 1.5f, white)
+                gfx.oval(viewW * 0.75f, 24f, 28f, 28f, 0xFFF0F0D0.toInt())
+                layer(cam, 0.25f, 200f) { i, x ->
+                    gfx.oval(x, 160f - (i % 3) * 12f, 220f, 140f, 0xFF1E2A4A.toInt())
+                }
+            }
+            Place.DEEP -> {
+                gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF06121A.toInt())
+                layer(cam, 0.3f, 80f) { i, x ->
+                    // Glowing sculk
+                    val glow = (120 + sin(time * 2 + i) * 80).toInt().coerceIn(0, 255)
+                    gfx.oval(x + 10, 190f - (i % 3) * 30f, 10f, 6f, argb(glow, 0x2AE8E0))
+                    gfx.rect(x + 40, 40f, 2f, 30f + (i % 4) * 10, 0xFF0E2A34.toInt())
+                }
+            }
+            Place.END -> {
+                gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF0A0614.toInt())
+                for (i in 0 until 50) gfx.rect((i * 89f - cam * 0.03f).mod(viewW), (i * 41f) % 200f, 1.5f, 1.5f, 0xFFE0D0FF.toInt())
+                layer(cam, 0.2f, 160f) { i, x ->
+                    gfx.rect(x + 40, 90f - (i % 3) * 20f, 24f, 160f, 0xFF1A1028.toInt())
+                }
+            }
             Place.CASTLE, Place.VOLCANO -> {
                 val volcano = level.def.place == Place.VOLCANO
                 gfx.rect(0f, 0f, viewW, VIEW_H, if (volcano) 0xFF3A1208.toInt() else 0xFF2A0E12.toInt())
@@ -1445,6 +1890,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 Tile.GROUND -> when (place) {
                     Place.CAVE -> Sprites.stone
                     Place.CASTLE, Place.VOLCANO -> Sprites.hardGrey
+                    Place.WATER -> if (under) Sprites.sandstone else Sprites.sandTop
+                    Place.DEEP -> TeamArt.deepStone
+                    Place.END -> TeamArt.endStone
                     Place.DESERT -> if (under) Sprites.sandstone else Sprites.sandTop
                     Place.SNOW -> if (under) Sprites.frozenDirt else Sprites.snowTop
                     else -> if (under) Sprites.dirt else Sprites.grassTop
@@ -1454,7 +1902,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 Tile.QCOIN, Tile.QHEART, Tile.QSTAR -> if ((time * 3).toInt() % 3 == 0) Sprites.question2 else Sprites.question1
                 Tile.QMYSTERY -> Sprites.question1
                 Tile.USED -> Sprites.used
-                Tile.HARD -> if (place == Place.CASTLE || place == Place.VOLCANO) Sprites.hardGrey else Sprites.hard
+                Tile.HARD -> when (place) {
+                    Place.CASTLE, Place.VOLCANO -> Sprites.hardGrey
+                    Place.END, Place.DEEP -> TeamArt.obsidian
+                    else -> Sprites.hard
+                }
+                Tile.RAIL -> { TeamArt.rail(gfx, tx * TILE - cam, (ty + 1) * TILE.toFloat()); null }
+                Tile.SPIKES -> { TeamArt.spikes(gfx, tx * TILE - cam, (ty + 1) * TILE.toFloat()); null }
+                Tile.VENT -> TeamArt.vent
                 Tile.LAVA -> if (level[tx, ty - 1] == Tile.LAVA) Sprites.lava else Sprites.lavaTop
                 Tile.CLOUD -> Sprites.cloud
                 else -> Tile.ore(t)?.let { TeamArt.ores[it] }
@@ -1495,12 +1950,27 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val starText = if (starT > 0) "  •  STAR ${starT.toInt() + 1}" else ""
         gfx.shadowText("${TeamArt.pickName(pickTier)} PICK  •  $powerText$starText", max(112f, viewW * 0.25f), 26f, 7f, 0xFFDDEEFF.toInt())
 
+        if (level.def.shoreX >= 0 && inWater(leader)) {
+            // Air meter: a row of bubbles under the HUD.
+            val n = 10
+            for (i in 0 until n) {
+                val full = air / AIR_MAX * n > i
+                gfx.oval(8f + i * 10f, 34f, 8f, 8f, if (full) 0xDDBFE8FF.toInt() else 0x44FFFFFF)
+            }
+            gfx.shadowText("AIR", 8f + n * 10f + 2, 41f, 7f, if (air < 8f && (time * 4).toInt() % 2 == 0) 0xFFFF6060.toInt() else white)
+        }
         val b = boss
         if (b != null && !bossDone && (b !is KragJr || b.engaged)) {
+            if (b is KingKrag && b.inBones) {
+                gfx.shadowText("...he's getting back up!", viewW / 2, 58f, 8f, 0xFFFFE8A0.toInt(), 1)
+            }
             val name = when {
                 b is KragJr && b.wonderStyle -> "WONDER KRAG JR."
                 b is KragJr -> "KRAG JR."
                 b is KingKrag && b.wonderStyle -> "WONDER KING KRAG"
+                b is KingKrag && b.dry -> "DRY BONES KING KRAG"
+                b is Warden -> "THE WARDEN"
+                b is EnderDragon -> "ENDER DRAGON"
                 else -> "KING KRAG"
             }
             val wonderBoss = (b is KragJr && b.wonderStyle) || (b is KingKrag && b.wonderStyle)
@@ -1631,34 +2101,69 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     private fun renderPick(gfx: Gfx) {
         gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF1A3A2A.toInt())
-        gfx.shadowText("CHOOSE YOUR POKEMON!", viewW / 2, 34f, 14f, 0xFFFFD21F.toInt(), 1)
+        gfx.shadowText("CHOOSE YOUR POKEMON!", viewW / 2, 24f, 13f, 0xFFFFD21F.toInt(), 1)
+        gfx.shadowText("FILE ${slot + 1}  \u2022  tap one to see it, tap again to pick", viewW / 2, 37f, 7f, 0xFFDDDDDD.toInt(), 1)
         Mon.entries.forEachIndexed { i, m ->
             val x = pickCardX(i)
+            val y = pickCardY(i)
             val w = pickCardW()
-            gfx.rect(x - 2, 48f, w + 4, 164f, 0xFF0A1A10.toInt())
-            gfx.rect(x, 50f, w, 160f, argb(255, m.color))
-            gfx.rect(x + 3, 53f, w - 6, 154f, 0xEEFFFFFF.toInt())
-            gfx.oval(x + w / 2 - 24, 64f, 48f, 48f, argb(80, m.color))
-            TeamArt.mon(gfx, m, x + w / 2, 102f, time * 1.5f + i, 1, (time * 2).toInt() % 4 == i, true)
-            gfx.text(m.label, x + w / 2, 124f, 10f, 0xFF202020.toInt(), 1)
-            gfx.text("SUPER:", x + w / 2, 138f, 6f, 0xFF606060.toInt(), 1)
-            gfx.text(m.superName, x + w / 2, 147f, 7f, argb(255, m.color) and 0xFF7F7F7F.toInt() or 0xFF000000.toInt(), 1)
-            // Word-wrap the blurb
-            val words = m.blurb.split(' ')
-            var line = ""
-            var ly = 160f
-            val maxChars = (w / 3.6f).toInt()
-            for (word in words) {
-                if ((line + " " + word).trim().length > maxChars) {
-                    gfx.text(line.trim(), x + w / 2, ly, 5.5f, 0xFF303030.toInt(), 1)
-                    ly += 8
-                    line = ""
-                }
-                line += " $word"
-            }
-            gfx.text(line.trim(), x + w / 2, ly, 5.5f, 0xFF303030.toInt(), 1)
+            val sel = m == pickChoice
+            gfx.rect(x - 2, y - 2, w + 4, pickCardH + 4, if (sel) 0xFFFFD21F.toInt() else 0xFF0A1A10.toInt())
+            gfx.rect(x, y, w, pickCardH, argb(255, m.color))
+            gfx.rect(x + 2, y + 2, w - 4, pickCardH - 4, 0xEEFFFFFF.toInt())
+            gfx.oval(x + w / 2 - 20, y + 6, 40f, 40f, argb(70, m.color))
+            TeamArt.mon(gfx, m, x + w / 2, y + 40f, time * 1.5f + i, 1, sel, sel)
+            gfx.text(m.label, x + w / 2, y + 56, 8f, 0xFF202020.toInt(), 1)
+            gfx.text(m.superName, x + w / 2, y + 67, 5.5f, argb(255, m.color) and 0xFF7F7F7F.toInt() or 0xFF000000.toInt(), 1)
         }
-        gfx.shadowText("FILE ${slot + 1}  •  Tap your partner!", viewW / 2, 228f, 9f, 0xFFDDDDDD.toInt(), 1)
+        // The chosen one's description and a GO button
+        val m = pickChoice
+        gfx.rect(10f, 206f, viewW - 100f, 30f, 0xCC000000.toInt())
+        gfx.text(m.label + ": SUPER " + m.superName, 16f, 218f, 7f, argb(255, m.color))
+        gfx.text(m.blurb, 16f, 230f, 6f, white)
+        val gx = goButtonX()
+        gfx.rect(gx - 28, 206f, 84f, 30f, 0xFF0A1A10.toInt())
+        gfx.rect(gx - 26, 208f, 80f, 26f, 0xFF2EB84A.toInt())
+        gfx.text("GO!", gx + 14, 226f, 12f, white, 1)
+    }
+
+    private fun renderTrade(gfx: Gfx) {
+        val v = trader ?: return
+        gfx.rect(0f, 30f, viewW, VIEW_H - 30f, 0x88000000.toInt())
+        val px = panelX()
+        val pw = panelW()
+        val trades = tradesOf(v)
+        val ph = rowsTop - panelTop + rowH * trades.size + 4
+        gfx.rect(px - 2, panelTop - 2, pw + 4, ph + 4, 0xFF1E4A2A.toInt())
+        gfx.rect(px, panelTop, pw, ph, 0xFFE8D8B0.toInt())
+        gfx.shadowText("VILLAGER TRADES", px + pw / 2, panelTop + 14, 11f, 0xFFFFF2C8.toInt(), 1)
+        gfx.oval(px + pw - 23, panelTop + 1, 18f, 18f, 0xFF8A1010.toInt())
+        gfx.text("X", px + pw - 14, panelTop + 14, 10f, white, 1)
+        gfx.text("\"" + greetings[v.seed % greetings.size] + "\"", px + pw / 2, panelTop + 32, 7f, 0xFF2A1808.toInt(), 1)
+        trades.forEachIndexed { i, t ->
+            val y = rowsTop + i * rowH
+            gfx.rect(px, y + rowH - 1, pw, 1f, 0x55000000)
+            gfx.text("${i + 1}", px + 4, y + 16, 7f, 0x88000000.toInt())
+            // What you pay
+            var cx = px + 16f
+            for ((o, n) in t.costs) {
+                TeamArt.oreIcon(gfx, o, cx, y + 8, 10f)
+                gfx.text("$n", cx + 12, y + 17, 8f, if (inventory[o.ordinal] >= n) 0xFF1E5A1E.toInt() else 0xFF8A1010.toInt())
+                cx += 30f
+            }
+            if (t.coinCost > 0) {
+                gfx.sprite(Sprites.coin, cx, y + 8, w = 8f, h = 11f)
+                gfx.text("${t.coinCost}", cx + 10, y + 17, 8f, if (coins >= t.coinCost) 0xFF1E5A1E.toInt() else 0xFF8A1010.toInt())
+                cx += 30f
+            }
+            gfx.text("\u2192", cx + 4, y + 17, 10f, 0xFF2A1808.toInt())
+            gfx.text(t.title, cx + 22, y + 17, 8f, 0xFF2A1808.toInt())
+            val ok = has(t.costs, t.coinCost)
+            val bx = px + pw - 52
+            gfx.rect(bx, y + 4, 46f, 19f, 0xFF2A1808.toInt())
+            gfx.rect(bx + 1.5f, y + 5.5f, 43f, 16f, if (ok) 0xFF2EB84A.toInt() else 0xFF8A7A6A.toInt())
+            gfx.text("TRADE", bx + 23, y + 17, 8f, white, 1)
+        }
     }
 
     private fun renderIntro(gfx: Gfx) {
@@ -1674,7 +2179,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     private fun renderVictory(gfx: Gfx) {
         gfx.rect(0f, 0f, viewW, VIEW_H, 0x55000000)
-        gfx.shadowText("YOU BEAT WONDER KING KRAG!", viewW / 2, 70f, 16f, solidRainbow(time * 0.5f), 1)
+        gfx.shadowText("YOU BEAT THE ENDER DRAGON!", viewW / 2, 70f, 16f, solidRainbow(time * 0.5f), 1)
         gfx.shadowText("Rocco + Blocky + ${mon.label} = BEST TEAM EVER!", viewW / 2, 90f, 9f, white, 1)
         gfx.shadowText("SCORE $score", viewW / 2, 106f, 10f, 0xFFFFD21F.toInt(), 1)
         val dance = abs(sin(time * 6)) * 6f

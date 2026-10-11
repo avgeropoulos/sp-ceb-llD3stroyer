@@ -10,6 +10,7 @@ import com.roccoquest.game.Music
 import com.roccoquest.game.Sound
 import com.roccoquest.game.SoundSink
 import com.roccoquest.game.SoundSynth
+import com.roccoquest.game.Voice
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
@@ -72,8 +73,22 @@ class SoundFx(context: Context) : SoundSink {
 
     override fun music(m: Music) = musicPlayer.play(m)
 
-    override fun say(text: String) {
-        if (ttsReady) tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "frog")
+    override fun say(text: String) = sayAs(text, Voice.FROG)
+
+    /** Each voice gets its own pitch and speed so villagers sound clear and Poseidon sounds deep. */
+    override fun sayAs(text: String, voice: Voice) {
+        val t = tts ?: return
+        if (!ttsReady) return
+        val (pitch, rate) = when (voice) {
+            Voice.FROG -> 1.9f to 1.15f
+            Voice.VILLAGER -> 0.95f to 0.85f
+            Voice.GOD -> 0.55f to 0.8f
+            Voice.MON -> 1.5f to 1.05f
+            Voice.HERO -> 1.1f to 0.95f
+        }
+        t.setPitch(pitch)
+        t.setSpeechRate(rate)
+        t.speak(text, TextToSpeech.QUEUE_FLUSH, null, voice.name)
     }
 
     fun setForeground(on: Boolean) = musicPlayer.setForeground(on)

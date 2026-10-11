@@ -430,6 +430,35 @@ class SuperFx(x: Float, y: Float, private val mon: Mon, private val dir: Int, pr
                 gfx.rect(left + ox, y - 4, len, 8f, argb(a, 0xBFE8FF))
                 gfx.oval(x + ox + side * len - 12, y - 12, 24f, 24f, argb(a, 0xBFE8FF))
             }
+            Mon.EMBER -> for (i in 0 until 16) {
+                val ang = i * 0.3927f + t * 6
+                val r = 20f + t * 80f
+                gfx.oval(x + ox + kotlin.math.cos(ang) * r - 7, y + sin(ang) * r * 0.6f - 7, 14f, 14f, argb(a, if (i % 2 == 0) 0xFF6A00 else 0xFFE14D))
+            }
+            Mon.SPLASHY -> for (i in 0 until 12) {
+                val d = (i * 19f + t * 300f) % w
+                val r = 4f + (i % 3) * 3f
+                gfx.oval(x + ox + dir * d - r, y - r + sin(t * 10 + i) * 8, r * 2, r * 2, argb(a, 0xBFE8FF))
+            }
+            Mon.MYSTIC -> {
+                val r = t * 500f
+                gfx.oval(x + ox - r, y - r * 0.6f, r * 2, r * 1.2f, argb(a / 3, 0xFF9AD0))
+                gfx.oval(x + ox - r * 0.7f, y - r * 0.4f, r * 1.4f, r * 0.8f, argb(a / 3, 0xFFFFFF))
+            }
+            Mon.PUNCHO -> {
+                val reach = min(w, t * 600f)
+                val fx = x + ox + dir * reach
+                gfx.oval(fx - 16, y - 16, 32f, 32f, argb(a, 0x8A9AB8))
+                gfx.oval(fx - 10, y - 10, 20f, 20f, argb(a, 0xFFE14D))
+                gfx.shadowText("POW!", fx, y - 20, 14f, argb(a, 0xFF3A3A), 1)
+            }
+            Mon.SPOOKY -> {
+                gfx.rect(x + ox - 600, 0f, 1200f, 240f, argb(a / 3, 0x2A0A4A))
+                for (i in 0 until 6) {
+                    val gx = x + ox + kotlin.math.cos(i * 1.05f + t * 3) * (40f + t * 120)
+                    gfx.oval(gx - 8, y - 30 + sin(i + t * 4) * 20, 16f, 18f, argb(a, 0xE8E0FF))
+                }
+            }
             Mon.BLOOM -> {
                 val len = min(w, t * 1200f)
                 val left = if (dir > 0) x else x - len
