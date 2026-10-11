@@ -1898,9 +1898,9 @@ class TeamGameTest {
     }
 
     @Test fun fourWorldsAndNewEnemies() {
-        assertEquals(84, Levels.all.size)
-        assertEquals(4, worldCount())
-        assertTrue(Levels.all.last().rows.any { 'Z' in it } && Levels.all.last().rows.any { 'Y' in it })
+        assertEquals(105, Levels.all.size)
+        assertEquals(5, worldCount())
+        assertTrue(Levels.all.last().rows.any { 'Z' in it } && Levels.all.last().rows.any { 'Q' in it })
         for (c in "zqlj") assertTrue(Levels.all.count { d -> d.rows.any { c in it } } >= 3, "new monster $c is in levels")
         // Beating a World 3 level is saved.
         startPlaying()
@@ -1980,5 +1980,61 @@ class TeamGameTest {
         }
         game.openControllerSetup(); run(0.3f)
         shot("controller-setup")
+    }
+
+    @Test fun world5HasWaterShipsAndRainbowRoad() {
+        val w5 = Levels.all.drop(4 * WORLD_SIZE)
+        assertEquals(21, w5.size)
+        assertTrue(w5.count { it.place == Place.WATER && it.shoreX > 0 } >= 9, "lots of water levels")
+        assertTrue(w5.count { it.place == Place.SHIP } >= 8, "pirate ship levels")
+        assertTrue(w5.any { it.name == "RAINBOW ROAD" && it.place == Place.RAINBOW })
+        assertTrue(w5.any { d -> d.rows.any { 'N' in it } }, "cannons on the ships")
+        assertTrue(w5.any { d -> d.rows.any { '$' in it } }, "metal caps")
+    }
+
+    @Test fun metalRoccoWalksUnderwaterAndCantBeHurt() {
+        startPlaying(Levels.all.indexOfFirst { it.place == Place.WATER })
+        game.foes.clear()
+        game.startMetal()
+        assertTrue(game.metal)
+        val r = game.rocco
+        run(1.5f) { input.right = true }
+        input.right = false
+        assertTrue(r.onGround, "Metal Rocco walks on the sea floor instead of swimming")
+        run(5f)
+        assertEquals(TeamGame.AIR_MAX, game.air, 0.01f, "no air needed")
+        val hearts = game.hearts
+        game.hurt(Grumbler(r.x + 4f, r.bottom, false))
+        assertEquals(hearts, game.hearts, "nothing hurts Metal Rocco")
+        run(20f)
+        assertTrue(!game.metal, "it wears off")
+    }
+
+    @Test fun cannonsFireCannonballs() {
+        startPlaying()
+        game.foes.clear()
+        val r = game.rocco
+        r.x = 122 * TILE.toFloat(); r.y = 100f
+        run(1f)
+        game.foes += Cannon(r.x + 120f, r.bottom).also { it.active = true }
+        var balls = 0
+        run(4.5f) { game.hurtProof(); balls = maxOf(balls, game.foes.count { it is CannonBall }) }
+        assertTrue(balls > 0, "BOOM")
+    }
+
+    @Test fun world5Screenshots() {
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 720, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f))
+            ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        for ((name, at) in listOf("PIRATE SHIP" to 0.18f, "RAINBOW ROAD" to 0.3f, "SHIPWRECK BAY" to 0.05f)) {
+            startPlaying(Levels.all.indexOfFirst { it.name == name })
+            game.leader.x = Levels.all[game.levelIndex].w * TILE * at; game.leader.y = 60f
+            if (name == "SHIPWRECK BAY") game.startMetal()
+            run(1.5f)
+            shot("w5-" + name.lowercase().replace(" ", "-"))
+        }
     }
 }

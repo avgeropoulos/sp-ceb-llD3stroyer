@@ -425,6 +425,29 @@ object Songs {
         leadDuty = 0.5f,
     )
 
+    // ------------------------------------------------------------------ Sea shanty (D minor, for the pirate ships)
+    private val shantyChords = listOf(
+        "D2 A2 F4 A4", "C2 G2 E4 G4", "C2 G2 E4 G4", "D2 A2 F4 A4",
+        "F2 C3 A4 C5", "Bb1 F2 D4 F4", "C2 G2 E4 G4", "D2 A2 D4 F4",
+    )
+    val shanty = Song(
+        bpm = 150,
+        lead = """
+            D5/2 D5/2 D5/2 A4/2 D5/2 F5/2 A5/4
+            G5/2 F5/2 E5/2 C5/2 E5/8
+            C5/2 C5/2 C5/2 G4/2 C5/2 E5/2 G5/4
+            F5/2 E5/2 D5/2 A4/2 D5/8
+            A5/2 A5/2 G5/2 F5/2 G5/4 A5/4
+            Bb5/2 A5/2 G5/2 F5/2 E5/8
+            D5/2 F5/2 A5/2 F5/2 E5/2 C5/2 E5/4
+            D5/8 -/8
+        """,
+        harmony = offbeats(shantyChords),
+        bass = oomPahBass(shantyChords),
+        drums = "k..sk..sk..sk.s.",
+        leadDuty = 0.25f,
+    )
+
     fun of(m: Music): Song? = when (m) {
         Music.NONE -> null
         Music.OVERWORLD -> overworld
@@ -444,5 +467,6 @@ object Songs {
         Music.NIGHT -> night
         Music.BEACH -> beach
         Music.DOOM -> doom
+        Music.SHANTY -> shanty
     }
 }

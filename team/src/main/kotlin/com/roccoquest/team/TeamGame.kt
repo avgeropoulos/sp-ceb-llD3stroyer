@@ -368,6 +368,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     /** Seconds left of Tanooki Rocco and of the Wing Cap. */
     var tanookiT = 0f
         private set
+    /** Metal Rocco: can't be hurt, and he's so heavy he walks on the sea floor. */
+    var metalT = 0f
+        private set
+    val metal get() = metalT > 0f
     var wingT = 0f
         private set
     /** Seconds left of Mini Rocco. */
@@ -622,6 +626,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (rocco.mini) setMini(false)
         miniT = 0f
         tanookiT = 0f
+        metalT = 0f
         wingT = 0f
         hearts = MAX_HEARTS
         if (power == Power.GRASS) armor = max(armor, 2)
@@ -657,6 +662,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 'F' -> things += Goal(px, bottom).also { goal = it }
                 'r' -> frogSpots += tx
                 'P' -> things += Portal(px, bottom)
+                '$' -> things += MetalItem(px, ty * TILE.toFloat(), popOut = false)
                 'y' -> things += Dino(px, bottom)
                 else -> spawnMonster(c, px, bottom)?.let { foes += it }
             }
@@ -1057,6 +1063,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (bonusT <= 0f) { exitBonus(); return }
         }
         if (tanookiT > 0) tanookiT -= dt
+        if (metalT > 0) { metalT -= dt; if (metalT <= 0f) toast("Metal Rocco wore off!") }
         if (wingT > 0) {
             wingT -= dt
             if (wingT in 0f..3f && (wingT * 4).toInt() != ((wingT + dt) * 4).toInt()) sfx(Sound.BUMP)
@@ -1230,8 +1237,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun updateLeader(h: Hero, dt: Float, jumpE: Boolean, grav: Float) {
         val dir = (if (input.right) 1 else 0) - (if (input.left) 1 else 0)
         if (dir != 0) h.facing = dir
-        if (inWater(h)) {
+        if (inWater(h) && !(metal && h === rocco)) {
             // Swimming: slow sinking, and every tap of JUMP is a swim stroke.
+            // (Metal Rocco is too heavy to swim: he walks along the bottom instead.)
             h.vx = approach(h.vx, dir * h.speed * 0.85f, 500f * dt)
             if (jumpE) { h.vy = -170f; sfx(Sound.SPLASH) }
             if (input.down) h.vy = approach(h.vy, 120f, 400f * dt)
@@ -1335,7 +1343,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         // Blue Shell: sprinting on the ground turns Rocco into a spinning shell.
         h.shellSpin = rocco && power == Power.SHELL && sprint && h.onGround && !h.mini && abs(h.vx) > 120f
         if (jumpE && h.onGround) {
-            h.vy = h.jumpV * (if (sprint) 1.06f else 1f)
+            h.vy = h.jumpV * (if (sprint) 1.06f else 1f) * (if (metal && h === this.rocco) (if (inWater(h)) 0.8f else 0.9f) else 1f)
             sfx(Sound.JUMP)
         }
         if (!input.jump && h.vy < -130f) h.vy = -130f
@@ -1468,6 +1476,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     7 -> spawn(WingCapItem(px, above))
                     1 -> spawn(HeartItem(px, above))
                     2 -> repeat(5) { i -> spawn(Coin(px + (i - 2) * 6f, ty * TILE - 16f, popping = true)) }
+                    4 -> spawn(MetalItem(px, above))
                     else -> spawn(GiftBox(px, above))
                 }
                 particles += FloatText(px + 8, above, "SURPRISE!", solidRainbow(time))
@@ -2097,6 +2106,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun updateWater(dt: Float) {
         if (level.def.shoreX < 0) return
         val l = leader
+        if (metal && l === rocco) { air = AIR_MAX; return }
         if (inWater(l)) {
             air -= dt * (if (mon.swimmer) 0.5f else 1f)
             if (air <= 0f) {
@@ -2305,6 +2315,17 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         puff(cx, b - 6)
     }
 
+    /** The Metal Cap: 20 seconds of shiny, unstoppable, heavy Metal Rocco. */
+    fun startMetal() {
+        if (dino != null) dismount()
+        if (riding == null) switchTo(Who.ROCCO)
+        if (rocco.mini) { miniT = 0f; setMini(false) }
+        metalT = 20f
+        sfx(Sound.POWERUP)
+        sound.sayAs("Metal Rocco!", Voice.HERO)
+        toast("METAL ROCCO! Nothing can hurt you, and you walk on the sea floor!")
+    }
+
     fun startStar() {
         starT = STAR_TIME
         sfx(Sound.ONEUP)
@@ -2384,6 +2405,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 if (h === leader) {
                     when {
                         starT > 0 -> f.hit(this, 3)
+                        metal && h === rocco -> f.hit(this, 4)
                         h.shellSpin && !f.boss -> { f.hit(this, 1 + flowerLevel[Power.SHELL.ordinal] / 2); h.vx = -h.vx * 0.5f }
                         else -> f.touch(this)
                     }
@@ -2445,6 +2467,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     fun hurt(from: Body? = null) {
         if (invuln > 0 || starT > 0 || state != State.PLAY) return
         val l = leader
+        if (metal && l === rocco) { invuln = 0.5f; sfx(Sound.BUMP); return }
         if (dino != null && l === rocco) {
             dismount(scared = true)
             invuln = 1.6f
@@ -2554,7 +2577,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun checkFalls() {
         val h = leader
         if (h.y > level.h * TILE + 8 || level.inLava(h)) {
-            if (starT <= 0) hearts--
+            if (starT <= 0 && !metal) hearts--
             sfx(Sound.HURT)
             if (hearts <= 0) { knockedOut(); return }
             toast(if (level.inLava(h)) "Hot hot hot! Watch out for lava!" else "Whoops! Mind the gap!")
@@ -2767,6 +2790,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             Place.DEEP -> listOf(Music.WARDEN, Music.NIGHT)
             Place.END -> listOf(Music.NIGHT, Music.DOOM)
             Place.SUNSET -> listOf(Music.STAR, Music.STAR)
+            Place.SHIP -> listOf(Music.SHANTY, Music.BEACH)
+            Place.RAINBOW -> listOf(Music.STAR, Music.WONDER)
         }
 
         /** The tune for a normal level, never the same as the level right before it. */
@@ -3065,6 +3090,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             0 -> Triple(0xFF4AA8E8, 0xFF6AC85A, 0xFF7FD86A)
             1 -> Triple(0xFF2A1E48, 0xFF4A3A6A, 0xFF5A4A7A)
             2 -> Triple(0xFF3A8AC8, 0xFFD8A85A, 0xFFE8BA6A)
+            4 -> Triple(0xFF1A4A8A, 0xFF3AA8C8, 0xFF5AC8E0)
             else -> Triple(0xFF1A2A4A, 0xFF8AB8D8, 0xFFA8D0E8)
         }
         gfx.rect(0f, 0f, viewW, VIEW_H, sea.toInt())
@@ -3826,6 +3852,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 }
             }
             Place.SUNSET -> Sunset.drawSky(gfx, viewW, VIEW_H, cam, time)
+            Place.SHIP -> SeaArt.seaSky(gfx, viewW, VIEW_H, cam, time)
+            Place.RAINBOW -> SeaArt.space(gfx, viewW, VIEW_H, cam, time)
             Place.END -> {
                 gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF0A0614.toInt())
                 for (i in 0 until 50) gfx.rect((i * 89f - cam * 0.03f).mod(viewW), (i * 41f) % 200f, 1.5f, 1.5f, 0xFFE0D0FF.toInt())
@@ -3897,6 +3925,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 Tile.RAIL -> { TeamArt.rail(gfx, tx * TILE - cam, (ty + 1) * TILE.toFloat()); null }
                 Tile.SPIKES -> { TeamArt.spikes(gfx, tx * TILE - cam, (ty + 1) * TILE.toFloat()); null }
                 Tile.VENT -> TeamArt.vent
+                Tile.PLANK -> { SeaArt.plank(gfx, tx * TILE - cam, ty * TILE.toFloat(), level[tx, ty - 1] != Tile.PLANK); null }
+                Tile.MAST -> {
+                    val top = level[tx, ty - 1] != Tile.MAST
+                    val sail = !top && level[tx, ty - 2] != Tile.MAST
+                    SeaArt.mast(gfx, tx * TILE - cam, ty * TILE.toFloat(), top, sail, time)
+                    null
+                }
+                Tile.RAINBOW -> { SeaArt.rainbowTile(gfx, tx * TILE - cam, ty * TILE.toFloat(), time, tx); null }
                 Tile.LAVA -> if (level[tx, ty - 1] == Tile.LAVA) Sprites.lava else Sprites.lavaTop
                 Tile.CLOUD -> Sprites.cloud
                 else -> Tile.ore(t)?.let { TeamArt.ores[it] }
@@ -3952,6 +3988,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             (if (starT > 0) "  •  STAR ${starT.toInt() + 1}" else "") +
             (if (miniT > 0) "  •  MINI ${miniT.toInt() + 1}" else "") +
             (if (tanookiT > 0) "  •  TANOOKI ${tanookiT.toInt() + 1}" else "") +
+            (if (metalT > 0) "  •  METAL ${metalT.toInt() + 1}" else "") +
             (if (wingT > 0) "  •  WINGS ${wingT.toInt() + 1}" else "")
         val swordText = if (sword != Sword.NONE) "  •  ${sword.label.removeSuffix(" SWORD")} SWORD ${swordHp * 100 / sword.durability}%" else ""
         val pickText = if (pickTier > 1) " ${pickHp * 100 / pickDurability(pickTier)}%" else ""

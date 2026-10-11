@@ -186,11 +186,13 @@ class Hero(val who: Who, x: Float, y: Float) :
         }
         when (who) {
             Who.ROCCO -> {
+                // Metal Rocco is all shiny silver.
+                fun rs(f: Int) = if (g.metal) Metal.of(TeamArt.rocco(g.power, f)) else TeamArt.rocco(g.power, f)
                 val frame = if (!onGround) 2 else if (walking) 1 else 0
                 if (g.dino != null) {
                     // Riding Dash: Dash runs along below, Rocco sits in the saddle.
                     Dino.drawBody(gfx, cx + ox, bottom, facing, anim, walking || !onGround)
-                    gfx.sprite(TeamArt.rocco(g.power, if (onGround) 0 else 2), px + 1 - facing * 3, bottom - 42, flipX = facing < 0)
+                    gfx.sprite(rs(if (onGround) 0 else 2), px + 1 - facing * 3, bottom - 42, flipX = facing < 0)
                     return
                 }
                 when {
@@ -205,23 +207,23 @@ class Hero(val who: Who, x: Float, y: Float) :
                         gfx.rect(px - facing * 8 + 4, bottom - 9, 7f, 1.5f, 0x99FFFFFF.toInt())
                     }
                     // Squatting: squash the sprite down.
-                    crouching -> gfx.sprite(TeamArt.rocco(g.power, 0), px, bottom - 15, flipX = facing < 0, h = 15f)
+                    crouching -> gfx.sprite(rs(0), px, bottom - 15, flipX = facing < 0, h = 15f)
                     // Butt slam: tucked in, spinning, with speed lines.
                     slamming -> {
-                        gfx.sprite(TeamArt.rocco(g.power, 2), px, py + 4, flipX = (anim * 20).toInt() % 2 == 0, h = 20f)
+                        gfx.sprite(rs(2), px, py + 4, flipX = (anim * 20).toInt() % 2 == 0, h = 20f)
                         if (slamPause <= 0) for (i in 0 until 3) gfx.rect(px + 2 + i * 5, py - 10, 1.5f, 10f, 0xAAFFFFFF.toInt())
                     }
                     // Double jump: a quick spinning flip.
                     flipT > 0 && !onGround -> {
                         val spin = (flipT * 24).toInt() % 4
-                        gfx.sprite(TeamArt.rocco(g.power, 2), px, py, flipX = spin >= 2, flipY = spin == 1 || spin == 2)
+                        gfx.sprite(rs(2), px, py, flipX = spin >= 2, flipY = spin == 1 || spin == 2)
                     }
                     // Long jump: stretched out flat like a superhero.
                     longJumping && !onGround -> {
-                        gfx.sprite(TeamArt.rocco(g.power, 2), px - 3, py + 6, flipX = facing < 0, w = 22f, h = 18f)
+                        gfx.sprite(rs(2), px - 3, py + 6, flipX = facing < 0, w = 22f, h = 18f)
                         gfx.rect(px - facing * 10 + 4, py + 14, 8f, 1.5f, 0x99FFFFFF.toInt())
                     }
-                    else -> gfx.sprite(TeamArt.rocco(g.power, frame), px, py, flipX = facing < 0)
+                    else -> gfx.sprite(rs(frame), px, py, flipX = facing < 0)
                 }
                 if (!mini && !shellSpin) {
                     if (g.tanookiT > 0) TeamArt.tanooki(gfx, cx + ox, py, bottom, facing, anim, swing > 0, crouching)

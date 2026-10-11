@@ -485,6 +485,7 @@ internal fun spawnMonster(c: Char, px: Float, bottom: Float): Foe? = when (c) {
     'q' -> Peekaboo(px, bottom)
     'l' -> Puffcloud(px, bottom)
     'j' -> Spikestack(px, bottom)
+    'N' -> Cannon(px, bottom)
     else -> null
 }
 

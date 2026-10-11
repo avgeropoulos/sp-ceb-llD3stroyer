@@ -269,7 +269,7 @@ you fall off instead of losing a heart, and Dash runs away for a moment.
 
 ### Worlds 3 and 4
 
-There are now **4 worlds, 84 levels**. **World 3, the Mystery Islands** (3-1 to 3-21) and **World 4, the Doom
+There are now **5 worlds, 105 levels**. **World 3, the Mystery Islands** (3-1 to 3-21) and **World 4, the Doom
 Lands** (4-1 to 4-21) have bosses halfway and at the end: Wonder Krag Jr. in the Sky Palace, the Warden,
 **TWIN TERROR** (Wonder King Krag then Dry Bones King Krag), King Krag's Keep, the Dragon's Nest, and the
 very last level, **THE ULTIMATE BATTLE**: Dry Bones King Krag, Wonder King Krag and the Ender Dragon in a row.
@@ -285,6 +285,26 @@ New bad guys (in Worlds 2 to 4):
 
 ![World 3 on the map](docs/teamup-map-world3.png)
 ![A crusher](docs/teamup-crusher.png)
+
+### World 5: the Sea World, and Metal Rocco
+
+**World 5** (5-1 to 5-21) is all about the sea and the stars:
+* **Water levels** (9 of them): swim from bubble vent to bubble vent past coral, kelp and fish.
+* **Pirate ship levels**: jump from ship to ship across the waves. The ships have masts with sails, crow's
+  nests, and **CANNONS** that fire cannonballs at you (a shield knocks them away, or break the cannon).
+  Bosses: **Krag Jr. attacks the Sky Ship**, and **King Krag on his own flagship**.
+* **STAR BRIDGE** and **RAINBOW ROAD**: a glowing rainbow path floating in space. Don't fall off!
+* The very last level is the **RAINBOW SHOWDOWN**: Wonder Krag Jr., Wonder King Krag and the Ender Dragon,
+  one after another, on Rainbow Road.
+* A **sea shanty** plays on the ships.
+
+**Metal Rocco**: grab a **METAL CAP** (in water levels, ships and mystery blocks) and Rocco turns shiny
+silver for 20 seconds. **Nothing can hurt him**, bad guys he bumps into get knocked out, and he's so heavy
+he **sinks and walks on the sea floor** without needing air.
+
+![Pirate ship](docs/teamup-pirate-ship.png)
+![Rainbow Road](docs/teamup-rainbow-road.png)
+![Metal Rocco](docs/teamup-metal-rocco.png)
 
 ### Playing with a controller
 

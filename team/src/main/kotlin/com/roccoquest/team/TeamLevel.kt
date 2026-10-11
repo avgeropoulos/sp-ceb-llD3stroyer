@@ -39,12 +39,16 @@ object Tile {
     const val RUBY = 22
     const val SAPPHIRE = 23
     const val OBSIDIAN = 24
+    /** Ship planks, ship masts (you walk past them) and Rainbow Road. */
+    const val PLANK = 25
+    const val MAST = 26
+    const val RAINBOW = 27
 
-    fun solid(t: Int) = t != EMPTY && t != LAVA && t != CLOUD && t != RAIL && t != SPIKES
+    fun solid(t: Int) = t != EMPTY && t != LAVA && t != CLOUD && t != RAIL && t != SPIKES && t != MAST
 
     /** How many pickaxe points it takes to mine a tile; 0 means it can't be mined. */
     fun toughness(t: Int) = when (t) {
-        GROUND, DIRT, BRICK -> 2
+        GROUND, DIRT, BRICK, PLANK -> 2
         STONE, IRON, COPPER -> 4
         GOLD, EMERALD, AMETHYST, RUBY, SAPPHIRE -> 6
         DIAMOND -> 8
@@ -96,6 +100,10 @@ enum class Place(val music: Music) {
     END(Music.UNDERGROUND),
     /** The bonus rooms behind the little portals. */
     SUNSET(Music.STAR),
+    /** Pirate ships on the open sea. */
+    SHIP(Music.SHANTY),
+    /** Rainbow Road, up among the stars. */
+    RAINBOW(Music.STAR),
 }
 
 /**
@@ -114,6 +122,7 @@ enum class Place(val music: Music) {
  *  'R' ruby   'E' sapphire   'x' obsidian   'P' bonus portal   't' treasure chest (bonus rooms)
  *  'A' skelly archer   'H' hopper   'U' gloop slime   'T' snapper plant   'y' Dash the dino
  *  'z' crusher   'q' peekaboo ghost   'l' puffcloud   'j' spikestack
+ *  'I' ship plank   ':' mast   '%' rainbow road   'N' cannon   '$' metal cap
  */
 class LevelDef(val name: String, val place: Place, val rows: List<String>, val tip: String) {
     val w get() = rows[0].length
@@ -124,7 +133,7 @@ class LevelDef(val name: String, val place: Place, val rows: List<String>, val t
 }
 
 /** Characters that make solid ground a bad guy (or a portal) can stand on. */
-const val GROUND_CHARS = "#sdXBiouaDeREx"
+const val GROUND_CHARS = "#sdXBiouaDeREx%I"
 
 class Builder(private val w: Int) {
     private val g = Array(ROWS) { CharArray(w) { '.' } }
@@ -158,7 +167,7 @@ object Levels {
             mushroomJungle(), lavaLake(), wonderCastle(),
             villagerValley(), coralReef(), minecartMine(), enderPlains(), deepDark(),
             treasureLagoon(), spikeTemple(), fireFortress(), boneCastle(), theEnd(),
-        ).plus(World2.all).plus(MoreWorlds.all).mapIndexed { i, d -> remix(d, i) }
+        ).plus(World2.all).plus(MoreWorlds.all).plus(World5.all).mapIndexed { i, d -> remix(d, i) }
     }
 
     /**
@@ -758,6 +767,9 @@ class Level(val def: LevelDef) {
                 'R' -> Tile.RUBY
                 'E' -> Tile.SAPPHIRE
                 'x' -> Tile.OBSIDIAN
+                'I' -> Tile.PLANK
+                ':' -> Tile.MAST
+                '%' -> Tile.RAINBOW
                 else -> Tile.EMPTY
             }
         }
