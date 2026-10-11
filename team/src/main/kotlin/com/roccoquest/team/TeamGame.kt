@@ -29,7 +29,7 @@ import kotlin.random.Random
  * and sleeping in the bed saves the game into one of three save slots.
  */
 class TeamGame(private val input: TeamInput, private val sound: SoundSink, private val storage: Storage = Storage.Memory()) {
-    enum class State { TITLE, SLOTS, PICK, INTRO, PLAY, CRAFT, TRADE, SLEEP, OUCH, CLEAR, STICKER, BOOK, VICTORY, HOME, MAP }
+    enum class State { TITLE, SLOTS, PICK, INTRO, PLAY, CRAFT, TRADE, SLEEP, OUCH, CLEAR, STICKER, BOOK, VICTORY, HOME, MAP, CONTROLS }
 
     companion object {
         const val MAX_HEARTS = 5
@@ -251,6 +251,83 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private var pickChoice = Mon.SPARKY
     private val prev = BooleanArray(16)
 
+    /** Menu moves from a controller (or keyboard) this frame. */
+    private class Nav { var left = false; var right = false; var up = false; var down = false; var a = false; var b = false; var lb = false; var rb = false }
+    private val nav = Nav()
+    private var slotCursor = 0
+    private var stickerCursor = 0
+    private var craftCursor = 0
+    private var tradeCursor = 0
+    private var pauseCursor = 0
+    private var shopCursor = 0
+
+    /** Controller setup: the buttons for JUMP, THROW, SWITCH and SUPER (names come from the phone). */
+    val padActions = listOf("JUMP", "THROW", "SWITCH", "SUPER")
+    val padNames = arrayOf("A", "B", "X", "Y")
+    /** Which action the setup screen is waiting for, or -1 when it's showing the summary. */
+    var padStep = -1
+        private set
+    /** Set by the phone when a controller button or stick is used. */
+    @Volatile var padConnected = false
+    /** The phone puts the standard buttons back when this is called. */
+    var onPadReset: (() -> Unit)? = null
+
+    /** The phone tells us which button was pressed for the action the setup screen asked for. */
+    fun padPressed(name: String) {
+        if (padStep !in padActions.indices) return
+        padNames[padStep] = name
+        sfx(Sound.COIN)
+        padStep++
+        if (padStep >= padActions.size) { padStep = -1; sfx(Sound.ONEUP); toast("Controller ready!") }
+    }
+
+    fun openControllerSetup() { padStep = -1; setState(State.CONTROLS) }
+
+    private fun updateControls(tapped: Boolean) {
+        if (padStep >= 0) {
+            // Waiting for a button: tapping the screen cancels.
+            if (tapped && input.tapX >= 0f && stateT > 0.3f) padStep = -1
+            return
+        }
+        if (stateT < 0.3f) return
+        if (nav.a || nav.b) { setState(State.TITLE); return }
+        if (!tapped || input.tapX < 0f) return
+        val y = input.tapY
+        when {
+            y in 168f..192f && input.tapX < viewW / 2 -> { padStep = 0; sfx(Sound.KICK) }
+            y in 168f..192f -> { onPadReset?.invoke(); sfx(Sound.KICK); toast("Standard buttons: A jump, B throw, X switch, Y super") }
+            y in 200f..226f -> setState(State.TITLE)
+        }
+    }
+
+    private fun renderControls(gfx: Gfx) {
+        gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF1A1A2E.toInt())
+        gfx.shadowText("CONTROLLER", viewW / 2, 26f, 16f, 0xFFFFD21F.toInt(), 1)
+        gfx.shadowText(if (padConnected) "Controller found!" else "Connect a controller (like a Switch Pro Controller) with Bluetooth", viewW / 2, 42f, 7f, if (padConnected) 0xFF7FE07F.toInt() else 0xFFDDDDDD.toInt(), 1)
+        if (padStep >= 0) {
+            gfx.shadowText("Press the button you want for", viewW / 2, 96f, 10f, white, 1)
+            gfx.shadowText(padActions[padStep], viewW / 2, 126f, 22f, solidRainbow(time * 0.5f), 1)
+            gfx.shadowText("(tap the screen to stop)", viewW / 2, 150f, 7f, 0xFFAAAAAA.toInt(), 1)
+            return
+        }
+        val rows = padActions.indices.map { "${padActions[it]}" to padNames[it] } + listOf(
+            "MOVE" to "D-PAD or STICK", "DUCK / SLAM" to "DOWN", "SPRINT" to "DOUBLE-TAP SIDEWAYS",
+            "PAUSE / CRAFT" to "+ / -", "TNT / LONG JUMP" to "L / R", "BLACK FLOWER / POSEIDON" to "ZL / ZR",
+        )
+        rows.forEachIndexed { i, (a, b) ->
+            val y = 52f + i * 10.5f
+            gfx.text(a, viewW / 2 - 8, y + 8, 7f, 0xFFDDEEFF.toInt(), 2)
+            gfx.text(b, viewW / 2 + 8, y + 8, 7f, 0xFFFFD21F.toInt(), 0)
+        }
+        gfx.rect(viewW / 2 - 150, 168f, 140f, 24f, 0xFF2E6BE6.toInt())
+        gfx.text("SET MY BUTTONS", viewW / 2 - 80, 184f, 8f, white, 1)
+        gfx.rect(viewW / 2 + 10, 168f, 140f, 24f, 0xFF6A6A7A.toInt())
+        gfx.text("STANDARD BUTTONS", viewW / 2 + 80, 184f, 8f, white, 1)
+        gfx.rect(viewW / 2 - 60, 200f, 120f, 24f, 0xFF2EB84A.toInt())
+        gfx.text("DONE", viewW / 2, 216f, 9f, white, 1)
+        if (toastT > 0) gfx.shadowText(toast, viewW / 2, 160f, 7f, 0xFF7FE07F.toInt(), 1)
+    }
+
     /** The armor the team is wearing, and how many more hits it can take. */
     var armorType = Armor.NONE
         private set
@@ -384,8 +461,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         storage.save(key("beds"), bedsOwned)
         storage.save(key("bedStyle"), bedStyle.ordinal)
         storage.save(key("unlocked"), unlocked)
-        storage.save(key("clearedLo"), (0 until 21).sumOf { if (cleared[it]) 1 shl it else 0 })
-        storage.save(key("clearedHi"), (21 until Levels.all.size).sumOf { if (cleared[it]) 1 shl (it - 21) else 0 })
+        // One number per world (21 levels each): "clearedLo", "clearedHi", then "cleared2", "cleared3"...
+        for (w in 0 until worldCount()) {
+            val bits = (0 until WORLD_SIZE).sumOf { k -> val i = w * WORLD_SIZE + k; if (i < cleared.size && cleared[i]) 1 shl k else 0 }
+            storage.save(key(clearedKey(w)), bits)
+        }
         storage.save(key("shieldHp"), shieldHp)
         // The house (and bed) belong to the level they were built in.
         val h = house
@@ -453,9 +533,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
         bedsOwned = storage.load(key("beds"))
         bedStyle = BedStyle.entries.getOrElse(storage.load(key("bedStyle"))) { BedStyle.RED }
-        val lo = storage.load(key("clearedLo"))
-        val hi = storage.load(key("clearedHi"))
-        for (i in cleared.indices) cleared[i] = if (i < 21) lo and (1 shl i) != 0 else hi and (1 shl (i - 21)) != 0
+        for (w in 0 until worldCount()) {
+            val bits = storage.load(key(clearedKey(w)))
+            for (k in 0 until WORLD_SIZE) { val i = w * WORLD_SIZE + k; if (i < cleared.size) cleared[i] = bits and (1 shl k) != 0 }
+        }
         // Older saves: everything up to the saved level is open (and the ones before it beaten).
         val lv = storage.load(key("level"))
         unlocked = maxOf(storage.load(key("unlocked")), lv, 1).coerceAtMost(Levels.all.size)
@@ -466,7 +547,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     fun eraseSlot(s: Int) {
-        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "armorType", "armorHp", "blackFlowers", "shieldType", "shieldHp", "swordHp", "pickHp", "houseType", "furniture", "plushies", "plush0", "plush1", "plush2", "plush3", "beds", "bedStyle", "unlocked", "clearedLo", "clearedHi", "stickersLo", "stickersHi", "houseLevel", "houseX", "houseY", "bed", "bedLevel", "spotLevel", "spotX", "spotY")) {
+        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "armorType", "armorHp", "blackFlowers", "shieldType", "shieldHp", "swordHp", "pickHp", "houseType", "furniture", "plushies", "plush0", "plush1", "plush2", "plush3", "beds", "bedStyle", "unlocked", "clearedLo", "clearedHi", "cleared2", "cleared3", "cleared4", "cleared5", "stickersLo", "stickersHi", "houseLevel", "houseX", "houseY", "bed", "bedLevel", "spotLevel", "spotX", "spotY")) {
             storage.save(key(name, s), 0)
         }
         Ore.entries.forEach { storage.save(key("ore_${it.name}", s), 0) }
@@ -585,7 +666,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         quakeWarn = -1f
         quakeCols.clear()
         // Bad guys are tough, and World 2 bad guys are even tougher.
-        val tough = if (index >= WORLD2_START) 1.75f else 1.4f
+        // Every world is a bit tougher than the one before.
+        val tough = 1.4f + 0.35f * (index / WORLD_SIZE)
         for (f in foes) if (!f.boss) f.toughen(tough)
         if (fromCheckpoint) {
             respawnX = keepX
@@ -649,16 +731,43 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         input.tap = false
         val num = input.numberKey
         input.numberKey = 0
+        // Controller / keyboard menu moves. A finger on the screen never counts, because every
+        // touch also lands on one of the (invisible in menus) game buttons.
+        val pad = !input.touching && !(tapped && input.tapX >= 0f)
+        nav.left = edge(12, input.left) && pad
+        nav.right = edge(13, input.right) && pad
+        nav.up = edge(14, input.up) && pad
+        nav.down = downE && pad
+        nav.a = jumpE && pad
+        nav.b = actionE && pad
+        nav.lb = tntE && pad
+        nav.rb = longE && pad
         if (toastT > 0) toastT -= dt
         if (eraseT > 0) eraseT -= dt else eraseArmed = -1
 
         when (state) {
-            State.TITLE -> if ((tapped || num > 0) && stateT > 0.4f) setState(State.SLOTS)
+            State.TITLE -> when {
+                stateT < 0.4f -> {}
+                craftE || (tapped && input.tapX > viewW - 112f && input.tapY < 28f) -> openControllerSetup()
+                tapped || num > 0 -> setState(State.SLOTS)
+            }
+            State.CONTROLS -> updateControls(tapped)
             State.SLOTS -> updateSlots(tapped, num)
             State.PICK -> updatePick(tapped, num)
             State.INTRO -> if (stateT > 3f || (tapped && stateT > 0.6f)) setState(State.PLAY)
             State.PLAY -> {
-                if (pauseE) paused = !paused
+                if (pauseE) { paused = !paused; pauseCursor = 0 }
+                // Controller on the pause screen: up/down picks a button, A presses it, B resumes.
+                if (paused) {
+                    if (nav.up) pauseCursor = (pauseCursor + 2) % 3
+                    if (nav.down) pauseCursor = (pauseCursor + 1) % 3
+                    if (nav.b) paused = false
+                    if (nav.a) when (pauseCursor) {
+                        0 -> { setState(State.BOOK); return }
+                        1 -> saveHere()
+                        else -> if (away == null) { saveAndExitToMap(); return } else toast("Finish the bonus room first!")
+                    }
+                }
                 // The STICKER BOOK button on the pause screen...
                 if (paused && tapped && input.tapY in 136f..162f && abs(input.tapX - viewW / 2) < 80f) { setState(State.BOOK); return }
                 // ...SAVE GAME under it...
@@ -677,10 +786,27 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     }
                 }
             }
-            State.CRAFT -> updateCraft(tapped, craftE || pauseE, num)
-            State.TRADE -> updateTrade(tapped, pauseE || craftE, num)
+            State.CRAFT -> {
+                val rows = recipes().size
+                if (nav.up) craftCursor = (craftCursor + rows - 1) % maxOf(1, rows)
+                if (nav.down) craftCursor = (craftCursor + 1) % maxOf(1, rows)
+                if (nav.left || nav.lb) { craftTab = (craftTab + TABS.size - 1) % TABS.size; craftCursor = 0 }
+                if (nav.right || nav.rb) { craftTab = (craftTab + 1) % TABS.size; craftCursor = 0 }
+                craftCursor = craftCursor.coerceIn(0, maxOf(0, recipes().size - 1))
+                if (nav.a && stateT > 0.2f) craft(craftCursor)
+                updateCraft(tapped, craftE || pauseE || nav.b, num)
+            }
+            State.TRADE -> {
+                trader?.let { v ->
+                    val n = tradesOf(v).size
+                    if (nav.up) tradeCursor = (tradeCursor + n - 1) % maxOf(1, n)
+                    if (nav.down) tradeCursor = (tradeCursor + 1) % maxOf(1, n)
+                    if (nav.a && stateT > 0.2f && tradeCursor < n) doTrade(tradesOf(v)[tradeCursor])
+                }
+                updateTrade(tapped, pauseE || craftE || nav.b, num)
+            }
             State.HOME -> { updateParticles(dt); updateHome(dt, tapped, pauseE || craftE, actionE) }
-            State.MAP -> updateMap(tapped, pauseE, jumpE, num)
+            State.MAP -> updateMap(tapped, pauseE, num)
             State.SLEEP -> {
                 updateParticles(dt)
                 if (stateT > 2.6f) {
@@ -754,6 +880,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun updateStickers(tapped: Boolean, num: Int) {
         if (stickerPicked < 0) {
             if (num in 1..3) pickSticker(num - 1)
+            if (nav.left) { stickerCursor = (stickerCursor + 2) % 3; sfx(Sound.KICK) }
+            if (nav.right) { stickerCursor = (stickerCursor + 1) % 3; sfx(Sound.KICK) }
+            if (nav.a && stateT > 0.5f) pickSticker(stickerCursor.coerceAtMost(stickerChoices.lastIndex))
             if (tapped && stateT > 0.5f) {
                 for (n in stickerChoices.indices) {
                     val x = stickerCardX(n)
@@ -796,6 +925,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             gfx.shadowText(st.rarity.label, x + (w + grow) / 2, 206f + bob, 7f, argb(255, st.rarity.color), 1)
             if (stickerPicked < 0) gfx.text("${n + 1}", x + 6, 74f + bob, 7f, 0xAAFFFFFF.toInt())
         }
+        if (padConnected && stickerPicked < 0) padFrame(gfx, stickerCardX(stickerCursor) - 4, 56f, w + 8, 142f)
         val hint = if (stickerPicked < 0) "Tap the one you want!" else "Added to your sticker book! Tap to keep going."
         gfx.shadowText(hint, viewW / 2, 228f, 9f, white, 1)
     }
@@ -823,6 +953,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     private fun updateSlots(tapped: Boolean, num: Int) {
         if (num in 1..SLOTS) { chooseSlot(num - 1); return }
+        if (nav.left) { slotCursor = (slotCursor + SLOTS - 1) % SLOTS; sfx(Sound.KICK) }
+        if (nav.right) { slotCursor = (slotCursor + 1) % SLOTS; sfx(Sound.KICK) }
+        if (nav.a && stateT > 0.3f) { chooseSlot(slotCursor); return }
+        if (nav.b && stateT > 0.3f) { setState(State.TITLE); return }
         if (!tapped || stateT < 0.3f) return
         val x = input.tapX
         val y = input.tapY
@@ -866,6 +1000,15 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     private fun updatePick(tapped: Boolean, num: Int) {
         if (num in 1..Mon.entries.size) { choose(Mon.entries[num - 1]); return }
+        val n = Mon.entries.size
+        var i = pickChoice.ordinal
+        if (nav.left) i = (i + n - 1) % n
+        if (nav.right) i = (i + 1) % n
+        if (nav.down && i < 5) i = minOf(i + 5, n - 1)
+        if (nav.up && i >= 5) i -= 5
+        if (i != pickChoice.ordinal) { pickChoice = Mon.entries[i]; sound.sayAs(pickChoice.label, Voice.MON); sfx(Sound.KICK) }
+        if (nav.a && stateT > 0.4f) { choose(pickChoice); return }
+        if (nav.b && stateT > 0.3f) { setState(State.SLOTS); return }
         if (!tapped || stateT < 0.3f) return
         val x = input.tapX
         val y = input.tapY
@@ -2068,7 +2211,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val trades = tradesOf(v)
         if (num in 1..trades.size) doTrade(trades[num - 1])
         if (close) { endTrade(); return }
-        if (!tapped || stateT < 0.2f) return
+        if (!tapped || stateT < 0.2f || input.tapX < 0f) return
         val px = panelX()
         val pw = panelW()
         val x = input.tapX
@@ -2201,7 +2344,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             10 -> craft(6)
         }
         if (close) { setState(State.PLAY); return }
-        if (!tapped || stateT < 0.15f || state != State.CRAFT) return
+        if (!tapped || stateT < 0.15f || state != State.CRAFT || input.tapX < 0f) return
         val x = input.tapX
         val y = input.tapY
         val px = panelX()
@@ -2558,8 +2701,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     heartBonus()
                     val nextName = Levels.all[levelIndex + 1].name
                     clearNote = when {
-                        levelIndex + 1 == WORLD2_START -> "The Ender Dragon is beaten... but WORLD 2 is waiting!"
-                        levelIndex >= WORLD2_START -> "Boss beaten! Next up: $nextName!"
+                        (levelIndex + 1) % WORLD_SIZE == 0 -> "World ${levelIndex / WORLD_SIZE + 1} is beaten... WORLD ${levelIndex / WORLD_SIZE + 2} is waiting!"
+                        levelIndex >= WORLD_SIZE -> "Boss beaten! Next up: $nextName!"
                         b is KingKrag && b.dry -> "Only one enemy left... THE ENDER DRAGON!"
                         b is KingKrag && b.wonderStyle -> "...but something stirs in the DEEP DARK!"
                         b is KingKrag -> "...but King Krag found a WONDER FLOWER!"
@@ -2658,6 +2801,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             State.BOOK -> renderBook(gfx)
             State.HOME -> renderHome(gfx)
             State.MAP -> renderMap(gfx)
+            State.CONTROLS -> renderControls(gfx)
             else -> {
                 renderWorld(gfx)
                 renderHud(gfx)
@@ -2735,6 +2879,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     gfx.rect(viewW / 2 - 80, 200f, 160f, 26f, 0xFF1A2A6A.toInt())
                     gfx.rect(viewW / 2 - 78, 202f, 156f, 22f, 0xFF2E6BE6.toInt())
                     gfx.text("SAVE & EXIT TO MAP", viewW / 2, 217f, 9f, white, 1)
+                    if (padConnected) {
+                        val cy = 136f + pauseCursor * 32f
+                        gfx.rect(viewW / 2 - 84, cy - 3, 4f, 32f, 0xFFFFD21F.toInt())
+                        gfx.rect(viewW / 2 + 80, cy - 3, 4f, 32f, 0xFFFFD21F.toInt())
+                    }
                     TeamControls.drawTop(gfx, viewW, musicOn, false, time)
                 }
             }
@@ -2825,7 +2974,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         homeShop = false
         plushBook = false
         mapSel = sel.coerceIn(-1, unlocked - 1)
-        if (mapSel >= 0) mapWorld = if (mapSel >= WORLD2_START) 1 else 0
+        if (mapSel >= 0) mapWorld = mapSel / WORLD_SIZE
         setState(State.MAP)
     }
 
@@ -2839,7 +2988,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     /** Where map spot [i] sits on screen (World page [mapWorld]). Home is spot -1. */
     fun mapSpot(i: Int): Pair<Float, Float> {
         if (i < 0) return 34f to 196f
-        val k = i - mapWorld * WORLD2_START
+        val k = i - mapWorld * WORLD_SIZE
         val row = k / 7
         val col = if (row % 2 == 0) k % 7 else 6 - k % 7
         val left = 82f
@@ -2847,35 +2996,45 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         return (left + col * step) to (70f + row * 58f)
     }
 
-    private fun mapLevels() = (mapWorld * WORLD2_START) until minOf(Levels.all.size, (mapWorld + 1) * WORLD2_START)
+    private fun mapLevels() = (mapWorld * WORLD_SIZE) until minOf(Levels.all.size, (mapWorld + 1) * WORLD_SIZE)
 
     /** "1-3" style names for the map. */
-    fun levelLabel(i: Int) = "${i / WORLD2_START + 1}-${i % WORLD2_START + 1}"
+    fun levelLabel(i: Int) = "${i / WORLD_SIZE + 1}-${i % WORLD_SIZE + 1}"
+
+    /** Worlds you can visit so far. */
+    private fun openWorlds() = (unlocked - 1) / WORLD_SIZE + 1
+
+    /** The world button shows the next world you can go to (and wraps back to World 1). */
+    private fun nextWorld() = (mapWorld + 1) % openWorlds()
 
     private fun mapButtons(): List<Pair<String, Float>> = buildList {
         add("TITLE" to (viewW - 58f))
-        if (unlocked > WORLD2_START) add((if (mapWorld == 0) "WORLD 2" else "WORLD 1") to (viewW - 120f))
+        if (openWorlds() > 1) add("WORLD ${nextWorld() + 1}" to (viewW - 120f))
     }
 
-    private fun updateMap(tapped: Boolean, pauseE: Boolean, jumpE0: Boolean, num: Int) {
+    private fun updateMap(tapped: Boolean, pauseE: Boolean, num: Int) {
         // On a touch screen every tap also lands on an (invisible) game button, like JUMP or the
-        // arrows. The map only listens to those from a real keyboard, never from a finger,
-        // otherwise tapping a level could start whatever was picked before (like the house).
-        val keys = !input.touching && !tapped
-        val leftE = edge(12, input.left) && keys
-        val rightE = edge(13, input.right) && keys
-        val jumpE = jumpE0 && keys
-        if (pauseE && keys) { save(); setState(State.TITLE); return }
+        // arrows. The map only listens to those from a controller or keyboard ([nav]), never from
+        // a finger, otherwise tapping a level could start whatever was picked before (like the house).
+        val leftE = nav.left
+        val rightE = nav.right
+        val jumpE = nav.a
+        if (pauseE && !input.touching) { save(); setState(State.TITLE); return }
+        if ((nav.lb || nav.rb) && openWorlds() > 1) {
+            mapWorld = (mapWorld + (if (nav.rb) 1 else openWorlds() - 1)) % openWorlds()
+            mapSel = mapLevels().first.coerceAtMost(unlocked - 1)
+            sfx(Sound.KICK)
+        }
         if (leftE) mapSel = (mapSel - 1).coerceAtLeast(-1)
         if (rightE) mapSel = (mapSel + 1).coerceAtMost(unlocked - 1)
-        if (leftE || rightE) { if (mapSel >= 0) mapWorld = if (mapSel >= WORLD2_START) 1 else 0; sfx(Sound.KICK) }
+        if (leftE || rightE) { if (mapSel >= 0) mapWorld = mapSel / WORLD_SIZE; sfx(Sound.KICK) }
         if ((jumpE || num > 0) && stateT > 0.3f) { playSelected(); return }
         if (!tapped || stateT < 0.3f) return
         val x = input.tapX
         val y = input.tapY
         if (y < 24f) {
             for ((n, bx) in mapButtons()) if (x in bx..(bx + 54f)) {
-                if (n == "TITLE") { save(); setState(State.TITLE) } else { mapWorld = 1 - mapWorld; mapSel = mapLevels().first.coerceAtMost(unlocked - 1); sfx(Sound.KICK) }
+                if (n == "TITLE") { save(); setState(State.TITLE) } else { mapWorld = nextWorld(); mapSel = mapLevels().first.coerceAtMost(unlocked - 1); sfx(Sound.KICK) }
                 return
             }
             return
@@ -2900,11 +3059,18 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     private fun renderMap(gfx: Gfx) {
-        val w2 = mapWorld == 1
-        gfx.rect(0f, 0f, viewW, VIEW_H, if (w2) 0xFF2A1E48.toInt() else 0xFF4AA8E8.toInt())
+        val w2 = mapWorld == 1 || mapWorld == 3
+        // Each world has its own colors: green, purple night, sandy orange, icy blue.
+        val (sea, land, land2) = when (mapWorld) {
+            0 -> Triple(0xFF4AA8E8, 0xFF6AC85A, 0xFF7FD86A)
+            1 -> Triple(0xFF2A1E48, 0xFF4A3A6A, 0xFF5A4A7A)
+            2 -> Triple(0xFF3A8AC8, 0xFFD8A85A, 0xFFE8BA6A)
+            else -> Triple(0xFF1A2A4A, 0xFF8AB8D8, 0xFFA8D0E8)
+        }
+        gfx.rect(0f, 0f, viewW, VIEW_H, sea.toInt())
         // Land
-        gfx.oval(-40f, 30f, viewW + 80f, 230f, if (w2) 0xFF4A3A6A.toInt() else 0xFF6AC85A.toInt())
-        gfx.oval(-20f, 44f, viewW + 40f, 204f, if (w2) 0xFF5A4A7A.toInt() else 0xFF7FD86A.toInt())
+        gfx.oval(-40f, 30f, viewW + 80f, 230f, land.toInt())
+        gfx.oval(-20f, 44f, viewW + 40f, 204f, land2.toInt())
         if (w2) for (k in 0 until 20) gfx.rect((k * 71f) % viewW, (k * 37f) % 30f + 4f, 1.5f, 1.5f, 0xFFFFFFFF.toInt())
         // The path between levels
         val levels = mapLevels().toList()
@@ -2954,7 +3120,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
         // Top bar
         gfx.rect(0f, 0f, viewW, 24f, 0xCC1A1008.toInt())
-        gfx.shadowText(if (w2) "WORLD 2" else "WORLD 1", 8f, 16f, 10f, 0xFFFFD21F.toInt())
+        gfx.shadowText("WORLD ${mapWorld + 1}", 8f, 16f, 10f, 0xFFFFD21F.toInt())
         gfx.sprite(com.roccoquest.game.Sprites.coin, 80f, 6f, w = 8f, h = 11f)
         gfx.shadowText("x$coins", 90f, 16f, 8f, white)
         gfx.shadowText("PLUSHIES $plushieCount/${Plushies.all.size}", 130f, 16f, 8f, 0xFFFF9AD0.toInt())
@@ -3133,8 +3299,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             when { homeShop -> homeShop = false; plushBook -> plushBook = false; else -> leaveHome() }
             return
         }
-        if (homeShop) { updateShop(tapped); return }
-        if (plushBook) { updateBook(tapped); return }
+        if (homeShop) { padShop(); updateShop(tapped); return }
+        if (plushBook) {
+            if (nav.left) bookPage = (bookPage + 3) % 4
+            if (nav.right) bookPage = (bookPage + 1) % 4
+            if (nav.a || nav.b) { plushBook = false; return }
+            updateBook(tapped); return
+        }
+        if (nav.a) { homeAction(homeTarget()); return }
         // Walk around the room.
         val speed = 110f
         if (input.left) { homeX -= speed * dt; homeFacing = -1; homeAnim += dt }
@@ -3154,8 +3326,27 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
     }
 
+    /** Shopping with a controller: move around the cards, A buys, B closes, L/R change tabs. */
+    private fun padShop() {
+        val n = shopItems().size
+        if (nav.lb || nav.rb) { shopTab = (shopTab + (if (nav.rb) 1 else SHOP_TABS.size - 1)) % SHOP_TABS.size; shopPage = 0; shopCursor = 0; sfx(Sound.KICK) }
+        val pages = (Plushies.all.size + PLUSH_PER_PAGE - 1) / PLUSH_PER_PAGE
+        when {
+            nav.left && shopCursor % 3 == 0 && shopTab == 2 -> { shopPage = (shopPage + pages - 1) % pages; shopCursor += 2 }
+            nav.right && (shopCursor % 3 == 2 || shopCursor == n - 1) && shopTab == 2 -> { shopPage = (shopPage + 1) % pages; shopCursor -= shopCursor % 3 }
+            nav.left -> shopCursor -= 1
+            nav.right -> shopCursor += 1
+            nav.up -> shopCursor -= 3
+            nav.down -> shopCursor += 3
+        }
+        shopCursor = shopCursor.coerceIn(0, maxOf(0, shopItems().size - 1))
+        if (nav.a && stateT > 0.2f) shopItems().getOrNull(shopCursor)?.second?.invoke()
+        if (nav.b) homeShop = false
+    }
+
     private fun updateShop(tapped: Boolean) {
-        if (!tapped || stateT < 0.2f) return
+        // (A controller button is a "tap" at no spot: only real taps count here.)
+        if (!tapped || stateT < 0.2f || input.tapX < 0f) return
         val x = input.tapX
         val y = input.tapY
         val tw = shopCardW() * 3 / SHOP_TABS.size
@@ -3180,7 +3371,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     private fun updateBook(tapped: Boolean) {
-        if (!tapped || stateT < 0.2f) return
+        if (!tapped || stateT < 0.2f || input.tapX < 0f) return
         val x = input.tapX
         val y = input.tapY
         if (y > VIEW_H - 22f) {
@@ -3252,6 +3443,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
     }
 
+    /** A blinking yellow frame showing what the controller is pointing at. */
+    private fun padFrame(gfx: Gfx, x: Float, y: Float, w: Float, h: Float) {
+        val c = if ((time * 4).toInt() % 2 == 0) 0xFFFFD21F.toInt() else 0xFFFFF2A0.toInt()
+        gfx.rect(x, y, w, 2f, c); gfx.rect(x, y + h - 2, w, 2f, c)
+        gfx.rect(x, y, 2f, h, c); gfx.rect(x + w - 2, y, 2f, h, c)
+    }
+
     private fun renderShop(gfx: Gfx) {
         gfx.rect(0f, 22f, viewW, VIEW_H - 22, 0xAA000000.toInt())
         val cw = shopCardW()
@@ -3306,6 +3504,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 Homes.drawHouse(ScaledGfx(gfx, 0.32f, cx + cw - 30f, cy + 6f), t, 0f, 72f, time)
             }
         }
+        if (padConnected) { val (fx, fy) = shopCard(shopCursor); padFrame(gfx, fx - 2, fy - 2, shopCardW() + 4, 44f) }
     }
 
     private fun shopCardBg(gfx: Gfx, cx: Float, cy: Float, owned: Boolean, can: Boolean) {
@@ -3811,6 +4010,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             gfx.rect(tx + 2, tabTop, tw - 4, 17f, if (i == craftTab) 0xFF7A4A20.toInt() else 0xFF9A6A3A.toInt())
             gfx.text(name, tx + tw / 2, tabTop + 12, 8f, if (i == craftTab) 0xFFFFF2C8.toInt() else 0xFFE0C8A0.toInt(), 1)
         }
+        if (padConnected && rows.isNotEmpty()) padFrame(gfx, px + 1, rowsTop + craftCursor.coerceAtMost(rows.lastIndex) * rh, pw - 2, rh)
         rows.forEachIndexed { i, r ->
             val y = rowsTop + i * rh
             gfx.rect(px, y + rh - 1, pw, 1f, 0x55000000)
@@ -3886,7 +4086,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         TeamArt.pickaxe(gfx, viewW / 2 - 52, base - 11, -2.3f, 4)
         Mon.entries.forEachIndexed { i, m -> TeamArt.mon(gfx, m, viewW / 2 - 18 + i * 24f, base, time + i, -1, false) }
         TeamArt.frog(gfx, viewW / 2 + 82, base - 26 - abs(sin(time * 9)) * 4, time)
-        if ((time * 2).toInt() % 2 == 0) gfx.shadowText("TAP TO START", viewW / 2, 222f, 12f, white, 1)
+        if ((time * 2).toInt() % 2 == 0) gfx.shadowText(if (padConnected) "PRESS A TO START" else "TAP TO START", viewW / 2, 222f, 12f, white, 1)
+        // Controller setup button (or press - on a controller).
+        gfx.rect(viewW - 110f, 6f, 102f, 18f, 0xCC1A1A2E.toInt())
+        gfx.text("CONTROLLER", viewW - 59f, 18.5f, 7f, if (padConnected) 0xFF7FE07F.toInt() else white, 1)
     }
 
     private fun renderSlots(gfx: Gfx) {
@@ -3915,7 +4118,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 gfx.text(if (armed) "TAP AGAIN TO ERASE" else "ERASE", x + w / 2, 191f, 6f, white, 1)
             }
         }
-        gfx.shadowText("Tap a file to play", viewW / 2, 222f, 9f, 0xFFDDDDDD.toInt(), 1)
+        if (padConnected) padFrame(gfx, slotCardX(slotCursor) - 4, 56f, slotCardW() + 8, 148f)
+        gfx.shadowText(if (padConnected) "Pick a file and press A" else "Tap a file to play", viewW / 2, 222f, 9f, 0xFFDDDDDD.toInt(), 1)
     }
 
     private fun renderPick(gfx: Gfx) {
@@ -3959,6 +4163,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         gfx.oval(px + pw - 23, panelTop + 1, 18f, 18f, 0xFF8A1010.toInt())
         gfx.text("X", px + pw - 14, panelTop + 14, 10f, white, 1)
         gfx.text("\"" + greetings[v.seed % greetings.size] + "\"", px + pw / 2, panelTop + 32, 7f, 0xFF2A1808.toInt(), 1)
+        if (padConnected && trades.isNotEmpty()) padFrame(gfx, px + 1, rowsTop + tradeCursor.coerceAtMost(trades.lastIndex) * rowH, pw - 2, rowH)
         trades.forEachIndexed { i, t ->
             val y = rowsTop + i * rowH
             gfx.rect(px, y + rowH - 1, pw, 1f, 0x55000000)
@@ -3987,7 +4192,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     private fun renderIntro(gfx: Gfx) {
         gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF101018.toInt())
-        if (levelIndex >= WORLD2_START) gfx.shadowText("WORLD 2", viewW / 2, 52f, 12f, solidRainbow(time * 0.5f), 1)
+        if (levelIndex >= WORLD_SIZE) gfx.shadowText("WORLD ${levelIndex / WORLD_SIZE + 1}", viewW / 2, 52f, 12f, solidRainbow(time * 0.5f), 1)
         gfx.shadowText("LEVEL ${levelIndex + 1} of ${Levels.all.size}", viewW / 2, 70f, 12f, 0xFFDDDDDD.toInt(), 1)
         gfx.shadowText(level.def.name, viewW / 2, 96f, 20f, 0xFFFFD21F.toInt(), 1)
         gfx.sprite(TeamArt.rocco(power, 0), viewW / 2 - 36, 112f)
@@ -4000,7 +4205,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     private fun renderVictory(gfx: Gfx) {
         gfx.rect(0f, 0f, viewW, VIEW_H, 0x55000000)
-        gfx.shadowText("YOU BEAT BOTH WORLDS!", viewW / 2, 70f, 16f, solidRainbow(time * 0.5f), 1)
+        gfx.shadowText("YOU BEAT ALL ${worldCount()} WORLDS!", viewW / 2, 70f, 16f, solidRainbow(time * 0.5f), 1)
         gfx.shadowText("Rocco + Blocky + ${mon.label} = BEST TEAM EVER!", viewW / 2, 90f, 9f, white, 1)
         gfx.shadowText("SCORE $score", viewW / 2, 106f, 10f, 0xFFFFD21F.toInt(), 1)
         val dance = abs(sin(time * 6)) * 6f

@@ -3,6 +3,7 @@ package com.roccoquest.teamup
 import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Build
+import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.SurfaceHolder
@@ -148,7 +149,78 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         return true
     }
 
+    // ------------------------------------------------------------------ Keyboard and game controllers
+
+    /** Controller buttons for JUMP, THROW, SWITCH and SUPER (changeable on the CONTROLLER screen). */
+    private val padKeys = IntArray(4)
+    private val defaultPadKeys = intArrayOf(
+        KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BUTTON_X, KeyEvent.KEYCODE_BUTTON_Y,
+    )
+
+    // Every way of pressing a direction: keyboard, D-pad buttons, the D-pad "hat", and the analog stick.
+    private var keyL = false; private var keyR = false; private var keyD = false; private var keyU = false
+    private var padL = false; private var padR = false; private var padD = false; private var padU = false
+    private var hatL = false; private var hatR = false; private var hatD = false; private var hatU = false
+    private var stickL = false; private var stickR = false; private var stickD = false; private var stickU = false
+
+    init {
+        for (k in 0 until 4) padKeys[k] = prefs.getInt("pad$k", defaultPadKeys[k]).takeIf { it != 0 } ?: defaultPadKeys[k]
+        showPadNames()
+        game.onPadReset = {
+            for (k in 0 until 4) padKeys[k] = defaultPadKeys[k]
+            savePadKeys()
+            showPadNames()
+        }
+    }
+
+    private fun savePadKeys() {
+        val e = prefs.edit()
+        for (k in 0 until 4) e.putInt("pad$k", padKeys[k])
+        e.apply()
+    }
+
+    private fun showPadNames() {
+        for (k in 0 until 4) game.padNames[k] = buttonName(padKeys[k])
+    }
+
+    private fun buttonName(code: Int): String =
+        KeyEvent.keyCodeToString(code).removePrefix("KEYCODE_").removePrefix("BUTTON_").replace('_', ' ')
+
+    private fun isController(event: android.view.InputEvent): Boolean {
+        val src = event.device?.sources ?: event.source
+        return (src and InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
+            (src and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK
+    }
+
+    private fun refreshDirections() {
+        input.left = keyL || padL || hatL || stickL
+        input.right = keyR || padR || hatR || stickR
+        input.down = keyD || padD || hatD || stickD
+        input.up = keyU || padU || hatU || stickU
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (isController(event)) {
+            game.padConnected = true
+            // The CONTROLLER screen is waiting for a button: remember it.
+            if (game.state == TeamGame.State.CONTROLS && game.padStep >= 0 && KeyEvent.isGamepadButton(keyCode) &&
+                keyCode != KeyEvent.KEYCODE_BUTTON_START && keyCode != KeyEvent.KEYCODE_BUTTON_SELECT
+            ) {
+                if (event.repeatCount == 0) {
+                    padKeys[game.padStep] = keyCode
+                    savePadKeys()
+                    game.padPressed(buttonName(keyCode))
+                }
+                return true
+            }
+            if (event.repeatCount > 0) return true
+            if (!setPad(keyCode, true)) return super.onKeyDown(keyCode, event)
+            // Menus treat any button like a tap (at no particular spot).
+            input.tapX = -1f
+            input.tapY = -1f
+            input.tap = true
+            return true
+        }
         if (keyCode == KeyEvent.KEYCODE_0) {
             input.numberKey = 10
             return true
@@ -164,29 +236,84 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         return true
     }
 
-    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean =
-        setKey(keyCode, false) || super.onKeyUp(keyCode, event)
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (isController(event)) return setPad(keyCode, false) || super.onKeyUp(keyCode, event)
+        return setKey(keyCode, false) || super.onKeyUp(keyCode, event)
+    }
 
-    /** Keyboard / game-controller support. */
+    /**
+     * A game controller (like a Switch Pro Controller): A jump, B throw, X switch, Y super (or whatever
+     * was set on the CONTROLLER screen), + pause, - craft, L TNT, R long jump, ZL Black Flower,
+     * ZR Poseidon, and pressing the left stick in to sprint.
+     */
+    private fun setPad(keyCode: Int, down: Boolean): Boolean {
+        when (keyCode) {
+            padKeys[0] -> input.jump = down
+            padKeys[1] -> input.action = down
+            padKeys[2] -> input.swap = down
+            padKeys[3] -> input.superMove = down
+            KeyEvent.KEYCODE_DPAD_LEFT -> { padL = down; refreshDirections() }
+            KeyEvent.KEYCODE_DPAD_RIGHT -> { padR = down; refreshDirections() }
+            KeyEvent.KEYCODE_DPAD_DOWN -> { padD = down; refreshDirections() }
+            KeyEvent.KEYCODE_DPAD_UP -> { padU = down; refreshDirections() }
+            KeyEvent.KEYCODE_BUTTON_START -> input.pause = down
+            KeyEvent.KEYCODE_BUTTON_SELECT -> input.craft = down
+            KeyEvent.KEYCODE_BUTTON_L1 -> input.tnt = down
+            KeyEvent.KEYCODE_BUTTON_R1 -> input.longJump = down
+            KeyEvent.KEYCODE_BUTTON_L2 -> input.blackFlower = down
+            KeyEvent.KEYCODE_BUTTON_R2 -> input.poseidon = down
+            KeyEvent.KEYCODE_BUTTON_THUMBL -> input.run = down
+            KeyEvent.KEYCODE_BUTTON_MODE -> input.musicToggle = down
+            else -> return false
+        }
+        return true
+    }
+
+    /** The analog stick and the D-pad "hat" on controllers that send it that way. */
+    override fun onGenericMotionEvent(event: MotionEvent): Boolean {
+        if ((event.source and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK &&
+            event.action == MotionEvent.ACTION_MOVE
+        ) {
+            game.padConnected = true
+            val dev = event.device
+            fun axis(a: Int): Float {
+                val v = event.getAxisValue(a)
+                val flat = dev?.getMotionRange(a, event.source)?.flat ?: 0f
+                return if (kotlin.math.abs(v) > flat) v else 0f
+            }
+            val x = axis(MotionEvent.AXIS_X)
+            val y = axis(MotionEvent.AXIS_Y)
+            val hx = event.getAxisValue(MotionEvent.AXIS_HAT_X)
+            val hy = event.getAxisValue(MotionEvent.AXIS_HAT_Y)
+            val dead = 0.45f
+            stickL = x < -dead; stickR = x > dead
+            stickU = y < -0.6f; stickD = y > 0.6f
+            hatL = hx < -0.5f; hatR = hx > 0.5f
+            hatU = hy < -0.5f; hatD = hy > 0.5f
+            refreshDirections()
+            return true
+        }
+        return super.onGenericMotionEvent(event)
+    }
+
+    /** Keyboard support. */
     private fun setKey(keyCode: Int, down: Boolean): Boolean {
         when (keyCode) {
-            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_A -> input.left = down
-            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_D -> input.right = down
-            KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_S -> input.down = down
-            KeyEvent.KEYCODE_Q, KeyEvent.KEYCODE_TAB, KeyEvent.KEYCODE_BUTTON_Y,
-            KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_BUTTON_R1 -> input.swap = down
-            KeyEvent.KEYCODE_C, KeyEvent.KEYCODE_BUTTON_SELECT -> input.craft = down
+            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_A -> { keyL = down; refreshDirections() }
+            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_D -> { keyR = down; refreshDirections() }
+            KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_S -> { keyD = down; refreshDirections() }
+            KeyEvent.KEYCODE_Q, KeyEvent.KEYCODE_TAB -> input.swap = down
+            KeyEvent.KEYCODE_C -> input.craft = down
             KeyEvent.KEYCODE_T -> input.tnt = down
             KeyEvent.KEYCODE_SHIFT_LEFT, KeyEvent.KEYCODE_SHIFT_RIGHT -> input.run = down
             KeyEvent.KEYCODE_L, KeyEvent.KEYCODE_Z -> input.longJump = down
             KeyEvent.KEYCODE_G -> input.poseidon = down
             KeyEvent.KEYCODE_B -> input.blackFlower = down
-            KeyEvent.KEYCODE_E, KeyEvent.KEYCODE_V, KeyEvent.KEYCODE_BUTTON_L2, KeyEvent.KEYCODE_BUTTON_R2 -> input.superMove = down
+            KeyEvent.KEYCODE_E, KeyEvent.KEYCODE_V -> input.superMove = down
             KeyEvent.KEYCODE_SPACE, KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_W,
-            KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> input.jump = down
-            KeyEvent.KEYCODE_X, KeyEvent.KEYCODE_J, KeyEvent.KEYCODE_BUTTON_B,
-            KeyEvent.KEYCODE_BUTTON_X, KeyEvent.KEYCODE_CTRL_LEFT -> input.action = down
-            KeyEvent.KEYCODE_P, KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_ESCAPE -> input.pause = down
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> { input.jump = down; keyU = down; refreshDirections() }
+            KeyEvent.KEYCODE_X, KeyEvent.KEYCODE_J, KeyEvent.KEYCODE_CTRL_LEFT -> input.action = down
+            KeyEvent.KEYCODE_P, KeyEvent.KEYCODE_ESCAPE -> input.pause = down
             KeyEvent.KEYCODE_M -> input.musicToggle = down
             else -> return false
         }

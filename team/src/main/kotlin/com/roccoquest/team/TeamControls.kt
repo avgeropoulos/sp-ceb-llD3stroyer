@@ -13,6 +13,8 @@ class TeamInput {
     @Volatile var action = false
     /** Swipe down: Blocky digs straight down. */
     @Volatile var down = false
+    /** Up on a controller or keyboard: only used to move around menus. */
+    @Volatile var up = false
     @Volatile var swap = false
     /** The Pokemon's SUPER move. */
     @Volatile var superMove = false

@@ -437,8 +437,9 @@ class TeamGameTest {
     }
 
     @Test fun finalBattleIsABossRushThatEndsTheGame() {
-        assertTrue(Levels.all.size >= 42, "World 2 doubles the game: ${Levels.all.size}")
-        startPlaying(Levels.all.lastIndex)
+        assertTrue(Levels.all.size >= 84, "four worlds: ${Levels.all.size}")
+        val big = Levels.all.indexOfFirst { it.name == "THE FINAL BATTLE" }
+        startPlaying(big)
         val q = game.foes.filterIsInstance<KingKrag>().single()
         assertTrue(q.wonderStyle, "round 1 is Wonder King Krag")
         val r = game.rocco
@@ -458,11 +459,7 @@ class TeamGameTest {
         run(3.2f)
         assertTrue(game.foes.none { it is KingKrag }, "Krag stays beaten")
         fightDragon()
-        assertEquals(TeamGame.State.STICKER, game.state, "one last sticker")
-        game.pickSticker(0)
-        run(3f)
-        assertEquals(TeamGame.State.VICTORY, game.state)
-        assertEquals(Music.FROG, ears.music, "Ring-Ding Frog sings at the end")
+        assertEquals(TeamGame.State.CLEAR, game.state, "World 2's big battle opens World 3")
     }
 
     private fun fightDragon() {
@@ -1809,5 +1806,179 @@ class TeamGameTest {
         run(0.5f)
         fingerTap(game.viewW - 46f, 230f)
         assertEquals(TeamGame.State.INTRO, game.state)
+    }
+
+
+    /** Presses a controller button for a few frames (no finger on the screen). */
+    private fun pad(set: (Boolean) -> Unit) {
+        input.touching = false
+        set(true); input.tapX = -1f; input.tapY = -1f; input.tap = true
+        repeat(2) { game.update(dt) }
+        set(false)
+        repeat(2) { game.update(dt) }
+    }
+
+    @Test fun playTheWholeGameWithAController() {
+        run(0.6f)
+        pad { input.jump = it }                       // A on the title
+        assertEquals(TeamGame.State.SLOTS, game.state)
+        run(0.4f)
+        pad { input.right = it }; pad { input.right = it } // over to FILE 3
+        pad { input.jump = it }
+        assertEquals(TeamGame.State.PICK, game.state)
+        run(0.5f)
+        pad { input.right = it }                      // Blaze
+        pad { input.jump = it }
+        assertEquals(Mon.BLAZE, game.mon)
+        assertEquals(2, game.slot)
+        run(3.2f)
+        assertEquals(TeamGame.State.PLAY, game.state)
+        // Y is SUPER, X switches, B throws, A jumps: the phone maps the buttons, the game just sees actions.
+        val who = game.leaderWho
+        pad { input.swap = it }
+        assertTrue(game.leaderWho != who, "X switched character")
+        // Down ducks (Rocco squats).
+        pad { input.swap = it }; pad { input.swap = it }
+        input.down = true; run(0.3f)
+        assertTrue(game.rocco.crouching, "duck")
+        input.down = false; run(0.2f)
+        // Pause menu: down twice to SAVE & EXIT TO MAP, then A.
+        pad { input.pause = it }
+        assertTrue(game.paused)
+        pad { input.down = it }; pad { input.down = it }
+        pad { input.jump = it }
+        assertEquals(TeamGame.State.MAP, game.state)
+        // On the map, A plays the picked level.
+        run(0.5f)
+        pad { input.jump = it }
+        assertEquals(TeamGame.State.INTRO, game.state)
+    }
+
+    @Test fun controllerShopsInTheHouseAndCrafts() {
+        startPlaying()
+        game.coins = 500
+        Ore.entries.forEach { game.inventory[it.ordinal] = 30 }
+        input.touching = false
+        // Crafting: open with -, move down, A crafts.
+        pad { input.craft = it }
+        assertEquals(TeamGame.State.CRAFT, game.state)
+        run(0.3f)
+        pad { input.jump = it }
+        assertEquals(Power.BOOM, game.power, "A crafted the first row")
+        pad { input.action = it }                     // B closes
+        assertEquals(TeamGame.State.PLAY, game.state)
+        // House shop: L/R change tab, A buys.
+        game.goToMap(-1); run(0.5f)
+        pad { input.jump = it }
+        assertEquals(TeamGame.State.HOME, game.state)
+        var t = 0
+        while (game.homeX > Homes.SHOP_X + 30f && t++ < 300) { input.left = true; game.update(dt) }
+        input.left = false
+        pad { input.jump = it }
+        assertTrue(game.homeShop)
+        pad { input.longJump = it }                   // R: next tab (BEDS)
+        assertEquals(1, game.shopTab)
+        pad { input.right = it }                      // the blue bed
+        pad { input.jump = it }
+        assertEquals(BedStyle.BLUE, game.bedStyle)
+        pad { input.action = it }
+        assertTrue(!game.homeShop)
+    }
+
+    @Test fun controllerSetupScreen() {
+        run(0.6f)
+        pad { input.craft = it }                      // - on the title opens it
+        assertEquals(TeamGame.State.CONTROLS, game.state)
+        run(0.4f)
+        tap(game.viewW / 2 - 80f, 180f)               // SET MY BUTTONS
+        assertEquals(0, game.padStep)
+        game.padPressed("B"); game.padPressed("A"); game.padPressed("Y"); game.padPressed("X")
+        assertEquals(-1, game.padStep)
+        assertEquals(listOf("B", "A", "Y", "X"), game.padNames.toList())
+    }
+
+    @Test fun fourWorldsAndNewEnemies() {
+        assertEquals(84, Levels.all.size)
+        assertEquals(4, worldCount())
+        assertTrue(Levels.all.last().rows.any { 'Z' in it } && Levels.all.last().rows.any { 'Y' in it })
+        for (c in "zqlj") assertTrue(Levels.all.count { d -> d.rows.any { c in it } } >= 3, "new monster $c is in levels")
+        // Beating a World 3 level is saved.
+        startPlaying()
+        game.unlockForTest(50)
+        game.startLevel(45)
+        run(3.2f)
+        game.foes.clear()
+        val goal = game.thingsForTest().filterIsInstance<Goal>().single()
+        game.leader.x = goal.x - 10f; game.leader.y = goal.bottom - game.leader.h - 2
+        var t = 0
+        while (game.state != TeamGame.State.STICKER && t++ < 600) { game.hurtProof(); game.update(dt) }
+        game.pickSticker(0); run(3f)
+        assertTrue(game.isCleared(45))
+        assertEquals("3-4", game.levelLabel(45))
+        val g2 = TeamGame(TeamInput(), ears, storage)
+        g2.continueGame(0)
+        assertTrue(g2.isCleared(45), "World 3 progress is saved")
+    }
+
+    @Test fun newEnemiesBehave() {
+        startPlaying()
+        game.foes.clear()
+        val r = game.rocco
+        r.x = 122 * TILE.toFloat(); r.y = 100f
+        run(1f)
+        // The crusher slams down when you walk under it.
+        val c = Crusher(r.cx - 8f, r.y - 30f).also { it.active = true }
+        game.foes += c
+        val y0 = c.y
+        run(1.2f) { game.hurtProof() }
+        assertTrue(c.y > y0 + 10f, "the crusher came down")
+        game.foes.clear()
+        // The ghost stops when you look at it.
+        val gh = Peekaboo(r.x + 80f, r.bottom - 10f).also { it.active = true }
+        game.foes += gh
+        r.facing = 1
+        val gx = gh.x
+        run(0.8f) { game.hurtProof(); r.facing = 1 }
+        assertEquals(gx, gh.x, 0.5f, "it hides while you look at it")
+        r.facing = -1
+        run(0.8f) { game.hurtProof(); r.facing = -1 }
+        assertTrue(gh.x < gx - 5f, "it sneaks up when you look away")
+        game.foes.clear()
+        // The spikestack loses a ball each hit.
+        val st = Spikestack(r.x + 100f, r.bottom).also { it.active = true }
+        game.foes += st
+        st.hit(game, 50)
+        assertEquals(2, st.hp, "one ball per hit, however strong")
+        game.foes.clear()
+        // The puffcloud drops spiky balls.
+        val pc = Puffcloud(r.x + 20f, 60f).also { it.active = true }
+        game.foes += pc
+        var balls = 0
+        run(5f) { game.hurtProof(); balls = maxOf(balls, game.foes.count { it is SpikeBall }) }
+        assertTrue(balls > 0, "spiky balls from the sky")
+    }
+
+    @Test fun moreWorldsScreenshots() {
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 720, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f))
+            ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        startPlaying()
+        game.unlockForTest(Levels.all.size)
+        game.padConnected = true
+        game.goToMap(50); run(0.5f)
+        shot("map-world3")
+        game.goToMap(70); run(0.5f)
+        shot("map-world4")
+        for ((name, at) in listOf("CRUSHER CANYON" to 0.25f, "GHOST GARDEN" to 0.3f, "BONE DESERT" to 0.35f)) {
+            startPlaying(Levels.all.indexOfFirst { it.name == name })
+            game.leader.x = Levels.all[game.levelIndex].w * TILE * at; game.leader.y = 60f
+            run(1.5f) { game.hurtProof() }
+            shot("w34-" + name.lowercase().replace(" ", "-"))
+        }
+        game.openControllerSetup(); run(0.3f)
+        shot("controller-setup")
     }
 }

@@ -267,6 +267,48 @@ you fall off instead of losing a heart, and Dash runs away for a moment.
 
 ![Dash the dino](docs/teamup-dash.png)
 
+### Worlds 3 and 4
+
+There are now **4 worlds, 84 levels**. **World 3, the Mystery Islands** (3-1 to 3-21) and **World 4, the Doom
+Lands** (4-1 to 4-21) have bosses halfway and at the end: Wonder Krag Jr. in the Sky Palace, the Warden,
+**TWIN TERROR** (Wonder King Krag then Dry Bones King Krag), King Krag's Keep, the Dragon's Nest, and the
+very last level, **THE ULTIMATE BATTLE**: Dry Bones King Krag, Wonder King Krag and the Ender Dragon in a row.
+Every world is tougher than the one before. On the map, the **WORLD** button (or L/R on a controller)
+flips between the worlds you've opened.
+
+New bad guys (in Worlds 2 to 4):
+* **Crushers**: angry stone blocks that hang in the air and **slam down** when you walk under them.
+* **Peekaboo ghosts**: they sneak up when you look away and **hide their face** when you turn to look at them.
+  You can't stomp a ghost.
+* **Puffclouds**: ride a cloud high up, follow you, and **drop spiky balls**. Jump up and stomp them!
+* **Spikestacks**: a cactus stack of three spiky balls. Too spiky to stomp: every hit knocks off one ball.
+
+![World 3 on the map](docs/teamup-map-world3.png)
+![A crusher](docs/teamup-crusher.png)
+
+### Playing with a controller
+
+Pair a controller (like a **Switch Pro Controller**) with the phone over Bluetooth and just play:
+
+| Button | Does |
+|---|---|
+| **A** | Jump (and OK in menus) |
+| **B** | Throw / mine / attack (and back in menus) |
+| **X** | Switch character |
+| **Y** | SUPER move |
+| **D-pad or left stick** | Move. **Down** ducks (and butt slams in the air) |
+| Double-tap left or right | Sprint (or press the left stick in) |
+| **+** / **-** | Pause / crafting table |
+| **L** / **R** | TNT / long jump (and change tabs or worlds in menus) |
+| **ZL** / **ZR** | Black Flower / Poseidon |
+
+Everything works with the controller, including the map, the save files, picking a Pokemon, stickers,
+crafting, villager trades, the pause menu, and walking around the house and shop. A yellow frame shows
+what you're pointing at. If your controller's buttons come out swapped, press **-** on the title screen (or
+tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you want for each one.
+
+![Controller setup](docs/teamup-controller.png)
+
 ### Other changes
 
 * **Music changes every level** (seven new songs: meadow, jungle, snow, desert, night, beach and a scary

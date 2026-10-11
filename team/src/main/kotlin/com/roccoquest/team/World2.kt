@@ -3,6 +3,15 @@ package com.roccoquest.team
 /** The first level of World 2 (as an index into [Levels.all]). */
 const val WORLD2_START = 21
 
+/** Every world has 21 levels: 1-1 to 1-21, 2-1 to 2-21, and so on. */
+const val WORLD_SIZE = 21
+
+/** How many worlds there are. */
+fun worldCount() = (Levels.all.size + WORLD_SIZE - 1) / WORLD_SIZE
+
+/** Where each world's beaten levels are saved (the first two names come from older saves). */
+fun clearedKey(w: Int) = when (w) { 0 -> "clearedLo"; 1 -> "clearedHi"; else -> "cleared$w" }
+
 /**
  * World 2: 21 more levels after the Ender Dragon, using everything from World 1 but harder,
  * with more bad guys mixed together. It ends with THE FINAL BATTLE: Wonder King Krag and then

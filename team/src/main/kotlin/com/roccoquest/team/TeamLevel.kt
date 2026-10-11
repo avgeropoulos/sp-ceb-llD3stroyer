@@ -113,6 +113,7 @@ enum class Place(val music: Music) {
  *  'S' (any row) marks the shore: everything left of that column is underwater
  *  'R' ruby   'E' sapphire   'x' obsidian   'P' bonus portal   't' treasure chest (bonus rooms)
  *  'A' skelly archer   'H' hopper   'U' gloop slime   'T' snapper plant   'y' Dash the dino
+ *  'z' crusher   'q' peekaboo ghost   'l' puffcloud   'j' spikestack
  */
 class LevelDef(val name: String, val place: Place, val rows: List<String>, val tip: String) {
     val w get() = rows[0].length
@@ -157,7 +158,7 @@ object Levels {
             mushroomJungle(), lavaLake(), wonderCastle(),
             villagerValley(), coralReef(), minecartMine(), enderPlains(), deepDark(),
             treasureLagoon(), spikeTemple(), fireFortress(), boneCastle(), theEnd(),
-        ).plus(World2.all).mapIndexed { i, d -> remix(d, i) }
+        ).plus(World2.all).plus(MoreWorlds.all).mapIndexed { i, d -> remix(d, i) }
     }
 
     /**
@@ -179,8 +180,16 @@ object Levels {
                 // Fewer prize blocks: some become plain bricks.
                 'm' -> if (nth('m', 2)) g[y][x] = '?'
                 '?' -> if (nth('?', 3)) g[y][x] = 'B'
-                'b' -> if (index >= 5 && nth('b', 3)) g[y][x] = 'U'
-                'w' -> if (index >= 7 && below in GROUND_CHARS && nth('w', 3)) g[y][x] = 'T'
+                'b' -> when {
+                    index >= 5 && nth('b', 3) -> g[y][x] = 'U'
+                    index in 21..41 && nth('B', 4) -> g[y][x] = 'j'
+                }
+                'w' -> when {
+                    index >= 7 && below in GROUND_CHARS && nth('w', 3) -> g[y][x] = 'T'
+                    // World 2 gets some of the newer monsters too.
+                    index in 21..41 && nth('W', 3) && y >= 4 && g[3][x] == '.' -> { g[y][x] = '.'; g[3][x] = 'l' }
+                }
+                'v' -> if (index >= 14 && nth('v', 3)) g[y][x] = 'q'
                 's' -> if (index >= 4 && y >= 2 && nth('s', 8)) g[y][x] = newOres[oreTurn++ % newOres.length]
             }
         }

@@ -481,7 +481,195 @@ internal fun spawnMonster(c: Char, px: Float, bottom: Float): Foe? = when (c) {
     'H' -> Hopper(px, bottom)
     'U' -> Gloop(px, bottom)
     'T' -> Snapper(px, bottom)
+    'z' -> Crusher(px, bottom)
+    'q' -> Peekaboo(px, bottom)
+    'l' -> Puffcloud(px, bottom)
+    'j' -> Spikestack(px, bottom)
     else -> null
+}
+
+// ============================================================================ Even more monsters
+
+/**
+ * A grumpy stone block that hangs in the air. When you walk underneath it shakes... then
+ * CRASHES down! It can't be beaten, but you can stand on top of it. Then it slowly rises back up.
+ */
+class Crusher(x: Float, bottom: Float) : Foe(x - 4, bottom - 24, 24f, 24f, 1) {
+    private val homeY = bottom - 24
+    private var mode = 0 // 0 waiting, 1 shaking, 2 falling, 3 resting, 4 rising
+    private var t = 0f
+    override val showBar = false
+    override val stompable = true
+
+    override fun update(g: TeamGame, dt: Float) {
+        t += dt
+        val l = g.leader
+        when (mode) {
+            0 -> if (abs(l.cx - cx) < 26f && l.y > bottom) { mode = 1; t = 0f }
+            1 -> if (t > 0.35f) { mode = 2; vy = 0f }
+            2 -> {
+                vy = min(vy + 1400f * dt, 520f)
+                if (g.level.moveY(this, vy * dt) == 1 || y > g.level.h * TILE) {
+                    mode = 3; t = 0f
+                    g.shake = maxOf(g.shake, 0.3f)
+                    g.sfx(Sound.BOSS_HIT)
+                    g.puff(x + 4, bottom - 4); g.puff(x + w - 4, bottom - 4)
+                }
+            }
+            3 -> if (t > 1.1f) mode = 4
+            4 -> { y -= 40f * dt; if (y <= homeY) { y = homeY; mode = 0 } }
+        }
+    }
+
+    // It's solid stone: hitting it does nothing, and standing on it is safe.
+    override fun hit(g: TeamGame, dmg: Int): Boolean { g.sfx(Sound.BUMP); return false }
+    override fun stomp(g: TeamGame, stomper: Hero) { g.sfx(Sound.BUMP) }
+    override fun touch(g: TeamGame) { if (mode == 2 || g.leader.bottom > y + 6) g.hurt(this) }
+
+    override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
+        val shake = if (mode == 1) sin(t * 80) * 1.5f else 0f
+        val px = x + ox + shake
+        gfx.rect(px, y, w, h, 0xFF5A6A7A.toInt())
+        gfx.rect(px + 2, y + 2, w - 4, h - 4, 0xFF8A9AAA.toInt())
+        // Spikes all around
+        for (i in 0 until 4) {
+            val sx = px + 2 + i * 6f
+            gfx.poly(floatArrayOf(sx, sx + 3, sx + 6), floatArrayOf(y, y - 4, y), 0xFF5A6A7A.toInt())
+            gfx.poly(floatArrayOf(sx, sx + 3, sx + 6), floatArrayOf(y + h, y + h + 3, y + h), 0xFF5A6A7A.toInt())
+        }
+        // Angry face
+        val angry = mode == 1 || mode == 2
+        gfx.rect(px + 5, y + 7, 5f, 4f, 0xFFFFFFFF.toInt()); gfx.rect(px + 14, y + 7, 5f, 4f, 0xFFFFFFFF.toInt())
+        gfx.rect(px + 7, y + 8, 2f, 2f, 0xFF101010.toInt()); gfx.rect(px + 15, y + 8, 2f, 2f, 0xFF101010.toInt())
+        gfx.poly(floatArrayOf(px + 4, px + 11, px + 11), floatArrayOf(y + 4, y + 7, y + 5), 0xFF2A2A3A.toInt())
+        gfx.poly(floatArrayOf(px + 20, px + 13, px + 13), floatArrayOf(y + 4, y + 7, y + 5), 0xFF2A2A3A.toInt())
+        gfx.rect(px + 6, y + 16, 12f, if (angry) 4f else 2f, 0xFF2A2A3A.toInt())
+        for (i in 0 until 3) gfx.rect(px + 7 + i * 4f, y + 16, 2f, if (angry) 4f else 2f, 0xFFFFFFFF.toInt())
+    }
+}
+
+/**
+ * A shy little ghost. It floats after you when you look away... and hides its face and
+ * stops when you turn to look at it! You can't stomp a ghost: use a power or your sword.
+ */
+class Peekaboo(x: Float, bottom: Float) : Foe(x, bottom - 16, 16f, 16f, 6) {
+    override val stompable = false
+    private var hiding = false
+    private var t = Random.nextFloat() * 5f
+
+    override fun update(g: TeamGame, dt: Float) {
+        if (updateDying(g, dt)) return
+        t += dt
+        val l = g.leader
+        val dx = l.cx - cx
+        val dy = l.cy - cy
+        hiding = (dx > 0 && l.facing < 0) || (dx < 0 && l.facing > 0)
+        if (!hiding && abs(dx) < 260f) {
+            val d = kotlin.math.hypot(dx, dy).coerceAtLeast(1f)
+            x += dx / d * 42f * dt
+            y += dy / d * 42f * dt + sin(t * 3) * 0.3f
+        } else y += sin(t * 2) * 0.2f
+    }
+
+    override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
+        val px = x + ox
+        val alpha = if (hiding) 0xAA else 0xEE
+        val body = argb(alpha, 0xF4F4FF)
+        gfx.oval(px, y, w, w - 2, body)
+        for (i in 0 until 3) gfx.poly(floatArrayOf(px + i * 5f, px + i * 5f + 3, px + i * 5f + 6), floatArrayOf(y + 10, y + 17, y + 10), body)
+        if (hiding) {
+            // Hands over its eyes, blushing.
+            gfx.oval(px + 2, y + 4, 5f, 4f, argb(alpha, 0xFFFFFF)); gfx.oval(px + 9, y + 4, 5f, 4f, argb(alpha, 0xFFFFFF))
+            gfx.oval(px + 2, y + 8, 3f, 2f, 0x88FF7AA8.toInt()); gfx.oval(px + 11, y + 8, 3f, 2f, 0x88FF7AA8.toInt())
+        } else {
+            val look = if (g.leader.cx > cx) 1f else -1f
+            gfx.oval(px + 4 + look, y + 4, 3f, 4f, 0xFF101010.toInt()); gfx.oval(px + 9 + look, y + 4, 3f, 4f, 0xFF101010.toInt())
+            gfx.oval(px + 5, y + 9, 6f, 4f, 0xFF8A1010.toInt())
+            gfx.poly(floatArrayOf(px + 6, px + 7, px + 8), floatArrayOf(y + 9, y + 11, y + 9), 0xFFFFFFFF.toInt())
+        }
+        drawFlash(gfx, ox)
+    }
+}
+
+/** Rides a little cloud high up, follows you, and drops spiky balls. Jump up and stomp it! */
+class Puffcloud(x: Float, bottom: Float) : Foe(x, bottom - 16, 18f, 16f, 5) {
+    private var drop = 2f + Random.nextFloat()
+    private var t = 0f
+
+    override fun update(g: TeamGame, dt: Float) {
+        if (updateDying(g, dt)) return
+        t += dt
+        val l = g.leader
+        val dx = l.cx - cx
+        if (abs(dx) < 300f) {
+            vx = approach(vx, (if (dx > 0) 1 else -1) * minOf(70f, abs(dx) * 1.5f), 120f * dt)
+            x += vx * dt
+            drop -= dt
+            if (drop <= 0f && abs(dx) < 90f) {
+                drop = 2.8f + Random.nextFloat()
+                g.spawn(SpikeBall(cx - 6, bottom))
+                g.sfx(Sound.KICK)
+            }
+        }
+        y += sin(t * 2) * 0.25f
+    }
+
+    override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
+        val px = x + ox
+        // The rider: a little goggled turtle-ish guy.
+        gfx.oval(px + 4, y - 4, 10f, 10f, 0xFFF4D84A.toInt())
+        gfx.rect(px + 5, y - 1, 8f, 3f, 0xFF3A3A3A.toInt())
+        gfx.rect(px + 6, y - 0.5f, 2.5f, 2f, 0xFF8AE8FF.toInt()); gfx.rect(px + 10, y - 0.5f, 2.5f, 2f, 0xFF8AE8FF.toInt())
+        // Cloud
+        gfx.oval(px - 3, y + 5, 12f, 10f, 0xFFFFFFFF.toInt())
+        gfx.oval(px + 5, y + 3, 12f, 12f, 0xFFFFFFFF.toInt())
+        gfx.oval(px + 11, y + 6, 10f, 9f, 0xFFFFFFFF.toInt())
+        gfx.oval(px + 4, y + 7, 3f, 4f, 0xFF101010.toInt()); gfx.oval(px + 11, y + 7, 3f, 4f, 0xFF101010.toInt())
+        drawFlash(gfx, ox)
+    }
+}
+
+/**
+ * A cactus stack of three spiky balls. Too spiky to stomp! Every hit knocks off one ball,
+ * so it gets shorter and shorter.
+ */
+class Spikestack(x: Float, bottom: Float) : Foe(x + 1, bottom - 36, 14f, 36f, 3) {
+    override val stompable = false
+    private var t = Random.nextFloat() * 5f
+    init { vx = -18f }
+
+    override fun hit(g: TeamGame, dmg: Int): Boolean {
+        if (dying) return false
+        // One ball falls off per hit, however strong the hit.
+        val b = bottom
+        val r = super.hit(g, 1)
+        if (!dying) { h = 12f * hp; y = b - h; g.puff(cx, y) }
+        return r
+    }
+
+    override fun update(g: TeamGame, dt: Float) {
+        if (updateDying(g, dt)) return
+        t += dt
+        if (onGround) vx = if (g.leader.cx < cx) -18f else 18f
+        walk(g, dt)
+    }
+
+    override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
+        val n = maxOf(1, hp)
+        for (i in 0 until n) {
+            val wob = sin(t * 4 + i) * 1.5f
+            val by = bottom - 12f * (i + 1)
+            val bx = x + ox + wob
+            gfx.oval(bx, by, 14f, 12f, 0xFF4AB84A.toInt())
+            gfx.oval(bx + 3, by + 2, 4f, 3f, 0x55FFFFFF)
+            for (k in 0 until 4) gfx.rect(bx + 1 + k * 4f, by + 1 + (k % 2) * 8f, 1.5f, 1.5f, 0xFFFFF2C8.toInt())
+            if (i == n - 1) {
+                gfx.rect(bx + 3, by + 4, 2f, 3f, 0xFF101010.toInt()); gfx.rect(bx + 9, by + 4, 2f, 3f, 0xFF101010.toInt())
+                gfx.oval(bx + 5, by - 4, 5f, 5f, 0xFFFF6AA8.toInt())
+            }
+        }
+        drawFlash(gfx, ox)
+    }
 }
 
 // ============================================================================ Dash the dino

@@ -15,6 +15,10 @@ Flow: title → save file → world map (`State.MAP`, levels "1-1"...) → level
 The house lives on the map (`State.HOME`: walk around, SHOP / SLEEP / plushie book / claw machine).
 Dash the dino (`Dino` in `Monsters.kt`, level char `y`) can be ridden by Rocco (`TeamGame.dino`).
 `GameView` catches any error and calls `game.recover()` (back to the title) instead of crashing.
+Controllers: `GameView` maps gamepad buttons (default A jump, B throw, X switch, Y super; changeable on
+`State.CONTROLS`, saved as `pad0..pad3` prefs), D-pad/hat/stick to `input.left/right/up/down`. Menus use
+`TeamGame.nav` (edges that only count when `!input.touching`). Gamepad presses also set `input.tap` with
+`tapX = -1`, so menu code must ignore taps with `tapX < 0` when it means a real touch.
 Each level has its own tune (`TeamGame.Tunes`); boss levels alternate scary songs.
 
 Gear wears out (swords, pickaxes, armor, shields) and crafting never lets a weaker item replace a
@@ -29,8 +33,9 @@ Only one of Rocco or Blocky is out at a time, with the Pokemon (`TeamGame.team` 
 |---|---|
 | `TeamGame.kt` | The game: states, save files, menus, crafting tabs, villager trades, stickers, HUD, rendering |
 | `TeamLevel.kt` | Tiles, ores, places, the 21 World 1 levels (character grids built with `Builder`), the `remix` pass that sprinkles new monsters/materials/portals into every level, and the bonus room |
-| `World2.kt` | The 21 World 2 levels (22-42). The last one is a boss rush: Wonder King Krag, then the Ender Dragon |
-| `Monsters.kt` | Newer monsters (Skelly Archer + arrows, Hopper, Gloop, Snapper + seeds), bonus `Portal`, `Chest`, sunset sky |
+| `World2.kt` | The 21 World 2 levels (22-42) and `WORLD_SIZE`/`worldCount()`/`clearedKey()` |
+| `MoreWorlds.kt` | Worlds 3 and 4 (levels 43-84), built by a seeded level generator plus boss-arena templates. Last level: THE ULTIMATE BATTLE (Y, Q, Z boss rush) |
+| `Monsters.kt` | Newer monsters (Skelly Archer + arrows, Hopper, Gloop, Snapper + seeds, Crusher `z`, Peekaboo `q`, Puffcloud `l`, Spikestack `j`), bonus `Portal`, `Chest`, sunset sky, Dash |
 | `Homes.kt` | `HouseType` (5), `Furniture` (12), `BedStyle`, house outside/inside drawing (the room is 720 wide and scrolls), `PlushieItem` |
 | `Plushies.kt` | The 100 `Plushie`s (characters use sticker art, animals are drawn from a `Species` + color) |
 | `Actors.kt` | `Power` (flowers), `Mon` (Pokemon), `Sword` (with durability), `Armor`, `Shield`, and `Hero` (Rocco, Blocky, partner) |
