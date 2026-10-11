@@ -11,6 +11,9 @@ Characters from real games get made-up names that look like them: Rocco (Mario),
 King Krag / Krag Jr. (Bowser / Bowser Jr.), Ring-Ding Frog (Crazy Frog), and the Pokemon partners
 Sparky, Blaze, Hydro, Bloom, Ember, Splashy, Mystic, Puncho and Spooky.
 
+Gear wears out (swords, pickaxes, armor, shields) and crafting never lets a weaker item replace a
+better one. Earthquakes happen on odd-numbered level indexes (`isQuakeLevel`).
+
 Only one of Rocco or Blocky is out at a time, with the Pokemon (`TeamGame.team` is the live pair,
 `allHeroes` is everybody; `switchTo` swaps them).
 
@@ -22,7 +25,8 @@ Only one of Rocco or Blocky is out at a time, with the Pokemon (`TeamGame.team` 
 | `TeamLevel.kt` | Tiles, ores, places, the 21 World 1 levels (character grids built with `Builder`), the `remix` pass that sprinkles new monsters/materials/portals into every level, and the bonus room |
 | `World2.kt` | The 21 World 2 levels (22-42). The last one is a boss rush: Wonder King Krag, then the Ender Dragon |
 | `Monsters.kt` | Newer monsters (Skelly Archer + arrows, Hopper, Gloop, Snapper + seeds), bonus `Portal`, `Chest`, sunset sky |
-| `Actors.kt` | `Power` (flowers), `Mon` (Pokemon), `Sword`, `Armor`, and `Hero` (Rocco, Blocky, partner) |
+| `Homes.kt` | `HouseType` (5 houses), `Furniture` (12), `Plushie` (20), house/interior drawing, `PlushieItem`. The inside of the house is `State.HOME` in `TeamGame.kt` |
+| `Actors.kt` | `Power` (flowers), `Mon` (Pokemon), `Sword` (with durability), `Armor`, `Shield`, and `Hero` (Rocco, Blocky, partner) |
 | `Foes.kt` | Enemies with health bars, Krag Jr. and King Krag (normal, Wonder, Dry Bones) |
 | `Extras.kt` | Villagers, Dennis the dog, minecarts, traps, TNT, bubbles, fish, Endermen, Warden, Ender Dragon, Bomb-bombs |
 | `Items.kt` | Shots, pickups (stars, leaf, wing cap, mini mushroom...), house/bed, particles, SUPER effects |

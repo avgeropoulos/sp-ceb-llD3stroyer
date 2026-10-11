@@ -106,7 +106,7 @@ class TeamGameTest {
         val (dx, dy) = (0 until lv.w).flatMap { x -> (0 until ROWS).map { x to it } }.first { (x, y) -> lv[x, y] == Tile.DIAMOND }
         repeat(10) { game.mine(dx, dy) }
         assertEquals(Tile.DIAMOND, lv[dx, dy], "a wooden pickaxe can't break diamond")
-        game.inventory[Ore.IRON.ordinal] = 3
+        game.inventory[Ore.IRON.ordinal] = 5
         game.craft(0, tab = 1)
         assertEquals(2, game.pickTier)
         repeat(4) { game.mine(dx, dy) }
@@ -119,7 +119,7 @@ class TeamGameTest {
         fun row(p: Power) = game.recipes().indexOfFirst { it.icon == p }
         game.craft(row(Power.FIRE))
         assertEquals(Power.NONE, game.power, "no gold, no flower")
-        game.inventory[Ore.GOLD.ordinal] = 9
+        game.inventory[Ore.GOLD.ordinal] = 15
         game.craft(row(Power.FIRE))
         assertEquals(Power.FIRE, game.power)
         assertEquals(1, game.flowerLevel[Power.FIRE.ordinal])
@@ -128,12 +128,12 @@ class TeamGameTest {
         assertEquals(3, game.flowerLevel[Power.FIRE.ordinal])
         assertEquals(0, game.inventory[Ore.GOLD.ordinal])
         // Flowers go all the way to Lv5.
-        game.inventory[Ore.GOLD.ordinal] = 30
+        game.inventory[Ore.GOLD.ordinal] = 50
         repeat(5) { game.craft(row(Power.FIRE)) }
         assertEquals(MAX_FLOWER_LV, game.flowerLevel[Power.FIRE.ordinal])
-        assertEquals(24, game.inventory[Ore.GOLD.ordinal], "upgrades stop costing once maxed")
+        assertEquals(40, game.inventory[Ore.GOLD.ordinal], "upgrades stop costing once maxed")
         // Grass Flower gives green armor that soaks up hits before hearts.
-        game.inventory[Ore.EMERALD.ordinal] = 3
+        game.inventory[Ore.EMERALD.ordinal] = 5
         game.craft(row(Power.GRASS))
         assertEquals(Power.GRASS, game.power)
         assertEquals(3, game.armor)
@@ -152,7 +152,7 @@ class TeamGameTest {
         TeamControls.layout(game.viewW)
         input.craft = true; game.update(dt); input.craft = false; game.update(dt)
         assertEquals(TeamGame.State.CRAFT, game.state)
-        game.inventory[Ore.IRON.ordinal] = 3
+        game.inventory[Ore.IRON.ordinal] = 5
         // Tap the first row (the Boomerang Flower).
         run(0.3f)
         tap(game.viewW / 2, 72f + 13f)
@@ -163,7 +163,7 @@ class TeamGameTest {
 
     @Test fun roccoThrowsTheCraftedPower() {
         startPlaying()
-        game.inventory[Ore.DIAMOND.ordinal] = 3
+        game.inventory[Ore.DIAMOND.ordinal] = 5
         game.craft(game.recipes().indexOfFirst { it.icon == Power.ICE })
         val g = game.foes.filterIsInstance<Grumbler>().minByOrNull { it.x }!!
         val r = game.rocco
@@ -525,8 +525,8 @@ class TeamGameTest {
 
     @Test fun throwTntBlowsUpAGrid() {
         startPlaying()
-        game.inventory[Ore.STONE.ordinal] = 6
-        game.inventory[Ore.IRON.ordinal] = 2
+        game.inventory[Ore.STONE.ordinal] = 8
+        game.inventory[Ore.IRON.ordinal] = 3
         game.craft(game.recipes(1).indexOfFirst { it.title == "TNT x2" }, tab = 1)
         assertEquals(2, game.tnt)
         // Stand next to the iron hill and throw.
@@ -699,7 +699,7 @@ class TeamGameTest {
 
     @Test fun blueShellHomesAndSpins() {
         startPlaying()
-        game.inventory[Ore.DIAMOND.ordinal] = 3
+        game.inventory[Ore.DIAMOND.ordinal] = 5
         game.craft(game.recipes(0).indexOfFirst { it.icon == Power.SHELL }, tab = 0)
         assertEquals(Power.SHELL, game.power)
         // A homing shell finds a bad guy even when it's up in the air.
@@ -739,8 +739,8 @@ class TeamGameTest {
             return y0 - top
         }
         val normal = jumpHeight()
-        game.inventory[Ore.EMERALD.ordinal] = 1
-        game.inventory[Ore.STONE.ordinal] = 3
+        game.inventory[Ore.EMERALD.ordinal] = 2
+        game.inventory[Ore.STONE.ordinal] = 4
         game.craft(game.recipes(1).indexOfFirst { it.title == "MINI MUSHROOM" }, tab = 1)
         assertTrue(r.mini && r.h < 10f, "tiny Rocco")
         val tiny = jumpHeight()
@@ -785,17 +785,18 @@ class TeamGameTest {
         assertEquals(7, game.recipes(swordsTab).count { it.kind == TeamGame.Kind.SWORD }, "seven kinds of swords, with ruby and obsidian")
         game.craft(row(Sword.DIAMOND), swordsTab)
         assertEquals(Sword.NONE, game.sword, "no diamonds yet")
-        game.inventory[Ore.STONE.ordinal] = 4
+        game.inventory[Ore.STONE.ordinal] = 8
         game.craft(row(Sword.STONE), swordsTab)
         assertEquals(Sword.STONE, game.sword)
-        game.inventory[Ore.DIAMOND.ordinal] = 3
+        game.inventory[Ore.DIAMOND.ordinal] = 5
         game.craft(row(Sword.DIAMOND), swordsTab)
         assertEquals(Sword.DIAMOND, game.sword)
-        // Switching back to a sword you already made is free.
+        // You can't waste stuff making a weaker sword than the one you're holding.
+        game.inventory[Ore.STONE.ordinal] = 8
         game.craft(row(Sword.STONE), swordsTab)
-        assertEquals(Sword.STONE, game.sword)
-        assertEquals(0, game.inventory[Ore.STONE.ordinal])
-        game.craft(row(Sword.DIAMOND), swordsTab)
+        assertEquals(Sword.DIAMOND, game.sword)
+        assertEquals(8, game.inventory[Ore.STONE.ordinal], "nothing was used up")
+        assertEquals("BETTER", game.recipes(swordsTab)[row(Sword.STONE)].button)
 
         // The diamond sword sweeps: two shellbacks (3 hp each) next to Blocky both go down.
         input.swap = true; game.update(dt); input.swap = false; game.update(dt)
@@ -811,7 +812,7 @@ class TeamGameTest {
         assertTrue(k1.dying && k2.dying, "6 damage knocks out a shellback")
 
         // The amethyst sword shoots a magic slash.
-        game.inventory[Ore.AMETHYST.ordinal] = 3
+        game.inventory[Ore.AMETHYST.ordinal] = 5
         game.craft(row(Sword.AMETHYST), swordsTab)
         game.foes.clear()
         run(0.5f)
@@ -823,7 +824,7 @@ class TeamGameTest {
         val g2 = TeamGame(TeamInput(), ears, storage)
         g2.continueGame(0)
         assertEquals(Sword.AMETHYST, g2.sword)
-        assertTrue(g2.hasSword(Sword.STONE) && g2.hasSword(Sword.DIAMOND))
+        assertEquals(game.swordHp, g2.swordHp, "how worn the sword is gets saved too")
     }
 
     @Test fun lotsOfPointsAndCoins() {
@@ -954,11 +955,11 @@ class TeamGameTest {
     @Test fun armorWearsDownAndBreaks() {
         startPlaying()
         val armorTab = TeamGame.TABS.indexOf("ARMOR")
-        game.inventory[Ore.IRON.ordinal] = 7
-        game.coins = 10
+        game.inventory[Ore.IRON.ordinal] = 11
+        game.coins = 25
         game.craft(0, armorTab)
-        assertEquals(Armor.NONE, game.armorType, "armor is expensive: 8 iron + 10 coins")
-        game.inventory[Ore.IRON.ordinal] = 8
+        assertEquals(Armor.NONE, game.armorType, "armor is expensive: 12 iron + 25 coins")
+        game.inventory[Ore.IRON.ordinal] = 12
         game.craft(0, armorTab)
         assertEquals(Armor.IRON, game.armorType)
         val hearts = game.hearts
@@ -1041,8 +1042,8 @@ class TeamGameTest {
         game.foes.forEach { it.active = true }
         val onScreen = game.foes.filter { it.x < game.camX + game.viewW }
         assertTrue(onScreen.isNotEmpty())
-        game.inventory[Ore.AMETHYST.ordinal] = 2
-        game.inventory[Ore.DIAMOND.ordinal] = 1
+        game.inventory[Ore.AMETHYST.ordinal] = 3
+        game.inventory[Ore.DIAMOND.ordinal] = 2
         game.craft(game.recipes(1).indexOfFirst { it.title == "SUPER STAR" }, tab = 1)
         assertTrue(game.starT > 0)
         val hearts = game.hearts
@@ -1103,7 +1104,7 @@ class TeamGameTest {
         input.right = false
         run(0.5f)
         game.craft(0, homeTab)
-        game.craft(1, homeTab)
+        game.craft(game.recipes(homeTab).indexOfFirst { it.kind == TeamGame.Kind.BED }, homeTab)
         assertEquals(0, game.inventory[Ore.STONE.ordinal])
         assertEquals(0, game.coins)
         val bed = game.bedForTest()!!
@@ -1167,7 +1168,8 @@ class TeamGameTest {
         startPlaying()
         game.foes.clear()
         game.rocco.x = 122 * TILE.toFloat(); game.rocco.y = 100f; run(0.6f)
-        game.inventory[Ore.IRON.ordinal] = 4
+        game.inventory[Ore.IRON.ordinal] = 8
+        game.coins = 10
         game.craft(game.recipes(5).indexOfFirst { it.shield == Shield.IRON }, tab = 5)
         assertEquals(Shield.IRON, game.shieldType)
         val r = game.rocco
@@ -1232,7 +1234,7 @@ class TeamGameTest {
         r.x = chest.x; r.y = chest.bottom - r.h
         game.update(dt)
         assertTrue(chest.open)
-        assertTrue(game.inventory[Ore.OBSIDIAN.ordinal] >= 2, "new materials from the chest")
+        assertTrue(game.inventory[Ore.OBSIDIAN.ordinal] >= 1, "new materials from the chest")
         // The sun goes down and the team is back where the portal was.
         run(Games.BONUS) { game.hurtProof() }
         assertTrue(!game.inBonus)
@@ -1242,6 +1244,120 @@ class TeamGameTest {
     }
 
     private object Games { const val BONUS = TeamGame.BONUS_TIME + 1f }
+
+    @Test fun betterGearIsNeverReplacedByWorseGear() {
+        startPlaying()
+        val armorTab = TeamGame.TABS.indexOf("ARMOR")
+        val shieldTab = TeamGame.TABS.indexOf("SHIELDS")
+        Ore.entries.forEach { game.inventory[it.ordinal] = 50 }
+        game.coins = 200
+        game.craft(game.recipes(armorTab).indexOfFirst { it.armor == Armor.DIAMOND }, armorTab)
+        assertEquals(Armor.DIAMOND, game.armorType)
+        val iron = game.inventory[Ore.IRON.ordinal]
+        game.craft(game.recipes(armorTab).indexOfFirst { it.armor == Armor.IRON }, armorTab)
+        assertEquals(Armor.DIAMOND, game.armorType, "weaker armor can't replace better armor")
+        assertEquals(iron, game.inventory[Ore.IRON.ordinal], "and nothing was used up")
+        game.craft(game.recipes(shieldTab).indexOfFirst { it.shield == Shield.RUBY }, shieldTab)
+        game.craft(game.recipes(shieldTab).indexOfFirst { it.shield == Shield.STONE }, shieldTab)
+        assertEquals(Shield.RUBY, game.shieldType)
+        assertTrue(Armor.entries.all { it.durability <= 8 } && Shield.entries.all { it.durability <= 6 }, "armor and shields don't last forever")
+    }
+
+    @Test fun swordsAndPickaxesWearOut() {
+        startPlaying()
+        val swordsTab = TeamGame.TABS.indexOf("WEAPONS")
+        game.inventory[Ore.STONE.ordinal] = 99
+        game.craft(game.recipes(swordsTab).indexOfFirst { it.sword == Sword.STONE }, swordsTab)
+        assertEquals(Sword.STONE.durability, game.swordHp)
+        input.swap = true; game.update(dt); input.swap = false; game.update(dt)
+        val b = game.blocky
+        var swings = 0
+        while (game.sword != Sword.NONE && swings < 200) {
+            game.foes.clear()
+            game.foes += Shellback(b.x + 12f, b.bottom).also { it.active = true }
+            b.facing = 1
+            game.hurtProof()
+            input.action = true; game.update(dt); input.action = false
+            run(0.35f)
+            swings++
+        }
+        assertEquals(Sword.NONE, game.sword, "the sword broke after $swings hits")
+        assertEquals(Sword.STONE.durability, swings)
+        // Pickaxes too: an iron pickaxe breaks back down to wood.
+        game.foes.clear()
+        game.inventory[Ore.IRON.ordinal] = 5
+        game.craft(0, tab = 1)
+        assertEquals(2, game.pickTier)
+        val lv = game.level
+        var mined = 0
+        while (game.pickTier == 2 && mined < 300) {
+            val tx = tileOf(b.x + b.w + 3); val ty = tileOf(b.bottom - 4)
+            lv[tx, ty] = Tile.DIRT
+            b.facing = 1
+            input.action = true; game.update(dt); input.action = false
+            run(0.3f)
+            mined++
+        }
+        assertEquals(1, game.pickTier, "the iron pickaxe broke after $mined swings")
+    }
+
+    @Test fun earthquakesCrackTheGroundIntoPits() {
+        val quakeLevel = Levels.all.indices.first { it > 0 && it % 2 == 1 && Levels.all[it].shoreX < 0 && Levels.all[it].place != Place.SKY }
+        startPlaying(quakeLevel)
+        assertTrue(game.quakeLevel)
+        game.foes.clear()
+        run(0.5f) { game.hurtProof() }
+        game.quakeNowForTest()
+        game.update(dt)
+        assertTrue(game.quakeWarn > 0f, "the ground cracks first")
+        val cols = game.quakeCols.toList()
+        assertTrue(cols.isNotEmpty())
+        run(TeamGame.QUAKE_WARN + 0.2f) { game.hurtProof() }
+        val lv = game.level
+        for (c in cols) assertTrue((3 until ROWS).none { Tile.solid(lv[c, it]) }, "column $c caved in")
+        val sx = tileOf(game.safeXForTest() + 6)
+        assertTrue(Tile.solid(lv[sx, tileOf(game.safeYForTest() + 2)]), "the safe spot isn't over a pit")
+        assertTrue(!game.isQuakeLevelForTest(0), "the first level is calm")
+    }
+
+    @Test fun housesFurnitureAndPlushies() {
+        game.newGame(2, Mon.MYSTIC)
+        run(3.2f)
+        game.foes.clear()
+        Ore.entries.forEach { game.inventory[it.ordinal] = 60 }
+        game.coins = 500
+        val homeTab = TeamGame.TABS.indexOf("HOME")
+        assertEquals(HouseType.entries.size + 1, game.recipes(homeTab).size, "five houses and a bed")
+        var tries = 0
+        while (!game.recipes(homeTab)[0].enabled && tries++ < 300) { input.right = true; game.update(dt) }
+        input.right = false
+        run(0.3f)
+        game.craft(game.recipes(homeTab).indexOfFirst { it.house == HouseType.MUSHROOM }, homeTab)
+        assertEquals(HouseType.MUSHROOM, game.houseType)
+        val h = game.houseForTest()!!
+        assertEquals(HouseType.MUSHROOM, h.type)
+        // Walk to the door and go inside.
+        val l = game.leader
+        l.x = h.x + 6f; l.y = h.bottom - l.h
+        run(0.3f)
+        input.action = true; game.update(dt); input.action = false
+        assertEquals(TeamGame.State.HOME, game.state)
+        Furniture.entries.forEach { game.buyFurniture(it) }
+        assertTrue(Furniture.entries.all { game.hasFurniture(it) })
+        val before = game.plushieCount
+        game.playClaw()
+        assertEquals(before + 1, game.plushieCount, "the claw machine gave a plushie")
+        assertEquals(Plushie.KRAG_JR, game.givePlushie(Plushie.KRAG_JR).let { if (it == null) Plushie.KRAG_JR else it })
+        assertEquals(20, Plushie.entries.size)
+        // Everything is saved with the file.
+        val g2 = TeamGame(TeamInput(), ears, storage)
+        g2.continueGame(2)
+        assertEquals(HouseType.MUSHROOM, g2.houseType)
+        assertEquals(before + 1, g2.plushieCount, "the claw machine prize was saved")
+        assertTrue(g2.hasFurniture(Furniture.FISH_TANK))
+        input.pause = true; game.update(dt); input.pause = false; game.update(dt)
+        assertEquals(TeamGame.State.PLAY, game.state)
+    }
 
     /** Renders a few frames to build/screens for eyeballing. */
     @Test fun screenshots() {
@@ -1450,7 +1566,7 @@ class TeamGameTest {
         val r = game.rocco
         r.x = 122 * TILE.toFloat(); r.y = 100f
         run(2.5f) { game.hurtProof() }
-        game.inventory[Ore.RUBY.ordinal] = 5; game.inventory[Ore.IRON.ordinal] = 6
+        game.inventory[Ore.RUBY.ordinal] = 7; game.inventory[Ore.IRON.ordinal] = 6; game.coins = 40
         game.inventory[Ore.SAPPHIRE.ordinal] = 3; game.inventory[Ore.OBSIDIAN.ordinal] = 2
         game.craft(game.recipes(5).indexOfFirst { it.shield == Shield.RUBY }, tab = 5)
         val b = r.bottom
@@ -1483,5 +1599,53 @@ class TeamGameTest {
         run(0.8f) { input.right = true }
         input.right = false
         shot("bonus-room")
+    }
+
+    @Test fun homeScreenshots() {
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 720, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f))
+            ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        game.newGame(2, Mon.SPARKY)
+        run(3.2f)
+        game.foes.clear()
+        Ore.entries.forEach { game.inventory[it.ordinal] = 90 }
+        game.coins = 900
+        val homeTab = TeamGame.TABS.indexOf("HOME")
+        var tries = 0
+        while (!game.recipes(homeTab)[0].enabled && tries++ < 300) { input.right = true; game.update(dt) }
+        input.right = false
+        run(0.3f)
+        for (t in HouseType.entries) {
+            game.craft(game.recipes(homeTab).indexOfFirst { it.house == t }, homeTab)
+            val h = game.houseForTest()!!
+            game.leader.x = h.x + 90f
+            run(0.6f)
+            shot("house-" + t.name.lowercase())
+        }
+        game.craft(game.recipes(homeTab).indexOfFirst { it.kind == TeamGame.Kind.BED }, homeTab)
+        val h = game.houseForTest()!!
+        game.leader.x = h.x + 6f; game.leader.y = h.bottom - game.leader.h
+        run(0.3f)
+        input.action = true; game.update(dt); input.action = false
+        run(0.5f)
+        shot("home-empty")
+        Furniture.entries.forEach { game.buyFurniture(it) }
+        repeat(12) { game.givePlushie() }
+        run(0.5f)
+        shot("home-decorated")
+        tap(game.viewW - 170f, 10f)
+        run(0.4f)
+        shot("home-shop")
+        // An earthquake.
+        val quakeLevel = Levels.all.indices.first { it % 2 == 1 && Levels.all[it].shoreX < 0 && Levels.all[it].place != Place.SKY }
+        startPlaying(quakeLevel)
+        game.foes.clear()
+        run(1f) { game.hurtProof() }
+        game.quakeNowForTest()
+        run(1.5f) { game.hurtProof() }
+        shot("earthquake")
     }
 }

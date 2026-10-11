@@ -57,15 +57,18 @@ val Mon.floaty get() = this == Mon.BLAZE || this == Mon.MYSTIC || this == Mon.SP
  * Gold swings fast, diamond and amethyst sweep every bad guy in reach, and amethyst
  * also shoots a magic slash.
  */
-enum class Sword(val label: String, val ore: Ore?, val cost: Int, val damage: Int, val reach: Float, val cooldown: Float, val blade: Int, val note: String) {
-    NONE("NO SWORD", null, 0, 0, 16f, 0.24f, 0, ""),
-    STONE("STONE SWORD", Ore.STONE, 4, 2, 22f, 0.26f, 0xFF9A9A9A.toInt(), "A good start: 2 damage"),
-    IRON("IRON SWORD", Ore.IRON, 3, 3, 24f, 0.24f, 0xFFE0E0E8.toInt(), "Strong and long: 3 damage"),
-    GOLD("GOLD SWORD", Ore.GOLD, 3, 4, 24f, 0.14f, 0xFFFFD82A.toInt(), "Super fast swings: 4 damage"),
-    DIAMOND("DIAMOND SWORD", Ore.DIAMOND, 3, 6, 28f, 0.24f, 0xFF7FF4F0.toInt(), "Sweeps every bad guy in reach: 6"),
-    AMETHYST("AMETHYST SWORD", Ore.AMETHYST, 3, 8, 30f, 0.24f, 0xFFC890FF.toInt(), "Sweeps AND shoots magic slashes: 8"),
-    RUBY("RUBY SWORD", Ore.RUBY, 4, 7, 26f, 0.12f, 0xFFFF3A5A.toInt(), "The fastest sword of all: 7"),
-    OBSIDIAN("OBSIDIAN SWORD", Ore.OBSIDIAN, 4, 11, 32f, 0.26f, 0xFF7A5AB0.toInt(), "Heavy! Sweeps everything: 11"),
+enum class Sword(
+    val label: String, val ore: Ore?, val cost: Int, val damage: Int, val reach: Float, val cooldown: Float, val blade: Int,
+    val note: String, val durability: Int,
+) {
+    NONE("NO SWORD", null, 0, 0, 16f, 0.24f, 0, "", 0),
+    STONE("STONE SWORD", Ore.STONE, 8, 2, 22f, 0.26f, 0xFF9A9A9A.toInt(), "A good start: 2 damage", 25),
+    IRON("IRON SWORD", Ore.IRON, 5, 3, 24f, 0.24f, 0xFFE0E0E8.toInt(), "Strong and long: 3 damage", 40),
+    GOLD("GOLD SWORD", Ore.GOLD, 5, 4, 24f, 0.14f, 0xFFFFD82A.toInt(), "Super fast but wears out fast: 4", 30),
+    DIAMOND("DIAMOND SWORD", Ore.DIAMOND, 5, 6, 28f, 0.24f, 0xFF7FF4F0.toInt(), "Sweeps every bad guy in reach: 6", 60),
+    AMETHYST("AMETHYST SWORD", Ore.AMETHYST, 5, 8, 30f, 0.24f, 0xFFC890FF.toInt(), "Sweeps AND shoots magic slashes: 8", 70),
+    RUBY("RUBY SWORD", Ore.RUBY, 6, 7, 26f, 0.12f, 0xFFFF3A5A.toInt(), "The fastest sword of all: 7", 50),
+    OBSIDIAN("OBSIDIAN SWORD", Ore.OBSIDIAN, 6, 11, 32f, 0.26f, 0xFF7A5AB0.toInt(), "Heavy! Sweeps everything: 11", 90),
     ;
 
     val sweeps get() = this == DIAMOND || this == AMETHYST || this == OBSIDIAN
@@ -77,12 +80,12 @@ enum class Sword(val label: String, val ore: Ore?, val cost: Int, val damage: In
  */
 enum class Armor(val label: String, val ore: Ore?, val cost: Int, val durability: Int, val color: Int) {
     NONE("NO ARMOR", null, 0, 0, 0),
-    IRON("IRON ARMOR", Ore.IRON, 8, 4, 0xFFD8D8E0.toInt()),
-    GOLD("GOLD ARMOR", Ore.GOLD, 8, 5, 0xFFFFD82A.toInt()),
-    DIAMOND("DIAMOND ARMOR", Ore.DIAMOND, 8, 8, 0xFF7FF4F0.toInt()),
-    AMETHYST("AMETHYST ARMOR", Ore.AMETHYST, 8, 12, 0xFFC890FF.toInt()),
-    SAPPHIRE("SAPPHIRE ARMOR", Ore.SAPPHIRE, 8, 16, 0xFF4A7AFF.toInt()),
-    OBSIDIAN("OBSIDIAN ARMOR", Ore.OBSIDIAN, 8, 24, 0xFF5A3A8A.toInt()),
+    IRON("IRON ARMOR", Ore.IRON, 12, 3, 0xFFD8D8E0.toInt()),
+    GOLD("GOLD ARMOR", Ore.GOLD, 12, 3, 0xFFFFD82A.toInt()),
+    DIAMOND("DIAMOND ARMOR", Ore.DIAMOND, 12, 4, 0xFF7FF4F0.toInt()),
+    AMETHYST("AMETHYST ARMOR", Ore.AMETHYST, 12, 5, 0xFFC890FF.toInt()),
+    SAPPHIRE("SAPPHIRE ARMOR", Ore.SAPPHIRE, 12, 6, 0xFF4A7AFF.toInt()),
+    OBSIDIAN("OBSIDIAN ARMOR", Ore.OBSIDIAN, 12, 8, 0xFF5A3A8A.toInt()),
 }
 
 /**
@@ -91,11 +94,11 @@ enum class Armor(val label: String, val ore: Ore?, val cost: Int, val durability
  */
 enum class Shield(val label: String, val costs: List<Pair<Ore, Int>>, val durability: Int, val color: Int, val rim: Int) {
     NONE("NO SHIELD", emptyList(), 0, 0, 0),
-    STONE("STONE SHIELD", listOf(Ore.STONE to 6), 4, 0xFF9A9A9A.toInt(), 0xFF5A5A5A.toInt()),
-    IRON("IRON SHIELD", listOf(Ore.IRON to 4), 8, 0xFFE0E0E8.toInt(), 0xFF8A8A9A.toInt()),
-    RUBY("RUBY SHIELD", listOf(Ore.RUBY to 3, Ore.IRON to 2), 14, 0xFFFF3A5A.toInt(), 0xFFFFD82A.toInt()),
-    SAPPHIRE("SAPPHIRE SHIELD", listOf(Ore.SAPPHIRE to 4, Ore.GOLD to 2), 20, 0xFF4A7AFF.toInt(), 0xFFFFD82A.toInt()),
-    OBSIDIAN("OBSIDIAN SHIELD", listOf(Ore.OBSIDIAN to 4, Ore.DIAMOND to 1), 32, 0xFF3A2460.toInt(), 0xFFC890FF.toInt()),
+    STONE("STONE SHIELD", listOf(Ore.STONE to 12), 2, 0xFF9A9A9A.toInt(), 0xFF5A5A5A.toInt()),
+    IRON("IRON SHIELD", listOf(Ore.IRON to 8), 3, 0xFFE0E0E8.toInt(), 0xFF8A8A9A.toInt()),
+    RUBY("RUBY SHIELD", listOf(Ore.RUBY to 6, Ore.IRON to 4), 4, 0xFFFF3A5A.toInt(), 0xFFFFD82A.toInt()),
+    SAPPHIRE("SAPPHIRE SHIELD", listOf(Ore.SAPPHIRE to 7, Ore.GOLD to 4), 5, 0xFF4A7AFF.toInt(), 0xFFFFD82A.toInt()),
+    OBSIDIAN("OBSIDIAN SHIELD", listOf(Ore.OBSIDIAN to 7, Ore.DIAMOND to 3), 6, 0xFF3A2460.toInt(), 0xFFC890FF.toInt()),
 }
 
 enum class Who { ROCCO, BLOCKY, MON }

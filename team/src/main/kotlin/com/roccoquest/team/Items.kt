@@ -1,5 +1,6 @@
 package com.roccoquest.team
 
+import com.roccoquest.game.Body
 import com.roccoquest.game.Gfx
 import com.roccoquest.game.Sound
 import com.roccoquest.game.Sprites
@@ -344,9 +345,17 @@ class Goal(x: Float, y: Float) : Thing(x + 6, y - 9 * TILE + TILE, 4f, 9f * TILE
 }
 
 /** The house the team can build out of stone and iron. */
-class House(x: Float, bottom: Float) : Thing(x, bottom - 56, 72f, 56f) {
+class House(x: Float, bottom: Float, val type: HouseType = HouseType.COTTAGE) : Thing(x, bottom - 56, 72f, 56f) {
     override fun update(g: TeamGame, dt: Float) {}
-    override fun draw(g: TeamGame, gfx: Gfx, ox: Float) = TeamArt.house(gfx, x + ox, bottom, g.time)
+    override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
+        Homes.drawHouse(gfx, type, x + ox, bottom, g.time)
+        if (atDoor(g.leader) && g.state == TeamGame.State.PLAY && (g.time * 2).toInt() % 2 == 0) {
+            gfx.shadowText("ENTER?", x + 13 + ox, bottom - 34, 7f, 0xFFFFF2C8.toInt(), 1)
+        }
+    }
+
+    /** True when [h] is standing at the front door. */
+    fun atDoor(h: Body) = h.cx in (x - 2)..(x + 28) && kotlin.math.abs(h.bottom - bottom) < 10f
 }
 
 /** A bed inside the house. Sleep in it to save the game. */

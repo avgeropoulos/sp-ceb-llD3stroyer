@@ -176,7 +176,7 @@ object Levels {
                 'k' -> if (index >= 3 && nth('k', 2)) g[y][x] = 'A'
                 'b' -> if (index >= 5 && nth('b', 3)) g[y][x] = 'U'
                 'w' -> if (index >= 7 && below in GROUND_CHARS && nth('w', 3)) g[y][x] = 'T'
-                's' -> if (index >= 4 && y >= 2 && nth('s', 5)) g[y][x] = newOres[oreTurn++ % newOres.length]
+                's' -> if (index >= 4 && y >= 2 && nth('s', 8)) g[y][x] = newOres[oreTurn++ % newOres.length]
             }
         }
         // A bonus portal a little way past the first checkpoint, standing on open ground.
@@ -201,9 +201,9 @@ object Levels {
             .fill(0, 0, 2, 12, 'X').fill(45, 45, 2, 12, 'X')
             .at(3, 12, '@')
             .row(6, 11, "cccccc").row(6, 8, "?m?*?")
-            .rock(14, 12, "RER", "xRE")
+            .rock(14, 12, "sRs", "Ess")
             .row(19, 9, "cccccc").row(19, 6, "cccccc").row(20, 10, "OOOO")
-            .rock(27, 12, "ExR", "RxE")
+            .rock(27, 12, "sxs", "sRs")
             .row(31, 11, "cccc").row(31, 7, "m?m")
             .at(36, 12, 't')
             .row(38, 8, "cccc")

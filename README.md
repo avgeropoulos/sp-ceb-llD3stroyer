@@ -208,6 +208,41 @@ nearby bad guy every few seconds. Tap **ERASE** twice on a file to delete it.
 ![Sunset bonus room](docs/teamup-bonus-room.png)
 ![Shields](docs/teamup-shields.png)
 
+### Gear wears out, and it's harder to get
+
+* **Better gear is safe**: the crafting table won't let you make armor, a shield or a sword that's
+  *weaker* than the one you have (the button says **BETTER**), so you never waste your materials.
+  Making the *same* one again **FIXes** it.
+* **Everything wears out**: armor takes 3 to 8 hits and shields block 2 to 6 hits. **Swords** lose a little
+  every hit (25 to 90 hits) and break. **Pickaxes** lose a little every block (iron 80, gold 60, diamond
+  150, amethyst 200) and when one breaks you go back down to the pickaxe before it. The wooden pickaxe never
+  breaks. The HUD shows how much is left (like `IRON PICK 62%`).
+* **Harder to get things**: flowers and pickaxes cost 5 ore, armor 12 ore + 25 coins, shields cost about
+  twice as much, swords more, and bosses, chests and bonus rooms give out less.
+
+### Earthquakes
+
+Every other level (not boss, underwater or cloud levels) has **EARTHQUAKES**. The screen rumbles, the ground
+flashes **red with cracks** (always one right under you!) and about two seconds later boulders crash down
+and turn those spots into **pits**. Get off the cracks!
+
+![Earthquake](docs/teamup-earthquake.png)
+
+### Houses, furniture and plushies
+
+* The **HOME** tab has **5 houses**: Cottage, Log Cabin, Igloo, Mushroom House and Mini Castle. Moving the
+  house you already have only costs 2 stone.
+* Walk to the door and press **ENTER** to go **inside**. Tap **SHOP** to buy **12 kinds of furniture** (rug,
+  lamp, table, chairs, couch, bookshelf, plant, TV, fireplace, painting, fish tank and a claw machine), and
+  each one appears in the room. With a bed you can **SLEEP** right from inside to save.
+* **20 plushies** to collect (Rocco, Blocky, all nine Pokemon, Ring-Ding Frog, Dennis, a Grumbler, a
+  Gloop, an Enderman, Krag Jr., King Krag, the Warden and the Ender Dragon). Get them from **bosses**
+  (each boss gives its own plushie), **treasure chests**, **mystery blocks** and the **claw machine**
+  (30 coins a try, always a new one). They sit on the shelves at home. Tap one and it says its name!
+
+![Inside the house](docs/teamup-home.png)
+![Five kinds of houses](docs/teamup-houses.png)
+
 ### Stickers
 
 After every level you get to **pick one of three stickers**. There are **40** to collect: Rocco, Blocky,
@@ -384,7 +419,7 @@ You can also open the folder in Android Studio and press Run.
 Levels are built in `core/.../Level.kt` with a small builder, so adding a new one is a few lines.
 
 * `team/`: Team Up!, also plain Kotlin. It reuses the drawing interface, Rocco's pixel art, the
-  sound effects and the music from `core/`. Its levels are in `TeamLevel.kt` (World 2 in `World2.kt`), the newer monsters, bonus portals and sunset in `Monsters.kt`, the heroes and
+  sound effects and the music from `core/`. Its levels are in `TeamLevel.kt` (World 2 in `World2.kt`), the newer monsters, bonus portals and sunset in `Monsters.kt`, houses, furniture and plushies in `Homes.kt`, the heroes and
   Pokemon in `Actors.kt`, the bad guys and bosses in `Foes.kt`, villagers, Dennis, minecarts, TNT,
   Endermen, the Warden and the Ender Dragon in `Extras.kt`, shots, items and effects in `Items.kt`, and the crafting table, save files and menus in `TeamGame.kt`.
 * `teamapp/`: the Android layer for Team Up!, a copy of `app/` wired to the new game.
