@@ -31,7 +31,7 @@ class TeamInput {
     @Volatile var tap = false
     @Volatile var tapX = -1f
     @Volatile var tapY = -1f
-    /** A number key 1-9 pressed in a menu, or 0. */
+    /** A number key 1-9 pressed in a menu (10 for the 0 key), or 0 for none. */
     @Volatile var numberKey = 0
 }
 

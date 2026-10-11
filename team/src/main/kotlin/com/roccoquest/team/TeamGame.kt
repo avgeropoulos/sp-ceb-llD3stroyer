@@ -162,6 +162,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private var dogT = 10f
     private val ventT = HashMap<Int, Float>()
     private var spikeT = 0f
+    /** Seconds left of Mini Rocco. */
+    var miniT = 0f
+        private set
 
     fun sfx(s: Sound) = sound.play(s)
     fun spawn(t: Thing) { pending += t }
@@ -278,6 +281,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         boss = null; bossDone = false; wonder = false; camLock = null; frog = null; goal = null
         house = null; bed = null
         riding = null; trader = null; floodT = 0f; air = AIR_MAX; dogT = 10f; ventT.clear()
+        if (rocco.mini) setMini(false)
+        miniT = 0f
         hearts = MAX_HEARTS
         if (power == Power.GRASS) armor = max(armor, 2)
         invuln = 0f
@@ -518,6 +523,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (superE) useSuper()
 
         if (floodT > 0) floodT -= dt
+        if (miniT > 0) {
+            miniT -= dt
+            // Grow back once there's room above Rocco.
+            if (miniT <= 0 && !level.solidAt(rocco.cx, rocco.bottom - 24f)) endMini() else if (miniT <= 0) miniT = 0.1f
+        }
         val grav = if (wonder) 0.75f else 1f
         val cart = riding
         if (cart != null) {
@@ -667,12 +677,21 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val top = h.speed * (if (sprint) 1.5f else 1f)
         val want = if (h.crouching) 0f else dir * top
         h.vx = approach(h.vx, want, (if (h.onGround) 800f else 520f) * dt)
+        // Blue Shell: sprinting on the ground turns Rocco into a spinning shell.
+        h.shellSpin = rocco && power == Power.SHELL && sprint && h.onGround && !h.mini && abs(h.vx) > 120f
         if (jumpE && h.onGround) {
             h.vy = h.jumpV * (if (sprint) 1.06f else 1f)
             sfx(Sound.JUMP)
         }
         if (!input.jump && h.vy < -130f) h.vy = -130f
-        h.vy = min(h.vy + GRAVITY * grav * dt, MAX_FALL)
+        // Mini Rocco is light as a feather: he floats way up high.
+        val g2 = if (h.mini) grav * 0.5f else grav
+        h.vy = min(h.vy + GRAVITY * g2 * dt, if (h.mini) 160f else MAX_FALL)
+        if (h.shellSpin) {
+            // Smash through bricks in front.
+            val tx = tileOf(if (h.facing > 0) h.x + h.w + 2 else h.x - 2)
+            for (ty in tileOf(h.y + 2)..tileOf(h.bottom - 2)) if (level[tx, ty] == Tile.BRICK) bump(tx, ty)
+        }
         // Floaty Pokemon (Blaze, Mystic, Spooky) glide when you hold JUMP on the way down.
         if (h.who == Who.MON && mon.floaty && input.jump && h.vy > 55f) h.vy = 55f
         moveHero(h, dt)
@@ -774,8 +793,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 level[tx, ty] = Tile.USED
                 sfx(Sound.POWERUP)
                 // A surprise every time!
-                when (Random.nextInt(5)) {
+                when (Random.nextInt(6)) {
                     0 -> spawn(StarItem(px, above))
+                    5 -> spawn(MiniItem(px, above))
                     1 -> spawn(HeartItem(px, above))
                     2 -> repeat(5) { i -> spawn(Coin(px + (i - 2) * 6f, ty * TILE - 16f, popping = true)) }
                     else -> spawn(GiftBox(px, above))
@@ -890,6 +910,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val dmg = power.damage + lvl - 1
         val pierce = if (lvl >= 4) 2 else 0
         val sx = if (h.facing > 0) h.x + h.w else h.x - 9
+        if (power == Power.SHELL) {
+            if (things.count { it is HomingShell } >= lvl) return
+            spawn(HomingShell(sx, h.y + 2, h.facing, dmg))
+            if (lvl >= 3) spawn(HomingShell(sx, h.y - 10, h.facing, dmg))
+            sfx(Sound.FIRE)
+            return
+        }
         val spread = if (power == Power.CRYSTAL) 70f else 0f
         spawn(Shot(sx, h.y + 8, h.facing, power, dmg, h, pierce))
         if (power == Power.CRYSTAL) {
@@ -1019,7 +1046,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     // ======================================================================== Crafting
 
-    enum class Kind { FLOWER, PICK, HEART, APPLE, TNT, TRAP, STAR, HOUSE, BED }
+    enum class Kind { FLOWER, PICK, HEART, APPLE, TNT, TRAP, STAR, MINI, HOUSE, BED }
 
     class Recipe(
         val title: String, val note: String, val costs: List<Pair<Ore, Int>>, val coinCost: Int,
@@ -1031,7 +1058,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     /** The recipes on one tab of the crafting table. */
     fun recipes(tab: Int = craftTab): List<Recipe> = when (tab) {
-        0 -> listOf(Power.BOOM, Power.FIRE, Power.ICE, Power.GRASS, Power.THUNDER, Power.CRYSTAL).map { p ->
+        0 -> listOf(Power.BOOM, Power.FIRE, Power.ICE, Power.GRASS, Power.THUNDER, Power.CRYSTAL, Power.SHELL).map { p ->
             val lvl = flowerLevel[p.ordinal]
             val ore = p.ore!!
             val note = when (p) {
@@ -1040,6 +1067,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 Power.ICE -> "Diamond: the strongest!"
                 Power.GRASS -> "Emerald: GREEN ARMOR + leaves"
                 Power.THUNDER -> "Copper: zaps jump to more bad guys"
+                Power.SHELL -> "Diamond: homing shells + sprint to spin!"
                 else -> "Amethyst: three crystal shards"
             }
             val costs = listOf(ore to COST)
@@ -1066,6 +1094,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             val tntCost = listOf(Ore.STONE to 6, Ore.IRON to 2)
             val trapCost = listOf(Ore.IRON to 3)
             val star = listOf(Ore.AMETHYST to 2, Ore.DIAMOND to 1)
+            val miniCost = listOf(Ore.EMERALD to 1, Ore.STONE to 3)
             listOf(
                 pick,
                 Recipe("HEART", "Heals one heart", heart, 0, "MAKE", has(heart, 0) && hearts < MAX_HEARTS, null, Kind.HEART),
@@ -1073,6 +1102,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 Recipe("TNT x2", "Throw it! Blows up a 5x5 area. You have $tnt", tntCost, 0, "MAKE", has(tntCost, 0), null, Kind.TNT),
                 Recipe("SPIKE TRAP", "Set it down: bad guys walk into it", trapCost, 0, "MAKE", has(trapCost, 0) && leader.onGround, null, Kind.TRAP),
                 Recipe("SUPER STAR", "10 seconds of invincibility!", star, 0, "MAKE", has(star, 0), null, Kind.STAR),
+                Recipe("MINI MUSHROOM", "Rocco goes tiny and floats up high", miniCost, 0, "MAKE", has(miniCost, 0), null, Kind.MINI),
             )
         }
         else -> {
@@ -1142,6 +1172,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 toast("Spike trap set!")
             }
             Kind.STAR -> { startStar(); setState(State.PLAY); return }
+            Kind.MINI -> { startMini(); setState(State.PLAY); return }
             Kind.HOUSE -> {
                 house?.let { it.removed = true }
                 bed?.let { it.removed = true }
@@ -1363,6 +1394,33 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         setState(State.PLAY)
     }
 
+    /** Mini Mushroom: Rocco shrinks for 25 seconds. */
+    fun startMini() {
+        if (!rocco.mini) setMini(true)
+        miniT = 25f
+        sfx(Sound.POWERUP)
+        toast("MINI ROCCO! Tiny and floaty!")
+    }
+
+    private fun endMini() {
+        miniT = 0f
+        if (rocco.mini) setMini(false)
+        sfx(Sound.POWERUP)
+    }
+
+    /** Resizes Rocco, keeping his feet and middle in the same place. */
+    private fun setMini(on: Boolean) {
+        val r = rocco
+        val cx = r.cx
+        val b = r.bottom
+        r.mini = on
+        r.w = if (on) 7f else 12f
+        r.h = if (on) 8f else 23f
+        r.x = cx - r.w / 2
+        r.y = b - r.h
+        puff(cx, b - 6)
+    }
+
     fun startStar() {
         starT = STAR_TIME
         sfx(Sound.ONEUP)
@@ -1393,11 +1451,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private val tabTop = 52f
     private val rowsTop = 72f
     private val rowH = 27f
+    /** Rows squeeze together a little when a tab has more than six recipes. */
+    private fun craftRowH() = min(rowH, (VIEW_H - 4f - rowsTop) / recipes().size)
 
     private fun updateCraft(tapped: Boolean, close: Boolean, num: Int) {
         when (num) {
             in 1..6 -> craft(num - 1)
             in 7..9 -> craftTab = num - 7
+            10 -> craft(6)
         }
         if (close) { setState(State.PLAY); return }
         if (!tapped || stateT < 0.15f || state != State.CRAFT) return
@@ -1415,7 +1476,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             sfx(Sound.KICK)
             return
         }
-        val i = ((y - rowsTop) / rowH).toInt()
+        val i = ((y - rowsTop) / craftRowH()).toInt()
         if (y >= rowsTop && i in recipes().indices) craft(i)
     }
 
@@ -1437,7 +1498,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     break
                 }
                 if (h === leader) {
-                    if (starT > 0) f.hit(this, 3) else f.touch(this)
+                    when {
+                        starT > 0 -> f.hit(this, 3)
+                        h.shellSpin -> { f.hit(this, 3 + flowerLevel[Power.SHELL.ordinal]); h.vx = -h.vx * 0.3f }
+                        else -> f.touch(this)
+                    }
                 }
             }
         }
@@ -1484,6 +1549,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     fun hurt() {
         if (invuln > 0 || starT > 0 || state != State.PLAY) return
+        if (leader === rocco && rocco.mini) {
+            // Mini Rocco just pops back to normal size instead of losing a heart.
+            endMini()
+            invuln = 1.6f
+            sfx(Sound.HURT)
+            return
+        }
         if (armor > 0) {
             armor--
             particles += FloatText(leader.cx, leader.y - 4, "ARMOR!", 0xFF3CE070.toInt())
@@ -2037,7 +2109,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             x += 25f
         }
         val powerText = if (power == Power.NONE) "NO FLOWER" else "${power.label} Lv${flowerLevel[power.ordinal]}"
-        val starText = if (starT > 0) "  •  STAR ${starT.toInt() + 1}" else ""
+        val starText = (if (starT > 0) "  •  STAR ${starT.toInt() + 1}" else "") +
+            (if (miniT > 0) "  •  MINI ${miniT.toInt() + 1}" else "")
         gfx.shadowText("${TeamArt.pickName(pickTier)} PICK  •  $powerText$starText", max(112f, viewW * 0.25f), 26f, 7f, 0xFFDDEEFF.toInt())
 
         if (level.def.shoreX >= 0 && inWater(leader)) {
@@ -2077,7 +2150,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val px = panelX()
         val pw = panelW()
         val rows = recipes()
-        val ph = rowsTop - panelTop + rowH * 6 + 2
+        val rh = craftRowH()
+        val ph = rowsTop - panelTop + rh * rows.size + 2
         gfx.rect(px - 2, panelTop - 2, pw + 4, ph + 4, 0xFF3A2410.toInt())
         gfx.rect(px, panelTop, pw, ph, 0xFFB98A52.toInt())
         gfx.shadowText("CRAFTING TABLE", px + pw / 2, panelTop + 14, 11f, 0xFFFFF2C8.toInt(), 1)
@@ -2091,8 +2165,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             gfx.text(name, tx + tw / 2, tabTop + 12, 8f, if (i == craftTab) 0xFFFFF2C8.toInt() else 0xFFE0C8A0.toInt(), 1)
         }
         rows.forEachIndexed { i, r ->
-            val y = rowsTop + i * rowH
-            gfx.rect(px, y + rowH - 1, pw, 1f, 0x55000000)
+            val y = rowsTop + i * rh
+            gfx.rect(px, y + rh - 1, pw, 1f, 0x55000000)
             when {
                 r.icon != null -> gfx.sprite(TeamArt.flowerSprite(r.icon), px + 6, y + 5, w = 17f, h = 17f)
                 r.kind == Kind.HEART -> TeamArt.heart(gfx, px + 8, y + 7, 13f, 0xFFE52521.toInt())

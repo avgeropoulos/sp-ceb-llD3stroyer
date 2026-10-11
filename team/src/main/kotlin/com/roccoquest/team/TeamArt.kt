@@ -69,6 +69,7 @@ object TeamArt {
         Power.GRASS -> 0xFF2EB84A.toInt() to 0xFF1E7A2E.toInt()
         Power.THUNDER -> 0xFFFFE14D.toInt() to 0xFFC87A10.toInt()
         Power.CRYSTAL -> 0xFFC890FF.toInt() to 0xFF7A3AC0.toInt()
+        Power.SHELL -> 0xFF2E6BE6.toInt() to 0xFF1A3A9A.toInt()
     }
 
     private val blockyCache = HashMap<Power, Pair<Sprite, Sprite>>()
@@ -97,6 +98,7 @@ object TeamArt {
         Power.FIRE -> arrayOf(Sprites.fireStand, Sprites.fireWalk, Sprites.fireJump)
         Power.ICE -> arrayOf(Sprites.iceStand, Sprites.iceWalk, Sprites.iceJump)
         Power.BOOM -> arrayOf(Sprites.boomStand, Sprites.boomWalk, Sprites.boomJump)
+        Power.SHELL -> arrayOf(Sprites.shellStand, Sprites.shellWalk, Sprites.shellJump)
         else -> arrayOf(grassStand, grassWalk, grassJump)
     }[frame]
 
@@ -163,6 +165,7 @@ object TeamArt {
         Power.BOOM -> Sprites.boomFlower
         Power.THUNDER -> thunderFlower
         Power.CRYSTAL -> crystalFlower
+        Power.SHELL -> Sprites.blueShell
         Power.GRASS, Power.NONE -> grassFlower
     }
 

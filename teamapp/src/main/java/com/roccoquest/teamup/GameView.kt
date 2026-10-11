@@ -140,6 +140,10 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_0) {
+            input.numberKey = 10
+            return true
+        }
         if (keyCode in KeyEvent.KEYCODE_1..KeyEvent.KEYCODE_9) {
             input.numberKey = keyCode - KeyEvent.KEYCODE_0
             return true

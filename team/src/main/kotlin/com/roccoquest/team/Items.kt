@@ -148,6 +148,44 @@ class MonShot(x: Float, y: Float, private val dir: Int, private val mon: Mon) : 
     }
 }
 
+/** A winged blue shell that flies to the nearest bad guy and explodes. */
+class HomingShell(x: Float, y: Float, private val dir: Int, private val damage: Int) : Thing(x, y, 14f, 12f) {
+    private var t = 0f
+    init { active = true; vx = dir * 150f; vy = -60f }
+
+    override fun update(g: TeamGame, dt: Float) {
+        t += dt
+        val target = g.foes.filter { it.active && !it.dying && it.x + it.w > g.camX && it.x < g.camX + g.viewW && it !is EndCrystal }
+            .minByOrNull { hypot(it.cx - cx, it.cy - cy) }
+        if (target != null && t > 0.15f) {
+            val dx = target.cx - cx
+            val dy = target.cy - cy
+            val d = hypot(dx, dy).coerceAtLeast(1f)
+            vx = approach(vx, dx / d * 230f, 600f * dt)
+            vy = approach(vy, dy / d * 230f, 600f * dt)
+        }
+        x += vx * dt
+        y += vy * dt
+        val hitFoe = g.foes.any { it.active && !it.dying && it.overlaps(this) }
+        if (hitFoe || t > 2.5f || g.level.solidAt(cx, cy)) explode(g)
+    }
+
+    private fun explode(g: TeamGame) {
+        removed = true
+        g.addParticle(Boom(cx, cy, 30f))
+        g.sfx(Sound.BOSS_HIT)
+        g.shake = 0.2f
+        for (f in g.foes) if (f.active && !f.dying && hypot(f.cx - cx, f.cy - cy) < 44f) f.hit(g, damage)
+    }
+
+    override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
+        val flap = (t * 16).toInt() % 2 == 0
+        gfx.oval(x + ox - 4, y - (if (flap) 4f else 0f), 7f, 8f, 0xFFFFFFFF.toInt())
+        gfx.oval(x + ox + 11, y - (if (flap) 4f else 0f), 7f, 8f, 0xFFFFFFFF.toInt())
+        gfx.sprite(Sprites.blueShell, x + ox - 1, y - 3, w = 16f, h = 16f, flipX = vx < 0)
+    }
+}
+
 // ============================================================================ Pickups
 
 class Coin(x: Float, y: Float, private val popping: Boolean = false) : Thing(x + 4, y + 2, 8f, 12f) {
@@ -199,6 +237,14 @@ class StarItem(x: Float, y: Float) : Pickup(x, y, true) {
     override fun collect(g: TeamGame) = g.startStar()
     override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
         gfx.sprite(if ((t * 8).toInt() % 2 == 0) Sprites.star1 else Sprites.star2, x + ox - 2, y - 2, w = 16f, h = 16f)
+    }
+}
+
+/** A Mini Mushroom: Rocco shrinks to tiny size and floats high. */
+class MiniItem(x: Float, y: Float) : Pickup(x, y, false) {
+    override fun collect(g: TeamGame) = g.startMini()
+    override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
+        gfx.sprite(Sprites.miniMushroom, x + ox + 2, y + 4, w = 8f, h = 8f)
     }
 }
 

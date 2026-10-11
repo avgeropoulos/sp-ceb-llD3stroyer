@@ -589,6 +589,62 @@ class TeamGameTest {
         assertTrue(r.longJumping, "crouch + jump = long jump")
     }
 
+    @Test fun blueShellHomesAndSpins() {
+        startPlaying()
+        game.inventory[Ore.DIAMOND.ordinal] = 3
+        game.craft(game.recipes(0).indexOfFirst { it.icon == Power.SHELL }, tab = 0)
+        assertEquals(Power.SHELL, game.power)
+        // A homing shell finds a bad guy even when it's up in the air.
+        val g = game.foes.filterIsInstance<Grumbler>().minByOrNull { it.x }!!
+        game.foes.retainAll(listOf(g))
+        val r = game.rocco
+        r.x = g.x - 90f; r.facing = 1
+        run(1.5f) { game.hurtProof() }
+        g.active = true; g.y -= 30f
+        input.action = true; game.update(dt); input.action = false
+        run(2f) { game.hurtProof() }
+        assertTrue(g.dying || g.removed, "the blue shell blew up the grumbler")
+        // Sprinting with the blue shell turns Rocco into a spinning shell.
+        game.foes.clear()
+        run(0.08f) { input.right = true }
+        input.right = false; game.update(dt)
+        run(0.8f) { input.right = true }
+        assertTrue(r.shellSpin, "spin dash")
+        input.right = false
+        run(0.3f)
+        assertTrue(!r.shellSpin)
+    }
+
+    @Test fun miniMushroomMakesRoccoTinyAndFloaty() {
+        startPlaying()
+        game.foes.clear()
+        val r = game.rocco
+        run(0.5f)
+        // How high does normal Rocco jump?
+        fun jumpHeight(): Float {
+            val y0 = r.y
+            var top = y0
+            input.jump = true
+            repeat(90) { game.update(dt); top = minOf(top, r.y) }
+            input.jump = false
+            run(2f)
+            return y0 - top
+        }
+        val normal = jumpHeight()
+        game.inventory[Ore.EMERALD.ordinal] = 1
+        game.inventory[Ore.STONE.ordinal] = 3
+        game.craft(game.recipes(1).indexOfFirst { it.title == "MINI MUSHROOM" }, tab = 1)
+        assertTrue(r.mini && r.h < 10f, "tiny Rocco")
+        val tiny = jumpHeight()
+        assertTrue(tiny > normal * 1.4f, "mini jumps way higher: $tiny vs $normal")
+        // Getting hit as Mini Rocco just makes him big again.
+        val hearts = game.hearts
+        run(2f)
+        game.hurt()
+        assertTrue(!r.mini && r.h > 20f)
+        assertEquals(hearts, game.hearts)
+    }
+
     @Test fun enemiesHaveHealthBars() {
         startPlaying()
         val g = game.foes.filterIsInstance<Grumbler>().first()

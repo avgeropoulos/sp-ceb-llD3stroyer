@@ -184,10 +184,13 @@ Every level adds damage. Lv3 throws two at once, Lv4 shots go through bad guys, 
 | Grass | emerald | **Green armor** that soaks up hits, plus sharp leaves |
 | Thunder | copper | Lightning that jumps to the next bad guy |
 | Crystal | amethyst | Fires three crystal shards in a fan |
+| **Blue Shell** | diamond | Rocco wears a blue shell and throws **homing shells** that fly to the nearest bad guy and explode. **Sprint** and he tucks in and **spins**, smashing bad guys and bricks |
 
 **Supplies**: better pickaxes (iron, gold, diamond, then amethyst), **Heart** (5 stone),
 **Golden Apple** (2 gold: all hearts back plus 1 armor), **TNT x2** (6 stone + 2 iron), **Spike Trap**
-(3 iron) and **Super Star** (2 amethyst + 1 diamond: 10 seconds of invincibility).
+(3 iron), **Super Star** (2 amethyst + 1 diamond: 10 seconds of invincibility) and
+**Mini Mushroom** (1 emerald + 3 stone): Rocco shrinks to tiny size for 25 seconds and floats way up
+high. If he gets hit while mini, he just pops back to normal size. Mystery blocks can hold one too!
 
 **Home**: build a **House** (10 stone + 2 iron) where you're standing, then a **Bed** inside it
 (4 stone + 10 coins). Stand on the bed and press the action button to **sleep**. That heals you and
@@ -229,7 +232,7 @@ It's easy but not too easy: 5 hearts, checkpoints, and if you run out of hearts 
 last checkpoint (or your bed) and keep all your ore. Beaten bosses leave diamonds, gold and TNT behind.
 
 Keyboard: arrows/WASD to move, Space to jump, X to mine/throw/talk/ride/sleep, Q to swap, E for SUPER,
-T to throw TNT, G for Poseidon, Shift to sprint, L for long jump, C to craft (1-6 picks a recipe, 7/8/9 switch tabs), P to pause, M for music.
+T to throw TNT, G for Poseidon, Shift to sprint, L for long jump, C to craft (1-6 and 0 pick a recipe, 7/8/9 switch tabs), P to pause, M for music.
 
 ![Crafting table](docs/teamup-craft.png)
 

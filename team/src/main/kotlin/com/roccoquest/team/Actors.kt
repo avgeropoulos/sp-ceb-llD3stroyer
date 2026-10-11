@@ -26,6 +26,8 @@ enum class Power(val label: String, val ore: Ore?, val damage: Int) {
     GRASS("GRASS FLOWER", Ore.EMERALD, 1),
     THUNDER("THUNDER FLOWER", Ore.COPPER, 2),
     CRYSTAL("CRYSTAL FLOWER", Ore.AMETHYST, 2),
+    /** Rocco wears a blue shell: homing shells to throw, and a spin dash when sprinting. */
+    SHELL("BLUE SHELL", Ore.DIAMOND, 3),
 }
 
 /**
@@ -84,6 +86,10 @@ class Hero(val who: Who, x: Float, y: Float) :
     var slamPause = 0f
     var longJumping = false
     var sprinting = false
+    /** Rocco's blue shell spin dash. */
+    var shellSpin = false
+    /** Rocco ate a Mini Mushroom: tiny and floaty. */
+    var mini = false
     /** Which Pokemon this is, when [who] is [Who.MON]. */
     var mon = Mon.SPARKY
 
@@ -125,6 +131,16 @@ class Hero(val who: Who, x: Float, y: Float) :
             Who.ROCCO -> {
                 val frame = if (!onGround) 2 else if (walking) 1 else 0
                 when {
+                    mini -> {
+                        val s = if (!onGround) com.roccoquest.game.Sprites.smallJump else if (walking) com.roccoquest.game.Sprites.smallWalk else com.roccoquest.game.Sprites.smallStand
+                        gfx.sprite(s, x - 1.5f + ox, bottom - 10, flipX = facing < 0, w = 10f, h = 10f)
+                    }
+                    shellSpin -> {
+                        // Tucked into the blue shell, spinning along.
+                        val spin = (anim * 24).toInt() % 2 == 0
+                        gfx.sprite(com.roccoquest.game.Sprites.blueShell, px, bottom - 16, flipX = spin)
+                        gfx.rect(px - facing * 8 + 4, bottom - 9, 7f, 1.5f, 0x99FFFFFF.toInt())
+                    }
                     // Squatting: squash the sprite down.
                     crouching -> gfx.sprite(TeamArt.rocco(g.power, 0), px, bottom - 15, flipX = facing < 0, h = 15f)
                     // Butt slam: tucked in, spinning, with speed lines.
