@@ -13,6 +13,7 @@ import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class TeamGameTest {
@@ -333,7 +334,8 @@ class TeamGameTest {
         assertTrue(game.stickerChoices.contains(Stickers.forBoss('K')), "King Krag's shiny sticker is on offer")
         game.pickSticker(0)
         run(3f)
-        assertEquals(4, game.levelIndex)
+        assertEquals(TeamGame.State.MAP, game.state)
+        assertEquals(4, game.mapSel, "the map is ready for the next level")
     }
 
     @Test fun stickersAfterEveryLevel() {
@@ -350,16 +352,18 @@ class TeamGameTest {
         assertEquals(1, game.stickerCount)
         assertTrue(ears.said.last().contains("sticker"), "it says which sticker you got")
         run(3f)
-        assertEquals(1, game.levelIndex, "then on to the next level")
+        assertEquals(1, game.mapSel, "then on to the next level")
         // Stickers are saved with the file.
         val g2 = TeamGame(TeamInput(), ears, storage)
         g2.continueGame(0)
         assertTrue(g2.hasSticker(got))
         // The sticker book opens from the pause screen.
+        input.jump = true; game.update(dt); input.jump = false
         run(3.5f)
+        assertEquals(TeamGame.State.PLAY, game.state)
         input.pause = true; game.update(dt); input.pause = false; game.update(dt)
         assertTrue(game.paused)
-        tap(game.viewW / 2, 164f)
+        tap(game.viewW / 2, 150f)
         assertEquals(TeamGame.State.BOOK, game.state)
         run(0.5f)
         tap()
@@ -379,7 +383,7 @@ class TeamGameTest {
         val krag = game.foes.filterIsInstance<KingKrag>().single()
         game.rocco.x = krag.homeX - 150f; game.rocco.y = 160f
         run(3.5f) { game.hurtProof() }
-        assertEquals(Music.KRAG, ears.music)
+        assertEquals(TeamGame.Tunes.bossMusic(game.levelIndex, fighting = true), ears.music, "a scary boss song")
     }
 
     @Test fun dryBonesKragGetsBackUpOnce() {
@@ -426,8 +430,10 @@ class TeamGameTest {
         assertEquals(TeamGame.State.STICKER, game.state)
         game.pickSticker(0)
         run(3f)
-        assertEquals(WORLD2_START, game.levelIndex, "on to World 2")
-        assertEquals("SUNSET MEADOW", game.level.def.name)
+        assertEquals(TeamGame.State.MAP, game.state)
+        assertEquals(WORLD2_START, game.mapSel, "on to World 2")
+        assertEquals(1, game.mapWorld, "the map shows World 2")
+        assertEquals("SUNSET MEADOW", Levels.all[game.mapSel].name)
     }
 
     @Test fun finalBattleIsABossRushThatEndsTheGame() {
@@ -558,7 +564,7 @@ class TeamGameTest {
         assertTrue(game.foes.none { it.dying }, "the wave starts behind the team and rolls forward")
         run(1.6f) { game.hurtProof() }
         assertTrue(game.foes.all { it.dying || it.boss || it.removed }, "simple bad guys were washed away")
-        assertTrue(ears.said.any { "Poseidon" in it })
+        assertTrue(ears.said.any { "Ποσειδώνας" in it }, "Poseidon speaks Greek")
     }
 
     @Test fun underwaterAirAndBubbles() {
@@ -711,7 +717,7 @@ class TeamGameTest {
         g.active = true; g.y -= 30f
         input.action = true; game.update(dt); input.action = false
         run(2f) { game.hurtProof() }
-        assertTrue(g.dying || g.removed, "the blue shell blew up the grumbler")
+        assertTrue(g.dying || g.removed || g.hp < g.maxHp, "the blue shell hit the grumbler (it's not as strong as it was)")
         // Sprinting with the blue shell turns Rocco into a spinning shell.
         game.foes.clear()
         run(0.08f) { input.right = true }
@@ -867,12 +873,13 @@ class TeamGameTest {
         game.inventory[Ore.GOLD.ordinal] = 7
         input.pause = true; game.update(dt); input.pause = false; game.update(dt)
         assertTrue(game.paused)
-        tap(game.viewW / 2, 198f)
+        tap(game.viewW / 2, 180f)
         assertTrue(game.slotSpotSaved(2), "saved from the pause screen")
-        // Load it again: same level, same spot, same stuff.
+        // Load it again: the map is on the same level, and playing it puts you on the same spot.
         val g2 = TeamGame(TeamInput(), ears, storage)
         g2.continueGame(2)
-        assertEquals(game.levelIndex, g2.levelIndex)
+        assertEquals(game.levelIndex, g2.mapSel)
+        g2.startLevel(g2.mapSel, restoreHome = true)
         assertEquals(7, g2.inventory[Ore.GOLD.ordinal])
         assertEquals(Mon.SPOOKY, g2.mon)
         assertTrue(abs(g2.rocco.x - x) < 60f, "starts where it was saved: ${g2.rocco.x} vs $x")
@@ -998,10 +1005,10 @@ class TeamGameTest {
     @Test fun enemiesHaveHealthBars() {
         startPlaying()
         val g = game.foes.filterIsInstance<Grumbler>().first()
-        assertEquals(4, g.maxHp, "tougher bad guys (3 x 1.3)")
+        assertEquals(5, g.maxHp, "tougher bad guys (3 x 1.4)")
         g.hit(game, 1)
-        assertEquals(3, g.hp)
-        g.hit(game, 2)
+        assertEquals(4, g.hp)
+        g.hit(game, 3)
         assertTrue(!g.dying)
         g.hit(game, 1)
         assertTrue(g.dying)
@@ -1087,44 +1094,6 @@ class TeamGameTest {
         assertEquals(-1, g2.slotLevel(2))
     }
 
-    @Test fun buildAHouseAndSleepToSave() {
-        game.newGame(1, Mon.BLAZE)
-        run(3.2f)
-        game.foes.clear()
-        repeat(60 * 5) { botStep() }
-        input.right = false; input.jump = false
-        run(1f)
-        val homeTab = 2
-        game.inventory[Ore.STONE.ordinal] = 14
-        game.inventory[Ore.IRON.ordinal] = 2
-        game.coins = 10
-        // Walk to flat ground first if needed.
-        var tries = 0
-        while (!game.recipes(homeTab)[0].enabled && tries++ < 200) { input.right = true; game.update(dt) }
-        input.right = false
-        run(0.5f)
-        game.craft(0, homeTab)
-        game.craft(game.recipes(homeTab).indexOfFirst { it.kind == TeamGame.Kind.BED }, homeTab)
-        assertEquals(0, game.inventory[Ore.STONE.ordinal])
-        assertEquals(0, game.coins)
-        val bed = game.bedForTest()!!
-        val l = game.leader
-        l.x = bed.cx - l.w / 2; l.y = bed.bottom - l.h - 1
-        run(0.3f)
-        input.action = true; game.update(dt); input.action = false
-        assertEquals(TeamGame.State.SLEEP, game.state)
-        run(3f)
-        assertEquals(TeamGame.State.PLAY, game.state)
-        assertTrue(game.slotSlept(1))
-        // Load the file again: the house and bed are still there and you wake up by the bed.
-        val g2 = TeamGame(TeamInput(), ears, storage)
-        g2.continueGame(1)
-        val bed2 = g2.bedForTest()
-        assertNotNull(bed2)
-        assertTrue(kotlin.math.abs(g2.rocco.x - bed2.x) < 40f, "woke up next to the bed")
-        assertEquals(Mon.BLAZE, g2.mon)
-    }
-
     @Test fun onlyRoccoOrBlockyIsOutWithThePokemon() {
         startPlaying()
         game.foes.clear()
@@ -1149,7 +1118,7 @@ class TeamGameTest {
     @Test fun newMonstersAreInTheLevels() {
         for (c in "AHUT") assertTrue(levelWithChar(c) >= 0, "monster $c is in a level")
         for (c in "REx") assertTrue(levelWithChar(c) >= 0, "material $c is in a level")
-        assertTrue(Levels.all.count { d -> d.rows.any { 'P' in it } } >= 30, "bonus portals in most levels")
+        assertTrue(Levels.all.count { d -> d.rows.any { 'P' in it } } >= 8, "bonus portals every few levels")
     }
 
     @Test fun skellyArcherShootsArrows() {
@@ -1170,7 +1139,7 @@ class TeamGameTest {
         game.rocco.x = 122 * TILE.toFloat(); game.rocco.y = 100f; run(0.6f)
         game.inventory[Ore.IRON.ordinal] = 8
         game.coins = 10
-        game.craft(game.recipes(5).indexOfFirst { it.shield == Shield.IRON }, tab = 5)
+        game.craft(game.recipes(TeamGame.TABS.indexOf("SHIELDS")).indexOfFirst { it.shield == Shield.IRON }, tab = TeamGame.TABS.indexOf("SHIELDS"))
         assertEquals(Shield.IRON, game.shieldType)
         val r = game.rocco
         r.facing = 1
@@ -1219,7 +1188,7 @@ class TeamGameTest {
     }
 
     @Test fun bonusPortalGoesToTheSunsetAndBack() {
-        startPlaying()
+        startPlaying(1)
         game.foes.clear()
         val portal = game.thingsForTest().filterIsInstance<Portal>().single()
         val r = game.rocco
@@ -1238,7 +1207,7 @@ class TeamGameTest {
         // The sun goes down and the team is back where the portal was.
         run(Games.BONUS) { game.hurtProof() }
         assertTrue(!game.inBonus)
-        assertEquals("GRASSY HILLS", game.level.def.name)
+        assertEquals(Levels.all[1].name, game.level.def.name)
         assertTrue(kotlin.math.abs(game.rocco.cx - portal.cx) < 30f, "back at the portal")
         assertTrue(game.thingsForTest().none { it is Portal }, "each portal works once")
     }
@@ -1307,8 +1276,12 @@ class TeamGameTest {
         assertTrue(game.quakeLevel)
         game.foes.clear()
         run(0.5f) { game.hurtProof() }
-        game.quakeNowForTest()
-        game.update(dt)
+        // Walk a little way in, then shake (the cracks are random, so give it a few tries).
+        repeat(60 * 3) { game.hurtProof(); botStep() }
+        input.right = false; input.jump = false
+        var tries = 0
+        while (game.quakeWarn <= 0f && tries++ < 20) { game.quakeNowForTest(); game.update(dt); if (game.quakeWarn <= 0f) run(0.3f) { botStep() } }
+        input.right = false; input.jump = false
         assertTrue(game.quakeWarn > 0f, "the ground cracks first")
         val cols = game.quakeCols.toList()
         assertTrue(cols.isNotEmpty())
@@ -1318,45 +1291,6 @@ class TeamGameTest {
         val sx = tileOf(game.safeXForTest() + 6)
         assertTrue(Tile.solid(lv[sx, tileOf(game.safeYForTest() + 2)]), "the safe spot isn't over a pit")
         assertTrue(!game.isQuakeLevelForTest(0), "the first level is calm")
-    }
-
-    @Test fun housesFurnitureAndPlushies() {
-        game.newGame(2, Mon.MYSTIC)
-        run(3.2f)
-        game.foes.clear()
-        Ore.entries.forEach { game.inventory[it.ordinal] = 60 }
-        game.coins = 500
-        val homeTab = TeamGame.TABS.indexOf("HOME")
-        assertEquals(HouseType.entries.size + 1, game.recipes(homeTab).size, "five houses and a bed")
-        var tries = 0
-        while (!game.recipes(homeTab)[0].enabled && tries++ < 300) { input.right = true; game.update(dt) }
-        input.right = false
-        run(0.3f)
-        game.craft(game.recipes(homeTab).indexOfFirst { it.house == HouseType.MUSHROOM }, homeTab)
-        assertEquals(HouseType.MUSHROOM, game.houseType)
-        val h = game.houseForTest()!!
-        assertEquals(HouseType.MUSHROOM, h.type)
-        // Walk to the door and go inside.
-        val l = game.leader
-        l.x = h.x + 6f; l.y = h.bottom - l.h
-        run(0.3f)
-        input.action = true; game.update(dt); input.action = false
-        assertEquals(TeamGame.State.HOME, game.state)
-        Furniture.entries.forEach { game.buyFurniture(it) }
-        assertTrue(Furniture.entries.all { game.hasFurniture(it) })
-        val before = game.plushieCount
-        game.playClaw()
-        assertEquals(before + 1, game.plushieCount, "the claw machine gave a plushie")
-        assertEquals(Plushie.KRAG_JR, game.givePlushie(Plushie.KRAG_JR).let { if (it == null) Plushie.KRAG_JR else it })
-        assertEquals(20, Plushie.entries.size)
-        // Everything is saved with the file.
-        val g2 = TeamGame(TeamInput(), ears, storage)
-        g2.continueGame(2)
-        assertEquals(HouseType.MUSHROOM, g2.houseType)
-        assertEquals(before + 1, g2.plushieCount, "the claw machine prize was saved")
-        assertTrue(g2.hasFurniture(Furniture.FISH_TANK))
-        input.pause = true; game.update(dt); input.pause = false; game.update(dt)
-        assertEquals(TeamGame.State.PLAY, game.state)
     }
 
     /** Renders a few frames to build/screens for eyeballing. */
@@ -1568,7 +1502,7 @@ class TeamGameTest {
         run(2.5f) { game.hurtProof() }
         game.inventory[Ore.RUBY.ordinal] = 7; game.inventory[Ore.IRON.ordinal] = 6; game.coins = 40
         game.inventory[Ore.SAPPHIRE.ordinal] = 3; game.inventory[Ore.OBSIDIAN.ordinal] = 2
-        game.craft(game.recipes(5).indexOfFirst { it.shield == Shield.RUBY }, tab = 5)
+        game.craft(game.recipes(TeamGame.TABS.indexOf("SHIELDS")).indexOfFirst { it.shield == Shield.RUBY }, tab = TeamGame.TABS.indexOf("SHIELDS"))
         val b = r.bottom
         game.foes += listOf(
             SkellyArcher(r.x + 190f, b), Hopper(r.x + 70f, b), Gloop(r.x + 120f, b), Snapper(r.x + 150f, b),
@@ -1576,7 +1510,7 @@ class TeamGameTest {
         run(1.6f) { game.hurtProof(); r.vx = 0f }
         shot("new-monsters")
         input.craft = true; game.update(dt); input.craft = false; game.update(dt)
-        repeat(5) { input.numberKey = 8; game.update(dt) }
+        repeat(TeamGame.TABS.indexOf("SHIELDS")) { input.numberKey = 8; game.update(dt) }
         input.numberKey = 0; game.update(dt)
         shot("craft-shields")
         input.craft = true; game.update(dt); input.craft = false; game.update(dt)
@@ -1586,7 +1520,7 @@ class TeamGameTest {
         shot("poseidon-wave")
         run(2.5f) { game.hurtProof() }
         // The bonus room.
-        startPlaying()
+        startPlaying(1)
         game.foes.clear()
         val portal = game.thingsForTest().filterIsInstance<Portal>().single()
         r.x = portal.x - 50f; r.y = portal.bottom - r.h
@@ -1601,7 +1535,187 @@ class TeamGameTest {
         shot("bonus-room")
     }
 
-    @Test fun homeScreenshots() {
+    /** Plays the very end of the game while drawing every frame, then goes back to the title and keeps playing. */
+    @Test fun theEndingGoesBackToTheTitleWithoutCrashing() {
+        val img = BufferedImage((game.viewW * 2).toInt(), 480, BufferedImage.TYPE_INT_ARGB)
+        val gfx = AwtGfx(img, 2f)
+        fun frame() { game.update(dt); game.render(gfx) }
+        game.newGame(0, Mon.SPARKY)
+        game.startLevel(Levels.all.lastIndex)
+        repeat(200) { frame() }
+        // Beat both bosses.
+        var t = 0
+        while (game.state != TeamGame.State.STICKER && t++ < 60 * 60) {
+            game.hurtProof()
+            for (f in game.foes.toList()) if (f.boss && f.hp > 0) f.hit(game, 50)
+            game.foes.filterIsInstance<EndCrystal>().forEach { it.hit(game, 50) }
+            if (game.boss == null) game.leader.x += 3f
+            frame()
+        }
+        assertEquals(TeamGame.State.STICKER, game.state, "reached the last sticker")
+        game.pickSticker(0)
+        repeat(60 * 4) { frame() }
+        assertEquals(TeamGame.State.VICTORY, game.state)
+        repeat(60 * 4) { frame() }
+        input.tapX = 50f; input.tapY = 100f; input.tap = true
+        repeat(60) { frame() }
+        assertTrue(game.state != TeamGame.State.VICTORY, "left the ending: ${game.state}")
+        repeat(60 * 3) { frame(); if (it % 30 == 0) { input.tapX = 60f; input.tapY = 120f; input.tap = true } }
+    }
+
+    private fun goHome() {
+        game.goToMap(-1)
+        run(0.4f)
+        input.jump = true; game.update(dt); input.jump = false; game.update(dt)
+        assertEquals(TeamGame.State.HOME, game.state)
+    }
+
+    private fun walkHomeTo(x: Float) {
+        var t = 0
+        while (kotlin.math.abs(game.homeX - x) > 4f && t++ < 600) {
+            input.right = game.homeX < x; input.left = game.homeX > x
+            game.update(dt)
+        }
+        input.left = false; input.right = false
+    }
+
+    @Test fun walkAroundTheHouseShopAndSleepToSave() {
+        game.newGame(1, Mon.BLAZE)
+        run(3.2f)
+        game.coins = 500
+        Ore.entries.forEach { game.inventory[it.ordinal] = 60 }
+        goHome()
+        // Walk to the shop counter and open the shop.
+        walkHomeTo(Homes.SHOP_X + 30f)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        assertTrue(game.homeShop, "the shop opened")
+        assertEquals(listOf("FURNITURE", "BEDS", "PLUSHIES", "HOUSES"), game.SHOP_TABS)
+        game.buyBed(BedStyle.BLUE)
+        assertEquals(BedStyle.BLUE, game.bedStyle, "a blue bed!")
+        Furniture.entries.forEach { game.buyFurniture(it) }
+        game.buyHouse(HouseType.MUSHROOM)
+        assertEquals(HouseType.MUSHROOM, game.houseType)
+        val fox = Plushies.BABY_FOX
+        game.buyPlushie(fox)
+        assertTrue(game.hasPlushie(fox), "a baby fox plushie")
+        input.pause = true; game.update(dt); input.pause = false; game.update(dt)
+        assertTrue(!game.homeShop)
+        // Sleep in the bed: it saves.
+        walkHomeTo(Homes.BED_X + 20f)
+        game.coins = 123
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        val g2 = TeamGame(TeamInput(), ears, storage)
+        g2.continueGame(1)
+        assertEquals(123, g2.coins, "sleeping saved the game")
+        assertEquals(TeamGame.State.MAP, g2.state, "continuing goes to the world map")
+        assertEquals(HouseType.MUSHROOM, g2.houseType)
+        assertEquals(BedStyle.BLUE, g2.bedStyle)
+        assertTrue(g2.hasPlushie(fox) && g2.hasFurniture(Furniture.FISH_TANK))
+        // Out the door, back to the map.
+        walkHomeTo(Homes.DOOR_X + 10f)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        assertEquals(TeamGame.State.MAP, game.state)
+    }
+
+    @Test fun aHundredPlushies() {
+        assertEquals(100, Plushies.all.size)
+        assertEquals(100, Plushies.all.map { it.name }.toSet().size, "all different")
+        assertTrue(Plushies.all.any { it.name == "BABY FOX" })
+        startPlaying()
+        val before = game.plushieCount
+        val p = game.givePlushie()
+        assertNotNull(p)
+        assertTrue(!p.boss, "boss plushies only come from bosses")
+        assertEquals(before + 1, game.plushieCount)
+        assertEquals(Plushies.KRAG_JR, game.givePlushie(Plushies.KRAG_JR))
+        // Coins buy plushies in the shop.
+        game.coins = 100
+        val cheap = Plushies.all.first { !game.hasPlushie(it) && it.price == 15 }
+        game.buyPlushie(cheap)
+        assertTrue(game.hasPlushie(cheap))
+        assertEquals(85, game.coins)
+    }
+
+    @Test fun worldMapPicksLevelsAndGoesHome() {
+        startPlaying()
+        // Beat level 1-1 (skip to the flag).
+        game.foes.clear()
+        val goal = game.thingsForTest().filterIsInstance<Goal>().single()
+        game.leader.x = goal.x - 10f; game.leader.y = goal.bottom - game.leader.h - 2
+        var t = 0
+        while (game.state != TeamGame.State.STICKER && t++ < 600) { game.hurtProof(); game.update(dt) }
+        assertEquals(TeamGame.State.STICKER, game.state)
+        game.pickSticker(0)
+        run(3f)
+        assertEquals(TeamGame.State.MAP, game.state, "back to the world map")
+        assertEquals(2, game.unlocked, "1-2 is open now")
+        assertTrue(game.isCleared(0))
+        assertEquals(1, game.mapSel, "standing on 1-2")
+        assertEquals("1-2", game.levelLabel(1))
+        // Tap 1-1 twice to play it again.
+        val (x, y) = game.mapSpot(0)
+        tap(x, y); tap(x, y)
+        assertEquals(TeamGame.State.INTRO, game.state)
+        assertEquals(0, game.levelIndex)
+        run(3.2f)
+        // Pause: SAVE & EXIT TO MAP.
+        input.pause = true; game.update(dt); input.pause = false; game.update(dt)
+        tap(game.viewW / 2, 212f)
+        assertEquals(TeamGame.State.MAP, game.state)
+        // Locked levels can't be picked.
+        val (lx, ly) = game.mapSpot(5)
+        tap(lx, ly); tap(lx, ly)
+        assertEquals(TeamGame.State.MAP, game.state)
+    }
+
+    @Test fun ridingDashTheDino() {
+        val lv = Levels.all.indexOfFirst { d -> d.rows.any { 'y' in it } }
+        assertTrue(lv >= 0, "Dash is in a level")
+        startPlaying(lv)
+        game.foes.clear()
+        val d = game.thingsForTest().filterIsInstance<Dino>().single()
+        val r = game.rocco
+        r.x = d.cx - 6f; r.y = d.y - 40f; r.vy = 50f
+        run(0.6f)
+        assertTrue(game.dino === d, "landed on Dash's back")
+        // The tongue gulps a bad guy.
+        val g = Grumbler(r.x + 30f, r.bottom, false).also { it.active = true }
+        game.foes += g
+        r.facing = 1
+        input.action = true; game.update(dt); input.action = false
+        assertTrue(g.dying, "GULP!")
+        // Jump, then jump again in the air to leap off.
+        input.jump = true; game.update(dt); input.jump = false; run(0.15f)
+        input.jump = true; game.update(dt); input.jump = false
+        assertNull(game.dino, "jumped off")
+        assertEquals(23f, r.h)
+        // Getting hit while riding knocks you off but keeps your hearts.
+        run(1.5f)
+        val d2 = game.thingsForTest().filterIsInstance<Dino>().single()
+        r.x = d2.cx - 6f; r.y = d2.y - 40f; r.vy = 50f
+        run(0.6f)
+        assertTrue(game.dino != null)
+        val hearts = game.hearts
+        run(2f)
+        game.hurt(Grumbler(r.x + 10f, r.bottom, false))
+        assertNull(game.dino)
+        assertEquals(hearts, game.hearts)
+    }
+
+    @Test fun musicChangesFromLevelToLevel() {
+        var same = 0
+        for (i in 1 until Levels.all.size) {
+            val a = if (Levels.all[i - 1].isBossLevel) null else TeamGame.Tunes.levelMusic(i - 1)
+            val b = if (Levels.all[i].isBossLevel) null else TeamGame.Tunes.levelMusic(i)
+            if (a != null && a == b) same++
+        }
+        assertEquals(0, same, "no two levels in a row share a tune")
+        val bosses = Levels.all.indices.filter { Levels.all[it].isBossLevel }
+        val tunes = bosses.map { TeamGame.Tunes.bossMusic(it, true) }
+        assertTrue(tunes.zipWithNext().all { (x, y) -> x != y }, "boss fights take turns with scary songs")
+    }
+
+    @Test fun homeAndMapScreenshots() {
         val dir = File("build/screens").apply { mkdirs() }
         fun shot(name: String) {
             val img = BufferedImage((game.viewW * 3).toInt(), 720, BufferedImage.TYPE_INT_ARGB)
@@ -1610,42 +1724,42 @@ class TeamGameTest {
         }
         game.newGame(2, Mon.SPARKY)
         run(3.2f)
-        game.foes.clear()
+        game.coins = 2000
         Ore.entries.forEach { game.inventory[it.ordinal] = 90 }
-        game.coins = 900
-        val homeTab = TeamGame.TABS.indexOf("HOME")
-        var tries = 0
-        while (!game.recipes(homeTab)[0].enabled && tries++ < 300) { input.right = true; game.update(dt) }
-        input.right = false
-        run(0.3f)
-        for (t in HouseType.entries) {
-            game.craft(game.recipes(homeTab).indexOfFirst { it.house == t }, homeTab)
-            val h = game.houseForTest()!!
-            game.leader.x = h.x + 90f
-            run(0.6f)
-            shot("house-" + t.name.lowercase())
-        }
-        game.craft(game.recipes(homeTab).indexOfFirst { it.kind == TeamGame.Kind.BED }, homeTab)
-        val h = game.houseForTest()!!
-        game.leader.x = h.x + 6f; game.leader.y = h.bottom - game.leader.h
-        run(0.3f)
-        input.action = true; game.update(dt); input.action = false
+        // The map, with a few levels beaten.
+        game.goToMap(0)
+        run(0.5f)
+        shot("map-world1")
+        goHome()
         run(0.5f)
         shot("home-empty")
         Furniture.entries.forEach { game.buyFurniture(it) }
-        repeat(12) { game.givePlushie() }
-        run(0.5f)
+        game.buyBed(BedStyle.BLUE)
+        repeat(40) { game.givePlushie() }
+        game.buyPlushie(Plushies.BABY_FOX)
+        walkHomeTo(400f)
+        run(0.3f)
         shot("home-decorated")
-        tap(game.viewW - 170f, 10f)
-        run(0.4f)
-        shot("home-shop")
-        // An earthquake.
-        val quakeLevel = Levels.all.indices.first { it % 2 == 1 && Levels.all[it].shoreX < 0 && Levels.all[it].place != Place.SKY }
-        startPlaying(quakeLevel)
+        walkHomeTo(Homes.SHOP_X + 30f)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        tap(game.viewW / 2, 38f)
+        repeat(2) { tap(game.viewW / 2 + 60f, 38f) }
+        shot("home-shop-plushies")
+        input.pause = true; game.update(dt); input.pause = false; game.update(dt)
+        walkHomeTo(Homes.SHELF_X + 60f)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        shot("plushie-book")
+        // Dash the dino.
+        val lv = Levels.all.indexOfFirst { d -> d.rows.any { 'y' in it } }
+        startPlaying(lv)
         game.foes.clear()
-        run(1f) { game.hurtProof() }
-        game.quakeNowForTest()
-        run(1.5f) { game.hurtProof() }
-        shot("earthquake")
+        val d = game.thingsForTest().filterIsInstance<Dino>().single()
+        val r = game.rocco
+        r.x = d.cx - 6f; r.y = d.y - 40f; r.vy = 50f
+        run(0.6f)
+        run(0.5f) { input.right = true }
+        input.right = false
+        run(2.5f)
+        shot("dash-the-dino")
     }
 }

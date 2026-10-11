@@ -82,13 +82,42 @@ class SoundFx(context: Context) : SoundSink {
         val (pitch, rate) = when (voice) {
             Voice.FROG -> 1.9f to 1.15f
             Voice.VILLAGER -> 0.95f to 0.85f
-            Voice.GOD -> 0.3f to 0.72f
+            Voice.GOD -> 0.62f to 0.82f
             Voice.MON -> 1.5f to 1.05f
             Voice.HERO -> 1.1f to 0.95f
         }
+        var say = text
+        val greek = text.any { it in '\u0370'..'\u03FF' || it in '\u1F00'..'\u1FFF' }
+        if (greek && !useGreek(t)) {
+            // No Greek voice on this phone: say it in English instead.
+            say = "I am Poseidon!"
+            useEnglish(t)
+        } else if (!greek) useEnglish(t)
         t.setPitch(pitch)
         t.setSpeechRate(rate)
-        t.speak(text, TextToSpeech.QUEUE_FLUSH, null, voice.name)
+        t.speak(say, TextToSpeech.QUEUE_FLUSH, null, voice.name)
+    }
+
+    private val greekLocale = Locale("el", "GR")
+    private var englishVoice: android.speech.tts.Voice? = null
+
+    private fun useEnglish(t: TextToSpeech) {
+        if (t.voice?.locale?.language == "en") return
+        val v = englishVoice
+        if (v != null) t.setVoice(v) else t.setLanguage(Locale.US)
+    }
+
+    /** Switches to the most natural-sounding Greek voice the phone has. Returns false if there is none. */
+    private fun useGreek(t: TextToSpeech): Boolean {
+        if (t.voice?.locale?.language == "el") return true
+        if (englishVoice == null) englishVoice = t.voice
+        val best = try {
+            t.voices?.filter { it.locale.language == "el" && !it.features.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED) }
+                ?.maxByOrNull { it.quality - (if (it.isNetworkConnectionRequired) 50 else 0) }
+        } catch (_: Exception) { null }
+        if (best != null) { t.setVoice(best); return true }
+        val r = t.setLanguage(greekLocale)
+        return r != TextToSpeech.LANG_MISSING_DATA && r != TextToSpeech.LANG_NOT_SUPPORTED
     }
 
     fun setForeground(on: Boolean) = musicPlayer.setForeground(on)

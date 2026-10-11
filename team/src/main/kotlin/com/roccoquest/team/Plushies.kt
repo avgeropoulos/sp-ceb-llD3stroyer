@@ -1,0 +1,185 @@
+package com.roccoquest.team
+
+import com.roccoquest.game.Gfx
+import com.roccoquest.game.argb
+import com.roccoquest.game.rainbow
+
+/**
+ * One of the 100 plushies. [price] is how many coins it costs in the shop at home.
+ * Character plushies use their sticker picture; animal plushies are drawn from a [species].
+ */
+class Plushie(
+    val id: Int, val name: String, val price: Int, val sticker: String? = null,
+    val species: Species? = null, val color: Int = 0, val rainbowFur: Boolean = false, val baby: Boolean = false,
+) {
+    val boss get() = price >= 80
+}
+
+/** The kinds of stuffed animal, and how their ears, faces and extras look. */
+enum class Species(val label: String) {
+    BEAR("BEAR"), BUNNY("BUNNY"), CAT("CAT"), DOG("PUPPY"), FOX("FOX"), PANDA("PANDA"), PIG("PIGGY"),
+    MOUSE("MOUSE"), OWL("OWL"), PENGUIN("PENGUIN"), DUCK("DUCKY"), FROGGY("FROGGY"), LION("LION"),
+    ELEPHANT("ELEPHANT"), UNICORN("UNICORN"), DRAGON("DRAGON"),
+}
+
+object Plushies {
+    private val colorNames = mapOf(
+        "BROWN" to 0xFFA8703A, "PINK" to 0xFFFF9AC8, "BLUE" to 0xFF5A9AF0, "PURPLE" to 0xFFAA7AE8,
+        "WHITE" to 0xFFF4F4F4, "YELLOW" to 0xFFF4D84A, "GREEN" to 0xFF5AC86A, "BLACK" to 0xFF3A3A44,
+        "RED" to 0xFFE84A4A, "ORANGE" to 0xFFF08A3A, "GOLD" to 0xFFE8B82A, "GREY" to 0xFFA8A8B0,
+        "MINT" to 0xFF8AE8C8, "RAINBOW" to 0xFFFFFFFF,
+    ).mapValues { it.value.toInt() }
+
+    /** Five colors for each kind of animal: the usual one first (cheapest), then fun ones, then a rare one. */
+    private val animalColors = listOf(
+        Species.BEAR to listOf("BROWN", "PINK", "BLUE", "WHITE", "RAINBOW"),
+        Species.BUNNY to listOf("WHITE", "PINK", "BROWN", "PURPLE", "GOLD"),
+        Species.CAT to listOf("ORANGE", "BLACK", "GREY", "PINK", "RAINBOW"),
+        Species.DOG to listOf("BROWN", "WHITE", "BLACK", "BLUE", "GOLD"),
+        Species.FOX to listOf("ORANGE", "WHITE", "PINK", "PURPLE", "GOLD"),
+        Species.PANDA to listOf("WHITE", "PINK", "BLUE", "GREEN", "RAINBOW"),
+        Species.PIG to listOf("PINK", "BROWN", "BLUE", "MINT", "GOLD"),
+        Species.MOUSE to listOf("GREY", "WHITE", "PINK", "YELLOW", "RAINBOW"),
+        Species.OWL to listOf("BROWN", "WHITE", "PURPLE", "BLUE", "GOLD"),
+        Species.PENGUIN to listOf("BLACK", "BLUE", "PINK", "PURPLE", "RAINBOW"),
+        Species.DUCK to listOf("YELLOW", "WHITE", "BLUE", "MINT", "GOLD"),
+        Species.FROGGY to listOf("GREEN", "BLUE", "PINK", "YELLOW", "RAINBOW"),
+        Species.LION to listOf("GOLD", "WHITE", "PINK", "BLUE", "RAINBOW"),
+        Species.ELEPHANT to listOf("GREY", "PINK", "BLUE", "PURPLE", "GOLD"),
+        Species.UNICORN to listOf("WHITE", "PINK", "BLUE", "PURPLE", "RAINBOW"),
+        Species.DRAGON to listOf("GREEN", "RED", "BLUE", "PURPLE"),
+    )
+
+    val all: List<Plushie> = buildList {
+        // The team and friends
+        val chars = listOf(
+            "ROCCO", "BLOCKY", "SPARKY", "BLAZE", "HYDRO", "BLOOM", "EMBER", "SPLASHY", "MYSTIC", "PUNCHO", "SPOOKY",
+            "RING-DING FROG", "DENNIS", "GRUMBLER", "GLOOP", "ENDERMAN",
+        )
+        for (n in chars) add(Plushie(size, n, 40, sticker = if (n == "GLOOP") null else n))
+        // Bosses (only bosses drop them, or save up lots of coins!)
+        for (n in listOf("KRAG JR.", "KING KRAG", "THE WARDEN", "ENDER DRAGON")) add(Plushie(size, n, 80, sticker = n))
+        add(Plushie(size, "BABY FOX", 25, species = Species.FOX, color = colorNames.getValue("ORANGE"), baby = true))
+        for ((sp, cols) in animalColors) cols.forEachIndexed { i, c ->
+            val price = when { c == "RAINBOW" || c == "GOLD" -> 60; i == 0 -> 15; else -> 30 }
+            add(Plushie(size, "$c ${sp.label}", price, species = sp, color = colorNames.getValue(c), rainbowFur = c == "RAINBOW"))
+        }
+    }
+
+    fun named(n: String) = all.first { it.name == n }
+    val KRAG_JR get() = named("KRAG JR.")
+    val KING_KRAG get() = named("KING KRAG")
+    val WARDEN get() = named("THE WARDEN")
+    val DRAGON get() = named("ENDER DRAGON")
+    val BABY_FOX get() = named("BABY FOX")
+
+    /** Draws plushie [p] sitting with its bottom at ([cx], [bottom]), about [size] tall. */
+    fun draw(g: TeamGame, gfx: Gfx, p: Plushie, cx: Float, bottom: Float, size: Float) {
+        gfx.oval(cx - size * 0.45f, bottom - 2, size * 0.9f, 4f, 0x44000000)
+        when {
+            p.species != null -> drawAnimal(gfx, p, cx, bottom, size, g.time)
+            p.sticker == null -> {
+                val s = size / 18f
+                Gloop(0f, 16f).draw(g, ScaledGfx(gfx, s, cx - 9 * s, bottom - 17 * s), 0f)
+            }
+            else -> {
+                val i = Stickers.all.indexOfFirst { it.name == p.sticker }
+                if (i >= 0) Stickers.drawPicture(g, gfx, i, cx, bottom - size / 2, size)
+            }
+        }
+        // A little heart tag: it's a plushie!
+        gfx.oval(cx + size * 0.25f, bottom - 6, 5f, 5f, 0xFFFF6A9A.toInt())
+    }
+
+    private fun lighter(c: Int, k: Float = 0.45f): Int {
+        val r = (c shr 16) and 255; val gg = (c shr 8) and 255; val b = c and 255
+        fun l(v: Int) = (v + (255 - v) * k).toInt()
+        return argb(255, (l(r) shl 16) or (l(gg) shl 8) or l(b))
+    }
+
+    private fun darker(c: Int, k: Float = 0.35f): Int {
+        val r = (c shr 16) and 255; val gg = (c shr 8) and 255; val b = c and 255
+        fun d(v: Int) = (v * (1 - k)).toInt()
+        return argb(255, (d(r) shl 16) or (d(gg) shl 8) or d(b))
+    }
+
+    /** A soft round stuffed animal: body, big head, ears and a cute face. Drawn in an 18-unit box. */
+    private fun drawAnimal(out: Gfx, p: Plushie, cx: Float, bottom: Float, size: Float, t: Float) {
+        val sz = if (p.baby) size * 0.8f else size
+        val s = sz / 18f
+        val gfx = ScaledGfx(out, s, cx - 9 * s, bottom - 18 * s)
+        val sp = p.species!!
+        val fur = if (p.rainbowFur) argb(255, rainbow(t * 0.3f)) else p.color
+        val belly = lighter(fur)
+        val dark = darker(fur)
+        val black = 0xFF1A1A1A.toInt()
+        val white = 0xFFFFFFFF.toInt()
+        // Ears / horns behind the head
+        when (sp) {
+            Species.BEAR, Species.PANDA, Species.MOUSE, Species.LION -> {
+                val big = if (sp == Species.MOUSE) 5.5f else 3.5f
+                gfx.oval(2f, 0.5f, big, big, if (sp == Species.PANDA) black else fur)
+                gfx.oval(16f - big, 0.5f, big, big, if (sp == Species.PANDA) black else fur)
+            }
+            Species.BUNNY -> {
+                gfx.oval(4.5f, -5f, 3f, 8f, fur); gfx.oval(10.5f, -5f, 3f, 8f, fur)
+                gfx.oval(5.3f, -4f, 1.4f, 6f, 0xFFFFB8D0.toInt()); gfx.oval(11.3f, -4f, 1.4f, 6f, 0xFFFFB8D0.toInt())
+            }
+            Species.CAT, Species.FOX -> {
+                gfx.poly(floatArrayOf(3f, 4.5f, 7.5f), floatArrayOf(4f, -1f, 2f), fur)
+                gfx.poly(floatArrayOf(15f, 13.5f, 10.5f), floatArrayOf(4f, -1f, 2f), fur)
+            }
+            Species.DOG -> { gfx.oval(1.5f, 2f, 4f, 7f, dark); gfx.oval(12.5f, 2f, 4f, 7f, dark) }
+            Species.ELEPHANT -> { gfx.oval(0f, 2f, 6f, 7f, dark); gfx.oval(12f, 2f, 6f, 7f, dark) }
+            Species.UNICORN -> {
+                gfx.poly(floatArrayOf(7.8f, 9f, 10.2f), floatArrayOf(2f, -4f, 2f), 0xFFFFD82A.toInt())
+                gfx.poly(floatArrayOf(3.5f, 5f, 7f), floatArrayOf(3f, 0f, 2f), fur)
+                gfx.poly(floatArrayOf(14.5f, 13f, 11f), floatArrayOf(3f, 0f, 2f), fur)
+            }
+            Species.DRAGON -> {
+                gfx.poly(floatArrayOf(4f, 5f, 6.5f), floatArrayOf(2.5f, -1.5f, 2f), dark)
+                gfx.poly(floatArrayOf(14f, 13f, 11.5f), floatArrayOf(2.5f, -1.5f, 2f), dark)
+                // little wings
+                gfx.poly(floatArrayOf(2f, -2f, 3f), floatArrayOf(11f, 7f, 14f), dark)
+                gfx.poly(floatArrayOf(16f, 20f, 15f), floatArrayOf(11f, 7f, 14f), dark)
+            }
+            Species.OWL -> {
+                gfx.poly(floatArrayOf(3f, 4f, 6f), floatArrayOf(3f, 0f, 2f), dark)
+                gfx.poly(floatArrayOf(15f, 14f, 12f), floatArrayOf(3f, 0f, 2f), dark)
+            }
+            else -> {}
+        }
+        if (sp == Species.LION) gfx.oval(1.5f, 0.5f, 15f, 13f, darker(fur, 0.25f))
+        if (sp == Species.FOX && !p.baby) gfx.oval(13f, 11f, 6f, 4f, fur)
+        // Body and head
+        gfx.oval(3.5f, 9f, 11f, 9f, fur)
+        gfx.oval(6f, 11f, 6f, 6f, if (sp == Species.PENGUIN) white else belly)
+        gfx.oval(3f, 1.5f, 12f, 10.5f, fur)
+        if (sp == Species.PENGUIN || sp == Species.OWL) gfx.oval(5f, 4f, 8f, 7.5f, if (sp == Species.PENGUIN) white else belly)
+        if (sp == Species.PANDA) {
+            gfx.oval(5f, 4.5f, 3.2f, 3.2f, black); gfx.oval(9.8f, 4.5f, 3.2f, 3.2f, black)
+            gfx.oval(3.5f, 9.5f, 3f, 5f, black); gfx.oval(11.5f, 9.5f, 3f, 5f, black)
+        }
+        // Face
+        val eye = if (p.baby) 2.2f else 1.7f
+        gfx.oval(6f, 5.5f, eye, eye + 0.3f, black)
+        gfx.oval(10.3f, 5.5f, eye, eye + 0.3f, black)
+        gfx.oval(6.4f, 5.7f, 0.7f, 0.7f, white)
+        gfx.oval(10.7f, 5.7f, 0.7f, 0.7f, white)
+        when (sp) {
+            Species.OWL, Species.PENGUIN, Species.DUCK ->
+                gfx.poly(floatArrayOf(8f, 10f, 9f), floatArrayOf(8f, 8f, if (sp == Species.DUCK) 10.5f else 9.8f), 0xFFF0A02A.toInt())
+            Species.PIG -> { gfx.oval(7.2f, 7.8f, 3.6f, 2.6f, 0xFFFF7AA8.toInt()); gfx.rect(8f, 8.6f, 0.6f, 0.8f, dark); gfx.rect(9.4f, 8.6f, 0.6f, 0.8f, dark) }
+            Species.ELEPHANT -> gfx.poly(floatArrayOf(8f, 10f, 9.6f, 8.6f), floatArrayOf(7.5f, 7.5f, 13f, 13f), fur)
+            Species.FROGGY -> gfx.rect(7f, 9f, 4f, 0.8f, dark)
+            else -> {
+                if (sp == Species.BEAR || sp == Species.DOG || sp == Species.LION || sp == Species.FOX) gfx.oval(7.3f, 7.5f, 3.4f, 2.8f, belly)
+                gfx.oval(8.3f, 7.8f, 1.4f, 1f, if (sp == Species.UNICORN || sp == Species.BUNNY || sp == Species.MOUSE || sp == Species.CAT) 0xFFFF7AA8.toInt() else black)
+            }
+        }
+        // Rosy cheeks
+        gfx.oval(4.5f, 8f, 2f, 1.2f, 0x66FF6A9A)
+        gfx.oval(11.5f, 8f, 2f, 1.2f, 0x66FF6A9A)
+        if (sp == Species.UNICORN) gfx.oval(3f, 2f, 3f, 6f, if (p.rainbowFur) 0xFFFFD82A.toInt() else argb(255, rainbow(t * 0.3f)))
+    }
+}

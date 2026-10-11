@@ -266,6 +266,165 @@ object Songs {
         leadDuty = 0.5f,
     )
 
+    // ------------------------------------------------------------------ Meadow (F major, bouncy)
+    private val meadowChords = listOf(
+        "F2 C3 A4 C5", "D2 A2 F4 A4", "Bb1 F2 D4 F4", "C2 G2 E4 G4",
+        "F2 C3 A4 C5", "D2 A2 F4 A4", "C2 G2 E4 G4", "F2 C3 A4 C5",
+    )
+    val meadow = Song(
+        bpm = 140,
+        lead = """
+            F5/2 A5/2 C6/4 A5/2 F5/2 G5/4
+            A5/2 G5/2 F5/2 D5/2 C5/8
+            Bb4/2 D5/2 F5/4 E5/2 D5/2 C5/4
+            D5/4 E5/4 F5/8
+            F5/2 A5/2 C6/4 A5/2 F5/2 G5/4
+            C6/2 D6/2 C6/2 A5/2 F5/8
+            G5/2 A5/2 Bb5/2 G5/2 E5/2 F5/2 G5/4
+            F5/8 -/8
+        """,
+        harmony = offbeats(meadowChords),
+        bass = oomPahBass(meadowChords),
+        drums = "k...s.h.k.k.s.h.",
+        leadDuty = 0.125f,
+    )
+
+    // ------------------------------------------------------------------ Jungle (A minor, drums!)
+    private val jungleChords = listOf(
+        "A2 E3 C4 E4", "G2 D3 B3 D4", "A2 E3 C4 E4", "E2 B2 G4 B4",
+        "F2 C3 A4 C5", "D2 A2 F4 A4", "G2 D3 B3 D4", "A2 E3 C4 E4",
+    )
+    val jungle = Song(
+        bpm = 156,
+        lead = """
+            A4/2 C5/2 E5/2 A5/2 G5/4 E5/4
+            D5/2 E5/2 G5/2 E5/2 D5/4 C5/4
+            A4/2 C5/2 E5/2 A5/2 B5/4 A5/4
+            G5/2 E5/2 D5/2 E5/2 A4/8
+            C6/2 B5/2 A5/2 G5/2 A5/4 E5/4
+            F5/2 E5/2 D5/2 C5/2 D5/4 E5/4
+            A5/2 G5/2 E5/2 D5/2 C5/2 D5/2 E5/4
+            A4/8 -/8
+        """,
+        harmony = offbeats(jungleChords),
+        bass = drivingBass(jungleChords),
+        drums = "k..hk.k.s.hkk.s.",
+    )
+
+    // ------------------------------------------------------------------ Snow (G major, slow and twinkly)
+    private val snowChords = listOf(
+        "G2 D3 B3 D4", "E2 B2 G4 B4", "C3 G3 E4 G4", "D2 A2 F#4 A4",
+        "G2 D3 B3 D4", "A2 E3 C4 E4", "D2 A2 F#4 A4", "G2 D3 B3 D4",
+    )
+    val snow = Song(
+        bpm = 118,
+        lead = """
+            D5/4 G5/4 B5/4 A5/4
+            G5/6 F#5/2 E5/8
+            C5/4 E5/4 G5/4 F#5/4
+            E5/6 D5/2 D5/8
+            D5/4 G5/4 B5/4 D6/4
+            C6/4 B5/4 A5/4 G5/4
+            E5/4 A5/4 G5/4 F#5/4
+            G5/12 -/4
+        """,
+        harmony = sustained(snowChords),
+        bass = oomPahBass(snowChords),
+        drums = "k.......h.......",
+        leadDuty = 0.125f,
+    )
+
+    // ------------------------------------------------------------------ Desert (D, sandy and mysterious)
+    private val desertChords = listOf(
+        "D2 A2 F#4 A4", "Eb2 Bb2 G4 Bb4", "D2 A2 F#4 A4", "D2 A2 F#4 A4",
+        "D2 A2 F#4 A4", "Eb2 Bb2 G4 Bb4", "G2 D3 G4 Bb4", "D2 A2 F#4 A4",
+    )
+    val desert = Song(
+        bpm = 136,
+        lead = """
+            D5/2 Eb5/2 F#5/2 G5/2 A5/4 G5/4
+            F#5/2 Eb5/2 D5/4 -/8
+            A5/2 Bb5/2 A5/2 G5/2 F#5/4 Eb5/4
+            D5/12 -/4
+            D5/2 F#5/2 A5/2 D6/2 C6/4 Bb5/4
+            A5/2 G5/2 F#5/2 Eb5/2 D5/8
+            G5/2 F#5/2 Eb5/2 D5/2 Eb5/2 F#5/2 G5/4
+            D5/8 -/8
+        """,
+        harmony = offbeats(desertChords),
+        bass = drivingBass(desertChords),
+        drums = "k.h.s.h.k.k.s.h.",
+    )
+
+    // ------------------------------------------------------------------ Night (C minor, quiet and spooky)
+    private val nightChords = listOf(
+        "C2 G2 Eb4 G4", "F2 C3 Ab4 C5", "C2 G2 Eb4 G4", "C2 G2 Eb4 G4",
+        "C2 G2 Eb4 G4", "F2 C3 Ab4 C5", "G2 D3 B3 D4", "C2 G2 Eb4 G4",
+    )
+    val night = Song(
+        bpm = 108,
+        lead = """
+            C5/4 Eb5/4 G5/4 Eb5/4
+            D5/4 F5/4 Ab5/8
+            G5/4 F5/4 Eb5/4 D5/4
+            C5/12 -/4
+            Eb5/4 G5/4 C6/4 Bb5/4
+            Ab5/4 G5/4 F5/8
+            Eb5/4 D5/4 B4/4 D5/4
+            C5/12 -/4
+        """,
+        harmony = sustained(nightChords),
+        bass = oomPahBass(nightChords),
+        drums = "k.......s.......",
+        leadDuty = 0.25f,
+    )
+
+    // ------------------------------------------------------------------ Beach (C major, island style)
+    private val beachChords = listOf(
+        "C3 G3 E4 G4", "A2 E3 C4 E4", "D3 A3 F4 A4", "G2 D3 B3 D4",
+        "C3 G3 E4 G4", "E2 B2 G4 B4", "F2 C3 A4 C5", "C3 G3 E4 G4",
+    )
+    val beach = Song(
+        bpm = 132,
+        lead = """
+            E5/2 G5/2 C6/2 G5/2 A5/4 G5/4
+            F5/2 E5/2 D5/2 E5/2 C5/8
+            D5/2 F5/2 A5/2 F5/2 G5/4 F5/4
+            E5/2 D5/2 C5/2 D5/2 G4/8
+            E5/2 G5/2 C6/2 G5/2 A5/4 C6/4
+            B5/2 A5/2 G5/2 F5/2 E5/4 G5/4
+            A5/2 G5/2 F5/2 E5/2 D5/2 E5/2 F5/4
+            C5/8 -/8
+        """,
+        harmony = offbeats(beachChords),
+        bass = oomPahBass(beachChords),
+        drums = "k..sk.s.k..sk.s.",
+        leadDuty = 0.125f,
+    )
+
+    // ------------------------------------------------------------------ Doom (B minor, an ominous boss battle)
+    private val doomChords = listOf(
+        "B1 F#2 D4 F#4", "C2 G2 E4 G4", "B1 F#2 D4 F#4", "B1 F#2 D4 F#4",
+        "E2 B2 G4 B4", "C2 G2 E4 G4", "B1 F#2 D4 F#4", "B1 F#2 D4 F#4",
+    )
+    val doom = Song(
+        bpm = 150,
+        lead = """
+            B4/1 -/1 B4/1 -/1 C5/2 B4/2 F5/4 E5/4
+            D5/2 C5/2 B4/4 -/8
+            B4/1 -/1 B4/1 -/1 D5/2 C5/2 G5/4 F#5/4
+            F5/4 E5/4 D5/4 C5/4
+            B5/2 A5/2 G5/2 F5/2 E5/2 D5/2 C5/2 B4/2
+            C5/4 B4/4 F5/8
+            B4/1 C5/1 B4/1 C5/1 B4/1 C5/1 B4/1 C5/1 D5/4 F5/4
+            B4/8 -/8
+        """,
+        harmony = sustained(doomChords),
+        bass = drivingBass(doomChords),
+        drums = "k.k.k.s.k.k.k.s.",
+        leadDuty = 0.5f,
+    )
+
     fun of(m: Music): Song? = when (m) {
         Music.NONE -> null
         Music.OVERWORLD -> overworld
@@ -278,5 +437,12 @@ object Songs {
         Music.FROG -> frog
         Music.KRAG -> krag
         Music.WARDEN -> warden
+        Music.MEADOW -> meadow
+        Music.JUNGLE -> jungle
+        Music.SNOW -> snow
+        Music.DESERT -> desert
+        Music.NIGHT -> night
+        Music.BEACH -> beach
+        Music.DOOM -> doom
     }
 }

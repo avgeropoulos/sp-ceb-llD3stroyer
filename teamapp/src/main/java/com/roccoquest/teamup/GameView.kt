@@ -91,7 +91,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             acc += ((now - last) / 1e9f).coerceAtMost(0.25f)
             last = now
             while (acc >= step) {
-                game.update(step)
+                // Never let one bad frame close the whole game: recover to the title screen instead.
+                try { game.update(step) } catch (t: Throwable) { recover(t) }
                 acc -= step
             }
             val canvas = try {
@@ -105,13 +106,21 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                 val scale = canvas.height / VIEW_H
                 game.viewW = canvas.width / scale
                 gfx.begin(canvas, scale)
-                game.render(gfx)
+                try { game.render(gfx) } catch (t: Throwable) { recover(t) }
             } finally {
                 holder.unlockCanvasAndPost(canvas)
             }
             val elapsed = (System.nanoTime() - now) / 1_000_000L
             if (elapsed < 8) Thread.sleep(8 - elapsed)
         }
+    }
+
+    private var errors = 0
+
+    private fun recover(t: Throwable) {
+        android.util.Log.e("TeamUp", "Game error, going back to the title", t)
+        errors++
+        try { game.recover() } catch (_: Throwable) {}
     }
 
     @SuppressLint("ClickableViewAccessibility")

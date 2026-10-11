@@ -112,12 +112,14 @@ enum class Place(val music: Music) {
  *  'M' minecart   '=' rail   '^' spike trap   '~' bubble vent   'C' end crystal
  *  'S' (any row) marks the shore: everything left of that column is underwater
  *  'R' ruby   'E' sapphire   'x' obsidian   'P' bonus portal   't' treasure chest (bonus rooms)
- *  'A' skelly archer   'H' hopper   'U' gloop slime   'T' snapper plant
+ *  'A' skelly archer   'H' hopper   'U' gloop slime   'T' snapper plant   'y' Dash the dino
  */
 class LevelDef(val name: String, val place: Place, val rows: List<String>, val tip: String) {
     val w get() = rows[0].length
     /** Column where the water ends, or -1 if this isn't an underwater level. */
     val shoreX: Int = rows.map { it.indexOf('S') }.filter { it >= 0 }.minOrNull() ?: -1
+    /** Levels with a boss fight get scary music. */
+    val isBossLevel: Boolean get() = rows.any { r -> r.any { it in "JWKQGYZ" } }
 }
 
 /** Characters that make solid ground a bad guy (or a portal) can stand on. */
@@ -174,6 +176,9 @@ object Levels {
             when (g[y][x]) {
                 'g' -> if (nth('g', 3)) g[y][x] = 'H'
                 'k' -> if (index >= 3 && nth('k', 2)) g[y][x] = 'A'
+                // Fewer prize blocks: some become plain bricks.
+                'm' -> if (nth('m', 2)) g[y][x] = '?'
+                '?' -> if (nth('?', 3)) g[y][x] = 'B'
                 'b' -> if (index >= 5 && nth('b', 3)) g[y][x] = 'U'
                 'w' -> if (index >= 7 && below in GROUND_CHARS && nth('w', 3)) g[y][x] = 'T'
                 's' -> if (index >= 4 && y >= 2 && nth('s', 8)) g[y][x] = newOres[oreTurn++ % newOres.length]
@@ -181,7 +186,8 @@ object Levels {
         }
         // A bonus portal a little way past the first checkpoint, standing on open ground.
         val cp = (0 until d.w).firstOrNull { x -> (0 until ROWS).any { d.rows[it][x] == '|' } }
-        if (cp != null && d.shoreX < 0) {
+        // Bonus portals only show up every third level now, so they feel special.
+        if (cp != null && d.shoreX < 0 && index % 3 == 1) {
             val spot = ((cp + 5) until minOf(d.w - 4, cp + 40)).firstNotNullOfOrNull { x ->
                 val y = (ROWS - 2 downTo 2).firstOrNull { y ->
                     g[y][x] == '.' && g[y - 1][x] == '.' && g[y + 1][x] in GROUND_CHARS &&
@@ -190,6 +196,17 @@ object Levels {
                 y?.let { x to it }
             }
             if (spot != null) g[spot.second][spot.first] = 'P'
+        }
+        // Dash the dino waits near the start of every fourth level.
+        val boss = d.rows.any { r -> r.any { it in "JWKQGYZ" } }
+        if (index % 4 == 2 && d.shoreX < 0 && d.place != Place.SKY && !boss) {
+            val spot = (10 until minOf(d.w - 4, 45)).firstNotNullOfOrNull { x ->
+                val y = (ROWS - 2 downTo 2).firstOrNull { y ->
+                    g[y][x] == '.' && g[y - 1][x] == '.' && g[y][x + 1] == '.' && g[y + 1][x] in GROUND_CHARS && g[y + 1][x + 1] in GROUND_CHARS
+                }
+                y?.let { x to it }
+            }
+            if (spot != null) g[spot.second][spot.first] = 'y'
         }
         return LevelDef(d.name, d.place, g.map { String(it) }, d.tip)
     }
@@ -200,13 +217,13 @@ object Levels {
             .ground(0, 45)
             .fill(0, 0, 2, 12, 'X').fill(45, 45, 2, 12, 'X')
             .at(3, 12, '@')
-            .row(6, 11, "cccccc").row(6, 8, "?m?*?")
+            .row(7, 11, "ccc").row(6, 8, "B?B")
             .rock(14, 12, "sRs", "Ess")
-            .row(19, 9, "cccccc").row(19, 6, "cccccc").row(20, 10, "OOOO")
+            .row(20, 9, "cccc").row(20, 10, "OOOO")
             .rock(27, 12, "sxs", "sRs")
-            .row(31, 11, "cccc").row(31, 7, "m?m")
+            .row(32, 11, "cc").row(31, 7, "BmB")
             .at(36, 12, 't')
-            .row(38, 8, "cccc")
+            .row(39, 8, "cc")
             .at(42, 12, 'P')
             .build("SUNSET BONUS", Place.SUNSET, "Grab everything before the sun goes down!")
     }

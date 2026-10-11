@@ -3,6 +3,7 @@ package com.roccoquest.team
 import com.roccoquest.game.Gfx
 import com.roccoquest.game.Sound
 import com.roccoquest.game.Sprites
+import com.roccoquest.game.TILE
 import com.roccoquest.game.argb
 import com.roccoquest.game.shadowText
 import kotlin.math.abs
@@ -383,7 +384,7 @@ class Portal(x: Float, bottom: Float, val exit: Boolean = false) : Thing(x - 2, 
 
     override fun update(g: TeamGame, dt: Float) {
         t += dt
-        if (!used && Random.nextFloat() < dt * 8) {
+        if (!used && Random.nextFloat() < dt * 3) {
             g.addParticle(Sparkle(cx + (Random.nextFloat() - 0.5f) * 16f, cy + (Random.nextFloat() - 0.5f) * 20f, 0f, -20f, sunset(Random.nextFloat())))
         }
     }
@@ -481,4 +482,82 @@ internal fun spawnMonster(c: Char, px: Float, bottom: Float): Foe? = when (c) {
     'U' -> Gloop(px, bottom)
     'T' -> Snapper(px, bottom)
     else -> null
+}
+
+// ============================================================================ Dash the dino
+
+/**
+ * Dash, a friendly green dinosaur. Rocco can jump on his back and ride him: he runs faster,
+ * jumps higher, flutters when you hold JUMP, and his long tongue gulps bad guys (ACTION).
+ * Jump again in mid-air to leap off him. If a bad guy hits you while riding, you fall off
+ * instead of losing a heart, and Dash runs away for a moment.
+ */
+class Dino(x: Float, bottom: Float) : Thing(x, bottom - 20, 18f, 20f) {
+    var rider: Hero? = null
+    /** Runs away scared (after you got hit) until this counts down. */
+    var scaredT = 0f
+    /** Can't be ridden again until this counts down (after jumping off). */
+    var mountCooldown = 0f
+    var facing = 1
+    private var t = 0f
+    init { active = true }
+
+    override fun update(g: TeamGame, dt: Float) {
+        t += dt
+        if (mountCooldown > 0) mountCooldown -= dt
+        if (rider != null) return
+        val l = g.leader
+        if (scaredT > 0) {
+            scaredT -= dt
+            facing = if (l.cx > cx) -1 else 1
+            vx = facing * 140f
+        } else {
+            vx = approach(vx, 0f, 400f * dt)
+            facing = if (l.cx > cx) 1 else -1
+            // A happy little hop now and then.
+            if (onGround && ((t * 0.7f) % 3f) < dt * 0.7f) vy = -160f
+        }
+        vy = kotlin.math.min(vy + GRAVITY * dt, MAX_FALL)
+        if (g.level.moveX(this, vx * dt)) vx = 0f
+        g.level.moveY(this, vy * dt)
+        if (y > g.level.h * TILE + 40) removed = true
+    }
+
+    override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
+        if (rider != null) return
+        drawBody(gfx, cx + ox, bottom, facing, t, abs(vx) > 20f)
+        if (scaredT <= 0 && abs(g.leader.cx - cx) < 60f && g.leader.who == Who.ROCCO) {
+            gfx.shadowText("RIDE ME!", cx + ox, y - 8 + sin(t * 5) * 1.5f, 7f, 0xFF7FE07F.toInt(), 1)
+        }
+    }
+
+    companion object {
+        /** Dash's picture, standing with his feet at ([cx], [bottom]). */
+        fun drawBody(gfx: Gfx, cx: Float, bottom: Float, facing: Int, t: Float, running: Boolean) {
+            val f = facing.toFloat()
+            val green = 0xFF3CC84A.toInt()
+            val dark = 0xFF1E8A2A.toInt()
+            val step = if (running && (t * 10).toInt() % 2 == 0) 2f else 0f
+            // Tail
+            gfx.poly(floatArrayOf(cx - f * 6, cx - f * 15, cx - f * 6), floatArrayOf(bottom - 14, bottom - 9, bottom - 8), green)
+            // Legs and orange shoes
+            gfx.rect(cx - 5, bottom - 7, 4f, 5f - step, green)
+            gfx.rect(cx + 2, bottom - 7, 4f, 5f + step - 2f, green)
+            gfx.oval(cx - 7 + f * 1, bottom - 4 - step, 8f, 4f, 0xFFF08A2A.toInt())
+            gfx.oval(cx + 0 + f * 1, bottom - 4, 8f, 4f, 0xFFF08A2A.toInt())
+            // Body with white belly
+            gfx.oval(cx - 8, bottom - 18, 16f, 13f, green)
+            gfx.oval(cx - 4 + f * 2, bottom - 14, 9f, 8f, 0xFFF4F4E8.toInt())
+            // Red saddle and back spikes
+            gfx.oval(cx - 6 - f * 1, bottom - 20, 10f, 5f, 0xFFE52521.toInt())
+            for (i in 0 until 3) gfx.poly(floatArrayOf(cx - f * (8 + i * 3) - 1.5f, cx - f * (8 + i * 3), cx - f * (8 + i * 3) + 1.5f), floatArrayOf(bottom - 14 + i * 2, bottom - 17 + i * 2, bottom - 14 + i * 2), 0xFFE52521.toInt())
+            // Neck and big round head with a big nose
+            gfx.oval(cx + f * 3 - 3, bottom - 26, 7f, 12f, green)
+            gfx.oval(cx + f * 6 - 6, bottom - 31, 12f, 10f, green)
+            gfx.oval(cx + f * 11 - 4, bottom - 29, 9f, 7f, green)
+            gfx.oval(cx + f * 13 - 1.5f, bottom - 27, 2f, 2f, dark)
+            gfx.oval(cx + f * 4 - 2.5f, bottom - 34, 5f, 6f, 0xFFFFFFFF.toInt())
+            gfx.oval(cx + f * 5 - 1f, bottom - 32, 2f, 3f, 0xFF101010.toInt())
+        }
+    }
 }

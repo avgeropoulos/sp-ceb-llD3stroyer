@@ -156,14 +156,15 @@ class HomingShell(x: Float, y: Float, private val dir: Int, private val damage: 
 
     override fun update(g: TeamGame, dt: Float) {
         t += dt
-        val target = g.foes.filter { it.active && !it.dying && it.x + it.w > g.camX && it.x < g.camX + g.viewW && it !is EndCrystal }
+        // It only homes in on bad guys that are fairly close, and turns slowly.
+        val target = g.foes.filter { it.active && !it.dying && it !is EndCrystal && hypot(it.cx - cx, it.cy - cy) < 130f }
             .minByOrNull { hypot(it.cx - cx, it.cy - cy) }
         if (target != null && t > 0.15f) {
             val dx = target.cx - cx
             val dy = target.cy - cy
             val d = hypot(dx, dy).coerceAtLeast(1f)
-            vx = approach(vx, dx / d * 230f, 600f * dt)
-            vy = approach(vy, dy / d * 230f, 600f * dt)
+            vx = approach(vx, dx / d * 190f, 330f * dt)
+            vy = approach(vy, dy / d * 190f, 330f * dt)
         }
         x += vx * dt
         y += vy * dt
@@ -176,7 +177,7 @@ class HomingShell(x: Float, y: Float, private val dir: Int, private val damage: 
         g.addParticle(Boom(cx, cy, 30f))
         g.sfx(Sound.BOSS_HIT)
         g.shake = 0.2f
-        for (f in g.foes) if (f.active && !f.dying && hypot(f.cx - cx, f.cy - cy) < 44f) f.hit(g, damage)
+        for (f in g.foes) if (f.active && !f.dying && hypot(f.cx - cx, f.cy - cy) < 26f) f.hit(g, damage)
     }
 
     override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
@@ -397,7 +398,11 @@ class Frog(x: Float, private val baseY: Float) : Thing(x, baseY, 24f, 24f) {
         if (t > 7.5f) removed = true
     }
 
-    override fun draw(g: TeamGame, gfx: Gfx, ox: Float) = TeamArt.frog(gfx, x + ox, y, t)
+    /** A new color every time he shows up (and once in a while he's a rainbow!). */
+    private val colors = TeamArt.frogColors.random()
+    private val rainbowSkin = kotlin.random.Random.nextInt(6) == 0
+
+    override fun draw(g: TeamGame, gfx: Gfx, ox: Float) = TeamArt.frog(gfx, x + ox, y, t, colors, rainbowSkin)
 }
 
 // ============================================================================ Particles
@@ -594,5 +599,16 @@ class SuperFx(x: Float, y: Float, private val mon: Mon, private val dir: Int, pr
         if (t < 0.3f && mon == Mon.SPARKY) {
             gfx.oval(x + ox - 6, y - 6, 12f, 12f, argb(220, 0xFFFFFF))
         }
+    }
+}
+
+/** Dash's long sticky tongue shooting out and snapping back. */
+class Tongue(x: Float, y: Float, private val dir: Int, private val len: Float) : Particle(x, y) {
+    override fun update(dt: Float) { life -= dt * 4f }
+    override fun draw(gfx: Gfx, ox: Float) {
+        val reach = len * (1f - kotlin.math.abs(life * 2 - 1))
+        val x0 = if (dir > 0) x + ox else x + ox - reach
+        gfx.rect(x0, y, reach, 3f, 0xFFFF5A7A.toInt())
+        gfx.oval(if (dir > 0) x + ox + reach - 3 else x + ox - reach - 3, y - 1.5f, 6f, 6f, 0xFFFF5A7A.toInt())
     }
 }

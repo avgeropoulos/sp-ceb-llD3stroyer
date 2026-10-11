@@ -30,33 +30,15 @@ enum class Furniture(val label: String, val costs: List<Pair<Ore, Int>>, val coi
     CLAW_MACHINE("CLAW MACHINE", listOf(Ore.IRON to 4, Ore.GOLD to 2), 50),
 }
 
-/** 20 plushies to collect and show off on the shelves at home. */
-enum class Plushie(val label: String, val sticker: String?) {
-    ROCCO("ROCCO", "ROCCO"),
-    BLOCKY("BLOCKY", "BLOCKY"),
-    SPARKY("SPARKY", "SPARKY"),
-    BLAZE("BLAZE", "BLAZE"),
-    HYDRO("HYDRO", "HYDRO"),
-    BLOOM("BLOOM", "BLOOM"),
-    EMBER("EMBER", "EMBER"),
-    SPLASHY("SPLASHY", "SPLASHY"),
-    MYSTIC("MYSTIC", "MYSTIC"),
-    PUNCHO("PUNCHO", "PUNCHO"),
-    SPOOKY("SPOOKY", "SPOOKY"),
-    FROG("RING-DING FROG", "RING-DING FROG"),
-    DENNIS("DENNIS", "DENNIS"),
-    GRUMBLER("GRUMBLER", "GRUMBLER"),
-    GLOOP("GLOOP", null),
-    ENDERMAN("ENDERMAN", "ENDERMAN"),
-    KRAG_JR("KRAG JR.", "KRAG JR."),
-    KING_KRAG("KING KRAG", "KING KRAG"),
-    WARDEN("THE WARDEN", "THE WARDEN"),
-    DRAGON("ENDER DRAGON", "ENDER DRAGON"),
+/** Beds for the house. Sleep in one to save the game. */
+enum class BedStyle(val label: String, val coins: Int, val blanket: Int, val pillow: Int) {
+    RED("RED BED", 20, 0xFFE52521.toInt(), 0xFFFFFFFF.toInt()),
+    BLUE("BLUE BED", 20, 0xFF2E6BE6.toInt(), 0xFFDDEEFF.toInt()),
 }
 
 object Homes {
-    /** The room is laid out for a 427-wide screen and centered on wider ones. */
-    const val ROOM_W = 427f
+    /** The room is wider than the screen: walk around and the view follows you. */
+    const val ROOM_W = 720f
     const val FLOOR_Y = 176f
 
     // ------------------------------------------------------------------ Outside
@@ -131,39 +113,38 @@ object Homes {
 
     // ------------------------------------------------------------------ Inside
 
-    /** Wallpaper and floor for each kind of house. [ox] is where the 427-wide room starts. */
-    fun drawRoom(gfx: Gfx, type: HouseType, viewW: Float, viewH: Float) {
+    /** Wallpaper and floor for each kind of house, scrolled by [ox]. */
+    fun drawRoom(gfx: Gfx, type: HouseType, ox: Float, viewW: Float, viewH: Float) {
         val (wall, stripe) = when (type) {
-            HouseType.COTTAGE -> 0xFFF2E2C0.toInt() to 0xFFF0C8C8.toInt()
+            HouseType.COTTAGE -> 0xFFF2E2C0.toInt() to 0xFFF0D0C8.toInt()
             HouseType.CABIN -> 0xFF9A6A3A.toInt() to 0xFF7A4A20.toInt()
             HouseType.IGLOO -> 0xFFDDEEFF.toInt() to 0xFFB8D4F0.toInt()
             HouseType.MUSHROOM -> 0xFFFFC8D8.toInt() to 0xFFFFFFFF.toInt()
             HouseType.CASTLE -> 0xFF8A8A9A.toInt() to 0xFF6A6A7A.toInt()
         }
         gfx.rect(0f, 0f, viewW, viewH, wall)
+        val x0 = ox
+        val x1 = ox + ROOM_W
         when (type) {
-            HouseType.COTTAGE -> { var x = 0f; while (x < viewW) { gfx.rect(x, 24f, 10f, FLOOR_Y - 24, stripe); x += 28f } }
-            HouseType.CABIN -> for (i in 0 until 10) gfx.rect(0f, 24f + i * 15f, viewW, 2f, stripe)
-            HouseType.IGLOO -> for (i in 0 until 10) {
-                gfx.rect(0f, 24f + i * 16f, viewW, 1f, stripe)
-                var x = if (i % 2 == 0) 0f else 20f
-                while (x < viewW) { gfx.rect(x, 24f + i * 16f, 1f, 16f, stripe); x += 40f }
+            HouseType.COTTAGE -> { var x = x0; while (x < x1) { gfx.rect(x, 24f, 10f, FLOOR_Y - 24, stripe); x += 34f } }
+            HouseType.CABIN -> for (i in 0 until 10) gfx.rect(x0, 24f + i * 15f, ROOM_W, 2f, stripe)
+            HouseType.IGLOO, HouseType.CASTLE -> for (i in 0 until 10) {
+                gfx.rect(x0, 24f + i * 16f, ROOM_W, 1f, stripe)
+                var x = x0 + if (i % 2 == 0) 0f else 18f
+                while (x < x1) { gfx.rect(x, 24f + i * 16f, 1f, 16f, stripe); x += 36f }
             }
-            HouseType.MUSHROOM -> for (i in 0 until 60) gfx.oval((i * 53f) % viewW, 30f + (i * 37f) % 140f, 8f, 8f, stripe)
-            HouseType.CASTLE -> for (i in 0 until 10) {
-                gfx.rect(0f, 24f + i * 16f, viewW, 1f, stripe)
-                var x = if (i % 2 == 0) 0f else 16f
-                while (x < viewW) { gfx.rect(x, 24f + i * 16f, 1f, 16f, stripe); x += 32f }
-            }
+            HouseType.MUSHROOM -> for (i in 0 until 50) gfx.oval(x0 + (i * 53f) % ROOM_W, 30f + (i * 37f) % 140f, 7f, 7f, stripe)
         }
         if (type == HouseType.CASTLE) {
-            // Red banners
-            for (bx in listOf(viewW * 0.2f, viewW * 0.8f)) {
+            for (bx in listOf(x0 + 150f, x0 + 600f)) {
                 gfx.rect(bx, 28f, 16f, 34f, 0xFFB01A1A.toInt())
-                gfx.poly(floatArrayOf(bx, bx + 8, bx + 16), floatArrayOf(62f, 56f, 62f), stripe)
+                gfx.poly(floatArrayOf(bx, bx + 8, bx + 16), floatArrayOf(62f, 56f, 62f), wall)
                 gfx.oval(bx + 4, 36f, 8f, 8f, 0xFFFFD21F.toInt())
             }
         }
+        // Darker outside the room's walls.
+        if (x0 > 0) gfx.rect(0f, 0f, x0, viewH, 0xFF2A1A10.toInt())
+        if (x1 < viewW) gfx.rect(x1, 0f, viewW - x1, viewH, 0xFF2A1A10.toInt())
         val floor = when (type) {
             HouseType.COTTAGE -> 0xFFB98A52.toInt()
             HouseType.CABIN -> 0xFF6A3A1A.toInt()
@@ -171,10 +152,10 @@ object Homes {
             HouseType.MUSHROOM -> 0xFF5AB85A.toInt()
             HouseType.CASTLE -> 0xFF5A5A6A.toInt()
         }
-        gfx.rect(0f, FLOOR_Y, viewW, viewH - FLOOR_Y, floor)
-        gfx.rect(0f, FLOOR_Y, viewW, 3f, 0x55000000)
-        var x = 0f
-        while (x < viewW) { gfx.rect(x, FLOOR_Y + 3, 1f, viewH, 0x22000000); x += 34f }
+        gfx.rect(maxOf(0f, x0), FLOOR_Y, minOf(viewW, x1) - maxOf(0f, x0), viewH - FLOOR_Y, floor)
+        gfx.rect(maxOf(0f, x0), FLOOR_Y, minOf(viewW, x1) - maxOf(0f, x0), 3f, 0x55000000)
+        var x = x0
+        while (x < x1) { if (x > 0 && x < viewW) gfx.rect(x, FLOOR_Y + 3, 1f, viewH, 0x22000000); x += 34f }
     }
 
     /** A window showing the sky outside. */
@@ -189,27 +170,60 @@ object Homes {
         gfx.rect(x - 5, y + 40, 66f, 4f, 0xFF7A4A20.toInt())
     }
 
+    const val DOOR_X = 10f
+    const val SHOP_X = 52f
+    const val BED_X = 250f
+    const val SHELF_X = 400f
+
     fun drawDoor(gfx: Gfx, x: Float) {
         gfx.rect(x, FLOOR_Y - 56, 30f, 56f, 0xFF5A3A1A.toInt())
         gfx.rect(x + 3, FLOOR_Y - 53, 24f, 53f, 0xFF8A5A2A.toInt())
         gfx.oval(x + 20, FLOOR_Y - 28, 4f, 4f, 0xFFFFD21F.toInt())
-        gfx.shadowText("EXIT", x + 15, FLOOR_Y - 60, 7f, 0xFFFFF2C8.toInt(), 1)
+        gfx.shadowText("MAP", x + 15, FLOOR_Y - 60, 7f, 0xFFFFF2C8.toInt(), 1)
     }
 
-    /** Where each piece of furniture goes, as an x position in the 427-wide room. */
+    /** The shop counter: buy furniture, beds, plushies and new houses here. */
+    fun drawShop(g: TeamGame, gfx: Gfx, x: Float, t: Float) {
+        // Awning
+        for (i in 0 until 6) gfx.rect(x + i * 11f, FLOOR_Y - 92, 11f, 12f, if (i % 2 == 0) 0xFFE52521.toInt() else 0xFFFFFFFF.toInt())
+        gfx.rect(x, FLOOR_Y - 80, 66f, 3f, 0xFF7A4A20.toInt())
+        gfx.shadowText("SHOP", x + 33, FLOOR_Y - 97, 9f, 0xFFFFD21F.toInt(), 1)
+        // Shopkeeper (a friendly villager)
+        Villager(x + 26f, FLOOR_Y - 18f, 3).draw(g, gfx, 0f)
+        // Counter with a cash register
+        gfx.rect(x, FLOOR_Y - 26, 66f, 26f, 0xFF8A5A2A.toInt())
+        gfx.rect(x, FLOOR_Y - 28, 66f, 4f, 0xFFB98A52.toInt())
+        gfx.rect(x + 44, FLOOR_Y - 38, 16f, 10f, 0xFF3A3A44.toInt())
+        gfx.rect(x + 46, FLOOR_Y - 36, 12f, 3f, 0xFF7FE07F.toInt())
+        if ((t * 2).toInt() % 2 == 0) gfx.oval(x + 10, FLOOR_Y - 34, 5f, 5f, 0xFFFFD21F.toInt())
+    }
+
+    fun drawBed(gfx: Gfx, style: BedStyle, x: Float) {
+        val fy = FLOOR_Y
+        gfx.rect(x, fy - 24, 5f, 24f, 0xFF7A4A20.toInt())
+        gfx.rect(x + 51, fy - 16, 5f, 16f, 0xFF7A4A20.toInt())
+        gfx.rect(x, fy - 10, 56f, 6f, 0xFF7A4A20.toInt())
+        gfx.rect(x + 5, fy - 17, 46f, 8f, 0xFFF4F4F4.toInt())
+        gfx.rect(x + 18, fy - 18, 33f, 9f, style.blanket)
+        gfx.rect(x + 18, fy - 18, 33f, 2f, 0x33FFFFFF)
+        gfx.oval(x + 6, fy - 21, 12f, 7f, style.pillow)
+        gfx.shadowText("SLEEP", x + 28, fy - 26, 6f, 0xFFFFF2C8.toInt(), 1)
+    }
+
+    /** Where each piece of furniture goes, as an x position in the room. */
     fun spot(f: Furniture): Float = when (f) {
-        Furniture.BOOKSHELF -> 42f
-        Furniture.FIREPLACE -> 78f
-        Furniture.PAINTING -> 82f
-        Furniture.COUCH -> 170f
-        Furniture.LAMP -> 228f
-        Furniture.RUG -> 150f
-        Furniture.TABLE -> 252f
-        Furniture.CHAIRS -> 242f
-        Furniture.TV -> 300f
-        Furniture.FISH_TANK -> 340f
-        Furniture.PLANT -> 376f
-        Furniture.CLAW_MACHINE -> 392f
+        Furniture.BOOKSHELF -> 132f
+        Furniture.FIREPLACE -> 172f
+        Furniture.PAINTING -> 176f
+        Furniture.COUCH -> 330f
+        Furniture.LAMP -> 316f
+        Furniture.RUG -> 300f
+        Furniture.TABLE -> 420f
+        Furniture.CHAIRS -> 410f
+        Furniture.TV -> 486f
+        Furniture.FISH_TANK -> 536f
+        Furniture.PLANT -> 580f
+        Furniture.CLAW_MACHINE -> 650f
     }
 
     fun drawFurniture(gfx: Gfx, f: Furniture, ox: Float, t: Float) {
@@ -311,34 +325,18 @@ object Homes {
         }
     }
 
-    /** Draws plushie [p] sitting with its bottom at ([cx], [bottom]), about [size] tall. */
-    fun drawPlushie(g: TeamGame, gfx: Gfx, p: Plushie, cx: Float, bottom: Float, size: Float) {
-        gfx.oval(cx - size * 0.45f, bottom - 2, size * 0.9f, 4f, 0x44000000)
-        val name = p.sticker
-        if (name == null) {
-            val s = size / 18f
-            Gloop(0f, 16f).draw(g, ScaledGfx(gfx, s, cx - 9 * s, bottom - 17 * s), 0f)
-        } else {
-            val i = Stickers.all.indexOfFirst { it.name == name }
-            if (i >= 0) Stickers.drawPicture(g, gfx, i, cx, bottom - size / 2, size)
-        }
-        // A little heart tag: it's a plushie!
-        gfx.oval(cx + size * 0.25f, bottom - 6, 5f, 5f, 0xFFFF6A9A.toInt())
-    }
-
-    /** The plushie shelves: 2 rows of 10, x positions in the 427-wide room. */
-    fun shelfSpot(i: Int): Pair<Float, Float> {
-        val row = i / 10
-        val col = i % 10
-        return (258f + col * 17f) to (if (row == 0) 72f else 112f)
-    }
+    /** The plushie shelves on the wall: 3 rows of 12 show off your newest plushies. */
+    fun shelfSpot(i: Int): Pair<Float, Float> = (SHELF_X + 8f + (i % 12) * 17f) to (48f + (i / 12) * 30f)
+    const val SHELF_SLOTS = 36
 
     fun drawShelves(gfx: Gfx, ox: Float) {
-        for (y in listOf(72f, 112f)) {
-            gfx.rect(ox + 248f, y, 174f, 4f, 0xFF7A4A20.toInt())
-            gfx.rect(ox + 252f, y + 4, 3f, 6f, 0xFF5A3A1A.toInt())
-            gfx.rect(ox + 414f, y + 4, 3f, 6f, 0xFF5A3A1A.toInt())
+        for (row in 0 until 3) {
+            val y = 48f + row * 30f
+            gfx.rect(ox + SHELF_X, y, 208f, 4f, 0xFF7A4A20.toInt())
+            gfx.rect(ox + SHELF_X + 4, y + 4, 3f, 5f, 0xFF5A3A1A.toInt())
+            gfx.rect(ox + SHELF_X + 200, y + 4, 3f, 5f, 0xFF5A3A1A.toInt())
         }
+        gfx.shadowText("PLUSHIES", ox + SHELF_X + 104, 132f, 7f, 0xFFFF9AD0.toInt(), 1)
     }
 }
 

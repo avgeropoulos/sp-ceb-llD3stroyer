@@ -741,16 +741,30 @@ object TeamArt {
     }
 
     // ---------------------------------------------------------------- Ring-Ding Frog on his scooter
-    fun frog(gfx: Gfx, px: Float, y: Float, t: Float) {
+    /** Ring-Ding Frog's skin colors: (body, belly). He shows up in a different one each time! */
+    val frogColors = listOf(
+        0xFF4CC83A.toInt() to 0xFFB8F0A0.toInt(),
+        0xFF3A8AE8.toInt() to 0xFFB8DCFF.toInt(),
+        0xFFE84A9A.toInt() to 0xFFFFC8E4.toInt(),
+        0xFFFF8A2A.toInt() to 0xFFFFE0B0.toInt(),
+        0xFF9A4AE8.toInt() to 0xFFE0C8FF.toInt(),
+        0xFFE8D02A.toInt() to 0xFFFFF4B0.toInt(),
+        0xFFE83A3A.toInt() to 0xFFFFC0C0.toInt(),
+        0xFF2AC8C8.toInt() to 0xFFB8F4F4.toInt(),
+    )
+
+    fun frog(gfx: Gfx, px: Float, y: Float, t: Float, colors: Pair<Int, Int> = frogColors[0], rainbowSkin: Boolean = false) {
+        val skin = if (rainbowSkin) argb(255, com.roccoquest.game.rainbow(t * 0.5f)) else colors.first
+        val belly = colors.second
         gfx.rect(px - 2, y + 20, 26f, 3f, 0xFF808090.toInt())
         gfx.rect(px + 20, y + 4, 2f, 17f, 0xFF808090.toInt())
         gfx.rect(px + 17, y + 3, 8f, 2f, 0xFF404050.toInt())
         gfx.oval(px - 2, y + 20, 6f, 6f, 0xFF202020.toInt())
         gfx.oval(px + 18, y + 20, 6f, 6f, 0xFF202020.toInt())
-        gfx.oval(px + 2, y + 6, 16f, 15f, 0xFF4CC83A.toInt())
-        gfx.oval(px + 5, y + 11, 10f, 8f, 0xFFB8F0A0.toInt())
-        gfx.oval(px + 2, y - 1, 8f, 9f, 0xFF4CC83A.toInt())
-        gfx.oval(px + 10, y - 1, 8f, 9f, 0xFF4CC83A.toInt())
+        gfx.oval(px + 2, y + 6, 16f, 15f, skin)
+        gfx.oval(px + 5, y + 11, 10f, 8f, belly)
+        gfx.oval(px + 2, y - 1, 8f, 9f, skin)
+        gfx.oval(px + 10, y - 1, 8f, 9f, skin)
         gfx.oval(px + 3, y, 6f, 7f, WHITE)
         gfx.oval(px + 11, y, 6f, 7f, WHITE)
         val look = if ((t * 4).toInt() % 2 == 0) 1f else 0f
@@ -759,7 +773,7 @@ object TeamArt {
         // Mouth wide open: he's singing!
         val open = abs(sin(t * 12)) * 3f
         gfx.oval(px + 6, y + 8, 8f, 2f + open, 0xFF8A1010.toInt())
-        gfx.rect(px + 14, y + 8, 6f, 2f, 0xFF4CC83A.toInt())
+        gfx.rect(px + 14, y + 8, 6f, 2f, skin)
         for (i in 0 until 3) {
             val nx = px + 6 + i * 8f + sin(t * 3 + i) * 3f
             val ny = y - 12 - ((t * 20 + i * 9) % 22)

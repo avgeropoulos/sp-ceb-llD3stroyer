@@ -147,7 +147,7 @@ object TeamControls {
         showLong: Boolean = false, sprinting: Boolean = false, blackFlowers: Int = 0,
     ) {
         layout(viewW)
-        val c = 0xDDFFFFFF.toInt()
+        val c = 0xBBFFFFFF.toInt()
         button(gfx, left, input.left)
         button(gfx, right, input.right)
         button(gfx, jump, input.jump)
@@ -157,7 +157,7 @@ object TeamControls {
         gfx.text("JUMP", jump.cx, jump.cy + 3, 8f, c, 1)
         gfx.text(actionLabel, action.cx, action.cy + 3, 7f, c, 1)
         // SWAP shows who you'll switch to.
-        val sf = if (input.swap) 0xCCFFFFFF.toInt() else (swapColor and 0x00FFFFFF) or 0x99000000.toInt()
+        val sf = if (input.swap) 0xCCFFFFFF.toInt() else (swapColor and 0x00FFFFFF) or 0x66000000
         gfx.oval(swap.cx - swap.r - 1, swap.cy - swap.r - 1, swap.r * 2 + 2, swap.r * 2 + 2, 0x55000000)
         gfx.oval(swap.cx - swap.r, swap.cy - swap.r, swap.r * 2, swap.r * 2, sf)
         gfx.text("SWAP", swap.cx, swap.cy, 6f, c, 1)
@@ -178,7 +178,7 @@ object TeamControls {
         if (showLong) {
             val lb = longB
             gfx.oval(lb.cx - lb.r - 1, lb.cy - lb.r - 1, lb.r * 2 + 2, lb.r * 2 + 2, 0x55000000)
-            gfx.oval(lb.cx - lb.r, lb.cy - lb.r, lb.r * 2, lb.r * 2, if (input.longJump) 0xCCFFFFFF.toInt() else 0x88E52521.toInt())
+            gfx.oval(lb.cx - lb.r, lb.cy - lb.r, lb.r * 2, lb.r * 2, if (input.longJump) 0xCCFFFFFF.toInt() else 0x55E52521)
             gfx.text("LONG", lb.cx, lb.cy + 1, 6f, c, 1)
             gfx.text("JUMP", lb.cx, lb.cy + 8, 5f, c, 1)
         }
@@ -210,7 +210,6 @@ object TeamControls {
             gfx.rect(pb.cx + 3.5f, pb.cy - 10, 1.5f, 4f, gold)
             gfx.text("50", pb.cx, pb.cy + 11, 5f, c, 1)
         }
-        gfx.text("2x tap = sprint  swipe \u2193 = squat/slam", 70f, 236f, 6f, if (input.down) c else 0x88FFFFFF.toInt(), 1)
     }
 
     fun drawTop(gfx: Gfx, viewW: Float, musicOn: Boolean, craftReady: Boolean, t: Float) {
@@ -235,8 +234,26 @@ object TeamControls {
     }
 
     private fun button(gfx: Gfx, b: Button, pressed: Boolean) {
-        val fill = if (pressed) 0x88FFFFFF.toInt() else 0x44FFFFFF
-        gfx.oval(b.cx - b.r - 1, b.cy - b.r - 1, b.r * 2 + 2, b.r * 2 + 2, 0x55000000)
+        // Soft, see-through buttons so they don't crowd the screen.
+        val fill = if (pressed) 0x77FFFFFF else 0x26FFFFFF
+        gfx.oval(b.cx - b.r - 1, b.cy - b.r - 1, b.r * 2 + 2, b.r * 2 + 2, 0x30000000)
         gfx.oval(b.cx - b.r, b.cy - b.r, b.r * 2, b.r * 2, fill)
+    }
+
+    /** Inside the house: just walk left/right and one action button (SHOP, SLEEP, LOOK...). */
+    fun drawHome(gfx: Gfx, input: TeamInput, label: String, t: Float) {
+        for ((b, held, arrow) in listOf(Triple(left, input.left, -1f), Triple(right, input.right, 1f))) {
+            gfx.oval(b.cx - b.r, b.cy - b.r, b.r * 2, b.r * 2, if (held) 0x99FFFFFF.toInt() else 0x55FFFFFF)
+            gfx.poly(
+                floatArrayOf(b.cx + arrow * 8, b.cx - arrow * 6, b.cx - arrow * 6),
+                floatArrayOf(b.cy, b.cy - 9, b.cy + 9), 0xDDFFFFFF.toInt(),
+            )
+        }
+        if (label.isNotEmpty()) {
+            val b = action
+            val glow = 0x66 + ((kotlin.math.sin(t * 5) + 1) * 40).toInt()
+            gfx.oval(b.cx - b.r - 4, b.cy - b.r - 4, b.r * 2 + 8, b.r * 2 + 8, (glow shl 24) or 0x2EB84A)
+            gfx.text(label, b.cx, b.cy + 3, 8f, 0xFFFFFFFF.toInt(), 1)
+        }
     }
 }

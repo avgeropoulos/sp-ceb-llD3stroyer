@@ -27,7 +27,7 @@ enum class Power(val label: String, val ore: Ore?, val damage: Int) {
     THUNDER("THUNDER FLOWER", Ore.COPPER, 2),
     CRYSTAL("CRYSTAL FLOWER", Ore.AMETHYST, 2),
     /** Rocco wears a blue shell: homing shells to throw, and a spin dash when sprinting. */
-    SHELL("BLUE SHELL", Ore.DIAMOND, 3),
+    SHELL("BLUE SHELL", Ore.DIAMOND, 2),
 }
 
 /**
@@ -187,6 +187,12 @@ class Hero(val who: Who, x: Float, y: Float) :
         when (who) {
             Who.ROCCO -> {
                 val frame = if (!onGround) 2 else if (walking) 1 else 0
+                if (g.dino != null) {
+                    // Riding Dash: Dash runs along below, Rocco sits in the saddle.
+                    Dino.drawBody(gfx, cx + ox, bottom, facing, anim, walking || !onGround)
+                    gfx.sprite(TeamArt.rocco(g.power, if (onGround) 0 else 2), px + 1 - facing * 3, bottom - 42, flipX = facing < 0)
+                    return
+                }
                 when {
                     mini -> {
                         val s = if (!onGround) com.roccoquest.game.Sprites.smallJump else if (walking) com.roccoquest.game.Sprites.smallWalk else com.roccoquest.game.Sprites.smallStand

@@ -228,20 +228,56 @@ and turn those spots into **pits**. Get off the cracks!
 
 ![Earthquake](docs/teamup-earthquake.png)
 
-### Houses, furniture and plushies
+### The world map
 
-* The **HOME** tab has **5 houses**: Cottage, Log Cabin, Igloo, Mushroom House and Mini Castle. Moving the
-  house you already have only costs 2 stone.
-* Walk to the door and press **ENTER** to go **inside**. Tap **SHOP** to buy **12 kinds of furniture** (rug,
-  lamp, table, chairs, couch, bookshelf, plant, TV, fireplace, painting, fish tank and a claw machine), and
-  each one appears in the room. With a bed you can **SLEEP** right from inside to save.
-* **20 plushies** to collect (Rocco, Blocky, all nine Pokemon, Ring-Ding Frog, Dennis, a Grumbler, a
-  Gloop, an Enderman, Krag Jr., King Krag, the Warden and the Ender Dragon). Get them from **bosses**
-  (each boss gives its own plushie), **treasure chests**, **mystery blocks** and the **claw machine**
-  (30 coins a try, always a new one). They sit on the shelves at home. Tap one and it says its name!
+Like in Mario, there's a **world map**. Levels are numbered **1-1 to 1-21** (World 1) and **2-1 to 2-21**
+(World 2). Beat a level and the next one opens up. Tap a level, then tap it again (or **PLAY!**) to play it,
+including old ones you've already beaten (they get a green flag). Boss levels are red. Your **house** is on
+the map too. Continuing a save file takes you to the map, and the pause menu has **SAVE & EXIT TO MAP**.
+After the very end of the game, tapping takes you back to the start menu.
+
+![World map](docs/teamup-map.png)
+
+### Your house, the shop and 100 plushies
+
+* Walk into your **HOUSE** from the map and **walk around inside** with the arrows. The room is big and the
+  view follows you. Walk up to things and press the button:
+  * **SHOP** (the counter with the shopkeeper) has its own menu: **FURNITURE** (12 things), **BEDS** (a red
+    bed and a **blue bed**), **PLUSHIES** and **HOUSES** (Cottage, Log Cabin, Igloo, Mushroom House, Mini Castle).
+  * **SLEEP** in your bed to **save the game**.
+  * **LOOK** at the plushie shelves to open the **PLUSHIE BOOK** with all **100 plushies**.
+  * **PLAY** the claw machine (30 coins, always a new plushie).
+  * The door goes back to the map.
+* **100 plushies**: Rocco, Blocky, all the Pokemon, Ring-Ding Frog, Dennis, bad guys, the 4 bosses, a
+  **BABY FOX**, and 79 stuffed animals (bears, bunnies, cats, puppies, foxes, pandas, piggies, mice, owls,
+  penguins, duckies, froggies, lions, elephants, unicorns and dragons) in lots of colors, including rare gold
+  and rainbow ones. **Save up your coins** to buy them in the shop, or find them in mystery blocks, treasure
+  chests and the claw machine. Boss plushies come from beating the bosses (or lots of coins).
 
 ![Inside the house](docs/teamup-home.png)
-![Five kinds of houses](docs/teamup-houses.png)
+![Plushie book](docs/teamup-plushies.png)
+
+### Dash the dino
+
+Every few levels **Dash**, a friendly green dinosaur, is waiting near the start. Jump on his back (or press
+**RIDE** next to him) to ride him: he runs faster and jumps higher, **hold JUMP to flutter**, and his long
+**TONGUE** gulps bad guys. Press **JUMP in the air to leap off**. If a bad guy hits you while you're riding,
+you fall off instead of losing a heart, and Dash runs away for a moment.
+
+![Dash the dino](docs/teamup-dash.png)
+
+### Other changes
+
+* **Music changes every level** (seven new songs: meadow, jungle, snow, desert, night, beach and a scary
+  one), and boss levels take turns with **ominous** boss songs.
+* **Poseidon** speaks Greek: **"Είμαι ο Ποσειδώνας!"** ("I am Poseidon!") using the phone's Greek voice (if
+  the phone has no Greek voice, he says it in English).
+* **Ring-Ding Frog** shows up in a **different color** every time (sometimes rainbow!).
+* The **Blue Shell** is weaker: one shell at a time, slower throws, a smaller blast and a gentler spin.
+* **Fewer free items**: bonus portals are only in every third level, bonus rooms have less loot, some prize
+  blocks are plain bricks, and mystery blocks are mostly coins.
+* Bad guys are a little tougher (40% more health, 75% in World 2).
+* The screen is **less crowded**: see-through buttons, only the materials you have are shown, no hint text.
 
 ### Stickers
 

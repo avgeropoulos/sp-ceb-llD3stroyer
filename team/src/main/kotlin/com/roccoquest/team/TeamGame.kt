@@ -29,7 +29,7 @@ import kotlin.random.Random
  * and sleeping in the bed saves the game into one of three save slots.
  */
 class TeamGame(private val input: TeamInput, private val sound: SoundSink, private val storage: Storage = Storage.Memory()) {
-    enum class State { TITLE, SLOTS, PICK, INTRO, PLAY, CRAFT, TRADE, SLEEP, OUCH, CLEAR, STICKER, BOOK, VICTORY, HOME }
+    enum class State { TITLE, SLOTS, PICK, INTRO, PLAY, CRAFT, TRADE, SLEEP, OUCH, CLEAR, STICKER, BOOK, VICTORY, HOME, MAP }
 
     companion object {
         const val MAX_HEARTS = 5
@@ -48,8 +48,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         const val BONUS_TIME = 30f
         const val QUAKE_WARN = 2.2f
         const val CLAW_COST = 30
+        const val POSEIDON_LINE = "Είμαι ο Ποσειδώνας!"
         const val SCORE_MULT = 3
-        val TABS = listOf("FLOWERS", "SUPPLIES", "HOME", "WEAPONS", "ARMOR", "SHIELDS")
+        /** Houses, beds and furniture are bought in the SHOP at home now, not crafted. */
+        val TABS = listOf("FLOWERS", "SUPPLIES", "WEAPONS", "ARMOR", "SHIELDS")
         /** How close bad guys have to be for the Black Flower to get them. */
         const val BLACK_RANGE = 170f
     }
@@ -116,13 +118,42 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         private set
     var furnitureBits = 0
         private set
-    var plushBits = 0
+    /** Which of the 100 plushies you have. */
+    val plushOwned = BooleanArray(Plushies.all.size)
+    /** Beds you own (one bit each) and the one in your room. */
+    var bedsOwned = 0
         private set
+    var bedStyle = BedStyle.RED
+        private set
+    fun hasBed() = bedsOwned != 0
+    fun ownsBed(b: BedStyle) = bedsOwned and (1 shl b.ordinal) != 0
     fun hasFurniture(f: Furniture) = furnitureBits and (1 shl f.ordinal) != 0
-    fun hasPlushie(p: Plushie) = plushBits and (1 shl p.ordinal) != 0
-    val plushieCount get() = Plushie.entries.count(::hasPlushie)
-    /** Inside the house: is the furniture shop open? */
+    fun hasPlushie(p: Plushie) = plushOwned[p.id]
+    val plushieCount get() = plushOwned.count { it }
+    /** Inside the house: is the shop open, and which tab? */
     var homeShop = false
+        private set
+    var shopTab = 0
+        private set
+    private var shopPage = 0
+    /** Inside the house: the plushie collection book, and where you're standing. */
+    var plushBook = false
+        private set
+    private var bookPage = 0
+    var homeX = 120f
+        private set
+    private var homeFacing = 1
+    private var homeAnim = 0f
+
+    /** World map: levels unlocked so far, levels beaten, which world page and which spot is picked. */
+    var unlocked = 1
+        private set
+    private val cleared = BooleanArray(Levels.all.size)
+    fun isCleared(i: Int) = cleared[i]
+    var mapWorld = 0
+        private set
+    /** The selected spot on the map: a level index, or -1 for home. */
+    var mapSel = 0
         private set
 
     /** The shield Rocco or Blocky carries, and how many more hits it can block. */
@@ -186,6 +217,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         private set
     private var portalHit: Portal? = null
 
+    /** Dash the dino, while Rocco is riding him. */
+    var dino: Dino? = null
+        private set
+    private var flutterT = 0f
+
     /** Earthquake levels: every so often the ground cracks, then boulders smash it into pits. */
     var quakeLevel = false
         private set
@@ -213,7 +249,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private var eraseArmed = -1
     private var eraseT = 0f
     private var pickChoice = Mon.SPARKY
-    private val prev = BooleanArray(12)
+    private val prev = BooleanArray(16)
 
     /** The armor the team is wearing, and how many more hits it can take. */
     var armorType = Armor.NONE
@@ -344,7 +380,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         storage.save(key("shieldType"), shieldType.ordinal)
         storage.save(key("houseType"), houseType.ordinal)
         storage.save(key("furniture"), furnitureBits)
-        storage.save(key("plushies"), plushBits)
+        for (k in 0 until 4) storage.save(key("plush$k"), (0 until 25).sumOf { b -> val i = k * 25 + b; if (i < plushOwned.size && plushOwned[i]) 1 shl b else 0 })
+        storage.save(key("beds"), bedsOwned)
+        storage.save(key("bedStyle"), bedStyle.ordinal)
+        storage.save(key("unlocked"), unlocked)
+        storage.save(key("clearedLo"), (0 until 21).sumOf { if (cleared[it]) 1 shl it else 0 })
+        storage.save(key("clearedHi"), (21 until Levels.all.size).sumOf { if (cleared[it]) 1 shl (it - 21) else 0 })
         storage.save(key("shieldHp"), shieldHp)
         // The house (and bed) belong to the level they were built in.
         val h = house
@@ -404,14 +445,28 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         shieldType = Shield.entries.getOrElse(storage.load(key("shieldType"))) { Shield.NONE }
         houseType = HouseType.entries.getOrElse(storage.load(key("houseType"))) { HouseType.COTTAGE }
         furnitureBits = storage.load(key("furniture"))
-        plushBits = storage.load(key("plushies"))
+        plushOwned.fill(false)
+        for (k in 0 until 4) {
+            // Older saves kept their first 20 plushies in "plushies": the same ones come first now.
+            val bits = storage.load(key("plush$k")) or (if (k == 0) storage.load(key("plushies")) else 0)
+            for (b in 0 until 25) if (bits and (1 shl b) != 0 && k * 25 + b < plushOwned.size) plushOwned[k * 25 + b] = true
+        }
+        bedsOwned = storage.load(key("beds"))
+        bedStyle = BedStyle.entries.getOrElse(storage.load(key("bedStyle"))) { BedStyle.RED }
+        val lo = storage.load(key("clearedLo"))
+        val hi = storage.load(key("clearedHi"))
+        for (i in cleared.indices) cleared[i] = if (i < 21) lo and (1 shl i) != 0 else hi and (1 shl (i - 21)) != 0
+        // Older saves: everything up to the saved level is open (and the ones before it beaten).
+        val lv = storage.load(key("level"))
+        unlocked = maxOf(storage.load(key("unlocked")), lv, 1).coerceAtMost(Levels.all.size)
+        for (i in 0 until lv - 1) cleared[i] = true
         shieldHp = storage.load(key("shieldHp"))
         if (shieldHp <= 0) shieldType = Shield.NONE
         mon = slotMon(slot)
     }
 
     fun eraseSlot(s: Int) {
-        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "armorType", "armorHp", "blackFlowers", "shieldType", "shieldHp", "swordHp", "pickHp", "houseType", "furniture", "plushies", "stickersLo", "stickersHi", "houseLevel", "houseX", "houseY", "bed", "bedLevel", "spotLevel", "spotX", "spotY")) {
+        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "armorType", "armorHp", "blackFlowers", "shieldType", "shieldHp", "swordHp", "pickHp", "houseType", "furniture", "plushies", "plush0", "plush1", "plush2", "plush3", "beds", "bedStyle", "unlocked", "clearedLo", "clearedHi", "stickersLo", "stickersHi", "houseLevel", "houseX", "houseY", "bed", "bedLevel", "spotLevel", "spotX", "spotY")) {
             storage.save(key(name, s), 0)
         }
         Ore.entries.forEach { storage.save(key("ore_${it.name}", s), 0) }
@@ -442,7 +497,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         shieldHp = 0
         houseType = HouseType.COTTAGE
         furnitureBits = 0
-        plushBits = 0
+        plushOwned.fill(false)
+        bedsOwned = 0
+        bedStyle = BedStyle.RED
+        unlocked = 1
+        cleared.fill(false)
+        mapWorld = 0
+        mapSel = 0
         startLevel(0)
     }
 
@@ -451,7 +512,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         loadSlot()
         score = 0
         val lv = slotLevel(slot).coerceIn(0, Levels.all.lastIndex)
-        startLevel(lv, restoreHome = true)
+        levelIndex = lv
+        // Back to the world map, standing on the level you were playing.
+        goToMap(lv)
     }
 
     // ======================================================================== Levels
@@ -473,6 +536,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         foes.clear(); things.clear(); pending.clear(); particles.clear(); frogSpots.clear()
         boss = null; bossDone = false; wonder = false; camLock = null; frog = null; goal = null
         house = null; bed = null
+        if (dino != null) dismount()
         riding = null; trader = null; floodT = 0f; air = AIR_MAX; dogT = 10f; ventT.clear()
         if (rocco.mini) setMini(false)
         miniT = 0f
@@ -512,6 +576,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 'F' -> things += Goal(px, bottom).also { goal = it }
                 'r' -> frogSpots += tx
                 'P' -> things += Portal(px, bottom)
+                'y' -> things += Dino(px, bottom)
                 else -> spawnMonster(c, px, bottom)?.let { foes += it }
             }
         }
@@ -520,7 +585,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         quakeWarn = -1f
         quakeCols.clear()
         // Bad guys are tough, and World 2 bad guys are even tougher.
-        val tough = if (index >= WORLD2_START) 1.6f else 1.3f
+        val tough = if (index >= WORLD2_START) 1.75f else 1.4f
         for (f in foes) if (!f.boss) f.toughen(tough)
         if (fromCheckpoint) {
             respawnX = keepX
@@ -528,18 +593,6 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             things.filterIsInstance<Checkpoint>().forEach { if (it.x <= keepX + 1) it.reached = true }
             keepHouse?.let { house = House(it.x, it.bottom); things += house!! }
             keepBed?.let { bed = Bed(it.x, it.bottom); things += bed!! }
-        }
-        if (restoreHome && storage.load(key("houseLevel")) == index + 1) {
-            val hx = storage.load(key("houseX")).toFloat()
-            val hb = storage.load(key("houseY")).toFloat()
-            house = House(hx, hb, houseType).also { things += it }
-            if (storage.load(key("bed")) == 1) bed = Bed(hx + 34, hb).also { things += it }
-            // Wake up next to the bed if that's where you saved.
-            if (storage.load(key("bedLevel")) == index + 1 && bed != null) {
-                respawnX = hx + 30
-                respawnY = hb
-                things.filterIsInstance<Checkpoint>().forEach { if (it.x <= respawnX) it.reached = true }
-            }
         }
         // Pick up right where SAVE GAME was pressed.
         val spotSaved = restoreHome && storage.load(key("spotLevel")) == index + 1
@@ -606,10 +659,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             State.INTRO -> if (stateT > 3f || (tapped && stateT > 0.6f)) setState(State.PLAY)
             State.PLAY -> {
                 if (pauseE) paused = !paused
-                // The STICKER BOOK button on the pause screen.
-                if (paused && tapped && input.tapY in 150f..178f && abs(input.tapX - viewW / 2) < 70f) { setState(State.BOOK); return }
-                // ...and the SAVE GAME button under it.
-                if (paused && tapped && input.tapY in 184f..212f && abs(input.tapX - viewW / 2) < 70f) saveHere()
+                // The STICKER BOOK button on the pause screen...
+                if (paused && tapped && input.tapY in 136f..162f && abs(input.tapX - viewW / 2) < 80f) { setState(State.BOOK); return }
+                // ...SAVE GAME under it...
+                if (paused && tapped && input.tapY in 168f..194f && abs(input.tapX - viewW / 2) < 80f) saveHere()
+                // ...and SAVE & EXIT TO MAP at the bottom.
+                if (paused && tapped && input.tapY in 200f..226f && abs(input.tapX - viewW / 2) < 80f) {
+                    if (away == null) { saveAndExitToMap(); return } else toast("Finish the bonus room first!")
+                }
                 if (savedFlash > 0) savedFlash -= dt
                 if (!paused) {
                     if (craftE) { setState(State.CRAFT); sfx(Sound.BUMP) } else {
@@ -622,7 +679,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
             State.CRAFT -> updateCraft(tapped, craftE || pauseE, num)
             State.TRADE -> updateTrade(tapped, pauseE || craftE, num)
-            State.HOME -> { updateParticles(dt); updateHome(tapped, pauseE || craftE) }
+            State.HOME -> { updateParticles(dt); updateHome(dt, tapped, pauseE || craftE, actionE) }
+            State.MAP -> updateMap(tapped, pauseE, jumpE, num)
             State.SLEEP -> {
                 updateParticles(dt)
                 if (stateT > 2.6f) {
@@ -664,6 +722,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     /** After a level: offer three stickers to pick from. [next] is the next level, or -1 for the ending. */
     private fun offerStickers(next: Int) {
         afterSticker = next
+        if (away == null) {
+            cleared[levelIndex] = true
+            unlocked = maxOf(unlocked, minOf(Levels.all.size, levelIndex + 2))
+        }
         stickerPicked = -1
         val missing = Stickers.all.indices.filter { !hasSticker(it) }.shuffled()
         val pool = if (missing.size >= 3) missing else (missing + Stickers.all.indices.shuffled()).distinct()
@@ -701,7 +763,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             return
         }
         if (stateT > 2.5f || ((tapped || num > 0) && stateT > 0.8f)) {
-            if (afterSticker >= 0) startLevel(afterSticker) else {
+            if (afterSticker >= 0) { save(); goToMap(afterSticker) } else {
                 setState(State.VICTORY)
                 sound.say("Ring ding ding ding! You did it! Ding ding!")
             }
@@ -883,6 +945,16 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 mc != null -> { rideCart(mc); return }
             }
         }
+        // Hop onto Dash: land on his back, or press ACTION next to him.
+        if (l === rocco && dino == null && riding == null && !rocco.mini) {
+            val d = things.firstOrNull { it is Dino && it.rider == null && it.mountCooldown <= 0f && it.scaredT <= 0f } as Dino?
+            if (d != null) {
+                val landed = l.vy > 0f && l.overlaps(d) && l.bottom < d.cy
+                val asked = actionE && abs(d.cx - l.cx) < 22f && abs(d.bottom - l.bottom) < 16f
+                if (landed || asked) { mount(d); return }
+            }
+        }
+        dino?.let { d -> d.x = rocco.cx - d.w / 2; d.y = rocco.bottom - d.h }
         if (input.action && l.cooldown <= 0f && riding == null) action(l)
         updateWater(dt)
         updateSpikes(dt)
@@ -925,6 +997,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     /** Puts [who] in charge. Rocco and Blocky trade places, since only one of them is out at a time. */
     private fun switchTo(who: Who) {
         if (who == leaderWho) return
+        if (dino != null) dismount()
         val old = leader
         old.crouching = false; old.slamming = false; old.longJumping = false; old.sprinting = false
         leaderWho = who
@@ -941,6 +1014,58 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         h.vx = 0f
         sfx(Sound.KICK)
         particles += FloatText(h.cx, h.y - 6, h.label + "!", h.color)
+    }
+
+    /** Rocco hops on Dash's back: he gets taller (Rocco sits on top). */
+    private fun mount(d: Dino) {
+        val r = rocco
+        if (r.mini || dino != null) return
+        dino = d
+        d.rider = r
+        val b = r.bottom
+        r.x = d.cx - 7f
+        r.w = 14f
+        r.h = 34f
+        r.y = b - r.h
+        r.vy = min(r.vy, 0f)
+        sfx(Sound.POWERUP)
+        say(r.cx, r.y - 8, "YAHOO!", 1.2f)
+        toast("Riding DASH! TONGUE eats bad guys. JUMP in the air = hop off.")
+    }
+
+    /** Rocco gets off Dash. [jumpOff]: a big leap up; [scared]: Dash got hit and runs away. */
+    fun dismount(jumpOff: Boolean = false, scared: Boolean = false) {
+        val d = dino ?: return
+        val r = rocco
+        dino = null
+        d.rider = null
+        d.x = r.cx - d.w / 2
+        d.y = r.bottom - d.h
+        d.vx = 0f
+        d.vy = if (jumpOff) 120f else 0f
+        d.mountCooldown = 1f
+        d.facing = r.facing
+        val b = r.bottom
+        r.w = 12f
+        r.h = 23f
+        r.y = (if (jumpOff) b - 12f else b) - r.h
+        r.x = r.cx - 6f
+        if (jumpOff) { r.vy = r.jumpV * 1.05f; r.doubleJumped = true; sfx(Sound.JUMP) }
+        if (scared) { d.scaredT = 2.5f; d.mountCooldown = 2.5f; say(d.cx, d.y - 8, "Eek!", 1f) }
+    }
+
+    /** Dash's long tongue gulps the closest bad guy in front of him. */
+    private fun dinoTongue(h: Hero) {
+        h.cooldown = 0.45f
+        h.swing = 0.25f
+        val reach = Body(if (h.facing > 0) h.cx else h.cx - 52f, h.bottom - 30f, 52f, 22f)
+        val f = foes.filter { !it.dying && it.active && it.overlaps(reach) }.minByOrNull { abs(it.cx - h.cx) }
+        particles += Tongue(h.cx + h.facing * 10f, h.bottom - 26f, h.facing, if (f != null) abs(f.cx - h.cx) else 44f)
+        if (f != null) {
+            f.hit(this, if (f.boss) 3 else 99)
+            if (!f.boss) particles += FloatText(f.cx, f.y, "GULP!", 0xFF7FE07F.toInt())
+            sfx(Sound.CHOMP)
+        } else sfx(Sound.KICK)
     }
 
     /** Who SWAP goes to next: Rocco, then Blocky, then the Pokemon, then back to Rocco. */
@@ -985,6 +1110,25 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         h.sprinting = sprint
 
         val rocco = h.who == Who.ROCCO
+        val d = dino
+        if (rocco && d != null) {
+            // Riding Dash: faster, higher jumps, a flutter when you hold JUMP, and JUMP in mid-air leaps off.
+            if (h.onGround) flutterT = 0.9f
+            if (jumpE && !h.onGround) { dismount(jumpOff = true); return }
+            val want = dir * h.speed * (if (sprint) 1.6f else 1.3f)
+            h.vx = approach(h.vx, want, (if (h.onGround) 900f else 600f) * dt)
+            if (jumpE && h.onGround) { h.vy = h.jumpV * 1.12f; sfx(Sound.JUMP) }
+            if (input.jump && !h.onGround && h.vy > 0f && flutterT > 0f) {
+                flutterT -= dt
+                h.vy = approach(h.vy, -40f, 1800f * dt)
+            }
+            if (!input.jump && h.vy < -150f) h.vy = -150f
+            h.vy = min(h.vy + GRAVITY * grav * dt, MAX_FALL)
+            moveHero(h, dt)
+            d.facing = h.facing
+            if (h.onGround) { safeX = h.x; safeY = h.bottom }
+            return
+        }
         // Rocco's moves: squat, butt slam and long jump.
         if (rocco) {
             if (h.onGround) h.doubleJumped = false
@@ -1171,8 +1315,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 level[tx, ty] = Tile.USED
                 sfx(Sound.POWERUP)
                 // A surprise every time!
-                when (Random.nextInt(9)) {
-                    8 -> spawn(if (plushieCount < Plushie.entries.size) PlushieItem(px, above) else GiftBox(px, above))
+                // Most of the time it's just a couple of coins: the good stuff is rare.
+                when (Random.nextInt(14)) {
+                    8 -> spawn(if (Plushies.all.any { !hasPlushie(it) && !it.boss }) PlushieItem(px, above) else GiftBox(px, above))
+                    in 9..13 -> repeat(2) { i -> spawn(Coin(px + (i - 1) * 6f, ty * TILE - 16f, popping = true)) }
                     0 -> spawn(StarItem(px, above))
                     5 -> spawn(MiniItem(px, above))
                     6 -> spawn(LeafItem(px, above))
@@ -1200,6 +1346,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     // ======================================================================== Mining, throwing and Pokemon moves
 
     private fun action(h: Hero) {
+        if (h.who == Who.ROCCO && dino != null) { dinoTongue(h); return }
         when (h.who) {
             Who.BLOCKY -> swingPick(h)
             Who.ROCCO -> throwPower(h)
@@ -1357,9 +1504,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val pierce = if (lvl >= 4) 2 else 0
         val sx = if (h.facing > 0) h.x + h.w else h.x - 9
         if (power == Power.SHELL) {
-            if (things.count { it is HomingShell } >= lvl) return
+            // Toned down: one shell at a time (two at Lv5), and a slower throw.
+            if (things.count { it is HomingShell } >= (if (lvl >= 5) 2 else 1)) return
+            h.cooldown = 0.7f
             spawn(HomingShell(sx, h.y + 2, h.facing, dmg))
-            if (lvl >= 3) spawn(HomingShell(sx, h.y - 10, h.facing, dmg))
+            if (lvl >= 5) spawn(HomingShell(sx, h.y - 10, h.facing, dmg))
             sfx(Sound.FIRE)
             return
         }
@@ -1504,8 +1653,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         costs.all { (o, n) -> inventory[o.ordinal] >= n } && coins >= coinCost
 
     /** The recipes on one tab of the crafting table. */
-    fun recipes(tab: Int = craftTab): List<Recipe> = when (tab) {
-        0 -> listOf(Power.BOOM, Power.FIRE, Power.ICE, Power.GRASS, Power.THUNDER, Power.CRYSTAL, Power.SHELL).map { p ->
+    fun recipes(tab: Int = craftTab): List<Recipe> = when (TABS.getOrNull(tab)) {
+        "FLOWERS" -> listOf(Power.BOOM, Power.FIRE, Power.ICE, Power.GRASS, Power.THUNDER, Power.CRYSTAL, Power.SHELL).map { p ->
             val lvl = flowerLevel[p.ordinal]
             val ore = p.ore!!
             val note = when (p) {
@@ -1527,7 +1676,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             val title = if (lvl > 0) "${p.label} Lv$lvl" else p.label
             Recipe(title, note, if (button == "EQUIP" || button == "MAX") emptyList() else costs, 0, button, enabled, p, Kind.FLOWER)
         }
-        1 -> {
+        "SUPPLIES" -> {
             val next = pickTier + 1
             val pickOre = when (next) { 2 -> Ore.IRON; 3 -> Ore.GOLD; 4 -> Ore.DIAMOND; else -> Ore.AMETHYST }
             val pick = if (pickTier >= 5) {
@@ -1554,7 +1703,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 Recipe("MINI MUSHROOM", "Rocco goes tiny and floats up high", miniCost, 0, "MAKE", has(miniCost, 0), null, Kind.MINI),
             )
         }
-        3 -> Sword.entries.filter { it != Sword.NONE }.map { sw ->
+        "WEAPONS" -> Sword.entries.filter { it != Sword.NONE }.map { sw ->
             val costs = listOf(sw.ore!! to sw.cost)
             val (button, enabled) = when {
                 sword == sw -> (if (swordHp < sw.durability) "FIX" else "READY") to (swordHp < sw.durability && has(costs, 0))
@@ -1568,39 +1717,20 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             val c = listOf(Ore.DIAMOND to 3, Ore.AMETHYST to 3, Ore.EMERALD to 3)
             listOf(Recipe("BLACK FLOWER", "One use: gets EVERY bad guy near you! Have $blackFlowers", c, 20, "MAKE", has(c, 20), null, Kind.BLACK))
         }
-        4 -> Armor.entries.filter { it != Armor.NONE }.map { a ->
+        "ARMOR" -> Armor.entries.filter { it != Armor.NONE }.map { a ->
             val c = listOf(a.ore!! to a.cost)
             val wearing = armorType == a
             val note = if (wearing) "Wearing it: $armorHp/${a.durability} left. Make again to fix it" else "Takes ${a.durability} hits, then breaks"
             val weaker = armorType != Armor.NONE && a.ordinal < armorType.ordinal
             Recipe(a.label, note, c, 25, if (wearing) "FIX" else if (weaker) "BETTER" else "MAKE", !weaker && has(c, 25) && !(wearing && armorHp >= a.durability), null, Kind.ARMOR, armor = a)
         }
-        5 -> Shield.entries.filter { it != Shield.NONE }.map { sh ->
+        "SHIELDS" -> Shield.entries.filter { it != Shield.NONE }.map { sh ->
             val holding = shieldType == sh
             val note = if (holding) "Holding it: $shieldHp/${sh.durability} left. Make again to fix it" else "Blocks ${sh.durability} hits from the front"
             val weaker = shieldType != Shield.NONE && sh.ordinal < shieldType.ordinal
             Recipe(sh.label, note, sh.costs, 10, if (holding) "FIX" else if (weaker) "BETTER" else "MAKE", !weaker && has(sh.costs, 10) && !(holding && shieldHp >= sh.durability), null, Kind.SHIELD, shield = sh)
         }
-        else -> {
-            val bedCost = listOf(Ore.STONE to 4)
-            val l = leader
-            val canBuild = l.onGround && boss == null && away == null &&
-                level.solidAt(l.cx - 34, l.bottom + 2) && level.solidAt(l.cx + 34, l.bottom + 2)
-            HouseType.entries.map { t ->
-                val mine = house != null && houseType == t
-                // Moving the house you already have is cheap: you don't lose what you built.
-                val c = if (mine) listOf(Ore.STONE to 2) else t.costs
-                val coinsNeeded = if (mine) 0 else t.coins
-                Recipe(
-                    if (mine) "MOVE ${t.label} HERE" else t.label,
-                    if (mine) "Your house comes with you (furniture too!)" else "${t.note}. Built where you stand",
-                    c, coinsNeeded, if (mine) "MOVE" else "BUILD", has(c, coinsNeeded) && canBuild, null, Kind.HOUSE, house = t,
-                )
-            } + Recipe(
-                "BED", if (house == null) "Build a house first!" else "Sleep in it to SAVE the game",
-                bedCost, 10, if (bed == null) "BUILD" else "DONE", has(bedCost, 10) && house != null && bed == null, null, Kind.BED,
-            )
-        }
+        else -> emptyList()
     }
 
     /** True when the crafting table has something new to make (the CRAFT button glows). */
@@ -1794,7 +1924,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         waveHit.clear()
         shake = 1f
         sfx(Sound.WAVE)
-        sound.sayAs("I am Poseidon, ruler of the sea! Wave... CRUSH THEM!", Voice.GOD)
+        // Poseidon speaks Greek: "I am Poseidon!"
+        sound.sayAs(POSEIDON_LINE, Voice.GOD)
         bannerTitle = "POSEIDON!"
         bannerSub = "A GIANT WAVE crashes over the bad guys!"
         bannerT = 2.5f
@@ -2004,6 +2135,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     /** Mini Mushroom: Rocco shrinks for 25 seconds. */
     fun startMini() {
+        if (dino != null) dismount()
         if (riding == null) switchTo(Who.ROCCO)
         if (!rocco.mini) setMini(true)
         miniT = 25f
@@ -2045,12 +2177,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     /** A gift box holds a handful of random ore. */
     fun openGift(x: Float, y: Float) {
         val pool = Ore.entries.filter { it != Ore.STONE }
-        repeat(2) {
-            val o = pool.random()
-            inventory[o.ordinal]++
-            particles += FloatText(x, y - it * 9f, "+1 ${o.label}", o.color)
-        }
-        inventory[Ore.STONE.ordinal] += 3
+        val o = pool.random()
+        inventory[o.ordinal]++
+        particles += FloatText(x, y, "+1 ${o.label}", o.color)
+        inventory[Ore.STONE.ordinal] += 2
         sfx(Sound.POWERUP)
     }
 
@@ -2111,7 +2241,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 if (h === leader) {
                     when {
                         starT > 0 -> f.hit(this, 3)
-                        h.shellSpin -> { f.hit(this, 3 + flowerLevel[Power.SHELL.ordinal]); h.vx = -h.vx * 0.3f }
+                        h.shellSpin && !f.boss -> { f.hit(this, 1 + flowerLevel[Power.SHELL.ordinal] / 2); h.vx = -h.vx * 0.5f }
                         else -> f.touch(this)
                     }
                 }
@@ -2172,6 +2302,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     fun hurt(from: Body? = null) {
         if (invuln > 0 || starT > 0 || state != State.PLAY) return
         val l = leader
+        if (dino != null && l === rocco) {
+            dismount(scared = true)
+            invuln = 1.6f
+            l.vy = -200f
+            sfx(Sound.HURT)
+            toast("Ouch! You fell off Dash. Catch him!")
+            return
+        }
         if (from != null && shieldType != Shield.NONE && shieldHp > 0 && (from.cx - l.cx) * l.facing > -2f) {
             // The shield takes it! Blocked hits only push you back a little.
             shieldHp--
@@ -2217,6 +2355,19 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         leader.vy = -180f
         leader.vx = -leader.facing * 90f
         if (hearts <= 0) knockedOut()
+    }
+
+    /** Something went wrong: tidy up and go back to the title screen instead of closing the game. */
+    fun recover() {
+        paused = false
+        away = null
+        homeShop = false
+        plushBook = false
+        riding = null
+        particles.clear()
+        pending.clear()
+        input.tap = false
+        setState(State.TITLE)
     }
 
     /** For tests: nothing can hurt the team for a while. */
@@ -2371,10 +2522,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         inventory[Ore.GOLD.ordinal] += 1
         givePlushie(
             when (f) {
-                is KragJr -> Plushie.KRAG_JR
-                is KingKrag -> Plushie.KING_KRAG
-                is Warden -> Plushie.WARDEN
-                is EnderDragon -> Plushie.DRAGON
+                is KragJr -> Plushies.KRAG_JR
+                is KingKrag -> Plushies.KING_KRAG
+                is Warden -> Plushies.WARDEN
+                is EnderDragon -> Plushies.DRAGON
                 else -> null
             },
         )
@@ -2441,18 +2592,55 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             state == State.VICTORY -> Music.FROG
             state == State.STICKER -> Music.STAR
             state == State.HOME -> Music.SKY
+            state == State.MAP -> Music.MEADOW
             state == State.OUCH || state == State.CLEAR || state == State.SLEEP -> Music.NONE
             starT > 0 -> Music.STAR
-            // King Krag gets his own crazy music, and the Warden his spooky one.
-            boss is KingKrag && !bossDone -> Music.KRAG
+            // The Warden has his creepy heartbeat; other bosses take turns with the scary songs.
             boss is Warden && !bossDone -> Music.WARDEN
-            frog?.singing == true -> Music.FROG
             wonder -> Music.WONDER
-            boss != null && !bossDone -> Music.BOSS
-            level.def.place == Place.DEEP -> Music.WARDEN
-            else -> level.def.place.music
+            boss != null && !bossDone -> Tunes.bossMusic(levelIndex, fighting = true)
+            frog?.singing == true -> Music.FROG
+            away != null -> level.def.place.music
+            Levels.all[levelIndex].isBossLevel -> Tunes.bossMusic(levelIndex, fighting = false)
+            else -> Tunes.levelMusic(levelIndex)
         }
         sound.music(m)
+    }
+
+    object Tunes {
+        /** Each kind of place has two tunes; levels take turns so the music changes every level. */
+        private fun tunes(p: Place): List<Music> = when (p) {
+            Place.HILLS -> listOf(Music.OVERWORLD, Music.MEADOW)
+            Place.CAVE -> listOf(Music.UNDERGROUND, Music.NIGHT)
+            Place.SKY -> listOf(Music.SKY, Music.MEADOW)
+            Place.CASTLE -> listOf(Music.CASTLE, Music.DOOM)
+            Place.DESERT -> listOf(Music.DESERT, Music.OVERWORLD)
+            Place.SNOW -> listOf(Music.SNOW, Music.SKY)
+            Place.JUNGLE -> listOf(Music.JUNGLE, Music.MEADOW)
+            Place.VOLCANO -> listOf(Music.DESERT, Music.CASTLE)
+            Place.WATER -> listOf(Music.BEACH, Music.SKY)
+            Place.NIGHT -> listOf(Music.NIGHT, Music.UNDERGROUND)
+            Place.DEEP -> listOf(Music.WARDEN, Music.NIGHT)
+            Place.END -> listOf(Music.NIGHT, Music.DOOM)
+            Place.SUNSET -> listOf(Music.STAR, Music.STAR)
+        }
+
+        /** The tune for a normal level, never the same as the level right before it. */
+        fun levelMusic(i: Int): Music {
+            val opts = tunes(Levels.all[i].place)
+            val pick = opts[i % 2]
+            if (i == 0) return pick
+            val prevLevel = Levels.all[i - 1]
+            val prev = if (prevLevel.isBossLevel) null else tunes(prevLevel.place)[(i - 1) % 2]
+            return if (pick == prev) opts[(i + 1) % 2] else pick
+        }
+
+        /** Boss levels take turns between the scary songs. */
+        fun bossMusic(i: Int, fighting: Boolean): Music {
+            val n = (0 until i).count { Levels.all[it].isBossLevel }
+            return if (fighting) listOf(Music.KRAG, Music.DOOM, Music.BOSS)[n % 3]
+            else listOf(Music.DOOM, Music.CASTLE, Music.NIGHT)[n % 3]
+        }
     }
 
     // ======================================================================== Rendering
@@ -2468,6 +2656,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             State.STICKER -> renderStickers(gfx)
             State.BOOK -> renderBook(gfx)
             State.HOME -> renderHome(gfx)
+            State.MAP -> renderMap(gfx)
             else -> {
                 renderWorld(gfx)
                 renderHud(gfx)
@@ -2480,6 +2669,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                             house?.atDoor(l) == true -> "ENTER"
                             things.any { it is Villager && abs(it.cx - l.cx) < 22f && abs(it.bottom - l.bottom) < 20f } -> "TALK"
                             things.any { it is Minecart && abs(it.cx - l.cx) < 24f && abs(it.bottom - l.bottom) < 20f } -> "RIDE"
+                            dino != null && l === rocco -> "TONGUE"
+                            l === rocco && things.any { it is Dino && it.rider == null && abs(it.cx - l.cx) < 22f } -> "RIDE"
                             l.who == Who.MON && mon == Mon.PUNCHO -> "PUNCH"
                             l.who == Who.BLOCKY -> "MINE"
                             l.who == Who.MON -> if (mon == Mon.BLOOM) "VINE" else "ATTACK"
@@ -2532,14 +2723,17 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 }
                 if (paused && state == State.PLAY) {
                     gfx.rect(0f, 0f, viewW, VIEW_H, 0x99000000.toInt())
-                    gfx.shadowText("PAUSED", viewW / 2, 110f, 20f, white, 1)
-                    gfx.shadowText("Tap the pause button to keep playing", viewW / 2, 132f, 9f, 0xFFDDDDDD.toInt(), 1)
-                    gfx.rect(viewW / 2 - 70, 150f, 140f, 28f, 0xFF7A4A20.toInt())
-                    gfx.rect(viewW / 2 - 68, 152f, 136f, 24f, 0xFFB98A52.toInt())
-                    gfx.text("STICKER BOOK  $stickerCount/${Stickers.all.size}", viewW / 2, 168f, 9f, white, 1)
-                    gfx.rect(viewW / 2 - 70, 184f, 140f, 28f, 0xFF1E5A1E.toInt())
-                    gfx.rect(viewW / 2 - 68, 186f, 136f, 24f, if (savedFlash > 0) 0xFF3CE070.toInt() else 0xFF2EB84A.toInt())
-                    gfx.text(if (savedFlash > 0) "SAVED! (FILE ${slot + 1})" else "SAVE GAME", viewW / 2, 202f, 9f, white, 1)
+                    gfx.shadowText("PAUSED", viewW / 2, 100f, 20f, white, 1)
+                    gfx.shadowText("Tap the pause button to keep playing", viewW / 2, 120f, 9f, 0xFFDDDDDD.toInt(), 1)
+                    gfx.rect(viewW / 2 - 80, 136f, 160f, 26f, 0xFF7A4A20.toInt())
+                    gfx.rect(viewW / 2 - 78, 138f, 156f, 22f, 0xFFB98A52.toInt())
+                    gfx.text("STICKER BOOK  $stickerCount/${Stickers.all.size}", viewW / 2, 153f, 9f, white, 1)
+                    gfx.rect(viewW / 2 - 80, 168f, 160f, 26f, 0xFF1E5A1E.toInt())
+                    gfx.rect(viewW / 2 - 78, 170f, 156f, 22f, if (savedFlash > 0) 0xFF3CE070.toInt() else 0xFF2EB84A.toInt())
+                    gfx.text(if (savedFlash > 0) "SAVED! (FILE ${slot + 1})" else "SAVE GAME", viewW / 2, 185f, 9f, white, 1)
+                    gfx.rect(viewW / 2 - 80, 200f, 160f, 26f, 0xFF1A2A6A.toInt())
+                    gfx.rect(viewW / 2 - 78, 202f, 156f, 22f, 0xFF2E6BE6.toInt())
+                    gfx.text("SAVE & EXIT TO MAP", viewW / 2, 217f, 9f, white, 1)
                     TeamControls.drawTop(gfx, viewW, musicOn, false, time)
                 }
             }
@@ -2620,24 +2814,188 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         gfx.oval(front - 30 + d * 18, top - 2, 46f, 14f, 0xFFFFFFFF.toInt())
     }
 
+    // ======================================================================== World map
+
+    /** Goes to the world map, with [sel] picked (a level, or -1 for home). */
+    fun goToMap(sel: Int = mapSel) {
+        if (dino != null) dismount()
+        paused = false
+        away = null
+        homeShop = false
+        plushBook = false
+        mapSel = sel.coerceIn(-1, unlocked - 1)
+        if (mapSel >= 0) mapWorld = if (mapSel >= WORLD2_START) 1 else 0
+        setState(State.MAP)
+    }
+
+    /** Pause menu: save and go back to the map. */
+    fun saveAndExitToMap() {
+        save()
+        toast("Game saved!")
+        goToMap(levelIndex)
+    }
+
+    /** Where map spot [i] sits on screen (World page [mapWorld]). Home is spot -1. */
+    fun mapSpot(i: Int): Pair<Float, Float> {
+        if (i < 0) return 34f to 196f
+        val k = i - mapWorld * WORLD2_START
+        val row = k / 7
+        val col = if (row % 2 == 0) k % 7 else 6 - k % 7
+        val left = 82f
+        val step = (viewW - left - 36f) / 6f
+        return (left + col * step) to (70f + row * 58f)
+    }
+
+    private fun mapLevels() = (mapWorld * WORLD2_START) until minOf(Levels.all.size, (mapWorld + 1) * WORLD2_START)
+
+    /** "1-3" style names for the map. */
+    fun levelLabel(i: Int) = "${i / WORLD2_START + 1}-${i % WORLD2_START + 1}"
+
+    private fun mapButtons(): List<Pair<String, Float>> = buildList {
+        add("TITLE" to (viewW - 58f))
+        if (unlocked > WORLD2_START) add((if (mapWorld == 0) "WORLD 2" else "WORLD 1") to (viewW - 120f))
+    }
+
+    private fun updateMap(tapped: Boolean, back: Boolean, jumpE: Boolean, num: Int) {
+        if (back) { save(); setState(State.TITLE); return }
+        // Keyboard: arrows move, JUMP / number keys play.
+        val leftE = edge(12, input.left)
+        val rightE = edge(13, input.right)
+        if (leftE) mapSel = (mapSel - 1).coerceAtLeast(-1)
+        if (rightE) mapSel = (mapSel + 1).coerceAtMost(unlocked - 1)
+        if (leftE || rightE) { if (mapSel >= 0) mapWorld = if (mapSel >= WORLD2_START) 1 else 0; sfx(Sound.KICK) }
+        if ((jumpE || num > 0) && stateT > 0.3f) { playSelected(); return }
+        if (!tapped || stateT < 0.3f) return
+        val x = input.tapX
+        val y = input.tapY
+        if (y < 24f) {
+            for ((n, bx) in mapButtons()) if (x in bx..(bx + 54f)) {
+                if (n == "TITLE") { save(); setState(State.TITLE) } else { mapWorld = 1 - mapWorld; mapSel = mapLevels().first.coerceAtMost(unlocked - 1); sfx(Sound.KICK) }
+                return
+            }
+            return
+        }
+        // The PLAY button on the info strip at the bottom.
+        if (y > VIEW_H - 26f && x > viewW - 90f) { playSelected(); return }
+        val spots = listOf(-1) + mapLevels().toList()
+        for (i in spots) {
+            if (i >= unlocked) continue
+            val (sx, sy) = mapSpot(i)
+            if (abs(x - sx) < 16f && abs(y - sy) < 16f) {
+                if (mapSel == i) playSelected() else { mapSel = i; sfx(Sound.KICK) }
+                return
+            }
+        }
+    }
+
+    private fun playSelected() {
+        if (mapSel < 0) { enterHome(); return }
+        sfx(Sound.COIN)
+        startLevel(mapSel, restoreHome = true)
+    }
+
+    private fun renderMap(gfx: Gfx) {
+        val w2 = mapWorld == 1
+        gfx.rect(0f, 0f, viewW, VIEW_H, if (w2) 0xFF2A1E48.toInt() else 0xFF4AA8E8.toInt())
+        // Land
+        gfx.oval(-40f, 30f, viewW + 80f, 230f, if (w2) 0xFF4A3A6A.toInt() else 0xFF6AC85A.toInt())
+        gfx.oval(-20f, 44f, viewW + 40f, 204f, if (w2) 0xFF5A4A7A.toInt() else 0xFF7FD86A.toInt())
+        if (w2) for (k in 0 until 20) gfx.rect((k * 71f) % viewW, (k * 37f) % 30f + 4f, 1.5f, 1.5f, 0xFFFFFFFF.toInt())
+        // The path between levels
+        val levels = mapLevels().toList()
+        var prev = if (mapWorld == 0) mapSpot(-1) else null
+        for (i in levels) {
+            val p = mapSpot(i)
+            if (prev != null) {
+                val n = 8
+                for (k in 1 until n) {
+                    val px = prev.first + (p.first - prev.first) * k / n
+                    val py = prev.second + (p.second - prev.second) * k / n
+                    gfx.oval(px - 2, py - 2, 4f, 4f, if (i < unlocked) 0xFFF4E8C0.toInt() else 0x66F4E8C0)
+                }
+            }
+            prev = p
+        }
+        // Home
+        val (hx, hy) = mapSpot(-1)
+        Homes.drawHouse(ScaledGfx(gfx, 0.36f, hx - 14f, hy - 22f), houseType, 0f, 56f, time)
+        gfx.shadowText("HOME", hx, hy + 14, 7f, 0xFFFFF2C8.toInt(), 1)
+        // Level spots
+        for (i in levels) {
+            val (sx, sy) = mapSpot(i)
+            val open = i < unlocked
+            val boss = Levels.all[i].isBossLevel
+            val c = when {
+                !open -> 0xFF6A6A7A.toInt()
+                cleared[i] -> 0xFFFFD21F.toInt()
+                boss -> 0xFFE53A1E.toInt()
+                else -> 0xFFFFFFFF.toInt()
+            }
+            gfx.oval(sx - 12, sy - 12, 24f, 24f, 0xFF2A1A10.toInt())
+            gfx.oval(sx - 10, sy - 10, 20f, 20f, c)
+            gfx.text(if (open) levelLabel(i) else "?", sx, sy + 3.5f, 7f, if (open && !cleared[i] && !boss) 0xFF2A1A10.toInt() else 0xFF1A1A1A.toInt(), 1)
+            if (cleared[i]) {
+                gfx.rect(sx + 7, sy - 18, 1.5f, 10f, 0xFF3A3A3A.toInt())
+                gfx.poly(floatArrayOf(sx + 8.5f, sx + 15, sx + 8.5f), floatArrayOf(sy - 18, sy - 15, sy - 12), 0xFF2EB84A.toInt())
+            }
+            if (boss && open) gfx.text("!", sx - 10, sy - 10, 8f, 0xFFFF4040.toInt(), 1)
+        }
+        // The team stands on the picked spot.
+        val (px, py) = mapSpot(mapSel)
+        if (mapSel < 0 || mapSel in levels) {
+            val bob = abs(sin(time * 5)) * 3f
+            val hero = if (heroOut == Who.BLOCKY) TeamArt.blocky(power, false) else TeamArt.rocco(power, 0)
+            gfx.sprite(hero, px - 6, py - 34 - bob, w = 12f, h = 18f)
+        }
+        // Top bar
+        gfx.rect(0f, 0f, viewW, 24f, 0xCC1A1008.toInt())
+        gfx.shadowText(if (w2) "WORLD 2" else "WORLD 1", 8f, 16f, 10f, 0xFFFFD21F.toInt())
+        gfx.sprite(com.roccoquest.game.Sprites.coin, 80f, 6f, w = 8f, h = 11f)
+        gfx.shadowText("x$coins", 90f, 16f, 8f, white)
+        gfx.shadowText("PLUSHIES $plushieCount/${Plushies.all.size}", 130f, 16f, 8f, 0xFFFF9AD0.toInt())
+        for ((n, bx) in mapButtons()) {
+            gfx.rect(bx, 3f, 54f, 18f, 0xFF2A1808.toInt())
+            gfx.rect(bx + 1.5f, 4.5f, 51f, 15f, if (n == "TITLE") 0xFF8A1010.toInt() else 0xFF2E6BE6.toInt())
+            gfx.text(n, bx + 27, 15.5f, 7f, white, 1)
+        }
+        // Info strip
+        gfx.rect(0f, VIEW_H - 26f, viewW, 26f, 0xCC1A1008.toInt())
+        val info = if (mapSel < 0) "YOUR ${houseType.label}: shop, sleep and your plushies" else
+            "${levelLabel(mapSel)}  ${Levels.all[mapSel].name}" + (if (cleared[mapSel]) "  (beaten)" else "")
+        gfx.shadowText(info, 8f, VIEW_H - 9f, 8f, white)
+        gfx.rect(viewW - 86f, VIEW_H - 23f, 80f, 20f, 0xFF1E5A1E.toInt())
+        gfx.rect(viewW - 84.5f, VIEW_H - 21.5f, 77f, 17f, 0xFF2EB84A.toInt())
+        gfx.text(if (mapSel < 0) "GO HOME" else "PLAY!", viewW - 46f, VIEW_H - 9f, 9f, white, 1)
+        gfx.shadowText("Tap a level, then tap it again (or PLAY!) to go", viewW / 2, 38f, 7f, 0xFFFFF2C8.toInt(), 1)
+        if (toastT > 0) {
+            gfx.rect(20f, VIEW_H - 48, viewW - 40, 18f, 0xDD101828.toInt())
+            gfx.text(toast, viewW / 2, VIEW_H - 35, 8f, white, 1)
+        }
+    }
+
     // ======================================================================== Home sweet home
 
-    /** Gives a plushie you don't have yet ([pref] if you're missing that one). Returns it, or null if you have them all. */
+    /** Gives a plushie you don't have yet ([pref] if you're missing that one). Bosses' plushies only come from bosses. */
     fun givePlushie(pref: Plushie? = null): Plushie? {
-        val missing = Plushie.entries.filter { !hasPlushie(it) }
+        val missing = Plushies.all.filter { !hasPlushie(it) && (it == pref || !it.boss) }
         if (missing.isEmpty()) { coins += 5; return null }
         val p = if (pref != null && pref in missing) pref else missing.random()
-        plushBits = plushBits or (1 shl p.ordinal)
+        plushOwned[p.id] = true
         sfx(Sound.ONEUP)
-        toast("NEW PLUSHIE: ${p.label}! ($plushieCount/20) It's waiting on your shelf at home.")
-        sound.sayAs("A ${p.label.lowercase()} plushie!", Voice.HERO)
+        toast("NEW PLUSHIE: ${p.name}! ($plushieCount/${Plushies.all.size}) It's on your shelf at home.")
+        sound.sayAs("A ${p.name.lowercase()} plushie!", Voice.HERO)
         return p
     }
 
-    private fun homeX() = (viewW - Homes.ROOM_W) / 2
+    /** Where the house view starts, so it follows you around the room. */
+    private fun homeCam(): Float = if (viewW >= Homes.ROOM_W) -(viewW - Homes.ROOM_W) / 2 else (homeX - viewW / 2).coerceIn(0f, Homes.ROOM_W - viewW)
 
-    private fun enterHome() {
+    fun enterHome() {
         homeShop = false
+        plushBook = false
+        homeX = Homes.DOOR_X + 40f
+        homeFacing = 1
+        mapSel = -1
         setState(State.HOME)
         sfx(Sound.PORTAL)
         sound.sayAs("Home sweet home!", Voice.HERO)
@@ -2645,152 +3003,338 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     private fun leaveHome() {
         homeShop = false
+        plushBook = false
         particles.removeAll { it is FloatText }
-        setState(State.PLAY)
         sfx(Sound.KICK)
+        goToMap(-1)
     }
 
-    /** Buttons along the top of the home screen: (label, x). */
-    private fun homeButtons(): List<Pair<String, Float>> =
-        listOfNotNull("SHOP", if (bed != null) "SLEEP" else null, "EXIT").let { names ->
-            names.mapIndexed { i, n -> n to (viewW - 58f * (names.size - i)) }
+    /** What's in front of you in the house, for the action button. */
+    private fun homeTarget(): String? {
+        val x = homeX
+        return when {
+            x < Homes.DOOR_X + 36f -> "EXIT"
+            x in (Homes.SHOP_X - 4f)..(Homes.SHOP_X + 72f) -> "SHOP"
+            hasBed() && x in (Homes.BED_X - 6f)..(Homes.BED_X + 62f) -> "SLEEP"
+            x in Homes.SHELF_X..(Homes.SHELF_X + 210f) && !(hasFurniture(Furniture.TV) && x in 480f..530f) -> "LOOK"
+            hasFurniture(Furniture.CLAW_MACHINE) && x in (Homes.spot(Furniture.CLAW_MACHINE) - 10f)..(Homes.spot(Furniture.CLAW_MACHINE) + 40f) -> "PLAY"
+            else -> null
         }
+    }
+
+    private fun homeAction(what: String?) {
+        when (what) {
+            "EXIT" -> leaveHome()
+            "SHOP" -> { homeShop = true; sfx(Sound.KICK) }
+            "SLEEP" -> sleepAtHome()
+            "LOOK" -> { plushBook = true; sfx(Sound.KICK) }
+            "PLAY" -> playClaw()
+        }
+    }
+
+    /** Sleeping in your bed at home saves the game. */
+    fun sleepAtHome() {
+        if (!hasBed()) return
+        hearts = MAX_HEARTS
+        save()
+        storage.save(key("spotLevel"), 0)
+        sfx(Sound.CLEAR)
+        sound.say("Good night!")
+        toast("Zzz... Good morning! Game saved in FILE ${slot + 1}.")
+        savedFlash = 2f
+    }
 
     fun buyFurniture(f: Furniture) {
         if (hasFurniture(f)) { toast("You already have the ${f.label}."); return }
-        if (!has(f.costs, f.coins)) {
-            sfx(Sound.BUMP)
-            toast("Need " + (f.costs.map { "${it.second} ${it.first.label}" } + listOf("${f.coins} COINS")).joinToString(" + ") + "!")
-            return
-        }
+        if (!has(f.costs, f.coins)) { needToast(f.costs, f.coins); return }
         for ((o, n) in f.costs) inventory[o.ordinal] -= n
         coins -= f.coins
         furnitureBits = furnitureBits or (1 shl f.ordinal)
         sfx(Sound.POWERUP)
-        toast(if (f == Furniture.CLAW_MACHINE) "CLAW MACHINE! Tap it to win plushies (${CLAW_COST} coins a try)." else "New ${f.label}!")
+        toast(if (f == Furniture.CLAW_MACHINE) "CLAW MACHINE! Walk to it and press PLAY ($CLAW_COST coins a try)." else "New ${f.label}!")
         save()
+    }
+
+    fun buyBed(b: BedStyle) {
+        if (ownsBed(b)) { bedStyle = b; toast("The ${b.label} is in your room now."); save(); return }
+        if (coins < b.coins) { needToast(emptyList(), b.coins); return }
+        coins -= b.coins
+        bedsOwned = bedsOwned or (1 shl b.ordinal)
+        bedStyle = b
+        sfx(Sound.POWERUP)
+        toast("A ${b.label}! Walk to it and press SLEEP to save.")
+        save()
+    }
+
+    fun buyPlushie(p: Plushie) {
+        if (hasPlushie(p)) { toast("You already have the ${p.name} plushie."); return }
+        if (coins < p.price) { needToast(emptyList(), p.price); return }
+        coins -= p.price
+        plushOwned[p.id] = true
+        sfx(Sound.ONEUP)
+        toast("${p.name} plushie! ($plushieCount/${Plushies.all.size})")
+        sound.sayAs("A ${p.name.lowercase()} plushie!", Voice.HERO)
+        save()
+    }
+
+    fun buyHouse(t: HouseType) {
+        if (houseType == t) { toast("You already live in the ${t.label}!"); return }
+        if (!has(t.costs, t.coins)) { needToast(t.costs, t.coins); return }
+        for ((o, n) in t.costs) inventory[o.ordinal] -= n
+        coins -= t.coins
+        houseType = t
+        sfx(Sound.POWERUP)
+        toast("Welcome to your new ${t.label}! (Your furniture and plushies moved in too.)")
+        save()
+    }
+
+    private fun needToast(costs: List<Pair<Ore, Int>>, coinsNeeded: Int) {
+        sfx(Sound.BUMP)
+        toast("Need " + (costs.map { "${it.second} ${it.first.label}" } + (if (coinsNeeded > 0) listOf("$coinsNeeded COINS") else emptyList())).joinToString(" + ") + "!")
     }
 
     /** The claw machine always wins (it's a nice one): a new plushie for some coins. */
     fun playClaw() {
         when {
             !hasFurniture(Furniture.CLAW_MACHINE) -> return
-            plushieCount >= Plushie.entries.size -> toast("You have ALL 20 plushies! Amazing!")
+            Plushies.all.none { !hasPlushie(it) && !it.boss } -> toast("The claw machine is empty: you have them all!")
             coins < CLAW_COST -> { sfx(Sound.BUMP); toast("The claw machine needs $CLAW_COST coins.") }
             else -> { coins -= CLAW_COST; givePlushie(); save() }
         }
     }
 
-    private fun shopCard(i: Int): Pair<Float, Float> = (homeX() + 20f + (i % 3) * 131f) to (50f + (i / 3) * 44f)
+    val SHOP_TABS = listOf("FURNITURE", "BEDS", "PLUSHIES", "HOUSES")
+    private val PLUSH_PER_PAGE = 12
 
-    private fun updateHome(tapped: Boolean, close: Boolean) {
-        if (close) { if (homeShop) homeShop = false else leaveHome(); return }
+    /** One card in the shop grid (3 across, 4 down). */
+    private fun shopCard(i: Int): Pair<Float, Float> {
+        val w = min(130f, (viewW - 40f) / 3f)
+        val left = viewW / 2 - (w * 3 + 8f) / 2
+        return (left + (i % 3) * (w + 4f)) to (52f + (i / 3) * 44f)
+    }
+    private fun shopCardW() = min(130f, (viewW - 40f) / 3f)
+
+    /** The things for sale on the current shop tab, each with what tapping it does. */
+    private fun shopItems(): List<Pair<String, () -> Unit>> = when (shopTab) {
+        0 -> Furniture.entries.map { f -> f.label to { buyFurniture(f) } }
+        1 -> BedStyle.entries.map { b -> b.label to { buyBed(b) } }
+        2 -> Plushies.all.drop(shopPage * PLUSH_PER_PAGE).take(PLUSH_PER_PAGE).map { p -> p.name to { buyPlushie(p) } }
+        else -> HouseType.entries.map { t -> t.label to { buyHouse(t) } }
+    }
+
+    private fun updateHome(dt: Float, tapped: Boolean, close: Boolean, actionE: Boolean) {
+        if (close) {
+            when { homeShop -> homeShop = false; plushBook -> plushBook = false; else -> leaveHome() }
+            return
+        }
+        if (homeShop) { updateShop(tapped); return }
+        if (plushBook) { updateBook(tapped); return }
+        // Walk around the room.
+        val speed = 110f
+        if (input.left) { homeX -= speed * dt; homeFacing = -1; homeAnim += dt }
+        if (input.right) { homeX += speed * dt; homeFacing = 1; homeAnim += dt }
+        homeX = homeX.coerceIn(Homes.DOOR_X + 4f, Homes.ROOM_W - 20f)
+        if (actionE) { homeAction(homeTarget()); return }
         if (!tapped || stateT < 0.3f) return
         val x = input.tapX
         val y = input.tapY
-        if (homeShop) {
-            for (f in Furniture.entries) {
-                val (cx, cy) = shopCard(f.ordinal)
-                if (x in cx..(cx + 127f) && y in cy..(cy + 40f)) { buyFurniture(f); return }
-            }
-            homeShop = false
+        // Tap a spot in the room to use it (walks you there).
+        if (y in 30f..(Homes.FLOOR_Y + 4f)) {
+            val rx = x + homeCam()
+            val old = homeX
+            homeX = rx.coerceIn(Homes.DOOR_X + 4f, Homes.ROOM_W - 20f)
+            val t = homeTarget()
+            if (t != null && !(input.left || input.right)) homeAction(t) else homeX = old
+        }
+    }
+
+    private fun updateShop(tapped: Boolean) {
+        if (!tapped || stateT < 0.2f) return
+        val x = input.tapX
+        val y = input.tapY
+        val tw = shopCardW() * 3 / SHOP_TABS.size
+        val (left, _) = shopCard(0)
+        if (y in 30f..46f) {
+            val t = ((x - left) / tw).toInt()
+            if (t in SHOP_TABS.indices) { shopTab = t; shopPage = 0; sfx(Sound.KICK) }
             return
         }
-        if (y < 22f) {
-            for ((n, bx) in homeButtons()) if (x in bx..(bx + 52f)) {
-                when (n) {
-                    "SHOP" -> { homeShop = true; sfx(Sound.KICK) }
-                    "SLEEP" -> sleep()
-                    else -> leaveHome()
-                }
-                return
-            }
+        if (shopTab == 2 && y > VIEW_H - 22f) {
+            val pages = (Plushies.all.size + PLUSH_PER_PAGE - 1) / PLUSH_PER_PAGE
+            shopPage = if (x < viewW / 2) (shopPage + pages - 1) % pages else (shopPage + 1) % pages
+            sfx(Sound.KICK)
             return
         }
-        val ox = homeX()
-        if (x in (ox + 4)..(ox + 40) && y in 110f..Homes.FLOOR_Y) { leaveHome(); return }
-        val claw = Homes.spot(Furniture.CLAW_MACHINE) + ox
-        if (hasFurniture(Furniture.CLAW_MACHINE) && x in claw..(claw + 32f) && y in (Homes.FLOOR_Y - 56)..Homes.FLOOR_Y) { playClaw(); return }
-        for (p in Plushie.entries) {
-            val (px, py) = Homes.shelfSpot(p.ordinal)
-            if (abs(x - (px + ox)) < 9f && y in (py - 18)..py && hasPlushie(p)) {
-                sound.sayAs(p.label.lowercase(), Voice.MON)
-                particles += FloatText(px + ox, py - 20, p.label, 0xFFFF9AD0.toInt())
+        val items = shopItems()
+        for (i in items.indices) {
+            val (cx, cy) = shopCard(i)
+            if (x in cx..(cx + shopCardW()) && y in cy..(cy + 40f)) { items[i].second(); return }
+        }
+        homeShop = false
+    }
+
+    private fun updateBook(tapped: Boolean) {
+        if (!tapped || stateT < 0.2f) return
+        val x = input.tapX
+        val y = input.tapY
+        if (y > VIEW_H - 22f) {
+            bookPage = if (x < viewW / 2) (bookPage + 3) % 4 else (bookPage + 1) % 4
+            sfx(Sound.KICK)
+            return
+        }
+        for (k in 0 until 25) {
+            val id = bookPage * 25 + k
+            if (id >= Plushies.all.size) break
+            val (bx, by) = bookCard(k)
+            if (x in bx..(bx + bookW()) && y in by..(by + 34f)) {
+                val p = Plushies.all[id]
+                if (hasPlushie(p)) sound.sayAs(p.name.lowercase(), Voice.MON)
+                toast(if (hasPlushie(p)) p.name else "??? (find it, or buy it in the SHOP for ${p.price} coins${if (p.boss) " - or beat its boss" else ""})")
                 return
             }
         }
+        plushBook = false
+    }
+
+    private fun bookW() = min(76f, (viewW - 30f) / 5f - 4f)
+    private fun bookCard(k: Int): Pair<Float, Float> {
+        val w = bookW()
+        val left = viewW / 2 - (w + 4f) * 5 / 2
+        return (left + (k % 5) * (w + 4f)) to (30f + (k / 5) * 37f)
     }
 
     private fun renderHome(gfx: Gfx) {
-        val ox = homeX()
-        Homes.drawRoom(gfx, houseType, viewW, VIEW_H)
-        Homes.drawWindow(gfx, ox + 182f, 34f, time)
-        Homes.drawDoor(gfx, ox + 6f)
-        // Rug first so everything else stands on it.
+        val cam = homeCam()
+        val ox = -cam
+        Homes.drawRoom(gfx, houseType, ox, viewW, VIEW_H)
+        Homes.drawWindow(gfx, ox + Homes.BED_X - 2f, 40f, time)
+        Homes.drawDoor(gfx, ox + Homes.DOOR_X)
+        Homes.drawShop(this, gfx, ox + Homes.SHOP_X, time)
         if (hasFurniture(Furniture.RUG)) Homes.drawFurniture(gfx, Furniture.RUG, ox, time)
         for (f in Furniture.entries) if (f != Furniture.RUG && hasFurniture(f)) Homes.drawFurniture(gfx, f, ox, time)
-        if (bed != null) {
-            val bx = ox + 128f
-            TeamArt.bed(ScaledGfx(gfx, 1.5f, bx, Homes.FLOOR_Y - 15f), 0f, 10f)
-        }
+        if (hasBed()) Homes.drawBed(gfx, bedStyle, ox + Homes.BED_X)
         Homes.drawShelves(gfx, ox)
-        for (p in Plushie.entries) {
-            val (px, py) = Homes.shelfSpot(p.ordinal)
-            if (hasPlushie(p)) Homes.drawPlushie(this, gfx, p, px + ox, py, 15f)
-            else gfx.text("?", px + ox, py - 4, 8f, 0x55000000, 1)
+        // The newest plushies sit on the shelves (the rest are in the PLUSHIE BOOK).
+        val shown = Plushies.all.filter(::hasPlushie).takeLast(Homes.SHELF_SLOTS)
+        shown.forEachIndexed { k, p ->
+            val (px, py) = Homes.shelfSpot(k)
+            Plushies.draw(this, gfx, p, px + ox, py, 14f)
         }
-        // The family hangs out at home too.
-        val hero = if (heroOut == Who.BLOCKY) TeamArt.blocky(power, false) else TeamArt.rocco(power, 0)
-        gfx.sprite(hero, ox + 196f, Homes.FLOOR_Y + 10, w = 16f, h = 24f)
-        TeamArt.mon(gfx, mon, ox + 226f, Homes.FLOOR_Y + 36, time, -1, false)
-        for (p in particles) if (p is FloatText) p.draw(gfx, 0f)
+        // You (and your Pokemon) walking around.
+        val step = if ((homeAnim * 8).toInt() % 2 == 0) 0 else 1
+        val hero = if (heroOut == Who.BLOCKY) TeamArt.blocky(power, step == 1) else TeamArt.rocco(power, if (input.left || input.right) 1 + step else 0)
+        gfx.sprite(hero, homeX + ox - 8, Homes.FLOOR_Y + 30, flipX = homeFacing < 0, w = 16f, h = 24f)
+        TeamArt.mon(gfx, mon, homeX + ox - homeFacing * 26f, Homes.FLOOR_Y + 54, time, homeFacing, false)
+        val target = homeTarget()
+        if (target != null && !homeShop && !plushBook) {
+            gfx.shadowText(target + "?", homeX + ox, Homes.FLOOR_Y + 22 + sin(time * 5) * 1.5f, 8f, 0xFFFFF2C8.toInt(), 1)
+        }
         // Top bar
         gfx.rect(0f, 0f, viewW, 22f, 0xCC1A1008.toInt())
         gfx.shadowText("MY ${houseType.label}", 8f, 15f, 9f, 0xFFFFD21F.toInt())
-        gfx.sprite(com.roccoquest.game.Sprites.coin, 110f, 5f, w = 8f, h = 11f)
-        gfx.shadowText("x$coins", 120f, 15f, 8f, white)
-        gfx.shadowText("PLUSHIES $plushieCount/20", 160f, 15f, 8f, 0xFFFF9AD0.toInt())
-        for ((n, bx) in homeButtons()) {
-            gfx.rect(bx, 2f, 52f, 18f, 0xFF2A1808.toInt())
-            gfx.rect(bx + 1.5f, 3.5f, 49f, 15f, when (n) { "SHOP" -> 0xFF2EB84A.toInt(); "SLEEP" -> 0xFF2E6BE6.toInt(); else -> 0xFF8A1010.toInt() })
-            gfx.text(n, bx + 26, 14.5f, 8f, white, 1)
-        }
-        if (homeShop) renderHomeShop(gfx)
+        gfx.sprite(com.roccoquest.game.Sprites.coin, 120f, 5f, w = 8f, h = 11f)
+        gfx.shadowText("x$coins", 130f, 15f, 8f, white)
+        gfx.shadowText("PLUSHIES $plushieCount/${Plushies.all.size}", 176f, 15f, 8f, 0xFFFF9AD0.toInt())
+        // Controls: walk left/right, and the action button.
+        TeamControls.layout(viewW)
+        if (!homeShop && !plushBook) TeamControls.drawHome(gfx, input, target ?: "", time)
+        if (homeShop) renderShop(gfx)
+        if (plushBook) renderPlushBook(gfx, true)
         if (toastT > 0) {
-            gfx.rect(20f, VIEW_H - 22, viewW - 40, 18f, 0xDD101828.toInt())
-            gfx.text(toast, viewW / 2, VIEW_H - 9, 8f, white, 1)
+            gfx.rect(20f, VIEW_H - 46, viewW - 40, 18f, 0xDD101828.toInt())
+            gfx.text(toast, viewW / 2, VIEW_H - 33, 8f, white, 1)
         }
     }
 
-    private fun renderHomeShop(gfx: Gfx) {
-        val ox = homeX()
-        gfx.rect(0f, 22f, viewW, VIEW_H - 22, 0x99000000.toInt())
-        gfx.rect(ox + 12f, 26f, 403f, 210f, 0xFF3A2410.toInt())
-        gfx.rect(ox + 14f, 28f, 399f, 206f, 0xFFB98A52.toInt())
-        gfx.shadowText("FURNITURE SHOP  (tap to buy, tap outside to close)", ox + 213f, 42f, 8f, 0xFFFFF2C8.toInt(), 1)
-        for (f in Furniture.entries) {
-            val (cx, cy) = shopCard(f.ordinal)
-            val owned = hasFurniture(f)
-            val can = !owned && has(f.costs, f.coins)
-            gfx.rect(cx, cy, 127f, 40f, if (owned) 0xFF7A9A5A.toInt() else if (can) 0xFFE8C88A.toInt() else 0xFFA8885A.toInt())
-            gfx.text(f.label, cx + 4, cy + 11, 7f, 0xFF2A1808.toInt())
-            if (owned) {
-                gfx.text("OWNED!", cx + 4, cy + 30, 8f, 0xFF1E4A1E.toInt())
-            } else {
-                var x = cx + 4
-                gfx.sprite(com.roccoquest.game.Sprites.coin, x, cy + 21, w = 7f, h = 10f)
-                gfx.text("${f.coins}", x + 9, cy + 29, 7f, if (coins >= f.coins) 0xFF1E5A1E.toInt() else 0xFF8A1010.toInt())
-                x += 28f
-                for ((o, n) in f.costs) {
-                    TeamArt.oreIcon(gfx, o, x, cy + 21, 9f)
-                    gfx.text("$n", x + 11, cy + 29, 7f, if (inventory[o.ordinal] >= n) 0xFF1E5A1E.toInt() else 0xFF8A1010.toInt())
-                    x += 26f
-                }
-            }
-            // A tiny preview of the furniture.
-            val pv = ScaledGfx(gfx, 0.32f, cx + 92f - Homes.spot(f) * 0.32f, cy + (if (f == Furniture.RUG) 22f else 38f) - Homes.FLOOR_Y * 0.32f)
-            Homes.drawFurniture(pv, f, 0f, time)
+    private fun renderShop(gfx: Gfx) {
+        gfx.rect(0f, 22f, viewW, VIEW_H - 22, 0xAA000000.toInt())
+        val cw = shopCardW()
+        val (left, _) = shopCard(0)
+        gfx.rect(left - 6, 26f, cw * 3 + 20f, VIEW_H - 28f, 0xFF3A2410.toInt())
+        gfx.rect(left - 4, 28f, cw * 3 + 16f, VIEW_H - 32f, 0xFFB98A52.toInt())
+        val tw = cw * 3 / SHOP_TABS.size
+        SHOP_TABS.forEachIndexed { i, n ->
+            val tx = left + i * tw
+            gfx.rect(tx + 1, 30f, tw - 2, 16f, if (i == shopTab) 0xFF7A4A20.toInt() else 0xFF9A6A3A.toInt())
+            gfx.text(n, tx + tw / 2, 41f, 7f, if (i == shopTab) 0xFFFFF2C8.toInt() else 0xFFE0C8A0.toInt(), 1)
         }
+        when (shopTab) {
+            0 -> Furniture.entries.forEachIndexed { i, f ->
+                val (cx, cy) = shopCard(i)
+                shopCardBg(gfx, cx, cy, hasFurniture(f), !hasFurniture(f) && has(f.costs, f.coins))
+                gfx.text(f.label, cx + 4, cy + 11, 7f, 0xFF2A1808.toInt())
+                if (hasFurniture(f)) gfx.text("OWNED!", cx + 4, cy + 30, 8f, 0xFF1E4A1E.toInt()) else priceTag(gfx, cx + 4, cy + 21, f.costs, f.coins)
+                val pv = ScaledGfx(gfx, 0.3f, cx + cw - 36f - Homes.spot(f) * 0.3f, cy + (if (f == Furniture.RUG) 22f else 38f) - Homes.FLOOR_Y * 0.3f)
+                Homes.drawFurniture(pv, f, 0f, time)
+            }
+            1 -> BedStyle.entries.forEachIndexed { i, b ->
+                val (cx, cy) = shopCard(i)
+                val owned = ownsBed(b)
+                shopCardBg(gfx, cx, cy, owned, !owned && coins >= b.coins)
+                gfx.text(b.label, cx + 4, cy + 11, 7f, 0xFF2A1808.toInt())
+                when {
+                    owned && bedStyle == b && hasBed() -> gfx.text("IN YOUR ROOM", cx + 4, cy + 30, 7f, 0xFF1E4A1E.toInt())
+                    owned -> gfx.text("TAP TO USE", cx + 4, cy + 30, 7f, 0xFF1E4A1E.toInt())
+                    else -> priceTag(gfx, cx + 4, cy + 21, emptyList(), b.coins)
+                }
+                Homes.drawBed(ScaledGfx(gfx, 0.5f, cx + cw - 34f, cy + 38f - Homes.FLOOR_Y * 0.5f), b, 0f)
+            }
+            2 -> {
+                Plushies.all.drop(shopPage * PLUSH_PER_PAGE).take(PLUSH_PER_PAGE).forEachIndexed { i, p ->
+                    val (cx, cy) = shopCard(i)
+                    val owned = hasPlushie(p)
+                    shopCardBg(gfx, cx, cy, owned, !owned && coins >= p.price)
+                    gfx.text(p.name, cx + 4, cy + 11, if (p.name.length > 14) 5.5f else 7f, 0xFF2A1808.toInt())
+                    if (owned) gfx.text("GOT IT!", cx + 4, cy + 30, 8f, 0xFF1E4A1E.toInt()) else priceTag(gfx, cx + 4, cy + 21, emptyList(), p.price)
+                    Plushies.draw(this, gfx, p, cx + cw - 16f, cy + 38f, 22f)
+                }
+                val pages = (Plushies.all.size + PLUSH_PER_PAGE - 1) / PLUSH_PER_PAGE
+                gfx.shadowText("< PREV      PAGE ${shopPage + 1}/$pages      NEXT >", viewW / 2, VIEW_H - 8f, 8f, white, 1)
+            }
+            else -> HouseType.entries.forEachIndexed { i, t ->
+                val (cx, cy) = shopCard(i)
+                val mine = houseType == t
+                shopCardBg(gfx, cx, cy, mine, !mine && has(t.costs, t.coins))
+                gfx.text(t.label, cx + 4, cy + 11, 7f, 0xFF2A1808.toInt())
+                if (mine) gfx.text("YOU LIVE HERE", cx + 4, cy + 30, 7f, 0xFF1E4A1E.toInt()) else priceTag(gfx, cx + 4, cy + 21, t.costs, t.coins)
+                Homes.drawHouse(ScaledGfx(gfx, 0.32f, cx + cw - 30f, cy + 6f), t, 0f, 72f, time)
+            }
+        }
+    }
+
+    private fun shopCardBg(gfx: Gfx, cx: Float, cy: Float, owned: Boolean, can: Boolean) {
+        gfx.rect(cx, cy, shopCardW(), 40f, if (owned) 0xFF7A9A5A.toInt() else if (can) 0xFFE8C88A.toInt() else 0xFFA8885A.toInt())
+    }
+
+    private fun priceTag(gfx: Gfx, x0: Float, y: Float, costs: List<Pair<Ore, Int>>, coinsNeeded: Int) {
+        var x = x0
+        if (coinsNeeded > 0) {
+            gfx.sprite(com.roccoquest.game.Sprites.coin, x, y, w = 7f, h = 10f)
+            gfx.text("$coinsNeeded", x + 9, y + 8, 7f, if (coins >= coinsNeeded) 0xFF1E5A1E.toInt() else 0xFF8A1010.toInt())
+            x += 26f
+        }
+        for ((o, n) in costs) {
+            TeamArt.oreIcon(gfx, o, x, y, 9f)
+            gfx.text("$n", x + 11, y + 8, 7f, if (inventory[o.ordinal] >= n) 0xFF1E5A1E.toInt() else 0xFF8A1010.toInt())
+            x += 24f
+        }
+    }
+
+    /** The PLUSHIE BOOK: all 100 plushies, 25 to a page. */
+    private fun renderPlushBook(gfx: Gfx, overlay: Boolean) {
+        gfx.rect(0f, if (overlay) 22f else 0f, viewW, VIEW_H, 0xEE2A1A30.toInt())
+        for (k in 0 until 25) {
+            val id = bookPage * 25 + k
+            if (id >= Plushies.all.size) break
+            val p = Plushies.all[id]
+            val (bx, by) = bookCard(k)
+            val owned = hasPlushie(p)
+            gfx.rect(bx, by, bookW(), 34f, if (owned) 0xFFFFE8F2.toInt() else 0xFF4A3A5A.toInt())
+            if (owned) Plushies.draw(this, gfx, p, bx + bookW() / 2, by + 26f, 20f)
+            else gfx.text("?", bx + bookW() / 2, by + 22f, 12f, 0x66FFFFFF, 1)
+            gfx.text(if (owned) p.name else "#${id + 1}", bx + bookW() / 2, by + 32f, if (owned && p.name.length > 12) 4f else 5f, if (owned) 0xFF5A2A4A.toInt() else 0x99FFFFFF.toInt(), 1)
+        }
+        gfx.shadowText("< PREV     PLUSHIE BOOK  page ${bookPage + 1}/4  ($plushieCount/${Plushies.all.size})     NEXT >", viewW / 2, VIEW_H - 8f, 8f, 0xFFFF9AD0.toInt(), 1)
     }
 
     // ======================================================================== Earthquakes
@@ -2911,6 +3455,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     // ======================================================================== Sunset bonus rooms
 
     private fun enterPortal(p: Portal) {
+        if (dino != null) dismount()
         p.used = true
         away = Away(
             level, ArrayList(foes), ArrayList(things), ArrayList(frogSpots), goal, house, bed,
@@ -3185,8 +3730,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         gfx.shadowText("\u2605$score", 42f, 26f, 7f, 0xFFFFE14D.toInt())
         var x = max(112f, viewW * 0.25f)
         // Ten materials now: squeeze them in so they stop before the CRAFT button.
-        val step = min(25f, (viewW - 106f - x) / Ore.entries.size)
-        for (o in Ore.entries) {
+        // Only the materials you actually have, so the top of the screen stays tidy.
+        val have = Ore.entries.filter { inventory[it.ordinal] > 0 }
+        val step = min(25f, (viewW - 106f - x) / maxOf(1, have.size))
+        for (o in have) {
             TeamArt.oreIcon(gfx, o, x, 5f, 10f)
             gfx.shadowText(inventory[o.ordinal].toString(), x + 11, 13f, 7f, white)
             x += step
@@ -3195,7 +3742,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             TeamArt.shieldIcon(gfx, 84f, 17f, 10f, shieldType)
             gfx.shadowText("$shieldHp", 94f, 26f, 7f, white)
         }
-        val powerText = if (power == Power.NONE) "NO FLOWER" else "${power.label} Lv${flowerLevel[power.ordinal]}"
+        val powerText = if (power == Power.NONE) "" else "${power.label} Lv${flowerLevel[power.ordinal]}"
         val starText = (if (away != null) "  •  BONUS ${bonusT.toInt() + 1}" else "") +
             (if (starT > 0) "  •  STAR ${starT.toInt() + 1}" else "") +
             (if (miniT > 0) "  •  MINI ${miniT.toInt() + 1}" else "") +
@@ -3203,7 +3750,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             (if (wingT > 0) "  •  WINGS ${wingT.toInt() + 1}" else "")
         val swordText = if (sword != Sword.NONE) "  •  ${sword.label.removeSuffix(" SWORD")} SWORD ${swordHp * 100 / sword.durability}%" else ""
         val pickText = if (pickTier > 1) " ${pickHp * 100 / pickDurability(pickTier)}%" else ""
-        gfx.shadowText("${TeamArt.pickName(pickTier)} PICK$pickText$swordText  •  $powerText", max(112f, viewW * 0.25f), 26f, 7f, 0xFFDDEEFF.toInt())
+        gfx.shadowText("${TeamArt.pickName(pickTier)} PICK$pickText$swordText" + (if (powerText.isEmpty()) "" else "  •  $powerText"), max(112f, viewW * 0.25f), 26f, 7f, 0xFFDDEEFF.toInt())
         // Power-up timers get their own line so they never run under the buttons.
         if (starText.isNotEmpty()) gfx.shadowText(starText.removePrefix("  •  "), 6f, if (level.def.shoreX >= 0 && inWater(leader)) 54f else 41f, 7f, 0xFFFFE14D.toInt())
 
