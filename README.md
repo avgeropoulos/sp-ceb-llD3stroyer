@@ -159,7 +159,7 @@ Every new affection level she goes to change, comes back in a nicer outfit and g
 | 12 | In Love | A pink bikini and sarong | A pool party for two: +50% more coins |
 | 16 | Soulmates | A golden gown with a high slit, and a tiara | Her date to the Royal Gala: double coins |
 
-Bella has green eyes and a curvy figure. Once she likes you, she flirts: she winks, blows kisses, poses with a hand on her
+Bella is drawn anime-style, with big green eyes and a curvy, shaded figure. Once she likes you, she flirts: she winks, blows kisses, poses with a hand on her
 hip and wears smoky eyeshadow.
 
 How to play:
@@ -177,7 +177,7 @@ How to play:
 * **Wardrobe**: choose which of her unlocked outfits Bella wears.
 * Tap Bella at home to chat. Progress is saved automatically.
 
-Install it from **https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/Spotless.apk**
+Install it from the **Spotless.apk** asset on https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/tag/latest-ccr-2431903a-w0tg0l
 the same way as Rocco's Quest. To build it yourself, run `./gradlew :spotless:assembleDebug`. The APK
 is at `spotless/build/outputs/apk/debug/spotless-debug.apk`. `./gradlew :spotless-core:test` renders
 screenshots to `spotless-core/build/screens`.

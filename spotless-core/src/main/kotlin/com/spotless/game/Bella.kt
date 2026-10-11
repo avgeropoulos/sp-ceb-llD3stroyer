@@ -53,11 +53,13 @@ object Bella {
         top(p, o)
         if (o.cut == Cut.SUNDRESS || o.cut == Cut.COCKTAIL || o.cut == Cut.GOWN || o.cut == Cut.GALA) skirt(p, o, t)
         chest(p, o)
+        curves(p, o)
         if (o.necklace) necklace(p, o, t)
         arms(p, o, pose)
         head(p, o, pose)
         frontHair(p, o)
         if (o.sparkles) twinkles(p, o, t)
+        if (pose.mood > 0.6f) longing(p, t)
         p.restore()
     }
 
@@ -155,24 +157,29 @@ object Bella {
                 close()
             }
         }
-        // The hair on top of the head, with a side-swept fringe.
+        // The hair on top of the head, with a spiky anime fringe.
         p.fill(shape {
             moveTo(-72f, 128f)
             cubicTo(-86f, -14f, 86f, -14f, 72f, 128f)
-            lineTo(64f, 128f)
-            cubicTo(66f, 82f, 52f, 46f, 12f, 44f)
-            cubicTo(-22f, 48f, -50f, 66f, -60f, 96f)
-            lineTo(-65f, 128f)
+            lineTo(66f, 128f)
+            quadTo(64f, 112f, 60f, 104f)
+            quadTo(56f, 72f, 42f, 56f)
+            quadTo(36f, 74f, 26f, 86f)
+            quadTo(22f, 64f, 12f, 52f)
+            quadTo(8f, 70f, 0f, 82f)
+            quadTo(-6f, 64f, -14f, 52f)
+            quadTo(-20f, 74f, -30f, 88f)
+            quadTo(-34f, 68f, -44f, 58f)
+            quadTo(-54f, 80f, -58f, 106f)
+            quadTo(-62f, 116f, -66f, 128f)
             close()
         }, HAIR)
-        p.fill(shape {
-            moveTo(12f, 44f)
-            cubicTo(-22f, 48f, -50f, 66f, -60f, 96f)
-            cubicTo(-48f, 74f, -24f, 60f, 12f, 54f)
-            close()
-        }, HAIR_DARK)
-        p.stroke(shape { moveTo(-44f, 26f); quadTo(-10f, 6f, 30f, 14f) }, HAIR_LIGHT, 7f)
-        p.stroke(shape { moveTo(40f, 30f); quadTo(58f, 50f, 62f, 90f) }, HAIR_LIGHT, 4f)
+        // Strand lines and a glossy shine band.
+        val strand = alpha(HAIR_DARK, 0.8f)
+        for (x in floatArrayOf(-44f, -14f, 12f, 42f)) p.stroke(shape { moveTo(x, 54f); quadTo(x * 0.7f, 30f, x * 0.4f, 8f) }, strand, 2.5f)
+        p.stroke(shape { moveTo(-54f, 34f); quadTo(-36f, 20f, -14f, 17f) }, alpha(HAIR_LIGHT, 0.85f), 5f)
+        p.stroke(shape { moveTo(14f, 17f); quadTo(34f, 20f, 48f, 32f) }, alpha(HAIR_LIGHT, 0.85f), 5f)
+        p.stroke(shape { moveTo(-56f, 36f); quadTo(-40f, 26f, -26f, 22f) }, alpha(WHITE, 0.7f), 3f)
         if (o.hair == Hair.UPDO) {
             // Loose curls framing the face.
             p.stroke(shape { moveTo(-64f, 110f); quadTo(-74f, 150f, -62f, 175f); quadTo(-56f, 190f, -66f, 200f) }, HAIR, 5f)
@@ -198,105 +205,129 @@ object Bella {
 
     private fun head(p: Painter, o: Outfit, pose: Pose) {
         val m = pose.mood
-        p.oval(-64f, 108f, 9f, 15f, SKIN_SHADE)
-        p.oval(64f, 108f, 9f, 15f, SKIN_SHADE)
+        p.oval(-63f, 108f, 9f, 15f, SKIN_SHADE)
+        p.oval(63f, 108f, 9f, 15f, SKIN_SHADE)
+        // Anime face: wide cheeks tapering to a small pointed chin.
         p.fill(shape {
             moveTo(-63f, 90f)
             cubicTo(-63f, 20f, 63f, 20f, 63f, 90f)
-            cubicTo(63f, 134f, 32f, 170f, 0f, 174f)
-            cubicTo(-32f, 170f, -63f, 134f, -63f, 90f)
+            cubicTo(63f, 128f, 26f, 168f, 0f, 178f)
+            cubicTo(-26f, 168f, -63f, 128f, -63f, 90f)
             close()
         }, SKIN)
+        // Shadow cast by the fringe.
+        p.fill(shape { moveTo(-60f, 94f); quadTo(0f, 76f, 60f, 94f); quadTo(0f, 86f, -60f, 94f); close() }, alpha(SKIN_SHADE, 0.3f))
         if (o.earrings) {
             val c = if (o.cut == Cut.GOWN) rgb(0xD8, 0xF4, 0xFF) else rgb(0xFF, 0xE6, 0x8A)
-            p.line(-64f, 122f, -64f, 136f, rgb(0xE8, 0xC0, 0x5A), 2.5f)
-            p.line(64f, 122f, 64f, 136f, rgb(0xE8, 0xC0, 0x5A), 2.5f)
-            p.oval(-64f, 142f, 6f, 8f, c)
-            p.oval(64f, 142f, 6f, 8f, c)
+            p.line(-63f, 122f, -63f, 136f, rgb(0xE8, 0xC0, 0x5A), 2.5f)
+            p.line(63f, 122f, 63f, 136f, rgb(0xE8, 0xC0, 0x5A), 2.5f)
+            p.oval(-63f, 142f, 6f, 8f, c)
+            p.oval(63f, 142f, 6f, 8f, c)
         }
-        // Blush deepens as she falls for you.
-        val blush = alpha(rgb(0xFF, 0x6E, 0x8E), 0.18f + 0.42f * m)
-        p.oval(-38f, 132f, 15f, 8f, blush)
-        p.oval(38f, 132f, 15f, 8f, blush)
+        // Blush, with anime hatching, deepens as she falls for you.
+        val blush = alpha(rgb(0xFF, 0x5E, 0x84), 0.2f + 0.45f * m)
+        for (s in floatArrayOf(-1f, 1f)) {
+            p.oval(s * 38f, 134f, 17f, 9f, blush)
+            if (m > 0.15f) for (k in 0..2) {
+                val hx = s * 38f + (k - 1) * 9f
+                p.line(hx + 3f, 129f, hx - 3f, 139f, alpha(rgb(0xE8, 0x40, 0x6A), 0.25f + 0.5f * m), 2f)
+            }
+        }
 
         val blink = (pose.time % 3.7f) < 0.13f
+        // She looks at you through half-closed eyes once she wants you.
+        val lid = if (m > 0.3f) 3f + 9f * m else 0f
+        val smitten = m > 0.6f
         for (s in floatArrayOf(-1f, 1f)) {
-            val ex = s * 26f
-            val ey = 106f
-            // Brows: raised and soft when happy, angled when pouty.
-            val browTilt = if (pose.face == 2) 6f else -2f
-            p.stroke(shape { moveTo(ex - s * 16f, ey - 26f + browTilt); quadTo(ex, ey - 34f, ex + s * 16f, ey - 26f - browTilt * 0.3f) }, BROW, 4f)
+            val ex = s * 27f
+            val ey = 108f
+            // Thin brows: soft and raised, or angled when pouty.
+            val browTilt = if (pose.face == 2) 6f else -3f
+            p.stroke(shape { moveTo(ex - s * 15f, ey - 30f + browTilt); quadTo(ex, ey - 38f, ex + s * 17f, ey - 31f - browTilt * 0.3f) }, BROW, 3f)
             if (m > 0.3f) {
-                // Smoky eyeshadow once she starts dressing up for you.
-                p.oval(ex + s * 3f, ey - 10f, 19f, 11f, alpha(rgb(0xB0, 0x5A, 0x8A), 0.12f + 0.3f * m))
+                // Smoky eyeshadow.
+                p.oval(ex + s * 3f, ey - 12f, 21f, 12f, alpha(rgb(0xB0, 0x4A, 0x8A), 0.12f + 0.3f * m))
             }
             val winking = (pose.face == 3 || pose.face == 4) && s > 0
             if (blink || pose.face == 1 || winking) {
-                // Closed, smiling eyes.
-                p.stroke(shape { moveTo(ex - 15f, ey + 2f); quadTo(ex, ey - 12f, ex + 15f, ey + 2f) }, LASH, 4.5f)
-                p.line(ex + s * 15f, ey + 1f, ex + s * 21f, ey - 4f, LASH, 3f)
+                // Closed, happy eyes: a curved lash line.
+                p.stroke(shape { moveTo(ex - 17f, ey + 2f); quadTo(ex, ey - 14f, ex + 17f, ey + 2f) }, LASH, 5f)
+                p.line(ex + s * 17f, ey + 1f, ex + s * 24f, ey - 5f, LASH, 3f)
                 continue
             }
-            p.oval(ex, ey, 15f, 17f, WHITE)
-            p.oval(ex, ey + 2f, 11f, 14f, EYE)
-            p.oval(ex, ey + 6f, 9f, 8f, darker(EYE, 0.25f))
-            p.oval(ex, ey + 3f, 5.5f, 7f, rgb(0x1E, 0x2A, 0x44))
-            p.oval(ex + 4f, ey - 4f, 4f, 4.5f, WHITE)
-            p.oval(ex - 4f, ey + 8f, 2f, 2f, alpha(WHITE, 0.8f))
-            if (m > 0.3f) {
-                // Heavy-lidded, sultry look.
-                p.fill(shape { moveTo(ex - 17f, ey - 4f); quadTo(ex, ey - 26f, ex + 17f, ey - 4f); quadTo(ex, ey - 8f + 4f * m, ex - 17f, ey - 4f); close() }, SKIN)
+            // Big, glossy anime eyes.
+            p.oval(ex, ey + 2f, 17f, 21f, WHITE)
+            p.oval(ex, ey + 4f, 13.5f, 18.5f, darker(EYE, 0.5f))
+            p.oval(ex, ey + 5f, 12f, 17f, EYE)
+            p.oval(ex, ey - 6f, 12f, 9f, darker(EYE, 0.35f))
+            p.oval(ex, ey + 14f, 8f, 6f, lighter(EYE, 0.45f))
+            if (smitten) {
+                p.fill(heart(ex, ey + 5f, 8f), rgb(0xE8, 0x2A, 0x6A))
+            } else {
+                p.oval(ex, ey + 5f, 5f, 8f, rgb(0x14, 0x30, 0x22))
             }
-            // Upper lash line with a little flick at the outer corner.
-            p.stroke(shape { moveTo(ex - 16f, ey - 3f); quadTo(ex, ey - 22f, ex + 16f, ey - 3f) }, LASH, 4.5f)
+            p.oval(ex + 5f, ey - 3f, 5.5f, 6.5f, WHITE)
+            p.oval(ex - 6f, ey + 13f, 2.5f, 2.5f, WHITE)
+            p.fill(sparkle(ex - 6f, ey - 6f, 4f), alpha(WHITE, 0.9f))
+            // Upper lid and heavy lash line.
+            val lashTop = ey - 24f + lid * 1.4f
+            if (lid > 0f) {
+                p.fill(shape {
+                    moveTo(ex - 19f, ey)
+                    quadTo(ex, ey - 34f, ex + 19f, ey)
+                    quadTo(ex, lashTop, ex - 19f, ey)
+                    close()
+                }, SKIN)
+            }
+            p.stroke(shape { moveTo(ex - 18f, ey); quadTo(ex, lashTop, ex + 18f, ey) }, LASH, 5.5f)
             p.fill(shape {
-                moveTo(ex + s * 13f, ey - 9f)
-                quadTo(ex + s * 22f, ey - 12f, ex + s * 25f, ey - 18f)
-                quadTo(ex + s * 22f, ey - 5f, ex + s * 15f, ey - 3f)
+                moveTo(ex + s * 14f, ey - 8f + lid * 0.4f)
+                quadTo(ex + s * 24f, ey - 10f, ex + s * 29f, ey - 19f)
+                quadTo(ex + s * 25f, ey - 3f, ex + s * 16f, ey)
                 close()
             }, LASH)
-            // Long lashes.
-            for (k in 0..2) p.line(ex + s * (4f + k * 5f), ey - 13f + k * 2f, ex + s * (7f + k * 7f), ey - 21f + k * 2f, LASH, 2.5f)
-            if (m > 0.55f) {
-                // Hearts in her eyes once she's really into you.
-                p.fill(heart(ex + 5f, ey - 4f, 4f), alpha(rgb(0xFF, 0x9E, 0xC0), (m - 0.55f) * 2.2f))
-            }
+            for (k in 0..2) p.line(ex + s * (6f + k * 5f), ey - 12f + lid * 0.6f + k * 2f, ex + s * (9f + k * 7f), ey - 20f + lid * 0.6f + k * 2f, LASH, 2.5f)
+            // Lower lashes.
+            p.stroke(shape { moveTo(ex + s * 6f, ey + 23f); quadTo(ex + s * 14f, ey + 21f, ex + s * 17f, ey + 14f) }, alpha(LASH, 0.7f), 2f)
         }
-        // Nose.
-        p.stroke(shape { moveTo(-2f, 120f); quadTo(4f, 130f, -3f, 133f) }, SKIN_SHADE, 3f)
+        // A tiny anime nose.
+        p.line(3f, 130f, 0f, 134f, SKIN_SHADE, 2.5f)
 
         // Mouth.
         val lipColor = o.lips
         when {
             pose.talking -> {
-                p.oval(0f, 151f, 10f, 8f, rgb(0x9A, 0x2E, 0x40))
-                p.oval(0f, 155f, 6f, 3f, rgb(0xFF, 0x8A, 0x9A))
-                p.stroke(shape { moveTo(-11f, 148f); quadTo(0f, 141f, 11f, 148f) }, lipColor, 3.5f)
+                p.fill(shape { moveTo(-9f, 150f); quadTo(0f, 147f, 9f, 150f); quadTo(0f, 164f, -9f, 150f); close() }, rgb(0x8A, 0x22, 0x3A))
+                p.oval(0f, 157f, 4f, 2.5f, rgb(0xFF, 0x8A, 0x9A))
             }
             pose.face == 4 -> {
                 // Puckered up, blowing a kiss.
-                p.oval(4f, 150f, 7f, 7f, lipColor)
-                p.oval(4f, 150f, 2.5f, 3f, darker(lipColor, 0.35f))
+                p.oval(4f, 153f, 6f, 6f, lipColor)
+                p.oval(4f, 153f, 2f, 2.5f, darker(lipColor, 0.35f))
             }
             pose.face == 3 -> {
                 // A playful smirk.
-                p.fill(shape { moveTo(-12f, 147f); quadTo(4f, 156f, 16f, 142f); quadTo(4f, 151f, -12f, 147f); close() }, lipColor)
+                p.fill(shape { moveTo(-11f, 151f); quadTo(4f, 159f, 14f, 146f); quadTo(4f, 155f, -11f, 151f); close() }, lipColor)
             }
             pose.face == 2 -> {
-                p.fill(shape { moveTo(-8f, 152f); quadTo(0f, 146f, 8f, 152f); quadTo(0f, 156f, -8f, 152f); close() }, lipColor)
+                p.fill(shape { moveTo(-7f, 155f); quadTo(0f, 150f, 7f, 155f); quadTo(0f, 158f, -7f, 155f); close() }, lipColor)
+            }
+            smitten && pose.face == 0 -> {
+                // Lips parted, a little breathless.
+                p.fill(shape { moveTo(-10f, 150f); quadTo(0f, 146f, 10f, 150f); quadTo(0f, 162f, -10f, 150f); close() }, rgb(0x8A, 0x22, 0x3A))
+                p.fill(shape { moveTo(-10f, 150f); quadTo(0f, 146f, 10f, 150f); quadTo(0f, 151f, -10f, 150f); close() }, lipColor)
+                p.fill(shape { moveTo(-8f, 154f); quadTo(0f, 164f, 8f, 154f); quadTo(0f, 158f, -8f, 154f); close() }, lipColor)
+                p.oval(-2f, 157f, 3f, 1.2f, alpha(WHITE, 0.6f))
             }
             else -> {
-                val w = 13f + m * 6f + (if (pose.face == 1) 4f else 0f)
-                val curve = 6f + m * 5f + (if (pose.face == 1) 5f else 0f)
+                val w = 11f + m * 4f + (if (pose.face == 1) 4f else 0f)
+                val curve = 5f + m * 4f + (if (pose.face == 1) 5f else 0f)
                 p.fill(shape {
-                    moveTo(-w, 146f)
-                    quadTo(0f, 146f + curve * 2f, w, 146f)
-                    quadTo(0f, 148f + curve, -w, 146f)
+                    moveTo(-w, 150f)
+                    quadTo(0f, 150f + curve * 2f, w, 150f)
+                    quadTo(0f, 152f + curve, -w, 150f)
                     close()
-                }, lipColor)
-                if (pose.face == 1 || m > 0.4f) {
-                    p.fill(shape { moveTo(-w + 4f, 148f); quadTo(0f, 146f + curve * 1.6f, w - 4f, 148f); close() }, WHITE)
-                }
+                }, if (pose.face == 1) rgb(0x8A, 0x22, 0x3A) else lipColor)
             }
         }
     }
@@ -329,6 +360,26 @@ object Bella {
             // Knee hint.
             p.stroke(shape { moveTo(-46f, 700f); quadTo(-38f, 708f, -30f, 700f) }, SKIN_SHADE, 2.5f)
             p.stroke(shape { moveTo(46f, 700f); quadTo(38f, 708f, 30f, 700f) }, SKIN_SHADE, 2.5f)
+            // Shading and shine that round out her thighs and calves.
+            val shade = alpha(SKIN_SHADE, 0.55f)
+            sym(p, shade) { s ->
+                moveTo(s * 86f, 476f)
+                quadTo(s * 90f, 600f, s * 60f, 690f)
+                lineTo(s * 54f, 688f)
+                quadTo(s * 76f, 600f, s * 76f, 500f)
+                close()
+            }
+            sym(p, shade) { s ->
+                moveTo(s * 60f, 712f)
+                quadTo(s * 66f, 770f, s * 42f, 852f)
+                lineTo(s * 40f, 850f)
+                quadTo(s * 56f, 780f, s * 54f, 716f)
+                close()
+            }
+            p.stroke(shape { moveTo(-8f, 560f); quadTo(-14f, 630f, -20f, 680f) }, shade, 2.5f)
+            p.stroke(shape { moveTo(8f, 560f); quadTo(14f, 630f, 20f, 680f) }, shade, 2.5f)
+            p.oval(-46f, 610f, 9f, 46f, alpha(WHITE, 0.22f))
+            p.oval(46f, 610f, 9f, 46f, alpha(WHITE, 0.22f))
         }
         // Shoes.
         for (s in floatArrayOf(-1f, 1f)) {
@@ -702,6 +753,46 @@ object Bella {
             }
             Cut.TEE_JEANS -> p.heartIcon(-46f, y + 40f, 9f, PINK)
             else -> {}
+        }
+    }
+
+    /** Cel shading that defines her waist, hips and collarbones. */
+    private fun curves(p: Painter, o: Outfit) {
+        if (o.cut == Cut.HOODIE) return
+        // Shadows hugging the waist and flaring out over the hips, over skin or fabric alike.
+        val tint = alpha(rgb(0x8A, 0x2A, 0x40), 0.16f)
+        sym(p, tint) { s ->
+            moveTo(s * 70f, 336f)
+            quadTo(s * 52f, 380f, s * 60f, 420f)
+            quadTo(s * 72f, 452f, s * 90f, 474f)
+            lineTo(s * 94f, 474f)
+            quadTo(s * 62f, 410f, s * 72f, 336f)
+            close()
+        }
+        val bareCollar = o.cut != Cut.TEE_JEANS
+        if (bareCollar) {
+            val bone = alpha(SKIN_SHADE, 0.8f)
+            p.stroke(shape { moveTo(-8f, 210f); quadTo(-28f, 200f, -50f, 204f) }, bone, 2.5f)
+            p.stroke(shape { moveTo(8f, 210f); quadTo(28f, 200f, 50f, 204f) }, bone, 2.5f)
+        }
+        val bareMidriff = o.cut == Cut.TEE_JEANS || o.cut == Cut.BLOUSE_SKIRT || o.cut == Cut.BIKINI
+        if (bareMidriff) {
+            val soft = alpha(SKIN_SHADE, 0.45f)
+            p.stroke(shape { moveTo(0f, 352f); quadTo(-2f, 372f, 0f, 392f) }, soft, 2f)
+            if (o.cut == Cut.BIKINI) {
+                p.stroke(shape { moveTo(-62f, 440f); quadTo(-52f, 460f, -48f, 478f) }, soft, 2.5f)
+                p.stroke(shape { moveTo(62f, 440f); quadTo(52f, 460f, 48f, 478f) }, soft, 2.5f)
+            }
+        }
+    }
+
+    /** Little hearts drifting up around her once she's smitten. */
+    private fun longing(p: Painter, t: Float) {
+        for (i in 0 until 3) {
+            val ph = (t * 0.45f + i / 3f) % 1f
+            val x = (if (i % 2 == 0) -1f else 1f) * (96f + 18f * sin(ph * 6.28f + i))
+            val y = 120f - ph * 150f
+            p.fill(heart(x, y, 9f + 5f * (1f - ph)), alpha(rgb(0xFF, 0x4F, 0x8B), (1f - ph) * 0.85f))
         }
     }
 
