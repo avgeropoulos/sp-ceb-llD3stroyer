@@ -16,10 +16,21 @@ class MusicPlayer {
     @Volatile private var wanted = Music.NONE
     @Volatile private var foreground = true
     @Volatile private var released = false
-    private val songs = HashMap<Music, ShortArray>()
+    private val songs = java.util.concurrent.ConcurrentHashMap<Music, ShortArray>()
 
     init {
-        thread(name = "music", priority = Thread.MAX_PRIORITY) { loop() }
+        thread(name = "music") {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO)
+            loop()
+        }
+        // Make the other songs slowly in the background, so the game itself never has to wait.
+        thread(name = "music-synth", priority = Thread.MIN_PRIORITY) {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+            for (m in Music.entries) {
+                if (released) break
+                try { song(m) } catch (_: Exception) {}
+            }
+        }
     }
 
     fun play(m: Music) { wanted = m }
@@ -28,8 +39,11 @@ class MusicPlayer {
 
     fun release() { released = true }
 
-    private fun song(m: Music): ShortArray? =
-        songs.getOrPut(m) { Chiptune.render(Songs.of(m) ?: return null) }
+    private fun song(m: Music): ShortArray? {
+        songs[m]?.let { return it }
+        val made = Chiptune.render(Songs.of(m) ?: return null)
+        return songs.putIfAbsent(m, made) ?: made
+    }
 
     private fun loop() {
         val minBuf = AudioTrack.getMinBufferSize(
@@ -57,9 +71,6 @@ class MusicPlayer {
             return // No audio output available; play silently.
         }
         track.setVolume(0.45f)
-
-        // Synthesize every song up front so switching tracks never stutters.
-        for (m in Music.entries) song(m)
 
         val chunk = ShortArray(1024)
         var current = Music.NONE

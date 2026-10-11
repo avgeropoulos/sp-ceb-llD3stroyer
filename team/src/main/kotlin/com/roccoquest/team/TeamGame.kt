@@ -712,11 +712,18 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     // ======================================================================== Update
 
+    /** A button that went down since the last frame (even a tap too quick to still be held). */
     private fun edge(i: Int, now: Boolean): Boolean {
-        val e = now && !prev[i]
+        val e = input.wasPressed(i) || (now && !prev[i])
         prev[i] = now
         return e
     }
+
+    /** JUMP pressed a moment before landing still jumps, and so does JUMP just after running off a ledge. */
+    private var jumpBufT = 0f
+    private var coyoteT = 0f
+    /** THROW / MINE pressed while still cooling down happens as soon as it's ready. */
+    private var actionBufT = 0f
 
     fun update(dt: Float) {
         time += dt
@@ -1105,7 +1112,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
         }
         dino?.let { d -> d.x = rocco.cx - d.w / 2; d.y = rocco.bottom - d.h }
-        if (input.action && l.cooldown <= 0f && riding == null) action(l)
+        if (actionE) actionBufT = 0.2f else if (actionBufT > 0f) actionBufT -= dt
+        if ((input.action || actionBufT > 0f) && l.cooldown <= 0f && riding == null) {
+            actionBufT = 0f
+            action(l)
+        }
         updateWater(dt)
         updateSpikes(dt)
         updateDog(dt)
@@ -1237,6 +1248,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun updateLeader(h: Hero, dt: Float, jumpE: Boolean, grav: Float) {
         val dir = (if (input.right) 1 else 0) - (if (input.left) 1 else 0)
         if (dir != 0) h.facing = dir
+        if (jumpE) jumpBufT = 0.13f else if (jumpBufT > 0f) jumpBufT -= dt
+        if (h.onGround) coyoteT = 0.1f else if (coyoteT > 0f) coyoteT -= dt
         if (inWater(h) && !(metal && h === rocco)) {
             // Swimming: slow sinking, and every tap of JUMP is a swim stroke.
             // (Metal Rocco is too heavy to swim: he walks along the bottom instead.)
@@ -1285,7 +1298,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (h.onGround) h.doubleJumped = false
             if (h.flipT > 0) h.flipT -= dt
             // Double jump: press JUMP again in mid-air.
-            if (jumpE && !h.onGround && !h.doubleJumped && !h.slamming) {
+            if (jumpE && !h.onGround && coyoteT <= 0f && !h.doubleJumped && !h.slamming) {
+                jumpBufT = 0f
                 h.doubleJumped = true
                 h.longJumping = false
                 h.vy = h.jumpV * (if (h.mini) 0.75f else 0.9f)
@@ -1342,7 +1356,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         h.vx = approach(h.vx, want, (if (h.onGround) 800f else 520f) * dt)
         // Blue Shell: sprinting on the ground turns Rocco into a spinning shell.
         h.shellSpin = rocco && power == Power.SHELL && sprint && h.onGround && !h.mini && abs(h.vx) > 120f
-        if (jumpE && h.onGround) {
+        if (jumpBufT > 0f && (h.onGround || (coyoteT > 0f && h.vy >= 0f))) {
+            jumpBufT = 0f
+            coyoteT = 0f
             h.vy = h.jumpV * (if (sprint) 1.06f else 1f) * (if (metal && h === this.rocco) (if (inWater(h)) 0.8f else 0.9f) else 1f)
             sfx(Sound.JUMP)
         }

@@ -53,7 +53,7 @@ class SoundFx(context: Context) : SoundSink {
 
     init {
         val dir = context.cacheDir
-        thread(name = "sfx-synth") {
+        thread(name = "sfx-synth", priority = Thread.MIN_PRIORITY) {
             for (s in Sound.entries) {
                 try {
                     val file = File(dir, "sfx_${s.name.lowercase()}.wav")
@@ -75,10 +75,22 @@ class SoundFx(context: Context) : SoundSink {
 
     override fun say(text: String) = sayAs(text, Voice.FROG)
 
-    /** Each voice gets its own pitch and speed so villagers sound clear and Poseidon sounds deep. */
+    /**
+     * Talking to the phone's speech engine can take a while (it's another app), so it happens on its
+     * own thread and never holds up the game.
+     */
+    private val speech = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "speech").apply { isDaemon = true; priority = Thread.MIN_PRIORITY }
+    }
+
     override fun sayAs(text: String, voice: Voice) {
+        if (tts == null || !ttsReady) return
+        try { speech.execute { try { speakNow(text, voice) } catch (_: Exception) {} } } catch (_: Exception) {}
+    }
+
+    /** Each voice gets its own pitch and speed so villagers sound clear and Poseidon sounds deep. */
+    private fun speakNow(text: String, voice: Voice) {
         val t = tts ?: return
-        if (!ttsReady) return
         val (pitch, rate) = when (voice) {
             Voice.FROG -> 1.9f to 1.15f
             Voice.VILLAGER -> 0.95f to 0.85f
@@ -123,6 +135,7 @@ class SoundFx(context: Context) : SoundSink {
     fun setForeground(on: Boolean) = musicPlayer.setForeground(on)
 
     fun release() {
+        speech.shutdownNow()
         pool.release()
         musicPlayer.release()
         tts?.shutdown()

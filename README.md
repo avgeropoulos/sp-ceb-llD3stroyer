@@ -329,6 +329,16 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
 
 ![Controller setup](docs/teamup-controller.png)
 
+### Snappy controls
+
+* The game draws exactly one picture per screen refresh, right after reading the buttons, so presses
+  show up on screen right away instead of waiting behind a queue of old frames.
+* Even a super-quick tap (or a controller button pressed and let go between two frames) always counts.
+* Pressing JUMP a tiny bit before landing still jumps, and so does pressing it just after running off
+  a ledge. THROW / MINE pressed a moment too early happens as soon as it's ready.
+* The talking voices and the music are made on their own background threads, so they never freeze
+  the game for a moment.
+
 ### Other changes
 
 * **Music changes every level** (seven new songs: meadow, jungle, snow, desert, night, beach and a scary

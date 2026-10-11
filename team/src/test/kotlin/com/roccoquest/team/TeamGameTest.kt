@@ -679,6 +679,40 @@ class TeamGameTest {
         assertTrue(r.vy >= vy, "no triple jump")
     }
 
+    @Test fun quickTapBetweenFramesStillJumps() {
+        startPlaying()
+        game.foes.clear()
+        val r = game.rocco
+        run(0.5f)
+        assertTrue(r.onGround)
+        // Finger goes down and up before the game even gets to look.
+        input.jump = true; input.jump = false
+        game.update(dt)
+        assertTrue(r.vy < 0f, "a super-quick tap still jumps")
+    }
+
+    @Test fun jumpPressedJustBeforeLandingStillJumps() {
+        startPlaying()
+        game.foes.clear()
+        val r = game.rocco
+        run(0.5f)
+        val ground = r.y
+        // Jump and double jump, then press JUMP again a tiny bit before touching down.
+        input.jump = true; game.update(dt); input.jump = false; run(0.2f)
+        input.jump = true; game.update(dt); input.jump = false
+        var pressed = false
+        var jumpedAgain = false
+        repeat(240) {
+            if (!pressed && !r.onGround && r.vy > 0f && r.y > ground - 8f) {
+                pressed = true
+                input.jump = true; game.update(dt); input.jump = false
+            } else game.update(dt)
+            if (pressed && r.vy < -100f) jumpedAgain = true
+        }
+        assertTrue(pressed, "got close to the ground")
+        assertTrue(jumpedAgain, "the early press jumps as soon as Rocco lands")
+    }
+
     @Test fun longJumpGoesFar() {
         startPlaying()
         game.foes.clear()

@@ -83,36 +83,58 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         stopLoop()
     }
 
+    /**
+     * The game thread draws exactly one frame per screen refresh (using the [Choreographer]), right
+     * after reading the newest input. Drawing faster than the screen just piles finished frames up in
+     * a queue, and every press then shows up a few frames late.
+     */
     override fun run() {
-        val step = 1f / 60f
-        var last = System.nanoTime()
+        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
+        android.os.Looper.prepare()
+        val looper = android.os.Looper.myLooper()!!
+        val choreographer = android.view.Choreographer.getInstance()
+        var last = 0L
         var acc = 0f
-        while (running) {
-            val now = System.nanoTime()
-            acc += ((now - last) / 1e9f).coerceAtMost(0.25f)
-            last = now
-            while (acc >= step) {
-                // Never let one bad frame close the whole game: recover to the title screen instead.
-                try { game.update(step) } catch (t: Throwable) { recover(t) }
-                acc -= step
+        val step = 1f / 60f
+        val callback = object : android.view.Choreographer.FrameCallback {
+            override fun doFrame(frameTimeNanos: Long) {
+                if (!running) {
+                    looper.quit()
+                    return
+                }
+                val now = System.nanoTime()
+                if (last == 0L) last = now - (step * 1e9f).toLong()
+                acc += ((now - last) / 1e9f).coerceAtMost(0.1f)
+                last = now
+                // Never run more than 3 game steps for one picture: after a slow frame the game slows
+                // down for a moment instead of jumping ahead.
+                var steps = 0
+                while (acc >= step && steps < 3) {
+                    // Never let one bad frame close the whole game: recover to the title screen instead.
+                    try { game.update(step) } catch (t: Throwable) { recover(t) }
+                    acc -= step
+                    steps++
+                }
+                if (steps == 3) acc = acc.coerceAtMost(step)
+                if (steps > 0) draw()
+                choreographer.postFrameCallback(this)
             }
-            val canvas = try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) holder.lockHardwareCanvas() else holder.lockCanvas()
-            } catch (_: Exception) { null }
-            if (canvas == null) {
-                Thread.sleep(16)
-                continue
-            }
-            try {
-                val scale = canvas.height / VIEW_H
-                game.viewW = canvas.width / scale
-                gfx.begin(canvas, scale)
-                try { game.render(gfx) } catch (t: Throwable) { recover(t) }
-            } finally {
-                holder.unlockCanvasAndPost(canvas)
-            }
-            val elapsed = (System.nanoTime() - now) / 1_000_000L
-            if (elapsed < 8) Thread.sleep(8 - elapsed)
+        }
+        choreographer.postFrameCallback(callback)
+        android.os.Looper.loop()
+    }
+
+    private fun draw() {
+        val canvas = try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) holder.lockHardwareCanvas() else holder.lockCanvas()
+        } catch (_: Exception) { null } ?: return
+        try {
+            val scale = canvas.height / VIEW_H
+            game.viewW = canvas.width / scale
+            gfx.begin(canvas, scale)
+            try { game.render(gfx) } catch (t: Throwable) { recover(t) }
+        } finally {
+            holder.unlockCanvasAndPost(canvas)
         }
     }
 

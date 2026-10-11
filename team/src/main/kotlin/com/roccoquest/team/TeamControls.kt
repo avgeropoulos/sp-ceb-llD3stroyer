@@ -4,33 +4,52 @@ import com.roccoquest.game.Gfx
 import kotlin.concurrent.Volatile
 import kotlin.math.hypot
 
-/** Held-button state written by the platform layer and read by [TeamGame]. */
+/**
+ * Held-button state written by the platform layer and read by [TeamGame].
+ *
+ * Every button also remembers that it was pressed ([wasPressed]) until the game reads it, so a quick tap
+ * that goes down and up between two game frames is never lost.
+ */
 class TeamInput {
-    @Volatile var left = false
-    @Volatile var right = false
-    @Volatile var jump = false
+    @Volatile private var pressed = 0
+
+    private fun hold(bit: Int, old: Boolean, now: Boolean): Boolean {
+        if (now && !old) synchronized(this) { pressed = pressed or (1 shl bit) }
+        return now
+    }
+
+    /** True if the button went down since the last call (and forgets it). */
+    fun wasPressed(bit: Int): Boolean = synchronized(this) {
+        val hit = pressed and (1 shl bit) != 0
+        pressed = pressed and (1 shl bit).inv()
+        hit
+    }
+
+    @Volatile var left = false; set(v) { field = hold(B_LEFT, field, v) }
+    @Volatile var right = false; set(v) { field = hold(B_RIGHT, field, v) }
+    @Volatile var jump = false; set(v) { field = hold(B_JUMP, field, v) }
     /** Mine (Blocky) or throw (Rocco). */
-    @Volatile var action = false
+    @Volatile var action = false; set(v) { field = hold(B_ACTION, field, v) }
     /** Swipe down: Blocky digs straight down. */
-    @Volatile var down = false
+    @Volatile var down = false; set(v) { field = hold(B_DOWN, field, v) }
     /** Up on a controller or keyboard: only used to move around menus. */
-    @Volatile var up = false
-    @Volatile var swap = false
+    @Volatile var up = false; set(v) { field = hold(B_UP, field, v) }
+    @Volatile var swap = false; set(v) { field = hold(B_SWAP, field, v) }
     /** The Pokemon's SUPER move. */
-    @Volatile var superMove = false
+    @Volatile var superMove = false; set(v) { field = hold(B_SUPER, field, v) }
     /** Keyboard run button; on touch screens, double-tap a direction instead. */
     @Volatile var run = false
     /** Rocco's long jump. */
-    @Volatile var longJump = false
+    @Volatile var longJump = false; set(v) { field = hold(B_LONG, field, v) }
     /** Throw a stick of TNT. */
-    @Volatile var tnt = false
+    @Volatile var tnt = false; set(v) { field = hold(B_TNT, field, v) }
     /** Use a Black Flower. */
-    @Volatile var blackFlower = false
+    @Volatile var blackFlower = false; set(v) { field = hold(B_BLACK, field, v) }
     /** Call Poseidon (costs 50 coins). */
-    @Volatile var poseidon = false
-    @Volatile var craft = false
-    @Volatile var pause = false
-    @Volatile var musicToggle = false
+    @Volatile var poseidon = false; set(v) { field = hold(B_POSEIDON, field, v) }
+    @Volatile var craft = false; set(v) { field = hold(B_CRAFT, field, v) }
+    @Volatile var pause = false; set(v) { field = hold(B_PAUSE, field, v) }
+    @Volatile var musicToggle = false; set(v) { field = hold(B_MUSIC, field, v) }
     /** Set on any new touch or key press; menus use it. */
     @Volatile var tap = false
     @Volatile var tapX = -1f
@@ -39,6 +58,24 @@ class TeamInput {
     @Volatile var touching = false
     /** A number key 1-9 pressed in a menu (10 for the 0 key), or 0 for none. */
     @Volatile var numberKey = 0
+
+    companion object {
+        const val B_JUMP = 0
+        const val B_SWAP = 1
+        const val B_CRAFT = 2
+        const val B_PAUSE = 3
+        const val B_MUSIC = 4
+        const val B_SUPER = 5
+        const val B_ACTION = 6
+        const val B_TNT = 7
+        const val B_POSEIDON = 8
+        const val B_DOWN = 9
+        const val B_LONG = 10
+        const val B_BLACK = 11
+        const val B_LEFT = 12
+        const val B_RIGHT = 13
+        const val B_UP = 14
+    }
 }
 
 /** On-screen touch controls in virtual coordinates (the screen is 240 tall). */

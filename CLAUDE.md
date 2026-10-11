@@ -19,6 +19,10 @@ Controllers: `GameView` maps gamepad buttons (default A jump, B throw, X switch,
 `State.CONTROLS`, saved as `pad0..pad3` prefs), D-pad/hat/stick to `input.left/right/up/down`. Menus use
 `TeamGame.nav` (edges that only count when `!input.touching`). Gamepad presses also set `input.tap` with
 `tapX = -1`, so menu code must ignore taps with `tapX < 0` when it means a real touch.
+Input: `TeamInput` setters latch presses (`wasPressed`), and `TeamGame.edge` reads them, so taps shorter
+than a frame still count. Rocco has a jump buffer and coyote time (`jumpBufT`, `coyoteT`) and THROW is
+buffered (`actionBufT`). `GameView.run` is a Choreographer loop (one draw per vsync, at most 3 updates
+per draw); text-to-speech runs on its own thread in `SoundFx`.
 Each level has its own tune (`TeamGame.Tunes`); boss levels alternate scary songs.
 
 Gear wears out (swords, pickaxes, armor, shields) and crafting never lets a weaker item replace a
