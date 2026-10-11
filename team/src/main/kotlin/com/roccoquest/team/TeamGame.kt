@@ -42,8 +42,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         /** Seconds of air underwater before the team starts losing hearts. */
         const val AIR_MAX = 30f
         const val POSEIDON_COST = 50
+        const val WAVE_TIME = 2.4f
+        const val BONUS_TIME = 30f
         const val SCORE_MULT = 3
-        val TABS = listOf("FLOWERS", "SUPPLIES", "HOME", "WEAPONS", "ARMOR")
+        val TABS = listOf("FLOWERS", "SUPPLIES", "HOME", "WEAPONS", "ARMOR", "SHIELDS")
         /** How close bad guys have to be for the Black Flower to get them. */
         const val BLACK_RANGE = 170f
     }
@@ -65,13 +67,19 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     val rocco = Hero(Who.ROCCO, 0f, 0f)
     val blocky = Hero(Who.BLOCKY, 0f, 0f)
     val partner = Hero(Who.MON, 0f, 0f)
-    val team = listOf(rocco, blocky, partner)
+    /** Everybody, in and out of the world. */
+    val allHeroes = listOf(rocco, blocky, partner)
+    /** Only one of Rocco or Blocky is out at a time, together with the Pokemon. */
+    var heroOut = Who.ROCCO
+        private set
+    /** The team that's actually out in the world: Rocco OR Blocky, plus the Pokemon. */
+    val team get() = listOf(if (heroOut == Who.BLOCKY) blocky else rocco, partner)
     var mon: Mon
         get() = partner.mon
         private set(value) { partner.mon = value }
     var leaderWho = Who.ROCCO
         private set
-    val leader get() = team.first { it.who == leaderWho }
+    val leader get() = allHeroes.first { it.who == leaderWho }
     val followers get() = team.filter { it.who != leaderWho }
 
     val foes = ArrayList<Foe>()
@@ -99,6 +107,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     var sword = Sword.NONE
         private set
     private var swordsOwned = 0
+    /** The shield Rocco or Blocky carries, and how many more hits it can block. */
+    var shieldType = Shield.NONE
+        private set
+    var shieldHp = 0
+        private set
     fun hasSword(s: Sword) = swordsOwned and (1 shl s.ordinal) != 0
     var power = Power.NONE
         private set
@@ -137,6 +150,23 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private var safeX = 0f
     private var safeY = 0f
     private var goal: Goal? = null
+
+    /** While the team is in a sunset bonus room, this remembers the level they came from. */
+    private class Away(
+        val level: Level, val foes: List<Foe>, val things: List<Thing>, val frogSpots: List<Int>, val goal: Goal?,
+        val house: House?, val bed: Bed?, val respawnX: Float, val respawnY: Float, val backX: Float, val backY: Float,
+    )
+    private var away: Away? = null
+    val inBonus get() = away != null
+    /** Seconds left in the bonus room before the sun goes down. */
+    var bonusT = 0f
+        private set
+    private var portalHit: Portal? = null
+
+    /** Poseidon's giant wave: where its front is on the screen, and which way it rolls. */
+    private var waveS = 0f
+    private var waveDir = 1
+    private val waveHit = HashSet<Foe>()
 
     var digDown = false
         private set
@@ -199,8 +229,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     fun sfx(s: Sound) = sound.play(s)
     fun spawn(t: Thing) { pending += t }
-    fun addParticle(p: Particle) { particles += p }
     fun puff(x: Float, y: Float) { particles += Puff(x, y) }
+    fun addParticle(p: Particle) { particles += p }
     fun say(x: Float, y: Float, text: String, dur: Float = 1.8f) { particles += Speech(x, y, text, dur) }
     /** Every point is worth [SCORE_MULT] times as much: lots of points! */
     fun addScore(n: Int, x: Float, y: Float) {
@@ -275,6 +305,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         storage.save(key("armorHp"), armorHp)
         storage.save(key("blackFlowers"), blackFlowers)
         storage.save(key("sword"), sword.ordinal)
+        storage.save(key("shieldType"), shieldType.ordinal)
+        storage.save(key("shieldHp"), shieldHp)
         // The house (and bed) belong to the level they were built in.
         val h = house
         storage.save(key("houseLevel"), if (h != null) levelIndex + 1 else 0)
@@ -295,6 +327,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     /** The SAVE GAME button on the pause screen: saves everything, right where the team is standing. */
     fun saveHere() {
+        if (away != null) { toast("Finish the bonus room first!"); return }
         save()
         storage.save(key("bedLevel"), 0)
         storage.save(key("spotLevel"), levelIndex + 1)
@@ -326,11 +359,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         blackFlowers = storage.load(key("blackFlowers"))
         sword = Sword.entries.getOrElse(storage.load(key("sword"))) { Sword.NONE }
         if (!hasSword(sword)) sword = Sword.NONE
+        shieldType = Shield.entries.getOrElse(storage.load(key("shieldType"))) { Shield.NONE }
+        shieldHp = storage.load(key("shieldHp"))
+        if (shieldHp <= 0) shieldType = Shield.NONE
         mon = slotMon(slot)
     }
 
     fun eraseSlot(s: Int) {
-        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "armorType", "armorHp", "blackFlowers", "stickersLo", "stickersHi", "houseLevel", "houseX", "houseY", "bed", "bedLevel", "spotLevel", "spotX", "spotY")) {
+        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "armorType", "armorHp", "blackFlowers", "shieldType", "shieldHp", "stickersLo", "stickersHi", "houseLevel", "houseX", "houseY", "bed", "bedLevel", "spotLevel", "spotX", "spotY")) {
             storage.save(key(name, s), 0)
         }
         Ore.entries.forEach { storage.save(key("ore_${it.name}", s), 0) }
@@ -355,6 +391,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         armorHp = 0
         blackFlowers = 0
         sword = Sword.NONE
+        shieldType = Shield.NONE
+        shieldHp = 0
         startLevel(0)
     }
 
@@ -371,6 +409,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun setState(s: State) { state = s; stateT = 0f }
 
     fun startLevel(index: Int, fromCheckpoint: Boolean = false, restoreHome: Boolean = false) {
+        // Knocked out in a bonus room? Go back to the real level's checkpoint.
+        away?.let { respawnX = it.respawnX; respawnY = it.respawnY }
+        away = null
+        bonusT = 0f
+        portalHit = null
         val keepX = respawnX
         val keepY = respawnY
         val keepHouse = if (index == levelIndex) house else null
@@ -390,10 +433,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         invuln = 0f
         starT = 0f
         leaderWho = Who.ROCCO
+        heroOut = Who.ROCCO
         for (ty in 0 until ROWS) for (tx in 0 until level.w) {
             val px = tx * TILE.toFloat()
             val bottom = (ty + 1) * TILE.toFloat()
-            when (level.def.rows[ty][tx]) {
+            when (val c = level.def.rows[ty][tx]) {
                 '@' -> { respawnX = px; respawnY = bottom }
                 'g' -> foes += Grumbler(px, bottom, false)
                 'w' -> foes += Grumbler(px, bottom, true)
@@ -417,8 +461,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 '|' -> things += Checkpoint(px, bottom)
                 'F' -> things += Goal(px, bottom).also { goal = it }
                 'r' -> frogSpots += tx
+                'P' -> things += Portal(px, bottom)
+                else -> spawnMonster(c, px, bottom)?.let { foes += it }
             }
         }
+        // Bad guys are tough, and World 2 bad guys are even tougher.
+        val tough = if (index >= WORLD2_START) 1.6f else 1.3f
+        for (f in foes) if (!f.boss) f.toughen(tough)
         if (fromCheckpoint) {
             respawnX = keepX
             respawnY = keepY
@@ -739,7 +788,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (swapE) swap()
         if (superE) useSuper()
 
-        if (floodT > 0) floodT -= dt
+        if (floodT > 0) { floodT -= dt; updateWave(dt) }
+        if (away != null) {
+            val before = bonusT
+            bonusT -= dt
+            if (before > 5f && bonusT <= 5f) toast("The sun is going down! 5 seconds!")
+            if (bonusT <= 0f) { exitBonus(); return }
+        }
         if (tanookiT > 0) tanookiT -= dt
         if (wingT > 0) {
             wingT -= dt
@@ -796,6 +851,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         updateParticles(dt)
 
         interact()
+        portalHit?.let { p ->
+            portalHit = null
+            if (p.exit) exitBonus() else enterPortal(p)
+            return
+        }
         updatePartnerZap(dt)
         updateFrog()
         updateBoss(dt)
@@ -803,16 +863,31 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (state == State.PLAY) checkFalls()
     }
 
-    private fun swap() {
+    private fun swap() = switchTo(nextWho())
+
+    /** Puts [who] in charge. Rocco and Blocky trade places, since only one of them is out at a time. */
+    private fun switchTo(who: Who) {
+        if (who == leaderWho) return
         val old = leader
         old.crouching = false; old.slamming = false; old.longJumping = false; old.sprinting = false
-        leaderWho = when (leaderWho) { Who.ROCCO -> Who.BLOCKY; Who.BLOCKY -> Who.MON; Who.MON -> Who.ROCCO }
+        leaderWho = who
         val h = leader
-        if (hypot(h.cx - old.cx, h.cy - old.cy) > 140f || h.y > level.h * TILE) teleport(h, old)
+        if (h.who != Who.MON && h.who != heroOut) {
+            // The new one pops out right where the other one was.
+            val was = if (heroOut == Who.BLOCKY) blocky else rocco
+            heroOut = h.who
+            if (was === rocco && rocco.mini) { miniT = 0f; setMini(false) }
+            teleport(h, was)
+            h.facing = was.facing
+            h.vy = was.vy
+        } else if (hypot(h.cx - old.cx, h.cy - old.cy) > 140f || h.y > level.h * TILE) teleport(h, old)
         h.vx = 0f
         sfx(Sound.KICK)
         particles += FloatText(h.cx, h.y - 6, h.label + "!", h.color)
     }
+
+    /** Who SWAP goes to next: Rocco, then Blocky, then the Pokemon, then back to Rocco. */
+    private fun nextWho() = when (leaderWho) { Who.ROCCO -> Who.BLOCKY; Who.BLOCKY -> Who.MON; Who.MON -> Who.ROCCO }
 
     private fun teleport(h: Hero, to: Hero) {
         puff(h.cx, h.cy)
@@ -1327,12 +1402,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     // ======================================================================== Crafting
 
-    enum class Kind { FLOWER, PICK, HEART, APPLE, TNT, TRAP, STAR, MINI, HOUSE, BED, SWORD, ARMOR, BLACK }
+    enum class Kind { FLOWER, PICK, HEART, APPLE, TNT, TRAP, STAR, MINI, HOUSE, BED, SWORD, ARMOR, BLACK, SHIELD }
 
     class Recipe(
         val title: String, val note: String, val costs: List<Pair<Ore, Int>>, val coinCost: Int,
         val button: String, val enabled: Boolean, val icon: Power?, val kind: Kind, val sword: Sword = Sword.NONE,
-        val armor: Armor = Armor.NONE,
+        val armor: Armor = Armor.NONE, val shield: Shield = Shield.NONE,
     )
 
     private fun has(costs: List<Pair<Ore, Int>>, coinCost: Int) =
@@ -1405,6 +1480,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             val wearing = armorType == a
             val note = if (wearing) "Wearing it: $armorHp/${a.durability} left. Make again to fix it" else "Takes ${a.durability} hits, then breaks"
             Recipe(a.label, note, c, 10, if (wearing) "FIX" else "MAKE", has(c, 10) && !(wearing && armorHp >= a.durability), null, Kind.ARMOR, armor = a)
+        }
+        5 -> Shield.entries.filter { it != Shield.NONE }.map { sh ->
+            val holding = shieldType == sh
+            val note = if (holding) "Holding it: $shieldHp/${sh.durability} left. Make again to fix it" else "Blocks ${sh.durability} hits from the front"
+            Recipe(sh.label, note, sh.costs, 0, if (holding) "FIX" else "MAKE", has(sh.costs, 0) && !(holding && shieldHp >= sh.durability), null, Kind.SHIELD, shield = sh)
         }
         else -> {
             val houseCost = listOf(Ore.STONE to 10, Ore.IRON to 2)
@@ -1480,6 +1560,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 armorHp = r.armor.durability
                 toast("${r.armor.label}! It wears down a little every time you're hit.")
                 color = r.armor.color
+            }
+            Kind.SHIELD -> {
+                shieldType = r.shield
+                shieldHp = r.shield.durability
+                toast("${r.shield.label}! Face the bad guys and it blocks their hits.")
+                color = r.shield.color
             }
             Kind.BLACK -> {
                 blackFlowers++
@@ -1592,14 +1678,37 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             return
         }
         coins -= POSEIDON_COST
-        floodT = 3f
-        shake = 0.8f
-        sfx(Sound.SPLASH)
-        sound.sayAs("I am Poseidon! Waves, wash them away!", Voice.GOD)
+        // A giant wave rolls in from behind the team and crashes forward across the screen.
+        floodT = WAVE_TIME
+        waveDir = leader.facing
+        waveS = if (waveDir > 0) -80f else viewW + 80f
+        waveHit.clear()
+        shake = 1f
+        sfx(Sound.WAVE)
+        sound.sayAs("I am Poseidon, ruler of the sea! Wave... CRUSH THEM!", Voice.GOD)
         bannerTitle = "POSEIDON!"
-        bannerSub = "The sea washes the bad guys away!"
+        bannerSub = "A GIANT WAVE crashes over the bad guys!"
         bannerT = 2.5f
-        for (f in foes) if (f.active && !f.dying && f.x + f.w > camX && f.x < camX + viewW) f.hit(this, if (f.boss) 6 else 99)
+    }
+
+    /** The wave's front sweeps across the screen, hitting and washing away every bad guy it passes. */
+    private fun updateWave(dt: Float) {
+        waveS += waveDir * 380f * dt
+        val waveX = camX + waveS
+        if (floodT > 0.4f && Random.nextFloat() < dt * 30) {
+            particles += Sparkle(waveX + waveDir * Random.nextFloat() * 20f, 60f + Random.nextFloat() * 120f, waveDir * (60f + Random.nextFloat() * 80f), -60f - Random.nextFloat() * 60f, 0xFFDDF4FF.toInt())
+        }
+        for (f in foes) {
+            if (!f.active || f.dying || f in waveHit) continue
+            if (f.x + f.w < camX - 40 || f.x > camX + viewW + 40) continue
+            val passed = if (waveDir > 0) f.cx < waveX else f.cx > waveX
+            if (!passed) continue
+            waveHit += f
+            f.hit(this, if (f.boss) 6 else 99)
+            if (!f.boss) { f.vx = waveDir * 220f; f.vy = -240f }
+            repeat(4) { particles += Sparkle(f.cx, f.cy, waveDir * (40f + it * 30f), -80f - it * 20f, 0xFFBFE8FF.toInt()) }
+            shake = max(shake, 0.25f)
+        }
     }
 
     private fun updateWater(dt: Float) {
@@ -1756,6 +1865,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     /** Super Leaf: Tanooki Rocco for 25 seconds (tail spin + slow float). */
     fun startTanooki() {
+        if (riding == null) switchTo(Who.ROCCO)
         tanookiT = 25f
         sfx(Sound.POWERUP)
         toast("TANOOKI ROCCO! ACTION = tail spin, hold JUMP to float.")
@@ -1763,6 +1873,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     /** Wing Cap: Rocco can fly for 15 seconds. */
     fun startWingCap() {
+        if (riding == null) switchTo(Who.ROCCO)
         wingT = 15f
         sfx(Sound.POWERUP)
         sound.sayAs("Wing cap!", Voice.HERO)
@@ -1784,6 +1895,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     /** Mini Mushroom: Rocco shrinks for 25 seconds. */
     fun startMini() {
+        if (riding == null) switchTo(Who.ROCCO)
         if (!rocco.mini) setMini(true)
         miniT = 25f
         sfx(Sound.POWERUP)
@@ -1914,6 +2026,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     t.removed = true
                     t.collect(this)
                 }
+                is Portal -> if (!t.used && t.overlaps(leader) && riding == null && portalHit == null) portalHit = t
+                is Chest -> if (hit && !t.open) openChest(t)
                 is Checkpoint -> if (!t.reached && t.overlaps(leader)) {
                     t.reached = true
                     respawnX = t.x
@@ -1946,8 +2060,25 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (coins == POSEIDON_COST) toast("50 COINS! Tap the trident to call POSEIDON!")
     }
 
-    fun hurt() {
+    fun hurt(from: Body? = null) {
         if (invuln > 0 || starT > 0 || state != State.PLAY) return
+        val l = leader
+        if (from != null && shieldType != Shield.NONE && shieldHp > 0 && (from.cx - l.cx) * l.facing > -2f) {
+            // The shield takes it! Blocked hits only push you back a little.
+            shieldHp--
+            invuln = 0.7f
+            sfx(Sound.BUMP)
+            particles += FloatText(l.cx, l.y - 4, "BLOCKED!", shieldType.color)
+            for (i in 0 until 5) particles += Sparkle(l.cx + l.facing * 10f, l.cy, l.facing * (20f + i * 15f), -40f + i * 15f, 0xFFFFF2C8.toInt())
+            l.vx = -l.facing * 70f
+            if (from is Projectile) (from as Thing).removed = true
+            if (shieldHp <= 0) {
+                toast("Your ${shieldType.label} broke! Craft a new one.")
+                shieldType = Shield.NONE
+                sfx(Sound.BREAK)
+            }
+            return
+        }
         if (leader === rocco && rocco.mini) {
             // Mini Rocco just pops back to normal size instead of losing a heart.
             endMini()
@@ -2230,7 +2361,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                             power == Power.NONE -> "PUNCH"
                             else -> "THROW"
                         }
-                        val next = team[(team.indexOf(l) + 1) % team.size]
+                        val next = allHeroes.first { it.who == nextWho() }
                         TeamControls.draw(
                             gfx, input, viewW, label, next.label, next.color, superCharge, mon.color, time,
                             tnt, coins >= POSEIDON_COST, l.who == Who.ROCCO && riding == null, l.sprinting, blackFlowers,
@@ -2304,6 +2435,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
         for (h in followers) h.draw(this, gfx, ox)
         leader.draw(this, gfx, ox)
+        if (shieldType != Shield.NONE) {
+            val hh = if (heroOut == Who.BLOCKY) blocky else rocco
+            if (!hh.mini) TeamArt.shieldIcon(gfx, hh.cx + ox + hh.facing * 6f - 4f, hh.y + hh.h * 0.3f, 11f, shieldType)
+        }
         for (t in things) if (t is Shot || t is MonShot || t is Frog) t.draw(this, gfx, ox)
         for (p in particles) p.draw(gfx, ox)
         // Underwater tint up to the shore, with a wavy surface line.
@@ -2319,24 +2454,110 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 }
             }
         }
-        if (floodT > 0) {
-            // Poseidon's flood: the water rises over everything, then drains away.
-            val p = 3f - floodT
-            val rise = if (p < 1f) p else if (p < 2f) 1f else (3f - p)
-            val top = VIEW_H - rise * (VIEW_H - 40f)
-            gfx.rect(0f, top, viewW, VIEW_H - top, 0xAA2E7AC8.toInt())
-            var wx = 0f
-            while (wx < viewW) {
-                gfx.oval(wx - 6, top - 6 + sin(time * 8 + wx * 0.1f) * 4f, 20f, 12f, 0xCCBFE8FF.toInt())
-                wx += 16f
-            }
-            TeamArt.poseidon(gfx, viewW / 2, top + 150f, time)
-        }
+        if (floodT > 0) drawWave(gfx, ox)
         val l = leader
         if (state == State.PLAY) {
             val ay = l.y - 10 + sin(time * 6) * 1.5f
             gfx.poly(floatArrayOf(l.cx + ox - 4, l.cx + ox + 4, l.cx + ox), floatArrayOf(ay, ay, ay + 5), white)
         }
+    }
+
+    /** Poseidon riding his giant curling wave as it crashes forward. */
+    private fun drawWave(gfx: Gfx, ox: Float) {
+        val front = waveS
+        val d = waveDir.toFloat()
+        val p = WAVE_TIME - floodT
+        val rise = min(1f, p / 0.4f) * min(1f, floodT / 0.5f)
+        val top = VIEW_H - rise * (VIEW_H - 46f)
+        val back = if (d > 0) -20f else viewW + 20f
+        val x0 = min(back, front)
+        val x1 = max(back, front)
+        // The big body of water behind the front, darker at the bottom.
+        gfx.rect(x0, top + 14, x1 - x0, VIEW_H - top, 0xCC1E5AA8.toInt())
+        gfx.rect(x0, top + 40, x1 - x0, VIEW_H - top, 0x661A3A7A)
+        // Poseidon rides the wave, trident first.
+        TeamArt.poseidon(gfx, front - d * 70f, top + 130f, time)
+        // The curling crest leaning forward over the front.
+        gfx.oval(front - 44, top - 4, 88f, 60f, 0xEE2E7AC8.toInt())
+        gfx.oval(front - 28 + d * 10, top + 4, 56f, 38f, 0xFF4A9AE0.toInt())
+        gfx.oval(front - 14 + d * 22, top + 18, 26f, 22f, 0xCC1E5AA8.toInt())
+        // Foam along the top and spilling off the crest.
+        var fx = x0
+        while (fx < x1) {
+            gfx.oval(fx - 8, top + 8 + sin(time * 9 + fx * 0.08f) * 3f, 22f, 12f, 0xEEEAF8FF.toInt())
+            fx += 14f
+        }
+        for (i in 0 until 6) {
+            val k = (time * 3 + i * 0.37f) % 1f
+            gfx.oval(front + d * (10f + k * 40f) - 4, top + 6 + k * k * 120f, 8f - k * 4, 8f - k * 4, 0xDDFFFFFF.toInt())
+        }
+        gfx.oval(front - 30 + d * 18, top - 2, 46f, 14f, 0xFFFFFFFF.toInt())
+    }
+
+    // ======================================================================== Sunset bonus rooms
+
+    private fun enterPortal(p: Portal) {
+        p.used = true
+        away = Away(
+            level, ArrayList(foes), ArrayList(things), ArrayList(frogSpots), goal, house, bed,
+            respawnX, respawnY, p.cx - 6f, p.bottom,
+        )
+        level = Level(Levels.bonusRoom)
+        foes.clear(); things.clear(); pending.clear(); frogSpots.clear()
+        goal = null; house = null; bed = null; frog = null; camLock = null
+        for (ty in 0 until ROWS) for (tx in 0 until level.w) {
+            val px = tx * TILE.toFloat()
+            val bottom = (ty + 1) * TILE.toFloat()
+            when (level.def.rows[ty][tx]) {
+                '@' -> { respawnX = px; respawnY = bottom }
+                'c' -> things += Coin(px, ty * TILE.toFloat())
+                't' -> things += Chest(px, bottom)
+                'P' -> things += Portal(px, bottom, exit = true)
+            }
+        }
+        placeTeam(respawnX, respawnY)
+        camX = 0f
+        bonusT = BONUS_TIME
+        sfx(Sound.PORTAL)
+        bannerTitle = "SUNSET BONUS!"
+        bannerSub = "Grab the coins, mine the new materials, open the chest!"
+        bannerT = 2.5f
+        sound.sayAs("Whoa! A secret bonus room!", Voice.HERO)
+    }
+
+    private fun exitBonus() {
+        val a = away ?: return
+        away = null
+        bonusT = 0f
+        level = a.level
+        foes.clear(); foes += a.foes
+        things.clear(); things += a.things.filter { !(it is Portal && it.used) }
+        pending.clear()
+        frogSpots.clear(); frogSpots += a.frogSpots
+        goal = a.goal; house = a.house; bed = a.bed
+        respawnX = a.respawnX; respawnY = a.respawnY
+        placeTeam(a.backX, a.backY)
+        camX = (leader.cx - viewW * 0.4f).coerceIn(0f, max(0f, level.w * TILE - viewW))
+        sfx(Sound.PORTAL)
+        toast("Back to ${level.def.name}!")
+    }
+
+    /** The treasure chest: some of every new material, plus one special surprise. */
+    private fun openChest(c: Chest) {
+        c.open = true
+        sfx(Sound.ONEUP)
+        for (o in listOf(Ore.RUBY, Ore.SAPPHIRE, Ore.OBSIDIAN)) inventory[o.ordinal] += 2
+        repeat(10) { particles += Sparkle(c.cx, c.y, Random.nextFloat() * 120f - 60f, -100f - Random.nextFloat() * 80f, Portal.sunset(Random.nextFloat())) }
+        val prize = when (Random.nextInt(6)) {
+            0 -> { startStar(); "a SUPER STAR" }
+            1 -> { tnt += 3; "3 TNT" }
+            2 -> { coins += 20; "20 COINS" }
+            3 -> { blackFlowers++; "a BLACK FLOWER" }
+            4 -> { hearts = MAX_HEARTS; armor = min(MAX_ARMOR, armor + 2); "full hearts and 2 armor" }
+            else -> { for (o in listOf(Ore.RUBY, Ore.SAPPHIRE, Ore.OBSIDIAN)) inventory[o.ordinal] += 2; "EXTRA materials" }
+        }
+        toast("TREASURE! Ruby, sapphire, obsidian AND $prize!")
+        sound.sayAs("Treasure! You got $prize!", Voice.HERO)
     }
 
     private fun renderBackground(gfx: Gfx, cam: Float) {
@@ -2439,6 +2660,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     gfx.rect(x + 40, 40f, 2f, 30f + (i % 4) * 10, 0xFF0E2A34.toInt())
                 }
             }
+            Place.SUNSET -> Sunset.drawSky(gfx, viewW, VIEW_H, cam, time)
             Place.END -> {
                 gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF0A0614.toInt())
                 for (i in 0 until 50) gfx.rect((i * 89f - cam * 0.03f).mod(viewW), (i * 41f) % 200f, 1.5f, 1.5f, 0xFFE0D0FF.toInt())
@@ -2547,13 +2769,20 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         gfx.shadowText("x$coins", 16f, 26f, 8f, white)
         gfx.shadowText("\u2605$score", 42f, 26f, 7f, 0xFFFFE14D.toInt())
         var x = max(112f, viewW * 0.25f)
+        // Ten materials now: squeeze them in so they stop before the CRAFT button.
+        val step = min(25f, (viewW - 106f - x) / Ore.entries.size)
         for (o in Ore.entries) {
             TeamArt.oreIcon(gfx, o, x, 5f, 10f)
-            gfx.shadowText(inventory[o.ordinal].toString(), x + 12, 13f, 7f, white)
-            x += 25f
+            gfx.shadowText(inventory[o.ordinal].toString(), x + 11, 13f, 7f, white)
+            x += step
+        }
+        if (shieldType != Shield.NONE) {
+            TeamArt.shieldIcon(gfx, 84f, 17f, 10f, shieldType)
+            gfx.shadowText("$shieldHp", 94f, 26f, 7f, white)
         }
         val powerText = if (power == Power.NONE) "NO FLOWER" else "${power.label} Lv${flowerLevel[power.ordinal]}"
-        val starText = (if (starT > 0) "  •  STAR ${starT.toInt() + 1}" else "") +
+        val starText = (if (away != null) "  •  BONUS ${bonusT.toInt() + 1}" else "") +
+            (if (starT > 0) "  •  STAR ${starT.toInt() + 1}" else "") +
             (if (miniT > 0) "  •  MINI ${miniT.toInt() + 1}" else "") +
             (if (tanookiT > 0) "  •  TANOOKI ${tanookiT.toInt() + 1}" else "") +
             (if (wingT > 0) "  •  WINGS ${wingT.toInt() + 1}" else "")
@@ -2638,6 +2867,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 r.kind == Kind.BED -> TeamArt.bed(gfx, px + 2, y + 20)
                 r.kind == Kind.SWORD -> TeamArt.sword(gfx, px + 7, y + 20, -0.8f, r.sword)
                 r.kind == Kind.BLACK -> TeamArt.blackFlower(gfx, px + 5, y + 3, 19f, time)
+                r.kind == Kind.SHIELD -> TeamArt.shieldIcon(gfx, px + 7, y + 4, 15f, r.shield)
                 r.kind == Kind.ARMOR -> {
                     val c = r.armor.color
                     gfx.rect(px + 8, y + 4, 12f, 5f, c)

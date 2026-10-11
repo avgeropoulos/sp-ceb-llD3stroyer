@@ -64,9 +64,11 @@ enum class Sword(val label: String, val ore: Ore?, val cost: Int, val damage: In
     GOLD("GOLD SWORD", Ore.GOLD, 3, 4, 24f, 0.14f, 0xFFFFD82A.toInt(), "Super fast swings: 4 damage"),
     DIAMOND("DIAMOND SWORD", Ore.DIAMOND, 3, 6, 28f, 0.24f, 0xFF7FF4F0.toInt(), "Sweeps every bad guy in reach: 6"),
     AMETHYST("AMETHYST SWORD", Ore.AMETHYST, 3, 8, 30f, 0.24f, 0xFFC890FF.toInt(), "Sweeps AND shoots magic slashes: 8"),
+    RUBY("RUBY SWORD", Ore.RUBY, 4, 7, 26f, 0.12f, 0xFFFF3A5A.toInt(), "The fastest sword of all: 7"),
+    OBSIDIAN("OBSIDIAN SWORD", Ore.OBSIDIAN, 4, 11, 32f, 0.26f, 0xFF7A5AB0.toInt(), "Heavy! Sweeps everything: 11"),
     ;
 
-    val sweeps get() = this == DIAMOND || this == AMETHYST
+    val sweeps get() = this == DIAMOND || this == AMETHYST || this == OBSIDIAN
 }
 
 /**
@@ -79,6 +81,21 @@ enum class Armor(val label: String, val ore: Ore?, val cost: Int, val durability
     GOLD("GOLD ARMOR", Ore.GOLD, 8, 5, 0xFFFFD82A.toInt()),
     DIAMOND("DIAMOND ARMOR", Ore.DIAMOND, 8, 8, 0xFF7FF4F0.toInt()),
     AMETHYST("AMETHYST ARMOR", Ore.AMETHYST, 8, 12, 0xFFC890FF.toInt()),
+    SAPPHIRE("SAPPHIRE ARMOR", Ore.SAPPHIRE, 8, 16, 0xFF4A7AFF.toInt()),
+    OBSIDIAN("OBSIDIAN ARMOR", Ore.OBSIDIAN, 8, 24, 0xFF5A3A8A.toInt()),
+}
+
+/**
+ * A shield for Rocco or Blocky. It blocks any hit coming from the way you're facing
+ * (arrows, fire, bad guys bumping into you) and wears down a little each time.
+ */
+enum class Shield(val label: String, val costs: List<Pair<Ore, Int>>, val durability: Int, val color: Int, val rim: Int) {
+    NONE("NO SHIELD", emptyList(), 0, 0, 0),
+    STONE("STONE SHIELD", listOf(Ore.STONE to 6), 4, 0xFF9A9A9A.toInt(), 0xFF5A5A5A.toInt()),
+    IRON("IRON SHIELD", listOf(Ore.IRON to 4), 8, 0xFFE0E0E8.toInt(), 0xFF8A8A9A.toInt()),
+    RUBY("RUBY SHIELD", listOf(Ore.RUBY to 3, Ore.IRON to 2), 14, 0xFFFF3A5A.toInt(), 0xFFFFD82A.toInt()),
+    SAPPHIRE("SAPPHIRE SHIELD", listOf(Ore.SAPPHIRE to 4, Ore.GOLD to 2), 20, 0xFF4A7AFF.toInt(), 0xFFFFD82A.toInt()),
+    OBSIDIAN("OBSIDIAN SHIELD", listOf(Ore.OBSIDIAN to 4, Ore.DIAMOND to 1), 32, 0xFF3A2460.toInt(), 0xFFC890FF.toInt()),
 }
 
 enum class Who { ROCCO, BLOCKY, MON }

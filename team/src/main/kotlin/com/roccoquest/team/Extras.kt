@@ -364,7 +364,7 @@ class Enderman(x: Float, bottom: Float) : Foe(x + 2, bottom - 34, 12f, 34f, 24) 
 }
 
 /** The Warden's sonic boom: a ring of sound that goes through walls. */
-class SonicBoom(x: Float, y: Float, private val dir: Int) : Foe(x, y, 18f, 18f, 1) {
+class SonicBoom(x: Float, y: Float, private val dir: Int) : Foe(x, y, 18f, 18f, 1), Projectile {
     private var t = 0f
     override val stompable = false
     init { active = true }
@@ -490,7 +490,7 @@ class Warden(x: Float, bottom: Float) : Foe(x - 8, bottom - 46, 32f, 46f, 110) {
 }
 
 /** A purple fireball breathed by the Ender Dragon. */
-class DragonBall(x: Float, y: Float, tx: Float, ty: Float) : Foe(x, y, 12f, 12f, 1) {
+class DragonBall(x: Float, y: Float, tx: Float, ty: Float) : Foe(x, y, 12f, 12f, 1), Projectile {
     private var t = 0f
     override val stompable = false
     init {
@@ -665,7 +665,7 @@ class EnderDragon(x: Float, y: Float) : Foe(x, y, 64f, 30f, 120) {
     }
 
     override fun stomp(g: TeamGame, stomper: Hero) { hit(g, 2) }
-    override fun touch(g: TeamGame) { if (mode != Mode.BEATEN) g.hurt() }
+    override fun touch(g: TeamGame) { if (mode != Mode.BEATEN) g.hurt(this) }
 
     override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
         val px = x + ox
@@ -753,7 +753,7 @@ class BombBomb(x: Float, bottom: Float) : Foe(x + 2, bottom - 13, 12f, 13f, 1) {
             kicked = true
             vx = if (g.leader.cx < cx) 200f else -200f
             g.sfx(Sound.KICK)
-        } else if (!stunned) g.hurt()
+        } else if (!stunned) g.hurt(this)
     }
 
     override fun hit(g: TeamGame, dmg: Int): Boolean {

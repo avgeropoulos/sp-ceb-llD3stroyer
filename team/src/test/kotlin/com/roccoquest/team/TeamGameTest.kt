@@ -180,8 +180,9 @@ class TeamGameTest {
         repeat(360) { botStep() }
         input.right = false; input.jump = false
         run(1f)
-        val d = kotlin.math.abs(game.rocco.cx - game.blocky.cx)
-        assertTrue(d < 120f, "Blocky stays with Rocco: $d")
+        val d = kotlin.math.abs(game.rocco.cx - game.partner.cx)
+        assertTrue(d < 120f, "the Pokemon stays with Rocco: $d")
+        assertTrue(game.blocky !in game.team, "only one of Rocco or Blocky is out")
         assertTrue(game.rocco.x > 300f, "Rocco got going: ${game.rocco.x}")
     }
 
@@ -554,7 +555,9 @@ class TeamGameTest {
         input.poseidon = true; game.update(dt); input.poseidon = false
         assertTrue(game.floodT > 0f)
         assertEquals(5, game.coins)
-        assertTrue(game.foes.all { it.dying || it.boss }, "simple bad guys were washed away")
+        assertTrue(game.foes.none { it.dying }, "the wave starts behind the team and rolls forward")
+        run(1.6f) { game.hurtProof() }
+        assertTrue(game.foes.all { it.dying || it.boss || it.removed }, "simple bad guys were washed away")
         assertTrue(ears.said.any { "Poseidon" in it })
     }
 
@@ -779,7 +782,7 @@ class TeamGameTest {
         startPlaying()
         val swordsTab = TeamGame.TABS.indexOf("WEAPONS")
         fun row(sw: Sword) = game.recipes(swordsTab).indexOfFirst { it.kind == TeamGame.Kind.SWORD && it.sword == sw }
-        assertEquals(5, game.recipes(swordsTab).count { it.kind == TeamGame.Kind.SWORD }, "five kinds of swords")
+        assertEquals(7, game.recipes(swordsTab).count { it.kind == TeamGame.Kind.SWORD }, "seven kinds of swords, with ruby and obsidian")
         game.craft(row(Sword.DIAMOND), swordsTab)
         assertEquals(Sword.NONE, game.sword, "no diamonds yet")
         game.inventory[Ore.STONE.ordinal] = 4
@@ -994,10 +997,10 @@ class TeamGameTest {
     @Test fun enemiesHaveHealthBars() {
         startPlaying()
         val g = game.foes.filterIsInstance<Grumbler>().first()
-        assertEquals(3, g.maxHp, "tougher bad guys")
+        assertEquals(4, g.maxHp, "tougher bad guys (3 x 1.3)")
         g.hit(game, 1)
-        assertEquals(2, g.hp)
-        g.hit(game, 1)
+        assertEquals(3, g.hp)
+        g.hit(game, 2)
         assertTrue(!g.dying)
         g.hit(game, 1)
         assertTrue(g.dying)
@@ -1120,6 +1123,125 @@ class TeamGameTest {
         assertTrue(kotlin.math.abs(g2.rocco.x - bed2.x) < 40f, "woke up next to the bed")
         assertEquals(Mon.BLAZE, g2.mon)
     }
+
+    @Test fun onlyRoccoOrBlockyIsOutWithThePokemon() {
+        startPlaying()
+        game.foes.clear()
+        assertEquals(listOf(game.rocco, game.partner), game.team)
+        run(0.5f) { input.right = true }
+        input.right = false
+        val spot = game.rocco.cx
+        input.swap = true; game.update(dt); input.swap = false; game.update(dt)
+        assertEquals(Who.BLOCKY, game.leaderWho)
+        assertEquals(listOf(game.blocky, game.partner), game.team, "Blocky swaps in for Rocco")
+        assertTrue(kotlin.math.abs(game.blocky.cx - spot) < 12f, "Blocky pops out where Rocco was")
+        input.swap = true; game.update(dt); input.swap = false; game.update(dt)
+        assertEquals(Who.MON, game.leaderWho)
+        assertEquals(listOf(game.blocky, game.partner), game.team, "Blocky follows the Pokemon")
+        input.swap = true; game.update(dt); input.swap = false; game.update(dt)
+        assertEquals(Who.ROCCO, game.leaderWho)
+        assertEquals(listOf(game.rocco, game.partner), game.team)
+    }
+
+    private fun levelWithChar(c: Char) = Levels.all.indexOfFirst { d -> d.rows.any { c in it } }
+
+    @Test fun newMonstersAreInTheLevels() {
+        for (c in "AHUT") assertTrue(levelWithChar(c) >= 0, "monster $c is in a level")
+        for (c in "REx") assertTrue(levelWithChar(c) >= 0, "material $c is in a level")
+        assertTrue(Levels.all.count { d -> d.rows.any { 'P' in it } } >= 30, "bonus portals in most levels")
+    }
+
+    @Test fun skellyArcherShootsArrows() {
+        startPlaying()
+        game.foes.clear()
+        game.rocco.x = 122 * TILE.toFloat(); game.rocco.y = 100f; run(0.6f) { game.hurtProof() }
+        val r = game.rocco
+        val a = SkellyArcher(r.x + 150f, r.bottom).also { it.active = true }
+        game.foes += a
+        var arrows = 0
+        run(4f) { game.hurtProof(); arrows = maxOf(arrows, game.foes.count { it is Arrow }) }
+        assertTrue(arrows > 0, "the archer shot an arrow")
+    }
+
+    @Test fun shieldBlocksArrowsFromTheFront() {
+        startPlaying()
+        game.foes.clear()
+        game.rocco.x = 122 * TILE.toFloat(); game.rocco.y = 100f; run(0.6f)
+        game.inventory[Ore.IRON.ordinal] = 4
+        game.craft(game.recipes(5).indexOfFirst { it.shield == Shield.IRON }, tab = 5)
+        assertEquals(Shield.IRON, game.shieldType)
+        val r = game.rocco
+        r.facing = 1
+        val hearts = game.hearts
+        val arrow = Arrow(r.x + r.w + 2f, r.cy - 2f, -200f, 0f)
+        game.foes += arrow
+        game.update(dt); game.update(dt)
+        assertEquals(hearts, game.hearts, "blocked!")
+        assertEquals(Shield.IRON.durability - 1, game.shieldHp)
+    }
+
+    @Test fun hopperJumpsAtYou() {
+        startPlaying()
+        game.foes.clear()
+        game.rocco.x = 122 * TILE.toFloat(); game.rocco.y = 100f; run(0.6f) { game.hurtProof() }
+        val r = game.rocco
+        val h = Hopper(r.x + 110f, r.bottom).also { it.active = true }
+        game.foes += h
+        var leapt = false
+        run(2.5f) { game.hurtProof(); if (!h.onGround && h.vx < -60f) leapt = true }
+        assertTrue(leapt, "the hopper leapt toward Rocco")
+    }
+
+    @Test fun gloopSplitsInTwo() {
+        startPlaying()
+        game.foes.clear()
+        game.rocco.x = 122 * TILE.toFloat(); game.rocco.y = 100f; run(0.6f) { game.hurtProof() }
+        val r = game.rocco
+        val gl = Gloop(r.x + 200f, r.bottom).also { it.active = true }
+        game.foes += gl
+        gl.hit(game, 99)
+        game.update(dt)
+        assertEquals(2, game.foes.count { it is Gloop && !it.big }, "two little gloops")
+    }
+
+    @Test fun snapperPopsUpAndSpits() {
+        startPlaying()
+        game.foes.clear()
+        game.rocco.x = 122 * TILE.toFloat(); game.rocco.y = 100f; run(0.6f) { game.hurtProof() }
+        val r = game.rocco
+        val sn = Snapper(r.x + 80f, r.bottom).also { it.active = true }
+        game.foes += sn
+        var seeds = 0
+        run(3.5f) { game.hurtProof(); seeds = maxOf(seeds, game.foes.count { it is Seed }) }
+        assertTrue(seeds > 0, "the snapper spat a seed")
+    }
+
+    @Test fun bonusPortalGoesToTheSunsetAndBack() {
+        startPlaying()
+        game.foes.clear()
+        val portal = game.thingsForTest().filterIsInstance<Portal>().single()
+        val r = game.rocco
+        r.x = portal.x - 30f; r.y = portal.bottom - r.h
+        var t = 0f
+        while (!game.inBonus && t < 4f) { game.hurtProof(); input.right = true; game.update(dt); t += dt }
+        input.right = false
+        assertTrue(game.inBonus, "walked into the portal")
+        assertEquals("SUNSET BONUS", game.level.def.name)
+        // Open the treasure chest.
+        val chest = game.thingsForTest().filterIsInstance<Chest>().single()
+        r.x = chest.x; r.y = chest.bottom - r.h
+        game.update(dt)
+        assertTrue(chest.open)
+        assertTrue(game.inventory[Ore.OBSIDIAN.ordinal] >= 2, "new materials from the chest")
+        // The sun goes down and the team is back where the portal was.
+        run(Games.BONUS) { game.hurtProof() }
+        assertTrue(!game.inBonus)
+        assertEquals("GRASSY HILLS", game.level.def.name)
+        assertTrue(kotlin.math.abs(game.rocco.cx - portal.cx) < 30f, "back at the portal")
+        assertTrue(game.thingsForTest().none { it is Portal }, "each portal works once")
+    }
+
+    private object Games { const val BONUS = TeamGame.BONUS_TIME + 1f }
 
     /** Renders a few frames to build/screens for eyeballing. */
     @Test fun screenshots() {
@@ -1313,5 +1435,53 @@ class TeamGameTest {
             run(1.2f) { game.hurtProof() }
             shot("w2-" + name.lowercase().replace(" ", "-").replace("'", ""))
         }
+    }
+
+    /** The new monsters, shields, bonus room and Poseidon's wave. */
+    @Test fun newStuffScreenshots() {
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 720, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f))
+            ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        startPlaying()
+        game.foes.clear()
+        val r = game.rocco
+        r.x = 122 * TILE.toFloat(); r.y = 100f
+        run(2.5f) { game.hurtProof() }
+        game.inventory[Ore.RUBY.ordinal] = 5; game.inventory[Ore.IRON.ordinal] = 6
+        game.inventory[Ore.SAPPHIRE.ordinal] = 3; game.inventory[Ore.OBSIDIAN.ordinal] = 2
+        game.craft(game.recipes(5).indexOfFirst { it.shield == Shield.RUBY }, tab = 5)
+        val b = r.bottom
+        game.foes += listOf(
+            SkellyArcher(r.x + 190f, b), Hopper(r.x + 70f, b), Gloop(r.x + 120f, b), Snapper(r.x + 150f, b),
+        ).onEach { it.active = true }
+        run(1.6f) { game.hurtProof(); r.vx = 0f }
+        shot("new-monsters")
+        input.craft = true; game.update(dt); input.craft = false; game.update(dt)
+        repeat(5) { input.numberKey = 8; game.update(dt) }
+        input.numberKey = 0; game.update(dt)
+        shot("craft-shields")
+        input.craft = true; game.update(dt); input.craft = false; game.update(dt)
+        game.coins = 60
+        input.poseidon = true; game.update(dt); input.poseidon = false
+        run(0.7f) { game.hurtProof() }
+        shot("poseidon-wave")
+        run(2.5f) { game.hurtProof() }
+        // The bonus room.
+        startPlaying()
+        game.foes.clear()
+        val portal = game.thingsForTest().filterIsInstance<Portal>().single()
+        r.x = portal.x - 50f; r.y = portal.bottom - r.h
+        run(2f)
+        shot("portal")
+        var t = 0f
+        while (!game.inBonus && t < 4f) { input.right = true; game.update(dt); t += dt }
+        input.right = false
+        run(3f)
+        run(0.8f) { input.right = true }
+        input.right = false
+        shot("bonus-room")
     }
 }

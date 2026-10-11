@@ -141,7 +141,9 @@ nearby bad guy every few seconds. Tap **ERASE** twice on a file to delete it.
 
 ### Playing
 
-* You control one hero and the others follow you. **SWAP** goes Rocco, then Blocky, then your Pokemon.
+* **One hero at a time**: either Rocco OR Blocky is out, together with your Pokemon. **SWAP** goes
+  Rocco, then Blocky (he pops out right where Rocco was), then your Pokemon, then back to Rocco.
+  Picking up a Tanooki leaf, Wing Cap or Mini Mushroom brings Rocco out automatically.
 * **Blocky** swings his pickaxe (**MINE**) to dig stone, **iron**, **gold**, **diamond**, **emerald**,
   **copper** and **amethyst** out of the rocks. Swipe down to dig straight down.
 * **Rocco** jumps higher and **THROWS** whatever flower power the team has crafted.
@@ -175,12 +177,36 @@ nearby bad guy every few seconds. Tap **ERASE** twice on a file to delete it.
   **Spike Trap** to set down in front of you.
 * **TNT**: craft it, then press the **TNT** button to throw it. A red **5x5 grid** shows what will blow up,
   and about one second later... BOOM! Blocks break (you keep the ore) and bad guys get hit hard.
-* **Poseidon**: once you have **50 coins**, a trident button appears. Tap it and Poseidon rises from the
-  sea, floods the screen and washes away all the simple bad guys (and hurts bosses).
+* **Poseidon**: once you have **50 coins**, a trident button appears. Tap it and Poseidon booms in a
+  deep, scary voice and rides a **GIANT WAVE** that rolls forward across the screen with a huge crashing
+  splash. Every simple bad guy it passes gets washed away (bosses get hurt).
+* **New monsters** (and every bad guy is tougher now: about 30% more health, 60% more in World 2):
+  * **Skelly Archers** stop, pull back their bow (watch for the red **!**) and shoot **arrows** at you.
+  * **Hoppers** are Grumblers with red headbands. Get close and they crouch... then **jump right at you**!
+  * **Gloops** are bouncy green slimes. Beat a big one and it **splits into two little ones**.
+  * **Snapper plants** hide in the ground, pop up when you're close and **spit seeds**. Their leaves are
+    spiky, so you can't stomp them: hit them with something!
+* **Bonus portals**: most levels have a little swirly **BONUS!** portal after the first checkpoint. Walk in
+  and you're in a **sunset bonus room** for 30 seconds: coins everywhere, prize blocks, the new materials
+  to mine, and a **treasure chest** with ruby, sapphire, obsidian and a surprise (a star, TNT, coins, a
+  Black Flower, armor or extra materials). Walk into the EXIT portal or wait for the sun to set to go back.
+  Each portal works once.
+* **New materials**: red **RUBY**, blue **SAPPHIRE** and super-tough black **OBSIDIAN** are hidden in the
+  rocks of later levels (and in every bonus room).
+* **Shields** (the new SHIELDS tab on the crafting table): Stone, Iron, Ruby, Sapphire and Obsidian
+  shields. Rocco or Blocky holds it, and it **blocks every hit from the way you're facing**: arrows, fire,
+  seeds, sonic booms and bad guys bumping into you. Each block wears it down a little.
+* **More to craft**: a super-fast **Ruby Sword**, a huge **Obsidian Sword**, and **Sapphire** and
+  **Obsidian Armor**.
 * **Underwater levels**: tap JUMP to swim. Watch the **AIR** bubbles under the hearts and swim through
   **bubbles** from the bubble vents to fill up. If you run out you lose one heart and get more air,
   so it's not too hard. Swim all the way to the shore!
 * **Boss music**: King Krag gets his own crazy fast music, and the Warden a creepy heartbeat one.
+
+![New monsters](docs/teamup-new-monsters.png)
+![Poseidon's giant wave](docs/teamup-poseidon-wave.png)
+![Sunset bonus room](docs/teamup-bonus-room.png)
+![Shields](docs/teamup-shields.png)
 
 ### Stickers
 
@@ -358,7 +384,7 @@ You can also open the folder in Android Studio and press Run.
 Levels are built in `core/.../Level.kt` with a small builder, so adding a new one is a few lines.
 
 * `team/`: Team Up!, also plain Kotlin. It reuses the drawing interface, Rocco's pixel art, the
-  sound effects and the music from `core/`. Its levels are in `TeamLevel.kt` (World 2 in `World2.kt`), the heroes and
+  sound effects and the music from `core/`. Its levels are in `TeamLevel.kt` (World 2 in `World2.kt`), the newer monsters, bonus portals and sunset in `Monsters.kt`, the heroes and
   Pokemon in `Actors.kt`, the bad guys and bosses in `Foes.kt`, villagers, Dennis, minecarts, TNT,
   Endermen, the Warden and the Ender Dragon in `Extras.kt`, shots, items and effects in `Items.kt`, and the crafting table, save files and menus in `TeamGame.kt`.
 * `teamapp/`: the Android layer for Team Up!, a copy of `app/` wired to the new game.

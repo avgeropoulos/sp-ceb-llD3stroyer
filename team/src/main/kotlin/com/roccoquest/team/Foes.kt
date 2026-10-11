@@ -15,10 +15,22 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.random.Random
 
+/** Things bad guys shoot or breathe (arrows, fire, seeds). A shield knocks them away. */
+interface Projectile
+
 /** Every bad guy has hit points and shows a health bar. */
-abstract class Foe(x: Float, y: Float, w: Float, h: Float, val maxHp: Int) : Thing(x, y, w, h) {
+abstract class Foe(x: Float, y: Float, w: Float, h: Float, baseHp: Int) : Thing(x, y, w, h) {
+    var maxHp = baseHp
+        private set
     var hp = maxHp
         protected set
+
+    /** Makes this bad guy tougher: [times] more health (World 2 bad guys get extra). */
+    fun toughen(times: Float) {
+        if (maxHp <= 1) return
+        maxHp = kotlin.math.ceil(maxHp * times).toInt()
+        hp = maxHp
+    }
     var dying = false
     /** Flashes white for a moment after being hit. */
     var flash = 0f
@@ -44,7 +56,7 @@ abstract class Foe(x: Float, y: Float, w: Float, h: Float, val maxHp: Int) : Thi
     }
 
     open fun stomp(g: TeamGame, stomper: Hero) { hp = 0; knockOut(g); g.addScore(100, cx, y) }
-    open fun touch(g: TeamGame) { g.hurt() }
+    open fun touch(g: TeamGame) { g.hurt(this) }
 
     fun knockOut(g: TeamGame) {
         if (dying) return
@@ -123,7 +135,7 @@ class Grumbler(x: Float, y: Float, private var winged: Boolean) : Foe(x + 1, y -
         vx = 0f
     }
 
-    override fun touch(g: TeamGame) { if (squashed < 0) g.hurt() }
+    override fun touch(g: TeamGame) { if (squashed < 0) g.hurt(this) }
 
     override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
         val s = if (g.level.def.place == Place.CAVE) Sprites.grumblerBlue else Sprites.grumbler
@@ -183,9 +195,9 @@ class Shellback(x: Float, y: Float) : Foe(x + 1, y - 22, 14f, 22f, 4) {
 
     override fun touch(g: TeamGame) {
         when {
-            !shell -> g.hurt()
+            !shell -> g.hurt(this)
             !sliding -> kick(g, g.leader)
-            kickGrace <= 0 -> g.hurt()
+            kickGrace <= 0 -> g.hurt(this)
         }
     }
 
@@ -235,7 +247,7 @@ class Bonehead(x: Float, y: Float) : Foe(x + 1, y - 20, 14f, 20f, 6) {
     /** While he's a pile of bones, powers do double damage. */
     override fun hit(g: TeamGame, dmg: Int) = super.hit(g, if (pile >= 0) dmg * 2 else dmg)
 
-    override fun touch(g: TeamGame) { if (pile < 0) g.hurt() }
+    override fun touch(g: TeamGame) { if (pile < 0) g.hurt(this) }
 
     override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
         val px = x + ox
@@ -331,7 +343,7 @@ class SpikeBall(x: Float, y: Float) : Foe(x, y, 12f, 12f, 1) {
 }
 
 /** King Krag's fire breath. Wonder King Krag breathes rainbow fire. */
-class Flame(x: Float, y: Float, private val dir: Int, private val rainbowFire: Boolean = false) : Foe(x, y, 20f, 8f, 1) {
+class Flame(x: Float, y: Float, private val dir: Int, private val rainbowFire: Boolean = false) : Foe(x, y, 20f, 8f, 1), Projectile {
     override val stompable = false
     private var t = 0f
     init { active = true }
@@ -457,7 +469,7 @@ class KragJr(x: Float, y: Float, val wonderStyle: Boolean = false) :
     }
 
     override fun stomp(g: TeamGame, stomper: Hero) { hit(g, 3) }
-    override fun touch(g: TeamGame) { if (mode == Mode.FLY || mode == Mode.SWOOP || mode == Mode.WINDUP) g.hurt() }
+    override fun touch(g: TeamGame) { if (mode == Mode.FLY || mode == Mode.SWOOP || mode == Mode.WINDUP) g.hurt(this) }
 
     override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
         val px = x + ox + if (mode == Mode.WINDUP) sin(t * 60) * 2f else 0f

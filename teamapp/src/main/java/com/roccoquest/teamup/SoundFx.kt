@@ -82,7 +82,7 @@ class SoundFx(context: Context) : SoundSink {
         val (pitch, rate) = when (voice) {
             Voice.FROG -> 1.9f to 1.15f
             Voice.VILLAGER -> 0.95f to 0.85f
-            Voice.GOD -> 0.55f to 0.8f
+            Voice.GOD -> 0.3f to 0.72f
             Voice.MON -> 1.5f to 1.05f
             Voice.HERO -> 1.1f to 0.95f
         }

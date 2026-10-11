@@ -33,6 +33,32 @@ object SoundSynth {
             }
         }
 
+        /** Noise that grows louder (a wave building up). */
+        fun swell(dur: Float, vol: Float, smooth: Float) {
+            val n = (RATE * dur).toInt()
+            var last = 0f
+            for (i in 0 until n) {
+                last = last * smooth + (Random.nextFloat() * 2f - 1f) * (1f - smooth)
+                samples += last * vol * (i.toFloat() / n) * 3f
+            }
+        }
+
+        /** Plays [block] with a low sliding tone mixed on top of it. */
+        fun mix(tone: Pair<Float, Float>, dur: Float, vol: Float, block: Builder.() -> Unit) {
+            val start = samples.size
+            block()
+            val n = (RATE * dur).toInt()
+            var phase = 0f
+            for (i in 0 until n) {
+                val t = i.toFloat() / n
+                val f = tone.first + (tone.second - tone.first) * t
+                phase = (phase + f / RATE) % 1f
+                val v = (4f * kotlin.math.abs(phase - 0.5f) - 1f) * vol * (1f - t)
+                val k = start + i
+                if (k < samples.size) samples[k] = (samples[k] + v).coerceIn(-1f, 1f) else samples += v
+            }
+        }
+
         fun noise(dur: Float, vol: Float = 0.4f, smooth: Float = 0f) {
             val n = (RATE * dur).toInt()
             var last = 0f
@@ -72,6 +98,14 @@ object SoundSynth {
                 tone(560f, 320f, 0.08f, 0.35f); noise(0.05f, 0.3f, 0.4f)
             }
             Sound.SPLASH -> { noise(0.12f, 0.45f, 0.2f); noise(0.35f, 0.3f, 0.85f); tone(400f, 900f, 0.1f, 0.12f, square = false) }
+            Sound.ARROW -> { noise(0.05f, 0.3f, 0.1f); tone(1800f, 700f, 0.12f, 0.12f, square = false) }
+            // A deep rumble that swells into a huge crashing wave, then washes away.
+            Sound.WAVE -> {
+                swell(0.5f, 0.35f, 0.93f)
+                mix(tone = 90f to 45f, dur = 1.2f, vol = 0.35f) { noise(1.2f, 0.65f, 0.75f) }
+                noise(0.8f, 0.3f, 0.95f)
+            }
+            Sound.PORTAL -> notes(floatArrayOf(392f, 523f, 659f, 784f, 1047f, 1319f, 1568f, 2093f), 0.045f, vol = 0.22f, lastHold = 0.3f)
         }
     }.samples.toFloatArray()
 }

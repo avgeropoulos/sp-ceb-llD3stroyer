@@ -178,6 +178,20 @@ object TeamArt {
     }
 
     /** A little green shield: one point of green armor. */
+    /** A shield you can craft: a rim, the shield's color and a little gem in the middle. [s] is its height. */
+    fun shieldIcon(gfx: Gfx, x: Float, y: Float, s: Float, sh: Shield) {
+        if (sh == Shield.NONE) return
+        val w = s * 0.8f
+        gfx.poly(floatArrayOf(x, x + w, x + w, x + w / 2, x), floatArrayOf(y, y, y + s * 0.6f, y + s, y + s * 0.6f), sh.rim)
+        gfx.poly(
+            floatArrayOf(x + 1.5f, x + w - 1.5f, x + w - 1.5f, x + w / 2, x + 1.5f),
+            floatArrayOf(y + 1.5f, y + 1.5f, y + s * 0.58f, y + s - 2.2f, y + s * 0.58f), sh.color,
+        )
+        gfx.rect(x + w / 2 - 0.75f, y + 2f, 1.5f, s - 5f, sh.rim)
+        gfx.oval(x + w / 2 - s * 0.14f, y + s * 0.3f, s * 0.28f, s * 0.28f, sh.rim)
+        gfx.rect(x + 2.5f, y + 2.5f, w * 0.25f, s * 0.2f, 0x66FFFFFF)
+    }
+
     fun shield(gfx: Gfx, x: Float, y: Float, s: Float, color: Int = 0xFF2EB84A.toInt()) {
         gfx.poly(
             floatArrayOf(x, x + s, x + s, x + s / 2, x),
@@ -207,7 +221,13 @@ object TeamArt {
                 gfx.poly(floatArrayOf(x + 3, x + s - 3, x + s - 1.5f, x + 1.5f), floatArrayOf(y + 3, y + 3, y + s - 3, y + s - 3), o.color)
                 gfx.rect(x + 4, y + 4, s / 3, 1.5f, 0xAAFFFFFF.toInt())
             }
-            Ore.DIAMOND, Ore.EMERALD, Ore.AMETHYST -> {
+            Ore.OBSIDIAN -> {
+                // A rough black-purple chunk with a shine.
+                gfx.poly(floatArrayOf(x + 1, x + s * 0.6f, x + s, x + s - 1, x + s * 0.3f), floatArrayOf(y + s * 0.4f, y, y + s * 0.3f, y + s, y + s - 0.5f), o.dark)
+                gfx.poly(floatArrayOf(x + 2.5f, x + s * 0.6f, x + s - 1.5f, x + s * 0.55f), floatArrayOf(y + s * 0.42f, y + 1.5f, y + s * 0.35f, y + s * 0.6f), o.color)
+                gfx.rect(x + s * 0.5f, y + 2.5f, 1.5f, 1.5f, 0xCCE0C8FF.toInt())
+            }
+            Ore.DIAMOND, Ore.EMERALD, Ore.AMETHYST, Ore.RUBY, Ore.SAPPHIRE -> {
                 gfx.poly(
                     floatArrayOf(x + s / 2, x + s, x + s / 2, x), floatArrayOf(y, y + s / 2, y + s, y + s / 2), o.dark,
                 )

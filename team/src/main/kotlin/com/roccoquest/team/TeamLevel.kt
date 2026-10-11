@@ -35,6 +35,10 @@ object Tile {
     const val SPIKES = 20
     /** Underwater bubble vent: a solid block that puffs out air bubbles. */
     const val VENT = 21
+    /** New materials: red ruby, blue sapphire and super-tough black obsidian. */
+    const val RUBY = 22
+    const val SAPPHIRE = 23
+    const val OBSIDIAN = 24
 
     fun solid(t: Int) = t != EMPTY && t != LAVA && t != CLOUD && t != RAIL && t != SPIKES
 
@@ -42,8 +46,9 @@ object Tile {
     fun toughness(t: Int) = when (t) {
         GROUND, DIRT, BRICK -> 2
         STONE, IRON, COPPER -> 4
-        GOLD, EMERALD, AMETHYST -> 6
+        GOLD, EMERALD, AMETHYST, RUBY, SAPPHIRE -> 6
         DIAMOND -> 8
+        OBSIDIAN -> 10
         else -> 0
     }
 
@@ -55,6 +60,9 @@ object Tile {
         EMERALD -> Ore.EMERALD
         COPPER -> Ore.COPPER
         AMETHYST -> Ore.AMETHYST
+        RUBY -> Ore.RUBY
+        SAPPHIRE -> Ore.SAPPHIRE
+        OBSIDIAN -> Ore.OBSIDIAN
         else -> null
     }
 }
@@ -68,6 +76,9 @@ enum class Ore(val label: String, val color: Int, val dark: Int) {
     EMERALD("EMERALD", 0xFF3CE070.toInt(), 0xFF128A3A.toInt()),
     COPPER("COPPER", 0xFFF0904A.toInt(), 0xFFA0501E.toInt()),
     AMETHYST("AMETHYST", 0xFFC890FF.toInt(), 0xFF7A3AC0.toInt()),
+    RUBY("RUBY", 0xFFFF3A5A.toInt(), 0xFFA0102A.toInt()),
+    SAPPHIRE("SAPPHIRE", 0xFF4A7AFF.toInt(), 0xFF1A2A9A.toInt()),
+    OBSIDIAN("OBSIDIAN", 0xFF5A3A8A.toInt(), 0xFF1A0E2A.toInt()),
 }
 
 enum class Place(val music: Music) {
@@ -83,6 +94,8 @@ enum class Place(val music: Music) {
     NIGHT(Music.UNDERGROUND),
     DEEP(Music.UNDERGROUND),
     END(Music.UNDERGROUND),
+    /** The bonus rooms behind the little portals. */
+    SUNSET(Music.STAR),
 }
 
 /**
@@ -98,12 +111,17 @@ enum class Place(val music: Music) {
  *  'V' villager   'n' enderman   'f' fish   'G' the Warden   'Y' Dry Bones King Krag   'Z' Ender Dragon
  *  'M' minecart   '=' rail   '^' spike trap   '~' bubble vent   'C' end crystal
  *  'S' (any row) marks the shore: everything left of that column is underwater
+ *  'R' ruby   'E' sapphire   'x' obsidian   'P' bonus portal   't' treasure chest (bonus rooms)
+ *  'A' skelly archer   'H' hopper   'U' gloop slime   'T' snapper plant
  */
 class LevelDef(val name: String, val place: Place, val rows: List<String>, val tip: String) {
     val w get() = rows[0].length
     /** Column where the water ends, or -1 if this isn't an underwater level. */
     val shoreX: Int = rows.map { it.indexOf('S') }.filter { it >= 0 }.minOrNull() ?: -1
 }
+
+/** Characters that make solid ground a bad guy (or a portal) can stand on. */
+const val GROUND_CHARS = "#sdXBiouaDeREx"
 
 class Builder(private val w: Int) {
     private val g = Array(ROWS) { CharArray(w) { '.' } }
@@ -121,7 +139,7 @@ class Builder(private val w: Int) {
     /** Puts a foe [c] standing on the ground in each of the columns [xs] (skipping columns with no room). */
     fun onGround(c: Char, vararg xs: Int) = apply {
         for (x in xs) {
-            val y = (ROWS - 2 downTo 1).firstOrNull { g[it][x] == '.' && g[it + 1][x] in "#sdXBiouaDe" } ?: continue
+            val y = (ROWS - 2 downTo 1).firstOrNull { g[it][x] == '.' && g[it + 1][x] in GROUND_CHARS } ?: continue
             g[y][x] = c
         }
     }
@@ -137,7 +155,60 @@ object Levels {
             mushroomJungle(), lavaLake(), wonderCastle(),
             villagerValley(), coralReef(), minecartMine(), enderPlains(), deepDark(),
             treasureLagoon(), spikeTemple(), fireFortress(), boneCastle(), theEnd(),
-        ) + World2.all
+        ).plus(World2.all).mapIndexed { i, d -> remix(d, i) }
+    }
+
+    /**
+     * Mixes the newer stuff into every level: Hoppers and Skelly Archers in place of some
+     * Grumblers and Shellbacks, Gloops and Snapper plants later on, new materials in the rock,
+     * and a little BONUS PORTAL somewhere after the first checkpoint.
+     */
+    private fun remix(d: LevelDef, index: Int): LevelDef {
+        val g = d.rows.map { it.toCharArray() }
+        val counts = HashMap<Char, Int>()
+        fun nth(c: Char, every: Int) = ((counts[c] ?: 0) + 1).also { counts[c] = it } % every == 0
+        val newOres = if (index >= 15) "REx" else "RE"
+        var oreTurn = 0
+        for (x in 0 until d.w) for (y in 0 until ROWS) {
+            val below = if (y + 1 < ROWS) g[y + 1][x] else '#'
+            when (g[y][x]) {
+                'g' -> if (nth('g', 3)) g[y][x] = 'H'
+                'k' -> if (index >= 3 && nth('k', 2)) g[y][x] = 'A'
+                'b' -> if (index >= 5 && nth('b', 3)) g[y][x] = 'U'
+                'w' -> if (index >= 7 && below in GROUND_CHARS && nth('w', 3)) g[y][x] = 'T'
+                's' -> if (index >= 4 && y >= 2 && nth('s', 5)) g[y][x] = newOres[oreTurn++ % newOres.length]
+            }
+        }
+        // A bonus portal a little way past the first checkpoint, standing on open ground.
+        val cp = (0 until d.w).firstOrNull { x -> (0 until ROWS).any { d.rows[it][x] == '|' } }
+        if (cp != null && d.shoreX < 0) {
+            val spot = ((cp + 5) until minOf(d.w - 4, cp + 40)).firstNotNullOfOrNull { x ->
+                val y = (ROWS - 2 downTo 2).firstOrNull { y ->
+                    g[y][x] == '.' && g[y - 1][x] == '.' && g[y + 1][x] in GROUND_CHARS &&
+                        g[y][x - 1] == '.' && g[y][x + 1] == '.' && g[y + 1][x - 1] in GROUND_CHARS && g[y + 1][x + 1] in GROUND_CHARS
+                }
+                y?.let { x to it }
+            }
+            if (spot != null) g[spot.second][spot.first] = 'P'
+        }
+        return LevelDef(d.name, d.place, g.map { String(it) }, d.tip)
+    }
+
+    /** The sunset bonus room behind every portal: coins, prize blocks, new materials and a treasure chest. */
+    val bonusRoom: LevelDef by lazy {
+        Builder(46)
+            .ground(0, 45)
+            .fill(0, 0, 2, 12, 'X').fill(45, 45, 2, 12, 'X')
+            .at(3, 12, '@')
+            .row(6, 11, "cccccc").row(6, 8, "?m?*?")
+            .rock(14, 12, "RER", "xRE")
+            .row(19, 9, "cccccc").row(19, 6, "cccccc").row(20, 10, "OOOO")
+            .rock(27, 12, "ExR", "RxE")
+            .row(31, 11, "cccc").row(31, 7, "m?m")
+            .at(36, 12, 't')
+            .row(38, 8, "cccc")
+            .at(42, 12, 'P')
+            .build("SUNSET BONUS", Place.SUNSET, "Grab everything before the sun goes down!")
     }
 
     private fun hills() = Builder(170)
@@ -658,6 +729,9 @@ class Level(val def: LevelDef) {
                 '=', 'M' -> Tile.RAIL
                 '^' -> Tile.SPIKES
                 '~' -> Tile.VENT
+                'R' -> Tile.RUBY
+                'E' -> Tile.SAPPHIRE
+                'x' -> Tile.OBSIDIAN
                 else -> Tile.EMPTY
             }
         }
