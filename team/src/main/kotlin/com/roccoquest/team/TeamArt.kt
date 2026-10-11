@@ -260,6 +260,42 @@ object TeamArt {
         )
     }
 
+    /** Draws a sword held at (hx, hy) pointing at [angle] radians. */
+    fun sword(gfx: Gfx, hx: Float, hy: Float, angle: Float, sw: Sword) {
+        if (sw == Sword.NONE) return
+        val dx = cos(angle)
+        val dy = sin(angle)
+        val nx = -dy
+        val ny = dx
+        // Handle
+        val gx = hx + dx * 3
+        val gy = hy + dy * 3
+        gfx.poly(
+            floatArrayOf(hx + nx, gx + nx, gx - nx, hx - nx), floatArrayOf(hy + ny, gy + ny, gy - ny, hy - ny),
+            0xFF6A3A1A.toInt(),
+        )
+        // Cross guard
+        gfx.poly(
+            floatArrayOf(gx + nx * 4 - dx, gx + nx * 4 + dx, gx - nx * 4 + dx, gx - nx * 4 - dx),
+            floatArrayOf(gy + ny * 4 - dy, gy + ny * 4 + dy, gy - ny * 4 + dy, gy - ny * 4 - dy),
+            0xFF5A3A1A.toInt(),
+        )
+        // Blade with a pointy tip
+        val len = 13f
+        val tx = gx + dx * len
+        val ty = gy + dy * len
+        gfx.poly(
+            floatArrayOf(gx + nx * 1.6f, tx + nx * 1.6f, tx + dx * 3, tx - nx * 1.6f, gx - nx * 1.6f),
+            floatArrayOf(gy + ny * 1.6f, ty + ny * 1.6f, ty + dy * 3, ty - ny * 1.6f, gy - ny * 1.6f),
+            sw.blade,
+        )
+        gfx.poly(
+            floatArrayOf(gx + nx * 0.4f, tx + nx * 0.4f, tx, gx),
+            floatArrayOf(gy + ny * 0.4f, ty + ny * 0.4f, ty, gy),
+            0xAAFFFFFF.toInt(),
+        )
+    }
+
     // ---------------------------------------------------------------- Sparky the electric mouse
     fun sparky(gfx: Gfx, x: Float, y: Float, t: Float, facing: Int, zapping: Boolean) {
         val yellow = 0xFFFFD82A.toInt()

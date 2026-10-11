@@ -52,6 +52,23 @@ val Mon.swimmer get() = this == Mon.HYDRO || this == Mon.SPLASHY
 /** Pokemon that float down slowly while JUMP is held. */
 val Mon.floaty get() = this == Mon.BLAZE || this == Mon.MYSTIC || this == Mon.SPOOKY
 
+/**
+ * Blocky's swords. Each one is crafted from its material and hits harder than the last.
+ * Gold swings fast, diamond and amethyst sweep every bad guy in reach, and amethyst
+ * also shoots a magic slash.
+ */
+enum class Sword(val label: String, val ore: Ore?, val cost: Int, val damage: Int, val reach: Float, val cooldown: Float, val blade: Int, val note: String) {
+    NONE("NO SWORD", null, 0, 0, 16f, 0.24f, 0, ""),
+    STONE("STONE SWORD", Ore.STONE, 4, 2, 22f, 0.26f, 0xFF9A9A9A.toInt(), "A good start: 2 damage"),
+    IRON("IRON SWORD", Ore.IRON, 3, 3, 24f, 0.24f, 0xFFE0E0E8.toInt(), "Strong and long: 3 damage"),
+    GOLD("GOLD SWORD", Ore.GOLD, 3, 4, 24f, 0.14f, 0xFFFFD82A.toInt(), "Super fast swings: 4 damage"),
+    DIAMOND("DIAMOND SWORD", Ore.DIAMOND, 3, 6, 28f, 0.24f, 0xFF7FF4F0.toInt(), "Sweeps every bad guy in reach: 6"),
+    AMETHYST("AMETHYST SWORD", Ore.AMETHYST, 3, 8, 30f, 0.24f, 0xFFC890FF.toInt(), "Sweeps AND shoots magic slashes: 8"),
+    ;
+
+    val sweeps get() = this == DIAMOND || this == AMETHYST
+}
+
 enum class Who { ROCCO, BLOCKY, MON }
 
 abstract class Thing(x: Float, y: Float, w: Float, h: Float) : Body(x, y, w, h) {
@@ -88,6 +105,8 @@ class Hero(val who: Who, x: Float, y: Float) :
     var sprinting = false
     /** Rocco's blue shell spin dash. */
     var shellSpin = false
+    /** Blocky's last swing was with his sword (not the pickaxe). */
+    var swordSwing = false
     /** Rocco ate a Mini Mushroom: tiny and floaty. */
     var mini = false
     /** Which Pokemon this is, when [who] is [Who.MON]. */
@@ -167,7 +186,12 @@ class Hero(val who: Who, x: Float, y: Float) :
                 val a = if (swing > 0) -1.9f + p * 2.6f + base else -2.3f
                 val hx = cx + facing * 4 + ox
                 val angle = if (facing > 0) a else (Math.PI.toFloat() - a)
-                TeamArt.pickaxe(gfx, hx, y + 13, angle, g.pickTier)
+                if (swordSwing && swing > 0) TeamArt.sword(gfx, hx, y + 13, angle, g.sword)
+                else TeamArt.pickaxe(gfx, hx, y + 13, angle, g.pickTier)
+                // His sword hangs on his back when he isn't using it.
+                if (g.sword != Sword.NONE && !(swordSwing && swing > 0)) {
+                    TeamArt.sword(gfx, cx - facing * 3 + ox, y + 20, if (facing > 0) -1.2f else (Math.PI.toFloat() + 1.2f), g.sword)
+                }
             }
             Who.MON -> TeamArt.mon(gfx, mon, cx + ox, bottom, g.time + x * 0.01f, facing, swing > 0 || g.superFlash > 0, walking)
         }

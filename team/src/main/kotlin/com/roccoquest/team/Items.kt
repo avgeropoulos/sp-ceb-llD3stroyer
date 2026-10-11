@@ -186,6 +186,37 @@ class HomingShell(x: Float, y: Float, private val dir: Int, private val damage: 
     }
 }
 
+/** The amethyst sword's magic slash: a purple crescent that flies forward. */
+class SwordBeam(x: Float, y: Float, private val dir: Int) : Thing(x, y, 12f, 16f) {
+    private var t = 0f
+    private val hitAlready = HashSet<Foe>()
+    init { active = true; vx = dir * 260f }
+
+    override fun update(g: TeamGame, dt: Float) {
+        t += dt
+        x += vx * dt
+        if (t > 0.7f) removed = true
+        for (f in g.foes) if (!f.dying && f.active && f !in hitAlready && f.overlaps(this)) {
+            hitAlready += f
+            f.hit(g, 4)
+        }
+    }
+
+    override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
+        val a = ((1f - t / 0.7f) * 255).toInt().coerceIn(0, 255)
+        val px = x + ox
+        val f = dir.toFloat()
+        gfx.poly(
+            floatArrayOf(px + 6 - f * 4, px + 6 + f * 6, px + 6 - f * 4, px + 6 + f * 1),
+            floatArrayOf(y, y + 8, y + 16, y + 8), argb(a, 0xC890FF),
+        )
+        gfx.poly(
+            floatArrayOf(px + 6 - f * 2, px + 6 + f * 4, px + 6 - f * 2, px + 6 + f * 1),
+            floatArrayOf(y + 3, y + 8, y + 13, y + 8), argb(a, 0xFFFFFF),
+        )
+    }
+}
+
 // ============================================================================ Pickups
 
 class Coin(x: Float, y: Float, private val popping: Boolean = false) : Thing(x + 4, y + 2, 8f, 12f) {

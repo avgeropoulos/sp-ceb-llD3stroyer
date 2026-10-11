@@ -174,7 +174,7 @@ nearby bad guy every few seconds. Tap **ERASE** twice on a file to delete it.
 
 ### The crafting table
 
-Tap **CRAFT**. It glows green when there's something new you can make. It has three tabs:
+Tap **CRAFT**. It glows green when there's something new you can make. It has four tabs:
 
 **Flowers**: make one with 3 of its ore, then make it again to power it up, all the way to **Lv5**.
 Every level adds damage. Lv3 throws two at once, Lv4 shots go through bad guys, and Lv5 throws three.
@@ -194,6 +194,17 @@ Every level adds damage. Lv3 throws two at once, Lv4 shots go through bad guys, 
 (3 iron), **Super Star** (2 amethyst + 1 diamond: 10 seconds of invincibility) and
 **Mini Mushroom** (1 emerald + 3 stone): Rocco shrinks to tiny size for 25 seconds and floats way up
 high. If he gets hit while mini, he just pops back to normal size. Mystery blocks can hold one too!
+
+**Swords**: Blocky can craft five kinds of swords and switch between the ones he's made for free.
+He still digs blocks with his pickaxe, but swings his sword whenever a bad guy is in front of him.
+
+| Sword | Costs | What's special |
+|---|---|---|
+| Stone | 4 stone | A good start: 2 damage |
+| Iron | 3 iron | Longer reach: 3 damage |
+| Gold | 3 gold | Super fast swings: 4 damage |
+| Diamond | 3 diamond | Sweeps every bad guy in reach: 6 damage |
+| Amethyst | 3 amethyst | Sweeps AND shoots a purple magic slash: 8 damage |
 
 **Home**: build a **House** (10 stone + 2 iron) where you're standing, then a **Bed** inside it
 (4 stone + 10 coins). Stand on the bed and press the action button to **sleep**. That heals you and
@@ -235,7 +246,7 @@ It's easy but not too easy: 5 hearts, checkpoints, and if you run out of hearts 
 last checkpoint (or your bed) and keep all your ore. Beaten bosses leave diamonds, gold and TNT behind.
 
 Keyboard: arrows/WASD to move, Space to jump, X to mine/throw/talk/ride/sleep, Q to swap, E for SUPER,
-T to throw TNT, G for Poseidon, Shift to sprint, L for long jump, C to craft (1-6 and 0 pick a recipe, 7/8/9 switch tabs), P to pause, M for music.
+T to throw TNT, G for Poseidon, Shift to sprint, L for long jump, C to craft (1-6 and 0 pick a recipe, 7 and 8 switch tabs), P to pause, M for music.
 
 ![Crafting table](docs/teamup-craft.png)
 

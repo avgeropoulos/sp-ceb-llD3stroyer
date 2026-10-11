@@ -670,6 +670,54 @@ class TeamGameTest {
         assertTrue(g.dying || g.removed, "and took the grumbler with it")
     }
 
+    @Test fun blockyCraftsSwords() {
+        startPlaying()
+        val swordsTab = TeamGame.TABS.indexOf("SWORDS")
+        fun row(sw: Sword) = game.recipes(swordsTab).indexOfFirst { it.sword == sw }
+        assertEquals(5, game.recipes(swordsTab).size, "five kinds of swords")
+        game.craft(row(Sword.DIAMOND), swordsTab)
+        assertEquals(Sword.NONE, game.sword, "no diamonds yet")
+        game.inventory[Ore.STONE.ordinal] = 4
+        game.craft(row(Sword.STONE), swordsTab)
+        assertEquals(Sword.STONE, game.sword)
+        game.inventory[Ore.DIAMOND.ordinal] = 3
+        game.craft(row(Sword.DIAMOND), swordsTab)
+        assertEquals(Sword.DIAMOND, game.sword)
+        // Switching back to a sword you already made is free.
+        game.craft(row(Sword.STONE), swordsTab)
+        assertEquals(Sword.STONE, game.sword)
+        assertEquals(0, game.inventory[Ore.STONE.ordinal])
+        game.craft(row(Sword.DIAMOND), swordsTab)
+
+        // The diamond sword sweeps: two shellbacks (3 hp each) next to Blocky both go down.
+        input.swap = true; game.update(dt); input.swap = false; game.update(dt)
+        val b = game.blocky
+        game.foes.clear()
+        val k1 = Shellback(b.x + 10f, b.bottom).also { it.active = true }
+        val k2 = Shellback(b.x + 16f, b.bottom).also { it.active = true }
+        game.foes += k1; game.foes += k2
+        b.facing = 1
+        game.hurtProof()
+        input.action = true; game.update(dt); input.action = false
+        assertTrue((k1.dying || k1.hp < 3) && (k2.dying || k2.hp < 3), "sweep hit both")
+        assertTrue(k1.dying && k2.dying, "6 damage knocks out a shellback")
+
+        // The amethyst sword shoots a magic slash.
+        game.inventory[Ore.AMETHYST.ordinal] = 3
+        game.craft(row(Sword.AMETHYST), swordsTab)
+        game.foes.clear()
+        run(0.5f)
+        input.action = true; game.update(dt); input.action = false
+        assertTrue(game.thingsForTest().any { it is SwordBeam }, "magic slash")
+
+        // Swords are saved with the file.
+        game.startLevel(game.levelIndex)
+        val g2 = TeamGame(TeamInput(), ears, storage)
+        g2.continueGame(0)
+        assertEquals(Sword.AMETHYST, g2.sword)
+        assertTrue(g2.hasSword(Sword.STONE) && g2.hasSword(Sword.DIAMOND))
+    }
+
     @Test fun enemiesHaveHealthBars() {
         startPlaying()
         val g = game.foes.filterIsInstance<Grumbler>().first()
@@ -914,5 +962,17 @@ class TeamGameTest {
         game.leader.x = bomb.x - 70f; game.leader.y = bomb.bottom - 24f
         run(1.2f) { game.hurtProof() }
         shot("bomb-bomb")
+        game.inventory[Ore.DIAMOND.ordinal] = 3
+        game.inventory[Ore.GOLD.ordinal] = 3
+        game.inventory[Ore.STONE.ordinal] = 4
+        input.craft = true; game.update(dt); input.craft = false; game.update(dt)
+        while (game.recipes().first().kind != TeamGame.Kind.SWORD) { input.numberKey = 8; game.update(dt) }
+        input.numberKey = 4; game.update(dt)
+        shot("craft-swords")
+        input.craft = true; game.update(dt); input.craft = false; game.update(dt)
+        while (game.leaderWho != Who.BLOCKY) { input.swap = true; game.update(dt); input.swap = false; game.update(dt) }
+        run(0.3f)
+        input.action = true; repeat(4) { game.update(dt) }; input.action = false
+        shot("blocky-sword")
     }
 }

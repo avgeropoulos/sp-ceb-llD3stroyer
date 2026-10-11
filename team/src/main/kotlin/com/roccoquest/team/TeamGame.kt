@@ -42,7 +42,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         /** Seconds of air underwater before the team starts losing hearts. */
         const val AIR_MAX = 30f
         const val POSEIDON_COST = 50
-        val TABS = listOf("FLOWERS", "SUPPLIES", "HOME")
+        val TABS = listOf("FLOWERS", "SUPPLIES", "HOME", "SWORDS")
     }
 
     var viewW = 427f
@@ -92,6 +92,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     val inventory = IntArray(Ore.entries.size)
     var pickTier = 1
         private set
+    /** Blocky's equipped sword, and which swords he's made (one bit each). */
+    var sword = Sword.NONE
+        private set
+    private var swordsOwned = 0
+    fun hasSword(s: Sword) = swordsOwned and (1 shl s.ordinal) != 0
     var power = Power.NONE
         private set
     val flowerLevel = IntArray(Power.entries.size)
@@ -209,6 +214,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         storage.save(key("coins"), coins)
         storage.save(key("armor"), armor)
         storage.save(key("tnt"), tnt)
+        storage.save(key("swords"), swordsOwned)
+        storage.save(key("sword"), sword.ordinal)
         // The house (and bed) belong to the level they were built in.
         val h = house
         storage.save(key("houseLevel"), if (h != null) levelIndex + 1 else 0)
@@ -232,11 +239,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         coins = storage.load(key("coins"))
         armor = storage.load(key("armor"))
         tnt = storage.load(key("tnt"))
+        swordsOwned = storage.load(key("swords"))
+        sword = Sword.entries.getOrElse(storage.load(key("sword"))) { Sword.NONE }
+        if (!hasSword(sword)) sword = Sword.NONE
         mon = slotMon(slot)
     }
 
     fun eraseSlot(s: Int) {
-        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "houseLevel", "houseX", "houseY", "bed", "bedLevel")) {
+        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "houseLevel", "houseX", "houseY", "bed", "bedLevel")) {
             storage.save(key(name, s), 0)
         }
         Ore.entries.forEach { storage.save(key("ore_${it.name}", s), 0) }
@@ -255,6 +265,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         score = 0
         armor = 0
         tnt = 0
+        swordsOwned = 0
+        sword = Sword.NONE
         startLevel(0)
     }
 
@@ -829,13 +841,38 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun swingPick(h: Hero) {
         h.swing = 0.22f
         h.cooldown = 0.24f
+        h.swordSwing = false
         digDown = input.down
-        val reach = Body(if (h.facing > 0) h.x + h.w - 2 else h.x - 16, h.y - 4, 18f, h.h + 4)
-        var hitFoe = false
-        for (f in foes) if (!f.dying && f.active && f.overlaps(reach)) { if (f.hit(this, pickTier)) hitFoe = true }
-        if (hitFoe) return
-        val (tx, ty) = pickTarget(h) ?: run { sfx(Sound.FIRE); return }
-        mine(tx, ty)
+        val sw = sword
+        val r = sw.reach
+        val reach = Body(if (h.facing > 0) h.x + h.w - 2 else h.x - r + 2, h.y - 4, r, h.h + 4)
+        val inReach = foes.filter { !it.dying && it.active && it.overlaps(reach) }
+        if (inReach.isNotEmpty()) {
+            if (sw == Sword.NONE) {
+                for (f in inReach) f.hit(this, pickTier)
+            } else {
+                // Sword swing: the strong swords hit everyone in reach, the others the closest one.
+                h.swordSwing = true
+                h.cooldown = sw.cooldown
+                val targets = if (sw.sweeps) inReach else listOf(inReach.minBy { abs(it.cx - h.cx) })
+                for (f in targets) f.hit(this, sw.damage)
+                sfx(Sound.KICK)
+                if (sw == Sword.AMETHYST) spawn(SwordBeam(if (h.facing > 0) h.x + h.w else h.x - 12, h.y + 2, h.facing))
+            }
+            return
+        }
+        val target = pickTarget(h)
+        if (target == null) {
+            // Nothing to dig: swing the sword at the air (the amethyst one shoots a slash).
+            if (sw != Sword.NONE) {
+                h.swordSwing = true
+                h.cooldown = sw.cooldown
+                if (sw == Sword.AMETHYST) spawn(SwordBeam(if (h.facing > 0) h.x + h.w else h.x - 12, h.y + 2, h.facing))
+            }
+            sfx(Sound.FIRE)
+            return
+        }
+        mine(target.first, target.second)
     }
 
     private fun pickTarget(h: Hero): Pair<Int, Int>? {
@@ -1047,11 +1084,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     // ======================================================================== Crafting
 
-    enum class Kind { FLOWER, PICK, HEART, APPLE, TNT, TRAP, STAR, MINI, HOUSE, BED }
+    enum class Kind { FLOWER, PICK, HEART, APPLE, TNT, TRAP, STAR, MINI, HOUSE, BED, SWORD }
 
     class Recipe(
         val title: String, val note: String, val costs: List<Pair<Ore, Int>>, val coinCost: Int,
-        val button: String, val enabled: Boolean, val icon: Power?, val kind: Kind,
+        val button: String, val enabled: Boolean, val icon: Power?, val kind: Kind, val sword: Sword = Sword.NONE,
     )
 
     private fun has(costs: List<Pair<Ore, Int>>, coinCost: Int) =
@@ -1106,6 +1143,15 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 Recipe("MINI MUSHROOM", "Rocco goes tiny and floats up high", miniCost, 0, "MAKE", has(miniCost, 0), null, Kind.MINI),
             )
         }
+        3 -> Sword.entries.filter { it != Sword.NONE }.map { sw ->
+            val costs = listOf(sw.ore!! to sw.cost)
+            val (button, enabled) = when {
+                sword == sw -> "READY" to false
+                hasSword(sw) -> "EQUIP" to true
+                else -> "MAKE" to has(costs, 0)
+            }
+            Recipe(sw.label, sw.note, if (hasSword(sw)) emptyList() else costs, 0, button, enabled, null, Kind.SWORD, sw)
+        }
         else -> {
             val houseCost = listOf(Ore.STONE to 10, Ore.IRON to 2)
             val bedCost = listOf(Ore.STONE to 4)
@@ -1135,6 +1181,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             toast(
                 when {
                     r.button == "MAX" -> "That's already the best!"
+                    r.button == "READY" -> "Blocky is already holding that sword!"
                     r.kind == Kind.HEART && hearts >= MAX_HEARTS -> "Hearts are full!"
                     r.kind == Kind.BED && house == null -> "Build a HOUSE first!"
                     r.kind == Kind.BED && bed != null -> "You already have a bed here."
@@ -1174,6 +1221,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
             Kind.STAR -> { startStar(); setState(State.PLAY); return }
             Kind.MINI -> { startMini(); setState(State.PLAY); return }
+            Kind.SWORD -> {
+                swordsOwned = swordsOwned or (1 shl r.sword.ordinal)
+                sword = r.sword
+                toast(if (r.button == "EQUIP") "Blocky grabs the ${r.sword.label}!" else "${r.sword.label}! Blocky swings it at bad guys.")
+                color = r.sword.blade
+            }
             Kind.HOUSE -> {
                 house?.let { it.removed = true }
                 bed?.let { it.removed = true }
@@ -1480,7 +1533,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun updateCraft(tapped: Boolean, close: Boolean, num: Int) {
         when (num) {
             in 1..6 -> craft(num - 1)
-            in 7..9 -> craftTab = num - 7
+            7 -> craftTab = (craftTab + TABS.size - 1) % TABS.size
+            8, 9 -> craftTab = (craftTab + 1) % TABS.size
             10 -> craft(6)
         }
         if (close) { setState(State.PLAY); return }
@@ -2134,7 +2188,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val powerText = if (power == Power.NONE) "NO FLOWER" else "${power.label} Lv${flowerLevel[power.ordinal]}"
         val starText = (if (starT > 0) "  •  STAR ${starT.toInt() + 1}" else "") +
             (if (miniT > 0) "  •  MINI ${miniT.toInt() + 1}" else "")
-        gfx.shadowText("${TeamArt.pickName(pickTier)} PICK  •  $powerText$starText", max(112f, viewW * 0.25f), 26f, 7f, 0xFFDDEEFF.toInt())
+        val swordText = if (sword != Sword.NONE) "  •  ${sword.label.removeSuffix(" SWORD")} SWORD" else ""
+        gfx.shadowText("${TeamArt.pickName(pickTier)} PICK$swordText  •  $powerText$starText", max(112f, viewW * 0.25f), 26f, 7f, 0xFFDDEEFF.toInt())
 
         if (level.def.shoreX >= 0 && inWater(leader)) {
             // Air meter: a row of bubbles under the HUD.
@@ -2210,6 +2265,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     gfx.rect(px + 12, y + 15, 4f, 7f, 0xFF7A4A20.toInt())
                 }
                 r.kind == Kind.BED -> TeamArt.bed(gfx, px + 2, y + 20)
+                r.kind == Kind.SWORD -> TeamArt.sword(gfx, px + 7, y + 20, -0.8f, r.sword)
+                r.kind == Kind.MINI -> gfx.sprite(Sprites.miniMushroom, px + 8, y + 7, w = 12f, h = 12f)
+                r.kind == Kind.TRAP -> TeamArt.spikes(gfx, px + 6, y + 20)
                 else -> TeamArt.pickaxe(gfx, px + 9, y + 22, -0.9f, min(5, pickTier + 1))
             }
             gfx.text(r.title, px + 30, y + 12, 8f, 0xFF2A1808.toInt())
