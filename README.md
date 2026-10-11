@@ -140,6 +140,20 @@ to run); **START** opens the menu; **SELECT** turns the music on or off. The pho
 also works as B. Keyboards and controllers work too (arrows / WASD, Z = A, X = B,
 Enter = START, Shift = SELECT).
 
+**Made for young players:**
+
+* **Voice:** the phone's text-to-speech reads every conversation, sign, battle message and menu
+  choice out loud. The music turns down while it talks.
+* **Helper:** a blinking yellow arrow beside the player shows which way to walk next, and a
+  bouncing arrow marks the door or person to go to. When you get there, a blinking **A** bubble
+  means "press A".
+* **Spoken hints:** a hint like "Go to Professor Hazel's lab" plays when you reach a new place,
+  and again if nothing is pressed for a while. Battles also give spoken tips if a player seems
+  stuck.
+* **Easy attacks:** the move list always starts on the strongest attack, so pressing A twice is a
+  good move.
+* **Settings:** turn VOICE and HELP on or off in the START menu.
+
 The game autosaves when you leave the app, and you can save any time from the START menu.
 
 ## Installing on your phone

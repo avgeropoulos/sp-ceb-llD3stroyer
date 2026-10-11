@@ -719,6 +719,56 @@ object Art {
         "................",
     )
 
+    // ------------------------------------------------------------------ the helper's arrows
+
+    private val arrowDown = art(
+        mapOf('k' to OUTLINE, 'y' to c(0xFFF8E040), 'o' to c(0xFFF89820)),
+        "................",
+        ".....kkkkkk.....",
+        ".....kyyyyk.....",
+        ".....kyyyyk.....",
+        ".....kyyyyk.....",
+        "..kkkkyyyykkkk..",
+        "..kyyyyyyyyyyk..",
+        "...kyyyyyyyyk...",
+        "....kyyyyyyk....",
+        ".....kyyyyk.....",
+        "......kyok......",
+        ".......kk.......",
+        "................",
+        "................",
+        "................",
+        "................",
+    )
+
+    private fun rotate(s: Sprite) = Sprite(s.w, s.h, IntArray(s.px.size) { i ->
+        val x = i % s.w; val y = i / s.w
+        s.px[(s.w - 1 - x) * s.w + y]
+    })
+
+    /** Yellow arrows pointing each way, for showing where to walk. */
+    val arrows: Map<Dir, Sprite> = run {
+        val right = rotate(arrowDown)
+        mapOf(Dir.DOWN to arrowDown, Dir.RIGHT to right, Dir.UP to rotate(right), Dir.LEFT to rotate(rotate(right)))
+    }
+
+    /** A red "A" button bubble: press A here. */
+    val pressA = art(
+        mapOf('k' to OUTLINE, 'r' to c(0xFFE83050), 'w' to PAPER),
+        "....kkkkkk....",
+        "..kkrrrrrrkk..",
+        ".krrrrwwrrrrk.",
+        ".krrrwrrwrrrk.",
+        "krrrrwrrwrrrrk",
+        "krrrrwwwwrrrrk",
+        "krrrrwrrwrrrrk",
+        "krrrrwrrwrrrrk",
+        ".krrrrrrrrrrk.",
+        ".krrrrrrrrrrk.",
+        "..kkrrrrrrkk..",
+        "....kkkkkk....",
+    )
+
     // ------------------------------------------------------------------ tiles by map character
 
     /** Map legend. Returns the tile picture for [ch] at animation frame [frame]. */

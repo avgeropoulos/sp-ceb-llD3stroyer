@@ -114,7 +114,12 @@ class BattleScene(private val g: Game, val battle: Battle, private val onFinish:
             return
         }
         when (mode) {
-            Mode.EVENTS -> { mode = Mode.ACTION; g.swallowInput() }
+            Mode.EVENTS -> {
+                mode = Mode.ACTION
+                actionIdle = 0
+                g.swallowInput()
+                g.speak("WHAT WILL ${battle.me.name} DO? PICK FIGHT TO ATTACK.")
+            }
             Mode.ACTION -> updateAction()
             Mode.MOVES -> updateMoves()
         }
@@ -127,7 +132,9 @@ class BattleScene(private val g: Game, val battle: Battle, private val onFinish:
             return
         }
         textWait++
-        if (textWait > 50 || (textWait > 6 && (g.pressed(Btn.A) || g.pressed(Btn.B)))) {
+        // Let the voice finish reading before moving on (A still skips ahead).
+        val talking = g.voiceOn && g.audio.speaking() && textWait < 600
+        if ((textWait > 50 && !talking) || (textWait > 6 && (g.pressed(Btn.A) || g.pressed(Btn.B)))) {
             text = null
         }
     }
@@ -149,6 +156,7 @@ class BattleScene(private val g: Game, val battle: Battle, private val onFinish:
     private fun side(isFoe: Boolean) = if (isFoe) foe else me
 
     private fun say(s: String) {
+        g.speak(s)
         text = g.text(s)
         shown = 0
         textWait = 0
@@ -287,9 +295,23 @@ class BattleScene(private val g: Game, val battle: Battle, private val onFinish:
         queue.addAll(battle.turn(a))
     }
 
+    private var actionIdle = 0
+    private val actionWords = listOf("FIGHT", "CRITTERS", "BAG", "RUN")
+
     private fun updateAction() {
+        val before = actionCursor
         if (g.pressed(Btn.LEFT) || g.pressed(Btn.RIGHT)) { actionCursor = actionCursor xor 1; g.sfx(Sfx.SELECT) }
         if (g.pressed(Btn.UP) || g.pressed(Btn.DOWN)) { actionCursor = actionCursor xor 2; g.sfx(Sfx.SELECT) }
+        if (actionCursor != before) g.speak(actionWords[actionCursor])
+        // A hint when nothing has been pressed for a while.
+        actionIdle = if (g.down(Btn.A) || actionCursor != before) 0 else actionIdle + 1
+        if (actionIdle == 12 * 60 || (actionIdle > 12 * 60 && (actionIdle - 12 * 60) % (20 * 60) == 0)) {
+            val canCatch = battle.wild && battle.bag.list().any { it.first.isBall } && battle.foe.hp < battle.foe.maxHp / 2
+            g.speak(
+                if (canCatch) "TO CATCH IT, PICK BAG, THEN PICK A CAPSULE."
+                else "MOVE THE ARROW TO FIGHT AND PRESS A. THEN PICK A MOVE AND PRESS A AGAIN."
+            )
+        }
         if (!g.pressed(Btn.A)) return
         g.sfx(Sfx.SELECT)
         when (actionCursor) {
@@ -298,7 +320,8 @@ class BattleScene(private val g: Game, val battle: Battle, private val onFinish:
                     send(Action.Fight(-1))
                 } else {
                     mode = Mode.MOVES
-                    moveCursor = moveCursor.coerceAtMost(battle.me.moves.lastIndex)
+                    moveCursor = bestMove()
+                    g.speak("PICK A MOVE. ${battle.me.moves[moveCursor].move.label}")
                 }
             }
             1 -> g.push(PartyScreen(PartyScreen.Mode.BATTLE) { i -> if (i >= 0) send(Action.Switch(i)) })
@@ -313,10 +336,31 @@ class BattleScene(private val g: Game, val battle: Battle, private val onFinish:
         }
     }
 
+    /** Starts the cursor on the hardest-hitting move, so pressing A twice always attacks well. */
+    private fun bestMove(): Int {
+        val moves = battle.me.moves
+        var best = moves.indexOfFirst { it.pp > 0 }.coerceAtLeast(0)
+        var bestScore = -1f
+        moves.forEachIndexed { i, s ->
+            val m = s.move
+            if (s.pp <= 0 || m.power == 0) return@forEachIndexed
+            val mult = battle.foe.species.types.fold(1f) { a, t -> a * Type.mult(m.type, t) }
+            val stab = if (m.type in battle.me.species.types) 1.5f else 1f
+            val score = m.power * mult * stab * m.acc / 100f
+            if (score > bestScore) { bestScore = score; best = i }
+        }
+        return best
+    }
+
+    private fun sayMove() {
+        val m = battle.me.moves[moveCursor].move
+        g.speak("${m.label}. ${m.type.name} TYPE.")
+    }
+
     private fun updateMoves() {
         val moves = battle.me.moves
-        if (g.repeat(Btn.UP)) { moveCursor = (moveCursor - 1 + moves.size) % moves.size; g.sfx(Sfx.SELECT) }
-        if (g.repeat(Btn.DOWN)) { moveCursor = (moveCursor + 1) % moves.size; g.sfx(Sfx.SELECT) }
+        if (g.repeat(Btn.UP)) { moveCursor = (moveCursor - 1 + moves.size) % moves.size; g.sfx(Sfx.SELECT); sayMove() }
+        if (g.repeat(Btn.DOWN)) { moveCursor = (moveCursor + 1) % moves.size; g.sfx(Sfx.SELECT); sayMove() }
         if (g.pressed(Btn.B)) { mode = Mode.ACTION; return }
         if (g.pressed(Btn.A)) {
             g.sfx(Sfx.SELECT)

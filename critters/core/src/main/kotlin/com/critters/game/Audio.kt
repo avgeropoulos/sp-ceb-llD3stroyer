@@ -17,6 +17,12 @@ interface Audio {
     fun music(t: Tune) {}
     fun cry(species: Int) {}
 
+    /** Reads [text] out loud. With [flush], it cuts off whatever was being said. */
+    fun say(text: String, flush: Boolean = true) {}
+
+    /** True while the voice is still talking. */
+    fun speaking(): Boolean = false
+
     object Silent : Audio
 }
 

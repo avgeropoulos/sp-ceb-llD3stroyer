@@ -56,6 +56,10 @@ class Game(
     val caught = HashSet<Int>()
     var musicOn = true
         private set
+    /** Reads conversations and battle text out loud. */
+    var voiceOn = true
+    /** Blinking arrows and spoken hints showing where to go next. */
+    var helperOn = true
     var playFrames = 0L
     val badges get() = listOf("badge1", "badge2", "badge3").count { it in flags }
 
@@ -148,6 +152,14 @@ class Game(
 
     fun sfx(s: Sfx) = audio.sfx(s)
 
+    /** Says [s] out loud if the voice is on. */
+    fun speak(s: String, flush: Boolean = true) {
+        if (voiceOn) audio.say(Speech.clean(text(s)), flush)
+    }
+
+    /** Where the previous map was entered from, for the guide's route search. */
+    fun backMap(): String? = returnStack.lastOrNull()?.first
+
     fun text(s: String) = s.replace("{P}", playerName)
 
     // ================================================================ main loop
@@ -207,6 +219,7 @@ class Game(
     private var titleSpecies = 1
 
     private fun updateTitle() {
+        if (tick % 900 == 120) speak("WELCOME TO POCKET CRITTERS! PRESS THE A BUTTON TO PLAY.")
         if (tick % 180 == 0) {
             titleSpecies = listOf(1, 3, 5, 11, 7, 17, 21, 19, 13, 22)[(tick / 180) % 10]
         }
@@ -370,7 +383,40 @@ class Game(
 
     fun npcAt(x: Int, y: Int): Npc? = npcs.firstOrNull { it.x == x && it.y == y }
 
+    // ---------------------------------------------------------------- the helper
+
+    var plan: Guide.Plan? = null
+        private set
+    private var idleFrames = 0
+    private var hintKey = ""
+    private var hintIn = 0
+
+    private fun updateGuide() {
+        if (!helperOn || scriptIt != null) {
+            plan = null
+            return
+        }
+        if (!moving && (tick % 6 == 0 || plan == null)) plan = Guide.plan(this)
+        val p = plan ?: return
+        idleFrames = if (curBits != 0) 0 else idleFrames + 1
+        val key = map.id + "|" + p.hint
+        if (key != hintKey) {
+            hintKey = key
+            hintIn = 50
+        }
+        if (hintIn > 0 && --hintIn == 0) {
+            speak(p.hint)
+            idleFrames = 0
+        }
+        // Standing still for a while? Say it again.
+        if (idleFrames >= 18 * 60) {
+            speak(p.hint)
+            idleFrames = 0
+        }
+    }
+
     private fun updateWorld() {
+        updateGuide()
         if (mapLabel > 0) mapLabel--
         if (bumpCool > 0) bumpCool--
         for (n in npcs) updateNpc(n)
@@ -752,6 +798,7 @@ class Game(
                 val d = Dialog(text(cmd.text), hold = true) {}
                 push(d)
                 val h = minOf(cmd.options.size, 5) * 12 + 12
+                speak(cmd.text + " " + cmd.options.joinToString(", ") + ".")
                 push(Menu(cmd.options, x = 160 - (cmd.options.maxOf { it.length } * 6 + 22).coerceAtMost(152), y = (96 - h).coerceAtLeast(0), maxRows = 5, cancelable = true) { i ->
                     d.done = true
                     c.choice = i
@@ -976,6 +1023,15 @@ class Game(
             })
         }
         opts += if (musicOn) "MUSIC ON" else "MUSIC OFF"; acts += { toggleMusic() }
+        opts += if (voiceOn) "VOICE ON" else "VOICE OFF"; acts += {
+            voiceOn = !voiceOn
+            if (voiceOn) speak("VOICE ON")
+        }
+        opts += if (helperOn) "HELP ON" else "HELP OFF"; acts += {
+            helperOn = !helperOn
+            hintKey = ""
+            speak(if (helperOn) "HELPER ON. FOLLOW THE BLINKING ARROW!" else "HELPER OFF")
+        }
         opts += "EXIT"; acts += {}
         push(Menu(opts, x = 88, y = 0, w = 72, cancelable = true, keepOpenOnPick = false) { i -> if (i >= 0) acts[i]() })
     }
@@ -1042,12 +1098,35 @@ class Game(
         }
         list.sortBy { it.y }
         list.forEach { it.f() }
+        drawGuide(camX, camY)
 
         if (mapLabel > 0) {
             val w = map.name.length * 6 + 16
             s.box(0, 0, w.coerceAtLeast(64), 24)
             s.text(map.name, 8, 8)
         }
+    }
+
+    private fun drawGuide(camX: Int, camY: Int) {
+        val p = plan ?: return
+        if (!helperOn || scriptIt != null || ui.isNotEmpty()) return
+        val s = screen
+        val bob = if ((tick / 10) % 2 == 0) 0 else 2
+        // Bouncing arrow over the goal (a door, or the person to talk to).
+        if (p.markX >= 0) {
+            val mx = p.markX * 16 - camX
+            val my = p.markY * 16 - camY
+            if (p.pressA) {
+                if ((tick / 15) % 2 == 0) s.blit(Art.pressA, mx + 1, my - 17 - bob)
+            } else {
+                s.blit(Art.arrows.getValue(Dir.DOWN), mx, my - 18 - bob)
+            }
+        }
+        // Blinking arrow beside the player showing which way to walk.
+        val d = p.step ?: return
+        if (moving || (tick / 15) % 3 == 2) return
+        val push = if ((tick / 8) % 2 == 0) 0 else 2
+        s.blit(Art.arrows.getValue(d), 64 + d.dx * (15 + push), 62 + d.dy * (15 + push))
     }
 
     // ================================================================ credits
@@ -1109,6 +1188,8 @@ class Game(
         kv("money", money)
         kv("frames", playFrames)
         kv("music", if (musicOn) 1 else 0)
+        kv("voice", if (voiceOn) 1 else 0)
+        kv("helper", if (helperOn) 1 else 0)
         kv("flags", flags.joinToString(","))
         kv("party", party.joinToString(";") { it.encode() })
         kv("box", box.joinToString(";") { it.encode() })
@@ -1138,6 +1219,8 @@ class Game(
             money = kv["money"]?.toIntOrNull() ?: 0
             playFrames = kv["frames"]?.toLongOrNull() ?: 0
             if (kv["music"] == "0" && musicOn) toggleMusic()
+            voiceOn = kv["voice"] != "0"
+            helperOn = kv["helper"] != "0"
             kv["flags"]?.split(",")?.filter { it.isNotEmpty() }?.let { flags += it }
             kv["party"]?.split(";")?.mapNotNull { if (it.isEmpty()) null else Critter.decode(it) }?.let { party += it }
             kv["box"]?.split(";")?.mapNotNull { if (it.isEmpty()) null else Critter.decode(it) }?.let { box += it }

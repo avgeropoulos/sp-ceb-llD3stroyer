@@ -5,6 +5,9 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
 import android.media.SoundPool
+import android.os.Bundle
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import com.critters.game.Audio
 import com.critters.game.Dex
 import com.critters.game.Sfx
@@ -15,6 +18,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.Locale
 import kotlin.concurrent.thread
 
 /**
@@ -34,6 +38,38 @@ class SoundFx(context: Context) : Audio {
     private val sfxIds = IntArray(Sfx.entries.size)
     private val cryIds = IntArray(Dex.all.size + 1)
     private val music = MusicPlayer()
+
+    /** The phone's own text-to-speech voice reads the game's text out loud. */
+    @Volatile private var ttsReady = false
+    @Volatile private var talking = 0
+    private var tts: TextToSpeech? = null
+    private var utterance = 0
+
+    init {
+        tts = TextToSpeech(context.applicationContext) { status ->
+            val t = tts ?: return@TextToSpeech
+            if (status == TextToSpeech.SUCCESS) {
+                val r = t.setLanguage(Locale.US)
+                if (r == TextToSpeech.LANG_MISSING_DATA || r == TextToSpeech.LANG_NOT_SUPPORTED) t.setLanguage(Locale.getDefault())
+                // A little slower and brighter than normal, for young listeners.
+                t.setSpeechRate(0.88f)
+                t.setPitch(1.1f)
+                t.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(id: String?) { talking++; music.duck(true) }
+                    override fun onDone(id: String?) { finished() }
+                    @Deprecated("Deprecated in Java")
+                    override fun onError(id: String?) { finished() }
+                    override fun onStop(id: String?, interrupted: Boolean) { finished() }
+                })
+                ttsReady = true
+            }
+        }
+    }
+
+    private fun finished() {
+        talking = (talking - 1).coerceAtLeast(0)
+        if (talking == 0) music.duck(false)
+    }
 
     init {
         val dir = context.cacheDir
@@ -67,11 +103,25 @@ class SoundFx(context: Context) : Audio {
 
     override fun music(t: Tune) = music.play(t)
 
-    fun setForeground(on: Boolean) = music.setForeground(on)
+    override fun say(text: String, flush: Boolean) {
+        val t = tts ?: return
+        if (!ttsReady || text.isBlank()) return
+        if (flush) talking = 0
+        val params = Bundle()
+        t.speak(text, if (flush) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD, params, "line${utterance++}")
+    }
+
+    override fun speaking(): Boolean = ttsReady && (talking > 0 || tts?.isSpeaking == true)
+
+    fun setForeground(on: Boolean) {
+        music.setForeground(on)
+        if (!on) tts?.stop()
+    }
 
     fun release() {
         pool.release()
         music.release()
+        tts?.shutdown()
     }
 
     private fun writeWav(file: File, samples: FloatArray) {
@@ -91,6 +141,7 @@ class MusicPlayer {
     @Volatile private var wanted = Tune.NONE
     @Volatile private var foreground = true
     @Volatile private var released = false
+    @Volatile private var ducked = false
     private val songs = HashMap<Tune, ShortArray?>()
 
     init {
@@ -102,6 +153,9 @@ class MusicPlayer {
     fun setForeground(on: Boolean) { foreground = on }
 
     fun release() { released = true }
+
+    /** Turns the music down while the voice is talking. */
+    fun duck(on: Boolean) { ducked = on }
 
     private fun song(t: Tune): ShortArray? = songs.getOrPut(t) { Tunes.render(t) }
 
@@ -132,6 +186,7 @@ class MusicPlayer {
         val chunk = ShortArray(1024)
         var current = Tune.NONE
         var pos = 0
+        var volume = 0.4f
         try {
             while (!released) {
                 val t = if (foreground) wanted else Tune.NONE
@@ -141,6 +196,11 @@ class MusicPlayer {
                     current = t
                     pos = 0
                     if (t != Tune.NONE) track.play()
+                }
+                val want = if (ducked) 0.12f else 0.4f
+                if (want != volume) {
+                    volume = want
+                    track.setVolume(volume)
                 }
                 val data = song(current)
                 if (data == null || data.isEmpty()) {

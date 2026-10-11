@@ -28,7 +28,7 @@ fun wrap(text: String, width: Int = 24): List<String> {
 
 /** The text box at the bottom of the screen, typed out letter by letter. */
 class Dialog(
-    text: String,
+    private val text: String,
     private val ask: Boolean = false,
     private val hold: Boolean = false,
     private val onDone: (Boolean) -> Unit,
@@ -38,11 +38,17 @@ class Dialog(
     private var shown = if (hold) 999 else 0
     private var asked = false
     private var blink = 0
+    private var spoken = false
 
     private fun pageLen() = pages[page].sumOf { it.length } + 1
 
     override fun update(g: Game) {
         blink++
+        if (!spoken) {
+            // Read the whole box out loud as soon as it opens.
+            spoken = true
+            if (!hold) g.speak(if (ask) "$text PRESS A FOR YES." else text)
+        }
         if (shown < pageLen()) {
             shown += if (g.down(Btn.A) || g.down(Btn.B)) 3 else 1
             if (g.pressed(Btn.A)) shown = pageLen()
@@ -105,8 +111,8 @@ class Menu(
             onPick(-1)
             return
         }
-        if (g.repeat(Btn.UP)) { cursor = (cursor - 1 + options.size) % options.size; g.sfx(Sfx.SELECT) }
-        if (g.repeat(Btn.DOWN)) { cursor = (cursor + 1) % options.size; g.sfx(Sfx.SELECT) }
+        if (g.repeat(Btn.UP)) { cursor = (cursor - 1 + options.size) % options.size; g.sfx(Sfx.SELECT); g.speak(options[cursor]) }
+        if (g.repeat(Btn.DOWN)) { cursor = (cursor + 1) % options.size; g.sfx(Sfx.SELECT); g.speak(options[cursor]) }
         if (cursor < top) top = cursor
         if (cursor >= top + rows) top = cursor - rows + 1
         if (g.pressed(Btn.A)) {
@@ -185,11 +191,22 @@ class PartyScreen(
     private var cursor = 0
     private var moving = -1
     private var msg = prompt
+    private var spoken = false
+
+    private fun sayCritter(g: Game, flush: Boolean = true) {
+        val c = g.party[cursor]
+        g.speak("${c.name}, LEVEL ${c.level}" + if (c.fainted) ", FAINTED" else "", flush)
+    }
 
     override fun update(g: Game) {
         val n = g.party.size
-        if (g.repeat(Btn.UP)) { cursor = (cursor - 1 + n) % n; g.sfx(Sfx.SELECT) }
-        if (g.repeat(Btn.DOWN)) { cursor = (cursor + 1) % n; g.sfx(Sfx.SELECT) }
+        if (!spoken) {
+            spoken = true
+            g.speak(prompt)
+            sayCritter(g, flush = false)
+        }
+        if (g.repeat(Btn.UP)) { cursor = (cursor - 1 + n) % n; g.sfx(Sfx.SELECT); sayCritter(g) }
+        if (g.repeat(Btn.DOWN)) { cursor = (cursor + 1) % n; g.sfx(Sfx.SELECT); sayCritter(g) }
         if (g.pressed(Btn.B) && mode != Mode.FORCED) {
             if (moving >= 0) { moving = -1; msg = prompt; return }
             done = true
@@ -276,8 +293,9 @@ class BagScreen(private val inBattle: Boolean, private val onChoose: (Item, Int)
     override fun update(g: Game) {
         val items = g.bag.list()
         val n = items.size + 1
-        if (g.repeat(Btn.UP)) { cursor = (cursor - 1 + n) % n; g.sfx(Sfx.SELECT) }
-        if (g.repeat(Btn.DOWN)) { cursor = (cursor + 1) % n; g.sfx(Sfx.SELECT) }
+        fun sayItem() = g.speak(if (cursor < items.size) "${items[cursor].first.label}. ${items[cursor].first.desc}" else "CANCEL")
+        if (g.repeat(Btn.UP)) { cursor = (cursor - 1 + n) % n; g.sfx(Sfx.SELECT); sayItem() }
+        if (g.repeat(Btn.DOWN)) { cursor = (cursor + 1) % n; g.sfx(Sfx.SELECT); sayItem() }
         if (g.pressed(Btn.B) || (g.pressed(Btn.A) && cursor == items.size)) {
             done = true
             if (inBattle) onChoose(Item.POTION, -2)
