@@ -150,8 +150,8 @@ class Game(private val sound: SoundSink, private val store: Storage) {
     private val brushRadius get() = 30f + 14f * upgrades[0]
     private val cleanPower get() = (1f + 0.25f * upgrades[1]) * (if (level >= 3) 1.2f else 1f)
     private val coinMultiplier get() = when {
-        level >= 6 -> 2f
-        level >= 5 -> 1.75f
+        level >= 7 -> 2f
+        level >= 6 -> 1.75f
         level >= 2 -> 1.25f
         else -> 1f
     }
@@ -170,7 +170,7 @@ class Game(private val sound: SoundSink, private val store: Storage) {
         messes = Rooms.makeMess(room, day, Random(day * 7919L + 17))
         val per = messes.sumOf { (if (it.type.tool == Tool.HAND) 2.4 else 4.2) * it.size / 42.0 }.toFloat()
         val squeeze = (1f - day * 0.02f).coerceAtLeast(0.72f)
-        timeLimit = 12f + per * squeeze + 6f * upgrades[2] + (if (level >= 1) 5f else 0f)
+        timeLimit = 12f + per * squeeze + 6f * upgrades[2] + (if (level >= 1) 5f else 0f) + (if (level >= 4) 5f else 0f)
         timeLeft = timeLimit
         readyT = 1.4f
         combo = 0; comboT = 0f; earned = 0
@@ -193,7 +193,7 @@ class Game(private val sound: SoundSink, private val store: Storage) {
         } else if (done >= total * 0.75f) 1 else 0
         val timeBonus = if (done == total) (timeLeft * 3f).toInt() else 0
         coinsGain = ((earned + timeBonus) * coinMultiplier).toInt()
-        heartsGain = stars + (if (stars == 3 && level >= 4) 1 else 0)
+        heartsGain = stars + (if (stars == 3 && level >= 5) 1 else 0)
         sound.play(if (stars > 0) Sound.CHIME else Sound.WRONG)
     }
 
@@ -297,7 +297,7 @@ class Game(private val sound: SoundSink, private val store: Storage) {
         var line = lines.random(rnd)
         if (line == speech && lines.size > 1) line = lines.first { it != speech }
         face = when {
-            level >= 4 && rnd.nextInt(3) == 0 -> 4
+            level >= 5 && rnd.nextInt(3) == 0 -> 4
             level >= 1 && rnd.nextBoolean() -> 3
             level >= 2 -> 1
             else -> 0
@@ -908,7 +908,7 @@ class Game(private val sound: SoundSink, private val store: Storage) {
                 }, PINK, 6f)
             }
             if (unlocked) {
-                Bella.draw(p, lv.outfit, x + cw / 2, y + ch - 56f, 0.27f, Pose(mood = i / 6f, time = t + i))
+                Bella.draw(p, lv.outfit, x + cw / 2, y + ch - 56f, 0.27f, Pose(mood = i / Story.maxLevel.toFloat(), time = t + i))
                 p.text(lv.outfit.name, x + cw / 2, y + ch - 20f, if (lv.outfit.name.length > 16) 17f else 20f, INK, ALIGN_CENTER)
             } else {
                 p.oval(x + cw / 2, y + 110f, 40f, 44f, rgb(0xB8, 0xAE, 0xC4))

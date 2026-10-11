@@ -33,16 +33,20 @@ object Bella {
     const val HEIGHT = 890f
 
     /** Draws Bella with her feet centred at (x, footY), [scale] times her natural size. */
-    fun draw(p: Painter, o: Outfit, x: Float, footY: Float, scale: Float, pose: Pose) {
+    fun draw(painter: Painter, o: Outfit, x: Float, footY: Float, scale: Float, pose: Pose) {
         val t = pose.time
-        p.save()
-        p.translate(x, footY)
-        p.rotate(sin(t * 1.1f) * 1.2f)
+        painter.save()
+        painter.translate(x, footY)
+        painter.rotate(sin(t * 1.1f) * 1.2f)
         val breathe = 1f + sin(t * 2.2f) * 0.006f
-        p.scale(scale, scale * breathe)
-        p.translate(0f, -HEIGHT)
+        // She is drawn a little smaller than her natural size: petite, not tall.
+        painter.scale(scale * 0.9f, scale * 0.9f * breathe)
+        painter.translate(0f, -HEIGHT)
+        val p = Warp(painter)
 
+        p.head = true
         backHair(p, o, t)
+        p.head = false
         if (o.cut == Cut.HOODIE) hood(p, o)
         legs(p, o)
         // Neck and torso skin (shows above low necklines).
@@ -55,12 +59,15 @@ object Bella {
         chest(p, o)
         curves(p, o)
         if (o.necklace) necklace(p, o, t)
+        if (o.choker) choker(p, o)
         arms(p, o, pose)
+        p.head = true
         head(p, o, pose)
         frontHair(p, o)
-        if (o.sparkles) twinkles(p, o, t)
         if (pose.mood > 0.6f) longing(p, t)
-        p.restore()
+        p.head = false
+        if (o.sparkles) twinkles(p, o, t)
+        painter.restore()
     }
 
     /** Fills a left/right symmetric shape: [build] draws the half on side s (-1 or 1). */
@@ -100,6 +107,20 @@ object Bella {
                     }
                     quadTo(s * 50f, 440f, -s * 2f, 420f)
                     close()
+                }
+            }
+            Hair.PIGTAILS -> {
+                val swing = sin(t * 2.6f) * 7f
+                sym(p, HAIR_DARK) { s ->
+                    moveTo(s * 46f, 24f)
+                    quadTo(s * 128f + swing, 30f, s * 124f + swing, 170f)
+                    quadTo(s * 120f + swing, 260f, s * 92f + swing * 1.4f, 318f)
+                    quadTo(s * 104f + swing, 210f, s * 62f, 88f)
+                    close()
+                }
+                for (sd in floatArrayOf(-1f, 1f)) {
+                    p.stroke(shape { moveTo(sd * 76f, 50f); quadTo(sd * 118f + swing, 110f, sd * 106f + swing, 260f) }, HAIR, 7f)
+                    p.stroke(shape { moveTo(sd * 84f, 60f); quadTo(sd * 112f + swing, 130f, sd * 112f + swing, 200f) }, HAIR_LIGHT, 3f)
                 }
             }
             Hair.PONYTAIL -> {
@@ -184,6 +205,15 @@ object Bella {
             // Loose curls framing the face.
             p.stroke(shape { moveTo(-64f, 110f); quadTo(-74f, 150f, -62f, 175f); quadTo(-56f, 190f, -66f, 200f) }, HAIR, 5f)
             p.stroke(shape { moveTo(64f, 110f); quadTo(74f, 150f, 62f, 175f); quadTo(56f, 190f, 66f, 200f) }, HAIR, 5f)
+        }
+        if (o.hair == Hair.PIGTAILS) {
+            // Bows in team colours.
+            for (sd in floatArrayOf(-1f, 1f)) {
+                val bx = sd * 62f
+                p.fill(poly(bx, 40f, bx - 18f, 26f, bx - 16f, 54f), o.main)
+                p.fill(poly(bx, 40f, bx + 18f, 26f, bx + 16f, 54f), o.main)
+                p.oval(bx, 40f, 6f, 6f, o.second)
+            }
         }
         if (o.hair == Hair.PONYTAIL) {
             p.oval(54f, 52f, 9f, 9f, o.shoes)
@@ -390,7 +420,7 @@ object Bella {
                     p.rect(fx - 26f, 876f, 52f, 8f, rgb(0xC8, 0xC8, 0xD0))
                     p.line(fx - 10f, 862f, fx + 10f, 862f, rgb(0xB0, 0xB0, 0xBA), 3f)
                 }
-                Cut.TEE_JEANS -> {
+                Cut.TEE_JEANS, Cut.CHEER -> {
                     p.roundRect(fx - 25f, 852f, 50f, 34f, 14f, o.shoes)
                     p.rect(fx - 25f, 877f, 50f, 8f, WHITE)
                 }
@@ -473,6 +503,22 @@ object Bella {
                 }
                 p.rect(-64f, 400f, 128f, 14f, darker(o.second, 0.3f))
                 p.oval(0f, 384f, 2.5f, 4f, SKIN_SHADE)
+            }
+            Cut.CHEER -> {
+                // A pleated cheer skirt with a white trim.
+                sym(p, o.main) { s ->
+                    moveTo(-s * 2f, 398f)
+                    lineTo(s * 66f, 398f)
+                    quadTo(s * 86f, 450f, s * 112f, 540f)
+                    lineTo(-s * 2f, 548f)
+                    close()
+                }
+                p.line(-108f, 526f, 108f, 526f, o.second, 7f)
+                for (k in -4..4) {
+                    p.line(k * 12f, 410f, k * 26f, 544f, darker(o.main, 0.22f), 2.5f)
+                }
+                p.rect(-66f, 396f, 132f, 14f, o.second)
+                p.oval(0f, 380f, 2.5f, 4f, SKIN_SHADE)
             }
             Cut.BIKINI -> {
                 // Bikini bottoms with side ties.
@@ -557,6 +603,22 @@ object Bella {
             Cut.COCKTAIL -> bodice(p, c, 268f, straps = false, strapW = 0f)
             Cut.GOWN -> bodice(p, c, 262f, straps = true, strapW = 4f)
             Cut.BIKINI -> {}
+            Cut.CHEER -> {
+                sym(p, c) { s ->
+                    moveTo(s * 2f, 296f)
+                    lineTo(s * 30f, 202f)
+                    quadTo(s * 46f, 206f, s * 62f, 210f)
+                    quadTo(s * 66f, 246f, s * 86f, 262f)
+                    quadTo(s * 92f, 304f, s * 66f, 330f)
+                    quadTo(s * 62f, 340f, s * 60f, 346f)
+                    lineTo(s * 2f, 350f)
+                    close()
+                }
+                // White piping along the V and the hem.
+                p.line(-30f, 202f, -2f, 292f, o.second, 5f)
+                p.line(30f, 202f, 2f, 292f, o.second, 5f)
+                p.line(-60f, 344f, 60f, 344f, o.second, 6f)
+            }
             Cut.GALA -> {
                 bodice(p, c, 256f, straps = false, strapW = 0f)
                 // Off-shoulder puff sleeves.
@@ -587,21 +649,18 @@ object Bella {
         val c = o.main
         when (o.cut) {
             Cut.SUNDRESS -> {
-                p.save()
-                p.translate(0f, 372f)
-                p.scale(1f, 0.68f)
-                p.translate(0f, -372f)
                 val sway = sin(t * 1.8f) * 6f
+                fun sq(y: Float) = 372f + (y - 372f) * 0.68f
                 p.fill(shape {
                     moveTo(-56f, 372f)
                     lineTo(56f, 372f)
-                    quadTo(110f, 500f, 150f + sway, 630f)
-                    quadTo(120f, 650f, 90f + sway, 638f)
-                    quadTo(60f, 656f, 30f + sway, 640f)
-                    quadTo(0f, 656f, -30f + sway, 640f)
-                    quadTo(-60f, 656f, -90f + sway, 638f)
-                    quadTo(-120f, 650f, -150f + sway, 630f)
-                    quadTo(-110f, 500f, -56f, 372f)
+                    quadTo(110f, sq(500f), 150f + sway, sq(630f))
+                    quadTo(120f, sq(650f), 90f + sway, sq(638f))
+                    quadTo(60f, sq(656f), 30f + sway, sq(640f))
+                    quadTo(0f, sq(656f), -30f + sway, sq(640f))
+                    quadTo(-60f, sq(656f), -90f + sway, sq(638f))
+                    quadTo(-120f, sq(650f), -150f + sway, sq(630f))
+                    quadTo(-110f, sq(500f), -56f, sq(372f))
                     close()
                 }, c)
                 p.rect(-56f, 366f, 112f, 14f, o.second)
@@ -609,7 +668,7 @@ object Bella {
                 val spots = floatArrayOf(-80f, 460f, -30f, 430f, 30f, 470f, 80f, 440f, -100f, 570f, -50f, 530f, 0f, 580f, 60f, 545f, 110f, 590f, -10f, 500f)
                 var i = 0
                 while (i < spots.size) {
-                    val fx = spots[i]; val fy = spots[i + 1]
+                    val fx = spots[i]; val fy = sq(spots[i + 1])
                     for (k in 0 until 5) {
                         val a = k * 1.2566f
                         p.oval(fx + kotlin.math.cos(a) * 6f, fy + kotlin.math.sin(a) * 6f, 4f, 4f, o.second)
@@ -617,7 +676,6 @@ object Bella {
                     p.oval(fx, fy, 3f, 3f, rgb(0xFF, 0xA0, 0x30))
                     i += 2
                 }
-                p.restore()
             }
             Cut.COCKTAIL -> {
                 p.fill(shape {
@@ -701,6 +759,7 @@ object Bella {
             Cut.TEE_JEANS -> 262f
             Cut.SUNDRESS -> 256f
             Cut.BLOUSE_SKIRT -> 270f
+            Cut.CHEER -> 276f
             Cut.COCKTAIL -> 270f
             Cut.BIKINI -> 268f
             else -> 266f
@@ -718,23 +777,23 @@ object Bella {
         }
         val y = lowCut
         // Skin above the neckline...
-        p.oval(-38f, y + 18f, 44f, 36f, SKIN)
-        p.oval(38f, y + 18f, 44f, 36f, SKIN)
+        p.oval(-35f, y + 18f, 39f, 33f, SKIN)
+        p.oval(35f, y + 18f, 39f, 33f, SKIN)
         p.stroke(shape { moveTo(-4f, y - 18f); quadTo(2f, y - 2f, 0f, y + 14f) }, SKIN_SHADE, 3f)
         p.stroke(shape { moveTo(-30f, y - 14f); quadTo(-12f, y - 20f, -4f, y - 10f) }, alpha(SKIN_SHADE, 0.6f), 2f)
         p.stroke(shape { moveTo(30f, y - 14f); quadTo(12f, y - 20f, 4f, y - 10f) }, alpha(SKIN_SHADE, 0.6f), 2f)
         // ...and the fabric cups below it.
         sym(p, c) { s ->
             moveTo(s * 2f, y + 12f)
-            quadTo(s * 36f, y - 8f, s * 84f, y + 2f)
-            quadTo(s * 96f, y + 50f, s * 70f, y + 70f)
-            quadTo(s * 30f, y + 84f, s * 2f, y + 60f)
+            quadTo(s * 34f, y - 6f, s * 78f, y + 4f)
+            quadTo(s * 88f, y + 48f, s * 64f, y + 68f)
+            quadTo(s * 28f, y + 80f, s * 2f, y + 58f)
             close()
         }
-        p.stroke(shape { moveTo(-80f, y + 46f); quadTo(-44f, y + 88f, -4f, y + 58f) }, shade, 3f)
-        p.stroke(shape { moveTo(80f, y + 46f); quadTo(44f, y + 88f, 4f, y + 58f) }, shade, 3f)
-        p.oval(-46f, y + 18f, 18f, 9f, shine)
-        p.oval(46f, y + 18f, 18f, 9f, shine)
+        p.stroke(shape { moveTo(-74f, y + 44f); quadTo(-40f, y + 84f, -4f, y + 56f) }, shade, 3f)
+        p.stroke(shape { moveTo(74f, y + 44f); quadTo(40f, y + 84f, 4f, y + 56f) }, shade, 3f)
+        p.oval(-42f, y + 18f, 16f, 8f, shine)
+        p.oval(42f, y + 18f, 16f, 8f, shine)
         when (o.cut) {
             Cut.BIKINI -> {
                 // Halter strings and a centre ring.
@@ -752,6 +811,7 @@ object Bella {
                 p.oval(0f, 340f, 9f, 8f, c)
             }
             Cut.TEE_JEANS -> p.heartIcon(-46f, y + 40f, 9f, PINK)
+            Cut.CHEER -> p.fill(star(-46f, y + 36f, 12f), o.second)
             else -> {}
         }
     }
@@ -775,7 +835,7 @@ object Bella {
             p.stroke(shape { moveTo(-8f, 210f); quadTo(-28f, 200f, -50f, 204f) }, bone, 2.5f)
             p.stroke(shape { moveTo(8f, 210f); quadTo(28f, 200f, 50f, 204f) }, bone, 2.5f)
         }
-        val bareMidriff = o.cut == Cut.TEE_JEANS || o.cut == Cut.BLOUSE_SKIRT || o.cut == Cut.BIKINI
+        val bareMidriff = o.cut == Cut.TEE_JEANS || o.cut == Cut.BLOUSE_SKIRT || o.cut == Cut.BIKINI || o.cut == Cut.CHEER
         if (bareMidriff) {
             val soft = alpha(SKIN_SHADE, 0.45f)
             p.stroke(shape { moveTo(0f, 352f); quadTo(-2f, 372f, 0f, 392f) }, soft, 2f)
@@ -784,6 +844,12 @@ object Bella {
                 p.stroke(shape { moveTo(62f, 440f); quadTo(52f, 460f, 48f, 478f) }, soft, 2.5f)
             }
         }
+    }
+
+    /** A black velvet choker with a little heart charm. */
+    private fun choker(p: Painter, o: Outfit) {
+        p.fill(shape { moveTo(-19f, 184f); quadTo(0f, 194f, 19f, 184f); lineTo(19f, 194f); quadTo(0f, 204f, -19f, 194f); close() }, rgb(0x1E, 0x14, 0x22))
+        p.fill(heart(0f, 206f, 6f), o.main)
     }
 
     /** Little hearts drifting up around her once she's smitten. */
@@ -854,6 +920,15 @@ object Bella {
             // Hand.
             val raised = (pose.wave && s > 0) || (pose.face == 4 && s > 0) || (pose.hip && s < 0)
             p.oval(hx, hy + (if (raised) -8f else 14f), 15f, 19f, SKIN)
+            if (o.cut == Cut.CHEER && !(pose.hip && s < 0) && !(pose.face == 4 && s > 0)) {
+                val py = hy + (if (raised) -8f else 18f)
+                for (k in 0 until 14) {
+                    val a = k * 0.449f + s
+                    val r = 22f + (k % 3) * 6f
+                    p.oval(hx + kotlin.math.cos(a) * r, py + kotlin.math.sin(a) * r, 15f, 15f, if (k % 2 == 0) o.main else o.second)
+                }
+                p.oval(hx, py, 18f, 18f, o.main)
+            }
             if (o.cut == Cut.GALA || o.cut == Cut.GOWN) {
                 // A bracelet.
                 p.line(hx - 12f, hy - 6f, hx + 12f, hy - 6f, rgb(0xEC, 0xC8, 0x5C), 5f)
@@ -875,5 +950,90 @@ object Bella {
             }
             i += 2
         }
+    }
+}
+
+/**
+ * Reshapes Bella's body as it is drawn: a smaller head (adult proportions), a shorter torso,
+ * longer legs and a narrower waist. The art is authored in the original coordinates and every
+ * point goes through [mapX]/[mapY] on its way to the real painter.
+ */
+private class Warp(private val p: Painter) : Painter {
+    /** True while drawing the head and hair, which are also scaled down around the chin. */
+    var head = false
+
+    private fun hx(x: Float) = if (head) x * HEAD else x
+    private fun hy(y: Float) = if (head) CHIN + (y - CHIN) * HEAD else y
+
+    fun mapY(y0: Float): Float {
+        val y = hy(y0)
+        if (y <= KY[0]) return y
+        for (i in 1 until KY.size) {
+            if (y <= KY[i]) {
+                val t = (y - KY[i - 1]) / (KY[i] - KY[i - 1])
+                return NY[i - 1] + (NY[i] - NY[i - 1]) * t
+            }
+        }
+        return NY.last() + (y - KY.last())
+    }
+
+    /** Vertical stretch at y, for scaling heights. */
+    private fun slope(y0: Float): Float = (mapY(y0 + 1f) - mapY(y0 - 1f)) / 2f
+
+    /** How much narrower the body is at this height: the waist is pulled in. */
+    private fun pinch(y0: Float): Float {
+        val y = hy(y0)
+        val d = (y - 372f) / 58f
+        return 1f - 0.17f * kotlin.math.exp(-d * d)
+    }
+
+    fun mapX(x0: Float, y0: Float) = hx(x0) * pinch(y0)
+
+    private fun warp(s: Shape): Shape {
+        val out = Shape()
+        s.forEach(
+            { x, y -> out.moveTo(mapX(x, y), mapY(y)) },
+            { x, y -> out.lineTo(mapX(x, y), mapY(y)) },
+            { a, b, x, y -> out.quadTo(mapX(a, b), mapY(b), mapX(x, y), mapY(y)) },
+            { a, b, c, d, x, y -> out.cubicTo(mapX(a, b), mapY(b), mapX(c, d), mapY(d), mapX(x, y), mapY(y)) },
+            { out.close() },
+        )
+        return out
+    }
+
+    private val k get() = if (head) HEAD else 1f
+
+    override fun rect(x: Float, y: Float, w: Float, h: Float, color: Int) =
+        fill(poly(x, y, x + w, y, x + w, y + h, x, y + h), color)
+
+    override fun roundRect(x: Float, y: Float, w: Float, h: Float, r: Float, color: Int) {
+        val l = mapX(x, y + h / 2); val rr = mapX(x + w, y + h / 2)
+        val t = mapY(y); val b = mapY(y + h)
+        p.roundRect(l, t, rr - l, b - t, r * k, color)
+    }
+
+    override fun oval(cx: Float, cy: Float, rx: Float, ry: Float, color: Int) =
+        p.oval(mapX(cx, cy), mapY(cy), rx * k * pinch(cy), ry * k * slope(cy), color)
+
+    override fun fill(p: Shape, color: Int) = this.p.fill(warp(p), color)
+    override fun stroke(p: Shape, color: Int, width: Float) = this.p.stroke(warp(p), color, width * k)
+    override fun line(x1: Float, y1: Float, x2: Float, y2: Float, color: Int, width: Float) =
+        p.line(mapX(x1, y1), mapY(y1), mapX(x2, y2), mapY(y2), color, width * k)
+    override fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Int) =
+        p.text(s, mapX(x, y), mapY(y), size * k, color, align)
+    override fun textWidth(s: String, size: Float) = p.textWidth(s, size * k)
+    override fun save() = p.save()
+    override fun restore() = p.restore()
+    override fun translate(x: Float, y: Float) = p.translate(x, y)
+    override fun scale(sx: Float, sy: Float) = p.scale(sx, sy)
+    override fun rotate(degrees: Float) = p.rotate(degrees)
+
+    companion object {
+        const val HEAD = 0.76f
+        const val CHIN = 176f
+        // Original heights of chin, shoulders, bust, waist, hips, crotch, knees, ankles and soles,
+        // and where they end up.
+        val KY = floatArrayOf(178f, 216f, 290f, 376f, 466f, 540f, 690f, 856f, 892f)
+        val NY = floatArrayOf(178f, 210f, 270f, 336f, 406f, 464f, 668f, 858f, 892f)
     }
 }

@@ -155,11 +155,12 @@ Every new affection level she goes to change, comes back in a nicer outfit and g
 | 2 | Flirty | A crop top and denim cut-offs | Lemonade: +5 seconds in every room |
 | 4 | Fond of You | A short yellow sundress | Cookies: +25% coins |
 | 6 | Crushing on You | A knotted, unbuttoned blouse and a mini skirt | Dinner: +20% cleaning power |
-| 9 | Sweetheart | A strapless red mini dress | A dinner date: an extra heart for 3-star rooms |
-| 12 | In Love | A pink bikini and sarong | A pool party for two: +50% more coins |
-| 16 | Soulmates | A golden gown with a high slit, and a tiara | Her date to the Royal Gala: double coins |
+| 8 | Cheering for You | A cheerleader uniform with pigtails, pom-poms and a choker | She cheers you on: +5 more seconds in every room |
+| 10 | Sweetheart | A strapless red mini dress | A dinner date: an extra heart for 3-star rooms |
+| 13 | In Love | A pink bikini and sarong | A pool party for two: +50% more coins |
+| 17 | Soulmates | A golden gown with a high slit, and a tiara | Her date to the Royal Gala: double coins |
 
-Bella is drawn anime-style, with big green eyes and a curvy, shaded figure. Once she likes you, she flirts: she winks, blows kisses, poses with a hand on her
+Bella is drawn anime-style with adult proportions: big green eyes, a slim waist and a curvy, shaded figure. Once she likes you, she flirts: she winks, blows kisses, poses with a hand on her
 hip and wears smoky eyeshadow.
 
 How to play:

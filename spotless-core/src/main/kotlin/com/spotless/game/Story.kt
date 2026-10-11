@@ -1,8 +1,8 @@
 package com.spotless.game
 
-enum class Hair { BUN, PONYTAIL, DOWN, WAVY, UPDO }
+enum class Hair { BUN, PONYTAIL, PIGTAILS, DOWN, WAVY, UPDO }
 
-enum class Cut { HOODIE, TEE_JEANS, SUNDRESS, BLOUSE_SKIRT, COCKTAIL, BIKINI, GOWN, GALA }
+enum class Cut { HOODIE, TEE_JEANS, SUNDRESS, BLOUSE_SKIRT, CHEER, COCKTAIL, BIKINI, GOWN, GALA }
 
 /** One of Bella's outfits. Each new affection level unlocks a nicer one. */
 class Outfit(
@@ -17,6 +17,7 @@ class Outfit(
     val necklace: Boolean = false,
     val earrings: Boolean = false,
     val tiara: Boolean = false,
+    val choker: Boolean = false,
 )
 
 /** An affection level: what Bella thinks of you, what she wears and what she gives you. */
@@ -94,7 +95,22 @@ object Story {
             meh = listOf("It's okay, I still like you!", "Let me help you next time?"),
         ),
         Level(
-            title = "Sweetheart", hearts = 9,
+            title = "Cheering for You", hearts = 8,
+            outfit = Outfit("Game Day Cheerleader", Cut.CHEER, Hair.PIGTAILS,
+                rgb(0xE8, 0x1E, 0x46), rgb(0xFF, 0xFF, 0xFF), rgb(0xFF, 0xFF, 0xFF), rgb(0xE0, 0x1E, 0x4A),
+                earrings = true, choker = true),
+            reward = "She cheers you on", perk = "+5 more seconds in every room",
+            revealLine = "Our squad has a game tonight, but I'll be cheering for you. Like the uniform?",
+            chat = listOf(
+                "Give me a Y! Give me an O! Give me a U! ...That spells my favourite person.",
+                "I did a high kick just now. Did you see? *winks*",
+                "The choker? A little extra, just for you.",
+            ),
+            thanks = listOf("Go, go, go! That's my guy!", "*shakes pom-poms* You're the MVP!", "That deserves a victory kiss. *mwah*"),
+            meh = listOf("Shake it off, champ! Next round is yours.", "Even MVPs miss sometimes. I still like you."),
+        ),
+        Level(
+            title = "Sweetheart", hearts = 10,
             outfit = Outfit("Strapless Red Mini", Cut.COCKTAIL, Hair.WAVY,
                 rgb(0xD8, 0x1B, 0x3C), rgb(0xA0, 0x10, 0x2A), rgb(0xD8, 0x1B, 0x3C), rgb(0xC8, 0x10, 0x30),
                 necklace = true, earrings = true),
@@ -110,7 +126,7 @@ object Story {
             meh = listOf("Don't worry about it, cutie.", "We'll clean the rest together later!"),
         ),
         Level(
-            title = "In Love", hearts = 12,
+            title = "In Love", hearts = 13,
             outfit = Outfit("Pool Party Bikini", Cut.BIKINI, Hair.WAVY,
                 rgb(0xFF, 0x3E, 0x8A), rgb(0xFF, 0xB8, 0xD8), rgb(0xFF, 0x3E, 0x8A), rgb(0xD8, 0x20, 0x50),
                 necklace = true, earrings = true),
@@ -126,7 +142,7 @@ object Story {
             meh = listOf("I love you anyway!", "Who cares about a little mess? I have you."),
         ),
         Level(
-            title = "Soulmates", hearts = 16,
+            title = "Soulmates", hearts = 17,
             outfit = Outfit("Golden Slit Gown", Cut.GOWN, Hair.UPDO,
                 rgb(0xE8, 0xB8, 0x48), rgb(0xC0, 0x90, 0x30), rgb(0xE8, 0xB8, 0x48), rgb(0xD0, 0x20, 0x48),
                 sparkles = true, necklace = true, earrings = true, tiara = true),
