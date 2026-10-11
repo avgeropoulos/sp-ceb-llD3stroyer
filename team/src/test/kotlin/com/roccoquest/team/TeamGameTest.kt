@@ -416,8 +416,49 @@ class TeamGameTest {
         assertEquals(TeamGame.State.CLEAR, game.state)
     }
 
-    @Test fun enderDragonEndsTheGame() {
+    @Test fun enderDragonOpensWorld2() {
+        startPlaying(WORLD2_START - 1)
+        assertEquals("THE END", game.level.def.name)
+        fightDragon()
+        assertEquals(TeamGame.State.CLEAR, game.state, "World 1's dragon is not the end any more")
+        run(3.6f)
+        assertEquals(TeamGame.State.STICKER, game.state)
+        game.pickSticker(0)
+        run(3f)
+        assertEquals(WORLD2_START, game.levelIndex, "on to World 2")
+        assertEquals("SUNSET MEADOW", game.level.def.name)
+    }
+
+    @Test fun finalBattleIsABossRushThatEndsTheGame() {
+        assertTrue(Levels.all.size >= 42, "World 2 doubles the game: ${Levels.all.size}")
         startPlaying(Levels.all.lastIndex)
+        val q = game.foes.filterIsInstance<KingKrag>().single()
+        assertTrue(q.wonderStyle, "round 1 is Wonder King Krag")
+        val r = game.rocco
+        r.x = q.homeX - 150f
+        run(3.5f) { game.hurtProof() }
+        assertTrue(game.boss === q, "Wonder King Krag woke up")
+        var t = 0f
+        while (q.hp > 0 && t < 60f) { game.hurtProof(); q.hit(game, 3); game.update(dt); t += dt }
+        assertEquals(0, q.hp)
+        run(4f) { game.hurtProof() }
+        assertEquals(TeamGame.State.PLAY, game.state, "the level keeps going after round 1")
+        assertTrue(game.boss == null, "ready for the next boss")
+        // A checkpoint after round 1 doesn't bring Wonder King Krag back.
+        val cp = game.thingsForTest().filterIsInstance<Checkpoint>().maxBy { it.x }
+        r.x = cp.x + 4f; run(1f) { game.hurtProof() }
+        game.startLevel(game.levelIndex, fromCheckpoint = true)
+        run(3.2f)
+        assertTrue(game.foes.none { it is KingKrag }, "Krag stays beaten")
+        fightDragon()
+        assertEquals(TeamGame.State.STICKER, game.state, "one last sticker")
+        game.pickSticker(0)
+        run(3f)
+        assertEquals(TeamGame.State.VICTORY, game.state)
+        assertEquals(Music.FROG, ears.music, "Ring-Ding Frog sings at the end")
+    }
+
+    private fun fightDragon() {
         val d = game.foes.filterIsInstance<EnderDragon>().single()
         val r = game.rocco
         r.x = d.homeX - 120f; r.y = 160f
@@ -441,12 +482,6 @@ class TeamGameTest {
         }
         input.action = false
         assertEquals(0, d.hp, "beat the dragon in ${t}s")
-        assertEquals(TeamGame.State.STICKER, game.state, "one last sticker")
-        assertTrue(game.stickerChoices.contains(Stickers.forBoss('Z')))
-        game.pickSticker(game.stickerChoices.indexOf(Stickers.forBoss('Z')))
-        run(3f)
-        assertEquals(TeamGame.State.VICTORY, game.state)
-        assertEquals(Music.FROG, ears.music, "Ring-Ding Frog sings at the end")
     }
 
     @Test fun villagersTalkAndTrade() {
@@ -1254,5 +1289,29 @@ class TeamGameTest {
         input.jump = true; run(0.7f); input.jump = false
         run(0.1f)
         shot("tanooki-wingcap")
+    }
+
+    /** World 2: the intro card and a peek at some of the new levels. */
+    @Test fun world2Screenshots() {
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 720, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f))
+            ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        game.newGame(0, Mon.SPARKY)
+        game.startLevel(WORLD2_START)
+        run(0.5f)
+        shot("w2-intro")
+        for ((name, col) in listOf(
+            "SUNSET MEADOW" to 60, "SANDSTORM DUNES" to 30, "BLIZZARD BRIDGE" to 34, "SUNKEN SHIP" to 60,
+            "VOLCANO PEAK" to 30, "PYRAMID OF SPIKES" to 28, "BOMB-BOMB FACTORY" to 22, "THE FINAL BATTLE" to 150,
+        )) {
+            game.startLevel(Levels.all.indexOfFirst { it.name == name })
+            run(3.2f)
+            game.leader.x = col * TILE.toFloat(); game.leader.y = 60f
+            run(1.2f) { game.hurtProof() }
+            shot("w2-" + name.lowercase().replace(" ", "-").replace("'", ""))
+        }
     }
 }

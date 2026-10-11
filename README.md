@@ -109,7 +109,8 @@ waves, a triangle bass and noise drums, so there are no audio files. Tap the **â
 
 A second game in the same repository. **Rocco** the plumber, **Blocky** the miner and a
 Pokemon partner team up to stop **Krag Jr.**, **King Krag**, their purple-and-green **Wonder**
-versions, **the Warden**, **Dry Bones King Krag** and finally **the Ender Dragon**, across 21 levels. **Ring-Ding Frog** scoots by on his scooter in every level, singing his
+versions, **the Warden**, **Dry Bones King Krag** and **the Ender Dragon**, across 21 levels... and then
+**World 2** doubles the game to **42 levels**, ending in a two-boss **Final Battle**. **Ring-Ding Frog** scoots by on his scooter in every level, singing his
 crazy song out loud (with the phone's voice), bowling over bad guys and dropping a present.
 
 ![Team Up! title screen](docs/teamup-title.png)
@@ -266,6 +267,39 @@ right where you saved. (The game also saves at the start of every level.)
 | 20 | Bone Castle | **DRY BONES KING KRAG**: knock him down and he gets back up once! |
 | 21 | The End | **THE ENDER DRAGON**: break the healing crystals, then hit it when it lands |
 
+### World 2 (levels 22 to 42)
+
+Beating the Ender Dragon opens **World 2**: 21 more levels with every kind of bad guy mixed together,
+bosses back for rematches, and a **Final Battle** at the end. The level card shows a rainbow
+**WORLD 2** so you know you made it.
+
+| # | Name | What's there |
+|---|---|---|
+| 22 | Sunset Meadow | Gangs of bad guys, and the first Enderman of World 2 |
+| 23 | Crystal Caverns | Amethyst and diamonds, lava pits and lots of Flapper bats |
+| 24 | Stormy Skies | **KRAG JR. IS BACK**, up in the thunderclouds |
+| 25 | Sandstorm Dunes | Up and down the dunes, spike traps, Boneheads and Endermen |
+| 26 | Blizzard Bridge | Hop across icy cloud bridges |
+| 27 | Sunken Ship | **Underwater** in an old shipwreck |
+| 28 | Krag's Return | **KING KRAG** built a new castle |
+| 29 | Jungle Ruins | Jungle ruins with Endermen and bomb-bombs |
+| 30 | Minecart Madness | Two huge minecart rides |
+| 31 | Volcano Peak | Climb the volcano over lava pits |
+| 32 | Rainbow Fortress | **WONDER KRAG JR.** rematch in the wobbly rainbow sky |
+| 33 | Moonlight Village | Villagers at night, a minecart and Endermen |
+| 34 | Deep Sea Trench | The longest swim yet |
+| 35 | Enderman Woods | A whole forest of Endermen |
+| 36 | Warden's Lair | **THE WARDEN** woke up again. Tiptoe! |
+| 37 | Pyramid of Spikes | Climb pyramids, jump spike traps, ride a minecart |
+| 38 | Magma Mines | Hot mines full of diamonds |
+| 39 | Skull Keep | **DRY BONES KING KRAG** is back |
+| 40 | Bomb-Bomb Factory | A dozen bomb-bombs: stomp one and kick it into the others! |
+| 41 | The Last Road | Every kind of bad guy, all at once |
+| 42 | The Final Battle | **WONDER KING KRAG**, then **THE ENDER DRAGON**, back to back. Your hearts refill between them, and a checkpoint keeps Krag beaten |
+
+![World 2](docs/teamup-world2.png)
+![Pyramid of Spikes](docs/teamup-pyramid.png)
+
 ![Wonder King Krag](docs/teamup-wonder-king-krag.png)
 ![Poseidon](docs/teamup-poseidon.png)
 ![The Ender Dragon](docs/teamup-ender-dragon.png)
@@ -324,7 +358,7 @@ You can also open the folder in Android Studio and press Run.
 Levels are built in `core/.../Level.kt` with a small builder, so adding a new one is a few lines.
 
 * `team/`: Team Up!, also plain Kotlin. It reuses the drawing interface, Rocco's pixel art, the
-  sound effects and the music from `core/`. Its levels are in `TeamLevel.kt`, the heroes and
+  sound effects and the music from `core/`. Its levels are in `TeamLevel.kt` (World 2 in `World2.kt`), the heroes and
   Pokemon in `Actors.kt`, the bad guys and bosses in `Foes.kt`, villagers, Dennis, minecarts, TNT,
   Endermen, the Warden and the Ender Dragon in `Extras.kt`, shots, items and effects in `Items.kt`, and the crafting table, save files and menus in `TeamGame.kt`.
 * `teamapp/`: the Android layer for Team Up!, a copy of `app/` wired to the new game.

@@ -445,6 +445,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             respawnY = storage.load(key("spotY")).toFloat()
             things.filterIsInstance<Checkpoint>().forEach { if (it.x <= respawnX) it.reached = true }
         }
+        // In a boss rush, a boss behind the checkpoint was already beaten: don't bring it back.
+        foes.removeAll { it.boss && it.x + it.w < respawnX }
         placeTeam(respawnX, respawnY)
         camX = (leader.cx - viewW * 0.4f).coerceIn(0f, max(0f, level.w * TILE - viewW))
         if (!fromCheckpoint) {
@@ -2137,11 +2139,22 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             val b = boss
             // Boss levels without a flag end when the boss is beaten.
             if (goal == null && state == State.PLAY && bossDoneT > 3f) {
-                if (levelIndex == Levels.all.lastIndex) {
+                val nextBoss = foes.firstOrNull { it.boss && it.hp > 0 && it !== b }
+                if (nextBoss != null) {
+                    // A boss rush: the next boss is waiting further on. Patch up the team and keep going.
+                    boss = null
+                    bossDone = false
+                    hearts = MAX_HEARTS
+                    toast(if (nextBoss is EnderDragon) "Hearts refilled! Now... THE ENDER DRAGON!" else "Hearts refilled! One more boss!")
+                    sfx(Sound.ONEUP)
+                } else if (levelIndex == Levels.all.lastIndex) {
                     offerStickers(-1)
                 } else {
                     heartBonus()
+                    val nextName = Levels.all[levelIndex + 1].name
                     clearNote = when {
+                        levelIndex + 1 == WORLD2_START -> "The Ender Dragon is beaten... but WORLD 2 is waiting!"
+                        levelIndex >= WORLD2_START -> "Boss beaten! Next up: $nextName!"
                         b is KingKrag && b.dry -> "Only one enemy left... THE ENDER DRAGON!"
                         b is KingKrag && b.wonderStyle -> "...but something stirs in the DEEP DARK!"
                         b is KingKrag -> "...but King Krag found a WONDER FLOWER!"
@@ -2779,6 +2792,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     private fun renderIntro(gfx: Gfx) {
         gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF101018.toInt())
+        if (levelIndex >= WORLD2_START) gfx.shadowText("WORLD 2", viewW / 2, 52f, 12f, solidRainbow(time * 0.5f), 1)
         gfx.shadowText("LEVEL ${levelIndex + 1} of ${Levels.all.size}", viewW / 2, 70f, 12f, 0xFFDDDDDD.toInt(), 1)
         gfx.shadowText(level.def.name, viewW / 2, 96f, 20f, 0xFFFFD21F.toInt(), 1)
         gfx.sprite(TeamArt.rocco(power, 0), viewW / 2 - 36, 112f)
@@ -2790,7 +2804,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     private fun renderVictory(gfx: Gfx) {
         gfx.rect(0f, 0f, viewW, VIEW_H, 0x55000000)
-        gfx.shadowText("YOU BEAT THE ENDER DRAGON!", viewW / 2, 70f, 16f, solidRainbow(time * 0.5f), 1)
+        gfx.shadowText("YOU BEAT BOTH WORLDS!", viewW / 2, 70f, 16f, solidRainbow(time * 0.5f), 1)
         gfx.shadowText("Rocco + Blocky + ${mon.label} = BEST TEAM EVER!", viewW / 2, 90f, 9f, white, 1)
         gfx.shadowText("SCORE $score", viewW / 2, 106f, 10f, 0xFFFFD21F.toInt(), 1)
         val dance = abs(sin(time * 6)) * 6f

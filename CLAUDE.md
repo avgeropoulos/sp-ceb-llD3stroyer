@@ -16,7 +16,8 @@ Sparky, Blaze, Hydro, Bloom, Ember, Splashy, Mystic, Puncho and Spooky.
 | File | What's in it |
 |---|---|
 | `TeamGame.kt` | The game: states, save files, menus, crafting tabs, villager trades, stickers, HUD, rendering |
-| `TeamLevel.kt` | Tiles, ores, places and all 21 levels (character grids built with `Builder`) |
+| `TeamLevel.kt` | Tiles, ores, places and the 21 World 1 levels (character grids built with `Builder`) |
+| `World2.kt` | The 21 World 2 levels (22-42). The last one is a boss rush: Wonder King Krag, then the Ender Dragon |
 | `Actors.kt` | `Power` (flowers), `Mon` (Pokemon), `Sword`, `Armor`, and `Hero` (Rocco, Blocky, partner) |
 | `Foes.kt` | Enemies with health bars, Krag Jr. and King Krag (normal, Wonder, Dry Bones) |
 | `Extras.kt` | Villagers, Dennis the dog, minecarts, traps, TNT, bubbles, fish, Endermen, Warden, Ender Dragon, Bomb-bombs |
@@ -41,8 +42,8 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
   pluginManagement { repositories { mavenCentral(); gradlePluginPortal() } }
   dependencyResolutionManagement { repositories { mavenCentral() } }
   rootProject.name = "scratch"
-  include(":core"); project(":core").projectDir = file("/home/user/sp-ceb-llD3stroyer/core")
-  include(":team"); project(":team").projectDir = file("/home/user/sp-ceb-llD3stroyer/team")
+  include(":core"); project(":core").projectDir = file("<repo>/core")
+  include(":team"); project(":team").projectDir = file("<repo>/team")
   EOF
   echo 'plugins { id("org.jetbrains.kotlin.jvm") version "2.1.21" apply false }' > $S/build.gradle.kts
   ./gradlew -p $S :core:test :team:test
