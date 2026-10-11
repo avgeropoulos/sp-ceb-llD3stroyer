@@ -263,7 +263,7 @@ class Bubble(x: Float, y: Float) : Thing(x, y, 10f, 10f) {
 // ============================================================================ New bad guys
 
 /** A fish that swims back and forth underwater. */
-class Fish(x: Float, y: Float) : Foe(x + 1, y - 12, 14f, 10f, 2) {
+class Fish(x: Float, y: Float) : Foe(x + 1, y - 12, 14f, 10f, 3) {
     private var t = Random.nextFloat() * 6
     private val homeX = x
     private val homeY = y - 12
@@ -294,7 +294,7 @@ class Fish(x: Float, y: Float) : Foe(x + 1, y - 12, 14f, 10f, 2) {
  * Endermen: tall, tough, and they teleport. Sometimes they dodge a shot by teleporting
  * away, but SUPER moves and TNT always hit.
  */
-class Enderman(x: Float, bottom: Float) : Foe(x + 2, bottom - 34, 12f, 34f, 18) {
+class Enderman(x: Float, bottom: Float) : Foe(x + 2, bottom - 34, 12f, 34f, 24) {
     private var t = 0f
     private var tele = 3f + Random.nextFloat()
     private var angry = false
@@ -307,7 +307,7 @@ class Enderman(x: Float, bottom: Float) : Foe(x + 2, bottom - 34, 12f, 34f, 18) 
         t += dt
         val l = g.leader
         if (!angry && abs(l.cx - cx) < 130f) angry = true
-        if (angry) vx = if (l.cx < cx) -32f else 32f
+        if (angry) vx = if (l.cx < cx) -40f else 40f
         walk(g, dt)
         tele -= dt
         if (angry && tele <= 0) {
@@ -390,7 +390,7 @@ class SonicBoom(x: Float, y: Float, private val dir: Int) : Foe(x, y, 18f, 18f, 
  * THE WARDEN: a huge, blind cave monster. He hears you when you run or jump and
  * charges up sonic booms that fly through walls.
  */
-class Warden(x: Float, bottom: Float) : Foe(x - 8, bottom - 46, 32f, 46f, 90) {
+class Warden(x: Float, bottom: Float) : Foe(x - 8, bottom - 46, 32f, 46f, 110) {
     var awake = false
         private set
     private var t = 0f
@@ -547,7 +547,7 @@ class EndCrystal(x: Float, bottom: Float) : Foe(x + 1, bottom - 14, 14f, 14f, 4)
  * dives at the team, and lands now and then (that's the time to hit it hard!). Any end
  * crystals still standing slowly heal it.
  */
-class EnderDragon(x: Float, y: Float) : Foe(x, y, 64f, 30f, 90) {
+class EnderDragon(x: Float, y: Float) : Foe(x, y, 64f, 30f, 120) {
     enum class Mode { WAIT, FLY, DIVE, PERCH, BEATEN }
 
     var mode = Mode.WAIT

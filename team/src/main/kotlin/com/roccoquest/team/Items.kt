@@ -482,6 +482,24 @@ class Vine(x: Float, y: Float, private val dir: Int) : Particle(x, y) {
     }
 }
 
+/** The Black Flower blooming: a dark swirl that pulls everything in. */
+class BlackBloom(x: Float, y: Float) : Particle(x, y) {
+    private var t = 0f
+    init { life = 1.2f }
+    override fun update(dt: Float) { life -= dt; t += dt }
+    override fun draw(gfx: Gfx, ox: Float) {
+        val a = (min(1f, life) * 220).toInt()
+        val r = TeamGame.BLACK_RANGE * (1f - min(1f, t * 1.2f))
+        gfx.oval(x + ox - r, y - r, r * 2, r * 2, argb(a / 3, 0x2A0A3A))
+        for (i in 0 until 10) {
+            val ang = i * 0.628f + t * 8
+            val rr = r * 0.9f
+            gfx.oval(x + ox + kotlin.math.cos(ang) * rr - 4, y + sin(ang) * rr - 4, 8f, 8f, argb(a, 0xC060FF))
+        }
+        TeamArt.blackFlower(gfx, x + ox - 14, y - 16, 28f, t * 4)
+    }
+}
+
 /** The big picture for a Pokemon SUPER move. [w] is how far it reaches. */
 class SuperFx(x: Float, y: Float, private val mon: Mon, private val dir: Int, private val w: Float) : Particle(x, y) {
     private var t = 0f

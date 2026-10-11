@@ -43,7 +43,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         const val AIR_MAX = 30f
         const val POSEIDON_COST = 50
         const val SCORE_MULT = 3
-        val TABS = listOf("FLOWERS", "SUPPLIES", "HOME", "SWORDS")
+        val TABS = listOf("FLOWERS", "SUPPLIES", "HOME", "WEAPONS", "ARMOR")
+        /** How close bad guys have to be for the Black Flower to get them. */
+        const val BLACK_RANGE = 170f
     }
 
     var viewW = 427f
@@ -147,7 +149,15 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private var eraseArmed = -1
     private var eraseT = 0f
     private var pickChoice = Mon.SPARKY
-    private val prev = BooleanArray(11)
+    private val prev = BooleanArray(12)
+
+    /** The armor the team is wearing, and how many more hits it can take. */
+    var armorType = Armor.NONE
+        private set
+    var armorHp = 0
+        private set
+    /** Black Flowers in the bag. */
+    var blackFlowers = 0
     private var downE = false
     private var longE = false
     // Double-tap a direction to sprint.
@@ -256,6 +266,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         storage.save(key("stickersLo"), (stickerBits and 0xFFFFFFFFL).toInt())
         storage.save(key("stickersHi"), (stickerBits ushr 32).toInt())
         storage.save(key("swords"), swordsOwned)
+        storage.save(key("armorType"), armorType.ordinal)
+        storage.save(key("armorHp"), armorHp)
+        storage.save(key("blackFlowers"), blackFlowers)
         storage.save(key("sword"), sword.ordinal)
         // The house (and bed) belong to the level they were built in.
         val h = house
@@ -302,13 +315,17 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         tnt = storage.load(key("tnt"))
         stickerBits = (storage.load(key("stickersLo")).toLong() and 0xFFFFFFFFL) or (storage.load(key("stickersHi")).toLong() shl 32)
         swordsOwned = storage.load(key("swords"))
+        armorType = Armor.entries.getOrElse(storage.load(key("armorType"))) { Armor.NONE }
+        armorHp = storage.load(key("armorHp"))
+        if (armorHp <= 0) armorType = Armor.NONE
+        blackFlowers = storage.load(key("blackFlowers"))
         sword = Sword.entries.getOrElse(storage.load(key("sword"))) { Sword.NONE }
         if (!hasSword(sword)) sword = Sword.NONE
         mon = slotMon(slot)
     }
 
     fun eraseSlot(s: Int) {
-        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "stickersLo", "stickersHi", "houseLevel", "houseX", "houseY", "bed", "bedLevel", "spotLevel", "spotX", "spotY")) {
+        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "armorType", "armorHp", "blackFlowers", "stickersLo", "stickersHi", "houseLevel", "houseX", "houseY", "bed", "bedLevel", "spotLevel", "spotX", "spotY")) {
             storage.save(key(name, s), 0)
         }
         Ore.entries.forEach { storage.save(key("ore_${it.name}", s), 0) }
@@ -329,6 +346,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         tnt = 0
         stickerBits = 0L
         swordsOwned = 0
+        armorType = Armor.NONE
+        armorHp = 0
+        blackFlowers = 0
         sword = Sword.NONE
         startLevel(0)
     }
@@ -457,6 +477,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val actionE = edge(6, input.action)
         val tntE = edge(7, input.tnt)
         val poseidonE = edge(8, input.poseidon)
+        val blackE = edge(11, input.blackFlower)
         downE = edge(9, input.down)
         longE = edge(10, input.longJump)
         val tapped = input.tap
@@ -482,6 +503,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     if (craftE) { setState(State.CRAFT); sfx(Sound.BUMP) } else {
                         if (tntE) throwTnt()
                         if (poseidonE) callPoseidon()
+                        if (blackE) useBlackFlower()
                         play(dt, jumpE, swapE, superE, actionE)
                     }
                 }
@@ -910,6 +932,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         for (tx in tileOf(h.x + 1)..tileOf(h.x + h.w - 1)) {
             when (level[tx, ty]) {
                 Tile.BRICK, Tile.QCOIN, Tile.QHEART, Tile.QSTAR, Tile.QMYSTERY -> bump(tx, ty)
+                // A butt slam mines the block under Rocco (but not plain ground).
+                Tile.GROUND, Tile.DIRT -> {}
+                else -> if (level.toughness(tx, ty) > 0) mine(tx, ty, 4, rocco = true)
             }
         }
         // A shockwave along the ground.
@@ -966,10 +991,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         level.moveX(h, h.vx * dt)
         camLock?.let { lock -> h.x = h.x.coerceIn(lock, lock + viewW - h.w) }
         h.x = h.x.coerceIn(0f, level.w * TILE - h.w)
-        if (level.moveY(h, h.vy * dt) == -1) bump(level.bumpX, level.bumpY)
+        if (level.moveY(h, h.vy * dt) == -1) bump(level.bumpX, level.bumpY, h)
     }
 
-    private fun bump(tx: Int, ty: Int) {
+    private fun bump(tx: Int, ty: Int, by: Hero? = null) {
         val px = tx * TILE.toFloat()
         val above = ty * TILE - 14f
         when (level[tx, ty]) {
@@ -1008,7 +1033,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 sfx(Sound.BREAK)
                 points(50)
             }
-            else -> sfx(Sound.BUMP)
+            // Rocco can bonk blocks from below to mine them.
+            else -> if (by?.who == Who.ROCCO && level.toughness(tx, ty) > 0) mine(tx, ty, 2, rocco = true) else sfx(Sound.BUMP)
         }
         for (f in foes) {
             if (!f.dying && !f.boss && abs(f.bottom - ty * TILE) < 2 && f.cx > tx * TILE - 4 && f.cx < tx * TILE + TILE + 4) f.hit(this, 99)
@@ -1083,8 +1109,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
     }
 
-    fun mine(tx: Int, ty: Int) {
+    /**
+     * Hits block ([tx], [ty]) with [strength] pickaxe points. Rocco's head-bonks and
+     * butt slams mine too ([rocco] = true): they can't break plain ground, but nothing is too hard.
+     */
+    fun mine(tx: Int, ty: Int, strength: Int = pickTier, rocco: Boolean = false) {
         val t = level[tx, ty]
+        if (rocco && (t == Tile.GROUND || t == Tile.DIRT)) { sfx(Sound.BUMP); return }
         if (t == Tile.QCOIN || t == Tile.QHEART || t == Tile.QSTAR || t == Tile.QMYSTERY) { bump(tx, ty); return }
         val tough = level.toughness(tx, ty)
         if (tough == 0) {
@@ -1092,13 +1123,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (Tile.solid(t)) particles += FloatText(tx * TILE + 8f, ty * TILE.toFloat(), "CLANK!")
             return
         }
-        if (t == Tile.DIAMOND && pickTier < 2) {
+        if (t == Tile.DIAMOND && pickTier < 2 && !rocco) {
             sfx(Sound.BUMP)
             toast("Diamond is too hard! Craft an IRON PICKAXE.")
             return
         }
         val key = ty * level.w + tx
-        val dmg = (level.cracks[key] ?: 0) + pickTier
+        val dmg = (level.cracks[key] ?: 0) + strength
         val ore = Tile.ore(t)
         val color = ore?.dark ?: 0xFF8A5A2A.toInt()
         if (dmg >= tough) {
@@ -1271,11 +1302,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     // ======================================================================== Crafting
 
-    enum class Kind { FLOWER, PICK, HEART, APPLE, TNT, TRAP, STAR, MINI, HOUSE, BED, SWORD }
+    enum class Kind { FLOWER, PICK, HEART, APPLE, TNT, TRAP, STAR, MINI, HOUSE, BED, SWORD, ARMOR, BLACK }
 
     class Recipe(
         val title: String, val note: String, val costs: List<Pair<Ore, Int>>, val coinCost: Int,
         val button: String, val enabled: Boolean, val icon: Power?, val kind: Kind, val sword: Sword = Sword.NONE,
+        val armor: Armor = Armor.NONE,
     )
 
     private fun has(costs: List<Pair<Ore, Int>>, coinCost: Int) =
@@ -1338,6 +1370,16 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 else -> "MAKE" to has(costs, 0)
             }
             Recipe(sw.label, sw.note, if (hasSword(sw)) emptyList() else costs, 0, button, enabled, null, Kind.SWORD, sw)
+        } + run {
+            // Rare and pricey: the one-time Black Flower.
+            val c = listOf(Ore.DIAMOND to 3, Ore.AMETHYST to 3, Ore.EMERALD to 3)
+            listOf(Recipe("BLACK FLOWER", "One use: gets EVERY bad guy near you! Have $blackFlowers", c, 20, "MAKE", has(c, 20), null, Kind.BLACK))
+        }
+        4 -> Armor.entries.filter { it != Armor.NONE }.map { a ->
+            val c = listOf(a.ore!! to a.cost)
+            val wearing = armorType == a
+            val note = if (wearing) "Wearing it: $armorHp/${a.durability} left. Make again to fix it" else "Takes ${a.durability} hits, then breaks"
+            Recipe(a.label, note, c, 10, if (wearing) "FIX" else "MAKE", has(c, 10) && !(wearing && armorHp >= a.durability), null, Kind.ARMOR, armor = a)
         }
         else -> {
             val houseCost = listOf(Ore.STONE to 10, Ore.IRON to 2)
@@ -1408,6 +1450,17 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
             Kind.STAR -> { startStar(); setState(State.PLAY); return }
             Kind.MINI -> { startMini(); setState(State.PLAY); return }
+            Kind.ARMOR -> {
+                armorType = r.armor
+                armorHp = r.armor.durability
+                toast("${r.armor.label}! It wears down a little every time you're hit.")
+                color = r.armor.color
+            }
+            Kind.BLACK -> {
+                blackFlowers++
+                toast("A BLACK FLOWER! Tap its button to use it (just once).")
+                color = 0xFFC060FF.toInt()
+            }
             Kind.SWORD -> {
                 swordsOwned = swordsOwned or (1 shl r.sword.ordinal)
                 sword = r.sword
@@ -1487,6 +1540,25 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         // Chain reaction!
         for (f in foes) if (f is BombBomb && !f.dying && !f.removed && hypot(f.cx - x, f.cy - y) < 44f) f.hit(this, 1)
         if (hurtsTeam && hypot(leader.cx - x, leader.cy - y) < 32f) hurt()
+    }
+
+    /** The Black Flower: pulls in every bad guy near the team and gets rid of them. One use! */
+    private fun useBlackFlower() {
+        if (blackFlowers <= 0) return
+        blackFlowers--
+        val l = leader
+        shake = 0.6f
+        sfx(Sound.BOSS_FIRE)
+        sound.sayAs("Black flower!", Voice.HERO)
+        bannerTitle = "BLACK FLOWER!"
+        bannerSub = ""
+        bannerT = 1.5f
+        particles += BlackBloom(l.cx, l.cy)
+        for (f in foes) {
+            if (!f.active || f.dying || hypot(f.cx - l.cx, f.cy - l.cy) > BLACK_RANGE) continue
+            particles += Bolt(f.cx, f.cy, l.cx, l.cy, 0xFFC060FF.toInt())
+            if (f.boss) f.hit(this, 12) else f.hit(this, 999)
+        }
     }
 
     private fun callPoseidon() {
@@ -1830,10 +1902,23 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             sfx(Sound.HURT)
             return
         }
-        if (armor > 0) {
-            armor--
-            particles += FloatText(leader.cx, leader.y - 4, "ARMOR!", 0xFF3CE070.toInt())
-        } else hearts--
+        when {
+            armor > 0 -> {
+                armor--
+                particles += FloatText(leader.cx, leader.y - 4, "SHIELD!", 0xFF3CE070.toInt())
+            }
+            armorHp > 0 -> {
+                // Armor takes the hit and wears down.
+                armorHp--
+                if (armorHp <= 0) {
+                    particles += FloatText(leader.cx, leader.y - 4, "ARMOR BROKE!", 0xFFFF6060.toInt())
+                    toast("Your ${armorType.label} broke! Craft a new one.")
+                    armorType = Armor.NONE
+                    sfx(Sound.BREAK)
+                } else particles += FloatText(leader.cx, leader.y - 4, "ARMOR $armorHp", armorType.color)
+            }
+            else -> hearts--
+        }
         invuln = 1.6f
         sfx(Sound.HURT)
         leader.vy = -180f
@@ -2083,7 +2168,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                         val next = team[(team.indexOf(l) + 1) % team.size]
                         TeamControls.draw(
                             gfx, input, viewW, label, next.label, next.color, superCharge, mon.color, time,
-                            tnt, coins >= POSEIDON_COST, l.who == Who.ROCCO && riding == null, l.sprinting,
+                            tnt, coins >= POSEIDON_COST, l.who == Who.ROCCO && riding == null, l.sprinting, blackFlowers,
                         )
                         TeamControls.drawTop(gfx, viewW, musicOn, canCraftSomething, time)
                     }
@@ -2387,6 +2472,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             TeamArt.heart(gfx, 6f + i * 12f, 4f, 10f, if (i < hearts) 0xFFE52521.toInt() else 0x66000000)
         }
         for (i in 0 until armor) TeamArt.shield(gfx, 6f + MAX_HEARTS * 12f + i * 9f, 3f, 8f)
+        if (armorType != Armor.NONE) {
+            // Armor durability bar under the hearts.
+            val bw = MAX_HEARTS * 12f - 2
+            gfx.rect(6f, 15f, bw, 3f, 0x88000000.toInt())
+            gfx.rect(6f, 15f, bw * armorHp / armorType.durability, 3f, armorType.color)
+        }
         gfx.sprite(Sprites.coin, 6f, 17f, w = 8f, h = 11f)
         gfx.shadowText("x$coins", 16f, 26f, 8f, white)
         gfx.shadowText("\u2605$score", 42f, 26f, 7f, 0xFFFFE14D.toInt())
@@ -2477,6 +2568,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 }
                 r.kind == Kind.BED -> TeamArt.bed(gfx, px + 2, y + 20)
                 r.kind == Kind.SWORD -> TeamArt.sword(gfx, px + 7, y + 20, -0.8f, r.sword)
+                r.kind == Kind.BLACK -> TeamArt.blackFlower(gfx, px + 5, y + 3, 19f, time)
+                r.kind == Kind.ARMOR -> {
+                    val c = r.armor.color
+                    gfx.rect(px + 8, y + 4, 12f, 5f, c)
+                    gfx.rect(px + 6, y + 10, 16f, 9f, c)
+                    gfx.rect(px + 9, y + 12, 3f, 2f, 0x88FFFFFF.toInt())
+                }
                 r.kind == Kind.MINI -> gfx.sprite(Sprites.miniMushroom, px + 8, y + 7, w = 12f, h = 12f)
                 r.kind == Kind.TRAP -> TeamArt.spikes(gfx, px + 6, y + 20)
                 else -> TeamArt.pickaxe(gfx, px + 9, y + 22, -0.9f, min(5, pickTier + 1))

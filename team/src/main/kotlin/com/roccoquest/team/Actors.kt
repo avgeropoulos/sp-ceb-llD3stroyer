@@ -69,6 +69,18 @@ enum class Sword(val label: String, val ore: Ore?, val cost: Int, val damage: In
     val sweeps get() = this == DIAMOND || this == AMETHYST
 }
 
+/**
+ * Armor the team can wear. Every hit wears it down instead of costing a heart, and it
+ * breaks when it's used up. It takes a lot of ore to make, so it's a real prize.
+ */
+enum class Armor(val label: String, val ore: Ore?, val cost: Int, val durability: Int, val color: Int) {
+    NONE("NO ARMOR", null, 0, 0, 0),
+    IRON("IRON ARMOR", Ore.IRON, 8, 4, 0xFFD8D8E0.toInt()),
+    GOLD("GOLD ARMOR", Ore.GOLD, 8, 5, 0xFFFFD82A.toInt()),
+    DIAMOND("DIAMOND ARMOR", Ore.DIAMOND, 8, 8, 0xFF7FF4F0.toInt()),
+    AMETHYST("AMETHYST ARMOR", Ore.AMETHYST, 8, 12, 0xFFC890FF.toInt()),
+}
+
 enum class Who { ROCCO, BLOCKY, MON }
 
 abstract class Thing(x: Float, y: Float, w: Float, h: Float) : Body(x, y, w, h) {
@@ -205,6 +217,14 @@ class Hero(val who: Who, x: Float, y: Float) :
                 }
             }
             Who.MON -> TeamArt.mon(gfx, mon, cx + ox, bottom, g.time + x * 0.01f, facing, swing > 0 || g.superFlash > 0, walking)
+        }
+        // Worn armor: a helmet and a chest plate in the armor's color.
+        if (g.armorType != Armor.NONE && who != Who.MON && !mini && !shellSpin && !crouching) {
+            val c = (g.armorType.color and 0x00FFFFFF) or 0xE0000000.toInt()
+            gfx.rect(px + 4, py - 1, 9f, 3f, c)
+            gfx.rect(px + 3, py + 1, 2f, 4f, c)
+            gfx.rect(px + 4, py + 9, 9f, 5f, c)
+            gfx.rect(px + 5, py + 10, 2f, 1f, 0x88FFFFFF.toInt())
         }
         if (g.armor > 0 && who != Who.MON && (g.time * 4).toInt() % 2 == 0) {
             gfx.oval(px - 1, py - 1, 18f, 26f, argb(40, 0x2EB84A))

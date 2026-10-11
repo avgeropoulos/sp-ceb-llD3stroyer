@@ -22,6 +22,8 @@ class TeamInput {
     @Volatile var longJump = false
     /** Throw a stick of TNT. */
     @Volatile var tnt = false
+    /** Use a Black Flower. */
+    @Volatile var blackFlower = false
     /** Call Poseidon (costs 50 coins). */
     @Volatile var poseidon = false
     @Volatile var craft = false
@@ -48,6 +50,7 @@ object TeamControls {
     val tntB = Button(0f, 210f, 14f)
     val longB = Button(0f, 166f, 15f)
     val poseidonB = Button(30f, 150f, 17f)
+    val blackB = Button(76f, 150f, 16f)
     val pause = Button(0f, 14f, 10f)
     val music = Button(0f, 14f, 10f)
     /** The CRAFT button is a pill [CRAFT_W] wide. */
@@ -84,6 +87,7 @@ object TeamControls {
         var tn = false
         var lj = false
         var po = false
+        var bf = false
         var c = false
         var p = false
         var m = false
@@ -94,6 +98,7 @@ object TeamControls {
             if (hypot(x - music.cx, y - music.cy) < music.r * 1.3f) { m = true; continue }
             if (inCraft(x, y)) { c = true; continue }
             if (hypot(x - poseidonB.cx, y - poseidonB.cy) < poseidonB.r * 1.2f) { po = true; continue }
+            if (hypot(x - blackB.cx, y - blackB.cy) < blackB.r * 1.2f) { bf = true; continue }
             if (y < 110f) continue
             val swiped = y - startY.getOrPut(ids[i]) { y } > SWIPE
             if (swiped && x < viewW / 2) { d = true; continue }
@@ -130,6 +135,7 @@ object TeamControls {
         input.tnt = tn
         input.longJump = lj
         input.poseidon = po
+        input.blackFlower = bf
         input.craft = c
         input.pause = p
         input.musicToggle = m
@@ -138,7 +144,7 @@ object TeamControls {
     fun draw(
         gfx: Gfx, input: TeamInput, viewW: Float, actionLabel: String, swapLabel: String, swapColor: Int,
         superCharge: Float, superColor: Int, t: Float, tntCount: Int = 0, poseidonReady: Boolean = false,
-        showLong: Boolean = false, sprinting: Boolean = false,
+        showLong: Boolean = false, sprinting: Boolean = false, blackFlowers: Int = 0,
     ) {
         layout(viewW)
         val c = 0xDDFFFFFF.toInt()
@@ -183,6 +189,13 @@ object TeamControls {
             gfx.oval(tb.cx - tb.r, tb.cy - tb.r, tb.r * 2, tb.r * 2, if (input.tnt) 0xCCFFFFFF.toInt() else 0x99E53A1E.toInt())
             gfx.text("TNT", tb.cx, tb.cy + 1, 6f, c, 1)
             gfx.text("x$tntCount", tb.cx, tb.cy + 8, 5f, c, 1)
+        }
+        if (blackFlowers > 0) {
+            val bb = blackB
+            gfx.oval(bb.cx - bb.r - 1, bb.cy - bb.r - 1, bb.r * 2 + 2, bb.r * 2 + 2, 0x55000000)
+            gfx.oval(bb.cx - bb.r, bb.cy - bb.r, bb.r * 2, bb.r * 2, if (input.blackFlower) 0xCCFFFFFF.toInt() else 0xCC2A1A3A.toInt())
+            TeamArt.blackFlower(gfx, bb.cx - 10, bb.cy - 11, 20f, t)
+            gfx.text("x$blackFlowers", bb.cx + 10, bb.cy + 14, 5f, c, 1)
         }
         if (poseidonReady) {
             val pb = poseidonB

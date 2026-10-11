@@ -260,6 +260,20 @@ object TeamArt {
         )
     }
 
+    /** The rare Black Flower: dark petals with a glowing purple middle. */
+    fun blackFlower(gfx: Gfx, x: Float, y: Float, s: Float, t: Float) {
+        val c = x + s / 2
+        val m = y + s * 0.38f
+        gfx.rect(c - s * 0.05f, m, s * 0.1f, s * 0.6f, 0xFF1E5A2E.toInt())
+        gfx.oval(c - s * 0.3f, y + s * 0.62f, s * 0.28f, s * 0.14f, 0xFF1E5A2E.toInt())
+        for (i in 0 until 6) {
+            val a = i * 1.047f + t
+            gfx.oval(c + cos(a) * s * 0.22f - s * 0.16f, m + sin(a) * s * 0.22f - s * 0.16f, s * 0.32f, s * 0.32f, 0xFF1A1020.toInt())
+        }
+        gfx.oval(c - s * 0.14f, m - s * 0.14f, s * 0.28f, s * 0.28f, 0xFFC060FF.toInt())
+        gfx.oval(c - s * 0.06f, m - s * 0.06f, s * 0.12f, s * 0.12f, 0xFFFFFFFF.toInt())
+    }
+
     /** Draws a sword held at (hx, hy) pointing at [angle] radians. */
     fun sword(gfx: Gfx, hx: Float, hy: Float, angle: Float, sw: Sword) {
         if (sw == Sword.NONE) return

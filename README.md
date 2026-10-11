@@ -146,10 +146,13 @@ nearby bad guy every few seconds. Tap **ERASE** twice on a file to delete it.
 * **Rocco** jumps higher and **THROWS** whatever flower power the team has crafted.
 * **Sprint**: double-tap left or right and keep holding to run 50% faster (Shift on a keyboard).
 * **Double jump**: Rocco can press JUMP again in mid-air for a spinning second jump.
+* **Rocco mines too**: his **butt slam** breaks the block under him, and **jumping up into a block**
+  bonks it from below. Either way you get the ore (plain ground is too tough for him).
 * **Rocco's Mario 64 moves**: swipe down on the ground to **squat**, swipe down in the air for a
   **butt slam** (it breaks blocks under him and sends out a shockwave), and press **LONG JUMP**
   (or squat + JUMP while running) for a big flying **long jump**.
-* Every bad guy has a **health bar**. Stomping still works on most of them!
+* Every bad guy has a **health bar**, and they're **tough**: more health and faster than before, and
+  bosses have about 30% more health. Stomping still works on most of them!
 * New bad guys: **Boneheads** fall apart when stomped and then get back up, and **Flapper** bats
   wake up in caves and chase you.
 * `?` blocks can hide a heart or a **Super Star**, and rainbow **mystery blocks** hold a surprise.
@@ -186,7 +189,7 @@ save file.
 
 ### The crafting table
 
-Tap **CRAFT**. It glows green when there's something new you can make. It has four tabs:
+Tap **CRAFT**. It glows green when there's something new you can make. It has five tabs:
 
 **Flowers**: make one with 3 of its ore, then make it again to power it up, all the way to **Lv5**.
 Every level adds damage. Lv3 throws two at once, Lv4 shots go through bad guys, and Lv5 throws three.
@@ -207,7 +210,15 @@ Every level adds damage. Lv3 throws two at once, Lv4 shots go through bad guys, 
 **Mini Mushroom** (1 emerald + 3 stone): Rocco shrinks to tiny size for 25 seconds and floats way up
 high. If he gets hit while mini, he just pops back to normal size. Mystery blocks can hold one too!
 
-**Swords**: Blocky can craft five kinds of swords and switch between the ones he's made for free.
+**Armor** (its own tab): Iron, Gold, Diamond and Amethyst armor take 4, 5, 8 and 12 hits instead of
+your hearts, then break. A bar under the hearts shows how much is left. It costs **8 of its ore plus
+10 coins**, so it takes some work to get. Make the same armor again to fix it.
+
+**Black Flower** (on the Weapons tab): a rare one-time item that costs 3 diamond, 3 amethyst,
+3 emerald and 20 coins. Tap its black flower button and it pulls in **every bad guy near you** and
+gets rid of them (bosses just take a big hit).
+
+**Swords** (the Weapons tab): Blocky can craft five kinds of swords and switch between the ones he's made for free.
 He still digs blocks with his pickaxe, but swings his sword whenever a bad guy is in front of him.
 
 | Sword | Costs | What's special |
@@ -264,7 +275,7 @@ It's easy but not too easy: 5 hearts, checkpoints, and if you run out of hearts 
 last checkpoint (or your bed) and keep all your ore. Beaten bosses leave diamonds, gold and TNT behind.
 
 Keyboard: arrows/WASD to move, Space to jump, X to mine/throw/talk/ride/sleep, Q to swap, E for SUPER,
-T to throw TNT, G for Poseidon, Shift to sprint, L for long jump, C to craft (1-6 and 0 pick a recipe, 7 and 8 switch tabs), P to pause, M for music.
+T to throw TNT, G for Poseidon, B for the Black Flower, Shift to sprint, L for long jump, C to craft (1-6 and 0 pick a recipe, 7 and 8 switch tabs), P to pause, M for music.
 
 ![Crafting table](docs/teamup-craft.png)
 

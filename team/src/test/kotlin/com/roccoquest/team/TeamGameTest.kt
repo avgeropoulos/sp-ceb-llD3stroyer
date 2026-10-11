@@ -742,9 +742,9 @@ class TeamGameTest {
 
     @Test fun blockyCraftsSwords() {
         startPlaying()
-        val swordsTab = TeamGame.TABS.indexOf("SWORDS")
-        fun row(sw: Sword) = game.recipes(swordsTab).indexOfFirst { it.sword == sw }
-        assertEquals(5, game.recipes(swordsTab).size, "five kinds of swords")
+        val swordsTab = TeamGame.TABS.indexOf("WEAPONS")
+        fun row(sw: Sword) = game.recipes(swordsTab).indexOfFirst { it.kind == TeamGame.Kind.SWORD && it.sword == sw }
+        assertEquals(5, game.recipes(swordsTab).count { it.kind == TeamGame.Kind.SWORD }, "five kinds of swords")
         game.craft(row(Sword.DIAMOND), swordsTab)
         assertEquals(Sword.NONE, game.sword, "no diamonds yet")
         game.inventory[Ore.STONE.ordinal] = 4
@@ -839,12 +839,87 @@ class TeamGameTest {
         assertTrue(abs(g2.rocco.x - x) < 60f, "starts where it was saved: ${g2.rocco.x} vs $x")
     }
 
+    @Test fun roccoMinesBySlammingAndBonking() {
+        startPlaying()
+        game.foes.clear()
+        val r = game.rocco
+        val lv = game.level
+        // Find an iron block with open air above it.
+        val (ix, iy) = (0 until lv.w).flatMap { x -> (1 until ROWS).map { x to it } }
+            .first { (x, y) -> lv[x, y] == Tile.IRON && lv[x, y - 1] == Tile.EMPTY && lv[x, y - 2] == Tile.EMPTY }
+        val iron = game.inventory[Ore.IRON.ordinal]
+        repeat(3) {
+            if (lv[ix, iy] != Tile.IRON) return@repeat
+            r.x = ix * TILE + 2f; r.y = iy * TILE - r.h - 50f; r.vy = 0f; r.onGround = false
+            game.update(dt)
+            input.down = true; game.update(dt); input.down = false
+            run(1f) { game.hurtProof() }
+        }
+        assertEquals(Tile.EMPTY, lv[ix, iy], "the butt slam mined the iron")
+        assertTrue(game.inventory[Ore.IRON.ordinal] > iron)
+        // Bonking a stone block from below mines it too.
+        lv[ix, iy] = Tile.STONE
+        lv[ix, iy - 1] = Tile.EMPTY
+        val stone = game.inventory[Ore.STONE.ordinal]
+        repeat(4) {
+            if (lv[ix, iy] != Tile.STONE) return@repeat
+            r.x = ix * TILE + 2f; r.y = (iy + 1) * TILE + 2f; r.vy = -300f; r.onGround = false
+            run(0.3f) { game.hurtProof() }
+        }
+        assertEquals(Tile.EMPTY, lv[ix, iy], "bonked it to pieces")
+        assertTrue(game.inventory[Ore.STONE.ordinal] > stone)
+    }
+
+    @Test fun armorWearsDownAndBreaks() {
+        startPlaying()
+        val armorTab = TeamGame.TABS.indexOf("ARMOR")
+        game.inventory[Ore.IRON.ordinal] = 7
+        game.coins = 10
+        game.craft(0, armorTab)
+        assertEquals(Armor.NONE, game.armorType, "armor is expensive: 8 iron + 10 coins")
+        game.inventory[Ore.IRON.ordinal] = 8
+        game.craft(0, armorTab)
+        assertEquals(Armor.IRON, game.armorType)
+        val hearts = game.hearts
+        repeat(Armor.IRON.durability) {
+            game.hurt()
+            run(2f)
+        }
+        assertEquals(hearts, game.hearts, "the armor took every hit")
+        assertEquals(Armor.NONE, game.armorType, "then it broke")
+        game.hurt()
+        assertEquals(hearts - 1, game.hearts)
+    }
+
+    @Test fun blackFlowerGetsEveryoneNearby() {
+        startPlaying()
+        val weapons = TeamGame.TABS.indexOf("WEAPONS")
+        val row = game.recipes(weapons).indexOfFirst { it.kind == TeamGame.Kind.BLACK }
+        game.craft(row, weapons)
+        assertEquals(0, game.blackFlowers, "hard to get")
+        game.inventory[Ore.DIAMOND.ordinal] = 3
+        game.inventory[Ore.AMETHYST.ordinal] = 3
+        game.inventory[Ore.EMERALD.ordinal] = 3
+        game.coins = 20
+        game.craft(row, weapons)
+        assertEquals(1, game.blackFlowers)
+        val r = game.rocco
+        val near = (0 until 3).map { Shellback(r.x + 40f + it * 30f, r.bottom).also { f -> f.active = true } }
+        val far = Shellback(r.x + 400f, r.bottom).also { it.active = true }
+        game.foes.clear(); game.foes += near; game.foes += far
+        input.blackFlower = true; game.update(dt); input.blackFlower = false
+        assertTrue(near.all { it.dying }, "everything close is gone")
+        assertTrue(!far.dying, "far away is safe")
+        assertEquals(0, game.blackFlowers, "one use")
+    }
+
     @Test fun enemiesHaveHealthBars() {
         startPlaying()
         val g = game.foes.filterIsInstance<Grumbler>().first()
-        assertEquals(2, g.maxHp)
+        assertEquals(3, g.maxHp, "tougher bad guys")
         g.hit(game, 1)
-        assertEquals(1, g.hp)
+        assertEquals(2, g.hp)
+        g.hit(game, 1)
         assertTrue(!g.dying)
         g.hit(game, 1)
         assertTrue(g.dying)
@@ -1110,5 +1185,22 @@ class TeamGameTest {
         input.pause = true; game.update(dt); input.pause = false; game.update(dt)
         tap(game.viewW / 2, 198f)
         shot("pause")
+        input.pause = true; game.update(dt); input.pause = false; game.update(dt)
+        game.inventory[Ore.DIAMOND.ordinal] = 11
+        game.inventory[Ore.AMETHYST.ordinal] = 3
+        game.inventory[Ore.EMERALD.ordinal] = 3
+        game.coins = 40
+        input.craft = true; game.update(dt); input.craft = false; game.update(dt)
+        while (game.recipes().first().kind != TeamGame.Kind.ARMOR) { input.numberKey = 8; game.update(dt) }
+        input.numberKey = 3; game.update(dt)
+        shot("craft-armor")
+        while (game.recipes().first().kind != TeamGame.Kind.SWORD) { input.numberKey = 8; game.update(dt) }
+        input.numberKey = 6; game.update(dt)
+        input.craft = true; game.update(dt); input.craft = false; game.update(dt)
+        run(0.5f)
+        shot("armor-and-black-flower")
+        input.blackFlower = true; game.update(dt); input.blackFlower = false
+        run(0.4f)
+        shot("black-flower")
     }
 }

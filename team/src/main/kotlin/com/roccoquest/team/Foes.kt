@@ -93,10 +93,10 @@ abstract class Foe(x: Float, y: Float, w: Float, h: Float, val maxHp: Int) : Thi
     }
 }
 
-class Grumbler(x: Float, y: Float, private var winged: Boolean) : Foe(x + 1, y - 14, 14f, 14f, 2) {
+class Grumbler(x: Float, y: Float, private var winged: Boolean) : Foe(x + 1, y - 14, 14f, 14f, 3) {
     private var squashed = -1f
     private var anim = 0f
-    init { vx = -30f }
+    init { vx = -38f }
 
     override fun update(g: TeamGame, dt: Float) {
         if (updateDying(g, dt)) return
@@ -141,12 +141,12 @@ class Grumbler(x: Float, y: Float, private var winged: Boolean) : Foe(x + 1, y -
     }
 }
 
-class Shellback(x: Float, y: Float) : Foe(x + 1, y - 22, 14f, 22f, 3) {
+class Shellback(x: Float, y: Float) : Foe(x + 1, y - 22, 14f, 22f, 4) {
     private var shell = false
     private var sliding = false
     private var anim = 0f
     private var kickGrace = 0f
-    init { vx = -28f }
+    init { vx = -34f }
 
     override val showBar get() = !shell
 
@@ -201,10 +201,10 @@ class Shellback(x: Float, y: Float) : Foe(x + 1, y - 22, 14f, 22f, 3) {
 }
 
 /** A skeleton turtle. Stomp him and he falls into a pile of bones... then gets back up! */
-class Bonehead(x: Float, y: Float) : Foe(x + 1, y - 20, 14f, 20f, 4) {
+class Bonehead(x: Float, y: Float) : Foe(x + 1, y - 20, 14f, 20f, 6) {
     private var pile = -1f
     private var anim = 0f
-    init { vx = -26f }
+    init { vx = -32f }
 
     override val stompable get() = pile < 0
 
@@ -265,7 +265,7 @@ class Bonehead(x: Float, y: Float) : Foe(x + 1, y - 20, 14f, 20f, 4) {
 }
 
 /** A cave bat: hangs from the ceiling until the team comes close, then flaps after them. */
-class Flapper(x: Float, y: Float) : Foe(x + 2, y - 12, 12f, 10f, 2) {
+class Flapper(x: Float, y: Float) : Foe(x + 2, y - 12, 12f, 10f, 3) {
     private var awake = false
     /** For the sticker picture: show it flapping. */
     fun wakeForSticker() { awake = true }
@@ -281,7 +281,7 @@ class Flapper(x: Float, y: Float) : Foe(x + 2, y - 12, 12f, 10f, 2) {
             return
         }
         val dx = h.cx - cx
-        vx = approach(vx, if (dx > 0) 55f else -55f, 120f * dt)
+        vx = approach(vx, if (dx > 0) 66f else -66f, 140f * dt)
         x += vx * dt
         val ty = (h.y - 4f).coerceIn(baseY - 30f, baseY + 70f)
         y += ((ty - y).coerceIn(-40f * dt, 40f * dt)) + sin(t * 6) * 0.8f
@@ -360,7 +360,7 @@ class Flame(x: Float, y: Float, private val dir: Int, private val rainbowFire: B
  * warning. The Wonder version is purple and green, tougher, and turns the sky Wonder.
  */
 class KragJr(x: Float, y: Float, val wonderStyle: Boolean = false) :
-    Foe(x, y - 34, 30f, 34f, if (wonderStyle) 18 else 10) {
+    Foe(x, y - 34, 30f, 34f, if (wonderStyle) 24 else 13) {
     enum class Mode { WAIT, FLY, WINDUP, SWOOP, HURT, BEATEN }
 
     var mode = Mode.WAIT
@@ -519,7 +519,7 @@ class KragJr(x: Float, y: Float, val wonderStyle: Boolean = false) :
 class KingKrag(x: Float, y: Float, val wonderStyle: Boolean = false, val dry: Boolean = false) :
     Foe(
         x - 10, y - 40 * scaleOf(wonderStyle || dry), 36f * scaleOf(wonderStyle || dry), 40f * scaleOf(wonderStyle || dry),
-        if (wonderStyle) 32 else if (dry) 36 else 16,
+        if (wonderStyle) 40 else if (dry) 44 else 22,
     ) {
     companion object {
         fun scaleOf(wonder: Boolean) = if (wonder) 1.35f else 1f
