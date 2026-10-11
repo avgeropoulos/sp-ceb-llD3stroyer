@@ -60,4 +60,7 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
   release tagged `latest-<branch>`. The Team Up! download link for this branch is
   https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/download/latest-ccr-d6916f07-ygbof4/TeamUp.apk
   (don't use `releases/latest/...`: other branches publish there too, so it can 404).
+* Both APKs are signed with the fixed key in `keystore/games.keystore` and get `versionCode` from the
+  CI run number. Don't remove that: a different key (or lower version) makes the phone say
+  "App not installed" instead of updating.
 * Keep `README.md` (the "New game: Rocco & Blocky: Team Up!" section) up to date with each feature.
