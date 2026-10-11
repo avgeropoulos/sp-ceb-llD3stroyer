@@ -145,6 +145,7 @@ nearby bad guy every few seconds. Tap **ERASE** twice on a file to delete it.
   **copper** and **amethyst** out of the rocks. Swipe down to dig straight down.
 * **Rocco** jumps higher and **THROWS** whatever flower power the team has crafted.
 * **Sprint**: double-tap left or right and keep holding to run 50% faster (Shift on a keyboard).
+* **Double jump**: Rocco can press JUMP again in mid-air for a spinning second jump.
 * **Rocco's Mario 64 moves**: swipe down on the ground to **squat**, swipe down in the air for a
   **butt slam** (it breaks blocks under him and sends out a shockwave), and press **LONG JUMP**
   (or squat + JUMP while running) for a big flying **long jump**.

@@ -568,6 +568,38 @@ class TeamGameTest {
         assertTrue(lv[bx, by] != Tile.BRICK, "the slam broke the brick")
     }
 
+    @Test fun roccoDoubleJumps() {
+        startPlaying()
+        game.foes.clear()
+        val r = game.rocco
+        run(0.5f)
+        fun peak(double: Boolean): Float {
+            val y0 = r.y
+            var top = y0
+            input.jump = true; game.update(dt)
+            repeat(20) { game.update(dt); top = minOf(top, r.y) }
+            if (double) {
+                // Let go, then press JUMP again in mid-air.
+                input.jump = false; game.update(dt)
+                input.jump = true; game.update(dt)
+            }
+            repeat(80) { game.update(dt); top = minOf(top, r.y) }
+            input.jump = false
+            run(2f)
+            return y0 - top
+        }
+        val single = peak(false)
+        val double = peak(true)
+        assertTrue(double > single * 1.4f, "double jump goes higher: $double vs $single")
+        // Only one extra jump per jump.
+        input.jump = true; game.update(dt); input.jump = false; game.update(dt)
+        input.jump = true; game.update(dt); input.jump = false
+        assertTrue(r.doubleJumped)
+        val vy = r.vy
+        input.jump = true; game.update(dt); input.jump = false
+        assertTrue(r.vy >= vy, "no triple jump")
+    }
+
     @Test fun longJumpGoesFar() {
         startPlaying()
         game.foes.clear()

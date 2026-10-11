@@ -645,6 +645,19 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val rocco = h.who == Who.ROCCO
         // Rocco's moves: squat, butt slam and long jump.
         if (rocco) {
+            if (h.onGround) h.doubleJumped = false
+            if (h.flipT > 0) h.flipT -= dt
+            // Double jump: press JUMP again in mid-air.
+            if (jumpE && !h.onGround && !h.doubleJumped && !h.slamming) {
+                h.doubleJumped = true
+                h.longJumping = false
+                h.vy = h.jumpV * (if (h.mini) 0.75f else 0.9f)
+                h.flipT = 0.35f
+                sfx(Sound.JUMP)
+                for (i in 0 until 6) particles += Sparkle(h.cx, h.bottom, (i - 2.5f) * 30f, 40f, 0xFFFFFFFF.toInt())
+                moveHero(h, dt)
+                return
+            }
             h.crouching = input.down && h.onGround && !h.slamming
             if (downE && !h.onGround && !h.slamming) {
                 h.slamming = true

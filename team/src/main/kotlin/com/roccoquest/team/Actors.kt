@@ -102,6 +102,10 @@ class Hero(val who: Who, x: Float, y: Float) :
     var slamming = false
     var slamPause = 0f
     var longJumping = false
+    /** Rocco can jump once more in mid-air; this is set until he lands. */
+    var doubleJumped = false
+    /** Counts down while the double-jump flip is showing. */
+    var flipT = 0f
     var sprinting = false
     /** Rocco's blue shell spin dash. */
     var shellSpin = false
@@ -166,6 +170,11 @@ class Hero(val who: Who, x: Float, y: Float) :
                     slamming -> {
                         gfx.sprite(TeamArt.rocco(g.power, 2), px, py + 4, flipX = (anim * 20).toInt() % 2 == 0, h = 20f)
                         if (slamPause <= 0) for (i in 0 until 3) gfx.rect(px + 2 + i * 5, py - 10, 1.5f, 10f, 0xAAFFFFFF.toInt())
+                    }
+                    // Double jump: a quick spinning flip.
+                    flipT > 0 && !onGround -> {
+                        val spin = (flipT * 24).toInt() % 4
+                        gfx.sprite(TeamArt.rocco(g.power, 2), px, py, flipX = spin >= 2, flipY = spin == 1 || spin == 2)
                     }
                     // Long jump: stretched out flat like a superhero.
                     longJumping && !onGround -> {
