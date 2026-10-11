@@ -279,6 +279,26 @@ class MiniItem(x: Float, y: Float) : Pickup(x, y, false) {
     }
 }
 
+/** A Super Leaf from a mystery block: Tanooki Rocco for a while. It floats down gently. */
+class LeafItem(x: Float, y: Float) : Pickup(x, y, false) {
+    init { vx = 0f; vy = -120f }
+    override fun update(g: TeamGame, dt: Float) {
+        t += dt
+        vy = min(vy + GRAVITY * 0.25f * dt, 30f)
+        x += sin(t * 3) * 0.8f
+        if (g.level.moveY(this, vy * dt) == 1) vy = 0f
+        if (t > 15f) removed = true
+    }
+    override fun collect(g: TeamGame) = g.startTanooki()
+    override fun draw(g: TeamGame, gfx: Gfx, ox: Float) = TeamArt.leaf(gfx, x + ox, y, t)
+}
+
+/** A Wing Cap from a mystery block: Rocco can fly for a while. */
+class WingCapItem(x: Float, y: Float) : Pickup(x, y, true) {
+    override fun collect(g: TeamGame) = g.startWingCap()
+    override fun draw(g: TeamGame, gfx: Gfx, ox: Float) = TeamArt.wingCapItem(gfx, x + ox - 1, y, t)
+}
+
 /** A gift box from Ring-Ding Frog or a mystery block: random ore inside! */
 class GiftBox(x: Float, y: Float) : Pickup(x, y, false) {
     init { vx = 30f }

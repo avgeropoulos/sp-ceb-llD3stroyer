@@ -260,6 +260,55 @@ object TeamArt {
         )
     }
 
+    /** Tanooki ears on Rocco's cap and a striped raccoon tail (spinning during a tail attack). */
+    fun tanooki(gfx: Gfx, cx: Float, top: Float, bottom: Float, facing: Int, t: Float, spinning: Boolean, low: Boolean) {
+        val brown = 0xFFB0702A.toInt()
+        val dark = 0xFF5A3410.toInt()
+        val headY = if (low) bottom - 16 else top
+        gfx.oval(cx - 7, headY - 4, 5f, 6f, brown)
+        gfx.oval(cx + 2, headY - 4, 5f, 6f, brown)
+        gfx.oval(cx - 6, headY - 3, 3f, 3f, 0xFFF0D0A0.toInt())
+        gfx.oval(cx + 3, headY - 3, 3f, 3f, 0xFFF0D0A0.toInt())
+        // Tail: wags behind him, or whips all the way around during a tail spin.
+        val side = if (spinning) (if ((t * 20).toInt() % 2 == 0) 1 else -1) else -facing
+        val wag = if (spinning) 0f else sin(t * 8) * 2f
+        val tx = cx + side * 8
+        val ty = bottom - 11 + wag
+        gfx.oval(tx - 3 + side * 3, ty - 3, 10f, 7f, brown)
+        gfx.rect(tx + side * 5 - 1, ty - 2.5f, 2f, 5f, dark)
+        gfx.rect(tx + side * 8 - 1, ty - 2f, 2f, 4f, dark)
+    }
+
+    /** The Wing Cap: little white wings on the sides of Rocco's cap that flap when he flies. */
+    fun wingCap(gfx: Gfx, cx: Float, top: Float, t: Float, flying: Boolean) {
+        val flap = if (flying) sin(t * 18) * 3f else 0f
+        for (side in intArrayOf(-1, 1)) {
+            val bx = cx + side * 6
+            gfx.poly(
+                floatArrayOf(bx, bx + side * 9, bx + side * 7, bx + side * 2),
+                floatArrayOf(top + 2, top - 5 - flap, top + 1, top + 4),
+                0xFFFFFFFF.toInt(),
+            )
+            gfx.rect(bx + side * 3 - 0.5f, top - 1 - flap / 2, 1f, 3f, 0xFFC8C8D8.toInt())
+        }
+    }
+
+    /** The Super Leaf that turns Rocco into Tanooki Rocco. */
+    fun leaf(gfx: Gfx, x: Float, y: Float, t: Float) {
+        val sway = sin(t * 3) * 2f
+        gfx.poly(floatArrayOf(x + 6 + sway, x + 13, x + 6 + sway, x - 1), floatArrayOf(y, y + 6, y + 13, y + 6), 0xFFE86A1E.toInt())
+        gfx.poly(floatArrayOf(x + 6 + sway, x + 10, x + 6 + sway, x + 2), floatArrayOf(y + 2, y + 6, y + 11, y + 6), 0xFF2EB84A.toInt())
+        gfx.rect(x + 6 + sway, y + 3, 1f, 9f, 0xFF7A4A20.toInt())
+    }
+
+    /** The Wing Cap item: Rocco's red cap with white wings. */
+    fun wingCapItem(gfx: Gfx, x: Float, y: Float, t: Float) {
+        gfx.oval(x + 2, y + 3, 10f, 8f, 0xFFE52521.toInt())
+        gfx.rect(x + 2, y + 8, 12f, 3f, 0xFFE52521.toInt())
+        gfx.oval(x + 5, y + 5, 4f, 3f, 0xFFFFFFFF.toInt())
+        wingCap(gfx, x + 7, y + 6, t, true)
+    }
+
     /** The rare Black Flower: dark petals with a glowing purple middle. */
     fun blackFlower(gfx: Gfx, x: Float, y: Float, s: Float, t: Float) {
         val c = x + s / 2

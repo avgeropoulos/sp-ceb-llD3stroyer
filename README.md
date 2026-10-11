@@ -147,7 +147,12 @@ nearby bad guy every few seconds. Tap **ERASE** twice on a file to delete it.
 * **Sprint**: double-tap left or right and keep holding to run 50% faster (Shift on a keyboard).
 * **Double jump**: Rocco can press JUMP again in mid-air for a spinning second jump.
 * **Rocco mines too**: his **butt slam** breaks the block under him, and **jumping up into a block**
-  bonks it from below. Either way you get the ore (plain ground is too tough for him).
+  bonks it from below. Either way you get the ore (plain ground is too tough for him). He mines with
+  the same strength as Blocky's pickaxe, so a block takes the same number of hits from either of them.
+* **Tanooki suit** (Super Leaf) and **Wing Cap**: limited-time perks that pop out of the rainbow
+  mystery blocks. Tanooki Rocco (25 seconds) floats down slowly when you hold JUMP, and his ACTION is a
+  **tail spin** that hits bad guys on both sides and breaks bricks. With the Wing Cap (15 seconds), hold
+  JUMP to **fly** like in Mario 64.
 * **Rocco's Mario 64 moves**: swipe down on the ground to **squat**, swipe down in the air for a
   **butt slam** (it breaks blocks under him and sends out a shockwave), and press **LONG JUMP**
   (or squat + JUMP while running) for a big flying **long jump**.

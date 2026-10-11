@@ -188,6 +188,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private var afterSticker = 0
     fun hasSticker(i: Int) = stickerBits and (1L shl i) != 0L
     val stickerCount get() = Stickers.all.indices.count { hasSticker(it) }
+    /** Seconds left of Tanooki Rocco and of the Wing Cap. */
+    var tanookiT = 0f
+        private set
+    var wingT = 0f
+        private set
     /** Seconds left of Mini Rocco. */
     var miniT = 0f
         private set
@@ -378,6 +383,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         riding = null; trader = null; floodT = 0f; air = AIR_MAX; dogT = 10f; ventT.clear()
         if (rocco.mini) setMini(false)
         miniT = 0f
+        tanookiT = 0f
+        wingT = 0f
         hearts = MAX_HEARTS
         if (power == Power.GRASS) armor = max(armor, 2)
         invuln = 0f
@@ -731,6 +738,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (superE) useSuper()
 
         if (floodT > 0) floodT -= dt
+        if (tanookiT > 0) tanookiT -= dt
+        if (wingT > 0) {
+            wingT -= dt
+            if (wingT in 0f..3f && (wingT * 4).toInt() != ((wingT + dt) * 4).toInt()) sfx(Sound.BUMP)
+        }
         if (miniT > 0) {
             miniT -= dt
             // Grow back once there's room above Rocco.
@@ -914,6 +926,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             val tx = tileOf(if (h.facing > 0) h.x + h.w + 2 else h.x - 2)
             for (ty in tileOf(h.y + 2)..tileOf(h.bottom - 2)) if (level[tx, ty] == Tile.BRICK) bump(tx, ty)
         }
+        if (rocco && !h.mini) {
+            // Wing Cap: hold JUMP to fly up into the sky.
+            if (wingT > 0 && input.jump && !jumpE) h.vy = approach(h.vy, -170f, 1400f * dt)
+            // Tanooki: hold JUMP to float down slowly, wagging the tail.
+            else if (tanookiT > 0 && input.jump && h.vy > 45f) h.vy = 45f
+            if (h.y < 34f) { h.y = 34f; h.vy = max(h.vy, 0f) }
+        }
         // Floaty Pokemon (Blaze, Mystic, Spooky) glide when you hold JUMP on the way down.
         if (h.who == Who.MON && mon.floaty && input.jump && h.vy > 55f) h.vy = 55f
         moveHero(h, dt)
@@ -934,7 +953,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 Tile.BRICK, Tile.QCOIN, Tile.QHEART, Tile.QSTAR, Tile.QMYSTERY -> bump(tx, ty)
                 // A butt slam mines the block under Rocco (but not plain ground).
                 Tile.GROUND, Tile.DIRT -> {}
-                else -> if (level.toughness(tx, ty) > 0) mine(tx, ty, 4, rocco = true)
+                else -> if (level.toughness(tx, ty) > 0) mine(tx, ty, pickTier, rocco = true)
             }
         }
         // A shockwave along the ground.
@@ -1018,9 +1037,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 level[tx, ty] = Tile.USED
                 sfx(Sound.POWERUP)
                 // A surprise every time!
-                when (Random.nextInt(6)) {
+                when (Random.nextInt(8)) {
                     0 -> spawn(StarItem(px, above))
                     5 -> spawn(MiniItem(px, above))
+                    6 -> spawn(LeafItem(px, above))
+                    7 -> spawn(WingCapItem(px, above))
                     1 -> spawn(HeartItem(px, above))
                     2 -> repeat(5) { i -> spawn(Coin(px + (i - 2) * 6f, ty * TILE - 16f, popping = true)) }
                     else -> spawn(GiftBox(px, above))
@@ -1034,7 +1055,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 points(50)
             }
             // Rocco can bonk blocks from below to mine them.
-            else -> if (by?.who == Who.ROCCO && level.toughness(tx, ty) > 0) mine(tx, ty, 2, rocco = true) else sfx(Sound.BUMP)
+            else -> if (by?.who == Who.ROCCO && level.toughness(tx, ty) > 0) mine(tx, ty, pickTier, rocco = true) else sfx(Sound.BUMP)
         }
         for (f in foes) {
             if (!f.dying && !f.boss && abs(f.bottom - ty * TILE) < 2 && f.cx > tx * TILE - 4 && f.cx < tx * TILE + TILE + 4) f.hit(this, 99)
@@ -1110,8 +1131,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     /**
-     * Hits block ([tx], [ty]) with [strength] pickaxe points. Rocco's head-bonks and
-     * butt slams mine too ([rocco] = true): they can't break plain ground, but nothing is too hard.
+     * Hits block ([tx], [ty]) with [strength] pickaxe points. Rocco's head-bonks and butt slams
+     * mine too ([rocco] = true) with the same strength as Blocky's pickaxe, so a block takes the
+     * same number of hits from either of them. Rocco just can't break plain ground.
      */
     fun mine(tx: Int, ty: Int, strength: Int = pickTier, rocco: Boolean = false) {
         val t = level[tx, ty]
@@ -1123,7 +1145,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (Tile.solid(t)) particles += FloatText(tx * TILE + 8f, ty * TILE.toFloat(), "CLANK!")
             return
         }
-        if (t == Tile.DIAMOND && pickTier < 2 && !rocco) {
+        if (t == Tile.DIAMOND && pickTier < 2) {
             sfx(Sound.BUMP)
             toast("Diamond is too hard! Craft an IRON PICKAXE.")
             return
@@ -1152,6 +1174,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun throwPower(h: Hero) {
         h.cooldown = 0.3f
         h.swing = 0.15f
+        if (tanookiT > 0 && !h.mini) { tailSpin(h); return }
         if (power == Power.NONE) {
             val reach = Body(if (h.facing > 0) h.x + h.w - 2 else h.x - 10, h.y + 4, 12f, 12f)
             for (f in foes) if (!f.dying && f.active && f.overlaps(reach)) f.hit(this, 1)
@@ -1729,6 +1752,34 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         setState(State.PLAY)
     }
 
+    /** Super Leaf: Tanooki Rocco for 25 seconds (tail spin + slow float). */
+    fun startTanooki() {
+        tanookiT = 25f
+        sfx(Sound.POWERUP)
+        toast("TANOOKI ROCCO! ACTION = tail spin, hold JUMP to float.")
+    }
+
+    /** Wing Cap: Rocco can fly for 15 seconds. */
+    fun startWingCap() {
+        wingT = 15f
+        sfx(Sound.POWERUP)
+        sound.sayAs("Wing cap!", Voice.HERO)
+        toast("WING CAP! Hold JUMP to fly!")
+    }
+
+    /** Tanooki tail spin: whacks bad guys and breaks bricks on both sides. */
+    private fun tailSpin(h: Hero) {
+        h.swing = 0.25f
+        h.cooldown = 0.3f
+        sfx(Sound.KICK)
+        val zone = Body(h.x - 20f, h.y + 6f, h.w + 40f, h.h - 4f)
+        for (f in foes) if (f.active && !f.dying && f.overlaps(zone)) f.hit(this, 3)
+        for (tx in intArrayOf(tileOf(h.x - 6), tileOf(h.x + h.w + 6))) {
+            for (ty in tileOf(h.y + 8)..tileOf(h.bottom - 2)) if (level[tx, ty] == Tile.BRICK) bump(tx, ty)
+        }
+        for (i in 0 until 4) particles += Puff(h.cx + (i - 1.5f) * 9f, h.bottom - 6)
+    }
+
     /** Mini Mushroom: Rocco shrinks for 25 seconds. */
     fun startMini() {
         if (!rocco.mini) setMini(true)
@@ -1940,6 +1991,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     internal fun pickCardYForTest(i: Int) = pickCardY(i)
     internal fun thingsForTest(): List<Thing> = things + pending
     internal fun dogForTest() { dogT = 0f }
+    internal fun spawnForTest(t: Thing) = spawn(t)
     internal fun pickStickerScreenForTest() = offerStickers(levelIndex + 1)
     internal fun giveStickerForTest(i: Int) { stickerBits = stickerBits or (1L shl i) }
     internal fun openBookForTest() = setState(State.BOOK)
@@ -2489,9 +2541,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
         val powerText = if (power == Power.NONE) "NO FLOWER" else "${power.label} Lv${flowerLevel[power.ordinal]}"
         val starText = (if (starT > 0) "  •  STAR ${starT.toInt() + 1}" else "") +
-            (if (miniT > 0) "  •  MINI ${miniT.toInt() + 1}" else "")
+            (if (miniT > 0) "  •  MINI ${miniT.toInt() + 1}" else "") +
+            (if (tanookiT > 0) "  •  TANOOKI ${tanookiT.toInt() + 1}" else "") +
+            (if (wingT > 0) "  •  WINGS ${wingT.toInt() + 1}" else "")
         val swordText = if (sword != Sword.NONE) "  •  ${sword.label.removeSuffix(" SWORD")} SWORD" else ""
-        gfx.shadowText("${TeamArt.pickName(pickTier)} PICK$swordText  •  $powerText$starText", max(112f, viewW * 0.25f), 26f, 7f, 0xFFDDEEFF.toInt())
+        gfx.shadowText("${TeamArt.pickName(pickTier)} PICK$swordText  •  $powerText", max(112f, viewW * 0.25f), 26f, 7f, 0xFFDDEEFF.toInt())
+        // Power-up timers get their own line so they never run under the buttons.
+        if (starText.isNotEmpty()) gfx.shadowText(starText.removePrefix("  •  "), 6f, if (level.def.shoreX >= 0 && inWater(leader)) 54f else 41f, 7f, 0xFFFFE14D.toInt())
 
         if (level.def.shoreX >= 0 && inWater(leader)) {
             // Air meter: a row of bubbles under the HUD.

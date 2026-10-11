@@ -197,7 +197,11 @@ class Hero(val who: Who, x: Float, y: Float) :
                     }
                     else -> gfx.sprite(TeamArt.rocco(g.power, frame), px, py, flipX = facing < 0)
                 }
-                if (swing > 0) {
+                if (!mini && !shellSpin) {
+                    if (g.tanookiT > 0) TeamArt.tanooki(gfx, cx + ox, py, bottom, facing, anim, swing > 0, crouching)
+                    if (g.wingT > 0) TeamArt.wingCap(gfx, cx + ox, if (crouching) bottom - 16 else py, anim, !onGround)
+                }
+                if (swing > 0 && g.tanookiT <= 0) {
                     val hx = cx + facing * 8 + ox
                     gfx.oval(hx - 2, y + 11, 4f, 4f, 0xFFFFC08A.toInt())
                 }

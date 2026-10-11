@@ -839,35 +839,78 @@ class TeamGameTest {
         assertTrue(abs(g2.rocco.x - x) < 60f, "starts where it was saved: ${g2.rocco.x} vs $x")
     }
 
-    @Test fun roccoMinesBySlammingAndBonking() {
+    @Test fun roccoMinesWithTheSameHitsAsBlocky() {
         startPlaying()
         game.foes.clear()
         val r = game.rocco
         val lv = game.level
         // Find an iron block with open air above it.
-        val (ix, iy) = (0 until lv.w).flatMap { x -> (1 until ROWS).map { x to it } }
+        val (ix, iy) = (0 until lv.w).flatMap { x -> (2 until ROWS).map { x to it } }
             .first { (x, y) -> lv[x, y] == Tile.IRON && lv[x, y - 1] == Tile.EMPTY && lv[x, y - 2] == Tile.EMPTY }
+        // Blocky's pickaxe: how many hits does iron take?
+        var blockyHits = 0
+        lv[ix, iy] = Tile.IRON
+        while (lv[ix, iy] == Tile.IRON && blockyHits < 20) { game.mine(ix, iy); blockyHits++ }
+        // Rocco's butt slams on the same kind of block.
+        lv[ix, iy] = Tile.IRON
         val iron = game.inventory[Ore.IRON.ordinal]
-        repeat(3) {
-            if (lv[ix, iy] != Tile.IRON) return@repeat
-            r.x = ix * TILE + 2f; r.y = iy * TILE - r.h - 50f; r.vy = 0f; r.onGround = false
+        var slams = 0
+        while (lv[ix, iy] == Tile.IRON && slams < 20) {
+            r.x = ix * TILE + 2f; r.y = iy * TILE - r.h - 40f; r.vy = 0f; r.onGround = false
             game.update(dt)
             input.down = true; game.update(dt); input.down = false
-            run(1f) { game.hurtProof() }
+            run(0.8f) { game.hurtProof() }
+            slams++
         }
-        assertEquals(Tile.EMPTY, lv[ix, iy], "the butt slam mined the iron")
-        assertTrue(game.inventory[Ore.IRON.ordinal] > iron)
-        // Bonking a stone block from below mines it too.
+        assertEquals(blockyHits, slams, "same number of hits for Rocco and Blocky")
+        assertTrue(game.inventory[Ore.IRON.ordinal] > iron, "Rocco gets the ore")
+        // Bonking a stone block from below takes the same number of hits too.
         lv[ix, iy] = Tile.STONE
-        lv[ix, iy - 1] = Tile.EMPTY
-        val stone = game.inventory[Ore.STONE.ordinal]
-        repeat(4) {
-            if (lv[ix, iy] != Tile.STONE) return@repeat
+        lv[ix, iy + 1] = Tile.EMPTY; lv[ix, iy + 2] = Tile.EMPTY
+        var bonks = 0
+        while (lv[ix, iy] == Tile.STONE && bonks < 20) {
             r.x = ix * TILE + 2f; r.y = (iy + 1) * TILE + 2f; r.vy = -300f; r.onGround = false
             run(0.3f) { game.hurtProof() }
+            bonks++
         }
-        assertEquals(Tile.EMPTY, lv[ix, iy], "bonked it to pieces")
-        assertTrue(game.inventory[Ore.STONE.ordinal] > stone)
+        lv[ix, iy] = Tile.STONE
+        var stoneHits = 0
+        while (lv[ix, iy] == Tile.STONE && stoneHits < 20) { game.mine(ix, iy); stoneHits++ }
+        assertEquals(stoneHits, bonks, "bonks match pickaxe hits")
+        // Diamonds need an iron pickaxe, for Rocco too.
+        lv[ix, iy] = Tile.DIAMOND
+        repeat(6) { game.mine(ix, iy, game.pickTier, rocco = true) }
+        assertEquals(Tile.DIAMOND, lv[ix, iy])
+    }
+
+    @Test fun tanookiAndWingCap() {
+        startPlaying()
+        game.foes.clear()
+        val r = game.rocco
+        run(0.5f)
+        // Wing Cap: hold JUMP and fly way up.
+        game.startWingCap()
+        input.jump = true
+        run(2f)
+        assertTrue(r.y < 80f, "flying high: y=${r.y}")
+        input.jump = false
+        run(3f)
+        // Tanooki: holding JUMP floats down slowly, and ACTION is a tail spin.
+        game.startTanooki()
+        r.y = 60f; r.vy = 0f; r.onGround = false
+        input.jump = true
+        run(0.6f)
+        assertTrue(r.vy <= 45f, "floating: vy=${r.vy}")
+        input.jump = false
+        run(3f)
+        val left = Grumbler(r.x - 14f, r.bottom, false).also { it.active = true; it.vx = 0f }
+        val right = Grumbler(r.x + 20f, r.bottom, false).also { it.active = true; it.vx = 0f }
+        game.foes += left; game.foes += right
+        game.hurtProof()
+        input.action = true; game.update(dt); input.action = false
+        assertTrue(left.dying && right.dying, "the tail spin hit both sides")
+        // Both come out of the rainbow mystery blocks.
+        assertTrue(game.thingsForTest().none { it is LeafItem })
     }
 
     @Test fun armorWearsDownAndBreaks() {
@@ -1202,5 +1245,14 @@ class TeamGameTest {
         input.blackFlower = true; game.update(dt); input.blackFlower = false
         run(0.4f)
         shot("black-flower")
+        while (game.leaderWho != Who.ROCCO) { input.swap = true; game.update(dt); input.swap = false; game.update(dt) }
+        run(2f)
+        game.startTanooki()
+        game.startWingCap()
+        game.spawnForTest(LeafItem(game.rocco.x + 60f, 120f))
+        game.spawnForTest(WingCapItem(game.rocco.x + 90f, 120f))
+        input.jump = true; run(0.7f); input.jump = false
+        run(0.1f)
+        shot("tanooki-wingcap")
     }
 }
