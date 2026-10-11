@@ -269,7 +269,27 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun saveAtBed() {
         save()
         storage.save(key("bedLevel"), levelIndex + 1)
+        storage.save(key("spotLevel"), 0)
     }
+
+    /** Shows "SAVED!" on the pause screen for a moment. */
+    private var savedFlash = 0f
+
+    /** The SAVE GAME button on the pause screen: saves everything, right where the team is standing. */
+    fun saveHere() {
+        save()
+        storage.save(key("bedLevel"), 0)
+        storage.save(key("spotLevel"), levelIndex + 1)
+        storage.save(key("spotX"), safeX.toInt())
+        storage.save(key("spotY"), safeY.toInt())
+        respawnX = safeX
+        respawnY = safeY
+        savedFlash = 2f
+        sfx(Sound.ONEUP)
+    }
+
+    /** True when the file was saved with SAVE GAME (not in a bed). */
+    fun slotSpotSaved(s: Int) = storage.load(key("spotLevel", s)) > 0
 
     private fun loadSlot() {
         Ore.entries.forEach { inventory[it.ordinal] = storage.load(key("ore_${it.name}")) }
@@ -288,7 +308,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     fun eraseSlot(s: Int) {
-        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "stickersLo", "stickersHi", "houseLevel", "houseX", "houseY", "bed", "bedLevel")) {
+        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "stickersLo", "stickersHi", "houseLevel", "houseX", "houseY", "bed", "bedLevel", "spotLevel", "spotX", "spotY")) {
             storage.save(key(name, s), 0)
         }
         Ore.entries.forEach { storage.save(key("ore_${it.name}", s), 0) }
@@ -391,9 +411,17 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 things.filterIsInstance<Checkpoint>().forEach { if (it.x <= respawnX) it.reached = true }
             }
         }
+        // Pick up right where SAVE GAME was pressed.
+        val spotSaved = restoreHome && storage.load(key("spotLevel")) == index + 1
+        if (spotSaved) {
+            respawnX = storage.load(key("spotX")).toFloat()
+            respawnY = storage.load(key("spotY")).toFloat()
+            things.filterIsInstance<Checkpoint>().forEach { if (it.x <= respawnX) it.reached = true }
+        }
         placeTeam(respawnX, respawnY)
         camX = (leader.cx - viewW * 0.4f).coerceIn(0f, max(0f, level.w * TILE - viewW))
         if (!fromCheckpoint) {
+            storage.save(key("spotLevel"), if (spotSaved) index + 1 else 0)
             storage.save(key("bedLevel"), if (restoreHome && storage.load(key("bedLevel")) == index + 1) index + 1 else 0)
             save()
         }
@@ -447,6 +475,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 if (pauseE) paused = !paused
                 // The STICKER BOOK button on the pause screen.
                 if (paused && tapped && input.tapY in 150f..178f && abs(input.tapX - viewW / 2) < 70f) { setState(State.BOOK); return }
+                // ...and the SAVE GAME button under it.
+                if (paused && tapped && input.tapY in 184f..212f && abs(input.tapX - viewW / 2) < 70f) saveHere()
+                if (savedFlash > 0) savedFlash -= dt
                 if (!paused) {
                     if (craftE) { setState(State.CRAFT); sfx(Sound.BUMP) } else {
                         if (tntE) throwTnt()
@@ -2100,6 +2131,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     gfx.rect(viewW / 2 - 70, 150f, 140f, 28f, 0xFF7A4A20.toInt())
                     gfx.rect(viewW / 2 - 68, 152f, 136f, 24f, 0xFFB98A52.toInt())
                     gfx.text("STICKER BOOK  $stickerCount/${Stickers.all.size}", viewW / 2, 168f, 9f, white, 1)
+                    gfx.rect(viewW / 2 - 70, 184f, 140f, 28f, 0xFF1E5A1E.toInt())
+                    gfx.rect(viewW / 2 - 68, 186f, 136f, 24f, if (savedFlash > 0) 0xFF3CE070.toInt() else 0xFF2EB84A.toInt())
+                    gfx.text(if (savedFlash > 0) "SAVED! (FILE ${slot + 1})" else "SAVE GAME", viewW / 2, 202f, 9f, white, 1)
                     TeamControls.drawTop(gfx, viewW, musicOn, false, time)
                 }
             }
@@ -2513,6 +2547,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 TeamArt.mon(gfx, m, x + w / 2, 146f, time + i, 1, false)
                 gfx.shadowText(m.label, x + w / 2, 160f, 7f, m.color, 1)
                 if (slotSlept(i)) gfx.shadowText("Saved in bed ♥", x + w / 2, 170f, 6f, 0xFFFFC8D8.toInt(), 1)
+                else if (slotSpotSaved(i)) gfx.shadowText("Saved mid-level", x + w / 2, 170f, 6f, 0xFFC8FFD8.toInt(), 1)
                 val armed = eraseArmed == i
                 gfx.rect(x + 8, 180f, w - 16, 16f, if (armed) 0xFFE53A1E.toInt() else 0x66000000)
                 gfx.text(if (armed) "TAP AGAIN TO ERASE" else "ERASE", x + w / 2, 191f, 6f, white, 1)

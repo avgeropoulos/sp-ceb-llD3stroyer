@@ -221,7 +221,8 @@ He still digs blocks with his pickaxe, but swings his sword whenever a bad guy i
 **Home**: build a **House** (10 stone + 2 iron) where you're standing, then a **Bed** inside it
 (4 stone + 10 coins). Stand on the bed and press the action button to **sleep**. That heals you and
 **saves your game** right there, and when you load the file you wake up next to your bed.
-(The game also saves at the start of every level.)
+You can also save any time: pause the game and tap **SAVE GAME**. When you load that file you start
+right where you saved. (The game also saves at the start of every level.)
 
 ### Levels
 

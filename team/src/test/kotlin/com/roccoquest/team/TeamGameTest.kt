@@ -816,6 +816,29 @@ class TeamGameTest {
         assertTrue(game.score >= TeamGame.MAX_HEARTS * 1000 * TeamGame.SCORE_MULT)
     }
 
+    @Test fun saveGameFromThePauseScreen() {
+        game.newGame(2, Mon.SPOOKY)
+        run(3.2f)
+        game.foes.clear()
+        repeat(60 * 6) { botStep() }
+        input.right = false; input.jump = false
+        run(1f)
+        val x = game.rocco.x
+        assertTrue(x > 300f)
+        game.inventory[Ore.GOLD.ordinal] = 7
+        input.pause = true; game.update(dt); input.pause = false; game.update(dt)
+        assertTrue(game.paused)
+        tap(game.viewW / 2, 198f)
+        assertTrue(game.slotSpotSaved(2), "saved from the pause screen")
+        // Load it again: same level, same spot, same stuff.
+        val g2 = TeamGame(TeamInput(), ears, storage)
+        g2.continueGame(2)
+        assertEquals(game.levelIndex, g2.levelIndex)
+        assertEquals(7, g2.inventory[Ore.GOLD.ordinal])
+        assertEquals(Mon.SPOOKY, g2.mon)
+        assertTrue(abs(g2.rocco.x - x) < 60f, "starts where it was saved: ${g2.rocco.x} vs $x")
+    }
+
     @Test fun enemiesHaveHealthBars() {
         startPlaying()
         val g = game.foes.filterIsInstance<Grumbler>().first()
@@ -1083,5 +1106,9 @@ class TeamGameTest {
         game.openBookForTest()
         run(0.2f)
         shot("sticker-book")
+        game.startLevel(0); run(3.5f)
+        input.pause = true; game.update(dt); input.pause = false; game.update(dt)
+        tap(game.viewW / 2, 198f)
+        shot("pause")
     }
 }
