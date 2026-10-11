@@ -269,6 +269,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         private set
     /** Set by the phone when a controller button or stick is used. */
     @Volatile var padConnected = false
+    /** For the controller tester: the last button the phone saw, where the stick is, and frames per second. */
+    @Volatile var padLastButton = ""
+    @Volatile var padLastTime = -10f
+    @Volatile var stickX = 0f
+    @Volatile var stickY = 0f
+    @Volatile var fps = 0
+    /** The phone reports a button press for the tester. */
+    fun padSaw(name: String) { padLastButton = name; padLastTime = time }
     /** The phone puts the standard buttons back when this is called. */
     var onPadReset: (() -> Unit)? = null
 
@@ -326,6 +334,36 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         gfx.rect(viewW / 2 - 60, 200f, 120f, 24f, 0xFF2EB84A.toInt())
         gfx.text("DONE", viewW / 2, 216f, 9f, white, 1)
         if (toastT > 0) gfx.shadowText(toast, viewW / 2, 160f, 7f, 0xFF7FE07F.toInt(), 1)
+        renderPadTester(gfx)
+    }
+
+    /** A little live tester: press a button or move the stick and see what the game gets. */
+    private fun renderPadTester(gfx: Gfx) {
+        val w = 92f
+        val x = viewW - w - 8f
+        val y = 50f
+        gfx.rect(x, y, w, 108f, 0xFF262640.toInt())
+        gfx.text("TEST IT", x + w / 2, y + 10, 7f, 0xFFFFD21F.toInt(), 1)
+        // The stick: the dot follows it.
+        val cx = x + w / 2
+        val cy = y + 34
+        gfx.oval(cx - 18, cy - 18, 36f, 36f, 0xFF3C3C5C.toInt())
+        val held = input.left || input.right || input.up || input.down
+        gfx.oval(cx + stickX.coerceIn(-1f, 1f) * 14 - 5, cy + stickY.coerceIn(-1f, 1f) * 14 - 5, 10f, 10f,
+            if (held) 0xFF7FE07F.toInt() else 0xFFDDDDDD.toInt())
+        val dir = buildString {
+            if (input.left) append("LEFT ")
+            if (input.right) append("RIGHT ")
+            if (input.up) append("UP ")
+            if (input.down) append("DOWN")
+        }.trim()
+        gfx.text(dir.ifEmpty { "move the stick" }, cx, y + 64, 6f, 0xFFDDDDDD.toInt(), 1)
+        val fresh = time - padLastTime < 1.5f
+        val action = padNames.indexOf(padLastButton).let { if (it >= 0) padActions[it] else "" }
+        gfx.text(if (padLastButton.isEmpty()) "press a button" else padLastButton, cx, y + 80, 9f,
+            if (fresh) 0xFF7FE07F.toInt() else 0xFFDDDDDD.toInt(), 1)
+        if (action.isNotEmpty()) gfx.text("= $action", cx, y + 90, 6f, 0xFFFFD21F.toInt(), 1)
+        if (fps > 0) gfx.text("$fps frames/sec", cx, y + 103, 6f, if (fps in 1..45) 0xFFE53A1E.toInt() else 0xFFAAAAAA.toInt(), 1)
     }
 
     /** The armor the team is wearing, and how many more hits it can take. */
@@ -612,7 +650,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         away = null
         bonusT = 0f
         portalHit = null
-        jumpBufT = 0f; coyoteT = 0f; actionBufT = 0f
+        jumpBufT = 0f; coyoteT = 0f; actionBufT = 0f; jumpHoldT = 0f
         val keepX = respawnX
         val keepY = respawnY
         val keepHouse = if (index == levelIndex) house else null
@@ -725,6 +763,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private var coyoteT = 0f
     /** THROW / MINE pressed while still cooling down happens as soon as it's ready. */
     private var actionBufT = 0f
+    /** Every jump goes at least a little way up, even from a very quick tap of the button. */
+    private var jumpHoldT = 0f
 
     fun update(dt: Float) {
         time += dt
@@ -1053,6 +1093,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         // Early presses are remembered for a moment (counted down every frame, even in a minecart).
         if (jumpE) jumpBufT = 0.13f else if (jumpBufT > 0f) jumpBufT -= dt
         if (actionE) actionBufT = 0.2f else if (actionBufT > 0f) actionBufT -= dt
+        if (jumpHoldT > 0f) jumpHoldT -= dt
         if (invuln > 0) invuln -= dt
         if (bannerT > 0) bannerT -= dt
         if (shake > 0) shake -= dt
@@ -1283,12 +1324,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (jumpE && !h.onGround) { dismount(jumpOff = true); return }
             val want = dir * h.speed * (if (sprint) 1.6f else 1.3f)
             h.vx = approach(h.vx, want, (if (h.onGround) 900f else 600f) * dt)
-            if (jumpE && h.onGround) { h.vy = h.jumpV * 1.12f; jumpBufT = 0f; sfx(Sound.JUMP) }
+            if (jumpE && h.onGround) { h.vy = h.jumpV * 1.12f; jumpBufT = 0f; jumpHoldT = 0.12f; sfx(Sound.JUMP) }
             if (input.jump && !h.onGround && h.vy > 0f && flutterT > 0f) {
                 flutterT -= dt
                 h.vy = approach(h.vy, -40f, 1800f * dt)
             }
-            if (!input.jump && h.vy < -150f) h.vy = -150f
+            if (!input.jump && jumpHoldT <= 0f && h.vy < -150f) h.vy = -150f
             h.vy = min(h.vy + GRAVITY * grav * dt, MAX_FALL)
             moveHero(h, dt)
             d.facing = h.facing
@@ -1306,6 +1347,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 h.longJumping = false
                 h.vy = h.jumpV * (if (h.mini) 0.75f else 0.9f)
                 h.flipT = 0.35f
+                jumpHoldT = 0.1f
                 sfx(Sound.JUMP)
                 for (i in 0 until 6) particles += Sparkle(h.cx, h.bottom, (i - 2.5f) * 30f, 40f, 0xFFFFFFFF.toInt())
                 moveHero(h, dt)
@@ -1362,10 +1404,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (jumpBufT > 0f && (h.onGround || (coyoteT > 0f && h.vy >= 0f))) {
             jumpBufT = 0f
             coyoteT = 0f
+            jumpHoldT = 0.12f
             h.vy = h.jumpV * (if (sprint) 1.06f else 1f) * (if (metal && h === this.rocco) (if (inWater(h)) 0.8f else 0.9f) else 1f)
             sfx(Sound.JUMP)
         }
-        if (!input.jump && h.vy < -130f) h.vy = -130f
+        if (!input.jump && jumpHoldT <= 0f && h.vy < -130f) h.vy = -130f
         // Mini Rocco is light as a feather: he floats way up high.
         val g2 = if (h.mini) grav * 0.5f else grav
         h.vy = min(h.vy + GRAVITY * g2 * dt, if (h.mini) 160f else MAX_FALL)

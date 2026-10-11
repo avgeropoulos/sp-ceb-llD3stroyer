@@ -3,6 +3,8 @@ package com.roccoquest.teamup
 import android.app.Activity
 import android.os.Build
 import android.os.Bundle
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
@@ -37,6 +39,13 @@ class MainActivity : Activity() {
         gameView.release()
         super.onDestroy()
     }
+
+    // Controllers: every button and stick move goes straight to the game.
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean =
+        gameView.handleKey(event) || super.dispatchKeyEvent(event)
+
+    override fun dispatchGenericMotionEvent(ev: MotionEvent): Boolean =
+        gameView.onGenericMotionEvent(ev) || super.dispatchGenericMotionEvent(ev)
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)

@@ -42,6 +42,15 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         holder.addCallback(this)
         isFocusable = true
         isFocusableInTouchMode = true
+        // Deliver stick moves the moment they happen instead of saving them up for the next frame.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try { requestUnbufferedDispatch(InputDevice.SOURCE_CLASS_JOYSTICK) } catch (_: Exception) {}
+        }
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        requestFocus()
     }
 
     fun resume() {
@@ -108,6 +117,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         val choreographer = android.view.Choreographer.getInstance()
         var last = 0L
         var acc = 0f
+        var frames = 0
+        var fpsStart = System.nanoTime()
         val step = 1f / 60f
         val callback = object : android.view.Choreographer.FrameCallback {
             override fun doFrame(frameTimeNanos: Long) {
@@ -129,7 +140,13 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                     steps++
                 }
                 if (steps == 3) acc = acc.coerceAtMost(step)
+                if (now - fpsStart >= 1_000_000_000L) {
+                    game.fps = (frames * 1_000_000_000L / (now - fpsStart)).toInt()
+                    frames = 0
+                    fpsStart = now
+                }
                 if (steps > 0) {
+                    frames++
                     // The screen can disappear mid-draw (phone locked, app closed): just skip that frame.
                     try { draw() } catch (_: Exception) {}
                 }
@@ -168,6 +185,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         val scale = height / VIEW_H
         if (scale <= 0f) return true
         val action = e.actionMasked
+        // Get the rest of this touch straight away instead of once per frame.
+        if (action == MotionEvent.ACTION_DOWN) try { requestUnbufferedDispatch(e) } catch (_: Exception) {}
         var n = 0
         if (action != MotionEvent.ACTION_CANCEL && action != MotionEvent.ACTION_UP) {
             for (i in 0 until e.pointerCount) {
@@ -192,6 +211,10 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
     /** Controller buttons for JUMP, THROW, SWITCH and SUPER (changeable on the CONTROLLER screen). */
     private val padKeys = IntArray(4)
+    private companion object {
+        const val STICK_ON = 0.35f
+        const val STICK_OFF = 0.25f
+    }
     private val defaultPadKeys = intArrayOf(
         KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BUTTON_X, KeyEvent.KEYCODE_BUTTON_Y,
     )
@@ -238,9 +261,20 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         input.up = keyU || padU || hatU || stickU
     }
 
+    /**
+     * The activity hands every key straight to us (so the controller works even if Android thinks
+     * something else has "focus"). Returns true if the game used the key.
+     */
+    fun handleKey(event: KeyEvent): Boolean = when (event.action) {
+        KeyEvent.ACTION_DOWN -> onKeyDown(event.keyCode, event)
+        KeyEvent.ACTION_UP -> onKeyUp(event.keyCode, event)
+        else -> false
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         if (isController(event)) {
             game.padConnected = true
+            if (event.repeatCount == 0) game.padSaw(buttonName(keyCode))
             // The CONTROLLER screen is waiting for a button: remember it.
             if (game.state == TeamGame.State.CONTROLS && game.padStep >= 0 && KeyEvent.isGamepadButton(keyCode) &&
                 keyCode != KeyEvent.KEYCODE_BUTTON_START && keyCode != KeyEvent.KEYCODE_BUTTON_SELECT
@@ -308,25 +342,25 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         return true
     }
 
-    /** The analog stick and the D-pad "hat" on controllers that send it that way. */
+    /**
+     * The analog stick and the D-pad "hat" on controllers that send it that way. A direction turns on
+     * past [STICK_ON] and only turns off again below [STICK_OFF], so a stick resting near the edge
+     * doesn't flicker on and off.
+     */
     override fun onGenericMotionEvent(event: MotionEvent): Boolean {
-        if ((event.source and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK &&
-            event.action == MotionEvent.ACTION_MOVE
-        ) {
+        if (event.isFromSource(InputDevice.SOURCE_CLASS_JOYSTICK) && event.actionMasked == MotionEvent.ACTION_MOVE) {
             game.padConnected = true
-            val dev = event.device
-            fun axis(a: Int): Float {
-                val v = event.getAxisValue(a)
-                val flat = dev?.getMotionRange(a, event.source)?.flat ?: 0f
-                return if (kotlin.math.abs(v) > flat) v else 0f
-            }
-            val x = axis(MotionEvent.AXIS_X)
-            val y = axis(MotionEvent.AXIS_Y)
+            val x = event.getAxisValue(MotionEvent.AXIS_X)
+            val y = event.getAxisValue(MotionEvent.AXIS_Y)
             val hx = event.getAxisValue(MotionEvent.AXIS_HAT_X)
             val hy = event.getAxisValue(MotionEvent.AXIS_HAT_Y)
-            val dead = 0.45f
-            stickL = x < -dead; stickR = x > dead
-            stickU = y < -0.6f; stickD = y > 0.6f
+            game.stickX = if (kotlin.math.abs(hx) > 0.5f) hx else x
+            game.stickY = if (kotlin.math.abs(hy) > 0.5f) hy else y
+            stickL = if (stickL) x < -STICK_OFF else x < -STICK_ON
+            stickR = if (stickR) x > STICK_OFF else x > STICK_ON
+            // Up and down need a firmer push, so running doesn't make Rocco duck by accident.
+            stickU = if (stickU) y < -STICK_OFF - 0.2f else y < -STICK_ON - 0.2f
+            stickD = if (stickD) y > STICK_OFF + 0.2f else y > STICK_ON + 0.2f
             hatL = hx < -0.5f; hatR = hx > 0.5f
             hatU = hy < -0.5f; hatD = hy > 0.5f
             refreshDirections()

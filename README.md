@@ -336,7 +336,14 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
 * Even a super-quick tap (or a controller button pressed and let go between two frames) always counts.
 * Pressing JUMP a tiny bit before landing still jumps, and so does pressing it just after running off
   a ledge. THROW / MINE pressed a moment too early happens as soon as it's ready.
-* The talking voices and the music are made on their own background threads, so they never freeze
+* Controllers: every button and stick move goes straight to the game (it no longer depends on Android
+  deciding the game has "focus"), stick moves arrive the moment they happen, and the stick has a
+  small "sticky" zone so it doesn't flicker on and off near the edge.
+* Every jump goes up at least a fair bit, even from a very quick tap of A.
+* The CONTROLLER screen has a **TEST IT** box: move the stick to see the dot follow it, press a button
+  to see its name and what it does, and see how many frames per second the phone draws. If A says
+  "= THROW" instead of "= JUMP", use SET MY BUTTONS.
+* The talking voices, sound effects and the music are made on their own background threads, so they never freeze
   the game for a moment.
 
 ### Other changes

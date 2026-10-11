@@ -66,9 +66,13 @@ class SoundFx(context: Context) : SoundSink {
         }
     }
 
+    /** Starting a sound can take the phone a few milliseconds, so it happens off the game thread. */
+    private val sfxThread = android.os.HandlerThread("sfx-play").apply { start() }
+    private val sfxHandler = android.os.Handler(sfxThread.looper)
+
     override fun play(s: Sound) {
         val id = ids[s.ordinal]
-        if (id != 0) pool.play(id, 0.55f, 0.55f, 1, 0, 1f)
+        if (id != 0) sfxHandler.post { try { pool.play(id, 0.55f, 0.55f, 1, 0, 1f) } catch (_: Exception) {} }
     }
 
     override fun music(m: Music) = musicPlayer.play(m)
@@ -136,6 +140,7 @@ class SoundFx(context: Context) : SoundSink {
 
     fun release() {
         speech.shutdownNow()
+        sfxThread.quit()
         pool.release()
         musicPlayer.release()
         tts?.shutdown()

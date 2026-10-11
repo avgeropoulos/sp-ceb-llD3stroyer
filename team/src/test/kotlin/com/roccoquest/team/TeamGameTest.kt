@@ -689,6 +689,20 @@ class TeamGameTest {
         input.jump = true; input.jump = false
         game.update(dt)
         assertTrue(r.vy < 0f, "a super-quick tap still jumps")
+        // ...and goes a decent way up, not just a tiny hop.
+        fun peak(holdFrames: Int): Float {
+            run(1f)
+            val y0 = r.y
+            var top = y0
+            input.jump = true
+            if (holdFrames == 0) input.jump = false
+            repeat(90) { i -> if (i == holdFrames) input.jump = false; game.update(dt); top = minOf(top, r.y) }
+            input.jump = false
+            return y0 - top
+        }
+        val quick = peak(0)
+        val full = peak(40)
+        assertTrue(quick > full * 0.4f, "a quick tap jumps a fair bit: $quick vs $full")
     }
 
     @Test fun jumpPressedJustBeforeLandingStillJumps() {
