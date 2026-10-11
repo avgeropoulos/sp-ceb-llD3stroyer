@@ -78,6 +78,12 @@ class Hero(val who: Who, x: Float, y: Float) :
     var cooldown = 0f
     var jumpCooldown = 0f
     var stuck = 0f
+    var crouching = false
+    /** Butt slam: a short pause in the air, then a fast drop. */
+    var slamming = false
+    var slamPause = 0f
+    var longJumping = false
+    var sprinting = false
     /** Which Pokemon this is, when [who] is [Who.MON]. */
     var mon = Mon.SPARKY
 
@@ -118,7 +124,21 @@ class Hero(val who: Who, x: Float, y: Float) :
         when (who) {
             Who.ROCCO -> {
                 val frame = if (!onGround) 2 else if (walking) 1 else 0
-                gfx.sprite(TeamArt.rocco(g.power, frame), px, py, flipX = facing < 0)
+                when {
+                    // Squatting: squash the sprite down.
+                    crouching -> gfx.sprite(TeamArt.rocco(g.power, 0), px, bottom - 15, flipX = facing < 0, h = 15f)
+                    // Butt slam: tucked in, spinning, with speed lines.
+                    slamming -> {
+                        gfx.sprite(TeamArt.rocco(g.power, 2), px, py + 4, flipX = (anim * 20).toInt() % 2 == 0, h = 20f)
+                        if (slamPause <= 0) for (i in 0 until 3) gfx.rect(px + 2 + i * 5, py - 10, 1.5f, 10f, 0xAAFFFFFF.toInt())
+                    }
+                    // Long jump: stretched out flat like a superhero.
+                    longJumping && !onGround -> {
+                        gfx.sprite(TeamArt.rocco(g.power, 2), px - 3, py + 6, flipX = facing < 0, w = 22f, h = 18f)
+                        gfx.rect(px - facing * 10 + 4, py + 14, 8f, 1.5f, 0x99FFFFFF.toInt())
+                    }
+                    else -> gfx.sprite(TeamArt.rocco(g.power, frame), px, py, flipX = facing < 0)
+                }
                 if (swing > 0) {
                     val hx = cx + facing * 8 + ox
                     gfx.oval(hx - 2, y + 11, 4f, 4f, 0xFFFFC08A.toInt())

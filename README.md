@@ -144,6 +144,10 @@ nearby bad guy every few seconds. Tap **ERASE** twice on a file to delete it.
 * **Blocky** swings his pickaxe (**MINE**) to dig stone, **iron**, **gold**, **diamond**, **emerald**,
   **copper** and **amethyst** out of the rocks. Swipe down to dig straight down.
 * **Rocco** jumps higher and **THROWS** whatever flower power the team has crafted.
+* **Sprint**: double-tap left or right and keep holding to run 50% faster (Shift on a keyboard).
+* **Rocco's Mario 64 moves**: swipe down on the ground to **squat**, swipe down in the air for a
+  **butt slam** (it breaks blocks under him and sends out a shockwave), and press **LONG JUMP**
+  (or squat + JUMP while running) for a big flying **long jump**.
 * Every bad guy has a **health bar**. Stomping still works on most of them!
 * New bad guys: **Boneheads** fall apart when stomped and then get back up, and **Flapper** bats
   wake up in caves and chase you.
@@ -225,7 +229,7 @@ It's easy but not too easy: 5 hearts, checkpoints, and if you run out of hearts 
 last checkpoint (or your bed) and keep all your ore. Beaten bosses leave diamonds, gold and TNT behind.
 
 Keyboard: arrows/WASD to move, Space to jump, X to mine/throw/talk/ride/sleep, Q to swap, E for SUPER,
-T to throw TNT, G for Poseidon, C to craft (1-6 picks a recipe, 7/8/9 switch tabs), P to pause, M for music.
+T to throw TNT, G for Poseidon, Shift to sprint, L for long jump, C to craft (1-6 picks a recipe, 7/8/9 switch tabs), P to pause, M for music.
 
 ![Crafting table](docs/teamup-craft.png)
 

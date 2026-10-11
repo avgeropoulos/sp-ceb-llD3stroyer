@@ -16,6 +16,10 @@ class TeamInput {
     @Volatile var swap = false
     /** The Pokemon's SUPER move. */
     @Volatile var superMove = false
+    /** Keyboard run button; on touch screens, double-tap a direction instead. */
+    @Volatile var run = false
+    /** Rocco's long jump. */
+    @Volatile var longJump = false
     /** Throw a stick of TNT. */
     @Volatile var tnt = false
     /** Call Poseidon (costs 50 coins). */
@@ -42,6 +46,7 @@ object TeamControls {
     val swap = Button(0f, 150f, 17f)
     val superB = Button(0f, 160f, 16f)
     val tntB = Button(0f, 210f, 14f)
+    val longB = Button(0f, 166f, 15f)
     val poseidonB = Button(30f, 150f, 17f)
     val pause = Button(0f, 14f, 10f)
     val music = Button(0f, 14f, 10f)
@@ -55,6 +60,7 @@ object TeamControls {
         swap.cx = viewW - 70f
         superB.cx = viewW - 124f
         tntB.cx = viewW - 150f
+        longB.cx = viewW - 176f
         pause.cx = viewW - 16f
         music.cx = viewW - 42f
         craft.cx = viewW - 82f
@@ -76,6 +82,7 @@ object TeamControls {
         var s = false
         var sup = false
         var tn = false
+        var lj = false
         var po = false
         var c = false
         var p = false
@@ -98,7 +105,9 @@ object TeamControls {
                 val ds = hypot(x - swap.cx, y - swap.cy) / swap.r
                 val dsu = hypot(x - superB.cx, y - superB.cy) / superB.r
                 val dt = hypot(x - tntB.cx, y - tntB.cy) / tntB.r
+                val dl = hypot(x - longB.cx, y - longB.cy) / longB.r
                 when {
+                    dl < 1.2f && dl <= dj && dl <= da && dl <= dt && dl <= dsu -> lj = true
                     dt < 1.2f && dt <= dj && dt <= da && dt <= dsu -> tn = true
                     dsu < 1.25f && dsu <= dj && dsu <= da && dsu <= ds -> sup = true
                     ds < 1.25f && ds <= dj && ds <= da -> s = true
@@ -119,6 +128,7 @@ object TeamControls {
         input.swap = s
         input.superMove = sup
         input.tnt = tn
+        input.longJump = lj
         input.poseidon = po
         input.craft = c
         input.pause = p
@@ -128,6 +138,7 @@ object TeamControls {
     fun draw(
         gfx: Gfx, input: TeamInput, viewW: Float, actionLabel: String, swapLabel: String, swapColor: Int,
         superCharge: Float, superColor: Int, t: Float, tntCount: Int = 0, poseidonReady: Boolean = false,
+        showLong: Boolean = false, sprinting: Boolean = false,
     ) {
         layout(viewW)
         val c = 0xDDFFFFFF.toInt()
@@ -158,6 +169,14 @@ object TeamControls {
             gfx.oval(b.cx - b.r, b.cy - b.r, b.r * 2, b.r * 2, if (input.superMove) 0xCCFFFFFF.toInt() else superColor)
         }
         gfx.text("SUPER", b.cx, b.cy + 2, 6f, c, 1)
+        if (showLong) {
+            val lb = longB
+            gfx.oval(lb.cx - lb.r - 1, lb.cy - lb.r - 1, lb.r * 2 + 2, lb.r * 2 + 2, 0x55000000)
+            gfx.oval(lb.cx - lb.r, lb.cy - lb.r, lb.r * 2, lb.r * 2, if (input.longJump) 0xCCFFFFFF.toInt() else 0x88E52521.toInt())
+            gfx.text("LONG", lb.cx, lb.cy + 1, 6f, c, 1)
+            gfx.text("JUMP", lb.cx, lb.cy + 8, 5f, c, 1)
+        }
+        if (sprinting) gfx.text("SPRINT!", (left.cx + right.cx) / 2, 178f, 8f, 0xFFFFD21F.toInt(), 1)
         if (tntCount > 0) {
             val tb = tntB
             gfx.oval(tb.cx - tb.r - 1, tb.cy - tb.r - 1, tb.r * 2 + 2, tb.r * 2 + 2, 0x55000000)
@@ -178,7 +197,7 @@ object TeamControls {
             gfx.rect(pb.cx + 3.5f, pb.cy - 10, 1.5f, 4f, gold)
             gfx.text("50", pb.cx, pb.cy + 11, 5f, c, 1)
         }
-        gfx.text("swipe ↓ = dig down", (left.cx + right.cx) / 2, 236f, 6f, if (input.down) c else 0x88FFFFFF.toInt(), 1)
+        gfx.text("2x tap = sprint  swipe \u2193 = squat/slam", 70f, 236f, 6f, if (input.down) c else 0x88FFFFFF.toInt(), 1)
     }
 
     fun drawTop(gfx: Gfx, viewW: Float, musicOn: Boolean, craftReady: Boolean, t: Float) {

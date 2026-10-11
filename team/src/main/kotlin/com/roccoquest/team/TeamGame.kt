@@ -141,7 +141,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private var eraseArmed = -1
     private var eraseT = 0f
     private var pickChoice = Mon.SPARKY
-    private val prev = BooleanArray(9)
+    private val prev = BooleanArray(11)
+    private var downE = false
+    private var longE = false
+    // Double-tap a direction to sprint.
+    private var prevDir = 0
+    private var lastTapDir = 0
+    private var lastTapTime = -1f
+    val sprinting get() = leader.sprinting
 
     // TNT, Poseidon, swimming, minecarts, villagers and Dennis
     var tnt = 0
@@ -361,6 +368,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val actionE = edge(6, input.action)
         val tntE = edge(7, input.tnt)
         val poseidonE = edge(8, input.poseidon)
+        downE = edge(9, input.down)
+        longE = edge(10, input.longJump)
         val tapped = input.tap
         input.tap = false
         val num = input.numberKey
@@ -563,6 +572,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     private fun swap() {
         val old = leader
+        old.crouching = false; old.slamming = false; old.longJumping = false; old.sprinting = false
         leaderWho = when (leaderWho) { Who.ROCCO -> Who.BLOCKY; Who.BLOCKY -> Who.MON; Who.MON -> Who.ROCCO }
         val h = leader
         if (hypot(h.cx - old.cx, h.cy - old.cy) > 140f || h.y > level.h * TILE) teleport(h, old)
@@ -598,9 +608,67 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (h.onGround) { safeX = h.x; safeY = h.bottom }
             return
         }
-        h.vx = approach(h.vx, dir * h.speed, (if (h.onGround) 800f else 520f) * dt)
+        // Double-tap a direction (and keep holding it) to sprint.
+        if (dir != 0 && dir != prevDir) {
+            h.sprinting = dir == lastTapDir && time - lastTapTime < 0.35f
+            lastTapDir = dir
+            lastTapTime = time
+        }
+        if (dir == 0) h.sprinting = false
+        prevDir = dir
+        val sprint = (h.sprinting || input.run) && dir != 0
+        h.sprinting = sprint
+
+        val rocco = h.who == Who.ROCCO
+        // Rocco's moves: squat, butt slam and long jump.
+        if (rocco) {
+            h.crouching = input.down && h.onGround && !h.slamming
+            if (downE && !h.onGround && !h.slamming) {
+                h.slamming = true
+                h.slamPause = 0.18f
+                h.longJumping = false
+                h.vx = 0f
+                h.vy = 0f
+                sfx(Sound.KICK)
+            }
+            val longJump = h.onGround && !h.slamming && (longE || (jumpE && h.crouching && abs(h.vx) > 40f))
+            if (longJump) {
+                h.longJumping = true
+                h.crouching = false
+                h.vx = h.facing * 270f
+                h.vy = -250f
+                sfx(Sound.JUMP)
+                particles += FloatText(h.cx, h.y - 4, "LONG JUMP!", 0xFFFFD21F.toInt())
+                moveHero(h, dt)
+                return
+            }
+        } else {
+            h.crouching = false
+            h.slamming = false
+            h.longJumping = false
+        }
+        if (h.slamming) {
+            if (h.slamPause > 0) {
+                h.slamPause -= dt
+                h.vx = 0f
+                h.vy = 0f
+            } else h.vy = 560f
+            moveHero(h, dt)
+            if (h.onGround) slamImpact(h)
+            return
+        }
+        if (h.longJumping) {
+            // Keep flying forward until we land.
+            h.vy = min(h.vy + GRAVITY * grav * 0.85f * dt, MAX_FALL)
+            moveHero(h, dt)
+            if (h.onGround) h.longJumping = false
+            return
+        }
+        val top = h.speed * (if (sprint) 1.5f else 1f)
+        val want = if (h.crouching) 0f else dir * top
+        h.vx = approach(h.vx, want, (if (h.onGround) 800f else 520f) * dt)
         if (jumpE && h.onGround) {
-            h.vy = h.jumpV
+            h.vy = h.jumpV * (if (sprint) 1.06f else 1f)
             sfx(Sound.JUMP)
         }
         if (!input.jump && h.vy < -130f) h.vy = -130f
@@ -611,6 +679,25 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (h.onGround && level.solidAt(h.x + 1, h.bottom + 1) && level.solidAt(h.x + h.w - 1, h.bottom + 1)) {
             safeX = h.x
             safeY = h.bottom
+        }
+    }
+
+    /** Rocco lands a butt slam: breaks the blocks under him and knocks out bad guys nearby. */
+    private fun slamImpact(h: Hero) {
+        h.slamming = false
+        shake = 0.25f
+        sfx(Sound.STOMP)
+        val ty = tileOf(h.bottom + 2)
+        for (tx in tileOf(h.x + 1)..tileOf(h.x + h.w - 1)) {
+            when (level[tx, ty]) {
+                Tile.BRICK, Tile.QCOIN, Tile.QHEART, Tile.QSTAR, Tile.QMYSTERY -> bump(tx, ty)
+            }
+        }
+        // A shockwave along the ground.
+        val zone = Body(h.cx - 40f, h.bottom - 20f, 80f, 22f)
+        for (f in foes) if (f.active && !f.dying && f.overlaps(zone)) f.hit(this, if (f.boss) 2 else 3)
+        for (i in 0 until 6) {
+            particles += Puff(h.cx + (i - 2.5f) * 10f, h.bottom - 2)
         }
     }
 
@@ -629,7 +716,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             return
         }
         val dx = targetX - f.cx
-        val want = if (abs(dx) > 12f) (if (dx > 0) 1f else -1f) * min(f.speed * 1.15f, abs(dx) * 4f) else 0f
+        val cap = max(f.speed * 1.15f, abs(l.vx) * 1.05f)
+        val want = if (abs(dx) > 12f) (if (dx > 0) 1f else -1f) * min(cap, abs(dx) * 4f) else 0f
         f.facing = when {
             want > 0f -> 1
             want < 0f -> -1
@@ -1343,6 +1431,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     f.stomp(this, h)
                     // Hydro is heavy: his stomps hurt bosses more.
                     if (h.who == Who.MON && mon == Mon.HYDRO && f.boss) f.hit(this, 2)
+                    // A butt slam lands extra hard.
+                    if (h.slamming && f.boss) f.hit(this, 3)
                     h.vy = if (h === leader && input.jump) -340f else -240f
                     break
                 }
@@ -1640,7 +1730,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                         val next = team[(team.indexOf(l) + 1) % team.size]
                         TeamControls.draw(
                             gfx, input, viewW, label, next.label, next.color, superCharge, mon.color, time,
-                            tnt, coins >= POSEIDON_COST,
+                            tnt, coins >= POSEIDON_COST, l.who == Who.ROCCO && riding == null, l.sprinting,
                         )
                         TeamControls.drawTop(gfx, viewW, musicOn, canCraftSomething, time)
                     }

@@ -526,6 +526,69 @@ class TeamGameTest {
         assertTrue(dodged > 0, "endermen dodge sometimes")
     }
 
+    @Test fun doubleTapToSprint() {
+        startPlaying()
+        game.foes.clear()
+        // Single press: normal speed.
+        run(1f) { input.right = true }
+        val walk = abs(game.rocco.vx)
+        input.right = false; run(0.1f)
+        // Tap, let go, tap again and hold: sprint!
+        run(0.08f) { input.right = true }
+        input.right = false; game.update(dt)
+        run(1f) { input.right = true }
+        assertTrue(game.sprinting, "sprinting after a double tap")
+        assertTrue(abs(game.rocco.vx) > walk * 1.3f, "sprint is faster: ${game.rocco.vx} vs $walk")
+        input.right = false
+        run(0.2f)
+        assertTrue(!game.sprinting)
+    }
+
+    @Test fun roccoSquatsAndButtSlams() {
+        startPlaying()
+        game.foes.clear()
+        val r = game.rocco
+        run(0.5f)
+        input.down = true; run(0.3f)
+        assertTrue(r.crouching, "squat")
+        run(0.5f) { input.right = true }
+        input.right = false
+        assertTrue(abs(r.vx) < 5f, "no walking while squatting")
+        input.down = false; run(0.2f)
+        assertTrue(!r.crouching)
+        // Jump under the first brick row and slam down onto... a brick below us.
+        val lv = game.level
+        val (bx, by) = (0 until lv.w).flatMap { x -> (0 until ROWS).map { x to it } }.first { (x, y) -> lv[x, y] == Tile.BRICK }
+        r.x = bx * TILE + 2f; r.y = by * TILE - 23f - 60f; r.vy = 0f
+        game.update(dt)
+        input.down = true; game.update(dt); input.down = false
+        assertTrue(r.slamming, "butt slam in the air")
+        run(1f)
+        assertTrue(!r.slamming)
+        assertTrue(lv[bx, by] != Tile.BRICK, "the slam broke the brick")
+    }
+
+    @Test fun longJumpGoesFar() {
+        startPlaying()
+        game.foes.clear()
+        val r = game.rocco
+        run(0.5f)
+        val x0 = r.x
+        r.facing = 1
+        input.longJump = true; game.update(dt); input.longJump = false
+        assertTrue(r.longJumping)
+        var t = 0f
+        while (!r.onGround && t < 3f) { game.update(dt); t += dt }
+        val long = r.x - x0
+        // A normal jump from standing still goes nowhere; the long jump goes far.
+        assertTrue(long > 90f, "long jump distance: $long")
+        // Crouch + jump while moving is a long jump too, like in Mario 64.
+        run(0.6f) { input.right = true }
+        input.down = true; game.update(dt)
+        input.jump = true; game.update(dt); input.jump = false; input.down = false; input.right = false
+        assertTrue(r.longJumping, "crouch + jump = long jump")
+    }
+
     @Test fun enemiesHaveHealthBars() {
         startPlaying()
         val g = game.foes.filterIsInstance<Grumbler>().first()
