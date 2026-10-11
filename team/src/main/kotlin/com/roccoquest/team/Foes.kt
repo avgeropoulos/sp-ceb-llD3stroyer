@@ -49,6 +49,7 @@ abstract class Foe(x: Float, y: Float, w: Float, h: Float, val maxHp: Int) : Thi
     fun knockOut(g: TeamGame) {
         if (dying) return
         dying = true
+        if (!boss) g.onFoeDefeated(this)
         vy = -220f
         vx = if (g.leader.cx < cx) 40f else -40f
         g.sfx(Sound.KICK)
@@ -118,6 +119,7 @@ class Grumbler(x: Float, y: Float, private var winged: Boolean) : Foe(x + 1, y -
         if (winged) { winged = false; vy = 0f; return }
         squashed = 0f
         hp = 0
+        g.onFoeDefeated(this)
         vx = 0f
     }
 

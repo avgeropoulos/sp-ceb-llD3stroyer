@@ -254,6 +254,11 @@ He still digs blocks with his pickaxe, but swings his sword whenever a bad guy i
 ![The Ender Dragon](docs/teamup-ender-dragon.png)
 ![Villager trades](docs/teamup-trade.png)
 
+**Lots of points!** Every point counts three times, and your score shows at the top (the star).
+Every bad guy you knock out drops coins (tough ones drop more), bosses drop a shower of coins,
+stomping bad guys one after another without landing is a **combo** worth more and more points
+(5 in a row gives a heart!), and every heart you have left at the end of a level is worth a bonus.
+
 It's easy but not too easy: 5 hearts, checkpoints, and if you run out of hearts you go back to the
 last checkpoint (or your bed) and keep all your ore. Beaten bosses leave diamonds, gold and TNT behind.
 

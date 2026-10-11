@@ -42,6 +42,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         /** Seconds of air underwater before the team starts losing hearts. */
         const val AIR_MAX = 30f
         const val POSEIDON_COST = 50
+        const val SCORE_MULT = 3
         val TABS = listOf("FLOWERS", "SUPPLIES", "HOME", "SWORDS")
     }
 
@@ -186,7 +187,35 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     fun addParticle(p: Particle) { particles += p }
     fun puff(x: Float, y: Float) { particles += Puff(x, y) }
     fun say(x: Float, y: Float, text: String, dur: Float = 1.8f) { particles += Speech(x, y, text, dur) }
-    fun addScore(n: Int, x: Float, y: Float) { score += n; particles += FloatText(x, y, n.toString()) }
+    /** Every point is worth [SCORE_MULT] times as much: lots of points! */
+    fun addScore(n: Int, x: Float, y: Float) {
+        score += n * SCORE_MULT
+        particles += FloatText(x, y, (n * SCORE_MULT).toString(), 0xFFFFE14D.toInt())
+    }
+    private fun points(n: Int) { score += n * SCORE_MULT }
+
+    /** A bad guy was knocked out: it drops coins (tough ones drop more). */
+    fun onFoeDefeated(f: Foe) {
+        if (f is SpikeBall || f is Flame || f is SonicBoom || f is DragonBall || f is BombBomb) return
+        val n = when {
+            f.maxHp >= 10 -> 5
+            f.maxHp >= 4 -> 3
+            else -> 1
+        }
+        repeat(n) { i -> spawn(Coin(f.cx - 8 + (i - (n - 1) / 2f) * 7f, f.y - 4, popping = true)) }
+    }
+
+    /** Stomping bad guys one after another without landing scores more and more. */
+    private fun stompCombo(h: Hero, f: Foe) {
+        h.combo++
+        val bonus = min(8000, 100 shl (h.combo - 1))
+        addScore(bonus, f.cx, f.y - 8)
+        if (h.combo >= 2) particles += FloatText(f.cx, f.y - 18, "COMBO x${h.combo}!", solidRainbow(time))
+        if (h.combo == 5) {
+            healHeart()
+            toast("5 STOMPS IN A ROW! +1 HEART")
+        }
+    }
     private fun toast(s: String) { toast = s; toastT = 2.4f }
 
     fun iceBurst(x: Float, y: Float) {
@@ -680,6 +709,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         updateSpikes(dt)
         updateDog(dt)
         for (h in team) {
+            if (h.onGround) h.combo = 0
             h.anim += dt
             if (h.swing > 0) h.swing -= dt
             if (h.cooldown > 0) h.cooldown -= dt
@@ -916,7 +946,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 level[tx, ty] = Tile.USED
                 spawn(Coin(px, ty * TILE - 16f, popping = true))
                 sfx(Sound.COIN)
-                score += 100
+                points(100)
             }
             Tile.QHEART -> {
                 level[tx, ty] = Tile.USED
@@ -945,7 +975,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 level[tx, ty] = Tile.EMPTY
                 debris(tx, ty, 0xFFB4501C.toInt())
                 sfx(Sound.BREAK)
-                score += 50
+                points(50)
             }
             else -> sfx(Sound.BUMP)
         }
@@ -1044,7 +1074,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             level[tx, ty] = Tile.EMPTY
             debris(tx, ty, color, 6)
             sfx(Sound.BREAK)
-            score += 20
+            points(20)
             if (ore != null) {
                 inventory[ore.ordinal]++
                 particles += FloatText(tx * TILE + 8f, ty * TILE.toFloat(), "+1 ${ore.label}", ore.color)
@@ -1630,7 +1660,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     fun healHeart() {
-        if (hearts < MAX_HEARTS) hearts++ else score += 1000
+        if (hearts < MAX_HEARTS) hearts++ else points(1000)
         particles += FloatText(leader.cx, leader.y, "+1 HEART", 0xFFFF8080.toInt())
         sfx(Sound.ONEUP)
     }
@@ -1693,6 +1723,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 val falling = h.vy > 0 && h.bottom - f.y < 10f
                 if (falling && f.stompable) {
                     f.stomp(this, h)
+                    stompCombo(h, f)
                     // Hydro is heavy: his stomps hurt bosses more.
                     if (h.who == Who.MON && mon == Mon.HYDRO && f.boss) f.hit(this, 2)
                     // A butt slam lands extra hard.
@@ -1736,16 +1767,25 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 }
                 is Goal -> if (leader.x + leader.w >= t.x && state == State.PLAY) {
                     setState(State.CLEAR)
-                    score += 2000
+                    heartBonus()
+                    points(2000)
                     sfx(Sound.CLEAR)
                 }
             }
         }
     }
 
+    private var lastBonus = 0
+
+    /** Finishing a level: 1000 points (times the multiplier) for every heart left. */
+    private fun heartBonus() {
+        lastBonus = hearts * 1000 * SCORE_MULT
+        score += lastBonus
+    }
+
     private fun collectCoin() {
         coins++
-        score += 50
+        points(50)
         sfx(Sound.COIN)
         if (coins == POSEIDON_COST) toast("50 COINS! Tap the trident to call POSEIDON!")
     }
@@ -1910,7 +1950,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         shake = 0.5f
         sfx(Sound.VICTORY)
         say(leader.cx, leader.y - 10, if (f is KragJr) "Teamwork!" else "We did it!!", 2f)
-        // Defeated bosses leave a pile of treasure behind.
+        // Defeated bosses leave a pile of treasure behind, and a shower of coins.
+        repeat(15) { i -> spawn(Coin(f.cx - 40 + i * 6f, f.y, popping = true)) }
         inventory[Ore.DIAMOND.ordinal] += 2
         inventory[Ore.GOLD.ordinal] += 3
         tnt += 1
@@ -1931,6 +1972,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 if (levelIndex == Levels.all.lastIndex) {
                     offerStickers(-1)
                 } else {
+                    heartBonus()
                     clearNote = when {
                         b is KingKrag && b.dry -> "Only one enemy left... THE ENDER DRAGON!"
                         b is KingKrag && b.wonderStyle -> "...but something stirs in the DEEP DARK!"
@@ -2035,6 +2077,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     State.CLEAR -> {
                         gfx.shadowText("LEVEL CLEAR!", viewW / 2, 96f, 22f, 0xFFFFD21F.toInt(), 1)
                         gfx.shadowText("SCORE $score", viewW / 2, 118f, 10f, white, 1)
+                        if (lastBonus > 0) gfx.shadowText("HEART BONUS +$lastBonus", viewW / 2, 154f, 9f, 0xFFFF9AB0.toInt(), 1)
                         if (clearNote.isNotEmpty()) gfx.shadowText(clearNote, viewW / 2, 138f, 10f, solidRainbow(time), 1)
                     }
                     State.VICTORY -> renderVictory(gfx)
@@ -2312,7 +2355,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         for (i in 0 until armor) TeamArt.shield(gfx, 6f + MAX_HEARTS * 12f + i * 9f, 3f, 8f)
         gfx.sprite(Sprites.coin, 6f, 17f, w = 8f, h = 11f)
         gfx.shadowText("x$coins", 16f, 26f, 8f, white)
-        gfx.shadowText(mon.label, 46f, 26f, 7f, mon.color)
+        gfx.shadowText("\u2605$score", 42f, 26f, 7f, 0xFFFFE14D.toInt())
         var x = max(112f, viewW * 0.25f)
         for (o in Ore.entries) {
             TeamArt.oreIcon(gfx, o, x, 5f, 10f)

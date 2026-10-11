@@ -788,6 +788,34 @@ class TeamGameTest {
         assertTrue(g2.hasSword(Sword.STONE) && g2.hasSword(Sword.DIAMOND))
     }
 
+    @Test fun lotsOfPointsAndCoins() {
+        startPlaying()
+        val r = game.rocco
+        // Knocked-out bad guys drop coins.
+        val g = game.foes.filterIsInstance<Grumbler>().first()
+        game.foes.retainAll(listOf(g))
+        g.active = true
+        val coins = game.coins
+        g.hit(game, 9)
+        run(1f) { game.hurtProof() }
+        assertTrue(game.coins > coins, "coins dropped: ${game.coins}")
+        // Stomping three bad guys in a row is a combo worth way more than three single stomps.
+        game.foes.clear()
+        val before = game.score
+        val gs = (0 until 3).map { Grumbler(r.x + it * 40f, r.bottom - 60f, false).also { f -> f.active = true; f.vx = 0f } }
+        r.vy = 0f
+        for (f in gs) {
+            r.x = f.cx - r.w / 2; r.y = f.y - r.h + 4; r.vy = 200f; r.onGround = false
+            game.foes.clear(); game.foes += f
+            game.update(dt)
+        }
+        assertTrue(r.combo >= 3, "combo ${r.combo}")
+        assertTrue(game.score - before >= (100 + 200 + 400) * TeamGame.SCORE_MULT, "combo points: ${game.score - before}")
+        // Finishing a level gives a heart bonus.
+        assertTrue(botRun(0, 100f))
+        assertTrue(game.score >= TeamGame.MAX_HEARTS * 1000 * TeamGame.SCORE_MULT)
+    }
+
     @Test fun enemiesHaveHealthBars() {
         startPlaying()
         val g = game.foes.filterIsInstance<Grumbler>().first()

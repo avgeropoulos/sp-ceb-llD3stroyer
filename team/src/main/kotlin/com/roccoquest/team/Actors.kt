@@ -104,6 +104,8 @@ class Hero(val who: Who, x: Float, y: Float) :
     var longJumping = false
     /** Rocco can jump once more in mid-air; this is set until he lands. */
     var doubleJumped = false
+    /** Stomps in a row without touching the ground. */
+    var combo = 0
     /** Counts down while the double-jump flip is showing. */
     var flipT = 0f
     var sprinting = false
