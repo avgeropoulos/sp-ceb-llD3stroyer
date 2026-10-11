@@ -27,6 +27,9 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     private val gfx = CanvasGfx()
 
     @Volatile private var running = false
+    /** Bumped every time a loop starts, so an old loop that wakes up late knows to stop. */
+    @Volatile private var loopId = 0
+    @Volatile private var loopLooper: android.os.Looper? = null
     private var resumed = false
     private var surfaceReady = false
     private var thread: Thread? = null
@@ -58,11 +61,14 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     private fun startLoop() {
         if (!resumed || !surfaceReady || running) return
         running = true
-        thread = Thread(this, "game-loop").also { it.start() }
+        val id = ++loopId
+        thread = Thread({ runLoop(id) }, "game-loop").also { it.start() }
     }
 
     private fun stopLoop() {
         running = false
+        // Wake the loop up right away (with the screen off it would never get another frame).
+        loopLooper?.quit()
         thread?.let {
             try { it.join(500) } catch (_: InterruptedException) {}
         }
@@ -88,17 +94,24 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
      * after reading the newest input. Drawing faster than the screen just piles finished frames up in
      * a queue, and every press then shows up a few frames late.
      */
-    override fun run() {
-        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
+    override fun run() = runLoop(loopId)
+
+    private fun runLoop(myId: Int) {
+        try {
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY)
+        } catch (_: Exception) {}
         android.os.Looper.prepare()
         val looper = android.os.Looper.myLooper()!!
+        loopLooper = looper
+        // stopLoop() may have happened while this thread was starting.
+        if (!running || myId != loopId) return
         val choreographer = android.view.Choreographer.getInstance()
         var last = 0L
         var acc = 0f
         val step = 1f / 60f
         val callback = object : android.view.Choreographer.FrameCallback {
             override fun doFrame(frameTimeNanos: Long) {
-                if (!running) {
+                if (!running || myId != loopId) {
                     looper.quit()
                     return
                 }
@@ -116,12 +129,16 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                     steps++
                 }
                 if (steps == 3) acc = acc.coerceAtMost(step)
-                if (steps > 0) draw()
+                if (steps > 0) {
+                    // The screen can disappear mid-draw (phone locked, app closed): just skip that frame.
+                    try { draw() } catch (_: Exception) {}
+                }
                 choreographer.postFrameCallback(this)
             }
         }
         choreographer.postFrameCallback(callback)
         android.os.Looper.loop()
+        if (loopLooper === looper) loopLooper = null
     }
 
     private fun draw() {

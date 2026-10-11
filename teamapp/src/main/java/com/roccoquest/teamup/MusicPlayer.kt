@@ -20,12 +20,12 @@ class MusicPlayer {
 
     init {
         thread(name = "music") {
-            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO)
+            try { android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO) } catch (_: Exception) {}
             loop()
         }
         // Make the other songs slowly in the background, so the game itself never has to wait.
         thread(name = "music-synth", priority = Thread.MIN_PRIORITY) {
-            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+            try { android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND) } catch (_: Exception) {}
             for (m in Music.entries) {
                 if (released) break
                 try { song(m) } catch (_: Exception) {}

@@ -612,6 +612,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         away = null
         bonusT = 0f
         portalHit = null
+        jumpBufT = 0f; coyoteT = 0f; actionBufT = 0f
         val keepX = respawnX
         val keepY = respawnY
         val keepHouse = if (index == levelIndex) house else null
@@ -1049,6 +1050,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     // ---------------------------------------------------------------- Playing
 
     private fun play(dt: Float, jumpE: Boolean, swapE: Boolean, superE: Boolean, actionE: Boolean) {
+        // Early presses are remembered for a moment (counted down every frame, even in a minecart).
+        if (jumpE) jumpBufT = 0.13f else if (jumpBufT > 0f) jumpBufT -= dt
+        if (actionE) actionBufT = 0.2f else if (actionBufT > 0f) actionBufT -= dt
         if (invuln > 0) invuln -= dt
         if (bannerT > 0) bannerT -= dt
         if (shake > 0) shake -= dt
@@ -1112,7 +1116,6 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
         }
         dino?.let { d -> d.x = rocco.cx - d.w / 2; d.y = rocco.bottom - d.h }
-        if (actionE) actionBufT = 0.2f else if (actionBufT > 0f) actionBufT -= dt
         if ((input.action || actionBufT > 0f) && l.cooldown <= 0f && riding == null) {
             actionBufT = 0f
             action(l)
@@ -1248,13 +1251,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun updateLeader(h: Hero, dt: Float, jumpE: Boolean, grav: Float) {
         val dir = (if (input.right) 1 else 0) - (if (input.left) 1 else 0)
         if (dir != 0) h.facing = dir
-        if (jumpE) jumpBufT = 0.13f else if (jumpBufT > 0f) jumpBufT -= dt
         if (h.onGround) coyoteT = 0.1f else if (coyoteT > 0f) coyoteT -= dt
         if (inWater(h) && !(metal && h === rocco)) {
             // Swimming: slow sinking, and every tap of JUMP is a swim stroke.
             // (Metal Rocco is too heavy to swim: he walks along the bottom instead.)
             h.vx = approach(h.vx, dir * h.speed * 0.85f, 500f * dt)
-            if (jumpE) { h.vy = -170f; sfx(Sound.SPLASH) }
+            if (jumpE) { h.vy = -170f; jumpBufT = 0f; sfx(Sound.SPLASH) }
             if (input.down) h.vy = approach(h.vy, 120f, 400f * dt)
             h.vy = min(h.vy + GRAVITY * 0.3f * dt, 80f)
             moveHero(h, dt)
@@ -1281,7 +1283,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (jumpE && !h.onGround) { dismount(jumpOff = true); return }
             val want = dir * h.speed * (if (sprint) 1.6f else 1.3f)
             h.vx = approach(h.vx, want, (if (h.onGround) 900f else 600f) * dt)
-            if (jumpE && h.onGround) { h.vy = h.jumpV * 1.12f; sfx(Sound.JUMP) }
+            if (jumpE && h.onGround) { h.vy = h.jumpV * 1.12f; jumpBufT = 0f; sfx(Sound.JUMP) }
             if (input.jump && !h.onGround && h.vy > 0f && flutterT > 0f) {
                 flutterT -= dt
                 h.vy = approach(h.vy, -40f, 1800f * dt)
@@ -1320,6 +1322,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
             val longJump = h.onGround && !h.slamming && (longE || (jumpE && h.crouching && abs(h.vx) > 40f))
             if (longJump) {
+                jumpBufT = 0f
                 h.longJumping = true
                 h.crouching = false
                 h.vx = h.facing * 270f
