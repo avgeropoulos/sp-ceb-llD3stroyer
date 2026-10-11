@@ -235,6 +235,7 @@ Like in Mario, there's a **world map**. Levels are numbered **1-1 to 1-21** (Wor
 including old ones you've already beaten (they get a green flag). Boss levels are red. Your **house** is on
 the map too. Continuing a save file takes you to the map, and the pause menu has **SAVE & EXIT TO MAP**.
 After the very end of the game, tapping takes you back to the start menu.
+Walking out of the house puts you on the next level to play (not back on the house).
 
 ![World map](docs/teamup-map.png)
 

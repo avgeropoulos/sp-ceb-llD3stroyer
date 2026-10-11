@@ -1762,4 +1762,52 @@ class TeamGameTest {
         run(2.5f)
         shot("dash-the-dino")
     }
+
+    /** Taps the screen like a real finger: the touch also lands on the game's button zones. */
+    private fun fingerTap(x: Float, y: Float) {
+        val ids = intArrayOf(0); val xs = floatArrayOf(x); val ys = floatArrayOf(y)
+        TeamControls.apply(input, ids, xs, ys, 1, game.viewW)
+        input.tapX = x; input.tapY = y; input.tap = true
+        repeat(3) { game.update(dt) }
+        TeamControls.apply(input, ids, xs, ys, 0, game.viewW)
+        repeat(3) { game.update(dt) }
+    }
+
+    @Test fun tappingTheMapNeverGetsStuckInTheHouse() {
+        startPlaying()
+        game.unlockForTest(Levels.all.size)
+        // Standing on the house, tap levels all over the map (World 1, then World 2).
+        for (world in 0..1) {
+            game.goToMap(-1)
+            run(0.5f)
+            if (world == 1) { val b = game.viewW - 120f + 20f; fingerTap(b, 12f); assertEquals(1, game.mapWorld, "switched to World 2") }
+            // (Switching to World 2 already picks 2-1, so a tap there would play it.)
+            for (k in (if (world == 1) 1 else 0) until 21) {
+                val i = world * WORLD2_START + k
+                val (x, y) = game.mapSpot(i)
+                fingerTap(x, y)
+                assertEquals(TeamGame.State.MAP, game.state, "one tap on ${game.levelLabel(i)} only picks it")
+                assertEquals(i, game.mapSel)
+            }
+            val last = world * WORLD2_START + 20
+            val (x, y) = game.mapSpot(last)
+            fingerTap(x, y)
+            assertEquals(TeamGame.State.INTRO, game.state, "a second tap plays it")
+            assertEquals(last, game.levelIndex)
+            run(3.2f)
+        }
+        // Leaving the house puts you on a level, not back on the house.
+        game.goToMap(-1)
+        run(0.5f)
+        val (hx, hy) = game.mapSpot(-1)
+        fingerTap(hx, hy); fingerTap(hx, hy)
+        assertEquals(TeamGame.State.HOME, game.state)
+        input.pause = true; game.update(dt); input.pause = false; game.update(dt)
+        assertEquals(TeamGame.State.MAP, game.state)
+        assertEquals(Levels.all.size - 1, game.mapSel, "standing on the next level after leaving home")
+        // The PLAY! button plays it.
+        run(0.5f)
+        fingerTap(game.viewW - 46f, 230f)
+        assertEquals(TeamGame.State.INTRO, game.state)
+    }
 }

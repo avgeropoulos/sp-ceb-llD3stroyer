@@ -2390,6 +2390,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     internal fun openBookForTest() = setState(State.BOOK)
     internal fun bedForTest() = bed
     internal fun houseForTest() = house
+    internal fun unlockForTest(n: Int) { unlocked = n }
     internal fun isQuakeLevelForTest(i: Int) = isQuakeLevel(i)
     internal fun quakeNowForTest() { quakeT = 0f }
     internal fun safeXForTest() = safeX
@@ -2856,11 +2857,15 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (unlocked > WORLD2_START) add((if (mapWorld == 0) "WORLD 2" else "WORLD 1") to (viewW - 120f))
     }
 
-    private fun updateMap(tapped: Boolean, back: Boolean, jumpE: Boolean, num: Int) {
-        if (back) { save(); setState(State.TITLE); return }
-        // Keyboard: arrows move, JUMP / number keys play.
-        val leftE = edge(12, input.left)
-        val rightE = edge(13, input.right)
+    private fun updateMap(tapped: Boolean, pauseE: Boolean, jumpE0: Boolean, num: Int) {
+        // On a touch screen every tap also lands on an (invisible) game button, like JUMP or the
+        // arrows. The map only listens to those from a real keyboard, never from a finger,
+        // otherwise tapping a level could start whatever was picked before (like the house).
+        val keys = !input.touching && !tapped
+        val leftE = edge(12, input.left) && keys
+        val rightE = edge(13, input.right) && keys
+        val jumpE = jumpE0 && keys
+        if (pauseE && keys) { save(); setState(State.TITLE); return }
         if (leftE) mapSel = (mapSel - 1).coerceAtLeast(-1)
         if (rightE) mapSel = (mapSel + 1).coerceAtMost(unlocked - 1)
         if (leftE || rightE) { if (mapSel >= 0) mapWorld = if (mapSel >= WORLD2_START) 1 else 0; sfx(Sound.KICK) }
@@ -3006,7 +3011,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         plushBook = false
         particles.removeAll { it is FloatText }
         sfx(Sound.KICK)
-        goToMap(-1)
+        // Out the door: you're standing on the next level to play, ready to go.
+        goToMap(unlocked - 1)
     }
 
     /** What's in front of you in the house, for the action button. */

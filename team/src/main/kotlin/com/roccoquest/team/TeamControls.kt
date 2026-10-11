@@ -33,6 +33,8 @@ class TeamInput {
     @Volatile var tap = false
     @Volatile var tapX = -1f
     @Volatile var tapY = -1f
+    /** True while a finger is on the screen (so menus can tell taps from keyboard keys). */
+    @Volatile var touching = false
     /** A number key 1-9 pressed in a menu (10 for the 0 key), or 0 for none. */
     @Volatile var numberKey = 0
 }
@@ -125,6 +127,7 @@ object TeamControls {
                 }
             }
         }
+        input.touching = count > 0
         input.left = l
         input.right = r
         input.jump = j
