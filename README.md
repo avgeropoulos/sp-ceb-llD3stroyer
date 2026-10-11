@@ -239,7 +239,7 @@ Every push builds an APK with GitHub Actions (see `.github/workflows/android.yml
 2. Download `RoccosQuest.apk` and open it. If Android asks, allow your browser to install unknown apps.
 
 For **Team Up!**, do the same with
-**https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/TeamUp.apk**.
+**https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/download/latest-ccr-d6916f07-ygbof4/TeamUp.apk**.
 It installs as a separate app, so you can have both games.
 
 ## Building it yourself
