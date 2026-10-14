@@ -150,6 +150,8 @@ Every build is signed with the same key (`bouzouki/signing/`) and gets a higher 
 
 * **Τρίχορδο / Τετράχορδο**: switch between the three-course trichordo (D A D, 26 frets) and the
   four-course tetrachordo (C F A D, 27 frets). The bass courses are octave pairs, like the real instruments.
+* **Zoom**: pinch the neck with two fingers to fit more or fewer frets on screen. **⤢ Whole neck** fits
+  every fret at once (the song screen starts that way). **⤡ Bigger** goes back to normal size.
 * **Two screens**: on the first, pick the bouzouki, the dromos and the root note. It also spells out the
   scale and its arpeggio. **Παίξε ▶ Play the bouzouki** opens the neck on its own screen.
 * **The whole neck**: the neck runs top to bottom with the nut at the top. Scroll down to reach the

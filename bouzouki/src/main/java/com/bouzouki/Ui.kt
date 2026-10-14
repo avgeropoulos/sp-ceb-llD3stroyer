@@ -50,6 +50,10 @@ class Settings(context: Context) {
     var course: Int
         get() = prefs.getInt("course", 0)
         set(v) = prefs.edit().putInt("course", v).apply()
+
+    /** Neck zoom per screen ("play" or "song"); 0 means "whole neck". */
+    fun zoom(screen: String, default: Float) = prefs.getFloat("zoom_$screen", default)
+    fun setZoom(screen: String, z: Float) = prefs.edit().putFloat("zoom_$screen", z).apply()
 }
 
 /** Small view builders shared by both screens. */
@@ -98,6 +102,29 @@ class Ui(private val activity: Activity) {
         setColor(fill)
         setStroke(px(1), stroke)
     }
+}
+
+/**
+ * Sets up the neck's zoom for [screen] (remembered between visits, 0 = whole neck) and
+ * returns a title-bar button that toggles between the whole neck and normal size.
+ */
+fun wireZoom(ui: Ui, settings: Settings, board: FretboardView, screen: String, defaultWhole: Boolean): Button {
+    val saved = settings.zoom(screen, if (defaultWhole) 0f else 1f)
+    if (saved <= 0f) board.wholeNeck = true else board.zoom = saved
+    val button = ui.chip("") {}
+    fun show() {
+        button.text = if (board.wholeNeck) "⤡ Bigger" else "⤢ Whole neck"
+        ui.style(button, board.wholeNeck)
+    }
+    button.setOnClickListener {
+        if (board.wholeNeck) { board.wholeNeck = false; board.zoom = 1f; settings.setZoom(screen, 1f) }
+        else { board.wholeNeck = true; settings.setZoom(screen, 0f); (board.parent as? View)?.scrollTo(0, 0) }
+        show()
+    }
+    board.onZoomChanged = { z -> settings.setZoom(screen, z); show() }
+    button.textSize = 12f
+    show()
+    return button
 }
 
 /** A strip of Greek key (meander) pattern. */

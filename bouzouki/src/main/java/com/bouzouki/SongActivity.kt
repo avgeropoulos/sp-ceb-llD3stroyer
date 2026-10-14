@@ -13,6 +13,7 @@ import android.os.Build
 import android.os.Bundle
 import android.text.InputType
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
@@ -41,6 +42,8 @@ class SongActivity : Activity() {
     private lateinit var board: FretboardView
     private lateinit var scroller: ScrollView
     private lateinit var link: EditText
+    private lateinit var linkRow: LinearLayout
+    private lateinit var linkToggle: Button
     private lateinit var web: WebView
     private lateinit var status: TextView
     private lateinit var videoButton: Button
@@ -87,11 +90,18 @@ class SongActivity : Activity() {
                 setOnClickListener { finish() }
             }, LinearLayout.LayoutParams(px(52), px(46)))
             addView(TextView(context).apply {
-                text = "Τραγούδι · Play along with a song"
+                text = "Τραγούδι · Play along"
                 textSize = 16f
                 typeface = Typeface.DEFAULT_BOLD
                 setTextColor(WHITE)
-            })
+                maxLines = 1
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            // Show the link box again after it folds away.
+            linkToggle = ui.chip("🔗") { linkRow.visibility = if (linkRow.visibility == View.VISIBLE) View.GONE else View.VISIBLE }
+            addView(linkToggle, LinearLayout.LayoutParams(px(44), px(40)).apply { marginEnd = px(6) })
+            // The song screen starts with the whole neck in view; pinch to zoom.
+            addView(wireZoom(ui, settings, board, "song", defaultWhole = true),
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(40)))
         })
 
         val controls = LinearLayout(this).apply {
@@ -113,7 +123,8 @@ class SongActivity : Activity() {
             setPadding(px(10), 0, px(10), 0)
             setOnEditorActionListener { _, _, _ -> loadLink(); true }
         }
-        controls.addView(ui.row().apply {
+        linkRow = ui.row()
+        controls.addView(linkRow.apply {
             addView(link, ui.weighted(3f).apply { height = px(44) })
             addView(ui.chip("Paste") { pasteAndLoad() }, ui.weighted(1f))
             addView(ui.chip("Load") { loadLink() }, ui.weighted(1f))
@@ -128,7 +139,7 @@ class SongActivity : Activity() {
             webChromeClient = WebChromeClient()
             addJavascriptInterface(YouTubeBridge(), "Android")
         }
-        controls.addView(web, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(200)))
+        controls.addView(web, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(170)))
 
         status = TextView(this).apply {
             setTextColor(0xFF9FB4CC.toInt())
@@ -165,7 +176,7 @@ class SongActivity : Activity() {
         })
 
         guessText = TextView(this).apply { textSize = 13f; setTextColor(0xFFE8EEF6.toInt()) }
-        useGuessButton = ui.chip("Use") { useGuess() }.apply { visibility = android.view.View.GONE }
+        useGuessButton = ui.chip("Use") { useGuess() }.apply { visibility = View.GONE }
         controls.addView(ui.row().apply {
             addView(guessText, ui.weighted(3f))
             addView(useGuessButton, ui.weighted(1f))
@@ -207,6 +218,7 @@ class SongActivity : Activity() {
         val id = youTubeId(link.text.toString())
         if (id == null) { status.text = "That doesn't look like a YouTube link."; return }
         status.text = "Loading… press play on the video, then tap 🎧 Listen to the video."
+        linkRow.visibility = View.GONE // more room for the neck; 🔗 brings it back
         resetSong()
         // YouTube wants to know which app is embedding it (an origin), or it refuses with error 152/153.
         web.loadDataWithBaseURL(ORIGIN, playerHtml(id), "text/html", "utf-8", null)
@@ -356,12 +368,12 @@ class SongActivity : Activity() {
         val g = guess
         if (g == null) {
             guessText.text = "Sounds like: (listening…)  ·  Neck shows ${settings.names.name(board.rootPc)} ${board.dromos.title}"
-            useGuessButton.visibility = android.view.View.GONE
+            useGuessButton.visibility = View.GONE
         } else {
             val same = g.dromos.semitones.contentEquals(board.dromos.semitones) && g.rootPc == board.rootPc
             guessText.text = "Sounds like: ${settings.names.name(g.rootPc)} ${g.dromos.title}" +
                 if (same) "  ✓ on the neck" else ""
-            useGuessButton.visibility = if (same) android.view.View.GONE else android.view.View.VISIBLE
+            useGuessButton.visibility = if (same) View.GONE else View.VISIBLE
         }
     }
 

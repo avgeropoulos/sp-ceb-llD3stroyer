@@ -85,6 +85,8 @@ class PlayActivity : Activity() {
                 maxLines = 2
                 ellipsize = TextUtils.TruncateAt.END
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(wireZoom(ui, settings, board, "play", defaultWhole = false),
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(40)))
         })
         root.addView(MeanderView(this), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(10)))
 

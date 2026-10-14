@@ -10,6 +10,7 @@ import android.graphics.Shader
 import android.graphics.Typeface
 import android.os.SystemClock
 import android.view.MotionEvent
+import android.view.ScaleGestureDetector
 import android.view.View
 import com.bouzouki.core.BouzoukiSynth
 import com.bouzouki.core.Cell
@@ -53,12 +54,28 @@ class FretboardView(context: Context, private val synth: BouzoukiSynth) : View(c
     var tremolo = false
         set(v) { field = v; if (v) scheduleTremolo() }
 
+    /**
+     * How tall the frets are: 1 is the normal size, smaller fits more frets on screen.
+     * Pinch the neck to change it.
+     */
+    var zoom: Float
+        get() = zoomValue
+        set(v) { zoomValue = v.coerceIn(MIN_ZOOM, MAX_ZOOM); requestLayout(); invalidate() }
+    private var zoomValue = 1f
+
+    /** Shrink the neck so every fret fits on screen at once. Pinching turns this off. */
+    var wholeNeck = false
+        set(v) { field = v; requestLayout(); invalidate() }
+
+    /** Called after a pinch, with the new zoom, so the screen can remember it. */
+    var onZoomChanged: ((Float) -> Unit)? = null
+
     /** Called with the y range of a cell that was played, so the scroller can follow it. */
     var onPlayed: ((top: Int, bottom: Int) -> Unit)? = null
 
     private val dp = resources.displayMetrics.density
     private val gutter = 40 * dp
-    private val openRow = 64 * dp
+    private var openRow = 64 * dp
 
     private val fretTops = ArrayList<Float>() // fretTops[n] = y of the wire at the bottom of fret n (n=0 is the nut)
 
@@ -91,14 +108,41 @@ class FretboardView(context: Context, private val synth: BouzoukiSynth) : View(c
         color = 0xB0FFD54F.toInt(); style = Paint.Style.STROKE
     }
 
-    private fun fretHeight(n: Int) = max(56 * dp, 104 * dp * 0.965f.pow(n - 1))
+    private fun baseFretHeight(n: Int) = max(56 * dp, 104 * dp * 0.965f.pow(n - 1))
+    private fun fretHeight(n: Int) = baseFretHeight(n) * zoom
+    private fun openRowFor(z: Float) = max(26 * dp, 64 * dp * z)
+    private val bottomMargin get() = 24 * dp
+
+    /** Height of the scroll area the neck sits in. */
+    private val viewport get() = (parent as? View)?.height ?: 0
+
+    /** The zoom at which the whole neck fits in [height] pixels. */
+    private fun fitZoom(height: Int): Float {
+        val frets = (1..instrument.frets).sumOf { baseFretHeight(it).toDouble() }.toFloat()
+        var z = (height - bottomMargin) / (64 * dp + frets)
+        if (64 * dp * z < 26 * dp) z = (height - bottomMargin - 26 * dp) / frets
+        return z.coerceIn(0.05f, MAX_ZOOM)
+    }
+
+    /** Smallest useful zoom: the whole neck on screen (never smaller). */
+    private fun minZoom() = if (viewport > 0) min(fitZoom(viewport), 1f) else MIN_ZOOM
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        // The whole-neck size depends on the scroll area's height, known only after it's laid out.
+        (parent as? View)?.addOnLayoutChangeListener { _, _, top, _, bottom, _, oldTop, _, oldBottom ->
+            if (wholeNeck && bottom - top != oldBottom - oldTop) post { requestLayout() }
+        }
+    }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        if (wholeNeck && viewport > 0) zoomValue = fitZoom(viewport) // no requestLayout() while measuring
+        openRow = openRowFor(zoom)
         var y = openRow
         fretTops.clear()
         fretTops.add(y)
         for (n in 1..instrument.frets) { y += fretHeight(n); fretTops.add(y) }
-        setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), (y + 24 * dp).toInt())
+        setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), (y + bottomMargin).toInt())
     }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
@@ -167,12 +211,17 @@ class FretboardView(context: Context, private val synth: BouzoukiSynth) : View(c
             val y = fretTops[n]
             canvas.drawRect(neckLeft, y + 1.5f * dp, neckRight, y + 3.5f * dp, fretShadow)
             canvas.drawRect(neckLeft, y - 1.5f * dp, neckRight, y + 1.5f * dp, fretPaint)
-            val ty = cellCenterY(n) + 5 * dp
+            // Zoomed far out, only the marked frets keep their numbers.
+            val h = fretHeight(n)
+            if (h < 16 * dp && n !in MARKED) continue
+            gutterText.textSize = min(13 * dp, h * 0.75f).coerceAtLeast(8 * dp)
+            val ty = cellCenterY(n) + gutterText.textSize * 0.38f
             gutterText.color = if (n % 12 == 0) 0xFFFFD54F.toInt() else 0xFF9FB4CC.toInt()
             canvas.drawText(n.toString(), gutter / 2, ty, gutterText)
             canvas.drawText(n.toString(), w - gutter / 2, ty, gutterText)
         }
         gutterText.color = 0xFF9FB4CC.toInt()
+        gutterText.textSize = min(13 * dp, openRow * 0.5f)
         canvas.drawText("0", gutter / 2, openRow / 2 + 5 * dp, gutterText)
         canvas.drawText("0", w - gutter / 2, openRow / 2 + 5 * dp, gutterText)
 
@@ -219,10 +268,12 @@ class FretboardView(context: Context, private val synth: BouzoukiSynth) : View(c
                 ring.strokeWidth = 2 * dp
                 ring.color = if (isRoot) 0xFFFFD54F.toInt() else 0xCCFFFFFF.toInt()
                 canvas.drawCircle(x, y, r, ring)
-                text.textSize = r * if (names == NoteNames.GREEK) 0.62f else 0.78f
-                text.color = if (pressed) 0xFF1A1A1A.toInt() else 0xFFFFFFFF.toInt()
-                canvas.drawText(label, x, y + text.textSize * 0.36f, text)
-            } else if (showAllNotes || pressed) {
+                if (r >= 6 * dp) { // too small to read when zoomed far out
+                    text.textSize = r * if (names == NoteNames.GREEK) 0.62f else 0.78f
+                    text.color = if (pressed) 0xFF1A1A1A.toInt() else 0xFFFFFFFF.toInt()
+                    canvas.drawText(label, x, y + text.textSize * 0.36f, text)
+                }
+            } else if ((showAllNotes || pressed) && r >= 6 * dp) {
                 faint.textSize = r * 0.62f
                 canvas.drawText(label, x, y + faint.textSize * 0.36f, faint)
             }
@@ -231,7 +282,7 @@ class FretboardView(context: Context, private val synth: BouzoukiSynth) : View(c
             val x = courseX(cell.course)
             val y = cellCenterY(cell.fret)
             val cellH = if (cell.fret == 0) openRow else fretHeight(cell.fret)
-            val r = min(courseWidth * 0.40f, cellH * 0.44f)
+            val r = max(min(courseWidth * 0.40f, cellH * 0.44f), 11 * dp) // stays readable zoomed out
             glow.shader = RadialGradient(x, y, r * 2.2f, intArrayOf(0xE0FFC107.toInt(), 0x00FFC107), null, Shader.TileMode.CLAMP)
             canvas.drawCircle(x, y, r * 2.2f, glow)
             dotPaint.color = 0xFFFFC107.toInt()
@@ -280,7 +331,48 @@ class FretboardView(context: Context, private val synth: BouzoukiSynth) : View(c
     fun fretSpan(first: Int, last: Int): Pair<Int, Int> =
         cellTop(first.coerceIn(0, instrument.frets)).toInt() to cellBottom(last.coerceIn(0, instrument.frets)).toInt()
 
+    private var pinching = false
+
+    private val pinch = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
+            // Two fingers spreading or closing: zoom instead of playing.
+            pinching = true
+            held.clear()
+            synth.muteAll()
+            parent?.requestDisallowInterceptTouchEvent(true)
+            return true
+        }
+
+        override fun onScale(detector: ScaleGestureDetector): Boolean {
+            val old = zoom
+            val new = (old * detector.scaleFactor).coerceIn(minZoom(), MAX_ZOOM)
+            if (new == old) return true
+            wholeNeck = false
+            zoom = new
+            // Keep the frets under the fingers in place while the neck grows or shrinks.
+            val scroller = parent as? View ?: return true
+            val onScreen = detector.focusY - scroller.scrollY
+            val target = (detector.focusY * new / old - onScreen).toInt().coerceAtLeast(0)
+            post { scroller.scrollTo(0, target) }
+            return true
+        }
+
+        override fun onScaleEnd(detector: ScaleGestureDetector) {
+            onZoomChanged?.invoke(zoom)
+        }
+    }).apply { isQuickScaleEnabled = false }
+
     override fun onTouchEvent(e: MotionEvent): Boolean {
+        if (e.actionMasked == MotionEvent.ACTION_DOWN) pinching = false
+        pinch.onTouchEvent(e)
+        if (pinching) {
+            if (e.actionMasked == MotionEvent.ACTION_UP || e.actionMasked == MotionEvent.ACTION_CANCEL) {
+                pinching = false
+                held.clear()
+                invalidate()
+            }
+            return true
+        }
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                 val i = e.actionIndex
@@ -325,5 +417,11 @@ class FretboardView(context: Context, private val synth: BouzoukiSynth) : View(c
     private fun scheduleTremolo() {
         removeCallbacks(tremoloTick)
         postDelayed(tremoloTick, 68)
+    }
+
+    companion object {
+        const val MIN_ZOOM = 0.05f
+        const val MAX_ZOOM = 2.5f
+        private val MARKED = setOf(3, 5, 7, 10, 12, 15, 17, 19, 22, 24)
     }
 }
