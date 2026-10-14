@@ -44,6 +44,9 @@ class FretboardView(context: Context, private val synth: BouzoukiSynth) : View(c
     /** The course the scale player runs down, shaded on the neck. */
     var focusCourse: Int? = null
         set(v) { field = v; invalidate() }
+    /** The note a song is playing right now, marked with a big gold ring. */
+    var liveCell: Cell? = null
+        set(v) { field = v; invalidate() }
     /** The frets of the hand position the scale player runs across, shaded on the neck. */
     var focusFrets: IntRange? = null
         set(v) { field = v; invalidate() }
@@ -224,6 +227,22 @@ class FretboardView(context: Context, private val synth: BouzoukiSynth) : View(c
                 canvas.drawText(label, x, y + faint.textSize * 0.36f, faint)
             }
         }
+        liveCell?.takeIf { it.course in instrument.courses.indices && it.fret in 0..instrument.frets }?.let { cell ->
+            val x = courseX(cell.course)
+            val y = cellCenterY(cell.fret)
+            val cellH = if (cell.fret == 0) openRow else fretHeight(cell.fret)
+            val r = min(courseWidth * 0.40f, cellH * 0.44f)
+            glow.shader = RadialGradient(x, y, r * 2.2f, intArrayOf(0xE0FFC107.toInt(), 0x00FFC107), null, Shader.TileMode.CLAMP)
+            canvas.drawCircle(x, y, r * 2.2f, glow)
+            dotPaint.color = 0xFFFFC107.toInt()
+            canvas.drawCircle(x, y, r, dotPaint)
+            ring.strokeWidth = 3 * dp
+            ring.color = WHITE
+            canvas.drawCircle(x, y, r, ring)
+            text.textSize = r * if (names == NoteNames.GREEK) 0.62f else 0.8f
+            text.color = 0xFF1A1A1A.toInt()
+            canvas.drawText(names.name(instrument.midiAt(cell.course, cell.fret)), x, y + text.textSize * 0.36f, text)
+        }
         if (flashes.isNotEmpty()) {
             flashes.entries.removeAll { now - it.value > 320 }
             postInvalidateOnAnimation()
@@ -253,6 +272,9 @@ class FretboardView(context: Context, private val synth: BouzoukiSynth) : View(c
         play(cell.course, cell.fret, 0.8f)
         onPlayed?.invoke(cellTop(cell.fret).toInt(), cellBottom(cell.fret).toInt())
     }
+
+    /** The y range of one fret, for scrolling it into view. */
+    fun cellSpan(cell: Cell): Pair<Int, Int> = fretSpan(cell.fret, cell.fret)
 
     /** The y range of a block of frets, for scrolling it into view. */
     fun fretSpan(first: Int, last: Int): Pair<Int, Int> =

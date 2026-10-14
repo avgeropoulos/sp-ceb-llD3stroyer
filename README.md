@@ -177,6 +177,15 @@ Every build is signed with the same key (`bouzouki/signing/`) and gets a higher 
   * **Scale / Arpeggio**: play the whole dromos, or just its 1st, 3rd, 5th and 7th. The neck marks
     only the arpeggio notes when it's selected.
   * **Tremolo** re-picks held notes fast, bouzouki style. **✋ Mute** stops everything ringing.
+* **🎵 Play along with a YouTube song**: paste a YouTube link, or tap **Share → Μπουζούκι** in the
+  YouTube app. The video plays in the app and the melody's notes light up on the neck as they sound,
+  with a gold ring on the note playing now and the last few notes listed above the neck.
+  * **🎧 Listen to the video** hears the video's own sound (Android 10+). Android asks once per
+    session to "start recording or casting". Only the sound is analysed: nothing is recorded or saved.
+  * **🎤 Listen with mic** works for music playing anywhere: the YouTube app, a speaker, or a live bouzouki.
+  * **Sounds like** guesses the song's dromos and root from the notes it has heard. **Use** puts it on the neck.
+  * It follows one melody line at a time. It works best when the bouzouki or the voice is clearly
+    in front; with a full band it will sometimes jump to other instruments.
 * **Ντο Ρε Μι / C D E** switches note names, and **All notes** shows the notes outside the scale too.
 * **The sound** is synthesized (no recordings). Each course is a pair of plucked steel strings,
   slightly detuned or an octave apart, picked near the bridge with a plectrum click, and shaped

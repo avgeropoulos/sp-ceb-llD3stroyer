@@ -134,6 +134,16 @@ class MainActivity : Activity() {
             ui.style(this, true)
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
+        // Play along with a YouTube song.
+        controls.addView(ui.chip("🎵  Play along with a YouTube song") {
+            startActivity(Intent(this, SongActivity::class.java))
+        }.apply {
+            textSize = 16f
+            minHeight = px(56)
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = px(10)
+        })
+
         // Update straight from GitHub, no browser needed.
         updateButton = ui.chip("Checking for updates…") { onUpdateClicked() }
         controls.addView(updateButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {

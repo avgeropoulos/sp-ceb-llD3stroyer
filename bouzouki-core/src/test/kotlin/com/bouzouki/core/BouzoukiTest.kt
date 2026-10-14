@@ -186,3 +186,70 @@ class ScalePathTest {
         assertEquals(listOf(50, 53, 57, 60, 62), midis(tetra, cells)) // one octave fits in the 2nd-fret position
     }
 }
+
+class PitchTest {
+    private val fs = 48000
+
+    private fun sine(hz: Double, seconds: Double, amp: Double = 0.3) =
+        FloatArray((fs * seconds).toInt()) { (amp * kotlin.math.sin(2 * Math.PI * hz * it / fs)).toFloat() }
+
+    @Test
+    fun yinFindsTheFundamentalOfTonesAcrossTheNeck() {
+        val yin = Yin(fs)
+        for (midi in listOf(48, 55, 62, 69, 76, 84, 89)) {
+            val hz = midiToHz(midi)
+            // A bright tone: fundamental plus harmonics, like a plucked string.
+            val x = FloatArray(yin.frameSize) { i ->
+                val t = i.toDouble() / fs
+                (0.3 * kotlin.math.sin(2 * Math.PI * hz * t) + 0.2 * kotlin.math.sin(4 * Math.PI * hz * t) +
+                    0.1 * kotlin.math.sin(6 * Math.PI * hz * t)).toFloat()
+            }
+            val found = assertNotNull(yin.detect(x), "midi $midi")
+            assertEquals(midi, hzToMidi(found), "midi $midi: $found Hz")
+        }
+    }
+
+    @Test
+    fun yinIgnoresNoise() {
+        val rnd = java.util.Random(1)
+        val yin = Yin(fs)
+        assertEquals(null, yin.detect(FloatArray(yin.frameSize) { (rnd.nextGaussian() * 0.3).toFloat() }))
+    }
+
+    @Test
+    fun trackerFollowsAMelodyAndFallsSilent() {
+        val tracker = NoteTracker(fs)
+        val melody = listOf(62, 63, 66, 67)
+        val events = ArrayList<NoteTracker.Event>()
+        for (m in melody) events += tracker.process(sine(midiToHz(m), 0.25))
+        events += tracker.process(FloatArray(fs / 2))
+        assertEquals(melody.map { NoteTracker.NoteOn(it) } + NoteTracker.NoteOff, events)
+    }
+
+    @Test
+    fun trackerHearsTheBouzoukiSynth() {
+        val synth = BouzoukiSynth(fs)
+        val tracker = NoteTracker(fs)
+        val heard = ArrayList<Int>()
+        val buf = FloatArray(512)
+        for (m in listOf(62, 65, 69, 74)) {
+            synth.pluck(3, m, false)
+            repeat(fs * 4 / 10 / buf.size) {
+                synth.render(buf)
+                tracker.process(buf).filterIsInstance<NoteTracker.NoteOn>().forEach { heard += it.midi }
+            }
+        }
+        assertEquals(listOf(62, 65, 69, 74), heard.distinct().filter { it in listOf(62, 65, 69, 74) })
+        assertTrue(heard.size <= 6, "few spurious notes: $heard")
+    }
+
+    @Test
+    fun guessesTheDromosFromTheMelody() {
+        // A melody in D Hitzaz that keeps coming back to D.
+        val time = DoubleArray(12)
+        for ((pc, t) in listOf(2 to 5.0, 3 to 2.0, 6 to 2.5, 7 to 2.0, 9 to 3.0, 10 to 1.5, 0 to 1.0)) time[pc] = t
+        val best = DromosGuess.rank(time).first()
+        assertEquals(Dromos.HITZAZ, best.dromos)
+        assertEquals(2, best.rootPc)
+    }
+}
