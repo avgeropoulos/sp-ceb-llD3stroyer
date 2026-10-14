@@ -136,3 +136,37 @@ You can also open the folder in Android Studio and press Run.
   renderer, sound effects that are synthesized at startup, and a streaming music player.
 
 Levels are built in `core/.../Level.kt` with a small builder, so adding a new one is a few lines.
+
+## Μπουζούκι: the Greek bouzouki app
+
+The repository also builds a second app, **Bouzouki.apk**, a playable Greek bouzouki:
+
+**https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/Bouzouki.apk**
+
+* **Τρίχορδο / Τετράχορδο**: switch between the three-course trichordo (D A D, 26 frets) and the
+  four-course tetrachordo (C F A D, 27 frets). The bass courses are octave pairs, like the real instruments.
+* **The whole neck**: the neck runs top to bottom with the nut at the top. Scroll down to reach the
+  high frets by dragging the fret numbers on either side. Touch a course anywhere to pluck it,
+  slide along it to glide between frets, and use several fingers for chords.
+* **Δρόμοι (scales)**: the scale's notes are marked on the neck (root in red) for any root note. The Greek name
+  comes first and the Western equivalent follows in parentheses:
+
+  | Dromos | | Dromos | |
+  |---|---|---|---|
+  | Matzore (Major) | Ματζόρε | Sabah (Minor with flat 4th) | Σαμπάχ |
+  | Minore (Natural Minor) | Μινόρε | Houzam (Major with sharp 2nd) | Χουζάμ |
+  | Nihavent (Harmonic Minor) | Νιαβέντ | Segiah (Harmonic Major with sharp 2nd) | Σεγκιά |
+  | Hitzaz (Phrygian Dominant) | Χιτζάζ | Pireotikos (Double Harmonic with sharp 4th) | Πειραιώτικος |
+  | Hitzazkiar (Double Harmonic) | Χιτζαζκιάρ | Nikriz (Ukrainian Dorian) | Νικρίζ |
+  | Ousak (Phrygian) | Ουσάκ | Tsinganikos (Hungarian Minor) | Τσιγγάνικος |
+  | Kiourdi (Phrygian) | Κιουρντί | Kartsigar (Dorian with flat 5th) | Καρσιγάρ |
+  | Rast (Mixolydian) | Ραστ | | |
+
+* **▶ Scale** plays the dromos up and down. **Tremolo** re-picks held notes fast, bouzouki style.
+  **Ντο Ρε Μι / C D E** switches note names, and **All notes** shows the notes outside the scale too.
+* **The sound** is synthesized (no recordings). Each course is a pair of plucked steel strings,
+  slightly detuned or an octave apart, picked near the bridge with a plectrum click, and shaped
+  by a bowl-body EQ and a small room. Listen to `docs/bouzouki-demo.wav`.
+
+Code: `bouzouki-core/` holds the scales, tunings and synthesizer in plain Kotlin (tested with
+`./gradlew :bouzouki-core:test`). `bouzouki/` is the Android app (`./gradlew :bouzouki:assembleDebug`).
