@@ -98,9 +98,9 @@ object SongJobs {
                 publish(State.Idle)
             } catch (e: Throwable) {
                 publish(State.Failed(id, friendly(e)))
-            } finally {
-                app.stopService(service)
             }
+            // PrepareService stops itself when it sees the job end (stopping it from here could
+            // race its startForeground() and crash the app on a quick failure).
         }
     }
 
@@ -215,6 +215,10 @@ class PrepareService : Service() {
     private fun update(s: SongJobs.State) {
         if (s is SongJobs.State.Working) {
             (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(ID, notification(s.step, s.fraction))
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+            stopSelf()
         }
     }
 
