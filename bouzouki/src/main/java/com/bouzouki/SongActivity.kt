@@ -365,13 +365,14 @@ class SongActivity : Activity() {
 
     private fun showDromos() {
         val s = song
-        if (s?.dromos == null) {
+        val d = s?.dromos
+        if (s == null || d == null) {
             dromosText.text = "Neck: ${settings.names.name(board.rootPc)} ${board.dromos.title}"
             useDromosButton.visibility = View.GONE
             return
         }
-        val same = s.dromos.semitones.contentEquals(board.dromos.semitones) && s.rootPc == board.rootPc
-        dromosText.text = "Song sounds like ${settings.names.name(s.rootPc)} ${s.dromos.title}" + if (same) " ✓" else ""
+        val same = d.semitones.contentEquals(board.dromos.semitones) && s.rootPc == board.rootPc
+        dromosText.text = "Song sounds like ${settings.names.name(s.rootPc)} ${d.title}" + if (same) " ✓" else ""
         useDromosButton.visibility = if (same) View.GONE else View.VISIBLE
     }
 
