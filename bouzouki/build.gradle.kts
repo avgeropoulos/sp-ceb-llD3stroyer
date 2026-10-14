@@ -51,6 +51,9 @@ android {
     }
 
     packaging {
+        // Keep the ONNX Runtime library compressed in the APK (it's unpacked at install):
+        // the download is about half the size.
+        jniLibs { useLegacyPackaging = true }
         resources {
             excludes += setOf(
                 "META-INF/{AL2.0,LGPL2.1}", "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*",
