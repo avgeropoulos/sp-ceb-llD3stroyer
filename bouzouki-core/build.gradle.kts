@@ -14,6 +14,9 @@ kotlin {
 }
 
 dependencies {
+    // The Android app supplies onnxruntime-android, which has the same ai.onnxruntime API.
+    compileOnly("com.microsoft.onnxruntime:onnxruntime:1.31.0")
+    testImplementation("com.microsoft.onnxruntime:onnxruntime:1.31.0")
     testImplementation(kotlin("test"))
 }
 

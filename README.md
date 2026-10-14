@@ -179,15 +179,20 @@ Every build is signed with the same key (`bouzouki/signing/`) and gets a higher 
   * **Scale / Arpeggio**: play the whole dromos, or just its 1st, 3rd, 5th and 7th. The neck marks
     only the arpeggio notes when it's selected.
   * **Tremolo** re-picks held notes fast, bouzouki style. **✋ Mute** stops everything ringing.
-* **🎵 Play along with a YouTube song**: paste a YouTube link, or tap **Share → Μπουζούκι** in the
-  YouTube app. The video plays in the app and the melody's notes light up on the neck as they sound,
-  with a gold ring on the note playing now and the last few notes listed above the neck.
-  * **🎧 Listen to the video** hears the video's own sound (Android 10+). Android asks once per
-    session to "start recording or casting". Only the sound is analysed: nothing is recorded or saved.
-  * **🎤 Listen with mic** works for music playing anywhere: the YouTube app, a speaker, or a live bouzouki.
-  * **Sounds like** guesses the song's dromos and root from the notes it has heard. **Use** puts it on the neck.
-  * It follows one melody line at a time. It works best when the bouzouki or the voice is clearly
-    in front; with a full band it will sometimes jump to other instruments.
+* **🎵 Play along with a YouTube song** (like Chordify): paste a YouTube link, or tap **Share → Μπουζούκι**
+  in the YouTube app. The first time, the app prepares the song in the background (a few minutes, with a
+  progress notification):
+  1. it reads the song's audio from YouTube,
+  2. removes the singer's voice with an AI vocal remover (UVR MDX-Net, downloaded once, 67 MB),
+  3. transcribes what's left into notes with Spotify's Basic Pitch,
+  4. keeps the bouzouki line (the top melodic line in the bouzouki's range) and chooses frets that keep
+     the hand moving as little as possible.
+
+  Then the video plays with that line on the neck: a gold ring on the note playing now, a hollow ring
+  on the next one, and a moving tab strip of the upcoming notes (tap it to jump). **0.5× / 0.75×** slow
+  the song down to learn it, and **🔊 Bouzouki** plays the line on the app's bouzouki too. Prepared songs
+  are kept on the phone (**🕘 My songs**) and open instantly; the song's audio itself is deleted once the
+  notes are worked out. **📁 Audio file** does the same with a song file on the phone.
 * **Ντο Ρε Μι / C D E** switches note names, and **All notes** shows the notes outside the scale too.
 * **The sound** is synthesized (no recordings). Each course is a pair of plucked steel strings,
   slightly detuned or an octave apart, picked near the bridge with a plectrum click, and shaped

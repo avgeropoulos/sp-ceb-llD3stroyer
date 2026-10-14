@@ -17,6 +17,8 @@ android {
         val build = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
         versionCode = build
         versionName = "1.$build"
+        // The song analysis runs ONNX models; only 64-bit ARM phones keep the APK small.
+        ndk { abiFilters += "arm64-v8a" }
     }
 
     // A fixed key kept in the repository. Android only installs an update over the app
@@ -44,6 +46,21 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // NewPipe Extractor uses newer Java APIs than Android 7-12 have.
+        isCoreLibraryDesugaringEnabled = true
+    }
+
+    packaging {
+        resources {
+            excludes += setOf(
+                "META-INF/{AL2.0,LGPL2.1}", "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*",
+                "META-INF/versions/9/OSGI-INF/MANIFEST.MF",
+            )
+        }
+    }
+
+    androidResources {
+        noCompress += "onnx"
     }
 }
 
@@ -53,4 +70,7 @@ kotlin {
 
 dependencies {
     implementation(project(":bouzouki-core"))
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.31.0")
+    implementation("com.github.teamnewpipe:NewPipeExtractor:v0.26.5")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.5")
 }

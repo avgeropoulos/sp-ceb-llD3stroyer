@@ -48,6 +48,9 @@ class FretboardView(context: Context, private val synth: BouzoukiSynth) : View(c
     /** The note a song is playing right now, marked with a big gold ring. */
     var liveCell: Cell? = null
         set(v) { field = v; invalidate() }
+    /** Where the song goes next, marked with a hollow ring so the hand can get ready. */
+    var nextCell: Cell? = null
+        set(v) { if (field != v) { field = v; invalidate() } }
     /** The frets of the hand position the scale player runs across, shaded on the neck. */
     var focusFrets: IntRange? = null
         set(v) { field = v; invalidate() }
@@ -277,6 +280,15 @@ class FretboardView(context: Context, private val synth: BouzoukiSynth) : View(c
                 faint.textSize = r * 0.62f
                 canvas.drawText(label, x, y + faint.textSize * 0.36f, faint)
             }
+        }
+        nextCell?.takeIf { it != liveCell && it.course in instrument.courses.indices && it.fret in 0..instrument.frets }?.let { cell ->
+            val x = courseX(cell.course)
+            val y = cellCenterY(cell.fret)
+            val cellH = if (cell.fret == 0) openRow else fretHeight(cell.fret)
+            val r = max(min(courseWidth * 0.36f, cellH * 0.40f), 9 * dp)
+            ring.strokeWidth = 3 * dp
+            ring.color = 0xCCFFD54F.toInt()
+            canvas.drawCircle(x, y, r, ring)
         }
         liveCell?.takeIf { it.course in instrument.courses.indices && it.fret in 0..instrument.frets }?.let { cell ->
             val x = courseX(cell.course)
