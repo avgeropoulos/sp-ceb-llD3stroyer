@@ -13,15 +13,31 @@ android {
         applicationId = "com.bouzouki"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        // Every CI build gets a higher version number, so Android installs it as an update.
+        val build = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+        versionCode = build
+        versionName = "1.$build"
+    }
+
+    // A fixed key kept in the repository. Android only installs an update over the app
+    // if it is signed with the same key, and the default debug key is different on
+    // every CI machine. The key is not secret: it only keeps updates installable.
+    signingConfigs {
+        create("bouzouki") {
+            storeFile = file("signing/bouzouki.jks")
+            storePassword = "bouzouki"
+            keyAlias = "bouzouki"
+            keyPassword = "bouzouki"
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("bouzouki")
+        }
         release {
             isMinifyEnabled = false
-            // Signed with the debug key so the release APK installs without extra setup.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("bouzouki")
         }
     }
 

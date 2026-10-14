@@ -143,6 +143,9 @@ The repository also builds a second app, **Bouzouki.apk**, a playable Greek bouz
 
 **https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/Bouzouki.apk**
 
+To update, download and open the new APK: Android installs it over the old one and keeps your settings.
+Every build is signed with the same key (`bouzouki/signing/`) and gets a higher version number. The version is shown under the title.
+
 * **Τρίχορδο / Τετράχορδο**: switch between the three-course trichordo (D A D, 26 frets) and the
   four-course tetrachordo (C F A D, 27 frets). The bass courses are octave pairs, like the real instruments.
 * **The whole neck**: the neck runs top to bottom with the nut at the top. Scroll down to reach the

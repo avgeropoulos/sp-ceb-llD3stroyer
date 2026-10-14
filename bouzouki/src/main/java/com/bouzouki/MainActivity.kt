@@ -76,7 +76,8 @@ class MainActivity : Activity() {
                 setTextColor(WHITE)
             })
             addView(TextView(context).apply {
-                text = "Greek Bouzouki · Δρόμοι (Greek scales)"
+                val version = try { packageManager.getPackageInfo(packageName, 0).versionName } catch (_: Exception) { null }
+                text = "Greek Bouzouki · Δρόμοι (Greek scales)" + (version?.let { "  ·  v$it" } ?: "")
                 textSize = 13f
                 setTextColor(0xFFCFE0F5.toInt())
             })
