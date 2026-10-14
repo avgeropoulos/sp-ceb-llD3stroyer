@@ -37,6 +37,7 @@ jobs:
         run: |
           cp app/build/outputs/apk/debug/app-debug.apk RoccosQuest.apk
           cp bouzouki/build/outputs/apk/debug/bouzouki-debug.apk Bouzouki.apk
+          echo "$GITHUB_RUN_NUMBER" > bouzouki-version.txt
 
       - uses: actions/upload-artifact@v4
         with:
@@ -66,3 +67,4 @@ jobs:
           files: |
             RoccosQuest.apk
             Bouzouki.apk
+            bouzouki-version.txt

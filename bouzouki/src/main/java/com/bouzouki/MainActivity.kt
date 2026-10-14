@@ -2,6 +2,7 @@ package com.bouzouki
 
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageInstaller
 import android.graphics.Typeface
 import android.os.Bundle
 import android.view.View
@@ -13,6 +14,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
+import android.widget.Toast
 import com.bouzouki.core.Dromos
 import com.bouzouki.core.Instrument
 import com.bouzouki.core.NoteNames
@@ -28,6 +30,10 @@ class MainActivity : Activity() {
     private lateinit var namesButton: Button
     private lateinit var allButton: Button
     private var rootNames: NoteNames? = null
+    private val updater by lazy { Updater(this) }
+    private lateinit var updateButton: Button
+    private var latestBuild: Long? = null
+    private var updating = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -128,8 +134,77 @@ class MainActivity : Activity() {
             ui.style(this, true)
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
+        // Update straight from GitHub, no browser needed.
+        updateButton = ui.chip("Checking for updates…") { onUpdateClicked() }
+        controls.addView(updateButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = px(12)
+        })
+
         setContentView(root)
+        checkForUpdate()
+        handleInstallStatus(intent)
         refresh()
+    }
+
+    private fun checkForUpdate() {
+        updateButton.text = "Checking for updates…"
+        ui.style(updateButton, false)
+        updater.checkLatest { latest ->
+            latestBuild = latest
+            if (!updating) showUpdateState()
+        }
+    }
+
+    private fun showUpdateState() {
+        val latest = latestBuild
+        when {
+            latest == null -> { updateButton.text = "Couldn't check for updates · tap to retry"; ui.style(updateButton, false) }
+            latest > updater.installedBuild -> { updateButton.text = "⬆  Update to v1.$latest"; ui.style(updateButton, true) }
+            else -> { updateButton.text = "✓ Up to date (v1.${updater.installedBuild}) · tap to check again"; ui.style(updateButton, false) }
+        }
+    }
+
+    private fun onUpdateClicked() {
+        val latest = latestBuild
+        if (updating) return
+        if (latest == null || latest <= updater.installedBuild) { checkForUpdate(); return }
+        if (!updater.ensureCanInstall()) {
+            Toast.makeText(this, "Allow Bouzouki to install updates, then come back and tap Update again", Toast.LENGTH_LONG).show()
+            return
+        }
+        updating = true
+        updater.install(
+            progress = { pct -> updateButton.text = "Downloading v1.$latest…  $pct%" },
+            failed = { msg ->
+                updating = false
+                showUpdateState()
+                Toast.makeText(this, "Update failed: $msg", Toast.LENGTH_LONG).show()
+            },
+        )
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleInstallStatus(intent)
+    }
+
+    /** Android reports on the update here: first it needs you to confirm, then it says how it went. */
+    private fun handleInstallStatus(intent: Intent?) {
+        if (intent?.action != Updater.ACTION_INSTALL_STATUS) return
+        when (intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)) {
+            PackageInstaller.STATUS_PENDING_USER_ACTION -> {
+                @Suppress("DEPRECATION")
+                val confirm = intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)
+                if (confirm != null) startActivity(confirm)
+            }
+            PackageInstaller.STATUS_SUCCESS -> updating = false
+            else -> {
+                updating = false
+                showUpdateState()
+                val msg = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE) ?: "cancelled"
+                Toast.makeText(this, "Update not installed: $msg", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     private fun refresh() {

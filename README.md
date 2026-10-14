@@ -143,7 +143,9 @@ The repository also builds a second app, **Bouzouki.apk**, a playable Greek bouz
 
 **https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/Bouzouki.apk**
 
-To update, download and open the new APK: Android installs it over the old one and keeps your settings.
+To update, tap the **⬆ Update** button at the bottom of the first screen. The app downloads the new
+version from GitHub itself and Android asks you to confirm, so you don't need the browser. The first time,
+Android asks you to allow Bouzouki to install apps. Updates install over the old version and keep your settings.
 Every build is signed with the same key (`bouzouki/signing/`) and gets a higher version number. The version is shown under the title.
 
 * **Τρίχορδο / Τετράχορδο**: switch between the three-course trichordo (D A D, 26 frets) and the
