@@ -123,3 +123,66 @@ class SynthTest {
         assertTrue(buf.copyOfRange(buf.size / 2, buf.size).maxOf { abs(it) } < 0.01f)
     }
 }
+
+class ScalePathTest {
+    private val tetra = Instrument.TETRACHORDO
+    private val tri = Instrument.TRICHORDO
+
+    private fun midis(inst: Instrument, cells: List<Cell>) = cells.map { inst.midiAt(it.course, it.fret) }
+
+    @Test
+    fun arpeggioIsTheFirstThirdFifthAndSeventh() {
+        assertEquals(listOf(0, 4, 7, 10), ScalePath.arpeggio(Dromos.HITZAZ).toList())
+        assertEquals(listOf(0, 3, 7, 11), ScalePath.arpeggio(Dromos.NIHAVENT).toList())
+    }
+
+    @Test
+    fun downTheNeckStaysOnOneCourseFromRootToRoot() {
+        val cells = ScalePath.downTheNeck(tetra, 3, 2, Dromos.HITZAZ.semitones) // D Hitzaz on the D course
+        assertTrue(cells.all { it.course == 3 })
+        assertEquals(0, cells.first().fret)
+        assertEquals(24, cells.last().fret) // two octaves up the neck
+        assertEquals(15, cells.size)
+        val m = midis(tetra, cells)
+        assertTrue(m.zipWithNext().all { (a, b) -> b > a })
+        assertTrue(m.all { Dromos.HITZAZ.contains(2, it) })
+    }
+
+    @Test
+    fun downTheNeckStartsAtTheFirstRootOnTheCourse() {
+        val cells = ScalePath.downTheNeck(tetra, 0, 2, Dromos.MATZORE.semitones) // D major on the C course
+        assertEquals(2, cells.first().fret)
+        assertEquals(26, cells.last().fret)
+    }
+
+    @Test
+    fun acrossTheNeckClimbsTheCoursesWithoutGaps() {
+        for (inst in Instrument.entries) for (d in Dromos.entries) for (root in 0 until 12) {
+            val hand = ScalePath.defaultHandFret(inst, root)
+            val cells = ScalePath.acrossTheNeck(inst, root, d.semitones, hand)
+            val m = midis(inst, cells)
+            assertTrue(m.size >= 8, "$inst $d $root: $m")
+            assertEquals(0, Math.floorMod(m.first() - root, 12))
+            assertEquals(0, Math.floorMod(m.last() - root, 12))
+            assertTrue(m.zipWithNext().all { (a, b) -> b > a })
+            assertTrue(cells.map { it.course }.zipWithNext().all { (a, b) -> b >= a })
+            assertTrue(cells.all { it.fret in ScalePath.window(inst, hand) })
+            // Every scale note between the first and last root is played.
+            val expected = (m.first()..m.last()).filter { d.contains(root, it) }
+            assertEquals(expected, m, "$inst $d $root")
+        }
+    }
+
+    @Test
+    fun acrossTheNeckOnTheTrichordoInDStartsOpen() {
+        val cells = ScalePath.acrossTheNeck(tri, 2, Dromos.HITZAZ.semitones, ScalePath.defaultHandFret(tri, 2))
+        assertEquals(Cell(0, 0), cells.first())
+        assertEquals(62, midis(tri, cells).last()) // D3 up to D4
+    }
+
+    @Test
+    fun arpeggioAcrossTheNeck() {
+        val cells = ScalePath.acrossTheNeck(tetra, 2, ScalePath.arpeggio(Dromos.MINORE), 2)
+        assertEquals(listOf(50, 53, 57, 60, 62), midis(tetra, cells)) // one octave fits in the 2nd-fret position
+    }
+}

@@ -12,9 +12,11 @@ import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
 import com.bouzouki.core.BouzoukiSynth
+import com.bouzouki.core.Cell
 import com.bouzouki.core.Dromos
 import com.bouzouki.core.Instrument
 import com.bouzouki.core.NoteNames
+import com.bouzouki.core.ScalePath
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
@@ -35,6 +37,15 @@ class FretboardView(context: Context, private val synth: BouzoukiSynth) : View(c
     var names = NoteNames.WESTERN
         set(v) { field = v; invalidate() }
     var showAllNotes = false
+        set(v) { field = v; invalidate() }
+    /** Mark only the arpeggio (1st, 3rd, 5th, 7th) instead of the whole dromos. */
+    var arpeggio = false
+        set(v) { field = v; invalidate() }
+    /** The course the scale player runs down, shaded on the neck. */
+    var focusCourse: Int? = null
+        set(v) { field = v; invalidate() }
+    /** The frets of the hand position the scale player runs across, shaded on the neck. */
+    var focusFrets: IntRange? = null
         set(v) { field = v; invalidate() }
     var tremolo = false
         set(v) { field = v; if (v) scheduleTremolo() }
@@ -72,6 +83,10 @@ class FretboardView(context: Context, private val synth: BouzoukiSynth) : View(c
         color = 0xFF9FB4CC.toInt(); textAlign = Paint.Align.CENTER; textSize = 13 * dp
     }
     private val gutterBg = Paint().apply { color = 0xFF0B1A2C.toInt() }
+    private val focusFill = Paint().apply { color = 0x30FFD54F }
+    private val focusEdge = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xB0FFD54F.toInt(); style = Paint.Style.STROKE
+    }
 
     private fun fretHeight(n: Int) = max(56 * dp, 104 * dp * 0.965f.pow(n - 1))
 
@@ -109,6 +124,23 @@ class FretboardView(context: Context, private val synth: BouzoukiSynth) : View(c
 
         // Headstock area above the nut.
         canvas.drawRect(neckLeft, 0f, neckRight, openRow, headPaint)
+
+        // Where the scale player will play: one course, or one hand position.
+        focusEdge.strokeWidth = 2 * dp
+        focusCourse?.takeIf { it in instrument.courses.indices }?.let { c ->
+            val l = neckLeft + courseWidth * c + 2 * dp
+            val r = l + courseWidth - 4 * dp
+            canvas.drawRect(l, 2 * dp, r, bottom + 10 * dp, focusFill)
+            canvas.drawRect(l, 2 * dp, r, bottom + 10 * dp, focusEdge)
+        }
+        focusFrets?.let { range ->
+            val first = range.first.coerceIn(0, instrument.frets)
+            val last = range.last.coerceIn(0, instrument.frets)
+            val t = cellTop(first) + 2 * dp
+            val b = cellBottom(last) - 2 * dp
+            canvas.drawRect(neckLeft + 2 * dp, t, neckRight - 2 * dp, b, focusFill)
+            canvas.drawRect(neckLeft + 2 * dp, t, neckRight - 2 * dp, b, focusEdge)
+        }
 
         // Mother-of-pearl inlays.
         val now = SystemClock.uptimeMillis()
@@ -155,9 +187,10 @@ class FretboardView(context: Context, private val synth: BouzoukiSynth) : View(c
 
         // Notes of the dromos.
         val heldKeys = held.values.map { key(it.first, it.second) }.toSet()
+        val marked = if (arpeggio) ScalePath.arpeggio(dromos) else dromos.semitones
         for (c in instrument.courses.indices) for (f in 0..instrument.frets) {
             val midi = instrument.midiAt(c, f)
-            val inScale = dromos.contains(rootPc, midi)
+            val inScale = Math.floorMod(midi - rootPc, 12) in marked
             val x = courseX(c)
             val y = cellCenterY(f)
             val cellH = if (f == 0) openRow else fretHeight(f)
@@ -215,13 +248,15 @@ class FretboardView(context: Context, private val synth: BouzoukiSynth) : View(c
         invalidate()
     }
 
-    /** Plays [midi] where it falls near [handFret], for the scale player. Returns false if out of range. */
-    fun playMidi(midi: Int, handFret: Int): Boolean {
-        val (c, f) = instrument.position(midi, handFret) ?: return false
-        play(c, f, 0.8f)
-        onPlayed?.invoke(cellTop(f).toInt(), cellBottom(f).toInt())
-        return true
+    /** Plays one note for the scale player and reports where it is so the screen can follow. */
+    fun playCell(cell: Cell) {
+        play(cell.course, cell.fret, 0.8f)
+        onPlayed?.invoke(cellTop(cell.fret).toInt(), cellBottom(cell.fret).toInt())
     }
+
+    /** The y range of a block of frets, for scrolling it into view. */
+    fun fretSpan(first: Int, last: Int): Pair<Int, Int> =
+        cellTop(first.coerceIn(0, instrument.frets)).toInt() to cellBottom(last.coerceIn(0, instrument.frets)).toInt()
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
         when (e.actionMasked) {

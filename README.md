@@ -148,6 +148,8 @@ Every build is signed with the same key (`bouzouki/signing/`) and gets a higher 
 
 * **Τρίχορδο / Τετράχορδο**: switch between the three-course trichordo (D A D, 26 frets) and the
   four-course tetrachordo (C F A D, 27 frets). The bass courses are octave pairs, like the real instruments.
+* **Two screens**: on the first, pick the bouzouki, the dromos and the root note. It also spells out the
+  scale and its arpeggio. **Παίξε ▶ Play the bouzouki** opens the neck on its own screen.
 * **The whole neck**: the neck runs top to bottom with the nut at the top. Scroll down to reach the
   high frets by dragging the fret numbers on either side. Touch a course anywhere to pluck it,
   slide along it to glide between frets, and use several fingers for chords.
@@ -165,8 +167,15 @@ Every build is signed with the same key (`bouzouki/signing/`) and gets a higher 
   | Kiourdi (Phrygian) | Κιουρντί | Kartsigar (Dorian with flat 5th) | Καρσιγάρ |
   | Rast (Mixolydian) | Ραστ | | |
 
-* **▶ Scale** plays the dromos up and down. **Tremolo** re-picks held notes fast, bouzouki style.
-  **Ντο Ρε Μι / C D E** switches note names, and **All notes** shows the notes outside the scale too.
+* **The scale player** on the neck screen plays the dromos up and back down:
+  * **⇣ Down the neck**: all the way up one string, from its first root to its highest root (two
+    octaves). Choose the string with the buttons under it. The string is shaded on the neck.
+  * **⇄ Across the neck**: across all the strings in one hand position, root to root. Move the
+    position with ◀ ▶. The frets are shaded on the neck.
+  * **Scale / Arpeggio**: play the whole dromos, or just its 1st, 3rd, 5th and 7th. The neck marks
+    only the arpeggio notes when it's selected.
+  * **Tremolo** re-picks held notes fast, bouzouki style. **✋ Mute** stops everything ringing.
+* **Ντο Ρε Μι / C D E** switches note names, and **All notes** shows the notes outside the scale too.
 * **The sound** is synthesized (no recordings). Each course is a pair of plucked steel strings,
   slightly detuned or an octave apart, picked near the bridge with a plectrum click, and shaped
   by a bowl-body EQ and a small room. Listen to `docs/bouzouki-demo.wav`.
