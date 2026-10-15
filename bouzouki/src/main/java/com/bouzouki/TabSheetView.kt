@@ -24,8 +24,10 @@ import kotlin.math.roundToInt
 
 /**
  * The whole song as printed bouzouki tablature, for a vertical [ScrollView]: rows of two bars
- * (8 beats, or 4 s when the beats aren't known), one line per course with the highest on top,
- * fret numbers where the notes start and a bar through the ones that are held (tremolo).
+ * (8 beats, or 4 s with a tick every second when the beats aren't known), one line per course
+ * with the highest on top, fret numbers where the notes start and a bar through the ones that
+ * are held (tremolo). Where the notes are too close together for that, a row holds half as
+ * much, so every number stays at its time and none run into each other.
  * A gold cursor follows the song, the note playing is lit, and the sheet scrolls along unless
  * the reader has just scrolled it. Tap a note to play it, or anywhere else to go there.
  * Stretches without bouzouki fold into one short row.
@@ -48,11 +50,13 @@ class TabSheetView(context: Context) : View(context) {
 
     private val dp = resources.displayMetrics.density
 
-    // Layout, rebuilt when the song or the beats change. grid[] holds the beat times (extended
-    // past both ends of the song); a row of music covers grid[g]..grid[g + 8].
+    // Layout, rebuilt when the song, the beats or the width change. grid[] holds the beat times
+    // (extended past both ends of the song); a row of music covers grid[g]..grid[g + steps].
     private var grid = DoubleArray(0)
+    private var hasBeats = false
     private var rowCount = 0
     private var rowGrid = IntArray(0)        // first grid index, or -1 for a folded stretch
+    private var rowSteps = IntArray(0)       // grid steps in the row: BEATS_PER_ROW, or half where it's crowded
     private var rowT0 = DoubleArray(0)
     private var rowT1 = DoubleArray(0)
     private var rowTop = FloatArray(0)
@@ -65,6 +69,8 @@ class TabSheetView(context: Context) : View(context) {
     private var subtitle = ""
     private var headerHeight = 0f
     private var totalHeight = 0f
+    private var layoutWidth = -1
+    private var boxX = FloatArray(0)         // where each note's fret number is drawn (x of its centre)
 
     // Geometry (px).
     private val margin = 8 * dp
@@ -73,7 +79,12 @@ class TabSheetView(context: Context) : View(context) {
     private val rowPadBottom = 18 * dp
     private val foldHeight = 34 * dp
     private val boxHeight = 16 * dp
+    private val boxGap = 2 * dp               // at least this between two numbers on a course
+    private val maxDrift = 4 * dp             // numbers moved further than this from their time: halve the row
     private var labelWidth = 0f
+    private var staffLeft = 0f                // where the staff starts, set with the rows
+    private var left = 0f                     // where its notes start and end
+    private var right = 0f
 
     // Auto-scroll.
     private var lastUserScroll = 0L
@@ -138,13 +149,13 @@ class TabSheetView(context: Context) : View(context) {
 
     private fun relayout() {
         val s = song
-        followedRow = -1
-        lastTarget = -1
         lastUserScroll = 0L
         autoScrollUntil = SystemClock.uptimeMillis() + 500 // the scroll view settling isn't the reader
         if (s == null) {
             rowCount = 0
             totalHeight = 0f
+            followedRow = -1
+            lastTarget = -1
             requestLayout(); invalidate()
             return
         }
@@ -155,6 +166,25 @@ class TabSheetView(context: Context) : View(context) {
         val first = notes.firstOrNull()?.start ?: 0.0
         val end = max(notes.maxOfOrNull { it.end } ?: 0.0, first + 1.0)
         grid = buildGrid(first, end)
+        title = s.title.ifBlank { "Bouzouki line" }
+        fitTitle()
+        val bpm = Beats.period(beats)?.let { (60.0 / it).roundToInt() }
+        subtitle = (if (bpm != null && hasBeats) "♩ ≈ $bpm  ·  " else "") +
+            courseNames.joinToString(" ") + "  ·  " + s.instrument.greekName
+        buildRows(s, width)
+        requestLayout()
+        invalidate()
+    }
+
+    /** The rows for a view [w] px wide: which stretch each one shows, where, and the fret numbers in them. */
+    private fun buildRows(s: SongAnalysis, w: Int) {
+        layoutWidth = w
+        followedRow = -1
+        lastTarget = -1
+        staffLeft = margin + labelWidth + 6 * dp
+        left = staffLeft + 12 * dp
+        right = w - margin - 6 * dp
+        boxX = FloatArray(s.notes.size)
 
         // Rows of 8 beats; empty stretches of two rows or more (and the intro) fold into one.
         val music = (grid.size - 1) / BEATS_PER_ROW
@@ -180,32 +210,77 @@ class TabSheetView(context: Context) : View(context) {
         }
         if (g.isNotEmpty() && g[0] >= 0 && t0[0] > 1.5) { g.add(0, -1); t0.add(0, 0.0); t1.add(0, t0[1]) }
 
+        // A row whose fret numbers would have to move off their time to fit holds one bar instead.
+        val steps = ArrayList<Int>()
+        val half = BEATS_PER_ROW / 2
+        var i = 0
+        while (i < g.size) {
+            val gi = g[i]
+            if (gi >= 0 && right - left > 0 && placeBoxes(s, gi, BEATS_PER_ROW) > maxDrift) {
+                placeBoxes(s, gi, half)
+                placeBoxes(s, gi + half, half)
+                g.add(i + 1, gi + half); t0.add(i + 1, grid[gi + half]); t1.add(i + 1, t1[i]); t1[i] = grid[gi + half]
+                steps += half; steps += half
+                i += 2
+                continue
+            }
+            steps += if (gi >= 0) BEATS_PER_ROW else 0
+            i++
+        }
+
         rowCount = g.size
         rowGrid = g.toIntArray()
+        rowSteps = steps.toIntArray()
         rowT0 = t0.toDoubleArray()
         rowT1 = t1.toDoubleArray()
         rowTop = FloatArray(rowCount)
         rowHeight = FloatArray(rowCount)
-        rowLabel = Array(rowCount) { i ->
-            if (rowGrid[i] >= 0) clock(rowT0[i])
-            else (if (i == 0) "Intro" else "No bouzouki") + " · " + clock(rowT0[i]) + " – " + clock(rowT1[i])
+        rowLabel = Array(rowCount) { r ->
+            if (rowGrid[r] >= 0) clock(rowT0[r])
+            else (if (r == 0) "Intro" else "No bouzouki") + " · " + clock(rowT0[r]) + " – " + clock(rowT1[r])
         }
-        title = s.title.ifBlank { "Bouzouki line" }
-        fitTitle()
-        val bpm = Beats.period(beats)?.let { (60.0 / it).roundToInt() }
-        subtitle = (if (bpm != null && beats.size >= 8) "♩ ≈ $bpm  ·  " else "") +
-            courseNames.joinToString(" ") + "  ·  " + s.instrument.greekName
         headerHeight = 58 * dp
         var y = headerHeight
         val staff = (courses - 1) * courseGap
-        for (i in 0 until rowCount) {
-            rowTop[i] = y
-            rowHeight[i] = if (rowGrid[i] >= 0) bandHeight + staff + rowPadBottom + 6 * dp else foldHeight
-            y += rowHeight[i]
+        for (r in 0 until rowCount) {
+            rowTop[r] = y
+            rowHeight[r] = if (rowGrid[r] >= 0) bandHeight + staff + rowPadBottom + 6 * dp else foldHeight
+            y += rowHeight[r]
         }
         totalHeight = y + 24 * dp
-        requestLayout()
-        invalidate()
+    }
+
+    /**
+     * Places the fret numbers of the notes starting in grid[g]..grid[g + steps] into [boxX]: each
+     * at its time, unless that would touch the one before on its course, then just after it (and
+     * back from the row's end). Returns how far the furthest one had to move, in px.
+     */
+    private fun placeBoxes(s: SongAnalysis, g: Int, steps: Int): Float {
+        val notes = s.notes
+        val first = s.nextAfter(grid[g] - 1e-9)
+        var end = first
+        while (end < notes.size && notes[end].start < grid[g + steps]) end++
+        var drift = 0f
+        for (c in 0 until courses) {
+            var prevRight = Float.NEGATIVE_INFINITY
+            for (i in first until end) {
+                val n = notes[i]
+                if (n.course != c) continue
+                val half = boxWidth(n.fret) / 2
+                boxX[i] = max(xAt(g, steps, n.start), prevRight + boxGap + half)
+                prevRight = boxX[i] + half
+            }
+            var nextLeft = Float.NaN
+            for (i in end - 1 downTo first) {
+                val n = notes[i]
+                if (n.course != c) continue
+                val half = boxWidth(n.fret) / 2
+                boxX[i] = min(boxX[i], if (nextLeft.isNaN()) right else nextLeft - boxGap - half)
+                nextLeft = boxX[i] - half
+                drift = max(drift, abs(boxX[i] - xAt(g, steps, n.start)))
+            }
+        }
+        return drift
     }
 
     /** Beat times covering [from]..[to], from the beats if there are enough, else every 0.5 s. */
@@ -213,7 +288,8 @@ class TabSheetView(context: Context) : View(context) {
         val b = beats
         val p = Beats.period(b)
         val out = ArrayList<Double>()
-        if (b.size >= BEATS_PER_ROW && p != null && p in 0.2..2.0) {
+        hasBeats = b.size >= BEATS_PER_ROW && p != null && p in 0.2..2.0
+        if (hasBeats && p != null) {
             // Whole rows before the first beat, so the beats keep their place in the rows.
             val before = ceil(max(0.0, b[0] - from) / p / BEATS_PER_ROW).toInt() * BEATS_PER_ROW
             for (k in before downTo 1) out += b[0] - k * p
@@ -227,7 +303,7 @@ class TabSheetView(context: Context) : View(context) {
         } else {
             out += 0.0
         }
-        val step = if (b.size >= BEATS_PER_ROW && p != null && p in 0.2..2.0) p else SECONDS_PER_ROW / BEATS_PER_ROW
+        val step = if (hasBeats && p != null) p else SECONDS_PER_ROW / BEATS_PER_ROW
         while (out.last() < to || (out.size - 1) % BEATS_PER_ROW != 0) out += out.last() + step
         return out.toDoubleArray()
     }
@@ -240,7 +316,9 @@ class TabSheetView(context: Context) : View(context) {
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val w = MeasureSpec.getSize(widthMeasureSpec)
-        val h = if (song == null) (200 * dp).toInt() else ceil(totalHeight).toInt()
+        val s = song
+        if (s != null && w != layoutWidth) buildRows(s, w) // which rows are halved depends on the width
+        val h = if (s == null) (200 * dp).toInt() else ceil(totalHeight).toInt()
         setMeasuredDimension(w, resolveSize(h, heightMeasureSpec)) // a ScrollView's fillViewport asks for exactly its height
     }
 
@@ -251,19 +329,18 @@ class TabSheetView(context: Context) : View(context) {
         lastTarget = -1
     }
 
-    private val staffLeft get() = margin + labelWidth + 6 * dp
-    private val left get() = staffLeft + 12 * dp
-    private val right get() = width - margin - 6 * dp
     private fun courseY(row: Int, course: Int) = rowTop[row] + bandHeight + 6 * dp + (courses - 1 - course) * courseGap
 
-    /** x of time [t] on a row of music: evenly spaced beats, time running evenly within each beat. */
-    private fun xFor(row: Int, t: Double): Float {
-        val g = rowGrid[row]
-        val beatWidth = (right - left) / BEATS_PER_ROW
+    /** x of time [t] on a row of music. */
+    private fun xFor(row: Int, t: Double): Float = xAt(rowGrid[row], rowSteps[row], t)
+
+    /** x of time [t] on a row of [steps] beats from grid[g]: evenly spaced beats, time running evenly within each. */
+    private fun xAt(g: Int, steps: Int, t: Double): Float {
+        val beatWidth = (right - left) / steps
         if (t <= grid[g]) return left
-        if (t >= grid[g + BEATS_PER_ROW]) return right
+        if (t >= grid[g + steps]) return right
         var k = 0
-        while (k < BEATS_PER_ROW - 1 && grid[g + k + 1] <= t) k++
+        while (k < steps - 1 && grid[g + k + 1] <= t) k++
         val frac = (t - grid[g + k]) / (grid[g + k + 1] - grid[g + k])
         return left + ((k + frac) * beatWidth).toFloat()
     }
@@ -271,7 +348,8 @@ class TabSheetView(context: Context) : View(context) {
     private fun timeAt(row: Int, x: Float): Double {
         val g = rowGrid[row]
         if (g < 0) return rowT0[row] + ((x - left) / (right - left)).coerceIn(0f, 1f) * (rowT1[row] - rowT0[row])
-        val pos = ((x - left) / ((right - left) / BEATS_PER_ROW)).coerceIn(0f, BEATS_PER_ROW - 0.001f)
+        val steps = rowSteps[row]
+        val pos = ((x - left) / ((right - left) / steps)).coerceIn(0f, steps - 0.001f)
         val k = pos.toInt()
         return grid[g + k] + (pos - k) * (grid[g + k + 1] - grid[g + k])
     }
@@ -357,10 +435,11 @@ class TabSheetView(context: Context) : View(context) {
 
     private fun drawRow(canvas: Canvas, s: SongAnalysis, r: Int, current: Boolean, lit: Int) {
         val g = rowGrid[r]
+        val steps = rowSteps[r]
         val top = rowTop[r]
         val yTop = courseY(r, courses - 1)
         val yBottom = courseY(r, 0)
-        val beatWidth = (right - left) / BEATS_PER_ROW
+        val beatWidth = (right - left) / steps
         val cursorX = if (current) xFor(r, time) else 0f
         if (current) {
             canvas.drawRect(0f, top, width.toFloat(), top + rowHeight[r], rowTint)
@@ -374,17 +453,24 @@ class TabSheetView(context: Context) : View(context) {
             canvas.drawLine(staffLeft, y, right, y, staffPaint)
             canvas.drawText(courseNames[c], margin, y + 4.2f * dp, coursePaint)
         }
-        // Beats, and a bar line every four.
-        for (k in 0..BEATS_PER_ROW) {
+        // Beats, and a bar line every four (rows start on a bar); without beats, a tick every
+        // second, all alike, since bars would only be made up.
+        for (k in 0..steps) {
             val x = if (k == 0) staffLeft else left + k * beatWidth
-            canvas.drawLine(x, yTop, x, yBottom, if (k % 4 == 0) barPaint else beatPaint)
+            val paint = when {
+                hasBeats -> if (k % 4 == 0) barPaint else beatPaint
+                k == 0 || k == steps -> staffPaint
+                k % 2 == 0 -> beatPaint
+                else -> null
+            }
+            if (paint != null) canvas.drawLine(x, yTop, x, yBottom, paint)
         }
         // The cursor goes under the notes, so the one playing stays readable.
         if (current) drawCursor(canvas, cursorX, yTop - 10 * dp, yBottom + 10 * dp)
 
         // A note held over from the row before.
         val t0 = grid[g]
-        val t1 = grid[g + BEATS_PER_ROW]
+        val t1 = grid[g + steps]
         val firstNote = s.nextAfter(t0 - 1e-9)
         val prev = firstNote - 1
         if (prev >= 0 && s.notes[prev].end > t0 + 0.05) {
@@ -396,8 +482,8 @@ class TabSheetView(context: Context) : View(context) {
         var i = firstNote
         while (i < s.notes.size && s.notes[i].start < t1) {
             val n = s.notes[i]
-            if (isHeld(g, n.start, n.end)) {
-                val x0 = xFor(r, n.start) + boxWidth(n.fret) / 2 + 1 * dp
+            if (isHeld(g, steps, n.start, n.end)) {
+                val x0 = boxX[i] + boxWidth(n.fret) / 2 + 1 * dp
                 val x1 = xFor(r, n.end)
                 val y = courseY(r, n.course)
                 if (x1 > x0 + 4 * dp) canvas.drawLine(x0, y, x1, y, if (i == lit) holdLitPaint else holdPaint)
@@ -407,7 +493,7 @@ class TabSheetView(context: Context) : View(context) {
         i = firstNote
         while (i < s.notes.size && s.notes[i].start < t1) {
             val n = s.notes[i]
-            val x = xFor(r, n.start)
+            val x = boxX[i]
             val y = courseY(r, n.course)
             val half = boxWidth(n.fret) / 2
             val on = i == lit
@@ -429,9 +515,9 @@ class TabSheetView(context: Context) : View(context) {
     }
 
     /** Long enough to be held (or played tremolo): most of a beat or more. */
-    private fun isHeld(g: Int, start: Double, end: Double): Boolean {
+    private fun isHeld(g: Int, steps: Int, start: Double, end: Double): Boolean {
         var k = g
-        while (k < g + BEATS_PER_ROW - 1 && grid[k + 1] <= start) k++
+        while (k < g + steps - 1 && grid[k + 1] <= start) k++
         return end - start >= 0.8 * (grid[k + 1] - grid[k])
     }
 
@@ -442,7 +528,7 @@ class TabSheetView(context: Context) : View(context) {
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         (parent as? View)?.setOnScrollChangeListener { _, _, _, _, _ ->
-            if (SystemClock.uptimeMillis() > autoScrollUntil) lastUserScroll = SystemClock.uptimeMillis()
+            if (SystemClock.uptimeMillis() > autoScrollUntil) userScrolled()
             invalidate() // the rows drawn depend on the scroll position
         }
     }
@@ -485,8 +571,15 @@ class TabSheetView(context: Context) : View(context) {
     // --- touch ---
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        lastUserScroll = SystemClock.uptimeMillis() // the reader is handling the sheet
+        userScrolled() // the reader is handling the sheet
         return super.dispatchTouchEvent(event)
+    }
+
+    /** The reader moved the sheet: following pauses, then brings the playing row back even if it's the same one. */
+    private fun userScrolled() {
+        lastUserScroll = SystemClock.uptimeMillis()
+        followedRow = -1
+        lastTarget = -1
     }
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
@@ -508,11 +601,11 @@ class TabSheetView(context: Context) : View(context) {
             var best = -1
             var bestD = 20 * dp
             val t0 = grid[rowGrid[r]]
-            val t1 = grid[rowGrid[r] + BEATS_PER_ROW]
+            val t1 = grid[rowGrid[r] + rowSteps[r]]
             var i = s.nextAfter(t0 - 1e-9)
             while (i < s.notes.size && s.notes[i].start < t1) {
                 val n = s.notes[i]
-                val dx = abs(xFor(r, n.start) - x)
+                val dx = abs(boxX[i] - x)
                 val dy = abs(courseY(r, n.course) - y)
                 val d = max(dx, dy * 1.3f)
                 if (d < bestD) { bestD = d; best = i }

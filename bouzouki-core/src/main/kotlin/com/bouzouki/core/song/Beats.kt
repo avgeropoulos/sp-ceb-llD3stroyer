@@ -15,6 +15,10 @@ import kotlin.math.sqrt
  * 2. the tempo, by autocorrelation weighted towards common tempi,
  * 3. the beats, by dynamic programming (D. Ellis, "Beat Tracking by Dynamic Programming", 2007,
  *    the method librosa uses): every beat sits on strong onsets, one beat period after the last.
+ *
+ * Not used by the app yet: so far it is checked on synthetic envelopes and on one real clip
+ * (against librosa, not hand-marked beats). It needs scoring on more songs with known beats,
+ * separate from the ones used to tune the envelope, before it lays out the tablature's bars.
  */
 object Beats {
     /** Frames per second of [envelope]'s output: Basic Pitch's hop, on a uniform time grid. */

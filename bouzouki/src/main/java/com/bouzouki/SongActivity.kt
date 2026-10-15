@@ -99,7 +99,8 @@ class SongActivity : Activity() {
     /** Playback time between the player's reports, and what follows it at every frame. */
     private val clock = PlaybackClock()
     private var frameScheduled = false
-    private var resumed = false
+    private var visible = false // started: drawn on screen, even when another window has the focus
+    private var lastFrameMedia = Double.NaN
     /** Seconds added to the playback time when looking up notes (per song, see [nudgeSync]). */
     private var syncOffset = 0.0
     /** After a seek the player still reports the old time for a moment: ignore it until then. */
@@ -373,6 +374,8 @@ class SongActivity : Activity() {
         fileRow.visibility = View.VISIBLE
         player = MediaPlayer().apply {
             setDataSource(this@SongActivity, uri)
+            // The speed chosen carries over; set before preparing, it doesn't start playback.
+            if (speed != 1f) try { playbackParams = PlaybackParams().setSpeed(speed) } catch (_: Exception) {}
             setOnPreparedListener { filePrepared = true; tickFile() }
             setOnCompletionListener { playing = false; refreshButtons(); tickFile() }
             setOnSeekCompleteListener { tickFile() }
@@ -432,6 +435,7 @@ class SongActivity : Activity() {
         sheet.song = s
         lastNote = -1
         lastNext = -1
+        lastFrameMedia = Double.NaN
         pluckReset = true
         board.liveCell = null
         board.nextCell = null
@@ -469,8 +473,8 @@ class SongActivity : Activity() {
     private fun playNoteAt(i: Int) {
         val s = song ?: return
         val n = s.notes.getOrNull(i) ?: return
-        seek(n.start - 0.15 - syncOffset)
-        if (bouzoukiSound && clock.playing) return // the bouzouki sound plays it in time, a moment from now
+        seek(n.start - NOTE_PREROLL - syncOffset)
+        if (bouzoukiSound && clock.playing) return // the bouzouki sound plays it in time, once the player is there
         val inst = board.instrument
         if (n.course in inst.courses.indices) audio.synth.pluck(n.course, inst.midiAt(n.course, n.fret), inst.courses[n.course].octavePair, 0.85f)
     }
@@ -576,7 +580,9 @@ class SongActivity : Activity() {
         val t = try { p.currentPosition / 1000.0 } catch (_: IllegalStateException) { return }
         val nowPlaying = try { p.isPlaying } catch (_: IllegalStateException) { false }
         if (nowPlaying != playing) { playing = nowPlaying; refreshButtons() } // e.g. a speed change can start it
-        onReport(t, playing, speed.toDouble(), SystemClock.elapsedRealtimeNanos())
+        // The speed the player really uses, which isn't the button's if setting it failed.
+        val rate = try { p.playbackParams.speed.toDouble() } catch (_: Exception) { speed.toDouble() }
+        onReport(t, playing, rate, SystemClock.elapsedRealtimeNanos())
         if (playing) main.postDelayed(fileTicker, 100)
     }
 
@@ -605,14 +611,18 @@ class SongActivity : Activity() {
         refreshButtons()
     }
 
-    /** Moves the song to [t] (seconds of media) and the clock with it, without waiting for the player. */
+    /**
+     * Moves the song to [t] (seconds of media). The clock goes there at once and waits for the
+     * player, and the bouzouki sound picks up from there when the player does.
+     */
     private fun seek(t: Double) {
         val target = t.coerceAtLeast(0.0)
         val nanos = SystemClock.elapsedRealtimeNanos()
         clock.jump(target, nanos)
         pendingSeek = target
         pendingSeekNanos = nanos
-        pluckReset = true
+        val s = song
+        if (s != null && clock.playing) { nextPluck = s.nextAfter(target + syncOffset); pluckReset = false } else pluckReset = true
         if (fileUri != null) player?.takeIf { filePrepared }?.let { p -> try { p.seekTo((target * 1000).toInt()) } catch (_: Exception) {} }
         else web.evaluateJavascript("player && player.seekTo($target, true)", null)
         render(target)
@@ -634,20 +644,22 @@ class SongActivity : Activity() {
     private val frameCallback = Choreographer.FrameCallback {
         frameScheduled = false
         if (clock.playing) {
-            render(clock.now(SystemClock.elapsedRealtimeNanos()))
+            val t = clock.now(SystemClock.elapsedRealtimeNanos())
+            if (t != lastFrameMedia) render(t) // the clock stands still while a seek lands or the player stalls
             scheduleFrame()
         }
     }
 
-    /** Draws at every frame (vsync) while the song plays. */
+    /** Draws at every frame (vsync) while the song plays and the screen shows it. */
     private fun scheduleFrame() {
-        if (frameScheduled || !resumed) return
+        if (frameScheduled || !visible) return
         frameScheduled = true
         Choreographer.getInstance().postFrameCallback(frameCallback)
     }
 
     /** Shows the song at media time [media]: the neck, the note, the tab strip and the tablature. */
     private fun render(media: Double) {
+        lastFrameMedia = media
         if (fileUri != null) {
             val sec = media.toInt()
             if (sec != shownSecond) { shownSecond = sec; fileTimeText.text = "%d:%02d".format(sec / 60, sec % 60) }
@@ -686,6 +698,7 @@ class SongActivity : Activity() {
      */
     private fun pluck(s: SongAnalysis, t: Double) {
         if (!bouzoukiSound || !clock.playing) { pluckReset = true; return }
+        if (clock.holding) return // a seek on its way: nothing before the player gets there
         if (pluckReset) { nextPluck = s.nextAfter(t); pluckReset = false }
         val ahead = t + PLUCK_LEAD * clock.rate
         val inst = board.instrument
@@ -765,22 +778,32 @@ class SongActivity : Activity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        visible = true
+        if (clock.playing) scheduleFrame()
+    }
+
     override fun onResume() {
         super.onResume()
         audio.start()
         SongJobs.listen(jobListener)
-        resumed = true
-        if (clock.playing) scheduleFrame()
     }
 
     override fun onPause() {
-        resumed = false
-        Choreographer.getInstance().removeFrameCallback(frameCallback)
-        frameScheduled = false
         SongJobs.unlisten(jobListener)
         audio.stop()
         if (playing && fileUri != null) toggleFilePlayback()
         super.onPause()
+    }
+
+    // Drawing stops when the screen is hidden, not on pause: paused but still visible (split screen,
+    // a dialog on top), the video plays on and so does the drawing.
+    override fun onStop() {
+        visible = false
+        Choreographer.getInstance().removeFrameCallback(frameCallback)
+        frameScheduled = false
+        super.onStop()
     }
 
     override fun onDestroy() {
@@ -803,6 +826,8 @@ class SongActivity : Activity() {
         private const val DISPLAY_LEAD = 0.025
         /** Seconds between plucking the synth and hearing it. */
         private const val PLUCK_LEAD = 0.06
+        /** A tapped note plays from this many seconds before it (a little more than YouTube's time step). */
+        private const val NOTE_PREROLL = 0.3
 
         private val ID = Regex("""(?:v=|youtu\.be/|shorts/|embed/|live/)([A-Za-z0-9_-]{11})""")
 
