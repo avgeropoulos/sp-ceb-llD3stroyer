@@ -47,7 +47,10 @@ import com.bouzouki.core.song.Detail
 import com.bouzouki.core.song.ParsedTab
 import com.bouzouki.core.song.PdfTab
 import com.bouzouki.core.song.SongAnalysis
+import com.bouzouki.core.song.TabParser
+import java.io.File
 import java.io.IOException
+import java.lang.ref.WeakReference
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -126,6 +129,11 @@ class SongActivity : Activity() {
     private var tabReport: SongLines.TabReport? = null
     private var wanted: SongLines.Spec? = null
     private var pendingTab: SongLines.Spec.FromTab? = null
+    /**
+     * A tab that came in (shared, or a file read) while it's offered for a song, its dialog up; it comes back
+     * with the screen when that's recreated (see [onSaveInstanceState]).
+     */
+    private var offered: TabFiles.Incoming? = null
     /** The song whose tab's notes gave way to the detected ones just now (the status says how to get them back). */
     private var tabGaveWay: String? = null
     /** The song being prepared while this screen watched: its song, once ready, replaces the one shown. */
@@ -440,10 +448,14 @@ class SongActivity : Activity() {
         SongLines.listen(lineListener)
         status.text = "Paste a YouTube link (or Share → Μπουζούκι in the YouTube app). The first time, a song takes a few minutes to prepare; after that it opens instantly."
 
+        live = WeakReference(this)
         // Back to a song that's being prepared (e.g. from the notification).
         (SongJobs.state as? SongJobs.State.Working)?.let { w ->
             if (!w.id.startsWith("file-")) openYouTube(w.id, startJob = false)
         }
+        // Recreated (dark mode, font size, or back after the app was closed): the song open, and a tab that came in for it.
+        if (savedInstanceState != null) restore(savedInstanceState)
+        TabFiles.sweep(this)
         handleShare(intent, fresh = savedInstanceState == null)
     }
 
@@ -458,21 +470,30 @@ class SongActivity : Activity() {
      */
     private fun handleShare(intent: Intent?, fresh: Boolean) {
         intent ?: return
+        // A tab isn't offered again when the screen is recreated or comes back from the recent apps: one still being
+        // offered comes back with the screen ([restore]), and a shared file's permission to read it is gone by then.
+        val again = !fresh || intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
         val file = sharedFile(intent)
         if (file != null) {
-            // Not again when the screen comes back (from the recent apps, say): the permission to read it is gone by then.
-            if (fresh && intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY == 0) receiveTabFile(file, intent.type, fromMenu = false)
+            if (!again) receiveTabFile(file, intent.type, fromMenu = false)
             return
         }
         if (intent.action != Intent.ACTION_SEND) return
         val shared = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return
-        if (TabFiles.looksLikeTab(shared)) {
-            offerTab(TabFiles.Incoming.Text("", shared)) // no file name
+        if (isTab(shared)) {
+            if (!again) offerTab(TabFiles.Incoming.Text("", shared)) // no file name
             return
         }
+        if (!fresh && currentId != null) return // the song came back with the screen
         link.setText(shared)
         loadLink()
     }
+
+    /**
+     * Whether shared [text] is a tab rather than a link: the tab reader finds notes in it (in as much of it as a tab
+     * can have; a text longer than that is then too long, which the look at it says).
+     */
+    private fun isTab(text: String) = TabParser.parse(text.take(MAX_TAB_CHARS), settings.instrument).notes.isNotEmpty()
 
     /** The file shared with this screen (Share → Μπουζούκι) or opened with it (Open with), if any. */
     private fun sharedFile(intent: Intent): Uri? = when (intent.action) {
@@ -505,9 +526,10 @@ class SongActivity : Activity() {
     private fun openYouTube(id: String, startJob: Boolean) {
         stopFile()
         fileUri = null
-        if (id != currentId) pendingTab = null
+        if (id != currentId) dropPendingTab()
         currentId = id
         currentSource = SongJobs.Source.YouTube(id)
+        prefs.edit().putString(PREF_LAST_SONG, id).apply() // offered first for a tab shared later
         loadSync(id)
         showLinkRows(false) // more room for the neck; 🔗 brings them back
         web.visibility = View.VISIBLE
@@ -523,7 +545,7 @@ class SongActivity : Activity() {
         stopFile()
         fileUri = uri
         val id = "file-" + Integer.toHexString(uri.toString().hashCode())
-        if (id != currentId) pendingTab = null
+        if (id != currentId) dropPendingTab()
         currentId = id
         currentSource = SongJobs.Source.AudioFile(uri, name)
         loadSync(id)
@@ -737,7 +759,8 @@ class SongActivity : Activity() {
 
     /**
      * A line worked out in the background (or ready at once): shown if it's still the one wanted. A tab just
-     * pasted or opened is kept for the song only if its notes were read and found; how it lined up is reported.
+     * pasted or opened is kept for the song only if its notes were read and found (and, in place of a tab kept
+     * before, only if a fair share of them were, or the player says so); how it lined up is reported.
      */
     private fun onLine(out: SongLines.Outcome, announce: Boolean = true) {
         val spec = out.spec
@@ -756,7 +779,11 @@ class SongActivity : Activity() {
                     if (pasted) dropPendingTab() else settings.setUsesTab(spec.id, false)
                     chooseLine(announce = false)
                     status.text = when {
-                        pasted && unread && pdf -> "No tab could be read from the PDF: nothing changed."
+                        pasted && unread && pdf -> when (r?.let { TabFiles.pdfTrouble(it.tab) }) {
+                            TabFiles.PdfTrouble.LOCKED -> "This PDF is locked with a password: nothing changed."
+                            TabFiles.PdfTrouble.DAMAGED -> "This file is damaged, or not really a PDF: nothing changed."
+                            null -> "No tab could be read from the PDF: nothing changed."
+                        }
                         pasted && unread -> "No tab notes could be read from it: nothing changed."
                         pasted -> "None of the new tab's notes could be found in the recording: nothing changed."
                         unread -> "The tab kept for this song can't be read: the detected notes are shown."
@@ -766,29 +793,24 @@ class SongActivity : Activity() {
                     refreshLineControls()
                     return
                 }
-                var keepIt = true
-                if (pasted && spec is SongLines.Spec.FromTab) {
-                    pendingTab = null
-                    try {
-                        // In place of the tab kept before (text or PDF).
-                        when (val t = spec.source) {
-                            is SongLines.TabSource.Text -> SongJobs.saveTab(this, spec.id, t.text)
-                            is SongLines.TabSource.Pdf -> SongJobs.keepTabPdf(this, spec.id, t.file)
-                        }
-                    } catch (e: IOException) {
-                        keepIt = false
-                        status.text = "Couldn't keep the tab on the phone (${e.message}): it's shown till the song is closed."
-                    }
+                val replaces = pasted && spec is SongLines.Spec.FromTab && SongJobs.hasTab(this, spec.id)
+                // Few of its notes found where the song has a tab already (a tab of another song, likely): shown, but
+                // kept in place of that one only if the player says so.
+                val ask = replaces && r != null && weak(r)
+                val kept = when {
+                    ask -> false
+                    pasted && spec is SongLines.Spec.FromTab -> keepPending(spec)
+                    else -> { keep(spec); true }
                 }
-                if (keepIt) keep(spec)
                 if (out.song !== line) {
                     line = out.song
                     lineSpec = spec
                     tabReport = r
                     showLine()
                 }
-                if (announce && keepIt) status.text = lineText()
-                if (pasted && r != null) showTabReport(r, pdf)
+                if ((announce && kept) || ask) status.text = lineText()
+                if (ask && r != null && spec is SongLines.Spec.FromTab) askToReplace(spec, r, pdf)
+                else if (pasted && r != null) showTabReport(r, pdf, replaced = replaces && kept)
             }
             is SongLines.Outcome.NoData -> {
                 // Prepared before what tabs and detail levels need was kept, or that can't be read (it's
@@ -810,11 +832,65 @@ class SongActivity : Activity() {
         refreshLineControls()
     }
 
-    /** Forgets the tab being tried, which won't be kept: a PDF that came in for it is deleted. */
-    private fun dropPendingTab() {
+    /**
+     * Forgets the tab being tried ([pendingTab]), which won't be kept, for [next] (another one to try, or none): a PDF
+     * that came in for it is deleted.
+     */
+    private fun dropPendingTab(next: SongLines.Spec.FromTab? = null) {
         val file = (pendingTab?.source as? SongLines.TabSource.Pdf)?.file
-        pendingTab = null
-        if (file != null && TabFiles.isIncoming(this, file)) file.delete()
+        pendingTab = next
+        if (file != null && file != (next?.source as? SongLines.TabSource.Pdf)?.file) TabFiles.release(this, file)
+    }
+
+    /**
+     * Keeps the tab just tried, [spec], for its song in place of the tab kept before (text or PDF), and remembers its
+     * line as the song's choice; false (and the status says so) if it couldn't be written.
+     */
+    private fun keepPending(spec: SongLines.Spec.FromTab): Boolean {
+        if (pendingTab == spec) pendingTab = null
+        val file = (spec.source as? SongLines.TabSource.Pdf)?.file
+        return try {
+            when (val t = spec.source) {
+                is SongLines.TabSource.Text -> SongJobs.saveTab(this, spec.id, t.text)
+                is SongLines.TabSource.Pdf -> SongJobs.keepTabPdf(this, spec.id, t.file)
+            }
+            keep(spec)
+            true
+        } catch (e: IOException) {
+            status.text = "Couldn't keep the tab on the phone (${e.message}): it's shown till the song is closed."
+            false
+        } finally {
+            if (file != null) TabFiles.release(this, file) // moved into place, or not kept
+        }
+    }
+
+    /** Whether few of a tab's notes were found in the recording: too few to be sure it's a tab of this song. */
+    private fun weak(r: SongLines.TabReport) = r.matched * 4 < r.total || r.matched < minOf(MIN_SURE_NOTES, (r.total + 1) / 2)
+
+    /**
+     * A tab just tried ([spec]) of which few notes were found, for a song that has a tab already: its line is shown,
+     * and the player says which tab to keep (closing the question keeps the old one).
+     */
+    private fun askToReplace(spec: SongLines.Spec.FromTab, r: SongLines.TabReport, pdf: Boolean) {
+        var answered = false
+        AlertDialog.Builder(this)
+            .setTitle(if (pdf) "📄 Keep this tab instead?" else "📝 Keep this tab instead?")
+            .setMessage("Only ${r.matched} of its ${r.total} notes were found in the recording: is it a tab of this song? It's shown now; " +
+                "the tab kept for this song stays unless you keep this one in its place.\n\n" + tabReportText(r, pdf, sure = false))
+            .setPositiveButton("Keep this one") { _, _ ->
+                answered = true
+                if (pendingTab == spec && keepPending(spec)) status.text = lineText()
+            }
+            .setNegativeButton("Keep the old one") { _, _ -> answered = true; keepOldTab(spec) }
+            .setOnDismissListener { if (!answered && !isChangingConfigurations && !isDestroyed) keepOldTab(spec) }
+            .show()
+    }
+
+    /** The tab just tried ([spec]) isn't kept: the song's line goes back to the one chosen before. */
+    private fun keepOldTab(spec: SongLines.Spec.FromTab) {
+        if (pendingTab != spec) return
+        dropPendingTab()
+        chooseLine(announce = true)
     }
 
     /** Remembers line [spec] as the one chosen for its song (once it has come). */
@@ -889,7 +965,7 @@ class SongActivity : Activity() {
             return
         }
         if (!SongJobs.hasData(this, src.id)) { askToPrepareAgain(); return }
-        pendingTab = null // a tab being tried gives way
+        dropPendingTab() // a tab being tried gives way
         // The tab's notes shown give way: the status then says the tab is kept, and how to show them again.
         tabGaveWay = if (lineSpec is SongLines.Spec.FromTab && SongJobs.hasTab(this, src.id)) src.id else null
         if (d == Detail.NORMAL) {
@@ -1004,12 +1080,13 @@ class SongActivity : Activity() {
 
     /**
      * Shows tab [raw] (pasted, a text file's, or shared) before it's used for song [id]: "Use this tab" lines
-     * it up ([useTab]); [other], if given, offers it for another song instead.
+     * it up ([useTab]); [other], if given, offers it for another song instead. [incoming] is the tab that came in
+     * (a file or shared), if it did: [offered] while the dialog is up.
      */
-    private fun offerTabText(id: String, raw: String, title: String, other: (() -> Unit)? = null) {
+    private fun offerTabText(id: String, raw: String, title: String, other: (() -> Unit)? = null, incoming: TabFiles.Incoming? = null) {
         val text = raw.replace("\r\n", "\n").replace('\r', '\n').trim('\n')
-        if (text.isBlank()) { status.text = "There's no tab in it: it's empty."; return }
-        if (text.length > MAX_TAB_CHARS) { status.text = "That's too long for one song's tab: keep just the tab's lines."; return }
+        if (text.isBlank()) { status.text = "There's no tab in it: it's empty."; settle(incoming); return }
+        if (text.length > MAX_TAB_CHARS) { status.text = "That's too long for one song's tab: keep just the tab's lines."; settle(incoming); return }
         val lines = text.lines()
         val preview = TextView(this).apply {
             typeface = Typeface.MONOSPACE
@@ -1026,17 +1103,33 @@ class SongActivity : Activity() {
             addView(TextView(this@SongActivity).apply {
                 setTextAppearance(android.R.style.TextAppearance_Material_Subhead)
                 setPadding(ui.px(24), ui.px(8), ui.px(24), ui.px(8))
-                this.text = "It's lined up with the recording, and kept on this phone for this song if its notes are found there."
+                this.text = "It's lined up with the recording, and kept on this phone for this song if its notes are found there" +
+                    (if (SongJobs.hasTab(this@SongActivity, id)) ", in place of the tab kept now." else ".")
             })
             addView(box, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         }
+        if (incoming != null) offered = incoming
+        var answered = false
         AlertDialog.Builder(this)
             .setTitle(title)
             .setView(content)
-            .setPositiveButton("Use this tab") { _, _ -> useTab(id, SongLines.TabSource.Text(text)) }
-            .apply { if (other != null) setNeutralButton("Another song…") { _, _ -> other() } }
+            .setPositiveButton("Use this tab") { _, _ -> answered = true; useTab(id, SongLines.TabSource.Text(text)); settle(incoming) }
+            .apply { if (other != null) setNeutralButton("Another song…") { _, _ -> answered = true; other() } }
             .setNegativeButton("Cancel", null)
+            .setOnDismissListener { if (!answered) settle(incoming) }
             .show()
+    }
+
+    /**
+     * Tab [tab] that came in is no longer offered (used for a song, or not wanted): forgotten as [offered], and a PDF's
+     * copy deleted unless it's being tried for a song now. Not while the screen is being recreated: it comes back then.
+     */
+    private fun settle(tab: TabFiles.Incoming?) {
+        tab ?: return
+        if (isChangingConfigurations || isDestroyed) return
+        if (offered === tab) offered = null
+        val tried = (pendingTab?.source as? SongLines.TabSource.Pdf)?.file
+        if (tab is TabFiles.Incoming.Pdf && tab.file != tried) TabFiles.release(this, tab)
     }
 
     /** 📄 Open a tab file: a PDF or a text file, picked with the phone's file picker (Files, Drive, Downloads…). */
@@ -1060,21 +1153,31 @@ class SongActivity : Activity() {
      */
     private fun receiveTabFile(uri: Uri, type: String?, fromMenu: Boolean) {
         status.text = "Reading the tab file…"
-        val keep = (pendingTab?.source as? SongLines.TabSource.Pdf)?.file
-        TabFiles.read(this, uri, type, keep) { result ->
-            if (isFinishing || isDestroyed) return@read
-            val tab = result.getOrElse { e ->
-                status.text = e.message
-                AlertDialog.Builder(this).setTitle("📝 Tab").setMessage(e.message).setPositiveButton("OK", null).show()
+        val song = if (fromMenu) currentId else null
+        TabFiles.read(this, uri, type) { result ->
+            // The screen may have been recreated meanwhile (dark mode, font size): the new one takes the tab.
+            val to = if (!isDestroyed) this else live?.get()?.takeIf { !it.isDestroyed }
+            if (to == null || to.isFinishing) {
+                result.getOrNull()?.let { TabFiles.release(applicationContext, it) }
                 return@read
             }
-            status.text = "Got the tab “${tab.name}”."
-            val id = currentId
-            if (!fromMenu || id == null) { offerTab(tab); return@read }
-            when (tab) {
-                is TabFiles.Incoming.Text -> offerTabText(id, tab.text, "Use this tab file?")
-                is TabFiles.Incoming.Pdf -> useTab(id, SongLines.TabSource.Pdf(tab.file))
-            }
+            to.tabRead(result, song)
+        }
+    }
+
+    /** A tab file read ([receiveTabFile]): for song [forSong] if it's still open (picked from its 📝 Tab menu), else offered. */
+    private fun tabRead(result: Result<TabFiles.Incoming>, forSong: String?) {
+        val tab = result.getOrElse { e ->
+            status.text = e.message
+            AlertDialog.Builder(this).setTitle("📝 Tab").setMessage(e.message).setPositiveButton("OK", null).show()
+            return
+        }
+        status.text = "Got the tab “${tab.name}”."
+        val id = currentId
+        if (forSong == null || forSong != id) { offerTab(tab); return }
+        when (tab) {
+            is TabFiles.Incoming.Text -> offerTabText(id, tab.text, "Use this tab file?", incoming = tab)
+            is TabFiles.Incoming.Pdf -> useTab(id, SongLines.TabSource.Pdf(tab.file))
         }
     }
 
@@ -1087,14 +1190,20 @@ class SongActivity : Activity() {
         val song = source?.title?.takeIf { it.isNotBlank() }?.let { "“$it”" } ?: "this song"
         val other = { pickSongFor(tab) }.takeIf { savedSongs().any { it.id != id } }
         when (tab) {
-            is TabFiles.Incoming.Text -> offerTabText(id, tab.text, "Use this tab for $song?", other)
-            is TabFiles.Incoming.Pdf -> AlertDialog.Builder(this)
-                .setTitle("📄 Use this PDF tab?")
-                .setMessage("“${tab.name}” for $song: its notes are lined up with the recording, and it's kept for the song if they're found there.")
-                .setPositiveButton("Use for this song") { _, _ -> useTab(id, SongLines.TabSource.Pdf(tab.file)) }
-                .apply { if (other != null) setNeutralButton("Another song…") { _, _ -> other() } }
-                .setNegativeButton("Cancel", null)
-                .show()
+            is TabFiles.Incoming.Text -> offerTabText(id, tab.text, "Use this tab for $song?", other, incoming = tab)
+            is TabFiles.Incoming.Pdf -> {
+                offered = tab
+                var answered = false
+                val instead = if (SongJobs.hasTab(this, id)) ", in place of the tab kept now," else ""
+                AlertDialog.Builder(this)
+                    .setTitle("📄 Use this PDF tab?")
+                    .setMessage("“${tab.name}” for $song: its notes are lined up with the recording, and it's kept for the song$instead if they're found there.")
+                    .setPositiveButton("Use for this song") { _, _ -> answered = true; useTab(id, SongLines.TabSource.Pdf(tab.file)); settle(tab) }
+                    .apply { if (other != null) setNeutralButton("Another song…") { _, _ -> answered = true; other() } }
+                    .setNegativeButton("Cancel", null)
+                    .setOnDismissListener { if (!answered) settle(tab) }
+                    .show()
+            }
         }
     }
 
@@ -1104,8 +1213,11 @@ class SongActivity : Activity() {
      * it says to prepare the song first.
      */
     private fun pickSongFor(tab: TabFiles.Incoming) {
-        val songs = savedSongs().filter { it.id != currentId }
+        // The song opened last first: likely the one being played, whose tab was found just now.
+        val last = prefs.getString(PREF_LAST_SONG, null)
+        val songs = savedSongs().filter { it.id != currentId }.sortedByDescending { it.id == last }
         if (songs.isEmpty()) {
+            settle(tab)
             status.text = "Prepare the song first, then share the tab again."
             AlertDialog.Builder(this)
                 .setTitle("Prepare the song first")
@@ -1115,18 +1227,22 @@ class SongActivity : Activity() {
                 .show()
             return
         }
+        offered = tab
+        var answered = false
         AlertDialog.Builder(this)
             .setTitle(if (tab.name.isEmpty()) "Which song is this tab for?" else "Which song is “${tab.name}” for?")
             .setItems(songs.map { if (it.current) it.title else "${it.title}  ·  prepare again" }.toTypedArray()) { _, i ->
+                answered = true
                 val s = songs[i]
                 link.setText("https://youtu.be/${s.id}")
                 openYouTube(s.id, startJob = !s.current)
                 when (tab) {
-                    is TabFiles.Incoming.Text -> offerTabText(s.id, tab.text, "Use this tab for “${s.title}”?")
-                    is TabFiles.Incoming.Pdf -> useTab(s.id, SongLines.TabSource.Pdf(tab.file))
+                    is TabFiles.Incoming.Text -> offerTabText(s.id, tab.text, "Use this tab for “${s.title}”?", incoming = tab)
+                    is TabFiles.Incoming.Pdf -> { useTab(s.id, SongLines.TabSource.Pdf(tab.file)); settle(tab) }
                 }
             }
             .setNegativeButton("Cancel", null)
+            .setOnDismissListener { if (!answered) settle(tab) }
             .show()
     }
 
@@ -1138,8 +1254,11 @@ class SongActivity : Activity() {
      * the tab kept before) only once they're read and found in the recording ([pendingTab], [onLine]).
      */
     private fun useTab(id: String, tab: SongLines.TabSource) {
-        if (id != currentId) return
-        pendingTab = SongLines.Spec.FromTab(id, tab, settings.instrument)
+        if (id != currentId) {
+            if (tab is SongLines.TabSource.Pdf) TabFiles.release(this, tab.file)
+            return
+        }
+        dropPendingTab(SongLines.Spec.FromTab(id, tab, settings.instrument))
         if (source == null) {
             status.text = "The tab is lined up with the recording once the song is ready (leaving this screen meanwhile forgets it)."
             return
@@ -1151,7 +1270,7 @@ class SongActivity : Activity() {
     /** The tab's notes ([use]) or the detected ones, for the song open (remembered once they're shown). */
     private fun chooseTab(use: Boolean) {
         val id = currentId ?: return
-        pendingTab = null
+        dropPendingTab()
         if (source == null) { settings.setUsesTab(id, use); return }
         if (use) {
             if (!SongJobs.hasData(this, id)) { askToPrepareAgain(); return }
@@ -1171,7 +1290,7 @@ class SongActivity : Activity() {
             .setMessage("The tab kept for this song (pasted, or opened from a file) is removed from the phone, and the detected notes are shown.")
             .setPositiveButton("Remove") { _, _ ->
                 if (id == currentId) {
-                    pendingTab = null
+                    dropPendingTab()
                     SongJobs.removeTab(this, id)
                     settings.setUsesTab(id, false)
                     chooseLine(announce = true)
@@ -1182,22 +1301,48 @@ class SongActivity : Activity() {
     }
 
     /**
-     * How a tab just pasted or opened lined up: what was read from a PDF ([pdf]), how many of its notes were
-     * found (and what shows where they weren't), those heard at another pitch, a key or an octave apart, and
-     * what couldn't be read.
+     * How a tab just pasted or opened lined up ([tabReportText]), and that it's kept in place of the tab kept for the
+     * song before ([replaced]).
      */
-    private fun showTabReport(r: SongLines.TabReport, pdf: Boolean = false) {
+    private fun showTabReport(r: SongLines.TabReport, pdf: Boolean = false, replaced: Boolean = false) {
+        var message = tabReportText(r, pdf)
+        if (replaced) {
+            // Before the list of what couldn't be read, if there is one.
+            val k = message.indexOf("\n\n• ").takeIf { it >= 0 } ?: message.length
+            message = message.substring(0, k) + "\n\nKept for this song, in place of the tab kept before." + message.substring(k)
+        }
+        AlertDialog.Builder(this).setTitle(if (pdf) "📄 Tab from the PDF" else "📝 Tab").setMessage(message).setPositiveButton("OK", null).show()
+    }
+
+    /**
+     * How a tab lined up: what was read from a PDF ([pdf]), how many of its notes were found (and what shows where
+     * they weren't; with [sure], asks if it's a tab of this song when few were), those heard at another pitch, a key
+     * or an octave apart, and what couldn't be read.
+     */
+    private fun tabReportText(r: SongLines.TabReport, pdf: Boolean, sure: Boolean = true): String {
         val tab = r.tab
-        // A PDF without numbers to read (a scan, a photo) is explained below, not listed with the other problems.
-        val scanned = pdf && tab.notes.isEmpty() && PdfTab.NO_NUMBERS in tab.warnings
-        val warnings = if (scanned) tab.warnings - PdfTab.NO_NUMBERS else tab.warnings
-        val message = buildString {
+        // A PDF that couldn't be opened (locked, damaged) or has no numbers to read (a scan, a photo) is explained,
+        // not listed with the other problems.
+        val trouble = if (pdf) TabFiles.pdfTrouble(tab) else null
+        val scanned = pdf && trouble == null && tab.notes.isEmpty() && PdfTab.NO_NUMBERS in tab.warnings
+        val warnings = when {
+            trouble != null -> tab.warnings.filterNot { it == PdfTab.NO_NUMBERS || TabFiles.troubleWarning(it) }
+            scanned -> tab.warnings - PdfTab.NO_NUMBERS
+            else -> tab.warnings
+        }
+        return buildString {
             if (pdf && tab.notes.isNotEmpty()) append(pdfSummary(tab)).append("\n\n")
             when {
                 pdf && tab.notes.isEmpty() -> {
                     append("No tab could be read from this PDF, so nothing changed.")
-                    if (scanned) append(" It has no tab numbers the app can read: it may be a scan or a photo. A PDF made on a computer " +
-                        "(saved from Sibelius, MuseScore or Guitar Pro, or a web page's tab printed to PDF) can be read.")
+                    when {
+                        trouble == TabFiles.PdfTrouble.LOCKED -> append(" It's locked with a password (or a lock the app can't open). " +
+                            "Open it where you can, save or print a copy without the lock (Print → Save as PDF), and open that here.")
+                        trouble == TabFiles.PdfTrouble.DAMAGED -> append(" The file is damaged, or isn't really a PDF. " +
+                            "Download or save it again, and open the new copy here.")
+                        scanned -> append(" It has no tab numbers the app can read: it may be a scan or a photo. A PDF made on a computer " +
+                            "(saved from Sibelius, MuseScore or Guitar Pro, or a web page's tab printed to PDF) can be read.")
+                    }
                 }
                 tab.notes.isEmpty() -> append("No tab notes could be read from it, so nothing changed. A tab has one line per course (like D|--5-7--|): keep just the tab's lines.")
                 r.matched == 0 -> append("None of the tab's ${r.total} notes could be found in the recording, so nothing changed. Is it a tab of this song?")
@@ -1207,6 +1352,7 @@ class SongActivity : Activity() {
                             else "${tab.unread} lines that look like tab couldn't be read (below): their notes are missing. ")
                     }
                     append(if (tab.unread > 0) "Lined up ${r.matched} of the ${r.total} tab notes read." else "Lined up ${r.matched} of ${r.total} tab notes.")
+                    if (sure && weak(r)) append(" Only a few were found: is it a tab of this song?")
                     val placed = r.sources.toHashSet()
                     val faint = r.notHeard.count { it in placed }
                     if (faint == 1) append(" The one not heard in the recording shows faint in 📜 Tablature, where the notes around it put it.")
@@ -1251,10 +1397,9 @@ class SongActivity : Activity() {
                 if (warnings.size > MAX_WARNINGS) append("\n• … and ${warnings.size - MAX_WARNINGS} more")
             }
         }
-        AlertDialog.Builder(this).setTitle(if (pdf) "📄 Tab from the PDF" else "📝 Tab").setMessage(message).setPositiveButton("OK", null).show()
     }
 
-    /** What was read from a PDF tab: "Read 653 notes from the PDF (4-course tab, 21 lines of music)." */
+    /** What was read from a PDF tab: "Read 240 notes from the PDF (4-course tab, 8 lines of music)." */
     private fun pdfSummary(tab: ParsedTab): String {
         val n = tab.notes.size
         val lines = tab.notes.mapTo(HashSet()) { it.system }.size // when the reader numbers its systems
@@ -1369,9 +1514,14 @@ class SongActivity : Activity() {
         useDromosButton.visibility = if (same) View.GONE else View.VISIBLE
     }
 
-    /** The line under the dromos saying how the record is tuned, shown only when that's clearly off A = 440 Hz. */
+    /**
+     * The line under the dromos saying how the record is tuned, shown only when that's clearly off A = 440 Hz. The
+     * bouzouki sound (and the notes tapped on the neck and the tablature) plays in the record's tuning, to sound with it.
+     */
     private fun showTuning() {
-        val line = source?.let { tuningLine(it.tuningCents) }
+        val cents = source?.tuningCents?.takeIf { it.isFinite() } ?: 0.0
+        audio.synth.tuningCents = cents
+        val line = tuningLine(cents)
         tuningText.text = line ?: ""
         tuningText.visibility = if (line != null) View.VISIBLE else View.GONE
     }
@@ -1387,7 +1537,7 @@ class SongActivity : Activity() {
             .setMessage("This recording sounds $off cents ${if (flat) "lower" else "higher"} than standard pitch (A = 440 Hz; " +
                 "a semitone is 100 cents), as old records often do.\n\nTo play along in tune, tune your bouzouki " +
                 "${if (flat) "down" else "up"}${if (off < 30) " a little" else ""}: by ear to the record, or with a tuner set to A = ${a.roundToInt()} Hz. " +
-                "The notes and frets shown stay the same.")
+                "The notes and frets shown stay the same, and the app's bouzouki sound already plays in the record's tuning.")
             .setPositiveButton("OK", null)
             .show()
     }
@@ -1757,14 +1907,71 @@ class SongActivity : Activity() {
         super.onStop()
     }
 
+    /**
+     * Kept when the screen may be recreated (dark mode, font size, or the app closed in the background): the song open
+     * (a YouTube one), a tab that came in and is being tried for it, and one being offered.
+     */
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        currentId?.takeIf { !it.startsWith("file-") }?.let { outState.putString(STATE_SONG, it) }
+        val p = pendingTab
+        when (val t = p?.source) {
+            is SongLines.TabSource.Pdf -> if (TabFiles.isIncoming(this, t.file)) outState.putString(STATE_PENDING_PDF, t.file.path)
+            is SongLines.TabSource.Text -> outState.putString(STATE_PENDING_TEXT, t.text)
+            null -> {}
+        }
+        if (p != null) outState.putString(STATE_PENDING_SONG, p.id)
+        val o = offered
+        when (o) {
+            is TabFiles.Incoming.Pdf -> outState.putString(STATE_OFFER_PDF, o.file.path)
+            is TabFiles.Incoming.Text -> if (o.text.length <= MAX_TAB_CHARS) outState.putString(STATE_OFFER_TEXT, o.text)
+            null -> {}
+        }
+        if (o != null) outState.putString(STATE_OFFER_NAME, o.name)
+    }
+
+    /**
+     * The screen recreated from [state] ([onSaveInstanceState]): the song open again, the tab being tried for it tried
+     * again (or offered, if its song isn't open), and the tab being offered offered again.
+     */
+    private fun restore(state: Bundle) {
+        state.getString(STATE_SONG)?.let { id ->
+            if (id != currentId) {
+                link.setText("https://youtu.be/$id")
+                openYouTube(id, startJob = false)
+            }
+        }
+        fun pdf(path: String?) = path?.let { File(it) }?.takeIf { it.isFile && TabFiles.isIncoming(this, it) }?.also { TabFiles.hold(it) }
+        val pendingSong = state.getString(STATE_PENDING_SONG)
+        val pendingPdf = pdf(state.getString(STATE_PENDING_PDF))
+        val pending = pendingPdf?.let { SongLines.TabSource.Pdf(it) } ?: state.getString(STATE_PENDING_TEXT)?.let { SongLines.TabSource.Text(it) }
+        val name = state.getString(STATE_OFFER_NAME) ?: ""
+        var tab: TabFiles.Incoming? = pdf(state.getString(STATE_OFFER_PDF))?.let { TabFiles.Incoming.Pdf(name, it) }
+            ?: state.getString(STATE_OFFER_TEXT)?.let { TabFiles.Incoming.Text(name, it) }
+        if (pending != null && pendingSong != null && pendingSong == currentId) useTab(pendingSong, pending)
+        else if (pendingPdf != null) {
+            // Tried for a song that didn't come back with the screen: offered again (unless another is offered).
+            if (tab == null) tab = TabFiles.Incoming.Pdf("", pendingPdf) else TabFiles.release(this, pendingPdf)
+        }
+        if (tab != null) offerTab(tab)
+    }
+
     override fun onDestroy() {
         SongLines.unlisten(lineListener) // a line still being worked out is kept for next time, not shown here
+        if (live?.get() === this) live = null
+        // Closed for good: a PDF that came in and wasn't kept goes (one the screen comes back with stays, see onSaveInstanceState).
+        if (isFinishing) {
+            (pendingTab?.source as? SongLines.TabSource.Pdf)?.let { TabFiles.release(this, it.file) }
+            offered?.let { TabFiles.release(this, it) }
+        }
         stopFile()
         web.destroy()
         super.onDestroy()
     }
 
     companion object {
+        /** The song screen now (a share or a file read finishing after the screen was recreated goes to the new one). */
+        private var live: WeakReference<SongActivity>? = null
         private const val REQ_FILE = 3
         private const val REQ_TAB = 4
         private const val ORIGIN = "https://com.bouzouki"
@@ -1773,6 +1980,14 @@ class SongActivity : Activity() {
         private const val PAGE_SHEET = 1
         private const val PREF_PAGE = "song_page"
         private const val PREF_SYNC = "song_sync_"
+        private const val PREF_LAST_SONG = "song_last"
+        private const val STATE_SONG = "song"
+        private const val STATE_PENDING_SONG = "tab_pending_song"
+        private const val STATE_PENDING_PDF = "tab_pending_pdf"
+        private const val STATE_PENDING_TEXT = "tab_pending_text"
+        private const val STATE_OFFER_NAME = "tab_offer_name"
+        private const val STATE_OFFER_PDF = "tab_offer_pdf"
+        private const val STATE_OFFER_TEXT = "tab_offer_text"
         private const val SYNC_STEP = 0.025
         private const val MAX_SYNC = 1.0
         /** Seconds between drawing a frame and seeing it. */
@@ -1794,6 +2009,12 @@ class SongActivity : Activity() {
         private const val PREVIEW_LINES = 40
         /** Problems reading a tab listed in its report. */
         private const val MAX_WARNINGS = 4
+        /**
+         * Tab notes that must be found in the recording (and at least a quarter of them, and half of a short tab's) to be
+         * sure a tab is of this song: a tab of another song gets a few found by chance, and replaces the song's tab only
+         * if the player says so.
+         */
+        private const val MIN_SURE_NOTES = 8
         /** The sound chip's label, and the least width it keeps beside the switches (dp; then it shows the icon only). */
         private const val SOUND_LABEL = "🔊 Bouzouki"
         private const val MIN_SOUND_DP = 64

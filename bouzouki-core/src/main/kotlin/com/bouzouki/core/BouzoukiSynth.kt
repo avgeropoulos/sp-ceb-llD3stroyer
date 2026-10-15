@@ -23,7 +23,8 @@ import kotlin.math.sqrt
  * tuning up to the 27th fret. A [legato] note moves the ringing string to its new pitch
  * instead of picking it again (the waveguide then reads its delay line at a moving,
  * interpolated length). [pluck], [legato] and [muteAll] are safe to call from any thread;
- * [render] is called from the audio thread.
+ * [render] is called from the audio thread. [tuningCents] tunes every note away from A = 440 Hz,
+ * to play along with a record tuned so.
  */
 class BouzoukiSynth(private val sampleRate: Int) {
     /** How a legato note leaves the note before it on the same course. */
@@ -36,7 +37,22 @@ class BouzoukiSynth(private val sampleRate: Int) {
         SLIDE,
     }
 
-    private class Event(val type: Int, val course: Int, val midi: Int, val octavePair: Boolean, val velocity: Float, val legato: Legato?)
+    private class Event(val type: Int, val course: Int, val midi: Int, val octavePair: Boolean, val velocity: Float, val legato: Legato?, val tune: Double = 1.0)
+
+    /**
+     * How far from A = 440 Hz the notes played from now on sound, in cents (+ sharp, - flat; a semitone is 100),
+     * so the sound matches a record tuned away from it. 0 by default.
+     */
+    @Volatile
+    var tuningCents = 0.0
+        set(v) {
+            field = if (v.isFinite()) v.coerceIn(-MAX_TUNING_CENTS, MAX_TUNING_CENTS) else 0.0
+            tune = 2.0.pow(field / 1200.0)
+        }
+
+    /** [tuningCents] as a frequency ratio. */
+    @Volatile
+    private var tune = 1.0
 
     private val events = ConcurrentLinkedQueue<Event>()
     private val voices = ArrayList<Voice>()
@@ -53,7 +69,7 @@ class BouzoukiSynth(private val sampleRate: Int) {
 
     /** Pluck [midi] on [course]. Any note still ringing on that course is damped, like a real string. */
     fun pluck(course: Int, midi: Int, octavePair: Boolean, velocity: Float = 0.85f) {
-        events.add(Event(PLUCK, course, midi, octavePair, velocity.coerceIn(0.05f, 1f), null))
+        events.add(Event(PLUCK, course, midi, octavePair, velocity.coerceIn(0.05f, 1f), null, tune))
     }
 
     /**
@@ -63,7 +79,7 @@ class BouzoukiSynth(private val sampleRate: Int) {
      * If nothing rings on the course any more, the note is picked softly instead.
      */
     fun legato(course: Int, midi: Int, octavePair: Boolean, kind: Legato, velocity: Float = 0.8f) {
-        events.add(Event(LEGATO, course, midi, octavePair, velocity.coerceIn(0.05f, 1f), kind))
+        events.add(Event(LEGATO, course, midi, octavePair, velocity.coerceIn(0.05f, 1f), kind, tune))
     }
 
     /** Damp every string, like resting the palm on the strings. */
@@ -83,11 +99,11 @@ class BouzoukiSynth(private val sampleRate: Int) {
             if (e.type == LEGATO && kind != null) {
                 // The newest voice on the course is the string ringing there now.
                 val v = voices.lastOrNull { it.course == e.course }
-                if (v != null && v.ringing) { v.legato(e.midi, kind, e.velocity); continue }
+                if (v != null && v.ringing) { v.legato(e.midi, kind, e.velocity, e.tune); continue }
             }
             for (v in voices) if (v.course == e.course) v.damp(0.025)
             val soft = if (e.type == LEGATO) 0.6f else 1f // a legato note with nothing left to move
-            voices.add(Voice(e.course, e.midi, e.octavePair, e.velocity * soft))
+            voices.add(Voice(e.course, e.midi, e.octavePair, e.velocity * soft, e.tune))
             while (voices.size > MAX_VOICES) voices.removeAt(0)
         }
         for (i in 0 until frames) {
@@ -106,8 +122,8 @@ class BouzoukiSynth(private val sampleRate: Int) {
         return ((seed ushr 11).toDouble() / (1L shl 53).toDouble()) * 2.0 - 1.0
     }
 
-    /** One course: two strings struck together plus the click of the plectrum. */
-    private inner class Voice(val course: Int, private var midi: Int, octavePair: Boolean, velocity: Float) {
+    /** One course: two strings struck together plus the click of the plectrum, [tune] times the note's pitch. */
+    private inner class Voice(val course: Int, private var midi: Int, octavePair: Boolean, velocity: Float, tune: Double) {
         /** Each string's pitch as a multiple of the note's: the octave string and the slight detuning of the pair. */
         private val ratios = if (octavePair) doubleArrayOf(cents(-1.5), 2 * cents(2.0)) else doubleArrayOf(cents(-2.2), cents(2.2))
         private val strings: Array<KsString>
@@ -118,7 +134,7 @@ class BouzoukiSynth(private val sampleRate: Int) {
         private var age = 0
 
         init {
-            val f = midiToHz(midi)
+            val f = midiToHz(midi) * tune
             strings = if (octavePair) arrayOf(
                 KsString(f * ratios[0], velocity, 1.0),
                 KsString(f * ratios[1], velocity, 0.62),
@@ -135,8 +151,8 @@ class BouzoukiSynth(private val sampleRate: Int) {
 
         fun damp(t60: Double) = strings.forEach { it.damp(t60) }
 
-        /** Moves both strings to [newMidi]; see [BouzoukiSynth.legato]. */
-        fun legato(newMidi: Int, kind: Legato, velocity: Float) {
+        /** Moves both strings to [newMidi] ([tune] times its pitch); see [BouzoukiSynth.legato]. */
+        fun legato(newMidi: Int, kind: Legato, velocity: Float, tune: Double) {
             val seconds = if (kind == Legato.SLIDE) slideSeconds(newMidi - midi) else FINGER_SECONDS
             val excite = when (kind) {
                 Legato.HAMMER -> 0.16 * velocity
@@ -145,7 +161,7 @@ class BouzoukiSynth(private val sampleRate: Int) {
             }
             // A hammer-on knocks the string with the soft fingertip; a pull-off plucks it, brighter.
             val bright = if (kind == Legato.PULL) 0.2 + 0.25 * velocity else 0.08 + 0.14 * velocity
-            val f = midiToHz(newMidi)
+            val f = midiToHz(newMidi) * tune
             for (k in strings.indices) strings[k].moveTo(f * ratios[k], seconds, excite, bright)
             midi = newMidi
         }
@@ -350,6 +366,8 @@ class BouzoukiSynth(private val sampleRate: Int) {
 
     companion object {
         const val MAX_VOICES = 16
+        /** The most [tuningCents] goes either way: further off, a record is in another key, not out of tune. */
+        const val MAX_TUNING_CENTS = 100.0
         private const val PLUCK = 0
         private const val LEGATO = 1
         private const val MUTE = 2

@@ -37,12 +37,14 @@
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation" />
 
         <!-- Share a video from the YouTube app to Μπουζούκι to play along with it; or share (or open
-             with Μπουζούκι) a song's bouzouki tab, as a PDF or text, from WhatsApp, Files, Gmail or Drive. -->
+             with Μπουζούκι) a song's bouzouki tab, as a PDF or text, from WhatsApp, Files, Gmail or Drive.
+             One song screen, in the app's own task: a share comes to the screen with the song open (Android
+             would otherwise start a new one in the sending app's task). -->
         <activity
             android:name=".SongActivity"
             android:exported="true"
             android:label="Μπουζούκι · play along"
-            android:launchMode="singleTop"
+            android:launchMode="singleTask"
             android:screenOrientation="portrait"
             android:windowSoftInputMode="adjustPan"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation">

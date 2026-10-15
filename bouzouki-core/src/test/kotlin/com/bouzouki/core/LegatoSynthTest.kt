@@ -171,6 +171,26 @@ class LegatoSynthTest {
     }
 
     @Test
+    fun tuningCentsTunesPickedAndLegatoNotes() {
+        for (tuning in listOf(-40.0, 30.0, 0.0)) {
+            val synth = BouzoukiSynth(fs)
+            synth.tuningCents = tuning
+            synth.pluck(1, 62, false, 0.85f)
+            val a = synth.run(0.3)
+            synth.legato(1, 64, false, Legato.HAMMER, 0.8f)
+            val x = a + synth.run(0.6)
+            val at = (fs * 0.3).toInt()
+            val picked = cents(pitch(x, at - fs / 5, fs / 6, midiToHz(62)), 62)
+            val hammered = cents(pitch(x, at + fs / 5, fs / 5, midiToHz(64)), 64)
+            assertTrue(abs(picked - tuning) < 8, "picked, tuned $tuning cents: $picked")
+            assertTrue(abs(hammered - tuning) < 8, "hammered on, tuned $tuning cents: $hammered")
+        }
+        val synth = BouzoukiSynth(fs)
+        synth.tuningCents = Double.NaN
+        assertTrue(synth.tuningCents == 0.0, "no tuning for a NaN")
+    }
+
+    @Test
     fun aLegatoNoteWithNothingRingingIsPickedSoftly() {
         val synth = BouzoukiSynth(fs)
         synth.legato(2, 64, false, Legato.HAMMER, 0.8f)

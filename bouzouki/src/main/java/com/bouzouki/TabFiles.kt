@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.provider.OpenableColumns
+import com.bouzouki.core.song.ParsedTab
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileNotFoundException
@@ -22,6 +23,10 @@ import java.nio.charset.CodingErrorAction
  * came to), up to [MAX_BYTES]. A PDF is copied into the app's own files ([incomingFile]) and read
  * with [com.bouzouki.core.song.PdfTab] when it's lined up ([SongLines]); a text file is decoded
  * (UTF-8, or the Greek code page older files use) and goes through the paste flow.
+ *
+ * A PDF that came in stays in the app's files only while it's offered or tried for a song ([hold]); once
+ * it's kept for a song it's moved there, and when it isn't wanted it's deleted ([release]). Copies left
+ * behind (the app was closed meanwhile) are cleared after a while ([sweep]).
  */
 object TabFiles {
     /** A tab that came in, with the file's [name] (as the player knows it; empty for a tab's text shared). */
@@ -39,14 +44,14 @@ object TabFiles {
 
     /**
      * Reads [uri] (of MIME [type], if known) off the main thread; [done] gets the tab, or a [Problem], on the
-     * main thread. Incoming PDFs other than [keep] (one still being tried) are deleted first.
+     * main thread. A PDF's copy is held ([hold]) till it's [release]d.
      */
-    fun read(context: Context, uri: Uri, type: String?, keep: File?, done: (Result<Incoming>) -> Unit) {
+    fun read(context: Context, uri: Uri, type: String?, done: (Result<Incoming>) -> Unit) {
         val app = context.applicationContext
         val main = Handler(Looper.getMainLooper())
         Thread({
             val result = try {
-                Result.success(read(app, uri, type, keep))
+                Result.success(read(app, uri, type))
             } catch (e: Problem) {
                 Result.failure(e)
             } catch (_: OutOfMemoryError) {
@@ -58,7 +63,7 @@ object TabFiles {
         }, "tab-file").start()
     }
 
-    private fun read(context: Context, uri: Uri, type: String?, keep: File?): Incoming {
+    private fun read(context: Context, uri: Uri, type: String?): Incoming {
         val resolver = context.contentResolver
         val name = try {
             resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
@@ -79,12 +84,12 @@ object TabFiles {
         if (bytes.isEmpty()) throw Problem("That file is empty.")
         val mime = type ?: try { resolver.getType(uri) } catch (_: Exception) { null }
         if (isPdf(bytes) || mime == PDF || name.endsWith(".pdf", ignoreCase = true)) {
-            val file = incomingFile(context, keep)
+            val file = incomingFile(context)
             try {
                 file.writeBytes(bytes)
-            } catch (e: IOException) {
-                file.delete()
-                throw Problem("Couldn't keep the PDF on the phone (${e.message ?: "no room?"}).")
+            } catch (e: Throwable) {
+                release(context, file)
+                throw if (e is IOException) Problem("Couldn't keep the PDF on the phone (${e.message ?: "no room?"}).") else e
             }
             return Incoming.Pdf(name, file)
         }
@@ -141,37 +146,80 @@ object TabFiles {
             ?: Charsets.ISO_8859_1
 
     /**
-     * Whether shared [text] is a tab rather than a link: at least [MIN_TAB_LINES] lines that look like tab
-     * lines (mostly dashes, frets and bars, such as D|--5-7--|), with a fret among them.
-     */
-    fun looksLikeTab(text: String): Boolean {
-        val lines = text.lineSequence().filter { tabLine(it) }.toList()
-        return lines.size >= MIN_TAB_LINES && lines.any { l -> l.any { it.isDigit() } }
-    }
-
-    private fun tabLine(line: String): Boolean {
-        val t = line.trim()
-        if (t.length < 6) return false
-        val dashes = t.count { it in DASHES }
-        val marks = t.count { it in DASHES || it.isDigit() || it in MARKS }
-        val ink = t.count { !it.isWhitespace() }
-        return dashes >= 4 && marks >= 0.6 * ink
-    }
-
-    /**
      * A new file for a PDF that came in, in the app's own files next to the songs (so keeping it for a song
-     * is a rename). The others there are deleted, but [keep]: one still being tried for a song.
+     * is a rename), held till it's [release]d. Copies left behind are cleared first ([sweep]).
      */
-    fun incomingFile(context: Context, keep: File?): File {
-        val dir = File(context.filesDir, "tab-incoming").apply { mkdirs() }
-        dir.listFiles()?.forEach { if (it != keep) it.delete() }
-        var t = System.currentTimeMillis()
-        while (File(dir, "$t.pdf").exists()) t++
-        return File(dir, "$t.pdf")
+    fun incomingFile(context: Context): File {
+        sweep(context)
+        val dir = incomingDir(context).apply { mkdirs() }
+        synchronized(held) {
+            var t = System.currentTimeMillis()
+            while (File(dir, "$t.pdf").exists() || File(dir, "$t.pdf").path in held) t++
+            return File(dir, "$t.pdf").also { held += it.path }
+        }
     }
 
     /** Whether [file] is one that came in and wasn't kept for a song (deleted when it's not wanted). */
-    fun isIncoming(context: Context, file: File) = file.parentFile == File(context.filesDir, "tab-incoming")
+    fun isIncoming(context: Context, file: File) = file.parentFile == incomingDir(context)
+
+    /** Keeps [file], a PDF that came in, while a song screen offers or tries it (one coming back after it was closed, say). */
+    fun hold(file: File) = synchronized(held) { held += file.path }
+
+    /**
+     * [tab] (or the PDF [file]) that came in is settled: kept for a song (moved there), or not wanted. Its copy is
+     * deleted if it's still among those that came in.
+     */
+    fun release(context: Context, tab: Incoming) {
+        if (tab is Incoming.Pdf) release(context, tab.file)
+    }
+
+    fun release(context: Context, file: File) {
+        synchronized(held) { held -= file.path }
+        if (isIncoming(context, file)) file.delete()
+    }
+
+    /**
+     * Deletes the copies of PDFs that came in and aren't held by a song screen: left behind when the app was closed
+     * while one was offered. Only those a while old ([STALE_MS]), so one a screen coming back still wants survives.
+     */
+    fun sweep(context: Context) {
+        val old = System.currentTimeMillis() - STALE_MS
+        val files = incomingDir(context).listFiles() ?: return
+        synchronized(held) {
+            for (f in files) if (f.path !in held && f.lastModified() < old) f.delete()
+        }
+    }
+
+    private fun incomingDir(context: Context) = File(context.filesDir, "tab-incoming")
+
+    /** The PDFs that came in still offered or tried on a song screen (their paths), across the app's screens. */
+    private val held = HashSet<String>()
+
+    /** Why a PDF gave nothing at all, as [com.bouzouki.core.song.PdfTab]'s warnings tell it. */
+    enum class PdfTrouble {
+        /** Locked with a password (or a lock the reader can't open). */
+        LOCKED,
+
+        /** Damaged, or not really a PDF. */
+        DAMAGED,
+    }
+
+    /** Why nothing could be read from the PDF [tab] came from: locked or damaged; null if neither (a scan, say) or it has notes. */
+    fun pdfTrouble(tab: ParsedTab): PdfTrouble? = when {
+        tab.notes.isNotEmpty() -> null
+        tab.warnings.any { lockWarning(it) } -> PdfTrouble.LOCKED
+        tab.warnings.any { damageWarning(it) } -> PdfTrouble.DAMAGED
+        else -> null
+    }
+
+    /** Whether [warning] is one of PdfTab's for a PDF it couldn't open or read (explained in plain words instead of listed). */
+    fun troubleWarning(warning: String) = lockWarning(warning) || damageWarning(warning)
+
+    // PdfTab has no constants for these yet; it words them "This PDF is protected with a password or an encryption …",
+    // "This PDF couldn't be read", "A page of this PDF couldn't be read", "This file doesn't look like a PDF, or it is
+    // too damaged to read" and "Parts of this PDF are damaged; it was read as well as possible".
+    private fun lockWarning(w: String) = "password" in w || "encryption" in w
+    private fun damageWarning(w: String) = "couldn't be read" in w || "doesn't look like a PDF" in w || "damaged" in w
 
     /** The biggest tab file read (a long PDF score with pictures can be several MB). */
     const val MAX_BYTES = 20_000_000
@@ -179,11 +227,9 @@ object TabFiles {
     /** The biggest text file read: a tab is a few KB; the paste flow then takes up to its own limit of characters. */
     private const val MAX_TEXT_BYTES = 512 * 1024
 
-    /** Tab-like lines a shared text needs to be taken as a tab (a trichordo tab has 3 a system). */
-    private const val MIN_TAB_LINES = 3
+    /** How old a copy of a PDF that came in, held by no screen, must be to be cleared ([sweep]). */
+    private const val STALE_MS = 60 * 60 * 1000L
 
     const val PDF = "application/pdf"
     private val MAGIC = "%PDF-".toByteArray(Charsets.ISO_8859_1)
-    private const val DASHES = "-–—−‐_="
-    private const val MARKS = "|:hpbrsx/\\~()[]<>^*.'"
 }
