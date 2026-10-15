@@ -100,6 +100,7 @@ class SongActivity : Activity() {
     private var player: MediaPlayer? = null
     private var speed = 1f
     private var bouzoukiSound = false
+    private var soundOn = false // the audio engine runs (onResume..onPause)
     private var lastNote = -1
     private var lastNext = -1
     private var playing = false // the audio file's player
@@ -264,7 +265,9 @@ class SongActivity : Activity() {
         dromosText = TextView(this).apply { textSize = 12f; setTextColor(0xFFE8EEF6.toInt()); maxLines = 2 }
         useDromosButton = ui.chip("Use") { useDromos() }.apply { visibility = View.GONE }
         controls.addView(ui.row().apply {
-            addView(noteText)
+            // A fixed size: a ♯/♭ comes from a taller fallback font, and a growing row would make
+            // the neck below re-fit (and jump) at every accidental.
+            addView(noteText, LinearLayout.LayoutParams(px(64), px(40)))
             addView(dromosText, ui.weighted(3f))
             addView(useDromosButton, ui.weighted(1f))
         })
@@ -765,7 +768,8 @@ class SongActivity : Activity() {
      * about [TREMOLO_HZ] times a second for as long as it lasts.
      */
     private fun pluck(s: SongAnalysis, t: Double) {
-        if (!bouzoukiSound || !clock.playing) { pluckReset = true; return }
+        // Not while the audio engine is stopped (paused but visible): the plucks would pile up and burst out on resume.
+        if (!bouzoukiSound || !clock.playing || !soundOn) { pluckReset = true; return }
         if (clock.holding) return // a seek on its way: nothing before the player gets there
         if (pluckReset) { restartSound(s, t); pluckReset = false }
         val ahead = t + PLUCK_LEAD * clock.rate
@@ -918,11 +922,13 @@ class SongActivity : Activity() {
     override fun onResume() {
         super.onResume()
         audio.start()
+        soundOn = true
         SongJobs.listen(jobListener)
     }
 
     override fun onPause() {
         SongJobs.unlisten(jobListener)
+        soundOn = false
         audio.stop()
         if (playing && fileUri != null) toggleFilePlayback()
         super.onPause()
