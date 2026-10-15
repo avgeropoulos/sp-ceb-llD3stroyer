@@ -61,11 +61,11 @@ object SongJobs {
     fun cached(context: Context, id: String): SongAnalysis? =
         File(songsDir(context), "$id.json").takeIf { it.exists() }?.readText()?.let { SongAnalysis.fromJson(it) }
 
-    /** Saved songs, newest first. */
-    fun recent(context: Context): List<SongAnalysis> =
+    /** Saved songs, newest first, those saved by an older version of the analysis too (not [SongAnalysis.Saved.current]). */
+    fun recent(context: Context): List<SongAnalysis.Saved> =
         (songsDir(context).listFiles { f -> f.name.endsWith(".json") } ?: emptyArray())
             .sortedByDescending { it.lastModified() }
-            .mapNotNull { SongAnalysis.fromJson(it.readText()) }
+            .mapNotNull { SongAnalysis.saved(it.readText()) }
 
     fun delete(context: Context, id: String) { File(songsDir(context), "$id.json").delete() }
 

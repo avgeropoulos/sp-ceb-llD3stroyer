@@ -391,7 +391,12 @@ class SongActivity : Activity() {
         if (songs.isEmpty()) { status.text = "No saved songs yet. Prepared songs are kept here for next time."; return }
         AlertDialog.Builder(this)
             .setTitle("My songs")
-            .setItems(songs.map { it.title }.toTypedArray()) { _, i -> link.setText("https://youtu.be/${songs[i].id}"); openYouTube(songs[i].id, startJob = false) }
+            .setItems(songs.map { if (it.current) it.title else "${it.title}  ·  prepare again" }.toTypedArray()) { _, i ->
+                val s = songs[i]
+                link.setText("https://youtu.be/${s.id}")
+                // Saved by an older version of the analysis: prepare it again with this one.
+                openYouTube(s.id, startJob = !s.current)
+            }
             .setNegativeButton("Close", null)
             .show()
     }

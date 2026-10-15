@@ -4,6 +4,8 @@ import com.bouzouki.core.Dromos
 import com.bouzouki.core.DromosGuess
 import com.bouzouki.core.Instrument
 import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
 
 /** One note of the bouzouki line, placed on the neck. */
 data class SongNote(val start: Double, val end: Double, val midi: Int, val course: Int, val fret: Int)
@@ -37,25 +39,28 @@ data class SongAnalysis(
         return lo
     }
 
-    fun toJson(): String = buildString {
-        append("{\"version\":").append(FORMAT).append(",\"id\":").append(quote(id))
-        append(",\"title\":").append(quote(title))
-        append(",\"instrument\":").append(quote(instrument.name))
-        append(",\"dromos\":").append(dromos?.let { quote(it.name) } ?: "null")
-        append(",\"root\":").append(rootPc)
-        append(",\"notes\":[")
-        notes.forEachIndexed { i, n ->
-            if (i > 0) append(',')
-            append('[').append(fmt(n.start)).append(',').append(fmt(n.end)).append(',')
-                .append(n.midi).append(',').append(n.course).append(',').append(n.fret).append(']')
-        }
-        append("]}")
-    }
+    /** The cache file: one JSON object, one field per property (new fields can simply be added). */
+    fun toJson(): String = jsonObject(
+        "version" to FORMAT.toString(),
+        "id" to quote(id),
+        "title" to quote(title),
+        "instrument" to quote(instrument.name),
+        "dromos" to (dromos?.let { quote(it.name) } ?: "null"),
+        "root" to rootPc.toString(),
+        "notes" to notes.joinToString(",", "[", "]") { n -> "[${fmt(n.start)},${fmt(n.end)},${n.midi},${n.course},${n.fret}]" },
+    )
+
+    /** A saved song as the song list shows it: [current] is false when an older version wrote it (prepare it again). */
+    data class Saved(val id: String, val title: String, val current: Boolean)
 
     companion object {
-        /** Bump when the analysis changes, so old cached songs get analysed again. */
-        const val FORMAT = 1
+        /**
+         * Bump when the analysis changes: [fromJson] then refuses songs saved before, so they are
+         * prepared again, and [saved] still lists them meanwhile.
+         */
+        const val FORMAT = 2
 
+        private fun jsonObject(vararg fields: Pair<String, String>) = fields.joinToString(",", "{", "}") { (k, v) -> quote(k) + ":" + v }
         private fun fmt(d: Double) = String.format(java.util.Locale.US, "%.3f", d)
         private fun quote(s: String) = buildString {
             append('"')
@@ -66,20 +71,26 @@ data class SongAnalysis(
             append('"')
         }
 
-        /** Reads what [toJson] wrote; null if it's from an older version or damaged. */
+        /** The id and title in a cache file of any version, and whether [fromJson] can read it; null if damaged. */
+        fun saved(json: String): Saved? = try {
+            val p = MiniJson(json).parse() as Map<*, *>
+            Saved(p["id"] as String, p["title"] as String, fromJson(json) != null)
+        } catch (_: Exception) { null }
+
+        /** Reads what [toJson] wrote; null if it's from an older version or damaged. Unknown fields are ignored. */
         fun fromJson(json: String): SongAnalysis? = try {
             val p = MiniJson(json).parse() as Map<*, *>
-            if ((p["version"] as Number).toInt() != FORMAT) null else SongAnalysis(
+            fun num(key: String) = p[key] as Number
+            if (num("version").toInt() != FORMAT) null else SongAnalysis(
                 id = p["id"] as String,
                 title = p["title"] as String,
                 instrument = Instrument.valueOf(p["instrument"] as String),
                 notes = (p["notes"] as List<*>).map {
-                    val a = it as List<*>
-                    SongNote((a[0] as Number).toDouble(), (a[1] as Number).toDouble(), (a[2] as Number).toInt(),
-                        (a[3] as Number).toInt(), (a[4] as Number).toInt())
+                    val a = (it as List<*>).map { v -> v as Number }
+                    SongNote(a[0].toDouble(), a[1].toDouble(), a[2].toInt(), a[3].toInt(), a[4].toInt())
                 },
                 dromos = (p["dromos"] as String?)?.let { Dromos.valueOf(it) },
-                rootPc = (p["root"] as Number).toInt(),
+                rootPc = num("root").toInt(),
             )
         } catch (_: Exception) { null }
     }
@@ -89,7 +100,7 @@ data class SongAnalysis(
  * Turns a song into its bouzouki line:
  * 1. remove the vocals (MDX-Net),
  * 2. transcribe the rest into notes (Basic Pitch),
- * 3. keep the top melodic line in the bouzouki's range (it usually carries the lead),
+ * 3. follow the melodic line in the bouzouki's range (it usually carries the lead),
  * 4. choose frets that keep the hand moving as little as possible.
  */
 class SongAnalyzer(private val separator: MdxSeparator, private val pitch: BasicPitch) {
@@ -114,15 +125,22 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
         progress(Stage.TRANSCRIBING, 0f)
         val audio = resample(instrumental, MdxSeparator.SAMPLE_RATE, BasicPitch.SAMPLE_RATE)
         val act = pitch.activations(audio, { progress(Stage.TRANSCRIBING, it * 0.9f) }, cancelled)
-        val all = BasicPitch.notes(act)
         progress(Stage.PLACING, 0f)
-        return build(id, title, all, instrument)
+        return build(id, title, candidates(act), instrument, act)
     }
 
     companion object {
-        /** Everything after transcription: the line, the frets and the dromos guess. */
-        fun build(id: String, title: String, all: List<NoteEvent>, instrument: Instrument): SongAnalysis {
-            val line = bouzoukiLine(all, instrument)
+        /**
+         * Every note the line could be made of: Basic Pitch notes that start at a clear onset
+         * (onset 0.6; the line tracker weighs how clear), as short as 4 frames (≈ 46 ms) so fast
+         * 16th runs survive, without the melodia trick (its onset-less notes are mostly accompaniment).
+         */
+        fun candidates(act: BasicPitch.Activations): List<NoteEvent> =
+            BasicPitch.notes(act, onsetThresh = 0.6f, minNoteLen = 4, melodia = false)
+
+        /** Everything after transcription: the line, the frets and the dromos guess. [act] sharpens the line when given. */
+        fun build(id: String, title: String, all: List<NoteEvent>, instrument: Instrument, act: BasicPitch.Activations? = null): SongAnalysis {
+            val line = bouzoukiLine(all, instrument, act)
             val cells = fingering(line.map { it.midi }, line.map { it.start }, instrument)
             val notes = line.mapIndexed { i, n -> SongNote(n.start, n.end, n.midi, cells[i].first, cells[i].second) }
             val tally = DoubleArray(12)
@@ -132,33 +150,120 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
         }
 
         /**
-         * The single melodic line a bouzouki would play: notes in the instrument's range,
-         * keeping the higher (or much louder) note where notes overlap — the "skyline".
-         * Chords from guitars sit lower, and the bouzouki usually leads on top.
+         * The single melodic line a bouzouki would play, from overlapping candidate notes in the
+         * instrument's range: a dynamic programme (Viterbi over the notes in time order) picks the
+         * chain that collects the most evidence (strong note and onset activations) for the least
+         * implausible movement (each semitone of a jump costs, octave jumps and bigger leaps cost
+         * extra, less so after a pause; picking the same pitch again costs a little, since that is
+         * mostly a held note detected twice). With [act], a note that starts while the line's previous
+         * note still sounds strongly is taken for accompaniment unless its evidence outweighs that.
+         * Then tremolo (fast same-pitch re-picks) is joined into one held note, as tab writes it.
+         * Notes without onset evidence (made by hand, e.g. a saved line) are always kept.
          */
-        fun bouzoukiLine(notes: List<NoteEvent>, instrument: Instrument, minAmplitude: Double = 0.25): List<NoteEvent> {
+        fun bouzoukiLine(notes: List<NoteEvent>, instrument: Instrument, act: BasicPitch.Activations? = null): List<NoteEvent> {
             val low = instrument.courses.first().openMidi
             val high = instrument.courses.last().openMidi + instrument.frets
-            val candidates = notes
-                .filter { it.midi in low..high && it.amplitude >= minAmplitude }
-                .sortedWith(compareBy<NoteEvent> { it.start }.thenByDescending { it.midi })
-            val out = ArrayList<NoteEvent>()
-            for (n in candidates) {
-                val last = out.lastOrNull()
-                if (last == null || n.start >= last.end - 0.02) { out += n; continue }
-                // Overlap: the new note takes over if it's higher or clearly stronger.
-                if (n.midi > last.midi || n.amplitude > last.amplitude * 1.6) {
-                    if (n.start - last.start < MIN_NOTE) out.removeAt(out.size - 1)
-                    else out[out.size - 1] = last.copy(end = n.start)
-                    out += n
-                } else if (n.end > last.end + MIN_NOTE && n.midi == last.midi) {
-                    out[out.size - 1] = last.copy(end = n.end) // same pitch rings on
+            val c = notes.filter { it.midi in low..high }.sortedBy { it.start }
+            if (c.isEmpty()) return emptyList()
+            if (c.all { it.onset.isNaN() }) return trimEnds(c) // a line chosen before: keep it as it is
+            val best = DoubleArray(c.size)
+            val back = IntArray(c.size) { -1 }
+            var near = 0 // first note that started less than HORIZON before c[i]
+            var far = -1 // the best line ending on a note before that, so long pauses don't cut the line
+            for (i in c.indices) {
+                while (c[i].start - c[near].start >= HORIZON) {
+                    if (far < 0 || best[near] > best[far]) far = near
+                    near++
                 }
+                var b = 0.0 // or start the line afresh here
+                for (j in i - 1 downTo near) {
+                    if (c[i].start - c[j].start < SEPARATION && !(c[i].onset.isNaN() && c[j].onset.isNaN())) continue
+                    val v = best[j] - transitionCost(c[j], c[i], act)
+                    if (v > b) { b = v; back[i] = j }
+                }
+                if (far >= 0) {
+                    val v = best[far] - transitionCost(c[far], c[i], act)
+                    if (v > b) { b = v; back[i] = far }
+                }
+                best[i] = evidence(c[i]) + b
             }
-            return out.filter { it.end - it.start >= MIN_NOTE }
+            val path = ArrayList<NoteEvent>()
+            var i = best.indices.maxBy { best[it] }
+            while (i >= 0) { path += c[i]; i = back[i] }
+            path.reverse()
+            return joinTremolo(trimEnds(path))
         }
 
-        private const val MIN_NOTE = 0.07
+        /** Each note of a line ends where the next one starts, at the latest. */
+        private fun trimEnds(line: List<NoteEvent>) =
+            line.mapIndexed { k, n -> if (k + 1 < line.size && line[k + 1].start < n.end) n.copy(end = line[k + 1].start) else n }
+
+        /** How much a candidate is worth to the line. */
+        private fun evidence(n: NoteEvent) =
+            if (n.onset.isNaN()) GIVEN_NOTE else n.salience + ONSET_WEIGHT * n.onset - EVIDENCE_NEEDED
+
+        /** What it costs the line to move from [a] to [b]. */
+        private fun transitionCost(a: NoteEvent, b: NoteEvent, act: BasicPitch.Activations?): Double {
+            val d = abs(b.midi - a.midi)
+            val gap = b.start - max(a.end, a.start)
+            val pause = max(PAUSE_FLOOR, 1 - max(0.0, gap) / PAUSE_TIME) // jumps after a pause are cheaper
+            var cost = (STEP_COST * d + (if (d == 12) OCTAVE_COST else 0.0) + (if (d > 12) LEAP_COST else 0.0)) * pause
+            if (d == 0) cost += REPEAT_COST
+            if (act != null && d != 0 && b.frame >= 0) {
+                val t = min(act.frames.size - 1, b.frame + STILL_SOUNDING_FRAMES)
+                cost += STILL_SOUNDING_COST * max(0.0, act.frames[t][a.midi - BasicPitch.MIDI_OFFSET] - STILL_SOUNDING_LEVEL)
+            }
+            return cost
+        }
+
+        /**
+         * Tremolo becomes one held note: [TREMOLO_PICKS] or more picks of one pitch, each within
+         * [TREMOLO_REACH] of the last (a missed pick or two doesn't break it), at a median interval of
+         * [TREMOLO_GAP] or less (10 picks a second and up). Slower repeats stay separate notes:
+         * 8ths, and 16ths below 150 BPM (and 4 repeated 16ths at any tempo).
+         */
+        private fun joinTremolo(line: List<NoteEvent>): List<NoteEvent> {
+            val out = ArrayList<NoteEvent>()
+            var i = 0
+            while (i < line.size) {
+                var j = i
+                while (j + 1 < line.size && !line[j + 1].onset.isNaN() && line[j + 1].midi == line[i].midi &&
+                    line[j + 1].start - line[j].start < TREMOLO_REACH) j++
+                val run = line.subList(i, j + 1)
+                if (run.size >= TREMOLO_PICKS && !line[i].onset.isNaN() && medianGap(run) <= TREMOLO_GAP) {
+                    out += line[i].copy(end = run.maxOf { it.end }, amplitude = run.maxOf { it.amplitude })
+                    i = j + 1
+                } else {
+                    out += line[i++]
+                }
+            }
+            return out
+        }
+
+        private fun medianGap(run: List<NoteEvent>): Double {
+            val gaps = run.zipWithNext { a, b -> b.start - a.start }.sorted()
+            val m = gaps.size / 2
+            return if (gaps.size % 2 == 1) gaps[m] else (gaps[m - 1] + gaps[m]) / 2
+        }
+
+        // The line tracker's weights, chosen on synthesized bouzouki songs (scratch evaluation, mir_eval F-measure).
+        private const val EVIDENCE_NEEDED = 0.5
+        private const val ONSET_WEIGHT = 0.5
+        private const val GIVEN_NOTE = 10.0
+        private const val STEP_COST = 0.05
+        private const val REPEAT_COST = 0.15
+        private const val OCTAVE_COST = 0.3
+        private const val LEAP_COST = 0.6
+        private const val PAUSE_TIME = 1.0
+        private const val PAUSE_FLOOR = 0.3
+        private const val STILL_SOUNDING_FRAMES = 2
+        private const val STILL_SOUNDING_LEVEL = 0.3
+        private const val STILL_SOUNDING_COST = 1.0
+        private const val SEPARATION = 0.05 // two line notes start at least this far apart
+        private const val HORIZON = 3.0     // how far back a note looks for its predecessor
+        private const val TREMOLO_PICKS = 5
+        private const val TREMOLO_GAP = 0.1
+        private const val TREMOLO_REACH = 0.4
 
         /**
          * Frets for a line of notes, by dynamic programming over every playable position:
