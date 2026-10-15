@@ -18,6 +18,7 @@ import android.widget.TextView
 import com.bouzouki.core.Dromos
 import com.bouzouki.core.Instrument
 import com.bouzouki.core.NoteNames
+import com.bouzouki.core.song.Detail
 
 const val GREEK_BLUE = 0xFF0D5EAF.toInt()
 const val NAVY = 0xFF0B1A2C.toInt()
@@ -57,6 +58,20 @@ class Settings(context: Context) {
     /** Neck zoom per screen ("play" or "song"); 0 means "whole neck". */
     fun zoom(screen: String, default: Float) = prefs.getFloat("zoom_$screen", default)
     fun setZoom(screen: String, z: Float) = prefs.edit().putFloat("zoom_$screen", z).apply()
+
+    // Per song (by its id): how many notes its detected line keeps, whether its line comes from the
+    // tab pasted for it, and the bouzouki that tab was pasted for (it's read for that one first).
+    fun detail(id: String): Detail = Detail.entries.getOrElse(prefs.getInt("song_detail_$id", Detail.NORMAL.ordinal)) { Detail.NORMAL }
+    fun setDetail(id: String, d: Detail) = prefs.edit().putInt("song_detail_$id", d.ordinal).apply()
+    fun usesTab(id: String) = prefs.getBoolean("song_tab_$id", false)
+    fun setUsesTab(id: String, v: Boolean) = prefs.edit().putBoolean("song_tab_$id", v).apply()
+    fun tabInstrument(id: String): Instrument = Instrument.entries.getOrElse(prefs.getInt("song_tabinst_$id", instrument.ordinal)) { instrument }
+    fun setTabInstrument(id: String, inst: Instrument) = prefs.edit().putInt("song_tabinst_$id", inst.ordinal).apply()
+
+    /** Forgets everything kept for song [id] (its sync offset too, which the song screen keeps as "song_sync_<id>"). */
+    fun forgetSong(id: String) = prefs.edit()
+        .remove("song_detail_$id").remove("song_tab_$id").remove("song_tabinst_$id").remove("song_sync_$id")
+        .apply()
 }
 
 /** Small view builders shared by both screens. */
@@ -197,6 +212,106 @@ class InstrumentSwitch(context: Context, private val onPick: (Instrument) -> Uni
             text.typeface = if (on) bold else plain
             text.color = if (on) GREEK_BLUE else 0xFFCFE0F5.toInt()
             canvas.drawText(inst.greekName, w / 2, (top + bottom) / 2 + text.textSize * 0.36f, text)
+        }
+    }
+}
+
+/**
+ * A small segmented control for a row of chips: a caption over [options] side by side, the chosen
+ * one lit ([selected], or -1 for none). Touching an option that isn't lit calls [onPick] with its
+ * index; a click without a touch (keyboard, TalkBack) picks the next one. Dimmed ([available]
+ * false) it still answers, so the screen can say why it can't be used yet. Its text follows the
+ * system font size.
+ */
+class Segmented(context: Context, caption: String, private val options: List<String>, private val onPick: (Int) -> Unit) : View(context) {
+    var caption = caption
+        set(v) { if (v != field) { field = v; requestLayout(); invalidate(); describe() } }
+    var selected = 0
+        set(v) { if (v != field) { field = v; invalidate(); describe() } }
+    var available = true
+        set(v) { if (v != field) { field = v; invalidate() } }
+    private val dp = context.resources.displayMetrics.density
+    private fun sp(v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, v, context.resources.displayMetrics)
+    private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; textSize = sp(12.5f) }
+    private val small = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; textSize = sp(9.5f); color = 0xFF9FB4CC.toInt() }
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = CHIP }
+    private val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = CHIP_EDGE; style = Paint.Style.STROKE; strokeWidth = 1 * dp }
+    private val lit = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = GREEK_BLUE }
+    private val litEdge = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = WHITE; style = Paint.Style.STROKE; strokeWidth = 1 * dp }
+    private val pad = 6 * dp // each side of an option's text
+    private var edges = FloatArray(options.size + 1) // where the options start and end, set with the size
+    private var touchX = -1f // where the touch that's about to click went down, or -1
+
+    init {
+        isClickable = true
+        isFocusable = true
+        describe()
+        setOnClickListener {
+            val x = touchX
+            touchX = -1f
+            val pick = if (x < 0) (selected + 1).mod(options.size) else (1 until options.size).firstOrNull { x < edges[it] }?.minus(1) ?: (options.size - 1)
+            if (pick != selected || !available) onPick(pick)
+        }
+    }
+
+    private fun describe() {
+        val now = options.getOrNull(selected) ?: "none"
+        contentDescription = "$caption: $now. Double-tap for ${options[(selected + 1).mod(options.size)]}."
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> touchX = event.x
+            MotionEvent.ACTION_CANCEL -> touchX = -1f
+        }
+        return super.onTouchEvent(event)
+    }
+
+    /** Each option's width as wide as its label in bold (the widest it gets). */
+    private fun optionWidths(): List<Float> {
+        text.typeface = Typeface.DEFAULT_BOLD
+        return options.map { text.measureText(it) + 2 * pad }
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val w = maxOf(optionWidths().sum(), small.measureText(caption) + 2 * pad) + 4 * dp
+        val h = maxOf(44 * dp, small.fontSpacing + text.fontSpacing + 12 * dp) // taller with a big system font
+        setMeasuredDimension(resolveSize(w.toInt(), widthMeasureSpec), resolveSize(h.toInt(), heightMeasureSpec))
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        val widths = optionWidths()
+        val scale = (w - 4 * dp) / widths.sum() // the options share the width as their labels do
+        edges = FloatArray(options.size + 1)
+        edges[0] = 2 * dp
+        for (k in options.indices) edges[k + 1] = edges[k] + widths[k] * scale
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        val w = width.toFloat()
+        val h = height.toFloat()
+        val inset = 1 * dp
+        val r = 10 * dp
+        val alpha = if (available) 255 else 110
+        for (p in arrayOf(fill, edge, lit, litEdge, small)) p.alpha = alpha
+        canvas.drawRoundRect(inset, inset, w - inset, h - inset, r, r, fill)
+        canvas.drawRoundRect(inset, inset, w - inset, h - inset, r, r, edge)
+        val captionBase = inset + 2 * dp - small.ascent()
+        canvas.drawText(caption, w / 2, captionBase, small)
+        val top = captionBase + small.descent() + 1 * dp
+        val bottom = h - inset - 3 * dp
+        for (k in options.indices) {
+            val on = k == selected
+            val l = edges[k] + 1 * dp
+            val rt = edges[k + 1] - 1 * dp
+            if (on) {
+                canvas.drawRoundRect(l, top, rt, bottom, r - 3 * dp, r - 3 * dp, lit)
+                canvas.drawRoundRect(l, top, rt, bottom, r - 3 * dp, r - 3 * dp, litEdge)
+            }
+            text.typeface = if (on) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+            text.color = if (on) WHITE else 0xFFCFE0F5.toInt()
+            text.alpha = alpha
+            canvas.drawText(options[k], (l + rt) / 2, (top + bottom) / 2 - (text.ascent() + text.descent()) / 2, text)
         }
     }
 }

@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
+import android.content.ActivityNotFoundException
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
@@ -19,6 +20,7 @@ import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.text.InputType
 import android.text.TextUtils
+import android.util.TypedValue
 import android.view.Choreographer
 import android.view.Gravity
 import android.view.View
@@ -31,6 +33,7 @@ import android.webkit.WebView
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
@@ -40,7 +43,10 @@ import com.bouzouki.core.Cell
 import com.bouzouki.core.Instrument
 import com.bouzouki.core.PlaybackClock
 import com.bouzouki.core.song.Articulation
+import com.bouzouki.core.song.Detail
 import com.bouzouki.core.song.SongAnalysis
+import com.bouzouki.core.song.SongNote
+import java.io.IOException
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -53,6 +59,9 @@ import kotlin.math.roundToInt
  * every frame, with a per-song sync offset. The title bar's switch fingers the song for the
  * τετράχορδο or the τρίχορδο at once, and the bouzouki sound plays hammer-ons, pull-offs and
  * slides without picking again, and tremolo notes picked fast for as long as they last.
+ * Each song's line can have fewer or more notes (Notes), or be made of the notes of a tab found
+ * online and pasted in (📝 Tab), lined up with the recording; both are worked out in the
+ * background by [SongLines] and remembered per song.
  */
 class SongActivity : Activity() {
     private val ui by lazy { Ui(this) }
@@ -74,6 +83,7 @@ class SongActivity : Activity() {
     private lateinit var prepText: TextView
     private lateinit var prepBar: ProgressBar
     private lateinit var status: TextView
+    private lateinit var statusSpinner: ProgressBar
     private lateinit var noteText: TextView
     private lateinit var dromosText: TextView
     private lateinit var useDromosButton: Button
@@ -85,7 +95,9 @@ class SongActivity : Activity() {
     private lateinit var sheetTab: Button
     private lateinit var syncText: TextView
     private lateinit var instrumentSwitch: InstrumentSwitch
-    private val speedButtons = LinkedHashMap<Float, Button>()
+    private lateinit var speedSwitch: Segmented
+    private lateinit var detailSwitch: Segmented
+    private lateinit var tabButton: Button
     private lateinit var soundButton: Button
     private val prefs by lazy { getSharedPreferences("bouzouki", Context.MODE_PRIVATE) }
 
@@ -94,8 +106,20 @@ class SongActivity : Activity() {
      * prepared ([source]) and as it's shown, fingered for the bouzouki chosen now ([song]).
      */
     private var currentId: String? = null
+    private var currentSource: SongJobs.Source? = null
     private var source: SongAnalysis? = null
     private var song: SongAnalysis? = null
+    /**
+     * The line shown instead of the prepared one (more or fewer notes, or the tab's) and what it is
+     * ([lineSpec]), or null for the prepared line; with a tab's, how the tab lined up. [wanted] is the
+     * line being worked out in the background, shown when it comes unless something else was asked
+     * for meanwhile; [reportTab] says to report how a tab just pasted lined up.
+     */
+    private var line: SongAnalysis? = null
+    private var lineSpec: SongLines.Spec? = null
+    private var tabReport: SongLines.TabReport? = null
+    private var wanted: SongLines.Spec? = null
+    private var reportTab = false
     private var fileUri: Uri? = null
     private var player: MediaPlayer? = null
     private var speed = 1f
@@ -128,6 +152,7 @@ class SongActivity : Activity() {
     private var shownSecond = -1
 
     private val jobListener: (SongJobs.State) -> Unit = { onJob(it) }
+    private val lineListener: (SongLines.Outcome) -> Unit = { onLine(it) }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -251,9 +276,16 @@ class SongActivity : Activity() {
             ellipsize = TextUtils.TruncateAt.END
             setPadding(px(4), px(2), px(4), px(2))
         }
-        controls.addView(status)
+        // Turns while a line is worked out in the background (more notes, or a tab lined up).
+        statusSpinner = ProgressBar(this, null, android.R.attr.progressBarStyleSmall).apply { visibility = View.GONE }
+        controls.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(statusSpinner, LinearLayout.LayoutParams(px(16), px(16)).apply { marginStart = px(4) })
+            addView(status, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        })
 
-        // The note now, the dromos, speed and sound.
+        // The note now, the dromos and the tab; speed, how many notes, and sound.
         noteText = TextView(this).apply {
             textSize = 24f
             typeface = Typeface.DEFAULT_BOLD
@@ -264,21 +296,29 @@ class SongActivity : Activity() {
         }
         dromosText = TextView(this).apply { textSize = 12f; setTextColor(0xFFE8EEF6.toInt()); maxLines = 2 }
         useDromosButton = ui.chip("Use") { useDromos() }.apply { visibility = View.GONE }
+        tabButton = ui.chip("📝 Tab") { showTabMenu() }
+        fun wrapped() = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            marginStart = px(3); marginEnd = px(3)
+        }
         controls.addView(ui.row().apply {
             // A fixed size: a ♯/♭ comes from a taller fallback font, and a growing row would make
             // the neck below re-fit (and jump) at every accidental.
             addView(noteText, LinearLayout.LayoutParams(px(64), px(40)))
             addView(dromosText, ui.weighted(3f))
-            addView(useDromosButton, ui.weighted(1f))
+            addView(useDromosButton, wrapped())
+            addView(tabButton, wrapped())
         })
         controls.addView(ui.row().apply {
-            for (r in listOf(0.5f, 0.75f, 1f)) {
-                val b = ui.chip(if (r == 1f) "1×" else "$r×".replace("0.", ".")) { setSpeed(r) }
-                speedButtons[r] = b
-                addView(b, ui.weighted())
+            speedSwitch = Segmented(context, "Speed", SPEEDS.map { if (it == 1f) "1×" else "$it×".replace("0.", ".") }) { k -> setSpeed(SPEEDS[k]) }
+            detailSwitch = Segmented(context, "Notes", listOf("fewer", "normal", "more")) { k -> pickDetail(Detail.entries[k]) }
+            addView(speedSwitch, wrapped())
+            addView(detailSwitch, wrapped())
+            soundButton = ui.chip("🔊 Bouzouki") { bouzoukiSound = !bouzoukiSound; pluckReset = true; refreshButtons() }.apply {
+                // One line, smaller when a big system font leaves it too little room beside the switches.
+                maxLines = 1
+                if (Build.VERSION.SDK_INT >= 26) setAutoSizeTextTypeUniformWithConfiguration(9, 14, 1, TypedValue.COMPLEX_UNIT_SP)
             }
-            soundButton = ui.chip("🔊 Bouzouki") { bouzoukiSound = !bouzoukiSound; pluckReset = true; refreshButtons() }
-            addView(soundButton, ui.weighted(1.6f))
+            addView(soundButton, ui.weighted(1f))
         })
 
         // Neck or tablature, and the sync between the notes and the sound.
@@ -339,6 +379,8 @@ class SongActivity : Activity() {
         showSync()
         refreshButtons()
         showDromos()
+        refreshLineControls()
+        SongLines.listen(lineListener)
         status.text = "Paste a YouTube link (or Share → Μπουζούκι in the YouTube app). The first time, a song takes a few minutes to prepare; after that it opens instantly."
 
         // Back to a song that's being prepared (e.g. from the notification).
@@ -379,6 +421,7 @@ class SongActivity : Activity() {
         stopFile()
         fileUri = null
         currentId = id
+        currentSource = SongJobs.Source.YouTube(id)
         loadSync(id)
         showLinkRows(false) // more room for the neck; 🔗 brings them back
         web.visibility = View.VISIBLE
@@ -395,6 +438,7 @@ class SongActivity : Activity() {
         fileUri = uri
         val id = "file-" + Integer.toHexString(uri.toString().hashCode())
         currentId = id
+        currentSource = SongJobs.Source.AudioFile(uri, name)
         loadSync(id)
         showLinkRows(false) // more room for the neck; 🔗 brings them back
         fileRow.visibility = View.VISIBLE
@@ -411,6 +455,13 @@ class SongActivity : Activity() {
         prepareOrShow(id, SongJobs.Source.AudioFile(uri, name), startJob = true)
     }
 
+    /** Asks (once, on Android 13+) to show the preparing song's progress notification; optional. */
+    private fun askForNotifications() {
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+        }
+    }
+
     private fun prepareOrShow(id: String, source: SongJobs.Source, startJob: Boolean) {
         showSong(null)
         val saved = SongJobs.cached(this, id)
@@ -422,9 +473,7 @@ class SongActivity : Activity() {
             status.text = "Another song is still being prepared. Wait for it to finish, or cancel it."
             return
         }
-        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1) // for the progress notification; optional
-        }
+        askForNotifications()
         SongJobs.start(this, source, settings.instrument)
     }
 
@@ -438,12 +487,7 @@ class SongActivity : Activity() {
         if (board.instrument != inst) board.instrument = inst
         val src = source
         if (src != null) {
-            val s = src.forInstrument(inst)
-            song = s
-            tab.song = s
-            sheet.song = s
-            resetMarks()
-            render(clock.now(SystemClock.elapsedRealtimeNanos())) // the note now and the next one, on the new neck
+            showLine() // the note now and the next one, on the new neck
             sheet.showNow()
         }
         // Once the neck has its new frets, bring the note playing back into view.
@@ -470,26 +514,383 @@ class SongActivity : Activity() {
         }
     }
 
-    /** Shows [prepared] (the song as it was prepared, or null for none), fingered for the bouzouki chosen now. */
+    /**
+     * Shows [prepared] (the song as it was prepared, or null for none), fingered for the bouzouki chosen
+     * now, then the line chosen for it (more or fewer notes, or its tab's) once that's worked out.
+     */
     private fun showSong(prepared: SongAnalysis?) {
         source = prepared
-        // Fingered for the bouzouki chosen now, with the current fingering rules (saved songs too).
-        val s = prepared?.forInstrument(settings.instrument)
-        song = s
-        tab.song = s
-        sheet.beats = if (s != null) beatsFor(s) else emptyList()
-        sheet.song = s
-        resetMarks()
+        line = null
+        lineSpec = null
+        tabReport = null
+        wanted = null
+        reportTab = false
+        busy(null)
+        sheet.beats = if (prepared != null) beatsFor(prepared) else emptyList()
+        showLine()
+        val s = song
         if (s != null) {
             prepPanel.visibility = View.GONE
             if (s.title.isNotBlank()) titleText.text = s.title
             status.text = if (s.notes.isEmpty()) "No clear bouzouki line was found in this song."
             else "Ready: ${s.notes.size} bouzouki notes. The hollow ring shows the next one. " +
                 "📜 Tablature shows the whole song: tap a note to hear it and play from there."
-            s.notes.firstOrNull()?.let { board.nextCell = Cell(it.course, it.fret) }
             sheet.showNow()
+            chooseLine(announce = false)
         }
         showDromos()
+        refreshLineControls()
+    }
+
+    /**
+     * Shows the line (the one chosen, else the prepared one) fingered for the bouzouki chosen now, with
+     * the current fingering rules (saved songs too), on the neck, the tab strip and the tablature, from
+     * where the song is now.
+     */
+    private fun showLine() {
+        val shown = line ?: source
+        val s = shown?.let { fingered(it) }
+        song = s
+        tab.song = s
+        sheet.ghosts = if (s != null) ghostsFor(s) else emptyList()
+        sheet.song = s
+        resetMarks()
+        if (s != null) render(clock.now(SystemClock.elapsedRealtimeNanos()))
+    }
+
+    /**
+     * [shown] for the bouzouki chosen now. A tab's line keeps the tab's frets on the bouzouki the tab
+     * is for (it says where to play); every other line is fingered again ([SongAnalysis.forInstrument]).
+     */
+    private fun fingered(shown: SongAnalysis): SongAnalysis {
+        val inst = settings.instrument
+        val asWritten = shown === line && lineSpec is SongLines.Spec.FromTab && shown.instrument == inst &&
+            shown.notes.all { it.course in inst.courses.indices && it.fret in 0..inst.frets && inst.midiAt(it.course, it.fret) == it.midi }
+        return if (asWritten) shown else shown.forInstrument(inst)
+    }
+
+    // --- the line: fewer or more notes, or a tab's ---
+
+    /** The line chosen for song [id]: its tab's if one is pasted and chosen, else the detected one with its detail (null for normal: the prepared line). */
+    private fun lineSpecFor(id: String): SongLines.Spec? {
+        if (settings.usesTab(id)) {
+            val text = SongJobs.tabText(this, id)
+            if (text != null) return SongLines.Spec.FromTab(id, text, settings.tabInstrument(id))
+        }
+        val d = settings.detail(id)
+        return if (d == Detail.NORMAL) null else SongLines.Spec.Detected(id, d)
+    }
+
+    /**
+     * Shows the line chosen for the song open. One not worked out yet is worked out in the background
+     * (the spinner turns meanwhile, and the line shown till then stays); [announce] says what's shown
+     * once it is.
+     */
+    private fun chooseLine(announce: Boolean) {
+        val src = source ?: return
+        val spec = lineSpecFor(src.id)
+        if (spec == null) {
+            wanted = null
+            busy(null)
+            if (line != null) {
+                line = null
+                lineSpec = null
+                tabReport = null
+                showLine()
+            }
+            if (announce) status.text = lineText()
+            refreshLineControls()
+            return
+        }
+        wanted = spec
+        val ready = SongLines.request(this, src, spec)
+        if (ready != null) onLine(ready, announce)
+        else {
+            busy(when (spec) {
+                is SongLines.Spec.FromTab -> "Lining the tab up with the recording…"
+                is SongLines.Spec.Detected -> "Finding the notes again: ${detailName(spec)}…"
+            })
+            refreshLineControls()
+        }
+    }
+
+    /** A line worked out in the background (or ready at once): shown if it's still the one wanted. */
+    private fun onLine(out: SongLines.Outcome, announce: Boolean = true) {
+        val spec = out.spec
+        if (spec != wanted) return // asked for before something else was, or for another song
+        wanted = null
+        busy(null)
+        val report = reportTab && spec is SongLines.Spec.FromTab
+        if (spec is SongLines.Spec.FromTab) reportTab = false
+        when (out) {
+            is SongLines.Outcome.Line -> {
+                val r = out.report
+                if (spec is SongLines.Spec.FromTab && (r == null || r.matched == 0 || out.song.notes.isEmpty())) {
+                    // Nothing of the tab could be read, or found: the detected notes stay.
+                    val unread = r == null || r.tab.notes.isEmpty()
+                    settings.setUsesTab(spec.id, false)
+                    if (unread) SongJobs.removeTab(this, spec.id) // not a tab: nothing to keep
+                    chooseLine(announce = false)
+                    status.text = if (unread) "No tab notes could be read from what was pasted."
+                    else "None of the tab's notes could be found in the recording: the detected notes stay."
+                    if (report && r != null) showTabReport(r)
+                    return
+                }
+                if (out.song !== line) {
+                    line = out.song
+                    lineSpec = spec
+                    tabReport = r
+                    showLine()
+                }
+                if (announce) status.text = lineText()
+                if (report && r != null) showTabReport(r)
+            }
+            is SongLines.Outcome.NoData -> status.text = "Prepare again to use tabs and detail levels."
+            is SongLines.Outcome.Failed -> status.text =
+                (if (spec is SongLines.Spec.FromTab) "Couldn't line the tab up: " else "Couldn't find the notes again: ") + out.message
+        }
+        refreshLineControls()
+    }
+
+    /** What the line shown is, in a sentence. */
+    private fun lineText(): String {
+        val s = song ?: return ""
+        val spec = lineSpec
+        val r = tabReport
+        return when {
+            spec is SongLines.Spec.FromTab && r != null ->
+                "From your tab: lined up ${r.matched} of ${r.total} tab notes." +
+                    if (sheet.ghosts.isNotEmpty()) " The others show faint in 📜 Tablature." else ""
+            spec is SongLines.Spec.Detected -> "${s.notes.size} bouzouki notes: ${detailName(spec)}."
+            else -> "${s.notes.size} bouzouki notes."
+        }
+    }
+
+    private fun detailName(spec: SongLines.Spec.Detected) = when (spec.detail) {
+        Detail.FEWER -> "fewer, only the clearest"
+        Detail.NORMAL -> "the usual detail"
+        Detail.MORE -> "more, quieter and quicker ones too"
+    }
+
+    /** The spinner by the status line, turning with [text] while a line is worked out; null stops it. */
+    private fun busy(text: String?) {
+        statusSpinner.visibility = if (text != null) View.VISIBLE else View.GONE
+        if (text != null) status.text = text
+    }
+
+    /** The Notes switch and the 📝 Tab button as the line shown (or coming) is. */
+    private fun refreshLineControls() {
+        val src = source
+        val spec = wanted ?: lineSpec
+        val fromTab = spec is SongLines.Spec.FromTab
+        detailSwitch.available = src != null && SongJobs.hasData(this, src.id)
+        detailSwitch.selected = when (spec) {
+            is SongLines.Spec.FromTab -> -1
+            is SongLines.Spec.Detected -> spec.detail.ordinal
+            null -> Detail.NORMAL.ordinal
+        }
+        detailSwitch.caption = if (fromTab) "Notes · from the tab" else "Notes"
+        ui.style(tabButton, fromTab)
+    }
+
+    /** Fewer or more notes in the detected line (remembered for the song); it replaces the tab's notes if those were shown. */
+    private fun pickDetail(d: Detail) {
+        val src = source
+        if (src == null) {
+            status.text = "Open a song first. Then: fewer notes keeps only the clearest, more adds quieter and quicker ones."
+            return
+        }
+        if (!SongJobs.hasData(this, src.id)) { askToPrepareAgain(); return }
+        settings.setDetail(src.id, d)
+        settings.setUsesTab(src.id, false)
+        chooseLine(announce = true)
+    }
+
+    /** 📝 Tab: find a tab online, paste one, choose between its notes and the detected ones, or remove it. */
+    private fun showTabMenu() {
+        val id = currentId
+        if (id == null) { status.text = "Open a song first; then find its bouzouki tab online, copy it and paste it here."; return }
+        val hasTab = SongJobs.tabText(this, id) != null
+        val fromTab = (wanted ?: lineSpec) is SongLines.Spec.FromTab
+        val items = ArrayList<Pair<String, () -> Unit>>()
+        items += "🔎 Find a tab online" to { findTabOnline(greek = false) }
+        items += "🔎 Βρες ταμπλατούρα (Greek search)" to { findTabOnline(greek = true) }
+        items += (if (hasTab) "📋 Paste another tab" else "📋 Paste tab") to { pasteTab() }
+        if (hasTab) {
+            items += "From tab" + (if (fromTab) "  ✓" else "") to { chooseTab(true) }
+            items += "Detected" + (if (fromTab) "" else "  ✓") to { chooseTab(false) }
+            items += "🗑 Remove tab" to { removeTab() }
+        }
+        val r = tabReport
+        val title = if (fromTab && r != null) "📝 Tab · ${r.matched} of ${r.total} notes lined up" else "📝 Bouzouki tab"
+        AlertDialog.Builder(this)
+            .setTitle(title)
+            .setItems(items.map { it.first }.toTypedArray()) { _, i -> items[i].second() }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    /** Opens a web search for the song's tab (in English or Greek) in the browser; the player copies it from there. */
+    private fun findTabOnline(greek: Boolean) {
+        val known = source?.title?.takeIf { it.isNotBlank() } ?: if (fileUri != null) titleText.text.toString() else null
+        val title = known?.let { searchTitle(it) }?.takeIf { it.isNotBlank() }
+        if (title == null) { status.text = "The song's title is known once it's prepared; search for its tab then."; return }
+        val query = if (greek) "$title ταμπλατούρα μπουζούκι" else "$title bouzouki tab"
+        val uri = Uri.parse("https://www.google.com/search").buildUpon().appendQueryParameter("q", query).build()
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, uri))
+            status.text = "Found one? Select the tab's lines, copy them, come back, and 📝 Tab → Paste tab."
+        } catch (_: ActivityNotFoundException) {
+            status.text = "No web browser found to search with."
+        }
+    }
+
+    /** Pastes a tab from the clipboard, after a look at it. */
+    private fun pasteTab() {
+        val id = currentId ?: return
+        val clip = (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).primaryClip
+        val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()
+            ?.replace("\r\n", "\n")?.replace('\r', '\n')?.trim('\n')
+        if (text.isNullOrBlank()) {
+            status.text = "Nothing to paste. In the browser, select all the tab's lines, Copy, come back, then 📝 Tab → Paste tab."
+            return
+        }
+        if (text.length > MAX_TAB_CHARS) { status.text = "That's too long for a tab: copy just the tab's lines."; return }
+        val lines = text.lines()
+        val preview = TextView(this).apply {
+            typeface = Typeface.MONOSPACE
+            textSize = 11f
+            setTextColor(0xFFE8EEF6.toInt())
+            setPadding(ui.px(24), ui.px(4), ui.px(24), ui.px(4)) // in line with the dialog's text
+            this.text = lines.take(PREVIEW_LINES).joinToString("\n") + if (lines.size > PREVIEW_LINES) "\n… (${lines.size - PREVIEW_LINES} more lines)" else ""
+        }
+        val box = ScrollView(this).apply { addView(HorizontalScrollView(this@SongActivity).apply { addView(preview) }) }
+        AlertDialog.Builder(this)
+            .setTitle("Paste this tab?")
+            .setMessage("It's lined up with the recording and kept on this phone for this song.")
+            .setView(box)
+            .setPositiveButton("Use this tab") { _, _ -> useTab(id, text) }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    /** Keeps [text] as song [id]'s tab, and shows its notes once they're lined up with the recording. */
+    private fun useTab(id: String, text: String) {
+        if (id != currentId) return
+        try {
+            SongJobs.saveTab(this, id, text)
+        } catch (e: IOException) {
+            status.text = "Couldn't keep the tab: ${e.message}"
+            return
+        }
+        settings.setUsesTab(id, true)
+        settings.setTabInstrument(id, settings.instrument)
+        if (source == null) { status.text = "Tab kept: it's lined up with the song once the song is ready."; return }
+        if (!SongJobs.hasData(this, id)) { askToPrepareAgain(); return }
+        reportTab = true
+        chooseLine(announce = true)
+    }
+
+    /** The tab's notes ([use]) or the detected ones, for the song open (remembered). */
+    private fun chooseTab(use: Boolean) {
+        val id = currentId ?: return
+        settings.setUsesTab(id, use)
+        if (source == null) return
+        if (use && !SongJobs.hasData(this, id)) { askToPrepareAgain(); return }
+        chooseLine(announce = true)
+    }
+
+    private fun removeTab() {
+        val id = currentId ?: return
+        AlertDialog.Builder(this)
+            .setTitle("Remove the tab?")
+            .setMessage("The tab pasted for this song is removed from the phone, and the detected notes are shown.")
+            .setPositiveButton("Remove") { _, _ ->
+                if (id == currentId) {
+                    SongJobs.removeTab(this, id)
+                    settings.setUsesTab(id, false)
+                    chooseLine(announce = true)
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    /** How a tab just pasted lined up: how many of its notes were found, and what couldn't be read. */
+    private fun showTabReport(r: SongLines.TabReport) {
+        val tab = r.tab
+        val message = buildString {
+            when {
+                tab.notes.isEmpty() -> append("No tab notes could be read from what was pasted. Copy just the tab's lines, one per course (like D|--5-7--|).")
+                r.matched == 0 -> append("None of the tab's ${r.total} notes could be found in the recording, so the detected notes stay. Is it a tab of this song?")
+                else -> {
+                    append("Lined up ${r.matched} of ${r.total} tab notes.")
+                    if (sheet.ghosts.isNotEmpty()) append(" The ${sheet.ghosts.size} not found show faint in 📜 Tablature.")
+                    if (tab.instrument != settings.instrument) append("\n\nRead as a tab for the ${tab.instrument.greekName}.")
+                }
+            }
+            if (tab.warnings.isNotEmpty()) {
+                append("\n")
+                for (w in tab.warnings.take(MAX_WARNINGS)) append("\n• ").append(w)
+                if (tab.warnings.size > MAX_WARNINGS) append("\n• … and ${tab.warnings.size - MAX_WARNINGS} more")
+            }
+        }
+        AlertDialog.Builder(this).setTitle("📝 Tab").setMessage(message).setPositiveButton("OK", null).show()
+    }
+
+    /**
+     * The tab's notes that weren't found in the recording, about where they'd come (between the tab
+     * notes either side that were, by their place across the tab), for the tablature to show faint.
+     * Only while the tab's line is shown as written, note for note.
+     */
+    private fun ghostsFor(shown: SongAnalysis): List<SongNote> {
+        val r = tabReport ?: return emptyList()
+        val tab = r.tab
+        if (r.missing.isEmpty() || line == null || lineSpec !is SongLines.Spec.FromTab || shown !== line || shown.instrument != tab.instrument) return emptyList()
+        val missing = r.missing.toHashSet()
+        val found = tab.notes.indices.filter { it !in missing }
+        if (found.isEmpty() || found.size != shown.notes.size) return emptyList()
+        val inst = tab.instrument
+        val out = ArrayList<SongNote>()
+        for (m in r.missing) {
+            val tn = tab.notes.getOrNull(m) ?: continue
+            if (tn.course !in inst.courses.indices) continue
+            val k = -(found.binarySearch(m) + 1) // found[k - 1] < m < found[k]
+            val before = found.getOrNull(k - 1)
+            val after = found.getOrNull(k)
+            val t = when {
+                before != null && after != null -> {
+                    val c0 = tab.notes[before].column
+                    val c1 = tab.notes[after].column
+                    val f = if (c1 > c0) (tn.column - c0).toDouble() / (c1 - c0) else (m - before).toDouble() / (after - before)
+                    shown.notes[k - 1].start + f.coerceIn(0.0, 1.0) * (shown.notes[k].start - shown.notes[k - 1].start)
+                }
+                before != null -> shown.notes[k - 1].end + GHOST_STEP * (m - before - 1)
+                after != null -> shown.notes[k].start - GHOST_STEP * (after - m)
+                else -> continue
+            }
+            if (t < 0) continue
+            out += SongNote(t, t + GHOST_STEP, inst.midiAt(tn.course, tn.fret), tn.course, tn.fret, tn.articulation)
+        }
+        return out.sortedBy { it.start }
+    }
+
+    /** Asks to prepare a song again that was prepared before what tabs and detail levels need was kept. */
+    private fun askToPrepareAgain() {
+        status.text = "Prepare again to use tabs and detail levels."
+        AlertDialog.Builder(this)
+            .setTitle("Prepare again?")
+            .setMessage("This song was prepared before tabs and detail levels came. Prepare again to use tabs and detail levels: it takes a few minutes, like the first time. A pasted tab is kept.")
+            .setPositiveButton("Prepare again") { _, _ -> prepareAgain() }
+            .setNegativeButton("Not now", null)
+            .show()
+    }
+
+    private fun prepareAgain() {
+        val src = currentSource ?: return
+        if (SongJobs.isBusy()) { status.text = "Another song is still being prepared. Wait for it to finish, or cancel it."; return }
+        askForNotifications()
+        SongJobs.start(this, src, settings.instrument) // the song shown stays until the new one is ready
     }
 
     /** Forgets what the neck and the bouzouki sound showed and played, for a new or newly fingered song. */
@@ -568,7 +969,7 @@ class SongActivity : Activity() {
     }
 
     private fun showDromos() {
-        val s = song
+        val s = source // the song's, whichever line is shown
         val d = s?.dromos
         if (s == null || d == null) {
             dromosText.text = "Neck: ${settings.names.name(board.rootPc)} ${board.dromos.title}"
@@ -581,7 +982,7 @@ class SongActivity : Activity() {
     }
 
     private fun useDromos() {
-        val s = song ?: return
+        val s = source ?: return
         val d = s.dromos ?: return
         board.dromos = d
         board.rootPc = s.rootPc
@@ -855,7 +1256,7 @@ class SongActivity : Activity() {
     }
 
     private fun refreshButtons() {
-        for ((r, b) in speedButtons) ui.style(b, r == speed)
+        speedSwitch.selected = SPEEDS.indexOf(speed)
         ui.style(soundButton, bouzoukiSound)
         filePlayButton.text = if (playing) "⏸ Pause" else "▶ Play"
     }
@@ -944,6 +1345,7 @@ class SongActivity : Activity() {
     }
 
     override fun onDestroy() {
+        SongLines.unlisten(lineListener) // a line still being worked out is kept for next time, not shown here
         stopFile()
         web.destroy()
         super.onDestroy()
@@ -967,8 +1369,29 @@ class SongActivity : Activity() {
         private const val TREMOLO_HZ = 12.0
         /** A tapped note plays from this many seconds before it (a little more than YouTube's time step). */
         private const val NOTE_PREROLL = 0.3
+        /** The playback speeds offered. */
+        private val SPEEDS = listOf(0.5f, 0.75f, 1f)
+        /** The longest text taken for a tab (a long song's tab is a few thousand characters). */
+        private const val MAX_TAB_CHARS = 200_000
+        /** Lines of a tab shown before pasting it. */
+        private const val PREVIEW_LINES = 40
+        /** Problems reading a tab listed in its report. */
+        private const val MAX_WARNINGS = 4
+        /** Seconds a tab note not found in the recording is drawn apart from its neighbour, where there's only one. */
+        private const val GHOST_STEP = 0.2
 
         private val ID = Regex("""(?:v=|youtu\.be/|shorts/|embed/|live/)([A-Za-z0-9_-]{11})""")
+        private val BRACKETS = Regex("""[(\[{【][^)\]}】]*[)\]}】]""")
+        private val NOISE = Regex("""(?<![\p{L}\p{N}])(official|video|videoclip|clip|lyrics?|audio|hd|hq|4k|remaster(ed)?|στίχοι|βίντεο)(?![\p{L}\p{N}])""",
+            RegexOption.IGNORE_CASE) // Greek capitals too: Kotlin's Regex makes it Unicode-aware
+
+        /** A video title as a search for its tab wants it: without "(Official Video)", "[HD]", "| Lyrics" and the like. */
+        fun searchTitle(title: String): String = title
+            .replace(BRACKETS, " ")
+            .replace(NOISE, " ")
+            .replace(Regex("""[|_•·"«»“”]+"""), " ")
+            .replace(Regex("""\s+"""), " ")
+            .trim(' ', '-', '–', '—', ':')
 
         /** The 11-character video id from any kind of YouTube link (or a bare id). */
         fun youTubeId(text: String): String? {

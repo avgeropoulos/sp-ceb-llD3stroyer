@@ -35,7 +35,8 @@ import kotlin.math.roundToInt
  * note held over a bar line (or into the next row) shows its fret again in brackets, tied.
  * A gold cursor follows the song, the note playing is lit, and the sheet scrolls along unless
  * the reader has just scrolled it. Tap a note to play it, or anywhere else to go there.
- * Stretches without bouzouki fold into one short row.
+ * Stretches without bouzouki fold into one short row. Notes of a pasted tab that weren't heard
+ * in the recording can be shown faint ([ghosts]).
  */
 class TabSheetView(context: Context) : View(context) {
     var song: SongAnalysis? = null
@@ -48,6 +49,12 @@ class TabSheetView(context: Context) : View(context) {
         set(v) { if (v != field) { field = v; invalidate(); follow(force = false) } }
     var names = NoteNames.WESTERN
         set(v) { field = v; relayout() }
+    /**
+     * Notes drawn faint, under the line's: a pasted tab's notes that weren't found in the recording, about
+     * where they'd come. They aren't played, lit or tapped, and take no room of their own.
+     */
+    var ghosts: List<SongNote> = emptyList()
+        set(v) { if (v != field) { field = v; relayout() } }
     /** Called with a note's index when it's tapped. */
     var onNoteTap: ((Int) -> Unit)? = null
     /** Called with a time in seconds when the sheet is tapped away from the notes. */
@@ -153,6 +160,13 @@ class TabSheetView(context: Context) : View(context) {
     }
     private val tiedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = ink(0xA8); textSize = 12 * dp; textAlign = Paint.Align.CENTER; typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD)
+    }
+    private val ghostPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = ink(0x70); textSize = 12 * dp; textAlign = Paint.Align.CENTER; typeface = Typeface.create(Typeface.SERIF, Typeface.ITALIC)
+    }
+    private val ghostEdge = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = ink(0x55); style = Paint.Style.STROKE; strokeWidth = 1f * dp
+        pathEffect = DashPathEffect(floatArrayOf(2.5f * dp, 2 * dp), 0f)
     }
     private val legendPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
         color = ink(0x99); textSize = 10.5f * dp; typeface = Typeface.create(Typeface.SERIF, Typeface.ITALIC)
@@ -358,6 +372,7 @@ class TabSheetView(context: Context) : View(context) {
         if (used[Articulation.PULL.ordinal]) parts += "$PULL_MARK pull-off"
         if (used[Articulation.SLIDE.ordinal]) parts += "$SLIDE_MARK slide"
         if (used[Articulation.TREMOLO.ordinal]) parts += "/// tremolo"
+        if (ghosts.isNotEmpty()) parts += "faint: in the tab, not heard"
         return parts.joinToString("    ")
     }
 
@@ -547,6 +562,16 @@ class TabSheetView(context: Context) : View(context) {
         while (held >= 0 && held >= firstNote - 4) {
             if (carriesOver(s, held, r - 1)) drawHeldOver(canvas, s, r, held, end, held == lit)
             held--
+        }
+        // Tab notes not heard: faint, under the line's notes (they cover them where the two meet).
+        for (n in ghosts) {
+            if (n.start < t0 - 1e-9 || n.start >= t1 - 1e-9 || n.course !in 0 until courses) continue
+            val half = boxWidth(n.fret) / 2
+            val x = xFor(r, n.start).coerceIn(left, right)
+            val y = courseY(r, n.course)
+            canvas.drawRoundRect(x - half, y - boxHeight / 2, x + half, y + boxHeight / 2, 3 * dp, 3 * dp, boxPaint)
+            canvas.drawRoundRect(x - half, y - boxHeight / 2, x + half, y + boxHeight / 2, 3 * dp, 3 * dp, ghostEdge)
+            canvas.drawText(fretText(n.fret), x, y + 4.2f * dp, ghostPaint)
         }
         // Bars of held and tremolo notes first, then the fret numbers over them, then the marks.
         for (i in firstNote until end) {
