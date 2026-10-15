@@ -67,17 +67,22 @@ internal object PdfForm {
         val strong get() = thick || lines > 1
     }
 
-    /** A page's glyphs (by baseline), vertical lines (joined) and thin horizontal lines (by height). */
+    /** A page's glyphs (by baseline), vertical lines (joined, by x), thin horizontal lines and curves (by height). */
     private class Page(val content: PdfPageContent) {
         private val glyphs = content.glyphs.filter { it.upright && it.size > 0 && it.text.isNotBlank() }.sortedBy { it.baseline }
         private val baselines = DoubleArray(glyphs.size) { glyphs[it].baseline }
-        val vlines = joinVertical(content.vlines)
+        val vlines = joinVertical(content.vlines).sortedBy { it.x }
+        private val vxs = DoubleArray(vlines.size) { vlines[it].x }
         private val lines = content.lines.filter { it.thickness <= 1.6 && it.x1 - it.x0 >= 2.0 }.sortedBy { it.y }
         private val ys = DoubleArray(lines.size) { lines[it].y }
-        val arcs = content.arcs
+        private val arcs = content.arcs.sortedBy { it.y0 }
+        private val arcYs = DoubleArray(arcs.size) { arcs[it].y0 }
 
         fun glyphs(top: Double, bottom: Double): List<PdfGlyph> = glyphs.subList(first(baselines, top), first(baselines, Math.nextUp(bottom)))
         fun lines(top: Double, bottom: Double): List<PdfLine> = lines.subList(first(ys, top), first(ys, Math.nextUp(bottom)))
+        fun vlines(left: Double, right: Double): List<PdfVLine> = vlines.subList(first(vxs, left), first(vxs, Math.nextUp(right)))
+        /** The curves whose tops are from [top] to [bottom]. */
+        fun arcs(top: Double, bottom: Double): List<PdfArc> = arcs.subList(first(arcYs, top), first(arcYs, Math.nextUp(bottom)))
 
         private fun first(a: DoubleArray, v: Double): Int {
             var lo = 0
@@ -257,7 +262,7 @@ internal object PdfForm {
             if (g.x1 - g.x0 > 1.2 * sp || cx !in x0..x1 || g.baseline > ys.last() + sp + 0.5 * g.size) continue
             cand += doubleArrayOf(cx, g.baseline, 0.45 * g.size)
         }
-        for (a in page.arcs) {
+        for (a in page.arcs(ys.first() - sp, ys.last())) {
             val w = a.x1 - a.x0
             val h = a.y1 - a.y0
             if (w !in 0.15 * sp..sp || h !in 0.15 * sp..sp || w > 1.7 * h || h > 1.7 * w) continue
@@ -284,6 +289,11 @@ internal object PdfForm {
     private const val SEGNO = 1
     private const val CODA_SIGN = 2
     private const val MAX_DOTS = 2_000
+    /** The most thin lines above a system read for endings: drawn ([MAX_LINES_DRAWN], copies too) and different ([MAX_LINES]). */
+    private const val MAX_LINES_DRAWN = 20_000
+    private const val MAX_LINES = 300
+    /** The most 1st/2nd-time endings read (different ones; the same one read twice is one). */
+    private const val MAX_ENDINGS = 200
 
     /** The sign [g] draws: a segno or a coda, as Unicode's musical symbols, SMuFL's, or a Sonata-style music font's. */
     private fun sign(g: PdfGlyph): Int? {
@@ -331,9 +341,10 @@ internal object PdfForm {
         return out
     }
 
-    // Instructions as written: with or without the dots, in any case (but Fine and Coda, which a lyric could hold).
-    private val DC = Regex("""(?i)^\s*(?:d\.\s?c\.?|da\s+capo)(?![\p{L}])""")
-    private val DS = Regex("""(?i)^\s*(?:d\.\s?s\.?|dal\s+segno)(?![\p{L}])""")
+    // Instructions as written, in any case (but Fine and Coda, which a lyric could hold): with the dots, or without them
+    // alone or before "al ..." (so a stray "DC" in other words isn't a jump).
+    private val DC = Regex("""(?i)^\s*(?:(?:d\.\s?c\.?|da\s+capo)(?![\p{L}])|dc\.?\s*(?:$|al\s))""")
+    private val DS = Regex("""(?i)^\s*(?:(?:d\.\s?s\.?|dal\s+segno)(?![\p{L}])|ds\.?\s*(?:$|al\s))""")
     private val AL_FINE = Regex("""(?i)al\s+fine""")
     private val AL_CODA = Regex("""(?i)al\s+coda""")
     private val TO_CODA = Regex("""(?i)^\s*to\s+(?:the\s+)?coda""")
@@ -350,6 +361,12 @@ internal object PdfForm {
      */
     private fun endings(page: Page, s: System, top: Double, nextPage: Page?, next: System?, phrases: List<Phrase>, marks: Marks, warnings: MutableSet<String>) {
         val sp = s.spacing
+        // Where an ending reaching this system's end goes on to in the next system (looked for once).
+        val cont: Int? by lazy {
+            if (next == null || nextPage == null) return@lazy null
+            val nextTop = if (next.page == s.page) max(s.bottom, next.top - 16 * next.spacing) else next.top - 16 * next.spacing
+            brackets(nextPage, next, nextTop).firstOrNull { it.x0 <= next.x0 + 12 * next.spacing && !hooked(nextPage, it, next) }?.let { next.position(it.x1) }
+        }
         for (l in brackets(page, s, top)) {
             if (!hooked(page, l, s)) continue
             // The numbers hang under the line, which runs on over them (a tuplet's number sits in a gap in its bracket).
@@ -359,12 +376,7 @@ internal object PdfForm {
             }
             val numbers = label?.let { numbers(it.text) } ?: emptySet()
             if (numbers.isEmpty()) continue // a tuplet's bracket, a line of a text box ...
-            var to = s.position(l.x1)
-            if (l.x1 >= s.x1 - sp && next != null && nextPage != null) {
-                val nextTop = if (next.page == s.page) max(s.bottom, next.top - 16 * next.spacing) else next.top - 16 * next.spacing
-                val cont = brackets(nextPage, next, nextTop).firstOrNull { it.x0 <= next.x0 + 12 * next.spacing && !hooked(nextPage, it, next) }
-                if (cont != null) to = next.position(cont.x1)
-            }
+            val to = (if (l.x1 >= s.x1 - sp) cont else null) ?: s.position(l.x1)
             marks.endings += Ending(s.position(l.x0), to, numbers, s.page + 1)
         }
     }
@@ -372,14 +384,20 @@ internal object PdfForm {
     /** Whether bracket line [l] has a hook down at its left end. */
     private fun hooked(page: Page, l: PdfLine, s: System): Boolean {
         val sp = s.spacing
-        return page.vlines.any { v -> abs(v.x - l.x0) <= 0.6 * sp && abs(v.y0 - l.y) <= 0.6 * sp && v.y1 - v.y0 in 0.6 * sp..5 * sp }
+        return page.vlines(l.x0 - 0.6 * sp, l.x0 + 0.6 * sp).any { v -> abs(v.y0 - l.y) <= 0.6 * sp && v.y1 - v.y0 in 0.6 * sp..5 * sp }
     }
 
-    /** Thin horizontal lines above system [s] (below [top]), at least two spacings long, that aren't a staff's. */
+    /**
+     * Thin horizontal lines above system [s] (below [top]), at least two spacings long, that aren't a staff's: a line
+     * drawn several times over is one, and a page with more of them than a score would draw there is left unread.
+     */
     private fun brackets(page: Page, s: System, top: Double): List<PdfLine> {
         val sp = s.spacing
-        val near = page.lines(top - 25, s.top)
-        if (near.size > MAX_DOTS) return emptyList()
+        val all = page.lines(top - 25, s.top)
+        if (all.size > MAX_LINES_DRAWN) return emptyList()
+        val seen = HashSet<Triple<Long, Long, Long>>()
+        val near = all.filter { seen.add(Triple(Math.round(2 * it.y), Math.round(2 * it.x0), Math.round(2 * it.x1))) }
+        if (near.size > MAX_LINES) return emptyList()
         return near.filter { l ->
             l.x1 - l.x0 >= 2 * sp && l.y >= top && l.y <= s.top - 0.8 * sp && l.x1 > s.x0 && l.x0 < s.x1 + sp &&
                 // not a staff line: no other line just like it a few points above or below
@@ -407,17 +425,26 @@ internal object PdfForm {
         val starts = m.starts.keys.filter { it in 0 until n }.sorted()
         val ends = m.ends.filterKeys { it in 1..n }
         for ((at, page) in m.starts) if (ends.keys.none { it > at }) warnings += "The repeat sign |: on page $page has no :| after it: read as played once"
-        val endings = m.endings.filter { e ->
-            val ok = e.to > e.from && ends.keys.any { it >= e.from }
+        val lastEnd = ends.keys.maxOrNull() ?: -1
+        // The same ending read twice (drawn over itself) is one.
+        val distinct = m.endings.distinctBy { Triple(it.from, it.to, it.numbers) }
+        if (distinct.size > MAX_ENDINGS) warnings += "Read only the first $MAX_ENDINGS 1st/2nd-time endings; left out the others"
+        val endings = distinct.take(MAX_ENDINGS).filter { e ->
+            val ok = e.to > e.from && e.from in 0..n && lastEnd >= e.from
             if (!ok) warnings += "The 1st/2nd-time ending on page ${e.page} has no repeat sign (:|) to go with it: read as written"
             ok
         }
         // A :| ending an ending is taken as many times as the ending is played through.
         val times = HashMap<Int, Int>(ends)
         for (e in endings) if (e.to in ends) times[e.to] = max(times.getValue(e.to), e.numbers.size + 1)
-        fun inEnding(q: Int) = endings.any { q in it.from..it.to }
+        // Whether each boundary is in an ending.
+        val inEnding = BooleanArray(n + 2)
+        val edges = IntArray(n + 2)
+        for (e in endings) { edges[e.from]++; edges[min(n, e.to) + 1]-- }
+        var depth = 0
+        for (q in 0..n) { depth += edges[q]; inEnding[q] = depth > 0 }
         /** Where a :| at [p] goes back to: the last |: before it, or the last :| outside an ending, or the start. */
-        fun back(p: Int): Int = max(0, max(starts.lastOrNull { it < p } ?: -1, ends.keys.filter { it < p && !inEnding(it) }.maxOrNull() ?: -1))
+        fun back(p: Int): Int = max(0, max(starts.lastOrNull { it < p } ?: -1, ends.keys.filter { it < p && !inEnding[it] }.maxOrNull() ?: -1))
         // The repeat each ending belongs to (where its :| goes back to), and the last ending of each.
         val owner = endings.associateWith { e -> back(ends.keys.filter { it >= e.from }.min()) }
         val lastNumber = HashMap<Int, Int>()
@@ -448,6 +475,7 @@ internal object PdfForm {
         val back0 = if (jump?.segno == true) segno!! else 0
         val fine = if (jump != null && !alCoda) m.fines.map { it.first }.filter { it > back0 }.minOrNull() else null
 
+        val byFrom = endings.sortedBy { it.from }
         val segs = ArrayList<IntArray>()
         val taken = HashMap<Int, Int>()
         val backs = HashMap<Int, Int>() // times the playing went back to each place
@@ -462,7 +490,7 @@ internal object PdfForm {
             var at = n
             var what = 0
             var skip: Ending? = null
-            for (e in endings.sortedBy { it.from }) {
+            for (e in byFrom) {
                 if (e.from < cur || e.from >= at) continue
                 val play = if (jumped) e.numbers.max() == lastNumber[owner.getValue(e)] else 1 + (backs[owner.getValue(e)] ?: 0) in e.numbers
                 if (!play) { at = e.from; what = SKIP; skip = e }

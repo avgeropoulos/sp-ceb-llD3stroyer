@@ -13,7 +13,8 @@ import kotlin.test.assertTrue
  * The tab aligner on the scratch evaluation's synthesized songs, whose exact bouzouki notes are known. Tabs are written
  * from the ground truth ([TabText]) and spoiled the way real tabs are (notes left out or added, wrong frets, an octave
  * or a key off, written for the other bouzouki, rhythm only roughly kept, only the first verse, repeats written once),
- * read back with [TabParser] and lined up with each song's cached activations. Reports how far the aligned notes are
+ * read back with [TabParser] and lined up with each song's cached activations; each also with bar lines (", bars": every
+ * four beats of the written notes, as a PDF score or a text tab with | has them). Reports how far the aligned notes are
  * from where they're played, how many land within 50 ms, what happens in parts the tab doesn't cover, and the time;
  * checks that no kind of tab leaves the song's line worse than the prepared line.
  * TAB_EVAL_DIR names the folder holding kotlin_legato/ (songs without a form) and kotlin_tabs/ (songs with intro,
@@ -256,8 +257,20 @@ class TabEvalTest {
         return tp
     }
 
-    private fun score(song: Song, v: Variant, base: SongAnalysis, par: TabAligner.Params): Score {
-        val tab = TabParser.parse(v.text, Instrument.TETRACHORDO)
+    /**
+     * The tab [read] from [v] with its bars: each note's bar counted every four beats from the song's first note, by the
+     * times the notes are written for (a note a little early still in the bar it starts).
+     */
+    private fun barred(read: ParsedTab, v: Variant, song: Song): ParsedTab {
+        if (read.notes.size != v.written.size) return read
+        val bar = 240.0 / song.bpm
+        val t0 = song.gt.first().start
+        return read.copy(notes = read.notes.mapIndexed { j, n -> n.copy(bar = Math.floor((v.written[j].time - t0) / bar + 0.02).toInt()) })
+    }
+
+    private fun score(song: Song, v: Variant, base: SongAnalysis, par: TabAligner.Params, bars: Boolean): Score {
+        val read = TabParser.parse(v.text, Instrument.TETRACHORDO)
+        val tab = if (bars) barred(read, v, song) else read
         val s = Score()
         if (tab.notes.size != v.written.size) println("  ${song.name} ${v.name}: wrote ${v.written.size} notes, read ${tab.notes.size}; ${tab.warnings}")
         val data = AnalysisData(song.act, song.attacks)
@@ -329,17 +342,18 @@ class TabEvalTest {
             val song = load(f)
             val base = SongAnalyzer.build(song.name, song.name, SongAnalyzer.candidates(song.act), Instrument.TETRACHORDO, song.act, song.attacks)
             val rnd = Random(song.name.hashCode().toLong())
-            for (v in variants(song, rnd)) for ((setName, par) in sets) {
+            for (v in variants(song, rnd)) for (bars in listOf(false, true)) for ((setName, par) in sets) {
+                val name = v.name + if (bars) ", bars" else ""
                 // TAB_EVAL_ONLY="song name:variant name" looks at one tab, with the aligner's log.
                 val only = System.getenv("TAB_EVAL_ONLY")?.split(":")
-                if (only != null && (only[0] != song.name || only.getOrNull(1)?.let { it != v.name } == true)) continue
+                if (only != null && (only[0] != song.name || only.getOrNull(1)?.let { it != name } == true)) continue
                 if (only != null) TabAligner.log = { report.append("  aligner: ").append(it).append('\n') }
-                val s = score(song, v, base, par)
+                val s = score(song, v, base, par, bars)
                 TabAligner.log = null
-                val key = (if (sets.size > 1) "[$setName] " else "") + (if (song.meta?.get("form") != null) "form: " else "") + v.name
+                val key = (if (sets.size > 1) "[$setName] " else "") + (if (song.meta?.get("form") != null) "form: " else "") + name
                 totals.getOrPut(key) { Score() }.add(s)
                 if (sets.size == 1) {
-                    val line = "%-26s %-18s %s".format(song.name, v.name, s)
+                    val line = "%-26s %-24s %s".format(song.name, name, s)
                     println(line)
                     report.append(line).append('\n')
                 }
@@ -349,15 +363,17 @@ class TabEvalTest {
         for ((setName, _) in sets) {
             val all = Score()
             val sameOctave = Score() // the line's F-measure compares pitches: leave out the tabs kept an octave off
+            val barred = Score()
             for ((k, s) in totals) if (sets.size == 1 || k.startsWith("[$setName] ")) {
                 all.add(s)
                 if ("octave" !in k) sameOctave.add(s)
-                val line = "%-24s %s".format(k, s)
+                if (k.endsWith(", bars")) barred.add(s)
+                val line = "%-30s %s".format(k, s)
                 println(line)
                 report.append(line).append('\n')
             }
             val prefix = if (sets.size > 1) "[$setName] " else ""
-            val line = "%-24s %s\n%-24s %s\n".format(prefix + "ALL", all, prefix + "ALL but octave", sameOctave)
+            val line = "%-30s %s\n%-30s %s\n%-30s %s\n".format(prefix + "ALL", all, prefix + "ALL but octave", sameOctave, prefix + "ALL with bars", barred)
             println(line)
             report.append(line).append('\n')
         }

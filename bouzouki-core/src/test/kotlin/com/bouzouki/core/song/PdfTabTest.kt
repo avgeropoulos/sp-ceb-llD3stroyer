@@ -109,6 +109,9 @@ class PdfTabTest {
     /** A glyph of a Sonata-style music font over the notation staff (% a segno, Þ a coda), centred on [at]. */
     private class Sign(override val at: Double, val code: Int) : Form()
 
+    /** Anything else drawn with the system (a hostile page's clutter). */
+    private class Raw(override val at: Double, val draw: (Ink, Sys) -> Unit) : Form()
+
     /**
      * One system: a notation staff at [top] over a tab staff of [lines] lines; frets by slot (line
      * from the top, text). [barTo] draws the system's barline on down to that height (over a second
@@ -216,6 +219,7 @@ class PdfTabTest {
                 }
                 is Words -> ink.text(font, 9.0, x - widthOf(font, f.text, 9.0), s.top - 4, f.text)
                 is Sign -> ink.music(14.0, x - 5, s.top - 4, f.code)
+                is Raw -> f.draw(ink, s)
             }
         }
     }
@@ -751,26 +755,31 @@ class PdfTabTest {
     @Test
     fun readsDalSegnoAlCoda() {
         // 0 1 2 | segno 3 4 5 To Coda | 6 7 8 9 D.S. al Coda || ; next system: coda 10 ... 15. Played 0-9, 3-5, 10-15.
-        val a = formSys(
-            90.0, 10, listOf(2.5, 5.5),
-            listOf(Sign(2.8, 0x25), Words(5.4, "To Coda"), Words(9.3, "D.S. al Coda"), DoubleBar(9.5)),
-        )
-        val b = formSys(260.0, 6, emptyList(), listOf(Sign(-2.0, 0xDE)), 10)
-        val tab = read(listOf(listOf(a, b)))
-        assertEquals(listOf(TabSection(0, 10), TabSection(3, 6), TabSection(10, 16)), tab.sections)
-        assertEquals(emptyList(), tab.warnings)
+        // (Written with or without the dots.)
+        for (ds in listOf("D.S. al Coda", "DS al Coda")) {
+            val a = formSys(
+                90.0, 10, listOf(2.5, 5.5),
+                listOf(Sign(2.8, 0x25), Words(5.4, "To Coda"), Words(9.3, ds), DoubleBar(9.5)),
+            )
+            val b = formSys(260.0, 6, emptyList(), listOf(Sign(-2.0, 0xDE)), 10)
+            val tab = read(listOf(listOf(a, b)))
+            assertEquals(listOf(TabSection(0, 10), TabSection(3, 6), TabSection(10, 16)), tab.sections, ds)
+            assertEquals(emptyList(), tab.warnings, ds)
+        }
     }
 
     @Test
     fun readsDaCapoAlFineAndACount() {
         // 0 1 2 3 :| x3 | 4 5 6 7 Fine | 8 9 0 1 D.C. al Fine (at the very end): played 0-3 three times, 4-11, 0-7.
-        val sys = formSys(
-            90.0, 12, listOf(7.5),
-            listOf(Repeat(3.5, start = false, end = true), Words(3.4, "x3"), Words(7.4, "Fine"), Words(11.3, "D.C. al Fine"), DoubleBar(11.5)),
-        )
-        val tab = read(listOf(listOf(sys)))
-        assertEquals(listOf(TabSection(0, 4, 3), TabSection(4, 12), TabSection(0, 8)), tab.sections)
-        assertEquals(emptyList(), tab.warnings)
+        for (dc in listOf("D.C. al Fine", "DC al Fine")) {
+            val sys = formSys(
+                90.0, 12, listOf(7.5),
+                listOf(Repeat(3.5, start = false, end = true), Words(3.4, "x3"), Words(7.4, "Fine"), Words(11.3, dc), DoubleBar(11.5)),
+            )
+            val tab = read(listOf(listOf(sys)))
+            assertEquals(listOf(TabSection(0, 4, 3), TabSection(4, 12), TabSection(0, 8)), tab.sections, dc)
+            assertEquals(emptyList(), tab.warnings, dc)
+        }
         // A :| at the very end of the tab is taken too.
         val last = formSys(90.0, 6, listOf(1.5), listOf(Repeat(1.5, start = true, end = false), Repeat(5.5, start = false, end = true)))
         assertEquals(listOf(TabSection(0, 2), TabSection(2, 6, 2)), read(listOf(listOf(last))).sections)
@@ -796,6 +805,26 @@ class PdfTabTest {
         val plain = read(listOf(listOf(bracket)))
         assertEquals(listOf(TabSection(0, 6)), plain.sections)
         assertEquals(emptyList(), plain.warnings)
+    }
+
+    @Test
+    fun readsPagesClutteredWithBracketLinesQuickly() {
+        // Over each system, an ending's bracket line (with its hook and "1.") drawn 1990 times, reaching the system's end:
+        // read as one ending, without comparing every copy with every other, or looking at the next system each time.
+        val copies = Raw(0.0) { ink, s ->
+            val y = s.top - 14
+            repeat(1_990) { ink.line(s.x0 + 1, s.x1 - 1, y, 0.6) }
+            ink.vline(s.x0 + 1, y, y + 8, 0.6)
+        }
+        val page = listOf(90.0, 260.0, 430.0, 600.0).map { formSys(it, 10, listOf(4.5), listOf(copies, Words(-1.5, "1."))) }
+        val bytes = tabPdf(listOf(page, page)).bytes
+        val t0 = System.nanoTime()
+        val tab = PdfTab.read(bytes, Instrument.TETRACHORDO)
+        val ms = (System.nanoTime() - t0) / 1e6
+        assertEquals(80, tab.notes.size)
+        assertEquals(listOf(TabSection(0, 80)), tab.sections)
+        assertTrue(tab.warnings.any { "1st/2nd-time ending" in it }, "${tab.warnings}")
+        assertTrue(ms < 3000, "two cluttered pages took $ms ms")
     }
 
     @Test

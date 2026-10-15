@@ -58,18 +58,22 @@ class TabAlignment(
  * take: a singer carrying the tune where the bouzouki plays only the fills between its phrases.
  * Paths are kept moving forward through the tab: going back where the tab doesn't say to, and each note played
  * again then until the path is back where it left, cost a little, as does jumping from there further ahead than
- * where it left (tab notes never played). So a part played again just as the tab writes it later (a second verse
- * with the tune of the first) is found where the tab writes it, and an earlier copy is played again only where
- * the tab leaves that part out (an intro played again before the last verse).
+ * where it left (tab notes never played), while going back to just after where it left is cheap. So a part played
+ * again just as the tab writes it later (a second verse with the tune of the first) is found where the tab writes it,
+ * and an earlier copy is played again only where the tab leaves that part out (an intro played again before the last
+ * verse), the path then going on where the tab was.
  * A pass the tab doesn't lead to (a repeat it doesn't mark) is kept only if it explains most of the line's notes
  * where it lies, as many as the passes through the tab do, and most of the tab notes it spans are heard at their
  * own pitch, so parts of the song the tab doesn't cover keep the prepared line; one going on after notes left out
- * needs that, or its own notes heard clearly (the line holds much else where a singer carries the tune). A tab in
- * another key is found by trying the transposition its pitch classes suggest; one written an octave off by trying
- * that octave. Tab notes a pass skips go where their columns put them between their neighbours, moved to a nearby
- * candidate at their pitch (or a fret or two off: a wrong fret in the tab, played at the pitch heard) or a
- * rise of its activation; one heard nowhere takes a prepared-line note a fret or two off close by, or is left out
- * where the time between its neighbours is much longer than its columns say (a stretch not played as written).
+ * needs that, or its own notes heard clearly (the line holds much else where a singer carries the tune). One right
+ * after a pass left out must pass together with it too, and such a pass is placed only from where its own notes are
+ * clearly heard to where they last are (not the singer's notes coming through the vocal removal before and after
+ * the fill a bouzouki plays). A tab in another key is found by trying the transposition its pitch classes suggest;
+ * one written an octave off by trying that octave. Tab notes a pass skips go where their columns put them between
+ * their neighbours, moved to a nearby candidate at their pitch (or a fret or two off: a wrong fret in the tab, played
+ * at the pitch heard) or a rise of its activation; one heard nowhere takes a prepared-line note a fret or two off
+ * close by, or is left out where the time between its neighbours is much longer than its columns say (a stretch not
+ * played as written).
  * Inside the passes, the prepared line's notes no tab note explains stay when their onsets are clear (tabs leave
  * out ornaments and fills). Each note lasts while its pitch's activation stays up, until the next note.
  *
@@ -141,11 +145,13 @@ object TabAligner {
         val barReach: Float = 8f,
         val jumpMid: Float = 1.5f,
         // Going back where the tab doesn't say to, each note played again then (revisitMax in all), and each tab note
-        // a jump from there further ahead than where it left leaves never played.
+        // a jump from there further ahead than where it left leaves never played; going on from the end of a part played
+        // again to just after where it left (jumpReturn).
         val jumpBack: Float = 0.5f,
         val revisit: Float = 0.05f,
         val revisitMax: Float = 3f,
         val aheadNote: Float = 0.05f,
+        val jumpReturn: Float = 0.5f,
         // Going on after leaving out skipMin tab notes or more (a sung phrase): a fixed cost, per note and per second,
         // from a state skipDelay s before or more, as long as the notes would take at its tempo (skipFast to skipSlow).
         val skipBase: Float = 3.0f,
@@ -170,12 +176,19 @@ object TabAligner {
         val noteBeam: Float = 0.5f,
         // Passes kept: explaining keepTrusted of the line, or (repeats) keepOther or keepRelative of what the others do,
         // with keepExact of the tab notes they span heard at their own pitch; or (after notes left out) with keepSupport
-        // of their own notes clear on the line.
+        // of their own notes clear on the line. A repeat starting within joinedWithin s of a pass left out must also pass
+        // with it.
         val keepTrusted: Float = 0.5f,
         val keepOther: Float = 0.65f,
         val keepRelative: Double = 0.8,
         val keepExact: Float = 0.75f,
         val keepSupport: Float = 0.8f,
+        val joinedWithin: Double = 0.8,
+        // A repeat placed from the first trimStart of its notes in a row heard at their pitch (all but one clear on the
+        // line) to the last trimEnd such notes; its ends are trimmed only if that leaves out trimMin notes or more.
+        val trimStart: Float = 4f,
+        val trimEnd: Float = 3f,
+        val trimMin: Float = 4f,
         // Placing skipped notes (a candidate worth at least accept; one heard nowhere only between neighbours within
         // smearTempo times the time its columns take at the pass's tempo, or smearMin s), and ends (activation under
         // endLevel).
@@ -472,6 +485,9 @@ object TabAligner {
     /** A bar of this many notes or more may be joined anywhere, not only at its start (as may a unit without barlines inside). */
     private const val LONG_BLOCK = 12
 
+    /** A path with more than this share of its notes heard an octave off is heard so (a tab written an octave away). */
+    private const val OCTAVE_SHARE = 0.15
+
     /** A max over notes with point updates that only raise it, by range (a segment tree), and the state holding it. */
     private class NoteMax(n: Int) {
         private val size = Integer.highestOneBit(max(1, n - 1)) * 2
@@ -512,9 +528,9 @@ object TabAligner {
      * [Params.revisitMax]) until the path is back where it left; going on from there further ahead than where it left
      * costs for each tab note never played ([Params.aheadNote]). So a part the recording plays again just as the tab
      * writes it later (a verse with the tune of the first) is found where the tab writes it, and an earlier copy only
-     * where the tab leaves the part out (an intro played again, then back to where the tab was). A state is either
-     * going on through the tab or revisiting (keeping the bar it left from); the beam counts what a revisiting path
-     * still owes. A pass may also leave out a stretch of tab notes and go on later in the tab ([Params.skipBase]): a
+     * where the tab leaves the part out (an intro played again, then back to where the tab was: [Params.jumpReturn]). A
+     * state is either going on through the tab or revisiting (keeping the bar it left from); the beam counts what a
+     * revisiting path still owes. A pass may also leave out a stretch of tab notes and go on later in the tab ([Params.skipBase]): a
      * sung phrase the bouzouki doesn't play, between its fills.
      */
     private class Dp(val p: Prep, val c: Candidates, val delta: Int, val par: Params, val line: Line, val cancelled: () -> Boolean) {
@@ -687,6 +703,8 @@ object TabAligner {
                             ends[m].state.let { s -> if (s >= 0) from(behind - other - par.jumpBack, s, back(s)) }
                         }
                         if (!selfWritten) for (m in 0..1) endS[m][u].let { s -> if (s >= 0) from(endV[m][u] - par.jumpSelf, s, back(s)) }
+                        // Back to where a path playing a part again left (just after it): where the tab was.
+                        for (w in max(0, b - 2) until b) retS[w].let { s -> if (s >= 0) from(retV[w] - par.jumpReturn - unplayed(s, i), s, sLeave[s]) }
                     } else if (intoBlock < EDGE && (line.on[ci] || line.empty)) {
                         // At the start of a bar inside a unit: from the end of a bar further back or ahead.
                         val skipIn = par.skip * intoBlock
@@ -834,13 +852,19 @@ object TabAligner {
 
         /**
          * A pass of the path: states [from] to [to]; [trusted] if it goes on through the tab, [skipped] if it goes on after
-         * tab notes left out (sung); how much of the line it [explained] (of its [lineNotes]), how many of the tab notes it
-         * spans are heard at their own pitch ([exact]), and how many of its notes are that and clear on the line ([support]).
+         * tab notes left out (sung); how many of its notes are heard at their own pitch and clear on the line ([onLine]),
+         * of the line's [lineNotes] where it lies ([explained]) and of its own ([support]); how many of the [span] tab notes
+         * it spans are heard at their own pitch ([exactCount], [exact]); and whether its start or end was trimmed off.
          */
         class Segment(
-            val from: Int, val to: Int, val trusted: Boolean, val explained: Double, val lineNotes: Int, val exact: Double,
-            val skipped: Boolean = false, val support: Double = 0.0,
-        )
+            val from: Int, val to: Int, val trusted: Boolean, val skipped: Boolean, val onLine: Int, val lineNotes: Int, val exactCount: Int,
+            val span: Int, val trimmedStart: Boolean = false, val trimmedEnd: Boolean = false,
+        ) {
+            val trimmed get() = trimmedStart || trimmedEnd
+            val explained get() = min(1.0, onLine.toDouble() / max(1, lineNotes))
+            val exact get() = exactCount.toDouble() / max(1, span)
+            val support get() = onLine.toDouble() / (to - from)
+        }
 
         val placed = ArrayList<Placed>()
 
@@ -853,7 +877,7 @@ object TabAligner {
                 // Notes a pass left out on purpose to go on later (sung) aren't placed at its ends.
                 val skipsOn = after != null && after == seg.to && path.kind[after] == K_SKIP
                 placePass(seg.from, seg.to, passes.size, if (after != null) c.time[path.cand[after]] - par.minGap else Double.MAX_VALUE,
-                    path.kind[seg.from] != K_SKIP, !skipsOn)
+                    path.kind[seg.from] != K_SKIP && !seg.trimmedStart, !skipsOn && !seg.trimmedEnd)
                 val mine = placed.subList(first, placed.size)
                 passes += TabPass(mine.minOf { it.note }, mine.maxOf { it.note }, mine.first().time, mine.last().time)
             }
@@ -962,6 +986,43 @@ object TabAligner {
             return ev >= (if (same) par.keepSame else par.keepEvidence)
         }
 
+        /** Whether path state [k] is heard at its tab note's own pitch (or an octave up on an octave-pair course). */
+        private fun exactAt(k: Int) = path.type[k] == T_EXACT || (path.type[k] == T_UP && p.pair[path.note[k]])
+
+        /** Path states [from, to) as a pass: what it explains of the line and how much of it is heard. */
+        private fun segment(from: Int, to: Int, trusted: Boolean, skipped: Boolean, trimmedStart: Boolean = false, trimmedEnd: Boolean = false) = Segment(
+            from, to, trusted, skipped, (from until to).count { line.on[path.cand[it]] && exactAt(it) },
+            line.upTo[path.cand[to - 1]] - line.before[path.cand[from]], (from until to).count { exactAt(it) },
+            path.note[to - 1] - path.note[from] + 1, trimmedStart, trimmedEnd,
+        )
+
+        /** Whether the path is often heard an octave off: then a note an octave off counts as heard, trimming a pass. */
+        private val octaves = octave != 0 || path.type.indices.count { !exactAt(it) && (path.type[it] == T_UP || path.type[it] == T_DOWN) } > OCTAVE_SHARE * path.type.size
+
+        /**
+         * Repeat [s] trimmed to where its own notes are clearly heard: from the first [Params.trimStart] states in a row
+         * (going on through the tab, a note or two skipped at most) heard at their pitch, all but one clear on the line, to
+         * the end of the last [Params.trimEnd] such states (clear on the line or not). A pass the tab doesn't lead to
+         * starts and ends at a bar's ends: where only a fill of a bar is played (a singer carries the rest of the tune),
+         * it takes in what it can of the other notes there, the singer's notes coming through the vocal removal among them.
+         */
+        private fun trim(s: Segment): Segment {
+            val r0 = par.trimStart.toInt()
+            val r1 = par.trimEnd.toInt()
+            if (r0 <= 0 || s.to - s.from < max(r0, r1)) return s
+            fun heard(k: Int) = exactAt(k) || (octaves && (path.type[k] == T_UP || path.type[k] == T_DOWN))
+            fun run(k0: Int, len: Int, clear: Boolean): Boolean {
+                for (k in k0 until k0 + len) if (!heard(k) || (k > k0 && path.kind[k] < 1)) return false
+                return !clear || (k0 until k0 + len).count { line.on[path.cand[it]] } >= len - 1
+            }
+            var a = (s.from..s.to - r0).firstOrNull { run(it, r0, true) } ?: return s
+            var b = (s.to - r1 downTo a).firstOrNull { run(it, r1, false) }?.let { it + r1 } ?: return s
+            if (a - s.from < par.trimMin) a = s.from
+            if (s.to - b < par.trimMin) b = s.to
+            if (a == s.from && b == s.to) return s
+            return segment(a, b, s.trusted, s.skipped, a > s.from, b < s.to)
+        }
+
         /**
          * The path's passes (broken where it starts afresh, jumps, or leaves tab notes out) worth keeping. One that goes on
          * through the tab (from the start, to the next part, or to a part the tab leads to, from a pass kept) must explain
@@ -973,45 +1034,59 @@ object TabAligner {
          * Where the line holds much else (a singer carries the tune, the bouzouki plays fills between), a pass whose own
          * notes are heard clearly ([Params.keepSupport] of them, and [Params.keepExact] of the tab notes it spans) is kept
          * too; one that goes on after leaving tab notes out needs that, or what a repeat needs, and more than [EDGE] notes.
+         * A repeat right after a pass left out must also pass judged together with it, and only its part where its own
+         * notes are clearly heard is placed ([trim]).
          */
         private fun kept(): List<Segment> {
             val starts = path.kind.indices.filter { path.kind[it] == K_FRESH || path.kind[it] == K_JUMP || path.kind[it] == K_SKIP } + path.kind.size
             val all = (0 until starts.size - 1).map { k ->
                 val from = starts[k]
                 val to = starts[k + 1]
-                fun exactAt(it: Int) = path.type[it] == T_EXACT || (path.type[it] == T_UP && p.pair[path.note[it]])
-                val onLine = (from until to).count { line.on[path.cand[it]] && exactAt(it) }
-                val exact = (from until to).count { exactAt(it) }.toDouble() / max(1, path.note[to - 1] - path.note[from] + 1)
-                val lineNotes = line.upTo[path.cand[to - 1]] - line.before[path.cand[from]]
                 val u = p.unitOf[path.note[from]]
                 val w = if (from > 0) p.unitOf[path.note[from - 1]] else -1
                 val skipped = path.kind[from] == K_SKIP
                 val trusted = !skipped && path.note[from] - p.unitStart[u] < EDGE && (from == 0 || w + 1 == u || w in p.writtenFrom[u])
-                Segment(from, to, trusted, min(1.0, onLine.toDouble() / max(1, lineNotes)), lineNotes, exact, skipped, onLine.toDouble() / (to - from))
+                segment(from, to, trusted, skipped)
             }
             val through = all.filter { it.trusted && it.explained >= par.keepTrusted && it.to - it.from >= EDGE }
                 .flatMap { s -> List(s.to - s.from) { s.explained } }.sorted()
             val keepOther = if (through.isEmpty()) par.keepOther.toDouble() else min(par.keepOther.toDouble(), par.keepRelative * through[through.size / 2])
             // A pass going on from one left out is a repeat too; a repeat needs line notes to explain.
             var lastKept = true
-            return all.filter { s0 ->
-                val s = if ((s0.trusted || s0.skipped) && s0.from > 0 && !lastKept) Segment(s0.from, s0.to, false, s0.explained, s0.lineNotes, s0.exact) else s0
-                val heard = s.support >= par.keepSupport && s.exact >= par.keepExact
-                val repeat = s.explained >= keepOther && s.exact >= par.keepExact
+            var prev: Segment? = null
+            val out = ArrayList<Segment>()
+            for (s0 in all) {
+                val s = if ((s0.trusted || s0.skipped) && s0.from > 0 && !lastKept) Segment(s0.from, s0.to, false, false, s0.onLine, s0.lineNotes, s0.exactCount, s0.span) else s0
+                fun heard(x: Segment) = x.support >= par.keepSupport && x.exact >= par.keepExact
+                fun repeat(x: Segment) = x.explained >= keepOther && x.exact >= par.keepExact
+                // Right after a pass left out, a repeat is judged with it too: a stretch of the recording the tab isn't heard in
+                // can hold a few bars that sound like a part of it, and the path may break that stretch up at a bar (going on
+                // elsewhere in the tab), but what's found there isn't kept where the whole stretch wouldn't be.
+                val p0 = prev
+                val joined = if (!s.trusted && !lastKept && p0 != null && c.time[path.cand[s0.from]] - c.time[path.cand[p0.to - 1]] <= par.joinedWithin) {
+                    Segment(p0.from, s.to, false, false, p0.onLine + s.onLine, p0.lineNotes + s.lineNotes, p0.exactCount + s.exactCount, p0.span + s.span)
+                } else null
+                // What's placed of a repeat: where its own notes are clearly heard.
+                val shown = if (s.trusted) s else trim(s)
                 val keep = line.empty || when {
                     s.trusted -> s.lineNotes < 3 || s.explained >= par.keepTrusted
-                    s.skipped -> s.to - s.from > EDGE && (heard || repeat)
-                    else -> repeat
+                    s.skipped -> s.to - s.from > EDGE && (heard(s) || repeat(s))
+                    else -> repeat(s) && (joined == null || repeat(joined))
                 }
-                log?.invoke("pass %.2f-%.2f s: %d notes, explains %.2f of the line, %.2f exact, %.2f heard%s%s".format(c.time[path.cand[s.from]],
-                    c.time[path.cand[s.to - 1]], s.to - s.from, s.explained, s.exact, s.support,
-                    if (s.trusted) "" else if (s.skipped) " (after notes left out)" else " (a repeat)", if (keep) "" else ", left out"))
-                if (logStates) log?.invoke("  states: " + (s.from until s.to).joinToString(" ") { k ->
-                    "%d@%.2f%s%s".format(path.note[k], c.time[path.cand[k]], "=^vs?"[path.type[k].coerceIn(0, 4)], if (path.kind[k] < 0) "k${path.kind[k]}" else if (path.kind[k] > 1) "d${path.kind[k]}" else "")
+                log?.invoke("pass %.2f-%.2f s: %d notes, explains %.2f of the line, %.2f exact, %.2f heard%s%s%s".format(c.time[path.cand[s0.from]],
+                    c.time[path.cand[s0.to - 1]], s0.to - s0.from, s.explained, s.exact, s.support,
+                    if (s.trusted) "" else if (s.skipped) " (after notes left out)" else " (a repeat)",
+                    if (shown.trimmed) " trimmed to %.2f-%.2f".format(c.time[path.cand[shown.from]], c.time[path.cand[shown.to - 1]]) else "",
+                    if (keep) "" else ", left out"))
+                if (logStates) log?.invoke("  states: " + (s0.from until s0.to).joinToString(" ") { k ->
+                    "%d@%.2f%s%s%s".format(path.note[k], c.time[path.cand[k]], "=^vs?"[path.type[k].coerceIn(0, 4)], if (line.on[path.cand[k]]) "*" else "",
+                        if (path.kind[k] < 0) "k${path.kind[k]}" else if (path.kind[k] > 1) "d${path.kind[k]}" else "")
                 })
                 lastKept = keep
-                keep
+                prev = s0
+                if (keep) out += shown
             }
+            return out
         }
 
         /**
