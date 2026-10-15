@@ -269,16 +269,19 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
             BasicPitch.notes(act, onsetThresh = 0.5f, frameThresh = if (detail == Detail.MORE) 0.25f else 0.3f, minNoteLen = 2, melodia = false)
 
         /**
-         * How far the recording behind [data] is tuned from A = 440 Hz (cents, + sharp, - flat): as measured when it
-         * was prepared, or for data saved before that was measured, read from its pitch contours (coarse, see
-         * [Tuning.fromContours]); null if they can't tell.
+         * How far the recording behind [data] is tuned from A = 440 Hz (cents, + sharp, - flat) as measured when it
+         * was prepared; null for data saved before the tuning was measured. Its contours can tell such a song was
+         * far off ([transcribedOutOfTune]), but not by how much: their reading can be 15 cents out (and from about 45
+         * cents flat it can even point the other way), no tuning to show a player or tune to.
          */
-        fun tuningOf(data: AnalysisData): Double? = data.tuning ?: Tuning.fromContours(data.act)
+        fun tuningOf(data: AnalysisData): Double? = data.tuning
 
         /**
          * Whether [data] was transcribed from a recording out of tune as it was (saved before the tuning was measured,
-         * and its contours say it is [Tuning.RETUNE_HINT] cents off or more): Basic Pitch then misses notes, so
-         * preparing the song again finds more of them.
+         * and its contours read [Tuning.RETUNE_HINT] cents off or more): Basic Pitch then missed notes, so preparing
+         * the song again finds more of them. A yes/no hint only: it misses records up to about 12 cents sharp and
+         * some 5 flat, which read like records in tune (a real recording 5 flat lost a fifth of its notes), so every
+         * song saved before the tuning was measured ([AnalysisData.tuning] null) may gain a little from preparing again.
          */
         fun transcribedOutOfTune(data: AnalysisData): Boolean =
             data.tuning == null && (Tuning.fromContours(data.act)?.let { abs(it) >= Tuning.RETUNE_HINT } ?: false)

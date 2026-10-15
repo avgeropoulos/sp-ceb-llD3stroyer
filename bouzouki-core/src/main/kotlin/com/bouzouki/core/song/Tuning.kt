@@ -27,16 +27,23 @@ import kotlin.math.sqrt
  * later line up with the recording.
  */
 object Tuning {
-    /** A recording this close to A = 440 (cents) is transcribed as it is: Basic Pitch hears it as well as in tune. */
+    /**
+     * A recording measured closer than this to A = 440 (cents) is transcribed as it is, exactly as before the tuning was
+     * measured. Closer than this, putting it in tune changes about as much for the worse as for the better: on test
+     * songs with known notes, 3 to 5 cents off, from 1.5% F worse to 2.5% better (Basic Pitch heard some best a few
+     * cents sharp, some a few flat).
+     */
     const val MIN_CORRECTION = 5.0
 
     /**
      * Data saved before the tuning was measured is reported out of tune ([SongAnalyzer.transcribedOutOfTune]) when its
-     * contours ([fromContours]) say it is this far off (cents). They read records 15 cents flat or more as 28 or more
-     * flat, and 25 sharp or more as 26 or more sharp: where Basic Pitch missed many notes (20 cents flat: over a quarter
-     * of them). Closer than that it missed few (10 flat reads about 9 flat, 20 sharp about 6 sharp, in tune within 2).
+     * contours ([fromContours]) read this far off (cents). Records in tune read within 2 cents (1 to 2 flat), 10 flat 4
+     * to 9 flat, 15 sharp 2.5 to 4 sharp, 20 sharp 5 to 7 sharp: so it tells records 10 cents flat or more and about 15
+     * sharp or more, where Basic Pitch missed many notes (of a real recording 10 flat, 40% of them). It misses 5 flat
+     * (read 2.5 to 4.5 flat) and up to about 12 sharp (read within 2 sharp), which lose less: that recording 5 flat a
+     * fifth of its notes, test songs with known notes up to 3% F.
      */
-    const val RETUNE_HINT = 15.0
+    const val RETUNE_HINT = 3.0
 
     /**
      * The tuning of [audio] (mono, 22050 Hz) in cents from A = 440 Hz, -50 until 50 (+ sharp, - flat); 0 when it can't
@@ -45,7 +52,10 @@ object Tuning {
      * cents from the nearest equally tempered note goes into a histogram (1 cent bins, around the circle: 50 cents sharp
      * is 50 flat). The tuning is the histogram's peak, refined by the mean of the peaks near it. Percussion, noise and a
      * leaking voice spread over the circle, so they hardly move the peak, and partials off the tempered scale (the fifth
-     * harmonic is 14 cents below its tempered note) make smaller peaks of their own instead of pulling it. Spectra are
+     * harmonic is 14 cents below its tempered note) make smaller peaks of their own instead of pulling it. Every peak
+     * counts alike, though, so a steady accompaniment tuned off on purpose can pull it: an accordion holding chords
+     * through the song with its second reed 15 cents sharp moves it about 6 cents (its two reeds are heard as one peak
+     * between them), 8 or 25 cents sharp 2 to 4 cents, reeds either side of the middle one less than 1. Spectra are
      * 186 ms (zero-padded twice), every 93 ms, at most [MAX_SPECTRA] of them spread over the song.
      */
     fun estimate(audio: FloatArray): Double {
@@ -98,9 +108,10 @@ object Tuning {
     /**
      * The tuning (cents, as [estimate]) read from Basic Pitch's pitch contours ([BasicPitch.Activations.contours], 3
      * bins a semitone) of a recording transcribed as it was, e.g. data saved before the tuning was measured; null
-     * without contours or too few clear ones. Coarse: the model leans towards its bins (a third of a semitone apart), so
-     * 20 cents flat reads about 31 flat, 15 sharp about 3 sharp and 25 sharp about 26 sharp, but a recording in tune
-     * reads within 2 cents of 0.
+     * without contours or too few clear ones. Only good for telling a recording was far off ([RETUNE_HINT]), never a
+     * tuning to show or tune to: the model leans towards its bins (a third of a semitone apart), so a recording in tune
+     * reads within 2 cents of 0, but 10 flat reads 4 to 9 flat, 20 flat about 30 flat, 10 sharp 1 to 2 sharp, 20 sharp
+     * 5 to 7 sharp, 35 sharp about 32 sharp, and 45 flat about 40 flat or even 40 sharp.
      */
     fun fromContours(act: BasicPitch.Activations): Double? {
         val c = act.contours ?: return null

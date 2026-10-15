@@ -223,13 +223,14 @@ class TuningTest {
         }
         assertNull(Tuning.fromContours(BasicPitch.Activations(emptyArray(), emptyArray(), null)))
         assertNull(Tuning.fromContours(act(Array(400) { ByteArray(BasicPitch.N_CONTOUR_BINS) })))
-        // Saved before the tuning was measured: the contours tell; measured: the data says so.
+        // Saved before the tuning was measured: the contours tell it was off, but give no tuning; measured: the data
+        // says so.
         val flat = act(contours(-20.0))
         assertTrue(SongAnalyzer.transcribedOutOfTune(AnalysisData(flat, null)))
         assertTrue(!SongAnalyzer.transcribedOutOfTune(AnalysisData(act(contours(0.0)), null)))
         assertTrue(!SongAnalyzer.transcribedOutOfTune(AnalysisData(flat, null, -20.0)))
         assertEquals(-20.0, SongAnalyzer.tuningOf(AnalysisData(flat, null, -20.0)))
-        assertTrue(apart(assertNotNull(SongAnalyzer.tuningOf(AnalysisData(flat, null))), -20.0) < 6)
+        assertNull(SongAnalyzer.tuningOf(AnalysisData(flat, null)))
     }
 
     @Test
@@ -276,7 +277,10 @@ class TuningTest {
         val inTune = render(plucks, seconds, rate)
         val env = OrtEnvironment.getEnvironment()
         env.createSession(model.path, OrtSession.SessionOptions()).use { session ->
-            val analyzer = SongAnalyzer(MdxSeparator(env, session), BasicPitch(env, session)) // the separator isn't asked
+            val pitch = BasicPitch(env, session)
+            val analyzer = SongAnalyzer(MdxSeparator(env, session), pitch) // the separator isn't asked
+            // What Basic Pitch made of a record as it was, before the tuning was measured (the data of older songs).
+            fun asItWas(instrumental: FloatArray) = AnalysisData.of(pitch.activations(resample(instrumental, rate, sr)), null)
             for (c in listOf(-30.0, 20.0)) {
                 val (instrumental, cents) = offSpeed(inTune, rate, c)
                 val k = 2.0.pow(-cents / 1200) // the record's time per second of the phrase
@@ -296,11 +300,21 @@ class TuningTest {
                 assertEquals(song.tuningCents, again.tuningCents)
                 assertTrue(!SongAnalyzer.transcribedOutOfTune(back))
             }
-            // In tune: transcribed as it is, the same activations as Basic Pitch gives the audio itself.
+            // Data saved before the tuning was measured, of records 10 flat or 15 sharp or more, is reported out of
+            // tune (the model pulls their contours towards its bins: here 10 flat reads about 7 flat, 15 sharp about 7
+            // sharp), but no tuning is made up for it.
+            for (c in listOf(-30.0, -10.0, 15.0, 20.0)) {
+                val old = asItWas(offSpeed(inTune, rate, c).first)
+                assertTrue(SongAnalyzer.transcribedOutOfTune(old), "$c cents: contours read ${Tuning.fromContours(old.act)}")
+                assertNull(SongAnalyzer.tuningOf(old))
+            }
+            // In tune: transcribed as it is, the same activations as Basic Pitch gives the audio itself; and data saved
+            // before the tuning was measured isn't reported out of tune.
             val (song, data) = analyzer.analyzeInstrumental("id", "t", inTune, tetra)
             assertTrue(abs(song.tuningCents) < Tuning.MIN_CORRECTION)
-            val direct = AnalysisData.of(BasicPitch(env, session).activations(resample(inTune, rate, sr)), null)
+            val direct = asItWas(inTune)
             assertTrue(direct.act.onsets.indices.all { direct.act.onsets[it].contentEquals(data.act.onsets[it]) })
+            assertTrue(!SongAnalyzer.transcribedOutOfTune(direct), "in tune: contours read ${Tuning.fromContours(direct.act)}")
         }
     }
 }
