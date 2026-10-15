@@ -36,7 +36,8 @@ import kotlin.concurrent.thread
  * One song at a time; the song screen watches [state].
  * A song is kept in filesDir/songs as <id>.json (its line), <id>.data (what the line was derived
  * from: [AnalysisData], for more or fewer notes or lining up a tab, see [SongLines]) and, once a
- * tab is pasted for it, <id>.tab.txt. Only the notes stay on the phone, never the audio.
+ * tab is pasted or opened for it, the tab as it came: <id>.tab.txt (pasted, or a text file) or
+ * <id>.tab.pdf (one or the other). Only the notes stay on the phone, never the audio.
  */
 object SongJobs {
     sealed interface State {
@@ -77,7 +78,7 @@ object SongJobs {
     /** Forgets a saved song: its line, what it was derived from, its tab and its settings. */
     fun delete(context: Context, id: String) {
         val dir = songsDir(context)
-        for (name in listOf("$id.json", "$id.data", "$id.tab.txt")) {
+        for (name in listOf("$id.json", "$id.data", "$id.tab.txt", "$id.tab.pdf")) {
             File(dir, name).delete()
             File(dir, "$name.tmp").delete()
         }
@@ -119,20 +120,67 @@ object SongJobs {
     fun hasData(context: Context, id: String) = File(songsDir(context), "$id.data").exists()
 
     /** Which data file song [id] has (when it was written, and its size; 0 if there is none), to tell lines derived from an older one. */
-    fun dataStamp(context: Context, id: String): Long {
-        val f = File(songsDir(context), "$id.data")
-        val time = f.lastModified()
-        return if (time == 0L) 0L else time * 1_000_003 + f.length()
+    fun dataStamp(context: Context, id: String): Long = stamp(File(songsDir(context), "$id.data"))
+
+    /** Which version of [file] it is: when it was written, and its size (0 if there is no such file). */
+    fun stamp(file: File): Long {
+        val time = file.lastModified()
+        return if (time == 0L) 0L else time * 1_000_003 + file.length()
     }
 
-    /** The tab pasted for song [id], or null. */
-    fun tabText(context: Context, id: String): String? =
-        File(songsDir(context), "$id.tab.txt").takeIf { it.exists() }?.let { try { it.readText() } catch (_: IOException) { null } }
+    /**
+     * The tab kept for song [id], or null: its text (read here: a tab's text is a few KB), or its PDF (only
+     * found here: it's read when its line is worked out, off the main thread).
+     */
+    fun tab(context: Context, id: String): SongLines.TabSource? {
+        val dir = songsDir(context)
+        val pdf = File(dir, "$id.tab.pdf").takeIf { it.isFile }
+        val txt = File(dir, "$id.tab.txt").takeIf { it.isFile }
+        // One is kept at a time; should both be there (cut off while replacing one), the newer one.
+        if (pdf != null && (txt == null || pdf.lastModified() >= txt.lastModified())) return SongLines.TabSource.Pdf(pdf)
+        return txt?.let { try { SongLines.TabSource.Text(it.readText()) } catch (_: IOException) { null } }
+    }
 
-    fun saveTab(context: Context, id: String, text: String) =
-        writeAtomically(File(songsDir(context), "$id.tab.txt")) { it.write(text.toByteArray(Charsets.UTF_8)) }
+    /** Whether a tab is kept for song [id] (text or PDF). */
+    fun hasTab(context: Context, id: String): Boolean {
+        val dir = songsDir(context)
+        return File(dir, "$id.tab.txt").isFile || File(dir, "$id.tab.pdf").isFile
+    }
 
-    fun removeTab(context: Context, id: String) { File(songsDir(context), "$id.tab.txt").delete() }
+    /** Keeps tab [text] for song [id], in place of the tab kept before (text or PDF). */
+    fun saveTab(context: Context, id: String, text: String) {
+        val dir = songsDir(context)
+        writeAtomically(File(dir, "$id.tab.txt")) { it.write(text.toByteArray(Charsets.UTF_8)) }
+        File(dir, "$id.tab.pdf").delete()
+    }
+
+    /**
+     * Keeps the PDF tab in [file] (one that came in, see [TabFiles]) for song [id], in place of the tab kept
+     * before (text or PDF): it's moved there whole, keeping its [stamp]. Returns where it's kept.
+     */
+    fun keepTabPdf(context: Context, id: String, file: File): File {
+        val dir = songsDir(context)
+        val kept = File(dir, "$id.tab.pdf")
+        if (file.canonicalPath != kept.canonicalPath) {
+            if (!file.isFile) throw IOException("the PDF isn't on the phone any more")
+            // A rename (the files are side by side in the app's files) replaces the old one at once.
+            if (!file.renameTo(kept)) {
+                val time = file.lastModified()
+                writeAtomically(kept) { out -> file.inputStream().use { it.copyTo(out) } }
+                kept.setLastModified(time)
+                file.delete()
+            }
+        }
+        File(dir, "$id.tab.txt").delete()
+        return kept
+    }
+
+    /** Removes the tab kept for song [id] (text or PDF). */
+    fun removeTab(context: Context, id: String) {
+        val dir = songsDir(context)
+        File(dir, "$id.tab.txt").delete()
+        File(dir, "$id.tab.pdf").delete()
+    }
 
     /** Writes [file] through a temporary file renamed over it at the end, so a crash never leaves it half written. */
     private fun writeAtomically(file: File, write: (OutputStream) -> Unit) {
