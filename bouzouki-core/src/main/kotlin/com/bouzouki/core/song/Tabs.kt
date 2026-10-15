@@ -29,6 +29,7 @@ data class TabSection(val from: Int, val to: Int, val times: Int = 1, val name: 
  * bouzouki the tab is written for, told by its number of lines (or string names); [asked] the one the player
  * plays. [sections] are the tab's parts in the order it says to play them: a part repeats when it is marked
  * (x2, |: :|), and a heading that names an earlier part without tab of its own ("Chorus" again) plays that part.
+ * [unread] lines look like tab but couldn't be read (each is in [warnings] too): their notes are missing.
  */
 data class ParsedTab(
     val instrument: Instrument,
@@ -36,6 +37,7 @@ data class ParsedTab(
     val warnings: List<String> = emptyList(),
     val sections: List<TabSection> = if (notes.isEmpty()) emptyList() else listOf(TabSection(0, notes.size)),
     val asked: Instrument = instrument,
+    val unread: Int = 0,
 ) {
     /** Whether the tab is written for the other bouzouki than the player's. */
     val forOtherBouzouki: Boolean get() = instrument != asked
@@ -49,11 +51,12 @@ data class ParsedTab(
  * highest course on top (string names such as d| A| D|, Ρε| Λα| Φα| Ντο|, "D-" or 1| 2| 3| say otherwise),
  * with dashes (or, on named lines with bars, spaces) and bar lines between 1-2 digit frets; h (hammer-on),
  * p (pull-off), / \ s (slide), ~ (tremolo); repeat marks (x2, (x3), 3 times, twice, 2 φορές, "repeat" lines,
- * |: :| bars, also across systems, a count between bars); headings (Intro, Verse 2, Chorus, "Repeat verse and
- * chorus", Κουπλέ, Ρεφρέν ...); chord names and lyrics between systems, dividers, and words after a tab line
- * (left out). A system of 3 lines is a trichordo tab, 4 lines a tetrachordo tab. Notes in one column are a
- * chord: the highest is kept as the melody (with the rest in [TabNote.stack]). Anything left out is said in
- * [ParsedTab.warnings].
+ * |: :| bars, also across systems, a count between bars; the x may be a Greek χ, as a Greek keyboard types it);
+ * headings (Intro, Verse 2, Chorus, "Repeat verse and chorus", Κουπλέ, Ρεφρέν or Ρεφραίν, 2ο Κουπλέ, Β' Κουπλέ
+ * ..., and Τέλος at the end, which only marks the end); chord names and lyrics between systems, dividers, and
+ * words after a tab line (left out). A system of 3 lines is a trichordo tab, 4 lines a tetrachordo tab. Notes
+ * in one column are a chord: the highest is kept as the melody (with the rest in [TabNote.stack]). Anything
+ * left out is said in [ParsedTab.warnings].
  */
 object TabParser {
     fun parse(text: String, instrument: Instrument): ParsedTab {
@@ -61,10 +64,11 @@ object TabParser {
         val src = raw.map { normalize(it) }
         val warn = LinkedHashSet<String>()
         val items = classify(raw, src, warn)
+        val unread = items.count { it is Text && looksLikeTab(it.text) }
         val blocks = items.filterIsInstance<Block>()
         if (blocks.isEmpty()) {
             warn += "No tab lines found: a tab has one line of dashes and frets for each course, such as D|--5--7--|"
-            return ParsedTab(instrument, emptyList(), warn.toList(), emptyList(), instrument)
+            return ParsedTab(instrument, emptyList(), warn.toList(), emptyList(), instrument, unread)
         }
         val tabInstrument = whichBouzouki(blocks, instrument)
         if (tabInstrument != instrument) {
@@ -74,7 +78,7 @@ object TabParser {
         }
         val reader = Reader(tabInstrument, warn)
         for (item in items) reader.add(item)
-        return reader.finish(instrument)
+        return reader.finish(instrument).copy(unread = unread)
     }
 
     // ---------------------------------------------------------------- lines
@@ -109,7 +113,10 @@ object TabParser {
                 },
             )
         }
-    }.trimEnd()
+    }.trimEnd().replace(CHI, "x")
+
+    /** A Greek χ next to a number: a repeat count typed on a Greek keyboard (Χ2, 2χ). */
+    private val CHI = Regex("""(?<=\d\s?)[Χχ](?![\p{L}])|(?<![\p{L}])[Χχ](?=\s?\d)""")
 
     private val LABEL = Regex("""^\s*([A-Za-zΑ-Ωα-ωΆ-Ώά-ώ]{1,3}[#♯♭]?\d?'?|[1-6](?=\s*[|)]))\s*(?=[|:)\]-])""")
     // Repeat marks, on lowercase text without accents: x2, 2x, *2, 3 times, 2 φορές, twice, δις; "repeat" with or without one.
@@ -121,18 +128,49 @@ object TabParser {
     private val REPEAT_LINE = Regex("""^[\s(\[*]*(?:$REPEAT|$COUNT)[\s)\].!:]*$""")
     /** A repeat count between bars inside a line: | x2 | (the stretch before it plays twice). */
     private val REPEAT_MID = Regex("""(?<=[\s|])[xX]\s?(\d{1,2})(?=[\s|])""")
+    /** A part's words, on lowercase text without accents. */
+    private const val PART_WORDS = """intro|verse|chorus|refrain|bridge|outro|solo|interlude|ending|coda|instrumental|""" +
+        """εισαγωγη|κουπλε|στροφη|ρεφρεν|ρεφραιν|γεφυρα|σολο|τελος|ταξιμι|ενδιαμεσο|οργανικο|γυρισμα"""
+    /** A number before a part's word: 2ο, 1st, Β' (Greek letters count), πρώτο, second. */
+    private const val ORDINAL = """(?:(\d{1,2})\s*(?:[οηo]|st|nd|rd|th)(?![\p{L}])|([α-δ])['ʹ΄’´′]|(πρωτ|δευτερ|τριτ|τεταρτ|first|second|third|fourth)\p{L}*)"""
     private val HEADER = Regex(
-        """^[\s\[(*#<-]*(?:(?:repeat|play|again|επαναληψη|ξανα)\s+(?:the\s+|το\s+|τη\s+|την\s+)?)?""" +
-            """(intro|verse|chorus|refrain|bridge|outro|solo|interlude|ending|coda|instrumental|""" +
-            """εισαγωγη|κουπλε|στροφη|ρεφρεν|γεφυρα|σολο|τελος|ταξιμι|ενδιαμεσο|οργανικο|γυρισμα)(?![\p{L}])\s*(\d*)(.*)$""",
+        """^[\s\[(*#<-]*(?:(?:repeat|play|again|επαναληψη|ξανα)\s+(?:the\s+|το\s+|τη\s+|την\s+)?)?(?:$ORDINAL\s*)?""" +
+            """($PART_WORDS)(?![\p{L}])\s*(\d*)(.*)$""",
         RegexOption.IGNORE_CASE,
     )
     private val TIMES_IN = Regex("""(?:x\s*(\d{1,2})|(\d{1,2})\s*(?:x|times|φορες))(?![\p{L}\d])|twice|δις|repeat|επαναληψη""")
-    /** A part a heading names: its word and number ("verse 2"), not a repeat count ("chorus 3 times"). */
+    /**
+     * A part a heading names: its number written before it (groups 1-3, see [ORDINAL]), its word (4) and the number
+     * after it (5: "verse 2", not a repeat count such as "chorus 3 times").
+     */
     private val PART = Regex(
-        """(intro|verse|chorus|refrain|bridge|outro|solo|interlude|ending|coda|instrumental|εισαγωγη|κουπλε|στροφη|ρεφρεν|""" +
-            """γεφυρα|σολο|τελος|ταξιμι|ενδιαμεσο|οργανικο|γυρισμα)(?![\p{L}])(?:\s*(\d{1,2})(?!\s*(?:x|times|φορες)(?![\p{L}])|\d))?""",
+        """(?:$ORDINAL\s*)?($PART_WORDS)(?![\p{L}])(?:\s*(\d{1,2})(?!\s*(?:x|times|φορες)(?![\p{L}])|\d))?""",
     )
+    private val ORDINAL_WORDS = listOf(listOf("πρωτ", "first"), listOf("δευτερ", "second"), listOf("τριτ", "third"), listOf("τεταρτ", "fourth"))
+
+    /** The part a match of [PART] names, as the parser names parts, with its number if one is written ("verse 2"). */
+    private fun partName(m: MatchResult): String {
+        val g = m.groupValues
+        val number = when {
+            g[1].isNotEmpty() -> g[1].toInt().toString()
+            g[2].isNotEmpty() -> (g[2][0] - 'α' + 1).toString()
+            g[3].isNotEmpty() -> (ORDINAL_WORDS.indexOfFirst { g[3] in it } + 1).toString()
+            else -> g[5]
+        }
+        return canonical(g[4]) + if (number.isNotEmpty()) " $number" else ""
+    }
+
+    private fun canonical(word: String) = when (word) {
+        "refrain", "ρεφρεν", "ρεφραιν" -> "chorus"
+        "κουπλε", "στροφη" -> "verse"
+        "εισαγωγη" -> "intro"
+        "γεφυρα" -> "bridge"
+        "σολο" -> "solo"
+        "τελος", "ending", "coda" -> "outro"
+        "ενδιαμεσο", "interlude", "οργανικο", "instrumental", "γυρισμα" -> "interlude"
+        "ταξιμι" -> "taximi"
+        else -> word
+    }
     /** Words a heading may hold besides part names and counts ("Chorus (same as above)", "Repeat verse and chorus"). */
     private val FILLER = setOf(
         "same", "above", "before", "again", "like", "the", "then", "and", "all", "once", "more", "play", "from", "top",
@@ -324,6 +362,8 @@ object TabParser {
 
         // The heading being read: its name, repeat count, where its sections start, and the parts read before.
         var name: String? = null
+        var heading: Text? = null // as written
+        var endMark = false // the heading is Τέλος ("the end")
         var nameTimes = 1
         var nameFrom = 0
         val named = ArrayList<Triple<String, Int, Int>>() // name ("verse 2"), from, to
@@ -346,15 +386,18 @@ object TabParser {
             if (p.isEmpty()) return
             if (HEADER.find(p) != null && p.length <= 40) {
                 // The parts it names ("Verse 2", "Verse and chorus"), a repeat count, and words such as "same as above".
-                val parts = PART.findAll(p).map { m -> canonical(m.groupValues[1]) + (if (m.groupValues[2].isNotEmpty()) " " + m.groupValues[2] else "") }.toList()
+                val found = PART.findAll(p).toList()
+                val parts = found.map { partName(it) }
                 val rest = PART.replace(p, " ")
                 val other = TIMES_IN.replace(rest, " ").split(Regex("[^\\p{L}]+")).count { it.length > 2 && it !in FILLER && !it.startsWith("rep") }
                 val after = PART.find(p)?.let { PART.replace(p.substring(it.range.last + 1), " ") } ?: "" // "Repeat chorus" plays it once
                 if (other <= 1 && parts.isNotEmpty()) {
                     // Each part but the last is played as written before; the last one's tab may follow.
-                    for (part in parts.dropLast(1)) { closeHeading(); name = part; closeHeading() }
+                    for (part in parts.dropLast(1)) { closeHeading(); name = part; heading = t; closeHeading() }
                     closeHeading()
                     name = parts.last()
+                    heading = t
+                    endMark = found.last().groupValues[4] == "τελος"
                     nameTimes = TIMES_IN.find(after)?.let { count(it) } ?: 1
                     nameFrom = sections.size
                     lastSystem = null
@@ -363,7 +406,12 @@ object TabParser {
                 warn += "Read line ${t.number} as text, not as a part's heading: \"${t.text.trim().take(40)}\""
                 return
             }
-            val r = REPEAT_LINE.find(p) ?: return
+            val r = REPEAT_LINE.find(p)
+            if (r == null) {
+                // A short line naming a part, not read as a heading (the words before it aren't understood): said.
+                if (p.length <= 40 && PART.find(p) != null) warn += "Read line ${t.number} as text, not as a part's heading: \"${t.text.trim().take(40)}\""
+                return
+            }
             val n = count(r)
             val last = lastSystem
             if (last != null) repeat(last, n)
@@ -385,18 +433,6 @@ object TabParser {
             }
         }
 
-        private fun canonical(word: String) = when (word) {
-            "refrain", "ρεφρεν" -> "chorus"
-            "κουπλε", "στροφη" -> "verse"
-            "εισαγωγη" -> "intro"
-            "γεφυρα" -> "bridge"
-            "σολο" -> "solo"
-            "τελος", "ending", "coda" -> "outro"
-            "ενδιαμεσο", "interlude", "οργανικο", "instrumental", "γυρισμα" -> "interlude"
-            "ταξιμι" -> "taximi"
-            else -> word
-        }
-
         private fun closeHeading() {
             val nm = name
             val own = sections.size - nameFrom
@@ -412,13 +448,17 @@ object TabParser {
                 }
                 if (nm != null) named += Triple(nm, sections[nameFrom].from, sections.last().to)
             } else if (nm != null) {
-                // A heading without tab plays the part of that name written before.
+                // A heading without tab plays the part of that name written before (Τέλος with none only marks the end).
                 val word = nm.substringBefore(' ')
                 val before = named.lastOrNull { it.first == nm } ?: named.lastOrNull { it.first.substringBefore(' ') == word }
+                val h = heading
                 if (before != null) sections += TabSection(before.second, before.third, nameTimes, nm)
-                else warn += "\"$nm\" has no tab, and no earlier $word to repeat"
+                else if (!endMark) warn += "\"${h?.text?.trim()?.take(40) ?: nm}\"" + (if (h != null) " on line ${h.number}" else "") +
+                    " has no tab under it, and no part of that name before it to play again"
             }
             name = null
+            heading = null
+            endMark = false
             nameTimes = 1
             nameFrom = sections.size
         }

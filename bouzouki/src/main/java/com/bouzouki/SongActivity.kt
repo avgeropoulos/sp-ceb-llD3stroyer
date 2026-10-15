@@ -122,6 +122,10 @@ class SongActivity : Activity() {
     private var tabReport: SongLines.TabReport? = null
     private var wanted: SongLines.Spec? = null
     private var pendingTab: SongLines.Spec.FromTab? = null
+    /** The song whose tab's notes gave way to the detected ones just now (the status says how to get them back). */
+    private var tabGaveWay: String? = null
+    /** The song being prepared while this screen watched: its song, once ready, replaces the one shown. */
+    private var awaited: String? = null
     private var fileUri: Uri? = null
     private var player: MediaPlayer? = null
     private var speed = 1f
@@ -541,13 +545,19 @@ class SongActivity : Activity() {
         val id = currentId
         when (s) {
             is SongJobs.State.Working -> if (s.id == id) {
+                awaited = id
                 prepPanel.visibility = View.VISIBLE
                 prepText.text = "Preparing the song: ${s.step}…  ${(s.fraction * 100).toInt()}%"
                 prepBar.progress = (s.fraction * 1000).toInt()
                 status.text = "You can watch the video meanwhile, or leave the app: it keeps working."
             }
-            is SongJobs.State.Done -> if (s.song.id == id) showSong(s.song)
+            // (A finished job's state is told again each time the screen comes back: shown only if it was awaited.)
+            is SongJobs.State.Done -> if (s.song.id == id && (awaited == id || source == null)) {
+                awaited = null
+                showSong(s.song)
+            }
             is SongJobs.State.Failed -> if (s.id == id) {
+                awaited = null
                 prepPanel.visibility = View.GONE
                 status.text = "Couldn't prepare this song: ${s.message}\nYou can try again with Load, or use 📁 Audio file."
             }
@@ -561,10 +571,12 @@ class SongActivity : Activity() {
      */
     private fun showSong(prepared: SongAnalysis?) {
         source = prepared
+        if (prepared != null && prepared.id == awaited && (SongJobs.state as? SongJobs.State.Working)?.id != prepared.id) awaited = null
         line = null
         lineSpec = null
         tabReport = null
         wanted = null
+        tabGaveWay = null
         busy(null)
         sheet.beats = if (prepared != null) beatsFor(prepared) else emptyList()
         showLine()
@@ -572,11 +584,16 @@ class SongActivity : Activity() {
         if (s != null) {
             prepPanel.visibility = View.GONE
             if (s.title.isNotBlank()) titleText.text = s.title
-            status.text = if (s.notes.isEmpty()) "No clear bouzouki line was found in this song."
-            else "Ready: ${s.notes.size} bouzouki notes. The hollow ring shows the next one. " +
-                "📜 Tablature shows the whole song: tap a note to hear it and play from there."
+            val spec = lineSpecFor(s.id)
+            if (spec == null) {
+                status.text = if (s.notes.isEmpty()) "No clear bouzouki line was found in this song."
+                else "Ready: ${s.notes.size} bouzouki notes. The hollow ring shows the next one. " +
+                    "📜 Tablature shows the whole song: tap a note to hear it and play from there."
+            }
             sheet.showNow()
             chooseLine(announce = false)
+            // The line chosen for the song came at once (worked out before): say what's shown.
+            if (spec != null && wanted == null && lineSpec == spec) status.text = lineText()
         }
         showDromos()
         refreshLineControls()
@@ -605,13 +622,15 @@ class SongActivity : Activity() {
 
     /**
      * [shown] for the bouzouki chosen now. A tab's line keeps the tab's frets on the bouzouki the tab
-     * is for (it says where to play); every other line is fingered again ([SongAnalysis.forInstrument]).
+     * is for (it says where to play); a line just found again with fewer or more notes is fingered for
+     * the bouzouki it was found for already; every other line is fingered again ([SongAnalysis.forInstrument]).
      */
     private fun fingered(shown: SongAnalysis): SongAnalysis {
         val inst = settings.instrument
         val asWritten = shown === line && lineSpec is SongLines.Spec.FromTab && shown.instrument == inst &&
             shown.notes.all { it.course in inst.courses.indices && it.fret in 0..inst.frets && inst.midiAt(it.course, it.fret) == it.midi }
-        return if (asWritten) shown else shown.forInstrument(inst)
+        val fresh = shown === line && lineSpec is SongLines.Spec.Detected && shown.instrument == inst
+        return if (asWritten || fresh) shown else shown.forInstrument(inst)
     }
 
     // --- the line: fewer or more notes, or a tab's ---
@@ -646,6 +665,7 @@ class SongActivity : Activity() {
         val src = source ?: return
         if (spec == null) {
             wanted = null
+            SongLines.settle(src.id)
             busy(null)
             if (line != null) {
                 line = null
@@ -721,9 +741,11 @@ class SongActivity : Activity() {
             is SongLines.Outcome.NoData -> {
                 // Prepared before what tabs and detail levels need was kept, or that can't be read (it's
                 // deleted then): a tab just pasted waits for the song prepared again.
+                tabGaveWay = null
                 if (announce) askToPrepareAgain() else status.text = PREPARE_AGAIN
             }
             is SongLines.Outcome.Failed -> {
+                tabGaveWay = null
                 val message = (if (spec is SongLines.Spec.FromTab) "Couldn't line the tab up: " else "Couldn't find the notes again: ") + out.message
                 if (pasted) {
                     pendingTab = null
@@ -758,9 +780,16 @@ class SongActivity : Activity() {
                 if (sheet.unheard.isNotEmpty()) append(" Faint in 📜 Tablature: not heard.")
                 if (sheet.offPitch.isNotEmpty()) append(" Marked $OFF_PITCH: heard at another pitch.")
             }
-            spec is SongLines.Spec.Detected -> "${s.notes.size} bouzouki notes: ${detailName(spec)}."
-            else -> "${s.notes.size} bouzouki notes."
+            spec is SongLines.Spec.Detected -> "${s.notes.size} bouzouki notes: ${detailName(spec)}." + tabKept()
+            else -> "${s.notes.size} bouzouki notes." + tabKept()
         }
+    }
+
+    /** After the tab's notes gave way to the detected ones (once): that the tab is kept, and how to show it again. */
+    private fun tabKept(): String {
+        if (tabGaveWay == null || tabGaveWay != source?.id) return ""
+        tabGaveWay = null
+        return " Detected notes now; your tab is kept: 📝 Tab → From tab shows its notes again."
     }
 
     private fun detailName(spec: SongLines.Spec.Detected) = when (spec.detail) {
@@ -802,6 +831,8 @@ class SongActivity : Activity() {
         }
         if (!SongJobs.hasData(this, src.id)) { askToPrepareAgain(); return }
         pendingTab = null // a tab being tried gives way
+        // The tab's notes shown give way: the status then says the tab is kept, and how to show them again.
+        tabGaveWay = if (lineSpec is SongLines.Spec.FromTab && SongJobs.tabText(this, src.id) != null) src.id else null
         if (d == Detail.NORMAL) {
             settings.setDetail(src.id, d)
             settings.setUsesTab(src.id, false)
@@ -870,10 +901,20 @@ class SongActivity : Activity() {
             this.text = lines.take(PREVIEW_LINES).joinToString("\n") + if (lines.size > PREVIEW_LINES) "\n… (${lines.size - PREVIEW_LINES} more lines)" else ""
         }
         val box = ScrollView(this).apply { addView(HorizontalScrollView(this@SongActivity).apply { addView(preview) }) }
+        // One view for the words and the preview (a message besides a view would let a long preview push the
+        // buttons off a small screen): the preview gets the room the buttons leave, and scrolls.
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(TextView(this@SongActivity).apply {
+                setTextAppearance(android.R.style.TextAppearance_Material_Subhead)
+                setPadding(ui.px(24), ui.px(8), ui.px(24), ui.px(8))
+                this.text = "It's lined up with the recording, and kept on this phone for this song if its notes are found there."
+            })
+            addView(box, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        }
         AlertDialog.Builder(this)
             .setTitle("Paste this tab?")
-            .setMessage("It's lined up with the recording, and kept on this phone for this song if its notes are found there.")
-            .setView(box)
+            .setView(content)
             .setPositiveButton("Use this tab") { _, _ -> useTab(id, text) }
             .setNegativeButton("Cancel", null)
             .show()
@@ -938,17 +979,34 @@ class SongActivity : Activity() {
                 tab.notes.isEmpty() -> append("No tab notes could be read from what was pasted, so nothing changed. Copy just the tab's lines, one per course (like D|--5-7--|).")
                 r.matched == 0 -> append("None of the tab's ${r.total} notes could be found in the recording, so nothing changed. Is it a tab of this song?")
                 else -> {
-                    append("Lined up ${r.matched} of ${r.total} tab notes.")
+                    if (tab.unread > 0) {
+                        append(if (tab.unread == 1) "1 line that looks like tab couldn't be read (below): its notes are missing. "
+                            else "${tab.unread} lines that look like tab couldn't be read (below): their notes are missing. ")
+                    }
+                    append(if (tab.unread > 0) "Lined up ${r.matched} of the ${r.total} tab notes read." else "Lined up ${r.matched} of ${r.total} tab notes.")
                     val placed = r.sources.toHashSet()
-                    val faint = r.missing.count { it in placed }
+                    val faint = r.notHeard.count { it in placed }
                     if (faint == 1) append(" The one not heard in the recording shows faint in 📜 Tablature, where the notes around it put it.")
                     if (faint > 1) append(" The $faint not heard in the recording show faint in 📜 Tablature, where the notes around them put them.")
-                    val left = r.missing.size - faint
+                    val left = r.notHeard.size - faint
                     if (left > 0) append(" $left more ${if (left == 1) "wasn't" else "weren't"} placed: parts of the tab not found in the recording.")
                     val off = r.differs.size
                     if (off > 0) {
-                        append("\n\n" + (if (off == 1) "1 sounds" else "$off sound") + " at another pitch in the recording (a wrong fret in the tab, or an octave off): ")
-                        append("marked $OFF_PITCH in 📜 Tablature, shown as the tab writes ${if (off == 1) "it" else "them"}. Check by ear.")
+                        // A note a fret or two off is shown at the fret heard (the tab's is likely wrong); an octave off,
+                        // or another note of its chord, as the tab writes it.
+                        val moved = r.moved.size
+                        val written = off - moved
+                        append("\n\n" + (if (off == 1) "1 sounds" else "$off sound") + " at another pitch in the recording: marked $OFF_PITCH in 📜 Tablature")
+                        when {
+                            off == 1 && moved == 1 -> append(", and shown at the fret heard, a fret or two from the tab's (likely a wrong fret in the tab).")
+                            off == 1 -> append(", and shown as the tab writes it (an octave off, or another note of its chord).")
+                            written == 0 -> append(", and shown at the frets heard, a fret or two from the tab's (likely wrong frets in the tab).")
+                            moved == 0 -> append(", and shown as the tab writes them (an octave off, or other notes of their chords).")
+                            else -> append(". Shown at the fret${if (moved == 1) "" else "s"} heard: $moved a fret or two off (likely ${if (moved == 1) "a wrong fret" else "wrong frets"} " +
+                                "in the tab). Shown as the tab writes ${if (written == 1) "it: 1 an octave off, or another note of its chord"
+                                else "them: $written an octave off, or other notes of their chords"}.")
+                        }
+                        append(" Check by ear.")
                     }
                     if (r.transpose != 0) {
                         val n = abs(r.transpose)

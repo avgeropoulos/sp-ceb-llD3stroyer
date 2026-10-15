@@ -221,6 +221,31 @@ class BouzoukiLineTest {
         assertEquals(null, AnalysisData.read(file(0, Int.MAX_VALUE - 8).inputStream()))
         assertEquals(null, AnalysisData.read(file(900_000, 0, frames = 0).inputStream()))
         assertEquals(null, AnalysisData.read(file(150_000, 0, frames = 10).inputStream()))
+        // Contours without all of Basic Pitch's bins (the line reads them at fixed bins), more than was written, or a
+        // wrong checksum: damaged too.
+        fun withContours(bins: Int, extra: Int = 0): ByteArray {
+            val out = java.io.ByteArrayOutputStream()
+            java.io.DataOutputStream(java.util.zip.DeflaterOutputStream(out)).use { d ->
+                d.writeInt(0x425A4144)
+                d.writeInt(AnalysisData.VERSION)
+                d.writeInt(10)
+                d.writeInt(BasicPitch.N_KEYS)
+                d.write(ByteArray(2 * BasicPitch.N_KEYS * 10))
+                d.writeBoolean(true)
+                d.writeInt(bins)
+                d.write(ByteArray(bins * 10))
+                d.writeBoolean(false) // no attacks
+                d.write(ByteArray(extra))
+            }
+            return out.toByteArray()
+        }
+        val good = withContours(BasicPitch.N_CONTOUR_BINS)
+        assertEquals(BasicPitch.N_CONTOUR_BINS, assertNotNull(AnalysisData.read(good.inputStream())).act.contours!![0].size)
+        assertEquals(null, AnalysisData.read(withContours(10).inputStream()))
+        assertEquals(null, AnalysisData.read(withContours(0).inputStream()))
+        assertEquals(null, AnalysisData.read(withContours(BasicPitch.N_CONTOUR_BINS, extra = 4).inputStream()))
+        val badSum = good.copyOf().also { it[it.size - 1] = (it[it.size - 1] + 1).toByte() }
+        assertEquals(null, AnalysisData.read(badSum.inputStream()))
     }
 
     @Test
