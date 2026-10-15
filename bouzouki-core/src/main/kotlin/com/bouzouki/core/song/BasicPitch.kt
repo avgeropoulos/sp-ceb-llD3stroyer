@@ -52,7 +52,7 @@ class BasicPitch(private val env: OrtEnvironment, private val session: OrtSessio
         val hop = AUDIO_N_SAMPLES - overlapLen
         val padded = FloatArray(overlapLen / 2 + audio.size).also { System.arraycopy(audio, 0, it, overlapLen / 2, audio.size) }
         val windows = (padded.size + hop - 1) / hop
-        val nOut = floor(audio.size * (ANNOTATIONS_FPS.toDouble() / SAMPLE_RATE)).toInt()
+        val nOut = frameCount(audio.size)
         val frames = ArrayList<FloatArray>(nOut)
         val onsets = ArrayList<FloatArray>(nOut)
         val contours = ArrayList<ByteArray>(nOut)
@@ -106,6 +106,9 @@ class BasicPitch(private val env: OrtEnvironment, private val session: OrtSessio
         private const val NOTE_OUT = "StatefulPartitionedCall:1"
         private const val ONSET_OUT = "StatefulPartitionedCall:2"
         private const val CONTOUR_OUT = "StatefulPartitionedCall:0"
+
+        /** How many frames [activations] gives for [samples] samples of audio. */
+        fun frameCount(samples: Int): Int = floor(samples * (ANNOTATIONS_FPS.toDouble() / SAMPLE_RATE)).toInt()
 
         /** A contour activation 0..1 as the byte 0..255 (rounded). */
         fun quantize(v: Float): Byte = (v * 255f + 0.5f).toInt().coerceIn(0, 255).toByte()

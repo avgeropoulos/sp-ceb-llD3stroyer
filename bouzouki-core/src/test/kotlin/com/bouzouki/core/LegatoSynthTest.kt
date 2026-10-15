@@ -102,6 +102,28 @@ class LegatoSynthTest {
     }
 
     @Test
+    fun theTuningMovesPickedAndLegatoNotesAlike() {
+        // Playing along with a record 20 cents flat: the picked note and the hammer-on after it sound 20 cents lower.
+        fun played(tuning: Double): Pair<Double, Double> {
+            val synth = BouzoukiSynth(fs)
+            synth.tuningCents = tuning
+            synth.pluck(1, 62, false, 0.85f)
+            val a = synth.run(0.3)
+            synth.legato(1, 64, false, Legato.HAMMER, 0.8f)
+            val x = a + synth.run(0.6)
+            val at = (fs * 0.3).toInt()
+            return cents(pitch(x, at - fs / 5, fs / 6, midiToHz(62)), 62) to cents(pitch(x, at + fs / 5, fs / 5, midiToHz(64)), 64)
+        }
+        val (picked, hammered) = played(0.0)
+        val (pickedFlat, hammeredFlat) = played(-20.0)
+        assertTrue(abs(pickedFlat - picked + 20) < 2.5, "picked: $picked -> $pickedFlat cents")
+        assertTrue(abs(hammeredFlat - hammered + 20) < 2.5, "hammered: $hammered -> $hammeredFlat cents")
+        // A tuning that isn't a number plays at A = 440.
+        val (pickedNaN, _) = played(Double.NaN)
+        assertTrue(abs(pickedNaN - picked) < 0.01, "NaN: $pickedNaN cents")
+    }
+
+    @Test
     fun aSlideGlidesThroughTheNotesBetween() {
         val at = (fs * 0.3).toInt()
         val glide = (BouzoukiSynth.slideSeconds(12) * fs).toInt()

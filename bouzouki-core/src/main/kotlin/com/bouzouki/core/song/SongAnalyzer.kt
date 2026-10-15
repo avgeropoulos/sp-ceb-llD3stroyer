@@ -177,7 +177,7 @@ data class SongAnalysis(
 /**
  * Turns a song into its bouzouki line:
  * 1. remove the vocals (MDX-Net),
- * 2. transcribe the rest into notes (Basic Pitch),
+ * 2. transcribe the rest into notes (Basic Pitch), put in tune first if the recording is off A = 440 Hz ([Tuning]),
  * 3. follow the melodic line in the bouzouki's range (it usually carries the lead), and tell the notes
  *    the plectrum picks from the hammer-ons, pull-offs and slides (where it strikes: [Attacks]),
  * 4. choose frets that keep the hand moving as little as possible.
@@ -217,15 +217,44 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
         progress(Stage.SEPARATING, 0f)
         val instrumental = separator.instrumentalMono(left, right, { progress(Stage.SEPARATING, it) }, cancelled)
         separated(instrumental)
+        return analyzeInstrumental(id, title, instrumental, instrument, progress, cancelled)
+    }
+
+    /**
+     * [analyzeWithData] once the voice is removed, from the song without it ([instrumental]: mono, 44.1 kHz): measures
+     * how far the recording is tuned from A = 440 Hz ([SongAnalysis.tuningCents], [AnalysisData.tuning]), transcribes it
+     * (put in tune first when it is [Tuning.MIN_CORRECTION] or more off, with every time mapped back to the
+     * recording's), finds the beats and derives the line.
+     */
+    fun analyzeInstrumental(
+        id: String,
+        title: String,
+        instrumental: FloatArray,
+        instrument: Instrument,
+        progress: (Stage, Float) -> Unit = { _, _ -> },
+        cancelled: () -> Boolean = { false },
+    ): Pair<SongAnalysis, AnalysisData> {
         progress(Stage.TRANSCRIBING, 0f)
         val audio = resample(instrumental, MdxSeparator.SAMPLE_RATE, BasicPitch.SAMPLE_RATE)
-        val raw = pitch.activations(audio, { progress(Stage.TRANSCRIBING, it * 0.9f) }, cancelled)
+        val tuning = Tuning.estimate(audio)
+        val raw = transcribe(audio, tuning, { progress(Stage.TRANSCRIBING, it * 0.9f) }, cancelled)
         progress(Stage.PLACING, 0f)
         // The beats lay the tablature out in bars; a song without a clear pulse just gets none.
         val beats = try { Beats.estimate(Beats.envelope(raw), Beats.FPS) } catch (_: Exception) { emptyList() }
         // The line comes from the activations as they are saved, so rebuild() gives this very line again.
-        val data = AnalysisData.of(raw, Attacks.of(audio))
-        return build(id, title, candidates(data.act), instrument, data.act, data.attacks).copy(beats = beats) to data
+        val data = AnalysisData.of(raw, Attacks.of(audio), tuning)
+        return build(id, title, candidates(data.act), instrument, data.act, data.attacks).copy(beats = beats, tuningCents = tuning) to data
+    }
+
+    /**
+     * Basic Pitch's activations of [audio] (22050 Hz) on its own time. A recording [tuning] cents off (by
+     * [Tuning.MIN_CORRECTION] or more) is [Tuning.retune]d into tune first, and the activations mapped back.
+     */
+    private fun transcribe(audio: FloatArray, tuning: Double, progress: (Float) -> Unit, cancelled: () -> Boolean): BasicPitch.Activations {
+        if (abs(tuning) < Tuning.MIN_CORRECTION) return pitch.activations(audio, progress, cancelled)
+        val rate = Tuning.rateFor(tuning)
+        val act = pitch.activations(Tuning.retune(audio, rate), progress, cancelled)
+        return Tuning.toRealTime(act, rate, BasicPitch.frameCount(audio.size))
     }
 
     companion object {
@@ -240,8 +269,26 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
             BasicPitch.notes(act, onsetThresh = 0.5f, frameThresh = if (detail == Detail.MORE) 0.25f else 0.3f, minNoteLen = 2, melodia = false)
 
         /**
+         * How far the recording behind [data] is tuned from A = 440 Hz (cents, + sharp, - flat) as measured when it
+         * was prepared; null for data saved before the tuning was measured. Its contours can tell such a song was
+         * far off ([transcribedOutOfTune]), but not by how much: their reading can be 15 cents out (and from about 45
+         * cents flat it can even point the other way), no tuning to show a player or tune to.
+         */
+        fun tuningOf(data: AnalysisData): Double? = data.tuning
+
+        /**
+         * Whether [data] was transcribed from a recording out of tune as it was (saved before the tuning was measured,
+         * and its contours read [Tuning.RETUNE_HINT] cents off or more): Basic Pitch then missed notes, so preparing
+         * the song again finds more of them. A yes/no hint only: it misses records up to about 12 cents sharp and
+         * some 5 flat, which read like records in tune (a real recording 5 flat lost a fifth of its notes), so every
+         * song saved before the tuning was measured ([AnalysisData.tuning] null) may gain a little from preparing again.
+         */
+        fun transcribedOutOfTune(data: AnalysisData): Boolean =
+            data.tuning == null && (Tuning.fromContours(data.act)?.let { abs(it) >= Tuning.RETUNE_HINT } ?: false)
+
+        /**
          * The line of a prepared song derived again from its saved [data] with [detail], for the bouzouki it was
-         * prepared for (show it through [SongAnalysis.forInstrument] as usual); title, beats and dromos stay.
+         * prepared for (show it through [SongAnalysis.forInstrument] as usual); title, beats, dromos and tuning stay.
          * With [Detail.NORMAL] it is the line [analyzeWithData] made.
          */
         fun rebuild(base: SongAnalysis, data: AnalysisData, detail: Detail = Detail.NORMAL): SongAnalysis =

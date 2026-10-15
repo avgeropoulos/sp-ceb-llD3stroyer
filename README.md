@@ -184,7 +184,8 @@ Every build is signed with the same key (`bouzouki/signing/`) and gets a higher 
   progress notification):
   1. it reads the song's audio from YouTube,
   2. removes the singer's voice with an AI vocal remover (UVR MDX-Net, downloaded once, 67 MB),
-  3. transcribes what's left into notes with Spotify's Basic Pitch,
+  3. transcribes what's left into notes with Spotify's Basic Pitch (an old record tuned off A = 440 Hz is
+     put back in tune for it first, or it would miss many of the notes),
   4. keeps the bouzouki line (the top melodic line in the bouzouki's range) and chooses frets that keep
      the hand moving as little as possible.
 
