@@ -14,7 +14,8 @@ import kotlin.test.assertTrue
  * from the ground truth ([TabText]) and spoiled the way real tabs are (notes left out or added, wrong frets, an octave
  * or a key off, written for the other bouzouki, rhythm only roughly kept, only the first verse, repeats written once),
  * read back with [TabParser] and lined up with each song's cached activations. Reports how far the aligned notes are
- * from where they're played, how many land within 50 ms, what happens in parts the tab doesn't cover, and the time.
+ * from where they're played, how many land within 50 ms, what happens in parts the tab doesn't cover, and the time;
+ * checks that no kind of tab leaves the song's line worse than the prepared line.
  * TAB_EVAL_DIR names the folder holding kotlin_legato/ (songs without a form) and kotlin_tabs/ (songs with intro,
  * verses and choruses repeated); only runs where it's set.
  */
@@ -115,6 +116,13 @@ class TabEvalTest {
             out += Variant("trichordo", TabText.write(tri, Instrument.TRICHORDO, step, rnd = rnd, names = TabText.Names.GREEK), tri, occ, emptyList())
             val key = tabNotes(song.gt, tetra, refs, -2)
             out += Variant("key -2", TabText.write(key, tetra, step, rnd = rnd), key, occ, emptyList())
+            // One kind of mistake at a time.
+            val wrong = spoil(clean, tetra, rnd, drop = 0.0, extra = 0.0)
+            out += Variant("wrong frets", TabText.write(wrong, tetra, step, rnd = rnd), wrong, occ, emptyList())
+            val dropped = spoil(clean, tetra, rnd, extra = 0.0, wrong = 0.0)
+            out += Variant("left out", TabText.write(dropped, tetra, step, rnd = rnd), dropped, occ, emptyList())
+            val extra = spoil(clean, tetra, rnd, drop = 0.0, wrong = 0.0)
+            out += Variant("added", TabText.write(extra, tetra, step, rnd = rnd), extra, occ, emptyList())
             return out
         }
         // Songs with a form: each section's notes (first play) and when every play sounds.
@@ -214,14 +222,20 @@ class TabEvalTest {
             uLineTp += o.uLineTp; uLineEst += o.uLineEst; uBaseTp += o.uBaseTp; uBaseEst += o.uBaseEst; uRef += o.uRef
         }
 
+        /** The F-measure of the aligned song's line, and of the prepared line, over the song or only the parts the tab doesn't cover. */
+        fun lineF() = 2.0 * lineTp / (lineEst + ref)
+        fun baseF() = 2.0 * baseTp / (baseEst + ref)
+        fun uncoveredF() = 2.0 * uLineTp / (uLineEst + uRef)
+        fun uncoveredBaseF() = 2.0 * uBaseTp / (uBaseEst + uRef)
+
         override fun toString(): String {
             val e = errors.map { it * 1000 }.sorted()
             fun q(p: Double) = if (e.isEmpty()) Double.NaN else e[((e.size - 1) * p).toInt()]
-            val uncovered = if (uRef == 0) "" else " | uncovered parts: F %.3f (base %.3f)".format(2.0 * uLineTp / (uLineEst + uRef), 2.0 * uBaseTp / (uBaseEst + uRef))
+            val uncovered = if (uRef == 0) "" else " | uncovered parts: F %.3f (base %.3f)".format(uncoveredF(), uncoveredBaseF())
             return ("within 50 ms %5.1f%% | error median %4.1f ms, p90 %5.1f ms | placed %5.1f%% | stray %4.1f%% | in uncovered %3d | matched %4.1f%% | " +
                 "F line %.3f (base %.3f) | %4.0f ms/song").format(
                 100.0 * within50 / occurrences, q(0.5), q(0.9), 100.0 * errors.size / occurrences, 100.0 * stray / placements.coerceAtLeast(1),
-                inUncovered, 100.0 * matched / total, 2.0 * lineTp / (lineEst + ref), 2.0 * baseTp / (baseEst + ref), ms / songs) + uncovered
+                inUncovered, 100.0 * matched / total, lineF(), baseF(), ms / songs) + uncovered
         }
     }
 
@@ -338,8 +352,16 @@ class TabEvalTest {
             report.append(line).append('\n')
         }
         System.getenv("TAB_EVAL_OUT")?.let { File(it).writeText(report.toString()) }
+        if (sets.size > 1) return
         val clean = totals["clean"] ?: return
         assertTrue(clean.within50 > clean.occurrences * 0.8, "clean tabs: $clean")
+        // However spoiled, partial or loosely written, a tab leaves the song's line no worse than the prepared line, and
+        // hardly worse in the parts it doesn't cover. (A tab an octave off is kept as written: the F-measure compares pitches.)
+        for ((k, s) in totals) {
+            if ("octave" in k) continue
+            assertTrue(s.lineF() >= s.baseF(), "$k: $s")
+            if (s.uRef > 0) assertTrue(s.uncoveredF() >= s.uncoveredBaseF() - 0.03, "$k: $s")
+        }
     }
 }
 
@@ -364,6 +386,9 @@ private fun tabParams(spec: String): TabAligner.Params {
             "wrongFret" -> p.copy(wrongFret = f); "keepTrusted" -> p.copy(keepTrusted = f); "keepOther" -> p.copy(keepOther = f)
             "keepRelative" -> p.copy(keepRelative = f.toDouble()); "onsetMin" -> p.copy(onsetMin = f); "minEvidence" -> p.copy(minEvidence = f)
             "legatoBonus" -> p.copy(legatoBonus = f); "accept" -> p.copy(accept = f)
+            "keepNear" -> p.copy(keepNear = f.toDouble()); "keepEvidence" -> p.copy(keepEvidence = f)
+            "correctWithin" -> p.copy(correctWithin = f.toDouble()); "keepSame" -> p.copy(keepSame = f)
+            "noteWindow" -> p.copy(noteWindow = f.toDouble()); "noteBeam" -> p.copy(noteBeam = f)
             else -> error("unknown aligner weight $k")
         }
     }

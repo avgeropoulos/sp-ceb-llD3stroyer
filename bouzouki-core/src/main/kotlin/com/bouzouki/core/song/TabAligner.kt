@@ -12,14 +12,16 @@ data class TabPass(val from: Int, val to: Int, val start: Double, val end: Doubl
 
 /**
  * A tab lined up with the recording: [song] is the song's line made of the tab's notes at the times
- * they're heard; [matched] of the tab's [total] notes were found in the recording, [missing] lists the
- * indices (in the tab) of the others (those inside a part that was found are still in [song], where the
- * notes around them put them).
+ * they're heard; [matched] of the tab's [total] notes were heard at their own pitch, [missing] lists the
+ * indices (in the tab) of the others: not heard at all (still in [song] when inside a part that was found,
+ * where the notes around them put them), or heard only at another pitch ([differs]: a fret or two off, shown
+ * at the pitch heard as the tab's fret is likely wrong; an octave off or another note of its chord, shown as
+ * written). Show the [missing] notes as less sure.
  * [sources] gives, for each note of [song], the index in the tab it comes from, or -1 for a note of the
- * prepared line kept where the tab isn't heard. [passes] are where the tab (or a part of it, repeated or not)
- * was found. The recording sits [transpose] semitones above the tab (a song in another key: the notes are
- * moved by it) and [octave] octaves above it (kept as the tab writes it). [differs] lists the tab notes
- * heard only at another pitch (a wrong fret, or an octave off).
+ * prepared line: kept where the tab isn't heard, and where the line hears a note clearly that the tab leaves
+ * out (an ornament, a fill). [passes] are where the tab (or a part of it, repeated or not) was found. The
+ * recording sits [transpose] semitones above the tab (a song in another key: the notes are moved by it) and
+ * [octave] octaves above it (kept as the tab writes it).
  */
 class TabAlignment(
     val song: SongAnalysis,
@@ -53,8 +55,13 @@ class TabAlignment(
  * the prepared line. A tab in another key is found by trying the transposition its pitch classes suggest;
  * one written an octave off by trying that octave.
  * Tab notes a pass skips go where their columns put them between their neighbours, moved to a nearby
- * candidate at their pitch (or a fret or two off: a wrong fret in the tab) or a rise of its activation.
- * Each note lasts while its pitch's activation stays up, until the next note.
+ * candidate at their pitch (or a fret or two off: a wrong fret in the tab, played at the pitch heard) or a
+ * rise of its activation; one heard nowhere takes a prepared-line note a fret or two off close by. Inside the
+ * passes, the prepared line's notes no tab note explains stay when their onsets are clear (tabs leave out
+ * ornaments and fills). Each note lasts while its pitch's activation stays up, until the next note.
+ *
+ * A four-minute song takes a few hundred ms on a desktop JVM, up to about 1.5 s with a long tab of a figure repeated
+ * over and over, and several times that on a phone: call [align] off the main thread, with progress shown.
  */
 object TabAligner {
     /** Where the aligner says what it found (for tests and tuning); null normally. */
@@ -63,7 +70,8 @@ object TabAligner {
     /**
      * [base] is the prepared song (for the bouzouki the player plays: notes keep the tab's course and fret
      * where it has them, else they are fingered for it; show [TabAlignment.song] as it is). With [keepLine], the
-     * prepared line's notes stay where the tab isn't heard (outside its passes).
+     * prepared line's notes stay where the tab isn't heard (outside its passes) and where the tab leaves out a note
+     * the line hears clearly. Takes a while on long songs: call it off the main thread.
      */
     fun align(tab: ParsedTab, data: AnalysisData, base: SongAnalysis, keepLine: Boolean = true): TabAlignment =
         align(tab, data, base, keepLine, Params())
@@ -113,6 +121,9 @@ object TabAligner {
         val minScan: Double = 1.0,
         val minGap: Double = 0.035,
         val beam: Float = 6f,
+        // A note's state far behind its best one within noteWindow s before (the note placed late, for a worse path).
+        val noteWindow: Double = 3.0,
+        val noteBeam: Float = 0.5f,
         // Passes kept: explaining keepTrusted of the line, or (repeats) keepOther or keepRelative of what the others do.
         val keepTrusted: Float = 0.5f,
         val keepOther: Float = 0.65f,
@@ -120,6 +131,12 @@ object TabAligner {
         // Placing skipped notes (a candidate worth at least accept), and ends (activation under endLevel).
         val accept: Float = -0.1f,
         val endLevel: Float = 0.25f,
+        // The line's notes inside passes: kept with no tab note within keepNear s and evidence keepEvidence; one a fret
+        // or two from a tab note heard nowhere, within correctWithin s, corrects it.
+        val keepNear: Double = 0.06,
+        val keepEvidence: Float = 0.35f,
+        val keepSame: Float = 0.5f,
+        val correctWithin: Double = 0.15,
     )
 
     internal fun align(tab: ParsedTab, data: AnalysisData, base: SongAnalysis, keepLine: Boolean, par: Params): TabAlignment {
@@ -353,7 +370,8 @@ object TabAligner {
     /**
      * The dynamic programme over candidates in time order, the recording [delta] semitones above the tab. A state is
      * a tab note placed on a candidate, with the best path's value, its tempo (seconds per column) and where it came
-     * from. States far behind the best one so far are dropped (a beam), and so are notes no state before can reach.
+     * from. States far behind the best one so far are dropped (a beam), and so are notes no state before can reach,
+     * and a note's states a little behind its best one just before (the same note placed later, on another candidate).
      */
     private class Dp(val p: Prep, val c: Candidates, val delta: Int, val par: Params, val line: Line) {
         private var size = 0
@@ -396,6 +414,8 @@ object TabAligner {
             val costByKey = Array(BasicPitch.N_KEYS) { keyedCost[it].toFloatArray() }
             val byNote = Array(n) { Ints(8) } // each note's states, in time order
             val noteBest = FloatArray(n) { NEG }
+            val recentT = DoubleArray(n) { Double.NEGATIVE_INFINITY } // each note's best state lately: when, and its value
+            val recentV = FloatArray(n) { NEG }
             val oldPtr = IntArray(n) // a rest: the best state of each note at least pauseAfter ago
             val oldBest = IntArray(n) { -1 }
             // The best state ending each unit (from minGap after it), and of any unit.
@@ -521,12 +541,15 @@ object TabAligner {
                     }
                     val value = best + ev
                     if (value < bestV - par.beam) continue // far behind the best path so far: it won't catch up
+                    // Far behind this note's best placing just before: the same note a little later, for a worse path.
+                    if (t - recentT[i] <= par.noteWindow && value < recentV[i] - par.noteBeam) continue
                     if (size == sCand.size) grow()
                     val id = size++
                     sCand[id] = ci; sNote[id] = i; sV[id] = value; sTau[id] = tau; sBack[id] = back
                     sType[id] = type.toByte(); sKind[id] = kind.toByte()
                     byNote[i].add(id)
                     if (value > noteBest[i]) noteBest[i] = value
+                    if (t - recentT[i] > par.noteWindow || value > recentV[i]) { recentT[i] = t; recentV[i] = value }
                     val left = p.unitEnd[u] - 1 - i
                     if (left < EDGE) {
                         if (qUnit.size == qTime.size) { qTime = qTime.copyOf(qTime.size * 2); qVal = qVal.copyOf(qVal.size * 2) }
@@ -538,6 +561,7 @@ object TabAligner {
                     if (value > bestV) { bestV = value; bestS = id }
                 }
             }
+            log?.invoke("dp $delta: ${c.count} candidates, $size states")
             val chain = ArrayList<Int>()
             var s = bestS
             while (s >= 0) { chain += s; s = sBack[s] }
@@ -573,28 +597,39 @@ object TabAligner {
                 passes += TabPass(mine.minOf { it.note }, mine.maxOf { it.note }, mine.first().time, mine.last().time)
             }
             placed.sortBy { it.time }
+            correctFromLine()
             val ends = DoubleArray(placed.size) { k -> end(placed[k], placed.getOrNull(k + 1)?.time ?: Double.MAX_VALUE) }
             val passEnd = DoubleArray(passes.size) { Double.NEGATIVE_INFINITY }
             for ((k, x) in placed.withIndex()) passEnd[x.pass] = max(passEnd[x.pass], ends[k])
             val spans = passes.mapIndexed { k, ps -> ps.copy(end = max(ps.end, passEnd[k])) }
-            // The song: the tab's notes, and the prepared line's where no pass is heard.
+            // The song: the tab's notes (one heard a fret or two off at the pitch heard: the tab's fret is likely wrong),
+            // and the prepared line's where no pass is heard, or where the line hears a note clearly that the tab leaves out.
             val inst = base.instrument
             val notes = ArrayList<Pair<SongNote, Int>>()
             var hand = 0
             var prevSource = -2
             var prevCourse = -1
             for ((k, x) in placed.withIndex()) {
-                val (midi, cell) = cell(x.note, p.midi[x.note] + transpose, inst, hand)
+                val heardPitch = if (x.type == T_WRONG) x.key + BasicPitch.MIDI_OFFSET - 12 * octave else p.midi[x.note] + transpose
+                val (midi, cell) = cell(x.note, heardPitch, inst, hand)
                 if (cell.second > 0) hand = cell.second
                 var art = tab.notes[x.note].articulation
-                if (art.isLegato && (prevSource != x.note - 1 || prevCourse != cell.first)) art = Articulation.PICK
+                if (art.isLegato && (prevSource != x.note - 1 || prevCourse != cell.first || x.type == T_WRONG)) art = Articulation.PICK
                 notes += SongNote(x.time, max(x.time + 0.02, ends[k]), midi, cell.first, cell.second, art) to x.note
                 prevSource = x.note
                 prevCourse = cell.first
             }
             if (keepLine) {
                 // (up to just after a pass's last note starts: the line goes on from there, cutting that note short)
-                for (bn in base.notes) if (passes.none { bn.start >= it.start - 0.1 && bn.start <= it.end + 0.1 }) notes += bn to -1
+                val at = DoubleArray(placed.size) { placed[it].time }
+                var inside = 0
+                for (bn in base.notes) {
+                    val inPass = passes.any { bn.start >= it.start - 0.1 && bn.start <= it.end + 0.1 }
+                    if (inPass && !leftOutByTab(bn, at)) continue
+                    notes += bn to -1
+                    if (inPass) inside++
+                }
+                log?.invoke("kept $inside of the line's notes inside passes")
             }
             notes.sortBy { it.first.start }
             val songNotes = notes.mapIndexed { k, (sn, _) ->
@@ -609,9 +644,9 @@ object TabAligner {
             }
             return TabAlignment(
                 song = base.copy(instrument = inst, notes = songNotes),
-                matched = heard.count { it },
+                matched = exact.count { it },
                 total = p.n,
-                missing = (0 until p.n).filter { !heard[it] },
+                missing = (0 until p.n).filter { !exact[it] },
                 sources = notes.map { it.second },
                 passes = spans,
                 transpose = transpose,
@@ -621,11 +656,55 @@ object TabAligner {
         }
 
         /**
+         * Tab notes heard nowhere (placed where their columns put them) that the prepared line hears a fret or two off,
+         * close by: the tab's fret is likely wrong, so they take the line's note's time and pitch.
+         */
+        private fun correctFromLine() {
+            if (!keepLine) return
+            val shift = 12 * octave
+            for ((k, x) in placed.withIndex()) {
+                if (x.type != T_NONE) continue
+                val written = p.midi[x.note] + transpose
+                val lo = (placed.getOrNull(k - 1)?.time ?: Double.NEGATIVE_INFINITY) + par.minGap
+                val hi = (placed.getOrNull(k + 1)?.time ?: Double.MAX_VALUE) - par.minGap
+                val bn = base.notes.filter { abs(it.start - x.time) <= par.correctWithin && it.start in lo..hi && abs(it.midi - shift - written) <= 2 }
+                    .minByOrNull { abs(it.start - x.time) } ?: continue
+                placed[k] = Placed(x.note, bn.start, bn.midi - BasicPitch.MIDI_OFFSET, if (bn.midi - shift == written) T_EXACT else T_WRONG, x.pass)
+            }
+        }
+
+        /**
+         * Whether the prepared line's note [bn], inside a pass, is one the tab leaves out (an ornament, a fill, a
+         * simplified run): no tab note placed within [Params.keepNear] of it ([at], the placed times in order), and a
+         * clear onset at its pitch ([Params.keepEvidence], or [Params.keepSame] at the pitch of a tab note next to it).
+         */
+        private fun leftOutByTab(bn: SongNote, at: DoubleArray): Boolean {
+            var a = 0
+            var b = at.size
+            while (a < b) { val m = (a + b) ushr 1; if (at[m] < bn.start) a = m + 1 else b = m }
+            if (a < at.size && at[a] - bn.start <= par.keepNear) return false
+            if (a > 0 && bn.start - at[a - 1] <= par.keepNear) return false
+            val key = bn.midi - BasicPitch.MIDI_OFFSET
+            var ev = Float.NEGATIVE_INFINITY
+            var ci = c.firstAt(bn.start - par.explained)
+            while (ci < c.count && c.time[ci] <= bn.start + par.explained) {
+                if (c.key[ci] == key) ev = max(ev, c.ev[ci])
+                ci++
+            }
+            /** The pitch [x] is heard at (in the recording). */
+            fun heardAt(x: Placed?) = if (x == null) -1 else if (x.key >= 0) x.key + BasicPitch.MIDI_OFFSET else p.midi[x.note] + delta
+            // A note at its neighbour's pitch is often that note heard again (a held note, a re-pick): it needs more.
+            val same = bn.midi == heardAt(placed.getOrNull(a - 1)) || bn.midi == heardAt(placed.getOrNull(a))
+            return ev >= (if (same) par.keepSame else par.keepEvidence)
+        }
+
+        /**
          * The path's passes (broken where it starts afresh or jumps) worth keeping. One that goes on through the tab
-         * (from the start, to the next part, or to a part the tab leads to) must explain [Params.keepTrusted] of the
-         * line's notes it spans (the line has extra notes); any other (a repeat the tab doesn't mark) [Params.keepOther]
-         * of them, or [Params.keepRelative] of what those passes explain if they explain less (a line with many extra
-         * notes). Only notes heard at their own pitch count: a pass of octave matches is likely another melody.
+         * (from the start, to the next part, or to a part the tab leads to, from a pass kept) must explain
+         * [Params.keepTrusted] of the line's notes it spans (the line has extra notes; it may span fewer than 3); any
+         * other (a repeat the tab doesn't mark) [Params.keepOther] of them, or [Params.keepRelative] of what those passes
+         * explain if they explain less (a line with many extra notes). Only notes heard at their own pitch count: a pass
+         * of octave matches is likely another melody.
          */
         private fun kept(): List<Segment> {
             val starts = path.kind.indices.filter { path.kind[it] == K_FRESH || path.kind[it] == K_JUMP } + path.kind.size
@@ -644,10 +723,14 @@ object TabAligner {
             val through = all.filter { it.trusted && it.explained >= par.keepTrusted && it.to - it.from >= EDGE }
                 .flatMap { s -> List(s.to - s.from) { s.explained } }.sorted()
             val keepOther = if (through.isEmpty()) par.keepOther.toDouble() else min(par.keepOther.toDouble(), par.keepRelative * through[through.size / 2])
-            return all.filter { s ->
-                val keep = line.empty || s.lineNotes < 3 || s.explained >= (if (s.trusted) par.keepTrusted.toDouble() else keepOther)
+            // A pass going on from one left out is a repeat too; a repeat needs line notes to explain.
+            var lastKept = true
+            return all.filter { s0 ->
+                val s = if (s0.trusted && s0.from > 0 && !lastKept) Segment(s0.from, s0.to, false, s0.explained, s0.lineNotes) else s0
+                val keep = line.empty || (s.trusted && s.lineNotes < 3) || s.explained >= (if (s.trusted) par.keepTrusted.toDouble() else keepOther)
                 log?.invoke("pass %.2f-%.2f s: %d notes, explains %.2f of the line%s%s".format(c.time[path.cand[s.from]],
                     c.time[path.cand[s.to - 1]], s.to - s.from, s.explained, if (s.trusted) "" else " (a repeat)", if (keep) "" else ", left out"))
+                lastKept = keep
                 keep
             }
         }

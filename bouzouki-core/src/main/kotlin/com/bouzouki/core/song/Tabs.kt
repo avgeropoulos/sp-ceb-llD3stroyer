@@ -47,17 +47,20 @@ data class ParsedTab(
 /**
  * Reads bouzouki tabs as people post them online: plain-text systems of tab lines, one line per course, the
  * highest course on top (string names such as d| A| D|, Ρε| Λα| Φα| Ντο|, "D-" or 1| 2| 3| say otherwise),
- * with dashes and bar lines between 1-2 digit frets; h (hammer-on), p (pull-off), / \ s (slide), ~ (tremolo);
- * repeat marks (x2, (x3), "repeat" lines, |: :| bars); headings (Intro, Verse, Chorus, Κουπλέ, Ρεφρέν ...);
- * chord names and lyrics between systems (left out). A system of 3 lines is a trichordo tab, 4 lines a
- * tetrachordo tab. Notes in one column are a chord: the highest is kept as the melody (with the rest in
- * [TabNote.stack]). Anything left out is said in [ParsedTab.warnings].
+ * with dashes (or, on named lines with bars, spaces) and bar lines between 1-2 digit frets; h (hammer-on),
+ * p (pull-off), / \ s (slide), ~ (tremolo); repeat marks (x2, (x3), 3 times, twice, 2 φορές, "repeat" lines,
+ * |: :| bars, also across systems, a count between bars); headings (Intro, Verse 2, Chorus, "Repeat verse and
+ * chorus", Κουπλέ, Ρεφρέν ...); chord names and lyrics between systems, dividers, and words after a tab line
+ * (left out). A system of 3 lines is a trichordo tab, 4 lines a tetrachordo tab. Notes in one column are a
+ * chord: the highest is kept as the melody (with the rest in [TabNote.stack]). Anything left out is said in
+ * [ParsedTab.warnings].
  */
 object TabParser {
     fun parse(text: String, instrument: Instrument): ParsedTab {
-        val src = text.lines().map { normalize(it) }
+        val raw = text.lines()
+        val src = raw.map { normalize(it) }
         val warn = LinkedHashSet<String>()
-        val items = classify(src, warn)
+        val items = classify(raw, src, warn)
         val blocks = items.filterIsInstance<Block>()
         if (blocks.isEmpty()) {
             warn += "No tab lines found: a tab has one line of dashes and frets for each course, such as D|--5--7--|"
@@ -76,8 +79,15 @@ object TabParser {
 
     // ---------------------------------------------------------------- lines
 
-    /** A line of tab: [label] as written (null if none), the [body] from raw index [start], a repeat mark's [times] at its end. */
-    private class TabLine(val number: Int, val label: String?, val start: Int, val body: String, val times: Int, val weak: Boolean)
+    /**
+     * A line of tab: [label] as written (null if none), the [body] from raw index [start], a repeat mark's [times] at its
+     * end. A [weak] line has no name, bar or fret (an empty course, or a divider); [rule] if it's drawn with = or _.
+     * [note]: words written after the tab, left out.
+     */
+    private class TabLine(
+        val number: Int, val label: String?, val start: Int, val body: String, val times: Int, val weak: Boolean,
+        val bars: Int, val rule: Boolean = false, val note: String? = null,
+    )
 
     private sealed class Item
     private class Text(val number: Int, val text: String) : Item()
@@ -86,48 +96,86 @@ object TabParser {
     private const val MARKS = "-|:hpbrstvxHPBRSTVX/\\~()[]<>^*.,'+ "
 
     private fun normalize(line: String): String = buildString(line.length) {
-        for (c in line) append(
-            when (c) {
-                '–', '—', '―', '−', '─', '━', '‐', '‑', '‒', '=', '_' -> '-'
-                '｜', '¦', '│', '┃', '‖' -> '|'
-                '\u00A0', '\t', '\u2009', '\u202F' -> ' '
-                '×' -> 'x'
-                '∼', '〜', '～' -> '~'
-                else -> c
-            },
-        )
+        for (c in line) {
+            if (c == '\t') { do append(' ') while (length % 8 != 0); continue } // tab stops keep the columns lined up
+            append(
+                when (c) {
+                    '–', '—', '―', '−', '─', '━', '‐', '‑', '‒', '=', '_' -> '-'
+                    '｜', '¦', '│', '┃', '‖' -> '|'
+                    '\u00A0', '\u2009', '\u202F' -> ' '
+                    '×' -> 'x'
+                    '∼', '〜', '～' -> '~'
+                    else -> c
+                },
+            )
+        }
     }.trimEnd()
 
     private val LABEL = Regex("""^\s*([A-Za-zΑ-Ωα-ωΆ-Ώά-ώ]{1,3}[#♯♭]?\d?'?|[1-6](?=\s*[|)]))\s*(?=[|:)\]-])""")
-    private val REPEAT_PAREN = Regex("""[(\[]\s*(?:[xX*]\s*(\d{1,2})|(\d{1,2})\s*[xX])\s*[)\]]\s*$""")
-    private val REPEAT_BARE = Regex("""(?:(?<=[\s|])|^)(?:[xX*]\s*(\d{1,2})|(\d{1,2})\s*[xX])\s*$""")
-    private val REPEAT_WORDS = Regex("""\s(?:repeat|rep\.?|επαναληψη|δις)(?![\p{L}])\s*(?:[xX]\s*)?(\d{1,2})?\s*(?:times|φορες)?\s*$""", RegexOption.IGNORE_CASE)
-    private val REPEAT_LINE = Regex(
-        """^[\s(\[*]*(?:[xX]\s*(\d{1,2})|(\d{1,2})\s*[xX]|(?:repeat|rep\.?|επαναληψη|δις)(?![\p{L}])[\s:]*(?:[xX]\s*)?(\d{1,2})?\s*(?:times|φορες)?)[\s)\].!:]*$""",
-        RegexOption.IGNORE_CASE,
-    )
+    // Repeat marks, on lowercase text without accents: x2, 2x, *2, 3 times, 2 φορές, twice, δις; "repeat" with or without one.
+    private const val COUNT = """(?:x\s*(\d{1,2})|\*\s*(\d{1,2})|(\d{1,2})\s*(?:x|times|φορες)(?![\p{L}])|twice|δις)"""
+    private const val REPEAT = """(?:repeat|rep\.?|επαναληψη)(?![\p{L}])[\s:]*(?:$COUNT|(\d{1,2}))?"""
+    private val REPEAT_PAREN = Regex("""[(\[]\s*(?:$REPEAT|$COUNT)\s*[)\]]\s*$""")
+    private val REPEAT_BARE = Regex("""(?:(?<=[\s|:])|^)(?:$REPEAT|$COUNT)\s*$""")
+    private val REPEAT_GLUED = Regex("""(?<=-)x\s?(\d{1,2})\s*$""") // --5--x2
+    private val REPEAT_LINE = Regex("""^[\s(\[*]*(?:$REPEAT|$COUNT)[\s)\].!:]*$""")
+    /** A repeat count between bars inside a line: | x2 | (the stretch before it plays twice). */
+    private val REPEAT_MID = Regex("""(?<=[\s|])[xX]\s?(\d{1,2})(?=[\s|])""")
     private val HEADER = Regex(
         """^[\s\[(*#<-]*(?:(?:repeat|play|again|επαναληψη|ξανα)\s+(?:the\s+|το\s+|τη\s+|την\s+)?)?""" +
             """(intro|verse|chorus|refrain|bridge|outro|solo|interlude|ending|coda|instrumental|""" +
             """εισαγωγη|κουπλε|στροφη|ρεφρεν|γεφυρα|σολο|τελος|ταξιμι|ενδιαμεσο|οργανικο|γυρισμα)(?![\p{L}])\s*(\d*)(.*)$""",
         RegexOption.IGNORE_CASE,
     )
-    private val TIMES_IN = Regex("""(?:[xX]\s*(\d{1,2})|(\d{1,2})\s*[xX])(?![\p{L}\d])|(?:repeat|επαναληψη|δις)""", RegexOption.IGNORE_CASE)
+    private val TIMES_IN = Regex("""(?:x\s*(\d{1,2})|(\d{1,2})\s*(?:x|times|φορες))(?![\p{L}\d])|twice|δις|repeat|επαναληψη""")
+    /** A part a heading names: its word and number ("verse 2"), not a repeat count ("chorus 3 times"). */
+    private val PART = Regex(
+        """(intro|verse|chorus|refrain|bridge|outro|solo|interlude|ending|coda|instrumental|εισαγωγη|κουπλε|στροφη|ρεφρεν|""" +
+            """γεφυρα|σολο|τελος|ταξιμι|ενδιαμεσο|οργανικο|γυρισμα)(?![\p{L}])(?:\s*(\d{1,2})(?!\s*(?:x|times|φορες)(?![\p{L}])|\d))?""",
+    )
+    /** Words a heading may hold besides part names and counts ("Chorus (same as above)", "Repeat verse and chorus"). */
+    private val FILLER = setOf(
+        "same", "above", "before", "again", "like", "the", "then", "and", "all", "once", "more", "play", "from", "top",
+        "repeat", "rep", "και", "ιδιο", "ιδια", "οπως", "πριν", "ξανα", "παλι", "απο", "πανω", "την", "του", "της",
+    )
 
     /** [s] without accents, lowercase (Greek headings and note names are written with or without them). */
     private fun plain(s: String) = Normalizer.normalize(s, Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "").lowercase()
 
+    /** [plain] keeping each character in its place (so a match's indices are [s]'s). */
+    private fun folded(s: String) = buildString(s.length) {
+        for (c in s) {
+            val d = Normalizer.normalize(c.toString(), Normalizer.Form.NFD)
+            append((d.firstOrNull { Character.getType(it) != Character.NON_SPACING_MARK.toInt() } ?: c).lowercaseChar())
+        }
+    }
+
     /** The repeat count a match of the REPEAT regexes carries (2 when it names none). */
     private fun count(m: MatchResult) = m.groupValues.drop(1).firstOrNull { it.isNotEmpty() }?.toInt()?.coerceIn(1, 16) ?: 2
 
-    /** The line as tab, or null if it isn't one. */
-    private fun tabLine(s: String, number: Int): TabLine? {
+    /** The line as tab ([raw]: as written, before [normalize]), or null if it isn't one. */
+    private fun tabLine(s: String, raw: String, number: Int): TabLine? {
         if (s.isBlank()) return null
         var end = s.length
         var times = 1
-        val p = plain(s)
-        val tail = REPEAT_PAREN.find(s) ?: REPEAT_BARE.find(s) ?: REPEAT_WORDS.find(p)
+        val f = folded(s)
+        val tail = REPEAT_PAREN.find(f) ?: REPEAT_BARE.find(f) ?: REPEAT_GLUED.find(f)
         if (tail != null && tail.range.first > 0) { times = count(tail); end = tail.range.first }
+        // Words after the tab ("let ring", a chord name, the string's name again after its last bar): left out.
+        var note: String? = null
+        val last = (end - 1 downTo 0).firstOrNull { s[it] == '|' || s[it] == '-' || s[it] == '~' || s[it].isDigit() }
+        if (last != null && last + 1 < end) {
+            val after = s.substring(last + 1, end)
+            val words = after.trim()
+            val name = s[last] == '|' && words.length <= 3 && labelPitch(words) != null
+            val kept = s.substring(0, last + 1)
+            if (words.any { it.isLetter() } && (after.first() == ' ' || name) && HEADER.find(plain(words)) == null &&
+                (kept.any { it.isDigit() } || kept.contains('|'))
+            ) {
+                end = last + 1
+                if (!name) note = words
+            }
+        }
         val head = LABEL.find(s)
         val label: String?
         var start: Int
@@ -150,33 +198,42 @@ object TabParser {
             else -> return null // a letter or sign tabs don't use: lyrics, chord names, a heading
         }
         val bars = body.count { it == '|' }
-        if (dashes < 2) return null
+        // Spaces may stand for the dashes on a named line with bars: D|  5  7  8  |
+        if (dashes < 2 && !(label != null && bars > 0 && (digits > 0 || body.all { it == ' ' || it == '|' }))) return null
         if (label == null && bars == 0 && dashes < 4) return null
         val weak = digits == 0 && label == null && bars == 0
-        return TabLine(number, label, start, body, times, weak)
+        val rule = weak && raw.any { it == '=' || it == '_' } && raw.none { it == '-' }
+        return TabLine(number, label, start, body, times, weak, bars, rule, note)
     }
 
     /** Lines that look like tab (dashes and frets) but couldn't be read, to warn about. */
     private fun looksLikeTab(s: String) = s.count { it == '-' } >= 6 && s.any { it.isDigit() } && HEADER.find(plain(s)) == null
 
-    private fun classify(src: List<String>, warn: MutableSet<String>): List<Item> {
+    private fun classify(raw: List<String>, src: List<String>, warn: MutableSet<String>): List<Item> {
         val items = ArrayList<Item>()
         val block = ArrayList<TabLine>()
         fun flush() {
             if (block.isEmpty()) return
-            // A row of dashes alone above or below the tab, of another length, is a divider rather than an empty course.
+            // A row of dashes alone above or below the tab is a divider rather than an empty course: drawn with = or _, of
+            // another length, or plain where the tab's lines have names or bars.
             val real = block.filter { !it.weak }
             if (real.isNotEmpty()) {
                 val len = real.map { it.body.length }.sorted()[real.size / 2]
-                while (block.isNotEmpty() && block.first().weak && kotlin.math.abs(block.first().body.length - len) > len / 5) block.removeAt(0)
-                while (block.isNotEmpty() && block.last().weak && kotlin.math.abs(block.last().body.length - len) > len / 5) block.removeAt(block.size - 1)
+                val marked = real.any { it.label != null || it.bars > 0 }
+                fun divider(l: TabLine) = l.weak && (l.rule || marked || kotlin.math.abs(l.body.length - len) > len / 5)
+                while (block.isNotEmpty() && divider(block.first())) block.removeAt(0)
+                while (block.isNotEmpty() && divider(block.last())) block.removeAt(block.size - 1)
                 items += Block(block.toList())
             }
             block.clear()
         }
         for ((n, s) in src.withIndex()) {
-            val t = tabLine(s, n + 1)
-            if (t != null) { block += t; continue }
+            val t = tabLine(s, raw[n], n + 1)
+            if (t != null) {
+                block += t
+                if (t.note != null) warn += "Left out \"${t.note.take(30)}\" written after the tab on line ${n + 1}"
+                continue
+            }
             flush()
             items += Text(n + 1, s)
             if (looksLikeTab(s)) warn += "Line ${n + 1} looks like tab but couldn't be read: \"${s.trim().take(40)}\""
@@ -239,8 +296,13 @@ object TabParser {
         var four = 0
         for (b in blocks) {
             val n = b.lines.size
+            // String names repeating every 3 (or 4) lines: systems written without a blank line between them.
+            val names = b.lines.map { it.label?.let { x -> plain(x) } }
+            fun repeats(k: Int) = n > 4 && n % k == 0 && names.all { it != null } && names.chunked(k).all { it == names.take(k) }
             when {
                 namesFourCourse(b.lines) -> four++
+                repeats(3) && !repeats(4) -> three++
+                repeats(4) -> four++
                 n == 4 || (n > 4 && n % 4 == 0 && n % 3 != 0) -> four++
                 n == 3 || (n > 4 && n % 3 == 0 && n % 4 != 0 && n != 6) -> three++
                 n == 6 && pitches(b.lines)?.let { it.take(3) == it.drop(3) } == true -> three++
@@ -264,8 +326,10 @@ object TabParser {
         var name: String? = null
         var nameTimes = 1
         var nameFrom = 0
-        val named = ArrayList<Triple<String, Int, Int>>() // word, from, to
+        val named = ArrayList<Triple<String, Int, Int>>() // name ("verse 2"), from, to
         var lastSystem: IntRange? = null // sections index range of the last system since the heading
+        var pendingOpen: Int? = null // a |: not closed yet: the note it's at, and the first of the sections since
+        var pendingSection = 0
         var muted = 0
         var bends = 0
         val tooHigh = ArrayList<Int>()
@@ -280,14 +344,23 @@ object TabParser {
         private fun text(t: Text) {
             val p = plain(t.text).trim()
             if (p.isEmpty()) return
-            val h = HEADER.find(p)
-            if (h != null && p.length <= 40 && h.groupValues[3].split(Regex("[^\\p{L}]+")).count { it.length > 2 && !it.startsWith("rep") } <= 1) {
-                closeHeading()
-                val word = canonical(h.groupValues[1])
-                name = if (h.groupValues[2].isNotEmpty()) "$word ${h.groupValues[2]}" else word
-                nameTimes = TIMES_IN.find(h.groupValues[3])?.let { count(it) } ?: 1
-                nameFrom = sections.size
-                lastSystem = null
+            if (HEADER.find(p) != null && p.length <= 40) {
+                // The parts it names ("Verse 2", "Verse and chorus"), a repeat count, and words such as "same as above".
+                val parts = PART.findAll(p).map { m -> canonical(m.groupValues[1]) + (if (m.groupValues[2].isNotEmpty()) " " + m.groupValues[2] else "") }.toList()
+                val rest = PART.replace(p, " ")
+                val other = TIMES_IN.replace(rest, " ").split(Regex("[^\\p{L}]+")).count { it.length > 2 && it !in FILLER && !it.startsWith("rep") }
+                val after = PART.find(p)?.let { PART.replace(p.substring(it.range.last + 1), " ") } ?: "" // "Repeat chorus" plays it once
+                if (other <= 1 && parts.isNotEmpty()) {
+                    // Each part but the last is played as written before; the last one's tab may follow.
+                    for (part in parts.dropLast(1)) { closeHeading(); name = part; closeHeading() }
+                    closeHeading()
+                    name = parts.last()
+                    nameTimes = TIMES_IN.find(after)?.let { count(it) } ?: 1
+                    nameFrom = sections.size
+                    lastSystem = null
+                    return
+                }
+                warn += "Read line ${t.number} as text, not as a part's heading: \"${t.text.trim().take(40)}\""
                 return
             }
             val r = REPEAT_LINE.find(p) ?: return
@@ -337,11 +410,11 @@ object TabParser {
                         sections += s
                     }
                 }
-                if (nm != null) named += Triple(nm.substringBefore(' '), sections[nameFrom].from, sections.last().to)
+                if (nm != null) named += Triple(nm, sections[nameFrom].from, sections.last().to)
             } else if (nm != null) {
                 // A heading without tab plays the part of that name written before.
                 val word = nm.substringBefore(' ')
-                val before = named.lastOrNull { it.first == word }
+                val before = named.lastOrNull { it.first == nm } ?: named.lastOrNull { it.first.substringBefore(' ') == word }
                 if (before != null) sections += TabSection(before.second, before.third, nameTimes, nm)
                 else warn += "\"$nm\" has no tab, and no earlier $word to repeat"
             }
@@ -374,54 +447,63 @@ object TabParser {
             val raw = ArrayList<RawNote>()
             for ((li, l) in lines.withIndex()) scan(l, li, shift[li], raw)
             val width = lines.indices.maxOf { shift[it] + lines[it].body.length }
-            // Repeat bars: |: starts a repeated stretch, :| ends it (at the system's start when nothing opened it).
+            // Repeat bars: |: starts a repeated stretch, :| (or a count between bars: | x3 |) ends it. A :| repeats from
+            // the last |:, even one in an earlier system, else from the system's start or the last :|.
             val opens = HashSet<Int>()
-            val closes = HashSet<Int>()
+            val closes = HashMap<Int, Int>() // column, and the count written there (0: none)
             for ((li, l) in lines.withIndex()) {
                 for (i in 0 until l.body.length - 1) {
                     if (l.body[i] == '|' && l.body[i + 1] == ':') opens += i + 1 + shift[li]
-                    if (l.body[i] == ':' && l.body[i + 1] == '|') closes += i + shift[li]
+                    if (l.body[i] == ':' && l.body[i + 1] == '|') closes.putIfAbsent(i + shift[li], 0)
                 }
+                for (m in REPEAT_MID.findAll(l.body)) closes[m.range.first + shift[li]] = m.groupValues[1].toInt().coerceIn(1, 16)
             }
             val sysFrom = notes.size
             val events = events(raw, courses)
             for (e in events) notes += e.copy(column = e.column + offset, system = system)
             val times = lines.maxOf { it.times }
-            val firstSection = sections.size
-            val blocks = repeatBlocks(dedupe(opens), dedupe(closes))
-            if (blocks.isEmpty()) {
-                if (notes.size > sysFrom) sections += TabSection(sysFrom, notes.size, times, name)
-            } else {
-                var at = sysFrom
-                for ((a, z) in blocks) {
-                    val from = (sysFrom until notes.size).firstOrNull { notes[it].column - offset >= a } ?: notes.size
-                    val to = (sysFrom until notes.size).firstOrNull { notes[it].column - offset >= z } ?: notes.size
-                    if (from > at) sections += TabSection(at, from, 1, name)
-                    if (to > from) sections += TabSection(from, to, if (blocks.size == 1 && times > 1) times else 2, name)
-                    at = maxOf(at, to)
+            var firstSection = sections.size
+            val closed = dedupe(closes)
+            val marks = (dedupe(opens.associateWith { -1 }) + closed).sortedBy { it.first }
+            fun noteAt(col: Int) = (sysFrom until notes.size).firstOrNull { notes[it].column - offset >= col } ?: notes.size
+            var at = sysFrom // the notes before it are in sections
+            var from = pendingOpen ?: sysFrom // where a :| repeats from
+            for ((col, count) in marks) {
+                val k = noteAt(col)
+                if (count < 0) {
+                    if (k > at) sections += TabSection(at, k, 1, name)
+                    at = maxOf(at, k)
+                    from = at
+                    pendingOpen = at
+                    pendingSection = sections.size
+                    continue
                 }
-                if (notes.size > at) sections += TabSection(at, notes.size, 1, name)
+                val opened = pendingOpen
+                if (opened != null && opened < sysFrom) {
+                    // Opened in an earlier system: the parts read since then are the repeated part.
+                    while (sections.size > pendingSection) sections.removeAt(sections.size - 1)
+                    firstSection = minOf(firstSection, sections.size)
+                    nameFrom = minOf(nameFrom, sections.size)
+                }
+                val n = if (count > 0) count else if (closed.size == 1 && times > 1) times else 2
+                if (k > from) sections += TabSection(from, k, n, name)
+                at = maxOf(at, k)
+                from = at
+                pendingOpen = null
             }
+            if (notes.size > at) sections += TabSection(at, notes.size, if (marks.isEmpty()) times else 1, name)
             lastSystem = if (sections.size > firstSection) firstSection until sections.size else null
             offset += width + 1
             system++
         }
 
-        private fun dedupe(cols: Set<Int>): List<Int> {
-            val out = ArrayList<Int>()
-            for (c in cols.sorted()) if (out.isEmpty() || c - out.last() > 2) out += c
-            return out
-        }
-
-        /** The repeated stretches (from column, to column) the bars mark. */
-        private fun repeatBlocks(opens: List<Int>, closes: List<Int>): List<Pair<Int, Int>> {
+        /** Marks at [cols] (column to count), those within two columns of each other as one (the larger count). */
+        private fun dedupe(cols: Map<Int, Int>): List<Pair<Int, Int>> {
             val out = ArrayList<Pair<Int, Int>>()
-            var open = 0
-            var oi = 0
-            for (c in closes) {
-                while (oi < opens.size && opens[oi] < c) open = opens[oi++]
-                out += open to c
-                open = c
+            for (c in cols.keys.sorted()) {
+                val last = out.lastOrNull()
+                if (last != null && c - last.first <= 2) out[out.size - 1] = last.first to maxOf(last.second, cols.getValue(c))
+                else out += c to cols.getValue(c)
             }
             return out
         }
@@ -467,11 +549,16 @@ object TabParser {
         private fun scan(l: TabLine, li: Int, shift: Int, out: MutableList<RawNote>) {
             val b = l.body
             val mine = ArrayList<RawNote>()
+            val counts = REPEAT_MID.findAll(b).associate { it.range.first to it.range.last } // | x2 |: not notes
             var prevEnd = 0
             var i = 0
             while (i < b.length) {
                 val c = b[i]
-                if (c.isDigit()) {
+                val countEnd = counts[i]
+                if (countEnd != null) {
+                    i = countEnd + 1
+                    prevEnd = i
+                } else if (c.isDigit()) {
                     var j = i
                     while (j < b.length && b[j].isDigit()) j++
                     for ((off, len) in splitFrets(b.substring(i, j), l.number)) {

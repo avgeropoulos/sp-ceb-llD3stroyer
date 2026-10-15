@@ -127,14 +127,38 @@ class TabAlignerTest {
         spoiled.add(6, spoiled[5].copy(fret = spoiled[5].fret + 2, time = (spoiled[5].time + spoiled[6].time) / 2)) // one added
         val tab = TabParser.parse(TabText.write(spoiled, tetra, 0.075, rnd = Random(4)), tetra)
         val a = TabAligner.align(tab, AnalysisData(act, null), base(act))
-        // The mis-fretted note is placed where its played note is, and said to differ.
+        // The mis-fretted note is placed where its played note is, at the pitch heard, and said to differ.
         val wrong = a.song.notes.indices.single { a.sources[it] == 3 }
         assertTrue(abs(a.song.notes[wrong].start - heardAt(song[3].time)) < 0.012)
-        assertTrue(3 in a.differs, "${a.differs}")
+        assertEquals(song[3].midi, a.song.notes[wrong].midi)
+        assertEquals(tetra.midiAt(a.song.notes[wrong].course, a.song.notes[wrong].fret), song[3].midi)
+        assertTrue(3 in a.differs && 3 in a.missing, "${a.differs} ${a.missing}")
+        assertEquals(a.total, a.matched + a.missing.size)
+        // The note left out of the tab is still there, from the prepared line.
+        assertNotNull(near(a, song[10].time, song[10].midi, fromTab = false)?.takeIf { abs(it.start - heardAt(song[10].time)) < 0.012 })
         // Everything else written lands on its note.
         var ok = 0
         for ((i, p) in song.withIndex()) if (i != 3 && i != 10 && near(a, p.time, p.midi)?.let { abs(it.start - heardAt(p.time)) < 0.012 } == true) ok++
         assertTrue(ok >= song.size - 3, "$ok of ${song.size - 2}")
+    }
+
+    @Test
+    fun notesTheTabLeavesOutStayInTheSong() {
+        // Tabs leave out ornaments and fills: where the prepared line hears those notes clearly, they stay.
+        val song = phrase(intro, 1.0, 0.3) + phrase(verse, 4.5, 0.3)
+        val act = activations(song, 9.0)
+        val b = base(act)
+        fun has(notes: List<SongNote>, p: Played) = notes.any { it.midi == p.midi && abs(it.start - heardAt(p.time)) < 0.012 }
+        assertTrue(song.all { has(b.notes, it) })
+        val all = tabNotes(song)
+        for (drop in listOf(listOf(10), listOf(5, 12), listOf(2, 6, 11, 15))) {
+            val tab = TabParser.parse(TabText.write(all.filterIndexed { i, _ -> i !in drop }, tetra, 0.075, rnd = Random(4)), tetra)
+            val a = TabAligner.align(tab, AnalysisData(act, null), b)
+            assertEquals(song.size - drop.size, a.matched, "$drop")
+            assertTrue(song.all { has(a.song.notes, it) }, "$drop: ${song.filter { !has(a.song.notes, it) }}")
+            for (i in drop) assertEquals(-1, a.sources[a.song.notes.indexOfFirst { it.midi == song[i].midi && abs(it.start - heardAt(song[i].time)) < 0.012 }])
+            assertEquals(song.size, a.song.notes.size, "$drop: no other line notes come in")
+        }
     }
 
     @Test
@@ -203,6 +227,27 @@ class TabAlignerTest {
         var ok = 0
         for (p in song) if (near(a, p.time, p.midi)?.let { abs(it.start - heardAt(p.time)) < 0.012 } == true) ok++
         assertTrue(ok >= song.size * 0.95, "$ok of ${song.size}")
+
+        // A figure on a few pitches over and over (an ostinato), written out: every candidate fits hundreds of tab notes.
+        val figure = listOf(62, 62, 65, 62, 62, 62, 67, 65)
+        val ostinato = ArrayList<Played>()
+        t = 1.0
+        while (t < 235) { for (m in figure) { ostinato += Played(t, m); t += 0.2 }; t += 0.2 }
+        val act2 = activations(ostinato, 240.0)
+        val b2 = base(act2)
+        val tab2 = TabParser.parse(TabText.write(tabNotes(ostinato), tetra, 0.05, rnd = Random(5)), tetra)
+        TabAligner.align(tab2, AnalysisData(act2, null), b2)
+        val t1 = System.nanoTime()
+        val a2 = TabAligner.align(tab2, AnalysisData(act2, null), b2)
+        val ms2 = (System.nanoTime() - t1) / 1e6
+        println("4-minute ostinato, ${tab2.notes.size} tab notes: %.0f ms".format(ms2))
+        assertTrue(ms2 < 5000, "took $ms2 ms")
+        var own = 0
+        for ((i, p) in ostinato.withIndex()) {
+            val k = a2.sources.indexOf(i)
+            if (k >= 0 && abs(a2.song.notes[k].start - heardAt(p.time)) < 0.012) own++
+        }
+        assertTrue(own >= ostinato.size * 0.95, "$own of ${ostinato.size} on their own note")
     }
 
     @Test

@@ -254,4 +254,161 @@ class TabParserTest {
         )
         assertEquals(listOf(Articulation.PICK, Articulation.PICK), tab.notes.map { it.articulation })
     }
+
+    @Test
+    fun aDividerNextToTheTabIsNoCourse() {
+        // Dashes, = or _ right above or below a system, about as wide as it, with no blank line between.
+        for (rule in listOf("-------------", "=============", "_____________")) {
+            val tri3 = TabParser.parse("$rule\nd|--3--5--7--|\nA|------------|\nD|--0---------|\n$rule", tri)
+            assertEquals(tri, tri3.instrument, rule)
+            assertEquals(listOf(65, 67, 69), tri3.pitches(), rule)
+            assertTrue(tri3.warnings.isEmpty(), "$rule: ${tri3.warnings}")
+        }
+        val tab = TabParser.parse(
+            """
+            Verse
+            ====================
+            D|--5--7--8--7--5--|
+            A|-----------------|
+            F|-----------------|
+            C|-----------------|
+            """.trimIndent(), tetra,
+        )
+        assertEquals(listOf(67, 69, 70, 69, 67), tab.pitches())
+        assertTrue(tab.warnings.isEmpty(), "${tab.warnings}")
+    }
+
+    @Test
+    fun trichordoSystemsWithoutBlankLinesForATetrachordoPlayer() {
+        // Twelve lines (3 and 4 both divide them): the names repeating every three lines tell the trichordo.
+        val tab = TabParser.parse(
+            """
+            d|--5--7--|
+            A|--------|
+            D|--------|
+            d|--8-----|
+            A|--------|
+            D|-----2--|
+            d|--3--5--|
+            A|--------|
+            D|--------|
+            d|--7--8--|
+            A|--------|
+            D|--------|
+            """.trimIndent(), tetra,
+        )
+        assertEquals(tri, tab.instrument)
+        assertEquals(listOf(67, 69, 70, 52, 65, 67, 69, 70), tab.pitches())
+        assertTrue(tab.forOtherBouzouki)
+    }
+
+    @Test
+    fun repeatCountsWrittenInWords() {
+        fun times(line: String, inst: Instrument = tri): Int {
+            val tab = TabParser.parse("$line\nA|----------|\nD|----------|", inst)
+            assertEquals(2, tab.notes.size, "$line: ${tab.warnings}")
+            assertTrue(tab.warnings.isEmpty(), "$line: ${tab.warnings}")
+            return tab.sections.single().times
+        }
+        assertEquals(3, times("d|--5--7--| 3 times"))
+        assertEquals(3, times("d|--5--7--| (3 times)"))
+        assertEquals(2, times("d|--5--7--| twice"))
+        assertEquals(2, times("d|--5--7--| 2 φορές"))
+        assertEquals(2, times("d|--5--7--| δις"))
+        assertEquals(4, times("d|--5--7--| repeat 4 times"))
+        assertEquals(2, times("d|--5--7--x2"))
+        // A heading's count, not its number.
+        val tab = TabParser.parse("Chorus 3 times\nd|--5--7--|\nA|---------|\nD|---------|", tri)
+        assertEquals(listOf(TabSection(0, 2, 3, "chorus")), tab.sections)
+    }
+
+    @Test
+    fun repeatsAcrossSystemsAndBetweenBars() {
+        val across = TabParser.parse(
+            """
+            d||:--3--5--|
+            A||:--------|
+            D||:--------|
+
+            d|--1--2--|
+            A|--------|
+            D|--------|
+
+            d|--7--8--:||
+            A|--------:||
+            D|--------:||
+            """.trimIndent(), tri,
+        )
+        assertEquals(listOf(TabSection(0, 6, 2)), across.sections)
+        // A count between bars is a repeat of what comes before it, not a muted note and a fret.
+        val between = TabParser.parse(
+            """
+            D|--5--7--8--| x3 |--10--8--|
+            A|-----------|    |---------|
+            F|-----------|    |---------|
+            C|-----------|    |---------|
+            """.trimIndent(), tetra,
+        )
+        assertEquals(listOf(67, 69, 70, 72, 70), between.pitches())
+        assertEquals(listOf(TabSection(0, 3, 3), TabSection(3, 5, 1)), between.sections)
+        assertTrue(between.warnings.isEmpty(), "${between.warnings}")
+    }
+
+    @Test
+    fun wordsAfterTheTabAreLeftOut() {
+        for (tail in listOf(" let ring", "  (slowly)", " Dm")) {
+            val tab = TabParser.parse("D|--5--7--8--|$tail\nA|-----------|\nF|-----------|\nC|-----------|", tetra)
+            assertEquals(listOf(67, 69, 70), tab.pitches(), tail)
+            assertEquals(listOf("Left out \"${tail.trim()}\" written after the tab on line 1"), tab.warnings)
+        }
+        // The string names written again after the last bar.
+        val both = TabParser.parse("D|--5--7--8--|D\nA|-----------|A\nF|-----------|F\nC|--3--------|C", tetra)
+        assertEquals(listOf(67, 69, 70), both.pitches())
+        assertEquals(listOf(listOf(0 to 3), emptyList(), emptyList()), both.notes.map { it.stack })
+        assertTrue(both.warnings.isEmpty(), "${both.warnings}")
+        // A heading after a row of dashes stays a heading.
+        assertEquals("chorus", TabParser.parse("------ Chorus\nD|--5--|\nA|-----|\nF|-----|\nC|-----|", tetra).sections.single().name)
+    }
+
+    @Test
+    fun headingsNamingSeveralPartsOrAPartAgain() {
+        val verseChorus = """
+            Verse 1
+            D|--5--7--|
+            A|--------|
+            F|--------|
+            C|--------|
+            Verse 2
+            D|--8--10--|
+            A|---------|
+            F|---------|
+            C|---------|
+            Chorus
+            D|--12--|
+            A|------|
+            F|------|
+            C|------|
+        """.trimIndent()
+        val again = TabParser.parse("$verseChorus\nRepeat verse 1 and chorus\nChorus (same as above)", tetra)
+        assertEquals(
+            listOf(TabSection(0, 2, 1, "verse 1"), TabSection(2, 4, 1, "verse 2"), TabSection(4, 5, 1, "chorus"),
+                TabSection(0, 2, 1, "verse 1"), TabSection(4, 5, 1, "chorus"), TabSection(4, 5, 1, "chorus")),
+            again.sections,
+        )
+        assertTrue(again.warnings.isEmpty(), "${again.warnings}")
+        // A line starting like a heading but saying more is text, and said so.
+        val text = TabParser.parse("$verseChorus\nChorus: play it softly with a light pick", tetra)
+        assertEquals(3, text.sections.size)
+        assertTrue(text.warnings.single().startsWith("Read line 16 as text"), "${text.warnings}")
+    }
+
+    @Test
+    fun spacesOrTabCharactersForDashes() {
+        val spaces = TabParser.parse("D|  5  7  8  7  5  |\nA|                 |\nF|                 |\nC|                 |", tetra)
+        assertEquals(listOf(67, 69, 70, 69, 67), spaces.pitches())
+        // Tab characters go to the next tab stop, so the columns stay lined up.
+        val tabs = TabParser.parse("D|\t5\t7\t8\t|\nA|\t-\t-\t-\t|\nF|\t-\t3\t-\t|\nC|\t-\t-\t-\t|", tetra)
+        assertEquals(listOf(67, 69, 70), tabs.pitches())
+        assertEquals(listOf(emptyList(), listOf(1 to 3), emptyList()), tabs.notes.map { it.stack })
+    }
 }
