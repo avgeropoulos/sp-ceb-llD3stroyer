@@ -167,10 +167,15 @@ class BasicPitch(private val env: OrtEnvironment, private val session: OrtSessio
 
             // Onset peaks (local maxima in time) above the threshold, latest first. The first frame
             // counts too (it has no frame before it), or audio that starts on a pluck loses that note.
+            // A flat top counts once, at its first frame: activations saved in steps (AnalysisData) often
+            // tie at a peak, which would otherwise lose the note.
             val peaks = ArrayList<Long>()
             for (t in 0 until nFrames - 1) for (k in 0 until N_KEYS) {
                 val v = onsets[t][k]
-                if ((t == 0 || v > onsets[t - 1][k]) && v > onsets[t + 1][k] && v >= onsetThresh) peaks += t.toLong() * N_KEYS + k
+                if (v < onsetThresh || (t > 0 && v <= onsets[t - 1][k])) continue
+                var next = t + 1
+                while (next < nFrames && onsets[next][k] == v) next++
+                if (next == nFrames || v > onsets[next][k]) peaks += t.toLong() * N_KEYS + k
             }
             for (p in peaks.indices.reversed()) {
                 val start = (peaks[p] / N_KEYS).toInt()
