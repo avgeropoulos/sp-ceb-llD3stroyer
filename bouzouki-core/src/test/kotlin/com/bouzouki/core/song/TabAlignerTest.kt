@@ -208,6 +208,147 @@ class TabAlignerTest {
         assertEquals(song.size, a.matched)
     }
 
+    /** How many of [played] are placed from the tab note given for each ([index]), where they're heard. */
+    private fun onOwnNote(a: TabAlignment, played: List<Played>, index: (Int) -> Int): Int = played.indices.count { i ->
+        a.song.notes.indices.any { k -> a.sources[k] == index(i) && abs(a.song.notes[k].start - heardAt(played[i].time)) < 0.012 }
+    }
+
+    /** Tab notes placed in [range] seconds. */
+    private fun tabNotesIn(a: TabAlignment, range: ClosedFloatingPointRange<Double>) =
+        a.song.notes.indices.filter { a.sources[it] >= 0 && a.song.notes[it].start in range }.map { a.sources[it] }
+
+    /** A tab of [parts] (notes and when they're written for), each its own block of lines. */
+    private fun partsTab(parts: List<Pair<List<Int>, Double>>, seed: Long): ParsedTab = TabParser.parse(
+        parts.mapIndexed { i, (ns, t) -> TabText.write(tabNotes(phrase(ns, t, if (ns == solo) 0.25 else 0.3)), tetra, 0.075, rnd = Random(seed + i)) }.joinToString("\n"),
+        tetra,
+    )
+
+    @Test
+    fun aTabWrittenOutInFullIsFollowedWhereItsVersesSoundTheSame() {
+        // The tab writes every verse out (the same tune each time, a block each). After the first verse the band plays on
+        // alone for a while, then two verses: they're the tab's second and third, going on through the tab, not its first
+        // two again (as well heard, but going back and leaving the last verse never played).
+        val tab = partsTab(listOf(intro to 1.0, verse to 4.5, verse to 8.4, verse to 12.3), 10)
+        val song = phrase(intro, 1.0, 0.3) + phrase(verse, 4.5, 0.3) + phrase(verse, 12.0, 0.3) + phrase(verse, 15.9, 0.3)
+        assertEquals(song.size, tab.notes.size)
+        val act = activations(song, 20.0)
+        val a = TabAligner.align(tab, AnalysisData(act, null), base(act))
+        val own = onOwnNote(a, song) { it }
+        assertTrue(own >= song.size - 2, "$own of ${song.size} from their own tab note")
+        // Played straight through: the tab notes come in the order they're written.
+        val order = a.song.notes.indices.filter { a.sources[it] >= 0 }.map { a.sources[it] }
+        assertEquals(order.sorted(), order)
+    }
+
+    @Test
+    fun aPartTheBandLeavesOutIsJumpedOverToTheNextVerse() {
+        // The tab: intro, verse, solo, verse, solo, verse, each part starting a system. The band leaves out the first
+        // solo: the second verse heard is the tab's second verse (going on through the tab), not the first again.
+        val v = verse.size
+        val o = solo.size
+        val parts = listOf(intro to 1.0, verse to 4.5, solo to 8.4, verse to 11.9, solo to 15.8, verse to 19.3)
+        val text = parts.mapIndexed { i, (ns, t) -> TabText.write(tabNotes(phrase(ns, t, if (ns == solo) 0.25 else 0.3)), tetra, 0.075, rnd = Random(20L + i)) }
+        val tab = TabParser.parse(text.joinToString("\n"), tetra)
+        val song = phrase(intro, 1.0, 0.3) + phrase(verse, 4.5, 0.3) + phrase(verse, 8.4, 0.3) + phrase(solo, 12.3, 0.25) + phrase(verse, 15.8, 0.3)
+        val act = activations(song, 20.0)
+        val a = TabAligner.align(tab, AnalysisData(act, null), base(act))
+        val n1 = intro.size
+        // Heard: intro, verse 1, verse 2 (tab notes after the first solo), solo 2, verse 3.
+        val own = onOwnNote(a, song) { i -> if (i < n1 + v) i else i + o }
+        assertTrue(own >= song.size - 2, "$own of ${song.size}")
+    }
+
+    @Test
+    fun anIntroPlayedAgainThatTheTabDoesntMarkIsFound() {
+        // The tab: intro, verse, verse, written out. The band plays the intro again before the second verse, unmarked: the
+        // intro again comes from the intro's tab notes, and the verse after it from the tab's second verse, back where the
+        // tab was (not its first verse again, which comes right after the intro in the tab).
+        val tab = partsTab(listOf(intro to 1.0, verse to 4.5, verse to 8.4), 7)
+        val song = phrase(intro, 1.0, 0.3) + phrase(verse, 4.5, 0.3) + phrase(intro, 9.0, 0.3) + phrase(verse, 12.5, 0.3)
+        val act = activations(song, 16.5)
+        val a = TabAligner.align(tab, AnalysisData(act, null), base(act))
+        val n1 = intro.size
+        val n2 = n1 + verse.size
+        val own = onOwnNote(a, song) { i -> if (i < n2) i else if (i < n2 + n1) i - n2 else i - n1 }
+        assertTrue(own >= song.size - 2, "$own of ${song.size}")
+        assertTrue(a.passes.size >= 2, "${a.passes}")
+    }
+
+    @Test
+    fun theFillsBetweenSungLinesAreFoundWhereTheTabWritesThem() {
+        // The tab writes the tune all through (the singer's lines and the bouzouki's fills between them); only the
+        // fills are played. Each fill is found where the tab writes it, and the sung lines get no tab notes.
+        val fill1 = phrase(intro, 5.0, 0.25)
+        val fill2 = phrase(solo, 11.5, 0.25)
+        val written = phrase(verse, 1.0, 0.3) + fill1 + phrase(verse, 7.4, 0.3) + fill2
+        val act = activations(fill1 + fill2, 15.0)
+        val tab = TabParser.parse(TabText.write(tabNotes(written), tetra, 0.075, rnd = Random(8)), tetra)
+        val a = TabAligner.align(tab, AnalysisData(act, null), base(act))
+        val v = verse.size
+        val own = onOwnNote(a, fill1 + fill2) { i -> if (i < fill1.size) v + i else 2 * v + i }
+        assertTrue(own >= fill1.size + fill2.size - 2, "$own of ${fill1.size + fill2.size}")
+        // The sung lines: the band's chords and stray notes there take no tab notes.
+        val sung = tabNotesIn(a, 0.5..4.8) + tabNotesIn(a, 7.4..11.3)
+        assertTrue(sung.isEmpty(), "tab notes placed in the sung lines: $sung")
+    }
+
+    @Test
+    fun theBandAloneBeforeTheTabStartsGetsNoTabNotes() {
+        // Six seconds of the band (chord tones in the bouzouki's range, stray notes) before the intro starts.
+        val song = phrase(intro, 6.0, 0.3) + phrase(verse, 9.5, 0.3)
+        val act = activations(song, 14.0, seed = 11)
+        val tab = TabParser.parse(TabText.write(tabNotes(song), tetra, 0.075, rnd = Random(9)), tetra)
+        val a = TabAligner.align(tab, AnalysisData(act, null), base(act))
+        assertEquals(emptyList(), tabNotesIn(a, 0.0..5.9))
+        val own = onOwnNote(a, song) { it }
+        assertTrue(own >= song.size - 2, "$own of ${song.size}")
+    }
+
+    @Test
+    fun tabNotesHeardNowhereAreNotSpreadOverALongGap() {
+        // The tab writes a note between the intro and the verse, all in one line; the band leaves it out and plays on alone
+        // for four seconds before the verse. The pass goes on over the pause, and the note heard nowhere isn't put
+        // somewhere in it (where its columns would: much longer than they say).
+        val gapNote = Played(3.8, 72)
+        val written = phrase(intro, 1.0, 0.3) + gapNote + phrase(verse, 4.1, 0.3)
+        val song = phrase(intro, 1.0, 0.3) + phrase(verse, 8.1, 0.3)
+        val act = activations(song, 12.5)
+        val tab = TabParser.parse(TabText.write(tabNotes(written), tetra, 0.075, width = 200), tetra)
+        assertEquals(1, tab.notes.map { it.system }.distinct().size)
+        val a = TabAligner.align(tab, AnalysisData(act, null), base(act))
+        assertEquals(1, a.passes.size, "${a.passes}")
+        assertEquals(emptyList(), tabNotesIn(a, 3.6..7.9))
+        val own = onOwnNote(a, song) { i -> if (i < intro.size) i else i + 1 }
+        assertTrue(own >= song.size - 2, "$own of ${song.size}")
+    }
+
+    @Test
+    fun theTabsSectionsAreFollowed() {
+        // A score's form unfolded (as from a D.S.): intro and verse, the verse again, then the solo.
+        val song = phrase(intro, 1.0, 0.3) + phrase(verse, 4.5, 0.3) + phrase(verse, 8.4, 0.3) + phrase(solo, 12.3, 0.25)
+        val act = activations(song, 16.0)
+        val written = phrase(intro, 1.0, 0.3) + phrase(verse, 4.5, 0.3) + phrase(solo, 12.3, 0.25)
+        val parsed = TabParser.parse(TabText.write(tabNotes(written), tetra, 0.075, rnd = Random(13)), tetra)
+        val n1 = intro.size
+        val n2 = n1 + verse.size
+        val tab = parsed.copy(sections = listOf(TabSection(0, n2), TabSection(n1, n2), TabSection(n2, written.size)))
+        val a = TabAligner.align(tab, AnalysisData(act, null), base(act))
+        val own = onOwnNote(a, song) { i -> if (i < n2) i else i - verse.size }
+        assertTrue(own >= song.size - 2, "$own of ${song.size}")
+        // Through the intro and verse, then from the verse again on through the solo.
+        assertEquals(listOf(0 to n2 - 1, n1 to written.size - 1), merge(a.passes.map { it.from to it.to }))
+    }
+
+    /** Passes one straight after another in the tab, made one (where to break a pass doesn't matter here). */
+    private fun merge(passes: List<Pair<Int, Int>>): List<Pair<Int, Int>> {
+        val out = ArrayList<Pair<Int, Int>>()
+        for (p in passes) {
+            val last = out.lastOrNull()
+            if (last != null && p.first == last.second + 1) out[out.size - 1] = last.first to p.second else out += p
+        }
+        return out
+    }
+
     @Test
     fun aFourMinuteSongIsLinedUpQuickly() {
         // Verse after verse for four minutes, the tab written out in full.

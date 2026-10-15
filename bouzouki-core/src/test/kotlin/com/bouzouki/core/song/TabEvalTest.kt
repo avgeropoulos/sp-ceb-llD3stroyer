@@ -13,7 +13,8 @@ import kotlin.test.assertTrue
  * The tab aligner on the scratch evaluation's synthesized songs, whose exact bouzouki notes are known. Tabs are written
  * from the ground truth ([TabText]) and spoiled the way real tabs are (notes left out or added, wrong frets, an octave
  * or a key off, written for the other bouzouki, rhythm only roughly kept, only the first verse, repeats written once),
- * read back with [TabParser] and lined up with each song's cached activations. Reports how far the aligned notes are
+ * read back with [TabParser] and lined up with each song's cached activations; each also with bar lines (", bars": every
+ * four beats of the written notes, as a PDF score or a text tab with | has them). Reports how far the aligned notes are
  * from where they're played, how many land within 50 ms, what happens in parts the tab doesn't cover, and the time;
  * checks that no kind of tab leaves the song's line worse than the prepared line.
  * TAB_EVAL_DIR names the folder holding kotlin_legato/ (songs without a form) and kotlin_tabs/ (songs with intro,
@@ -256,8 +257,20 @@ class TabEvalTest {
         return tp
     }
 
-    private fun score(song: Song, v: Variant, base: SongAnalysis, par: TabAligner.Params): Score {
-        val tab = TabParser.parse(v.text, Instrument.TETRACHORDO)
+    /**
+     * The tab [read] from [v] with its bars: each note's bar counted every four beats from the song's first note, by the
+     * times the notes are written for (a note a little early still in the bar it starts).
+     */
+    private fun barred(read: ParsedTab, v: Variant, song: Song): ParsedTab {
+        if (read.notes.size != v.written.size) return read
+        val bar = 240.0 / song.bpm
+        val t0 = song.gt.first().start
+        return read.copy(notes = read.notes.mapIndexed { j, n -> n.copy(bar = Math.floor((v.written[j].time - t0) / bar + 0.02).toInt()) })
+    }
+
+    private fun score(song: Song, v: Variant, base: SongAnalysis, par: TabAligner.Params, bars: Boolean): Score {
+        val read = TabParser.parse(v.text, Instrument.TETRACHORDO)
+        val tab = if (bars) barred(read, v, song) else read
         val s = Score()
         if (tab.notes.size != v.written.size) println("  ${song.name} ${v.name}: wrote ${v.written.size} notes, read ${tab.notes.size}; ${tab.warnings}")
         val data = AnalysisData(song.act, song.attacks)
@@ -271,6 +284,11 @@ class TabEvalTest {
         val placedAt = HashMap<Int, MutableList<Double>>()
         for ((k, src) in a.sources.withIndex()) if (src >= 0) placedAt.getOrPut(src) { ArrayList() } += a.song.notes[k].start
         val count = minOf(tab.notes.size, v.written.size)
+        if (TabAligner.log != null) {
+            // Looking at one tab: where each written part starts and when it's played.
+            TabAligner.log?.invoke("written parts: " + (0 until count).filter { it == 0 || v.written[it].ref / 1000 != v.written[it - 1].ref / 1000 }
+                .joinToString(" ") { j -> "#$j@" + (v.occurrences[v.written[j].ref] ?: emptyList()).joinToString("/") { "%.1f".format(it) } })
+        }
         for (j in 0 until count) {
             val r = v.written[j].ref
             val mine = placedAt[j] ?: emptyList()
@@ -324,12 +342,18 @@ class TabEvalTest {
             val song = load(f)
             val base = SongAnalyzer.build(song.name, song.name, SongAnalyzer.candidates(song.act), Instrument.TETRACHORDO, song.act, song.attacks)
             val rnd = Random(song.name.hashCode().toLong())
-            for (v in variants(song, rnd)) for ((setName, par) in sets) {
-                val s = score(song, v, base, par)
-                val key = (if (sets.size > 1) "[$setName] " else "") + (if (song.meta?.get("form") != null) "form: " else "") + v.name
+            for (v in variants(song, rnd)) for (bars in listOf(false, true)) for ((setName, par) in sets) {
+                val name = v.name + if (bars) ", bars" else ""
+                // TAB_EVAL_ONLY="song name:variant name" looks at one tab, with the aligner's log.
+                val only = System.getenv("TAB_EVAL_ONLY")?.split(":")
+                if (only != null && (only[0] != song.name || only.getOrNull(1)?.let { it != name } == true)) continue
+                if (only != null) TabAligner.log = { report.append("  aligner: ").append(it).append('\n') }
+                val s = score(song, v, base, par, bars)
+                TabAligner.log = null
+                val key = (if (sets.size > 1) "[$setName] " else "") + (if (song.meta?.get("form") != null) "form: " else "") + name
                 totals.getOrPut(key) { Score() }.add(s)
                 if (sets.size == 1) {
-                    val line = "%-26s %-18s %s".format(song.name, v.name, s)
+                    val line = "%-26s %-24s %s".format(song.name, name, s)
                     println(line)
                     report.append(line).append('\n')
                 }
@@ -339,15 +363,17 @@ class TabEvalTest {
         for ((setName, _) in sets) {
             val all = Score()
             val sameOctave = Score() // the line's F-measure compares pitches: leave out the tabs kept an octave off
+            val barred = Score()
             for ((k, s) in totals) if (sets.size == 1 || k.startsWith("[$setName] ")) {
                 all.add(s)
                 if ("octave" !in k) sameOctave.add(s)
-                val line = "%-24s %s".format(k, s)
+                if (k.endsWith(", bars")) barred.add(s)
+                val line = "%-30s %s".format(k, s)
                 println(line)
                 report.append(line).append('\n')
             }
             val prefix = if (sets.size > 1) "[$setName] " else ""
-            val line = "%-24s %s\n%-24s %s\n".format(prefix + "ALL", all, prefix + "ALL but octave", sameOctave)
+            val line = "%-30s %s\n%-30s %s\n%-30s %s\n".format(prefix + "ALL", all, prefix + "ALL but octave", sameOctave, prefix + "ALL with bars", barred)
             println(line)
             report.append(line).append('\n')
         }
@@ -371,26 +397,17 @@ internal fun tabParamSets(): List<Pair<String, TabAligner.Params>> {
     return all.split(";").map { it to tabParams(it) }
 }
 
+/** [TabAligner.Params] with the weights [spec] names ("skip=0.6,beam=4": any of its Float or Double fields) changed. */
 private fun tabParams(spec: String): TabAligner.Params {
-    var p = TabAligner.Params()
+    val p = TabAligner.Params()
     for (kv in spec.split(",").filter { it.contains("=") }) {
-        val (k, v) = kv.split("=")
-        val f = v.toFloat()
-        p = when (k) {
-            "skip" -> p.copy(skip = f); "beam" -> p.copy(beam = f); "fresh" -> p.copy(fresh = f); "bias" -> p.copy(bias = f)
-            "lineBonus" -> p.copy(lineBonus = f); "unexplained" -> p.copy(unexplained = f); "pause" -> p.copy(pause = f)
-            "pauseUnexplained" -> p.copy(pauseUnexplained = f); "jumpNext" -> p.copy(jumpNext = f); "jumpWritten" -> p.copy(jumpWritten = f)
-            "jumpSelf" -> p.copy(jumpSelf = f); "jumpOther" -> p.copy(jumpOther = f); "jumpInside" -> p.copy(jumpInside = f)
-            "jumpMid" -> p.copy(jumpMid = f); "tempoWeight" -> p.copy(tempoWeight = f); "tempoFree" -> p.copy(tempoFree = f)
-            "tempoCap" -> p.copy(tempoCap = f); "tempoAlpha" -> p.copy(tempoAlpha = f); "octave" -> p.copy(octave = f)
-            "wrongFret" -> p.copy(wrongFret = f); "keepTrusted" -> p.copy(keepTrusted = f); "keepOther" -> p.copy(keepOther = f)
-            "keepRelative" -> p.copy(keepRelative = f.toDouble()); "onsetMin" -> p.copy(onsetMin = f); "minEvidence" -> p.copy(minEvidence = f)
-            "legatoBonus" -> p.copy(legatoBonus = f); "accept" -> p.copy(accept = f)
-            "keepNear" -> p.copy(keepNear = f.toDouble()); "keepEvidence" -> p.copy(keepEvidence = f)
-            "correctWithin" -> p.copy(correctWithin = f.toDouble()); "keepSame" -> p.copy(keepSame = f)
-            "noteWindow" -> p.copy(noteWindow = f.toDouble()); "noteBeam" -> p.copy(noteBeam = f)
-            "repeatWithin" -> p.copy(repeatWithin = f.toDouble()); "clearOnset" -> p.copy(clearOnset = f); "keepExact" -> p.copy(keepExact = f)
-            else -> error("unknown aligner weight $k")
+        val (k, v) = kv.split("=").map { it.trim() }
+        val f = try { p.javaClass.getDeclaredField(k) } catch (e: NoSuchFieldException) { error("unknown aligner weight $k") }
+        f.isAccessible = true
+        when (f.type) {
+            java.lang.Float.TYPE -> f.setFloat(p, v.toFloat())
+            java.lang.Double.TYPE -> f.setDouble(p, v.toDouble())
+            else -> error("aligner weight $k is a ${f.type}")
         }
     }
     return p

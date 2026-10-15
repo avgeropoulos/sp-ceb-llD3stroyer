@@ -61,6 +61,22 @@ class PdfTabTest {
             sb.append("${pt(x0, 0.0)} m ${pt(x0 + d, 3.0)} ${pt(x1 - d, 3.0)} ${pt(x1, 0.0)} c ${pt(x1 - d, 2.2)} ${pt(x0 + d, 2.2)} ${pt(x0, 0.0)} c f\n")
         }
 
+        /** A filled round dot of radius [r] centred on ([cx], [cy]), drawn with curves. */
+        fun dot(cx: Double, cy: Double, r: Double) {
+            val k = 0.55 * r
+            fun pt(x: Double, y: Double) = "${px(x)} ${py(y)}"
+            sb.append("${pt(cx + r, cy)} m ${pt(cx + r, cy + k)} ${pt(cx + k, cy + r)} ${pt(cx, cy + r)} c ")
+            sb.append("${pt(cx - k, cy + r)} ${pt(cx - r, cy + k)} ${pt(cx - r, cy)} c ${pt(cx - r, cy - k)} ${pt(cx - k, cy - r)} ${pt(cx, cy - r)} c ")
+            sb.append("${pt(cx + k, cy - r)} ${pt(cx + r, cy - k)} ${pt(cx + r, cy)} c f\n")
+        }
+
+        /** A glyph of the music font (F4), as bytes of its WinAnsi encoding, at ([x], [baseline]). */
+        fun music(size: Double, x: Double, baseline: Double, code: Int) {
+            val str = "(\\%03o)".format(code)
+            if (flip) sb.append("BT /F4 ${f(4 * size)} Tf 1 0 0 -1 ${px(x)} ${py(baseline)} Tm $str Tj ET\n")
+            else sb.append("BT /F4 ${f(size)} Tf ${px(x)} ${py(baseline)} Td $str Tj ET\n")
+        }
+
         fun raw(s: String) { sb.append(s).append('\n') }
         fun done() = sb.toString() + (if (flip) "Q\n" else "")
     }
@@ -71,15 +87,41 @@ class PdfTabTest {
     /** A tie on tab line [line] from slot position [from] to [to]; [START] and [END] are the ends of the system. */
     private class Tie(val from: Double, val to: Double, val line: Int)
 
+    /** A sign of the score's form at slot position [at] (between two slots, where a barline goes). */
+    private sealed class Form { abstract val at: Double }
+
+    /**
+     * A repeat barline: |: ([start]), :| ([end]) or both, a thick and a thin line with two dots each side that repeats;
+     * the dots drawn as text (a music font's dot) or as filled curves ([curves]), on both staffs or only the notation
+     * staff's ([tabDots] false).
+     */
+    private class Repeat(override val at: Double, val start: Boolean, val end: Boolean, val curves: Boolean = false, val tabDots: Boolean = true) : Form()
+
+    /** Two thin barlines: the end of a part. */
+    private class DoubleBar(override val at: Double) : Form()
+
+    /** A 1st/2nd-time ending: a bracket over the notation staff from [at] to [to], with a hook down at its start and [label]. */
+    private class Ending(override val at: Double, val to: Double, val label: String, val closed: Boolean = true) : Form()
+
+    /** Words over the notation staff (D.S. al Coda, Fine, x3 ...), their right end at [at]. */
+    private class Words(override val at: Double, val text: String) : Form()
+
+    /** A glyph of a Sonata-style music font over the notation staff (% a segno, Þ a coda), centred on [at]. */
+    private class Sign(override val at: Double, val code: Int) : Form()
+
+    /** Anything else drawn with the system (a hostile page's clutter). */
+    private class Raw(override val at: Double, val draw: (Ink, Sys) -> Unit) : Form()
+
     /**
      * One system: a notation staff at [top] over a tab staff of [lines] lines; frets by slot (line
      * from the top, text). [barTo] draws the system's barline on down to that height (over a second
-     * part's staffs).
+     * part's staffs). [bars] are the slot positions of its plain barlines, [form] the signs of the score's form.
      */
     private class Sys(
         val x0: Double, val x1: Double, val top: Double, val lines: Int,
         val slots: Map<Int, List<Pair<Int, String>>>, val marks: List<Mark> = emptyList(), val tabLines: Int = lines,
         val ties: List<Tie> = emptyList(), val barTo: Double? = null,
+        val bars: List<Double> = listOf(8.5), val form: List<Form> = emptyList(),
     ) {
         val tabTop get() = top + 55
         fun slotX(at: Double) = x0 + 50 + STEP * at
@@ -106,7 +148,8 @@ class PdfTabTest {
         // Notation staff, barlines, bar number, time signatures, clef letters.
         for (i in 0 until 5) ink.line(s.x0, s.x1, s.top + 5.0 * i)
         val tabBottom = s.lineY(s.tabLines - 1)
-        for (x in listOf(s.x0, s.x1, (s.x0 + s.x1) / 2)) { ink.vline(x, s.top, s.top + 20); ink.vline(x, s.tabTop, tabBottom) }
+        for (x in listOf(s.x0, s.x1) + s.bars.map { s.slotX(it) }) { ink.vline(x, s.top, s.top + 20); ink.vline(x, s.tabTop, tabBottom) }
+        drawForm(ink, s, font)
         ink.text(font, 7.0, s.x0, s.top - 8, "3")
         for (y in listOf(s.top + 10, s.top + 20)) ink.text(music, 20.0, s.x0 + 20, y, "\u0005")
         ink.text(music, 24.0, s.x0 + 22, s.tabTop + 9, "\u0005")
@@ -149,6 +192,38 @@ class PdfTabTest {
         s.barTo?.let { ink.vline(s.x0, s.top, it) }
     }
 
+    /** Draws the signs of the score's form of system [s]. */
+    private fun drawForm(ink: Ink, s: Sys, font: TestFont) {
+        val tabBottom = s.lineY(s.tabLines - 1)
+        fun across(x: Double, width: Double) { ink.vline(x, s.top, s.top + 20, width); ink.vline(x, s.tabTop, tabBottom, width) }
+        fun dots(x: Double, curves: Boolean, tab: Boolean) {
+            // In the spaces each side of the middle line: the notation staff's 2nd and 3rd, the tab staff's outer ones.
+            val ys = listOf(s.top + 7.5, s.top + 12.5) + if (!tab) emptyList() else if (s.tabLines == 4) listOf(s.tabTop + 3, s.tabTop + 15) else listOf(s.tabTop + 3, s.tabTop + 9)
+            for (y in ys) if (curves) ink.dot(x, y, 1.1) else ink.text(font, 9.0, x - widthOf(font, ".", 9.0) / 2, y, ".")
+        }
+        for (f in s.form) {
+            val x = s.slotX(f.at)
+            when (f) {
+                is Repeat -> {
+                    if (f.end) { dots(x - 5.5, f.curves, f.tabDots); across(x - 2, 0.6); across(x + 1.5, 2.5) }
+                    if (f.start) { val y = if (f.end) x + 5 else x - 1.5; across(y, 2.5); across(y + 3.5, 0.6); dots(y + 7.5, f.curves, f.tabDots) }
+                }
+                is DoubleBar -> { across(x - 1.5, 0.6); across(x + 1.5, 0.6) }
+                is Ending -> {
+                    val y = s.top - 14
+                    val end = s.slotX(f.to)
+                    ink.line(x + 1, end - 1, y, 0.6)
+                    ink.vline(x + 1, y, y + 8, 0.6)
+                    if (f.closed) ink.vline(end - 1, y, y + 8, 0.6)
+                    ink.text(font, 8.0, x + 3, y + 9, f.label)
+                }
+                is Words -> ink.text(font, 9.0, x - widthOf(font, f.text, 9.0), s.top - 4, f.text)
+                is Sign -> ink.music(14.0, x - 5, s.top - 4, f.code)
+                is Raw -> f.draw(ink, s)
+            }
+        }
+    }
+
     /** A tab PDF of [pages] (each a list of systems), in [style]. */
     private fun tabPdf(pages: List<List<Sys>>, style: Style = Style()): Built {
         val w = TestPdfWriter(style.objectStreams, style.encryption)
@@ -159,7 +234,9 @@ class PdfTabTest {
             "<< /Type /Font /Subtype /Type1 /BaseFont /MusicStd /FirstChar 1 /LastChar 10 /Widths [500 500 500 500 500 500 500 500 500 500] " +
                 "/Encoding << /Type /Encoding /Differences [1 /zero /one /two /three /four /five /six /seven /eight /nine] >> >>",
         )
-        val fonts = "<< /F1 $fontNum 0 R /F3 $musicNum 0 R >>"
+        // A music font laid out like Sonata (Opus Special), for the form's signs.
+        val signs = w.add("<< /Type /Font /Subtype /Type1 /BaseFont /ABCDEF+OpusSpecialStd /FirstChar 32 /LastChar 255 /Widths [${List(224) { 700 }.joinToString(" ")}] /Encoding /WinAnsiEncoding >>")
+        val fonts = "<< /F1 $fontNum 0 R /F3 $musicNum 0 R /F4 $signs 0 R >>"
         val pagesNode = w.reserve()
         val middle = if (style.type0) w.reserve() else pagesNode
         val pageNums = ArrayList<Int>()
@@ -224,17 +301,23 @@ class PdfTabTest {
     )
     private val pages = listOf(listOf(system1, system2), listOf(system3))
 
-    /** What PdfTab should read: course 3 is the top line (D); 2 columns per note step; 3 columns between systems. */
+    /**
+     * What PdfTab should read: course 3 is the top line (D); 2 columns per note step; 3 columns between systems; a
+     * chord is its top note with the others in its stack. Each system has a barline after slot 8 and one at its end;
+     * bars are counted on through the systems, each starting a new one (the first system's bars are 0 and 1, the
+     * second system's start at 3).
+     */
     private val expected = listOf(
         TabNote(3, 0, 0), TabNote(3, 2, 2), TabNote(3, 3, 4), TabNote(3, 5, 6),
-        TabNote(3, 7, 8), TabNote(2, 9, 8),
+        TabNote(3, 7, 8, stack = listOf(2 to 9)),
         TabNote(3, 8, 10), TabNote(3, 10, 12, HAMMER), TabNote(3, 8, 14, PULL), TabNote(3, 7, 16),
-        TabNote(2, 12, 18), TabNote(2, 10, 22, SLIDE), TabNote(1, 3, 24), TabNote(0, 2, 26),
-        TabNote(2, 5, 29), TabNote(2, 7, 31), TabNote(3, 3, 33),
-        TabNote(3, 5, 35), TabNote(2, 5, 35), TabNote(1, 7, 35),
-        TabNote(3, 15, 37, SLIDE), TabNote(3, 17, 39), TabNote(3, 0, 41),
+        TabNote(2, 12, 18, bar = 1), TabNote(2, 10, 22, SLIDE, bar = 1), TabNote(1, 3, 24, bar = 1), TabNote(0, 2, 26, bar = 1),
+        TabNote(2, 5, 29, system = 1, bar = 3), TabNote(2, 7, 31, system = 1, bar = 3), TabNote(3, 3, 33, system = 1, bar = 3),
+        TabNote(3, 5, 35, stack = listOf(2 to 5, 1 to 7), system = 1, bar = 3),
+        TabNote(3, 15, 37, SLIDE, system = 1, bar = 3), TabNote(3, 17, 39, system = 1, bar = 3), TabNote(3, 0, 41, system = 1, bar = 3),
         // Page 2; its "29" is too big for a fret and is left out.
-        TabNote(0, 0, 44), TabNote(1, 2, 46), TabNote(2, 4, 48), TabNote(3, 26, 50), TabNote(3, 1, 54),
+        TabNote(0, 0, 44, system = 2, bar = 6), TabNote(1, 2, 46, system = 2, bar = 6), TabNote(2, 4, 48, system = 2, bar = 6),
+        TabNote(3, 26, 50, system = 2, bar = 6), TabNote(3, 1, 54, system = 2, bar = 6),
     )
     private val expectedWarnings = listOf(
         "Kept 2 chords (notes played together)",
@@ -278,7 +361,7 @@ class PdfTabTest {
         val tab = PdfTab.read(tabPdf(listOf(listOf(sys))).bytes, Instrument.TETRACHORDO)
         assertEquals(Instrument.TRICHORDO, tab.instrument)
         assertEquals(
-            listOf(TabNote(2, 0, 0), TabNote(2, 2, 2), TabNote(2, 3, 4, HAMMER), TabNote(1, 3, 4), TabNote(0, 5, 6), TabNote(2, 12, 8)),
+            listOf(TabNote(2, 0, 0), TabNote(2, 2, 2), TabNote(2, 3, 4, HAMMER, listOf(1 to 3)), TabNote(0, 5, 6), TabNote(2, 12, 8)),
             tab.notes,
         )
         assertEquals(listOf("This tab is for the trichordo (3 courses), not the tetrachordo", "Kept 1 chord (notes played together)"), tab.warnings)
@@ -323,7 +406,7 @@ class PdfTabTest {
             built.catalog, n + 1,
         )
         val tab = PdfTab.read(pdf, Instrument.TETRACHORDO)
-        assertEquals(expected.take(23) + listOf(TabNote(2, 2, 44), TabNote(2, 4, 46), TabNote(3, 5, 48)), tab.notes)
+        assertEquals(expected.take(20) + listOf(TabNote(2, 2, 44, system = 2, bar = 6), TabNote(2, 4, 46, system = 2, bar = 6), TabNote(3, 5, 48, system = 2, bar = 6)), tab.notes)
     }
 
     @Test
@@ -623,6 +706,125 @@ class PdfTabTest {
         }
         // The spread-out row is cut, not padded with millions of spaces.
         assertTrue(PdfTab.text(PdfTab.readPages(cases.last(), LinkedHashSet())).length < 2_000)
+    }
+
+    // ---- The score's form ----
+
+    /** A system at [top] of [n] notes on the top line, the frets counting up from [first]; with [bars] and [form]. */
+    private fun formSys(top: Double, n: Int, bars: List<Double>, form: List<Form>, first: Int = 0) =
+        Sys(60.0, 540.0, top, 4, (0 until n).associateWith { listOf(0 to "${(first + it) % 10}") }, bars = bars, form = form)
+
+    private fun read(pages: List<List<Sys>>, style: Style = Style()) = PdfTab.read(tabPdf(pages, style).bytes, Instrument.TETRACHORDO)
+
+    @Test
+    fun readsRepeatBarlinesOverTwoSystems() {
+        // |: after the 2nd note, :| after the 4th note of the next system, then a double barline: the end of a part.
+        for ((curves, tabDots, style) in listOf(Triple(false, true, Style()), Triple(true, true, Style(flip = false)), Triple(false, false, Style()))) {
+            val a = formSys(90.0, 8, listOf(3.5), listOf(Repeat(1.5, start = true, end = false, curves = curves, tabDots = tabDots)))
+            val b = formSys(260.0, 6, emptyList(), listOf(Repeat(3.5, start = false, end = true, curves = curves, tabDots = tabDots), DoubleBar(4.5)), 8)
+            val tab = read(listOf(listOf(a, b)), style)
+            val what = "curves $curves, dots on the tab staff $tabDots"
+            assertEquals((0 until 14).map { it % 10 }, tab.notes.map { it.fret }, what)
+            assertEquals(List(8) { 0 } + List(6) { 1 }, tab.notes.map { it.system }, what)
+            // Bars counted on through the systems: the first system's are 0 to 2 (the repeat sign and the barline are
+            // barlines too) and its end barline is the last; the next system's start at 4.
+            assertEquals(listOf(0, 0, 1, 1, 2, 2, 2, 2, 4, 4, 4, 4, 5, 6), tab.notes.map { it.bar }, what)
+            assertEquals(listOf(TabSection(0, 2), TabSection(2, 12, 2), TabSection(12, 13), TabSection(13, 14)), tab.sections, what)
+            assertEquals(emptyList(), tab.warnings, what)
+        }
+    }
+
+    @Test
+    fun readsFirstAndSecondTimeEndings() {
+        // |: 0 1 | 2 3 4 5 | [1. 6 7 :| [2. 8 9 ] : played 0-7, 2-5, 8-9.
+        val sys = formSys(
+            90.0, 10, listOf(5.5, 9.5),
+            listOf(Repeat(1.5, start = true, end = false), Ending(5.5, 7.5, "1."), Repeat(7.5, start = false, end = true), Ending(7.5, 9.5, "2.")),
+        )
+        val tab = read(listOf(listOf(sys)))
+        assertEquals(listOf(TabSection(0, 8), TabSection(2, 6), TabSection(8, 10)), tab.sections)
+        assertEquals(emptyList(), tab.warnings)
+        // A 1st ending played twice ("1., 2."), the 3rd ending after it: the :| is taken twice.
+        val three = formSys(
+            90.0, 10, listOf(5.5, 9.5),
+            listOf(Repeat(1.5, start = true, end = false), Ending(5.5, 7.5, "1., 2."), Repeat(7.5, start = false, end = true), Ending(7.5, 9.5, "3.")),
+        )
+        assertEquals(listOf(TabSection(0, 8), TabSection(2, 8), TabSection(2, 6), TabSection(8, 10)), read(listOf(listOf(three))).sections)
+    }
+
+    @Test
+    fun readsDalSegnoAlCoda() {
+        // 0 1 2 | segno 3 4 5 To Coda | 6 7 8 9 D.S. al Coda || ; next system: coda 10 ... 15. Played 0-9, 3-5, 10-15.
+        // (Written with or without the dots.)
+        for (ds in listOf("D.S. al Coda", "DS al Coda")) {
+            val a = formSys(
+                90.0, 10, listOf(2.5, 5.5),
+                listOf(Sign(2.8, 0x25), Words(5.4, "To Coda"), Words(9.3, ds), DoubleBar(9.5)),
+            )
+            val b = formSys(260.0, 6, emptyList(), listOf(Sign(-2.0, 0xDE)), 10)
+            val tab = read(listOf(listOf(a, b)))
+            assertEquals(listOf(TabSection(0, 10), TabSection(3, 6), TabSection(10, 16)), tab.sections, ds)
+            assertEquals(emptyList(), tab.warnings, ds)
+        }
+    }
+
+    @Test
+    fun readsDaCapoAlFineAndACount() {
+        // 0 1 2 3 :| x3 | 4 5 6 7 Fine | 8 9 0 1 D.C. al Fine (at the very end): played 0-3 three times, 4-11, 0-7.
+        for (dc in listOf("D.C. al Fine", "DC al Fine")) {
+            val sys = formSys(
+                90.0, 12, listOf(7.5),
+                listOf(Repeat(3.5, start = false, end = true), Words(3.4, "x3"), Words(7.4, "Fine"), Words(11.3, dc), DoubleBar(11.5)),
+            )
+            val tab = read(listOf(listOf(sys)))
+            assertEquals(listOf(TabSection(0, 4, 3), TabSection(4, 12), TabSection(0, 8)), tab.sections, dc)
+            assertEquals(emptyList(), tab.warnings, dc)
+        }
+        // A :| at the very end of the tab is taken too.
+        val last = formSys(90.0, 6, listOf(1.5), listOf(Repeat(1.5, start = true, end = false), Repeat(5.5, start = false, end = true)))
+        assertEquals(listOf(TabSection(0, 2), TabSection(2, 6, 2)), read(listOf(listOf(last))).sections)
+    }
+
+    @Test
+    fun signsThatCantBeFollowedAreLeftOutWithAWarning() {
+        // |: with no :| after it, a D.S. with no segno to go back to, a count with no repeat sign by it.
+        val sys = formSys(90.0, 10, listOf(4.5), listOf(Repeat(1.5, start = true, end = false), Words(4.4, "2x"), Words(9.3, "D.S."), DoubleBar(9.5)))
+        val tab = read(listOf(listOf(sys)))
+        assertEquals((0 until 10).toList(), tab.notes.map { it.fret })
+        assertEquals(listOf(TabSection(0, 10)), tab.sections)
+        assertEquals(
+            setOf(
+                "Left out \"2x\" on page 1: no repeat sign (:|) by it to say what it repeats",
+                "The repeat sign |: on page 1 has no :| after it: read as played once",
+                "Left out the D.S. on page 1: no segno sign found to go back to",
+            ),
+            tab.warnings.toSet(),
+        )
+        // A bracket over the staff without numbers (a tuplet's, a text box's) isn't an ending.
+        val bracket = formSys(90.0, 6, emptyList(), listOf(Ending(0.5, 3.5, "")))
+        val plain = read(listOf(listOf(bracket)))
+        assertEquals(listOf(TabSection(0, 6)), plain.sections)
+        assertEquals(emptyList(), plain.warnings)
+    }
+
+    @Test
+    fun readsPagesClutteredWithBracketLinesQuickly() {
+        // Over each system, an ending's bracket line (with its hook and "1.") drawn 1990 times, reaching the system's end:
+        // read as one ending, without comparing every copy with every other, or looking at the next system each time.
+        val copies = Raw(0.0) { ink, s ->
+            val y = s.top - 14
+            repeat(1_990) { ink.line(s.x0 + 1, s.x1 - 1, y, 0.6) }
+            ink.vline(s.x0 + 1, y, y + 8, 0.6)
+        }
+        val page = listOf(90.0, 260.0, 430.0, 600.0).map { formSys(it, 10, listOf(4.5), listOf(copies, Words(-1.5, "1."))) }
+        val bytes = tabPdf(listOf(page, page)).bytes
+        val t0 = System.nanoTime()
+        val tab = PdfTab.read(bytes, Instrument.TETRACHORDO)
+        val ms = (System.nanoTime() - t0) / 1e6
+        assertEquals(80, tab.notes.size)
+        assertEquals(listOf(TabSection(0, 80)), tab.sections)
+        assertTrue(tab.warnings.any { "1st/2nd-time ending" in it }, "${tab.warnings}")
+        assertTrue(ms < 3000, "two cluttered pages took $ms ms")
     }
 
     @Test
