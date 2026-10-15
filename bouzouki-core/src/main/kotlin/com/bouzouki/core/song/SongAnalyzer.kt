@@ -266,20 +266,18 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
          * chain that collects the most evidence (strong note and onset activations) for the least
          * implausible movement (each semitone of a jump costs, leaps past an octave cost extra, less
          * so after a pause; picking the same pitch again costs a little, since that is mostly a held
-         * note detected twice). [Detail.MORE] lets weaker notes in; [Detail.FEWER] is the normal line
-         * without its weaker notes (tremolo kept whole), so it is cleaner as well as sparser than
-         * asking more of every note would make it. With [act], a note that starts while
-         * the line's previous note still sounds strongly is taken for accompaniment unless its
-         * evidence outweighs that, and one whose octave below sounds strongly at the same time counts
-         * less (likely a harmonic of that lower note).
+         * note detected twice). With [act], a note that starts while the line's previous note still
+         * sounds strongly is taken for accompaniment unless its evidence outweighs that, and one whose
+         * octave below sounds strongly at the same time counts less (likely a harmonic of that lower note).
          * Then tremolo (fast same-pitch re-picks) is joined into one held note, as tab writes it ([Articulation.TREMOLO]).
-         * With [attacks] too (where the plectrum strikes): a note with a sharp attack counts more and one without
-         * counts less (the bouzouki is the plucked, bright instrument of the band) unless it takes over from the
-         * line's note a few semitones away the way a hammer-on, pull-off or slide does; a candidate that continues
-         * one of the same pitch without a pick of its own is that note detected twice (a bend, vibrato), so they are
-         * joined; a note without a pick that starts while the line's note still sounds costs twice as much (likely
-         * accompaniment, the way a long held note gets split); and, with the contours of [act], the notes sounded
-         * without a pick are marked hammer-on, pull-off or slide ([articulate]).
+         * With [attacks] too (where the plectrum strikes): a note with a sharp attack counts more (the bouzouki is
+         * the plucked, bright instrument of the band; a soft attack costs nothing, since reverb and lossy audio blur
+         * picks); a candidate that continues one of the same pitch without a pick of its own is that note detected
+         * twice (a bend, vibrato), so they are joined; a note without a pick that starts while the line's note still
+         * sounds costs twice as much (likely accompaniment, the way a long held note gets split); and, with the
+         * contours of [act], the notes sounded without a pick are marked hammer-on, pull-off or slide ([articulate]).
+         * [Detail.FEWER] is this line without its weak notes ([fewer]). [Detail.MORE] (with [act]) keeps every note
+         * of the normal line, from [act]'s normal [candidates], and lets weaker notes in between them.
          * Notes without onset evidence (made by hand, e.g. a saved line) are always kept.
          */
         fun bouzoukiLine(
@@ -291,17 +289,48 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
         ): List<NoteEvent> {
             val low = instrument.courses.first().openMidi
             val high = instrument.courses.last().openMidi + instrument.frets
-            var c = notes.filter { it.midi in low..high }.sortedBy { it.start }
+            fun inRange(list: List<NoteEvent>) = list.filter { it.midi in low..high }.sortedBy { it.start }
+            fun joined(c: List<NoteEvent>) = if (attacks != null) joinRedetections(c, act, attacks) else c
+            var c = inRange(notes)
             if (c.isEmpty()) return emptyList()
             if (c.all { it.onset.isNaN() }) return trimEnds(c) // a line chosen before: keep it as it is
-            if (attacks != null) c = joinRedetections(c, act, attacks)
-            val needed = if (detail == Detail.MORE) EVIDENCE_NEEDED_MORE else EVIDENCE_NEEDED
-            // What each note's attack adds to its evidence (0 when the attacks are unknown), and the evidence.
-            val attack = DoubleArray(c.size) { i ->
-                if (attacks == null || c[i].onset.isNaN()) 0.0
-                else ATTACK_WEIGHT * min(ATTACK_CAP, ln(1 + attacks.rise(c[i].start)) - ln(1 + PICK_ATTACK))
+            c = joined(c)
+            var forced: Set<Long>? = null
+            if (detail == Detail.MORE && act != null) {
+                // The normal line's notes stay (one missing from these candidates joins them); weaker ones fill in.
+                val normal = trimEnds(track(joined(inRange(candidates(act, Detail.NORMAL))), act, attacks, EVIDENCE_NEEDED, null).first)
+                val have = c.mapTo(HashSet()) { key(it) }
+                c = (c + normal.filter { key(it) !in have }).sortedBy { it.start }
+                forced = normal.mapTo(HashSet()) { key(it) }
             }
-            val worth = DoubleArray(c.size) { i -> evidence(c[i], needed) + attack[i] + harmonic(c[i], act) }
+            val (path, worth) = track(c, act, attacks, if (detail == Detail.MORE) EVIDENCE_NEEDED_MORE else EVIDENCE_NEEDED, forced)
+            var line = joinTremolo(trimEnds(path))
+            if (detail == Detail.FEWER) line = fewer(line, path.indices.associate { path[it].start to worth[it] }, act, attacks)
+            return if (act?.contours != null && attacks != null) articulate(line, act, attacks) else line
+        }
+
+        /** A candidate's identity across candidate lists (its pitch and first frame). */
+        private fun key(n: NoteEvent) = n.frame.toLong() * 256 + n.midi
+
+        /**
+         * The Viterbi pass of [bouzoukiLine] over [c] (in range, in time order): the chosen notes and the evidence each
+         * brought ([needed] is what a note must reach; a note in [forced] gets [GIVEN_NOTE] more, so it stays).
+         */
+        private fun track(
+            c: List<NoteEvent>,
+            act: BasicPitch.Activations?,
+            attacks: Attacks?,
+            needed: Double,
+            forced: Set<Long>?,
+        ): Pair<List<NoteEvent>, DoubleArray> {
+            if (c.isEmpty()) return emptyList<NoteEvent>() to DoubleArray(0)
+            // What each note's attack adds to its evidence (0 when the attacks are unknown or soft), and the evidence.
+            val worth = DoubleArray(c.size) { i ->
+                val attack = if (attacks == null || c[i].onset.isNaN()) 0.0
+                    else ATTACK_WEIGHT * max(0.0, min(ATTACK_CAP, ln(1 + attacks.rise(c[i].start)) - ln(1 + PICK_ATTACK)))
+                evidence(c[i], needed) + attack + harmonic(c[i], act)
+            }
+            val gain = if (forced == null) worth else DoubleArray(c.size) { i -> worth[i] + if (key(c[i]) in forced) GIVEN_NOTE else 0.0 }
             val best = DoubleArray(c.size)
             val back = IntArray(c.size) { -1 }
             var near = 0 // first note that started less than HORIZON before c[i]
@@ -316,27 +345,43 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
                 val picked = attacks == null || c[i].onset.isNaN() || attacks.rise(c[i].start) >= PICK_ATTACK
                 for (j in i - 1 downTo near) {
                     if (c[i].start - c[j].start < SEPARATION && !(c[i].onset.isNaN() && c[j].onset.isNaN())) continue
-                    val v = best[j] - transitionCost(c[j], c[i], act, picked, attack[i])
+                    val v = best[j] - transitionCost(c[j], c[i], act, picked)
                     if (v > b) { b = v; back[i] = j }
                 }
                 if (far >= 0) {
-                    val v = best[far] - transitionCost(c[far], c[i], act, picked, attack[i])
+                    val v = best[far] - transitionCost(c[far], c[i], act, picked)
                     if (v > b) { b = v; back[i] = far }
                 }
-                best[i] = worth[i] + b
+                best[i] = gain[i] + b
             }
             val path = ArrayList<NoteEvent>()
-            val weak = HashSet<Double>() // starts of the path's notes too weak for Detail.FEWER
+            val brought = ArrayList<Double>()
             var i = best.indices.maxBy { best[it] }
             while (i >= 0) {
                 path += c[i]
-                if (worth[i] < FEWER_KEEP) weak += c[i].start
+                brought += worth[i]
                 i = back[i]
             }
             path.reverse()
-            var line = joinTremolo(trimEnds(path))
-            if (detail == Detail.FEWER) line = line.filter { it.articulation == Articulation.TREMOLO || it.start !in weak }
-            return if (act?.contours != null && attacks != null) articulate(line, act, attacks) else line
+            brought.reverse()
+            return path to brought.toDoubleArray()
+        }
+
+        /**
+         * [line] without its weak notes, for [Detail.FEWER]: weak is under [FEWER_KEEP] or, where most notes are weaker
+         * than that (a quiet or blurred recording), among the weakest [FEWER_SHARE] of the line, so a song never loses
+         * more than about that share. [worth] is each note's evidence by its start. Tremolo stays, and so does a
+         * hammer-on, pull-off or slide whose note before it stays (the two are played as one).
+         */
+        private fun fewer(line: List<NoteEvent>, worth: Map<Double, Double>, act: BasicPitch.Activations?, attacks: Attacks?): List<NoteEvent> {
+            val values = line.filter { it.articulation != Articulation.TREMOLO }.map { worth[it.start] ?: GIVEN_NOTE }.sorted()
+            val bar = if (values.isEmpty()) FEWER_KEEP else min(FEWER_KEEP, values[min(values.size - 1, (FEWER_SHARE * values.size).toInt())])
+            val marked = if (act != null && attacks != null && act.contours != null) articulate(line, act, attacks) else line
+            var kept = false
+            return line.filterIndexed { k, n ->
+                kept = n.articulation == Articulation.TREMOLO || (worth[n.start] ?: GIVEN_NOTE) >= bar || (kept && marked[k].articulation.isLegato)
+                kept
+            }
         }
 
         /**
@@ -514,42 +559,19 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
             return HARMONIC_WEIGHT * act.frames[min(act.frames.size - 1, n.frame + HARMONIC_FRAMES)][key - 12]
         }
 
-        /**
-         * What it costs the line to move from [a] to [b] ([picked]: b brings a pick of its own; [attack]: what b's
-         * attack added to its evidence). A note without a pick that takes over from [a] ([takesOver]) gets
-         * [LEGATO_REFUND] of what its missing pick took back: it is likely a hammer-on, pull-off or slide.
-         */
-        private fun transitionCost(a: NoteEvent, b: NoteEvent, act: BasicPitch.Activations?, picked: Boolean = true, attack: Double = 0.0): Double {
+        /** What it costs the line to move from [a] to [b] ([picked]: b brings a pick of its own). */
+        private fun transitionCost(a: NoteEvent, b: NoteEvent, act: BasicPitch.Activations?, picked: Boolean = true): Double {
             val d = abs(b.midi - a.midi)
             val gap = b.start - max(a.end, a.start)
             val pause = max(PAUSE_FLOOR, 1 - max(0.0, gap) / PAUSE_TIME) // jumps after a pause are cheaper
             var cost = (STEP_COST * d + (if (d > 12) LEAP_COST else 0.0)) * pause
             if (d == 0) cost += REPEAT_COST
-            if (act != null && !picked && attack < 0 && d in 1..SLIDE_REACH && takesOver(act, a, b)) cost += LEGATO_REFUND * attack
             if (act != null && d != 0 && b.frame >= 0) {
                 val t = min(act.frames.size - 1, b.frame + STILL_SOUNDING_FRAMES)
                 val weight = if (picked) STILL_SOUNDING_COST else STILL_SOUNDING_COST * (1 + UNPICKED_EXTRA)
                 cost += weight * max(0.0, act.frames[t][a.midi - BasicPitch.MIDI_OFFSET] - STILL_SOUNDING_LEVEL)
             }
             return cost
-        }
-
-        /**
-         * Whether [b] takes over from [a] as a legato note does: [a] lasts until at most [TAKEOVER_GAP] before [b],
-         * its activation in the 3 frames before [b] is at least [HANDOVER_BEFORE] and fades 3-8 frames into [b] to at
-         * most [HANDOVER_FADE] of that.
-         */
-        private fun takesOver(act: BasicPitch.Activations, a: NoteEvent, b: NoteEvent): Boolean {
-            val f = b.frame
-            val frames = act.frames
-            val n = frames.size
-            if (a.end < b.start - TAKEOVER_GAP || f < 1 || f >= n) return false
-            val ka = a.midi - BasicPitch.MIDI_OFFSET
-            var before = 0.0
-            for (t in max(0, f - 3) until f) before = max(before, frames[t][ka].toDouble())
-            var after = Double.MAX_VALUE
-            for (t in min(n - 1, f + 3) until min(n, f + 9)) after = min(after, frames[t][ka].toDouble())
-            return before >= HANDOVER_BEFORE && after <= HANDOVER_FADE * before
         }
 
         /**
@@ -582,34 +604,32 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
             return if (gaps.size % 2 == 1) gaps[m] else (gaps[m - 1] + gaps[m]) / 2
         }
 
-        // The line tracker's weights, chosen on synthesized bouzouki songs (scratch evaluation, mir_eval F-measure;
-        // tuned on 17 songs and checked on others generated apart).
+        // The line tracker's weights, chosen on synthesized bouzouki songs, both clean and blurred the way recordings
+        // are (reverb, low-pass, noise, lossy coding): scratch evaluation, mir_eval F-measure.
         private const val EVIDENCE_NEEDED = 0.5
         /** What a note needs with [Detail.MORE]: a fuller line, weaker notes too. */
-        private const val EVIDENCE_NEEDED_MORE = 0.35
-        /** The evidence a line note keeps with [Detail.FEWER] (counted as for the normal line). */
+        private const val EVIDENCE_NEEDED_MORE = 0.4
+        /** The evidence a line note keeps with [Detail.FEWER] (counted as for the normal line)... */
         private const val FEWER_KEEP = 0.4
+        /** ... or, where most notes have less, the share of the line's weakest notes [Detail.FEWER] leaves out. */
+        private const val FEWER_SHARE = 0.2
         private const val ONSET_WEIGHT = 0.5
         private const val GIVEN_NOTE = 10.0
-        /** Per natural-log step of a note's attack over [PICK_ATTACK] (above it: more evidence, below: less)... */
+        /** Per natural-log step of a note's attack over [PICK_ATTACK] (more evidence; a softer attack adds none)... */
         private const val ATTACK_WEIGHT = 0.2
         /** ... counting at most this many steps (a percussion hit on top of a pick adds nothing more). */
         private const val ATTACK_CAP = 1.0
         /** Per unit of the octave below's activation [HARMONIC_FRAMES] into a note. */
         private const val HARMONIC_WEIGHT = -0.25
         private const val HARMONIC_FRAMES = 2
-        private const val STEP_COST = 0.07
-        private const val REPEAT_COST = 0.3
+        private const val STEP_COST = 0.05
+        private const val REPEAT_COST = 0.2
         private const val LEAP_COST = 0.6
         private const val PAUSE_TIME = 1.0
         private const val PAUSE_FLOOR = 0.3
         private const val STILL_SOUNDING_FRAMES = 2
         private const val STILL_SOUNDING_LEVEL = 0.35
         private const val STILL_SOUNDING_COST = 0.75
-        /** The share of a legato note's missing-pick penalty given back ([takesOver])... */
-        private const val LEGATO_REFUND = 0.5
-        /** ... when the note before ends at most this long before it (a slide's first note fades as it glides). */
-        private const val TAKEOVER_GAP = 0.1
         private const val SEPARATION = 0.05 // two line notes start at least this far apart
         private const val HORIZON = 3.0     // how far back a note looks for its predecessor
         private const val TREMOLO_PICKS = 5

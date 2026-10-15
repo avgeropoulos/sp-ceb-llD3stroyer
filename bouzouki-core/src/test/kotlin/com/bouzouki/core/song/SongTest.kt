@@ -117,14 +117,15 @@ class BouzoukiLineTest {
 
     @Test
     fun repeatedNotesAreNotTremolo() {
-        // 120 BPM: D D D D as 16ths, E F G as 8ths, A A A as 16ths, a held F; then 160 BPM 8ths G G G G F E E E D.
+        // 120 BPM: D D D D as 16ths, E F G as 8ths, A A A as 16ths, D held (a fifth down, then a fourth up: the line
+        // keeps a leap out of and back into a held note); then 160 BPM 8ths G G G G F E E E D.
         val notes = ArrayList<NoteEvent>()
         var t = 0.0
         fun play(midi: Int, dur: Double) { notes += heard(t, t + dur, midi, if (notes.size % 2 == 0) 0.75 else 0.65); t += dur }
         repeat(4) { play(62, 0.125) }
         for (m in listOf(64, 65, 67)) play(m, 0.25)
         repeat(3) { play(69, 0.125) }
-        play(65, 1.0)
+        play(62, 1.0)
         for (m in listOf(67, 67, 67, 67, 65, 64, 64, 64, 62)) play(m, 60.0 / 160 / 2)
         val line = SongAnalyzer.bouzoukiLine(notes, tetra)
         assertEquals(notes.map { it.midi }, line.map { it.midi }, "line: $line")
@@ -159,30 +160,27 @@ class BouzoukiLineTest {
     }
 
     @Test
-    fun aNoteWithoutAPickCountsLessUnlessItTakesOverFromTheLine() {
+    fun aSharpPickCountsMoreAndASoftAttackNoLess() {
         val n = 300
-        fun line(aRingsOn: Boolean, cPicked: Boolean): List<Int> {
-            val frames = Array(n) { FloatArray(BasicPitch.N_KEYS) { 0.1f } }
-            fun sound(midi: Int, from: Int, to: Int) { for (t in from until to) frames[t][midi - BasicPitch.MIDI_OFFSET] = 0.6f }
-            sound(62, 20, if (aRingsOn) 120 else 61); sound(64, 60, 120); sound(66, 150, 200)
-            val act = BasicPitch.Activations(frames, Array(n) { FloatArray(BasicPitch.N_KEYS) { 0.05f } })
-            fun note(midi: Int, from: Int, to: Int) =
-                NoteEvent(BasicPitch.frameTime(from), BasicPitch.frameTime(to), midi, 0.5, onset = 0.8, salience = 0.6, frame = from, endFrame = to)
-            val notes = listOf(note(62, 20, 60), note(64, 60, 120), note(66, 150, 200))
-            // The plectrum strikes the first note (and the last one if cPicked); the rest of the song is calm.
+        val act = BasicPitch.Activations(Array(n) { FloatArray(BasicPitch.N_KEYS) { 0.1f } }, Array(n) { FloatArray(BasicPitch.N_KEYS) { 0.05f } })
+        fun note(midi: Int, from: Int, to: Int, salience: Double, onset: Double) =
+            NoteEvent(BasicPitch.frameTime(from), BasicPitch.frameTime(to), midi, 0.5, onset = onset, salience = salience, frame = from, endFrame = to)
+        // The line of these notes where the plectrum strikes the notes [picked] (indices) and nothing else rises.
+        fun line(notes: List<NoteEvent>, picked: List<Int>): List<Int> {
             val rises = FloatArray(1300) { 1f }
-            for (k in listOf(0, 2)) {
-                if (k == 2 && !cPicked) continue
+            for (k in picked) {
                 val i = ((notes[k].start * Attacks.SAMPLE_RATE - Attacks.FFT / 2) / Attacks.HOP).roundToInt()
                 for (j in i - 1..i + 1) rises[j] = 100f
             }
             return SongAnalyzer.bouzoukiLine(notes, tetra, act, Attacks(rises, FloatArray(rises.size))).map { it.midi }
         }
-        // 64 has no pick but takes over from 62 as a hammer-on does (62 fades as it starts); 66, after a rest, has neither.
-        assertEquals(listOf(62, 64), line(aRingsOn = false, cPicked = false))
-        assertEquals(listOf(62, 64, 66), line(aRingsOn = false, cPicked = true))
-        // While 62 rings on, the unpicked 64 is something else sounding with it.
-        assertEquals(listOf(62, 66), line(aRingsOn = true, cPicked = true))
+        val clear = note(62, 20, 60, 0.6, 0.8)
+        val faint = note(64, 150, 200, 0.3, 0.2) // a little short of the evidence a note needs
+        assertEquals(listOf(62), line(listOf(clear, faint), picked = listOf(0)))
+        // A sharp pick makes up for it.
+        assertEquals(listOf(62, 64), line(listOf(clear, faint), picked = listOf(0, 1)))
+        // A clear note without a pick (a hammer-on, a slide, or a pick the recording blurred) loses nothing for that.
+        assertEquals(listOf(62, 64), line(listOf(clear, note(64, 150, 200, 0.6, 0.8)), picked = listOf(0)))
     }
 
     @Test
@@ -196,6 +194,33 @@ class BouzoukiLineTest {
         frames[30][60] = 1f; frames[31][60] = 1f // a frame jump elsewhere, too short for a note, sets the inferred onsets' scale
         val notes = BasicPitch.notes(BasicPitch.Activations(frames, onsets), onsetThresh = 0.5f, minNoteLen = 2, melodia = false)
         assertEquals(listOf(62 to 10), notes.map { it.midi to it.frame })
+    }
+
+    @Test
+    fun damagedAnalysisDataReadsAsNothing() {
+        // A file as AnalysisData writes it: [n] frames said, the columns of [frames] frames there, [m] attack frames said.
+        fun file(n: Int, m: Int, frames: Int = n): ByteArray {
+            val out = java.io.ByteArrayOutputStream()
+            java.io.DataOutputStream(java.util.zip.DeflaterOutputStream(out)).use { d ->
+                d.writeInt(0x425A4144) // "BZAD"
+                d.writeInt(AnalysisData.VERSION)
+                d.writeInt(n)
+                d.writeInt(BasicPitch.N_KEYS)
+                d.write(ByteArray(2 * BasicPitch.N_KEYS * frames))
+                d.writeBoolean(false) // no contours
+                d.writeBoolean(true)
+                d.writeInt(m)
+                repeat(2 * minOf(m, 64)) { d.writeFloat(0f) }
+            }
+            return out.toByteArray()
+        }
+        assertNotNull(AnalysisData.read(file(10, 40).inputStream()))
+        // Lengths a damaged file may say are refused before anything is allocated for them (or memory would run out):
+        // an attack track longer than the frames allow, more frames than a song has, more than the file holds.
+        assertEquals(null, AnalysisData.read(file(10, Int.MAX_VALUE - 8).inputStream()))
+        assertEquals(null, AnalysisData.read(file(0, Int.MAX_VALUE - 8).inputStream()))
+        assertEquals(null, AnalysisData.read(file(900_000, 0, frames = 0).inputStream()))
+        assertEquals(null, AnalysisData.read(file(150_000, 0, frames = 10).inputStream()))
     }
 
     @Test
@@ -334,11 +359,9 @@ class BasicPitchTest {
             }
             // The saved data gives the very same line again.
             assertEquals(first.notes, SongAnalyzer.rebuild(first, back).notes)
-            // More detail never loses the notes the normal line has, fewer never adds any.
-            val more = SongAnalyzer.rebuild(first, back, Detail.MORE)
-            assertTrue(first.notes.all { n -> more.notes.any { it.midi == n.midi && abs(it.start - n.start) < 0.03 } })
-            val fewer = SongAnalyzer.rebuild(first, back, Detail.FEWER)
-            assertTrue(fewer.notes.all { n -> first.notes.any { it.midi == n.midi && abs(it.start - n.start) < 0.03 } })
+            // More detail never loses the notes the normal line has, fewer never adds any (EvalTest checks real songs).
+            assertTrue(keeps(SongAnalyzer.rebuild(first, back, Detail.MORE).notes, first.notes))
+            assertTrue(keeps(first.notes, SongAnalyzer.rebuild(first, back, Detail.FEWER).notes))
             assertEquals(null, AnalysisData.read(bytes.copyOf(40).inputStream()))
         }
     }
@@ -566,11 +589,16 @@ class EvalTest {
                     assertTrue(err <= 1e-4 * scale, "${song.name}: attack track differs by $err (max $scale)")
                 }
             }
+            val lines = Detail.entries.associateWith { detail ->
+                SongAnalyzer.bouzoukiLine(SongAnalyzer.candidates(act, detail), Instrument.TETRACHORDO, act, attacks, detail)
+            }
+            // More detail keeps every note of the normal line, fewer adds none.
+            assertTrue(keeps(lines.getValue(Detail.MORE), lines.getValue(Detail.NORMAL)), "${song.name}: MORE lost notes of NORMAL")
+            assertTrue(keeps(lines.getValue(Detail.NORMAL), lines.getValue(Detail.FEWER)), "${song.name}: FEWER has notes NORMAL hasn't")
             for (detail in Detail.entries) {
                 val file = File(song, if (detail == Detail.NORMAL) "line.csv" else "line_${detail.name}.csv")
                 if (!file.exists()) continue
-                val notes = SongAnalyzer.bouzoukiLine(SongAnalyzer.candidates(act, detail), Instrument.TETRACHORDO, act, attacks, detail)
-                val line = rows(notes)
+                val line = rows(lines.getValue(detail))
                 val python = rows(file)
                 val same = match(python, line, 0.001)
                 val sameArticulation = same.count { (i, j, _) -> python[i].articulation == line[j].articulation }
@@ -667,6 +695,20 @@ class EvalTest {
     }
 
     private fun model() = File("../bouzouki/src/main/assets/basic_pitch.onnx")
+}
+
+/**
+ * Whether every note of [some] is in [line]: a note of its pitch starts within 30 ms of it, or a tremolo of its pitch
+ * sounds as it starts (where more re-picks were found, they join into one held note).
+ */
+internal fun keeps(line: List<NoteEvent>, some: List<NoteEvent>) = some.all { n ->
+    line.any { it.midi == n.midi && (abs(it.start - n.start) < 0.03 || (it.articulation == Articulation.TREMOLO && it.start <= n.start && n.start < it.end)) }
+}
+
+@JvmName("keepsSongNotes")
+internal fun keeps(line: List<SongNote>, some: List<SongNote>): Boolean {
+    fun events(l: List<SongNote>) = l.map { NoteEvent(it.start, it.end, it.midi, 0.0, articulation = it.articulation) }
+    return keeps(events(line), events(some))
 }
 
 /** Reads a 16-bit, 32-bit float or 64-bit float WAV file into one array per channel. */

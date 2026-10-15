@@ -35,26 +35,20 @@ class AnalysisData(val act: BasicPitch.Activations, val attacks: Attacks?) {
         val n = act.frames.size
         d.writeInt(n)
         d.writeInt(BasicPitch.N_KEYS)
-        val column = ByteArray(n)
-        // Each key's (bin's) bytes over time, as the change from the frame before: they change slowly, so this deflates well.
-        fun writeColumn(value: (Int) -> Int) {
-            var prev = 0
-            for (t in 0 until n) {
-                val b = value(t)
-                column[t] = (b - prev).toByte()
-                prev = b
-            }
-            d.write(column)
-        }
+        val column = ByteArray(n) // one key's (bin's) bytes over time, as changes ([encodeColumn])
         for (plane in arrayOf(act.frames, act.onsets)) for (k in 0 until BasicPitch.N_KEYS) {
-            writeColumn { t -> BasicPitch.quantize(plane[t][k]).toInt() and 0xFF }
+            encodeColumn(column) { t -> BasicPitch.quantize(plane[t][k]).toInt() and 0xFF }
+            d.write(column)
         }
         val contours = act.contours
         d.writeBoolean(contours != null)
         if (contours != null) {
             val bins = contours.firstOrNull()?.size ?: 0
             d.writeInt(bins)
-            for (k in 0 until bins) writeColumn { t -> contours[t][k].toInt() and 0xFF }
+            for (k in 0 until bins) {
+                encodeColumn(column) { t -> contours[t][k].toInt() and 0xFF }
+                d.write(column)
+            }
         }
         val a = attacks
         d.writeBoolean(a != null)
@@ -69,8 +63,11 @@ class AnalysisData(val act: BasicPitch.Activations, val attacks: Attacks?) {
         private const val MAGIC = 0x425A4144 // "BZAD"
         /** 2: columns of changes (1 wrote the frames one after another). */
         const val VERSION = 2
-        /** More frames than any song has (3 hours): a damaged length isn't allocated. */
-        private const val MAX_FRAMES = 3 * 3600 * BasicPitch.ANNOTATIONS_FPS
+        /** More frames than a song has (30 minutes): a damaged length isn't allocated. */
+        private const val MAX_FRAMES = 30 * 60 * BasicPitch.ANNOTATIONS_FPS
+        /** The attack track's frames to each of Basic Pitch's, at most (about 4: hop 64 against 256), and some slack. */
+        private const val ATTACK_FRAMES = 5
+        private const val ATTACK_SLACK = 4096
 
         /** [act] and [attacks] as [write] saves them and [read] gives them back: the activations rounded to bytes. */
         fun of(act: BasicPitch.Activations, attacks: Attacks?): AnalysisData =
@@ -79,7 +76,11 @@ class AnalysisData(val act: BasicPitch.Activations, val attacks: Attacks?) {
         private fun rounded(a: Array<FloatArray>) =
             Array(a.size) { t -> val row = a[t]; FloatArray(row.size) { k -> (BasicPitch.quantize(row[k]).toInt() and 0xFF) / 255f } }
 
-        /** Reads what [write] wrote; null if it's another version or damaged. */
+        /**
+         * Reads what [write] wrote; null if it's another version or damaged. A damaged length is refused before
+         * anything is allocated for it: the frames must fit a song and the file must hold their first column, and
+         * the attack track must fit the frames.
+         */
         fun read(input: InputStream): AnalysisData? = try {
             DataInputStream(BufferedInputStream(InflaterInputStream(input), 1 shl 16)).use { d ->
                 if (d.readInt() != MAGIC || d.readInt() != VERSION) return null
@@ -87,24 +88,28 @@ class AnalysisData(val act: BasicPitch.Activations, val attacks: Attacks?) {
                 val keys = d.readInt()
                 if (keys != BasicPitch.N_KEYS || n !in 0..MAX_FRAMES) return null
                 val column = ByteArray(n)
-                fun readColumn(store: (Int, Int) -> Unit) {
-                    d.readFully(column)
-                    var v = 0
-                    for (t in 0 until n) {
-                        v = (v + column[t]) and 0xFF
-                        store(t, v)
-                    }
-                }
+                d.readFully(column) // the first key's column: a file shorter than its length says ends here
                 val frames = Array(n) { FloatArray(keys) }
                 val onsets = Array(n) { FloatArray(keys) }
-                for (plane in arrayOf(frames, onsets)) for (k in 0 until keys) readColumn { t, v -> plane[t][k] = v / 255f }
+                var first = true
+                for (plane in arrayOf(frames, onsets)) for (k in 0 until keys) {
+                    if (!first) d.readFully(column)
+                    first = false
+                    decodeColumn(column) { t, v -> plane[t][k] = v / 255f }
+                }
                 val contours = if (d.readBoolean()) {
                     val bins = d.readInt()
                     if (bins !in 0..BasicPitch.N_CONTOUR_BINS) return null
-                    Array(n) { ByteArray(bins) }.also { c -> for (k in 0 until bins) readColumn { t, v -> c[t][k] = v.toByte() } }
+                    Array(n) { ByteArray(bins) }.also { c ->
+                        for (k in 0 until bins) {
+                            d.readFully(column)
+                            decodeColumn(column) { t, v -> c[t][k] = v.toByte() }
+                        }
+                    }
                 } else null
                 val attacks = if (d.readBoolean()) {
                     val m = d.readInt()
+                    if (m < 0 || m > ATTACK_FRAMES.toLong() * n + ATTACK_SLACK) return null
                     val rises = FloatArray(m) { d.readFloat() }
                     val energies = FloatArray(m) { d.readFloat() }
                     Attacks(rises, energies)
@@ -116,8 +121,31 @@ class AnalysisData(val act: BasicPitch.Activations, val attacks: Attacks?) {
 }
 
 /**
+ * Fills [column] with each frame's value (a byte, 0..255) as the change from the frame before: a key's activations
+ * change slowly, so this deflates well. Inline, so no value is boxed.
+ */
+private inline fun encodeColumn(column: ByteArray, value: (Int) -> Int) {
+    var prev = 0
+    for (t in column.indices) {
+        val b = value(t)
+        column[t] = (b - prev).toByte()
+        prev = b
+    }
+}
+
+/** Gives [store] each frame's value back from what [encodeColumn] made of it. */
+private inline fun decodeColumn(column: ByteArray, store: (Int, Int) -> Unit) {
+    var v = 0
+    for (t in column.indices) {
+        v = (v + column[t]) and 0xFF
+        store(t, v)
+    }
+}
+
+/**
  * How many notes the line keeps ([SongAnalyzer.rebuild]): [NORMAL] is the analysis default (the best balance of
- * notes found and notes right); [FEWER] keeps only the clearer notes, a sparser line; [MORE] also keeps weaker,
- * quieter notes, finding more of the tune at the price of more wrong ones.
+ * notes found and notes right); [FEWER] is that line without its weaker notes (at most about a fifth of them), a
+ * sparser, cleaner line; [MORE] keeps every note of the normal line and adds weaker, quieter ones between them,
+ * finding more of the tune at the price of more wrong ones.
  */
 enum class Detail { FEWER, NORMAL, MORE }
