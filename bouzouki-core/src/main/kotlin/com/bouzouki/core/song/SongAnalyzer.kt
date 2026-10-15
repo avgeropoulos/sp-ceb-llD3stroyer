@@ -36,15 +36,47 @@ data class SongAnalysis(
     val beats: List<Double> = emptyList(),
 ) {
     /**
-     * The same song fingered for [inst] (the other bouzouki, or with a newer fingering): notes outside
-     * its range move by octaves, and every note keeps its time and articulation.
+     * The same song fingered for [inst] (the other bouzouki, or with a newer fingering): every note keeps
+     * its time and articulation, and notes outside its range move by octaves. They move a passage at a
+     * time (the notes of a phrase that move by step, a legato note always with the one before), so the
+     * tune keeps its shape and a hammer-on, pull-off or slide its direction. Only a passage wider than
+     * the instrument moves in pieces (each picked note with its legato notes, failing that note by note),
+     * and a legato note moved apart from the note before is then picked.
      */
     fun forInstrument(inst: Instrument): SongAnalysis {
-        val low = inst.courses.first().openMidi
-        val high = inst.courses.last().openMidi + inst.frets
-        val midis = notes.map { n -> var m = n.midi; while (m < low) m += 12; while (m > high) m -= 12; m }
-        val cells = SongAnalyzer.fingering(midis, notes.map { it.start }, inst, notes.map { it.articulation.isLegato })
-        return copy(instrument = inst, notes = notes.mapIndexed { i, n -> n.copy(midi = midis[i], course = cells[i].first, fret = cells[i].second) })
+        val shift = octaveShifts(inst.courses.first().openMidi, inst.courses.last().openMidi + inst.frets)
+        val moved = notes.mapIndexed { i, n ->
+            val apart = i > 0 && shift[i] != shift[i - 1]
+            n.copy(midi = n.midi + shift[i], articulation = if (apart && n.articulation.isLegato) Articulation.PICK else n.articulation)
+        }
+        val cells = SongAnalyzer.fingering(moved.map { it.midi }, moved.map { it.start }, inst,
+            moved.map { it.articulation.isLegato }, moved.map { it.articulation == Articulation.SLIDE })
+        return copy(instrument = inst, notes = moved.mapIndexed { i, n -> n.copy(course = cells[i].first, fret = cells[i].second) })
+    }
+
+    /** How far (whole octaves, in semitones) each note moves to lie between [low] and [high], as [forInstrument] says. */
+    private fun octaveShifts(low: Int, high: Int): IntArray {
+        val shift = IntArray(notes.size)
+        // Moves notes [from, to) by the same octaves, if that brings them all in range.
+        fun together(from: Int, to: Int): Boolean {
+            val lo = (from until to).minOf { notes[it].midi }
+            val hi = (from until to).maxOf { notes[it].midi }
+            val k = if (lo < low) (low - lo + 11) / 12 * 12 else if (hi > high) -((hi - high + 11) / 12 * 12) else 0
+            if (lo + k < low || hi + k > high) return false
+            for (i in from until to) shift[i] = k
+            return true
+        }
+        // Cuts [from, to) before each note [cut] picks and hands each piece to [each].
+        fun pieces(from: Int, to: Int, cut: (Int) -> Boolean, each: (Int, Int) -> Unit) {
+            var a = from
+            while (a < to) { var b = a + 1; while (b < to && !cut(b)) b++; each(a, b); a = b }
+        }
+        val phrase = Fingering.phraseStarts(notes.map { it.start })
+        val picked = { i: Int -> !notes[i].articulation.isLegato }
+        pieces(0, notes.size, { i -> picked(i) && (phrase[i] || abs(notes[i].midi - notes[i - 1].midi) > PASSAGE_STEP) }) { a, b ->
+            if (!together(a, b)) pieces(a, b, picked) { c, d -> if (!together(c, d)) for (i in c until d) together(i, i + 1) }
+        }
+        return shift
     }
 
     /** Index of the note sounding at [time], or -1. */
@@ -88,6 +120,9 @@ data class SongAnalysis(
          * prepared again, and [saved] still lists them meanwhile.
          */
         const val FORMAT = 3
+
+        /** The widest step (semitones) inside a passage that [forInstrument] moves as one: a fourth. */
+        private const val PASSAGE_STEP = 5
 
         private fun jsonObject(vararg fields: Pair<String, String>) = fields.joinToString(",", "{", "}") { (k, v) -> quote(k) + ":" + v }
         private fun fmt(d: Double) = String.format(java.util.Locale.US, "%.3f", d)
@@ -517,46 +552,19 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
         private const val GLIDE_MARGIN = 0.25
 
         /**
-         * Frets for a line of notes, by dynamic programming over every playable position:
-         * small moves along the neck are cheap, big jumps cost more (less after a pause),
-         * and very high frets cost a little extra.
+         * The course and fret of each note of a line, as a Greek player fingers a melody: on the top two
+         * courses, shifting up and down the neck rather than crossing to the bass courses ([Fingering]).
+         * [legato]`[i]` marks a note hammered, pulled or slid from the one before: it stays on that note's
+         * course whenever the course has it. [slide]`[i]` marks the slides among them (never from or to an
+         * open string); without it, legato notes are taken for hammer-ons and pull-offs.
          */
-        fun fingering(midis: List<Int>, starts: List<Double>, inst: Instrument, legato: List<Boolean>? = null): List<Pair<Int, Int>> {
-            if (midis.isEmpty()) return emptyList()
-            val options = midis.map { m ->
-                inst.courses.indices.mapNotNull { c -> (m - inst.courses[c].openMidi).takeIf { it in 0..inst.frets }?.let { c to it } }
-                    .ifEmpty { listOf(inst.position(m.coerceIn(inst.courses.first().openMidi, inst.courses.last().openMidi + inst.frets)) ?: (0 to 0)) }
-            }
-            fun placeCost(p: Pair<Int, Int>) = if (p.second > 12) (p.second - 12) * 0.15 else 0.0
-            val cost = ArrayList<DoubleArray>()
-            val back = ArrayList<IntArray>()
-            cost += DoubleArray(options[0].size) { placeCost(options[0][it]) }
-            back += IntArray(options[0].size)
-            for (i in 1 until midis.size) {
-                val gap = starts[i] - starts[i - 1]
-                val moveWeight = if (gap > 1.0) 0.3 else 1.0
-                val prev = options[i - 1]
-                val here = options[i]
-                val c = DoubleArray(here.size)
-                val b = IntArray(here.size)
-                for ((j, p) in here.withIndex()) {
-                    var best = Double.MAX_VALUE
-                    for ((q, pp) in prev.withIndex()) {
-                        // Open strings don't move the hand.
-                        val fretMove = if (p.second == 0 || pp.second == 0) 0 else abs(p.second - pp.second)
-                        val v = cost[i - 1][q] + moveWeight * fretMove + 0.4 * abs(p.first - pp.first)
-                        if (v < best) { best = v; b[j] = q }
-                    }
-                    c[j] = best + placeCost(p)
-                }
-                cost += c
-                back += b
-            }
-            val path = IntArray(midis.size)
-            path[midis.size - 1] = cost.last().indices.minBy { cost.last()[it] }
-            for (i in midis.size - 1 downTo 1) path[i - 1] = back[i][path[i]]
-            return path.mapIndexed { i, j -> options[i][j] }
-        }
+        fun fingering(
+            midis: List<Int>,
+            starts: List<Double>,
+            inst: Instrument,
+            legato: List<Boolean>? = null,
+            slide: List<Boolean>? = null,
+        ): List<Pair<Int, Int>> = Fingering.place(midis, starts, inst, legato, slide)
     }
 }
 
