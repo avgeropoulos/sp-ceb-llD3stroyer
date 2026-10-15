@@ -52,6 +52,13 @@
             </intent-filter>
         </activity>
 
+        <!-- Hands a song's data (never audio) to the app picked in the share sheet: Send song data. -->
+        <provider
+            android:name=".ExportProvider"
+            android:authorities="com.bouzouki.export"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
         <service
             android:name=".PrepareService"
             android:exported="false"

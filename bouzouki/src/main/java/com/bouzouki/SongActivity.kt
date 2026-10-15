@@ -826,12 +826,56 @@ class SongActivity : Activity() {
             items += "Detected" + (if (fromTab) "" else "  ✓") to { chooseTab(false) }
             items += "🗑 Remove tab" to { removeTab() }
         }
+        if (source != null) items += "📤 Send song data (to improve its notes)" to { sendSongData() }
         val r = tabReport
         val title = if (fromTab && r != null) "📝 Tab · ${r.matched} of ${r.total} notes lined up" else "📝 Bouzouki tab"
         AlertDialog.Builder(this)
             .setTitle(title)
             .setItems(items.map { it.first }.toTypedArray()) { _, i -> items[i].second() }
             .setNegativeButton("Close", null)
+            .show()
+    }
+
+    /**
+     * Shares the song's data (its notes and what the note detector heard, never audio) with the
+     * playback time and a note from the player, so wrong or missing notes can be looked into.
+     */
+    private fun sendSongData() {
+        val id = currentId ?: return
+        val src = source ?: return
+        val time = clock.now(SystemClock.elapsedRealtimeNanos())
+        val note = EditText(this).apply {
+            hint = "What's wrong? e.g. notes missing at ${SongExport.clock(time)}"
+            setText("Around ${SongExport.clock(time)}: ")
+            setSelection(text.length)
+            setTextColor(WHITE)
+            setHintTextColor(0xFF9FB4CC.toInt())
+            minLines = 2
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+        }
+        val box = FrameLayout(this).apply { setPadding(ui.px(20), 0, ui.px(20), 0); addView(note) }
+        AlertDialog.Builder(this)
+            .setTitle("📤 Send song data")
+            .setMessage("Sends this song's notes and what the app heard (no audio), its link, any tab you added, " +
+                "and the playback time (${SongExport.clock(time)}). Play to the part that's wrong first.")
+            .setView(box)
+            .setPositiveButton("Send") { _, _ ->
+                val yt = currentSource as? SongJobs.Source.YouTube
+                val info = SongExport.Info(
+                    id = id,
+                    title = src.title.ifBlank { titleText.text.toString() },
+                    link = yt?.let { "https://youtu.be/${it.videoId}" },
+                    instrument = settings.instrument.greekName,
+                    detail = settings.detail(id).name.lowercase(Locale.ROOT),
+                    lineFrom = if (lineSpec is SongLines.Spec.FromTab) "tab" else "detected",
+                    sync = syncOffset,
+                    time = time,
+                    note = note.text.toString(),
+                )
+                status.text = "Packing the song's data…"
+                SongExport.share(this, info) { error -> status.text = error ?: "Pick where to send it (for example, upload it to the chat)." }
+            }
+            .setNegativeButton("Cancel", null)
             .show()
     }
 
