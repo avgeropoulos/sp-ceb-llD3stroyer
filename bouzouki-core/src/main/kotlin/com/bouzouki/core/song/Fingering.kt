@@ -15,7 +15,9 @@ import kotlin.math.min
  * The hand covers [Weights.span] frets from where the index finger rests, one more being a stretch.
  * Moving it is a shift: cheap when there is time (a long note, a pause, a new phrase, a big interval)
  * and dear inside a fast group. Crossing to another course costs more the further it takes the hand
- * from the melody courses, and each note costs by its course and by how high up the neck it is.
+ * from the melody courses, and less with time just as a shift does. Each note costs by its course and by
+ * how high up the neck it is; the A course (and any below it) is for the low positions, so a note the
+ * top course also has costs a little more there above the fifth fret.
  * A legato note (hammered, pulled or slid from the one before) stays on that note's course whenever
  * that course has it. A hammer-on or pull-off keeps the hand where it is (an open string at either end
  * is fine); a slide is the shift itself, so it may go any distance, but never from or to an open string.
@@ -42,7 +44,7 @@ object Fingering {
          * enough that a lone low note in a fast run goes to the course below instead.
          */
         val reach: Int = 4,
-        val leap: Double = 1.5,
+        val leap: Double = 1.75,
         /**
          * A shift costs [shiftAcross] times as much when the hand changes course at the same time, [slide] times
          * as much as a slide, and [aroundOpen] times as much around an open string (the hand is free).
@@ -63,33 +65,47 @@ object Fingering {
         val high: Double = 0.03,
         val tooHighFrom: Int = 22,
         val tooHigh: Double = 0.8,
-        /** A shift costs fully at [fastGap] between onsets or less, [slowFactor] of that at [slowGap] and more. */
+        /**
+         * A shift, or a crossing inside a phrase, costs fully at [fastGap] between onsets or less, and [slowFactor]
+         * of that at [slowGap] and more.
+         */
         val fastGap: Double = 0.12,
         val slowGap: Double = 0.4,
         val slowFactor: Double = 0.5,
         /** Shifting and crossing at the start of a phrase. */
         val phraseShift: Double = 0.25,
         val phraseCross: Double = 0.6,
+        /**
+         * A note above fret [sideFrom] of a course below the top one, when the top course has it too: players
+         * keep the A course for the low positions and take the tune up the D course.
+         */
+        val sideFrom: Int = 5,
+        val side: Double = 0.2,
     )
 
-    /** Tetrachordo C F A D: D and A carry the melody, F the notes below A3, C almost never. */
+    /**
+     * Tetrachordo C F A D: D and A carry the melody, F the notes below A3, C almost never. Crossing between
+     * A and D costs about as much as a short shift at any tempo, so a line mostly stays on its course and the
+     * hand moves along it (a real player's tab crosses about once in ten notes), and a note A or D can play
+     * seldom goes down to a bass course just to spare the hand a shift.
+     */
     val TETRACHORDO = Weights(
-        course = doubleArrayOf(3.0, 1.2, 0.1, 0.0),
+        course = doubleArrayOf(3.6, 1.8, 0.1, 0.0),
         cross = arrayOf(
             doubleArrayOf(0.0, 1.0, 2.0, 2.6),
             doubleArrayOf(1.0, 0.0, 0.9, 1.5),
-            doubleArrayOf(2.0, 0.9, 0.0, 0.35),
-            doubleArrayOf(2.6, 1.5, 0.35, 0.0),
+            doubleArrayOf(2.0, 0.9, 0.0, 0.65),
+            doubleArrayOf(2.6, 1.5, 0.65, 0.0),
         ),
     )
 
     /** Trichordo D A D: the high D and A carry the melody, the low D (the drone course) the notes below A3. */
     val TRICHORDO = Weights(
-        course = doubleArrayOf(1.2, 0.1, 0.0),
+        course = doubleArrayOf(1.8, 0.1, 0.0),
         cross = arrayOf(
             doubleArrayOf(0.0, 0.9, 1.5),
-            doubleArrayOf(0.9, 0.0, 0.35),
-            doubleArrayOf(1.5, 0.35, 0.0),
+            doubleArrayOf(0.9, 0.0, 0.65),
+            doubleArrayOf(1.5, 0.65, 0.0),
         ),
     )
 
@@ -115,7 +131,8 @@ object Fingering {
         val n = midis.size
         if (n == 0) return emptyList()
         val low = inst.courses.first().openMidi
-        val high = inst.courses.last().openMidi + inst.frets
+        val top = inst.courses.last().openMidi
+        val high = top + inst.frets
         val time = List(n) { starts.getOrElse(it) { starts.lastOrNull() ?: 0.0 } }
         val phrase = phraseStarts(time)
         val layers = ArrayList<Layer>(n)
@@ -129,7 +146,8 @@ object Fingering {
                 val f = m - inst.courses[c].openMidi
                 if (f !in 0..inst.frets) continue
                 layer.onCourse[c] = true
-                val place = w.course[c] + height(f, w) + if (f == 0) (if (atEdge) w.openAtEdge else w.open) else 0.0
+                val side = if (c < inst.courses.lastIndex && f > w.sideFrom && m >= top) w.side else 0.0
+                val place = w.course[c] + height(f, w) + side + if (f == 0) (if (atEdge) w.openAtEdge else w.open) else 0.0
                 if (f == 0) {
                     for (h in 1..inst.frets) layer.add(c, f, h, place) // the hand is free: anywhere
                 } else {
@@ -144,9 +162,10 @@ object Fingering {
                 val prev = layers[i - 1]
                 val gap = time[i] - time[i - 1]
                 val slow = ((gap - w.fastGap) / (w.slowGap - w.fastGap)).coerceIn(0.0, 1.0)
-                val pace = if (phrase[i]) w.phraseShift else 1.0 - (1.0 - w.slowFactor) * slow
+                val slowPace = 1.0 - (1.0 - w.slowFactor) * slow
+                val pace = if (phrase[i]) w.phraseShift else slowPace
                 val fast = if (phrase[i]) 0.0 else 1.0 - slow
-                val crossPace = if (phrase[i]) w.phraseCross else 1.0
+                val crossPace = if (phrase[i]) w.phraseCross else slowPace
                 val leg = legato?.getOrNull(i) == true
                 val sl = leg && slide?.getOrNull(i) == true
                 for (s in 0 until layer.size) {
