@@ -144,6 +144,18 @@ internal class LegatoPhrase(private val fs: Int = BasicPitch.SAMPLE_RATE, seed: 
 class LegatoTest {
     private val model = File("../bouzouki/src/main/assets/basic_pitch.onnx")
 
+    /**
+     * [phrase] as a recording has it: over a noise floor (a clean render has none to measure attacks against), with a
+     * softer bass picked under it at [bass] (time, MIDI pitch below the bouzouki's range).
+     */
+    private fun withBand(phrase: FloatArray, bass: List<Pair<Double, Int>>): FloatArray {
+        val b = LegatoPhrase(seed = 11)
+        for ((t, m) in bass) b.pick(t, m)
+        val low = b.render(phrase.size.toDouble() / BasicPitch.SAMPLE_RATE)
+        val rnd = Random(5)
+        return FloatArray(phrase.size) { (phrase[it] + 0.25 * low[it] + 3e-4 * rnd.nextGaussian()).toFloat() }
+    }
+
     private fun analyse(audio: FloatArray): Pair<BasicPitch.Activations, Attacks> {
         val env = OrtEnvironment.getEnvironment()
         return env.createSession(model.path, OrtSession.SessionOptions()).use { session ->
@@ -165,7 +177,7 @@ class LegatoTest {
             .pick(3.00, 64).hammer(3.22, 65).hammer(3.44, 67)
             .pick(3.90, 62).hammer(4.12, 63).pull(4.34, 62)
         listOf(64, 65, 67, 69, 67, 65, 64, 62).forEachIndexed { i, m -> ph.pick(4.80 + i * 0.2, m) }
-        val audio = ph.render(6.8)
+        val audio = withBand(ph.render(6.8), listOf(0.30 to 43, 1.20 to 38, 2.10 to 41, 3.00 to 36, 3.90 to 43, 4.80 to 40, 5.60 to 45))
         val (act, attacks) = analyse(audio)
         val line = SongAnalyzer.bouzoukiLine(SongAnalyzer.candidates(act), Instrument.TETRACHORDO, act, attacks)
         val report = ph.score.map { n -> "${n.kind}@${n.time}:${n.midi} -> ${find(line, n)?.articulation}" }
@@ -190,13 +202,16 @@ class LegatoTest {
     }
 
     @Test
-    fun aLongNoteWithVibratoOrABendIsOneNote() {
-        // Tied notes held across beats: one plain, one with vibrato, one with a small bend. Each stays one note.
+    fun aLongNoteWithVibratoOrABendIsOneNoteAndAPickedAgainIsTwo() {
+        // Tied notes held across beats: one plain, one with vibrato, one with a small bend. Each stays one note, while
+        // the plain one and the bent one are then picked again on the same pitch: those are new notes.
         val fs = BasicPitch.SAMPLE_RATE
-        val audio = FloatArray(fs * 6)
+        val audio = FloatArray(fs * 7)
         fun held(start: Double, midi: Int, dur: Double, cents: (Double) -> Double) {
             val ph = LegatoPhrase(seed = (start * 100).toLong())
             val one = ph.pick(0.0, midi).render(dur)
+            val damp = (0.03 * fs).toInt() // the hand (or the next pick) damps the string at the end
+            for (k in 0 until damp) one[one.size - 1 - k] *= k.toFloat() / damp
             // Bend the rendered note by resampling it along the pitch curve (time-varying playback rate).
             var pos = 0.0
             var i = (start * fs).toInt()
@@ -206,12 +221,15 @@ class LegatoTest {
                 pos += 2.0.pow(cents(pos / fs) / 1200)
             }
         }
-        held(0.3, 62, 1.6) { 0.0 }
+        held(0.3, 62, 1.2) { 0.0 }
+        held(1.5, 62, 0.6) { 0.0 }
         held(2.1, 65, 1.6) { t -> if (t < 0.3) 0.0 else 30 * sin(2 * PI * 5.5 * (t - 0.3)) }
         held(3.9, 69, 1.6) { t -> 60 * ((t - 0.4) / 0.1).coerceIn(0.0, 1.0) - 60 * ((t - 0.75) / 0.15).coerceIn(0.0, 1.0) }
-        val (act, attacks) = analyse(audio)
+        held(5.5, 69, 1.0) { 0.0 }
+        val (act, attacks) = analyse(withBand(audio, listOf(0.3 to 43, 2.1 to 38, 3.9 to 40, 5.5 to 40)))
         val line = SongAnalyzer.bouzoukiLine(SongAnalyzer.candidates(act), Instrument.TETRACHORDO, act, attacks)
-        assertEquals(listOf(62, 65, 69), line.map { it.midi }, "line: $line")
+        assertEquals(listOf(62, 62, 65, 69, 69), line.map { it.midi }, "line: $line")
+        assertEquals(listOf(0.3, 1.5, 2.1, 3.9, 5.5), line.map { it.start }.map { Math.round(it * 10) / 10.0 }, "line: $line")
         assertTrue(line.all { it.articulation == Articulation.PICK }, "line: $line")
     }
 }
@@ -242,6 +260,18 @@ class AttacksTest {
     }
 
     @Test
+    fun withoutANoiseFloorAnyRiseIsAPick() {
+        // A clean render: most frames rise not at all (the median is 0), so a click is a pick however small, and
+        // silence is none.
+        val rnd = Random(4)
+        val x = FloatArray(fs)
+        for (i in 0 until (0.006 * fs).toInt()) x[fs / 2 + i] = ((rnd.nextDouble() * 2 - 1) * 0.01).toFloat()
+        val a = Attacks.of(x)
+        assertEquals(Double.POSITIVE_INFINITY, a.rise(0.5))
+        assertEquals(0.0, a.rise(0.2), 0.0)
+    }
+
+    @Test
     fun aRepeatedPitchWithoutAPickIsOneNote() {
         // Basic Pitch heard a held note twice (a second onset 0.4 s in, where nothing was picked) and a re-pick at 1.0 s.
         val x = FloatArray(fs * 2)
@@ -258,11 +288,46 @@ class AttacksTest {
         assertEquals(1.0, line[0].end, 1e-9)
     }
 
+    /** The audio of hand-made activations: a quiet room, and a click (of [level]) where each of [picks] starts. */
+    private fun clicks(frames: Int, picks: List<Int>, level: (Int) -> Double = { 0.3 }): Attacks {
+        val rnd = Random(3)
+        val x = FloatArray((BasicPitch.frameTime(frames) * fs).toInt() + fs) { (0.001 * rnd.nextGaussian()).toFloat() }
+        for (f in picks) {
+            val at = ((BasicPitch.frameTime(f) + BasicPitch.ONSET_LATENCY) * fs).toInt()
+            for (i in 0 until (0.006 * fs).toInt()) x[at + i] += ((rnd.nextDouble() * 2 - 1) * level(f)).toFloat()
+        }
+        return Attacks.of(x)
+    }
+
+    @Test
+    fun aTrillComesBackToTheNoteRatherThanContinuingIt() {
+        // D4 picked, then E4, D4, E4 by hammer-on and pull-off, with no attacks. Basic Pitch stretched the first D
+        // across the short E, so the D after it starts where that one ends, as a re-detection would. But D stopped
+        // sounding while E played: the line went to E and back, a trill, and keeps all four notes.
+        fun at(f: Int) = BasicPitch.frameTime(f) + BasicPitch.ONSET_LATENCY
+        fun heard(m: Int, f: Int, e: Int) = NoteEvent(at(f), at(e), m, 0.6, onset = 0.9, salience = 0.8, frame = f, endFrame = e)
+        val notes = listOf(heard(62, 20, 40), heard(64, 30, 40), heard(62, 40, 50), heard(64, 50, 70))
+        fun line(dHeld: Boolean): List<NoteEvent> {
+            val frames = Array(100) { FloatArray(88) }
+            for ((m, f, e) in listOf(Triple(62, 20, 30), Triple(64, 30, 40), Triple(62, 40, 50), Triple(64, 50, 70))) {
+                for (t in f until e) frames[t][m - 21] = 0.8f
+            }
+            if (dHeld) for (t in 20 until 50) frames[t][62 - 21] = 0.8f
+            val act = BasicPitch.Activations(frames, Array(100) { FloatArray(88) })
+            return SongAnalyzer.bouzoukiLine(notes, Instrument.TETRACHORDO, act, clicks(100, listOf(20)))
+        }
+        val trill = line(dHeld = false)
+        assertEquals(listOf(62, 64, 62, 64), trill.map { it.midi }, "line: $trill")
+        // While D keeps sounding through the E (another voice passing by), the second D is still D heard again.
+        assertTrue(line(dHeld = true).count { it.midi == 62 } == 1, "line: ${line(dHeld = true)}")
+    }
+
     @Test
     fun articulationsFollowTheHandoverAndTheContour() {
         // Activations made by hand: D4 picked at frame 10, E4 by hammer-on at frame 40 (D fades as E takes over, no
-        // attack), D4 picked again at frame 70, then F4 at frame 100 reached by a slide (the contour glides).
-        val n = 140
+        // attack), D4 picked again at frame 70, F4 at frame 100 reached by a slide (the contour glides), C5 a fifth
+        // up at 130 without a pick but without a glide either, back down to F4 at 160 by a slide, then picks.
+        val n = 320
         val frames = Array(n) { FloatArray(88) }
         val onsets = Array(n) { FloatArray(88) }
         val contours = Array(n) { ByteArray(BasicPitch.N_CONTOUR_BINS) }
@@ -273,40 +338,68 @@ class AttacksTest {
             }
             onsets[from][midi - 21] = 0.95f
         }
-        sound(62, 10, 40); sound(64, 40, 70); sound(62, 70, 100); sound(65, 100, 130)
-        for ((k, t) in (93..99).withIndex()) { // the glide: the contour's peak moves up from D to F
-            contours[t][3 * (62 - 21) + 1] = 0
-            contours[t][3 * (62 - 21) + 1 + k] = BasicPitch.quantize(0.6f)
+        fun glide(from: Int, to: Int, frame: Int) { // the contour's peak moves from one pitch to the other
+            val steps = 7
+            for (k in 0 until steps) {
+                val t = frame - steps + k
+                contours[t][3 * (from - 21) + 1] = 0
+                contours[t][3 * (from - 21) + 1 + (3 * (to - from) * (k + 1)) / steps] = BasicPitch.quantize(0.6f)
+            }
         }
+        val plan = listOf(62 to 10, 64 to 40, 62 to 70, 65 to 100, 72 to 130, 65 to 160, 64 to 190, 62 to 220, 64 to 250, 65 to 280)
+        plan.forEachIndexed { i, (m, f) -> sound(m, f, if (i + 1 < plan.size) plan[i + 1].second else 310) }
+        glide(62, 65, 100)
+        glide(72, 65, 160)
         val act = BasicPitch.Activations(frames, onsets, contours)
-        // Attacks: clicks at the two picks only.
-        val rnd = Random(3)
-        val x = FloatArray((BasicPitch.frameTime(n) * fs).toInt() + fs) { (0.001 * rnd.nextGaussian()).toFloat() }
-        for (f in listOf(10, 70)) {
-            val at = ((BasicPitch.frameTime(f) + BasicPitch.ONSET_LATENCY) * fs).toInt()
-            for (i in 0 until (0.006 * fs).toInt()) x[at + i] += ((rnd.nextDouble() * 2 - 1) * 0.3).toFloat()
-        }
-        val line = SongAnalyzer.bouzoukiLine(SongAnalyzer.candidates(act), Instrument.TETRACHORDO, act, Attacks.of(x))
-        assertEquals(listOf(62, 64, 62, 65), line.map { it.midi }, "line: $line")
-        assertEquals(listOf(Articulation.PICK, Articulation.HAMMER, Articulation.PICK, Articulation.SLIDE), line.map { it.articulation })
+        // Attacks: clicks at the picks only.
+        val line = SongAnalyzer.bouzoukiLine(SongAnalyzer.candidates(act), Instrument.TETRACHORDO, act, clicks(n, listOf(10, 70, 190, 220, 250, 280)))
+        assertEquals(plan.map { it.first }, line.map { it.midi }, "line: $line")
+        val p = Articulation.PICK
+        assertEquals(listOf(p, Articulation.HAMMER, p, Articulation.SLIDE, p, Articulation.SLIDE, p, p, p, p), line.map { it.articulation })
         // Without the attacks nothing can be told apart: all picked.
         assertTrue(SongAnalyzer.bouzoukiLine(SongAnalyzer.candidates(act), Instrument.TETRACHORDO, act).all { it.articulation == Articulation.PICK })
     }
 
     @Test
-    fun songsSavedBeforeArticulationsStillOpen() {
+    fun aQuietPassageIsNotTakenForLegato() {
+        // Stepwise notes, all with a handover the way legato has one: sixteen loud picks, then, after a pause, the
+        // band drops 20 dB and eight quieter picks follow, one of them (frame 1100) a hammer-on with no attack. A
+        // quiet pick adds far less energy than the song's typical note, but as much as the notes around it.
+        val loud = (0 until 16).map { 40 + 20 * it }
+        val quiet = (0 until 8).map { 1040 + 20 * it }
+        val n = quiet.last() + 40
+        val frames = Array(n) { FloatArray(88) }
+        val onsets = Array(n) { FloatArray(88) }
+        val contours = Array(n) { ByteArray(BasicPitch.N_CONTOUR_BINS) }
+        val steps = listOf(62, 64, 65, 67, 65, 64)
+        for (part in listOf(loud, quiet)) part.forEachIndexed { i, f ->
+            val m = steps[i % steps.size]
+            for (t in f until f + 20) { frames[t][m - 21] = 0.8f; contours[t][3 * (m - 21) + 1] = BasicPitch.quantize(0.8f) }
+            onsets[f][m - 21] = 0.95f
+        }
+        val hammer = quiet[3]
+        val attacks = clicks(n, loud + quiet.filter { it != hammer }) { f -> if (f < 1000) 0.3 else 0.03 }
+        val act = BasicPitch.Activations(frames, onsets, contours)
+        val line = SongAnalyzer.bouzoukiLine(SongAnalyzer.candidates(act), Instrument.TETRACHORDO, act, attacks)
+        assertEquals(24, line.size, "line: $line")
+        assertEquals(listOf(hammer), line.filter { it.articulation.isLegato }.map { it.frame }, "line: $line")
+        assertEquals(Articulation.HAMMER, line.first { it.frame == hammer }.articulation)
+    }
+
+    @Test
+    fun songsSavedBeforeArticulationsArePreparedAgain() {
         val a = SongAnalysis("id", "Σ", Instrument.TETRACHORDO, listOf(
             SongNote(1.0, 1.4, 62, 3, 0), SongNote(1.4, 1.8, 64, 3, 2, Articulation.HAMMER),
         ), Dromos.MATZORE, 2)
         val json = a.toJson()
         assertEquals(a.notes, assertNotNull(SongAnalysis.fromJson(json)).notes)
-        // Version 2 wrote the same fields (its articulations were all picks): it reads, all picked, but isn't current.
-        val v2 = json.replace("\"version\":${SongAnalysis.FORMAT}", "\"version\":2")
-        val old = assertNotNull(SongAnalysis.fromJson(v2))
-        assertEquals(a.notes.map { it.copy(articulation = Articulation.PICK) }, old.notes)
-        assertEquals(SongAnalysis.Saved("id", "Σ", current = false), SongAnalysis.saved(v2))
         assertEquals(SongAnalysis.Saved("id", "Σ", current = true), SongAnalysis.saved(json))
-        // Newer than this version: not read.
+        // Version 2 (before articulations were detected) isn't read, so the app prepares the song again (it opens a
+        // song from the cache only when this reads it), and the song list shows it as one to prepare again.
+        val v2 = json.replace("\"version\":${SongAnalysis.FORMAT}", "\"version\":2")
+        assertEquals(null, SongAnalysis.fromJson(v2))
+        assertEquals(SongAnalysis.Saved("id", "Σ", current = false), SongAnalysis.saved(v2))
+        // Newer than this version: not read either.
         assertEquals(null, SongAnalysis.fromJson(json.replace("\"version\":${SongAnalysis.FORMAT}", "\"version\":${SongAnalysis.FORMAT + 1}")))
     }
 }

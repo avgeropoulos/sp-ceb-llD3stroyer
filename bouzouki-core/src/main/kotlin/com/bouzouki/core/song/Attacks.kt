@@ -19,8 +19,15 @@ import kotlin.math.min
 class Attacks(internal val rises: FloatArray, internal val energies: FloatArray) {
     private val riseMedian: Double = median(rises)
 
-    /** The sharpest attack within [WINDOW] of [time] (seconds), relative to the song's median frame. */
-    fun rise(time: Double): Double = if (riseMedian > 0) peak(rises, time) / riseMedian else 0.0
+    /**
+     * The sharpest attack within [WINDOW] of [time] (seconds), relative to the song's median frame. Where most frames
+     * rise not at all (silence, a clean render) any rise is infinitely sharp: a note counts as picked unless nothing
+     * rises at its start.
+     */
+    fun rise(time: Double): Double {
+        val p = peak(rises, time)
+        return if (riseMedian > 0) p / riseMedian else if (p > 0) Double.POSITIVE_INFINITY else 0.0
+    }
 
     /** The most energy an attack adds within [WINDOW] of [time] (seconds); compare it with other notes of the song. */
     fun energy(time: Double): Double = peak(energies, time)

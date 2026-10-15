@@ -84,16 +84,10 @@ data class SongAnalysis(
 
     companion object {
         /**
-         * Bump when the analysis changes: [fromJson] then refuses songs saved before [OLDEST_READ], so they
-         * are prepared again, and [saved] still lists them meanwhile (as not [Saved.current]).
+         * Bump when the analysis changes: [fromJson] then refuses songs saved before, so they are
+         * prepared again, and [saved] still lists them meanwhile.
          */
         const val FORMAT = 3
-
-        /**
-         * The oldest cache [fromJson] still reads. Version 2 (before articulations were detected) has the same
-         * fields: its notes all read as picked.
-         */
-        const val OLDEST_READ = 2
 
         private fun jsonObject(vararg fields: Pair<String, String>) = fields.joinToString(",", "{", "}") { (k, v) -> quote(k) + ":" + v }
         private fun fmt(d: Double) = String.format(java.util.Locale.US, "%.3f", d)
@@ -106,28 +100,27 @@ data class SongAnalysis(
             append('"')
         }
 
-        /** The id and title in a cache file of any version, and whether this version wrote it; null if damaged. */
+        /** The id and title in a cache file of any version, and whether [fromJson] can read it; null if damaged. */
         fun saved(json: String): Saved? = try {
             val p = MiniJson(json).parse() as Map<*, *>
             Saved(p["id"] as String, p["title"] as String, (p["version"] as Number).toInt() == FORMAT)
         } catch (_: Exception) { null }
 
         /**
-         * Reads what [toJson] wrote (versions [OLDEST_READ]..[FORMAT]); null if it's from an older or newer
-         * version, or damaged. Unknown fields are ignored.
+         * Reads what [toJson] wrote; null if it's from an older version (the app then prepares the song again,
+         * e.g. version 2, from before articulations were detected) or damaged. Unknown fields are ignored.
          */
         fun fromJson(json: String): SongAnalysis? = try {
             val p = MiniJson(json).parse() as Map<*, *>
             fun num(key: String) = p[key] as Number
-            val version = num("version").toInt()
-            if (version !in OLDEST_READ..FORMAT) null else SongAnalysis(
+            if (num("version").toInt() != FORMAT) null else SongAnalysis(
                 id = p["id"] as String,
                 title = p["title"] as String,
                 instrument = Instrument.valueOf(p["instrument"] as String),
                 notes = (p["notes"] as List<*>).map {
                     val a = (it as List<*>).map { v -> v as Number }
-                    val art = if (version < 3) null else a.getOrNull(5)?.toInt()?.let { Articulation.entries.getOrNull(it) }
-                    SongNote(a[0].toDouble(), a[1].toDouble(), a[2].toInt(), a[3].toInt(), a[4].toInt(), art ?: Articulation.PICK)
+                    SongNote(a[0].toDouble(), a[1].toDouble(), a[2].toInt(), a[3].toInt(), a[4].toInt(),
+                        a.getOrNull(5)?.toInt()?.let { Articulation.entries.getOrNull(it) } ?: Articulation.PICK)
                 },
                 dromos = (p["dromos"] as String?)?.let { Dromos.valueOf(it) },
                 rootPc = num("root").toInt(),
@@ -184,9 +177,9 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
             BasicPitch.notes(act, onsetThresh = 0.6f, minNoteLen = 4, melodia = false)
 
         /**
-         * Everything after transcription: the line with its articulations, the frets (legato notes on the course of
-         * the note before) and the dromos guess. [act] sharpens the line when given, [attacks] (with [act]) finds the
-         * notes sounded without a pick.
+         * Everything after transcription: the line with its articulations, the frets ([fingering] is told which notes
+         * are legato) and the dromos guess. [act] sharpens the line when given, [attacks] (with [act]) finds the notes
+         * sounded without a pick.
          */
         fun build(
             id: String,
@@ -268,23 +261,49 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
          * Candidates without a pick of their own that start where one of the same pitch ends ([REDETECTION_GAP]),
          * or within [BRIDGE_TIME] of its end while the contour shows the string still sounding near the pitch, are
          * that note detected again (after a bend or vibrato, or the pair of strings beating): each is joined into it.
+         * Unless the line went to a neighbouring note and back meanwhile, as in a trill or mordent ([leftFor]).
          */
         private fun joinRedetections(c: List<NoteEvent>, act: BasicPitch.Activations?, attacks: Attacks): List<NoteEvent> {
             val out = ArrayList<NoteEvent>(c.size)
+            val latest = ArrayList<NoteEvent>(c.size) // the last candidate joined into each note of out (or itself)
             val last = HashMap<Int, Int>() // pitch -> index in out of its latest note
             for (n in c) {
                 val k = last[n.midi]
                 if (k != null && !n.onset.isNaN() && attacks.rise(n.start) < PICK_ATTACK) {
                     val p = out[k]
-                    if (p.end >= n.start - REDETECTION_GAP || (p.end >= n.start - BRIDGE_TIME && sounds(act, n.midi, p.endFrame, n.frame))) {
+                    if ((p.end >= n.start - REDETECTION_GAP || (p.end >= n.start - BRIDGE_TIME && sounds(act, n.midi, p.endFrame, n.frame))) &&
+                        !leftFor(out, latest[k], n, act)) {
                         out[k] = p.copy(end = max(p.end, n.end), endFrame = max(p.endFrame, n.endFrame))
+                        latest[k] = n
                         continue
                     }
                 }
                 last[n.midi] = out.size
                 out += n
+                latest += n
             }
             return out
+        }
+
+        /**
+         * Whether, after [from] and before [n] (same pitch, both [SEPARATION] away), a note within [LEGATO_REACH] of
+         * them started in [out] and [n]'s pitch stopped sounding as it did (its activation under
+         * [STILL_SOUNDING_LEVEL] in the [TRILL_FRAMES] after; without [act], any such note): the line left the pitch
+         * and came back.
+         */
+        private fun leftFor(out: List<NoteEvent>, from: NoteEvent, n: NoteEvent, act: BasicPitch.Activations?): Boolean {
+            val key = n.midi - BasicPitch.MIDI_OFFSET
+            for (i in out.indices.reversed()) {
+                val y = out[i]
+                if (y.start <= from.start + SEPARATION) break // out is in time order
+                if (y.start >= n.start - SEPARATION || abs(y.midi - n.midi) !in 1..LEGATO_REACH) continue
+                if (act == null || y.frame < 0) return true
+                val end = min(act.frames.size, max(y.frame + 1, min(n.frame, y.frame + TRILL_FRAMES)))
+                var low = Float.MAX_VALUE
+                for (t in y.frame until end) low = min(low, act.frames[t][key])
+                if (low < STILL_SOUNDING_LEVEL) return true
+            }
+            return false
         }
 
         /** Whether the contour stays within 4 bins of [midi], at [BRIDGE_LEVEL] or more, in every frame [from] until [to]. */
@@ -302,28 +321,29 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
 
         /**
          * Marks the line's notes sounded without a new pick, from the note before on the same string. B is legato
-         * from A when it is within [LEGATO_REACH] semitones; A sounds up to B (its note reaches B, its activation
-         * just before B is at least [HANDOVER_BEFORE]) and fades as B takes over (3-8 frames into B, to at most
-         * [HANDOVER_FADE] of that while B reaches [LEGATO_STRONG], or to at most [HANDOVER_CLEAR] of it while B
-         * reaches [LEGATO_WEAK]); and B's attack adds less than [LEGATO_ENERGY] of the energy the line's median note
-         * adds. B is a [Articulation.SLIDE] when the pitch contour glides from A to B (or B adds almost no energy and
-         * its onset is soft), else a [Articulation.HAMMER] (up) or [Articulation.PULL] (down), which need a clear onset.
+         * from A when it is within [LEGATO_REACH] semitones ([SLIDE_REACH] for a slide); A sounds up to B (its note
+         * reaches B, its activation just before B is at least [HANDOVER_BEFORE]) and fades as B takes over (3-8 frames
+         * into B, to at most [HANDOVER_FADE] of that while B reaches [LEGATO_STRONG], or to at most [HANDOVER_CLEAR] of
+         * it while B reaches [LEGATO_WEAK]); and B's attack adds less than [LEGATO_ENERGY] of the energy the median
+         * line note within [LOCAL_TIME] adds (nearby notes, so a fade-out or a quiet verse isn't taken for legato).
+         * B is a [Articulation.SLIDE] when the pitch contour glides from A to B (or, within [LEGATO_REACH], B adds
+         * almost no energy and its onset is soft), else a [Articulation.HAMMER] (up) or [Articulation.PULL] (down),
+         * which need a clear onset.
          */
         fun articulate(line: List<NoteEvent>, act: BasicPitch.Activations, attacks: Attacks): List<NoteEvent> {
             if (line.size < 2 || act.contours == null) return line
             val frames = act.frames
             val n = frames.size
             val energy = line.map { attacks.energy(it.start) }
-            val typical = median(energy)
-            if (typical <= 0) return line
+            val typical = localMedians(line, energy)
             val out = line.toMutableList()
             for (j in 1 until out.size) {
                 val a = out[j - 1]
                 val b = out[j]
                 val f = b.frame
-                if (b.articulation != Articulation.PICK || f < 1 || f >= n || b.onset.isNaN()) continue
+                if (b.articulation != Articulation.PICK || f < 1 || f >= n || b.onset.isNaN() || typical[j] <= 0) continue
                 val d = b.midi - a.midi
-                if (abs(d) !in 1..LEGATO_REACH || a.end < b.start - LEGATO_GAP) continue
+                if (abs(d) !in 1..SLIDE_REACH || a.end < b.start - LEGATO_GAP) continue
                 val ka = a.midi - BasicPitch.MIDI_OFFSET
                 val kb = b.midi - BasicPitch.MIDI_OFFSET
                 var before = 0.0
@@ -334,11 +354,26 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
                 for (t in f until min(n, f + 5)) strong = max(strong, frames[t][kb].toDouble())
                 if (before < HANDOVER_BEFORE || after > HANDOVER_FADE * before) continue
                 if (strong < LEGATO_STRONG && !(strong >= LEGATO_WEAK && after <= HANDOVER_CLEAR * before)) continue
-                val added = energy[j] / typical
+                val added = energy[j] / typical[j]
                 if (added >= LEGATO_ENERGY) continue
-                val slide = glides(act, a.midi, b.midi, f) || (added < SLIDE_ENERGY && b.onset < LEGATO_ONSET)
+                val glide = glides(act, a.midi, b.midi, f)
+                if (!glide && abs(d) > LEGATO_REACH) continue // only a slide reaches further
+                val slide = glide || (added < SLIDE_ENERGY && b.onset < LEGATO_ONSET)
                 if (!slide && b.onset < LEGATO_ONSET) continue
                 out[j] = b.copy(articulation = if (slide) Articulation.SLIDE else if (d > 0) Articulation.HAMMER else Articulation.PULL)
+            }
+            return out
+        }
+
+        /** For each note of [line], the median of [values] over the line's notes starting within [LOCAL_TIME] of it. */
+        private fun localMedians(line: List<NoteEvent>, values: List<Double>): DoubleArray {
+            val out = DoubleArray(line.size)
+            var lo = 0
+            var hi = 0 // the window is [lo, hi): the line is in time order
+            for (j in line.indices) {
+                while (line[lo].start < line[j].start - LOCAL_TIME) lo++
+                while (hi < line.size && line[hi].start <= line[j].start + LOCAL_TIME) hi++
+                out[j] = median(values.subList(lo, hi))
             }
             return out
         }
@@ -461,14 +496,20 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
         /** ... or within this of its end while the contour stays near the pitch at [BRIDGE_LEVEL] or more. */
         private const val BRIDGE_TIME = 0.6
         private const val BRIDGE_LEVEL = 0.3
+        /** How soon a note's pitch must stop sounding after a neighbour starts, for the line to have left it. */
+        private const val TRILL_FRAMES = 6
         private const val LEGATO_REACH = 4
+        /** A slide (the contour glides) may reach this far: up to a fifth along one course. */
+        private const val SLIDE_REACH = 7
         private const val LEGATO_GAP = 0.02
         private const val HANDOVER_BEFORE = 0.2
         private const val HANDOVER_FADE = 0.8
         private const val HANDOVER_CLEAR = 0.5
         private const val LEGATO_STRONG = 0.6
         private const val LEGATO_WEAK = 0.45
-        private const val LEGATO_ENERGY = 0.35
+        private const val LEGATO_ENERGY = 0.4
+        /** How far (seconds) the notes a note's attack is compared with may lie (levels change over a song). */
+        private const val LOCAL_TIME = 6.0
         private const val LEGATO_ONSET = 0.85
         private const val SLIDE_ENERGY = 0.05
         private const val GLIDE_FRAMES = 8
