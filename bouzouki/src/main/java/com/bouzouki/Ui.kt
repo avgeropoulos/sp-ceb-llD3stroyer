@@ -59,18 +59,16 @@ class Settings(context: Context) {
     fun zoom(screen: String, default: Float) = prefs.getFloat("zoom_$screen", default)
     fun setZoom(screen: String, z: Float) = prefs.edit().putFloat("zoom_$screen", z).apply()
 
-    // Per song (by its id): how many notes its detected line keeps, whether its line comes from the
-    // tab pasted for it, and the bouzouki that tab was pasted for (it's read for that one first).
+    // Per song (by its id): how many notes its detected line keeps, and whether its line comes from
+    // the tab pasted for it.
     fun detail(id: String): Detail = Detail.entries.getOrElse(prefs.getInt("song_detail_$id", Detail.NORMAL.ordinal)) { Detail.NORMAL }
     fun setDetail(id: String, d: Detail) = prefs.edit().putInt("song_detail_$id", d.ordinal).apply()
     fun usesTab(id: String) = prefs.getBoolean("song_tab_$id", false)
     fun setUsesTab(id: String, v: Boolean) = prefs.edit().putBoolean("song_tab_$id", v).apply()
-    fun tabInstrument(id: String): Instrument = Instrument.entries.getOrElse(prefs.getInt("song_tabinst_$id", instrument.ordinal)) { instrument }
-    fun setTabInstrument(id: String, inst: Instrument) = prefs.edit().putInt("song_tabinst_$id", inst.ordinal).apply()
 
     /** Forgets everything kept for song [id] (its sync offset too, which the song screen keeps as "song_sync_<id>"). */
     fun forgetSong(id: String) = prefs.edit()
-        .remove("song_detail_$id").remove("song_tab_$id").remove("song_tabinst_$id").remove("song_sync_$id")
+        .remove("song_detail_$id").remove("song_tab_$id").remove("song_sync_$id")
         .apply()
 }
 
@@ -221,7 +219,7 @@ class InstrumentSwitch(context: Context, private val onPick: (Instrument) -> Uni
  * one lit ([selected], or -1 for none). Touching an option that isn't lit calls [onPick] with its
  * index; a click without a touch (keyboard, TalkBack) picks the next one. Dimmed ([available]
  * false) it still answers, so the screen can say why it can't be used yet. Its text follows the
- * system font size.
+ * system font size, and shrinks when it's given less width than its labels want.
  */
 class Segmented(context: Context, caption: String, private val options: List<String>, private val onPick: (Int) -> Unit) : View(context) {
     var caption = caption
@@ -232,14 +230,17 @@ class Segmented(context: Context, caption: String, private val options: List<Str
         set(v) { if (v != field) { field = v; invalidate() } }
     private val dp = context.resources.displayMetrics.density
     private fun sp(v: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, v, context.resources.displayMetrics)
-    private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; textSize = sp(12.5f) }
-    private val small = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; textSize = sp(9.5f); color = 0xFF9FB4CC.toInt() }
+    private val textSize = sp(12.5f)
+    private val smallSize = sp(9.5f)
+    private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; textSize = this@Segmented.textSize }
+    private val small = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; textSize = smallSize; color = 0xFF9FB4CC.toInt() }
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = CHIP }
     private val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = CHIP_EDGE; style = Paint.Style.STROKE; strokeWidth = 1 * dp }
     private val lit = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = GREEK_BLUE }
     private val litEdge = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = WHITE; style = Paint.Style.STROKE; strokeWidth = 1 * dp }
     private val pad = 6 * dp // each side of an option's text
     private var edges = FloatArray(options.size + 1) // where the options start and end, set with the size
+    private var fit = 1f // the labels' size, given the width, as a share of their full size
     private var touchX = -1f // where the touch that's about to click went down, or -1
 
     init {
@@ -267,13 +268,15 @@ class Segmented(context: Context, caption: String, private val options: List<Str
         return super.onTouchEvent(event)
     }
 
-    /** Each option's width as wide as its label in bold (the widest it gets). */
+    /** Each option's width as wide as its label in bold (the widest it gets), at full size. */
     private fun optionWidths(): List<Float> {
         text.typeface = Typeface.DEFAULT_BOLD
+        text.textSize = textSize
         return options.map { text.measureText(it) + 2 * pad }
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        small.textSize = smallSize
         val w = maxOf(optionWidths().sum(), small.measureText(caption) + 2 * pad) + 4 * dp
         val h = maxOf(44 * dp, small.fontSpacing + text.fontSpacing + 12 * dp) // taller with a big system font
         setMeasuredDimension(resolveSize(w.toInt(), widthMeasureSpec), resolveSize(h.toInt(), heightMeasureSpec))
@@ -285,6 +288,8 @@ class Segmented(context: Context, caption: String, private val options: List<Str
         edges = FloatArray(options.size + 1)
         edges[0] = 2 * dp
         for (k in options.indices) edges[k + 1] = edges[k] + widths[k] * scale
+        // Narrower than the labels want (a big system font in a full row): they shrink to fit.
+        fit = scale.coerceIn(0.3f, 1f)
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -296,6 +301,10 @@ class Segmented(context: Context, caption: String, private val options: List<Str
         for (p in arrayOf(fill, edge, lit, litEdge, small)) p.alpha = alpha
         canvas.drawRoundRect(inset, inset, w - inset, h - inset, r, r, fill)
         canvas.drawRoundRect(inset, inset, w - inset, h - inset, r, r, edge)
+        // The caption and the labels, smaller if they're given less width than they want.
+        small.textSize = smallSize
+        small.textSize = smallSize * ((w - 4 * dp) / (small.measureText(caption) + 2 * pad)).coerceIn(0.3f, 1f)
+        text.textSize = textSize * fit
         val captionBase = inset + 2 * dp - small.ascent()
         canvas.drawText(caption, w / 2, captionBase, small)
         val top = captionBase + small.descent() + 1 * dp

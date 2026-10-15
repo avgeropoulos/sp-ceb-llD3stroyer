@@ -19,13 +19,34 @@ object TabParser {
 
 /**
  * A tab lined up with the recording: [song] is the song's line made of the tab's notes at the times
- * they're heard; [matched] of the tab's [total] notes were found in the recording, [missing] lists the
- * indices (in the tab) of the others.
+ * they're heard, for the bouzouki of the song given to [TabAligner.align] (the player's), to show as it
+ * is: its notes keep the tab's course and fret where that bouzouki has the tab's string.
+ * [matched] of the tab's [total] notes were found in the recording, [missing] lists the indices (in the
+ * tab) of the others: those inside a part that was found are still in [song], where the notes around
+ * them put them. [sources] gives, for each note of [song], the index in the tab it comes from, or -1 for
+ * a note of the prepared line kept where the tab isn't heard. The recording sits [transpose] semitones
+ * above the tab (a song in another key: the notes are moved by it) and [octave] octaves above it (kept
+ * as the tab writes it). [differs] lists the tab notes heard only at another pitch (a wrong fret, or an
+ * octave off).
  */
-class TabAlignment(val song: SongAnalysis, val matched: Int, val total: Int, val missing: List<Int>)
+class TabAlignment(
+    val song: SongAnalysis,
+    val matched: Int,
+    val total: Int,
+    val missing: List<Int>,
+    val sources: List<Int> = emptyList(),
+    val transpose: Int = 0,
+    val octave: Int = 0,
+    val differs: List<Int> = emptyList(),
+)
 
 /** Lines a [ParsedTab] up with a prepared song's [AnalysisData]. */
 object TabAligner {
+    /**
+     * [base] is the prepared song, fingered for the bouzouki the player plays: notes keep the tab's course
+     * and fret where it has them, else they're fingered for it, and the prepared line's notes stay where
+     * the tab isn't heard.
+     */
     fun align(tab: ParsedTab, data: AnalysisData, base: SongAnalysis): TabAlignment =
-        TabAlignment(base, 0, tab.notes.size, tab.notes.indices.toList())
+        TabAlignment(base, 0, tab.notes.size, tab.notes.indices.toList(), List(base.notes.size) { -1 })
 }

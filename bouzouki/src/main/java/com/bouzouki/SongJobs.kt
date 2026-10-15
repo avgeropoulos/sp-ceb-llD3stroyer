@@ -101,8 +101,19 @@ object SongJobs {
     }
 
     /** What song [id]'s line was derived from, or null if it was prepared before that was kept (or it's damaged). */
-    fun data(context: Context, id: String): AnalysisData? =
+    fun data(context: Context, id: String): AnalysisData? = try {
         File(songsDir(context), "$id.data").takeIf { it.exists() }?.let { f -> f.inputStream().use { AnalysisData.read(it.buffered()) } }
+    } catch (_: IOException) {
+        null
+    }
+
+    /**
+     * Deletes song [id]'s data file, which couldn't be read, if it's still the one [stamp] names (not one
+     * written since): the song then asks to be prepared again for tabs and detail levels.
+     */
+    fun dropData(context: Context, id: String, stamp: Long) {
+        if (stamp != 0L && dataStamp(context, id) == stamp) File(songsDir(context), "$id.data").delete()
+    }
 
     /** Whether song [id] has its [data] file: songs prepared before it was kept need preparing again for tabs and detail levels. */
     fun hasData(context: Context, id: String) = File(songsDir(context), "$id.data").exists()

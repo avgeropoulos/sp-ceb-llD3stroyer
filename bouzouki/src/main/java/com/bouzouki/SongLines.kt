@@ -31,22 +31,49 @@ object SongLines {
         /** The line found in the recording, with [detail] notes. */
         data class Detected(override val id: String, val detail: Detail) : Spec
 
-        /** The notes of the tab [text], read for [instrument] first (see [readTab]), at the times they're heard. */
+        /**
+         * The notes of the tab [text] at the times they're heard, for [instrument] (the bouzouki the player
+         * plays): the tab is read for it first (see [readTab]), and its notes keep the tab's frets on it.
+         */
         data class FromTab(override val id: String, val text: String, val instrument: Instrument) : Spec {
             override fun toString() = "FromTab($id, ${text.length} chars, $instrument)"
         }
     }
 
-    /** How a tab lined up: [tab] as read, and [matched] of its [total] notes found in the recording, not those in [missing]. */
-    class TabReport(val tab: ParsedTab, val matched: Int, val total: Int, val missing: List<Int>)
+    /**
+     * How a tab lined up: [tab] as read, and [matched] of its [total] notes found in the recording, not
+     * those in [missing]; [differs] were heard only at another pitch. [sources] says which tab note each
+     * note of the line comes from (-1: a detected note, kept where the tab isn't heard). The recording is
+     * [transpose] semitones (and [octave] octaves) above the tab. See [TabAlignment].
+     */
+    class TabReport(
+        val tab: ParsedTab,
+        val matched: Int,
+        val total: Int,
+        val missing: List<Int>,
+        val sources: List<Int>,
+        val differs: List<Int>,
+        val transpose: Int,
+        val octave: Int,
+    ) {
+        /** The line's notes (by index) from tab notes not heard in the recording, and from those heard at another pitch. */
+        val unheard: Set<Int> = notesFrom(missing)
+        val offPitch: Set<Int> = notesFrom(differs)
+
+        private fun notesFrom(tabNotes: List<Int>): Set<Int> {
+            if (tabNotes.isEmpty()) return emptySet()
+            val wanted = tabNotes.toHashSet()
+            return sources.indices.filterTo(HashSet()) { sources[it] >= 0 && sources[it] in wanted }
+        }
+    }
 
     sealed interface Outcome {
         val spec: Spec
 
-        /** The line, for the bouzouki it was made for (the tab's, or the one the song was prepared for). */
+        /** The line, for the bouzouki it was made for (the player's for a tab's line, else the one the song was prepared for). */
         class Line(override val spec: Spec, val song: SongAnalysis, val report: TabReport? = null) : Outcome
 
-        /** The song was prepared before what its line comes from was kept: it needs preparing again. */
+        /** The song was prepared before what its line comes from was kept (or that can't be read): it needs preparing again. */
         class NoData(override val spec: Spec) : Outcome
 
         class Failed(override val spec: Spec, val message: String) : Outcome
@@ -73,7 +100,8 @@ object SongLines {
     /**
      * The line [spec] of [base] (the song as prepared) if it's ready, or null when it's being worked
      * out: it then comes to the listeners. [Outcome.NoData] at once for a song prepared before its
-     * data was kept.
+     * data was kept; a data file that can't be read is deleted (so [SongJobs.hasData] says so) and
+     * [Outcome.NoData] comes to the listeners.
      */
     fun request(context: Context, base: SongAnalysis, spec: Spec): Outcome? {
         val app = context.applicationContext
@@ -88,7 +116,8 @@ object SongLines {
                 derive(app, base, spec, stamp)
             } catch (_: OutOfMemoryError) {
                 lastData = null
-                Outcome.Failed(spec, "The song is too long for the phone's memory.")
+                Outcome.Failed(spec, if (spec is Spec.FromTab) "The tab is too long for the phone's memory: paste a shorter part of it."
+                    else "The song is too long for the phone's memory.")
             } catch (e: Exception) {
                 Outcome.Failed(spec, e.message ?: e.javaClass.simpleName)
             }
@@ -102,13 +131,22 @@ object SongLines {
     }
 
     private fun derive(app: Context, base: SongAnalysis, spec: Spec, stamp: Long): Outcome {
-        val data = data(app, spec.id, stamp) ?: return Outcome.NoData(spec)
+        val data = data(app, spec.id, stamp)
+        if (data == null) {
+            SongJobs.dropData(app, spec.id, stamp) // it can't be read: the song asks to be prepared again
+            return Outcome.NoData(spec)
+        }
         return when (spec) {
             is Spec.Detected -> Outcome.Line(spec, SongAnalyzer.rebuild(base, data, spec.detail))
             is Spec.FromTab -> {
                 val tab = readTab(spec.text, spec.instrument)
-                val a = TabAligner.align(tab, data, base)
-                Outcome.Line(spec, a.song, TabReport(tab, a.matched, a.total, a.missing))
+                // Lining up takes time and memory growing faster than the notes: a whole songbook pasted would stall the phone.
+                if (tab.notes.size > MAX_TAB_NOTES) {
+                    return Outcome.Failed(spec, "it has ${tab.notes.size} notes, more than the $MAX_TAB_NOTES a tab can have here. Copy just this song's bouzouki part.")
+                }
+                // Lined up against the song fingered for the player's bouzouki, so the line keeps the tab's frets on it.
+                val a = TabAligner.align(tab, data, base.forInstrument(spec.instrument))
+                Outcome.Line(spec, a.song, TabReport(tab, a.matched, a.total, a.missing, a.sources, a.differs, a.transpose, a.octave))
             }
         }
     }
@@ -137,4 +175,7 @@ object SongLines {
 
     /** Lines kept. */
     private const val KEEP = 8
+
+    /** The most notes a tab lined up may have (a long song's tab has several hundred). */
+    const val MAX_TAB_NOTES = 1500
 }
