@@ -69,8 +69,9 @@ class TabStripView(context: Context) : View(context) {
         fun yFor(course: Int) = top + (courses - 1 - course) * gap // highest course on top
         label.textAlign = Paint.Align.LEFT
         for (c in 0 until courses) {
-            canvas.drawLine(0f, yFor(c), width.toFloat(), yFor(c), line)
-            canvas.drawText(names.name(s.instrument.courses[c].openMidi), 2 * dp, yFor(c) - 2 * dp, label)
+            // The course name sits at the start of its line (above it, the top one would be cut off).
+            canvas.drawLine(20 * dp, yFor(c), width.toFloat(), yFor(c), line)
+            canvas.drawText(names.name(s.instrument.courses[c].openMidi), 2 * dp, yFor(c) + 3.5f * dp, label)
         }
         val from = time - secondsShown * nowAt
         val to = time + secondsShown * (1 - nowAt)
