@@ -193,7 +193,10 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
         cancelled: () -> Boolean = { false },
     ): SongAnalysis = analyzeWithData(id, title, left, right, instrument, progress, cancelled).first
 
-    /** Like [analyze], also returning what the line was derived from, to save with the song (see [rebuild]). */
+    /**
+     * Like [analyze], also returning what the line was derived from, to save with the song (see [rebuild]).
+     * [separated] sees the song without its voice (mono, 44.1 kHz) once it's ready; the app doesn't need it.
+     */
     fun analyzeWithData(
         id: String,
         title: String,
@@ -202,9 +205,11 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
         instrument: Instrument,
         progress: (Stage, Float) -> Unit = { _, _ -> },
         cancelled: () -> Boolean = { false },
+        separated: (FloatArray) -> Unit = {},
     ): Pair<SongAnalysis, AnalysisData> {
         progress(Stage.SEPARATING, 0f)
         val instrumental = separator.instrumentalMono(left, right, { progress(Stage.SEPARATING, it) }, cancelled)
+        separated(instrumental)
         progress(Stage.TRANSCRIBING, 0f)
         val audio = resample(instrumental, MdxSeparator.SAMPLE_RATE, BasicPitch.SAMPLE_RATE)
         val raw = pitch.activations(audio, { progress(Stage.TRANSCRIBING, it * 0.9f) }, cancelled)

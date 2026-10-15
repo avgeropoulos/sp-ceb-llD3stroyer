@@ -21,3 +21,12 @@ dependencies {
 }
 
 tasks.test { useJUnitPlatform() }
+
+// Developer tool: analyse a WAV like the app does (used by .github/workflows/analyze-song.yml).
+tasks.register<JavaExec>("analyzeSong") {
+    description = "Analyses -PsongAudio=<wav> with -PsongModel=<mdx.onnx> into -PsongOut=<dir> (and -PsongStem=<wav>)"
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.bouzouki.core.song.AnalyzeSongKt")
+    maxHeapSize = "6g"
+    args = listOf("songAudio", "songModel", "songOut", "songStem").map { (findProperty(it) ?: "").toString() }
+}
