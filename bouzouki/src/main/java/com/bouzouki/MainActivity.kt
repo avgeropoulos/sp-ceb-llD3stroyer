@@ -198,6 +198,11 @@ class MainActivity : Activity() {
         handleInstallStatus(intent)
     }
 
+    override fun onResume() {
+        super.onResume()
+        refresh() // the song screen can switch the bouzouki
+    }
+
     /** Android reports on the update here: first it needs you to confirm, then it says how it went. */
     private fun handleInstallStatus(intent: Intent?) {
         if (intent?.action != Updater.ACTION_INSTALL_STATUS) return

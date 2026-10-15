@@ -5,8 +5,11 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.util.TypedValue
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
@@ -125,6 +128,77 @@ fun wireZoom(ui: Ui, settings: Settings, board: FretboardView, screen: String, d
     button.textSize = 12f
     show()
     return button
+}
+
+/**
+ * A switch between the two bouzoukia, its options stacked (Τετράχορδο over Τρίχορδο) so it
+ * fits in a title bar. The chosen one is lit; touching the other one picks it and calls
+ * [onPick], touching the lit one does nothing. A click without a touch (keyboard, TalkBack)
+ * picks the other one. Its text follows the system font size.
+ */
+class InstrumentSwitch(context: Context, private val onPick: (Instrument) -> Unit) : View(context) {
+    var instrument = Instrument.TETRACHORDO
+        set(v) {
+            field = v
+            contentDescription = "Bouzouki: ${v.greekName} (${v.englishName.substringBefore(" ·")}). Double-tap for the other one."
+            invalidate()
+        }
+    private val options = arrayOf(Instrument.TETRACHORDO, Instrument.TRICHORDO)
+    private val dp = context.resources.displayMetrics.density
+    private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
+        textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 10.5f, context.resources.displayMetrics)
+    }
+    private val lit = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = WHITE }
+    private val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x99FFFFFF.toInt(); style = Paint.Style.STROKE; strokeWidth = 1 * dp }
+    private val bold = Typeface.DEFAULT_BOLD
+    private val plain = Typeface.DEFAULT
+    private var touchY = -1f // where the touch that's about to click went down, or -1
+
+    init {
+        isClickable = true
+        isFocusable = true
+        instrument = Instrument.TETRACHORDO
+        setOnClickListener {
+            val y = touchY
+            touchY = -1f
+            val pick = if (y < 0) options.first { it != instrument } else options[if (y < height / 2f) 0 else 1]
+            if (pick != instrument) onPick(pick)
+        }
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> touchY = event.y
+            MotionEvent.ACTION_CANCEL -> touchY = -1f
+        }
+        return super.onTouchEvent(event)
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        text.typeface = bold
+        val w = options.maxOf { text.measureText(it.greekName) } + 12 * dp
+        val h = maxOf(40 * dp, 2 * (text.fontSpacing + 4 * dp)) // two lines, taller with a big system font
+        setMeasuredDimension(resolveSize(w.toInt(), widthMeasureSpec), resolveSize(h.toInt(), heightMeasureSpec))
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        val w = width.toFloat()
+        val h = height.toFloat()
+        val inset = 1 * dp
+        val r = 7 * dp
+        canvas.drawRoundRect(inset, inset, w - inset, h - inset, r, r, edge)
+        for (k in options.indices) {
+            val inst = options[k]
+            val top = inset + k * (h - 2 * inset) / 2
+            val bottom = top + (h - 2 * inset) / 2
+            val on = inst == instrument
+            if (on) canvas.drawRoundRect(inset + 1.5f * dp, top + 1.5f * dp, w - inset - 1.5f * dp, bottom - 1.5f * dp, r - 2 * dp, r - 2 * dp, lit)
+            text.typeface = if (on) bold else plain
+            text.color = if (on) GREEK_BLUE else 0xFFCFE0F5.toInt()
+            canvas.drawText(inst.greekName, w / 2, (top + bottom) / 2 + text.textSize * 0.36f, text)
+        }
+    }
 }
 
 /** A strip of Greek key (meander) pattern. */

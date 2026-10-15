@@ -35,8 +35,11 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
+import com.bouzouki.core.BouzoukiSynth
 import com.bouzouki.core.Cell
+import com.bouzouki.core.Instrument
 import com.bouzouki.core.PlaybackClock
+import com.bouzouki.core.song.Articulation
 import com.bouzouki.core.song.SongAnalysis
 import java.util.Locale
 import kotlin.math.abs
@@ -47,7 +50,9 @@ import kotlin.math.roundToInt
  * prepares the song once — removing the voice and transcribing the bouzouki line — and then
  * plays the video with that line marked on the neck (with a moving tab strip) or on the whole
  * song's tablature. A [PlaybackClock] smooths the player's coarse time so both follow it at
- * every frame, with a per-song sync offset.
+ * every frame, with a per-song sync offset. The title bar's switch fingers the song for the
+ * τετράχορδο or the τρίχορδο at once, and the bouzouki sound plays hammer-ons, pull-offs and
+ * slides without picking again, and tremolo notes picked fast for as long as they last.
  */
 class SongActivity : Activity() {
     private val ui by lazy { Ui(this) }
@@ -79,12 +84,17 @@ class SongActivity : Activity() {
     private lateinit var neckTab: Button
     private lateinit var sheetTab: Button
     private lateinit var syncText: TextView
+    private lateinit var instrumentSwitch: InstrumentSwitch
     private val speedButtons = LinkedHashMap<Float, Button>()
     private lateinit var soundButton: Button
     private val prefs by lazy { getSharedPreferences("bouzouki", Context.MODE_PRIVATE) }
 
-    /** What's loaded: a YouTube id or a file id, and the prepared song once there is one. */
+    /**
+     * What's loaded: a YouTube id or a file id, and once it's prepared the song as it was
+     * prepared ([source]) and as it's shown, fingered for the bouzouki chosen now ([song]).
+     */
     private var currentId: String? = null
+    private var source: SongAnalysis? = null
     private var song: SongAnalysis? = null
     private var fileUri: Uri? = null
     private var player: MediaPlayer? = null
@@ -108,6 +118,12 @@ class SongActivity : Activity() {
     /** The next note to pluck with the bouzouki sound; recomputed after jumps. */
     private var nextPluck = 0
     private var pluckReset = true
+    /** The last note the bouzouki sound played (a legato note goes on from its string), or -1. */
+    private var lastSounded = -1
+    /** The tremolo note being picked again and again, or -1, and when (song time) it's picked next. */
+    private var tremoloNote = -1
+    private var nextTremolo = 0.0
+    private var tremoloUp = false
     private var shownSecond = -1
 
     private val jobListener: (SongJobs.State) -> Unit = { onJob(it) }
@@ -148,10 +164,15 @@ class SongActivity : Activity() {
                 textSize = 15f
                 typeface = Typeface.DEFAULT_BOLD
                 setTextColor(WHITE)
-                maxLines = 1
+                maxLines = 2 // a long title wraps beside the bouzouki switch before it's cut short
                 ellipsize = TextUtils.TruncateAt.END
             }
             addView(titleText, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            // Which bouzouki: the song is fingered again for it at once.
+            instrumentSwitch = InstrumentSwitch(context) { inst -> setInstrument(inst) }.apply { instrument = settings.instrument }
+            addView(instrumentSwitch, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                marginStart = px(4); marginEnd = px(4)
+            })
             addView(ui.chip("🔗") { showLinkRows(linkRow.visibility != View.VISIBLE) },
                 LinearLayout.LayoutParams(px(42), px(40)).apply { marginEnd = px(4) })
             addView(wireZoom(ui, settings, board, "song", defaultWhole = true),
@@ -390,7 +411,7 @@ class SongActivity : Activity() {
     private fun prepareOrShow(id: String, source: SongJobs.Source, startJob: Boolean) {
         showSong(null)
         val saved = SongJobs.cached(this, id)
-        if (saved != null) { showSong(forInstrument(saved)); return }
+        if (saved != null) { showSong(saved); return }
         val s = SongJobs.state
         if (s is SongJobs.State.Working && s.id == id) return // already on it
         if (!startJob) return
@@ -404,8 +425,29 @@ class SongActivity : Activity() {
         SongJobs.start(this, source, settings.instrument)
     }
 
-    /** A song fingered for the bouzouki chosen now (and with the current fingering rules). */
-    private fun forInstrument(s: SongAnalysis): SongAnalysis = s.forInstrument(settings.instrument)
+    /**
+     * Switches the bouzouki: the neck, and the song (if one is open) fingered again for it at once,
+     * on the neck, the tab strip and the tablature, from where it is now. Remembered for next time.
+     */
+    private fun setInstrument(inst: Instrument) {
+        settings.instrument = inst
+        instrumentSwitch.instrument = inst
+        if (board.instrument != inst) board.instrument = inst
+        val src = source
+        if (src != null) {
+            val s = src.forInstrument(inst)
+            song = s
+            tab.song = s
+            sheet.song = s
+            resetMarks()
+            render(clock.now(SystemClock.elapsedRealtimeNanos())) // the note now and the next one, on the new neck
+            sheet.showNow()
+        }
+        // Once the neck has its new frets, bring the note playing back into view.
+        board.post { board.liveCell?.let { keepVisible(it) } }
+        val courses = inst.courses.joinToString(" ") { settings.names.name(it.openMidi) }
+        status.text = "${inst.greekName} ($courses)" + if (src != null) ": the song is fingered for it now." else "."
+    }
 
     private fun onJob(s: SongJobs.State) {
         val id = currentId
@@ -416,7 +458,7 @@ class SongActivity : Activity() {
                 prepBar.progress = (s.fraction * 1000).toInt()
                 status.text = "You can watch the video meanwhile, or leave the app: it keeps working."
             }
-            is SongJobs.State.Done -> if (s.song.id == id) showSong(forInstrument(s.song))
+            is SongJobs.State.Done -> if (s.song.id == id) showSong(s.song)
             is SongJobs.State.Failed -> if (s.id == id) {
                 prepPanel.visibility = View.GONE
                 status.text = "Couldn't prepare this song: ${s.message}\nYou can try again with Load, or use 📁 Audio file."
@@ -425,18 +467,16 @@ class SongActivity : Activity() {
         }
     }
 
-    private fun showSong(s: SongAnalysis?) {
+    /** Shows [prepared] (the song as it was prepared, or null for none), fingered for the bouzouki chosen now. */
+    private fun showSong(prepared: SongAnalysis?) {
+        source = prepared
+        // Fingered for the bouzouki chosen now, with the current fingering rules (saved songs too).
+        val s = prepared?.forInstrument(settings.instrument)
         song = s
         tab.song = s
         sheet.beats = if (s != null) beatsFor(s) else emptyList()
         sheet.song = s
-        lastNote = -1
-        lastNext = -1
-        lastFrameMedia = Double.NaN
-        pluckReset = true
-        board.liveCell = null
-        board.nextCell = null
-        noteText.text = "–"
+        resetMarks()
         if (s != null) {
             prepPanel.visibility = View.GONE
             if (s.title.isNotBlank()) titleText.text = s.title
@@ -447,6 +487,18 @@ class SongActivity : Activity() {
             sheet.showNow()
         }
         showDromos()
+    }
+
+    /** Forgets what the neck and the bouzouki sound showed and played, for a new or newly fingered song. */
+    private fun resetMarks() {
+        lastNote = -1
+        lastNext = -1
+        lastFrameMedia = Double.NaN
+        pluckReset = true
+        board.liveCell = null
+        board.nextCell = null
+        board.legatoFrom = null
+        noteText.text = "–"
     }
 
     /**
@@ -480,7 +532,7 @@ class SongActivity : Activity() {
         val n = s.notes.getOrNull(i) ?: return
         seek(n.start - NOTE_PREROLL - syncOffset)
         if (bouzoukiSound && clock.playing) return // the bouzouki sound plays it in time, once the player is there
-        val inst = board.instrument
+        val inst = s.instrument
         if (n.course in inst.courses.indices) audio.synth.pluck(n.course, inst.midiAt(n.course, n.fret), inst.courses[n.course].octavePair, 0.85f)
     }
 
@@ -632,7 +684,7 @@ class SongActivity : Activity() {
         pendingSeek = target
         pendingSeekNanos = nanos
         val s = song
-        if (s != null && clock.playing) { nextPluck = s.nextAfter(target + syncOffset); pluckReset = false } else pluckReset = true
+        if (s != null && clock.playing) { restartSound(s, target + syncOffset); pluckReset = false } else pluckReset = true
         if (fileUri != null) player?.takeIf { filePrepared }?.let { p -> try { p.seekTo((target * 1000).toInt()) } catch (_: Exception) {} }
         else web.evaluateJavascript("player && player.seekTo($target, true)", null)
         render(target)
@@ -687,10 +739,13 @@ class SongActivity : Activity() {
             if (i >= 0) {
                 val n = s.notes[i]
                 val cell = Cell(n.course, n.fret)
+                // Hammered, pulled or slid from the note before: the neck shows the finger's way there.
+                board.legatoFrom = if (s.joinsPrevious(i)) s.notes[i - 1].let { Cell(it.course, it.fret) } else null
                 board.liveCell = cell
                 noteText.text = settings.names.name(n.midi)
                 keepVisible(cell)
             } else {
+                board.legatoFrom = null
                 board.liveCell = null
                 noteText.text = "–"
             }
@@ -704,20 +759,84 @@ class SongActivity : Activity() {
 
     /**
      * The bouzouki sound: plucks each note a little ahead of time [t] (the synth takes a moment
-     * to reach the speaker), once, and never a note the song is already well into.
+     * to reach the speaker), once, and never a note the song is already well into. A hammer-on,
+     * pull-off or slide moves the string still ringing from the note before instead of picking
+     * it (a slide sets off a little early, to arrive on time), and a tremolo note is picked again
+     * about [TREMOLO_HZ] times a second for as long as it lasts.
      */
     private fun pluck(s: SongAnalysis, t: Double) {
         if (!bouzoukiSound || !clock.playing) { pluckReset = true; return }
         if (clock.holding) return // a seek on its way: nothing before the player gets there
-        if (pluckReset) { nextPluck = s.nextAfter(t); pluckReset = false }
+        if (pluckReset) { restartSound(s, t); pluckReset = false }
         val ahead = t + PLUCK_LEAD * clock.rate
-        val inst = board.instrument
-        while (nextPluck < s.notes.size && s.notes[nextPluck].start <= ahead) {
-            val n = s.notes[nextPluck]
-            if (ahead - n.start < 0.25 && n.course in inst.courses.indices) {
-                audio.synth.pluck(n.course, inst.midiAt(n.course, n.fret), inst.courses[n.course].octavePair, 0.85f)
-            }
+        val inst = s.instrument
+        while (nextPluck < s.notes.size) {
+            val i = nextPluck
+            val n = s.notes[i]
+            val legato = if (lastSounded == i - 1) s.legatoInto(i) else null
+            val early = if (legato == Articulation.SLIDE)
+                0.5 * BouzoukiSynth.slideSeconds(n.midi - s.notes[i - 1].midi) * clock.rate else 0.0
+            if (n.start - early > ahead) break
+            if (ahead - n.start < 0.25 && n.course in inst.courses.indices) sound(s, i, legato)
+            else if (i > tremoloNote) tremoloNote = -1 // a later note has come (too late to sound): the tremolo is over
             nextPluck++
+        }
+        // Tremolo: down and up strokes, evenly in real time whatever the speed.
+        val tr = tremoloNote
+        if (tr >= 0 && tr < s.notes.size) {
+            val n = s.notes[tr]
+            // Over when its next stroke, or the song itself (after a stall), reaches the note's end.
+            if (nextTremolo >= n.end - 0.03 || ahead >= n.end - 0.03) tremoloNote = -1
+            else if (ahead >= nextTremolo && n.course in inst.courses.indices) {
+                tremoloUp = !tremoloUp
+                audio.synth.pluck(n.course, inst.midiAt(n.course, n.fret), inst.courses[n.course].octavePair, if (tremoloUp) 0.62f else 0.74f)
+                val step = clock.rate / TREMOLO_HZ
+                nextTremolo += step
+                if (nextTremolo < ahead) nextTremolo = ahead + step / 2 // after a stall, no burst of the strokes missed
+            }
+        }
+    }
+
+    /**
+     * Plays note [i]: moves the string still ringing from the note before as the [legato]
+     * articulation says (see [legatoInto]), or picks it when that's null.
+     */
+    private fun sound(s: SongAnalysis, i: Int, legato: Articulation?) {
+        val n = s.notes[i]
+        val inst = s.instrument
+        val midi = inst.midiAt(n.course, n.fret)
+        val octave = inst.courses[n.course].octavePair
+        val kind = when (legato) {
+            Articulation.HAMMER -> BouzoukiSynth.Legato.HAMMER
+            Articulation.PULL -> BouzoukiSynth.Legato.PULL
+            Articulation.SLIDE -> BouzoukiSynth.Legato.SLIDE
+            else -> null
+        }
+        if (kind != null) audio.synth.legato(n.course, midi, octave, kind, 0.8f)
+        else audio.synth.pluck(n.course, midi, octave, if (n.articulation == Articulation.TREMOLO) 0.74f else 0.85f)
+        lastSounded = i
+        if (n.articulation == Articulation.TREMOLO) {
+            tremoloNote = i
+            tremoloUp = false
+            nextTremolo = n.start + clock.rate / TREMOLO_HZ
+        } else {
+            tremoloNote = -1
+        }
+    }
+
+    /**
+     * The bouzouki sound starts again from time [t] (song time), after a jump: from the next note,
+     * or within a tremolo note already under way, which simply goes on being picked from here.
+     */
+    private fun restartSound(s: SongAnalysis, t: Double) {
+        nextPluck = s.nextAfter(t)
+        lastSounded = -1
+        tremoloNote = -1
+        val now = s.noteAt(t)
+        if (now >= 0 && s.notes[now].articulation == Articulation.TREMOLO && s.notes[now].end - t > 0.15) {
+            tremoloNote = now
+            lastSounded = now
+            nextTremolo = t
         }
     }
 
@@ -838,6 +957,8 @@ class SongActivity : Activity() {
         private const val DISPLAY_LEAD = 0.025
         /** Seconds between plucking the synth and hearing it. */
         private const val PLUCK_LEAD = 0.06
+        /** Strokes per second of the bouzouki sound's tremolo. */
+        private const val TREMOLO_HZ = 12.0
         /** A tapped note plays from this many seconds before it (a little more than YouTube's time step). */
         private const val NOTE_PREROLL = 0.3
 
