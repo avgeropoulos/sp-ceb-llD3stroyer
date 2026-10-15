@@ -8,23 +8,27 @@ import android.content.Context
 import android.content.Intent
 import android.database.Cursor
 import android.database.MatrixCursor
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
+import com.bouzouki.core.song.SongNote
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileNotFoundException
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 /**
- * "Send song data": packs a prepared song into one zip to share (to the developer, to improve how
- * notes are found). It holds the song as saved (<id>.json), what its line comes from (<id>.data:
- * the note detector's activations and pick attacks), the tab kept for it if any, and info.txt (title,
- * link, app version, bouzouki, detail level, sync, the playback time and the player's note). Never
- * any audio: the app doesn't keep it.
+ * "Send song data": packs a prepared song to share (to the developer, to improve how notes are found).
+ * A zip holds the song as saved (<id>.json), what its line comes from (<id>.data: the note detector's
+ * activations and pick attacks), the tab kept for it if any, and info.txt (title, link, app version,
+ * bouzouki, detail level, sync, the playback time and the player's note). It goes out inside a PDF
+ * (see [DataPdf]), because chats take PDFs where they refuse zips: page 1 pictures the song around the
+ * playback time. Never any audio: the app doesn't keep it.
  */
 object SongExport {
     /** What goes in info.txt besides the files. */
@@ -38,10 +42,12 @@ object SongExport {
         val sync: Double,
         val time: Double,
         val note: String,
+        /** The line on screen, drawn over what was heard on page 1. */
+        val notes: List<SongNote> = emptyList(),
     )
 
     /**
-     * Writes the zip off the main thread, then opens the share sheet; [done] gets null when the
+     * Writes the PDF off the main thread, then opens the share sheet; [done] gets null when the
      * sheet opened, or a message saying what went wrong.
      */
     fun share(activity: Activity, info: Info, done: (String?) -> Unit) {
@@ -55,15 +61,15 @@ object SongExport {
             }
             main.post {
                 if (activity.isFinishing || activity.isDestroyed) return@post
-                val zip = result.getOrNull()
-                if (zip == null) { done("Couldn't pack the song's data: ${result.exceptionOrNull()?.message ?: "unknown error"}"); return@post }
-                val uri = ExportProvider.uri(app, zip)
+                val pdf = result.getOrNull()
+                if (pdf == null) { done("Couldn't pack the song's data: ${result.exceptionOrNull()?.message ?: "unknown error"}"); return@post }
+                val uri = ExportProvider.uri(app, pdf)
                 val send = Intent(Intent.ACTION_SEND).apply {
-                    type = "application/zip"
+                    type = "application/pdf"
                     putExtra(Intent.EXTRA_STREAM, uri)
                     putExtra(Intent.EXTRA_SUBJECT, "Bouzouki song data: ${info.title}")
                     putExtra(Intent.EXTRA_TEXT, "Song data for \"${info.title}\" from the Bouzouki app (notes and what was heard, no audio).")
-                    clipData = ClipData.newRawUri(zip.name, uri)
+                    clipData = ClipData.newRawUri(pdf.name, uri)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
                 try {
@@ -76,15 +82,16 @@ object SongExport {
         }.start()
     }
 
-    /** The zip for [info]'s song, in the cache folder the provider serves (older ones are removed). */
+    /** The PDF for [info]'s song, in the cache folder the provider serves (older ones are removed). */
     private fun write(context: Context, info: Info): File {
         val songs = File(context.filesDir, "songs")
         val dir = ExportProvider.dir(context)
         dir.listFiles()?.forEach { it.delete() }
-        val zip = File(dir, "bouzouki-" + safeName(info.title).ifEmpty { "song" } + ".zip")
-        ZipOutputStream(zip.outputStream().buffered()).use { out ->
+        val text = infoText(context, info)
+        val zip = ByteArrayOutputStream()
+        ZipOutputStream(zip).use { out ->
             out.putNextEntry(ZipEntry("info.txt"))
-            out.write(infoText(context, info).toByteArray(Charsets.UTF_8))
+            out.write(text.toByteArray(Charsets.UTF_8))
             out.closeEntry()
             for (name in listOf("${info.id}.json", "${info.id}.data", "${info.id}.tab.txt")) {
                 val f = File(songs, name).takeIf { it.isFile } ?: continue
@@ -93,7 +100,20 @@ object SongExport {
                 out.closeEntry()
             }
         }
-        return zip
+        val heading = listOf(
+            info.title,
+            listOfNotNull(info.link, "app " + (text.lines().firstOrNull { it.startsWith("app: ") }?.removePrefix("app: ") ?: "?")).joinToString("  ·  "),
+            "${info.instrument}  ·  notes: ${info.detail}  ·  line from: ${info.lineFrom}  ·  sync %.3f s".format(java.util.Locale.ROOT, info.sync),
+            "playback time ${clock(info.time)}",
+        ) + info.note.trim().replace('\n', ' ').chunked(110).take(3).mapIndexed { i, part -> if (i == 0) "note: $part" else "      $part" }
+        val picture = DataPdf.roll(heading, SongJobs.data(context, info.id), info.notes, info.time)
+        val jpeg = ByteArrayOutputStream()
+        picture.compress(Bitmap.CompressFormat.JPEG, 90, jpeg)
+        val size = Triple(jpeg.toByteArray(), picture.width, picture.height)
+        picture.recycle()
+        val pdf = File(dir, "bouzouki-" + safeName(info.title).ifEmpty { "song" } + ".pdf")
+        pdf.outputStream().buffered().use { DataPdf.write(it, listOf(size), "song-data.zip", zip.toByteArray(), "Bouzouki song data (no audio)") }
+        return pdf
     }
 
     private fun infoText(context: Context, info: Info): String {
@@ -132,7 +152,7 @@ object SongExport {
 class ExportProvider : ContentProvider() {
     override fun onCreate() = true
 
-    override fun getType(uri: Uri) = "application/zip"
+    override fun getType(uri: Uri) = if (uri.lastPathSegment?.endsWith(".pdf") == true) "application/pdf" else "application/zip"
 
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor {
         if (mode != "r") throw FileNotFoundException("read only")

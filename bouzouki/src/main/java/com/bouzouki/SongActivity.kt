@@ -888,8 +888,9 @@ class SongActivity : Activity() {
         val box = FrameLayout(this).apply { setPadding(ui.px(20), 0, ui.px(20), 0); addView(note) }
         AlertDialog.Builder(this)
             .setTitle("📤 Send song data")
-            .setMessage("Sends this song's notes and what the app heard (no audio), its link, any tab you added, " +
-                "and the playback time (${SongExport.clock(time)}). Play to the part that's wrong first.")
+            .setMessage("Makes a PDF with this song's notes and what the app heard (no audio), its link, any tab you added, " +
+                "and the playback time (${SongExport.clock(time)}). Play to the part that's wrong first; then save or send " +
+                "the PDF and upload it to the chat.")
             .setView(box)
             .setPositiveButton("Send") { _, _ ->
                 val yt = currentSource as? SongJobs.Source.YouTube
@@ -903,9 +904,10 @@ class SongActivity : Activity() {
                     sync = syncOffset,
                     time = time,
                     note = note.text.toString(),
+                    notes = song?.notes ?: emptyList(),
                 )
                 status.text = "Packing the song's data…"
-                SongExport.share(this, info) { error -> status.text = error ?: "Pick where to send it (for example, upload it to the chat)." }
+                SongExport.share(this, info) { error -> status.text = error ?: "Pick where to save or send the PDF, then upload it to the chat." }
             }
             .setNegativeButton("Cancel", null)
             .show()
