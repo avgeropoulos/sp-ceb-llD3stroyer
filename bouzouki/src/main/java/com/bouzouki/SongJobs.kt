@@ -16,12 +16,16 @@ import android.os.Looper
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import com.bouzouki.core.Instrument
+import com.bouzouki.core.song.AnalysisData
 import com.bouzouki.core.song.BasicPitch
 import com.bouzouki.core.song.MdxSeparator
 import com.bouzouki.core.song.SongAnalysis
 import com.bouzouki.core.song.SongAnalyzer
+import java.io.BufferedOutputStream
 import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
+import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.concurrent.thread
@@ -30,6 +34,9 @@ import kotlin.concurrent.thread
  * Prepares songs in the background (like Chordify): downloads the audio, removes the voice,
  * transcribes the bouzouki line and saves it, so it opens instantly the next time.
  * One song at a time; the song screen watches [state].
+ * A song is kept in filesDir/songs as <id>.json (its line), <id>.data (what the line was derived
+ * from: [AnalysisData], for more or fewer notes or lining up a tab, see [SongLines]) and, once a
+ * tab is pasted for it, <id>.tab.txt. Only the notes stay on the phone, never the audio.
  */
 object SongJobs {
     sealed interface State {
@@ -67,9 +74,82 @@ object SongJobs {
             .sortedByDescending { it.lastModified() }
             .mapNotNull { SongAnalysis.saved(it.readText()) }
 
-    fun delete(context: Context, id: String) { File(songsDir(context), "$id.json").delete() }
+    /** Forgets a saved song: its line, what it was derived from, its tab and its settings. */
+    fun delete(context: Context, id: String) {
+        val dir = songsDir(context)
+        for (name in listOf("$id.json", "$id.data", "$id.tab.txt")) {
+            File(dir, name).delete()
+            File(dir, "$name.tmp").delete()
+        }
+        Settings(context).forgetSong(id)
+    }
 
-    private fun save(context: Context, song: SongAnalysis) = File(songsDir(context), "${song.id}.json").writeText(song.toJson())
+    /**
+     * Saves a prepared song: what its line was derived from first, so a song file never comes
+     * without its data file unless that one couldn't be written (the song then simply works
+     * without detail levels and tabs). Each file is replaced whole, never left half written.
+     */
+    fun save(context: Context, song: SongAnalysis, data: AnalysisData?) {
+        val dir = songsDir(context)
+        val dataFile = File(dir, "${song.id}.data")
+        if (data != null) {
+            try { writeAtomically(dataFile) { data.write(it) } } catch (_: IOException) { dataFile.delete() }
+        } else {
+            dataFile.delete() // an older song's data doesn't belong to the new line
+        }
+        writeAtomically(File(dir, "${song.id}.json")) { it.write(song.toJson().toByteArray(Charsets.UTF_8)) }
+    }
+
+    /** What song [id]'s line was derived from, or null if it was prepared before that was kept (or it's damaged). */
+    fun data(context: Context, id: String): AnalysisData? = try {
+        File(songsDir(context), "$id.data").takeIf { it.exists() }?.let { f -> f.inputStream().use { AnalysisData.read(it.buffered()) } }
+    } catch (_: IOException) {
+        null
+    }
+
+    /**
+     * Deletes song [id]'s data file, which couldn't be read, if it's still the one [stamp] names (not one
+     * written since): the song then asks to be prepared again for tabs and detail levels.
+     */
+    fun dropData(context: Context, id: String, stamp: Long) {
+        if (stamp != 0L && dataStamp(context, id) == stamp) File(songsDir(context), "$id.data").delete()
+    }
+
+    /** Whether song [id] has its [data] file: songs prepared before it was kept need preparing again for tabs and detail levels. */
+    fun hasData(context: Context, id: String) = File(songsDir(context), "$id.data").exists()
+
+    /** Which data file song [id] has (when it was written, and its size; 0 if there is none), to tell lines derived from an older one. */
+    fun dataStamp(context: Context, id: String): Long {
+        val f = File(songsDir(context), "$id.data")
+        val time = f.lastModified()
+        return if (time == 0L) 0L else time * 1_000_003 + f.length()
+    }
+
+    /** The tab pasted for song [id], or null. */
+    fun tabText(context: Context, id: String): String? =
+        File(songsDir(context), "$id.tab.txt").takeIf { it.exists() }?.let { try { it.readText() } catch (_: IOException) { null } }
+
+    fun saveTab(context: Context, id: String, text: String) =
+        writeAtomically(File(songsDir(context), "$id.tab.txt")) { it.write(text.toByteArray(Charsets.UTF_8)) }
+
+    fun removeTab(context: Context, id: String) { File(songsDir(context), "$id.tab.txt").delete() }
+
+    /** Writes [file] through a temporary file renamed over it at the end, so a crash never leaves it half written. */
+    private fun writeAtomically(file: File, write: (OutputStream) -> Unit) {
+        val tmp = File(file.parentFile, file.name + ".tmp")
+        try {
+            FileOutputStream(tmp).use { f ->
+                // Buffered, and left open when [write] closes it, so it can be synced before the rename.
+                val out = object : BufferedOutputStream(f, 64 * 1024) { override fun close() = flush() }
+                write(out)
+                out.flush()
+                f.fd.sync()
+            }
+            if (!tmp.renameTo(file)) { file.delete(); if (!tmp.renameTo(file)) throw IOException("Couldn't save ${file.name}") }
+        } finally {
+            tmp.delete()
+        }
+    }
 
     // --- running a job ---
 
@@ -91,8 +171,9 @@ object SongJobs {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) app.startForegroundService(service) else app.startService(service)
         worker = thread(name = "song-prep") {
             try {
-                val song = prepare(app, id, source, instrument) { step, f -> publish(State.Working(id, step, f)) }
-                save(app, song)
+                val (song, data) = prepare(app, id, source, instrument) { step, f -> publish(State.Working(id, step, f)) }
+                publish(State.Working(id, "Saving", 1f))
+                save(app, song, data)
                 publish(State.Done(song))
             } catch (_: InterruptedException) {
                 publish(State.Idle)
@@ -115,7 +196,9 @@ object SongJobs {
         else -> e.message ?: e.javaClass.simpleName
     }
 
-    private fun prepare(context: Context, id: String, source: Source, instrument: Instrument, report: (String, Float) -> Unit): SongAnalysis {
+    private fun prepare(
+        context: Context, id: String, source: Source, instrument: Instrument, report: (String, Float) -> Unit,
+    ): Pair<SongAnalysis, AnalysisData> {
         val cancelled = { cancel }
         val mdxFile = ensureModel(context) { report("Getting the voice-removal model (once, 67 MB)", it) }
 
@@ -147,7 +230,7 @@ object SongJobs {
         val bpBytes = context.assets.open("basic_pitch.onnx").use { it.readBytes() }
         return env.createSession(mdxFile.path, options).use { mdx ->
             env.createSession(bpBytes, options).use { bp ->
-                SongAnalyzer(MdxSeparator(env, mdx), BasicPitch(env, bp)).analyze(
+                SongAnalyzer(MdxSeparator(env, mdx), BasicPitch(env, bp)).analyzeWithData(
                     id, title, audio.left, audio.right, instrument,
                     progress = { stage, f -> report(stage.label, f) },
                     cancelled = cancelled,

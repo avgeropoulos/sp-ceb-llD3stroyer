@@ -17,10 +17,14 @@ import com.bouzouki.core.song.SongAnalysis
  * or slash (slide, up or down) before its number, in a box made wide enough for both; when
  * the next note on the line comes too soon for that, the mark goes just under the box's
  * start instead (over it on the lowest line). Tremolo notes have slashes after the number.
+ * A pasted tab's notes that weren't heard in the recording ([unheard]) are dimmed.
  * Tap it to jump the song to that moment.
  */
 class TabStripView(context: Context) : View(context) {
     var song: SongAnalysis? = null
+        set(v) { field = v; invalidate() }
+    /** Notes of the song (by index) from a pasted tab that weren't heard in the recording: dimmed. */
+    var unheard: Set<Int> = emptySet()
         set(v) { field = v; invalidate() }
     var time = 0.0
         set(v) { field = v; invalidate() }
@@ -85,8 +89,9 @@ class TabStripView(context: Context) : View(context) {
             val x1 = boxEnd(s, i, inline)
             val y = yFor(n.course)
             val playing = n.start <= time && time < n.end
-            val ink = if (playing) 0xFF1A1A1A.toInt() else 0xFFFFFFFF.toInt()
-            box.color = if (playing) 0xFFFFC107.toInt() else 0xFF0D5EAF.toInt()
+            val faint = !playing && i in unheard
+            val ink = if (playing) 0xFF1A1A1A.toInt() else if (faint) 0xFF9FB4CC.toInt() else 0xFFFFFFFF.toInt()
+            box.color = if (playing) 0xFFFFC107.toInt() else if (faint) 0xFF253C57.toInt() else 0xFF0D5EAF.toInt()
             if (legato != null) {
                 // A link from the note before: one stroke of the pick for both.
                 val px1 = boxEnd(s, i - 1, s.legatoInto(i - 1) != null && markFits(s, i - 1))
