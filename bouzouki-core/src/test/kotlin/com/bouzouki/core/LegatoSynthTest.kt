@@ -46,6 +46,33 @@ class LegatoSynthTest {
 
     private fun cents(f: Double, midi: Int) = 1200 * ln(f / midiToHz(midi)) / ln(2.0)
 
+    /**
+     * Semitones above midi [ref] of the pitch over [len] samples from [start], searched over a
+     * wide range (midi [lo] to [hi]) so the answer isn't steered towards any expected note: the
+     * first peak of the normalised autocorrelation that comes close to its highest.
+     */
+    private fun semitonesWide(x: FloatArray, start: Int, len: Int, ref: Int, lo: Int, hi: Int): Double {
+        val minLag = (fs / midiToHz(hi)).toInt()
+        val maxLag = (fs / midiToHz(lo)).toInt() + 1
+        val r = DoubleArray(maxLag + 2)
+        var e0 = 0.0
+        for (i in start until start + len) e0 += x[i].toDouble() * x[i]
+        for (lag in minLag - 1..maxLag + 1) {
+            var s = 0.0
+            var e = 0.0
+            for (i in start until start + len) { s += x[i] * x[i + lag]; e += x[i + lag].toDouble() * x[i + lag] }
+            r[lag] = s / sqrt(e0 * e + 1e-12)
+        }
+        val top = (minLag..maxLag).maxOf { r[it] }
+        val best = (minLag..maxLag).first { r[it] >= 0.9 * top && r[it] >= r[it - 1] && r[it] >= r[it + 1] }
+        val a = r[best - 1]; val b = r[best]; val c = r[best + 1]
+        val lag = best + 0.5 * (a - c) / (a - 2 * b + c)
+        return 12 * ln(fs / lag / midiToHz(ref)) / ln(2.0)
+    }
+
+    /** RMS of [x] over [len] samples from [start]. */
+    private fun rms(x: FloatArray, start: Int, len: Int) = sqrt((start until start + len).sumOf { x[it].toDouble() * x[it] } / len)
+
     /** Peak of the signal's second difference (its clicks) over [len] samples from [start]. */
     private fun edge(x: FloatArray, start: Int, len: Int): Double {
         var peak = 0.0
@@ -76,13 +103,22 @@ class LegatoSynthTest {
 
     @Test
     fun aSlideGlidesThroughTheNotesBetween() {
-        val x = twoNotes(62, 74, Legato.SLIDE, after = 0.4)
         val at = (fs * 0.3).toInt()
         val glide = (BouzoukiSynth.slideSeconds(12) * fs).toInt()
-        // A short look halfway through the glide hears a pitch well between the two notes.
-        val mid = pitch(x, at + glide / 2 - 120, 240, midiToHz(68))
-        val semis = 12 * ln(mid / midiToHz(62)) / ln(2.0)
-        assertTrue(semis in 3.0..9.0, "halfway through the slide: $mid Hz, $semis semitones up")
+        val win = 240
+        // Short looks along the glide, each searched from below the first note to above the second.
+        fun track(x: FloatArray) = listOf(0.15, 0.3, 0.5, 0.7, 0.85).map { f ->
+            semitonesWide(x, at + (f * glide).toInt() - win / 2, win, 62, lo = 58, hi = 78)
+        }
+        val slide = track(twoNotes(62, 74, Legato.SLIDE, after = 0.4))
+        val what = "semitones up along the slide: " + slide.joinToString { "%.2f".format(it) }
+        // It rises all the way, through the notes between: not there at once, nor still at the start.
+        for (k in 1 until slide.size) assertTrue(slide[k] > slide[k - 1] + 0.3, what)
+        assertTrue(slide.first() < 4.0 && slide.last() > 8.0, what)
+        assertTrue(slide[2] in 3.0..9.0, what)
+        // The same looks after a hammer-on hear the new note already, so they would tell a jump.
+        val hammer = track(twoNotes(62, 74, Legato.HAMMER, after = 0.4))
+        assertTrue(hammer.all { abs(it - 12) < 0.5 }, "after a hammer-on: " + hammer.joinToString { "%.2f".format(it) })
     }
 
     @Test
@@ -137,9 +173,14 @@ class LegatoSynthTest {
     @Test
     fun aLegatoNoteWithNothingRingingIsPickedSoftly() {
         val synth = BouzoukiSynth(fs)
-        synth.legato(2, 64, false, Legato.HAMMER)
+        synth.legato(2, 64, false, Legato.HAMMER, 0.8f)
         val x = synth.run(0.5)
         assertTrue(x.copyOfRange(fs / 20, fs / 5).maxOf { abs(it) } > 0.02f, "heard")
         assertTrue(abs(cents(pitch(x, fs / 5, fs / 5, midiToHz(64)), 64)) < 8)
+        // Softer than the same note picked as hard.
+        val picked = BouzoukiSynth(fs).apply { pluck(2, 64, false, 0.8f) }.run(0.5)
+        val soft = rms(x, 0, fs / 4)
+        val full = rms(picked, 0, fs / 4)
+        assertTrue(soft < 0.9 * full, "picked softly: RMS ${"%.4f".format(soft)}, picked ${"%.4f".format(full)}")
     }
 }

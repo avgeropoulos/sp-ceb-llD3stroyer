@@ -164,13 +164,13 @@ class SongActivity : Activity() {
                 textSize = 15f
                 typeface = Typeface.DEFAULT_BOLD
                 setTextColor(WHITE)
-                maxLines = 1
+                maxLines = 2 // a long title wraps beside the bouzouki switch before it's cut short
                 ellipsize = TextUtils.TruncateAt.END
             }
             addView(titleText, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             // Which bouzouki: the song is fingered again for it at once.
             instrumentSwitch = InstrumentSwitch(context) { inst -> setInstrument(inst) }.apply { instrument = settings.instrument }
-            addView(instrumentSwitch, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(40)).apply {
+            addView(instrumentSwitch, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 marginStart = px(4); marginEnd = px(4)
             })
             addView(ui.chip("🔗") { showLinkRows(linkRow.visibility != View.VISIBLE) },
@@ -773,18 +773,20 @@ class SongActivity : Activity() {
         while (nextPluck < s.notes.size) {
             val i = nextPluck
             val n = s.notes[i]
-            val legato = lastSounded == i - 1 && s.joinsPrevious(i)
-            val early = if (legato && n.articulation == Articulation.SLIDE)
+            val legato = if (lastSounded == i - 1) s.legatoInto(i) else null
+            val early = if (legato == Articulation.SLIDE)
                 0.5 * BouzoukiSynth.slideSeconds(n.midi - s.notes[i - 1].midi) * clock.rate else 0.0
             if (n.start - early > ahead) break
             if (ahead - n.start < 0.25 && n.course in inst.courses.indices) sound(s, i, legato)
+            else if (i > tremoloNote) tremoloNote = -1 // a later note has come (too late to sound): the tremolo is over
             nextPluck++
         }
         // Tremolo: down and up strokes, evenly in real time whatever the speed.
         val tr = tremoloNote
         if (tr >= 0 && tr < s.notes.size) {
             val n = s.notes[tr]
-            if (nextTremolo >= n.end - 0.03) tremoloNote = -1
+            // Over when its next stroke, or the song itself (after a stall), reaches the note's end.
+            if (nextTremolo >= n.end - 0.03 || ahead >= n.end - 0.03) tremoloNote = -1
             else if (ahead >= nextTremolo && n.course in inst.courses.indices) {
                 tremoloUp = !tremoloUp
                 audio.synth.pluck(n.course, inst.midiAt(n.course, n.fret), inst.courses[n.course].octavePair, if (tremoloUp) 0.62f else 0.74f)
@@ -795,19 +797,22 @@ class SongActivity : Activity() {
         }
     }
 
-    /** Plays note [i]: moves the ringing string if it's [legato] from the note before, else picks it. */
-    private fun sound(s: SongAnalysis, i: Int, legato: Boolean) {
+    /**
+     * Plays note [i]: moves the string still ringing from the note before as the [legato]
+     * articulation says (see [legatoInto]), or picks it when that's null.
+     */
+    private fun sound(s: SongAnalysis, i: Int, legato: Articulation?) {
         val n = s.notes[i]
         val inst = s.instrument
         val midi = inst.midiAt(n.course, n.fret)
         val octave = inst.courses[n.course].octavePair
-        val kind = when (n.articulation) {
+        val kind = when (legato) {
             Articulation.HAMMER -> BouzoukiSynth.Legato.HAMMER
             Articulation.PULL -> BouzoukiSynth.Legato.PULL
             Articulation.SLIDE -> BouzoukiSynth.Legato.SLIDE
             else -> null
         }
-        if (legato && kind != null) audio.synth.legato(n.course, midi, octave, kind, 0.8f)
+        if (kind != null) audio.synth.legato(n.course, midi, octave, kind, 0.8f)
         else audio.synth.pluck(n.course, midi, octave, if (n.articulation == Articulation.TREMOLO) 0.74f else 0.85f)
         lastSounded = i
         if (n.articulation == Articulation.TREMOLO) {

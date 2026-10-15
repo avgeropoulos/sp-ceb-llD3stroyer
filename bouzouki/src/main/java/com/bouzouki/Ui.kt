@@ -7,7 +7,9 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.util.TypedValue
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
@@ -130,34 +132,54 @@ fun wireZoom(ui: Ui, settings: Settings, board: FretboardView, screen: String, d
 
 /**
  * A switch between the two bouzoukia, its options stacked (Τετράχορδο over Τρίχορδο) so it
- * fits in a title bar. The chosen one is lit; a tap picks the other and calls [onPick].
+ * fits in a title bar. The chosen one is lit; touching the other one picks it and calls
+ * [onPick], touching the lit one does nothing. A click without a touch (keyboard, TalkBack)
+ * picks the other one. Its text follows the system font size.
  */
 class InstrumentSwitch(context: Context, private val onPick: (Instrument) -> Unit) : View(context) {
     var instrument = Instrument.TETRACHORDO
         set(v) {
             field = v
-            contentDescription = "Bouzouki: ${v.greekName} (${v.englishName.substringBefore(" ·")}). Tap for the other one."
+            contentDescription = "Bouzouki: ${v.greekName} (${v.englishName.substringBefore(" ·")}). Double-tap for the other one."
             invalidate()
         }
     private val options = arrayOf(Instrument.TETRACHORDO, Instrument.TRICHORDO)
     private val dp = context.resources.displayMetrics.density
-    private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; textSize = 10.5f * dp }
+    private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER
+        textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 10.5f, context.resources.displayMetrics)
+    }
     private val lit = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = WHITE }
     private val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x99FFFFFF.toInt(); style = Paint.Style.STROKE; strokeWidth = 1 * dp }
     private val bold = Typeface.DEFAULT_BOLD
     private val plain = Typeface.DEFAULT
+    private var touchY = -1f // where the touch that's about to click went down, or -1
 
     init {
         isClickable = true
         isFocusable = true
         instrument = Instrument.TETRACHORDO
-        setOnClickListener { onPick(if (instrument == options[0]) options[1] else options[0]) }
+        setOnClickListener {
+            val y = touchY
+            touchY = -1f
+            val pick = if (y < 0) options.first { it != instrument } else options[if (y < height / 2f) 0 else 1]
+            if (pick != instrument) onPick(pick)
+        }
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> touchY = event.y
+            MotionEvent.ACTION_CANCEL -> touchY = -1f
+        }
+        return super.onTouchEvent(event)
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         text.typeface = bold
         val w = options.maxOf { text.measureText(it.greekName) } + 12 * dp
-        setMeasuredDimension(resolveSize(w.toInt(), widthMeasureSpec), resolveSize((40 * dp).toInt(), heightMeasureSpec))
+        val h = maxOf(40 * dp, 2 * (text.fontSpacing + 4 * dp)) // two lines, taller with a big system font
+        setMeasuredDimension(resolveSize(w.toInt(), widthMeasureSpec), resolveSize(h.toInt(), heightMeasureSpec))
     }
 
     override fun onDraw(canvas: Canvas) {
