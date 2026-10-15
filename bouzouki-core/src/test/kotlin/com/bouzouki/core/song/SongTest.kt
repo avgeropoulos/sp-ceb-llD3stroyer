@@ -262,12 +262,14 @@ class BouzoukiLineTest {
         val a = SongAnalyzer.build("abc123def45", "Τραγούδι \"test\"", listOf(
             NoteEvent(0.5, 0.9, 62, 0.8), NoteEvent(1.0, 1.4, 63, 0.8), NoteEvent(1.5, 2.0, 66, 0.8),
             NoteEvent(2.0, 2.4, 67, 0.8), NoteEvent(2.5, 3.5, 62, 0.9),
-        ), tetra).copy(beats = listOf(0.512, 1.04, 1.6))
+        ), tetra).copy(beats = listOf(0.512, 1.04, 1.6), tuningCents = -23.5)
         val back = assertNotNull(SongAnalysis.fromJson(a.toJson()))
         assertEquals(listOf(0.512, 1.04, 1.6), back.beats)
-        // A cache file without beats still reads, with none.
-        val noBeats = a.toJson().replace(",\"beats\":[0.512,1.040,1.600]", "")
+        assertEquals(-23.5, back.tuningCents)
+        // A cache file without beats or tuning still reads, with none.
+        val noBeats = a.toJson().replace(",\"beats\":[0.512,1.040,1.600]", "").replace(",\"tuning\":-23.500", "")
         assertEquals(emptyList(), assertNotNull(SongAnalysis.fromJson(noBeats)).beats)
+        assertEquals(0.0, assertNotNull(SongAnalysis.fromJson(noBeats)).tuningCents)
         assertEquals(a.copy(notes = emptyList()), back.copy(notes = emptyList()))
         assertEquals(a.notes.map { it.midi to it.fret }, back.notes.map { it.midi to it.fret })
         assertEquals(1, back.noteAt(1.2))

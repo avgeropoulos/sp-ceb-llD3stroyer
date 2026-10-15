@@ -26,7 +26,11 @@ data class SongNote(
     val articulation: Articulation = Articulation.PICK,
 )
 
-/** A prepared song: the bouzouki line with frets, the dromos it seems to be in, and its beats (seconds). */
+/**
+ * A prepared song: the bouzouki line with frets, the dromos it seems to be in, its beats (seconds), and how
+ * far the recording is tuned from A = 440 Hz ([tuningCents], + sharp, - flat; old records often are a little
+ * off, and a player tunes to them to play along).
+ */
 data class SongAnalysis(
     val id: String,
     val title: String,
@@ -35,6 +39,7 @@ data class SongAnalysis(
     val dromos: Dromos?,
     val rootPc: Int,
     val beats: List<Double> = emptyList(),
+    val tuningCents: Double = 0.0,
 ) {
     /**
      * The same song fingered for [inst] (the other bouzouki, or with a newer fingering): every note keeps
@@ -110,6 +115,7 @@ data class SongAnalysis(
         "root" to rootPc.toString(),
         "notes" to notes.joinToString(",", "[", "]") { n -> "[${fmt(n.start)},${fmt(n.end)},${n.midi},${n.course},${n.fret},${n.articulation.ordinal}]" },
         "beats" to beats.joinToString(",", "[", "]") { fmt(it) },
+        "tuning" to fmt(tuningCents),
     )
 
     /** A saved song as the song list shows it: [current] is false when an older version wrote it (prepare it again). */
@@ -162,6 +168,7 @@ data class SongAnalysis(
                 dromos = (p["dromos"] as String?)?.let { Dromos.valueOf(it) },
                 rootPc = num("root").toInt(),
                 beats = (p["beats"] as List<*>?)?.map { (it as Number).toDouble() } ?: emptyList(),
+                tuningCents = (p["tuning"] as Number?)?.toDouble() ?: 0.0,
             )
         } catch (_: Exception) { null }
     }
@@ -239,7 +246,7 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
          */
         fun rebuild(base: SongAnalysis, data: AnalysisData, detail: Detail = Detail.NORMAL): SongAnalysis =
             build(base.id, base.title, candidates(data.act, detail), base.instrument, data.act, data.attacks, detail)
-                .copy(beats = base.beats, dromos = base.dromos, rootPc = base.rootPc)
+                .copy(beats = base.beats, dromos = base.dromos, rootPc = base.rootPc, tuningCents = base.tuningCents)
 
         /**
          * Everything after transcription: the line with its articulations, the frets ([fingering] is told which notes
