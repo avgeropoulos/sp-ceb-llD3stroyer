@@ -15,9 +15,11 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.text.InputType
 import android.text.TextUtils
+import android.view.Choreographer
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -28,19 +30,26 @@ import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import com.bouzouki.core.Cell
+import com.bouzouki.core.PlaybackClock
 import com.bouzouki.core.song.NoteEvent
 import com.bouzouki.core.song.SongAnalysis
 import com.bouzouki.core.song.SongAnalyzer
+import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * Play along with a song, Chordify-style: give it a YouTube link (or an audio file), it
  * prepares the song once — removing the voice and transcribing the bouzouki line — and then
- * plays the video with that line marked on the neck and on a moving tab strip.
+ * plays the video with that line marked on the neck (with a moving tab strip) or on the whole
+ * song's tablature. A [PlaybackClock] smooths the player's coarse time so both follow it at
+ * every frame, with a per-song sync offset.
  */
 class SongActivity : Activity() {
     private val ui by lazy { Ui(this) }
@@ -65,8 +74,15 @@ class SongActivity : Activity() {
     private lateinit var dromosText: TextView
     private lateinit var useDromosButton: Button
     private lateinit var tab: TabStripView
+    private lateinit var neckPage: LinearLayout
+    private lateinit var sheet: TabSheetView
+    private lateinit var sheetScroller: ScrollView
+    private lateinit var neckTab: Button
+    private lateinit var sheetTab: Button
+    private lateinit var syncText: TextView
     private val speedButtons = LinkedHashMap<Float, Button>()
     private lateinit var soundButton: Button
+    private val prefs by lazy { getSharedPreferences("bouzouki", Context.MODE_PRIVATE) }
 
     /** What's loaded: a YouTube id or a file id, and the prepared song once there is one. */
     private var currentId: String? = null
@@ -76,7 +92,23 @@ class SongActivity : Activity() {
     private var speed = 1f
     private var bouzoukiSound = false
     private var lastNote = -1
-    private var playing = false
+    private var lastNext = -1
+    private var playing = false // the audio file's player
+    private var filePrepared = false
+
+    /** Playback time between the player's reports, and what follows it at every frame. */
+    private val clock = PlaybackClock()
+    private var frameScheduled = false
+    private var resumed = false
+    /** Seconds added to the playback time when looking up notes (per song, see [nudgeSync]). */
+    private var syncOffset = 0.0
+    /** After a seek the player still reports the old time for a moment: ignore it until then. */
+    private var pendingSeek = Double.NaN
+    private var pendingSeekNanos = 0L
+    /** The next note to pluck with the bouzouki sound; recomputed after jumps. */
+    private var nextPluck = 0
+    private var pluckReset = true
+    private var shownSecond = -1
 
     private val jobListener: (SongJobs.State) -> Unit = { onJob(it) }
 
@@ -218,23 +250,66 @@ class SongActivity : Activity() {
                 speedButtons[r] = b
                 addView(b, ui.weighted())
             }
-            soundButton = ui.chip("🔊 Bouzouki") { bouzoukiSound = !bouzoukiSound; refreshButtons() }
+            soundButton = ui.chip("🔊 Bouzouki") { bouzoukiSound = !bouzoukiSound; pluckReset = true; refreshButtons() }
             addView(soundButton, ui.weighted(1.6f))
         })
 
+        // Neck or tablature, and the sync between the notes and the sound.
+        root.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(px(6), px(2), px(6), px(4))
+            fun slim(b: Button) = b.apply { minHeight = px(38); minimumHeight = px(38) } // this row stays low
+            neckTab = slim(ui.chip("🎸 Neck") { showPage(PAGE_NECK) })
+            sheetTab = slim(ui.chip("📜 Tablature") { showPage(PAGE_SHEET) })
+            addView(neckTab, ui.weighted(1f))
+            addView(sheetTab, ui.weighted(1.35f))
+            addView(slim(ui.chip("−") { nudgeSync(-SYNC_STEP) }), LinearLayout.LayoutParams(px(38), px(38)).apply { marginStart = px(6) })
+            syncText = TextView(context).apply {
+                textSize = 11f
+                setTextColor(0xFFE8EEF6.toInt())
+                gravity = Gravity.CENTER
+                minWidth = px(56)
+                setOnClickListener { status.text = "Sync: if the notes come after you hear them, press +; if they come early, press −. Kept for this song." }
+            }
+            addView(syncText, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(slim(ui.chip("+") { nudgeSync(SYNC_STEP) }), LinearLayout.LayoutParams(px(38), px(38)).apply { marginEnd = px(3) })
+        })
+
+        // The neck, with the moving tab strip above it.
         tab = TabStripView(this).apply {
             names = settings.names
-            onSeek = { t -> seek(t) }
+            onSeek = { t -> seek(t - syncOffset) }
         }
-        controls.addView(tab)
-
         scroller = ScrollView(this).apply {
             isFillViewport = true
             addView(board)
         }
-        root.addView(scroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        neckPage = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(tab, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                marginStart = px(6); marginEnd = px(6); bottomMargin = px(2)
+            })
+            addView(scroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        }
+        // The whole song's tablature (the strip would only repeat it, so it stays with the neck).
+        sheet = TabSheetView(this).apply {
+            names = settings.names
+            onNoteTap = { i -> playNoteAt(i) }
+            onSeek = { t -> seek(t - syncOffset) }
+        }
+        sheetScroller = ScrollView(this).apply {
+            isFillViewport = true
+            addView(sheet)
+        }
+        root.addView(FrameLayout(this).apply {
+            addView(neckPage, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            addView(sheetScroller, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
 
         setContentView(root)
+        showPage(prefs.getInt(PREF_PAGE, PAGE_NECK))
+        showSync()
         refreshButtons()
         showDromos()
         status.text = "Paste a YouTube link (or Share → Μπουζούκι in the YouTube app). The first time, a song takes a few minutes to prepare; after that it opens instantly."
@@ -277,6 +352,7 @@ class SongActivity : Activity() {
         stopFile()
         fileUri = null
         currentId = id
+        loadSync(id)
         linkRow.visibility = View.GONE
         web.visibility = View.VISIBLE
         fileRow.visibility = View.GONE
@@ -292,11 +368,14 @@ class SongActivity : Activity() {
         fileUri = uri
         val id = "file-" + Integer.toHexString(uri.toString().hashCode())
         currentId = id
+        loadSync(id)
         linkRow.visibility = View.GONE
         fileRow.visibility = View.VISIBLE
         player = MediaPlayer().apply {
             setDataSource(this@SongActivity, uri)
-            setOnCompletionListener { playing = false; refreshButtons() }
+            setOnPreparedListener { filePrepared = true; tickFile() }
+            setOnCompletionListener { playing = false; refreshButtons(); tickFile() }
+            setOnSeekCompleteListener { tickFile() }
             prepareAsync()
         }
         titleText.text = name
@@ -349,7 +428,11 @@ class SongActivity : Activity() {
     private fun showSong(s: SongAnalysis?) {
         song = s
         tab.song = s
+        sheet.beats = if (s != null) beatsFor(s) else emptyList()
+        sheet.song = s
         lastNote = -1
+        lastNext = -1
+        pluckReset = true
         board.liveCell = null
         board.nextCell = null
         noteText.text = "–"
@@ -357,10 +440,67 @@ class SongActivity : Activity() {
             prepPanel.visibility = View.GONE
             if (s.title.isNotBlank()) titleText.text = s.title
             status.text = if (s.notes.isEmpty()) "No clear bouzouki line was found in this song."
-            else "Ready: ${s.notes.size} bouzouki notes. Press play; the next note has a hollow ring on the neck."
+            else "Ready: ${s.notes.size} bouzouki notes. Press play; the next note has a hollow ring on the neck. " +
+                "📜 Tablature shows the whole song: tap a note to hear it and play from there."
             s.notes.firstOrNull()?.let { board.nextCell = Cell(it.course, it.fret) }
+            sheet.showNow()
         }
         showDromos()
+    }
+
+    /**
+     * Beat times (seconds) that lay the tablature out in bars of 4 beats, two to a row; empty
+     * means rows of 4 seconds. To be filled from the song's analysis once it carries its beats.
+     */
+    private fun beatsFor(song: SongAnalysis): List<Double> = emptyList()
+
+    /** Shows the neck (with the tab strip) or the whole song's tablature, and remembers which. */
+    private fun showPage(page: Int) {
+        val sheetPage = page == PAGE_SHEET
+        neckPage.visibility = if (sheetPage) View.GONE else View.VISIBLE
+        sheetScroller.visibility = if (sheetPage) View.VISIBLE else View.GONE
+        ui.style(neckTab, !sheetPage)
+        ui.style(sheetTab, sheetPage)
+        prefs.edit().putInt(PREF_PAGE, page).apply()
+        if (sheetPage) sheet.showNow()
+    }
+
+    /** A tapped note on the tablature: play it, and the song from just before it. */
+    private fun playNoteAt(i: Int) {
+        val s = song ?: return
+        val n = s.notes.getOrNull(i) ?: return
+        seek(n.start - 0.15 - syncOffset)
+        if (bouzoukiSound && clock.playing) return // the bouzouki sound plays it in time, a moment from now
+        val inst = board.instrument
+        if (n.course in inst.courses.indices) audio.synth.pluck(n.course, inst.midiAt(n.course, n.fret), inst.courses[n.course].octavePair, 0.85f)
+    }
+
+    // --- sync between the notes and the sound ---
+
+    private fun loadSync(id: String) {
+        syncOffset = prefs.getFloat(PREF_SYNC + id, 0f).toDouble()
+        showSync()
+    }
+
+    /** Positive: the notes show (and the bouzouki sound plays) that much earlier. */
+    private fun nudgeSync(by: Double) {
+        val id = currentId ?: run { status.text = "Load a song first; the sync is kept for each song."; return }
+        syncOffset = (((syncOffset + by) * 1000).roundToInt() / 1000.0).coerceIn(-MAX_SYNC, MAX_SYNC)
+        prefs.edit().putFloat(PREF_SYNC + id, syncOffset.toFloat()).apply()
+        showSync()
+        val ms = abs(syncOffset * 1000).roundToInt()
+        status.text = when {
+            syncOffset > 0 -> "Notes now show $ms ms earlier than the sound."
+            syncOffset < 0 -> "Notes now show $ms ms later than the sound."
+            else -> "Notes in step with the sound (no sync offset)."
+        }
+        pluckReset = true
+        render(clock.now(SystemClock.elapsedRealtimeNanos()))
+    }
+
+    private fun showSync() {
+        val v = String.format(Locale.US, "%+.3f", syncOffset).let { if (it.endsWith("0")) it.dropLast(1) else it }
+        syncText.text = "Sync\n" + (if (syncOffset == 0.0) "0.00" else v) + " s"
     }
 
     private fun showDromos() {
@@ -418,20 +558,26 @@ class SongActivity : Activity() {
 
     private fun toggleFilePlayback() {
         val p = player ?: return
+        if (!filePrepared) { status.text = "The file is still loading…"; return }
         try {
-            if (p.isPlaying) { p.pause(); playing = false } else { p.start(); playing = true; tickFile() }
+            if (p.isPlaying) { p.pause(); playing = false } else { p.start(); playing = true }
         } catch (_: IllegalStateException) { status.text = "The file is still loading…" }
+        tickFile()
         refreshButtons()
     }
 
     private val fileTicker = Runnable { tickFile() }
 
+    /** Reports the file's position to the clock, ten times a second while it plays. */
     private fun tickFile() {
+        main.removeCallbacks(fileTicker)
         val p = player ?: return
+        if (!filePrepared) return // asking for the position before that puts MediaPlayer in its error state
         val t = try { p.currentPosition / 1000.0 } catch (_: IllegalStateException) { return }
-        fileTimeText.text = "%d:%02d".format(t.toInt() / 60, t.toInt() % 60)
-        onTime(t, playing)
-        if (playing) main.postDelayed(fileTicker, 33)
+        val nowPlaying = try { p.isPlaying } catch (_: IllegalStateException) { false }
+        if (nowPlaying != playing) { playing = nowPlaying; refreshButtons() } // e.g. a speed change can start it
+        onReport(t, playing, speed.toDouble(), SystemClock.elapsedRealtimeNanos())
+        if (playing) main.postDelayed(fileTicker, 100)
     }
 
     private fun stopFile() {
@@ -439,6 +585,11 @@ class SongActivity : Activity() {
         player?.release()
         player = null
         playing = false
+        filePrepared = false
+        // Whatever plays next starts from a stopped clock.
+        clock.report(0.0, false, speed.toDouble(), SystemClock.elapsedRealtimeNanos())
+        pendingSeek = Double.NaN
+        shownSecond = -1
     }
 
     // --- playback and sync ---
@@ -447,43 +598,108 @@ class SongActivity : Activity() {
         speed = r
         if (fileUri != null) {
             player?.let { p -> try { p.playbackParams = PlaybackParams().setSpeed(r) } catch (_: Exception) {} }
+            tickFile()
         } else {
             web.evaluateJavascript("player && player.setPlaybackRate($r)", null)
         }
         refreshButtons()
     }
 
+    /** Moves the song to [t] (seconds of media) and the clock with it, without waiting for the player. */
     private fun seek(t: Double) {
-        if (fileUri != null) player?.let { p -> try { p.seekTo((t * 1000).toInt()); tickFile() } catch (_: Exception) {} }
-        else web.evaluateJavascript("player && player.seekTo($t, true)", null)
+        val target = t.coerceAtLeast(0.0)
+        val nanos = SystemClock.elapsedRealtimeNanos()
+        clock.jump(target, nanos)
+        pendingSeek = target
+        pendingSeekNanos = nanos
+        pluckReset = true
+        if (fileUri != null) player?.takeIf { filePrepared }?.let { p -> try { p.seekTo((target * 1000).toInt()) } catch (_: Exception) {} }
+        else web.evaluateJavascript("player && player.seekTo($target, true)", null)
+        render(target)
     }
 
-    /** Called about 20 times a second while the song plays, with the playback time in seconds. */
-    private fun onTime(t: Double, isPlaying: Boolean) {
-        tab.time = t
-        val s = song ?: return
-        val i = s.noteAt(t)
-        if (i >= 0) {
-            val n = s.notes[i]
-            board.liveCell = Cell(n.course, n.fret)
-            noteText.text = settings.names.name(n.midi)
-            if (i != lastNote) {
-                if (bouzoukiSound && isPlaying && t - n.start < 0.2) {
-                    val inst = board.instrument
-                    audio.synth.pluck(n.course, inst.midiAt(n.course, n.fret), inst.courses[n.course].octavePair, 0.85f)
-                }
-                val (top, bottom) = board.cellSpan(Cell(n.course, n.fret))
-                keepVisible(top, bottom)
-            }
-        } else {
-            board.liveCell = null
-            noteText.text = "–"
+    /** A time report from the player (YouTube or the file), taken at [nanos]. */
+    private fun onReport(t: Double, isPlaying: Boolean, rate: Double, nanos: Long) {
+        if (!pendingSeek.isNaN()) {
+            // Near the target, whether it has played on since or is still loading: the seek has landed.
+            val since = (nanos - pendingSeekNanos) / 1e9
+            val furthest = pendingSeek + if (clock.playing) since * clock.rate else 0.0
+            if ((t < pendingSeek - 0.3 || t > furthest + 0.3) && since < 2.0) return // still the old position
+            pendingSeek = Double.NaN
         }
-        lastNote = i
-        s.notes.getOrNull(s.nextAfter(t))?.let { board.nextCell = Cell(it.course, it.fret) } ?: run { board.nextCell = null }
+        if (clock.report(t, isPlaying, rate, nanos)) pluckReset = true
+        if (clock.playing) scheduleFrame() else render(clock.now(nanos))
+    }
+
+    private val frameCallback = Choreographer.FrameCallback {
+        frameScheduled = false
+        if (clock.playing) {
+            render(clock.now(SystemClock.elapsedRealtimeNanos()))
+            scheduleFrame()
+        }
+    }
+
+    /** Draws at every frame (vsync) while the song plays. */
+    private fun scheduleFrame() {
+        if (frameScheduled || !resumed) return
+        frameScheduled = true
+        Choreographer.getInstance().postFrameCallback(frameCallback)
+    }
+
+    /** Shows the song at media time [media]: the neck, the note, the tab strip and the tablature. */
+    private fun render(media: Double) {
+        if (fileUri != null) {
+            val sec = media.toInt()
+            if (sec != shownSecond) { shownSecond = sec; fileTimeText.text = "%d:%02d".format(sec / 60, sec % 60) }
+        }
+        // What's drawn now is on screen a frame or two later.
+        val t = media + syncOffset + if (clock.playing) DISPLAY_LEAD * clock.rate else 0.0
+        tab.time = t
+        sheet.time = t
+        val s = song ?: return
+        pluck(s, media + syncOffset)
+        val i = s.noteAt(t)
+        if (i != lastNote) {
+            lastNote = i
+            if (i >= 0) {
+                val n = s.notes[i]
+                val cell = Cell(n.course, n.fret)
+                board.liveCell = cell
+                noteText.text = settings.names.name(n.midi)
+                val (top, bottom) = board.cellSpan(cell)
+                keepVisible(top, bottom)
+            } else {
+                board.liveCell = null
+                noteText.text = "–"
+            }
+        }
+        val next = s.nextAfter(t)
+        if (next != lastNext) {
+            lastNext = next
+            board.nextCell = s.notes.getOrNull(next)?.let { Cell(it.course, it.fret) }
+        }
+    }
+
+    /**
+     * The bouzouki sound: plucks each note a little ahead of time [t] (the synth takes a moment
+     * to reach the speaker), once, and never a note the song is already well into.
+     */
+    private fun pluck(s: SongAnalysis, t: Double) {
+        if (!bouzoukiSound || !clock.playing) { pluckReset = true; return }
+        if (pluckReset) { nextPluck = s.nextAfter(t); pluckReset = false }
+        val ahead = t + PLUCK_LEAD * clock.rate
+        val inst = board.instrument
+        while (nextPluck < s.notes.size && s.notes[nextPluck].start <= ahead) {
+            val n = s.notes[nextPluck]
+            if (ahead - n.start < 0.25 && n.course in inst.courses.indices) {
+                audio.synth.pluck(n.course, inst.midiAt(n.course, n.fret), inst.courses[n.course].octavePair, 0.85f)
+            }
+            nextPluck++
+        }
     }
 
     private fun keepVisible(top: Int, bottom: Int) {
+        if (!scroller.isShown) return
         val visibleTop = scroller.scrollY
         if (top < visibleTop || bottom > visibleTop + scroller.height) {
             scroller.smoothScrollTo(0, (top - scroller.height / 3).coerceAtLeast(0))
@@ -504,17 +720,27 @@ class SongActivity : Activity() {
         </head><body><div id="p"></div>
         <script src="https://www.youtube.com/iframe_api"></script>
         <script>
-          var player = null;
+          var player = null, lastT = -1, lastS = -9, lastR = -1, lastSent = 0;
+          // Polled often but passed on only when something changed (or every 250 ms), so the app
+          // sees each new time soon after the player has it.
+          function report(force) {
+            if (!player || !player.getCurrentTime) return;
+            var t = player.getCurrentTime(), s = player.getPlayerState();
+            var r = player.getPlaybackRate ? player.getPlaybackRate() : 1;
+            var now = Date.now();
+            if (force || t !== lastT || s !== lastS || r !== lastR || now - lastSent > 250) {
+              lastT = t; lastS = s; lastR = r; lastSent = now;
+              Android.onTime(t, s, r);
+            }
+          }
           function onYouTubeIframeAPIReady() {
             player = new YT.Player('p', {
               width: '100%', height: '100%', videoId: '$id',
               playerVars: { playsinline: 1, rel: 0, origin: '$ORIGIN' },
               events: {
-                onReady: function () {
-                  setInterval(function () {
-                    if (player && player.getCurrentTime) Android.onTime(player.getCurrentTime(), player.getPlayerState());
-                  }, 50);
-                },
+                onReady: function () { setInterval(report, 20); },
+                onStateChange: function () { report(true); },
+                onPlaybackRateChange: function () { report(true); },
                 onError: function (e) { Android.onError(e.data); }
               }
             });
@@ -524,8 +750,9 @@ class SongActivity : Activity() {
 
     private inner class YouTubeBridge {
         @JavascriptInterface
-        fun onTime(t: Double, state: Int) = main.post {
-            if (fileUri == null) onTime(t, state == 1)
+        fun onTime(t: Double, state: Int, rate: Double) {
+            val nanos = SystemClock.elapsedRealtimeNanos() // when the page read it, not when the UI thread gets to it
+            main.post { if (fileUri == null) onReport(t, state == YT_PLAYING, rate, nanos) }
         }
 
         @JavascriptInterface
@@ -542,9 +769,14 @@ class SongActivity : Activity() {
         super.onResume()
         audio.start()
         SongJobs.listen(jobListener)
+        resumed = true
+        if (clock.playing) scheduleFrame()
     }
 
     override fun onPause() {
+        resumed = false
+        Choreographer.getInstance().removeFrameCallback(frameCallback)
+        frameScheduled = false
         SongJobs.unlisten(jobListener)
         audio.stop()
         if (playing && fileUri != null) toggleFilePlayback()
@@ -560,6 +792,17 @@ class SongActivity : Activity() {
     companion object {
         private const val REQ_FILE = 3
         private const val ORIGIN = "https://com.bouzouki"
+        private const val YT_PLAYING = 1
+        private const val PAGE_NECK = 0
+        private const val PAGE_SHEET = 1
+        private const val PREF_PAGE = "song_page"
+        private const val PREF_SYNC = "song_sync_"
+        private const val SYNC_STEP = 0.025
+        private const val MAX_SYNC = 1.0
+        /** Seconds between drawing a frame and seeing it. */
+        private const val DISPLAY_LEAD = 0.025
+        /** Seconds between plucking the synth and hearing it. */
+        private const val PLUCK_LEAD = 0.06
 
         private val ID = Regex("""(?:v=|youtu\.be/|shorts/|embed/|live/)([A-Za-z0-9_-]{11})""")
 
