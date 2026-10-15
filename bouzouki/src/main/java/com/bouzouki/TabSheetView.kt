@@ -71,6 +71,7 @@ class TabSheetView(context: Context) : View(context) {
     private var totalHeight = 0f
     private var layoutWidth = -1
     private var boxX = FloatArray(0)         // where each note's fret number is drawn (x of its centre)
+    private val boxWidths = FloatArray(40)   // cached box width per fret number (0 = not measured yet)
 
     // Geometry (px).
     private val margin = 8 * dp
@@ -380,12 +381,13 @@ class TabSheetView(context: Context) : View(context) {
             canvas.drawText(message, width / 2f, 80 * dp, placeholderPaint)
             return
         }
-        // Only the rows on screen, and a screen's worth either side for smooth scrolling.
+        // Only the rows on screen (plus a little slack): the scroll listener redraws as it scrolls.
         val scroller = parent as? View
         val viewTop = if (scroller != null) scroller.scrollY - top else 0
         val viewHeight = scroller?.height ?: height
-        val from = viewTop - viewHeight
-        val to = viewTop + 2 * viewHeight
+        val slack = (120 * dp).toInt()
+        val from = viewTop - slack
+        val to = viewTop + viewHeight + slack
 
         if (from < headerHeight) drawHeader(canvas)
         val now = rowAt(time)
@@ -521,7 +523,12 @@ class TabSheetView(context: Context) : View(context) {
         return end - start >= 0.8 * (grid[k + 1] - grid[k])
     }
 
-    private fun boxWidth(fret: Int) = max(numPaint.measureText(fretText(fret)) + 6 * dp, 14 * dp)
+    /** Width of a fret number's box, measured once per fret (drawing asks for it at every frame). */
+    private fun boxWidth(fret: Int): Float {
+        if (fret !in boxWidths.indices) return max(numPaint.measureText(fretText(fret)) + 6 * dp, 14 * dp)
+        if (boxWidths[fret] == 0f) boxWidths[fret] = max(numPaint.measureText(fretText(fret)) + 6 * dp, 14 * dp)
+        return boxWidths[fret]
+    }
 
     // --- following the song ---
 

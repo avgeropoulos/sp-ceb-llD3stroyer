@@ -76,7 +76,7 @@ data class SongAnalysis(
         /** The id and title in a cache file of any version, and whether [fromJson] can read it; null if damaged. */
         fun saved(json: String): Saved? = try {
             val p = MiniJson(json).parse() as Map<*, *>
-            Saved(p["id"] as String, p["title"] as String, fromJson(json) != null)
+            Saved(p["id"] as String, p["title"] as String, (p["version"] as Number).toInt() == FORMAT)
         } catch (_: Exception) { null }
 
         /** Reads what [toJson] wrote; null if it's from an older version or damaged. Unknown fields are ignored. */

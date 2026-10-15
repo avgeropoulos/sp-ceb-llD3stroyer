@@ -62,6 +62,7 @@ class SongActivity : Activity() {
     private lateinit var titleText: TextView
     private lateinit var link: EditText
     private lateinit var linkRow: LinearLayout
+    private lateinit var extraRow: LinearLayout
     private lateinit var web: WebView
     private lateinit var fileRow: LinearLayout
     private lateinit var filePlayButton: Button
@@ -153,7 +154,7 @@ class SongActivity : Activity() {
                 ellipsize = TextUtils.TruncateAt.END
             }
             addView(titleText, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            addView(ui.chip("🔗") { linkRow.visibility = if (linkRow.visibility == View.VISIBLE) View.GONE else View.VISIBLE },
+            addView(ui.chip("🔗") { showLinkRows(linkRow.visibility != View.VISIBLE) },
                 LinearLayout.LayoutParams(px(42), px(40)).apply { marginEnd = px(4) })
             addView(wireZoom(ui, settings, board, "song", defaultWhole = true),
                 LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(40)))
@@ -184,10 +185,11 @@ class SongActivity : Activity() {
             addView(ui.chip("Paste") { pasteAndLoad() }, ui.weighted(1.1f))
             addView(ui.chip("Load") { loadLink() }, ui.weighted(1f))
         })
-        controls.addView(ui.row().apply {
+        extraRow = ui.row().apply {
             addView(ui.chip("📁 Audio file") { pickFile() }, ui.weighted())
             addView(ui.chip("🕘 My songs") { showSaved() }, ui.weighted())
-        }.also { it.tag = "extra" })
+        }
+        controls.addView(extraRow)
 
         // The video (YouTube) or a simple player (audio file).
         web = WebView(this).apply {
@@ -225,6 +227,8 @@ class SongActivity : Activity() {
         status = TextView(this).apply {
             setTextColor(0xFF9FB4CC.toInt())
             textSize = 12f
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
             setPadding(px(4), px(2), px(4), px(2))
         }
         controls.addView(status)
@@ -354,7 +358,7 @@ class SongActivity : Activity() {
         fileUri = null
         currentId = id
         loadSync(id)
-        linkRow.visibility = View.GONE
+        showLinkRows(false) // more room for the neck; 🔗 brings them back
         web.visibility = View.VISIBLE
         fileRow.visibility = View.GONE
         // YouTube wants to know which app is embedding it (an origin), or it refuses with error 152/153.
@@ -370,7 +374,7 @@ class SongActivity : Activity() {
         val id = "file-" + Integer.toHexString(uri.toString().hashCode())
         currentId = id
         loadSync(id)
-        linkRow.visibility = View.GONE
+        showLinkRows(false) // more room for the neck; 🔗 brings them back
         fileRow.visibility = View.VISIBLE
         player = MediaPlayer().apply {
             setDataSource(this@SongActivity, uri)
@@ -444,7 +448,7 @@ class SongActivity : Activity() {
             prepPanel.visibility = View.GONE
             if (s.title.isNotBlank()) titleText.text = s.title
             status.text = if (s.notes.isEmpty()) "No clear bouzouki line was found in this song."
-            else "Ready: ${s.notes.size} bouzouki notes. Press play; the next note has a hollow ring on the neck. " +
+            else "Ready: ${s.notes.size} bouzouki notes. The hollow ring shows the next one. " +
                 "📜 Tablature shows the whole song: tap a note to hear it and play from there."
             s.notes.firstOrNull()?.let { board.nextCell = Cell(it.course, it.fret) }
             sheet.showNow()
@@ -467,6 +471,14 @@ class SongActivity : Activity() {
         ui.style(sheetTab, sheetPage)
         prefs.edit().putInt(PREF_PAGE, page).apply()
         if (sheetPage) sheet.showNow()
+        else board.post { board.liveCell?.let { keepVisible(it) } } // after the neck's first layout
+    }
+
+    /** The link box and the file/saved-songs row, folded away while a song is open. */
+    private fun showLinkRows(show: Boolean) {
+        val v = if (show) View.VISIBLE else View.GONE
+        linkRow.visibility = v
+        extraRow.visibility = v
     }
 
     /** A tapped note on the tablature: play it, and the song from just before it. */
@@ -643,12 +655,13 @@ class SongActivity : Activity() {
             pendingSeek = Double.NaN
         }
         if (clock.report(t, isPlaying, rate, nanos)) pluckReset = true
-        if (clock.playing) scheduleFrame() else render(clock.now(nanos))
+        // Frame-by-frame drawing only once there are notes to follow; before that, the reports will do.
+        if (clock.playing && song != null) scheduleFrame() else render(clock.now(nanos))
     }
 
     private val frameCallback = Choreographer.FrameCallback {
         frameScheduled = false
-        if (clock.playing) {
+        if (clock.playing && song != null) {
             val t = clock.now(SystemClock.elapsedRealtimeNanos())
             if (t != lastFrameMedia) render(t) // the clock stands still while a seek lands or the player stalls
             scheduleFrame()
@@ -670,10 +683,10 @@ class SongActivity : Activity() {
             if (sec != shownSecond) { shownSecond = sec; fileTimeText.text = "%d:%02d".format(sec / 60, sec % 60) }
         }
         // What's drawn now is on screen a frame or two later.
+        val s = song ?: return
         val t = media + syncOffset + if (clock.playing) DISPLAY_LEAD * clock.rate else 0.0
         tab.time = t
         sheet.time = t
-        val s = song ?: return
         pluck(s, media + syncOffset)
         val i = s.noteAt(t)
         if (i != lastNote) {
@@ -683,8 +696,7 @@ class SongActivity : Activity() {
                 val cell = Cell(n.course, n.fret)
                 board.liveCell = cell
                 noteText.text = settings.names.name(n.midi)
-                val (top, bottom) = board.cellSpan(cell)
-                keepVisible(top, bottom)
+                keepVisible(cell)
             } else {
                 board.liveCell = null
                 noteText.text = "–"
@@ -716,8 +728,10 @@ class SongActivity : Activity() {
         }
     }
 
-    private fun keepVisible(top: Int, bottom: Int) {
+    /** Scrolls the neck to [cell] if it's off screen (only while the neck page shows: it isn't laid out otherwise). */
+    private fun keepVisible(cell: Cell) {
         if (!scroller.isShown) return
+        val (top, bottom) = board.cellSpan(cell)
         val visibleTop = scroller.scrollY
         if (top < visibleTop || bottom > visibleTop + scroller.height) {
             scroller.smoothScrollTo(0, (top - scroller.height / 3).coerceAtLeast(0))

@@ -906,15 +906,19 @@ class FretboardView(context: Context, private val synth: BouzoukiSynth) : View(c
     /** Plays one note for the scale player and reports where it is so the screen can follow. */
     fun playCell(cell: Cell) {
         play(cell.course, cell.fret, 0.8f)
-        onPlayed?.invoke(cellTop(cell.fret).toInt(), cellBottom(cell.fret).toInt())
+        if (laidOut) onPlayed?.invoke(cellTop(cell.fret).toInt(), cellBottom(cell.fret).toInt())
     }
 
     /** The y range of one fret, for scrolling it into view. */
     fun cellSpan(cell: Cell): Pair<Int, Int> = fretSpan(cell.fret, cell.fret)
 
-    /** The y range of a block of frets, for scrolling it into view. */
+    /** The y range of a block of frets, for scrolling it into view; 0 to 0 until the neck has been measured. */
     fun fretSpan(first: Int, last: Int): Pair<Int, Int> =
-        cellTop(first.coerceIn(0, instrument.frets)).toInt() to cellBottom(last.coerceIn(0, instrument.frets)).toInt()
+        if (!laidOut) 0 to 0
+        else cellTop(first.coerceIn(0, instrument.frets)).toInt() to cellBottom(last.coerceIn(0, instrument.frets)).toInt()
+
+    /** True once onMeasure has placed the frets of the current instrument (not while the view is hidden, GONE). */
+    private val laidOut get() = fretTops.size > instrument.frets
 
     /** Copies the fingers in [held] into the flat arrays the drawing reads. */
     private fun syncHeld() {
