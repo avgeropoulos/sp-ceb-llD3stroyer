@@ -11,6 +11,7 @@ import java.nio.ByteOrder
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.test.Test
@@ -116,14 +117,14 @@ class BouzoukiLineTest {
 
     @Test
     fun repeatedNotesAreNotTremolo() {
-        // 120 BPM: D D D D as 16ths, E F G as 8ths, A A A as 16ths, D; then 160 BPM 8ths G G G G F E E E D.
+        // 120 BPM: D D D D as 16ths, E F G as 8ths, A A A as 16ths, a held F; then 160 BPM 8ths G G G G F E E E D.
         val notes = ArrayList<NoteEvent>()
         var t = 0.0
         fun play(midi: Int, dur: Double) { notes += heard(t, t + dur, midi, if (notes.size % 2 == 0) 0.75 else 0.65); t += dur }
         repeat(4) { play(62, 0.125) }
         for (m in listOf(64, 65, 67)) play(m, 0.25)
         repeat(3) { play(69, 0.125) }
-        play(62, 1.0)
+        play(65, 1.0)
         for (m in listOf(67, 67, 67, 67, 65, 64, 64, 64, 62)) play(m, 60.0 / 160 / 2)
         val line = SongAnalyzer.bouzoukiLine(notes, tetra)
         assertEquals(notes.map { it.midi }, line.map { it.midi }, "line: $line")
@@ -155,6 +156,46 @@ class BouzoukiLineTest {
         val again = SongAnalyzer.bouzoukiLine(close, Instrument.TRICHORDO)
         assertEquals(close.map { it.start to it.midi }, again.map { it.start to it.midi })
         assertTrue(monophonic(again), "monophonic: $again")
+    }
+
+    @Test
+    fun aNoteWithoutAPickCountsLessUnlessItTakesOverFromTheLine() {
+        val n = 300
+        fun line(aRingsOn: Boolean, cPicked: Boolean): List<Int> {
+            val frames = Array(n) { FloatArray(BasicPitch.N_KEYS) { 0.1f } }
+            fun sound(midi: Int, from: Int, to: Int) { for (t in from until to) frames[t][midi - BasicPitch.MIDI_OFFSET] = 0.6f }
+            sound(62, 20, if (aRingsOn) 120 else 61); sound(64, 60, 120); sound(66, 150, 200)
+            val act = BasicPitch.Activations(frames, Array(n) { FloatArray(BasicPitch.N_KEYS) { 0.05f } })
+            fun note(midi: Int, from: Int, to: Int) =
+                NoteEvent(BasicPitch.frameTime(from), BasicPitch.frameTime(to), midi, 0.5, onset = 0.8, salience = 0.6, frame = from, endFrame = to)
+            val notes = listOf(note(62, 20, 60), note(64, 60, 120), note(66, 150, 200))
+            // The plectrum strikes the first note (and the last one if cPicked); the rest of the song is calm.
+            val rises = FloatArray(1300) { 1f }
+            for (k in listOf(0, 2)) {
+                if (k == 2 && !cPicked) continue
+                val i = ((notes[k].start * Attacks.SAMPLE_RATE - Attacks.FFT / 2) / Attacks.HOP).roundToInt()
+                for (j in i - 1..i + 1) rises[j] = 100f
+            }
+            return SongAnalyzer.bouzoukiLine(notes, tetra, act, Attacks(rises, FloatArray(rises.size))).map { it.midi }
+        }
+        // 64 has no pick but takes over from 62 as a hammer-on does (62 fades as it starts); 66, after a rest, has neither.
+        assertEquals(listOf(62, 64), line(aRingsOn = false, cPicked = false))
+        assertEquals(listOf(62, 64, 66), line(aRingsOn = false, cPicked = true))
+        // While 62 rings on, the unpicked 64 is something else sounding with it.
+        assertEquals(listOf(62, 66), line(aRingsOn = true, cPicked = true))
+    }
+
+    @Test
+    fun anOnsetPeakWithAFlatTopIsOneNote() {
+        // Activations saved in 1/255 steps tie at a peak; the note must not be lost.
+        val n = 40
+        val frames = Array(n) { FloatArray(BasicPitch.N_KEYS) }
+        val onsets = Array(n) { FloatArray(BasicPitch.N_KEYS) }
+        for (t in 10 until 30) frames[t][41] = 0.7f
+        onsets[9][41] = 0.2f; onsets[10][41] = 0.8f; onsets[11][41] = 0.8f; onsets[12][41] = 0.3f
+        frames[30][60] = 1f; frames[31][60] = 1f // a frame jump elsewhere, too short for a note, sets the inferred onsets' scale
+        val notes = BasicPitch.notes(BasicPitch.Activations(frames, onsets), onsetThresh = 0.5f, minNoteLen = 2, melodia = false)
+        assertEquals(listOf(62 to 10), notes.map { it.midi to it.frame })
     }
 
     @Test
@@ -212,6 +253,8 @@ class BouzoukiLineTest {
         assertNotNull(SongAnalysis.fromJson(json))
         val old = json.replace("\"version\":${SongAnalysis.FORMAT}", "\"version\":1")
         assertEquals(null, SongAnalysis.fromJson(old))
+        // Version 3 (before the line weighed the plectrum's attacks, and without saved analysis data) is prepared again too.
+        assertEquals(null, SongAnalysis.fromJson(json.replace("\"version\":${SongAnalysis.FORMAT}", "\"version\":3")))
         // The song list still shows it, to be prepared again.
         assertEquals(SongAnalysis.Saved("x", "Σ x", current = false), SongAnalysis.saved(old))
         assertEquals(SongAnalysis.Saved("x", "Σ x", current = true), SongAnalysis.saved(json))
@@ -228,7 +271,10 @@ class BasicPitchTest {
     /** A pluck: when, which course, which note. */
     private data class Pluck(val time: Double, val course: Int, val midi: Int, val velocity: Float = 0.9f)
 
-    /** Renders [plucks] with the app's bouzouki synth at Basic Pitch's rate, each pluck on its exact sample. */
+    /**
+     * Renders [plucks] with the app's bouzouki synth at Basic Pitch's rate, each pluck on its exact sample, over a
+     * faint hiss (about -55 dB) as any recording has, so the attack measure sees a pick against something.
+     */
     private fun render(plucks: List<Pluck>, seconds: Double): FloatArray {
         val fs = BasicPitch.SAMPLE_RATE
         val synth = BouzoukiSynth(fs)
@@ -241,18 +287,19 @@ class BasicPitchTest {
             synth.pluck(p.course, p.midi, Instrument.TETRACHORDO.courses[p.course].octavePair, p.velocity)
         }
         synth.render(audio, pos, audio.size - pos)
+        val hiss = java.util.Random(7)
+        for (i in audio.indices) audio[i] += 0.002f * hiss.nextGaussian().toFloat()
         return audio
     }
 
     private fun line(audio: FloatArray): List<NoteEvent> {
         val env = OrtEnvironment.getEnvironment()
         return env.createSession(model.path, OrtSession.SessionOptions()).use { session ->
-            val act = BasicPitch(env, session).activations(audio)
-            val line = SongAnalyzer.bouzoukiLine(SongAnalyzer.candidates(act), Instrument.TETRACHORDO, act)
-            // Knowing where the plectrum strikes changes nothing on picked notes: same line, nothing legato.
-            val withAttacks = SongAnalyzer.bouzoukiLine(SongAnalyzer.candidates(act), Instrument.TETRACHORDO, act, Attacks.of(audio))
-            assertEquals(line.map { it.start to it.midi }, withAttacks.map { it.start to it.midi })
-            assertEquals(line.map { it.articulation }, withAttacks.map { it.articulation })
+            // As the analysis does it: the activations as saved, and where the plectrum strikes.
+            val data = AnalysisData.of(BasicPitch(env, session).activations(audio), Attacks.of(audio))
+            val line = SongAnalyzer.bouzoukiLine(SongAnalyzer.candidates(data.act), Instrument.TETRACHORDO, data.act, data.attacks)
+            // Every note here is picked: nothing is taken for legato.
+            assertTrue(line.none { it.articulation.isLegato }, "line: $line")
             line
         }
     }
@@ -274,17 +321,24 @@ class BasicPitchTest {
         val env = OrtEnvironment.getEnvironment()
         env.createSession(model.path, OrtSession.SessionOptions()).use { session ->
             val act = BasicPitch(env, session).activations(audio)
-            val data = AnalysisData(act, Attacks.of(audio))
-            val first = SongAnalyzer.build("id", "t", SongAnalyzer.candidates(act), Instrument.TETRACHORDO, act, data.attacks)
+            // As analyzeWithData does: the line comes from the activations as they are saved.
+            val data = AnalysisData.of(act, Attacks.of(audio))
+            val first = SongAnalyzer.build("id", "t", SongAnalyzer.candidates(data.act), Instrument.TETRACHORDO, data.act, data.attacks)
+            assertEquals(melody, first.notes.map { it.midi })
             val bytes = java.io.ByteArrayOutputStream().also { data.write(it) }.toByteArray()
             val back = assertNotNull(AnalysisData.read(bytes.inputStream()))
             assertEquals(act.frames.size, back.act.frames.size)
-            val again = SongAnalyzer.rebuild(first, back)
-            assertEquals(first.notes.map { it.midi }, again.notes.map { it.midi })
-            again.notes.forEachIndexed { i, n -> assertTrue(abs(n.start - first.notes[i].start) < 0.005) }
-            // More detail never loses the notes the normal line has.
+            for (t in act.frames.indices) {
+                assertTrue(data.act.frames[t].contentEquals(back.act.frames[t]) && data.act.onsets[t].contentEquals(back.act.onsets[t]))
+                assertTrue(act.contours!![t].contentEquals(back.act.contours!![t]))
+            }
+            // The saved data gives the very same line again.
+            assertEquals(first.notes, SongAnalyzer.rebuild(first, back).notes)
+            // More detail never loses the notes the normal line has, fewer never adds any.
             val more = SongAnalyzer.rebuild(first, back, Detail.MORE)
             assertTrue(first.notes.all { n -> more.notes.any { it.midi == n.midi && abs(it.start - n.start) < 0.03 } })
+            val fewer = SongAnalyzer.rebuild(first, back, Detail.FEWER)
+            assertTrue(fewer.notes.all { n -> first.notes.any { it.midi == n.midi && abs(it.start - n.start) < 0.03 } })
             assertEquals(null, AnalysisData.read(bytes.copyOf(40).inputStream()))
         }
     }
@@ -488,14 +542,21 @@ class EvalTest {
         }
     }
 
+    private fun activations(song: File): BasicPitch.Activations {
+        val contours = File(song, "contours.u8").takeIf { it.exists() }?.let { bytes(it, BasicPitch.N_CONTOUR_BINS) }
+        return BasicPitch.Activations(floats(File(song, "frames.f32"), 88), floats(File(song, "onsets.f32"), 88), contours)
+    }
+
+    private fun attacks(song: File) = File(song, "audio22.f32").takeIf { it.exists() }?.let { Attacks.of(samples(it)) }
+
     @Test
     fun kotlinLineIsThePythonLine() {
         val d = dir ?: return
-        val bySet = LinkedHashMap<String, Score>()
+        // The line at each detail level the export has (line.csv is the normal one; line_MORE.csv and so on).
+        val bySet = LinkedHashMap<Pair<Detail, String>, Score>()
         for (song in songs(d)) {
-            val contours = File(song, "contours.u8").takeIf { it.exists() }?.let { bytes(it, BasicPitch.N_CONTOUR_BINS) }
-            val act = BasicPitch.Activations(floats(File(song, "frames.f32"), 88), floats(File(song, "onsets.f32"), 88), contours)
-            val attacks = File(song, "audio22.f32").takeIf { it.exists() }?.let { Attacks.of(samples(it)) }
+            val act = activations(song)
+            val attacks = attacks(song)
             if (attacks != null) {
                 // The attack tracks are the Python ones (float32 rounding apart).
                 for ((mine, theirs) in listOf(attacks.rises to samples(File(song, "rise.f32")), attacks.energies to samples(File(song, "energy.f32")))) {
@@ -505,27 +566,77 @@ class EvalTest {
                     assertTrue(err <= 1e-4 * scale, "${song.name}: attack track differs by $err (max $scale)")
                 }
             }
-            val line = rows(SongAnalyzer.bouzoukiLine(SongAnalyzer.candidates(act), Instrument.TETRACHORDO, act, attacks))
-            val python = rows(File(song, "line.csv"))
-            val same = match(python, line, 0.001)
-            val sameArticulation = same.count { (i, j, _) -> python[i].articulation == line[j].articulation }
-            val gt = rows(File(song, "gt.csv"))
-            val s = Score().apply { add(gt, line, match(gt, line)) }
-            val set = File(song, "set.txt").takeIf { it.exists() }?.readText()?.trim() ?: "songs"
-            bySet.getOrPut(set) { Score() }.add(s)
-            println("%-28s same as python %d/%d (kotlin %d), articulations %d | %s".format(
-                song.name, same.size, python.size, line.size, sameArticulation, s))
-            assertTrue(same.size >= python.size * 0.98 && same.size >= line.size * 0.98, "${song.name}: ${same.size} of ${python.size}/${line.size}")
-            // An export from before articulations (start,end,midi only) has none to compare.
-            val withArticulations = File(song, "line.csv").useLines { l -> l.firstOrNull()?.split(",")?.size ?: 0 } >= 4
-            if (withArticulations) assertTrue(sameArticulation >= same.size * 0.98, "${song.name}: articulations $sameArticulation of ${same.size}")
+            for (detail in Detail.entries) {
+                val file = File(song, if (detail == Detail.NORMAL) "line.csv" else "line_${detail.name}.csv")
+                if (!file.exists()) continue
+                val notes = SongAnalyzer.bouzoukiLine(SongAnalyzer.candidates(act, detail), Instrument.TETRACHORDO, act, attacks, detail)
+                val line = rows(notes)
+                val python = rows(file)
+                val same = match(python, line, 0.001)
+                val sameArticulation = same.count { (i, j, _) -> python[i].articulation == line[j].articulation }
+                val gt = rows(File(song, "gt.csv"))
+                val s = Score().apply { add(gt, line, match(gt, line)) }
+                val set = File(song, "set.txt").takeIf { it.exists() }?.readText()?.trim() ?: "songs"
+                bySet.getOrPut(detail to set) { Score() }.add(s)
+                println("%-28s %-6s same as python %d/%d (kotlin %d), articulations %d | %s".format(
+                    song.name, detail, same.size, python.size, line.size, sameArticulation, s))
+                assertTrue(same.size >= python.size * 0.98 && same.size >= line.size * 0.98, "${song.name} $detail: ${same.size} of ${python.size}/${line.size}")
+                // An export from before articulations (start,end,midi only) has none to compare.
+                val withArticulations = file.useLines { l -> l.firstOrNull()?.split(",")?.size ?: 0 } >= 4
+                if (withArticulations) assertTrue(sameArticulation >= same.size * 0.98, "${song.name}: articulations $sameArticulation of ${same.size}")
+            }
         }
-        val earlier = Score()
-        for ((set, s) in bySet) {
-            println("%-18s %s".format(set, s))
-            if (set in listOf("songs", "songs_test", "songs_rep")) earlier.add(s)
+        for (detail in Detail.entries) {
+            val earlier = Score()
+            val all = Score()
+            for ((key, s) in bySet) {
+                if (key.first != detail) continue
+                println("%-6s %-18s %s".format(detail, key.second, s))
+                if (key.second in listOf("songs", "songs_test", "songs_rep")) earlier.add(s)
+                all.add(s)
+            }
+            if (earlier.ref > 0) println("%-6s 13 earlier songs:  %s".format(detail, earlier))
+            if (all.ref > 0) println("%-6s all songs:         %s".format(detail, all))
         }
-        if (earlier.ref > 0) println("13 earlier songs:  $earlier")
+    }
+
+    @Test
+    fun savedDataGivesTheSameLine() {
+        val d = dir ?: return
+        val list = songs(d).filter { File(it, "audio22.f32").exists() && File(it, "contours.u8").exists() }
+        for (song in list) {
+            val data = AnalysisData.of(activations(song), attacks(song))
+            val fresh = SongAnalyzer.build(song.name, song.name, SongAnalyzer.candidates(data.act), Instrument.TETRACHORDO, data.act, data.attacks)
+            val bytes = java.io.ByteArrayOutputStream().also { data.write(it) }.toByteArray()
+            val back = assertNotNull(AnalysisData.read(bytes.inputStream()))
+            assertEquals(fresh.notes, SongAnalyzer.rebuild(fresh, back).notes, song.name)
+        }
+        // A 4-minute song (the songs strung together): its file size, and how long reading it and deriving its line take.
+        val parts = list.map { activations(it) to samples(File(it, "audio22.f32")) }
+        val frames = ArrayList<FloatArray>(); val onsets = ArrayList<FloatArray>(); val contours = ArrayList<ByteArray>()
+        val audio = ArrayList<FloatArray>()
+        var seconds = 0.0
+        for ((act, a) in parts) {
+            if (seconds >= 240) break
+            frames += act.frames; onsets += act.onsets; contours += act.contours!!
+            audio += a
+            seconds += act.frames.size.toDouble() / BasicPitch.ANNOTATIONS_FPS
+        }
+        val all = FloatArray(audio.sumOf { it.size }).also { var p = 0; for (a in audio) { a.copyInto(it, p); p += a.size } }
+        val act = BasicPitch.Activations(frames.toTypedArray(), onsets.toTypedArray(), contours.toTypedArray())
+        val data = AnalysisData.of(act, Attacks.of(all))
+        val base = SongAnalyzer.build("long", "long", SongAnalyzer.candidates(data.act), Instrument.TETRACHORDO, data.act, data.attacks)
+        val bytes = java.io.ByteArrayOutputStream().also { data.write(it) }.toByteArray()
+        var best = Double.MAX_VALUE
+        repeat(3) {
+            val t0 = System.nanoTime()
+            val again = SongAnalyzer.rebuild(base, assertNotNull(AnalysisData.read(bytes.inputStream())))
+            best = minOf(best, (System.nanoTime() - t0) / 1e9)
+            assertEquals(base.notes, again.notes)
+        }
+        println("%.0f s of song: %.2f MB saved (%.2f MB a minute), read + rebuild %.2f s, %d notes".format(
+            seconds, bytes.size / 1e6, bytes.size / 1e6 / (seconds / 60), best, base.notes.size))
+        assertTrue(bytes.size < 5e6 * seconds / 240, "${bytes.size} bytes for $seconds s")
     }
 
     @Test
