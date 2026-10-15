@@ -268,6 +268,28 @@ class BasicPitchTest {
     }
 
     @Test
+    fun savedAnalysisDataGivesTheSameLineAgain() {
+        val melody = listOf(62, 63, 66, 67, 69, 70, 72, 74)
+        val audio = render(melody.mapIndexed { i, m -> Pluck(0.25 + i * 0.5, 3, m) }, (melody.size + 1) / 2.0 + 0.25)
+        val env = OrtEnvironment.getEnvironment()
+        env.createSession(model.path, OrtSession.SessionOptions()).use { session ->
+            val act = BasicPitch(env, session).activations(audio)
+            val data = AnalysisData(act, Attacks.of(audio))
+            val first = SongAnalyzer.build("id", "t", SongAnalyzer.candidates(act), Instrument.TETRACHORDO, act, data.attacks)
+            val bytes = java.io.ByteArrayOutputStream().also { data.write(it) }.toByteArray()
+            val back = assertNotNull(AnalysisData.read(bytes.inputStream()))
+            assertEquals(act.frames.size, back.act.frames.size)
+            val again = SongAnalyzer.rebuild(first, back)
+            assertEquals(first.notes.map { it.midi }, again.notes.map { it.midi })
+            again.notes.forEachIndexed { i, n -> assertTrue(abs(n.start - first.notes[i].start) < 0.005) }
+            // More detail never loses the notes the normal line has.
+            val more = SongAnalyzer.rebuild(first, back, Detail.MORE)
+            assertTrue(first.notes.all { n -> more.notes.any { it.midi == n.midi && abs(it.start - n.start) < 0.03 } })
+            assertEquals(null, AnalysisData.read(bytes.copyOf(40).inputStream()))
+        }
+    }
+
+    @Test
     fun repeatedNotesStaySeparate() {
         // 120 BPM: D D D D as 16ths, E F G as 8ths, A A A as 16ths, a held F; then 160 BPM 8ths G G G G F E E E D.
         val plucks = ArrayList<Pluck>()

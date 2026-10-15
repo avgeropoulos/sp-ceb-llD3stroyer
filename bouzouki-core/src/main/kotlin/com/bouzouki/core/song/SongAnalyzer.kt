@@ -189,7 +189,18 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
         instrument: Instrument,
         progress: (Stage, Float) -> Unit = { _, _ -> },
         cancelled: () -> Boolean = { false },
-    ): SongAnalysis {
+    ): SongAnalysis = analyzeWithData(id, title, left, right, instrument, progress, cancelled).first
+
+    /** Like [analyze], also returning what the line was derived from, to save with the song (see [rebuild]). */
+    fun analyzeWithData(
+        id: String,
+        title: String,
+        left: FloatArray,
+        right: FloatArray,
+        instrument: Instrument,
+        progress: (Stage, Float) -> Unit = { _, _ -> },
+        cancelled: () -> Boolean = { false },
+    ): Pair<SongAnalysis, AnalysisData> {
         progress(Stage.SEPARATING, 0f)
         val instrumental = separator.instrumentalMono(left, right, { progress(Stage.SEPARATING, it) }, cancelled)
         progress(Stage.TRANSCRIBING, 0f)
@@ -199,7 +210,7 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
         val attacks = Attacks.of(audio)
         // The beats lay the tablature out in bars; a song without a clear pulse just gets none.
         val beats = try { Beats.estimate(Beats.envelope(act), Beats.FPS) } catch (_: Exception) { emptyList() }
-        return build(id, title, candidates(act), instrument, act, attacks).copy(beats = beats)
+        return build(id, title, candidates(act), instrument, act, attacks).copy(beats = beats) to AnalysisData(act, attacks)
     }
 
     companion object {
@@ -208,8 +219,19 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
          * (onset 0.6; the line tracker weighs how clear), as short as 4 frames (≈ 46 ms) so fast
          * 16th runs survive, without the melodia trick (its onset-less notes are mostly accompaniment).
          */
-        fun candidates(act: BasicPitch.Activations): List<NoteEvent> =
-            BasicPitch.notes(act, onsetThresh = 0.6f, minNoteLen = 4, melodia = false)
+        fun candidates(act: BasicPitch.Activations, detail: Detail = Detail.NORMAL): List<NoteEvent> = when (detail) {
+            Detail.FEWER -> BasicPitch.notes(act, onsetThresh = 0.7f, minNoteLen = 6, melodia = false)
+            Detail.NORMAL -> BasicPitch.notes(act, onsetThresh = 0.6f, minNoteLen = 4, melodia = false)
+            Detail.MORE -> BasicPitch.notes(act, onsetThresh = 0.45f, minNoteLen = 3, melodia = false)
+        }
+
+        /**
+         * The line of a prepared song derived again from its saved [data] with [detail], for the bouzouki it was
+         * prepared for (show it through [SongAnalysis.forInstrument] as usual); title, beats and dromos stay.
+         */
+        fun rebuild(base: SongAnalysis, data: AnalysisData, detail: Detail = Detail.NORMAL): SongAnalysis =
+            build(base.id, base.title, candidates(data.act, detail), base.instrument, data.act, data.attacks)
+                .copy(beats = base.beats, dromos = base.dromos, rootPc = base.rootPc)
 
         /**
          * Everything after transcription: the line with its articulations, the frets ([fingering] is told which notes
