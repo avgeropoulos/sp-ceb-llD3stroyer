@@ -1,4 +1,0 @@
-# Songs to look into with .github/workflows/analyze-song.yml (with the song owner's go-ahead):
-# <YouTube link or ytsearch1:words> | <close-up windows m:ss-m:ss, comma-separated>
-ytsearch1:Mou 'Fages Ta Dahtilidia Babis Golles | 2:18-2:42
-ytsearch1:Γιώργος Μαργαρίτης Το καλύτερο μπεγλέρι | 0:00-0:30

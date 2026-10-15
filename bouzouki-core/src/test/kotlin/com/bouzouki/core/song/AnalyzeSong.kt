@@ -12,7 +12,7 @@ import java.nio.ByteOrder
  * Developer tool: analyses a song (a 44.1 kHz WAV) exactly as the app does, to look into wrong or
  * missing notes on real recordings. Writes the saved song (song.json) and what its line comes from
  * (song.data); with a fourth argument, also the song without its voice there as a 16-bit mono WAV, for
- * close-up spectrograms (deleted with the audio by .github/workflows/analyze-song.yml).
+ * close-up spectrograms. Recordings stay out of the repository.
  * `gradle :bouzouki-core:analyzeSong -PsongAudio=<wav> -PsongModel=<mdx.onnx> -PsongOut=<dir> [-PsongStem=<wav>]`
  */
 fun main(args: Array<String>) {

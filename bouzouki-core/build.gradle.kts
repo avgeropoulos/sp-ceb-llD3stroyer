@@ -22,7 +22,7 @@ dependencies {
 
 tasks.test { useJUnitPlatform() }
 
-// Developer tool: analyse a WAV like the app does (used by .github/workflows/analyze-song.yml).
+// Developer tool: analyse a WAV like the app does (see AnalyzeSong.kt).
 tasks.register<JavaExec>("analyzeSong") {
     description = "Analyses -PsongAudio=<wav> with -PsongModel=<mdx.onnx> into -PsongOut=<dir> (and -PsongStem=<wav>)"
     classpath = sourceSets["test"].runtimeClasspath
