@@ -115,6 +115,22 @@ class BouzoukiLineTest {
     }
 
     @Test
+    fun repeatedNotesAreNotTremolo() {
+        // 120 BPM: D D D D as 16ths, E F G as 8ths, A A A as 16ths, D; then 160 BPM 8ths G G G G F E E E D.
+        val notes = ArrayList<NoteEvent>()
+        var t = 0.0
+        fun play(midi: Int, dur: Double) { notes += heard(t, t + dur, midi, if (notes.size % 2 == 0) 0.75 else 0.65); t += dur }
+        repeat(4) { play(62, 0.125) }
+        for (m in listOf(64, 65, 67)) play(m, 0.25)
+        repeat(3) { play(69, 0.125) }
+        play(62, 1.0)
+        for (m in listOf(67, 67, 67, 67, 65, 64, 64, 64, 62)) play(m, 60.0 / 160 / 2)
+        val line = SongAnalyzer.bouzoukiLine(notes, tetra)
+        assertEquals(notes.map { it.midi }, line.map { it.midi }, "line: $line")
+        assertEquals(notes.map { it.start }, line.map { it.start })
+    }
+
+    @Test
     fun aHarmonicAboveTheMelodyIsNotTaken() {
         val notes = listOf(
             heard(0.0, 0.25, 62), heard(0.25, 0.5, 64), heard(0.255, 0.45, 76, 0.55, 0.75), // 76: the octave above 64
@@ -134,6 +150,11 @@ class BouzoukiLineTest {
         // Re-fingering a saved song for the other bouzouki: notes without onset evidence all stay, leaps and repeats too.
         val saved = listOf(62, 86, 62, 62, 62, 50, 74).mapIndexed { i, m -> NoteEvent(i * 0.15, i * 0.15 + 0.15, m, 1.0) }
         assertEquals(saved.map { it.midi }, SongAnalyzer.bouzoukiLine(saved, tetra).map { it.midi })
+        // Notes just 50 ms apart in the cache (rounded to ms, so the difference can come out a hair under 0.05).
+        val close = listOf(1.0 to 62, 1.235 to 64, 1.285 to 65, 1.6 to 67).map { (s, m) -> NoteEvent(s, s + 0.3, m, 1.0) }
+        val again = SongAnalyzer.bouzoukiLine(close, Instrument.TRICHORDO)
+        assertEquals(close.map { it.start to it.midi }, again.map { it.start to it.midi })
+        assertTrue(monophonic(again), "monophonic: $again")
     }
 
     @Test
@@ -161,9 +182,14 @@ class BouzoukiLineTest {
 
     @Test
     fun cacheFromAnOlderVersionIsAnalysedAgain() {
-        val json = SongAnalyzer.build("x", "x", listOf(NoteEvent(0.5, 0.9, 62, 0.8)), tetra).toJson()
+        val json = SongAnalyzer.build("x", "Σ x", listOf(NoteEvent(0.5, 0.9, 62, 0.8)), tetra).toJson()
         assertNotNull(SongAnalysis.fromJson(json))
-        assertEquals(null, SongAnalysis.fromJson(json.replace("\"version\":${SongAnalysis.FORMAT}", "\"version\":1")))
+        val old = json.replace("\"version\":${SongAnalysis.FORMAT}", "\"version\":1")
+        assertEquals(null, SongAnalysis.fromJson(old))
+        // The song list still shows it, to be prepared again.
+        assertEquals(SongAnalysis.Saved("x", "Σ x", current = false), SongAnalysis.saved(old))
+        assertEquals(SongAnalysis.Saved("x", "Σ x", current = true), SongAnalysis.saved(json))
+        assertEquals(null, SongAnalysis.saved(json.take(20)))
         // Fields this version doesn't know about (added later) are ignored.
         assertNotNull(SongAnalysis.fromJson(json.dropLast(1) + ",\"later\":[1,2,{\"a\":null}]}"))
     }
@@ -202,12 +228,29 @@ class BasicPitchTest {
 
     @Test
     fun transcribesBouzoukiNotes() {
-        // The first pluck comes after a moment of silence: a note on the very first sample has no onset to find.
+        // The first pluck is on the very first sample (its onset peak is on the first frame).
         val melody = listOf(62, 63, 66, 67, 69, 70, 72, 74) // D Hitzaz up
-        val line = line(render(melody.mapIndexed { i, m -> Pluck(0.25 + i * 0.5, 3, m) }, 0.25 + (melody.size + 1) / 2.0))
+        val line = line(render(melody.mapIndexed { i, m -> Pluck(i * 0.5, 3, m) }, (melody.size + 1) / 2.0))
         assertEquals(melody, line.map { it.midi }, "line: $line")
         // Starts are refined between model frames and corrected for the model's latency: within a few ms.
-        line.forEachIndexed { i, n -> assertTrue(abs(n.start - 0.25 - i * 0.5) < 0.012, "note $i starts at ${n.start}") }
+        line.forEachIndexed { i, n -> assertTrue(abs(n.start - i * 0.5) < 0.012, "note $i starts at ${n.start}") }
+    }
+
+    @Test
+    fun repeatedNotesStaySeparate() {
+        // 120 BPM: D D D D as 16ths, E F G as 8ths, A A A as 16ths, a held F; then 160 BPM 8ths G G G G F E E E D.
+        val plucks = ArrayList<Pluck>()
+        var t = 0.3
+        fun play(midi: Int, dur: Double) { plucks += Pluck(t, 3, midi, if (plucks.size % 2 == 0) 0.9f else 0.75f); t += dur }
+        repeat(4) { play(62, 0.125) }
+        for (m in listOf(64, 65, 67)) play(m, 0.25)
+        repeat(3) { play(69, 0.125) }
+        play(65, 1.0)
+        for (m in listOf(67, 67, 67, 67, 65, 64, 64, 64, 62)) play(m, 60.0 / 160 / 2)
+        val line = line(render(plucks, t + 0.6))
+        assertEquals(plucks.map { it.midi }, line.map { it.midi }, "line: $line")
+        val errors = line.mapIndexed { i, n -> n.start - plucks[i].time }
+        assertTrue(errors.all { abs(it) < 0.015 }, "onset errors $errors")
     }
 
     @Test

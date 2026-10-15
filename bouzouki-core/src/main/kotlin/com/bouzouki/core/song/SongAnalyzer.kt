@@ -50,8 +50,14 @@ data class SongAnalysis(
         "notes" to notes.joinToString(",", "[", "]") { n -> "[${fmt(n.start)},${fmt(n.end)},${n.midi},${n.course},${n.fret}]" },
     )
 
+    /** A saved song as the song list shows it: [current] is false when an older version wrote it (prepare it again). */
+    data class Saved(val id: String, val title: String, val current: Boolean)
+
     companion object {
-        /** Bump when the analysis changes, so old cached songs get analysed again. */
+        /**
+         * Bump when the analysis changes: [fromJson] then refuses songs saved before, so they are
+         * prepared again, and [saved] still lists them meanwhile.
+         */
         const val FORMAT = 2
 
         private fun jsonObject(vararg fields: Pair<String, String>) = fields.joinToString(",", "{", "}") { (k, v) -> quote(k) + ":" + v }
@@ -64,6 +70,12 @@ data class SongAnalysis(
             }
             append('"')
         }
+
+        /** The id and title in a cache file of any version, and whether [fromJson] can read it; null if damaged. */
+        fun saved(json: String): Saved? = try {
+            val p = MiniJson(json).parse() as Map<*, *>
+            Saved(p["id"] as String, p["title"] as String, fromJson(json) != null)
+        } catch (_: Exception) { null }
 
         /** Reads what [toJson] wrote; null if it's from an older version or damaged. Unknown fields are ignored. */
         fun fromJson(json: String): SongAnalysis? = try {
@@ -142,9 +154,10 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
          * instrument's range: a dynamic programme (Viterbi over the notes in time order) picks the
          * chain that collects the most evidence (strong note and onset activations) for the least
          * implausible movement (each semitone of a jump costs, octave jumps and bigger leaps cost
-         * extra, less so after a pause). With [act], a note that starts while the line's previous
+         * extra, less so after a pause; picking the same pitch again costs a little, since that is
+         * mostly a held note detected twice). With [act], a note that starts while the line's previous
          * note still sounds strongly is taken for accompaniment unless its evidence outweighs that.
-         * Then quick same-pitch re-picks (tremolo) are joined into one held note, as tab writes them.
+         * Then tremolo (fast same-pitch re-picks) is joined into one held note, as tab writes it.
          * Notes without onset evidence (made by hand, e.g. a saved line) are always kept.
          */
         fun bouzoukiLine(notes: List<NoteEvent>, instrument: Instrument, act: BasicPitch.Activations? = null): List<NoteEvent> {
@@ -152,6 +165,7 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
             val high = instrument.courses.last().openMidi + instrument.frets
             val c = notes.filter { it.midi in low..high }.sortedBy { it.start }
             if (c.isEmpty()) return emptyList()
+            if (c.all { it.onset.isNaN() }) return trimEnds(c) // a line chosen before: keep it as it is
             val best = DoubleArray(c.size)
             val back = IntArray(c.size) { -1 }
             var near = 0 // first note that started less than HORIZON before c[i]
@@ -163,7 +177,7 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
                 }
                 var b = 0.0 // or start the line afresh here
                 for (j in i - 1 downTo near) {
-                    if (c[i].start - c[j].start < SEPARATION) continue
+                    if (c[i].start - c[j].start < SEPARATION && !(c[i].onset.isNaN() && c[j].onset.isNaN())) continue
                     val v = best[j] - transitionCost(c[j], c[i], act)
                     if (v > b) { b = v; back[i] = j }
                 }
@@ -177,14 +191,16 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
             var i = best.indices.maxBy { best[it] }
             while (i >= 0) { path += c[i]; i = back[i] }
             path.reverse()
-            val line = path.mapIndexed { k, n -> if (k + 1 < path.size && path[k + 1].start < n.end) n.copy(end = path[k + 1].start) else n }
-            return joinTremolo(line)
+            return joinTremolo(trimEnds(path))
         }
 
-        /** How much a candidate is worth to the line; the bouzouki usually leads above the accompaniment. */
+        /** Each note of a line ends where the next one starts, at the latest. */
+        private fun trimEnds(line: List<NoteEvent>) =
+            line.mapIndexed { k, n -> if (k + 1 < line.size && line[k + 1].start < n.end) n.copy(end = line[k + 1].start) else n }
+
+        /** How much a candidate is worth to the line. */
         private fun evidence(n: NoteEvent) =
-            if (n.onset.isNaN()) GIVEN_NOTE
-            else n.salience + ONSET_WEIGHT * n.onset - EVIDENCE_NEEDED + HIGHER_BONUS * (n.midi - 60) / 12.0
+            if (n.onset.isNaN()) GIVEN_NOTE else n.salience + ONSET_WEIGHT * n.onset - EVIDENCE_NEEDED
 
         /** What it costs the line to move from [a] to [b]. */
         private fun transitionCost(a: NoteEvent, b: NoteEvent, act: BasicPitch.Activations?): Double {
@@ -192,6 +208,7 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
             val gap = b.start - max(a.end, a.start)
             val pause = max(PAUSE_FLOOR, 1 - max(0.0, gap) / PAUSE_TIME) // jumps after a pause are cheaper
             var cost = (STEP_COST * d + (if (d == 12) OCTAVE_COST else 0.0) + (if (d > 12) LEAP_COST else 0.0)) * pause
+            if (d == 0) cost += REPEAT_COST
             if (act != null && d != 0 && b.frame >= 0) {
                 val t = min(act.frames.size - 1, b.frame + STILL_SOUNDING_FRAMES)
                 cost += STILL_SOUNDING_COST * max(0.0, act.frames[t][a.midi - BasicPitch.MIDI_OFFSET] - STILL_SOUNDING_LEVEL)
@@ -199,16 +216,21 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
             return cost
         }
 
-        /** Three or more picks of one pitch, each within [TREMOLO_GAP] of the last, become one note. */
+        /**
+         * Tremolo becomes one held note: [TREMOLO_PICKS] or more picks of one pitch, each within
+         * [TREMOLO_REACH] of the last (a missed pick or two doesn't break it), at a median interval of
+         * [TREMOLO_GAP] or less (10 picks a second and up). Slower repeats stay separate notes:
+         * 8ths, and 16ths below 150 BPM (and 4 repeated 16ths at any tempo).
+         */
         private fun joinTremolo(line: List<NoteEvent>): List<NoteEvent> {
             val out = ArrayList<NoteEvent>()
             var i = 0
             while (i < line.size) {
                 var j = i
                 while (j + 1 < line.size && !line[j + 1].onset.isNaN() && line[j + 1].midi == line[i].midi &&
-                    line[j + 1].start - line[j].start < TREMOLO_GAP) j++
-                if (j - i + 1 >= TREMOLO_PICKS && !line[i].onset.isNaN()) {
-                    val run = line.subList(i, j + 1)
+                    line[j + 1].start - line[j].start < TREMOLO_REACH) j++
+                val run = line.subList(i, j + 1)
+                if (run.size >= TREMOLO_PICKS && !line[i].onset.isNaN() && medianGap(run) <= TREMOLO_GAP) {
                     out += line[i].copy(end = run.maxOf { it.end }, amplitude = run.maxOf { it.amplitude })
                     i = j + 1
                 } else {
@@ -218,12 +240,18 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
             return out
         }
 
+        private fun medianGap(run: List<NoteEvent>): Double {
+            val gaps = run.zipWithNext { a, b -> b.start - a.start }.sorted()
+            val m = gaps.size / 2
+            return if (gaps.size % 2 == 1) gaps[m] else (gaps[m - 1] + gaps[m]) / 2
+        }
+
         // The line tracker's weights, chosen on synthesized bouzouki songs (scratch evaluation, mir_eval F-measure).
         private const val EVIDENCE_NEEDED = 0.5
         private const val ONSET_WEIGHT = 0.5
-        private const val HIGHER_BONUS = 0.1 // per octave above middle C
         private const val GIVEN_NOTE = 10.0
         private const val STEP_COST = 0.05
+        private const val REPEAT_COST = 0.15
         private const val OCTAVE_COST = 0.3
         private const val LEAP_COST = 0.6
         private const val PAUSE_TIME = 1.0
@@ -233,8 +261,9 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
         private const val STILL_SOUNDING_COST = 1.0
         private const val SEPARATION = 0.05 // two line notes start at least this far apart
         private const val HORIZON = 3.0     // how far back a note looks for its predecessor
-        private const val TREMOLO_GAP = 0.2
-        private const val TREMOLO_PICKS = 3
+        private const val TREMOLO_PICKS = 5
+        private const val TREMOLO_GAP = 0.1
+        private const val TREMOLO_REACH = 0.4
 
         /**
          * Frets for a line of notes, by dynamic programming over every playable position:

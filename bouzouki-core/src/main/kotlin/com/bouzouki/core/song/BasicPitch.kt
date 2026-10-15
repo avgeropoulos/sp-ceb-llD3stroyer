@@ -145,11 +145,12 @@ class BasicPitch(private val env: OrtEnvironment, private val session: OrtSessio
             val remaining = Array(nFrames) { frames[it].copyOf() }
             val events = ArrayList<IntArray>()      // start, end, key, 1 if it starts at an onset peak
 
-            // Onset peaks (local maxima in time) above the threshold, latest first.
+            // Onset peaks (local maxima in time) above the threshold, latest first. The first frame
+            // counts too (it has no frame before it), or audio that starts on a pluck loses that note.
             val peaks = ArrayList<Long>()
-            for (t in 1 until nFrames - 1) for (k in 0 until N_KEYS) {
+            for (t in 0 until nFrames - 1) for (k in 0 until N_KEYS) {
                 val v = onsets[t][k]
-                if (v > onsets[t - 1][k] && v > onsets[t + 1][k] && v >= onsetThresh) peaks += t.toLong() * N_KEYS + k
+                if ((t == 0 || v > onsets[t - 1][k]) && v > onsets[t + 1][k] && v >= onsetThresh) peaks += t.toLong() * N_KEYS + k
             }
             for (p in peaks.indices.reversed()) {
                 val start = (peaks[p] / N_KEYS).toInt()
