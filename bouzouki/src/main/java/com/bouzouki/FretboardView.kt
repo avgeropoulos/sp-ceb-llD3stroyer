@@ -246,19 +246,21 @@ class FretboardView(context: Context, private val synth: BouzoukiSynth) : View(c
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         geometryDirty = true
-        if (w == artWidth || w <= 2 * gutter) return
+        // The fingerboard texture is half the board's width and needs at least two pixels.
+        val woodW = (w - 2 * gutter).toInt() / 2
+        if (w == artWidth || woodW < 2) return
         artWidth = w
         // Textures depend only on the width (they repeat down the neck), so zooming never rebuilds them.
         // The first time they take a moment to make: plain colours stand in until they are ready.
-        val woodW = (w - 2 * gutter).toInt() / 2
         val spruceW = w / 2
         val ready = NeckArt.cached(woodW, spruceW)
         if (ready != null) useTextures(ready) else {
             woodPaint.shader = null; sprucePaint.shader = null; leatherPaint.shader = null
             pearlPaint.shader = null; abalonePaint.shader = null
             Thread({
-                val made = NeckArt.textures(woodW, spruceW)
-                mainHandler.post { if (artWidth == w) { useTextures(made); invalidate() } }
+                // Should making them fail (say, out of memory) the plain colours simply stay.
+                val made = try { NeckArt.textures(woodW, spruceW) } catch (e: Throwable) { null }
+                if (made != null) mainHandler.post { if (artWidth == w) { useTextures(made); invalidate() } }
             }, "neck-textures").apply { isDaemon = true }.start()
         }
         veneerPaint.shader = LinearGradient(0f, 0f, w.toFloat(), 0f,
@@ -848,12 +850,9 @@ class FretboardView(context: Context, private val synth: BouzoukiSynth) : View(c
 
     /** A round token with a soft shadow on the wood, a shaded face and a rim. */
     private fun token(canvas: Canvas, x: Float, y: Float, r: Float, face: Paint, rim: Int, rimWidth: Float) {
-        canvas.save()
-        canvas.translate(x, y)
-        canvas.scale(r, r)
-        canvas.drawCircle(0.1f, 0.16f, 1.14f, tokenShadow)
-        canvas.drawCircle(0f, 0f, 1f, face)
-        canvas.restore()
+        // The shadow's gradient is centred on its own circle, down and right of the face, so a crescent shows.
+        unitCircle(canvas, x + 0.1f * r, y + 0.16f * r, 1.14f * r, tokenShadow)
+        unitCircle(canvas, x, y, r, face)
         ring.strokeWidth = rimWidth
         ring.color = rim
         canvas.drawCircle(x, y, r - rimWidth / 2, ring)
