@@ -299,46 +299,12 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
         private const val TREMOLO_REACH = 0.4
 
         /**
-         * Frets for a line of notes, by dynamic programming over every playable position:
-         * small moves along the neck are cheap, big jumps cost more (less after a pause),
-         * and very high frets cost a little extra.
+         * The course and fret of each note of a line, as a Greek player fingers a melody: on the top two
+         * courses, shifting up and down the neck rather than crossing to the bass courses ([Fingering]).
+         * [legato]`[i]` marks a note hammered, pulled or slid from the one before: it stays on its course.
          */
-        fun fingering(midis: List<Int>, starts: List<Double>, inst: Instrument, legato: List<Boolean>? = null): List<Pair<Int, Int>> {
-            if (midis.isEmpty()) return emptyList()
-            val options = midis.map { m ->
-                inst.courses.indices.mapNotNull { c -> (m - inst.courses[c].openMidi).takeIf { it in 0..inst.frets }?.let { c to it } }
-                    .ifEmpty { listOf(inst.position(m.coerceIn(inst.courses.first().openMidi, inst.courses.last().openMidi + inst.frets)) ?: (0 to 0)) }
-            }
-            fun placeCost(p: Pair<Int, Int>) = if (p.second > 12) (p.second - 12) * 0.15 else 0.0
-            val cost = ArrayList<DoubleArray>()
-            val back = ArrayList<IntArray>()
-            cost += DoubleArray(options[0].size) { placeCost(options[0][it]) }
-            back += IntArray(options[0].size)
-            for (i in 1 until midis.size) {
-                val gap = starts[i] - starts[i - 1]
-                val moveWeight = if (gap > 1.0) 0.3 else 1.0
-                val prev = options[i - 1]
-                val here = options[i]
-                val c = DoubleArray(here.size)
-                val b = IntArray(here.size)
-                for ((j, p) in here.withIndex()) {
-                    var best = Double.MAX_VALUE
-                    for ((q, pp) in prev.withIndex()) {
-                        // Open strings don't move the hand.
-                        val fretMove = if (p.second == 0 || pp.second == 0) 0 else abs(p.second - pp.second)
-                        val v = cost[i - 1][q] + moveWeight * fretMove + 0.4 * abs(p.first - pp.first)
-                        if (v < best) { best = v; b[j] = q }
-                    }
-                    c[j] = best + placeCost(p)
-                }
-                cost += c
-                back += b
-            }
-            val path = IntArray(midis.size)
-            path[midis.size - 1] = cost.last().indices.minBy { cost.last()[it] }
-            for (i in midis.size - 1 downTo 1) path[i - 1] = back[i][path[i]]
-            return path.mapIndexed { i, j -> options[i][j] }
-        }
+        fun fingering(midis: List<Int>, starts: List<Double>, inst: Instrument, legato: List<Boolean>? = null): List<Pair<Int, Int>> =
+            Fingering.place(midis, starts, inst, legato)
     }
 }
 
