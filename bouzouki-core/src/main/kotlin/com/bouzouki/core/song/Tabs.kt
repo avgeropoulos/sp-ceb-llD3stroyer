@@ -7,7 +7,8 @@ import java.text.Normalizer
  * One note of a tab a player pasted in: its course and fret, its column (position across the tab,
  * left to right, used as a rough rhythm), and how it's played. A chord or a drone written in one column is
  * one note, its top (melody) note, with the others in [stack] (course to fret, highest first). [system] is the
- * block of tab lines it's written in, counted from 0.
+ * block of tab lines it's written in, counted from 0; [bar] the bar it's in, counted from 0 through the tab (it
+ * changes where a bar line is crossed; the same for every note of a tab without bar lines).
  */
 data class TabNote(
     val course: Int,
@@ -16,6 +17,7 @@ data class TabNote(
     val articulation: Articulation = Articulation.PICK,
     val stack: List<Pair<Int, Int>> = emptyList(),
     val system: Int = 0,
+    val bar: Int = 0,
 )
 
 /**
@@ -359,6 +361,7 @@ object TabParser {
         val sections = ArrayList<TabSection>()
         var offset = 0
         var system = 0
+        var bar = 0 // the first bar of the system being read
 
         // The heading being read: its name, repeat count, where its sections start, and the parts read before.
         var name: String? = null
@@ -500,7 +503,11 @@ object TabParser {
             }
             val sysFrom = notes.size
             val events = events(raw, courses)
-            for (e in events) notes += e.copy(column = e.column + offset, system = system)
+            // Bar lines: a | in any line (one drawn a column off in another line, or a double bar, is the same one).
+            val barCols = dedupe(lines.withIndex().flatMap { (li, l) -> l.body.indices.filter { l.body[it] == '|' }.map { it + shift[li] } }.associateWith { 0 })
+                .map { it.first }
+            for (e in events) notes += e.copy(column = e.column + offset, system = system, bar = bar + barCols.count { it < e.column })
+            bar += barCols.size + 1
             val times = lines.maxOf { it.times }
             var firstSection = sections.size
             val closed = dedupe(closes)

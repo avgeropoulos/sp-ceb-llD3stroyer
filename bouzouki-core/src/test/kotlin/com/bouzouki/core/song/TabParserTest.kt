@@ -56,6 +56,8 @@ class TabParserTest {
         // Columns run on across systems, so the second system comes after the first.
         assertTrue(tab.notes.zipWithNext().all { (a, b) -> b.column > a.column })
         assertEquals(listOf(0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1), tab.notes.map { it.system })
+        // Bars counted by the barlines left of each note, on through the systems (which never share a bar).
+        assertEquals(listOf(1, 1, 1, 1, 1, 2, 2, 2, 2, 5, 5, 5), tab.notes.map { it.bar })
         assertTrue(tab.warnings.isEmpty(), "${tab.warnings}")
     }
 
@@ -162,6 +164,7 @@ class TabParserTest {
             """.trimIndent(), tri,
         )
         assertEquals(listOf(TabSection(0, 1), TabSection(1, 3, 2), TabSection(3, 4)), tab.sections)
+        assertEquals(listOf(1, 2, 2, 3), tab.notes.map { it.bar })
     }
 
     @Test

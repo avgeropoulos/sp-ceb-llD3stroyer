@@ -271,6 +271,11 @@ class TabEvalTest {
         val placedAt = HashMap<Int, MutableList<Double>>()
         for ((k, src) in a.sources.withIndex()) if (src >= 0) placedAt.getOrPut(src) { ArrayList() } += a.song.notes[k].start
         val count = minOf(tab.notes.size, v.written.size)
+        if (TabAligner.log != null) {
+            // Looking at one tab: where each written part starts and when it's played.
+            TabAligner.log?.invoke("written parts: " + (0 until count).filter { it == 0 || v.written[it].ref / 1000 != v.written[it - 1].ref / 1000 }
+                .joinToString(" ") { j -> "#$j@" + (v.occurrences[v.written[j].ref] ?: emptyList()).joinToString("/") { "%.1f".format(it) } })
+        }
         for (j in 0 until count) {
             val r = v.written[j].ref
             val mine = placedAt[j] ?: emptyList()
@@ -325,7 +330,12 @@ class TabEvalTest {
             val base = SongAnalyzer.build(song.name, song.name, SongAnalyzer.candidates(song.act), Instrument.TETRACHORDO, song.act, song.attacks)
             val rnd = Random(song.name.hashCode().toLong())
             for (v in variants(song, rnd)) for ((setName, par) in sets) {
+                // TAB_EVAL_ONLY="song name:variant name" looks at one tab, with the aligner's log.
+                val only = System.getenv("TAB_EVAL_ONLY")?.split(":")
+                if (only != null && (only[0] != song.name || only.getOrNull(1)?.let { it != v.name } == true)) continue
+                if (only != null) TabAligner.log = { report.append("  aligner: ").append(it).append('\n') }
                 val s = score(song, v, base, par)
+                TabAligner.log = null
                 val key = (if (sets.size > 1) "[$setName] " else "") + (if (song.meta?.get("form") != null) "form: " else "") + v.name
                 totals.getOrPut(key) { Score() }.add(s)
                 if (sets.size == 1) {
@@ -371,26 +381,17 @@ internal fun tabParamSets(): List<Pair<String, TabAligner.Params>> {
     return all.split(";").map { it to tabParams(it) }
 }
 
+/** [TabAligner.Params] with the weights [spec] names ("skip=0.6,beam=4": any of its Float or Double fields) changed. */
 private fun tabParams(spec: String): TabAligner.Params {
-    var p = TabAligner.Params()
+    val p = TabAligner.Params()
     for (kv in spec.split(",").filter { it.contains("=") }) {
-        val (k, v) = kv.split("=")
-        val f = v.toFloat()
-        p = when (k) {
-            "skip" -> p.copy(skip = f); "beam" -> p.copy(beam = f); "fresh" -> p.copy(fresh = f); "bias" -> p.copy(bias = f)
-            "lineBonus" -> p.copy(lineBonus = f); "unexplained" -> p.copy(unexplained = f); "pause" -> p.copy(pause = f)
-            "pauseUnexplained" -> p.copy(pauseUnexplained = f); "jumpNext" -> p.copy(jumpNext = f); "jumpWritten" -> p.copy(jumpWritten = f)
-            "jumpSelf" -> p.copy(jumpSelf = f); "jumpOther" -> p.copy(jumpOther = f); "jumpInside" -> p.copy(jumpInside = f)
-            "jumpMid" -> p.copy(jumpMid = f); "tempoWeight" -> p.copy(tempoWeight = f); "tempoFree" -> p.copy(tempoFree = f)
-            "tempoCap" -> p.copy(tempoCap = f); "tempoAlpha" -> p.copy(tempoAlpha = f); "octave" -> p.copy(octave = f)
-            "wrongFret" -> p.copy(wrongFret = f); "keepTrusted" -> p.copy(keepTrusted = f); "keepOther" -> p.copy(keepOther = f)
-            "keepRelative" -> p.copy(keepRelative = f.toDouble()); "onsetMin" -> p.copy(onsetMin = f); "minEvidence" -> p.copy(minEvidence = f)
-            "legatoBonus" -> p.copy(legatoBonus = f); "accept" -> p.copy(accept = f)
-            "keepNear" -> p.copy(keepNear = f.toDouble()); "keepEvidence" -> p.copy(keepEvidence = f)
-            "correctWithin" -> p.copy(correctWithin = f.toDouble()); "keepSame" -> p.copy(keepSame = f)
-            "noteWindow" -> p.copy(noteWindow = f.toDouble()); "noteBeam" -> p.copy(noteBeam = f)
-            "repeatWithin" -> p.copy(repeatWithin = f.toDouble()); "clearOnset" -> p.copy(clearOnset = f); "keepExact" -> p.copy(keepExact = f)
-            else -> error("unknown aligner weight $k")
+        val (k, v) = kv.split("=").map { it.trim() }
+        val f = try { p.javaClass.getDeclaredField(k) } catch (e: NoSuchFieldException) { error("unknown aligner weight $k") }
+        f.isAccessible = true
+        when (f.type) {
+            java.lang.Float.TYPE -> f.setFloat(p, v.toFloat())
+            java.lang.Double.TYPE -> f.setDouble(p, v.toDouble())
+            else -> error("aligner weight $k is a ${f.type}")
         }
     }
     return p

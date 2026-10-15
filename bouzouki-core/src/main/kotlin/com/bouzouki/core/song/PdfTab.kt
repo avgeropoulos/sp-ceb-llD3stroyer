@@ -26,7 +26,11 @@ import kotlin.math.roundToInt
  *    as it isn't picked again.
  * 4. Notes are put in reading order (page, then top to bottom), and their x positions become
  *    columns of one timeline across the systems, about 2 columns per typical note spacing (like a
- *    text tab), so the aligner's tempo prior still works. Notes at one x (chords) share a column.
+ *    text tab), so the aligner's tempo prior still works. Frets at one x are a chord, kept as [TabParser]
+ *    keeps them: its top (melody) note, with the others in [TabNote.stack]. Each note has its system
+ *    (the tab staff it's printed on, counted from 0), as a text tab's notes have theirs.
+ * 5. The score's form ([PdfForm]): repeat barlines, 1st/2nd-time endings, D.C., D.S., Coda and Fine
+ *    become the tab's sections in playing order ([ParsedTab.sections]), as a text tab's |: :| and x2.
  *
  * A PDF without any staffs (a text tab printed to PDF) has its page text rebuilt and handed to
  * [TabParser] ([NO_TEXT_TAB] if that finds nothing). A PDF with no readable digits, such as a scan,
@@ -184,7 +188,7 @@ object PdfTab {
                 if (text.any { it.isDigit() }) {
                     val t = TabParser.parse(text, instrument)
                     val w = warnings + t.warnings
-                    return ParsedTab(t.instrument, t.notes, (if (t.notes.isEmpty()) w + NO_TEXT_TAB else w).toList())
+                    return ParsedTab(t.instrument, t.notes, (if (t.notes.isEmpty()) w + NO_TEXT_TAB else w).toList(), t.sections)
                 }
             }
             return ParsedTab(instrument, emptyList(), (warnings + NO_NUMBERS).toList())
@@ -216,20 +220,37 @@ object PdfTab {
             warnings += "This tab is for the ${tabInstrument.name.lowercase()} ($tabLines courses), not the ${instrument.name.lowercase()}"
         }
 
-        val systems = tabs.filter { it.lines == tabLines }.map { s ->
+        val read = tabs.filter { it.lines == tabLines }
+        val systems = read.map { s ->
             val g = digits.getValue(s).filter { it.size in usual * MIN_SIZE_RATIO..usual * MAX_SIZE_RATIO }
             val frets = frets(index[s.page], s, g, tabInstrument.frets, counts)
             articulations(index[s.page], s, frets, usual)
             ties(pages[s.page], s, frets)
             frets
         }
-        val notes = timeline(systems, counts)
+        val placed = timeline(systems, tabInstrument, counts)
+        val notes0 = placed.flatten().map { it.note }
+        // The form: each system with the notation staff over it (the nearest 5-line staff above, with no tab staff between).
+        var first = 0
+        val form = read.mapIndexed { k, s ->
+            val above = all.filter { o ->
+                o.page == s.page && o.lines == 5 && o.bottom < s.top && s.top - o.bottom < 20 * s.spacing && o.x0 < s.x1 && o.x1 > s.x0 &&
+                    staffs.none { t -> t.page == s.page && t.top > o.bottom && t.bottom < s.top }
+            }.maxByOrNull { it.bottom }
+            PdfForm.System(s.page, s.ys, above?.ys, s.x0, s.x1, first, DoubleArray(placed[k].size) { placed[k][it].x }).also { first += placed[k].size }
+        }
+        val score = try { PdfForm.read(pages, form, notes0.size, warnings) } catch (e: RuntimeException) {
+            warnings += "Couldn't make sense of the score's repeat signs: the tab is read in written order"
+            PdfForm.Form(listOf(TabSection(0, notes0.size)), IntArray(notes0.size))
+        }
+        val notes = notes0.mapIndexed { i, nt -> nt.copy(bar = score.bar[i]) }
+        val sections = score.sections
         if (counts.stacks > 0) warnings += "Kept ${counts.stacks} chord${if (counts.stacks > 1) "s" else ""} (notes played together)"
         if (counts.ties > 0) warnings += "Left out ${counts.ties} tied note${if (counts.ties > 1) "s" else ""} (held on, not picked again)"
         if (counts.bracketed > 0) warnings += "Kept ${counts.bracketed} note${if (counts.bracketed > 1) "s" else ""} in brackets (tied or ghost notes)"
         if (counts.tooBig > 0) warnings += "Left out ${counts.tooBig} number${if (counts.tooBig > 1) "s" else ""} on the tab lines too big to be frets"
         if (notes.isEmpty()) warnings += NO_NUMBERS
-        return ParsedTab(tabInstrument, notes, warnings.toList())
+        return ParsedTab(tabInstrument, notes, warnings.toList(), if (notes.isEmpty()) emptyList() else sections)
     }
 
     private fun instrumentFor(lines: List<Int>) = if (lines.isNotEmpty() && lines.all { it == 3 }) Instrument.TRICHORDO else Instrument.TETRACHORDO
@@ -315,22 +336,7 @@ object PdfTab {
     }
 
     /** Joins vertical lines drawn in pieces (a system's barline is often drawn staff by staff) into single lines. */
-    private fun joinVertical(lines: List<PdfVLine>): List<PdfVLine> {
-        val sorted = lines.sortedWith(compareBy({ it.x }, { it.y0 }))
-        val out = ArrayList<PdfVLine>()
-        var cur: PdfVLine? = null
-        for (l in sorted) {
-            val c = cur
-            cur = if (c != null && abs(l.x - c.x) <= 0.5 && l.y0 <= c.y1 + 1.0) {
-                PdfVLine(c.x, c.y0, max(c.y1, l.y1), max(c.thickness, l.thickness))
-            } else {
-                if (c != null) out += c
-                l
-            }
-        }
-        cur?.let { out += it }
-        return out
-    }
+    private fun joinVertical(lines: List<PdfVLine>): List<PdfVLine> = PdfForm.joinVertical(lines)
 
     /** Joins lines drawn in pieces (or drawn twice) at the same height into single lines. */
     private fun joinPieces(lines: List<PdfLine>): List<PdfLine> {
@@ -604,13 +610,16 @@ object PdfTab {
 
     // ---- Timeline ----
 
+    /** A note as read, with the x of its column on the page. */
+    private class Placed(val note: TabNote, val x: Double)
+
     /**
-     * The notes of all [systems] in reading order, with columns on one timeline: within a system
-     * the x positions scaled so that the typical note spacing is [COLUMNS_PER_NOTE] columns, each
-     * system starting [SYSTEM_GAP] columns after the previous one ends. Frets at one x (chords)
-     * share a column, top course first.
+     * The notes of all [systems] in reading order, system by system, with columns on one timeline: within a
+     * system the x positions scaled so that the typical note spacing is [COLUMNS_PER_NOTE] columns, each
+     * system starting [SYSTEM_GAP] columns after the previous one ends. Frets at one x are a chord: its
+     * highest note on [inst], with the others in its stack (highest first), as [TabParser] reads chords.
      */
-    private fun timeline(all: List<List<Fret>>, counts: Counts): List<TabNote> {
+    private fun timeline(all: List<List<Fret>>, inst: Instrument, counts: Counts): List<List<Placed>> {
         // Leave out tied notes: the same fret again on a course, joined to the one before by a tie,
         // or in brackets. The fret before may end the previous system.
         val last = HashMap<Int, Int>()
@@ -635,24 +644,35 @@ object PdfTab {
         val gaps = onsets.flatMap { g -> g.zipWithNext { a, b -> b[0].x - a[0].x } }.filter { it > 0 }.sorted()
         val typical = if (gaps.isNotEmpty()) gaps[gaps.size / 2] else 4 * (systems.firstOrNull()?.firstOrNull()?.staff?.spacing ?: 5.0)
         val unit = typical / COLUMNS_PER_NOTE
-        val notes = ArrayList<TabNote>()
+        val out = ArrayList<List<Placed>>()
         var next = 0
-        for (system in onsets) {
+        for ((k, system) in onsets.withIndex()) {
+            val notes = ArrayList<Placed>()
+            out += notes
             if (system.isEmpty()) continue
             val start = next
             val x0 = system[0][0].x
-            var last = start - 1
+            var prev = start - 1
             for (g in system) {
-                val col = max(last + 1, start + ((g[0].x - x0) / unit).roundToInt())
-                if (g.size > 1) counts.stacks++
-                for (f in g.sortedBy { it.line }) {
-                    notes += TabNote(f.staff.lines - 1 - f.line, f.fret, col, f.articulation)
-                }
-                last = col
+                val col = max(prev + 1, start + ((g[0].x - x0) / unit).roundToInt())
+                // One fret per course; the highest note is the melody, the others its stack.
+                val chord = g.distinctBy { it.line }.sortedWith(
+                    compareByDescending<Fret> { inst.midiAt(it.staff.lines - 1 - it.line, it.fret) }.thenBy { it.line },
+                )
+                if (chord.size > 1) counts.stacks++
+                val top = chord[0]
+                notes += Placed(
+                    TabNote(
+                        top.staff.lines - 1 - top.line, top.fret, col, top.articulation,
+                        chord.drop(1).map { (it.staff.lines - 1 - it.line) to it.fret }, k,
+                    ),
+                    g.sumOf { it.x } / g.size,
+                )
+                prev = col
             }
-            next = last + 1 + SYSTEM_GAP
+            next = prev + 1 + SYSTEM_GAP
         }
-        return notes
+        return out
     }
 
     // ---- Text tabs printed to PDF ----
