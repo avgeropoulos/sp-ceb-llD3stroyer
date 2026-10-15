@@ -16,8 +16,9 @@ import kotlin.math.min
  * Moving it is a shift: cheap when there is time (a long note, a pause, a new phrase, a big interval)
  * and dear inside a fast group. Crossing to another course costs more the further it takes the hand
  * from the melody courses, and each note costs by its course and by how high up the neck it is.
- * A legato note (hammered, pulled or slid from the one before) stays on that note's course, and a
- * slide is the shift itself, so it may go any distance.
+ * A legato note (hammered, pulled or slid from the one before) stays on that note's course whenever
+ * that course has it. A hammer-on or pull-off keeps the hand where it is (an open string at either end
+ * is fine); a slide is the shift itself, so it may go any distance, but never from or to an open string.
  */
 object Fingering {
     /** What each choice costs; [weights] gives the ones for each bouzouki. */
@@ -36,17 +37,23 @@ object Fingering {
         /** Moving the hand, plus [shiftPerFret] per fret it moves, in a fast group (less with time). */
         val shift: Double = 0.5,
         val shiftPerFret: Double = 0.06,
-        /** A picked jump of more than [reach] frets in a fast group, per fret beyond (the hand leaps). */
+        /**
+         * A picked jump of more than [reach] frets in a fast group, per fret beyond (the hand leaps): dear
+         * enough that a lone low note in a fast run goes to the course below instead.
+         */
         val reach: Int = 4,
-        val leap: Double = 0.4,
+        val leap: Double = 1.5,
         /**
          * A shift costs [shiftAcross] times as much when the hand changes course at the same time, [slide] times
-         * as much as a slide (a legato note), and [aroundOpen] times as much around an open string (the hand is free).
+         * as much as a slide, and [aroundOpen] times as much around an open string (the hand is free).
          */
         val shiftAcross: Double = 1.25,
         val slide: Double = 0.15,
         val aroundOpen: Double = 0.5,
-        /** Leaving the course on a legato note: only when it cannot stay (the note isn't on that course). */
+        /**
+         * A legato note that can't be played as marked: one whose predecessor's course doesn't have it (it
+         * must leave), or a slide from or to an open string. Leaving a course that has the note is never allowed.
+         */
         val legatoBreak: Double = 25.0,
         /** An open string inside a phrase, and at either end of one. */
         val open: Double = 0.5,
@@ -93,14 +100,16 @@ object Fingering {
 
     /**
      * The (course, fret) of each note of a line. [starts] are the onsets in seconds; [legato]`[i]` is true
-     * when note i is hammered, pulled or slid from note i-1 (so it stays on that course). A note out of
-     * the instrument's range is placed an octave or more nearer, where it can be played.
+     * when note i is hammered, pulled or slid from note i-1 (so it stays on that course if it can), and
+     * [slide]`[i]` when it is slid (without [slide], every legato note is a hammer-on or pull-off). A note
+     * out of the instrument's range is placed an octave or more nearer, where it can be played.
      */
     fun place(
         midis: List<Int>,
         starts: List<Double>,
         inst: Instrument,
         legato: List<Boolean>? = null,
+        slide: List<Boolean>? = null,
         w: Weights = weights(inst),
     ): List<Pair<Int, Int>> {
         val n = midis.size
@@ -115,10 +124,11 @@ object Fingering {
             while (m < low) m += 12
             while (m > high) m -= 12
             val atEdge = phrase[i] || i == n - 1 || phrase[i + 1]
-            val layer = Layer()
+            val layer = Layer(inst.courses.size)
             for (c in inst.courses.indices) {
                 val f = m - inst.courses[c].openMidi
                 if (f !in 0..inst.frets) continue
+                layer.onCourse[c] = true
                 val place = w.course[c] + height(f, w) + if (f == 0) (if (atEdge) w.openAtEdge else w.open) else 0.0
                 if (f == 0) {
                     for (h in 1..inst.frets) layer.add(c, f, h, place) // the hand is free: anywhere
@@ -138,11 +148,15 @@ object Fingering {
                 val fast = if (phrase[i]) 0.0 else 1.0 - slow
                 val crossPace = if (phrase[i]) w.phraseCross else 1.0
                 val leg = legato?.getOrNull(i) == true
+                val sl = leg && slide?.getOrNull(i) == true
                 for (s in 0 until layer.size) {
-                    var best = Double.MAX_VALUE
+                    var best = Double.POSITIVE_INFINITY
                     var from = 0
                     for (p in 0 until prev.size) {
-                        val v = prev.cost[p] + move(prev, p, layer, s, leg, pace, crossPace, fast, w)
+                        // A legato note never leaves a course that has it. Every state of the note before still
+                        // leads somewhere (to its own course, or to any if that lacks the note), so a path remains.
+                        if (leg && prev.course[p] != layer.course[s] && layer.onCourse[prev.course[p]]) continue
+                        val v = prev.cost[p] + move(prev, p, layer, s, leg, sl, pace, crossPace, fast, w)
                         if (v < best) { best = v; from = p }
                     }
                     layer.cost[s] += best
@@ -160,16 +174,18 @@ object Fingering {
         return out.asReversed()
     }
 
-    /** What going from state [p] of [a] to state [s] of [b] costs. */
-    private fun move(a: Layer, p: Int, b: Layer, s: Int, legato: Boolean, pace: Double, crossPace: Double, fast: Double, w: Weights): Double {
+    /** What going from state [p] of [a] to state [s] of [b] costs; [slide] when the note is slid there. */
+    private fun move(a: Layer, p: Int, b: Layer, s: Int, legato: Boolean, slide: Boolean, pace: Double, crossPace: Double, fast: Double, w: Weights): Double {
         val sameCourse = a.course[p] == b.course[s]
+        val open = a.fret[p] == 0 || b.fret[s] == 0
         var cost = if (sameCourse) 0.0 else if (legato) w.legatoBreak else w.cross[a.course[p]][b.course[s]] * crossPace
+        if (slide && sameCourse && open) cost += w.legatoBreak
         val frets = abs(a.hand[p] - b.hand[s])
         if (frets > 0) {
             var shift = (w.shift + w.shiftPerFret * frets) * pace
             if (!sameCourse) shift *= w.shiftAcross
-            if (legato && sameCourse) shift *= w.slide
-            if (a.fret[p] == 0 || b.fret[s] == 0) shift *= w.aroundOpen
+            if (slide && sameCourse) shift *= w.slide
+            if (open) shift *= w.aroundOpen
             cost += shift
         }
         if (!legato && fast > 0 && a.fret[p] > 0 && b.fret[s] > 0) {
@@ -199,7 +215,9 @@ object Fingering {
     private const val PHRASE_MIN = 0.3
 
     /** The states one note can be played in, with the best cost of reaching each and where from. */
-    private class Layer {
+    private class Layer(courses: Int) {
+        /** Whether the note is on each course at all. */
+        val onCourse = BooleanArray(courses)
         var size = 0
         var course = IntArray(32); var fret = IntArray(32); var hand = IntArray(32)
         var cost = DoubleArray(32); var back = IntArray(32)
