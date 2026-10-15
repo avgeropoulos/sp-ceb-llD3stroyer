@@ -225,7 +225,8 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
             attacks: Attacks? = null,
         ): SongAnalysis {
             val line = bouzoukiLine(all, instrument, act, attacks)
-            val cells = fingering(line.map { it.midi }, line.map { it.start }, instrument, line.map { it.articulation.isLegato })
+            val cells = fingering(line.map { it.midi }, line.map { it.start }, instrument,
+                line.map { it.articulation.isLegato }, line.map { it.articulation == Articulation.SLIDE })
             val notes = line.mapIndexed { i, n -> SongNote(n.start, n.end, n.midi, cells[i].first, cells[i].second, n.articulation) }
             val tally = DoubleArray(12)
             for (n in line) tally[Math.floorMod(n.midi, 12)] += (n.end - n.start) * n.amplitude
