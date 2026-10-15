@@ -141,9 +141,10 @@ internal class TestPdfWriter(private val objectStreams: Boolean = false, private
 /**
  * The standard security handler with an empty user password, written from ISO 32000 for the
  * tests: RC4 40-bit (revision 2), AES-128 (revision 4) or AES-256 (revision 6). [userPassword]
- * other than empty makes a file that can't be opened without it.
+ * other than empty makes a file that can't be opened without it. Without [topLength], an AES-128
+ * dictionary leaves out its optional top-level /Length (the crypt filter's says 16 bytes).
  */
-internal class TestEncryption(private val kind: Kind, private val userPassword: String = "") {
+internal class TestEncryption(private val kind: Kind, private val userPassword: String = "", private val topLength: Boolean = true) {
     enum class Kind { RC4_40, AES_128, AES_256 }
 
     private val id0 = hex("00112233445566778899AABBCCDDEEFF")
@@ -188,7 +189,7 @@ internal class TestEncryption(private val kind: Kind, private val userPassword: 
 
     fun dictionary(): String = when (kind) {
         Kind.RC4_40 -> "<< /Filter /Standard /V 1 /R 2 /O <${hex(owner)}> /U <${hex(u)}> /P $p >>"
-        Kind.AES_128 -> "<< /Filter /Standard /V 4 /R 4 /Length 128 /CF << /StdCF << /CFM /AESV2 /Length 16 /AuthEvent /DocOpen >> >> " +
+        Kind.AES_128 -> "<< /Filter /Standard /V 4 /R 4${if (topLength) " /Length 128" else ""} /CF << /StdCF << /CFM /AESV2 /Length 16 /AuthEvent /DocOpen >> >> " +
             "/StmF /StdCF /StrF /StdCF /O <${hex(owner)}> /U <${hex(u)}> /P $p >>"
         Kind.AES_256 -> "<< /Filter /Standard /V 5 /R 6 /Length 256 /CF << /StdCF << /CFM /AESV3 /Length 32 /AuthEvent /DocOpen >> >> " +
             "/StmF /StdCF /StrF /StdCF /O <${hex(owner + ByteArray(16))}> /U <${hex(u)}> /UE <${hex(ue)}> /OE <${hex(ByteArray(32))}> " +

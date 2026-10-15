@@ -2,6 +2,7 @@ package com.bouzouki.core.song
 
 import com.bouzouki.core.Instrument
 import com.bouzouki.core.song.Articulation.HAMMER
+import com.bouzouki.core.song.Articulation.PICK
 import com.bouzouki.core.song.Articulation.PULL
 import com.bouzouki.core.song.Articulation.SLIDE
 import kotlin.test.Test
@@ -52,6 +53,14 @@ class PdfTabTest {
             sb.append("BT /${font.resName} ${f(size * k)} Tf ${if (flip) "1 0 0 -1" else "1 0 0 1"} ${px(x)} ${py(baseline)} Tm [${font.encode(a)} $kern ${font.encode(b)}] TJ ET\n")
         }
 
+        /** A tie: a filled crescent from [x0] to [x1], its ends at height [y], bulging up. */
+        fun tie(x0: Double, x1: Double, y: Double) {
+            val d = (x1 - x0) / 3
+            val up = if (flip) -1.0 else 1.0
+            fun pt(x: Double, dy: Double) = "${px(x)} ${if (flip) f(4 * (y - dy)) else f(H - y + dy * up - oy)}"
+            sb.append("${pt(x0, 0.0)} m ${pt(x0 + d, 3.0)} ${pt(x1 - d, 3.0)} ${pt(x1, 0.0)} c ${pt(x1 - d, 2.2)} ${pt(x0 + d, 2.2)} ${pt(x0, 0.0)} c f\n")
+        }
+
         fun raw(s: String) { sb.append(s).append('\n') }
         fun done() = sb.toString() + (if (flip) "Q\n" else "")
     }
@@ -59,10 +68,18 @@ class PdfTabTest {
     /** A mark written as text: on tab line [line], or [ABOVE] or [BELOW] the staff, at slot position [at]. */
     private class Mark(val text: String, val at: Double, val line: Int)
 
-    /** One system: a notation staff at [top] over a tab staff of [lines] lines; frets by slot (line from the top, text). */
+    /** A tie on tab line [line] from slot position [from] to [to]; [START] and [END] are the ends of the system. */
+    private class Tie(val from: Double, val to: Double, val line: Int)
+
+    /**
+     * One system: a notation staff at [top] over a tab staff of [lines] lines; frets by slot (line
+     * from the top, text). [barTo] draws the system's barline on down to that height (over a second
+     * part's staffs).
+     */
     private class Sys(
         val x0: Double, val x1: Double, val top: Double, val lines: Int,
         val slots: Map<Int, List<Pair<Int, String>>>, val marks: List<Mark> = emptyList(), val tabLines: Int = lines,
+        val ties: List<Tie> = emptyList(), val barTo: Double? = null,
     ) {
         val tabTop get() = top + 55
         fun slotX(at: Double) = x0 + 50 + STEP * at
@@ -123,6 +140,13 @@ class PdfTabTest {
             }
             ink.text(font, FRET_SIZE, s.slotX(m.at) - widthOf(font, m.text, FRET_SIZE) / 2, baseline, m.text)
         }
+        // Ties just above the line, from inside one fret to inside the next.
+        for (t in s.ties) {
+            val a = if (t.from == START) s.x0 + 30 else s.slotX(t.from) + 1
+            val b = if (t.to == END) s.x1 else s.slotX(t.to) - 1
+            ink.tie(a, b, s.lineY(t.line) - 0.6 * SPACING)
+        }
+        s.barTo?.let { ink.vline(s.x0, s.top, it) }
     }
 
     /** A tab PDF of [pages] (each a list of systems), in [style]. */
@@ -268,6 +292,9 @@ class PdfTabTest {
         }
         val b = Style(flip = false, type0 = true, objectStreams = true, form = true, encryption = TestEncryption(TestEncryption.Kind.AES_128))
         assertTab(PdfTab.read(tabPdf(pages, b).bytes, Instrument.TETRACHORDO))
+        // AES-128 without the optional top-level /Length: the key length comes from the crypt filter.
+        val noLength = TestEncryption(TestEncryption.Kind.AES_128, topLength = false)
+        assertTab(PdfTab.read(tabPdf(pages, Style(encryption = noLength)).bytes, Instrument.TETRACHORDO))
     }
 
     @Test
@@ -355,14 +382,21 @@ class PdfTabTest {
     fun rebuildsTheTextOfATextTabPrintedToPdf() {
         val typed = listOf(
             "Made-up exercise",
+            "",
             "D|--0--2--3--5h7--|",
             "A|--------------5-|",
             "F|----------------|",
             "C|----------------|",
+            "",
+            "D|--7--5--3-------|",
+            "A|-----------5--3-|",
+            "F|----------------|",
+            "C|----------------|",
         )
         val w = TestPdfWriter()
+        // Typed in Courier, 12 pt apart, with an empty line between title and systems.
         val body = StringBuilder("BT /F1 10 Tf 12 TL 50 780 Td\n")
-        for (line in typed) body.append("(${line}) Tj T*\n")
+        for (line in typed) body.append(if (line.isEmpty()) "T*\n" else "(${line}) Tj T*\n")
         body.append("ET")
         val content = w.stream("", body.toString().toByteArray())
         val font = w.add("<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>")
@@ -370,11 +404,16 @@ class PdfTabTest {
         val page = w.add("<< /Type /Page /Parent $pagesNode 0 R /MediaBox [0 0 595 842] /Contents $content 0 R /Resources << /Font << /F1 $font 0 R >> >> >>")
         w.set(pagesNode, "<< /Type /Pages /Kids [$page 0 R] /Count 1 >>")
         val pdf = w.build(w.add("<< /Type /Catalog /Pages $pagesNode 0 R >>"))
-        val pageContent = PdfTab.readPages(pdf, LinkedHashSet()).single()
-        val text = PdfTab.pageText(pageContent)
+        // The text handed to the text tab reader keeps the columns and the empty lines between systems.
+        val text = PdfTab.text(PdfTab.readPages(pdf, LinkedHashSet()))
         assertEquals(typed.joinToString("\n", postfix = "\n"), text)
-        // The text goes to the text tab reader.
-        assertEquals(TabParser.parse(text, Instrument.TETRACHORDO).notes, PdfTab.read(pdf, Instrument.TETRACHORDO).notes)
+        // What comes back is the text tab reader's reading of that text, with its warnings.
+        val parsed = TabParser.parse(text, Instrument.TETRACHORDO)
+        val tab = PdfTab.read(pdf, Instrument.TETRACHORDO)
+        assertEquals(parsed.notes, tab.notes)
+        assertTrue(tab.warnings.containsAll(parsed.warnings), tab.warnings.toString())
+        assertEquals(parsed.notes.isEmpty(), PdfTab.NO_TEXT_TAB in tab.warnings)
+        assertTrue(PdfTab.NO_NUMBERS !in tab.warnings)
     }
 
     @Test
@@ -394,6 +433,99 @@ class PdfTabTest {
         assertEquals(842.0 - 702.0, glyphs[0].baseline, 1e-6)
         assertEquals(10.0, glyphs[0].size, 1e-6)
         assertEquals(10.0, glyphs[0].x1 - glyphs[0].x0, 1e-6)
+    }
+
+    /** A one-page PDF drawn by [draw] in plain PDF coordinates (from the top left), with the test font as F1. */
+    private fun onePage(draw: (Ink, TestFont) -> Unit): ByteArray {
+        val w = TestPdfWriter()
+        val font = TestFont("F1", false)
+        val fontNum = font.write(w)
+        val ink = Ink(false)
+        draw(ink, font)
+        val content = w.stream("", ink.done().toByteArray(Charsets.ISO_8859_1))
+        val pagesNode = w.reserve()
+        val page = w.add("<< /Type /Page /Parent $pagesNode 0 R /MediaBox [0 0 595 $H] /Contents $content 0 R /Resources << /Font << /F1 $fontNum 0 R >> >> >>")
+        w.set(pagesNode, "<< /Type /Pages /Kids [$page 0 R] /Count 1 >>")
+        return w.build(w.add("<< /Type /Catalog /Pages $pagesNode 0 R >>"))
+    }
+
+    @Test
+    fun readsDenseRunsOfTwoDigitFrets() {
+        // A made-up fast run on the top line, set as densely as notation programs set 16ths:
+        // 0.1 to 0.2 em between numbers, while the digits of a number touch.
+        val run = listOf("17", "12", "10", "7", "12", "14", "15", "17", "19", "17", "15", "14", "12")
+        val gaps = listOf(0.10, 0.14, 0.20, 0.12, 0.10, 0.16, 0.11, 0.10, 0.13, 0.18, 0.10, 0.15)
+        // On the next line, numbers so close that their digits touch, but which only make sense as two
+        // frets each (17 12 and 10 7, 0.05 em apart), and a real 29, too big for a fret.
+        val close = listOf(listOf("17", "12"), listOf("10", "7"), listOf("29"))
+        val pdf = onePage { ink, font ->
+            for (i in 0 until 4) ink.line(60.0, 540.0, 300.0 + SPACING * i)
+            var x = 80.0
+            for ((i, t) in run.withIndex()) {
+                ink.text(font, FRET_SIZE, x, 300.0 + 0.35 * FRET_SIZE, t)
+                x += widthOf(font, t, FRET_SIZE) + (gaps.getOrNull(i) ?: 0.0) * FRET_SIZE
+            }
+            x = 320.0
+            for (group in close) {
+                var gx = x
+                for (t in group) {
+                    ink.text(font, FRET_SIZE, gx, 300.0 + SPACING + 0.35 * FRET_SIZE, t)
+                    gx += widthOf(font, t, FRET_SIZE) + 0.05 * FRET_SIZE
+                }
+                x += 40
+            }
+        }
+        val tab = PdfTab.read(pdf, Instrument.TETRACHORDO)
+        assertEquals(run.map { 3 to it.toInt() } + listOf(2 to 17, 2 to 12, 2 to 10, 2 to 7), tab.notes.map { it.course to it.fret })
+        assertTrue(tab.notes.zipWithNext().all { (a, b) -> b.column > a.column })
+        assertEquals(listOf("Left out 1 number on the tab lines too big to be frets"), tab.warnings)
+    }
+
+    @Test
+    fun readsOnlyTheTopPartOfATwoPartScore() {
+        // Two made-up parts, each a notation staff over a 4-line tab, in two systems; each system's
+        // barline runs down over both parts.
+        fun parts(joined: Boolean): List<Sys> {
+            val b1 = Sys(60.0, 540.0, 190.0, 4, mapOf(0 to listOf(2 to "0"), 1 to listOf(2 to "2"), 2 to listOf(3 to "3")))
+            val b2 = Sys(60.0, 540.0, 430.0, 4, mapOf(0 to listOf(2 to "4"), 1 to listOf(3 to "6")))
+            val a1 = Sys(60.0, 540.0, 90.0, 4, mapOf(0 to listOf(0 to "5"), 1 to listOf(0 to "7"), 2 to listOf(1 to "8")), barTo = if (joined) b1.lineY(3) else null)
+            val a2 = Sys(60.0, 540.0, 330.0, 4, mapOf(0 to listOf(0 to "10"), 1 to listOf(1 to "12")), barTo = if (joined) b2.lineY(3) else null)
+            return listOf(a1, b1, a2, b2)
+        }
+        val tab = PdfTab.read(tabPdf(listOf(parts(true))).bytes, Instrument.TETRACHORDO)
+        assertEquals(listOf(3 to 5, 3 to 7, 2 to 8, 3 to 10, 2 to 12), tab.notes.map { it.course to it.fret })
+        assertEquals(listOf("This PDF has 2 tab parts; only the top one was read"), tab.warnings)
+        // Without barlines joining them they are four systems of one part, read in order.
+        val apart = PdfTab.read(tabPdf(listOf(parts(false))).bytes, Instrument.TETRACHORDO)
+        assertEquals(listOf(5, 7, 8, 0, 2, 3, 10, 12, 4, 6), apart.notes.map { it.fret })
+        assertEquals(emptyList(), apart.warnings)
+    }
+
+    @Test
+    fun leavesOutTiedNotes() {
+        // A made-up phrase with ties: in brackets (5 then (5)), as a tie curve (7 to 7), and from the
+        // end of one system to the start of the next (3 to 3). A bracketed 9 after an 8 is a ghost note.
+        val s1 = Sys(
+            60.0, 540.0, 90.0, 4,
+            mapOf(0 to listOf(1 to "5"), 1 to listOf(1 to "(5)"), 2 to listOf(0 to "7"), 3 to listOf(0 to "7"), 4 to listOf(0 to "8"), 5 to listOf(0 to "(9)"), 6 to listOf(2 to "3")),
+            ties = listOf(Tie(2.0, 3.0, 0), Tie(6.0, END, 2)),
+        )
+        val s2 = Sys(60.0, 540.0, 260.0, 4, mapOf(0 to listOf(2 to "3"), 1 to listOf(2 to "5")), ties = listOf(Tie(START, 0.0, 2)))
+        val tab = PdfTab.read(tabPdf(listOf(listOf(s1, s2))).bytes, Instrument.TETRACHORDO)
+        assertEquals(listOf(2 to 5, 3 to 7, 3 to 8, 3 to 9, 1 to 3, 1 to 5), tab.notes.map { it.course to it.fret })
+        assertEquals(listOf("Left out 3 tied notes (held on, not picked again)", "Kept 1 note in brackets (tied or ghost notes)"), tab.warnings)
+    }
+
+    @Test
+    fun dynamicsAroundTheStaffAreNotMarks() {
+        // A p and an f below the staff (dynamics), and a Guitar Pro style H above it.
+        val sys = Sys(
+            60.0, 540.0, 90.0, 4,
+            mapOf(0 to listOf(0 to "2"), 1 to listOf(0 to "3"), 2 to listOf(0 to "5"), 3 to listOf(0 to "3"), 4 to listOf(0 to "5")),
+            listOf(Mark("p", 1.5, BELOW), Mark("f", 2.5, BELOW), Mark("p", 0.5, ABOVE), Mark("H", 3.5, ABOVE)),
+        )
+        val tab = PdfTab.read(tabPdf(listOf(listOf(sys))).bytes, Instrument.TETRACHORDO)
+        assertEquals(listOf(PICK, PICK, PICK, PICK, HAMMER), tab.notes.map { it.articulation })
     }
 
     @Test
@@ -431,9 +563,22 @@ class PdfTabTest {
             sb.append("trailer\n<< /Size ${objects.size + 1} $trailer >>\nstartxref\n$xref\n%%EOF\n")
             return sb.toString().toByteArray(Charsets.ISO_8859_1)
         }
+        fun onePageWith(content: ByteArray, resources: String = ""): String = String(
+            pdf("<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] >>",
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R$resources >>",
+                "<< /Filter /FlateDecode /Length ${content.size} >>\nstream\n" + String(TestPdfWriter.deflate(content), Charsets.ISO_8859_1) + "\nendstream"),
+            Charsets.ISO_8859_1,
+        )
         val bomb = TestPdfWriter.deflate(ByteArray(40 * 1024 * 1024) { ' '.code.toByte() })
         val huge = "1" + "0".repeat(300)
         val overflow = "$huge 0 0 $huge 0 0 cm $huge 0 0 $huge 0 0 cm 0.5 w 0 0 m 500 0 l S BT /F1 7 Tf (12) Tj ET"
+        // Many streams without endstream (or endobj) and with a wrong /Length.
+        val unterminated = StringBuilder("%PDF-1.4\n").also { b -> for (i in 1..8_000) b.append("$i 0 obj <</Length 999999>> stream\n").append("x".repeat(40)).append('\n') }
+        // An xref stream of 16 M one-byte rows, from a 16 KB file.
+        val rows = TestPdfWriter.deflate(ByteArray(16 * 1024 * 1024))
+        val xrefRows = "%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n" +
+            "3 0 obj\n<< /Type /XRef /Size 16777216 /W [0 1 0] /Root 1 0 R /Filter /FlateDecode /Length ${rows.size} >>\nstream\n" +
+            String(rows, Charsets.ISO_8859_1) + "\nendstream\nendobj\nstartxref\n85\n%%EOF\n"
         val cases = listOf(
             ByteArray(0),
             "%PDF-1.4".toByteArray(),
@@ -459,6 +604,15 @@ class PdfTabTest {
             String(pdf("<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count -5 >>",
                 "<< /Type /Page /MediaBox [0 0 1e999 -4] /Contents 4 0 R >>",
                 "<< /Filter /JBIG2Decode /Length 3 >>\nstream\nabc\nendstream", trailer = "/Root 1 0 R /Encrypt << /Filter /Custom >>"), Charsets.ISO_8859_1),
+            // A path closed 3 million times, and a million subpaths.
+            onePageWith(("0 0 m\n" + "h\n".repeat(3_000_000)).toByteArray()),
+            onePageWith("0 0 m\n".repeat(1_000_000).toByteArray()),
+            unterminated.toString(),
+            xrefRows,
+            // Thousands of trailers, each opening a string that runs to the end of the file.
+            "%PDF-1.4\n" + "trailer<</A(".repeat(20_000),
+            // Digits spread far apart along one row (a text page).
+            onePageWith(("BT /F1 1 Tf 0 0 Td [" + "(1)-300000".repeat(150_000) + "] TJ ET").toByteArray(), " /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Courier >> >> >>"),
         ).map { if (it is String) it.toByteArray(Charsets.ISO_8859_1) else it as ByteArray }
         for (c in cases) {
             val t0 = System.nanoTime()
@@ -467,6 +621,8 @@ class PdfTabTest {
             assertTrue(tab.warnings.isNotEmpty())
             assertTrue(System.nanoTime() - t0 < 3_000_000_000L, "took ${(System.nanoTime() - t0) / 1e6} ms")
         }
+        // The spread-out row is cut, not padded with millions of spaces.
+        assertTrue(PdfTab.text(PdfTab.readPages(cases.last(), LinkedHashSet())).length < 2_000)
     }
 
     @Test
@@ -487,6 +643,8 @@ class PdfTabTest {
         private const val FRET_SIZE = 7.0
         private const val ABOVE = -1
         private const val BELOW = -2
+        private const val START = -1.0
+        private const val END = -2.0
         private const val DAMAGED = "Parts of this PDF are damaged; it was read as well as possible"
     }
 }

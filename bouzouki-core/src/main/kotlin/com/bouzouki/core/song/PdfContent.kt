@@ -25,13 +25,21 @@ internal class PdfGlyph(
 /** A straight horizontal stroke, or a thin filled bar, from [x0] to [x1] at height [y] (page space, y down). */
 internal class PdfLine(val x0: Double, val x1: Double, val y: Double, val thickness: Double)
 
-/** The text and the horizontal lines on one page, and how many pictures it draws. */
+/** A straight vertical stroke, or a thin filled bar, at [x] from height [y0] down to [y1] (page space, y down). */
+internal class PdfVLine(val x: Double, val y0: Double, val y1: Double, val thickness: Double)
+
+/** The bounding box of a painted curve (a subpath with Bézier segments), such as a tie or a slur (page space, y down). */
+internal class PdfArc(val x0: Double, val x1: Double, val y0: Double, val y1: Double)
+
+/** The text, the horizontal and vertical lines and the curves on one page, and how many pictures it draws. */
 internal class PdfPageContent(
     val width: Double,
     val height: Double,
     val glyphs: List<PdfGlyph>,
     val lines: List<PdfLine>,
     val images: Int,
+    val vlines: List<PdfVLine> = emptyList(),
+    val arcs: List<PdfArc> = emptyList(),
 )
 
 /** An affine transform `[a b c d e f]`, as PDF writes them (row vectors: x' = a x + c y + e, y' = b x + d y + f). */
@@ -66,7 +74,8 @@ internal class PdfMatrix(val a: Double, val b: Double, val c: Double, val d: Dou
 /**
  * Runs a page's content streams, and the forms they draw, keeping track of the graphics and text
  * state (q/Q/cm, BT/ET, Tf Tm Td TD T* TL Tc Tw Tz Ts, Tj TJ ' ") to place every glyph, and of
- * paths (m l re h c v y, painted by S s f F f* B B* b b* or dropped by n) to find horizontal lines.
+ * paths (m l re h c v y, painted by S s f F f* B B* b b* or dropped by n) to find horizontal and
+ * vertical lines and curves.
  */
 internal class PdfContentReader(private val doc: PdfDocument) {
     /** Problems met while reading pages, worded for the player. */
@@ -80,29 +89,24 @@ internal class PdfContentReader(private val doc: PdfDocument) {
         fun copy() = State(ctm, lineWidth, font, size, charSpace, wordSpace, hScale, leading, rise)
     }
 
-    /** One subpath, already in page space; kinds[i] says how point i was reached: 0 move, 1 line, 2 curve. */
-    private class SubPath {
-        var n = 0
-        var xs = DoubleArray(8)
-        var ys = DoubleArray(8)
-        var kinds = ByteArray(8)
-        var closed = false
-
-        fun add(x: Double, y: Double, kind: Int) {
-            if (n == xs.size) { xs = xs.copyOf(n * 2); ys = ys.copyOf(n * 2); kinds = kinds.copyOf(n * 2) }
-            xs[n] = x; ys[n] = y; kinds[n] = kind.toByte(); n++
-        }
-    }
-
     // Per-page state.
     private var gs = State(PdfMatrix.IDENTITY, 1.0, null, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     private val stack = ArrayList<State>()
     private var tm = PdfMatrix.IDENTITY
     private var tlm = PdfMatrix.IDENTITY
-    private val path = ArrayList<SubPath>()
-    private var pathPoints = 0
+    // The current path, already in page space, in flat arrays: point i is (px[i], py[i]), reached by
+    // pk[i] (0 move, 1 line, 2 curve); subpath k starts at point subStart[k] and is closed if subClosed[k].
+    private var px = DoubleArray(64)
+    private var py = DoubleArray(64)
+    private var pk = ByteArray(64)
+    private var points = 0
+    private var subStart = IntArray(16)
+    private var subClosed = BooleanArray(16)
+    private var subs = 0
     private var glyphs = ArrayList<PdfGlyph>()
     private var lines = ArrayList<PdfLine>()
+    private var vlines = ArrayList<PdfVLine>()
+    private var arcs = ArrayList<PdfArc>()
     private var images = 0
     private var ops = 0
     /** What's left of the budgets shared by all the pages of the document. */
@@ -121,15 +125,15 @@ internal class PdfContentReader(private val doc: PdfDocument) {
             else -> PdfMatrix(1.0, 0.0, 0.0, -1.0, -box[0], box[3])
         }
         gs = State(base, 1.0, null, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0)
-        stack.clear(); path.clear(); activeForms.clear()
-        pathPoints = 0; images = 0; ops = 0
+        stack.clear(); activeForms.clear()
+        endPath(); images = 0; ops = 0
         tm = PdfMatrix.IDENTITY; tlm = PdfMatrix.IDENTITY
-        glyphs = ArrayList(); lines = ArrayList()
+        glyphs = ArrayList(); lines = ArrayList(); vlines = ArrayList(); arcs = ArrayList()
         run(doc.contents(page), page.resources, 0)
         val turned = page.rotate == 90 || page.rotate == 270
         val w = box[2] - box[0]
         val h = box[3] - box[1]
-        return PdfPageContent(if (turned) h else w, if (turned) w else h, glyphs, lines, images)
+        return PdfPageContent(if (turned) h else w, if (turned) w else h, glyphs, lines, images, vlines, arcs)
     }
 
     private fun run(data: ByteArray, res: Map<String, Any?>, depth: Int) {
@@ -185,11 +189,11 @@ internal class PdfContentReader(private val doc: PdfDocument) {
             "v", "y" -> if (has(4)) lineTo(num(o, 4, 2), num(o, 4, 3), 2)
             "re" -> if (has(4)) rect(num(o, 4, 0), num(o, 4, 1), num(o, 4, 2), num(o, 4, 3))
             "h" -> closePath()
-            "S" -> { stroke(); endPath() }
-            "s" -> { closePath(); stroke(); endPath() }
-            "f", "F", "f*" -> { fill(); endPath() }
-            "B", "B*" -> { fill(); stroke(); endPath() }
-            "b", "b*" -> { closePath(); fill(); stroke(); endPath() }
+            "S" -> { stroke(); curves(); endPath() }
+            "s" -> { closePath(); stroke(); curves(); endPath() }
+            "f", "F", "f*" -> { fill(); curves(); endPath() }
+            "B", "B*" -> { fill(); stroke(); curves(); endPath() }
+            "b", "b*" -> { closePath(); fill(); stroke(); curves(); endPath() }
             "n" -> endPath()
             "Do" -> if (has(1)) xObject(pdfName(o.last()), res, depth)
         }
@@ -232,20 +236,32 @@ internal class PdfContentReader(private val doc: PdfDocument) {
 
     // ---- Paths ----
 
-    private fun moveTo(x: Double, y: Double) {
-        if (pathPoints >= MAX_PATH_POINTS) return
-        val s = SubPath()
-        s.add(gs.ctm.x(x, y), gs.ctm.y(x, y), 0)
-        path.add(s)
-        pathPoints++
+    /** Adds a point to the current subpath, unless the path is full. */
+    private fun addPoint(x: Double, y: Double, kind: Int) {
+        if (points >= MAX_PATH_POINTS) return
+        if (points == px.size) { px = px.copyOf(points * 2); py = py.copyOf(points * 2); pk = pk.copyOf(points * 2) }
+        px[points] = x; py[points] = y; pk[points] = kind.toByte(); points++
     }
 
+    /** Starts a subpath at page-space point ([x], [y]). */
+    private fun startSubpath(x: Double, y: Double) {
+        if (points >= MAX_PATH_POINTS) return
+        if (subs == subStart.size) { subStart = subStart.copyOf(subs * 2); subClosed = subClosed.copyOf(subs * 2) }
+        subStart[subs] = points; subClosed[subs] = false; subs++
+        addPoint(x, y, 0)
+    }
+
+    private fun moveTo(x: Double, y: Double) = startSubpath(gs.ctm.x(x, y), gs.ctm.y(x, y))
+
     private fun lineTo(x: Double, y: Double, kind: Int) {
-        val s = path.lastOrNull()
-        if (s == null || s.closed) { moveTo(x, y); return }
-        if (pathPoints >= MAX_PATH_POINTS) return
-        s.add(gs.ctm.x(x, y), gs.ctm.y(x, y), kind)
-        pathPoints++
+        if (subs == 0) { moveTo(x, y); return }
+        if (subClosed[subs - 1]) {
+            // After h, drawing goes on from the closed subpath's start, in a new subpath.
+            val from = subStart[subs - 1]
+            startSubpath(px[from], py[from])
+            if (subClosed[subs - 1]) return // the path is full
+        }
+        addPoint(gs.ctm.x(x, y), gs.ctm.y(x, y), kind)
     }
 
     private fun rect(x: Double, y: Double, w: Double, h: Double) {
@@ -257,52 +273,74 @@ internal class PdfContentReader(private val doc: PdfDocument) {
     }
 
     private fun closePath() {
-        val s = path.lastOrNull() ?: return
-        if (s.closed) return
-        s.closed = true
-        // Drawing continues from the subpath's start.
-        if (pathPoints < MAX_PATH_POINTS) { val n = SubPath(); n.add(s.xs[0], s.ys[0], 0); path.add(n) }
+        if (subs > 0) subClosed[subs - 1] = true
     }
 
     private fun endPath() {
-        path.clear()
-        pathPoints = 0
+        points = 0
+        subs = 0
+    }
+
+    /** Calls [f] with the first point and the end (exclusive) of every subpath, and whether it is closed. */
+    private inline fun forEachSubpath(f: (from: Int, to: Int, closed: Boolean) -> Unit) {
+        for (k in 0 until subs) f(subStart[k], if (k + 1 < subs) subStart[k + 1] else points, subClosed[k])
     }
 
     private fun stroke() {
         val width = max(gs.lineWidth, 0.0) * gs.ctm.scale
-        for (s in path) {
-            for (i in 1 until s.n) if (s.kinds[i].toInt() == 1) segment(s.xs[i - 1], s.ys[i - 1], s.xs[i], s.ys[i], width)
-            if (s.closed && s.n > 1) segment(s.xs[s.n - 1], s.ys[s.n - 1], s.xs[0], s.ys[0], width)
+        forEachSubpath { from, to, closed ->
+            for (i in from + 1 until to) if (pk[i].toInt() == 1) segment(px[i - 1], py[i - 1], px[i], py[i], width)
+            if (closed && to - from > 1) segment(px[to - 1], py[to - 1], px[from], py[from], width)
         }
     }
 
     private fun segment(x0: Double, y0: Double, x1: Double, y1: Double, width: Double) {
         val dx = abs(x1 - x0)
-        if (!(dx + y0 + y1 + width).isFinite() || dx < 0.5 || abs(y1 - y0) > max(0.25, 0.005 * dx) || lines.size >= MAX_LINES) return
-        lines.add(PdfLine(min(x0, x1), max(x0, x1), (y0 + y1) / 2, width))
+        val dy = abs(y1 - y0)
+        if (!(dx + dy + x0 + y0 + width).isFinite()) return
+        if (dx >= 0.5 && dy <= max(0.25, 0.005 * dx)) {
+            if (lines.size < MAX_LINES) lines.add(PdfLine(min(x0, x1), max(x0, x1), (y0 + y1) / 2, width))
+        } else if (dy >= 0.5 && dx <= max(0.25, 0.005 * dy)) {
+            if (vlines.size < MAX_LINES) vlines.add(PdfVLine((x0 + x1) / 2, min(y0, y1), max(y0, y1), width))
+        }
     }
 
-    /** Filled axis-aligned rectangles that are thin and long count as lines (some programs draw staff lines that way). */
+    /** Filled axis-aligned rectangles that are thin and long count as lines (some programs draw staff lines and barlines that way). */
     private fun fill() {
-        for (s in path) {
-            var n = s.n
-            if (n < 4) continue
-            if (n == 5 && abs(s.xs[4] - s.xs[0]) < 0.01 && abs(s.ys[4] - s.ys[0]) < 0.01) n = 4
-            if (n != 4) continue
+        forEachSubpath { from, to, _ ->
+            var n = to - from
+            if (n == 5 && abs(px[from + 4] - px[from]) < 0.01 && abs(py[from + 4] - py[from]) < 0.01) n = 4
+            if (n != 4) return@forEachSubpath
             var axis = true
-            for (i in 1 until 4) if (s.kinds[i].toInt() != 1) axis = false
+            for (i in 1 until 4) if (pk[from + i].toInt() != 1) axis = false
             for (i in 0 until 4) {
-                val j = (i + 1) % 4
-                if (abs(s.xs[i] - s.xs[j]) > 0.01 && abs(s.ys[i] - s.ys[j]) > 0.01) axis = false
+                val a = from + i
+                val b = from + (i + 1) % 4
+                if (abs(px[a] - px[b]) > 0.01 && abs(py[a] - py[b]) > 0.01) axis = false
             }
-            if (!axis) continue
-            val x0 = min(min(s.xs[0], s.xs[1]), min(s.xs[2], s.xs[3]))
-            val x1 = max(max(s.xs[0], s.xs[1]), max(s.xs[2], s.xs[3]))
-            val y0 = min(min(s.ys[0], s.ys[1]), min(s.ys[2], s.ys[3]))
-            val y1 = max(max(s.ys[0], s.ys[1]), max(s.ys[2], s.ys[3]))
-            if (!(x0 + x1 + y0 + y1).isFinite()) continue
-            if (y1 - y0 <= MAX_BAR && x1 - x0 > 2 * (y1 - y0) && lines.size < MAX_LINES) lines.add(PdfLine(x0, x1, (y0 + y1) / 2, y1 - y0))
+            if (!axis) return@forEachSubpath
+            val x0 = min(min(px[from], px[from + 1]), min(px[from + 2], px[from + 3]))
+            val x1 = max(max(px[from], px[from + 1]), max(px[from + 2], px[from + 3]))
+            val y0 = min(min(py[from], py[from + 1]), min(py[from + 2], py[from + 3]))
+            val y1 = max(max(py[from], py[from + 1]), max(py[from + 2], py[from + 3]))
+            if (!(x0 + x1 + y0 + y1).isFinite()) return@forEachSubpath
+            if (y1 - y0 <= MAX_BAR && x1 - x0 > 2 * (y1 - y0)) {
+                if (lines.size < MAX_LINES) lines.add(PdfLine(x0, x1, (y0 + y1) / 2, y1 - y0))
+            } else if (x1 - x0 <= MAX_BAR && y1 - y0 > 2 * (x1 - x0)) {
+                if (vlines.size < MAX_LINES) vlines.add(PdfVLine((x0 + x1) / 2, y0, y1, x1 - x0))
+            }
+        }
+    }
+
+    /** Keeps the bounding box of every painted subpath that has curves in it. */
+    private fun curves() {
+        forEachSubpath { from, to, _ ->
+            var curved = false
+            for (i in from + 1 until to) if (pk[i].toInt() == 2) { curved = true; break }
+            if (!curved || arcs.size >= MAX_ARCS) return@forEachSubpath
+            var x0 = px[from]; var x1 = x0; var y0 = py[from]; var y1 = y0
+            for (i in from + 1 until to) { x0 = min(x0, px[i]); x1 = max(x1, px[i]); y0 = min(y0, py[i]); y1 = max(y1, py[i]) }
+            if ((x0 + x1 + y0 + y1).isFinite()) arcs.add(PdfArc(x0, x1, y0, y1))
         }
     }
 
@@ -340,7 +378,8 @@ internal class PdfContentReader(private val doc: PdfDocument) {
         private const val MAX_STACK = 256
         private const val MAX_GLYPHS = 200_000
         private const val MAX_LINES = 200_000
-        private const val MAX_PATH_POINTS = 1_000_000
+        private const val MAX_ARCS = 50_000
+        private const val MAX_PATH_POINTS = 200_000
         private const val MAX_FORM_DEPTH = 12
         /** The thickest filled bar still taken as a line, in points. */
         private const val MAX_BAR = 4.0

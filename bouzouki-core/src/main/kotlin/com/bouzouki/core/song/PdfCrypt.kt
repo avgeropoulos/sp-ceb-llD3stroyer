@@ -61,12 +61,13 @@ internal class PdfCrypt private constructor(private val key: ByteArray, private 
             val p = (enc["P"] as? Double)?.toLong()?.toInt() ?: 0
             val encryptMetadata = enc["EncryptMetadata"] != false
             val id0 = ((id as? List<*>)?.firstOrNull() as? PdfString)?.bytes ?: ByteArray(0)
+            val stmF = pdfName(enc["StmF"]) ?: "Identity"
+            val filter = pdfDict(pdfDict(enc["CF"])?.get(stmF))
             val method = when (v) {
                 1, 2 -> Method.RC4
                 4 -> {
-                    val stmF = pdfName(enc["StmF"]) ?: "Identity"
                     if (stmF == "Identity") Method.NONE
-                    else when (pdfName(pdfDict(pdfDict(enc["CF"])?.get(stmF))?.get("CFM"))) {
+                    else when (pdfName(filter?.get("CFM"))) {
                         "AESV2" -> Method.AES128
                         "V2" -> Method.RC4
                         "None" -> Method.NONE
@@ -86,7 +87,15 @@ internal class PdfCrypt private constructor(private val key: ByteArray, private 
                 c.init(Cipher.DECRYPT_MODE, SecretKeySpec(intermediate, "AES"), IvParameterSpec(ByteArray(16)))
                 return PdfCrypt(c.doFinal(ue, 0, 32), method, encryptMetadata)
             }
-            val length = if (v == 1 || r == 2) 5 else (((enc["Length"] as? Double)?.toInt() ?: 40) / 8).coerceIn(5, 16)
+            // The key length in bytes. For V 4 the top-level /Length is optional: then it's the crypt filter's
+            // (in bytes, though some writers give bits), else 128 bits, as pdf.js reads it. AES-128 needs 16.
+            val bits = (enc["Length"] as? Double)?.toInt()
+                ?: if (v == 4) (filter?.get("Length") as? Double)?.toInt()?.let { if (it < 40) it * 8 else it } ?: 128 else 40
+            val length = when {
+                method == Method.AES128 -> 16
+                v == 1 || r == 2 -> 5
+                else -> (bits / 8).coerceIn(5, 16)
+            }
             val md = MessageDigest.getInstance("MD5")
             md.update(PAD)
             md.update(o, 0, minOf(o.size, 32))

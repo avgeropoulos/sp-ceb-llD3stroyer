@@ -26,8 +26,17 @@ internal class PdfString(val bytes: ByteArray)
 /** An indirect reference, `num gen R`. */
 internal data class PdfRef(val num: Int, val gen: Int)
 
-/** A stream: its dictionary and its still encoded (and possibly encrypted) bytes; [num] and [gen] name its object. */
-internal class PdfStream(val dict: Map<String, Any?>, val raw: ByteArray, val num: Int = -1, val gen: Int = 0)
+/**
+ * A stream: its dictionary and where its still encoded (and possibly encrypted) bytes are, [length]
+ * bytes at [offset] in [src] (the file, not a copy); [num] and [gen] name its object.
+ */
+internal class PdfStream(
+    val dict: Map<String, Any?>, private val src: ByteArray, private val offset: Int, val length: Int,
+    val num: Int = -1, val gen: Int = 0,
+) {
+    /** A copy of the raw bytes. */
+    fun raw(): ByteArray = src.copyOfRange(offset, offset + length)
+}
 
 /** A keyword that isn't true, false or null: a content stream operator, or `obj`, `stream`, `xref`... */
 internal data class PdfOp(val name: String)
@@ -343,7 +352,12 @@ internal class PdfDocument(private val data: ByteArray) {
     /** Where an object lives: at a file offset ([inStream] false, [a] = offset), or in object stream [a] at index [b]. */
     private class Entry(val inStream: Boolean, val a: Int, val b: Int)
 
-    private val table = HashMap<Int, Entry?>()
+    /** The objects in use; at most [MAX_OBJECTS]. */
+    private val table = HashMap<Int, Entry>()
+    /** Objects that a newer section of the table marks as free, so older sections can't bring them back. */
+    private val freed = HashSet<Int>()
+    /** The file offsets of the objects in [table], sorted, to know where each one ends at the latest; made when needed. */
+    private var objectStarts: IntArray? = null
     private val cache = HashMap<Int, Any?>()
     private val loading = HashSet<Int>()
     private val objStms = HashMap<Int, ObjStm?>()
@@ -351,11 +365,16 @@ internal class PdfDocument(private val data: ByteArray) {
     private var decodeBudget = MAX_TOTAL_DECODED
     private var crypt: PdfCrypt? = null
     private var endstreams: IntArray? = null
+    private var endobjs: IntArray? = null
 
-    private class ObjStm(val bytes: ByteArray, val nums: IntArray, val offsets: IntArray)
+    /** A decoded object stream: object [nums] at [offsets] in [bytes], and those offsets [sorted]. */
+    private class ObjStm(val bytes: ByteArray, val nums: IntArray, val offsets: IntArray) {
+        val sorted: IntArray = offsets.sortedArray()
+    }
 
     init {
         val ok = try { readXref() } catch (e: RuntimeException) { false }
+        objectStarts = null // objects read while the table was incomplete may have made it too early
         if (!ok || trailer["Root"] == null) repair()
         val enc = trailer["Encrypt"]
         if (enc != null) {
@@ -432,6 +451,7 @@ internal class PdfDocument(private val data: ByteArray) {
         val lx = PdfLexer(data, offset)
         val first = lx.next(false)
         if (first is PdfOp && first.name == "xref") {
+            val free = ArrayList<Int>()
             while (true) {
                 val a = lx.next(false)
                 if (a is PdfOp && a.name == "trailer") break
@@ -443,13 +463,17 @@ internal class PdfDocument(private val data: ByteArray) {
                     val gen = lx.next(false) as? Double ?: return null
                     val kind = (lx.next(false) as? PdfOp)?.name ?: return null
                     val num = start + i
-                    if (!table.containsKey(num)) table[num] = if (kind == "n" && off > 0) Entry(false, off.toInt(), gen.toInt()) else null
+                    if (num in table || num in freed) continue
+                    if (kind == "n" && off > 0) { if (table.size < MAX_OBJECTS) table[num] = Entry(false, off.toInt(), gen.toInt()) }
+                    else if (free.size < MAX_OBJECTS) free += num
                 }
             }
             val tr = pdfDict(lx.next(true)) ?: return null
+            // A hybrid file's stream section lists the objects that its table marks free for older readers.
             (tr["XRefStm"] as? Double)?.let { at ->
                 (parseObjectAt(at.toInt(), -1) as? PdfStream)?.let { readXrefStream(it) }
             }
+            for (num in free) if (num !in table && freed.size < MAX_OBJECTS) freed += num
             return tr
         }
         val s = parseObjectAt(offset, -1) as? PdfStream ?: return null
@@ -477,12 +501,13 @@ internal class PdfDocument(private val data: ByteArray) {
                 val f2 = field(d, p + w[0] + w[1], w[2])
                 p += row
                 val num = start + i
-                if (num < 0 || table.containsKey(num)) continue
+                if (num < 0 || num in table || num in freed) continue
                 when (type) {
-                    0 -> table[num] = null
-                    1 -> table[num] = if (f1 > 0) Entry(false, f1, f2) else null
+                    0 -> if (freed.size < MAX_OBJECTS) freed += num
+                    1 -> if (f1 > 0) table[num] = Entry(false, f1, f2)
                     2 -> table[num] = Entry(true, f1, f2)
                 }
+                if (table.size >= MAX_OBJECTS) return
             }
         }
     }
@@ -528,12 +553,14 @@ internal class PdfDocument(private val data: ByteArray) {
             i = indexOf(key, i + 3)
         }
         // Keep what the old table said about objects in object streams; direct objects come from the scan.
-        val packed = table.filterValues { it != null && it.inStream }
+        val packed = table.filterValues { it.inStream }
         table.clear()
+        freed.clear()
         cache.clear()
         objStms.clear()
         table.putAll(found)
-        for ((k, v) in packed) if (k !in table) table[k] = v
+        for ((k, v) in packed) if (k !in table && table.size < MAX_OBJECTS) table[k] = v
+        objectStarts = null
         starts.sort()
         val sorted = starts.toIntArray()
 
@@ -542,18 +569,22 @@ internal class PdfDocument(private val data: ByteArray) {
             val s = get(num) as? PdfStream
             if (s != null && pdfName(s.dict["Type"]) == "ObjStm") {
                 val stm = objStm(num)
-                if (stm != null) for (k in stm.nums.indices) if (stm.nums[k] !in table) table[stm.nums[k]] = Entry(true, num, k)
+                if (stm != null) for (k in stm.nums.indices) if (stm.nums[k] !in table && table.size < MAX_OBJECTS) table[stm.nums[k]] = Entry(true, num, k)
             }
         }
 
-        // The trailer: classic trailers and xref stream dictionaries, later ones winning.
+        // The trailer: classic trailers and xref stream dictionaries, later ones winning. Only the last
+        // few trailers are read, each within a bounded stretch of the file.
         val merged = LinkedHashMap<String, Any?>()
         val trailerKey = "trailer".toByteArray(Charsets.ISO_8859_1)
+        val trailers = ArrayDeque<Int>()
         var t = indexOf(trailerKey, 0)
         while (t >= 0) {
-            pdfDict(PdfLexer(data, t + trailerKey.size).next(true))?.let { merged.putAll(it) }
+            trailers.addLast(t + trailerKey.size)
+            if (trailers.size > MAX_TRAILERS) trailers.removeFirst()
             t = indexOf(trailerKey, t + trailerKey.size)
         }
+        for (at in trailers) pdfDict(PdfLexer(data, at, min(data.size, at + MAX_TRAILER_BYTES)).next(true))?.let { merged.putAll(it) }
         forEachOwner("/XRef", sorted) { num ->
             val s = get(num) as? PdfStream
             if (s != null && pdfName(s.dict["Type"]) == "XRef") merged.putAll(s.dict)
@@ -587,10 +618,14 @@ internal class PdfDocument(private val data: ByteArray) {
 
     // ---- Objects ----
 
-    /** The object at [offset], checked to be number [expect] (unless that's -1); [MISMATCH] if it isn't there. */
+    /**
+     * The object at [offset], checked to be number [expect] (unless that's -1); [MISMATCH] if it isn't
+     * there. Unless it is a table section ([expect] -1), it is read no further than the next object.
+     */
     private fun parseObjectAt(offset: Int, expect: Int): Any? {
         if (offset < 0 || offset >= data.size) return MISMATCH
-        val lx = PdfLexer(data, offset)
+        val end = if (expect >= 0) objectEnd(offset) else data.size
+        val lx = PdfLexer(data, offset, end)
         val n = lx.next(false) as? Double
         val g = lx.next(false) as? Double
         val kw = lx.next(false) as? PdfOp
@@ -601,25 +636,38 @@ internal class PdfDocument(private val data: ByteArray) {
         val save = lx.pos
         val k = lx.next(false)
         if (k !is PdfOp || k.name != "stream") { lx.pos = save; return dict }
-        return PdfStream(dict, streamBytes(lx.pos, dict), n.toInt(), g.toInt())
+        return stream(lx.pos, dict, end, n.toInt(), g.toInt())
     }
 
-    /** A stream's bytes, starting just after the `stream` keyword; [dict]'s /Length is checked against `endstream`. */
-    private fun streamBytes(afterKeyword: Int, dict: Map<String, Any?>): ByteArray {
+    /** Where the object at [offset] ends at the latest: where the next object in the table starts. */
+    private fun objectEnd(offset: Int): Int {
+        val starts = objectStarts ?: table.values.filter { !it.inStream }.map { it.a }.toIntArray().also { it.sort(); objectStarts = it }
+        var k = java.util.Arrays.binarySearch(starts, offset + 1)
+        if (k < 0) k = -k - 1
+        return if (k < starts.size) starts[k] else data.size
+    }
+
+    /**
+     * A stream starting just after the `stream` keyword, ending by [end]. [dict]'s /Length is checked
+     * against `endstream`; if it's wrong, the data ends at the next `endstream`, or `endobj` if that
+     * comes first (a missing `endstream`).
+     */
+    private fun stream(afterKeyword: Int, dict: Map<String, Any?>, end: Int, num: Int, gen: Int): PdfStream {
         var p = afterKeyword
         if (p < data.size && data[p] == '\r'.code.toByte()) p++
         if (p < data.size && data[p] == '\n'.code.toByte()) p++
         val lenObj = dict["Length"]
         val len = (if (lenObj is PdfRef) resolve(lenObj) else lenObj) as? Double
         if (len != null && len >= 0 && p + len <= data.size && endstreamAt(p + len.toInt())) {
-            return data.copyOfRange(p, p + len.toInt())
+            return PdfStream(dict, data, p, len.toInt(), num, gen)
         }
-        var e = nextEndstream(p)
-        if (e < 0) e = data.size
-        var q = e
+        var e = end
+        nextKeyword(ENDSTREAM, p).let { if (it >= 0) e = min(e, it) }
+        nextKeyword(ENDOBJ, p).let { if (it >= 0) e = min(e, it) }
+        var q = maxOf(p, min(e, data.size))
         if (q > p && data[q - 1] == '\n'.code.toByte()) q--
         if (q > p && data[q - 1] == '\r'.code.toByte()) q--
-        return data.copyOfRange(p, min(q, p + MAX_STREAM))
+        return PdfStream(dict, data, p, min(q - p, MAX_STREAM), num, gen)
     }
 
     private fun endstreamAt(at: Int): Boolean {
@@ -628,13 +676,14 @@ internal class PdfDocument(private val data: ByteArray) {
         return startsWith(p, ENDSTREAM)
     }
 
-    /** The first `endstream` at or after [from], found by binary search in a list made once. */
-    private fun nextEndstream(from: Int): Int {
-        val all = endstreams ?: run {
+    /** The first [key] (`endstream` or `endobj`) at or after [from], or -1; found by binary search in a list made once. */
+    private fun nextKeyword(key: ByteArray, from: Int): Int {
+        val known = if (key === ENDSTREAM) endstreams else endobjs
+        val all = known ?: run {
             val list = ArrayList<Int>()
-            var i = indexOf(ENDSTREAM, 0)
-            while (i >= 0) { list += i; i = indexOf(ENDSTREAM, i + ENDSTREAM.size) }
-            list.toIntArray().also { endstreams = it }
+            var i = indexOf(key, 0)
+            while (i >= 0) { list += i; i = indexOf(key, i + key.size) }
+            list.toIntArray().also { if (key === ENDSTREAM) endstreams = it else endobjs = it }
         }
         var k = java.util.Arrays.binarySearch(all, from)
         if (k < 0) k = -k - 1
@@ -647,7 +696,10 @@ internal class PdfDocument(private val data: ByteArray) {
         if (k < 0) return null
         val off = stm.offsets[k]
         if (off !in stm.bytes.indices) return null
-        val v = PdfLexer(stm.bytes, off).next(true)
+        // Read no further than where the next object in the stream starts.
+        var e = java.util.Arrays.binarySearch(stm.sorted, off + 1)
+        if (e < 0) e = -e - 1
+        val v = PdfLexer(stm.bytes, off, if (e < stm.sorted.size) stm.sorted[e] else stm.bytes.size).next(true)
         return if (v === PdfLexer.EOF) null else v
     }
 
@@ -680,7 +732,9 @@ internal class PdfDocument(private val data: ByteArray) {
      * Truncated compressed data gives what could be decoded.
      */
     fun decode(s: PdfStream): ByteArray? {
-        var d = s.raw
+        if (decodeBudget <= 0) { warnings += TOO_LARGE; return null }
+        var d = s.raw()
+        decodeBudget -= d.size
         val c = crypt
         if (c != null && pdfName(s.dict["Type"]) != "XRef") d = c.decrypt(d, s.num, s.gen, s.dict) ?: return null
         val filters = resolve(s.dict["Filter"]).let { f -> if (f is List<*>) f.map { pdfName(resolve(it)) } else listOf(pdfName(f)) }
@@ -728,7 +782,7 @@ internal class PdfDocument(private val data: ByteArray) {
             }
             if (out.size > 0 || raw) break
         }
-        if (out.size >= cap) warnings += "This PDF is too large to read completely"
+        if (out.size >= cap) warnings += TOO_LARGE
         return out.toArray()
     }
 
@@ -829,12 +883,16 @@ internal class PdfDocument(private val data: ByteArray) {
 
     companion object {
         /** Caps that keep a hostile or broken file from taking too long or too much memory. */
-        const val MAX_OBJECTS = 500_000
+        const val MAX_OBJECTS = 100_000
         const val MAX_PAGES = 2_000
         const val MAX_STREAM = 16 * 1024 * 1024
         const val MAX_TOTAL_DECODED = 64 * 1024 * 1024
+        private const val MAX_TRAILERS = 64
+        private const val MAX_TRAILER_BYTES = 64 * 1024
+        private const val TOO_LARGE = "This PDF is too large to read completely"
         private val MISMATCH = Any()
         private val ENDSTREAM = "endstream".toByteArray(Charsets.ISO_8859_1)
+        private val ENDOBJ = "endobj".toByteArray(Charsets.ISO_8859_1)
         private val DEFAULT_BOX = doubleArrayOf(0.0, 0.0, 612.0, 792.0)
     }
 }
