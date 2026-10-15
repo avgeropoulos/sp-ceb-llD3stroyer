@@ -10,7 +10,7 @@ import kotlin.math.min
 /** One note of the bouzouki line, placed on the neck. */
 data class SongNote(val start: Double, val end: Double, val midi: Int, val course: Int, val fret: Int)
 
-/** A prepared song: the bouzouki line with frets, and the dromos it seems to be in. */
+/** A prepared song: the bouzouki line with frets, the dromos it seems to be in, and its beats (seconds). */
 data class SongAnalysis(
     val id: String,
     val title: String,
@@ -18,6 +18,7 @@ data class SongAnalysis(
     val notes: List<SongNote>,
     val dromos: Dromos?,
     val rootPc: Int,
+    val beats: List<Double> = emptyList(),
 ) {
     /** Index of the note sounding at [time], or -1. */
     fun noteAt(time: Double): Int {
@@ -48,6 +49,7 @@ data class SongAnalysis(
         "dromos" to (dromos?.let { quote(it.name) } ?: "null"),
         "root" to rootPc.toString(),
         "notes" to notes.joinToString(",", "[", "]") { n -> "[${fmt(n.start)},${fmt(n.end)},${n.midi},${n.course},${n.fret}]" },
+        "beats" to beats.joinToString(",", "[", "]") { fmt(it) },
     )
 
     /** A saved song as the song list shows it: [current] is false when an older version wrote it (prepare it again). */
@@ -91,6 +93,7 @@ data class SongAnalysis(
                 },
                 dromos = (p["dromos"] as String?)?.let { Dromos.valueOf(it) },
                 rootPc = num("root").toInt(),
+                beats = (p["beats"] as List<*>?)?.map { (it as Number).toDouble() } ?: emptyList(),
             )
         } catch (_: Exception) { null }
     }
@@ -126,7 +129,9 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
         val audio = resample(instrumental, MdxSeparator.SAMPLE_RATE, BasicPitch.SAMPLE_RATE)
         val act = pitch.activations(audio, { progress(Stage.TRANSCRIBING, it * 0.9f) }, cancelled)
         progress(Stage.PLACING, 0f)
-        return build(id, title, candidates(act), instrument, act)
+        // The beats lay the tablature out in bars; a song without a clear pulse just gets none.
+        val beats = try { Beats.estimate(Beats.envelope(act), Beats.FPS) } catch (_: Exception) { emptyList() }
+        return build(id, title, candidates(act), instrument, act).copy(beats = beats)
     }
 
     companion object {

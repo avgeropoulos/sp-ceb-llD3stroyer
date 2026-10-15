@@ -407,7 +407,7 @@ class SongActivity : Activity() {
         val inst = settings.instrument
         if (s.instrument == inst) return s
         val events = s.notes.map { NoteEvent(it.start, it.end, it.midi, 1.0) }
-        return SongAnalyzer.build(s.id, s.title, events, inst).copy(dromos = s.dromos, rootPc = s.rootPc)
+        return SongAnalyzer.build(s.id, s.title, events, inst).copy(dromos = s.dromos, rootPc = s.rootPc, beats = s.beats)
     }
 
     private fun onJob(s: SongJobs.State) {
@@ -454,9 +454,9 @@ class SongActivity : Activity() {
 
     /**
      * Beat times (seconds) that lay the tablature out in bars of 4 beats, two to a row; empty
-     * means rows of 4 seconds. To be filled from the song's analysis once it carries its beats.
+     * (no clear pulse) means rows of 4 seconds.
      */
-    private fun beatsFor(song: SongAnalysis): List<Double> = emptyList()
+    private fun beatsFor(song: SongAnalysis): List<Double> = song.beats
 
     /** Shows the neck (with the tab strip) or the whole song's tablature, and remembers which. */
     private fun showPage(page: Int) {
