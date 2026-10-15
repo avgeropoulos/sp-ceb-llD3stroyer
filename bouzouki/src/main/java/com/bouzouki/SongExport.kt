@@ -22,9 +22,9 @@ import java.util.zip.ZipOutputStream
 /**
  * "Send song data": packs a prepared song into one zip to share (to the developer, to improve how
  * notes are found). It holds the song as saved (<id>.json), what its line comes from (<id>.data:
- * the note detector's activations and pick attacks), the tab kept for it if any, and info.txt (title,
- * link, app version, bouzouki, detail level, sync, the playback time and the player's note). Never
- * any audio: the app doesn't keep it.
+ * the note detector's activations and pick attacks), the tab kept for it if any (its text, or the
+ * PDF it came as), and info.txt (title, link, app version, bouzouki, detail level, sync, the
+ * playback time and the player's note). Never any audio: the app doesn't keep it.
  */
 object SongExport {
     /** What goes in info.txt besides the files. */
@@ -86,7 +86,7 @@ object SongExport {
             out.putNextEntry(ZipEntry("info.txt"))
             out.write(infoText(context, info).toByteArray(Charsets.UTF_8))
             out.closeEntry()
-            for (name in listOf("${info.id}.json", "${info.id}.data", "${info.id}.tab.txt")) {
+            for (name in listOf("${info.id}.json", "${info.id}.data", "${info.id}.tab.txt", "${info.id}.tab.pdf")) {
                 val f = File(songs, name).takeIf { it.isFile } ?: continue
                 out.putNextEntry(ZipEntry(name.replaceFirst(info.id, "song")))
                 f.inputStream().use { it.copyTo(out) }

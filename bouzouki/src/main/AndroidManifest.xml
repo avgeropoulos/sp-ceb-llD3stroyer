@@ -36,7 +36,8 @@
             android:screenOrientation="portrait"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation" />
 
-        <!-- Share a video from the YouTube app to Μπουζούκι to play along with it. -->
+        <!-- Share a video from the YouTube app to Μπουζούκι to play along with it; or share (or open
+             with Μπουζούκι) a song's bouzouki tab, as a PDF or text, from WhatsApp, Files, Gmail or Drive. -->
         <activity
             android:name=".SongActivity"
             android:exported="true"
@@ -49,6 +50,17 @@
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/pdf" />
             </intent-filter>
         </activity>
 

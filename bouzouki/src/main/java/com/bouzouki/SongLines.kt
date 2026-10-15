@@ -8,10 +8,13 @@ import com.bouzouki.core.Instrument
 import com.bouzouki.core.song.AnalysisData
 import com.bouzouki.core.song.Detail
 import com.bouzouki.core.song.ParsedTab
+import com.bouzouki.core.song.PdfTab
 import com.bouzouki.core.song.SongAnalysis
 import com.bouzouki.core.song.SongAnalyzer
 import com.bouzouki.core.song.TabAligner
 import com.bouzouki.core.song.TabParser
+import java.io.File
+import java.io.IOException
 import java.lang.ref.SoftReference
 import java.util.concurrent.CancellationException
 import java.util.concurrent.ConcurrentHashMap
@@ -20,7 +23,8 @@ import java.util.concurrent.Executors
 /**
  * A saved song's line derived again, off the main thread, from what it was derived from (its
  * [AnalysisData], saved next to it by [SongJobs]): with fewer or more notes ([Spec.Detected]), or
- * made of the notes of a tab the player pasted, lined up with the recording ([Spec.FromTab]).
+ * made of the notes of a tab the player pasted or opened (text or PDF), lined up with the recording
+ * ([Spec.FromTab]).
  * One at a time, in the order asked; a line no longer wanted (another line of the song was asked for
  * since, or [settle]d on) isn't worked out, and one being worked out stops. Lines are kept for a while
  * (the last few), so going back and forth is instant, and handed on the main thread to the screens
@@ -36,11 +40,30 @@ object SongLines {
         data class Detected(override val id: String, val detail: Detail) : Spec
 
         /**
-         * The notes of the tab [text] at the times they're heard, for [instrument] (the bouzouki the player
-         * plays): the tab is read for it first (see [readTab]), and its notes keep the tab's frets on it.
+         * The notes of the tab in [source] at the times they're heard, for [instrument] (the bouzouki the player
+         * plays): the tab is read for it first (see [readTab], [readPdf]), and its notes keep the tab's frets on it.
          */
-        data class FromTab(override val id: String, val text: String, val instrument: Instrument) : Spec {
-            override fun toString() = "FromTab($id, ${text.length} chars, $instrument)"
+        data class FromTab(override val id: String, val source: TabSource, val instrument: Instrument) : Spec {
+            constructor(id: String, text: String, instrument: Instrument) : this(id, TabSource.Text(text), instrument)
+
+            override fun toString() = "FromTab($id, $source, $instrument)"
+        }
+    }
+
+    /** Where a tab comes from: its text (pasted, or a text file), or a PDF file, read when its line is worked out. */
+    sealed interface TabSource {
+        data class Text(val text: String) : TabSource {
+            override fun toString() = "${text.length} chars"
+        }
+
+        /**
+         * A PDF tab in [file], known by [stamp] (when it was written, and its size: see [SongJobs.stamp]). Moving
+         * the file to where it's kept for its song doesn't change that, so its line stays the one worked out.
+         */
+        class Pdf(val file: File, val stamp: Long = SongJobs.stamp(file)) : TabSource {
+            override fun equals(other: Any?) = other is Pdf && other.stamp == stamp
+            override fun hashCode() = stamp.hashCode()
+            override fun toString() = "PDF $stamp"
         }
     }
 
@@ -132,8 +155,11 @@ object SongLines {
                 null // asked for another line of the song meanwhile
             } catch (_: OutOfMemoryError) {
                 lastData = null
-                Outcome.Failed(spec, if (spec is Spec.FromTab) "The tab is too long for the phone's memory: paste a shorter part of it."
-                    else "The song is too long for the phone's memory.")
+                Outcome.Failed(spec, when {
+                    spec !is Spec.FromTab -> "The song is too long for the phone's memory."
+                    spec.source is TabSource.Pdf -> "The PDF is too big for the phone's memory."
+                    else -> "The tab is too long for the phone's memory: paste a shorter part of it."
+                })
             } catch (e: Exception) {
                 Outcome.Failed(spec, e.message ?: e.javaClass.simpleName)
             }
@@ -159,10 +185,14 @@ object SongLines {
         return when (spec) {
             is Spec.Detected -> Outcome.Line(spec, SongAnalyzer.rebuild(base, data, spec.detail))
             is Spec.FromTab -> {
-                val tab = readTab(spec.text, spec.instrument)
+                val tab = when (val s = spec.source) {
+                    is TabSource.Text -> readTab(s.text, spec.instrument)
+                    is TabSource.Pdf -> readPdf(s.file, spec.instrument) ?: return Outcome.Failed(spec, "the PDF isn't on the phone any more.")
+                }
                 // Lining up takes time and memory growing faster than the notes: a whole songbook pasted would stall the phone.
                 if (tab.notes.size > MAX_TAB_NOTES) {
-                    return Outcome.Failed(spec, "it has ${tab.notes.size} notes, more than the $MAX_TAB_NOTES a tab can have here. Copy just this song's bouzouki part.")
+                    return Outcome.Failed(spec, "it has ${tab.notes.size} notes, more than the $MAX_TAB_NOTES a tab can have here. " +
+                        if (spec.source is TabSource.Pdf) "Use a PDF of just this song's bouzouki part." else "Copy just this song's bouzouki part.")
                 }
                 // Lined up against the song fingered for the player's bouzouki, so the line keeps the tab's frets on it.
                 val a = TabAligner.align(tab, data, base.forInstrument(spec.instrument), cancelled = stale)
@@ -191,6 +221,17 @@ object SongLines {
         val better = other.notes.size > first.notes.size ||
             (other.notes.size == first.notes.size && other.notes.isNotEmpty() && other.warnings.size < first.warnings.size)
         return if (better) other else first
+    }
+
+    /**
+     * Reads the PDF tab in [file] for [instrument] (the tab's own bouzouki, told by its lines, is in the result), or
+     * null if the file is gone. Off the main thread only: a long score takes a moment.
+     */
+    fun readPdf(file: File, instrument: Instrument): ParsedTab? {
+        if (!file.isFile) return null
+        if (file.length() > TabFiles.MAX_BYTES) return ParsedTab(instrument, emptyList(), listOf("This PDF is too big to be a tab"))
+        val bytes = try { file.readBytes() } catch (_: IOException) { return null }
+        return PdfTab.read(bytes, instrument)
     }
 
     /** Lines kept. */
