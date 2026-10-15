@@ -145,6 +145,11 @@ class FingeringTest {
         val c = SongAnalyzer.fingering(low, timed(low, 0.25), tetra)
         low.forEachIndexed { i, m -> if (m >= 53) assertTrue(c[i].first >= 1, "note $i ($m) off the C course: $c") }
         assertTrue(c.filter { it.first == 0 }.size == 6, "only C3 D3 E3 on the C course: $c")
+        // A short low figure around F3: what F reaches stays on F (open and low frets), not up the C course.
+        for (fig in listOf(listOf(52, 53, 54, 52, 48, 48), listOf(52, 53, 55, 53, 52, 48))) {
+            val f = SongAnalyzer.fingering(fig, timed(fig, 0.2), tetra)
+            fig.forEachIndexed { i, m -> if (m >= 53) assertEquals(1, f[i].first, "note $i ($m) on F: $f") }
+        }
     }
 
     private fun song(midis: List<Int>, starts: List<Double>, arts: List<Articulation>, inst: Instrument = tetra): SongAnalysis {
@@ -230,6 +235,112 @@ class FingeringTest {
             assertTrue(c.take(9).all { it.second <= 8 }, "$inst the first phrase low on the neck: $c")
             assertTrue(c.drop(9).all { it.second >= 10 }, "$inst the second phrase an octave up the neck: $c")
             assertEquals(0, FingeringMetrics.of(l.midis, l.starts, c, inst).spanViolations, "$inst $c")
+        }
+    }
+
+    // Made-up phrases in the way a real player fingers a tune: up and down the D course, between A and D in one
+    // position where the tune dips below D4, the open D ringing under it. A player fingers a tune the same way
+    // whatever its tempo, so each runs at steps from a fast sixteenth-note run to slow quarter notes.
+    private val tempos = listOf(0.13, 0.2, 0.3, 0.4, 0.5)
+    private val ousakClimb = listOf(62, 63, 65, 67, 69, 70, 72, 74, 74, 72, 70, 69, 67, 65, 63, 62) // D4 to D5 and back
+    private val thirds = listOf(59, 62, 60, 64, 62, 65, 64, 67, 65, 64, 62, 60, 59) // B3 D4 C4 E4 … up in thirds to G4 and back
+    private val overTheOpenD = listOf(62, 69, 62, 70, 62, 72, 62, 70, 62, 69, 62, 67, 62, 65, 62) // a tune over the open D
+    private val hitzazDown = listOf(69, 70, 72, 70, 69, 67, 66, 63, 62, 63, 66, 67, 66, 63, 62) // around B♭4, then down to D4
+    private val hitzazOnA = listOf(57, 58, 61, 62, 64, 65, 67, 69, 67, 65, 64, 62, 61, 58, 57) // A3 to A4 and back
+    private val rastOnG = listOf(55, 57, 59, 60, 62, 64, 66, 67, 66, 64, 62, 60, 59, 57, 55) // G3 to G4 and back
+    private val closingOnD = listOf(64, 62, 64, 65, 67, 65, 64, 62, 60, 62, 64, 62) // dips to C4, ends on D4
+    private val openingOnD = listOf(62, 63, 65, 63, 62, 60, 58, 57, 58, 60, 62) // starts on D4, down to A3
+
+    private fun crossings(c: List<Pair<Int, Int>>) = c.zipWithNext().count { (a, b) -> a.first != b.first }
+
+    @Test
+    fun aPhraseClimbsTheDCourseToTheTwelfthFretAndBack() {
+        for (inst in Instrument.entries) for (step in tempos) {
+            val c = SongAnalyzer.fingering(ousakClimb, timed(ousakClimb, step), inst)
+            val top = inst.courses.lastIndex
+            // One string from the open D up to D5 at the twelfth fret and back, the hand shifting along it.
+            assertTrue(c.all { it.first == top }, "$inst $step: $c")
+            assertEquals(listOf(0, 12, 0), listOf(c.first().second, c.maxOf { it.second }, c.last().second), "$inst $step: $c")
+            val peak = c.indexOfFirst { it.second == 12 }
+            assertTrue(c.take(peak + 1).zipWithNext().all { (a, b) -> b.second >= a.second }, "$inst $step up: $c")
+            assertTrue(c.drop(peak).zipWithNext().all { (a, b) -> b.second <= a.second }, "$inst $step down: $c")
+        }
+    }
+
+    @Test
+    fun aPhraseBelowD4MovesBetweenAAndDInOnePosition() {
+        for (inst in Instrument.entries) for (step in tempos) {
+            val starts = timed(thirds, step)
+            val c = SongAnalyzer.fingering(thirds, starts, inst)
+            val top = inst.courses.lastIndex
+            // B3 and C4 on A, E4 to G4 on D, all under one hand: no shift, and across only where the tune passes D4,
+            // however slow the tune (when a shift costs little, climbing the A course is still not how it's played).
+            thirds.forEachIndexed { i, m ->
+                if (m < 62) assertEquals(top - 1, c[i].first, "$inst $step note $i: $c")
+                if (m > 62) assertEquals(top, c[i].first, "$inst $step note $i: $c")
+            }
+            val fretted = c.map { it.second }.filter { it > 0 }
+            assertTrue(fretted.max() - fretted.min() <= 3, "$inst $step one hand position: $c")
+            assertEquals(0.0, FingeringMetrics.of(thirds, starts, c, inst).shiftsPerPhrase, "$inst $step $c")
+            assertTrue(crossings(c) <= 2, "$inst $step $c")
+        }
+    }
+
+    @Test
+    fun aScaleFromA3StaysInTheLowPositionAtAnyTempo() {
+        // A Hitzaz scale from A3 and a Rast one from G3: the A course in the first position, the D course above it,
+        // not the whole scale up the A course to the tenth or twelfth fret.
+        for (inst in Instrument.entries) for (step in tempos) for (line in listOf(hitzazOnA, rastOnG)) {
+            val c = SongAnalyzer.fingering(line, timed(line, step), inst)
+            val top = inst.courses.lastIndex
+            line.forEachIndexed { i, m -> if (m >= 64) assertEquals(top, c[i].first, "$inst $step note $i: $c") }
+            assertTrue(c.filter { it.first == top - 1 }.all { it.second <= 5 }, "$inst $step: $c")
+            assertTrue(c.all { it.second <= 7 }, "$inst $step: $c")
+        }
+    }
+
+    @Test
+    fun aPhraseAroundD4StartsAndEndsOnTheOpenD() {
+        for (inst in Instrument.entries) for (step in tempos) {
+            val top = inst.courses.lastIndex
+            val end = SongAnalyzer.fingering(closingOnD, timed(closingOnD, step), inst)
+            assertEquals(top to 0, end.last(), "$inst $step: $end")
+            val start = SongAnalyzer.fingering(openingOnD, timed(openingOnD, step), inst)
+            assertEquals(listOf(0, 1, 3, 1, 0).map { top to it }, start.take(5), "$inst $step: $start")
+        }
+    }
+
+    @Test
+    fun aFastLineTakesTheOpenDRatherThanLeaping() {
+        // Down to C4 or A3 on A, the open D, then up the neck: the open string frees the hand, so no picked jump
+        // (E4 D4 C4 D4 G4 D5 all on A, say, with a leap from the fifth fret to the tenth).
+        val fast = listOf(listOf(64, 62, 60, 62, 67, 74), listOf(60, 59, 57, 62, 69, 71, 72))
+        for (inst in Instrument.entries) for (step in listOf(0.11, 0.13, 0.15)) for (line in fast) {
+            val starts = timed(line, step)
+            val c = SongAnalyzer.fingering(line, starts, inst)
+            assertEquals(0, FingeringMetrics.of(line, starts, c, inst).spanViolations, "$inst $step: $c")
+            assertTrue(c.any { it == inst.courses.lastIndex to 0 }, "$inst $step: $c")
+        }
+    }
+
+    @Test
+    fun theOpenDRingsUnderATuneOnTheSameCourse() {
+        for (inst in Instrument.entries) for (step in tempos) {
+            val c = SongAnalyzer.fingering(overTheOpenD, timed(overTheOpenD, step), inst)
+            val top = inst.courses.lastIndex
+            overTheOpenD.forEachIndexed { i, m -> if (m == 62) assertEquals(top to 0, c[i], "$inst $step note $i: $c") }
+            assertEquals(0, crossings(c), "$inst $step: $c")
+        }
+    }
+
+    @Test
+    fun theHandComesBackDownAlongTheDCourse() {
+        // From around B♭4 down to D4 the hand shifts down the D course; it doesn't cross to A to stay up the neck.
+        for (inst in Instrument.entries) for (step in tempos) {
+            val c = SongAnalyzer.fingering(hitzazDown, timed(hitzazDown, step), inst)
+            val top = inst.courses.lastIndex
+            assertTrue(c.all { it.first == top }, "$inst $step: $c")
+            assertEquals(top to 0, c.last(), "$inst $step: $c")
         }
     }
 }
