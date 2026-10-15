@@ -37,9 +37,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import com.bouzouki.core.Cell
 import com.bouzouki.core.PlaybackClock
-import com.bouzouki.core.song.NoteEvent
 import com.bouzouki.core.song.SongAnalysis
-import com.bouzouki.core.song.SongAnalyzer
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -406,13 +404,8 @@ class SongActivity : Activity() {
         SongJobs.start(this, source, settings.instrument)
     }
 
-    /** A saved song re-fingered for the bouzouki chosen now, if it was prepared for the other one. */
-    private fun forInstrument(s: SongAnalysis): SongAnalysis {
-        val inst = settings.instrument
-        if (s.instrument == inst) return s
-        val events = s.notes.map { NoteEvent(it.start, it.end, it.midi, 1.0) }
-        return SongAnalyzer.build(s.id, s.title, events, inst).copy(dromos = s.dromos, rootPc = s.rootPc, beats = s.beats)
-    }
+    /** A song fingered for the bouzouki chosen now (and with the current fingering rules). */
+    private fun forInstrument(s: SongAnalysis): SongAnalysis = s.forInstrument(settings.instrument)
 
     private fun onJob(s: SongJobs.State) {
         val id = currentId

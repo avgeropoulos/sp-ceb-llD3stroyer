@@ -7,8 +7,23 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
+/** How a note is sounded: picked, or legato from the note before (on the same course), or held with tremolo. */
+enum class Articulation {
+    PICK, HAMMER, PULL, SLIDE, TREMOLO;
+
+    /** Sounded from the previous note without a new pick, so it must stay on that note's course. */
+    val isLegato get() = this == HAMMER || this == PULL || this == SLIDE
+}
+
 /** One note of the bouzouki line, placed on the neck. */
-data class SongNote(val start: Double, val end: Double, val midi: Int, val course: Int, val fret: Int)
+data class SongNote(
+    val start: Double,
+    val end: Double,
+    val midi: Int,
+    val course: Int,
+    val fret: Int,
+    val articulation: Articulation = Articulation.PICK,
+)
 
 /** A prepared song: the bouzouki line with frets, the dromos it seems to be in, and its beats (seconds). */
 data class SongAnalysis(
@@ -20,6 +35,18 @@ data class SongAnalysis(
     val rootPc: Int,
     val beats: List<Double> = emptyList(),
 ) {
+    /**
+     * The same song fingered for [inst] (the other bouzouki, or with a newer fingering): notes outside
+     * its range move by octaves, and every note keeps its time and articulation.
+     */
+    fun forInstrument(inst: Instrument): SongAnalysis {
+        val low = inst.courses.first().openMidi
+        val high = inst.courses.last().openMidi + inst.frets
+        val midis = notes.map { n -> var m = n.midi; while (m < low) m += 12; while (m > high) m -= 12; m }
+        val cells = SongAnalyzer.fingering(midis, notes.map { it.start }, inst, notes.map { it.articulation.isLegato })
+        return copy(instrument = inst, notes = notes.mapIndexed { i, n -> n.copy(midi = midis[i], course = cells[i].first, fret = cells[i].second) })
+    }
+
     /** Index of the note sounding at [time], or -1. */
     fun noteAt(time: Double): Int {
         var lo = 0
@@ -48,7 +75,7 @@ data class SongAnalysis(
         "instrument" to quote(instrument.name),
         "dromos" to (dromos?.let { quote(it.name) } ?: "null"),
         "root" to rootPc.toString(),
-        "notes" to notes.joinToString(",", "[", "]") { n -> "[${fmt(n.start)},${fmt(n.end)},${n.midi},${n.course},${n.fret}]" },
+        "notes" to notes.joinToString(",", "[", "]") { n -> "[${fmt(n.start)},${fmt(n.end)},${n.midi},${n.course},${n.fret},${n.articulation.ordinal}]" },
         "beats" to beats.joinToString(",", "[", "]") { fmt(it) },
     )
 
@@ -89,7 +116,8 @@ data class SongAnalysis(
                 instrument = Instrument.valueOf(p["instrument"] as String),
                 notes = (p["notes"] as List<*>).map {
                     val a = (it as List<*>).map { v -> v as Number }
-                    SongNote(a[0].toDouble(), a[1].toDouble(), a[2].toInt(), a[3].toInt(), a[4].toInt())
+                    SongNote(a[0].toDouble(), a[1].toDouble(), a[2].toInt(), a[3].toInt(), a[4].toInt(),
+                        a.getOrNull(5)?.toInt()?.let { Articulation.entries.getOrNull(it) } ?: Articulation.PICK)
                 },
                 dromos = (p["dromos"] as String?)?.let { Dromos.valueOf(it) },
                 rootPc = num("root").toInt(),
@@ -275,7 +303,7 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
          * small moves along the neck are cheap, big jumps cost more (less after a pause),
          * and very high frets cost a little extra.
          */
-        fun fingering(midis: List<Int>, starts: List<Double>, inst: Instrument): List<Pair<Int, Int>> {
+        fun fingering(midis: List<Int>, starts: List<Double>, inst: Instrument, legato: List<Boolean>? = null): List<Pair<Int, Int>> {
             if (midis.isEmpty()) return emptyList()
             val options = midis.map { m ->
                 inst.courses.indices.mapNotNull { c -> (m - inst.courses[c].openMidi).takeIf { it in 0..inst.frets }?.let { c to it } }

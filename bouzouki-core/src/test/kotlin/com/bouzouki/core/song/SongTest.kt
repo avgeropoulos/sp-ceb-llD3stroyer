@@ -185,6 +185,28 @@ class BouzoukiLineTest {
     }
 
     @Test
+    fun articulationsSurviveTheCacheAndTheOtherBouzouki() {
+        val a = SongAnalysis("id", "t", tetra, listOf(
+            SongNote(0.5, 0.9, 48, 0, 0), // C3: below the trichordo's lowest D3
+            SongNote(1.0, 1.4, 62, 3, 0),
+            SongNote(1.4, 1.8, 64, 3, 2, Articulation.HAMMER),
+            SongNote(1.8, 2.6, 62, 3, 0, Articulation.PULL),
+            SongNote(3.0, 4.0, 69, 3, 7, Articulation.TREMOLO),
+        ), Dromos.MATZORE, 2)
+        val back = assertNotNull(SongAnalysis.fromJson(a.toJson()))
+        assertEquals(a.notes.map { it.articulation }, back.notes.map { it.articulation })
+        // A note written before articulations were stored reads as picked.
+        val old = a.toJson().replace(",0]", "]")
+        assertEquals(Articulation.PICK, assertNotNull(SongAnalysis.fromJson(old)).notes[0].articulation)
+
+        val tri = a.forInstrument(Instrument.TRICHORDO)
+        assertEquals(Instrument.TRICHORDO, tri.instrument)
+        assertEquals(60, tri.notes[0].midi) // moved up an octave into range
+        assertEquals(a.notes.map { it.articulation }, tri.notes.map { it.articulation })
+        tri.notes.forEach { n -> assertEquals(n.midi, Instrument.TRICHORDO.midiAt(n.course, n.fret)) }
+    }
+
+    @Test
     fun cacheFromAnOlderVersionIsAnalysedAgain() {
         val json = SongAnalyzer.build("x", "Σ x", listOf(NoteEvent(0.5, 0.9, 62, 0.8)), tetra).toJson()
         assertNotNull(SongAnalysis.fromJson(json))
