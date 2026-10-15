@@ -7,11 +7,14 @@ import android.graphics.Typeface
 import android.view.MotionEvent
 import android.view.View
 import com.bouzouki.core.NoteNames
+import com.bouzouki.core.song.Articulation
 import com.bouzouki.core.song.SongAnalysis
 
 /**
  * A moving strip of tablature: one line per course (highest on top, as bouzouki tab is
  * written), the song's notes as fret numbers sliding left towards the "now" line.
+ * A legato note's box joins the one before, with a small "h" (hammer-on), "p" (pull-off)
+ * or slash (slide, up or down) before its number; tremolo notes have slashes after it.
  * Tap it to jump the song to that moment.
  */
 class TabStripView(context: Context) : View(context) {
@@ -33,6 +36,10 @@ class TabStripView(context: Context) : View(context) {
     private val num = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER; typeface = Typeface.DEFAULT_BOLD; color = 0xFFFFFFFF.toInt()
     }
+    private val mark = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textAlign = Paint.Align.CENTER; typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD_ITALIC); textSize = 10 * dp
+    }
+    private val slash = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeWidth = 1.4f * dp; strokeCap = Paint.Cap.ROUND }
     private val label = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF9FB4CC.toInt(); textSize = 10 * dp }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -67,13 +74,53 @@ class TabStripView(context: Context) : View(context) {
             val x1 = maxOf(xFor(n.end), x0 + 14 * dp)
             val y = yFor(n.course)
             val playing = n.start <= time && time < n.end
+            val ink = if (playing) 0xFF1A1A1A.toInt() else 0xFFFFFFFF.toInt()
             box.color = if (playing) 0xFFFFC107.toInt() else 0xFF0D5EAF.toInt()
+            val legato = s.joinsPrevious(i)
+            if (legato) {
+                // A link from the note before: one stroke of the pick for both.
+                val p = s.notes[i - 1]
+                val px1 = maxOf(xFor(p.end), xFor(p.start) + 14 * dp)
+                if (px1 < x0 + 2 * dp) canvas.drawRect(px1 - 2 * dp, y - 3.5f * dp, x0 + 2 * dp, y + 3.5f * dp, box)
+            }
             canvas.drawRoundRect(x0, y - 8 * dp, x1, y + 8 * dp, 5 * dp, 5 * dp, box)
-            num.color = if (playing) 0xFF1A1A1A.toInt() else 0xFFFFFFFF.toInt()
-            canvas.drawText(n.fret.toString(), x0 + 7 * dp, y + 4.2f * dp, num)
+            num.color = ink
+            val textWidth = fretWidth(n.fret)
+            var nx = x0 + 7 * dp
+            // The mark goes before the number when the next note on the line leaves room for both.
+            val nextX = if (i + 1 < s.notes.size && s.notes[i + 1].course == n.course) xFor(s.notes[i + 1].start) else Float.MAX_VALUE
+            if (legato && nextX - x0 >= 8 * dp + textWidth) {
+                mark.color = ink
+                slash.color = ink
+                when (n.articulation) {
+                    Articulation.HAMMER -> canvas.drawText(HAMMER_MARK, x0 + 3.8f * dp, y + 2.8f * dp, mark)
+                    Articulation.PULL -> canvas.drawText(PULL_MARK, x0 + 3.8f * dp, y + 2.8f * dp, mark)
+                    else -> { // a slide, up or down
+                        val rise = if (n.midi >= s.notes[i - 1].midi) 3.5f * dp else -3.5f * dp
+                        canvas.drawLine(x0 + 2 * dp, y + rise, x0 + 5.5f * dp, y - rise, slash)
+                    }
+                }
+                nx = x0 + 7 * dp + textWidth / 2
+            }
+            canvas.drawText(fretText(n.fret), nx, y + 4.2f * dp, num)
+            if (n.articulation == Articulation.TREMOLO) {
+                val sx = nx + textWidth / 2 + 5 * dp
+                if (sx + 10 * dp < x1) {
+                    slash.color = ink
+                    for (k in 0..2) canvas.drawLine(sx + k * 3.5f * dp - 1.8f * dp, y + 4 * dp, sx + k * 3.5f * dp + 1.8f * dp, y - 4 * dp, slash)
+                }
+            }
             i++
         }
         canvas.drawLine(width * nowAt, 0f, width * nowAt, height.toFloat(), nowLine)
+    }
+
+    private val fretWidths = FloatArray(FRETS.size) // measured once each (0 = not yet)
+
+    private fun fretWidth(fret: Int): Float {
+        if (fret !in fretWidths.indices) return num.measureText(fretText(fret))
+        if (fretWidths[fret] == 0f) fretWidths[fret] = num.measureText(fretText(fret))
+        return fretWidths[fret]
     }
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
@@ -81,5 +128,12 @@ class TabStripView(context: Context) : View(context) {
             onSeek?.invoke((time + (e.x - width * nowAt) / width * secondsShown).coerceAtLeast(0.0))
         }
         return true
+    }
+
+    private companion object {
+        const val HAMMER_MARK = "h"
+        const val PULL_MARK = "p"
+        val FRETS = Array(40) { it.toString() }
+        fun fretText(fret: Int) = FRETS.getOrElse(fret) { fret.toString() }
     }
 }

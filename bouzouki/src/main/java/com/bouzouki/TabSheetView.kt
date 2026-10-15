@@ -14,8 +14,10 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.widget.ScrollView
 import com.bouzouki.core.NoteNames
+import com.bouzouki.core.song.Articulation
 import com.bouzouki.core.song.Beats
 import com.bouzouki.core.song.SongAnalysis
+import com.bouzouki.core.song.SongNote
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.max
@@ -25,9 +27,12 @@ import kotlin.math.roundToInt
 /**
  * The whole song as printed bouzouki tablature, for a vertical [ScrollView]: rows of two bars
  * (8 beats, or 4 s with a tick every second when the beats aren't known), one line per course
- * with the highest on top, fret numbers where the notes start and a bar through the ones that
- * are held (tremolo). Where the notes are too close together for that, a row holds half as
- * much, so every number stays at its time and none run into each other.
+ * with the highest on top, fret numbers where the notes start and a bar along the ones that
+ * are held. Where the notes are too close together for that, a row holds half as much, so
+ * every number stays at its time and none run into each other.
+ * Articulations are marked as in printed tab: a slur with "h" or "p" over a hammer-on or
+ * pull-off, a slanted line ("sl.") into a slide, slashes across a tremolo note's bar, and a
+ * note held over a bar line (or into the next row) shows its fret again in brackets, tied.
  * A gold cursor follows the song, the note playing is lit, and the sheet scrolls along unless
  * the reader has just scrolled it. Tap a note to play it, or anywhere else to go there.
  * Stretches without bouzouki fold into one short row.
@@ -67,15 +72,17 @@ class TabSheetView(context: Context) : View(context) {
     private var title = ""
     private var titleShown = ""
     private var subtitle = ""
+    private var legend = ""                  // the articulation marks the song uses, explained
     private var headerHeight = 0f
     private var totalHeight = 0f
     private var layoutWidth = -1
     private var boxX = FloatArray(0)         // where each note's fret number is drawn (x of its centre)
     private val boxWidths = FloatArray(40)   // cached box width per fret number (0 = not measured yet)
+    private val tiedWidths = FloatArray(40)  // and of a tied fret number, "(5)"
 
     // Geometry (px).
     private val margin = 8 * dp
-    private val bandHeight = 18 * dp          // above the staff: the row's time
+    private val bandHeight = 22 * dp          // above the staff: the row's time, and room for the top course's slurs
     private val courseGap = 22 * dp
     private val rowPadBottom = 18 * dp
     private val foldHeight = 34 * dp
@@ -100,6 +107,12 @@ class TabSheetView(context: Context) : View(context) {
     private var tapping = false
 
     private val path = Path()
+    private var apexX = 0f                    // the middle of the last arc drawn, for its letter
+    private var apexY = 0f
+    private var rowIsCurrent = false          // the row being drawn is tinted (playing), and darker up to the cursor
+    private var rowCursorX = 0f
+    private var playedTop = 0f                // where that darker tint is, top to bottom
+    private var playedBottom = 0f
 
     private val paperPaint = Paint().apply { color = PAPER }
     private val staffPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ink(0x99); strokeWidth = 1f * dp }
@@ -122,6 +135,30 @@ class TabSheetView(context: Context) : View(context) {
         color = (GREEK_BLUE and 0x00FFFFFF) or (0xA0 shl 24); strokeWidth = 3.2f * dp; strokeCap = Paint.Cap.ROUND
     }
     private val holdLitPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = GOLD_DARK; strokeWidth = 3.2f * dp; strokeCap = Paint.Cap.ROUND }
+    // Articulation marks.
+    private val slurPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = ink(0xD0); style = Paint.Style.STROKE; strokeWidth = 1.3f * dp; strokeCap = Paint.Cap.ROUND
+    }
+    private val slurLitPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = GOLD_DARK; style = Paint.Style.STROKE; strokeWidth = 1.8f * dp; strokeCap = Paint.Cap.ROUND
+    }
+    private val tiePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = ink(0x90); style = Paint.Style.STROKE; strokeWidth = 1.1f * dp; strokeCap = Paint.Cap.ROUND
+    }
+    private val slidePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ink(0xE0); strokeWidth = 1.6f * dp; strokeCap = Paint.Cap.ROUND }
+    private val slideLitPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = GOLD_DARK; strokeWidth = 2f * dp; strokeCap = Paint.Cap.ROUND }
+    private val tremoloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = INK; strokeWidth = 1.5f * dp; strokeCap = Paint.Cap.ROUND }
+    private val markPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = GREEK_RED; textSize = 10.5f * dp; textAlign = Paint.Align.CENTER; typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD_ITALIC)
+    }
+    private val tiedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = ink(0xA8); textSize = 12 * dp; textAlign = Paint.Align.CENTER; typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD)
+    }
+    private val legendPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = ink(0x99); textSize = 10.5f * dp; typeface = Typeface.create(Typeface.SERIF, Typeface.ITALIC)
+    }
+    private val hWidth = markPaint.measureText(HAMMER_MARK)
+    private val pWidth = markPaint.measureText(PULL_MARK)
     private val cursorPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = GOLD_DARK; strokeWidth = 2.5f * dp }
     private val cursorHead = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = GOLD_DARK }
     private val rowTint = Paint().apply { color = 0x1AE0A100 }
@@ -168,6 +205,7 @@ class TabSheetView(context: Context) : View(context) {
         val end = max(notes.maxOfOrNull { it.end } ?: 0.0, first + 1.0)
         grid = buildGrid(first, end)
         title = s.title.ifBlank { "Bouzouki line" }
+        legend = legendFor(s)
         fitTitle()
         val bpm = Beats.period(beats)?.let { (60.0 / it).roundToInt() }
         subtitle = (if (bpm != null && hasBeats) "♩ ≈ $bpm  ·  " else "") +
@@ -240,7 +278,7 @@ class TabSheetView(context: Context) : View(context) {
             if (rowGrid[r] >= 0) clock(rowT0[r])
             else (if (r == 0) "Intro" else "No bouzouki") + " · " + clock(rowT0[r]) + " – " + clock(rowT1[r])
         }
-        headerHeight = 58 * dp
+        headerHeight = if (legend.isEmpty()) 58 * dp else 72 * dp
         var y = headerHeight
         val staff = (courses - 1) * courseGap
         for (r in 0 until rowCount) {
@@ -258,9 +296,8 @@ class TabSheetView(context: Context) : View(context) {
      */
     private fun placeBoxes(s: SongAnalysis, g: Int, steps: Int): Float {
         val notes = s.notes
-        val first = s.nextAfter(grid[g] - 1e-9)
-        var end = first
-        while (end < notes.size && notes[end].start < grid[g + steps]) end++
+        val first = firstFrom(s, grid[g])
+        val end = firstFrom(s, grid[g + steps])
         var drift = 0f
         for (c in 0 until courses) {
             var prevRight = Float.NEGATIVE_INFINITY
@@ -309,11 +346,29 @@ class TabSheetView(context: Context) : View(context) {
         return out.toDoubleArray()
     }
 
+    /** The articulation marks [s] uses, explained in one line (empty when every note is simply picked). */
+    private fun legendFor(s: SongAnalysis): String {
+        val used = BooleanArray(Articulation.entries.size)
+        for (n in s.notes) used[n.articulation.ordinal] = true
+        val parts = ArrayList<String>()
+        if (used[Articulation.HAMMER.ordinal]) parts += "$HAMMER_MARK hammer-on"
+        if (used[Articulation.PULL.ordinal]) parts += "$PULL_MARK pull-off"
+        if (used[Articulation.SLIDE.ordinal]) parts += "$SLIDE_MARK slide"
+        if (used[Articulation.TREMOLO.ordinal]) parts += "/// tremolo"
+        return parts.joinToString("    ")
+    }
+
     private fun hasNotes(s: SongAnalysis, t0: Double, t1: Double): Boolean {
-        val i = s.nextAfter(t0 - 1e-9)
-        if (i < s.notes.size && s.notes[i].start < t1) return true
+        val i = firstFrom(s, t0)
+        if (i < firstFrom(s, t1)) return true
         return i > 0 && s.notes[i - 1].end > t0 + 0.05
     }
+
+    /**
+     * The first note of a row starting at [t]: a row from t0 to t1 holds the notes firstFrom(t0) until
+     * firstFrom(t1), so a note on the line between two rows (within rounding) is in the later one only.
+     */
+    private fun firstFrom(s: SongAnalysis, t: Double) = s.nextAfter(t - 1e-9)
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val w = MeasureSpec.getSize(widthMeasureSpec)
@@ -407,13 +462,17 @@ class TabSheetView(context: Context) : View(context) {
         return lo
     }
 
+    private var legendShown = ""
+
     private fun fitTitle() {
         titleShown = if (width > 0) TextUtils.ellipsize(title, titlePaint, width - 2 * margin, TextUtils.TruncateAt.END).toString() else title
+        legendShown = if (width > 0) TextUtils.ellipsize(legend, legendPaint, width - 2 * margin, TextUtils.TruncateAt.END).toString() else legend
     }
 
     private fun drawHeader(canvas: Canvas) {
         canvas.drawText(titleShown, margin, 24 * dp, titlePaint)
         canvas.drawText(subtitle, margin, 42 * dp, subtitlePaint)
+        if (legendShown.isNotEmpty()) canvas.drawText(legendShown, margin, 57 * dp, legendPaint)
         val y = headerHeight - 8 * dp
         canvas.drawLine(margin, y, width - margin, y, rulePaint)
         canvas.drawLine(margin, y + 3 * dp, width - margin, y + 3 * dp, rulePaint)
@@ -443,11 +502,15 @@ class TabSheetView(context: Context) : View(context) {
         val yBottom = courseY(r, 0)
         val beatWidth = (right - left) / steps
         val cursorX = if (current) xFor(r, time) else 0f
+        rowIsCurrent = current
+        rowCursorX = cursorX
+        playedTop = yTop - 8 * dp
+        playedBottom = yBottom + 8 * dp
         if (current) {
             canvas.drawRect(0f, top, width.toFloat(), top + rowHeight[r], rowTint)
-            canvas.drawRect(staffLeft, yTop - 8 * dp, cursorX, yBottom + 8 * dp, playedTint)
+            canvas.drawRect(staffLeft, playedTop, cursorX, playedBottom, playedTint)
         }
-        canvas.drawText(rowLabel[r], margin, top + 13 * dp, timePaint)
+        canvas.drawText(rowLabel[r], margin, top + 10.5f * dp, timePaint)
 
         // Staff: one line per course, the highest on top, its name in front.
         for (c in 0 until courses) {
@@ -470,31 +533,42 @@ class TabSheetView(context: Context) : View(context) {
         // The cursor goes under the notes, so the one playing stays readable.
         if (current) drawCursor(canvas, cursorX, yTop - 10 * dp, yBottom + 10 * dp)
 
-        // A note held over from the row before.
         val t0 = grid[g]
         val t1 = grid[g + steps]
-        val firstNote = s.nextAfter(t0 - 1e-9)
+        val notes = s.notes
+        val firstNote = firstFrom(s, t0)
+        val end = firstFrom(s, t1) // notes firstNote until end start in this row
+
+        // A note held over from the row before: its bar, and its fret again in brackets, tied over.
         val prev = firstNote - 1
-        if (prev >= 0 && s.notes[prev].end > t0 + 0.05) {
-            val n = s.notes[prev]
+        if (prev >= 0 && notes[prev].end > t0 + 0.05) {
+            val n = notes[prev]
             val y = courseY(r, n.course)
-            canvas.drawLine(staffLeft, y, xFor(r, n.end), y, if (prev == lit) holdLitPaint else holdPaint)
+            val x1 = xFor(r, n.end)
+            val tied = tiedWidth(n.fret)
+            val tx = staffLeft + 3 * dp + tied / 2
+            if (x1 >= tx + tied / 2 + 4 * dp && (firstNote >= end || notes[firstNote].course != n.course ||
+                    boxX[firstNote] - boxWidth(notes[firstNote].fret) / 2 > tx + tied / 2 + boxGap)) {
+                canvas.drawLine(tx + tied / 2, y, x1, y, if (prev == lit) holdLitPaint else holdPaint)
+                tie(canvas, staffLeft - 5 * dp, tx, y)
+                drawTied(canvas, tx, y, n.fret)
+                drawTies(canvas, s, r, prev, tx, tied / 2, end)
+            } else {
+                canvas.drawLine(staffLeft, y, x1, y, if (prev == lit) holdLitPaint else holdPaint)
+            }
         }
-        // Held notes' bars first, then the fret numbers over them.
-        var i = firstNote
-        while (i < s.notes.size && s.notes[i].start < t1) {
-            val n = s.notes[i]
-            if (isHeld(g, steps, n.start, n.end)) {
+        // Bars of held and tremolo notes first, then the fret numbers over them, then the marks.
+        for (i in firstNote until end) {
+            val n = notes[i]
+            if (hasBar(g, steps, n)) {
                 val x0 = boxX[i] + boxWidth(n.fret) / 2 + 1 * dp
                 val x1 = xFor(r, n.end)
                 val y = courseY(r, n.course)
                 if (x1 > x0 + 4 * dp) canvas.drawLine(x0, y, x1, y, if (i == lit) holdLitPaint else holdPaint)
             }
-            i++
         }
-        i = firstNote
-        while (i < s.notes.size && s.notes[i].start < t1) {
-            val n = s.notes[i]
+        for (i in firstNote until end) {
+            val n = notes[i]
             val x = boxX[i]
             val y = courseY(r, n.course)
             val half = boxWidth(n.fret) / 2
@@ -502,8 +576,159 @@ class TabSheetView(context: Context) : View(context) {
             canvas.drawRoundRect(x - half, y - boxHeight / 2, x + half, y + boxHeight / 2, 3 * dp, 3 * dp, if (on) litPaint else boxPaint)
             canvas.drawRoundRect(x - half, y - boxHeight / 2, x + half, y + boxHeight / 2, 3 * dp, 3 * dp, if (on) litEdge else boxEdge)
             canvas.drawText(fretText(n.fret), x, y + 4.6f * dp, numPaint)
-            i++
         }
+        for (i in firstNote until end) {
+            val n = notes[i]
+            if (hasBar(g, steps, n)) drawTies(canvas, s, r, i, boxX[i], boxWidth(n.fret) / 2, end)
+            when (n.articulation) {
+                Articulation.HAMMER, Articulation.PULL -> drawSlur(canvas, s, r, i, firstNote, i == lit)
+                Articulation.SLIDE -> drawSlide(canvas, s, r, i, firstNote, i == lit)
+                Articulation.TREMOLO -> drawTremolo(canvas, s, r, i)
+                Articulation.PICK -> {}
+            }
+        }
+        // A hammer-on or pull-off at the start of the next row: its slur leaves from here.
+        if (end > firstNote && s.joinsPrevious(end) && notes[end].articulation != Articulation.SLIDE) {
+            val n = notes[end - 1]
+            val y = courseY(r, n.course) - boxHeight / 2 - 1.5f * dp
+            arc(canvas, boxX[end - 1], y, right + 5 * dp, y, up = true, paint = if (end == lit) slurLitPaint else slurPaint)
+        }
+    }
+
+    /** Whether note [n] (starting in the row from grid[g]) gets a bar for its length: held long enough, or tremolo. */
+    private fun hasBar(g: Int, steps: Int, n: SongNote) = n.articulation == Articulation.TREMOLO || isHeld(g, steps, n.start, n.end)
+
+    /**
+     * Ties for note [i], whose fret number (or bracketed fret, held over), [fromHalf] wide on each side,
+     * is at [fromX] on row [r]: at each bar line it is held over, its fret again in brackets, tied to the
+     * one before, and a tie running off the row if it goes on into the next. [end] is the first note after the row.
+     */
+    private fun drawTies(canvas: Canvas, s: SongAnalysis, r: Int, i: Int, fromX: Float, fromHalf: Float, end: Int) {
+        val n = s.notes[i]
+        val g = rowGrid[r]
+        val steps = rowSteps[r]
+        val y = courseY(r, n.course)
+        val x1 = xFor(r, n.end)
+        val tied = tiedWidth(n.fret)
+        var half = fromHalf
+        var x = fromX
+        if (hasBeats) {
+            var k = BARS_EVERY
+            while (k < steps) {
+                val bar = grid[g + k]
+                val xb = left + k * ((right - left) / steps)
+                k += BARS_EVERY
+                if (x + half >= xb - 1 * dp || n.end < bar + 0.05) continue // not held over this bar line
+                val tx = xb + 2 * dp + tied / 2
+                if (tx + tied / 2 + 2 * dp > x1) continue // it ends too soon after the bar line for the brackets
+                val next = nextOnCourse(s, i, end)
+                if (next >= 0 && boxX[next] - boxWidth(s.notes[next].fret) / 2 < tx + tied / 2 + boxGap) continue
+                tie(canvas, x, tx, y)
+                drawTied(canvas, tx, y, n.fret)
+                x = tx
+                half = tied / 2
+            }
+        }
+        if (n.end > grid[g + steps] + 0.05) tie(canvas, x, right + 5 * dp, y) // on into the next row
+    }
+
+    /** The next note after [i] on its course among the notes before [end], or -1. */
+    private fun nextOnCourse(s: SongAnalysis, i: Int, end: Int): Int {
+        var j = i + 1
+        while (j < end) { if (s.notes[j].course == s.notes[i].course) return j; j++ }
+        return -1
+    }
+
+    /** A tie between two fret numbers at [x0] and [x1] on a line at [y]: a flat arc under them. */
+    private fun tie(canvas: Canvas, x0: Float, x1: Float, y: Float) {
+        val yb = y + boxHeight / 2 + 1.5f * dp
+        arc(canvas, x0 + 2 * dp, yb, x1 - 2 * dp, yb, up = false, paint = tiePaint)
+    }
+
+    /** A held-over fret in brackets, "(5)", at [x] on the line at [y], over the note's bar. */
+    private fun drawTied(canvas: Canvas, x: Float, y: Float, fret: Int) {
+        val half = tiedWidth(fret) / 2
+        clear(canvas, x - half, y - boxHeight / 2 + 2 * dp, x + half, y + boxHeight / 2 - 2 * dp)
+        canvas.drawText(tiedText(fret), x, y + 4.3f * dp, tiedPaint)
+    }
+
+    /** Paints over the lines in a small rectangle of a music row with the row's own background, for a mark on top. */
+    private fun clear(canvas: Canvas, l: Float, t: Float, r: Float, b: Float) {
+        canvas.drawRect(l, t, r, b, paperPaint)
+        if (!rowIsCurrent) return
+        canvas.drawRect(l, t, r, b, rowTint)
+        val pl = max(l, staffLeft)
+        val pr = min(r, rowCursorX)
+        val pt = max(t, playedTop)
+        val pb = min(b, playedBottom)
+        if (pl < pr && pt < pb) canvas.drawRect(pl, pt, pr, pb, playedTint)
+    }
+
+    /** The slur of a hammer-on or pull-off into note [i], from the note before (or from the row's start), with its letter. */
+    private fun drawSlur(canvas: Canvas, s: SongAnalysis, r: Int, i: Int, firstNote: Int, lit: Boolean) {
+        if (!s.joinsPrevious(i)) return
+        val n = s.notes[i]
+        val y = courseY(r, n.course) - boxHeight / 2 - 1.5f * dp
+        val x0 = if (i - 1 >= firstNote) boxX[i - 1] else staffLeft - 5 * dp
+        arc(canvas, x0, y, boxX[i], y, up = true, paint = if (lit) slurLitPaint else slurPaint)
+        // The letter sits in a gap at the top of the slur.
+        val hammer = n.articulation == Articulation.HAMMER
+        val w = (if (hammer) hWidth else pWidth) / 2 + 1.2f * dp
+        clear(canvas, apexX - w, apexY - 4.6f * dp, apexX + w, apexY + 3.6f * dp)
+        canvas.drawText(if (hammer) HAMMER_MARK else PULL_MARK, apexX, apexY + 3.2f * dp, markPaint)
+    }
+
+    /** The slanted line of a slide into note [i]: up or down as the slide goes, just before its fret number, marked "sl.". */
+    private fun drawSlide(canvas: Canvas, s: SongAnalysis, r: Int, i: Int, firstNote: Int, lit: Boolean) {
+        if (!s.joinsPrevious(i)) return
+        val n = s.notes[i]
+        val p = s.notes[i - 1]
+        val y = courseY(r, n.course)
+        val to = boxX[i] - boxWidth(n.fret) / 2 - 1.5f * dp
+        val from = if (i - 1 >= firstNote) boxX[i - 1] + boxWidth(p.fret) / 2 + 1.5f * dp else staffLeft + 2 * dp
+        val gap = to - from
+        val len = gap.coerceIn(7 * dp, 13 * dp)
+        val x1 = if (gap < len) to + (len - gap) / 2 else to // too close: centred on the gap, over the boxes' edges
+        val x0 = x1 - len
+        val rise = if (n.midi >= p.midi) 4.5f * dp else -4.5f * dp
+        canvas.drawLine(x0, y + rise, x1, y - rise, if (lit) slideLitPaint else slidePaint)
+        canvas.drawText(SLIDE_MARK, (x0 + x1) / 2, y - boxHeight / 2 - 2.5f * dp, markPaint)
+    }
+
+    /** Tremolo slashes across note [i]'s bar, or over its fret number when the bar is too short for them. */
+    private fun drawTremolo(canvas: Canvas, s: SongAnalysis, r: Int, i: Int) {
+        val n = s.notes[i]
+        val y = courseY(r, n.course)
+        val x0 = boxX[i] + boxWidth(n.fret) / 2 + 1 * dp
+        val x1 = xFor(r, n.end)
+        if (x1 - x0 >= 18 * dp) {
+            for (k in 0..2) {
+                val x = x0 + 6 * dp + k * 4 * dp
+                canvas.drawLine(x - 2.2f * dp, y + 4.5f * dp, x + 2.2f * dp, y - 4.5f * dp, tremoloPaint)
+            }
+        } else {
+            val yt = y - boxHeight / 2 - 5 * dp
+            for (k in -1..1) {
+                val x = boxX[i] + k * 3.5f * dp
+                canvas.drawLine(x - 1.6f * dp, yt + 3 * dp, x + 1.6f * dp, yt - 3 * dp, tremoloPaint)
+            }
+        }
+    }
+
+    /**
+     * A slur ([up]) or tie from ([x0], [y0]) to ([x1], [y1]): a quadratic arc, higher for longer
+     * spans (within a few dp). Leaves its middle in [apexX], [apexY].
+     */
+    private fun arc(canvas: Canvas, x0: Float, y0: Float, x1: Float, y1: Float, up: Boolean, paint: Paint) {
+        val h = (abs(x1 - x0) * if (up) 0.2f else 0.12f).coerceIn(2.5f * dp, if (up) 6 * dp else 5 * dp)
+        val cx = (x0 + x1) / 2
+        val cy = if (up) min(y0, y1) - 2 * h else max(y0, y1) + 2 * h
+        path.reset()
+        path.moveTo(x0, y0)
+        path.quadTo(cx, cy, x1, y1)
+        canvas.drawPath(path, paint)
+        apexX = cx
+        apexY = (y0 + 2 * cy + y1) / 4
     }
 
     private fun drawCursor(canvas: Canvas, x: Float, y0: Float, y1: Float) {
@@ -528,6 +753,13 @@ class TabSheetView(context: Context) : View(context) {
         if (fret !in boxWidths.indices) return max(numPaint.measureText(fretText(fret)) + 6 * dp, 14 * dp)
         if (boxWidths[fret] == 0f) boxWidths[fret] = max(numPaint.measureText(fretText(fret)) + 6 * dp, 14 * dp)
         return boxWidths[fret]
+    }
+
+    /** Width of a held-over fret in brackets, measured once per fret. */
+    private fun tiedWidth(fret: Int): Float {
+        if (fret !in tiedWidths.indices) return tiedPaint.measureText(tiedText(fret)) + 2 * dp
+        if (tiedWidths[fret] == 0f) tiedWidths[fret] = tiedPaint.measureText(tiedText(fret)) + 2 * dp
+        return tiedWidths[fret]
     }
 
     // --- following the song ---
@@ -609,8 +841,9 @@ class TabSheetView(context: Context) : View(context) {
             var bestD = 20 * dp
             val t0 = grid[rowGrid[r]]
             val t1 = grid[rowGrid[r] + rowSteps[r]]
-            var i = s.nextAfter(t0 - 1e-9)
-            while (i < s.notes.size && s.notes[i].start < t1) {
+            var i = firstFrom(s, t0)
+            val end = firstFrom(s, t1)
+            while (i < end) {
                 val n = s.notes[i]
                 val dx = abs(boxX[i] - x)
                 val dy = abs(courseY(r, n.course) - y)
@@ -627,6 +860,11 @@ class TabSheetView(context: Context) : View(context) {
         const val BEATS_PER_ROW = 8
         const val SECONDS_PER_ROW = 4.0
         private const val FOLLOW_PAUSE_MS = 4000L
+        /** Beats from one bar line to the next. */
+        private const val BARS_EVERY = 4
+        private const val HAMMER_MARK = "h"
+        private const val PULL_MARK = "p"
+        private const val SLIDE_MARK = "sl."
 
         private const val PAPER = 0xFFF7F0E1.toInt()
         private const val INK = 0xFF2A2420.toInt()
@@ -636,7 +874,9 @@ class TabSheetView(context: Context) : View(context) {
 
         private fun ink(alpha: Int) = (INK and 0x00FFFFFF) or (alpha shl 24)
         private val FRETS = Array(40) { it.toString() }
+        private val TIED = Array(40) { "($it)" }
         private fun fretText(fret: Int) = FRETS.getOrElse(fret) { "?" }
+        private fun tiedText(fret: Int) = TIED.getOrElse(fret) { "(?)" }
 
         private fun clock(t: Double): String {
             val s = max(0, t.toInt())

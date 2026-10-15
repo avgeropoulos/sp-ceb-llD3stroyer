@@ -67,6 +67,12 @@ class FretboardView(context: Context, private val synth: BouzoukiSynth) : View(c
     /** Where the song goes next, marked with a hollow ring so the hand can get ready. */
     var nextCell: Cell? = null
         set(v) { if (field != v) { field = v; invalidate() } }
+    /**
+     * Where the live note was hammered, pulled or slid from (on its course), drawn as a gold trail
+     * along the string into it; null when the live note is picked.
+     */
+    var legatoFrom: Cell? = null
+        set(v) { if (field != v) { field = v; invalidate() } }
     /** The frets of the hand position the scale player runs across, shaded on the neck. */
     var focusFrets: IntRange? = null
         set(v) { field = v; invalidate() }
@@ -168,6 +174,11 @@ class FretboardView(context: Context, private val synth: BouzoukiSynth) : View(c
     private val glowPaint = Paint(aa).apply {
         shader = RadialGradient(0f, 0f, 1f, intArrayOf(0xD8FFC860.toInt(), 0x66FFB030, 0x00FFA000),
             floatArrayOf(0f, 0.45f, 1f), Shader.TileMode.CLAMP)
+    }
+    /** The legato trail: transparent where the finger was, gold where it is now (unit space, 0 to 1 down). */
+    private val trailPaint = Paint(aa).apply {
+        shader = LinearGradient(0f, 0f, 0f, 1f, intArrayOf(0x00FFC860, 0x70FFC860, 0xE8FFD866.toInt()),
+            floatArrayOf(0f, 0.4f, 1f), Shader.TileMode.CLAMP)
     }
     private val ring = Paint(aa).apply { style = Paint.Style.STROKE }
     private val text = Paint(aa).apply {
@@ -835,6 +846,19 @@ class FretboardView(context: Context, private val synth: BouzoukiSynth) : View(c
             val y = cellCenterY(cell.fret)
             val cellH = if (cell.fret == 0) openRow else fretHeight(cell.fret)
             val r = max(min(courseWidth * 0.40f, cellH * 0.44f), 11 * dp) // stays readable zoomed out
+            legatoFrom?.takeIf { it.course == cell.course && it.fret != cell.fret && onNeck(it) }?.let { from ->
+                // Hammered, pulled or slid here: a gold trail along the string from where the finger was.
+                val y0 = cellCenterY(from.fret)
+                val half = min(max(2.5f * dp, courseWidth * 0.07f), 4 * dp)
+                canvas.save()
+                canvas.translate(x, y0)
+                canvas.scale(1f, y - y0)
+                canvas.drawRect(-half, 0f, half, 1f, trailPaint)
+                canvas.restore()
+                ring.strokeWidth = 1.5f * dp
+                ring.color = 0x90FFD36A.toInt()
+                canvas.drawCircle(x, y0, r * 0.42f, ring)
+            }
             unitCircle(canvas, x, y, r * 2.3f, glowPaint)
             token(canvas, x, y, r, liveFace, 0xFFFFF6DA.toInt(), 3 * dp)
             ring.strokeWidth = 1.2f * dp
