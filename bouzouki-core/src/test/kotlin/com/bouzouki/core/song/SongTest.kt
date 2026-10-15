@@ -248,7 +248,12 @@ class BasicPitchTest {
         val env = OrtEnvironment.getEnvironment()
         return env.createSession(model.path, OrtSession.SessionOptions()).use { session ->
             val act = BasicPitch(env, session).activations(audio)
-            SongAnalyzer.bouzoukiLine(SongAnalyzer.candidates(act), Instrument.TETRACHORDO, act)
+            val line = SongAnalyzer.bouzoukiLine(SongAnalyzer.candidates(act), Instrument.TETRACHORDO, act)
+            // Knowing where the plectrum strikes changes nothing on picked notes: same line, nothing legato.
+            val withAttacks = SongAnalyzer.bouzoukiLine(SongAnalyzer.candidates(act), Instrument.TETRACHORDO, act, Attacks.of(audio))
+            assertEquals(line.map { it.start to it.midi }, withAttacks.map { it.start to it.midi })
+            assertEquals(line.map { it.articulation }, withAttacks.map { it.articulation })
+            line
         }
     }
 
@@ -305,6 +310,8 @@ class BasicPitchTest {
         assertTrue(errors.all { abs(it) < 0.015 }, "onset errors $errors")
         assertTrue(errors.map { abs(it) }.sorted()[errors.size / 2] < 0.005, "median onset error, errors $errors")
         assertTrue(line[run.size].end > tremStart + 2 * beat - 0.1, "the tremolo is held: ${line[run.size]}")
+        assertEquals(Articulation.TREMOLO, line[run.size].articulation)
+        assertTrue(line.filterIndexed { i, _ -> i != run.size }.all { it.articulation == Articulation.PICK })
     }
 
     @Test
@@ -368,10 +375,12 @@ class ReferenceTest {
 
 /**
  * The bouzouki line on the synthesized evaluation songs (written by the scratch evaluation's
- * export_kotlin.py: activations, the Python model's line, ground truth and the mix of each song).
- * Given the same activations the Kotlin line must be the Python one; with EVAL_FULL and
- * BOUZOUKI_ML_DIR set, the whole analysis (vocal removal included) runs on every mix and is scored.
- * Only runs where EVAL_DIR points at the exported songs.
+ * export_kotlin.py into kotlin_legato/: activations and pitch contours, the instrumental Basic Pitch
+ * heard, the Python model's line with its articulations, the ground truth and the mix of each song).
+ * Given the same activations and audio, the Kotlin line must be the Python one, articulations included
+ * (an older export without contours and audio, like kotlin/, compares the line without attacks); with
+ * EVAL_FULL and BOUZOUKI_ML_DIR set, the whole analysis (vocal removal included) runs on every mix and is
+ * scored. Only runs where EVAL_DIR points at the exported songs.
  */
 class EvalTest {
     private val dir = System.getenv("EVAL_DIR")?.let { File(it) }
@@ -383,51 +392,118 @@ class EvalTest {
         return Array(b.remaining() / cols) { FloatArray(cols).also { row -> b.get(row) } }
     }
 
-    /** (onset, midi) of each row of a start,end,midi[,kind] file. */
-    private fun csv(f: File) = f.readLines().filter { it.isNotBlank() }.map { it.split(",") }.map { it[0].toDouble() to it[2].toInt() }
-
-    /** One-to-one matching (same pitch, onsets within [tol], closest pairs first); the onset errors of the pairs. */
-    private fun match(ref: List<Pair<Double, Int>>, est: List<Pair<Double, Int>>, tol: Double = 0.05): List<Double> {
-        val pairs = ArrayList<Triple<Int, Int, Double>>()
-        for ((i, r) in ref.withIndex()) for ((j, e) in est.withIndex()) {
-            if (r.second == e.second && abs(e.first - r.first) <= tol) pairs += Triple(i, j, e.first - r.first)
-        }
-        val usedR = HashSet<Int>(); val usedE = HashSet<Int>(); val errors = ArrayList<Double>()
-        for ((i, j, d) in pairs.sortedBy { abs(it.third) }) {
-            if (i !in usedR && j !in usedE) { usedR += i; usedE += j; errors += d }
-        }
-        return errors
+    private fun samples(f: File): FloatArray {
+        val b = ByteBuffer.wrap(f.readBytes()).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
+        return FloatArray(b.remaining()).also { b.get(it) }
     }
 
+    private fun bytes(f: File, cols: Int): Array<ByteArray> {
+        val all = f.readBytes()
+        return Array(all.size / cols) { all.copyOfRange(it * cols, (it + 1) * cols) }
+    }
+
+    /** A note of a start,end,midi[,kind][,articulation] file (no articulation: as the synth's kind says, else picked). */
+    private class Row(val start: Double, val midi: Int, val articulation: Articulation)
+
+    private val kinds = mapOf("hammer" to Articulation.HAMMER, "pull" to Articulation.PULL, "slideB" to Articulation.SLIDE, "tremolo" to Articulation.TREMOLO)
+
+    private fun rows(f: File) = f.readLines().filter { it.isNotBlank() }.map { it.split(",") }.map { c ->
+        Row(c[0].toDouble(), c[2].toInt(), Articulation.entries.firstOrNull { it.name == c.last() } ?: kinds[c.last()] ?: Articulation.PICK)
+    }
+
+    private fun rows(notes: List<NoteEvent>) = notes.map { Row(it.start, it.midi, it.articulation) }
+
+    /** One-to-one matching (same pitch, onsets within [tol], closest pairs first): (ref index, est index, onset error). */
+    private fun match(ref: List<Row>, est: List<Row>, tol: Double = 0.05): List<Triple<Int, Int, Double>> {
+        val pairs = ArrayList<Triple<Int, Int, Double>>()
+        for ((i, r) in ref.withIndex()) for ((j, e) in est.withIndex()) {
+            if (r.midi == e.midi && abs(e.start - r.start) <= tol) pairs += Triple(i, j, e.start - r.start)
+        }
+        val usedR = HashSet<Int>(); val usedE = HashSet<Int>(); val out = ArrayList<Triple<Int, Int, Double>>()
+        for (p in pairs.sortedBy { abs(it.third) }) {
+            if (p.first !in usedR && p.second !in usedE) { usedR += p.first; usedE += p.second; out += p }
+        }
+        return out
+    }
+
+    /** Line scores against the ground truth, and how well the legato notes are found and marked. */
     private class Score {
         var tp = 0; var est = 0; var ref = 0; val errors = ArrayList<Double>()
-        fun add(e: List<Double>, nEst: Int, nRef: Int) { tp += e.size; est += nEst; ref += nRef; errors += e }
+        var legato = 0; var found = 0; var marked = 0; var estLegato = 0; var estLegatoRight = 0; var right = 0
+
+        fun add(gt: List<Row>, line: List<Row>, pairs: List<Triple<Int, Int, Double>>) {
+            tp += pairs.size; est += line.size; ref += gt.size; errors += pairs.map { it.third }
+            val byGt = pairs.associate { it.first to it.second }
+            val byLine = pairs.associate { it.second to it.first }
+            for ((i, g) in gt.withIndex()) if (g.articulation.isLegato) {
+                legato++
+                val j = byGt[i] ?: continue
+                found++
+                if (line[j].articulation == g.articulation) marked++
+            }
+            for ((j, n) in line.withIndex()) if (n.articulation.isLegato) {
+                estLegato++
+                if (byLine[j]?.let { gt[it].articulation } == n.articulation) estLegatoRight++
+            }
+            right += pairs.count { (i, j, _) -> gt[i].articulation == line[j].articulation }
+        }
+
+        fun add(o: Score) {
+            tp += o.tp; est += o.est; ref += o.ref; errors += o.errors
+            legato += o.legato; found += o.found; marked += o.marked; estLegato += o.estLegato; estLegatoRight += o.estLegatoRight; right += o.right
+        }
+
         val f get() = 2.0 * tp / (est + ref)
+
         override fun toString(): String {
             val ms = errors.map { it * 1000 }
             val mean = ms.average()
             val std = sqrt(ms.sumOf { (it - mean) * (it - mean) } / ms.size)
             return "P %.3f R %.3f F %.3f | onset error mean %+.1f ms, |mean| %.1f ms, std %.1f ms".format(
-                tp.toDouble() / est, tp.toDouble() / ref, f, mean, ms.map { abs(it) }.average(), std)
+                tp.toDouble() / est, tp.toDouble() / ref, f, mean, ms.map { abs(it) }.average(), std) +
+                " | legato found %d/%d, marked %d, marks right %d/%d, articulations right %d/%d".format(
+                    found, legato, marked, estLegatoRight, estLegato, right, tp)
         }
     }
 
     @Test
     fun kotlinLineIsThePythonLine() {
         val d = dir ?: return
-        val total = Score()
+        val bySet = LinkedHashMap<String, Score>()
         for (song in songs(d)) {
-            val act = BasicPitch.Activations(floats(File(song, "frames.f32"), 88), floats(File(song, "onsets.f32"), 88))
-            val line = SongAnalyzer.bouzoukiLine(SongAnalyzer.candidates(act), Instrument.TETRACHORDO, act).map { it.start to it.midi }
-            val python = csv(File(song, "line.csv"))
-            val same = match(python, line, 0.001).size
-            val gt = csv(File(song, "gt.csv"))
-            val s = Score().apply { add(match(gt, line), line.size, gt.size) }
-            total.add(match(gt, line), line.size, gt.size)
-            println("%-28s same as python %d/%d (kotlin %d) | %s".format(song.name, same, python.size, line.size, s))
-            assertTrue(same >= python.size * 0.98 && same >= line.size * 0.98, "${song.name}: $same of ${python.size}/${line.size}")
+            val contours = File(song, "contours.u8").takeIf { it.exists() }?.let { bytes(it, BasicPitch.N_CONTOUR_BINS) }
+            val act = BasicPitch.Activations(floats(File(song, "frames.f32"), 88), floats(File(song, "onsets.f32"), 88), contours)
+            val attacks = File(song, "audio22.f32").takeIf { it.exists() }?.let { Attacks.of(samples(it)) }
+            if (attacks != null) {
+                // The attack tracks are the Python ones (float32 rounding apart).
+                for ((mine, theirs) in listOf(attacks.rises to samples(File(song, "rise.f32")), attacks.energies to samples(File(song, "energy.f32")))) {
+                    assertEquals(theirs.size, mine.size, "${song.name}: attack frames")
+                    val scale = theirs.maxOrNull() ?: 1f
+                    val err = mine.indices.maxOfOrNull { abs(mine[it] - theirs[it]) } ?: 0f
+                    assertTrue(err <= 1e-4 * scale, "${song.name}: attack track differs by $err (max $scale)")
+                }
+            }
+            val line = rows(SongAnalyzer.bouzoukiLine(SongAnalyzer.candidates(act), Instrument.TETRACHORDO, act, attacks))
+            val python = rows(File(song, "line.csv"))
+            val same = match(python, line, 0.001)
+            val sameArticulation = same.count { (i, j, _) -> python[i].articulation == line[j].articulation }
+            val gt = rows(File(song, "gt.csv"))
+            val s = Score().apply { add(gt, line, match(gt, line)) }
+            val set = File(song, "set.txt").takeIf { it.exists() }?.readText()?.trim() ?: "songs"
+            bySet.getOrPut(set) { Score() }.add(s)
+            println("%-28s same as python %d/%d (kotlin %d), articulations %d | %s".format(
+                song.name, same.size, python.size, line.size, sameArticulation, s))
+            assertTrue(same.size >= python.size * 0.98 && same.size >= line.size * 0.98, "${song.name}: ${same.size} of ${python.size}/${line.size}")
+            // An export from before articulations (start,end,midi only) has none to compare.
+            val withArticulations = File(song, "line.csv").useLines { l -> l.firstOrNull()?.split(",")?.size ?: 0 } >= 4
+            if (withArticulations) assertTrue(sameArticulation >= same.size * 0.98, "${song.name}: articulations $sameArticulation of ${same.size}")
         }
-        println("all songs: $total")
+        val earlier = Score()
+        for ((set, s) in bySet) {
+            println("%-18s %s".format(set, s))
+            if (set in listOf("songs", "songs_test", "songs_rep")) earlier.add(s)
+        }
+        if (earlier.ref > 0) println("13 earlier songs:  $earlier")
     }
 
     @Test
@@ -445,11 +521,11 @@ class EvalTest {
                     val mix = readWav(File(song, "mix.wav"))
                     val t0 = System.nanoTime()
                     val a = analyzer.analyze(song.name, song.name, mix[0], mix[1], Instrument.TETRACHORDO)
-                    val line = a.notes.map { it.start to it.midi }
-                    val gt = csv(File(song, "gt.csv"))
-                    val errors = match(gt, line)
-                    total.add(errors, line.size, gt.size)
-                    println("%-28s %.0f s | %s".format(song.name, (System.nanoTime() - t0) / 1e9, Score().apply { add(errors, line.size, gt.size) }))
+                    val line = a.notes.map { Row(it.start, it.midi, it.articulation) }
+                    val gt = rows(File(song, "gt.csv"))
+                    val s = Score().apply { add(gt, line, match(gt, line)) }
+                    total.add(s)
+                    println("%-28s %.0f s | %s".format(song.name, (System.nanoTime() - t0) / 1e9, s))
                 }
             }
         }

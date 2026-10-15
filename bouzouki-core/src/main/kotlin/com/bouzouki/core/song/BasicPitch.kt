@@ -12,8 +12,10 @@ import kotlin.math.max
  * A transcribed note: start and end in seconds, MIDI pitch, and loudness 0..1.
  * Notes from [BasicPitch.notes] also carry the evidence the melody tracker weighs:
  * [onset] is the onset activation where the note starts (0 if it has no clear onset) and
- * [salience] the strongest note activation in its first frames; [frame] is its first model frame.
+ * [salience] the strongest note activation in its first frames; [frame] is its first model frame and [endFrame] the
+ * frame it ends at.
  * A note made by hand (onset = NaN) is one that was already chosen, e.g. from a saved line.
+ * The bouzouki line marks how each of its notes is sounded in [articulation].
  */
 data class NoteEvent(
     val start: Double,
@@ -23,6 +25,8 @@ data class NoteEvent(
     val onset: Double = Double.NaN,
     val salience: Double = amplitude,
     val frame: Int = -1,
+    val endFrame: Int = -1,
+    val articulation: Articulation = Articulation.PICK,
 )
 
 /**
@@ -32,8 +36,15 @@ data class NoteEvent(
  * basic_pitch's (exact window offsets, onsets refined between frames, latency corrected).
  */
 class BasicPitch(private val env: OrtEnvironment, private val session: OrtSession) {
-    /** Frame-by-frame note and onset activations, [frame][key] for 88 piano keys from A0. */
-    class Activations(val frames: Array<FloatArray>, val onsets: Array<FloatArray>)
+    /**
+     * Frame-by-frame note and onset activations, [frame][key] for 88 piano keys from A0, and the pitch
+     * [contours] (null when not computed): [frame][bin], 3 bins a semitone with MIDI m at bin 3·(m − 21) + 1,
+     * each activation 0..1 stored as 0..255 (a quarter of the memory of floats; read with [contour]).
+     */
+    class Activations(val frames: Array<FloatArray>, val onsets: Array<FloatArray>, val contours: Array<ByteArray>? = null) {
+        /** The contour activation 0..1 at [frame] and [bin]; 0 without contours. */
+        fun contour(frame: Int, bin: Int): Double = contours?.let { (it[frame][bin].toInt() and 0xFF) / 255.0 } ?: 0.0
+    }
 
     /** Runs the model over [audio] (mono, 22050 Hz). */
     fun activations(audio: FloatArray, progress: (Float) -> Unit = {}, cancelled: () -> Boolean = { false }): Activations {
@@ -44,6 +55,7 @@ class BasicPitch(private val env: OrtEnvironment, private val session: OrtSessio
         val nOut = floor(audio.size * (ANNOTATIONS_FPS.toDouble() / SAMPLE_RATE)).toInt()
         val frames = ArrayList<FloatArray>(nOut)
         val onsets = ArrayList<FloatArray>(nOut)
+        val contours = ArrayList<ByteArray>(nOut)
         val olap = OVERLAP_FRAMES / 2
         var w = 0
         while (w < windows) {
@@ -56,9 +68,10 @@ class BasicPitch(private val env: OrtEnvironment, private val session: OrtSessio
                 if (len > 0) System.arraycopy(padded, start, input, b * AUDIO_N_SAMPLES, len)
             }
             OnnxTensor.createTensor(env, FloatBuffer.wrap(input), longArrayOf(batch.toLong(), AUDIO_N_SAMPLES.toLong(), 1)).use { tensor ->
-                session.run(mapOf(INPUT to tensor), setOf(NOTE_OUT, ONSET_OUT)).use { res ->
+                session.run(mapOf(INPUT to tensor), setOf(NOTE_OUT, ONSET_OUT, CONTOUR_OUT)).use { res ->
                     val note = (res.get(NOTE_OUT).get() as OnnxTensor).floatBuffer
                     val onset = (res.get(ONSET_OUT).get() as OnnxTensor).floatBuffer
+                    val contour = (res.get(CONTOUR_OUT).get() as OnnxTensor).floatBuffer
                     for (b in 0 until batch) {
                         // Drop half the overlapping frames at each side of every window.
                         for (f in olap until ANNOT_N_FRAMES - olap) {
@@ -66,6 +79,8 @@ class BasicPitch(private val env: OrtEnvironment, private val session: OrtSessio
                             val base = (b * ANNOT_N_FRAMES + f) * N_KEYS
                             frames += FloatArray(N_KEYS) { note.get(base + it) }
                             onsets += FloatArray(N_KEYS) { onset.get(base + it) }
+                            val cBase = (b * ANNOT_N_FRAMES + f) * N_CONTOUR_BINS
+                            contours += ByteArray(N_CONTOUR_BINS) { quantize(contour.get(cBase + it)) }
                         }
                     }
                 }
@@ -73,7 +88,7 @@ class BasicPitch(private val env: OrtEnvironment, private val session: OrtSessio
             w += batch
             progress(w.toFloat() / windows)
         }
-        return Activations(frames.toTypedArray(), onsets.toTypedArray())
+        return Activations(frames.toTypedArray(), onsets.toTypedArray(), contours.toTypedArray())
     }
 
     companion object {
@@ -84,11 +99,16 @@ class BasicPitch(private val env: OrtEnvironment, private val session: OrtSessio
         const val ANNOT_N_FRAMES = ANNOTATIONS_FPS * 2        // 172
         const val N_KEYS = 88
         const val MIDI_OFFSET = 21
+        const val N_CONTOUR_BINS = 264
         private const val OVERLAP_FRAMES = 30
         private const val BATCH = 4
         private const val INPUT = "serving_default_input_2:0"
         private const val NOTE_OUT = "StatefulPartitionedCall:1"
         private const val ONSET_OUT = "StatefulPartitionedCall:2"
+        private const val CONTOUR_OUT = "StatefulPartitionedCall:0"
+
+        /** A contour activation 0..1 as the byte 0..255 (rounded). */
+        fun quantize(v: Float): Byte = (v * 255f + 0.5f).toInt().coerceIn(0, 255).toByte()
 
         /** Output frames kept from each model window (half the overlap is dropped at each side). */
         private const val KEPT_FRAMES = ANNOT_N_FRAMES - OVERLAP_FRAMES
@@ -185,6 +205,7 @@ class BasicPitch(private val env: OrtEnvironment, private val session: OrtSessio
                     onset = if (fromOnset == 1) onsets[s][k].toDouble() else 0.0,
                     salience = sal.toDouble(),
                     frame = s,
+                    endFrame = e,
                 )
             }.sortedBy { it.start }
         }
