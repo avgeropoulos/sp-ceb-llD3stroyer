@@ -13,15 +13,19 @@ import com.bouzouki.core.song.SongAnalyzer
 import com.bouzouki.core.song.TabAligner
 import com.bouzouki.core.song.TabParser
 import java.lang.ref.SoftReference
+import java.util.concurrent.CancellationException
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 
 /**
  * A saved song's line derived again, off the main thread, from what it was derived from (its
  * [AnalysisData], saved next to it by [SongJobs]): with fewer or more notes ([Spec.Detected]), or
  * made of the notes of a tab the player pasted, lined up with the recording ([Spec.FromTab]).
- * One at a time, in the order asked. Lines are kept for a while (the last few), so going back and
- * forth is instant, and handed on the main thread to the screens listening. The work holds no
- * screen, so leaving or turning the screen meanwhile leaks nothing.
+ * One at a time, in the order asked; a line no longer wanted (another line of the song was asked for
+ * since, or [settle]d on) isn't worked out, and one being worked out stops. Lines are kept for a while
+ * (the last few), so going back and forth is instant, and handed on the main thread to the screens
+ * listening. The work holds no screen, so leaving or turning the screen meanwhile leaks nothing (a
+ * line being worked out goes on, for next time).
  */
 object SongLines {
     /** Which line of song [id]. */
@@ -42,9 +46,10 @@ object SongLines {
 
     /**
      * How a tab lined up: [tab] as read, and [matched] of its [total] notes found in the recording, not
-     * those in [missing]; [differs] were heard only at another pitch. [sources] says which tab note each
-     * note of the line comes from (-1: a detected note, kept where the tab isn't heard). The recording is
-     * [transpose] semitones (and [octave] octaves) above the tab. See [TabAlignment].
+     * those in [missing]: [differs] of those were heard, but at another pitch ([moved] of them shown at the
+     * pitch heard, the others as written), the rest not at all ([notHeard]). [sources] says which tab note
+     * each note of the line comes from (-1: a detected note, kept where the tab isn't heard). The recording
+     * is [transpose] semitones (and [octave] octaves) above the tab. See [TabAlignment].
      */
     class TabReport(
         val tab: ParsedTab,
@@ -55,9 +60,13 @@ object SongLines {
         val differs: List<Int>,
         val transpose: Int,
         val octave: Int,
+        val moved: List<Int> = emptyList(),
     ) {
+        /** The tab notes not heard in the recording at all (those heard at another pitch aren't). */
+        val notHeard: List<Int> = differs.toHashSet().let { off -> missing.filter { it !in off } }
+
         /** The line's notes (by index) from tab notes not heard in the recording, and from those heard at another pitch. */
-        val unheard: Set<Int> = notesFrom(missing)
+        val unheard: Set<Int> = notesFrom(notHeard)
         val offPitch: Set<Int> = notesFrom(differs)
 
         private fun notesFrom(tabNotes: List<Int>): Set<Int> {
@@ -91,6 +100,9 @@ object SongLines {
     }
     private val running = HashSet<Key>()
 
+    /** The line last asked for, for each song: the worker skips (or stops) work on any other. */
+    private val latest = ConcurrentHashMap<String, Spec>()
+
     // The last song's data, for the worker only: reading it again takes a moment.
     private var lastData: Triple<String, Long, SoftReference<AnalysisData>>? = null
 
@@ -105,6 +117,7 @@ object SongLines {
      */
     fun request(context: Context, base: SongAnalysis, spec: Spec): Outcome? {
         val app = context.applicationContext
+        latest[spec.id] = spec
         val stamp = SongJobs.dataStamp(app, spec.id)
         if (stamp == 0L) return Outcome.NoData(spec)
         val key = Key(spec, stamp)
@@ -112,8 +125,11 @@ object SongLines {
         if (!running.add(key)) return null
         worker.execute {
             Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
-            val out = try {
-                derive(app, base, spec, stamp)
+            val stale = { latest[spec.id] != spec }
+            val out = if (stale()) null else try {
+                derive(app, base, spec, stamp, stale)
+            } catch (_: CancellationException) {
+                null // asked for another line of the song meanwhile
             } catch (_: OutOfMemoryError) {
                 lastData = null
                 Outcome.Failed(spec, if (spec is Spec.FromTab) "The tab is too long for the phone's memory: paste a shorter part of it."
@@ -123,6 +139,7 @@ object SongLines {
             }
             main.post {
                 running -= key
+                if (out == null) return@post
                 if (out is Outcome.Line) done[key] = out
                 for (l in listeners.toList()) l(out)
             }
@@ -130,7 +147,10 @@ object SongLines {
         return null
     }
 
-    private fun derive(app: Context, base: SongAnalysis, spec: Spec, stamp: Long): Outcome {
+    /** The song [id] shows its prepared line now: work on any other line of it is no longer wanted. */
+    fun settle(id: String) { latest.remove(id) }
+
+    private fun derive(app: Context, base: SongAnalysis, spec: Spec, stamp: Long, stale: () -> Boolean): Outcome {
         val data = data(app, spec.id, stamp)
         if (data == null) {
             SongJobs.dropData(app, spec.id, stamp) // it can't be read: the song asks to be prepared again
@@ -145,8 +165,8 @@ object SongLines {
                     return Outcome.Failed(spec, "it has ${tab.notes.size} notes, more than the $MAX_TAB_NOTES a tab can have here. Copy just this song's bouzouki part.")
                 }
                 // Lined up against the song fingered for the player's bouzouki, so the line keeps the tab's frets on it.
-                val a = TabAligner.align(tab, data, base.forInstrument(spec.instrument))
-                Outcome.Line(spec, a.song, TabReport(tab, a.matched, a.total, a.missing, a.sources, a.differs, a.transpose, a.octave))
+                val a = TabAligner.align(tab, data, base.forInstrument(spec.instrument), cancelled = stale)
+                Outcome.Line(spec, a.song, TabReport(tab, a.matched, a.total, a.missing, a.sources, a.differs, a.transpose, a.octave, a.moved))
             }
         }
     }

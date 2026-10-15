@@ -403,6 +403,46 @@ class TabParserTest {
     }
 
     @Test
+    fun greekRepeatMarksAndHeadingsAsGreekKeyboardsTypeThem() {
+        // The X key on a Greek keyboard types χ: a count after a tab line, on a heading, or between bars.
+        val phrase = "D|-0-2-4-5-|-7-5-4-2-|\nA|---------|---------|\nF|---------|---------|\nC|---------|---------|"
+        for (mark in listOf("  x2", "  Χ2", "  χ2", "  (Χ2)", "  2Χ")) {
+            val lines = phrase.lines().toMutableList()
+            lines[0] += mark
+            val tab = TabParser.parse("Εισαγωγή\n" + lines.joinToString("\n"), tetra)
+            assertEquals(8, tab.notes.size, "$mark: ${tab.warnings}")
+            assertEquals(listOf(TabSection(0, 8, 2, "intro")), tab.sections, mark)
+            assertTrue(tab.warnings.isEmpty() && tab.unread == 0, "$mark: ${tab.warnings}")
+        }
+        assertEquals(2, TabParser.parse("Εισαγωγή Χ2\n$phrase", tetra).sections.single().times)
+        assertEquals(2, TabParser.parse("ΡΕΦΡΕΝ (Χ2)\n$phrase", tetra).sections.single().times)
+        val between = TabParser.parse("D|-0-2-| Χ3 |-4-5-|\nA|-----|    |-----|\nF|-----|    |-----|\nC|-----|    |-----|", tetra)
+        assertEquals(listOf(TabSection(0, 2, 3), TabSection(2, 4, 1)), between.sections)
+        // Words with χ in them stay words, and a line that can't be read is counted.
+        val bad = TabParser.parse("$phrase\nD|-0-1-4-5-|-7-5-4-ψ-|\nA|---------|---------|", tetra)
+        assertEquals(1, bad.unread)
+
+        // Ρεφραίν, numbers written before the part (2ο, Β'), a count with a χ, and Τέλος at the end.
+        fun system(fret: Int) = "d|--$fret--${fret + 2}--|\nA|----------|\nD|----------|\n"
+        val tab = TabParser.parse(
+            "Εισαγωγή Χ2\n" + system(0) + "\n1ο Κουπλέ\n" + system(3) + "\nΡεφραίν χ2\n" + system(5) +
+                "\nΒ' Κουπλέ\n" + system(7) + "\nΡεφρέν 2Χ\n\nΤέλος\n", tri,
+        )
+        assertEquals(
+            listOf(TabSection(0, 2, 2, "intro"), TabSection(2, 4, 1, "verse 1"), TabSection(4, 6, 2, "chorus"),
+                TabSection(6, 8, 1, "verse 2"), TabSection(4, 6, 2, "chorus")),
+            tab.sections,
+        )
+        assertTrue(tab.warnings.isEmpty(), "${tab.warnings}")
+        // A part named with no tab and nothing before it to play again: said with the heading as written.
+        val lone = TabParser.parse(system(0) + "\nΡεφρέν\n", tri)
+        assertEquals(listOf("\"Ρεφρέν\" on line 5 has no tab under it, and no part of that name before it to play again"), lone.warnings)
+        // A short line naming a part that isn't read as a heading is said.
+        val odd = TabParser.parse("Το κουπλέ αργά\n" + system(0), tri)
+        assertTrue(odd.warnings.single().startsWith("Read line 1 as text"), "${odd.warnings}")
+    }
+
+    @Test
     fun spacesOrTabCharactersForDashes() {
         val spaces = TabParser.parse("D|  5  7  8  7  5  |\nA|                 |\nF|                 |\nC|                 |", tetra)
         assertEquals(listOf(67, 69, 70, 69, 67), spaces.pitches())

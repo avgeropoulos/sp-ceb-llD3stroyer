@@ -389,6 +389,7 @@ private fun tabParams(spec: String): TabAligner.Params {
             "keepNear" -> p.copy(keepNear = f.toDouble()); "keepEvidence" -> p.copy(keepEvidence = f)
             "correctWithin" -> p.copy(correctWithin = f.toDouble()); "keepSame" -> p.copy(keepSame = f)
             "noteWindow" -> p.copy(noteWindow = f.toDouble()); "noteBeam" -> p.copy(noteBeam = f)
+            "repeatWithin" -> p.copy(repeatWithin = f.toDouble()); "clearOnset" -> p.copy(clearOnset = f); "keepExact" -> p.copy(keepExact = f)
             else -> error("unknown aligner weight $k")
         }
     }

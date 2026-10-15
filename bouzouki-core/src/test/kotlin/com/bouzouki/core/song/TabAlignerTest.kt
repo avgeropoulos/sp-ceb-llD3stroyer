@@ -11,6 +11,7 @@ import java.util.Random
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -133,6 +134,7 @@ class TabAlignerTest {
         assertEquals(song[3].midi, a.song.notes[wrong].midi)
         assertEquals(tetra.midiAt(a.song.notes[wrong].course, a.song.notes[wrong].fret), song[3].midi)
         assertTrue(3 in a.differs && 3 in a.missing, "${a.differs} ${a.missing}")
+        assertTrue(3 in a.moved && a.differs.containsAll(a.moved), "${a.moved}")
         assertEquals(a.total, a.matched + a.missing.size)
         // The note left out of the tab is still there, from the prepared line.
         assertNotNull(near(a, song[10].time, song[10].midi, fromTab = false)?.takeIf { abs(it.start - heardAt(song[10].time)) < 0.012 })
@@ -140,6 +142,8 @@ class TabAlignerTest {
         var ok = 0
         for ((i, p) in song.withIndex()) if (i != 3 && i != 10 && near(a, p.time, p.midi)?.let { abs(it.start - heardAt(p.time)) < 0.012 } == true) ok++
         assertTrue(ok >= song.size - 3, "$ok of ${song.size - 2}")
+        // Work no longer wanted stops.
+        assertFailsWith<java.util.concurrent.CancellationException> { TabAligner.align(tab, AnalysisData(act, null), base(act), cancelled = { true }) }
     }
 
     @Test

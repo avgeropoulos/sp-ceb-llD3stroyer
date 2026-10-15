@@ -79,7 +79,8 @@ class AnalysisData(val act: BasicPitch.Activations, val attacks: Attacks?) {
         /**
          * Reads what [write] wrote; null if it's another version or damaged. A damaged length is refused before
          * anything is allocated for it: the frames must fit a song and the file must hold their first column, and
-         * the attack track must fit the frames.
+         * the attack track must fit the frames. The contours must have all of Basic Pitch's bins (the line reads them
+         * at fixed bins), and the file is read to its end, so its checksum is checked and damaged data isn't read.
          */
         fun read(input: InputStream): AnalysisData? = try {
             DataInputStream(BufferedInputStream(InflaterInputStream(input), 1 shl 16)).use { d ->
@@ -99,7 +100,7 @@ class AnalysisData(val act: BasicPitch.Activations, val attacks: Attacks?) {
                 }
                 val contours = if (d.readBoolean()) {
                     val bins = d.readInt()
-                    if (bins !in 0..BasicPitch.N_CONTOUR_BINS) return null
+                    if (bins != BasicPitch.N_CONTOUR_BINS && !(bins == 0 && n == 0)) return null
                     Array(n) { ByteArray(bins) }.also { c ->
                         for (k in 0 until bins) {
                             d.readFully(column)
@@ -114,6 +115,7 @@ class AnalysisData(val act: BasicPitch.Activations, val attacks: Attacks?) {
                     val energies = FloatArray(m) { d.readFloat() }
                     Attacks(rises, energies)
                 } else null
+                if (d.read() != -1) return null // more than was written (or the checksum fails: that throws)
                 AnalysisData(BasicPitch.Activations(frames, onsets, contours), attacks)
             }
         } catch (_: Exception) { null }
