@@ -211,6 +211,7 @@ class BouzoukiLineTest {
                 d.writeBoolean(true)
                 d.writeInt(m)
                 repeat(2 * minOf(m, 64)) { d.writeFloat(0f) }
+                d.writeBoolean(false) // tuning not measured
             }
             return out.toByteArray()
         }
@@ -235,6 +236,7 @@ class BouzoukiLineTest {
                 d.writeInt(bins)
                 d.write(ByteArray(bins * 10))
                 d.writeBoolean(false) // no attacks
+                d.writeBoolean(false) // tuning not measured
                 d.write(ByteArray(extra))
             }
             return out.toByteArray()

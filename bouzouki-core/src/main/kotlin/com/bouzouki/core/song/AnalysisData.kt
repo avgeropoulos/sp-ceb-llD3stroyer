@@ -17,8 +17,14 @@ import java.util.zip.InflaterInputStream
  * rounds them so, and the analysis derives its line from that, so the saved data gives the same line
  * again), written key by key as changes from the frame before, then deflated: a 4-minute song takes
  * about 4 MB.
+ *
+ * The activations are always on the recording's own time (frame t at [BasicPitch.frameTime]): [tuning] is how far
+ * the recording is from A = 440 Hz (cents) as measured when it was prepared, and when that was [Tuning.MIN_CORRECTION]
+ * or more, they are of the recording put in tune and mapped back ([Tuning.toRealTime]). Null for data saved before the
+ * tuning was measured (version 2), which was transcribed as it was ([SongAnalyzer.transcribedOutOfTune] tells when
+ * that missed notes).
  */
-class AnalysisData(val act: BasicPitch.Activations, val attacks: Attacks?) {
+class AnalysisData(val act: BasicPitch.Activations, val attacks: Attacks?, val tuning: Double? = null) {
     /** Writes the data to [out] (and closes it). */
     fun write(out: OutputStream) {
         val deflater = Deflater(6)
@@ -57,34 +63,40 @@ class AnalysisData(val act: BasicPitch.Activations, val attacks: Attacks?) {
             for (v in a.rises) d.writeFloat(v)
             for (v in a.energies) d.writeFloat(v)
         }
+        val tuning = tuning
+        d.writeBoolean(tuning != null)
+        if (tuning != null) d.writeDouble(tuning)
     }
 
     companion object {
         private const val MAGIC = 0x425A4144 // "BZAD"
-        /** 2: columns of changes (1 wrote the frames one after another). */
-        const val VERSION = 2
+        /** 3: and the tuning; 2: columns of changes (1 wrote the frames one after another). [read] reads 2 and 3. */
+        const val VERSION = 3
         /** More frames than a song has (30 minutes): a damaged length isn't allocated. */
         private const val MAX_FRAMES = 30 * 60 * BasicPitch.ANNOTATIONS_FPS
         /** The attack track's frames to each of Basic Pitch's, at most (about 4: hop 64 against 256), and some slack. */
         private const val ATTACK_FRAMES = 5
         private const val ATTACK_SLACK = 4096
 
-        /** [act] and [attacks] as [write] saves them and [read] gives them back: the activations rounded to bytes. */
-        fun of(act: BasicPitch.Activations, attacks: Attacks?): AnalysisData =
-            AnalysisData(BasicPitch.Activations(rounded(act.frames), rounded(act.onsets), act.contours), attacks)
+        /** [act], [attacks] and [tuning] as [write] saves them and [read] gives them back: the activations rounded to bytes. */
+        fun of(act: BasicPitch.Activations, attacks: Attacks?, tuning: Double? = null): AnalysisData =
+            AnalysisData(BasicPitch.Activations(rounded(act.frames), rounded(act.onsets), act.contours), attacks, tuning)
 
         private fun rounded(a: Array<FloatArray>) =
             Array(a.size) { t -> val row = a[t]; FloatArray(row.size) { k -> (BasicPitch.quantize(row[k]).toInt() and 0xFF) / 255f } }
 
         /**
-         * Reads what [write] wrote; null if it's another version or damaged. A damaged length is refused before
-         * anything is allocated for it: the frames must fit a song and the file must hold their first column, and
-         * the attack track must fit the frames. The contours must have all of Basic Pitch's bins (the line reads them
-         * at fixed bins), and the file is read to its end, so its checksum is checked and damaged data isn't read.
+         * Reads what [write] wrote, or version 2 (from before the tuning was measured: [tuning] null); null if it's
+         * another version or damaged. A damaged length is refused before anything is allocated for it: the frames must
+         * fit a song and the file must hold their first column, and the attack track must fit the frames. The contours
+         * must have all of Basic Pitch's bins (the line reads them at fixed bins), the tuning must be within half a
+         * semitone, and the file is read to its end, so its checksum is checked and damaged data isn't read.
          */
         fun read(input: InputStream): AnalysisData? = try {
             DataInputStream(BufferedInputStream(InflaterInputStream(input), 1 shl 16)).use { d ->
-                if (d.readInt() != MAGIC || d.readInt() != VERSION) return null
+                if (d.readInt() != MAGIC) return null
+                val version = d.readInt()
+                if (version != VERSION && version != 2) return null
                 val n = d.readInt()
                 val keys = d.readInt()
                 if (keys != BasicPitch.N_KEYS || n !in 0..MAX_FRAMES) return null
@@ -115,8 +127,10 @@ class AnalysisData(val act: BasicPitch.Activations, val attacks: Attacks?) {
                     val energies = FloatArray(m) { d.readFloat() }
                     Attacks(rises, energies)
                 } else null
+                val tuning = if (version >= 3 && d.readBoolean()) d.readDouble() else null
+                if (tuning != null && !(tuning >= -50.0 && tuning <= 50.0)) return null
                 if (d.read() != -1) return null // more than was written (or the checksum fails: that throws)
-                AnalysisData(BasicPitch.Activations(frames, onsets, contours), attacks)
+                AnalysisData(BasicPitch.Activations(frames, onsets, contours), attacks, tuning)
             }
         } catch (_: Exception) { null }
     }
