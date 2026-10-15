@@ -2,16 +2,19 @@ package com.bouzouki
 
 import android.app.Activity
 import android.content.Context
+import android.graphics.Color
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -70,6 +73,38 @@ class Settings(context: Context) {
     fun forgetSong(id: String) = prefs.edit()
         .remove("song_detail_$id").remove("song_tab_$id").remove("song_sync_$id")
         .apply()
+}
+
+/**
+ * Keeps a screen clear of the status bar (clock, signal) and the navigation bar, which Android 15 draws over
+ * every app: the screen's first view, its title bar, grows by the status bar's height with its colour running
+ * behind it, and the rest stays above the navigation bar and clear of side cut-outs. Call after setContentView.
+ */
+fun fitSystemBars(activity: Activity, root: ViewGroup) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        // The same on Android 11-14 as Android 15 does anyway: the screen draws behind the bars, which it keeps clear of.
+        activity.window.setDecorFitsSystemWindows(false)
+        @Suppress("DEPRECATION")
+        activity.window.statusBarColor = Color.TRANSPARENT
+    }
+    val top = root.getChildAt(0) ?: return
+    val topPad = top.paddingTop
+    val left = root.paddingLeft
+    val right = root.paddingRight
+    val bottom = root.paddingBottom
+    root.setOnApplyWindowInsetsListener { _, insets ->
+        val (l, t, r, b) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+            intArrayOf(bars.left, bars.top, bars.right, bars.bottom)
+        } else {
+            @Suppress("DEPRECATION")
+            intArrayOf(insets.systemWindowInsetLeft, insets.systemWindowInsetTop, insets.systemWindowInsetRight, insets.systemWindowInsetBottom)
+        }
+        top.setPadding(top.paddingLeft, topPad + t, top.paddingRight, top.paddingBottom)
+        root.setPadding(left + l, root.paddingTop, right + r, bottom + b)
+        insets
+    }
+    root.requestApplyInsets()
 }
 
 /** Small view builders shared by both screens. */

@@ -151,6 +151,7 @@ class MainActivity : Activity() {
         })
 
         setContentView(root)
+        fitSystemBars(this, root)
         checkForUpdate()
         handleInstallStatus(intent)
         refresh()

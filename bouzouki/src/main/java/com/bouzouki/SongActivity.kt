@@ -415,6 +415,7 @@ class SongActivity : Activity() {
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
 
         setContentView(root)
+        fitSystemBars(this, root)
         showPage(prefs.getInt(PREF_PAGE, PAGE_NECK))
         showSync()
         refreshButtons()

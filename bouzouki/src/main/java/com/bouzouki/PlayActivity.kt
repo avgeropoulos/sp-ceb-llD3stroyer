@@ -129,6 +129,7 @@ class PlayActivity : Activity() {
         board.onPlayed = { top, bottom -> keepVisible(top, bottom) }
 
         setContentView(root)
+        fitSystemBars(this, root)
         refresh()
     }
 
