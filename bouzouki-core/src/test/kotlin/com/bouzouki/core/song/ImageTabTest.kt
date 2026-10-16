@@ -367,10 +367,14 @@ class ImageTabTest {
         val systems = tab(seed = 4, systems = 2, bars = 4, courses = 4)
         val img = draw(systems, 4, Style(Font(Font.SANS_SERIF, Font.BOLD, 10), digit = 16))
         val r = ImageTab.read(listOf(gray(img)), Instrument.TETRACHORDO)
-        val acc = accuracy(expected(systems, Instrument.TETRACHORDO), got(r.tab))
         // The built-in digits are only the fallback (the app always passes digits in the phone's own fonts), and Java's
-        // "SansSerif" is a different font on every machine: a sanity check, not a measure of accuracy.
-        assertTrue(acc >= 0.6, "accuracy $acc: ${got(r.tab)} for ${expected(systems, Instrument.TETRACHORDO)}")
+        // "SansSerif" is a different font on every machine, so this checks what must hold in any font: both systems found,
+        // and notes read on the tab's lines in left-to-right order. Digit accuracy is measured by the tests passing digits.
+        assertEquals(2, r.systems)
+        val want = expected(systems, Instrument.TETRACHORDO)
+        assertTrue(r.tab.notes.size >= want.size * 0.8, "read ${r.tab.notes.size} of ${want.size} notes")
+        assertTrue(r.tab.notes.all { it.course in 0..3 })
+        assertTrue(r.tab.notes.zipWithNext().all { (a, b) -> b.column >= a.column })
     }
 
     @Test
