@@ -242,13 +242,13 @@ class SongActivity : Activity() {
 
         // The link, an audio file, or a saved song.
         link = EditText(this).apply {
-            hint = "Paste a YouTube link"
+            hint = "Search YouTube or paste a link"
             setHintTextColor(0xFF7F93AB.toInt())
             setTextColor(WHITE)
             textSize = 14f
             isSingleLine = true
-            inputType = InputType.TYPE_TEXT_VARIATION_URI
-            imeOptions = EditorInfo.IME_ACTION_GO
+            inputType = InputType.TYPE_CLASS_TEXT
+            imeOptions = EditorInfo.IME_ACTION_SEARCH
             background = ui.rounded()
             setPadding(px(10), 0, px(10), 0)
             setOnEditorActionListener { _, _, _ -> loadLink(); true }
@@ -257,7 +257,7 @@ class SongActivity : Activity() {
         controls.addView(linkRow.apply {
             addView(link, ui.weighted(3f).apply { height = px(44) })
             addView(ui.chip("Paste") { pasteAndLoad() }, ui.weighted(1.1f))
-            addView(ui.chip("Load") { loadLink() }, ui.weighted(1f))
+            addView(ui.chip("🔎") { loadLink() }.apply { contentDescription = "Search YouTube, or load the link" }, ui.weighted(1f))
         })
         extraRow = ui.row().apply {
             addView(ui.chip("📁 Audio file") { pickFile() }, ui.weighted())
@@ -543,10 +543,19 @@ class SongActivity : Activity() {
         loadLink()
     }
 
+    /** The box holds a YouTube link (load it) or words (search YouTube for them, as Chordify does). */
     private fun loadLink() {
-        val id = youTubeId(link.text.toString())
-        if (id == null) { status.text = "That doesn't look like a YouTube link."; return }
-        openYouTube(id, startJob = true)
+        val text = link.text.toString().trim()
+        if (text.isEmpty()) { status.text = "Type a song or an artist to search YouTube, or paste a YouTube link."; return }
+        val id = youTubeId(text)
+        if (id != null) { openYouTube(id, startJob = true); return }
+        (getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).hideSoftInputFromWindow(link.windowToken, 0)
+        val saved = SongJobs.recent(this).associate { it.id to it.current }
+        SongSearch(this, ui, { saved[it] == true }) { hit ->
+            link.setText("https://youtu.be/${hit.id}")
+            // A song prepared with this version opens at once; any other is prepared now.
+            openYouTube(hit.id, startJob = saved[hit.id] != true)
+        }.show(text) { msg -> status.text = msg }
     }
 
     // --- loading a song ---
@@ -2094,7 +2103,8 @@ class SongActivity : Activity() {
         fun youTubeId(text: String): String? {
             val t = text.trim()
             ID.find(t)?.let { return it.groupValues[1] }
-            return t.takeIf { Regex("[A-Za-z0-9_-]{11}").matches(it) }
+            // A bare video id: 11 characters with a digit, - or _ (a plain 11-letter word is a search).
+            return t.takeIf { Regex("[A-Za-z0-9_-]{11}").matches(it) && it.any { c -> c.isDigit() || c == '-' || c == '_' } }
         }
     }
 }

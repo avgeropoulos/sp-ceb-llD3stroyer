@@ -1,13 +1,16 @@
 package com.bouzouki
 
 import org.schabi.newpipe.extractor.MediaFormat
+import org.schabi.newpipe.extractor.Page
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.downloader.Downloader
 import org.schabi.newpipe.extractor.downloader.Request
 import org.schabi.newpipe.extractor.downloader.Response
+import org.schabi.newpipe.extractor.search.SearchExtractor
 import org.schabi.newpipe.extractor.stream.AudioStream
 import org.schabi.newpipe.extractor.stream.DeliveryMethod
+import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -42,6 +45,45 @@ object YouTubeAudio {
         fetch(best.content, file, progress, cancelled)
         return Song(title, file)
     }
+
+    /** One video found by [search]: its id, title, channel, length in seconds (0 if unknown) and a thumbnail URL. */
+    class Hit(val id: String, val title: String, val channel: String, val seconds: Long, val thumbnail: String?)
+
+    /** A YouTube search, page by page, like typing into YouTube's own search box. Call [next] off the main thread. */
+    class Search internal constructor(private val extractor: SearchExtractor) {
+        private var nextPage: Page? = null
+        private var started = false
+        /** Whether [next] can give more results. */
+        val hasMore get() = !started || nextPage != null
+
+        /** The next page of videos (the first page on the first call); empty when there are no more. */
+        fun next(): List<Hit> {
+            val page = if (!started) { started = true; extractor.fetchPage(); extractor.initialPage }
+                else nextPage?.let { extractor.getPage(it) } ?: return emptyList()
+            nextPage = if (page.hasNextPage()) page.nextPage else null
+            return page.items.mapNotNull { item ->
+                val v = item as? StreamInfoItem ?: return@mapNotNull null
+                val id = SongActivity.youTubeId(v.url) ?: return@mapNotNull null
+                if (v.duration <= 0) return@mapNotNull null // live streams and upcoming premieres have no song to prepare
+                Hit(id, v.name, v.uploaderName ?: "", v.duration, v.thumbnails.minByOrNull { kotlin.math.abs(it.width - 320) }?.url)
+            }
+        }
+    }
+
+    /** Starts a search for videos matching [query] (nothing is fetched until [Search.next]). */
+    fun search(query: String): Search {
+        init()
+        return Search(ServiceList.YouTube.getSearchExtractor(query, listOf("videos"), ""))
+    }
+
+    /** A small image (a search result's thumbnail), or null if it can't be had. Off the main thread. */
+    fun image(url: String): ByteArray? = try {
+        val conn = URL(url).openConnection() as HttpURLConnection
+        conn.setRequestProperty("User-Agent", USER_AGENT)
+        conn.connectTimeout = 10000
+        conn.readTimeout = 15000
+        if (conn.responseCode in 200..299) conn.inputStream.use { it.readBytes() } else null
+    } catch (_: Exception) { null }
 
     /** AAC (m4a) decodes everywhere; otherwise Opus/WebM. Highest quality of the kind. */
     private fun pick(streams: List<AudioStream>): AudioStream? {
