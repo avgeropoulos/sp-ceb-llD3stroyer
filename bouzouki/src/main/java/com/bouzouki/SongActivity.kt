@@ -8,6 +8,7 @@ import android.content.ActivityNotFoundException
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Typeface
 import android.media.MediaPlayer
 import android.media.PlaybackParams
@@ -66,7 +67,9 @@ import kotlin.math.roundToInt
  * Each song's line can have fewer or more notes (Notes), or be made of the notes of a tab (📝 Tab:
  * found online and pasted in, or a PDF or text file opened here or shared from another app), lined
  * up with the recording; both are worked out in the background by [SongLines] and remembered per
- * song. A record tuned clearly away from A = 440 Hz says so, to tune the bouzouki to it.
+ * song. A record tuned clearly away from A = 440 Hz says so, to tune the bouzouki to it. Turned
+ * sideways (or with 🪕) it shows the whole bouzouki with the video above its neck ([SongLandscape]),
+ * following the same clock.
  */
 class SongActivity : Activity() {
     private val ui by lazy { Ui(this) }
@@ -81,6 +84,8 @@ class SongActivity : Activity() {
     private lateinit var linkRow: LinearLayout
     private lateinit var extraRow: LinearLayout
     private lateinit var web: WebView
+    /** The screen turned sideways: the whole bouzouki, with the video above its neck. */
+    private lateinit var whole: SongLandscape
     private lateinit var fileRow: LinearLayout
     private lateinit var filePlayButton: Button
     private lateinit var fileTimeText: TextView
@@ -219,6 +224,12 @@ class SongActivity : Activity() {
             })
             addView(ui.chip("🔗") { showLinkRows(linkRow.visibility != View.VISIBLE) },
                 LinearLayout.LayoutParams(px(42), px(40)).apply { marginEnd = px(4) })
+            // The whole bouzouki, sideways (turning the phone does it too). A long press says so.
+            addView(ui.chip("🪕") { whole.turnSideways() }.apply {
+                contentDescription = "Whole bouzouki, sideways"
+                if (Build.VERSION.SDK_INT >= 26) tooltipText = "The whole bouzouki, sideways (or turn the phone)"
+            },
+                LinearLayout.LayoutParams(px(38), px(40)).apply { marginEnd = px(3) })
             addView(wireZoom(ui, settings, board, "song", defaultWhole = true),
                 LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(40)))
         })
@@ -264,7 +275,10 @@ class SongActivity : Activity() {
             addJavascriptInterface(YouTubeBridge(), "Android")
             visibility = View.GONE
         }
-        controls.addView(web, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(170)))
+        // In a Dock, so it can move into the sideways screen and back without stopping.
+        controls.addView(Dock(this).apply { addView(web, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(170))) },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        whole = SongLandscape(this, audio.synth, settings, web, { titleText.text }, { status.text }, { fileUri != null }, { playing }) { toggleFilePlayback() }
         fileRow = ui.row().apply { visibility = View.GONE }
         filePlayButton = ui.chip("▶ Play") { toggleFilePlayback() }
         fileTimeText = TextView(this).apply { setTextColor(WHITE); textSize = 14f; gravity = Gravity.CENTER }
@@ -458,6 +472,19 @@ class SongActivity : Activity() {
         if (savedInstanceState != null) restore(savedInstanceState)
         TabFiles.sweep(this)
         handleShare(intent, fresh = savedInstanceState == null)
+        whole.follow(resources.configuration)
+    }
+
+    // Turned sideways (or upright again): the screen isn't made again (the manifest says so), it switches.
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        whole.follow(newConfig)
+    }
+
+    // Back while the whole bouzouki shows turns the screen upright, as ⤺ does, instead of closing the song.
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (!whole.back()) @Suppress("DEPRECATION") super.onBackPressed()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -595,6 +622,7 @@ class SongActivity : Activity() {
         settings.instrument = inst
         instrumentSwitch.instrument = inst
         if (board.instrument != inst) board.instrument = inst
+        whole.bouzouki.instrument = inst
         val src = source
         if (src != null) {
             showLine() // the note now and the next one, on the new neck
@@ -655,8 +683,8 @@ class SongActivity : Activity() {
             val spec = lineSpecFor(s.id)
             if (spec == null) {
                 status.text = if (s.notes.isEmpty()) "No clear bouzouki line was found in this song."
-                else "Ready: ${s.notes.size} bouzouki notes. The hollow ring shows the next one. " +
-                    "📜 Tablature shows the whole song: tap a note to hear it and play from there."
+                else "Ready: ${s.notes.size} bouzouki notes; the hollow ring shows the next. Turn the phone sideways (or 🪕) " +
+                    "for the whole bouzouki. 📜 Tablature: the whole song, tap a note to play from there."
             }
             sheet.showNow()
             chooseLine(announce = false)
@@ -1437,6 +1465,8 @@ class SongActivity : Activity() {
         board.liveCell = null
         board.nextCell = null
         board.legatoFrom = null
+        whole.live(null, null, false)
+        whole.next(null)
         noteText.text = "–"
     }
 
@@ -1550,6 +1580,8 @@ class SongActivity : Activity() {
         val d = s.dromos ?: return
         board.dromos = d
         board.rootPc = s.rootPc
+        whole.bouzouki.dromos = d
+        whole.bouzouki.rootPc = s.rootPc
         settings.dromos = d
         settings.rootPc = s.rootPc
         showDromos()
@@ -1698,7 +1730,7 @@ class SongActivity : Activity() {
             if (sec != shownSecond) { shownSecond = sec; fileTimeText.text = "%d:%02d".format(sec / 60, sec % 60) }
         }
         // What's drawn now is on screen a frame or two later.
-        val s = song ?: return
+        val s = song ?: return whole.status(null, media, false)
         val t = media + syncOffset + if (clock.playing) DISPLAY_LEAD * clock.rate else 0.0
         tab.time = t
         sheet.time = t
@@ -1712,11 +1744,13 @@ class SongActivity : Activity() {
                 // Hammered, pulled or slid from the note before: the neck shows the finger's way there.
                 board.legatoFrom = if (s.joinsPrevious(i)) s.notes[i - 1].let { Cell(it.course, it.fret) } else null
                 board.liveCell = cell
+                whole.live(board.legatoFrom, cell, n.articulation == Articulation.TREMOLO)
                 noteText.text = settings.names.name(n.midi)
                 keepVisible(cell)
             } else {
                 board.legatoFrom = null
                 board.liveCell = null
+                whole.live(null, null, false)
                 noteText.text = "–"
             }
         }
@@ -1724,7 +1758,9 @@ class SongActivity : Activity() {
         if (next != lastNext) {
             lastNext = next
             board.nextCell = s.notes.getOrNull(next)?.let { Cell(it.course, it.fret) }
+            whole.next(board.nextCell)
         }
+        whole.status(noteText.text, media, clock.playing)
     }
 
     /**

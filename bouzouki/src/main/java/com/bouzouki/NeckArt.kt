@@ -46,7 +46,7 @@ internal object NeckArt {
      * Dark ebony with long wandering streaks and pores along the neck; mirror it vertically.
      * The board is slightly rounded, so it is darker at the edges with a soft sheen left of centre.
      */
-    private fun fingerboard(w: Int): Bitmap {
+    internal fun fingerboard(w: Int): Bitmap {
         val h = WOOD_H
         val px = IntArray(w * h)
         val light = FloatArray(w) { x -> sheen(x / (w - 1f)) }
@@ -70,7 +70,7 @@ internal object NeckArt {
     }
 
     /** Honey spruce with fine straight grain lines and faint silk; mirror it vertically. */
-    private fun spruceTop(w: Int): Bitmap {
+    internal fun spruceTop(w: Int): Bitmap {
         val h = SPRUCE_H
         val px = IntArray(w * h)
         for (y in 0 until h) for (x in 0 until w) {
@@ -89,7 +89,7 @@ internal object NeckArt {
     }
 
     /** Dark brown pebbled leather, a seamless tile. */
-    private fun leather(): Bitmap {
+    internal fun leather(): Bitmap {
         val n = 128
         val px = IntArray(n * n)
         for (y in 0 until n) for (x in 0 until n) {
@@ -103,10 +103,10 @@ internal object NeckArt {
     }
 
     /** White mother-of-pearl with a pastel rainbow shimmer; mirror it both ways. */
-    private fun pearl() = shell(saturation = 0.13f, value = 0.88f, hueFrom = 0f, hueSpan = 360f, seed = 51)
+    internal fun pearl() = shell(saturation = 0.13f, value = 0.88f, hueFrom = 0f, hueSpan = 360f, seed = 51)
 
     /** Green, blue and violet abalone; mirror it both ways. */
-    private fun abalone() = shell(saturation = 0.62f, value = 0.55f, hueFrom = 140f, hueSpan = 170f, seed = 61)
+    internal fun abalone() = shell(saturation = 0.62f, value = 0.55f, hueFrom = 140f, hueSpan = 170f, seed = 61)
 
     private fun shell(saturation: Float, value: Float, hueFrom: Float, hueSpan: Float, seed: Int): Bitmap {
         val n = 160
@@ -147,7 +147,7 @@ internal object NeckArt {
         if (period > 0) hash(Math.floorMod(i, period), Math.floorMod(j, period), seed) else hash(i, j, seed)
 
     /** Smooth value noise in 0..1; with [period] > 0 it tiles every [period] lattice cells. */
-    private fun noise(x: Float, y: Float, seed: Int, period: Int = 0): Float {
+    internal fun noise(x: Float, y: Float, seed: Int, period: Int = 0): Float {
         val xf = floor(x)
         val yf = floor(y)
         val xi = xf.toInt()
@@ -164,7 +164,7 @@ internal object NeckArt {
     }
 
     /** A few octaves of [noise], each twice as fine and half as strong. */
-    private fun fbm(x: Float, y: Float, seed: Int, octaves: Int, period: Int = 0): Float {
+    internal fun fbm(x: Float, y: Float, seed: Int, octaves: Int, period: Int = 0): Float {
         var sum = 0f
         var amp = 0.5f
         var norm = 0f
