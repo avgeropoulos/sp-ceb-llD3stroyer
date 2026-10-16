@@ -7,6 +7,7 @@ import android.os.Process
 import com.bouzouki.core.Instrument
 import com.bouzouki.core.song.AnalysisData
 import com.bouzouki.core.song.Detail
+import com.bouzouki.core.song.ImageTab
 import com.bouzouki.core.song.ParsedTab
 import com.bouzouki.core.song.PdfTab
 import com.bouzouki.core.song.SongAnalysis
@@ -225,13 +226,21 @@ object SongLines {
 
     /**
      * Reads the PDF tab in [file] for [instrument] (the tab's own bouzouki, told by its lines, is in the result), or
-     * null if the file is gone. Off the main thread only: a long score takes a moment.
+     * null if the file is gone. A PDF without tab numbers as text whose pages are pictures (a scan, a tab saved as
+     * an image, a screenshot that came in) is read from its pictures ([TabPictures]). Off the main thread only: a
+     * long score takes a moment, pictures a few seconds.
      */
     fun readPdf(file: File, instrument: Instrument): ParsedTab? {
         if (!file.isFile) return null
         if (file.length() > TabFiles.MAX_BYTES) return ParsedTab(instrument, emptyList(), listOf("This PDF is too big to be a tab"))
         val bytes = try { file.readBytes() } catch (_: IOException) { return null }
-        return PdfTab.read(bytes, instrument)
+        val tab = PdfTab.read(bytes, instrument)
+        if (PdfTab.PICTURES !in tab.warnings) return tab
+        return try {
+            TabPictures.readPictures(bytes, instrument) ?: tab
+        } catch (_: OutOfMemoryError) {
+            ParsedTab(instrument, emptyList(), listOf(ImageTab.PICTURE, "The pictures in this PDF are too big for the phone's memory"))
+        }
     }
 
     /** Lines kept. */

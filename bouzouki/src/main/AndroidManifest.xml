@@ -37,7 +37,7 @@
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation" />
 
         <!-- Share a video from the YouTube app to Μπουζούκι to play along with it; or share (or open
-             with Μπουζούκι) a song's bouzouki tab, as a PDF or text, from WhatsApp, Files, Gmail or Drive.
+             with Μπουζούκι) a song's bouzouki tab, as a PDF, text or a picture, from WhatsApp, Files, Gmail or Drive.
              One song screen, in the app's own task: a share comes to the screen with the song open (Android
              would otherwise start a new one in the sending app's task). Turned sideways (as auto-rotate
              allows) it shows the whole bouzouki, without being made again. -->
@@ -58,6 +58,12 @@
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="application/pdf" />
+            </intent-filter>
+            <!-- A picture of a tab (a screenshot), read from the picture. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

@@ -363,6 +363,8 @@ internal class PdfDocument(private val data: ByteArray) {
     private val objStms = HashMap<Int, ObjStm?>()
     private var repaired = false
     private var decodeBudget = MAX_TOTAL_DECODED
+    /** The most one stream may decode to ([MAX_STREAM], or a picture's own cap while [imageData] decodes it). */
+    private var streamCap = MAX_STREAM
     private var crypt: PdfCrypt? = null
     private var endstreams: IntArray? = null
     private var endobjs: IntArray? = null
@@ -731,7 +733,30 @@ internal class PdfDocument(private val data: ByteArray) {
      * ASCII85, RunLength, with PNG/TIFF predictors). Null for image codecs and unknown filters.
      * Truncated compressed data gives what could be decoded.
      */
-    fun decode(s: PdfStream): ByteArray? {
+    fun decode(s: PdfStream): ByteArray? = filtered(s, null)?.takeIf { it.first == null }?.second
+
+    /**
+     * A picture's data ([s] an image XObject): decrypted and through its filters up to the picture codec, which is
+     * named with the bytes still in it (DCTDecode: a JPEG file; JPXDecode, CCITTFaxDecode, JBIG2Decode); with no
+     * codec (null) the bytes are the image's samples. Up to [cap] bytes decoded, outside the document's budget.
+     */
+    fun imageData(s: PdfStream, cap: Int): Pair<String?, ByteArray>? = filtered(s, cap)
+
+    /** [decode] and [imageData]: [pictureCap] null to decode a stream that isn't a picture. */
+    private fun filtered(s: PdfStream, pictureCap: Int?): Pair<String?, ByteArray>? {
+        if (pictureCap == null) return filteredIn(s, false)
+        val savedBudget = decodeBudget
+        decodeBudget = pictureCap + s.length
+        streamCap = pictureCap
+        try {
+            return filteredIn(s, true)
+        } finally {
+            decodeBudget = savedBudget
+            streamCap = MAX_STREAM
+        }
+    }
+
+    private fun filteredIn(s: PdfStream, picture: Boolean): Pair<String?, ByteArray>? {
         if (decodeBudget <= 0) { warnings += TOO_LARGE; return null }
         var d = s.raw()
         decodeBudget -= d.size
@@ -749,15 +774,15 @@ internal class PdfDocument(private val data: ByteArray) {
                 "ASCII85Decode", "A85" -> PdfFilters.ascii85(d)
                 "RunLengthDecode", "RL" -> PdfFilters.runLength(d, budget())
                 "Crypt" -> d
-                "DCTDecode", "DCT", "JPXDecode", "CCITTFaxDecode", "CCF", "JBIG2Decode" -> return null // pictures
+                "DCTDecode", "DCT", "JPXDecode", "CCITTFaxDecode", "CCF", "JBIG2Decode" -> return if (picture) f to d else null // pictures
                 else -> { warnings += "Skipped a part of this PDF compressed with $f, which isn't supported"; return null }
             }
             decodeBudget -= d.size
         }
-        return d
+        return null to d
     }
 
-    private fun budget() = min(MAX_STREAM, maxOf(0, decodeBudget))
+    private fun budget() = min(streamCap, maxOf(0, decodeBudget))
 
     /** Inflates zlib data, keeping whatever comes out of a truncated or corrupt stream. */
     private fun inflate(src: ByteArray): ByteArray {
