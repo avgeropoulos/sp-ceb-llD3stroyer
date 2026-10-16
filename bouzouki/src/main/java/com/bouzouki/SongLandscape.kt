@@ -2,6 +2,7 @@ package com.bouzouki
 
 import android.app.Activity
 import android.app.Application
+import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
@@ -16,6 +17,7 @@ import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.OrientationEventListener
+import android.view.Surface
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
@@ -26,6 +28,8 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 import com.bouzouki.core.BouzoukiSynth
 import com.bouzouki.core.Cell
 
@@ -39,7 +43,8 @@ import com.bouzouki.core.Cell
  * While it shows, the upright screen stays underneath, hidden and untouched, so turning back
  * finds it as it was. The video moves without ever leaving the window ([Dock]), so it plays on.
  * The status bar is hidden while sideways (a swipe brings it back for a moment); the instrument
- * keeps clear of the navigation bar and of cut-outs.
+ * keeps clear of the navigation bar and of cut-outs. Back turns the screen upright, as ⤺ does
+ * ([back]), instead of closing the song.
  */
 internal class SongLandscape(
     private val activity: Activity,
@@ -118,6 +123,17 @@ internal class SongLandscape(
     private var playing = false
     private var liveTremolo = false
     private var shownText: String? = null
+    /** Whether the activity is on screen (started): the once-a-second [ticker] runs only then. */
+    private var started = false
+    /** Back while sideways, with Android 13's own back handling (when the app opts in to it): turns upright. */
+    private val backCallback: Any? = if (Build.VERSION.SDK_INT >= 33) OnBackInvokedCallback { turnUpright() } else null
+    /** Memory running short, or the app out of sight: the painting kept for turning back is let go. */
+    private val memory = object : ComponentCallbacks2 {
+        override fun onTrimMemory(level: Int) { if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) bouzouki.dropKept() }
+        @Deprecated("Deprecated in Java")
+        override fun onLowMemory() = bouzouki.dropKept()
+        override fun onConfigurationChanged(newConfig: Configuration) {}
+    }
 
     init {
         root.setBackgroundColor(0xFF22170F.toInt())
@@ -140,13 +156,31 @@ internal class SongLandscape(
             root.requestLayout()
             insets
         }
+        activity.application.registerComponentCallbacks(memory)
         activity.application.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
-            override fun onActivityStarted(a: Activity) { if (a === activity) watchSensor() }
-            override fun onActivityStopped(a: Activity) { if (a === activity) sensor.disable() }
+            override fun onActivityStarted(a: Activity) {
+                if (a !== activity) return
+                started = true
+                watchSensor()
+                if (shown) { main.removeCallbacks(ticker); ticker.run() }
+            }
+            override fun onActivityStopped(a: Activity) {
+                if (a !== activity) return
+                started = false
+                sensor.disable()
+                main.removeCallbacks(ticker)
+            }
             override fun onActivityDestroyed(a: Activity) {
                 if (a !== activity) return
+                started = false
                 sensor.disable()
+                main.removeCallbacks(ticker)
+                unregisterBack()
+                shown = false
                 a.application.unregisterActivityLifecycleCallbacks(this)
+                a.application.unregisterComponentCallbacks(memory)
+                // The song screen is closed (not just made again for a new look): its painting needn't wait for it.
+                if (!a.isChangingConfigurations) bouzouki.dropKept()
             }
             override fun onActivityCreated(a: Activity, state: Bundle?) {}
             override fun onActivityResumed(a: Activity) {}
@@ -186,10 +220,13 @@ internal class SongLandscape(
         if (shown && !same) refresh()
     }
 
-    /** Once a second while sideways, for what changes without a frame to show it (a song being prepared, a file's player). */
+    /**
+     * Once a second while sideways and on screen, for what changes without a frame to show it (a song being prepared,
+     * a file's player). Stopped while the activity is stopped, and for good once it's destroyed.
+     */
     private val ticker = object : Runnable {
         override fun run() {
-            if (!shown) return
+            if (!shown || !started) return
             refresh()
             main.postDelayed(this, 1000)
         }
@@ -200,6 +237,13 @@ internal class SongLandscape(
 
     /** ⤺: turns the screen upright now; it follows the phone again once the phone is held upright too. */
     fun turnUpright() = lock(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT)
+
+    /** Back: while sideways it turns the screen upright (as ⤺ does) and returns true; upright, false (the song screen closes). */
+    fun back(): Boolean {
+        if (!shown) return false
+        turnUpright()
+        return true
+    }
 
     private fun show() {
         if (shown) return
@@ -220,14 +264,17 @@ internal class SongLandscape(
         }
         videoDock.take(video, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         root.requestApplyInsets()
+        if (Build.VERSION.SDK_INT >= 33) activity.onBackInvokedDispatcher.registerOnBackInvokedCallback(
+            OnBackInvokedDispatcher.PRIORITY_DEFAULT, backCallback as OnBackInvokedCallback)
         main.removeCallbacks(ticker)
-        ticker.run()
+        if (started) ticker.run() else refresh()
     }
 
     private fun hide() {
         if (!shown) return
         shown = false
         main.removeCallbacks(ticker)
+        unregisterBack()
         val home = videoHome
         val params = videoHomeParams
         if (home is Dock && params != null) home.take(video, params)
@@ -235,9 +282,14 @@ internal class SongLandscape(
         for (v in hidden) v.visibility = View.VISIBLE
         hidden.clear()
         fullScreen(false)
-        // Gone from the window, the bouzouki lets its painting go (kept only while memory allows, for next time).
+        // Gone from the window, the bouzouki lets its painting go; it's kept for turning back until memory runs
+        // short, the app is out of sight or the song screen closes ([memory]).
         (root.parent as? ViewGroup)?.removeView(root)
         restoreScrolls()
+    }
+
+    private fun unregisterBack() {
+        if (Build.VERSION.SDK_INT >= 33) activity.onBackInvokedDispatcher.unregisterOnBackInvokedCallback(backCallback as OnBackInvokedCallback)
     }
 
     /**
@@ -282,9 +334,14 @@ internal class SongLandscape(
             }
         }
         val n = note
-        val text = if (n == null) message().toString().lineSequence().firstOrNull().orEmpty() else {
-            val sec = media.coerceAtLeast(0.0).toInt()
-            "$n   ·   %d:%02d".format(sec / 60, sec % 60)
+        val text = when {
+            n != null -> {
+                val sec = media.coerceAtLeast(0.0).toInt()
+                "$n   ·   %d:%02d".format(sec / 60, sec % 60)
+            }
+            // Nothing open: a song is opened on the upright screen (its link, saved songs, files), not here.
+            !hasVideo && !fileOpen() -> "Turn the phone upright (or ⤺) to open a song: a YouTube link, a saved song or an audio file."
+            else -> message().toString().lineSequence().firstOrNull().orEmpty()
         }
         if (text != shownText) { shownText = text; statusText.text = text }
     }
@@ -312,14 +369,23 @@ internal class SongLandscape(
 
     // ---- Turning: a button turns the screen at once; it follows the phone's own turning again once the phone agrees. ----
 
-    /** The orientation a button asked for, kept until the phone is held that way too (or for good with auto-rotate off). */
-    private var locked = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+    /**
+     * The orientation a button asked for, kept until the phone is held that way too (or for good with auto-rotate off).
+     * The system keeps it on the activity when the screen is made again (dark mode or font size changed, or the app
+     * was closed meanwhile), so a new screen picks it up and follows the phone from there.
+     */
+    private var locked = activity.requestedOrientation.takeIf {
+        it == ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE || it == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+    } ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+    /** Whether the device's own upright position is landscape (most tablets): the sensor counts degrees from there. */
+    private var naturalLandscape = false
 
     private val sensor = object : OrientationEventListener(activity) {
         override fun onOrientationChanged(deg: Int) {
             if (deg == ORIENTATION_UNKNOWN) return // lying flat (on a music stand, say): the screen stays as asked
-            val sideways = deg in 60..120 || deg in 240..300
-            val upright = deg <= 30 || deg >= 330 || deg in 150..210
+            val d = if (naturalLandscape) (deg + 90) % 360 else deg // degrees from holding it as a phone, upright
+            val sideways = d in 60..120 || d in 240..300
+            val upright = d <= 30 || d >= 330 || d in 150..210
             val agrees = if (locked == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) upright else sideways
             if (agrees && autoRotate()) unlock()
         }
@@ -340,8 +406,26 @@ internal class SongLandscape(
         activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_USER
     }
 
+    init {
+        // A lock kept from before the screen was made again: without a sensor, upright is where it goes back to anyway.
+        if (locked == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT && !sensor.canDetectOrientation()) main.post { unlock() }
+    }
+
     private fun watchSensor() {
-        if (locked != ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED && sensor.canDetectOrientation()) sensor.enable()
+        if (locked == ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED || !sensor.canDetectOrientation()) return
+        naturalLandscape = naturalLandscape()
+        sensor.enable()
+    }
+
+    /** Whether the display, turned as it is now, would be landscape unturned: then the device's natural position is landscape. */
+    private fun naturalLandscape(): Boolean {
+        @Suppress("DEPRECATION")
+        fun windowRotation() = try { activity.windowManager.defaultDisplay.rotation } catch (_: Exception) { Surface.ROTATION_0 }
+        val rotation = if (Build.VERSION.SDK_INT < 30) windowRotation()
+        else try { activity.display?.rotation ?: windowRotation() } catch (_: Exception) { windowRotation() }
+        val turned = rotation == Surface.ROTATION_90 || rotation == Surface.ROTATION_270
+        val landscape = activity.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        return landscape != turned
     }
 
     /** Whether the phone turns the screen by itself (auto-rotate on); with it off, a button's choice stays. */

@@ -16,6 +16,7 @@ import android.graphics.PointF
 import android.graphics.RadialGradient
 import android.graphics.Rect
 import android.graphics.RectF
+import android.graphics.Region
 import android.graphics.Shader
 import android.graphics.Typeface
 import android.os.Build
@@ -135,6 +136,16 @@ class BouzoukiView(context: Context, private val synth: BouzoukiSynth) : View(co
         if (onNeck(cell)) play(cell.course, cell.fret, 0.8f)
     }
 
+    /**
+     * Lets go of the painting kept for coming back to this screen (memory runs short, the app is out of sight, or the
+     * screen is closed): its pixels are freed at once unless this view is showing it.
+     */
+    fun dropKept() {
+        val p = lastPainting?.get()
+        lastPainting = null
+        if (p != null && p !== art) release(p.bitmap)
+    }
+
     /** Sets the string of [cell] swinging without a sound, say for each stroke of a tremolo the song plays. */
     fun showPluck(cell: Cell) {
         if (!onNeck(cell)) return
@@ -222,8 +233,8 @@ class BouzoukiView(context: Context, private val synth: BouzoukiSynth) : View(co
         paintGen++
         painting = false
         wanted = null
-        // The painting is a screenful of pixels: the view lets it go now. It stays in [lastPainting] only while memory
-        // allows, so coming back to the same screen shows it at once; otherwise it's made again.
+        // The painting is a screenful of pixels: the view lets it go now. It stays in [lastPainting] (so coming back
+        // to the same screen shows it at once) until [dropKept]; after that it's made again.
         art = null
     }
 
@@ -276,7 +287,7 @@ class BouzoukiView(context: Context, private val synth: BouzoukiSynth) : View(co
             var broke = false
             val made = if (wanted !== sh) null else try { BouzoukiArt.paint(sh) } catch (e: Throwable) { broke = true; null }
             mainHandler.post {
-                // Detached meanwhile: kept for when the view comes back (only while memory allows).
+                // Detached meanwhile: kept for when the view comes back (till [dropKept]).
                 if (gen != paintGen) { made?.let { lastPainting = SoftReference(it) }; return@post }
                 painting = false
                 if (broke) failed = sh
@@ -455,18 +466,15 @@ class BouzoukiView(context: Context, private val synth: BouzoukiSynth) : View(co
     private fun drawSongMarks(canvas: Canvas, sh: BouzoukiShape) {
         val labels = LABELS[names.ordinal]
         val r = (sh.spacing(sh.cellX(7)) * 0.85f).coerceIn(10.5f * dp, 14 * dp)
-        nextCell?.takeIf { it != liveCell && onNeck(it) }?.let { cell ->
-            val x = sh.cellX(cell.fret)
-            val y = sh.courseY(cell.course, x)
+        val ringR = r * 0.86f
+        val next = nextCell?.takeIf { it != liveCell && onNeck(it) }
+        val nx = next?.let { sh.cellX(it.fret) } ?: 0f
+        val ny = next?.let { sh.courseY(it.course, nx) } ?: 0f
+        if (next != null) {
             // Dark inside, so a dot or an inlay under it doesn't make it read as one more marked note.
             flat.color = 0xC0140D09.toInt()
-            canvas.drawCircle(x, y, r * 0.86f - 1.3f * dp, flat)
-            ring.strokeWidth = 5f * dp
-            ring.color = 0x99000000.toInt()
-            canvas.drawCircle(x, y, r * 0.86f, ring)
-            ring.strokeWidth = 2.6f * dp
-            ring.color = 0xF0FFD36A.toInt()
-            canvas.drawCircle(x, y, r * 0.86f, ring)
+            canvas.drawCircle(nx, ny, ringR - 1.3f * dp, flat)
+            nextRing(canvas, nx, ny, ringR)
         }
         val cell = liveCell?.takeIf { onNeck(it) } ?: return
         val x = sh.cellX(cell.fret)
@@ -497,7 +505,31 @@ class BouzoukiView(context: Context, private val synth: BouzoukiSynth) : View(co
         canvas.drawCircle(x, y, r + 0.6f * dp, ring)
         text.textSize = r * if (names == NoteNames.GREEK) 0.66f else 0.9f
         text.color = 0xFF2A1A08.toInt()
-        canvas.drawText(labels[Math.floorMod(sh.instrument.midiAt(cell.course, cell.fret), 12)], x, y + text.textSize * 0.36f, text)
+        val label = labels[Math.floorMod(sh.instrument.midiAt(cell.course, cell.fret), 12)]
+        if (next != null && hypot(nx - x, ny - y) < r + ringR + 2.5f * dp) {
+            // High on the neck a fret is narrower than the token, so a next note a fret or a course away would hide
+            // under it: its ring is drawn again over the token, all but across the note's name.
+            val half = text.measureText(label) / 2 + 1.5f * dp
+            labelHole.rewind()
+            labelHole.addRoundRect(x - half, y - text.textSize * 0.62f, x + half, y + text.textSize * 0.62f, 3 * dp, 3 * dp, Path.Direction.CW)
+            canvas.save()
+            if (Build.VERSION.SDK_INT >= 26) canvas.clipOutPath(labelHole) else @Suppress("DEPRECATION") canvas.clipPath(labelHole, Region.Op.DIFFERENCE)
+            nextRing(canvas, nx, ny, ringR)
+            canvas.restore()
+        }
+        canvas.drawText(label, x, y + text.textSize * 0.36f, text)
+    }
+
+    private val labelHole = Path()
+
+    /** The next note's hollow ring: gold on a dark edge, so it reads on wood, pearl and the gold token alike. */
+    private fun nextRing(canvas: Canvas, x: Float, y: Float, r: Float) {
+        ring.strokeWidth = 5f * dp
+        ring.color = 0x99000000.toInt()
+        canvas.drawCircle(x, y, r, ring)
+        ring.strokeWidth = 2.6f * dp
+        ring.color = 0xF0FFD36A.toInt()
+        canvas.drawCircle(x, y, r, ring)
     }
 
     private fun onNeck(cell: Cell) =
@@ -637,7 +669,11 @@ class BouzoukiView(context: Context, private val synth: BouzoukiSynth) : View(co
         private val painter: ExecutorService by lazy {
             Executors.newSingleThreadExecutor { r -> Thread(r, "bouzouki-art").apply { isDaemon = true } }
         }
-        /** The last painting made, kept only while memory allows, so turning back to the same screen shows it at once. */
+        /**
+         * The last painting made, kept so turning back to the same screen shows it at once. Its pixels are native
+         * memory, which a soft reference alone wouldn't give back: the screen lets it go with [dropKept] when memory
+         * runs short, the app goes out of sight or the screen closes.
+         */
         private var lastPainting: SoftReference<BouzoukiArt.Painting>? = null
 
         /** Frees a painting's pixels at once where that is safe (Android 8 on); before that the collector does it. */

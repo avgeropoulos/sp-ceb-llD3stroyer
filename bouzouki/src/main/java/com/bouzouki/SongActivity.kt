@@ -211,8 +211,11 @@ class SongActivity : Activity() {
             })
             addView(ui.chip("🔗") { showLinkRows(linkRow.visibility != View.VISIBLE) },
                 LinearLayout.LayoutParams(px(42), px(40)).apply { marginEnd = px(4) })
-            // The whole bouzouki, sideways (turning the phone does it too).
-            addView(ui.chip("🪕") { whole.turnSideways() }.apply { contentDescription = "Whole bouzouki, sideways" },
+            // The whole bouzouki, sideways (turning the phone does it too). A long press says so.
+            addView(ui.chip("🪕") { whole.turnSideways() }.apply {
+                contentDescription = "Whole bouzouki, sideways"
+                if (Build.VERSION.SDK_INT >= 26) tooltipText = "The whole bouzouki, sideways (or turn the phone)"
+            },
                 LinearLayout.LayoutParams(px(38), px(40)).apply { marginEnd = px(3) })
             addView(wireZoom(ui, settings, board, "song", defaultWhole = true),
                 LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, px(40)))
@@ -448,6 +451,12 @@ class SongActivity : Activity() {
         whole.follow(newConfig)
     }
 
+    // Back while the whole bouzouki shows turns the screen upright, as ⤺ does, instead of closing the song.
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        if (!whole.back()) @Suppress("DEPRECATION") super.onBackPressed()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleShare(intent)
@@ -606,8 +615,8 @@ class SongActivity : Activity() {
             val spec = lineSpecFor(s.id)
             if (spec == null) {
                 status.text = if (s.notes.isEmpty()) "No clear bouzouki line was found in this song."
-                else "Ready: ${s.notes.size} bouzouki notes. The hollow ring shows the next one. " +
-                    "📜 Tablature shows the whole song: tap a note to hear it and play from there."
+                else "Ready: ${s.notes.size} bouzouki notes; the hollow ring shows the next. Turn the phone sideways (or 🪕) " +
+                    "for the whole bouzouki. 📜 Tablature: the whole song, tap a note to play from there."
             }
             sheet.showNow()
             chooseLine(announce = false)
