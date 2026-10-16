@@ -36,15 +36,16 @@
             android:screenOrientation="portrait"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation" />
 
-        <!-- Share a video from the YouTube app to Μπουζούκι to play along with it. -->
+        <!-- Share a video from the YouTube app to Μπουζούκι to play along with it.
+             Turned sideways (as auto-rotate allows) it shows the whole bouzouki, without being made again. -->
         <activity
             android:name=".SongActivity"
             android:exported="true"
             android:label="Μπουζούκι · play along"
             android:launchMode="singleTop"
-            android:screenOrientation="portrait"
+            android:screenOrientation="fullUser"
             android:windowSoftInputMode="adjustPan"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation">
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|keyboard|navigation">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />

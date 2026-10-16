@@ -5,11 +5,14 @@ import android.graphics.Bitmap
 import android.graphics.BitmapShader
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.DashPathEffect
 import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PointF
 import android.graphics.RadialGradient
 import android.graphics.Rect
 import android.graphics.RectF
@@ -27,9 +30,13 @@ import com.bouzouki.core.Dromos
 import com.bouzouki.core.Instrument
 import com.bouzouki.core.NoteNames
 import com.bouzouki.core.ScalePath
+import java.lang.ref.SoftReference
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
+import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.hypot
@@ -46,17 +53,21 @@ import kotlin.math.sqrt
  * right, the highest course at the top like a line of tab. Notes light up on it as they do on
  * [FretboardView]: the note now as a gold token with its name, the next one as a hollow ring,
  * a legato trail along the string, the dromos as small pearl dots, and the sounding string
- * hums and shimmers. Touch a course on the neck to pluck it.
+ * hums and shimmers. Touch a course on the neck to pluck it there, or over the body to pick it
+ * open (sweeping across the courses strums them).
  *
  * Proportions are a real instrument's (67.5 cm scale, a 30 by 39 cm pear-shaped body, 99 cm
  * long in all), except that the neck may be drawn up to 1.6 times wider so the courses stay
- * far enough apart to read. Everything that stands still, the resting strings and the dromos
- * dots included, is painted into a bitmap on a background thread; a frame copies it and draws
- * only the course that sounds and the song's marks.
+ * far enough apart to read. The leather it lies on fills the whole view; the instrument and
+ * the free slots ([videoSlot], [statusSlot]) stay inside the view's padding, so padding the
+ * view by the system bars and cut-outs keeps them clear while the view runs edge to edge.
+ * Everything that stands still, the resting strings included, is painted into a bitmap on a
+ * background thread; a frame copies it and draws the course that sounds, the dromos dots
+ * (small ready-made bitmaps, so a change of dromos shows at once) and the song's marks.
  */
 class BouzoukiView(context: Context, private val synth: BouzoukiSynth) : View(context) {
     var instrument = Instrument.TETRACHORDO
-        set(v) { if (field != v) { field = v; held.clear(); syncHeld(); relayout() } }
+        set(v) { if (field != v) { field = v; held.clear(); bodyTouch.clear(); syncHeld(); relayout() } }
     var dromos = Dromos.HITZAZ
         set(v) { field = v; marksChanged() }
     var rootPc = 2
@@ -91,9 +102,12 @@ class BouzoukiView(context: Context, private val synth: BouzoukiSynth) : View(co
     /** Where the live note was hammered, pulled or slid from (on its course): a gold trail along the string. */
     var legatoFrom: Cell? = null
         set(v) { if (field != v) { field = v; invalidate() } }
-    /** While a finger holds a note, pick it again and again (the classic bouzouki tremolo). */
+    /**
+     * Tremolo: a finger holding a note picks it again and again (the classic bouzouki tremolo),
+     * and with no finger down the live note's string keeps shimmering, for a tremolo note a song plays.
+     */
     var tremolo = false
-        set(v) { field = v; if (v) scheduleTremolo() }
+        set(v) { if (field != v) { field = v; if (v) scheduleTremolo() } }
 
     /**
      * A free area above the neck and headstock, 16:9 and as large as fits, where the song's video
@@ -103,6 +117,18 @@ class BouzoukiView(context: Context, private val synth: BouzoukiSynth) : View(co
 
     /** A one-line strip for status text, below the neck on the left. Empty until the view has a size. */
     fun statusSlot(): RectF = RectF(shape?.status ?: EMPTY)
+
+    /** The middle of [cell]'s place (an open string's is on the nut) in this view's pixels; null before layout or off the neck. */
+    fun cellCenter(cell: Cell): PointF? {
+        val sh = shape ?: return null
+        if (!onNeck(cell)) return null
+        val x = sh.cellX(cell.fret)
+        return PointF(x, sh.courseY(cell.course, x))
+    }
+
+    /** Whether the painted instrument is shown; until it's ready a flat stand-in is. */
+    val artReady: Boolean
+        get() = art.let { it != null && it.shape === shape && !it.bitmap.isRecycled }
 
     /** Plucks [cell] with the bouzouki sound and sets its string swinging. */
     fun playCell(cell: Cell) {
@@ -119,16 +145,30 @@ class BouzoukiView(context: Context, private val synth: BouzoukiSynth) : View(co
     private val dp = resources.displayMetrics.density
     private val pens = BouzoukiPens(dp)
     private var shape: BouzoukiShape? = null
+    /** The last layout worked out (see [shapeFor]). */
+    private var planned: BouzoukiShape? = null
     private var art: BouzoukiArt.Painting? = null
     private var painting = false
     private var paintGen = 0
+    /** The layout the painter thread should paint; anything else it was asked for meanwhile it skips. */
+    @Volatile private var wanted: BouzoukiShape? = null
+    /** A layout whose painting failed (say, out of memory): the stand-in stays for it, without trying again and again. */
+    private var failed: BouzoukiShape? = null
     private val artDst = Rect()
     // Flat stand-ins for the painting while it is being made.
     private var flatTop: Path? = null
     private var flatHead: Path? = null
     private var flatBoard: Path? = null
+    // The dromos dots: x, y, radius and kind (0 pearl, 1 root, 2 another note) of each, made again when the scale or the layout changes.
+    private var marks = FloatArray(0)
+    private var markCount = 0
+    private var marksDirty = true
+    private var sprites: Array<Bitmap>? = null
+    private val spriteDst = RectF()
 
     private val held = HashMap<Int, Pair<Int, Int>>() // pointer id -> (course, fret)
+    /** Fingers that came down over the body: they pick open strings, and sweeping across the courses strums them. */
+    private val bodyTouch = HashSet<Int>()
     private var tremoloUp = true
     // Per-cell and per-course state kept in flat arrays so drawing never boxes or allocates.
     private val pressed = BooleanArray(MAX_COURSES * CELLS)
@@ -137,6 +177,7 @@ class BouzoukiView(context: Context, private val synth: BouzoukiSynth) : View(co
     private val flashAt = LongArray(MAX_COURSES * CELLS)
     private val pluckAt = LongArray(MAX_COURSES)
     private val pluckFret = IntArray(MAX_COURSES)
+    private val pluckAmp = FloatArray(MAX_COURSES)
     private var lastPlay = 0L
     private val swingPath = Path()
 
@@ -163,6 +204,13 @@ class BouzoukiView(context: Context, private val synth: BouzoukiSynth) : View(co
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) = relayout()
 
+    /** The padding is the room kept clear of system bars and cut-outs: the instrument is laid out inside it. */
+    override fun setPadding(left: Int, top: Int, right: Int, bottom: Int) {
+        val same = left == paddingLeft && top == paddingTop && right == paddingRight && bottom == paddingBottom
+        super.setPadding(left, top, right, bottom)
+        if (!same) relayout()
+    }
+
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         requestPaint()
@@ -171,20 +219,37 @@ class BouzoukiView(context: Context, private val synth: BouzoukiSynth) : View(co
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
         removeCallbacks(tremoloTick)
-        // The painting is a screenful of pixels: let it go now; it is made again if the view comes back.
         paintGen++
         painting = false
-        art?.let { release(it.bitmap) }
+        wanted = null
+        // The painting is a screenful of pixels: the view lets it go now. It stays in [lastPainting] only while memory
+        // allows, so coming back to the same screen shows it at once; otherwise it's made again.
         art = null
     }
 
-    /** Lays the instrument out again for a new size or instrument; the old painting no longer fits. */
+    /**
+     * The layout for a [w] by [h] view with the current padding and instrument, kept while those stay the
+     * same (a parent can ask for it while measuring, before the view has its size). Null for an empty view.
+     */
+    internal fun shapeFor(w: Int, h: Int): BouzoukiShape? {
+        if (w <= 0 || h <= 0) return null
+        val pad = Rect(paddingLeft, paddingTop, paddingRight, paddingBottom)
+        planned?.takeIf { it.matches(w, h, dp, instrument, pad) }?.let { return it }
+        // A painting kept from before (the screen turned sideways again, say) brings its own layout, the very same.
+        val kept = lastPainting?.get()?.takeIf { it.shape.matches(w, h, dp, instrument, pad) && !it.bitmap.isRecycled }
+        return (kept?.shape ?: BouzoukiShape(w, h, dp, instrument, pad)).also { planned = it }
+    }
+
+    /** Lays the instrument out again for a new size, padding or instrument; the old painting no longer fits. */
     private fun relayout() {
-        art?.let { release(it.bitmap) }
+        val sh = shapeFor(width, height)
+        if (sh != null && sh === shape) return
+        val old = art
         art = null
-        if (width <= 0 || height <= 0) { shape = null; return }
-        val sh = BouzoukiShape(width, height, dp, instrument)
+        old?.let { retire(it) }
         shape = sh
+        marksDirty = true
+        if (sh == null) { flatTop = null; flatHead = null; flatBoard = null; return }
         flatTop = sh.outline(0f)
         flatHead = sh.headPath()
         flatBoard = sh.boardPath(0f)
@@ -193,53 +258,64 @@ class BouzoukiView(context: Context, private val synth: BouzoukiSynth) : View(co
     }
 
     private fun marksChanged() {
+        marksDirty = true
         invalidate()
-        requestPaint()
     }
 
-    private fun marks() = BouzoukiArt.Marks(markMask(), Math.floorMod(rootPc, 12), showAllNotes)
-
-    /** Paints the still bouzouki on a background thread, unless a painting is under way (it checks again when done). */
+    /** Paints the still bouzouki on the painter thread, unless it's painted (or being painted) already. */
     private fun requestPaint() {
         val sh = shape ?: return
-        if (painting || !isAttachedToWindow) return
-        val a = art
-        val m = marks()
-        if (a != null && a.shape === sh && a.marks == m) return
+        if (!isAttachedToWindow || sh === failed) return
+        art?.let { if (it.shape === sh && !it.bitmap.isRecycled) return }
+        lastPainting?.get()?.takeIf { it.shape === sh && !it.bitmap.isRecycled }?.let { art = it; invalidate(); return }
+        if (painting) return // it looks again when that one is done
         painting = true
+        wanted = sh
         val gen = paintGen
-        Thread({
-            // Should painting fail (say, out of memory) the plain stand-in simply stays.
-            val made = try { BouzoukiArt.paint(sh, m) } catch (e: Throwable) { null }
+        painter.execute {
+            var broke = false
+            val made = if (wanted !== sh) null else try { BouzoukiArt.paint(sh) } catch (e: Throwable) { broke = true; null }
             mainHandler.post {
-                if (gen != paintGen) { made?.let { release(it.bitmap) }; return@post }
+                // Detached meanwhile: kept for when the view comes back (only while memory allows).
+                if (gen != paintGen) { made?.let { lastPainting = SoftReference(it) }; return@post }
                 painting = false
+                if (broke) failed = sh
                 if (made != null && made.shape === shape) {
-                    art?.let { release(it.bitmap) }
+                    val old = art
                     art = made
+                    lastPainting = SoftReference(made)
+                    if (old != null && old !== made) retire(old)
                     invalidate()
                 } else made?.let { release(it.bitmap) }
-                requestPaint() // the size or the dromos may have changed meanwhile
+                requestPaint() // the size may have changed meanwhile
             }
-        }, "bouzouki-art").apply { isDaemon = true }.start()
+        }
+    }
+
+    /** Lets an old painting's pixels go, unless it's the one kept for later. */
+    private fun retire(p: BouzoukiArt.Painting) {
+        if (p !== art && p !== lastPainting?.get()) release(p.bitmap)
     }
 
     override fun onDraw(canvas: Canvas) {
         val sh = shape ?: return
+        if (art?.bitmap?.isRecycled == true) { art = null; requestPaint() }
         val now = SystemClock.uptimeMillis()
-        val a = art?.takeIf { it.shape === sh && !it.bitmap.isRecycled }
+        val a = art?.takeIf { it.shape === sh }
         if (a != null) {
             artDst.set(0, 0, sh.width, sh.height)
             canvas.drawBitmap(a.bitmap, null, artDst, artPaint)
         } else drawStandIn(canvas, sh)
-        val moving = drawSounding(canvas, sh, now, a != null)
+        val moving = drawSounding(canvas, sh, now)
+        drawMarks(canvas, sh)
         drawTouches(canvas, sh, now)
         drawSongMarks(canvas, sh)
-        // Only the band the strings and notes move in changes (a software canvas then copies just that much).
+        // Only the band the strings and notes move in changes. A software canvas then copies just that much; with
+        // hardware drawing (the usual case) the whole view is drawn again, which is a cheap copy of the painting.
         if (moving || now - lastPlay < FLASH_MS) sh.band.let { postInvalidateOnAnimation(it.left, it.top, it.right, it.bottom) }
     }
 
-    /** Flat shapes, the strings and the dromos while the painting is being made. */
+    /** Flat shapes and the strings while the painting is being made. */
     private fun drawStandIn(canvas: Canvas, sh: BouzoukiShape) {
         canvas.drawColor(0xFF22170F.toInt())
         flat.color = 0xFFCFAE7A.toInt()
@@ -249,19 +325,16 @@ class BouzoukiView(context: Context, private val synth: BouzoukiSynth) : View(co
         flat.color = 0xFF1E140E.toInt()
         flatBoard?.let { canvas.drawPath(it, flat) }
         for (st in sh.strings) pens.stillString(canvas, sh, st)
-        val m = markMask()
-        for (c in 0 until sh.courses) pens.marks(canvas, sh, c, 0, m, rootPc, showAllNotes)
     }
 
     /**
      * The courses that sound: the live note's course hums (a warm glow and bright metal from the
      * stopping fret to the bridge), and a plucked course swings there for a moment, blurring
-     * between its ghosts. The dots on them are drawn again on top. Returns whether any string moves.
+     * between its ghosts. Returns whether any string moves.
      */
-    private fun drawSounding(canvas: Canvas, sh: BouzoukiShape, now: Long, painted: Boolean): Boolean {
+    private fun drawSounding(canvas: Canvas, sh: BouzoukiShape, now: Long): Boolean {
         var moving = false
         val live = liveCell?.takeIf { onNeck(it) }
-        val mask = markMask()
         for (c in 0 until sh.courses) {
             val age = now - pluckAt[c]
             val shaking = pluckAt[c] > 0 && age < VIBRATE_MS
@@ -292,7 +365,7 @@ class BouzoukiView(context: Context, private val synth: BouzoukiSynth) : View(co
                 val t = age.toFloat()
                 val env = exp(-t / 190f)
                 val period = if (sh.instrument.courses[c].octavePair && !st.wound) 42f else 84f
-                val reach = sh.spacing(sh.bridgeX) * 0.3f
+                val reach = sh.spacing(sh.bridgeX) * 0.3f * pluckAmp[c]
                 val y0 = sh.yOn(st, x0)
                 swing(sh, st, x0, y0, reach * 0.85f * env)
                 pens.ghost(canvas, swingPath, st, color, env)
@@ -301,8 +374,6 @@ class BouzoukiView(context: Context, private val synth: BouzoukiSynth) : View(co
                 swing(sh, st, x0, y0, reach * env * cos(2f * PI.toFloat() * t / period + st.index * 0.9f))
                 pens.curve(canvas, swingPath, st, color)
             }
-            // Their shadows are in the painting already.
-            if (painted) pens.marks(canvas, sh, c, fret + 1, mask, rootPc, showAllNotes, shadows = false)
         }
         return moving
     }
@@ -312,6 +383,53 @@ class BouzoukiView(context: Context, private val synth: BouzoukiSynth) : View(co
         swingPath.rewind()
         swingPath.moveTo(x0, y0)
         swingPath.quadTo((x0 + sh.bridgeX) / 2, (y0 + st.bridgeY) / 2 + 2 * amp, sh.bridgeX, st.bridgeY)
+    }
+
+    /** The dromos: pearl dots, the root in red lacquer, the other notes as small dark dots when asked; each a small ready-made bitmap. */
+    private fun drawMarks(canvas: Canvas, sh: BouzoukiShape) {
+        if (marksDirty) buildMarks(sh)
+        if (markCount == 0) return
+        val sp = sprites ?: makeSprites().also { sprites = it }
+        val perR = sp[0].width / 2f / pens.maxMarkR // a sprite's half size, per pixel of the dot's radius
+        for (m in 0 until markCount) {
+            val k = m * 4
+            val half = marks[k + 2] * perR
+            spriteDst.set(marks[k] - half, marks[k + 1] - half, marks[k] + half, marks[k + 1] + half)
+            canvas.drawBitmap(sp[marks[k + 3].toInt()], null, spriteDst, artPaint)
+        }
+    }
+
+    /** Works out where the dromos dots go (only when the scale or the layout changes). */
+    private fun buildMarks(sh: BouzoukiShape) {
+        marksDirty = false
+        val mask = markMask()
+        val root = Math.floorMod(rootPc, 12)
+        val need = sh.courses * (sh.frets + 1) * 4
+        if (marks.size < need) marks = FloatArray(need)
+        markCount = 0
+        for (c in 0 until sh.courses) for (f in 0..sh.frets) {
+            val degree = Math.floorMod(sh.instrument.midiAt(c, f) - root, 12)
+            val kind = when {
+                mask and (1 shl degree) == 0 -> if (showAllNotes) 2 else continue
+                degree == 0 -> 1
+                else -> 0
+            }
+            val x = sh.cellX(f)
+            val k = markCount++ * 4
+            marks[k] = x
+            marks[k + 1] = sh.courseY(c, x)
+            marks[k + 2] = pens.markR(sh, f)
+            marks[k + 3] = kind.toFloat()
+        }
+    }
+
+    /** The three kinds of dot painted once at their largest, shadows included; each frame scales them down to size. */
+    private fun makeSprites(): Array<Bitmap> {
+        val r = pens.maxMarkR
+        val size = ceil(2 * SPRITE_REACH * r).toInt() + 2
+        return Array(3) { kind ->
+            Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888).also { pens.mark(Canvas(it), size / 2f, size / 2f, r, kind) }
+        }
     }
 
     /** Glows where fingers press or just played, with the pressed notes in gold. */
@@ -340,6 +458,9 @@ class BouzoukiView(context: Context, private val synth: BouzoukiSynth) : View(co
         nextCell?.takeIf { it != liveCell && onNeck(it) }?.let { cell ->
             val x = sh.cellX(cell.fret)
             val y = sh.courseY(cell.course, x)
+            // Dark inside, so a dot or an inlay under it doesn't make it read as one more marked note.
+            flat.color = 0xC0140D09.toInt()
+            canvas.drawCircle(x, y, r * 0.86f - 1.3f * dp, flat)
             ring.strokeWidth = 5f * dp
             ring.color = 0x99000000.toInt()
             canvas.drawCircle(x, y, r * 0.86f, ring)
@@ -407,10 +528,12 @@ class BouzoukiView(context: Context, private val synth: BouzoukiSynth) : View(co
         return maskBits
     }
 
-    private fun shake(course: Int, fret: Int, now: Long) {
+    /** Sets course [course] swinging from [fret], [amp] as wide as a full pick. */
+    private fun shake(course: Int, fret: Int, now: Long, amp: Float = 1f) {
         if (course !in 0 until MAX_COURSES) return
         pluckAt[course] = now
         pluckFret[course] = fret
+        pluckAmp[course] = amp
     }
 
     private fun play(course: Int, fret: Int, velocity: Float) {
@@ -442,39 +565,54 @@ class BouzoukiView(context: Context, private val synth: BouzoukiSynth) : View(co
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                 val i = e.actionIndex
-                val cell = sh.cellAt(e.getX(i), e.getY(i)) ?: return e.actionMasked != MotionEvent.ACTION_DOWN
+                val x = e.getX(i)
+                val cell = sh.cellAt(x, e.getY(i)) ?: return e.actionMasked != MotionEvent.ACTION_DOWN
                 parent?.requestDisallowInterceptTouchEvent(true)
+                val id = e.getPointerId(i)
+                if (sh.overBody(x)) bodyTouch.add(id) else bodyTouch.remove(id)
                 // One finger per course: a new finger on a ringing course replaces the old one.
                 held.entries.removeAll { it.value.first == cell.first }
-                held[e.getPointerId(i)] = cell
+                held[id] = cell
                 play(cell.first, cell.second, 0.9f)
                 if (tremolo) scheduleTremolo()
             }
             MotionEvent.ACTION_MOVE -> for (i in 0 until e.pointerCount) {
                 val id = e.getPointerId(i)
                 val old = held[id] ?: continue
-                val cell = sh.cellAt(e.getX(i), e.getY(i)) ?: continue
+                val x = e.getX(i)
+                // A fretting finger stays on the neck and a picking one over the body.
+                val cell = sh.cellAt(x, e.getY(i))?.takeIf { sh.overBody(x) == (id in bodyTouch) } ?: continue
                 if (cell != old) {
                     held.entries.removeAll { it.key != id && it.value.first == cell.first }
                     held[id] = cell
-                    // Gliding along a course re-sounds it softly, like a slide.
+                    // Gliding along a course re-sounds it softly, like a slide; sweeping over the body strums.
                     play(cell.first, cell.second, if (cell.first == old.first) 0.55f else 0.85f)
                 }
             }
-            MotionEvent.ACTION_POINTER_UP -> { held.remove(e.getPointerId(e.actionIndex)); invalidate() }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { held.clear(); invalidate() }
+            MotionEvent.ACTION_POINTER_UP -> {
+                val id = e.getPointerId(e.actionIndex)
+                held.remove(id)
+                bodyTouch.remove(id)
+                invalidate()
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { held.clear(); bodyTouch.clear(); invalidate() }
         }
         return true
     }
 
     private val tremoloTick = object : Runnable {
         override fun run() {
-            if (!tremolo || held.isEmpty()) return
+            if (!tremolo) return
+            val live = liveCell?.takeIf { onNeck(it) }
+            if (held.isEmpty() && live == null) return
             tremoloUp = !tremoloUp
             val now = SystemClock.uptimeMillis()
-            for ((c, f) in held.values.distinct()) {
+            if (held.isNotEmpty()) for ((c, f) in held.values.distinct()) {
                 synth.pluck(c, instrument.midiAt(c, f), instrument.courses[c].octavePair, if (tremoloUp) 0.62f else 0.74f)
-                shake(c, f, now)
+                shake(c, f, now, 0.8f)
+            } else if (live != null) {
+                // The song's tremolo: the string keeps being picked (the song makes the sound itself).
+                shake(live.course, live.fret, now, 0.7f)
             }
             invalidate()
             postDelayed(this, 68)
@@ -491,9 +629,16 @@ class BouzoukiView(context: Context, private val synth: BouzoukiSynth) : View(co
         private const val CELLS = 40            // frets 0..39 per course in the flat arrays
         private const val FLASH_MS = 320L       // glow after a note is touched
         private const val VIBRATE_MS = 650L     // a plucked string swings this long
+        private const val SPRITE_REACH = 1.5f   // a dot's shadow reaches this many radii from its middle
         private val EMPTY = RectF()
         private val mainHandler = Handler(Looper.getMainLooper())
         private val LABELS = Array(NoteNames.entries.size) { n -> Array(12) { NoteNames.entries[n].name(it) } }
+        /** One thread paints for every view, one painting at a time (each is a screenful of pixels). */
+        private val painter: ExecutorService by lazy {
+            Executors.newSingleThreadExecutor { r -> Thread(r, "bouzouki-art").apply { isDaemon = true } }
+        }
+        /** The last painting made, kept only while memory allows, so turning back to the same screen shows it at once. */
+        private var lastPainting: SoftReference<BouzoukiArt.Painting>? = null
 
         /** Frees a painting's pixels at once where that is safe (Android 8 on); before that the collector does it. */
         private fun release(b: Bitmap) {
@@ -510,8 +655,8 @@ class BouzoukiView(context: Context, private val synth: BouzoukiSynth) : View(co
 }
 
 /**
- * Paints for the strings and the dromos dots, drawn both by the painter (once, on its thread)
- * and by [BouzoukiView] (each frame): each of them has its own set.
+ * Paints for the strings and the dots, drawn both by the painter (once, on its thread) and by
+ * [BouzoukiView] (each frame, and its dot sprites): each of them has its own set.
  */
 internal class BouzoukiPens(private val dp: Float) {
     private val aa = Paint.ANTI_ALIAS_FLAG
@@ -578,24 +723,23 @@ internal class BouzoukiPens(private val dp: Float) {
         canvas.drawPath(p, ghost)
     }
 
+    /** The largest radius a dromos dot gets (still well under half the live note's token). */
+    val maxMarkR = 4.4f * dp
+
     fun markR(sh: BouzoukiShape, fret: Int): Float {
         val x = sh.cellX(fret)
-        return min(sh.spacing(x) * 0.22f, sh.cellW(fret) * 0.28f).coerceAtMost(3.9f * dp)
+        return min(sh.spacing(x) * 0.26f, sh.cellW(fret) * 0.30f).coerceAtMost(maxMarkR)
     }
 
-    /** The dromos on course [c] from fret [from] up: pearl dots, the root in red lacquer, others small dark dots when asked. */
-    fun marks(canvas: Canvas, sh: BouzoukiShape, c: Int, from: Int, mask: Int, rootPc: Int, showAll: Boolean, shadows: Boolean = true) {
-        for (f in from..sh.frets) {
-            val x = sh.cellX(f)
-            val y = sh.courseY(c, x)
-            val r = markR(sh, f)
-            val degree = Math.floorMod(sh.instrument.midiAt(c, f) - rootPc, 12)
-            if (mask and (1 shl degree) != 0) {
-                dot(canvas, x, y, r, if (degree == 0) rootFace else pearlFace, if (degree == 0) 0xFFE4BC58.toInt() else 0xFF5E4A2E.toInt(), shadows)
-            } else if (showAll) {
+    /** One dromos dot of radius [r] at ([x], [y]): [kind] 0 a pearl dot, 1 the root in red lacquer, 2 another note (a small dark dot). */
+    fun mark(canvas: Canvas, x: Float, y: Float, r: Float, kind: Int) {
+        when (kind) {
+            0 -> dot(canvas, x, y, r, pearlFace, 0xFF5E4A2E.toInt(), true)
+            1 -> dot(canvas, x, y, r, rootFace, 0xFFE4BC58.toInt(), true)
+            else -> {
                 flat.color = 0xB0140D09.toInt()
                 canvas.drawCircle(x, y, r * 0.62f, flat)
-                ring.strokeWidth = 0.8f * dp
+                ring.strokeWidth = r * 0.18f
                 ring.color = 0x70E8DCC4
                 canvas.drawCircle(x, y, r * 0.62f, ring)
             }
@@ -634,11 +778,13 @@ internal class BouzoukiPens(private val dp: Float) {
  * arithmetic, made on the UI thread and read by the painting thread too, so it never changes
  * once made (the paths it hands out are new each time).
  *
- * The instrument lies along x, centred: the headstock's tip at [left], the nut, the frets, the
- * body and the tailpiece. Lengths are real ones (centimetres) times [s] pixels per centimetre;
- * only the neck and the headstock are widened, [k] times, so the courses stay readable.
+ * The instrument lies along x, centred in the view less its padding [pad] (the room kept clear of
+ * system bars and cut-outs): the headstock's tip at [left], the nut, the frets, the body and the
+ * tailpiece. Lengths are real ones (centimetres) times [s] pixels per centimetre; only the neck
+ * and the headstock are widened, [k] times, so the courses stay readable.
  */
-internal class BouzoukiShape(val width: Int, val height: Int, val dp: Float, val instrument: Instrument) {
+internal class BouzoukiShape(val width: Int, val height: Int, val dp: Float, val instrument: Instrument, pad: Rect = Rect()) {
+    val pad = Rect(pad)
     val courses = instrument.courses.size
     val frets = instrument.frets
     /** Real fingerboard width at the nut (six strings sit a little closer than eight). */
@@ -652,11 +798,16 @@ internal class BouzoukiShape(val width: Int, val height: Int, val dp: Float, val
 
     init {
         val margin = MARGIN_DP * dp
-        s = min((width - 2 * margin) / TOTAL_CM, (height - 2 * margin) / TALL_CM).coerceAtLeast(0.05f)
+        val w = width - pad.left - pad.right
+        val h = height - pad.top - pad.bottom
+        s = min((w - 2 * margin) / TOTAL_CM, (h - 2 * margin) / TALL_CM).coerceAtLeast(0.05f)
         k = (MIN_COURSE_DP * dp * courses / (nutCm * s)).coerceIn(1f, MAX_WIDEN)
-        left = (width - TOTAL_CM * s) / 2
-        cy = height / 2f - BOWL_DROP_CM * s / 2
+        left = pad.left + (w - TOTAL_CM * s) / 2
+        cy = pad.top + h / 2f - BOWL_DROP_CM * s / 2
     }
+
+    /** Whether this is the layout for a [w] by [h] view of [inst] with padding [p] at density [d]. */
+    fun matches(w: Int, h: Int, d: Float, inst: Instrument, p: Rect) = w == width && h == height && d == dp && inst == instrument && p == pad
 
     fun x(cm: Float) = left + cm * s
 
@@ -691,9 +842,20 @@ internal class BouzoukiShape(val width: Int, val height: Int, val dp: Float, val
     fun cellX(fret: Int) = if (fret <= 0) nutX - nutLen / 2 else (fretX[fret - 1] + fretX[fret.coerceAtMost(frets)]) / 2
     fun cellW(fret: Int) = if (fret <= 0) 2f * s else fretX[fret.coerceAtMost(frets)] - fretX[fret - 1]
 
-    /** The (course, fret) under a finger, or null when it is off the fingerboard. */
+    /** Whether column [px] lies past the fingerboard, over the body, where the strings are picked. */
+    fun overBody(px: Float) = px > boardEndX
+
+    /**
+     * The (course, fret) under a finger on the fingerboard; over the body, between the fingerboard and
+     * the bridge (where a player picks), the open course under it; null anywhere else.
+     */
     fun cellAt(px: Float, py: Float): Pair<Int, Int>? {
-        if (px < nutX - nutLen - 1.2f * s || px > boardEndX) return null
+        if (px < nutX - nutLen - 1.2f * s || px > bridgeX - 0.6f * s) return null
+        if (overBody(px)) {
+            val sp = spacing(px)
+            val c = ((cy - py) / sp + (courses - 1) / 2f).roundToInt()
+            return if (c in 0 until courses && abs(py - courseY(c, px)) <= sp * 0.8f) c to 0 else null
+        }
         if (abs(py - cy) > boardHalf(px) + 6 * dp) return null
         val c = ((cy - py) / spacing(px) + (courses - 1) / 2f).roundToInt().coerceIn(0, courses - 1)
         if (px < nutX) return c to 0
@@ -732,16 +894,26 @@ internal class BouzoukiShape(val width: Int, val height: Int, val dp: Float, val
         }
     }
 
-    // ---- The body: a pear, narrow at the neck, widest 60% of the way down, round at the tail. ----
+    // ---- The body: a pear (a teardrop), its shoulders swelling out of the neck, widest 60% of the way down, round at the tail. ----
     private val frontHalfCm = boardHalf(bodyX) / s + 0.2f
 
-    /** Half the width of the top, in cm, at [u] = 0 (the neck) to 1 (the tail). */
+    /**
+     * Half the width of the top, in cm, at [u] = 0 (the neck joint) to 1 (the tail). Below 0 the curve
+     * goes on, narrowing under the fingerboard, so the top comes out from under it without a corner.
+     */
     private fun bodyHalfCm(u: Float): Float = if (u < WIDEST) {
-        val v = u / WIDEST
-        frontHalfCm + (BODY_HALF_CM - frontHalfCm) * (1f - (1f - v).pow(FULLNESS))
+        val t = (WIDEST - u) / WIDEST
+        BODY_HALF_CM - (BODY_HALF_CM - frontHalfCm) * t.pow(FULLNESS)
     } else {
         val v = ((u - WIDEST) / (1f - WIDEST)).coerceIn(0f, 1f)
         BODY_HALF_CM * sqrt(1f - v * v)
+    }
+
+    /** Where the outline starts: out of sight, a little inside the fingerboard's edge. */
+    private val startU: Float = run {
+        var u = 0f
+        while (u > -0.1f && bodyHalfCm(u) * s > boardHalf(bodyX + u * bodyLen) - 0.4f * s) u -= 0.001f
+        u
     }
 
     /** The top's outline, clockwise from the neck along the treble side and back: x, y and the outward normal. */
@@ -752,7 +924,8 @@ internal class BouzoukiShape(val width: Int, val height: Int, val dp: Float, val
         val pts = ArrayList<FloatArray>()
         val front = OUTLINE / 2
         for (i in 0..front) {
-            val u = WIDEST * (i.toFloat() / front).pow(1.3f) // closer together near the neck, where the curve turns fastest
+            // Closer together near the neck, where the curve turns fastest.
+            val u = startU + (WIDEST - startU) * (i.toFloat() / front).pow(1.3f)
             pts.add(floatArrayOf(bodyX + u * bodyLen, bodyHalfCm(u) * s))
         }
         val tail = OUTLINE - front
@@ -777,12 +950,18 @@ internal class BouzoukiShape(val width: Int, val height: Int, val dp: Float, val
         }
     }
 
-    /** The top's outline pushed [delta] pixels outwards (inwards when negative) and [drop] pixels down. */
+    /**
+     * The top's outline pushed [delta] pixels outwards (inwards when negative) and [drop] pixels down. Both
+     * fade out towards the neck, where the top meets the fingerboard and no bowl shows.
+     */
     fun outline(delta: Float, drop: Float = 0f): Path {
         val p = Path()
+        val x0 = rim[0]
+        val ramp = OFFSET_RAMP_CM * s
         for (j in 0 until rimCount) {
-            val x = rim[j * 4] + rim[j * 4 + 2] * delta
-            val y = rim[j * 4 + 1] + rim[j * 4 + 3] * delta + drop
+            val f = ((rim[j * 4] - x0) / ramp).coerceIn(0f, 1f).let { it * it * (3 - 2 * it) }
+            val x = rim[j * 4] + rim[j * 4 + 2] * delta * f
+            val y = rim[j * 4 + 1] + (rim[j * 4 + 3] * delta + drop) * f
             if (j == 0) p.moveTo(x, y) else p.lineTo(x, y)
         }
         p.close()
@@ -792,7 +971,7 @@ internal class BouzoukiShape(val width: Int, val height: Int, val dp: Float, val
     /** Half the top's width at [px], or 0 off the body. */
     fun bodyHalf(px: Float): Float {
         val u = (px - bodyX) / bodyLen
-        return if (u < 0f || u > 1f) 0f else bodyHalfCm(u) * s
+        return if (u < startU || u > 1f) 0f else max(0f, bodyHalfCm(u) * s)
     }
 
     /** The fingerboard, [inset] pixels inside its edges: straight tapering sides and a rounded point over the top. */
@@ -859,37 +1038,42 @@ internal class BouzoukiShape(val width: Int, val height: Int, val dp: Float, val
         val m = MARGIN_DP * dp
         val gap = 6 * dp
         val step = max(1f, 2 * dp)
-        val cols = ((width - 2 * m) / step).toInt().coerceAtLeast(0) + 1
-        val top = FloatArray(cols) { cy - reach(m + it * step, false) }
-        val bottom = FloatArray(cols) { cy + reach(m + it * step, true) }
+        val x0 = pad.left + m
+        val y0 = pad.top + m
+        val yEnd = height - pad.bottom - m
+        val cols = ((width - pad.right - m - x0) / step).toInt().coerceAtLeast(0) + 1
+        val top = FloatArray(cols) { cy - reach(x0 + it * step, false) }
+        val bottom = FloatArray(cols) { cy + reach(x0 + it * step, true) }
         // The tallest 16:9 box that fits above the instrument, centred in the run of free columns it uses.
         var v = RectF()
-        var h = cy - m - gap
+        var h = cy - y0 - gap
         while (h >= 48 * dp && v.isEmpty) {
             val need = h * 16f / 9f
             var best = 0f
             var bestAt = 0f
             var start = -1
             for (i in 0 until cols) {
-                if (top[i] >= m + h + gap) {
+                if (top[i] >= y0 + h + gap) {
                     if (start < 0) start = i
                     val run = (i - start) * step
-                    if (run > best) { best = run; bestAt = m + start * step }
+                    if (run > best) { best = run; bestAt = x0 + start * step }
                 } else start = -1
             }
             if (best >= need) {
                 val l = bestAt + (best - need) / 2
-                v = RectF(l, m, l + need, m + h)
+                v = RectF(l, y0, l + need, y0 + h)
             }
             h -= step
         }
         video = v
-        // One line at the bottom left, from the margin to the body (or as far as the room below the neck goes).
-        val lineH = min(28 * dp, (height - m - (cy + headHalf + buttonReach)).coerceAtLeast(0f))
-        val y = height - m - lineH
+        // One line at the bottom left, under the neck: from the margin to the video's right edge or to just
+        // before the body, whichever comes first (or as far as the room below the neck goes).
+        val lineH = min(28 * dp, (yEnd - (cy + headHalf + buttonReach)).coerceAtLeast(0f))
+        val y = yEnd - lineH
+        val stop = min(if (v.isEmpty) Float.MAX_VALUE else v.right, bodyX - 8 * dp)
         var end = 0
-        while (end < cols && bottom[end] + gap <= y && m + end * step < bodyX - gap) end++
-        status = if (lineH < 14 * dp || end < 2) RectF() else RectF(m, y, m + (end - 1) * step, y + lineH)
+        while (end < cols && bottom[end] + gap <= y && x0 + end * step <= stop) end++
+        status = if (lineH < 14 * dp || end < 2) RectF() else RectF(x0, y, x0 + (end - 1) * step, y + lineH)
     }
 
     companion object {
@@ -901,7 +1085,8 @@ internal class BouzoukiShape(val width: Int, val height: Int, val dp: Float, val
         const val BODY_LEN_CM = 39f
         const val BODY_HALF_CM = 15f
         const val WIDEST = 0.6f           // where the body is widest, from the neck
-        const val FULLNESS = 2.7f         // how quickly the body widens from the neck: higher is rounder
+        const val FULLNESS = 2.2f         // how quickly the body widens from the neck: higher is rounder
+        const val OFFSET_RAMP_CM = 4f     // the bowl showing round the top fades out over this much towards the neck
         const val HOLE_FROM_NUT_CM = 58.4f
         const val HOLE_R_CM = 2.8f
         const val TAIL_HOOK_CM = 95.6f
@@ -920,22 +1105,19 @@ internal class BouzoukiShape(val width: Int, val height: Int, val dp: Float, val
 
 /**
  * Paints everything of a [BouzoukiShape] that stands still into a bitmap: the leather it lies
- * on, its shadow, the staved back, the spruce top with binding, rosette and pickguard, the
- * bridge, the tailpiece, the fingerboard with frets and pearl inlays, the nut, the headstock
- * with its tuners, the resting strings and the dromos dots. [BouzoukiView] draws what moves
- * over it each frame.
+ * on, its shadow, the staved back, the spruce top with binding, abalone purfling, rosette and
+ * pickguard, the bridge, the tailpiece, the fingerboard with frets and pearl inlays, the nut, the
+ * headstock with its tuners, and the resting strings. [BouzoukiView] draws what moves over it
+ * each frame, the dromos dots included.
  */
 internal object BouzoukiArt {
-    /** Which notes are marked: degrees above [rootPc] in [mask] as pearl dots, the others too when [showAll]. */
-    data class Marks(val mask: Int, val rootPc: Int, val showAll: Boolean)
-
-    /** A finished painting and what it was painted for. */
-    class Painting(val bitmap: Bitmap, val shape: BouzoukiShape, val marks: Marks)
+    /** A finished painting and the layout it was painted for. */
+    class Painting(val bitmap: Bitmap, val shape: BouzoukiShape)
 
     /** Small tiles shared by every painting; size-independent, so made once per process. */
     private class Tiles(val leather: Bitmap, val pearl: Bitmap, val abalone: Bitmap, val tortoise: Bitmap)
 
-    /** The spruce and ebony textures for the last size painted, kept so a change of dromos repaints quickly. */
+    /** The spruce and ebony textures for the last size painted, kept so painting the same size again is quicker. */
     private class Woods(val spruceW: Int, val ebonyW: Int, val spruce: Bitmap, val ebony: Bitmap)
 
     @Volatile private var tiles: Tiles? = null
@@ -953,14 +1135,14 @@ internal object BouzoukiArt {
             ?: Woods(spruceW, ebonyW, NeckArt.spruceTop(spruceW), NeckArt.fingerboard(ebonyW)).also { woods = it }
     }
 
-    /** The still bouzouki for [sh] with [marks]. Takes a few hundred milliseconds, so call it off the UI thread. */
-    fun paint(sh: BouzoukiShape, marks: Marks): Painting {
+    /** The still bouzouki for [sh]. Takes a few hundred milliseconds, so call it off the UI thread. */
+    fun paint(sh: BouzoukiShape): Painting {
         val scale = min(1f, MAX_SIDE / max(sh.width, sh.height))
         val bmp = Bitmap.createBitmap(max(1, (sh.width * scale).toInt()), max(1, (sh.height * scale).toInt()), Bitmap.Config.ARGB_8888)
         val c = Canvas(bmp)
         c.scale(scale, scale)
-        Painter(sh, tiles(), c).paint(marks)
-        return Painting(bmp, sh, marks)
+        Painter(sh, tiles(), c).paint()
+        return Painting(bmp, sh)
     }
 
     /** Amber and dark brown flecks of tortoiseshell celluloid, a seamless tile. */
@@ -992,12 +1174,19 @@ internal object BouzoukiArt {
         val head = sh.headPath()
         val pearl = tile(t.pearl, Shader.TileMode.MIRROR, max(0.5f, s / 40f))
         val shell = tile(t.abalone, Shader.TileMode.MIRROR, max(0.5f, s / 30f))
+        /** The abalone toned down for the rings on the top, where it sits beside the honey spruce. */
+        val softShell = Paint(shell).apply {
+            colorFilter = ColorMatrixColorFilter(ColorMatrix().apply {
+                setSaturation(0.7f)
+                postConcat(ColorMatrix().apply { setScale(0.8f, 0.8f, 0.8f, 1f) })
+            })
+        }
         val inlayEdge = stroke(0xD0120A06.toInt(), max(0.6f, 0.05f * s))
         val spruceSpan = 2 * BouzoukiShape.BODY_HALF_CM * s
         val boardWide = 2 * sh.boardHalf(sh.boardEndX)
         val wood = woods(max(2, (spruceSpan / 2).toInt()), max(2, (boardWide / 2).toInt()))
 
-        fun paint(marks: Marks) {
+        fun paint() {
             background()
             shadow()
             bowl()
@@ -1011,7 +1200,6 @@ internal object BouzoukiArt {
             numbers()
             val pens = BouzoukiPens(dp)
             for (st in sh.strings) pens.stillString(c, sh, st)
-            for (course in 0 until sh.courses) pens.marks(c, sh, course, 0, marks.mask, marks.rootPc, marks.showAll)
         }
 
         private fun fill(color: Int) = Paint(aa).apply { this.color = color }
@@ -1078,29 +1266,65 @@ internal object BouzoukiArt {
             c.restore()
         }
 
-        /** Honey spruce with its grain along the instrument, a pool of light, cream binding and black-white-black purfling. */
+        /**
+         * Honey spruce with its grain along the instrument, a pool of light, the bend behind the bridge, and
+         * round its edge cream binding, black-white-black purfling and the band of abalone a Greek bouzouki has.
+         */
         private fun spruce() {
             c.drawPath(top, alongX(wood.spruce, sh.bodyX, cy - spruceSpan / 2, spruceSpan))
             c.save()
             c.clipPath(top)
-            // Aged a little towards amber, light falling on the lower bout, a faint shade under the raised binding.
+            // Aged a little towards amber, light falling on the lower bout.
             c.drawPath(top, fill(0x1CC07818))
             c.drawPath(top, Paint(aa).apply {
                 shader = RadialGradient(sh.bodyX + sh.bodyLen * 0.55f, cy - 4f * s, 20f * s,
                     intArrayOf(0x30FFF6E0, 0x00FFF4DC, 0x34201000), floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP)
             })
+            // The top bends down a little behind the bridge, so that part catches less light.
+            val bend = sh.x(BouzoukiShape.HEAD_CM + BouzoukiShape.SCALE_CM + 1.4f)
+            c.drawRect(bend, 0f, w, h, Paint().apply {
+                shader = LinearGradient(bend, 0f, bend + 2.6f * s, 0f, 0x00000000, 0x24000000, Shader.TileMode.CLAMP)
+            })
+            c.drawRect(bend - 0.15f * s, 0f, bend + 0.15f * s, h, fill(0x10FFF0D0))
+            // A faint shade under the raised binding.
             c.drawPath(top, stroke(0x30301400, 1.6f * s).apply { maskFilter = BlurMaskFilter(0.4f * s, BlurMaskFilter.Blur.NORMAL) })
-            val bind = 0.3f * s
-            c.drawPath(top, stroke(CREAM, 2 * bind))
+            // From the edge in: binding, black, white, black, abalone, black, white.
+            val black = 0xFF140C08.toInt()
+            val white = 0xFFF4ECDA.toInt()
+            bands(top, floatArrayOf(0.30f, 0.045f, 0.04f, 0.045f, 0.24f, 0.04f, 0.035f),
+                arrayOf(fill(CREAM), fill(black), fill(white), fill(black), Paint(softShell), fill(black), fill(white)))
+            // The rounded binding catches the light along the top edge and falls into shade along the bottom.
+            c.drawPath(top, Paint(aa).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = 0.22f * s
+                shader = LinearGradient(0f, cy - BouzoukiShape.BODY_HALF_CM * s, 0f, cy + BouzoukiShape.BODY_HALF_CM * s,
+                    intArrayOf(0x50FFFFFF, 0x00FFFFFF, 0x40000000), floatArrayOf(0f, 0.45f, 1f), Shader.TileMode.CLAMP)
+            })
             c.restore()
             c.drawPath(top, stroke(0xFF1A100A.toInt(), 0.06f * s))
-            val p = max(0.6f, 0.06f * s)
-            val purfl = sh.outline(-bind - 1.5f * p)
-            c.drawPath(purfl, stroke(0xFF140C08.toInt(), 3 * p))
-            c.drawPath(purfl, stroke(0xFFF4ECDA.toInt(), p))
         }
 
-        /** The round soundhole with a rosette: bone and ebony lines, a ring of abalone, and a rope of light and dark wood. */
+        /**
+         * Concentric bands just inside [path] (the canvas clipped to it), [widths] in cm from the edge in: each
+         * is a stroke along the edge twice as wide as how deep it reaches, the deepest drawn first.
+         */
+        private fun bands(path: Path, widths: FloatArray, paints: Array<Paint>) {
+            var depth = widths.sum()
+            for (i in widths.indices.reversed()) {
+                paints[i].apply {
+                    style = Paint.Style.STROKE
+                    strokeWidth = 2 * depth * s
+                    strokeJoin = Paint.Join.ROUND
+                }
+                c.drawPath(path, paints[i])
+                depth -= widths[i]
+            }
+        }
+
+        /**
+         * The round soundhole with a rosette: bone and ebony lines, a ring of abalone, a wooden mosaic and a rope of
+         * light and dark wood; through the hole, the inside of the staved bowl.
+         */
         private fun rosette() {
             val x = sh.holeX
             val r = sh.holeR
@@ -1118,9 +1342,11 @@ internal object BouzoukiArt {
             c.drawCircle(x, cy, ropeR, stroke(0xFF2C5A44.toInt(), ropeW * 0.34f).apply { pathEffect = DashPathEffect(floatArrayOf(seg * 0.25f, seg * 0.75f), seg * 0.12f) })
             c.drawCircle(x, cy, r + 1.04f * s, fill(black))
             c.drawCircle(x, cy, r + 0.98f * s, fill(cream))
-            c.drawCircle(x, cy, r + 0.86f * s, fill(black))
-            c.drawCircle(x, cy, r + 0.8f * s, shell)
-            c.drawCircle(x, cy, r + 0.8f * s, Paint(aa).apply {
+            c.drawCircle(x, cy, r + 0.92f * s, fill(black))
+            mosaic(x, r + 0.62f * s, r + 0.88f * s)
+            c.drawCircle(x, cy, r + 0.62f * s, fill(black))
+            c.drawCircle(x, cy, r + 0.58f * s, softShell)
+            c.drawCircle(x, cy, r + 0.58f * s, Paint(aa).apply {
                 shader = RadialGradient(x - 0.3f * r, cy - 0.4f * r, r * 1.6f, intArrayOf(0x30FFFFFF, 0x00000000, 0x40000000), floatArrayOf(0f, 0.6f, 1f), Shader.TileMode.CLAMP)
             })
             c.drawCircle(x, cy, r + 0.28f * s, fill(black))
@@ -1131,7 +1357,37 @@ internal object BouzoukiArt {
                 shader = RadialGradient(x + 0.35f * r, cy + 0.45f * r, r * 1.3f, intArrayOf(0xFF3A2414.toInt(), 0xFF140C07.toInt(), 0xFF050302.toInt()),
                     floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
             })
+            c.save()
+            c.clipPath(Path().apply { addCircle(x, cy, r, Path.Direction.CW) })
+            // Inside: the seams of the bowl's staves running along it, and the shaded edge of the brace beyond the hole.
+            val seam = stroke(0x2CE0B080, 0.06f * s)
+            for (j in -4..4) {
+                val y = cy + j * 0.8f * s
+                c.drawLine(x - r, y + j * 0.15f * s, x + r, y - j * 0.05f * s, seam)
+            }
+            c.drawRect(x + r * 0.55f, cy - r, x + r * 0.82f, cy + r, fill(0x40000000))
+            c.restore()
             c.drawCircle(x, cy, r - 0.08f * s, stroke(0x90000000.toInt(), 0.18f * s))
+        }
+
+        /** A ring of small tiles of bone, rosewood and green-stained wood between radii [r0] and [r1], in two rows half a tile apart. */
+        private fun mosaic(x: Float, r0: Float, r1: Float) {
+            val row = (r1 - r0) / 2
+            val tiles = ((2 * PI * r1) / (0.14f * s)).toInt().coerceIn(24, 720) / 4 * 4
+            val sweep = 360f / tiles
+            val bone = 0xFFE6D3A6.toInt()
+            val dark = 0xFF3A2414.toInt()
+            val rows = arrayOf(intArrayOf(bone, dark, 0xFF8E3C1E.toInt(), dark), intArrayOf(dark, bone, dark, 0xFF2F5C44.toInt()))
+            val p = Paint(aa).apply { style = Paint.Style.STROKE; strokeWidth = row + 0.5f }
+            val oval = RectF()
+            for (k in 0..1) {
+                val rr = r0 + row * (k + 0.5f)
+                oval.set(x - rr, cy - rr, x + rr, cy + rr)
+                for (t in 0 until tiles) {
+                    p.color = rows[k][t % 4]
+                    c.drawArc(oval, t * sweep + k * sweep / 2, sweep + 0.3f, false, p)
+                }
+            }
         }
 
         /** The kapaki: a tortoiseshell crescent hugging the rosette towards the bridge, edged in cream, with a pearl flower. */
@@ -1172,38 +1428,37 @@ internal object BouzoukiArt {
             }
         }
 
-        /** The floating ebony bridge with its moustache wings and pearl eyes, and the bone saddle the strings cross. */
+        /**
+         * The floating ebony bridge: a straight bar about a centimetre wide, its rounded ends reaching past the
+         * outer strings with a pearl dot in each, and the bone saddle the strings cross, notched for each.
+         */
         private fun bridge() {
             val bx = sh.bridgeX
             val spread = sh.strings.maxOf { it.bridgeY } - sh.strings.minOf { it.bridgeY }
-            val e = spread / 2 + 1.7f * s
-            val f0 = bx - 0.5f * s
-            val b0 = bx + 0.95f * s
-            val p = Path().apply {
-                moveTo(f0, cy)
-                cubicTo(f0, cy - e * 0.45f, bx - 0.15f * s, cy - e * 0.78f, bx - 0.05f * s, cy - e)
-                cubicTo(bx + 0.05f * s, cy - e - 0.22f * s, bx + 0.5f * s, cy - e - 0.16f * s, bx + 0.45f * s, cy - e * 0.9f)
-                cubicTo(bx + 0.45f * s, cy - e * 0.62f, b0, cy - e * 0.4f, b0, cy)
-                cubicTo(b0, cy + e * 0.4f, bx + 0.45f * s, cy + e * 0.62f, bx + 0.45f * s, cy + e * 0.9f)
-                cubicTo(bx + 0.5f * s, cy + e + 0.16f * s, bx + 0.05f * s, cy + e + 0.22f * s, bx - 0.05f * s, cy + e)
-                cubicTo(bx - 0.15f * s, cy + e * 0.78f, f0, cy + e * 0.45f, f0, cy)
-                close()
-            }
+            val half = spread / 2 + 1.2f * s
+            val f0 = bx - 0.45f * s
+            val b0 = bx + 0.55f * s
+            val end = (b0 - f0) / 2
+            val p = Path().apply { addRoundRect(RectF(f0, cy - half, b0, cy + half), end, end, Path.Direction.CW) }
             shadowOf(p, 0.25f * s, 0.45f * s, 0x90000000.toInt(), 0.25f * s)
-            c.drawPath(p, linear(f0, 0f, b0, 0f, intArrayOf(0xFF4A382C.toInt(), 0xFF2A1E16.toInt(), 0xFF120C08.toInt()), floatArrayOf(0f, 0.35f, 1f)))
-            c.drawPath(p, linear(0f, cy - e, 0f, cy + e, intArrayOf(0x30FFFFFF, 0x00FFFFFF, 0x30000000)))
+            // Lit on the neck side, the far side in shade; a soft sheen along the top.
+            c.drawPath(p, linear(f0, 0f, b0, 0f, intArrayOf(0xFF5A4434.toInt(), 0xFF2E2118.toInt(), 0xFF140D09.toInt(), 0xFF1E140E.toInt()),
+                floatArrayOf(0f, 0.4f, 0.75f, 1f)))
+            c.drawPath(p, linear(0f, cy - half, 0f, cy + half, intArrayOf(0x30FFFFFF, 0x00FFFFFF, 0x30000000)))
             c.drawPath(p, stroke(0x50FFFFFF, 0.04f * s))
+            c.drawPath(p, stroke(0x70000000, 0.03f * s))
             for (side in floatArrayOf(-1f, 1f)) {
-                val ex = bx + 0.2f * s
-                val ey = cy + side * (e - 0.35f * s)
-                c.drawCircle(ex, ey, 0.15f * s, pearl)
-                c.drawCircle(ex, ey, 0.15f * s, inlayEdge)
+                val ey = cy + side * (half - end)
+                c.drawCircle(bx + 0.05f * s, ey, 0.16f * s, pearl)
+                c.drawCircle(bx + 0.05f * s, ey, 0.16f * s, inlayEdge)
             }
-            // Bone saddle: a cream strip with a lit edge, a little longer than the strings' spread.
-            val half = spread / 2 + 0.55f * s
-            val sw = 0.3f * s
-            c.drawRoundRect(bx - sw * 0.5f, cy - half, bx + sw * 0.5f, cy + half, sw / 2, sw / 2,
+            // Bone saddle: a cream strip with a lit edge, a little longer than the strings' spread, a notch under each string.
+            val sHalf = spread / 2 + 0.4f * s
+            val sw = 0.26f * s
+            c.drawRoundRect(bx - sw * 0.5f, cy - sHalf, bx + sw * 0.5f, cy + sHalf, sw / 2, sw / 2,
                 linear(bx - sw * 0.5f, 0f, bx + sw * 0.5f, 0f, intArrayOf(0xFFFFFAEC.toInt(), 0xFFE6D8B8.toInt(), 0xFF9C8B6E.toInt())))
+            val notch = fill(0x70301E0A)
+            for (st in sh.strings) c.drawRect(bx - sw * 0.5f, st.bridgeY - 0.045f * s, bx + sw * 0.5f, st.bridgeY + 0.045f * s, notch)
         }
 
         /** A shield of nickel: an arched front with a small point towards the bridge, sides widening to a round end over the rim. */
@@ -1389,10 +1644,13 @@ internal object BouzoukiArt {
             c.save(); c.translate(x, y); c.scale(r, r); c.drawCircle(0f, 0f, 1f, p); c.restore()
         }
 
-        /** Fret numbers below the neck at the marked frets: gold on the leather, inked on the spruce, none on the edge between. */
+        /**
+         * Fret numbers below the neck at the marked frets: gold on the leather, inked on the spruce, and on a dark
+         * pill where one falls across the top's edge (17, where the neck meets the body, is a landmark players look for).
+         */
         private fun numbers() {
             val tp = Paint(aa).apply { textAlign = Paint.Align.CENTER; typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD) }
-            tp.textSize = (0.95f * s).coerceIn(7.5f * dp, 11f * dp)
+            tp.textSize = (1.15f * s).coerceIn(9f * dp, 12.5f * dp)
             for (n in intArrayOf(3, 5, 7, 10, 12, 15, 17, 19, 22, 24)) {
                 if (n > sh.frets) continue
                 val label = n.toString()
@@ -1400,17 +1658,20 @@ internal object BouzoukiArt {
                 val y = cy + sh.boardHalf(x) + 0.45f * s + tp.textSize * 0.95f
                 val half = tp.measureText(label) / 2 + 0.15f * s
                 val ends = floatArrayOf(x - half, x + half)
-                val inside = ends.all { sh.bodyHalf(it) > 0f && y + 0.3f * s < cy + sh.bodyHalf(it) - 0.5f * s }
+                val inside = ends.all { sh.bodyHalf(it) > 0f && y + 0.3f * s < cy + sh.bodyHalf(it) - 0.6f * s }
                 val outside = ends.all { sh.bodyHalf(it) == 0f || y - tp.textSize > cy + sh.bodyHalf(it) + 1.2f * s }
-                if (!inside && !outside) continue
                 val octave = n % 12 == 0
                 if (inside) {
-                    tp.color = 0x70FFF4DC; c.drawText(label, x, y + 0.9f * dp, tp)
-                    tp.color = if (octave) 0xFF9A1E14.toInt() else 0xFF5E3C1E.toInt(); c.drawText(label, x, y, tp)
-                } else {
-                    tp.color = 0xC0000000.toInt(); c.drawText(label, x, y - 0.9f * dp, tp)
-                    tp.color = if (octave) 0xFFF6CF74.toInt() else 0xFFC2A066.toInt(); c.drawText(label, x, y, tp)
+                    tp.color = 0xA0FFF4DC.toInt(); c.drawText(label, x, y + 0.9f * dp, tp)
+                    tp.color = if (octave) 0xFF8E1A12.toInt() else 0xFF3E2610.toInt(); c.drawText(label, x, y, tp)
+                    continue
                 }
+                if (!outside) {
+                    val pill = RectF(x - half - 0.1f * s, y - tp.textSize * 0.86f, x + half + 0.1f * s, y + tp.textSize * 0.26f)
+                    c.drawRoundRect(pill, pill.height() / 2, pill.height() / 2, fill(0x90000000.toInt()))
+                }
+                tp.color = 0xC0000000.toInt(); c.drawText(label, x, y - 0.9f * dp, tp)
+                tp.color = if (octave) 0xFFF6CF74.toInt() else 0xFFC2A066.toInt(); c.drawText(label, x, y, tp)
             }
         }
 
