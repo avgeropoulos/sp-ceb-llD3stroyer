@@ -69,7 +69,7 @@ internal object PdfForm {
 
     /** A page's glyphs (by baseline), vertical lines (joined, by x), thin horizontal lines and curves (by height). */
     private class Page(val content: PdfPageContent) {
-        private val glyphs = content.glyphs.filter { it.upright && it.size > 0 && it.text.isNotBlank() }.sortedBy { it.baseline }
+        private val glyphs = content.glyphs.filter { it.upright && it.size > 0 && (it.text.isNotBlank() || it.name != null) }.sortedBy { it.baseline }
         private val baselines = DoubleArray(glyphs.size) { glyphs[it].baseline }
         val vlines = joinVertical(content.vlines).sortedBy { it.x }
         private val vxs = DoubleArray(vlines.size) { vlines[it].x }
@@ -255,9 +255,12 @@ internal object PdfForm {
         // Candidates: x, the y given (a glyph's baseline, or a curve's middle), and how far above it the dot may be.
         val cand = ArrayList<DoubleArray>()
         for (g in page.glyphs(ys.first() - sp, ys.last() + 4 * sp)) {
-            if (g.text.length != 1) continue
-            val c = g.text[0]
-            if (c.isLetterOrDigit() || c in "()[]{}<>/\\|-_–—,;'\"`~^=+*#") continue
+            // A music font's dot: a mark that isn't a letter or a sign, or LilyPond's glyph named so.
+            if (g.name?.lowercase() != "dots.dot") {
+                if (g.text.length != 1) continue
+                val c = g.text[0]
+                if (c.isLetterOrDigit() || c in "()[]{}<>/\\|-_–—,;'\"`~^=+*#") continue
+            }
             val cx = (g.x0 + g.x1) / 2
             if (g.x1 - g.x0 > 1.2 * sp || cx !in x0..x1 || g.baseline > ys.last() + sp + 0.5 * g.size) continue
             cand += doubleArrayOf(cx, g.baseline, 0.45 * g.size)
