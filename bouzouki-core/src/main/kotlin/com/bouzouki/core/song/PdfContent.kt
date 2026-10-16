@@ -10,7 +10,9 @@ import kotlin.math.sqrt
 /**
  * A glyph of text on a page, in page space with y measured down from the top of the page (as
  * pdfplumber does). [x0]..[x1] is its advance, [size] its em height (the font size as drawn).
- * [upright] is false for rotated or mirrored text.
+ * [upright] is false for rotated or mirrored text. [code] is its character code in the font, and
+ * [name] the glyph name the font's encoding gives it (if it names it), for music fonts whose glyphs
+ * have no proper text.
  */
 internal class PdfGlyph(
     val text: String,
@@ -20,6 +22,8 @@ internal class PdfGlyph(
     val size: Double,
     val upright: Boolean,
     val font: String,
+    val code: Int = -1,
+    val name: String? = null,
 )
 
 /** A straight horizontal stroke, or a thin filled bar, from [x0] to [x1] at height [y] (page space, y down). */
@@ -28,10 +32,25 @@ internal class PdfLine(val x0: Double, val x1: Double, val y: Double, val thickn
 /** A straight vertical stroke, or a thin filled bar, at [x] from height [y0] down to [y1] (page space, y down). */
 internal class PdfVLine(val x: Double, val y0: Double, val y1: Double, val thickness: Double)
 
-/** The bounding box of a painted curve (a subpath with Bézier segments), such as a tie or a slur (page space, y down). */
-internal class PdfArc(val x0: Double, val x1: Double, val y0: Double, val y1: Double)
+/**
+ * The bounding box of a painted curve (a subpath with Bézier segments), such as a tie or a slur (page space, y down).
+ * [filled] when it was filled (a notehead drawn as a shape, a tie as a crescent), not only stroked; [hollow] when the
+ * same path has another curved subpath inside it (a ring, such as a half note's head), and [inner] for that one.
+ */
+internal class PdfArc(
+    val x0: Double, val x1: Double, val y0: Double, val y1: Double,
+    val filled: Boolean = false, val hollow: Boolean = false, val inner: Boolean = false,
+)
 
-/** The text, the horizontal and vertical lines and the curves on one page, and how many pictures it draws. */
+/** A filled shape of 4 straight sides that isn't an upright rectangle, such as a sloping beam: its corners (page space, y down). */
+internal class PdfPoly(val xs: DoubleArray, val ys: DoubleArray) {
+    val x0 get() = xs.min()
+    val x1 get() = xs.max()
+    val y0 get() = ys.min()
+    val y1 get() = ys.max()
+}
+
+/** The text, the horizontal and vertical lines, the curves and sloping filled shapes on one page, and how many pictures it draws. */
 internal class PdfPageContent(
     val width: Double,
     val height: Double,
@@ -40,6 +59,7 @@ internal class PdfPageContent(
     val images: Int,
     val vlines: List<PdfVLine> = emptyList(),
     val arcs: List<PdfArc> = emptyList(),
+    val polys: List<PdfPoly> = emptyList(),
 )
 
 /** An affine transform `[a b c d e f]`, as PDF writes them (row vectors: x' = a x + c y + e, y' = b x + d y + f). */
@@ -107,6 +127,7 @@ internal class PdfContentReader(private val doc: PdfDocument) {
     private var lines = ArrayList<PdfLine>()
     private var vlines = ArrayList<PdfVLine>()
     private var arcs = ArrayList<PdfArc>()
+    private var polys = ArrayList<PdfPoly>()
     private var images = 0
     private var ops = 0
     /** What's left of the budgets shared by all the pages of the document. */
@@ -128,12 +149,12 @@ internal class PdfContentReader(private val doc: PdfDocument) {
         stack.clear(); activeForms.clear()
         endPath(); images = 0; ops = 0
         tm = PdfMatrix.IDENTITY; tlm = PdfMatrix.IDENTITY
-        glyphs = ArrayList(); lines = ArrayList(); vlines = ArrayList(); arcs = ArrayList()
+        glyphs = ArrayList(); lines = ArrayList(); vlines = ArrayList(); arcs = ArrayList(); polys = ArrayList()
         run(doc.contents(page), page.resources, 0)
         val turned = page.rotate == 90 || page.rotate == 270
         val w = box[2] - box[0]
         val h = box[3] - box[1]
-        return PdfPageContent(if (turned) h else w, if (turned) w else h, glyphs, lines, images, vlines, arcs)
+        return PdfPageContent(if (turned) h else w, if (turned) w else h, glyphs, lines, images, vlines, arcs, polys)
     }
 
     private fun run(data: ByteArray, res: Map<String, Any?>, depth: Int) {
@@ -189,11 +210,11 @@ internal class PdfContentReader(private val doc: PdfDocument) {
             "v", "y" -> if (has(4)) lineTo(num(o, 4, 2), num(o, 4, 3), 2)
             "re" -> if (has(4)) rect(num(o, 4, 0), num(o, 4, 1), num(o, 4, 2), num(o, 4, 3))
             "h" -> closePath()
-            "S" -> { stroke(); curves(); endPath() }
-            "s" -> { closePath(); stroke(); curves(); endPath() }
-            "f", "F", "f*" -> { fill(); curves(); endPath() }
-            "B", "B*" -> { fill(); stroke(); curves(); endPath() }
-            "b", "b*" -> { closePath(); fill(); stroke(); curves(); endPath() }
+            "S" -> { stroke(); curves(false); endPath() }
+            "s" -> { closePath(); stroke(); curves(false); endPath() }
+            "f", "F", "f*" -> { fill(); curves(true); endPath() }
+            "B", "B*" -> { fill(); stroke(); curves(true); endPath() }
+            "b", "b*" -> { closePath(); fill(); stroke(); curves(true); endPath() }
             "n" -> endPath()
             "Do" -> if (has(1)) xObject(pdfName(o.last()), res, depth)
         }
@@ -227,7 +248,7 @@ internal class PdfContentReader(private val doc: PdfDocument) {
             if ((x0 + x1 + trm.f + em).isFinite() && glyphs.size < MAX_GLYPHS && glyphsLeft-- > 0) {
                 // Upright: the glyph's up points up the page (y down) and its advance goes right.
                 val upright = trm.d < 0 && abs(trm.c) < 0.1 * em && trm.a > 0 && abs(trm.b) < 0.1 * abs(trm.a)
-                glyphs.add(PdfGlyph(f.text(code), min(x0, x1), max(x0, x1), trm.f, em, upright, f.name))
+                glyphs.add(PdfGlyph(f.text(code), min(x0, x1), max(x0, x1), trm.f, em, upright, f.name, code, f.glyphName(code)))
             }
             val tx = (w * size + gs.charSpace + if (len == 1 && code == 32) gs.wordSpace else 0.0) * h
             tm = PdfMatrix.translate(tx, 0.0) * tm
@@ -311,14 +332,22 @@ internal class PdfContentReader(private val doc: PdfDocument) {
             var n = to - from
             if (n == 5 && abs(px[from + 4] - px[from]) < 0.01 && abs(py[from + 4] - py[from]) < 0.01) n = 4
             if (n != 4) return@forEachSubpath
+            for (i in 1 until to - from) if (pk[from + i].toInt() != 1) return@forEachSubpath
             var axis = true
-            for (i in 1 until 4) if (pk[from + i].toInt() != 1) axis = false
             for (i in 0 until 4) {
                 val a = from + i
                 val b = from + (i + 1) % 4
                 if (abs(px[a] - px[b]) > 0.01 && abs(py[a] - py[b]) > 0.01) axis = false
             }
-            if (!axis) return@forEachSubpath
+            if (!axis) {
+                // A sloping filled quadrilateral: a beam, as most notation programs draw them.
+                if (polys.size < MAX_POLYS) {
+                    val xs = DoubleArray(4) { px[from + it] }
+                    val ys = DoubleArray(4) { py[from + it] }
+                    if ((xs.sum() + ys.sum()).isFinite()) polys.add(PdfPoly(xs, ys))
+                }
+                return@forEachSubpath
+            }
             val x0 = min(min(px[from], px[from + 1]), min(px[from + 2], px[from + 3]))
             val x1 = max(max(px[from], px[from + 1]), max(px[from + 2], px[from + 3]))
             val y0 = min(min(py[from], py[from + 1]), min(py[from + 2], py[from + 3]))
@@ -332,15 +361,35 @@ internal class PdfContentReader(private val doc: PdfDocument) {
         }
     }
 
-    /** Keeps the bounding box of every painted subpath that has curves in it. */
-    private fun curves() {
+    /**
+     * Keeps the bounding box of every painted subpath that has curves in it ([filled] if the path was filled), marking
+     * the ones with another inside them (rings, such as hollow noteheads) and those inside.
+     */
+    private fun curves(filled: Boolean) {
+        val boxes = ArrayList<DoubleArray>()
         forEachSubpath { from, to, _ ->
             var curved = false
             for (i in from + 1 until to) if (pk[i].toInt() == 2) { curved = true; break }
-            if (!curved || arcs.size >= MAX_ARCS) return@forEachSubpath
+            if (!curved || arcs.size + boxes.size >= MAX_ARCS) return@forEachSubpath
             var x0 = px[from]; var x1 = x0; var y0 = py[from]; var y1 = y0
             for (i in from + 1 until to) { x0 = min(x0, px[i]); x1 = max(x1, px[i]); y0 = min(y0, py[i]); y1 = max(y1, py[i]) }
-            if ((x0 + x1 + y0 + y1).isFinite()) arcs.add(PdfArc(x0, x1, y0, y1))
+            if ((x0 + x1 + y0 + y1).isFinite()) boxes.add(doubleArrayOf(x0, x1, y0, y1))
+        }
+        val n = boxes.size
+        // Rings: only looked for in small paths (a glyph drawn as a shape has a few subpaths).
+        val hollow = BooleanArray(n)
+        val inner = BooleanArray(n)
+        if (n in 2..MAX_RING_SUBPATHS) {
+            for (i in 0 until n) for (j in 0 until n) {
+                if (i == j) continue
+                val a = boxes[i]
+                val b = boxes[j]
+                if (b[0] > a[0] && b[1] < a[1] && b[2] > a[2] && b[3] < a[3]) { hollow[i] = true; inner[j] = true }
+            }
+        }
+        for (i in 0 until n) {
+            val b = boxes[i]
+            arcs.add(PdfArc(b[0], b[1], b[2], b[3], filled, hollow[i] && !inner[i], inner[i]))
         }
     }
 
@@ -379,6 +428,9 @@ internal class PdfContentReader(private val doc: PdfDocument) {
         private const val MAX_GLYPHS = 200_000
         private const val MAX_LINES = 200_000
         private const val MAX_ARCS = 50_000
+        private const val MAX_POLYS = 50_000
+        /** The most subpaths of one path looked at for rings (hollow noteheads drawn as shapes). */
+        private const val MAX_RING_SUBPATHS = 8
         private const val MAX_PATH_POINTS = 200_000
         private const val MAX_FORM_DEPTH = 12
         /** The thickest filled bar still taken as a line, in points. */

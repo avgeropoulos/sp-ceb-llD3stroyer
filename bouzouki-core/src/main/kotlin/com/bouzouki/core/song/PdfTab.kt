@@ -32,13 +32,25 @@ import kotlin.math.roundToInt
  * 5. The score's form ([PdfForm]): repeat barlines, 1st/2nd-time endings, D.C., D.S., Coda and Fine
  *    become the tab's sections in playing order ([ParsedTab.sections]), as a text tab's |: :| and x2.
  *
+ * A PDF of sheet music without a tab staff (5-line staves only) is read by [PdfNotation]: its notes,
+ * with strings and frets chosen by the app's [Fingering]; the summary of what it read is the first
+ * warning ([sheetMusicSummary]). A score with a tab staff under its notation staff is read from the tab.
  * A PDF without any staffs (a text tab printed to PDF) has its page text rebuilt and handed to
- * [TabParser] ([NO_TEXT_TAB] if that finds nothing). A PDF with no readable digits, such as a scan,
- * gives no notes and [NO_NUMBERS].
+ * [TabParser] ([NO_TEXT_TAB] if that finds nothing). A PDF with no readable digits or notes, such as
+ * a scan, gives no notes and [NO_NUMBERS].
  */
 object PdfTab {
     /** The warning for a PDF whose tab is a picture (or has no tab at all). */
-    const val NO_NUMBERS = "This PDF has no readable tab numbers (it may be a scanned picture)"
+    const val NO_NUMBERS = "This PDF has no readable tab numbers or notes (it may be a scanned picture)"
+
+    /** The warning for sheet music whose staves have no notes that could be read (a font the app doesn't know, or notes drawn as pictures). */
+    const val NO_NOTES = "This PDF's sheet music has no notes the app can read (its music font may be one the app doesn't know, or a picture)"
+
+    /** In the summary (the first warning) of a tab read from sheet music: "Read 412 notes from the sheet music (…)". */
+    const val FROM_SHEET_MUSIC = "from the sheet music"
+
+    /** The summary of what was read when [tab] came from sheet music (notation, no tab staff), or null. */
+    fun sheetMusicSummary(tab: ParsedTab): String? = tab.warnings.firstOrNull { it.startsWith("Read ") && FROM_SHEET_MUSIC in it }
 
     /** The warning for a PDF of plain text (a typed tab) in which [TabParser] finds no tab. */
     const val NO_TEXT_TAB = "This PDF's text has no tab lines that could be read"
@@ -60,6 +72,17 @@ object PdfTab {
         } catch (e: RuntimeException) {
             ParsedTab(instrument, emptyList(), (warnings + NO_NUMBERS).toList())
         }
+    }
+
+    /**
+     * Reads only the sheet music (the 5-line staves) of [pdf], leaving out any tab staff: for tests and for checking
+     * the notation reader against a score that also has a tab.
+     */
+    internal fun readNotation(pdf: ByteArray, instrument: Instrument): ParsedTab {
+        val warnings = LinkedHashSet<String>()
+        val pages = try { readPages(pdf, warnings) } catch (e: RuntimeException) { emptyList() }
+        val all = pages.flatMapIndexed { i, p -> staffs(p, i) }
+        return PdfNotation.read(pages, all, instrument, warnings)
     }
 
     /** The content of every page of [pdf]; problems go to [warnings]. */
@@ -123,7 +146,7 @@ object PdfTab {
     private const val MAX_TEXT = 1_000_000
 
     /** A staff (a tab staff when it has 3 or 4 lines): its page, its lines' heights from the top, and its horizontal extent. */
-    private class Staff(val page: Int, val ys: DoubleArray, val x0: Double, val x1: Double) {
+    internal class Staff(val page: Int, val ys: DoubleArray, val x0: Double, val x1: Double) {
         val spacing = (ys.last() - ys.first()) / (ys.size - 1)
         val lines get() = ys.size
         val top get() = ys.first()
@@ -181,6 +204,15 @@ object PdfTab {
         if (guitar > 0) warnings += "Skipped $guitar guitar tab staff${if (guitar > 1) "s" else ""} (6 lines); bouzouki tabs have 3 or 4"
         val staffs = all.filter { it.lines <= 4 }
 
+        // Sheet music without a tab staff (or whose tab staffs have no frets): read the notes. Tab staffs without frets
+        // and staves without notes are a picture's: as having no numbers.
+        fun notes(): ParsedTab {
+            val before = warnings.toList()
+            val read = try { PdfNotation.read(pages, all, instrument, warnings) } catch (e: RuntimeException) { null }
+            if (read != null && (read.notes.isNotEmpty() || (staffs.isEmpty() && guitar == 0))) return read
+            return ParsedTab(if (staffs.isEmpty()) instrument else instrumentFor(staffs.map { it.lines }), emptyList(), (before + NO_NUMBERS).distinct())
+        }
+        if (staffs.isEmpty() && notation > 0) return notes()
         if (staffs.isEmpty()) {
             // No staffs at all: maybe a text tab printed to PDF. Rebuild the text and let the text tab reader try.
             if (notation == 0 && guitar == 0) {
@@ -198,7 +230,10 @@ object PdfTab {
         val index = pages.map { GlyphIndex(it) }
         val digits = staffs.associateWith { s -> digitsOn(index[s.page], s) }
         val sizes = digits.values.flatMap { g -> g.map { it.size } }.sorted()
-        if (sizes.isEmpty()) return ParsedTab(instrumentFor(staffs.map { it.lines }), emptyList(), (warnings + NO_NUMBERS).toList())
+        if (sizes.isEmpty()) {
+            if (notation > 0) return notes()
+            return ParsedTab(instrumentFor(staffs.map { it.lines }), emptyList(), (warnings + NO_NUMBERS).toList())
+        }
         val usual = sizes[sizes.size / 2]
 
         // The top tab staff of each system is the tab; the others with frets are other parts.
@@ -258,7 +293,7 @@ object PdfTab {
     // ---- Staffs ----
 
     /** The staffs (runs of 3 to 6 equally spaced lines) on [page] in reading order, top to bottom. */
-    private fun staffs(page: PdfPageContent, pageIndex: Int): List<Staff> {
+    internal fun staffs(page: PdfPageContent, pageIndex: Int): List<Staff> {
         val lines = joinPieces(page.lines.filter { it.thickness <= MAX_LINE_THICKNESS })
             .filter { it.x1 - it.x0 >= MIN_STAFF_LENGTH }
             .sortedBy { it.y }
@@ -302,7 +337,7 @@ object PdfTab {
      * top to bottom: tab staffs on a page are in one system when a barline or bracket runs across
      * them all, from a staff's top line to a staff's bottom line (so a page frame doesn't count).
      */
-    private fun systems(pages: List<PdfPageContent>, staffs: List<Staff>, tabs: List<Staff>): List<List<Staff>> {
+    internal fun systems(pages: List<PdfPageContent>, staffs: List<Staff>, tabs: List<Staff>): List<List<Staff>> {
         val out = ArrayList<List<Staff>>()
         for ((pi, page) in pages.withIndex()) {
             val mine = tabs.filter { it.page == pi }

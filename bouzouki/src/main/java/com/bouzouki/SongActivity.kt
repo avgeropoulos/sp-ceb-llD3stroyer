@@ -1029,7 +1029,7 @@ class SongActivity : Activity() {
         items += "🔎 Find a tab online" to { findTabOnline(greek = false) }
         items += "🔎 Βρες ταμπλατούρα (Greek search)" to { findTabOnline(greek = true) }
         items += (if (hasTab) "📋 Paste another tab" else "📋 Paste tab") to { pasteTab() }
-        items += "📄 Open a tab file (PDF or text)" to { openTabFile() }
+        items += "📄 Open a tab file (PDF or text; sheet music as PDF too)" to { openTabFile() }
         if (hasTab) {
             val kind = if (kept is SongLines.TabSource.Pdf) " (PDF)" else ""
             items += "From tab$kind" + (if (fromTab) "  ✓" else "") to { chooseTab(true) }
@@ -1351,7 +1351,12 @@ class SongActivity : Activity() {
             val k = message.indexOf("\n\n• ").takeIf { it >= 0 } ?: message.length
             message = message.substring(0, k) + "\n\nKept for this song, in place of the tab kept before." + message.substring(k)
         }
-        AlertDialog.Builder(this).setTitle(if (pdf) "📄 Tab from the PDF" else "📝 Tab").setMessage(message).setPositiveButton("OK", null).show()
+        val title = when {
+            !pdf -> "📝 Tab"
+            PdfTab.sheetMusicSummary(r.tab) != null -> "📄 Tab from the sheet music"
+            else -> "📄 Tab from the PDF"
+        }
+        AlertDialog.Builder(this).setTitle(title).setMessage(message).setPositiveButton("OK", null).show()
     }
 
     /**
@@ -1365,11 +1370,13 @@ class SongActivity : Activity() {
         // not listed with the other problems.
         val trouble = if (pdf) TabFiles.pdfTrouble(tab) else null
         val scanned = pdf && trouble == null && tab.notes.isEmpty() && PdfTab.NO_NUMBERS in tab.warnings
+        // Sheet music's summary of what was read opens the report instead of being listed.
+        val summary = if (pdf) PdfTab.sheetMusicSummary(tab) else null
         val warnings = when {
             trouble != null -> tab.warnings.filterNot { it == PdfTab.NO_NUMBERS || TabFiles.troubleWarning(it) }
             scanned -> tab.warnings - PdfTab.NO_NUMBERS
             else -> tab.warnings
-        }
+        }.filterNot { it == summary }
         return buildString {
             if (pdf && tab.notes.isNotEmpty()) append(pdfSummary(tab)).append("\n\n")
             when {
@@ -1380,8 +1387,8 @@ class SongActivity : Activity() {
                             "Open it where you can, save or print a copy without the lock (Print → Save as PDF), and open that here.")
                         trouble == TabFiles.PdfTrouble.DAMAGED -> append(" The file is damaged, or isn't really a PDF. " +
                             "Download or save it again, and open the new copy here.")
-                        scanned -> append(" It has no tab numbers the app can read: it may be a scan or a photo. A PDF made on a computer " +
-                            "(saved from Sibelius, MuseScore or Guitar Pro, or a web page's tab printed to PDF) can be read.")
+                        scanned -> append(" It has no tab numbers or notes the app can read: it may be a scan or a photo. A PDF made on a computer " +
+                            "(a tab or sheet music saved from Sibelius, MuseScore, Finale or Guitar Pro, or a web page's tab printed to PDF) can be read.")
                     }
                 }
                 tab.notes.isEmpty() -> append("No tab notes could be read from it, so nothing changed. A tab has one line per course (like D|--5-7--|): keep just the tab's lines.")
@@ -1441,6 +1448,8 @@ class SongActivity : Activity() {
 
     /** What was read from a PDF tab: "Read 240 notes from the PDF (4-course tab, 8 lines of music)." */
     private fun pdfSummary(tab: ParsedTab): String {
+        // Sheet music: its own summary ("Read 412 notes from the sheet music (treble clef, 2 sharps, …); strings and frets chosen by the app").
+        PdfTab.sheetMusicSummary(tab)?.let { return "$it." }
         val n = tab.notes.size
         val lines = tab.notes.mapTo(HashSet()) { it.system }.size // when the reader numbers its systems
         return "Read $n note${if (n == 1) "" else "s"} from the PDF (${tab.instrument.courses.size}-course tab" +

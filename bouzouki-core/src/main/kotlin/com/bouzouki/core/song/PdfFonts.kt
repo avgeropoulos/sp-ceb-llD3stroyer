@@ -16,6 +16,8 @@ internal class PdfFont private constructor(
     private val encoding: Array<String?>?,
     private val unicodeCodes: Boolean,
     private val scale: Double,
+    /** A simple font's glyph names from its /Encoding's /Differences (by code), or null. */
+    private val names: Array<String?>? = null,
 ) {
     private val texts = HashMap<Int, String>()
 
@@ -53,6 +55,9 @@ internal class PdfFont private constructor(
             ?: ""
     }
 
+    /** The glyph name a simple font's /Differences gives [code] (as LilyPond's music font names its glyphs), or null. */
+    fun glyphName(code: Int): String? = names?.getOrNull(code)
+
     companion object {
         /** Reads font dictionary [d]. Never fails: what can't be read falls back to plain defaults. */
         fun load(doc: PdfDocument, d: Map<String, Any?>): PdfFont {
@@ -76,7 +81,7 @@ internal class PdfFont private constructor(
                     ?: missing?.takeIf { widths != null && it > 0 }
                     ?: (guessWidth(base, code) * 0.001 / scale)
             }
-            return PdfFont(base, false, null, { table.getOrElse(it) { 0.0 } }, toUnicode, encoding(doc, d["Encoding"]), false, scale)
+            return PdfFont(base, false, null, { table.getOrElse(it) { 0.0 } }, toUnicode, encoding(doc, d["Encoding"]), false, scale, names(doc, d["Encoding"]))
         }
 
         private fun composite(doc: PdfDocument, d: Map<String, Any?>, base: String, toUnicode: PdfCMap?): PdfFont {
@@ -132,6 +137,20 @@ internal class PdfFont private constructor(
                 }
             }
             return table
+        }
+
+        /** The glyph names in a simple font's /Differences, by code (null without any). */
+        private fun names(doc: PdfDocument, e: Any?): Array<String?>? {
+            val diffs = doc.resolve(pdfDict(doc.resolve(e))?.get("Differences")) as? List<*> ?: return null
+            val out = arrayOfNulls<String>(256)
+            var code = 0
+            for (item in diffs) {
+                when (val v = doc.resolve(item)) {
+                    is Double -> code = v.toInt()
+                    is PdfName -> { if (code in 0..255) out[code] = v.name; code++ }
+                }
+            }
+            return out
         }
 
         /** Advance widths (per 1000) for fonts without /Widths, close enough for the standard fonts. */
