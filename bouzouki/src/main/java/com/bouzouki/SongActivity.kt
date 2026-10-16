@@ -45,6 +45,7 @@ import com.bouzouki.core.Instrument
 import com.bouzouki.core.PlaybackClock
 import com.bouzouki.core.song.Articulation
 import com.bouzouki.core.song.Detail
+import com.bouzouki.core.song.ImageTab
 import com.bouzouki.core.song.ParsedTab
 import com.bouzouki.core.song.PdfTab
 import com.bouzouki.core.song.SongAnalysis
@@ -1041,7 +1042,7 @@ class SongActivity : Activity() {
         items += "🔎 Find a tab online" to { findTabOnline(greek = false) }
         items += "🔎 Βρες ταμπλατούρα (Greek search)" to { findTabOnline(greek = true) }
         items += (if (hasTab) "📋 Paste another tab" else "📋 Paste tab") to { pasteTab() }
-        items += "📄 Open a tab file (PDF or text; sheet music as PDF too)" to { openTabFile() }
+        items += "📄 Open a tab file (PDF, text, picture or sheet music)" to { openTabFile() }
         if (hasTab) {
             val kind = if (kept is SongLines.TabSource.Pdf) " (PDF)" else ""
             items += "From tab$kind" + (if (fromTab) "  ✓" else "") to { chooseTab(true) }
@@ -1184,12 +1185,15 @@ class SongActivity : Activity() {
         if (tab is TabFiles.Incoming.Pdf && tab.file != tried) TabFiles.release(this, tab)
     }
 
-    /** 📄 Open a tab file: a PDF or a text file, picked with the phone's file picker (Files, Drive, Downloads…). */
+    /**
+     * 📄 Open a tab file: a PDF, a text file or a picture (a screenshot of a tab), picked with the phone's file picker
+     * (Files, Drive, Downloads, Photos…).
+     */
     private fun openTabFile() {
         val pick = Intent(Intent.ACTION_OPEN_DOCUMENT)
             .addCategory(Intent.CATEGORY_OPENABLE)
             .setType("*/*")
-            .putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(TabFiles.PDF, "text/plain", "text/*"))
+            .putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(TabFiles.PDF, "text/plain", "text/*", "image/*"))
         try {
             @Suppress("DEPRECATION")
             startActivityForResult(pick, REQ_TAB)
@@ -1248,7 +1252,7 @@ class SongActivity : Activity() {
                 var answered = false
                 val instead = if (SongJobs.hasTab(this, id)) ", in place of the tab kept now," else ""
                 AlertDialog.Builder(this)
-                    .setTitle("📄 Use this PDF tab?")
+                    .setTitle(if (tab.picture) "📄 Use this tab picture?" else "📄 Use this PDF tab?")
                     .setMessage("“${tab.name}” for $song: its notes are lined up with the recording, and it's kept for the song$instead if they're found there.")
                     .setPositiveButton("Use for this song") { _, _ -> answered = true; useTab(id, SongLines.TabSource.Pdf(tab.file)); settle(tab) }
                     .apply { if (other != null) setNeutralButton("Another song…") { _, _ -> answered = true; other() } }
@@ -1366,6 +1370,7 @@ class SongActivity : Activity() {
         val title = when {
             !pdf -> "📝 Tab"
             PdfTab.sheetMusicSummary(r.tab) != null -> "📄 Tab from the sheet music"
+            ImageTab.unsureIn(r.tab) != null -> "📄 Tab from the picture"
             else -> "📄 Tab from the PDF"
         }
         AlertDialog.Builder(this).setTitle(title).setMessage(message).setPositiveButton("OK", null).show()
@@ -1384,14 +1389,21 @@ class SongActivity : Activity() {
         val scanned = pdf && trouble == null && tab.notes.isEmpty() && PdfTab.NO_NUMBERS in tab.warnings
         // Sheet music's summary of what was read opens the report instead of being listed.
         val summary = if (pdf) PdfTab.sheetMusicSummary(tab) else null
+        // A tab read from pictures (a screenshot, a PDF of pictures): what it says of itself is in the summary.
+        val picture = pdf && ImageTab.unsureIn(tab) != null
         val warnings = when {
+            picture -> tab.warnings.filterNot {
+                it == ImageTab.PICTURE || it == ImageTab.NO_STAFFS || it == ImageTab.NO_NUMBERS || ImageTab.unsureWarning(it)
+            }
             trouble != null -> tab.warnings.filterNot { it == PdfTab.NO_NUMBERS || TabFiles.troubleWarning(it) }
-            scanned -> tab.warnings - PdfTab.NO_NUMBERS
+            scanned -> tab.warnings - PdfTab.NO_NUMBERS - PdfTab.PICTURES
             else -> tab.warnings
         }.filterNot { it == summary }
         return buildString {
             if (pdf && tab.notes.isNotEmpty()) append(pdfSummary(tab)).append("\n\n")
             when {
+                picture && tab.notes.isEmpty() -> append("No tab could be read from the picture, so nothing changed. The app reads clear " +
+                    "pictures of printed tabs (screenshots, PDFs of tab pages): photos of paper and handwritten tabs can't be read.")
                 pdf && tab.notes.isEmpty() -> {
                     append("No tab could be read from this PDF, so nothing changed.")
                     when {
@@ -1458,14 +1470,19 @@ class SongActivity : Activity() {
         }
     }
 
-    /** What was read from a PDF tab: "Read 240 notes from the PDF (4-course tab, 8 lines of music)." */
+    /**
+     * What was read from a PDF tab: "Read 240 notes from the PDF (4-course tab, 8 lines of music)."; from a picture,
+     * how many of its numbers were hard to make out.
+     */
     private fun pdfSummary(tab: ParsedTab): String {
         // Sheet music: its own summary ("Read 412 notes from the sheet music (treble clef, 2 sharps, …); strings and frets chosen by the app").
         PdfTab.sheetMusicSummary(tab)?.let { return "$it." }
         val n = tab.notes.size
         val lines = tab.notes.mapTo(HashSet()) { it.system }.size // when the reader numbers its systems
-        return "Read $n note${if (n == 1) "" else "s"} from the PDF (${tab.instrument.courses.size}-course tab" +
-            (if (lines > 1) ", $lines lines of music" else "") + ")."
+        val unsure = ImageTab.unsureIn(tab)
+        return "Read $n note${if (n == 1) "" else "s"} from the ${if (unsure != null) "picture" else "PDF"} (${tab.instrument.courses.size}-course tab" +
+            (if (lines > 1) ", $lines lines of music" else "") + ")" +
+            (if (unsure != null && unsure > 0) "; $unsure number${if (unsure == 1) "" else "s"} unsure" else "") + "."
     }
 
     /** Asks to prepare a song again that was prepared before what tabs and detail levels need was kept. */

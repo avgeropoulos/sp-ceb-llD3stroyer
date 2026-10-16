@@ -21,7 +21,8 @@ import java.nio.charset.CodingErrorAction
  * with Μπουζούκι, from WhatsApp, Files, Gmail or Drive). They're read at once, off the main thread,
  * while the app may still read them (a shared file's permission lasts only as long as the screen it
  * came to), up to [MAX_BYTES]. A PDF is copied into the app's own files ([incomingFile]) and read
- * with [com.bouzouki.core.song.PdfTab] when it's lined up ([SongLines]); a text file is decoded
+ * with [com.bouzouki.core.song.PdfTab] when it's lined up ([SongLines]); a picture (a screenshot of a
+ * tab) is made into a one-page PDF ([TabPictures]) and goes the same way; a text file is decoded
  * (UTF-8, or the Greek code page older files use) and goes through the paste flow.
  *
  * A PDF that came in stays in the app's files only while it's offered or tried for a song ([hold]); once
@@ -35,8 +36,8 @@ object TabFiles {
 
         class Text(override val name: String, val text: String) : Incoming
 
-        /** A PDF, copied to [file] in the app's own files. */
-        class Pdf(override val name: String, val file: File) : Incoming
+        /** A PDF, copied to [file] in the app's own files; a [picture] (a screenshot of a tab, say) is made into one. */
+        class Pdf(override val name: String, val file: File, val picture: Boolean = false) : Incoming
     }
 
     /** What went wrong reading a tab file, in a sentence for the player. */
@@ -83,18 +84,22 @@ object TabFiles {
         } ?: throw Problem("That file is too big for a tab (over ${MAX_BYTES / 1_000_000} MB).")
         if (bytes.isEmpty()) throw Problem("That file is empty.")
         val mime = type ?: try { resolver.getType(uri) } catch (_: Exception) { null }
-        if (isPdf(bytes) || mime == PDF || name.endsWith(".pdf", ignoreCase = true)) {
+        val pdf = isPdf(bytes) || mime == PDF || name.endsWith(".pdf", ignoreCase = true)
+        val picture = !pdf && TabPictures.isPicture(bytes, mime, name)
+        if (pdf || picture) {
+            // A picture becomes a one-page PDF of it, read as a PDF of pictures is.
+            val data = if (picture) TabPictures.toPdf(bytes) ?: throw Problem("That picture couldn't be opened.") else bytes
             val file = incomingFile(context)
             try {
-                file.writeBytes(bytes)
+                file.writeBytes(data)
             } catch (e: Throwable) {
                 release(context, file)
-                throw if (e is IOException) Problem("Couldn't keep the PDF on the phone (${e.message ?: "no room?"}).") else e
+                throw if (e is IOException) Problem("Couldn't keep the ${if (picture) "picture" else "PDF"} on the phone (${e.message ?: "no room?"}).") else e
             }
-            return Incoming.Pdf(name, file)
+            return Incoming.Pdf(name, file, picture)
         }
         if (bytes.size > MAX_TEXT_BYTES) throw Problem("That text file is far too long for one song's tab.")
-        val text = decode(bytes) ?: throw Problem("That file isn't a PDF or a text file, so no tab can be read from it.")
+        val text = decode(bytes) ?: throw Problem("That file isn't a PDF, a picture or a text file, so no tab can be read from it.")
         return Incoming.Text(name, text)
     }
 

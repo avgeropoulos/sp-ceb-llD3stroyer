@@ -67,11 +67,13 @@ object PdfTab {
             warnings += "This PDF couldn't be read"
             emptyList()
         }
-        return try {
+        val tab = try {
             fromPages(pages, instrument, warnings)
         } catch (e: RuntimeException) {
             ParsedTab(instrument, emptyList(), (warnings + NO_NUMBERS).toList())
         }
+        // No tab as text: if its pages are pictures, say so, for them to be read with ImageTab (see pageImages).
+        return if (tab.notes.isEmpty() && pages.isNotEmpty() && pageImages(pdf).isNotEmpty()) tab.copy(warnings = tab.warnings + PICTURES) else tab
     }
 
     /**
@@ -84,6 +86,9 @@ object PdfTab {
         val all = pages.flatMapIndexed { i, p -> staffs(p, i) }
         return PdfNotation.read(pages, all, instrument, warnings)
     }
+
+    /** The warning for a PDF without tab numbers as text whose pages are pictures ([pageImages]). */
+    const val PICTURES = "This PDF's pages are pictures"
 
     /** The content of every page of [pdf]; problems go to [warnings]. */
     internal fun readPages(pdf: ByteArray, warnings: MutableSet<String>): List<PdfPageContent> {
