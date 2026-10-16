@@ -116,6 +116,23 @@ object SongJobs {
         if (stamp != 0L && dataStamp(context, id) == stamp) File(songsDir(context), "$id.data").delete()
     }
 
+    /**
+     * [song] (as saved) with its line derived again from its data when an older version of the analysis derived it
+     * ([SongAnalysis.isLineOld]), saved in its place, so the song gets the newer line without preparing it again; null
+     * if its line is current or it has no data. Reads the data and follows the line again: call it off the main thread.
+     */
+    fun withCurrentLine(context: Context, song: SongAnalysis): SongAnalysis? {
+        if (!SongAnalysis.isLineOld(song)) return null
+        val data = data(context, song.id) ?: return null
+        val fresh = try { SongAnalyzer.rebuild(song, data) } catch (_: Exception) { return null }
+        try {
+            writeAtomically(File(songsDir(context), "${song.id}.json")) { it.write(fresh.toJson().toByteArray(Charsets.UTF_8)) }
+        } catch (_: IOException) {
+            // shown all the same; derived again next time
+        }
+        return fresh
+    }
+
     /** Whether song [id] has its [data] file: songs prepared before it was kept need preparing again for tabs and detail levels. */
     fun hasData(context: Context, id: String) = File(songsDir(context), "$id.data").exists()
 

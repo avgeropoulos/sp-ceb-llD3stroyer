@@ -32,6 +32,33 @@ class Attacks(internal val rises: FloatArray, internal val energies: FloatArray)
     /** The most energy an attack adds within [WINDOW] of [time] (seconds); compare it with other notes of the song. */
     fun energy(time: Double): Double = peak(energies, time)
 
+    /**
+     * Where the plectrum strikes from [from] until [to] (seconds): the frames whose rise peaks at [level] times the
+     * song's median frame or more, at least [PICK_SPACING] apart (of two closer peaks the sharper one counts).
+     */
+    fun picks(from: Double, to: Double, level: Double): List<Double> {
+        val out = ArrayList<Double>()
+        if (riseMedian <= 0) return out
+        val centre = FFT / 2.0 / HOP
+        val i0 = max(1, ceil(from * SAMPLE_RATE / HOP - centre - 1e-9).toInt())
+        val i1 = min(rises.size - 1, ceil(to * SAMPLE_RATE / HOP - centre - 1e-9).toInt())
+        var last = -1.0
+        var lastValue = 0f
+        for (i in i0 until i1) {
+            val v = rises[i]
+            if (v < level * riseMedian || v < rises[i - 1] || v <= rises[i + 1]) continue
+            val t = (i * HOP + FFT / 2.0) / SAMPLE_RATE
+            if (last >= 0 && t - last < PICK_SPACING) {
+                if (v > lastValue) { out[out.size - 1] = t; last = t; lastValue = v }
+                continue
+            }
+            out += t
+            last = t
+            lastValue = v
+        }
+        return out
+    }
+
     companion object {
         const val SAMPLE_RATE = BasicPitch.SAMPLE_RATE
         const val FFT = 256
@@ -39,6 +66,9 @@ class Attacks(internal val rises: FloatArray, internal val energies: FloatArray)
 
         /** How far from a note's start its attack is looked for (onsets and frames are a few ms apart). */
         const val WINDOW = 0.015
+
+        /** Two picks [picks] tells apart are at least this far apart (seconds): tremolo goes up to about 25 a second. */
+        const val PICK_SPACING = 0.035
 
         private val BANDS = intArrayOf(2000, 4000, 6000, 8000, 11025)
 

@@ -53,6 +53,7 @@ import java.io.File
 import java.io.IOException
 import java.lang.ref.WeakReference
 import java.util.Locale
+import kotlin.concurrent.thread
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -611,7 +612,18 @@ class SongActivity : Activity() {
     private fun prepareOrShow(id: String, source: SongJobs.Source, startJob: Boolean) {
         showSong(null)
         val saved = SongJobs.cached(this, id)
-        if (saved != null) { showSong(saved); return }
+        if (saved != null) {
+            showSong(saved)
+            if (SongAnalysis.isLineOld(saved) && SongJobs.hasData(this, id)) {
+                // Saved by an older analysis: derive its line again from its data (a second or so), then show that.
+                val app = applicationContext
+                thread(isDaemon = true) {
+                    val fresh = SongJobs.withCurrentLine(app, saved) ?: return@thread
+                    runOnUiThread { if (!isFinishing && !isDestroyed && this@SongActivity.source === saved) showSong(fresh) }
+                }
+            }
+            return
+        }
         val s = SongJobs.state
         if (s is SongJobs.State.Working && s.id == id) return // already on it
         if (!startJob) return
