@@ -137,9 +137,10 @@ data class SongAnalysis(
          * The version of the line derivation: bump when [SongAnalyzer] derives a different line from the same saved
          * [AnalysisData] (songs saved before have an older [line] and are derived again from their data, see
          * [isLineOld]); 0 is the line of songs saved before it was recorded. 1: tremolo from the picks, repeated
-         * notes, quick turns, and the accompaniment (bass, baglamas, strums) kept out of the line.
+         * notes, quick turns, and the accompaniment (bass, baglamas, strums) kept out of the line. 2: no notes where the
+         * bouzouki doesn't play (an intro, a verse without it), and the melody's register over a louder accompaniment's.
          */
-        const val LINE = 1
+        const val LINE = 2
 
         /** Whether [song]'s line is older than what [SongAnalyzer.rebuild] derives now from its data. */
         fun isLineOld(song: SongAnalysis): Boolean = song.line < LINE
@@ -364,6 +365,10 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
          * comes out ([ornaments]).
          * [Detail.FEWER] is this line without its weak notes ([fewer]). [Detail.MORE] (with [act]) keeps every note
          * of the normal line, from [act]'s normal [candidates], and lets weaker notes in between them ([withNormal]).
+         * Where the bouzouki seems not to play ([Presence.plays]: few candidates that sound like it, in an intro or a verse
+         * it sits out) the line has no notes, rather than following the loudest instrument; and a candidate under D4 costs
+         * more the lower it lies and the less it sounds like the bouzouki ([registerCue]), so a quieter picked note in the
+         * melody's register wins over a louder accompaniment on the C and F courses' register (both need [attacks]).
          * Notes without onset evidence (made by hand, e.g. a saved line) are always kept.
          */
         fun bouzoukiLine(
@@ -381,7 +386,12 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
             var c = inRange(notes)
             if (c.isEmpty()) return emptyList()
             if (c.all { it.onset.isNaN() }) return trimEnds(c) // a line chosen before: keep it as it is
-            c = joined(c)
+            // Where the bouzouki plays, judged on the normal candidates at every detail (so the lines nest).
+            val presence = if (act == null || attacks == null) null
+                else Presence(if (detail == Detail.MORE) candidates(act, Detail.NORMAL) else notes, act, attacks)
+            fun gated(list: List<NoteEvent>) = if (presence == null) list else list.filter { it.onset.isNaN() || presence.plays(it.start) }
+            c = joined(gated(c))
+            if (c.isEmpty()) return emptyList()
             // Tremolo becomes one note, and quick turns hidden in held notes come out.
             fun finished(path: List<NoteEvent>): List<NoteEvent> {
                 var l = joinTremolo(trimEnds(path))
@@ -393,13 +403,13 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
             var normalLine: List<NoteEvent>? = null
             if (detail == Detail.MORE && act != null) {
                 // The normal line's notes stay (one missing from these candidates joins them); weaker ones fill in.
-                val normal = trimEnds(track(joined(inRange(candidates(act, Detail.NORMAL))), act, attacks, EVIDENCE_NEEDED, null).first)
+                val normal = trimEnds(track(joined(gated(inRange(candidates(act, Detail.NORMAL)))), act, attacks, EVIDENCE_NEEDED, null, presence).first)
                 val have = c.mapTo(HashSet()) { key(it) }
                 c = (c + normal.filter { key(it) !in have }).sortedBy { it.start }
                 forced = normal.mapTo(HashSet()) { key(it) }
                 normalLine = finished(normal)
             }
-            val (path, worth) = track(c, act, attacks, if (detail == Detail.MORE) EVIDENCE_NEEDED_MORE else EVIDENCE_NEEDED, forced)
+            val (path, worth) = track(c, act, attacks, if (detail == Detail.MORE) EVIDENCE_NEEDED_MORE else EVIDENCE_NEEDED, forced, presence)
             var line = finished(path)
             if (normalLine != null) line = withNormal(line, normalLine)
             if (detail == Detail.FEWER) line = fewer(line, path.indices.associate { path[it].start to worth[it] }, act, attacks)
@@ -673,7 +683,8 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
 
         /**
          * The Viterbi pass of [bouzoukiLine] over [c] (in range, in time order): the chosen notes and the evidence each
-         * brought ([needed] is what a note must reach; a note in [forced] gets [GIVEN_NOTE] more, so it stays).
+         * brought, not counting [registerCue] ([needed] is what a note must reach; a note in [forced] gets [GIVEN_NOTE]
+         * more, so it stays; [presence] weighs the register).
          */
         private fun track(
             c: List<NoteEvent>,
@@ -681,6 +692,7 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
             attacks: Attacks?,
             needed: Double,
             forced: Set<Long>?,
+            presence: Presence? = null,
         ): Pair<List<NoteEvent>, DoubleArray> {
             if (c.isEmpty()) return emptyList<NoteEvent>() to DoubleArray(0)
             // The energy a typical candidate's attack adds (the bouzouki's picks add more than the accompaniment's).
@@ -689,7 +701,8 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
             val worth = DoubleArray(c.size) { i ->
                 val attack = if (attacks == null || c[i].onset.isNaN()) 0.0
                     else ATTACK_WEIGHT * max(0.0, min(ATTACK_CAP, ln(1 + attacks.rise(c[i].start)) - ln(1 + PICK_ATTACK)))
-                evidence(c[i], needed) + attack + harmonic(c[i], act) + energyCue(c[i], attacks, energyRef) + strumCue(c, i)
+                evidence(c[i], needed) + attack + harmonic(c[i], act) + energyCue(c[i], attacks, energyRef) + strumCue(c, i) +
+                    registerCue(c[i], presence)
             }
             // What a legato note (sounded from the line's note before, still sounding: [legatoFrom]) gets back of the
             // accompaniment cues: it brings no pick, so it adds little energy, and it starts as the note before ends.
@@ -731,7 +744,7 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
             var i = best.indices.maxBy { best[it] }
             while (i >= 0) {
                 path += c[i]
-                brought += worth[i]
+                brought += worth[i] - registerCue(c[i], presence) // a low note is no weaker for lying low ([fewer])
                 i = back[i]
             }
             path.reverse()
@@ -970,6 +983,18 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
         }
 
         /**
+         * What a candidate under D4 ([MELODY_FROM]) costs: [LOW_TIER], and [LOW_STEP] more for each semitone under the
+         * open A course ([Presence.MELODY_LOW]), less the more it sounds like the bouzouki ([Presence.like]). The melody
+         * lies on the D and A courses (in a real tab 99% of the notes, 15% on the A course); long stretches on the C and F
+         * courses are the register of the keyboards, guitars and bass, which a production often makes louder than the
+         * bouzouki. 0 without [presence] (the attacks unknown) or onset evidence.
+         */
+        private fun registerCue(n: NoteEvent, presence: Presence?): Double {
+            if (presence == null || n.onset.isNaN() || n.midi >= MELODY_FROM) return 0.0
+            return -(LOW_TIER + LOW_STEP * max(0, Presence.MELODY_LOW - n.midi)) * (1 - presence.like(n))
+        }
+
+        /**
          * What it costs candidate [i] of [c] (in time order) to start with others ([STRUM_TIME]) of which one sounds
          * louder ([STRUM_LOUDER]): a strum (guitar, baglamas) sounds several strings at once, the bouzouki's melody one,
          * and its note stands out of a strum it coincides with ([STRUM_COST] for each other one).
@@ -1049,6 +1074,11 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
         // The line tracker's weights, chosen on synthesized bouzouki songs, both clean and blurred the way recordings
         // are (reverb, low-pass, noise, lossy coding): scratch evaluation, mir_eval F-measure.
         private const val EVIDENCE_NEEDED = 0.5
+        /** A candidate under this (D4, the open D course) pays [registerCue]: [LOW_TIER] ... */
+        private const val MELODY_FROM = 62
+        private const val LOW_TIER = 0.15
+        /** ... and this more per semitone under the open A course. */
+        private const val LOW_STEP = 0.1
         /** What a note needs with [Detail.MORE]: a fuller line, weaker notes too. */
         private const val EVIDENCE_NEEDED_MORE = 0.4
         /** The evidence a line note keeps with [Detail.FEWER] (counted as for the normal line)... */
