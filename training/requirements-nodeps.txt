@@ -1,0 +1,4 @@
+# Install with:  pip install --no-deps -r requirements-nodeps.txt
+# basic-pitch's own requirements would pull `tensorflow` (we use tensorflow-cpu), resampy, mir_eval
+# and librosa pins that this pipeline does not need; its code needs only TensorFlow + numpy here.
+basic-pitch==0.4.0         # Apache-2.0 (Spotify): model code, losses, TFRecord reader, icassp_2022 weights

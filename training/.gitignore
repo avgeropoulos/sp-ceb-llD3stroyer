@@ -1,0 +1,6 @@
+data/
+runs/
+*.tfrecord
+__pycache__/
+.pytest_cache/
+.venv/
