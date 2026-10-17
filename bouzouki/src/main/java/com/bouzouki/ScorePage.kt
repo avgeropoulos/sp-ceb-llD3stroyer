@@ -1,3 +1,4 @@
+@file:OptIn(kotlin.contracts.ExperimentalContracts::class) // alphaTab's API is declared with contracts
 package com.bouzouki
 
 import alphaTab.AlphaTabView
