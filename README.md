@@ -201,3 +201,38 @@ Every build is signed with the same key (`bouzouki/signing/`) and gets a higher 
 
 Code: `bouzouki-core/` holds the scales, tunings and synthesizer in plain Kotlin (tested with
 `./gradlew :bouzouki-core:test`). `bouzouki/` is the Android app (`./gradlew :bouzouki:assembleDebug`).
+
+## Μπουζούκι Lab: transcribe what you play and hear
+
+A second version of the bouzouki app, **BouzoukiLab.apk** (`com.bouzouki.lab`, installs beside Μπουζούκι), from the
+`latest-bouzouki-lab` release: https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/download/latest-bouzouki-lab/BouzoukiLab.apk
+
+**Privacy and content.** Everything happens on the phone, for you, when you ask. Audio is never uploaded or kept: a
+clip heard with 🎧 Listen stays in memory only until its tab is made. Tabs and songs are kept only in the app's own
+storage, and are left out of backups. There is no public library, no search across users and no sharing. You accept
+Terms of Use on first start: the app is for personal practice and study, and you are responsible for what you analyse.
+The app goes online only for its own updates and models (from this repository's releases). There is no YouTube link
+input and nothing is downloaded from YouTube.
+
+**What it does**
+- **🎧 Listen** to a song playing on the phone (Android 10+ playback capture, with Android's consent), or with the
+  microphone if capture is blocked, a band nearby, or your bouzouki alone. 📁 opens audio files of yours.
+- **Separation** of a band's recording on the phone: Demucs v4 htdemucs_6s (guitar and "other" stems), on full,
+  3.9 s or 2 s segments by the phone's memory, or a light DSP separation (🔧 Lab tools → 🧩 Separation).
+- **Transcription** with Spotify's Basic Pitch (ONNX Runtime or LiteRT, whichever is faster on the phone). The
+  recording is put in tune first (cents from A = 440 Hz), and pitches are checked against Basic Pitch's fine contours.
+- **Bouzouki post-processing**: an octave-paired course's pluck becomes one note, and fast repeated picks one tremolo
+  note (all settings in `PostConfig`).
+- **Fingering** on courses, for any tuning (tetrachordo C3/C4 F3/F4 A3 D4 by default, trichordo D3/D4 A3 D4, or your
+  own, up to 30 frets). Two engines: the bouzouki HMM, or a port of tuttut. Every weight can be edited (🔧 → 🎚 Fingering).
+- **Tab**: the neck, a tab strip and the whole tablature in sync with the recording; 🎼 Score draws and plays it with
+  alphaTab; ✏️ Edit notes changes any note (place, pitch, articulation, add, delete, undo).
+- **🎯 Calibrate**: pluck each open course to measure your tuning, the octave strings' loudness and the room's noise.
+
+**For developers**
+- `./gradlew :bouzouki-core:evalSet -PevalSet=<folder|synth>`: scores note accuracy and time. See
+  [docs/eval-recordings.md](docs/eval-recordings.md) for recording your own set; reports are in `docs/eval/`.
+- [docs/listen-testing.md](docs/listen-testing.md): testing capture with the YouTube app, solo vs mix, separation cost.
+- `training/`: a Basic Pitch fine-tuning pipeline, prepared but not run. It needs licensed data, signed off in
+  `training/DATA_LICENSES.yaml`.
+- `tools/demucs/` and `.github/workflows/models.yml`: the Demucs ONNX exports, published to `bouzouki-models-v1`.
