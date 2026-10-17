@@ -43,14 +43,15 @@ object Separation {
     private fun prefs(context: Context) = context.getSharedPreferences("bouzouki", Context.MODE_PRIVATE)
 
     /**
-     * The player's choice, or (none made) by the phone's memory: full Demucs from 8 GB, its 3.9 s export from 6 GB,
-     * the 2 s export from 4 GB, the light separation below.
+     * The player's choice, or (none made) by the phone's memory: full Demucs from 8 GB, its 3.9 s export from 6 GB, the
+     * light separation below. The 2 s export is only there to choose: on the synthetic mixes it scored under no
+     * separation at all (docs/eval/phase7.md), the light one just under full Demucs.
      */
     fun chosen(context: Context): Kind {
         prefs(context).getString(PREF, null)?.let { n -> Kind.entries.firstOrNull { it.name == n }?.let { return it } }
         val mem = ActivityManager.MemoryInfo().also { (context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).getMemoryInfo(it) }
         val gb = mem.totalMem / 1e9
-        return when { gb >= 7.5 -> Kind.DEMUCS; gb >= 5.5 -> Kind.DEMUCS_LITE; gb >= 3.5 -> Kind.DEMUCS_TINY; else -> Kind.LIGHT }
+        return when { gb >= 7.5 -> Kind.DEMUCS; gb >= 5.5 -> Kind.DEMUCS_LITE; else -> Kind.LIGHT }
     }
 
     fun choose(context: Context, kind: Kind?) = prefs(context).edit().apply { if (kind == null) remove(PREF) else putString(PREF, kind.name) }.apply()
