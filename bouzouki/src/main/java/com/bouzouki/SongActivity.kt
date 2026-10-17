@@ -101,6 +101,14 @@ class SongActivity : Activity() {
     private lateinit var sheetScroller: ScrollView
     private lateinit var neckTab: Button
     private lateinit var sheetTab: Button
+    private lateinit var scoreTab: Button
+    /** 🎼 Score: the tab as alphaTab draws and plays it. */
+    private lateinit var score: ScorePage
+    private lateinit var sheetPage: LinearLayout
+    private lateinit var editButton: Button
+    /** ✏️: taps on the tablature edit notes instead of playing them; [undo] holds the song before each edit. */
+    private var editing = false
+    private val undo = ArrayList<SongAnalysis>()
     private lateinit var syncText: TextView
     private lateinit var instrumentSwitch: InstrumentSwitch
     private lateinit var speedSwitch: Segmented
@@ -384,9 +392,11 @@ class SongActivity : Activity() {
             setPadding(px(6), px(2), px(6), px(4))
             fun slim(b: Button) = b.apply { minHeight = px(38); minimumHeight = px(38) } // this row stays low
             neckTab = slim(ui.chip("🎸 Neck") { showPage(PAGE_NECK) })
-            sheetTab = slim(ui.chip("📜 Tablature") { showPage(PAGE_SHEET) })
+            sheetTab = slim(ui.chip("📜 Tab") { showPage(PAGE_SHEET) })
+            scoreTab = slim(ui.chip("🎼 Score") { showPage(PAGE_SCORE) })
             addView(neckTab, ui.weighted(1f))
-            addView(sheetTab, ui.weighted(1.35f))
+            addView(sheetTab, ui.weighted(1f))
+            addView(scoreTab, ui.weighted(1.1f))
             addView(slim(ui.chip("−") { nudgeSync(-SYNC_STEP) }), LinearLayout.LayoutParams(px(38), px(38)).apply { marginStart = px(6) })
             syncText = TextView(context).apply {
                 textSize = 11f
@@ -418,16 +428,30 @@ class SongActivity : Activity() {
         // The whole song's tablature (the strip would only repeat it, so it stays with the neck).
         sheet = TabSheetView(this).apply {
             names = settings.names
-            onNoteTap = { i -> playNoteAt(i) }
+            onNoteTap = { i -> if (editing) editNote(i) else playNoteAt(i) }
             onSeek = { t -> seek(t - syncOffset) }
         }
         sheetScroller = ScrollView(this).apply {
             isFillViewport = true
             addView(sheet)
         }
+        // The tablature, with the editor's switch and its undo above it.
+        editButton = ui.chip("✏️ Edit notes") { toggleEditing() }
+        sheetPage = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(ui.row().apply {
+                setPadding(px(6), 0, px(6), 0)
+                addView(editButton, ui.weighted(1.4f))
+                addView(ui.chip("↩ Undo") { undoEdit() }, ui.weighted(1f))
+                addView(ui.chip("＋ Note") { editInsert() }, ui.weighted(1f))
+            })
+            addView(sheetScroller, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        }
+        score = ScorePage(this, ui)
         root.addView(FrameLayout(this).apply {
             addView(neckPage, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-            addView(sheetScroller, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            addView(sheetPage, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            addView(score, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
 
         setContentView(root)
@@ -692,6 +716,7 @@ class SongActivity : Activity() {
         sheet.unheard = r?.unheard ?: emptySet()
         sheet.offPitch = r?.offPitch ?: emptySet()
         sheet.song = s
+        score.show(s)
         resetMarks()
         if (s != null) render(clock.now(SystemClock.elapsedRealtimeNanos()))
     }
@@ -703,6 +728,8 @@ class SongActivity : Activity() {
      */
     private fun fingered(shown: SongAnalysis): SongAnalysis {
         val inst = settings.instrument
+        // A line edited by hand keeps its frets on the bouzouki it was edited for.
+        if (shown.edited && shown.instrument == inst) return shown
         val asWritten = shown === line && lineSpec is SongLines.Spec.FromTab && shown.instrument == inst &&
             shown.notes.all { it.course in inst.courses.indices && it.fret in 0..inst.frets && inst.midiAt(it.course, it.fret) == it.midi }
         val fresh = shown === line && lineSpec is SongLines.Spec.Detected && shown.instrument == inst
@@ -999,6 +1026,7 @@ class SongActivity : Activity() {
         val items = ArrayList<Pair<String, () -> Unit>>()
         items += (if (hasTab) "📋 Paste another tab" else "📋 Paste tab") to { pasteTab() }
         items += "📄 Open a tab file (PDF, text, picture or sheet music)" to { openTabFile() }
+        if (source?.edited == true) items += "↩ Undo all edits (the detected notes again)" to { revertEdits() }
         if (hasTab) {
             val kind = if (kept is SongLines.TabSource.Pdf) " (PDF)" else ""
             items += "From tab$kind" + (if (fromTab) "  ✓" else "") to { chooseTab(true) }
@@ -1012,6 +1040,25 @@ class SongActivity : Activity() {
             .setItems(items.map { it.first }.toTypedArray()) { _, i -> items[i].second() }
             .setNegativeButton("Close", null)
             .show()
+    }
+
+    /** The song's line as detected, in place of the one edited by hand (from its saved data, in the background). */
+    private fun revertEdits() {
+        val src = source ?: return
+        if (!SongJobs.hasData(this, src.id)) { askToPrepareAgain(); return }
+        val app = applicationContext
+        busy("Finding the notes again…")
+        thread(isDaemon = true) {
+            val fresh = SongJobs.revertEdits(app, src)
+            runOnUiThread {
+                busy(null)
+                if (isFinishing || isDestroyed || source !== src) return@runOnUiThread
+                if (fresh == null) { status.text = "Couldn't find the detected notes again."; return@runOnUiThread }
+                undo.clear()
+                showSong(fresh)
+                status.text = "The detected notes again: your edits are gone."
+            }
+        }
     }
 
     /** Pastes a tab from the clipboard, after a look at it. */
@@ -1420,16 +1467,96 @@ class SongActivity : Activity() {
      */
     private fun beatsFor(song: SongAnalysis): List<Double> = song.beats
 
-    /** Shows the neck (with the tab strip) or the whole song's tablature, and remembers which. */
+    /** Shows the neck (with the tab strip), the whole song's tablature or alphaTab's score, and remembers which. */
     private fun showPage(page: Int) {
-        val sheetPage = page == PAGE_SHEET
-        neckPage.visibility = if (sheetPage) View.GONE else View.VISIBLE
-        sheetScroller.visibility = if (sheetPage) View.VISIBLE else View.GONE
-        ui.style(neckTab, !sheetPage)
-        ui.style(sheetTab, sheetPage)
+        neckPage.visibility = if (page == PAGE_NECK) View.VISIBLE else View.GONE
+        sheetPage.visibility = if (page == PAGE_SHEET) View.VISIBLE else View.GONE
+        score.visibility = if (page == PAGE_SCORE) View.VISIBLE else View.GONE
+        ui.style(neckTab, page == PAGE_NECK)
+        ui.style(sheetTab, page == PAGE_SHEET)
+        ui.style(scoreTab, page == PAGE_SCORE)
         prefs.edit().putInt(PREF_PAGE, page).apply()
-        if (sheetPage) sheet.showNow()
-        else board.post { board.liveCell?.let { keepVisible(it) } } // after the neck's first layout
+        if (page != PAGE_SCORE) score.stop()
+        when (page) {
+            PAGE_SHEET -> sheet.showNow()
+            PAGE_SCORE -> score.post { score.visible() }
+            else -> board.post { board.liveCell?.let { keepVisible(it) } } // after the neck's first layout
+        }
+    }
+
+    // --- the tab editor ---
+
+    private fun toggleEditing() {
+        if (song == null) { status.text = "Open a song first; then ✏️ Edit notes and tap a note to change it."; return }
+        editing = !editing
+        ui.style(editButton, editing)
+        status.text = if (editing) "Editing: tap a note to move it, change it or delete it; ＋ Note adds one after the note playing now. Saved as you go."
+            else "Done editing: tapping a note plays it again."
+    }
+
+    /** The edit dialog for note [i] of the line shown: another place for it, another pitch or articulation, or gone. */
+    private fun editNote(i: Int) {
+        val s = song ?: return
+        val n = s.notes.getOrNull(i) ?: return
+        val inst = s.instrument
+        val places = com.bouzouki.core.song.TabEdit.places(inst, n.midi).filter { it != n.course to n.fret }
+        val items = ArrayList<Pair<String, () -> Unit>>()
+        for ((c, f) in places) items += "Play it on course ${c + 1} (${settings.names.name(inst.courses[c].openMidi)}), fret $f" to {
+            commitEdit(com.bouzouki.core.song.TabEdit.place(s, i, c, f))
+        }
+        items += "▲ A semitone higher" to { commitEdit(com.bouzouki.core.song.TabEdit.transpose(s, i, 1)) }
+        items += "▼ A semitone lower" to { commitEdit(com.bouzouki.core.song.TabEdit.transpose(s, i, -1)) }
+        items += "▲▲ An octave higher" to { commitEdit(com.bouzouki.core.song.TabEdit.transpose(s, i, 12)) }
+        items += "▼▼ An octave lower" to { commitEdit(com.bouzouki.core.song.TabEdit.transpose(s, i, -12)) }
+        for (a in Articulation.entries) if (a != n.articulation) items += "Make it ${articulationName(a)}" to { commitEdit(com.bouzouki.core.song.TabEdit.articulate(s, i, a)) }
+        items += "＋ Add a note after it" to { commitEdit(com.bouzouki.core.song.TabEdit.insertAfter(s, i)) }
+        items += "🗑 Delete it" to { commitEdit(com.bouzouki.core.song.TabEdit.delete(s, i)) }
+        AlertDialog.Builder(this)
+            .setTitle("${settings.names.name(n.midi)} · course ${n.course + 1}, fret ${n.fret} · ${articulationName(n.articulation)}")
+            .setItems(items.map { it.first }.toTypedArray()) { _, k -> items[k].second() }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun articulationName(a: Articulation) = when (a) {
+        Articulation.PICK -> "picked"; Articulation.HAMMER -> "a hammer-on"; Articulation.PULL -> "a pull-off"
+        Articulation.SLIDE -> "a slide"; Articulation.TREMOLO -> "tremolo"
+    }
+
+    /** ＋ Note: a note after the one playing now (or at the start). */
+    private fun editInsert() {
+        val s = song ?: run { status.text = "Open a song first."; return }
+        if (!editing) toggleEditing()
+        val t = clock.now(SystemClock.elapsedRealtimeNanos()) + syncOffset
+        commitEdit(com.bouzouki.core.song.TabEdit.insertAfter(s, s.nextAfter(t) - 1))
+    }
+
+    private fun undoEdit() {
+        val before = undo.removeLastOrNull() ?: run { status.text = "Nothing to undo."; return }
+        commitEdit(before, remember = false)
+    }
+
+    /**
+     * The line edited by hand, [edited] (frets kept as they are), becomes the song's: saved on the phone at once, the line
+     * chosen for it (detail, tab) giving way to it. [remember]: it can be undone ([undo]).
+     */
+    private fun commitEdit(edited: SongAnalysis, remember: Boolean = true) {
+        val shown = song ?: return
+        if (remember) { undo += shown; if (undo.size > MAX_UNDO) undo.removeAt(0) }
+        val id = edited.id
+        dropPendingTab()
+        settings.setDetail(id, Detail.NORMAL)
+        settings.setUsesTab(id, false)
+        line = null
+        lineSpec = null
+        tabReport = null
+        wanted = null
+        source = edited
+        try { SongJobs.saveSong(this, edited) } catch (e: IOException) { status.text = "Couldn't save the edit (${e.message})." }
+        showLine()
+        sheet.showNow()
+        refreshLineControls()
+        status.text = "Edited: ${edited.notes.size} notes, kept on the phone. ↩ Undo takes the last change back."
     }
 
     /** The row to open a song (a file, a saved song), folded away while a song is open. */
@@ -1897,6 +2024,7 @@ class SongActivity : Activity() {
         soundOn = false
         audio.stop()
         if (playing) toggleFilePlayback()
+        score.stop()
         super.onPause()
     }
 
@@ -1974,6 +2102,9 @@ class SongActivity : Activity() {
         private const val REQ_TAB = 4
         private const val PAGE_NECK = 0
         private const val PAGE_SHEET = 1
+        private const val PAGE_SCORE = 2
+        /** Edits ↩ Undo can take back. */
+        private const val MAX_UNDO = 50
         private const val PREF_PAGE = "song_page"
         private const val PREF_SYNC = "song_sync_"
         private const val PREF_LAST_SONG = "song_last"

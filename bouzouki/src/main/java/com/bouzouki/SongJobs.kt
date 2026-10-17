@@ -104,6 +104,22 @@ object SongJobs {
         writeAtomically(File(dir, "${song.id}.json")) { it.write(song.toJson().toByteArray(Charsets.UTF_8)) }
     }
 
+    /** Saves [song] (its line, as edited by hand) in place of the one kept, its data staying as it was. */
+    fun saveSong(context: Context, song: SongAnalysis) {
+        writeAtomically(File(songsDir(context), "${song.id}.json")) { it.write(song.toJson().toByteArray(Charsets.UTF_8)) }
+    }
+
+    /**
+     * [song]'s line derived again from its data, as detected (its edits by hand dropped), saved in its place; null
+     * without data. Reads the data: call it off the main thread.
+     */
+    fun revertEdits(context: Context, song: SongAnalysis): SongAnalysis? {
+        val data = data(context, song.id) ?: return null
+        val fresh = try { SongAnalyzer.rebuild(song, data).copy(edited = false) } catch (_: Exception) { return null }
+        try { saveSong(context, fresh) } catch (_: IOException) {}
+        return fresh
+    }
+
     /** What song [id]'s line was derived from, or null if it was prepared before that was kept (or it's damaged). */
     fun data(context: Context, id: String): AnalysisData? = try {
         File(songsDir(context), "$id.data").takeIf { it.exists() }?.let { f -> f.inputStream().use { AnalysisData.read(it.buffered()) } }

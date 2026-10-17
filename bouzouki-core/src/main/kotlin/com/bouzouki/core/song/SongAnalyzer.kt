@@ -46,6 +46,8 @@ data class SongAnalysis(
     /** Prepared as the bouzouki alone ([PostConfig.solo]), and with each octave-paired course's pluck as one note. */
     val solo: Boolean = false,
     val octaves: Boolean = false,
+    /** Changed by hand in the tab editor: its notes, courses and frets stay as the player left them. */
+    val edited: Boolean = false,
 ) {
     /**
      * The same song fingered for [inst] (the other bouzouki, or with a newer fingering): every note keeps
@@ -125,6 +127,7 @@ data class SongAnalysis(
         "line" to line.toString(),
         "solo" to solo.toString(),
         "octaves" to octaves.toString(),
+        "edited" to edited.toString(),
     )
 
     /** A saved song as the song list shows it: [current] is false when an older version wrote it (prepare it again). */
@@ -148,7 +151,7 @@ data class SongAnalysis(
         const val LINE = 2
 
         /** Whether [song]'s line is older than what [SongAnalyzer.rebuild] derives now from its data. */
-        fun isLineOld(song: SongAnalysis): Boolean = song.line < LINE
+        fun isLineOld(song: SongAnalysis): Boolean = song.line < LINE && !song.edited
 
         /** The widest step (semitones) inside a passage that [forInstrument] moves as one: a fourth. */
         private const val PASSAGE_STEP = 5
@@ -193,6 +196,7 @@ data class SongAnalysis(
                 line = (p["line"] as Number?)?.toInt() ?: 0,
                 solo = p["solo"] as Boolean? ?: false,
                 octaves = p["octaves"] as Boolean? ?: false,
+                edited = p["edited"] as Boolean? ?: false,
             )
         } catch (_: Exception) { null }
     }

@@ -12,7 +12,8 @@ android {
     defaultConfig {
         // The Lab version: its own app on the phone, installed beside the original Μπουζούκι (com.bouzouki).
         applicationId = "com.bouzouki.lab"
-        minSdk = 24
+        // alphaTab (the tab sheet and its player) needs Android 8.0.
+        minSdk = 26
         targetSdk = 35
         // Every CI build gets a higher version number, so Android installs it as an update.
         val build = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
@@ -75,4 +76,6 @@ dependencies {
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.31.0")
     // LiteRT (Google's TensorFlow Lite runtime, Apache-2.0): the other engine for Basic Pitch (see PitchEngines).
     implementation("com.google.ai.edge.litert:litert:1.4.0")
+    // alphaTab (MPL-2.0): tablature display and playback; with alphaSkia (BSD-3-Clause) and AndroidX (Apache-2.0).
+    implementation("net.alphatab:alphaTab:1.8.4")
 }
