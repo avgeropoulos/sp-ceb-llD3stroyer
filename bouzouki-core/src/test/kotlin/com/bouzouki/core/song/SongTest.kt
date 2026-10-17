@@ -20,6 +20,40 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class DspTest {
+
+    /** The resampler as it was, computing every tap: the cached kernels must give the same samples. */
+    private fun slowResample(input: FloatArray, fromRate: Int, toRate: Int, halfTaps: Int = 16): FloatArray {
+        val ratio = toRate.toDouble() / fromRate
+        val cutoff = kotlin.math.min(1.0, ratio) * 0.97
+        val reach = halfTaps / cutoff
+        return FloatArray(kotlin.math.floor(input.size * ratio).toInt()) { i ->
+            val t = i / ratio
+            var acc = 0.0; var norm = 0.0
+            for (j in kotlin.math.max(0, (t - reach).toInt() + 1)..kotlin.math.min(input.size - 1, (t + reach).toInt())) {
+                val x = (j - t) * cutoff
+                val w = 0.5 + 0.5 * kotlin.math.cos(Math.PI * (j - t) / reach)
+                val k = (if (abs(x) < 1e-9) 1.0 else kotlin.math.sin(Math.PI * x) / (Math.PI * x)) * w
+                acc += input[j] * k; norm += k
+            }
+            if (norm != 0.0) (acc / norm).toFloat() else 0f
+        }
+    }
+
+    @Test
+    fun cachedResamplingKernelsGiveTheSameSamples() {
+        val rnd = java.util.Random(3)
+        val x = FloatArray(30_000) { rnd.nextGaussian().toFloat() * 0.3f }
+        for ((from, to) in listOf(44100 to 22050, 48000 to 44100, 22050 to 21748, 44100 to 48000, 32000 to 22050)) {
+            val a = resample(x, from, to)
+            val b = slowResample(x, from, to)
+            assertEquals(b.size, a.size)
+            // From where the window is whole: before that the old way dropped a tap (it truncated a negative position).
+            val reach = 16 / (kotlin.math.min(1.0, to.toDouble() / from) * 0.97) // the window's half width, in input samples
+            val skip = ((reach + 2) * to / from).toInt() + 1
+            val err = (skip until a.size).maxOf { abs(a[it] - b[it]) }
+            assertTrue(err < 1e-6f, "$from -> $to differs by $err")
+        }
+    }
     private fun naiveDft(re: DoubleArray, im: DoubleArray, k: Int): Pair<Double, Double> {
         var sr = 0.0; var si = 0.0
         val n = re.size

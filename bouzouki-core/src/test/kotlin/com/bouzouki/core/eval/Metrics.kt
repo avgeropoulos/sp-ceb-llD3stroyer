@@ -12,6 +12,7 @@ import kotlin.math.sqrt
  * first) when their onsets are within [ONSET_TOL] and their pitches agree. The scores:
  * - [note]: same pitch, the usual note F-measure;
  * - [octave]: same pitch class (an octave off counts), to tell octave errors (octave-pair courses) from wrong notes;
+ * - [tpSemitone]: pitch within a semitone, so [tpSemitone] − [tp] counts the notes a semitone off (tuning errors);
  * - [offset]: same pitch and the end within 20% of the note's length (at least 50 ms), as mir_eval's onset-offset F;
  * - [course] and [fret]: of the notes matched by pitch whose reference says where they're played, how many the
  *   fingering put on the same course, and on the same course and fret;
@@ -19,7 +20,7 @@ import kotlin.math.sqrt
  */
 class Score {
     var ref = 0; var est = 0
-    var tp = 0; var tpOctave = 0; var tpOffset = 0
+    var tp = 0; var tpOctave = 0; var tpOffset = 0; var tpSemitone = 0
     var placed = 0; var sameCourse = 0; var sameFret = 0
     var refTremolo = 0; var estTremolo = 0; var tremoloRight = 0
     val onsetErrors = ArrayList<Double>()
@@ -34,7 +35,7 @@ class Score {
     val fret get() = if (placed == 0) Double.NaN else sameFret.toDouble() / placed
 
     fun add(o: Score) {
-        ref += o.ref; est += o.est; tp += o.tp; tpOctave += o.tpOctave; tpOffset += o.tpOffset
+        ref += o.ref; est += o.est; tp += o.tp; tpOctave += o.tpOctave; tpOffset += o.tpOffset; tpSemitone += o.tpSemitone
         placed += o.placed; sameCourse += o.sameCourse; sameFret += o.sameFret
         refTremolo += o.refTremolo; estTremolo += o.estTremolo; tremoloRight += o.tremoloRight
         onsetErrors += o.onsetErrors
@@ -82,6 +83,7 @@ object Metrics {
         val exact = match(ref, est) { r, e -> r.midi == e.midi }
         s.tp = exact.size
         s.tpOctave = match(ref, est) { r, e -> Math.floorMod(r.midi - e.midi, 12) == 0 }.size
+        s.tpSemitone = match(ref, est) { r, e -> abs(r.midi - e.midi) <= 1 }.size
         s.tpOffset = match(ref, est) { r, e ->
             r.midi == e.midi && abs(e.end - r.end) <= max(0.05, 0.2 * (r.end - r.start))
         }.size

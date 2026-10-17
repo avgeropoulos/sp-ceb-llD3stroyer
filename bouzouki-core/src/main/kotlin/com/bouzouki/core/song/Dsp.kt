@@ -102,7 +102,9 @@ fun hann(n: Int) = DoubleArray(n) { 0.5 - 0.5 * cos(2 * PI * it / n) }
 
 /**
  * Windowed-sinc resampling between any two rates (e.g. 48000 to 44100, 44100 to 22050),
- * with the cutoff lowered when downsampling so nothing folds back.
+ * with the cutoff lowered when downsampling so nothing folds back. Between rates whose pattern of output positions
+ * repeats every [MAX_PHASES] outputs or fewer (all the usual ones), each phase's kernel is worked out once and reused;
+ * near the ends (where the kernel is cut short) and for other rates every tap is computed as it comes.
  */
 fun resample(input: FloatArray, fromRate: Int, toRate: Int, halfTaps: Int = 16): FloatArray {
     if (fromRate == toRate) return input.copyOf()
@@ -111,21 +113,55 @@ fun resample(input: FloatArray, fromRate: Int, toRate: Int, halfTaps: Int = 16):
     val cutoff = min(1.0, ratio) * 0.97
     val out = FloatArray(outLen)
     val reach = halfTaps / cutoff
-    for (i in 0 until outLen) {
+    fun kernel(d: Double): Double { // d = j - t
+        val x = d * cutoff
+        val w = 0.5 + 0.5 * cos(PI * d / reach) // Hann taper
+        val s = if (abs(x) < 1e-9) 1.0 else sin(PI * x) / (PI * x)
+        return s * w
+    }
+    fun direct(i: Int) {
         val t = i / ratio // position in input samples
         val first = max(0, (t - reach).toInt() + 1)
         val last = min(input.size - 1, (t + reach).toInt())
         var acc = 0.0
         var norm = 0.0
         for (j in first..last) {
-            val x = (j - t) * cutoff
-            val w = 0.5 + 0.5 * cos(PI * (j - t) / reach) // Hann taper
-            val s = if (abs(x) < 1e-9) 1.0 else sin(PI * x) / (PI * x)
-            val k = s * w
+            val k = kernel(j - t)
             acc += input[j] * k
             norm += k
         }
         out[i] = if (norm != 0.0) (acc / norm).toFloat() else 0f
     }
+    val g = gcd(fromRate, toRate)
+    val p = toRate / g // outputs per period
+    val q = fromRate / g // inputs per period
+    if (p > MAX_PHASES) { for (i in 0 until outLen) direct(i); return out }
+    // Phase r (output i = k·p + r) sits at input k·q + r·q/p: its taps start at k·q + firstOf[r], normalised by normOf[r].
+    val firstOf = IntArray(p)
+    val taps = arrayOfNulls<DoubleArray>(p)
+    val normOf = DoubleArray(p)
+    for (r in 0 until p) {
+        val t = r.toDouble() * q / p
+        val first = floor(t - reach).toInt() + 1
+        val last = floor(t + reach).toInt()
+        firstOf[r] = first
+        taps[r] = DoubleArray(last - first + 1) { kernel(first + it - t) }
+        normOf[r] = taps[r]!!.sum()
+    }
+    for (i in 0 until outLen) {
+        val k = i / p
+        val r = i - k * p
+        val first = k * q + firstOf[r]
+        val kt = taps[r]!!
+        if (first < 0 || first + kt.size > input.size) { direct(i); continue }
+        var acc = 0.0
+        for (m in kt.indices) acc += input[first + m] * kt[m]
+        out[i] = if (normOf[r] != 0.0) (acc / normOf[r]).toFloat() else 0f
+    }
     return out
 }
+
+/** The most phases [resample] keeps kernels for (a few MB at most). */
+private const val MAX_PHASES = 50_000
+
+private tailrec fun gcd(a: Int, b: Int): Int = if (b == 0) a else gcd(b, a % b)

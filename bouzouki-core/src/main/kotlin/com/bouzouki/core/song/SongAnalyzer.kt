@@ -413,7 +413,43 @@ class SongAnalyzer(private val separator: Separator, private val pitch: BasicPit
             var line = finished(path)
             if (normalLine != null) line = withNormal(line, normalLine)
             if (detail == Detail.FEWER) line = fewer(line, path.indices.associate { path[it].start to worth[it] }, act, attacks)
+            if (act?.contours != null) line = repitch(line, act)
             return if (act?.contours != null && attacks != null) articulate(line, act, attacks) else line
+        }
+
+        /**
+         * Each note's pitch checked against the fine pitch of its sound: Basic Pitch rounds to a key in its note output,
+         * but its contours (3 bins a semitone) say where the pitch really is. Summed over the note's first frames (the
+         * transcription is already in tune: [Tuning] retuned the recording first), a contour peak [REPITCH_BINS] bins
+         * or more from the note's key, clearly stronger than at the key itself and not sounding already just before the note,
+         * moves the note to the nearest key there.
+         */
+        fun repitch(line: List<NoteEvent>, act: BasicPitch.Activations): List<NoteEvent> {
+            val contours = act.contours ?: return line
+            val bins = BasicPitch.N_CONTOUR_BINS
+            return line.map { n ->
+                if (n.frame < 0 || n.onset.isNaN()) return@map n
+                val from = n.frame
+                val to = min(contours.size, min(maxOf(n.endFrame, n.frame + 1), n.frame + REPITCH_FRAMES))
+                if (to - from < 2) return@map n
+                val centre = 3 * (n.midi - BasicPitch.MIDI_OFFSET) + 1
+                val sum = DoubleArray(2 * REPITCH_REACH + 1)
+                for (f in from until to) for (d in -REPITCH_REACH..REPITCH_REACH) {
+                    val b = centre + d
+                    if (b in 0 until bins) sum[d + REPITCH_REACH] += act.contour(f, b)
+                }
+                val peak = sum.indices.maxByOrNull { sum[it] } ?: return@map n
+                val d = peak - REPITCH_REACH
+                val atKey = (-1..1).maxOf { sum[it + REPITCH_REACH] }
+                if (abs(d) < REPITCH_BINS || sum[peak] < REPITCH_STRONGER * atKey || sum[peak] < REPITCH_MIN * (to - from)) return@map n
+                // Only a pitch that starts with the note: one sounding just before it (a chord ringing on, the note before
+                // still ringing) is another note's, not this one's.
+                val b = centre + d
+                var before = 0.0
+                for (f in max(0, from - REPITCH_BEFORE) until from) before = max(before, act.contour(f, b))
+                if (before > REPITCH_NEW * sum[peak] / (to - from)) return@map n
+                n.copy(midi = n.midi + Math.round(d / 3.0).toInt())
+            }
         }
 
         /**
@@ -1093,6 +1129,17 @@ class SongAnalyzer(private val separator: Separator, private val pitch: BasicPit
         private const val ATTACK_CAP = 1.0
         /** Per unit of the octave below's activation [HARMONIC_FRAMES] into a note (a harmonic, or a baglamas doubling the
          * melody an octave up)... */
+        /** [repitch]: the note's first frames looked at, the contour bins either side of its key, and when to move it. */
+        private const val REPITCH_FRAMES = 12
+        private const val REPITCH_REACH = 5
+        /** Bins (a third of a semitone each) from the key a contour peak must be: 2 = at least about 67 cents. */
+        private const val REPITCH_BINS = 2
+        private const val REPITCH_STRONGER = 1.5
+        /** The least mean contour activation per frame at the peak. */
+        private const val REPITCH_MIN = 0.2
+        /** Frames before the note where its pitch must not sound already: at most this share of its mean activation. */
+        private const val REPITCH_BEFORE = 3
+        private const val REPITCH_NEW = 0.5
         private const val HARMONIC_WEIGHT = -0.4
         /** ... of which a legato note pays only this much. */
         private const val HARMONIC_LEGATO = -0.25

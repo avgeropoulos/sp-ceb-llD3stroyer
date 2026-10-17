@@ -33,6 +33,8 @@ data class EvalItem(
     val instrument: Instrument,
     val kind: String,
     val group: String,
+    /** How far the recording is really tuned from A = 440 Hz (cents), when known (header `# cents=`). */
+    val cents: Double? = null,
 )
 
 /**
@@ -60,7 +62,7 @@ object EvalSet {
             val h = defaults + header(lines)
             val instrument = Instrument.valueOf(h["instrument"]?.uppercase(Locale.ROOT) ?: "TETRACHORDO")
             val ref = if (refFile != null) refNotes(lines) else planNotes(lines, instrument)
-            EvalItem(base, wav, ref, instrument, h["kind"] ?: "solo", h["group"] ?: base.substringBefore('-').substringBefore('_'))
+            EvalItem(base, wav, ref, instrument, h["kind"] ?: "solo", h["group"] ?: base.substringBefore('-').substringBefore('_'), h["cents"]?.toDoubleOrNull())
         }
     }
 

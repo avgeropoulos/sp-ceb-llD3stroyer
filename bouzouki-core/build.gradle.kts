@@ -37,5 +37,5 @@ tasks.register<JavaExec>("evalSet") {
     classpath = sourceSets["test"].runtimeClasspath
     mainClass.set("com.bouzouki.core.eval.EvaluatorKt")
     maxHeapSize = "6g"
-    args = listOf("evalSet", "evalOut", "evalLabel").map { (findProperty(it) ?: "").toString() }
+    args = listOf("evalSet", "evalOut", "evalLabel", "evalOnly", "evalDump").map { (findProperty(it) ?: "").toString() }
 }
