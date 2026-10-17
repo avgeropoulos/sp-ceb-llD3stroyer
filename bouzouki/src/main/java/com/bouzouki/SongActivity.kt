@@ -535,14 +535,15 @@ class SongActivity : Activity() {
         contentResolver.openFileDescriptor(uri, "r")?.use { true } ?: false
     } catch (_: Exception) { false }
 
-    private fun openFile(uri: Uri, name: String, startJob: Boolean = true) {
+    private fun openFile(uri: Uri, name: String, startJob: Boolean = true, solo: Boolean = prefs.getBoolean(PREF_SOLO + songId(uri), false)) {
         stopFile()
         fileUri = uri
-        val id = "file-" + Integer.toHexString(uri.toString().hashCode())
+        val id = songId(uri)
         if (id != currentId) dropPendingTab()
         currentId = id
-        currentSource = SongJobs.Source.AudioFile(uri, name)
-        prefs.edit().putString(PREF_LAST_SONG, id).putString(PREF_URI + id, uri.toString()).putString(PREF_NAME + id, name).apply()
+        currentSource = SongJobs.Source.AudioFile(uri, name, solo)
+        prefs.edit().putString(PREF_LAST_SONG, id).putString(PREF_URI + id, uri.toString()).putString(PREF_NAME + id, name)
+            .putBoolean(PREF_SOLO + id, solo).apply()
         loadSync(id)
         showLinkRows(false) // more room for the neck; ➕ brings them back
         fileRow.visibility = View.VISIBLE
@@ -556,7 +557,7 @@ class SongActivity : Activity() {
             prepareAsync()
         }
         titleText.text = name
-        prepareOrShow(id, SongJobs.Source.AudioFile(uri, name), startJob)
+        prepareOrShow(id, SongJobs.Source.AudioFile(uri, name, solo), startJob)
     }
 
     /** Asks (once, on Android 13+) to show the preparing song's progress notification; optional. */
@@ -1550,7 +1551,7 @@ class SongActivity : Activity() {
             .setPositiveButton("Delete") { _, _ ->
                 for ((i, s) in songs.withIndex()) if (picked[i]) {
                     SongJobs.delete(this, s.id)
-                    prefs.edit().remove(PREF_URI + s.id).remove(PREF_NAME + s.id).remove(PREF_SYNC + s.id).apply()
+                    prefs.edit().remove(PREF_URI + s.id).remove(PREF_NAME + s.id).remove(PREF_SYNC + s.id).remove(PREF_SOLO + s.id).apply()
                     if (s.id == currentId) { stopFile(); currentId = null; currentSource = null; showSong(null); titleText.text = "Τραγούδι · Play along" }
                 }
                 status.text = "Deleted ${picked.count { it }} song(s) from the phone."
@@ -1578,7 +1579,24 @@ class SongActivity : Activity() {
         val name = contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
             if (it.moveToFirst()) it.getString(0) else null
         } ?: "Audio file"
-        openFile(uri, name.substringBeforeLast('.'))
+        askWhatsInIt(uri, name.substringBeforeLast('.'))
+    }
+
+    /** The song id of the audio file [uri]. */
+    private fun songId(uri: Uri) = SongJobs.idFor(SongJobs.Source.AudioFile(uri, ""))
+
+    /**
+     * Asks what a new recording holds: the bouzouki alone (a practice take: transcribed as it is, every course followed,
+     * each octave-paired course's pluck one note) or a band's song (the instruments separated first). A song prepared
+     * before opens at once.
+     */
+    private fun askWhatsInIt(uri: Uri, name: String) {
+        if (SongJobs.cached(this, songId(uri)) != null) { openFile(uri, name); return }
+        AlertDialog.Builder(this)
+            .setTitle("What's in “$name”?")
+            .setItems(arrayOf("🪕 The bouzouki alone (my own recording)", "🎶 A song with a band")) { _, i -> openFile(uri, name, solo = i == 0) }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun toggleFilePlayback() {
@@ -1961,6 +1979,8 @@ class SongActivity : Activity() {
         /** An audio file song's file (a content link the app keeps permission to read) and name. */
         private const val PREF_URI = "song_uri_"
         private const val PREF_NAME = "song_name_"
+        /** Whether a song's recording is the bouzouki alone. */
+        private const val PREF_SOLO = "song_solo_"
         private const val STATE_SONG = "song"
         private const val STATE_PENDING_SONG = "tab_pending_song"
         private const val STATE_PENDING_PDF = "tab_pending_pdf"

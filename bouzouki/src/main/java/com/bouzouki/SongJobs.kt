@@ -18,6 +18,9 @@ import ai.onnxruntime.OrtSession
 import com.bouzouki.core.Instrument
 import com.bouzouki.core.song.AnalysisData
 import com.bouzouki.core.song.MdxSeparator
+import com.bouzouki.core.song.NoSeparation
+import com.bouzouki.core.song.PostConfig
+import com.bouzouki.core.song.Separator
 import com.bouzouki.core.song.SongAnalysis
 import com.bouzouki.core.song.SongAnalyzer
 import java.io.BufferedOutputStream
@@ -218,8 +221,10 @@ object SongJobs {
 
     // --- running a job ---
 
+    /** What a song is prepared from; [solo]: the bouzouki alone (a practice take), so nothing is separated. */
     sealed interface Source {
-        data class AudioFile(val uri: Uri, val name: String) : Source
+        val solo: Boolean
+        data class AudioFile(val uri: Uri, val name: String, override val solo: Boolean = false) : Source
     }
 
     /** The song id for [source]. */
@@ -280,7 +285,8 @@ object SongJobs {
         context: Context, id: String, source: Source, instrument: Instrument, report: (String, Float) -> Unit,
     ): Pair<SongAnalysis, AnalysisData> {
         val cancelled = { cancel }
-        val mdxFile = ensureModel(context) { report("Getting the voice-removal model (once, 67 MB)", it) }
+        // A band's song is separated first (its model downloaded once); the bouzouki alone needs nothing of the kind.
+        val mdxFile = if (source.solo) null else ensureModel(context) { report("Getting the voice-removal model (once, 67 MB)", it) }
 
         val title: String
         val audio: AudioDecoder.Stereo
@@ -297,14 +303,18 @@ object SongJobs {
             setIntraOpNumThreads(threads)
             setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
         }
-        return env.createSession(mdxFile.path, options).use { mdx ->
-            PitchEngines.open(context).use { bp ->
-                SongAnalyzer(MdxSeparator(env, mdx), bp.pitch).analyzeWithData(
+        val mdx = mdxFile?.let { env.createSession(it.path, options) }
+        try {
+            val separator: Separator = if (mdx != null) MdxSeparator(env, mdx) else NoSeparation
+            return PitchEngines.open(context).use { bp ->
+                SongAnalyzer(separator, bp.pitch, PostConfig(solo = source.solo)).analyzeWithData(
                     id, title, audio.left, audio.right, instrument,
-                    progress = { stage, f -> report(stage.label, f) },
+                    progress = { stage, f -> report(if (source.solo && stage == SongAnalyzer.Stage.SEPARATING) "Reading the bouzouki" else stage.label, f) },
                     cancelled = cancelled,
                 )
             }
+        } finally {
+            mdx?.close()
         }
     }
 

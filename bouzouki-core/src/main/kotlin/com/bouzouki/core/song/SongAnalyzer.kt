@@ -43,6 +43,9 @@ data class SongAnalysis(
     val beats: List<Double> = emptyList(),
     val tuningCents: Double = 0.0,
     val line: Int = LINE,
+    /** Prepared as the bouzouki alone ([PostConfig.solo]), and with each octave-paired course's pluck as one note. */
+    val solo: Boolean = false,
+    val octaves: Boolean = false,
 ) {
     /**
      * The same song fingered for [inst] (the other bouzouki, or with a newer fingering): every note keeps
@@ -120,6 +123,8 @@ data class SongAnalysis(
         "beats" to beats.joinToString(",", "[", "]") { fmt(it) },
         "tuning" to fmt(tuningCents),
         "line" to line.toString(),
+        "solo" to solo.toString(),
+        "octaves" to octaves.toString(),
     )
 
     /** A saved song as the song list shows it: [current] is false when an older version wrote it (prepare it again). */
@@ -186,6 +191,8 @@ data class SongAnalysis(
                 beats = (p["beats"] as List<*>?)?.map { (it as Number).toDouble() } ?: emptyList(),
                 tuningCents = (p["tuning"] as Number?)?.toDouble() ?: 0.0,
                 line = (p["line"] as Number?)?.toInt() ?: 0,
+                solo = p["solo"] as Boolean? ?: false,
+                octaves = p["octaves"] as Boolean? ?: false,
             )
         } catch (_: Exception) { null }
     }
@@ -199,7 +206,10 @@ data class SongAnalysis(
  *    the plectrum picks from the hammer-ons, pull-offs and slides (where it strikes: [Attacks]),
  * 4. choose frets that keep the hand moving as little as possible.
  */
-class SongAnalyzer(private val separator: Separator, private val pitch: BasicPitch) {
+class SongAnalyzer(private val separator: Separator, private val pitch: BasicPitch, post: PostConfig = PostConfig.DEFAULT) {
+    /** The post-processing, decided for this separator (octaves merge only where nothing else sounds an octave below). */
+    private val post = post.resolvedFor(separator)
+
     enum class Stage(val label: String) {
         SEPARATING("Removing the singer's voice"),
         TRANSCRIBING("Finding the bouzouki notes"),
@@ -260,7 +270,8 @@ class SongAnalyzer(private val separator: Separator, private val pitch: BasicPit
         val beats = try { Beats.estimate(Beats.envelope(raw), Beats.FPS) } catch (_: Exception) { emptyList() }
         // The line comes from the activations as they are saved, so rebuild() gives this very line again.
         val data = AnalysisData.of(raw, Attacks.of(audio), tuning)
-        return build(id, title, candidates(data.act), instrument, data.act, data.attacks).copy(beats = beats, tuningCents = tuning) to data
+        return build(id, title, candidates(data.act), instrument, data.act, data.attacks, post = post)
+            .copy(beats = beats, tuningCents = tuning, solo = post.solo, octaves = post.octaveMerge == true) to data
     }
 
     /**
@@ -309,9 +320,13 @@ class SongAnalyzer(private val separator: Separator, private val pitch: BasicPit
          * With [Detail.NORMAL] it is the line [analyzeWithData] made, or makes now for a song saved with an older line
          * ([SongAnalysis.isLineOld]: the result is the current [SongAnalysis.LINE]).
          */
-        fun rebuild(base: SongAnalysis, data: AnalysisData, detail: Detail = Detail.NORMAL): SongAnalysis =
-            build(base.id, base.title, candidates(data.act, detail), base.instrument, data.act, data.attacks, detail)
-                .copy(beats = base.beats, dromos = base.dromos, rootPc = base.rootPc, tuningCents = base.tuningCents, line = SongAnalysis.LINE)
+        fun rebuild(base: SongAnalysis, data: AnalysisData, detail: Detail = Detail.NORMAL, post: PostConfig = PostConfig.DEFAULT): SongAnalysis {
+            // As the song was prepared: solo or a band's, its octaves merged or not.
+            val p = post.copy(solo = base.solo, octaveMerge = base.octaves)
+            return build(base.id, base.title, candidates(data.act, detail), base.instrument, data.act, data.attacks, detail, p)
+                .copy(beats = base.beats, dromos = base.dromos, rootPc = base.rootPc, tuningCents = base.tuningCents, line = SongAnalysis.LINE,
+                    solo = base.solo, octaves = base.octaves)
+        }
 
         /**
          * Everything after transcription: the line with its articulations, the frets ([fingering] is told which notes
@@ -326,8 +341,9 @@ class SongAnalyzer(private val separator: Separator, private val pitch: BasicPit
             act: BasicPitch.Activations? = null,
             attacks: Attacks? = null,
             detail: Detail = Detail.NORMAL,
+            post: PostConfig = PostConfig.DEFAULT,
         ): SongAnalysis {
-            val line = bouzoukiLine(all, instrument, act, attacks, detail)
+            val line = bouzoukiLine(all, instrument, act, attacks, detail, post)
             val cells = fingering(line.map { it.midi }, line.map { it.start }, instrument,
                 line.map { it.articulation.isLegato }, line.map { it.articulation == Articulation.SLIDE })
             val notes = line.mapIndexed { i, n -> SongNote(n.start, n.end, n.midi, cells[i].first, cells[i].second, n.articulation) }
@@ -377,10 +393,14 @@ class SongAnalyzer(private val separator: Separator, private val pitch: BasicPit
             act: BasicPitch.Activations? = null,
             attacks: Attacks? = null,
             detail: Detail = Detail.NORMAL,
+            post: PostConfig = PostConfig.DEFAULT,
         ): List<NoteEvent> {
             val low = instrument.courses.first().openMidi
             val high = instrument.courses.last().openMidi + instrument.frets
-            fun inRange(list: List<NoteEvent>) = list.filter { it.midi in low..high }.sortedBy { it.start }
+            // In range, above the noise floor, each octave-paired course's pluck one note ([PostProcess]).
+            fun inRange(list: List<NoteEvent>) = PostProcess.aboveNoise(
+                PostProcess.mergeOctaves(list.filter { it.midi in low..high + 12 }, instrument, act, post), post,
+            ).filter { it.midi in low..high }.sortedBy { it.start }
             fun joined(c: List<NoteEvent>) =
                 if (attacks != null) joinRedetections(if (act != null) splitRepicks(c, act, attacks) else c, act, attacks) else c
             var c = inRange(notes)
@@ -390,12 +410,14 @@ class SongAnalyzer(private val separator: Separator, private val pitch: BasicPit
             val presence = if (act == null || attacks == null) null
                 else Presence(if (detail == Detail.MORE) candidates(act, Detail.NORMAL) else notes, act, attacks)
             fun gated(list: List<NoteEvent>) = if (presence == null) list else list.filter { it.onset.isNaN() || presence.plays(it.start) }
+            // The band's register cue weighs only in a band's recording.
+            val register = if (post.solo) null else presence
             c = joined(gated(c))
             if (c.isEmpty()) return emptyList()
             // Tremolo becomes one note, and quick turns hidden in held notes come out.
             fun finished(path: List<NoteEvent>): List<NoteEvent> {
-                var l = joinTremolo(trimEnds(path))
-                if (attacks != null && act != null) l = pickedTremolo(l, act, attacks)
+                var l = joinTremolo(trimEnds(path), post)
+                if (attacks != null && act != null) l = pickedTremolo(l, act, attacks, post)
                 if (attacks != null && act?.contours != null) l = ornaments(l, act, attacks)
                 return l
             }
@@ -403,13 +425,13 @@ class SongAnalyzer(private val separator: Separator, private val pitch: BasicPit
             var normalLine: List<NoteEvent>? = null
             if (detail == Detail.MORE && act != null) {
                 // The normal line's notes stay (one missing from these candidates joins them); weaker ones fill in.
-                val normal = trimEnds(track(joined(gated(inRange(candidates(act, Detail.NORMAL)))), act, attacks, EVIDENCE_NEEDED, null, presence).first)
+                val normal = trimEnds(track(joined(gated(inRange(candidates(act, Detail.NORMAL)))), act, attacks, EVIDENCE_NEEDED, null, register).first)
                 val have = c.mapTo(HashSet()) { key(it) }
                 c = (c + normal.filter { key(it) !in have }).sortedBy { it.start }
                 forced = normal.mapTo(HashSet()) { key(it) }
                 normalLine = finished(normal)
             }
-            val (path, worth) = track(c, act, attacks, if (detail == Detail.MORE) EVIDENCE_NEEDED_MORE else EVIDENCE_NEEDED, forced, presence)
+            val (path, worth) = track(c, act, attacks, if (detail == Detail.MORE) EVIDENCE_NEEDED_MORE else EVIDENCE_NEEDED, forced, register)
             var line = finished(path)
             if (normalLine != null) line = withNormal(line, normalLine)
             if (detail == Detail.FEWER) line = fewer(line, path.indices.associate { path[it].start to worth[it] }, act, attacks)
@@ -490,13 +512,13 @@ class SongAnalyzer(private val separator: Separator, private val pitch: BasicPit
         /**
          * Held notes picked fast and evenly become one [Articulation.TREMOLO] note: from a line note on, while its pitch
          * keeps sounding (activation [TREMOLO_LEVEL] or more), the attack track shows picks of that pitch ([Attacks.picks],
-         * [atPitch]) no further apart than [TREMOLO_MAX_GAP], [TREMOLO_PICKS] or more of them at a median interval of
+         * [atPitch]) no further apart than [TREMOLO_MAX_GAP], [PostConfig.tremoloPicks] or more of them at a median interval of
          * [TREMOLO_PICK_GAP] or less (picked sixteenths and triplets are slower, or too few). Line notes that start among
          * those picks are part of it (the same pitch picked again, or the accompaniment heard through it). The tremolo
          * starts where the picks come evenly (a note picked once before it stays a note of its own) and reaches back
          * over the even picks of its pitch the line missed ([TREMOLO_BACK]).
          */
-        private fun pickedTremolo(line: List<NoteEvent>, act: BasicPitch.Activations, attacks: Attacks): List<NoteEvent> {
+        private fun pickedTremolo(line: List<NoteEvent>, act: BasicPitch.Activations, attacks: Attacks, post: PostConfig): List<NoteEvent> {
             val out = ArrayList<NoteEvent>(line.size)
             val frames = act.frames
             var i = 0
@@ -516,11 +538,11 @@ class SongAnalyzer(private val separator: Separator, private val pitch: BasicPit
                         o.end - o.start >= TREMOLO_TAKEOVER) { until = o.start; break }
                 }
                 val all = attacks.picks(n.start - Attacks.WINDOW, until, TREMOLO_PICK).filter { t -> atPitch(act, k, t) }
-                if (all.size < TREMOLO_PICKS) { out += n; i++; continue }
+                if (all.size < post.tremoloPicks) { out += n; i++; continue }
                 var m = 0
                 while (m + 1 < all.size && all[m + 1] - all[m] <= TREMOLO_MAX_GAP) m++
                 val chain = all.subList(0, m + 1)
-                if (chain.size < TREMOLO_PICKS || abs(chain[0] - n.start) > Attacks.WINDOW * 2) { out += n; i++; continue }
+                if (chain.size < post.tremoloPicks || abs(chain[0] - n.start) > Attacks.WINDOW * 2) { out += n; i++; continue }
                 val gaps = chain.zipWithNext { a, b -> b - a }.sorted()
                 val gap = gaps[gaps.size / 2]
                 if (gap > TREMOLO_PICK_GAP) { out += n; i++; continue }
@@ -528,7 +550,7 @@ class SongAnalyzer(private val separator: Separator, private val pitch: BasicPit
                 var first = 0
                 while (first + 1 < chain.size && chain[first + 1] - chain[first] > TREMOLO_EVEN * gap) first++
                 val picks = chain.subList(first, chain.size)
-                if (picks.size < TREMOLO_PICKS) { out += n; i++; continue }
+                if (picks.size < post.tremoloPicks) { out += n; i++; continue }
                 val end = max(n.end, min(until, picks.last() + gap))
                 var j = i + 1
                 while (j < line.size && line[j].start < picks.last() + Attacks.WINDOW) j++
@@ -1078,20 +1100,20 @@ class SongAnalyzer(private val separator: Separator, private val pitch: BasicPit
         }
 
         /**
-         * Tremolo becomes one held note: [TREMOLO_PICKS] or more picks of one pitch, each within
-         * [TREMOLO_REACH] of the last (a missed pick or two doesn't break it), at a median interval of
-         * [TREMOLO_GAP] or less (10 picks a second and up). Slower repeats stay separate notes:
-         * 8ths, and 16ths below 150 BPM (and 4 repeated 16ths at any tempo).
+         * Tremolo becomes one held note: [PostConfig.tremoloPicks] or more picks of one pitch, each within
+         * [PostConfig.tremoloReach] of the last (a missed pick or two doesn't break it), at a median interval of
+         * [PostConfig.tremoloGap] or less (by default 5 picks, 10 a second and up). Slower repeats stay separate
+         * notes: 8ths, and 16ths below 150 BPM (and 4 repeated 16ths at any tempo).
          */
-        private fun joinTremolo(line: List<NoteEvent>): List<NoteEvent> {
+        private fun joinTremolo(line: List<NoteEvent>, post: PostConfig): List<NoteEvent> {
             val out = ArrayList<NoteEvent>()
             var i = 0
             while (i < line.size) {
                 var j = i
                 while (j + 1 < line.size && !line[j + 1].onset.isNaN() && line[j + 1].midi == line[i].midi &&
-                    line[j + 1].start - line[j].start < TREMOLO_REACH) j++
+                    line[j + 1].start - line[j].start < post.tremoloReach) j++
                 val run = line.subList(i, j + 1)
-                if (run.size >= TREMOLO_PICKS && !line[i].onset.isNaN() && medianGap(run) <= TREMOLO_GAP) {
+                if (run.size >= post.tremoloPicks && !line[i].onset.isNaN() && medianGap(run) <= post.tremoloGap) {
                     out += line[i].copy(end = run.maxOf { it.end }, amplitude = run.maxOf { it.amplitude }, articulation = Articulation.TREMOLO)
                     i = j + 1
                 } else {
@@ -1177,9 +1199,6 @@ class SongAnalyzer(private val separator: Separator, private val pitch: BasicPit
         private const val STILL_SOUNDING_COST = 0.75
         private const val SEPARATION = 0.05 // two line notes start at least this far apart
         private const val HORIZON = 3.0     // how far back a note looks for its predecessor
-        private const val TREMOLO_PICKS = 5
-        private const val TREMOLO_GAP = 0.1
-        private const val TREMOLO_REACH = 0.4
         /** A re-pick found inside a candidate starts at least this many frames after the candidate (or piece) does ... */
         private const val SPLIT_FRAMES = 4
         /** ... at an onset peak of this ([splitRepicks]) ... */

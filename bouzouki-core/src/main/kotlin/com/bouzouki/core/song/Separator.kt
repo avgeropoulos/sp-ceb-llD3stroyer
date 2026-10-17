@@ -8,6 +8,9 @@ package com.bouzouki.core.song
 interface Separator {
     fun instrumentalMono(left: FloatArray, right: FloatArray, progress: (Float) -> Unit = {}, cancelled: () -> Boolean = { false }): FloatArray
 
+    /** Whether a band's bass (and so anything an octave below the bouzouki) may still be in what [instrumentalMono] gives. */
+    val keepsBass: Boolean get() = true
+
     companion object {
         /** The rate every separator takes and gives (and the song is decoded to). */
         const val SAMPLE_RATE = 44100

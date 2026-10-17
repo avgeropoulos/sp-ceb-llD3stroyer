@@ -4,6 +4,7 @@ import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import com.bouzouki.core.song.BasicPitch
 import com.bouzouki.core.song.NoSeparation
+import com.bouzouki.core.song.PostConfig
 import com.bouzouki.core.song.Separator
 import com.bouzouki.core.song.SongAnalyzer
 import com.bouzouki.core.song.SongNote
@@ -29,7 +30,12 @@ fun interface Pipeline {
  * The app's pipeline ([SongAnalyzer]): a solo recording straight to the note model, a mix through [mixSeparator]
  * first (none given: the mix as it is). Timed by the analyzer's stages.
  */
-class AppPipeline(private val pitch: BasicPitch, private val mixSeparator: Separator? = null) : Pipeline {
+class AppPipeline(
+    private val pitch: BasicPitch,
+    private val mixSeparator: Separator? = null,
+    /** The post-processing settings for each recording (by default: solo takes as solo, [PostConfig.solo]). */
+    private val post: (EvalItem) -> PostConfig = { PostConfig(solo = it.kind == "solo") },
+) : Pipeline {
     override fun transcribe(item: EvalItem, left: FloatArray, right: FloatArray, timings: Timings): Transcript {
         val separator = if (item.kind == "mix") mixSeparator ?: NoSeparation else NoSeparation
         var stage: String? = null
@@ -39,7 +45,7 @@ class AppPipeline(private val pitch: BasicPitch, private val mixSeparator: Separ
             stage?.let { timings[it] = (timings[it] ?: 0.0) + (now - since) / 1e9 }
             stage = next; since = now
         }
-        val (song, _) = SongAnalyzer(separator, pitch).analyzeWithData(
+        val (song, _) = SongAnalyzer(separator, pitch, post(item)).analyzeWithData(
             item.name, item.name, left, right, item.instrument,
             progress = { s, _ -> val name = s.name.lowercase(Locale.ROOT); if (name != stage) lap(name) },
         )
@@ -162,7 +168,15 @@ fun main(args: Array<String>) {
     val dump = args.getOrNull(4) == "true"
     val items = EvalSet.load(dir).filter { only == null || only.containsMatchIn(it.name) }
     require(items.isNotEmpty()) { "no recordings with a reference in $dir" }
-    val results = AppPipeline.withBasicPitch { bp -> Evaluator.run(items, AppPipeline(bp), dump) { println(it) } }
+    // EVAL_POST picks a variant of the post-processing to compare: "plain" (no octave merge, band cues everywhere),
+    // "merge" (octave merge, band cues everywhere), "solo" (band cues off for solo takes, no merge), or the default (both).
+    val post: (EvalItem) -> PostConfig = when (System.getenv("EVAL_POST")) {
+        "plain" -> { _ -> PostConfig(octaveMerge = false) }
+        "merge" -> { _ -> PostConfig() }
+        "solo" -> { it -> PostConfig(octaveMerge = false, solo = it.kind == "solo") }
+        else -> { it -> PostConfig(solo = it.kind == "solo") }
+    }
+    val results = AppPipeline.withBasicPitch { bp -> Evaluator.run(items, AppPipeline(bp, post = post), dump) { println(it) } }
     File(out, "$label.md").writeText(Evaluator.markdown(label, results))
     File(out, "$label.csv").writeText(Evaluator.csv(label, results))
     println(Evaluator.markdown(label, results).lines().take(20).joinToString("\n"))
