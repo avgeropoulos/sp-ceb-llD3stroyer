@@ -150,6 +150,10 @@ class MainActivity : Activity() {
             topMargin = px(12)
         })
 
+        // Measurements on the phone: note engines, separation, listening to other apps.
+        controls.addView(ui.chip("🔧  Lab tools") { LabTools.show(this) },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = px(8) })
+
         // The Terms of Use, privacy and the third-party parts.
         controls.addView(ui.chip("ⓘ  About · Terms of Use · Privacy") { Legal.showAbout(this) },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = px(8) })

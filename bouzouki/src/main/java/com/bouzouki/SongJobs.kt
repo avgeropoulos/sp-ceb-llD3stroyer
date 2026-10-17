@@ -17,7 +17,6 @@ import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import com.bouzouki.core.Instrument
 import com.bouzouki.core.song.AnalysisData
-import com.bouzouki.core.song.BasicPitch
 import com.bouzouki.core.song.MdxSeparator
 import com.bouzouki.core.song.SongAnalysis
 import com.bouzouki.core.song.SongAnalyzer
@@ -298,10 +297,9 @@ object SongJobs {
             setIntraOpNumThreads(threads)
             setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
         }
-        val bpBytes = context.assets.open("basic_pitch.onnx").use { it.readBytes() }
         return env.createSession(mdxFile.path, options).use { mdx ->
-            env.createSession(bpBytes, options).use { bp ->
-                SongAnalyzer(MdxSeparator(env, mdx), BasicPitch(env, bp)).analyzeWithData(
+            PitchEngines.open(context).use { bp ->
+                SongAnalyzer(MdxSeparator(env, mdx), bp.pitch).analyzeWithData(
                     id, title, audio.left, audio.right, instrument,
                     progress = { stage, f -> report(stage.label, f) },
                     cancelled = cancelled,

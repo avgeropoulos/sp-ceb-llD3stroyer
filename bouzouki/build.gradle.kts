@@ -62,7 +62,7 @@ android {
     }
 
     androidResources {
-        noCompress += "onnx"
+        noCompress += listOf("onnx", "tflite")
     }
 }
 
@@ -73,4 +73,6 @@ kotlin {
 dependencies {
     implementation(project(":bouzouki-core"))
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.31.0")
+    // LiteRT (Google's TensorFlow Lite runtime, Apache-2.0): the other engine for Basic Pitch (see PitchEngines).
+    implementation("com.google.ai.edge.litert:litert:1.4.0")
 }

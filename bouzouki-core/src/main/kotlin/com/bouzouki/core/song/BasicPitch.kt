@@ -30,12 +30,44 @@ data class NoteEvent(
 )
 
 /**
+ * What runs the Basic Pitch network: [run] takes [batch] windows of [BasicPitch.AUDIO_N_SAMPLES] samples each, one
+ * after the other, and returns the note, onset and contour outputs for them, batch-major ([BasicPitch.ANNOT_N_FRAMES]
+ * frames each, of [BasicPitch.N_KEYS] keys or [BasicPitch.N_CONTOUR_BINS] bins). The ONNX model through ONNX Runtime
+ * ([OnnxPitchModel]) everywhere; on Android also the same network as a LiteRT (TensorFlow Lite) model.
+ */
+interface PitchModel {
+    class Output(val notes: FloatArray, val onsets: FloatArray, val contours: FloatArray)
+
+    fun run(input: FloatArray, batch: Int): Output
+}
+
+/** Basic Pitch's ONNX model (icassp_2022 nmp.onnx) in an ONNX Runtime session. */
+class OnnxPitchModel(private val env: OrtEnvironment, private val session: OrtSession) : PitchModel {
+    override fun run(input: FloatArray, batch: Int): PitchModel.Output =
+        OnnxTensor.createTensor(env, FloatBuffer.wrap(input), longArrayOf(batch.toLong(), BasicPitch.AUDIO_N_SAMPLES.toLong(), 1)).use { tensor ->
+            session.run(mapOf(INPUT to tensor), setOf(NOTE_OUT, ONSET_OUT, CONTOUR_OUT)).use { res ->
+                fun out(name: String) = (res.get(name).get() as OnnxTensor).floatBuffer.let { b -> FloatArray(b.remaining()).also { b.get(it) } }
+                PitchModel.Output(out(NOTE_OUT), out(ONSET_OUT), out(CONTOUR_OUT))
+            }
+        }
+
+    private companion object {
+        const val INPUT = "serving_default_input_2:0"
+        const val NOTE_OUT = "StatefulPartitionedCall:1"
+        const val ONSET_OUT = "StatefulPartitionedCall:2"
+        const val CONTOUR_OUT = "StatefulPartitionedCall:0"
+    }
+}
+
+/**
  * Note transcription with Spotify's Basic Pitch model (Apache-2.0, github.com/spotify/basic-pitch).
  * The windowing and the note decoding below follow basic_pitch/inference.py and
  * basic_pitch/note_creation.py, ported to Kotlin; the note start times are sharper than
  * basic_pitch's (exact window offsets, onsets refined between frames, latency corrected).
  */
-class BasicPitch(private val env: OrtEnvironment, private val session: OrtSession) {
+class BasicPitch(private val model: PitchModel) {
+    constructor(env: OrtEnvironment, session: OrtSession) : this(OnnxPitchModel(env, session))
+
     /**
      * Frame-by-frame note and onset activations, [frame][key] for 88 piano keys from A0, and the pitch
      * [contours] (null when not computed): [frame][bin], 3 bins a semitone with MIDI m at bin 3·(m − 21) + 1,
@@ -67,22 +99,16 @@ class BasicPitch(private val env: OrtEnvironment, private val session: OrtSessio
                 val len = minOf(AUDIO_N_SAMPLES, padded.size - start)
                 if (len > 0) System.arraycopy(padded, start, input, b * AUDIO_N_SAMPLES, len)
             }
-            OnnxTensor.createTensor(env, FloatBuffer.wrap(input), longArrayOf(batch.toLong(), AUDIO_N_SAMPLES.toLong(), 1)).use { tensor ->
-                session.run(mapOf(INPUT to tensor), setOf(NOTE_OUT, ONSET_OUT, CONTOUR_OUT)).use { res ->
-                    val note = (res.get(NOTE_OUT).get() as OnnxTensor).floatBuffer
-                    val onset = (res.get(ONSET_OUT).get() as OnnxTensor).floatBuffer
-                    val contour = (res.get(CONTOUR_OUT).get() as OnnxTensor).floatBuffer
-                    for (b in 0 until batch) {
-                        // Drop half the overlapping frames at each side of every window.
-                        for (f in olap until ANNOT_N_FRAMES - olap) {
-                            if (frames.size >= nOut) break
-                            val base = (b * ANNOT_N_FRAMES + f) * N_KEYS
-                            frames += FloatArray(N_KEYS) { note.get(base + it) }
-                            onsets += FloatArray(N_KEYS) { onset.get(base + it) }
-                            val cBase = (b * ANNOT_N_FRAMES + f) * N_CONTOUR_BINS
-                            contours += ByteArray(N_CONTOUR_BINS) { quantize(contour.get(cBase + it)) }
-                        }
-                    }
+            val out = model.run(input, batch)
+            for (b in 0 until batch) {
+                // Drop half the overlapping frames at each side of every window.
+                for (f in olap until ANNOT_N_FRAMES - olap) {
+                    if (frames.size >= nOut) break
+                    val base = (b * ANNOT_N_FRAMES + f) * N_KEYS
+                    frames += out.notes.copyOfRange(base, base + N_KEYS)
+                    onsets += out.onsets.copyOfRange(base, base + N_KEYS)
+                    val cBase = (b * ANNOT_N_FRAMES + f) * N_CONTOUR_BINS
+                    contours += ByteArray(N_CONTOUR_BINS) { quantize(out.contours[cBase + it]) }
                 }
             }
             w += batch
@@ -102,10 +128,6 @@ class BasicPitch(private val env: OrtEnvironment, private val session: OrtSessio
         const val N_CONTOUR_BINS = 264
         private const val OVERLAP_FRAMES = 30
         private const val BATCH = 4
-        private const val INPUT = "serving_default_input_2:0"
-        private const val NOTE_OUT = "StatefulPartitionedCall:1"
-        private const val ONSET_OUT = "StatefulPartitionedCall:2"
-        private const val CONTOUR_OUT = "StatefulPartitionedCall:0"
 
         /** How many frames [activations] gives for [samples] samples of audio. */
         fun frameCount(samples: Int): Int = floor(samples * (ANNOTATIONS_FPS.toDouble() / SAMPLE_RATE)).toInt()
