@@ -37,7 +37,7 @@ class LightSeparationTest {
             val v = (rnd.nextDouble() * 2 - 1).toFloat() * 0.8f
             l[b * fs / 2 + j] += v; r[b * fs / 2 + j] += v
         }
-        val out = LightSeparator().bouzoukiMono(l, r)
+        val out = LightSeparator(centreDepth = 0.8).bouzoukiMono(l, r)
         assertEquals(n, out.size)
         val keep = level(out, 587.33) / 0.15 // the input mid has 0.5·(0.8+0.2)·0.3
         val voice = level(out, 784.0) / 0.3

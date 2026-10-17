@@ -11,8 +11,10 @@ import kotlin.math.sqrt
  * A cheap stand-in for Demucs when the phone is too slow or the model isn't downloaded:
  * plain DSP on one STFT (2048 points, hop 512) that leans the mix towards the bouzouki.
  *
- *  1. Centre cancel: bins where left and right agree (a centre-panned voice) are turned down,
- *     by how alike they are (2·Re(L·R̄)/(|L|²+|R|²), near 1 for the centre).
+ *  1. Centre cancel ([centreDepth]): bins where left and right agree (a centre-panned voice)
+ *     are turned down, by how alike they are (2·Re(L·R̄)/(|L|²+|R|²), near 1 for the centre).
+ *     Off by default: a bouzouki near the centre goes with the voice (on the synthetic mixes
+ *     depth 0.8 cost 5 points of note F, depth 0 gained 2 over no separation).
  *  2. Harmonic/percussive separation (Fitzgerald 2010): medians of the magnitude across 17
  *     frames (harmonic) and across 17 bins (percussive) give a soft mask H²/(H²+P²); the
  *     harmonic part is kept, which removes most drums and strum noise.
@@ -23,7 +25,7 @@ import kotlin.math.sqrt
  */
 class LightSeparator(
     private val sampleRate: Int = 44100,
-    private val centreDepth: Double = 0.8,
+    private val centreDepth: Double = 0.0,
     private val low: Double = 110.0,
     private val high: Double = 3000.0,
     private val floor: Double = 0.25,
