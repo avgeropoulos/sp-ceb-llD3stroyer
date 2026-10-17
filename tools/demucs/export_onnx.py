@@ -8,7 +8,8 @@ spectrogram (HTDemucs._mask + _ispec) plus the sum of both branches after it. Nu
 of those steps are in this file; the Kotlin app (bouzouki-core song/Demucs.kt) mirrors them.
 
 Graph interface, for one segment of SEGMENT = 343980 samples (7.8 s at 44.1 kHz, the
-training length of htdemucs / htdemucs_6s) and FRAMES = ceil(SEGMENT / 1024) = 336:
+training length of htdemucs / htdemucs_6s) and FRAMES = ceil(SEGMENT / 1024) = 336
+(with --segment-seconds, a shorter segment and its frame count instead):
 
   inputs   spec  float32 [1, 4, 2048, 336]   CaC spectrogram of the mix: channels are
                                              (left re, left im, right re, right im)
@@ -23,7 +24,8 @@ Usage:
   export_onnx.py --model htdemucs_6s --out htdemucs_6s.onnx            # pretrained (downloads)
   export_onnx.py --model htdemucs_6s --weights 5c90dfd2-34c22ccb.th ...  # local .th / .safetensors
   export_onnx.py --model htdemucs_6s --random --ref-dir DIR ...         # random weights, offline
-  add --fp16 for a float16 graph (float32 inputs/outputs), --validate to compare against torch.
+  add --fp16 for a float16 graph (float32 inputs/outputs), --validate to compare against torch,
+  --segment-seconds 3.9 for shorter segments (far less memory: attention is quadratic in them).
 """
 import argparse
 import copy
@@ -82,6 +84,26 @@ def load_model(name, weights):
     assert isinstance(model, HTDemucs) and model.cac and model.nfft == NFFT
     assert int(model.segment * model.samplerate) == SEGMENT, model.segment
     return model.eval()
+
+
+def set_segment(model, samples):
+    """
+    Runs the model on segments of [samples] instead of its training length. HTDemucs.forward
+    pads every input to the training length unless use_train_segment is off; with it off the
+    network runs on the given length (the transformer's sin embeddings follow any length).
+    The model was trained on 7.8 s, so shorter segments see less context.
+    """
+    if samples != SEGMENT:
+        assert samples < SEGMENT, "segments can't be longer than the training length"
+        model.use_train_segment = False
+        model.segment = Fraction(samples, SAMPLE_RATE)
+    model.export_samples = samples
+    return model
+
+
+def samples_of(sess):
+    """The segment length an exported graph takes (its mix input's last dimension)."""
+    return next(i.shape[2] for i in sess.get_inputs() if i.name == "mix")
 
 
 class Core(nn.Module):
@@ -208,7 +230,7 @@ def ispec(zout, length):
 
 
 def run_segment(sess, seg):
-    """One segment [2, SEGMENT] through the ONNX graph -> stems [S, 2, SEGMENT]."""
+    """One segment [2, samples] through the ONNX graph -> stems [S, 2, SEGMENT]."""
     s = spec(seg)[None]
     t, z = sess.run(["time", "zout"], {"spec": s, "mix": seg[None].astype(np.float32)})
     return t[0] + ispec(z[0], seg.shape[-1])
@@ -224,19 +246,20 @@ def separate(sess, wav, overlap=0.25):
     mean, std = ref.mean(), ref.std(ddof=1) + 1e-8
     x = (wav - mean) / std
     n = x.shape[-1]
-    stride = int((1 - overlap) * SEGMENT)
-    half = SEGMENT // 2
-    weight = np.concatenate([np.arange(1, half + 1), np.arange(SEGMENT - half, 0, -1)]).astype(np.float32)
+    SEG = samples_of(sess)
+    stride = int((1 - overlap) * SEG)
+    half = SEG // 2
+    weight = np.concatenate([np.arange(1, half + 1), np.arange(SEG - half, 0, -1)]).astype(np.float32)
     weight /= weight.max()
     out, total = None, np.zeros(n, np.float32)
     for off in range(0, n, stride):
-        length = min(SEGMENT, n - off)
-        start = off - (SEGMENT - length) // 2
-        seg = np.zeros((2, SEGMENT), np.float32)
-        a, b = max(0, start), min(n, start + SEGMENT)
+        length = min(SEG, n - off)
+        start = off - (SEG - length) // 2
+        seg = np.zeros((2, SEG), np.float32)
+        a, b = max(0, start), min(n, start + SEG)
         seg[:, a - start:b - start] = x[:, a:b]
         y = run_segment(sess, seg)
-        d = SEGMENT - length
+        d = SEG - length
         y = y[..., d // 2: d // 2 + length]
         if out is None:
             out = np.zeros((y.shape[0], 2, n), np.float32)
@@ -266,8 +289,9 @@ def test_track(seconds=12.0, seed=1):
 
 def export(model, out, fp16):
     core = Core(model).eval()
-    spec_in = torch.randn(1, 4, NFFT // 2, FRAMES)
-    mix_in = torch.randn(1, 2, SEGMENT)
+    samples = model.export_samples
+    spec_in = torch.randn(1, 4, NFFT // 2, math.ceil(samples / HOP))
+    mix_in = torch.randn(1, 2, samples)
     os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
     if fp16:
         # The network in float16; the (de)normalisation around it stays float32 (Core.half).
@@ -295,7 +319,8 @@ def session(path, threads=4):
 def validate(model, path, tol, min_snr):
     """Torch forward on one segment vs ONNX graph + numpy STFT; returns max abs error."""
     rng = np.random.default_rng(0)
-    seg = test_track(SEGMENT / SAMPLE_RATE + 0.01)[:, :SEGMENT]
+    samples = model.export_samples
+    seg = test_track(samples / SAMPLE_RATE + 0.01)[:, :samples]
     seg = seg + 0.05 * rng.standard_normal(seg.shape).astype(np.float32)
     with torch.no_grad():
         ref = model(torch.from_numpy(seg)[None])[0].numpy()
@@ -322,8 +347,8 @@ def write_reference(model, path, ref_dir, sources):
     ref = wav.mean(0)
     mean, std = ref.mean(), ref.std(ddof=1) + 1e-8
     with torch.no_grad():
-        stems = apply_model(model, torch.from_numpy((wav - mean) / std)[None], shifts=0,
-                            split=True, overlap=0.25)[0].numpy() * std + mean
+        stems = apply_model(model, torch.from_numpy((wav - mean) / std)[None], shifts=0, split=True,
+                            overlap=0.25, segment=Fraction(model.export_samples, SAMPLE_RATE))[0].numpy() * std + mean
     got = separate(session(path), wav)
     snr = 10 * np.log10((stems ** 2).sum() / ((got - stems) ** 2).sum())
     print(f"reference: numpy+onnx track vs torch apply_model SNR {snr:.1f} dB", file=sys.stderr)
@@ -343,9 +368,12 @@ def main():
     p.add_argument("--validate", action="store_true")
     p.add_argument("--tol", type=float, default=None, help="max abs error (default 1e-3 fp32, 5e-2 fp16)")
     p.add_argument("--min-snr", type=float, default=None, help="dB (default 60 fp32, 30 fp16)")
+    p.add_argument("--segment-seconds", type=float, default=None,
+                   help="segment length (default: the training length, 7.8 s); e.g. 3.9 or 2.0")
     p.add_argument("--ref-dir", help="also write a reference test vector here")
     a = p.parse_args()
     model = random_model(a.model) if a.random else load_model(a.model, a.weights)
+    set_segment(model, round(a.segment_seconds * SAMPLE_RATE) if a.segment_seconds else SEGMENT)
     export(model, a.out, a.fp16)
     if a.validate:
         validate(model, a.out, a.tol or (5e-2 if a.fp16 else 1e-3), a.min_snr or (30 if a.fp16 else 60))

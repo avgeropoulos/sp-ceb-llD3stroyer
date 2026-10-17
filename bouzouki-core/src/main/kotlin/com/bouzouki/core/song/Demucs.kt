@@ -5,11 +5,9 @@ import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import ai.onnxruntime.TensorInfo
 import com.bouzouki.core.song.DemucsSeparator.Companion.BINS
-import com.bouzouki.core.song.DemucsSeparator.Companion.FRAMES
 import com.bouzouki.core.song.DemucsSeparator.Companion.HOP
 import com.bouzouki.core.song.DemucsSeparator.Companion.N_FFT
 import com.bouzouki.core.song.DemucsSeparator.Companion.PAD
-import com.bouzouki.core.song.DemucsSeparator.Companion.SEGMENT
 import java.io.File
 import java.io.InputStream
 import java.nio.FloatBuffer
@@ -22,15 +20,22 @@ import kotlin.math.sqrt
  * in "other", so by default those two are summed. The 4-stem htdemucs works too ("other" only).
  *
  * The ONNX graph (made by tools/demucs/export_onnx.py) is the network alone, for one segment
- * of 7.8 s: it takes the mix and its spectrogram and returns the time branch's stems and the
+ * (7.8 s, the training length, or a shorter one: the length is read from the graph): it takes the mix and its spectrogram and returns the time branch's stems and the
  * spectral branch's complex spectrograms. Everything around it is here and matches demucs:
  * the track normalisation of demucs.api, the overlapping segments with triangular weights of
  * demucs.apply.apply_model (overlap 0.25, no shifts), HTDemucs._spec and HTDemucs._ispec.
  *
- * One segment needs a lot of memory in ONNX Runtime (about 2.5 GB at peak on desktop x86 without
- * its memory arena, twice that with it), so open the session with [sessionOptions].
+ * One 7.8 s segment needs a lot of memory in ONNX Runtime (about 2.5 GB at peak on desktop x86
+ * without its memory arena, twice that with it), so open the session with [sessionOptions], and
+ * on a phone prefer a short-segment export ([MODEL_6S_SEG39], [MODEL_6S_SEG20]).
+ *
+ * As a [Separator] it gives the [defaultStems] (or [mixStems]) summed, in mono.
  */
-class DemucsSeparator(private val env: OrtEnvironment, private val session: OrtSession) {
+class DemucsSeparator(
+    private val env: OrtEnvironment,
+    private val session: OrtSession,
+    mixStems: Collection<String>? = null,
+) : Separator {
     /** Stem names in the model's output order, read from the graph's output shape. */
     val sources: List<String> = when (val s = (session.outputInfo["time"]?.info as? TensorInfo)?.shape?.get(1)) {
         6L -> SOURCES_6S
@@ -41,11 +46,26 @@ class DemucsSeparator(private val env: OrtEnvironment, private val session: OrtS
     /** The [DEFAULT_STEMS] this model has: guitar and other for htdemucs_6s, other for htdemucs. */
     val defaultStems: List<String> = DEFAULT_STEMS.filter { it in sources }
 
+    /** What [instrumentalMono] gives: the stems asked for, or else the [defaultStems]. */
+    val mixStems: List<String> = mixStems?.distinct()?.also { s -> require(s.all { it in sources }) { "stems $s not all in $sources" } } ?: defaultStems
+
+    /** Samples per segment, from the graph's mix input: [SEGMENT] for the full-length export. */
+    val segment: Int = ((session.inputInfo["mix"]?.info as? TensorInfo)?.shape?.get(2) ?: SEGMENT.toLong()).toInt()
+
+    /** Spectrogram frames per segment. */
+    val frames: Int = (segment + HOP - 1) / HOP
+
+    override val keepsBass: Boolean get() = "bass" in mixStems
+
+    override fun instrumentalMono(left: FloatArray, right: FloatArray, progress: (Float) -> Unit, cancelled: () -> Boolean): FloatArray =
+        stemMono(left, right, mixStems, progress, cancelled)
+
     /** How long one segment took: [dspMillis] for STFT, iSTFT and mixing, [modelMillis] in ONNX Runtime. */
     data class SegmentTiming(val index: Int, val count: Int, val dspMillis: Long, val modelMillis: Long)
 
-    private val stft = DemucsStft()
-    private val weight = FloatArray(SEGMENT) { (if (it < SEGMENT / 2) it + 1 else SEGMENT - it).toFloat() / (SEGMENT / 2) }
+    private val stft = DemucsStft(segment)
+    // apply_model's transition weights: a triangle rising to 1 in the middle of the segment.
+    private val weight = FloatArray(segment) { (if (it < segment / 2) it + 1 else segment - it).toFloat() / (segment - segment / 2) }
 
     /**
      * The chosen [stems] of a 44.1 kHz stereo song summed and mixed down to mono.
@@ -82,26 +102,26 @@ class DemucsSeparator(private val env: OrtEnvironment, private val session: OrtS
         for (i in 0 until n) { val d = (left[i] + right[i]) / 2.0 - mean; v += d * d }
         val std = (if (n > 1) sqrt(v / (n - 1)) else 0.0) + 1e-8
 
-        val stride = (0.75 * SEGMENT).toInt()
+        val stride = (0.75 * segment).toInt()
         val count = (n + stride - 1) / stride
         val total = FloatArray(n)
-        val mix = FloatArray(2 * SEGMENT)
-        val spec = FloatArray(4 * BINS * FRAMES)
-        val outL = DoubleArray(SEGMENT)
-        val outR = DoubleArray(SEGMENT)
+        val mix = FloatArray(2 * segment)
+        val spec = FloatArray(4 * BINS * frames)
+        val outL = DoubleArray(segment)
+        val outR = DoubleArray(segment)
         for (c in 0 until count) {
             if (cancelled()) throw InterruptedException()
             val t0 = System.nanoTime()
             // A short last segment is centred in a full one, with the song around it as context.
             val off = c * stride
-            val length = minOf(SEGMENT, n - off)
-            val lead = (SEGMENT - length) / 2
+            val length = minOf(segment, n - off)
+            val lead = (segment - length) / 2
             val start = off - lead
-            for (j in 0 until SEGMENT) {
+            for (j in 0 until segment) {
                 val idx = start + j
                 val inside = idx in 0 until n
                 mix[j] = if (inside) ((left[idx] - mean) / std).toFloat() else 0f
-                mix[SEGMENT + j] = if (inside) ((right[idx] - mean) / std).toFloat() else 0f
+                mix[segment + j] = if (inside) ((right[idx] - mean) / std).toFloat() else 0f
             }
             stft.spectrogram(mix, spec)
             val t1 = System.nanoTime()
@@ -109,12 +129,12 @@ class DemucsSeparator(private val env: OrtEnvironment, private val session: OrtS
             val t2 = System.nanoTime()
             for ((w, s) in wanted.withIndex()) {
                 stft.waveform(zout, s, outL, outR)
-                val tb = s * 2 * SEGMENT
+                val tb = s * 2 * segment
                 for (j in 0 until length) {
                     val src = lead + j
                     val dst = off + j
                     out[w][0][dst] += weight[j] * (time[tb + src] + outL[src].toFloat())
-                    out[w][1][dst] += weight[j] * (time[tb + SEGMENT + src] + outR[src].toFloat())
+                    out[w][1][dst] += weight[j] * (time[tb + segment + src] + outR[src].toFloat())
                 }
             }
             for (j in 0 until length) total[off + j] += weight[j]
@@ -127,8 +147,8 @@ class DemucsSeparator(private val env: OrtEnvironment, private val session: OrtS
 
     /** One segment through the network: the time-branch stems and the spectral-branch output. */
     private fun run(mix: FloatArray, spec: FloatArray): Pair<FloatArray, FloatArray> {
-        OnnxTensor.createTensor(env, FloatBuffer.wrap(mix), longArrayOf(1, 2, SEGMENT.toLong())).use { m ->
-            OnnxTensor.createTensor(env, FloatBuffer.wrap(spec), longArrayOf(1, 4, BINS.toLong(), FRAMES.toLong())).use { z ->
+        OnnxTensor.createTensor(env, FloatBuffer.wrap(mix), longArrayOf(1, 2, segment.toLong())).use { m ->
+            OnnxTensor.createTensor(env, FloatBuffer.wrap(spec), longArrayOf(1, 4, BINS.toLong(), frames.toLong())).use { z ->
                 session.run(mapOf("mix" to m, "spec" to z)).use { res ->
                     fun read(name: String): FloatArray {
                         val buf = (res.get(name).get() as OnnxTensor).floatBuffer
@@ -145,7 +165,7 @@ class DemucsSeparator(private val env: OrtEnvironment, private val session: OrtS
         const val N_FFT = 4096
         const val HOP = 1024
         const val BINS = N_FFT / 2
-        /** Samples per segment: the models' training length, 39/5 s. */
+        /** Samples per segment of the full-length export: the models' training length, 39/5 s. */
         const val SEGMENT = 343_980
         const val FRAMES = (SEGMENT + HOP - 1) / HOP
         internal const val PAD = HOP / 2 * 3
@@ -166,6 +186,10 @@ class DemucsSeparator(private val env: OrtEnvironment, private val session: OrtS
         const val RELEASE_URL = "https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/download/bouzouki-models-v1/"
         const val MODEL_6S = "htdemucs_6s.onnx"
         const val MODEL_6S_FP16 = "htdemucs_6s_fp16.onnx"
+        /** 3.9 s segments: about a third of the peak memory, slightly less context. */
+        const val MODEL_6S_SEG39 = "htdemucs_6s_seg39.onnx"
+        /** 2.0 s segments: the least memory, the least context. */
+        const val MODEL_6S_SEG20 = "htdemucs_6s_seg20.onnx"
         /** `sha256sum` output for every file of the release. */
         const val CHECKSUMS = "SHA256SUMS"
         fun url(file: String) = RELEASE_URL + file
@@ -206,7 +230,8 @@ class DemucsSeparator(private val env: OrtEnvironment, private val session: OrtS
 }
 
 /** The spectrogram and its inverse exactly as HTDemucs computes them, for one segment. Not thread-safe. */
-internal class DemucsStft {
+internal class DemucsStft(private val segment: Int = DemucsSeparator.SEGMENT) {
+    private val frames = (segment + HOP - 1) / HOP
     private val fft = Fft(N_FFT)
     private val window = hann(N_FFT)
     private val re = DoubleArray(N_FFT)
@@ -215,26 +240,26 @@ internal class DemucsStft {
 
     /**
      * HTDemucs._spec + _magnitude of one segment ([mix]: left then right) into [dst]
-     * (4 × BINS × FRAMES: left re, left im, right re, right im). Frame t windows samples
+     * (4 × BINS × frames: left re, left im, right re, right im). Frame t windows samples
      * [t·1024 − 1536, t·1024 + 2560), reflected at the ends; the STFT is normalised (÷ 64)
      * and the Nyquist bin dropped. Both channels share one complex FFT.
      */
     fun spectrogram(mix: FloatArray, dst: FloatArray) {
-        val plane = BINS * FRAMES
+        val plane = BINS * frames
         val scale = 1.0 / sqrt(N_FFT.toDouble())
-        for (t in 0 until FRAMES) {
+        for (t in 0 until frames) {
             for (j in 0 until N_FFT) {
                 var idx = t * HOP - PAD + j
                 if (idx < 0) idx = -idx
-                if (idx >= SEGMENT) idx = 2 * (SEGMENT - 1) - idx
+                if (idx >= segment) idx = 2 * (segment - 1) - idx
                 re[j] = mix[idx] * window[j]
-                im[j] = mix[SEGMENT + idx] * window[j]
+                im[j] = mix[segment + idx] * window[j]
             }
             fft.forward(re, im)
             for (k in 0 until BINS) {
                 val nk = if (k == 0) 0 else N_FFT - k
                 val zr = re[k]; val zi = im[k]; val wr = re[nk]; val wi = im[nk]
-                val o = k * FRAMES + t
+                val o = k * frames + t
                 dst[o] = ((zr + wr) / 2 * scale).toFloat()
                 dst[plane + o] = ((zi - wi) / 2 * scale).toFloat()
                 dst[2 * plane + o] = ((zi + wi) / 2 * scale).toFloat()
@@ -244,18 +269,18 @@ internal class DemucsStft {
     }
 
     /**
-     * HTDemucs._mask + _ispec for source [s] of [zout] (S × 4 × BINS × FRAMES) into
+     * HTDemucs._mask + _ispec for source [s] of [zout] (S × 4 × BINS × frames) into
      * [outL]/[outR] (one segment): a zero Nyquist bin, the imaginary part of DC ignored as
      * irfft does, overlap-add at t·1024 − 1536 and division by the squared-window sum.
      */
     fun waveform(zout: FloatArray, s: Int, outL: DoubleArray, outR: DoubleArray) {
         outL.fill(0.0); outR.fill(0.0)
-        val plane = BINS * FRAMES
+        val plane = BINS * frames
         val base = s * 4 * plane
         val scale = sqrt(N_FFT.toDouble())
-        for (t in 0 until FRAMES) {
+        for (t in 0 until frames) {
             for (k in 0 until BINS) {
-                val o = base + k * FRAMES + t
+                val o = base + k * frames + t
                 val lr = zout[o].toDouble(); val li = zout[o + plane].toDouble()
                 val rr = zout[o + 2 * plane].toDouble(); val ri = zout[o + 3 * plane].toDouble()
                 // Z = L + iR, with L and R Hermitian-symmetric (real signals).
@@ -266,21 +291,21 @@ internal class DemucsStft {
             re[BINS] = 0.0; im[BINS] = 0.0
             fft.inverse(re, im)
             val pos = t * HOP - PAD
-            for (j in maxOf(0, -pos) until minOf(N_FFT, SEGMENT - pos)) {
+            for (j in maxOf(0, -pos) until minOf(N_FFT, segment - pos)) {
                 val w = window[j] * scale
                 outL[pos + j] += re[j] * w
                 outR[pos + j] += im[j] * w
             }
         }
-        for (i in 0 until SEGMENT) { outL[i] /= envelope[i]; outR[i] /= envelope[i] }
+        for (i in 0 until segment) { outL[i] /= envelope[i]; outR[i] /= envelope[i] }
     }
 
     /** torch.istft's squared-window sum, over the frame sequence _ispec pads with two empty frames at each end. */
     private fun envelope(): DoubleArray {
-        val e = DoubleArray(SEGMENT)
-        for (f in 0 until FRAMES + 4) {
+        val e = DoubleArray(segment)
+        for (f in 0 until frames + 4) {
             val pos = (f - 2) * HOP - PAD
-            for (j in maxOf(0, -pos) until minOf(N_FFT, SEGMENT - pos)) e[pos + j] += window[j] * window[j]
+            for (j in maxOf(0, -pos) until minOf(N_FFT, segment - pos)) e[pos + j] += window[j] * window[j]
         }
         return e
     }

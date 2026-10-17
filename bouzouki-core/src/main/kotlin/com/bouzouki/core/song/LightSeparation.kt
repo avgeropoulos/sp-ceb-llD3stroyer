@@ -19,6 +19,7 @@ import kotlin.math.sqrt
  *  3. Band emphasis: 110–3000 Hz as is, rolling off over an octave on either side to [floor].
  *
  * It streams with a 17-frame look-ahead, so memory stays small however long the song is.
+ * As a [Separator], the bass is only turned down (to [floor]), not removed: [keepsBass].
  */
 class LightSeparator(
     private val sampleRate: Int = 44100,
@@ -26,12 +27,17 @@ class LightSeparator(
     private val low: Double = 110.0,
     private val high: Double = 3000.0,
     private val floor: Double = 0.25,
-) {
+) : Separator {
     private val fft = Fft(N)
     private val window = hann(N)
     private val re = DoubleArray(N)
     private val im = DoubleArray(N)
     private val band = DoubleArray(BINS) { k -> bandGain(k.toDouble() * sampleRate / N) }
+
+    override val keepsBass: Boolean get() = true
+
+    override fun instrumentalMono(left: FloatArray, right: FloatArray, progress: (Float) -> Unit, cancelled: () -> Boolean): FloatArray =
+        bouzoukiMono(left, right, progress, cancelled)
 
     /** The bouzouki-leaning mono signal of a stereo song (same length). [progress] gets 0..1. */
     fun bouzoukiMono(left: FloatArray, right: FloatArray, progress: (Float) -> Unit = {}, cancelled: () -> Boolean = { false }): FloatArray {

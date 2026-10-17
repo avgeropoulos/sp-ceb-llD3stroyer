@@ -23,27 +23,30 @@ class DemucsTest {
         // Tones well below Nyquist, so dropping the Nyquist bin (as HTDemucs does) costs nothing.
         // The first and last 1536 samples don't come back: _spec drops the frames centred
         // there and _ispec puts empty ones in their place (the time branch covers for it).
-        val rnd = Random(3)
-        val mix = FloatArray(2 * SEGMENT)
-        val freqs = DoubleArray(6) { 50.0 + rnd.nextDouble() * 8000 }
-        for (i in 0 until SEGMENT) {
-            var l = 0.0; var r = 0.0
-            for ((k, f) in freqs.withIndex()) {
-                val s = sin(2 * PI * f * i / 44100 + k)
-                if (k % 2 == 0) l += s else r += s
-                l += 0.1 * s
+        // Full-length (7.8 s) and the short-segment exports' lengths (3.9 s, 2.0 s).
+        for (seg in listOf(SEGMENT, 171_990, 88_200)) {
+            val rnd = Random(3)
+            val mix = FloatArray(2 * seg)
+            val freqs = DoubleArray(6) { 50.0 + rnd.nextDouble() * 8000 }
+            for (i in 0 until seg) {
+                var l = 0.0; var r = 0.0
+                for ((k, f) in freqs.withIndex()) {
+                    val s = sin(2 * PI * f * i / 44100 + k)
+                    if (k % 2 == 0) l += s else r += s
+                    l += 0.1 * s
+                }
+                mix[i] = (l / 6).toFloat(); mix[seg + i] = (r / 6).toFloat()
             }
-            mix[i] = (l / 6).toFloat(); mix[SEGMENT + i] = (r / 6).toFloat()
+            val stft = DemucsStft(seg)
+            val spec = FloatArray(4 * BINS * ((seg + 1023) / 1024))
+            stft.spectrogram(mix, spec)
+            val outL = DoubleArray(seg)
+            val outR = DoubleArray(seg)
+            stft.waveform(spec, 0, outL, outR)
+            var err = 0.0
+            for (i in 1536 until seg - 1536) err = maxOf(err, abs(outL[i] - mix[i]), abs(outR[i] - mix[seg + i]))
+            assertTrue(err < 1e-4, "round trip error $err at $seg") // float32 spectrogram, sidelobes at Nyquist
         }
-        val stft = DemucsStft()
-        val spec = FloatArray(4 * BINS * FRAMES)
-        stft.spectrogram(mix, spec)
-        val outL = DoubleArray(SEGMENT)
-        val outR = DoubleArray(SEGMENT)
-        stft.waveform(spec, 0, outL, outR)
-        var err = 0.0
-        for (i in 1536 until SEGMENT - 1536) err = maxOf(err, abs(outL[i] - mix[i]), abs(outR[i] - mix[SEGMENT + i]))
-        assertTrue(err < 1e-4, "round trip error $err") // float32 spectrogram, sidelobes at Nyquist
     }
 
     @Test
@@ -90,6 +93,7 @@ class DemucsTest {
         val opts = OrtSession.SessionOptions().apply { setIntraOpNumThreads(4) }
         env.createSession(File(dir, meta.getValue("model")).path, opts).use { session ->
             val sep = DemucsSeparator(env, session)
+            println("segment ${sep.segment} samples, ${sep.frames} frames, keepsBass ${sep.keepsBass}")
             assertEquals(sources, sep.sources)
             val times = mutableListOf<DemucsSeparator.SegmentTiming>()
             val got = sep.separate(input.copyOfRange(0, n), input.copyOfRange(n, 2 * n), sources, timing = { times += it })
