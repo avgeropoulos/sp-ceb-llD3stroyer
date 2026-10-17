@@ -365,7 +365,6 @@ internal class PdfDocument(private val data: ByteArray) {
     private var decodeBudget = MAX_TOTAL_DECODED
     /** The most one stream may decode to ([MAX_STREAM], or a picture's own cap while [imageData] decodes it). */
     private var streamCap = MAX_STREAM
-    private var crypt: PdfCrypt? = null
     private var endstreams: IntArray? = null
     private var endobjs: IntArray? = null
 
@@ -378,13 +377,11 @@ internal class PdfDocument(private val data: ByteArray) {
         val ok = try { readXref() } catch (e: RuntimeException) { false }
         objectStarts = null // objects read while the table was incomplete may have made it too early
         if (!ok || trailer["Root"] == null) repair()
-        val enc = trailer["Encrypt"]
-        if (enc != null) {
-            crypt = PdfCrypt.open(pdfDict(resolve(enc)), trailer["ID"])
-            if (crypt == null) {
-                locked = true
-                warnings += "This PDF is protected with a password or an encryption PdfTab can't read"
-            }
+        // A protected PDF (encrypted, with or without a password) is not opened: the app doesn't remove protection
+        // its author put on a file. The player can open a copy they are allowed to make without it.
+        if (trailer["Encrypt"] != null) {
+            locked = true
+            warnings += "This PDF is protected with a password or an encryption, which the app doesn't remove"
         }
     }
 
@@ -729,14 +726,14 @@ internal class PdfDocument(private val data: ByteArray) {
     // ---- Streams ----
 
     /**
-     * A stream's decoded bytes: decrypted, then through its filters (Flate, LZW, ASCIIHex,
+     * A stream's decoded bytes: through its filters (Flate, LZW, ASCIIHex,
      * ASCII85, RunLength, with PNG/TIFF predictors). Null for image codecs and unknown filters.
      * Truncated compressed data gives what could be decoded.
      */
     fun decode(s: PdfStream): ByteArray? = filtered(s, null)?.takeIf { it.first == null }?.second
 
     /**
-     * A picture's data ([s] an image XObject): decrypted and through its filters up to the picture codec, which is
+     * A picture's data ([s] an image XObject): through its filters up to the picture codec, which is
      * named with the bytes still in it (DCTDecode: a JPEG file; JPXDecode, CCITTFaxDecode, JBIG2Decode); with no
      * codec (null) the bytes are the image's samples. Up to [cap] bytes decoded, outside the document's budget.
      */
@@ -760,8 +757,6 @@ internal class PdfDocument(private val data: ByteArray) {
         if (decodeBudget <= 0) { warnings += TOO_LARGE; return null }
         var d = s.raw()
         decodeBudget -= d.size
-        val c = crypt
-        if (c != null && pdfName(s.dict["Type"]) != "XRef") d = c.decrypt(d, s.num, s.gen, s.dict) ?: return null
         val filters = resolve(s.dict["Filter"]).let { f -> if (f is List<*>) f.map { pdfName(resolve(it)) } else listOf(pdfName(f)) }
         val parms = resolve(s.dict["DecodeParms"] ?: s.dict["DP"]).let { p -> if (p is List<*>) p.map { pdfDict(resolve(it)) } else listOf(pdfDict(p)) }
         for ((i, f) in filters.withIndex()) {

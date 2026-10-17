@@ -35,8 +35,8 @@ import com.bouzouki.core.Cell
 
 /**
  * The song screen turned sideways: the whole bouzouki ([BouzoukiView]) edge to edge, the song's
- * video moved into the free room above its neck (for an audio file, its title and a play button
- * there instead), a status line under the neck with the note now and the time, and ⤺ to go
+ * title and a play button in the free room above its neck (a song's video would go there; the app
+ * has none now), a status line under the neck with the note now and the time, and ⤺ to go
  * back upright. [SongActivity] makes one, lets it follow the screen ([follow]) and drives its
  * bouzouki with the same clock as the neck ([live], [next], [status]).
  *
@@ -50,12 +50,12 @@ internal class SongLandscape(
     private val activity: Activity,
     synth: BouzoukiSynth,
     settings: Settings,
-    /** The song's video (the YouTube player), in a [Dock] on the upright screen. */
+    /** The song's video, in a [Dock] on the upright screen (hidden: there is none). */
     private val video: View,
     private val title: () -> CharSequence,
     /** The upright screen's status message, shown in the status line while no song is ready. */
     private val message: () -> CharSequence,
-    /** Whether an audio file is open (no video: its title and a play button go in the video's place). */
+    /** Whether a song is open (no video: its title and a play button go in the video's place). */
     private val fileOpen: () -> Boolean,
     private val filePlaying: () -> Boolean,
     private val playPause: () -> Unit,
@@ -340,7 +340,7 @@ internal class SongLandscape(
                 "$n   ·   %d:%02d".format(sec / 60, sec % 60)
             }
             // Nothing open: a song is opened on the upright screen (its link, saved songs, files), not here.
-            !hasVideo && !fileOpen() -> "Turn the phone upright (or ⤺) to open a song: a YouTube link, a saved song or an audio file."
+            !hasVideo && !fileOpen() -> "Turn the phone upright (or ⤺) to open a song: a saved song or an audio file."
             else -> message().toString().lineSequence().firstOrNull().orEmpty()
         }
         if (text != shownText) { shownText = text; statusText.text = text }

@@ -52,7 +52,7 @@ class MainActivity : Activity() {
             setBackgroundColor(GREEK_BLUE)
             setPadding(px(16), px(14), px(16), px(10))
             addView(TextView(context).apply {
-                text = "Μπουζούκι"
+                text = "Μπουζούκι Lab"
                 textSize = 30f
                 typeface = Typeface.create(Typeface.SERIF, Typeface.BOLD)
                 setTextColor(WHITE)
@@ -134,8 +134,8 @@ class MainActivity : Activity() {
             ui.style(this, true)
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
-        // Play along with a YouTube song.
-        controls.addView(ui.chip("🎵  Play along with a YouTube song") {
+        // Play along with a song: an audio file of yours, or one heard on the phone.
+        controls.addView(ui.chip("🎵  Songs: listen, transcribe, play along") {
             startActivity(Intent(this, SongActivity::class.java))
         }.apply {
             textSize = 16f
@@ -150,9 +150,14 @@ class MainActivity : Activity() {
             topMargin = px(12)
         })
 
+        // The Terms of Use, privacy and the third-party parts.
+        controls.addView(ui.chip("ⓘ  About · Terms of Use · Privacy") { Legal.showAbout(this) },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = px(8) })
+
         setContentView(root)
         fitSystemBars(this, root)
-        checkForUpdate()
+        SongJobs.sweep(this) // temporary audio a crash may have left behind
+        Legal.requireTerms(this) { checkForUpdate() }
         handleInstallStatus(intent)
         refresh()
     }
@@ -180,7 +185,7 @@ class MainActivity : Activity() {
         if (updating) return
         if (latest == null || latest <= updater.installedBuild) { checkForUpdate(); return }
         if (!updater.ensureCanInstall()) {
-            Toast.makeText(this, "Allow Bouzouki to install updates, then come back and tap Update again", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Allow Bouzouki Lab to install updates, then come back and tap Update again", Toast.LENGTH_LONG).show()
             return
         }
         updating = true

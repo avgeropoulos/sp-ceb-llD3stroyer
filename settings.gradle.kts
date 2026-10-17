@@ -11,8 +11,6 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        // NewPipe Extractor (reads YouTube audio for the song analysis) is published on JitPack.
-        maven("https://jitpack.io") { content { includeGroupByRegex("com\\.github\\..*") } }
     }
 }
 

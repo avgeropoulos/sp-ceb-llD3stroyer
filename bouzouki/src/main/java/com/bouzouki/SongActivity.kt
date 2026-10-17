@@ -19,7 +19,6 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.OpenableColumns
-import android.text.InputType
 import android.text.TextUtils
 import android.util.TypedValue
 import android.view.Choreographer
@@ -27,12 +26,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
-import android.view.inputmethod.EditorInfo
-import android.webkit.JavascriptInterface
-import android.webkit.WebChromeClient
-import android.webkit.WebView
 import android.widget.Button
-import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
@@ -59,19 +53,21 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * Play along with a song, Chordify-style: give it a YouTube link (or an audio file), it
- * prepares the song once — removing the voice and transcribing the bouzouki line — and then
- * plays the video with that line marked on the neck (with a moving tab strip) or on the whole
- * song's tablature. A [PlaybackClock] smooths the player's coarse time so both follow it at
+ * Play along with a song: give it an audio file of yours (or a clip heard with 🎧 Listen), it
+ * prepares the song once on the phone — separating the instruments and transcribing the bouzouki
+ * line — and then plays it with that line marked on the neck (with a moving tab strip) or on the
+ * whole song's tablature. A song whose audio isn't on the phone (a clip, which is deleted once its
+ * tab is made, or a file that can't be read any more) plays on the app's bouzouki sound, playing its tab.
+ * A [PlaybackClock] smooths the player's coarse time so both follow it at
  * every frame, with a per-song sync offset. The title bar's switch fingers the song for the
  * τετράχορδο or the τρίχορδο at once, and the bouzouki sound plays hammer-ons, pull-offs and
  * slides without picking again, and tremolo notes picked fast for as long as they last.
  * Each song's line can have fewer or more notes (Notes), or be made of the notes of a tab (📝 Tab:
- * found online and pasted in, or a PDF or text file opened here or shared from another app), lined
+ * pasted in, or a PDF or text file of yours opened here or shared from another app), lined
  * up with the recording; both are worked out in the background by [SongLines] and remembered per
  * song. A record tuned clearly away from A = 440 Hz says so, to tune the bouzouki to it. Turned
- * sideways (or with 🪕) it shows the whole bouzouki with the video above its neck ([SongLandscape]),
- * following the same clock.
+ * sideways (or with 🪕) it shows the whole bouzouki ([SongLandscape]), following the same clock.
+ * Songs and tabs are kept only in the app's own storage on this phone; nothing is shared or uploaded.
  */
 class SongActivity : Activity() {
     private val ui by lazy { Ui(this) }
@@ -82,11 +78,10 @@ class SongActivity : Activity() {
     private lateinit var board: FretboardView
     private lateinit var scroller: ScrollView
     private lateinit var titleText: TextView
-    private lateinit var link: EditText
-    private lateinit var linkRow: LinearLayout
     private lateinit var extraRow: LinearLayout
-    private lateinit var web: WebView
-    /** The screen turned sideways: the whole bouzouki, with the video above its neck. */
+    /** Where a video would go on the sideways screen: there is none, so it stays hidden (the title and ▶ show). */
+    private lateinit var video: View
+    /** The screen turned sideways: the whole bouzouki. */
     private lateinit var whole: SongLandscape
     private lateinit var fileRow: LinearLayout
     private lateinit var filePlayButton: Button
@@ -116,7 +111,7 @@ class SongActivity : Activity() {
     private val prefs by lazy { getSharedPreferences("bouzouki", Context.MODE_PRIVATE) }
 
     /**
-     * What's loaded: a YouTube id or a file id, and once it's prepared the song as it was
+     * What's loaded: a song id (an audio file's, or a clip's), and once it's prepared the song as it was
      * prepared ([source]) and as it's shown, fingered for the bouzouki chosen now ([song]).
      */
     private var currentId: String? = null
@@ -152,8 +147,14 @@ class SongActivity : Activity() {
     private var soundOn = false // the audio engine runs (onResume..onPause)
     private var lastNote = -1
     private var lastNext = -1
-    private var playing = false // the audio file's player
+    private var playing = false // the audio file's player, or the bouzouki sound playing the tab alone
     private var filePrepared = false
+    /**
+     * Playing the tab on the bouzouki sound alone (no audio for the song on the phone): the song time at
+     * [virtualStart] (elapsed-realtime nanos), going on at [speed] while [playing].
+     */
+    private var virtualBase = 0.0
+    private var virtualStart = 0L
 
     /** Playback time between the player's reports, and what follows it at every frame. */
     private val clock = PlaybackClock()
@@ -179,9 +180,10 @@ class SongActivity : Activity() {
     private val jobListener: (SongJobs.State) -> Unit = { onJob(it) }
     private val lineListener: (SongLines.Outcome) -> Unit = { onLine(it) }
 
-    @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Opened straight from a share or a notification: the Terms of Use come first here too.
+        if (!Legal.accepted(this)) Legal.requireTerms(this)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.statusBarColor = GREEK_BLUE
         window.navigationBarColor = NAVY
@@ -224,7 +226,7 @@ class SongActivity : Activity() {
             addView(instrumentSwitch, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 marginStart = px(4); marginEnd = px(4)
             })
-            addView(ui.chip("🔗") { showLinkRows(linkRow.visibility != View.VISIBLE) },
+            addView(ui.chip("➕") { showLinkRows(extraRow.visibility != View.VISIBLE) },
                 LinearLayout.LayoutParams(px(42), px(40)).apply { marginEnd = px(4) })
             // The whole bouzouki, sideways (turning the phone does it too). A long press says so.
             addView(ui.chip("🪕") { whole.turnSideways() }.apply {
@@ -242,45 +244,17 @@ class SongActivity : Activity() {
         }
         root.addView(controls)
 
-        // The link, an audio file, or a saved song.
-        link = EditText(this).apply {
-            hint = "Search YouTube or paste a link"
-            setHintTextColor(0xFF7F93AB.toInt())
-            setTextColor(WHITE)
-            textSize = 14f
-            isSingleLine = true
-            inputType = InputType.TYPE_CLASS_TEXT
-            imeOptions = EditorInfo.IME_ACTION_SEARCH
-            background = ui.rounded()
-            setPadding(px(10), 0, px(10), 0)
-            setOnEditorActionListener { _, _, _ -> loadLink(); true }
-        }
-        linkRow = ui.row()
-        controls.addView(linkRow.apply {
-            addView(link, ui.weighted(3f).apply { height = px(44) })
-            addView(ui.chip("Paste") { pasteAndLoad() }, ui.weighted(1.1f))
-            addView(ui.chip("🔎") { loadLink() }.apply { contentDescription = "Search YouTube, or load the link" }, ui.weighted(1f))
-        })
+        // A clip heard on the phone, an audio file, or a saved song.
         extraRow = ui.row().apply {
             addView(ui.chip("📁 Audio file") { pickFile() }, ui.weighted())
             addView(ui.chip("🕘 My songs") { showSaved() }, ui.weighted())
         }
         controls.addView(extraRow)
 
-        // The video (YouTube) or a simple player (audio file).
-        web = WebView(this).apply {
-            setBackgroundColor(0xFF000000.toInt())
-            settings.javaScriptEnabled = true
-            settings.domStorageEnabled = true
-            settings.mediaPlaybackRequiresUserGesture = false
-            webChromeClient = WebChromeClient()
-            addJavascriptInterface(YouTubeBridge(), "Android")
-            visibility = View.GONE
-        }
-        // In a Dock, so it can move into the sideways screen and back without stopping.
-        controls.addView(Dock(this).apply { addView(web, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(170))) },
+        video = View(this).apply { visibility = View.GONE }
+        controls.addView(Dock(this).apply { addView(video, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0)) },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        whole = SongLandscape(this, audio.synth, settings, web, { titleText.text }, { status.text }, { fileUri != null }, { playing }) { toggleFilePlayback() }
+        whole = SongLandscape(this, audio.synth, settings, video, { titleText.text }, { status.text }, { source != null || fileUri != null }, { playing }) { toggleFilePlayback() }
         fileRow = ui.row().apply { visibility = View.GONE }
         filePlayButton = ui.chip("▶ Play") { toggleFilePlayback() }
         fileTimeText = TextView(this).apply { setTextColor(WHITE); textSize = 14f; gravity = Gravity.CENTER }
@@ -463,13 +437,12 @@ class SongActivity : Activity() {
         showDromos()
         refreshLineControls()
         SongLines.listen(lineListener)
-        status.text = "Paste a YouTube link (or Share → Μπουζούκι in the YouTube app). The first time, a song takes a few minutes to prepare; after that it opens instantly."
+        status.text = "Open 📁 an audio file of yours. Preparing it takes a minute or " +
+            "two, on the phone; after that it opens instantly from 🕘 My songs."
 
         live = WeakReference(this)
         // Back to a song that's being prepared (e.g. from the notification).
-        (SongJobs.state as? SongJobs.State.Working)?.let { w ->
-            if (!w.id.startsWith("file-")) openYouTube(w.id, startJob = false)
-        }
+        (SongJobs.state as? SongJobs.State.Working)?.let { w -> openSaved(w.id) }
         // Recreated (dark mode, font size, or back after the app was closed): the song open, and a tab that came in for it.
         if (savedInstanceState != null) restore(savedInstanceState)
         TabFiles.sweep(this)
@@ -495,8 +468,8 @@ class SongActivity : Activity() {
     }
 
     /**
-     * What another app shared with this screen (or opened with it): a YouTube link, or a tab, as a PDF or
-     * text file or as a tab's text (several lines that look like tab). A tab is offered for a song.
+     * What another app shared with this screen (or opened with it): a tab of yours, as a PDF, text file or
+     * picture, or as a tab's text (several lines that look like tab). A tab is offered for a song.
      */
     private fun handleShare(intent: Intent?, fresh: Boolean) {
         intent ?: return
@@ -510,17 +483,13 @@ class SongActivity : Activity() {
         }
         if (intent.action != Intent.ACTION_SEND) return
         val shared = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return
-        if (isTab(shared)) {
-            if (!again) offerTab(TabFiles.Incoming.Text("", shared)) // no file name
-            return
-        }
-        if (!fresh && currentId != null) return // the song came back with the screen
-        link.setText(shared)
-        loadLink()
+        if (again) return
+        if (isTab(shared)) offerTab(TabFiles.Incoming.Text("", shared)) // no file name
+        else status.text = "That isn't a tab: share a tab's lines (like D|--5-7--|), a tab PDF or a picture of a tab."
     }
 
     /**
-     * Whether shared [text] is a tab rather than a link: the tab reader finds notes in it (in as much of it as a tab
+     * Whether shared [text] is a tab: the tab reader finds notes in it (in as much of it as a tab
      * can have; a text longer than that is then too long, which the look at it says).
      */
     private fun isTab(text: String) = TabParser.parse(text.take(MAX_TAB_CHARS), settings.instrument).notes.isNotEmpty()
@@ -537,58 +506,45 @@ class SongActivity : Activity() {
         else -> null
     }
 
-    private fun pasteAndLoad() {
-        val clip = (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).primaryClip
-        val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()
-        if (text.isNullOrBlank()) { status.text = "The clipboard is empty. In YouTube: Share → Copy link."; return }
-        link.setText(text)
-        loadLink()
-    }
-
-    /** The box holds a YouTube link (load it) or words (search YouTube for them, as Chordify does). */
-    private fun loadLink() {
-        val text = link.text.toString().trim()
-        if (text.isEmpty()) { status.text = "Type a song or an artist to search YouTube, or paste a YouTube link."; return }
-        val id = youTubeId(text)
-        if (id != null) { openYouTube(id, startJob = true); return }
-        (getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).hideSoftInputFromWindow(link.windowToken, 0)
-        val saved = SongJobs.recent(this).associate { it.id to it.current }
-        SongSearch(this, ui, { saved[it] == true }) { hit ->
-            link.setText("https://youtu.be/${hit.id}")
-            // A song prepared with this version opens at once; any other is prepared now.
-            openYouTube(hit.id, startJob = saved[hit.id] != true)
-        }.show(text) { msg -> status.text = msg }
-    }
-
     // --- loading a song ---
 
-    private fun openYouTube(id: String, startJob: Boolean) {
+    /**
+     * Opens saved song [id] (or the one being prepared): with its audio file when the phone still lets the app read it
+     * ([PREF_URI]), else on the bouzouki sound alone, playing its tab.
+     */
+    private fun openSaved(id: String) {
+        val uri = prefs.getString(PREF_URI + id, null)?.let { Uri.parse(it) }
+        if (uri != null && readable(uri)) {
+            openFile(uri, prefs.getString(PREF_NAME + id, null) ?: "Audio file", startJob = false)
+            return
+        }
         stopFile()
         fileUri = null
         if (id != currentId) dropPendingTab()
         currentId = id
-        currentSource = SongJobs.Source.YouTube(id)
+        currentSource = null
         prefs.edit().putString(PREF_LAST_SONG, id).apply() // offered first for a tab shared later
         loadSync(id)
-        showLinkRows(false) // more room for the neck; 🔗 brings them back
-        web.visibility = View.VISIBLE
-        fileRow.visibility = View.GONE
-        // YouTube wants to know which app is embedding it (an origin), or it refuses with error 152/153.
-        web.loadDataWithBaseURL(ORIGIN, playerHtml(id), "text/html", "utf-8", null)
-        prepareOrShow(id, SongJobs.Source.YouTube(id), startJob)
+        showLinkRows(false) // more room for the neck; ➕ brings them back
+        fileRow.visibility = View.VISIBLE
+        prepareOrShow(id, null, startJob = false)
     }
 
-    private fun openFile(uri: Uri, name: String) {
-        web.loadUrl("about:blank")
-        web.visibility = View.GONE
+    /** Whether the app may still read [uri] (a file picked before; the phone can take that back). */
+    private fun readable(uri: Uri) = try {
+        contentResolver.openFileDescriptor(uri, "r")?.use { true } ?: false
+    } catch (_: Exception) { false }
+
+    private fun openFile(uri: Uri, name: String, startJob: Boolean = true) {
         stopFile()
         fileUri = uri
         val id = "file-" + Integer.toHexString(uri.toString().hashCode())
         if (id != currentId) dropPendingTab()
         currentId = id
         currentSource = SongJobs.Source.AudioFile(uri, name)
+        prefs.edit().putString(PREF_LAST_SONG, id).putString(PREF_URI + id, uri.toString()).putString(PREF_NAME + id, name).apply()
         loadSync(id)
-        showLinkRows(false) // more room for the neck; 🔗 brings them back
+        showLinkRows(false) // more room for the neck; ➕ brings them back
         fileRow.visibility = View.VISIBLE
         player = MediaPlayer().apply {
             setDataSource(this@SongActivity, uri)
@@ -600,7 +556,7 @@ class SongActivity : Activity() {
             prepareAsync()
         }
         titleText.text = name
-        prepareOrShow(id, SongJobs.Source.AudioFile(uri, name), startJob = true)
+        prepareOrShow(id, SongJobs.Source.AudioFile(uri, name), startJob)
     }
 
     /** Asks (once, on Android 13+) to show the preparing song's progress notification; optional. */
@@ -610,7 +566,7 @@ class SongActivity : Activity() {
         }
     }
 
-    private fun prepareOrShow(id: String, source: SongJobs.Source, startJob: Boolean) {
+    private fun prepareOrShow(id: String, source: SongJobs.Source?, startJob: Boolean) {
         showSong(null)
         val saved = SongJobs.cached(this, id)
         if (saved != null) {
@@ -627,7 +583,7 @@ class SongActivity : Activity() {
         }
         val s = SongJobs.state
         if (s is SongJobs.State.Working && s.id == id) return // already on it
-        if (!startJob) return
+        if (!startJob || source == null) return
         if (SongJobs.isBusy()) {
             status.text = "Another song is still being prepared. Wait for it to finish, or cancel it."
             return
@@ -667,7 +623,7 @@ class SongActivity : Activity() {
                 prepPanel.visibility = View.VISIBLE
                 prepText.text = "Preparing the song: ${s.step}…  ${(s.fraction * 100).toInt()}%"
                 prepBar.progress = (s.fraction * 1000).toInt()
-                status.text = "You can watch the video meanwhile, or leave the app: it keeps working."
+                status.text = "You can leave the app meanwhile: it keeps working, on the phone."
             }
             // (A finished job's state is told again each time the screen comes back: shown only if it was awaited.)
             is SongJobs.State.Done -> if (s.song.id == id && (awaited == id || source == null)) {
@@ -677,7 +633,7 @@ class SongActivity : Activity() {
             is SongJobs.State.Failed -> if (s.id == id) {
                 awaited = null
                 prepPanel.visibility = View.GONE
-                status.text = "Couldn't prepare this song: ${s.message}\nYou can try again with Load, or use 📁 Audio file."
+                status.text = "Couldn't prepare this song: ${s.message}\nTry again with ➕ → 📁 Audio file."
             }
             SongJobs.State.Idle -> prepPanel.visibility = View.GONE
         }
@@ -1029,18 +985,16 @@ class SongActivity : Activity() {
     }
 
     /**
-     * 📝 Tab: find a tab online, paste one or open a tab file (PDF or text), choose between its notes and
-     * the detected ones, or remove it.
+     * 📝 Tab: paste one or open a tab file of yours (PDF, text or picture), choose between its notes and
+     * the detected ones, or remove it. The tab stays on this phone, with its song.
      */
     private fun showTabMenu() {
         val id = currentId
-        if (id == null) { status.text = "Open a song first; then find its bouzouki tab online, copy it and paste it here, or open a tab file."; return }
+        if (id == null) { status.text = "Open a song first; then paste its bouzouki tab here, or open a tab file of yours."; return }
         val kept = SongJobs.tab(this, id)
         val hasTab = kept != null
         val fromTab = (wanted ?: lineSpec) is SongLines.Spec.FromTab
         val items = ArrayList<Pair<String, () -> Unit>>()
-        items += "🔎 Find a tab online" to { findTabOnline(greek = false) }
-        items += "🔎 Βρες ταμπλατούρα (Greek search)" to { findTabOnline(greek = true) }
         items += (if (hasTab) "📋 Paste another tab" else "📋 Paste tab") to { pasteTab() }
         items += "📄 Open a tab file (PDF, text, picture or sheet music)" to { openTabFile() }
         if (hasTab) {
@@ -1049,7 +1003,6 @@ class SongActivity : Activity() {
             items += "Detected" + (if (fromTab) "" else "  ✓") to { chooseTab(false) }
             items += "🗑 Remove tab" to { removeTab() }
         }
-        if (source != null) items += "📤 Send song data (to improve its notes)" to { sendSongData() }
         val r = tabReport
         val title = if (fromTab && r != null) "📝 Tab · ${r.matched} of ${r.total} notes lined up" else "📝 Bouzouki tab"
         AlertDialog.Builder(this)
@@ -1059,73 +1012,13 @@ class SongActivity : Activity() {
             .show()
     }
 
-    /**
-     * Shares the song's data (its notes and what the note detector heard, never audio) with the
-     * playback time and a note from the player, so wrong or missing notes can be looked into.
-     */
-    private fun sendSongData() {
-        val id = currentId ?: return
-        val src = source ?: return
-        val time = clock.now(SystemClock.elapsedRealtimeNanos())
-        val note = EditText(this).apply {
-            hint = "What's wrong? e.g. notes missing at ${SongExport.clock(time)}"
-            setText("Around ${SongExport.clock(time)}: ")
-            setSelection(text.length)
-            setTextColor(WHITE)
-            setHintTextColor(0xFF9FB4CC.toInt())
-            minLines = 2
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-        }
-        val box = FrameLayout(this).apply { setPadding(ui.px(20), 0, ui.px(20), 0); addView(note) }
-        AlertDialog.Builder(this)
-            .setTitle("📤 Send song data")
-            .setMessage("Makes a PDF with this song's notes and what the app heard (no audio), its link, any tab you added, " +
-                "and the playback time (${SongExport.clock(time)}). Play to the part that's wrong first; then save or send " +
-                "the PDF and upload it to the chat.")
-            .setView(box)
-            .setPositiveButton("Send") { _, _ ->
-                val yt = currentSource as? SongJobs.Source.YouTube
-                val info = SongExport.Info(
-                    id = id,
-                    title = src.title.ifBlank { titleText.text.toString() },
-                    link = yt?.let { "https://youtu.be/${it.videoId}" },
-                    instrument = settings.instrument.greekName,
-                    detail = settings.detail(id).name.lowercase(Locale.ROOT),
-                    lineFrom = if (lineSpec is SongLines.Spec.FromTab) "tab" else "detected",
-                    sync = syncOffset,
-                    time = time,
-                    note = note.text.toString(),
-                    notes = song?.notes ?: emptyList(),
-                )
-                status.text = "Packing the song's data…"
-                SongExport.share(this, info) { error -> status.text = error ?: "Pick where to save or send the PDF, then upload it to the chat." }
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    /** Opens a web search for the song's tab (in English or Greek) in the browser; the player copies it from there. */
-    private fun findTabOnline(greek: Boolean) {
-        val known = source?.title?.takeIf { it.isNotBlank() } ?: if (fileUri != null) titleText.text.toString() else null
-        val title = known?.let { searchTitle(it) }?.takeIf { it.isNotBlank() }
-        if (title == null) { status.text = "The song's title is known once it's prepared; search for its tab then."; return }
-        val query = if (greek) "$title ταμπλατούρα μπουζούκι" else "$title bouzouki tab"
-        val uri = Uri.parse("https://www.google.com/search").buildUpon().appendQueryParameter("q", query).build()
-        try {
-            startActivity(Intent(Intent.ACTION_VIEW, uri))
-            status.text = "Found one? Select the tab's lines, copy them, come back, and 📝 Tab → Paste tab."
-        } catch (_: ActivityNotFoundException) {
-            status.text = "No web browser found to search with."
-        }
-    }
-
     /** Pastes a tab from the clipboard, after a look at it. */
     private fun pasteTab() {
         val id = currentId ?: return
         val clip = (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).primaryClip
         val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()
         if (text.isNullOrBlank()) {
-            status.text = "Nothing to paste. In the browser, select all the tab's lines, Copy, come back, then 📝 Tab → Paste tab."
+            status.text = "Nothing to paste. Select all the tab's lines, Copy, come back, then 📝 Tab → Paste tab."
             return
         }
         offerTabText(id, text, "Paste this tab?")
@@ -1277,7 +1170,7 @@ class SongActivity : Activity() {
             status.text = "Prepare the song first, then share the tab again."
             AlertDialog.Builder(this)
                 .setTitle("Prepare the song first")
-                .setMessage("A tab goes with a prepared song. Paste the song's YouTube link here (or Share → Μπουζούκι in the YouTube app) " +
+                .setMessage("A tab goes with a prepared song. Prepare the song first (📁 Audio file) " +
                     "and let it get ready; then share the tab again, or open it with 📝 Tab → Open a tab file.")
                 .setPositiveButton("OK") { _, _ -> showLinkRows(true) }
                 .show()
@@ -1290,8 +1183,7 @@ class SongActivity : Activity() {
             .setItems(songs.map { if (it.current) it.title else "${it.title}  ·  prepare again" }.toTypedArray()) { _, i ->
                 answered = true
                 val s = songs[i]
-                link.setText("https://youtu.be/${s.id}")
-                openYouTube(s.id, startJob = !s.current)
+                openSaved(s.id)
                 when (tab) {
                     is TabFiles.Incoming.Text -> offerTabText(s.id, tab.text, "Use this tab for “${s.title}”?", incoming = tab)
                     is TabFiles.Incoming.Pdf -> { useTab(s.id, SongLines.TabSource.Pdf(tab.file)); settle(tab) }
@@ -1302,8 +1194,8 @@ class SongActivity : Activity() {
             .show()
     }
 
-    /** The saved songs that can be opened again (an audio file's can't: the app doesn't keep the file). */
-    private fun savedSongs() = SongJobs.recent(this).filter { !it.id.startsWith("file-") }
+    /** The saved songs (one whose audio isn't on the phone plays on the bouzouki sound). */
+    private fun savedSongs() = SongJobs.recent(this)
 
     /**
      * Lines tab [tab] (text or a PDF) up with song [id] and shows its notes. It's kept for the song (in place of
@@ -1497,7 +1389,10 @@ class SongActivity : Activity() {
     }
 
     private fun prepareAgain() {
-        val src = currentSource ?: return
+        val src = currentSource ?: run {
+            status.text = "This song's audio isn't on the phone any more: prepare it again from 📁 Audio file."
+            return
+        }
         if (SongJobs.isBusy()) { status.text = "Another song is still being prepared. Wait for it to finish, or cancel it."; return }
         askForNotifications()
         SongJobs.start(this, src, settings.instrument) // the song shown stays until the new one is ready
@@ -1535,10 +1430,9 @@ class SongActivity : Activity() {
         else board.post { board.liveCell?.let { keepVisible(it) } } // after the neck's first layout
     }
 
-    /** The link box and the file/saved-songs row, folded away while a song is open. */
+    /** The row to open a song (a file, a saved song), folded away while a song is open. */
     private fun showLinkRows(show: Boolean) {
         val v = if (show) View.VISIBLE else View.GONE
-        linkRow.visibility = v
         extraRow.visibility = v
     }
 
@@ -1635,17 +1529,33 @@ class SongActivity : Activity() {
     }
 
     private fun showSaved() {
-        val songs = SongJobs.recent(this).filter { !it.id.startsWith("file-") }
-        if (songs.isEmpty()) { status.text = "No saved songs yet. Prepared songs are kept here for next time."; return }
+        val songs = savedSongs()
+        if (songs.isEmpty()) { status.text = "No saved songs yet. Prepared songs are kept here, on this phone only."; return }
         AlertDialog.Builder(this)
             .setTitle("My songs")
             .setItems(songs.map { if (it.current) it.title else "${it.title}  ·  prepare again" }.toTypedArray()) { _, i ->
-                val s = songs[i]
-                link.setText("https://youtu.be/${s.id}")
-                // Saved by an older version of the analysis: prepare it again with this one.
-                openYouTube(s.id, startJob = !s.current)
+                openSaved(songs[i].id)
             }
+            .setNeutralButton("🗑 Delete…") { _, _ -> deleteSongs(songs) }
             .setNegativeButton("Close", null)
+            .show()
+    }
+
+    /** Lets the player delete saved songs from the phone (their notes, tabs and settings; no audio is kept anyway). */
+    private fun deleteSongs(songs: List<SongAnalysis.Saved>) {
+        val picked = BooleanArray(songs.size)
+        AlertDialog.Builder(this)
+            .setTitle("Delete from this phone")
+            .setMultiChoiceItems(songs.map { it.title }.toTypedArray(), picked) { _, i, on -> picked[i] = on }
+            .setPositiveButton("Delete") { _, _ ->
+                for ((i, s) in songs.withIndex()) if (picked[i]) {
+                    SongJobs.delete(this, s.id)
+                    prefs.edit().remove(PREF_URI + s.id).remove(PREF_NAME + s.id).remove(PREF_SYNC + s.id).apply()
+                    if (s.id == currentId) { stopFile(); currentId = null; currentSource = null; showSong(null); titleText.text = "Τραγούδι · Play along" }
+                }
+                status.text = "Deleted ${picked.count { it }} song(s) from the phone."
+            }
+            .setNegativeButton("Cancel", null)
             .show()
     }
 
@@ -1672,7 +1582,7 @@ class SongActivity : Activity() {
     }
 
     private fun toggleFilePlayback() {
-        val p = player ?: return
+        val p = player ?: return toggleVirtual()
         if (!filePrepared) { status.text = "The file is still loading…"; return }
         try {
             if (p.isPlaying) { p.pause(); playing = false } else { p.start(); playing = true }
@@ -1681,12 +1591,52 @@ class SongActivity : Activity() {
         refreshButtons()
     }
 
+    /**
+     * ▶ for a song without audio on the phone: the tab plays on the bouzouki sound alone (switched on for it),
+     * from where it is, until its last note has rung.
+     */
+    private fun toggleVirtual() {
+        val s = song ?: run { status.text = "Open a song first."; return }
+        val nanos = SystemClock.elapsedRealtimeNanos()
+        if (playing) {
+            virtualBase = virtualTime(nanos)
+            playing = false
+        } else {
+            if (virtualBase >= virtualEnd(s)) virtualBase = 0.0
+            virtualStart = nanos
+            playing = true
+            if (!bouzoukiSound) { bouzoukiSound = true; pluckReset = true }
+            status.text = "Playing the tab on the bouzouki sound (this song's audio isn't kept on the phone)."
+        }
+        tickFile()
+        refreshButtons()
+    }
+
+    /** Where the tab played alone is at [nanos] (song seconds). */
+    private fun virtualTime(nanos: Long) = if (playing) virtualBase + (nanos - virtualStart) / 1e9 * speed else virtualBase
+
+    /** When the tab played alone is over: its last note's end and a moment more. */
+    private fun virtualEnd(s: SongAnalysis) = (s.notes.lastOrNull()?.end ?: 0.0) + 1.0
+
     private val fileTicker = Runnable { tickFile() }
 
-    /** Reports the file's position to the clock, ten times a second while it plays. */
+    /** Reports the file's position (or the tab's, played alone) to the clock, ten times a second while it plays. */
     private fun tickFile() {
         main.removeCallbacks(fileTicker)
-        val p = player ?: return
+        val p = player
+        if (p == null) {
+            if (fileUri != null || currentId == null) return
+            val nanos = SystemClock.elapsedRealtimeNanos()
+            val s = song
+            if (playing && (s == null || virtualTime(nanos) >= virtualEnd(s))) {
+                virtualBase = s?.let { virtualEnd(it) } ?: 0.0
+                playing = false
+                refreshButtons()
+            }
+            onReport(virtualTime(nanos), playing, speed.toDouble(), nanos)
+            if (playing) main.postDelayed(fileTicker, 100)
+            return
+        }
         if (!filePrepared) return // asking for the position before that puts MediaPlayer in its error state
         val t = try { p.currentPosition / 1000.0 } catch (_: IllegalStateException) { return }
         val nowPlaying = try { p.isPlaying } catch (_: IllegalStateException) { false }
@@ -1703,6 +1653,7 @@ class SongActivity : Activity() {
         player = null
         playing = false
         filePrepared = false
+        virtualBase = 0.0
         // Whatever plays next starts from a stopped clock.
         clock.report(0.0, false, speed.toDouble(), SystemClock.elapsedRealtimeNanos())
         pendingSeek = Double.NaN
@@ -1712,13 +1663,11 @@ class SongActivity : Activity() {
     // --- playback and sync ---
 
     private fun setSpeed(r: Float) {
+        val nanos = SystemClock.elapsedRealtimeNanos()
+        if (player == null) { virtualBase = virtualTime(nanos); virtualStart = nanos } // the tab alone goes on from here
         speed = r
-        if (fileUri != null) {
-            player?.let { p -> try { p.playbackParams = PlaybackParams().setSpeed(r) } catch (_: Exception) {} }
-            tickFile()
-        } else {
-            web.evaluateJavascript("player && player.setPlaybackRate($r)", null)
-        }
+        player?.let { p -> try { p.playbackParams = PlaybackParams().setSpeed(r) } catch (_: Exception) {} }
+        tickFile()
         refreshButtons()
     }
 
@@ -1734,12 +1683,13 @@ class SongActivity : Activity() {
         pendingSeekNanos = nanos
         val s = song
         if (s != null && clock.playing) { restartSound(s, target + syncOffset); pluckReset = false } else pluckReset = true
-        if (fileUri != null) player?.takeIf { filePrepared }?.let { p -> try { p.seekTo((target * 1000).toInt()) } catch (_: Exception) {} }
-        else web.evaluateJavascript("player && player.seekTo($target, true)", null)
+        val p = player
+        if (p != null) p.takeIf { filePrepared }?.let { try { it.seekTo((target * 1000).toInt()) } catch (_: Exception) {} }
+        else { virtualBase = target; virtualStart = nanos; pendingSeek = Double.NaN; tickFile() }
         render(target)
     }
 
-    /** A time report from the player (YouTube or the file), taken at [nanos]. */
+    /** A time report from the player (the file, or the tab played alone), taken at [nanos]. */
     private fun onReport(t: Double, isPlaying: Boolean, rate: Double, nanos: Long) {
         if (!pendingSeek.isNaN()) {
             // Near the target, whether it has played on since or is still loading: the seek has landed.
@@ -1772,7 +1722,7 @@ class SongActivity : Activity() {
     /** Shows the song at media time [media]: the neck, the note, the tab strip and the tablature. */
     private fun render(media: Double) {
         lastFrameMedia = media
-        if (fileUri != null) {
+        if (currentId != null) {
             val sec = media.toInt()
             if (sec != shownSecond) { shownSecond = sec; fileTimeText.text = "%d:%02d".format(sec / 60, sec % 60) }
         }
@@ -1910,59 +1860,6 @@ class SongActivity : Activity() {
         filePlayButton.text = if (playing) "⏸ Pause" else "▶ Play"
     }
 
-    private fun playerHtml(id: String) = """
-        <!DOCTYPE html><html><head>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta name="referrer" content="strict-origin-when-cross-origin">
-        <style>html,body{margin:0;height:100%;background:#000}#p{width:100%;height:100%}</style>
-        </head><body><div id="p"></div>
-        <script src="https://www.youtube.com/iframe_api"></script>
-        <script>
-          var player = null, lastT = -1, lastS = -9, lastR = -1, lastSent = 0;
-          // Polled often but passed on only when something changed (or every 250 ms), so the app
-          // sees each new time soon after the player has it.
-          function report(force) {
-            if (!player || !player.getCurrentTime) return;
-            var t = player.getCurrentTime(), s = player.getPlayerState();
-            var r = player.getPlaybackRate ? player.getPlaybackRate() : 1;
-            var now = Date.now();
-            if (force || t !== lastT || s !== lastS || r !== lastR || now - lastSent > 250) {
-              lastT = t; lastS = s; lastR = r; lastSent = now;
-              Android.onTime(t, s, r);
-            }
-          }
-          function onYouTubeIframeAPIReady() {
-            player = new YT.Player('p', {
-              width: '100%', height: '100%', videoId: '$id',
-              playerVars: { playsinline: 1, rel: 0, origin: '$ORIGIN' },
-              events: {
-                onReady: function () { setInterval(report, 20); },
-                onStateChange: function () { report(true); },
-                onPlaybackRateChange: function () { report(true); },
-                onError: function (e) { Android.onError(e.data); }
-              }
-            });
-          }
-        </script></body></html>
-    """.trimIndent()
-
-    private inner class YouTubeBridge {
-        @JavascriptInterface
-        fun onTime(t: Double, state: Int, rate: Double) {
-            val nanos = SystemClock.elapsedRealtimeNanos() // when the page read it, not when the UI thread gets to it
-            main.post { if (fileUri == null) onReport(t, state == YT_PLAYING, rate, nanos) }
-        }
-
-        @JavascriptInterface
-        fun onError(code: Int) = main.post {
-            status.text = when (code) {
-                101, 150 -> "The owner of this video doesn't allow it to play inside other apps. The song can still be prepared; play it from 📁 Audio file if you have it."
-                100 -> "That video was not found (removed or private)."
-                else -> "YouTube couldn't play this here (error $code)."
-            }
-        }
-    }
-
     override fun onStart() {
         super.onStart()
         visible = true
@@ -1980,7 +1877,7 @@ class SongActivity : Activity() {
         SongJobs.unlisten(jobListener)
         soundOn = false
         audio.stop()
-        if (playing && fileUri != null) toggleFilePlayback()
+        if (playing) toggleFilePlayback()
         super.onPause()
     }
 
@@ -1994,12 +1891,12 @@ class SongActivity : Activity() {
     }
 
     /**
-     * Kept when the screen may be recreated (dark mode, font size, or the app closed in the background): the song open
-     * (a YouTube one), a tab that came in and is being tried for it, and one being offered.
+     * Kept when the screen may be recreated (dark mode, font size, or the app closed in the background): the song open,
+     * a tab that came in and is being tried for it, and one being offered.
      */
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        currentId?.takeIf { !it.startsWith("file-") }?.let { outState.putString(STATE_SONG, it) }
+        currentId?.let { outState.putString(STATE_SONG, it) }
         val p = pendingTab
         when (val t = p?.source) {
             is SongLines.TabSource.Pdf -> if (TabFiles.isIncoming(this, t.file)) outState.putString(STATE_PENDING_PDF, t.file.path)
@@ -2022,10 +1919,7 @@ class SongActivity : Activity() {
      */
     private fun restore(state: Bundle) {
         state.getString(STATE_SONG)?.let { id ->
-            if (id != currentId) {
-                link.setText("https://youtu.be/$id")
-                openYouTube(id, startJob = false)
-            }
+            if (id != currentId) openSaved(id)
         }
         fun pdf(path: String?) = path?.let { File(it) }?.takeIf { it.isFile && TabFiles.isIncoming(this, it) }?.also { TabFiles.hold(it) }
         val pendingSong = state.getString(STATE_PENDING_SONG)
@@ -2051,7 +1945,6 @@ class SongActivity : Activity() {
             offered?.let { TabFiles.release(this, it) }
         }
         stopFile()
-        web.destroy()
         super.onDestroy()
     }
 
@@ -2060,13 +1953,14 @@ class SongActivity : Activity() {
         private var live: WeakReference<SongActivity>? = null
         private const val REQ_FILE = 3
         private const val REQ_TAB = 4
-        private const val ORIGIN = "https://com.bouzouki"
-        private const val YT_PLAYING = 1
         private const val PAGE_NECK = 0
         private const val PAGE_SHEET = 1
         private const val PREF_PAGE = "song_page"
         private const val PREF_SYNC = "song_sync_"
         private const val PREF_LAST_SONG = "song_last"
+        /** An audio file song's file (a content link the app keeps permission to read) and name. */
+        private const val PREF_URI = "song_uri_"
+        private const val PREF_NAME = "song_name_"
         private const val STATE_SONG = "song"
         private const val STATE_PENDING_SONG = "tab_pending_song"
         private const val STATE_PENDING_PDF = "tab_pending_pdf"
@@ -2082,7 +1976,7 @@ class SongActivity : Activity() {
         private const val PLUCK_LEAD = 0.06
         /** Strokes per second of the bouzouki sound's tremolo. */
         private const val TREMOLO_HZ = 12.0
-        /** A tapped note plays from this many seconds before it (a little more than YouTube's time step). */
+        /** A tapped note plays from this many seconds before it. */
         private const val NOTE_PREROLL = 0.3
         /** The playback speeds offered. */
         private val SPEEDS = listOf(0.5f, 0.75f, 1f)
@@ -2108,19 +2002,6 @@ class SongActivity : Activity() {
         private const val OFF_PITCH = "?"
         private const val PREPARE_AGAIN = "Prepare again to use tabs and detail levels."
 
-        private val ID = Regex("""(?:v=|youtu\.be/|shorts/|embed/|live/)([A-Za-z0-9_-]{11})""")
-        private val BRACKETS = Regex("""[(\[{【][^)\]}】]*[)\]}】]""")
-        private val NOISE = Regex("""(?<![\p{L}\p{N}])(official|video|videoclip|clip|lyrics?|audio|hd|hq|4k|remaster(ed)?|στίχοι|βίντεο)(?![\p{L}\p{N}])""",
-            RegexOption.IGNORE_CASE) // Greek capitals too: Kotlin's Regex makes it Unicode-aware
-
-        /** A video title as a search for its tab wants it: without "(Official Video)", "[HD]", "| Lyrics" and the like. */
-        fun searchTitle(title: String): String = title
-            .replace(BRACKETS, " ")
-            .replace(NOISE, " ")
-            .replace(Regex("""[|_•·"«»“”]+"""), " ")
-            .replace(Regex("""\s+"""), " ")
-            .trim(' ', '-', '–', '—', ':')
-
         /** How far off A = 440 Hz a record must be (cents) for the song to say how to tune to it. */
         private const val TUNING_SHOWN = 10
 
@@ -2135,14 +2016,6 @@ class SongActivity : Activity() {
             val flat = cents < 0
             return "Record tuned $off cents ${if (flat) "flat" else "sharp"}: tune ${if (flat) "down" else "up"}" +
                 (if (off < 30) " a little" else "") + " to play along"
-        }
-
-        /** The 11-character video id from any kind of YouTube link (or a bare id). */
-        fun youTubeId(text: String): String? {
-            val t = text.trim()
-            ID.find(t)?.let { return it.groupValues[1] }
-            // A bare video id: 11 characters with a digit, - or _ (a plain 11-letter word is a search).
-            return t.takeIf { Regex("[A-Za-z0-9_-]{11}").matches(it) && it.any { c -> c.isDigit() || c == '-' || c == '_' } }
         }
     }
 }

@@ -177,10 +177,10 @@ internal class TestEncryption(private val kind: Kind, private val userPassword: 
                 var h = md.digest()
                 if (kind != Kind.RC4_40) repeat(50) { h = MessageDigest.getInstance("MD5").digest(h.copyOf(n)) }
                 fileKey = h.copyOf(n)
-                u = if (kind == Kind.RC4_40) PdfCrypt.rc4(fileKey, PAD) else {
+                u = if (kind == Kind.RC4_40) rc4(fileKey, PAD) else {
                     val m = MessageDigest.getInstance("MD5"); m.update(PAD); m.update(id0)
-                    var x = PdfCrypt.rc4(fileKey, m.digest())
-                    for (i in 1..19) x = PdfCrypt.rc4(ByteArray(n) { (fileKey[it].toInt() xor i).toByte() }, x)
+                    var x = rc4(fileKey, m.digest())
+                    for (i in 1..19) x = rc4(ByteArray(n) { (fileKey[it].toInt() xor i).toByte() }, x)
                     x + ByteArray(16)
                 }
             }
@@ -203,7 +203,7 @@ internal class TestEncryption(private val kind: Kind, private val userPassword: 
         md.update(byteArrayOf(num.toByte(), (num shr 8).toByte(), (num shr 16).toByte(), 0, 0))
         if (kind == Kind.AES_128) md.update("sAlT".toByteArray())
         val key = md.digest().copyOf(minOf(fileKey.size + 5, 16))
-        return if (kind == Kind.AES_128) aes(key, d) else PdfCrypt.rc4(key, d)
+        return if (kind == Kind.AES_128) aes(key, d) else rc4(key, d)
     }
 
     private fun aes(key: ByteArray, d: ByteArray): ByteArray {
@@ -680,4 +680,24 @@ internal class TestScore(private val style: Style) {
         const val H = 842.0
         val TEXT = TestFont("T1", false)
     }
+}
+
+/** RC4, for writing encrypted test files (the app itself never decrypts a PDF). */
+internal fun rc4(key: ByteArray, d: ByteArray): ByteArray {
+    val s = IntArray(256) { it }
+    var j = 0
+    for (i in 0 until 256) {
+        j = (j + s[i] + (key[i % key.size].toInt() and 0xFF)) and 255
+        val t = s[i]; s[i] = s[j]; s[j] = t
+    }
+    var i = 0
+    j = 0
+    val out = ByteArray(d.size)
+    for (k in d.indices) {
+        i = (i + 1) and 255
+        j = (j + s[i]) and 255
+        val t = s[i]; s[i] = s[j]; s[j] = t
+        out[k] = (d[k].toInt() xor s[(s[i] + s[j]) and 255]).toByte()
+    }
+    return out
 }

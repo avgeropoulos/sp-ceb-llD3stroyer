@@ -24,47 +24,44 @@ jobs:
       - name: Run game logic tests
         run: ./gradlew :core:test --console=plain
 
-      - name: Run bouzouki scale and sound tests
+      - name: Run bouzouki core tests
         run: ./gradlew :bouzouki-core:test --console=plain
 
-      - name: Build APK
-        run: ./gradlew :app:assembleDebug --console=plain
-
-      - name: Build bouzouki APK
+      - name: Build Bouzouki Lab APK
         run: ./gradlew :bouzouki:assembleDebug --console=plain
 
-      - name: Rename APKs
+      - name: Rename APK
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk RoccosQuest.apk
-          cp bouzouki/build/outputs/apk/debug/bouzouki-debug.apk Bouzouki.apk
-          echo "$GITHUB_RUN_NUMBER" > bouzouki-version.txt
+          cp bouzouki/build/outputs/apk/debug/bouzouki-debug.apk BouzoukiLab.apk
+          echo "$GITHUB_RUN_NUMBER" > bouzouki-lab-version.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: RoccosQuest-apk
-          path: RoccosQuest.apk
+          name: BouzoukiLab-apk
+          path: BouzoukiLab.apk
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: Bouzouki-apk
-          path: Bouzouki.apk
+          name: bouzouki-core-test-reports
+          path: bouzouki-core/build/reports/tests/test
 
+      # The Lab app's own release: never the repository's "latest" one, which the original
+      # Μπουζούκι app (com.bouzouki) and Rocco's Quest update from.
       - name: Publish downloadable build
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest-${{ github.ref_name }}
-          name: "Rocco's Quest - Download for Android"
-          prerelease: false
-          make_latest: true
+          tag_name: latest-bouzouki-lab
+          name: "Μπουζούκι Lab - Download for Android"
+          prerelease: true
+          make_latest: false
           body: |
-            Install on Android: download **RoccosQuest.apk** on your phone, open it,
-            and allow "install unknown apps" for your browser if asked.
+            Install on Android: download **BouzoukiLab.apk** on your phone, open it,
+            and allow "install unknown apps" for your browser if asked. It installs beside
+            the original Μπουζούκι app (it is a separate app, com.bouzouki.lab).
 
-            **Bouzouki.apk** is the Greek bouzouki app (trichordo and tetrachordo with the dromoi).
-
-            Built from ${{ github.sha }}.
+            Built from ${{ github.sha }} (${{ github.ref_name }}).
           files: |
-            RoccosQuest.apk
-            Bouzouki.apk
-            bouzouki-version.txt
+            BouzoukiLab.apk
+            bouzouki-lab-version.txt

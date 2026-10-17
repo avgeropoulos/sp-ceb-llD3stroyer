@@ -369,15 +369,13 @@ class PdfTabTest {
     }
 
     @Test
-    fun readsEncryptedFilesWithoutAPassword() {
+    fun leavesProtectedFilesAlone() {
+        // Protection is never removed, even an empty-password "no copying" lock: nothing is read, and it says why.
         for (kind in TestEncryption.Kind.values()) {
-            assertTab(PdfTab.read(tabPdf(pages, Style(encryption = TestEncryption(kind))).bytes, Instrument.TETRACHORDO))
+            val tab = PdfTab.read(tabPdf(pages, Style(encryption = TestEncryption(kind))).bytes, Instrument.TETRACHORDO)
+            assertEquals(emptyList(), tab.notes)
+            assertTrue(tab.warnings.first().contains("encryption"), tab.warnings.toString())
         }
-        val b = Style(flip = false, type0 = true, objectStreams = true, form = true, encryption = TestEncryption(TestEncryption.Kind.AES_128))
-        assertTab(PdfTab.read(tabPdf(pages, b).bytes, Instrument.TETRACHORDO))
-        // AES-128 without the optional top-level /Length: the key length comes from the crypt filter.
-        val noLength = TestEncryption(TestEncryption.Kind.AES_128, topLength = false)
-        assertTab(PdfTab.read(tabPdf(pages, Style(encryption = noLength)).bytes, Instrument.TETRACHORDO))
     }
 
     @Test

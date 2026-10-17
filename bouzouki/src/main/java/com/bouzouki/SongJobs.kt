@@ -31,13 +31,14 @@ import java.net.URL
 import kotlin.concurrent.thread
 
 /**
- * Prepares songs in the background (like Chordify): downloads the audio, removes the voice,
- * transcribes the bouzouki line and saves it, so it opens instantly the next time.
+ * Prepares songs in the background, all on the phone: reads the audio (a file of the player's), separates
+ * the instruments, transcribes the bouzouki line and saves it, so it opens instantly the next time.
  * One song at a time; the song screen watches [state].
  * A song is kept in filesDir/songs as <id>.json (its line), <id>.data (what the line was derived
  * from: [AnalysisData], for more or fewer notes or lining up a tab, see [SongLines]) and, once a
  * tab is pasted or opened for it, the tab as it came: <id>.tab.txt (pasted, or a text file) or
- * <id>.tab.pdf (one or the other). Only the notes stay on the phone, never the audio.
+ * <id>.tab.pdf (one or the other). Only the notes stay on the phone, never the audio, and nothing is uploaded:
+ * any temporary audio lives in the app's cache only while a song is prepared ([sweep] clears what a crash left).
  */
 object SongJobs {
     sealed interface State {
@@ -219,8 +220,26 @@ object SongJobs {
     // --- running a job ---
 
     sealed interface Source {
-        data class YouTube(val videoId: String) : Source
         data class AudioFile(val uri: Uri, val name: String) : Source
+    }
+
+    /** The song id for [source]. */
+    fun idFor(source: Source): String = when (source) {
+        is Source.AudioFile -> "file-" + Integer.toHexString(source.uri.toString().hashCode())
+    }
+
+    /** Where temporary audio goes while a song is prepared (the app's cache; never anywhere else). */
+    fun tempDir(context: Context) = File(context.cacheDir, "audio").apply { mkdirs() }
+
+    /**
+     * Deletes temporary audio a crash or a killed app left behind (none is ever meant to stay): all of it, unless a
+     * song is being prepared now.
+     */
+    fun sweep(context: Context) {
+        if (isBusy()) return
+        tempDir(context).listFiles()?.forEach { it.delete() }
+        // What older versions left in the cache itself (a downloaded song's audio).
+        context.cacheDir.listFiles { f -> f.isFile && f.extension.lowercase() in setOf("m4a", "webm", "opus", "mp4", "wav", "pcm") }?.forEach { it.delete() }
     }
 
     fun isBusy() = worker?.isAlive == true
@@ -230,7 +249,7 @@ object SongJobs {
         if (isBusy()) return
         cancel = false
         val app = context.applicationContext
-        val id = when (source) { is Source.YouTube -> source.videoId; is Source.AudioFile -> "file-" + Integer.toHexString(source.uri.toString().hashCode()) }
+        val id = idFor(source)
         publish(State.Working(id, "Starting…", 0f))
         val service = Intent(app, PrepareService::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) app.startForegroundService(service) else app.startService(service)
@@ -254,9 +273,6 @@ object SongJobs {
 
     private fun friendly(e: Throwable): String = when {
         e is OutOfMemoryError -> "The song is too long for the phone's memory."
-        e.javaClass.name.contains("ContentNotAvailable") || e.javaClass.name.contains("AgeRestricted") ->
-            "YouTube won't let this video be read (private, age-restricted or blocked)."
-        e.javaClass.name.contains("ReCaptcha") -> "YouTube is asking for a captcha. Try again later, or pick the song as an audio file."
         e is IOException -> e.message ?: "Network problem"
         else -> e.message ?: e.javaClass.simpleName
     }
@@ -270,16 +286,6 @@ object SongJobs {
         val title: String
         val audio: AudioDecoder.Stereo
         when (source) {
-            is Source.YouTube -> {
-                report("Downloading the song's audio", 0f)
-                val song = YouTubeAudio.download(source.videoId, context.cacheDir, { report("Downloading the song's audio", it) }, cancelled)
-                title = song.title
-                try {
-                    audio = AudioDecoder.decode(song.file, { report("Reading the audio", it) }, cancelled)
-                } finally {
-                    song.file.delete() // only the notes are kept
-                }
-            }
             is Source.AudioFile -> {
                 title = source.name
                 audio = AudioDecoder.decode(context, source.uri, { report("Reading the audio", it) }, cancelled)

@@ -11,6 +11,9 @@ import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.concurrent.thread
 
+/** The GitHub release CI publishes the Lab app's builds to. */
+const val RELEASE_TAG = "latest-bouzouki-lab"
+
 /**
  * Updates the app from the latest GitHub release without going through the browser:
  * it reads the build number CI publishes next to the APK, and if it's newer, downloads
@@ -51,7 +54,7 @@ class Updater(private val activity: Activity) {
                 params.setAppPackageName(activity.packageName)
                 sessionId = installer.createSession(params)
                 installer.openSession(sessionId).use { session ->
-                    session.openWrite("Bouzouki.apk", 0, total).use { out ->
+                    session.openWrite("BouzoukiLab.apk", 0, total).use { out ->
                         conn.inputStream.use { input ->
                             val buf = ByteArray(64 * 1024)
                             var done = 0L
@@ -93,8 +96,12 @@ class Updater(private val activity: Activity) {
 
     companion object {
         const val ACTION_INSTALL_STATUS = "com.bouzouki.INSTALL_STATUS"
-        private const val RELEASE = "https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download"
-        private const val APK_URL = "$RELEASE/Bouzouki.apk"
-        private const val VERSION_URL = "$RELEASE/bouzouki-version.txt"
+        /**
+         * The Lab version's own release (its branch's build), never the repository's "latest" one: that is the original
+         * app's, a different app on the phone.
+         */
+        private const val RELEASE = "https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/download/$RELEASE_TAG"
+        private const val APK_URL = "$RELEASE/BouzoukiLab.apk"
+        private const val VERSION_URL = "$RELEASE/bouzouki-lab-version.txt"
     }
 }

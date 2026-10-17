@@ -10,7 +10,8 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.bouzouki"
+        // The Lab version: its own app on the phone, installed beside the original Μπουζούκι (com.bouzouki).
+        applicationId = "com.bouzouki.lab"
         minSdk = 24
         targetSdk = 35
         // Every CI build gets a higher version number, so Android installs it as an update.
@@ -46,8 +47,6 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-        // NewPipe Extractor uses newer Java APIs than Android 7-12 have.
-        isCoreLibraryDesugaringEnabled = true
     }
 
     packaging {
@@ -74,6 +73,4 @@ kotlin {
 dependencies {
     implementation(project(":bouzouki-core"))
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.31.0")
-    implementation("com.github.teamnewpipe:NewPipeExtractor:v0.26.5")
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.5")
 }
