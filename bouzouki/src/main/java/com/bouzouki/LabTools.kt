@@ -65,7 +65,7 @@ object LabTools {
     private fun separationCost(activity: Activity): String {
         val (l, r) = testMix(20.0)
         val lines = ArrayList<String>()
-        for (kind in listOf(Separation.Kind.LIGHT, Separation.Kind.DEMUCS_LITE, Separation.Kind.DEMUCS)) {
+        for (kind in listOf(Separation.Kind.LIGHT, Separation.Kind.DEMUCS_TINY, Separation.Kind.DEMUCS_LITE, Separation.Kind.DEMUCS)) {
             val file = Separation.modelFile(activity, kind)
             if (file != null && !file.isFile) { lines += "${kind.name}: model not on the phone (🧩 Separation gets it)"; continue }
             System.gc()

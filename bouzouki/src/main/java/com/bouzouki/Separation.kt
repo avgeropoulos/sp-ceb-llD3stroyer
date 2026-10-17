@@ -18,7 +18,8 @@ import java.net.URL
  * How a band's recording is separated before its bouzouki is transcribed, all on the phone:
  * - [Kind.DEMUCS]: Demucs v4 htdemucs_6s (Meta, MIT), its guitar and "other" stems (where the bouzouki lands): the
  *   best, and the heaviest (a segment of 7.8 s at a time, several GB of memory at its peak on a desktop);
- * - [Kind.DEMUCS_LITE]: the same network on shorter segments ([LITE_MODEL]): much less memory, a little less clean;
+ * - [Kind.DEMUCS_LITE], [Kind.DEMUCS_TINY]: the same network on 3.9 s or 2.0 s segments: about half and a third of the
+ *   memory (on a desktop 1.2 and 0.75 GB at the peak, against 2.5 GB), with less context for the network;
  * - [Kind.LIGHT]: plain DSP (voice turned down, drums and strums out, the bouzouki's band kept), almost free;
  * - [Kind.NONE]: nothing (the bouzouki alone).
  * The models are downloaded once from the app's model release (and checked against its SHA-256 sums). [chosen] is the
@@ -28,13 +29,11 @@ import java.net.URL
 object Separation {
     enum class Kind(val label: String) {
         DEMUCS("Separating the instruments (Demucs)"),
-        DEMUCS_LITE("Separating the instruments (Demucs, light)"),
+        DEMUCS_LITE("Separating the instruments (Demucs, 3.9 s segments)"),
+        DEMUCS_TINY("Separating the instruments (Demucs, 2 s segments)"),
         LIGHT("Leaning the mix towards the bouzouki"),
         NONE("Reading the bouzouki"),
     }
-
-    /** The shorter-segment export of htdemucs_6s (see tools/demucs, .github/workflows/models.yml). */
-    const val LITE_MODEL = "htdemucs_6s_seg39.onnx"
 
     class Opened(val separator: Separator, label: String, private val close: () -> Unit) : Closeable {
         var label = label; internal set
@@ -43,19 +42,23 @@ object Separation {
 
     private fun prefs(context: Context) = context.getSharedPreferences("bouzouki", Context.MODE_PRIVATE)
 
-    /** The player's choice, or (none made) by the phone's memory: Demucs from 8 GB, its light export from 4 GB. */
+    /**
+     * The player's choice, or (none made) by the phone's memory: full Demucs from 8 GB, its 3.9 s export from 6 GB,
+     * the 2 s export from 4 GB, the light separation below.
+     */
     fun chosen(context: Context): Kind {
         prefs(context).getString(PREF, null)?.let { n -> Kind.entries.firstOrNull { it.name == n }?.let { return it } }
         val mem = ActivityManager.MemoryInfo().also { (context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).getMemoryInfo(it) }
         val gb = mem.totalMem / 1e9
-        return when { gb >= 7.5 -> Kind.DEMUCS; gb >= 3.5 -> Kind.DEMUCS_LITE; else -> Kind.LIGHT }
+        return when { gb >= 7.5 -> Kind.DEMUCS; gb >= 5.5 -> Kind.DEMUCS_LITE; gb >= 3.5 -> Kind.DEMUCS_TINY; else -> Kind.LIGHT }
     }
 
     fun choose(context: Context, kind: Kind?) = prefs(context).edit().apply { if (kind == null) remove(PREF) else putString(PREF, kind.name) }.apply()
 
     fun modelFile(context: Context, kind: Kind): File? = when (kind) {
         Kind.DEMUCS -> File(context.filesDir, DemucsSeparator.MODEL_6S)
-        Kind.DEMUCS_LITE -> File(context.filesDir, LITE_MODEL)
+        Kind.DEMUCS_LITE -> File(context.filesDir, DemucsSeparator.MODEL_6S_SEG39)
+        Kind.DEMUCS_TINY -> File(context.filesDir, DemucsSeparator.MODEL_6S_SEG20)
         else -> null
     }
 
