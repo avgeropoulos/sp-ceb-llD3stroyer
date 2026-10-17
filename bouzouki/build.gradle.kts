@@ -7,7 +7,8 @@ plugins {
 
 android {
     namespace = "com.bouzouki"
-    compileSdk = 35
+    // AndroidX core 1.17 (alphaTab) compiles against Android 16; the app still targets 35.
+    compileSdk = 36
 
     defaultConfig {
         // The Lab version: its own app on the phone, installed beside the original Μπουζούκι (com.bouzouki).
