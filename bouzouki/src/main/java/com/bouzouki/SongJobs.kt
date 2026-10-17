@@ -13,13 +13,8 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import ai.onnxruntime.OrtEnvironment
-import ai.onnxruntime.OrtSession
 import com.bouzouki.core.Instrument
 import com.bouzouki.core.song.AnalysisData
-import com.bouzouki.core.song.MdxSeparator
-import com.bouzouki.core.song.NoSeparation
-import com.bouzouki.core.song.Separator
 import com.bouzouki.core.song.SongAnalysis
 import com.bouzouki.core.song.SongAnalyzer
 import java.io.BufferedOutputStream
@@ -27,8 +22,6 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.OutputStream
-import java.net.HttpURLConnection
-import java.net.URL
 import kotlin.concurrent.thread
 
 /**
@@ -240,11 +233,21 @@ object SongJobs {
     sealed interface Source {
         val solo: Boolean
         data class AudioFile(val uri: Uri, val name: String, override val solo: Boolean = false) : Source
+        /**
+         * A clip heard with 🎧 Listen: its audio (44.1 kHz stereo) in memory only, let go of as soon as the song is
+         * prepared; it's never written anywhere.
+         */
+        class Clip(val id: String, val title: String, left: FloatArray, right: FloatArray, override val solo: Boolean = false) : Source {
+            @Volatile var left: FloatArray? = left; private set
+            @Volatile var right: FloatArray? = right; private set
+            fun release() { left = null; right = null }
+        }
     }
 
     /** The song id for [source]. */
     fun idFor(source: Source): String = when (source) {
         is Source.AudioFile -> "file-" + Integer.toHexString(source.uri.toString().hashCode())
+        is Source.Clip -> source.id
     }
 
     /** Where temporary audio goes while a song is prepared (the app's cache; never anywhere else). */
@@ -274,7 +277,11 @@ object SongJobs {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) app.startForegroundService(service) else app.startService(service)
         worker = thread(name = "song-prep") {
             try {
-                val (song, data) = prepare(app, id, source, instrument) { step, f -> publish(State.Working(id, step, f)) }
+                val (song, data) = try {
+                    prepare(app, id, source, instrument) { step, f -> publish(State.Working(id, step, f)) }
+                } finally {
+                    (source as? Source.Clip)?.release() // the clip's audio is gone once its tab is made
+                }
                 publish(State.Working(id, "Saving", 1f))
                 save(app, song, data)
                 publish(State.Done(song))
@@ -300,9 +307,6 @@ object SongJobs {
         context: Context, id: String, source: Source, instrument: Instrument, report: (String, Float) -> Unit,
     ): Pair<SongAnalysis, AnalysisData> {
         val cancelled = { cancel }
-        // A band's song is separated first (its model downloaded once); the bouzouki alone needs nothing of the kind.
-        val mdxFile = if (source.solo) null else ensureModel(context) { report("Getting the voice-removal model (once, 67 MB)", it) }
-
         val title: String
         val audio: AudioDecoder.Stereo
         when (source) {
@@ -310,57 +314,21 @@ object SongJobs {
                 title = source.name
                 audio = AudioDecoder.decode(context, source.uri, { report("Reading the audio", it) }, cancelled)
             }
+            is Source.Clip -> {
+                title = source.title
+                audio = AudioDecoder.Stereo(source.left ?: throw IOException("The clip is gone"), source.right ?: throw IOException("The clip is gone"))
+            }
         }
-
-        val env = OrtEnvironment.getEnvironment()
-        val threads = Runtime.getRuntime().availableProcessors().coerceIn(2, 8)
-        val options = OrtSession.SessionOptions().apply {
-            setIntraOpNumThreads(threads)
-            setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
-        }
-        val mdx = mdxFile?.let { env.createSession(it.path, options) }
-        try {
-            val separator: Separator = if (mdx != null) MdxSeparator(env, mdx) else NoSeparation
-            return PitchEngines.open(context).use { bp ->
-                SongAnalyzer(separator, bp.pitch, CalibrationStore.post(context, source.solo)).analyzeWithData(
+        // A band's song is separated first (the bouzouki's instruments from the rest); the bouzouki alone needs nothing.
+        return Separation.open(context, if (source.solo) Separation.Kind.NONE else Separation.chosen(context), report, cancelled).use { sep ->
+            PitchEngines.open(context).use { bp ->
+                SongAnalyzer(sep.separator, bp.pitch, CalibrationStore.post(context, source.solo)).analyzeWithData(
                     id, title, audio.left, audio.right, instrument,
-                    progress = { stage, f -> report(if (source.solo && stage == SongAnalyzer.Stage.SEPARATING) "Reading the bouzouki" else stage.label, f) },
+                    progress = { stage, f -> report(if (stage == SongAnalyzer.Stage.SEPARATING) sep.label else stage.label, f) },
                     cancelled = cancelled,
                 )
             }
-        } finally {
-            mdx?.close()
         }
-    }
-
-    /** The vocal-removal model, downloaded once into the app's files. */
-    private fun ensureModel(context: Context, progress: (Float) -> Unit): File {
-        val file = File(context.filesDir, "mdx_inst_hq3.onnx")
-        if (file.exists() && file.length() == MdxSeparator.MODEL_BYTES) return file
-        val part = File(context.filesDir, "mdx_inst_hq3.onnx.part")
-        val conn = URL(MdxSeparator.MODEL_URL).openConnection() as HttpURLConnection
-        conn.instanceFollowRedirects = true
-        conn.connectTimeout = 20000
-        conn.readTimeout = 60000
-        if (conn.responseCode !in 200..299) throw IOException("Couldn't download the voice-removal model (${conn.responseCode})")
-        val total = conn.contentLengthLong.takeIf { it > 0 } ?: MdxSeparator.MODEL_BYTES
-        conn.inputStream.use { input ->
-            part.outputStream().use { out ->
-                val buf = ByteArray(256 * 1024)
-                var done = 0L
-                while (true) {
-                    if (cancel) throw InterruptedException()
-                    val n = input.read(buf)
-                    if (n < 0) break
-                    out.write(buf, 0, n)
-                    done += n
-                    progress(done.toFloat() / total)
-                }
-            }
-        }
-        if (part.length() != MdxSeparator.MODEL_BYTES) { part.delete(); throw IOException("The model download was incomplete. Try again.") }
-        part.renameTo(file)
-        return file
     }
 }
 

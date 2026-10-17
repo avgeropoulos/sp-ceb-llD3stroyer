@@ -2,6 +2,12 @@ basic_pitch.onnx is the Basic Pitch note transcription model (icassp_2022 nmp.on
 by Spotify, https://github.com/spotify/basic-pitch, licensed under the Apache License 2.0.
 basic_pitch.tflite is the same model as Spotify publishes it for TensorFlow Lite (icassp_2022 nmp.tflite), Apache License 2.0.
 
-The vocal removal model (UVR-MDX-NET-Inst_HQ_3.onnx, Ultimate Vocal Remover project,
-https://github.com/TRvlvr/model_repo) is downloaded by the app on first use; it is not
-included in this repository.
+The instrument separation model (Demucs v4 htdemucs_6s by Meta, https://github.com/facebookresearch/demucs,
+MIT License), exported to ONNX by tools/demucs in this repository, is downloaded by the app from its model
+release on first use; it is not included in the app.
+
+alphaTab (https://github.com/CoderLine/alphaTab) is licensed under the Mozilla Public License 2.0; its Bravura
+font under the SIL Open Font License 1.1; alphaSkia under the BSD 3-Clause License.
+
+The fingering engine's tuttut mode is ported from tuttut (https://github.com/natecdr/tuttut), Copyright (c) 2023
+Nathan Candre, MIT License.

@@ -186,6 +186,9 @@ class SongActivity : Activity() {
     private var shownSecond = -1
 
     private val jobListener: (SongJobs.State) -> Unit = { onJob(it) }
+    private val listenListener: (Listen.State) -> Unit = { onListen(it) }
+    /** The listen asked for, while Android asks the player to allow capturing the phone's playback. */
+    private var listenRequest: Listen.Request? = null
     private val lineListener: (SongLines.Outcome) -> Unit = { onLine(it) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -255,6 +258,7 @@ class SongActivity : Activity() {
 
         // A clip heard on the phone, an audio file, or a saved song.
         extraRow = ui.row().apply {
+            addView(ui.chip("🎧 Listen") { listen() }, ui.weighted())
             addView(ui.chip("📁 Audio file") { pickFile() }, ui.weighted())
             addView(ui.chip("🕘 My songs") { showSaved() }, ui.weighted())
         }
@@ -462,7 +466,7 @@ class SongActivity : Activity() {
         showDromos()
         refreshLineControls()
         SongLines.listen(lineListener)
-        status.text = "Open 📁 an audio file of yours. Preparing it takes a minute or " +
+        status.text = "🎧 Listen to a song playing on the phone, or open 📁 an audio file of yours. Preparing it takes a minute or " +
             "two, on the phone; after that it opens instantly from 🕘 My songs."
 
         live = WeakReference(this)
@@ -471,7 +475,8 @@ class SongActivity : Activity() {
         // Recreated (dark mode, font size, or back after the app was closed): the song open, and a tab that came in for it.
         if (savedInstanceState != null) restore(savedInstanceState)
         TabFiles.sweep(this)
-        handleShare(intent, fresh = savedInstanceState == null)
+        if (intent?.action == ACTION_CAPTURE_TEST && savedInstanceState == null) captureTest()
+        else handleShare(intent, fresh = savedInstanceState == null)
         whole.follow(resources.configuration)
     }
 
@@ -489,6 +494,7 @@ class SongActivity : Activity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        if (intent.action == ACTION_CAPTURE_TEST) { captureTest(); return }
         handleShare(intent, fresh = true)
     }
 
@@ -659,7 +665,7 @@ class SongActivity : Activity() {
             is SongJobs.State.Failed -> if (s.id == id) {
                 awaited = null
                 prepPanel.visibility = View.GONE
-                status.text = "Couldn't prepare this song: ${s.message}\nTry again with ➕ → 📁 Audio file."
+                status.text = "Couldn't prepare this song: ${s.message}\nTry again with ➕ → 🎧 Listen or 📁 Audio file."
             }
             SongJobs.State.Idle -> prepPanel.visibility = View.GONE
         }
@@ -1219,7 +1225,7 @@ class SongActivity : Activity() {
             status.text = "Prepare the song first, then share the tab again."
             AlertDialog.Builder(this)
                 .setTitle("Prepare the song first")
-                .setMessage("A tab goes with a prepared song. Prepare the song first (📁 Audio file) " +
+                .setMessage("A tab goes with a prepared song. Prepare the song first (🎧 Listen, or 📁 Audio file) " +
                     "and let it get ready; then share the tab again, or open it with 📝 Tab → Open a tab file.")
                 .setPositiveButton("OK") { _, _ -> showLinkRows(true) }
                 .show()
@@ -1439,7 +1445,7 @@ class SongActivity : Activity() {
 
     private fun prepareAgain() {
         val src = currentSource ?: run {
-            status.text = "This song's audio isn't on the phone any more: prepare it again from 📁 Audio file."
+            status.text = "This song's audio isn't on the phone any more: prepare it again from 🎧 Listen or 📁 Audio file."
             return
         }
         if (SongJobs.isBusy()) { status.text = "Another song is still being prepared. Wait for it to finish, or cancel it."; return }
@@ -1688,6 +1694,94 @@ class SongActivity : Activity() {
             .show()
     }
 
+    // --- 🎧 Listen ---
+
+    /** 🎧 Listen: what to listen to and for how long, then (for the phone's playback) Android's consent. Again: stop. */
+    private fun listen() {
+        if (Listen.busy()) { Listen.stop(); status.text = "Stopped listening; nothing was kept."; return }
+        if (SongJobs.isBusy()) { status.text = "A song is still being prepared. Wait for it to finish, or cancel it."; return }
+        val sources = arrayOf(
+            "🎧 What's playing on this phone (YouTube, Spotify, …: a song with a band)",
+            "🎤 The microphone: a band or a record playing nearby",
+            "🎤 The microphone: my bouzouki alone",
+        )
+        AlertDialog.Builder(this)
+            .setTitle("🎧 Listen to…")
+            .setItems(sources) { _, i ->
+                val mode = if (i == 0) Listen.Mode.PLAYBACK else Listen.Mode.MICROPHONE
+                val lengths = listOf(30.0, 60.0, 90.0, 120.0)
+                AlertDialog.Builder(this)
+                    .setTitle("For how long?")
+                    .setItems(lengths.map { "${it.toInt()} seconds" }.toTypedArray()) { _, k ->
+                        startListening(Listen.Request(mode, lengths[k], wait = 60.0, solo = i == 2))
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    /** 🔧 Lab tools' capture test: five seconds of the phone's playback, kept nowhere, and a report of how it went. */
+    private fun captureTest() {
+        AlertDialog.Builder(this)
+            .setTitle("🎧 Capture test")
+            .setMessage("Start playing a song in the YouTube app (or any app), come back, and tap Test: the app tries to capture " +
+                "five seconds of what plays, says whether it worked, and keeps nothing.")
+            .setPositiveButton("Test") { _, _ -> startListening(Listen.Request(Listen.Mode.PLAYBACK, 5.0, wait = 20.0, solo = false, test = true)) }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun startListening(request: Listen.Request) {
+        listenRequest = request
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQ_MIC)
+            return
+        }
+        askForNotifications()
+        if (request.mode == Listen.Mode.PLAYBACK && Build.VERSION.SDK_INT >= 29) {
+            @Suppress("DEPRECATION")
+            startActivityForResult(Listen.consentIntent(this), REQ_CAPTURE)
+        } else {
+            if (request.mode == Listen.Mode.PLAYBACK) status.text = "Capturing the phone's playback needs Android 10: listening with the microphone."
+            Listen.start(this, request.copy(mode = Listen.Mode.MICROPHONE))
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQ_MIC) return
+        val r = listenRequest ?: return
+        if (grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED) startListening(r)
+        else status.text = "Listening needs the microphone permission (Android asks for it for playback capture too)."
+    }
+
+    private fun onListen(s: Listen.State) {
+        when (s) {
+            Listen.State.Idle -> {}
+            is Listen.State.Waiting -> status.text = "Waiting for the song… play it now (open YouTube or your music app). " +
+                "Recording starts with the sound (${s.leftToWait.toInt()} s left to start)."
+            is Listen.State.Recording -> status.text = "Listening (${if (s.mode == Listen.Mode.PLAYBACK) "the phone's playback" else "the microphone"}): " +
+                "${s.done.toInt()} of ${s.total.toInt()} s. Tap 🎧 Listen again to stop."
+            is Listen.State.Finished -> {
+                val r = s.report
+                if (listenRequest?.test == true) {
+                    listenRequest = null
+                    LabTools.report(this, "🎧 Capture test", r.toString())
+                    return
+                }
+                listenRequest = null
+                status.text = when {
+                    r.used == null -> "Nothing was heard${r.error?.let { " ($it)" } ?: ""}. Play the song, then 🎧 Listen again."
+                    r.captureSilent == true -> "The playing app doesn't allow capture, so the microphone listened instead. Preparing the clip…"
+                    else -> "Heard ${r.seconds.toInt()} s. Preparing its tab on the phone; the clip is deleted once it's done."
+                }
+                s.songId?.let { openSaved(it) }
+            }
+        }
+    }
+
     // --- audio files ---
 
     private fun pickFile() {
@@ -1702,6 +1796,13 @@ class SongActivity : Activity() {
         val uri = data?.data
         // A tab file: read now, while the picker's permission to read it lasts (it's copied, not kept as a link).
         if (requestCode == REQ_TAB && resultCode == RESULT_OK && uri != null) { receiveTabFile(uri, data.type, fromMenu = true); return }
+        if (requestCode == REQ_CAPTURE) {
+            val r = listenRequest ?: return
+            if (resultCode == RESULT_OK && data != null) Listen.start(this, r, resultCode, data)
+            else if (r.test) { listenRequest = null; status.text = "Capture wasn't allowed: nothing to test." }
+            else { status.text = "Capture wasn't allowed: listening with the microphone."; Listen.start(this, r.copy(mode = Listen.Mode.MICROPHONE)) }
+            return
+        }
         if (requestCode != REQ_FILE || resultCode != RESULT_OK || uri == null) return
         try { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) {}
         val name = contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use {
@@ -2017,10 +2118,12 @@ class SongActivity : Activity() {
         audio.start()
         soundOn = true
         SongJobs.listen(jobListener)
+        Listen.listen(listenListener)
     }
 
     override fun onPause() {
         SongJobs.unlisten(jobListener)
+        Listen.unlisten(listenListener)
         soundOn = false
         audio.stop()
         if (playing) toggleFilePlayback()
@@ -2100,6 +2203,10 @@ class SongActivity : Activity() {
         private var live: WeakReference<SongActivity>? = null
         private const val REQ_FILE = 3
         private const val REQ_TAB = 4
+        private const val REQ_CAPTURE = 5
+        private const val REQ_MIC = 6
+        /** Opens the song screen to run the capture test (🔧 Lab tools). */
+        const val ACTION_CAPTURE_TEST = "com.bouzouki.CAPTURE_TEST"
         private const val PAGE_NECK = 0
         private const val PAGE_SHEET = 1
         private const val PAGE_SCORE = 2
