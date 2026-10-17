@@ -136,3 +136,8 @@ You can also open the folder in Android Studio and press Run.
   renderer, sound effects that are synthesized at startup, and a streaming music player.
 
 Levels are built in `core/.../Level.kt` with a small builder, so adding a new one is a few lines.
+
+## Also in this repository: Bouzouki Tabs
+
+[`bouzouki-tabs/`](bouzouki-tabs/) is a separate Python app that listens to the bouzouki
+in a YouTube video and writes out a tab. See [its README](bouzouki-tabs/README.md).

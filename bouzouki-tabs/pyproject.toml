@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bouzouki-tabs"
+version = "0.1.0"
+description = "Transcribe Greek bouzouki from YouTube videos into tablature"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24", "yt-dlp>=2024.1.0"]
+
+[project.optional-dependencies]
+separate = ["demucs>=4.0"]
+test = ["pytest>=7"]
+
+[project.scripts]
+bouzouki-tabs = "bouzouki_tabs.cli:main"
+
+[tool.setuptools]
+packages = ["bouzouki_tabs"]
+
+[tool.setuptools.package-data]
+bouzouki_tabs = ["static/*.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

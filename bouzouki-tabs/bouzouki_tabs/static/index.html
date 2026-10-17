@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bouzouki Tabs</title>
+<style>
+  :root {
+    --bg: #f7f3ea;
+    --panel: #ffffff;
+    --ink: #1d2433;
+    --muted: #5d6677;
+    --accent: #0d5eaf;
+    --accent-ink: #ffffff;
+    --line: #ddd6c6;
+    --tab-bg: #fbf9f4;
+    --error: #b42318;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12161f;
+      --panel: #1a2030;
+      --ink: #e8ebf2;
+      --muted: #9aa3b5;
+      --accent: #5aa2ec;
+      --accent-ink: #0b1220;
+      --line: #2c3447;
+      --tab-bg: #151a26;
+      --error: #f97066;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; }
+  .lede { color: var(--muted); margin: 0 0 20px; }
+  form, .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+  label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--muted); }
+  label.grow { flex: 1 1 320px; }
+  label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--ink); }
+  input, select {
+    font: inherit;
+    color: var(--ink);
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 10px;
+    min-width: 0;
+  }
+  input.short { width: 90px; }
+  button {
+    font: inherit;
+    font-weight: 600;
+    border: 0;
+    border-radius: 8px;
+    padding: 9px 18px;
+    background: var(--accent);
+    color: var(--accent-ink);
+    cursor: pointer;
+  }
+  button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); padding: 6px 12px; }
+  button:disabled { opacity: 0.6; cursor: wait; }
+  .options { margin-top: 12px; }
+  .hint { font-size: 0.85rem; color: var(--muted); margin: 10px 0 0; }
+  #status { margin: 16px 0; color: var(--muted); min-height: 1.5em; }
+  #status.error { color: var(--error); }
+  #results { display: none; gap: 16px; flex-direction: column; }
+  #results.shown { display: flex; }
+  .video { aspect-ratio: 16 / 9; width: 100%; max-width: 640px; border-radius: 10px; overflow: hidden; background: #000; }
+  .video iframe, .video > div { width: 100%; height: 100%; border: 0; }
+  .meta { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; }
+  .meta dt { color: var(--muted); }
+  .meta dd { margin: 0; }
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .toolbar h2 { font-size: 1.1rem; margin: 0; }
+  pre {
+    margin: 0;
+    padding: 12px;
+    overflow-x: auto;
+    background: var(--tab-bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font: 14px/1.35 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  pre .stamp {
+    font: inherit;
+    padding: 0 2px;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    cursor: pointer;
+    text-decoration: underline;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Bouzouki Tabs</h1>
+  <p class="lede">Paste a YouTube link to a song with bouzouki. The app listens for the bouzouki line and writes it out as tab.</p>
+
+  <form id="form">
+    <div class="row">
+      <label class="grow">YouTube link
+        <input id="url" type="url" required placeholder="https://www.youtube.com/watch?v=...">
+      </label>
+      <button id="go" type="submit">Make tab</button>
+    </div>
+    <div class="row options">
+      <label>Start <input id="start" class="short" placeholder="0:00"></label>
+      <label>End <input id="end" class="short" placeholder="1:30"></label>
+      <label>Bouzouki
+        <select id="tuning">
+          <option value="tetrachordo">4-course (CFAD)</option>
+          <option value="trichordo">3-course (DAD)</option>
+        </select>
+      </label>
+      <label>Rhythm
+        <select id="meter">
+          <option>4/4</option><option>2/4</option><option>3/4</option>
+          <option value="9/8">9/8 (zeibekiko)</option><option value="7/8">7/8 (kalamatianos)</option>
+          <option>5/8</option><option>12/8</option>
+        </select>
+      </label>
+      <label>BPM <input id="bpm" class="short" type="number" min="30" max="300" placeholder="auto"></label>
+      <label class="check"><input id="separate" type="checkbox"> Isolate bouzouki (Demucs)</label>
+    </div>
+    <p class="hint">Works best on a stretch where the bouzouki leads: the intro, a solo or a taximi. Pick it with Start and End.</p>
+  </form>
+
+  <p id="status" role="status"></p>
+
+  <section id="results">
+    <div class="video"><div id="player"></div></div>
+    <div class="panel"><dl class="meta" id="meta"></dl></div>
+    <div class="panel">
+      <div class="toolbar">
+        <h2>Tab</h2>
+        <div>
+          <button class="ghost" id="copy" type="button">Copy</button>
+          <button class="ghost" id="download" type="button">Download .txt</button>
+        </div>
+      </div>
+      <pre id="tab"></pre>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let player = null;
+let pendingVideo = null;
+let lastResult = null;
+
+window.onYouTubeIframeAPIReady = () => {
+  if (pendingVideo) showVideo(pendingVideo);
+};
+
+function showVideo(videoId) {
+  if (!window.YT || !YT.Player) { pendingVideo = videoId; return; }
+  if (player) { player.cueVideoById(videoId); return; }
+  player = new YT.Player("player", { videoId, playerVars: { rel: 0 } });
+}
+
+function seek(seconds) {
+  if (player && player.seekTo) { player.seekTo(seconds, true); player.playVideo(); }
+}
+
+function parseStamp(text) {
+  return text.split(":").reduce((acc, part) => acc * 60 + parseFloat(part), 0);
+}
+
+function renderTab(tab) {
+  const pre = $("tab");
+  pre.textContent = "";
+  for (const line of tab.split("\n")) {
+    const match = line.match(/^\[(\d+:\d+(?:\.\d+)?)\](.*)$/);
+    if (match) {
+      const button = document.createElement("button");
+      button.className = "stamp";
+      button.type = "button";
+      button.textContent = `[${match[1]}]`;
+      button.title = "Play from here";
+      button.addEventListener("click", () => seek(parseStamp(match[1])));
+      pre.append(button, match[2] + "\n");
+    } else {
+      pre.append(line + "\n");
+    }
+  }
+}
+
+function renderMeta(result) {
+  const rows = [
+    ["Song", result.title],
+    ["Tuning", result.tuning],
+    ["Tempo", `~${Math.round(result.bpm)} BPM, ${result.meter}`],
+    ["Dromos", result.dromoi.length ? result.dromoi.map((d) => `${d.name} on ${d.tonic}`).join(" · ") : "not enough notes"],
+    ["Notes found", String(result.notes.length)],
+  ];
+  if (Math.abs(result.tuning_cents) >= 5) {
+    rows.push(["Pitch", `${Math.abs(Math.round(result.tuning_cents))} cents ${result.tuning_cents > 0 ? "sharp" : "flat"} of A440`]);
+  }
+  const meta = $("meta");
+  meta.textContent = "";
+  for (const [key, value] of rows) {
+    const dt = document.createElement("dt");
+    const dd = document.createElement("dd");
+    dt.textContent = key;
+    dd.textContent = value;
+    meta.append(dt, dd);
+  }
+}
+
+function setStatus(text, isError = false) {
+  $("status").textContent = text;
+  $("status").classList.toggle("error", isError);
+}
+
+async function poll(job) {
+  while (true) {
+    await new Promise((r) => setTimeout(r, 1000));
+    const res = await fetch(`/api/jobs/${job}`);
+    const data = await res.json();
+    if (data.status === "running") { setStatus(data.message); continue; }
+    return data;
+  }
+}
+
+$("form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  $("go").disabled = true;
+  setStatus("Starting...");
+  try {
+    const body = {
+      url: $("url").value,
+      start: $("start").value,
+      end: $("end").value,
+      tuning: $("tuning").value,
+      meter: $("meter").value,
+      bpm: $("bpm").value,
+      separate: $("separate").checked,
+    };
+    const res = await fetch("/api/transcribe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const started = await res.json();
+    if (!res.ok) throw new Error(started.message || "Something went wrong");
+    const data = await poll(started.job);
+    if (data.status === "error") throw new Error(data.message);
+    lastResult = data.result;
+    renderMeta(lastResult);
+    renderTab(lastResult.tab);
+    $("results").classList.add("shown");
+    if (lastResult.video_id) showVideo(lastResult.video_id);
+    setStatus("Done. Click a time stamp to play the video from there.");
+  } catch (err) {
+    setStatus(err.message, true);
+  } finally {
+    $("go").disabled = false;
+  }
+});
+
+$("copy").addEventListener("click", async () => {
+  if (!lastResult) return;
+  await navigator.clipboard.writeText(`${lastResult.header}\n\n${lastResult.tab}`);
+  setStatus("Tab copied.");
+});
+
+$("download").addEventListener("click", () => {
+  if (!lastResult) return;
+  const blob = new Blob([`${lastResult.header}\n\n${lastResult.tab}`], { type: "text/plain" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `${lastResult.title.replace(/[^\w\- ]+/g, "").trim() || "bouzouki"}.txt`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+});
+</script>
+<script src="https://www.youtube.com/iframe_api"></script>
+</body>
+</html>

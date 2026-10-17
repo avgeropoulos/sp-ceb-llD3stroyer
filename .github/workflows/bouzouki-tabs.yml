@@ -1,0 +1,30 @@
+name: Bouzouki Tabs
+
+on:
+  push:
+    paths: ["bouzouki-tabs/**", ".github/workflows/bouzouki-tabs.yml"]
+  pull_request:
+    paths: ["bouzouki-tabs/**", ".github/workflows/bouzouki-tabs.yml"]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bouzouki-tabs
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install
+        run: pip install -e ".[test]"
+
+      - name: Run tests
+        run: pytest -q
