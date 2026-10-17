@@ -49,6 +49,11 @@ data class PostConfig(
      * accompaniment's low register, are off, so a melody on the bass courses is followed.
      */
     val solo: Boolean = false,
+    /**
+     * How far the player's bouzouki is tuned from A = 440 Hz (cents), as calibration measured: used for a recording
+     * whose own tuning can't be measured (too few steady notes); null: such a recording is taken as in tune.
+     */
+    val tuningHint: Double? = null,
 ) {
     /**
      * These settings with what calibration measured: the octave strings' loudness against their courses' (the merge

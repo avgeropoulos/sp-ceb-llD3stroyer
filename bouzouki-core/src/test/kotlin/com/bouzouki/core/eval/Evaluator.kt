@@ -174,6 +174,8 @@ fun main(args: Array<String>) {
         "plain" -> { _ -> PostConfig(octaveMerge = false) }
         "merge" -> { _ -> PostConfig() }
         "solo" -> { it -> PostConfig(octaveMerge = false, solo = it.kind == "solo") }
+        // As calibration on the synth measures it (CalibrationTest): octave strings 0.76x, noise floor 0.14.
+        "calibrated" -> { it -> if (it.kind == "solo") PostConfig(solo = true).calibrated(0.76, 0.14) else PostConfig().calibrated(0.76, null) }
         else -> { it -> PostConfig(solo = it.kind == "solo") }
     }
     // EVAL_FINGERING=TUTTUT fingers with the tuttut engine instead of the HMM one.

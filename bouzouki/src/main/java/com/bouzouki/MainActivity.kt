@@ -153,6 +153,10 @@ class MainActivity : Activity() {
             topMargin = px(12)
         })
 
+        // Calibrate: the player's bouzouki and room, for the songs they record.
+        controls.addView(ui.chip("🎯  Calibrate my bouzouki") { startActivity(Intent(this, CalibrationActivity::class.java)) },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = px(8) })
+
         // Measurements on the phone: note engines, separation, listening to other apps.
         controls.addView(ui.chip("🔧  Lab tools") { LabTools.show(this) },
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = px(8) })

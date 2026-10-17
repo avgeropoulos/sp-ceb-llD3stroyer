@@ -19,7 +19,6 @@ import com.bouzouki.core.Instrument
 import com.bouzouki.core.song.AnalysisData
 import com.bouzouki.core.song.MdxSeparator
 import com.bouzouki.core.song.NoSeparation
-import com.bouzouki.core.song.PostConfig
 import com.bouzouki.core.song.Separator
 import com.bouzouki.core.song.SongAnalysis
 import com.bouzouki.core.song.SongAnalyzer
@@ -323,7 +322,7 @@ object SongJobs {
         try {
             val separator: Separator = if (mdx != null) MdxSeparator(env, mdx) else NoSeparation
             return PitchEngines.open(context).use { bp ->
-                SongAnalyzer(separator, bp.pitch, PostConfig(solo = source.solo)).analyzeWithData(
+                SongAnalyzer(separator, bp.pitch, CalibrationStore.post(context, source.solo)).analyzeWithData(
                     id, title, audio.left, audio.right, instrument,
                     progress = { stage, f -> report(if (source.solo && stage == SongAnalyzer.Stage.SEPARATING) "Reading the bouzouki" else stage.label, f) },
                     cancelled = cancelled,

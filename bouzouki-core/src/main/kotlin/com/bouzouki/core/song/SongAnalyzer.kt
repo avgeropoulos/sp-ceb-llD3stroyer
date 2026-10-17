@@ -267,7 +267,7 @@ class SongAnalyzer(private val separator: Separator, private val pitch: BasicPit
     ): Pair<SongAnalysis, AnalysisData> {
         progress(Stage.TRANSCRIBING, 0f)
         val audio = resample(instrumental, Separator.SAMPLE_RATE, BasicPitch.SAMPLE_RATE)
-        val tuning = Tuning.estimate(audio)
+        val tuning = Tuning.estimateOrNull(audio) ?: post.tuningHint?.takeIf { it.isFinite() }?.coerceIn(-50.0, 50.0) ?: 0.0
         val raw = transcribe(audio, tuning, { progress(Stage.TRANSCRIBING, it * 0.9f) }, cancelled)
         progress(Stage.PLACING, 0f)
         // The beats lay the tablature out in bars; a song without a clear pulse just gets none.
