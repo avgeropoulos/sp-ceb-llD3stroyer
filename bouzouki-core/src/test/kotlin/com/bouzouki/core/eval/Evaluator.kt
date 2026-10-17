@@ -3,6 +3,8 @@ package com.bouzouki.core.eval
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import com.bouzouki.core.song.BasicPitch
+import com.bouzouki.core.song.DemucsSeparator
+import com.bouzouki.core.song.LightSeparator
 import com.bouzouki.core.song.NoSeparation
 import com.bouzouki.core.song.PostConfig
 import com.bouzouki.core.song.Separator
@@ -180,8 +182,37 @@ fun main(args: Array<String>) {
     }
     // EVAL_FINGERING=TUTTUT fingers with the tuttut engine instead of the HMM one.
     System.getenv("EVAL_FINGERING")?.let { com.bouzouki.core.song.Fingering.engine = com.bouzouki.core.song.Fingering.Engine.valueOf(it) }
-    val results = AppPipeline.withBasicPitch { bp -> Evaluator.run(items, AppPipeline(bp, post = post), dump) { println(it) } }
+    // EVAL_SEPARATOR picks what the mixes go through: "none" (the default), "light[:<centre depth>]" ([LightSeparator]) or
+    // "demucs:<onnx path>[:<stem>,<stem>...]" ([DemucsSeparator], by default its guitar + other).
+    val results = AppPipeline.withBasicPitch { bp ->
+        withMixSeparator(System.getenv("EVAL_SEPARATOR")) { sep ->
+            println("mix separator: ${sep?.javaClass?.simpleName ?: "none"}" +
+                ((sep as? DemucsSeparator)?.let { " ${it.mixStems}, ${it.segment} samples a segment" } ?: ""))
+            Evaluator.run(items, AppPipeline(bp, mixSeparator = sep, post = post), dump) { println(it) }
+        }
+    }
     File(out, "$label.md").writeText(Evaluator.markdown(label, results))
     File(out, "$label.csv").writeText(Evaluator.csv(label, results))
     println(Evaluator.markdown(label, results).lines().take(20).joinToString("\n"))
+}
+
+/** Runs [block] with the separator [spec] names (see EVAL_SEPARATOR in [main]); null for none. */
+fun <T> withMixSeparator(spec: String?, block: (Separator?) -> T): T = when {
+    spec.isNullOrBlank() || spec == "none" -> block(null)
+    spec == "light" -> block(LightSeparator())
+    // "light:<depth>": the centre cancel at another depth (0 turns it off).
+    spec.startsWith("light:") -> block(LightSeparator(centreDepth = spec.removePrefix("light:").toDouble()))
+    spec.startsWith("demucs:") -> {
+        val rest = spec.removePrefix("demucs:")
+        val cut = rest.lastIndexOf(':')
+        val tail = if (cut > 0) rest.substring(cut + 1) else ""
+        // A trailing ":guitar,other" names the stems; anything with a dot or slash is still the path.
+        val (path, stems) = if (cut > 0 && '.' !in tail && '/' !in tail)
+            rest.substring(0, cut) to tail.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        else rest to null
+        val env = OrtEnvironment.getEnvironment()
+        val threads = Runtime.getRuntime().availableProcessors()
+        env.createSession(path, DemucsSeparator.sessionOptions(threads)).use { block(DemucsSeparator(env, it, stems)) }
+    }
+    else -> error("EVAL_SEPARATOR must be none, light or demucs:<onnx>[:stems], not $spec")
 }

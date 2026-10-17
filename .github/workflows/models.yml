@@ -17,7 +17,7 @@ permissions:
 jobs:
   export:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
 
@@ -40,10 +40,20 @@ jobs:
       - name: Export htdemucs_6s (float16 network, float32 inputs and outputs)
         run: python tools/demucs/export_onnx.py --model htdemucs_6s --fp16 --out dist/htdemucs_6s_fp16.onnx --validate
 
-      - name: Time the exports on the runner
+      - name: Export htdemucs_6s with 3.9 s and 2.0 s segments (less memory), with test vectors
         run: |
-          python tools/demucs/bench.py dist/htdemucs_6s.onnx --seconds 30
-          python tools/demucs/bench.py dist/htdemucs_6s_fp16.onnx --seconds 30
+          python tools/demucs/export_onnx.py --model htdemucs_6s --segment-seconds 3.9 \
+            --out dist/htdemucs_6s_seg39.onnx --validate --ref-dir ref39
+          cp dist/htdemucs_6s_seg39.onnx ref39/
+          python tools/demucs/export_onnx.py --model htdemucs_6s --segment-seconds 2.0 \
+            --out dist/htdemucs_6s_seg20.onnx --validate --ref-dir ref20
+          cp dist/htdemucs_6s_seg20.onnx ref20/
+
+      - name: Time the exports on the runner (memory arena off, as the app runs them)
+        run: |
+          for m in htdemucs_6s htdemucs_6s_fp16 htdemucs_6s_seg39 htdemucs_6s_seg20; do
+            python tools/demucs/bench.py dist/$m.onnx --seconds 30 --no-arena
+          done
 
       - uses: actions/setup-java@v4
         with:
@@ -53,9 +63,39 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Check the Kotlin separator against torch with the real weights
-        env:
-          DEMUCS_REF_DIR: ${{ github.workspace }}/ref
-        run: ./gradlew :bouzouki-core:test --tests '*DemucsTest*' --console=plain -i | grep -E "SNR|segments|DemucsTest|BUILD"
+        run: |
+          for r in ref ref39 ref20; do
+            DEMUCS_REF_DIR=$GITHUB_WORKSPACE/$r ./gradlew :bouzouki-core:cleanTest :bouzouki-core:test \
+              --tests '*DemucsTest*' --console=plain -i | grep -E "SNR|segment|DemucsTest|BUILD"
+          done
+
+      # Real-weight accuracy and cost on the synthetic set's twins: each solo take and the same
+      # phrases inside a band, with the mixes through each separator (solo takes never are).
+      - name: Score solo vs mix with each separator
+        continue-on-error: true # a scoring problem shouldn't hold back the release
+        run: |
+          run() {
+            EVAL_SEPARATOR="$1" ./gradlew :bouzouki-core:evalSet -PevalSet=synth '-PevalOnly=^(mix|solo)-' \
+              -PevalLabel="$2" --console=plain
+          }
+          run none none
+          run light light
+          for m in htdemucs_6s htdemucs_6s_fp16 htdemucs_6s_seg39 htdemucs_6s_seg20; do
+            run "demucs:$GITHUB_WORKSPACE/dist/$m.onnx" "$m"
+          done
+          run "demucs:$GITHUB_WORKSPACE/dist/htdemucs_6s.onnx:guitar" htdemucs_6s-guitar
+          for f in bouzouki-core/build/eval/*.md; do
+            echo "::group::$f"; cat "$f"; echo "::endgroup::"
+            cat "$f" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: separation-scores
+          path: |
+            bouzouki-core/build/eval/*.md
+            bouzouki-core/build/eval/*.csv
 
       - name: Checksums
         run: |
@@ -73,15 +113,19 @@ jobs:
           body: |
             Demucs v4 htdemucs_6s (Meta, MIT licence: https://github.com/facebookresearch/demucs)
             exported to ONNX for the bouzouki app by tools/demucs/export_onnx.py.
-            Stems: drums, bass, other, vocals, guitar, piano. One 7.8 s segment per run;
+            Stems: drums, bass, other, vocals, guitar, piano. One segment (7.8 s unless noted) per run;
             the app does the STFT, iSTFT and segment blending (bouzouki-core song/Demucs.kt).
 
             - htdemucs_6s.onnx: float32
             - htdemucs_6s_fp16.onnx: float16 network, float32 inputs and outputs
-            - SHA256SUMS: sha256sum of both
+            - htdemucs_6s_seg39.onnx / htdemucs_6s_seg20.onnx: float32, 3.9 s / 2.0 s segments
+              (use_train_segment off): far less memory, less context per segment
+            - SHA256SUMS: sha256sum of all of them
 
             Built from ${{ github.sha }}.
           files: |
             dist/htdemucs_6s.onnx
             dist/htdemucs_6s_fp16.onnx
+            dist/htdemucs_6s_seg39.onnx
+            dist/htdemucs_6s_seg20.onnx
             dist/SHA256SUMS
