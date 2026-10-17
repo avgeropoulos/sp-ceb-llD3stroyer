@@ -33,9 +33,15 @@ private const val CHIP_EDGE = 0xFF2C4A6E.toInt()
 class Settings(context: Context) {
     private val prefs = context.getSharedPreferences("bouzouki", Context.MODE_PRIVATE)
 
+    /** The bouzouki played: kept by name (a custom tuning's name spells it); older versions kept the standard one's index. */
     var instrument: Instrument
-        get() = Instrument.entries.getOrElse(prefs.getInt("instrument", 1)) { Instrument.TETRACHORDO }
-        set(v) = prefs.edit().putInt("instrument", v.ordinal).apply()
+        get() = prefs.getString("instrument_name", null)?.let { runCatching { Instrument.valueOf(it) }.getOrNull() }
+            ?: Instrument.entries.getOrElse(prefs.getInt("instrument", 1)) { Instrument.TETRACHORDO }
+        set(v) = prefs.edit().putString("instrument_name", v.name).putInt("instrument", maxOf(0, v.ordinal)).apply()
+    /** The player's own tuning, if they made one (see MainActivity). */
+    var customTuning: Instrument?
+        get() = prefs.getString("custom_tuning", null)?.let { runCatching { Instrument.valueOf(it) }.getOrNull() }
+        set(v) = prefs.edit().apply { if (v == null) remove("custom_tuning") else putString("custom_tuning", v.name) }.apply()
     var dromos: Dromos
         get() = Dromos.entries.getOrElse(prefs.getInt("dromos", Dromos.HITZAZ.ordinal)) { Dromos.HITZAZ }
         set(v) = prefs.edit().putInt("dromos", v.ordinal).apply()
@@ -191,7 +197,10 @@ class InstrumentSwitch(context: Context, private val onPick: (Instrument) -> Uni
             contentDescription = "Bouzouki: ${v.greekName} (${v.englishName.substringBefore(" ·")}). Double-tap for the other one."
             invalidate()
         }
-    private val options = arrayOf(Instrument.TETRACHORDO, Instrument.TRICHORDO)
+    /** The two it switches between: the tetrachordo and the trichordo, or (with a custom tuning set) that and the tetrachordo. */
+    var custom: Instrument? = null
+        set(v) { field = v; options = if (v != null) arrayOf(v, Instrument.TETRACHORDO) else arrayOf(Instrument.TETRACHORDO, Instrument.TRICHORDO); requestLayout(); invalidate() }
+    private var options = arrayOf(Instrument.TETRACHORDO, Instrument.TRICHORDO)
     private val dp = context.resources.displayMetrics.density
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER

@@ -184,6 +184,7 @@ class SongActivity : Activity() {
         super.onCreate(savedInstanceState)
         // Opened straight from a share or a notification: the Terms of Use come first here too.
         if (!Legal.accepted(this)) Legal.requireTerms(this)
+        FingeringPrefs.apply(this)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.statusBarColor = GREEK_BLUE
         window.navigationBarColor = NAVY
@@ -222,7 +223,7 @@ class SongActivity : Activity() {
             }
             addView(titleText, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             // Which bouzouki: the song is fingered again for it at once.
-            instrumentSwitch = InstrumentSwitch(context) { inst -> setInstrument(inst) }.apply { instrument = settings.instrument }
+            instrumentSwitch = InstrumentSwitch(context) { inst -> setInstrument(inst) }.apply { custom = settings.customTuning; instrument = settings.instrument }
             addView(instrumentSwitch, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 marginStart = px(4); marginEnd = px(4)
             })

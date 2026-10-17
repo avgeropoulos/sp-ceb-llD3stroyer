@@ -81,7 +81,67 @@ object Fingering {
          */
         val sideFrom: Int = 5,
         val side: Double = 0.2,
-    )
+        /** A new phrase starts after a gap between onsets of [phraseGap] or more, or twice the pace around it (at least [phraseMin]). */
+        val phraseGap: Double = 0.6,
+        val phraseMin: Double = 0.3,
+    ) {
+        /**
+         * Every weight by name ("course.0", "cross.2.3", "finger.1", "shift", …), as the app shows and saves them; a
+         * whole number (a fret count) is a Double here too.
+         */
+        fun toMap(): LinkedHashMap<String, Double> {
+            val m = LinkedHashMap<String, Double>()
+            course.forEachIndexed { i, v -> m["course.$i"] = v }
+            cross.forEachIndexed { a, row -> row.forEachIndexed { b, v -> if (a != b) m["cross.$a.$b"] = v } }
+            m["span"] = span.toDouble()
+            finger.forEachIndexed { i, v -> m["finger.$i"] = v }
+            m["stretch"] = stretch; m["highStretch"] = highStretch
+            m["shift"] = shift; m["shiftPerFret"] = shiftPerFret
+            m["reach"] = reach.toDouble(); m["leap"] = leap
+            m["shiftAcross"] = shiftAcross; m["slide"] = slide; m["aroundOpen"] = aroundOpen
+            m["legatoBreak"] = legatoBreak; m["open"] = open; m["openAtEdge"] = openAtEdge
+            m["highFrom"] = highFrom.toDouble(); m["high"] = high; m["tooHighFrom"] = tooHighFrom.toDouble(); m["tooHigh"] = tooHigh
+            m["fastGap"] = fastGap; m["slowGap"] = slowGap; m["slowFactor"] = slowFactor
+            m["phraseShift"] = phraseShift; m["phraseCross"] = phraseCross
+            m["sideFrom"] = sideFrom.toDouble(); m["side"] = side
+            m["phraseGap"] = phraseGap; m["phraseMin"] = phraseMin
+            return m
+        }
+
+        /** These weights with those [values] names (as [toMap] names them) changed; unknown names are ignored. */
+        fun with(values: Map<String, Double>): Weights {
+            fun d(k: String, v: Double) = values[k]?.takeIf { it.isFinite() } ?: v
+            fun i(k: String, v: Int) = values[k]?.takeIf { it.isFinite() }?.let { Math.round(it).toInt() } ?: v
+            return Weights(
+                course = DoubleArray(course.size) { d("course.$it", course[it]) },
+                cross = Array(cross.size) { a -> DoubleArray(cross[a].size) { b -> if (a == b) 0.0 else d("cross.$a.$b", cross[a][b]) } },
+                span = i("span", span).coerceIn(1, 6),
+                finger = DoubleArray(finger.size) { d("finger.$it", finger[it]) },
+                stretch = d("stretch", stretch), highStretch = d("highStretch", highStretch),
+                shift = d("shift", shift), shiftPerFret = d("shiftPerFret", shiftPerFret),
+                reach = i("reach", reach), leap = d("leap", leap),
+                shiftAcross = d("shiftAcross", shiftAcross), slide = d("slide", slide), aroundOpen = d("aroundOpen", aroundOpen),
+                legatoBreak = d("legatoBreak", legatoBreak), open = d("open", open), openAtEdge = d("openAtEdge", openAtEdge),
+                highFrom = i("highFrom", highFrom), high = d("high", high), tooHighFrom = i("tooHighFrom", tooHighFrom), tooHigh = d("tooHigh", tooHigh),
+                fastGap = d("fastGap", fastGap), slowGap = d("slowGap", slowGap).coerceAtLeast(d("fastGap", fastGap) + 0.01),
+                slowFactor = d("slowFactor", slowFactor),
+                phraseShift = d("phraseShift", phraseShift), phraseCross = d("phraseCross", phraseCross),
+                sideFrom = i("sideFrom", sideFrom), side = d("side", side),
+                phraseGap = d("phraseGap", phraseGap), phraseMin = d("phraseMin", phraseMin),
+            )
+        }
+
+        /** The weights as text, one "name = value" a line (what [parse] reads back). */
+        fun text(): String = toMap().entries.joinToString("\n") { (k, v) ->
+            k + " = " + if (v == Math.rint(v) && kotlin.math.abs(v) < 1e6) v.toLong().toString() else v.toString()
+        }
+
+        companion object {
+            /** "name = value" lines (as [text] writes them; # comments and blank lines skipped) as values for [with]. */
+            fun parse(text: String): Map<String, Double> = text.lines().map { it.substringBefore('#').trim() }.filter { '=' in it }
+                .mapNotNull { l -> l.substringAfter('=').trim().toDoubleOrNull()?.let { l.substringBefore('=').trim() to it } }.toMap()
+        }
+    }
 
     /**
      * Tetrachordo C F A D: D and A carry the melody, F the notes below A3, C almost never. Crossing between
@@ -109,10 +169,37 @@ object Fingering {
         ),
     )
 
-    fun weights(inst: Instrument): Weights = when (inst) {
-        Instrument.TETRACHORDO -> TETRACHORDO
-        Instrument.TRICHORDO -> TRICHORDO
+    /**
+     * The weights for [inst]: the player's own ([custom], see [Weights.with]) if set for its number of courses, else the
+     * tetrachordo's for four courses, the trichordo's for three, and for any other tuning ones made for its courses
+     * ([forCourses]).
+     */
+    fun weights(inst: Instrument): Weights = custom[inst.courses.size] ?: when (inst.courses.size) {
+        4 -> TETRACHORDO
+        3 -> TRICHORDO
+        else -> forCourses(inst.courses.size)
     }
+
+    /** The player's own weights by number of courses (set by the app from its settings); empty: the defaults. */
+    @Volatile var custom: Map<Int, Weights> = emptyMap()
+
+    /**
+     * Which engine fingers the songs: this one (a Viterbi over course, fret and hand position, with bouzouki-made
+     * costs) or the tuttut HMM ([TuttutFingering], with [tuttut]'s weights by number of courses if set).
+     */
+    enum class Engine { HMM, TUTTUT }
+
+    @Volatile var engine: Engine = Engine.HMM
+    @Volatile var tuttut: Map<Int, TuttutFingering.Weights> = emptyMap()
+
+    /**
+     * Weights for a bouzouki of [n] courses with no preset: the top two carry the melody, each course below costs more,
+     * crossing costs grow with the distance between courses (as on the tetrachordo).
+     */
+    fun forCourses(n: Int): Weights = Weights(
+        course = DoubleArray(n) { c -> when (n - 1 - c) { 0 -> 0.0; 1 -> 0.1; else -> 1.8 * (n - 2 - c + 1) } },
+        cross = Array(n) { a -> DoubleArray(n) { b -> if (a == b) 0.0 else 0.65 * kotlin.math.abs(a - b) + 0.25 * (kotlin.math.abs(a - b) - 1) } },
+    )
 
     /**
      * The (course, fret) of each note of a line. [starts] are the onsets in seconds; [legato]`[i]` is true
@@ -134,7 +221,7 @@ object Fingering {
         val top = inst.courses.last().openMidi
         val high = top + inst.frets
         val time = List(n) { starts.getOrElse(it) { starts.lastOrNull() ?: 0.0 } }
-        val phrase = phraseStarts(time)
+        val phrase = phraseStarts(time, w.phraseGap, w.phraseMin)
         val layers = ArrayList<Layer>(n)
         for (i in 0 until n) {
             var m = midis[i]
@@ -218,15 +305,15 @@ object Fingering {
 
     /**
      * Whether each note starts a phrase: the first one, and each after a gap between onsets of
-     * [PHRASE_GAP] or more, or of twice the pace around it (at least [PHRASE_MIN]).
+     * [phraseGap] or more, or of twice the pace around it (at least [phraseMin]; [Weights.phraseGap], [Weights.phraseMin]).
      */
-    internal fun phraseStarts(starts: List<Double>): BooleanArray {
+    internal fun phraseStarts(starts: List<Double>, phraseGap: Double = PHRASE_GAP, phraseMin: Double = PHRASE_MIN): BooleanArray {
         val n = starts.size
         val gap = DoubleArray(n) { if (it == 0) 0.0 else max(0.0, starts[it] - starts[it - 1]) }
         return BooleanArray(n) { i ->
             if (i == 0) return@BooleanArray true
             val near = (max(1, i - 4)..min(n - 1, i + 4)).map { gap[it] }.sorted()
-            gap[i] >= PHRASE_GAP || gap[i] >= max(PHRASE_MIN, 2 * near[near.size / 2])
+            gap[i] >= phraseGap || gap[i] >= max(phraseMin, 2 * near[near.size / 2])
         }
     }
 

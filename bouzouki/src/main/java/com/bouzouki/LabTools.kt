@@ -25,10 +25,13 @@ object LabTools {
 
     fun show(activity: Activity) {
         val tools = listOf(Tool("⏱ Note engines: ONNX Runtime vs LiteRT") { PitchEngines.benchmark(it) }) + extra
+        val fingering = "🎚 Fingering: engine and weights"
         val engine = PitchEngines.chosen(activity).label
         AlertDialog.Builder(activity)
             .setTitle("🔧 Lab tools · note engine: $engine")
-            .setItems(tools.map { it.name }.toTypedArray()) { _, i -> run(activity, tools[i]) }
+            .setItems((tools.map { it.name } + fingering).toTypedArray()) { _, i ->
+                if (i < tools.size) run(activity, tools[i]) else FingeringPrefs.edit(activity, Settings(activity).instrument)
+            }
             .setNegativeButton("Close", null)
             .show()
     }

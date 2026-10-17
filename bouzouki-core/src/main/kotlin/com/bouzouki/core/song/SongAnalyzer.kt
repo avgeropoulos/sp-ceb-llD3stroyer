@@ -1308,7 +1308,10 @@ class SongAnalyzer(private val separator: Separator, private val pitch: BasicPit
             inst: Instrument,
             legato: List<Boolean>? = null,
             slide: List<Boolean>? = null,
-        ): List<Pair<Int, Int>> = Fingering.place(midis, starts, inst, legato, slide)
+        ): List<Pair<Int, Int>> = when (Fingering.engine) {
+            Fingering.Engine.HMM -> Fingering.place(midis, starts, inst, legato, slide)
+            Fingering.Engine.TUTTUT -> TuttutFingering.place(midis, inst, legato, Fingering.tuttut[inst.courses.size] ?: TuttutFingering.bouzouki(inst))
+        }
     }
 }
 

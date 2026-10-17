@@ -176,6 +176,8 @@ fun main(args: Array<String>) {
         "solo" -> { it -> PostConfig(octaveMerge = false, solo = it.kind == "solo") }
         else -> { it -> PostConfig(solo = it.kind == "solo") }
     }
+    // EVAL_FINGERING=TUTTUT fingers with the tuttut engine instead of the HMM one.
+    System.getenv("EVAL_FINGERING")?.let { com.bouzouki.core.song.Fingering.engine = com.bouzouki.core.song.Fingering.Engine.valueOf(it) }
     val results = AppPipeline.withBasicPitch { bp -> Evaluator.run(items, AppPipeline(bp, post = post), dump) { println(it) } }
     File(out, "$label.md").writeText(Evaluator.markdown(label, results))
     File(out, "$label.csv").writeText(Evaluator.csv(label, results))

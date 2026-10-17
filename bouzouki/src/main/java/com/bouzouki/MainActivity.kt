@@ -28,6 +28,7 @@ class MainActivity : Activity() {
     private lateinit var rootSpinner: Spinner
     private val instrumentButtons = HashMap<Instrument, Button>()
     private lateinit var namesButton: Button
+    private lateinit var customButton: Button
     private lateinit var allButton: Button
     private var rootNames: NoteNames? = null
     private val updater by lazy { Updater(this) }
@@ -86,6 +87,8 @@ class MainActivity : Activity() {
                 instrumentButtons[inst] = b
                 addView(b, ui.weighted())
             }
+            customButton = ui.chip("") { askTuning() }.apply { textSize = 13f; minHeight = px(56) }
+            addView(customButton, ui.weighted())
         })
 
         // Dromos.
@@ -161,6 +164,7 @@ class MainActivity : Activity() {
         setContentView(root)
         fitSystemBars(this, root)
         SongJobs.sweep(this) // temporary audio a crash may have left behind
+        FingeringPrefs.apply(this)
         Legal.requireTerms(this) { checkForUpdate() }
         handleInstallStatus(intent)
         refresh()
@@ -234,6 +238,9 @@ class MainActivity : Activity() {
 
     private fun refresh() {
         for ((inst, b) in instrumentButtons) ui.style(b, inst == settings.instrument)
+        val custom = settings.customTuning
+        customButton.text = if (custom != null) "Κούρδισμα\n${custom.tuning}" else "Κούρδισμα\nCustom tuning…"
+        ui.style(customButton, !settings.instrument.standard)
         val names = settings.names
         if (rootNames != names) { // re-setting the adapter would fire the listener again
             rootNames = names
@@ -250,6 +257,42 @@ class MainActivity : Activity() {
         info.text = "${d.greekName} · ${d.title}\n\n" +
             "Scale:  ${spelled.joinToString("  ")}\n(${degrees.joinToString("  ")})\n\n" +
             "Arpeggio:  ${arp.joinToString("  ") { spelled[it] }}\n(${arp.joinToString("  ") { degrees[it] }})"
+    }
+
+    /**
+     * The player's own tuning: courses low to high as note names, an octave pair as both its notes ("C3/C4 F3/F4 A3 D4"),
+     * and the frets (up to ${Instrument.MAX_FRETS}). Tapped again while it's chosen, it can be changed.
+     */
+    private fun askTuning() {
+        val current = settings.customTuning
+        if (current != null && settings.instrument != current) { settings.instrument = current; settings.course = 0; refresh(); return }
+        val tuning = android.widget.EditText(this).apply { setText(current?.tuning ?: "C3/C4 F3/F4 A3 D4"); textSize = 16f }
+        val frets = android.widget.EditText(this).apply {
+            setText((current?.frets ?: 26).toString()); textSize = 16f
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(ui.px(20), 0, ui.px(20), 0)
+            addView(TextView(context).apply { text = "Courses, low to high. An octave pair as both its notes: C3/C4."; textSize = 13f })
+            addView(tuning)
+            addView(TextView(context).apply { text = "Frets"; textSize = 13f })
+            addView(frets)
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Κούρδισμα · Custom tuning")
+            .setView(box)
+            .setPositiveButton("Use") { _, _ ->
+                val inst = Instrument.parseTuning(tuning.text.toString(), frets.text.toString().toIntOrNull()?.coerceIn(1, Instrument.MAX_FRETS) ?: 26)
+                if (inst == null) { Toast.makeText(this, "Couldn't read that tuning. Write the courses like C3/C4 F3/F4 A3 D4.", Toast.LENGTH_LONG).show(); return@setPositiveButton }
+                if (!inst.standard) settings.customTuning = inst
+                settings.instrument = inst
+                settings.course = 0
+                refresh()
+            }
+            .apply { if (current != null) setNeutralButton("Remove") { _, _ -> settings.customTuning = null; if (!settings.instrument.standard) settings.instrument = Instrument.TETRACHORDO; refresh() } }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun darkAdapter(items: List<String>) = object : ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, items) {
