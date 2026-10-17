@@ -193,13 +193,13 @@ data class SongAnalysis(
 
 /**
  * Turns a song into its bouzouki line:
- * 1. remove the vocals (MDX-Net),
+ * 1. separate the instruments the bouzouki plays among from the voice (a [Separator]; none for a solo recording),
  * 2. transcribe the rest into notes (Basic Pitch), put in tune first if the recording is off A = 440 Hz ([Tuning]),
  * 3. follow the melodic line in the bouzouki's range (it usually carries the lead), and tell the notes
  *    the plectrum picks from the hammer-ons, pull-offs and slides (where it strikes: [Attacks]),
  * 4. choose frets that keep the hand moving as little as possible.
  */
-class SongAnalyzer(private val separator: MdxSeparator, private val pitch: BasicPitch) {
+class SongAnalyzer(private val separator: Separator, private val pitch: BasicPitch) {
     enum class Stage(val label: String) {
         SEPARATING("Removing the singer's voice"),
         TRANSCRIBING("Finding the bouzouki notes"),
@@ -252,7 +252,7 @@ class SongAnalyzer(private val separator: MdxSeparator, private val pitch: Basic
         cancelled: () -> Boolean = { false },
     ): Pair<SongAnalysis, AnalysisData> {
         progress(Stage.TRANSCRIBING, 0f)
-        val audio = resample(instrumental, MdxSeparator.SAMPLE_RATE, BasicPitch.SAMPLE_RATE)
+        val audio = resample(instrumental, Separator.SAMPLE_RATE, BasicPitch.SAMPLE_RATE)
         val tuning = Tuning.estimate(audio)
         val raw = transcribe(audio, tuning, { progress(Stage.TRANSCRIBING, it * 0.9f) }, cancelled)
         progress(Stage.PLACING, 0f)

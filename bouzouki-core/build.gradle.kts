@@ -30,3 +30,12 @@ tasks.register<JavaExec>("analyzeSong") {
     maxHeapSize = "6g"
     args = listOf("songAudio", "songModel", "songOut", "songStem").map { (findProperty(it) ?: "").toString() }
 }
+
+// Developer tool: score the transcription on an evaluation set (see eval/Evaluator.kt and docs/eval-recordings.md).
+tasks.register<JavaExec>("evalSet") {
+    description = "Scores -PevalSet=<dir|synth> into -PevalOut=<dir> as -PevalLabel=<name>"
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.bouzouki.core.eval.EvaluatorKt")
+    maxHeapSize = "6g"
+    args = listOf("evalSet", "evalOut", "evalLabel").map { (findProperty(it) ?: "").toString() }
+}

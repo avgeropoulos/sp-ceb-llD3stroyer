@@ -6,7 +6,7 @@ import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
-import com.bouzouki.core.song.MdxSeparator
+import com.bouzouki.core.song.Separator
 import com.bouzouki.core.song.resample
 import java.io.File
 import java.io.IOException
@@ -107,7 +107,7 @@ object AudioDecoder {
             }
             if (n == 0) throw IOException("Couldn't decode the audio")
             left = left.copyOf(n); right = right.copyOf(n)
-            val target = MdxSeparator.SAMPLE_RATE
+            val target = Separator.SAMPLE_RATE
             return if (rate == target) Stereo(left, right)
             else Stereo(resample(left, rate, target, 8), resample(right, rate, target, 8))
         } finally {
