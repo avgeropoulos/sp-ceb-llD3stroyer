@@ -6,3 +6,4 @@ local.properties
 .DS_Store
 captures/
 .claude/worktrees/
+__pycache__/

@@ -1,0 +1,6 @@
+# torch itself: pip install torch (CPU wheels are enough)
+demucs==4.1.0
+onnx>=1.16
+onnxscript
+onnxruntime>=1.20
+numpy

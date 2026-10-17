@@ -3,16 +3,17 @@ package com.bouzouki.core.song
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
-import java.io.File
-import java.io.InputStream
-import java.nio.FloatBuffer
-import java.security.MessageDigest
+import ai.onnxruntime.TensorInfo
 import com.bouzouki.core.song.DemucsSeparator.Companion.BINS
 import com.bouzouki.core.song.DemucsSeparator.Companion.FRAMES
 import com.bouzouki.core.song.DemucsSeparator.Companion.HOP
 import com.bouzouki.core.song.DemucsSeparator.Companion.N_FFT
 import com.bouzouki.core.song.DemucsSeparator.Companion.PAD
 import com.bouzouki.core.song.DemucsSeparator.Companion.SEGMENT
+import java.io.File
+import java.io.InputStream
+import java.nio.FloatBuffer
+import java.security.MessageDigest
 import kotlin.math.sqrt
 
 /**
@@ -25,14 +26,20 @@ import kotlin.math.sqrt
  * spectral branch's complex spectrograms. Everything around it is here and matches demucs:
  * the track normalisation of demucs.api, the overlapping segments with triangular weights of
  * demucs.apply.apply_model (overlap 0.25, no shifts), HTDemucs._spec and HTDemucs._ispec.
+ *
+ * One segment needs a lot of memory in ONNX Runtime (about 2.5 GB at peak on desktop x86 without
+ * its memory arena, twice that with it), so open the session with [sessionOptions].
  */
 class DemucsSeparator(private val env: OrtEnvironment, private val session: OrtSession) {
     /** Stem names in the model's output order, read from the graph's output shape. */
-    val sources: List<String> = when (val s = (session.outputInfo["time"]?.info as? ai.onnxruntime.TensorInfo)?.shape?.get(1)) {
+    val sources: List<String> = when (val s = (session.outputInfo["time"]?.info as? TensorInfo)?.shape?.get(1)) {
         6L -> SOURCES_6S
         4L -> SOURCES_4S
         else -> error("not a Demucs export (time output has $s sources)")
     }
+
+    /** The [DEFAULT_STEMS] this model has: guitar and other for htdemucs_6s, other for htdemucs. */
+    val defaultStems: List<String> = DEFAULT_STEMS.filter { it in sources }
 
     /** How long one segment took: [dspMillis] for STFT, iSTFT and mixing, [modelMillis] in ONNX Runtime. */
     data class SegmentTiming(val index: Int, val count: Int, val dspMillis: Long, val modelMillis: Long)
@@ -45,7 +52,7 @@ class DemucsSeparator(private val env: OrtEnvironment, private val session: OrtS
      * [progress] gets 0..1; [cancelled] is polled between segments; [timing] hears about each segment.
      */
     fun stemMono(
-        left: FloatArray, right: FloatArray, stems: Collection<String> = DEFAULT_STEMS,
+        left: FloatArray, right: FloatArray, stems: Collection<String> = defaultStems,
         progress: (Float) -> Unit = {}, cancelled: () -> Boolean = { false }, timing: (SegmentTiming) -> Unit = {},
     ): FloatArray {
         val sep = separate(left, right, stems, progress, cancelled, timing)
@@ -59,7 +66,7 @@ class DemucsSeparator(private val env: OrtEnvironment, private val session: OrtS
      * Only the requested stems are kept, so a long song needs memory for those alone.
      */
     fun separate(
-        left: FloatArray, right: FloatArray, stems: Collection<String> = DEFAULT_STEMS,
+        left: FloatArray, right: FloatArray, stems: Collection<String> = defaultStems,
         progress: (Float) -> Unit = {}, cancelled: () -> Boolean = { false }, timing: (SegmentTiming) -> Unit = {},
     ): Map<String, Array<FloatArray>> {
         val n = left.size
@@ -142,6 +149,13 @@ class DemucsSeparator(private val env: OrtEnvironment, private val session: OrtS
         const val SEGMENT = 343_980
         const val FRAMES = (SEGMENT + HOP - 1) / HOP
         internal const val PAD = HOP / 2 * 3
+
+        /** Session options that keep the peak memory down (no arena, no memory patterns), ~30% slower. */
+        fun sessionOptions(threads: Int = 4) = OrtSession.SessionOptions().apply {
+            setIntraOpNumThreads(threads)
+            setCPUArenaAllocator(false)
+            setMemoryPatternOptimization(false)
+        }
 
         val SOURCES_6S = listOf("drums", "bass", "other", "vocals", "guitar", "piano")
         val SOURCES_4S = listOf("drums", "bass", "other", "vocals")

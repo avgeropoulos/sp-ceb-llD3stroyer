@@ -21,7 +21,7 @@ training length of htdemucs / htdemucs_6s) and FRAMES = ceil(SEGMENT / 1024) = 3
 
 Usage:
   export_onnx.py --model htdemucs_6s --out htdemucs_6s.onnx            # pretrained (downloads)
-  export_onnx.py --model htdemucs_6s --weights 5c90dfd2-34c22ccb.th ...  # local checkpoint
+  export_onnx.py --model htdemucs_6s --weights 5c90dfd2-34c22ccb.th ...  # local .th / .safetensors
   export_onnx.py --model htdemucs_6s --random --ref-dir DIR ...         # random weights, offline
   add --fp16 for a float16 graph (float32 inputs/outputs), --validate to compare against torch.
 """
@@ -66,12 +66,15 @@ def random_model(name, seed=0):
 
 
 def load_model(name, weights):
-    if weights:
+    if weights and weights.endswith(".safetensors"):
+        from demucs.hf import load_safetensors_model
+        model = load_safetensors_model(weights)
+    elif weights:
         from demucs.states import load_model as load
         model = load(weights)
     else:
         from demucs.pretrained import get_model
-        model = get_model(name)
+        model = get_model(name)  # demucs 4.1 tries the HuggingFace hub, then dl.fbaipublicfiles.com
         if hasattr(model, "models"):  # a BagOfModels of one
             assert len(model.models) == 1, "only single-model bags are supported"
             model = model.models[0]
@@ -289,7 +292,7 @@ def session(path, threads=4):
     return ort.InferenceSession(path, o, providers=["CPUExecutionProvider"])
 
 
-def validate(model, path, tol):
+def validate(model, path, tol, min_snr):
     """Torch forward on one segment vs ONNX graph + numpy STFT; returns max abs error."""
     rng = np.random.default_rng(0)
     seg = test_track(SEGMENT / SAMPLE_RATE + 0.01)[:, :SEGMENT]
@@ -306,8 +309,8 @@ def validate(model, path, tol):
     snr = 10 * np.log10((ref ** 2).sum() / ((got - ref) ** 2).sum())
     print(f"validate {os.path.basename(path)}: spec max|err| {spec_err:.2e}, stems max|err| {err:.2e} "
           f"(ref peak {np.abs(ref).max():.3f}), SNR {snr:.1f} dB, segment {dt:.2f} s", file=sys.stderr)
-    if err > tol:
-        raise SystemExit(f"validation failed: {err} > {tol}")
+    if err > tol or snr < min_snr:
+        raise SystemExit(f"validation failed: max|err| {err} (tol {tol}), SNR {snr:.1f} dB (min {min_snr})")
     return err
 
 
@@ -333,18 +336,19 @@ def write_reference(model, path, ref_dir, sources):
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--model", choices=sorted(SOURCES), default="htdemucs_6s")
-    p.add_argument("--weights", help="local .th checkpoint (default: demucs' pretrained download)")
+    p.add_argument("--weights", help="local .th or .safetensors checkpoint (default: demucs' pretrained download)")
     p.add_argument("--random", action="store_true", help="random weights, identical architecture (offline tests)")
     p.add_argument("--fp16", action="store_true", help="float16 weights and compute, float32 I/O")
     p.add_argument("--out", required=True)
     p.add_argument("--validate", action="store_true")
     p.add_argument("--tol", type=float, default=None, help="max abs error (default 1e-3 fp32, 5e-2 fp16)")
+    p.add_argument("--min-snr", type=float, default=None, help="dB (default 60 fp32, 30 fp16)")
     p.add_argument("--ref-dir", help="also write a reference test vector here")
     a = p.parse_args()
     model = random_model(a.model) if a.random else load_model(a.model, a.weights)
     export(model, a.out, a.fp16)
     if a.validate:
-        validate(model, a.out, a.tol or (5e-2 if a.fp16 else 1e-3))
+        validate(model, a.out, a.tol or (5e-2 if a.fp16 else 1e-3), a.min_snr or (30 if a.fp16 else 60))
     if a.ref_dir:
         write_reference(model, a.out, a.ref_dir, model.sources)
 
