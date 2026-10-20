@@ -2,26 +2,46 @@ plugins {
     id "com.android.application"
 }
 
-// The game lives in ../../game; copy it into the app's assets on every build.
-def gameAssets = layout.buildDirectory.dir("generated/gameAssets").get().asFile
-tasks.register("copyGame", Copy) {
-    from("$rootDir/../game") {
-        include "*.html", "*.js", "*.jpg"
+// Two apps from one project: the classic top-down game and Backyard Boop 3D.
+// Each has its own name, icon and app id, so they install side by side.
+// The game lives in ../../game; copy each app's files into its assets on every build.
+def gameFiles = [
+    classic: ["index.html", "*.jpg"],
+    threeD : ["3d.html", "three.min.js", "*.jpg"],
+]
+gameFiles.each { flavor, files ->
+    def task = tasks.register("copyGame${flavor.capitalize()}", Copy) {
+        from("$rootDir/../game") { include files }
+        into(layout.buildDirectory.dir("generated/gameAssets/$flavor/game"))
     }
-    into(new File(gameAssets, "game"))
+    preBuild.dependsOn(task)
 }
-preBuild.dependsOn("copyGame")
 
 android {
     namespace "com.backyardboop.game"
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.backyardboop.game"
         minSdk 24
         targetSdk 34
         versionCode((System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger())
         versionName "1.0." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
+    }
+
+    flavorDimensions "game"
+    productFlavors {
+        classic {
+            dimension "game"
+            applicationId "com.backyardboop.game"
+            resValue "string", "app_name", "Backyard Boop"
+            resValue "string", "start_page", "index.html"
+        }
+        threeD {
+            dimension "game"
+            applicationId "com.backyardboop.game3d"
+            resValue "string", "app_name", "Backyard Boop 3D"
+            resValue "string", "start_page", "3d.html"
+        }
     }
 
     // A fixed key so each new APK installs as an update over the last one.
@@ -42,7 +62,8 @@ android {
     }
 
     sourceSets {
-        main.assets.srcDir(gameAssets)
+        classic.assets.srcDir(layout.buildDirectory.dir("generated/gameAssets/classic"))
+        threeD.assets.srcDir(layout.buildDirectory.dir("generated/gameAssets/threeD"))
     }
 
     compileOptions {

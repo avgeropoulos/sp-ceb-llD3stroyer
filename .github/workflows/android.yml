@@ -26,17 +26,24 @@ jobs:
         with:
           gradle-version: "8.9"
 
-      - name: Build the APK
+      - name: Build both apps
         working-directory: android
-        run: gradle assembleRelease --no-daemon
+        run: gradle assembleClassicRelease assembleThreeDRelease --no-daemon
 
-      - name: Name the APK
-        run: cp android/app/build/outputs/apk/release/app-release.apk BackyardBoop.apk
+      - name: Name the APKs
+        run: |
+          cp android/app/build/outputs/apk/classic/release/app-classic-release.apk BackyardBoop.apk
+          cp android/app/build/outputs/apk/threeD/release/app-threeD-release.apk BackyardBoop3D.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: BackyardBoop-apk
           path: BackyardBoop.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BackyardBoop3D-apk
+          path: BackyardBoop3D.apk
 
       # Needs "Read and write permissions" under Settings > Actions > General >
       # Workflow permissions. Without it the APK is still attached to the run above.
@@ -52,3 +59,18 @@ jobs:
             Android will ask you to allow installing apps from your browser the first time.
           files: BackyardBoop.apk
           make_latest: true
+
+      # Backyard Boop 3D is its own app, so it gets its own release.
+      - name: Publish a download link for Backyard Boop 3D
+        uses: softprops/action-gh-release@v2
+        continue-on-error: true
+        with:
+          tag_name: backyard-boop-3d-v${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: Backyard Boop 3D for Android (build ${{ github.run_number }})
+          body: |
+            Open this page on your Android phone and tap **BackyardBoop3D.apk** to download it.
+            It installs as its own app next to Backyard Boop.
+            Android will ask you to allow installing apps from your browser the first time.
+          files: BackyardBoop3D.apk
+          make_latest: false

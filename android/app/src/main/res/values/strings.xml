@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Backyard Boop</string>
+    <!-- app_name and start_page come from the product flavors in build.gradle -->
 </resources>

@@ -162,9 +162,6 @@ kbd { font-family: var(--body); font-weight: 800; background: #eef2ec; border-ra
 #ui { z-index: 1; }
 .leapbtn { z-index: 2; }
 .overlay { z-index: 3; }
-a.dogbtn { text-decoration: none; }
-.linkrow { font-size: 14px; }
-.linkrow a { color: var(--leash-red); font-weight: 800; }
 </style>
 
 <div id="app">
@@ -207,7 +204,6 @@ a.dogbtn { text-decoration: none; }
           <div><i>🦴</i><span><b>Treats</b> fall from the sky. Grab one for a 7-second boost.</span></div>
         </div>
         <p class="keys"><kbd>W</kbd>/<kbd>↑</kbd> runs forward, <kbd>S</kbd>/<kbd>↓</kbd> backs up, <kbd>A</kbd> <kbd>D</kbd> or <kbd>←</kbd> <kbd>→</kbd> turn. <kbd>Space</kbd> uses your power: Hercules <b>zooms</b> so fast he stays dry, Apollo <b>leaps</b> over mud, spray and bathtubs. On a phone or tablet, put your thumb down anywhere and slide it: up to run, sideways to turn. A quick tap or the round button uses the power. <kbd>P</kbd> pauses.</p>
-        <p class="linkrow">Two players? <a href="index.html">Play the classic top-down yard</a> for team mode.</p>
         <div class="scorebox"><h3 class="sbTitle">3D high scores</h3><div class="sbBody"></div></div>
       </div>
     </div>
@@ -252,7 +248,6 @@ a.dogbtn { text-decoration: none; }
       <div class="card">
         <h2>No 3D here, sorry!</h2>
         <p>This browser can't draw 3D graphics (WebGL is switched off or not supported).</p>
-        <div class="row"><a class="btn" href="index.html" style="text-decoration:none">Play the classic yard</a></div>
       </div>
     </div>
   </div>
@@ -1491,7 +1486,7 @@ window.bbBack = () => {
   if (screen === "play") { pause(); return "handled"; }
   if (screen === "pause") { resume(); return "handled"; }
   if (screen === "intro" || screen === "over") { toTitle(); return "handled"; }
-  location.href = "index.html"; return "handled";   // the 3D title goes back to the main menu
+  return "exit";
 };
 window.bbAppPaused = () => { if (screen === "play") pause(); else Music.stop(); };
 window.bbAppResumed = () => { if (G && screen === "intro") Music.start(styleFor(G.level), G.level, false); };

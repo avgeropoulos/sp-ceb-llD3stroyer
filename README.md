@@ -14,11 +14,11 @@ Open `game/index.html` in a browser to play (no build step).
 
 ## 3D chase cam
 
-Open `game/3d.html` (or pick **3D chase cam** on the main menu) to play in 3D with the camera right behind your dog. Pick Hercules or Apollo and run around a fenced backyard with a house, trees and flowers. The squirrels, bunnies, Giant Golden Goose, sprinklers, mud, Mr. Bubbles and falling treats all work the same way they do in 2D, and so do both powers: Hercules **zooms** and Apollo **leaps**.
+**Backyard Boop 3D** is a separate game: open `game/3d.html` to play in 3D with the camera right behind your dog. Pick Hercules or Apollo and run around a fenced backyard with a house, trees and flowers. The squirrels, bunnies, Giant Golden Goose, sprinklers, mud, Mr. Bubbles and falling treats all work the same way they do in 2D, and so do both powers: Hercules **zooms** and Apollo **leaps**.
 
 - `W`/`↑` runs forward, `S`/`↓` backs up, and `A`/`D` or `←`/`→` turn. `Space` uses the power. On a phone, put a thumb down anywhere and slide it up to run or sideways to turn. A quick tap or the round button uses the power.
 - The yard is bigger than the 2D one, so a round minimap in the corner turns with your dog and shows where the critters, treats and hazards are.
-- It's single player and keeps its own high score list. Team mode is still in the 2D game.
+- It's single player and keeps its own high score list. Team mode is in the original game.
 - It uses [three.js](https://threejs.org) r149 (MIT), stored as `game/three.min.js` so the Android app works offline.
 
 ## Music
@@ -27,4 +27,4 @@ Each dog has a theme song, made live in the browser with no audio files. Hercule
 
 ## Android
 
-`android/` holds a small app that runs the game full screen. Every push that changes the game makes GitHub Actions build a new APK. It is attached to each run on the Actions tab as `BackyardBoop-apk`. If the repo's workflow permissions are set to "Read and write" (Settings > Actions > General), it is also published on the [Releases page](../../releases/latest). To install it, open the Releases page on an Android phone, tap `BackyardBoop.apk`, and allow your browser to install apps when Android asks. Each new build is signed with the same key, so it installs as an update over the last one.
+`android/` builds two apps that run the games full screen: **Backyard Boop** and **Backyard Boop 3D** (the `classic` and `threeD` flavors). They have their own names, icons and app ids, so you can install both. Every push that changes the game makes GitHub Actions build new APKs. They are attached to each run on the Actions tab as `BackyardBoop-apk` and `BackyardBoop3D-apk`. If the repo's workflow permissions are set to "Read and write" (Settings > Actions > General), they are also published on the [Releases page](../../releases): `backyard-boop-v…` holds `BackyardBoop.apk` and `backyard-boop-3d-v…` holds `BackyardBoop3D.apk`. To install one, open its release on an Android phone, tap the APK, and allow your browser to install apps when Android asks. Each new build is signed with the same key, so it installs as an update over the last one.

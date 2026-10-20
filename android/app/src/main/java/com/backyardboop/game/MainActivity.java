@@ -10,7 +10,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
-/** Full-screen WebView that runs the game bundled in assets/game. */
+/** Full-screen WebView that runs the game bundled in assets/game (2D or 3D, per flavor). */
 public class MainActivity extends Activity {
     private WebView web;
 
@@ -34,7 +34,7 @@ public class MainActivity extends Activity {
         hideSystemBars();
 
         if (savedInstanceState != null) web.restoreState(savedInstanceState);
-        else web.loadUrl("file:///android_asset/game/index.html");
+        else web.loadUrl("file:///android_asset/game/" + getString(R.string.start_page));
     }
 
     private void hideSystemBars() {
