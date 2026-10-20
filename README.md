@@ -12,6 +12,15 @@ Open `game/index.html` in a browser to play (no build step).
 - Treats fall from the sky every 10 to 15 seconds. Grabbing one gives that dog a 7-second boost: Hercules gets zoomies (even faster, even snappier turns) and Apollo gets super leaps (longer, higher, quicker to recharge).
 - Play solo as either dog, or as a team on one keyboard: WASD moves Hercules and the arrow keys move Apollo. On phones and tablets, put a thumb down anywhere and slide it like a joystick. In team mode the left half of the screen steers Hercules and the right half steers Apollo.
 
+## 3D chase cam
+
+Open `game/3d.html` (or pick **3D chase cam** on the main menu) to play in 3D with the camera right behind your dog. Pick Hercules or Apollo and run around a fenced backyard with a house, trees and flowers. The squirrels, bunnies, Giant Golden Goose, sprinklers, mud, Mr. Bubbles and falling treats all work the same way they do in 2D, and so do both powers: Hercules **zooms** and Apollo **leaps**.
+
+- `W`/`↑` runs forward, `S`/`↓` backs up, and `A`/`D` or `←`/`→` turn. `Space` uses the power. On a phone, put a thumb down anywhere and slide it up to run or sideways to turn. A quick tap or the round button uses the power.
+- The yard is bigger than the 2D one, so a round minimap in the corner turns with your dog and shows where the critters, treats and hazards are.
+- It's single player and keeps its own high score list. Team mode is still in the 2D game.
+- It uses [three.js](https://threejs.org) r149 (MIT), stored as `game/three.min.js` so the Android app works offline.
+
 ## Music
 
 Each dog has a theme song, made live in the browser with no audio files. Hercules gets ridiculous heavy metal: chugging guitars, double kick drums, shredding solos and pinch squeals. Apollo gets fluffy, bouncy pop with marimba, ukulele strums and boings. Each level plays a different variation, the key goes up every 4 levels, and the music speeds up when time is running low. Extra layers kick in while the Giant Goose is out. In team mode the dogs take turns: Hercules plays on odd levels and Apollo on even ones. The **Music** and **Sounds** buttons switch each one off separately.

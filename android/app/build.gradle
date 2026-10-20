@@ -6,7 +6,7 @@ plugins {
 def gameAssets = layout.buildDirectory.dir("generated/gameAssets").get().asFile
 tasks.register("copyGame", Copy) {
     from("$rootDir/../game") {
-        include "index.html", "*.jpg"
+        include "*.html", "*.js", "*.jpg"
     }
     into(new File(gameAssets, "game"))
 }
