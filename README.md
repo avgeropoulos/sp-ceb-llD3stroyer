@@ -17,6 +17,8 @@ Open `game/index.html` in a browser to play (no build step).
 **Backyard Boop 3D** is a separate game: open `game/3d.html` to play in 3D with the camera right behind your dog. Pick Hercules or Apollo and run around a fenced backyard with a house, trees and flowers. The squirrels, bunnies, Giant Golden Goose, sprinklers, mud, Mr. Bubbles and falling treats all work the same way they do in 2D, and so do both powers: Hercules **zooms** and Apollo **leaps**.
 
 - `W`/`↑` runs forward, `S`/`↓` backs up, and `A`/`D` or `←`/`→` turn. `Space` uses the power. On a phone, put a thumb down anywhere and slide it up to run or sideways to turn. A quick tap or the round button uses the power.
+- It's gentler than the 2D game: the critters are a bit slower and tire sooner, the clock is longer, and when you run straight at a critter your dog drifts toward it a little.
+- Hercules and Apollo are shaggy cockapoos, with long furry ears, beards and eyebrows, and plumed tails.
 - The yard is bigger than the 2D one, so a round minimap in the corner turns with your dog and shows where the critters, treats and hazards are.
 - It's single player and keeps its own high score list. Team mode is in the original game.
 - It uses [three.js](https://threejs.org) r149 (MIT), stored as `game/three.min.js` so the Android app works offline.

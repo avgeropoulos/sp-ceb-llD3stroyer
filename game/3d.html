@@ -274,7 +274,7 @@ const BOOST_TIME = 7;
 const MAX_SPLASH = 3;
 const LEVEL_NAMES = ["Backyard Romp", "Sprinkler Lane", "Mr. Bubbles Rolls In", "Squirrel Rush Hour", "Bunny Meadow", "The Big Park", "Splash Zone", "Golden Goose Grove", "Speedy Sunday", "Top Dog Trail"];
 // The yard is bigger than the 2D screen, in the same units (a dog is about 50 long).
-const W = 1500, H = 1100;
+const W = 1300, H = 950;
 const isTouch = (window.matchMedia && matchMedia("(pointer: coarse)").matches) || "ontouchstart" in window;
 
 // ---------- Sound ----------
@@ -587,7 +587,7 @@ function buildYard() {
   const leaf = (x, y, z, sx, sy, sz, c) => { leaves.setMatrixAt(li, m4.compose(new THREE.Vector3(x, y, z), q, one.set(sx, sy, sz))); leaves.setColorAt(li++, new THREE.Color(c)); };
   for (let i = 0; i < TREES; i++) {
     let x, y;
-    do { x = srnd(-700, W + 700); y = srnd(-700, H + 700); } while ((x > -60 && x < W + 60 && y > -60 && y < H + 60) || (y < -60 && x > 300 && x < 1000));
+    do { x = srnd(-700, W + 700); y = srnd(-700, H + 700); } while ((x > -60 && x < W + 60 && y > -60 && y < H + 60) || (y < -60 && x > W / 2 - 500 && x < W / 2 + 200));
     x -= W / 2; y -= H / 2; const s = srnd(0.8, 1.5);
     trunks.setMatrixAt(i, m4.compose(new THREE.Vector3(x, 60 * s, y), q, one.set(12 * s, 120 * s, 12 * s)));
     for (let k = 0; k < 4; k++) { const r = (55 + srnd(0, 20)) * s; leaf(x + srnd(-30, 30) * s, (140 + srnd(0, 60)) * s, y + srnd(-30, 30) * s, r, r, r, k % 2 ? "#3f8f3a" : "#4fa346"); }
@@ -612,39 +612,64 @@ buildYard();
 let level3d = group(scene);   // everything that belongs to one level
 
 // ---------- Models ----------
+// Cockapoos, not poodles: a shaggy wavy coat, long furry spaniel ears, a beard
+// and eyebrows, thick fluffy legs and a feathery plume of a tail.
+const COAT = {
+  hercules: { fur: "#2b2930", wave: "#3e3b45", head: "#2e2c33", brow: "#45424d", ear: "#26242b", earTip: "#34313a", muzzle: "#36333b", beard: "#f0ede6", bib: "#e6e2d9" },
+  apollo:   { fur: "#a8835f", wave: "#c4a07a", head: "#8f8880", brow: "#b8b1a8", ear: "#735e4e", earTip: "#8c7563", muzzle: "#b68a60", beard: "#dacbb7", bib: null },
+};
+function tuft(p, c, x, y, z, rx, ry, rz, tilt) {
+  const b = ball(p, c, x, y, z, rx, ry, rz);
+  b.rotation.set(srnd(-0.3, 0.3), srnd(-0.4, 0.4), tilt === undefined ? srnd(-0.4, 0.4) : tilt);
+  return b;
+}
 function makeDogModel(id) {
-  const L = Object.assign({}, DOGS[id], id === "hercules" ? { fur: "#2b2930", curl: "#4b4753", head: "#2b2930", ear: "#1e1c22", muzzle: "#38353d" } : {}), root = group(scene), body = group(root), m = { root, body, legs: [], ears: [] };
+  const L = DOGS[id], C = COAT[id], root = group(scene), body = group(root), m = { root, body, legs: [], ears: [] };
   m.shadow = blob(scene, 30);
-  for (const [lx, lz, ph] of [[14, 8, 0], [14, -8, Math.PI], [-16, 8, Math.PI / 2], [-16, -8, Math.PI * 1.5]]) {
+  seed = id === "hercules" ? 3 : 5;
+  // sturdy, shaggy legs
+  for (const [lx, lz, ph] of [[13, 8, 0], [13, -8, Math.PI], [-15, 8, Math.PI / 2], [-15, -8, Math.PI * 1.5]]) {
     const pivot = group(root, lx, 22, lz);
-    mesh(CYL, L.fur, pivot, 0, -10, 0, 4.2, 20, 4.2); ball(pivot, L.curl, 0, -20, 0, 5, 4, 5.5);
+    ball(pivot, C.fur, 0, -7, 0, 6, 10, 6);
+    tuft(pivot, C.wave, 0, -14.5, 0, 6.6, 6, 6.6, 0);
+    ball(pivot, C.fur, 1.5, -20, 0, 5.6, 2.8, 5);
     m.legs.push([pivot, ph]);
   }
-  ball(body, L.fur, -2, 30, 0, 22, 13, 13);
-  seed = id === "hercules" ? 3 : 5;
-  for (let i = 0; i < 16; i++) {   // curly coat
-    const u = srnd(-1, 1), v = srnd(-0.2, 1) * Math.PI;
-    ball(body, i % 3 ? L.fur : L.curl, -2 + u * 18, 30 + Math.sin(v) * 10, Math.cos(v) * 11, 6);
-  }
-  const head = m.head = group(body, 21, 44, 0);
-  ball(head, L.head, 0, 0, 0, 12);
-  for (let i = 0; i < 7; i++) { const a = i / 7 * Math.PI * 2; ball(head, i % 2 ? L.head : L.curl, -2, 6 + Math.sin(a) * 6, Math.cos(a) * 8, 5); }
-  ball(head, L.muzzle, 11, -3, 0, 8.5, 6.5, 7);
-  ball(head, L.chin, 10, -8, 0, 5.5, 3, 5);
-  ball(head, "#0b0a0c", 19, -1.5, 0, 3.6, 3, 4);
+  // a barrel of a body, wavy tufts all over and a fringe hanging underneath
+  ball(body, C.fur, -2, 30, 0, 21, 13, 13);
+  for (let i = 0; i < 14; i++) { const u = srnd(-0.9, 0.9), v = srnd(0.05, 0.95) * Math.PI; tuft(body, i % 3 ? C.fur : C.wave, -2 + u * 18, 30 + Math.sin(v) * 10, Math.cos(v) * 11, 6.5, 4.5, 5); }
+  for (let i = 0; i < 6; i++) for (const s of [-1, 1]) tuft(body, (i + s) % 2 ? C.fur : C.wave, -16 + i * 6, 20, s * 8, 4, 7, 4);
+  if (C.bib) ball(body, C.bib, 15, 31, 0, 5, 7.5, 6.5);   // white chest patch
+  // a big round shaggy head
+  const head = m.head = group(body, 20, 45, 0);
+  ball(head, C.head, 0, 0, 0, 13, 12.5, 13);
+  for (let i = 0; i < 6; i++) tuft(head, i % 2 ? C.head : C.brow, srnd(-6, 7), srnd(8.5, 12), srnd(-8, 8), 5.5, 4, 5);   // messy top
+  ball(head, C.muzzle, 10.5, -3, 0, 7, 6, 7.5);
+  ball(head, "#0b0a0c", 17, -1.5, 0, 3.2, 2.6, 3.6);
+  tuft(head, C.beard, 11, -9.5, 0, 5, 4.5, 5.5, 0);
+  tuft(head, C.beard, 8, -12.5, 0, 4, 4, 4.5, 0);
   for (const s of [-1, 1]) {
-    ball(head, "#24160f", 8.5, 4, s * 5.6, 2.7);
-    ball(head, "#ffffff", 10.6, 5, s * 5.9, 0.9);
-    const ear = group(head, -1, 4, s * 10);
-    ball(ear, L.ear, 0, -8, 0, 5, 11, 3.6);
+    ball(head, "#1c120c", 9.5, 3.5, s * 5.2, 2.6);
+    ball(head, "#ffffff", 11.8, 4.5, s * 5.4, 0.6);
+    tuft(head, C.brow, 10, 7, s * 5.5, 3.6, 2.2, 3.6, 0.3);   // eyebrows
+    tuft(head, C.muzzle, 13, -4.5, s * 3.6, 4, 3.5, 3.5);   // mustache
+    tuft(head, C.head, 4, -3, s * 9.5, 6, 7, 4.5);   // cheek fluff
+    // long furry spaniel ears that hang below the jaw
+    const ear = group(head, -2, 6, s * 11.5);
+    ball(ear, C.ear, 0, -6, 0, 6.5, 9, 3.5);
+    tuft(ear, C.ear, 0.5, -14, s * 0.8, 7.5, 7, 4);
+    tuft(ear, C.earTip, 1, -20, s * 1, 6, 5, 3.6);
     m.ears.push([ear, s]);
   }
-  const collar = mesh(new THREE.TorusGeometry(10, 2, 8, 20), L.collar, body, 14, 36, 0, 1);
+  const collar = mesh(new THREE.TorusGeometry(10.5, 2, 8, 20), L.collar, body, 13, 37, 0, 1);
   collar.rotation.set(0, Math.PI / 2, 0.5);
-  ball(body, "#ffd34d", 18, 27, 0, 2.6);
-  const tail = m.tail = group(body, -22, 36, 0);
-  tail.rotation.z = 0.7;
-  mesh(CYL, L.fur, tail, 0, 6, 0, 2.5, 12, 2.5); ball(tail, L.curl, 0, 15, 0, 8);
+  ball(body, "#ffd34d", 17.5, 27.5, 0, 2.6);
+  // a feathery plume, carried high
+  const tail = m.tail = group(body, -21, 36, 0);
+  tail.rotation.z = 0.5;
+  ball(tail, C.fur, 0, 5, 0, 4, 7, 4);
+  tuft(tail, C.wave, -2, 12, 0, 5, 7, 5, 0.4);
+  tuft(tail, C.fur, -5, 18, 0, 5, 6, 4.5, 0.8);
   m.ring = new THREE.Mesh(new THREE.TorusGeometry(32, 2.2, 6, 40), new THREE.MeshBasicMaterial({ color: "#ffe26e", transparent: true, opacity: 0.85 }));
   m.ring.rotation.x = Math.PI / 2; m.ring.position.y = 2; m.ring.visible = false; root.add(m.ring);
   m.sparkle = glow(root, 120, 34); m.sparkle.visible = false;
@@ -764,16 +789,16 @@ function levelCfg(n) {
   const goal = Math.min(5 + (n - 1) * 2, 25);
   return {
     goal,
-    time: Math.round(55 + goal * 4 - Math.min(n - 1, 8) * 1.5),   // a little longer than 2D: the yard is bigger
-    speed: Math.min(1 + (n - 1) * 0.08, 1.8),
-    fleeR: Math.min(110 + n * 10, 230),
+    time: Math.round(70 + goal * 4 - Math.min(n - 1, 8) * 1.5),   // longer than 2D: the yard is bigger and steering is trickier
+    speed: Math.min(0.85 + (n - 1) * 0.07, 1.6),
+    fleeR: Math.min(90 + n * 8, 190),
     pop: Math.min(6 + Math.floor(n / 2), 11),
-    sprinklers: Math.min(Math.floor(n / 2) + (n >= 2 ? 1 : 0), 5),
+    sprinklers: Math.min(Math.floor(n / 2), 4),
     sprinkSpin: 0.7 + n * 0.1,
     doubleArm: n >= 6,
     tubs: n >= 3 ? (n >= 7 ? 3 : n >= 5 ? 2 : 1) : 0,
-    tubSpeed: Math.min(60 + n * 9, 150),
-    mud: n >= 2 ? Math.min(2 + Math.floor(n / 2), 6) : 0,
+    tubSpeed: Math.min(50 + n * 8, 130),
+    mud: n >= 2 ? Math.min(1 + Math.floor(n / 2), 4) : 0,
     bunnyShare: Math.min(0.3 + n * 0.04, 0.55),
   };
 }
@@ -820,7 +845,7 @@ function spawnCritter() {
   // critters pop out of the bushes somewhere away from the dog
   let p = null;
   for (let t = 0; t < 30; t++) { p = { x: rnd(60, W - 60), y: rnd(60, H - 60) }; if (dist(p, d) > 320) break; }
-  const q = { type, x: p.x, y: p.y, r: type === "bunny" ? 14 : 12, dir: rnd(0, 6.28), vx: 0, vy: 0, state: "enter", t: 0, turnT: 0, stamina: 2.2, tired: 0, hop: 0, hopPhase: 0, bob: 0, enterT: 0.5, face: 0, fur: type === "bunny" ? (Math.random() < 0.5 ? "#c9a07a" : "#a9a4a0") : (Math.random() < 0.6 ? "#8b6a52" : "#7d7d82") };
+  const q = { type, x: p.x, y: p.y, r: type === "bunny" ? 14 : 12, dir: rnd(0, 6.28), vx: 0, vy: 0, state: "enter", t: 0, turnT: 0, stamina: 1.6, tired: 0, hop: 0, hopPhase: 0, bob: 0, enterT: 0.5, face: 0, fur: type === "bunny" ? (Math.random() < 0.5 ? "#c9a07a" : "#a9a4a0") : (Math.random() < 0.6 ? "#8b6a52" : "#7d7d82") };
   q.face = q.dir; q.m = makeCritterModel(q);
   for (let k = 0; k < 8; k++) G.particles.push({ x: q.x, y: q.y, z: 2, vx: rnd(-50, 50), vy: rnd(-50, 50), vz: rnd(40, 110), life: 0.5, max: 0.5, col: "#6b4a2b", s: 3, g: 300 });
   G.critters.push(q);
@@ -915,6 +940,13 @@ function update(dt) {
     const tr = S.turn * (boosted ? 1.25 : 1) * (d.leap ? 0.35 : d.dash ? 0.6 : 1);
     d.av += (turn * tr - d.av) * Math.min(1, dt * 14);
     d.a += d.av * dt;
+    if (fwd > 0.2 && Math.abs(turn) < 0.5) {   // aim assist: drift toward a critter just ahead
+      let best = null, bd = 280;
+      const targets = G.critters.filter((q) => q.state === "wander");
+      if (G.bird && G.bird.state === "ground") targets.push(G.bird);
+      for (const q of targets) { const dd = dist(d, q); if (dd < bd && Math.abs(angDiff(Math.atan2(q.y - d.y, q.x - d.x), d.a)) < 0.65) { bd = dd; best = q; } }
+      if (best) d.a += clamp(angDiff(Math.atan2(best.y - d.y, best.x - d.x), d.a), -1, 1) * dt * 2.6;
+    }
     if (d.leap) {
       const L = d.leap; L.t += dt;
       const p = Math.min(1, L.t / L.dur);
@@ -1005,8 +1037,8 @@ function updateCritter(q, dt, c) {
   const fleeing = d && dd < c.fleeR;
   const base = (q.type === "bunny" ? 200 : 185) * c.speed;
   // stamina: critters tire after a long chase, so a persistent pup always wins
-  if (fleeing) { q.stamina -= dt; if (q.stamina <= 0) { q.tired = 1.6; q.stamina = 2.2; } }
-  else q.stamina = Math.min(2.2, q.stamina + dt * 0.7);
+  if (fleeing) { q.stamina -= dt; if (q.stamina <= 0) { q.tired = 2.2; q.stamina = 1.6; } }
+  else q.stamina = Math.min(1.6, q.stamina + dt * 0.7);
   q.tired = Math.max(0, q.tired - dt);
 
   let tx, ty, speed;
@@ -1036,7 +1068,7 @@ function updateCritter(q, dt, c) {
   q.face += angDiff(q.dir, q.face) * Math.min(1, dt * 12);
 }
 
-const reach = (d) => d.r + (d.leap || d.dash ? 14 : 0);   // a pounce or zoom reaches a little further
+const reach = (d) => d.r + 10 + (d.leap || d.dash ? 14 : 0);   // a generous boop, and a pounce or zoom reaches further
 const safe = (d) => d.z > 12 || !!d.dash;   // leaping over hazards, or zooming too fast to get wet
 
 function bark(d) {
@@ -1070,7 +1102,7 @@ function updateTreats(dt) {
       const tr = { x: clamp(d.x + Math.cos(d.a + side) * ahead, 60, W - 60), y: clamp(d.y + Math.sin(d.a + side) * ahead, 60, H - 60), z: 520, state: "fall", life: 9, spin: rnd(0, 6) };
       tr.m = makeTreatModel(); G.treats.push(tr);
     }
-    G.treatT = rnd(10, 15);
+    G.treatT = rnd(8, 12);
   }
   for (const tr of G.treats) {
     if (tr.state === "fall") {
@@ -1138,7 +1170,7 @@ function updateBird(b, dt) {
 }
 
 function splash(d, msg) {
-  d.inv = 1.8; G.splashes++; G.shake = 1;
+  d.inv = 2.4; G.splashes++; G.shake = 1;
   G.floaters.push({ x: d.x, y: d.y, z: 80, text: msg, life: 1.3, col: "#d6efff" });
   for (let i = 0; i < 24; i++) G.particles.push({ x: d.x, y: d.y, z: 30, vx: rnd(-150, 150), vy: rnd(-150, 150), vz: rnd(20, 200), life: 0.7, max: 0.7, col: "#7cc4ff", s: rnd(3, 6), g: 400 });
   sfx.splash();
