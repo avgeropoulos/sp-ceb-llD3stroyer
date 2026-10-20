@@ -160,6 +160,7 @@ kbd { font-family: var(--body); font-weight: 800; background: #eef2ec; border-ra
 /* 3D: the WebGL yard sits under a 2D canvas for sparkles, labels, the minimap and the joystick. */
 #gl { pointer-events: none; }
 #ui { z-index: 1; }
+.dogbtn.sel { border-color: var(--leash-yellow); box-shadow: 0 0 0 4px rgba(247,197,49,.45); transform: translateY(-2px); }
 .leapbtn { z-index: 2; }
 .overlay { z-index: 3; }
 </style>
@@ -203,7 +204,8 @@ kbd { font-family: var(--body); font-weight: 800; background: #eef2ec; border-ra
           <div><i>🟤</i><span><b>Mud</b> slows you down.</span></div>
           <div><i>🦴</i><span><b>Treats</b> fall from the sky. Grab one for a 7-second boost.</span></div>
         </div>
-        <p class="keys"><kbd>W</kbd>/<kbd>↑</kbd> runs forward, <kbd>S</kbd>/<kbd>↓</kbd> backs up, <kbd>A</kbd> <kbd>D</kbd> or <kbd>←</kbd> <kbd>→</kbd> turn. <kbd>Space</kbd> uses your power: Hercules <b>zooms</b> so fast he stays dry, Apollo <b>leaps</b> over mud, spray and bathtubs. On a phone or tablet, put your thumb down anywhere and slide it: up to run, sideways to turn. A quick tap or the round button uses the power. <kbd>P</kbd> pauses.</p>
+        <p class="keys" id="padNote" hidden>🎮 <b>Controller ready!</b> Left stick or D-pad: run. Right stick: look around. <b>A</b> (or any face button): power. <b>Start</b>: pause. Press left or right to pick a dog, then <b>A</b>.</p>
+        <p class="keys">Run with <kbd>WASD</kbd> or the arrow keys: your dog runs the way you point and the camera swings round behind him. <kbd>Q</kbd> and <kbd>E</kbd> turn the camera. <kbd>Space</kbd> uses your power: Hercules <b>zooms</b> so fast he stays dry, Apollo <b>leaps</b> over mud, spray and bathtubs. On a phone or tablet, slide your thumb on the left side to run and drag on the right side to look around. A quick tap or the round button uses the power. Game controllers work too. <kbd>P</kbd> pauses.</p>
         <div class="scorebox"><h3 class="sbTitle">3D high scores</h3><div class="sbBody"></div></div>
       </div>
     </div>
@@ -265,10 +267,10 @@ const DOGS = {
   apollo:   { name: "Apollo",   fur: "#b27b47", curl: "#d29c64", head: "#6f6258", ear: "#3a302b", muzzle: "#c58b52", chin: "#e9dccb", collar: "#2f86d6", photo: "apollo.jpg" },
 };
 const PTS = { squirrel: 10, bunny: 15 };
-// Same feel as the 2D game, plus how quickly each dog turns under the chase cam.
+// Quicker than the 2D dogs, plus how fast each one turns (radians a second).
 const STATS = {
-  hercules: { speed: 290, grip: 24, boostSpeed: 1.4, turn: 3.6 },
-  apollo:   { speed: 225, grip: 9,  boostSpeed: 1.2, turn: 3.0 },
+  hercules: { speed: 345, grip: 22, boostSpeed: 1.35, turn: 10 },
+  apollo:   { speed: 285, grip: 13, boostSpeed: 1.2,  turn: 8 },
 };
 const BOOST_TIME = 7;
 const MAX_SPLASH = 3;
@@ -520,17 +522,39 @@ const srnd = (a, b) => { seed = (seed * 16807) % 2147483647; return a + (seed / 
 // ---------- 3D scene ----------
 // Game logic works on a flat yard: x across, y deep, z up. In three.js that is
 // X = x, Z = y and Y = z, centred on the yard. Models face +X.
+THREE.ColorManagement.legacyMode = false;   // colours below are sRGB; light them in linear space
 let renderer = null;
-try { renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: !isTouch, powerPreference: "high-performance" }); } catch (e) { renderer = null; }
+try { renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true, powerPreference: "high-performance" }); } catch (e) { renderer = null; }
+if (renderer) {
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.95;
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+}
 const scene = new THREE.Scene();
-const SKY = "#9fd6f5";
-scene.background = new THREE.Color(SKY);
-scene.fog = new THREE.Fog(SKY, 1100, 3200);
-const camera = new THREE.PerspectiveCamera(62, 1, 2, 7000);
-scene.add(new THREE.HemisphereLight("#f2f9ff", "#4f7d38", 0.62));
-const sun = new THREE.DirectionalLight("#fff1d6", 0.55); sun.position.set(-500, 1000, -350); scene.add(sun);
+const HAZE = "#cfe6f3";
+scene.background = new THREE.Color(HAZE);
+scene.fog = new THREE.Fog(HAZE, 1200, 3600);
+const camera = new THREE.PerspectiveCamera(62, 1, 2, 9000);
+scene.add(new THREE.HemisphereLight("#dff0ff", "#4a6a30", 0.8));
+// The sun casts real shadows over the patch of yard around the dog (it follows him).
+const sun = new THREE.DirectionalLight("#fff0d8", 1.7);
+const SUN_OFFSET = new THREE.Vector3(-420, 900, -300);
+sun.castShadow = true;
+sun.shadow.mapSize.set(isTouch ? 1024 : 2048, isTouch ? 1024 : 2048);
+Object.assign(sun.shadow.camera, { left: -560, right: 560, top: 560, bottom: -560, near: 10, far: 2600 });
+sun.shadow.bias = -0.0006; sun.shadow.normalBias = 1.2;
+scene.add(sun, sun.target);
+function aimSun(x, z) { sun.target.position.set(x, 0, z); sun.position.set(x + SUN_OFFSET.x, SUN_OFFSET.y, z + SUN_OFFSET.z); }
+// sky: a gradient dome that travels with the camera
+const sky = new THREE.Mesh(new THREE.SphereGeometry(8000, 32, 16), new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false, fog: false,
+  uniforms: { top: { value: new THREE.Color("#3d8ee6") }, mid: { value: new THREE.Color("#8cc8f2") }, low: { value: new THREE.Color(HAZE) } },
+  vertexShader: "varying float h; void main() { h = normalize(position).y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+  fragmentShader: "uniform vec3 top; uniform vec3 mid; uniform vec3 low; varying float h; void main() { float k = clamp(h, 0.0, 1.0); vec3 c = k < 0.18 ? mix(low, mid, k / 0.18) : mix(mid, top, pow((k - 0.18) / 0.82, 0.7)); gl_FragColor = vec4(c, 1.0);\n#include <tonemapping_fragment>\n#include <encodings_fragment>\n}",
+}));
+sky.renderOrder = -1; scene.add(sky);
 
-const SPH = new THREE.SphereGeometry(1, 16, 12), CYL = new THREE.CylinderGeometry(1, 1, 1, 12), CONE = new THREE.ConeGeometry(1, 1, 12), BOX = new THREE.BoxGeometry(1, 1, 1);
+const SPH = new THREE.SphereGeometry(1, 14, 10), LOWSPH = new THREE.SphereGeometry(1, 7, 5), CYL = new THREE.CylinderGeometry(1, 1, 1, 12), CONE = new THREE.ConeGeometry(1, 1, 12), BOX = new THREE.BoxGeometry(1, 1, 1);
 const mats = {};
 function mat(c) { return mats[c] || (mats[c] = new THREE.MeshLambertMaterial({ color: c })); }
 function mesh(geo, c, parent, x, y, z, sx, sy, sz) {
@@ -541,7 +565,40 @@ function mesh(geo, c, parent, x, y, z, sx, sy, sz) {
 const ball = (p, c, x, y, z, rx, ry, rz) => mesh(SPH, c, p, x, y, z, rx, ry, rz);
 const group = (parent, x = 0, y = 0, z = 0) => { const g = new THREE.Group(); g.position.set(x, y, z); if (parent) parent.add(g); return g; };
 function place(obj, x, y, z) { obj.position.set(x - W / 2, z || 0, y - H / 2); }
-function canvasTex(w, h, paint) { const c = document.createElement("canvas"); c.width = w; c.height = h; paint(c.getContext("2d"), w, h); const t = new THREE.CanvasTexture(c); return t; }
+function canvasTex(w, h, paint) { const c = document.createElement("canvas"); c.width = w; c.height = h; paint(c.getContext("2d"), w, h); const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t; }
+// Merge a group's plain coloured parts into one mesh with vertex colours: a dog
+// is ~80 balls, and drawing them as a handful of meshes keeps phones fast.
+const VCOL = new THREE.MeshLambertMaterial({ vertexColors: true });
+function bake(g, material) {
+  const parts = g.children.filter((c) => c.isMesh && !c.userData.keep && !c.isInstancedMesh && c.material.isMeshLambertMaterial && !c.material.map && !c.material.vertexColors);
+  if (!parts.length) return;
+  const pos = [], nor = [], col = [], idx = [], v = new THREE.Vector3(), nm = new THREE.Matrix3();
+  let off = 0;
+  for (const m of parts) {
+    m.updateMatrix(); nm.getNormalMatrix(m.matrix);
+    const p = m.geometry.attributes.position, n = m.geometry.attributes.normal, c = m.material.color, ix = m.geometry.index;
+    const shade = m.userData.flat ? 1 : 0.93 + srnd(0, 0.14);   // a little variation, like real fur
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i).applyMatrix4(m.matrix); pos.push(v.x, v.y, v.z);
+      v.fromBufferAttribute(n, i).applyMatrix3(nm).normalize(); nor.push(v.x, v.y, v.z);
+      col.push(c.r * shade, c.g * shade, c.b * shade);
+    }
+    if (ix) for (let i = 0; i < ix.count; i++) idx.push(ix.getX(i) + off);
+    else for (let i = 0; i < p.count; i++) idx.push(i + off);
+    off += p.count; g.remove(m);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+  geo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  geo.setIndex(idx); geo.computeBoundingSphere();
+  const merged = new THREE.Mesh(geo, material || VCOL);
+  merged.castShadow = true; merged.receiveShadow = true; merged.userData.baked = true;
+  g.add(merged);
+}
+function bakeAll(root, material) { const groups = []; root.traverse((o) => { if (!o.isMesh && !o.isSprite) groups.push(o); }); groups.forEach((g) => bake(g, material)); }
+function shadowsOn(root) { root.traverse((o) => { if (o.isMesh && o.material && !o.material.transparent) o.castShadow = true; }); }
+function disposeBaked(root) { root.traverse((o) => { if (o.userData && o.userData.baked) o.geometry.dispose(); }); }
 const glowTex = canvasTex(64, 64, (g, w) => { const r = g.createRadialGradient(32, 32, 2, 32, 32, 32); r.addColorStop(0, "rgba(255,230,120,.75)"); r.addColorStop(1, "rgba(255,230,120,0)"); g.fillStyle = r; g.fillRect(0, 0, w, w); });
 const shadowTex = canvasTex(64, 64, (g, w) => { const r = g.createRadialGradient(32, 32, 4, 32, 32, 32); r.addColorStop(0, "rgba(0,0,0,.42)"); r.addColorStop(1, "rgba(0,0,0,0)"); g.fillStyle = r; g.fillRect(0, 0, w, w); });
 const shadowMat = new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false });
@@ -549,65 +606,116 @@ const FLAT = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
 function blob(parent, r) { const m = new THREE.Mesh(FLAT, shadowMat); m.scale.set(r * 2, 1, r * 2); m.renderOrder = 1; parent.add(m); return m; }
 function glow(parent, size, y) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); s.scale.set(size, size, 1); s.position.y = y; parent.add(s); return s; }
 
-// The yard: striped lawn, a white picket fence, the house, trees and flowers.
+// The yard: a striped, grassy lawn, a white picket fence, the house, trees, clouds.
+function grassTex(base, a, b, stripe) {
+  return canvasTex(512, 512, (g) => {
+    g.fillStyle = base; g.fillRect(0, 0, 512, 512);
+    if (stripe) { g.fillStyle = stripe; g.fillRect(0, 0, 256, 512); }
+    for (let i = 0; i < 9000; i++) {   // blades and speckles
+      g.fillStyle = i % 2 ? a : b; g.globalAlpha = srnd(0.15, 0.5);
+      const x = srnd(0, 512), y = srnd(0, 512); g.fillRect(x, y, srnd(1, 2.5), srnd(2, 6));
+    }
+    g.globalAlpha = 1;
+  });
+}
 function buildYard() {
   seed = 11;
-  const outer = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000).rotateX(-Math.PI / 2), mat("#4f9a3a")); outer.position.y = -0.5; scene.add(outer);
-  const stripes = canvasTex(128, 16, (g) => { g.fillStyle = "#5fa843"; g.fillRect(0, 0, 128, 16); g.fillStyle = "#6bb54e"; g.fillRect(0, 0, 64, 16); });
-  stripes.wrapS = stripes.wrapT = THREE.RepeatWrapping; stripes.repeat.set(W / 140, 1);
-  const lawn = new THREE.Mesh(new THREE.PlaneGeometry(W, H).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ map: stripes })); scene.add(lawn);
+  const aniso = renderer ? renderer.capabilities.getMaxAnisotropy() : 1;
+  const wild = grassTex("#3f8a2f", "#337626", "#559c40");
+  wild.wrapS = wild.wrapT = THREE.RepeatWrapping; wild.repeat.set(30, 30); wild.anisotropy = aniso;
+  const outer = new THREE.Mesh(new THREE.PlaneGeometry(12000, 12000).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ map: wild })); outer.position.y = -0.5; outer.receiveShadow = true; scene.add(outer);
+  const stripes = grassTex("#4a9433", "#3c8229", "#62a846", "#56a03c");
+  stripes.wrapS = stripes.wrapT = THREE.RepeatWrapping; stripes.repeat.set(W / 150, H / 300); stripes.anisotropy = aniso;
+  const lawn = new THREE.Mesh(new THREE.PlaneGeometry(W, H).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ map: stripes })); lawn.receiveShadow = true; scene.add(lawn);
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), qTip = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 4), one = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), col = new THREE.Color();
+  // grass tufts: thousands of little three-sided blades in one draw call
+  const blade = new THREE.ConeGeometry(1, 1, 3).translate(0, 0.5, 0);
+  const NG = isTouch ? 2000 : 4000, grass = new THREE.InstancedMesh(blade, new THREE.MeshLambertMaterial({ color: "#ffffff" }), NG);
+  for (let i = 0; i < NG; i++) {
+    const inside = i < NG * 0.75;
+    const x = inside ? srnd(4, W - 4) : srnd(-900, W + 900), y = inside ? srnd(4, H - 4) : srnd(-900, H + 900);
+    if (!inside && x > -20 && x < W + 20 && y > -20 && y < H + 20) { grass.setMatrixAt(i, m4.makeScale(0, 0, 0)); continue; }
+    q.setFromAxisAngle(up, srnd(0, 6.28));
+    grass.setMatrixAt(i, m4.compose(new THREE.Vector3(x - W / 2, 0, y - H / 2), q, one.set(srnd(2.2, 3.4), srnd(3, 6.5), srnd(2.2, 3.4))));
+    grass.setColorAt(i, col.set(["#3d8a2c", "#4b9734", "#57a23d", "#438f30"][i % 4]));
+  }
+  q.identity(); scene.add(grass);
   // fence: pickets every 24 units, two rails
   const pickets = [];
   for (let x = 0; x <= W; x += 24) pickets.push([x, -8], [x, H + 8]);
   for (let y = 24; y < H; y += 24) pickets.push([-8, y], [W + 8, y]);
   const pk = new THREE.InstancedMesh(BOX, mat("#fbfaf4"), pickets.length), tip = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 4), mat("#fbfaf4"), pickets.length);
-  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), qTip = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 4), one = new THREE.Vector3();
   pickets.forEach(([x, y], i) => {
     pk.setMatrixAt(i, m4.compose(new THREE.Vector3(x - W / 2, 19, y - H / 2), q, one.set(9, 38, 3)));
     tip.setMatrixAt(i, m4.compose(new THREE.Vector3(x - W / 2, 42, y - H / 2), qTip, one.set(6.4, 8, 6.4)));
   });
-  scene.add(pk, tip);
+  pk.castShadow = tip.castShadow = true; scene.add(pk, tip);
+  const rails = group(scene);
   for (const h of [12, 30]) {
-    mesh(BOX, "#e9e7dc", scene, 0, h, -H / 2 - 10, W + 20, 4, 3); mesh(BOX, "#e9e7dc", scene, 0, h, H / 2 + 10, W + 20, 4, 3);
-    mesh(BOX, "#e9e7dc", scene, -W / 2 - 10, h, 0, 3, 4, H + 20); mesh(BOX, "#e9e7dc", scene, W / 2 + 10, h, 0, 3, 4, H + 20);
+    mesh(BOX, "#e9e7dc", rails, 0, h, -H / 2 - 10, W + 20, 4, 3); mesh(BOX, "#e9e7dc", rails, 0, h, H / 2 + 10, W + 20, 4, 3);
+    mesh(BOX, "#e9e7dc", rails, -W / 2 - 10, h, 0, 3, 4, H + 20); mesh(BOX, "#e9e7dc", rails, W / 2 + 10, h, 0, 3, 4, H + 20);
   }
   // the house, behind the far fence
   const house = group(scene, -150, 0, -H / 2 - 330);
   mesh(BOX, "#f4e3c3", house, 0, 140, 0, 640, 280, 360);
+  const gable = new THREE.ExtrudeGeometry(new THREE.Shape([new THREE.Vector2(-180, 0), new THREE.Vector2(180, 0), new THREE.Vector2(0, 112)]), { depth: 8, bevelEnabled: false });
+  for (const s of [-1, 1]) { const gm = mesh(gable, "#f4e3c3", house, s * 316 - 4, 280, 0, 1); gm.rotation.y = Math.PI / 2; }
   for (const s of [-1, 1]) mesh(BOX, "#b5483a", house, 0, 335, s * 95, 700, 14, 225).rotation.x = s * 0.6;   // gable roof
-  mesh(BOX, "#ffffff", house, 210, 470, 0, 46, 120, 46);   // chimney
+  mesh(BOX, "#e8e2d6", house, 210, 470, 0, 46, 120, 46);   // chimney
   mesh(BOX, "#7a4b2f", house, 0, 70, 181, 80, 140, 4);   // back door
   ball(house, "#f7c531", 28, 72, 184, 4);
-  for (const x of [-220, -110, 120, 230]) { mesh(BOX, "#ffffff", house, x, 180, 181, 72, 76, 3); mesh(BOX, "#8fcdf2", house, x, 180, 183, 60, 64, 2); }
+  for (const x of [-220, -110, 120, 230]) { mesh(BOX, "#ffffff", house, x, 180, 181, 72, 76, 3); mesh(BOX, "#7fb8dc", house, x, 180, 183, 60, 64, 2); mesh(BOX, "#3f7f4f", house, x - 44, 180, 182, 12, 80, 2); mesh(BOX, "#3f7f4f", house, x + 44, 180, 182, 12, 80, 2); }
   mesh(BOX, "#cdb89a", house, 0, 8, 210, 150, 16, 60);   // step
-  // trees and bushes around the outside, instanced so they cost two draw calls
-  const TREES = 26, BUSHES = 18;
-  const trunks = new THREE.InstancedMesh(CYL, mat("#7a5634"), TREES), leaves = new THREE.InstancedMesh(SPH, new THREE.MeshLambertMaterial({ color: "#ffffff" }), TREES * 4 + BUSHES);
-  let li = 0;
-  const leaf = (x, y, z, sx, sy, sz, c) => { leaves.setMatrixAt(li, m4.compose(new THREE.Vector3(x, y, z), q, one.set(sx, sy, sz))); leaves.setColorAt(li++, new THREE.Color(c)); };
-  for (let i = 0; i < TREES; i++) {
-    let x, y;
-    do { x = srnd(-700, W + 700); y = srnd(-700, H + 700); } while ((x > -60 && x < W + 60 && y > -60 && y < H + 60) || (y < -60 && x > W / 2 - 500 && x < W / 2 + 200));
-    x -= W / 2; y -= H / 2; const s = srnd(0.8, 1.5);
-    trunks.setMatrixAt(i, m4.compose(new THREE.Vector3(x, 60 * s, y), q, one.set(12 * s, 120 * s, 12 * s)));
-    for (let k = 0; k < 4; k++) { const r = (55 + srnd(0, 20)) * s; leaf(x + srnd(-30, 30) * s, (140 + srnd(0, 60)) * s, y + srnd(-30, 30) * s, r, r, r, k % 2 ? "#3f8f3a" : "#4fa346"); }
+  bake(house); bake(rails);
+  // a red doghouse next to the house
+  const dh = group(scene, 300, 0, -H / 2 - 120);
+  mesh(BOX, "#c0392b", dh, 0, 35, 0, 80, 70, 70);
+  for (const s of [-1, 1]) mesh(BOX, "#7d2a20", dh, 0, 86, s * 22, 92, 8, 54).rotation.x = s * 0.75;
+  mesh(BOX, "#2a1a14", dh, 0, 26, 36, 34, 44, 2);
+  bake(dh);
+  // trees, pines and bushes around the outside, instanced so they cost a few draw calls
+  const TREES = 22, PINES = 14, BUSHES = 18;
+  const trunks = new THREE.InstancedMesh(CYL, mat("#7a5634"), TREES + PINES), leaves = new THREE.InstancedMesh(SPH, new THREE.MeshLambertMaterial({ color: "#ffffff" }), TREES * 4 + BUSHES);
+  const needles = new THREE.InstancedMesh(new THREE.ConeGeometry(1, 1, 8), new THREE.MeshLambertMaterial({ color: "#ffffff" }), PINES * 3);
+  let li = 0, ni = 0;
+  const leaf = (x, y, z, sx, sy, sz, c) => { leaves.setMatrixAt(li, m4.compose(new THREE.Vector3(x, y, z), q, one.set(sx, sy, sz))); leaves.setColorAt(li++, col.set(c)); };
+  const spot = () => { let x, y; do { x = srnd(-800, W + 800); y = srnd(-800, H + 800); } while ((x > -70 && x < W + 70 && y > -70 && y < H + 70) || (y < -40 && x > W / 2 - 520 && x < W / 2 + 380)); return [x - W / 2, y - H / 2]; };
+  for (let i = 0; i < TREES + PINES; i++) {
+    const [x, y] = spot(), s = srnd(0.8, 1.5);
+    if (i < TREES) {
+      trunks.setMatrixAt(i, m4.compose(new THREE.Vector3(x, 60 * s, y), q, one.set(12 * s, 120 * s, 12 * s)));
+      for (let k = 0; k < 4; k++) { const r = (55 + srnd(0, 20)) * s; leaf(x + srnd(-30, 30) * s, (140 + srnd(0, 60)) * s, y + srnd(-30, 30) * s, r, r * 0.9, r, ["#3f8f3a", "#4fa346", "#5aae4c", "#38813a"][k]); }
+    } else {
+      trunks.setMatrixAt(i, m4.compose(new THREE.Vector3(x, 30 * s, y), q, one.set(9 * s, 60 * s, 9 * s)));
+      for (let k = 0; k < 3; k++) { needles.setMatrixAt(ni, m4.compose(new THREE.Vector3(x, (95 + k * 55) * s, y), q, one.set((70 - k * 18) * s, (110 - k * 20) * s, (70 - k * 18) * s))); needles.setColorAt(ni++, col.set(k % 2 ? "#2f6e3a" : "#2a6334")); }
+    }
   }
   for (let i = 0; i < BUSHES; i++) {
     const side = i % 4, f = srnd(0.05, 0.95);
     const x = side === 0 ? f * W : side === 1 ? f * W : side === 2 ? -45 : W + 45, y = side === 0 ? -45 : side === 1 ? H + 45 : f * H;
     leaf(x - W / 2, 18, y - H / 2, srnd(26, 38), srnd(20, 30), srnd(26, 38), i % 3 ? "#3d8a36" : "#58a845");
   }
-  scene.add(trunks, leaves);
+  trunks.castShadow = leaves.castShadow = needles.castShadow = true;
+  scene.add(trunks, leaves, needles);
   // flowers: five petals round a yellow middle, coloured per instance
-  const n = 120, petals = new THREE.InstancedMesh(SPH, new THREE.MeshLambertMaterial({ color: "#ffffff" }), n * 5), mids = new THREE.InstancedMesh(SPH, mat("#f2a516"), n), col = new THREE.Color();
+  const n = 120, petals = new THREE.InstancedMesh(LOWSPH, new THREE.MeshLambertMaterial({ color: "#ffffff" }), n * 5), mids = new THREE.InstancedMesh(LOWSPH, mat("#f2a516"), n);
   for (let i = 0; i < n; i++) {
     const x = srnd(10, W - 10) - W / 2, z = srnd(10, H - 10) - H / 2, s = srnd(0.8, 1.3);
     col.set(["#ffffff", "#ffd84a", "#ff8fb1", "#c9a7ff"][i % 4]);
-    for (let k = 0; k < 5; k++) { const a = k * 1.2566; petals.setMatrixAt(i * 5 + k, m4.compose(new THREE.Vector3(x + Math.cos(a) * 3.4 * s, 3, z + Math.sin(a) * 3.4 * s), q, one.set(2.6 * s, 0.8, 2.6 * s))); petals.setColorAt(i * 5 + k, col); }
-    mids.setMatrixAt(i, m4.compose(new THREE.Vector3(x, 3.4, z), q, one.set(1.9 * s, 1, 1.9 * s)));
+    for (let k = 0; k < 5; k++) { const a = k * 1.2566; petals.setMatrixAt(i * 5 + k, m4.compose(new THREE.Vector3(x + Math.cos(a) * 3.4 * s, 4, z + Math.sin(a) * 3.4 * s), q, one.set(2.6 * s, 0.8, 2.6 * s))); petals.setColorAt(i * 5 + k, col); }
+    mids.setMatrixAt(i, m4.compose(new THREE.Vector3(x, 4.4, z), q, one.set(1.9 * s, 1, 1.9 * s)));
   }
   scene.add(petals, mids);
+  // fluffy clouds drifting high overhead
+  const cloudMat = new THREE.MeshLambertMaterial({ vertexColors: true, emissive: "#9fb4c8", fog: false });
+  for (let i = 0; i < 12; i++) {
+    const c = group(clouds), a = srnd(0, 6.28), r = srnd(900, 3200);
+    c.position.set(Math.cos(a) * r, srnd(650, 1050), Math.sin(a) * r);
+    for (let k = 0; k < 6; k++) { const b = ball(c, "#ffffff", srnd(-120, 120), srnd(-10, 30), srnd(-50, 50), srnd(55, 95), srnd(35, 55), srnd(45, 70)); b.userData.flat = true; }
+    bake(c, cloudMat); c.children[0].castShadow = false;
+  }
 }
+const clouds = group(scene);
 buildYard();
 let level3d = group(scene);   // everything that belongs to one level
 
@@ -615,7 +723,7 @@ let level3d = group(scene);   // everything that belongs to one level
 // Cockapoos, not poodles: a shaggy wavy coat, long furry spaniel ears, a beard
 // and eyebrows, thick fluffy legs and a feathery plume of a tail.
 const COAT = {
-  hercules: { fur: "#2b2930", wave: "#3e3b45", head: "#2e2c33", brow: "#45424d", ear: "#26242b", earTip: "#34313a", muzzle: "#36333b", beard: "#f0ede6", bib: "#e6e2d9" },
+  hercules: { fur: "#3b3841", wave: "#4f4b57", head: "#3e3b44", brow: "#5a5662", ear: "#322f38", earTip: "#45414c", muzzle: "#4a4650", beard: "#f0ede6", bib: "#e6e2d9" },
   apollo:   { fur: "#a8835f", wave: "#c4a07a", head: "#8f8880", brow: "#b8b1a8", ear: "#735e4e", earTip: "#8c7563", muzzle: "#b68a60", beard: "#dacbb7", bib: null },
 };
 function tuft(p, c, x, y, z, rx, ry, rz, tilt) {
@@ -625,7 +733,6 @@ function tuft(p, c, x, y, z, rx, ry, rz, tilt) {
 }
 function makeDogModel(id) {
   const L = DOGS[id], C = COAT[id], root = group(scene), body = group(root), m = { root, body, legs: [], ears: [] };
-  m.shadow = blob(scene, 30);
   seed = id === "hercules" ? 3 : 5;
   // sturdy, shaggy legs
   for (const [lx, lz, ph] of [[13, 8, 0], [13, -8, Math.PI], [-15, 8, Math.PI / 2], [-15, -8, Math.PI * 1.5]]) {
@@ -673,13 +780,13 @@ function makeDogModel(id) {
   m.ring = new THREE.Mesh(new THREE.TorusGeometry(32, 2.2, 6, 40), new THREE.MeshBasicMaterial({ color: "#ffe26e", transparent: true, opacity: 0.85 }));
   m.ring.rotation.x = Math.PI / 2; m.ring.position.y = 2; m.ring.visible = false; root.add(m.ring);
   m.sparkle = glow(root, 120, 34); m.sparkle.visible = false;
+  bakeAll(root);
   return m;
 }
-function removeModel(m) { if (!m) return; if (m.root.parent) m.root.parent.remove(m.root); if (m.shadow && m.shadow.parent) m.shadow.parent.remove(m.shadow); }
+function removeModel(m) { if (!m) return; disposeBaked(m.root); if (m.root.parent) m.root.parent.remove(m.root); if (m.shadow && m.shadow.parent) m.shadow.parent.remove(m.shadow); }
 
 function makeCritterModel(q) {
   const root = group(level3d), body = group(root), m = { root, body, ears: [] };
-  m.shadow = blob(level3d, 15);
   const f = q.fur;
   if (q.type === "squirrel") {
     const tail = m.tail = group(body, -8, 9, 0);
@@ -704,8 +811,9 @@ function makeCritterModel(q) {
     ball(body, "#e88a9b", 17.4, 16, 0, 1.5);
     for (const [x, z] of [[6, 5], [6, -5], [-6, 6], [-6, -6]]) ball(body, f, x, 3, z, 3.2, 2.6, 3.2);
   }
-  m.drop = ball(root, "#bfe6ff", 6, 34, 0, 2.6, 4, 2.6); m.drop.visible = false;   // tired sweat drop
+  m.drop = ball(root, "#bfe6ff", 6, 34, 0, 2.6, 4, 2.6); m.drop.visible = false; m.drop.userData.keep = true;   // tired sweat drop
   m.size = 1.35;   // drawn a little bigger than its catch circle so it reads from behind the dog
+  bakeAll(root);
   return m;
 }
 
@@ -722,22 +830,23 @@ function makeBirdModel() {
   for (const s of [-1, 1]) ball(body, "#1a1210", 32, 88, s * 8.5, 2.4);
   for (const x of [20, 26, 32]) mesh(CONE, "#f6c531", body, x, 100, 0, 3.2, 12, 3.2);
   glow(root, 220, 46);
+  bakeAll(root);
   return m;
 }
 
 function makeTubModel() {
   const root = group(level3d), body = group(root), m = { root, body, bubbles: [] };
-  m.shadow = blob(level3d, 40);
   for (const x of [-20, 20]) for (const z of [-13, 13]) ball(body, "#c7a24a", x, 5, z, 5.5);
   mesh(BOX, "#fbfdff", body, 0, 24, 0, 62, 30, 40);
   for (const x of [-31, 31]) mesh(CYL, "#fbfdff", body, x, 24, 0, 20, 30, 20);
   mesh(BOX, "#c9d6e0", body, 0, 40, 0, 104, 4, 44);
   seed = 9;
-  for (let i = 0; i < 9; i++) m.bubbles.push(ball(body, "#e4f4ff", -40 + i * 10, 44, srnd(-12, 12), 8));
+  for (let i = 0; i < 9; i++) { const b = ball(body, "#e4f4ff", -40 + i * 10, 44, srnd(-12, 12), 8); b.userData.keep = true; b.castShadow = true; m.bubbles.push(b); }
   ball(body, "#ffd23f", 12, 54, 0, 7, 5, 5); ball(body, "#ffd23f", 17, 60, 0, 4.2);
   const bk = mesh(CONE, "#f08a1c", body, 22, 59.5, 0, 1.8, 5, 1.8); bk.rotation.z = -Math.PI / 2;
   for (const s of [-1, 1]) { ball(body, "#26323a", 51, 28, s * 8, 2.8); ball(body, "#ff8ca0", 50.5, 21, s * 14, 3.6, 3.6, 2.4); }
   const smile = mesh(new THREE.TorusGeometry(5, 1.1, 6, 12, Math.PI), "#26323a", body, 51.5, 22, 0, 1); smile.rotation.set(0, Math.PI / 2, Math.PI);
+  bakeAll(root);
   return m;
 }
 
@@ -752,6 +861,7 @@ function makeSprinklerModel(s) {
     for (let i = 1; i <= 8; i++) { const l = s.len * i / 9; ball(arm, "#d6efff", l, 4 + Math.sin(i / 9 * Math.PI) * 34, 0, 2.6); }
     m.arms.push(arm);
   }
+  bakeAll(root);
   return m;
 }
 
@@ -762,6 +872,7 @@ function makeMudModel(md) {
   for (let i = 0; i < 5; i++) mesh(disc, "#5e3f25", root, Math.cos(md.seed + i * 2) * md.rx * 0.5, 0.8, Math.sin(md.seed + i * 1.3) * md.ry * 0.5, 10, 1, 6);
   mesh(disc, "#a07a58", root, -md.rx * 0.3, 0.9, -md.ry * 0.35, md.rx * 0.25, 1, 4);
   place(root, md.x, md.y, 0);
+  root.traverse((o) => { if (o.isMesh) o.receiveShadow = true; });
   return { root };
 }
 
@@ -771,6 +882,7 @@ function makeTreatModel() {
   const bar = mesh(CYL, "#d99a4e", body, 0, 0, 0, 4.6, 20, 4.6); bar.rotation.z = Math.PI / 2;
   for (const [x, z] of [[-10, -4], [-10, 4], [10, -4], [10, 4]]) ball(body, "#d99a4e", x, 0, z, 5.6);
   glow(root, 80, 12);
+  bakeAll(root);
   return m;
 }
 
@@ -780,7 +892,7 @@ function showPreview(on) {
   preview.forEach(removeModel); preview = [];
   if (!on) return;
   [["hercules", W / 2 - 45, H / 2, 0.4], ["apollo", W / 2 + 45, H / 2 + 10, 2.7]].forEach(([id, x, y, a]) => {
-    const m = makeDogModel(id); place(m.root, x, y, 0); m.root.rotation.y = -a; place(m.shadow, x, y, 1.2); m.a = a; preview.push(m);
+    const m = makeDogModel(id); place(m.root, x, y, 0); m.root.rotation.y = -a; m.a = a; preview.push(m);
   });
 }
 
@@ -810,7 +922,7 @@ let screen = "title";  // title | intro | play | pause | over
 let lastSaved = null;
 
 function makeDog(id) {
-  return { id, x: W / 2, y: H / 2, z: 0, r: 22, a: -Math.PI / 2, av: 0, vx: 0, vy: 0, inv: 0, step: 0, caught: 0, stick: null, leap: null, leapCd: 0, dash: null, dashCd: 0, boost: 0, idleT: 1, runT: 0, barkEvery: 3.5 };
+  return { id, x: W / 2, y: H / 2, z: 0, r: 22, a: -Math.PI / 2, want: -Math.PI / 2, av: 0, vx: 0, vy: 0, inv: 0, step: 0, caught: 0, stick: null, leap: null, leapCd: 0, dash: null, dashCd: 0, boost: 0, idleT: 1, runT: 0, barkEvery: 3.5 };
 }
 function newGame() {
   if (G) G.dogs.forEach((d) => removeModel(d.m));
@@ -821,10 +933,10 @@ function newGame() {
 }
 function setupLevel() {
   const c = G.cfg = levelCfg(G.level);
-  scene.remove(level3d); level3d = group(scene);
+  disposeBaked(level3d); scene.remove(level3d); level3d = group(scene);
   G.caught = 0; G.time = c.time; G.critters = []; G.particles = []; G.floaters = []; G.tubs = []; G.sprinklers = []; G.muds = []; G.bird = null; G.spawnT = 0; G.shake = 0;
-  G.dogs.forEach((d) => { Object.assign(d, { x: W / 2, y: H / 2 + 120, z: 0, a: -Math.PI / 2, av: 0, vx: 0, vy: 0, inv: 1.5, stick: null, leap: null, leapCd: 0, dash: null, dashCd: 0, boost: 0, idleT: 1, runT: 0 }); });
-  cam.init = false;
+  G.dogs.forEach((d) => { Object.assign(d, { x: W / 2, y: H / 2 + 120, z: 0, a: -Math.PI / 2, want: -Math.PI / 2, av: 0, vx: 0, vy: 0, inv: 1.5, stick: null, leap: null, leapCd: 0, dash: null, dashCd: 0, boost: 0, idleT: 1, runT: 0 }); });
+  cam.init = false; cam.yaw = -Math.PI / 2; cam.manualT = 0;
   G.treats = []; G.treatT = rnd(5, 8);
   const start = { x: W / 2, y: H / 2 + 120 };
   const farFromStart = (minD) => { for (let t = 0; t < 40; t++) { const p = { x: rnd(90, W - 90), y: rnd(90, H - 90) }; if (dist(p, start) > minD) return p; } return { x: rnd(90, W - 90), y: rnd(90, H - 90) }; };
@@ -858,10 +970,12 @@ function nearestDog(e, skipInv) {
 }
 
 // ---------- Input ----------
-// Tank-style steering so the camera can stay behind the dog: forward and back
-// move along the way the dog faces, left and right turn him.
+// Point where you want to go. The keys, the touch joystick and a controller's
+// left stick all point relative to the camera: the dog turns and runs that way
+// and the camera swings round behind him. The right stick (or Q and E, or a
+// drag on the right side of a touch screen) turns the camera.
 const keys = new Set();
-const KEYMAP = { KeyW: "u", KeyA: "l", KeyS: "d", KeyD: "r", ArrowUp: "u", ArrowLeft: "l", ArrowDown: "d", ArrowRight: "r" };
+const KEYMAP = { KeyW: "u", KeyA: "l", KeyS: "d", KeyD: "r", ArrowUp: "u", ArrowLeft: "l", ArrowDown: "d", ArrowRight: "r", KeyQ: "cl", KeyE: "cr" };
 window.addEventListener("keydown", (e) => {
   if (e.target && e.target.tagName === "INPUT") return;
   if (KEYMAP[e.code]) { keys.add(KEYMAP[e.code]); e.preventDefault(); }
@@ -873,24 +987,110 @@ window.addEventListener("keyup", (e) => { if (KEYMAP[e.code]) keys.delete(KEYMAP
 window.addEventListener("blur", () => { keys.clear(); if (screen === "play") pause(); });
 document.addEventListener("visibilitychange", () => { if (document.hidden && screen === "play") pause(); });
 
+// ----- Controllers -----
+// In the Android app the activity hands the controller over through window.BBPad
+// (a WebView can't see analog sticks); in a browser we use the Gamepad API.
+const PAD = { A: 1, B: 2, X: 4, Y: 8, START: 16, SELECT: 32, L1: 64, R1: 128, UP: 256, DOWN: 512, LEFT: 1024, RIGHT: 2048, L2: 4096, R2: 8192 };
+const POWER_BUTTONS = PAD.A | PAD.B | PAD.X | PAD.Y | PAD.R1 | PAD.R2 | PAD.L1 | PAD.L2;
+const pad = { move: [0, 0], look: 0, held: 0, pressed: 0, prev: 0, seen: false, lastDir: 0 };
+function deadzone(x, y, dz) {
+  const m = Math.hypot(x, y);
+  if (m < dz) return [0, 0];
+  const s = Math.min(1, (m - dz) / (1 - dz - 0.1)) / m;
+  return [x * s, y * s];
+}
+function readPad() {
+  let lx = 0, ly = 0, rx = 0, held = 0, taps = 0, got = false;
+  if (window.BBPad && window.BBPad.poll) {
+    try {
+      const v = String(window.BBPad.poll()).split(",").map(Number);
+      if (v.length >= 9 && v[8] > 0) {
+        got = true; lx = v[0]; ly = v[1]; rx = v[2]; held = v[6]; taps = v[7];   // taps: pressed since the last frame, even if already let go
+        if (v[4] < -0.5) held |= PAD.LEFT; if (v[4] > 0.5) held |= PAD.RIGHT;
+        if (v[5] < -0.5) held |= PAD.UP; if (v[5] > 0.5) held |= PAD.DOWN;
+      }
+    } catch (e) {}
+  }
+  if (navigator.getGamepads) {
+    let list = []; try { list = navigator.getGamepads() || []; } catch (e) {}
+    for (const gp of list) {
+      if (!gp || !gp.connected) continue;
+      const b = (i) => !!(gp.buttons[i] && (gp.buttons[i].pressed || gp.buttons[i].value > 0.5));
+      const ax = (i) => gp.axes[i] || 0;
+      if (Math.abs(ax(0)) > Math.abs(lx)) lx = ax(0);
+      if (Math.abs(ax(1)) > Math.abs(ly)) ly = ax(1);
+      if (Math.abs(ax(2)) > Math.abs(rx)) rx = ax(2);
+      [PAD.A, PAD.B, PAD.X, PAD.Y, PAD.L1, PAD.R1, PAD.L2, PAD.R2, PAD.SELECT, PAD.START].forEach((bit, i) => { if (b(i)) held |= bit; });
+      if (b(12)) held |= PAD.UP; if (b(13)) held |= PAD.DOWN; if (b(14)) held |= PAD.LEFT; if (b(15)) held |= PAD.RIGHT;
+      if (held || Math.hypot(lx, ly) > 0.3) got = true;
+    }
+  }
+  if (got && !pad.seen) { pad.seen = true; padHint(); }
+  let [mx, my] = deadzone(lx, ly, 0.2);
+  if (!mx && !my) { held |= taps & (PAD.UP | PAD.DOWN | PAD.LEFT | PAD.RIGHT); mx = (held & PAD.RIGHT ? 1 : 0) - (held & PAD.LEFT ? 1 : 0); my = (held & PAD.DOWN ? 1 : 0) - (held & PAD.UP ? 1 : 0); const m = Math.hypot(mx, my) || 1; mx /= m; my /= m; }
+  pad.move = [mx, -my];   // up on the stick means "away from the camera"
+  pad.look = Math.abs(rx) > 0.2 ? Math.sign(rx) * Math.min(1, (Math.abs(rx) - 0.2) / 0.7) : 0;
+  pad.pressed = (held & ~pad.prev) | taps; pad.prev = held; pad.held = held | taps;
+  // the stick flicked left or right, for menus
+  const dir = lx < -0.6 ? -1 : lx > 0.6 ? 1 : 0;
+  pad.flick = dir !== pad.lastDir ? dir : 0; pad.lastDir = dir;
+}
+let titleSel = 0;
+function padMenus() {
+  const p = pad.pressed;
+  if (!p && !pad.flick) return;
+  if (screen === "play") {
+    if (p & (PAD.START | PAD.SELECT)) pause();
+    else if (p & POWER_BUTTONS) power(G.dogs[0]);
+  } else if (screen === "title") {
+    const picks = [...document.querySelectorAll("[data-pick]")];
+    if (p & (PAD.LEFT | PAD.RIGHT) || pad.flick) { titleSel = (titleSel + 1) % picks.length; markTitle(); }
+    if (p & (PAD.A | PAD.START)) picks[titleSel].click();
+  } else if (screen === "intro") { if (p & (PAD.A | PAD.START | PAD.B)) startLevel(); }
+  else if (screen === "pause") { if (p & (PAD.A | PAD.START)) resume(); else if (p & PAD.SELECT) $("quitBtn").click(); }
+  else if (screen === "over") {
+    if (p & PAD.X && !$("saveForm").hidden && !$("saveBtn").disabled) $("saveForm").requestSubmit();
+    else if (p & (PAD.A | PAD.START)) $("againBtn").click();
+    else if (p & PAD.B) $("menuBtn").click();
+  }
+}
+function markTitle() { document.querySelectorAll("[data-pick]").forEach((b, i) => b.classList.toggle("sel", pad.seen && i === titleSel)); }
+function padHint() {
+  markTitle();
+  $("padNote").hidden = false;
+  if (G && screen === "play") G.floaters.push({ x: G.dogs[0].x, y: G.dogs[0].y, z: 110, text: "Controller ready!", life: 1.6, col: "#ffe680", big: true });
+}
+
+// ----- Touch and mouse -----
+// Left side of the screen: a floating joystick. Right side: drag to turn the
+// camera. A quick tap anywhere uses the power.
 $("powerBtn").addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); if (G) power(G.dogs[0]); });
-// A floating joystick for touch and mouse: put a finger down anywhere and slide.
-// Up runs forward, down backs up, sideways turns. A quick tap uses the power.
 const STICK_R = 56;
+let camDrag = null;
 function toCss(e) { const r = ui.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
 ui.addEventListener("pointerdown", (e) => {
   if (screen !== "play") return;
   ac(); e.preventDefault();
   const d = G.dogs[0], c = toCss(e);
-  if (d.stick) return;
-  d.stick = { id: e.pointerId, ox: c.x, oy: c.y, x: c.x, y: c.y, t0: performance.now(), travel: 0 };
+  if (c.x > cw * 0.55 && e.pointerType !== "mouse") {
+    if (camDrag) return;
+    camDrag = { id: e.pointerId, x: c.x, t0: performance.now(), travel: 0 };
+  } else {
+    if (d.stick) return;
+    d.stick = { id: e.pointerId, ox: c.x, oy: c.y, x: c.x, y: c.y, t0: performance.now(), travel: 0 };
+  }
   try { ui.setPointerCapture(e.pointerId); } catch (err) {}
 });
 ui.addEventListener("pointermove", (e) => {
   if (!G) return;
+  const c = toCss(e);
+  if (camDrag && camDrag.id === e.pointerId) {
+    const dx = c.x - camDrag.x; camDrag.x = c.x; camDrag.travel += Math.abs(dx);
+    cam.yaw += dx * 0.009; cam.manualT = 1.2;
+    return;
+  }
   const st = G.dogs[0].stick;
   if (!st || st.id !== e.pointerId) return;
-  const c = toCss(e);
   st.travel += Math.hypot(c.x - st.x, c.y - st.y);
   st.x = c.x; st.y = c.y;
   const dx = st.x - st.ox, dy = st.y - st.oy, m = Math.hypot(dx, dy);
@@ -898,25 +1098,29 @@ ui.addEventListener("pointermove", (e) => {
 });
 const endPtr = (e) => {
   if (!G) return;
+  const quick = (s) => e.type === "pointerup" && performance.now() - s.t0 < 220 && s.travel < 14;
+  if (camDrag && camDrag.id === e.pointerId) { if (quick(camDrag)) power(G.dogs[0]); camDrag = null; return; }
   const d = G.dogs[0], st = d.stick;
   if (!st || st.id !== e.pointerId) return;
   d.stick = null;
-  if (e.type === "pointerup" && performance.now() - st.t0 < 220 && st.travel < 14) power(d);
+  if (quick(st)) power(d);
 };
 ui.addEventListener("pointerup", endPtr); ui.addEventListener("pointercancel", endPtr);
 
-// returns [turn, forward], each -1..1
-function dogInput(d) {
-  let turn = 0, fwd = 0;
-  if (keys.has("l")) turn -= 1; if (keys.has("r")) turn += 1;
-  if (keys.has("u")) fwd += 1; if (keys.has("d")) fwd -= 1;
-  if (turn || fwd) return [turn, fwd];
+// Where the player is pointing: [x, y] with x to the right and y away from the
+// camera, length 0..1.
+function moveInput(d) {
+  let x = 0, y = 0;
+  if (keys.has("l")) x -= 1; if (keys.has("r")) x += 1;
+  if (keys.has("u")) y += 1; if (keys.has("d")) y -= 1;
+  if (x || y) { const m = Math.hypot(x, y); return [x / m, y / m]; }
+  if (pad.move[0] || pad.move[1]) return pad.move;
   const st = d.stick;
   if (st) {
-    const dx = st.x - st.ox, dy = st.y - st.oy;
-    if (Math.hypot(dx, dy) < 8) return [0, 0];
-    const k = STICK_R * 0.7;
-    return [clamp(dx / k, -1, 1), clamp(-dy / k, -1, 1)];
+    const dx = st.x - st.ox, dy = st.y - st.oy, m = Math.hypot(dx, dy);
+    if (m < 8) return [0, 0];
+    const s = Math.min(1, (m - 4) / (STICK_R * 0.75)) / m;
+    return [dx * s, -dy * s];
   }
   return [0, 0];
 }
@@ -935,18 +1139,24 @@ function update(dt) {
     d.dashCd = Math.max(0, d.dashCd - dt);
     d.inv = Math.max(0, d.inv - dt);
     if (boosted && Math.random() < dt * 22) G.particles.push({ x: d.x + rnd(-16, 16), y: d.y + rnd(-16, 16), z: d.z + rnd(20, 50), vx: rnd(-20, 20), vy: rnd(-20, 20), vz: rnd(10, 50), life: 0.6, max: 0.6, kind: "star", s: rnd(3, 5), g: 0 });
-    let [turn, fwd] = dogInput(d);
-    // turning, a little slower mid-leap or mid-zoom
-    const tr = S.turn * (boosted ? 1.25 : 1) * (d.leap ? 0.35 : d.dash ? 0.6 : 1);
-    d.av += (turn * tr - d.av) * Math.min(1, dt * 14);
-    d.a += d.av * dt;
-    if (fwd > 0.2 && Math.abs(turn) < 0.5) {   // aim assist: drift toward a critter just ahead
-      let best = null, bd = 280;
+    const [ix, iy] = moveInput(d);
+    let mag = Math.min(1, Math.hypot(ix, iy));
+    if (mag > 0.05) {
+      let want = cam.yaw + Math.atan2(ix, iy);
+      // aim assist: pointing roughly at a critter steers the rest of the way
+      let best = null, bd = 300;
       const targets = G.critters.filter((q) => q.state === "wander");
       if (G.bird && G.bird.state === "ground") targets.push(G.bird);
-      for (const q of targets) { const dd = dist(d, q); if (dd < bd && Math.abs(angDiff(Math.atan2(q.y - d.y, q.x - d.x), d.a)) < 0.65) { bd = dd; best = q; } }
-      if (best) d.a += clamp(angDiff(Math.atan2(best.y - d.y, best.x - d.x), d.a), -1, 1) * dt * 2.6;
+      for (const q of targets) { const dd = dist(d, q); if (dd < bd && Math.abs(angDiff(Math.atan2(q.y - d.y, q.x - d.x), want)) < 0.6) { bd = dd; best = q; } }
+      if (best) want += angDiff(Math.atan2(best.y - d.y, best.x - d.x), want) * 0.7;
+      d.want = want;
     }
+    // turn toward where the player points: quick, but smooth
+    const tr = S.turn * (boosted ? 1.2 : 1) * (d.leap ? 0.3 : d.dash ? 0.5 : 1);
+    const diff = mag > 0.05 ? angDiff(d.want, d.a) : 0;
+    d.av = clamp(diff * 12, -tr, tr);
+    d.a += d.av * dt;
+    let fwd = mag * (Math.abs(diff) > 1.7 ? 0.3 : 1 - Math.abs(diff) * 0.3);   // slow down for a U-turn
     if (d.leap) {
       const L = d.leap; L.t += dt;
       const p = Math.min(1, L.t / L.dur);
@@ -962,7 +1172,7 @@ function update(dt) {
     if (d.dash) { d.dash.t += dt; fwd = 1; if (d.dash.t >= d.dash.dur) { d.dash = null; d.dashCd = boosted ? 0.6 : 1.4; } }   // a zoom keeps going
     const inMud = !d.dash && G.muds.some((m) => ((d.x - m.x) / m.rx) ** 2 + ((d.y - m.y) / m.ry) ** 2 < 1);
     const sp = d.speedNow = S.speed * (boosted ? S.boostSpeed : 1) * (inMud ? 0.48 : 1) * (d.dash ? 1.9 : 1);
-    const go = fwd >= 0 ? fwd : fwd * 0.45;   // backing up is a slow shuffle
+    const go = fwd;
     const grip = d.dash ? 1 : Math.min(1, dt * S.grip * (boosted ? 1.3 : 1));
     d.vx += (Math.cos(d.a) * go * sp - d.vx) * grip;
     d.vy += (Math.sin(d.a) * go * sp - d.vy) * grip;
@@ -1084,10 +1294,11 @@ function dash(d) {
 function leap(d) {
   if (!d || d.id !== "apollo" || d.leap || d.leapCd > 0 || screen !== "play") return;
   const boosted = d.boost > 0;
-  // leap the way he faces; backing up hops him backwards
-  const back = dogInput(d)[1] < -0.3 ? -1 : 1;
-  const dx = Math.cos(d.a) * back, dy = Math.sin(d.a) * back;
-  const distance = boosted ? 330 : 220, dur = boosted ? 0.66 : 0.52;
+  // leap where the player points, or straight ahead
+  const [ix, iy] = moveInput(d), a = ix || iy ? cam.yaw + Math.atan2(ix, iy) : d.a;
+  const dx = Math.cos(a), dy = Math.sin(a);
+  d.a = a; d.want = a;
+  const distance = boosted ? 360 : 250, dur = boosted ? 0.66 : 0.52;
   d.speedNow = d.speedNow || STATS.apollo.speed;
   d.leap = { t: 0, dur, dx, dy, spd: distance / dur, h: boosted ? 90 : 60 };
   sfx.leap();
@@ -1178,17 +1389,25 @@ function splash(d, msg) {
 }
 
 // ---------- Camera ----------
-const cam = { yaw: -Math.PI / 2, x: 0, y: 0, h: 0, init: false };
+// It swings round behind the dog as he runs, but lets him run toward the camera
+// without spinning, and a hand turn (right stick, Q/E, drag) wins for a moment.
+const cam = { yaw: -Math.PI / 2, x: 0, y: 0, h: 0, init: false, manualT: 0, fov: 62 };
 const look = new THREE.Vector3();
 function updateCamera(dt, t) {
   if (!G) {   // title screen: slowly circle the two dogs
     const a = t * 0.15;
     camera.position.set(Math.cos(a) * 230, 95, Math.sin(a) * 230);
     camera.lookAt(0, 30, 0);
+    aimSun(0, 0);
     return;
   }
   const d = G.dogs[0];
-  cam.yaw += angDiff(d.a, cam.yaw) * (cam.init ? Math.min(1, dt * 4) : 1);
+  const turn = pad.look + (keys.has("cr") ? 1 : 0) - (keys.has("cl") ? 1 : 0);
+  if (turn) { cam.yaw += turn * 2.6 * dt; cam.manualT = 1.2; }
+  else cam.manualT -= dt;
+  const off = Math.abs(angDiff(d.a, cam.yaw)), moving = Math.hypot(d.vx, d.vy) > 60 || d.leap;
+  if (!cam.init) cam.yaw = d.a;
+  else if (cam.manualT <= 0 && moving) cam.yaw += angDiff(d.a, cam.yaw) * Math.min(1, dt * (off < 1.2 ? 2.6 : off < 2.3 ? 0.9 : 0));
   const back = 180, tx = d.x - Math.cos(cam.yaw) * back, ty = d.y - Math.sin(cam.yaw) * back, th = 88 + d.z * 0.45;
   if (!cam.init) { cam.x = tx; cam.y = ty; cam.h = th; cam.init = true; }
   const f = Math.min(1, dt * 9);
@@ -1197,13 +1416,16 @@ function updateCamera(dt, t) {
   camera.position.set(cam.x - W / 2 + rnd(-sh, sh), cam.h + rnd(-sh, sh), cam.y - H / 2);
   look.set(d.x + Math.cos(cam.yaw) * 70 - W / 2, 34 + d.z * 0.6, d.y + Math.sin(cam.yaw) * 70 - H / 2);
   camera.lookAt(look);
+  // a little wider view during a zoom, for a sense of speed
+  const fov = baseFov + (d.dash ? 9 : 0) + (d.boost > 0 ? 3 : 0);
+  if (Math.abs(fov - camera.fov) > 0.05) { camera.fov += (fov - camera.fov) * Math.min(1, dt * 8); camera.updateProjectionMatrix(); }
+  aimSun(d.x + Math.cos(cam.yaw) * 260 - W / 2, d.y + Math.sin(cam.yaw) * 260 - H / 2);
 }
 
 // ---------- Syncing models to the game ----------
 function animDog(m, d, t) {
   const moving = Math.hypot(d.vx, d.vy) > 20 || Math.abs(d.av) > 0.5 || !!d.leap;
   place(m.root, d.x, d.y, d.z); m.root.rotation.y = -d.a;
-  place(m.shadow, d.x, d.y, 1.2); const ss = 1 - Math.min(d.z, 100) / 180; m.shadow.scale.set(60 * ss, 1, 60 * ss);
   for (const [pivot, ph] of m.legs) pivot.rotation.z = moving ? Math.sin(d.step * 2 + ph) * (d.leap ? 0.2 : 0.65) : 0;
   if (d.leap) { const p = Math.min(1, d.leap.t / d.leap.dur); m.body.rotation.z = 0.35 * Math.cos(p * Math.PI); for (const [pv, ph] of m.legs) pv.rotation.z = (ph < 3 ? -0.9 : 0.9) * Math.sin(p * Math.PI); }
   else m.body.rotation.z = 0;
@@ -1231,7 +1453,6 @@ function sync(t) {
     if (q.state === "enter") sc = 1 - q.enterT / 0.5;
     if (q.state === "boop") { z = 18 * Math.max(0, Math.sin(Math.min(1, (0.45 - q.boopT) / 0.45) * Math.PI)); if (screen === "play") q.face += 0.35; if (q.boopT < 0) sc = Math.max(0.01, 1 + q.boopT / 0.45); }
     place(m.root, q.x, q.y, z); m.root.rotation.y = -q.face; m.root.scale.setScalar(Math.max(0.01, sc) * m.size);
-    place(m.shadow, q.x, q.y, 1.2); m.shadow.scale.set(40 * sc, 1, 40 * sc);
     if (m.tail) m.tail.rotation.z = Math.sin(t * 6 + q.x) * 0.15;
     for (const [ear, s] of m.ears) { ear.rotation.z = 0.3 + q.hop * 0.4; ear.rotation.x = -s * 0.15; }
     m.drop.visible = q.tired > 0 && q.state !== "boop"; m.drop.position.y = 34 + Math.sin(q.t * 8) * 1.5;
@@ -1239,7 +1460,6 @@ function sync(t) {
   for (const tb of G.tubs) {
     place(tb.m.root, tb.x, tb.y, 0); tb.m.root.rotation.y = -tb.face; tb.m.body.position.y = Math.sin(tb.wob * 2) * 1.5;
     tb.m.bubbles.forEach((b, i) => { b.position.y = 44 + Math.abs(Math.sin(tb.wob + i)) * 5; });
-    place(tb.m.shadow, tb.x, tb.y, 1.2);
   }
   for (const s of G.sprinklers) s.m.arms.forEach((arm, a) => { arm.rotation.y = -(s.ang + a * Math.PI); });
   for (const tr of G.treats) {
@@ -1260,7 +1480,7 @@ function sync(t) {
 }
 
 // ---------- 2D overlay: sparkles, labels, minimap, joystick ----------
-let cw = 1, ch = 1, dpr = 1;
+let cw = 1, ch = 1, dpr = 1, baseFov = 62;
 const pv = new THREE.Vector3();
 function project(x, y, z) {
   pv.set(x - W / 2, z, y - H / 2);
@@ -1339,7 +1559,7 @@ function drawStick() {
   if (!st) {
     if (!(isTouch && G.time > G.cfg.time - 5)) return;
     const x = 90, y = ch - 110, wig = Math.sin(performance.now() / 300) * 22;
-    st = { ox: x, oy: y, x, y: y - Math.abs(wig) }; ghost = true;
+    st = { ox: x, oy: y, x: x + wig * 0.6, y: y - Math.abs(wig) * 0.6 }; ghost = true;
   }
   const dx = st.x - st.ox, dy = st.y - st.oy, m = Math.hypot(dx, dy), lim = Math.min(m, STICK_R);
   const tx = m ? st.ox + dx / m * lim : st.ox, ty = m ? st.oy + dy / m * lim : st.oy;
@@ -1348,7 +1568,11 @@ function drawStick() {
   ctx.beginPath(); ctx.arc(st.ox, st.oy, STICK_R, 0, 7); ctx.fill(); ctx.stroke();
   ctx.fillStyle = DOGS[d.id].collar; ctx.beginPath(); ctx.arc(tx, ty, 26, 0, 7); ctx.fill();
   ctx.strokeStyle = "#fff"; ctx.stroke();
-  if (ghost) { ctx.globalAlpha = 0.85; ctx.fillStyle = "#fff"; ctx.font = "15px 'Lilita One', sans-serif"; ctx.textAlign = "center"; ctx.fillText("Slide up to run", st.ox, st.oy - STICK_R - 10); }
+  if (ghost) {
+    ctx.globalAlpha = 0.85; ctx.fillStyle = "#fff"; ctx.font = "15px 'Lilita One', sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("Slide to run", st.ox, st.oy - STICK_R - 10);
+    ctx.fillText("⟵ drag here to look around ⟶", cw * 0.72, ch * 0.5);
+  }
   ctx.globalAlpha = 1;
 }
 
@@ -1359,7 +1583,7 @@ function resize() {
   ui.width = Math.round(cw * dpr); ui.height = Math.round(ch * dpr);
   if (renderer) { renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, isTouch ? 1.5 : 2)); renderer.setSize(cw, ch, false); }
   camera.aspect = cw / ch;
-  camera.fov = cw < ch ? 75 : 62;   // a wider view when the phone is upright
+  camera.fov = baseFov = cw < ch ? 75 : 62;   // a wider view when the phone is upright
   camera.updateProjectionMatrix();
 }
 window.addEventListener("resize", resize);
@@ -1395,10 +1619,11 @@ function intro(cleared) {
   const c = G.cfg, n = G.level;
   $("lsTitle").textContent = cleared ? `Level ${n - 1} cleared!` : `Level ${n}: ${LEVEL_NAMES[(n - 1) % LEVEL_NAMES.length]}`;
   const notes = [];
-  if (n === 1) notes.push(isTouch ? "Slide your thumb up to run and sideways to turn. The camera stays right behind you." : "W or ↑ runs, A and D or ← and → turn. The camera stays right behind you.");
+  if (n === 1) notes.push(pad.seen ? "Point the left stick where you want to run, and use the right stick to look around." : isTouch ? "Slide your thumb on the left side to run that way, and drag on the right side to look around." : "Point with WASD or the arrow keys and your dog runs that way. Q and E turn the camera.");
   if (n === 1) notes.push("Critters hiding behind you show up on the minimap in the corner.");
   if (n <= 2) notes.push(`Treats fall from the sky. Grab one for a ${BOOST_TIME}-second boost: ${mode === "hercules" ? "ZOOMIES" : "SUPER LEAPS"}!`);
-  if (n <= 2) notes.push(mode === "hercules" ? `Zoom with ${isTouch ? "the Zoom! button or a quick tap" : "Space"}. Hercules goes so fast he stays dry!` : `Leap with ${isTouch ? "the Leap! button or a quick tap" : "Space"} to sail right over hazards.`);
+  const powerKey = pad.seen ? "the A button" : isTouch ? `the ${mode === "hercules" ? "Zoom!" : "Leap!"} button or a quick tap` : "Space";
+  if (n <= 2) notes.push(mode === "hercules" ? `Zoom with ${powerKey}. Hercules goes so fast he stays dry!` : `Leap with ${powerKey} to sail right over hazards.`);
   if (c.mud && n === 2) notes.push("New: mud puddles slow your paws.");
   if (c.sprinklers && levelCfg(n - 1).sprinklers < c.sprinklers) notes.push(c.sprinklers === 1 ? "New: a sprinkler! Stay out of the spray." : "One more sprinkler joins the yard.");
   if (c.tubs && levelCfg(n - 1).tubs < c.tubs) notes.push(c.tubs === 1 ? "New: Mr. Bubbles the bathtub rolls after you. Don't let it catch you!" : "Another bathtub is on the loose!");
@@ -1455,7 +1680,7 @@ function gameOver(reason) {
 function toTitle() {
   Music.stop(); screen = "title";
   if (G) G.dogs.forEach((d) => removeModel(d.m));
-  scene.remove(level3d); level3d = group(scene);
+  disposeBaked(level3d); scene.remove(level3d); level3d = group(scene);
   G = null; hudCache = {}; resetHud(); renderScores(); showPreview(true); show("titleScreen");
 }
 function resetHud() { ["lvl", "score", "caught", "time"].forEach((id) => ($(id).textContent = id === "lvl" ? "1" : id === "caught" ? "0/5" : id === "time" ? levelCfg(1).time : "0")); $("goalfill").style.width = "0"; $("boostStat").hidden = true; $("birdpips").innerHTML = "<span class='pip'>🪶</span>".repeat(3); $("splashpips").innerHTML = "<span class='pip'>💧</span>".repeat(3); }
@@ -1528,9 +1753,12 @@ let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   const t = now / 1000;
+  readPad(); padMenus();
   if (screen === "play" && G) { update(dt); hud(); }
   if (G) updateCamera(screen === "play" ? dt : 0, t); else updateCamera(dt, t);
   sync(t);
+  sky.position.copy(camera.position);
+  clouds.rotation.y += dt * 0.006;
   renderer.render(scene, camera);
   drawOverlay();
   requestAnimationFrame(frame);

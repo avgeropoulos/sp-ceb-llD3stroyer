@@ -16,7 +16,9 @@ Open `game/index.html` in a browser to play (no build step).
 
 **Backyard Boop 3D** is a separate game: open `game/3d.html` to play in 3D with the camera right behind your dog. Pick Hercules or Apollo and run around a fenced backyard with a house, trees and flowers. The squirrels, bunnies, Giant Golden Goose, sprinklers, mud, Mr. Bubbles and falling treats all work the same way they do in 2D, and so do both powers: Hercules **zooms** and Apollo **leaps**.
 
-- `W`/`↑` runs forward, `S`/`↓` backs up, and `A`/`D` or `←`/`→` turn. `Space` uses the power. On a phone, put a thumb down anywhere and slide it up to run or sideways to turn. A quick tap or the round button uses the power.
+- Point where you want to go and your dog runs that way while the camera swings round behind him. `WASD` or the arrow keys point, `Q`/`E` turn the camera, and `Space` uses the power. On a phone, slide a thumb on the left side to run and drag on the right side to look around. A quick tap or the round button uses the power.
+- Game controllers work, in a browser and in the Android app: the left stick or D-pad runs, the right stick looks around, any face button (or a trigger) uses the power, and Start pauses. The menus work with the controller too. A WebView can't see analog sticks, so the app's `MainActivity` hands controller input to the page through a small `BBPad` bridge.
+- The graphics have real sun shadows, a sky with drifting clouds, grass tufts, pine trees and a doghouse. Each dog's parts are merged into a few meshes so phones stay smooth.
 - It's gentler than the 2D game: the critters are a bit slower and tire sooner, the clock is longer, and when you run straight at a critter your dog drifts toward it a little.
 - Hercules and Apollo are shaggy cockapoos, with long furry ears, beards and eyebrows, and plumed tails.
 - The yard is bigger than the 2D one, so a round minimap in the corner turns with your dog and shows where the critters, treats and hazards are.
