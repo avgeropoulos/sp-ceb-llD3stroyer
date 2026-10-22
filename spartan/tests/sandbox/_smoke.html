@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Sandbox smoke</title>
+  <link rel="stylesheet" href="../../src/main/assets/game/style.css">
+  <script type="importmap">
+    { "imports": { "three": "../../src/main/assets/game/lib/three/three.module.js", "three/addons/": "../../src/main/assets/game/lib/three/addons/" } }
+  </script>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <div id="overlay"></div>
+  <script type="module">
+    import { createSandboxCtx } from './sandbox-ctx.js';
+    const ctx = await createSandboxCtx();
+    const { THREE } = ctx;
+    const box = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0xb08d57, metalness: 0.8, roughness: 0.35 }));
+    box.position.set(0, 1.2, -4);
+    box.castShadow = true;
+    ctx.scene.add(box);
+    ctx.loop((dt) => { box.rotation.y += dt; });
+  </script>
+</body>
+</html>
