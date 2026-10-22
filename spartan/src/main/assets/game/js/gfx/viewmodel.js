@@ -84,7 +84,7 @@ const POSES = {
   // Spear: thrust extended, throw drawn back over the shoulder, release, follow-through.
   spearOut: spearAim([0.15, -0.06, -0.56], [-0.02, -0.18, -2.8], [0.3, -1, 0.3]),
   windup: spearAim([0.3, 0.13, 0.13], [0.12, 0.5, -2.6], [0.25, -1, -0.1]),
-  release: spearAim([0.24, 0.07, -0.24], [0.05, 0.25, -3], [0.3, -1, 0.3]),
+  release: spearAim([0.3, 0.12, -0.2], [0.05, 0.25, -3], [0.3, -1, 0.3]),
   follow: pose([0.06, -0.34, -0.42], [-0.5, -0.3, -0.8], [0.55, -0.55, 0.45]),
   // Draw: the hand dips out of view and comes back with the weapon.
   drawLow: pose([0.3, -0.72, -0.18], [0.1, -0.3, -0.95], [0.4, -0.6, 0.6]),
@@ -123,10 +123,17 @@ export function createViewmodel(ctx) {
   scene.fog = null;
   scene.background = null;
 
+  // Canvas sizes per quality. Painting is CPU work at construction (behind the boot screen):
+  // about 0.65 s on medium on a desktop CPU, so the sizes go where they show — the hands and the
+  // shield interior; the bronze face only shows to the enemy.
   const quality = ctx.quality || 'medium';
-  const big = quality === 'high' ? 1024 : quality === 'low' ? 256 : 512;
-  const mid = quality === 'low' ? 256 : 512;
-  const aniso = quality === 'high' ? 8 : 4;
+  const high = quality === 'high';
+  const low = quality === 'low';
+  const armSize = high ? 1024 : low ? 256 : 512;
+  const weaponSize = high ? 512 : 256;
+  const bronzeSize = high ? 512 : 256;
+  const woodSize = low ? 256 : 512;
+  const aniso = high ? 8 : 4;
   const rng = createRng(7);
 
   // ---- Textures and materials ----
@@ -149,11 +156,11 @@ export function createViewmodel(ctx) {
       ...extra,
     });
   };
-  const armSet = paintArmAtlas(big);
-  const weaponSet = paintWeaponAtlas(mid);
-  const bronzeSet = paintShieldBronze(mid);
-  const woodSet = paintShieldInterior(big === 1024 ? 1024 : mid);
-  const arrowSet = paintArrowAtlas(quality === 'low' ? 64 : 128);
+  const armSet = paintArmAtlas(armSize);
+  const weaponSet = paintWeaponAtlas(weaponSize);
+  const bronzeSet = paintShieldBronze(bronzeSize);
+  const woodSet = paintShieldInterior(woodSize);
+  const arrowSet = paintArrowAtlas(low ? 64 : 128);
   const armMat = matOf(armSet);
   const weaponMat = matOf(weaponSet);
   const bronzeMat = matOf(bronzeSet, { envMapIntensity: 1.1 });
@@ -202,7 +209,7 @@ export function createViewmodel(ctx) {
   spear.frustumCulled = false;
   sway.add(sword, spear);
 
-  const aspis = aspisGeometry(quality === 'low' ? 48 : 72);
+  const aspis = aspisGeometry(low ? 48 : 72);
   const shield = new THREE.Group();
   shield.name = 'vmAspis';
   const shieldBronze = new THREE.Mesh(aspis.bronze, bronzeMat);
@@ -863,20 +870,38 @@ export function createViewmodel(ctx) {
     }
   }
 
-  function firstUpdate() {
-    st.first = false;
-    // Composite the player's blazon over the bronze face if the shared textures provide one.
+  /** Paints the player's blazon (the shared blazonFly texture) over the bronze face. */
+  function applyBlazon(src) {
     try {
-      const t = ctx.textures && ctx.textures.get && ctx.textures.get('blazonFly');
-      const img = t && t.image;
-      if (img && img.width > 0) {
-        compositeBlazon(bronzeSet, img);
-        bronzeMap.needsUpdate = true;
-        bronzeMat.metalnessMap.needsUpdate = true;
-      }
+      compositeBlazon(bronzeSet, src);
+      bronzeMap.needsUpdate = true;
+      bronzeMat.metalnessMap.needsUpdate = true;
     } catch (err) {
       console.warn('viewmodel: blazon composite failed', err);
     }
+  }
+
+  function firstUpdate() {
+    st.first = false;
+    // The constructor may not call other modules, so the blazon is fetched on the first update.
+    // Its canvas may live on the GPU: copy it with createImageBitmap, which reads it back off the
+    // main thread, instead of stalling a frame on a synchronous read. Until then the fallback
+    // fly painted with the bronze shows (and the face only faces the enemy anyway).
+    let img = null;
+    try {
+      const t = ctx.textures && ctx.textures.get && ctx.textures.get('blazonFly');
+      img = t && t.image;
+    } catch (err) {
+      console.warn('viewmodel: blazonFly unavailable', err);
+    }
+    if (img && img.width > 0 && typeof img.getContext === 'function') {
+      if (typeof createImageBitmap === 'function') {
+        createImageBitmap(img).then((bmp) => {
+          applyBlazon(bmp);
+          if (bmp.close) bmp.close();
+        }, () => applyBlazon(img));
+      } else applyBlazon(img);
+    } else if (img && img.width > 0 && typeof ImageBitmap !== 'undefined' && img instanceof ImageBitmap) applyBlazon(img);
     arrows.count = stuckCount;
     st.shown = targetShown();
   }

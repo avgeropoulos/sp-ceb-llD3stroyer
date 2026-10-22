@@ -3,6 +3,7 @@
 // Views: fwd, left (cliff), right (sea), back (wall), down (ground), plus every time of day
 // looking forward, the volley shade, and a phone-sized frame.
 import { mkdirSync } from 'node:fs';
+import process from 'node:process';
 import { launch } from './lib.mjs';
 
 const [, , outDir, quality = 'high', set = 'all', prefix = ''] = process.argv;
@@ -71,8 +72,11 @@ try {
     big.push({ name: 'extra-dusk-right', yaw: -60, pitch: 0, tod: 'dusk' });
   }
   if (set === 'all' || set === 'phone') {
-    phone.push({ name: 'phone-fwd', yaw: 0, pitch: 0 });
-    phone.push({ name: 'phone-left', yaw: 60, pitch: 4 });
+    for (const v of ['fwd', 'left', 'right', 'back', 'down']) {
+      const [yaw, pitch, fov] = VIEWS[v];
+      phone.push({ name: `phone-${v}`, yaw, pitch, fov });
+    }
+    phone.push({ name: 'phone-dusk', yaw: 0, pitch: 2, tod: 'dusk' });
   }
   if (big.length) await shoot(l, [960, 540], big);
   if (phone.length) await shoot(l, [844, 390], phone);

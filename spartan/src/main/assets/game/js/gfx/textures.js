@@ -277,14 +277,13 @@ function resamplePixels(px, S, T) {
   const f = S / T;
   for (let y = 0; y < T; y++) {
     for (let x = 0; x < T; x++) {
-      let r = 0, g = 0, b = 0, n = 0;
+      let r = 0, g = 0, b = 0;
       for (let j = 0; j < f; j++) {
         for (let i = 0; i < f; i++) {
           const k = ((Math.floor(y * f) + j) * S + Math.floor(x * f) + i) * 4;
           r += px[k] - 128;
           g += px[k + 1] - 128;
           b += px[k + 2] - 128;
-          n++;
         }
       }
       const l = Math.hypot(r, g, b) || 1;
@@ -1345,21 +1344,38 @@ function genWaterNormal(S, N, R) {
     // Wind from the north-west with a wide spread, so no single direction stripes the sea.
     const ang = -0.5 + (R.next() - 0.5) * Math.PI * 1.6;
     let kx = Math.round(Math.cos(ang) * kmag);
-    let ky = Math.round(Math.sin(ang) * kmag);
+    const ky = Math.round(Math.sin(ang) * kmag);
     if (kx === 0 && ky === 0) kx = 1;
     waves.push({ kx, ky, a: 1 / Math.pow(Math.hypot(kx, ky), 1.25), ph: R.next() * Math.PI * 2 });
   }
   const rip = N.fbmField(S, 24, { octaves: 3, salt: 3 });
   const h = new Float32Array(n);
+  // sin(a + b) = sin a·cos b + cos a·sin b, with a along u and b along v tabulated per wave.
+  const nw = waves.length;
+  const su = new Float32Array(nw * S);
+  const cu = new Float32Array(nw * S);
+  const sv = new Float32Array(nw * S);
+  const cv = new Float32Array(nw * S);
+  const amp = new Float32Array(nw);
+  for (let i = 0; i < nw; i++) {
+    const w = waves[i];
+    amp[i] = w.a;
+    for (let t = 0; t < S; t++) {
+      const a = (w.kx * t / S) * Math.PI * 2 + w.ph;
+      const b = (w.ky * t / S) * Math.PI * 2;
+      su[i * S + t] = Math.sin(a);
+      cu[i * S + t] = Math.cos(a);
+      sv[i * S + t] = Math.sin(b);
+      cv[i * S + t] = Math.cos(b);
+    }
+  }
   for (let y = 0; y < S; y++) {
     for (let x = 0; x < S; x++) {
-      const u = x / S;
-      const v = y / S;
       let s = 0;
-      for (const w of waves) {
+      for (let i = 0; i < nw; i++) {
         // Sharpened crests (peaked sine).
-        const p = Math.sin((w.kx * u + w.ky * v) * Math.PI * 2 + w.ph);
-        s += w.a * (p - 0.25 * p * p);
+        const p = su[i * S + x] * cv[i * S + y] + cu[i * S + x] * sv[i * S + y];
+        s += amp[i] * (p - 0.25 * p * p);
       }
       h[y * S + x] = s + rip[y * S + x] * 0.04;
     }
@@ -1443,28 +1459,46 @@ function genBlood(S, N, R) {
     const dist = 0.22 + Math.pow(R.next(), 0.7) * 0.24;
     drops.push({ x: 0.5 + Math.cos(ang) * dist, y: 0.5 + Math.sin(ang) * dist, r: 0.006 + R.next() * 0.022, ang });
   }
+  // Coverage: the lobed central splash, then each drop stamped over its own bounding box.
+  const cover = new Float32Array(n);
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const k = y * S + x;
+      const dx = (x + 0.5) / S - 0.5;
+      const dy = (y + 0.5) / S - 0.5;
+      const r = Math.hypot(dx, dy);
+      const a0 = Math.atan2(dy, dx);
+      const lobes = 0.2 + 0.05 * Math.sin(a0 * 5 + 1.3) + 0.03 * Math.sin(a0 * 11) + f[k] * 0.08;
+      cover[k] = 1 - smoothstep(lobes - 0.01, lobes + 0.004, r);
+    }
+  }
+  for (const d of drops) {
+    // Drops are stretched along their flight direction.
+    const ca = Math.cos(d.ang);
+    const sa = Math.sin(d.ang);
+    const ext = d.r * 1.8;
+    const x0 = Math.max(0, Math.floor((d.x - ext) * S));
+    const x1 = Math.min(S - 1, Math.ceil((d.x + ext) * S));
+    const y0 = Math.max(0, Math.floor((d.y - ext) * S));
+    const y1 = Math.min(S - 1, Math.ceil((d.y + ext) * S));
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const ex = (x + 0.5) / S - d.x;
+        const ey = (y + 0.5) / S - d.y;
+        const along = ex * ca + ey * sa;
+        const side = -ex * sa + ey * ca;
+        const dd = Math.hypot(along / 1.8, side) / d.r;
+        const k = y * S + x;
+        cover[k] = Math.max(cover[k], 1 - smoothstep(0.85, 1, dd));
+      }
+    }
+  }
   const px = new Uint8ClampedArray(n * 4);
   for (let y = 0; y < S; y++) {
     for (let x = 0; x < S; x++) {
       const k = y * S + x;
-      const u = (x + 0.5) / S;
-      const v = (y + 0.5) / S;
-      const dx = u - 0.5;
-      const dy = v - 0.5;
-      const r = Math.hypot(dx, dy);
-      const a0 = Math.atan2(dy, dx);
-      const lobes = 0.2 + 0.05 * Math.sin(a0 * 5 + 1.3) + 0.03 * Math.sin(a0 * 11) + f[k] * 0.08;
-      let a = 1 - smoothstep(lobes - 0.01, lobes + 0.004, r);
-      for (const d of drops) {
-        // Drops are stretched along their flight direction.
-        const ex = u - d.x;
-        const ey = v - d.y;
-        const along = ex * Math.cos(d.ang) + ey * Math.sin(d.ang);
-        const side = -ex * Math.sin(d.ang) + ey * Math.cos(d.ang);
-        const dd = Math.hypot(along / 1.8, side) / d.r;
-        a = Math.max(a, 1 - smoothstep(0.85, 1, dd));
-      }
-      if (r > 0.49) a = 0;
+      const r = Math.hypot((x + 0.5) / S - 0.5, (y + 0.5) / S - 0.5);
+      const a = r > 0.49 ? 0 : cover[k];
       const thick = clamp(0.75 + g[k] * 0.3 + (0.2 - r) * 0.8, 0.4, 1);
       put(px, k, 92 * thick + 14, 6, 8, a * 255 * (0.82 + 0.18 * thick));
     }
@@ -2112,7 +2146,8 @@ function drawScrub(g, R) {
     g.lineTo(0.5 + Math.cos(a) * len, 0.99 + Math.sin(a) * len * 0.9);
     g.stroke();
   }
-  const greens = ['#1f2717', '#27301c', '#303a21', '#3a4527', '#46502e', '#525c38', '#5f6843', '#6d7350'];
+  // Dusty grey-greens: maquis on limestone, not a lawn.
+  const greens = ['#2a3220', '#343d26', '#3f482c', '#4b5434', '#58603d', '#656c48', '#737856', '#82856a'];
   for (let i = 0; i < 1800; i++) {
     const cl = clumps[Math.floor(R.next() * clumps.length)];
     const a = R.next() * Math.PI * 2;

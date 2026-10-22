@@ -141,7 +141,7 @@ function layoutArmy(layout, total) {
  * @param {{ patch: Function, fogUniforms: object, time: { value: number }, quality: string, dustMap: THREE.Texture, lit: object }} o
  */
 export function buildHorde(layout, o) {
-  const total = o.quality === 'high' ? 5200 : o.quality === 'low' ? 1800 : 3600;
+  const total = o.quality === 'high' ? 5200 : o.quality === 'low' ? 1800 : 3200;
   const men = layoutArmy(layout, total);
   const n = men.length;
   const lit = o.lit;

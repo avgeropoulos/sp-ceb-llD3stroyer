@@ -18,6 +18,12 @@ export function makeCanvas(w, h) {
   return c;
 }
 
+/**
+ * 2D context of a canvas painted on the CPU. willReadFrequently keeps it out of GPU memory, so
+ * pixel reads never stall on a GPU readback (texture uploads read it once anyway).
+ */
+const ctx2d = (c) => c.getContext('2d', { willReadFrequently: true });
+
 /** Float paint buffers with region helpers and soft stamps. */
 class Paint {
   constructor(w, h, seed) {
@@ -105,15 +111,18 @@ class Paint {
     return [r.x0 + this.rng.next() * r.w, r.y0 + this.rng.next() * r.h];
   }
 
-  /** Bakes the buffers into { map, normal, orm } canvases. */
-  bake(normalStrength = 2) {
+  /**
+   * Bakes the buffers into { map, normal, orm } canvases. With keep, the colour and ORM pixels
+   * stay available as { mapImg, ormImg } for later compositing without a read back.
+   */
+  bake(normalStrength = 2, keep = false) {
     const { w, h } = this;
     const map = makeCanvas(w, h);
     const normal = makeCanvas(w, h);
     const orm = makeCanvas(w, h);
-    const mImg = map.getContext('2d').createImageData(w, h);
-    const nImg = normal.getContext('2d').createImageData(w, h);
-    const oImg = orm.getContext('2d').createImageData(w, h);
+    const mImg = ctx2d(map).createImageData(w, h);
+    const nImg = ctx2d(normal).createImageData(w, h);
+    const oImg = ctx2d(orm).createImageData(w, h);
     const md = mImg.data;
     const nd = nImg.data;
     const od = oImg.data;
@@ -159,10 +168,10 @@ class Paint {
         }
       }
     }
-    map.getContext('2d').putImageData(mImg, 0, 0);
-    normal.getContext('2d').putImageData(nImg, 0, 0);
-    orm.getContext('2d').putImageData(oImg, 0, 0);
-    return { map, normal, orm };
+    ctx2d(map).putImageData(mImg, 0, 0);
+    ctx2d(normal).putImageData(nImg, 0, 0);
+    ctx2d(orm).putImageData(oImg, 0, 0);
+    return keep ? { map, normal, orm, mapImg: mImg, ormImg: oImg } : { map, normal, orm };
   }
 }
 
@@ -588,7 +597,7 @@ export function paintShieldBronze(size, seed = 31) {
     });
   }
   paintFlyBlazon(P, all, size);
-  return P.bake(1.6);
+  return P.bake(1.6, true);
 }
 
 /** A fly painted in dark paint at the centre of the face, worn through in places. */
@@ -650,13 +659,14 @@ function paintFlyBlazon(P, r, size) {
 /**
  * Composites an external blazon image (e.g. ctx.textures.get('blazonFly').image) over the face of
  * a baked bronze set: colour where it differs from bronze becomes paint (non-metal, rougher).
+ * Uses the set's kept pixels (bake(…, true)) and drops them afterwards.
  */
 export function compositeBlazon(set, image) {
   const map = set.map;
   const orm = set.orm;
   const size = map.width;
   const tmp = makeCanvas(size, size);
-  const t = tmp.getContext('2d');
+  const t = ctx2d(tmp);
   const face = size * SHIELD_UV_R * SHIELD_BANDS.face * 2;
   t.save();
   t.beginPath();
@@ -665,10 +675,8 @@ export function compositeBlazon(set, image) {
   t.drawImage(image, size / 2 - face / 2, size / 2 - face / 2, face, face);
   t.restore();
   const src = t.getImageData(0, 0, size, size).data;
-  const mctx = map.getContext('2d');
-  const octx = orm.getContext('2d');
-  const mImg = mctx.getImageData(0, 0, size, size);
-  const oImg = octx.getImageData(0, 0, size, size);
+  const mImg = set.mapImg || ctx2d(map).getImageData(0, 0, size, size);
+  const oImg = set.ormImg || ctx2d(orm).getImageData(0, 0, size, size);
   const md = mImg.data;
   const od = oImg.data;
   for (let j = 0; j < md.length; j += 4) {
@@ -695,8 +703,10 @@ export function compositeBlazon(set, image) {
       od[j + 2] = lerp(od[j + 2], 0, paint);
     }
   }
-  mctx.putImageData(mImg, 0, 0);
-  octx.putImageData(oImg, 0, 0);
+  ctx2d(map).putImageData(mImg, 0, 0);
+  ctx2d(orm).putImageData(oImg, 0, 0);
+  set.mapImg = null;
+  set.ormImg = null;
 }
 
 /** Paints the aspis interior: turned wooden core of vertical planks, worn rim back, cord corner. */

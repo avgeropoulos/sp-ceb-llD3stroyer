@@ -40,8 +40,8 @@ function withAttributes(g, { color = [1, 1, 1], ao = null, sway = null }) {
  * flattened underneath. Returns a unit-ish geometry before placement.
  */
 function rockGeometry(N, R, pebble = false, detail = 0) {
-  // Detail 0 near the line, 1 and 2 further off (≈ 140, 80 and 48 triangles).
-  const g = pebble ? new THREE.IcosahedronGeometry(1, 0) : new THREE.SphereGeometry(1, [10, 8, 6][detail], [7, 5, 4][detail]);
+  // Detail 0 near the line, 1 and 2 further off (≈ 140, 80 and 48 triangles; pebbles 80 or 20).
+  const g = pebble ? new THREE.IcosahedronGeometry(1, detail === 0 ? 1 : 0) : new THREE.SphereGeometry(1, [10, 8, 6][detail], [7, 5, 4][detail]);
   const p = g.attributes.position;
   const seed = R.next() * 50;
   const cuts = [];
@@ -74,7 +74,8 @@ function rockGeometry(N, R, pebble = false, detail = 0) {
     p.setXYZ(i, x * r2, y * r2, z * r2);
   }
   // Creased normals keep the fracture faces flat and the weathered surfaces rounded.
-  const out = toCreasedNormals(g, pebble ? 0.5 : 0.62);
+  // Pebbles (an icosahedron) shade smooth so they read as worn stones, not cut gems.
+  const out = toCreasedNormals(g, pebble ? 1.0 : 0.62);
   if (out !== g) g.dispose();
   return out;
 }
@@ -82,7 +83,7 @@ function rockGeometry(N, R, pebble = false, detail = 0) {
 /** Places a rock: scale, random orientation, sunk into the ground. */
 function placeRock(N, R, layout, x, z, size, opts = {}) {
   const off = Math.max(Math.abs(z + 4) - 0.6 * size * 10, 0);
-  const g = rockGeometry(N, R, opts.pebble, off < 40 ? 0 : off < 130 ? 1 : 2);
+  const g = rockGeometry(N, R, opts.pebble, off < (opts.pebble ? 14 : 32) ? 0 : off < 100 ? 1 : 2);
   const sx = size * (0.75 + R.next() * 0.5);
   const sy = size * (opts.flat ?? 0.55 + R.next() * 0.35);
   const sz = size * (0.75 + R.next() * 0.5);

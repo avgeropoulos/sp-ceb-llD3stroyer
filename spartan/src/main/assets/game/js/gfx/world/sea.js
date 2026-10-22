@@ -3,7 +3,7 @@
  * reaches fade into the sky, a lapping foam line, and the ring of distant mountains and shores.
  */
 import * as THREE from 'three';
-import { clamp, lerp, smoothstep } from '../../core/math.js';
+import { clamp, lerp } from '../../core/math.js';
 import { SEA_LEVEL } from './layout.js';
 
 const SEA_RADIUS = 1880;
@@ -151,11 +151,19 @@ export function buildFoamGeometry(layout) {
   const index = [];
   let n = 0;
   for (let z = 260; z > -260; z -= 1.25) {
+    // The waterline: a coarse march past the lip, then bisection.
     const sx = layout.shoreX(z);
     let xw = sx;
-    for (let x = sx; x < sx + 8; x += 0.08) {
+    for (let x = sx; x < sx + 8; x += 0.4) {
       if (layout.terrainHeight(x, z) < SEA_LEVEL) {
-        xw = x;
+        let lo = x - 0.4;
+        let hi = x;
+        for (let k = 0; k < 6; k++) {
+          const mid = (lo + hi) * 0.5;
+          if (layout.terrainHeight(mid, z) < SEA_LEVEL) hi = mid;
+          else lo = mid;
+        }
+        xw = hi;
         break;
       }
     }
@@ -197,7 +205,7 @@ function sectorHeight(phi) {
 /** Two ranges of mountains and the far shores at 1.4–1.9 km: a nearer, lower range and a higher, hazier one. */
 export function buildMountainGeometry(layout) {
   const N = layout.noise;
-  const seg = 600;
+  const seg = 520;
   const ranges = [
     // [base radius, height scale, profile rows [radial offset, height fraction, rockiness]]
     { R0: 1420, k: 0.55, salt: 3, prof: [[0, -6, 0], [20, 1.5, 0], [60, 0.12, 0.05], [110, 0.45, 0.2], [150, 0.8, 0.45], [175, 1, 0.8], [215, 0.7, 0.6]] },

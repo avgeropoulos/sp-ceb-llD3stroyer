@@ -26,7 +26,7 @@ export const PRESETS = {
   morning: { elev: 22, az: [0.36, 0.93], turbidity: 4.4, rayleigh: 1.5, mie: 0.0048, mieG: 0.82, exposure: 1.1, fog: 0.00072, sun: 3.3, hemi: 0.2, env: 0.5, clouds: 0, cloudDensity: 0.38, haze: 0.75 },
   noon: { elev: 58, az: [0.5, 0.35], turbidity: 3.6, rayleigh: 1.2, mie: 0.0042, mieG: 0.8, exposure: 0.92, fog: 0.00068, sun: 3.6, hemi: 0.2, env: 0.55, clouds: 0, cloudDensity: 0.35, haze: 0.7 },
   afternoon: { elev: 30, az: [0.66, -0.75], turbidity: 4.6, rayleigh: 1.45, mie: 0.0052, mieG: 0.83, exposure: 1.02, fog: 0.00075, sun: 3.4, hemi: 0.2, env: 0.52, clouds: 0, cloudDensity: 0.38, haze: 0.8 },
-  dusk: { elev: 4, az: [0.42, -0.91], turbidity: 8, rayleigh: 2.8, mie: 0.0066, mieG: 0.86, exposure: 2.0, fog: 0.00095, sun: 3.0, hemi: 0.32, env: 0.85, clouds: 0.12, cloudDensity: 0.45, haze: 1, tint: [1.12, 0.93, 1.0] },
+  dusk: { elev: 4, az: [0.42, -0.91], turbidity: 8, rayleigh: 2.8, mie: 0.0066, mieG: 0.86, exposure: 2.0, fog: 0.00095, sun: 3.0, hemi: 0.32, env: 0.85, clouds: 0.12, cloudDensity: 0.45, haze: 1, tint: [1.22, 0.9, 1.02] },
 };
 
 // Constants of three's Sky shader.

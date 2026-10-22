@@ -97,9 +97,7 @@ try {
       V.tick(Math.round(t * 60));
       obj.updateWorldMatrix(true, false);
       p.copy(local).applyMatrix4(obj.matrixWorld);
-      const world = p.clone();
-      const ndc = p.project(cam);
-      return { world, ndc };
+      return { world: p.clone(), ndc: p.clone().project(cam) };
     };
     const out = [];
     const dirs = [0, 45, 90, 135, 180, -135, -90, -45, 20, 160, -70];

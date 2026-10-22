@@ -2,6 +2,7 @@
 // renderer.info for the main and shadow passes, program count stability across setTimeOfDay and
 // the volley shade, groundHeight across the pass and over the sea, colliders vs geometry, and
 // texture memory. Usage: node spartan/tests/e2e/world-check.mjs [quality=medium]
+import process from 'node:process';
 import { launch } from './lib.mjs';
 
 const quality = process.argv[2] || 'medium';
@@ -18,13 +19,13 @@ try {
   await page.evaluate(() => window.__sandbox.step(2));
   const r = await page.evaluate(() => {
     const ctx = window.__sandbox.ctx;
-    const { world, renderer, scene, THREE } = ctx;
+    const { world, renderer, scene } = ctx;
     const out = {};
     out.stats = window.__worldStats();
     // World meshes and their draw calls (everything under the world root plus the sky).
     let worldMeshes = 0;
     let hordeMeshes = 0;
-    let casters = [];
+    const casters = [];
     world.root.traverse((o) => {
       if (!o.isMesh || !o.visible) return;
       if (o.parent && o.parent.name === 'horde') hordeMeshes++;

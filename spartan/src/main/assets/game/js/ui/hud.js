@@ -559,7 +559,7 @@ export function createHud(ctx) {
     const le = d.lastEvent;
     const evText = le ? (typeof le === 'string' ? le : `${le.type || ''}${Number.isFinite(le.power) ? ' ' + le.power.toFixed(2) : ''}`) : '–';
     const rate = ctx.platform && ctx.platform.motion && ctx.platform.motion.rate ? Math.round(ctx.platform.motion.rate()) : 0;
-    const txt = `${d.phase || 'idle'} · look ${d.lookState || '–'} · ${rate} Hz · last ${evText}`;
+    const txt = `${d.phase || 'idle'} · ${d.lookState || '–'} · ${rate} Hz · ${evText}`;
     setText(dbg.txt, 'dbgTxt', txt);
   }
 

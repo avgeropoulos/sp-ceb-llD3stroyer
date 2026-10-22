@@ -286,8 +286,52 @@ try {
     busy && s.control === 'touch' && s.safetyAccepted === true && (await has('.mn-notice', 'is-on')) && /touch controls/i.test(await text('.mn-notice-p')),
     `control ${s.control}`);
   await shot('nomotion');
+  const errs1 = await ev(() => window.__game.errors);
 
-  const errs = page.errors.concat(await ev(() => window.__game.errors));
+  // ------------------------------------------------------------------ motion layout (real motion pipeline)
+  // Headless Chromium has no gyroscope: the title's motion probe would (rightly) fall back to
+  // touch 1.5 s in. Model an iOS-style permission gate instead, which defers that verdict.
+  await page.addInitScript(() => {
+    if (window.DeviceMotionEvent) window.DeviceMotionEvent.requestPermission = () => Promise.resolve('granted');
+  });
+  await page.goto(`${l.game}?manual=1&seed=3&quality=low&control=motion&mode=battle`);
+  await page.waitForFunction(() => window.__game && window.__game.ready, null, { timeout: 180000 });
+  await ev(() => {
+    const log = (window.__log = []);
+    window.__game.ctx.events.on('gesture', (e) => log.push(['gesture', { type: e.type, dir: e.dir }]));
+    window.__game.ctx.events.on('swing', (e) => log.push(['swing', { kind: e.kind, src: e.src }]));
+  });
+  await step(5);
+  const lay = { pause: await center('.ctl-pause'), rec: await center('.ctl-recenter'), swap: await center('.ctl-swap'), shield: await center('.ctl-shield') };
+  check('motion battle: pause / recenter / swap corner buttons, no touch buttons, input.motion',
+    (await has('#controls', 'ctl-motion')) && lay.pause && lay.rec && lay.swap && !lay.shield && (await ev(() => window.__game.ctx.input.motion)) === true,
+    JSON.stringify(lay));
+  // Hold the glass: the real shield rises. Swing (synthesized samples through platform → frames →
+  // gestures) three times while holding for over 5 s: the resting-thumb tip appears.
+  await gesture([['down', 600, 220], ['step', 20]]);
+  const mRaise = await ev(() => window.__game.ctx.player.shieldRaise);
+  await ev(() => {
+    const sc = [{ kind: 'idle', duration: 0.3 }, { kind: 'swing', dir: 0, ret: 0 }, { kind: 'idle', duration: 0.4 },
+      { kind: 'swing', dir: Math.PI, ret: 0 }, { kind: 'idle', duration: 0.4 }, { kind: 'swing', dir: 0, ret: 0 }, { kind: 'idle', duration: 0.4 }];
+    window.__game.injectMotion(window.__game.synth(sc, { rot: 90 }));
+  });
+  for (let last = Date.now(), end = last + 6500; Date.now() < end;) {
+    await sleep(100);
+    const now = Date.now();
+    await step(Math.max(1, Math.min(30, Math.round((now - last) / (1000 / 60)))));
+    last = now;
+  }
+  const mg = (await events('gesture')).filter((g) => g.type === 'slash');
+  const tip = await has('.ctl-tip', 'is-shown');
+  if (tip) await shot('motion-tip');
+  await gesture([['up', 600, 220], ['step', 20]]);
+  check('motion: hold anywhere → real shield; 3 motion slashes during a > 5 s hold → resting-thumb tip',
+    mRaise > 0.9 && mg.length >= 3 && tip && (await ev(() => window.__game.ctx.player.shieldRaise)) < 0.3, `raise ${mRaise.toFixed(2)} slashes ${mg.length} tip ${tip}`);
+  await tap('.ctl-recenter');
+  await step(2);
+  check('motion: recenter button does not raise the shield', !(await ev(() => window.__game.ctx.input.shieldHeld)));
+
+  const errs = page.errors.concat(errs1, await ev(() => window.__game.errors));
   check('no page errors', errs.length === 0, errs.slice(0, 6).join(' | '));
 } finally {
   await l.close();
