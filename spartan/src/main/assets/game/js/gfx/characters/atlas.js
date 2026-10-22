@@ -1157,8 +1157,10 @@ float bloodMask() {
   if (uBlood <= 0.0) return 0.0;
   vec3 p = vBindPos;
   float n = bNoise(p * vec3(11.0, 5.0, 11.0)) * 0.65 + bNoise(p * 31.0) * 0.35;
-  float region = smoothstep(0.55, 1.15, p.y) * (0.75 + 0.25 * sign(p.z)) + 0.25;
-  float thr = 1.02 - uBlood * 0.62;
+  // Wounds stain the torso; the head and legs stay mostly clean (a dead man is stained, not dyed).
+  float torso = smoothstep(0.6, 1.0, p.y) * (1.0 - 0.85 * smoothstep(1.32, 1.48, p.y));
+  float region = torso * (0.75 + 0.25 * sign(p.z)) + 0.2;
+  float thr = 1.02 - uBlood * 0.32;
   return smoothstep(thr, thr + 0.06, n * region + 0.12 * uBlood);
 }`,
     )
@@ -1166,7 +1168,7 @@ float bloodMask() {
       '#include <map_fragment>',
       `#include <map_fragment>
 float bMask = bloodMask();
-diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.17, 0.012, 0.008), bMask * 0.9);`,
+diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.17, 0.012, 0.008), bMask * 0.82);`,
     )
     .replace(
       '#include <metalnessmap_fragment>',
