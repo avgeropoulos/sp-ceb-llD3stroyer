@@ -539,9 +539,9 @@ export function createParticles(ctx, hooks = {}) {
       vx = (vx / l) * sp;
       vy = (vy / l) * sp + R(0.3, 1.5);
       vz = (vz / l) * sp;
-      const w = R(0.008, 0.02) * (sp < 2 ? 1.3 : 1);
+      const w = R(0.007, 0.017) * (sp < 2 ? 1.3 : 1);
       const i = emit(streaks, BLOOD, ox + R(-0.03, 0.03), oy + R(-0.04, 0.04), oz + R(-0.03, 0.03), vx, vy, vz,
-        2.2, w, w, R(0.22, 0.36), R(0.006, 0.02), R(0.005, 0.014), 0.97, R(0.25, 0.8), 1);
+        2.2, w, w, R(0.13, 0.22), R(0.005, 0.013), R(0.004, 0.01), 0.97, R(0.25, 0.8), 1);
       streaks.len[i] = 0.016;
       streaks.emit[i] = 0.8;
       streaks.tag[i] = tag;
@@ -551,7 +551,7 @@ export function createParticles(ctx, hooks = {}) {
       const w = R(0.01, 0.017);
       const i = emit(streaks, BLOOD, ox + R(-0.05, 0.05), oy + R(-0.08, 0.02), oz + R(-0.05, 0.05),
         dx * R(0.1, 0.6) + gauss() * 0.15, R(-0.6, 0.3), dz * R(0.1, 0.6) + gauss() * 0.15,
-        2.2, w, w, R(0.24, 0.34), R(0.01, 0.02), R(0.008, 0.014), 0.97, 0.4, 1);
+        2.2, w, w, R(0.14, 0.2), R(0.007, 0.013), R(0.005, 0.01), 0.97, 0.4, 1);
       streaks.len[i] = 0.02;
       streaks.emit[i] = 0.8;
       streaks.tag[i] = tag;
@@ -561,7 +561,7 @@ export function createParticles(ctx, hooks = {}) {
       const sp = R(0.6, 1.8);
       softPuff(MIST, ox + R(-0.04, 0.04), oy + R(-0.04, 0.04), oz + R(-0.04, 0.04),
         dx * sp + gauss() * 0.25, dy * sp + 0.15, dz * sp + gauss() * 0.25,
-        R(0.35, 0.65), 0.05, R(0.25, 0.42) * Math.sqrt(amount), 0.26, 0.02, 0.015, R(0.45, 0.6), 5, 0.05, 0.6, R(-1, 1));
+        R(0.35, 0.65), 0.05, R(0.25, 0.42) * Math.sqrt(amount), 0.2, 0.016, 0.011, R(0.45, 0.6), 5, 0.05, 0.6, R(-1, 1));
     }
   }
 
@@ -639,10 +639,11 @@ export function createParticles(ctx, hooks = {}) {
       const vy = dy * sp + gauss() * 0.9 + R(0.8, 2.4);
       const vz = dz * sp + gauss() * 0.9;
       const shade = rng.next();
-      const r = shade < 0.4 ? 0.66 : shade < 0.8 ? 0.52 : 0.36;
-      const g = shade < 0.4 ? 0.54 : shade < 0.8 ? 0.4 : 0.26;
-      const b = shade < 0.4 ? 0.33 : shade < 0.8 ? 0.22 : 0.14;
-      const w = R(0.007, 0.014);
+      // Freshly split willow is pale inside; the weathered outer skin is darker.
+      const r = shade < 0.45 ? 0.78 : shade < 0.8 ? 0.6 : 0.4;
+      const g = shade < 0.45 ? 0.66 : shade < 0.8 ? 0.47 : 0.29;
+      const b = shade < 0.45 ? 0.42 : shade < 0.8 ? 0.27 : 0.16;
+      const w = R(0.008, 0.016);
       const i = emit(streaks, SPLINTER, ox + R(-0.05, 0.05), oy + R(-0.05, 0.05), oz + R(-0.05, 0.05), vx, vy, vz,
         R(2.4, 3.6), w, w, r, g, b, 1, 0.9, 1);
       streaks.len[i] = R(0.04, 0.12);

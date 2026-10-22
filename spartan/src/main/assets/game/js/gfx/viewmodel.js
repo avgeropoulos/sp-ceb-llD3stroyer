@@ -13,7 +13,7 @@
  */
 import * as THREE from 'three';
 import { TIMING } from '../game/rules.js';
-import { clamp, lerp, wrapAngle, createRng } from '../core/math.js';
+import { clamp, wrapAngle, createRng } from '../core/math.js';
 import {
   RIG, slashTimes, slashParam, slashGeometry, createSlashOut, slashEdgeSign,
   thrustCurve, bashCurve, jolt, bump, ramp, easeOutCubic, easeOutQuad, easeInOutSine, smootherstep,
@@ -47,7 +47,6 @@ const _d = new THREE.Vector3();
 const _e = new THREE.Vector3();
 const _q = new THREE.Quaternion();
 const _q2 = new THREE.Quaternion();
-const _eul = new THREE.Euler();
 
 /** Orthonormal basis quaternion with +Y = yDir and +Z as close as possible to zHint. */
 function basisQuat(yDir, zHint, out) {
@@ -66,30 +65,37 @@ function pose(p, y, z) {
 function spearPose(p, fwd, wrist) {
   return pose(p, fwd.map((x) => -x), wrist);
 }
+/** Overhand spear pose with the head aimed at a point (rig space). */
+function spearAim(p, at, wrist) {
+  return spearPose(p, [at[0] - p[0], at[1] - p[1], at[2] - p[2]], wrist);
+}
 
 const POSES = {
   swordLow: pose([0.27, -0.235, -0.42], [-0.11, 0.7, -0.7], [0.35, -0.6, 0.7]),
   swordHigh: pose([0.285, -0.165, -0.41], [-0.12, 0.68, -0.72], [0.35, -0.6, 0.7]),
-  spearLow: spearPose([0.26, -0.05, -0.27], [-0.16, -0.17, -1], [0.3, -1, 0.35]),
-  spearHigh: spearPose([0.265, -0.015, -0.29], [-0.15, -0.19, -1], [0.3, -1, 0.3]),
+  // Overhand dory: the fist above the shoulder, just out of view; the shaft comes in from the upper
+  // right and the head points at an enemy's chest.
+  spearLow: spearAim([0.28, 0.06, -0.12], [0.0, -0.42, -2.4], [0.3, -1, 0.3]),
+  spearHigh: spearAim([0.28, 0.075, -0.15], [0.0, -0.36, -2.4], [0.3, -1, 0.3]),
   empty: pose([0.27, -0.66, -0.2], [-0.1, 0.4, -0.9], [0.3, -0.6, 0.7]),
-  // Sword thrust: chambered and extended, the point aimed at the centre.
-  thrustBack: pose([0.2, -0.27, -0.27], [-0.13, 0.18, -0.97], [0.4, -0.8, 0.4]),
-  thrustOut: pose([0.085, -0.2, -0.6], [-0.06, 0.13, -0.99], [0.35, -0.85, 0.35]),
+  // Sword thrust: chambered back, then driven out with the point at the centre.
+  thrustBack: pose([0.24, -0.17, -0.32], [-0.12, 0.2, -0.97], [0.4, -0.8, 0.4]),
+  thrustOut: pose([0.13, -0.165, -0.55], [-0.21, 0.23, -0.95], [0.4, -0.8, 0.35]),
   // Spear: thrust extended, throw drawn back over the shoulder, release, follow-through.
-  spearOut: spearPose([0.15, -0.11, -0.66], [-0.06, 0.02, -1], [0.3, -1, 0.3]),
-  windup: spearPose([0.3, 0.06, 0.17], [-0.06, 0.27, -1], [0.25, -1, -0.15]),
-  release: spearPose([0.22, -0.02, -0.2], [-0.04, -0.06, -1], [0.3, -1, 0.3]),
-  follow: pose([0.04, -0.44, -0.46], [-0.6, -0.2, -0.75], [0.6, -0.6, 0.4]),
+  spearOut: spearAim([0.15, -0.06, -0.56], [-0.02, -0.18, -2.8], [0.3, -1, 0.3]),
+  windup: spearAim([0.3, 0.13, 0.13], [0.12, 0.5, -2.6], [0.25, -1, -0.1]),
+  release: spearAim([0.24, 0.07, -0.24], [0.05, 0.25, -3], [0.3, -1, 0.3]),
+  follow: pose([0.06, -0.34, -0.42], [-0.5, -0.3, -0.8], [0.55, -0.55, 0.45]),
   // Draw: the hand dips out of view and comes back with the weapon.
   drawLow: pose([0.3, -0.72, -0.18], [0.1, -0.3, -0.95], [0.4, -0.6, 0.6]),
+  drawLowSpear: spearAim([0.3, -0.7, -0.12], [0.3, -1.7, -2.2], [0.3, -1, 0.3]),
   drawSwordMid: pose([0.24, -0.42, -0.36], [-0.05, -0.15, -0.99], [0.35, -0.8, 0.4]),
-  drawSpearMid: spearPose([0.27, -0.3, -0.25], [-0.04, 0.18, -1], [0.3, -1, 0.3]),
+  drawSpearMid: spearAim([0.28, -0.22, -0.2], [0.05, 0.05, -2.4], [0.3, -1, 0.3]),
 };
 
 const SHIELD_POSES = {
-  low: { p: v3(-0.37, -0.56, -0.38), e: new THREE.Euler(0.42, 0.62, 0.42, 'YXZ') },
-  high: { p: v3(-0.13, -0.505, -0.37), e: new THREE.Euler(0.12, 0.07, 0.02, 'YXZ') },
+  low: { p: v3(-0.36, -0.53, -0.4), e: new THREE.Euler(0.42, 0.62, 0.42, 'YXZ') },
+  high: { p: v3(-0.13, -0.478, -0.37), e: new THREE.Euler(0.12, 0.07, 0.02, 'YXZ') },
 };
 SHIELD_POSES.low.q = new THREE.Quaternion().setFromEuler(SHIELD_POSES.low.e);
 SHIELD_POSES.high.q = new THREE.Quaternion().setFromEuler(SHIELD_POSES.high.e);
@@ -247,7 +253,10 @@ export function createViewmodel(ctx) {
     lightScan: 0,
   };
   const worldLights = { sun: null, hemi: null };
-  const stuck = []; // { p: Vector3, q: Quaternion, axis: Vector3, t }
+  // Stuck arrows: a fixed pool; the oldest is replaced once all eight are in use.
+  const stuck = [];
+  for (let i = 0; i < MAX_ARROWS; i++) stuck.push({ p: new THREE.Vector3(), q: new THREE.Quaternion(), axis: new THREE.Vector3(), t: 0 });
+  let stuckCount = 0;
   let stuckHead = 0;
 
   // Working poses.
@@ -261,14 +270,26 @@ export function createViewmodel(ctx) {
   // ---------------------------------------------------------------------------------------------
   // One-shots
 
-  function snapshot(a) {
-    a.fromP = hand.p.clone();
-    a.fromQ = hand.q.clone();
-  }
+  // Right-arm one-shot state: two pooled records, alternated so a wind-up can hand over to its
+  // release within one frame without allocating.
+  const NO_OPTS = Object.freeze({});
+  const TOUCH_RELEASE = Object.freeze({ motion: false });
+  const newArm = () => ({
+    kind: '', t: 0, dur: 0, opts: NO_OPTS, dir: 0, power: 0, sigma: 1, swapped: false, hideAt: 0,
+    fromP: new THREE.Vector3(), fromQ: new THREE.Quaternion(),
+  });
+  const armPool = [newArm(), newArm()];
+  let armNext = 0;
 
-  function startArm(kind, opts = {}) {
-    const a = { kind, t: 0, opts, done: false };
-    snapshot(a);
+  function startArm(kind, opts = NO_OPTS) {
+    const a = armPool[armNext];
+    armNext ^= 1;
+    a.kind = kind;
+    a.t = 0;
+    a.opts = opts || NO_OPTS;
+    a.fromP.copy(hand.p);
+    a.fromQ.copy(hand.q);
+    a.swapped = false;
     if (kind === 'slash' || kind === 'spearSlash') {
       a.dir = typeof opts.dir === 'number' ? opts.dir : 0;
       a.power = clamp(opts.power ?? 0.6, 0, 1);
@@ -281,11 +302,10 @@ export function createViewmodel(ctx) {
     else if (kind === 'throwWindup') a.dur = opts.auto ? TIMING.throw.windup : 1.3;
     else if (kind === 'throwRelease') {
       a.dur = Math.max(0.5, TIMING.throw.total - (opts.motion ? 0 : TIMING.throw.windup));
+      // The world spear spawns 0.03 s into a motion throw and at once for a touch throw (§7).
+      a.hideAt = opts.motion ? 0.03 : 0.012;
       st.released = false;
-    } else if (kind === 'draw') {
-      a.dur = 0.55;
-      a.swapped = false;
-    }
+    } else if (kind === 'draw') a.dur = 0.55;
     st.arm = a;
     return a;
   }
@@ -297,7 +317,8 @@ export function createViewmodel(ctx) {
     st.shieldFx.push(f);
   }
 
-  function play(kind, opts = {}) {
+  function play(kind, opts = NO_OPTS) {
+    if (!opts) opts = NO_OPTS;
     switch (kind) {
       case 'slash':
         if (st.shown === 'spear') startArm('spearSlash', opts);
@@ -351,7 +372,7 @@ export function createViewmodel(ctx) {
     if (!p) return;
     switch (p.kind) {
       case 'slash':
-        play(p.weapon === 'spear' && st.shown === 'spear' ? 'spearSlash' : 'slash', { dir: p.dir, power: p.power });
+        play(p.weapon === 'spear' && st.shown === 'spear' ? 'spearSlash' : 'slash', p);
         break;
       case 'thrust':
         play('thrust', p);
@@ -408,9 +429,8 @@ export function createViewmodel(ctx) {
 
   function addStuckArrow() {
     let i;
-    if (stuck.length < MAX_ARROWS) {
-      i = stuck.length;
-      stuck.push({ p: new THREE.Vector3(), q: new THREE.Quaternion(), axis: new THREE.Vector3(), t: 0 });
+    if (stuckCount < MAX_ARROWS) {
+      i = stuckCount++;
     } else {
       i = stuckHead;
       stuckHead = (stuckHead + 1) % MAX_ARROWS;
@@ -430,13 +450,13 @@ export function createViewmodel(ctx) {
     s.axis.set(rng.next() - 0.5, rng.next() - 0.5, 0).cross(out).normalize();
     s.t = 0;
     writeArrow(i);
-    arrows.count = stuck.length;
+    arrows.count = stuckCount;
     arrows.instanceMatrix.needsUpdate = true;
     addShieldFx('arrow', { side: x > 0 ? 0.4 : -0.4 });
   }
 
   function clearStuckArrows() {
-    stuck.length = 0;
+    stuckCount = 0;
     stuckHead = 0;
     arrows.count = 0;
   }
@@ -505,7 +525,7 @@ export function createViewmodel(ctx) {
         basisQuat(_a, _b, tmpPose.q);
         const wIn = easeOutQuad(clamp(t / slashTm.ta, 0, 1));
         slerpPose(hand, fromPose, tmpPose, wIn);
-        const wOut = ramp(slashTm.recover, slashTm.total, t);
+        const wOut = ramp(slashTm.recover, slashTm.back, t);
         if (wOut > 0) slerpPose(hand, hand, guard, wOut);
         break;
       }
@@ -516,11 +536,11 @@ export function createViewmodel(ctx) {
         const dx = Math.cos(a.dir);
         const dy = Math.sin(a.dir);
         tmpPose.p.copy(guard.p).add(_a.set(dx * 0.1 * g, dy * 0.08 * g, -0.05 * (1 - Math.abs(g) * 0.4)));
-        _b.set(-dy, dx, 0); // axis in the view plane, perpendicular to the cut
+        _b.set(dy, -dx, 0); // axis in the view plane, perpendicular to the cut (the head moves along dir)
         _q.setFromAxisAngle(_b.normalize(), 0.42 * g);
         tmpPose.q.copy(guard.q).premultiply(_q);
         slerpPose(hand, fromPose, tmpPose, easeOutQuad(clamp(t / slashTm.ta, 0, 1)));
-        const wOut = ramp(slashTm.recover, slashTm.total, t);
+        const wOut = ramp(slashTm.recover, slashTm.back, t);
         if (wOut > 0) slerpPose(hand, hand, guard, wOut);
         break;
       }
@@ -558,16 +578,19 @@ export function createViewmodel(ctx) {
       }
       case 'throwRelease':
         keyed(keysRelease, t, hand);
-        if (!st.released && t >= 0.045) st.released = true;
+        if (!st.released && t >= a.hideAt) st.released = true;
         if (st.shown === 'spear' && st.released) st.shown = null;
         break;
       case 'draw': {
-        keysDraw[2].pose = (a.target ?? targetShown()) === 'spear' ? POSES.drawSpearMid : POSES.drawSwordMid;
+        // Down and out of view with the old weapon, swap there, and come back up with the new one.
         if (!a.swapped && t >= 0.2) {
           a.swapped = true;
           st.shown = targetShown();
           st.released = false;
         }
+        const next = targetShown();
+        keysDraw[1].pose = st.shown === 'spear' ? POSES.drawLowSpear : POSES.drawLow;
+        keysDraw[2].pose = next === 'spear' ? POSES.drawSpearMid : POSES.drawSwordMid;
         keyed(keysDraw, t, hand);
         break;
       }
@@ -785,7 +808,7 @@ export function createViewmodel(ctx) {
         const dx = Math.cos(a.dir);
         const dy = Math.sin(a.dir);
         _c.copy(guard.p).add(_a.set(dx * 0.1 * g, dy * 0.08 * g, -0.05 * (1 - Math.abs(g) * 0.4)));
-        _q.setFromAxisAngle(_b.set(-dy, dx, 0).normalize(), 0.42 * g);
+        _q.setFromAxisAngle(_b.set(dy, -dx, 0).normalize(), 0.42 * g);
         _q2.copy(guard.q).premultiply(_q);
         _d.set(0, -1, 0).applyQuaternion(_q2);
         tt.copy(_c).addScaledVector(_d, -SPEAR.headTip);
@@ -820,7 +843,9 @@ export function createViewmodel(ctx) {
     if (world && world.sunDirection) sun.position.copy(world.sunDirection).applyQuaternion(invCam).multiplyScalar(5);
     else sun.position.set(-3, 4, 2.5);
     hemi.position.set(0, 1, 0).applyQuaternion(invCam);
-    scene.environment = (world && world.envMap) || null;
+    // Keep the last env map if the world briefly has none (a context restore), so the vm programs
+    // never switch between env and no-env at runtime.
+    if (world && world.envMap) scene.environment = world.envMap;
     scene.environmentRotation.setFromQuaternion(invCam);
     st.lightScan -= dt;
     if ((!worldLights.sun || !worldLights.sun.parent) && st.lightScan <= 0) {
@@ -852,7 +877,7 @@ export function createViewmodel(ctx) {
     } catch (err) {
       console.warn('viewmodel: blazon composite failed', err);
     }
-    arrows.count = stuck.length;
+    arrows.count = stuckCount;
     st.shown = targetShown();
   }
 
@@ -956,7 +981,7 @@ export function createViewmodel(ctx) {
     const busy = a0 && (a0.kind === 'draw' || a0.kind === 'throwRelease' || (a0.kind === 'throwWindup'));
     if (target !== st.shown && !busy) {
       if (target === null) st.shown = null;
-      else play('draw', {});
+      else play('draw');
     }
 
     const raise = updateShield(pdt);
@@ -972,7 +997,7 @@ export function createViewmodel(ctx) {
         const over = a.t - TIMING.throw.windup;
         a.t = TIMING.throw.windup;
         evalArm(a); // the release starts from the fully drawn-back pose
-        const r = startArm('throwRelease', { power: a.opts.power });
+        const r = startArm('throwRelease', TOUCH_RELEASE);
         r.t = over;
         evalArm(r);
       } else if (a.t >= a.dur) {
@@ -1006,7 +1031,7 @@ export function createViewmodel(ctx) {
 
     // Arrow quiver.
     let dirty = false;
-    for (let i = 0; i < stuck.length; i++) {
+    for (let i = 0; i < stuckCount; i++) {
       if (stuck[i].t < 0.6) {
         stuck[i].t += pdt;
         writeArrow(i);
@@ -1014,7 +1039,7 @@ export function createViewmodel(ctx) {
       }
     }
     if (dirty) arrows.instanceMatrix.needsUpdate = true;
-    arrows.visible = stuck.length > 0;
+    arrows.visible = stuckCount > 0;
 
     trail.mesh.visible = st.visible && updateTrail(st.arm);
     rigRoot.visible = st.visible;
@@ -1080,7 +1105,7 @@ export function createViewmodel(ctx) {
     update,
     /** Debug/test view of the internal state (not part of the contract). */
     get debug() {
-      return { shown: st.shown, arm: st.arm && { kind: st.arm.kind, t: st.arm.t }, arrows: stuck.length, raise: st.raise, hand, shieldPose };
+      return { shown: st.shown, arm: st.arm && { kind: st.arm.kind, t: st.arm.t }, arrows: stuckCount, raise: st.raise, hand, shieldPose };
     },
   };
 }

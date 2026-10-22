@@ -138,9 +138,9 @@ function groundColour(N, x, y, z, cx, sx, springs, out) {
   const margin = Math.max(1 - smoothstep(0.5, 4, x - cx), smoothstep(-4, -0.8, x - sx));
   const far = smoothstep(-60, -260, z) + smoothstep(25, 60, z) * 0.5;
   const veg = clamp(smoothstep(0.0, 0.5, N.fbm2(x * 0.05, z * 0.05 + 40, 3)) * (0.35 + margin * 0.5 + far * 0.6), 0, 1);
-  r *= 1 - veg * 0.22;
-  g *= 1 - veg * 0.1;
-  b *= 1 - veg * 0.35;
+  r *= 1 - veg * 0.14;
+  g *= 1 - veg * 0.11;
+  b *= 1 - veg * 0.3;
   // Scree at the cliff foot is greyer.
   const scree = 1 - smoothstep(0, 2.8, x - cx);
   r *= 1 - scree * 0.05;

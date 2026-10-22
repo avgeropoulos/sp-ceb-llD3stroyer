@@ -27,8 +27,8 @@ const step = (page, n = 1) => page.evaluate((n) => {
 }, n);
 
 try {
-  const page = await l.newPage({ width: 960, height: 540 });
-  await page.goto(`${l.game}?manual=1&mode=battle&seed=7&quality=medium&nohud=1`);
+  const page = await l.newPage({ width: 800, height: 450 });
+  await page.goto(`${l.game}?manual=1&mode=battle&seed=7&quality=low&nohud=1`);
   await page.waitForFunction(() => window.__game && window.__game.ready, null, { timeout: 180000 });
 
   // 1. Pre-warm: main.js compiled the fx programs before the first frame (they're hidden since).
@@ -94,27 +94,30 @@ try {
   });
   await step(page, 2);
   await page.evaluate(() => window.__game.action({ type: 'throw', power: 0.85 }));
+  // Steps in the page until `phase` has been seen for `n` frames (one round trip per mark).
+  const until = (phase, n) => page.evaluate(({ phase, n }) => {
+    const g = window.__game;
+    const out = [];
+    let seen = 0;
+    for (let i = 0; i < 400; i++) {
+      g.step(1);
+      const t = g.ctx.time;
+      const p = g.ctx.fx.spearCamPhase;
+      out.push({ scale: t.scale, hitStop: t.hitStop, rt: t.playerRealtime, phase: p });
+      if (p === phase && ++seen >= n) break;
+    }
+    return out;
+  }, { phase, n });
   const run = [];
-  const shots = { trail: false, impact: false, ease: false };
-  let trailFrames = 0;
-  let impactFrames = 0;
-  for (let i = 0; i < 400; i++) {
-    const [s] = await step(page, 1);
-    run.push(s);
-    if (s.phase === 'trail' && ++trailFrames === 40 && !shots.trail) {
-      shots.trail = true;
-      await snap(page, 'game-spearcam-trail.png');
-    }
-    if (s.phase === 'impact' && ++impactFrames === 25 && !shots.impact) {
-      shots.impact = true;
-      await snap(page, 'game-spearcam-orbit.png');
-    }
-    if (s.phase === 'ease' && !shots.ease && run.filter((x) => x.phase === 'ease').length === 10) {
-      shots.ease = true;
-      await snap(page, 'game-spearcam-ease.png');
-    }
-    if (run.length > 30 && s.phase === 'off' && run[run.length - 2].phase === 'off') break;
-  }
+  run.push(...(await until('trail', 3)));
+  await snap(page, 'game-spearcam-launch.png');
+  run.push(...(await until('trail', 30)));
+  await snap(page, 'game-spearcam-trail.png');
+  run.push(...(await until('impact', 25)));
+  await snap(page, 'game-spearcam-orbit.png');
+  run.push(...(await until('ease', 10)));
+  await snap(page, 'game-spearcam-ease.png');
+  run.push(...(await until('off', 2)));
   await snap(page, 'game-spearcam-end.png');
   const spearLog = await page.evaluate(() => window.__log);
   const phases = spearLog.events.filter((e) => e.name === 'spearCam').map((e) => e.phase);

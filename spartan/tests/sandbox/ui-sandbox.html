@@ -51,7 +51,20 @@
     ctx.platform.storage = { load: (k, f) => (store.has(k) ? JSON.parse(JSON.stringify(store.get(k))) : f), save: (k, v) => store.set(k, JSON.parse(JSON.stringify(v))) };
     ctx.platform.motion.isSupported = async () => params.get('motion') === '1';
     ctx.platform.motion.requestPermission = async () => true;
-    ctx.platform.motion.inject = (s) => { log.injected += s.length; log.injectRot = s[0] && s[0].rot; };
+    // Like platform.js: injected samples are re-based after lastT() and released as time passes
+    // (here the sandbox clock, so stepped tests stay deterministic).
+    const inj = { t0: 0, now0: 0, end: 0, last: 0 };
+    ctx.platform.motion.inject = (s) => {
+      log.injected += s.length;
+      log.injectRot = s[0] && s[0].rot;
+      inj.t0 = inj.last + 0.01;
+      inj.now0 = ctx.time.now;
+      inj.end = inj.t0 + (s.length ? s[s.length - 1].t - s[0].t : 0);
+    };
+    ctx.platform.motion.lastT = () => {
+      if (inj.end > inj.last) inj.last = Math.min(inj.end, inj.t0 + (ctx.time.now - inj.now0));
+      return inj.last;
+    };
     ctx.platform.voice = { say() {}, stop() {} };
     const pushAction = ctx.actions.push;
     ctx.actions.push = (a) => { log.actions.push(Object.assign({ at: performance.now() }, a)); pushAction(a); };
@@ -233,6 +246,12 @@
         Object.assign(ctx.player, { hp: 31, score: 21480, chain: 1, kills: 64, weapon: 'sword', spearsLeft: 0 });
         Object.assign(ctx.waves, { day: 3, phase: 'C', wave: 1 });
         emit('phase', { day: 3, phase: 'C', wave: 0, title: 'The Kolonos', subtitle: 'They defended themselves with swords, those who still had them, and with hands and teeth.', seconds: 7 });
+      },
+      'hud-endcard'() {
+        ctx.setMode('battle');
+        populate();
+        Object.assign(ctx.player, { hp: 66, score: 14210, chain: 1, kills: 41 });
+        ctx.hud.banner('Three times, it is said, the King leapt from his throne in fear for his army.', 'Herodotus 7.212', 7);
       },
       'hud-volley'() {
         ctx.setMode('battle');

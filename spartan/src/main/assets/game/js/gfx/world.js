@@ -53,7 +53,9 @@ export function createWorld(ctx) {
   Object.assign(sun.shadow.camera, { left: -SHADOW_HALF, right: SHADOW_HALF, top: SHADOW_HALF, bottom: -SHADOW_HALF, near: 1, far: 220 });
   sun.shadow.camera.updateProjectionMatrix();
   sun.shadow.bias = -0.00025;
-  sun.shadow.normalBias = 0.035;
+  // Enough normal offset that faces lit at a grazing angle (the cliff under a low sun) don't
+  // self-shadow in triangle-shaped patches.
+  sun.shadow.normalBias = quality === 'high' ? 0.055 : 0.07;
   sun.shadow.radius = 1.5;
   scene.add(hemi, sun, sun.target);
 
@@ -86,11 +88,11 @@ export function createWorld(ctx) {
   const grassMat = new THREE.MeshStandardMaterial({
     name: 'grass', map: tex.get('grass'), alphaTest: CUTOUT_ALPHA, alphaToCoverage: a2c, side: THREE.DoubleSide, roughness: 1, metalness: 0, vertexColors: true,
   });
-  patch(grassMat, { key: 'grass', fog: {}, ao: true, wind: { time, amp: 1 } });
+  patch(grassMat, { key: 'grass', fog: {}, ao: true, foliage: true, wind: { time, amp: 1 } });
   const scrubMat = new THREE.MeshStandardMaterial({
     name: 'scrub', map: tex.get('scrub'), alphaTest: CUTOUT_ALPHA, alphaToCoverage: a2c, side: THREE.DoubleSide, roughness: 0.95, metalness: 0, vertexColors: true,
   });
-  patch(scrubMat, { key: 'scrub', fog: {}, ao: true, wind: { time, amp: 0.45 } });
+  patch(scrubMat, { key: 'scrub', fog: {}, ao: true, foliage: true, wind: { time, amp: 0.45 } });
   const seaMat = makeWaterMaterial(tex.get('waterNormal'), time, patch);
   const foamTex = tex.get('foam').clone();
   foamTex.needsUpdate = true;
@@ -100,9 +102,9 @@ export function createWorld(ctx) {
   });
   patch(foamMat, { key: 'foam', fog: {} });
   const mountainMat = new THREE.MeshStandardMaterial({ name: 'mountains', vertexColors: true, roughness: 1, metalness: 0 });
-  patch(mountainMat, { key: 'mountains', fog: { scale: 0.5 } });
+  patch(mountainMat, { key: 'mountains', fog: { scale: 0.85 } });
   const poolMat = new THREE.MeshStandardMaterial({
-    name: 'springPool', color: 0x86c2b6, roughness: 0.1, metalness: 0, normalMap: tex.get('waterNormal'), vertexColors: true,
+    name: 'springPool', color: 0x6fa59c, roughness: 0.12, metalness: 0, normalMap: tex.get('waterNormal'), vertexColors: true,
   });
   poolMat.normalScale.set(0.12, 0.12);
   patch(poolMat, { key: 'pool', fog: {} });
@@ -160,8 +162,9 @@ export function createWorld(ctx) {
   const base = { sunI: 3, hemiI: 0.55, exposure: 0.5, env: 0.75 };
   let phase = 'morning';
   let shade = 0;
-  let shadeTarget = 0;
-  let shadeTimer = 0;
+  // Volleys in the air, as expiry times on the world clock: overlapping volleys keep the shade
+  // until the last one ends, and one whose 'end' never comes (a reset mid-volley) times out.
+  const volleys = [];
 
   function applyLight() {
     const s = shade;
@@ -215,13 +218,13 @@ export function createWorld(ctx) {
   events.on('volley', (e) => {
     if (!e) return;
     if (e.phase === 'loosed') {
-      shadeTarget = 1;
-      shadeTimer = 2.0 + (Number.isFinite(e.duration) ? e.duration : 1) + 0.75;
+      if (volleys.length < 8) volleys.push(time.value + 2.0 + (Number.isFinite(e.duration) ? e.duration : 1) + 0.75);
     } else if (e.phase === 'end') {
-      shadeTarget = 0;
-      shadeTimer = 0;
+      if (volleys.length) volleys.shift();
     }
   });
+  // Training hides the army and doesn't bring it back; every day of battle starts with it.
+  events.on('dayStart', () => horde.setDensity(1));
 
   // --- Shadow camera: follows the view, snapped to shadow-map texels ---
   const _fwd = new THREE.Vector3();
@@ -263,10 +266,8 @@ export function createWorld(ctx) {
     time.value += g;
     skySys.sky.material.uniforms.time.value = time.value;
     foamTex.offset.set(time.value * 0.004, -0.07 + 0.07 * Math.sin(time.value * 0.55));
-    if (shadeTimer > 0) {
-      shadeTimer -= g;
-      if (shadeTimer <= 0) shadeTarget = 0;
-    }
+    while (volleys.length && volleys[0] <= time.value) volleys.shift();
+    const shadeTarget = volleys.length ? 1 : 0;
     if (Math.abs(shade - shadeTarget) > 1e-4) {
       shade = damp(shade, shadeTarget, shadeTarget > shade ? 3.2 : 1.6, r);
       if (Math.abs(shade - shadeTarget) < 0.002) shade = shadeTarget;

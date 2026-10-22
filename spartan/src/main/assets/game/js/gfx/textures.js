@@ -72,7 +72,7 @@ export function textureSize(name, quality) {
   const def = DEFS[name];
   if (!def) return 0;
   const kind = def.size || (def.of && DEFS[def.of].size === 'big' ? 'bigNormal' : 'normal');
-  if (quality === 'low') return kind === 'sprite' || kind === 'small' ? 128 : 256;
+  if (quality === 'low') return 256;
   if (kind === 'big') return quality === 'high' ? 1024 : 512;
   if (kind === 'bigNormal') return name === 'dirtNormal' && quality === 'high' ? 1024 : 512;
   if (kind === 'sprite' || kind === 'small') return 256;
@@ -685,7 +685,7 @@ function genRock(S, N) {
       const crack = (1 - smoothstep(0.006, 0.03, e)) * smoothstep(0.05, 0.35, crackOn[k]);
       crackA[k] = crack;
       v -= crack * 0.28;
-      if (pits.id[k] < 0.35) v -= (1 - smoothstep(0.05, 0.3, pits.f1[k])) * 0.12 * smoothstep(-0.1, 0.3, pitOn[k]);
+      if (pits.id[k] < 0.25) v -= (1 - smoothstep(0.05, 0.3, pits.f1[k] + body[k] * 0.1)) * 0.07 * smoothstep(-0.1, 0.3, pitOn[k]);
       h[k] = v;
     }
   }
@@ -702,8 +702,9 @@ function genRock(S, N) {
     mixc(c, warm, smoothstep(-0.1, 0.4, wx[k]) * 0.35, c);
     const lm = smoothstep(0.28, 0.48, lichenF[k]);
     if (lm > 0) mixc(c, lichenGrey, lm * 0.45, c);
-    if (spots.id[k] < 0.06 && spots.f1[k] < 0.18 + (0.25 * spots.id[k]) / 0.06) mixc(c, lichenOrange, 0.6, c);
-    else if (spots.id[k] > 0.94 && spots.f1[k] < 0.12) mixc(c, dark, 0.7, c);
+    const sr = spots.f1[k] + body[k] * 0.12;
+    if (spots.id[k] < 0.035 && sr < 0.16 + (0.2 * spots.id[k]) / 0.035) mixc(c, lichenOrange, 0.45 * lm + 0.15, c);
+    else if (spots.id[k] > 0.95 && sr < 0.12) mixc(c, dark, 0.45, c);
     mixc(c, dark, crackA[k] * 0.35, c);
     const shade = clamp(1 + (h[k] - cav[k]) * 1.3, 0.6, 1.2);
     put(px, k, c[0] * shade, c[1] * shade, c[2] * shade);
@@ -762,7 +763,7 @@ function genCliff(S, N, R) {
   const lichM = N.fbmField(S, 5, { octaves: 4, salt: 10 });
   const blocks = N.worleyField(S, 6, 9, 0.85, 11);
   // Chipped facets about a metre across: each cell a plane tilted its own way (normals only).
-  const facets = N.worleyField(S, 9, 16, 0.9, 15, true);
+  const facets = N.worleyField(S, 13, 22, 0.9, 15, true);
   const fsx = new Float32Array(n);
   const fsy = new Float32Array(n);
   const pits = N.worleyField(S, 46, 46, 1, 13);
@@ -811,12 +812,16 @@ function genCliff(S, N, R) {
       const bm = smoothstep(0.0, 0.5, stain[k] + rough[k] * 0.3);
       v += (bid - 0.5) * 0.09 * (0.5 + b.hard) * bm * smoothstep(0.0, 0.05, bedge);
       {
-        // Facets break at the seams: the bed index re-seeds them.
-        const fid = fract(facets.id[k] * 3.71 + bi * 0.377);
+        // Facets break at the seams (the bed index re-seeds them), and their borders are
+        // warped so they never read as straight-edged polygons.
+        const wx = (x + Math.round(wob[k] * S * 0.03 + rough[k] * S * 0.006) + S) % S;
+        const wy = (y + Math.round(body[k] * S * 0.02) + S) % S;
+        const fk = wy * S + wx;
+        const fid = fract(facets.id[fk] * 3.71 + bi * 0.377);
         const ga = fid * 23.25;
-        const gm = (0.04 + 0.14 * fract(fid * 13.1)) * smoothstep(-0.15, 0.35, lichM[k] * 0.7 + body[k] * 0.6 + 0.1) * (0.5 + 0.7 * b.hard);
+        const gm = (0.02 + 0.06 * fract(fid * 13.1)) * smoothstep(-0.15, 0.35, lichM[k] * 0.7 + body[k] * 0.6 + 0.1) * (0.4 + 0.8 * b.hard);
         // Facets round over in the last few pixels before a border, like a worn arris.
-        const soft = smoothstep(0.0, 0.03, facets.f2[k] - facets.f1[k]);
+        const soft = smoothstep(0.0, 0.04, facets.f2[fk] - facets.f1[fk]);
         fsx[k] = Math.cos(ga) * gm * soft;
         fsy[k] = Math.sin(ga) * gm * soft;
       }
@@ -1496,7 +1501,7 @@ function genSulphur(S, N) {
       const du = u - 0.33;
       const dv = (v - 0.5) * 1.15;
       // Elongated downhill (+u), lobed edge.
-      const r = Math.hypot(du * (du > 0 ? 0.62 : 1.25), dv) * 2.15 + f[k] * 0.28;
+      const r = Math.hypot(du * (du > 0 ? 0.68 : 1.35), dv) * 2.2 + f[k] * 0.24;
       mixc(white, cream, smoothstep(0.15, 0.7, r) + g[k] * 0.25, c);
       // Rimstone terraces: thin raised rims at irregular radii.
       const ring = Math.abs(fract(r * 7 + f[k] * 1.5) - 0.5);
@@ -1508,7 +1513,8 @@ function genSulphur(S, N) {
       mixc(c, zone[k] > 0 ? rust : ochre, ch * 0.8, c);
       mixc(c, damp, smoothstep(0.62, 0.95, r) * 0.75, c);
       const t = 0.92 + grain[k] * 0.1;
-      const a = (1 - smoothstep(0.78, 1.0, r)) * (0.9 + g[k] * 0.2);
+      const border = smoothstep(0, 0.08, Math.min(u, 1 - u, v, 1 - v));
+      const a = (1 - smoothstep(0.72, 0.98, r)) * (0.9 + g[k] * 0.2) * border;
       put(px, k, c[0] * t, c[1] * t, c[2] * t, clamp(a, 0, 1) * 235);
     }
   }
@@ -2082,30 +2088,57 @@ function drawGrass(g, R) {
 }
 
 function drawScrub(g, R) {
-  // Twigs fanning up from the base.
-  g.strokeStyle = '#4a3a28';
+  // Maquis (kermes oak, lentisk): a low, wide, irregular mound of small dark leaves built from
+  // overlapping clumps, sunlit grey-green on top, nearly black inside, a few dead twigs.
+  const clumps = [];
+  const nc = 6 + Math.floor(R.next() * 3);
+  for (let i = 0; i < nc; i++) {
+    const a = (i / nc) * Math.PI + (R.next() - 0.5) * 0.5;
+    clumps.push({
+      x: 0.5 - Math.cos(a) * (0.2 + R.next() * 0.12),
+      y: 0.8 - Math.sin(a) * (0.1 + R.next() * 0.2),
+      r: 0.13 + R.next() * 0.1,
+    });
+  }
+  clumps.push({ x: 0.5, y: 0.66, r: 0.24 }, { x: 0.33, y: 0.84, r: 0.14 }, { x: 0.67, y: 0.84, r: 0.14 });
   g.lineCap = 'round';
-  for (let i = 0; i < 12; i++) {
-    const a = -Math.PI / 2 + (R.next() - 0.5) * 1.5;
-    const len = 0.2 + R.next() * 0.25;
-    g.lineWidth = 0.012;
+  g.strokeStyle = '#3b3024';
+  for (let i = 0; i < 9; i++) {
+    const a = -Math.PI / 2 + (R.next() - 0.5) * 2.2;
+    const len = 0.12 + R.next() * 0.12;
+    g.lineWidth = 0.008;
     g.beginPath();
-    g.moveTo(0.5, 0.99);
-    g.lineTo(0.5 + Math.cos(a) * len, 0.99 + Math.sin(a) * len);
+    g.moveTo(0.5 + (R.next() - 0.5) * 0.2, 0.99);
+    g.lineTo(0.5 + Math.cos(a) * len, 0.99 + Math.sin(a) * len * 0.9);
     g.stroke();
   }
-  // Leaf clusters: dark evergreen (kermes oak, lentisk), lighter towards the sunlit top.
-  const greens = ['#2c3720', '#364426', '#41502b', '#4d5b33', '#5a673b', '#6a7444'];
-  for (let i = 0; i < 1100; i++) {
+  const greens = ['#1f2717', '#27301c', '#303a21', '#3a4527', '#46502e', '#525c38', '#5f6843', '#6d7350'];
+  for (let i = 0; i < 1800; i++) {
+    const cl = clumps[Math.floor(R.next() * clumps.length)];
     const a = R.next() * Math.PI * 2;
-    const r = Math.sqrt(R.next()) * 0.42;
-    const x = 0.5 + Math.cos(a) * r * (1 + 0.15 * Math.sin(a * 3));
-    const y = 0.55 + Math.sin(a) * r * 0.82;
-    if (y > 0.96) continue;
-    const top = clamp((0.95 - y) / 0.8, 0, 1);
-    const idx = clamp(Math.floor((top * 0.75 + R.next() * 0.45) * greens.length), 0, greens.length - 1);
-    g.fillStyle = greens[idx];
-    ellipse(g, x, y, 0.011 + R.next() * 0.01, 0.006 + R.next() * 0.006, R.next() * Math.PI);
+    const r = Math.sqrt(R.next()) * cl.r;
+    const x = cl.x + Math.cos(a) * r;
+    const y = cl.y + Math.sin(a) * r * 0.85;
+    if (y > 0.985 || y < 0.03 || x < 0.03 || x > 0.97) continue;
+    // Light from above and outside; dark in the core of each clump.
+    const outer = r / cl.r;
+    const top = clamp((cl.y - y) / cl.r * 0.5 + 0.5, 0, 1);
+    const lum = clamp(top * 0.55 + outer * 0.35 + (R.next() - 0.5) * 0.45, 0, 0.999);
+    g.fillStyle = greens[Math.floor(lum * greens.length)];
+    ellipse(g, x, y, 0.009 + R.next() * 0.009, 0.005 + R.next() * 0.005, R.next() * Math.PI);
     g.fill();
+  }
+  // Dead twigs poking out of the mound.
+  g.strokeStyle = '#6e6250';
+  for (let i = 0; i < 6; i++) {
+    const cl = clumps[Math.floor(R.next() * clumps.length)];
+    const a = -Math.PI / 2 + (R.next() - 0.5) * 2.4;
+    const x = cl.x + Math.cos(a) * cl.r * 0.8;
+    const y = cl.y + Math.sin(a) * cl.r * 0.7;
+    g.lineWidth = 0.005;
+    g.beginPath();
+    g.moveTo(x, y);
+    g.lineTo(x + Math.cos(a) * 0.07, y + Math.sin(a) * 0.07);
+    g.stroke();
   }
 }

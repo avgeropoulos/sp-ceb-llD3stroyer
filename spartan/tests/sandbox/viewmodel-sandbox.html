@@ -2,7 +2,8 @@
 <!-- Viewmodel sandbox: a sky-and-ground pass with an enemy stand-in, plus the vm pass.
      URL params (all optional): weapon=sword|spear, raise=0..1, arrows=N, helmet=1, vignette=x, hurt=x,
      act=<play kind>|swing:<kind>|block|perfect|guardBreak|hurt, dir=<deg>, at=<s>, yaw, pitch, walk=1, world=1.
-     window.__vm exposes { ctx, vm, emit, setup, run(at), stats() } for e2e scripts. -->
+     window.__vm exposes { ctx, vm, emit, setup, run(at), tick(n), shot(spec), stats(), orbit(view) } for the
+     e2e scripts (tests/e2e/viewmodel-shots.mjs, viewmodel-checks.mjs). -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -126,7 +127,7 @@
     }
     const emit = (name, payload) => ctx.events.emit(name, payload);
 
-    ctx.loop((dt) => {
+    function frame(dt) {
       if (state.walk) player.pos.z -= 1.4 * dt;
       player.weapon = state.weapon;
       vm.setWeapon(state.weapon);
@@ -137,7 +138,27 @@
       ctx.camera.rotation.set(player.pitch, player.yaw, 0, 'YXZ');
       ctx.camera.updateMatrixWorld();
       enemy.position.z = player.pos.z - 1.65;
-    });
+    }
+    ctx.loop(frame);
+
+    /** Advances n frames like ctx.step (same time rules) but without rendering; for fast scripted checks. */
+    function tick(n = 1, dt = 1 / 60) {
+      for (let i = 0; i < n; i++) {
+        const t = ctx.time;
+        t.dt = dt;
+        t.now += dt;
+        if (t.hitStop > 0) {
+          t.hitStop = Math.max(0, t.hitStop - dt);
+          t.gdt = 0;
+          t.pdt = 0;
+        } else {
+          t.gdt = dt * t.scale;
+          t.pdt = t.playerRealtime ? dt : t.gdt;
+        }
+        t.gnow += t.gdt;
+        frame(dt);
+      }
+    }
 
     /** Advances exactly `at` seconds of pdt in 1/60 steps (last step partial) and renders. */
     function run(at) {
@@ -201,7 +222,7 @@
       return vm.debug ? JSON.stringify({ shown: vm.debug.shown, arm: vm.debug.arm }) : '';
     }
 
-    window.__vm = { ctx, vm, emit, setup, run, stats, player, state, orbit, shot };
+    window.__vm = { ctx, vm, emit, setup, run, tick, stats, player, state, orbit, shot };
 
     // URL-driven scenario (for shot.mjs).
     setup({

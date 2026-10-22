@@ -141,3 +141,25 @@ function a64() {
   for (let y = 0; y < 4; y++) for (let x = 0; x < 4; x++) f[y * 4 + x] = x;
   return f;
 }
+
+test('worleyField vectors point at the nearest feature point', () => {
+  const S = 64;
+  const w = createNoise(6).worleyField(S, 5, 9, 0.9, 3, true);
+  const plain = createNoise(6).worleyField(S, 5, 9, 0.9, 3);
+  assert.deepEqual(w.f1, plain.f1);
+  assert.equal(plain.dx, undefined);
+  for (let k = 0; k < S * S; k++) {
+    assert.ok(Math.abs(Math.hypot(w.dx[k], w.dy[k]) - w.f1[k]) < 1e-4, `|d| = F1 at ${k}`);
+  }
+  // Within one cell the vector changes by exactly the pixel step (a plane through the point).
+  let same = 0;
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S - 1; x++) {
+      const k = y * S + x;
+      if (w.id[k] !== w.id[k + 1]) continue;
+      same++;
+      assert.ok(Math.abs(w.dx[k] - w.dx[k + 1] - (5 / S) * Math.sqrt(9 / 5)) < 1e-4);
+    }
+  }
+  assert.ok(same > S * S * 0.8);
+});

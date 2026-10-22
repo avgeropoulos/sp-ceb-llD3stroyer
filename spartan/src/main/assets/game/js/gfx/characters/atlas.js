@@ -36,6 +36,8 @@ export const FACE = {
   eyeY: 0.040, eyeT: 0.34, browY: 0.064, mouthY: -0.036, noseY: 0.0, earT: 1.5,
 };
 export const faceV = (y) => (y - FACE.yBot) / (FACE.yTop - FACE.yBot);
+/** Around the head: u = 0.5 at the front, widened there so the face gets most of the tile. */
+export const faceU = (t) => 0.5 + 0.5 * Math.sign(t) * Math.pow(Math.min(1, Math.abs(t) / Math.PI), 0.6);
 
 const COLS_C = 4, ROWS_C = 8, COLS_M = 4, ROWS_M = 4;
 
@@ -344,19 +346,34 @@ function paintPattern(g, P, kind, seed) {
     }
     g.restore();
   } else if (kind === 'quilted') {
-    paintCloth(g, P, 0xc9b896, seed, 0.6);
+    // quilted linen: puffed panels between stitched seams (vertical and horizontal)
+    paintCloth(g, P, 0xb09c74, seed, 0.6);
     g.save();
-    g.strokeStyle = 'rgba(70,50,30,0.45)';
-    g.lineWidth = Math.max(1, P / 128);
-    const n = 8;
-    for (let i = 0; i <= n; i++) {
+    const nx = 6, ny = 8, cw = P / nx, ch = P / ny;
+    for (let y = 0; y < ny; y++) {
+      for (let x = 0; x < nx; x++) {
+        const cx = (x + 0.5) * cw, cy = (y + 0.5) * ch;
+        const grad = g.createRadialGradient(cx - cw * 0.12, cy - ch * 0.15, 0, cx, cy, Math.max(cw, ch) * 0.62);
+        grad.addColorStop(0, 'rgba(255,250,230,0.22)');
+        grad.addColorStop(0.6, 'rgba(255,250,230,0.0)');
+        grad.addColorStop(1, 'rgba(70,50,30,0.32)');
+        g.fillStyle = grad;
+        g.fillRect(x * cw, y * ch, cw, ch);
+      }
+    }
+    g.strokeStyle = 'rgba(70,50,30,0.55)';
+    g.lineWidth = Math.max(1, P / 200);
+    g.setLineDash([Math.max(2, P / 90), Math.max(1, P / 160)]);
+    for (let i = 0; i <= nx; i++) {
       g.beginPath();
-      g.moveTo(0, (i / n) * P);
-      g.lineTo(P, (i / n) * P);
+      g.moveTo(i * cw, 0);
+      g.lineTo(i * cw, P);
       g.stroke();
+    }
+    for (let i = 0; i <= ny; i++) {
       g.beginPath();
-      g.moveTo((i / n) * P, 0);
-      g.lineTo((i / n) * P, P);
+      g.moveTo(0, i * ch);
+      g.lineTo(P, i * ch);
       g.stroke();
     }
     g.restore();
@@ -376,137 +393,211 @@ function paintPattern(g, P, kind, seed) {
 }
 
 function paintHair(g, P, base, seed) {
-  noiseFill(g.canvas, base, [14, 10, 8], 16, 3, seed, true);
+  noiseFill(g.canvas, base, [12, 9, 7], 8, 3, seed, true);
   const r = rng(seed);
   g.save();
-  g.lineWidth = Math.max(1, P / 160);
-  for (let i = 0; i < 260; i++) {
-    const x = r() * P, y = r() * P, s = P * (0.01 + r() * 0.015);
-    g.strokeStyle = r() < 0.5 ? 'rgba(0,0,0,0.35)' : 'rgba(255,230,200,0.10)';
+  // dense small curls: dark troughs and faint lit crests
+  const n = Math.round((P * P) / 90);
+  for (let i = 0; i < n; i++) {
+    const x = r() * P, y = r() * P, rad = P * (0.004 + r() * 0.006);
+    const dark = r() < 0.6;
+    g.strokeStyle = dark ? `rgba(0,0,0,${0.25 + r() * 0.25})` : `rgba(255,225,190,${0.05 + r() * 0.08})`;
+    g.lineWidth = Math.max(1, P / 300) * (dark ? 1.4 : 1);
+    const a = r() * 6.28;
     g.beginPath();
-    g.arc(x, y, s, r() * 6, r() * 6 + 3.5);
+    g.arc(x, y, rad, a, a + 2.2 + r() * 1.5);
     g.stroke();
   }
   g.restore();
 }
 
-/** Painted face over a skin tile. u = 0.5 + θ/2π (front at the centre), v by head height. */
+/**
+ * Painted face over a skin tile, in the head's mapping (u = faceU(θ), v = faceV(y)): form
+ * shading, almond eyes with lids, bushy brows, nose and mouth, hairline, beard and moustache.
+ */
 function paintFace(g, P, kind) {
-  const X = (theta) => (0.5 + theta / (Math.PI * 2)) * P;
+  const TAU = Math.PI * 2;
+  const X = (t) => faceU(t) * P;
   const Y = (y) => (1 - faceV(y)) * P;
+  const PY = P / (FACE.yTop - FACE.yBot);
   const helmet = kind === 'faceH';
-  const persian = kind !== 'faceG' && !helmet;
-  if (helmet) tint(g, P, 'rgb(88,72,64)');
-  const hairCol = kind === 'faceS' ? '#3a2a1c' : persian ? '#16100c' : '#2b1d14';
+  const persian = kind === 'faceP' || kind === 'faceS';
+  const hair = kind === 'faceS' ? [58, 42, 28] : persian ? [24, 17, 12] : [44, 30, 20];
+  const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+  const r = rng(kind.length * 977 + 3);
+  const path = (pts, close) => {
+    g.beginPath();
+    pts.forEach(([t, y], i) => (i ? g.lineTo(X(t), Y(y)) : g.moveTo(X(t), Y(y))));
+    if (close) g.closePath();
+  };
+  const blob = (t, y, rt, ry, col, a) => {
+    const cx = X(t), cy = Y(y);
+    const rx = Math.max(1, (Math.abs(X(t + rt) - cx) + Math.abs(X(t - rt) - cx)) / 2), rr = Math.max(1, ry * PY);
+    g.save();
+    g.translate(cx, cy);
+    g.scale(rx / rr, 1);
+    const gr = g.createRadialGradient(0, 0, 0, 0, 0, rr);
+    gr.addColorStop(0, rgba(col, a));
+    gr.addColorStop(1, rgba(col, 0));
+    g.fillStyle = gr;
+    g.fillRect(-rr, -rr, rr * 2, rr * 2);
+    g.restore();
+  };
+  if (helmet) tint(g, P, 'rgb(84,68,60)');
   g.save();
-  // hair over the scalp and the back of the head
-  g.fillStyle = hairCol;
-  g.beginPath();
-  g.moveTo(0, 0);
-  g.lineTo(P, 0);
-  g.lineTo(P, Y(0.0));
-  g.lineTo(X(1.45), Y(0.02));
-  g.quadraticCurveTo(X(1.15), Y(0.11), X(0.6), Y(0.105));
-  g.quadraticCurveTo(X(0), Y(0.118), X(-0.6), Y(0.105));
-  g.quadraticCurveTo(X(-1.15), Y(0.11), X(-1.45), Y(0.02));
-  g.lineTo(0, Y(0.0));
-  g.closePath();
-  g.fill();
-  // eye sockets (shadowed)
-  const ex = FACE.eyeT;
+  // form: lit forehead, cheekbones and nose bridge; shaded sockets, temples and cheek hollows
+  blob(0, 0.09, 0.55, 0.035, [255, 226, 196], 0.13);
+  blob(0, 0.022, 0.09, 0.022, [255, 226, 196], 0.12);
   for (const s of [-1, 1]) {
-    const cx = X(s * ex), cy = Y(FACE.eyeY);
-    let grad = g.createRadialGradient(cx, cy, 0, cx, cy, P * 0.045);
-    grad.addColorStop(0, 'rgba(60,30,20,0.55)');
-    grad.addColorStop(1, 'rgba(60,30,20,0)');
-    g.fillStyle = grad;
-    g.fillRect(cx - P * 0.05, cy - P * 0.05, P * 0.1, P * 0.1);
-    // eye white + iris
-    g.fillStyle = helmet ? '#8a8072' : persian ? '#d6c9b4' : '#d9cdb8';
-    g.beginPath();
-    g.ellipse(cx, cy, P * 0.023, P * 0.0105, 0, 0, Math.PI * 2);
+    blob(s * 0.36, 0.045, 0.24, 0.022, [72, 34, 24], 0.5);
+    blob(s * 0.5, 0.008, 0.22, 0.016, [255, 218, 188], 0.12);
+    blob(s * 0.85, 0.02, 0.4, 0.06, [92, 46, 32], 0.28);
+    blob(s * 0.6, -0.03, 0.22, 0.028, [86, 42, 28], 0.2);
+  }
+  // eyes: almond whites, brown irises under the upper lid, dark lid line, crease, lower lid
+  for (const s of [-1, 1]) {
+    const y = FACE.eyeY;
+    const inner = s * 0.2, outer = s * 0.5;
+    const top = [], bot = [];
+    for (let i = 0; i <= 10; i++) {
+      const f = i / 10, t = inner + (outer - inner) * f, sh = Math.sin(f * Math.PI);
+      top.push([t, y + 0.0058 * Math.pow(sh, 0.7) - 0.0012 * f]);
+      bot.push([t, y - 0.0038 * Math.pow(sh, 0.9) - 0.0008 * f]);
+    }
+    const outline = top.concat(bot.slice().reverse());
+    path(outline, true);
+    g.fillStyle = helmet ? '#6e655b' : '#cbbca6';
     g.fill();
-    g.fillStyle = '#21140c';
+    g.save();
+    path(outline, true);
+    g.clip();
+    const ic = s * 0.335;
+    const irx = Math.abs(X(ic + 0.07) - X(ic)), iry = 0.0062 * PY;
+    g.fillStyle = helmet ? '#21140c' : '#3b2415';
     g.beginPath();
-    g.arc(cx + s * -P * 0.002, cy, P * 0.0092, 0, Math.PI * 2);
+    g.ellipse(X(ic), Y(y + 0.0006), irx, iry, 0, 0, TAU);
     g.fill();
-    // lids / kohl
-    g.strokeStyle = persian ? 'rgba(10,6,4,0.95)' : 'rgba(40,20,12,0.8)';
-    g.lineWidth = persian ? P * 0.006 : P * 0.004;
+    g.fillStyle = '#0b0705';
     g.beginPath();
-    g.ellipse(cx, cy, P * 0.024, P * 0.011, 0, Math.PI, Math.PI * 2);
+    g.ellipse(X(ic), Y(y + 0.0006), irx * 0.45, iry * 0.45, 0, 0, TAU);
+    g.fill();
+    // the upper lid's shadow across the eyeball
+    path(top);
+    g.strokeStyle = 'rgba(30,14,8,0.4)';
+    g.lineWidth = 0.006 * PY;
+    g.stroke();
+    g.restore();
+    if (!helmet) {
+      g.fillStyle = 'rgba(255,250,240,0.7)';
+      g.beginPath();
+      g.arc(X(ic) - s * irx * 0.3, Y(y + 0.002), Math.max(0.8, iry * 0.25), 0, TAU);
+      g.fill();
+    }
+    path(top);
+    g.strokeStyle = persian ? 'rgba(10,6,4,0.95)' : 'rgba(34,18,10,0.85)';
+    g.lineWidth = Math.max(1, (persian ? 0.0024 : 0.0017) * PY);
     g.stroke();
     if (persian) {
+      // kohl line out past the outer corner
       g.beginPath();
-      g.moveTo(cx + s * P * 0.021, cy);
-      g.lineTo(cx + s * P * 0.032, cy - P * 0.004);
+      g.moveTo(X(outer), Y(y - 0.0012));
+      g.lineTo(X(outer + s * 0.08), Y(y + 0.0015));
       g.stroke();
     }
-    // brow
-    g.strokeStyle = hairCol;
-    g.lineWidth = persian ? P * 0.011 : P * 0.008;
-    g.beginPath();
-    g.moveTo(X(s * 0.12), Y(FACE.browY - 0.002));
-    g.quadraticCurveTo(X(s * 0.3), Y(FACE.browY + 0.008), X(s * 0.55), Y(FACE.browY - 0.006));
+    path(bot);
+    g.strokeStyle = 'rgba(70,34,22,0.45)';
+    g.lineWidth = Math.max(1, 0.0012 * PY);
+    g.stroke();
+    path(top.map(([t, yy]) => [t, yy + 0.006]));
+    g.strokeStyle = 'rgba(70,34,22,0.35)';
+    g.lineWidth = Math.max(1, 0.0016 * PY);
+    g.stroke();
+    // brow: short hairs along an arch, thick at the inner end
+    for (let i = 0; i < 46; i++) {
+      const f = i / 45;
+      const t = s * (0.12 + 0.52 * f + (r() - 0.5) * 0.02);
+      const yb = 0.06 + 0.0095 * Math.pow(Math.sin(Math.min(1, f * 1.15) * Math.PI * 0.5 + f * 0.6), 0.8) - 0.006 * f;
+      const w = (1 - 0.55 * f) * (persian ? 1.25 : 1);
+      g.strokeStyle = rgba(hair, 0.55 + r() * 0.35);
+      g.lineWidth = Math.max(1, 0.0011 * PY * (0.8 + r() * 0.6));
+      g.beginPath();
+      g.moveTo(X(t), Y(yb - 0.0035 * w + (r() - 0.5) * 0.002));
+      g.lineTo(X(t + s * (0.035 + r() * 0.02)), Y(yb + 0.0035 * w + (r() - 0.5) * 0.002));
+      g.stroke();
+    }
+  }
+  // nose: nostril shadows, wings, a lit tip
+  for (const s of [-1, 1]) {
+    blob(s * 0.16, -0.005, 0.06, 0.006, [60, 26, 18], 0.55);
+    blob(s * 0.22, 0.004, 0.07, 0.012, [90, 44, 30], 0.25);
+    path([[s * 0.21, -0.002], [s * 0.27, -0.022], [s * 0.28, -0.038]]);
+    g.strokeStyle = 'rgba(84,40,26,0.28)';
+    g.lineWidth = 0.004 * PY;
     g.stroke();
   }
-  // nose shading + cheeks
-  let grad = g.createLinearGradient(X(-0.12), 0, X(0.12), 0);
-  grad.addColorStop(0, 'rgba(70,35,20,0.0)');
-  grad.addColorStop(0.3, 'rgba(70,35,20,0.18)');
-  grad.addColorStop(0.5, 'rgba(255,220,190,0.10)');
-  grad.addColorStop(0.7, 'rgba(70,35,20,0.18)');
-  grad.addColorStop(1, 'rgba(70,35,20,0.0)');
-  g.fillStyle = grad;
-  g.fillRect(X(-0.12), Y(FACE.eyeY), X(0.12) - X(-0.12), Y(FACE.noseY) - Y(FACE.eyeY));
-  for (const s of [-1, 1]) {
-    const cx = X(s * 0.55), cy = Y(0.0);
-    grad = g.createRadialGradient(cx, cy, 0, cx, cy, P * 0.05);
-    grad.addColorStop(0, 'rgba(170,70,50,0.18)');
-    grad.addColorStop(1, 'rgba(170,70,50,0)');
-    g.fillStyle = grad;
-    g.fillRect(cx - P * 0.05, cy - P * 0.05, P * 0.1, P * 0.1);
-  }
-  // lips
-  g.fillStyle = 'rgba(110,45,35,0.85)';
-  g.beginPath();
-  g.ellipse(X(0), Y(FACE.mouthY), P * 0.022, P * 0.0065, 0, 0, Math.PI * 2);
-  g.fill();
-  g.strokeStyle = 'rgba(40,15,10,0.8)';
-  g.lineWidth = P * 0.003;
-  g.beginPath();
-  g.moveTo(X(-0.14), Y(FACE.mouthY));
-  g.lineTo(X(0.14), Y(FACE.mouthY));
+  blob(0, 0.006, 0.05, 0.008, [255, 228, 200], 0.16);
+  // mouth: upper lip in shade, fuller lower lip with a highlight
+  const my = FACE.mouthY, mw = 0.24;
+  const lip = (y0, h, col) => {
+    const pts = [];
+    for (let i = 0; i <= 10; i++) {
+      const f = i / 10, t = (f * 2 - 1) * mw;
+      pts.push([t, y0 + h * Math.pow(1 - Math.abs(f * 2 - 1), 0.6)]);
+    }
+    path(pts.concat([[mw, y0], [-mw, y0]]), true);
+    g.fillStyle = col;
+    g.fill();
+  };
+  lip(my, 0.0058, 'rgba(112,52,40,0.85)');
+  lip(my, -0.0075, 'rgba(146,72,58,0.8)');
+  blob(0, my - 0.004, 0.08, 0.0025, [255, 220, 200], 0.22);
+  path([[-mw, my], [-mw * 0.5, my + 0.0008], [0, my - 0.0005], [mw * 0.5, my + 0.0008], [mw, my]]);
+  g.strokeStyle = 'rgba(40,16,10,0.85)';
+  g.lineWidth = Math.max(1, 0.0014 * PY);
   g.stroke();
-  // beard and moustache
-  g.fillStyle = hairCol;
-  g.globalAlpha = persian ? 1 : 0.92;
-  g.beginPath();
-  g.moveTo(X(-1.5), Y(0.03));
-  g.lineTo(X(-1.2), Y(0.0));
-  g.quadraticCurveTo(X(-0.75), Y(-0.008), X(-0.42), Y(-0.022));
-  g.quadraticCurveTo(X(-0.2), Y(-0.02), X(0), Y(-0.017));
-  g.quadraticCurveTo(X(0.2), Y(-0.02), X(0.42), Y(-0.022));
-  g.quadraticCurveTo(X(0.75), Y(-0.008), X(1.2), Y(0.0));
-  g.lineTo(X(1.5), Y(0.03));
-  g.lineTo(X(1.5), P);
-  g.lineTo(X(-1.5), P);
-  g.closePath();
+  // hair: scalp above a soft hairline, temples, sideburns
+  const hl = [[-Math.PI, 0.03], [-1.6, 0.03], [-1.42, 0.07], [-1.05, 0.085], [-0.62, 0.104], [-0.3, 0.112], [0, 0.114],
+    [0.3, 0.112], [0.62, 0.104], [1.05, 0.085], [1.42, 0.07], [1.6, 0.03], [Math.PI, 0.03], [Math.PI, 0.2], [-Math.PI, 0.2]];
+  path(hl, true);
+  g.fillStyle = rgba(hair, 1);
   g.fill();
-  // keep the lower lip visible
-  g.globalAlpha = 1;
-  g.fillStyle = 'rgba(105,45,35,0.9)';
-  g.beginPath();
-  g.ellipse(X(0), Y(FACE.mouthY - 0.004), P * 0.016, P * 0.005, 0, 0, Math.PI * 2);
+  path(hl.slice(0, 13));
+  g.strokeStyle = rgba(hair, 0.35);
+  g.lineWidth = 0.008 * PY;
+  g.stroke();
+  // beard: cheeks, jaw and chin, with a soft stubble edge; moustache over the upper lip
+  const beard = [[-1.6, 0.03], [-1.25, 0.012], [-0.85, 0.0], [-0.55, -0.012], [-0.38, -0.024], [-0.3, -0.042],
+    [-0.12, -0.05], [0, -0.052], [0.12, -0.05], [0.3, -0.042], [0.38, -0.024], [0.55, -0.012], [0.85, 0.0],
+    [1.25, 0.012], [1.6, 0.03], [1.6, -0.2], [-1.6, -0.2]];
+  path(beard.slice(0, 15));
+  g.strokeStyle = rgba(hair, 0.3);
+  g.lineWidth = 0.014 * PY;
+  g.stroke();
+  path(beard, true);
+  g.fillStyle = rgba(hair, persian ? 1 : 0.95);
   g.fill();
-  // curls in the beard
-  const r = rng(kind.length * 31);
-  g.lineWidth = Math.max(1, P / 220);
-  for (let i = 0; i < 160; i++) {
-    const x = X((r() - 0.5) * 2.6), y = Y(-0.02 - r() * 0.07);
-    g.strokeStyle = r() < 0.5 ? 'rgba(0,0,0,0.4)' : 'rgba(255,220,180,0.10)';
+  for (const s of [-1, 1]) {
+    for (let i = 0; i < 26; i++) {
+      const f = i / 25;
+      const t0 = s * (0.03 + 0.26 * f);
+      g.strokeStyle = rgba(hair, 0.7 + r() * 0.3);
+      g.lineWidth = Math.max(1, 0.0016 * PY);
+      g.beginPath();
+      g.moveTo(X(t0), Y(my + 0.012 - 0.002 * f));
+      g.quadraticCurveTo(X(t0 + s * 0.05), Y(my + 0.006), X(t0 + s * (0.08 + 0.04 * f)), Y(my - 0.004 - 0.012 * f));
+      g.stroke();
+    }
+  }
+  // the lower lip shows through the beard; the chin tuft below it
+  lip(my - 0.0005, -0.007, 'rgba(140,68,54,0.9)');
+  for (let i = 0; i < 260; i++) {
+    const t = (r() - 0.5) * 3.0, y = -0.02 - r() * 0.07;
+    if (Math.abs(t) < mw * 1.1 && y > my - 0.012) continue;
+    g.strokeStyle = r() < 0.6 ? 'rgba(0,0,0,0.35)' : 'rgba(255,225,190,0.08)';
+    g.lineWidth = Math.max(1, 0.0012 * PY);
+    const a = r() * 6.28;
     g.beginPath();
-    g.arc(x, y, P * 0.008, r() * 6, r() * 6 + 3);
+    g.arc(X(t), Y(y), 0.0035 * PY, a, a + 2.4);
     g.stroke();
   }
   g.restore();
@@ -618,6 +709,11 @@ function paintScale(g, P, base, seed) {
 /** Simple painted emblems on a bronze disc, used when textures.js has no blazon. */
 function paintBlazon(g, P, name, seed) {
   paintMetal(g, P, 0xb88a42, seed);
+  blazonShapes(g, P, name);
+}
+
+/** The painted emblem alone (dark paint on whatever is below). */
+function blazonShapes(g, P, name) {
   const c = P / 2;
   g.save();
   g.translate(c, c);
@@ -923,7 +1019,7 @@ const CLOTH_SPEC = {
   robeA: { tex: 'persianRobeA', paint: (g, P) => paintPattern(g, P, 'robeA', 27) },
   robeB: { tex: 'persianRobeB', paint: (g, P) => paintPattern(g, P, 'robeB', 28) },
   robeC: { tex: 'persianRobeC', paint: (g, P) => paintPattern(g, P, 'robeC', 29) },
-  quilted: { paint: (g, P) => paintPattern(g, P, 'quilted', 30), deco: (g, P) => tint(g, P, 'rgb(225,205,165)') },
+  quilted: { paint: (g, P) => paintPattern(g, P, 'quilted', 30) },
   tunicRed: { tex: 'linen', tint: '#9c3a26', paint: (g, P) => paintCloth(g, P, 0x8e3622, 31) },
   tunicBlue: { tex: 'linen', tint: '#4a5a86', paint: (g, P) => paintCloth(g, P, 0x3c4a72, 32) },
   tunicOchre: { tex: 'linen', tint: '#b88a3a', paint: (g, P) => paintCloth(g, P, 0xa67a34, 33) },
@@ -945,13 +1041,13 @@ const METAL_SPEC = {
   iron: { paint: (g, P) => paintMetal(g, P, 0x7a7a7c, 53), metal: 1, rough: 0.42 },
   gold: { paint: (g, P) => paintMetal(g, P, 0xd9ab45, 54, false), metal: 1, rough: 0.28 },
   silver: { paint: (g, P) => paintMetal(g, P, 0xc8c8cc, 55, false), metal: 1, rough: 0.3 },
-  scaleBronze: { tex: 'scale', paint: (g, P) => paintScale(g, P, 0xb08040, 56), metal: 'auto', rough: 0.45 },
-  scaleIron: { tex: 'scale', tint: 'rgb(150,150,155)', sat: true, paint: (g, P) => paintScale(g, P, 0x808084, 57), metal: 'auto', rough: 0.5 },
+  scaleBronze: { tex: 'scale', paint: (g, P) => paintScale(g, P, 0xb08040, 56), metal: 1, rough: 0.48 },
+  scaleIron: { tex: 'scale', tint: 'rgb(150,150,155)', paint: (g, P) => paintScale(g, P, 0x808084, 57), metal: 1, rough: 0.52 },
   ironDark: { paint: (g, P) => paintMetal(g, P, 0x4c4a48, 58), metal: 1, rough: 0.55 },
   greave: { tex: 'bronze', paint: (g, P) => paintMetal(g, P, 0xb8873e, 59), metal: 1, rough: 0.33, deco: paintGreave },
   helmet: { tex: 'bronze', paint: (g, P) => paintMetal(g, P, 0xb8873e, 60), metal: 1, rough: 0.3, deco: paintHelmet },
 };
-for (const b of BLAZONS) METAL_SPEC[b] = { tex: b, paint: (g, P) => paintBlazon(g, P, b, 61), metal: 'auto', rough: 0.36, blazon: true, deco: paintAspisRim };
+for (const b of BLAZONS) METAL_SPEC[b] = { tex: b, paint: (g, P) => paintBlazon(g, P, b, 61), metal: 1, rough: 0.36, blazon: b, deco: paintAspisRim };
 
 function placeTile(atlasCtx, tileCanvas, x0, y0, T, gutter) {
   const P = tileCanvas.width;
@@ -974,52 +1070,66 @@ function getTex(ctx, name) {
   }
 }
 
-/** Builds one tile canvas (P×P) for a spec. */
+/**
+ * Builds one tile canvas (P×P) for a spec. Shield faces also get a paint mask (the emblem and
+ * the rim decoration on a transparent ground), so their paint can be made non-metallic in the
+ * roughness/metalness atlas without reading pixels back from a canvas.
+ */
 function buildTile(ctx, name, spec, P) {
   const cv = makeCanvas(P, P);
   const g = cv.getContext('2d');
   const ext = spec.tex ? getTex(ctx, spec.tex) : null;
-  let used = false;
-  if (ext && spec.blazon) {
-    // emblems may be painted on a transparent ground: lay the bronze first
+  let mask = null;
+  if (spec.blazon) {
+    // emblems are painted on a transparent ground: lay the bronze first
     const br = getTex(ctx, 'bronze');
     if (!(br && drawExternal(g, br, P))) paintMetal(g, P, 0xb88a42, 61);
-  }
-  if (ext) used = drawExternal(g, ext, P, spec.reps || 1);
-  if (used) {
-    if (spec.tint) tint(g, P, spec.tint);
+    mask = makeCanvas(P, P);
+    const mg = mask.getContext('2d');
+    if (!(ext && drawExternal(mg, ext, P))) blazonShapes(mg, P, spec.blazon);
+    g.drawImage(mask, 0, 0);
+    if (spec.deco) spec.deco(mg, P);
   } else {
-    spec.paint(g, P);
+    const used = ext ? drawExternal(g, ext, P, spec.reps || 1) : false;
+    if (used) {
+      if (spec.tint) tint(g, P, spec.tint);
+    } else {
+      spec.paint(g, P);
+    }
   }
   if (spec.face) paintFace(g, P, name);
   if (spec.deco) spec.deco(g, P);
-  return cv;
+  return { cv, mask };
 }
 
-/** Roughness (G) / metalness (B) for a metal tile, derived from its colours where 'auto'. */
-function ormTile(cv, spec, P2) {
+/**
+ * Roughness (G) / metalness (B) tile for a metal tile: the spec's roughness with a little
+ * variation, and paint (from the mask) as a rough dielectric. Draw calls only, no readback.
+ */
+function ormTile(spec, P2, mask, seed) {
   const out = makeCanvas(P2, P2);
   const g = out.getContext('2d');
-  g.drawImage(cv, 0, 0, P2, P2);
-  const img = g.getImageData(0, 0, P2, P2);
-  const d = img.data;
-  for (let i = 0; i < d.length; i += 4) {
-    const r = d[i], gg = d[i + 1], b = d[i + 2];
-    let metal = 1;
-    if (spec.metal === 'auto') {
-      // bronze/iron/gold-like colours stay metal; dark gaps and paint become dielectric
-      const lum = (r + gg + b) / 3;
-      const gr = gg / Math.max(1, r), br = b / Math.max(1, r);
-      const metallic = lum > 70 && ((gr > 0.45 && gr < 0.95 && br < 0.8) || (Math.abs(r - gg) < 22 && Math.abs(gg - b) < 22 && lum > 95 && !spec.blazon));
-      metal = metallic ? 1 : 0;
-    }
-    const rough = metal ? spec.rough + ((i * 7919) % 13) / 255 : 0.72;
-    d[i] = 255;
-    d[i + 1] = Math.round(Math.min(1, rough) * 255);
-    d[i + 2] = Math.round(metal * 255);
-    d[i + 3] = 255;
+  const r0 = Math.round(spec.rough * 255);
+  g.fillStyle = `rgb(255,${r0},255)`;
+  g.fillRect(0, 0, P2, P2);
+  const r = rng(seed);
+  for (let i = 0; i < 40; i++) {
+    const v = Math.max(0, Math.min(255, r0 + Math.round((r() - 0.5) * 70)));
+    g.fillStyle = `rgba(255,${v},255,0.35)`;
+    const x = r() * P2, y = r() * P2, s = P2 * (0.05 + r() * 0.2);
+    g.beginPath();
+    g.arc(x, y, s, 0, Math.PI * 2);
+    g.fill();
   }
-  g.putImageData(img, 0, 0);
+  if (mask) {
+    const m = makeCanvas(P2, P2);
+    const mg = m.getContext('2d');
+    mg.drawImage(mask, 0, 0, P2, P2);
+    mg.globalCompositeOperation = 'source-in';
+    mg.fillStyle = 'rgb(255,184,0)';
+    mg.fillRect(0, 0, P2, P2);
+    g.drawImage(m, 0, 0);
+  }
   return out;
 }
 
@@ -1081,8 +1191,8 @@ export function buildMaterials(ctx) {
   const clothCv = makeCanvas(COLS_C * T, ROWS_C * T);
   const cg = clothCv.getContext('2d');
   CLOTH_TILES.forEach((name, i) => {
-    const tile = buildTile(ctx, name, CLOTH_SPEC[name], P);
-    placeTile(cg, tile, (i % COLS_C) * T, Math.floor(i / COLS_C) * T, T, gutter);
+    const { cv } = buildTile(ctx, name, CLOTH_SPEC[name], P);
+    placeTile(cg, cv, (i % COLS_C) * T, Math.floor(i / COLS_C) * T, T, gutter);
   });
   const metalCv = makeCanvas(COLS_M * T, ROWS_M * T);
   const mg = metalCv.getContext('2d');
@@ -1091,10 +1201,10 @@ export function buildMaterials(ctx) {
   const og = ormCv.getContext('2d');
   METAL_TILES.forEach((name, i) => {
     const spec = METAL_SPEC[name];
-    const tile = buildTile(ctx, name, spec, P);
+    const { cv, mask } = buildTile(ctx, name, spec, P);
     const x = i % COLS_M, y = Math.floor(i / COLS_M);
-    placeTile(mg, tile, x * T, y * T, T, gutter);
-    placeTile(og, ormTile(tile, spec, P2), x * half, y * half, half, gh);
+    placeTile(mg, cv, x * T, y * T, T, gutter);
+    placeTile(og, ormTile(spec, P2, mask, 70 + i), x * half, y * half, half, gh);
   });
   const aniso = quality === 'high' ? 8 : 4;
   const mk = (cv, srgb) => {

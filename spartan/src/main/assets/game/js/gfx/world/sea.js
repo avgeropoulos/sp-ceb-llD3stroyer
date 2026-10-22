@@ -197,7 +197,7 @@ function sectorHeight(phi) {
 /** Two ranges of mountains and the far shores at 1.4–1.9 km: a nearer, lower range and a higher, hazier one. */
 export function buildMountainGeometry(layout) {
   const N = layout.noise;
-  const seg = 480;
+  const seg = 600;
   const ranges = [
     // [base radius, height scale, profile rows [radial offset, height fraction, rockiness]]
     { R0: 1420, k: 0.55, salt: 3, prof: [[0, -6, 0], [20, 1.5, 0], [60, 0.12, 0.05], [110, 0.45, 0.2], [150, 0.8, 0.45], [175, 1, 0.8], [215, 0.7, 0.6]] },

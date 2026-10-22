@@ -5,7 +5,11 @@
  */
 import * as THREE from 'three';
 import { clamp, smoothstep } from '../../core/math.js';
+import { toCreasedNormals } from 'three/addons/BufferGeometryUtils.js';
 import { Z_NEAR, Z_FAR } from './layout.js';
+
+/** Faces meeting at more than this angle keep separate normals (crisp ledges and arrises). */
+const CREASE = 0.7;
 
 const LEDGES = [2.7, 5.9, 8.9, 12.7, 16.8, 21.5, 26.7, 32.4, 38.5, 45.1, 51.6];
 const WALL_ROWS_TOP = 58;
@@ -89,7 +93,7 @@ export function buildCliff(layout, material) {
       const a = N.fbm2(z * 0.045 + k * 13.7, k * 3.1, 3);
       const b = N.fbm2(z * 0.15 + k * 5.3, k * 7.7 + 40, 2) * 2.4 + 0.5;
       const bq = Math.floor(b);
-      band[k] = (1.15 * a + 0.55 * (bq + smoothstep(0.7, 1, b - bq))) * (k === 0 ? 0.3 : 1);
+      band[k] = (1.2 * a + 0.42 * (bq + smoothstep(0.6, 1, b - bq))) * (k === 0 ? 0.3 : 1);
     }
     let arc = 0;
     let px = 0;
@@ -156,6 +160,16 @@ export function buildCliff(layout, material) {
     }
   }
 
+  // Rows kept away from the line: every other plain row low on the face, every ledge row, and
+  // the whole upper slope (the near chunk keeps them all).
+  const allRows = [];
+  const sparseRows = [];
+  for (let r = 0; r < nRows; r++) {
+    allRows.push(r);
+    const b = r < base.length ? base[r] : null;
+    const ledge = b !== null && LEDGES.some((l) => Math.abs(b - l) < 0.25);
+    if (b === null || b > 14 || ledge || r % 2 === 0 || r === base.length - 1) sparseRows.push(r);
+  }
   // Shared vertex data → three chunks (behind, near, far) with one shared column at each seam.
   const chunks = [
     { name: 'cliffBehind', from: 34, to: Infinity, cast: false },
@@ -167,8 +181,13 @@ export function buildCliff(layout, material) {
   for (const ch of chunks) {
     const cIdx = [];
     for (let c = 0; c < nCols; c++) if (zs[c] <= ch.to + 1.0 && zs[c] >= ch.from - 1.0) cIdx.push(c);
-    const g = gridGeometry(P, UV, COL, AO, nRows, nCols, cIdx);
+    let g = gridGeometry(P, UV, COL, AO, ch.cast ? allRows : sparseRows, nCols, cIdx);
     tintLedges(g);
+    if (CREASE > 0) {
+      const cg = toCreasedNormals(g, CREASE);
+      g.dispose();
+      g = cg;
+    }
     const mesh = new THREE.Mesh(g, material);
     mesh.name = ch.name;
     mesh.castShadow = ch.cast;
@@ -181,15 +200,16 @@ export function buildCliff(layout, material) {
   return { meshes, near, ledgeSpots, slopeSpots, crestSpots };
 }
 
-function gridGeometry(P, UV, COL, AO, nRows, nCols, cIdx) {
+function gridGeometry(P, UV, COL, AO, rIdx, nCols, cIdx) {
   const n = cIdx.length;
+  const nRows = rIdx.length;
   const pos = new Float32Array(nRows * n * 3);
   const uv = new Float32Array(nRows * n * 2);
   const col = new Float32Array(nRows * n * 3);
   const ao = new Float32Array(nRows * n);
   for (let r = 0; r < nRows; r++) {
     for (let i = 0; i < n; i++) {
-      const src = r * nCols + cIdx[i];
+      const src = rIdx[r] * nCols + cIdx[i];
       const dst = r * n + i;
       pos.set(P.subarray(src * 3, src * 3 + 3), dst * 3);
       uv.set(UV.subarray(src * 2, src * 2 + 2), dst * 2);

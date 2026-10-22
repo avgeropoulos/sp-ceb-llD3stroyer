@@ -95,8 +95,8 @@ export function createLayout(seed = 480) {
     return smoothstep(18, 8, Math.abs(z + 3)) * smoothstep(10.5, 8.5, Math.abs(x - 0.5));
   }
 
-  /** Raw terrain height (may be below sea level, under the water). */
-  function terrainHeight(x, z) {
+  /** Terrain before the springs carve their basins. */
+  function baseHeight(x, z) {
     const cx = cliffX(z);
     const sx = shoreX(z);
     const calm = calmWeight(x, z);
@@ -112,6 +112,8 @@ export function createLayout(seed = 480) {
       h += N.fbm2(x * 0.012, z * 0.008, 3) * 0.8 * far;
       const run = -60 - z;
       h += run < 450 ? 0.022 * run * smoothstep(0, 60, run) : 9.9 + 0.01 * (run - 450);
+      // Further off the road tops a long rise, so the army coming over it shows as a mass.
+      h += 16 * smoothstep(-110, -400, z);
     }
     if (z < -1000) h += smoothstep(-1000, -1600, z) * (40 + 25 * N.noise2(x * 0.006, z * 0.004));
     h += talus(x, z, cx);
@@ -126,7 +128,29 @@ export function createLayout(seed = 480) {
     return h;
   }
 
-  // Precompute the near-field cache (bilinear; error < 1 mm against terrainHeight).
+  // Each spring sits in a small basin on a levelled patch of crust.
+  for (const sp of springs) sp.base = baseHeight(sp.x, sp.z);
+
+  /** Raw terrain height (may be below sea level, under the water). */
+  function terrainHeight(x, z) {
+    let h = baseHeight(x, z);
+    for (let i = 0; i < springs.length; i++) {
+      const sp = springs[i];
+      const dx = x - sp.x;
+      const dz = z - sp.z;
+      const outer = sp.pool + 1.6;
+      if (dx > outer || dx < -outer || dz > outer || dz < -outer) continue;
+      const r = Math.sqrt(dx * dx + dz * dz);
+      if (r >= outer) continue;
+      h += (sp.base - h) * smoothstep(outer, sp.pool + 0.3, r);
+      const t = 1 - r / (sp.pool * 1.15);
+      if (t > 0) h -= 0.28 * t * (2 - t);
+    }
+    return h;
+  }
+
+  // Precompute the near-field cache (bilinear on 25 cm: under 1 cm on the floor, a few cm at
+  // the kinks along the cliff foot).
   const cw = Math.round((CACHE_X1 - CACHE_X0) / CACHE_STEP) + 1;
   const ch = Math.round((CACHE_Z1 - CACHE_Z0) / CACHE_STEP) + 1;
   const cache = new Float32Array(cw * ch);

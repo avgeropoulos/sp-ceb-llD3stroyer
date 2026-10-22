@@ -274,6 +274,36 @@ export async function run(view) {
     });
     frozen = true;
     sheetViews(ctx, cells, phases.length, clips.length, camMode);
+  } else if (view === 'gait') {
+    // rows = speeds, columns = successive moments (dt apart) of the same cycle, seen in profile
+    const kind = params.get('kind') || 'levy';
+    const speeds = (params.get('speeds') || '0,1.4,3.0').split(',').map(Number);
+    const cols = num('cols', 6), dtc = num('dtc', 0.1), t0 = num('t', 1.5);
+    const cells = [];
+    speeds.forEach((sp, r) => {
+      for (let c = 0; c < cols; c++) {
+        const v = add(kind, { seed: seed0, variant: params.get('variant') || undefined }, 0, 0, 0);
+        if (params.get('guard') === '1') v.anim.setGuard(true);
+        v.anim.setLocomotion(sp);
+        const T = t0 + c * dtc, steps = Math.round(T * 120);
+        for (let k = 0; k < steps; k++) v.anim.update(T / steps);
+        cells.push({ v, r, c });
+      }
+    });
+    frozen = true;
+    sheetViews(ctx, cells, cols, speeds.length, camMode);
+  } else if (view === 'props') {
+    // the four projectile/weapon props, +Z (the tip) to the right, origins on the red marks
+    ['dory', 'persianSpear', 'sagaris', 'arrow'].forEach((n, i) => {
+      const p = chars.createProp(n);
+      p.position.set(0, 1.9 - i * 0.42, 0);
+      p.rotation.y = Math.PI / 2;
+      scene.add(p);
+      const mark = new THREE.Mesh(new THREE.SphereGeometry(0.012, 8, 6), new THREE.MeshBasicMaterial({ color: 0xff2020 }));
+      mark.position.copy(p.position).add(new THREE.Vector3(0, 0, 0.05));
+      scene.add(mark);
+    });
+    look([0, 1.3, 3.3], [0, 1.3, 0]);
   } else if (view === 'crowd') {
     // 22 living actors + 20 corpses, as in a busy battle frame
     const kinds = ['levy', 'levy', 'immortal', 'sparabara', 'levy', 'immortal', 'captain', 'archer', 'levy', 'immortal', 'levy', 'sparabara', 'immortal', 'levy'];

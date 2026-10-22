@@ -58,6 +58,29 @@ try {
     ctx.events.emit('volley', { phase: 'loosed', duration: 1 });
     window.__sandbox.step(60 * 6);
     out.autoClear = world.sun.intensity / sun0;
+    // Overlapping volleys: the shade holds until the last one ends.
+    ctx.events.emit('volley', { phase: 'loosed', duration: 1 });
+    window.__sandbox.step(60);
+    ctx.events.emit('volley', { phase: 'loosed', duration: 1 });
+    window.__sandbox.step(30);
+    ctx.events.emit('volley', { phase: 'end', duration: 1 });
+    window.__sandbox.step(60);
+    out.overlapHeld = world.sun.intensity / sun0;
+    ctx.events.emit('volley', { phase: 'end', duration: 1 });
+    window.__sandbox.step(240);
+    out.overlapEnd = world.sun.intensity / sun0;
+    // Army density: training hides it, a day of battle brings it back.
+    world.setArmyDensity(0);
+    const hidden = world.horde.group.visible;
+    ctx.events.emit('dayStart', { day: 1 });
+    out.army = { hidden, restored: world.horde.group.visible && world.horde.density === 1, half: (world.setArmyDensity(0.5), world.horde.meshes[0].count) };
+    world.setArmyDensity(1);
+    // Context-restore path: a fresh PMREM env replaces (and frees) the old one without new programs.
+    const envBefore = world.envMap;
+    const progs = renderer.info.programs.length;
+    world.rebuildEnvironment();
+    ctx.render();
+    out.rebuild = { changed: world.envMap !== envBefore, isEnv: scene.environment === world.envMap, programs: renderer.info.programs.length - progs };
     // groundHeight.
     const g = world.groundHeight;
     out.ground = {
@@ -117,6 +140,9 @@ try {
   check(r.shadeSun < 0.35 && r.shadeShadow < 0.45, `volley shade dims sun ×${r.shadeSun.toFixed(2)}, shadow ${r.shadeShadow.toFixed(2)}`);
   check(Math.abs(r.restoredSun - 1) < 0.02, `sun restored after end: ×${r.restoredSun.toFixed(3)}`);
   check(Math.abs(r.autoClear - 1) < 0.02, `stuck shade clears itself: ×${r.autoClear.toFixed(3)}`);
+  check(r.overlapHeld < 0.4 && Math.abs(r.overlapEnd - 1) < 0.02, `overlapping volleys hold the shade (×${r.overlapHeld.toFixed(2)}) until the last ends (×${r.overlapEnd.toFixed(3)})`);
+  check(!r.army.hidden && r.army.restored && r.army.half > 0, `army density 0 hides, dayStart restores, 0.5 → ${r.army.half} soldiers`);
+  check(r.rebuild.changed && r.rebuild.isEnv && r.rebuild.programs === 0, `rebuildEnvironment swaps the env map with no new programs (${JSON.stringify(r.rebuild)})`);
   console.log('ground', JSON.stringify(r.ground));
   check(r.ground.line.every((h) => Math.abs(h) < 0.3), 'line floor is near 0');
   check(r.ground.sea.every((h) => h === -3), 'groundHeight is −3 over the sea');
@@ -127,8 +153,15 @@ try {
   console.log('cliff', JSON.stringify(r.cliff), 'rock colliders', r.rockColliders);
   check(Math.abs(r.cliff.meanX + 9) < 0.6 && r.cliff.maxX < -8.3, 'cliff face base sits on the x = −9 plane');
   check(r.envMap, 'envMap is scene.environment');
-  console.log('texture memory MB', r.texMB);
-  check(r.texMB <= 64, 'texture memory ≤ 64 MB');
+  // Every texture, as main.js generates them at boot.
+  const all = await page.evaluate(async () => {
+    const t = window.__sandbox.ctx.textures;
+    const t0 = performance.now();
+    await t.generateAll();
+    return { mb: +(t.memoryBytes() / 1048576).toFixed(1), ms: Math.round(performance.now() - t0), n: t.names.length };
+  });
+  console.log('texture memory MB (world only)', r.texMB, '| all', all.n, 'textures:', all.mb, 'MB');
+  check(all.mb <= 64, `texture memory for all textures ≤ 64 MB (${all.mb})`);
   const errs = page.errors.concat(r.errors);
   check(errs.length === 0, `no page errors${errs.length ? ': ' + errs.join(' | ') : ''}`);
 } finally {

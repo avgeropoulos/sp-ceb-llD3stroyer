@@ -46,33 +46,32 @@ void main() {
   vec4 col = vec4(0.0);
 
   if (uHelmet > 0.5) {
-    // The view through a Corinthian helmet: the two almond eye-openings merge into one wide
-    // opening (binocular), the brow dips to a point over the nose, the cheek-pieces close in
-    // from the lower corners and the nasal guard is a faint, very blurred shadow. Everything is
-    // ~3 cm from the eye, so all edges are strongly out of focus.
+    // The view out of a Corinthian helmet. The two almond eye-openings merge into one wide opening
+    // (binocular vision); the brow arches and dips to the nasal guard, which both eyes see past as
+    // a faint blurred shadow; the cheek-pieces close in only at the lower outer corners. The bronze
+    // is ~3 cm from the eye, so every edge is far out of focus, with a dull glint on its inner lip.
     float ax = max(uAspect, 1.0);
-    vec2 q = vec2(p.x * ax, p.y);
-    float side = abs(q.x) / ax;                 // 0 centre .. 1 screen edge
-    float brow = 0.86 - 0.16 * exp(-pow(q.x / 0.32, 2.0)) - 0.2 * pow(side, 2.2);
-    float cheek = -0.9 + 0.48 * pow(side, 1.8) + 0.06 * exp(-pow(q.x / 0.5, 2.0));
-    float top = smoothstep(brow - 0.22, brow + 0.1, q.y);
-    float bottom = 1.0 - smoothstep(cheek - 0.12, cheek + 0.2, q.y);
-    float sides = smoothstep(0.86, 1.08, side + 0.1 * pow(abs(q.y), 2.0));
-    float mask = clamp(max(max(top, bottom), sides), 0.0, 1.0);
-    float nasal = 0.2 * exp(-pow(q.x / 0.09, 2.0)) * smoothstep(0.35, 0.8, q.y);
-    mask = max(mask, nasal);
-    // Out-of-focus bronze edge catching light just inside the opening.
-    float rim = mask * (1.0 - mask) * 4.0;
-    vec3 inside = vec3(0.028, 0.02, 0.014) + vec3(0.2, 0.13, 0.06) * rim * 0.35;
+    vec2 q = vec2(p.x * ax, p.y);              // 1 unit = half the screen height
+    float side = abs(p.x);                     // 0 centre .. 1 screen edge
+    float brow = 0.99 - 0.07 * exp(-pow(q.x / 0.3, 2.0)) - 0.3 * pow(side, 3.0);
+    float top = smoothstep(brow - 0.15, brow + 0.08, q.y);
+    float cheekEdge = -1.15 + 0.52 * smoothstep(0.62, 1.0, side);
+    float bottom = 1.0 - smoothstep(cheekEdge - 0.1, cheekEdge + 0.18, q.y);
+    float sides = smoothstep(0.9, 1.05, side + 0.05 * q.y * q.y);
+    float mask = max(max(top, bottom), sides);
+    float nasal = 0.16 * exp(-pow(q.x / 0.13, 2.0)) * smoothstep(0.2, 1.0, q.y);
+    mask = max(mask, nasal) * 0.94;
+    float rim = clamp(mask * (1.0 - mask) * 4.0, 0.0, 1.0);
+    vec3 inside = vec3(0.03, 0.022, 0.015) + vec3(0.3, 0.19, 0.08) * rim * 0.2;
     col = over(vec4(inside * mask, mask), col);
   }
 
   if (uVignette > 0.003) {
     vec2 q = vec2(p.x * 0.82, p.y);
     float r = length(q);
+    // hud drives the heartbeat through uVignette; the blood itself only creeps slowly.
     float n = fbm(vec2(p.x * uAspect, p.y) * 2.2 + vec2(0.0, uTime * 0.04));
-    float beat = pow(0.5 + 0.5 * sin(uTime * 7.2), 6.0) + 0.6 * pow(0.5 + 0.5 * sin(uTime * 7.2 - 1.1), 10.0);
-    float reach = mix(1.25, 0.55, uVignette) - 0.08 * beat * uVignette;
+    float reach = mix(1.25, 0.55, uVignette);
     float e = smoothstep(reach, reach + 0.6, r + (n - 0.5) * 0.45);
     float a = clamp(e * (0.55 + 0.45 * uVignette), 0.0, 0.92);
     vec3 blood = mix(vec3(0.32, 0.015, 0.01), vec3(0.12, 0.0, 0.0), smoothstep(0.3, 1.0, e));
@@ -81,7 +80,7 @@ void main() {
 
   if (uHurt > 0.003) {
     float r = length(vec2(p.x * 0.85, p.y));
-    float a = uHurt * (0.16 + 0.5 * smoothstep(0.35, 1.3, r));
+    float a = uHurt * (0.07 + 0.55 * smoothstep(0.3, 1.3, r));
     col = over(vec4(vec3(0.55, 0.03, 0.02) * a, a), col);
   }
 

@@ -1,0 +1,53 @@
+<!doctype html>
+<!-- World slice: boot timing as main.js does it — textures.generateAll(), then createWorld().
+     Reports window.__boot = { genMs, worldMs, texMB, perTexture }. ?quality=low|medium|high -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sandbox: world boot</title>
+  <link rel="stylesheet" href="../../src/main/assets/game/style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "../../src/main/assets/game/lib/three/three.module.js",
+        "three/addons/": "../../src/main/assets/game/lib/three/addons/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <div id="overlay"></div>
+  <script type="module">
+    import { createSandboxCtx } from './sandbox-ctx.js';
+    import { createWorld } from '../../src/main/assets/game/js/gfx/world.js';
+    const ctx = await createSandboxCtx({ withWorld: false, withLights: false });
+    const perTexture = {};
+    let last = performance.now();
+    const t0 = last;
+    await ctx.textures.generateAll((f, name) => {
+      const now = performance.now();
+      perTexture[name] = Math.round(now - last);
+      last = now;
+    });
+    const genMs = Math.round(performance.now() - t0);
+    const t1 = performance.now();
+    // Replace the sandbox's stand-in world with the real one.
+    ctx.scene.clear();
+    ctx.world = createWorld(ctx);
+    const worldMs = Math.round(performance.now() - t1);
+    ctx.camera.position.set(0, 1.66, 0);
+    ctx.camera.updateMatrixWorld();
+    const t2 = performance.now();
+    await ctx.renderer.compileAsync(ctx.scene, ctx.camera);
+    const compileMs = Math.round(performance.now() - t2);
+    ctx.render();
+    window.__boot = {
+      genMs, worldMs, compileMs, texMB: +(ctx.textures.memoryBytes() / 1048576).toFixed(1),
+      textures: ctx.renderer.info.memory.textures, perTexture,
+    };
+    ctx.loop((dt, gdt) => ctx.world.update(dt, gdt));
+  </script>
+</body>
+</html>

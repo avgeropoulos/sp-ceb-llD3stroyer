@@ -39,8 +39,9 @@ function withAttributes(g, { color = [1, 1, 1], ao = null, sway = null }) {
  * A fractured limestone boulder: a displaced sphere cut by a few planes (flat joint faces),
  * flattened underneath. Returns a unit-ish geometry before placement.
  */
-function rockGeometry(N, R, pebble = false) {
-  const g = pebble ? new THREE.IcosahedronGeometry(1, 0) : new THREE.SphereGeometry(1, 10, 7);
+function rockGeometry(N, R, pebble = false, detail = 0) {
+  // Detail 0 near the line, 1 and 2 further off (≈ 140, 80 and 48 triangles).
+  const g = pebble ? new THREE.IcosahedronGeometry(1, 0) : new THREE.SphereGeometry(1, [10, 8, 6][detail], [7, 5, 4][detail]);
   const p = g.attributes.position;
   const seed = R.next() * 50;
   const cuts = [];
@@ -48,7 +49,7 @@ function rockGeometry(N, R, pebble = false) {
   for (let i = 0; i < nc; i++) {
     const a = R.next() * Math.PI * 2;
     const b = (R.next() - 0.3) * 1.3;
-    cuts.push([Math.cos(a) * Math.cos(b), Math.sin(b), Math.sin(a) * Math.cos(b), 0.42 + R.next() * 0.3]);
+    cuts.push([Math.cos(a) * Math.cos(b), Math.sin(b), Math.sin(a) * Math.cos(b), 0.5 + R.next() * 0.3]);
   }
   for (let i = 0; i < p.count; i++) {
     let x = p.getX(i);
@@ -68,7 +69,9 @@ function rockGeometry(N, R, pebble = false) {
       }
     }
     if (y < -0.35) y = -0.35 + (y + 0.35) * 0.35;
-    p.setXYZ(i, x, y, z);
+    // Joint faces are never perfectly planar.
+    const r2 = 1 + 0.03 * N.noise3(x * 4.1, y * 4.1 + seed, z * 4.1);
+    p.setXYZ(i, x * r2, y * r2, z * r2);
   }
   // Creased normals keep the fracture faces flat and the weathered surfaces rounded.
   const out = toCreasedNormals(g, pebble ? 0.5 : 0.62);
@@ -78,7 +81,8 @@ function rockGeometry(N, R, pebble = false) {
 
 /** Places a rock: scale, random orientation, sunk into the ground. */
 function placeRock(N, R, layout, x, z, size, opts = {}) {
-  const g = rockGeometry(N, R, opts.pebble);
+  const off = Math.max(Math.abs(z + 4) - 0.6 * size * 10, 0);
+  const g = rockGeometry(N, R, opts.pebble, off < 40 ? 0 : off < 130 ? 1 : 2);
   const sx = size * (0.75 + R.next() * 0.5);
   const sy = size * (opts.flat ?? 0.55 + R.next() * 0.35);
   const sz = size * (0.75 + R.next() * 0.5);
@@ -156,7 +160,7 @@ function placeCard(R, x, y, z, w, h, quads, tint, normalUp, swayAmt) {
     col[i * 3] = tint[0];
     col[i * 3 + 1] = tint[1];
     col[i * 3 + 2] = tint[2];
-    ao[i] = 0.55 + 0.45 * sw.getX(i);
+    ao[i] = 0.7 + 0.3 * sw.getX(i);
     sw.setX(i, sw.getX(i) * swayAmt);
   }
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
@@ -178,6 +182,12 @@ function staticMesh(geoms, material, name, cast) {
   return mesh;
 }
 
+/** True when something of this size placed at (x, z) would sit in a hot-spring pool or its vent. */
+function onSpring(layout, x, z, size = 0) {
+  for (const s of layout.springs) if (Math.hypot(x - s.x, z - s.z) < s.pool + 0.6 + size * 0.7) return true;
+  return false;
+}
+
 /** Distance band in which props cast shadows (the shadow box follows the player, ±18 m). */
 const isNear = (x, z) => z > -24 && z < 22 && x > -13 && x < 13;
 
@@ -193,6 +203,10 @@ export function buildRocks(layout, mat, quality, extraStones = []) {
   const colliders = [];
   const scale = quality === 'low' ? 0.6 : 1;
   const add = (res, x, z, size) => {
+    if (onSpring(layout, x, z, size)) {
+      res.g.dispose();
+      return;
+    }
     (isNear(x, z) ? near : far).push(res.g);
     if (size >= 0.85 && z > -75 && z < 45 && x > -10 && x < 11) {
       const b = res.box;
@@ -255,10 +269,12 @@ export function buildRocks(layout, mat, quality, extraStones = []) {
     const sx = layout.shoreX(z);
     const x = lerp(cx + 0.8, sx - 0.2, R.next());
     const calm = layout.calmWeight(x, z);
-    if (R.next() < calm * 0.65) continue;
-    const size = 0.05 + Math.pow(R.next(), 2.2) * 0.3;
+    if (R.next() < calm * 0.4) continue;
+    // Small, kicked-about stones on the trampled line; bigger ones toward the margins.
+    const size = (0.05 + Math.pow(R.next(), 2.2) * 0.3) * (1 - 0.5 * calm);
     const res = placeRock(N, R, layout, x, z, size, { pebble: true, flat: 0.35 + R.next() * 0.3, sink: 0.25 });
-    (isNear(x, z) ? stones : stonesFar).push(res.g);
+    if (onSpring(layout, x, z, size)) res.g.dispose();
+    else (isNear(x, z) ? stones : stonesFar).push(res.g);
   }
   // Rubble at the foot of the wall.
   for (let i = 0; i < 60 * scale; i++) {
@@ -287,7 +303,7 @@ export function buildVegetation(layout, grassMat, scrubMat, cliffSpots, quality)
   const scale = quality === 'low' ? 0.5 : quality === 'high' ? 1.3 : 1;
   const tuft = (x, z, s) => {
     const y = layout.terrainHeight(x, z);
-    if (y < SEA_LEVEL + 0.2) return;
+    if (y < SEA_LEVEL + 0.2 || onSpring(layout, x, z)) return;
     const dry = R.next();
     const tint = [lerp(1, 0.86, dry * 0.5), lerp(0.98, 0.9, dry), lerp(0.94, 0.8, dry)];
     grass.push(placeCard(R, x, y - 0.03, z, 0.45 * s + R.next() * 0.3 * s, 0.35 * s + R.next() * 0.35 * s, 3, tint, true, 1));
@@ -311,6 +327,7 @@ export function buildVegetation(layout, grassMat, scrubMat, cliffSpots, quality)
   }
   // Scrub on the talus, around the springs' margins and the far floor.
   const bush = (x, y, z, s, quads = 3) => {
+    if (onSpring(layout, x, z, s * 0.5)) return;
     const t = 0.85 + R.next() * 0.3;
     scrub.push(placeCard(R, x, y - 0.08 * s, z, s * (0.9 + R.next() * 0.4), s * (0.7 + R.next() * 0.35), quads, [t, t * (0.95 + R.next() * 0.1), t * 0.9], false, 0.35));
   };
@@ -359,8 +376,11 @@ export function buildWall(layout, mat) {
   const batter = 0.16;
   const tile = 3.1;
   const stones = [];
+  const seaEnd = segs[1][1];
   const topAt = (x) => {
     let t = WALL.height - 0.25 + 0.14 * N.noise2(x * 0.6, 3.3) + 0.06 * N.noise2(x * 2.5, 1.1);
+    // The seaward end has slumped down the shore drop.
+    t -= 1.7 * smoothstep(seaEnd - 3.2, seaEnd + 0.2, x);
     // Broken, lower courses beside the gap and here and there along the wall.
     const dg = Math.min(Math.abs(x - WALL.gapMinX), Math.abs(x - WALL.gapMaxX));
     t -= 0.4 * (1 - smoothstep(0.2, 1.6, dg)) * (0.6 + 0.4 * N.noise2(x * 2, 7));
@@ -440,7 +460,8 @@ export function buildWall(layout, mat) {
           const y = lerp(ground - 0.5, topAt(x), t);
           const lean = batter * clamp(y / WALL.height, 0, 1);
           const z = lerp(z0 + lean, z1 - lean, k / nz);
-          pos.push(x + facing * bump(x, y, z) * 1.6, y, z);
+          // Bumps only ever push inward, so nothing stands in the gap.
+          pos.push(x + facing * (bump(x, y, z) * 1.6 - 0.13), y, z);
           uv.push(z / tile, y / tile);
         }
       }
@@ -461,7 +482,15 @@ export function buildWall(layout, mat) {
     if (xb === WALL.gapMinX) geoms.push(end(xb, 1));
     if (xa === WALL.gapMaxX) geoms.push(end(xa, -1));
     if (xb > 5) geoms.push(end(xb, 1));
-    colliders.push({ type: 'box', min: [xa, -1, z0 - 0.12], max: [xb, WALL.height + 0.3, z1 + 0.12] });
+    // Colliders in ~2 m chunks that follow the broken top.
+    const nb = Math.max(1, Math.round((xb - xa) / 2));
+    for (let i = 0; i < nb; i++) {
+      const c0 = lerp(xa, xb, i / nb);
+      const c1 = lerp(xa, xb, (i + 1) / nb);
+      let top = -Infinity;
+      for (let k = 0; k <= 8; k++) top = Math.max(top, topAt(lerp(c0, c1, k / 8)));
+      colliders.push({ type: 'box', min: [c0, -1.5, z0 - 0.22], max: [c1, top + 0.22, z1 + 0.22] });
+    }
     // Capstones along the top, two irregular rows, and big blocks at the gap ends.
     const R = createRng(Math.round(xa * 100) + 5000);
     for (let x = xa + 0.3; x < xb - 0.2; x += 0.42 + R.next() * 0.3) {
@@ -472,12 +501,21 @@ export function buildWall(layout, mat) {
         stones.push({ x: x + (R.next() - 0.5) * 0.2, z: zz + (R.next() - 0.5) * 0.25, y: topAt(x) - 0.04, size, flat: 0.5 + R.next() * 0.2, sink: 0.35 });
       }
     }
+    // Big quoins stacked at the gap ends, kept clear of the gap itself.
     for (const ex of [xa, xb]) {
       if (Math.abs(ex) > 2.5) continue;
-      const inward = ex < 0 ? -1 : 1;
+      const away = ex < 0 ? -1 : 1;
       for (let i = 0; i < 4; i++) {
         const y = 0.2 + i * 0.6;
-        stones.push({ x: ex - inward * (0.18 + R.next() * 0.15), z: WALL.z + (R.next() - 0.5) * 1.1, y, size: 0.45 + R.next() * 0.2, flat: 0.55, sink: 0.4 });
+        stones.push({ x: ex + away * (0.42 + R.next() * 0.12), z: WALL.z + (R.next() - 0.5) * 1.1, y, size: 0.4 + R.next() * 0.15, flat: 0.55, sink: 0.4 });
+      }
+    }
+    // Tumbled stones below the slumped seaward end.
+    if (xb === seaEnd) {
+      for (let i = 0; i < 9; i++) {
+        const x = xb - 1.5 + R.next() * 3;
+        const z = WALL.z + (R.next() - 0.5) * 3.2;
+        stones.push({ x, z, y: layout.terrainHeight(x, z), size: 0.3 + R.next() * 0.35, flat: 0.6, sink: 0.25 });
       }
     }
   }
@@ -537,7 +575,8 @@ export function buildSprings(layout, poolMat, crustMat, steamMat, quality) {
         // The texture's vent is at u = 0.33.
         const x = s.x + (u - 0.33) * 3 * R;
         const z = s.z + (v - 0.5) * 2 * R;
-        pos.push(x, Math.max(layout.terrainHeight(x, z), s.level) + 0.025, z);
+        // Draped on the ground, under the water where the basin dips: the pool hides it there.
+        pos.push(x, layout.terrainHeight(x, z) + 0.025, z);
         uv.push(u, v);
       }
     }

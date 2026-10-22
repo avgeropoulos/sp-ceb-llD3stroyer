@@ -139,9 +139,19 @@ export function createCharacters(ctx) {
     return e;
   }
 
+  // The first visual of a kind builds every default variant of it (normally at the boot
+  // pre-warm), so new variants never stall a frame in battle.
+  const prebuilt = new Set();
+  function prebuild(kind) {
+    if (prebuilt.has(kind)) return;
+    prebuilt.add(kind);
+    for (let sd = 1; sd <= 96; sd++) entryFor(kind, {}, sd);
+  }
+
   function create(kind, opts = {}) {
     if (!KINDS[kind]) kind = 'levy';
     const m = materials();
+    prebuild(kind);
     const seed = Number.isFinite(opts.seed) ? opts.seed | 0 : (counter++ * 7919 + 101) | 0;
     const e = entryFor(kind, opts, seed);
     const mesh = new THREE.SkinnedMesh(e.geometry, [m.cloth[0], m.metal[0]]);

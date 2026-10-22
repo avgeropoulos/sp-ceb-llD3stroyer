@@ -61,7 +61,7 @@ try {
     return out;
   });
   for (const r of slip) {
-    check(r.planted > 20 && r.meanSlip < 0.12 * Math.max(1, Math.abs(r.speed)) && r.maxSink > -0.02,
+    check(r.planted > 20 && r.meanSlip < 0.05 && r.maxSink > -0.02,
       `${r.kind} speed ${r.speed}: planted samples ${r.planted}, mean slip ${r.meanSlip.toFixed(3)} m/s, max ${r.maxSlip.toFixed(3)} m/s, lowest heel ${r.maxSink.toFixed(3)} m`);
   }
 
@@ -143,7 +143,7 @@ try {
     return res;
   });
   for (const d of deaths) {
-    check(d.ended && d.minY > -0.06 && d.minY < 0.05 && d.maxY < 0.75,
+    check(d.ended && d.minY > -0.03 && d.minY < 0.05 && d.maxY < 0.75,
       `${d.kind} ${d.clip}: ended ${d.ended}, lowest vertex ${d.minY.toFixed(3)} m, highest ${d.maxY.toFixed(3)} m, holds '${d.clipName}'`);
   }
 
@@ -187,6 +187,111 @@ try {
     }
     await p2.close();
   }
+
+  // ---- Visual API: attach, bloodied, visibility, dispose, flinch, props, shared programs
+  const api = await page.evaluate(() => {
+    const { chars, ctx, THREE } = window.__chars;
+    const r = {};
+    const render = () => {
+      ctx.camera.position.set(0, 1.66, 3);
+      ctx.camera.lookAt(0, 1, 0);
+      ctx.camera.updateMatrixWorld();
+      ctx.renderer.render(ctx.scene, ctx.camera);
+    };
+    const a = chars.create('levy', { seed: 21 }), b = chars.create('levy', { seed: 21 });
+    ctx.scene.add(a.root, b.root);
+    a.root.position.set(0.7, 0, -1);
+    a.root.rotation.y = 0.6;
+    a.anim.play('thrust', {});
+    for (let i = 0; i < 40; i++) a.anim.update(1 / 60);
+    a.root.updateMatrixWorld(true);
+    const spear = chars.createProp('dory');
+    ctx.scene.add(spear);
+    spear.position.set(0.8, 1.2, -0.9);
+    spear.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(0.3, -0.2, -1).normalize());
+    spear.updateMatrixWorld(true);
+    const before = spear.matrixWorld.clone();
+    a.attach(spear, 'chest');
+    spear.updateMatrixWorld(true);
+    let diff = 0;
+    for (let i = 0; i < 16; i++) diff = Math.max(diff, Math.abs(before.elements[i] - spear.matrixWorld.elements[i]));
+    r.attachDiff = diff;
+    r.attachParent = spear.parent && spear.parent.name;
+    render();
+    render(); // shadow depth programs settle on the second frame
+    const progs = ctx.renderer.info.programs.length;
+    a.setBloodied(0.5);
+    b.setBloodied(1);
+    render();
+    r.bloodMats = [a.mesh.material[0].name, b.mesh.material[0].name];
+    r.newPrograms = ctx.renderer.info.programs.length - progs;
+    a.setVisible(false);
+    r.hidden = a.root.visible === false;
+    a.setVisible(true);
+    // flinch never cancels a clip
+    let struck = 0;
+    a.anim.play('overhead', { duration: 1.0, onStrike: () => struck++ });
+    for (let i = 0; i < 70; i++) {
+      if (i % 9 === 0) a.anim.flinch(0.5, -1, 1);
+      a.anim.update(1 / 60);
+    }
+    r.flinchStruck = struck;
+    const geo = b.mesh.geometry;
+    let disposedEvents = 0;
+    geo.addEventListener('dispose', () => disposedEvents++);
+    a.dispose();
+    a.dispose();
+    r.removed = a.root.parent === null;
+    render();
+    r.geoDisposed = disposedEvents;
+    r.sharedGeometry = a.mesh.geometry === b.mesh.geometry;
+    // props: tip on +Z (the point/head is the +Z end: thin there), origin between the ends
+    r.props = ['dory', 'arrow', 'persianSpear', 'sagaris'].map((n) => {
+      const p = chars.createProp(n);
+      const pos = p.geometry.attributes.position;
+      let minZ = Infinity, maxZ = -Infinity;
+      for (let i = 0; i < pos.count; i++) {
+        minZ = Math.min(minZ, pos.getZ(i));
+        maxZ = Math.max(maxZ, pos.getZ(i));
+      }
+      // widest cross-section near each end (the head of an axe is at +Z; spear and arrow points end in a pole)
+      let headR = 0, tailR = 0;
+      for (let i = 0; i < pos.count; i++) {
+        const rr = Math.hypot(pos.getX(i), pos.getY(i)), z = pos.getZ(i);
+        if (z > maxZ - 0.12) headR = Math.max(headR, rr);
+        if (z < minZ + 0.12) tailR = Math.max(tailR, rr);
+      }
+      return { n, minZ, maxZ, headR, tailR, calls: Array.isArray(p.material) ? p.material.length : 1 };
+    });
+    // all kinds share the two material programs (plus depth programs for shadows)
+    const kinds = ['spartan', 'levy', 'sparabara', 'immortal', 'archer', 'captain', 'dummy', 'helot'];
+    const vs = kinds.map((k, i) => {
+      const v = chars.create(k, { seed: 40 + i });
+      v.root.position.set(i - 3.5, 0, -2);
+      ctx.scene.add(v.root);
+      return v;
+    });
+    render();
+    render();
+    const p1 = ctx.renderer.info.programs.length;
+    vs.forEach((v) => v.setBloodied(0.9));
+    render();
+    r.kindPrograms = ctx.renderer.info.programs.length - p1;
+    vs.forEach((v) => v.dispose());
+    b.dispose();
+    return r;
+  });
+  check(api.attachDiff < 1e-4, `attach keeps the world transform (max matrix diff ${api.attachDiff.toExponential(1)}, parent '${api.attachParent}')`);
+  check(api.newPrograms === 0, `setBloodied switches materials without new programs (${api.bloodMats.join(', ')}; +${api.newPrograms} programs)`);
+  check(api.hidden, 'setVisible(false) hides the root');
+  check(api.flinchStruck === 1, `flinch during a clip never cancels it (onStrike fired ${api.flinchStruck}×)`);
+  check(api.removed && api.geoDisposed === 0 && api.sharedGeometry, `dispose removes the root and keeps shared geometry (dispose events ${api.geoDisposed})`);
+  for (const p of api.props) {
+    const headFirst = p.n === 'sagaris' ? p.headR > p.tailR * 2 : p.n === 'arrow' ? p.tailR > p.headR * 0.5 : true;
+    check(p.maxZ > 0.1 && p.minZ < -0.1 && headFirst,
+      `prop ${p.n}: +Z end at ${p.maxZ.toFixed(2)} m (r ${p.headR.toFixed(3)}), −Z end at ${p.minZ.toFixed(2)} m (r ${p.tailR.toFixed(3)}), ${p.calls} material(s)`);
+  }
+  check(api.kindPrograms === 0, `bloodied variants of every kind add no programs (+${api.kindPrograms})`);
 
   // ---- update cost, 30 actors
   const perf = await page.evaluate(() => {

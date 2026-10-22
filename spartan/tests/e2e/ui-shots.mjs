@@ -30,6 +30,7 @@ const SHOTS = [
   ['hud-wave', 'view=hud-wave', 20],
   ['hud-dayfade', 'view=hud-dayfade', 138],
   ['hud-kolonos', 'view=hud-kolonos', 40],
+  ['hud-endcard', 'view=hud-endcard', 20],
   ['hud-volley', 'view=hud-volley', 30],
   ['hud-spearcam', 'view=hud-spearcam', 10],
   ['touch', 'view=touch&control=touch'],

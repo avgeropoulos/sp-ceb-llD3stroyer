@@ -16,15 +16,17 @@ const DEG = Math.PI / 180;
  */
 /** The Sky shader's radiance is scaled by this so the scene sits at ordinary light levels. */
 export const SKY_SCALE = 0.2;
+const NO_TINT = [1, 1, 1];
+
 /** Colour saturation of the sky as captured into the environment map. */
 export const ENV_SATURATION = 0.5;
 
 export const PRESETS = {
-  dawn: { elev: 3.5, az: [0.5, 0.87], turbidity: 6.5, rayleigh: 2.6, mie: 0.0062, mieG: 0.85, exposure: 2.4, fog: 0.0009, sun: 2.6, hemi: 0.32, env: 0.85, clouds: 0.12, cloudDensity: 0.45, haze: 0.9 },
+  dawn: { elev: 3.5, az: [0.5, 0.87], turbidity: 5.2, rayleigh: 2.1, mie: 0.0062, mieG: 0.85, exposure: 2.4, fog: 0.0009, sun: 2.6, hemi: 0.32, env: 0.85, clouds: 0.12, cloudDensity: 0.45, haze: 0.9, tint: [1.3, 0.88, 1.02] },
   morning: { elev: 22, az: [0.36, 0.93], turbidity: 4.4, rayleigh: 1.5, mie: 0.0048, mieG: 0.82, exposure: 1.1, fog: 0.00072, sun: 3.3, hemi: 0.2, env: 0.5, clouds: 0, cloudDensity: 0.38, haze: 0.75 },
   noon: { elev: 58, az: [0.5, 0.35], turbidity: 3.6, rayleigh: 1.2, mie: 0.0042, mieG: 0.8, exposure: 0.92, fog: 0.00068, sun: 3.6, hemi: 0.2, env: 0.55, clouds: 0, cloudDensity: 0.35, haze: 0.7 },
   afternoon: { elev: 30, az: [0.66, -0.75], turbidity: 4.6, rayleigh: 1.45, mie: 0.0052, mieG: 0.83, exposure: 1.02, fog: 0.00075, sun: 3.4, hemi: 0.2, env: 0.52, clouds: 0, cloudDensity: 0.38, haze: 0.8 },
-  dusk: { elev: 4, az: [0.42, -0.91], turbidity: 8, rayleigh: 2.8, mie: 0.0066, mieG: 0.86, exposure: 2.0, fog: 0.00095, sun: 3.0, hemi: 0.32, env: 0.85, clouds: 0.12, cloudDensity: 0.45, haze: 1 },
+  dusk: { elev: 4, az: [0.42, -0.91], turbidity: 8, rayleigh: 2.8, mie: 0.0066, mieG: 0.86, exposure: 2.0, fog: 0.00095, sun: 3.0, hemi: 0.32, env: 0.85, clouds: 0.12, cloudDensity: 0.45, haze: 1, tint: [1.12, 0.93, 1.0] },
 };
 
 // Constants of three's Sky shader.
@@ -58,8 +60,11 @@ export function skyCoefficients(sun, turbidity, rayleigh, mie) {
   };
 }
 
-/** Sky radiance (linear, pre-exposure) in a world direction; the Sky fragment shader without clouds or sun disc. */
-export function skyRadiance(dir, sun, coef, mieG, out = [0, 0, 0]) {
+/**
+ * Sky radiance (linear, pre-exposure) in a world direction; the Sky fragment shader without
+ * clouds or sun disc, times the preset's tint.
+ */
+export function skyRadiance(dir, sun, coef, mieG, out = [0, 0, 0], tint = NO_TINT) {
   const za = Math.acos(Math.max(0, dir[1]));
   const inv = 1 / (Math.cos(za) + 0.15 * Math.pow(93.885 - za / DEG, -1.253));
   const sR = 8.4e3 * inv;
@@ -78,7 +83,7 @@ export function skyRadiance(dir, sun, coef, mieG, out = [0, 0, 0]) {
     const base = (coef.sunE * (bR * rp + bM * mp)) / (bR + bM);
     let lin = Math.pow(base * (1 - fex), 1.5);
     lin *= lerp(1, Math.pow(base * fex, 0.5), fade);
-    out[i] = ((lin + 0.1 * fex) * 0.04 + add[i]) * SKY_SCALE;
+    out[i] = ((lin + 0.1 * fex) * 0.04 + add[i]) * SKY_SCALE * tint[i];
   }
   return out;
 }
@@ -118,6 +123,7 @@ uniform vec3 wBetaR;
 uniform vec3 wBetaM;
 uniform float wSunE;
 uniform float wMieG;
+uniform vec3 wSkyTint;
 vec3 wSkyRadiance( vec3 dir ) {
   float za = acos( max( 0.0, dir.y ) );
   float inv = 1.0 / ( cos( za ) + 0.15 * pow( 93.885 - za * 57.2957795, -1.253 ) );
@@ -130,7 +136,7 @@ vec3 wSkyRadiance( vec3 dir ) {
   vec3 base = wSunE * ( wBetaR * rp + wBetaM * mp ) / ( wBetaR + wBetaM );
   vec3 lin = pow( base * ( 1.0 - fex ), vec3( 1.5 ) );
   lin *= mix( vec3( 1.0 ), pow( base * fex, vec3( 0.5 ) ), clamp( pow( 1.0 - wSunDir.y, 5.0 ), 0.0, 1.0 ) );
-  return ( ( lin + 0.1 * fex ) * 0.04 + vec3( 0.0, 0.0003, 0.00075 ) ) * ${SKY_SCALE.toFixed(4)};
+  return ( ( lin + 0.1 * fex ) * 0.04 + vec3( 0.0, 0.0003, 0.00075 ) ) * ${SKY_SCALE.toFixed(4)} * wSkyTint;
 }
 `;
 
@@ -143,11 +149,14 @@ vec3 wSkyRadiance( vec3 dir ) {
 function scaledSky(saturation = 1) {
   const s = new Sky();
   const m = s.material;
+  // skyTint stands in for what Preetham leaves out (chiefly ozone absorption, without which a
+  // twilight sky turns teal); it is a uniform, so presets change it freely.
+  m.uniforms.skyTint = { value: new THREE.Vector3(1, 1, 1) };
   const out = saturation < 1
-    ? `vec3 skyC = texColor * ${SKY_SCALE.toFixed(4)};
+    ? `vec3 skyC = texColor * ${SKY_SCALE.toFixed(4)} * skyTint;
       gl_FragColor = vec4( mix( vec3( dot( skyC, vec3( 0.2126, 0.7152, 0.0722 ) ) ), skyC, ${saturation.toFixed(3)} ), 1.0 );`
-    : `gl_FragColor = vec4( texColor * ${SKY_SCALE.toFixed(4)}, 1.0 );`;
-  m.fragmentShader = m.fragmentShader.replace('gl_FragColor = vec4( texColor, 1.0 );', out);
+    : `gl_FragColor = vec4( texColor * ${SKY_SCALE.toFixed(4)} * skyTint, 1.0 );`;
+  m.fragmentShader = `uniform vec3 skyTint;\n${m.fragmentShader.replace('gl_FragColor = vec4( texColor, 1.0 );', out)}`;
   if (!m.fragmentShader.includes(`* ${SKY_SCALE.toFixed(4)}`)) console.warn('world: Sky shader patch did not apply');
   return s;
 }
@@ -201,6 +210,7 @@ export function createSky(ctx) {
     wBetaM: { value: new THREE.Vector3() },
     wSunE: { value: 0 },
     wMieG: { value: 0.8 },
+    wSkyTint: { value: new THREE.Vector3(1, 1, 1) },
   };
 
   const state = {
@@ -228,6 +238,8 @@ export function createSky(ctx) {
     u.cloudElevation.value = 0.75;
     u.cloudScale.value = 0.0003;
     u.cloudSpeed.value = 0.00002;
+    const t = p.tint || NO_TINT;
+    u.skyTint.value.set(t[0], t[1], t[2]);
   }
 
   /** Recomputes everything derived from a preset (no GPU work except uniforms). */
@@ -243,6 +255,8 @@ export function createSky(ctx) {
     fogUniforms.wBetaM.value.fromArray(coef.betaM);
     fogUniforms.wSunE.value = coef.sunE;
     fogUniforms.wMieG.value = p.mieG;
+    const tint = p.tint || NO_TINT;
+    fogUniforms.wSkyTint.value.set(tint[0], tint[1], tint[2]);
 
     // Direct sun: transmittance along the sun ray (golden at low elevations).
     // Raised to a power < 1 so a very low sun stays golden rather than blood red.
@@ -260,7 +274,7 @@ export function createSky(ctx) {
       for (let j = 0; j < 12; j++) {
         const a = (j / 12) * Math.PI * 2;
         const w = Math.sin(el + 0.1);
-        skyRadiance([Math.cos(el) * Math.cos(a), Math.sin(el), Math.cos(el) * Math.sin(a)], sun, coef, p.mieG, tmp);
+        skyRadiance([Math.cos(el) * Math.cos(a), Math.sin(el), Math.cos(el) * Math.sin(a)], sun, coef, p.mieG, tmp, tint);
         avg[0] += tmp[0] * w;
         avg[1] += tmp[1] * w;
         avg[2] += tmp[2] * w;
@@ -288,10 +302,10 @@ export function createSky(ctx) {
     const eCliff = state.sunIntensity * Math.max(0, sun[0]) * 0.8 + eSky;
     cliffMat.color.setRGB((rock[0] * eCliff) / Math.PI, (rock[1] * eCliff) / Math.PI, (rock[2] * eCliff) / Math.PI, THREE.LinearSRGBColorSpace);
     // Fog colour for unpatched materials: the tone-mapped forward horizon (fog mixes after tone mapping).
-    const hz = skyRadiance([0, 0.03, -1], sun, coef, p.mieG, [0, 0, 0]);
+    const hz = skyRadiance([0, 0.03, -1], sun, coef, p.mieG, [0, 0, 0], tint);
     // Sea seen at a grazing angle mirrors the horizon; water reflections that dip below the
     // horizon must not pick up something darker.
-    const hzR = skyRadiance([1, 0.02, 0], sun, coef, p.mieG, [0, 0, 0]);
+    const hzR = skyRadiance([1, 0.02, 0], sun, coef, p.mieG, [0, 0, 0], tint);
     seaMat.color.setRGB(hzR[0] * 0.8, hzR[1] * 0.82, hzR[2] * 0.85, THREE.LinearSRGBColorSpace);
     state.horizon.setRGB(hz[0], hz[1], hz[2], THREE.LinearSRGBColorSpace);
     const tm = acesFilmic(hz, p.exposure);

@@ -154,7 +154,7 @@ export function createHud(ctx) {
     el.className = 'hud-chev';
     el.innerHTML = `<i class="hud-chev-ring"></i><span class="hud-chev-arrow">${CHEVRON}</span>`;
     chevsEl.appendChild(el);
-    chevs.push({ el, ring: el.firstChild, arrow: el.lastChild, actor: null, t0: 0, tts: 1, hot: false, off: null, shown: false });
+    chevs.push({ el, ring: el.firstChild, arrow: el.lastChild, actor: null, t0: 0, tts: 1, hot: false, off: null, shown: false, tf: '', rf: '', sf: '' });
   }
   const toasts = [];
   for (let i = 0; i < 3; i++) {
@@ -191,6 +191,7 @@ export function createHud(ctx) {
   let daysSeen = 0;             // dayStart cards since the last reset (the first one needs no curtain)
   const curtain = { t: -1, a: 0, h: 0, o: 0, shown: 0 };
   let focusShown = false;
+  let focusTf = '';
   let focusHpShown = -1;
   const v = new THREE.Vector3();
 
@@ -215,6 +216,7 @@ export function createHud(ctx) {
     bannerT.textContent = title || '';
     bannerS.textContent = sub || '';
     bannerEl.classList.toggle('is-small', kind !== 'card');
+    bannerEl.classList.toggle('is-quote', kind === 'card' && String(title || '').length > 34);
     bannerEl.classList.toggle('no-sub', !sub);
     // Restart the entrance: drop the class this frame, add it back on the next update.
     bannerEl.classList.remove('is-shown');
@@ -487,10 +489,13 @@ export function createHud(ctx) {
         rot = Math.atan2(dy, dx) - Math.PI / 2; // the glyph points down (+y); turn it toward the actor
       }
       const left = Math.max(0, c.tts - age);
-      c.el.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`;
-      c.arrow.style.transform = `rotate(${rot.toFixed(3)}rad)`;
+      const tf = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px)`;
+      const rf = `rotate(${rot.toFixed(3)}rad)`;
+      if (tf !== c.tf) c.el.style.transform = c.tf = tf;
+      if (rf !== c.rf) c.arrow.style.transform = c.rf = rf;
       // The ring closes on the glyph at the strike moment (perfect-block cue).
-      c.ring.style.transform = `scale(${(1 + 1.6 * clamp(left / c.tts, 0, 1)).toFixed(3)})`;
+      const sf = `scale(${(1 + 1.6 * clamp(left / c.tts, 0, 1)).toFixed(3)})`;
+      if (sf !== c.sf) c.ring.style.transform = c.sf = sf;
       const hot = left < 0.3;
       if (hot !== c.hot) {
         c.hot = hot;
@@ -519,7 +524,8 @@ export function createHud(ctx) {
         }
         return;
       }
-      focusEl.style.transform = `translate(${pp.x.toFixed(1)}px,${pp.y.toFixed(1)}px)`;
+      const tf = `translate(${pp.x.toFixed(1)}px,${pp.y.toFixed(1)}px)`;
+      if (tf !== focusTf) focusEl.style.transform = focusTf = tf;
       const f = Math.round(clamp(t.hp / t.maxHp, 0, 1) * 100);
       if (f !== focusHpShown) {
         focusHpShown = f;
@@ -607,25 +613,46 @@ export function createHud(ctx) {
       }
       setClass(spearsEl, 'spearsNone', 'is-none', spears === 0);
     }
-    setText(scoreN, 'score', groupDigits(p.score || 0));
-    const chain = Math.round((p.chain || 1) * 10) / 10;
-    setText(chainEl, 'chain', `×${chain.toFixed(1)}`);
-    setClass(chainEl, 'chainOn', 'is-on', chain > 1.0);
-    setText(killsN, 'kills', String(p.kills || 0));
-    let wave = '';
-    if (mode === 'training' || (mode === 'paused' && ctx.training && ctx.training.active)) wave = 'The Agoge';
-    else if (ctx.waves) {
-      const w = ctx.waves;
-      const day = w.day || 0;
-      const resting = 'inRespite' in w ? !!w.inRespite : w.state === 'respite';
-      let part = w.wave ? `Wave ${roman(w.wave)}` : '';
-      if (w.phase === 'B' && w.wave) part = `Surge ${roman(w.wave)}`;
-      else if (w.phase === 'C') part = 'The Kolonos';
-      if (resting) part = 'Respite';
-      if (day) wave = part ? `Day ${roman(day)} · ${part}` : `Day ${roman(day)}`;
+    // Numbers are compared first and formatted only when they change (no per-frame strings).
+    const score = p.score || 0;
+    if (score !== last.scoreV) {
+      last.scoreV = score;
+      scoreN.textContent = groupDigits(score);
     }
-    setText(waveEl, 'wave', wave);
-    setClass(root, 'training', 'is-training', wave === 'The Agoge');
+    const chain10 = Math.round((p.chain || 1) * 10);
+    if (chain10 !== last.chain10) {
+      last.chain10 = chain10;
+      chainEl.textContent = `×${(chain10 / 10).toFixed(1)}`;
+      setClass(chainEl, 'chainOn', 'is-on', chain10 > 10);
+    }
+    const kills = p.kills | 0;
+    if (kills !== last.killsV) {
+      last.killsV = kills;
+      killsN.textContent = String(kills);
+    }
+    const agoge = mode === 'training' || (mode === 'paused' && !!(ctx.training && ctx.training.active));
+    const w = ctx.waves;
+    let key = agoge ? -1 : 0;
+    let resting = false;
+    if (!agoge && w) {
+      resting = 'inRespite' in w ? !!w.inRespite : w.state === 'respite';
+      const ph = w.phase === 'B' ? 1 : w.phase === 'C' ? 2 : 0;
+      key = (w.day | 0) * 10000 + (w.wave | 0) * 10 + ph * 2 + (resting ? 1 : 0);
+    }
+    if (key !== last.waveKey) {
+      last.waveKey = key;
+      let wave = '';
+      if (agoge) wave = 'The Agoge';
+      else if (w && w.day) {
+        let part = w.wave ? `Wave ${roman(w.wave)}` : '';
+        if (w.phase === 'B' && w.wave) part = `Surge ${roman(w.wave)}`;
+        else if (w.phase === 'C') part = 'The Kolonos';
+        if (resting) part = 'Respite';
+        wave = part ? `Day ${roman(w.day)} · ${part}` : `Day ${roman(w.day)}`;
+      }
+      waveEl.textContent = wave;
+    }
+    setClass(root, 'training', 'is-training', agoge);
     const reticle = p.weapon === 'spear' && !!p.hasSpearInHand;
     setClass(root, 'reticle', 'has-reticle', reticle);
   }

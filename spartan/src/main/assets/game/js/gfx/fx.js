@@ -322,63 +322,77 @@ export function createFx(ctx) {
   let orbitH0 = 0.4;
   let orbitSign = 1;
 
-  /** Predicted game seconds until the spear lands: ballistic steps against ground and actors. */
-  function predictFlight(p, v, age) {
-    if (!p || !v) return 0;
-    let x = p.x;
-    let y = p.y;
-    let z = p.z;
-    const vx = v.x;
-    let vy = v.y;
-    const vz = v.z;
+  /**
+   * Predicted game seconds until the spear strikes something: ballistic steps of its tip (combat
+   * collides the tip, `projectile.tip` metres ahead of pos) against the ground, the world's
+   * colliders and living Persians.
+   */
+  function predictFlight(pr) {
+    if (!pr || !pr.pos || !pr.vel) return 0;
+    const tip = Number.isFinite(pr.tip) ? pr.tip : 0;
+    let x = pr.pos.x;
+    let y = pr.pos.y;
+    let z = pr.pos.z;
+    const vx = pr.vel.x;
+    let vy = pr.vel.y;
+    const vz = pr.vel.z;
+    let sp = Math.hypot(vx, vy, vz) || 1;
+    let tx = x + (vx / sp) * tip;
+    let ty = y + (vy / sp) * tip;
+    let tz = z + (vz / sp) * tip;
     const h = 1 / 60;
-    const tMax = Math.max(0, SPEAR_CAM.maxAge - (age || 0));
+    const tMax = Math.max(0, SPEAR_CAM.maxAge - (pr.age || 0));
     const actors = ctx.actors || EMPTY;
     const cols = (ctx.world && ctx.world.colliders) || EMPTY;
     for (let t = 0; t < tMax; t += h) {
-      const x0 = x;
-      const y0 = y;
-      const z0 = z;
+      const x0 = tx;
+      const y0 = ty;
+      const z0 = tz;
       vy -= 9.81 * h;
       x += vx * h;
       y += vy * h;
       z += vz * h;
-      if (y < SPEAR_CAM.minY || y <= ground(x, z)) return t + h;
-      if (insideCollider(cols, x, y, z)) return t + h;
-      const sx = x - x0;
-      const sz = z - z0;
+      sp = Math.hypot(vx, vy, vz) || 1;
+      tx = x + (vx / sp) * tip;
+      ty = y + (vy / sp) * tip;
+      tz = z + (vz / sp) * tip;
+      if (y < SPEAR_CAM.minY || ty <= ground(tx, tz)) return t + h;
+      if (insideCollider(cols, tx, ty, tz)) return t + h;
+      const sx = tx - x0;
+      const sz = tz - z0;
       const l2 = sx * sx + sz * sz;
       for (let i = 0; i < actors.length; i++) {
         const a = actors[i];
         if (!a || !a.alive || a.team === 'greek' || !a.pos) continue;
-        let s = l2 > 1e-9 ? ((a.pos.x - x0) * sx + (a.pos.z - z0) * sz) / l2 : 0;
-        s = s < 0 ? 0 : s > 1 ? 1 : s;
-        const cx = x0 + sx * s - a.pos.x;
-        const cz = z0 + sz * s - a.pos.z;
-        const cy = y0 + (y - y0) * s;
+        let k = l2 > 1e-9 ? ((a.pos.x - x0) * sx + (a.pos.z - z0) * sz) / l2 : 0;
+        k = k < 0 ? 0 : k > 1 ? 1 : k;
+        const dx = x0 + sx * k - a.pos.x;
+        const dz = z0 + sz * k - a.pos.z;
+        const py = y0 + (ty - y0) * k;
         const rr = (a.radius || 0.32) + 0.06;
-        if (cx * cx + cz * cz <= rr * rr && cy >= a.pos.y && cy <= a.pos.y + (a.height || 1.8)) return t + h * s;
+        if (dx * dx + dz * dz <= rr * rr && py >= a.pos.y && py <= a.pos.y + (a.height || 1.8)) return t + h * k;
       }
     }
     return tMax;
   }
-  const cx = (v, i) => (Array.isArray(v) ? v[i] : i === 0 ? v.x : i === 1 ? v.y : v.z);
+  const comp = (v, i) => (Array.isArray(v) ? v[i] : i === 0 ? v.x : i === 1 ? v.y : v.z);
   /** True if the point is inside a box collider or behind a plane collider (§11 world). */
   function insideCollider(cols, x, y, z) {
     for (let i = 0; i < cols.length; i++) {
       const c = cols[i];
       if (!c) continue;
       if (c.type === 'box' && c.min && c.max) {
-        if (x >= cx(c.min, 0) && x <= cx(c.max, 0) && y >= cx(c.min, 1) && y <= cx(c.max, 1) &&
-          z >= cx(c.min, 2) && z <= cx(c.max, 2)) return true;
+        if (x >= comp(c.min, 0) && x <= comp(c.max, 0) && y >= comp(c.min, 1) && y <= comp(c.max, 1) &&
+          z >= comp(c.min, 2) && z <= comp(c.max, 2)) return true;
       } else if (c.type === 'plane' && c.point && c.normal) {
-        const d = (x - cx(c.point, 0)) * cx(c.normal, 0) + (y - cx(c.point, 1)) * cx(c.normal, 1) + (z - cx(c.point, 2)) * cx(c.normal, 2);
+        const d = (x - comp(c.point, 0)) * comp(c.normal, 0) + (y - comp(c.point, 1)) * comp(c.normal, 1) +
+          (z - comp(c.point, 2)) * comp(c.normal, 2);
         if (d < 0) return true;
       }
     }
     return false;
   }
-  const remainingFlight = () => (camProj ? predictFlight(camProj.pos, camProj.vel, camProj.age) : 0);
+  const remainingFlight = () => (camProj ? predictFlight(camProj) : 0);
 
   function startSpearCam(pr) {
     if (tc.camActive || !pr || !pr.pos || !pr.vel) return;
@@ -387,7 +401,7 @@ export function createFx(ctx) {
     const sp = pr.vel.length();
     if (sp > 0.1) velDir.copy(pr.vel).multiplyScalar(1 / sp);
     trailValid = lastValid = easeFromValid = orbitInit = false;
-    tc.camStart(pr.src === 'motion', predictFlight(pr.pos, pr.vel, pr.age), remainingFlight);
+    tc.camStart(pr.src === 'motion', predictFlight(pr), remainingFlight);
     computeTrail(0);
     events.emit('spearCam', CAM_START);
   }

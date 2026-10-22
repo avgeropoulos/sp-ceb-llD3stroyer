@@ -558,6 +558,27 @@ html, body {
 .hud-banner.is-small .hud-banner-t { font-size: clamp(20px, 6.6vh, 38px); letter-spacing: 0.2em; }
 .hud-banner.is-small .hud-banner-rule { width: min(150px, 30vw); margin: 5px auto 4px; }
 .hud-banner.no-sub .hud-banner-rule { margin-bottom: 0; }
+/* A sentence (e.g. the Day 1 end card, Herodotus 7.212) reads as an inscribed quotation. */
+.hud-banner.is-quote .hud-banner-t {
+  max-width: min(760px, 64vw);
+  margin: 14px auto 0;
+  font-size: clamp(18px, 6.2vh, 32px);
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1.3;
+  letter-spacing: 0.03em;
+  padding-left: 0;
+  text-transform: none;
+  color: var(--cream);
+}
+.hud-banner.is-quote .hud-banner-s {
+  font-size: 12px;
+  font-style: normal;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--bronze-hi);
+}
+.hud-banner.is-quote .hud-banner-s::before { content: '— '; }
 
 /* Volley warning. */
 .hud-volley {
@@ -1198,6 +1219,10 @@ html, body {
   pointer-events: auto;
   transition: opacity 0.25s ease;
 }
+/* The base `#overlay button` rule makes every button hit-testable on its own: a screen that is
+   fading out must not catch taps meant for the game (or the Agoge panel) underneath. */
+#menus .mn-screen:not(.is-on) button,
+#menus .mn-screen:not(.is-on) input { pointer-events: none; }
 .mn-dim { background: radial-gradient(ellipse at 50% 45%, rgba(14, 8, 4, 0.55) 0%, rgba(6, 3, 1, 0.86) 100%); }
 .mn-dark { background: radial-gradient(ellipse at 50% 45%, rgba(18, 6, 4, 0.78) 0%, rgba(4, 2, 1, 0.95) 100%); }
 
@@ -1704,4 +1729,7 @@ input[type='range']::-moz-range-thumb {
   .hud-combo-b { font-size: 12px; }
   .hud-combo.is-big .hud-combo-in { padding: 13px 22px 7px; }
   .hud-combo.is-big .hud-combo-n { font-size: 17px; }
+  /* Keep title cards clear of the SHIELD/BASH column on phones. */
+  .hud-banner { top: 12%; }
+  .hud-banner-s { max-width: 50vw; margin: 0 auto; }
 }

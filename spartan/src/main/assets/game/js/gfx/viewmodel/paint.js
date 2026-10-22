@@ -176,7 +176,7 @@ const BRONZE_DARK = [0.42, 0.28, 0.15];
 const PATINA = [0.30, 0.40, 0.30];
 const IRON = [0.6, 0.6, 0.6];
 const RUST = [0.45, 0.25, 0.12];
-const ASH = [0.67, 0.53, 0.37];
+const ASH = [0.6, 0.45, 0.3]; // oiled ash
 
 // ---------------------------------------------------------------------------------------------
 // Arm atlas
@@ -243,23 +243,32 @@ export function paintArmAtlas(size, seed = 11) {
     });
   }
   // Veins on the inner forearm and a pair of old scars on the outside.
-  for (let k = 0; k < 4; k++) {
+  // Veins: a smooth wandering path, painted as a soft max-blended ridge so joints don't bead.
+  const vein = new Float32Array(P.w * P.h);
+  for (let k = 0; k < 3; k++) {
     let x = R.arm.x0 + R.arm.w * (0.16 + 0.2 * P.rng.next());
     let y = R.arm.y0 + R.arm.h * (0.53 + 0.1 * P.rng.next());
-    for (let s = 0; s < 14; s++) {
-      const nx = x + (P.rng.next() - 0.5) * 9 * px;
-      const ny = y + (12 + P.rng.next() * 6) * px;
+    let ang = Math.PI / 2 + (P.rng.next() - 0.5) * 0.4;
+    for (let s = 0; s < 60; s++) {
+      ang += (P.rng.next() - 0.5) * 0.35;
+      ang = clamp(ang, Math.PI / 2 - 0.6, Math.PI / 2 + 0.6);
+      const nx = x + Math.cos(ang) * 4 * px;
+      const ny = y + Math.sin(ang) * 4 * px;
       if (ny > R.arm.y1 - 4) break;
-      P.stroke(R.arm, x, y, nx, ny, 2.4 * px, (j, c) => {
-        P.alb[j * 3] -= 0.025 * c;
-        P.alb[j * 3 + 1] -= 0.004 * c;
-        P.alb[j * 3 + 2] += 0.018 * c;
-        P.hgt[j] += 0.9 * c;
+      P.stroke(R.arm, x, y, nx, ny, 3.4 * px, (j, c) => {
+        vein[j] = Math.max(vein[j], c);
       });
       x = nx;
       y = ny;
     }
   }
+  P.each(R.arm, (i) => {
+    const c = vein[i];
+    if (c <= 0) return;
+    P.alb[i * 3] -= 0.02 * c;
+    P.alb[i * 3 + 2] += 0.014 * c;
+    P.hgt[i] += 0.55 * c;
+  });
   for (let k = 0; k < 3; k++) {
     const x = R.arm.x0 + R.arm.w * (0.62 + 0.25 * P.rng.next());
     const y = R.arm.y0 + R.arm.h * (0.55 + 0.35 * P.rng.next());
@@ -287,12 +296,12 @@ export function paintArmAtlas(size, seed = 11) {
     const dors = 0.5 + 0.5 * Math.cos(2 * Math.PI * (u - 0.25));
     skinBase(P, i, u, v, n1, n2, dors);
     // Redder over the knuckles (joints at v ≈ 0, 0.45, 0.75 along the finger).
-    const kn = Math.max(Math.exp(-(((v - 0.45) / 0.06) ** 2)), Math.exp(-(((v - 0.76) / 0.05) ** 2)), Math.exp(-((v / 0.08) ** 2)));
+    const kn = Math.max(Math.exp(-(((v - 0.5) / 0.06) ** 2)), Math.exp(-(((v - 0.78) / 0.05) ** 2)), Math.exp(-((v / 0.08) ** 2)));
     P.alb[i * 3] += 0.05 * kn * dors;
     P.alb[i * 3 + 1] -= 0.02 * kn * dors;
     // Creases across the dorsal knuckles.
-    const cr = Math.sin((v - 0.45) * 140) * Math.exp(-(((v - 0.45) / 0.05) ** 2)) + Math.sin((v - 0.76) * 160) * Math.exp(-(((v - 0.76) / 0.04) ** 2));
-    P.hgt[i] = 0.5 * cr * dors + 0.2 * N.pnoise2(u * 70, v * 90, 70, 90);
+    const cr = Math.sin((v - 0.5) * 140) * Math.exp(-(((v - 0.5) / 0.05) ** 2)) + Math.sin((v - 0.78) * 160) * Math.exp(-(((v - 0.78) / 0.04) ** 2));
+    P.hgt[i] = 0.22 * cr * dors + 0.2 * N.pnoise2(u * 70, v * 90, 70, 90);
     P.rough[i] = 0.5 + 0.05 * n1;
     // Nail on the dorsal side of the last phalanx.
     const nail = smoothstep(0.84, 0.88, v) * (1 - smoothstep(0.985, 1, v)) * smoothstep(0.62, 0.8, dors);
@@ -468,7 +477,7 @@ export function paintWeaponAtlas(width, seed = 23) {
     const fine = N.pnoise2(u * 40, v * 400, 40, 400);
     const line = Math.pow(0.5 + 0.5 * g, 6);
     const grime = Math.exp(-(((v - 0.52) / 0.07) ** 2));
-    const sh = 1 - 0.18 * line - 0.05 * fine - 0.2 * grime;
+    const sh = 1 - 0.1 * line - 0.05 * fine - 0.2 * grime;
     P.setAlb(i, ASH[0] * sh, ASH[1] * sh, ASH[2] * sh * 0.97);
     P.hgt[i] = -0.6 * line + 0.25 * fine;
     P.rough[i] = 0.62 - 0.18 * grime + 0.05 * fine;

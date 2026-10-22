@@ -15,7 +15,10 @@ const PALETTES = [
   ['#6a4a2c', '#8a3222', '#5e4e36', '#7a6a4a'],
 ];
 
-/** Soldier: tapered body, peaked head (cap or tiara), wicker shield. 14 triangles, faces +Z. */
+/**
+ * Soldier, 11 triangles, facing +Z: a tapered three-sided body (flat front, ridged back), a
+ * three-sided cap and a wicker shield. Legs, face and cap are coloured per fragment by height.
+ */
 function soldierGeometry() {
   const pos = [];
   const part = [];
@@ -27,21 +30,16 @@ function soldierGeometry() {
     pos.push(...a, ...b, ...c);
     part.push(p, p, p);
   };
-  const bw = 0.16;
-  const bd = 0.11;
-  const tw = 0.22;
-  const td = 0.13;
   const ht = 1.44;
-  const B = [[-bw, 0, bd], [bw, 0, bd], [bw, 0, -bd], [-bw, 0, -bd]];
-  const T = [[-tw, ht, td], [tw, ht, td], [tw, ht, -td], [-tw, ht, -td]];
-  for (let i = 0; i < 4; i++) {
-    const j = (i + 1) % 4;
+  const B = [[-0.16, 0, 0.1], [0.16, 0, 0.1], [0, 0, -0.14]];
+  const T = [[-0.23, ht, 0.1], [0.23, ht, 0.1], [0, ht, -0.17]];
+  for (let i = 0; i < 3; i++) {
+    const j = (i + 1) % 3;
     quad(B[i], B[j], T[j], T[i], 0);
   }
-  const hb = 0.11;
-  const apex = [0, 1.86, 0];
-  const H = [[-hb, 1.4, hb], [hb, 1.4, hb], [hb, 1.4, -hb], [-hb, 1.4, -hb]];
-  for (let i = 0; i < 4; i++) tri(H[i], H[(i + 1) % 4], apex, 1);
+  const apex = [0, 1.8, -0.02];
+  const H = [[-0.13, 1.42, 0.12], [0.13, 1.42, 0.12], [0, 1.42, -0.15]];
+  for (let i = 0; i < 3; i++) tri(H[i], H[(i + 1) % 3], apex, 1);
   quad([-0.24, 0.55, 0.2], [0.12, 0.55, 0.2], [0.12, 1.22, 0.22], [-0.24, 1.22, 0.22], 2);
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -99,7 +97,7 @@ function standardGeometry() {
 function layoutArmy(layout, total) {
   const R = createRng(1480);
   const men = [];
-  let z = -82;
+  let z = -74;
   let guard = 0;
   while (men.length < total && z > -470 && guard++ < 400) {
     const depth = 7 + R.next() * 16;
@@ -115,11 +113,11 @@ function layoutArmy(layout, total) {
       const x0 = cx + b * (bw + gap);
       const spacingX = 0.95 + R.next() * 0.35;
       const spacingZ = 1.05 + R.next() * 0.4;
-      const loose = z > -105 ? 0.6 : 0.22;
+      const loose = z > -100 ? 0.6 : 0.22;
       const nation = Math.floor(R.next() * 4);
       for (let rz = 0; rz < depth; rz += spacingZ) {
         for (let rx = 0; rx < bw; rx += spacingX) {
-          if (z > -100 && R.next() < 0.55) continue;
+          if (z > -95 && R.next() < 0.5) continue;
           const x = x0 + rx + (R.next() - 0.5) * spacingX * loose * 2;
           const zz = z - rz + (R.next() - 0.5) * spacingZ * loose * 2;
           men.push({ x, z: zz, col: pal[Math.floor(R.next() * pal.length)], nation, spear: R.next() < 0.82 });

@@ -303,7 +303,7 @@ export function upperArmParts(len) {
   const skin = loft(st, 18, ARM_UV.arm, { capStart: 3, capEnd: 4, capLen: 0.8 });
   const sleeve = [];
   for (let i = 0; i <= 6; i++) {
-    const t = -0.05 + 0.42 * i / 6;
+    const t = -0.05 + 0.27 * i / 6;
     const hem = i === 6 ? -0.002 : 0;
     const fold = (th) => 1 + 0.06 * Math.sin(th * 5 + i * 0.7) * (i / 6);
     sleeve.push({ c: [0, t * len, 0], ax: X, ay: Z, a: 0.062 + 0.006 * (i / 6) + hem, b: 0.058 + 0.006 * (i / 6) + hem, v: i / 6, prof: fold });
@@ -401,34 +401,48 @@ export function fistParts(handleR = 0.016) {
     { y: -0.0095, r: 0.0093, s: 0.98, dz: -0.002 },
     { y: -0.0275, r: 0.0081, s: 0.84, dz: 0.003 },
   ];
-  const keys = [
+  // Each finger is three nearly straight phalanges with rounded, slightly knobbly joints, wrapped
+  // round the handle: joints in polar form around the grip axis in the z-x plane.
+  const joints = [
     // [rho, phi (deg, atan2(x, z)), radius scale]
-    [0.034, 97, 1.0],
-    [0.0345, 150, 0.97],
-    [0.034, 190, 1.0],
-    [0.0325, 232, 0.92],
-    [0.0295, 262, 0.88],
-    [0.027, 284, 0.78],
+    [0.033, 95, 1.0],    // MCP knuckle
+    [0.036, 178, 1.04],  // PIP: the front of the fist
+    [0.0335, 224, 0.96], // DIP
+    [0.0285, 262, 0.8],  // fingertip, pressed in toward the heel of the hand
   ];
   const fu = ARM_UV.fingers;
   for (const f of fingers) {
     const minRho = handleR + f.r * 0.98;
-    const pts = keys.map(([rho, phi, rs], k) => {
-      const ph = (97 + (phi - 97) * f.s) * Math.PI / 180;
+    const key = joints.map(([rho, phi, rs], k) => {
+      const ph = (95 + (phi - 95) * f.s) * Math.PI / 180;
       const rr = Math.max(minRho, rho * (k === 0 ? 1 : 0.98 + 0.02 * f.s));
-      return [Math.sin(ph) * rr, f.y - (k > 0 ? 0.0012 * k * Math.sign(f.y) * 0.3 : 0), Math.cos(ph) * rr + (k === 0 ? f.dz : 0), f.r * rs];
+      return [Math.sin(ph) * rr, f.y - 0.0008 * k * Math.sign(f.y), Math.cos(ph) * rr + (k === 0 ? f.dz : 0), f.r * rs];
     });
+    // Straight phalanges: extra points along each chord keep the segments straight and the bends tight.
+    const pts = [];
+    for (let k = 0; k < key.length - 1; k++) {
+      const p0 = key[k];
+      const p1 = key[k + 1];
+      for (const w of k === 0 ? [0, 0.3, 0.7] : [0, 0.35, 0.7]) {
+        const mid = w > 0 && w < 1 ? 0.965 : 1; // phalanx shafts are a little slimmer than the joints
+        pts.push(p0.map((x, c) => (c < 3 ? x + (p1[c] - x) * w : (x + (p1[c] - x) * w) * mid)));
+      }
+    }
+    pts.push(key[key.length - 1]);
     parts.push(fingerTube(pts, Y, fu, (p) => [p[0], 0, p[2]]));
   }
   // Thumb: from the thenar along the side of the palm, over the handle, tip resting on the index.
-  const thumb = [
-    [0.014, 0.028, 0.06, 0.0112],
-    [0.01, 0.04, 0.032, 0.0102],
-    [0.005, 0.0455, 0.008, 0.0095],
-    [-0.005, 0.0465, -0.012, 0.009],
-    [-0.017, 0.0435, -0.025, 0.0084],
-    [-0.025, 0.0395, -0.029, 0.0076],
+  const tk = [
+    [0.015, 0.029, 0.062, 0.0118], // base, inside the thenar
+    [0.009, 0.042, 0.03, 0.0108],  // MCP
+    [-0.003, 0.0475, -0.005, 0.0099], // IP
+    [-0.021, 0.041, -0.025, 0.0079], // tip, over the index finger
   ];
+  const thumb = [];
+  for (let k = 0; k < tk.length - 1; k++) {
+    for (const w of [0, 0.35, 0.7]) thumb.push(tk[k].map((x, c) => x + (tk[k + 1][c] - x) * w));
+  }
+  thumb.push(tk[tk.length - 1]);
   parts.push(fingerTube(thumb, X, fu, (p) => [0, 1, 0.2]));
   // Thenar and hypothenar pads at the heel of the hand.
   parts.push(blob([0.008, 0.024, 0.046], [0.014, 0.017, 0.026], ARM_UV.palm));
@@ -516,7 +530,7 @@ export function swordGeometry() {
 // ---------------------------------------------------------------------------------------------
 // Dory (grip frame: overhand, head toward -Y, butt toward +Y)
 
-export const SPEAR = { shaftHead: -1.0, shaftButt: 1.1, headTip: -1.3, buttTip: 1.34 };
+export const SPEAR = { shaftHead: -1.0, shaftButt: 1.1, headTip: -1.36, buttTip: 1.34 };
 
 export function spearGeometry() {
   const parts = [];
@@ -548,7 +562,7 @@ export function spearGeometry() {
   parts.push(loft(socket, 14, sub(hu, 0.3, 0, 0.7, 1)));
   const headLen = SPEAR.shaftHead - 0.08 - SPEAR.headTip;
   const hw = (t) => {
-    const k = [[0, 0.012], [0.12, 0.032], [0.35, 0.056], [0.55, 0.052], [0.8, 0.03], [1, 0]];
+    const k = [[0, 0.013], [0.12, 0.036], [0.35, 0.064], [0.55, 0.06], [0.8, 0.034], [1, 0]];
     for (let i = 1; i < k.length; i++) {
       if (t <= k[i][0]) {
         const s = (t - k[i - 1][0]) / (k[i][0] - k[i - 1][0]);
@@ -699,7 +713,7 @@ export function aspisGeometry(seg = 72) {
     for (let s = 0; s < 8; s++) {
       if (k === pegs && s > 0) break;
       const thS = th + (Math.PI * 0.64 / pegs) * (s / 8);
-      const sag = Math.sin((s / 8) * Math.PI) ** 1.3 * 0.05;
+      const sag = Math.sin((s / 8) * Math.PI) ** 1.3 * 0.03;
       const x = Math.cos(thS) * cr;
       const y = Math.sin(thS) * cr - sag;
       const r = Math.hypot(x, y);

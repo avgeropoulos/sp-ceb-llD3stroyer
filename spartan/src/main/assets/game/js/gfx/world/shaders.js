@@ -8,7 +8,10 @@
  * - ground: anti-tiling (a rotated, larger-scale second sample of the map modulates brightness)
  *   and splatting of a second texture pair by a per-vertex `splat` weight.
  * - wind: per-vertex `sway` (0 at the root, 1 at the tip) bends foliage.
+ * - foliage: double-sided cards keep their authored normals on both faces (three flips them
+ *   on back faces, which turns every card seen from behind black).
  */
+import * as THREE from 'three';
 import { SKY_GLSL } from './sky.js';
 
 const LUMA = 'vec3( 0.2126, 0.7152, 0.0722 )';
@@ -17,7 +20,7 @@ const LUMA = 'vec3( 0.2126, 0.7152, 0.0722 )';
  * @param {THREE.Material} mat
  * @param {{ key: string, fog?: { uniforms: object, scale?: number, perFragment?: boolean },
  *   ao?: boolean, aoDirect?: number, ground?: { mean: number, splatMap?: THREE.Texture, splatNormal?: THREE.Texture, splatScale?: number, antiTile?: number },
- *   wind?: { time: { value: number }, amp?: number }, extra?: (shader: object) => void }} opts
+ *   wind?: { time: { value: number }, amp?: number }, foliage?: boolean, extra?: (shader: object) => void }} opts
  */
 export function patchMaterial(mat, opts) {
   const uniforms = {};
@@ -126,6 +129,12 @@ export function patchMaterial(mat, opts) {
           #endif`,
         );
       }
+    }
+    if (opts.foliage) {
+      const chunk = THREE.ShaderChunk.normal_fragment_begin;
+      const kept = chunk.replace('normal *= faceDirection;', '');
+      if (kept === chunk) console.warn('world: foliage normal patch did not apply');
+      fs = fs.replace('#include <normal_fragment_begin>', kept);
     }
     if (opts.wind) {
       vDecl += 'attribute float sway;\nuniform float wTime;\nuniform float wWindAmp;\n';

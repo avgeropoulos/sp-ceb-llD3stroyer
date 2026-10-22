@@ -21,6 +21,14 @@ export const CH = {
 export const N = 69;
 const DEG = Math.PI / 180;
 const ANG = new Set(['pelR', 'spine', 'chest', 'neck', 'head', 'thighL', 'shinL', 'footFKL', 'thighR', 'shinR', 'footFKR', 'cloak']);
+/** Channel counts (each named channel group's width; the rest of a longer list is ignored). */
+const SIZE = {};
+{
+  const names = Object.keys(CH).sort((a, b) => CH[a] - CH[b]);
+  names.forEach((k, i) => {
+    SIZE[k] = (i + 1 < names.length ? CH[names[i + 1]] : N) - CH[k];
+  });
+}
 
 /** Channels driven by an 'upper' layer clip. */
 export const UPPER = new Uint8Array(N);
@@ -30,9 +38,6 @@ UPPER[CH.wscale] = 1;
 UPPER[CH.lscale] = 1;
 UPPER[CH.draw] = 1;
 UPPER[CH.aimSpace] = 1;
-
-/** Channels holding angles (wrapped when blending is not needed; listed for tooling). */
-export const ANGLE_CH = new Uint8Array(N);
 
 function restPoseArray() {
   const p = new Float32Array(N);
@@ -60,7 +65,8 @@ export function P(base, o = {}) {
     if (ch === undefined) throw new Error(`pose: unknown channel ${k}`);
     const isFoot = k === 'footL' || k === 'footR';
     const vals = typeof v === 'number' ? [v] : v;
-    for (let i = 0; i < vals.length; i++) {
+    const n = Math.min(vals.length, SIZE[k]);
+    for (let i = 0; i < n; i++) {
       if (vals[i] === null || vals[i] === undefined) continue;
       const ang = ANG.has(k) || (isFoot && i >= 3);
       const x = ang ? vals[i] * DEG : vals[i];
@@ -80,7 +86,7 @@ hoplite.stance = P(null, {
   pelP: [0, -0.04, 0], pelR: [2, -14, 0], spine: [5, 0, 0], chest: [3, 9, 0], neck: [-3, 0, 0], head: [-3, 5, 0],
   footL: [0.12, 0, 0.17, 6, 0], footR: [-0.15, 0, -0.17, -30, 0],
   handL: [-0.05, -0.27, 0.22], elbL: [1, -0.5, -0.2], aimL: [0.15, 0.12, 1], upL: [0, 1, 0],
-  handR: [-0.26, -0.31, 0.10], elbR: [-0.4, 0, -1], aimR: [0.04, 0.35, 1],
+  handR: [-0.26, -0.31, 0.10], elbR: [-0.4, 0, -1], aimR: [0.04, 0.95, 0.9],
 });
 hoplite.guard = P(hoplite.stance, {
   spine: [8, 0, 0], chest: [4, 10, 0], neck: [-6, 0, 0], head: [-4, 4, 0],
@@ -93,7 +99,7 @@ levy.stance = P(null, {
   pelP: [0, -0.03, 0], pelR: [2, -8, 0], spine: [3, 0, 0], chest: [2, 5, 0], neck: [-2, 0, 0], head: [-2, 3, 0],
   footL: [0.12, 0, 0.12, 6, 0], footR: [-0.13, 0, -0.13, -22, 0],
   handL: [0.2, -0.3, 0.13], elbL: [1, -0.2, -0.6], aimL: [0.5, 0.02, 1], upL: [0, 1, 0],
-  handR: [-0.25, -0.27, 0.10], elbR: [-0.3, 0, -1], aimR: [0.03, 0.5, 1],
+  handR: [-0.25, -0.27, 0.10], elbR: [-0.3, 0, -1], aimR: [0.03, 0.8, 1],
 });
 levy.guard = P(levy.stance, {
   spine: [7, 0, 0], chest: [3, 6, 0], neck: [-5, 0, 0], head: [-3, 3, 0],
@@ -131,8 +137,9 @@ captain.stance = P(null, {
 });
 captain.guard = P(captain.stance, {
   spine: [9, 0, 0], neck: [-6, 0, 0],
-  handL: [0.18, -0.02, 0.30], elbL: [1, -0.4, -0.4],
-  handR: [-0.17, 0.10, 0.30], elbR: [-1, -0.2, -0.4], aimR: [0.4, 0.75, 0.45], upR: [0, -0.2, 1],
+  // the off hand forward to fend, the axe cocked high on the right, blade to the front
+  handL: [0.12, 0.18, 0.3], elbL: [1, -0.4, -0.4],
+  handR: [-0.27, 0.16, 0.16], elbR: [-1, -0.4, -0.3], aimR: [-0.12, 0.92, 0.3], upR: [0, -0.1, 1],
 });
 
 const helot = {};

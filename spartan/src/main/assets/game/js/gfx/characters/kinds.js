@@ -4,7 +4,7 @@
  * the instance seed and opts, and each variant's geometry is built once and shared.
  */
 import * as THREE from 'three';
-import { sweep, slab, box, tube, thetas, mat } from './geo.js';
+import { sweep, slab, box, tube, mat } from './geo.js';
 import { B } from './rig.js';
 import { BLAZONS } from './atlas.js';
 import {
@@ -97,7 +97,7 @@ function corinthian(c, crestTile) {
   rad.push([0.024, 0.04]);
   pts.push([0, -0.2, -0.2]);
   rad.push([0.016, 0.022]);
-  add(tube(pts, rad, { segs: S(6, 4), up: [1, 0, 0], capStart: true, capEnd: true }), crestTile, B.head, M);
+  add(tube(pts, rad, { segs: S(5, 4), up: [1, 0, 0], capStart: true, capEnd: true }), crestTile, B.head, M);
 }
 
 /** Soft felt tiara (Mede/Persian hood): covers skull, neck and cheeks, the face open, peak folded forward. */
@@ -212,14 +212,15 @@ function cloak(c) {
       const a = PI + phi;
       const w = 1 - v; // 0 at the top
       const y = yTop - (yTop - yBot) * w + 0.03 * Math.cos(phi * 1.3) * (1 - w) ** 3;
-      const fold = Math.sin(phi * 6.5 + 0.4) * smooth(0, 0.5, w);
-      const r = 0.168 + 0.05 * w + 0.01 * fold;
-      const rz = 0.118 + 0.045 * w + 0.02 * fold;
+      // vertical folds that deepen toward the hem
+      const fold = Math.sin(phi * 5.2 + 0.4) * smooth(0, 0.8, w);
+      const r = 0.168 + 0.05 * w + 0.012 * fold;
+      const rz = 0.118 + 0.045 * w + 0.03 * fold;
       out[0] = Math.sin(a) * r * bulk;
       out[1] = y;
       out[2] = Math.cos(a) * rz * bulk - 0.022 - 0.012 * w;
     },
-    S(6, 4), S(4, 2), 0.01, { flip: true, backUv: (u, v) => [u, v], noEdges: true },
+    S(8, 4), S(4, 2), 0.01, { flip: true, backUv: (u, v) => [u, v], noEdges: true },
   );
   add(pt, 'crimson', B.cloak, null, { boneFn: (p) => (p.y > 1.43 * s ? B.chest : B.cloak) });
 }
@@ -274,7 +275,7 @@ function xiphos(c) {
       out[1] = 0.004;
       out[2] = z;
     },
-    2, c.S(5, 3), 0.008, { flip: false },
+    2, c.S(4, 3), 0.008, { flip: false },
   );
   add(blade, 'iron', B.weaponR, M.clone().multiply(mat([0, 0, 0])));
   add(box(0.10, 0.022, 0.028), 'bronzeDark', B.weaponR, M.clone().multiply(mat([0, 0, 0.05])));
@@ -332,9 +333,10 @@ export function variantFor(kind, opts, seed) {
     const blazon = normBlazon(opts.blazon) || pick(BLAZONS.slice(1), r(1));
     const crest = 'horsehair';
     const weapon = opts.weapon === 'xiphos' || opts.weapon === 'sword' ? 'xiphos' : 'dory';
-    const skin = r(2) < 0.5 ? 'skinG' : 'skinG2';
+    // skin tone follows the blazon so the variant count stays small
+    const skin = BLAZONS.indexOf(blazon) % 2 ? 'skinG2' : 'skinG';
     return {
-      key: `spartan:${blazon}:${weapon}:${skin}`,
+      key: `spartan:${blazon}:${weapon}`,
       spec: {
         kind, H, shoulders: 1.06, bulk: 1.05, weapon,
         tiles: { hips: 'crimson', trunk: 'linen', skin, sleeve: 'crimson', thigh: skin, shin: skin, foot: skin, neck: skin },
@@ -361,10 +363,10 @@ export function variantFor(kind, opts, seed) {
     const tunic = ['tunicRed', 'tunicBlue', 'tunicOchre'][scheme];
     const trousers = scheme === 1 ? 'trouserDiamond' : 'trouserStripe';
     const coat = kind === 'levy' && r(3) < 0.45 ? 'scaleIron' : 'quilted';
-    const skin = r(4) < 0.5 ? 'skinP' : 'skinP2';
+    const skin = (scheme + (kissian ? 1 : 0)) % 2 ? 'skinP2' : 'skinP';
     const variant = kissian ? 'kissian' : 'mede';
     return {
-      key: `${kind}:${variant}:${tunic}:${coat}:${skin}`,
+      key: `${kind}:${variant}:${tunic}:${coat}`,
       spec: {
         kind, H, shoulders: 1.0, bulk: 1.0, variant,
         tiles: { hips: tunic, trunk: kind === 'archer' ? tunic : coat, skin, sleeve: tunic, thigh: trousers, shin: trousers, foot: 'leather', neck: skin },
@@ -395,9 +397,9 @@ export function variantFor(kind, opts, seed) {
     const robe = pick(['robeA', 'robeB', 'robeC'], r(1));
     const gold = opts.variant === 'gold' || (opts.variant !== 'silver' && r(2) < 0.2);
     const tiaraOn = r(3) < 0.4;
-    const skin = r(4) < 0.5 ? 'skinP' : 'skinP2';
+    const skin = robe === 'robeB' ? 'skinP2' : 'skinP';
     return {
-      key: `immortal:${robe}:${gold ? 'gold' : 'silver'}:${tiaraOn ? 't' : 'b'}:${skin}`,
+      key: `immortal:${robe}:${gold ? 'gold' : 'silver'}:${tiaraOn ? 't' : 'b'}`,
       spec: {
         kind, H, shoulders: 1.02, bulk: 1.02,
         tiles: { hips: robe, trunk: robe, skin, sleeve: robe, thigh: 'trouserStripe', shin: 'trouserStripe', foot: 'leatherDark', neck: skin },

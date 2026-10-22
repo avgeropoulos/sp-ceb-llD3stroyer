@@ -7,9 +7,9 @@
  * +Z) and placed at the bone's rest position.
  */
 import * as THREE from 'three';
-import { sweep, slab, box, tube, polySmooth, thetas, mat, PartBuilder } from './geo.js';
+import { sweep, slab, box, tube, polySmooth, mat, PartBuilder } from './geo.js';
 import { B, restPose } from './rig.js';
-import { FACE, faceV, METAL_TILES } from './atlas.js';
+import { faceU, faceV, METAL_TILES } from './atlas.js';
 
 const METAL = new Set(METAL_TILES);
 const PI = Math.PI;
@@ -93,12 +93,12 @@ function buildBody(c) {
     [1.19, 0.150, 0.104, 0.006],
     [1.275, 0.162, 0.112, 0.01],
     [1.345, 0.172, 0.112, 0.004],
-    [1.405, 0.176, 0.100, -0.008],
-    [1.445, 0.125, 0.080, -0.016],
-    [1.468, 0.06, 0.055, -0.022],
-    [1.472, 0, 0, -0.022],
+    [1.40, 0.171, 0.101, -0.008],
+    [1.438, 0.14, 0.085, -0.014],
+    [1.462, 0.088, 0.066, -0.02],
+    [1.478, 0, 0, -0.022],
   ];
-  const trunk = rings(sel(c, trunkT, [0, 1, 2, 3, 4, 5, 6, 8], [0, 1, 3, 5, 6, 8]), 0, 0, k).map((r) => {
+  const trunk = rings(sel(c, trunkT, null, [0, 1, 3, 5, 6, 8]), 0, 0, k).map((r) => {
     if (r.y > 1.15 && r.y < 1.42) r.shape = chestShape(0.07, 0.05);
     if (r.y >= 1.40 && r.y < 1.45) r.shape = (th) => 1 - 0.08 * Math.max(0, Math.cos(th)) ** 2;
     return r;
@@ -247,7 +247,7 @@ export function buildHead(c, o) {
     };
     return r;
   });
-  add(sweep(headR, { thetas: th, uvFn: (u, v, t, i, pt) => [0.5 + t / (2 * PI), faceV(pt[1])] }), o.face, B.head, M);
+  add(sweep(headR, { thetas: th, uvFn: (u, v, t, i, pt) => [faceU(t), faceV(pt[1])] }), o.face, B.head, M);
   // nose
   const nose = polySmooth(
     [
@@ -255,12 +255,12 @@ export function buildHead(c, o) {
       [0, 0.004, 0.124], [0.019, -0.005, 0.101], [-0.019, -0.005, 0.101], [0, -0.010, 0.108],
     ],
     [[0, 2, 3], [0, 3, 1], [1, 3, 4], [2, 5, 3], [3, 5, 6], [3, 6, 4]],
-    (p) => [0.5 + Math.atan2(p[0], p[2]) / (2 * PI), faceV(p[1])],
+    (p) => [faceU(Math.atan2(p[0], p[2])), faceV(p[1])],
   );
   add(nose, o.face, B.head, M);
   if (o.ears !== false && !c.lo) {
     for (const sd of [1, -1]) {
-      const ear = sweep(rings([[-0.02, 0, 0], [-0.012, 0.007, 0.016], [0.014, 0.008, 0.02], [0.036, 0, 0]], 0, 0), { segs: 5, uvFn: () => [0.5 + (sd * 1.5) / (2 * PI), faceV(0.0)] });
+      const ear = sweep(rings([[-0.02, 0, 0], [-0.012, 0.007, 0.016], [0.014, 0.008, 0.02], [0.036, 0, 0]], 0, 0), { segs: 5, uvFn: () => [faceU(sd * 1.5), faceV(0.0)] });
       add(ear, o.face, B.head, mat([hp[0] + sd * 0.074, hp[1] + 0.012, hp[2] - 0.006], [0, 0, sd * 0.18]));
     }
   }

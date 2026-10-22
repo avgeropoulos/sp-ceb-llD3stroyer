@@ -26,8 +26,7 @@ const _q = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(() => new THREE.Quaternion());
 const _v = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map(() => new THREE.Vector3());
 const _sx = new THREE.Vector3(), _sy = new THREE.Vector3(), _sz = new THREE.Vector3();
 const _ua = new THREE.Vector3(), _ub = new THREE.Vector3(), _uc = new THREE.Vector3(), _ud = new THREE.Vector3();
-const _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion(), _qc = new THREE.Quaternion();
-const _qRest = new THREE.Quaternion();
+const _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion(), _qc = new THREE.Quaternion(), _qd = new THREE.Quaternion();
 
 function eulerQ(q, x, y, z, order = 'YXZ') {
   _e.set(x, y, z, order);
@@ -556,7 +555,7 @@ export class Animator {
     b[CH.handL + 2] += swing * (this.left === 'aspis' || this.left === 'grip' ? 0.3 : 1) * gwk * w;
     b[CH.handL + 1] += Math.abs(Math.cos(ph)) * 0.012 * w + run * 0.03 * w;
     b[CH.handR + 1] += run * 0.04 * w;
-    b[CH.cloak] += (0.1 + 0.25 * run) * Math.min(1, av / 1.4) * w * dir;
+    b[CH.cloak] += (0.06 + 0.14 * run) * Math.min(1, av / 1.4) * w * dir;
   }
 
   // -------------------------------------------------------------------------------------
@@ -629,8 +628,10 @@ export class Animator {
       const u = v[4].set(0, -1, 0).applyQuaternion(qThigh);
       const pitch = Math.atan2(u.z, -u.y), roll = Math.atan2(u.x, -u.y);
       const sf = bones[L ? B.skirtFL : B.skirtFR], sb = bones[L ? B.skirtBL : B.skirtBR];
-      eulerQ(sf.quaternion, -Math.max(0, pitch) * 0.85, 0, roll * 0.5);
-      eulerQ(sb.quaternion, -Math.min(0, pitch) * 0.8, 0, roll * 0.5);
+      // lying down, the cloth drapes instead of standing out on a raised thigh
+      const follow = 1 - 0.65 * clamp(p[CH.ground], 0, 1);
+      eulerQ(sf.quaternion, -Math.max(0, pitch) * 0.85 * follow, 0, roll * 0.5);
+      eulerQ(sb.quaternion, -Math.min(0, pitch) * 0.8 * follow, 0, roll * 0.5);
     }
     // ---- arms (chest space)
     this.solveArms(p);
@@ -782,6 +783,10 @@ export class Animator {
       if (parent < 0) mats[i].copy(bn.matrix);
       else mats[i].multiplyMatrices(mats[parent], bn.matrix);
     }
+    // how much the body is lying (not kneeling): the chest's up axis toward horizontal
+    const up = mats[B.chest].elements[5];
+    const lying = weight * clamp((0.75 - up) / 0.45, 0, 1);
+    if (lying > 0.001 && this.left && bones[B.itemL].scale.x > 0.5) this.layShield(lying);
     let minY = Infinity;
     const pt = _v[0];
     const cs = this.contacts;
@@ -810,7 +815,7 @@ export class Animator {
     bones[B.pelvis].position.y += dy;
     this.groundY = minY + dy;
     if (this.cloth) this.squashCloth(dy);
-    if (this.wFront > 0 && bones[B.weaponR].scale.x > 0.5) this.layWeapon(weight, dy);
+    if (lying > 0.001 && this.wFront > 0 && bones[B.weaponR].scale.x > 0.5) this.layWeapon(lying, dy);
   }
 
   /**
@@ -843,6 +848,23 @@ export class Animator {
     }
   }
 
+  /** On the ground the shield (or bow) settles flat, face up or down, still on the arm. */
+  layShield(weight) {
+    const bones = this.bones, mats = this.mats;
+    const qHand = _qa.setFromRotationMatrix(_m.extractRotation(mats[B.handL]));
+    const qI = _qb.copy(qHand).multiply(bones[B.itemL].quaternion);
+    const n = this.left === 'bow' ? _ua.set(1, 0, 0) : _ua.set(0, 0, 1);
+    n.applyQuaternion(qI);
+    const want = _ub.set(0, n.y >= 0 ? 1 : -1, 0);
+    _qc.setFromUnitVectors(n, want).multiply(qI);
+    qI.slerp(_qc, clamp(weight, 0, 1));
+    const item = bones[B.itemL];
+    item.quaternion.copy(qHand.invert()).multiply(qI);
+    item.updateMatrix();
+    mats[B.itemL].multiplyMatrices(mats[B.handL], item.matrix);
+    mats[B.nock].multiplyMatrices(mats[B.itemL], bones[B.nock].matrix);
+  }
+
   /**
    * Lays the carried weapon down beside a body on the ground: its long axis goes level, then
    * tips so that its longer end rests on the ground (a spear never goes through the floor).
@@ -864,6 +886,16 @@ export class Animator {
     const want = _uc.copy(flat).multiplyScalar(cosA);
     want.y = tipDown ? -sinA : sinA;
     _qc.setFromUnitVectors(ax, want).multiply(qW);
+    // roll about the shaft so the flat of the blade lies on the ground (an axe's blade sits on +Y)
+    const flatAxis = this.right === 'axe' ? _ub.set(1, 0, 0) : _ub.set(0, 1, 0);
+    flatAxis.applyQuaternion(_qc);
+    const tgt = _ud.set(0, 1, 0).addScaledVector(want, -want.y);
+    if (tgt.lengthSq() > 1e-6) {
+      tgt.normalize();
+      if (tgt.dot(flatAxis) < 0) tgt.negate();
+      _qd.setFromUnitVectors(flatAxis, tgt);
+      _qc.premultiply(_qd);
+    }
     qW.slerp(_qc, clamp(weight, 0, 1));
     bones[B.weaponR].quaternion.copy(qHand.invert()).multiply(qW);
   }
@@ -872,6 +904,5 @@ export class Animator {
     const fl = this.fl;
     const spine = this.bones[B.spine];
     eulerQ(spine.quaternion, fl[0] * 0.35, fl[2] * 0.2, fl[1] * 0.35);
-    _qRest.identity();
   }
 }

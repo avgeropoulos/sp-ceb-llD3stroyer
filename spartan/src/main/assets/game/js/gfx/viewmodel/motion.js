@@ -46,7 +46,7 @@ export function jolt(t, freq, decay) {
 }
 
 // ---------- slash timeline ----------
-const S0 = -1.45; // path parameter at the cocked pose (the path itself is s ∈ [-1, 1])
+const S0 = -1.3; // path parameter at the cocked pose (the path itself is s ∈ [-1, 1])
 
 /**
  * Derived times for a slash from TIMING.slash ({ strike, total }). The tip velocity is a C1
@@ -61,7 +61,9 @@ export function slashTimes(timing) {
   const tc = strike + h2;
   // Same peak speed on both sides, so the follow-through travels further: s1 solves s(strike) = 0.
   const s1 = S0 + -S0 * (h1 + h2) / h1;
-  return { strike, total, ta, tc, h1, h2, s0: S0, s1, recover: tc - 0.03 };
+  // Recovery to guard starts as the follow-through settles and is back on guard before `total`.
+  const recover = tc - 0.04;
+  return { strike, total, ta, tc, h1, h2, s0: S0, s1, recover, back: recover + 0.75 * (total - recover) };
 }
 
 /** Raw path parameter s(t). s = -1 and +1 are the ends of the §11 tip path; s(strike) = 0. */
@@ -95,14 +97,30 @@ function shapeParam(s) {
  * strike at every phone aspect, with the blade angled into the scene so its flat stays readable.
  */
 export const SLASH = {
-  handC: [0.19, -0.12],     // screen-plane centre of the hand path
+  handC: [0.19, -0.12],     // screen-plane offset of the hand from the tip at the strike (lower right)
+  minAngle: 0.8,            // the hand sits at least this far (rad) off the cut line, so the blade sweeps flat
   handQ: 0.45,              // fraction of the tip's lateral travel the hand follows at the centre
   handQEnd: 0.22,           // … plus this much more at the path ends (keeps the hand within reach)
-  handPerp: 0.05,           // perpendicular offset toward the arm side (bias)
-  bias: [0.507, -0.862],    // the arm side: lower right
+  upFollow: 0.6,            // the hand follows less when the tip is high (keeps the arm out of the face)
+  leftFollow: 0.8,          // … and when it is to the left (the arm across the body)
   maxLat: 0.9,              // max screen-plane share of the blade (keeps it off edge-on)
   forearm: [0.35, -0.6, 0.7], // where the forearm leaves the fist at guard (picks which edge leads)
 };
+
+/** Hand offset from the tip at the strike for a cut along dir, as [x, y] (rig metres). */
+export function slashHandOffset(dir, P = SLASH, out = [0, 0]) {
+  const r = Math.hypot(P.handC[0], P.handC[1]);
+  let a = Math.atan2(P.handC[1], P.handC[0]);
+  // Angle between the offset and the cut line (mod π), in (-π/2, π/2].
+  let rel = a - dir;
+  rel -= Math.PI * Math.round(rel / Math.PI);
+  if (Math.abs(rel) < P.minAngle) a += (rel >= 0 ? 1 : -1) * (P.minAngle - Math.abs(rel));
+  out[0] = r * Math.cos(a);
+  out[1] = r * Math.sin(a);
+  return out;
+}
+
+const _off = [0, 0];
 
 /**
  * Sword pose for a slash at path parameter s (see slashParam), in rig space.
@@ -120,13 +138,11 @@ export function slashGeometry(dir, s, out, reach = RIG.swordReach, P = SLASH) {
   const tx = g * E * dx;
   const ty = g * E * dy - over * over * 0.3;
   const tz = -D + over * 0.6;
-  // Hand: around the lower-right centre, following the tip partly.
-  const bd = P.bias[0] * dx + P.bias[1] * dy;
-  const ox = P.handC[0] + P.handPerp * (P.bias[0] - bd * dx);
-  const oy = P.handC[1] + P.handPerp * (P.bias[1] - bd * dy);
+  // Hand: offset from the tip's path, following the tip partly.
+  const [ox, oy] = slashHandOffset(dir, P, _off);
   const q = P.handQ + P.handQEnd * Math.min(1, g * g);
-  let hx = ox + q * tx;
-  let hy = oy + q * ty;
+  let hx = ox + q * tx * (tx < 0 ? P.leftFollow : 1);
+  let hy = oy + q * ty * (ty > 0 ? P.upFollow : 1);
   let lx = tx - hx;
   let ly = ty - hy;
   let lat = Math.hypot(lx, ly);

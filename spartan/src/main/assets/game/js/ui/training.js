@@ -136,7 +136,9 @@ export function createTraining(ctx) {
   let doneWait = 0;         // > 0: step complete, advancing soon
   let hintLeft = 0;
   let bigLeft = 0;
-  let demoLeft = 0;
+  let demoLeft = 0;          // > 0 while a demo runs (a safety cap on its length)
+  let demoEndT = 0;          // sensor time of the last injected sample
+  let demoTail = 0;          // settle time once every injected sample has been delivered
   let demoShield = false;
   let meterClock = 0;
   let dummy = null;
@@ -553,8 +555,15 @@ export function createTraining(ctx) {
         if (hintLeft <= 0) el.hint.classList.remove('is-shown');
       }
       if (demoLeft > 0) {
+        // Injected samples are released in real time; the demo ends once the last one has been
+        // delivered (and the recognizer has had a moment), or at the cap.
         demoLeft -= dt;
+        const m = ctx.platform && ctx.platform.motion;
+        const delivered = !m || typeof m.lastT !== 'function' || m.lastT() >= demoEndT - 1e-6;
+        if (delivered || demoTail < 0.3) demoTail -= dt;
+        if (demoTail <= 0) demoLeft = 0;
         if (demoLeft <= 0) {
+          demoLeft = 0;
           ctx.motionDemo = false;
           demoShield = false;
           root.classList.remove('is-demo');
@@ -614,9 +623,14 @@ export function createTraining(ctx) {
       });
       ctx.motionDemo = true;
       demoShield = def.id === 'bash';
+      // inject() re-bases the samples to start just after lastT(), keeping their spacing.
+      const t0 = motion.lastT ? motion.lastT() : 0;
       motion.inject(samples);
-      const dur = mod.scriptDuration ? mod.scriptDuration(script) : samples.length ? samples[samples.length - 1].t - samples[0].t : 2;
-      demoLeft = dur + 0.3;
+      const span = samples.length ? samples[samples.length - 1].t - samples[0].t : 0;
+      demoEndT = t0 + 0.01 + span;
+      const dur = mod.scriptDuration ? mod.scriptDuration(script) : span;
+      demoTail = 0.3;
+      demoLeft = dur + 4;
       root.classList.add('is-demo');
       return true;
     },
