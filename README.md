@@ -162,6 +162,33 @@ walks, so chase everything on the way home, where your person is waiting at the 
 
 Keyboard: arrows or A/D to run, Space to jump, and K, Z or Shift (or H/J) for BARK or DASH.
 
+## Third game: Hercules & Apollo 3D
+
+A separate app with real 3D graphics. Pick Hercules or Apollo and run around four open 3D
+levels with the camera following behind the dog.
+
+![Apollo jumping at a cat on a fence](docs/walk3d.png)
+
+| Level | Name | What's there |
+|---|---|---|
+| 1 | The Park | Squirrels in the trees, pigeons, bunnies, benches, a skunk and two bikes. |
+| 2 | Maple Street | Cats on fences, raccoons on bins, squirrels and bikes on the road. |
+| 3 | Sunny Beach | Seagulls, crabs that hide in holes, bunnies, and bouncy beach umbrellas. |
+| 4 | Moonlight Walk | Raccoons, cats and skunks at night, under the street lamps. |
+
+* Chase all but two of the critters on a level, then follow the arrow home. Critters that get
+  away (up a tree, down a burrow, into a bin, off into the sky) come back out after a while.
+* The arrow at the top of the screen points to the nearest critter, then home.
+* **Hercules** jumps high enough to grab squirrels sitting up in the trees, and **BARK** freezes
+  everything nearby. **Apollo** is much faster, and **DASH** is a lunge that works in mid-air.
+* Fences, bins, benches, hydrants and sandcastles can be jumped on. Umbrellas bounce you up high.
+* Stay away from skunks, and jump out of the way of the bikes. Three bumps and you redo the level.
+* Stars for how fast you get home. Each dog keeps its own progress.
+
+Controls: put your thumb anywhere on the left half of the screen and drag to run (the stick
+appears where your thumb lands). **JUMP** (hold it to jump higher) and **BARK**/**DASH** are on
+the right. Keyboard: arrows or WASD, Space to jump, K, Z or Shift for BARK/DASH.
+
 ## Installing on your phone
 
 Every push builds an APK with GitHub Actions (see `.github/workflows/android.yml`):
@@ -173,7 +200,9 @@ Every push builds an APK with GitHub Actions (see `.github/workflows/android.yml
 
 For Hercules & Apollo, use
 **https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/HerculesApolloWalk.apk**
-instead. The two games install side by side.
+instead, and for the 3D version
+**https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/HerculesApollo3D.apk**.
+The games install side by side.
 Updates install over the top and keep your progress. (If you installed Hercules & Apollo before
 it got its own signing key, uninstall that copy once first.)
 
@@ -187,6 +216,8 @@ You need JDK 17 and the Android SDK (Android Studio installs both).
                                  # and the music to core/build/music/*.wav
 ./gradlew :walkapp:assembleDebug # Hercules & Apollo APK at walkapp/build/outputs/apk/debug/walkapp-debug.apk
 ./gradlew :walk:test             # its tests; screenshots go to walk/build/screens
+./gradlew :walk3dapp:assembleDebug  # the 3D version's APK
+./gradlew :walk3d:test           # its tests; a software renderer draws screenshots to walk3d/build/screens
 ```
 
 You can also open the folder in Android Studio and press Run.
@@ -203,5 +234,9 @@ You can also open the folder in Android Studio and press Run.
 * `walk/` and `walkapp/`: Hercules & Apollo. `walk/` is the game logic and drawing in plain Kotlin
   (it reuses `core/`'s drawing interface and chiptune synth). The walks are laid out in `Course.kt`,
   and the dogs' pixel art and coat colors are at the top of `WalkSprites.kt`. `walkapp/` is its Android app.
+* `walk3d/` and `walk3dapp/`: the 3D version. `walk3d/` is plain Kotlin: the levels (`World3D.kt`),
+  critters, physics and camera (`Game3D.kt`), and the models, built from boxes, balls, cones and
+  cylinders (`Models.kt`). `walk3dapp/` draws them with OpenGL ES 2.0. `walkshared/` holds the
+  Android drawing and sound code that both Hercules & Apollo apps use.
 
 Levels are built in `core/.../Level.kt` with a small builder, so adding a new one is a few lines.

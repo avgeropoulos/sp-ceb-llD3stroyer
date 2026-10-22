@@ -1,4 +1,4 @@
-package com.herculesapollo.walkapp
+package com.herculesapollo.walkshared
 
 import android.graphics.Bitmap
 import android.graphics.Canvas

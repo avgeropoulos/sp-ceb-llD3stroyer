@@ -51,5 +51,5 @@ kotlin {
 }
 
 dependencies {
-    implementation(project(":walk"))
+    implementation(project(":walkshared"))
 }

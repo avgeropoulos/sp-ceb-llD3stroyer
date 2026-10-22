@@ -11,6 +11,8 @@ import com.herculesapollo.walk.VIEW_H
 import com.herculesapollo.walk.WalkControls
 import com.herculesapollo.walk.WalkGame
 import com.herculesapollo.walk.WalkInput
+import com.herculesapollo.walkshared.CanvasGfx
+import com.herculesapollo.walkshared.WalkSoundFx
 import com.roccoquest.game.Storage
 
 /** Hosts the game loop on its own thread and feeds it touch and key input. */

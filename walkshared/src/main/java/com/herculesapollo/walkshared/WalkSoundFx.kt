@@ -1,4 +1,4 @@
-package com.herculesapollo.walkapp
+package com.herculesapollo.walkshared
 
 import android.content.Context
 import android.media.AudioAttributes
