@@ -115,13 +115,19 @@ export function createTextures(ctx) {
     return tex;
   }
 
-  function fromPixels(px, S, name, { data = false, linear = false } = {}) {
+  function fromPixels(px, S, name, { data = false, linear = false, cutout = false } = {}) {
     const meanLum = linear ? 0.5 : meanLuminance(px);
     if (data) {
       const tex = new THREE.DataTexture(px, S, S, THREE.RGBAFormat, THREE.UnsignedByteType);
       tex.flipY = false;
       tex.userData.meanLum = meanLum;
-      return finish(tex, name, linear);
+      finish(tex, name, linear);
+      if (cutout) {
+        // Alpha-tested foliage thins out in the mips; keep its coverage instead.
+        tex.mipmaps = coverageMips(px, S, CUTOUT_ALPHA);
+        tex.generateMipmaps = false;
+      }
+      return tex;
     }
     const canvas = makeCanvas(S);
     // Rows are generated bottom-up (row 0 = v 0); canvases are top-down and flipped on upload.
@@ -149,7 +155,7 @@ export function createTextures(ctx) {
         const img = g.getImageData(0, 0, S, S).data;
         const px = flipRows(new Uint8ClampedArray(img), S);
         if (odef.cutout) bleedColour(px, S, 6);
-        return fromPixels(px, S, owner, { data: true });
+        return fromPixels(px, S, owner, { data: true, cutout: !!odef.cutout });
       }
       return finish(new THREE.CanvasTexture(canvas), owner, false);
     }
@@ -292,6 +298,74 @@ function resamplePixels(px, S, T) {
   return out;
 }
 
+/** alphaTest that world foliage materials use with the cut-out textures. */
+export const CUTOUT_ALPHA = 0.42;
+
+/**
+ * Full mip chain for an alpha cut-out (rows of RGBA bytes, square, power of two). Colour is
+ * alpha-weighted, and each level's alpha is scaled so the fraction of texels passing the alpha
+ * test stays what it is at full size (otherwise grass blades vanish a few metres away).
+ */
+function coverageMips(px, S, ref) {
+  const cover = (a, n, k) => {
+    let c = 0;
+    for (let i = 0; i < n; i++) if (a[i * 4 + 3] * k > ref * 255) c++;
+    return c / n;
+  };
+  const target = cover(px, S * S, 1);
+  const levels = [{ data: px, width: S, height: S }];
+  let src = px;
+  let s = S;
+  while (s > 1) {
+    const t = s >> 1;
+    const raw = new Uint8ClampedArray(t * t * 4);
+    for (let y = 0; y < t; y++) {
+      for (let x = 0; x < t; x++) {
+        let r = 0, g = 0, b = 0, a = 0, rr = 0, gg = 0, bb = 0;
+        for (let j = 0; j < 2; j++) {
+          for (let i = 0; i < 2; i++) {
+            const o = ((y * 2 + j) * s + x * 2 + i) * 4;
+            const w = src[o + 3];
+            r += src[o] * w;
+            g += src[o + 1] * w;
+            b += src[o + 2] * w;
+            a += w;
+            rr += src[o];
+            gg += src[o + 1];
+            bb += src[o + 2];
+          }
+        }
+        const o = (y * t + x) * 4;
+        if (a > 0) {
+          raw[o] = r / a;
+          raw[o + 1] = g / a;
+          raw[o + 2] = b / a;
+        } else {
+          raw[o] = rr / 4;
+          raw[o + 1] = gg / 4;
+          raw[o + 2] = bb / 4;
+        }
+        raw[o + 3] = a / 4;
+      }
+    }
+    // Binary search for the alpha scale that keeps the coverage.
+    let lo = 0.5;
+    let hi = 8;
+    for (let it = 0; it < 14; it++) {
+      const mid = (lo + hi) * 0.5;
+      if (cover(raw, t * t, mid) < target) lo = mid;
+      else hi = mid;
+    }
+    const k = (lo + hi) * 0.5;
+    const out = new Uint8ClampedArray(raw);
+    for (let i = 3; i < out.length; i += 4) out[i] = raw[i] * k;
+    levels.push({ data: out, width: t, height: t });
+    src = raw;
+    s = t;
+  }
+  return levels;
+}
+
 /** Spreads colour into fully transparent texels so filtering/mips don't pull in black. */
 function bleedColour(px, S, passes) {
   const n = S * S;
@@ -396,8 +470,11 @@ function blur(f, S, r) {
   return src;
 }
 
-/** Tangent-space normal map (OpenGL convention, +Y = +v) from a height field. */
-function normalMap(h, S, strength) {
+/**
+ * Tangent-space normal map (OpenGL convention, +Y = +v) from a height field. Optional slope
+ * fields (sx, sy, as tangents of the tilt) add facets that need no height (chipped planes).
+ */
+function normalMap(h, S, strength, sx = null, sy = null) {
   const px = new Uint8ClampedArray(S * S * 4);
   const k = strength * (S / 512);
   for (let y = 0; y < S; y++) {
@@ -411,6 +488,10 @@ function normalMap(h, S, strength) {
       const dy = (h[yu + x] - h[yd + x]) * 0.5;
       let nx = -dx * k;
       let ny = -dy * k;
+      if (sx) {
+        nx -= sx[row + x];
+        ny -= sy[row + x];
+      }
       const l = 1 / Math.sqrt(nx * nx + ny * ny + 1);
       nx *= l;
       ny *= l;
@@ -680,6 +761,10 @@ function genCliff(S, N, R) {
   const stain = N.fbmField(S, 3, { octaves: 5, salt: 9 });
   const lichM = N.fbmField(S, 5, { octaves: 4, salt: 10 });
   const blocks = N.worleyField(S, 6, 9, 0.85, 11);
+  // Chipped facets about a metre across: each cell a plane tilted its own way (normals only).
+  const facets = N.worleyField(S, 9, 16, 0.9, 15, true);
+  const fsx = new Float32Array(n);
+  const fsy = new Float32Array(n);
   const pits = N.worleyField(S, 46, 46, 1, 13);
   const spots = N.worleyField(S, 30, 30, 0.95, 14);
   const h = new Float32Array(n);
@@ -725,6 +810,16 @@ function genCliff(S, N, R) {
       const bedge = blocks.f2[k] - blocks.f1[k];
       const bm = smoothstep(0.0, 0.5, stain[k] + rough[k] * 0.3);
       v += (bid - 0.5) * 0.09 * (0.5 + b.hard) * bm * smoothstep(0.0, 0.05, bedge);
+      {
+        // Facets break at the seams: the bed index re-seeds them.
+        const fid = fract(facets.id[k] * 3.71 + bi * 0.377);
+        const ga = fid * 23.25;
+        const gm = (0.04 + 0.14 * fract(fid * 13.1)) * smoothstep(-0.15, 0.35, lichM[k] * 0.7 + body[k] * 0.6 + 0.1) * (0.5 + 0.7 * b.hard);
+        // Facets round over in the last few pixels before a border, like a worn arris.
+        const soft = smoothstep(0.0, 0.03, facets.f2[k] - facets.f1[k]);
+        fsx[k] = Math.cos(ga) * gm * soft;
+        fsy[k] = Math.sin(ga) * gm * soft;
+      }
       // Surface: ridged roughness, runnels down the soft beds, solution pits.
       v += rough[k] * 0.11 + fine[k] * 0.025;
       v += rill[k] * (0.03 + 0.05 * (1 - b.hard));
@@ -770,10 +865,11 @@ function genCliff(S, N, R) {
       }
     }
     mixc(c, grime, seamA[k] * 0.32, c);
-    const shade = clamp(1.04 + (h[k] - cav[k]) * 1.1, 0.66, 1.16);
+    // Up-facing facets catch dust and skylight.
+    const shade = clamp(1.04 + (h[k] - cav[k]) * 1.1 + fsy[k] * 0.25, 0.66, 1.18);
     put(px, k, c[0] * shade, c[1] * shade, c[2] * shade);
   }
-  return { color: px, normal: normalMap(h, S, 7) };
+  return { color: px, normal: normalMap(h, S, 7, fsx, fsy) };
 }
 
 function genSand(S, N) {
@@ -1371,34 +1467,49 @@ function genBlood(S, N, R) {
   return px;
 }
 
-/** Mineral crust round a hot-spring vent: white travertine, pale sulphur, rusty runoff. */
+/**
+ * Mineral crust round a hot-spring vent, as a ground decal: pale sulphur at the vent, white
+ * travertine with rimstone terraces, rust-orange runoff channels toward +u (downhill, to the
+ * sea), and a damp brown fringe. The vent sits at u ≈ 0.33, v = 0.5.
+ */
 function genSulphur(S, N) {
   const n = S * S;
   const f = N.fbmField(S, 3, { octaves: 6, salt: 1 });
   const g = N.fbmField(S, 12, { octaves: 4, salt: 2 });
   const zone = N.fbmField(S, 4, { octaves: 4, salt: 3 });
-  const crust = N.worleyField(S, 20, 20, 1, 4);
+  const runs = N.fbmField(S, 3, { octaves: 4, salt: 5, periodY: 14 });
+  const grain = N.fbmField(S, 64, { octaves: 2, salt: 6 });
   const px = new Uint8ClampedArray(n * 4);
-  const white = [208, 202, 180];
-  const grey = [172, 164, 140];
-  const yellow = [204, 182, 96];
-  const rust = [168, 104, 58];
-  const brown = [128, 96, 66];
+  const vent = [226, 214, 132];
+  const white = [226, 222, 206];
+  const cream = [212, 202, 176];
+  const rim = [176, 164, 140];
+  const rust = [184, 106, 50];
+  const ochre = [196, 146, 74];
+  const damp = [118, 96, 72];
   const c = [0, 0, 0];
   for (let y = 0; y < S; y++) {
     for (let x = 0; x < S; x++) {
       const k = y * S + x;
-      const dx = (x + 0.5) / S - 0.5;
-      const dy = (y + 0.5) / S - 0.5;
-      const r = Math.hypot(dx, dy) * 2 + f[k] * 0.32;
-      mixc(white, grey, smoothstep(0.1, 0.6, r) * 0.6 + g[k] * 0.2, c);
-      // Patches rather than rings: sulphur near the vent, rust in the runoff.
-      mixc(c, yellow, smoothstep(0.15, 0.45, zone[k]) * (1 - smoothstep(0.2, 0.55, r)) * 0.8, c);
-      mixc(c, rust, smoothstep(0.0, 0.35, -zone[k]) * smoothstep(0.3, 0.7, r) * 0.7, c);
-      mixc(c, brown, smoothstep(0.7, 0.95, r) * 0.6, c);
-      const cr = 0.86 + smoothstep(0, 0.1, crust.f2[k] - crust.f1[k]) * 0.14;
-      const a = (1 - smoothstep(0.55, 0.95, r)) * (0.85 + g[k] * 0.3);
-      put(px, k, c[0] * cr, c[1] * cr, c[2] * cr, clamp(a, 0, 1) * 215);
+      const u = (x + 0.5) / S;
+      const v = (y + 0.5) / S;
+      const du = u - 0.33;
+      const dv = (v - 0.5) * 1.15;
+      // Elongated downhill (+u), lobed edge.
+      const r = Math.hypot(du * (du > 0 ? 0.62 : 1.25), dv) * 2.15 + f[k] * 0.28;
+      mixc(white, cream, smoothstep(0.15, 0.7, r) + g[k] * 0.25, c);
+      // Rimstone terraces: thin raised rims at irregular radii.
+      const ring = Math.abs(fract(r * 7 + f[k] * 1.5) - 0.5);
+      mixc(c, rim, (1 - smoothstep(0.03, 0.09, ring)) * smoothstep(0.2, 0.35, r) * 0.55, c);
+      // Sulphur round the vent.
+      mixc(c, vent, (1 - smoothstep(0.08, 0.3, r + zone[k] * 0.1)) * 0.85, c);
+      // Runoff channels: rust and ochre streaks drawn downhill.
+      const ch = smoothstep(0.15, 0.5, runs[k] + zone[k] * 0.3) * smoothstep(0.0, 0.15, du) * smoothstep(0.15, 0.4, r);
+      mixc(c, zone[k] > 0 ? rust : ochre, ch * 0.8, c);
+      mixc(c, damp, smoothstep(0.62, 0.95, r) * 0.75, c);
+      const t = 0.92 + grain[k] * 0.1;
+      const a = (1 - smoothstep(0.78, 1.0, r)) * (0.9 + g[k] * 0.2);
+      put(px, k, c[0] * t, c[1] * t, c[2] * t, clamp(a, 0, 1) * 235);
     }
   }
   return px;
@@ -1913,26 +2024,42 @@ function drawScorpion(g) {
 // ---------------------------------------------------------------------------------------
 
 function drawGrass(g, R) {
-  const cols = ['#c8b47c', '#b9a46a', '#d6c28c', '#a89a64', '#9a9a6a', '#bfa870', '#8f8a5a'];
+  // A summer-dry tuft: a fan of thin, drooping blades, darker and denser at the base, a few
+  // still faintly green, some carrying oat-like seed heads.
+  const cols = [
+    [196, 182, 140], [210, 198, 160], [178, 166, 128], [164, 150, 116], [150, 140, 112],
+    [186, 170, 124], [140, 140, 108], [128, 132, 100], [200, 190, 156],
+  ];
   g.lineCap = 'round';
-  for (let i = 0; i < 70; i++) {
-    const x0 = 0.5 + (R.next() - 0.5) * 0.28;
-    const lean = (R.next() - 0.5) * 0.9 + (x0 - 0.5) * 1.6;
-    const len = 0.45 + R.next() * 0.5;
-    const x1 = x0 + lean * len * 0.6;
-    const y1 = 1 - len * 0.95;
-    const cx = x0 + lean * len * 0.15;
-    const cy = 1 - len * 0.55;
-    g.strokeStyle = cols[Math.floor(R.next() * cols.length)];
-    const w0 = 0.012 + R.next() * 0.01;
-    const steps = 6;
+  const blades = 150;
+  for (let i = 0; i < blades; i++) {
+    const back = i < blades * 0.35;
+    const x0 = 0.5 + (R.next() - 0.5) * (back ? 0.22 : 0.34);
+    // Fan: lean grows with distance from the centre; outer blades droop.
+    const ang = (R.next() - 0.5) * 1.6 + (x0 - 0.5) * 2.2;
+    const len = (0.4 + R.next() * 0.55) * (1 - Math.abs(ang) * 0.25);
+    const droop = 0.15 + R.next() * 0.35;
+    const sx = Math.sin(ang);
+    const x1 = x0 + sx * len * 0.85;
+    const y1 = 1 - len * Math.cos(ang) * (1 - droop * Math.abs(sx));
+    const cx = x0 + sx * len * 0.3;
+    const cy = 1 - len * 0.75;
+    const c = cols[Math.floor(R.next() * cols.length)];
+    const shade = back ? 0.72 + R.next() * 0.15 : 0.85 + R.next() * 0.2;
+    const grad = g.createLinearGradient(x0, 1, x1, y1);
+    grad.addColorStop(0, `rgb(${(c[0] * shade * 0.62) | 0},${(c[1] * shade * 0.6) | 0},${(c[2] * shade * 0.55) | 0})`);
+    grad.addColorStop(0.45, `rgb(${(c[0] * shade) | 0},${(c[1] * shade) | 0},${(c[2] * shade) | 0})`);
+    grad.addColorStop(1, `rgb(${Math.min(255, c[0] * shade * 1.08) | 0},${Math.min(255, c[1] * shade * 1.08) | 0},${Math.min(255, c[2] * shade * 1.05) | 0})`);
+    g.strokeStyle = grad;
+    const w0 = 0.009 + R.next() * 0.009;
+    const steps = 7;
     let px = x0;
     let py = 1;
-    for (let s = 1; s <= steps; s++) {
-      const t = s / steps;
+    for (let k = 1; k <= steps; k++) {
+      const t = k / steps;
       const qx = (1 - t) * (1 - t) * x0 + 2 * (1 - t) * t * cx + t * t * x1;
       const qy = (1 - t) * (1 - t) * 1 + 2 * (1 - t) * t * cy + t * t * y1;
-      g.lineWidth = w0 * (1 - t * 0.85);
+      g.lineWidth = w0 * (1 - t * 0.8);
       g.beginPath();
       g.moveTo(px, py);
       g.lineTo(qx, qy);
@@ -1940,11 +2067,16 @@ function drawGrass(g, R) {
       px = qx;
       py = qy;
     }
-    // Some blades carry a seed head.
-    if (R.next() < 0.25) {
-      g.fillStyle = '#d8c690';
-      ellipse(g, x1, y1 + 0.03, 0.012, 0.04, lean * 0.6);
-      g.fill();
+    if (!back && R.next() < 0.2) {
+      // Seed head: a few pale spikelets hanging off the last part of the stem.
+      g.fillStyle = `rgb(${(214 * shade) | 0},${(202 * shade) | 0},${(164 * shade) | 0})`;
+      for (let k = 0; k < 5; k++) {
+        const t = 0.8 + k * 0.045;
+        const qx = (1 - t) * (1 - t) * x0 + 2 * (1 - t) * t * cx + t * t * x1;
+        const qy = (1 - t) * (1 - t) * 1 + 2 * (1 - t) * t * cy + t * t * y1;
+        ellipse(g, qx + (k & 1 ? 0.008 : -0.008), qy + 0.012, 0.005, 0.016, (k & 1 ? 0.5 : -0.5) + ang * 0.5);
+        g.fill();
+      }
     }
   }
 }

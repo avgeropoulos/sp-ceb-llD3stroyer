@@ -8,10 +8,10 @@
  */
 import * as THREE from 'three';
 import { buildMaterials, atlasRects } from './characters/atlas.js';
-import { B, createBones } from './characters/rig.js';
+import { B, BONES, createBones } from './characters/rig.js';
 import { buildModel, spearParts, sagarisParts } from './characters/models.js';
 import { KINDS, variantFor } from './characters/kinds.js';
-import { Animator } from './characters/anim.js';
+import { Animator, CLOTH_BONES } from './characters/anim.js';
 import { CLIPS } from './characters/poses.js';
 import { PartBuilder, sweep, slab, mat } from './characters/geo.js';
 import { METAL_TILES } from './characters/atlas.js';
@@ -22,6 +22,57 @@ const METAL = new Set(METAL_TILES);
 const SOCKETS = { head: B.head, chest: B.chest, rightHand: B.handR, leftHand: B.handL, back: B.back };
 const RIGHT = { dory: 'spear', persianSpear: 'spear', sagaris: 'axe', bow: 'arrow', bundle: 'bundle', xiphos: 'sword' };
 const LEFT = { aspis: 'aspis', gerron: 'grip', spara: 'grip', wicker: null };
+/** Reach of the carried weapon in front of / behind the fist (unit body metres), for laying it down. */
+const WEAPON_LEN = {
+  spartan: [1.45, 1.05], xiphos: [0.56, 0.12], levy: [1.2, 0.8], sparabara: [1.2, 0.8], immortal: [1.23, 0.82],
+  captain: [0.64, 0.16], helot: [1.5, 0.96],
+};
+
+const CONTACT_DIRS = [
+  [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1],
+  [1, 1, 1], [1, 1, -1], [1, -1, 1], [1, -1, -1], [-1, 1, 1], [-1, 1, -1], [-1, -1, 1], [-1, -1, -1],
+];
+const HEM_DIRS = [[0, -1, 0], [1, -1, 0], [-1, -1, 0], [0, -1, 1], [0, -1, -1]];
+
+/**
+ * Ground contacts measured from a variant's geometry: for every rigid bone, its extreme
+ * vertices in 14 directions (bone space); for every cloth bone, its lowest hem vertices.
+ * Returns { contacts, cloth } as flat [bone, x, y, z] arrays (mesh metres).
+ */
+function measureContacts(geometry, rest) {
+  const pos = geometry.attributes.position, si = geometry.attributes.skinIndex;
+  const skip = new Set([B.weaponR, B.nock]);
+  const cloth = new Set(CLOTH_BONES);
+  const out = [], hem = [];
+  for (let b = 0; b < BONES.length; b++) {
+    const isCloth = cloth.has(b);
+    if (skip.has(b)) continue;
+    const dirs = isCloth ? HEM_DIRS : CONTACT_DIRS;
+    const wy = isCloth ? 4 : 1;
+    const bp = rest.pos[BONES[b][0]];
+    const top = dirs.map(() => ({ d: -Infinity, x: 0, y: 0, z: 0 }));
+    let any = false;
+    for (let i = 0; i < pos.count; i++) {
+      if (si.getX(i) !== b) continue;
+      any = true;
+      const x = pos.getX(i) - bp[0], y = pos.getY(i) - bp[1], z = pos.getZ(i) - bp[2];
+      for (let k = 0; k < dirs.length; k++) {
+        const d = dirs[k];
+        const v = x * d[0] + y * d[1] * wy + z * d[2];
+        if (v > top[k].d) Object.assign(top[k], { d: v, x, y, z });
+      }
+    }
+    if (!any) continue;
+    const seen = new Set();
+    for (const t of top) {
+      const key = `${t.x.toFixed(4)},${t.y.toFixed(4)},${t.z.toFixed(4)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      (isCloth ? hem : out).push(b, t.x, t.y, t.z);
+    }
+  }
+  return { contacts: new Float32Array(out), cloth: hem.length ? new Float32Array(hem) : null };
+}
 
 /** Ground-contact sample points of the left item (item-bone space, unit body metres). */
 function itemPointsFor(shield, spec) {
@@ -31,8 +82,8 @@ function itemPointsFor(shield, spec) {
   }
   if (shield === 'spara') return [[0.3, 0.42, 0.06], [-0.3, 0.42, 0.06], [0.3, -1.15, 0.06], [-0.3, -1.15, 0.06]];
   if (shield === 'gerron') {
-    const h = spec && spec.kind === 'immortal' ? 0.43 : 0.46;
-    return [[0.25, h, 0.05], [-0.25, h, 0.05], [0.25, -h, 0.05], [-0.25, -h, 0.05]];
+    const h = spec && spec.kind === 'immortal' ? 0.41 : 0.4;
+    return [[0.24, h, 0.05], [-0.24, h, 0.05], [0.24, -h, 0.05], [-0.24, -h, 0.05]];
   }
   if (shield === 'bow') return [[0, -0.04, 0.52], [0, -0.04, -0.52]];
   return [];
@@ -78,6 +129,8 @@ export function createCharacters(ctx) {
         left: kd.weapon === 'bow' ? 'bow' : LEFT[kd.shield] || null,
         itemPoints: itemPointsFor(kd.weapon === 'bow' ? 'bow' : kd.shield, spec),
         bowTipY: kd.weapon === 'bow' ? -0.04 : 0,
+        weaponLen: WEAPON_LEN[kind === 'spartan' && spec.weapon === 'xiphos' ? 'xiphos' : kind] || null,
+        ...(kind === 'dummy' ? { contacts: null, cloth: null } : measureContacts(model.geometry, model.rest)),
       };
       entries.set(key, e);
       stats.variants++;
@@ -112,8 +165,9 @@ export function createCharacters(ctx) {
     root.name = `visual-${kind}`;
     root.add(mesh);
     const anim = new Animator({
-      bones, rest: e.rest, style: KINDS[kind].style, mesh, root, seed,
-      right: e.right, left: e.left, itemPoints: e.itemPoints, bowTipY: e.bowTipY,
+      bones, rest: e.rest, style: KINDS[kind].style, mesh, root, seed, scale: mesh.scale.x,
+      right: e.right, left: e.left, itemPoints: e.itemPoints, bowTipY: e.bowTipY, weaponLen: e.weaponLen,
+      contacts: e.contacts, cloth: e.cloth,
     });
     anim.update(0);
     const sockets = {};

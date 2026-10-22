@@ -26,7 +26,7 @@ export const METAL_TILES = [
   'bronze', 'bronzeDark', 'iron', 'gold',
   'silver', 'scaleBronze', 'scaleIron', 'ironDark',
   'blazonFly', 'blazonGorgon', 'blazonLion', 'blazonBoar',
-  'blazonClub', 'blazonScorpion', 'bronzePlain', 'bronzeRim',
+  'blazonClub', 'blazonScorpion', 'greave', 'helmet',
 ];
 export const BLAZONS = ['blazonFly', 'blazonGorgon', 'blazonLion', 'blazonBoar', 'blazonClub', 'blazonScorpion'];
 
@@ -757,6 +757,108 @@ function paintBlazon(g, P, name, seed) {
   g.restore();
 }
 
+/** Embossed line: a dark groove with a light lip below it (path built by draw()). */
+function emboss(g, P, draw, w = 1) {
+  const lw = Math.max(1, P / 210) * w;
+  g.save();
+  g.lineCap = 'round';
+  g.lineJoin = 'round';
+  g.translate(0, lw * 1.1);
+  g.strokeStyle = 'rgba(255,236,190,0.32)';
+  g.lineWidth = lw * 1.5;
+  draw();
+  g.stroke();
+  g.restore();
+  g.save();
+  g.lineCap = 'round';
+  g.lineJoin = 'round';
+  g.strokeStyle = 'rgba(42,24,10,0.62)';
+  g.lineWidth = lw;
+  draw();
+  g.stroke();
+  g.restore();
+}
+
+/**
+ * Corinthian helmet details in the helmet's mapping (u = 0.5 + θ/2π with the face at the
+ * centre, v = (y + 0.13)/0.34 in head metres): arched brows meeting over the nasal, the
+ * carination round the skull, and borders along the lower edge and the face opening.
+ */
+function paintHelmet(g, P) {
+  const X = (t) => (0.5 + t / (Math.PI * 2)) * P;
+  const Y = (y) => (1 - (y + 0.13) / 0.34) * P;
+  const sm = (a, b, v) => {
+    const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  };
+  // darker patina low on the cheek pieces and neck guard
+  const grad = g.createLinearGradient(0, Y(0.0), 0, Y(-0.11));
+  grad.addColorStop(0, 'rgba(60,40,20,0)');
+  grad.addColorStop(1, 'rgba(60,40,20,0.28)');
+  g.fillStyle = grad;
+  g.fillRect(0, Y(0.0), P, Y(-0.11) - Y(0.0));
+  for (const sd of [-1, 1]) {
+    emboss(g, P, () => {
+      g.beginPath();
+      g.moveTo(X(0), Y(0.058));
+      g.quadraticCurveTo(X(sd * 0.36), Y(0.09), X(sd * 0.98), Y(0.07));
+      g.quadraticCurveTo(X(sd * 1.7), Y(0.096), X(sd * Math.PI), Y(0.094));
+    }, 1.2);
+  }
+  // borders: along the lower edge (following its notch and flare) and down the cheek slit
+  emboss(g, P, () => {
+    g.beginPath();
+    for (let i = 0; i <= 64; i++) {
+      const t = -Math.PI + (i / 64) * Math.PI * 2, a = Math.abs(t);
+      const y = -0.086 + 0.022 * Math.exp(-(((a - 1.45) / 0.3) ** 2)) - 0.03 * sm(1.8, 2.7, a);
+      if (i === 0) g.moveTo(X(t), Y(y));
+      else g.lineTo(X(t), Y(y));
+    }
+  });
+  for (const sd of [-1, 1]) {
+    emboss(g, P, () => {
+      g.beginPath();
+      g.moveTo(X(sd * 0.26), Y(-0.095));
+      g.lineTo(X(sd * 0.26), Y(-0.02));
+      g.quadraticCurveTo(X(sd * 0.3), Y(0.012), X(sd * 0.68), Y(0.03));
+    }, 0.8);
+  }
+}
+
+/** Anatomical greave in the shin mapping (front at u = 0.5, v = (y − 0.11)/0.41). */
+function paintGreave(g, P) {
+  const X = (t) => (0.5 + t / (Math.PI * 2)) * P;
+  const Y = (y) => (1 - (y - 0.11) / 0.41) * P;
+  // knee boss
+  for (const r of [0.028, 0.016]) {
+    emboss(g, P, () => {
+      g.beginPath();
+      g.ellipse(X(0), Y(0.465), (r / 0.06) * P * 0.16, r * P * 2.2, 0, 0, Math.PI * 2);
+    }, 0.9);
+  }
+  // calf muscles and the shin ridge
+  for (const sd of [-1, 1]) {
+    emboss(g, P, () => {
+      g.beginPath();
+      g.moveTo(X(sd * 0.5), Y(0.43));
+      g.bezierCurveTo(X(sd * 1.6), Y(0.4), X(sd * 1.9), Y(0.3), X(sd * 1.2), Y(0.2));
+    });
+  }
+  emboss(g, P, () => {
+    g.beginPath();
+    g.moveTo(X(0), Y(0.42));
+    g.lineTo(X(0), Y(0.16));
+  }, 0.7);
+  // rolled rims at the top and the ankle
+  for (const y of [0.5, 0.122]) {
+    emboss(g, P, () => {
+      g.beginPath();
+      g.moveTo(0, Y(y));
+      g.lineTo(P, Y(y));
+    }, 1.1);
+  }
+}
+
 /**
  * The aspis rim in the planar shield mapping (tile radius 0.5 = the shield's edge): a groove
  * where the offset rim meets the bowl and a running guilloche on the rim, as on many aspides.
@@ -846,8 +948,8 @@ const METAL_SPEC = {
   scaleBronze: { tex: 'scale', paint: (g, P) => paintScale(g, P, 0xb08040, 56), metal: 'auto', rough: 0.45 },
   scaleIron: { tex: 'scale', tint: 'rgb(150,150,155)', sat: true, paint: (g, P) => paintScale(g, P, 0x808084, 57), metal: 'auto', rough: 0.5 },
   ironDark: { paint: (g, P) => paintMetal(g, P, 0x4c4a48, 58), metal: 1, rough: 0.55 },
-  bronzePlain: { tex: 'bronze', paint: (g, P) => paintMetal(g, P, 0xb8873e, 59), metal: 1, rough: 0.32 },
-  bronzeRim: { tex: 'bronze', paint: (g, P) => paintMetal(g, P, 0xa87a38, 60), metal: 1, rough: 0.38 },
+  greave: { tex: 'bronze', paint: (g, P) => paintMetal(g, P, 0xb8873e, 59), metal: 1, rough: 0.33, deco: paintGreave },
+  helmet: { tex: 'bronze', paint: (g, P) => paintMetal(g, P, 0xb8873e, 60), metal: 1, rough: 0.3, deco: paintHelmet },
 };
 for (const b of BLAZONS) METAL_SPEC[b] = { tex: b, paint: (g, P) => paintBlazon(g, P, b, 61), metal: 'auto', rough: 0.36, blazon: true, deco: paintAspisRim };
 

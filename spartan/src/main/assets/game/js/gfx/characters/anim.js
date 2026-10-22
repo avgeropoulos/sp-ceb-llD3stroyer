@@ -139,6 +139,12 @@ function clipData(style, clip) {
   return d;
 }
 
+/** Bones of loose cloth (cloak, skirt panels). */
+export const CLOTH_BONES = [B.cloak, B.skirtFL, B.skirtFR, B.skirtBL, B.skirtBR];
+
+/** Foot roll pivots relative to the ankle (unit body metres): ball of the foot and heel. */
+const PIV_Y = -0.085, PIV_BALL_Z = 0.13, PIV_HEEL_Z = -0.06;
+
 /** Contact points for ground correction: [bone, x, y, z, radius] in unit-body bone space. */
 const CONTACTS = [
   [B.head, 0, 0.07, -0.02, 0.11], [B.head, 0, -0.04, 0.07, 0.07], [B.head, 0, 0.12, 0.05, 0.06],
@@ -170,6 +176,17 @@ export class Animator {
     this.itemPoints = cfg.itemPoints || [];
     this.bowTipY = cfg.bowTipY || 0;
     this.isDummy = cfg.style === 'dummy';
+    // world metres per mesh metre (the per-instance height variety scales the mesh)
+    this.meshScale = cfg.scale || 1;
+    // the carried weapon's reach either side of the fist (mesh metres), to lay it down
+    this.wFront = (cfg.weaponLen && cfg.weaponLen[0]) || 0;
+    this.wBack = (cfg.weaponLen && cfg.weaponLen[1]) || 0;
+    this.dirty = true;
+    // ground contacts: [bone, x, y, z] in bone space (mesh metres), measured from the geometry;
+    // cloth: hem points of the cloak and skirt panels, which squash rather than lift the body
+    this.contacts = cfg.contacts || null;
+    this.cloth = cfg.cloth || null;
+    this.clothSquashed = false;
     const s = this.rest.s;
     this.s = s;
     // per-instance variety (deterministic)
@@ -247,10 +264,12 @@ export class Animator {
 
   setLocomotion(speed) {
     this.speedCmd = Number.isFinite(speed) ? speed : 0;
+    this.dirty = true;
   }
 
   setGuard(on) {
     this.guardOn = !!on;
+    this.dirty = true;
   }
 
   /** One-shot clip. Replacing a clip drops its pending callbacks. */
@@ -270,6 +289,7 @@ export class Animator {
     this.clipStruck = false;
     this.onStrike = opts.onStrike || null;
     this.onEnd = opts.onEnd || null;
+    this.dirty = true;
   }
 
   /** Additive hit reaction; dirX/dirZ is the hit direction in world space (attacker → target). */
@@ -283,6 +303,7 @@ export class Animator {
     this.fl[5] += (lx >= 0 ? 1 : -1) * 0.25 * k * (0.5 + 0.5 * Math.abs(lx));
     this.flPush[0] += lx * 0.06 * strength;
     this.flPush[1] += lz * 0.06 * strength;
+    this.dirty = true;
   }
 
   get clip() {
@@ -315,12 +336,16 @@ export class Animator {
   }
 
   update(gdt) {
-    const dt = gdt > 0 ? Math.min(gdt, 0.1) : 0;
+    // clip time advances by the whole step (callbacks stay exact); dynamics use a clamped step
+    const step = gdt > 0 ? gdt : 0;
+    const dt = Math.min(step, 0.1);
+    if (step === 0 && !this.dirty) return;
+    this.dirty = false;
     this.t += dt;
     if (this.isDummy) {
       this.springs(dt);
       this.applyDummy();
-      this.advanceClip(dt);
+      this.advanceClip(step);
       return;
     }
     // locomotion state
@@ -335,7 +360,7 @@ export class Animator {
     // clip layer (evaluate at the time reached this frame, then fire callbacks)
     const prevClip = this.clipName;
     if (this.clipName) {
-      this.clipT += dt;
+      this.clipT += step;
       const ct = this.clipTime();
       sampleKeys(this.clipData.keys, this.clipData.tans, ct, this.cpose);
       const cp = this.cpose;
@@ -477,7 +502,7 @@ export class Animator {
     const s = this.s;
     // cadence (steps/s) and stride; one cycle = two steps
     const cadence = 1.5 + 0.42 * Math.max(av, 0.6) + 0.25 * run;
-    const stepLen = av / cadence / s; // unit body metres
+    const stepLen = av / cadence / s / this.meshScale; // unit body metres
     this.gait = (this.gait + (cadence / 2) * dt * dir + 10) % 1;
     const beta = 0.62 - 0.26 * run;
     const D = 2 * beta * stepLen; // stance travel
@@ -493,7 +518,6 @@ export class Animator {
         z = D / 2 - q * D;
         // heel strike → flat → heel off
         pitch = -0.18 * (1 - smooth(clamp(q / 0.15, 0, 1))) * (1 - run) + 0.45 * smooth(clamp((q - 0.65) / 0.35, 0, 1));
-        y = 0.13 * Math.sin(Math.max(0, pitch));
       } else {
         const q = (p - beta) / (1 - beta);
         const e = smooth(q);
@@ -562,8 +586,19 @@ export class Animator {
       const hip = L ? r.hipL : r.hipR;
       let qThigh = q[2], phi = 0;
       if (legFK < 0.999) {
-        const T = v[0].set(p[fch] * s, this.rest.ankle + Math.max(0, p[fch + 1]) * s, p[fch + 2] * s).sub(pel.position).applyQuaternion(qPinv);
         const yaw = p[fch + 3];
+        // the foot rolls about the ball when the heel lifts and about the heel when the toes
+        // lift, so the ankle moves to keep that point where it is (no skating on heel-off)
+        const fp = p[fch + 4];
+        const pz = fp >= 0 ? PIV_BALL_Z : PIV_HEEL_Z;
+        const cp = Math.cos(fp), sp = Math.sin(fp);
+        const dy = PIV_Y * (1 - cp) + pz * sp;
+        const dz = pz - PIV_Y * sp - pz * cp;
+        const T = v[0].set(
+          (p[fch] + Math.sin(yaw) * dz) * s,
+          this.rest.ankle + (Math.max(0, p[fch + 1]) + dy) * s,
+          (p[fch + 2] + Math.cos(yaw) * dz) * s,
+        ).sub(pel.position).applyQuaternion(qPinv);
         const pole = v[1].set(Math.sin(yaw), 0, Math.cos(yaw)).applyQuaternion(qPinv);
         phi = solve2(hip, T, pole, this.len.thigh, this.len.shin, 1, qThigh, v[2], v[3]);
         // foot: flat on the ground with yaw and heel pitch, relative to the shin
@@ -607,7 +642,9 @@ export class Animator {
     if (dyaw < -PI) dyaw += 2 * PI;
     if (dt > 0) {
       const chestPitch = p[CH.pelR] + p[CH.spine] + p[CH.chest];
-      const target = clamp(p[CH.cloak] + Math.max(0, -chestPitch) * 0.8 - Math.max(0, chestPitch) * 0.3, -0.2, 1.4);
+      // gravity swings it away from a leaning back; on the ground it lies along the body
+      const free = 1 - clamp(p[CH.ground], 0, 1);
+      const target = clamp(p[CH.cloak] + (Math.max(0, -chestPitch) * 0.8 - Math.max(0, chestPitch) * 0.3) * free, -0.2, 1.4);
       const a = -60 * (this.cloakA - target) - 9 * this.cloakV;
       this.cloakV += a * dt + Math.abs(dyaw) * 3;
       this.cloakA += this.cloakV * dt;
@@ -619,6 +656,10 @@ export class Animator {
     bones[B.weaponR].scale.setScalar(ws < 0.5 ? 1e-4 : 1);
     bones[B.itemL].scale.setScalar(ls < 0.5 ? 1e-4 : 1);
     // ground correction for lying poses
+    if (this.clothSquashed) {
+      for (let i = 0; i < CLOTH_BONES.length; i++) bones[CLOTH_BONES[i]].scale.set(1, 1, 1);
+      this.clothSquashed = false;
+    }
     const gw = p[CH.ground];
     if (gw > 0.01) this.groundCorrect(gw);
   }
@@ -743,23 +784,88 @@ export class Animator {
     }
     let minY = Infinity;
     const pt = _v[0];
-    for (const [bi, x, y, z, rad] of CONTACTS) {
-      pt.set(x * s, y * s, z * s).applyMatrix4(mats[bi]);
-      const yy = pt.y - rad * s;
-      if (yy < minY) minY = yy;
-    }
-    if (this.left) {
-      for (const ip of this.itemPoints) {
-        pt.set(ip[0] * s, ip[1] * s, ip[2] * s).applyMatrix4(mats[B.itemL]);
+    const cs = this.contacts;
+    if (cs) {
+      for (let i = 0; i < cs.length; i += 4) {
+        pt.set(cs[i + 1], cs[i + 2], cs[i + 3]).applyMatrix4(mats[cs[i]]);
         if (pt.y < minY) minY = pt.y;
+      }
+    } else {
+      for (let i = 0; i < CONTACTS.length; i++) {
+        const c = CONTACTS[i];
+        pt.set(c[1] * s, c[2] * s, c[3] * s).applyMatrix4(mats[c[0]]);
+        const yy = pt.y - c[4] * s;
+        if (yy < minY) minY = yy;
+      }
+      if (this.left && bones[B.itemL].scale.x > 0.5) {
+        const ips = this.itemPoints;
+        for (let i = 0; i < ips.length; i++) {
+          pt.set(ips[i][0] * s, ips[i][1] * s, ips[i][2] * s).applyMatrix4(mats[B.itemL]);
+          if (pt.y < minY) minY = pt.y;
+        }
       }
     }
     // never sink; settle onto the ground as the pose asks
-    let dy = 0;
-    if (minY < 0) dy = -minY;
-    else dy = -minY * weight;
-    this.bones[B.pelvis].position.y += dy;
+    const dy = minY < 0 ? -minY : -minY * weight;
+    bones[B.pelvis].position.y += dy;
     this.groundY = minY + dy;
+    if (this.cloth) this.squashCloth(dy);
+    if (this.wFront > 0 && bones[B.weaponR].scale.x > 0.5) this.layWeapon(weight, dy);
+  }
+
+  /**
+   * Cloak and skirt panels are rigid; where a hem would go through the ground, the panel is
+   * flattened along its most vertical axis (cloth lying crumpled under or beside the body).
+   */
+  squashCloth(dy) {
+    const cl = this.cloth, mats = this.mats, bones = this.bones, pt = _v[0];
+    for (let k = 0; k < CLOTH_BONES.length; k++) {
+      const b = CLOTH_BONES[k];
+      let low = Infinity;
+      for (let i = 0; i < cl.length; i += 4) {
+        if (cl[i] !== b) continue;
+        pt.set(cl[i + 1], cl[i + 2], cl[i + 3]).applyMatrix4(mats[b]);
+        if (pt.y < low) low = pt.y;
+      }
+      low += dy;
+      const m = mats[b].elements;
+      const yo = m[13] + dy;
+      const margin = 0.012;
+      if (low >= margin || yo <= margin) continue;
+      const f = clamp((yo - margin) / (yo - low), 0.08, 1);
+      // the bone axis closest to vertical (columns of its mesh-space matrix)
+      const ax = Math.abs(m[1]), ay = Math.abs(m[5]), az = Math.abs(m[9]);
+      const sc = bones[b].scale;
+      if (ax >= ay && ax >= az) sc.x = f;
+      else if (ay >= az) sc.y = f;
+      else sc.z = f;
+      this.clothSquashed = true;
+    }
+  }
+
+  /**
+   * Lays the carried weapon down beside a body on the ground: its long axis goes level, then
+   * tips so that its longer end rests on the ground (a spear never goes through the floor).
+   */
+  layWeapon(weight, dy) {
+    const bones = this.bones, s = this.s;
+    const qHand = _qa.setFromRotationMatrix(_m.extractRotation(this.mats[B.handR]));
+    const qW = _qb.copy(qHand).multiply(bones[B.weaponR].quaternion);
+    const ax = _ua.set(0, 0, 1).applyQuaternion(qW);
+    const flat = _ub.set(ax.x, 0, ax.z);
+    if (flat.lengthSq() < 1e-6) flat.set(1, 0, 0).applyQuaternion(qW).setY(0);
+    if (flat.lengthSq() < 1e-6) flat.set(1, 0, 0);
+    flat.normalize();
+    const h = this.mats[B.weaponR].elements[13] + dy - 0.016 * s;
+    const front = this.wFront * s, back = this.wBack * s;
+    const tipDown = front >= back;
+    const sinA = clamp(h / (tipDown ? front : back), -0.9, 0.9);
+    const cosA = Math.sqrt(1 - sinA * sinA);
+    const want = _uc.copy(flat).multiplyScalar(cosA);
+    want.y = tipDown ? -sinA : sinA;
+    _qc.setFromUnitVectors(ax, want).multiply(qW);
+    qW.slerp(_qc, clamp(weight, 0, 1));
+    bones[B.weaponR].quaternion.copy(qHand.invert()).multiply(qW);
   }
 
   applyDummy() {

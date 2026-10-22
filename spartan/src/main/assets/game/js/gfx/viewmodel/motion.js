@@ -10,13 +10,13 @@
 import { clamp } from '../../core/math.js';
 
 export const RIG = {
-  scale: 0.75,                      // rig metres → vm units
+  scale: 0.6,                       // rig metres → vm units (the strike tip sits 0.92 m out)
   shoulderR: [0.185, -0.215, 0.04],
   shoulderL: [-0.185, -0.215, 0.04],
   upperArm: 0.29,                   // shoulder → elbow
   foreArm: 0.255,                   // elbow → wrist
   wristInGrip: [0.027, 0, 0.075],   // wrist centre in the right hand's grip frame
-  swordReach: 0.584,                // grip centre → sword tip
+  swordReach: 0.594,                // grip centre → sword tip (meshes.js SWORD.tipY)
   slashPlaneZ: -0.55,               // vm units: the tip path plane
   slashHalf: 0.35,                  // vm units: the tip path runs from -half·d to +half·d
 };
@@ -88,17 +88,27 @@ function shapeParam(s) {
   return Math.sign(s) * (1 + 0.55 * Math.tanh((a - 1) / 0.55));
 }
 
-const BIAS = [0.507, -0.862];            // the sword hand sits to the lower right of the tip
-const HAND_C0 = [0.11, -0.14];           // rig metres, screen-plane offset of the hand path
-const HAND_R = 0.25;                     // perpendicular offset strength
-const HAND_Q = 0.42;                     // the hand travels this fraction of the tip's travel
-const MAX_LAT = 0.93;                    // max screen-plane share of the blade (keeps it off edge-on)
+/**
+ * Hand path tuning (rig metres). The hand follows a scaled copy of the tip path around a centre at
+ * the lower right of the view, offset a little perpendicular to the cut toward the arm's side, and
+ * its depth comes from the sword's length. That keeps the fist and forearm in view through the
+ * strike at every phone aspect, with the blade angled into the scene so its flat stays readable.
+ */
+export const SLASH = {
+  handC: [0.19, -0.12],     // screen-plane centre of the hand path
+  handQ: 0.45,              // fraction of the tip's lateral travel the hand follows at the centre
+  handQEnd: 0.22,           // … plus this much more at the path ends (keeps the hand within reach)
+  handPerp: 0.05,           // perpendicular offset toward the arm side (bias)
+  bias: [0.507, -0.862],    // the arm side: lower right
+  maxLat: 0.9,              // max screen-plane share of the blade (keeps it off edge-on)
+  forearm: [0.35, -0.6, 0.7], // where the forearm leaves the fist at guard (picks which edge leads)
+};
 
 /**
  * Sword pose for a slash at path parameter s (see slashParam), in rig space.
- * out = { tip:[3], hand:[3], blade:[3] (unit, grip→tip), motion:[3] (unit tip velocity dir) }.
+ * out = { tip:[3], hand:[3], blade:[3] (unit, grip→tip), motion:[3] (unit tip direction of travel) }.
  */
-export function slashGeometry(dir, s, out, reach = RIG.swordReach) {
+export function slashGeometry(dir, s, out, reach = RIG.swordReach, P = SLASH) {
   const k = RIG.scale;
   const D = -RIG.slashPlaneZ / k;
   const E = RIG.slashHalf / k;
@@ -108,18 +118,19 @@ export function slashGeometry(dir, s, out, reach = RIG.swordReach) {
   const over = Math.max(0, Math.abs(g) - 1);
   // Tip: on the path for |s| ≤ 1; beyond it, curl toward the body and drop a little.
   const tx = g * E * dx;
-  const ty = g * E * dy - over * over * 0.25;
-  const tz = -D + over * 0.55;
-  // Hand: offset perpendicular to the cut, toward the sword side, following the tip partly.
-  const bd = BIAS[0] * dx + BIAS[1] * dy;
-  const ox = HAND_C0[0] + HAND_R * (BIAS[0] - bd * dx);
-  const oy = HAND_C0[1] + HAND_R * (BIAS[1] - bd * dy);
-  let hx = ox + HAND_Q * tx;
-  let hy = oy + HAND_Q * ty;
+  const ty = g * E * dy - over * over * 0.3;
+  const tz = -D + over * 0.6;
+  // Hand: around the lower-right centre, following the tip partly.
+  const bd = P.bias[0] * dx + P.bias[1] * dy;
+  const ox = P.handC[0] + P.handPerp * (P.bias[0] - bd * dx);
+  const oy = P.handC[1] + P.handPerp * (P.bias[1] - bd * dy);
+  const q = P.handQ + P.handQEnd * Math.min(1, g * g);
+  let hx = ox + q * tx;
+  let hy = oy + q * ty;
   let lx = tx - hx;
   let ly = ty - hy;
   let lat = Math.hypot(lx, ly);
-  const maxLat = MAX_LAT * reach;
+  const maxLat = P.maxLat * reach;
   if (lat > maxLat) {
     lx *= maxLat / lat;
     ly *= maxLat / lat;
@@ -133,6 +144,22 @@ export function slashGeometry(dir, s, out, reach = RIG.swordReach) {
   out.blade[0] = lx / reach; out.blade[1] = ly / reach; out.blade[2] = (tz - hz) / reach;
   out.motion[0] = dx; out.motion[1] = dy; out.motion[2] = 0;
   return out;
+}
+
+/**
+ * Which edge leads (+1/-1) for a slash along dir: the side that keeps the forearm leaving the fist
+ * toward the lower right, as at guard. Both xiphos edges are sharp, so either can lead.
+ */
+export function slashEdgeSign(dir, P = SLASH) {
+  const out = createSlashOut();
+  slashGeometry(dir, 0, out, RIG.swordReach, P);
+  const b = out.blade;
+  const m = out.motion;
+  const mb = m[0] * b[0] + m[1] * b[1] + m[2] * b[2];
+  const f = P.forearm;
+  let d = 0;
+  for (let i = 0; i < 3; i++) d += (m[i] - mb * b[i]) * f[i];
+  return d >= 0 ? 1 : -1;
 }
 
 export function createSlashOut() {

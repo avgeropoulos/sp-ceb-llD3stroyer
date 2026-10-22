@@ -21,8 +21,8 @@ varying vec2 vFade;
 void main() {
   float age = clamp(vFade.x, 0.0, 1.0);
   float across = clamp(vFade.y, 0.0, 1.0);
-  float edge = smoothstep(0.0, 0.85, across) * (1.0 - 0.35 * smoothstep(0.9, 1.0, across));
-  float a = uOpacity * pow(1.0 - age, 2.2) * edge * edge;
+  float edge = smoothstep(0.0, 0.8, across) * (1.0 - 0.3 * smoothstep(0.92, 1.0, across));
+  float a = uOpacity * pow(1.0 - age, 1.6) * edge;
   if (a < 0.003) discard;
   gl_FragColor = vec4(uColor * a, a);
 }`;

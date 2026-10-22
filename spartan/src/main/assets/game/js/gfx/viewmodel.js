@@ -15,7 +15,7 @@ import * as THREE from 'three';
 import { TIMING } from '../game/rules.js';
 import { clamp, lerp, wrapAngle, createRng } from '../core/math.js';
 import {
-  RIG, slashTimes, slashParam, slashGeometry, createSlashOut,
+  RIG, slashTimes, slashParam, slashGeometry, createSlashOut, slashEdgeSign,
   thrustCurve, bashCurve, jolt, bump, ramp, easeOutCubic, easeOutQuad, easeInOutSine, smootherstep,
 } from './viewmodel/motion.js';
 import {
@@ -273,14 +273,8 @@ export function createViewmodel(ctx) {
       a.dir = typeof opts.dir === 'number' ? opts.dir : 0;
       a.power = clamp(opts.power ?? 0.6, 0, 1);
       a.dur = slashTm.total;
-      if (kind === 'slash') {
-        // Fix which edge leads for the whole swing (the side that keeps the wrist natural).
-        slashGeometry(a.dir, 0, slashOut, SWORD_REACH);
-        _a.fromArray(slashOut.blade);
-        _b.fromArray(slashOut.motion).addScaledVector(_a, -_b.dot(_a)).normalize();
-        _c.fromArray(RIG.shoulderR).sub(_d.fromArray(slashOut.hand));
-        a.sigma = _b.dot(_c) >= 0 ? 1 : -1;
-      }
+      // Which edge leads is fixed for the whole swing (the side that keeps the wrist natural).
+      if (kind === 'slash') a.sigma = slashEdgeSign(a.dir);
     } else if (kind === 'thrust') a.dur = TIMING.thrust.total;
     else if (kind === 'spearThrust') a.dur = TIMING.spearThrust.total;
     else if (kind === 'bash') a.dur = TIMING.bash.total;
@@ -762,7 +756,7 @@ export function createViewmodel(ctx) {
       trail.hide();
       return false;
     }
-    const win = 0.05;
+    const win = 0.07;
     const t1 = Math.min(a.t, slashTm.tc - 0.025);
     const t0 = Math.max(slashTm.ta, a.t - win);
     if (t1 - t0 < 0.004) {
@@ -792,7 +786,7 @@ export function createViewmodel(ctx) {
       trail.set(i, tb, tt, age);
     }
     trail.commit(n);
-    trail.mesh.material.uniforms.uOpacity.value = 0.12 + 0.14 * (a.power ?? 0.6);
+    trail.mesh.material.uniforms.uOpacity.value = 0.22 + 0.2 * (a.power ?? 0.6);
     return true;
   }
 

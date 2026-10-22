@@ -180,7 +180,7 @@ function buildBody(c) {
       // knee, the bronze greave (open at the top, sprung round the calf), the ankle
       add(sweep(rings([[0.525, 0, 0, 0.004], [0.505, 0.05, 0.053, 0.006], [0.468, 0, 0, 0.008]], x0, 0, k), { segs: S(7, 5), uvFn: cylUv(0.46, 0.53, 0, 0.4) }), t.skin, B['shin' + L]);
       const grT = [[0.505, 0.052, 0.056, 0.012], [0.47, 0.058, 0.064, 0.010], [0.405, 0.06, 0.068, -0.010], [0.32, 0.054, 0.059, -0.013], [0.22, 0.042, 0.044, -0.006], [0.13, 0.035, 0.038, -0.002], [0.112, 0, 0, 0]];
-      add(sweep(rings(sel(c, grT, null, [0, 2, 4, 6]), x0, 0, k), { segs: S(8, 6), uvFn: cylUv(0.11, 0.52) }), 'bronze', B['shin' + L]);
+      add(sweep(rings(sel(c, grT, null, [0, 2, 4, 6]), x0, 0, k), { segs: S(8, 6), uvFn: cylUv(0.11, 0.52) }), 'greave', B['shin' + L]);
       add(sweep(rings(sel(c, [[0.125, 0.028, 0.031, -0.002], [0.092, 0.027, 0.030, 0.0], [0.078, 0, 0, 0.0]], null, [0, 2]), x0, 0, k), { segs: S(7, 5), uvFn: cylUv(0.07, 0.13, 0, 0.4) }), t.skin, B['shin' + L]);
     } else {
       const sk = spec.trousers ? k * 1.14 : k;
@@ -534,9 +534,9 @@ export function bowParts(add, bone, nockBone, o = {}, lo = false) {
 
 /** Rectangular wicker gerron or violin-shaped Persian shield in the grip frame (+Z = facing out). */
 export function gerronParts(add, bone, o, lo = false) {
-  const W = o.width || 0.56, H = o.height || 0.92;
+  const W = o.width || 0.5, H = o.height || 0.8;
   const violin = o.shape === 'violin';
-  const nu = lo ? 3 : 4, nv = lo ? 3 : 6;
+  const nu = lo ? 2 : 4, nv = lo ? 2 : 5;
   const sh = slab(
     (u, v, out) => {
       const y = (v - 0.5) * H;
@@ -561,11 +561,11 @@ export function gerronParts(add, bone, o, lo = false) {
   if (!lo && !violin) {
     for (const yy of [-1, 1]) {
       const pts = [];
-      for (let i = 0; i <= 6; i++) {
-        const x = (i / 6 - 0.5) * W * 0.88;
+      for (let i = 0; i <= 4; i++) {
+        const x = (i / 4 - 0.5) * W * 0.88;
         pts.push([x, yy * (H / 2 - 0.012) + (o.dy || 0), (o.dz ?? 0.05) - (o.curve ?? 0.07) * (x / (W / 2)) ** 2 - (o.thick || 0.022) * 0.5]);
       }
-      add(tube(pts, [[0.012, 0.016]], { segs: 4, capStart: true, capEnd: true }), 'leatherDark', bone, o.M);
+      add(tube(pts, [[0.012, 0.016]], { segs: 3, capStart: true, capEnd: true }), 'leatherDark', bone, o.M);
     }
   }
   // grip bar behind the centre

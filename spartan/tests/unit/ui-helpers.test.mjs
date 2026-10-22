@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Trail, findSwipe, stickVector, swipePower, INPUT, MOTION_TIP } from '../../src/main/assets/game/js/ui/input.js';
-import { roman, groupDigits, clock, subtitleSeconds } from '../../src/main/assets/game/js/ui/hud.js';
+import { roman, groupDigits, clock, subtitleSeconds, phaseFade, curtainOpacity } from '../../src/main/assets/game/js/ui/hud.js';
 import { FIELDS, TEXT } from '../../src/main/assets/game/js/ui/menus.js';
 import { STEPS, suggestSensitivity } from '../../src/main/assets/game/js/ui/training.js';
 import { synthesize, scriptDuration } from '../../src/main/assets/game/js/motion/synth.js';
@@ -92,6 +92,32 @@ test('hud formatting helpers', () => {
   assert.equal(clock(-3), '0:00');
   assert.ok(subtitleSeconds('Come and take them.', 'ΜΟΛΩΝ ΛΑΒΕ') > subtitleSeconds('Come and take them.'));
   assert.ok(subtitleSeconds('x'.repeat(400)) <= 7);
+});
+
+test('phase fades: Day 3 phase C fades 2 s (§13), others none; payload wins', () => {
+  assert.equal(phaseFade({ day: 3, phase: 'C' }), 2);
+  assert.equal(phaseFade({ day: 3, phase: 'A' }), 0);
+  assert.equal(phaseFade({ day: 3, phase: 'B' }), 0);
+  assert.equal(phaseFade({ day: 1, phase: null }), 0);
+  assert.equal(phaseFade({ day: 3, phase: 'B', fade: 1.5 }), 1.5);
+  assert.equal(phaseFade(null), 0);
+});
+
+test('curtainOpacity: in, hold, out, then clear', () => {
+  const [a, h, o] = [0.5, 1.2, 1.1];
+  assert.equal(curtainOpacity(-0.1, a, h, o), 0);
+  assert.equal(curtainOpacity(0, a, h, o), 0);
+  assert.ok(curtainOpacity(0.25, a, h, o) > 0.4 && curtainOpacity(0.25, a, h, o) < 0.6);
+  assert.equal(curtainOpacity(0.5, a, h, o), 1);
+  assert.equal(curtainOpacity(1.0, a, h, o), 1, 'covers the view when waves changes the world (BEHIND_CARD = 1 s)');
+  assert.ok(curtainOpacity(2.25, a, h, o) > 0.3 && curtainOpacity(2.25, a, h, o) < 0.7);
+  assert.equal(curtainOpacity(a + h + o, a, h, o), 0);
+  let prev = 0;
+  for (let t = 0; t <= a; t += 0.01) {
+    const v = curtainOpacity(t, a, h, o);
+    assert.ok(v >= prev - 1e-12);
+    prev = v;
+  }
 });
 
 test('settings UI covers every §9 field', () => {

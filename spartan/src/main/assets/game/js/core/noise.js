@@ -415,14 +415,17 @@ export function createNoise(seed = 1) {
 
   /**
    * Fast tileable Worley field: one jittered point per cell, cellsX × cellsY cells across the
-   * texture (unequal counts make elongated cells). Distances are in mean-cell units.
-   * @returns {{ f1: Float32Array, f2: Float32Array, id: Float32Array }}
+   * texture (unequal counts make elongated cells). Distances are in mean-cell units. With
+   * `vectors`, dx/dy hold the offset from each pixel to its nearest feature point (same units).
+   * @returns {{ f1: Float32Array, f2: Float32Array, id: Float32Array, dx?: Float32Array, dy?: Float32Array }}
    */
-  function worleyField(size, cellsX, cellsY = cellsX, jitter = 0.9, salt = 0) {
+  function worleyField(size, cellsX, cellsY = cellsX, jitter = 0.9, salt = 0, vectors = false) {
     const n = size * size;
     const f1o = new Float32Array(n);
     const f2o = new Float32Array(n);
     const ido = new Float32Array(n);
+    const dxo = vectors ? new Float32Array(n) : null;
+    const dyo = vectors ? new Float32Array(n) : null;
     const nc = cellsX * cellsY;
     const ox = new Float32Array(nc);
     const oy = new Float32Array(nc);
@@ -462,6 +465,8 @@ export function createNoise(seed = 1) {
         let d1 = 1e9;
         let d2 = 1e9;
         let best = 0;
+        let bx = 0;
+        let by = 0;
         for (let dj = 0; dj < 3; dj++) {
           const rb = dj === 0 ? r0 : dj === 1 ? r1 : r2;
           const ey = dj === 0 ? e0 : dj === 1 ? e1 : e2;
@@ -475,6 +480,8 @@ export function createNoise(seed = 1) {
               d2 = d1;
               d1 = d;
               best = c;
+              bx = dx;
+              by = dy;
             } else if (d < d2) {
               d2 = d;
             }
@@ -484,9 +491,13 @@ export function createNoise(seed = 1) {
         f1o[k] = Math.sqrt(d1);
         f2o[k] = Math.sqrt(d2);
         ido[k] = cid[best];
+        if (vectors) {
+          dxo[k] = bx;
+          dyo[k] = by;
+        }
       }
     }
-    return { f1: f1o, f2: f2o, id: ido };
+    return vectors ? { f1: f1o, f2: f2o, id: ido, dx: dxo, dy: dyo } : { f1: f1o, f2: f2o, id: ido };
   }
 
   return { noise2, noise3, fbm2, ridge2, warp2, pnoise2, pfbm2, pridge2, worley2, hash2, fbmField, worleyField };

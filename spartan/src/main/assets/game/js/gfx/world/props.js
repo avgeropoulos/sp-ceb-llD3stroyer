@@ -289,7 +289,7 @@ export function buildVegetation(layout, grassMat, scrubMat, cliffSpots, quality)
     const y = layout.terrainHeight(x, z);
     if (y < SEA_LEVEL + 0.2) return;
     const dry = R.next();
-    const tint = [lerp(0.95, 0.72, dry * 0.5), lerp(0.92, 0.82, dry), lerp(0.75, 0.6, dry)];
+    const tint = [lerp(1, 0.86, dry * 0.5), lerp(0.98, 0.9, dry), lerp(0.94, 0.8, dry)];
     grass.push(placeCard(R, x, y - 0.03, z, 0.45 * s + R.next() * 0.3 * s, 0.35 * s + R.next() * 0.35 * s, 3, tint, true, 1));
   };
   // Along the cliff foot and the shore lip, and sparse on the floor.
@@ -524,9 +524,9 @@ export function buildSprings(layout, poolMat, crustMat, steamMat, quality) {
     pg.translate(s.x, s.level, s.z);
     withAttributes(pg, { color: [1, 1, 1] });
     pools.push(pg);
-    // Crust decal draped on the terrain.
-    const n = 12;
-    const R = s.crust;
+    // Crust decal draped on the terrain, reaching further downhill (+x, toward the sea).
+    const n = 16;
+    const R = s.crust * 1.35;
     const pos = [];
     const uv = [];
     const index = [];
@@ -534,8 +534,9 @@ export function buildSprings(layout, poolMat, crustMat, steamMat, quality) {
       for (let i = 0; i <= n; i++) {
         const u = i / n;
         const v = j / n;
-        const x = s.x + (u - 0.5) * 2 * R;
-        const z = s.z + (v - 0.5) * 2 * R * 1.25;
+        // The texture's vent is at u = 0.33.
+        const x = s.x + (u - 0.33) * 3 * R;
+        const z = s.z + (v - 0.5) * 2 * R;
         pos.push(x, Math.max(layout.terrainHeight(x, z), s.level) + 0.025, z);
         uv.push(u, v);
       }
@@ -559,7 +560,7 @@ export function buildSprings(layout, poolMat, crustMat, steamMat, quality) {
   crustMesh.receiveShadow = true;
   crustMesh.renderOrder = -5;
   // Steam: GPU-animated camera-facing quads, one instanced draw.
-  const per = quality === 'low' ? 10 : quality === 'high' ? 22 : 16;
+  const per = quality === 'low' ? 14 : quality === 'high' ? 34 : 26;
   const count = per * layout.springs.length;
   const quad = new THREE.PlaneGeometry(1, 1);
   const ig = new THREE.InstancedBufferGeometry();
@@ -617,22 +618,22 @@ export function makeSteamMaterial(map, uniforms) {
       varying float vAlpha;
       varying float vLit;
       void main() {
-        float life = 4.0 + iSeed.y * 3.0;
+        float life = 4.5 + iSeed.y * 3.5;
         float age = fract( uTime / life + iSeed.x );
         vec3 p = iBase.xyz;
-        float rise = age * ( 1.8 + iSeed.z * 1.4 );
-        p.y += 0.15 + rise;
-        p.xz += uWind * rise * rise * 0.6;
-        p.x += sin( uTime * 0.6 + iSeed.w * 6.283 ) * 0.3 * age;
-        p.z += cos( uTime * 0.45 + iSeed.y * 6.283 ) * 0.3 * age;
-        float size = mix( 0.4, 2.6, sqrt( age ) ) * ( 0.7 + iSeed.z * 0.6 ) * iBase.w;
+        float rise = age * ( 2.4 + iSeed.z * 2.2 );
+        p.y += 0.1 + rise;
+        p.xz += uWind * rise * rise * 0.45;
+        p.x += sin( uTime * 0.6 + iSeed.w * 6.283 ) * 0.35 * age;
+        p.z += cos( uTime * 0.45 + iSeed.y * 6.283 ) * 0.35 * age;
+        float size = mix( 0.5, 3.2, sqrt( age ) ) * ( 0.7 + iSeed.z * 0.6 ) * iBase.w;
         vec4 mv = viewMatrix * vec4( p, 1.0 );
         float rot = iSeed.w * 6.283 + uTime * 0.15 * ( iSeed.x - 0.5 );
         vec2 c = ( uv - 0.5 ) * size;
         mv.xy += mat2( cos( rot ), sin( rot ), -sin( rot ), cos( rot ) ) * c;
         gl_Position = projectionMatrix * mv;
         vUv = uv;
-        vAlpha = smoothstep( 0.0, 0.15, age ) * ( 1.0 - smoothstep( 0.35, 1.0, age ) ) * iBase.w;
+        vAlpha = smoothstep( 0.0, 0.12, age ) * ( 1.0 - smoothstep( 0.3, 1.0, age ) ) * iBase.w;
         // Puffs between the eye and the sun glow (forward scattering).
         vec3 toCam = normalize( cameraPosition - p );
         vLit = 0.55 + 0.45 * max( 0.0, -dot( toCam, uSunDir ) );
@@ -648,7 +649,7 @@ export function makeSteamMaterial(map, uniforms) {
       void main() {
         vec4 t = texture2D( map, vUv );
         vec3 col = mix( uShade, uLight, vLit );
-        gl_FragColor = vec4( col, t.a * vAlpha * 0.5 );
+        gl_FragColor = vec4( col, t.a * vAlpha * 0.78 );
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }

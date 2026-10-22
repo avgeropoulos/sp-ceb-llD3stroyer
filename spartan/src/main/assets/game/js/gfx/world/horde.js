@@ -156,15 +156,11 @@ export function buildHorde(layout, o) {
     fog: {},
     extra: (sh) => {
       sh.uniforms.wTime = o.time;
-      sh.vertexShader = `attribute float part;\nuniform float wTime;\n${sh.vertexShader}`
+      sh.vertexShader = `attribute float part;\nuniform float wTime;\nvarying vec3 vMan;\n${sh.vertexShader}`
         .replace(
           '#include <color_vertex>',
           `#include <color_vertex>
-          #ifdef USE_INSTANCING_COLOR
-            vec3 skin = vec3( 0.28, 0.17, 0.11 );
-            vec3 wicker = mix( vec3( 0.3, 0.22, 0.12 ), instanceColor.rgb, fract( instanceMatrix[ 3 ].x * 3.7 + instanceMatrix[ 3 ].z * 1.3 ) * 0.6 );
-            vColor.rgb = part < 0.5 ? instanceColor.rgb : ( part < 1.5 ? mix( instanceColor.rgb, skin, 0.55 ) : wicker );
-          #endif`,
+          vMan = vec3( part, position.y, fract( instanceMatrix[ 3 ].x * 3.7 + instanceMatrix[ 3 ].z * 1.3 ) );`,
         )
         .replace(
           '#include <begin_vertex>',
@@ -176,6 +172,20 @@ export function buildHorde(layout, o) {
             transformed.y += abs( sin( wTime * 2.1 + ph ) ) * 0.025;
           }`,
         );
+      // Per-fragment colouring: trousers or bare legs below the hem, a face under the cap,
+      // wicker shields tinted toward the contingent's colour.
+      sh.fragmentShader = `varying vec3 vMan;\n${sh.fragmentShader}`.replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+        {
+          vec3 skin = vec3( 0.28, 0.17, 0.11 );
+          vec3 tunic = diffuseColor.rgb;
+          vec3 legs = mix( tunic * 0.45, vec3( 0.1, 0.08, 0.06 ), vMan.z );
+          vec3 cap = mix( tunic, vec3( 0.55, 0.5, 0.42 ), 0.4 );
+          vec3 wicker = mix( vec3( 0.3, 0.22, 0.12 ), tunic, vMan.z * 0.6 );
+          diffuseColor.rgb = vMan.x < 0.5 ? ( vMan.y < 0.74 ? legs : tunic ) : ( vMan.x < 1.5 ? ( vMan.y < 1.58 ? skin : cap ) : wicker );
+        }`,
+      );
     },
   });
   const bodies = new THREE.InstancedMesh(soldierGeometry(), bodyMat, n);
@@ -226,14 +236,15 @@ export function buildHorde(layout, o) {
         vec3 toCam = cameraPosition - P;
         float dist = length( toCam );
         vec3 side = normalize( cross( axis, toCam / dist ) );
-        P += side * position.x * max( 0.035, dist * 0.0021 );
+        // About half a pixel wide in the distance (MSAA resolves it to a fine hairline).
+        P += side * position.x * max( 0.03, dist * 0.0011 );
         vT = position.y;
         vec4 mvPosition = viewMatrix * vec4( P, 1.0 );
         gl_Position = projectionMatrix * mvPosition;`,
       );
       sh.fragmentShader = `uniform vec3 wShaft;\nuniform vec3 wTip;\nvarying float vT;\n${sh.fragmentShader}`.replace(
         '#include <color_fragment>',
-        '#include <color_fragment>\ndiffuseColor.rgb = vT > 0.9 ? wTip : wShaft;',
+        '#include <color_fragment>\ndiffuseColor.rgb = vT > 0.92 ? wTip : wShaft;',
       );
     },
   });

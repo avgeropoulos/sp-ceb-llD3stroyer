@@ -63,6 +63,21 @@ export function buildSeaGeometry(layout) {
   return g;
 }
 
+// Wave normals can tilt a reflection below the horizon, where the environment holds the land
+// proxies: water never mirrors what is beneath it, so fold such rays back up over the horizon.
+const ENV_REFLECT = 'reflectVec = transformDirectionByInverseViewMatrix( reflectVec, viewMatrix );';
+function seaEnvPars() {
+  const src = THREE.ShaderChunk.envmap_physical_pars_fragment;
+  const out = src.replace(
+    ENV_REFLECT,
+    `${ENV_REFLECT}
+      reflectVec.y = abs( reflectVec.y ) * 0.6 + 0.012;
+      reflectVec = normalize( reflectVec );`,
+  );
+  if (out === src) console.warn('world: sea reflection patch did not apply');
+  return out;
+}
+
 /**
  * Water material: three scrolling layers of the wave normal map, colour by depth, alpha from
  * depth and Fresnel (shallows show the seabed, grazing views mirror the sky).
@@ -93,6 +108,7 @@ export function makeWaterMaterial(normalTex, time, patch) {
         '#include <begin_vertex>\nvDepth = depth;',
       );
       sh.fragmentShader = `varying float vDepth;\nuniform float wTime;\nuniform vec3 wShallow;\nuniform vec3 wDeep;\n${sh.fragmentShader}`
+        .replace('#include <envmap_physical_pars_fragment>', seaEnvPars())
         .replace(
           '#include <color_fragment>',
           `#include <color_fragment>

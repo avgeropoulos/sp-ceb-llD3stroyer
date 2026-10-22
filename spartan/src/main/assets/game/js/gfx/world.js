@@ -11,6 +11,7 @@ import { damp } from '../core/math.js';
 import { createLayout, WALL, CLIFF_X } from './world/layout.js';
 import { createSky, PRESETS } from './world/sky.js';
 import { patchMaterial } from './world/shaders.js';
+import { CUTOUT_ALPHA } from './textures.js';
 import { buildTerrain } from './world/terrain.js';
 import { buildCliff } from './world/cliff.js';
 import { buildSeaGeometry, makeWaterMaterial, buildFoamGeometry, buildMountainGeometry } from './world/sea.js';
@@ -83,11 +84,11 @@ export function createWorld(ctx) {
   patch(wallMat, { key: 'wall', fog: {}, ao: true });
   const a2c = quality !== 'low';
   const grassMat = new THREE.MeshStandardMaterial({
-    name: 'grass', map: tex.get('grass'), alphaTest: 0.42, alphaToCoverage: a2c, side: THREE.DoubleSide, roughness: 1, metalness: 0, vertexColors: true,
+    name: 'grass', map: tex.get('grass'), alphaTest: CUTOUT_ALPHA, alphaToCoverage: a2c, side: THREE.DoubleSide, roughness: 1, metalness: 0, vertexColors: true,
   });
   patch(grassMat, { key: 'grass', fog: {}, ao: true, wind: { time, amp: 1 } });
   const scrubMat = new THREE.MeshStandardMaterial({
-    name: 'scrub', map: tex.get('scrub'), alphaTest: 0.42, alphaToCoverage: a2c, side: THREE.DoubleSide, roughness: 0.95, metalness: 0, vertexColors: true,
+    name: 'scrub', map: tex.get('scrub'), alphaTest: CUTOUT_ALPHA, alphaToCoverage: a2c, side: THREE.DoubleSide, roughness: 0.95, metalness: 0, vertexColors: true,
   });
   patch(scrubMat, { key: 'scrub', fog: {}, ao: true, wind: { time, amp: 0.45 } });
   const seaMat = makeWaterMaterial(tex.get('waterNormal'), time, patch);
@@ -195,7 +196,7 @@ export function createWorld(ctx) {
     const lg = sc.g * li * 0.32 + a[1] * 2.2;
     const lb = sc.b * li * 0.32 + a[2] * 2.2;
     lit.shaft.value.setRGB(0.09 * lr, 0.065 * lg, 0.045 * lb);
-    lit.tip.value.setRGB(0.32 * lr, 0.3 * lg, 0.27 * lb);
+    lit.tip.value.setRGB(0.2 * lr, 0.19 * lg, 0.17 * lb);
     lit.dust.value.setRGB(0.3 * lr, 0.25 * lg, 0.19 * lb);
     lit.dustAlpha.value = 0.08 + p.haze * 0.08;
     lit.light.value.setRGB(0.9 * lr, 0.9 * lg, 0.9 * lb);

@@ -81,7 +81,7 @@ function corinthian(c, crestTile) {
     if (i > iNasal) return mid < eyeIn;
     return false;
   };
-  add(sweep(R, { thetas: th, skip, uvFn: (u, v, t, i, p) => [0.5 + t / (2 * PI), (p[1] + 0.13) / 0.34] }), 'bronze', B.head, M);
+  add(sweep(R, { thetas: th, skip, uvFn: (u, v, t, i, p) => [0.5 + t / (2 * PI), (p[1] + 0.13) / 0.34] }), 'helmet', B.head, M);
   // horsehair crest set straight on the bowl, front to nape, its tail hanging down the back
   const pts = [], rad = [];
   const crest = c.lo
@@ -411,7 +411,7 @@ export function variantFor(kind, opts, seed) {
           skirt(c, robe, 1.035, 0.2, 0.162, 0.27, { thick: 0.008, flare: 0.12, depth: 0.76 });
           persianBody(c, { belt: 'leather' });
           spearParts(c.add, B.weaponR, { length: 2.05, grip: 0.82, butt: 'pomegranate', headTile: 'iron', buttTile: gold ? 'gold' : 'silver', headLen: 0.23, shaftR: 0.0135 }, mat(c.U.weaponR), c.lo);
-          gerronParts(c.add, B.itemL, { M: mat(c.U.itemL), shape: 'violin', width: 0.5, height: 0.86 }, c.lo);
+          gerronParts(c.add, B.itemL, { M: mat(c.U.itemL), shape: 'violin', width: 0.48, height: 0.82 }, c.lo);
           // bow case on the back
           gorytosParts(c, B.chest, [0.06, 1.22, -0.16], [0, PI / 2, 0.5], { arrows: true });
         },

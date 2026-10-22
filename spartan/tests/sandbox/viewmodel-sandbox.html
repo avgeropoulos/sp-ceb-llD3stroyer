@@ -111,6 +111,7 @@
 
     const state = { weapon: 'sword', hasSpear: true, raise: 0, walk: false };
     function setup(o = {}) {
+      if (o.reset) vm.reset();
       if (o.weapon) state.weapon = o.weapon;
       if (typeof o.hasSpear === 'boolean') state.hasSpear = o.hasSpear;
       if (typeof o.raise === 'number') state.raise = o.raise;
@@ -122,7 +123,6 @@
         vm.clearStuckArrows();
         for (let i = 0; i < o.arrows; i++) vm.addStuckArrow();
       }
-      if (o.reset) vm.reset();
     }
     const emit = (name, payload) => ctx.events.emit(name, payload);
 
@@ -183,7 +183,25 @@
       ov.visible = wasVis;
     }
 
-    window.__vm = { ctx, vm, emit, setup, run, stats, player, state, orbit };
+    /** One deterministic scenario (used by the e2e scripts): reset, set up, settle, act, advance `at` s of pdt. */
+    function shot(s) {
+      vm.reset();
+      Object.assign(ctx.time, { hitStop: 0, scale: 1, playerRealtime: false });
+      player.pos.set(0, 0, 0);
+      player.yaw = 0;
+      player.pitch = -0.04;
+      setup(Object.assign({ weapon: 'sword', hasSpear: true, raise: 0, walk: false, arrows: 0, overlay: { helmet: false, vignette: 0, hurt: 0 } }, s.setup || {}));
+      ctx.step(s.settle || 45, 1 / 60);
+      if (s.after) setup(s.after);
+      for (const k of s.play || []) vm.play(k);
+      if (s.settle2) run(s.settle2);
+      for (const [n, p] of s.events || []) emit(n, p);
+      run(s.at || 0);
+      if (s.orbit) orbit(s.orbit);
+      return vm.debug ? JSON.stringify({ shown: vm.debug.shown, arm: vm.debug.arm }) : '';
+    }
+
+    window.__vm = { ctx, vm, emit, setup, run, stats, player, state, orbit, shot };
 
     // URL-driven scenario (for shot.mjs).
     setup({

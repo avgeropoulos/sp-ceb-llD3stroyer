@@ -111,7 +111,7 @@ export function createLayout(seed = 480) {
       const far = smoothstep(-60, -200, z);
       h += N.fbm2(x * 0.012, z * 0.008, 3) * 0.8 * far;
       const run = -60 - z;
-      h += run < 450 ? 0.017 * run * smoothstep(0, 60, run) : 7.6 + 0.008 * (run - 450);
+      h += run < 450 ? 0.022 * run * smoothstep(0, 60, run) : 9.9 + 0.01 * (run - 450);
     }
     if (z < -1000) h += smoothstep(-1000, -1600, z) * (40 + 25 * N.noise2(x * 0.006, z * 0.004));
     h += talus(x, z, cx);

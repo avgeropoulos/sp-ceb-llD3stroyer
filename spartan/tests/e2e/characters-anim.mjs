@@ -31,6 +31,7 @@ try {
         const feet = [v.mesh.skeleton.bones.find((b) => b.name === 'footL'), v.mesh.skeleton.bones.find((b) => b.name === 'footR')];
         const prev = [new THREE.Vector3(), new THREE.Vector3()];
         const p = new THREE.Vector3();
+        const s = v._animator.s;
         let maxSlip = 0, sum = 0, n = 0, maxSink = 0;
         for (let f = 0; f < 240; f++) {
           v.root.position.z += speed * dt;
@@ -38,7 +39,7 @@ try {
           v.root.updateMatrixWorld(true);
           feet.forEach((b, i) => {
             for (const off of [[0, -0.085, 0.13], [0, -0.085, -0.05]]) {
-              p.set(off[0], off[1], off[2]).applyMatrix4(b.matrixWorld);
+              p.set(off[0] * s, off[1] * s, off[2] * s).applyMatrix4(b.matrixWorld);
               if (off[2] < 0) {
                 maxSink = Math.min(maxSink, p.y);
                 continue;
