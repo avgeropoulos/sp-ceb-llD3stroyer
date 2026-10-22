@@ -612,7 +612,15 @@ export function createViewmodel(ctx) {
     const maxD = L1 + L2 - 0.003;
     const minD = Math.abs(L1 - L2) + 0.06;
     if (d > maxD) {
-      outS.addScaledVector(_a, (d - maxD) / d); // the shoulder protracts (torso twist), unseen
+      // The shoulder protracts (torso twist and lean), mostly forward and sideways rather than up,
+      // so a reach overhead doesn't lift the upper arm into view.
+      _b.copy(_a).divideScalar(d);
+      if (_b.y > 0) _b.y *= 0.25;
+      _b.normalize();
+      const vu = _a.dot(_b);
+      const disc = vu * vu - d * d + maxD * maxD;
+      if (disc >= 0) outS.addScaledVector(_b, vu - Math.sqrt(disc));
+      else outS.addScaledVector(_a, (d - maxD) / d);
       d = maxD;
     } else if (d < minD) {
       outS.addScaledVector(_a, -(minD - d) / Math.max(d, 1e-4));

@@ -736,7 +736,7 @@ html, body {
   position: absolute;
   left: calc(var(--safe-l) + 12px);
   top: calc(var(--safe-t) + 74px);
-  width: 210px;
+  width: 260px;
   padding: 6px 8px;
   background: rgba(10, 6, 3, 0.7);
   border: 1px solid var(--edge-soft);

@@ -219,7 +219,7 @@ function cloak(c) {
       out[1] = y;
       out[2] = Math.cos(a) * rz * bulk - 0.022 - 0.012 * w;
     },
-    S(6, 4), S(4, 2), 0.01, { flip: true, backUv: (u, v) => [u, v] },
+    S(6, 4), S(4, 2), 0.01, { flip: true, backUv: (u, v) => [u, v], noEdges: true },
   );
   add(pt, 'crimson', B.cloak, null, { boneFn: (p) => (p.y > 1.43 * s ? B.chest : B.cloak) });
 }

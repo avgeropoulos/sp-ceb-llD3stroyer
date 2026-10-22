@@ -307,7 +307,7 @@ export function buildHead(c, o) {
         out[1] = y;
         out[2] = Math.cos(a) * r * 1.0 - 0.025 - (1 - v) * 0.02;
       },
-      S(4, 2), S(2, 1), 0.015, { flip: true, noEdges: c.lo },
+      S(4, 2), S(2, 1), 0.015, { flip: true, noEdges: true },
     );
     add(locks, 'hair', B.neck, M, { boneFn: (p) => (p.y > hp[1] * c.s - 0.005 ? B.head : B.neck) });
   }
