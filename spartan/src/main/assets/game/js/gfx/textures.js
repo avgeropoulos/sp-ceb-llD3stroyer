@@ -739,9 +739,9 @@ function genCliff(S, N, R) {
   const cav = blur(h, S, Math.max(1, Math.round(5 * px2)));
   const px = new Uint8ClampedArray(n * 4);
   const c = [0, 0, 0];
-  const grey = [174, 170, 162];
-  const buff = [186, 175, 152];
-  const cream = [198, 188, 166];
+  const grey = [156, 153, 146];
+  const buff = [170, 159, 138];
+  const cream = [184, 174, 152];
   const grime = [86, 84, 80];
   const ochre = [170, 124, 80];
   const lichenW = [196, 196, 186];

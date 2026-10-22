@@ -21,8 +21,11 @@ const t0 = Date.now();
 const l = await launch();
 try {
   const page = await l.newPage({ width: 844, height: 390, mobile: true });
+  // SwiftShader boots slower than a phone: keep index.html's 12 s watchdog from replacing #overlay.
+  await page.addInitScript(() => { window.__booted = true; });
   await page.goto(`${l.game}?manual=1&seed=3&quality=low&control=touch`);
   await page.waitForFunction(() => window.__game && window.__game.ready, null, { timeout: 180000 });
+  console.log(`booted in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
   const cdp = await page.context().newCDPSession(page);
   const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', {
     type, touchPoints: pts.map((p, i) => Object.assign({ id: p.id ?? i + 1, radiusX: 4, radiusY: 4, force: 1 }, p)),

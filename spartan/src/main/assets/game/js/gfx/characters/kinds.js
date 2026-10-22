@@ -43,8 +43,8 @@ function corinthian(c, crestTile) {
   // columns: dense across the face so the eye holes, nasal and cheek slit are real openings
   const th = c.lo
     ? [-PI, -2.0, -1.1, -0.55, -0.15, 0, 0.15, 0.55, 1.1, 2.0, PI]
-    : [-PI, -2.3, -1.65, -1.1, -0.6, -0.17, 0, 0.17, 0.6, 1.1, 1.65, 2.3, PI];
-  const eyeOut = c.lo ? 0.55 : 0.6, eyeIn = c.lo ? 0.15 : 0.17;
+    : [-PI, -2.3, -1.65, -1.1, -0.62, -0.38, -0.17, 0, 0.17, 0.38, 0.62, 1.1, 1.65, 2.3, PI];
+  const eyeOut = c.lo ? 0.55 : 0.62, eyeIn = c.lo ? 0.15 : 0.17;
   const near = (t, a) => Math.abs(Math.abs(t) - a) < 0.02;
   const ringsH = [
     { y: 0.198, rx: 0, rz: 0, z: -0.014 },
@@ -54,15 +54,15 @@ function corinthian(c, crestTile) {
     // brow: a raised ridge over the eyes
     { y: 0.066, rx: 0.094, rz: 0.121, z: -0.003, shape: (t) => 1 + 0.03 * Math.max(0, Math.cos(t)) ** 3 },
     // top of the eye openings; the outer corners drop (almond eyes)
-    { y: 0.056, rx: 0.092, rz: 0.121, z: 0.0, fn: (t, p) => { if (near(t, eyeOut)) p[1] -= 0.013; } },
+    { y: 0.056, rx: 0.092, rz: 0.121, z: 0.0, fn: (t, p) => { if (near(t, eyeOut)) p[1] -= 0.014; if (near(t, 0.38)) p[1] += 0.003; } },
     // bottom of the eye openings / middle of the nasal
-    { y: 0.02, rx: 0.09, rz: 0.123, z: 0.004, fn: (t, p) => { if (near(t, eyeOut)) p[1] += 0.008; if (near(t, eyeIn)) p[1] -= 0.006; } },
+    { y: 0.02, rx: 0.09, rz: 0.123, z: 0.004, fn: (t, p) => { if (near(t, eyeOut)) p[1] += 0.012; if (near(t, 0.38)) p[1] += 0.002; if (near(t, eyeIn)) p[1] -= 0.008; } },
     // end of the nasal; the cheek pieces start
     { y: -0.014, rx: 0.088, rz: 0.122, z: 0.008, lo: false },
-    { y: -0.062, rx: 0.087, rz: 0.116, z: 0.012, shape: (t) => 1 - 0.05 * Math.max(0, Math.cos(t)) ** 2 },
+    { y: -0.062, rx: 0.083, rz: 0.115, z: 0.012, shape: (t) => 1 - 0.06 * Math.max(0, Math.cos(t)) ** 2 },
     {
       // lower edge: cheek pieces to the jaw, a notch below the ear, a flared neck guard
-      y: -0.104, rx: 0.082, rz: 0.108, z: 0.016,
+      y: -0.104, rx: 0.074, rz: 0.106, z: 0.016,
       fn: (t, p) => {
         const a = Math.abs(t);
         p[1] += 0.022 * Math.exp(-(((a - 1.45) / 0.3) ** 2)) - 0.03 * smooth(1.8, 2.7, a);
@@ -227,7 +227,7 @@ function cloak(c) {
 /** Linothorax shoulder pieces (epomides): strapped from the back over each shoulder to the chest. */
 function epomides(c) {
   const { add, S, bulk, torsoBone } = c;
-  const path = [[1.33, -0.098], [1.415, -0.082], [1.462, -0.04], [1.479, 0.0], [1.466, 0.04], [1.425, 0.082], [1.35, 0.108]];
+  const path = [[1.33, -0.096], [1.415, -0.082], [1.462, -0.04], [1.479, -0.004], [1.466, 0.036], [1.425, 0.074], [1.35, 0.1]];
   const at = (u, out) => {
     const f = u * (path.length - 1), i = Math.min(path.length - 2, Math.floor(f)), t = f - i;
     out[1] = path[i][0] + (path[i + 1][0] - path[i][0]) * t;
@@ -237,11 +237,12 @@ function epomides(c) {
     const pt = slab(
       (u, v, out) => {
         at(u, out);
-        const w = 0.046 + 0.008 * Math.sin(u * PI);
-        out[0] = k * (0.108 + (v - 0.5) * 2 * w) * bulk;
+        const top = Math.sin(u * PI);
+        const w = 0.045 + 0.022 * top;
+        out[0] = k * (0.118 + 0.022 * top + (v - 0.5) * 2 * w) * bulk;
         out[2] *= bulk;
-        // the strap's outer edge droops over the deltoid at the top
-        out[1] -= 0.018 * v * Math.sin(u * PI) * (k > 0 ? 1 : 1);
+        // the outer edge drops over the shoulder joint
+        out[1] += 0.008 * top - 0.03 * v * v * top;
       },
       S(6, 3), 1, 0.01, { flip: k < 0, noEdges: c.lo },
     );

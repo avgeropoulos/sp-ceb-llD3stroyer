@@ -65,6 +65,7 @@ export function buildCliff(layout, material) {
   const slopeSpots = [];
   const crestSpots = [];
   const ys = new Float32Array(nRows);
+  const band = new Float32Array(LEDGES.length + 1);
 
   for (let c = 0; c < nCols; c++) {
     const z = zs[c];
@@ -82,28 +83,35 @@ export function buildCliff(layout, material) {
     for (let u = 0; u < UPPER.length; u++) ys[r++] = upperFrom + (hTop - upperFrom) * UPPER[u];
     ys[r++] = hTop + 7;
     ys[r++] = hTop + 15;
+    // Each bed band (between two ledges) is a near-vertical slab with its own outline along z:
+    // broad buttresses and squared-off blocks. Bands step back at every ledge.
+    for (let k = 0; k < band.length; k++) {
+      const a = N.fbm2(z * 0.045 + k * 13.7, k * 3.1, 3);
+      const b = N.fbm2(z * 0.15 + k * 5.3, k * 7.7 + 40, 2) * 2.4 + 0.5;
+      const bq = Math.floor(b);
+      band[k] = (1.15 * a + 0.55 * (bq + smoothstep(0.7, 1, b - bq))) * (k === 0 ? 0.3 : 1);
+    }
     let arc = 0;
     let px = 0;
     let py = 0;
     for (r = 0; r < nRows; r++) {
       const y = ys[r];
-      let s = Math.max(0, y) * 0.022;
+      let s = Math.max(0, y) * 0.03;
+      let off = band[0];
       for (let k = 0; k < LEDGES.length; k++) {
         const ly = LEDGES[k] + dip;
         if (ly > hWall) break;
-        s += setbacks[k] * smoothstep(ly - 0.2, ly + 0.2, y);
-        // Hard beds stand out a little over the soft notch beneath them (a lip, then a straight face).
-        const t = (y - ly) / 3.0;
-        if (t > 0 && t < 1) s -= 0.3 * smoothstep(0, 0.12, t) * (1 - smoothstep(0.45, 1, t)) * smoothstep(0.5, 2, y);
+        const w = smoothstep(ly - 0.22, ly + 0.22, y);
+        s += setbacks[k] * w;
+        off += (band[k + 1] - band[k]) * w;
+        // A hard bed's lip throws a crisp shadow line just above each ledge.
+        const t = (y - ly) / 1.4;
+        if (t > 0 && t < 1) s -= 0.22 * smoothstep(0, 0.15, t) * (1 - smoothstep(0.4, 1, t));
       }
+      s += off;
       s += gully * smoothstep(1.5, 9, y);
-      // Blocky masses: quantised noise gives flat faces with sharp vertical edges.
-      const bn = N.fbm2(z * 0.055 + 17, y * 0.03 + Math.floor((y + 1) / 4.5) * 0.37, 2) * 3.2;
-      const bq = Math.floor(bn);
-      s += 1.1 * (bq + smoothstep(0.75, 1, bn - bq)) * smoothstep(1, 5, y);
-      // Relief: vertically drawn-out masses (rain-carved), and smaller irregularity.
-      s += 0.85 * N.fbm2(z * 0.085 + 3, y * 0.024, 3) * smoothstep(1, 6, y);
-      s += 0.4 * N.fbm2(z * 0.26, y * 0.2, 3) * smoothstep(0, 2.5, y);
+      // The slab faces are not quite planar.
+      s += 0.32 * N.fbm2(z * 0.28, y * 0.16, 2) * smoothstep(0, 2.5, y);
       // The foot never juts out over the pass (the x = −9 plane collider stands for it).
       if (y < 7) s = smax(s, -0.35 - smoothstep(2, 7, y), 0.35);
       if (y > hWall) s += (y - hWall) / 1.2 + 6 * N.fbm2(z * 0.03, y * 0.03 + 4, 2) * smoothstep(hWall, hWall + 20, y);

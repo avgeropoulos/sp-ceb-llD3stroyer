@@ -16,12 +16,14 @@ const DEG = Math.PI / 180;
  */
 /** The Sky shader's radiance is scaled by this so the scene sits at ordinary light levels. */
 export const SKY_SCALE = 0.2;
+/** Colour saturation of the sky as captured into the environment map. */
+export const ENV_SATURATION = 0.5;
 
 export const PRESETS = {
   dawn: { elev: 3.5, az: [0.5, 0.87], turbidity: 6.5, rayleigh: 2.6, mie: 0.0062, mieG: 0.85, exposure: 2.4, fog: 0.0009, sun: 2.6, hemi: 0.32, env: 0.85, clouds: 0.12, cloudDensity: 0.45, haze: 0.9 },
-  morning: { elev: 22, az: [0.36, 0.93], turbidity: 4.4, rayleigh: 1.5, mie: 0.0048, mieG: 0.82, exposure: 1.05, fog: 0.00072, sun: 3.3, hemi: 0.28, env: 0.7, clouds: 0, cloudDensity: 0.38, haze: 0.75 },
-  noon: { elev: 58, az: [0.5, 0.35], turbidity: 3.6, rayleigh: 1.2, mie: 0.0042, mieG: 0.8, exposure: 0.92, fog: 0.00068, sun: 3.6, hemi: 0.28, env: 0.65, clouds: 0, cloudDensity: 0.35, haze: 0.7 },
-  afternoon: { elev: 30, az: [0.66, -0.75], turbidity: 4.6, rayleigh: 1.45, mie: 0.0052, mieG: 0.83, exposure: 0.98, fog: 0.00075, sun: 3.4, hemi: 0.28, env: 0.7, clouds: 0, cloudDensity: 0.38, haze: 0.8 },
+  morning: { elev: 22, az: [0.36, 0.93], turbidity: 4.4, rayleigh: 1.5, mie: 0.0048, mieG: 0.82, exposure: 1.1, fog: 0.00072, sun: 3.3, hemi: 0.2, env: 0.5, clouds: 0, cloudDensity: 0.38, haze: 0.75 },
+  noon: { elev: 58, az: [0.5, 0.35], turbidity: 3.6, rayleigh: 1.2, mie: 0.0042, mieG: 0.8, exposure: 0.92, fog: 0.00068, sun: 3.6, hemi: 0.2, env: 0.55, clouds: 0, cloudDensity: 0.35, haze: 0.7 },
+  afternoon: { elev: 30, az: [0.66, -0.75], turbidity: 4.6, rayleigh: 1.45, mie: 0.0052, mieG: 0.83, exposure: 1.02, fog: 0.00075, sun: 3.4, hemi: 0.2, env: 0.52, clouds: 0, cloudDensity: 0.38, haze: 0.8 },
   dusk: { elev: 4, az: [0.42, -0.91], turbidity: 8, rayleigh: 2.8, mie: 0.0066, mieG: 0.86, exposure: 2.0, fog: 0.00095, sun: 3.0, hemi: 0.32, env: 0.85, clouds: 0.12, cloudDensity: 0.45, haze: 1 },
 };
 
@@ -132,12 +134,21 @@ vec3 wSkyRadiance( vec3 dir ) {
 }
 `;
 
-/** A Preetham Sky whose output is multiplied by SKY_SCALE (patched once, before compilation). */
-function scaledSky() {
+/**
+ * A Preetham Sky whose output is multiplied by SKY_SCALE (patched once, before compilation).
+ * With `saturation` < 1 (the environment-capture copy) the colour is pulled toward its own
+ * luminance: Preetham skylight is far bluer than real skylight, and lighting with it turns every
+ * shadow cyan.
+ */
+function scaledSky(saturation = 1) {
   const s = new Sky();
   const m = s.material;
-  m.fragmentShader = m.fragmentShader.replace('gl_FragColor = vec4( texColor, 1.0 );', `gl_FragColor = vec4( texColor * ${SKY_SCALE.toFixed(4)}, 1.0 );`);
-  if (!m.fragmentShader.includes('texColor * ')) console.warn('world: Sky shader patch did not apply');
+  const out = saturation < 1
+    ? `vec3 skyC = texColor * ${SKY_SCALE.toFixed(4)};
+      gl_FragColor = vec4( mix( vec3( dot( skyC, vec3( 0.2126, 0.7152, 0.0722 ) ) ), skyC, ${saturation.toFixed(3)} ), 1.0 );`
+    : `gl_FragColor = vec4( texColor * ${SKY_SCALE.toFixed(4)}, 1.0 );`;
+  m.fragmentShader = m.fragmentShader.replace('gl_FragColor = vec4( texColor, 1.0 );', out);
+  if (!m.fragmentShader.includes(`* ${SKY_SCALE.toFixed(4)}`)) console.warn('world: Sky shader patch did not apply');
   return s;
 }
 
@@ -161,7 +172,7 @@ export function createSky(ctx) {
   // Environment capture: a second Sky without the sun disc, plus coarse proxies of the ground,
   // the cliff and the sea so bronze reflects the place instead of an endless horizon.
   const envScene = new THREE.Scene();
-  const envSky = scaledSky();
+  const envSky = scaledSky(ENV_SATURATION);
   envSky.scale.setScalar(900);
   envSky.material.uniforms.showSunDisc.value = 0;
   envScene.add(envSky);
@@ -261,7 +272,7 @@ export function createSky(ctx) {
     avg[2] /= n;
     state.skyAvg = avg;
     const hl = Math.max(avg[0], avg[1], avg[2], 1e-6);
-    state.hemiSky.setRGB(lerp(1, avg[0] / hl, 0.6), lerp(1, avg[1] / hl, 0.6), lerp(1, avg[2] / hl, 0.6), THREE.LinearSRGBColorSpace);
+    state.hemiSky.setRGB(lerp(1, avg[0] / hl, 0.35), lerp(1, avg[1] / hl, 0.35), lerp(1, avg[2] / hl, 0.35), THREE.LinearSRGBColorSpace);
 
     // Ground bounce: dusty limestone soil lit by sun and sky.
     const albedo = [0.36, 0.3, 0.22];
