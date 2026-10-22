@@ -365,3 +365,45 @@ test('lifecycle: nativepause/nativeresume and visibilitychange, deduplicated; on
   p.exit();
   assert.equal(win.closed, true);
 });
+
+test('android: every bridge call passes exactly the arguments NativeBridge.kt declares', async () => {
+  // Android's JS bridge finds a method by name AND argument count; a call with extra (even undefined)
+  // arguments throws "Method not found" on the device. Arities come from the Kotlin source itself.
+  const { readFileSync } = await import('node:fs');
+  const kt = readFileSync(new URL('../../src/main/java/com/thermopylae/NativeBridge.kt', import.meta.url), 'utf8');
+  const arity = {};
+  for (const m of kt.matchAll(/@JavascriptInterface\s+fun\s+(\w+)\s*\(([^)]*)\)/g)) {
+    arity[m[1]] = m[2].trim() ? m[2].split(',').length : 0;
+  }
+  assert.ok(Object.keys(arity).length >= 10, `parsed bridge methods: ${Object.keys(arity)}`);
+  const N = fakeNative([line(1), line(1.005)]);
+  const misuse = [];
+  for (const name of Object.keys(arity)) {
+    const fn = N[name];
+    assert.equal(typeof fn, 'function', `fake bridge implements ${name}`);
+    N[name] = function (...args) {
+      if (args.length !== arity[name]) misuse.push(`${name} called with ${args.length} args, declared ${arity[name]}`);
+      return fn.apply(this, args);
+    };
+  }
+  const p = createPlatform({ window: fakeWindow({ SpartanNative: N }), now: () => 0 });
+  p.bindSettings({ haptics: true, voice: true });
+  await p.motion.isSupported();
+  p.motion.start();
+  p.motion.poll();
+  p.motion.info();
+  p.motion.stop();
+  p.haptics.pulse(30, 0.8);
+  p.haptics.pattern([0, 20, 40, 20]);
+  p.voice.say('Hold the line!', { pitch: 0.8, rate: 0.9 });
+  p.voice.stop();
+  p.lockOrientation(true);
+  p.lockOrientation(false);
+  if (p.rotation) p.rotation();
+  p.exit();
+  assert.deepEqual(misuse, []);
+  const used = new Set(N.calls.map((c) => c[0]));
+  for (const name of ['startMotion', 'stopMotion', 'vibrate', 'vibratePattern', 'say', 'stopSpeech', 'lockOrientation', 'exit']) {
+    assert.ok(used.has(name), `${name} reached the bridge`);
+  }
+});

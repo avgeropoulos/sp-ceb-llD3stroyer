@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- The game never goes online: every request is answered from the APK by AssetServer. Without this
+         permission, though, WebView blocks https:// page loads with ERR_CACHE_MISS on some versions. -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- The sensors run at exactly 200 Hz (5000 µs); this keeps Android 12+ from capping them below that. -->
     <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />

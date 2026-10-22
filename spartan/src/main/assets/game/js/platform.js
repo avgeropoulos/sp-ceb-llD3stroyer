@@ -39,11 +39,14 @@ export function createPlatform(opts = {}) {
   let settings = null;
   const allowed = (key) => !settings || !!settings[key];
 
-  /** Calls a bridge method; every SpartanNative call is wrapped (§5.1). */
-  function nat(name, a, b, c) {
+  /**
+   * Calls a bridge method; every SpartanNative call is wrapped (§5.1). Android looks bridge methods up by
+   * name AND argument count, so the call must pass exactly the arguments the Kotlin method declares.
+   */
+  function nat(name, ...args) {
     try {
       const fn = N && N[name];
-      return typeof fn === 'function' ? fn.call(N, a, b, c) : undefined;
+      return typeof fn === 'function' ? fn.apply(N, args) : undefined;
     } catch (err) {
       return undefined;
     }
