@@ -49,6 +49,8 @@ const CAM_END = Object.freeze({ phase: 'end' });
 
 const ORBIT_SWEEP = 1.15; // radians the camera travels around the impact
 const PASS_MIN_X = -8.3; // keep the spear cam out of the cliff
+const TRAIL_UP = 0.55; // spear-cam trail: metres above the flight line…
+const TRAIL_SIDE = 0.45; // …and to the side of it (away from the cliff)
 const JOBS = 8;
 const EMPTY = Object.freeze([]);
 
@@ -301,6 +303,7 @@ export function createFx(ctx) {
   let camProj = null;
   const camOrigin = new THREE.Vector3();
   const velDir = new THREE.Vector3(0, 0, -1);
+  let trailSide = 1; // +1/-1: which side of the flight the trail sits (fixed per throw)
   const trailPos = new THREE.Vector3();
   const trailQuat = new THREE.Quaternion();
   let trailValid = false;
@@ -400,6 +403,8 @@ export function createFx(ctx) {
     camOrigin.copy(pr.pos);
     const sp = pr.vel.length();
     if (sp > 0.1) velDir.copy(pr.vel).multiplyScalar(1 / sp);
+    // cross(velDir, up).x = -velDir.z: take the side whose offset points away from the cliff (+x).
+    trailSide = -velDir.z >= 0 ? 1 : -1;
     trailValid = lastValid = easeFromValid = orbitInit = false;
     tc.camStart(pr.src === 'motion', predictFlight(pr), remainingFlight);
     computeTrail(0);
@@ -431,7 +436,11 @@ export function createFx(ctx) {
     return out.setFromRotationMatrix(mA);
   }
 
-  /** Trail: behind and above the spear, looking a little ahead of it. */
+  /**
+   * Trail: behind, above and to one side of the spear (the side away from the cliff), looking a
+   * little ahead of it, so the shaft crosses the frame diagonally and the target's body doesn't
+   * hide the impact.
+   */
   function computeTrail(dt) {
     const pr = camProj;
     if (!pr || !pr.pos) return;
@@ -440,7 +449,12 @@ export function createFx(ctx) {
       if (sp > 0.5) velDir.copy(pr.vel).multiplyScalar(1 / sp);
     }
     const back = Math.min(1.6, pr.pos.distanceTo(camOrigin));
-    vA.copy(pr.pos).addScaledVector(velDir, -back).addScaledVector(UP, 0.35 * smoothstep(0, 0.25, tc.camT));
+    const s = smoothstep(0, 0.25, tc.camT);
+    vA.copy(pr.pos).addScaledVector(velDir, -back).addScaledVector(UP, TRAIL_UP * s);
+    vC.crossVectors(velDir, UP);
+    vC.y = 0;
+    const side = vC.length();
+    if (side > 1e-3) vA.addScaledVector(vC, (trailSide * TRAIL_SIDE * s) / side);
     clampCam(vA, 0.3);
     vB.copy(pr.pos).addScaledVector(velDir, 5);
     lookQuat(vA, vB, qA);

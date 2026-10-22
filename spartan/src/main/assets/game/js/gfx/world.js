@@ -21,6 +21,8 @@ import { buildHorde } from './world/horde.js';
 export { PRESETS as TIME_PRESETS };
 
 const SHADOW_HALF = 18;
+/** Volley shade at full strength: fractions taken off the sun, its shadows, sky light, env and exposure. */
+export const SHADE = Object.freeze({ sun: 0.85, shadow: 0.75, hemi: 0.18, env: 0.15, exposure: 0.2 });
 
 /**
  * @param {object} ctx §4 ctx (scene, renderer, camera, events, textures, quality)
@@ -166,13 +168,16 @@ export function createWorld(ctx) {
   // until the last one ends, and one whose 'end' never comes (a reset mid-volley) times out.
   const volleys = [];
 
+  // The volley shade: the arrows hide the sun (direct light down to 15%, its shadows almost gone)
+  // and the whole view, sky included, drops a fifth in exposure, so the player sees the day go
+  // dark under the cloud rather than reading it off a banner.
   function applyLight() {
     const s = shade;
-    sun.intensity = base.sunI * (1 - 0.72 * s);
-    sun.shadow.intensity = 1 - 0.7 * s;
-    hemi.intensity = base.hemiI * (1 - 0.18 * s);
-    scene.environmentIntensity = base.env * (1 - 0.15 * s);
-    renderer.toneMappingExposure = base.exposure * (1 - 0.1 * s);
+    sun.intensity = base.sunI * (1 - SHADE.sun * s);
+    sun.shadow.intensity = 1 - SHADE.shadow * s;
+    hemi.intensity = base.hemiI * (1 - SHADE.hemi * s);
+    scene.environmentIntensity = base.env * (1 - SHADE.env * s);
+    renderer.toneMappingExposure = base.exposure * (1 - SHADE.exposure * s);
   }
 
   function setTimeOfDay(name) {

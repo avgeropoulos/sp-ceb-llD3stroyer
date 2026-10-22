@@ -54,7 +54,20 @@ const SINK_DEPTH = 1;
 const SINK_TIME = 3;
 const MAX_SINKING = 4;
 const SHADOW_DIST2 = 20 * 20;
+const SHADOW_NEAREST = 12;          // shadow casters on medium/high: the nearest within 20 m
 const SHADOW_NEAREST_LOW = 6;
+// A dying body slides up to this far (m) during its fall to keep clear of the bodies already
+// down; lying bodies are head–feet segments, kept BODY_GAP apart (two body half-widths).
+const NUDGE_MAX = 0.4;
+const BODY_GAP = 0.5;
+// Where each death leaves the body, in actor space (x the actor's left, z its front) per unit of
+// body height: the head and the feet midpoint of the settled pose (measured from the animator).
+const DEATH_SEGS = {
+  die_back: [-0.08, -0.59, 0.06, 0.23],
+  die_spear: [-0.08, -0.59, 0.05, 0.21],
+  die_forward: [-0.03, 0.62, 0.1, -0.21],
+  die_crumple: [0.55, 0.09, -0.18, 0.15],
+};
 const WAIT_ROWS_FRONT = [-4.4, -5.9];
 const WAIT_ROWS_REAR = [4.2, 5.7];
 const GROUND_REFRESH = 0.35;        // re-sample the terrain after moving this far (linear in between)
@@ -77,6 +90,46 @@ function clipDuration(name, fallback) {
 function clipStrikeAt(name) {
   const c = clipInfo(name);
   return c && c.strikeAt > 0 && c.strikeAt <= 1 ? c.strikeAt : 0.6;
+}
+
+// Lying-body segments (die-time only): SEG holds two bodies [hx, hz, fx, fz] at 0 and 4, and
+// segGap leaves the closest points in SEG[8..11] (on the first body, then the second).
+const SEG = new Float64Array(12);
+
+/** Writes the lying segment of a body with death clip `clip` at (x, z), facing f, into SEG[o..]. */
+function bodySeg(o, clip, x, z, f, h) {
+  const d = DEATH_SEGS[clip];
+  if (!d) return false;
+  const c = Math.cos(f), sn = Math.sin(f);
+  // actor space (x left, z front) → world: x·(cos f, −sin f) + z·(sin f, cos f)
+  SEG[o] = x + (d[0] * c + d[1] * sn) * h;
+  SEG[o + 1] = z + (-d[0] * sn + d[1] * c) * h;
+  SEG[o + 2] = x + (d[2] * c + d[3] * sn) * h;
+  SEG[o + 3] = z + (-d[2] * sn + d[3] * c) * h;
+  return true;
+}
+
+/** Closest distance between the segments in SEG[0..3] and SEG[4..7] (2D). */
+function segGap() {
+  const ax = SEG[0], az = SEG[1], bx = SEG[4], bz = SEG[5];
+  const ux = SEG[2] - ax, uz = SEG[3] - az, vx = SEG[6] - bx, vz = SEG[7] - bz;
+  const rx = ax - bx, rz = az - bz;
+  const a = ux * ux + uz * uz, e = vx * vx + vz * vz, f = vx * rx + vz * rz;
+  let s = 0, t = 0;
+  if (a < 1e-9 && e < 1e-9) { s = 0; t = 0; } else if (a < 1e-9) { t = clamp(f / e, 0, 1); } else {
+    const c = ux * rx + uz * rz;
+    if (e < 1e-9) s = clamp(-c / a, 0, 1);
+    else {
+      const b = ux * vx + uz * vz, den = a * e - b * b;
+      s = den > 1e-9 ? clamp((b * f - c * e) / den, 0, 1) : 0;
+      t = (b * s + f) / e;
+      if (t < 0) { t = 0; s = clamp(-c / a, 0, 1); } else if (t > 1) { t = 1; s = clamp((b - c) / a, 0, 1); }
+    }
+  }
+  SEG[8] = ax + ux * s; SEG[9] = az + uz * s;
+  SEG[10] = bx + vx * t; SEG[11] = bz + vz * t;
+  const dx = SEG[8] - SEG[10], dz = SEG[9] - SEG[11];
+  return Math.sqrt(dx * dx + dz * dz);
 }
 
 /** A visual that does nothing, used if gfx/characters is missing or throws. */
@@ -200,8 +253,11 @@ export function createAI(ctx) {
       this.keepCorpse = false;
       this.removeMe = false;
       this.animDone = false;
+      this.frozen = false;      // a settled corpse whose visual no longer updates (setFrozen)
+      this.deathClip = '';
       this.deathT = 0.5;
       this.sinkT = -1.5;
+      this.nudgeX = 0.5; this.nudgeZ = 0.5; this.nudgeT = 1.5;
       this.fall = 0;            // Into the Gulf: 1 slide, 2 drop, 3 in the water
       this.fallY = 0.5; this.fallVY = 0.5; this.fallDX = 0.5; this.fallDZ = 0.5;
       this.helotPhase = 0;
@@ -216,6 +272,7 @@ export function createAI(ctx) {
       this.gx = 0; this.gz = 0; this.goalR = 0.12; this.faceTo = 0; this.groundY = 0; this.gyY = 0; this.gyDX = 0; this.gyDZ = 0;
       this.homeX = 0; this.homeZ = 0; this.thinkT = 0; this.stateT = 0; this.delay = 0; this.engagedAt = -1; this.playerHitAt = -1;
       this.readyAt = 0; this.nextAttackAt = 0; this.lane = 0; this.speedMul = 1; this.deathT = 0; this.sinkT = -1;
+      this.nudgeX = 0; this.nudgeZ = 0; this.nudgeT = 1;
       this.fallY = 0; this.fallVY = 0; this.fallDX = 0; this.fallDZ = 0;
       this.attack.damage = 0; this.attack.reach = 0; this.result.damage = 0;
     }
@@ -363,7 +420,9 @@ export function createAI(ctx) {
     a.attackClip = stats.attackClip || 'thrust';
     a.manualStrike = !clipInfo(a.attackClip);
     a.homeX = x;
-    a.homeZ = -0.05 + (ctx.rng.next() - 0.5) * 0.12;
+    // The two neighbours stand a little forward, so the line shows at the frame's edges (their
+    // shoulders and shields) rather than as bare dory shafts with no one holding them.
+    a.homeZ = (Math.abs(x) < 1.5 ? -0.45 : -0.05) + (ctx.rng.next() - 0.5) * 0.12;
     a.protected = a.name === LEONIDAS;
     a.thinkT = ctx.rng.next() * 0.3;
     if (opts.walkIn) {
@@ -597,6 +656,7 @@ export function createAI(ctx) {
     a.playDeath.duration = clipDuration(clip, 1.2);
     a.animDone = false;
     a.deathT = 0;
+    a.deathClip = clip;
     const an = a.visual.anim;
     an.setLocomotion(0);
     an.setGuard(false);
@@ -612,7 +672,53 @@ export function createAI(ctx) {
     } else {
       a.kbx *= 0.5; // bodies keep a little of the blow's momentum
       a.kbz *= 0.5;
+      clearOfBodies(a);
     }
+  }
+
+  /** Where a body will lie: its position after the remaining shove and pile nudge. */
+  function restSeg(o, b) {
+    const k = 1 - b.nudgeT;
+    return bodySeg(o, b.deathClip, b.pos.x + b.kbx / 9 + b.nudgeX * k, b.pos.z + b.kbz / 9 + b.nudgeZ * k, b.facing, b.height);
+  }
+
+  /**
+   * Heaps of dead must not pass through each other: the dying body's final pose is nudged (up to
+   * NUDGE_MAX, applied during its fall in updateCorpses) away from the bodies already down or
+   * falling within BODY_GAP of where it will lie.
+   */
+  function clearOfBodies(a) {
+    a.nudgeX = 0;
+    a.nudgeZ = 0;
+    a.nudgeT = 1;
+    if (!restSeg(0, a)) return;
+    const mx = (SEG[0] + SEG[2]) * 0.5, mz = (SEG[1] + SEG[3]) * 0.5;
+    let px = 0, pz = 0;
+    const n = corpses.length + actors.length;
+    for (let i = 0; i < n; i++) {
+      const b = i < corpses.length ? corpses[i] : actors[i - corpses.length];
+      if (b === a || b.alive || b.fall !== 0 || b.sinkT >= 0 || !restSeg(4, b)) continue;
+      const d = segGap();
+      if (d >= BODY_GAP) continue;
+      let ux = SEG[8] - SEG[10], uz = SEG[9] - SEG[11];
+      if (d < 1e-3) {
+        // crossing: away from the other body's axis, on the side of this body's middle
+        ux = -(SEG[7] - SEG[5]);
+        uz = SEG[6] - SEG[4];
+        if (ux * (mx - SEG[4]) + uz * (mz - SEG[5]) < 0) { ux = -ux; uz = -uz; }
+      }
+      const l = Math.sqrt(ux * ux + uz * uz);
+      if (l < 1e-6) continue;
+      const k = (BODY_GAP - d) / l;
+      px += ux * k;
+      pz += uz * k;
+    }
+    const pl = Math.sqrt(px * px + pz * pz);
+    if (pl < 0.02) return;
+    const k = pl > NUDGE_MAX ? NUDGE_MAX / pl : 1;
+    a.nudgeX = px * k;
+    a.nudgeZ = pz * k;
+    a.nudgeT = 0;
   }
 
   /** Scripted death (Leonidas on Day 3, phase B). Returns the actor or null. */
@@ -706,8 +812,23 @@ export function createAI(ctx) {
     let w = 0;
     for (let i = 0; i < corpses.length; i++) {
       const c = corpses[i];
+      if (c.frozen) {
+        // A settled body costs nothing until it moves again (it starts to sink).
+        if (c.sinkT < 0 && c.fall === 0 && c.kbx === 0 && c.kbz === 0) { corpses[w++] = c; continue; }
+        c.frozen = false;
+        if (c.visual.setFrozen) c.visual.setFrozen(false);
+      }
       if (c.fall > 0) updateSeaFall(c, gdt);
       else if (c.kbx !== 0 || c.kbz !== 0) integrateKnock(c, gdt);
+      if (c.nudgeT < 1 && (c.animDone || c.deathT > 0.15 * c.playDeath.duration)) {
+        // the pile nudge, spread over the fall
+        let k = gdt / (0.55 * c.playDeath.duration);
+        if (k > 1 - c.nudgeT) k = 1 - c.nudgeT;
+        c.nudgeT += k;
+        c.pos.x += c.nudgeX * k;
+        c.pos.z += c.nudgeZ * k;
+        if (c.fall === 0) c.pos.x = c.pos.x < X_MIN ? X_MIN : c.pos.x > X_MAX ? X_MAX : c.pos.x;
+      }
       if (c.sinkT >= 0) {
         c.sinkT += gdt;
         if (c.sinkT >= SINK_TIME) { disposeActor(c); continue; }
@@ -717,6 +838,10 @@ export function createAI(ctx) {
         c.visual.anim.update(gdt);
         c.deathT += gdt;
         if (c.deathT > c.playDeath.duration + 0.5) c.animDone = true; // in case onEnd never comes
+      } else if (c.sinkT < 0 && c.fall === 0 && c.kbx === 0 && c.kbz === 0 && c.nudgeT >= 1 && c.visual.setFrozen) {
+        // Settled: freeze its matrices and skeleton (render CPU in big fights).
+        c.frozen = true;
+        c.visual.setFrozen(true);
       }
       corpses[w++] = c;
     }
@@ -1594,30 +1719,30 @@ export function createAI(ctx) {
     }
   }
 
-  // Shadows: only actors within 20 m of the camera cast them (the nearest 6 on low), §15.
-  const nearest = new Array(SHADOW_NEAREST_LOW).fill(null);
-  const nearestD = new Float64Array(SHADOW_NEAREST_LOW);
+  // Shadows: only the nearest 12 actors within 20 m of the camera cast them (6 on low), §15:
+  // each caster is two shadow draws, the biggest share of the shadow pass in a full fight.
+  const nearest = new Array(SHADOW_NEAREST).fill(null);
+  const nearestD = new Float64Array(SHADOW_NEAREST);
   function updateShadows() {
     const cam = ctx.camera;
     if (!cam) return;
     const cx = cam.position.x, cz = cam.position.z;
-    const low = ctx.quality === 'low';
-    if (low) for (let k = 0; k < SHADOW_NEAREST_LOW; k++) { nearest[k] = null; nearestD[k] = Infinity; }
+    const K = ctx.quality === 'low' ? SHADOW_NEAREST_LOW : SHADOW_NEAREST;
+    for (let k = 0; k < K; k++) { nearest[k] = null; nearestD[k] = Infinity; }
     for (let i = 0; i < actors.length; i++) {
       const a = actors[i];
       const m = a.visual.mesh;
       if (!m) continue;
+      m.castShadow = false;
       const ex = a.pos.x - cx, ez = a.pos.z - cz;
       const d2 = ex * ex + ez * ez;
-      if (!low) { m.castShadow = a.alive && d2 < SHADOW_DIST2; continue; }
-      m.castShadow = false;
-      if (!a.alive || d2 >= SHADOW_DIST2 || d2 >= nearestD[SHADOW_NEAREST_LOW - 1]) continue;
-      let k = SHADOW_NEAREST_LOW - 1;
+      if (!a.alive || d2 >= SHADOW_DIST2 || d2 >= nearestD[K - 1]) continue;
+      let k = K - 1;
       while (k > 0 && nearestD[k - 1] > d2) { nearestD[k] = nearestD[k - 1]; nearest[k] = nearest[k - 1]; k--; }
       nearestD[k] = d2;
       nearest[k] = a;
     }
-    if (low) for (let k = 0; k < SHADOW_NEAREST_LOW; k++) if (nearest[k]) nearest[k].visual.mesh.castShadow = true;
+    for (let k = 0; k < K; k++) if (nearest[k]) nearest[k].visual.mesh.castShadow = true;
   }
 
   // ---------------------------------------------------------------------------------------

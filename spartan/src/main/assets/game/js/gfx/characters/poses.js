@@ -91,7 +91,9 @@ hoplite.stance = P(null, {
 hoplite.guard = P(hoplite.stance, {
   spine: [8, 0, 0], chest: [4, 10, 0], neck: [-6, 0, 0], head: [-4, 4, 0],
   handL: [-0.10, -0.09, 0.30], elbL: [1, -0.6, -0.1], aimL: [0.1, 0.06, 1],
-  handR: [-0.27, 0.36, 0.08], elbR: [-1, 0.1, -0.55], aimR: [0.03, -0.08, 1],
+  // the dory overhand, its head ~22° down: a neighbour's shaft runs low across the player's view,
+  // under the enemies' faces, not through them
+  handR: [-0.27, 0.36, 0.08], elbR: [-1, 0.1, -0.55], aimR: [0.03, -0.4, 1],
 });
 
 const levy = {};
@@ -104,7 +106,9 @@ levy.stance = P(null, {
 levy.guard = P(levy.stance, {
   spine: [7, 0, 0], chest: [3, 6, 0], neck: [-5, 0, 0], head: [-3, 3, 0],
   handL: [0.08, -0.08, 0.32], elbL: [1, -0.4, -0.5], aimL: [0.08, 0.0, 1],
-  handR: [-0.26, 0.33, 0.06], elbR: [-1, 0.1, -0.5], aimR: [0.03, -0.07, 1],
+  // fist by the ear and a little forward, the elbow dropped down and out (not a level
+  // 'scarecrow' upper arm at shoulder height)
+  handR: [-0.24, 0.24, 0.12], elbR: [-0.6, -0.65, -0.35], aimR: [0.03, -0.07, 1],
 });
 
 const sparabara = {};
@@ -115,7 +119,7 @@ sparabara.stance = P(levy.stance, {
 });
 sparabara.guard = P(sparabara.stance, {
   spine: [11, 0, 0], neck: [-8, 0, 0],
-  handR: [-0.25, 0.33, 0.10], elbR: [-1, 0.1, -0.5], aimR: [0.04, -0.08, 1],
+  handR: [-0.24, 0.24, 0.12], elbR: [-0.6, -0.65, -0.35], aimR: [0.04, -0.08, 1],
 });
 
 const archer = {};

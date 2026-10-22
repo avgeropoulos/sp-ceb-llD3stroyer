@@ -7,7 +7,7 @@
  * geometry toolkit, atlases, rig, kit, poses and animator.
  */
 import * as THREE from 'three';
-import { buildMaterials, atlasRects } from './characters/atlas.js';
+import { buildMaterials, atlasRects, BLOOD_SEED_TEXEL } from './characters/atlas.js';
 import { B, BONES, createBones } from './characters/rig.js';
 import { buildModel, spearParts, sagarisParts } from './characters/models.js';
 import { KINDS, variantFor } from './characters/kinds.js';
@@ -33,6 +33,15 @@ const CONTACT_DIRS = [
   [1, 1, 1], [1, 1, -1], [1, -1, 1], [1, -1, -1], [-1, 1, 1], [-1, 1, -1], [-1, -1, 1], [-1, -1, -1],
 ];
 const HEM_DIRS = [[0, -1, 0], [1, -1, 0], [-1, -1, 0], [0, -1, 1], [0, -1, -1]];
+const noop = () => {};
+
+/** Per-instance blood-stain seed in [0, 1), deterministic per visual seed. */
+function bloodSeed(seed) {
+  let h = Math.imul(seed ^ 0x2545f491, 0x9e3779b1);
+  h ^= h >>> 15;
+  h = Math.imul(h, 0x85ebca6b);
+  return ((h ^ (h >>> 13)) >>> 0) / 4294967296;
+}
 
 /**
  * Ground contacts measured from a variant's geometry: for every rigid bone, its extreme
@@ -164,6 +173,12 @@ export function createCharacters(ctx) {
     const { bones } = createBones(e.rest, overrides);
     mesh.add(bones[0]);
     mesh.bind(new THREE.Skeleton(bones));
+    // The bone texture has spare texels past the last bone matrix (28 bones → a 12×12 texture of
+    // 36 matrices); the first spare one carries this body's blood-stain seed, which the shared
+    // materials read per draw (atlas.js bloodCompile). Bone updates never write past the bones.
+    const skel = mesh.skeleton;
+    skel.computeBoneTexture();
+    if (skel.boneMatrices.length >= BLOOD_SEED_TEXEL * 4 + 4) skel.boneMatrices[BLOOD_SEED_TEXEL * 4] = bloodSeed(seed);
     mesh.frustumCulled = true;
     mesh.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0.9, 0), 1.7);
     mesh.castShadow = true;
@@ -184,6 +199,7 @@ export function createCharacters(ctx) {
     for (const k in SOCKETS) sockets[k] = bones[SOCKETS[k]];
     let blood = 0;
     let disposed = false;
+    let frozen = false;
     const visual = {
       root,
       mesh,
@@ -224,9 +240,42 @@ export function createCharacters(ctx) {
       setVisible(on) {
         root.visible = !!on;
       },
+      /**
+       * Freezes a body that will not move again (a settled corpse): its root, mesh and bones stop
+       * recomposing their matrices every frame and the skeleton stops re-uploading its bone
+       * texture. The animator must not run while frozen; unfreeze before moving the root again
+       * (sinking, a shove). Objects attached to its bones keep updating as usual.
+       */
+      setFrozen(on) {
+        const f = !!on;
+        if (f === frozen || disposed) return;
+        frozen = f;
+        if (f) {
+          root.updateMatrixWorld(true);
+          skel.update();
+          skel.update = noop;
+        } else {
+          delete skel.update;
+        }
+        root.matrixAutoUpdate = !f;
+        root.matrixWorldAutoUpdate = !f;
+        mesh.matrixAutoUpdate = !f;
+        mesh.matrixWorldAutoUpdate = !f;
+        for (let i = 0; i < bones.length; i++) {
+          bones[i].matrixAutoUpdate = !f;
+          bones[i].matrixWorldAutoUpdate = !f;
+        }
+      },
+      get frozen() {
+        return frozen;
+      },
       dispose() {
         if (disposed) return;
         disposed = true;
+        if (frozen) {
+          frozen = false;
+          delete skel.update;
+        }
         root.removeFromParent();
         anim.onStrike = null;
         anim.onEnd = null;
@@ -282,11 +331,29 @@ export function createCharacters(ctx) {
     return g;
   }
 
+  // Props get their own copies of the clean materials: a material drawn by both SkinnedMeshes and
+  // plain meshes makes three.js re-resolve its program on every switch between the two.
+  let propMats = null;
+  function propMaterials() {
+    if (!propMats) {
+      const m = materials();
+      const copy = (src) => {
+        const c = src.clone();
+        c.name = `${src.name}-prop`;
+        c.userData = src.userData;
+        c.onBeforeCompile = src.onBeforeCompile;
+        return c;
+      };
+      propMats = { cloth: copy(m.cloth[0]), metal: copy(m.metal[0]) };
+    }
+    return propMats;
+  }
+
   function createProp(name) {
-    const m = materials();
+    const m = propMaterials();
     const geo = propGeometry(name);
     const twoGroups = geo.groups.length > 1 || (geo.groups[0] && geo.groups[0].materialIndex === 1);
-    const mesh = new THREE.Mesh(geo, twoGroups ? [m.cloth[0], m.metal[0]] : m.cloth[0]);
+    const mesh = new THREE.Mesh(geo, twoGroups ? [m.cloth, m.metal] : m.cloth);
     mesh.name = `prop-${name}`;
     mesh.castShadow = true;
     return mesh;

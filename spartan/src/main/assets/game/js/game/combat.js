@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/BufferGeometryUtils.js';
 import { WEAPONS, slashProfile, sectorHit, segmentCapsule, computeDamage, ballisticPitch } from './rules.js';
 import { clamp, facingToYaw, angleDiff, yawTo } from '../core/math.js';
+import { createArrowStreaks } from '../gfx/fx/streaks.js';
 
 const G = 9.81;
 const SEA_X = 8.6;
@@ -22,6 +23,18 @@ const MAX_FLYING_ARROWS = 24;
 const VOLLEY_FLIGHT = 2.0; // loosed → first impact
 const VOLLEY_SLOTS = 600; // visual arrows in flight at once
 const GROUND_ARROWS = 200;
+// Volley look (visual only): flight arrows grow with distance (×1 up to LOD_NEAR m, up to ×LOD_MAX)
+// so a 9 mm shaft 40 m away still covers pixels, and each trails a motion-blur streak of its
+// last VOLLEY_BLUR seconds of flight.
+// The 2 s flight is a gameplay timing; the arc is drawn as if shot from much farther off (a
+// stronger visual gravity), so the cloud towers 8–20 m over the pass and the arrows come down
+// steeply on the line, as a long-range volley does.
+const VOLLEY_G = 1.8 * G;
+const LOD_NEAR = 12;
+const LOD_MAX = 4;
+const VOLLEY_BLUR = 0.06;
+const ARROW_HALF = 0.37; // volley arrow: tip 0.37 m ahead of the instance origin, tail 0.36 behind
+const SPEAR_SHADOW_DIST = 8; // stuck spears farther than this from the camera cast no shadow
 const SKEWER_POWER = 0.7;
 const SKEWER_REACH = 2.2;
 const BLEED_TICK = 0.5;
@@ -184,6 +197,9 @@ export function createCombat(ctx) {
   volleyMesh.receiveShadow = false;
   volleyMesh.count = 0;
   for (let i = 0; i < GROUND_ARROWS + VOLLEY_SLOTS; i++) volleyMesh.setMatrixAt(i, ZERO_SCALE);
+  // Motion-blur streaks of the flight slots, under volleyMesh so hiding it hides the whole volley.
+  const streaks = createArrowStreaks(VOLLEY_SLOTS, { renderer: ctx.renderer });
+  volleyMesh.add(streaks.mesh);
   if (scene) scene.add(volleyMesh);
   // Flight slot data (struct of arrays).
   const fl = {
@@ -236,6 +252,9 @@ export function createCombat(ctx) {
       }
       obj.name = `prop:${name}`;
     }
+    // An 8 mm shaft leaves nothing in a 3.5 cm shadow texel, and stuck arrows sit mostly beside
+    // or behind the camera, culled from the view but not from the shadow box.
+    if (name === 'arrow') obj.castShadow = false;
     if (!propInfo[name]) {
       // Tip offset along +Z from the centre of mass, measured once per prop kind.
       obj.updateMatrixWorld(true);
@@ -465,7 +484,7 @@ export function createCombat(ctx) {
       if (!target.alive) continue;
       let dx = target.pos.x - origin.x;
       let dz = target.pos.z - origin.z;
-      const d = Math.hypot(dx, dz);
+      const d = Math.sqrt(dx * dx + dz * dz);
       if (d > 1e-6) {
         dx /= d;
         dz /= d;
@@ -545,7 +564,7 @@ export function createCombat(ctx) {
 
     let dx = target.pos.x - attacker.pos.x;
     let dz = target.pos.z - attacker.pos.z;
-    const d = Math.hypot(dx, dz) || 1;
+    const d = Math.sqrt(dx * dx + dz * dz) || 1;
     dx /= d;
     dz /= d;
     const kind = attack.kind || 'melee';
@@ -617,7 +636,7 @@ export function createCombat(ctx) {
   function stickArrowProp(actor, point, dx, dy, dz, blocked) {
     const mesh = makeProp('arrow');
     const tip = propInfo.arrow.tip;
-    const l = Math.hypot(dx, dy, dz) || 1;
+    const l = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
     dx /= l;
     dy /= l;
     dz /= l;
@@ -641,7 +660,7 @@ export function createCombat(ctx) {
       stickArrowProp(actor, point, dx, dy, dz, true);
       return;
     }
-    const hl = Math.hypot(dx, dz) || 1;
+    const hl = Math.sqrt(dx * dx + dz * dz) || 1;
     const hit = makeHit('arrow', ARROW_DAMAGE, dx / hl, dz / hl, 0.5, false, shooter || null, point);
     hit.ignoreGuard = isAlly;
     ev.emit('arrowHit', { target: actor, point });
@@ -712,7 +731,7 @@ export function createCombat(ctx) {
     }
     const dx = aim.x - origin.x;
     const dz = aim.z - origin.z;
-    const dxz = Math.hypot(dx, dz);
+    const dxz = Math.sqrt(dx * dx + dz * dz);
     const p = ballisticPitch(ARROW_SPEED, dxz, aim.y - origin.y);
     const r = rng();
     const spread = r ? r.gauss() * 0.006 : 0;
@@ -856,7 +875,7 @@ export function createCombat(ctx) {
   }
 
   function spearHitsActor(p, actor, point) {
-    const l = Math.hypot(p.vel.x, p.vel.z) || 1;
+    const l = Math.sqrt(p.vel.x * p.vel.x + p.vel.z * p.vel.z) || 1;
     const dx = p.vel.x / l;
     const dz = p.vel.z / l;
     const hit = makeHit('spear', computeDamage({ base: WEAPONS.spear.throwDamage, power: p.power }), dx, dz, p.power, p.byPlayer, p.byPlayer ? 'player' : null, point);
@@ -998,11 +1017,14 @@ export function createCombat(ctx) {
     const px = pl ? pl.pos.x : 0;
     const pz = pl ? pl.pos.z : 0;
     const impactAt = v.warn + VOLLEY_FLIGHT;
+    // The archers loose together from one block facing the player, so the arrows rise as a
+    // cloud and fan out over the line (the draws per arrow are unchanged: gameplay rng).
+    const lx0 = clamp(px, -3, 4) - 4;
     let slot = 0;
     for (let k = 0; k < v.count; k++) {
       while (slot < VOLLEY_SLOTS && fl.on[slot]) slot++;
       if (slot >= VOLLEY_SLOTS) break;
-      const lx = -6 + 13 * rnd();
+      const lx = lx0 + 8 * rnd();
       const lz = v.fromBehind ? 30 + 20 * rnd() : -42 - 22 * rnd();
       const ly = groundY(lx, lz) + 1.5;
       let tx = -8.3 + 18.5 * rnd();
@@ -1015,7 +1037,7 @@ export function createCombat(ctx) {
         tz += ddz >= 0 ? 0.6 : -0.6;
       }
       const ty = Math.max(groundY(tx, tz), -3);
-      const t0 = v.t + 0.35 * rnd();
+      const t0 = v.t + 0.15 * rnd();
       const tLand = impactAt + v.duration * rnd();
       const F = Math.max(0.8, tLand - t0);
       fl.on[slot] = 1;
@@ -1026,7 +1048,7 @@ export function createCombat(ctx) {
       fl.py[slot] = ly;
       fl.pz[slot] = lz;
       fl.vx[slot] = (tx - lx) / F;
-      fl.vy[slot] = (ty - ly) / F + 0.5 * G * F;
+      fl.vy[slot] = (ty - ly) / F + 0.5 * VOLLEY_G * F;
       fl.vz[slot] = (tz - lz) / F;
       flyingActive++;
       if (slot + 1 > flyingHigh) flyingHigh = slot + 1;
@@ -1034,7 +1056,7 @@ export function createCombat(ctx) {
   }
 
   function landGroundArrow(x, y, z, dx, dy, dz) {
-    const l = Math.hypot(dx, dy, dz) || 1;
+    const l = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
     tmp.set(dx / l, dy / l, dz / l);
     quat.setFromUnitVectors(Z_AXIS, tmp);
     const r = rng();
@@ -1049,14 +1071,22 @@ export function createCombat(ctx) {
 
   function stepVolleyArrows() {
     if (flyingActive === 0) return false;
+    const cam = ctx.camera;
+    const cx = cam ? cam.position.x : 0;
+    const cy = cam ? cam.position.y : 0;
+    const cz = cam ? cam.position.z : 0;
     let high = 0;
     for (let s = 0; s < flyingHigh; s++) {
-      if (!fl.on[s]) continue;
+      if (!fl.on[s]) {
+        streaks.set(s, 0, 0, 0, 0, 0, 0, 0, 0);
+        continue;
+      }
       const v = fl.vol[s];
       const tau = v.t - fl.t0[s];
       const idx = GROUND_ARROWS + s;
       if (tau < 0) {
         volleyMesh.setMatrixAt(idx, ZERO_SCALE);
+        streaks.set(s, 0, 0, 0, 0, 0, 0, 0, 0);
         high = s + 1;
         continue;
       }
@@ -1066,26 +1096,46 @@ export function createCombat(ctx) {
         fl.vol[s] = null;
         flyingActive--;
         volleyMesh.setMatrixAt(idx, ZERO_SCALE);
+        streaks.set(s, 0, 0, 0, 0, 0, 0, 0, 0);
         const x = fl.px[s] + fl.vx[s] * T;
-        const y = fl.py[s] + fl.vy[s] * T - 0.5 * G * T * T;
+        const y = fl.py[s] + fl.vy[s] * T - 0.5 * VOLLEY_G * T * T;
         const z = fl.pz[s] + fl.vz[s] * T;
-        if (y > WATER_Y + 0.1) landGroundArrow(x, y, z, fl.vx[s], fl.vy[s] - G * T, fl.vz[s]);
+        if (y > WATER_Y + 0.1) landGroundArrow(x, y, z, fl.vx[s], fl.vy[s] - VOLLEY_G * T, fl.vz[s]);
         continue;
       }
       high = s + 1;
       const x = fl.px[s] + fl.vx[s] * tau;
-      const y = fl.py[s] + fl.vy[s] * tau - 0.5 * G * tau * tau;
+      const y = fl.py[s] + fl.vy[s] * tau - 0.5 * VOLLEY_G * tau * tau;
       const z = fl.pz[s] + fl.vz[s] * tau;
-      const dvy = fl.vy[s] - G * tau;
-      const l = Math.hypot(fl.vx[s], dvy, fl.vz[s]) || 1;
-      tmp.set(fl.vx[s] / l, dvy / l, fl.vz[s] / l);
+      const fvx = fl.vx[s];
+      const dvy = fl.vy[s] - VOLLEY_G * tau;
+      const fvz = fl.vz[s];
+      const l = Math.sqrt(fvx * fvx + dvy * dvy + fvz * fvz) || 1;
+      const ux = fvx / l;
+      const uy = dvy / l;
+      const uz = fvz / l;
+      tmp.set(ux, uy, uz);
       quat.setFromUnitVectors(Z_AXIS, tmp);
       tmp2.set(x, y, z);
-      scl.set(1, 1, 1);
+      // Distance LOD: thicker and a little longer far away (×1 within LOD_NEAR metres).
+      const ex = x - cx;
+      const ey = y - cy;
+      const ez = z - cz;
+      const k = clamp(Math.sqrt(ex * ex + ey * ey + ez * ez) / LOD_NEAR, 1, LOD_MAX);
+      const kz = 1 + 0.5 * (k - 1);
+      scl.set(k, k, kz);
       mat4.compose(tmp2, quat, scl);
       volleyMesh.setMatrixAt(idx, mat4);
+      // Streak: from the tip back over the arrow and its last VOLLEY_BLUR seconds of flight.
+      const hx = x + ux * ARROW_HALF * kz;
+      const hy = y + uy * ARROW_HALF * kz;
+      const hz = z + uz * ARROW_HALF * kz;
+      const back = 2 * ARROW_HALF * kz + l * VOLLEY_BLUR;
+      const fade = tau < 0.1 ? tau * 10 : 1;
+      streaks.set(s, hx, hy, hz, hx - ux * back, hy - uy * back, hz - uz * back, fade, ((s * 0.618034) % 1));
     }
     flyingHigh = high;
+    streaks.commit(high);
     return true;
   }
 
@@ -1163,6 +1213,24 @@ export function createCombat(ctx) {
     }
   }
 
+  // Stuck spears cast a shadow only near the camera: farther out the 2-call shadow draw of a
+  // 2.5 m shaft buys nothing a player notices (DESIGN.md §11 shadow budget).
+  function updateSpearShadows() {
+    const cam = ctx.camera;
+    if (!cam) return;
+    const cp = cam.position;
+    const r2 = SPEAR_SHADOW_DIST * SPEAR_SHADOW_DIST;
+    for (let i = 0; i < stuckSpears.length; i++) {
+      const m = stuckSpears[i].mesh;
+      if (!m) continue;
+      const e = m.matrixWorld.elements;
+      const dx = e[12] - cp.x;
+      const dy = e[13] - cp.y;
+      const dz = e[14] - cp.z;
+      m.castShadow = dx * dx + dy * dy + dz * dz <= r2;
+    }
+  }
+
   // ---- lifecycle ----------------------------------------------------------------------------
 
   function update(gdt) {
@@ -1179,6 +1247,7 @@ export function createCombat(ctx) {
       volleyMesh.count = count;
       volleyMesh.instanceMatrix.needsUpdate = true;
     }
+    updateSpearShadows();
   }
 
   /** Removes every projectile, stuck spear and arrow, volley and bleed. */
@@ -1198,6 +1267,7 @@ export function createCombat(ctx) {
     for (let i = 0; i < GROUND_ARROWS + VOLLEY_SLOTS; i++) volleyMesh.setMatrixAt(i, ZERO_SCALE);
     volleyMesh.count = 0;
     volleyMesh.instanceMatrix.needsUpdate = true;
+    streaks.commit(0);
   }
 
   return {

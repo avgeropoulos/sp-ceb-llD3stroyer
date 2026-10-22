@@ -9,6 +9,7 @@
  * single program (only a uniform differs), so bleeding never compiles a shader.
  */
 import * as THREE from 'three';
+import { BONES } from './rig.js';
 
 /** Non-metal tiles, 4 columns × 8 rows. */
 export const CLOTH_TILES = [
@@ -255,7 +256,7 @@ function paintWicker(g, P, base, seed) {
         const grad = g.createLinearGradient(0, y, 0, y + rh);
         grad.addColorStop(0, 'rgba(255,240,200,0.20)');
         grad.addColorStop(0.5, 'rgba(255,240,200,0.05)');
-        grad.addColorStop(1, 'rgba(40,25,10,0.35)');
+        grad.addColorStop(1, 'rgba(30,18,6,0.5)');
         g.fillStyle = grad;
         g.beginPath();
         g.ellipse(x + dx + cw / 2, y + rh / 2, cw * 0.48, rh * 0.42, 0, 0, Math.PI * 2);
@@ -266,6 +267,53 @@ function paintWicker(g, P, base, seed) {
   // vertical stakes between the weave
   g.fillStyle = 'rgba(30,20,8,0.35)';
   for (let c = 0; c < cols; c++) g.fillRect(c * cw - 1, 0, 2, P);
+  g.restore();
+}
+
+/**
+ * Wear on a wicker shield face (over the shared texture or the painted fallback): weathered,
+ * dirty patches, then a dark rawhide binding lashed round the rim. The tile maps the whole
+ * face (gerron, spara), so its border is the shield's edge.
+ */
+function paintWickerWear(g, P, seed) {
+  const r = rng(seed);
+  g.save();
+  for (let i = 0; i < 9; i++) {
+    const x = r() * P, y = r() * P, rad = P * (0.08 + r() * 0.16);
+    const grad = g.createRadialGradient(x, y, 0, x, y, rad);
+    grad.addColorStop(0, `rgba(28,17,6,${(0.18 + r() * 0.16).toFixed(2)})`);
+    grad.addColorStop(1, 'rgba(28,17,6,0)');
+    g.fillStyle = grad;
+    for (const dx of [-P, 0, P]) for (const dy of [-P, 0, P]) g.fillRect(x + dx - rad, y + dy - rad, rad * 2, rad * 2);
+  }
+  // rawhide binding: a dark band round the rim, a shadow inside it and the lashing across it
+  const b = Math.max(2, Math.round(P * 0.04));
+  g.fillStyle = 'rgba(20,12,5,0.35)';
+  g.fillRect(b, b, P - 2 * b, Math.ceil(b * 0.5));
+  g.fillRect(b, P - b - Math.ceil(b * 0.5), P - 2 * b, Math.ceil(b * 0.5));
+  g.fillRect(b, b, Math.ceil(b * 0.5), P - 2 * b);
+  g.fillRect(P - b - Math.ceil(b * 0.5), b, Math.ceil(b * 0.5), P - 2 * b);
+  g.fillStyle = 'rgb(66,44,26)';
+  g.fillRect(0, 0, P, b);
+  g.fillRect(0, P - b, P, b);
+  g.fillRect(0, 0, b, P);
+  g.fillRect(P - b, 0, b, P);
+  g.strokeStyle = 'rgba(120,92,60,0.55)';
+  g.lineWidth = Math.max(1, b * 0.22);
+  const n = 22;
+  g.beginPath();
+  for (let i = 0; i < n; i++) {
+    const t = ((i + 0.5) / n) * P;
+    g.moveTo(t - b * 0.35, 0);
+    g.lineTo(t + b * 0.35, b);
+    g.moveTo(t - b * 0.35, P - b);
+    g.lineTo(t + b * 0.35, P);
+    g.moveTo(0, t - b * 0.35);
+    g.lineTo(b, t + b * 0.35);
+    g.moveTo(P - b, t - b * 0.35);
+    g.lineTo(P, t + b * 0.35);
+  }
+  g.stroke();
   g.restore();
 }
 
@@ -1014,7 +1062,8 @@ const CLOTH_SPEC = {
   leatherDark: { tex: 'leather', tint: 'rgb(130,110,100)', paint: (g, P) => paintLeather(g, P, 0x3e2a1c, 22) },
   wood: { tex: 'wood', paint: (g, P) => paintWood(g, P, 0x8a6a45, 23) },
   woodDark: { tex: 'wood', tint: 'rgb(150,125,110)', paint: (g, P) => paintWood(g, P, 0x5a4029, 24) },
-  wicker: { tex: 'wicker', paint: (g, P) => paintWicker(g, P, 0xa88a52, 25) },
+  // darker and more saturated than raw straw: a weathered shield, not the brightest thing in view
+  wicker: { tex: 'wicker', tint: 'rgb(199,186,180)', paint: (g, P) => paintWicker(g, P, 0x83653a, 25), deco: (g, P) => paintWickerWear(g, P, 43) },
   felt: { tex: 'felt', tint: 'rgb(220,196,150)', paint: (g, P) => noiseFill(g.canvas, 0xa8956e, [18, 16, 12], 6, 4, 26, true) },
   robeA: { tex: 'persianRobeA', paint: (g, P) => paintPattern(g, P, 'robeA', 27) },
   robeB: { tex: 'persianRobeB', paint: (g, P) => paintPattern(g, P, 'robeB', 28) },
@@ -1061,28 +1110,32 @@ function placeTile(atlasCtx, tileCanvas, x0, y0, T, gutter) {
   atlasCtx.restore();
 }
 
-function getTex(ctx, name) {
+function getTex(ctx, name, used) {
   try {
     const t = ctx.textures && ctx.textures.get ? ctx.textures.get(name) : null;
+    if (t && used) used.add(name);
     return t || null;
   } catch (err) {
     return null;
   }
 }
 
+/** Shared textures the atlas reads that something else reads later (viewmodel.js: its aspis). */
+const KEEP_SOURCES = new Set(['blazonFly']);
+
 /**
  * Builds one tile canvas (P×P) for a spec. Shield faces also get a paint mask (the emblem and
  * the rim decoration on a transparent ground), so their paint can be made non-metallic in the
  * roughness/metalness atlas without reading pixels back from a canvas.
  */
-function buildTile(ctx, name, spec, P) {
+function buildTile(ctx, name, spec, P, used) {
   const cv = makeCanvas(P, P);
   const g = cv.getContext('2d');
-  const ext = spec.tex ? getTex(ctx, spec.tex) : null;
+  const ext = spec.tex ? getTex(ctx, spec.tex, used) : null;
   let mask = null;
   if (spec.blazon) {
     // emblems are painted on a transparent ground: lay the bronze first
-    const br = getTex(ctx, 'bronze');
+    const br = getTex(ctx, 'bronze', used);
     if (!(br && drawExternal(g, br, P))) paintMetal(g, P, 0xb88a42, 61);
     mask = makeCanvas(P, P);
     const mg = mask.getContext('2d');
@@ -1135,17 +1188,40 @@ function ormTile(spec, P2, mask, seed) {
 
 const BLOOD_LEVELS = [0, 0.35, 0.65, 1];
 
-/** Shared onBeforeCompile: blood splatter in bind space (follows the body as it moves). */
+/**
+ * Texel of a skeleton's bone texture that holds the body's blood-stain seed: the first one past
+ * the bone matrices (characters.js writes it once; bone updates never reach it). Per instance at
+ * no per-draw cost, while the materials stay shared.
+ */
+export const BLOOD_SEED_TEXEL = BONES.length * 4;
+
+/**
+ * Shared onBeforeCompile: blood splatter in bind space (follows the body as it moves), offset
+ * per body by its seed so two corpses of a kind never carry the same stains.
+ */
 function bloodCompile(shader) {
   shader.uniforms.uBlood = this.userData.uBlood;
   shader.vertexShader = shader.vertexShader
-    .replace('#include <common>', '#include <common>\nvarying vec3 vBindPos;')
-    .replace('#include <begin_vertex>', '#include <begin_vertex>\nvBindPos = position;');
+    .replace('#include <common>', '#include <common>\nvarying vec3 vBindPos;\nvarying float vBloodSeed;')
+    .replace(
+      '#include <begin_vertex>',
+      `#include <begin_vertex>
+vBindPos = position;
+vBloodSeed = 0.0;
+#ifdef USE_SKINNING
+{
+  int bSize = textureSize( boneTexture, 0 ).x;
+  int bj = ${BLOOD_SEED_TEXEL};
+  if ( bj < bSize * bSize ) vBloodSeed = texelFetch( boneTexture, ivec2( bj % bSize, bj / bSize ), 0 ).x;
+}
+#endif`,
+    );
   shader.fragmentShader = shader.fragmentShader
     .replace(
       '#include <common>',
       `#include <common>
 varying vec3 vBindPos;
+varying float vBloodSeed;
 uniform float uBlood;
 float bHash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
 float bNoise(vec3 x) {
@@ -1156,7 +1232,8 @@ float bNoise(vec3 x) {
 float bloodMask() {
   if (uBlood <= 0.0) return 0.0;
   vec3 p = vBindPos;
-  float n = bNoise(p * vec3(11.0, 5.0, 11.0)) * 0.65 + bNoise(p * 31.0) * 0.35;
+  vec3 q = p + vec3(vBloodSeed * 7.1, vBloodSeed * 1.9, vBloodSeed * 3.3);
+  float n = bNoise(q * vec3(11.0, 5.0, 11.0)) * 0.65 + bNoise(q * 31.0) * 0.35;
   // Wounds stain the torso; the head and legs stay mostly clean (a dead man is stained, not dyed).
   float torso = smoothstep(0.6, 1.0, p.y) * (1.0 - 0.85 * smoothstep(1.32, 1.48, p.y));
   float region = torso * (0.75 + 0.25 * sign(p.z)) + 0.2;
@@ -1192,8 +1269,9 @@ export function buildMaterials(ctx) {
   const P = T - gutter * 2;
   const clothCv = makeCanvas(COLS_C * T, ROWS_C * T);
   const cg = clothCv.getContext('2d');
+  const used = new Set();
   CLOTH_TILES.forEach((name, i) => {
-    const { cv } = buildTile(ctx, name, CLOTH_SPEC[name], P);
+    const { cv } = buildTile(ctx, name, CLOTH_SPEC[name], P, used);
     placeTile(cg, cv, (i % COLS_C) * T, Math.floor(i / COLS_C) * T, T, gutter);
   });
   const metalCv = makeCanvas(COLS_M * T, ROWS_M * T);
@@ -1203,7 +1281,7 @@ export function buildMaterials(ctx) {
   const og = ormCv.getContext('2d');
   METAL_TILES.forEach((name, i) => {
     const spec = METAL_SPEC[name];
-    const { cv, mask } = buildTile(ctx, name, spec, P);
+    const { cv, mask } = buildTile(ctx, name, spec, P, used);
     const x = i % COLS_M, y = Math.floor(i / COLS_M);
     placeTile(mg, cv, x * T, y * T, T, gutter);
     placeTile(og, ormTile(spec, P2, mask, 70 + i), x * half, y * half, half, gh);
@@ -1220,6 +1298,15 @@ export function buildMaterials(ctx) {
     return t;
   };
   const clothTex = mk(clothCv, true), metalTex = mk(metalCv, true), ormTex = mk(ormCv, false);
+  // The atlases hold their own copies now: the source textures (atlas-only) can be freed.
+  for (const name of used) {
+    if (KEEP_SOURCES.has(name)) continue;
+    try {
+      ctx.textures.release?.(name);
+    } catch (err) {
+      console.warn('characters: texture release failed', name, err);
+    }
+  }
   const cloth = [], metal = [];
   for (const level of BLOOD_LEVELS) {
     const c = new THREE.MeshStandardMaterial({ map: clothTex, roughness: 0.82, metalness: 0 });
