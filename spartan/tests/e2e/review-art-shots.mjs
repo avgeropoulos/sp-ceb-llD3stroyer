@@ -30,6 +30,8 @@ const facts = () =>
       actors: c.actors.length,
       corpses: c.ai.corpses.length,
       wave: c.waves.state,
+      chevrons: [...document.querySelectorAll('.hud-chev.is-shown')].map((e) => e.style.transform),
+      reticle: document.querySelector('#hud').classList.contains('has-reticle'),
       stats: g.stats(),
     };
   });
@@ -42,6 +44,7 @@ async function shot(name) {
   await page.waitForTimeout(900);
   await page.screenshot({ path: file, timeout: 300000 });
   console.log(`${file} ${JSON.stringify(await facts())}`);
+  if (process.env.WLOG) console.log((await ev(() => window.__wl.splice(0))).join('\n'));
 }
 
 // A clean battle with no waves running: the player alone with what we spawn.
@@ -367,6 +370,12 @@ let bad = 0;
 try {
   await page.goto(`${l.game}?manual=1&seed=7&quality=medium`);
   await page.waitForFunction(() => window.__game && (window.__game.ready || window.__game.errors.length), null, { timeout: 180000 });
+  await ev(() => {
+    const c = window.__game.ctx;
+    window.__wl = [];
+    c.events.on('enemyWindup', (e) => window.__wl.push(`windup g=${c.time.gnow.toFixed(2)} id=${e.actor.id} ${e.actor.kind} inActors=${c.actors.includes(e.actor)} toPlayer=${e.targetIsPlayer}`));
+    c.events.on('modeChanged', (e) => window.__wl.push(`mode ${e.prev}->${e.mode} g=${c.time.gnow.toFixed(2)}`));
+  });
   const list = wanted.length ? wanted : Object.keys(scenes);
   for (const name of list) {
     const t0 = Date.now();

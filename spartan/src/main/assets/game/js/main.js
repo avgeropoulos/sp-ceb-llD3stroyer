@@ -153,6 +153,13 @@ async function boot() {
 
   // Motion pipeline (DESIGN.md §5); main.js owns the glue.
   ctx.motionFrames = new MotionFrames({ platformKind: platform.kind });
+  // A browser's sensor quirks (axis order, gravity sign, screen angle) are learned once and remembered.
+  const CALIB_KEY = 'thermopylae.calib';
+  ctx.motionFrames.importCalibration?.(platform.storage.load(CALIB_KEY, null));
+  const saveCalibration = () => {
+    const calib = ctx.motionFrames.exportCalibration?.();
+    if (calib && calib.confirmed) platform.storage.save(CALIB_KEY, calib);
+  };
   ctx.gestures = new GestureRecognizer({
     sensitivity: settings.sensitivity,
     weapon: 'sword',
@@ -209,6 +216,7 @@ async function boot() {
       if (prev !== 'battle' && prev !== 'training') return;
       pausedFrom = prev;
     }
+    if (prev === 'battle' || prev === 'training') saveCalibration();
     ctx.mode = mode;
     ctx.actions.clear();
     ctx.gestures.reset();
@@ -216,7 +224,7 @@ async function boot() {
     if ((mode === 'battle' || mode === 'training') && !opts.resume) {
       resetAll(mode);
       if (mode === 'battle') {
-        ctx.waves.start(opts.day ?? 1);
+        ctx.waves.start(opts.day ?? 1, opts.entry ?? 0);
         ctx.audio.setAmbience('battle');
       } else {
         ctx.training.start();
@@ -263,6 +271,7 @@ async function boot() {
     if (ctx.mode === 'battle' || ctx.mode === 'training') ctx.setMode('paused');
     ctx.audio.suspend();
     ctx.saveSettings();
+    saveCalibration();
   });
   // The notification shade or another system window took focus: stop the fight until the player is back.
   platform.onBlur(() => {
