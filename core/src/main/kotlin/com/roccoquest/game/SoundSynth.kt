@@ -2,49 +2,48 @@ package com.roccoquest.game
 
 import kotlin.random.Random
 
-/** Synthesizes the retro sound effects as mono float samples at [Chiptune.RATE]. */
-object SoundSynth {
-    private const val RATE = Chiptune.RATE
+/** Builds a sound effect from swept tones and noise bursts, as mono float samples at [Chiptune.RATE]. */
+class SfxBuilder {
+    val samples = ArrayList<Float>()
 
-    private class Builder {
-        val samples = ArrayList<Float>()
-
-        fun tone(f0: Float, f1: Float, dur: Float, vol: Float = 0.35f, square: Boolean = true, decay: Boolean = true) {
-            val n = (RATE * dur).toInt()
-            var phase = 0f
-            for (i in 0 until n) {
-                val t = i.toFloat() / n
-                val f = f0 + (f1 - f0) * t
-                phase = (phase + f / RATE) % 1f
-                val v = if (f <= 0f) 0f else if (square) {
-                    if (phase < 0.5f) 1f else -1f
-                } else {
-                    4f * kotlin.math.abs(phase - 0.5f) - 1f
-                }
-                val env = if (decay) 1f - t else if (t > 0.9f) (1f - t) * 10f else 1f
-                samples += v * vol * env
+    fun tone(f0: Float, f1: Float, dur: Float, vol: Float = 0.35f, square: Boolean = true, decay: Boolean = true) {
+        val n = (Chiptune.RATE * dur).toInt()
+        var phase = 0f
+        for (i in 0 until n) {
+            val t = i.toFloat() / n
+            val f = f0 + (f1 - f0) * t
+            phase = (phase + f / Chiptune.RATE) % 1f
+            val v = if (f <= 0f) 0f else if (square) {
+                if (phase < 0.5f) 1f else -1f
+            } else {
+                4f * kotlin.math.abs(phase - 0.5f) - 1f
             }
-        }
-
-        fun notes(freqs: FloatArray, each: Float, vol: Float = 0.3f, lastHold: Float = 0f) {
-            freqs.forEachIndexed { i, f ->
-                val d = if (i == freqs.lastIndex && lastHold > 0f) lastHold else each
-                tone(f, f, d, vol, decay = i == freqs.lastIndex)
-            }
-        }
-
-        fun noise(dur: Float, vol: Float = 0.4f, smooth: Float = 0f) {
-            val n = (RATE * dur).toInt()
-            var last = 0f
-            for (i in 0 until n) {
-                val raw = Random.nextFloat() * 2f - 1f
-                last = last * smooth + raw * (1f - smooth)
-                samples += last * vol * (1f - i.toFloat() / n)
-            }
+            val env = if (decay) 1f - t else if (t > 0.9f) (1f - t) * 10f else 1f
+            samples += v * vol * env
         }
     }
 
-    fun render(s: Sound): FloatArray = Builder().apply {
+    fun notes(freqs: FloatArray, each: Float, vol: Float = 0.3f, lastHold: Float = 0f) {
+        freqs.forEachIndexed { i, f ->
+            val d = if (i == freqs.lastIndex && lastHold > 0f) lastHold else each
+            tone(f, f, d, vol, decay = i == freqs.lastIndex)
+        }
+    }
+
+    fun noise(dur: Float, vol: Float = 0.4f, smooth: Float = 0f) {
+        val n = (Chiptune.RATE * dur).toInt()
+        var last = 0f
+        for (i in 0 until n) {
+            val raw = Random.nextFloat() * 2f - 1f
+            last = last * smooth + raw * (1f - smooth)
+            samples += last * vol * (1f - i.toFloat() / n)
+        }
+    }
+}
+
+/** Synthesizes the retro sound effects as mono float samples at [Chiptune.RATE]. */
+object SoundSynth {
+    fun render(s: Sound): FloatArray = SfxBuilder().apply {
         when (s) {
             Sound.JUMP -> tone(280f, 640f, 0.14f)
             Sound.COIN -> { tone(988f, 988f, 0.06f, decay = false); tone(1319f, 1319f, 0.3f) }

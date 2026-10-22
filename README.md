@@ -105,6 +105,42 @@ waves, a triangle bass and noise drums, so there are no audio files. Tap the **â
 * Keyboards and game controllers also work: arrow keys or WASD, Shift to run,
   Down or S to crouch/slam, Space to jump, X to fire, M for music.
 
+## Second game: Hercules & Apollo, The Big Walk
+
+A separate game (its own app on your phone). You take the two dogs, **Hercules** and **Apollo**,
+out on five walks, and they chase down everything they see.
+
+![Hercules and Apollo chasing a squirrel](docs/walk.png)
+
+* **Hercules** (brown, red collar) is the big, strong one and jumps high enough to reach cats
+  on fences and raccoons on bins.
+* **Apollo** (golden, blue collar) is the quick one, and the only dog fast enough to catch a bunny.
+* Tap **HERC** or **APOLLO** and that dog barks and runs after the nearest critter. Pull too hard
+  and the dog drags you along by the leash ("WHOA!").
+* Squirrels race up their tree, pigeons and seagulls fly off, bunnies dive into bushes, crabs
+  scuttle into holes and raccoons duck into bins. You have to be quick!
+* If both dogs catch something within a second and a half of each other, you get a **TEAM CHASE** bonus.
+* **Don't chase the skunk!** The dog gets sprayed, loses you points and is too stinky to chase
+  anything for a while.
+* **Bikes** ring their bell and ride toward you. **JUMP** over them. Three bumps and you start
+  that walk again.
+* Grab the floating **bones** for points. Chase every critter on a walk for a 1000-point bonus.
+
+| Walk | Name | What's there |
+|---|---|---|
+| 1 | Morning in the Park | Squirrels, pigeons and the first bikes. |
+| 2 | Maple Street | Cats on fences, squirrels, hydrants and more bikes. |
+| 3 | Meadow Trail | Bunnies, squirrels and two skunks. |
+| 4 | Sunny Beach | Seagulls and crabs on the boardwalk. |
+| 5 | Moonlight Walk | Raccoons on bins, cats and skunks at night. |
+
+Every walk ends at home, with two water bowls by the door. At the end you get 1 to 3 stars
+for how many critters were chased. Progress and your best score are saved.
+
+Controls: the left half of the screen walks left and right. On the right are **JUMP**,
+**HERC** and **APOLLO**. With a keyboard: arrows or A/D to walk, Space to jump,
+H for Hercules, J for Apollo, P to pause and M for music.
+
 ## Installing on your phone
 
 Every push builds an APK with GitHub Actions (see `.github/workflows/android.yml`):
@@ -114,6 +150,10 @@ Every push builds an APK with GitHub Actions (see `.github/workflows/android.yml
    in Chrome. It's also the latest release on the repository page.
 2. Download `RoccosQuest.apk` and open it. If Android asks, allow your browser to install unknown apps.
 
+For Hercules & Apollo, use
+**https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/HerculesApolloWalk.apk**
+instead. The two games install side by side.
+
 ## Building it yourself
 
 You need JDK 17 and the Android SDK (Android Studio installs both).
@@ -122,6 +162,8 @@ You need JDK 17 and the Android SDK (Android Studio installs both).
 ./gradlew :app:assembleDebug     # APK at app/build/outputs/apk/debug/app-debug.apk
 ./gradlew :core:test             # game-logic tests; also renders screenshots to core/build/screens
                                  # and the music to core/build/music/*.wav
+./gradlew :walkapp:assembleDebug # Hercules & Apollo APK at walkapp/build/outputs/apk/debug/walkapp-debug.apk
+./gradlew :walk:test             # its tests; screenshots go to walk/build/screens
 ```
 
 You can also open the folder in Android Studio and press Run.
@@ -134,5 +176,9 @@ You can also open the folder in Android Studio and press Run.
   The music lives in `Songs.kt`, written in a tiny note notation, and `Chiptune.kt` turns it into audio.
 * `app/`: the Android layer. A `SurfaceView` game loop, multitouch controls, a `Canvas`
   renderer, sound effects that are synthesized at startup, and a streaming music player.
+
+* `walk/` and `walkapp/`: Hercules & Apollo. `walk/` is the game logic and drawing in plain Kotlin
+  (it reuses `core/`'s drawing interface and chiptune synth). The walks are laid out in `Course.kt`,
+  and the dogs' pixel art and coat colors are at the top of `WalkSprites.kt`. `walkapp/` is its Android app.
 
 Levels are built in `core/.../Level.kt` with a small builder, so adding a new one is a few lines.

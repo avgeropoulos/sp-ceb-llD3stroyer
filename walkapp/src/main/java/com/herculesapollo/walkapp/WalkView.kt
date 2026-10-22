@@ -1,0 +1,164 @@
+package com.herculesapollo.walkapp
+
+import android.annotation.SuppressLint
+import android.content.Context
+import android.os.Build
+import android.view.KeyEvent
+import android.view.MotionEvent
+import android.view.SurfaceHolder
+import android.view.SurfaceView
+import com.herculesapollo.walk.VIEW_H
+import com.herculesapollo.walk.WalkControls
+import com.herculesapollo.walk.WalkGame
+import com.herculesapollo.walk.WalkInput
+import com.roccoquest.game.Storage
+
+/** Hosts the game loop on its own thread and feeds it touch and key input. */
+@SuppressLint("ViewConstructor")
+class WalkView(context: Context) : SurfaceView(context), SurfaceHolder.Callback, Runnable {
+    private val input = WalkInput()
+    private val sound = WalkSoundFx(context)
+    private val prefs = context.getSharedPreferences("walk", Context.MODE_PRIVATE)
+    private val game = WalkGame(input, sound, object : Storage {
+        override fun load(key: String) = prefs.getInt(key, 0)
+        override fun save(key: String, value: Int) { prefs.edit().putInt(key, value).apply() }
+    })
+    private val gfx = CanvasGfx()
+
+    @Volatile private var running = false
+    private var resumed = false
+    private var surfaceReady = false
+    private var thread: Thread? = null
+
+    private val touchX = FloatArray(10)
+    private val touchY = FloatArray(10)
+
+    init {
+        holder.addCallback(this)
+        isFocusable = true
+        isFocusableInTouchMode = true
+    }
+
+    fun resume() {
+        resumed = true
+        sound.setForeground(true)
+        startLoop()
+    }
+
+    fun pause() {
+        resumed = false
+        sound.setForeground(false)
+        stopLoop()
+    }
+
+    fun release() = sound.release()
+
+    private fun startLoop() {
+        if (!resumed || !surfaceReady || running) return
+        running = true
+        thread = Thread(this, "game-loop").also { it.start() }
+    }
+
+    private fun stopLoop() {
+        running = false
+        thread?.let {
+            try { it.join(500) } catch (_: InterruptedException) {}
+        }
+        thread = null
+    }
+
+    override fun surfaceCreated(holder: SurfaceHolder) {
+        surfaceReady = true
+        startLoop()
+    }
+
+    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+        if (height > 0) game.viewW = width * VIEW_H / height
+    }
+
+    override fun surfaceDestroyed(holder: SurfaceHolder) {
+        surfaceReady = false
+        stopLoop()
+    }
+
+    override fun run() {
+        val step = 1f / 60f
+        var last = System.nanoTime()
+        var acc = 0f
+        while (running) {
+            val now = System.nanoTime()
+            acc += ((now - last) / 1e9f).coerceAtMost(0.25f)
+            last = now
+            while (acc >= step) {
+                game.update(step)
+                acc -= step
+            }
+            val canvas = try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) holder.lockHardwareCanvas() else holder.lockCanvas()
+            } catch (_: Exception) { null }
+            if (canvas == null) {
+                Thread.sleep(16)
+                continue
+            }
+            try {
+                val scale = canvas.height / VIEW_H
+                game.viewW = canvas.width / scale
+                gfx.begin(canvas, scale)
+                game.render(gfx)
+            } finally {
+                holder.unlockCanvasAndPost(canvas)
+            }
+            val elapsed = (System.nanoTime() - now) / 1_000_000L
+            if (elapsed < 8) Thread.sleep(8 - elapsed)
+        }
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        val scale = height / VIEW_H
+        if (scale <= 0f) return true
+        val action = e.actionMasked
+        var n = 0
+        if (action != MotionEvent.ACTION_CANCEL && action != MotionEvent.ACTION_UP) {
+            for (i in 0 until e.pointerCount) {
+                if (action == MotionEvent.ACTION_POINTER_UP && i == e.actionIndex) continue
+                if (n >= touchX.size) break
+                touchX[n] = e.getX(i) / scale
+                touchY[n] = e.getY(i) / scale
+                n++
+            }
+        }
+        WalkControls.apply(input, touchX, touchY, n, game.viewW)
+        if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
+            input.tapX = e.getX(e.actionIndex) / scale
+            input.tap = true
+        }
+        return true
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (!setKey(keyCode, true)) return super.onKeyDown(keyCode, event)
+        input.tapX = -1f
+        input.tap = true
+        return true
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean =
+        setKey(keyCode, false) || super.onKeyUp(keyCode, event)
+
+    /** Keyboard / game-controller support. */
+    private fun setKey(keyCode: Int, down: Boolean): Boolean {
+        when (keyCode) {
+            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_A -> input.left = down
+            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_D -> input.right = down
+            KeyEvent.KEYCODE_SPACE, KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_W,
+            KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> input.jump = down
+            KeyEvent.KEYCODE_H, KeyEvent.KEYCODE_X, KeyEvent.KEYCODE_BUTTON_X -> input.herc = down
+            KeyEvent.KEYCODE_J, KeyEvent.KEYCODE_C, KeyEvent.KEYCODE_BUTTON_B -> input.apollo = down
+            KeyEvent.KEYCODE_P, KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_ESCAPE -> input.pause = down
+            KeyEvent.KEYCODE_M, KeyEvent.KEYCODE_BUTTON_SELECT -> input.musicToggle = down
+            else -> return false
+        }
+        return true
+    }
+}
