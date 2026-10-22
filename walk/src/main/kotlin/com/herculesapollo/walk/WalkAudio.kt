@@ -5,7 +5,7 @@ import com.roccoquest.game.Song
 
 enum class WalkSound { GAV, ARP, CATCH, TREAT, JUMP, BELL, OUCH, HISS, SKUNK, WHOA, TEAM, HOME }
 
-/** DAY is the walk with both dogs; HERC and APOLLO are each dog's own stroll when you play as them. */
+/** DAY is the walk with both dogs; HERC (lively) and APOLLO (calm) are each dog's own tune when you play as them. */
 enum class WalkTune { NONE, DAY, NIGHT, HERC, APOLLO }
 
 /** Where the walk sends its sounds; the platform layer plays them. */
@@ -112,78 +112,78 @@ object WalkSongs {
         drums = "k...h...s...h...",
     )
 
-    /** Hercules' stroll: the same bouncy style, a bit lower and struttier, in F. */
+    /** Hercules' run: fast and full of adrenaline, a driving bass and busy drums, in A minor. */
     private val herc = Song(
-        bpm = 124,
+        bpm = 172,
         lead = """
-            F4/2 A4/2 C5/2 A4/2 Bb4/2 D5/2 C5/4
-            A4/2 C5/2 F5/2 C5/2 D5/2 C5/2 A4/4
-            Bb4/2 A4/2 G4/2 A4/2 Bb4/2 D5/2 C5/2 Bb4/2
-            A4/2 G4/2 F4/2 G4/2 A4/4 F4/4
-            D5/2 F5/2 D5/2 Bb4/2 C5/2 E5/2 G5/4
-            F5/2 E5/2 D5/2 C5/2 Bb4/2 A4/2 G4/4
-            F4/2 A4/2 C5/2 F5/2 E5/2 C5/2 D5/2 E5/2
-            F5/4 C5/2 A4/2 F4/8
+            A4/1 C5/1 E5/2 A5/2 E5/2 G5/2 E5/2 D5/2 C5/2
+            E5/2 E5/1 E5/1 G5/2 A5/2 B5/4 G5/4
+            F5/2 E5/2 D5/2 F5/2 A5/2 G5/2 F5/2 D5/2
+            E5/2 C5/2 B4/2 C5/2 E5/4 -/4
+            A5/2 A5/1 G5/1 E5/2 D5/2 E5/2 G5/2 A5/4
+            G5/2 G5/1 F5/1 D5/2 C5/2 D5/2 F5/2 G5/4
+            F5/2 E5/2 F5/2 G5/2 A5/2 B5/2 C6/2 B5/2
+            A5/4 E5/2 C5/2 A4/8
         """,
         harmony = """
-            -/2 A3/2 -/2 C4/2 -/2 D4/2 -/2 C4/2
-            -/2 A3/2 -/2 C4/2 -/2 F4/2 -/2 C4/2
-            -/2 D4/2 -/2 F4/2 -/2 E4/2 -/2 G4/2
-            -/2 C4/2 -/2 A3/2 -/2 C4/2 -/2 A3/2
-            -/2 D4/2 -/2 F4/2 -/2 E4/2 -/2 G4/2
-            -/2 D4/2 -/2 F4/2 -/2 C4/2 -/2 E4/2
-            -/2 A3/2 -/2 C4/2 -/2 A3/2 -/2 C4/2
-            -/2 A3/2 -/2 C4/2 -/8
+            -/2 C4/2 -/2 E4/2 -/2 C4/2 -/2 E4/2
+            -/2 B3/2 -/2 E4/2 -/2 G4/2 -/2 B4/2
+            -/2 D4/2 -/2 F4/2 -/2 A4/2 -/2 F4/2
+            -/2 G#4/2 -/2 B4/2 -/2 G#4/2 -/2 B4/2
+            -/2 C4/2 -/2 E4/2 -/2 C4/2 -/2 E4/2
+            -/2 B3/2 -/2 D4/2 -/2 B3/2 -/2 D4/2
+            -/2 A3/2 -/2 C4/2 -/2 B3/2 -/2 D4/2
+            -/2 C4/2 -/2 E4/2 -/8
         """,
         bass = """
-            F2/4 C3/4 F2/4 C3/4
-            F2/4 C3/4 D3/4 C3/4
-            Bb2/4 F2/4 C3/4 G2/4
-            F2/4 C3/4 F2/4 F2/4
-            Bb2/4 F3/4 C3/4 G3/4
-            Bb2/4 F3/4 C3/4 E3/4
-            F2/4 C3/4 A2/4 C3/4
-            F2/4 C3/4 F2/8
+            A2/2 A2/2 A3/2 A2/2 A2/2 A2/2 A3/2 A2/2
+            E2/2 E2/2 E3/2 E2/2 G2/2 G2/2 G3/2 G2/2
+            D2/2 D2/2 D3/2 D2/2 F2/2 F2/2 F3/2 F2/2
+            E2/2 E2/2 E3/2 E2/2 E2/2 E2/2 E3/2 G#2/2
+            A2/2 A2/2 A3/2 A2/2 A2/2 A2/2 A3/2 A2/2
+            G2/2 G2/2 G3/2 G2/2 G2/2 G2/2 G3/2 G2/2
+            F2/2 F2/2 F3/2 F2/2 G2/2 G2/2 G3/2 G2/2
+            A2/2 A2/2 A3/2 A2/2 A2/8
         """,
-        drums = "k...s.h.k.k.s.h.",
-        leadDuty = 0.5f,
+        drums = "k.hhs.hkk.hhs.hs",
+        leadDuty = 0.25f,
     )
 
-    /** Apollo's stroll: the same bouncy style, quicker and brighter, in G. */
+    /** Apollo's stroll: slow and calm, with long soft notes, in D. */
     private val apollo = Song(
-        bpm = 150,
+        bpm = 96,
         lead = """
-            G5/2 D5/2 B4/2 D5/2 G5/2 A5/2 B5/4
-            A5/2 G5/2 E5/2 G5/2 D5/4 B4/4
-            C5/2 E5/2 A5/2 G5/2 F#5/2 A5/2 D5/4
-            G5/2 F#5/2 E5/2 D5/2 B4/4 G4/4
-            E5/2 G5/2 B5/2 G5/2 C6/2 B5/2 A5/4
-            D5/2 F#5/2 A5/2 F#5/2 B5/2 A5/2 G5/4
-            E5/2 F#5/2 G5/2 A5/2 B5/2 A5/2 G5/2 F#5/2
-            G5/4 D5/2 B4/2 G4/8
+            D5/4 F#5/4 A5/4 F#5/4
+            E5/4 G5/4 F#5/8
+            B4/4 D5/4 G5/4 F#5/4
+            E5/8 A4/8
+            D5/4 F#5/4 B5/4 A5/4
+            G5/4 F#5/4 E5/8
+            G5/4 F#5/4 E5/4 C#5/4
+            D5/12 -/4
         """,
         harmony = """
-            -/2 B3/2 -/2 D4/2 -/2 B3/2 -/2 D4/2
-            -/2 C4/2 -/2 E4/2 -/2 B3/2 -/2 D4/2
-            -/2 C4/2 -/2 E4/2 -/2 A3/2 -/2 D4/2
-            -/2 B3/2 -/2 D4/2 -/2 B3/2 -/2 D4/2
-            -/2 C4/2 -/2 E4/2 -/2 C4/2 -/2 E4/2
-            -/2 D4/2 -/2 F#4/2 -/2 B3/2 -/2 D4/2
-            -/2 C4/2 -/2 E4/2 -/2 D4/2 -/2 F#4/2
-            -/2 B3/2 -/2 D4/2 -/8
+            F#4/8 A4/8
+            G4/8 A4/8
+            G4/8 B4/8
+            G4/8 E4/8
+            F#4/8 D4/8
+            B3/8 C#4/8
+            B3/8 A3/8
+            F#4/16
         """,
         bass = """
-            G2/4 D3/4 G2/4 D3/4
-            C3/4 G2/4 G2/4 D3/4
-            A2/4 E3/4 D3/4 A2/4
-            G2/4 D3/4 G2/4 G2/4
-            C3/4 G3/4 C3/4 G3/4
-            D3/4 A2/4 G2/4 B2/4
-            C3/4 E3/4 D3/4 F#3/4
-            G2/4 D3/4 G2/8
+            D3/8 A2/8
+            A2/8 D3/8
+            G2/8 B2/8
+            A2/8 A2/8
+            D3/8 B2/8
+            G2/8 A2/8
+            E2/8 A2/8
+            D3/16
         """,
-        drums = "k.h.s.hhk.h.s.hh",
-        leadDuty = 0.25f,
+        drums = "k.......h...h...",
+        leadDuty = 0.5f,
     )
 
     fun of(t: WalkTune): Song? = when (t) {

@@ -31,13 +31,13 @@ class Dog(val name: String, val herc: Boolean) {
     var whoaShown = false
 
     /** Hitbox size. */
-    val w = if (herc) 22f else 20f
-    val h = if (herc) 17f else 14f
+    val w = 20f
+    val h = 15f
     /** Where the dog trots, ahead of the walker. */
     val offset = if (herc) 30f else 54f
-    /** Hercules is strong (jumps high), Apollo is quick (runs fast). */
-    val dashSpeed = if (herc) 175f else 265f
-    val jumpV = if (herc) 300f else 200f
+    /** Hercules is quick (runs fast), Apollo is springy (jumps high). */
+    val dashSpeed = if (herc) 265f else 175f
+    val jumpV = if (herc) 190f else 300f
 
     val ready get() = stinkT <= 0f
 }
@@ -128,7 +128,14 @@ class WalkGame(
     private var prevMusic = false
     private var prevAction = false
 
+    /** Three save slots; each remembers the walk, and each dog's adventure, separately. */
+    val slots = SaveSlots(storage)
+
     init {
+        // Progress saved before there were slots goes into slot 1.
+        slots.migrate("walk", WALK)
+        slots.migrate("adventureHerc", HERC)
+        slots.migrate("adventureApollo", APOLLO)
         resetPositions()
         applyMusic()
     }
@@ -143,12 +150,11 @@ class WalkGame(
         if (dg != null) dg.applyMusic() else audio.music(if (!musicOn) WalkTune.NONE else course.walk.theme.tune)
     }
 
-    /** Where each dog's adventure picks up again. */
-    fun adventureWalk(herc: Boolean) =
-        storage.load(if (herc) "adventureHerc" else "adventureApollo").coerceIn(0, Walks.all.lastIndex)
+    /** Where each dog's adventure picks up again, in the current slot. */
+    fun adventureWalk(herc: Boolean) = slots.walk(if (herc) HERC else APOLLO).coerceIn(0, Walks.all.lastIndex)
 
-    /** Furthest walk reached, for "continue" on the title screen. */
-    val savedWalk get() = storage.load("walk").coerceIn(0, Walks.all.lastIndex)
+    /** Where the walk picks up again, in the current slot. */
+    val savedWalk get() = slots.walk(WALK).coerceIn(0, Walks.all.lastIndex)
 
     fun startWalk(i: Int) {
         walkIndex = i
@@ -161,7 +167,7 @@ class WalkGame(
         walkStartScore = score
         popups.clear()
         tip = null
-        if (i > savedWalk) storage.save("walk", i)
+        slots.save(WALK, i, score)
         applyMusic()
         setState(State.INTRO)
     }
@@ -197,8 +203,11 @@ class WalkGame(
         val playing = if (dg != null) dg.state == DogGame.State.PLAYING else state == State.PLAYING
         if (playing && pauseP) { paused = !paused; return }
         if (paused) {
-            if (tap && !input.pause && !input.musicToggle) paused = false
-            if (paused) return
+            if (tap && !input.pause && !input.musicToggle) {
+                paused = false
+                if (WalkControls.onSaveAndQuit(input.tapX, input.tapY, viewW)) saveAndQuit()
+            }
+            return
         }
         // Taps on the top-right buttons shouldn't also press menu buttons.
         val menuTap = tap && !input.pause && !input.musicToggle
@@ -222,18 +231,7 @@ class WalkGame(
         when (state) {
             State.TITLE -> {
                 updateTitle(dt)
-                if (menuTap && stateTime > 0.4f) {
-                    score = 0
-                    // The title screen has three buttons side by side; a key press picks the walk.
-                    when (if (input.tapX < 0f) 0 else (input.tapX / (viewW / 3f)).toInt()) {
-                        0 -> {
-                            audio.say("Let's go for a walk!")
-                            startWalk(savedWalk)
-                        }
-                        1 -> startAdventure(herc = true)
-                        else -> startAdventure(herc = false)
-                    }
-                }
+                if (menuTap && stateTime > 0.4f) titleTap(input.tapX, input.tapY)
             }
             State.INTRO -> {
                 time += dt
@@ -248,7 +246,7 @@ class WalkGame(
             State.HOME -> updateHome(dt)
             State.RESULTS -> if (menuTap && stateTime > 1.5f) {
                 if (walkIndex == Walks.all.lastIndex) {
-                    storage.save("walk", 0)
+                    slots.clear(WALK)
                     audio.music(WalkTune.NONE)
                     setState(State.ALL_DONE)
                     audio.say("All done! Good dogs, Hercules and Apollo!")
@@ -272,9 +270,47 @@ class WalkGame(
         }
     }
 
+    /**
+     * The title screen: a row of save-slot tabs, then three buttons side by side (walk
+     * both dogs, be Hercules, be Apollo). A key press picks the walk in the current slot.
+     */
+    private fun titleTap(x: Float, y: Float) {
+        if (x >= 0f && y in WalkControls.SLOT_TOP..WalkControls.SLOT_TOP + WalkControls.SLOT_H) {
+            WalkControls.slotAt(x, viewW)?.let { slots.current = it }
+            return
+        }
+        val mode = if (x < 0f) 0 else if (y < WalkControls.CARD_TOP) return else (x / (viewW / 3f)).toInt().coerceIn(0, 2)
+        when (mode) {
+            0 -> {
+                score = slots.score(WALK)
+                audio.say("Let's go for a walk!")
+                startWalk(savedWalk)
+            }
+            1 -> startAdventure(herc = true)
+            else -> startAdventure(herc = false)
+        }
+    }
+
     private fun startAdventure(herc: Boolean) {
         audio.say(if (herc) "Go, Hercules!" else "Go, Apollo!")
-        dogGame = DogGame(input, audio, storage, herc) { musicOn }.also { it.viewW = viewW }
+        dogGame = DogGame(input, audio, storage, slots, herc) { musicOn }.also { it.viewW = viewW }
+    }
+
+    /** SAVE & QUIT from the pause screen: keep this walk (as it was when it started) and go back to the title. */
+    private fun saveAndQuit() {
+        val dg = dogGame
+        if (dg != null) {
+            dg.saveAndQuit()
+            dogGame = null
+        } else {
+            slots.save(WALK, walkIndex, walkStartScore)
+            best = max(best, score).also { storage.save("best", it) }
+        }
+        tip = null
+        course = Course(Walks.all[0])
+        resetPositions()
+        applyMusic()
+        setState(State.TITLE)
     }
 
     private fun updateTitle(dt: Float) {
@@ -434,8 +470,8 @@ class WalkGame(
     private fun endDash(d: Dog, t: Critter?) {
         if (t != null && t.mood != Mood.CHASED) {
             val msg = when {
-                d.herc && t.kind == Kind.RABBIT -> "TOO FAST!"
-                !d.herc && (t.kind == Kind.CAT || t.kind == Kind.RACCOON) -> "TOO HIGH!"
+                !d.herc && t.kind == Kind.RABBIT -> "TOO FAST!"
+                d.herc && (t.kind == Kind.CAT || t.kind == Kind.RACCOON) -> "TOO HIGH!"
                 t.mood == Mood.SAFE || t.mood == Mood.GONE -> "GOT AWAY!"
                 else -> null
             }
@@ -458,8 +494,8 @@ class WalkGame(
     private fun maybeTip(c: Critter) {
         if (c.x > camX + viewW - 30f) return
         when (c.kind) {
-            Kind.CAT -> showTip("Cats sit up high. HERCULES can jump that high!")
-            Kind.RABBIT -> showTip("Bunnies are fast. Only APOLLO can keep up!")
+            Kind.CAT -> showTip("Cats sit up high. APOLLO can jump that high!")
+            Kind.RABBIT -> showTip("Bunnies are fast. Only HERCULES can keep up!")
             Kind.RACCOON -> showTip("Quick! Raccoons hide in the bins.")
             Kind.SKUNK -> showTip("Uh oh, a skunk! DON'T chase it!")
             Kind.CRAB -> showTip("Catch the crabs before they hide!")
@@ -597,10 +633,17 @@ class WalkGame(
             bonus = hearts * 100 + (if (chased == course.total) 1000 else 0)
             score += bonus
             best = max(best, score).also { storage.save("best", it) }
-            if (walkIndex + 1 > savedWalk && walkIndex < Walks.all.lastIndex) storage.save("walk", walkIndex + 1)
+            if (walkIndex < Walks.all.lastIndex) slots.save(WALK, walkIndex + 1, score)
             setState(State.RESULTS)
             audio.say(if (chased == course.total) "Wow! Super good dogs!" else "Good dogs!")
         }
+    }
+
+    companion object {
+        /** Save-slot modes. */
+        const val WALK = "walk"
+        const val HERC = "herc"
+        const val APOLLO = "apollo"
     }
 
     fun render(gfx: Gfx) {

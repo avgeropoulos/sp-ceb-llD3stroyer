@@ -1,6 +1,7 @@
 package com.herculesapollo.walk3d
 
 import com.herculesapollo.walk.Kind
+import com.herculesapollo.walk.SaveSlots
 import com.roccoquest.game.Gfx
 import com.roccoquest.game.shadowText
 import kotlin.math.atan2
@@ -102,6 +103,30 @@ object Controls3D {
         gfx.text(actionLabel, action.cx, action.cy + 3, 7f, if (ready) c else 0x88FFFFFF.toInt(), 1)
     }
 
+    // ---------------------------------------------------------------- Menus
+    /** The title screen's save-slot tabs, and the dog buttons below them. */
+    const val SLOT_TOP = 160f
+    const val SLOT_H = 16f
+    const val SLOT_W = 64f
+    const val CARD_TOP = 196f
+
+    fun slotX(i: Int, viewW: Float) = viewW / 2 - SaveSlots.COUNT * SLOT_W / 2 + i * SLOT_W
+
+    fun slotAt(x: Float, viewW: Float): Int? {
+        val i = kotlin.math.floor((x - slotX(0, viewW)) / SLOT_W).toInt()
+        return if (i in 0 until SaveSlots.COUNT) i + 1 else null
+    }
+
+    /** The pause screen's buttons: KEEP GOING on the left, SAVE & QUIT on the right. */
+    const val PAUSE_Y = 142f
+    const val PAUSE_H = 24f
+    const val PAUSE_W = 120f
+    fun resumeX(viewW: Float) = viewW / 2 - PAUSE_W - 8f
+    fun quitX(viewW: Float) = viewW / 2 + 8f
+
+    fun onSaveAndQuit(x: Float, y: Float, viewW: Float) =
+        x >= quitX(viewW) && x <= quitX(viewW) + PAUSE_W && y >= PAUSE_Y - 4f && y <= PAUSE_Y + PAUSE_H + 4f
+
     fun drawPause(gfx: Gfx, viewW: Float, musicOn: Boolean) {
         layout(viewW)
         val c = 0xDDFFFFFF.toInt()
@@ -172,11 +197,7 @@ object Hud3D {
                 g.tip?.let { banner(gfx, w, it, 72f) }
                 val ring = if (g.dog.herc) Models.HERC_COLLAR else Models.APOLLO_COLLAR
                 Controls3D.draw(gfx, g.input, w, g.dog.actionLabel, ring, g.dog.cooldown <= 0f)
-                if (g.paused) {
-                    gfx.rect(0f, 0f, w, VIEW_H, 0x88000000.toInt())
-                    gfx.shadowText("PAUSED", w / 2, 110f, 18f, WHITE, 1)
-                    gfx.shadowText("tap to keep going", w / 2, 130f, 8f, WHITE, 1)
-                }
+                if (g.paused) paused(gfx, w)
             }
             Game3D.State.HOME -> {
                 hud(g, gfx)
@@ -243,18 +264,43 @@ object Hud3D {
         gfx.rect(0f, 30f, w, 72f, 0x77000000)
         gfx.shadowText("HERCULES & APOLLO", w / 2, 60f, 22f, WHITE, 1)
         gfx.shadowText("3D", w / 2, 86f, 18f, YELLOW, 1)
+        // Save slot tabs.
+        for (i in 0 until SaveSlots.COUNT) {
+            val x = Controls3D.slotX(i, w)
+            val on = g.slots.current == i + 1
+            gfx.rect(x + 2f, Controls3D.SLOT_TOP, Controls3D.SLOT_W - 4f, Controls3D.SLOT_H, if (on) 0xFFFFD21F.toInt() else 0xAA000000.toInt())
+            gfx.text("SLOT ${i + 1}", x + Controls3D.SLOT_W / 2, Controls3D.SLOT_TOP + 11f, 7.5f, if (on) 0xFF1D1D1D.toInt() else WHITE, 1)
+        }
         val pulse = (g.stateTime * 2f).toInt() % 2 == 0
+        val top = Controls3D.CARD_TOP
         for ((i, herc) in listOf(true, false).withIndex()) {
             val cx = w / 4 + i * w / 2
             val bw = min(150f, w / 2 - 24f)
             val color = if (herc) Models.HERC_COLLAR else Models.APOLLO_COLLAR
-            gfx.rect(cx - bw / 2 - 1.5f, 196f - 1.5f, bw + 3f, 33f, if (pulse) WHITE else 0xAAFFFFFF.toInt())
-            gfx.rect(cx - bw / 2, 196f, bw, 30f, 0xDD000000.toInt() or (color and 0xFFFFFF))
-            gfx.shadowText(if (herc) "BE HERCULES" else "BE APOLLO", cx, 210f, 9f, WHITE, 1)
-            gfx.text(if (herc) "Big jumps + BARK" else "Super fast + DASH", cx, 221f, 6f, 0xDDFFFFFF.toInt(), 1)
-            gfx.text("LEVEL ${g.savedLevel(herc) + 1}", cx, 190f, 6f, WHITE, 1)
+            gfx.rect(cx - bw / 2 - 1.5f, top - 1.5f, bw + 3f, 37f, if (pulse) WHITE else 0xAAFFFFFF.toInt())
+            gfx.rect(cx - bw / 2, top, bw, 34f, 0xDD000000.toInt() or (color and 0xFFFFFF))
+            gfx.shadowText(if (herc) "BE HERCULES" else "BE APOLLO", cx, top + 12f, 9f, WHITE, 1)
+            gfx.text(if (herc) "Super fast + DASH" else "Big jumps + BARK", cx, top + 22f, 6f, 0xDDFFFFFF.toInt(), 1)
+            val mode = if (herc) "herc" else "apollo"
+            val progress = if (g.slots.started(mode)) "LEVEL ${g.savedLevel(herc) + 1}  SCORE ${g.slots.score(mode)}" else "NEW GAME"
+            gfx.text(progress, cx, top + 31f, 5.5f, 0xDDFFFFFF.toInt(), 1)
         }
         if (g.best > 0) gfx.shadowText("BEST ${g.best}", w / 2, 112f, 7f, WHITE, 1)
+    }
+
+    private fun paused(gfx: Gfx, w: Float) {
+        gfx.rect(0f, 0f, w, VIEW_H, 0x88000000.toInt())
+        gfx.shadowText("PAUSED", w / 2, 110f, 18f, WHITE, 1)
+        gfx.shadowText("Your game is saved at the start of every level.", w / 2, 128f, 7f, WHITE, 1)
+        val y = Controls3D.PAUSE_Y
+        for ((x, label, color) in listOf(
+            Triple(Controls3D.resumeX(w), "KEEP GOING", 0xFF2A9D8F.toInt()),
+            Triple(Controls3D.quitX(w), "SAVE & QUIT", 0xFFE76F51.toInt()),
+        )) {
+            gfx.rect(x - 1.5f, y - 1.5f, Controls3D.PAUSE_W + 3f, Controls3D.PAUSE_H + 3f, WHITE)
+            gfx.rect(x, y, Controls3D.PAUSE_W, Controls3D.PAUSE_H, color)
+            gfx.shadowText(label, x + Controls3D.PAUSE_W / 2, y + Controls3D.PAUSE_H / 2 + 3f, 9f, WHITE, 1)
+        }
     }
 
     private fun banner(gfx: Gfx, w: Float, text: String, y: Float) {

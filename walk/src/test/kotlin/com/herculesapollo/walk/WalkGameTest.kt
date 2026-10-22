@@ -91,35 +91,35 @@ class WalkGameTest {
         assertEquals(0, g.chased)
     }
 
-    @Test fun onlyHerculesReachesTheCat() {
+    @Test fun onlyApolloReachesTheCat() {
         val g = newGame(1)
         val cat = g.course.critters.first { it.kind == Kind.CAT }
         place(g, cat.x - 90f)
-        press(g, herc = false)
+        press(g, herc = true)
         run(g, 2.6f)
-        assertEquals(0, g.chased, "Apollo can't jump that high")
+        assertEquals(0, g.chased, "Hercules can't jump that high")
         assertTrue(cat.catchable)
         place(g, cat.x - 90f)
-        press(g, herc = true)
+        press(g, herc = false)
         run(g, 1.5f)
-        assertEquals(1, g.chased, "Hercules can")
+        assertEquals(1, g.chased, "Apollo can")
     }
 
-    @Test fun onlyApolloCatchesBunnies() {
+    @Test fun onlyHerculesCatchesBunnies() {
         val g = newGame(2)
         val bunny = g.course.critters.first { it.kind == Kind.RABBIT }
         place(g, bunny.x - 130f)
-        press(g, herc = true)
+        press(g, herc = false)
         run(g, 2.5f)
-        assertEquals(Mood.SAFE, bunny.mood, "the bunny outruns Hercules")
+        assertEquals(Mood.SAFE, bunny.mood, "the bunny outruns Apollo")
         assertTrue(g.popups.any { it.text == "TOO FAST!" } || g.chased == 0)
 
         val g2 = newGame(2)
         val bunny2 = g2.course.critters.first { it.kind == Kind.RABBIT }
         place(g2, bunny2.x - 130f)
-        press(g2, herc = false)
+        press(g2, herc = true)
         run(g2, 2f)
-        assertEquals(1, g2.chased, "Apollo catches it")
+        assertEquals(1, g2.chased, "Hercules catches it")
     }
 
     @Test fun dontChaseTheSkunk() {
@@ -239,6 +239,7 @@ class WalkGameTest {
             ImageIO.write(img, "png", File(dir, "$name.png"))
         }
         val title = WalkGame(WalkInput()).apply { viewW = 427f }
+        title.slots.save(WalkGame.HERC, 2, 1350)
         run(title, 1f)
         shot(title, "0-title")
 
@@ -264,6 +265,15 @@ class WalkGameTest {
         place(g, bike.x - 200f)
         run(g, 0.5f)
         shot(g, "1-bike")
+        g.input.pause = true
+        g.update(dt)
+        g.input.pause = false
+        g.update(dt)
+        shot(g, "1-paused")
+        g.input.tapX = 10f
+        g.input.tapY = 10f
+        g.input.tap = true
+        g.update(dt)
 
         for ((walk, kind) in listOf(1 to Kind.CAT, 2 to Kind.RABBIT, 3 to Kind.CRAB, 4 to Kind.RACCOON)) {
             val w = newGame(walk)
@@ -300,16 +310,53 @@ class WalkGameTest {
         g.input.right = true
         run(g, 4.5f)
         assertEquals(WalkGame.State.RESULTS, g.state)
-        assertEquals(1, store.load("walk"))
+        assertEquals(1, SaveSlots(store).walk(WalkGame.WALK))
+        assertEquals(g.score, SaveSlots(store).score(WalkGame.WALK))
         assertTrue(store.load("best") > 0)
 
         val again = WalkGame(WalkInput(), storage = store).apply { viewW = 427f }
         assertEquals(1, again.savedWalk)
         run(again, 0.5f)
         again.input.tapX = 50f
+        again.input.tapY = WalkControls.CARD_TOP + 20f
         again.input.tap = true
         again.update(dt)
         assertEquals(1, again.walkIndex)
-        assertNotNull(again.course)
+        assertEquals(g.score, again.score, "the score comes back too")
+    }
+
+    @Test fun threeSaveSlots() {
+        val store = com.roccoquest.game.Storage.Memory()
+        val slots = SaveSlots(store)
+        slots.save(WalkGame.WALK, 3, 900)
+        val g = WalkGame(WalkInput(), storage = store).apply { viewW = 427f }
+        run(g, 0.5f)
+        // Pick slot 2 on the title screen: it's empty, so the walk starts from the beginning.
+        g.input.tapX = WalkControls.slotX(1, g.viewW) + 10f
+        g.input.tapY = WalkControls.SLOT_TOP + 5f
+        g.input.tap = true
+        g.update(dt)
+        assertEquals(WalkGame.State.TITLE, g.state)
+        assertEquals(2, g.slots.current)
+        assertEquals(0, g.savedWalk)
+        g.input.tapX = 50f
+        g.input.tapY = WalkControls.CARD_TOP + 20f
+        g.input.tap = true
+        g.update(dt)
+        assertEquals(0, g.walkIndex)
+        assertEquals(0, g.score)
+        // Slot 1 still has its walk.
+        assertEquals(3, slots.walk(WalkGame.WALK, slot = 1))
+        assertEquals(900, slots.score(WalkGame.WALK, slot = 1))
+    }
+
+    @Test fun oldProgressMovesIntoSlotOne() {
+        val store = com.roccoquest.game.Storage.Memory()
+        store.save("walk", 2)
+        store.save("adventureApollo", 4)
+        val g = WalkGame(WalkInput(), storage = store)
+        assertEquals(2, g.slots.walk(WalkGame.WALK, slot = 1))
+        assertEquals(4, g.adventureWalk(herc = false))
+        assertEquals(0, store.load("walk"))
     }
 }

@@ -38,7 +38,6 @@ class GlRenderer(private val game: Game3D) : GLSurfaceView.Renderer {
     private var skyBuffer = 0
     private var aspect = 1f
     private var last = 0L
-    private var acc = 0f
 
     private val mvp = FloatArray(16)
     private val mv = FloatArray(16)
@@ -85,14 +84,14 @@ class GlRenderer(private val game: Game3D) : GLSurfaceView.Renderer {
 
     override fun onDrawFrame(gl: GL10?) {
         val now = System.nanoTime()
-        acc += ((now - last) / 1e9f).coerceAtMost(0.25f)
+        val elapsed = ((now - last) / 1e9f).coerceIn(0f, 0.1f)
         last = now
         val frame: Frame
         synchronized(game) {
-            while (acc >= STEP) {
-                game.update(STEP)
-                acc -= STEP
-            }
+            // Advance by exactly the time this frame covers, in small steps, so motion stays
+            // smooth on 60, 90 and 120 Hz screens alike (fixed 1/60 s steps judder on fast screens).
+            val steps = kotlin.math.ceil(elapsed / MAX_STEP).toInt()
+            repeat(steps) { game.update(elapsed / steps) }
             frame = game.buildFrame(aspect)
         }
         draw(frame)
@@ -209,7 +208,7 @@ class GlRenderer(private val game: Game3D) : GLSurfaceView.Renderer {
     private fun b(c: Int) = (c and 0xFF) / 255f
 
     private companion object {
-        const val STEP = 1f / 60f
+        const val MAX_STEP = 1f / 120f
         const val STRIDE_BYTES = Mesh.STRIDE * 4
 
         const val VERTEX = """

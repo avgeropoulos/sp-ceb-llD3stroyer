@@ -67,7 +67,18 @@ object WalkRenderer {
     internal fun drawPaused(gfx: Gfx, viewW: Float) {
         gfx.rect(0f, 0f, viewW, VIEW_H, 0x88000000.toInt())
         gfx.shadowText("PAUSED", viewW / 2, 110f, 18f, WHITE, 1)
-        gfx.shadowText("tap to keep going", viewW / 2, 130f, 8f, WHITE, 1)
+        gfx.shadowText("Your game is saved at the start of every walk.", viewW / 2, 128f, 7f, WHITE, 1)
+        val y = WalkControls.PAUSE_Y
+        val w = WalkControls.PAUSE_W
+        val h = WalkControls.PAUSE_H
+        for ((x, label, color) in listOf(
+            Triple(WalkControls.resumeX(viewW), "KEEP GOING", 0xFF2A9D8F.toInt()),
+            Triple(WalkControls.quitX(viewW), "SAVE & QUIT", 0xFFE76F51.toInt()),
+        )) {
+            gfx.rect(x - 1.5f, y - 1.5f, w + 3f, h + 3f, WHITE)
+            gfx.rect(x, y, w, h, color)
+            gfx.shadowText(label, x + w / 2, y + h / 2 + 3f, 9f, WHITE, 1)
+        }
     }
 
     // ------------------------------------------------------------------ Helpers
@@ -552,30 +563,44 @@ object WalkRenderer {
         gfx.shadowText("HERCULES & APOLLO", g.viewW / 2, 68f, 22f, WHITE, 1)
         gfx.shadowText("THE BIG WALK", g.viewW / 2, 90f, 14f, YELLOW, 1)
         gfx.shadowText("Chase squirrels, bunnies, cats and more!", g.viewW / 2, 104f, 7f, WHITE, 1)
+        // Save slot tabs.
+        val ty = WalkControls.SLOT_TOP
+        for (i in 0 until SaveSlots.COUNT) {
+            val x = WalkControls.slotX(i, g.viewW)
+            val on = g.slots.current == i + 1
+            gfx.rect(x + 2f, ty, WalkControls.SLOT_W - 4f, WalkControls.SLOT_H, if (on) 0xFFFFD21F.toInt() else 0xAA000000.toInt())
+            gfx.text("SLOT ${i + 1}", x + WalkControls.SLOT_W / 2, ty + 11f, 7.5f, if (on) 0xFF1D1D1D.toInt() else WHITE, 1)
+        }
         // Three buttons side by side: walk both dogs, or be one of them.
         val third = g.viewW / 3f
+        val top = WalkControls.CARD_TOP
         val cards = listOf(
-            Triple("WALK THE DOGS", g.savedWalk, 0xFF2A9D8F.toInt()),
-            Triple("BE HERCULES", g.adventureWalk(herc = true), WalkSprites.HERC_COLLAR),
-            Triple("BE APOLLO", g.adventureWalk(herc = false), WalkSprites.APOLLO_COLLAR),
+            Triple("WALK THE DOGS", WalkGame.WALK, 0xFF2A9D8F.toInt()),
+            Triple("BE HERCULES", WalkGame.HERC, WalkSprites.HERC_COLLAR),
+            Triple("BE APOLLO", WalkGame.APOLLO, WalkSprites.APOLLO_COLLAR),
         )
         val pulse = (g.stateTime * 2f).toInt() % 2 == 0
-        cards.forEachIndexed { i, (label, walk, color) ->
+        cards.forEachIndexed { i, (label, mode, color) ->
             val cx = third * i + third / 2
             val w = third - 12f
-            gfx.rect(cx - w / 2 - 1.5f, 115f - 1.5f, w + 3f, 47f, if (pulse) WHITE else 0xAAFFFFFF.toInt())
-            gfx.rect(cx - w / 2, 115f, w, 44f, (0xDD000000.toInt()) or (color and 0xFFFFFF))
-            gfx.shadowText(label, cx, 129f, 8f, WHITE, 1)
+            gfx.rect(cx - w / 2 - 1.5f, top - 1.5f, w + 3f, 51f, if (pulse) WHITE else 0xAAFFFFFF.toInt())
+            gfx.rect(cx - w / 2, top, w, 48f, (0xDD000000.toInt()) or (color and 0xFFFFFF))
+            gfx.shadowText(label, cx, top + 11f, 8f, WHITE, 1)
             when (i) {
                 0 -> {
-                    gfx.sprite(WalkSprites.walkerStand, cx - 30f, 132f, w = 9f, h = 17f)
-                    gfx.sprite(WalkSprites.hercStand, cx - 18f, 137f)
-                    gfx.sprite(WalkSprites.apolloStand, cx + 10f, 141f)
+                    gfx.sprite(WalkSprites.walkerStand, cx - 36f, top + 15f, w = 9f, h = 17f)
+                    gfx.sprite(WalkSprites.hercStand, cx - 25f, top + 14f)
+                    gfx.sprite(WalkSprites.apolloStand, cx + 2f, top + 14f)
                 }
-                1 -> gfx.sprite(WalkSprites.hercStand, cx - 13f, 136f)
-                else -> gfx.sprite(WalkSprites.apolloStand, cx - 10f, 140f)
+                1 -> gfx.sprite(WalkSprites.hercStand, cx - 12.5f, top + 14f)
+                else -> gfx.sprite(WalkSprites.apolloStand, cx - 12.5f, top + 14f)
             }
-            gfx.text("WALK ${walk + 1}", cx, 160f - 3f, 5.5f, 0xCCFFFFFF.toInt(), 1)
+            val progress = if (g.slots.started(mode)) {
+                "WALK ${g.slots.walk(mode).coerceAtMost(Walks.all.lastIndex) + 1}  SCORE ${g.slots.score(mode)}"
+            } else {
+                "NEW GAME"
+            }
+            gfx.text(progress, cx, top + 44f, 5.5f, 0xDDFFFFFF.toInt(), 1)
         }
         if (g.best > 0) gfx.shadowText("BEST ${g.best}", g.viewW / 2, 232f, 7f, WHITE, 1)
     }

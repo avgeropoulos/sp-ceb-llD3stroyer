@@ -19,8 +19,9 @@ class WalkInput {
     @Volatile var musicToggle = false
     /** Set on any new touch / key press; consumed by menus. */
     @Volatile var tap = false
-    /** Horizontal position (virtual pixels) of the last tap, for on-screen menu buttons. */
+    /** Position (virtual pixels) of the last tap, for on-screen menu buttons; -1 for a key press. */
     @Volatile var tapX = -1f
+    @Volatile var tapY = -1f
 }
 
 /** On-screen touch controls, laid out in virtual coordinates. */
@@ -121,6 +122,32 @@ object WalkControls {
         gfx.text("JUMP", bigJump.cx, bigJump.cy + 3, 8f, c, 1)
         gfx.text(actionLabel, action.cx, action.cy + 3, 7f, if (ready) c else 0x88FFFFFF.toInt(), 1)
     }
+
+    // ---------------------------------------------------------------- Menus
+    /** The title screen's row of save-slot tabs, and the mode buttons below them. */
+    const val SLOT_TOP = 113f
+    const val SLOT_H = 16f
+    const val CARD_TOP = 134f
+    const val SLOT_W = 64f
+
+    /** Left edge of slot tab [i] (0-based). */
+    fun slotX(i: Int, viewW: Float) = viewW / 2 - SaveSlots.COUNT * SLOT_W / 2 + i * SLOT_W
+
+    /** The slot (1-3) whose tab is at [x], if any. */
+    fun slotAt(x: Float, viewW: Float): Int? {
+        val i = kotlin.math.floor((x - slotX(0, viewW)) / SLOT_W).toInt()
+        return if (i in 0 until SaveSlots.COUNT) i + 1 else null
+    }
+
+    /** The pause screen's two buttons: KEEP GOING on the left, SAVE & QUIT on the right. */
+    const val PAUSE_Y = 142f
+    const val PAUSE_H = 24f
+    const val PAUSE_W = 120f
+    fun resumeX(viewW: Float) = viewW / 2 - PAUSE_W - 8f
+    fun quitX(viewW: Float) = viewW / 2 + 8f
+
+    fun onSaveAndQuit(x: Float, y: Float, viewW: Float) =
+        x >= quitX(viewW) && x <= quitX(viewW) + PAUSE_W && y >= PAUSE_Y - 4f && y <= PAUSE_Y + PAUSE_H + 4f
 
     /** Pause button plus the music on/off toggle beside it. */
     fun drawPause(gfx: Gfx, viewW: Float, musicOn: Boolean) {

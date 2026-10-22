@@ -22,6 +22,7 @@ class DogGameTest {
         g.viewW = 427f
         run(g, 0.5f)
         g.input.tapX = if (herc) 213f else 400f
+        g.input.tapY = WalkControls.CARD_TOP + 20f
         g.input.tap = true
         g.update(dt)
         val dg = assertNotNull(g.dogGame)
@@ -82,17 +83,22 @@ class DogGameTest {
     }
 
     @Test fun holdJumpToJumpHigher() {
-        val (g, dg) = adventure(herc = true)
+        val (g, dg) = adventure(herc = false)
         clearCritters(dg)
         val high = jumpHeight(g, dg, 1f)
-        assertTrue(abs(high - 96f) < 5f, "Hercules jumps $high")
+        assertTrue(abs(high - 96f) < 5f, "Apollo jumps $high")
         val low = jumpHeight(g, dg, 0.05f)
         assertTrue(low < high * 0.5f, "a tap is a hop: $low")
 
-        val (g2, dg2) = adventure(herc = false)
+        val (g2, dg2) = adventure(herc = true)
         clearCritters(dg2)
-        val apollo = jumpHeight(g2, dg2, 1f)
-        assertTrue(abs(apollo - 56f) < 5f, "Apollo jumps $apollo")
+        val herc = jumpHeight(g2, dg2, 1f)
+        assertTrue(abs(herc - 56f) < 5f, "Hercules jumps $herc")
+    }
+
+    @Test fun herculesIsFaster() {
+        assertTrue(Player(herc = true).maxSpeed > Player(herc = false).maxSpeed)
+        assertTrue(Player(herc = false).jumpV > Player(herc = true).jumpV)
     }
 
     @Test fun jumpBufferAndCoyoteTime() {
@@ -127,8 +133,8 @@ class DogGameTest {
         run(g, 1f)
     }
 
-    @Test fun herculesJumpsOntoTheBranchForTheSquirrel() {
-        val (g, dg) = adventure(herc = true)
+    @Test fun apolloJumpsOntoTheBranchForTheSquirrel() {
+        val (g, dg) = adventure(herc = false)
         val squirrel = dg.course.critters.first { it.kind == Kind.SQUIRREL }
         // Let it scamper up the tree first.
         place(g, dg, squirrel.x - 60f)
@@ -145,15 +151,15 @@ class DogGameTest {
         assertEquals(chasedBefore + 1, dg.chased, "caught it on the branch")
     }
 
-    @Test fun apolloCantReachTheBranch() {
-        val (g, dg) = adventure(herc = false)
+    @Test fun herculesCantReachTheBranch() {
+        val (g, dg) = adventure(herc = true)
         val tree = dg.ledges.first { it.top == GROUND - 84f }
         place(g, dg, tree.x0 + 6f)
         assertTrue(jumpHeight(g, dg, 1f) < 84f)
     }
 
-    @Test fun apolloJumpsOnTheFenceForTheCat() {
-        val (g, dg) = adventure(herc = false, walk = 1)
+    @Test fun herculesJumpsOnTheFenceForTheCat() {
+        val (g, dg) = adventure(herc = true, walk = 1)
         val cat = dg.course.critters.first { it.kind == Kind.CAT }
         place(g, dg, cat.x - 70f)
         g.input.right = true
@@ -165,8 +171,8 @@ class DogGameTest {
         assertTrue(cat.mood == Mood.CHASED || cat.mood == Mood.GONE)
     }
 
-    @Test fun herculesBarkFreezesTheBunny() {
-        val (g, dg) = adventure(herc = true, walk = 2)
+    @Test fun apolloBarkFreezesTheBunny() {
+        val (g, dg) = adventure(herc = false, walk = 2)
         val bunny = dg.course.critters.first { it.kind == Kind.RABBIT }
         place(g, dg, bunny.x - 90f)
         g.input.action = true
@@ -179,8 +185,8 @@ class DogGameTest {
         assertEquals(1, dg.chased)
     }
 
-    @Test fun apolloDashesDownTheBunny() {
-        val (g, dg) = adventure(herc = false, walk = 2)
+    @Test fun herculesDashesDownTheBunny() {
+        val (g, dg) = adventure(herc = true, walk = 2)
         val bunny = dg.course.critters.first { it.kind == Kind.RABBIT }
         place(g, dg, bunny.x - 110f)
         g.input.right = true
@@ -248,8 +254,10 @@ class DogGameTest {
         assertEquals(DogGame.State.HOME, dg.state)
         run(g, 3f)
         assertEquals(DogGame.State.RESULTS, dg.state)
-        assertEquals(1, store.load("adventureHerc"))
-        assertEquals(0, store.load("adventureApollo"))
+        val slots = SaveSlots(store)
+        assertEquals(1, slots.walk(WalkGame.HERC))
+        assertEquals(dg.score, slots.score(WalkGame.HERC))
+        assertTrue(!slots.started(WalkGame.APOLLO))
         assertEquals(1, g.adventureWalk(herc = true))
 
         dg.startWalk(Walks.all.lastIndex)
@@ -268,7 +276,40 @@ class DogGameTest {
         g.update(dt)
         assertNull(g.dogGame)
         assertEquals(WalkGame.State.TITLE, g.state)
-        assertEquals(0, store.load("adventureHerc"))
+        assertTrue(!SaveSlots(store).started(WalkGame.HERC), "back to a new game after the last walk")
+    }
+
+    @Test fun saveAndQuitFromThePauseScreen() {
+        val store = Storage.Memory()
+        val (g, dg) = adventure(herc = false, walk = 2, storage = store)
+        dg.score = 450
+        dg.startWalk(2)
+        run(g, 2.2f)
+        g.input.pause = true
+        g.update(dt)
+        g.input.pause = false
+        g.update(dt)
+        assertTrue(g.paused)
+        g.input.tapX = WalkControls.quitX(g.viewW) + 10f
+        g.input.tapY = WalkControls.PAUSE_Y + 10f
+        g.input.tap = true
+        g.update(dt)
+        assertNull(g.dogGame)
+        assertEquals(WalkGame.State.TITLE, g.state)
+        val slots = SaveSlots(store)
+        assertEquals(2, slots.walk(WalkGame.APOLLO))
+        assertEquals(450, slots.score(WalkGame.APOLLO))
+
+        // Picking Apollo again carries on from there, with the score.
+        val again = WalkGame(WalkInput(), storage = store).apply { viewW = 427f }
+        run(again, 0.5f)
+        again.input.tapX = 400f
+        again.input.tapY = WalkControls.CARD_TOP + 20f
+        again.input.tap = true
+        again.update(dt)
+        val dg2 = assertNotNull(again.dogGame)
+        assertEquals(2, dg2.walkIndex)
+        assertEquals(450, dg2.score)
     }
 
     @Test fun screenshots() {
@@ -279,7 +320,7 @@ class DogGameTest {
             g.render(AwtGfx(img, scale))
             ImageIO.write(img, "png", File(dir, "$name.png"))
         }
-        val (g, dg) = adventure(herc = true)
+        val (g, dg) = adventure(herc = false)
         val squirrel = dg.course.critters.first { it.kind == Kind.SQUIRREL }
         place(g, dg, squirrel.x - 60f)
         run(g, 3f)
@@ -288,22 +329,22 @@ class DogGameTest {
         g.input.right = true
         run(g, 0.3f)
         g.input.right = false
-        shot(g, "7-herc-branch")
+        shot(g, "7-apollo-branch")
         g.input.jump = false
         run(g, 1f)
         g.input.action = true
         g.update(dt)
         g.input.action = false
         run(g, 0.15f)
-        shot(g, "7-herc-bark")
+        shot(g, "7-apollo-bark")
 
-        val (g2, dg2) = adventure(herc = false, walk = 1)
+        val (g2, dg2) = adventure(herc = true, walk = 1)
         val cat = dg2.course.critters.first { it.kind == Kind.CAT }
         place(g2, dg2, cat.x - 70f)
         g2.input.right = true
         g2.input.jump = true
         run(g2, 0.3f)
-        shot(g2, "8-apollo-fence")
+        shot(g2, "8-herc-fence")
         g2.input.jump = false
         g2.input.right = false
         run(g2, 1f)
@@ -313,6 +354,6 @@ class DogGameTest {
         g2.update(dt)
         g2.input.action = false
         run(g2, 0.1f)
-        shot(g2, "8-apollo-dash")
+        shot(g2, "8-herc-dash")
     }
 }

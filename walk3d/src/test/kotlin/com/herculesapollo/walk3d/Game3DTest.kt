@@ -23,6 +23,7 @@ class Game3DTest {
         g.viewW = 427f
         run(g, 0.5f)
         g.input.tapX = if (herc) 50f else 400f
+        g.input.tapY = Controls3D.CARD_TOP + 10f
         g.input.tap = true
         g.update(dt)
         assertEquals(herc, g.dog.herc)
@@ -48,7 +49,9 @@ class Game3DTest {
         val dx = x - g.dog.x
         val dz = z - g.dog.z
         val l = hypot(dx, dz).coerceAtLeast(0.001f)
-        val a = g.camYaw
+        // The game reads a held stick against the camera direction from when it was first pushed.
+        val held = hypot(g.input.stickX, g.input.stickY) > 0.05f
+        val a = if (held) g.controlYaw else g.camYaw
         g.input.stickY = (dx * sin(a) + dz * cos(a)) / l
         g.input.stickX = (-dx * cos(a) + dz * sin(a)) / l
     }
@@ -138,18 +141,55 @@ class Game3DTest {
     }
 
     @Test fun holdJumpToJumpHigher() {
-        val g = start(herc = true)
+        val g = start(herc = false)
         clearCritters(g)
         place(g, 0f, 0f)
         val high = jumpPeak(g, 2f)
-        assertTrue(abs(high - 2.58f) < 0.1f, "Hercules jumps $high")
+        assertTrue(abs(high - 2.58f) < 0.1f, "Apollo jumps $high")
         val low = jumpPeak(g, 0.04f)
         assertTrue(low < high * 0.45f, "a tap is a hop: $low")
-        val a = start(herc = false)
-        clearCritters(a)
-        place(a, 0f, 0f)
-        val apollo = jumpPeak(a, 2f)
-        assertTrue(abs(apollo - 1.46f) < 0.1f, "Apollo jumps $apollo")
+        val h = start(herc = true)
+        clearCritters(h)
+        place(h, 0f, 0f)
+        val herc = jumpPeak(h, 2f)
+        assertTrue(abs(herc - 1.46f) < 0.1f, "Hercules jumps $herc")
+        assertTrue(h.dog.maxSpeed > g.dog.maxSpeed, "Hercules is the fast one")
+    }
+
+    /**
+     * Holding the stick to one side used to send the dog round in a slow circle, because
+     * the camera swung behind it and the stick followed the camera. Now the dog runs straight.
+     */
+    @Test fun holdingTheStickRunsStraight() {
+        val g = start(herc = true)
+        clearCritters(g)
+        g.bikes.clear()
+        place(g, -12f, -10f, Math.PI.toFloat() / 2f)
+        g.input.stickX = 1f
+        run(g, 0.3f)
+        val yaw0 = g.dog.yaw
+        val x0 = g.dog.x; val z0 = g.dog.z
+        run(g, 1.5f)
+        g.input.stickX = 0f
+        assertTrue(abs(wrapAngle(g.dog.yaw - yaw0)) < 0.05f, "still heading the same way: ${g.dog.yaw} vs $yaw0")
+        val moved = hypot(g.dog.x - x0, g.dog.z - z0)
+        assertTrue(moved > g.dog.maxSpeed * 1.4f, "ran in a straight line: $moved")
+        // Meanwhile the camera has eased round behind the dog.
+        assertTrue(abs(wrapAngle(g.camYaw - g.dog.yaw)) < abs(wrapAngle(g.controlYaw - g.dog.yaw)))
+    }
+
+    @Test fun theCameraDoesNotBobWhenYouJump() {
+        val g = start(herc = false)
+        clearCritters(g)
+        place(g, 0f, 0f)
+        run(g, 1f)
+        val y0 = g.camY
+        g.input.jump = true
+        var highest = y0
+        repeat(60) { g.update(dt); highest = maxOf(highest, g.camY) }
+        g.input.jump = false
+        run(g, 1f)
+        assertTrue(highest - y0 < 0.4f, "camera rose ${highest - y0} for a ${2.58f} jump")
     }
 
     @Test fun walkingIntoThingsStopsYouAndYouCanJumpOnTop() {
@@ -174,7 +214,7 @@ class Game3DTest {
         assertEquals(0.5f, g.dog.y, "standing on the bench")
     }
 
-    @Test fun onlyHerculesReachesSquirrelsUpTrees() {
+    @Test fun onlyApolloReachesSquirrelsUpTrees() {
         for (herc in listOf(true, false)) {
             val g = start(herc)
             val sq = g.critters.first { it.kind == Kind.SQUIRREL }
@@ -193,11 +233,11 @@ class Game3DTest {
             g.input.jump = false
             stop(g)
             run(g, 0.5f)
-            if (herc) assertEquals(1, g.chased, "Hercules got it") else assertEquals(0, g.chased, "too high for Apollo")
+            if (!herc) assertEquals(1, g.chased, "Apollo got it") else assertEquals(0, g.chased, "too high for Hercules")
         }
     }
 
-    @Test fun bunniesOutrunHerculesUnlessHeBarks() {
+    @Test fun bunniesOutrunApolloUnlessHeBarks() {
         fun chase(herc: Boolean, bark: Boolean): Int {
             val g = start(herc)
             val bunny = g.critters.first { it.kind == Kind.RABBIT }
@@ -212,13 +252,13 @@ class Game3DTest {
             }
             return g.chased
         }
-        assertEquals(1, chase(herc = false, bark = false), "Apollo is fast enough")
-        assertEquals(0, chase(herc = true, bark = false), "too fast for Hercules")
-        assertEquals(1, chase(herc = true, bark = true), "frozen by the bark")
+        assertEquals(1, chase(herc = true, bark = false), "Hercules is fast enough")
+        assertEquals(0, chase(herc = false, bark = false), "too fast for Apollo")
+        assertEquals(1, chase(herc = false, bark = true), "frozen by the bark")
     }
 
     @Test fun catsOnFences() {
-        val g = start(herc = false, level = 1)
+        val g = start(herc = true, level = 1)
         val cat = g.critters.first { it.kind == Kind.CAT }
         place(g, cat.x, cat.z + 2.5f, Math.PI.toFloat())
         steer(g, cat.x, cat.z)
@@ -272,12 +312,48 @@ class Game3DTest {
         assertEquals(Game3D.State.HOME, g.state)
         run(g, 3f)
         assertEquals(Game3D.State.RESULTS, g.state)
-        assertEquals(1, store.load("level3dHerc"))
+        assertEquals(1, g.slots.walk("herc"))
+        assertEquals(g.score, g.slots.score("herc"))
         assertTrue(store.load("best3d") > 0)
         run(g, 2f)
         g.input.tap = true
         g.update(dt)
         assertEquals(1, g.levelIndex)
+    }
+
+    @Test fun saveSlotsAndSaveAndQuit() {
+        val store = Storage.Memory()
+        store.save("level3dApollo", 2)
+        val g = start(herc = false, storage = store)
+        assertEquals(2, g.levelIndex, "old progress moved into slot 1")
+        g.score = 700
+        g.startLevel(3)
+        run(g, 2.1f)
+        g.input.pause = true
+        g.update(dt)
+        g.input.pause = false
+        g.update(dt)
+        assertTrue(g.paused)
+        g.input.tapX = Controls3D.quitX(g.viewW) + 10f
+        g.input.tapY = Controls3D.PAUSE_Y + 10f
+        g.input.tap = true
+        g.update(dt)
+        assertEquals(Game3D.State.TITLE, g.state)
+        assertEquals(3, g.slots.walk("apollo"))
+        assertEquals(700, g.slots.score("apollo"))
+        // Slot 2 is a fresh start.
+        run(g, 0.5f)
+        g.input.tapX = Controls3D.slotX(1, g.viewW) + 10f
+        g.input.tapY = Controls3D.SLOT_TOP + 5f
+        g.input.tap = true
+        g.update(dt)
+        assertEquals(2, g.slots.current)
+        g.input.tapX = 400f
+        g.input.tapY = Controls3D.CARD_TOP + 10f
+        g.input.tap = true
+        g.update(dt)
+        assertEquals(0, g.levelIndex)
+        assertEquals(0, g.score)
     }
 
     /** A simple bot plays each level as each dog, to check they can all be finished. */
@@ -355,25 +431,25 @@ class Game3DTest {
             shot(g, "${i + 1}-start")
         }
 
-        val g = start(herc = true)
+        val g = start(herc = false)
         val sq = g.critters.first { it.kind == Kind.SQUIRREL }
         place(g, sq.x + 6f, sq.z + 2f, -1.9f)
         steer(g, sq.x, sq.z)
         run(g, 0.5f)
-        shot(g, "5-herc-squirrel")
+        shot(g, "5-apollo-squirrel")
         g.input.action = true
         g.update(dt)
         g.input.action = false
         run(g, 0.12f)
-        shot(g, "5-herc-bark")
+        shot(g, "5-apollo-bark")
 
-        val a = start(herc = false, level = 1)
+        val a = start(herc = true, level = 1)
         val cat = a.critters.first { it.kind == Kind.CAT }
         place(a, cat.x + 1f, cat.z + 3f, Math.PI.toFloat() - 0.3f)
         steer(a, cat.x, cat.z)
         a.input.jump = true
         run(a, 0.35f)
-        shot(a, "6-apollo-cat")
+        shot(a, "6-herc-cat")
         a.input.jump = false
         stop(a)
 

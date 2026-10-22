@@ -21,20 +21,20 @@ class Player(val herc: Boolean) {
     var jumpHeld = false
     var stinkT = 0f
     var hurtT = 0f
-    /** Apollo: seconds left in a dash. */
+    /** Hercules: seconds left in a dash. */
     var dashT = 0f
-    /** Hercules: seconds left of the bark's shock wave (for drawing it). */
+    /** Apollo: seconds left of the bark's shock wave (for drawing it). */
     var barkT = 0f
     var cooldown = 0f
 
-    val w = if (herc) 22f else 20f
-    val h = if (herc) 17f else 14f
-    /** Hercules is strong and jumps high; Apollo is quick. */
-    val maxSpeed = if (herc) 140f else 205f
-    /** Gives about 96 pixels of jump for Hercules (onto tree branches) and 56 for Apollo (onto fences). */
-    val jumpV = if (herc) 380f else 290f
+    val w = 20f
+    val h = 15f
+    /** Hercules is quick; Apollo is springy and jumps high. */
+    val maxSpeed = if (herc) 205f else 140f
+    /** Gives about 56 pixels of jump for Hercules (onto fences) and 96 for Apollo (onto tree branches). */
+    val jumpV = if (herc) 290f else 380f
     val name = if (herc) "Hercules" else "Apollo"
-    val actionLabel = if (herc) "BARK" else "DASH"
+    val actionLabel = if (herc) "DASH" else "BARK"
 }
 
 /** Something to stand on: a fence top, a bin lid, a branch. Solid from above only. */
@@ -50,6 +50,7 @@ class DogGame(
     val input: WalkInput,
     private val audio: WalkAudio,
     private val storage: Storage,
+    private val slots: SaveSlots,
     herc: Boolean,
     private val musicOn: () -> Boolean,
 ) : WalkSession {
@@ -74,16 +75,17 @@ class DogGame(
         private set
 
     val player = Player(herc)
-    private val saveKey = if (herc) "adventureHerc" else "adventureApollo"
+    /** This dog's save-slot mode. */
+    private val mode = if (herc) WalkGame.HERC else WalkGame.APOLLO
 
-    override var walkIndex = storage.load(saveKey).coerceIn(0, Walks.all.lastIndex)
+    override var walkIndex = slots.walk(mode).coerceIn(0, Walks.all.lastIndex)
         private set
     override var course = Course(Walks.all[walkIndex])
         private set
     var ledges = buildLedges(course)
         private set
     override var camX = 0f
-    override var score = 0
+    override var score = slots.score(mode)
     private var walkStartScore = 0
     override var hearts = 3
     override var chased = 0
@@ -142,9 +144,16 @@ class DogGame(
         walkStartScore = score
         popups.clear()
         tip = null
-        if (i > storage.load(saveKey)) storage.save(saveKey, i)
+        slots.save(mode, i, score)
         applyMusic()
         setState(State.INTRO)
+    }
+
+    /** SAVE & QUIT: keep this walk as it was when it started. */
+    fun saveAndQuit() {
+        slots.save(mode, walkIndex, walkStartScore)
+        best = max(best, score).also { storage.save("best", it) }
+        finished = true
     }
 
     fun update(dt: Float, tap: Boolean, jumpP: Boolean, actionP: Boolean) {
@@ -155,7 +164,7 @@ class DogGame(
                 if (stateTime > 2f) {
                     setState(State.PLAYING)
                     if (walkIndex == 0) {
-                        showTip(if (player.herc) "Hold JUMP to jump higher. BARK freezes critters!" else "Hold JUMP to jump higher. DASH to pounce!")
+                        showTip(if (player.herc) "Hold JUMP to jump higher. DASH to pounce!" else "Hold JUMP to jump higher. BARK freezes critters!")
                     }
                 }
             }
@@ -163,7 +172,7 @@ class DogGame(
             State.HOME -> updateHome(dt)
             State.RESULTS -> if (tap && stateTime > 1.5f) {
                 if (walkIndex == Walks.all.lastIndex) {
-                    storage.save(saveKey, 0)
+                    slots.clear(mode)
                     audio.music(WalkTune.NONE)
                     setState(State.ALL_DONE)
                     audio.say("All done! Good dog, ${player.name}!")
@@ -212,7 +221,7 @@ class DogGame(
         if (p.barkT > 0f) p.barkT -= dt
 
         if (actionP && p.cooldown <= 0f) {
-            if (p.herc) bark() else dash()
+            if (p.herc) dash() else bark()
         }
 
         val dir = (if (input.right) 1 else 0) - (if (input.left) 1 else 0)
@@ -274,10 +283,11 @@ class DogGame(
 
     private fun bark() {
         val p = player
-        p.cooldown = 1.2f
+        // Longer than the freeze, so critters can't be kept frozen forever.
+        p.cooldown = 2f
         p.barkT = 0.4f
-        audio.play(WalkSound.GAV)
-        popup("GAV GAV!", p.x, p.y - p.h - 6f, WHITE, 9f)
+        audio.play(WalkSound.ARP)
+        popup("ARP ARP!", p.x, p.y - p.h - 6f, WHITE, 9f)
         for (c in course.critters) {
             if (c.catchable && abs(c.x - p.x) < 120f && abs(c.y - p.y) < 100f) c.frozenT = 1.5f
         }
@@ -287,8 +297,8 @@ class DogGame(
         val p = player
         p.cooldown = 0.7f
         p.dashT = 0.22f
-        audio.play(WalkSound.ARP)
-        popup("ARP!", p.x, p.y - p.h - 6f, WHITE, 8f)
+        audio.play(WalkSound.GAV)
+        popup("GAV!", p.x, p.y - p.h - 6f, WHITE, 8f)
     }
 
     private fun followCamera(dt: Float) {
@@ -311,12 +321,12 @@ class DogGame(
         if (c.x > camX + worldW - 30f) return
         when (c.kind) {
             Kind.CAT -> showTip("Jump up on the fence to get the cat!")
-            Kind.RABBIT -> showTip(if (player.herc) "Bunnies are fast! BARK to freeze them." else "Bunnies are fast! DASH to catch them.")
+            Kind.RABBIT -> showTip(if (player.herc) "Bunnies are fast! DASH to catch them." else "Bunnies are fast! BARK to freeze them.")
             Kind.RACCOON -> showTip("Quick! Jump on the bin before the raccoon hides.")
             Kind.SKUNK -> showTip("A skunk! Jump over it, DON'T touch it!")
             Kind.CRAB -> showTip("Catch the crabs before they hide!")
             Kind.SQUIRREL -> if (c.mood == Mood.SAFE) {
-                showTip(if (player.herc) "Up the tree? Jump onto the branch!" else "Too high for Apollo! Catch them before they climb.")
+                showTip(if (player.herc) "Too high for Hercules! Catch them before they climb." else "Up the tree? Jump onto the branch!")
             }
             else -> {}
         }
@@ -450,7 +460,7 @@ class DogGame(
             bonus = hearts * 100 + (if (chased == course.total) 1000 else 0)
             score += bonus
             best = max(best, score).also { storage.save("best", it) }
-            if (walkIndex < Walks.all.lastIndex && walkIndex + 1 > storage.load(saveKey)) storage.save(saveKey, walkIndex + 1)
+            if (walkIndex < Walks.all.lastIndex) slots.save(mode, walkIndex + 1, score)
             setState(State.RESULTS)
             audio.say(if (chased == course.total) "Wow! Super good dog!" else "Good dog, ${player.name}!")
         }

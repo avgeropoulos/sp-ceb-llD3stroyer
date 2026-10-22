@@ -112,11 +112,12 @@ out on five walks, and they chase down everything they see.
 
 ![Hercules and Apollo chasing a squirrel](docs/walk.png)
 
-* **Hercules** (black curls, white beard, red collar) jumps high enough to reach cats on fences
-  and raccoons on bins. Hercules barks **"GAV!"**
-* **Apollo** (tan curls, silvery-grey head) is the quick one, and the only dog fast enough to
-  catch a bunny. Apollo barks **"ARP!"**
-* When you play as one of them, each dog has its own stroll music.
+* **Hercules** (black curls, white beard, red collar) is the quick one, and the only dog fast
+  enough to catch a bunny. Hercules barks **"GAV!"**
+* **Apollo** (tan curls, silvery-grey head) jumps high enough to reach cats on fences and
+  raccoons on bins. Apollo barks **"ARP!"**
+* When you play as one of them, each dog has its own music: a fast, pumped-up tune for
+  Hercules and a calm stroll for Apollo.
 * Tap **HERC** or **APOLLO** and that dog barks and runs after the nearest critter. Pull too hard
   and the dog drags you along by the leash ("WHOA!").
 * Squirrels race up their tree, pigeons and seagulls fly off, bunnies dive into bushes, crabs
@@ -137,7 +138,11 @@ out on five walks, and they chase down everything they see.
 | 5 | Moonlight Walk | Raccoons on bins, cats and skunks at night. |
 
 Every walk ends at home, with two water bowls by the door. At the end you get 1 to 3 stars
-for how many critters were chased. Progress and your best score are saved.
+for how many critters were chased.
+
+**Saving:** the title screen has three save slots, like Rocco's Quest. Each slot keeps the walk,
+and each dog's adventure, separately: which walk you're on and your score. Your game is saved at
+the start of every walk and when you finish one, and the pause screen has **SAVE & QUIT**.
 
 Controls: the left half of the screen walks left and right. On the right are **JUMP**,
 **HERC** and **APOLLO**. With a keyboard: arrows or A/D to walk, Space to jump,
@@ -155,10 +160,10 @@ walks, so chase everything on the way home, where your person is waiting at the 
   before landing still counts, and so does one pressed just after running off a ledge.
 * Catch critters by running or jumping into them. Fences, bins, benches, mailboxes, hydrants
   and tree branches are all things to stand on. Beach umbrellas are bouncy!
-* **Hercules** jumps high enough to land on tree branches, so squirrels up a tree aren't safe.
-  **BARK** freezes every critter nearby for a moment, which is the way to catch bunnies.
-* **Apollo** is much faster. **DASH** is a quick lunge that also works in mid-air. Apollo can get
-  up on fences and bins but can't reach the branches.
+* **Hercules** is much faster. **DASH** ("GAV!") is a quick lunge that also works in mid-air.
+  Hercules can get up on fences and bins but can't reach the branches.
+* **Apollo** jumps high enough to land on tree branches, so squirrels up a tree aren't safe.
+  **BARK** ("ARP ARP!") freezes every critter nearby for a moment, which is the way to catch bunnies.
 * Catch critters one after another for a **COMBO**. Jump over the bikes and the skunks.
 * Each dog keeps track of its own progress.
 
@@ -169,7 +174,7 @@ Keyboard: arrows or A/D to run, Space to jump, and K, Z or Shift (or H/J) for BA
 A separate app with real 3D graphics. Pick Hercules or Apollo and run around four open 3D
 levels with the camera following behind the dog.
 
-![Apollo jumping at a cat on a fence](docs/walk3d.png)
+![Hercules and Apollo in the park](docs/walk3d.png)
 
 | Level | Name | What's there |
 |---|---|---|
@@ -181,12 +186,15 @@ levels with the camera following behind the dog.
 * Chase all but two of the critters on a level, then follow the arrow home. Critters that get
   away (up a tree, down a burrow, into a bin, off into the sky) come back out after a while.
 * The arrow at the top of the screen points to the nearest critter, then home.
-* **Hercules** (black curls, white beard) jumps high enough to grab squirrels sitting up in the
-  trees, and **BARK** ("GAV GAV!") freezes everything nearby. **Apollo** (tan curls, grey head) is
-  much faster, and **DASH** ("ARP!") is a lunge that works in mid-air. Each dog has its own stroll music.
+* **Hercules** (black curls, white beard) is much faster, and **DASH** ("GAV!") is a lunge that
+  works in mid-air. **Apollo** (tan curls, grey head) jumps high enough to grab squirrels sitting
+  up in the trees, and **BARK** ("ARP ARP!") freezes everything nearby. Each dog has its own music.
 * Fences, bins, benches, hydrants and sandcastles can be jumped on. Umbrellas bounce you up high.
 * Stay away from skunks, and jump out of the way of the bikes. Three bumps and you redo the level.
-* Stars for how fast you get home. Each dog keeps its own progress.
+* Stars for how fast you get home. Three save slots on the title screen, each keeping both
+  dogs' progress; saved at the start of every level, and with **SAVE & QUIT** on the pause screen.
+* The camera eases round behind the dog without swinging your steering with it: while you
+  hold the stick, it keeps steering the way the camera faced when you first pushed it.
 
 Controls: put your thumb anywhere on the left half of the screen and drag to run (the stick
 appears where your thumb lands). **JUMP** (hold it to jump higher) and **BARK**/**DASH** are on

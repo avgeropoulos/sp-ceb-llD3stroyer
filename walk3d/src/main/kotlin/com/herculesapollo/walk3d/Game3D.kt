@@ -1,6 +1,7 @@
 package com.herculesapollo.walk3d
 
 import com.herculesapollo.walk.Kind
+import com.herculesapollo.walk.SaveSlots
 import com.herculesapollo.walk.WalkAudio
 import com.herculesapollo.walk.WalkSound
 import com.herculesapollo.walk.WalkTune
@@ -9,6 +10,7 @@ import kotlin.concurrent.Volatile
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.exp
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
@@ -27,13 +29,15 @@ class Input3D {
     @Volatile var keyUp = false
     @Volatile var keyDown = false
     @Volatile var jump = false
-    /** Hercules barks, Apollo dashes. */
+    /** Hercules dashes, Apollo barks. */
     @Volatile var action = false
     @Volatile var pause = false
     @Volatile var musicToggle = false
     /** Set on any new touch / key press; consumed by menus. */
     @Volatile var tap = false
+    /** Where the last tap was (virtual pixels), for menu buttons; -1 for a key press. */
     @Volatile var tapX = -1f
+    @Volatile var tapY = -1f
 }
 
 /** The dog you play. ([x], [y], [z]) is its feet; [yaw] is the way it faces (0 = +z). */
@@ -60,11 +64,11 @@ class Dog3(val herc: Boolean) {
     /** Both doodles are about the same size. */
     val radius = 0.38f
     val height = 0.85f
-    /** Hercules jumps high (up into the trees); Apollo is fast. */
-    val maxSpeed = if (herc) 5.5f else 8f
-    val jumpV = if (herc) 8.5f else 6.4f
+    /** Hercules is fast; Apollo jumps high (up into the trees). */
+    val maxSpeed = if (herc) 8f else 5.5f
+    val jumpV = if (herc) 6.4f else 8.5f
     val name = if (herc) "Hercules" else "Apollo"
-    val actionLabel = if (herc) "BARK" else "DASH"
+    val actionLabel = if (herc) "DASH" else "BARK"
     val speed get() = hypot(vx, vz)
 }
 
@@ -113,6 +117,19 @@ class Game3D(
     val popups = ArrayList<Popup3>()
 
     var camYaw = 0f
+    /**
+     * The camera direction the stick is read against. It's caught when you start pushing
+     * the stick and held until you let go, so the camera swinging round behind the dog
+     * never changes the way you're steering (that feedback loop is what made it dizzy).
+     */
+    var controlYaw = 0f
+        private set
+    private var stickHeld = false
+    /** The ground height the camera follows: it ignores jumps, so it doesn't bob up and down. */
+    private var camFloor = 0f
+    /** The height the camera looks at, just above the dog. */
+    var lookY = 0.8f
+        private set
     var camX = 0f
     var camY = 3f
     var camZ = 0f
@@ -161,14 +178,20 @@ class Game3D(
         private set
     private var builtFor = -1
 
+    /** Three save slots, each remembering both dogs' levels and scores. */
+    val slots = SaveSlots(storage, prefix = "3d")
+
     init {
+        // Progress saved before there were slots goes into slot 1.
+        slots.migrate("level3dHerc", "herc")
+        slots.migrate("level3dApollo", "apollo")
         loadLevel(0)
         applyMusic()
     }
 
-    fun savedLevel(herc: Boolean) = storage.load(if (herc) "level3dHerc" else "level3dApollo").coerceIn(0, Levels.all.lastIndex)
+    private fun mode(herc: Boolean) = if (herc) "herc" else "apollo"
 
-    private fun saveKey() = if (dog.herc) "level3dHerc" else "level3dApollo"
+    fun savedLevel(herc: Boolean) = slots.walk(mode(herc)).coerceIn(0, Levels.all.lastIndex)
 
     private fun setState(s: State) {
         state = s
@@ -210,6 +233,10 @@ class Game3D(
         camX = dog.x - sin(camYaw) * CAM_DIST
         camZ = dog.z - cos(camYaw) * CAM_DIST
         camY = CAM_HEIGHT
+        camFloor = 0f
+        lookY = 0.8f
+        controlYaw = camYaw
+        stickHeld = false
         popups.clear()
         tip = null
     }
@@ -223,14 +250,14 @@ class Game3D(
         combo = 0
         levelTime = 0f
         levelStartScore = score
-        if (i > savedLevel(dog.herc)) storage.save(saveKey(), i)
+        slots.save(mode(dog.herc), i, score)
         applyMusic()
         setState(State.INTRO)
     }
 
     fun choose(herc: Boolean) {
         dog = Dog3(herc)
-        score = 0
+        score = slots.score(mode(herc))
         audio.say(if (herc) "Go, Hercules!" else "Go, Apollo!")
         startLevel(savedLevel(herc))
     }
@@ -251,8 +278,11 @@ class Game3D(
         }
         if (state == State.PLAYING && pauseP) { paused = !paused; return }
         if (paused) {
-            if (tap && !input.pause && !input.musicToggle) paused = false
-            if (paused) return
+            if (tap && !input.pause && !input.musicToggle) {
+                paused = false
+                if (Controls3D.onSaveAndQuit(input.tapX, input.tapY, viewW)) saveAndQuit()
+            }
+            return
         }
         val menuTap = tap && !input.pause && !input.musicToggle
         stateTime += dt
@@ -260,7 +290,7 @@ class Game3D(
         when (state) {
             State.TITLE -> {
                 camYaw += dt * 0.25f
-                if (menuTap && stateTime > 0.4f) choose(herc = input.tapX < 0f || input.tapX < viewW / 2)
+                if (menuTap && stateTime > 0.4f) titleTap(input.tapX, input.tapY)
             }
             State.INTRO -> {
                 followCamera(dt, 0f)
@@ -281,7 +311,7 @@ class Game3D(
             }
             State.RESULTS -> if (menuTap && stateTime > 1.5f) {
                 if (levelIndex == Levels.all.lastIndex) {
-                    storage.save(saveKey(), 0)
+                    slots.clear(mode(dog.herc))
                     audio.music(WalkTune.NONE)
                     setState(State.ALL_DONE)
                     audio.say("All done! Good dog, ${dog.name}!")
@@ -301,13 +331,31 @@ class Game3D(
         }
     }
 
+    /** The title screen: save-slot tabs, then a button for each dog. A key press picks Hercules. */
+    private fun titleTap(x: Float, y: Float) {
+        if (x >= 0f && y >= Controls3D.SLOT_TOP && y <= Controls3D.SLOT_TOP + Controls3D.SLOT_H) {
+            Controls3D.slotAt(x, viewW)?.let { slots.current = it }
+            return
+        }
+        if (x < 0f) choose(herc = true) else if (y >= Controls3D.CARD_TOP - 8f) choose(herc = x < viewW / 2)
+    }
+
+    /** SAVE & QUIT from the pause screen: keep this level (as it was when it started) and go back to the title. */
+    private fun saveAndQuit() {
+        slots.save(mode(dog.herc), levelIndex, levelStartScore)
+        best = max(best, score).also { storage.save("best3d", it) }
+        loadLevel(0)
+        setState(State.TITLE)
+        applyMusic()
+    }
+
     // ------------------------------------------------------------------ Playing
 
     private fun play(dt: Float, jumpP: Boolean, actionP: Boolean) {
         levelTime += dt
         if (tipT > 0f) { tipT -= dt; if (tipT <= 0f) tip = null }
         if (levelIndex == 0 && stateTime > 4.5f) {
-            showTip(if (dog.herc) "Tap BARK to freeze critters in their tracks!" else "Tap DASH to pounce!")
+            showTip(if (dog.herc) "Tap DASH to pounce!" else "Tap BARK to freeze critters in their tracks!")
         }
         val stickY = moveDog(dt, jumpP, actionP)
         followCamera(dt, stickY)
@@ -330,14 +378,17 @@ class Game3D(
         if (d.stinkT > 0f) d.stinkT -= dt
         if (d.hurtT > 0f) d.hurtT -= dt
         if (d.barkT > 0f) d.barkT -= dt
-        if (actionP && d.cooldown <= 0f) if (d.herc) bark() else dash()
+        if (actionP && d.cooldown <= 0f) if (d.herc) dash() else bark()
 
         var sx = input.stickX + (if (input.keyRight) 1f else 0f) - (if (input.keyLeft) 1f else 0f)
         var sy = input.stickY + (if (input.keyUp) 1f else 0f) - (if (input.keyDown) 1f else 0f)
         val sl = hypot(sx, sy)
         if (sl > 1f) { sx /= sl; sy /= sl }
-        // Stick to world: forward is the way the camera looks, flattened.
-        val fx = sin(camYaw); val fz = cos(camYaw)
+        // Stick to world, against the camera direction caught when the stick was first pushed.
+        val pushingStick = hypot(sx, sy) > 0.05f
+        if (pushingStick && !stickHeld) controlYaw = camYaw
+        stickHeld = pushingStick
+        val fx = sin(controlYaw); val fz = cos(controlYaw)
         val wx = fx * sy - fz * sx
         val wz = fz * sy + fx * sx
         val top = d.maxSpeed * (if (d.stinkT > 0f) 0.6f else 1f)
@@ -438,8 +489,8 @@ class Game3D(
         // Longer than the freeze, so critters can't be kept frozen forever.
         d.cooldown = 2f
         d.barkT = 0.45f
-        audio.play(WalkSound.GAV)
-        popup("GAV GAV!", d.x, d.y + 1.3f, d.z, WHITE, 10f)
+        audio.play(WalkSound.ARP)
+        popup("ARP ARP!", d.x, d.y + 1.3f, d.z, WHITE, 10f)
         for (c in critters) {
             if ((c.state == State3.IDLE || c.state == State3.FLEE) && hypot(c.x - d.x, c.z - d.z) < 7f) c.frozenT = 1.6f
         }
@@ -448,23 +499,29 @@ class Game3D(
     private fun dash() {
         dog.cooldown = 0.7f
         dog.dashT = 0.22f
-        audio.play(WalkSound.ARP)
-        popup("ARP!", dog.x, dog.y + 1.2f, dog.z, WHITE, 9f)
+        audio.play(WalkSound.GAV)
+        popup("GAV!", dog.x, dog.y + 1.2f, dog.z, WHITE, 9f)
     }
 
     /** Swings the camera round behind the dog as it runs (but not when running toward the camera). */
     private fun followCamera(dt: Float, stickY: Float) {
         val d = dog
-        if (state == State.PLAYING && d.speed > 1f && stickY > -0.3f) {
+        // Ease round behind the dog while it runs away from (or across) the view, but never
+        // when it runs toward the camera, and never quickly.
+        val off = abs(wrapAngle(d.yaw - camYaw))
+        if (state == State.PLAYING && d.speed > 1f && stickY > -0.3f && off < 1.9f) {
             camYaw = turnToward(camYaw, d.yaw, CAM_TURN * dt * min(1f, d.speed / d.maxSpeed))
         }
+        // Follow the ground the dog stands on, not every jump.
+        if (d.onGround) camFloor += (d.y - camFloor) * min(1f, dt * 5f)
+        val k = 1f - exp(-dt * 7f)
         val tx = d.x - sin(camYaw) * CAM_DIST
         val tz = d.z - cos(camYaw) * CAM_DIST
-        val ty = CAM_HEIGHT + d.y * 0.6f
-        val k = min(1f, dt * 8f)
+        val ty = camFloor + CAM_HEIGHT + (d.y - camFloor) * 0.12f
         camX += (tx - camX) * k
         camZ += (tz - camZ) * k
         camY += (ty - camY) * k
+        lookY += (camFloor + 0.8f + (d.y - camFloor) * 0.35f - lookY) * k
     }
 
     private fun showTip(text: String) {
@@ -488,12 +545,12 @@ class Game3D(
         val h = dog.herc
         when (c.kind) {
             Kind.CAT -> showTip("Jump up on the fence to get the cat!")
-            Kind.RABBIT -> showTip(if (h) "Bunnies are fast! BARK to freeze them." else "Bunnies are fast! DASH to catch them.")
+            Kind.RABBIT -> showTip(if (h) "Bunnies are fast! DASH to catch them." else "Bunnies are fast! BARK to freeze them.")
             Kind.RACCOON -> showTip("Quick! Raccoons hide in the bins.")
             Kind.SKUNK -> showTip("A skunk! Stay away from it!")
             Kind.CRAB -> showTip("Catch the crabs before they hide!")
             Kind.SQUIRREL -> if (c.state == State3.SAFE) {
-                showTip(if (h) "Up the tree? Jump and grab it!" else "Too high for Apollo! Catch them before they climb.")
+                showTip(if (h) "Too high for Hercules! Catch them before they climb." else "Up the tree? Jump and grab it!")
             }
             else -> {}
         }
@@ -665,7 +722,7 @@ class Game3D(
         bonus = hearts * 100 + timeBonus + (if (chased == level.total) 1000 else 0)
         score += bonus
         best = max(best, score).also { storage.save("best3d", it) }
-        if (levelIndex < Levels.all.lastIndex && levelIndex + 1 > savedLevel(dog.herc)) storage.save(saveKey(), levelIndex + 1)
+        if (levelIndex < Levels.all.lastIndex) slots.save(mode(dog.herc), levelIndex + 1, score)
         setState(State.RESULTS)
         audio.say(if (chased == level.total) "Wow! Super good dog!" else "Good dog, ${dog.name}!")
     }
@@ -704,9 +761,9 @@ class Game3D(
         const val DASH_SPEED = 15f
         const val BOUNCE_V = 13f
         const val BIKE_SPEED = 6f
-        const val CAM_DIST = 5.2f
-        const val CAM_HEIGHT = 2.5f
-        const val CAM_TURN = 2.4f
+        const val CAM_DIST = 5.6f
+        const val CAM_HEIGHT = 2.7f
+        const val CAM_TURN = 1.3f
         const val HOME_TIP = "That's plenty! Follow the arrow HOME!"
         private const val WHITE = 0xFFFFFFFF.toInt()
         private const val YELLOW = 0xFFFFE14D.toInt()

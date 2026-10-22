@@ -48,6 +48,7 @@ class HudView(context: Context, private val game: Game3D) : View(context) {
         Controls3D.apply(input, touchId, touchX, touchY, n, width / scale)
         if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
             input.tapX = e.getX(e.actionIndex) / scale
+            input.tapY = e.getY(e.actionIndex) / scale
             input.tap = true
         }
         return true

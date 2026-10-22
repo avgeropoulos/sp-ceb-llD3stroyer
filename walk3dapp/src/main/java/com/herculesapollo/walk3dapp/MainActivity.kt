@@ -71,6 +71,7 @@ class MainActivity : Activity() {
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         if (!setKey(keyCode, true)) return super.onKeyDown(keyCode, event)
         game.input.tapX = -1f
+        game.input.tapY = -1f
         game.input.tap = true
         return true
     }

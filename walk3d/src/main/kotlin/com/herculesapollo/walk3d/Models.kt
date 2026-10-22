@@ -89,7 +89,7 @@ object Models {
             val cz = g.level.startZ - 2f
             f.setCamera(cx + sin(g.camYaw) * 5.5f, 2.2f, cz + cos(g.camYaw) * 5.5f, cx, 0.7f, cz, aspect)
         } else {
-            f.setCamera(g.camX, g.camY, g.camZ, d.x, d.y + 0.8f, d.z, aspect)
+            f.setCamera(g.camX, g.camY, g.camZ, d.x, g.lookY, d.z, aspect)
         }
 
         // The ground and all the scenery that never moves, each baked into a single mesh.

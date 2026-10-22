@@ -133,6 +133,7 @@ class WalkView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         WalkControls.apply(input, touchX, touchY, n, game.viewW, game.dogMode)
         if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
             input.tapX = e.getX(e.actionIndex) / scale
+            input.tapY = e.getY(e.actionIndex) / scale
             input.tap = true
         }
         return true
@@ -141,6 +142,7 @@ class WalkView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         if (!setKey(keyCode, true)) return super.onKeyDown(keyCode, event)
         input.tapX = -1f
+        input.tapY = -1f
         input.tap = true
         return true
     }
