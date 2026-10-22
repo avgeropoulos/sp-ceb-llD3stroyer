@@ -8,6 +8,11 @@ throw bouncing fireballs and take Krag down.
 
 ![Title screen](docs/title.png)
 
+> **Also in this repository: [Thermopylae](spartan/README.md)**, a first-person 3D Spartan
+> melee game set at the Battle of Thermopylae. You can swing your phone like a sword, raise the
+> shield with your thumb, bash, and throw the spear with a real throwing motion.
+> Download: **https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/Thermopylae.apk**
+
 ## The game
 
 There are three worlds with four levels each:
@@ -127,6 +132,8 @@ You need JDK 17 and the Android SDK (Android Studio installs both).
 You can also open the folder in Android Studio and press Run.
 
 ## Code layout
+
+(Thermopylae lives in `spartan/`; see [its README](spartan/README.md).)
 
 * `core/`: the whole game in plain Kotlin with no Android dependencies. It covers physics, levels,
   enemies, the boss and rendering through a small `Gfx` interface. All art is pixel art defined
