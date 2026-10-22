@@ -91,3 +91,37 @@ html, body {
   letter-spacing: 0.12em;
   opacity: 0.6;
 }
+
+.boot-bar {
+  margin-top: 22px;
+  width: min(320px, 60vw);
+  height: 3px;
+  background: rgba(233, 220, 192, 0.15);
+}
+
+.boot-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--bronze);
+  transition: width 0.25s ease;
+}
+
+.engine-fail {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  background: #120b06;
+  color: var(--parchment);
+  pointer-events: auto;
+}
+
+.engine-fail h1 {
+  color: var(--bronze);
+  letter-spacing: 0.3em;
+  font-weight: normal;
+}
