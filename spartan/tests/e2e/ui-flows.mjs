@@ -154,7 +154,7 @@ try {
     check('Restart asks to confirm', (await t.mode()) === 'paused' && /Tap again/.test(await t.text('.mn-pause [data-act="restart"]')));
     await t.click('.mn-pause [data-act="restart"]');
     let log = await t.log();
-    check('Restart (confirmed) → setMode(pausedFrom, { day: waves.day })', JSON.stringify(log.modes.at(-1)) === JSON.stringify(['battle', { day: 1 }]), JSON.stringify(log.modes.at(-1)));
+    check('Restart (confirmed) → setMode(pausedFrom, { day: waves.day, entry: waves.entryIndex })', JSON.stringify(log.modes.at(-1)) === JSON.stringify(['battle', { day: 1, entry: 0 }]), JSON.stringify(log.modes.at(-1)));
     await t.ev(() => window.__ui.ctx.setMode('paused'));
     await t.click('.mn-pause [data-act="quit"]');
     await t.step(240);

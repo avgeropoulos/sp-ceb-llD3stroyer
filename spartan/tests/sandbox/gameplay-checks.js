@@ -573,12 +573,12 @@ export const CHECKS = {
     const sc = h.events('scoreChanged').pop().payload;
     ok(sc.score === 110 && sc.chain === 1.1 && sc.kills === 1, 'scoreChanged payload');
     for (let i = 0; i < 60; i++) h.ctx.events.emit('hit', { byPlayer: true, kind: 'slash' });
-    ok(P.chain === 5, 'chain capped at 5');
+    ok(P.chain === 3, 'chain capped at 3');
     h.ctx.events.emit('hit', { byPlayer: true, kind: 'bleed' });
     h.ctx.events.emit('hit', { byPlayer: false, kind: 'melee' });
-    ok(P.chain === 5, 'bleed ticks and AI hits do not count');
+    ok(P.chain === 3, 'bleed ticks and AI hits do not count');
     h.ctx.events.emit('kill', { byPlayer: true, spear: true, cause: 'weapon' });
-    ok(P.score === 110 + 500 + 250 && P.kills === 2, 'spear kill +250');
+    ok(P.score === 110 + 300 + 250 && P.kills === 2, 'spear kill +250');
     h.ctx.events.emit('kill', { byPlayer: false, spear: false, cause: 'weapon' });
     ok(P.kills === 2, 'AI kills ignored');
     const n = h.events('scoreChanged').length;
@@ -740,9 +740,10 @@ export const CHECKS = {
     near(total, 18, 0.2, 'bleed total');
     ok(bleed.length >= 5 && bleed.length <= 7, `ticks (${bleed.length})`);
     ok(lv.hitsTaken.length === 2 + bleed.length, 'bleed went through takeHit');
-    // answer: bash then thrust executes a staggered target.
+    // answer: bash then thrust executes a weakened (≤ 35% hp) staggered target.
     h.reset();
     const ex = spawnAt(h, 'levy', 0, 1.3, { hp: 400 });
+    ex.hp = 120;
     h.action({ type: 'bash', power: 0.5 });
     h.stepTime(0.47);
     ok(ex.state === 'stagger', 'bash staggered');

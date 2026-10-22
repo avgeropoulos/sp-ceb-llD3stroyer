@@ -732,11 +732,16 @@ without attacking.
     `guardBreak`.
   * Perfect block: 0 damage, and the captain staggers 1.4 s.
 
+**Anti-turtle.** Once the player has held the shield up (raise ≥ 0.7) without a break for 3 s,
+player-targeted blows become heavy (guard breaks). This is waived for 7 s after a volley
+warning. Allies take on one of the player's attackers that the player hasn't hit for 15 s.
+
 **Bash.**
 * A thrust with the shield held, or an explicit bash.
 * Reach 1.6 m, halfAngle 0.44 rad, one target (`wall` hits everything within 2.5 m).
-* The target staggers 1.1 s, is knocked back 0.9 m along the hit direction, loses its guard,
-  and is knocked down if power > 0.75. A wind-up is interrupted.
+* The target staggers 1.1 s (heavy enemies such as the captain 0.5 s, never knocked down), is
+  knocked back 0.9 m along the hit direction, loses its guard, and is knocked down if
+  power > 0.75. A wind-up is interrupted.
 * An actor bashed within the last 2.5 s only takes damage and a flinch, unless the bash
   completes `wall`.
 
@@ -765,8 +770,10 @@ with power > 0.8, a bash, `breakGuard`, and any hit on a staggered target all ig
   and the 0.6 s draw plays.
 * After a throw, `hasSpearInHand = false`. After `redraw` (pdt), a spear is drawn if
   spares > 0. Otherwise `weapon = 'sword'` and `weaponSwitch` is emitted.
-* `refillSpears()`: spares = 3 and hasSpearInHand = true. In training a spear is always
-  redrawn.
+* `refillSpears(total = 4)`: tops up to `total` spears (one in hand). It never takes spears
+  away. In training a spear is always redrawn.
+* `dropSpears({ keepInHand })`: spares = 0. Without keepInHand the hand is emptied too, and the
+  weapon becomes the sword. Day 3 uses it ("Our spears are broken. Swords!").
 * Throw power > 0.7 can skewer two actors.
 
 **Throw.** At release (attack start + `TIMING.throw.windup`, or +0.03 s for motion throws),
@@ -783,7 +790,8 @@ The view is not rotated. player calls `combat.throwSpear({ origin, velocity, pow
 
 **Score** (owned by player):
 * A kill scores `round(100·chain)`, with +250 for a spear kill and +150 for into the Gulf.
-* The chain starts at 1.0, rises 0.1 per player hit (capped at 5.0), and resets on `playerHurt`.
+* The chain starts at 1.0 and rises 0.1 per player hit, capped at 3.0. It resets on
+  `playerHurt`, on `waveCleared`, and after 4 s (game time) without a player hit.
 * Perfect block: +50. A combo adds its `bonus`.
 * `scoreChanged` is emitted on every change.
 
@@ -820,6 +828,11 @@ export class ComboTracker {
   matching the last n tokens. So R,L returns twin, R,L,R returns fury, and R,L,R,L returns
   storm, which then clears.
 * `bash` cooldown (0.9 s) is less than the window, so B,B is reachable.
+* twin, fury and storm are **flow** combos: every gap between their swings must be ≤ 0.6 s
+  (touch) or ≤ 1.7 s (motion, where a strike plus its return takes about 1.5 s). In motion mode
+  the general window is 1.7 s.
+* `execute` (the Hoplite's Answer) finishes a staggered target at ≤ 35% HP; otherwise it deals
+  ×2 damage.
 
 **Who does what.**
 * player pushes a token when an attack **starts** (as it emits `swing`), with `t = gnow`. The
@@ -1411,13 +1424,20 @@ const DAYS = [
  { day:3, time:'dawn', title:'The Third Day', subtitle:'The Anopaia path', phases:[ /* below */ ] },
 ];
 ```
-* Spawning: one enemy every 1.2–2.0 s until `alive` is reached, at z = −35…−45 and
-  x ∈ [−6, 7]. A wave clears when all its melee enemies are dead. Archers then retreat.
+* Spawning: one enemy every 1.2–2.0 s until `alive` is reached, at z = −26…−20 (archers at
+  −45…−35) and x ∈ [−6, 7]. A wave clears when all its melee enemies are dead. Archers then
+  retreat. The next wave's first men set out 6 s before a respite ends. Day 1 opens with four
+  levies standing in a rank at z ≈ −16 during the herald's lines.
+* Engage delay by day (`DIRECTOR[d].engageDelay`): Days 1–2 0.3–0.7 s, Day 3 0.8–1.4 s. Rates:
+  Day 1 0.30, Day 2 0.40.
 * The first volley comes ≥ 12 s after waveStart. After that, one comes every `volleyEvery`
-  seconds.
+  seconds, but only while the wave's archers live. Its size scales with the surviving archers
+  (phase C keeps its own clock).
+* A volley is blocked only if the player faces where it comes from (within 1.31 rad) with the
+  shield raised ≥ 0.4.
 * **Respite**:
-  * 25 s in motion mode, 15 s otherwise. READY ends it after 6 s.
-  * Heals 35%, refills spears, and sends the helot.
+  * 18 s in motion mode, 10 s otherwise. READY ends it after 3 s.
+  * Heals 35%, tops spears up to 2, and sends the helot. dayStart refills fully.
   * Calls `ensureAllies` before Day 3.
   * The Day 2 respite line: "The Tegeans take the line." (Herodotus 7.212).
 * `dayStart` heals to 100% and restores allies on Days 1–2.
@@ -1434,9 +1454,9 @@ const DAYS = [
   * **Phase C, "The Kolonos"**:
     * A 2 s fade. Enemies come from the front, and the Immortals come **from behind**: they
       spawn at z = +30…+40 and enter through the wall gap.
-    * Volleys come every 10 s, shrinking by 1 s down to 4 s. Volleys from behind can't be
-      blocked.
-    * Sword only, no heal. It ends at death.
+    * Volleys come every 10 s, shrinking by 0.5 s down to 7 s. Rear volleys (100 arrows) are
+      blocked only by turning to face them. "Shields up!" plays at most every 12 s.
+    * Sword only (`swordOnly`, spears dropped), no heal. It ends at death.
     * The card text: "They defended themselves with swords, those who still had them, and with
       hands and teeth." (7.225)
 * **Voice lines** (speaker: text, trigger):

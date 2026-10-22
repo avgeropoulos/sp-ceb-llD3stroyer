@@ -9,6 +9,7 @@
 
 const G = 9.81;
 const DIAG = Math.SQRT1_2;
+const AXIS_WIN = 4; // the axis check's verdict: the winner leaves ≤ 1/4 of the loser's residual
 
 /**
  * Remaps a device-frame vector into the screen frame of display rotation `rotDeg`
@@ -67,6 +68,7 @@ export class MotionFrames {
     this._contra = 0;
     this._rotFix = 0;
     this._perm = false;
+    this._axisOk = false; // the axis check has confirmed the current mapping this session
     this._g0 = [0, 0, 0];
     this._gPrev = [0, 0, 0];
     this._wPrev = [0, 0, 0];
@@ -113,6 +115,57 @@ export class MotionFrames {
   /** Where rotationRate alpha, beta, gamma go: 'xyz' (default) or 'zxy' (W3C order). */
   get axisMap() {
     return this._perm ? 'zxy' : 'xyz';
+  }
+
+  /**
+   * The web calibration as a plain object, for storage: { axisMap, gravitySign, rotFix, confirmed }.
+   * `confirmed` is true once this session's own data has settled both the gravity sign (latched
+   * by fast swings) and the axis order (the self-check decided for the current mapping); only
+   * then is it worth persisting. Always unconfirmed on Android, which has nothing to calibrate.
+   */
+  exportCalibration() {
+    return {
+      axisMap: this.axisMap,
+      gravitySign: this._sign,
+      rotFix: this._rotFix,
+      confirmed: this.web && this._signLatched && this._axisOk,
+    };
+  }
+
+  /**
+   * Seeds the web calibration from a stored exportCalibration() object, so the first strikes of a
+   * session already use the right axis order. Invalid fields are ignored; Android ignores it all.
+   * Nothing is taken as confirmed: the self-checks keep running, so a changed browser or device
+   * overrides it as it would from scratch (the first fast-swing verdict sets the sign, the axis
+   * check switches the order, and a latched sign re-checks the screen angle).
+   * @param {{axisMap?: string, gravitySign?: number, rotFix?: number}|null} c
+   * @returns {boolean} true if anything was applied
+   */
+  importCalibration(c) {
+    if (!this.web || !c || typeof c !== 'object') return false;
+    let applied = false;
+    if (c.axisMap === 'xyz' || c.axisMap === 'zxy') {
+      this._perm = c.axisMap === 'zxy';
+      applied = true;
+    }
+    if (c.gravitySign === 1 || c.gravitySign === -1) {
+      if (c.gravitySign !== this._sign) this._flipSign();
+      applied = true;
+    }
+    if (c.rotFix === 0 || c.rotFix === 180) {
+      this._rotFix = c.rotFix;
+      applied = true;
+    }
+    if (applied) {
+      // a seed, not a verdict: the next evidence decides
+      this._signLatched = false;
+      this._contra = 0;
+      this._axisOk = false;
+      this._upOk = false;
+      this._latchSum = this._latchN = 0;
+      this._resetAxisCheck();
+    }
+    return applied;
   }
 
   /**
@@ -325,7 +378,9 @@ export class MotionFrames {
    * axisMap self-check (web): in the device frame a world-fixed gravity direction ĝ obeys
    * dĝ/dt = ĝ × w. Over short chunks of slow rotation, compare the measured change of ĝ with the
    * change each gyro mapping predicts (the current one and the W3C order alpha→z, beta→x,
-   * gamma→y). The mapping whose prediction leaves half the residual or less over ≥ 1 s wins.
+   * gamma→y). The mapping whose prediction leaves a quarter of the residual or less over ≥ 1 s
+   * wins (§5.2 says half: without a linear-acceleration sensor, the swing's own acceleration in
+   * accG let the wrong order win by 2.5× during slow returns; a true verdict wins by 5–18×).
    * Residuals (not correlations) keep noise-only data, e.g. turns about gravity, inconclusive.
    */
   _axisStep(raw) {
@@ -374,9 +429,13 @@ export class MotionFrames {
         this._axN++;
         this._chT = -1;
         if (this._axT >= 1 - 1e-6) {
-          if (this._axEc > 2 * this._axEa && this._axEc - this._axEa > 0.004 * this._axN) {
+          if (this._axEc > AXIS_WIN * this._axEa && this._axEc - this._axEa > 0.004 * this._axN) {
             this._perm = !this._perm;
+            this._axisOk = true;
             this._upOk = false; // the propagated up used the wrong axes
+            this._resetAxisCheck();
+          } else if (this._axEa > AXIS_WIN * this._axEc && this._axEa - this._axEc > 0.004 * this._axN) {
+            this._axisOk = true; // the current mapping wins as clearly: keep checking, but it's confirmed
             this._resetAxisCheck();
           } else if (this._axT >= 3) {
             this._resetAxisCheck();

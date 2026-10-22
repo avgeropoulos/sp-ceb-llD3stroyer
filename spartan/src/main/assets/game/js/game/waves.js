@@ -16,6 +16,8 @@ const BEHIND_CARD = 1.0;          // world changes wait until the card covers th
 const PHASE_GAP = 3;              // pause between Day 3 phases
 const ENDLESS_WAVE_SECONDS = 25;  // phase C: the director's wave count rises this often
 const SPAWN_CLEARANCE = 1.3;
+const SHIELDS_UP_EVERY = 12;      // 'Shields up!' is spoken at most this often (s)
+const VANGUARD_STAGGER = 0.3;     // the pre-placed front rank sets out one man at a time (s)
 
 /** Rough spoken length of a line, so lines don't cut each other off (TTS uses QUEUE_FLUSH). */
 export function voiceSeconds(text) {
@@ -48,9 +50,10 @@ export function createWaves(ctx) {
     nextVolley: 0.5,
     volleyEvery: 0.5,
     voiceBusy: 0.5,
+    shieldsUpAt: -1.5,
     deathT: -1.5,
   };
-  for (const k in T) T[k] = k === 'deathT' ? -1 : 0;
+  for (const k in T) T[k] = k === 'deathT' ? -1 : k === 'shieldsUpAt' ? -1e9 : 0;
   let lull = false;
   let readyRequested = false;
   let afterTimer = null;    // what the timer leads to: 'wave' | 'phase' | 'entry' | 'endless'
@@ -61,6 +64,8 @@ export function createWaves(ctx) {
   let wave = null;
   let plan = [];
   let planIdx = 0;
+  let preparedWave = -1;    // index of the next wave whose plan is already built (and partly spawned)
+  const vanguard = [];      // Day 1: the front rank standing during the intro, released at waveStart
   let endless = false;
   let archersLeft = 0;
   let volleyN = 0;
@@ -134,9 +139,12 @@ export function createWaves(ctx) {
     const p = ctx.player;
     if (p && p.heal && fraction > 0) p.heal((p.maxHp || 100) * fraction);
   }
-  function refill() {
+  /** Full bundle with no argument; else tops up to `total` spears (never takes any away). */
+  function refill(total) {
     const p = ctx.player;
-    if (refillAllowed && p && p.refillSpears) p.refillSpears();
+    if (!refillAllowed || !p || !p.refillSpears) return;
+    if (!(total > 0)) p.refillSpears();
+    else if (!(p.spearsLeft >= total)) p.refillSpears(total);
   }
   function motion() {
     return !!(ctx.settings && ctx.settings.control === 'motion');
@@ -151,6 +159,8 @@ export function createWaves(ctx) {
     entryIdx = i;
     phaseIdx = -1;
     waveIdx = -1;
+    preparedWave = -1;
+    vanguard.length = 0;
     day = e.day;
     if (newDay) {
       wavesToday = 0;
@@ -162,15 +172,6 @@ export function createWaves(ctx) {
     music(day === 3 ? 'lastStand' : 'battle');
     card('dayStart', e.title, e.subtitle, CARD_SECONDS, 0);
     // dayStart heals, refills and restores the line; world changes happen behind the card.
-    const restore = () => {
-      setTime(e.time);
-      if (!first && newDay && ctx.ai && ctx.ai.clearCorpses) ctx.ai.clearCorpses();
-      if (ctx.ai) ctx.ai.ensureAllies(ALLY_SLOTS);
-    };
-    if (first) restore();
-    else later(BEHIND_CARD, restore);
-    heal(1);
-    refill();
     let speech = 0;
     for (const key of e.intro || []) {
       later(VOICE_LEAD, () => say(key));
@@ -178,6 +179,45 @@ export function createWaves(ctx) {
     }
     T.timer = Math.max(CARD_SECONDS + 1, VOICE_LEAD + speech + 1.2);
     afterTimer = e.phases ? 'phase' : 'wave';
+    const restore = () => {
+      setTime(e.time);
+      if (!first && newDay && ctx.ai && ctx.ai.clearCorpses) ctx.ai.clearCorpses();
+      if (ctx.ai) ctx.ai.ensureAllies(ALLY_SLOTS);
+      if (e.vanguard && e.waves) placeVanguard(e.vanguard, e.waves[0]);
+    };
+    if (first) restore();
+    else later(BEHIND_CARD, restore);
+    heal(1);
+    refill();
+  }
+
+  /**
+   * The herald's audience: the first `count` men of the entry's first wave stand in a rank at
+   * z ≈ `z` through the intro and set out at waveStart (they're the start of that wave's plan).
+   */
+  function placeVanguard(v, w) {
+    const ai = ctx.ai;
+    if (!ai || !w) return;
+    buildPlan(w);
+    preparedWave = 0;
+    const n = Math.min(v.count | 0, plan.length, w.alive || 0);
+    for (let k = 0; k < n; k++) {
+      const x = (k - (n - 1) / 2) * 1.5 + 0.3 + (rng.next() - 0.5) * 0.4;
+      const z = v.z + (k % 2) * 0.6 + (rng.next() - 0.5) * 0.4;
+      // Idle until the wave starts (the timer still covers the rest of the intro).
+      const a = ai.spawnEnemy(plan[planIdx++], x, z, { facing: 0, delay: Math.max(0.05, T.timer) + k * VANGUARD_STAGGER });
+      if (a) vanguard.push(a);
+    }
+  }
+
+  /** waveStart: the vanguard sets out now, whatever is left of its intro delay. */
+  function releaseVanguard() {
+    for (let k = 0; k < vanguard.length; k++) {
+      const a = vanguard[k];
+      const d = 0.05 + k * VANGUARD_STAGGER;
+      if (a && a.alive && a.state === 'idle' && a.delay > d) a.delay = d;
+    }
+    vanguard.length = 0;
   }
 
   function beginPhase(k) {
@@ -185,6 +225,7 @@ export function createWaves(ctx) {
     const p = e.phases[k];
     phaseIdx = k;
     waveIdx = -1;
+    preparedWave = -1;
     state = 'intro';
     T.stateT = 0;
     lull = false;
@@ -197,8 +238,17 @@ export function createWaves(ctx) {
       });
     }
     if (p.noRefill) {
+      // 7.224: the spears are broken. One stays in hand; the bundle is gone.
       refillAllowed = false;
-      later(2.4, () => say('swords'));
+      later(2.4, () => {
+        say('swords');
+        ctx.player?.dropSpears?.({ keepInHand: true });
+      });
+    }
+    if (p.swordOnly) {
+      // 7.225: the Kolonos is fought with swords.
+      refillAllowed = false;
+      ctx.player?.dropSpears?.({ keepInHand: false });
     }
     T.timer = (p.fade || 0) + CARD_SECONDS - 1;
     afterTimer = p.endless ? 'endless' : 'wave';
@@ -249,8 +299,11 @@ export function createWaves(ctx) {
     waveIdx = k;
     wave = w;
     endless = false;
-    buildPlan(w);
-    beginFighting(w);
+    const prepared = preparedWave === k;
+    if (!prepared) buildPlan(w);
+    preparedWave = -1;
+    beginFighting(w, prepared);
+    releaseVanguard();
     const p = phaseDef();
     const title = p && p.id === 'B' ? `Surge ${k + 1} of ${list.length}` : `Wave ${k + 1} of ${list.length}`;
     card('waveStart', title, w.subtitle || '', WAVE_CARD_SECONDS, k + 1);
@@ -271,13 +324,14 @@ export function createWaves(ctx) {
     say('warcry');
   }
 
-  function beginFighting(w) {
+  /** `keepSpawnClock`: the wave's first men already set out during the respite; keep their cadence. */
+  function beginFighting(w, keepSpawnClock = false) {
     state = 'fighting';
     T.stateT = 0;
     T.fightT = 0;
     lull = false;
     archersLeft = w.archer || 0;
-    T.spawnT = 0.6;
+    if (!keepSpawnClock) T.spawnT = 0.6;
     T.archerT = 2.5;
     T.volleyEvery = w.volleyEvery || 0;
     T.nextVolley = T.volleyEvery > 0 ? SPAWN.firstVolley + rng.next() * 3 : Infinity;
@@ -286,8 +340,8 @@ export function createWaves(ctx) {
     dayWave = wavesToday++;
   }
 
-  function spawnPoint(behind, out) {
-    const area = behind ? SPAWN.behind : SPAWN.front;
+  function spawnPoint(behind, archer, out) {
+    const area = behind ? SPAWN.behind : archer && SPAWN.archer ? SPAWN.archer : SPAWN.front;
     const actors = ctx.actors || [];
     let bestX = 0, bestZ = 0, bestD = -1;
     for (let tries = 0; tries < 6; tries++) {
@@ -312,7 +366,7 @@ export function createWaves(ctx) {
   function spawn(kind, behind) {
     const ai = ctx.ai;
     if (!ai) return;
-    spawnPoint(behind, spot);
+    spawnPoint(behind, kind === 'archer', spot);
     ai.spawnEnemy(kind, spot.x, spot.z, behind ? { fromBehind: true } : undefined);
   }
 
@@ -357,17 +411,38 @@ export function createWaves(ctx) {
     if (!endless && planIdx >= plan.length && ai && ai.enemiesAlive === 0) waveCleared();
   }
 
+  /**
+   * Living archers of the current wave (on the firing line or still to come), or -1 if the wave
+   * has none or ai can't tell: then volleys run on the clock alone (Day 3 phase A, phase C).
+   */
+  function archersStanding() {
+    const ai = ctx.ai;
+    if (endless || !wave || !(wave.archer > 0) || !ai) return -1;
+    const n = ai.archersShooting ?? ai.archersAlive;
+    return Number.isFinite(n) ? n + archersLeft : -1;
+  }
+
   function fireVolley() {
     const p = phaseDef();
     const kolonos = endless && p && p.volley;
+    // Kill the wave's archers and its volleys stop; each archer down thins them.
+    const standing = archersStanding();
+    if (standing === 0) {
+      T.nextVolley = Infinity;
+      return;
+    }
     volleyN++;
     const first = campaignVolleys === 0;
     campaignVolleys++;
     // Phase C: every other volley comes from behind, over the wall, and can't be blocked.
     const fromBehind = !!kolonos && volleyN % 2 === 0;
-    const count = fromBehind ? (volleyN < 7 ? 100 : 200) : day === 3 ? 360 : 300;
+    let count = fromBehind ? 100 : day === 3 ? 360 : 300;
+    if (standing > 0 && standing < wave.archer) count = Math.max(100, Math.round((count * standing) / wave.archer));
     if (ctx.combat && ctx.combat.volley) ctx.combat.volley({ count, duration: 1.0, warn: 2.5, fromBehind });
-    say('shieldsUp', true);
+    if (T.clock - T.shieldsUpAt >= SHIELDS_UP_EVERY - 1e-6) {
+      T.shieldsUpAt = T.clock;
+      say('shieldsUp', true);
+    }
     if (first) {
       say('arrowsHideSun');
       say('fightInShade');
@@ -421,7 +496,7 @@ export function createWaves(ctx) {
     T.timer = cfg.seconds;
     afterTimer = 'wave';
     heal(cfg.heal);
-    if (cfg.refill) refill();
+    if (cfg.refill) refill(RESPITE.spears);
     if (cfg.helot && ctx.ai) ctx.ai.spawnHelot();
     if (cfg.allies && ctx.ai) ctx.ai.ensureAllies(ALLY_SLOTS, { walkIn: true });
     const sub = cfg.refill && refillAllowed ? 'Bind your wounds. Take up fresh spears.' : 'Bind your wounds.';
@@ -495,21 +570,47 @@ export function createWaves(ctx) {
       T.timer -= gdt;
       if (state === 'respite' && readyRequested && T.stateT >= RESPITE.readyAfter) T.timer = 0;
       if (T.timer <= 0) timerDone();
+      else if (state === 'respite' && !lull && afterTimer === 'wave' && T.timer <= SPAWN.respiteLead) prespawn(gdt);
     }
   }
 
-  /** Starts the campaign at the first entry of `day` (1–3). */
-  function start(d = 1) {
+  /** The last seconds of a respite: the next wave's first men set out from the Persian line. */
+  function prespawn(gdt) {
+    const ai = ctx.ai;
+    const list = waveList();
+    const k = waveIdx + 1;
+    if (!ai || !list || k >= list.length) return;
+    const w = list[k];
+    if (preparedWave !== k) {
+      buildPlan(w);
+      preparedWave = k;
+      T.spawnT = 0;
+    }
+    T.spawnT -= gdt;
+    if (T.spawnT <= 0 && planIdx < plan.length && ai.enemiesAlive < w.alive) {
+      spawn(plan[planIdx++], false);
+      T.spawnT = SPAWN.interval[0] + rng.next() * (SPAWN.interval[1] - SPAWN.interval[0]);
+    }
+  }
+
+  /**
+   * Starts the campaign at `day` (1–3), at its `entry`-th part (0 = the day's first entry, 1 =
+   * Day 1 dusk; out-of-range values fall back to the day's first entry).
+   */
+  function start(d = 1, entry = 0) {
     stop();
     running = true;
     T.clock = 0;
+    T.shieldsUpAt = -1e9;
     day = d >= 3 ? 3 : d <= 1 ? 1 : 2;
     refillAllowed = true;
     leonidasFallen = false;
     tegeansSaid = false;
     campaignVolleys = 0;
     wavesToday = 0;
-    beginEntry(firstEntryOfDay(day), true);
+    const first = firstEntryOfDay(day);
+    const k = first + (entry > 0 ? Math.floor(entry) : 0);
+    beginEntry(k < DAYS.length && DAYS[k].day === day ? k : first, true);
   }
 
   /** Cancels everything silently (no events, no voice). */
@@ -522,6 +623,8 @@ export function createWaves(ctx) {
     T.deathT = -1;
     plan.length = 0;
     planIdx = 0;
+    preparedWave = -1;
+    vanguard.length = 0;
     wave = null;
     endless = false;
     T.nextVolley = Infinity;
@@ -531,7 +634,7 @@ export function createWaves(ctx) {
   }
 
   /**
-   * READY from the HUD: ends the respite now if it has run ≥ 6 s, else as soon as it has.
+   * READY from the HUD: ends the respite now if it has run ≥ RESPITE.readyAfter s, else as soon as it has.
    * Returns true if the request was taken. (Also bound to the `ready` event.)
    */
   function ready() {
@@ -548,6 +651,22 @@ export function createWaves(ctx) {
     ready,
     get day() {
       return day;
+    },
+    /** 0-based part of the current day (Day 1: 0 morning, 1 dusk); pass to start(day, entry). */
+    get entryIndex() {
+      return Math.max(0, entryIdx - firstEntryOfDay(day));
+    },
+    /** The current entry's time of day ('morning'|'dusk'|'noon'|'dawn'), or null when stopped. */
+    get timeOfDay() {
+      return running && DAYS[entryIdx] ? DAYS[entryIdx].time : null;
+    },
+    /** Waves (or surges) in the current day entry or phase; 0 in the endless phase or before one. */
+    get waveCount() {
+      if (endless) return 0;
+      const e = DAYS[entryIdx];
+      if (!e || (e.phases && phaseIdx < 0)) return 0;
+      const list = waveList();
+      return list ? list.length : 0;
     },
     /** 'A'|'B'|'C' on Day 3, else null. */
     get phase() {

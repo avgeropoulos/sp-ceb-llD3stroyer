@@ -33,11 +33,15 @@ test('campaign data matches §13', () => {
   assert.equal(B.title, "Over Leonidas' body");
   assert.equal(C.title, 'The Kolonos');
   assert.equal(C.subtitle, 'They defended themselves with swords, those who still had them, and with hands and teeth.');
-  assert.deepEqual(C.volley, { first: 10, start: 10, step: 1, min: 4 });
+  assert.deepEqual(C.volley, { first: 10, start: 10, step: 0.5, min: 7 });
+  assert.equal(C.swordOnly, true);
   assert.equal(C.fade, 2);
-  assert.deepEqual(RESPITE, { motion: 25, touch: 15, readyAfter: 6, heal: 0.35 });
+  assert.deepEqual(RESPITE, { motion: 18, touch: 10, readyAfter: 3, heal: 0.35, spears: 2 });
   assert.deepEqual(SPAWN.interval, [1.2, 2.0]);
-  assert.deepEqual(SPAWN.front, { x: [-6, 7], z: [-45, -35] });
+  assert.deepEqual(SPAWN.front, { x: [-6, 7], z: [-26, -20] });
+  assert.deepEqual(SPAWN.archer, { x: [-6, 7], z: [-45, -35] });
+  assert.equal(SPAWN.respiteLead, 6);
+  assert.deepEqual(DAYS[0].vanguard, { count: 4, z: -16 });
   assert.deepEqual(SPAWN.behind.z, [30, 40]);
   assert.deepEqual([...ALLY_SLOTS], [-4.2, -2.8, -1.4, 1.4, 2.8, 4.2, 5.6]);
   assert.equal(LEONIDAS_X, -1.4);
@@ -115,7 +119,7 @@ test('the campaign runs from Day 1 to the end of phase C and gameOver 3.2 s afte
   for (let i = 0; i < 200000 && h.waves.state !== 'over'; i++) {
     h.step(0.05);
     if (cAt === null && h.waves.phase === 'C' && h.waves.state === 'fighting') cAt = h.t.gnow;
-    if (cAt !== null && h.t.gnow - cAt > 60 && !h.log.some((e) => e.n === 'gameOver') && !h.dead) {
+    if (cAt !== null && h.t.gnow - cAt > 90 && !h.log.some((e) => e.n === 'gameOver') && !h.dead) {
       h.dead = h.t.gnow;
       h.events.emit('playerDeath', {});
     }
@@ -142,24 +146,34 @@ test('the campaign runs from Day 1 to the end of phase C and gameOver 3.2 s afte
   // Phase C: Immortals from behind at z 30..40.
   const behind = h.calls.spawns.filter((s) => s.fromBehind);
   assert.ok(behind.length > 3 && behind.every((s) => s.kind === 'immortal' && s.z >= 30 && s.z <= 40 && s.t > cAt));
-  assert.ok(h.calls.spawns.filter((s) => !s.fromBehind && s.kind !== 'archer').every((s) => s.z >= -45 && s.z <= -35 && s.x >= -6 && s.x <= 7));
-  // Phase C volleys: 10, 10, 9, 8, ... ≥ 4 s apart, alternating from behind.
+  // The Day 1 vanguard (4 levies at z ≈ −16, placed at Fight); every other front spawn at z −26…−20.
+  const front = h.calls.spawns.filter((s) => !s.fromBehind && s.kind !== 'archer');
+  assert.deepEqual(front.slice(0, 4).map((s) => [s.t, s.kind]), [[0, 'levy'], [0, 'levy'], [0, 'levy'], [0, 'levy']]);
+  assert.ok(front.slice(0, 4).every((s) => s.z >= -16.5 && s.z <= -15));
+  assert.ok(front.slice(4).every((s) => s.z >= -26 && s.z <= -20 && s.x >= -6 && s.x <= 7));
+  assert.ok(h.calls.spawns.filter((s) => s.kind === 'archer').every((s) => s.z >= -45 && s.z <= -35));
+  // Phase C volleys: 10, 10, 9.5, 9, ... ≥ 7 s apart (never overlapping), alternating from behind.
   const cv = h.calls.volley.filter((v) => v.t >= cAt);
   const gaps = cv.map((v, i) => +(v.t - (i ? cv[i - 1].t : cAt)).toFixed(2));
-  assert.deepEqual(gaps.slice(0, 8), [10, 10, 9, 8, 7, 6, 5, 4]);
+  assert.deepEqual(gaps.slice(0, 9), [10, 10, 9.5, 9, 8.5, 8, 7.5, 7, 7]);
   assert.deepEqual(cv.slice(0, 6).map((v) => v.fromBehind), [false, true, false, true, false, true]);
+  assert.ok(cv.every((v) => v.count === (v.fromBehind ? 100 : 360)));
   // The end card banner and the voice lines.
   assert.ok(h.calls.banner[0].startsWith('Three times'));
   const voices = h.log.filter((e) => e.n === 'voice');
-  assert.equal(voices.filter((v) => v.text === 'Shields up!').length, h.calls.volley.length);
+  // 'Shields up!' at a volley warning, at most once per 12 s.
+  const shields = voices.filter((v) => v.text === 'Shields up!').map((v) => v.t);
+  assert.ok(shields.length > 10 && shields.length < h.calls.volley.length);
+  assert.ok(shields.every((t, i) => i === 0 || t - shields[i - 1] >= 12 - 1e-6));
+  assert.ok(shields.every((t) => h.calls.volley.some((v) => Math.abs(v.t - t) < 1e-6)));
   assert.equal(voices.filter((v) => v.text === 'Their arrows will hide the sun!').length, 1);
   assert.equal(voices.filter((v) => v.text === 'The Tegeans take the line.').length, 1);
   assert.ok(voices.filter((v) => v.t > bAt + 1.1).every((v) => v.speaker !== 'Leonidas'));
   assert.deepEqual(h.log.filter((e) => e.n === 'waveCleared' && e.phase === 'B').map((e) => e.title), ['Driven back (1/4)', 'Driven back (2/4)', 'Driven back (3/4)', 'Driven back (4/4)']);
 });
 
-test('respites last 15 s (touch) / 25 s (motion); READY ends them at ≥ 6 s', () => {
-  for (const [motion, ready, want] of [[false, null, 15], [true, null, 25], [true, 2, 6], [true, 9, 9]]) {
+test('respites last 10 s (touch) / 18 s (motion); READY ends them at ≥ 3 s', () => {
+  for (const [motion, ready, want] of [[false, null, 10], [true, null, 18], [true, 2, 3], [true, 9, 9]]) {
     const h = harness({ motion, killAfter: 1 });
     h.waves.start(1);
     let rAt = null, readyRes = null;
@@ -173,7 +187,7 @@ test('respites last 15 s (touch) / 25 s (motion); READY ends them at ≥ 6 s', (
     const next = h.log.find((e) => e.n === 'waveStart' && e.t > rAt).t;
     assert.ok(Math.abs(next - rAt - want) < 0.11, `motion=${motion} ready=${ready}: ${next - rAt}`);
     const r = h.log.find((e) => e.n === 'respite');
-    assert.equal(r.seconds, motion ? 25 : 15);
+    assert.equal(r.seconds, motion ? 18 : 10);
     if (ready !== null) assert.equal(readyRes, true);
     // 35% heal, spears, helot and walk-in allies.
     assert.ok(h.calls.heal.some(([, n]) => Math.abs(n - 35) < 1e-9));

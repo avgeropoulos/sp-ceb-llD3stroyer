@@ -13,6 +13,11 @@ const DEG = Math.PI / 180;
 const HALF_PI = Math.PI / 2;
 const UP_SECTOR = 60 * DEG; // §5.3: upward swings and wind-ups
 const AUTO_RESUME = 2.5; // s: failsafe when a throw starts no spear cam (no holdLook/resumeLook follows)
+const RING = 256; // committed-look history (≥ 1.28 s at 200 Hz) for the provisional window
+const HOLDS = 4; // headings the phone was held at before an excursion's first swing
+const HOLD_MIN = 0.04; // s of stillness that count as a hold
+const HOLD_SEP = 0.1; // rad: a hold this close to the excursion's start is no turn
+const HOLD_NEAR = 0.35; // a strike 'came back to a hold' within this fraction of the hold's offset
 
 /**
  * Every threshold of the recognizer (§5.3). Sensitivity scales some of them (see setSensitivity).
@@ -23,12 +28,21 @@ const AUTO_RESUME = 2.5; // s: failsafe when a throw starts no spear cam (no hol
  *   started lower still fire early; others fire at swing end, never with a wrong token.
  * - windupBeta 1.0 → 1.6: an uppercut from a level guard ends at β ≈ 1.4; a throw wind-up
  *   goes past vertical (β ≈ 2.1–2.6).
+ * - A held-up swing that reaches windupBeta is not a wind-up at once: a cut that ends overhead
+ *   rebounds, a raise is held. It becomes a wind-up only if the phone stays up, without moving
+ *   back down, for windupTime after the swing; otherwise it is the uppercut (see _upPending).
+ *   A held-up swing also fires early once it is clearly braking well below windupBeta.
  * - vfLeakBack (new): backward vf leaks slowly so a retraction's final deceleration cannot push
  *   vf above thrustVel (vfLeak still bounds positive drift).
  * - calmHold (new): vf is zeroed only after calm persists; a phone moving at constant velocity
  *   also reads calm for a sample or two.
  * - swingSettleTime (new): after an excursion that contained a swing, the look waits this long
  *   before treating the new heading as a body turn (strikes pause before their return).
+ * - prepRate, prepMax, prepSettleTime, prepWindow (new): a cock-back before a strike is often
+ *   slower than swingStart, so it is no swing, yet its heading change must not stay behind as a
+ *   turn. A brisk (peak ≥ prepRate/s), short (|δ| ≤ prepMax) excursion waits prepSettleTime
+ *   before it counts as a turn; and look changes released within prepWindow before a swing are
+ *   provisional (see _rollBack).
  */
 export const GESTURE_DEFAULTS = Object.freeze({
   swingStart: 3.5, swingPeak: 5.0, swingSweep: 0.45, swingEnd: 1.5, endHold: 0.04,
@@ -38,6 +52,7 @@ export const GESTURE_DEFAULTS = Object.freeze({
   upHoldStartBeta: -0.45, windupBeta: 1.6, windupTime: 0.1, windupMemory: 1.0,
   throwPeak: 7, throwFull: 13, throwSector: 65 * DEG, throwReleaseRatio: 0.6, throwMaxSweep: 1.4, postThrowLock: 1.0,
   settleRate: 1.0, settleTime: 0.15, swingSettleTime: 0.6, absorb: 0.35, lookEase: 0.25, deadZone: 0.02,
+  prepRate: 1.75, prepMax: 0.6, prepSettleTime: 0.45, prepWindow: 0.8,
   slashPowerSpan: 10, thrustPowerSpan: 18,
 });
 
@@ -85,10 +100,20 @@ export class GestureRecognizer {
     this._psi = 0;
     this._psiOk = false;
     this._dir = this._sweepNow = 0;
+    // committed look (L + pending) per sample, for _rollBack
+    this._ringT = new Float64Array(RING);
+    this._ringC = new Float64Array(RING);
+    this._ringHead = 0;
+    this._ringN = 0;
+    this._holdY = new Float64Array(HOLDS);
+    this._holdN = 0;
     this.reset();
   }
 
-  /** Sensitivity 0.5–2.0: divides swingStart, swingPeak, throwPeak, throwFull, thrustAcc; swingSweep by √s. */
+  /**
+   * Sensitivity 0.5–2.0: divides swingStart, swingPeak, thrustAcc; swingSweep by √s. throwPeak and
+   * throwFull are divided by max(1, s): a hard slasher (s < 1) does not have to throw harder too.
+   */
   setSensitivity(s) {
     s = clamp(Number(s) || 1, 0.5, 2);
     if (s === this.sens) return;
@@ -97,10 +122,11 @@ export class GestureRecognizer {
     this._start = p.swingStart / s;
     this._peak = p.swingPeak / s;
     this._sweep = p.swingSweep / Math.sqrt(s);
-    this._throwPeak = p.throwPeak / s;
-    this._throwFull = p.throwFull / s;
+    this._throwPeak = p.throwPeak / Math.max(1, s);
+    this._throwFull = p.throwFull / Math.max(1, s);
     this._thrustAcc = p.thrustAcc / s;
     this._slashSpan = Math.max(0.5, Math.min(p.slashPowerSpan, 0.9 * this.gyroRange - this._peak));
+    this._prepRate = p.prepRate / s;
   }
 
   /** 'sword' | 'spear' (throws only happen with the spear). */
@@ -136,17 +162,29 @@ export class GestureRecognizer {
     this._raisedSince = NaN;
     this._raisedEmitted = false;
     this._raiseArmed = false; // a raise counts only after the phone was seen lower
+    this._cutRaise = false; // this raise was an uppercut: no wind-up event for it
+    this._upPend = false; // a held-up swing ended overhead: uppercut or wind-up? (see _upPending)
+    this._upReb = false;
+    this._upT0 = 0;
+    this._upTop = 0;
+    this._upRebN = 0;
+    this._upRebPeak = 0;
+    this._upDir = this._upPeak = this._upSweep = 0;
     this._lockUntil = -Infinity;
     this._hold = false;
     this._holdAuto = false;
     this._holdSince = 0;
     this._settleAcc = 0;
+    this._stillAcc = 0;
     this._settled = false;
     this._lookSettled = false;
     this._excSwing = false;
+    this._excPeak = 0;
+    this._swStarted = false;
     this._gapAnchor = false;
     this._pending = 0;
     this._O = this._hYaw - this._L;
+    this._anchorLook();
     this._events.length = 0;
     this._fRef[0] = this._fRef[1] = this._fRef[2] = 0;
     this._wp0 = this._wp1 = this._wp2 = 0;
@@ -207,15 +245,20 @@ export class GestureRecognizer {
       if (this._raisedSince !== this._raisedSince) this._raisedSince = t;
       if (this._raiseArmed && !locked && t - this._raisedSince >= p.windupTime - 1e-9) {
         this._lastWindup = t;
-        if (!this._raisedEmitted && !(this._swActive && this._swMode === DONE)) this._emitWindup();
+        // (a held-up swing and its aftermath decide for themselves: see _upPending)
+        const deciding = this._upPend || (this._swActive && (this._swMode === DONE || this._swMode === UP));
+        if (!this._raisedEmitted && !this._cutRaise && !deciding) this._emitWindup();
       }
     } else {
       this._raisedSince = NaN;
       if (beta < p.windupBeta - 0.3) {
         this._raisedEmitted = false;
         this._raiseArmed = true;
+        if (!this._swActive) this._cutRaise = false;
       }
     }
+
+    if (this._upPend && !this._swActive) this._upPending();
 
     // ---- swing ----
     if (this._swActive) {
@@ -325,15 +368,28 @@ export class GestureRecognizer {
       const dz = p.deadZone;
       this._hYaw += (rate > dz ? rate - dz : rate < -dz ? rate + dz : 0) * dt;
     }
-    const moving = m >= p.settleRate || this._swActive || locked;
+    // `settled` (the spear cam's 'looked back') is plain stillness; the post-throw lock only
+    // keeps the look from settling, so the cam lets go as soon as the phone is still.
+    const still = m < p.settleRate && !this._swActive;
+    this._stillAcc = still ? this._stillAcc + dt : 0;
+    const moving = !still || locked;
     if (moving) {
       this._settleAcc = 0;
       this._lookSettled = false;
       if (this._swActive || locked) this._excSwing = true;
+      if (m > this._excPeak) this._excPeak = m;
     } else {
       this._settleAcc += dt;
     }
-    const settledNow = !moving && this._settleAcc >= p.settleTime - 1e-9;
+    if (this._swStarted) {
+      this._swStarted = false;
+      if (!this._excStruck) {
+        // the first swing of this excursion: the holds before it are now known
+        this._excStruck = true;
+        if (!this._hold) this._rollBack(t);
+      }
+    }
+    if (this._rollPend && (this._sweepNow >= 0.2 || !this._swActive)) this._rollDecide();
     if (this._hold) {
       if (this._holdAuto && t - this._holdSince > AUTO_RESUME) this.resumeLook();
     } else {
@@ -348,19 +404,55 @@ export class GestureRecognizer {
       const target = this._hYaw - this._O;
       if (this._lookSettled) {
         this._L = target - this._pending; // slow turns are followed 1:1
-      } else if (!moving && this._settleAcc >= (this._excSwing ? p.swingSettleTime : p.settleTime) - 1e-9) {
+      } else if (!moving && this._settleAcc >= p.settleTime - 1e-9) {
         // Settled after an excursion: a strike that came back near its start was an imprecise
         // return to guard (absorb); anything else is a body turn (release). After a data gap the
-        // rotation in between is unknown: re-anchor instead.
-        const delta = target - this._L - this._pending;
-        if (this._gapAnchor || (this._excSwing && Math.abs(delta) <= p.absorb)) this._O += delta;
-        else this._pending += delta;
-        this._lookSettled = true;
-        this._excSwing = false;
-        this._gapAnchor = false;
+        // rotation in between is unknown: re-anchor instead. A brisk, short excursion may be the
+        // cock-back of a strike: it waits prepSettleTime for that strike before it counts as a turn.
+        let delta = target - this._L - this._pending;
+        const prep = this._excPeak >= this._prepRate && Math.abs(delta) <= p.prepMax;
+        const wait = this._excSwing ? p.swingSettleTime : prep ? p.prepSettleTime : p.settleTime;
+        if (this._settleAcc >= wait - 1e-9) {
+          if (this._rolled !== 0) {
+            // A strike took back a look change as its cock-back (_rollBack). Where the phone came
+            // back to decides: nearer the changed heading, it was a body turn after all.
+            if (Math.abs(delta - this._rolled) < Math.abs(delta)) {
+              this._pending += this._rolled;
+              delta -= this._rolled;
+            }
+            this._rolled = 0;
+          }
+          const absorb = this._excSwing && Math.abs(delta) <= p.absorb && !this._turnedFirst(delta);
+          if (this._gapAnchor || absorb) this._O += delta;
+          else this._pending += delta;
+          this._lookSettled = true;
+          this._excSwing = false;
+          this._excPeak = 0;
+          this._excStruck = false;
+          this._holdN = 0;
+          this._holdLive = false;
+          this._gapAnchor = false;
+        }
       }
     }
-    this._settled = settledNow;
+    this._settled = this._stillAcc >= p.settleTime - 1e-9;
+    // Holds before the excursion's first swing: candidates for the guard a strike returns to
+    if (!still) {
+      this._holdLive = false;
+    } else if (!this._lookSettled && !this._excStruck && this._stillAcc >= HOLD_MIN - 1e-9) {
+      if (!this._holdLive) {
+        this._holdLive = true; // a new hold
+        if (this._holdN === HOLDS) this._holdY.copyWithin(0, 1);
+        else this._holdN++;
+      }
+      this._holdY[this._holdN - 1] = this._hYaw;
+    }
+    // committed-look history
+    const h = (this._ringHead + 1) % RING;
+    this._ringHead = h;
+    this._ringT[h] = t;
+    this._ringC[h] = this._L + this._pending;
+    if (this._ringN < RING) this._ringN++;
 
     const d = this._dbg;
     d.m = m;
@@ -384,6 +476,7 @@ export class GestureRecognizer {
   holdLook() {
     this._hold = true;
     this._holdAuto = false;
+    this._anchorLook();
   }
 
   /** Re-anchors (O = hYaw − L) so nothing jumps, and follows again. */
@@ -392,12 +485,14 @@ export class GestureRecognizer {
     this._holdAuto = false;
     this._pending = 0;
     this._O = this._hYaw - this._L;
+    this._anchorLook();
   }
 
   /** Makes the current phone heading the reference for the current view. */
   recenter() {
     this._pending = 0;
     this._O = this._hYaw - this._L;
+    this._anchorLook();
   }
 
   /** Phone settled and the screen upright, facing the player. */
@@ -438,11 +533,14 @@ export class GestureRecognizer {
       this._holdSince += shift;
     }
     this._swActive = false;
+    this._upPend = false;
+    this._cutRaise = false;
     this._cand = false;
     this._vf = 0;
     this._raisedSince = NaN;
     this._raiseArmed = false;
     this._settleAcc = 0;
+    this._stillAcc = 0;
     this._settled = false;
     this._lookSettled = false;
     this._excSwing = true; // where the phone went during the gap is unknown: wait like after a swing
@@ -454,11 +552,81 @@ export class GestureRecognizer {
       this._pending = 0;
       this._O = this._hYaw - this._L;
     }
+    this._excPeak = 0;
+    this._anchorLook();
+  }
+
+  /** Forgets the look history: nothing before now can be rolled back. */
+  _anchorLook() {
+    this._ringN = 0;
+    this._rolled = 0;
+    this._rollCand = 0;
+    this._rollPend = false;
+    this._excStruck = false;
+    this._holdN = 0;
+    this._holdLive = false;
+  }
+
+  /**
+   * A strike returns to the guard it left. If the phone came back close to a heading it was held
+   * at before the strike (well away from where the excursion began), the body turned first and
+   * the strike came before the turn settled: a turn, not an imprecise return. (A cock-back's hold
+   * is a candidate too, but the strike returns to the start, away from it.)
+   */
+  _turnedFirst(delta) {
+    if (!this._excStruck) return false;
+    const e = this._hYaw - delta; // where the excursion began, in heading units
+    for (let i = 0; i < this._holdN; i++) {
+      const off = Math.abs(this._holdY[i] - e);
+      if (off >= HOLD_SEP && Math.abs(this._hYaw - this._holdY[i]) <= HOLD_NEAR * off) return true;
+    }
+    return false;
+  }
+
+  /**
+   * The first swing of an excursion has just started. A look change released in the last
+   * prepWindow (an excursion's release, or a slow turn followed 1:1) may have been its cock-back:
+   * note it (≤ prepMax) and let _rollDecide judge once the swing's direction is known.
+   */
+  _rollBack(t) {
+    const n = this._ringN;
+    this._ringN = 0; // once per excursion: later swings in it see no history
+    if (n === 0) return;
+    const T = this._ringT, C = this._ringC;
+    const tw = t - this.p.prepWindow;
+    let i = this._ringHead;
+    let k = 1;
+    while (k < n && T[i] > tw) {
+      i = (i + RING - 1) % RING;
+      k++;
+    }
+    const roll = this._L + this._pending - C[i];
+    if (roll !== 0 && Math.abs(roll) <= this.p.prepMax) {
+      this._rollCand = roll;
+      this._rollPend = true;
+    }
+  }
+
+  /**
+   * A cock-back turns the heading against the strike's sideways direction (positive look = left,
+   * dx > 0 = blade moving right). If so, ease the change back now and remember it in _rolled: the
+   * settle after the strike decides from where the phone came back whether it was a turn after all.
+   */
+  _rollDecide() {
+    this._rollPend = false;
+    const roll = this._rollCand, dx = this._dx;
+    if (this._hold || this._sweepNow < 0.2 || roll * dx <= 0 || Math.abs(dx) < 0.3 * this._sweepNow) return;
+    this._pending -= roll;
+    this._rolled += roll;
+    this._ringN = 0;
   }
 
   _startSwing() {
     const p = this.p;
     const t = this._t, m = this._m, beta = this._beta;
+    // A new swing right after an uppercut that ended overhead: with the sword it was the cut
+    // (fire it first, so the recoil rule sees it); with the spear this swing decides (_swingStep).
+    if (this._upPend && this.weapon !== 'spear') this._fireUp();
     this._swActive = true;
     this._swMode = NORMAL;
     this._swT0 = t;
@@ -471,6 +639,7 @@ export class GestureRecognizer {
     this._swWindMem = t - this._lastWindup <= p.windupMemory || (this._raiseArmed && beta >= p.windupBeta);
     this._vf = 0;
     this._cand = false;
+    this._swStarted = true;
   }
 
   /** May the current swing produce a slash now (thresholds + the recoil rule)? */
@@ -493,13 +662,16 @@ export class GestureRecognizer {
     this._pDir = dir;
     this._pPeak = peak;
     this._pEnd = Infinity;
+    if (within(dir, HALF_PI, UP_SECTOR)) this._cutRaise = true; // a raise is a cut or a wind-up, never both
     this._emit({ type: 'slash', dir, power, peak, sweep, t });
   }
 
   _resolveThrow() {
     const t = this._t;
     const peak = this._swPeak;
-    if (peak >= this._throwPeak) {
+    // A remembered wind-up plus a downward swing is a throw: below throwPeak it is a weak one
+    // (power 0), never a chop.
+    if (peak >= Math.min(this._peak, this._throwPeak)) {
       this._swMode = DONE;
       const power = clamp((peak - this._throwPeak) / Math.max(1e-6, this._throwFull - this._throwPeak), 0, 1);
       this._lockUntil = t + this.p.postThrowLock;
@@ -518,6 +690,61 @@ export class GestureRecognizer {
     } else {
       this._swMode = DONE;
     }
+  }
+
+  /**
+   * After a held-up swing that ended overhead (not in a swing): held still up for windupTime, it
+   * was a raise (wind-up); moving back down, it was a cut that rebounds (the uppercut). With the
+   * spear a downward motion may also be the throw itself, so it waits to see whether that
+   * becomes a swing (_startSwing/_swingStep decide) or stays a slow rebound.
+   */
+  _upPending() {
+    const p = this.p;
+    const t = this._t, beta = this._beta;
+    if (t < this._lockUntil) {
+      this._upPend = false;
+      return;
+    }
+    if (beta > this._upTop) this._upTop = beta;
+    if (!this._upReb) {
+      this._upRebN = this._vy < -0.5 ? this._upRebN + 1 : 0;
+      if (this._upRebN >= 2 || beta < this._upTop - 0.1 || beta < p.windupBeta) {
+        if (this.weapon !== 'spear') {
+          this._fireUp();
+          return;
+        }
+        this._upReb = true;
+        this._upRebPeak = this._m;
+      } else if (t - this._upT0 >= p.windupTime - 1e-9) {
+        this._upWindup();
+      }
+      return;
+    }
+    // spear, moving back down: a rebound peaks below swingStart (else a swing starts and decides)
+    const m = this._m;
+    if (m > this._upRebPeak) this._upRebPeak = m;
+    if ((this._upRebPeak > 1 && m < 0.7 * this._upRebPeak) || beta < p.windupBeta - 0.3 || t - this._upT0 > 0.5) this._fireUp();
+  }
+
+  /** The pending overhead swing was a raise: a wind-up. */
+  _upWindup() {
+    this._upPend = false;
+    this._lastWindup = this._t;
+    if (!this._raisedEmitted) this._emitWindup();
+  }
+
+  /** The pending overhead swing was the uppercut: emit it now (it ended at _upT0). */
+  _fireUp() {
+    this._upPend = false;
+    this._cutRaise = true; // a raise is a cut or a wind-up, never both
+    const t = this._t;
+    const peak = this._upPeak;
+    const power = clamp((peak - this._peak) / this._slashSpan, 0, 1);
+    this._pValid = true;
+    this._pDir = this._upDir;
+    this._pPeak = peak;
+    this._pEnd = t;
+    this._emit({ type: 'slash', dir: this._upDir, power, peak, sweep: this._upSweep, t });
   }
 
   _swingStep() {
@@ -547,24 +774,34 @@ export class GestureRecognizer {
     const mode = this._swMode;
     if (mode === NORMAL) {
       const upHeld = this._swBeta0 >= p.upHoldStartBeta && within(dir, HALF_PI, UP_SECTOR);
-      if (upHeld && sweep >= 0.15 && beta >= p.windupBeta && this._raiseArmed) {
-        // phone raised beside or behind the head: a wind-up, never a slash
+      const cut = sweep >= this._sweep && this._swPeak >= this._peak;
+      if (upHeld && sweep >= 0.15 && beta >= p.windupBeta && this._raiseArmed && !cut) {
+        // phone raised beside or behind the head, too gently for a cut: a wind-up, never a slash
+        if (this._upPend) this._fireUp();
         this._swMode = DONE;
         if (!this._raisedEmitted) this._emitWindup();
         else this._lastWindup = t;
-      } else if (sweep >= this._sweep && this._swPeak >= this._peak) {
-        if (this.weapon === 'spear' && this._swWindMem && within(dir, -HALF_PI, p.throwSector)) {
-          this._swMode = THROW;
-        } else if (upHeld) {
+      } else if (
+        this.weapon === 'spear' && this._swWindMem && sweep >= this._sweep &&
+        this._swPeak >= Math.min(this._peak, this._throwPeak) && within(dir, -HALF_PI, p.throwSector)
+      ) {
+        // a throw right after an overhead uppercut (spear): that swing was its wind-up
+        if (this._upPend) this._upWindup();
+        this._swMode = THROW;
+      } else if (cut) {
+        if (this._upPend) this._fireUp(); // otherwise it was the uppercut, which comes first
+        if (upHeld) {
           this._swMode = UP;
         } else if (this._slashOk()) {
           this._fireSlash();
         }
       }
     }
-    if (this._swMode === UP && beta >= p.windupBeta && this._raiseArmed) {
-      this._swMode = DONE;
-      if (!this._raisedEmitted) this._emitWindup();
+    if (this._swMode === UP && beta < p.windupBeta - 0.3 && sweep >= 2 * this._sweep && m <= 0.85 * this._swPeak) {
+      // Braking: a min-jerk stroke has about ½(m/peak)²·sweep still to go. Well short of
+      // windupBeta it is an uppercut, not a raise: fire now rather than at the swing's end.
+      const r = m / this._swPeak;
+      if (beta + 0.5 * r * r * sweep < p.windupBeta - 0.3 && this._slashOk()) this._fireSlash();
     }
     if (this._swMode === THROW) {
       const pk = this._swPeak;
@@ -573,7 +810,23 @@ export class GestureRecognizer {
       }
     }
     if (end) {
-      if (this._swMode === UP && this._slashOk()) this._fireSlash();
+      if (this._upPend) this._fireUp(); // the spear's next swing was no throw: that was the uppercut
+      if (this._swMode === UP && this._slashOk()) {
+        if (beta >= p.windupBeta && this._raiseArmed) {
+          // ended overhead: an uppercut that will rebound, or a raise that will be held
+          this._upPend = true;
+          this._upReb = false;
+          this._upT0 = t;
+          this._upTop = beta;
+          this._upRebN = 0;
+          this._upRebPeak = 0;
+          this._upDir = dir;
+          this._upPeak = this._swPeak;
+          this._upSweep = sweep;
+        } else {
+          this._fireSlash();
+        }
+      }
       if (this._swFired) {
         this._pEnd = t;
         this._pPeak = this._swPeak;

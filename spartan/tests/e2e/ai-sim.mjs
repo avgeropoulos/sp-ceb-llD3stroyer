@@ -70,7 +70,8 @@ try {
     check('helot: in ctx.actors, reaches the player, leaves, no corpse, ignores hits', u.helot.inActors && u.helot.minD < 1.15 && u.helot.gone && !u.helot.corpse && u.helot.hit === 0, u.helot);
     check('from behind: through the wall gap only', u.behind.violations === 0, u.behind.violations);
     check('from behind: no overlap', u.behind.minPair >= 0.63, u.behind.minPair);
-    check('from behind: they engage the player or allies from the rear', u.behind.final.filter((b) => b.z < 4 && (b.toPlayer || b.foe)).length >= 3 && u.behind.windupsFromBehind > 0, u.behind);
+    // A player who never strikes lets the allies take his attackers after 15 s: some fall in the rear.
+    check('from behind: they engage the player or allies from the rear', u.behind.final.filter((b) => b.z < 4 && (b.toPlayer || b.foe || b.state === 'dead')).length >= 3 && u.behind.windupsFromBehind > 0, u.behind);
     check('Leonidas is protected until his scripted fall', u.leonidas.survived && u.leonidas.x === -1.4, u.leonidas);
     check('Leonidas corpse is kept (never sinks) and not respawned by name', u.leonidas.corpse && u.leonidas.sinking < 0 && u.leonidas.fallen && !u.leonidas.respawnedName.includes('Leonidas'), u.leonidas);
     check('archers stay at z < −25, shoot allies, retreat without corpses', u.archers.shots > 2 && u.archers.atAllies && u.archers.maxZ < -25 && u.archers.removed && u.archers.corpses === 0, u.archers);
@@ -79,13 +80,13 @@ try {
 
   if (want('respite')) {
     const t = await sim('respite', { motion: false });
-    check('respite touch = 15 s', Math.abs(t.length - 15) < 0.11 && t.seconds === 15, t);
+    check('respite touch = 10 s', Math.abs(t.length - 10) < 0.11 && t.seconds === 10, t);
     check('respite heals 35% and refills spears', t.heals.some((h) => Math.abs(h.n - 35) < 1e-6) && t.refills >= 2, { heals: t.heals, refills: t.refills });
-    check('READY not live before 6 s', t.readyEarly && !t.readyEarly.canReady && t.readyEarly.inRespite, t.readyEarly);
+    check('READY not live before 3 s', t.readyEarly && !t.readyEarly.canReady && t.readyEarly.inRespite, t.readyEarly);
     const m = await sim('respite', { motion: true });
-    check('respite motion = 25 s', Math.abs(m.length - 25) < 0.11 && m.seconds === 25, m);
-    const e = await sim('respite', { motion: true, readyAt: 3 });
-    check('READY at 3 s ends the respite at 6 s', e.readyResult === true && Math.abs(e.length - 6) < 0.11, e);
+    check('respite motion = 18 s', Math.abs(m.length - 18) < 0.11 && m.seconds === 18, m);
+    const e = await sim('respite', { motion: true, readyAt: 1 });
+    check('READY at 1 s ends the respite at 3 s', e.readyResult === true && Math.abs(e.length - 3) < 0.11, e);
     const g = await sim('respite', { motion: true, readyAt: 8 });
     check('READY at 8 s ends it at once', g.readyResult === true && Math.abs(g.length - 8) < 0.11, g);
   }
@@ -138,7 +139,8 @@ try {
     const warcries = voices.filter((v) => v.text === 'Alalai!');
     check('voice: Alalai! at every waveStart', warcries.length === names('waveStart').length, { warcries: warcries.length, waves: names('waveStart').length });
     const shields = voices.filter((v) => v.text === 'Shields up!');
-    check('voice: Shields up! on every volley', shields.length === r.volleys.length, { shields: shields.length, volleys: r.volleys.length });
+    const shieldGaps = shields.map((v, i) => (i ? v.t - shields[i - 1].t : Infinity));
+    check('voice: Shields up! on volleys, at most once per 12 s', shields.length > 0 && shields.length <= r.volleys.length && shieldGaps.every((g) => g >= 12 - 1e-6), { shields: shields.length, volleys: r.volleys.length });
     const afterB = ev.find((e) => e.name === 'phase' && e.phase === 'B').t;
     check('voice: Leonidas speaks no battle line after he falls', voices.filter((v) => v.t > afterB + 1.1 && v.speaker === 'Leonidas').length === 0 && voices.filter((v) => v.t > afterB && v.speaker === 'Dienekes' && (v.text === 'Alalai!' || v.text === 'Shields up!')).length > 0);
     const firstVolley = r.volleys[0];
@@ -175,15 +177,15 @@ try {
     const cStart = (waveStarts.find((w) => w.phase === 'C') || {}).t;
     const cVolleys = r.volleys.filter((v) => v.t >= cStart);
     const cGaps = cVolleys.map((v, i) => (i ? +(v.t - cVolleys[i - 1].t).toFixed(2) : +(v.t - cStart).toFixed(2)));
-    const wantGaps = [10, 10, 9, 8, 7, 6, 5, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4];
-    check('volleys: phase C every 10 s shrinking by 1 s to 4 s', cGaps.length >= 8 && cGaps.every((g, i) => Math.abs(g - wantGaps[i]) < 0.06), cGaps);
+    const wantGaps = [10, 10, 9.5, 9, 8.5, 8, 7.5, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7];
+    check('volleys: phase C every 10 s shrinking by 0.5 s to 7 s', cGaps.length >= 8 && cGaps.every((g, i) => Math.abs(g - wantGaps[i]) < 0.06), cGaps);
     check('volleys: phase C alternates from behind', cVolleys.length > 3 && cVolleys.every((v, i) => v.fromBehind === (i % 2 === 1)), cVolleys.map((v) => v.fromBehind));
     check('volleys: none from behind before phase C', r.volleys.filter((v) => v.t < cStart).every((v) => !v.fromBehind));
     // Respites.
     const respites = names('respite');
     const rLens = respites.map((e) => +((waveStarts.find((w) => w.t > e.t) || { t: NaN }).t - e.t).toFixed(2));
     check('respites: 8 of them, each ended by READY at 7 s', respites.length === 3 + 1 + 2 + 2 && rLens.every((x) => Math.abs(x - 7) < 0.11), rLens);
-    check('respites: 15 s on Days 1–2 (touch), 12 s in phase A', respites.slice(0, 6).every((e) => e.seconds === 15) && respites.slice(6).every((e) => e.seconds === 12 && e.phase === 'A'), respites.map((e) => `${e.day}${e.phase || ''}:${e.seconds}`));
+    check('respites: 10 s on Days 1–2 (touch), 12 s in phase A', respites.slice(0, 6).every((e) => e.seconds === 10) && respites.slice(6).every((e) => e.seconds === 12 && e.phase === 'A'), respites.map((e) => `${e.day}${e.phase || ''}:${e.seconds}`));
     check('voice: Hold the line! is heard', voices.some((v) => v.text === 'Hold the line!'), voices.filter((v) => v.text === 'Hold the line!').length);
     check('respites: Day 3 heal 20%', r.heals.filter((h) => Math.abs(h.n - 20) < 1e-6).length === 2, r.heals.map((h) => h.n));
     check('dayStart heals to full', r.heals.filter((h) => h.n === 100).length === 4, r.heals.map((h) => h.n));

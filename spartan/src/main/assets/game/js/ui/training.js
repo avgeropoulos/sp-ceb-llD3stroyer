@@ -7,7 +7,12 @@ import { dirToken, TOKEN_SETS } from '../game/rules.js';
 
 const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
 const WORD = { R: 'right', UR: 'up-right', U: 'up', UL: 'up-left', L: 'left', DL: 'down-left', D: 'down', DR: 'down-right' };
+const NEAR = { x: 0, z: -2.6 };
 const FAR = { x: 1.5, z: -18 };
+// In step XI the near dummy hid the far target (and stole the throw lock): once the two thrusts
+// are done it steps aside to ASIDE_X, out of the line and the 0.262 rad lock cone, and comes back after.
+const ASIDE_X = -1.4;
+const ASIDE_SPEED = 3.5; // m/s
 
 /** Sensitivity suggested by the calibration swings: clamp(9 / median(peak), 0.6, 1.8), to 0.05. */
 export function suggestSensitivity(peaks) {
@@ -143,6 +148,7 @@ export function createTraining(ctx) {
   let meterClock = 0;
   let dummy = null;
   let farDummy = null;
+  let dummyGoalX = NEAR.x;
   let trainer = null;
   let trainerWait = 0;
   let volleyWait = 0;
@@ -256,7 +262,11 @@ export function createTraining(ctx) {
       volleyHit = false;
       volleyLive = false;
     }
-    if (step.id === 'spear' && ctx.player && ctx.player.weapon === 'spear') sub.switched = true;
+    if (step.id === 'spear') {
+      if (ctx.player && ctx.player.weapon === 'spear') sub.switched = true;
+      // The throw is at the far target: never lock onto the near dummy.
+      if (dummy) dummy.noThrowLock = true;
+    }
   }
 
   function leaveStep() {
@@ -264,6 +274,21 @@ export function createTraining(ctx) {
     const next = STEPS[index + 1];
     if (step && step.trainer && !(next && next.trainer) && trainer) removeTrainer();
     volleyWait = 0;
+    if (step && step.id === 'spear') stepDummyAside(false);
+  }
+
+  // Moves the near dummy out of the far target's line (eased in update) or back to its place.
+  function stepDummyAside(aside) {
+    dummyGoalX = aside ? ASIDE_X : NEAR.x;
+    if (dummy && !aside) dummy.noThrowLock = false;
+  }
+
+  function slideDummy(dt) {
+    const p = dummy && dummy.pos;
+    if (!p || p.x === dummyGoalX) return;
+    const d = dummyGoalX - p.x;
+    const stepX = ASIDE_SPEED * dt;
+    p.x = Math.abs(d) <= stepX ? dummyGoalX : p.x + Math.sign(d) * stepX;
   }
 
   function complete() {
@@ -293,8 +318,9 @@ export function createTraining(ctx) {
   function spawnDummies() {
     const ai = ctx.ai;
     if (!ai || !ai.spawnDummy) return;
-    dummy = ai.spawnDummy(0, -2.6, {});
+    dummy = ai.spawnDummy(NEAR.x, NEAR.z, {});
     farDummy = ai.spawnDummy(FAR.x, FAR.z, { far: true });
+    dummyGoalX = NEAR.x;
   }
 
   function ensureTrainer() {
@@ -363,6 +389,7 @@ export function createTraining(ctx) {
       if (id === 'thrust') progress('');
       else if (id === 'spear' && s.kind === 'spearThrust' && sub.thrusts < 2) {
         sub.thrusts++;
+        if (sub.thrusts === 2) stepDummyAside(true);
         progress(sub.thrusts === 2 ? 'Now throw it at the far target.' : '');
       } else if (id === 'spear' && !sub.switched) setHint('Take the spear first.');
     } else if (s.kind === 'bash') {
@@ -570,6 +597,7 @@ export function createTraining(ctx) {
         }
       }
       updateMeters(dt);
+      slideDummy(dt);
       if (finished) return;
       if (doneWait > 0) {
         doneWait -= dt;
@@ -613,6 +641,7 @@ export function createTraining(ctx) {
         return false;
       }
       if (def.id === 'spear' && ctx.player && ctx.player.weapon !== 'spear') ctx.actions.push({ type: 'switchWeapon', weapon: 'spear', src: 'test' });
+      if (def.id === 'spear' && step && step.id === 'spear') stepDummyAside(true); // the demo throws at the far target
       const script = def.demo();
       const info = motion.info ? motion.info() : null;
       const samples = mod.synthesize(script, {

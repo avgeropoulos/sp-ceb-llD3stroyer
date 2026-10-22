@@ -34,11 +34,15 @@ export const ENEMIES = {
   helot: { hp: 1, guard: 0, damage: 0, walk: 3.5 },
 };
 
-/** Limits on attacks whose target is the player, by day. */
+/**
+ * Limits on attacks whose target is the player, by day. engageDelay = [min, span] s: a newly
+ * engaged enemy waits min + span·rnd before its first wind-up (short on Days 1–2 so the first
+ * waves press the player before they die, the full 0.8–1.4 s on Day 3).
+ */
 export const DIRECTOR = {
-  1: { engaged: 2, windups: 1, rate: 0.18, gap: 0.6 },
-  2: { engaged: 3, windups: 2, rate: 0.28, gap: 0.4 },
-  3: { engaged: 4, windups: 2, rate: 0.40, ratePerWave: 0.04, rateMax: 0.9, gap: 0.3 },
+  1: { engaged: 2, windups: 1, rate: 0.30, gap: 0.6, engageDelay: [0.3, 0.4] },
+  2: { engaged: 3, windups: 2, rate: 0.40, gap: 0.4, engageDelay: [0.3, 0.4] },
+  3: { engaged: 4, windups: 2, rate: 0.40, ratePerWave: 0.04, rateMax: 0.9, gap: 0.3, engageDelay: [0.8, 0.6] },
 };
 
 const TOKENS = ['R', 'UR', 'U', 'UL', 'L', 'DL', 'D', 'DR'];

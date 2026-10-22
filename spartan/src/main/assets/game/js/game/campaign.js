@@ -36,11 +36,15 @@ export const MELEE_KINDS = Object.freeze(['levy', 'sparabara', 'immortal', 'capt
 /**
  * The campaign. Days 1–2 are lists of waves; Day 3 is three phases.
  * Wave fields: kind counts, `alive` (max melee alive at once), `volleyEvery` (s, 0/absent = none).
+ * A wave with archers only gets volleys while some of them stand; fewer archers, thinner volleys.
+ * `vanguard`: the first `count` men of the entry's first wave stand in a rank at z ≈ `z` through
+ * the intro (the herald's audience) and set out at waveStart.
  */
 export const DAYS = [
   {
     day: 1, time: 'morning', title: 'The First Day', subtitle: 'The Medes and Kissians', allies: true,
     intro: ['herald', 'molonLabe'],
+    vanguard: { count: 4, z: -16 },
     waves: [
       { levy: 8, alive: 4, subtitle: 'Medes and Kissians' },
       { levy: 12, alive: 5, subtitle: 'Many men, but few warriors' },
@@ -95,23 +99,33 @@ export const DAYS = [
         id: 'C', title: 'The Kolonos',
         // Herodotus 7.225
         subtitle: 'They defended themselves with swords, those who still had them, and with hands and teeth.',
-        fade: 2, endless: true,
+        fade: 2, endless: true, swordOnly: true,
         endlessWave: { levy: 0.3, immortal: 0.7, alive: 12, behindShare: 0.4 },
-        volley: { first: 10, start: 10, step: 1, min: 4 },
+        // Volleys never overlap (each lasts 5.5 s from warning to end).
+        volley: { first: 10, start: 10, step: 0.5, min: 7 },
       },
     ],
   },
 ];
 
-/** Respite rules for Days 1–2 (Day 3 phase A carries its own). */
-export const RESPITE = Object.freeze({ motion: 25, touch: 15, readyAfter: 6, heal: 0.35 });
+/**
+ * Respite rules for Days 1–2 (Day 3 phase A carries its own). Motion mode keeps a longer rest for
+ * the sword arm. Every respite tops the bundle up to `spears` (dayStart refills it fully).
+ */
+export const RESPITE = Object.freeze({ motion: 18, touch: 10, readyAfter: 3, heal: 0.35, spears: 2 });
 
-/** Spawning rules (§13). */
+/**
+ * Spawning rules (§13). The front ranks form up 20–26 m out (clear of the fight, a short walk);
+ * archers come from further back and walk up to their firing line (z −26…−31). The next wave's
+ * first men set out `respiteLead` s before a respite ends.
+ */
 export const SPAWN = Object.freeze({
   interval: [1.2, 2.0],
-  front: { x: [-6, 7], z: [-45, -35] },
+  front: { x: [-6, 7], z: [-26, -20] },
+  archer: { x: [-6, 7], z: [-45, -35] },
   behind: { x: [-3, 3], z: [30, 40] },
   firstVolley: 12,
+  respiteLead: 6,
 });
 
 /** Seconds a title card stays up; the HUD fades it. */

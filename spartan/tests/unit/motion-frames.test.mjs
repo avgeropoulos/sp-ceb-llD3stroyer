@@ -192,6 +192,71 @@ test('web axisMap: a W3C-ordered rotationRate (alpha=z, beta=x, gamma=y) is dete
   assert.equal(a.axisMap, 'xyz', 'android never remaps');
 });
 
+test('web calibration export/import: a remembered W3C axis order gets the first strikes right, and is re-checked', async () => {
+  const { GestureRecognizer } = await import('../../src/main/assets/game/js/motion/gestures.js');
+  const TOK = ['R', 'UR', 'U', 'UL', 'L', 'DL', 'D', 'DR'];
+  const tok = (d) => TOK[((Math.round(d / (Math.PI / 4)) % 8) + 8) % 8];
+  const w3c = (raw) => raw.map((r) => ({ ...r, gyro: [r.gyro[2], r.gyro[0], r.gyro[1]] }));
+  const dirs = [0, Math.PI, -Math.PI / 2, Math.PI / 2, Math.PI / 4, (-3 * Math.PI) / 4];
+  const session = (f, so, map) => {
+    const script = [idle(1.5)];
+    for (const d of dirs) script.push(idle(0.4), swing(d, { speed: 9 }), idle(0.6));
+    const g = new GestureRecognizer();
+    const out = [];
+    for (const r of map(synthesize(script, so))) for (const e of g.push(f.process(r))) if (e.type === 'slash') out.push(tok(e.dir));
+    return out.join(' ');
+  };
+  const want = 'R L D U UR DL';
+  for (const gravitySign of [1, -1]) {
+    const so = { rate: 60, includeGravity: false, gravitySign };
+    const fresh = new MotionFrames({ platformKind: 'web' });
+    assert.deepEqual(fresh.exportCalibration(), { axisMap: 'xyz', gravitySign: 1, rotFix: 0, confirmed: false });
+    assert.notEqual(session(fresh, so, w3c), want, 'a fresh page learns the axis order on its first strikes');
+    const saved = JSON.parse(JSON.stringify(fresh.exportCalibration())); // as stored
+    assert.deepEqual(saved, { axisMap: 'zxy', gravitySign, rotFix: 0, confirmed: true });
+
+    const next = new MotionFrames({ platformKind: 'web' });
+    assert.equal(next.importCalibration(saved), true);
+    assert.equal(next.axisMap, 'zxy');
+    assert.equal(next.gravitySign, gravitySign);
+    assert.equal(next.exportCalibration().confirmed, false, 'an import is a seed, not a verdict');
+    assert.equal(session(next, so, w3c), want, `seeded (sign ${gravitySign}): every strike right from the first`);
+    assert.equal(next.exportCalibration().confirmed, true);
+
+    // the same stored calibration on another browser/device (spec order is gone, sign flipped): overridden
+    const stale = new MotionFrames({ platformKind: 'web' });
+    stale.importCalibration(saved);
+    const other = { ...so, gravitySign: -gravitySign };
+    assert.ok(session(stale, other, (x) => x).endsWith('D U UR DL'), 'later strikes right once re-checked');
+    assert.deepEqual(stale.exportCalibration(), { axisMap: 'xyz', gravitySign: -gravitySign, rotFix: 0, confirmed: true });
+  }
+  // a remembered 180° screen-angle fix is re-checked too
+  const rf = new MotionFrames({ platformKind: 'web' });
+  rf.importCalibration({ axisMap: 'xyz', gravitySign: 1, rotFix: 180, confirmed: true });
+  assert.equal(rf.rotFix, 180);
+  feed(rf, synthesize([idle(0.3), swing(0), swing(Math.PI), idle(2.2)], { rate: 100, includeGravity: false }), () => {});
+  assert.equal(rf.rotFix, 0, 'a wrong remembered screen-angle fix is undone');
+
+  // garbage and Android
+  const g = new MotionFrames({ platformKind: 'web' });
+  for (const bad of [null, undefined, 'zxy', 42, {}, { axisMap: 'yzx', gravitySign: 2, rotFix: 90 }]) assert.equal(g.importCalibration(bad), false);
+  assert.deepEqual(g.exportCalibration(), { axisMap: 'xyz', gravitySign: 1, rotFix: 0, confirmed: false });
+  const a = new MotionFrames({ platformKind: 'android' });
+  assert.equal(a.importCalibration({ axisMap: 'zxy', gravitySign: -1, rotFix: 180, confirmed: true }), false, 'Android has nothing to calibrate');
+  assert.deepEqual(a.exportCalibration(), { axisMap: 'xyz', gravitySign: 1, rotFix: 0, confirmed: false });
+});
+
+test('the web axis check does not switch on the swing acceleration a missing linear sensor leaves in accG', () => {
+  // gentle strikes never latch the sign; their slow returns used to let the wrong order win by 2.5×
+  const script = [idle(1.2)];
+  for (let i = 0; i < 4; i++) script.push(idle(0.5), swing(0, { speed: 5.5 }), idle(0.8));
+  for (const rate of [50, 100]) {
+    const f = new MotionFrames({ platformKind: 'web' });
+    feed(f, synthesize(script, { rate, tilt: 0.5, includeLinear: false, includeGravity: false, gravitySign: -1 }), () => {});
+    assert.equal(f.axisMap, 'xyz', `${rate} Hz`);
+  }
+});
+
 test('a rotation change re-initialises up and is flagged like a gap', () => {
   const raw = synthesize([idle(0.5)], { rate: 100, rot: 90, includeGravity: false });
   const flipped = synthesize([idle(0.5)], { rate: 100, rot: 270, includeGravity: false, t0: 0.51 });

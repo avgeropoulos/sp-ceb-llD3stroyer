@@ -16,14 +16,18 @@ function row(r) {
   return Object.freeze(r);
 }
 
-/** Rows; 'either order' combos are two rows with the same id. Each row has desc and bonus = round(100·mult). */
+/**
+ * Rows; 'either order' combos are two rows with the same id. Each row has desc and bonus = round(100·mult).
+ * `flow` rows (the alternating Twin/Fury/Storm) also need every gap inside them within the
+ * tracker's flow window, so slow right-left swiping is not a combo.
+ */
 export const COMBOS = [
-  row({ id: 'twin', name: 'Twin Fangs', seq: [Rish, Lish], mult: 1.5, desc: 'Slash right, then left.' }),
-  row({ id: 'twin', name: 'Twin Fangs', seq: [Lish, Rish], mult: 1.5, desc: 'Slash left, then right.' }),
-  row({ id: 'fury', name: 'Fury of Lakedaimon', seq: [Rish, Lish, Rish], mult: 1.8, effect: 'sweep', arc: 1.75, desc: 'Three alternating slashes: the last sweeps every foe before you.' }),
-  row({ id: 'fury', name: 'Fury of Lakedaimon', seq: [Lish, Rish, Lish], mult: 1.8, effect: 'sweep', arc: 1.75, desc: 'Three alternating slashes: the last sweeps every foe before you.' }),
-  row({ id: 'storm', name: 'Storm of Bronze', seq: [Rish, Lish, Rish, Lish], mult: 2.4, effect: 'sweep', arc: 1.75, slowMo: [0.5, 0.4], desc: 'Four alternating slashes in a storm of bronze.' }),
-  row({ id: 'storm', name: 'Storm of Bronze', seq: [Lish, Rish, Lish, Rish], mult: 2.4, effect: 'sweep', arc: 1.75, slowMo: [0.5, 0.4], desc: 'Four alternating slashes in a storm of bronze.' }),
+  row({ id: 'twin', name: 'Twin Fangs', seq: [Rish, Lish], mult: 1.5, flow: true, desc: 'Slash right, then left.' }),
+  row({ id: 'twin', name: 'Twin Fangs', seq: [Lish, Rish], mult: 1.5, flow: true, desc: 'Slash left, then right.' }),
+  row({ id: 'fury', name: 'Fury of Lakedaimon', seq: [Rish, Lish, Rish], mult: 1.8, flow: true, effect: 'sweep', arc: 1.75, desc: 'Three alternating slashes: the last sweeps every foe before you.' }),
+  row({ id: 'fury', name: 'Fury of Lakedaimon', seq: [Lish, Rish, Lish], mult: 1.8, flow: true, effect: 'sweep', arc: 1.75, desc: 'Three alternating slashes: the last sweeps every foe before you.' }),
+  row({ id: 'storm', name: 'Storm of Bronze', seq: [Rish, Lish, Rish, Lish], mult: 2.4, flow: true, effect: 'sweep', arc: 1.75, slowMo: [0.5, 0.4], desc: 'Four alternating slashes in a storm of bronze.' }),
+  row({ id: 'storm', name: 'Storm of Bronze', seq: [Lish, Rish, Lish, Rish], mult: 2.4, flow: true, effect: 'sweep', arc: 1.75, slowMo: [0.5, 0.4], desc: 'Four alternating slashes in a storm of bronze.' }),
   row({ id: 'cleave', name: "Leonidas' Cleave", seq: [Uish, Dish], mult: 2.2, breakGuard: true, slowMo: [0.35, 0.5], desc: 'An uppercut, then an overhead chop that splits any guard.' }),
   row({ id: 'xcut', name: 'Cross of Ares', seq: [DR, DL], mult: 1.7, bleed: { dps: 6, dur: 3 }, desc: 'Two crossing diagonal downward cuts. The wound bleeds.' }),
   row({ id: 'xcut', name: 'Cross of Ares', seq: [DL, DR], mult: 1.7, bleed: { dps: 6, dur: 3 }, desc: 'Two crossing diagonal downward cuts. The wound bleeds.' }),
@@ -31,6 +35,16 @@ export const COMBOS = [
   row({ id: 'drive', name: 'Phalanx Drive', seq: [T, T, T], mult: 1.6, knockback: 2.5, desc: 'Three thrusts drive the foe back.' }),
   row({ id: 'wall', name: 'Shield Wall', seq: [B, B], mult: 1.0, effect: 'stagger_all', radius: 2.5, desc: 'Two bashes: everyone around you staggers.' }),
 ];
+
+/**
+ * Seconds between consecutive attack starts. `chain`: a token more than this after the previous
+ * one starts a new chain. `flow`: the gap limit inside a `flow` row. A motion strike with its
+ * return to guard takes ~1.5 s, so motion uses one wider window for both.
+ */
+export const COMBO_WINDOWS = Object.freeze({
+  touch: Object.freeze({ chain: 1.25, flow: 0.6 }),
+  motion: Object.freeze({ chain: 1.7, flow: 1.7 }),
+});
 
 const MAX_CHAIN = 6;
 
@@ -49,25 +63,49 @@ function matchesAt(seq, n, tokens, start) {
 /**
  * Matches combo rows against the suffix of the token chain.
  * * A token more than `window` seconds after the previous one starts a new chain.
+ * * A `flow` row matches only if each gap between its tokens is ≤ `flow` seconds.
  * * The longest matching row wins; ties go to the more specific row (smaller summed step-set size).
  * * After a match of length n the chain is cleared unless a longer row starts with those n tokens.
  */
 export class ComboTracker {
-  constructor(table = COMBOS, window = 1.25) {
+  constructor(table = COMBOS, window = 1.25, flow = Infinity) {
     this.table = table;
     this.window = window;
+    this.flow = flow;
     this.tokens = [];
+    this.times = [];
     this.lastT = -Infinity;
     this.spec = table.map((r) => specificity(r.seq));
+  }
+
+  /** Sets the windows (seconds), e.g. COMBO_WINDOWS.touch or .motion; omitted fields are kept. */
+  setWindows({ chain, flow } = {}) {
+    if (chain > 0) this.window = chain;
+    if (flow > 0) this.flow = flow;
+  }
+
+  // Are the last n tokens each within `flow` of the one before?
+  flowsOver(n) {
+    const times = this.times;
+    for (let i = times.length - n + 1; i < times.length; i++) if (times[i] - times[i - 1] > this.flow + 1e-9) return false;
+    return true;
   }
 
   /** Appends a token at time t (seconds) and returns the completed row, or null. */
   push(token, t) {
     const tokens = this.tokens;
-    if (t - this.lastT > this.window || t < this.lastT - 1e-6) tokens.length = 0;
+    const times = this.times;
+    if (t - this.lastT > this.window || t < this.lastT - 1e-6) {
+      tokens.length = 0;
+      times.length = 0;
+    }
     this.lastT = t;
     tokens.push(token);
-    if (tokens.length > MAX_CHAIN) tokens.shift();
+    times.push(t);
+    if (tokens.length > MAX_CHAIN) {
+      tokens.shift();
+      times.shift();
+    }
 
     let best = -1;
     let bestLen = 0;
@@ -75,6 +113,7 @@ export class ComboTracker {
       const n = this.table[i].seq.length;
       if (n > tokens.length || n < bestLen) continue;
       if (!matchesAt(this.table[i].seq, n, tokens, tokens.length - n)) continue;
+      if (this.table[i].flow && !this.flowsOver(n)) continue;
       if (n > bestLen || this.spec[i] < this.spec[best]) {
         best = i;
         bestLen = n;
@@ -91,12 +130,16 @@ export class ComboTracker {
         break;
       }
     }
-    if (!extendable) tokens.length = 0;
+    if (!extendable) {
+      tokens.length = 0;
+      times.length = 0;
+    }
     return this.table[best];
   }
 
   reset() {
     this.tokens.length = 0;
+    this.times.length = 0;
     this.lastT = -Infinity;
   }
 

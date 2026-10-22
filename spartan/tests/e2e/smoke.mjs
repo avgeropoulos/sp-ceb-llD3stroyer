@@ -90,14 +90,17 @@ try {
     g.ctx.input.motion = true;
     const seen = [];
     const off = g.ctx.events.on('gesture', (e) => seen.push(e.type + ':' + (e.dir != null ? e.dir.toFixed(2) : '')));
-    g.injectMotion(g.synth([{ kind: 'idle', duration: 0.5 }, { kind: 'swing', dir: 0, speed: 10 }, { kind: 'idle', duration: 0.6 }], { rot: 90 }));
+    const samples = g.synth([{ kind: 'idle', duration: 0.5 }, { kind: 'swing', dir: 0, speed: 10 }, { kind: 'idle', duration: 0.6 }], { rot: 90 });
+    g.injectMotion(samples);
+    // Injected samples are released on wall-clock time, so keep stepping until the whole script has played.
+    const until = performance.now() + (samples[samples.length - 1].t - samples[0].t) * 1000 + 1500;
     return new Promise((resolve) => {
-      let n = 0;
       const tick = () => {
-        g.step(6);
-        if (++n < 40) setTimeout(tick, 16);
+        g.step(2);
+        if (performance.now() < until) setTimeout(tick, 16);
         else {
           off();
+          if (!seen.length) seen.push(`none: weapon=${g.ctx.player.weapon} over=${g.ctx.fx.cameraOverridden} dbg=${JSON.stringify(g.ctx.gestures.debug)}`);
           resolve(seen);
         }
       };

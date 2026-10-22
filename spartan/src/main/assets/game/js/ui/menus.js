@@ -17,6 +17,20 @@ export const TEXT = Object.freeze({
   motionOn: 'Motion controls are on. Visit the Agoge to calibrate your swing.',
 });
 
+/**
+ * The pause screen's kicker for the campaign state `w` (ctx.waves): the day, the part of it
+ * and the wave or surge, e.g. 'Day I · Dusk · Wave II', 'Day III · Surge II of IV', 'Day III · The Kolonos'.
+ */
+export function pauseKicker(w) {
+  if (!w || !w.day) return '';
+  let k = `Day ${roman(w.day)}`;
+  if (w.timeOfDay === 'dusk') k += ' · Dusk';
+  if (w.phase === 'C') k += ' · The Kolonos';
+  else if (w.phase === 'B' && w.wave) k += w.waveCount > 0 ? ` · Surge ${roman(w.wave)} of ${roman(w.waveCount)}` : ` · Surge ${roman(w.wave)}`;
+  else if (w.wave) k += ` · Wave ${roman(w.wave)}`;
+  return k;
+}
+
 /** Settings fields (§9). `tab` groups them; every field is live-applied. */
 export const FIELDS = [
   { tab: 'controls', key: 'control', type: 'seg', label: 'Controls', options: [['motion', 'Motion'], ['touch', 'Touch']] },
@@ -615,7 +629,7 @@ export function createMenus(ctx) {
     const s = screens.pause;
     let k = '';
     if (pausedFrom === 'training') k = 'The Agoge';
-    else if (ctx.waves && ctx.waves.day) k = ctx.waves.wave ? `Day ${roman(ctx.waves.day)} · Wave ${roman(ctx.waves.wave)}` : `Day ${roman(ctx.waves.day)}`;
+    else k = pauseKicker(ctx.waves);
     s.querySelector('.mn-pause-k').textContent = k;
   }
 
@@ -700,7 +714,11 @@ export function createMenus(ctx) {
         if (!confirmFirst(b)) return sfx('uiTap');
         sfx('uiConfirm');
         if (pausedFrom === 'training') ctx.setMode('training', {});
-        else ctx.setMode(pausedFrom, { day: (ctx.waves && ctx.waves.day) || 1 });
+        else {
+          // Back to the start of the current part of the day (Day 1 dusk restarts at dusk).
+          const w = ctx.waves;
+          ctx.setMode(pausedFrom, { day: (w && w.day) || 1, entry: (w && w.entryIndex) || 0 });
+        }
         break;
       case 'quit':
         if (!confirmFirst(b)) return sfx('uiTap');

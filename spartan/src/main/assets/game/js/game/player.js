@@ -5,7 +5,7 @@
  */
 import * as THREE from 'three';
 import { TIMING, WEAPONS, pickTarget, ballisticPitch, dirToken } from './rules.js';
-import { ComboTracker } from './combos.js';
+import { ComboTracker, COMBO_WINDOWS } from './combos.js';
 import { clamp, lerp, smoothstep, angleDiff, wrapAngle, yawTo, TAU } from '../core/math.js';
 
 const EYE = 1.66;
@@ -38,6 +38,9 @@ const SWITCH_TIME = 0.3;
 const MAX_SPARES = 3;
 const START_SPARES = 2;
 const MAX_WINDUPS = 16;
+const CHAIN_MAX = 3.0;
+const CHAIN_STEP = 0.1;
+const CHAIN_IDLE = 4.0; // s of game time without a player hit before the chain drops back to 1
 
 const SPEED_FWD = 2.3;
 const SPEED_BACK = 1.5;
@@ -67,6 +70,7 @@ export function createPlayer(ctx) {
   let critUntil = -Infinity;
   let shieldUpFlag = false;
   let deathT = 0;
+  let lastHitAt = -Infinity; // gnow of the player's last hit (chain decay)
 
   // Shield hold tracking for perfect blocks (gnow based, like input.shieldPressedAt).
   let prevHeld = false;
@@ -142,6 +146,7 @@ export function createPlayer(ctx) {
     push,
     heal,
     refillSpears,
+    dropSpears,
     recenter,
   };
   strikeAttack.origin = player.pos;
@@ -162,6 +167,17 @@ export function createPlayer(ctx) {
     if (!n) return;
     player.score += n;
     emitScore();
+  }
+
+  function resetChain() {
+    if (player.chain === 1) return;
+    player.chain = 1;
+    emitScore();
+  }
+
+  // The chain lapses after CHAIN_IDLE s of game time without a player hit.
+  function decayChain() {
+    if (player.chain !== 1 && gnow() - lastHitAt > CHAIN_IDLE + 1e-9) resetChain();
   }
 
   function weaponReach() {
@@ -339,6 +355,8 @@ export function createPlayer(ctx) {
     lastAttackAt = ptime;
 
     const token = kind === 'slash' ? dirToken(dir) : kind === 'bash' ? 'B' : kind === 'throw' ? 'J' : 'T';
+    // A motion strike returns to guard before the next one (~1.5 s apart): a wider window.
+    player.combos.setWindows(atk.motion ? COMBO_WINDOWS.motion : COMBO_WINDOWS.touch);
     atk.combo = player.combos.push(token, gnow());
     player.attackYaw = player.yaw;
     if (atk.motion && atk.target) player.attackYaw = wrapAngle(player.yaw + clamp(angleTo(atk.target), -MOTION_YAW_CLAMP, MOTION_YAW_CLAMP));
@@ -406,14 +424,15 @@ export function createPlayer(ctx) {
     }
   }
 
-  // The living hostile with the smallest view angle within 0.262 rad and 45 m.
+  // The living hostile with the smallest view angle within 0.262 rad and 45 m. Actors flagged
+  // noThrowLock (the Agoge's near dummy while the far target is the aim) are never locked.
   function findThrowTarget() {
     const actors = ctx.actors || [];
     let best = null;
     let bestA = THROW_ANGLE;
     for (let i = 0; i < actors.length; i++) {
       const a = actors[i];
-      if (!a || !a.alive || a.team !== 'persian') continue;
+      if (!a || !a.alive || a.team !== 'persian' || a.noThrowLock) continue;
       const d = Math.hypot(a.pos.x - player.pos.x, a.pos.z - player.pos.z);
       if (d > THROW_RANGE || d < 0.3) continue;
       const ang = Math.abs(angleTo(a));
@@ -787,6 +806,7 @@ export function createPlayer(ctx) {
     player.kills = 0;
     player.score = 0;
     player.chain = 1;
+    lastHitAt = -Infinity;
     player.combos.reset();
     player.focusTarget = null;
     player.attackYaw = 0;
@@ -834,6 +854,7 @@ export function createPlayer(ctx) {
       syncViewmodel();
       return;
     }
+    decayChain();
     trackShieldHold();
     updateFocus();
     stepStates(dt);
@@ -917,10 +938,7 @@ export function createPlayer(ctx) {
     const from = info.from || null;
     let relYaw = info.relYaw;
     if (!Number.isFinite(relYaw)) relYaw = from && from.pos ? angleTo(from) : 0;
-    if (player.chain !== 1) {
-      player.chain = 1;
-      emitScore();
-    }
+    resetChain();
     const s = clamp(amount / 16, 0.4, 1.5);
     kickAt = ctx.time.now;
     kickPitch = 0.05 * s;
@@ -986,13 +1004,37 @@ export function createPlayer(ctx) {
     player.hp = Math.min(player.maxHp, player.hp + amount);
   }
 
-  /** Spares = 3 and a spear in hand. */
-  function refillSpears() {
-    player.spares = MAX_SPARES;
+  /**
+   * Tops the bundle up to `total` spears, one of them in hand (default: the full 1 + MAX_SPARES).
+   * A refill never takes spears away: with more than `total` left it only puts one in hand.
+   */
+  function refillSpears(total = MAX_SPARES + 1) {
+    const want = Number.isFinite(total) ? clamp(Math.round(total), 0, MAX_SPARES + 1) : MAX_SPARES + 1;
+    const n = Math.max(want, player.spearsLeft);
+    if (n <= 0) return;
+    player.spares = n - 1;
     player.hasSpearInHand = true;
     if (player.state === 'postThrow') {
       redrawAt = Infinity;
       player.state = 'idle';
+    }
+  }
+
+  /**
+   * The spears are broken (Day 3): spares = 0. keepInHand false also empties the hand and goes
+   * back to the sword (weaponSwitch), cancelling a spear attack or throw in progress.
+   */
+  function dropSpears({ keepInHand = false } = {}) {
+    player.spares = 0;
+    if (keepInHand) return;
+    player.hasSpearInHand = false;
+    redrawAt = Infinity;
+    // A throw (even one already loosed) ends now: no redraw follows, so 'postThrow' would stick.
+    if (atk.active && (atk.kind === 'throw' || atk.weapon === 'spear')) endAttack();
+    if (player.state === 'postThrow' || player.state === 'throw') player.state = 'idle';
+    if (player.weapon !== 'sword') {
+      player.weapon = 'sword';
+      ev.emit('weaponSwitch', { weapon: 'sword' });
     }
   }
 
@@ -1010,9 +1052,12 @@ export function createPlayer(ctx) {
 
   ev.on('hit', (e) => {
     if (!e || !e.byPlayer || e.kind === 'bleed') return;
-    player.chain = Math.min(5, Math.round((player.chain + 0.1) * 10) / 10);
+    lastHitAt = gnow();
+    player.chain = Math.min(CHAIN_MAX, Math.round((player.chain + CHAIN_STEP) * 10) / 10);
     emitScore();
   });
+
+  ev.on('waveCleared', resetChain);
 
   ev.on('kill', (e) => {
     if (!e || !e.byPlayer) return;

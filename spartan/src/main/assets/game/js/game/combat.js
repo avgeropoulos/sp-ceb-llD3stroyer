@@ -29,6 +29,9 @@ const MAX_BLEEDS = 24;
 const SPEAR_EMBED = 0.32;
 const ARROW_EMBED = 0.12;
 const PLAYER_ARROW_LIMIT = 3;
+const EXECUTE_HP = 0.35; // Hoplite's Answer finishes a staggered foe at ≤ 35% hp…
+const EXECUTE_MUL = 2.0; // …and otherwise strikes for double damage
+const HEAVY_BASH_STAGGER = 0.5; // a heavy enemy (the captain) shrugs off a bash this fast
 
 const Z_AXIS = new THREE.Vector3(0, 0, 1);
 
@@ -350,6 +353,13 @@ export function createCombat(ctx) {
     return res;
   }
 
+  // Bash stagger for a heavy enemy (stats.bashStagger, else HEAVY_BASH_STAGGER), or null.
+  function bashStaggerOf(target) {
+    const st = target.stats;
+    if (st && Number.isFinite(st.bashStagger)) return st.bashStagger;
+    return target.heavy || (st && st.heavy) ? HEAVY_BASH_STAGGER : null;
+  }
+
   function makeHit(kind, damage, dx, dz, power, byPlayer, attacker, point) {
     return {
       damage, kind, dir: { x: dx, z: dz }, power, ignoreGuard: false, knockback: 0, stagger: 0, knockdown: false,
@@ -474,7 +484,10 @@ export function createCombat(ctx) {
       let hitKd = knockdown;
       const staggered = target.state === 'stagger' || target.state === 'knockdown';
       if (effect === 'execute' && staggered) {
-        damage = Math.max(damage, Number.isFinite(target.hp) ? target.hp : damage * 3);
+        const hp = target.hp;
+        const maxHp = target.maxHp;
+        const weakened = Number.isFinite(hp) && Number.isFinite(maxHp) && maxHp > 0 && hp <= EXECUTE_HP * maxHp + 1e-9;
+        damage = weakened ? Math.max(damage, hp) : damage * EXECUTE_MUL;
         hitIgnore = true;
       }
       if (kind === 'bash') {
@@ -485,6 +498,11 @@ export function createCombat(ctx) {
           hitKd = false;
         } else {
           target.lastBashedAt = now;
+          const heavyStagger = bashStaggerOf(target);
+          if (heavyStagger !== null) {
+            hitStagger = Math.min(hitStagger, heavyStagger);
+            hitKd = false;
+          }
         }
       }
       const hit = makeHit(kind, damage, dx, dz, power, true, 'player', point);
@@ -572,17 +590,15 @@ export function createCombat(ctx) {
 
   // ---- arrows vs the player and allies ------------------------------------------------------
 
-  // Resolves one arrow on the player. fromBehind (volleys) or the shooter's bearing decides
-  // whether the raised shield (≥ 0.4) can take it.
+  // Resolves one arrow on the player. The raised shield (≥ 0.4) takes it only if the player
+  // faces where it comes from: the shooter's bearing, or for a volley the Persian front (yaw 0)
+  // or, fromBehind, the rear (yaw π). Turning toward the threat is the skill.
   function arrowOnPlayer(fromBehind, shooter) {
     const pl = ctx.player;
     if (!pl || !pl.alive) return 'miss';
-    let frontal = !fromBehind;
-    let relYaw = fromBehind ? Math.PI : 0;
-    if (shooter && shooter.pos) {
-      relYaw = angleDiff(pl.yaw, yawTo(shooter.pos.x - pl.pos.x, shooter.pos.z - pl.pos.z));
-      frontal = Math.abs(relYaw) <= BLOCK_HALF_ANGLE;
-    }
+    const from = shooter && shooter.pos ? yawTo(shooter.pos.x - pl.pos.x, shooter.pos.z - pl.pos.z) : fromBehind ? Math.PI : 0;
+    const relYaw = angleDiff(pl.yaw, from);
+    const frontal = Math.abs(relYaw) <= BLOCK_HALF_ANGLE;
     const gy = groundY(pl.pos.x, pl.pos.z);
     const sy = Math.sin(pl.yaw);
     const cy = Math.cos(pl.yaw);

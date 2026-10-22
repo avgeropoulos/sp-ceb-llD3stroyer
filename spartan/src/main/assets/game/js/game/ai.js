@@ -41,8 +41,11 @@ const GUARDED_MUL = 0.15;
 const ALLY_DAMAGE_MUL = 0.45;       // allies hold and wear the enemy down; the player wins the wave
 const ALLY_LOOK = 0.6;              // an idle ally keeps its face within this of the front (rad)
 const ATTACK_HALF = { thrust: 0.45, overhead: 0.55, axe: 0.6, slash: 0.6, bash: 0.5, shoot: 0.3 };
-const ENGAGE_DELAY_MIN = 0.8;
+const ENGAGE_DELAY_MIN = 0.8;       // fallback when DIRECTOR[day].engageDelay is absent
 const ENGAGE_DELAY_SPAN = 0.6;
+const TURTLE_HOLD = 3.0;            // a shield held this long (s) takes player-targeted blows as heavy
+const VOLLEY_COVER = 6.0;           // s after a volley warning (+ its duration) a long hold is not turtling
+const ALLY_RELIEF = 15;             // allies take a player's attacker the player hasn't hit for this long (s)
 const SPEARCAM_GRACE = 0.5;
 const STRIKE_FALLBACK = 0.3;        // force the blow if a visual never calls onStrike
 const CORPSE_CAP = 20;
@@ -117,7 +120,10 @@ export function createAI(ctx) {
   let candidate = null;
 
   // Director (§11): token bucket, concurrent wind-up cap, gap between strike moments.
-  const dir = { tokens: 1, cap: 1, rate: 0.18, gap: 0.6, windups: 1, engaged: 2, lastStrikeAt: -1e9, lastWindupAt: -1e9 };
+  const dir = {
+    tokens: 1, cap: 1, rate: 0.18, gap: 0.6, windups: 1, engaged: 2, lastStrikeAt: -1e9, lastWindupAt: -1e9,
+    engageMin: ENGAGE_DELAY_MIN, engageSpan: ENGAGE_DELAY_SPAN, volleyUntil: -1e9,
+  };
 
   // Engage slots around the player: bearings relative to the line (−Z), not the camera.
   const slots = [];
@@ -183,6 +189,7 @@ export function createAI(ctx) {
       this.homeX = 0.5; this.homeZ = 0.5;
       this.thinkT = 0.5; this.stateT = 0.5; this.delay = 0.5;
       this.engagedAt = -1.5; this.readyAt = 0.5; this.nextAttackAt = 0.5;
+      this.playerHitAt = -1.5;  // last time the player's blow landed on it (ally relief)
       this.gate = 2;            // from behind: 0 to the gap, 1 through it, 2 free
       this.lane = 0.5;
       this.speedMul = 1.5;
@@ -207,7 +214,7 @@ export function createAI(ctx) {
       this.facing = 0; this.guard = 0; this.blockChance = 0; this.staggerT = 0; this.strikeAt = -1; this.timeToStrike = 0;
       this.baseBlock = 0; this.vx = 0; this.vz = 0; this.speed = 0; this.speedCap = 0; this.kbx = 0; this.kbz = 0;
       this.gx = 0; this.gz = 0; this.goalR = 0.12; this.faceTo = 0; this.groundY = 0; this.gyY = 0; this.gyDX = 0; this.gyDZ = 0;
-      this.homeX = 0; this.homeZ = 0; this.thinkT = 0; this.stateT = 0; this.delay = 0; this.engagedAt = -1;
+      this.homeX = 0; this.homeZ = 0; this.thinkT = 0; this.stateT = 0; this.delay = 0; this.engagedAt = -1; this.playerHitAt = -1;
       this.readyAt = 0; this.nextAttackAt = 0; this.lane = 0; this.speedMul = 1; this.deathT = 0; this.sinkT = -1;
       this.fallY = 0; this.fallVY = 0; this.fallDX = 0; this.fallDZ = 0;
       this.attack.damage = 0; this.attack.reach = 0; this.result.damage = 0;
@@ -464,6 +471,7 @@ export function createAI(ctx) {
     if (!a.alive || !hit || a.role === 'helot') return res;
 
     const now = ctx.time.gnow;
+    if (hit.byPlayer) a.playerHitAt = now;
     let dx = hit.dir ? hit.dir.x || 0 : 0;
     let dz = hit.dir ? hit.dir.z || 0 : 0;
     const dl = Math.sqrt(dx * dx + dz * dz);
@@ -904,6 +912,9 @@ export function createAI(ctx) {
     dir.gap = d.gap;
     dir.windups = d.windups;
     dir.engaged = d.engaged;
+    const ed = d.engageDelay;
+    dir.engageMin = ed ? ed[0] : ENGAGE_DELAY_MIN;
+    dir.engageSpan = ed ? ed[1] : ENGAGE_DELAY_SPAN;
     dir.cap = d.windups > 1 ? d.windups : 1;
     dir.tokens = Math.min(dir.cap, dir.tokens + rate * gdt);
   }
@@ -960,6 +971,29 @@ export function createAI(ctx) {
     if (a.team === 'persian') events.emit('enemyWindup', { actor: a, timeToStrike: T, targetIsPlayer: toPlayer });
   }
 
+  /**
+   * Anti-turtle: a shield held without a break for TURTLE_HOLD s turns blows aimed at the
+   * player into heavy ones (guard break). Time under a volley doesn't count: the hold clock
+   * restarts when the volley's cover ends.
+   */
+  function playerTurtling() {
+    const inp = ctx.input;
+    const p = ctx.player;
+    if (!inp || !inp.shieldHeld) return false;
+    if (p && Number.isFinite(p.shieldRaise) && p.shieldRaise < 0.7) return false;
+    const now = ctx.time.gnow;
+    if (now < dir.volleyUntil) return false;
+    const pressed = Number.isFinite(inp.shieldPressedAt) ? inp.shieldPressedAt : now;
+    const since = pressed > dir.volleyUntil ? pressed : dir.volleyUntil;
+    return now - since >= TURTLE_HOLD - 1e-6;
+  }
+
+  events.on('volley', (e) => {
+    if (!e || e.phase !== 'warning') return;
+    const until = ctx.time.gnow + VOLLEY_COVER + (e.duration > 0 ? e.duration : 1);
+    if (until > dir.volleyUntil) dir.volleyUntil = until;
+  });
+
   /** onStrike of the attack clip: the blow resolves through combat. */
   function resolveStrike(a) {
     if (!a.alive || a.state !== 'windup') return;
@@ -973,7 +1007,7 @@ export function createAI(ctx) {
       atk.damage = a.trainer ? 0 : (a.stats.damage || 0) * (a.role === 'ally' ? ALLY_DAMAGE_MUL : 1);
       atk.reach = a.stats.reach || 1.9;
       atk.halfAngle = ATTACK_HALF[a.attackClip] || 0.45;
-      atk.heavy = !!a.stats.heavy;
+      atk.heavy = !!a.stats.heavy || (a.targetIsPlayer && !a.trainer && playerTurtling());
       if (a.targetIsPlayer) {
         dir.lastStrikeAt = ctx.time.gnow;
         atk.target = 'player';
@@ -1022,7 +1056,7 @@ export function createAI(ctx) {
     if (a.engagedAt < 0) {
       const now = ctx.time.gnow;
       a.engagedAt = now;
-      a.readyAt = now + ENGAGE_DELAY_MIN + ctx.rng.next() * ENGAGE_DELAY_SPAN;
+      a.readyAt = now + dir.engageMin + ctx.rng.next() * dir.engageSpan;
       if (a.nextAttackAt < a.readyAt) a.nextAttackAt = a.readyAt;
     }
   }
@@ -1335,7 +1369,10 @@ export function createAI(ctx) {
     }
   }
 
-  /** The enemy attacking this ally, else one close in front that isn't on the player. */
+  /**
+   * The enemy attacking this ally, else one close in front that isn't on the player, or one on
+   * the player that the player hasn't struck for ALLY_RELIEF s (so a stalled duel resolves).
+   */
   function pickAllyFoe(a) {
     let best = null;
     let bestD = Infinity;
@@ -1348,7 +1385,12 @@ export function createAI(ctx) {
         if (d - 100 < bestD) { bestD = d - 100; best = o; }
         continue;
       }
-      if (o.targetIsPlayer || d > 2.7 * 2.7 || (ez > 0.4 && day !== 3)) continue;
+      if (d > 2.7 * 2.7 || (ez > 0.4 && day !== 3)) continue;
+      if (o.targetIsPlayer) {
+        if (o.engagedAt < 0) continue;
+        const since = o.playerHitAt > o.engagedAt ? o.playerHitAt : o.engagedAt;
+        if (F.gnow - since < ALLY_RELIEF) continue;
+      }
       if (d < bestD) { bestD = d; best = o; }
     }
     return best;
@@ -1675,6 +1717,7 @@ export function createAI(ctx) {
     dir.tokens = 1;
     dir.lastStrikeAt = -1e9;
     dir.lastWindupAt = -1e9;
+    dir.volleyUntil = -1e9;
   }
 
   /** Removes the bodies only (a new day: the field was cleared in the night). Leonidas stays. */
@@ -1711,6 +1754,15 @@ export function createAI(ctx) {
     get archersAlive() {
       let n = 0;
       for (let i = 0; i < actors.length; i++) if (actors[i].alive && actors[i].role === 'archer') n++;
+      return n;
+    },
+    /** Living archers still on the firing line (not retreating): what feeds a wave's volleys. */
+    get archersShooting() {
+      let n = 0;
+      for (let i = 0; i < actors.length; i++) {
+        const a = actors[i];
+        if (a.alive && a.role === 'archer' && a.state !== 'retreat') n++;
+      }
       return n;
     },
     get alliesAlive() {
