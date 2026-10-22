@@ -300,6 +300,12 @@ export function createWorld(ctx) {
     setTimeOfDay,
     setArmyDensity,
     rebuildEnvironment,
+    /** Clears battle leftovers (volley shade) when main.js resets for a new mode. */
+    reset() {
+      volleys.length = 0;
+      shade = 0;
+      applyLight();
+    },
     update,
     // Extras (debugging, tests and other modules that want them).
     get timeOfDay() {

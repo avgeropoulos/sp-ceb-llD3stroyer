@@ -735,7 +735,7 @@ export function createAI(ctx) {
         a.fallY = groundAt(a.pos.x, a.pos.z);
         if (a.fallY < WATER_Y + 0.5) a.fallY = Math.max(a.groundY, WATER_Y + 0.5);
         a.fallVY = 1.2;
-        if (ctx.audio && ctx.audio.play) ctx.audio.play('scream', { at: a.pos });
+        if (ctx.audio && ctx.audio.play) ctx.audio.play('scream', { at: a.pos, volume: 2, prio: 3 });
       }
     } else if (a.fall === 2) {
       a.pos.x += 1.4 * gdt;
@@ -746,7 +746,7 @@ export function createAI(ctx) {
         a.fall = 3;
         tmpV.set(a.pos.x, WATER_Y, a.pos.z);
         if (ctx.fx && ctx.fx.splash) ctx.fx.splash(tmpV);
-        if (ctx.audio && ctx.audio.play) ctx.audio.play('splash', { at: tmpV });
+        if (ctx.audio && ctx.audio.play) ctx.audio.play('splash', { at: tmpV, volume: 2, prio: 3 });
         if (a.sinkT < 0) a.sinkT = 0;
       }
     }

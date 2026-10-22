@@ -152,7 +152,12 @@ class MainActivity : Activity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) applyImmersive()
+        if (hasFocus) {
+            applyImmersive()
+        } else if (isResumedNow) {
+            // The notification shade, power menu or a system dialog took focus without pausing us.
+            webView?.evaluateJavascript("window.dispatchEvent(new Event('nativeblur'))", null)
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -191,7 +196,9 @@ class MainActivity : Activity() {
             return
         }
         wv.evaluateJavascript(BACK_SCRIPT) { result ->
-            if (result != "true" && !isFinishing) finish()
+            // Like a launcher Back on Android 12+: send the game to the background instead of
+            // destroying it, so coming back is instant rather than a full reload.
+            if (result != "true" && !isFinishing && !moveTaskToBack(true)) finish()
         }
     }
 

@@ -213,7 +213,8 @@ export function createCharacters(ctx) {
         return object3d;
       },
       setBloodied(amount) {
-        const a = Number.isFinite(amount) ? amount : 0;
+        // settings.blood off means no blood anywhere (DESIGN.md §11 fx), clothes included.
+        const a = Number.isFinite(amount) && !(ctx.settings && ctx.settings.blood === false) ? amount : 0;
         const lvl = a <= 0.05 ? 0 : a < 0.4 ? 1 : a < 0.75 ? 2 : 3;
         if (lvl === blood) return;
         blood = lvl;

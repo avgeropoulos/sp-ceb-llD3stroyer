@@ -307,6 +307,12 @@ export function createPlatform(opts = {}) {
       for (const s of samples) if (s && s.gyro) queue.push(copySample(s, base + ((+s.t || 0) - t0)));
     },
 
+    /** Drops queued synthetic samples (a training demo cut short must not replay later). */
+    clearInjected() {
+      queue.length = 0;
+      qHead = 0;
+    },
+
     /** t of the last delivered sample (0 if none). */
     lastT: () => lastT,
 
@@ -509,6 +515,7 @@ export function createPlatform(opts = {}) {
   // ---------------------------------------------------------------- lifecycle
 
   const pauseFns = [];
+  const blurFns = [];
   const resumeFns = [];
   let paused = false;
   let lifeBound = false;
@@ -536,6 +543,8 @@ export function createPlatform(opts = {}) {
     lifeBound = true;
     win.addEventListener('nativepause', firePause);
     win.addEventListener('nativeresume', fireResume);
+    // A system window (notification shade, power menu, assistant) took focus without pausing us.
+    win.addEventListener('nativeblur', () => run(blurFns));
     const doc = win.document;
     if (doc && typeof doc.addEventListener === 'function') {
       doc.addEventListener('visibilitychange', () => (doc.visibilityState === 'hidden' ? firePause() : fireResume()));
@@ -591,6 +600,8 @@ export function createPlatform(opts = {}) {
     onPause: (fn) => subscribe(pauseFns, fn),
     /** 'nativeresume' and visibilitychange → visible. Returns an unsubscribe function. */
     onResume: (fn) => subscribe(resumeFns, fn),
+    /** 'nativeblur': the app lost window focus to a system window but kept running. */
+    onBlur: (fn) => subscribe(blurFns, fn),
     /** Installs window.__onBack (the Android back key asks it; true = handled). */
     onBack(fn) {
       if (!win) return;

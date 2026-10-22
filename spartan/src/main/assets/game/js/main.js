@@ -191,10 +191,12 @@ async function boot() {
     ctx.waves.stop();
     ctx.ai.clear();
     ctx.combat.reset();
+    ctx.world.reset();
     ctx.fx.reset();
     ctx.viewmodel.reset();
     ctx.hud.reset();
     ctx.actions.clear();
+    platform.motion.clearInjected();
     ctx.motionFrames.reset();
     ctx.gestures.reset();
     platform.voice.stop();
@@ -213,19 +215,33 @@ async function boot() {
 
     if ((mode === 'battle' || mode === 'training') && !opts.resume) {
       resetAll(mode);
-      if (mode === 'battle') ctx.waves.start(opts.day ?? 1);
-      else ctx.training.start();
+      if (mode === 'battle') {
+        ctx.waves.start(opts.day ?? 1);
+        ctx.audio.setAmbience('battle');
+      } else {
+        ctx.training.start();
+      }
     } else if (mode === 'title') {
       resetAll('title');
       ctx.world.setTimeOfDay('afternoon');
+      ctx.world.setArmyDensity(1);
       ctx.audio.setAmbience('calm');
       ctx.audio.setMusic('title');
     }
 
+    // Sensors run only while fighting. Stopping them in the pause menu also means nothing the
+    // phone did meanwhile can replay as attacks on Resume (starting again clears the native ring).
     const active = mode === 'battle' || mode === 'training';
     ctx.input.motion = active && motionWanted();
-    if (active && motionWanted()) platform.motion.start();
-    else if (mode !== 'paused') platform.motion.stop();
+    if (active && motionWanted()) {
+      platform.motion.start();
+      if (opts.resume) {
+        platform.motion.poll();
+        ctx.motionFrames.reset();
+      }
+    } else {
+      platform.motion.stop();
+    }
     platform.lockOrientation(active && motionWanted());
     quietUntil = ctx.time.now + 2;
     ctx.events.emit('modeChanged', { mode, prev });
@@ -247,6 +263,10 @@ async function boot() {
     if (ctx.mode === 'battle' || ctx.mode === 'training') ctx.setMode('paused');
     ctx.audio.suspend();
     ctx.saveSettings();
+  });
+  // The notification shade or another system window took focus: stop the fight until the player is back.
+  platform.onBlur(() => {
+    if (ctx.mode === 'battle' || ctx.mode === 'training') ctx.setMode('paused');
   });
   platform.onResume(() => {
     ctx.audio.resume();
@@ -455,8 +475,14 @@ async function boot() {
     ctx.player.applyCamera(camera);
     camera.updateMatrixWorld();
     if (renderer.compileAsync) {
-      await renderer.compileAsync(scene, camera);
-      await renderer.compileAsync(vm.scene, vm.camera);
+      // Parallel shader compiles can take a while on a phone GPU; keep the boot watchdog fed.
+      const alive = setInterval(() => bootProgress(null, null), 1000);
+      try {
+        await renderer.compileAsync(scene, camera);
+        await renderer.compileAsync(vm.scene, vm.camera);
+      } finally {
+        clearInterval(alive);
+      }
     } else {
       renderer.compile(scene, camera);
     }

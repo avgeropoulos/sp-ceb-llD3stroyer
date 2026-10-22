@@ -30,16 +30,27 @@
       var update = 'Please update Android System WebView (or Chrome) to play.';
       try {
         new Function('class A{static{}}');
-        if (!(window.HTMLScriptElement && HTMLScriptElement.supports && HTMLScriptElement.supports('importmap'))) throw 0;
+        // Class static blocks need Chrome 94; import maps (89) are older, so only reject an explicit "no".
+        if (window.HTMLScriptElement && HTMLScriptElement.supports && !HTMLScriptElement.supports('importmap')) throw 0;
       } catch (e) {
         window.__engineFail(update);
         return;
       }
       // Fail only if booting stops making progress for 15 s (slow phones may take longer than that overall).
       var started = Date.now();
+      // Time spent in the background doesn't count: a paused WebView makes no progress.
+      var touch = function () {
+        window.__bootProgressAt = Date.now();
+      };
+      document.addEventListener('visibilitychange', touch);
+      window.addEventListener('nativeresume', touch);
       var watchdog = setInterval(function () {
         if (window.__booted) {
           clearInterval(watchdog);
+          return;
+        }
+        if (document.hidden) {
+          touch();
           return;
         }
         if (Date.now() - (window.__bootProgressAt || started) > 15000) {

@@ -877,17 +877,8 @@ export function createAudio(ctx) {
       const at = posOf(k.target);
       // Named allies (Leonidas on Day 3) fall at full volume, not as background AI-vs-AI.
       const vol = mine || (k.target.team === 'greek' && k.target.name) ? 1 : AI_VOL;
-      if (k.cause === 'sea') {
-        // Into the Gulf: the scream carries from the edge, the splash follows from below.
-        playSfx('scream', { volume: vol * 2, at, prio: 3 });
-        if (at) {
-          tmpAt.x = Math.max(num(at.x, 10), 10);
-          tmpAt.y = -3;
-          tmpAt.z = num(at.z, 0);
-        }
-        playSfx('splash', { volume: vol * 2, at: at ? tmpAt : null, delay: 1.05, prio: 3 });
-        return;
-      }
+      // Into the Gulf: ai.js plays the scream at the lip and the splash at the water, in game time.
+      if (k.cause === 'sea') return;
       playSfx('death', { volume: vol * 0.9, at, prio: vol === 1 ? 3 : 2, rate: k.target.team === 'greek' ? 0.92 : 1 });
     },
     block(b) {
