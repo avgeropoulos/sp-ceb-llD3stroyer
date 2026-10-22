@@ -55,6 +55,13 @@ class WalkView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
     fun release() = sound.release()
 
+    /** The phone's Back button. Returns false on the title screen, so the app can close. */
+    fun back(): Boolean {
+        if (game.atTitle) return false
+        input.back = true
+        return true
+    }
+
     private fun startLoop() {
         if (!resumed || !surfaceReady || running) return
         running = true

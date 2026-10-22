@@ -1,6 +1,7 @@
 package com.herculesapollo.walk3d
 
 import com.herculesapollo.walk.Kind
+import com.herculesapollo.walk.PauseMenu
 import com.herculesapollo.walk.SaveSlots
 import com.herculesapollo.walk.WalkAudio
 import com.herculesapollo.walk.WalkSound
@@ -38,6 +39,8 @@ class Input3D {
     /** Where the last tap was (virtual pixels), for menu buttons; -1 for a key press. */
     @Volatile var tapX = -1f
     @Volatile var tapY = -1f
+    /** The phone's Back button: pauses (or resumes) the game, or leaves for the title screen. */
+    @Volatile var back = false
 }
 
 /** The dog you play. ([x], [y], [z]) is its feet; [yaw] is the way it faces (0 = +z). */
@@ -265,6 +268,8 @@ class Game3D(
     fun update(dt: Float) {
         val tap = input.tap
         input.tap = false
+        val backP = input.back
+        input.back = false
         val jumpP = input.jump && !prevJump
         val actionP = input.action && !prevAction
         val pauseP = input.pause && !prevPause
@@ -276,11 +281,16 @@ class Game3D(
             storage.save("musicOff3d", if (musicOn) 0 else 1)
             applyMusic()
         }
+        if (backP) { back(); return }
         if (state == State.PLAYING && pauseP) { paused = !paused; return }
         if (paused) {
             if (tap && !input.pause && !input.musicToggle) {
                 paused = false
-                if (Controls3D.onSaveAndQuit(input.tapX, input.tapY, viewW)) saveAndQuit()
+                when (PauseMenu.hit(input.tapX, input.tapY, viewW, canSwitch = true)) {
+                    PauseMenu.Action.QUIT -> saveAndQuit()
+                    PauseMenu.Action.SWITCH -> switchDog()
+                    else -> {}
+                }
             }
             return
         }
@@ -340,10 +350,38 @@ class Game3D(
         if (x < 0f) choose(herc = true) else if (y >= Controls3D.CARD_TOP - 8f) choose(herc = x < viewW / 2)
     }
 
+    /** True on the title screen, where the phone's Back button leaves the app. */
+    val atTitle get() = state == State.TITLE
+
+    /** The phone's Back button: pause or resume during play; anywhere else, back to the title. */
+    private fun back() {
+        when {
+            paused -> paused = false
+            state == State.PLAYING -> paused = true
+            // Finished levels are already saved (as the next level), so don't save over them.
+            state == State.RESULTS || state == State.ALL_DONE -> toTitle()
+            state != State.TITLE -> saveAndQuit()
+        }
+    }
+
     /** SAVE & QUIT from the pause screen: keep this level (as it was when it started) and go back to the title. */
     private fun saveAndQuit() {
+        save()
+        toTitle()
+    }
+
+    /** SWITCH DOG from the pause screen: save this dog's game and carry on as the other dog. */
+    private fun switchDog() {
+        save()
+        choose(herc = !dog.herc)
+    }
+
+    private fun save() {
         slots.save(mode(dog.herc), levelIndex, levelStartScore)
         best = max(best, score).also { storage.save("best3d", it) }
+    }
+
+    private fun toTitle() {
         loadLevel(0)
         setState(State.TITLE)
         applyMusic()

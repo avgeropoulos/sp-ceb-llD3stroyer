@@ -1,6 +1,7 @@
 package com.herculesapollo.walk3d
 
 import com.herculesapollo.walk.Kind
+import com.herculesapollo.walk.PauseMenu
 import com.herculesapollo.walk.SaveSlots
 import com.roccoquest.game.Gfx
 import com.roccoquest.game.shadowText
@@ -116,16 +117,6 @@ object Controls3D {
         val i = kotlin.math.floor((x - slotX(0, viewW)) / SLOT_W).toInt()
         return if (i in 0 until SaveSlots.COUNT) i + 1 else null
     }
-
-    /** The pause screen's buttons: KEEP GOING on the left, SAVE & QUIT on the right. */
-    const val PAUSE_Y = 142f
-    const val PAUSE_H = 24f
-    const val PAUSE_W = 120f
-    fun resumeX(viewW: Float) = viewW / 2 - PAUSE_W - 8f
-    fun quitX(viewW: Float) = viewW / 2 + 8f
-
-    fun onSaveAndQuit(x: Float, y: Float, viewW: Float) =
-        x >= quitX(viewW) && x <= quitX(viewW) + PAUSE_W && y >= PAUSE_Y - 4f && y <= PAUSE_Y + PAUSE_H + 4f
 
     fun drawPause(gfx: Gfx, viewW: Float, musicOn: Boolean) {
         layout(viewW)
@@ -288,20 +279,8 @@ object Hud3D {
         if (g.best > 0) gfx.shadowText("BEST ${g.best}", w / 2, 112f, 7f, WHITE, 1)
     }
 
-    private fun paused(gfx: Gfx, w: Float) {
-        gfx.rect(0f, 0f, w, VIEW_H, 0x88000000.toInt())
-        gfx.shadowText("PAUSED", w / 2, 110f, 18f, WHITE, 1)
-        gfx.shadowText("Your game is saved at the start of every level.", w / 2, 128f, 7f, WHITE, 1)
-        val y = Controls3D.PAUSE_Y
-        for ((x, label, color) in listOf(
-            Triple(Controls3D.resumeX(w), "KEEP GOING", 0xFF2A9D8F.toInt()),
-            Triple(Controls3D.quitX(w), "SAVE & QUIT", 0xFFE76F51.toInt()),
-        )) {
-            gfx.rect(x - 1.5f, y - 1.5f, Controls3D.PAUSE_W + 3f, Controls3D.PAUSE_H + 3f, WHITE)
-            gfx.rect(x, y, Controls3D.PAUSE_W, Controls3D.PAUSE_H, color)
-            gfx.shadowText(label, x + Controls3D.PAUSE_W / 2, y + Controls3D.PAUSE_H / 2 + 3f, 9f, WHITE, 1)
-        }
-    }
+    private fun paused(gfx: Gfx, w: Float) =
+        PauseMenu.draw(gfx, w, VIEW_H, canSwitch = true, note = "Your game is saved at the start of every level.")
 
     private fun banner(gfx: Gfx, w: Float, text: String, y: Float) {
         val bw = text.length * 5.2f + 16f

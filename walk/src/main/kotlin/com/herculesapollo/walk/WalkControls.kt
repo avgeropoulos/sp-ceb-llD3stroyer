@@ -22,6 +22,8 @@ class WalkInput {
     /** Position (virtual pixels) of the last tap, for on-screen menu buttons; -1 for a key press. */
     @Volatile var tapX = -1f
     @Volatile var tapY = -1f
+    /** The phone's Back button: pauses (or resumes) the game, or leaves for the title screen. */
+    @Volatile var back = false
 }
 
 /** On-screen touch controls, laid out in virtual coordinates. */
@@ -138,16 +140,6 @@ object WalkControls {
         val i = kotlin.math.floor((x - slotX(0, viewW)) / SLOT_W).toInt()
         return if (i in 0 until SaveSlots.COUNT) i + 1 else null
     }
-
-    /** The pause screen's two buttons: KEEP GOING on the left, SAVE & QUIT on the right. */
-    const val PAUSE_Y = 142f
-    const val PAUSE_H = 24f
-    const val PAUSE_W = 120f
-    fun resumeX(viewW: Float) = viewW / 2 - PAUSE_W - 8f
-    fun quitX(viewW: Float) = viewW / 2 + 8f
-
-    fun onSaveAndQuit(x: Float, y: Float, viewW: Float) =
-        x >= quitX(viewW) && x <= quitX(viewW) + PAUSE_W && y >= PAUSE_Y - 4f && y <= PAUSE_Y + PAUSE_H + 4f
 
     /** Pause button plus the music on/off toggle beside it. */
     fun drawPause(gfx: Gfx, viewW: Float, musicOn: Boolean) {

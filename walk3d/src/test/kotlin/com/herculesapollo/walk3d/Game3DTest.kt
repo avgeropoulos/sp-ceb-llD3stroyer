@@ -1,6 +1,7 @@
 package com.herculesapollo.walk3d
 
 import com.herculesapollo.walk.Kind
+import com.herculesapollo.walk.PauseMenu
 import com.roccoquest.game.Storage
 import java.awt.image.BufferedImage
 import java.io.File
@@ -334,8 +335,8 @@ class Game3DTest {
         g.input.pause = false
         g.update(dt)
         assertTrue(g.paused)
-        g.input.tapX = Controls3D.quitX(g.viewW) + 10f
-        g.input.tapY = Controls3D.PAUSE_Y + 10f
+        g.input.tapX = PauseMenu.x(PauseMenu.Action.QUIT, g.viewW, canSwitch = true) + 10f
+        g.input.tapY = PauseMenu.Y + 10f
         g.input.tap = true
         g.update(dt)
         assertEquals(Game3D.State.TITLE, g.state)
@@ -354,6 +355,32 @@ class Game3DTest {
         g.update(dt)
         assertEquals(0, g.levelIndex)
         assertEquals(0, g.score)
+    }
+
+    @Test fun switchDogAndBackButton() {
+        val store = Storage.Memory()
+        val g = start(herc = true, level = 2, storage = store)
+        g.score = 800
+        g.startLevel(2)
+        run(g, 2.1f)
+        g.input.back = true
+        g.update(dt)
+        assertTrue(g.paused, "Back pauses")
+        g.input.tapX = PauseMenu.x(PauseMenu.Action.SWITCH, g.viewW, canSwitch = true) + 10f
+        g.input.tapY = PauseMenu.Y + 10f
+        g.input.tap = true
+        g.update(dt)
+        assertTrue(!g.dog.herc, "now Apollo")
+        assertEquals(0, g.levelIndex, "Apollo's own (new) game")
+        assertEquals(2, g.slots.walk("herc"))
+        assertEquals(800, g.slots.score("herc"))
+        run(g, 2.1f)
+        g.input.back = true
+        g.update(dt)
+        g.input.back = true
+        g.update(dt)
+        assertTrue(!g.paused)
+        assertTrue(!g.atTitle)
     }
 
     /** A simple bot plays each level as each dog, to check they can all be finished. */

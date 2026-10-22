@@ -143,6 +143,9 @@ for how many critters were chased.
 **Saving:** the title screen has three save slots, like Rocco's Quest. Each slot keeps the walk,
 and each dog's adventure, separately: which walk you're on and your score. Your game is saved at
 the start of every walk and when you finish one, and the pause screen has **SAVE & QUIT**.
+When you're playing as one of the dogs, the pause screen also has **SWITCH DOG**: it saves that
+dog's game and carries on as the other one. The phone's **Back** button pauses the game, or
+takes you back to the title screen from the intro and results screens.
 
 Controls: the left half of the screen walks left and right. On the right are **JUMP**,
 **HERC** and **APOLLO**. With a keyboard: arrows or A/D to walk, Space to jump,
@@ -192,7 +195,8 @@ levels with the camera following behind the dog.
 * Fences, bins, benches, hydrants and sandcastles can be jumped on. Umbrellas bounce you up high.
 * Stay away from skunks, and jump out of the way of the bikes. Three bumps and you redo the level.
 * Stars for how fast you get home. Three save slots on the title screen, each keeping both
-  dogs' progress; saved at the start of every level, and with **SAVE & QUIT** on the pause screen.
+  dogs' progress; saved at the start of every level, and with **SAVE & QUIT** and **SWITCH DOG**
+  (save this dog's game and carry on as the other) on the pause screen. Back pauses the game.
 * The camera eases round behind the dog without swinging your steering with it: while you
   hold the stick, it keeps steering the way the camera faced when you first pushed it.
 

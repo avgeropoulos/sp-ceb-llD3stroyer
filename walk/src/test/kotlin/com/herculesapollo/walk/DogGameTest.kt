@@ -290,8 +290,8 @@ class DogGameTest {
         g.input.pause = false
         g.update(dt)
         assertTrue(g.paused)
-        g.input.tapX = WalkControls.quitX(g.viewW) + 10f
-        g.input.tapY = WalkControls.PAUSE_Y + 10f
+        g.input.tapX = PauseMenu.x(PauseMenu.Action.QUIT, g.viewW, canSwitch = true) + 10f
+        g.input.tapY = PauseMenu.Y + 10f
         g.input.tap = true
         g.update(dt)
         assertNull(g.dogGame)
@@ -310,6 +310,51 @@ class DogGameTest {
         val dg2 = assertNotNull(again.dogGame)
         assertEquals(2, dg2.walkIndex)
         assertEquals(450, dg2.score)
+    }
+
+    @Test fun switchDogFromThePauseScreen() {
+        val store = Storage.Memory()
+        val (g, dg) = adventure(herc = true, walk = 3, storage = store)
+        dg.score = 600
+        dg.startWalk(3)
+        run(g, 2.2f)
+        g.input.pause = true
+        g.update(dt)
+        g.input.pause = false
+        g.update(dt)
+        g.input.tapX = PauseMenu.x(PauseMenu.Action.SWITCH, g.viewW, canSwitch = true) + 10f
+        g.input.tapY = PauseMenu.Y + 10f
+        g.input.tap = true
+        g.update(dt)
+        val apollo = assertNotNull(g.dogGame)
+        assertTrue(!apollo.player.herc, "now playing as Apollo")
+        assertEquals(0, apollo.walkIndex, "Apollo's own (new) game")
+        val slots = SaveSlots(store)
+        assertEquals(3, slots.walk(WalkGame.HERC), "Hercules' walk was saved")
+        assertEquals(600, slots.score(WalkGame.HERC))
+    }
+
+    @Test fun backButtonPausesThenLeaves() {
+        val store = Storage.Memory()
+        val (g, dg) = adventure(herc = false, walk = 1, storage = store)
+        assertTrue(!g.atTitle)
+        g.input.back = true
+        g.update(dt)
+        assertTrue(g.paused, "Back pauses")
+        g.input.back = true
+        g.update(dt)
+        assertTrue(!g.paused, "Back again carries on")
+        // From the results screen, Back goes to the title without losing the finished walk.
+        place(g, dg, dg.course.homeX + 20f)
+        g.input.right = true
+        run(g, 0.3f)
+        g.input.right = false
+        run(g, 3f)
+        assertEquals(DogGame.State.RESULTS, dg.state)
+        g.input.back = true
+        g.update(dt)
+        assertTrue(g.atTitle)
+        assertEquals(2, SaveSlots(store).walk(WalkGame.APOLLO))
     }
 
     @Test fun screenshots() {

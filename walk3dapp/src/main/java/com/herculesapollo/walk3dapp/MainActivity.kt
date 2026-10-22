@@ -58,6 +58,13 @@ class MainActivity : Activity() {
         super.onPause()
     }
 
+    /** Back pauses the game (or goes back to the title); on the title screen it leaves the app. */
+    @Deprecated("Still called for the Back button while the app doesn't opt in to predictive back.")
+    override fun onBackPressed() {
+        @Suppress("DEPRECATION")
+        if (game.atTitle) super.onBackPressed() else game.input.back = true
+    }
+
     override fun onDestroy() {
         sound.release()
         super.onDestroy()

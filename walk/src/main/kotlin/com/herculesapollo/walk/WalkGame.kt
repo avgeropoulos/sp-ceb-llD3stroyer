@@ -185,6 +185,8 @@ class WalkGame(
     fun update(dt: Float) {
         val tap = input.tap
         input.tap = false
+        val backP = input.back
+        input.back = false
         val jumpP = input.jump && !prevJump
         val hercP = input.herc && !prevHerc
         val apolloP = input.apollo && !prevApollo
@@ -201,11 +203,16 @@ class WalkGame(
         }
         val dg = dogGame
         val playing = if (dg != null) dg.state == DogGame.State.PLAYING else state == State.PLAYING
+        if (backP) { back(playing); return }
         if (playing && pauseP) { paused = !paused; return }
         if (paused) {
             if (tap && !input.pause && !input.musicToggle) {
                 paused = false
-                if (WalkControls.onSaveAndQuit(input.tapX, input.tapY, viewW)) saveAndQuit()
+                when (PauseMenu.hit(input.tapX, input.tapY, viewW, canSwitch = dogGame != null)) {
+                    PauseMenu.Action.QUIT -> saveAndQuit()
+                    PauseMenu.Action.SWITCH -> switchDog()
+                    else -> {}
+                }
             }
             return
         }
@@ -296,6 +303,22 @@ class WalkGame(
         dogGame = DogGame(input, audio, storage, slots, herc) { musicOn }.also { it.viewW = viewW }
     }
 
+    /** True on the title screen, where the phone's Back button leaves the app. */
+    val atTitle get() = dogGame == null && state == State.TITLE
+
+    /** The phone's Back button: pause or resume during play; anywhere else, back to the title. */
+    private fun back(playing: Boolean) {
+        val dg = dogGame
+        when {
+            paused -> paused = false
+            playing -> paused = true
+            dg != null -> { dg.quit(); dogGame = null; toTitle() }
+            // Finished walks are already saved (as the next walk), so don't save over them.
+            state == State.RESULTS || state == State.ALL_DONE -> toTitle()
+            state != State.TITLE -> saveAndQuit()
+        }
+    }
+
     /** SAVE & QUIT from the pause screen: keep this walk (as it was when it started) and go back to the title. */
     private fun saveAndQuit() {
         val dg = dogGame
@@ -306,6 +329,18 @@ class WalkGame(
             slots.save(WALK, walkIndex, walkStartScore)
             best = max(best, score).also { storage.save("best", it) }
         }
+        toTitle()
+    }
+
+    /** SWITCH DOG from the pause screen: save this dog's adventure and carry on as the other dog. */
+    private fun switchDog() {
+        val dg = dogGame ?: return
+        dg.saveAndQuit()
+        best = max(best, storage.load("best"))
+        startAdventure(herc = !dg.player.herc)
+    }
+
+    private fun toTitle() {
         tip = null
         course = Course(Walks.all[0])
         resetPositions()
@@ -654,7 +689,7 @@ class WalkGame(
         }
         dg.viewW = viewW
         DogRenderer.render(dg, gfx)
-        if (paused) WalkRenderer.drawPaused(gfx, viewW)
+        if (paused) WalkRenderer.drawPaused(gfx, viewW, canSwitch = true)
         WalkControls.drawPause(gfx, viewW, musicOn)
     }
 }

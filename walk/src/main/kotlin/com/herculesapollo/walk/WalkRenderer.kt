@@ -32,7 +32,7 @@ object WalkRenderer {
                 drawHud(g, gfx)
                 g.tip?.let { banner(gfx, g.viewW, it, 66f) }
                 WalkControls.draw(gfx, g.input, g.viewW, g.herc.ready, g.apollo.ready)
-                if (g.paused) drawPaused(gfx, g.viewW)
+                if (g.paused) drawPaused(gfx, g.viewW, canSwitch = false)
             }
             WalkGame.State.HOME -> {
                 drawHud(g, gfx)
@@ -64,22 +64,9 @@ object WalkRenderer {
         for (p in popups) gfx.shadowText(p.text, p.x - g.camX, p.y - p.t * 18f, p.size, p.color, 1)
     }
 
-    internal fun drawPaused(gfx: Gfx, viewW: Float) {
-        gfx.rect(0f, 0f, viewW, VIEW_H, 0x88000000.toInt())
-        gfx.shadowText("PAUSED", viewW / 2, 110f, 18f, WHITE, 1)
-        gfx.shadowText("Your game is saved at the start of every walk.", viewW / 2, 128f, 7f, WHITE, 1)
-        val y = WalkControls.PAUSE_Y
-        val w = WalkControls.PAUSE_W
-        val h = WalkControls.PAUSE_H
-        for ((x, label, color) in listOf(
-            Triple(WalkControls.resumeX(viewW), "KEEP GOING", 0xFF2A9D8F.toInt()),
-            Triple(WalkControls.quitX(viewW), "SAVE & QUIT", 0xFFE76F51.toInt()),
-        )) {
-            gfx.rect(x - 1.5f, y - 1.5f, w + 3f, h + 3f, WHITE)
-            gfx.rect(x, y, w, h, color)
-            gfx.shadowText(label, x + w / 2, y + h / 2 + 3f, 9f, WHITE, 1)
-        }
-    }
+    /** [canSwitch]: playing as one of the dogs, so offer SWITCH DOG too. */
+    internal fun drawPaused(gfx: Gfx, viewW: Float, canSwitch: Boolean) =
+        PauseMenu.draw(gfx, viewW, VIEW_H, canSwitch, "Your game is saved at the start of every walk.")
 
     // ------------------------------------------------------------------ Helpers
 

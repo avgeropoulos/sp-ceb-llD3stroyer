@@ -149,6 +149,11 @@ class DogGame(
         setState(State.INTRO)
     }
 
+    /** Leave for the title screen: saved, unless this walk is already finished (and saved as the next one). */
+    fun quit() {
+        if (state == State.RESULTS || state == State.ALL_DONE) finished = true else saveAndQuit()
+    }
+
     /** SAVE & QUIT: keep this walk as it was when it started. */
     fun saveAndQuit() {
         slots.save(mode, walkIndex, walkStartScore)
