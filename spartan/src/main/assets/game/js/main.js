@@ -398,13 +398,14 @@ async function boot() {
       else ctx.training.update(dt);
     } else if (ctx.mode === 'title' || ctx.mode === 'gameover') {
       ctx.ai.update(t.gdt);
-      ctx.player.idleCamera(dt);
+      // The title pans slowly behind the line; game over keeps the fallen hoplite's view of the sky.
+      if (ctx.mode === 'title') ctx.player.idleCamera(dt);
     }
 
     ctx.viewmodel.update(dt, t.gdt);
     ctx.fx.update(ctx.mode === 'paused' ? 0 : dt, t.gdt);
 
-    if (ctx.mode !== 'title' && ctx.mode !== 'gameover') ctx.player.applyCamera(camera);
+    ctx.player.applyCamera(camera);
     ctx.fx.applyCamera(camera);
     camera.updateMatrixWorld();
 
