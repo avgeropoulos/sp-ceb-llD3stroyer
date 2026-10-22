@@ -17,25 +17,13 @@ object WalkRenderer {
     private const val SHADE = 0x99000000.toInt()
 
     fun render(g: WalkGame, gfx: Gfx) {
-        val theme = g.course.walk.theme
-        drawSky(g, gfx, theme)
-        drawBackdrop(g, gfx, theme)
-        drawGround(g, gfx, theme)
-        for (p in g.course.props) drawProp(g, gfx, p, theme)
-        for (t in g.course.treats) if (!t.taken) {
-            val bob = sin(g.time * 4f + t.x) * 1.5f
-            gfx.sprite(WalkSprites.bone, t.x - g.camX, t.y + bob)
-        }
-        for (c in g.course.critters) drawCritter(g, gfx, c)
-        for (b in g.course.bikes) if (b.active) drawBike(gfx, b.x - g.camX, b.t)
+        drawWorld(g, gfx)
         if (g.state != WalkGame.State.ALL_DONE) {
             for (d in g.dogs) drawLeash(g, gfx, d)
             drawWalker(g, gfx)
         }
         for (d in g.dogs) drawDog(g, gfx, d)
-        for (p in g.popups) {
-            gfx.shadowText(p.text, p.x - g.camX, p.y - p.t * 18f, p.size, p.color, 1)
-        }
+        drawPopups(g, gfx, g.popups)
 
         when (g.state) {
             WalkGame.State.TITLE -> drawTitle(g, gfx)
@@ -44,11 +32,7 @@ object WalkRenderer {
                 drawHud(g, gfx)
                 g.tip?.let { banner(gfx, g.viewW, it, 66f) }
                 WalkControls.draw(gfx, g.input, g.viewW, g.herc.ready, g.apollo.ready)
-                if (g.paused) {
-                    gfx.rect(0f, 0f, g.viewW, VIEW_H, 0x88000000.toInt())
-                    gfx.shadowText("PAUSED", g.viewW / 2, 110f, 18f, WHITE, 1)
-                    gfx.shadowText("tap to keep walking", g.viewW / 2, 130f, 8f, WHITE, 1)
-                }
+                if (g.paused) drawPaused(gfx, g.viewW)
             }
             WalkGame.State.HOME -> {
                 drawHud(g, gfx)
@@ -61,9 +45,34 @@ object WalkRenderer {
         WalkControls.drawPause(gfx, g.viewW, g.musicOn)
     }
 
+    /** Sky, scenery, treats, critters and bikes: everything but the player's characters. */
+    internal fun drawWorld(g: WalkScene, gfx: Gfx) {
+        val theme = g.course.walk.theme
+        drawSky(g, gfx, theme)
+        drawBackdrop(g, gfx, theme)
+        drawGround(g, gfx, theme)
+        for (p in g.course.props) drawProp(g, gfx, p, theme)
+        for (t in g.course.treats) if (!t.taken) {
+            val bob = sin(g.time * 4f + t.x) * 1.5f
+            gfx.sprite(WalkSprites.bone, t.x - g.camX, t.y + bob)
+        }
+        for (c in g.course.critters) drawCritter(g, gfx, c)
+        for (b in g.course.bikes) if (b.active) drawBike(gfx, b.x - g.camX, b.t)
+    }
+
+    internal fun drawPopups(g: WalkScene, gfx: Gfx, popups: List<Popup>) {
+        for (p in popups) gfx.shadowText(p.text, p.x - g.camX, p.y - p.t * 18f, p.size, p.color, 1)
+    }
+
+    internal fun drawPaused(gfx: Gfx, viewW: Float) {
+        gfx.rect(0f, 0f, viewW, VIEW_H, 0x88000000.toInt())
+        gfx.shadowText("PAUSED", viewW / 2, 110f, 18f, WHITE, 1)
+        gfx.shadowText("tap to keep going", viewW / 2, 130f, 8f, WHITE, 1)
+    }
+
     // ------------------------------------------------------------------ Helpers
 
-    private fun lerpColor(a: Int, b: Int, t: Float): Int {
+    internal fun lerpColor(a: Int, b: Int, t: Float): Int {
         fun ch(shift: Int) = (((a shr shift) and 0xFF) + (((b shr shift) and 0xFF) - ((a shr shift) and 0xFF)) * t).toInt()
         return (0xFF shl 24) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0)
     }
@@ -79,7 +88,7 @@ object WalkRenderer {
     }
 
     /** A straight line of [w] thickness, drawn as a thin quad. */
-    private fun line(gfx: Gfx, x1: Float, y1: Float, x2: Float, y2: Float, w: Float, color: Int) {
+    internal fun line(gfx: Gfx, x1: Float, y1: Float, x2: Float, y2: Float, w: Float, color: Int) {
         val len = hypot(x2 - x1, y2 - y1)
         if (len < 0.01f) return
         val nx = -(y2 - y1) / len * w / 2f
@@ -87,10 +96,10 @@ object WalkRenderer {
         gfx.poly(floatArrayOf(x1 + nx, x2 + nx, x2 - nx, x1 - nx), floatArrayOf(y1 + ny, y2 + ny, y2 - ny, y1 - ny), color)
     }
 
-    private fun sprite(gfx: Gfx, s: Sprite, cx: Float, feet: Float, facing: Int) =
+    internal fun sprite(gfx: Gfx, s: Sprite, cx: Float, feet: Float, facing: Int) =
         gfx.sprite(s, cx - s.w / 2f, feet - s.h, flipX = facing < 0)
 
-    private fun banner(gfx: Gfx, viewW: Float, text: String, y: Float) {
+    internal fun banner(gfx: Gfx, viewW: Float, text: String, y: Float) {
         val w = text.length * 5.2f + 16f
         gfx.rect(viewW / 2 - w / 2, y - 11f, w, 16f, 0xAA000000.toInt())
         gfx.text(text, viewW / 2, y, 8f, WHITE, 1)
@@ -98,7 +107,7 @@ object WalkRenderer {
 
     // ------------------------------------------------------------------ Scenery
 
-    private fun drawSky(g: WalkGame, gfx: Gfx, theme: Theme) {
+    private fun drawSky(g: WalkScene, gfx: Gfx, theme: Theme) {
         val bands = 12
         val bottom = GROUND - 10f
         for (i in 0 until bands) {
@@ -129,7 +138,7 @@ object WalkRenderer {
         }
     }
 
-    private fun drawBackdrop(g: WalkGame, gfx: Gfx, theme: Theme) {
+    private fun drawBackdrop(g: WalkScene, gfx: Gfx, theme: Theme) {
         val night = theme == Theme.NIGHT
         // Far hills, slow parallax.
         val far = g.camX * 0.25f
@@ -190,7 +199,7 @@ object WalkRenderer {
         }
     }
 
-    private fun drawGround(g: WalkGame, gfx: Gfx, theme: Theme) {
+    private fun drawGround(g: WalkScene, gfx: Gfx, theme: Theme) {
         gfx.rect(0f, GROUND - 16f, g.viewW, VIEW_H - GROUND + 16f, theme.grass)
         // Tufts / speckles that scroll with the ground.
         val step = 23f
@@ -215,7 +224,7 @@ object WalkRenderer {
         }
     }
 
-    private fun drawProp(g: WalkGame, gfx: Gfx, p: Prop, theme: Theme) {
+    private fun drawProp(g: WalkScene, gfx: Gfx, p: Prop, theme: Theme) {
         val sx = p.x - g.camX
         if (sx < -120f - p.w || sx > g.viewW + 120f) return
         val night = theme == Theme.NIGHT
@@ -389,7 +398,7 @@ object WalkRenderer {
 
     // ------------------------------------------------------------------ Characters
 
-    private fun drawCritter(g: WalkGame, gfx: Gfx, c: Critter) {
+    private fun drawCritter(g: WalkScene, gfx: Gfx, c: Critter) {
         if (c.mood == Mood.GONE) return
         val sx = c.x - g.camX
         if (sx < -40f || sx > g.viewW + 40f) return
@@ -442,6 +451,7 @@ object WalkRenderer {
             }
             Kind.SKUNK -> sprite(gfx, WalkSprites.skunk, sx, c.y, c.facing)
         }
+        if (c.frozenT > 0f && c.catchable) gfx.shadowText("!?", sx, c.y - c.h - 5f, 7f, YELLOW, 1)
         if (c.mood == Mood.CHASED && c.t < 0.5f && c.kind != Kind.SKUNK) {
             gfx.shadowText("!", sx, c.y - c.h - 6f, 9f, YELLOW, 1)
         }
@@ -520,7 +530,7 @@ object WalkRenderer {
 
     // ------------------------------------------------------------------ HUD and menus
 
-    private fun drawHud(g: WalkGame, gfx: Gfx) {
+    internal fun drawHud(g: WalkSession, gfx: Gfx) {
         gfx.shadowText("WALK ${g.walkIndex + 1}: ${g.course.walk.title}", 8f, 14f, 8f, WHITE)
         gfx.shadowText("SCORE ${g.score.toString().padStart(6, '0')}", 8f, 26f, 8f, YELLOW)
         for (i in 0 until 3) {
@@ -530,35 +540,53 @@ object WalkRenderer {
         gfx.shadowText("BEST ${g.best}", g.viewW - 60f, 14f, 6f, WHITE, 2)
     }
 
-    private fun drawIntro(g: WalkGame, gfx: Gfx) {
+    internal fun drawIntro(g: WalkSession, gfx: Gfx) {
         gfx.rect(0f, 70f, g.viewW, 56f, SHADE)
         gfx.shadowText("WALK ${g.walkIndex + 1}", g.viewW / 2, 90f, 10f, YELLOW, 1)
         gfx.shadowText(g.course.walk.title, g.viewW / 2, 110f, 16f, WHITE, 1)
-        gfx.shadowText("Hercules & Apollo are ready to go!", g.viewW / 2, 122f, 7f, WHITE, 1)
+        gfx.shadowText(g.introLine, g.viewW / 2, 122f, 7f, WHITE, 1)
     }
 
     private fun drawTitle(g: WalkGame, gfx: Gfx) {
-        gfx.rect(0f, 36f, g.viewW, 98f, 0x77000000)
+        gfx.rect(0f, 36f, g.viewW, 74f, 0x77000000)
         gfx.shadowText("HERCULES & APOLLO", g.viewW / 2, 68f, 22f, WHITE, 1)
         gfx.shadowText("THE BIG WALK", g.viewW / 2, 90f, 14f, YELLOW, 1)
-        gfx.shadowText("Chase squirrels, bunnies, cats and more!", g.viewW / 2, 106f, 7f, WHITE, 1)
-        val blink = (g.stateTime * 2f).toInt() % 2 == 0
-        if (g.savedWalk > 0) {
-            gfx.shadowText("NEW GAME", g.viewW / 4, 124f, 9f, if (blink) WHITE else YELLOW, 1)
-            gfx.shadowText("CONTINUE: WALK ${g.savedWalk + 1}", g.viewW * 3 / 4, 124f, 9f, if (blink) YELLOW else WHITE, 1)
-        } else if (blink) {
-            gfx.shadowText("TAP TO START", g.viewW / 2, 124f, 9f, WHITE, 1)
+        gfx.shadowText("Chase squirrels, bunnies, cats and more!", g.viewW / 2, 104f, 7f, WHITE, 1)
+        // Three buttons side by side: walk both dogs, or be one of them.
+        val third = g.viewW / 3f
+        val cards = listOf(
+            Triple("WALK THE DOGS", g.savedWalk, 0xFF2A9D8F.toInt()),
+            Triple("BE HERCULES", g.adventureWalk(herc = true), WalkSprites.HERC_COLLAR),
+            Triple("BE APOLLO", g.adventureWalk(herc = false), WalkSprites.APOLLO_COLLAR),
+        )
+        val pulse = (g.stateTime * 2f).toInt() % 2 == 0
+        cards.forEachIndexed { i, (label, walk, color) ->
+            val cx = third * i + third / 2
+            val w = third - 12f
+            gfx.rect(cx - w / 2 - 1.5f, 115f - 1.5f, w + 3f, 47f, if (pulse) WHITE else 0xAAFFFFFF.toInt())
+            gfx.rect(cx - w / 2, 115f, w, 44f, (0xDD000000.toInt()) or (color and 0xFFFFFF))
+            gfx.shadowText(label, cx, 129f, 8f, WHITE, 1)
+            when (i) {
+                0 -> {
+                    gfx.sprite(WalkSprites.walkerStand, cx - 30f, 132f, w = 9f, h = 17f)
+                    gfx.sprite(WalkSprites.hercStand, cx - 18f, 137f)
+                    gfx.sprite(WalkSprites.apolloStand, cx + 10f, 141f)
+                }
+                1 -> gfx.sprite(WalkSprites.hercStand, cx - 13f, 136f)
+                else -> gfx.sprite(WalkSprites.apolloStand, cx - 10f, 140f)
+            }
+            gfx.text("WALK ${walk + 1}", cx, 160f - 3f, 5.5f, 0xCCFFFFFF.toInt(), 1)
         }
         if (g.best > 0) gfx.shadowText("BEST ${g.best}", g.viewW / 2, 232f, 7f, WHITE, 1)
     }
 
-    private fun panel(g: WalkGame, gfx: Gfx, top: Float, height: Float) {
+    internal fun panel(g: WalkSession, gfx: Gfx, top: Float, height: Float) {
         val w = min(300f, g.viewW - 32f)
         gfx.rect(g.viewW / 2 - w / 2 - 2f, top - 2f, w + 4f, height + 4f, 0xFF1D3557.toInt())
         gfx.rect(g.viewW / 2 - w / 2, top, w, height, 0xEE2A4A7A.toInt())
     }
 
-    private fun drawResults(g: WalkGame, gfx: Gfx) {
+    internal fun drawResults(g: WalkSession, gfx: Gfx) {
         drawHud(g, gfx)
         val cx = g.viewW / 2
         panel(g, gfx, 50f, 150f)
@@ -579,7 +607,7 @@ object WalkRenderer {
         }
     }
 
-    private fun drawOuch(g: WalkGame, gfx: Gfx) {
+    internal fun drawOuch(g: WalkSession, gfx: Gfx) {
         drawHud(g, gfx)
         val cx = g.viewW / 2
         panel(g, gfx, 70f, 90f)
@@ -588,18 +616,18 @@ object WalkRenderer {
         if (g.stateTime > 1.5f) gfx.shadowText("tap to try this walk again", cx, 142f, 8f, YELLOW, 1)
     }
 
-    private fun drawAllDone(g: WalkGame, gfx: Gfx) {
+    internal fun drawAllDone(g: WalkSession, gfx: Gfx) {
         val cx = g.viewW / 2
         panel(g, gfx, 40f, 112f)
         gfx.shadowText("ALL WALKS DONE!", cx, 64f, 14f, YELLOW, 1)
-        gfx.shadowText("Hercules & Apollo are tired and happy.", cx, 82f, 8f, WHITE, 1)
+        gfx.shadowText(g.doneLine, cx, 82f, 8f, WHITE, 1)
         gfx.shadowText("GOOD DOGS!", cx, 102f, 12f, WHITE, 1)
         gfx.shadowText("FINAL SCORE ${g.score}", cx, 122f, 10f, YELLOW, 1)
         gfx.shadowText("BEST ${g.best}", cx, 138f, 7f, WHITE, 1)
         if (g.stateTime > 3f) gfx.shadowText("tap to go back to the start", cx, 232f, 7f, WHITE, 1)
     }
 
-    private fun star(gfx: Gfx, cx: Float, cy: Float, r: Float, color: Int) {
+    internal fun star(gfx: Gfx, cx: Float, cy: Float, r: Float, color: Int) {
         val xs = FloatArray(10)
         val ys = FloatArray(10)
         for (i in 0 until 10) {

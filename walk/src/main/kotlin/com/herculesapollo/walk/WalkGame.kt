@@ -70,42 +70,50 @@ class WalkGame(
     val input: WalkInput,
     private val audio: WalkAudio = WalkAudio {},
     private val storage: Storage = Storage.Memory(),
-) {
+) : WalkSession {
     enum class State { TITLE, INTRO, PLAYING, HOME, RESULTS, OUCH, ALL_DONE }
 
     var state = State.TITLE
         private set
-    var stateTime = 0f
+    override var stateTime = 0f
         private set
-    var viewW = 427f
+    override var viewW = 427f
 
-    var walkIndex = 0
+    override var walkIndex = 0
         private set
-    var course = Course(Walks.all[0])
+    override var course = Course(Walks.all[0])
         private set
     val walker = Walker()
     val herc = Dog("Hercules", true)
     val apollo = Dog("Apollo", false)
     val dogs = listOf(herc, apollo)
-    var camX = 0f
-    var score = 0
+    override var camX = 0f
+    override var score = 0
     private var walkStartScore = 0
-    var hearts = 3
-    var chased = 0
+    override var hearts = 3
+    override var chased = 0
         private set
-    var treatsGot = 0
+    override var treatsGot = 0
         private set
-    var bonus = 0
+    override var bonus = 0
         private set
     var paused = false
         private set
     var musicOn = storage.load("musicOff") == 0
         private set
-    var best = storage.load("best")
+    override var best = storage.load("best")
         private set
     /** Seconds of play, for animations and team bonuses. */
-    var time = 0f
+    override var time = 0f
         private set
+    override val introLine get() = "Hercules & Apollo are ready to go!"
+    override val doneLine get() = "Hercules & Apollo are tired and happy."
+
+    /** The dog's-eye adventure (playing as one of the dogs), while it's running. */
+    var dogGame: DogGame? = null
+        private set
+    /** True while the on-screen controls should use the adventure's layout. */
+    val dogMode get() = dogGame != null
     val popups = ArrayList<Popup>()
 
     var tip: String? = null
@@ -118,6 +126,7 @@ class WalkGame(
     private var prevApollo = false
     private var prevPause = false
     private var prevMusic = false
+    private var prevAction = false
 
     init {
         resetPositions()
@@ -129,7 +138,14 @@ class WalkGame(
         stateTime = 0f
     }
 
-    private fun applyMusic() = audio.music(if (!musicOn) WalkTune.NONE else course.walk.theme.tune)
+    private fun applyMusic() {
+        val dg = dogGame
+        if (dg != null) dg.applyMusic() else audio.music(if (!musicOn) WalkTune.NONE else course.walk.theme.tune)
+    }
+
+    /** Where each dog's adventure picks up again. */
+    fun adventureWalk(herc: Boolean) =
+        storage.load(if (herc) "adventureHerc" else "adventureApollo").coerceIn(0, Walks.all.lastIndex)
 
     /** Furthest walk reached, for "continue" on the title screen. */
     val savedWalk get() = storage.load("walk").coerceIn(0, Walks.all.lastIndex)
@@ -168,15 +184,18 @@ class WalkGame(
         val apolloP = input.apollo && !prevApollo
         val pauseP = input.pause && !prevPause
         val musicP = input.musicToggle && !prevMusic
+        val actionP = input.action && !prevAction
         prevJump = input.jump; prevHerc = input.herc; prevApollo = input.apollo
-        prevPause = input.pause; prevMusic = input.musicToggle
+        prevPause = input.pause; prevMusic = input.musicToggle; prevAction = input.action
 
         if (musicP) {
             musicOn = !musicOn
             storage.save("musicOff", if (musicOn) 0 else 1)
             applyMusic()
         }
-        if (state == State.PLAYING && pauseP) { paused = !paused; return }
+        val dg = dogGame
+        val playing = if (dg != null) dg.state == DogGame.State.PLAYING else state == State.PLAYING
+        if (playing && pauseP) { paused = !paused; return }
         if (paused) {
             if (tap && !input.pause && !input.musicToggle) paused = false
             if (paused) return
@@ -184,15 +203,36 @@ class WalkGame(
         // Taps on the top-right buttons shouldn't also press menu buttons.
         val menuTap = tap && !input.pause && !input.musicToggle
 
+        if (dg != null) {
+            dg.viewW = viewW
+            // On a keyboard, the HERC and APOLLO keys work as the dog's action button too.
+            dg.update(dt, menuTap, jumpP, actionP || hercP || apolloP)
+            if (dg.finished) {
+                dogGame = null
+                best = max(best, storage.load("best"))
+                course = Course(Walks.all[0])
+                resetPositions()
+                applyMusic()
+                setState(State.TITLE)
+            }
+            return
+        }
+
         stateTime += dt
         when (state) {
             State.TITLE -> {
                 updateTitle(dt)
                 if (menuTap && stateTime > 0.4f) {
                     score = 0
-                    val cont = savedWalk > 0 && input.tapX > viewW / 2
-                    audio.say("Let's go for a walk!")
-                    startWalk(if (cont) savedWalk else 0)
+                    // The title screen has three buttons side by side; a key press picks the walk.
+                    when (if (input.tapX < 0f) 0 else (input.tapX / (viewW / 3f)).toInt()) {
+                        0 -> {
+                            audio.say("Let's go for a walk!")
+                            startWalk(savedWalk)
+                        }
+                        1 -> startAdventure(herc = true)
+                        else -> startAdventure(herc = false)
+                    }
                 }
             }
             State.INTRO -> {
@@ -230,6 +270,11 @@ class WalkGame(
                 }
             }
         }
+    }
+
+    private fun startAdventure(herc: Boolean) {
+        audio.say(if (herc) "Go, Hercules!" else "Go, Apollo!")
+        dogGame = DogGame(input, audio, storage, herc) { musicOn }.also { it.viewW = viewW }
     }
 
     private fun updateTitle(dt: Float) {
@@ -402,27 +447,11 @@ class WalkGame(
 
     // ------------------------------------------------------------------ Critters
 
-    private fun nearestDog(c: Critter) = dogs.minOf { abs(it.x - c.x) }
-
     private fun updateCritters(dt: Float) {
+        val chasers = dogs.map { it.x }
         for (c in course.critters) {
-            c.t += dt
             if (c.mood == Mood.IDLE || c.mood == Mood.FLEE) maybeTip(c)
-            when (c.mood) {
-                Mood.IDLE -> idle(c)
-                Mood.FLEE -> flee(c, dt)
-                Mood.CHASED -> {
-                    c.x += c.vx * dt
-                    if (c.kind == Kind.PIGEON || c.kind == Kind.GULL) {
-                        c.vy -= 60f * dt
-                    } else {
-                        c.vy += 900f * dt
-                    }
-                    c.y = min(GROUND, c.y + c.vy * dt)
-                    if (c.x < camX - 60f || c.x > camX + viewW + 60f || c.y < -30f) c.mood = Mood.GONE
-                }
-                Mood.SAFE, Mood.GONE -> {}
-            }
+            CritterAi.update(c, dt, chasers, walker.x, this, audio)
         }
     }
 
@@ -435,79 +464,6 @@ class WalkGame(
             Kind.SKUNK -> showTip("Uh oh, a skunk! DON'T chase it!")
             Kind.CRAB -> showTip("Catch the crabs before they hide!")
             else -> {}
-        }
-    }
-
-    private fun idle(c: Critter) {
-        val near = nearestDog(c)
-        when (c.kind) {
-            Kind.SQUIRREL -> {
-                val nx = c.startX + sin(c.t * 1.3f) * 14f
-                if (abs(nx - c.x) > 0.01f) c.facing = if (nx > c.x) 1 else -1
-                c.x = nx
-                if (near < 75f) { c.mood = Mood.FLEE; c.facing = if (c.home > c.x) 1 else -1 }
-            }
-            Kind.PIGEON, Kind.GULL -> {
-                c.x = c.startX + sin(c.t * 0.7f) * 6f
-                c.facing = if (sin(c.t * 0.35f) > 0) 1 else -1
-                if (near < 42f) {
-                    c.mood = Mood.FLEE
-                    val dogX = dogs.minBy { abs(it.x - c.x) }.x
-                    c.vx = if (c.x >= dogX) 50f else -50f
-                    c.vy = -115f
-                    c.facing = if (c.vx > 0) 1 else -1
-                }
-            }
-            Kind.RABBIT -> if (near < 60f) { c.mood = Mood.FLEE; c.t = 0f }
-            Kind.CAT -> if (near < 70f) { c.mood = Mood.FLEE; audio.play(WalkSound.HISS) }
-            Kind.RACCOON -> if (near < 85f) { c.mood = Mood.FLEE; c.t = 0f }
-            Kind.CRAB -> {
-                c.x = c.startX + sin(c.t * 2f) * 14f
-                if (near < 70f) c.mood = Mood.FLEE
-            }
-            Kind.SKUNK -> {
-                val nx = c.startX + sin(c.t * 0.5f) * 20f
-                if (abs(nx - c.x) > 0.01f) c.facing = if (nx > c.x) 1 else -1
-                c.x = nx
-            }
-        }
-        if (c.kind == Kind.CAT || c.kind == Kind.RACCOON) {
-            c.facing = if (walker.x > c.x) -1 else 1
-        }
-    }
-
-    private fun flee(c: Critter, dt: Float) {
-        when (c.kind) {
-            Kind.SQUIRREL -> if (!c.climbing) {
-                val trunk = c.home - 7f
-                val step = 100f * dt
-                if (abs(trunk - c.x) <= step) { c.x = trunk; c.climbing = true }
-                else c.x += if (trunk > c.x) step else -step
-            } else {
-                c.y -= 55f * dt
-                if (c.y <= GROUND - 82f) {
-                    c.climbing = false
-                    c.mood = Mood.SAFE
-                    c.x = c.home + 12f
-                    c.y = GROUND - 84f
-                    c.facing = -1
-                }
-            }
-            Kind.PIGEON, Kind.GULL -> {
-                c.x += c.vx * dt
-                c.vy -= 30f * dt
-                c.y += c.vy * dt
-                if (c.y < GROUND - 130f) c.mood = Mood.GONE
-            }
-            Kind.RABBIT, Kind.CRAB -> {
-                val speed = if (c.kind == Kind.RABBIT) 170f else 60f
-                val step = speed * dt
-                c.facing = if (c.home > c.x) 1 else -1
-                if (abs(c.home - c.x) <= step) { c.x = c.home; c.hidden = true; c.mood = Mood.SAFE }
-                else c.x += c.facing * step
-            }
-            Kind.RACCOON -> if (c.t > 1.1f) { c.hidden = true; c.mood = Mood.SAFE }
-            Kind.CAT, Kind.SKUNK -> {}
         }
     }
 
@@ -647,11 +603,15 @@ class WalkGame(
         }
     }
 
-    /** 1 to 3 stars for how many critters got chased on this walk. */
-    val stars get() = course.total.let { total ->
-        val r = if (total == 0) 1f else chased.toFloat() / total
-        when { r >= 0.8f -> 3; r >= 0.5f -> 2; else -> 1 }
+    fun render(gfx: Gfx) {
+        val dg = dogGame
+        if (dg == null) {
+            WalkRenderer.render(this, gfx)
+            return
+        }
+        dg.viewW = viewW
+        DogRenderer.render(dg, gfx)
+        if (paused) WalkRenderer.drawPaused(gfx, viewW)
+        WalkControls.drawPause(gfx, viewW, musicOn)
     }
-
-    fun render(gfx: Gfx) = WalkRenderer.render(this, gfx)
 }

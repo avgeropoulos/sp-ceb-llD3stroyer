@@ -51,6 +51,8 @@ class Critter(val kind: Kind, var x: Float, var y: Float, val home: Float) {
     var climbing = false
     /** Hidden in a bush, a hole or a bin. */
     var hidden = false
+    /** Seconds left frozen in surprise after Hercules' big bark. */
+    var frozenT = 0f
     val startX = x
 
     val w get() = when (kind) {

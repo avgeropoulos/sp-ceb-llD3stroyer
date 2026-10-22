@@ -13,6 +13,8 @@ class WalkInput {
     @Volatile var herc = false
     /** Sends Apollo after the nearest critter. */
     @Volatile var apollo = false
+    /** The dog's special move in the adventure: Hercules barks, Apollo dashes. */
+    @Volatile var action = false
     @Volatile var pause = false
     @Volatile var musicToggle = false
     /** Set on any new touch / key press; consumed by menus. */
@@ -30,6 +32,9 @@ object WalkControls {
     val jump = Button("JUMP", 0f, 216f, 17f)
     val herc = Button("HERC", 0f, 210f, 23f)
     val apollo = Button("APOLLO", 0f, 196f, 23f)
+    /** The adventure's layout: a big JUMP button with the dog's special move beside it. */
+    val bigJump = Button("JUMP", 0f, 200f, 27f)
+    val action = Button("ACTION", 0f, 214f, 21f)
     val pause = Button("II", 0f, 14f, 10f)
     val music = Button("M", 0f, 14f, 10f)
 
@@ -37,12 +42,14 @@ object WalkControls {
         apollo.cx = viewW - 34f
         herc.cx = viewW - 90f
         jump.cx = viewW - 140f
+        bigJump.cx = viewW - 38f
+        action.cx = viewW - 104f
         pause.cx = viewW - 16f
         music.cx = viewW - 42f
     }
 
-    /** Maps the currently held touch points onto [input]. */
-    fun apply(input: WalkInput, xs: FloatArray, ys: FloatArray, count: Int, viewW: Float) {
+    /** Maps the currently held touch points onto [input]. [dogMode] picks the adventure's layout. */
+    fun apply(input: WalkInput, xs: FloatArray, ys: FloatArray, count: Int, viewW: Float, dogMode: Boolean = false) {
         layout(viewW)
         var l = false
         var r = false
@@ -51,6 +58,7 @@ object WalkControls {
         var a = false
         var p = false
         var m = false
+        var act = false
         for (i in 0 until count) {
             val x = xs[i]
             val y = ys[i]
@@ -60,6 +68,10 @@ object WalkControls {
             if (x < viewW / 2) {
                 // Whole bottom-left area acts as a d-pad so a sliding thumb works.
                 if (x < (left.cx + right.cx) / 2) l = true else r = true
+            } else if (dogMode) {
+                val dj = hypot(x - bigJump.cx, y - bigJump.cy) / bigJump.r
+                val da = hypot(x - action.cx, y - action.cy) / action.r
+                if (dj <= da) j = true else act = true
             } else {
                 val best = listOf(jump, herc, apollo).minBy { hypot(x - it.cx, y - it.cy) / it.r }
                 when (best) {
@@ -76,6 +88,7 @@ object WalkControls {
         input.apollo = a
         input.pause = p
         input.musicToggle = m
+        input.action = act
     }
 
     fun draw(gfx: Gfx, input: WalkInput, viewW: Float, hercReady: Boolean, apolloReady: Boolean) {
@@ -93,6 +106,20 @@ object WalkControls {
         gfx.text("HERC", herc.cx, herc.cy + 12, 7f, c, 1)
         gfx.sprite(WalkSprites.apolloStand, apollo.cx - 9f, apollo.cy - 12f, w = 17f, h = 11f)
         gfx.text("APOLLO", apollo.cx, apollo.cy + 12, 6.5f, c, 1)
+    }
+
+    /** The adventure's controls. [ready] greys out the action button while it recharges. */
+    fun drawDog(gfx: Gfx, input: WalkInput, viewW: Float, actionLabel: String, ring: Int, ready: Boolean) {
+        layout(viewW)
+        val c = 0xDDFFFFFF.toInt()
+        button(gfx, left, input.left, 0)
+        button(gfx, right, input.right, 0)
+        button(gfx, bigJump, input.jump, 0)
+        button(gfx, action, input.action, if (ready) ring else 0xFF666666.toInt())
+        gfx.poly(floatArrayOf(left.cx - 9, left.cx + 6, left.cx + 6), floatArrayOf(left.cy, left.cy - 9, left.cy + 9), c)
+        gfx.poly(floatArrayOf(right.cx + 9, right.cx - 6, right.cx - 6), floatArrayOf(right.cy, right.cy - 9, right.cy + 9), c)
+        gfx.text("JUMP", bigJump.cx, bigJump.cy + 3, 8f, c, 1)
+        gfx.text(actionLabel, action.cx, action.cy + 3, 7f, if (ready) c else 0x88FFFFFF.toInt(), 1)
     }
 
     /** Pause button plus the music on/off toggle beside it. */

@@ -306,7 +306,7 @@ class WalkGameTest {
         val again = WalkGame(WalkInput(), storage = store).apply { viewW = 427f }
         assertEquals(1, again.savedWalk)
         run(again, 0.5f)
-        again.input.tapX = 400f
+        again.input.tapX = 50f
         again.input.tap = true
         again.update(dt)
         assertEquals(1, again.walkIndex)

@@ -141,6 +141,27 @@ Controls: the left half of the screen walks left and right. On the right are **J
 **HERC** and **APOLLO**. With a keyboard: arrows or A/D to walk, Space to jump,
 H for Hercules, J for Apollo, P to pause and M for music.
 
+### Be Hercules, or be Apollo
+
+The title screen has three buttons: **WALK THE DOGS** (the game above), **BE HERCULES** and
+**BE APOLLO**. In those last two you play as one dog, platformer style like Rocco's Quest,
+with the camera following close behind. The dogs have slipped their leashes on the same five
+walks, so chase everything on the way home, where your person is waiting at the door.
+
+* The controls are snappy. The dog hits full speed in a tenth of a second, stops on a dime and
+  turns around instantly. Hold **JUMP** to jump higher or tap it for a hop. A jump pressed just
+  before landing still counts, and so does one pressed just after running off a ledge.
+* Catch critters by running or jumping into them. Fences, bins, benches, mailboxes, hydrants
+  and tree branches are all things to stand on. Beach umbrellas are bouncy!
+* **Hercules** jumps high enough to land on tree branches, so squirrels up a tree aren't safe.
+  **BARK** freezes every critter nearby for a moment, which is the way to catch bunnies.
+* **Apollo** is much faster. **DASH** is a quick lunge that also works in mid-air. Apollo can get
+  up on fences and bins but can't reach the branches.
+* Catch critters one after another for a **COMBO**. Jump over the bikes and the skunks.
+* Each dog keeps track of its own progress.
+
+Keyboard: arrows or A/D to run, Space to jump, and K, Z or Shift (or H/J) for BARK or DASH.
+
 ## Installing on your phone
 
 Every push builds an APK with GitHub Actions (see `.github/workflows/android.yml`):

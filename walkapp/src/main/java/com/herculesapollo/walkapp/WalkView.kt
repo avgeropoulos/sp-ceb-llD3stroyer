@@ -128,7 +128,7 @@ class WalkView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                 n++
             }
         }
-        WalkControls.apply(input, touchX, touchY, n, game.viewW)
+        WalkControls.apply(input, touchX, touchY, n, game.viewW, game.dogMode)
         if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
             input.tapX = e.getX(e.actionIndex) / scale
             input.tap = true
@@ -155,6 +155,8 @@ class WalkView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> input.jump = down
             KeyEvent.KEYCODE_H, KeyEvent.KEYCODE_X, KeyEvent.KEYCODE_BUTTON_X -> input.herc = down
             KeyEvent.KEYCODE_J, KeyEvent.KEYCODE_C, KeyEvent.KEYCODE_BUTTON_B -> input.apollo = down
+            KeyEvent.KEYCODE_K, KeyEvent.KEYCODE_Z, KeyEvent.KEYCODE_SHIFT_LEFT,
+            KeyEvent.KEYCODE_SHIFT_RIGHT, KeyEvent.KEYCODE_BUTTON_Y -> input.action = down
             KeyEvent.KEYCODE_P, KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_ESCAPE -> input.pause = down
             KeyEvent.KEYCODE_M, KeyEvent.KEYCODE_BUTTON_SELECT -> input.musicToggle = down
             else -> return false
