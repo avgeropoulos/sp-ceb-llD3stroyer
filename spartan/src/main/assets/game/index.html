@@ -34,9 +34,18 @@
         window.__engineFail(update);
         return;
       }
-      setTimeout(function () {
-        if (!window.__booted) window.__engineFail('The game failed to start. ' + (firstError ? firstError : update));
-      }, 12000);
+      // Fail only if booting stops making progress for 15 s (slow phones may take longer than that overall).
+      var started = Date.now();
+      var watchdog = setInterval(function () {
+        if (window.__booted) {
+          clearInterval(watchdog);
+          return;
+        }
+        if (Date.now() - (window.__bootProgressAt || started) > 15000) {
+          clearInterval(watchdog);
+          window.__engineFail('The game failed to start. ' + (firstError ? firstError : update));
+        }
+      }, 1000);
     })();
   </script>
   <script type="importmap">

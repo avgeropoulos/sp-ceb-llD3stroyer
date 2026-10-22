@@ -54,6 +54,7 @@ window.addEventListener('unhandledrejection', (e) =>
 );
 
 function bootProgress(text, fraction) {
+  window.__bootProgressAt = Date.now();
   const msg = document.getElementById('boot-msg');
   if (msg && text) msg.textContent = text;
   const fill = document.getElementById('boot-fill');
@@ -374,7 +375,7 @@ async function boot() {
 
   // ---- Frame (DESIGN.md §10) ----
   let fps = 60;
-  function frame(realDt) {
+  function frame(realDt, draw = true) {
     const t = ctx.time;
     const dt = Math.min(realDt, 0.05);
     const frozen = ctx.mode === 'paused' || ctx.mode === 'gameover';
@@ -411,7 +412,7 @@ async function boot() {
     ctx.audio.update(dt);
     ctx.hud.update(dt);
     ctx.menus.update(dt);
-    render();
+    if (draw) render();
   }
 
   function render() {
@@ -467,8 +468,9 @@ async function boot() {
   // ---- Test hooks (DESIGN.md §14) ----
   Object.assign(hook, {
     ctx,
+    /** Advances n frames; only the last one is drawn (software GL in tests is slow). */
     step(n = 1, dt = 1 / 60) {
-      for (let i = 0; i < n; i++) frame(dt);
+      for (let i = 0; i < n; i++) frame(dt, i === n - 1);
     },
     render,
     action: (a) => ctx.actions.push(Object.assign({ src: 'test' }, a)),
