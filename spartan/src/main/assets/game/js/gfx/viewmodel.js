@@ -894,14 +894,15 @@ export function createViewmodel(ctx) {
     } catch (err) {
       console.warn('viewmodel: blazonFly unavailable', err);
     }
-    if (img && img.width > 0 && typeof img.getContext === 'function') {
+    // Any drawable image (canvas, bitmap, <img>); a DataTexture's { data } image is not drawable.
+    if (img && img.width > 0 && !img.data) {
       if (typeof createImageBitmap === 'function') {
         createImageBitmap(img).then((bmp) => {
           applyBlazon(bmp);
           if (bmp.close) bmp.close();
         }, () => applyBlazon(img));
       } else applyBlazon(img);
-    } else if (img && img.width > 0 && typeof ImageBitmap !== 'undefined' && img instanceof ImageBitmap) applyBlazon(img);
+    }
     arrows.count = stuckCount;
     st.shown = targetShown();
   }

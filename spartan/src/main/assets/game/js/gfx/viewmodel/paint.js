@@ -596,11 +596,15 @@ export function paintShieldBronze(size, seed = 31) {
       P.mixAlb(j, BRONZE_DARK, 0.15 * c);
     });
   }
-  paintFlyBlazon(P, all, size);
-  return P.bake(1.6, true);
+  // The fallback fly goes on top of the baked bronze; the clean bronze pixels stay in the set so
+  // the player's real blazon can replace it later (compositeBlazon).
+  const fly = paintFlyBlazon(P, all, size);
+  const set = P.bake(1.6, true);
+  applyPaint(set, fly);
+  return set;
 }
 
-/** A fly painted in dark paint at the centre of the face, worn through in places. */
+/** Fallback blazon: a fly in dark paint at the centre of the face, worn through in places. Returns its coverage. */
 function paintFlyBlazon(P, r, size) {
   const N = P.noise;
   const cx = size / 2;
@@ -641,19 +645,37 @@ function paintFlyBlazon(P, r, size) {
       P.stroke(r, kx, ky, fx, fy, s * 0.02, (j, c) => add(j, Math.min(1, c * 2)));
     }
   }
-  // Eyes (lighter paint) are skipped; paint wear lets bronze through.
+  // Paint wear lets bronze through.
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const j = y * size + x;
       if (paint[j] <= 0) continue;
       const wear = smoothstep(0.35, 0.7, N.fbm2(x / size * 40, y / size * 40, 3) * 0.5 + 0.5);
-      const a = paint[j] * (1 - 0.85 * wear);
-      P.mixAlb(j, [0.07, 0.05, 0.04], a);
-      P.rough[j] = lerp(P.rough[j], 0.62, a);
-      P.metal[j] = lerp(P.metal[j], 0, a);
-      P.hgt[j] += 0.6 * a;
+      paint[j] *= 1 - 0.85 * wear;
     }
   }
+  return paint;
+}
+
+/** Lays dark paint (coverage per pixel) over a baked set's colour and ORM canvases. */
+function applyPaint(set, paint) {
+  const size = set.map.width;
+  const mImg = new ImageData(new Uint8ClampedArray(set.mapImg.data), size, size);
+  const oImg = new ImageData(new Uint8ClampedArray(set.ormImg.data), size, size);
+  const md = mImg.data;
+  const od = oImg.data;
+  for (let j = 0; j < paint.length; j++) {
+    const a = paint[j];
+    if (a <= 0) continue;
+    const k = j * 4;
+    md[k] = lerp(md[k], 0.07 * 255, a);
+    md[k + 1] = lerp(md[k + 1], 0.05 * 255, a);
+    md[k + 2] = lerp(md[k + 2], 0.04 * 255, a);
+    od[k + 1] = lerp(od[k + 1], 0.62 * 255, a);
+    od[k + 2] = lerp(od[k + 2], 0, a);
+  }
+  ctx2d(set.map).putImageData(mImg, 0, 0);
+  ctx2d(set.orm).putImageData(oImg, 0, 0);
 }
 
 /**
