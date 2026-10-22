@@ -1,0 +1,78 @@
+<!doctype html>
+<!-- World slice: the pass from the player's eye.
+     ?view=fwd|left|right|back|down|up|horde|wall|cliff  (or ?yaw=&pitch= in degrees)
+     &tod=dawn|morning|noon|afternoon|dusk  &shade=1 (volley shade)  &x=&z= (eye position)
+     &density=0..1  &quality=low|medium|high  &stats=1 (overlay renderer.info) -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sandbox: world</title>
+  <link rel="stylesheet" href="../../src/main/assets/game/style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "../../src/main/assets/game/lib/three/three.module.js",
+        "three/addons/": "../../src/main/assets/game/lib/three/addons/"
+      }
+    }
+  </script>
+  <style>#stats{position:fixed;left:6px;bottom:6px;font:11px monospace;color:#fff;text-shadow:0 0 3px #000;white-space:pre;pointer-events:none}</style>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <div id="overlay"></div>
+  <div id="stats"></div>
+  <script type="module">
+    import { createSandboxCtx } from './sandbox-ctx.js';
+    const params = new URLSearchParams(location.search);
+    const t0 = performance.now();
+    const ctx = await createSandboxCtx({ withWorld: true, withLights: false });
+    const tBuild = performance.now() - t0;
+    const { THREE, camera, renderer, world, scene } = ctx;
+    scene.background = null;
+    const VIEWS = {
+      fwd: [0, 0], left: [90, 6], right: [-90, -4], back: [180, 2], down: [0, -62], up: [35, 40],
+      horde: [0, 1], wall: [180, -2], cliff: [70, 28], sea: [-70, -8],
+    };
+    const v = VIEWS[params.get('view') || 'fwd'] || [0, 0];
+    const yaw = THREE.MathUtils.degToRad(Number(params.get('yaw') ?? v[0]));
+    const pitch = THREE.MathUtils.degToRad(Number(params.get('pitch') ?? v[1]));
+    const ex = Number(params.get('x') || 0);
+    const ez = Number(params.get('z') || 0);
+    camera.position.set(ex, world.groundHeight(ex, ez) + 1.66, ez);
+    camera.rotation.set(pitch, yaw, 0, 'YXZ');
+    if (params.get('fov')) { camera.fov = Number(params.get('fov')); camera.updateProjectionMatrix(); }
+    camera.updateMatrixWorld();
+    const progs0 = renderer.info.programs ? renderer.info.programs.length : 0;
+    if (params.get('tod')) world.setTimeOfDay(params.get('tod'));
+    if (params.get('density')) world.setArmyDensity(Number(params.get('density')));
+    if (params.get('shade') === '1') ctx.events.emit('volley', { phase: 'loosed', duration: 1.5 });
+    const statsEl = document.getElementById('stats');
+    // Split main and shadow pass costs: render once with shadows forced off to measure the main pass.
+    window.__worldStats = () => {
+      const info = renderer.info;
+      ctx.render();
+      const total = { calls: info.render.calls, triangles: info.render.triangles };
+      const sm = renderer.shadowMap.autoUpdate;
+      renderer.shadowMap.autoUpdate = false;
+      renderer.shadowMap.needsUpdate = false;
+      ctx.render();
+      const main = { calls: info.render.calls, triangles: info.render.triangles };
+      renderer.shadowMap.autoUpdate = sm;
+      ctx.render();
+      return {
+        main, shadow: { calls: total.calls - main.calls, triangles: total.triangles - main.triangles },
+        programs: info.programs.length, textures: info.memory.textures, geometries: info.memory.geometries,
+        texMB: +(ctx.textures.memoryBytes ? ctx.textures.memoryBytes() / 1048576 : 0).toFixed(1),
+        buildMs: Math.round(tBuild), shade: world.shade, tod: world.timeOfDay,
+      };
+    };
+    ctx.loop(() => {
+      if (params.get('stats') === '1' && ctx.time.now > 0) statsEl.textContent = JSON.stringify(window.__worldStats(), null, 0);
+    });
+    world.update(0, 0);
+    ctx.loop((dt, gdt) => world.update(dt, gdt));
+  </script>
+</body>
+</html>

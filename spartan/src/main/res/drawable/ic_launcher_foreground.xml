@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive icon foreground: the helmet and crest, sized to the 66 dp safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.71"
+        android:scaleY="0.71"
+        android:translateX="-5.5"
+        android:translateY="3.19">
+        <path
+            android:fillColor="#A3201C"
+            android:pathData="M32,29 C34,16 48,8 62,8 C77,9 90,19 95,37 C96,44 95,51 92,57 C90,49 87,44 84,40 C82,35 80,32 78,30 C74,26 69,23 64,22.5 C58,21.6 48,21.8 41,23.8 C37,25 34,27 32,29 Z" />
+        <path
+            android:fillColor="#6B1210"
+            android:pathData="M84,40 C87,44 90,49 92,57 C93.5,50 93.5,44 91.5,38 C88,29 81,22 72,18 C77,22 81,27 84,40 Z" />
+        <path
+            android:strokeColor="#C8392E"
+            android:strokeWidth="1.2"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M37,24 C44,15 57,12 69,14" />
+        <path
+            android:strokeColor="#7A1512"
+            android:strokeWidth="1.0"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M42,21.5 C52,16 66,16 77,22" />
+        <path
+            android:strokeColor="#7A1512"
+            android:strokeWidth="1.0"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M58,18.5 C70,18.5 81,26 87,37" />
+        <path
+            android:strokeColor="#C8392E"
+            android:strokeWidth="1.0"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M74,16 C84,21 90,30 92.5,41" />
+        <path
+            android:fillColor="#7C5523"
+            android:pathData="M46.5,27.5 L48.5,21.6 L61,21.6 L62.5,27 Z" />
+        <path
+            android:fillColor="#D9AE5C"
+            android:pathData="M48.8,22.6 L60.4,22.6 L60.6,23.6 L48.5,23.6 Z" />
+        <path
+            android:fillColor="#B88A3E"
+            android:fillType="evenOdd"
+            android:pathData="M30,67 L28.5,50 C28,43 31,35 38,31 C46,25 64,24 73,31 C80,37 81,49 77,57 C74,62 74,67 77,71 C80,75 84,78 87,80 C80,83 69,81 63,76 C60,73 57,69 53,70 C49,72 44,80 38,87 C36,82 35,75 35,69 Z M34,51 C38,49 45,50 50,54 C45,56 38,57 34,56 Z" />
+        <path
+            android:fillColor="#8A6128"
+            android:pathData="M35,69 C35,75 36,82 38,87 C44,80 49,72 53,70 C57,69 60,73 63,76 C69,81 80,83 87,80 C84,78 80,75 77,71 C74,67 74,62 77,57 C70,62 60,63 52,61 C46,60 40,62 35,69 Z" />
+        <path
+            android:fillColor="#E2B866"
+            android:pathData="M33,40 C36,32 46,27 58,27 C66,27 72,30 75,34 C66,30 52,30 43,34 C38,36 35,38 33,40 Z" />
+        <path
+            android:strokeColor="#F2D38A"
+            android:strokeWidth="0.8"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M29.4,48 C29,41 32,34.5 38,31.2 C44,27.5 52,26.3 60,26.6" />
+        <path
+            android:strokeColor="#5C3D16"
+            android:strokeWidth="1.3"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M30,46 C40,41 52,42 62,47 C68,50 73,52 77.5,52.5" />
+        <path
+            android:strokeColor="#5C3D16"
+            android:strokeWidth="0.9"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M34,51 C38,49 45,50 50,54 C45,56 38,57 34,56 Z" />
+        <path
+            android:strokeColor="#D9AE5C"
+            android:strokeWidth="0.8"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M35.6,70 C35.6,76 36.5,81 38,85.5" />
+    </group>
+</vector>

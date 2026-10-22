@@ -1,0 +1,216 @@
+<!doctype html>
+<!-- Gameplay sandbox: game/player.js + game/combat.js against stub actors (gameplay-harness.js).
+     ?scene=flight|stuck|fallen|skewer|volley|duel sets up a screenshot scene; ?checks=1 only loads.
+     window.__gp = { h, runChecks(names), scene(name), freeze(bool) }. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gameplay sandbox</title>
+  <link rel="stylesheet" href="../../src/main/assets/game/style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "../../src/main/assets/game/lib/three/three.module.js",
+        "three/addons/": "../../src/main/assets/game/lib/three/addons/"
+      }
+    }
+  </script>
+  <style>
+    #gp-info { position: fixed; left: 8px; bottom: 8px; color: #fff; font: 12px/1.3 monospace; text-shadow: 0 1px 2px #000; z-index: 50; pointer-events: none; white-space: pre; }
+  </style>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <div id="overlay"></div>
+  <div id="gp-info"></div>
+  <script type="module">
+    import { createSandboxCtx } from './sandbox-ctx.js';
+    import { createHarness } from './gameplay-harness.js';
+    import { runChecks } from './gameplay-checks.js';
+
+    const params = new URLSearchParams(location.search);
+    const ctx = await createSandboxCtx();
+    const { THREE } = ctx;
+    ctx.scene.fog = new THREE.Fog(0xa9bccd, 30, 140);
+
+    // Real props when gfx/characters.js exists and works; otherwise combat's fallback dory.
+    let characters = null;
+    let propSource = 'fallback';
+    try {
+      const mod = await import('../../src/main/assets/game/js/gfx/characters.js');
+      const ch = mod.createCharacters(ctx);
+      const probe = ch.createProp('dory');
+      if (probe && probe.isObject3D) {
+        characters = { createProp: (n) => ch.createProp(n) };
+        propSource = 'characters.createProp';
+      }
+    } catch (err) {
+      console.info('gameplay sandbox: using fallback props', String(err).slice(0, 120));
+    }
+
+    const h = createHarness(ctx, { characters });
+    let frozen = false;
+    let camFn = null;
+    ctx.loop(() => {
+      if (!frozen) h.tick();
+      if (camFn) {
+        camFn(ctx.camera);
+        ctx.camera.updateMatrixWorld();
+      }
+    });
+
+    // Scenery for screenshots: the sea beyond x = 9.5.
+    const sea = new THREE.Mesh(new THREE.PlaneGeometry(60, 200), new THREE.MeshStandardMaterial({ color: 0x2c5a72, roughness: 0.25, metalness: 0.1 }));
+    sea.rotation.x = -Math.PI / 2;
+    sea.position.set(39.5, 0.01, -40);
+    ctx.scene.add(sea);
+
+    const info = document.getElementById('gp-info');
+    const tmp = new THREE.Vector3();
+    function lookFrom(eye, target) {
+      return (cam) => {
+        cam.position.copy(eye);
+        cam.up.set(0, 1, 0);
+        cam.lookAt(target);
+      };
+    }
+
+    function arm() {
+      h.player.refillSpears();
+      h.action({ type: 'switchWeapon', weapon: 'spear' });
+      h.stepTime(0.4);
+    }
+
+    // Screenshot scenes. Each leaves the simulation frozen with a camera function.
+    const SCENES = {
+      flight() {
+        h.reset();
+        arm();
+        h.spawn('levy', 0.8, -14, { blockChance: 0, hp: 1000 });
+        h.step(1);
+        h.action({ type: 'throw', power: 0.6, src: 'touch' });
+        h.stepUntil(() => h.events('spearThrown').length > 0, 60);
+        h.stepTime(0.22);
+        const p = h.events('spearThrown')[0].payload.projectile;
+        frozen = true;
+        camFn = lookFrom(new THREE.Vector3(p.pos.x + 1.7, p.pos.y + 0.25, p.pos.z + 0.4), p.pos.clone());
+        return `spear in flight, vel ${p.vel.toArray().map((v) => v.toFixed(1))}`;
+      },
+      stuck() {
+        h.reset();
+        arm();
+        const lv = h.spawn('levy', 0.8, -14, { blockChance: 0, hp: 1000 });
+        h.step(1);
+        h.action({ type: 'throw', power: 0.6, src: 'touch' });
+        h.stepUntil(() => h.events('spearImpact').length > 0, 300);
+        h.stepTime(0.1);
+        frozen = true;
+        const c = lv.chestPoint(new THREE.Vector3());
+        camFn = lookFrom(new THREE.Vector3(c.x + 3.0, c.y + 0.4, c.z + 2.2), c);
+        return `spear stuck in ${lv.name}`;
+      },
+      fallen() {
+        h.reset();
+        arm();
+        const lv = h.spawn('levy', 0.8, -14, { blockChance: 0, hp: 60 });
+        h.step(1);
+        h.action({ type: 'throw', power: 0.6, src: 'touch' });
+        h.stepUntil(() => h.events('spearImpact').length > 0, 300);
+        h.stepTime(1.2);
+        frozen = true;
+        const c = new THREE.Vector3(lv.pos.x, 0.5, lv.pos.z - 0.6);
+        camFn = lookFrom(new THREE.Vector3(c.x + 3.4, 1.6, c.z + 1.8), c);
+        return `${lv.name} fell with the spear (alive=${lv.alive})`;
+      },
+      skewer() {
+        h.reset();
+        arm();
+        h.spawn('levy', 0, -9, { blockChance: 0, hp: 1000 });
+        h.spawn('immortal', 0.05, -10.1, { blockChance: 0, hp: 1000 });
+        h.step(1);
+        h.action({ type: 'throw', power: 0.95, src: 'touch' });
+        h.stepUntil(() => h.events('spearImpact').length > 0, 300);
+        frozen = true;
+        camFn = lookFrom(new THREE.Vector3(3.2, 1.9, -8.2), new THREE.Vector3(0, 1.2, -9.6));
+        const imp = h.events('spearImpact')[0].payload;
+        return `skewer hits ${imp.projectile.hits.length}`;
+      },
+      ground() {
+        h.reset();
+        arm();
+        for (let i = 0; i < 4; i++) {
+          h.player.yaw = -0.25 + 0.17 * i;
+          h.player.pitch = 0.45 + 0.04 * i;
+          h.action({ type: 'throw', power: 0.05 * i, src: 'touch' });
+          h.stepTime(3.0);
+          h.player.refillSpears();
+        }
+        frozen = true;
+        const first = h.combat.stuckSpears[0].pos.clone();
+        first.y = 0.7;
+        camFn = lookFrom(new THREE.Vector3(first.x + 2.6, 1.5, first.z + 1.6), first);
+        return `ground spears ${h.combat.stuckSpears.length}`;
+      },
+      volley() {
+        h.reset();
+        for (const x of [-1.4, 1.4, 2.8, -2.8]) h.spawn('spartan', x, 0, { team: 'greek', role: 'ally', hp: 150, facing: Math.PI });
+        h.combat.volley({ count: 300, duration: 1.0, warn: 0.3 });
+        h.stepTime(1.9);
+        frozen = true;
+        camFn = (cam) => {
+          cam.position.set(0, 1.66, 2.5);
+          cam.rotation.set(0.35, 0, 0, 'YXZ');
+        };
+        return `volley arrows drawn: ${h.combat.volleyMesh.count}`;
+      },
+      volleyLanded() {
+        h.reset();
+        h.combat.volley({ count: 300, duration: 1.0, warn: 0.3 });
+        h.stepTime(4.5);
+        frozen = true;
+        camFn = (cam) => {
+          cam.position.set(0, 1.66, 3);
+          cam.rotation.set(-0.25, 0, 0, 'YXZ');
+        };
+        return `ground arrows: ${h.combat.volleyMesh.count}`;
+      },
+    };
+
+    window.__gp = {
+      h,
+      propSource,
+      async runChecks(names) {
+        frozen = false;
+        camFn = null;
+        // The checks only need the simulation: skip drawing every stepped frame.
+        const render = ctx.render;
+        ctx.render = () => {};
+        try {
+          return await runChecks(h, names);
+        } finally {
+          ctx.render = render;
+          ctx.render();
+        }
+      },
+      scene(name) {
+        frozen = false;
+        camFn = null;
+        const msg = SCENES[name] ? SCENES[name]() : `unknown scene ${name}`;
+        info.textContent = `${name}: ${msg}\nprops: ${propSource}`;
+        ctx.step(1);
+        return msg;
+      },
+      freeze(f) { frozen = !!f; },
+    };
+    if (params.get('scene')) window.__gp.scene(params.get('scene'));
+    else {
+      // Interactive default: a few stub enemies in front.
+      h.spawn('levy', -1.0, -1.7, { blockChance: 0.25 });
+      h.spawn('immortal', 0.6, -2.0, { blockChance: 0.45 });
+      h.spawn('captain', 2.4, -3.2, { blockChance: 0.3 });
+    }
+    window.__gpReady = true;
+  </script>
+</body>
+</html>

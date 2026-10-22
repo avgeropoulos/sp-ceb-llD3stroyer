@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Characters: crowd</title>
+  <link rel="stylesheet" href="../../src/main/assets/game/style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "../../src/main/assets/game/lib/three/three.module.js",
+        "three/addons/": "../../src/main/assets/game/lib/three/addons/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <div id="overlay"></div>
+  <script type="module">
+    import { run } from './characters-views.js';
+    try {
+      await run('crowd');
+    } catch (err) {
+      console.error(err);
+      (window.__sandbox || {}).errors?.push(String(err && err.stack || err));
+    }
+  </script>
+</body>
+</html>

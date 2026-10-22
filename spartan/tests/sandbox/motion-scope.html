@@ -1,0 +1,259 @@
+<!doctype html>
+<!--
+  Motion scope: plots what the motion pipeline (platform → frames → gestures, DESIGN.md §5) sees.
+  Synthetic:  motion-scope.html?preset=tour|sword|spear|look&kind=android|web&rot=90&tilt=0&roll=0&rate=100&sign=1&hand=right&sens=1&grav=1&linear=1&seed=1
+  Live phone: motion-scope.html?live=1   (tap Start; on iOS this asks for motion permission)
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Motion Scope</title>
+  <style>
+    :root { --bg: #14100c; --panel: #1d1712; --ink: #eadfca; --dim: #8f826d; --grid: #2c241c; color-scheme: dark; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 12px/1.3 system-ui, sans-serif; overflow: hidden; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+    #start { position: fixed; inset: auto 16px 16px auto; padding: 14px 22px; font: 600 16px system-ui; color: #1a120c; background: #d9a441; border: 0; border-radius: 8px; display: none; }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <button id="start">Start sensors</button>
+  <script type="module">
+    import { createPlatform } from '../../src/main/assets/game/js/platform.js';
+    import { MotionFrames } from '../../src/main/assets/game/js/motion/frames.js';
+    import { GestureRecognizer, GESTURE_DEFAULTS as P } from '../../src/main/assets/game/js/motion/gestures.js';
+    import { synthesize, scriptDuration } from '../../src/main/assets/game/js/motion/synth.js';
+
+    const q = new URLSearchParams(location.search);
+    const num = (k, d) => (q.has(k) ? Number(q.get(k)) : d);
+    const live = q.get('live') === '1';
+    const TOK = ['R', 'UR', 'U', 'UL', 'L', 'DL', 'D', 'DR'];
+    const ARROW = { R: '→', UR: '↗', U: '↑', UL: '↖', L: '←', DL: '↙', D: '↓', DR: '↘' };
+    const token = (d) => TOK[((Math.round(d / (Math.PI / 4)) % 8) + 8) % 8];
+    const PI = Math.PI;
+    const PRESETS = {
+      tour: [
+        { kind: 'idle', duration: 1.2 }, { kind: 'swing', dir: 0 }, { kind: 'swing', dir: PI }, { kind: 'swing', dir: PI / 2 },
+        { kind: 'swing', dir: -PI / 2 }, { kind: 'swing', dir: PI / 4 }, { kind: 'swing', dir: -3 * PI / 4 },
+        { kind: 'thrust' }, { kind: 'idle', duration: 0.4 }, { kind: 'turn', yaw: 0.8, duration: 1.0 }, { kind: 'idle', duration: 0.4 },
+        { kind: 'throw', speed: 13, weapon: 'spear' }, { kind: 'idle', duration: 0.6 },
+      ],
+      sword: [{ kind: 'idle', duration: 1.2 }, ...[0, PI, 0, PI].map((dir) => ({ kind: 'swing', dir, arc: 1.0, ret: 0 })), { kind: 'swing', dir: 0, speed: 10 }, { kind: 'idle', duration: 0.05 }, { kind: 'swing', dir: PI, speed: 4 }, { kind: 'raise' }, { kind: 'swing', dir: -PI / 2, arc: 2.6, windup: 0 }, { kind: 'idle', duration: 0.6 }],
+      spear: [{ kind: 'idle', duration: 1.2 }, ...[9, 13, 18].flatMap((speed) => [{ kind: 'throw', speed, weapon: 'spear' }, { kind: 'idle', duration: 0.8 }]), { kind: 'swing', dir: -PI / 2, weapon: 'spear' }, { kind: 'thrust', retract: 0.25 }, { kind: 'idle', duration: 0.6 }],
+      look: [{ kind: 'idle', duration: 1.2 }, { kind: 'turn', yaw: 1.0, duration: 1.2 }, { kind: 'idle', duration: 0.6 }, { kind: 'swing', dir: 0 }, { kind: 'idle', duration: 0.6 }, { kind: 'walk', duration: 3 }, { kind: 'turn', yaw: -0.5, duration: 0.8 }, { kind: 'idle', duration: 0.8 }],
+    };
+
+    const canvas = document.getElementById('c');
+    const g2 = canvas.getContext('2d');
+    const css = getComputedStyle(document.documentElement);
+    const C = { ink: css.getPropertyValue('--ink'), dim: css.getPropertyValue('--dim'), grid: css.getPropertyValue('--grid'), panel: css.getPropertyValue('--panel'),
+      m: '#e8b04a', yaw: '#5fb3d9', pitch: '#d97a5f', beta: '#9ad16b', f: '#c98be0', vf: '#7f6aa8', look: '#5fd9b3', thr: '#5a4c3c', ev: '#f3e6c8' };
+
+    const kind = live ? (q.get('kind') || null) : q.get('kind') || 'android';
+    const frames = new MotionFrames({ platformKind: kind || 'web' });
+    const gest = new GestureRecognizer({ sensitivity: num('sens', 1), weapon: 'sword' });
+    const trace = []; // { t, m, yaw, pitch, beta, f, vf, look, settled }
+    const events = []; // { t, label }
+    const segs = []; // { t0, t1, label }
+    let look = 0;
+    function ingest(raw) {
+      const s = frames.process(raw);
+      for (const e of gest.push(s)) {
+        const label = e.type === 'slash' ? `${ARROW[token(e.dir)]} ${token(e.dir)} ${e.power.toFixed(2)}` : e.type === 'windup' ? 'WINDUP' : `${e.type.toUpperCase()} ${e.power.toFixed(2)}`;
+        events.push({ t: e.t, label, type: e.type });
+      }
+      look += gest.consumeLook().yaw;
+      const d = gest.debug;
+      trace.push({ t: s.t, m: d.m, yaw: d.yawRate, pitch: d.pitchRate, beta: d.beta, f: d.fwdAcc, vf: d.fwdVel, look, settled: gest.settled });
+    }
+
+    let title = '';
+    let platform = null;
+    if (!live) {
+      const script = PRESETS[q.get('preset') || 'tour'] || PRESETS.tour;
+      const opts = { rot: num('rot', 90), tilt: num('tilt', 0), roll: num('roll', 0), rate: num('rate', 100), gravitySign: num('sign', 1), hand: q.get('hand') || 'right',
+        includeGravity: q.get('grav') !== '0' && kind === 'android', includeLinear: q.get('linear') !== '0', seed: num('seed', 1), jitter: num('jitter', 0) };
+      let t = 0;
+      const weaponAt = [];
+      for (const seg of script) {
+        const d = scriptDuration([seg], opts);
+        segs.push({ t0: t, t1: t + d, label: seg.kind === 'swing' ? `swing ${token(seg.dir)}${seg.speed ? ' ' + seg.speed : ''}` : seg.kind === 'throw' ? `throw ${seg.speed ?? 13}` : seg.kind });
+        weaponAt.push([t, seg.weapon || 'sword']);
+        t += d;
+      }
+      const raw = synthesize(script, opts);
+      let wi = 0;
+      for (const r of raw) {
+        while (wi + 1 < weaponAt.length && r.t >= weaponAt[wi + 1][0]) wi++;
+        // a throw segment arms the spear from its start until the next segment
+        gest.setWeapon(weaponAt[wi][1]);
+        ingest(r);
+      }
+      title = `synthetic "${q.get('preset') || 'tour'}" · ${kind} · rot ${opts.rot} · tilt ${opts.tilt} · roll ${opts.roll} · ${opts.rate} Hz · sign ${opts.gravitySign} · ${opts.hand} hand · sens ${gest.sens}`;
+    } else {
+      platform = createPlatform();
+      title = `live · ${platform.kind}`;
+      const btn = document.getElementById('start');
+      btn.style.display = 'block';
+      btn.onclick = async () => {
+        const ok = await platform.motion.requestPermission();
+        const sup = ok && (await platform.motion.isSupported());
+        btn.textContent = sup ? 'Running' : 'No motion sensors';
+        if (sup) {
+          platform.motion.start();
+          setTimeout(() => (btn.style.display = 'none'), 600);
+        }
+      };
+    }
+
+    function lane(y, h, label, series, lo, hi, lines = []) {
+      const W = canvas.width / devicePixelRatio;
+      const x0 = 70, x1 = W - 16;
+      g2.fillStyle = C.panel;
+      g2.fillRect(x0, y, x1 - x0, h);
+      g2.fillStyle = C.dim;
+      g2.fillText(label, 8, y + 12);
+      const Y = (v) => y + h - ((Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo)) * h;
+      g2.lineWidth = 1;
+      for (const [v, name] of lines) {
+        g2.strokeStyle = C.thr;
+        g2.setLineDash([4, 4]);
+        g2.beginPath();
+        g2.moveTo(x0, Y(v));
+        g2.lineTo(x1, Y(v));
+        g2.stroke();
+        g2.setLineDash([]);
+        g2.fillStyle = C.dim;
+        g2.fillText(name, 8, Y(v) + 4);
+      }
+      return { x0, x1, Y, draw(key, color, X) {
+        g2.strokeStyle = color;
+        g2.lineWidth = 1.5;
+        g2.beginPath();
+        let first = true;
+        for (const s of series) {
+          const x = X(s.t);
+          if (x < x0 || x > x1) continue;
+          if (first) g2.moveTo(x, Y(s[key]));
+          else g2.lineTo(x, Y(s[key]));
+          first = false;
+        }
+        g2.stroke();
+      } };
+    }
+
+    function render() {
+      const dpr = devicePixelRatio || 1;
+      const W = innerWidth, H = innerHeight;
+      if (canvas.width !== W * dpr || canvas.height !== H * dpr) {
+        canvas.width = W * dpr;
+        canvas.height = H * dpr;
+      }
+      g2.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g2.fillStyle = getComputedStyle(document.body).backgroundColor;
+      g2.fillRect(0, 0, W, H);
+      g2.font = '12px system-ui, sans-serif';
+      if (!trace.length) {
+        g2.fillStyle = C.ink;
+        g2.fillText(title + ' · waiting for samples…', 16, 24);
+        return;
+      }
+      const tEnd = trace[trace.length - 1].t;
+      const tStart = live ? tEnd - 8 : trace[0].t;
+      const x0 = 70, x1 = W - 16;
+      const X = (t) => x0 + ((t - tStart) / Math.max(1e-6, tEnd - tStart)) * (x1 - x0);
+      const vis = live ? trace.filter((s) => s.t >= tStart) : trace;
+
+      g2.fillStyle = C.ink;
+      g2.font = '600 13px system-ui, sans-serif';
+      g2.fillText('Motion scope', 16, 20);
+      g2.font = '12px system-ui, sans-serif';
+      g2.fillStyle = C.dim;
+      const rate = platform ? ` · ${platform.motion.rate().toFixed(0)} Hz` : '';
+      g2.fillText(`${title}${rate} · gravitySign ${frames.gravitySign}${frames.gravityLatched ? ' (latched)' : ''} · rotFix ${frames.rotFix} · axisMap ${frames.axisMap} · ${events.length} events`, 120, 20);
+
+      const top = 52;
+      const gap = 10;
+      const lanes = 5;
+      const h = Math.max(40, (H - top - 16 - gap * (lanes - 1)) / lanes);
+      let y = top;
+      // segment bands
+      for (const sg of segs) {
+        const a = X(sg.t0), b = X(sg.t1);
+        g2.fillStyle = C.dim;
+        if (b - a > 34) g2.fillText(sg.label, a + 3, top - 6);
+        g2.strokeStyle = C.grid;
+        g2.beginPath();
+        g2.moveTo(a, top - 2);
+        g2.lineTo(a, H - 16);
+        g2.stroke();
+      }
+      const L1 = lane(y, h, 'm rad/s', vis, 0, 16, [[P.swingStart / gest.sens, 'start'], [P.swingPeak / gest.sens, 'peak']]);
+      L1.draw('m', C.m, X);
+      y += h + gap;
+      const L2 = lane(y, h, 'yaw / pitch', vis, -14, 14, [[0, '0']]);
+      L2.draw('yaw', C.yaw, X);
+      L2.draw('pitch', C.pitch, X);
+      y += h + gap;
+      const L3 = lane(y, h, 'β rad', vis, -1.8, 2.8, [[P.upHoldStartBeta, 'upHold'], [P.windupBeta, 'windup'], [0, '0']]);
+      L3.draw('beta', C.beta, X);
+      y += h + gap;
+      const L4 = lane(y, h, 'f m/s², vf', vis, -40, 70, [[P.thrustAcc / gest.sens, 'thrust'], [0, '0']]);
+      L4.draw('f', C.f, X);
+      L4.draw('vf', C.vf, X);
+      y += h + gap;
+      const L5 = lane(y, h, 'look rad', vis, -1.2, 1.2, [[0, '0']]);
+      // settled shading
+      g2.fillStyle = 'rgba(95,217,179,0.08)';
+      for (const s of vis) if (s.settled) g2.fillRect(X(s.t), y, 2, h);
+      L5.draw('look', C.look, X);
+
+      // events
+      g2.font = '600 12px system-ui, sans-serif';
+      let lastX = -1e9, row = 0;
+      for (const e of events) {
+        const x = X(e.t);
+        if (x < x0 || x > x1) continue;
+        g2.strokeStyle = e.type === 'slash' ? C.m : e.type === 'thrust' ? C.f : C.beta;
+        g2.lineWidth = 1.5;
+        g2.beginPath();
+        g2.moveTo(x, top);
+        g2.lineTo(x, H - 16);
+        g2.stroke();
+        row = x - lastX < 80 ? (row + 1) % 3 : 0;
+        lastX = x;
+        const tw = g2.measureText(e.label).width + 8;
+        const ty = top + 4 + row * 18;
+        g2.fillStyle = 'rgba(20,16,12,0.85)';
+        g2.fillRect(x + 3, ty, tw, 16);
+        g2.fillStyle = C.ev;
+        g2.fillText(e.label, x + 7, ty + 12);
+      }
+      g2.font = '12px system-ui, sans-serif';
+      g2.fillStyle = C.dim;
+      g2.fillText(`${(tEnd - tStart).toFixed(1)} s`, x1 - 30, H - 3);
+      if (live && events.length) {
+        g2.font = '600 40px system-ui, sans-serif';
+        g2.fillStyle = C.ink;
+        g2.fillText(events[events.length - 1].label, x1 - 260, top + 60);
+      }
+    }
+
+    function step() {
+      if (platform) for (const r of platform.motion.poll()) ingest(r);
+      if (trace.length > 6000) trace.splice(0, trace.length - 4000);
+      render();
+    }
+    window.__sandbox = { step: (n = 1) => { for (let i = 0; i < n; i++) step(); }, errors: [], events, frames, gest };
+    addEventListener('resize', render);
+    if (q.get('manual') !== '1') {
+      const loop = () => {
+        step();
+        if (live) requestAnimationFrame(loop);
+      };
+      requestAnimationFrame(loop);
+    }
+  </script>
+</body>
+</html>

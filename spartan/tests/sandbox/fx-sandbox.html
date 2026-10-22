@@ -1,0 +1,29 @@
+<!doctype html>
+<!-- fx sandbox. Params: scene=blood|sparks|dust|splinters|splash|decals|all|spear (default all),
+     motion=1, settled=0|1|auto, target=hit|miss|sea, blood=0, world=1 (use the real world.js), manual=1.
+     window.__fx exposes the test API (see fx-sandbox.js). -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>fx sandbox</title>
+  <link rel="stylesheet" href="../../src/main/assets/game/style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "../../src/main/assets/game/lib/three/three.module.js",
+        "three/addons/": "../../src/main/assets/game/lib/three/addons/"
+      }
+    }
+  </script>
+  <style>
+    #fx-hud { position: fixed; left: 8px; bottom: 6px; font: 12px/1.3 monospace; color: #fff; text-shadow: 0 1px 2px #000; pointer-events: none; z-index: 50; white-space: pre; }
+  </style>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <div id="overlay"></div>
+  <div id="fx-hud"></div>
+  <script type="module" src="./fx-sandbox.js"></script>
+</body>
+</html>

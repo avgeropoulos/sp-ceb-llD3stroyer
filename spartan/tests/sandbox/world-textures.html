@@ -1,0 +1,81 @@
+<!doctype html>
+<!-- World slice: every procedural texture in a grid. ?page=0..n (12 per page), ?tile=2 repeats each
+     texture to reveal seams, ?lit=1 shows colour+normal pairs under a raking light. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sandbox: textures</title>
+  <link rel="stylesheet" href="../../src/main/assets/game/style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "../../src/main/assets/game/lib/three/three.module.js",
+        "three/addons/": "../../src/main/assets/game/lib/three/addons/"
+      }
+    }
+  </script>
+  <style>#labels{position:fixed;inset:0;pointer-events:none;font:11px sans-serif;color:#fff;text-shadow:0 0 3px #000}
+  #labels div{position:absolute}</style>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <div id="overlay"></div>
+  <div id="labels"></div>
+  <script type="module">
+    import { createSandboxCtx } from './sandbox-ctx.js';
+    const ctx = await createSandboxCtx({ withLights: false });
+    const { THREE, scene } = ctx;
+    const params = new URLSearchParams(location.search);
+    const page = Number(params.get('page') || 0);
+    const tile = Number(params.get('tile') || 2);
+    const lit = params.get('lit') === '1';
+    const only = params.get('names');
+    const t0 = performance.now();
+    const all = ctx.textures.names;
+    let names = only ? only.split(',') : all.slice(page * 12, page * 12 + 12);
+    if (lit) names = names.filter((n) => !n.endsWith('Normal'));
+    scene.background = new THREE.Color(lit ? 0x202020 : 0x6b6152);
+    const cam = new THREE.OrthographicCamera(0, 4, 3, 0, -10, 10);
+    const cols = 4;
+    const labels = document.getElementById('labels');
+    const timings = {};
+    if (lit) {
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x404040, 0.6));
+      const sun = new THREE.DirectionalLight(0xffffff, 2.5);
+      sun.position.set(-1, 1.2, 0.6);
+      scene.add(sun);
+    }
+    names.forEach((name, i) => {
+      const s = performance.now();
+      const tex = ctx.textures.get(name);
+      timings[name] = Math.round(performance.now() - s);
+      const t = tex.clone();
+      t.repeat.set(tile, tile);
+      t.needsUpdate = true;
+      let mat;
+      if (lit) {
+        const nn = name + 'Normal';
+        const normal = all.includes(nn) ? ctx.textures.get(nn).clone() : null;
+        if (normal) { normal.repeat.set(tile, tile); normal.needsUpdate = true; }
+        mat = new THREE.MeshStandardMaterial({ map: t, normalMap: normal, roughness: 0.8, metalness: name === 'bronze' || name === 'scale' ? 0.9 : 0 });
+      } else {
+        mat = new THREE.MeshBasicMaterial({ map: t, transparent: true });
+      }
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(0.96, 0.96), mat);
+      const cx = (i % cols) + 0.5, cy = 2.5 - Math.floor(i / cols);
+      m.position.set(cx, cy, 0);
+      scene.add(m);
+      const d = document.createElement('div');
+      d.textContent = `${name} ${tex.image.width}px ${timings[name]}ms`;
+      d.style.left = ((cx - 0.48) / 4 * 100) + '%';
+      d.style.top = ((3 - cy - 0.48) / 3 * 100) + '%';
+      labels.appendChild(d);
+    });
+    console.log('generated', names.length, 'in', Math.round(performance.now() - t0), 'ms', JSON.stringify(timings));
+    window.__texInfo = { timings, total: performance.now() - t0, memory: ctx.textures.memoryBytes() };
+    ctx.render = () => { ctx.renderer.clear(); ctx.renderer.render(scene, cam); };
+    ctx.loop(() => {});
+  </script>
+</body>
+</html>

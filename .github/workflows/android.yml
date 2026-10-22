@@ -21,31 +21,51 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run Thermopylae unit tests
+        run: node --test spartan/tests/unit/*.test.mjs
+
       - name: Run game logic tests
         run: ./gradlew :core:test --console=plain
 
-      - name: Build APK
-        run: ./gradlew :app:assembleDebug --console=plain
+      - name: Build APKs
+        run: ./gradlew :app:assembleDebug :spartan:assembleDebug --console=plain
 
-      - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk RoccosQuest.apk
+      - name: Rename APKs
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk RoccosQuest.apk
+          cp spartan/build/outputs/apk/debug/spartan-debug.apk Thermopylae.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: RoccosQuest-apk
           path: RoccosQuest.apk
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Thermopylae-apk
+          path: Thermopylae.apk
+
       - name: Publish downloadable build
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-${{ github.ref_name }}
-          name: "Rocco's Quest - Download for Android"
+          name: "Rocco's Quest and Thermopylae - Download for Android"
           prerelease: false
           make_latest: true
           body: |
-            Install on Android: download **RoccosQuest.apk** on your phone, open it,
+            Install on Android: download the APK on your phone, open it,
             and allow "install unknown apps" for your browser if asked.
 
+            * **RoccosQuest.apk**: Rocco's Quest, the platformer.
+            * **Thermopylae.apk**: Thermopylae, a first-person Spartan last stand with
+              motion controls (needs Android 7.0+ and an up-to-date Android System WebView).
+
             Built from ${{ github.sha }}.
-          files: RoccosQuest.apk
+          files: |
+            RoccosQuest.apk
+            Thermopylae.apk

@@ -1,0 +1,270 @@
+<!doctype html>
+<!-- UI sandbox: hud.js, menus.js, input.js and training.js on a stub ctx.
+     ?view=title|settings|pause|gameover|howto|safety|hud|hud-banner|hud-volley|hud-spearcam|touch|motion|training
+     &control=touch|motion &left=1 &tab=<tab> &step=<n> &motion=1 (motion supported) &spear=1 -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>UI sandbox</title>
+  <link rel="stylesheet" href="../../src/main/assets/game/style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "../../src/main/assets/game/lib/three/three.module.js",
+        "three/addons/": "../../src/main/assets/game/lib/three/addons/"
+      }
+    }
+  </script>
+  <style>
+    /* Stand-in for the viewmodel's overlay quad (vignette, hurt flash, helmet slit). */
+    #vmfake { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+    #vmfake .v { position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 45%, rgba(120, 0, 0, 0.85) 100%); opacity: 0; }
+    #vmfake .h { position: absolute; inset: 0; background: rgba(255, 30, 10, 0.35); opacity: 0; }
+    #vmfake .m { position: absolute; inset: 0; background: radial-gradient(ellipse 75% 85% at 50% 58%, transparent 70%, rgba(0, 0, 0, 0.55) 100%); opacity: 0; }
+  </style>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <div id="vmfake"><div class="m"></div><div class="v"></div><div class="h"></div></div>
+  <div id="overlay"></div>
+  <script type="module">
+    import { createSandboxCtx } from './sandbox-ctx.js';
+    import { createHud } from '../../src/main/assets/game/js/ui/hud.js';
+    import { createMenus } from '../../src/main/assets/game/js/ui/menus.js';
+    import { createInput } from '../../src/main/assets/game/js/ui/input.js';
+    import { createTraining } from '../../src/main/assets/game/js/ui/training.js';
+
+    const params = new URLSearchParams(location.search);
+    const ctx = await createSandboxCtx();
+    const { THREE } = ctx;
+    const log = { actions: [], audio: [], voice: [], volleys: [], saves: 0, injected: 0, overlay: null, overlayCalls: 0, spawned: [], spawnArgs: [], cleared: 0, events: [], modes: [] };
+
+    // ---- settings / storage ----
+    ctx.settings.control = params.get('control') || 'touch';
+    ctx.settings.leftHanded = params.get('left') === '1';
+    ctx.settings.safetyAccepted = params.get('safe') === '1';
+    ctx.settings.sensorDebug = params.get('debug') === '1';
+    ctx.saveSettings = () => { log.saves++; };
+    const store = new Map();
+    if (params.get('best')) store.set('thermopylae.best', JSON.parse(params.get('best')));
+    ctx.platform.storage = { load: (k, f) => (store.has(k) ? JSON.parse(JSON.stringify(store.get(k))) : f), save: (k, v) => store.set(k, JSON.parse(JSON.stringify(v))) };
+    ctx.platform.motion.isSupported = async () => params.get('motion') === '1';
+    ctx.platform.motion.requestPermission = async () => true;
+    ctx.platform.motion.inject = (s) => { log.injected += s.length; log.injectRot = s[0] && s[0].rot; };
+    ctx.platform.voice = { say() {}, stop() {} };
+    const pushAction = ctx.actions.push;
+    ctx.actions.push = (a) => { log.actions.push(Object.assign({ at: performance.now() }, a)); pushAction(a); };
+
+    // ---- 3D stand-ins: a few figures to project wind-up chevrons onto ----
+    ctx.scene.background = new THREE.Color(0x9db2c6);
+    ctx.scene.fog = new THREE.Fog(0x9db2c6, 20, 140);
+    const body = new THREE.MeshStandardMaterial({ color: 0x6b3b2a, roughness: 0.8 });
+    const bronze = new THREE.MeshStandardMaterial({ color: 0xb48a3c, roughness: 0.35, metalness: 0.8 });
+    function figure(x, z, h = 1.78, mat = body) {
+      const g = new THREE.Group();
+      const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, h - 0.9, 4, 10), mat);
+      torso.position.y = h / 2 + 0.05;
+      torso.castShadow = true;
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 10), mat);
+      head.position.y = h - 0.12;
+      const shield = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.05, 20), bronze);
+      shield.rotation.x = Math.PI / 2;
+      shield.position.set(-0.25, h * 0.55, 0.3);
+      g.add(torso, head, shield);
+      g.position.set(x, 0, z);
+      ctx.scene.add(g);
+      return g;
+    }
+    function actor(kind, x, z, extra = {}) {
+      const a = Object.assign({ id: log.spawned.length + 1, kind, team: 'persian', role: 'melee', pos: new THREE.Vector3(x, 0, z), height: 1.78, alive: true, state: 'engage', hp: 55, maxHp: 55 }, extra);
+      a.mesh = figure(x, z, a.height, kind === 'dummy' ? bronze : body);
+      ctx.actors.push(a);
+      log.spawned.push(kind);
+      return a;
+    }
+    // Distant rocks for depth.
+    for (let i = 0; i < 14; i++) {
+      const r = new THREE.Mesh(new THREE.DodecahedronGeometry(1 + (i % 4)), new THREE.MeshStandardMaterial({ color: 0x8a7a66, roughness: 1 }));
+      r.position.set(-12 - (i % 3) * 3, 0, -10 - i * 7);
+      ctx.scene.add(r);
+    }
+
+    // ---- module stubs ----
+    ctx.player = { hp: 100, maxHp: 100, weapon: 'sword', spares: 2, hasSpearInHand: false, spearsLeft: 2, score: 0, chain: 1, kills: 0, focusTarget: null, alive: true, shieldRaise: 0, yaw: 0, pitch: 0 };
+    ctx.fx = { cameraOverridden: false };
+    ctx.waves = { day: 1, wave: 2, phase: 'A', state: 'fighting', readyCalls: 0, ready() { this.readyCalls++; this.state = 'fighting'; } };
+    const vmEl = document.getElementById('vmfake');
+    ctx.viewmodel = {
+      setOverlay(o) {
+        log.overlay = { vignette: o.vignette, hurt: o.hurt, helmet: o.helmet };
+        log.overlayCalls++;
+        vmEl.querySelector('.v').style.opacity = String(o.vignette);
+        vmEl.querySelector('.h').style.opacity = String(o.hurt);
+        vmEl.querySelector('.m').style.opacity = o.helmet ? '1' : '0';
+      },
+      play() {},
+    };
+    ctx.gestures = { debug: { m: 6.2, beta: 0.3, fwdAcc: 9, phase: 'swing', lookState: 'settled', lastEvent: { type: 'slash', power: 0.62 } }, settled: true, setSensitivity(s) { this.sens = s; } };
+    ctx.audio = { unlock() { log.audio.push('unlock'); }, play(n) { log.audio.push(n); }, applyVolumes() { log.audio.push('volumes'); }, setMusic() {}, setAmbience() {} };
+    ctx.world.setTimeOfDay = () => {};
+    ctx.world.setArmyDensity = () => {};
+    ctx.ai = {
+      spawnDummy: (x, z, o) => { log.spawnArgs.push(['dummy', x, z, o]); return actor('dummy', x, z, { role: 'dummy', hp: Infinity, maxHp: Infinity, state: 'idle', height: 1.6 }); },
+      spawnEnemy: (kind, x, z, o) => { log.spawnArgs.push([kind, x, z, o]); return actor(kind, x, z, { trainer: !!(o && o.trainer) }); },
+      clear() {
+        log.cleared++;
+        for (const a of ctx.actors) ctx.scene.remove(a.mesh);
+        ctx.actors.length = 0;
+      },
+    };
+    const timers = [];
+    const later = (sec, fn) => timers.push({ at: ctx.time.gnow + sec, fn });
+    ctx.combat = {
+      volley(o = {}) {
+        log.volleys.push(o);
+        const warn = o.warn ?? 2.5, dur = o.duration ?? 1;
+        ctx.events.emit('volley', { phase: 'warning', duration: dur });
+        later(warn, () => ctx.events.emit('volley', { phase: 'loosed', duration: dur }));
+        later(warn + 2, () => ctx.events.emit('volley', { phase: 'impact', duration: dur }));
+        later(warn + 2 + dur, () => ctx.events.emit('volley', { phase: 'end', duration: dur }));
+      },
+    };
+    for (const n of ['voice', 'modeChanged', 'gameOver', 'respite', 'waveStart']) ctx.events.on(n, (e) => log.events.push([n, e]));
+
+    // ---- mode machine (§10, simplified) ----
+    let pausedFrom = 'battle';
+    ctx.mode = 'boot';
+    ctx.setMode = (mode, opts = {}) => {
+      log.modes.push([mode, opts]);
+      const prev = ctx.mode;
+      if (mode === 'paused') {
+        if (prev !== 'battle' && prev !== 'training') return;
+        pausedFrom = prev;
+      }
+      ctx.mode = mode;
+      ctx.actions.clear();
+      if ((mode === 'battle' || mode === 'training' || mode === 'title') && !opts.resume) {
+        ctx.training.stop();
+        ctx.ai.clear();
+        ctx.hud.reset();
+        if (mode === 'training') ctx.training.start();
+      }
+      ctx.input.motion = (mode === 'battle' || mode === 'training') && ctx.settings.control === 'motion';
+      ctx.events.emit('modeChanged', { mode, prev });
+    };
+    ctx.resume = () => { if (ctx.mode === 'paused') ctx.setMode(pausedFrom, { resume: true }); };
+
+    ctx.hud = createHud(ctx);
+    ctx.menus = createMenus(ctx);
+    ctx.inputCtl = createInput(ctx);
+    ctx.training = createTraining(ctx);
+
+    ctx.loop((dt, gdt) => {
+      for (let i = timers.length - 1; i >= 0; i--) if (ctx.time.gnow >= timers[i].at) timers.splice(i, 1)[0].fn();
+      ctx.inputCtl.update(dt);
+      // Let the stub player consume look like the real one.
+      ctx.player.yaw += ctx.input.lookYaw;
+      ctx.player.pitch = Math.max(-1.2, Math.min(1.2, ctx.player.pitch + ctx.input.lookPitch));
+      log.lookYaw = (log.lookYaw || 0) + ctx.input.lookYaw;
+      log.lookPitch = (log.lookPitch || 0) + ctx.input.lookPitch;
+      ctx.input.lookYaw = 0;
+      ctx.input.lookPitch = 0;
+      ctx.player.shieldRaise += ((ctx.input.shieldHeld ? 1 : 0) - ctx.player.shieldRaise) * Math.min(1, dt * 8);
+      if (ctx.mode === 'training') ctx.training.update(dt);
+      ctx.camera.rotation.set(ctx.player.pitch, ctx.player.yaw, 0, 'YXZ');
+      ctx.camera.updateMatrixWorld();
+      ctx.hud.update(dt);
+      ctx.menus.update(dt);
+    });
+
+    // ---- scenarios ----
+    const emit = (n, p) => ctx.events.emit(n, p);
+    const step = (n) => window.__sandbox.step(n);
+    const scenarios = {
+      title() { ctx.setMode('title'); },
+      settings() { ctx.setMode('title'); ctx.menus.show('settings'); clickTab(params.get('tab')); },
+      howto() { ctx.setMode('title'); ctx.menus.show('howto'); clickTab(params.get('tab')); },
+      safety() { ctx.setMode('title'); ctx.menus.show('safety'); },
+      pause() { ctx.setMode('battle'); populate(); step(5); ctx.setMode('paused'); },
+      gameover() {
+        ctx.setMode('battle');
+        emit('gameOver', { day: 3, wave: 4, kills: 87, score: 15420 });
+        ctx.setMode('gameover');
+      },
+      hud() {
+        ctx.setMode('battle');
+        populate();
+        Object.assign(ctx.player, { hp: 22, score: 12840, chain: 2.3, kills: 31, weapon: 'sword', spearsLeft: 3, hasSpearInHand: false });
+        const a = actor('immortal', 0.6, -2.4, { state: 'windup' });
+        const b = actor('levy', -6, 1.5, { state: 'windup' });
+        ctx.player.focusTarget = a;
+        a.hp = 31;
+        emit('enemyWindup', { actor: a, timeToStrike: 0.8, targetIsPlayer: true });
+        emit('enemyWindup', { actor: b, timeToStrike: 1.0, targetIsPlayer: true });
+        emit('playerHurt', { damage: 16, hp: 22, from: b, kind: 'melee', relYaw: 1.2 });
+        emit('combo', { id: 'fury', name: 'Fury of Lakedaimon', bonus: 180, seq: [1, 2, 3] });
+        emit('voice', { text: 'Come and take them.', speaker: 'Leonidas', greek: 'ΜΟΛΩΝ ΛΑΒΕ' });
+        emit('kill', { byPlayer: true, cause: 'sea' });
+      },
+      'hud-banner'() {
+        ctx.setMode('battle');
+        Object.assign(ctx.player, { hp: 74, score: 4210, chain: 1, kills: 12 });
+        ctx.waves.state = 'respite';
+        emit('dayStart', { day: 2, title: 'The Second Day', subtitle: 'The Greeks hold the pass city by city', seconds: 5 });
+        emit('respite', { day: 2, seconds: 25 });
+        emit('voice', { text: 'The Tegeans take the line.', speaker: 'Herald' });
+      },
+      'hud-wave'() {
+        ctx.setMode('battle');
+        Object.assign(ctx.player, { hp: 74, score: 4210, chain: 1.4, kills: 12 });
+        emit('waveStart', { day: 3, wave: 2, title: 'Driven back (2/4)', subtitle: "Over Leonidas' body" });
+      },
+      'hud-volley'() {
+        ctx.setMode('battle');
+        Object.assign(ctx.player, { hp: 61, score: 6020, chain: 1.6, kills: 18 });
+        ctx.combat.volley({ count: 300, duration: 1, warn: 2.5 });
+        emit('voice', { text: 'Their arrows will hide the sun!', speaker: 'Trachinian' });
+      },
+      'hud-spearcam'() {
+        ctx.setMode('battle');
+        Object.assign(ctx.player, { hp: 80, score: 7020, chain: 1.6, kills: 21 });
+        ctx.fx.cameraOverridden = true;
+      },
+      touch() {
+        ctx.setMode('battle');
+        populate();
+        Object.assign(ctx.player, { hp: 88, score: 2140, chain: 1.2, kills: 7 });
+        if (params.get('spear') === '1') Object.assign(ctx.player, { weapon: 'spear', hasSpearInHand: true, spearsLeft: 3 });
+      },
+      motion() {
+        ctx.setMode('battle');
+        populate();
+        Object.assign(ctx.player, { hp: 88, score: 2140, chain: 1.2, kills: 7 });
+      },
+      training() {
+        ctx.setMode('training');
+        const n = Number(params.get('step') || 0);
+        for (let i = 0; i < n; i++) document.querySelector('#training [data-act="skip"]').click();
+        if (params.get('gesture')) emit('gesture', { type: 'slash', dir: 0.7, power: 0.8, peak: 8.1, sweep: 0.6, t: 1 });
+      },
+    };
+    function populate() {
+      actor('levy', -1.2, -6);
+      actor('levy', 1.8, -8);
+      actor('sparabara', 3.5, -11);
+      actor('immortal', -3.5, -13);
+    }
+    function clickTab(t) {
+      if (!t) return;
+      const b = document.querySelector(`#menus .mn-screen.is-on .mn-tabs [data-tab="${t}"]`);
+      if (b) b.click();
+    }
+
+    window.__ui = { ctx, log, emit, actor, scenarios, store };
+    const view = params.get('view');
+    if (view && scenarios[view]) scenarios[view]();
+    else ctx.setMode('title');
+  </script>
+</body>
+</html>

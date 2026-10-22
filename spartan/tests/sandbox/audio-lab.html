@@ -1,0 +1,140 @@
+<!doctype html>
+<!-- Audio lab: audition every synthesized sound, music and ambience, watch the output meter and
+     the render progress. Used by tests/e2e/audio-*.mjs as well (window.__audio, window.__lab). -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Audio lab</title>
+  <link rel="stylesheet" href="../../src/main/assets/game/style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "../../src/main/assets/game/lib/three/three.module.js",
+        "three/addons/": "../../src/main/assets/game/lib/three/addons/"
+      }
+    }
+  </script>
+  <style>
+    #lab { position: absolute; inset: 0; overflow: auto; padding: 12px 16px; color: #eadfc8; font: 13px/1.35 system-ui, sans-serif;
+      background: linear-gradient(180deg, rgba(20, 14, 10, 0.92), rgba(20, 14, 10, 0.78)); pointer-events: auto; z-index: 40; }
+    #lab h1 { font: 600 18px Georgia, serif; letter-spacing: 0.12em; margin: 0 0 6px; color: #f0d9a8; }
+    #lab .row { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 10px; align-items: center; }
+    #lab button { background: #3a2a1c; color: #f3e6cc; border: 1px solid #7a5a36; border-radius: 4px; padding: 5px 9px; font: inherit; cursor: pointer; }
+    #lab button.on { background: #8a3a22; border-color: #d48a54; }
+    #lab button.pending { opacity: 0.45; }
+    #lab label { display: inline-flex; gap: 4px; align-items: center; }
+    #lab canvas { background: #120c08; border: 1px solid #5a4028; border-radius: 4px; }
+    #lab .stat { font: 12px ui-monospace, monospace; color: #cbb892; white-space: pre; }
+  </style>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <div id="overlay"></div>
+  <script type="module">
+    import { createSandboxCtx } from './sandbox-ctx.js';
+    import { createAudio, SFX, SFX_NAMES, MUSIC_NAMES, AMBIENCE } from '../../src/main/assets/game/js/audio/audio.js';
+    import { EventBus } from '../../src/main/assets/game/js/core/events.js';
+
+    const ctx = await createSandboxCtx();
+    ctx.mode = 'title';
+    ctx.settings.voice = true;
+    const spoken = [];
+    ctx.platform.voice = { say: (text, o) => spoken.push({ text, ...o }), stop() {} };
+    const audio = createAudio(ctx);
+    ctx.audio = audio;
+    window.__audio = audio;
+    window.__lab = { ctx, createAudio, EventBus, SFX, SFX_NAMES, spoken };
+
+    const lab = document.createElement('div');
+    lab.id = 'lab';
+    lab.innerHTML = `
+      <h1>THERMOPYLAE · AUDIO LAB</h1>
+      <div class="row"><button id="unlock">Unlock</button><button id="suspend">Suspend</button><button id="resume">Resume</button>
+        <label><input type="checkbox" id="pos"> positional (random point)</label>
+        <label>master <input type="range" id="master" min="0" max="1" step="0.05" value="0.9"></label>
+        <label>music <input type="range" id="music" min="0" max="1" step="0.05" value="0.55"></label>
+        <label>sfx <input type="range" id="sfx" min="0" max="1" step="0.05" value="1"></label></div>
+      <div class="row" id="music-row">Music: </div>
+      <div class="row" id="amb-row">Ambience: </div>
+      <div class="row" id="sfx-row"></div>
+      <div class="row"><canvas id="meter" width="560" height="120"></canvas><canvas id="radar" width="120" height="120"></canvas></div>
+      <div class="stat" id="stat"></div>`;
+    ctx.overlay.appendChild(lab);
+    const $ = (id) => lab.querySelector('#' + id);
+    $('unlock').onclick = () => audio.unlock();
+    $('suspend').onclick = () => audio.suspend();
+    $('resume').onclick = () => audio.resume();
+    for (const k of ['master', 'music', 'sfx']) $(k).oninput = (e) => { ctx.settings[k] = Number(e.target.value); audio.applyVolumes(); };
+
+    const btn = (row, label, fn) => {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.onclick = () => { audio.unlock(); fn(b); };
+      row.appendChild(b);
+      return b;
+    };
+    const musicBtns = [...MUSIC_NAMES, 'none'].map((m) => btn($('music-row'), m, () => { audio.setMusic(m); musicBtns.forEach((x) => x.classList.toggle('on', x.textContent === m)); }));
+    const ambBtns = Object.keys(AMBIENCE).map((m) => btn($('amb-row'), m, () => { audio.setAmbience(m); ambBtns.forEach((x) => x.classList.toggle('on', x.textContent === m)); }));
+    const blips = [];
+    const sfxBtns = Object.keys(SFX).map((name) => btn($('sfx-row'), name, () => {
+      let at = null;
+      if ($('pos').checked) {
+        const a = Math.random() * Math.PI * 2, d = 1 + Math.random() * 30;
+        at = new ctx.THREE.Vector3(Math.sin(a) * d, 1.2, -Math.cos(a) * d);
+        blips.push({ x: at.x, z: at.z, life: 1.5 });
+      }
+      audio.play(name, { at });
+    }));
+
+    const meter = $('meter').getContext('2d'), radar = $('radar').getContext('2d');
+    const fbuf = new Float32Array(1024), tbuf = new Float32Array(2048);
+    let peakHold = 0;
+    ctx.loop((dt) => {
+      audio.update(dt);
+      const st = audio.stats();
+      sfxBtns.forEach((b) => b.classList.toggle('pending', !audio.getBuffer(b.textContent)));
+      musicBtns.forEach((b) => b.classList.toggle('pending', b.textContent !== 'none' && !audio.getBuffer(b.textContent)));
+      $('stat').textContent = `state ${st.state}  sr ${st.sampleRate}  workers ${st.workers}  ready ${st.ready}  pending ${st.pending}  ${st.mb.toFixed(1)} MB  render ${st.renderMs.toFixed(0)} ms` +
+        `  boot→done ${st.doneAt ? (st.doneAt - st.startedAt).toFixed(0) + ' ms' : '…'}\nvoices ${st.voices}  played ${st.played}  stolen ${st.stolen}  dropped ${st.dropped}  music ${st.music}  ambience ${st.ambience}  heartbeat ${st.heartbeat}`;
+      const an = audio.analyser();
+      const W = 560, H = 120;
+      meter.fillStyle = '#120c08';
+      meter.fillRect(0, 0, W, H);
+      if (an) {
+        an.getFloatFrequencyData(fbuf);
+        an.getFloatTimeDomainData(tbuf);
+        meter.fillStyle = '#c8783c';
+        const sr = audio.context.sampleRate;
+        for (let x = 0; x < W - 40; x++) {
+          const f = 40 * Math.pow(16000 / 40, x / (W - 40));
+          const k = Math.min(fbuf.length - 1, Math.round(f / (sr / 2) * fbuf.length));
+          const v = Math.max(0, (fbuf[k] + 100) / 80);
+          meter.fillRect(x, H - v * H, 1, v * H);
+        }
+        let pk = 0;
+        for (const v of tbuf) pk = Math.max(pk, Math.abs(v));
+        peakHold = Math.max(pk, peakHold - dt * 0.5);
+        meter.fillStyle = peakHold > 0.98 ? '#ff3020' : '#7fbf6a';
+        const h = Math.min(1, peakHold) * H;
+        meter.fillRect(W - 30, H - h, 20, h);
+      }
+      radar.fillStyle = '#120c08';
+      radar.fillRect(0, 0, 120, 120);
+      radar.fillStyle = '#7a5a36';
+      radar.fillRect(58, 58, 4, 4);
+      for (let i = blips.length - 1; i >= 0; i--) {
+        const b = blips[i];
+        b.life -= dt;
+        if (b.life <= 0) { blips.splice(i, 1); continue; }
+        radar.fillStyle = `rgba(232, 160, 90, ${b.life / 1.5})`;
+        radar.beginPath();
+        radar.arc(60 + b.x * 1.8, 60 + b.z * 1.8, 4, 0, Math.PI * 2);
+        radar.fill();
+      }
+    });
+    audio.setMusic('title');
+    audio.setAmbience('calm');
+  </script>
+</body>
+</html>

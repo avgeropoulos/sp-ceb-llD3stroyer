@@ -1,0 +1,28 @@
+<!doctype html>
+<!-- ai.js + waves.js sandbox. Params: manual=1, seed=N, quality=low|medium|high,
+     real=1 (use the real gfx/characters.js instead of tests/sandbox/ai-stub-characters.js),
+     stubRules=1 (use ai-stub-rules.js if game/rules.js is missing), world=1 (real gfx/world.js),
+     scene=battle|campaign|none (what to set up on load), day=1..3, view=eye|top|side. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI sandbox</title>
+  <link rel="stylesheet" href="../../src/main/assets/game/style.css">
+  <script>
+    (function () {
+      var q = new URLSearchParams(location.search);
+      var game = '../../src/main/assets/game/';
+      var imports = { three: game + 'lib/three/three.module.js', 'three/addons/': game + 'lib/three/addons/' };
+      if (q.get('real') !== '1') imports[game + 'js/gfx/characters.js'] = './ai-stub-characters.js';
+      if (q.get('stubRules') === '1') imports[game + 'js/game/rules.js'] = './ai-stub-rules.js';
+      document.write('<script type="importmap">' + JSON.stringify({ imports: imports }) + '<\/script>');
+    })();
+  </script>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <div id="overlay"></div>
+  <script type="module" src="./ai-sim.js"></script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+<!doctype html>
+<!-- Loads the motion slice for tests/e2e/motion-platform.mjs: exposes window.__motion. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Motion platform harness</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; padding: 16px; background: #15110d; color: #e8dcc6; font: 14px/1.4 system-ui, sans-serif; }
+  </style>
+</head>
+<body>
+  <p id="status">loading…</p>
+  <script type="module">
+    import { createPlatform } from '../../src/main/assets/game/js/platform.js';
+    import { MotionFrames, remapToScreen } from '../../src/main/assets/game/js/motion/frames.js';
+    import { GestureRecognizer, GESTURE_DEFAULTS } from '../../src/main/assets/game/js/motion/gestures.js';
+    import { synthesize, scriptDuration } from '../../src/main/assets/game/js/motion/synth.js';
+    window.__motion = { createPlatform, MotionFrames, remapToScreen, GestureRecognizer, GESTURE_DEFAULTS, synthesize, scriptDuration };
+    window.__sandbox = { step() {}, errors: [] };
+    document.getElementById('status').textContent = 'ready';
+  </script>
+</body>
+</html>

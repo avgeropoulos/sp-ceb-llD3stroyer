@@ -1,0 +1,209 @@
+<!doctype html>
+<!-- Viewmodel sandbox: a sky-and-ground pass with an enemy stand-in, plus the vm pass.
+     URL params (all optional): weapon=sword|spear, raise=0..1, arrows=N, helmet=1, vignette=x, hurt=x,
+     act=<play kind>|swing:<kind>|block|perfect|guardBreak|hurt, dir=<deg>, at=<s>, yaw, pitch, walk=1, world=1.
+     window.__vm exposes { ctx, vm, emit, setup, run(at), stats() } for e2e scripts. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Viewmodel sandbox</title>
+  <link rel="stylesheet" href="../../src/main/assets/game/style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "../../src/main/assets/game/lib/three/three.module.js",
+        "three/addons/": "../../src/main/assets/game/lib/three/addons/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <div id="overlay"></div>
+  <script type="module">
+    import * as THREE from 'three';
+    import { createSandboxCtx } from './sandbox-ctx.js';
+    import { createViewmodel } from '../../src/main/assets/game/js/gfx/viewmodel.js';
+
+    const params = new URLSearchParams(location.search);
+    const ctx = await createSandboxCtx({ withWorld: params.get('world') === '1', withLights: true });
+    // The viewmodel brings its own vm lights.
+    for (const c of ctx.vm.scene.children.slice()) ctx.vm.scene.remove(c);
+
+    // ---- Simple sky-and-ground world (only if the real world module isn't in use) ----
+    if (!ctx.world.envMap) {
+      const sunDir = ctx.world.sunDirection.clone().normalize();
+      const skyMat = new THREE.ShaderMaterial({
+        side: THREE.BackSide, depthWrite: false,
+        uniforms: { uSun: { value: sunDir } },
+        vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position,1.0); gl_Position = p.xyww; }',
+        fragmentShader: `uniform vec3 uSun; varying vec3 vDir;
+          void main(){ vec3 d = normalize(vDir); float h = d.y;
+            vec3 zen = vec3(0.16, 0.34, 0.72), hor = vec3(0.72, 0.78, 0.84), gnd = vec3(0.36, 0.30, 0.24);
+            vec3 c = h > 0.0 ? mix(hor, zen, pow(h, 0.55)) : mix(hor, gnd, pow(-h, 0.4));
+            float s = max(dot(d, uSun), 0.0);
+            c += vec3(1.0, 0.85, 0.6) * (pow(s, 600.0) * 30.0 + pow(s, 12.0) * 0.35);
+            gl_FragColor = vec4(c, 1.0); }`,
+      });
+      const sky = new THREE.Mesh(new THREE.SphereGeometry(900, 32, 16), skyMat);
+      sky.frustumCulled = false;
+      ctx.scene.background = null;
+      ctx.scene.add(sky);
+      const envScene = new THREE.Scene();
+      envScene.add(new THREE.Mesh(new THREE.SphereGeometry(50, 32, 16), skyMat));
+      const pmrem = new THREE.PMREMGenerator(ctx.renderer);
+      const env = pmrem.fromScene(envScene, 0, 0.1, 1000).texture;
+      ctx.world.envMap = env;
+      ctx.scene.environment = env;
+      ctx.scene.fog = new THREE.FogExp2(0xb8c4cc, 0.006);
+      // A cliff on the left, rocks, and the far pass.
+      const rockMat = new THREE.MeshStandardMaterial({ color: 0x8a7a68, roughness: 0.95 });
+      const cliff = new THREE.Mesh(new THREE.BoxGeometry(6, 40, 200), rockMat);
+      cliff.position.set(-12, 18, -60);
+      cliff.rotation.z = 0.08;
+      ctx.scene.add(cliff);
+      for (let i = 0; i < 14; i++) {
+        const r = new THREE.Mesh(new THREE.DodecahedronGeometry(0.3 + ctx.rng.next() * 0.8), rockMat);
+        r.position.set(-7 + ctx.rng.next() * 15, 0.1, -4 - ctx.rng.next() * 40);
+        r.castShadow = r.receiveShadow = true;
+        ctx.scene.add(r);
+      }
+      const sea = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshStandardMaterial({ color: 0x2f5a6e, roughness: 0.15, metalness: 0.1 }));
+      sea.rotation.x = -Math.PI / 2;
+      sea.position.set(210, -3, -60);
+      ctx.scene.add(sea);
+    }
+
+    // ---- Enemy stand-in at the engage distance (1.6 m) ----
+    const enemy = new THREE.Group();
+    if (params.get('enemy') !== '0') {
+      const robe = new THREE.MeshStandardMaterial({ color: 0x6b3d5c, roughness: 0.9 });
+      const skin = new THREE.MeshStandardMaterial({ color: 0x9a6a4c, roughness: 0.7 });
+      const wick = new THREE.MeshStandardMaterial({ color: 0x9c8250, roughness: 0.95 });
+      const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.75, 6, 12), robe);
+      body.position.y = 1.0;
+      const legs = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.6, 6, 12), new THREE.MeshStandardMaterial({ color: 0x4a4038, roughness: 0.9 }));
+      legs.position.y = 0.45;
+      const head = new THREE.Mesh(new THREE.SphereGeometry(0.115, 16, 12), skin);
+      head.position.y = 1.62;
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.125, 0.14, 14), new THREE.MeshStandardMaterial({ color: 0xd8cbb0, roughness: 0.9 }));
+      cap.position.y = 1.72;
+      const gerron = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.9, 0.04), wick);
+      gerron.position.set(0.22, 1.05, 0.25);
+      const spearM = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 2.0, 6), new THREE.MeshStandardMaterial({ color: 0x8a6a48 }));
+      spearM.position.set(-0.3, 1.2, 0.2);
+      spearM.rotation.x = 0.3;
+      for (const m of [body, legs, head, cap, gerron, spearM]) {
+        m.castShadow = true;
+        enemy.add(m);
+      }
+      enemy.position.set(0.1, 0, -1.65);
+      ctx.scene.add(enemy);
+    }
+
+    // ---- Fake player (yaw/pitch/pos drive sway and bob) ----
+    const player = { yaw: Number(params.get('yaw') || 0), pitch: Number(params.get('pitch') || -0.04), pos: new THREE.Vector3(0, 0, 0), weapon: 'sword', hasSpearInHand: true, shieldRaise: 0 };
+    ctx.player = player;
+
+    const vm = createViewmodel(ctx);
+    ctx.viewmodel = vm;
+
+    const state = { weapon: 'sword', hasSpear: true, raise: 0, walk: false };
+    function setup(o = {}) {
+      if (o.weapon) state.weapon = o.weapon;
+      if (typeof o.hasSpear === 'boolean') state.hasSpear = o.hasSpear;
+      if (typeof o.raise === 'number') state.raise = o.raise;
+      if (typeof o.walk === 'boolean') state.walk = o.walk;
+      if (typeof o.yaw === 'number') player.yaw = o.yaw;
+      if (typeof o.pitch === 'number') player.pitch = o.pitch;
+      if (o.overlay) vm.setOverlay(o.overlay);
+      if (typeof o.arrows === 'number') {
+        vm.clearStuckArrows();
+        for (let i = 0; i < o.arrows; i++) vm.addStuckArrow();
+      }
+      if (o.reset) vm.reset();
+    }
+    const emit = (name, payload) => ctx.events.emit(name, payload);
+
+    ctx.loop((dt) => {
+      if (state.walk) player.pos.z -= 1.4 * dt;
+      player.weapon = state.weapon;
+      vm.setWeapon(state.weapon);
+      vm.setHasSpear(state.hasSpear);
+      vm.setShield(state.raise);
+      vm.update(dt, ctx.time.gdt);
+      ctx.camera.position.set(player.pos.x, 1.66, player.pos.z);
+      ctx.camera.rotation.set(player.pitch, player.yaw, 0, 'YXZ');
+      ctx.camera.updateMatrixWorld();
+      enemy.position.z = player.pos.z - 1.65;
+    });
+
+    /** Advances exactly `at` seconds of pdt in 1/60 steps (last step partial) and renders. */
+    function run(at) {
+      let left = at;
+      while (left > 1 / 60 + 1e-9) {
+        ctx.step(1, 1 / 60);
+        left -= 1 / 60;
+      }
+      if (left > 1e-6) ctx.step(1, left);
+      else ctx.render();
+    }
+
+    function stats() {
+      const info = ctx.renderer.info;
+      info.reset();
+      ctx.renderer.clear();
+      ctx.renderer.render(ctx.scene, ctx.camera);
+      const main = info.render.calls;
+      ctx.renderer.clearDepth();
+      ctx.renderer.render(ctx.vm.scene, ctx.vm.camera);
+      return { mainCalls: main, vmCalls: info.render.calls - main, vmTriangles: info.render.triangles, programs: info.programs ? info.programs.length : -1, textures: info.memory.textures, geometries: info.memory.geometries };
+    }
+
+    /** Debug: renders only the vm scene from an orbit camera (vm units) to inspect the rig from outside. */
+    const orbitCam = new THREE.PerspectiveCamera(30, 1, 0.005, 20);
+    function orbit({ az = 30, el = 10, dist = 1.2, tx = 0, ty = -0.2, tz = -0.3, fov = 30, bg = 0x506070 } = {}) {
+      const r = ctx.renderer;
+      const size = r.getSize(new THREE.Vector2());
+      orbitCam.fov = fov;
+      orbitCam.aspect = size.x / size.y;
+      orbitCam.updateProjectionMatrix();
+      const a = az * Math.PI / 180;
+      const e = el * Math.PI / 180;
+      orbitCam.position.set(tx + Math.sin(a) * Math.cos(e) * dist, ty + Math.sin(e) * dist, tz + Math.cos(a) * Math.cos(e) * dist);
+      orbitCam.lookAt(tx, ty, tz);
+      const ov = ctx.vm.scene.getObjectByName('vmOverlay');
+      const wasVis = ov.visible;
+      ov.visible = false;
+      r.setClearColor(bg, 1);
+      r.clear();
+      r.render(ctx.vm.scene, orbitCam);
+      r.setClearColor(0x000000, 1);
+      ov.visible = wasVis;
+    }
+
+    window.__vm = { ctx, vm, emit, setup, run, stats, player, state, orbit };
+
+    // URL-driven scenario (for shot.mjs).
+    setup({
+      weapon: params.get('weapon') || 'sword',
+      raise: Number(params.get('raise') || 0),
+      walk: params.get('walk') === '1',
+      overlay: { helmet: params.get('helmet') === '1', vignette: Number(params.get('vignette') || 0), hurt: Number(params.get('hurt') || 0) },
+      arrows: Number(params.get('arrows') || 0),
+    });
+    const act = params.get('act');
+    if (act && params.get('manual') !== '1') {
+      // Live loop: repeat the action every 1.2 s.
+      const dir = Number(params.get('dir') || 0) * Math.PI / 180;
+      setInterval(() => {
+        if (act === 'slash') emit('swing', { kind: 'slash', dir, power: 0.8, weapon: state.weapon, src: 'test' });
+        else if (act === 'block') emit('block', { by: 'player', perfect: false, kind: 'melee' });
+        else if (act === 'hurt') emit('playerHurt', { damage: 12, hp: 50, relYaw: 0.5, kind: 'melee' });
+        else emit('swing', { kind: act, dir, power: 0.8, weapon: state.weapon, src: 'test' });
+      }, 1200);
+    }
+  </script>
+</body>
+</html>
