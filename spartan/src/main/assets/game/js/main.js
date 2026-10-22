@@ -43,6 +43,7 @@ const DEFAULT_SETTINGS = {
 };
 
 const PIXEL_RATIO_CAP = { low: 1.0, medium: 1.25, high: 1.5 };
+const H_FOV = 100;
 const PROBE_KINDS = ['spartan', 'levy', 'sparabara', 'immortal', 'archer', 'captain', 'dummy', 'helot'];
 const PROBE_PROPS = ['dory', 'arrow', 'persianSpear', 'sagaris'];
 
@@ -317,6 +318,7 @@ async function boot() {
   let quietUntil = 0;
   let windowTime = 0;
   let windowFrames = 0;
+  let windowCpu = 0;
   let goodWindows = 0;
   let lastDecrease = -100;
   let lastChange = -100;
@@ -326,6 +328,9 @@ async function boot() {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, PIXEL_RATIO_CAP[quality]) * renderScale);
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
+    // A fixed horizontal field of view: a fixed 70° vertical FOV is ~114° across a wide phone,
+    // which shrinks the enemies and stretches the edges. ~100° across (55–70° vertical).
+    camera.fov = clamp((2 * Math.atan(Math.tan((H_FOV * Math.PI) / 360) / camera.aspect) * 180) / Math.PI, 55, 70);
     camera.updateProjectionMatrix();
     vm.camera.aspect = w / h;
     vm.camera.updateProjectionMatrix();
@@ -333,21 +338,33 @@ async function boot() {
   window.addEventListener('resize', applySize);
   applySize();
 
-  function adaptResolution(intervalMs) {
+  // Only the GPU's share of a slow frame is helped by fewer pixels. When the main thread itself
+  // takes most of the frame (CPU-bound fights on mid-range phones), keep the image sharp.
+  function adaptResolution(intervalMs, cpuMs) {
     const now = ctx.time.now;
     if (now < quietUntil) {
       windowTime = 0;
+      windowCpu = 0;
       windowFrames = 0;
       return;
     }
     windowTime += intervalMs;
+    windowCpu += cpuMs;
     windowFrames++;
     if (windowTime < 1000) return;
     const mean = windowTime / windowFrames;
+    const cpuMean = windowCpu / windowFrames;
     windowTime = 0;
+    windowCpu = 0;
     windowFrames = 0;
     if (now - lastChange < 1) return;
-    if (mean > 20 && renderScale > 0.6) {
+    const gpuBound = cpuMean < 0.75 * mean;
+    if (!gpuBound && renderScale < 0.85) {
+      renderScale = 0.85;
+      lastChange = now;
+      goodWindows = 0;
+      applySize();
+    } else if (mean > 20 && gpuBound && renderScale > 0.6) {
       renderScale = Math.max(0.6, renderScale - 0.1);
       lastDecrease = lastChange = now;
       goodWindows = 0;
@@ -460,11 +477,13 @@ async function boot() {
   bootProgress('Lighting the watch fires…', 0.75);
   await nextFrame();
   const probes = [];
+  const probeMeshes = [];
   for (let i = 0; i < PROBE_KINDS.length; i++) {
     try {
       const v = ctx.characters.create(PROBE_KINDS[i], {});
       v.root.position.set((i - 4) * 1.2, 0, -6);
       scene.add(v.root);
+      if (v.mesh) probeMeshes.push(v.mesh);
       probes.push(() => v.dispose());
     } catch (err) {
       hook.errors.push(`probe ${PROBE_KINDS[i]}: ${err && (err.stack || err)}`);
@@ -495,6 +514,10 @@ async function boot() {
     } else {
       renderer.compile(scene, camera);
     }
+    // compileAsync skips the shadow pass's depth materials (the skinned one most of all), so draw
+    // one frame with the probes casting shadows while the boot screen still covers the canvas.
+    for (const obj of probeMeshes) obj.castShadow = true;
+    renderer.render(scene, camera);
   } catch (err) {
     hook.errors.push(`prewarm: ${err && (err.stack || err)}`);
   }
@@ -549,16 +572,24 @@ async function boot() {
     markBooted();
     return;
   }
-  let lastRendered = performance.now();
+  // 60 fps on any panel: an accumulator over vsync intervals renders 2 of 3 frames at 90 Hz,
+  // 1 of 2 at 120 Hz, 5 of 12 at 144 Hz, and every frame at 60 Hz (with jitter headroom).
+  let lastVsync = performance.now();
+  let lastRendered = lastVsync;
+  let pace = 0;
   const loop = (now) => {
     requestAnimationFrame(loop);
+    pace += now - lastVsync;
+    lastVsync = now;
+    if (pace < 14) return;
+    pace = Math.min(pace - 1000 / 60, 1000 / 60);
     const interval = now - lastRendered;
-    if (interval < 9.5) return; // 120 Hz panels run the game at 60 fps
     lastRendered = now;
     if (contextLost) return;
     fps = fps * 0.95 + (1000 / Math.max(1, interval)) * 0.05;
+    const t0 = performance.now();
     frame(interval / 1000);
-    adaptResolution(interval);
+    adaptResolution(interval, performance.now() - t0);
     if (!window.__booted) markBooted();
   };
   requestAnimationFrame(loop);

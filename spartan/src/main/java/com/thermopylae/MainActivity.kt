@@ -50,6 +50,7 @@ class MainActivity : Activity() {
         volumeControlStream = AudioManager.STREAM_MUSIC
         val attrs = window.attributes
         attrs.preferredRefreshRate = 60f
+        prefer60HzMode(attrs)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) Api28.cutoutShortEdges(attrs)
         window.attributes = attrs
 
@@ -337,6 +338,27 @@ class MainActivity : Activity() {
             .show()
     }
 
+    /**
+     * Some OEM "high refresh" modes ignore preferredRefreshRate; a 60 Hz display mode at the current
+     * resolution is honoured more reliably, and the game paces itself to 60 fps anyway.
+     */
+    private fun prefer60HzMode(attrs: WindowManager.LayoutParams) {
+        try {
+            val display = (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Api30.display(this) else null)
+                ?: @Suppress("DEPRECATION") windowManager.defaultDisplay
+                ?: return
+            val current = display.mode
+            var best: android.view.Display.Mode? = null
+            for (m in display.supportedModes) {
+                if (m.physicalWidth != current.physicalWidth || m.physicalHeight != current.physicalHeight) continue
+                if (best == null || kotlin.math.abs(m.refreshRate - 60f) < kotlin.math.abs(best.refreshRate - 60f)) best = m
+            }
+            if (best != null && kotlin.math.abs(best.refreshRate - 60f) < 1f) attrs.preferredDisplayModeId = best.modeId
+        } catch (e: Throwable) {
+            Log.w(TAG, e)
+        }
+    }
+
     // ---- Version-specific calls, kept in their own classes so older runtimes never resolve them ----
 
     @TargetApi(Build.VERSION_CODES.O)
@@ -361,6 +383,8 @@ class MainActivity : Activity() {
 
     @TargetApi(Build.VERSION_CODES.R)
     private object Api30 {
+        fun display(activity: Activity): android.view.Display? = activity.display
+
         fun hideSystemBars(window: Window) {
             // Needed on API 30–34; API 35 makes targetSdk-35 apps edge-to-edge and deprecates it.
             @Suppress("DEPRECATION")
