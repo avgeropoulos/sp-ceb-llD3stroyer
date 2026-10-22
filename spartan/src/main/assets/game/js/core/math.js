@@ -64,3 +64,23 @@ export function v3norm(a) {
   const l = v3len(a);
   return l > 1e-12 ? [a[0] / l, a[1] / l, a[2] / l] : [0, 0, 0];
 }
+
+// Yaw helpers (DESIGN.md §3.1). Camera yaw: 0 faces -Z, positive turns left.
+// Actor facing: models face +Z locally, root.rotation.y = facing.
+
+/** Camera yaw → horizontal unit direction [x, z]. */
+export const yawToDir = (yaw) => [-Math.sin(yaw), -Math.cos(yaw)];
+/** Camera yaw that looks along (dx, dz). */
+export const yawTo = (dx, dz) => Math.atan2(-dx, -dz);
+/** Actor facing that looks along (dx, dz). */
+export const facingTo = (dx, dz) => Math.atan2(dx, dz);
+export const facingToYaw = (f) => wrapAngle(f + Math.PI);
+export const yawToFacing = (y) => wrapAngle(y + Math.PI);
+/** Unit view direction [x, y, z] for a camera yaw and pitch. */
+export const forward3 = (yaw, pitch) => [
+  -Math.sin(yaw) * Math.cos(pitch),
+  Math.sin(pitch),
+  -Math.cos(yaw) * Math.cos(pitch),
+];
+/** Unit right vector [x, y, z] for a camera yaw. */
+export const right3 = (yaw) => [Math.cos(yaw), 0, -Math.sin(yaw)];

@@ -21,19 +21,20 @@ async function tryImport(path) {
 export async function createSandboxCtx({ withWorld = false, withLights = true } = {}) {
   const params = new URLSearchParams(location.search);
   const canvas = document.getElementById('scene');
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance', precision: 'highp', stencil: false, preserveDrawingBuffer: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   renderer.setSize(window.innerWidth, window.innerHeight, false);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
+  renderer.info.autoReset = false;
   renderer.autoClear = false;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x9fb4c8);
-  const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 2000);
+  const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 2000);
   camera.rotation.order = 'YXZ';
   camera.position.set(0, 1.66, 0);
   const vm = { scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.01, 10) };
@@ -49,11 +50,14 @@ export async function createSandboxCtx({ withWorld = false, withLights = true } 
     events: new EventBus(),
     settings,
     saveSettings() {},
-    time: { now: 0, dt: 0, gdt: 0, scale: 1, hitStop: 0 },
+    time: { now: 0, gnow: 0, dt: 0, gdt: 0, pdt: 0, scale: 1, hitStop: 0, playerRealtime: false },
     rng: createRng(Number(params.get('seed') || 1)),
     quality: settings.quality === 'auto' ? 'high' : settings.quality,
-    input: { moveX: 0, moveZ: 0, lookYaw: 0, lookPitch: 0, shieldHeld: false, firing: false },
-    actions: { push: (a) => actionsQ.push(a), drain: () => actionsQ.splice(0, actionsQ.length) },
+    input: { moveX: 0, moveZ: 0, lookYaw: 0, lookPitch: 0, shieldHeld: false, shieldPressedAt: -10, phoneSettled: true, motion: false },
+    actions: { push: (a) => actionsQ.push(a), drain: () => actionsQ.splice(0, actionsQ.length), clear: () => { actionsQ.length = 0; } },
+    debug: true,
+    motionDemo: false,
+    resume() {},
     mode: 'battle',
     setMode(m) { ctx.mode = m; },
     actors: [],
@@ -61,9 +65,11 @@ export async function createSandboxCtx({ withWorld = false, withLights = true } 
     platform: {
       kind: 'web',
       haptics: { pulse() {}, pattern() {} },
-      voice: { say(t) { console.log('voice:', t); } },
+      voice: { say(t) { console.log('voice:', t); }, stop() {} },
+      bindSettings() {},
+      lockOrientation() {},
       storage: { load: (k, f) => f, save() {} },
-      motion: { isSupported: async () => false, requestPermission: async () => true, start() {}, stop() {}, poll: () => [], inject() {}, rate: () => 0 },
+      motion: { isSupported: async () => false, requestPermission: async () => true, start() {}, stop() {}, poll: () => [], inject() {}, lastT: () => 0, rate: () => 0, info: () => ({ gyroRange: 34.9, accRange: 78, rateHz: 0 }) },
       onPause() {}, onResume() {}, onBack() {}, exit() {},
     },
   };
@@ -102,7 +108,7 @@ export async function createSandboxCtx({ withWorld = false, withLights = true } 
       colliders: [],
       sunDirection: new THREE.Vector3(-30, 40, 25).normalize(),
       envMap: null,
-      setTimeOfDay() {}, setArmyDensity() {}, setVolleyShade() {},
+      setTimeOfDay() {}, setArmyDensity() {}, rebuildEnvironment() {},
       update() {},
     };
   }
@@ -119,6 +125,7 @@ export async function createSandboxCtx({ withWorld = false, withLights = true } 
 
   const updaters = [];
   ctx.render = () => {
+    renderer.info.reset();
     renderer.clear();
     renderer.render(scene, camera);
     if (vm.scene.children.length > 0 && !ctx.hideViewmodel) {
@@ -128,12 +135,18 @@ export async function createSandboxCtx({ withWorld = false, withLights = true } 
   };
   ctx.step = (n = 1, dt = 1 / 60) => {
     for (let i = 0; i < n; i++) {
-      ctx.time.dt = dt;
-      ctx.time.now += dt;
-      if (ctx.time.hitStop > 0) {
-        ctx.time.hitStop -= dt;
-        ctx.time.gdt = 0;
-      } else ctx.time.gdt = dt * ctx.time.scale;
+      const t = ctx.time;
+      t.dt = dt;
+      t.now += dt;
+      if (t.hitStop > 0) {
+        t.hitStop = Math.max(0, t.hitStop - dt);
+        t.gdt = 0;
+        t.pdt = 0;
+      } else {
+        t.gdt = dt * t.scale;
+        t.pdt = t.playerRealtime ? dt : t.gdt;
+      }
+      t.gnow += t.gdt;
       for (const fn of updaters) fn(ctx.time.dt, ctx.time.gdt);
     }
     ctx.render();
