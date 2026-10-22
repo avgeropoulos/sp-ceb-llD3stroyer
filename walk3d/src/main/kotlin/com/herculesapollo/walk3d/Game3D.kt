@@ -25,6 +25,8 @@ class Input3D {
     /** The virtual stick: x is right, y is forward (away from the camera), each -1..1. */
     @Volatile var stickX = 0f
     @Volatile var stickY = 0f
+    /** Sideways swipe (virtual pixels) across the look area since the game last read it. */
+    @Volatile var lookDelta = 0f
     @Volatile var keyLeft = false
     @Volatile var keyRight = false
     @Volatile var keyUp = false
@@ -120,14 +122,9 @@ class Game3D(
     val popups = ArrayList<Popup3>()
 
     var camYaw = 0f
-    /**
-     * The camera direction the stick is read against. It's caught when you start pushing
-     * the stick and held until you let go, so the camera swinging round behind the dog
-     * never changes the way you're steering (that feedback loop is what made it dizzy).
-     */
-    var controlYaw = 0f
-        private set
-    private var stickHeld = false
+    /** The stick as last read: x is right, y is forward (away from the camera). */
+    private var stickNowX = 0f
+    private var stickNowY = 0f
     /** The ground height the camera follows: it ignores jumps, so it doesn't bob up and down. */
     private var camFloor = 0f
     /** The height the camera looks at, just above the dog. */
@@ -238,8 +235,8 @@ class Game3D(
         camY = CAM_HEIGHT
         camFloor = 0f
         lookY = 0.8f
-        controlYaw = camYaw
-        stickHeld = false
+        stickNowX = 0f
+        stickNowY = 0f
         popups.clear()
         tip = null
     }
@@ -270,6 +267,9 @@ class Game3D(
         input.tap = false
         val backP = input.back
         input.back = false
+        // Read the look swipe every frame, so swipes on menus or while paused don't pile up.
+        val look = input.lookDelta
+        input.lookDelta = 0f
         val jumpP = input.jump && !prevJump
         val actionP = input.action && !prevAction
         val pauseP = input.pause && !prevPause
@@ -303,19 +303,19 @@ class Game3D(
                 if (menuTap && stateTime > 0.4f) titleTap(input.tapX, input.tapY)
             }
             State.INTRO -> {
-                followCamera(dt, 0f)
+                followCamera(dt)
                 if (stateTime > 2f) {
                     setState(State.PLAYING)
                     if (levelIndex == 0) showTip("Drag on the left to run. Hold JUMP to jump higher!")
                     if (level.def.look == Look.BEACH) showTip("Beach umbrellas are bouncy!")
                 }
             }
-            State.PLAYING -> play(dt, jumpP, actionP)
+            State.PLAYING -> play(dt, jumpP, actionP, look)
             State.HOME -> {
                 dog.vx = 0f; dog.vz = 0f
                 dog.yaw = turnToward(dog.yaw, 0f, dt * 6f)
                 camYaw = turnToward(camYaw, Math.PI.toFloat(), dt * 2f)
-                followCamera(dt, 0f)
+                followCamera(dt)
                 updatePopups(dt)
                 if (stateTime > 2.5f) finishLevel()
             }
@@ -389,14 +389,17 @@ class Game3D(
 
     // ------------------------------------------------------------------ Playing
 
-    private fun play(dt: Float, jumpP: Boolean, actionP: Boolean) {
+    private fun play(dt: Float, jumpP: Boolean, actionP: Boolean, look: Float) {
         levelTime += dt
         if (tipT > 0f) { tipT -= dt; if (tipT <= 0f) tip = null }
         if (levelIndex == 0 && stateTime > 4.5f) {
             showTip(if (dog.herc) "Tap DASH to pounce!" else "Tap BARK to freeze critters in their tracks!")
         }
-        val stickY = moveDog(dt, jumpP, actionP)
-        followCamera(dt, stickY)
+        if (levelIndex == 0 && stateTime > 10f) showTip("Swipe across the top right of the screen to look around.")
+        // Swiping across the top right of the screen turns the camera.
+        camYaw = wrapAngle(camYaw - look * LOOK_SPEED)
+        moveDog(dt, jumpP, actionP)
+        followCamera(dt)
         for (c in critters) {
             CritterBrain.update(c, dt, dog.x, dog.z, level, audio)
             maybeTip(c)
@@ -409,8 +412,8 @@ class Game3D(
         checkHome(dt)
     }
 
-    /** Moves the dog from the stick; returns the stick's forward amount (for the camera). */
-    private fun moveDog(dt: Float, jumpP: Boolean, actionP: Boolean): Float {
+    /** Moves the dog from the stick. */
+    private fun moveDog(dt: Float, jumpP: Boolean, actionP: Boolean) {
         val d = dog
         if (d.cooldown > 0f) d.cooldown -= dt
         if (d.stinkT > 0f) d.stinkT -= dt
@@ -422,11 +425,11 @@ class Game3D(
         var sy = input.stickY + (if (input.keyUp) 1f else 0f) - (if (input.keyDown) 1f else 0f)
         val sl = hypot(sx, sy)
         if (sl > 1f) { sx /= sl; sy /= sl }
-        // Stick to world, against the camera direction caught when the stick was first pushed.
-        val pushingStick = hypot(sx, sy) > 0.05f
-        if (pushingStick && !stickHeld) controlYaw = camYaw
-        stickHeld = pushingStick
-        val fx = sin(controlYaw); val fz = cos(controlYaw)
+        stickNowX = sx
+        stickNowY = sy
+        // Stick to world, against the camera as it is right now: the dog goes where your
+        // thumb points on the screen.
+        val fx = sin(camYaw); val fz = cos(camYaw)
         val wx = fx * sy - fz * sx
         val wz = fz * sy + fx * sx
         val top = d.maxSpeed * (if (d.stinkT > 0f) 0.6f else 1f)
@@ -501,7 +504,6 @@ class Game3D(
         }
         if (d.y <= 0f) { d.y = 0f; d.vy = 0f; d.onGround = true }
         d.stride += d.speed * dt
-        return sy
     }
 
     /** Pushes the dog out of any solid it's walked into (unless it's up on top). */
@@ -542,12 +544,13 @@ class Game3D(
     }
 
     /** Swings the camera round behind the dog as it runs (but not when running toward the camera). */
-    private fun followCamera(dt: Float, stickY: Float) {
+    private fun followCamera(dt: Float) {
         val d = dog
-        // Ease round behind the dog while it runs away from (or across) the view, but never
-        // when it runs toward the camera, and never quickly.
-        val off = abs(wrapAngle(d.yaw - camYaw))
-        if (state == State.PLAYING && d.speed > 1f && stickY > -0.3f && off < 1.9f) {
+        // Ease round behind the dog only while you run more or less straight ahead. Steering
+        // sideways or back toward the camera leaves the camera where it is, so the stick
+        // always matches what's on the screen.
+        val ahead = stickNowY > 0.3f && abs(stickNowX) < stickNowY * 0.6f
+        if (state == State.PLAYING && d.speed > 1f && ahead) {
             camYaw = turnToward(camYaw, d.yaw, CAM_TURN * dt * min(1f, d.speed / d.maxSpeed))
         }
         // Follow the ground the dog stands on, not every jump.
@@ -802,6 +805,8 @@ class Game3D(
         const val CAM_DIST = 5.6f
         const val CAM_HEIGHT = 2.7f
         const val CAM_TURN = 1.3f
+        /** Radians the camera turns per pixel of swipe. */
+        const val LOOK_SPEED = 0.012f
         const val HOME_TIP = "That's plenty! Follow the arrow HOME!"
         private const val WHITE = 0xFFFFFFFF.toInt()
         private const val YELLOW = 0xFFFFE14D.toInt()

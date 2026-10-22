@@ -32,6 +32,11 @@ object Controls3D {
     var knobX = restX
     var knobY = restY
     private var stickId = -1
+    /** A finger swiping across the look area (the top right, above the buttons) turns the camera. */
+    private var lookId = -1
+    private var lookLastX = 0f
+    /** Touches on the right half higher up than this are for looking around, not the buttons. */
+    const val LOOK_BOTTOM = 158f
 
     fun layout(viewW: Float) {
         jump.cx = viewW - 40f
@@ -48,12 +53,19 @@ object Controls3D {
         var p = false
         var m = false
         var stickFound = false
+        var lookFound = false
         for (i in 0 until count) {
             val x = xs[i]
             val y = ys[i]
             if (ids[i] == stickId) {
                 stickFound = true
                 knobX = x; knobY = y
+                continue
+            }
+            if (ids[i] == lookId) {
+                lookFound = true
+                input.lookDelta += x - lookLastX
+                lookLastX = x
                 continue
             }
             if (hypot(x - pause.cx, y - pause.cy) < pause.r * 1.3f) { p = true; continue }
@@ -65,12 +77,19 @@ object Controls3D {
                 stickX = x; stickY = y; knobX = x; knobY = y
                 continue
             }
-            if (x >= viewW / 2) {
+            if (x >= viewW / 2 && y < LOOK_BOTTOM && lookId == -1) {
+                lookId = ids[i]
+                lookFound = true
+                lookLastX = x
+                continue
+            }
+            if (x >= viewW / 2 && y >= LOOK_BOTTOM) {
                 val dj = hypot(x - jump.cx, y - jump.cy) / jump.r
                 val da = hypot(x - action.cx, y - action.cy) / action.r
                 if (dj <= da) j = true else a = true
             }
         }
+        if (!lookFound) lookId = -1
         if (!stickFound) {
             stickId = -1
             stickX = restX; stickY = restY; knobX = restX; knobY = restY

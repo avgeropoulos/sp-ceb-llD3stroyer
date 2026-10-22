@@ -50,9 +50,7 @@ class Game3DTest {
         val dx = x - g.dog.x
         val dz = z - g.dog.z
         val l = hypot(dx, dz).coerceAtLeast(0.001f)
-        // The game reads a held stick against the camera direction from when it was first pushed.
-        val held = hypot(g.input.stickX, g.input.stickY) > 0.05f
-        val a = if (held) g.controlYaw else g.camYaw
+        val a = g.camYaw
         g.input.stickY = (dx * sin(a) + dz * cos(a)) / l
         g.input.stickX = (-dx * cos(a) + dz * sin(a)) / l
     }
@@ -157,26 +155,66 @@ class Game3DTest {
         assertTrue(h.dog.maxSpeed > g.dog.maxSpeed, "Hercules is the fast one")
     }
 
+    /** Where the dog runs, in world terms, for a stick push of ([sx], [sy]) on the current camera. */
+    private fun screenDir(g: Game3D, sx: Float, sy: Float): Pair<Float, Float> {
+        val a = g.camYaw
+        return (sin(a) * sy - cos(a) * sx) to (cos(a) * sy + sin(a) * sx)
+    }
+
     /**
-     * Holding the stick to one side used to send the dog round in a slow circle, because
-     * the camera swung behind it and the stick followed the camera. Now the dog runs straight.
+     * Push the stick any way and the dog runs that way on the screen, the whole time you
+     * hold it: steering sideways or back doesn't swing the camera round.
      */
-    @Test fun holdingTheStickRunsStraight() {
-        val g = start(herc = true)
+    @Test fun theDogGoesWhereTheStickPoints() {
+        for ((sx, sy) in listOf(1f to 0f, -1f to 0f, 0f to -1f, 0.7f to -0.7f)) {
+            val g = start(herc = true)
+            clearCritters(g)
+            g.bikes.clear()
+            g.level.solids.clear() // nothing to bump into
+            place(g, 0f, -2f, 0.6f)
+            val yaw0 = g.camYaw
+            g.input.stickX = sx
+            g.input.stickY = sy
+            repeat(90) {
+                g.update(dt)
+                val (wx, wz) = screenDir(g, sx, sy)
+                val l = hypot(wx, wz)
+                if (it > 10 && g.dog.speed > 0.5f) {
+                    // Moving along the direction the stick points on screen right now.
+                    val dot = (g.dog.vx * wx + g.dog.vz * wz) / (g.dog.speed * l)
+                    assertTrue(dot > 0.98f, "stick ($sx, $sy): dog heads off-screen-direction ($dot)")
+                }
+            }
+            assertTrue(abs(wrapAngle(g.camYaw - yaw0)) < 0.01f, "camera stayed put for ($sx, $sy)")
+        }
+    }
+
+    @Test fun runningStraightAheadBringsTheCameraRoundBehind() {
+        val g = start(herc = false)
         clearCritters(g)
         g.bikes.clear()
-        place(g, -12f, -10f, Math.PI.toFloat() / 2f)
-        g.input.stickX = 1f
-        run(g, 0.3f)
-        val yaw0 = g.dog.yaw
-        val x0 = g.dog.x; val z0 = g.dog.z
-        run(g, 1.5f)
-        g.input.stickX = 0f
-        assertTrue(abs(wrapAngle(g.dog.yaw - yaw0)) < 0.05f, "still heading the same way: ${g.dog.yaw} vs $yaw0")
-        val moved = hypot(g.dog.x - x0, g.dog.z - z0)
-        assertTrue(moved > g.dog.maxSpeed * 1.4f, "ran in a straight line: $moved")
-        // Meanwhile the camera has eased round behind the dog.
-        assertTrue(abs(wrapAngle(g.camYaw - g.dog.yaw)) < abs(wrapAngle(g.controlYaw - g.dog.yaw)))
+        place(g, 0f, -2f, 0f)
+        g.camYaw = 0.6f
+        g.input.stickY = 1f
+        run(g, 3f)
+        g.input.stickY = 0f
+        assertTrue(abs(wrapAngle(g.camYaw - g.dog.yaw)) < 0.15f, "camera behind the dog")
+    }
+
+    @Test fun swipeTheTopRightToLookAround() {
+        val g = start(herc = true)
+        clearCritters(g)
+        val yaw0 = g.camYaw
+        val ids = intArrayOf(7)
+        val xs = floatArrayOf(300f)
+        val ys = floatArrayOf(80f)
+        Controls3D.apply(g.input, ids, xs, ys, 1, g.viewW)
+        xs[0] = 360f
+        Controls3D.apply(g.input, ids, xs, ys, 1, g.viewW)
+        assertTrue(!g.input.jump, "the look area isn't the JUMP button")
+        g.update(dt)
+        assertTrue(abs(wrapAngle(g.camYaw - (yaw0 - 60f * Game3D.LOOK_SPEED))) < 0.01f, "swiped right, looked right")
+        Controls3D.apply(g.input, ids, xs, ys, 0, g.viewW)
     }
 
     @Test fun theCameraDoesNotBobWhenYouJump() {

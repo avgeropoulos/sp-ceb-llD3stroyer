@@ -197,8 +197,9 @@ levels with the camera following behind the dog.
 * Stars for how fast you get home. Three save slots on the title screen, each keeping both
   dogs' progress; saved at the start of every level, and with **SAVE & QUIT** and **SWITCH DOG**
   (save this dog's game and carry on as the other) on the pause screen. Back pauses the game.
-* The camera eases round behind the dog without swinging your steering with it: while you
-  hold the stick, it keeps steering the way the camera faced when you first pushed it.
+* The dog always runs the way you push the stick on the screen. The camera only eases round
+  behind the dog while you run more or less straight ahead; steering sideways or back toward
+  the camera leaves it still. Swipe across the top right of the screen to look around.
 
 Controls: put your thumb anywhere on the left half of the screen and drag to run (the stick
 appears where your thumb lands). **JUMP** (hold it to jump higher) and **BARK**/**DASH** are on
