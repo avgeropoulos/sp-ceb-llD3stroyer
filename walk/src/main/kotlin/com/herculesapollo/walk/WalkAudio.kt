@@ -3,9 +3,10 @@ package com.herculesapollo.walk
 import com.roccoquest.game.SfxBuilder
 import com.roccoquest.game.Song
 
-enum class WalkSound { WOOF, YIP, CATCH, TREAT, JUMP, BELL, OUCH, HISS, SKUNK, WHOA, TEAM, HOME }
+enum class WalkSound { GAV, ARP, CATCH, TREAT, JUMP, BELL, OUCH, HISS, SKUNK, WHOA, TEAM, HOME }
 
-enum class WalkTune { NONE, DAY, NIGHT }
+/** DAY is the walk with both dogs; HERC and APOLLO are each dog's own stroll when you play as them. */
+enum class WalkTune { NONE, DAY, NIGHT, HERC, APOLLO }
 
 /** Where the walk sends its sounds; the platform layer plays them. */
 fun interface WalkAudio {
@@ -22,12 +23,13 @@ fun interface WalkAudio {
 object WalkSynth {
     fun render(s: WalkSound): FloatArray = SfxBuilder().apply {
         when (s) {
-            // Hercules: a deep "WOOF-woof"; Apollo: a quick high "yip yip".
-            WalkSound.WOOF -> {
-                noise(0.03f, 0.35f, 0.4f); tone(190f, 110f, 0.13f, 0.45f)
-                tone(0f, 0f, 0.05f); noise(0.02f, 0.25f, 0.4f); tone(170f, 100f, 0.1f, 0.35f)
+            // Hercules says "GAV GAV!" (a gruff double bark); Apollo says "ARP!" (one bright, quick bark).
+            WalkSound.GAV -> {
+                noise(0.025f, 0.35f, 0.5f); tone(330f, 180f, 0.14f, 0.42f)
+                tone(0f, 0f, 0.06f)
+                noise(0.025f, 0.3f, 0.5f); tone(300f, 160f, 0.16f, 0.38f)
             }
-            WalkSound.YIP -> { tone(900f, 520f, 0.06f, 0.3f); tone(0f, 0f, 0.04f); tone(980f, 560f, 0.06f, 0.3f) }
+            WalkSound.ARP -> { noise(0.02f, 0.3f, 0.3f); tone(620f, 880f, 0.04f, 0.32f, decay = false); tone(880f, 480f, 0.11f, 0.32f) }
             WalkSound.CATCH -> notes(floatArrayOf(660f, 880f, 1320f), 0.05f, 0.28f, lastHold = 0.12f)
             WalkSound.TREAT -> { tone(1175f, 1175f, 0.05f, decay = false); tone(1568f, 1568f, 0.18f) }
             WalkSound.JUMP -> tone(300f, 560f, 0.12f, 0.25f)
@@ -110,9 +112,85 @@ object WalkSongs {
         drums = "k...h...s...h...",
     )
 
+    /** Hercules' stroll: the same bouncy style, a bit lower and struttier, in F. */
+    private val herc = Song(
+        bpm = 124,
+        lead = """
+            F4/2 A4/2 C5/2 A4/2 Bb4/2 D5/2 C5/4
+            A4/2 C5/2 F5/2 C5/2 D5/2 C5/2 A4/4
+            Bb4/2 A4/2 G4/2 A4/2 Bb4/2 D5/2 C5/2 Bb4/2
+            A4/2 G4/2 F4/2 G4/2 A4/4 F4/4
+            D5/2 F5/2 D5/2 Bb4/2 C5/2 E5/2 G5/4
+            F5/2 E5/2 D5/2 C5/2 Bb4/2 A4/2 G4/4
+            F4/2 A4/2 C5/2 F5/2 E5/2 C5/2 D5/2 E5/2
+            F5/4 C5/2 A4/2 F4/8
+        """,
+        harmony = """
+            -/2 A3/2 -/2 C4/2 -/2 D4/2 -/2 C4/2
+            -/2 A3/2 -/2 C4/2 -/2 F4/2 -/2 C4/2
+            -/2 D4/2 -/2 F4/2 -/2 E4/2 -/2 G4/2
+            -/2 C4/2 -/2 A3/2 -/2 C4/2 -/2 A3/2
+            -/2 D4/2 -/2 F4/2 -/2 E4/2 -/2 G4/2
+            -/2 D4/2 -/2 F4/2 -/2 C4/2 -/2 E4/2
+            -/2 A3/2 -/2 C4/2 -/2 A3/2 -/2 C4/2
+            -/2 A3/2 -/2 C4/2 -/8
+        """,
+        bass = """
+            F2/4 C3/4 F2/4 C3/4
+            F2/4 C3/4 D3/4 C3/4
+            Bb2/4 F2/4 C3/4 G2/4
+            F2/4 C3/4 F2/4 F2/4
+            Bb2/4 F3/4 C3/4 G3/4
+            Bb2/4 F3/4 C3/4 E3/4
+            F2/4 C3/4 A2/4 C3/4
+            F2/4 C3/4 F2/8
+        """,
+        drums = "k...s.h.k.k.s.h.",
+        leadDuty = 0.5f,
+    )
+
+    /** Apollo's stroll: the same bouncy style, quicker and brighter, in G. */
+    private val apollo = Song(
+        bpm = 150,
+        lead = """
+            G5/2 D5/2 B4/2 D5/2 G5/2 A5/2 B5/4
+            A5/2 G5/2 E5/2 G5/2 D5/4 B4/4
+            C5/2 E5/2 A5/2 G5/2 F#5/2 A5/2 D5/4
+            G5/2 F#5/2 E5/2 D5/2 B4/4 G4/4
+            E5/2 G5/2 B5/2 G5/2 C6/2 B5/2 A5/4
+            D5/2 F#5/2 A5/2 F#5/2 B5/2 A5/2 G5/4
+            E5/2 F#5/2 G5/2 A5/2 B5/2 A5/2 G5/2 F#5/2
+            G5/4 D5/2 B4/2 G4/8
+        """,
+        harmony = """
+            -/2 B3/2 -/2 D4/2 -/2 B3/2 -/2 D4/2
+            -/2 C4/2 -/2 E4/2 -/2 B3/2 -/2 D4/2
+            -/2 C4/2 -/2 E4/2 -/2 A3/2 -/2 D4/2
+            -/2 B3/2 -/2 D4/2 -/2 B3/2 -/2 D4/2
+            -/2 C4/2 -/2 E4/2 -/2 C4/2 -/2 E4/2
+            -/2 D4/2 -/2 F#4/2 -/2 B3/2 -/2 D4/2
+            -/2 C4/2 -/2 E4/2 -/2 D4/2 -/2 F#4/2
+            -/2 B3/2 -/2 D4/2 -/8
+        """,
+        bass = """
+            G2/4 D3/4 G2/4 D3/4
+            C3/4 G2/4 G2/4 D3/4
+            A2/4 E3/4 D3/4 A2/4
+            G2/4 D3/4 G2/4 G2/4
+            C3/4 G3/4 C3/4 G3/4
+            D3/4 A2/4 G2/4 B2/4
+            C3/4 E3/4 D3/4 F#3/4
+            G2/4 D3/4 G2/8
+        """,
+        drums = "k.h.s.hhk.h.s.hh",
+        leadDuty = 0.25f,
+    )
+
     fun of(t: WalkTune): Song? = when (t) {
         WalkTune.NONE -> null
         WalkTune.DAY -> day
         WalkTune.NIGHT -> night
+        WalkTune.HERC -> herc
+        WalkTune.APOLLO -> apollo
     }
 }

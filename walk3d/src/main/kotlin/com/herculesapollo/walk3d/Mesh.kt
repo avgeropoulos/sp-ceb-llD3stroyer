@@ -6,12 +6,62 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * A triangle mesh: 6 floats per vertex (x, y, z, nx, ny, nz), 3 vertices per triangle,
- * counter-clockwise seen from the front. [handle] lets a platform keep its GPU copy.
+ * A triangle mesh: [STRIDE] floats per vertex (x, y, z, nx, ny, nz, r, g, b), 3 vertices
+ * per triangle, counter-clockwise seen from the front. The vertex color multiplies the
+ * draw color (the unit shapes are white). [ground] marks the terrain, which is drawn
+ * pushed slightly back so [decal] meshes (paths, water) lying on it never flicker.
+ * [handle] lets a platform keep its GPU copy.
  */
-class Mesh(val data: FloatArray) {
-    val vertexCount get() = data.size / 6
+class Mesh(val data: FloatArray, val ground: Boolean = false, val decal: Boolean = false) {
+    val vertexCount get() = data.size / STRIDE
     var handle: Any? = null
+
+    companion object {
+        const val STRIDE = 9
+    }
+}
+
+/**
+ * Bakes many shapes into one mesh, each moved by its model matrix and tinted, so a
+ * whole level's scenery can be drawn in one go.
+ */
+class MeshBatch {
+    private var data = FloatArray(1 shl 16)
+    private var size = 0
+    private val nrm = FloatArray(9)
+    private val p = FloatArray(4)
+
+    private fun put(v: Float) {
+        if (size == data.size) data = data.copyOf(size * 2)
+        data[size++] = v
+    }
+
+    fun vertex(x: Float, y: Float, z: Float, nx: Float, ny: Float, nz: Float, color: Int) {
+        put(x); put(y); put(z); put(nx); put(ny); put(nz)
+        put((color shr 16 and 0xFF) / 255f); put((color shr 8 and 0xFF) / 255f); put((color and 0xFF) / 255f)
+    }
+
+    /** Adds [mesh] transformed by [model] and tinted [color]. */
+    fun add(mesh: Mesh, model: FloatArray, color: Int) {
+        Mat4.normalMatrix(model, nrm)
+        val d = mesh.data
+        val r = (color shr 16 and 0xFF) / 255f
+        val g = (color shr 8 and 0xFF) / 255f
+        val b = (color and 0xFF) / 255f
+        var i = 0
+        while (i < d.size) {
+            Mat4.transform(model, d[i], d[i + 1], d[i + 2], p)
+            val nx = nrm[0] * d[i + 3] + nrm[3] * d[i + 4] + nrm[6] * d[i + 5]
+            val ny = nrm[1] * d[i + 3] + nrm[4] * d[i + 4] + nrm[7] * d[i + 5]
+            val nz = nrm[2] * d[i + 3] + nrm[5] * d[i + 4] + nrm[8] * d[i + 5]
+            val l = sqrt(nx * nx + ny * ny + nz * nz).coerceAtLeast(1e-6f)
+            put(p[0]); put(p[1]); put(p[2]); put(nx / l); put(ny / l); put(nz / l)
+            put(d[i + 6] * r); put(d[i + 7] * g); put(d[i + 8] * b)
+            i += Mesh.STRIDE
+        }
+    }
+
+    fun build(ground: Boolean = false, decal: Boolean = false) = Mesh(data.copyOf(size), ground, decal)
 }
 
 /** Low-poly unit shapes that everything in the 3D world is built from. */
@@ -33,7 +83,10 @@ object Meshes {
             val flat = floatArrayOf(nx / l, ny / l, nz / l)
             val verts = if (flip) listOf(a to (na ?: flat), c to (nc ?: flat), b to (nb ?: flat))
             else listOf(a to (na ?: flat), b to (nb ?: flat), c to (nc ?: flat))
-            for ((p, n) in verts) { out += p[0]; out += p[1]; out += p[2]; out += n[0]; out += n[1]; out += n[2] }
+            for ((p, n) in verts) {
+                out += p[0]; out += p[1]; out += p[2]; out += n[0]; out += n[1]; out += n[2]
+                out += 1f; out += 1f; out += 1f
+            }
         }
 
         fun quad(a: FloatArray, b: FloatArray, c: FloatArray, d: FloatArray) { tri(a, b, c); tri(a, c, d) }

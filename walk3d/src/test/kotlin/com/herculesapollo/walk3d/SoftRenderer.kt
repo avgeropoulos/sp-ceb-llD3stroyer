@@ -28,15 +28,18 @@ object SoftRenderer {
         val cp = Array(3) { FloatArray(4) }
         for (item in frame.items) {
             val d = if (item.mesh === Meshes.plane && (item.model[0] > 8f || item.model[10] > 8f)) tiles else item.mesh.data
-            val ground = (item.mesh === Meshes.plane || item.mesh === Meshes.disc) && item.model[13] < 0.05f
+            val ground = (item.mesh === Meshes.plane || item.mesh === Meshes.disc) && item.model[13] < 0.1f
+            val st = Mesh.STRIDE
             var i = 0
             while (i < d.size) {
+                var tr = 0f; var tg = 0f; var tb = 0f
                 for (k in 0 until 3) {
-                    val o = i + k * 6
+                    val o = i + k * st
+                    tr += d[o + 6] / 3f; tg += d[o + 7] / 3f; tb += d[o + 8] / 3f
                     Mat4.transform(item.model, d[o], d[o + 1], d[o + 2], wp[k])
                     Mat4.transform(frame.viewProj, wp[k][0], wp[k][1], wp[k][2], cp[k])
                 }
-                i += 18
+                i += 3 * st
                 // Face normal from the world-space triangle.
                 val ux = wp[1][0] - wp[0][0]; val uy = wp[1][1] - wp[0][1]; val uz = wp[1][2] - wp[0][2]
                 val vx = wp[2][0] - wp[0][0]; val vy = wp[2][1] - wp[0][1]; val vz = wp[2][2] - wp[0][2]
@@ -54,9 +57,16 @@ object SoftRenderer {
                 val ys = FloatArray(poly.size) { (0.5f - poly[it][1] / poly[it][3] * 0.5f) * h }
                 val dist = sqrt((cx - frame.eyeX) * (cx - frame.eyeX) + (cy - frame.eyeY) * (cy - frame.eyeY) + (cz - frame.eyeZ) * (cz - frame.eyeZ))
                 val light = (frame.ambient + frame.sun * maxOf(0f, nx * frame.light[0] + ny * frame.light[1] + nz * frame.light[2])).coerceAtMost(1.15f)
-                val lit = Models.shade(item.color, light)
+                val c = item.color
+                val tinted = (0xFF shl 24) or
+                    (((c shr 16 and 0xFF) * tr).toInt().coerceIn(0, 255) shl 16) or
+                    (((c shr 8 and 0xFF) * tg).toInt().coerceIn(0, 255) shl 8) or
+                    ((c and 0xFF) * tb).toInt().coerceIn(0, 255)
+                val lit = Models.shade(tinted, light)
                 val fog = ((dist - frame.fogNear) / (frame.fogFar - frame.fogNear)).coerceIn(0f, 1f)
-                tris += Tri(xs, ys, if (ground) 1e6f + dist else dist, mix(lit, frame.fogColor, fog))
+                // Ground first, then what lies on it, then everything else back to front.
+                val layer = if (item.mesh.ground) 2e6f else if (item.mesh.decal || ground) 1e6f else 0f
+                tris += Tri(xs, ys, layer + dist, mix(lit, frame.fogColor, fog))
             }
         }
         tris.sortByDescending { it.depth }
@@ -79,7 +89,7 @@ object SoftRenderer {
     private val tiles: FloatArray = run {
         val n = 12
         val out = ArrayList<Float>()
-        fun v(x: Float, z: Float) { out += x; out += 0f; out += z; out += 0f; out += 1f; out += 0f }
+        fun v(x: Float, z: Float) { out += x; out += 0f; out += z; out += 0f; out += 1f; out += 0f; out += 1f; out += 1f; out += 1f }
         for (i in 0 until n) for (j in 0 until n) {
             val x0 = -0.5f + i / n.toFloat(); val x1 = x0 + 1f / n
             val z0 = -0.5f + j / n.toFloat(); val z1 = z0 + 1f / n

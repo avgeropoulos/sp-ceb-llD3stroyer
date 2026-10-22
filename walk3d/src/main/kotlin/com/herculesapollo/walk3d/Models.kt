@@ -13,19 +13,23 @@ object Models {
     private const val WHITE = 0xFFF4F4F4.toInt()
     private const val PINK = 0xFFFF7A9A.toInt()
     private const val GOLD = 0xFFFFD21F.toInt()
-    const val HERC_BODY = 0xFF7A4A24.toInt()
-    const val HERC_DARK = 0xFF4A2A12.toInt()
-    const val HERC_LIGHT = 0xFFC8915A.toInt()
     const val HERC_COLLAR = 0xFFE52521.toInt()
-    const val APOLLO_BODY = 0xFFE2A443.toInt()
-    const val APOLLO_DARK = 0xFFA8702A.toInt()
-    const val APOLLO_LIGHT = 0xFFF7D58C.toInt()
     const val APOLLO_COLLAR = 0xFF2E7CF6.toInt()
+
+    /** Each dog's colors: [body] curls, [curl] highlights, [head], [ear], [muzzle], [beard] and [tail]. */
+    class Coat(val body: Int, val curl: Int, val head: Int, val headCurl: Int, val ear: Int, val muzzle: Int, val beard: Int, val tail: Int, val collar: Int)
+
+    /** Hercules: black curls with a white beard and a red collar. */
+    val HERC = Coat(0xFF221E20.toInt(), 0xFF3A3437.toInt(), 0xFF262123.toInt(), 0xFF3E373A.toInt(), 0xFF1A1618.toInt(), 0xFF2C2729.toInt(), 0xFFEDE8E0.toInt(), 0xFF1E1A1C.toInt(), HERC_COLLAR)
+    /** Apollo: tan curls, a silvery-grey head, reddish-brown ears and a dark tail. */
+    val APOLLO = Coat(0xFFC9A27A.toInt(), 0xFFD4B188.toInt(), 0xFF9C958E.toInt(), 0xFFBDB6AE.toInt(), 0xFFA0552E.toInt(), 0xFFB9905F.toInt(), 0xFFD2B286.toInt(), 0xFF2A2018.toInt(), APOLLO_COLLAR)
 
     private val base = FloatArray(16)
     private val tmp = FloatArray(16)
 
     private lateinit var f: Frame
+    /** While baking a level's scenery, parts go into this instead of the frame. */
+    private var batch: MeshBatch? = null
 
     /** Sets [base] to a model placed at (x, y, z), turned by [yaw] and uniformly scaled by [s]. */
     private fun place(x: Float, y: Float, z: Float, yaw: Float = 0f, s: Float = 1f): FloatArray {
@@ -45,12 +49,14 @@ object Models {
         px: Float, py: Float, pz: Float, sx: Float, sy: Float, sz: Float,
         rx: Float = 0f, ry: Float = 0f, rz: Float = 0f,
     ) {
-        val m = f.add(mesh, color, parent).model
+        val b = batch
+        val m = if (b != null) Mat4.copy(parent, tmp) else f.add(mesh, color, parent).model
         Mat4.translate(m, px, py, pz)
         if (ry != 0f) Mat4.rotateY(m, ry)
         if (rx != 0f) Mat4.rotateX(m, rx)
         if (rz != 0f) Mat4.rotateZ(m, rz)
         Mat4.scale(m, sx, sy, sz)
+        b?.add(mesh, m, color)
     }
 
     private fun box(c: Int, p: FloatArray, px: Float, py: Float, pz: Float, sx: Float, sy: Float, sz: Float, rx: Float = 0f, ry: Float = 0f, rz: Float = 0f) =
@@ -86,14 +92,17 @@ object Models {
             f.setCamera(g.camX, g.camY, g.camZ, d.x, d.y + 0.8f, d.z, aspect)
         }
 
-        // Ground.
-        part(Meshes.plane, look.ground, place(0f, 0f, 0f), 0f, 0f, 0f, 220f, 1f, 220f)
-        for (p in g.level.props) {
-            val dx = p.x - f.eyeX
-            val dz = p.z - f.eyeZ
-            val reach = f.fogFar + 4f + maxOf(p.w, p.d) / 2f
-            if (dx * dx + dz * dz > reach * reach) continue
-            prop(g, p)
+        // The ground and all the scenery that never moves, each baked into a single mesh.
+        f.add(g.terrain, 0xFFFFFFFF.toInt())
+        f.add(g.decals, 0xFFFFFFFF.toInt())
+        f.add(g.scenery, 0xFFFFFFFF.toInt())
+        for (p in g.level.props) when (p.type) {
+            PropType.BIN -> binLid(g, p)
+            PropType.WATER -> {
+                val wave = sin(g.clock * 1.5f) * 0.4f
+                part(Meshes.plane, 0xFFE8F8FF.toInt(), place(p.x, 0f, p.z), 0f, 0.08f, -p.d / 2 + 0.3f + wave, p.w, 1f, 0.6f)
+            }
+            else -> {}
         }
         if (g.goalReached && g.state == Game3D.State.PLAYING) {
             // A big bouncing arrow over your front door.
@@ -118,7 +127,7 @@ object Models {
         for (s in g.level.solids) {
             if (s.top < 30f && s.top <= above + 0.05f && x in s.x0..s.x1 && z in s.z0..s.z1) top = maxOf(top, s.top)
         }
-        part(Meshes.disc, shade(ground, 0.62f), place(x, top + 0.02f, z), 0f, 0f, 0f, r * 2f, 1f, r * 2f)
+        part(Meshes.disc, shade(ground, 0.62f), place(x, top + 0.05f, z), 0f, 0f, 0f, r * 2f, 1f, r * 2f)
     }
 
     private fun drawDog(g: Game3D, ground: Int) {
@@ -148,40 +157,72 @@ object Models {
         }
     }
 
-    /** One of the dogs. [stride] drives the legs (0 = standing). */
+    /** Curls on the body, relative to the dog's feet. */
+    private val bodyCurls = arrayOf(
+        floatArrayOf(0f, 0.66f, -0.1f), floatArrayOf(0.13f, 0.64f, 0.1f), floatArrayOf(-0.13f, 0.64f, 0.1f),
+        floatArrayOf(0.16f, 0.62f, -0.24f), floatArrayOf(-0.16f, 0.62f, -0.24f), floatArrayOf(0.25f, 0.48f, 0.04f),
+        floatArrayOf(-0.25f, 0.48f, 0.04f), floatArrayOf(0.23f, 0.42f, -0.26f), floatArrayOf(-0.23f, 0.42f, -0.26f),
+        floatArrayOf(0f, 0.58f, -0.36f), floatArrayOf(0.2f, 0.56f, 0.28f), floatArrayOf(-0.2f, 0.56f, 0.28f),
+    )
+    /** Curls on top of the head, relative to the head's middle. */
+    private val headCurls = arrayOf(
+        floatArrayOf(0f, 0.2f, 0f), floatArrayOf(0.12f, 0.17f, 0.06f), floatArrayOf(-0.12f, 0.17f, 0.06f),
+        floatArrayOf(0.1f, 0.15f, -0.1f), floatArrayOf(-0.1f, 0.15f, -0.1f), floatArrayOf(0f, 0.17f, -0.13f),
+    )
+    /** The tail plume: (x, y, z, size) balls arcing up and over the back from its base. */
+    private val tailPuffs = arrayOf(
+        floatArrayOf(0f, 0.04f, -0.06f, 0.16f), floatArrayOf(0f, 0.17f, -0.12f, 0.18f), floatArrayOf(0f, 0.3f, -0.09f, 0.2f),
+        floatArrayOf(0f, 0.4f, 0f, 0.19f), floatArrayOf(0f, 0.44f, 0.11f, 0.16f),
+    )
+    private val leg = FloatArray(16)
+
+    /** One of the dogs: a curly-coated doodle. [stride] drives the legs (0 = standing). */
     fun dogModel(herc: Boolean, x: Float, y: Float, z: Float, yaw: Float, stride: Float, onGround: Boolean, clock: Float, ground: Int) {
-        val k = if (herc) 1f else 0.78f
-        val body = if (herc) HERC_BODY else APOLLO_BODY
-        val dark = if (herc) HERC_DARK else APOLLO_DARK
-        val light = if (herc) HERC_LIGHT else APOLLO_LIGHT
-        val collar = if (herc) HERC_COLLAR else APOLLO_COLLAR
-        val p = place(x, y, z, yaw, k).copyOf()
-        val slim = if (herc) 1f else 0.85f
-        box(body, p, 0f, 0.33f, -0.02f, 0.42f * slim, 0.34f, 0.78f)
-        box(light, p, 0f, 0.3f, 0.06f, 0.36f * slim, 0.06f, 0.56f)
-        box(body, p, 0f, 0.5f, 0.42f, 0.34f * slim, 0.32f, 0.32f)
-        box(light, p, 0f, 0.53f, 0.64f, 0.22f * slim, 0.16f, 0.2f)
-        box(BLACK, p, 0f, 0.64f, 0.75f, 0.09f, 0.07f, 0.05f)
-        box(BLACK, p, 0.09f, 0.71f, 0.58f, 0.05f, 0.05f, 0.03f)
-        box(BLACK, p, -0.09f, 0.71f, 0.58f, 0.05f, 0.05f, 0.03f)
-        box(dark, p, 0.15f, 0.76f, 0.36f, 0.09f, 0.18f, 0.07f, rz = -0.35f)
-        box(dark, p, -0.15f, 0.76f, 0.36f, 0.09f, 0.18f, 0.07f, rz = 0.35f)
-        box(collar, p, 0f, 0.5f, 0.28f, 0.38f * slim, 0.07f, 0.1f)
-        box(GOLD, p, 0f, 0.44f, 0.34f, 0.05f, 0.06f, 0.03f)
-        if (stride > 0f) box(PINK, p, 0f, 0.47f, 0.7f, 0.07f, 0.02f, 0.12f, rx = 0.5f)
-        val wag = sin(clock * 14f) * 0.6f
-        box(dark, p, 0f, 0.58f, -0.38f, 0.07f, 0.32f, 0.07f, rx = -0.7f, ry = wag)
-        // Legs swing from the hips; mid-air they stretch out.
-        val swing = if (!onGround) 0.8f else if (stride > 0f) sin(stride * 6f) * 0.75f else 0f
-        for ((lx, lz, s) in listOf(
-            Triple(0.13f, 0.27f, 1f), Triple(-0.13f, 0.27f, -1f), Triple(0.13f, -0.28f, -1f), Triple(-0.13f, -0.28f, 1f),
-        )) {
+        val c = if (herc) HERC else APOLLO
+        val p = place(x, y, z, yaw, if (herc) 0.8f else 0.83f).copyOf()
+        val run = stride > 0f
+        val bob = if (run && onGround) abs(sin(stride * 6f)) * 0.04f else 0f
+        // A round, fluffy body covered in curls.
+        ball(c.body, p, 0f, 0.46f + bob, -0.02f, 0.5f, 0.44f, 0.78f)
+        ball(c.body, p, 0f, 0.5f + bob, 0.24f, 0.46f, 0.46f, 0.42f)
+        for ((i, q) in bodyCurls.withIndex()) ball(if (i % 3 == 0) c.curl else c.body, p, q[0], q[1] + bob, q[2], 0.18f)
+        // A big round mop of a head.
+        val hy = 0.84f + bob
+        val hz = 0.4f
+        ball(c.head, p, 0f, hy, hz, 0.46f, 0.44f, 0.44f)
+        for (q in headCurls) ball(c.headCurl, p, q[0], hy + q[1], hz + q[2], 0.18f)
+        ball(c.muzzle, p, 0f, hy - 0.1f, hz + 0.22f, 0.24f, 0.2f, 0.24f)
+        ball(c.beard, p, 0f, hy - 0.23f, hz + 0.17f, 0.2f, 0.17f, 0.18f)
+        ball(BLACK, p, 0f, hy - 0.05f, hz + 0.34f, 0.09f, 0.07f, 0.07f)
+        for (ex in floatArrayOf(-0.1f, 0.1f)) {
+            ball(BLACK, p, ex, hy + 0.04f, hz + 0.2f, 0.07f)
+            ball(WHITE, p, ex + 0.015f, hy + 0.06f, hz + 0.235f, 0.025f)
+        }
+        // Long floppy ears that bounce as the dog runs.
+        val flop = if (run) sin(stride * 6f) * 0.25f else 0f
+        for (side in floatArrayOf(-1f, 1f)) {
+            part(Meshes.sphere, c.ear, p, side * 0.22f, hy - 0.12f, hz - 0.02f, 0.14f, 0.42f, 0.22f, rz = side * (0.12f + flop))
+        }
+        part(Meshes.cylinder, c.collar, p, 0f, 0.58f + bob, 0.3f, 0.36f, 0.07f, 0.3f, rx = -0.5f)
+        ball(GOLD, p, 0f, 0.55f + bob, 0.47f, 0.06f)
+        if (run) box(PINK, p, 0f, hy - 0.27f, hz + 0.27f, 0.07f, 0.02f, 0.1f, rx = 0.6f)
+        // The plumed tail, curling up over the back and wagging.
+        val tail = Mat4.copy(p, FloatArray(16))
+        Mat4.translate(tail, 0f, 0.6f + bob, -0.38f)
+        Mat4.rotateY(tail, sin(clock * 12f) * 0.35f)
+        for ((i, q) in tailPuffs.withIndex()) ball(if (i % 2 == 0) c.tail else shade(c.tail, 1.35f), tail, q[0], q[1], q[2], q[3])
+        // Fluffy legs swing from the hips; mid-air they stretch out.
+        val swing = if (!onGround) 0.8f else if (run) sin(stride * 6f) * 0.75f else 0f
+        for (i in 0 until 4) {
+            val lx = if (i % 2 == 0) 0.14f else -0.14f
+            val lz = if (i < 2) 0.24f else -0.26f
+            val s = if (i == 0 || i == 3) 1f else -1f
             val a = if (!onGround) (if (lz > 0) -swing else swing) else swing * s
-            val m = f.add(Meshes.box, if (lz > 0) body else dark, p).model
-            Mat4.translate(m, lx * slim, 0.36f, lz)
-            Mat4.rotateX(m, a)
-            Mat4.translate(m, 0f, -0.36f, 0f)
-            Mat4.scale(m, 0.12f, 0.36f, 0.12f)
+            Mat4.copy(p, leg)
+            Mat4.translate(leg, lx, 0.4f, lz)
+            Mat4.rotateX(leg, a)
+            part(Meshes.cylinder, c.body, leg, 0f, -0.4f, 0f, 0.17f, 0.4f, 0.17f)
+            ball(if (herc) c.body else c.curl, leg, 0f, -0.37f, 0.03f, 0.19f, 0.13f, 0.22f)
         }
     }
 
@@ -326,8 +367,48 @@ object Models {
         ball(0xFFFFD166.toInt(), p, 0f, 1.66f, 0.12f, 0.3f, 0.18f, 0.32f)
     }
 
-    private fun prop(g: Game3D, p: Prop) {
-        val night = g.level.def.look.night
+    /** Bakes the scenery of [level] that never moves (everything but the ground) into one mesh. */
+    fun buildScenery(level: Level): Mesh {
+        val b = MeshBatch()
+        batch = b
+        try {
+            for (p in level.props) prop(level, p)
+            Decor.scatter(level, ::decor)
+        } finally {
+            batch = null
+        }
+        return b.build()
+    }
+
+    /** One piece of scattered decoration, for [Decor]. */
+    private fun decor(kind: Decor.Kind, x: Float, y: Float, z: Float, size: Float, yaw: Float, color: Int) {
+        val o = place(x, y, z, yaw).copyOf()
+        when (kind) {
+            Decor.Kind.TUFT -> for (i in 0 until 3) {
+                val a = i * 2.1f
+                box(color, o, cos(a) * 0.06f, 0f, sin(a) * 0.06f, 0.025f, 0.24f * size, 0.06f, rx = sin(a) * 0.35f, ry = a, rz = cos(a) * 0.35f)
+            }
+            Decor.Kind.FLOWER -> {
+                box(0xFF3F8C38.toInt(), o, 0f, 0f, 0f, 0.03f, 0.22f * size, 0.03f)
+                box(color, o, 0f, 0.22f * size, 0f, 0.12f, 0.06f, 0.12f, ry = 0.78f)
+                box(0xFFFFE14D.toInt(), o, 0f, 0.24f * size, 0f, 0.05f, 0.05f, 0.05f)
+            }
+            Decor.Kind.PEBBLE -> box(color, o, 0f, -0.02f, 0f, 0.18f * size, 0.1f * size, 0.14f * size, rx = 0.2f, rz = 0.15f)
+            Decor.Kind.TREE -> {
+                part(Meshes.cylinder, 0xFF6B4A2A.toInt(), o, 0f, -0.2f, 0f, 0.5f * size, 3f * size, 0.5f * size)
+                ball(color, o, 0f, 3.6f * size, 0f, 3f * size, 2.6f * size, 3f * size)
+                ball(shade(color, 1.12f), o, 0.5f * size, 4.4f * size, 0.3f * size, 1.9f * size)
+            }
+            Decor.Kind.PINE -> {
+                part(Meshes.cylinder, 0xFF5A3E22.toInt(), o, 0f, -0.2f, 0f, 0.4f * size, 1.2f * size, 0.4f * size)
+                part(Meshes.cone, color, o, 0f, 1f * size, 0f, 2.8f * size, 2.6f * size, 2.8f * size)
+                part(Meshes.cone, shade(color, 1.1f), o, 0f, 2.6f * size, 0f, 2f * size, 2.2f * size, 2f * size)
+            }
+        }
+    }
+
+    private fun prop(level: Level, p: Prop) {
+        val night = level.def.look.night
         fun dim(c: Int) = if (night) shade(c, 0.7f) else c
         val o = place(p.x, 0f, p.z).copyOf()
         when (p.type) {
@@ -364,15 +445,14 @@ object Models {
                 box(c, o, 0f, Level.FENCE_TOP - 0.06f, 0f, p.w, 0.06f, p.d)
             }
             PropType.BIN -> {
-                val raccoonHiding = g.critters.any { it.kind == Kind.RACCOON && it.spawn.x == p.x && it.spawn.z == p.z && it.hidden }
                 box(dim(0xFF3C7A4A.toInt()), o, 0f, 0f, 0f, 0.9f, Level.BIN_TOP - 0.1f, 0.9f)
-                box(dim(0xFF2C5A36.toInt()), o, 0f, Level.BIN_TOP - 0.1f, 0f, 1f, 0.1f, 1f, rx = if (raccoonHiding) -0.25f else 0f)
+                for (i in 0 until 3) box(dim(0xFF2F6A3E.toInt()), o, -0.3f + i * 0.3f, 0.1f, 0.455f, 0.08f, Level.BIN_TOP - 0.3f, 0.02f)
             }
             PropType.HOUSE, PropType.HOME -> house(p, o, night)
             PropType.LAMP -> {
                 part(Meshes.cylinder, 0xFF2E2E3A.toInt(), o, 0f, 0f, 0f, 0.14f, 3.2f, 0.14f)
                 ball(if (night) 0xFFFFF0A0.toInt() else 0xFFE8E8E8.toInt(), o, 0f, 3.35f, 0f, 0.45f)
-                if (night) part(Meshes.disc, shade(g.level.def.look.ground, 1.6f), o, 0f, 0.015f, 0f, 5f, 1f, 5f)
+                if (night) part(Meshes.disc, shade(level.def.look.ground, 1.6f), o, 0f, 0.02f, 0f, 5f, 1f, 5f)
             }
             PropType.UMBRELLA -> {
                 part(Meshes.cylinder, 0xFFEEEEEE.toInt(), o, 0f, 0f, 0f, 0.1f, 2.1f, 0.1f)
@@ -408,14 +488,30 @@ object Models {
                 part(Meshes.disc, 0xFF6B4E2A.toInt(), o, 0f, 0.012f, 0f, 0.8f, 1f, 0.6f)
                 part(Meshes.disc, 0xFF2A1E10.toInt(), o, 0f, 0.018f, 0f, 0.55f, 1f, 0.4f)
             }
-            PropType.HEDGE -> box(dim(0xFF2F7A34.toInt()), o, 0f, 0f, 0f, p.w, 1.5f, p.d)
-            PropType.WATER -> {
-                part(Meshes.plane, 0xFF2A8FD8.toInt(), o, 0f, 0.03f, 0f, p.w, 1f, p.d)
-                val wave = sin(g.clock * 1.5f) * 0.4f
-                part(Meshes.plane, 0xFFE8F8FF.toInt(), o, 0f, 0.04f, -p.d / 2 + 0.3f + wave, p.w, 1f, 0.5f)
+            PropType.HEDGE -> {
+                // A leafy hedge: a box with a bumpy top.
+                box(dim(0xFF2F7A34.toInt()), o, 0f, 0f, 0f, p.w, 1.3f, p.d)
+                val along = p.w >= p.d
+                val len = if (along) p.w else p.d
+                val n = (len / 1.4f).toInt()
+                for (i in 0..n) {
+                    val s = -len / 2 + len * i / n
+                    val k = 0.85f + Terrain.noise(p.x + s * 1.7f, p.z + s) * 0.3f
+                    ball(dim(shade(0xFF3A8A3C.toInt(), k)), o, if (along) s else 0f, 1.25f, if (along) 0f else s, 1.6f, 1.0f, 1.6f)
+                }
             }
-            PropType.PATH -> part(Meshes.plane, g.level.def.look.path, o, 0f, 0.012f, 0f, p.w, 1f, p.d)
+            PropType.WATER, PropType.PATH -> {}
         }
+    }
+
+    /** A bin's lid, propped open while a raccoon hides inside. */
+    private fun binLid(g: Game3D, p: Prop) {
+        val dx = p.x - f.eyeX
+        val dz = p.z - f.eyeZ
+        if (dx * dx + dz * dz > f.fogFar * f.fogFar) return
+        val hiding = g.critters.any { it.kind == Kind.RACCOON && it.spawn.x == p.x && it.spawn.z == p.z && it.hidden }
+        val c = if (g.level.def.look.night) shade(0xFF2C5A36.toInt(), 0.7f) else 0xFF2C5A36.toInt()
+        box(c, place(p.x, 0f, p.z), 0f, Level.BIN_TOP - 0.1f, 0f, 1f, 0.1f, 1f, rx = if (hiding) -0.25f else 0f)
     }
 
     private fun house(p: Prop, o: FloatArray, night: Boolean) {

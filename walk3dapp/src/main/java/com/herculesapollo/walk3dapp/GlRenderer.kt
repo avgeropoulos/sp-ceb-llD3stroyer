@@ -22,6 +22,7 @@ class GlRenderer(private val game: Game3D) : GLSurfaceView.Renderer {
     private var skyProgram = 0
     private var aPos = 0
     private var aNormal = 0
+    private var aColor = 0
     private var uMvp = 0
     private var uMv = 0
     private var uNormal = 0
@@ -42,13 +43,19 @@ class GlRenderer(private val game: Game3D) : GLSurfaceView.Renderer {
     private val mvp = FloatArray(16)
     private val mv = FloatArray(16)
     private val nrm = FloatArray(9)
+    /** The per-level meshes (terrain, scenery) on the GPU, freed when a level stops using them. */
+    private val levelMeshes = ArrayList<Mesh>()
+    private val used: MutableSet<Mesh> = java.util.Collections.newSetFromMap(java.util.IdentityHashMap())
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
         // A new GL context: anything uploaded to the old one is gone.
         for (m in Meshes.all) m.handle = null
+        for (m in levelMeshes) m.handle = null
+        levelMeshes.clear()
         program = link(VERTEX, FRAGMENT)
         aPos = GLES20.glGetAttribLocation(program, "aPos")
         aNormal = GLES20.glGetAttribLocation(program, "aNormal")
+        aColor = GLES20.glGetAttribLocation(program, "aColor")
         uMvp = GLES20.glGetUniformLocation(program, "uMvp")
         uMv = GLES20.glGetUniformLocation(program, "uMv")
         uNormal = GLES20.glGetUniformLocation(program, "uNormal")
@@ -115,14 +122,25 @@ class GlRenderer(private val game: Game3D) : GLSurfaceView.Renderer {
         GLES20.glUniform2f(uFogRange, f.fogNear, f.fogFar)
         GLES20.glEnableVertexAttribArray(aPos)
         GLES20.glEnableVertexAttribArray(aNormal)
+        GLES20.glEnableVertexAttribArray(aColor)
         var bound: Mesh? = null
+        used.clear()
         for (item in f.items) {
             val mesh = item.mesh
             if (mesh !== bound) {
+                // Push the terrain back a touch so paths and shadows lying on it never flicker.
+                if (mesh.ground) {
+                    GLES20.glEnable(GLES20.GL_POLYGON_OFFSET_FILL)
+                    GLES20.glPolygonOffset(2f, 4f)
+                } else if (bound?.ground == true) {
+                    GLES20.glDisable(GLES20.GL_POLYGON_OFFSET_FILL)
+                }
                 GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, buffer(mesh))
-                GLES20.glVertexAttribPointer(aPos, 3, GLES20.GL_FLOAT, false, 24, 0)
-                GLES20.glVertexAttribPointer(aNormal, 3, GLES20.GL_FLOAT, false, 24, 12)
+                GLES20.glVertexAttribPointer(aPos, 3, GLES20.GL_FLOAT, false, STRIDE_BYTES, 0)
+                GLES20.glVertexAttribPointer(aNormal, 3, GLES20.GL_FLOAT, false, STRIDE_BYTES, 12)
+                GLES20.glVertexAttribPointer(aColor, 3, GLES20.GL_FLOAT, false, STRIDE_BYTES, 24)
                 bound = mesh
+                used += mesh
             }
             Mat4.multiply(f.viewProj, item.model, mvp)
             Mat4.multiply(f.view, item.model, mv)
@@ -135,11 +153,25 @@ class GlRenderer(private val game: Game3D) : GLSurfaceView.Renderer {
         }
         GLES20.glDisableVertexAttribArray(aPos)
         GLES20.glDisableVertexAttribArray(aNormal)
+        GLES20.glDisableVertexAttribArray(aColor)
+        GLES20.glDisable(GLES20.GL_POLYGON_OFFSET_FILL)
         GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
+        // Free the last level's terrain and scenery once they're no longer drawn.
+        val it = levelMeshes.iterator()
+        while (it.hasNext()) {
+            val m = it.next()
+            if (m in used) continue
+            (m.handle as? Int)?.let { GLES20.glDeleteBuffers(1, intArrayOf(it), 0) }
+            m.handle = null
+            it.remove()
+        }
     }
 
     /** Uploads [mesh] to the GPU the first time it's drawn. */
-    private fun buffer(mesh: Mesh): Int = (mesh.handle as? Int) ?: upload(mesh.data).also { mesh.handle = it }
+    private fun buffer(mesh: Mesh): Int = (mesh.handle as? Int) ?: upload(mesh.data).also {
+        mesh.handle = it
+        if (Meshes.all.none { m -> m === mesh }) levelMeshes += mesh
+    }
 
     private fun upload(data: FloatArray): Int {
         val ids = IntArray(1)
@@ -178,6 +210,7 @@ class GlRenderer(private val game: Game3D) : GLSurfaceView.Renderer {
 
     private companion object {
         const val STEP = 1f / 60f
+        const val STRIDE_BYTES = Mesh.STRIDE * 4
 
         const val VERTEX = """
             uniform mat4 uMvp;
@@ -189,12 +222,13 @@ class GlRenderer(private val game: Game3D) : GLSurfaceView.Renderer {
             uniform float uSun;
             attribute vec3 aPos;
             attribute vec3 aNormal;
+            attribute vec3 aColor;
             varying vec3 vColor;
             varying float vDist;
             void main() {
                 vec3 n = normalize(uNormal * aNormal);
                 float l = min(uAmbient + uSun * max(dot(n, uLight), 0.0), 1.15);
-                vColor = min(uColor * l, vec3(1.0));
+                vColor = min(uColor * aColor * l, vec3(1.0));
                 vDist = length((uMv * vec4(aPos, 1.0)).xyz);
                 gl_Position = uMvp * vec4(aPos, 1.0);
             }

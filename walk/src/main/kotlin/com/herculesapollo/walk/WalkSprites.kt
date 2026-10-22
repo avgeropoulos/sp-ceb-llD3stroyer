@@ -16,89 +16,71 @@ object WalkSprites {
     private const val PINK = 0xFFFF7A9A.toInt()
     private const val GOLD = 0xFFFFD21F.toInt()
 
-    // ---------------------------------------------------------------- Hercules (the big one)
-    /** Hercules' coat colors, so they're easy to change: body, dark points, light chest. */
-    const val HERC_BODY = 0xFF7A4A24.toInt()
-    private const val HERC_DARK = 0xFF4A2A12.toInt()
-    private const val HERC_LIGHT = 0xFFC8915A.toInt()
+    // ---------------------------------------------------------------- Hercules and Apollo
+    /*
+     * Both dogs are curly-coated doodles drawn from one template, colored by name:
+     * B body, b body shadow, c curl highlight, H head, h head highlight, E floppy ear,
+     * M muzzle, W beard, N nose, I eye, g eye glint, C collar, Y tag, T tail, t tail curl.
+     */
+    private val dogTop = arrayOf(
+        "...............hHHHh",
+        ".............HHHHHHHHH",
+        "............HHHHhHHHHHH",
+        "..TT.......HHHHHHHHHHHHH",
+        ".TTtT.....EEEHHHHHHgIHHH",
+        "TTTTtT...EEEEEHHHHHIIHMMM",
+        "TtTTTT...EEEEEEHHHHHMMMNN",
+        ".TTtTT...EEEEEEHHHHMMMMNN",
+        "..TTTT..BEEEEEEhHHWWWWW",
+        "...TTTBBBEEEEEECCCWWWW",
+        "....BBBBcBEEEEEBCCYWW",
+        "...BBcBBBBcBEEBBBB",
+        "...BBBBBcBBBBBBcBBB",
+        "...BcBBBBBBcBBBBBBB",
+        "....BBbbbbbbbbbBBB",
+    )
+    private val standLegs = arrayOf(
+        "....BBB.BB...BBB.BB",
+        "....BBB.BB...BBB.BB",
+        "....bbb.bbb..bbb.bbb",
+    )
+    private val walkLegs = arrayOf(
+        "....BBB..BB..BB..BBB",
+        "...BBB....BB.BB...BBB",
+        "..bbb.....bbbbb....bbb",
+    )
+    private val leapLegs = arrayOf(
+        "..BBB...........BBB",
+        ".BB...............BBB",
+        "bb...................bb",
+    )
+
+    /** Hercules: black curls, a white beard and a red collar. */
+    const val HERC_BODY = 0xFF1E1A1C.toInt()
     const val HERC_COLLAR = 0xFFE52521.toInt()
-
     private val hercPal = mapOf(
-        'B' to HERC_BODY, 'D' to HERC_DARK, 'T' to HERC_LIGHT, 'K' to K, 'W' to WHITE,
-        'R' to HERC_COLLAR, 'Y' to GOLD, 'P' to PINK,
-    )
-    private val hercTop = arrayOf(
-        "..................DD",
-        ".................DBBD",
-        "................DBBBBBB",
-        "................BBWKBBBB",
-        "................BBBBBBTTTK",
-        "................BBBBBTTTT",
-        "...............RRRYBBTPP",
-        "..DD..........BRRRBBB",
-        "...DD.......BBBBBBBBB",
-        "....BBBBBBBBBBBBBBBBB",
-        "...BBBBBBBBBBBBBBBBBB",
-        "...BBBBBBBBBBBBBBBBB",
-        "...BBTTTTTTTTTTTTBBB",
-    )
-    val hercStand = art(hercPal, *hercTop,
-        "...BBB.BB.....BB.BBB",
-        "...BB..BB.....BB..BB",
-        "...BB..BB.....BB..BB",
-        "...DD..DD.....DD..DD",
-    )
-    val hercWalk = art(hercPal, *hercTop,
-        "...BBB..BB...BB..BBB",
-        "..BB.....BB.BB....BB",
-        ".BB.......BBB......BB",
-        ".DD.......DD.......DD",
-    )
-    val hercLeap = art(hercPal, *hercTop,
-        "..BBB..............BBB",
-        ".BB..................BB",
-        "BB....................BB",
-        "DD.....................DD",
+        'B' to HERC_BODY, 'b' to 0xFF0E0C0D.toInt(), 'c' to 0xFF3B3538.toInt(), 'H' to 0xFF221E20.toInt(),
+        'h' to 0xFF403A3D.toInt(), 'E' to 0xFF141113.toInt(), 'M' to 0xFF2A2527.toInt(), 'W' to 0xFFE8E4DC.toInt(),
+        'N' to 0xFF050505.toInt(), 'I' to 0xFF050505.toInt(), 'g' to WHITE, 'C' to HERC_COLLAR, 'Y' to GOLD,
+        'T' to 0xFF1A1618.toInt(), 't' to 0xFF3B3538.toInt(),
     )
 
-    // ---------------------------------------------------------------- Apollo (the quick one)
-    /** Apollo's coat colors: golden body, darker ears/tail, cream chest. */
-    const val APOLLO_BODY = 0xFFE2A443.toInt()
-    private const val APOLLO_DARK = 0xFFA8702A.toInt()
-    private const val APOLLO_LIGHT = 0xFFF7D58C.toInt()
+    /** Apollo: tan curls, a silvery-grey head, reddish-brown ears and a dark tail. */
+    const val APOLLO_BODY = 0xFFC9A27A.toInt()
     const val APOLLO_COLLAR = 0xFF2E7CF6.toInt()
-
     private val apolloPal = mapOf(
-        'G' to APOLLO_BODY, 'O' to APOLLO_DARK, 'L' to APOLLO_LIGHT, 'K' to K, 'W' to WHITE,
-        'C' to APOLLO_COLLAR, 'Y' to GOLD, 'P' to PINK,
+        'B' to APOLLO_BODY, 'b' to 0xFFA07E58.toInt(), 'c' to 0xFFE0C29A.toInt(), 'H' to 0xFF9C958E.toInt(),
+        'h' to 0xFFC2BCB4.toInt(), 'E' to 0xFFA0552E.toInt(), 'M' to 0xFFB9905F.toInt(), 'W' to 0xFFD8B88E.toInt(),
+        'N' to 0xFF101010.toInt(), 'I' to 0xFF101010.toInt(), 'g' to WHITE, 'C' to APOLLO_COLLAR, 'Y' to GOLD,
+        'T' to 0xFF2A2018.toInt(), 't' to 0xFF4A3A2C.toInt(),
     )
-    private val apolloTop = arrayOf(
-        "..............OO",
-        ".............OGGO",
-        "............GGWKGG",
-        "............GGGGGLLK",
-        "............GGGGLLL",
-        "..O........CCYGGPP",
-        "...OG.....GCCGGG",
-        "....GGGGGGGGGGGG",
-        "...GGGGGGGGGGGGG",
-        "...GGLLLLLLLLLGG",
-    )
-    val apolloStand = art(apolloPal, *apolloTop,
-        "...GG.GG....GG.GG",
-        "...GG.GG....GG.GG",
-        "...OO.OO....OO.OO",
-    )
-    val apolloWalk = art(apolloPal, *apolloTop,
-        "...GG..GG..GG..GG",
-        "..GG....GGGG....GG",
-        "..OO.....OO......OO",
-    )
-    val apolloLeap = art(apolloPal, *apolloTop,
-        "..GG.............GG",
-        ".GG...............GG",
-        ".OO...............OO",
-    )
+
+    val hercStand = art(hercPal, *dogTop, *standLegs)
+    val hercWalk = art(hercPal, *dogTop, *walkLegs)
+    val hercLeap = art(hercPal, *dogTop, *leapLegs)
+    val apolloStand = art(apolloPal, *dogTop, *standLegs)
+    val apolloWalk = art(apolloPal, *dogTop, *walkLegs)
+    val apolloLeap = art(apolloPal, *dogTop, *leapLegs)
 
     // ---------------------------------------------------------------- The walker
     private val walkerPal = mapOf(

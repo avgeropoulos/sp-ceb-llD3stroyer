@@ -57,7 +57,7 @@ class Frame {
     fun setCamera(ex: Float, ey: Float, ez: Float, cx: Float, cy: Float, cz: Float, aspect: Float) {
         eyeX = ex; eyeY = ey; eyeZ = ez
         Mat4.lookAt(view, ex, ey, ez, cx, cy, cz)
-        Mat4.perspective(proj, FOV, aspect, 0.2f, 120f)
+        Mat4.perspective(proj, FOV, aspect, 0.3f, 120f)
         Mat4.multiply(proj, view, viewProj)
     }
 

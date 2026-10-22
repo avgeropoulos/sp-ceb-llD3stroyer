@@ -51,7 +51,7 @@ class WalkGameTest {
             assertTrue(c.props.any { it.kind == PropKind.HOME }, "${w.title} ends at home")
             assertTrue(c.critters.all { it.x in 100f..c.homeX - 40f }, "${w.title} critters are on the walk")
         }
-        assertTrue(WalkSprites.hercStand.w > WalkSprites.apolloStand.w, "Hercules is the big one")
+        assertEquals(WalkSprites.hercStand.w, WalkSprites.apolloStand.w, "the two doodles are the same size")
     }
 
     @Test fun walkerWalksAndDogsFollow() {

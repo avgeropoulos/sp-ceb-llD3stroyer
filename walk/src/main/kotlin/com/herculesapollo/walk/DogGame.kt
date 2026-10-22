@@ -27,8 +27,8 @@ class Player(val herc: Boolean) {
     var barkT = 0f
     var cooldown = 0f
 
-    val w = if (herc) 22f else 17f
-    val h = if (herc) 17f else 13f
+    val w = if (herc) 22f else 20f
+    val h = if (herc) 17f else 14f
     /** Hercules is strong and jumps high; Apollo is quick. */
     val maxSpeed = if (herc) 140f else 205f
     /** Gives about 96 pixels of jump for Hercules (onto tree branches) and 56 for Apollo (onto fences). */
@@ -111,7 +111,14 @@ class DogGame(
         startWalk(walkIndex)
     }
 
-    fun applyMusic() = audio.music(if (!musicOn()) WalkTune.NONE else course.walk.theme.tune)
+    /** Each dog has its own daytime stroll tune; night walks keep the night tune. */
+    fun applyMusic() = audio.music(
+        when {
+            !musicOn() -> WalkTune.NONE
+            course.walk.theme.tune == WalkTune.DAY -> if (player.herc) WalkTune.HERC else WalkTune.APOLLO
+            else -> course.walk.theme.tune
+        },
+    )
 
     private fun setState(s: State) {
         state = s
@@ -269,8 +276,8 @@ class DogGame(
         val p = player
         p.cooldown = 1.2f
         p.barkT = 0.4f
-        audio.play(WalkSound.WOOF)
-        popup("WOOF!", p.x, p.y - p.h - 6f, WHITE, 9f)
+        audio.play(WalkSound.GAV)
+        popup("GAV GAV!", p.x, p.y - p.h - 6f, WHITE, 9f)
         for (c in course.critters) {
             if (c.catchable && abs(c.x - p.x) < 120f && abs(c.y - p.y) < 100f) c.frozenT = 1.5f
         }
@@ -280,7 +287,8 @@ class DogGame(
         val p = player
         p.cooldown = 0.7f
         p.dashT = 0.22f
-        audio.play(WalkSound.YIP)
+        audio.play(WalkSound.ARP)
+        popup("ARP!", p.x, p.y - p.h - 6f, WHITE, 8f)
     }
 
     private fun followCamera(dt: Float) {

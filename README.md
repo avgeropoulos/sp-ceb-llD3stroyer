@@ -112,9 +112,11 @@ out on five walks, and they chase down everything they see.
 
 ![Hercules and Apollo chasing a squirrel](docs/walk.png)
 
-* **Hercules** (brown, red collar) is the big, strong one and jumps high enough to reach cats
-  on fences and raccoons on bins.
-* **Apollo** (golden, blue collar) is the quick one, and the only dog fast enough to catch a bunny.
+* **Hercules** (black curls, white beard, red collar) jumps high enough to reach cats on fences
+  and raccoons on bins. Hercules barks **"GAV!"**
+* **Apollo** (tan curls, silvery-grey head) is the quick one, and the only dog fast enough to
+  catch a bunny. Apollo barks **"ARP!"**
+* When you play as one of them, each dog has its own stroll music.
 * Tap **HERC** or **APOLLO** and that dog barks and runs after the nearest critter. Pull too hard
   and the dog drags you along by the leash ("WHOA!").
 * Squirrels race up their tree, pigeons and seagulls fly off, bunnies dive into bushes, crabs
@@ -179,8 +181,9 @@ levels with the camera following behind the dog.
 * Chase all but two of the critters on a level, then follow the arrow home. Critters that get
   away (up a tree, down a burrow, into a bin, off into the sky) come back out after a while.
 * The arrow at the top of the screen points to the nearest critter, then home.
-* **Hercules** jumps high enough to grab squirrels sitting up in the trees, and **BARK** freezes
-  everything nearby. **Apollo** is much faster, and **DASH** is a lunge that works in mid-air.
+* **Hercules** (black curls, white beard) jumps high enough to grab squirrels sitting up in the
+  trees, and **BARK** ("GAV GAV!") freezes everything nearby. **Apollo** (tan curls, grey head) is
+  much faster, and **DASH** ("ARP!") is a lunge that works in mid-air. Each dog has its own stroll music.
 * Fences, bins, benches, hydrants and sandcastles can be jumped on. Umbrellas bounce you up high.
 * Stay away from skunks, and jump out of the way of the bikes. Three bumps and you redo the level.
 * Stars for how fast you get home. Each dog keeps its own progress.

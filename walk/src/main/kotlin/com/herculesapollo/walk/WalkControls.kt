@@ -102,9 +102,9 @@ object WalkControls {
         gfx.poly(floatArrayOf(left.cx - 9, left.cx + 6, left.cx + 6), floatArrayOf(left.cy, left.cy - 9, left.cy + 9), c)
         gfx.poly(floatArrayOf(right.cx + 9, right.cx - 6, right.cx - 6), floatArrayOf(right.cy, right.cy - 9, right.cy + 9), c)
         gfx.text("JUMP", jump.cx, jump.cy + 3, 7f, c, 1)
-        gfx.sprite(WalkSprites.hercStand, herc.cx - 10f, herc.cy - 13f, w = 20f, h = 14f)
+        gfx.sprite(WalkSprites.hercStand, herc.cx - 10.5f, herc.cy - 14f, w = 21f, h = 15f)
         gfx.text("HERC", herc.cx, herc.cy + 12, 7f, c, 1)
-        gfx.sprite(WalkSprites.apolloStand, apollo.cx - 9f, apollo.cy - 12f, w = 17f, h = 11f)
+        gfx.sprite(WalkSprites.apolloStand, apollo.cx - 10.5f, apollo.cy - 14f, w = 21f, h = 15f)
         gfx.text("APOLLO", apollo.cx, apollo.cy + 12, 6.5f, c, 1)
     }
 

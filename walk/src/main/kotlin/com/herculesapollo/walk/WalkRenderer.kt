@@ -460,7 +460,7 @@ object WalkRenderer {
     private fun hand(g: WalkGame) = (g.walker.x + 5f * g.walker.facing) to (g.walker.y - 11.5f)
 
     private fun collar(d: Dog) =
-        (d.x + (if (d.herc) 4f else 2f) * d.facing) to (d.y - (if (d.herc) 10f else 7f))
+        (d.x + 4f * d.facing) to (d.y - 8.5f)
 
     private fun drawLeash(g: WalkGame, gfx: Gfx, d: Dog) {
         val (ax, ay) = hand(g)

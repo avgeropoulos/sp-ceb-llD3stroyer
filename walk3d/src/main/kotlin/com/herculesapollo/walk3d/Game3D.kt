@@ -57,9 +57,10 @@ class Dog3(val herc: Boolean) {
     /** Distance run, for the leg animation. */
     var stride = 0f
 
-    val radius = if (herc) 0.42f else 0.34f
-    val height = if (herc) 0.8f else 0.6f
-    /** Hercules is big and jumps high (up into the trees); Apollo is fast. */
+    /** Both doodles are about the same size. */
+    val radius = 0.38f
+    val height = 0.85f
+    /** Hercules jumps high (up into the trees); Apollo is fast. */
     val maxSpeed = if (herc) 5.5f else 8f
     val jumpV = if (herc) 8.5f else 6.4f
     val name = if (herc) "Hercules" else "Apollo"
@@ -151,6 +152,14 @@ class Game3D(
     private var prevMusic = false
 
     val frame = Frame()
+    /** This level's ground and its baked scenery. */
+    var terrain = Mesh(FloatArray(0), ground = true)
+        private set
+    var decals = Mesh(FloatArray(0), decal = true)
+        private set
+    var scenery = Mesh(FloatArray(0))
+        private set
+    private var builtFor = -1
 
     init {
         loadLevel(0)
@@ -166,11 +175,25 @@ class Game3D(
         stateTime = 0f
     }
 
-    private fun applyMusic() = audio.music(if (!musicOn) WalkTune.NONE else level.def.look.tune)
+    /** Each dog has its own daytime stroll tune; the night level keeps the night tune. */
+    private fun applyMusic() = audio.music(
+        when {
+            !musicOn -> WalkTune.NONE
+            state == State.TITLE -> WalkTune.DAY
+            level.def.look.tune == WalkTune.DAY -> if (dog.herc) WalkTune.HERC else WalkTune.APOLLO
+            else -> level.def.look.tune
+        },
+    )
 
     private fun loadLevel(i: Int) {
         levelIndex = i
         level = Level(Levels.all[i])
+        if (builtFor != i) {
+            builtFor = i
+            terrain = Terrain.build(level)
+            decals = Terrain.buildDecals(level)
+            scenery = Models.buildScenery(level)
+        }
         critters.clear()
         level.spawns.mapTo(critters) { Critter3(it) }
         treats.clear()
@@ -415,8 +438,8 @@ class Game3D(
         // Longer than the freeze, so critters can't be kept frozen forever.
         d.cooldown = 2f
         d.barkT = 0.45f
-        audio.play(WalkSound.WOOF)
-        popup("WOOF!", d.x, d.y + 1.3f, d.z, WHITE, 10f)
+        audio.play(WalkSound.GAV)
+        popup("GAV GAV!", d.x, d.y + 1.3f, d.z, WHITE, 10f)
         for (c in critters) {
             if ((c.state == State3.IDLE || c.state == State3.FLEE) && hypot(c.x - d.x, c.z - d.z) < 7f) c.frozenT = 1.6f
         }
@@ -425,7 +448,8 @@ class Game3D(
     private fun dash() {
         dog.cooldown = 0.7f
         dog.dashT = 0.22f
-        audio.play(WalkSound.YIP)
+        audio.play(WalkSound.ARP)
+        popup("ARP!", dog.x, dog.y + 1.2f, dog.z, WHITE, 9f)
     }
 
     /** Swings the camera round behind the dog as it runs (but not when running toward the camera). */

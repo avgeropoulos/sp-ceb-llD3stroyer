@@ -93,13 +93,14 @@ class Game3DTest {
         for (mesh in Meshes.all) {
             val d = mesh.data
             var i = 0
+            val st = Mesh.STRIDE
             while (i < d.size) {
-                val ux = d[i + 6] - d[i]; val uy = d[i + 7] - d[i + 1]; val uz = d[i + 8] - d[i + 2]
-                val vx = d[i + 12] - d[i]; val vy = d[i + 13] - d[i + 1]; val vz = d[i + 14] - d[i + 2]
+                val ux = d[i + st] - d[i]; val uy = d[i + st + 1] - d[i + 1]; val uz = d[i + st + 2] - d[i + 2]
+                val vx = d[i + 2 * st] - d[i]; val vy = d[i + 2 * st + 1] - d[i + 1]; val vz = d[i + 2 * st + 2] - d[i + 2]
                 val nx = uy * vz - uz * vy; val ny = uz * vx - ux * vz; val nz = ux * vy - uy * vx
                 // The winding agrees with the stored normal (so back-face culling keeps the outside).
                 assertTrue(nx * d[i + 3] + ny * d[i + 4] + nz * d[i + 5] > -1e-6f, "winding at $i")
-                i += 18
+                i += 3 * st
             }
         }
     }
@@ -335,6 +336,18 @@ class Game3DTest {
         val title = Game3D(Input3D()).apply { viewW = 427f }
         run(title, 1f)
         shot(title, "0-title")
+        // A close-up of the two dogs, from the front and from the side.
+        for ((name, angle) in listOf("0-dogs-front" to 0f, "0-dogs-side" to 1.3f)) {
+            val w = (title.viewW * 3).toInt()
+            val h = (VIEW_H * 3).toInt()
+            val img = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
+            val f = title.buildFrame(w.toFloat() / h)
+            val cx = title.level.startX
+            val cz = title.level.startZ - 2f
+            f.setCamera(cx + sin(angle) * 2.6f, 1.1f, cz + cos(angle) * 2.6f, cx, 0.55f, cz, w.toFloat() / h)
+            SoftRenderer.render(f, img)
+            ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
 
         for (i in Levels.all.indices) {
             val g = start(herc = i % 2 == 0, level = i)

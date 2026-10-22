@@ -30,9 +30,9 @@ class Dog(val name: String, val herc: Boolean) {
     var lastCatch = -10f
     var whoaShown = false
 
-    /** Hitbox size; Hercules is the big one. */
-    val w = if (herc) 22f else 17f
-    val h = if (herc) 17f else 13f
+    /** Hitbox size. */
+    val w = if (herc) 22f else 20f
+    val h = if (herc) 17f else 14f
     /** Where the dog trots, ahead of the walker. */
     val offset = if (herc) 30f else 54f
     /** Hercules is strong (jumps high), Apollo is quick (runs fast). */
@@ -422,8 +422,8 @@ class WalkGame(
         d.whoaShown = false
         d.cooldown = 0.35f
         d.target?.let { d.facing = if (it.x >= d.x) 1 else -1 }
-        audio.play(if (d.herc) WalkSound.WOOF else WalkSound.YIP)
-        popup(if (d.herc) "WOOF!" else "YIP!", d.x, d.y - d.h - 4, 0xFFFFFFFF.toInt(), 7f)
+        audio.play(if (d.herc) WalkSound.GAV else WalkSound.ARP)
+        popup(if (d.herc) "GAV!" else "ARP!", d.x, d.y - d.h - 4, 0xFFFFFFFF.toInt(), 7f)
     }
 
     /** The nearest critter out in the open, preferring ones up ahead. */
