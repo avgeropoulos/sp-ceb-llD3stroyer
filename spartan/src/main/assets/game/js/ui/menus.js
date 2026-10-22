@@ -66,16 +66,16 @@ export const DIAGRAMS = {
   throw: `<svg viewBox="0 0 160 104"><circle class="d-head" cx="50" cy="56" r="12"/><path class="d-body" d="M50 68v34"/><path class="d-arm" d="M44 66 34 46 38 30"/><rect x="33" y="14" width="10" height="17" rx="2" class="d-phone" transform="rotate(-18 38 22)"/><path class="d-arc" d="M44 16C66-2 108 4 124 40"/>${ARROW(118, 30, 128, 50, 'd-arrow d-hot')}<text x="112" y="94" class="d-label">overhand</text></svg>`,
   layout: `<svg viewBox="0 0 320 150" class="d-layout"><rect x="3" y="3" width="314" height="144" rx="18" class="d-frame"/><rect x="16" y="9" width="288" height="132" rx="5" class="d-screen"/>
     <circle cx="32" cy="24" r="8" class="d-btn"/><text x="45" y="27" class="d-small">pause</text>
-    <circle cx="288" cy="24" r="8" class="d-btn"/><text x="275" y="27" class="d-small" text-anchor="end">swap weapon</text>
-    <circle cx="288" cy="56" r="12" class="d-btn d-throwbtn"/><text x="272" y="59" class="d-small" text-anchor="end">throw: hold, release</text>
     <circle cx="54" cy="112" r="21" class="d-ring"/><circle cx="58" cy="108" r="9" class="d-btn"/><text x="80" y="134" class="d-small">move</text>
     <circle cx="50" cy="64" r="16" class="d-btn"/><text x="50" y="66.5" class="d-tiny" text-anchor="middle">SHIELD</text>
     <circle cx="90" cy="72" r="11" class="d-btn"/><text x="90" y="74.5" class="d-tiny" text-anchor="middle">BASH</text>
     ${ARROW(50, 46, 50, 32, 'd-arrow')}<text x="58" y="40" class="d-small">swipe up: bash</text>
     <path d="M160 16v118" class="d-divider"/>
-    ${ARROW(180, 98, 244, 74, 'd-arrow d-hot')}<text x="182" y="114" class="d-small">swipe fast: slash</text>
-    <circle cx="246" cy="124" r="4.5" class="d-hotfill"/><text x="256" y="127" class="d-small">tap: stab</text>
-    <path d="M182 50q22-12 44 0" class="d-arc"/><text x="184" y="40" class="d-small">drag slowly: look</text></svg>`,
+    <path d="M176 44q22-12 44 0" class="d-arc"/><text x="174" y="29" class="d-small">drag slowly: look</text>
+    ${ARROW(180, 104, 232, 80, 'd-arrow d-hot')}<text x="176" y="70" class="d-small">swipe fast: slash</text>
+    <circle cx="178" cy="126" r="4.5" class="d-hotfill"/><text x="187" y="129.5" class="d-small">tap: stab</text>
+    <text x="300" y="56" class="d-small" text-anchor="end">throw: hold, release</text><circle cx="284" cy="78" r="13" class="d-btn d-throwbtn"/>
+    <text x="300" y="108" class="d-small" text-anchor="end">swap weapon</text><circle cx="287" cy="124" r="9" class="d-btn"/></svg>`,
   grip: '<svg viewBox="0 0 64 64"><rect x="25" y="6" width="15" height="30" rx="3" class="d-phone"/><rect x="28" y="9" width="9" height="20" rx="1" class="d-glass"/><rect x="19" y="27" width="28" height="21" rx="8" class="d-phone"/><path class="d-cut" d="M23 33h20M23 39h20M24 45h18"/><path class="d-body" d="M19 33q-3-9 6-12"/><rect x="24" y="47" width="18" height="13" class="d-phone"/></svg>',
   strap: '<svg viewBox="0 0 64 64"><rect x="10" y="8" width="16" height="28" rx="3" class="d-phone"/><rect x="13" y="11" width="10" height="18" rx="1" class="d-glass"/><path class="d-cord" d="M18 36c0 12 10 17 20 13"/><path class="d-body" d="M44 46 58 60"/><ellipse cx="42" cy="46" rx="6" ry="8" transform="rotate(-45 42 46)" class="d-band"/></svg>',
   space: '<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="25" class="d-ring d-dash"/><circle cx="32" cy="21" r="6" class="d-head"/><path d="M23 46l4-17h10l4 17z" class="d-phone"/><path class="d-arrow" d="M32 4v-1M60 32h1M4 32H3"/></svg>',
@@ -375,7 +375,8 @@ export function createMenus(ctx) {
                 <li><b>Left thumb</b> moves with the stick; hold <b>Shield</b> to block.</li>
                 <li><b>Swipe</b> fast on the right to slash that way; <b>tap</b> to stab; <b>drag slowly</b> to look.</li>
                 <li><b>Bash</b>: tap Bash, or swipe up from the Shield.</li>
-                <li><b>Throw</b>: with a spear in hand, hold Throw to wind up and release. Drag off it to cancel.</li>
+                <li><b>Throw</b>: with a spear in hand, hold Throw to wind up, then release. Drag off it to cancel.</li>
+                <li><b>Swap</b> sword and spear with the corner button; its number is the spears you have left.</li>
               </ul>
             </div>
           </div>

@@ -20,6 +20,13 @@ try {
     await page.waitForFunction(() => window.__ui, null, { timeout: 30000 });
     await page.evaluate(() => window.__sandbox.step(2));
     const cdp = await page.context().newCDPSession(page);
+    // Warm-up stroke: the first CDP touch sequence on a fresh page can arrive slowly (JIT, first
+    // paint) and read as a look drag. Its effects are cleared below.
+    const warm = async (type, x, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ id: 9, x, y, radiusX: 4, radiusY: 4, force: 1 }] });
+    await warm('touchStart', 560, 120);
+    for (let i = 1; i <= 4; i++) await warm('touchMove', 560 + i * 35, 120);
+    await warm('touchEnd');
+    await page.evaluate(() => { window.__sandbox.step(2); window.__ui.log.actions.length = 0; });
     const api = {
       page,
       async touch(type, pts) {
@@ -182,6 +189,8 @@ try {
     await t.step(1);
     const th = await t.center('.ctl-throw');
     check('THROW appears only with a spear in hand', throwHidden && th.w > 60, `w ${th.w}`);
+    check('touch layout: swap in the bottom-right corner, THROW above it', swap.x > 844 - 70 && swap.y > 390 - 70 && Math.abs(th.x - swap.x) < 8 && th.y < swap.y - 50 && th.y > 390 / 2,
+      `swap ${swap.x.toFixed(0)},${swap.y.toFixed(0)} throw ${th.x.toFixed(0)},${th.y.toFixed(0)}`);
     await t.clear();
     const held = await t.page.evaluate(() => {
       window.__thr = [];
@@ -276,7 +285,9 @@ try {
     check('left-handed: swipe on the left half → slash R', acts.length === 1 && acts[0].type === 'slash' && near(acts[0].dir, 0, 0.25), JSON.stringify(acts));
     const sh = await t.center('.ctl-shield');
     const pz = await t.center('.ctl-pause');
-    check('left-handed: SHIELD bottom-right, pause top-right', sh.x > 600 && pz.x > 700, `shield ${sh.x.toFixed(0)} pause ${pz.x.toFixed(0)}`);
+    const sw = await t.center('.ctl-swap');
+    check('left-handed: SHIELD bottom-right, pause top-right, swap bottom-left', sh.x > 600 && pz.x > 700 && pz.y < 80 && sw.x < 80 && sw.y > 300,
+      `shield ${sh.x.toFixed(0)} pause ${pz.x.toFixed(0)},${pz.y.toFixed(0)} swap ${sw.x.toFixed(0)},${sw.y.toFixed(0)}`);
     await t.page.context().close();
   }
 
@@ -284,6 +295,10 @@ try {
   {
     const t = await touchPage('view=motion&control=motion');
     const held = async () => (await t.input()).shieldHeld;
+    const [mp, mr, ms] = [await t.center('.ctl-pause'), await t.center('.ctl-recenter'), await t.center('.ctl-swap')];
+    const noTouchCtl = await t.page.evaluate(() => ['.ctl-shield', '.ctl-bash', '.ctl-stick', '.ctl-throw'].every((s) => getComputedStyle(document.querySelector(s)).display === 'none'));
+    check('motion layout: pause top-left, recenter top-centre, swap top-right, no touch buttons', mp.x < 80 && mp.y < 80 && Math.abs(mr.x - 422) < 2 && mr.y < 80 && ms.x > 764 && ms.y < 80 && noTouchCtl && mp.w >= 48 && mr.w >= 48 && ms.w >= 48,
+      JSON.stringify([mp, mr, ms]));
     await t.touch('touchStart', [{ x: 600, y: 220 }]);
     await t.step(1);
     check('motion: hold anywhere → shield', await held());

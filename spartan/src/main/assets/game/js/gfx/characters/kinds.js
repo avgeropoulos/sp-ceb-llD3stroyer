@@ -40,53 +40,64 @@ export const KINDS = {
 function corinthian(c, crestTile) {
   const { add, U, S } = c;
   const M = mat(U.head);
+  // columns: dense across the face so the eye holes, nasal and cheek slit are real openings
   const th = c.lo
-    ? [-PI, -1.9, -1.2, -0.62, -0.17, -0.085, 0, 0.085, 0.17, 0.62, 1.2, 1.9, PI]
-    : [-PI, -2.45, -1.8, -1.2, -0.62, -0.17, -0.085, 0, 0.085, 0.17, 0.62, 1.2, 1.8, 2.45, PI];
-  const R = [
-    { y: 0.2, rx: 0, rz: 0, z: -0.016 },
-    { y: 0.188, rx: 0.05, rz: 0.064, z: -0.016 },
-    { y: 0.162, rx: 0.08, rz: 0.103, z: -0.014 },
-    { y: 0.12, rx: 0.09, rz: 0.115, z: -0.01 },
-    { y: 0.083, rx: 0.091, rz: 0.117, z: -0.005, shape: (t) => 1 + 0.035 * Math.max(0, Math.cos(t)) ** 3 },
-    { y: 0.061, rx: 0.088, rz: 0.118, z: 0.002, fn: (t, p) => { if (Math.abs(t) < 0.7) p[1] -= 0.015 * smooth(0.28, 0.62, Math.abs(t)); } },
-    { y: 0.033, rx: 0.087, rz: 0.121, z: 0.004, fn: (t, p) => { if (Math.abs(t) < 0.7) p[1] += 0.008 * smooth(0.36, 0.62, Math.abs(t)); } },
-    { y: 0.002, rx: 0.086, rz: 0.121, z: 0.006, shape: (t) => 1 + 0.03 * Math.max(0, Math.cos(t)) ** 4 },
-    { y: -0.04, rx: 0.083, rz: 0.116, z: 0.01, shape: (t) => 1 + 0.02 * Math.max(0, Math.cos(t)) },
+    ? [-PI, -2.0, -1.1, -0.55, -0.15, 0, 0.15, 0.55, 1.1, 2.0, PI]
+    : [-PI, -2.3, -1.65, -1.1, -0.6, -0.17, 0, 0.17, 0.6, 1.1, 1.65, 2.3, PI];
+  const eyeOut = c.lo ? 0.55 : 0.6, eyeIn = c.lo ? 0.15 : 0.17;
+  const near = (t, a) => Math.abs(Math.abs(t) - a) < 0.02;
+  const ringsH = [
+    { y: 0.198, rx: 0, rz: 0, z: -0.014 },
+    { y: 0.178, rx: 0.06, rz: 0.077, z: -0.014, lo: false },
+    { y: 0.14, rx: 0.089, rz: 0.113, z: -0.011 },
+    { y: 0.095, rx: 0.096, rz: 0.121, z: -0.007, lo: false },
+    // brow: a raised ridge over the eyes
+    { y: 0.066, rx: 0.094, rz: 0.121, z: -0.003, shape: (t) => 1 + 0.03 * Math.max(0, Math.cos(t)) ** 3 },
+    // top of the eye openings; the outer corners drop (almond eyes)
+    { y: 0.056, rx: 0.092, rz: 0.121, z: 0.0, fn: (t, p) => { if (near(t, eyeOut)) p[1] -= 0.013; } },
+    // bottom of the eye openings / middle of the nasal
+    { y: 0.02, rx: 0.09, rz: 0.123, z: 0.004, fn: (t, p) => { if (near(t, eyeOut)) p[1] += 0.008; if (near(t, eyeIn)) p[1] -= 0.006; } },
+    // end of the nasal; the cheek pieces start
+    { y: -0.014, rx: 0.088, rz: 0.122, z: 0.008, lo: false },
+    { y: -0.062, rx: 0.087, rz: 0.116, z: 0.012, shape: (t) => 1 - 0.05 * Math.max(0, Math.cos(t)) ** 2 },
     {
-      y: -0.084, rx: 0.074, rz: 0.104, z: 0.013,
+      // lower edge: cheek pieces to the jaw, a notch below the ear, a flared neck guard
+      y: -0.104, rx: 0.082, rz: 0.108, z: 0.016,
       fn: (t, p) => {
         const a = Math.abs(t);
-        p[1] -= 0.028 * smooth(1.3, 2.6, a);
-        const f = 1 + 0.12 * smooth(1.6, 2.9, a);
+        p[1] += 0.022 * Math.exp(-(((a - 1.45) / 0.3) ** 2)) - 0.03 * smooth(1.8, 2.7, a);
+        const f = 1 + 0.13 * smooth(1.7, 2.9, a);
         p[0] *= f;
-        p[2] = (p[2] - 0.013) * f + 0.013 - 0.012 * smooth(1.6, 2.9, a);
+        p[2] = (p[2] - 0.016) * f + 0.016 - 0.012 * smooth(1.7, 2.9, a);
       },
     },
   ];
+  const R = ringsH.filter((r) => !(c.lo && r.lo === false));
+  const iEye = R.findIndex((r) => r.y === 0.056);
+  const iNasal = R.findIndex((r) => r.y === 0.02);
   const skip = (i, j) => {
     const mid = Math.abs((th[j] + th[j + 1]) / 2);
-    if (i === 5) return mid > 0.085 && mid < 0.62;
-    if (i === 6) return mid > 0.085 && mid < 0.17;
-    if (i >= 7) return mid < 0.17;
+    if (i === iEye) return mid > eyeIn && mid < eyeOut;
+    if (i > iNasal) return mid < eyeIn;
     return false;
   };
-  add(sweep(R, { thetas: th, skip, uvFn: (u, v, t, i, p) => [0.5 + t / (2 * PI), (p[1] + 0.12) / 0.33] }), 'bronze', B.head, M);
-  // horsehair crest on a low holder, front to back over the crown
-  const crest = slab(
-    (u, v, out) => {
-      const a = 0.55 - u * 2.55; // forehead → nape
-      const R0 = 0.19;
-      const bx = 0, by = 0.012 + Math.cos(a) * R0, bz = -0.012 + Math.sin(a) * R0;
-      const h = 0.025 + 0.085 * Math.sin(Math.min(1, u * 1.12) * PI) ** 0.75;
-      out[0] = 0.013 + 0.007 * v;
-      out[1] = by + Math.cos(a) * h * v;
-      out[2] = bz + Math.sin(a) * h * v;
-      void bx;
-    },
-    S(8, 4), 1, 0.026 + 0.007, { flip: true, edgeUv: [0.1, 0.1, 0.9, 0.9] },
-  );
-  add(crest, crestTile, B.head, M.clone().multiply(mat([-0.0, 0, 0])), { sub: [0, 0.2, 1, 0.8] });
+  add(sweep(R, { thetas: th, skip, uvFn: (u, v, t, i, p) => [0.5 + t / (2 * PI), (p[1] + 0.13) / 0.34] }), 'bronze', B.head, M);
+  // horsehair crest set straight on the bowl, front to nape, its tail hanging down the back
+  const pts = [], rad = [];
+  const crest = c.lo
+    ? [[0.8, 0.04], [0.25, 0.11], [-0.35, 0.12], [-1.0, 0.1]]
+    : [[0.88, 0.035], [0.6, 0.085], [0.25, 0.112], [-0.15, 0.124], [-0.55, 0.12], [-0.95, 0.105], [-1.3, 0.09]];
+  for (const [a, h] of crest) {
+    const by = 0.04 + 0.163 * Math.cos(a), bz = -0.013 + 0.128 * Math.sin(a);
+    const ny = Math.cos(a), nz = Math.sin(a);
+    pts.push([0, by + ny * h * 0.42, bz + nz * h * 0.42]);
+    rad.push([0.017 + 0.008 * Math.min(1, h / 0.1), h * 0.55]);
+  }
+  pts.push([0, -0.045, -0.2]);
+  rad.push([0.024, 0.04]);
+  pts.push([0, -0.2, -0.2]);
+  rad.push([0.016, 0.022]);
+  add(tube(pts, rad, { segs: S(6, 4), up: [1, 0, 0], capStart: true, capEnd: true }), crestTile, B.head, M);
 }
 
 /** Soft felt tiara (Mede/Persian hood): covers skull, neck and cheeks, the face open, peak folded forward. */
@@ -213,6 +224,31 @@ function cloak(c) {
   add(pt, 'crimson', B.cloak, null, { boneFn: (p) => (p.y > 1.43 * s ? B.chest : B.cloak) });
 }
 
+/** Linothorax shoulder pieces (epomides): strapped from the back over each shoulder to the chest. */
+function epomides(c) {
+  const { add, S, bulk, torsoBone } = c;
+  const path = [[1.33, -0.098], [1.415, -0.082], [1.462, -0.04], [1.479, 0.0], [1.466, 0.04], [1.425, 0.082], [1.35, 0.108]];
+  const at = (u, out) => {
+    const f = u * (path.length - 1), i = Math.min(path.length - 2, Math.floor(f)), t = f - i;
+    out[1] = path[i][0] + (path[i + 1][0] - path[i][0]) * t;
+    out[2] = path[i][1] + (path[i + 1][1] - path[i][1]) * t;
+  };
+  for (const k of [1, -1]) {
+    const pt = slab(
+      (u, v, out) => {
+        at(u, out);
+        const w = 0.046 + 0.008 * Math.sin(u * PI);
+        out[0] = k * (0.108 + (v - 0.5) * 2 * w) * bulk;
+        out[2] *= bulk;
+        // the strap's outer edge droops over the deltoid at the top
+        out[1] -= 0.018 * v * Math.sin(u * PI) * (k > 0 ? 1 : 1);
+      },
+      S(6, 3), 1, 0.01, { flip: k < 0, noEdges: c.lo },
+    );
+    add(pt, 'linen', B.chest, null, { boneFn: torsoBone, sub: [0.1, 0.25, 0.9, 0.75] });
+  }
+}
+
 function pteruges(c) {
   skirt(c, 'linen', 1.035, 0.76, 0.158, 0.19, { thick: 0.012, flare: 0.08, depth: 0.74 });
 }
@@ -303,11 +339,12 @@ export function variantFor(kind, opts, seed) {
         tiles: { hips: 'crimson', trunk: 'linen', skin, sleeve: 'crimson', thigh: skin, shin: skin, foot: skin, neck: skin },
         sleeve: 'short', greaves: true,
         head: (c) => {
-          buildHead(c, { face: 'faceG', beard: 'greek', hair: 'long', ears: false });
+          buildHead(c, { face: 'faceH', beard: 'greek', hair: 'long', ears: false });
           corinthian(c, crest);
         },
         kit: (c) => {
           pteruges(c);
+          epomides(c);
           cloak(c);
           scabbard(c, 1);
           aspisParts(c.add, B.itemL, { face: blazon, M: mat(c.U.itemL) }, c.lo);

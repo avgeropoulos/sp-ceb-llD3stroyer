@@ -62,25 +62,32 @@ export function buildModel(spec, rects, quality) {
 // ---------------------------------------------------------------------------------------
 // Anatomy
 
+/** Rows of a profile table by index: `hi` on high/medium, `lo` on low (null keeps every row). */
+export function sel(c, table, hi, lo) {
+  const idx = c.lo ? lo : hi;
+  return idx ? idx.map((i) => table[i]) : table;
+}
+
+/**
+ * Torso, neck, arms, fists and legs. Ring counts are chosen per quality so the whole body
+ * stays near 900 triangles on high and 480 on low, leaving the rest of the budget for kit.
+ */
 function buildBody(c) {
   const { add, U, S, bulk, spec, torsoBone } = c;
   const k = bulk;
   const t = spec.tiles;
-  const segT = S(12, 8);
+  const segT = S(10, 7);
   // torso: hips (lower tile) then the trunk (upper tile)
   const chestShape = (amp, back) => (th) => 1 + amp * Math.max(0, Math.cos(th)) ** 2 - back * Math.max(0, -Math.cos(th)) ** 2;
-  const hips = rings(
-    [
-      [0.835, 0, 0, -0.005],
-      [0.86, 0.105, 0.085, -0.005],
-      [0.905, 0.148, 0.100, -0.008],
-      [0.96, 0.160, 0.106, -0.01],
-      [1.03, 0.151, 0.101, -0.004],
-    ],
-    0, 0, k,
-  );
-  add(sweep(hips, { segs: segT, uvFn: cylUv(0.83, 1.03) }), t.hips, B.pelvis, null, { boneFn: torsoBone });
-  const trunkTable = spec.trunk || [
+  const hipsT = [
+    [0.835, 0, 0, -0.005],
+    [0.86, 0.105, 0.085, -0.005],
+    [0.905, 0.148, 0.100, -0.008],
+    [0.96, 0.160, 0.106, -0.01],
+    [1.03, 0.151, 0.101, -0.004],
+  ];
+  add(sweep(rings(sel(c, hipsT, null, [0, 2, 3, 4]), 0, 0, k), { segs: segT, uvFn: cylUv(0.83, 1.03) }), t.hips, B.pelvis, null, { boneFn: torsoBone });
+  const trunkT = [
     [1.0, 0.152, 0.101, -0.004],
     [1.10, 0.142, 0.095, 0.0],
     [1.19, 0.150, 0.104, 0.006],
@@ -91,66 +98,54 @@ function buildBody(c) {
     [1.468, 0.06, 0.055, -0.022],
     [1.472, 0, 0, -0.022],
   ];
-  const trunk = rings(trunkTable, 0, 0, k).map((r, i) => {
+  const trunk = rings(sel(c, trunkT, [0, 1, 2, 3, 4, 5, 6, 8], [0, 1, 3, 5, 6, 8]), 0, 0, k).map((r) => {
     if (r.y > 1.15 && r.y < 1.42) r.shape = chestShape(0.07, 0.05);
     if (r.y >= 1.40 && r.y < 1.45) r.shape = (th) => 1 - 0.08 * Math.max(0, Math.cos(th)) ** 2;
     return r;
   });
   add(sweep(trunk, { segs: segT, uvFn: cylUv(1.0, 1.47) }), t.trunk, B.chest, null, { boneFn: torsoBone });
   // neck
-  const neck = rings([[1.40, 0.058, 0.062, -0.026], [1.47, 0.052, 0.058, -0.024], [1.545, 0.048, 0.054, -0.018], [1.61, 0.046, 0.05, -0.01]], 0, 0, Math.min(k, 1.05));
-  add(sweep(neck, { segs: S(8, 6), uvFn: cylUv(1.4, 1.61, 0, 0.25) }), t.neck || t.skin, B.neck, null, { boneFn: (p) => (p.y > 1.585 * c.s ? B.head : B.neck) });
+  const neckT = [[1.40, 0.058, 0.062, -0.026], [1.47, 0.052, 0.058, -0.024], [1.545, 0.048, 0.054, -0.018], [1.61, 0.046, 0.05, -0.01]];
+  add(sweep(rings(sel(c, neckT, [0, 2, 3], [0, 3]), 0, 0, Math.min(k, 1.05)), { segs: S(7, 5), uvFn: cylUv(1.4, 1.61, 0, 0.25) }), t.neck || t.skin, B.neck, null, { boneFn: (p) => (p.y > 1.585 * c.s ? B.head : B.neck) });
+  const limb = S(7, 5);
   // arms
   for (const side of [1, -1]) {
     const L = side > 0 ? 'L' : 'R';
     const x0 = U['upperArm' + L][0], z0 = U['upperArm' + L][2];
     const sl = spec.sleeve || 'none';
     const upperTile = sl === 'none' ? t.skin : t.sleeve;
-    const upper = rings(
-      [
-        [1.474, 0, 0],
-        [1.462, 0.036, 0.040],
-        [1.432, 0.053, 0.057, 0, 0.006 * side],
-        [1.37, 0.051, 0.053, 0.003, 0.005 * side],
-        [1.29, 0.046, 0.048, 0.006],
-        [1.205, 0.041, 0.043, 0.002],
-        [1.142, 0.037, 0.039],
-        [1.112, 0.022, 0.024],
-        [1.104, 0, 0],
-      ],
-      x0, z0, k,
-    );
+    const upperT = [
+      [1.474, 0, 0],
+      [1.462, 0.036, 0.040],
+      [1.432, 0.053, 0.057, 0, 0.006 * side],
+      [1.37, 0.051, 0.053, 0.003, 0.005 * side],
+      [1.29, 0.046, 0.048, 0.006],
+      [1.205, 0.041, 0.043, 0.002],
+      [1.142, 0.037, 0.039],
+      [1.112, 0.022, 0.024],
+      [1.104, 0, 0],
+    ];
     if (sl === 'short') {
       // short sleeve over the shoulder, skin below
-      const sleeve = rings([[1.477, 0, 0], [1.466, 0.041, 0.045], [1.436, 0.059, 0.063, 0, 0.006 * side], [1.37, 0.057, 0.059, 0.003, 0.005 * side], [1.33, 0.055, 0.057, 0.004]], x0, z0, k);
-      sleeve.push({ y: 1.325, rx: 0.043 * k, rz: 0.045 * k, x: x0, z: z0 + 0.004 });
-      add(sweep(sleeve, { segs: S(8, 6), uvFn: cylUv(1.32, 1.48) }), t.sleeve, B['upperArm' + L]);
-      add(sweep(upper.slice(3), { segs: S(8, 6), uvFn: cylUv(1.1, 1.38, 0, 0.5) }), t.skin, B['upperArm' + L]);
+      const sleeveT = [[1.477, 0, 0], [1.466, 0.041, 0.045], [1.436, 0.059, 0.063, 0, 0.006 * side], [1.37, 0.057, 0.059, 0.003, 0.005 * side], [1.33, 0.055, 0.057, 0.004], [1.325, 0.043, 0.045, 0.004]];
+      add(sweep(rings(sel(c, sleeveT, [0, 2, 3, 4, 5], [0, 2, 4, 5]), x0, z0, k), { segs: limb, uvFn: cylUv(1.32, 1.48) }), t.sleeve, B['upperArm' + L]);
+      add(sweep(rings(sel(c, upperT, [3, 4, 6, 8], [3, 5, 8]), x0, z0, k), { segs: limb, uvFn: cylUv(1.1, 1.38, 0, 0.5) }), t.skin, B['upperArm' + L]);
     } else {
-      add(sweep(upper, { segs: S(8, 6), uvFn: cylUv(1.1, 1.48) }), upperTile, B['upperArm' + L]);
+      add(sweep(rings(sel(c, upperT, [0, 1, 2, 4, 6, 8], [0, 2, 4, 6, 8]), x0, z0, k), { segs: limb, uvFn: cylUv(1.1, 1.48) }), upperTile, B['upperArm' + L]);
     }
     const foreTile = sl === 'long' ? t.sleeve : t.skin;
     const fx = U['forearm' + L][0];
-    const fore = rings(
-      sl === 'long'
-        ? [[1.162, 0, 0], [1.148, 0.032, 0.034], [1.12, 0.043, 0.045], [1.05, 0.044, 0.043, 0.004], [0.96, 0.040, 0.040, 0.004], [0.905, 0.038, 0.040, 0.006], [0.895, 0.03, 0.032, 0.006], [0.89, 0, 0, 0.006]]
-        : [[1.162, 0, 0], [1.148, 0.030, 0.032], [1.12, 0.040, 0.042], [1.055, 0.043, 0.040, 0.004, 0.003 * side], [0.98, 0.034, 0.031, 0.006], [0.905, 0.021, 0.028, 0.008], [0.88, 0.019, 0.026, 0.008], [0.872, 0, 0, 0.008]],
-      fx, z0, k,
-    );
-    add(sweep(fore, { segs: S(8, 6), uvFn: cylUv(0.87, 1.165, 0, sl === 'long' ? 1 : 0.5) }), foreTile, B['forearm' + L]);
+    const foreT = sl === 'long'
+      ? [[1.162, 0, 0], [1.148, 0.032, 0.034], [1.12, 0.043, 0.045], [1.05, 0.044, 0.043, 0.004], [0.96, 0.040, 0.040, 0.004], [0.905, 0.038, 0.040, 0.006], [0.895, 0.03, 0.032, 0.006], [0.89, 0, 0, 0.006]]
+      : [[1.162, 0, 0], [1.148, 0.030, 0.032], [1.12, 0.040, 0.042], [1.055, 0.043, 0.040, 0.004, 0.003 * side], [0.98, 0.034, 0.031, 0.006], [0.905, 0.021, 0.028, 0.008], [0.88, 0.019, 0.026, 0.008], [0.872, 0, 0, 0.008]];
+    add(sweep(rings(sel(c, foreT, [0, 2, 3, 4, 5, 7], [0, 2, 4, 7]), fx, z0, k), { segs: limb, uvFn: cylUv(0.87, 1.165, 0, sl === 'long' ? 1 : 0.5) }), foreTile, B['forearm' + L]);
     // fist
     const hx = U['hand' + L][0];
-    const fist = rings(
-      [[0.888, 0, 0, 0.008], [0.882, 0.019, 0.026, 0.008], [0.862, 0.024, 0.040, 0.014], [0.835, 0.027, 0.046, 0.018], [0.806, 0.026, 0.044, 0.016], [0.787, 0.019, 0.034, 0.012], [0.781, 0, 0, 0.012]],
-      hx - 0.002 * side, z0, Math.min(k, 1.06),
-    );
-    add(sweep(fist, { segs: S(7, 5), uvFn: cylUv(0.78, 0.89, 0, 0.3) }), t.hand || t.skin, B['hand' + L]);
+    const fistT = [[0.888, 0, 0, 0.008], [0.882, 0.019, 0.026, 0.008], [0.862, 0.024, 0.040, 0.014], [0.835, 0.027, 0.046, 0.018], [0.806, 0.026, 0.044, 0.016], [0.787, 0.019, 0.034, 0.012], [0.781, 0, 0, 0.012]];
+    add(sweep(rings(sel(c, fistT, [0, 2, 3, 4, 6], [0, 2, 4, 6]), hx - 0.002 * side, z0, Math.min(k, 1.06)), { segs: S(6, 5), uvFn: cylUv(0.78, 0.89, 0, 0.3) }), t.hand || t.skin, B['hand' + L]);
     // thumb across the front of the fist
     if (!c.lo) {
-      const th = tube(
-        [[hx + 0.012 * side, 0.858, z0 + 0.046], [hx + 0.004 * side, 0.836, z0 + 0.06], [hx - 0.012 * side, 0.822, z0 + 0.058]],
-        [0.0115, 0.0105, 0.009], { segs: 5, capEnd: true },
-      );
+      const th = tube([[hx + 0.012 * side, 0.856, z0 + 0.05], [hx - 0.010 * side, 0.826, z0 + 0.06]], [0.0115, 0.0095], { segs: 4, capEnd: true });
       add(th, t.hand || t.skin, B['hand' + L]);
     }
   }
@@ -159,22 +154,19 @@ function buildBody(c) {
     const L = side > 0 ? 'L' : 'R';
     const x0 = U['thigh' + L][0];
     const tk = spec.trousers ? k * 1.16 : k;
-    const thigh = rings(
-      [
-        [0.99, 0, 0],
-        [0.965, 0.072, 0.075],
-        [0.90, 0.085, 0.086, 0.004, 0.004 * side],
-        [0.80, 0.078, 0.079, 0.012, 0.006 * side],
-        [0.68, 0.066, 0.068, 0.01, 0.004 * side],
-        [0.565, 0.056, 0.057, 0.006],
-        [0.495, 0.049, 0.051, 0.004],
-        [0.462, 0.040, 0.041],
-        [0.452, 0, 0],
-      ],
-      x0, 0, tk,
-    );
-    add(sweep(thigh, { segs: S(9, 6), uvFn: cylUv(0.45, 0.99) }), t.thigh, B['thigh' + L]);
-    const shinTable = [
+    const thighT = [
+      [0.99, 0, 0],
+      [0.965, 0.072, 0.075],
+      [0.90, 0.085, 0.086, 0.004, 0.004 * side],
+      [0.80, 0.078, 0.079, 0.012, 0.006 * side],
+      [0.68, 0.066, 0.068, 0.01, 0.004 * side],
+      [0.565, 0.056, 0.057, 0.006],
+      [0.495, 0.049, 0.051, 0.004],
+      [0.462, 0.040, 0.041],
+      [0.452, 0, 0],
+    ];
+    add(sweep(rings(sel(c, thighT, [0, 1, 2, 4, 6, 8], [0, 2, 4, 6, 8]), x0, 0, tk), { segs: S(8, 6), uvFn: cylUv(0.45, 0.99) }), t.thigh, B['thigh' + L]);
+    const shinT = [
       [0.525, 0, 0, 0.004],
       [0.508, 0.044, 0.046, 0.006],
       [0.47, 0.049, 0.053, 0.008],
@@ -186,23 +178,20 @@ function buildBody(c) {
       [0.078, 0, 0, 0.0],
     ];
     if (spec.greaves) {
-      add(sweep(rings(shinTable.slice(0, 3).concat([[0.455, 0.045, 0.047, 0.008], [0.448, 0, 0, 0.008]]), x0, 0, k), { segs: S(8, 6), uvFn: cylUv(0.44, 0.53, 0, 0.4) }), t.skin, B['shin' + L]);
-      const gr = rings(
-        [[0.512, 0.03, 0.03, 0.014], [0.50, 0.050, 0.056, 0.012], [0.47, 0.055, 0.060, 0.010], [0.405, 0.056, 0.063, -0.010], [0.32, 0.050, 0.055, -0.013], [0.22, 0.040, 0.042, -0.006], [0.13, 0.034, 0.037, -0.002], [0.115, 0.03, 0.033, 0], [0.112, 0, 0, 0]],
-        x0, 0, k,
-      );
-      gr[0].crease = false;
-      add(sweep(gr, { segs: S(9, 6), uvFn: cylUv(0.11, 0.52) }), 'bronze', B['shin' + L]);
-      add(sweep(rings(shinTable.slice(5), x0, 0, k), { segs: S(7, 5), uvFn: cylUv(0.07, 0.23, 0, 0.4) }), t.skin, B['shin' + L]);
+      // knee, the bronze greave (open at the top, sprung round the calf), the ankle
+      add(sweep(rings([[0.525, 0, 0, 0.004], [0.505, 0.045, 0.048, 0.006], [0.468, 0, 0, 0.008]], x0, 0, k), { segs: S(7, 5), uvFn: cylUv(0.46, 0.53, 0, 0.4) }), t.skin, B['shin' + L]);
+      const grT = [[0.505, 0.047, 0.051, 0.012], [0.47, 0.054, 0.060, 0.010], [0.405, 0.056, 0.063, -0.010], [0.32, 0.050, 0.055, -0.013], [0.22, 0.040, 0.042, -0.006], [0.13, 0.034, 0.037, -0.002], [0.112, 0, 0, 0]];
+      add(sweep(rings(sel(c, grT, null, [0, 2, 4, 6]), x0, 0, k), { segs: S(8, 6), uvFn: cylUv(0.11, 0.52) }), 'bronze', B['shin' + L]);
+      add(sweep(rings(sel(c, [[0.125, 0.028, 0.031, -0.002], [0.092, 0.027, 0.030, 0.0], [0.078, 0, 0, 0.0]], null, [0, 2]), x0, 0, k), { segs: S(7, 5), uvFn: cylUv(0.07, 0.13, 0, 0.4) }), t.skin, B['shin' + L]);
     } else {
       const sk = spec.trousers ? k * 1.14 : k;
-      add(sweep(rings(shinTable, x0, 0, sk), { segs: S(9, 6), uvFn: cylUv(0.07, 0.53) }), t.shin, B['shin' + L]);
+      add(sweep(rings(sel(c, shinT, [0, 2, 3, 4, 6, 8], [0, 2, 3, 5, 8]), x0, 0, sk), { segs: S(8, 6), uvFn: cylUv(0.07, 0.53) }), t.shin, B['shin' + L]);
     }
     // foot: swept along +Z (sweep y → +Z, sweep z → −Y)
     const fz = U['foot' + L][2];
     const boot = !!spec.boots;
     const fk = boot ? 1.04 : 0.92;
-    const foot = [
+    const footT = [
       [-0.068, 0, 0, 0.040],
       [-0.06, 0.028, 0.030, 0.042],
       [-0.03, 0.033, 0.045, 0.045],
@@ -211,27 +200,28 @@ function buildBody(c) {
       [0.14, 0.042, 0.022, 0.019],
       [0.178, 0.033, 0.016, 0.014],
       [0.192, 0, 0, 0.012],
-    ].map(([z, rx, ry, yc]) => ({ y: z, rx: rx * fk, rz: ry * fk, x: 0, z: -yc, fn: (th, pt) => { if (pt[2] > 0) pt[2] = Math.min(pt[2], 0.0005); } }));
-    foot[0].fn = null;
-    foot[foot.length - 1].fn = null;
+    ];
+    const foot = sel(c, footT, [0, 1, 2, 4, 5, 6, 7], [0, 2, 4, 5, 7]).map(([z, rx, ry, yc]) => ({ y: z, rx: rx * fk, rz: ry * fk, x: 0, z: -yc, fn: rx > 0 ? (th, pt) => { if (pt[2] > 0) pt[2] = Math.min(pt[2], 0.0005); } : null }));
     // flat sole: sweep z positive maps to −Y; clamp so the sole lies on y = 0
     const m = mat([x0, 0, fz], [PI / 2, 0, 0]);
-    add(sweep(foot, { segs: S(8, 6), uvFn: (u, v) => [u, v] }), t.foot, B['foot' + L], m);
+    add(sweep(foot, { segs: S(7, 5), uvFn: (u, v) => [u, v] }), t.foot, B['foot' + L], m);
     if (boot) {
       // ankle cuff of the shoe
-      add(sweep(rings([[0.075, 0.032, 0.035], [0.16, 0.034, 0.037, -0.002], [0.17, 0.0, 0.0, -0.002]], x0, 0, 1.05), { segs: S(8, 6), uvFn: cylUv(0.07, 0.17, 0, 0.5) }), t.foot, B['shin' + L]);
+      add(sweep(rings([[0.075, 0.032, 0.035], [0.16, 0.034, 0.037, -0.002], [0.17, 0.0, 0.0, -0.002]], x0, 0, 1.05), { segs: S(7, 5), uvFn: cylUv(0.07, 0.17, 0, 0.5) }), t.foot, B['shin' + L]);
     }
   }
 }
 
-/** Head with face; style: { face, beard: 'persian'|'greek'|'saka'|'short', hair: 'bun'|'long'|null, ears } */
+/** Head with face; o: { face, beard: 'persian'|'greek'|'saka'|'short', hair: 'bun'|'long'|null, ears } */
 export function buildHead(c, o) {
   const { add, U, S } = c;
   const hp = U.head;
   const M = mat(hp);
-  const segs = S(14, 8);
-  const th = thetas(segs);
-  const headR = [
+  // denser columns across the face (eye sockets at ±0.36 rad)
+  const th = c.lo
+    ? [-PI, -2.1, -1.2, -0.5, 0, 0.5, 1.2, 2.1, PI]
+    : [-PI, -2.4, -1.75, -1.2, -0.75, -0.36, 0, 0.36, 0.75, 1.2, 1.75, 2.4, PI];
+  const headT = [
     [-0.080, 0.0, 0.0, 0.045],
     [-0.074, 0.030, 0.038, 0.048],
     [-0.058, 0.052, 0.070, 0.030],
@@ -243,7 +233,8 @@ export function buildHead(c, o) {
     [0.140, 0.060, 0.080, -0.010],
     [0.160, 0.038, 0.050, -0.012],
     [0.168, 0, 0, -0.012],
-  ].map(([y, rx, rz, z]) => {
+  ];
+  const headR = sel(c, headT, [0, 2, 3, 4, 5, 6, 7, 8, 10], [0, 3, 4, 6, 8, 10]).map(([y, rx, rz, z]) => {
     const r = { y, rx, rz, z };
     // flatter face, deeper skull at the back, eye sockets, cheekbones, brow
     r.shape = (t) => {
@@ -257,7 +248,6 @@ export function buildHead(c, o) {
     };
     return r;
   });
-  if (c.lo) headR.splice(7, 1);
   add(sweep(headR, { thetas: th, uvFn: (u, v, t, i, pt) => [0.5 + t / (2 * PI), faceV(pt[1])] }), o.face, B.head, M);
   // nose
   const nose = polySmooth(
@@ -271,7 +261,7 @@ export function buildHead(c, o) {
   add(nose, o.face, B.head, M);
   if (o.ears !== false && !c.lo) {
     for (const sd of [1, -1]) {
-      const ear = sweep(rings([[-0.02, 0, 0], [-0.012, 0.007, 0.016], [0.012, 0.008, 0.02], [0.03, 0.006, 0.014], [0.036, 0, 0]], 0, 0), { segs: 6, uvFn: () => [0.5 + (sd * 1.5) / (2 * PI), faceV(0.0)] });
+      const ear = sweep(rings([[-0.02, 0, 0], [-0.012, 0.007, 0.016], [0.014, 0.008, 0.02], [0.036, 0, 0]], 0, 0), { segs: 5, uvFn: () => [0.5 + (sd * 1.5) / (2 * PI), faceV(0.0)] });
       add(ear, o.face, B.head, mat([hp[0] + sd * 0.074, hp[1] + 0.012, hp[2] - 0.006], [0, 0, sd * 0.18]));
     }
   }
@@ -289,7 +279,8 @@ export function buildHead(c, o) {
     } else {
       table = [[-0.105, 0.0, 0.0, 0.05], [-0.098, 0.030, 0.026, 0.05], [-0.075, 0.058, 0.072, 0.03], [-0.04, 0.069, 0.090, 0.016], [-0.01, 0.071, 0.097, 0.008]];
     }
-    const br = table.map(([y, rx, rz, z]) => ({
+    const rows = table.length === 6 ? sel(c, table, [0, 2, 3, 4, 5], [0, 2, 4, 5]) : sel(c, table, [0, 2, 3, 4], [0, 2, 4]);
+    const br = rows.map(([y, rx, rz, z]) => ({
       y, rx, rz, z,
       // full around the jaw, thin at the back so it tucks into the neck
       shape: (t) => (Math.abs(t) < 1.5 ? 1.02 : 1.02 - 0.75 * smooth(1.5, 2.3, Math.abs(t))),
@@ -299,11 +290,12 @@ export function buildHead(c, o) {
         p[1] -= 0.05 * k * (1 - smooth(0.3, 1.0, Math.abs(t)));
       },
     }));
-    add(sweep(br, { segs: S(12, 7), uvFn: (u, v, t, i, pt) => [0.5 + t / (2 * PI), 0.5 + pt[1] * 1.6] }), tile, B.head, M);
+    const bs = b === 'greek' || b === 'short' ? S(8, 6) : S(10, 7);
+    add(sweep(br, { segs: bs, uvFn: (u, v, t, i, pt) => [0.5 + t / (2 * PI), 0.5 + pt[1] * 1.6] }), tile, B.head, M);
   }
-  if (o.hair === 'bun') {
+  if (o.hair === 'bun' && !c.lo) {
     // knot of curls at the nape
-    const bun = sweep(rings([[-0.055, 0, 0], [-0.045, 0.045, 0.026], [-0.01, 0.062, 0.036], [0.02, 0.052, 0.03], [0.035, 0, 0]], 0, 0), { segs: S(8, 6) });
+    const bun = sweep(rings([[-0.055, 0, 0], [-0.04, 0.05, 0.03], [0.0, 0.06, 0.035], [0.035, 0, 0]], 0, 0), { segs: 6 });
     add(bun, 'hair', B.head, mat([hp[0], hp[1], hp[2] - 0.088]));
   } else if (o.hair === 'long') {
     // Spartan locks falling from under the helmet onto the back
@@ -316,7 +308,7 @@ export function buildHead(c, o) {
         out[1] = y;
         out[2] = Math.cos(a) * r * 1.0 - 0.025 - (1 - v) * 0.02;
       },
-      S(4, 2), 2, 0.015, { flip: true },
+      S(4, 2), S(2, 1), 0.015, { flip: true, noEdges: c.lo },
     );
     add(locks, 'hair', B.neck, M, { boneFn: (p) => (p.y > hp[1] * c.s - 0.005 ? B.head : B.neck) });
   }
@@ -347,7 +339,7 @@ export function skirt(c, tile, yTop, yBot, rTop, rBot, o = {}) {
         out[2] = Math.cos(a) * rz + zc + (o.lean ?? 0) * w;
       },
       nu, S(2, 1), o.thick ?? 0.008,
-      { edgeUv: [0, 0, 0.05, 0.05] },
+      { noEdges: true },
     );
     const boneName = 'skirt' + name;
     add(pt, tile, B[boneName], null, {
@@ -365,7 +357,7 @@ export function band(c, tile, y0, y1, rx, rz, zc, bone, o = {}) {
     { y: y1 - 0.002, rx, rz, z: zc, x: o.x || 0 },
     { y: y1, rx: rx * 0.96, rz: rz * 0.96, z: zc, x: o.x || 0 },
   ];
-  c.add(sweep(r, { segs: o.segs || c.S(12, 8), closed: true, uvFn: o.uvFn }), tile, bone, o.m || null, o.extra);
+  c.add(sweep(r, { segs: o.segs || c.S(9, 6), closed: true, uvFn: o.uvFn }), tile, bone, o.m || null, o.extra);
 }
 
 // ---------------------------------------------------------------------------------------
@@ -586,30 +578,25 @@ export function gerronParts(add, bone, o, lo = false) {
  * elbow, +Z facing out. Centre at (0.30, 0, −0.05), diameter 0.91, deep bowl, offset rim.
  */
 export function aspisParts(add, bone, o, lo = false) {
-  const R = 0.455, Rr = 0.405;
-  const segs = lo ? 14 : 22;
-  const zf = (r) => 0.135 * Math.max(0, 1 - (r / Rr) ** 2) ** 0.55 + 0.02;
+  const R = 0.455, Rr = 0.4;
+  const segs = lo ? 12 : 20;
+  const zf = (r) => 0.135 * Math.max(0, 1 - (r / Rr) ** 2) ** 0.55 + 0.022;
   const center = [0.30, 0, -0.05];
   // sweep along +y = shield normal, rotated so y → +Z
   const M = (o.M || new THREE.Matrix4()).clone().multiply(mat(center, [PI / 2, 0, 0]));
-  const prof = [];
-  // back (wood), from the inside centre outward
-  const back = lo ? [0, 0.2, 0.35] : [0, 0.12, 0.24, 0.33, 0.39];
-  for (const r of back) prof.push({ y: zf(r) - 0.012, rx: r, rz: r });
-  prof[prof.length - 1].crease = true;
-  const front = [];
-  front.push({ y: -0.004, rx: R - 0.004, rz: R - 0.004, crease: true });
-  front.push({ y: 0.0, rx: R, rz: R });
-  front.push({ y: 0.011, rx: R, rz: R, crease: true });
-  front.push({ y: 0.02, rx: Rr, rz: Rr, crease: true });
-  const fr = lo ? [0.3, 0.17, 0] : [0.36, 0.3, 0.22, 0.12, 0];
-  for (const r of fr) front.push({ y: zf(r), rx: r, rz: r });
   const planar = (u, v, t, i, pt) => [0.5 + pt[0] / (2 * R), 0.5 - pt[2] / (2 * R)];
-  // back of the bowl: wood; its first ring is the inside centre (a pole)
-  const backRings = prof.map((r) => Object.assign({}, r));
-  backRings.push({ y: -0.004, rx: R - 0.004, rz: R - 0.004 });
-  add(sweep(backRings.reverse(), { segs, uvFn: planar, flip: true }), 'woodDark', bone, M);
-  add(sweep([{ y: -0.004, rx: R - 0.004, rz: R - 0.004 }].concat(front.slice(1)), { segs, uvFn: planar, flip: false }), o.face, bone, M);
+  // back of the bowl (wood, painted dark), from the inside centre out to the rim lip
+  const back = (lo ? [0] : [0, 0.24]).map((r) => ({ y: zf(r) - 0.014, rx: r, rz: r }));
+  back.push({ y: -0.012, rx: R - 0.006, rz: R - 0.006 });
+  add(sweep(back.reverse(), { segs, uvFn: planar, flip: true }), 'woodDark', bone, M);
+  // face: rim lip, the flat offset rim (porpax side ring), then the bronze-faced bowl
+  const front = [
+    { y: -0.012, rx: R - 0.006, rz: R - 0.006 },
+    { y: 0.0, rx: R, rz: R, crease: true },
+    { y: 0.014, rx: Rr, rz: Rr, crease: true },
+  ];
+  for (const r of lo ? [0.22, 0] : [0.31, 0.17, 0]) front.push({ y: zf(r), rx: r, rz: r });
+  add(sweep(front, { segs, uvFn: planar, flip: false }), o.face, bone, M);
   // porpax (arm band) and antilabe (hand grip)
   add(box(0.05, 0.10, 0.028), 'bronzeDark', bone, (o.M || new THREE.Matrix4()).clone().multiply(mat([0.30, 0, 0.055])));
   add(box(0.03, 0.12, 0.02), 'leatherDark', bone, (o.M || new THREE.Matrix4()).clone().multiply(mat([0.0, 0, 0.045])));

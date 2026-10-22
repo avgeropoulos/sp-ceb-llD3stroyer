@@ -36,7 +36,9 @@
     let names = only ? only.split(',') : all.slice(page * 12, page * 12 + 12);
     if (lit) names = names.filter((n) => !n.endsWith('Normal'));
     scene.background = new THREE.Color(lit ? 0x202020 : 0x6b6152);
-    const cam = new THREE.OrthographicCamera(0, 4, 3, 0, -10, 10);
+    // One texture fills the view (square viewport recommended); otherwise a 4 × 3 grid.
+    const single = names.length === 1;
+    const cam = single ? new THREE.OrthographicCamera(0, 1, 1, 0, -10, 10) : new THREE.OrthographicCamera(0, 4, 3, 0, -10, 10);
     const cols = 4;
     const labels = document.getElementById('labels');
     const timings = {};
@@ -55,15 +57,15 @@
       t.needsUpdate = true;
       let mat;
       if (lit) {
-        const nn = name + 'Normal';
+        const nn = name === 'cliffStrata' ? 'cliffNormal' : name + 'Normal';
         const normal = all.includes(nn) ? ctx.textures.get(nn).clone() : null;
         if (normal) { normal.repeat.set(tile, tile); normal.needsUpdate = true; }
         mat = new THREE.MeshStandardMaterial({ map: t, normalMap: normal, roughness: 0.8, metalness: name === 'bronze' || name === 'scale' ? 0.9 : 0 });
       } else {
         mat = new THREE.MeshBasicMaterial({ map: t, transparent: true });
       }
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(0.96, 0.96), mat);
-      const cx = (i % cols) + 0.5, cy = 2.5 - Math.floor(i / cols);
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(single ? 1 : 0.96, single ? 1 : 0.96), mat);
+      const cx = single ? 0.5 : (i % cols) + 0.5, cy = single ? 0.5 : 2.5 - Math.floor(i / cols);
       m.position.set(cx, cy, 0);
       scene.add(m);
       const d = document.createElement('div');

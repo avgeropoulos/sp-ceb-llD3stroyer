@@ -17,7 +17,7 @@ export const CLOTH_TILES = [
   'linen', 'crimson', 'leather', 'leatherDark',
   'wood', 'woodDark', 'wicker', 'felt',
   'robeA', 'robeB', 'robeC', 'quilted',
-  'tunicRed', 'tunicBlue', 'tunicOchre', 'tunicGreen',
+  'tunicRed', 'tunicBlue', 'tunicOchre', 'faceH',
   'trouserDiamond', 'trouserStripe', 'turban', 'feltDark',
   'straw', 'dogskin', 'wool', 'horsehair',
 ];
@@ -140,7 +140,8 @@ function drawExternal(g, tex, P, reps = 1) {
   const img = tex && tex.image;
   if (!img) return false;
   try {
-    if (img.data && img.width && img.height && !(img instanceof HTMLCanvasElement)) {
+    if (!(img.width >= 8 && img.height >= 8)) return false;
+    if (img.data && !(img instanceof HTMLCanvasElement)) {
       const src = makeCanvas(img.width, img.height);
       const d = src.getContext('2d').createImageData(img.width, img.height);
       if (img.data.length !== d.data.length) return false;
@@ -148,7 +149,7 @@ function drawExternal(g, tex, P, reps = 1) {
       src.getContext('2d').putImageData(d, 0, 0);
       return drawExternal(g, { image: src }, P, reps);
     }
-    if (!(img.width > 0)) return false;
+    if (!(img.width >= 8 && img.height >= 8)) return false;
     const s = P / reps;
     for (let y = 0; y < reps; y++) for (let x = 0; x < reps; x++) g.drawImage(img, x * s, y * s, s, s);
     return true;
@@ -393,7 +394,9 @@ function paintHair(g, P, base, seed) {
 function paintFace(g, P, kind) {
   const X = (theta) => (0.5 + theta / (Math.PI * 2)) * P;
   const Y = (y) => (1 - faceV(y)) * P;
-  const persian = kind !== 'faceG';
+  const helmet = kind === 'faceH';
+  const persian = kind !== 'faceG' && !helmet;
+  if (helmet) tint(g, P, 'rgb(88,72,64)');
   const hairCol = kind === 'faceS' ? '#3a2a1c' : persian ? '#16100c' : '#2b1d14';
   g.save();
   // hair over the scalp and the back of the head
@@ -419,7 +422,7 @@ function paintFace(g, P, kind) {
     g.fillStyle = grad;
     g.fillRect(cx - P * 0.05, cy - P * 0.05, P * 0.1, P * 0.1);
     // eye white + iris
-    g.fillStyle = persian ? '#d6c9b4' : '#d9cdb8';
+    g.fillStyle = helmet ? '#8a8072' : persian ? '#d6c9b4' : '#d9cdb8';
     g.beginPath();
     g.ellipse(cx, cy, P * 0.023, P * 0.0105, 0, 0, Math.PI * 2);
     g.fill();
@@ -754,6 +757,48 @@ function paintBlazon(g, P, name, seed) {
   g.restore();
 }
 
+/**
+ * The aspis rim in the planar shield mapping (tile radius 0.5 = the shield's edge): a groove
+ * where the offset rim meets the bowl and a running guilloche on the rim, as on many aspides.
+ */
+function paintAspisRim(g, P) {
+  const c = P / 2, rIn = (0.4 / 0.455) * c, rOut = c * 0.985;
+  const TAU = Math.PI * 2;
+  g.save();
+  g.strokeStyle = 'rgba(36,22,10,0.6)';
+  g.lineWidth = Math.max(1, P / 150);
+  g.beginPath();
+  g.arc(c, c, rIn, 0, TAU);
+  g.stroke();
+  g.strokeStyle = 'rgba(255,236,190,0.25)';
+  g.lineWidth = Math.max(1, P / 260);
+  g.beginPath();
+  g.arc(c, c, rIn + P / 160, 0, TAU);
+  g.stroke();
+  const rm = (rIn + rOut) / 2, w = (rOut - rIn) * 0.3;
+  const n = 30, steps = n * 10;
+  g.strokeStyle = 'rgba(30,18,8,0.7)';
+  g.lineWidth = Math.max(1, P / 230);
+  for (const ph of [0, Math.PI]) {
+    g.beginPath();
+    for (let i = 0; i <= steps; i++) {
+      const a = (i / steps) * TAU;
+      const r = rm + w * Math.sin(a * n + ph);
+      if (i === 0) g.moveTo(c + Math.cos(a) * r, c + Math.sin(a) * r);
+      else g.lineTo(c + Math.cos(a) * r, c + Math.sin(a) * r);
+    }
+    g.stroke();
+  }
+  g.fillStyle = 'rgba(30,18,8,0.6)';
+  for (let i = 0; i < n; i++) {
+    const a = ((i + 0.5) / n) * TAU;
+    g.beginPath();
+    g.arc(c + Math.cos(a) * rm, c + Math.sin(a) * rm, Math.max(0.8, P / 300), 0, TAU);
+    g.fill();
+  }
+  g.restore();
+}
+
 // ---------------------------------------------------------------------------------------
 
 const CLOTH_SPEC = {
@@ -780,7 +825,8 @@ const CLOTH_SPEC = {
   tunicRed: { tex: 'linen', tint: '#9c3a26', paint: (g, P) => paintCloth(g, P, 0x8e3622, 31) },
   tunicBlue: { tex: 'linen', tint: '#4a5a86', paint: (g, P) => paintCloth(g, P, 0x3c4a72, 32) },
   tunicOchre: { tex: 'linen', tint: '#b88a3a', paint: (g, P) => paintCloth(g, P, 0xa67a34, 33) },
-  tunicGreen: { tex: 'linen', tint: '#6f7448', paint: (g, P) => paintCloth(g, P, 0x5f6640, 34) },
+  // the face inside a Corinthian helmet: in deep shade, only the eyes catch light
+  faceH: { tex: 'skinGreek', paint: (g, P) => paintSkin(g, P, SKIN.skinG, 34), face: true },
   trouserDiamond: { paint: (g, P) => paintPattern(g, P, 'trouserDiamond', 35) },
   trouserStripe: { paint: (g, P) => paintPattern(g, P, 'trouserStripe', 36) },
   turban: { paint: (g, P) => paintPattern(g, P, 'turban', 37) },
@@ -803,7 +849,7 @@ const METAL_SPEC = {
   bronzePlain: { tex: 'bronze', paint: (g, P) => paintMetal(g, P, 0xb8873e, 59), metal: 1, rough: 0.32 },
   bronzeRim: { tex: 'bronze', paint: (g, P) => paintMetal(g, P, 0xa87a38, 60), metal: 1, rough: 0.38 },
 };
-for (const b of BLAZONS) METAL_SPEC[b] = { tex: b, paint: (g, P) => paintBlazon(g, P, b, 61), metal: 'auto', rough: 0.36, blazon: true };
+for (const b of BLAZONS) METAL_SPEC[b] = { tex: b, paint: (g, P) => paintBlazon(g, P, b, 61), metal: 'auto', rough: 0.36, blazon: true, deco: paintAspisRim };
 
 function placeTile(atlasCtx, tileCanvas, x0, y0, T, gutter) {
   const P = tileCanvas.width;

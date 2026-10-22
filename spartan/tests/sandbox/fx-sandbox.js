@@ -324,6 +324,10 @@ ctx.events.on('spearCam', (e) => spearCamLog.push({ t: ctx.time.now, phase: e.ph
 
 const fx = createFx(ctx);
 ctx.fx = fx;
+// main.js pre-warms with compileAsync before the first frame (§10 boot). compile() skips
+// invisible objects, so record which programs it builds right after createFx.
+renderer.compile(scene, camera);
+const prewarmPrograms = (renderer.info.programs || []).map((p) => p.name);
 
 // ---- Scenes -------------------------------------------------------------------------------------
 
@@ -501,7 +505,8 @@ function drawCalls() {
 
 window.__sandbox.step = step;
 window.__fx = {
-  ctx, fx, THREE, P, actors, hapticLog, spearCamLog, view, frame,
+  ctx, fx, THREE, P, actors, hapticLog, spearCamLog, view, frame, prewarmPrograms,
+  programs: () => (renderer.info.programs || []).map((p) => p.name),
   step, state, drawCalls, makeActor, makeShield, playerThrow, throwSpear, groundHeight,
   setPaused: (p) => (paused = !!p),
   setSettled: (m) => (settledMode = String(m)),

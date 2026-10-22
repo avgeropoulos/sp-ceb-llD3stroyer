@@ -1,6 +1,6 @@
 <!doctype html>
 <!-- UI sandbox: hud.js, menus.js, input.js and training.js on a stub ctx.
-     ?view=title|settings|pause|gameover|howto|safety|hud|hud-banner|hud-volley|hud-spearcam|touch|motion|training
+     ?view=title|settings|pause|gameover|howto|safety|hud|hud-banner|hud-wave|hud-dayfade|hud-kolonos|hud-volley|hud-spearcam|touch|motion|training
      &control=touch|motion &left=1 &tab=<tab> &step=<n> &motion=1 (motion supported) &spear=1 -->
 <html lang="en">
 <head>
@@ -219,6 +219,20 @@
         ctx.setMode('battle');
         Object.assign(ctx.player, { hp: 74, score: 4210, chain: 1.4, kills: 12 });
         emit('waveStart', { day: 3, wave: 2, title: 'Driven back (2/4)', subtitle: "Over Leonidas' body" });
+      },
+      'hud-dayfade'() {
+        ctx.setMode('battle');
+        populate();
+        Object.assign(ctx.player, { hp: 58, score: 9310, chain: 1, kills: 26 });
+        emit('dayStart', { day: 1, title: 'The First Day', subtitle: 'The Medes and Kissians', seconds: 5 });
+        emit('dayStart', { day: 1, title: 'The Immortals', subtitle: "Hydarnes leads the King's Ten Thousand", seconds: 5 });
+        emit('voice', { text: 'The Immortals! Hydarnes leads them.', speaker: 'Lookout' });
+      },
+      'hud-kolonos'() {
+        ctx.setMode('battle');
+        Object.assign(ctx.player, { hp: 31, score: 21480, chain: 1, kills: 64, weapon: 'sword', spearsLeft: 0 });
+        Object.assign(ctx.waves, { day: 3, phase: 'C', wave: 1 });
+        emit('phase', { day: 3, phase: 'C', wave: 0, title: 'The Kolonos', subtitle: 'They defended themselves with swords, those who still had them, and with hands and teeth.', seconds: 7 });
       },
       'hud-volley'() {
         ctx.setMode('battle');

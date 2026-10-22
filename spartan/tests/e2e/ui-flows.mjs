@@ -262,6 +262,48 @@ try {
     await t.step(60 * 4.2);
     const second = await t.text('.hud-banner-t');
     check('wave banner waits for the day card', first === 'The Second Day' && second === 'Wave I', `${first} → ${second}`);
+    // A later day card covers the view while waves changes the light behind it (BEHIND_CARD = 1 s).
+    const op = () => t.ev(() => +(document.querySelector('.hud-curtain').style.opacity || 0));
+    await t.step(60 * 4);
+    await t.ev(() => window.__ui.emit('dayStart', { day: 3, title: 'The Third Day', subtitle: 'The Anopaia path', seconds: 5 }));
+    await t.step(2);
+    const c0 = await op();
+    await t.step(58);
+    const c1 = await op();
+    await t.step(60 * 3);
+    const c2 = await op();
+    check('later dayStart → black curtain covers 0.5–1.7 s, then clears', c0 < 0.2 && c1 === 1 && c2 === 0, `${c0} → ${c1} → ${c2}`);
+    // Phase C: "A 2 s fade" (fade comes from the campaign data).
+    await t.step(60 * 4);
+    await t.ev(() => window.__ui.emit('phase', { day: 3, phase: 'C', title: 'The Kolonos', subtitle: 'They defended themselves with swords', seconds: 7 }));
+    await t.step(48);
+    const k1 = await op();
+    await t.step(90);
+    const k2 = await op();
+    check('phase C → 2 s fade through black', k1 === 1 && k2 === 0 && (await t.text('.hud-banner-t')) === 'The Kolonos', `${k1} → ${k2}`);
+    await t.ev(() => window.__ui.emit('phase', { day: 3, phase: 'B', title: "Over Leonidas' body", seconds: 5 }));
+    await t.step(30);
+    check('phase B → no fade', (await op()) === 0);
+    await t.ev(() => Object.assign(window.__ui.ctx.waves, { day: 3, phase: 'B', wave: 2 }));
+    await t.step(1);
+    const metaB = await t.text('.hud-wave');
+    await t.ev(() => Object.assign(window.__ui.ctx.waves, { phase: 'C', wave: 1 }));
+    await t.step(1);
+    check('wave meta names surges and the Kolonos', metaB === 'Day III · Surge II' && (await t.text('.hud-wave')) === 'Day III · The Kolonos', `${metaB} / ${await t.text('.hud-wave')}`);
+    // Respite: the countdown and READY lock follow waves.respiteLeft / canReady when waves exposes them.
+    await t.ev(() => {
+      Object.assign(window.__ui.ctx.waves, { day: 1, phase: null, wave: 2, state: 'respite', inRespite: true, respiteLeft: 24.2, canReady: false });
+      window.__ui.emit('respite', { day: 1, wave: 2, title: 'Respite', subtitle: 'Bind your wounds.', seconds: 25 });
+    });
+    await t.step(2);
+    const r0 = [await t.text('.hud-respite-t'), await t.has('.hud-ready', 'is-locked')];
+    await t.ev(() => Object.assign(window.__ui.ctx.waves, { respiteLeft: 9.4, canReady: true }));
+    await t.step(1);
+    const r1 = [await t.text('.hud-respite-t'), await t.has('.hud-ready', 'is-locked')];
+    await t.ev(() => Object.assign(window.__ui.ctx.waves, { state: 'fighting', inRespite: false, respiteLeft: 0 }));
+    await t.step(2);
+    check('respite polls waves.respiteLeft/canReady, ends with the state', r0[0] === '0:25' && r0[1] && r1[0] === '0:10' && !r1[1] && !(await t.has('.hud-respite', 'is-shown')), JSON.stringify([r0, r1]));
+    await t.ev(() => { delete window.__ui.ctx.waves.inRespite; delete window.__ui.ctx.waves.respiteLeft; delete window.__ui.ctx.waves.canReady; });
     const errs = await t.errors();
     check('HUD: no page errors', errs.length === 0, errs.join(' | '));
     await t.page.context().close();

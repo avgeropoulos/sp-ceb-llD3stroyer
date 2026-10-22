@@ -49,7 +49,6 @@ const CAM_END = Object.freeze({ phase: 'end' });
 
 const ORBIT_SWEEP = 1.15; // radians the camera travels around the impact
 const PASS_MIN_X = -8.3; // keep the spear cam out of the cliff
-const SEA_FALLS = 4;
 const JOBS = 8;
 const EMPTY = Object.freeze([]);
 
@@ -173,8 +172,17 @@ export function createFx(ctx) {
     return out;
   }
 
-  const isBronze = (a) => !!a && typeof a === 'object' && a.kind === 'spartan';
-  const isWicker = (a) => !!a && typeof a === 'object' && a.kind !== 'spartan' && a.kind !== 'captain' && a.kind !== 'archer' && a.kind !== 'helot';
+  /** What an actor parries with: 'bronze' (aspis), 'wicker' (gerron, spara) or 'weapon'. */
+  function guardOf(a) {
+    if (!a || typeof a !== 'object') return 'weapon';
+    const K = ctx.characters && ctx.characters.KINDS;
+    const shield = K && K[a.kind] ? K[a.kind].shield : undefined;
+    if (shield !== undefined) return shield === 'aspis' ? 'bronze' : shield ? 'wicker' : 'weapon';
+    if (a.kind === 'spartan') return 'bronze';
+    return a.kind === 'captain' || a.kind === 'archer' || a.kind === 'helot' ? 'weapon' : 'wicker';
+  }
+  const isBronze = (a) => guardOf(a) === 'bronze';
+  const isWicker = (a) => guardOf(a) === 'wicker';
 
   // --- emitters (public) ---------------------------------------------------------------------
 
@@ -194,7 +202,7 @@ export function createFx(ctx) {
     particles.splash(lastSplash, amount);
   }
 
-  // --- delayed effects: body-fall dust, sea-fall splashes ------------------------------------
+  // --- delayed effects: the dust of a falling body ------------------------------------------
 
   const jobT = new Float32Array(JOBS);
   const jobX = new Float32Array(JOBS);
@@ -221,21 +229,6 @@ export function createFx(ctx) {
     jobA[slot] = amount;
   }
 
-  const seaActor = new Array(SEA_FALLS).fill(null);
-  const seaT = new Float32Array(SEA_FALLS);
-  function watchSeaFall(actor) {
-    let slot = 0;
-    for (let i = 0; i < SEA_FALLS; i++) {
-      if (!seaActor[i]) {
-        slot = i;
-        break;
-      }
-      if (seaT[i] > seaT[slot]) slot = i;
-    }
-    seaActor[slot] = actor;
-    seaT[slot] = 0;
-  }
-
   function updateDelayed(gdt) {
     if (!(gdt > 0)) return;
     for (let i = 0; i < JOBS; i++) {
@@ -244,22 +237,6 @@ export function createFx(ctx) {
       if (jobT[i] <= 0) {
         vA.set(jobX[i], jobY[i], jobZ[i]);
         particles.dust(vA, jobA[i]);
-      }
-    }
-    for (let i = 0; i < SEA_FALLS; i++) {
-      const a = seaActor[i];
-      if (!a) continue;
-      seaT[i] += gdt;
-      const root = a.visual && a.visual.root;
-      const p = root ? root.position : a.pos;
-      if (!p) {
-        seaActor[i] = null;
-        continue;
-      }
-      if (p.y <= -2.6 || seaT[i] > 2.5) {
-        vA.set(p.x, -3, p.z);
-        splash(vA, 1.6);
-        seaActor[i] = null;
       }
     }
   }
@@ -279,13 +256,21 @@ export function createFx(ctx) {
       if (!ambL) ambL = o;
     }
   };
+  /** The world's sun and sky light (world.sun/hemi), else whatever lights the scene has. */
+  function findLights() {
+    sunL = hemiL = ambL = null;
+    const w = ctx.world;
+    if (w && w.sun && w.sun.isDirectionalLight) {
+      sunL = w.sun;
+      if (w.hemi && w.hemi.isHemisphereLight) hemiL = w.hemi;
+      return true;
+    }
+    scene.traverse(scanFn);
+    return !!(sunL && (hemiL || ambL));
+  }
   function refreshLights(dt) {
     scanLeft -= dt;
-    if (scanLeft <= 0) {
-      sunL = hemiL = ambL = null;
-      scene.traverse(scanFn);
-      scanLeft = sunL && (hemiL || ambL) ? 5 : 1;
-    }
+    if (scanLeft <= 0) scanLeft = findLights() ? 5 : 1;
     const U = particles.uniforms;
     if (sunL) {
       if (sunL.visible) U.uSun.value.copy(sunL.color).multiplyScalar(sunL.intensity);
@@ -349,6 +334,7 @@ export function createFx(ctx) {
     const h = 1 / 60;
     const tMax = Math.max(0, SPEAR_CAM.maxAge - (age || 0));
     const actors = ctx.actors || EMPTY;
+    const cols = (ctx.world && ctx.world.colliders) || EMPTY;
     for (let t = 0; t < tMax; t += h) {
       const x0 = x;
       const y0 = y;
@@ -358,6 +344,7 @@ export function createFx(ctx) {
       y += vy * h;
       z += vz * h;
       if (y < SPEAR_CAM.minY || y <= ground(x, z)) return t + h;
+      if (insideCollider(cols, x, y, z)) return t + h;
       const sx = x - x0;
       const sz = z - z0;
       const l2 = sx * sx + sz * sz;
@@ -374,6 +361,22 @@ export function createFx(ctx) {
       }
     }
     return tMax;
+  }
+  const cx = (v, i) => (Array.isArray(v) ? v[i] : i === 0 ? v.x : i === 1 ? v.y : v.z);
+  /** True if the point is inside a box collider or behind a plane collider (§11 world). */
+  function insideCollider(cols, x, y, z) {
+    for (let i = 0; i < cols.length; i++) {
+      const c = cols[i];
+      if (!c) continue;
+      if (c.type === 'box' && c.min && c.max) {
+        if (x >= cx(c.min, 0) && x <= cx(c.max, 0) && y >= cx(c.min, 1) && y <= cx(c.max, 1) &&
+          z >= cx(c.min, 2) && z <= cx(c.max, 2)) return true;
+      } else if (c.type === 'plane' && c.point && c.normal) {
+        const d = (x - cx(c.point, 0)) * cx(c.normal, 0) + (y - cx(c.point, 1)) * cx(c.normal, 1) + (z - cx(c.point, 2)) * cx(c.normal, 2);
+        if (d < 0) return true;
+      }
+    }
+    return false;
   }
   const remainingFlight = () => (camProj ? predictFlight(camProj.pos, camProj.vel, camProj.age) : 0);
 
@@ -594,9 +597,8 @@ export function createFx(ctx) {
     if (!e || !e.target || typeof e.target !== 'object') return;
     const tgt = e.target;
     const cause = e.cause || 'weapon';
-    if (cause === 'sea') {
-      watchSeaFall(tgt);
-    } else if (tgt.pos) {
+    // 'sea': ai.js splashes when the body reaches the water (§7 Into the Gulf).
+    if (cause !== 'sea' && tgt.pos) {
       let fx = lastHitDx;
       let fz = lastHitDz;
       if (lastHitTarget !== tgt) {
@@ -647,10 +649,8 @@ export function createFx(ctx) {
       addShake(SHAKE.perfect);
       haptic(HAPTICS.perfect);
     } else if (guardBreak) {
-      tc.hitStop(HITSTOP.block);
+      tc.hitStop(HITSTOP.block); // player.guardBreak() pushes the view itself
       addShake(SHAKE.guardBreak);
-      const m = motionMul();
-      shake.addKick(0.03 * m, 0, 0.012 * m, 0.07);
       haptic(HAPTICS.block);
     } else {
       tc.hitStop(HITSTOP.block);
@@ -659,14 +659,10 @@ export function createFx(ctx) {
     }
   }
 
-  function onPlayerHurt(e) {
+  function onPlayerHurt() {
+    // player.applyCamera adds the directional flinch; fx adds the hit-stop and the shake.
     tc.hitStop(HITSTOP.hurt);
     addShake(SHAKE.hurt);
-    const rel = e && Number.isFinite(e.relYaw) ? e.relYaw : 0;
-    const side = rel > 0.1 ? 1 : rel < -0.1 ? -1 : 0;
-    const m = motionMul();
-    // Knocked away from the blow: a hit from the left turns the view right.
-    shake.addKick(0.012 * m, -0.018 * side * m, 0.012 * side * m, 0.06);
     haptic(HAPTICS.hurt);
   }
 
@@ -706,6 +702,14 @@ export function createFx(ctx) {
     if (!e) return;
     const tg = e.target;
     if (tg === 'player') return; // playerHurt covers it
+    if (!tg && e.blocked && e.by && typeof e.by === 'object') {
+      // An ally caught it on his aspis (combat: { target: null, blocked: true, by: actor }).
+      if (!pointOf(e.point, e.by, hitP) || hitP.distanceToSquared(ctx.camera.position) > 900) return;
+      nrm.set(0, 0.8, -0.6); // the arrows come down from the Persian side
+      if (isBronze(e.by)) particles.sparks(hitP, nrm, 0.3);
+      else particles.splinters(hitP, nrm, 0.25);
+      return;
+    }
     if (tg === 'shield') {
       haptic(HAPTICS.arrowShield);
       if (!pointOf(e.point, null, hitP)) {
@@ -879,7 +883,6 @@ export function createFx(ctx) {
     shakeWritten = false;
     offX = offY = offZ = 0;
     jobT.fill(0);
-    seaActor.fill(null);
     lastHitTarget = null;
     lastSplashT = -1e9;
     if (wasCam) events.emit('spearCam', CAM_END);

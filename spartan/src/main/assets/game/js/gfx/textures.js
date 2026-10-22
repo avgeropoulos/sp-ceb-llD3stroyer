@@ -630,103 +630,147 @@ function genRock(S, N) {
   return { color: px, normal: normalMap(h, S, 9) };
 }
 
-/** Layered limestone; v runs up the cliff (row 0 = bottom of a tile). */
+/**
+ * Weathered limestone for the cliff; v runs up the face (row 0 = bottom of a tile ≈ 10 m).
+ * Beds of uneven thickness with recessed seams that come and go, angular fracture blocks,
+ * pitted and runnelled surfaces, rain streaks hanging from the seams, ochre staining, lichen.
+ */
 function genCliff(S, N, R) {
   const n = S * S;
-  // Beds of irregular thickness that fill the tile exactly so it tiles vertically.
+  const px2 = S / 1024;
+  // Beds that fill the tile exactly, so it tiles vertically.
   const beds = [];
   let total = 0;
-  const count = 8;
+  const count = 6;
   for (let i = 0; i < count; i++) {
-    const w = 0.3 + Math.pow(R.next(), 1.5) * 1.7;
+    const w = 0.35 + Math.pow(R.next(), 1.3) * 1.9;
     beds.push({ w });
     total += w;
   }
   let acc = 0;
-  const tints = [[202, 194, 176], [188, 182, 168], [204, 190, 162], [178, 172, 160], [196, 184, 158], [208, 200, 182]];
-  beds.forEach((b) => {
+  for (const b of beds) {
     b.y0 = (acc / total) * S;
     acc += b.w;
     b.y1 = (acc / total) * S;
-    b.hard = R.next() < 0.5;
-    const tnt = tints[Math.floor(R.next() * tints.length)];
-    const m = 0.94 + R.next() * 0.1;
-    b.tint = [tnt[0] * m, tnt[1] * m, tnt[2] * m];
+    b.hard = R.next();
+    b.tone = R.next();
+    b.seam = 0.35 + R.next() * 0.65;
+    b.salt = R.next() * 10;
     const joints = [];
-    const jn = R.next() < 0.55 ? 0 : 1 + Math.floor(R.next() * 2);
-    for (let j = 0; j < jn; j++) joints.push({ x: R.next() * S, w: 0.4 + R.next() * 1.4, slant: (R.next() - 0.5) * 0.35 });
+    const jn = R.next() < 0.4 ? 0 : 1 + Math.floor(R.next() * 2.4);
+    for (let j = 0; j < jn; j++) joints.push({ x: R.next() * S, w: 0.6 + R.next(), slant: (R.next() - 0.5) * 0.3, vis: 0.4 + R.next() * 0.6 });
     b.joints = joints;
-  });
-  const bedAt = new Int16Array(S);
-  for (let y = 0; y < S; y++) {
+  }
+  const bedAt = new Int16Array(S + 1);
+  for (let y = 0; y <= S; y++) {
     let bi = 0;
     while (bi < beds.length - 1 && y >= beds[bi].y1) bi++;
     bedAt[y] = bi;
   }
-  // Bedding planes undulate along u (two scales), so beds never read as planks.
-  const waveLo = N.fbmField(S, 2, { octaves: 2, salt: 7, periodY: 1 });
-  const waveHi = N.fbmField(S, 14, { octaves: 2, salt: 8, periodY: 1 });
-  const block = N.fbmField(S, 6, { octaves: 5, ridged: true, salt: 9 });
-  const rough = N.fbmField(S, 10, { octaves: 5, gain: 0.55 });
-  const fine = N.fbmField(S, 48, { octaves: 2, salt: 1 });
-  const wob = N.fbmField(S, 8, { octaves: 3, salt: 2 });
-  const streaks = N.fbmField(S, 16, { octaves: 4, salt: 3, periodY: 2 });
-  const stain = N.fbmField(S, 3, { octaves: 5, salt: 4 });
-  const holes = N.worleyField(S, 22, 22, 1, 5);
-  const lichen = N.worleyField(S, 44, 44, 0.9, 6);
+  // Fields. Row 0 of a periodY:1 field is a 1D profile along u.
+  const waveLo = N.fbmField(S, 2, { octaves: 3, salt: 7, periodY: 1 });
+  const waveHi = N.fbmField(S, 16, { octaves: 2, salt: 8, periodY: 1 });
+  const seamVis = N.fbmField(S, 6, { octaves: 3, salt: 12, periodY: 1 });
+  const rough = N.fbmField(S, 8, { octaves: 6, gain: 0.52, ridged: true, salt: 1 });
+  const body = N.fbmField(S, 4, { octaves: 5, salt: 2 });
+  const fine = N.fbmField(S, 64, { octaves: 2, salt: 3 });
+  const wob = N.fbmField(S, 10, { octaves: 3, salt: 4 });
+  const rill = N.fbmField(S, 28, { octaves: 3, salt: 5, periodY: 3 });
+  const streak = N.fbmField(S, 18, { octaves: 4, salt: 6, periodY: 2 });
+  const stain = N.fbmField(S, 3, { octaves: 5, salt: 9 });
+  const lichM = N.fbmField(S, 5, { octaves: 4, salt: 10 });
+  const blocks = N.worleyField(S, 6, 9, 0.85, 11);
+  const pits = N.worleyField(S, 46, 46, 1, 13);
+  const spots = N.worleyField(S, 30, 30, 0.95, 14);
   const h = new Float32Array(n);
-  const lineA = new Float32Array(n);
+  const seamA = new Float32Array(n);
   const bedT = new Float32Array(n);
   const bedI = new Uint8Array(n);
+  const fresh = new Float32Array(n);
   for (let y = 0; y < S; y++) {
     for (let x = 0; x < S; x++) {
       const k = y * S + x;
-      const yy = (((y + waveLo[x] * S * 0.035 + waveHi[x] * S * 0.006) % S) + S) % S;
-      const bi = bedAt[Math.floor(yy) % S];
+      const yy = (((y + waveLo[x] * S * 0.03 + waveHi[x] * S * 0.004 + wob[k] * S * 0.004) % S) + S) % S;
+      const bi = bedAt[Math.floor(yy)];
       const b = beds[bi];
       const th = b.y1 - b.y0;
       const t = clamp((yy - b.y0) / th, 0, 1);
-      const distEdge = Math.min(yy - b.y0, b.y1 - yy);
-      const notchW = S * (0.004 + 0.008 * smoothstep(-0.3, 0.4, rough[k]));
-      const notch = 1 - smoothstep(0, notchW + 0.6, distEdge + fine[k] * 1.2);
-      // Hard beds stand proud with a rounded lip; soft beds are scooped back.
-      let v = b.hard ? 0.55 - 0.18 * Math.pow(t, 6) - 0.12 * Math.pow(1 - t, 6) : 0.12 - 0.26 * Math.sin(Math.PI * t);
-      v += block[k] * (b.hard ? 0.22 : 0.12) + rough[k] * 0.16 + fine[k] * 0.04;
+      // Hard beds: flat faces with rounded arrises. Soft beds: hollowed back.
+      const edge = Math.min(t, 1 - t) * th;
+      const round = smoothstep(0, 14 * px2 + th * 0.12, edge);
+      let v = b.hard > 0.45 ? 0.32 * round + 0.05 : 0.08 + 0.18 * round - 0.12 * Math.sin(Math.PI * t);
+      // Seams between beds: recesses whose depth comes and goes along the bed. Each boundary is
+      // shaped from both sides so the face never steps abruptly.
+      const below = yy - b.y0;
+      const above = b.y1 - yy;
+      const vis = smoothstep(-0.25, 0.45, seamVis[x] + body[k] * 0.5 + wob[k] * 0.3);
+      const svLo = b.seam * vis;
+      const svHi = beds[(bi + 1) % beds.length].seam * vis;
+      const sLo = (1 - smoothstep(0, (2 + 7 * svLo) * px2 + 1, below + fine[k] * 2 * px2)) * svLo;
+      const sHi = (1 - smoothstep(0, (1 + 3 * svHi) * px2 + 1, above - fine[k] * 2 * px2)) * svHi;
+      const seam = Math.max(sLo, sHi);
+      v -= seam * 0.24;
+      // Joints: narrow vertical fractures, wobbling and fading along their length.
       let joint = 0;
       for (const j of b.joints) {
-        let d = Math.abs(x - (j.x + wob[k] * S * 0.025 + (yy - b.y0) * j.slant));
+        let d = Math.abs(x - (j.x + wob[k] * S * 0.02 + below * j.slant));
         if (d > S / 2) d = S - d;
-        joint = Math.max(joint, 1 - smoothstep(0, S * 0.003 * j.w + 0.6, d));
+        const jw = (1.5 + 2.5 * j.w) * px2 + 0.5;
+        joint = Math.max(joint, (1 - smoothstep(0, jw, d)) * j.vis * smoothstep(-0.35, 0.2, rough[k] * 0.6 + body[k]));
       }
-      const hole = !b.hard && holes.id[k] < 0.12 ? 1 - smoothstep(0.05, 0.3, holes.f1[k]) : 0;
-      // Notches fade in and out along the bed, so bedding reads as weathering, not mortar.
-      const fadeN = smoothstep(-0.25, 0.35, wob[k] + rough[k] * 0.5);
-      v -= notch * 0.3 * fadeN + joint * 0.3 + hole * 0.12;
+      v -= joint * 0.26;
+      // Angular fracture blocks: each Voronoi cell a slightly different plane, only in patches,
+      // blended over a few pixels so the borders read as arrises rather than drawn lines.
+      const bid = fract(blocks.id[k] * 7.13 + b.salt);
+      const bedge = blocks.f2[k] - blocks.f1[k];
+      const bm = smoothstep(0.0, 0.5, stain[k] + rough[k] * 0.3);
+      v += (bid - 0.5) * 0.09 * (0.5 + b.hard) * bm * smoothstep(0.0, 0.05, bedge);
+      // Surface: ridged roughness, runnels down the soft beds, solution pits.
+      v += rough[k] * 0.11 + fine[k] * 0.025;
+      v += rill[k] * (0.03 + 0.05 * (1 - b.hard));
+      if (pits.id[k] < 0.16) v -= (1 - smoothstep(0.05, 0.3, pits.f1[k] + fine[k] * 0.1)) * 0.04 * smoothstep(0.0, 0.4, body[k] + 0.1);
       h[k] = v;
-      lineA[k] = Math.max(notch * 0.8 * fadeN, joint * 0.8);
+      seamA[k] = Math.max(seam * 0.8, joint);
       bedT[k] = t;
       bedI[k] = bi;
+      fresh[k] = bid < 0.22 ? bm : 0;
     }
   }
-  const cav = blur(h, S, Math.max(1, S >> 7));
+  const cav = blur(h, S, Math.max(1, Math.round(5 * px2)));
   const px = new Uint8ClampedArray(n * 4);
   const c = [0, 0, 0];
-  const grime = [94, 90, 84];
-  const iron = [178, 128, 84];
-  const lichenC = [200, 200, 186];
-  const lichenO = [186, 136, 70];
+  const grey = [174, 170, 162];
+  const buff = [186, 175, 152];
+  const cream = [198, 188, 166];
+  const grime = [86, 84, 80];
+  const ochre = [170, 124, 80];
+  const lichenW = [196, 196, 186];
+  const lichenO = [184, 132, 66];
+  const lichenK = [62, 60, 56];
   for (let k = 0; k < n; k++) {
     const b = beds[bedI[k]];
-    const tone = 0.9 + rough[k] * 0.2 + block[k] * 0.06 + fine[k] * 0.04;
-    c[0] = b.tint[0] * tone;
-    c[1] = b.tint[1] * tone;
-    c[2] = b.tint[2] * tone;
-    // Rain streaks hang from each bed's upper edge (t = 1 is the top of the bed).
-    const sm = smoothstep(0.1, 0.6, streaks[k]) * (0.45 + 0.55 * bedT[k]);
-    mixc(c, grime, sm * 0.55, c);
-    mixc(c, iron, smoothstep(0.2, 0.6, stain[k]) * 0.35, c);
-    if (lichen.id[k] < 0.1 && lichen.f1[k] < 0.3) mixc(c, lichen.id[k] < 0.025 ? lichenO : lichenC, 0.5, c);
-    const shade = clamp(1 + (h[k] - cav[k]) * 0.9 - lineA[k] * (0.06 + 0.14 * smoothstep(-0.2, 0.3, rough[k])), 0.6, 1.15);
+    mixc(grey, buff, clamp(b.tone * 0.5 + body[k] * 0.6 + 0.25, 0, 1), c);
+    if (fresh[k] > 0) mixc(c, cream, 0.45 * fresh[k], c);
+    const tone = 0.93 + body[k] * 0.12 + fine[k] * 0.04;
+    c[0] *= tone;
+    c[1] *= tone;
+    c[2] *= tone;
+    // Rain streaks hang from each bed's top (t = 1) and fade downward.
+    const st = smoothstep(0.05, 0.55, streak[k] + body[k] * 0.25) * (0.25 + 0.75 * Math.pow(bedT[k], 0.6));
+    mixc(c, grime, st * 0.42, c);
+    mixc(c, ochre, smoothstep(0.15, 0.6, stain[k]) * 0.38 + smoothstep(0.35, 0.8, -streak[k]) * smoothstep(0.6, 1, bedT[k]) * 0.2, c);
+    // Lichen: ragged rosettes in clusters.
+    const lm = smoothstep(0.15, 0.5, lichM[k]);
+    if (lm > 0) {
+      const sid = spots.id[k];
+      const r = spots.f1[k] + fine[k] * 0.25 + rough[k] * 0.08;
+      if (sid < 0.3 && r < 0.4) {
+        const a = (1 - smoothstep(0.18, 0.36, r)) * lm * (0.6 + 0.4 * fract(sid * 31.7));
+        mixc(c, sid < 0.05 ? lichenO : sid < 0.1 ? lichenK : lichenW, a * 0.55, c);
+      }
+    }
+    mixc(c, grime, seamA[k] * 0.32, c);
+    const shade = clamp(1.04 + (h[k] - cav[k]) * 1.1, 0.66, 1.16);
     put(px, k, c[0] * shade, c[1] * shade, c[2] * shade);
   }
   return { color: px, normal: normalMap(h, S, 7) };

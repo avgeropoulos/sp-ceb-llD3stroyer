@@ -708,6 +708,9 @@ html, body {
 #hud .hud-ready.is-locked .hud-ready-lock { opacity: 1; }
 #hud .hud-ready.is-armed span::after { content: ' ✓'; }
 
+/* Black curtain: later days and the Kolonos fade through it (opacity set per frame while fading). */
+.hud-curtain { position: absolute; inset: 0; background: #000; opacity: 0; }
+
 /* Spear-cam letterbox. */
 .hud-letterbox i {
   position: absolute;
@@ -790,7 +793,7 @@ html, body {
 #controls .is-down { transform: scale(0.92); opacity: 1; }
 .ctl-pause { left: calc(var(--safe-l) + 12px); }
 .ctl-swap { right: calc(var(--safe-r) + 12px); }
-.ctl-recenter { left: 50%; margin-left: -25px; display: none; }
+.ctl-recenter { left: calc(50% - 25px); display: none; }
 #controls.ctl-motion .ctl-recenter { display: block; }
 #controls.ctl-touch.ctl-left .ctl-pause { left: auto; right: calc(var(--safe-r) + 12px); }
 #controls.ctl-touch.ctl-left .ctl-swap { right: auto; left: calc(var(--safe-l) + 12px); }
@@ -926,7 +929,7 @@ html, body {
 .ctl-throw {
   position: absolute;
   right: calc(var(--safe-r) + 10px);
-  top: calc(var(--safe-t) + 76px);
+  bottom: calc(var(--safe-b) + 86px);
   width: 78px;
   height: 78px;
   border-radius: 50%;
@@ -937,6 +940,16 @@ html, body {
   transition: transform 0.08s ease, opacity 0.2s ease;
 }
 #controls.ctl-left .ctl-throw { right: auto; left: calc(var(--safe-l) + 10px); }
+/* Touch layout on a touch device: weapon swap in the bottom corner of the swipe side, THROW above it. */
+#controls.ctl-touch.ctl-hastouch .ctl-swap {
+  top: auto;
+  bottom: calc(var(--safe-b) + 16px);
+  right: calc(var(--safe-r) + 21px);
+  width: 56px;
+  height: 56px;
+}
+#controls.ctl-touch.ctl-hastouch.ctl-left .ctl-swap { right: auto; left: calc(var(--safe-l) + 21px); }
+#controls.ctl-touch.ctl-hastouch .ctl-swap svg { width: 25px; height: 25px; }
 .ctl-throw-face { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 2px; color: var(--bronze-hi); }
 .ctl-throw-face svg { width: 26px; height: 26px; }
 .ctl-throw.is-held { opacity: 1; }
@@ -1003,6 +1016,7 @@ html, body {
 }
 #training.is-on { visibility: visible; }
 #training button { pointer-events: auto; }
+/* The panel lets touches through (swipes and shield holds still work over it); only its controls catch them. */
 .tr-panel {
   position: absolute;
   left: 50%;
@@ -1015,8 +1029,9 @@ html, body {
   border: 1px solid var(--edge);
   border-top: 0;
   box-shadow: 0 8px 26px rgba(0, 0, 0, 0.55);
-  pointer-events: auto;
+  pointer-events: none;
 }
+#training input { pointer-events: auto; }
 .tr-panel::before {
   content: '';
   position: absolute;

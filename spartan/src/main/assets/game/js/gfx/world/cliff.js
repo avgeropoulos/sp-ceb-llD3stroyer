@@ -18,8 +18,8 @@ function makeColumns() {
     zs.push(z);
     z -= Math.max(1, (z - 60) * 0.1);
   }
-  for (z = 70; z > -55; z -= 0.9) zs.push(z);
-  let dz = 0.9;
+  for (z = 70; z > -55; z -= 0.75) zs.push(z);
+  let dz = 0.75;
   while (z > Z_FAR - 60) {
     zs.push(z);
     dz = Math.min(32, dz * 1.045);
@@ -31,7 +31,8 @@ function makeColumns() {
 
 function makeBaseRows() {
   const ys = [-2.5, -0.8];
-  for (let y = 0.4; y < WALL_ROWS_TOP; y += 1.15) ys.push(y);
+  // Denser rows low down, where the player looks at the face from a few metres.
+  for (let y = 0.3; y < WALL_ROWS_TOP; y += y < 14 ? 0.62 : 1.15) ys.push(y);
   for (const l of LEDGES) ys.push(l - 0.2, l + 0.2);
   ys.sort((a, b) => a - b);
   const out = [];
@@ -40,6 +41,12 @@ function makeBaseRows() {
 }
 
 const UPPER = [0.1, 0.22, 0.36, 0.52, 0.68, 0.82, 0.93, 1];
+
+/** Smooth maximum (polynomial, blend width k). */
+function smax(a, b, k) {
+  const h = Math.max(k - Math.abs(a - b), 0) / k;
+  return Math.max(a, b) + h * h * k * 0.25;
+}
 
 /**
  * @returns {{ meshes: THREE.Mesh[], near: THREE.Mesh, ledgeSpots: number[][], slopeSpots: number[][], crestSpots: number[][] }}
@@ -85,18 +92,20 @@ export function buildCliff(layout, material) {
         const ly = LEDGES[k] + dip;
         if (ly > hWall) break;
         s += setbacks[k] * smoothstep(ly - 0.2, ly + 0.2, y);
-        // Hard beds bulge out over the soft notch beneath them.
-        const t = (y - ly) / 3.2;
-        if (t > 0 && t < 1) s -= 0.5 * Math.pow(Math.sin(Math.PI * Math.sqrt(t)), 2) * smoothstep(0.5, 2, y);
+        // Hard beds stand out a little over the soft notch beneath them (a lip, then a straight face).
+        const t = (y - ly) / 3.0;
+        if (t > 0 && t < 1) s -= 0.3 * smoothstep(0, 0.12, t) * (1 - smoothstep(0.45, 1, t)) * smoothstep(0.5, 2, y);
       }
       s += gully * smoothstep(1.5, 9, y);
       // Blocky masses: quantised noise gives flat faces with sharp vertical edges.
       const bn = N.fbm2(z * 0.055 + 17, y * 0.03 + Math.floor((y + 1) / 4.5) * 0.37, 2) * 3.2;
       const bq = Math.floor(bn);
       s += 1.1 * (bq + smoothstep(0.75, 1, bn - bq)) * smoothstep(1, 5, y);
-      // Relief at two scales: rounded masses and smaller blocky irregularity.
-      s += 1.3 * N.fbm2(z * 0.07 + 3, y * 0.055, 3) * smoothstep(1, 6, y);
-      s += 0.42 * N.fbm2(z * 0.24, y * 0.21, 3) * smoothstep(0, 2.5, y);
+      // Relief: vertically drawn-out masses (rain-carved), and smaller irregularity.
+      s += 0.85 * N.fbm2(z * 0.085 + 3, y * 0.024, 3) * smoothstep(1, 6, y);
+      s += 0.4 * N.fbm2(z * 0.26, y * 0.2, 3) * smoothstep(0, 2.5, y);
+      // The foot never juts out over the pass (the x = −9 plane collider stands for it).
+      if (y < 7) s = smax(s, -0.35 - smoothstep(2, 7, y), 0.35);
       if (y > hWall) s += (y - hWall) / 1.2 + 6 * N.fbm2(z * 0.03, y * 0.03 + 4, 2) * smoothstep(hWall, hWall + 20, y);
       if (y > hTop) s += (y - hTop) * 4.5;
       const x = cx - s;

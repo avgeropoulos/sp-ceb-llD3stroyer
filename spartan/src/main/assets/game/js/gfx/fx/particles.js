@@ -321,7 +321,9 @@ function makeBatch(cap, layout, material, renderOrder) {
   mesh.castShadow = false;
   mesh.receiveShadow = false;
   mesh.renderOrder = renderOrder;
-  mesh.visible = false;
+  // Visible (with no instances) until the first update, so main.js's pre-warm compileAsync,
+  // which skips invisible objects, compiles these programs behind the boot screen.
+  mesh.visible = true;
   mesh.name = 'fx-particles';
   return { geom, mesh, buffer, data };
 }
@@ -385,7 +387,7 @@ export function createParticles(ctx, hooks = {}) {
   const bSpark = makeBatch(CAP_SPARK, STREAK_LAYOUT, sparkMat, 14);
   scene.add(bStreak.mesh, bSoft.mesh, bSpark.mesh);
 
-  let dirty = false;
+  let dirty = true; // the first update hides the empty batches
 
   // Scratch values for spawners (no per-call allocation).
   let ox = 0, oy = 0, oz = 0; // origin

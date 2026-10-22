@@ -2,6 +2,8 @@
 // Polls ctx.player and ctx.fx.cameraOverridden every frame; events drive only transient effects.
 // DOM text changes only when its value changes, and only transform/opacity animate.
 import { clamp, smoothstep } from '../core/math.js';
+// Namespace import: a renamed export degrades to "no fade" instead of breaking the module graph.
+import * as campaign from '../game/campaign.js';
 
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
 /** 1 → 'I' … 12 → 'XII' (falls back to digits). */
@@ -27,6 +29,29 @@ const ARC = '<svg viewBox="-100 -100 200 200" aria-hidden="true"><path d="M-50.5
 const MAX_CHEV = 6;
 const MAX_ARCS = 4;
 
+/** Seconds of a Day 3 phase's fade (§13 Phase C: "A 2 s fade"), from the payload or campaign data. */
+export function phaseFade(e) {
+  if (!e) return 0;
+  if (Number.isFinite(e.fade)) return Math.max(0, e.fade);
+  const days = campaign && Array.isArray(campaign.DAYS) ? campaign.DAYS : [];
+  for (const d of days) {
+    if (d.day !== e.day || !Array.isArray(d.phases)) continue;
+    for (const p of d.phases) if (p.id === e.phase) return Math.max(0, +p.fade || 0);
+  }
+  return 0;
+}
+
+/**
+ * Opacity of the black curtain `t` seconds into a fade that darkens over `a`, holds for `h`
+ * and clears over `o` (smoothstep edges).
+ */
+export function curtainOpacity(t, a, h, o) {
+  if (t < 0 || t >= a + h + o) return 0;
+  if (t < a) return smoothstep(0, a, t);
+  if (t < a + h) return 1;
+  return 1 - smoothstep(a + h, a + h + o, t);
+}
+
 /**
  * Creates the HUD.
  * @param {object} ctx shared context (§4)
@@ -44,6 +69,7 @@ export function createHud(ctx) {
         <stop offset="0" stop-color="#c0261b" stop-opacity="0"/><stop offset=".3" stop-color="#d8331f"/>
         <stop offset=".5" stop-color="#ff5a36"/><stop offset=".7" stop-color="#d8331f"/><stop offset="1" stop-color="#c0261b" stop-opacity="0"/>
       </linearGradient></defs></svg>
+    <div class="hud-curtain"></div>
     <div class="hud-letterbox"><i class="hud-lb-top"></i><i class="hud-lb-bot"></i></div>
     <div class="hud-arcs"></div>
     <div class="hud-reticle"></div>
@@ -103,6 +129,7 @@ export function createHud(ctx) {
   const respiteT = q('.hud-respite-t');
   const readyBtn = q('.hud-ready');
   const readyLock = q('.hud-ready-lock');
+  const curtainEl = q('.hud-curtain');
   const focusEl = q('.hud-focus');
   const focusHp = q('.hud-focus-hp b');
   const debugEl = q('.hud-debug');
@@ -161,6 +188,8 @@ export function createHud(ctx) {
   const overlay = { vignette: 0, hurt: 0, helmet: false };
   const sent = { vignette: -1, hurt: -1, helmet: null };
   let dbgClock = 0;
+  let daysSeen = 0;             // dayStart cards since the last reset (the first one needs no curtain)
+  const curtain = { t: -1, a: 0, h: 0, o: 0, shown: 0 };
   let focusShown = false;
   let focusHpShown = -1;
   const v = new THREE.Vector3();
@@ -219,6 +248,7 @@ export function createHud(ctx) {
       t.el.classList.remove('is-shown');
     }
     hurt = 0;
+    clearCurtain();
   }
 
   function endRespite() {
@@ -253,6 +283,21 @@ export function createHud(ctx) {
       c.el.classList.remove('is-shown', 'is-hot', 'is-off');
       c.hot = false;
       c.off = null;
+    }
+  }
+
+  /** Fades to black and back (world changes hide behind it; waves waits ~1 s for the card). */
+  function startCurtain(a, h, o) {
+    curtain.t = 0;
+    curtain.a = a;
+    curtain.h = h;
+    curtain.o = o;
+  }
+  function clearCurtain() {
+    curtain.t = -1;
+    if (curtain.shown !== 0) {
+      curtain.shown = 0;
+      curtainEl.style.opacity = '0';
     }
   }
 
@@ -309,20 +354,25 @@ export function createHud(ctx) {
   });
 
   const dayKicker = (e) => (e && e.day ? `Day ${roman(e.day)}` : '');
+  const cardSeconds = (e, def) => (e && Number.isFinite(e.seconds) && e.seconds > 0 ? e.seconds : def);
   ev.on('dayStart', (e) => {
     endRespite();
-    showBanner(dayKicker(e), (e && e.title) || dayKicker(e), e && e.subtitle, (e && e.seconds) || 4.5, 'card');
+    // A later day (or dusk) changes the light behind the card: cover the view while it does.
+    if (daysSeen++ > 0) startCurtain(0.5, 1.2, 1.1);
+    showBanner(dayKicker(e), (e && e.title) || dayKicker(e), e && e.subtitle, cardSeconds(e, 4.5), 'card');
   });
   ev.on('phase', (e) => {
     endRespite();
-    showBanner(dayKicker(e), e && e.title, e && e.subtitle, (e && e.seconds) || 4, 'card');
+    const fade = phaseFade(e);
+    if (fade > 0) startCurtain(fade * 0.3, fade * 0.3, fade * 0.4);
+    showBanner(dayKicker(e), e && e.title, e && e.subtitle, cardSeconds(e, 4), 'card');
   });
   ev.on('waveStart', (e) => {
     endRespite();
-    showBanner(dayKicker(e), (e && e.title) || (e && e.wave ? `Wave ${roman(e.wave)}` : 'They come'), e && e.subtitle, 2.6, 'small');
+    showBanner(dayKicker(e), (e && e.title) || (e && e.wave ? `Wave ${roman(e.wave)}` : 'They come'), e && e.subtitle, Math.min(cardSeconds(e, 2.6), 3.2), 'small');
   });
   ev.on('waveCleared', (e) => {
-    showBanner(dayKicker(e), (e && e.title) || 'The wave breaks', e && e.subtitle, 2.4, 'small');
+    showBanner(dayKicker(e), (e && e.title) || 'The wave breaks', e && e.subtitle, Math.min(cardSeconds(e, 2.4), 3.2), 'small');
   });
   ev.on('respite', (e) => {
     respite.on = true;
@@ -568,7 +618,11 @@ export function createHud(ctx) {
       const w = ctx.waves;
       const day = w.day || 0;
       const resting = 'inRespite' in w ? !!w.inRespite : w.state === 'respite';
-      if (day) wave = resting ? `Day ${roman(day)} · Respite` : w.wave ? `Day ${roman(day)} · Wave ${roman(w.wave)}` : `Day ${roman(day)}`;
+      let part = w.wave ? `Wave ${roman(w.wave)}` : '';
+      if (w.phase === 'B' && w.wave) part = `Surge ${roman(w.wave)}`;
+      else if (w.phase === 'C') part = 'The Kolonos';
+      if (resting) part = 'Respite';
+      if (day) wave = part ? `Day ${roman(day)} · ${part}` : `Day ${roman(day)}`;
     }
     setText(waveEl, 'wave', wave);
     setClass(root, 'training', 'is-training', wave === 'The Agoge');
@@ -577,6 +631,16 @@ export function createHud(ctx) {
   }
 
   function updateTimers(dt, gdt) {
+    // Curtain (game time, so it stays in step with waves' behind-the-card timeline).
+    if (curtain.t >= 0) {
+      curtain.t += gdt;
+      const op = Math.round(curtainOpacity(curtain.t, curtain.a, curtain.h, curtain.o) * 100) / 100;
+      if (op !== curtain.shown) {
+        curtain.shown = op;
+        curtainEl.style.opacity = String(op);
+      }
+      if (curtain.t >= curtain.a + curtain.h + curtain.o) clearCurtain();
+    }
     // Banner and queue.
     if (bannerLeft > 0) {
       if (!last.bannerIn) {
@@ -634,14 +698,17 @@ export function createHud(ctx) {
     }
     // Respite countdown (game time) and READY.
     if (respite.on) {
-      respite.left -= gdt;
+      const w = ctx.waves;
+      // waves owns the clock when it exposes it (READY may cut it short); else count down here.
+      const polled = !!(w && w.inRespite === true && Number.isFinite(w.respiteLeft));
+      respite.left = polled ? w.respiteLeft : respite.left - gdt;
       respite.elapsed += gdt;
       const sec = Math.max(0, Math.ceil(respite.left));
       if (sec !== respite.shownSec) {
         respite.shownSec = sec;
         respiteT.textContent = clock(sec);
       }
-      const locked = respite.elapsed < 6;
+      const locked = polled && typeof w.canReady === 'boolean' ? !w.canReady : respite.elapsed < 6;
       if (locked !== respite.locked) {
         respite.locked = locked;
         readyBtn.classList.toggle('is-locked', locked);
@@ -652,8 +719,7 @@ export function createHud(ctx) {
         readyLock.style.transform = `scaleX(${(lk / 50).toFixed(2)})`;
       }
       if (respite.armed && !locked) callReady();
-      const w = ctx.waves;
-      const over = respite.left <= -0.5 || (w && typeof w.state === 'string' && w.state !== 'respite' && respite.elapsed > 0.3);
+      const over = respite.left <= -0.5 || (w && w.inRespite === false) || (w && typeof w.state === 'string' && w.state !== 'respite' && respite.elapsed > 0.3);
       if (over) endRespite();
     }
   }
@@ -689,6 +755,7 @@ export function createHud(ctx) {
 
   function reset() {
     hideTransients();
+    daysSeen = 0;
     for (const k of Object.keys(last)) delete last[k];
     volleyRaised = null;
     cinematic = null;

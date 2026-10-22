@@ -227,6 +227,7 @@ export function createDecals(ctx) {
   mesh.renderOrder = 10;
   mesh.matrixAutoUpdate = false;
   mesh.name = 'fx-decals';
+  mesh.visible = true; // empty until the first update; lets the pre-warm compile its program
   scene.add(mesh);
 
   const birth = new Float32Array(DECAL_CAP);

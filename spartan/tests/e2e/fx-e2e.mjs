@@ -137,11 +137,15 @@ await check('AI-vs-AI events: particles only (no hit-stop, shake or haptics)', '
     f.emit('kill', { target: a, attacker: b, byPlayer: false, kind: 'slash', spear: false, cause: 'weapon' });
     f.emit('block', { by: b, attacker: a, point: f.P(1, 1.3, -2.6), perfect: true, kind: 'melee' });
     f.emit('hit', hit(b, { attacker: a, byPlayer: false, guarded: true }));
+    const before = f.fx.particleCount;
+    f.emit('arrowHit', { target: null, point: f.P(1, 1.4, -3.3), blocked: true, by: b }); // an ally's aspis
+    const arrowSparks = f.fx.particleCount - before;
     const sh = f.fx.shakeOffset;
     const amps = Array.from(sh.amp);
     const run = f.run(10);
-    return { hs: f.ctx.time.hitStop, frozen: run.filter((s) => s.gdt === 0).length, haptics: f.hapticLog.length, amps, particles: run[0].particles, decals: f.state().decals };
+    return { hs: f.ctx.time.hitStop, frozen: run.filter((s) => s.gdt === 0).length, haptics: f.hapticLog.length, amps, particles: run[0].particles, decals: f.state().decals, arrowSparks };
   }, HIT);
+  assert.ok(r.arrowSparks > 0, 'sparks off an ally\'s aspis');
   assert.equal(r.hs, 0);
   assert.equal(r.frozen, 0);
   assert.equal(r.haptics, 0);
@@ -396,6 +400,72 @@ await check('reset() restores scale 1 and clears everything', 'scene=empty', asy
   assert.equal(r.after.decals, 0);
   assert.deepEqual(r.log, ['end']);
   assert.equal(r.slowAfter, true, 'slowMo works again after reset');
+});
+
+await check('spear cam camera: starts at the eye, trails behind the spear, orbits the impact, returns to the eye', 'scene=empty', async (page) => {
+  const r = await page.evaluate(() => {
+    const f = window.__fx;
+    const cam = f.ctx.camera;
+    const a = f.makeActor(1.0, -16);
+    f.run(1);
+    const eye = cam.position.clone();
+    const eyeQ = cam.quaternion.clone();
+    const pr = f.playerThrow(f.P(a.pos.x, a.pos.y + 1.3, a.pos.z), { src: 'touch' });
+    const fwd = new f.THREE.Vector3();
+    const samples = [];
+    for (let i = 0; i < 160 && f.fx.spearCamPhase !== 'off'; i++) {
+      f.frame(1 / 60);
+      cam.getWorldDirection(fwd);
+      const vdir = pr.vel.clone().normalize();
+      const toImpact = pr.impactPoint ? pr.impactPoint.clone().sub(cam.position) : null;
+      samples.push({
+        phase: f.fx.spearCamPhase,
+        hitStop: f.ctx.time.hitStop,
+        fromEye: cam.position.distanceTo(eye),
+        toSpear: cam.position.distanceTo(pr.pos),
+        alongVel: fwd.dot(vdir),
+        toImpactDist: toImpact ? toImpact.length() : -1,
+        lookAtImpact: toImpact ? fwd.dot(toImpact.normalize()) : -1,
+        quatDot: Math.abs(cam.quaternion.dot(eyeQ)),
+      });
+    }
+    f.run(1);
+    return { samples, endFromEye: cam.position.distanceTo(eye), endQuat: Math.abs(cam.quaternion.dot(eyeQ)) };
+  });
+  const s = r.samples;
+  assert.ok(s[0].phase === 'trail' && s[0].fromEye < 0.05, `first frame at the eye (${s[0].fromEye})`);
+  const trail = s.filter((x) => x.phase === 'trail').slice(15); // after the 0.2 s blend-in
+  assert.ok(trail.length > 10, 'trailed');
+  for (const x of trail) {
+    assert.ok(x.toSpear < 2.1, `close behind the spear (${x.toSpear})`);
+    assert.ok(x.alongVel > 0.85, `looking along the flight (${x.alongVel})`);
+  }
+  const orbit = s.filter((x) => x.phase === 'impact' && x.hitStop === 0);
+  assert.ok(orbit.length > 30, `orbit frames ${orbit.length}`);
+  for (const x of orbit.slice(10)) {
+    assert.ok(x.toImpactDist > 1.0 && x.toImpactDist < 2.8, `orbit radius ${x.toImpactDist}`);
+    assert.ok(x.lookAtImpact > 0.97, `looking at the impact (${x.lookAtImpact})`);
+  }
+  assert.ok(r.endFromEye < 1e-9 && r.endQuat > 1 - 1e-9, 'back at the eye after the ease');
+});
+
+await check('pre-warm: compile() right after createFx builds every fx program; spawning adds none', 'scene=empty', async (page) => {
+  const r = await page.evaluate(() => {
+    const f = window.__fx;
+    const P = f.P;
+    const fxNames = (list) => list.filter((n) => /^fx-/.test(n)).sort();
+    f.fx.blood(P(0, 1.3, -3), P(0, 0.2, -1), 1);
+    f.fx.sparks(P(0, 1.3, -2), P(0, 0, 1), 1);
+    f.fx.dust(P(1, 0, -4), 1);
+    f.fx.splash(P(12, -3, -6));
+    f.fx.decal(P(0, 0, -2.5), 'pool', 1);
+    const before = f.programs().length;
+    f.run(10);
+    return { prewarm: fxNames(f.prewarmPrograms), after: fxNames(f.programs()), grew: f.programs().length - before };
+  });
+  assert.deepEqual(r.prewarm, ['fx-decals', 'fx-soft', 'fx-sparks', 'fx-streaks']);
+  assert.deepEqual(r.after, r.prewarm);
+  assert.equal(r.grew, 0, 'no program compiled when effects first appear');
 });
 
 await check('gameplay haptics table, recorded by a stub platform', 'scene=empty', async (page) => {
