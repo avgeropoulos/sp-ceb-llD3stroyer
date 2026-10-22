@@ -174,6 +174,8 @@ Every push builds an APK with GitHub Actions (see `.github/workflows/android.yml
 For Hercules & Apollo, use
 **https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/HerculesApolloWalk.apk**
 instead. The two games install side by side.
+Updates install over the top and keep your progress. (If you installed Hercules & Apollo before
+it got its own signing key, uninstall that copy once first.)
 
 ## Building it yourself
 
