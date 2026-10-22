@@ -16,12 +16,13 @@
       });
       window.__engineFail = function (msg) {
         var show = function () {
-          var o = document.getElementById('overlay');
-          if (!o) return;
-          var boot = document.getElementById('boot');
-          if (boot) boot.parentNode.removeChild(boot);
-          o.innerHTML = '<div class="engine-fail"><h1>THERMOPYLAE</h1><p></p></div>';
-          o.querySelector('p').textContent = msg;
+          // Its own layer, so the game's UI survives if booting finishes after all (main.js removes it).
+          var el = document.getElementById('engine-fail') || document.createElement('div');
+          el.id = 'engine-fail';
+          el.className = 'engine-fail';
+          el.innerHTML = '<h1>THERMOPYLAE</h1><p></p>';
+          el.querySelector('p').textContent = msg;
+          document.body.appendChild(el);
         };
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', show);
         else show();

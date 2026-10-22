@@ -505,9 +505,13 @@ async function boot() {
   }
   hook.ready = true;
 
+  const markBooted = () => {
+    window.__booted = true;
+    document.getElementById('engine-fail')?.remove();
+  };
   if (MANUAL) {
     frame(1 / 60);
-    window.__booted = true;
+    markBooted();
     return;
   }
   let lastRendered = performance.now();
@@ -520,7 +524,7 @@ async function boot() {
     fps = fps * 0.95 + (1000 / Math.max(1, interval)) * 0.05;
     frame(interval / 1000);
     adaptResolution(interval);
-    window.__booted = true;
+    if (!window.__booted) markBooted();
   };
   requestAnimationFrame(loop);
 }
