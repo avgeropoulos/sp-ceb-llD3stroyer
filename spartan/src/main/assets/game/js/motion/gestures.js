@@ -92,6 +92,14 @@ export const SENSITIVITY_MAX = 2.2;
 
 const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
 
+/**
+ * The peak rate (rad/s) a swing must reach to slash at sensitivity `s`: swingPeak / s, but never
+ * below lookMax, so a body turn that gyro look accepts never slashes.
+ */
+export function slashThreshold(s, p = GESTURE_DEFAULTS) {
+  return Math.max(p.swingPeak / clamp(Number(s) || 1, SENSITIVITY_MIN, SENSITIVITY_MAX), p.lookMax);
+}
+
 /** |wrap(a − b)| ≤ lim (returns a boolean, so nothing is boxed in the hot path) */
 function within(a, b, lim) {
   let d = (a - b) % (2 * Math.PI);
@@ -203,7 +211,7 @@ export class GestureRecognizer {
     this._start = p.swingStart / s;
     // Never below lookMax: a body turn that gyro look accepts (up to lookMax) must not slash, or a
     // high sensitivity would turn every turn into a strike and stop the view from following it.
-    this._peak = Math.max(p.swingPeak / s, p.lookMax);
+    this._peak = slashThreshold(s, p);
     // (never below swingSweepMin: a short, fast wind-up must not pass for a stroke at a high sensitivity)
     this._sweep = Math.max(p.swingSweepMin, p.swingSweep / rs);
     this._sweepFast = p.swingSweepFast / rs;

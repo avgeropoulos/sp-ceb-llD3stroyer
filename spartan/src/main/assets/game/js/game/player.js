@@ -109,6 +109,7 @@ export function createPlayer(ctx) {
   };
   const buffer = { has: false, action: null, age: 0 };
   const strikeAttack = { kind: 'slash', dir: 0, power: 0, yaw: 0, origin: null, combo: null, crit: false, weapon: 'sword', focus: null, src: 'test' };
+  const strikeOrigin = new THREE.Vector3(); // where the strike lands from: the lunge's end point
   const throwTrack = { target: null, x: 0, z: 0, t: 0 };
 
   const throwOrigin = new THREE.Vector3();
@@ -395,7 +396,14 @@ export function createPlayer(ctx) {
     s.dir = atk.dir;
     s.power = atk.power;
     s.yaw = player.attackYaw;
-    s.origin = player.pos;
+    // A motion slash strikes before its lunge has finished (the step runs over the unscaled strike
+    // time, so the camera doesn't jump): the blow reaches from where the lunge is carrying the player.
+    strikeOrigin.copy(player.pos);
+    if (atk.lungeLeft > 0) {
+      strikeOrigin.x += atk.lungeX * atk.lungeLeft;
+      strikeOrigin.z += atk.lungeZ * atk.lungeLeft;
+    }
+    s.origin = strikeOrigin;
     s.combo = atk.combo;
     s.crit = crit;
     s.weapon = atk.weapon;

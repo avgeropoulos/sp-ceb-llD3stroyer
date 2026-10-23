@@ -445,136 +445,360 @@ by 2× over at least 1 s of data, switch to it.
 
 ### 5.3 motion/gestures.js (PURE)
 ```js
-export const GESTURE_DEFAULTS = { swingStart: 3.5, swingPeak: 5.0, swingSweep: 0.45, swingEnd: 1.5, endHold: 0.04,
-  maxSwing: 0.7, reverseWindow: 0.45, reverseRatio: 0.6, reverseSweep: 0.5, reverseSector: 60°,
-  thrustAcc: 12, thrustVel: 0.15, thrustWindow: 0.06, thrustRefractory: 0.35, vfLeak: 0.5, postThrustSwingLock: 0.15,
-  upHoldStartBeta: -0.2, windupBeta: 1.0, windupTime: 0.1, windupMemory: 1.0,
-  throwPeak: 7, throwFull: 13, throwSector: 65°, throwReleaseRatio: 0.6, throwMaxSweep: 1.4, postThrowLock: 1.0,
-  settleRate: 1.0, settleTime: 0.15, absorb: 0.35, lookEase: 0.25, deadZone: 0.02,
-  slashPowerSpan: 10, thrustPowerSpan: 18 }
+export const GESTURE_DEFAULTS = {   // frozen; rates are the body-frame planar rate m (rad/s)
+  swingStart: 2.0, swingPeak: 2.8, swingSweep: 0.24, swingSweepMin: 0.2, swingSweepFast: 0.16, swingSweepLate: 0.55,
+  riseRatio: 0.04, riseWindow: 0.025, exRate: 0.8, exSweep: 0.08, fastWindow: 0.35, fastRatio: 1.5,
+  preRate: 0.6, swingEnd: 1.5, endHold: 0.04, maxSwing: 0.7, maxRaise: 1.6,
+  reverseWindow: 0.6, reverseRatio: 0.55, reverseSweep: 0.4, reverseSector: 60°, cardinalSnap: 22°,
+  dirMargin: 8°, dipSector: 35°, dipRaise: 0.07, dipLook: 0.3, dipSweep: 0.55, dipEarlySweep: 0.3, dipRise: 0.08,
+  quietRate: 1.0, rightStale: 0.5,
+  thrustAcc: 12, thrustMaxRate: 3, thrustVel: 0.15, thrustWindow: 0.06, thrustRefractory: 0.35, vfLeak: 0.5,
+  postThrustSwingLock: 0.15, vfLeakBack: 4, calmHold: 0.1,
+  guardBeta: -0.39, guardTau: 1.5, upHoldStartBeta: -0.45, windupBeta: 1.6, windupTime: 0.1, windupMemory: 1.0,
+  throwPeak: 7, throwFull: 13, throwMin: 4.5, throwMinSweep: 0.8, throwSector: 65°, throwReleaseRatio: 0.6,
+  throwMaxSweep: 1.4, postThrowLock: 1.0,
+  settleRate: 1.0, settleTime: 0.15,
+  lookDead0: 0.1, lookDead1: 0.3, lookMax: 2.0, lookStrike: 2.5, lookDelay: 0.28, lookAfter: 0.6,
+  lookRestRate: 0.15, lookRestTime: 0.35, lookAfterMax: 3.0, lookCockGap: 0.3, lookHoldRun: 0.45, lookRunMin: 0.03,
+  lookTau: 0.07, lookRate: 1.4, lookStep: 0.026,
+  candStart: 1.8, candEnd: 1.2, candSweep: 0.3, candMax: 0.9,
+  slashPowerSpan: 10, powerRise: 1.3, thrustPowerSpan: 18 }
+export const SENSITIVITY_MIN = 0.5, SENSITIVITY_MAX = 2.2
+export function snapCardinal(dir, lim)   // the nearest of 0, ±π/2, π if dir is within lim of it, else dir (never −0 or −π)
 export class GestureRecognizer {
-  constructor(opts = { sensitivity: 1, weapon: 'sword', gyroRange: 34.9 })
-  setSensitivity(s)         // 0.5–2.0
-  setWeapon('sword'|'spear')
-  reset()                   // clears swing/thrust/windup state, recoil memory, look state
-  push(sample) → GestureEvent[]   // returns a reused array; copy what you keep
-  consumeLook() → { yaw }   // heading change released since the last call (radians), then zeroed
+  constructor({ sensitivity = 1, weapon = 'sword', gyroRange = 34.9, params = null } = {})  // params overrides GESTURE_DEFAULTS (tests, tuning)
+  setSensitivity(s)         // clamped to SENSITIVITY_MIN–MAX
+  setWeapon('sword'|'spear')   // anything else → 'sword'
+  setFlip(flipX, flipY)     // settings.motionFlipX/Y: corrects a mirrored sensor setup
+  reset()                   // clears swing/thrust/wind-up/candidate state, recoil memory, locks and look state;
+                            // keeps the released heading and the learned guard
+  push(sample) → GestureEvent[]           // returns a reused array; copy what you keep
+  consumeCandidates() → SwingCandidate[]  // completed since the last call, oldest first (≤ 32 queued); reused array
+  consumeLook(frameDt = 0) → { yaw }  // released heading change since the last call (rad, + = left), capped per
+                                      // call at max(lookStep, 1.1·lookRate·min(frameDt, 0.1)); reused object
   holdLook(), resumeLook(), recenter()
-  get settled()             // phone settled AND up.y ≥ 0.5 (screen upright, facing the player)
-  get debug()               // { m, yawRate, pitchRate, beta, phase, peak, fwdAcc, fwdVel, lookState, lastEvent }
+  get settled()             // |w| < settleRate for settleTime with no swing active (a post-throw lock doesn't matter),
+                            // AND the screen upright (up.y ≥ 0.5) or tilted back toward the eyes (up.y ≥ 0, up.z ≥ 0.5)
+  get debug()               // { m, yawRate, pitchRate, beta, phase, peak, fwdAcc, fwdVel, lookState, lastEvent,
+                            //   guardBeta, lastCandidatePeak, lastCandidate }
 }
-// GestureEvent: { type:'slash', dir, power, peak, sweep, t } | { type:'thrust', power, peak, t }
+// GestureEvent: { type:'slash', dir, rawDir, power, peak, sweep, t } | { type:'thrust', power, peak, t }
 //             | { type:'throw', power, peak, t } | { type:'windup', t }
+// SwingCandidate: { type:'swingCandidate', peak, sweep, dir, t0, t }
+// debug.phase: 'idle'|'swing'|'hold-up'|'throw'|'done'|'thrust'|'locked'
+// debug.lookState: 'hold'|'turning'|'blocked'|'settled'|'moving'
 ```
-**Sensitivity** `s` divides only `swingStart`, `swingPeak`, `throwPeak`, `throwFull` and
-`thrustAcc`, and divides `swingSweep` by √s. The power formulas use the scaled thresholds.
-Power ceilings respect the gyro range:
-`slash power = clamp((peak − swingPeak/s)/min(slashPowerSpan, 0.9·gyroRange − swingPeak/s), 0, 1)`.
-A gap resets the swing, thrust and look state.
+**Sensitivity** `s` (clamped to 0.5–2.2) divides `swingStart`, `swingPeak`, `thrustAcc` and
+`thrustMaxRate`. It divides `swingSweep` (never below `swingSweepMin`), `swingSweepFast` and
+`swingSweepLate` by √s, and `throwPeak`, `throwMin` and `throwFull` by max(1, s), so a hard
+slasher calibrated below 1 never has to throw harder. Nothing else scales. Below, a primed name is
+the scaled value (`swingStart′ = swingStart/s`). Two of them are bounded:
+* `swingPeak′ = max(swingPeak/s, lookMax)`, exported as `slashThreshold(s)` (the meters mark it). A body turn that gyro look accepts (up to `lookMax`)
+  must never slash, or a high sensitivity would turn every turn into a strike and stop the view
+  from following it.
+* `swingEnd′ = min(swingEnd, 0.7·swingStart′)`.
 
-**Rates in a gravity-aligned frame.**
-* `u = sample.up`, `b = (0,0,−1)`, `s = u.y ≥ 0 ? 1 : −1`.
-* Blade elevation, unwrapped past vertical: `β = atan2(−u.z, s·hypot(u.x, u.y))`, so β > π/2
-  means the blade points back over the shoulder. `c = cos β`.
-* `yawRate = w·u` (positive = blade moving left).
-* Pitch axis: if `|b×u| ≥ 0.35`, `r = s·normalize(b×u)`; otherwise `r = normalize(x̂ − u.x·u)`.
-  `pitchRate = w·r` (positive = blade tip moving up).
-* Integrate `dx += −yawRate·c·dt`, `dy += pitchRate·dt`. The planar rate is
-  `m = hypot(yawRate, pitchRate)`.
+A cautious swing (peak 3.5–4 rad/s, arc 0.8–1.0) registers at s = 1.
+
+**Body frame.** Directions don't depend on how the phone is gripped (tilted back, rolled, screen
+facing partly sideways).
+* `u = sample.up`. Blade elevation, unwrapped past vertical: `βabs = atan2(−u.z, s·hypot(u.x, u.y))`
+  with `s = u.y ≥ 0 ? 1 : −1`, so β > π/2 means the blade points back over the shoulder.
+* **Learned guard** G (the grip; reset() keeps it): the first settle with βabs ∈ (−1.45, 0.9) sets
+  it, and later settles move it toward βabs with time constant `guardTau` while within 0.6 of it.
+  Learning pauses while locked or while an overhead swing is pending. Every elevation rule uses
+  `β = βabs − (G − guardBeta)`, as if the guard were at `guardBeta`, so a phone held tilted back
+  raises the same.
+* **Body-right R** (screen frame) is captured from the attitude whenever no swing is active and
+  the phone is quiet (|w| < `quietRate`) or hasn't been for `rightStale` (a long body turn), and
+  after a reset or gap. In between, the gyro carries it as a world-fixed vector, kept horizontal and
+  unit. It is never re-derived mid-swing, so a strike keeps the axis of the guard it started from
+  (a cock-back isn't quiet).
+  * Capture: F = the horizontal part of the back axis −z (negated past vertical, u.y < 0). As the
+    phone nears flat (|F| < 0.35), F also takes in the horizontal part of the top edge +y, with
+    weight `clamp((0.35 − |F|)/0.25, 0, 1)·sign(u.z)`.
+  * `R = normalize(F × u)`, or the horizontal part of +x if that degenerates.
+* `wh = w·u` (positive = turning left) and `wv = w·R` (positive = tip up). Roll about the body's
+  forward axis (wrist roll) is ignored.
+* `setFlip` negates `wh` (flipX: dir → π − dir, and look turns the other way) and/or `wv` (flipY:
+  dir → −dir) before every rule below, so uppercut, chop, wind-up, throw and recoil logic agree.
+* The blade velocity across the view is `(vx, vy) = (−wh, wv)`, and the planar rate is
+  `m = hypot(vx, vy)`. The **sweep** `(dx, dy)` is its integral since the swing began.
+  `rawDir = atan2(dy, dx)` (§3.4).
+* **Rising**: m ≥ the previous sample's m, and m rose by at least `riseRatio·m` over `riseWindow`
+  (true with too little history).
 
 **Swing.**
-* Starts when `m > swingStart`, with `dx = dy = 0` and `peak = m`.
-* **Fires early**, as soon as `hypot(dx,dy) ≥ swingSweep` and `peak ≥ swingPeak`, with
-  `dir = atan2(dy, dx)`. The two exceptions below are deferred instead.
-* At most one event per swing.
+* **Ramp**: outside a swing, a rising run of m ≥ `preRate` in one direction is integrated (within
+  0.03 s of its running max, and no more than 0.03 + 0.02·m below it). A swing it leads into starts
+  with that sweep, so the direction is known sooner.
+* **Starts** when `m > swingStart′`, unless locked, or within `postThrustSwingLock` of a thrust
+  with m < 6.
+  * β0 = β where the motion began (the ramp's start, if lower).
+  * βtop = the highest β over the `dipLook` before the start.
+* **Cut**: the direction is reliable. It is decided once per swing, and needs a running peak
+  ≥ `swingPeak′` and one of the rules below. `clear` means rising, m ≥ `swingStart′`, and rawDir
+  more than `dirMargin` from a token boundary (π/8 + kπ/4).
+  * sweep ≥ `swingSweepLate′`, at any phase
+  * sweep ≥ `swingSweep′` while clear. A cock-back stops accelerating at half its short arc, so
+    cock-backs of up to about 0.5 rad never fire, while a stroke of 0.6 rad or more fires early.
+  * sweep ≥ `swingSweepFast′` while clear, right after its own cock-back. That is the last
+    completed run (m ≥ `exRate` one way, sweep ≥ `exSweep`): it ended ≤ `fastWindow` ago, went
+    within 60° of the opposite direction, and this swing's peak is ≥ `fastRatio` × the run's peak.
+  * **Dip rule** (uppercut or chop?) for a swing within `dipSector` of straight down from the guard
+    (`βtop ≤ guardBeta + dipRaise`; a chop is raised first, if only a little). It may be the dip
+    to a low guard before an uppercut, which peaks at half its short arc. It is a cut only once:
+    * sweep ≥ `dipSweep`, at any phase, or
+    * sweep ≥ `dipEarlySweep` while clear and m rose by ≥ `dipRise·m` over `riseWindow`.
+
+    Neither is scaled: how far one dips is style, not strength. A chop from a raised blade follows
+    the rules above.
+
+  A cut cancels a thrust candidate and zeroes vf.
+* A cut fires its slash at once, except in the upward and spear cases below. The recoil rule may
+  hold it, and is re-checked every sample. At most one slash per swing.
 * **Ends** at the first of:
-  * (a) `m < swingEnd` for `endHold`
-  * (b) a reversal: once `|(dx,dy)| ≥ 0.2`, the velocity `(−yawRate·c, pitchRate)` points
-    against `(dx,dy)` on 2 consecutive samples
-  * (c) `maxSwing`
+  * (a) `m < swingEnd′` for `endHold`
+  * (b) a reversal: once sweep ≥ 0.2, the velocity points against the sweep on 2 consecutive
+    samples
+  * (c) `maxSwing` (`maxRaise` for a held-up swing, which may be a slow raise)
 
   A new swing may start on the very next sample.
+* **Slash event**:
+  * `dir = snapCardinal(rawDir, cardinalSnap)`, and `rawDir` keeps the measured angle. Real
+    horizontal slashes dip a little, and a tilted animation reads as the wrong direction.
+  * Power is measured at fire time. While the stroke still accelerates, it counts on
+    `powerRise·m`: `power = clamp((max(peak, rising ? powerRise·m : 0) − swingPeak′)/span, 0, 1)`.
+    A pending uppercut fired later (during the next swing) uses only its own peak.
+  * The gyro range sets the ceiling: `span = max(0.5, min(slashPowerSpan, 0.9·gyroRange − swingPeak′))`.
 
-**Recoil and return-to-guard.** Let P be the last fired swing. A new swing whose dir is
-within `reverseSector` of `P.dir + π`, and which starts within `reverseWindow` after P ended,
-fires only when its running peak is at least `max(swingPeak/s, reverseRatio·P.peak)` and its
-sweep is at least `reverseSweep`. The test runs every sample. Returns run at 20–50% of the
-strike's speed; deliberate reverse slashes run at 70–110%.
+**Recoil and return-to-guard.** Let P be the last slash. A swing is P's return if:
+* its rawDir is within `reverseSector` of P's rawDir + π, and
+* it starts within `reverseWindow` after P's swing ended, or before the arm has come to rest
+  since P (as for look, below).
 
-**Upward swings and wind-ups.** A swing whose running dir is within ±60° of straight up, and
-whose β at swing start is ≥ `upHoldStartBeta`, is **not** early-fired:
-* If β reaches `windupBeta` (phone raised beside or behind the head), emit `windup` at once.
-  No slash comes from this swing.
-* Otherwise, at swing end, emit the slash with the whole swing's dir.
+A return slashes only when its peak is ≥ `max(swingPeak′, reverseRatio·P.peak)` and its sweep is
+≥ `reverseSweep`. Returns run at 20–50% of the strike's speed; deliberate reverse slashes run at
+70% or more. A throw clears P.
 
-Uppercuts started from a low guard (β < upHoldStartBeta) fire early as normal. The time of the
-last wind-up is remembered for `windupMemory`, and so is any period of at least `windupTime`
-with β ≥ windupBeta.
+**Upward swings and wind-ups.** A swing is **held up** if its rawDir is within 35° of straight up
+and β0 ≥ `upHoldStartBeta`. Uppercuts from a low guard (the usual small dip first) and
+up-diagonals beyond 35° fire like any cut.
+* A raise: a held-up swing that reaches `windupBeta` (beside or behind the head) with sweep ≥ 0.15
+  before it is a cut. It emits `windup`, never a slash.
+* A held-up cut fires **while braking**, once it will clearly stop short of `windupBeta`. That
+  needs β < windupBeta − 0.3, sweep ≥ `swingSweep′`, m ≤ 0.97·peak, no longer rising, and
+  `β + r(m/peak)·sweep < windupBeta − 0.35`. Here r is the arc still to come of a minimum-jerk
+  stroke past its peak, as a fraction of the arc so far.
+* Otherwise it fires at swing end if below `windupBeta`. If it ended overhead, it is **pending**:
+  * Held up for `windupTime` without moving back down: it was a raise, and emits `windup`.
+  * Moving back down (vy < −0.5 on 2 samples, β 0.1 below its top, or β < windupBeta): it was a
+    cut that rebounds, and emits the U slash.
+  * With the spear, the next downward motion may be the throw itself. A swing then decides: a
+    throw (the overhead swing was its wind-up), else the U fires first. A slow rebound is the U:
+    its m has peaked above 1 rad/s and fallen below 70% of that, β < windupBeta − 0.3, or 0.5 s
+    have passed.
+  * With the sword, a new swing that starts while pending fires the U first. So an uppercut that
+    flows over the top into a chop gives U, then D (Leonidas' Cleave).
+* **Wind-up memory**: a raise counts only once the phone has been below windupBeta − 0.3. Any
+  period of ≥ `windupTime` with β ≥ `windupBeta` emits `windup` once per raise, and is remembered
+  for `windupMemory`. It doesn't emit for an uppercut's raise, or while a held-up swing is still
+  deciding.
 
 **Throw** (weapon = spear only).
-* A swing whose running dir is within ±`throwSector` of straight down is not early-fired
-  **if** a wind-up is remembered (emitted, or β ≥ windupBeta at swing start).
-* It resolves at **release**, the first of:
-  * the running peak is ≥ `throwPeak/s` and `m < throwReleaseRatio·peak`
+* A swing within ±`throwSector` of straight down, after a remembered wind-up (within
+  `windupMemory`, or β ≥ windupBeta at swing start), is never a chop. Once its sweep reaches 0.12,
+  it resolves at **release**, the first of:
+  * the running peak is ≥ `throwPeak′` and `m < throwReleaseRatio·peak`
   * sweep ≥ `throwMaxSweep`
   * swing end
-* Peak ≥ `throwPeak/s` → `throw` with `power = clamp((peak − throwPeak/s)/(throwFull/s − throwPeak/s), 0, 1)`.
-  A firm flick is enough, so never throw hard. Otherwise it is a slash with that dir.
-* A downward swing with no wind-up is an ordinary slash, so an overhead spear chop never
-  throws.
-* After a throw, ignore every swing, thrust and wind-up for `postThrowLock`, and keep look in
-  HOLD until `resumeLook()`.
+* At release, if peak ≥ `swingPeak′` and (peak ≥ `throwMin′` or sweep ≥ `throwMinSweep`), it is a
+  `throw` with `power = clamp((peak − throwPeak′)/(throwFull′ − throwPeak′), 0, 1)`.
+  * Below throwPeak′ it is a weak throw (power 0), never a chop. A firm flick is enough, so never
+    throw hard.
+  * A shorter, slower one is no throw. After an uppercut that ended overhead, it was that cut's
+    rebound.
+* A downward swing with no wind-up is an ordinary slash, so an overhead spear chop never throws.
+* After a throw:
+  * every swing, thrust and wind-up is ignored for `postThrowLock`
+  * recoil memory is cleared
+  * look is held until `resumeLook()`, or for 2.5 s if no spear cam follows
 
 **Thrust.**
-* `f = a·b = −a.z`. The forward velocity is `vf = vf·exp(−dt/vfLeak) + f·dt`. It is zeroed
-  while a swing is active, at swing end, and on calm samples.
-* A candidate opens on any sample with `f > thrustAcc/s`, `vf > thrustVel`, no active swing
-  and `m < 4`.
-* Emit `thrustWindow` after it opens, or earlier once `f < 0.8·runningPeak`, but no sooner
-  than 30 ms after opening. `power = clamp((runningPeak − thrustAcc/s)/thrustPowerSpan, 0, 1)`.
-* Cancel the candidate if a swing starts or `m ≥ 4` within that window.
-* Refractory period: `thrustRefractory` after emitting.
-* After a thrust, a swing may not start for `postThrustSwingLock` unless `m ≥ 6`.
-* Retraction is stopped by +f with negative vf, so it never fires.
+* `f = min(−a.z, 2·(a·(u × R)))`: a push along the phone's back axis that is also forward for the
+  body. A phone held tilted back moves along its back axis when it chops down.
+* The forward velocity is `vf = vf·exp(−dt/(vf > 0 ? vfLeak : vfLeakBack)) + f·dt`. It is zeroed
+  while a cut, raise or throw swing is active, at swing end, and once samples have been calm for
+  `calmHold`.
+* A candidate opens on a sample with all of:
+  * `f > thrustAcc′`, `vf > thrustVel` and `m < thrustMaxRate′`
+  * no cut, raise or throw swing, and no lock
+  * at least `thrustRefractory` since the last thrust
+* Emit `thrustWindow` after it opens, or earlier once `f < 0.8·runningPeak`, but no sooner than
+  30 ms after opening. `power = clamp((runningPeak − thrustAcc′)/thrustPowerSpan, 0, 1)`. An
+  uncut swing under way was the thrust's dip, and emits nothing.
+* Cancel the candidate if, within that window, a cut swing is active, `m ≥ thrustMaxRate′`, or a
+  lock starts.
+* After a thrust, a swing may not start for `postThrustSwingLock` unless m ≥ 6.
+* Retraction is stopped by +f with negative vf (backward vf leaks slowly), so it never fires.
 
-**Gyro look follows the settled heading.**
-* Every sample, swings included: `hYaw += dz(yawRate, deadZone)·dt`.
-* **Settled**: `m < settleRate` for at least `settleTime`, no active swing, and no lock.
-* While settled, the released look heading `L = hYaw − O`, where O is an offset.
-* When the phone settles after an excursion (a swing, wind-up, throw or fast turn), compare
-  `δ = (hYaw − O) − L`:
-  * If `|δ| ≤ absorb`, it was an imprecise return to guard: `O += δ`, and L doesn't move.
-  * Otherwise, release δ eased over `lookEase` (a body turn).
-* `consumeLook()` returns the change in L.
-* `holdLook()` freezes L until `resumeLook()`. That re-anchors with `O = hYaw − L`, so nothing
-  jumps.
-* `recenter()` sets `O = hYaw − L`.
-* Pitch is never looked by gyro: player.js eases the pitch toward the focus target instead.
+A **gap** resets the swing, thrust, wind-up, pending-uppercut and candidate state, and R is
+captured again. A slash whose swing the gap cut off ends there, for the recoil rule. For look, a
+gap counts as a strike: there is no turn from it, and look waits for the arm to rest. If time went
+backwards (injected → real samples), the timers are shifted.
 
-**Required unit tests** (synth, §5.4), over the matrix rot {90, 270} × tilt {0, 0.5} ×
-roll {0, 0.3} × rate {50, 100, 200} × gravitySign {±1}, plus runs without linear acceleration
-and without gravity:
+**Calibration candidates.** Every swing-like excursion, slash or not, is queued for
+`consumeCandidates()`, with the whole excursion's peak.
+* It starts at `m > candStart`.
+* It ends when `m < candEnd` for `endHold`, on a reversal (sweep ≥ 0.15, 2 samples), or after
+  `candMax`.
+* It counts if its sweep is ≥ `candSweep`. None of these is scaled.
+
+The Agoge calibrates from these (§11), so a player whose swings are all too gentle to slash still
+calibrates.
+
+**Gyro look.** Only deliberate body rotation turns the view, 1:1.
+* Look integrates `wh` through a soft dead zone: gain `smoothstep(lookDead0, lookDead1, |wh|)`.
+* **Strikes** are:
+  * a swing whose running peak reaches `min(lookStrike, swingPeak′)`
+  * a thrust, a wind-up, or a throw and its lock
+  * any run of rotation one way faster than `lookMax` (a stroke too gentle to slash still swings
+    the arm)
+* Rotation counts only when all of these hold:
+  * no strike is under way
+  * it is more than `lookAfter` since the last strike
+  * the arm has come to rest since then: the low-passed |w| (τ 0.06 s) < `lookRestRate` and
+    |w| < 2·lookRestRate + 0.2 for `lookRestTime`, or `lookAfterMax` has passed. A slow, sloppy
+    return to guard is part of the strike.
+
+  Rotation during strikes and their aftermath is discarded, never released later.
+* **Runs**: a run is rotation one way above `lookDead0`. A 0.05 s pause or a sign change ends it.
+  A run that gets faster than `lookMax` is no turn: none of it counts, and whatever of it was
+  shown is taken back.
+* **Delay**: rotation is shown `lookDelay` later, so a strike's run-up never shows. A run is held
+  back, because it may be a cock-back, until either:
+  * it has lasted `lookHoldRun` (a deliberate turn), or
+  * it has been over for `lookCockGap` with no strike after it.
+
+  The same holds for a run that began within lookCockGap of the previous one.
+* **Cock-back undo**: a strike drops its own run-up and shows anything older. The run just before
+  it is decided by the slash, if it ended ≤ `lookCockGap` before the strike's run-up began and
+  moved ≥ `lookRunMin`.
+  * It turned against the slash: |dx| ≥ 0.3·sweep, and the run moved the blade the opposite way.
+    It was the cock-back. It is dropped, and whatever of it was already shown is taken back.
+  * Otherwise it was a turn, and it is shown.
+
+  A swing that ends with no slash drops what of it is still delayed. A thrust or wind-up shows it.
+  A throw drops everything still delayed.
+* **Smoothing**: the view eases toward the released heading (`lookTau`), at most `lookRate` fast.
+  `consumeLook(frameDt)` hands out at most `max(lookStep, 1.1·lookRate·min(frameDt, 0.1))` per
+  call, and the rest follows. So no 60 fps frame turns the view by more than lookStep, and at a
+  lower frame rate the view keeps up with the body instead of trailing behind it.
+* `holdLook()` freezes the view, and a turn being eased in stops where it is. `resumeLook()`
+  follows body turns again from the current view, so nothing jumps. A throw holds look by itself.
+  If no holdLook/resumeLook follows (no spear cam), it resumes after 2.5 s.
+* `recenter()`: look is relative, so nothing is re-anchored, and a turn under way carries on.
+  player.js turns the view back to the line.
+* Pitch is never looked by gyro. player.js holds a steady pitch (§7).
+
+**Required unit tests** (synth §5.4 → frames → gestures).
+
+`tests/unit/motion-gestures.test.mjs` runs over the matrix rot {90, 270} × tilt {0, 0.5} ×
+roll {0, 0.3} × rate {50, 100, 200} × {Android with TYPE_GRAVITY, web +1, web −1 without gravity},
+plus runs without linear acceleration and/or gravity:
 * Each 8-way swing with wind-up, rebound and return gives exactly one slash with the right token.
-* R,L,R,L at about 2 Hz (arc 1.0, speed 9) gives 4 alternating slashes.
-* `swing R speed 10, idle 0.05, swing L speed 4` gives exactly 1 slash.
+* R,L,R,L at about 2 Hz (arc 1.0, speed 9, ret 0) gives 4 alternating slashes.
+* `swing R speed 10 ret 0, idle 0.05, swing L speed 4` gives exactly 1 slash.
 * `… swing L speed 9` gives 2 slashes.
-* Throws at speed {9, 13, 18} give exactly one windup and one throw, no slash, with power
-  rising with speed.
-* `swing dir −π/2 speed 9` without a wind-up, in spear mode, gives a slash.
-* A thrust followed by retraction {0.25, 0.3, 0.35} s gives exactly one thrust.
-* 10 s of walking, and 10 s of idling, give nothing.
+* Gentle R then L (speed 4, arc 0.9), each returning at 1–2 rad/s, gives R, L.
+* Throws at speed {9, 13, 18} give exactly one windup and one throw, no slash. Power is > 0 and
+  rises with speed.
+* `swing dir −π/2 speed 9` without a wind-up, in spear mode, gives a D slash.
+* A thrust followed by retraction {0.25, 0.3, 0.35} s gives exactly one thrust, power > 0.5.
+* 10 s of walking, and 10 s of idling, give nothing (idle look ≤ 0.02).
 * A 1.0 rad turn over 1.2 s gives a consumed look of 1.0 ± 0.1 and no gesture.
-* A swing plus its return gives a net consumed |look| < 0.05.
-* Detection latency from motion onset is < 130 ms for a 9 rad/s swing.
+* A swing plus its return gives |net| and |peak| consumed look < 0.05.
+* Detection latency from motion onset is < 130 ms for a 9 rad/s swing (U, UL and UR at tilt 0.5
+  excluded).
+
+The same file, on a lighter matrix:
+* Proportionally scaled motions at s {0.6, 1, 1.6} classify the same. So do the left hand, and
+  10% jitter with about 4% dropped samples.
+* Throw wind-ups at 3.5–12 rad/s or over 2–3 rad never slash.
+* At s 0.6, throws at {8, 10, 13} still throw. With the spear, a raise + chop at 6 rad/s is a
+  power-0 throw.
+* Raise + chop gives windup, D with the sword, and windup, throw with the spear. Ordinary 8-way
+  spear swings stay slashes.
+* An uppercut ending overhead (arc 2.0–2.4, speed 7–12) is U with either weapon. Held overhead, it
+  is a windup. U flowing over the top into D gives U, D.
+* Straight up from the guard (tilt 0, no dip), an uppercut fires before 0.8 of its stroke.
+* None of these move the view by 0.05 or more:
+  * arm motions that come back to the guard (raise and chop, high swings)
+  * a slow cock-back (1.5–2.5 rad/s, held up to 0.5 s) before a strike
+  * a return landing 0.12 rad off
+  * repeated gentle slashes (speed 5–6)
+* Body turns and strikes:
+  * A body turn 0.35 s before a strike is kept.
+  * A turn ending 0.1 s before a same-way or upward slash is kept.
+  * A turn ending 0.05 s before an opposite slash is kept or dropped whole. It is dropped if it
+    lasted ≤ 0.5 s.
+  * A 0.4 rad turn over 0.45 s is followed (± 0.05). Over 0.25 s it is not (≤ 0.03).
+* A strike that stays out never turns the view. A turn after the arm has rested is followed 1:1.
+* Thrusts of other depths, speeds and dips count once.
+* A gap > 0.1 s gives no event from the torn swing, and no look jump (< 0.1).
+* reset() clears recoil memory, the post-throw lock and look hold, without moving the view.
+* After a throw, `settled` follows the phone (within settleTime + 0.05 s), not the lock.
+* holdLook, resumeLook and recenter never jump.
+* API: the sensitivity clamp, the reused event array, the debug fields, and a frozen
+  GESTURE_DEFAULTS. Slash power is > 0.9 for a 14 rad/s swing on an 8.7 rad/s gyro.
+
+`tests/unit/motion-feel.test.mjs` runs over 9 grips × Android / web −1 × 50/100/200 Hz. The grips
+are default, upright, tilted back 30° and 60°, rolled ±45°, back 40° and rolled 30°, and screen
+sideways ±30°.
+* Cautious swings register at s = 1, with never a wrong token or an extra event, and ≥ 98%
+  detected. They peak at 3.5–4 rad/s with an arc of 0.8–1.0, a small cock-back, some wrist roll
+  and a slow, off-target return.
+* None of these give a false slash: walking, idling, slow body turns (±90°), looking around, and
+  returns to guard (at 2.5 and 4 rad/s, and at 1–2 rad/s up to 0.44 rad off). R, L with their
+  returns gives exactly R, L.
+* All 8 directions at 5 and 9 rad/s come out right in every grip. Wrist roll of ±0.2 rad doesn't
+  bend them.
+* Latency from onset (cardinals, tilt {0, 0.5}):
+  * 5 rad/s, arc 1.0: median ≤ 90 ms, worst ≤ 100 ms
+  * 9 rad/s, arc 1.6: median ≤ 70 ms, worst ≤ 80 ms
+  * 9 rad/s, arc 1.0: worst ≤ 60 ms
+  * uppercuts with the usual dip: worst ≤ 80 ms
+  * straight up with no dip (tilt 0.5): before 0.7 of the stroke
+* A 0.3–0.5 rad dip before an uppercut (speed 5–13, tilt −0.3…0.4) gives only U.
+* A chop straight down from the guard gives D within 180, 140 and 100 ms at 3.5, 5 and 9 rad/s.
+* Slashes within cardinalSnap snap to the cardinal (never −0), rawDir keeps the angle, and
+  diagonals stay diagonal.
+* setFlip(x, y) maps dir → π − dir and/or −dir. It corrects a sensor with one axis reversed, and
+  flipX mirrors look.
+* Look:
+  * Slashes with sloppy returns (≤ 25° off, 1–2 rad/s) move the view < 3°, net and at peak.
+  * A 90° body turn over 2 s turns the view 80–92°, smoothly (never back, no jumps).
+  * No frame moves the view more than 1.5°, whatever the phone does.
+  * Idle < 0.5°, walking < 3°, and a strike that stays out or thrusts < 1°.
+  * Swings too gentle to slash (2.2–2.7 rad/s) slash nothing and leave the view < 1° net.
+* Calibration:
+  * 5 swings at 2.4 rad/s slash nothing at 1×, yet `pickStrokes` finds 5 strokes among the
+    candidates.
+  * The suggestion, in (1.5, 2.2], makes them R L R L R, still with nothing from walking or a slow
+    look.
+  * A hard slasher's (9 rad/s) strokes are picked, not the cock-backs or returns, and suggest 0.6.
+* At s 2.2, proportionally scaled motions still classify.
+* At s 1.6–2.2, a hard swing (9–18 rad/s) is one slash: its short, fast wind-up is no stroke.
 
 ### 5.4 motion/synth.js (PURE)
 ```js
 export function synthesize(script, opts) → RawSample[]
-// opts: { rate = 100, rot = 90, tilt = 0, roll = 0, hand = 'right', noise = 1, seed = 1, gravitySign = 1,
-//         includeLinear = true, includeGravity = true, gyroRange = 34.9, jitter = 0, t0 = 0 }
+// opts: { rate = 100, rot = 90, tilt = 0, roll = 0, aim = 0, grip = null /* { pitch, roll, yaw } */, hand = 'right',
+//         noise = 1, seed = 1, gravitySign = 1, includeLinear = true, includeGravity = true, gyroRange = 34.9, jitter = 0, t0 = 0 }
 // script segments, back-to-back:
 //   { kind:'idle', duration }  { kind:'walk', duration }  { kind:'turn', yaw, duration }
-//   { kind:'swing', dir, speed = 9, arc = 1.6, radius = 0.55, windup = 0.3, recoil = 0.15, ret = 2.5, wrist = 0.3, pronate = 0.3 }
+//   { kind:'swing', dir, speed = 9, arc = 1.6, radius = 0.55, windup = 0.3, recoil = 0.15, ret = 2.5, wrist = 0.3, pronate = 0.3,
+//     wristRoll = 0, rollEnd = 0, retYaw = 0, retPitch = 0 }
 //   { kind:'thrust', distance = 0.35, duration = 0.18, hold = 0.08, retract = 0.3, dip = 0.12 }
 //   { kind:'throw', speed = 13, windupArc = 2.5, windupSpeed = 6, hold = 0.12, arc = 3.4, twist = 0.45, lookBack = 0.7 }
 //   { kind:'raise' }   (wind-up only: lift the phone beside the head and hold; used for overhead chops)
@@ -585,6 +809,15 @@ The model:
 * Guard pose: eye `E = (0, 1.66, 0)`, phone centre `P0 = (0.12, 1.48, −0.42)`. The blade
   `b0 = normalize(P0 − E)` is pitched back by `tilt` and rolled by `roll` about b0, with
   screen-x horizontal.
+* `aim` turns the guard orientation about the vertical by that yaw: the forearm, and the phone
+  with it, points off the body's forward, so the screen faces partly sideways. Swings follow the
+  forearm.
+* `grip = { pitch, roll, yaw }` is the phone's attitude in the hand. The arm moves the same; only
+  what the sensors see changes (`q·G`).
+  * pitch > 0 tilts the screen back: top edge away, screen up toward the eyes.
+  * roll turns the phone about its own back axis.
+  * yaw turns the screen to face partly sideways (+ = right).
+* `aim`, grip roll and grip yaw are mirrored for the left hand.
 * The profile is `s(τ) = 10τ³ − 15τ⁴ + 6τ⁵`, with `T = 1.875·arc/speed`, so `speed` is the
   true peak.
 * **swing**: view direction `d = cos(dir)·R̂ + sin(dir)·Û`, axis `n = normalize(b × d)`.
@@ -596,6 +829,12 @@ The model:
     pause.
   * After it: a rebound of `recoil·arc` at 0.3·speed, then a return to guard at peak `ret`
     rad/s (0 = stay).
+  * **Wrist roll**: the hand rolls about the forearm by `wristRoll·sin(π·k) + rollEnd·k`, where
+    k is the stroke's progress (s5) and the forearm is the blade's horizontal forward at the
+    swing's start, carried by the arm. rollEnd stays until the return. It is mirrored for the left
+    hand, and it doesn't tilt the arm's sweep.
+  * **Sloppy return**: the return lands off the guard by `retYaw` about the trunk and `retPitch`
+    about the body's right axis. The body hasn't turned.
 * **thrust**: translate along b (peak 5.77·D/T²), hold, retract, and dip the blade tip by
   `dip` at full extension.
 * **throw**:
@@ -727,6 +966,15 @@ export function computeDamage({ base, power, comboMul = 1, crit = false }) → b
 * `pause`, `recenter` and `switchWeapon` are never buffered.
 * A bash within `TIMING.bash.cooldown` of the previous bash's start is dropped.
 * While `fx.cameraOverridden` is true, attack actions are ignored.
+* **Motion strikes** (`src: 'motion'`: the phone has already swung):
+  * A motion slash strikes at `0.5 × TIMING.slash.strike` (`MOTION_STRIKE_SCALE`); its total and
+    cancelAfter are unchanged. Every other attack keeps TIMING.
+  * A motion slash or thrust (or the bash a thrust becomes) arriving during a cancellable attack
+    starts at once, in that frame. If the current attack's strike hasn't resolved, the rest of
+    its lunge lands and its strike resolves first; then the rest of that attack is cancelled.
+  * A motion strike is buffered only while staggered, drawing or throwing. A buffered one may
+    start as soon as the current attack has struck.
+  * Touch, key and test actions wait for cancelAfter, as above.
 
 **Targets.** A normal slash, thrust, spearThrust or bash damages **one** target: the focus
 target if it's inside the attack's sector, otherwise the nearest hostile in the sector. The
@@ -735,16 +983,19 @@ every hostile in their arc. Sectors are centred on the **attack yaw**.
 
 **Aim assist.** `focusTarget = pickTarget(hostiles, pos, yaw, 0.70, reach + 1.5)`, re-evaluated
 every frame.
-* **Motion mode**: the camera is never pulled. Instead `attack.yaw = yaw + clamp(angleToFocus, ±0.44)`.
-  * Pitch eases toward the focus target's chest at 4 rad/s, clamped to [−0.26, +0.17].
-  * Auto-face: if no hostile is within ±1.0 rad of the view, and one engaged with the player is
-    winding up, the view turns toward it at 1.5 rad/s. This is needed for attackers from
-    behind on Day 3.
+* **Motion mode**: the camera only ever turns with the player's body (gyro look, §5.3) or a
+  recenter. Nothing turns it toward a foe: there is no auto-face and no pitch easing.
+  * The attack turns instead: `attack.yaw = yaw + clamp(angleToFocus, ±0.52)` (±30°,
+    `MOTION_YAW_CLAMP`), with the focus target taken at the attack's start.
+  * Pitch is steady and slightly lowered: −0.07 rad (`MOTION_PITCH`, the chest of a foe in
+    reach), eased back at 4 rad/s after a recenter or a mode change.
 * **Touch and keyboard** (if `settings.aimAssist`): during the first 0.1 s of an attack, the
   view yaw is pulled up to 0.21 rad toward the focus target.
 
 **Lunge.** If the focus target is beyond the weapon's reach but within reach + 1.0 m, the
-player steps up to 0.8 m toward it over the attack's `strike` time. Positions clamp to
+player steps up to 0.8 m toward it over the attack kind's TIMING `strike` time (≥ 0.05 s). A
+motion slash's step is no faster: it strikes halfway through it, so its blow reaches from the
+lunge's end point (`pos + lunge·lungeLeft`). Positions clamp to
 `world.bounds`. In motion mode, the player drifts back to the line slot at 1 m/s after 1.5 s
 without attacking.
 
@@ -837,21 +1088,26 @@ The view is not rotated. player calls `combat.throwSpear({ origin, velocity, pow
 
 ```js
 export const COMBOS = [   // rows; 'either order' combos are two rows with the same id
-  { id:'twin',   name:'Twin Fangs',          seq:[Rish, Lish],             mult:1.5 },
-  { id:'twin',   name:'Twin Fangs',          seq:[Lish, Rish],             mult:1.5 },
-  { id:'fury',   name:'Fury of Lakedaimon',  seq:[Rish, Lish, Rish],       mult:1.8, effect:'sweep', arc:1.75 },
-  { id:'fury',   name:'Fury of Lakedaimon',  seq:[Lish, Rish, Lish],       mult:1.8, effect:'sweep', arc:1.75 },
-  { id:'storm',  name:'Storm of Bronze',     seq:[Rish, Lish, Rish, Lish], mult:2.4, effect:'sweep', arc:1.75, slowMo:[0.5, 0.4] },
-  { id:'storm',  name:'Storm of Bronze',     seq:[Lish, Rish, Lish, Rish], mult:2.4, effect:'sweep', arc:1.75, slowMo:[0.5, 0.4] },
-  { id:'cleave', name:"Leonidas' Cleave",    seq:[Uish, Dish],             mult:2.2, breakGuard:true, slowMo:[0.35, 0.5] },
+  { id:'twin',   name:'Twin Fangs',          seq:[Rish, Lish],             mult:1.5, flow:true },
+  { id:'twin',   name:'Twin Fangs',          seq:[Lish, Rish],             mult:1.5, flow:true },
+  { id:'fury',   name:'Fury of Lakedaimon',  seq:[Rish, Lish, Rish],       mult:1.8, flow:true, effect:'sweep', arc:1.75 },
+  { id:'fury',   name:'Fury of Lakedaimon',  seq:[Lish, Rish, Lish],       mult:1.8, flow:true, effect:'sweep', arc:1.75 },
+  { id:'storm',  name:'Storm of Bronze',     seq:[Rish, Lish, Rish, Lish], mult:2.4, flow:true, effect:'sweep', arc:1.75, slowMo:[0.5, 0.4] },
+  { id:'storm',  name:'Storm of Bronze',     seq:[Lish, Rish, Lish, Rish], mult:2.4, flow:true, effect:'sweep', arc:1.75, slowMo:[0.5, 0.4] },
+  { id:'cleave', name:"Leonidas' Cleave",    seq:[Uish, Dish],             mult:2.2, slow:true, breakGuard:true, slowMo:[0.35, 0.5] },
   { id:'xcut',   name:'Cross of Ares',       seq:[{DR}, {DL}],             mult:1.7, bleed:{ dps:6, dur:3 } },
   { id:'xcut',   name:'Cross of Ares',       seq:[{DL}, {DR}],             mult:1.7, bleed:{ dps:6, dur:3 } },
   { id:'answer', name:"The Hoplite's Answer", seq:[{B}, {T}],              mult:1.3, effect:'execute' },
   { id:'drive',  name:'Phalanx Drive',       seq:[{T}, {T}, {T}],          mult:1.6, knockback:2.5 },
   { id:'wall',   name:'Shield Wall',         seq:[{B}, {B}],               mult:1.0, effect:'stagger_all', radius:2.5 },
 ]   // each row also has desc and bonus = round(100·mult)
+export const COMBO_WINDOWS = {   // frozen; seconds between consecutive attack starts
+  touch:  { chain: 1.25, flow: 0.6, step: 1.25 },
+  motion: { chain: 2.6,  flow: 1.7, step: 1.7 },
+}
 export class ComboTracker {
-  constructor(table = COMBOS, window = 1.25)
+  constructor(table = COMBOS, window = 1.25, flow = Infinity, step = Infinity)
+  setWindows({ chain, flow, step })   // e.g. COMBO_WINDOWS.touch or .motion; omitted fields are kept
   push(token, t) → row | null   // token: dirToken | 'T' | 'B' | 'J'
   reset()
   get chain()
@@ -866,14 +1122,22 @@ export class ComboTracker {
   matching the last n tokens. So R,L returns twin, R,L,R returns fury, and R,L,R,L returns
   storm, which then clears.
 * `bash` cooldown (0.9 s) is less than the window, so B,B is reachable.
-* twin, fury and storm are **flow** combos: every gap between their swings must be ≤ 0.6 s
-  (touch) or ≤ 1.7 s (motion, where a strike plus its return takes about 1.5 s). In motion mode
-  the general window is 1.7 s.
+* Every gap between a row's tokens must also be within one of the tracker's windows:
+  * `flow` rows (twin, fury, storm): within `flow`, so slow right-left swiping is no combo
+  * `slow` rows (the Cleave: uppercut, raise the blade overhead, chop): within the whole `chain`
+    window
+  * every other row: within `step`
+* Touch: flow 0.6 s, and everything else 1.25 s.
+* Motion: a strike plus its return to guard takes about 1.5 s, so flow and step are 1.7 s. The
+  Cleave as the Agoge teaches it chops about 2.5 s after its uppercut, so the chain window is
+  2.6 s, which only the Cleave can use: two other swings 2.5 s apart are no combo.
+* With no setWindows the tracker has window 1.25 s and no flow or step limit.
 * `execute` (the Hoplite's Answer) finishes a staggered target at ≤ 35% HP; otherwise it deals
   ×2 damage.
 
 **Who does what.**
-* player pushes a token when an attack **starts** (as it emits `swing`), with `t = gnow`. The
+* player pushes a token when an attack **starts** (as it emits `swing`), with `t = gnow`, after
+  `setWindows(COMBO_WINDOWS.motion)` in motion mode (`ctx.input.motion`), else `.touch`. The
   tokens are dirToken for a slash, 'T' for a thrust or spearThrust, 'B' for a bash (including
   shield + thrust), and 'J' for a throw.
 * A returned row is attached as `attack.combo`.
@@ -888,21 +1152,32 @@ export class ComboTracker {
   the row has slowMo.
 * Unit tests: R,L,R,L pushed 0.3 s apart returns twin, fury, storm; DR,DL returns xcut; and a
   gap > 1.25 s resets.
+* With the motion windows:
+  * U, D up to 2.6 s apart is the Cleave (UL, DR at 2.5 s too), and 2.7 s apart is not.
+  * No other row spans a gap over 1.7 s, and each still completes with 1.6 s gaps.
+  * R, L 2.5 s apart is no Twin, and DR, DL 2.5 s apart is no Cross.
 
 ## 9. Settings (persisted under `thermopylae.settings`)
 
 ```js
 { control: 'touch',          // 'motion' | 'touch'; motion is offered only if supported
-  sensitivity: 1.0,          // 0.5–2.0
-  gyroLook: true,            // motion mode: turning your body turns the view (settled heading)
+  sensitivity: 1.0,          // SENSITIVITY_MIN–MAX = 0.5–2.2 (§5.3); the Agoge suggests 0.6–2.2
+  gyroLook: true,            // motion mode: deliberate body turns turn the view 1:1; strikes never do (§5.3)
   aimAssist: true,           // touch/keyboard camera pull (motion always rotates attacks)
   leftHanded: false,         // mirror the touch layout and synth demos
   haptics: true, voice: true, blood: true, helmetView: true,
   quality: 'auto',           // 'auto'|'low'|'medium'|'high'
   master: 0.9, music: 0.55, sfx: 1.0,
   sensorDebug: false,
-  safetyAccepted: false }
+  safetyAccepted: false,
+  motionFlipX: false,        // motion: a mirrored sensor setup, slashes come out left↔right (dir → π − dir; look too)
+  motionFlipY: false }       // motion: ... up↔down (dir → −dir)
 ```
+* Settings UI (Controls tab): sensitivity, gyroLook, and the two toggles "Swap swing left/right"
+  (motionFlipX) and "Swap swing up/down" (motionFlipY) are motion-only rows, greyed out in touch
+  mode. The sensitivity slider spans SENSITIVITY_MIN–MAX in steps of 0.05.
+* The Agoge also toggles motionFlipX/Y when it sees mirrored swings (§11).
+
 `thermopylae.best` is `{ score, kills, day }`, written by menus on `gameOver`.
 
 ## 10. Frame order and lifecycle (main.js)
@@ -912,17 +1187,22 @@ export class ComboTracker {
    * `dt = min(real, 0.05)`.
    * `hitStop` is decremented unless paused or in gameover.
    * gdt, pdt and gnow are computed per §3.2.
-1. Motion glue, when `mode ∈ {battle, training}` and (`settings.control === 'motion'` or `ctx.motionDemo`):
+1. Motion glue (`pumpMotion(dt)`), when `mode ∈ {battle, training}` and (`settings.control === 'motion'` or `ctx.motionDemo`):
+   * Every frame, first: `gestures.setSensitivity(settings.sensitivity)`, `setWeapon` ('spear'
+     with a spear in hand, else 'sword') and `setFlip(settings.motionFlipX, settings.motionFlipY)`.
+     During an Agoge demo (`ctx.motionDemo`) it is `setFlip(false, false)`: the demos are
+     synthesized for an unmirrored phone.
    * `poll` → `frames.process` → `gestures.push`. Each event emits `gesture`.
-   * slash, thrust and throw events become actions, except while `fx.cameraOverridden`, when
-     they are dropped.
-   * A `windup` with a spear in hand calls `viewmodel.play('throwWindup')`.
-   * `ctx.input.lookYaw += consumeLook().yaw` if `settings.gyroLook` and the camera isn't
-     overridden.
+   * slash (with its snapped `dir`), thrust and throw events become actions with
+     `src: 'motion'`, except while `fx.cameraOverridden`, when they are dropped.
+   * A `windup` with a spear in hand (camera not overridden) calls `viewmodel.play('throwWindup')`.
+   * Then each of `gestures.consumeCandidates()` emits `swingCandidate`.
+   * `consumeLook(dt)` (the frame's dt) is called every frame. `ctx.input.lookYaw += yaw` only if
+     `settings.gyroLook`, the control is motion (not a demo) and the camera isn't overridden.
    * `gestures.holdLook()` when the spear cam starts, `resumeLook()` when it ends.
    * `input.phoneSettled = gestures.settled`.
 
-   The poll is skipped entirely outside motion mode.
+   The poll is skipped entirely outside motion mode (`phoneSettled = true`).
 2. `inputCtl.update(dt)`
 3. Battle and training run, in order:
    * `player.update(pdt)` (it reads gdt itself where needed)
@@ -1128,8 +1408,9 @@ createViewmodel(ctx) → {
 }
 ```
 * **Event-driven one-shots.** The viewmodel subscribes itself, and player never calls play():
-  * `swing` → slash / thrust / spearThrust / bash / throw. A throw plays `throwWindup`, then
-    `throwRelease` at TIMING.throw.windup, or at once for motion.
+  * `swing` → slash / thrust / spearThrust / bash / throw. A touch throw plays `throwWindup`,
+    then `throwRelease` at TIMING.throw.windup. A motion throw plays `throwRelease` at once
+    (motion sync, below).
   * `block` with by === 'player' → blockImpact {perfect, guardBreak}
   * `playerHurt` → hurt
   * `weaponSwitch` and the spear redraw → draw
@@ -1147,8 +1428,37 @@ createViewmodel(ctx) → {
   low-left, partly in view. Raised, it covers the lower-left and centre of the view, and you
   look over its rim.
 * **Slash path**: the blade tip travels in the plane z = −0.55 from `−0.35·(cos dir, sin dir)`
-  to `+0.35·(cos dir, sin dir)`, crossing the centre at `TIMING.slash.strike`, with a
-  motion-trail ribbon.
+  to `+0.35·(cos dir, sin dir)`, with a motion-trail ribbon. It crosses the centre at
+  `TIMING.slash.strike` for a touch, key or test swing, after the anticipation (into the cocked
+  pose).
+* **Motion sync** (a `swing` with `src: 'motion'`; `gfx/viewmodel/motion.js` exports
+  `MOTION_SWING = { s0: −1.3, a0: 0.5, blendIn: 0.012, minStrike: 0.02, maxStrike: 0.25 }`,
+  `motionStrike`, `motionSlashTimes`, `thrustCurveMotion`, `bashCurveMotion`). The phone has
+  already wound up, so there is no anticipation.
+  * The one-shot animates on the swing's own frame, in the payload's `dir` (the gesture's snapped
+    dir).
+  * Its contact pose lands at `lead + motionStrike(strikeIn)`.
+    * `motionStrike` clamps the payload's `strikeIn` to [minStrike, maxStrike]. Without one it
+      falls back to TIMING's strike (0.03 s for a throw).
+    * `lead` is this frame's pdt (clamped to 0–0.05). The swing fires inside player.update, and
+      this frame's viewmodel update still adds its pdt. So the contact pose renders on the frame
+      the strike resolves, and is the pose a hit-stop freezes.
+  * Slash: `ta = 0`. The blade starts at the cocked end of the path (s = s0), already moving at
+    a0 of its peak speed, and reaches the peak at contact (s = 0 exactly at the strike).
+    * After contact come the touch slash's follow-through and recovery:
+      `total = strike + max(0.12, TIMING.slash.total − TIMING.slash.strike)`. The blade always
+      follows through past the path end.
+    * The hand joins the moving path from its current pose within `blendIn` (under one 60 Hz
+      frame), and the trail shows from the first frame.
+  * Thrust, spearThrust and bash: no draw-back or chamber.
+    * The extension moves from the first frame (`u·(0.6 + 0.4u)`) and is full at the strike.
+    * Then comes the touch retract: a thrust holds 0.06 s first; a bash goes straight back.
+      `total = strike + (TIMING total − TIMING strike)`.
+    * The shield's bash punch lands on the same strike.
+  * Throw: `throwRelease` with the release pose at `lead + motionStrike(strikeIn)` (0.03 s, the
+    spear's spawn, §7). The viewmodel spear hides then.
+  * A new swing always restarts the arm from wherever the hand is, even mid-swing.
+  * Touch, key and test swings keep the authored timing.
 * A bash punches the shield forward. A throw draws the spear back over the shoulder and whips
   it forward. The viewmodel hides the spear at release.
 * The overlay quad (vignette, hurt flash, Corinthian-helmet eye-slit when `helmet`) is drawn
@@ -1167,15 +1477,26 @@ createFx(ctx) → {
 * Particles are pooled (≤ 800) in a few `Points`/`InstancedMesh` draws. Decals are capped
   (≤ 60) and recycled. `settings.blood` off means no blood and no decals.
 * fx subscribes to `hit`, `kill`, `block`, `playerHurt`, `spearImpact`, `arrowHit`, `combo`,
-  `shield` and `spearThrown`.
+  `shield`, `spearThrown`, `volley` and `swing` (blood follows the player's blade; a motion swing
+  ends a hit-stop, below).
 * **Hit-stop and shake fire only for events involving the player**: hit/kill with byPlayer,
   block with by === 'player', and playerHurt. AI-vs-AI hits get only particles (and audio).
   * `hitStop(s)` sets remaining = max(remaining, s). A new one can't start within 0.08 s of
     the last one ending.
+  * A motion swing (`swing` with `src: 'motion'`) ends a running hit-stop at once
+    (`TimeControl.endHitStop()`). The phone is already swinging again, and the new attack and its
+    animation run on pdt. The cut-short freeze doesn't count for the 0.08 s rule, so the new blow
+    (striking about 50 ms later) gets its own hit-stop. It does nothing while the spear cam runs,
+    so the cam's impact freeze stays.
   * Durations: player hit 50 ms, kill or crit 85 ms, block 35 ms, perfect 110 ms,
     playerHurt 60 ms.
-  * Shake is in radians: hit 0.006, kill 0.010, bash 0.012, hurt 0.025, guardBreak 0.035,
-    lasting 0.12–0.3 s, and ×0.5 in motion mode.
+  * Shake is in radians: hit 0.006, kill 0.010, bash 0.012, block 0.008, perfect 0.012,
+    hurt 0.025, guardBreak 0.035, lasting 0.12–0.3 s.
+  * In motion mode each is scaled by `MOTION_SHAKE = { hit: 0.4, kill: 0.4, bash: 0.4,
+    block: 0.6, perfect: 0.6, hurt: 1, guardBreak: 1, other: 0.5 }` (`other`: the public
+    `shake()`). The camera is the phone in the swinging hand. The player's own blows are already
+    confirmed by the swing, the haptic, the sound and the blade's contact pose. A block lands
+    while the phone is held still. Blows taken hard stay full.
 * **Gameplay haptics are owned by fx**, through `platform.haptics`, at the strike moment:
 
   | event | haptic |
@@ -1399,8 +1720,22 @@ and `gameOver`. It calls `combat.volley`, `ai.*`, `player.heal/refillSpears`,
   * start() spawns a dummy at (0, −2.6) and a far target dummy at (1.5, −18).
   * Steps complete on events, each after N repetitions, with a Skip button:
     0. Grip and safety (confirm).
-    1. Calibrate: "Slash 5 times as in battle". `sensitivity = clamp(9/median(gesture.peak), 0.6, 1.8)`,
-       with Apply/Keep buttons. Touch mode skips this step.
+    1. Calibrate: "Slash 5 times, the way you will in battle. Gentle is fine." Touch mode skips
+       this step.
+       * It counts `swingCandidate`s, slash or not, so a gentle swinger below the thresholds
+         still calibrates.
+       * `pickStrokes(cands)`: a stroke is a candidate at least 0.8× as fast as every candidate
+         touching it in time (within `STROKE_GAP` = 0.45 s before its start or after its end).
+         The cock-back before a stroke and the return after it are slower, so they drop out.
+       * A candidate counts once its neighbours are known: a later one started more than
+         STROKE_GAP after it ended, or STROKE_GAP + 0.05 s (real time) have passed since the
+         last one.
+       * After 5 strokes: `sensitivity = suggestSensitivity(peaks, CALIBRATION)`, which is
+         clamp(target/median(peak), min, max) rounded to 0.05.
+         * `CALIBRATION = { target: swingPeak/0.6 (≈ 4.67 rad/s), min: 0.6, max: 2.2 }`: the slash
+           threshold swingPeak/s lands at 60% of the median swing (but never below lookMax, §5.3).
+         * suggestSensitivity's defaults stay `{ target: 9, min: 0.6, max: 1.8 }`.
+       * It shows the median peak and the suggestion, with Apply/Keep buttons.
     2. Slash right ×2 and left ×2.
     3. Overhead ×2. The dummy has a wicker shield, showing the guard bypass.
     4. Uppercut ×1, starting low.
@@ -1412,10 +1747,22 @@ and `gameOver`. It calls `combat.volley`, `ai.*`, `player.heal/refillSpears`,
     10. Switch to the spear and thrust ×2, then throw ×1 so it lands within 2 m of the far
         target.
     11. Twin Fangs ×1.
+  * **Mirrored setup** (motion slashes only, steps 2–4): each slash is compared with what the
+    instruction asks at that moment. Step 2 asks right until two rights have counted, then left;
+    step 3 asks D; step 4 asks U. Only R/L-ish slashes (step 2) or U/D-ish ones (steps 3–4) tell.
+    * If a step's first three telling slashes all went the opposite way, motionFlipX (step 2) or
+      motionFlipY (steps 3–4) is toggled, saved and applied (`gestures.setFlip`), with the hint
+      "Swing direction corrected".
+    * The slashes counted so far are recounted the right way round: step 2 swaps its right and
+      left counts, and steps 3–4 restart their count. The check then starts over.
+    * A telling slash that went the asked way ends the check for the step, so a player who only
+      took the sides in another order is not flipped.
   * Each step shows the last detected gesture, an arrow (from `gesture` in motion or `swing` in
-    touch), live sensor meters and a sensitivity slider.
+    touch), live sensor meters (marks at `slashThreshold(s)` from §5.3 and `thrustAcc/s`) and a
+    sensitivity slider (SENSITIVITY_MIN–MAX).
   * **Demo** button: `ctx.motionDemo = true`, then `platform.motion.inject(synthesize(script, { rot: current rotation, hand }))`,
-    then clear the flag after `scriptDuration + 0.3 s`. This works in touch mode too.
+    then clear the flag after `scriptDuration + 0.3 s`. This works in touch mode too. Demos are
+    never flipped by motionFlipX/Y (§10).
   * Training emits `voice` (Narrator) for instructions.
 
 ## 12. Events (EventBus)
@@ -1423,7 +1770,8 @@ and `gameOver`. It calls `combat.volley`, `ai.*`, `player.heal/refillSpears`,
 | event | emitter | payload |
 |---|---|---|
 | `gesture` | main | the GestureEvent |
-| `swing` | player | `{ kind:'slash'|'thrust'|'spearThrust'|'bash'|'throw', dir, power, weapon, src }` (attack start) |
+| `swingCandidate` | main | `{ type:'swingCandidate', peak, sweep, dir, t0, t }`: any swing-like excursion, slash or not (§5.3), for the Agoge's calibration |
+| `swing` | player | `{ kind:'slash'|'thrust'|'spearThrust'|'bash'|'throw', dir, power, weapon, src, strikeIn }` (attack start). `strikeIn` is the seconds until the strike resolves (0.05 for a motion slash), or for a throw until the spear leaves the hand; the viewmodel lands its contact pose on it. |
 | `combo` | player | combo row + `{ bonus }` (only when the completing attack hit) |
 | `hit` | combat | `{ target: Actor, attacker: Actor|'player', damage, kind, dir:{x,z}, point, guarded, critical, killed, byPlayer, combo: id|null }`. Every damage to an Actor; never for the player. |
 | `kill` | combat | `{ target, attacker, byPlayer, kind, spear: bool, cause: 'weapon'|'sea'|'bleed' }` |

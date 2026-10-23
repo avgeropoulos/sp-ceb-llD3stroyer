@@ -18,7 +18,7 @@ register(`data:text/javascript,${encodeURIComponent(hook)}`, import.meta.url);
 
 const { EventBus } = await import('../../src/main/assets/game/js/core/events.js');
 const { createRng } = await import('../../src/main/assets/game/js/core/math.js');
-const { TIMING } = await import('../../src/main/assets/game/js/game/rules.js');
+const { TIMING, WEAPONS } = await import('../../src/main/assets/game/js/game/rules.js');
 const { createHarness, createHeadlessCtx } = await import('../sandbox/gameplay-harness.js');
 
 const ctx = createHeadlessCtx({ EventBus, createRng });
@@ -139,4 +139,39 @@ test('motion mode never turns the camera by itself: no auto-face, steady pitch, 
   assert.equal(P().yaw, 0);
   assert.ok(Math.abs(P().attackYaw - 0.5) < 1e-6, `attack yaw ${P().attackYaw}`);
   assert.equal(h.events('hit').pop().payload.target, side);
+});
+
+// ---- Review follow-ups -----------------------------------------------------------------------
+
+test('a motion slash at a foe just out of reach lunges at the normal speed and still lands', () => {
+  // 3.0 m: out of sword reach (2.1 m, foe radius 0.32), within the lunge. The motion slash strikes
+  // at half the delay, before its lunge has finished: the blow reaches from where the lunge ends.
+  motionReset();
+  const foe = spawnAt('levy', 0, 3.0);
+  h.stepTime(0.1);
+  const x0 = P().pos.x, z0 = P().pos.z;
+  let last = [x0, z0], maxStep = 0;
+  motion({ type: 'slash', dir: 0 });
+  for (let i = 0; i < 30; i++) {
+    h.step(1);
+    maxStep = Math.max(maxStep, Math.hypot(P().pos.x - last[0], P().pos.z - last[1]));
+    last = [P().pos.x, P().pos.z];
+  }
+  assert.equal(foe.hitsTaken.length, 1, 'the slash landed');
+  assert.ok(Math.hypot(P().pos.x - x0, P().pos.z - z0) > 0.3, 'the player lunged');
+  assert.ok(maxStep <= (0.8 * DT) / TIMING.slash.strike + 1e-6, `lunge step ${maxStep.toFixed(3)} m per frame`);
+  assert.ok(WEAPONS.sword.reach < 3.0 - 0.32, 'the foe starts out of reach');
+});
+
+test('two motion slashes in one frame both land on a foe in lunge range (the cut-short attack lunges first)', () => {
+  for (const dist of [1.6, 2.6]) {
+    motionReset();
+    const foe = spawnAt('levy', 0, dist);
+    h.stepTime(0.1);
+    motion({ type: 'slash', dir: PI / 2 });
+    motion({ type: 'slash', dir: -PI / 2 });
+    h.stepTime(0.5);
+    assert.equal(foe.hitsTaken.length, 2, `${dist} m: ${foe.hitsTaken.length} hits`);
+    assert.deepEqual(h.events('combo').map((e) => e.payload.id), ['cleave'], `${dist} m`);
+  }
 });

@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { synthesize } from '../../src/main/assets/game/js/motion/synth.js';
 import { MotionFrames } from '../../src/main/assets/game/js/motion/frames.js';
-import { GestureRecognizer, GESTURE_DEFAULTS, snapCardinal } from '../../src/main/assets/game/js/motion/gestures.js';
+import { GestureRecognizer, GESTURE_DEFAULTS, snapCardinal, slashThreshold } from '../../src/main/assets/game/js/motion/gestures.js';
 import { suggestSensitivity, pickStrokes, CALIBRATION } from '../../src/main/assets/game/js/ui/training.js';
 
 const PI = Math.PI;
@@ -38,8 +38,12 @@ const SOURCES = [
   ['web -1', 'web', { includeGravity: false, gravitySign: -1 }],
 ];
 
-/** Runs a script (after an idle lead-in); consumes look once per 60 Hz frame of sensor time. */
-function run(script, so, { kind = 'android', sensitivity = 1, weapon = 'sword', flip = null, onFrame = null } = {}) {
+/**
+ * Runs a script (after an idle lead-in); consumes look once per frame of sensor time (`fps`; with
+ * `passDt` the frame time is passed as main.js does). `gapAfterSlash`: drop that many seconds of
+ * samples right after the first slash (a sensor gap while its swing is still under way).
+ */
+function run(script, so, { kind = 'android', sensitivity = 1, weapon = 'sword', flip = null, onFrame = null, fps = 60, passDt = false, gapAfterSlash = 0 } = {}) {
   const raw = synthesize([idle(LEAD), ...script], so);
   const frames = new MotionFrames({ platformKind: kind });
   const g = new GestureRecognizer({ sensitivity, weapon });
@@ -47,15 +51,20 @@ function run(script, so, { kind = 'android', sensitivity = 1, weapon = 'sword', 
   const events = [];
   const candidates = [];
   let look = 0, maxStep = 0, maxLook = 0;
-  let next = raw[0].t + 1 / 60;
+  let next = raw[0].t + 1 / fps;
+  let skipUntil = -Infinity;
   const steps = [];
   for (const r of raw) {
+    if (r.t < skipUntil) continue;
     const s = frames.process(r);
-    for (const e of g.push(s)) events.push({ ...e });
+    for (const e of g.push(s)) {
+      events.push({ ...e });
+      if (gapAfterSlash && e.type === 'slash' && skipUntil === -Infinity) skipUntil = r.t + gapAfterSlash;
+    }
     for (const c of g.consumeCandidates()) candidates.push({ ...c });
     if (r.t >= next) {
-      next += 1 / 60;
-      const y = g.consumeLook().yaw;
+      next += 1 / fps;
+      const y = g.consumeLook(passDt ? 1 / fps : undefined).yaw;
       look += y;
       steps.push(y);
       maxStep = Math.max(maxStep, Math.abs(y));
@@ -477,4 +486,51 @@ test('a hard swing at a high sensitivity is one slash: its short, fast wind-up i
     }
   }
   assertNoFails(fails, n);
+});
+
+// ---- Review follow-ups -----------------------------------------------------------------------
+
+test('slashThreshold: swingPeak / s, never below lookMax (a body turn gyro look accepts)', () => {
+  assert.equal(slashThreshold(1), GESTURE_DEFAULTS.swingPeak);
+  assert.equal(slashThreshold(0.5), GESTURE_DEFAULTS.swingPeak / 0.5);
+  assert.equal(slashThreshold(2.2), GESTURE_DEFAULTS.lookMax);
+  assert.equal(slashThreshold(9), GESTURE_DEFAULTS.lookMax, 'clamped to SENSITIVITY_MAX');
+});
+
+test('at high sensitivity a deliberate body turn is still no slash, and the view follows it', () => {
+  for (const sensitivity of [1.6, 1.8, 2.2]) {
+    for (const rate of [50, 100, 200]) {
+      for (const [yaw, duration] of [[PI / 4, 1], [-PI / 4, 1], [PI / 2, 2], [-PI / 2, 2]]) {
+        const r = run([{ kind: 'turn', yaw, duration }, idle(1)], { rate }, { sensitivity });
+        const label = `s ${sensitivity}, ${rate} Hz, ${Math.round(yaw / DEG)}° over ${duration} s`;
+        assert.equal(slashes(r.events).length, 0, `${label}: ${describe(r.events)}`);
+        assert.ok(Math.abs(r.look) >= 0.85 * Math.abs(yaw), `${label}: the view turned ${(r.look / DEG).toFixed(1)}°`);
+      }
+    }
+  }
+});
+
+test('a sensor gap while a slash is under way does not turn later opposite swings into its "return"', () => {
+  for (const rate of [100, 200]) {
+    const script = [swing(0, { speed: 9 }), idle(2.7), swing(PI, { speed: 3.5, arc: 1.0, windup: 0 }), idle(1)];
+    const base = run(script, { rate });
+    const gap = run(script, { rate }, { gapAfterSlash: 0.15 });
+    assert.equal(slashes(base.events).length, 2, `${rate} Hz without a gap: ${describe(base.events)}`);
+    assert.equal(slashes(gap.events).length, 2, `${rate} Hz with a gap: ${describe(gap.events)}`);
+    assert.ok(slashes(gap.events)[1].t - slashes(base.events)[1].t < 0.02, `${rate} Hz: the gentle swing came late after the gap`);
+  }
+});
+
+test('at 30 fps the view keeps up with a body turn (main.js passes the frame time to consumeLook)', () => {
+  const stopT = LEAD + 2;
+  for (const fps of [30, 45, 60]) {
+    for (const rate of [100, 200]) {
+      let atStop = null;
+      const r = run([{ kind: 'turn', yaw: PI / 2, duration: 2 }, idle(1.5)], { rate }, {
+        fps, passDt: true, onFrame: (g, t, look) => { if (atStop === null && t >= stopT) atStop = look; },
+      });
+      assert.ok(atStop >= 0.9 * r.look, `${fps} fps, ${rate} Hz: ${(atStop / DEG).toFixed(1)}° of ${(r.look / DEG).toFixed(1)}° when the body stopped`);
+      assert.ok(r.maxStep <= Math.max(GESTURE_DEFAULTS.lookStep, (1.1 * GESTURE_DEFAULTS.lookRate) / fps) + 1e-9, `${fps} fps: frame step ${(r.maxStep / DEG).toFixed(2)}°`);
+    }
+  }
 });

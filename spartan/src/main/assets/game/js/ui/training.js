@@ -4,7 +4,7 @@
 // above #controls so its buttons work in the motion layout.
 import { clamp } from '../core/math.js';
 import { dirToken, TOKEN_SETS } from '../game/rules.js';
-import { GESTURE_DEFAULTS, SENSITIVITY_MIN, SENSITIVITY_MAX } from '../motion/gestures.js';
+import { GESTURE_DEFAULTS, SENSITIVITY_MIN, SENSITIVITY_MAX, slashThreshold } from '../motion/gestures.js';
 
 const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
 const WORD = { R: 'right', UR: 'up-right', U: 'up', UL: 'up-left', L: 'left', DL: 'down-left', D: 'down', DR: 'down-right' };
@@ -627,8 +627,8 @@ export function createTraining(ctx) {
     const s = clamp(settings.sensitivity || 1, SENSITIVITY_MIN, SENSITIVITY_MAX);
     el.mm.style.transform = `scaleX(${clamp((d.m || 0) / 12, 0, 1).toFixed(3)})`;
     el.mf.style.transform = `scaleX(${clamp((d.fwdAcc || 0) / 30, 0, 1).toFixed(3)})`;
-    // the mark is where a swing becomes a slash (swingPeak at this sensitivity)
-    el.mt.style.transform = `translateX(${clamp((GESTURE_DEFAULTS.swingPeak / s / 12) * 100, 0, 100).toFixed(1)}%)`;
+    // the mark is where a swing becomes a slash at this sensitivity
+    el.mt.style.transform = `translateX(${clamp((slashThreshold(s) / 12) * 100, 0, 100).toFixed(1)}%)`;
     el.ft.style.transform = `translateX(${clamp((GESTURE_DEFAULTS.thrustAcc / s / 30) * 100, 0, 100).toFixed(1)}%)`;
   }
 
