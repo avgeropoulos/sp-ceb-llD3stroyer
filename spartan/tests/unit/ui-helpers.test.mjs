@@ -6,6 +6,7 @@ import { roman, groupDigits, clock, subtitleSeconds, phaseFade, curtainOpacity }
 import { FIELDS, TEXT } from '../../src/main/assets/game/js/ui/menus.js';
 import { STEPS, suggestSensitivity } from '../../src/main/assets/game/js/ui/training.js';
 import { synthesize, scriptDuration } from '../../src/main/assets/game/js/motion/synth.js';
+import { SENSITIVITY_MIN, SENSITIVITY_MAX } from '../../src/main/assets/game/js/motion/gestures.js';
 
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 
@@ -122,13 +123,28 @@ test('curtainOpacity: in, hold, out, then clear', () => {
 
 test('settings UI covers every §9 field', () => {
   const keys = FIELDS.map((f) => f.key).sort();
-  assert.deepEqual(keys, ['aimAssist', 'blood', 'control', 'gyroLook', 'haptics', 'helmetView', 'leftHanded', 'master', 'music', 'quality', 'sensitivity', 'sensorDebug', 'sfx', 'voice'].sort());
+  assert.deepEqual(keys, ['aimAssist', 'blood', 'control', 'gyroLook', 'haptics', 'helmetView', 'leftHanded', 'master', 'motionFlipX', 'motionFlipY', 'music', 'quality', 'sensitivity', 'sensorDebug', 'sfx', 'voice'].sort());
+  assert.equal(new Set(FIELDS.map((f) => f.key)).size, FIELDS.length, 'no duplicate keys');
   const q = FIELDS.find((f) => f.key === 'quality');
   assert.deepEqual(q.options.map((o) => o[0]), ['auto', 'low', 'medium', 'high']);
   assert.match(q.hint, /after restart/i);
+  // The slider spans the recognizer's range, so it can show (and set) what the Agoge suggests.
   const s = FIELDS.find((f) => f.key === 'sensitivity');
-  assert.equal(s.min, 0.5);
-  assert.equal(s.max, 2);
+  assert.equal(s.min, SENSITIVITY_MIN);
+  assert.equal(s.max, SENSITIVITY_MAX);
+  assert.equal(SENSITIVITY_MIN, 0.5);
+  assert.equal(SENSITIVITY_MAX, 2.2);
+  const steps = (s.max - s.min) / s.step;
+  assert.ok(Math.abs(steps - Math.round(steps)) < 1e-9, 'the max is on a slider step');
+  // Motion-only rows (greyed out in touch mode), the swap toggles among them, under Controls.
+  const motionOnly = FIELDS.filter((f) => f.motionOnly).map((f) => f.key);
+  assert.deepEqual(motionOnly, ['sensitivity', 'gyroLook', 'motionFlipX', 'motionFlipY']);
+  for (const k of ['motionFlipX', 'motionFlipY']) {
+    const f = FIELDS.find((x) => x.key === k);
+    assert.equal(f.tab, 'controls');
+    assert.equal(f.type, 'toggle');
+    assert.match(f.label, /^Swap swing/);
+  }
   assert.match(TEXT.epitaph1 + ' ' + TEXT.epitaph2, /^Go tell the Spartans, stranger passing by, that here, obedient to their laws, we lie\.$/);
   assert.equal(TEXT.epitaphCite, 'Simonides (Herodotus 7.228)');
   assert.equal(TEXT.epigraph, 'With it, or on it.');

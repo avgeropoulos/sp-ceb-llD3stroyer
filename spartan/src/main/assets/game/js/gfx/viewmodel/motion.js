@@ -66,11 +66,81 @@ export function slashTimes(timing) {
   return { strike, total, ta, tc, h1, h2, s0: S0, s1, recover, back: recover + 0.75 * (total - recover) };
 }
 
+/**
+ * Motion swings (src 'motion'): the phone has already wound up and is mid-stroke when the swing
+ * event arrives, so the viewmodel skips the anticipation. The blade enters the path at once and
+ * already moving (a0 of its peak speed), crosses the centre (s = 0) at the payload's strikeIn and
+ * follows through as a touch slash does. Thrusts and bashes likewise start at once with no draw-back.
+ */
+export const MOTION_SWING = {
+  s0: -1.3,        // path parameter at t = 0 (the touch slash's cocked pose)
+  a0: 0.5,         // starting speed as a share of the peak speed, which is reached at the strike
+  blendIn: 0.012,  // s: the hand joins the moving path from its current pose over this (easeOutQuad). Under
+                   // one 60 Hz frame, so the first frame drawn is already on the path: a longer blend
+                   // drags that frame back toward the old pose and the next one barely moves (a stall).
+  minStrike: 0.02, // strikeIn is clamped to [minStrike, maxStrike]
+  maxStrike: 0.25,
+};
+
+/** strikeIn clamped for a motion one-shot; `fallback` when the payload has none. */
+export function motionStrike(strikeIn, fallback) {
+  const s = Number.isFinite(strikeIn) ? strikeIn : fallback;
+  return clamp(s, MOTION_SWING.minStrike, MOTION_SWING.maxStrike);
+}
+
+/**
+ * Slash timeline for a motion swing: the same shape of record as slashTimes (so slashParam, the
+ * trail and the recovery read it the same way) with ta = 0, the strike at `lead + strikeIn` and
+ * the touch slash's follow-through and recovery after it. `lead` is the time the viewmodel's clock
+ * runs ahead of the attack's (the swing frame's pdt: the viewmodel updates after the player in that
+ * frame), so the contact pose lands on the frame the strike resolves. Writes into `out`.
+ */
+export function motionSlashTimes(strikeIn, timing, out = {}, lead = 0) {
+  const P = MOTION_SWING;
+  const strike = motionStrike(strikeIn, timing.strike) + Math.max(0, lead);
+  const total = strike + Math.max(0.12, timing.total - timing.strike);
+  const h1 = strike;
+  const h2 = Math.min(0.12, Math.max(0.05, total - strike - 0.1));
+  const a0 = P.a0;
+  const A1 = (h1 * (1 + a0)) / 2; // time-integral of the normalized speed before the strike
+  const s0 = P.s0;
+  const tc = strike + h2;
+  const recover = tc - 0.04;
+  out.strike = strike;
+  out.total = total;
+  out.ta = 0;
+  out.tc = tc;
+  out.h1 = h1;
+  out.h2 = h2;
+  out.a0 = a0;
+  out.s0 = s0;
+  // Same peak speed on both sides of the strike, but always a full follow-through past the path end
+  // (a long strikeIn would otherwise stop the blade short of it; the blade then speeds up through
+  // the contact instead).
+  out.s1 = Math.max((-s0 * h2) / 2 / A1, -s0);
+  out.recover = recover;
+  out.back = recover + 0.75 * (total - recover);
+  out.blendIn = Math.min(P.blendIn, 0.6 * strike);
+  return out;
+}
+
 /** Raw path parameter s(t). s = -1 and +1 are the ends of the §11 tip path; s(strike) = 0. */
 export function slashParam(t, tm) {
   const { ta, tc, h1, h2, strike, s0, s1 } = tm;
   if (t <= ta) return s0;
   if (t >= tc) return s1;
+  const a0 = tm.a0 || 0;
+  if (a0 > 0) {
+    // Motion: speed a0 + (1 − a0)·sin² rising over [ta, strike] from s0 to 0, then cos² falling
+    // over [strike, tc] from 0 to s1. Each side is normalized on its own, so s(strike) = 0 exactly.
+    if (t < strike) {
+      const x = (t - ta) / h1;
+      const area = a0 * x + (1 - a0) * (x / 2 - Math.sin(Math.PI * x) / (2 * Math.PI));
+      return s0 * (1 - area / ((1 + a0) / 2));
+    }
+    const x = (t - strike) / h2;
+    return s1 * (x + Math.sin(Math.PI * x) / Math.PI);
+  }
   const A = (h1 + h2) / 2;
   let area;
   if (t < strike) {
@@ -199,6 +269,25 @@ export function thrustCurve(t, strike, total) {
     ? easeInQuad(clamp((t - strike * 0.42) / (strike * 0.58), 0, 1))
     : 1 - easeInOutSine(clamp((t - strike - 0.06) / Math.max(0.05, total - strike - 0.06), 0, 1));
   return t < strike * 0.42 ? -back : out - back;
+}
+
+/** Motion lunge 0..1 over u ∈ [0, 1]: moving from the first frame (slope 0.6), fastest at contact (1.4). */
+export function motionLunge(u) {
+  u = clamp(u, 0, 1);
+  return u * (0.6 + 0.4 * u);
+}
+
+/** Thrust extension for a motion thrust: no draw-back, full at strike, then the touch hold and retract. */
+export function thrustCurveMotion(t, strike, total) {
+  if (t < strike) return motionLunge(t / strike);
+  return 1 - easeInOutSine(clamp((t - strike - 0.06) / Math.max(0.05, total - strike - 0.06), 0, 1));
+}
+
+/** Bash punch for a motion bash: no pull-back, full at strike, then the touch return. */
+export function bashCurveMotion(t, strike, total) {
+  if (t <= 0 || t >= total) return 0;
+  if (t < strike) return motionLunge(t / strike);
+  return 1 - easeInOutSine((t - strike) / (total - strike));
 }
 
 /** Bash punch 0..1 (shield forward), peaking at strike with a jolt after contact. */

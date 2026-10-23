@@ -367,6 +367,20 @@ try {
     scen.push({ name: 'touch throw', setup: { weapon: 'spear' }, events: [swing('throw', { weapon: 'spear', src: 'touch' })], frames: 50 });
     scen.push({ name: 'motion windup', setup: { weapon: 'spear' }, play: ['throwWindup'], frames: 90 });
     scen.push({ name: 'motion throw', setup: { weapon: 'spear' }, play: ['throwWindup'], settle2: 0.3, events: [swing('throw', { weapon: 'spear', src: 'motion' })], frames: 50 });
+    // Motion swings (§11 motion sync): no anticipation, contact at strikeIn, restarts mid-swing.
+    const mswing = (kind, extra = {}) => swing(kind, Object.assign({ src: 'motion' }, extra));
+    for (let i = 0; i < 16; i++) {
+      const dir = -Math.PI + (i * Math.PI) / 8;
+      scen.push({ name: `motion slash ${(dir * 180 / Math.PI).toFixed(0)}`, events: [mswing('slash', { dir, strikeIn: 0.05 })], frames: 24 });
+      // cut short after its strike by the next swing, the other way
+      scen.push({ name: `motion slash restart ${(dir * 180 / Math.PI).toFixed(0)}`, setup: { raise: i % 2 }, events: [mswing('slash', { dir, strikeIn: 0.05 })], later: [5, mswing('slash', { dir: dir + Math.PI * (0.75 + 0.25 * (i % 2)), strikeIn: 0.05 })], frames: 26 });
+    }
+    scen.push({ name: 'motion spear slash', setup: { weapon: 'spear' }, events: [mswing('slash', { dir: 2.4, weapon: 'spear', strikeIn: 0.05 })], frames: 24 });
+    scen.push({ name: 'motion thrust', events: [mswing('thrust', { strikeIn: 0.11 })], frames: 26 });
+    scen.push({ name: 'motion thrust after a slash', events: [mswing('slash', { dir: 0.3, strikeIn: 0.05 })], later: [5, mswing('thrust', { strikeIn: 0.11 })], frames: 30 });
+    scen.push({ name: 'motion spearThrust', setup: { weapon: 'spear', raise: 1 }, events: [mswing('spearThrust', { weapon: 'spear', strikeIn: 0.13 })], frames: 30 });
+    scen.push({ name: 'motion bash', setup: { raise: 1 }, events: [mswing('bash', { strikeIn: 0.09 })], frames: 30 });
+    scen.push({ name: 'motion throw, strikeIn', setup: { weapon: 'spear' }, play: ['throwWindup'], settle2: 0.3, events: [mswing('throw', { weapon: 'spear', strikeIn: 0.03 })], frames: 50 });
     scen.push({ name: 'block', setup: { raise: 1 }, events: [['block', { by: 'player', perfect: false, kind: 'melee' }]], frames: 30 });
     scen.push({ name: 'perfect', events: [['block', { by: 'player', perfect: true, kind: 'melee' }]], frames: 30 });
     scen.push({ name: 'guardBreak', setup: { raise: 1 }, events: [['block', { by: 'player', perfect: false, kind: 'guardBreak' }]], frames: 50 });
@@ -385,6 +399,7 @@ try {
         const res = { violations: 0, minDepth: Infinity, minWhat: '', where: '' };
         for (let f = 0; f < s.frames; f++) {
           if (s.turn) V.player.yaw += 0.08 * Math.sin(f * 0.4);
+          if (s.later && f === s.later[0]) V.emit(s.later[1][0], s.later[1][1]);
           V.tick(1);
           checkFrame(aspect, res);
           report.frames++;

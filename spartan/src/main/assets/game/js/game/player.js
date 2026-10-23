@@ -2,6 +2,13 @@
  * PlayerController (DESIGN.md §7, §11 game/player.js). Drains actions, runs the attack timeline on
  * pdt, raises the shield, aims (motion: rotated attacks; touch: a short camera pull), lunges,
  * throws spears, keeps score, and places the first-person camera.
+ *
+ * Motion mode: the camera only ever turns with the player's own body (gyro look) or a recenter:
+ * no auto-face toward attackers and no pitch easing toward targets (a steady, slightly lowered
+ * pitch). Aim help rotates the attack instead (up to MOTION_YAW_CLAMP). A detected swing starts
+ * its attack at once: it may cut the current one short as soon as that one's strike has resolved
+ * (resolving it first if need be), and a motion slash strikes after MOTION_STRIKE_SCALE of the
+ * usual delay, since the physical swing is already under way.
  */
 import * as THREE from 'three';
 import { TIMING, WEAPONS, pickTarget, ballisticPitch, dirToken } from './rules.js';
@@ -12,7 +19,7 @@ const EYE = 1.66;
 const BUFFER_LIFE = 0.4;
 const FOCUS_ANGLE = 0.70;
 const FOCUS_EXTRA = 1.5;
-const MOTION_YAW_CLAMP = 0.44;
+const MOTION_YAW_CLAMP = 0.52; // ±30°: the attack turns toward a foe the player is not quite facing
 const TOUCH_PULL = 0.21;
 const TOUCH_PULL_TIME = 0.1;
 const LUNGE_MAX = 0.8;
@@ -27,17 +34,13 @@ const GUARD_BREAK_STAGGER = 0.35;
 const THROW_ANGLE = 0.262;
 const THROW_RANGE = 45;
 const MOTION_PITCH_RATE = 4;
-const MOTION_PITCH_MIN = -0.26;
-const MOTION_PITCH_MAX = 0.17;
-const AUTO_FACE_RATE = 1.5;
-const AUTO_FACE_CLEAR = 1.0;
-const AUTO_FACE_RANGE = 6;
+const MOTION_PITCH = -0.07; // steady, slightly lowered: chest height of a foe in reach
+const MOTION_STRIKE_SCALE = 0.5;
 const LOOK_PITCH_LIMIT = 1.15;
 const PLAYER_RADIUS = 0.32;
 const SWITCH_TIME = 0.3;
 const MAX_SPARES = 3;
 const START_SPARES = 2;
-const MAX_WINDUPS = 16;
 const CHAIN_MAX = 3.0;
 const CHAIN_STEP = 0.1;
 const CHAIN_IDLE = 4.0; // s of game time without a player hit before the chain drops back to 1
@@ -56,7 +59,6 @@ const isHostile = (a) => a.team === 'persian';
 export function createPlayer(ctx) {
   const ev = ctx.events;
   const v1 = new THREE.Vector3();
-  const v2 = new THREE.Vector3();
 
   // Internal timeline (sum of pdt) and state.
   let mode = 'battle';
@@ -108,7 +110,6 @@ export function createPlayer(ctx) {
   const buffer = { has: false, action: null, age: 0 };
   const strikeAttack = { kind: 'slash', dir: 0, power: 0, yaw: 0, origin: null, combo: null, crit: false, weapon: 'sword', focus: null, src: 'test' };
   const throwTrack = { target: null, x: 0, z: 0, t: 0 };
-  const windups = [];
 
   const throwOrigin = new THREE.Vector3();
   const throwVel = new THREE.Vector3();
@@ -189,14 +190,6 @@ export function createPlayer(ctx) {
     return angleDiff(fromYaw, yawTo(actor.pos.x - player.pos.x, actor.pos.z - player.pos.z));
   }
 
-  function chestY(actor) {
-    if (actor.chestPoint) {
-      actor.chestPoint(v2);
-      return v2.y;
-    }
-    return actor.pos.y + (actor.height || 1.75) * 0.74;
-  }
-
   function chestPointOf(actor, out) {
     if (actor.chestPoint) return actor.chestPoint(out);
     return out.set(actor.pos.x, actor.pos.y + (actor.height || 1.75) * 0.74, actor.pos.z);
@@ -227,49 +220,10 @@ export function createPlayer(ctx) {
     prevPressedAt = pressedAt;
   }
 
-  // ---- focus and auto-face ---------------------------------------------------------------
+  // ---- focus ------------------------------------------------------------------------------
 
   function updateFocus() {
     player.focusTarget = pickTarget(ctx.actors, player.pos, player.yaw, FOCUS_ANGLE, weaponReach() + FOCUS_EXTRA, isHostile);
-  }
-
-  function onEnemyWindup(e) {
-    if (!e || !e.targetIsPlayer || !e.actor) return;
-    const strikeAt = gnow() + (e.timeToStrike || 0);
-    for (const w of windups) {
-      if (w.actor === e.actor) {
-        w.strikeAt = strikeAt;
-        return;
-      }
-    }
-    if (windups.length >= MAX_WINDUPS) windups.shift();
-    windups.push({ actor: e.actor, strikeAt });
-  }
-
-  function autoFace(dt) {
-    const now = gnow();
-    let threat = null;
-    for (let i = windups.length - 1; i >= 0; i--) {
-      const w = windups[i];
-      const a = w.actor;
-      const stale = !a.alive || now > w.strikeAt + 0.25 || (a.state && a.state !== 'windup');
-      if (stale) {
-        windups.splice(i, 1);
-        continue;
-      }
-      if (!threat || w.strikeAt < threat.strikeAt) threat = w;
-    }
-    if (!threat || dt <= 0) return;
-    const actors = ctx.actors || [];
-    for (let i = 0; i < actors.length; i++) {
-      const a = actors[i];
-      if (!a.alive || a.team !== 'persian') continue;
-      const d = Math.hypot(a.pos.x - player.pos.x, a.pos.z - player.pos.z);
-      if (d <= AUTO_FACE_RANGE && Math.abs(angleTo(a)) <= AUTO_FACE_CLEAR) return;
-    }
-    const ang = angleTo(threat.actor);
-    const step = AUTO_FACE_RATE * dt;
-    player.yaw = wrapAngle(player.yaw + clamp(ang, -step, step));
   }
 
   // ---- attacks ---------------------------------------------------------------------------
@@ -278,12 +232,18 @@ export function createPlayer(ctx) {
     return player.state === 'idle';
   }
 
-  function canCancelInto() {
-    return atk.active && atk.cancellable && atk.t >= atk.cancelAfter - 1e-9;
+  // A motion slash or thrust (the phone already swung) may cut the current attack short as soon as
+  // its strike has resolved; anything else waits for cancelAfter.
+  const isMotionStrike = (a) => !!a && a.src === 'motion' && (a.type === 'slash' || a.type === 'thrust');
+
+  function canCancelInto(a) {
+    if (!atk.active || !atk.cancellable) return false;
+    if (isMotionStrike(a) && atk.struck) return true;
+    return atk.t >= atk.cancelAfter - 1e-9;
   }
 
-  // Starts an attack from an action. Returns false if the action is dropped.
-  function startAttack(a) {
+  // The attack an action would start now (null if it would be dropped).
+  function attackKind(a) {
     const inp = ctx.input || {};
     let kind;
     if (a.type === 'slash') kind = 'slash';
@@ -292,10 +252,29 @@ export function createPlayer(ctx) {
       if (inp.shieldHeld && !shieldLocked()) kind = 'bash';
       else kind = player.weapon === 'spear' && player.hasSpearInHand ? 'spearThrust' : 'thrust';
     } else if (a.type === 'throw') {
-      if (player.weapon !== 'spear' || !player.hasSpearInHand) return false;
+      if (player.weapon !== 'spear' || !player.hasSpearInHand) return null;
       kind = 'throw';
-    } else return false;
-    if (kind === 'bash' && ptime - lastBashStart < TIMING.bash.cooldown - 1e-9) return false;
+    } else return null;
+    if (kind === 'bash' && ptime - lastBashStart < TIMING.bash.cooldown - 1e-9) return null;
+    return kind;
+  }
+
+  // A motion swing mid-attack starts now: the current attack's strike lands first if still pending.
+  function interruptForMotion(a) {
+    if (!isMotionStrike(a) || player.state !== 'attack' || !atk.active || !atk.cancellable || !attackKind(a)) return false;
+    if (!atk.struck) {
+      clampToBounds();
+      resolveStrike();
+    }
+    endAttack();
+    return startAttack(a);
+  }
+
+  // Starts an attack from an action. Returns false if the action is dropped.
+  function startAttack(a) {
+    const inp = ctx.input || {};
+    const kind = attackKind(a);
+    if (!kind) return false;
 
     const power = Number.isFinite(a.power) ? clamp(a.power, 0, 1) : 0.6;
     const dir = kind === 'slash' && Number.isFinite(a.dir) ? a.dir : 0;
@@ -339,7 +318,8 @@ export function createPlayer(ctx) {
     } else {
       const tm = ATTACK_TIMING[kind];
       atk.total = tm.total;
-      atk.strike = tm.strike;
+      // the physical swing is already under way: a motion slash strikes sooner
+      atk.strike = kind === 'slash' && src === 'motion' ? tm.strike * MOTION_STRIKE_SCALE : tm.strike;
       atk.cancelAfter = tm.cancelAfter;
       atk.cancellable = true;
       atk.reach = kind === 'bash' ? WEAPONS.shield.reach : kind === 'spearThrust' ? WEAPONS.spear.reach : WEAPONS[weapon].reach;
@@ -355,12 +335,14 @@ export function createPlayer(ctx) {
     lastAttackAt = ptime;
 
     const token = kind === 'slash' ? dirToken(dir) : kind === 'bash' ? 'B' : kind === 'throw' ? 'J' : 'T';
-    // A motion strike returns to guard before the next one (~1.5 s apart): a wider window.
+    // A motion strike returns to guard before the next one (~1.5 s apart), and the Cleave's chop
+    // comes ~2.5 s after its uppercut: wider windows (COMBO_WINDOWS.motion).
     player.combos.setWindows(atk.motion ? COMBO_WINDOWS.motion : COMBO_WINDOWS.touch);
     atk.combo = player.combos.push(token, gnow());
     player.attackYaw = player.yaw;
     if (atk.motion && atk.target) player.attackYaw = wrapAngle(player.yaw + clamp(angleTo(atk.target), -MOTION_YAW_CLAMP, MOTION_YAW_CLAMP));
-    ev.emit('swing', { kind, dir, power, weapon, src });
+    // strikeIn: seconds until the strike resolves (a throw: until the spear leaves the hand)
+    ev.emit('swing', { kind, dir, power, weapon, src, strikeIn: kind === 'throw' ? atk.releaseAt : atk.strike });
     return true;
   }
 
@@ -600,6 +582,7 @@ export function createPlayer(ctx) {
       if (!ATTACK_ACTIONS[a.type] || !player.alive || overridden) continue;
       if (canStartNow() && startAttack(a)) continue;
       if (canStartNow()) continue; // dropped (no spear, bash cooldown)
+      if (interruptForMotion(a)) continue;
       buffer.has = true;
       buffer.action = a;
       buffer.age = 0;
@@ -614,7 +597,7 @@ export function createPlayer(ctx) {
       buffer.action = null;
       return;
     }
-    if (canStartNow() || canCancelInto()) {
+    if (canStartNow() || canCancelInto(buffer.action)) {
       const a = buffer.action;
       buffer.has = false;
       buffer.action = null;
@@ -683,17 +666,10 @@ export function createPlayer(ctx) {
     }
 
     if (motion) {
-      // Pitch eases toward the focus target's chest; gyro never looks in pitch.
-      let want = 0;
-      const f = player.focusTarget;
-      if (f) {
-        const eyeY = groundY(player.pos.x, player.pos.z) + EYE;
-        const d = Math.max(0.3, Math.hypot(f.pos.x - player.pos.x, f.pos.z - player.pos.z));
-        want = clamp(Math.atan2(chestY(f) - eyeY, d), MOTION_PITCH_MIN, MOTION_PITCH_MAX);
-      }
+      // A steady, slightly lowered pitch (eased back after a recenter or a mode change). Gyro never
+      // looks in pitch, and nothing turns the view toward a foe: the attack turns instead.
       const step = MOTION_PITCH_RATE * dt;
-      player.pitch += clamp(want - player.pitch, -step, step);
-      if (!overridden) autoFace(dt);
+      player.pitch += clamp(MOTION_PITCH - player.pitch, -step, step);
     }
   }
 
@@ -836,7 +812,6 @@ export function createPlayer(ctx) {
     yawImpulse = 0;
     recenterLeft = 0;
     kickAt = -Infinity;
-    windups.length = 0;
     throwTrack.target = null;
     emitScore();
     syncViewmodel();
@@ -1072,8 +1047,6 @@ export function createPlayer(ctx) {
     if (player.shieldRaise < 0.7) player.shieldRaise = 0.7;
     addScore(50);
   });
-
-  ev.on('enemyWindup', onEnemyWindup);
 
   return player;
 }

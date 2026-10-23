@@ -153,19 +153,35 @@ await check('AI-vs-AI events: particles only (no hit-stop, shake or haptics)', '
   assert.ok(r.particles > 20, `particles ${r.particles}`);
 });
 
-await check('shake amplitudes, ×0.5 in motion mode', 'scene=empty', async (page) => {
-  const r = await page.evaluate(() => {
+await check('shake amplitudes, scaled by MOTION_SHAKE in motion mode', 'scene=empty', async (page) => {
+  const r = await page.evaluate((HIT) => {
     const f = window.__fx;
+    const hit = eval(HIT);
     const maxAmp = () => Math.max(...f.fx.shakeOffset.amp);
     const out = {};
     for (const motion of [false, true]) {
+      const m = motion ? 'M' : '';
       f.setMotion(motion);
       f.fx.reset();
       f.emit('playerHurt', { damage: 10, hp: 90, from: null, kind: 'arrow', relYaw: 0 });
-      out[`hurt${motion ? 'M' : ''}`] = maxAmp();
+      out[`hurt${m}`] = maxAmp();
       f.fx.reset();
       f.emit('block', { by: 'player', attacker: null, point: f.P(0, 1.4, -0.7), perfect: false, kind: 'guardBreak' });
-      out[`gb${motion ? 'M' : ''}`] = maxAmp();
+      out[`gb${m}`] = maxAmp();
+      f.fx.reset();
+      f.emit('block', { by: 'player', attacker: null, point: f.P(0, 1.4, -0.7), perfect: false, kind: 'melee' });
+      out[`block${m}`] = maxAmp();
+      // the player's own blows
+      const a = f.makeActor(0, -2);
+      f.fx.reset();
+      f.emit('hit', hit(a));
+      out[`hit${m}`] = maxAmp();
+      f.fx.reset();
+      f.emit('hit', hit(a, { kind: 'bash', damage: 8 }));
+      out[`bash${m}`] = maxAmp();
+      f.fx.reset();
+      f.emit('kill', { target: a, attacker: 'player', byPlayer: true, kind: 'slash', spear: false, cause: 'weapon' });
+      out[`kill${m}`] = maxAmp();
     }
     f.setMotion(false);
     f.fx.reset();
@@ -180,11 +196,21 @@ await check('shake amplitudes, ×0.5 in motion mode', 'scene=empty', async (page
     out.peak = peak;
     out.settled = Math.abs(f.ctx.camera.rotation.x - f.view.pitch) + Math.abs(f.ctx.camera.rotation.y - f.view.yaw);
     return out;
-  });
+  }, HIT);
+  // Touch: the SHAKE table. Motion (the phone is the camera, in the swinging hand): the player's own
+  // blows ×0.4, blocks ×0.6, blows taken hard (hurt, guard break) stay full.
   near(r.hurt, 0.025, 1e-6, 'hurt');
-  near(r.hurtM, 0.0125, 1e-6, 'hurt motion');
+  near(r.hurtM, 0.025, 1e-6, 'hurt motion');
   near(r.gb, 0.035, 1e-6, 'guardBreak');
-  near(r.gbM, 0.0175, 1e-6, 'guardBreak motion');
+  near(r.gbM, 0.035, 1e-6, 'guardBreak motion');
+  near(r.block, 0.008, 1e-6, 'block');
+  near(r.blockM, 0.0048, 1e-6, 'block motion');
+  near(r.hit, 0.006, 1e-6, 'hit');
+  near(r.hitM, 0.0024, 1e-6, 'hit motion');
+  near(r.bash, 0.012, 1e-6, 'bash');
+  near(r.bashM, 0.0048, 1e-6, 'bash motion');
+  near(r.kill, 0.01, 1e-6, 'kill');
+  near(r.killM, 0.004, 1e-6, 'kill motion');
   assert.ok(r.peak > 0.004 && r.peak < 0.05, `camera peak ${r.peak}`);
   assert.ok(r.settled < 1e-9, `shake gone ${r.settled}`);
 });

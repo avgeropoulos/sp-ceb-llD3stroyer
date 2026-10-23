@@ -18,6 +18,7 @@ import { clamp, wrapAngle, createRng } from '../core/math.js';
 import {
   RIG, slashTimes, slashParam, slashGeometry, createSlashOut, slashEdgeSign,
   thrustCurve, bashCurve, jolt, bump, ramp, easeInQuad, easeOutCubic, easeOutQuad, easeInOutSine, smootherstep,
+  MOTION_SWING, motionStrike, motionSlashTimes, thrustCurveMotion, bashCurveMotion,
 } from './viewmodel/motion.js';
 import {
   paintArmAtlas, paintWeaponAtlas, paintShieldBronze, paintShieldInterior, paintArrowAtlas, compositeBlazon,
@@ -37,6 +38,7 @@ const MAX_ARROWS = 8;
 // then the rig hides while the camera rolls to the ground.
 const FALL = { dur: 0.5, drop: 0.45, outX: 0.1, roll: 0.7, yaw: 0.25 };
 const SWORD_REACH = SWORD.tipY; // grip centre → tip
+const RELEASE_AT = 0.045; // s into a touch throw's release one-shot: the release pose
 const BLADE_BASE = SWORD.guardHi + 0.25; // trail inner edge along the blade
 
 // ---------------------------------------------------------------------------------------------
@@ -286,38 +288,64 @@ export function createViewmodel(ctx) {
 
   // Right-arm one-shot state: two pooled records, alternated so a wind-up can hand over to its
   // release within one frame without allocating.
+  //
+  // Motion swings (payload src 'motion', DESIGN.md §11 motion sync): the phone already did the
+  // wind-up, so the one-shot starts on its path at once (visible in the frame of the swing event),
+  // skips the anticipation, and its contact pose lands at payload.strikeIn (a throw: the release),
+  // with the usual follow-through and recovery after it. A new swing always restarts the arm from
+  // wherever the hand is, even mid-swing. Touch, key and test swings keep the authored timing.
   const NO_OPTS = Object.freeze({});
   const TOUCH_RELEASE = Object.freeze({ motion: false });
   const newArm = () => ({
     kind: '', t: 0, dur: 0, opts: NO_OPTS, dir: 0, power: 0, sigma: 1, swapped: false, hideAt: 0,
+    motion: false, tm: null, mtm: {}, strike: 0, total: 0, blendIn: 0, ext: 0,
     fromP: new THREE.Vector3(), fromQ: new THREE.Quaternion(),
   });
   const armPool = [newArm(), newArm()];
   let armNext = 0;
+  const isMotionSwing = (opts) => !!opts && opts.src === 'motion';
+  // This frame's pdt (0 during a hit-stop), which update() is about to add to a one-shot started now.
+  const motionLead = () => clamp((ctx.time && ctx.time.pdt) || 0, 0, 0.05);
+  // Thrust and bash blend-in from the current pose (touch: into the chamber, which is anticipation).
+  const BLEND_IN = { thrust: 0.045, spearThrust: 0.05, bash: 0.06 };
 
   function startArm(kind, opts = NO_OPTS) {
     const a = armPool[armNext];
     armNext ^= 1;
+    opts = opts || NO_OPTS;
     a.kind = kind;
     a.t = 0;
-    a.opts = opts || NO_OPTS;
+    a.opts = opts;
     a.fromP.copy(hand.p);
     a.fromQ.copy(hand.q);
     a.swapped = false;
+    a.ext = 0;
+    a.motion = isMotionSwing(opts);
+    // The swing event fires inside player.update and this frame's update() still adds its pdt, so
+    // the arm's clock leads the attack's by that much: a motion strike is placed `lead` later so its
+    // contact pose renders on the frame the strike resolves (and is the pose a hit-stop freezes).
+    const lead = a.motion ? motionLead() : 0;
     if (kind === 'slash' || kind === 'spearSlash') {
       a.dir = typeof opts.dir === 'number' ? opts.dir : 0;
       a.power = clamp(opts.power ?? 0.6, 0, 1);
-      a.dur = slashTm.total;
+      a.tm = a.motion ? motionSlashTimes(opts.strikeIn, TIMING.slash, a.mtm, lead) : slashTm;
+      a.dur = a.tm.total;
       // Which edge leads is fixed for the whole swing (the side that keeps the wrist natural).
       if (kind === 'slash') a.sigma = slashEdgeSign(a.dir);
-    } else if (kind === 'thrust') a.dur = TIMING.thrust.total;
-    else if (kind === 'spearThrust') a.dur = TIMING.spearThrust.total;
-    else if (kind === 'bash') a.dur = TIMING.bash.total;
-    else if (kind === 'throwWindup') a.dur = opts.auto ? TIMING.throw.windup : 1.3;
+    } else if (kind === 'thrust' || kind === 'spearThrust' || kind === 'bash') {
+      const tm = TIMING[kind];
+      a.strike = a.motion ? lead + motionStrike(opts.strikeIn, tm.strike) : tm.strike;
+      a.total = a.motion ? a.strike + (tm.total - tm.strike) : tm.total;
+      a.blendIn = a.motion ? MOTION_SWING.blendIn : BLEND_IN[kind];
+      a.dur = a.total;
+    } else if (kind === 'throwWindup') a.dur = opts.auto ? TIMING.throw.windup : 1.3;
     else if (kind === 'throwRelease') {
       a.dur = Math.max(0.5, TIMING.throw.total - (opts.motion ? 0 : TIMING.throw.windup));
-      // The world spear spawns 0.03 s into a motion throw and at once for a touch throw (§7).
-      a.hideAt = opts.motion ? 0.03 : 0.012;
+      // The world spear spawns at strikeIn into a motion throw (0.03 s, §7) and at once for a touch
+      // throw; the release pose lands on it.
+      a.strike = opts.motion ? motionLead() + motionStrike(opts.strikeIn, 0.03) : RELEASE_AT;
+      a.hideAt = opts.motion ? a.strike : 0.012;
+      if (opts.motion) a.dur = Math.max(a.dur, a.strike - RELEASE_AT + 0.47); // reach the empty pose
       st.released = false;
     } else if (kind === 'draw') a.dur = 0.55;
     else if (kind === 'fall') a.dur = FALL.dur;
@@ -327,8 +355,14 @@ export function createViewmodel(ctx) {
 
   function addShieldFx(kind, opts = {}) {
     if (st.shieldFx.length >= 6) st.shieldFx.shift();
-    const f = { kind, t: 0, opts, side: opts.side ?? (rng.next() - 0.5) };
-    f.dur = kind === 'bash' ? TIMING.bash.total : kind === 'guardBreak' ? 0.9 : kind === 'arrow' ? 0.5 : 0.6;
+    const f = { kind, t: 0, opts, side: opts.side ?? (rng.next() - 0.5), motion: false, strike: 0, total: 0 };
+    if (kind === 'bash') {
+      const tm = TIMING.bash;
+      f.motion = isMotionSwing(opts);
+      f.strike = f.motion ? motionLead() + motionStrike(opts.strikeIn, tm.strike) : tm.strike;
+      f.total = f.motion ? f.strike + (tm.total - tm.strike) : tm.total;
+    }
+    f.dur = kind === 'bash' ? f.total : kind === 'guardBreak' ? 0.9 : kind === 'arrow' ? 0.5 : 0.6;
     st.shieldFx.push(f);
   }
 
@@ -405,7 +439,8 @@ export function createViewmodel(ctx) {
         play('bash', p);
         break;
       case 'throw':
-        if (p.src === 'motion') play('throwRelease', { motion: true, power: p.power });
+        // Motion: the phone already threw; the release pose lands at strikeIn (the spear's spawn).
+        if (p.src === 'motion') play('throwRelease', { motion: true, power: p.power, strikeIn: p.strikeIn });
         else play('throwWindup', { auto: true, power: p.power });
         break;
       default:
@@ -519,11 +554,19 @@ export function createViewmodel(ctx) {
   const fromPose = { p: null, q: null };
   const keysRelease = [
     { t: 0, pose: fromPose },
-    { t: 0.045, pose: POSES.release },
+    { t: RELEASE_AT, pose: POSES.release },
     { t: 0.2, pose: POSES.follow },
     { t: 0.42, pose: POSES.empty },
     { t: 10, pose: POSES.empty },
   ];
+  // Motion throw: the same keys shifted so the release pose lands at the arm's strike (strikeIn).
+  const keysReleaseMotion = keysRelease.map((k) => ({ t: k.t, pose: k.pose }));
+  function releaseKeys(a) {
+    if (!a.opts.motion) return keysRelease;
+    const shift = a.strike - RELEASE_AT;
+    for (let i = 1; i < 4; i++) keysReleaseMotion[i].t = keysRelease[i].t + shift;
+    return keysReleaseMotion;
+  }
   const keysDraw = [
     { t: 0, pose: fromPose },
     { t: 0.2, pose: POSES.drawLow },
@@ -532,6 +575,13 @@ export function createViewmodel(ctx) {
     { t: 10, pose: guard },
   ];
 
+  /** Thrust extension (touch: draw-back, lunge, hold, retract; motion: lunge at once). Kept in a.ext for the rig lunge. */
+  function thrustExt(a) {
+    const c = a.motion ? thrustCurveMotion(a.t, a.strike, a.total) : thrustCurve(a.t, a.strike, a.total);
+    a.ext = clamp(c, 0, 1);
+    return c;
+  }
+
   /** Evaluates the right-arm one-shot into `hand` (already holding the guard). */
   function evalArm(a) {
     const t = a.t;
@@ -539,7 +589,8 @@ export function createViewmodel(ctx) {
     fromPose.q = a.fromQ;
     switch (a.kind) {
       case 'slash': {
-        const s = slashParam(t, slashTm);
+        const tm = a.tm;
+        const s = slashParam(t, tm);
         slashGeometry(a.dir, s, slashOut, SWORD_REACH);
         _a.fromArray(slashOut.blade);
         _b.fromArray(slashOut.motion).addScaledVector(_a, -_b.dot(_a));
@@ -547,15 +598,17 @@ export function createViewmodel(ctx) {
         _b.normalize().multiplyScalar(a.sigma);
         tmpPose.p.fromArray(slashOut.hand);
         basisQuat(_a, _b, tmpPose.q);
-        const wIn = easeOutQuad(clamp(t / slashTm.ta, 0, 1));
+        // Touch: into the cocked pose by ta. Motion: onto the already moving path within blendIn.
+        const wIn = easeOutQuad(clamp(t / (a.motion ? tm.blendIn : tm.ta), 0, 1));
         slerpPose(hand, fromPose, tmpPose, wIn);
-        const wOut = ramp(slashTm.recover, slashTm.back, t);
+        const wOut = ramp(tm.recover, tm.back, t);
         if (wOut > 0) slerpPose(hand, hand, guard, wOut);
         break;
       }
       case 'spearSlash': {
         // The head sweeps along dir: the spear pivots about the hand while the hand drifts with it.
-        const s = slashParam(t, slashTm);
+        const tm = a.tm;
+        const s = slashParam(t, tm);
         const g = clamp(s, -1.6, 1.6);
         const dx = Math.cos(a.dir);
         const dy = Math.sin(a.dir);
@@ -563,35 +616,38 @@ export function createViewmodel(ctx) {
         _b.set(dy, -dx, 0); // axis in the view plane, perpendicular to the cut (the head moves along dir)
         _q.setFromAxisAngle(_b.normalize(), 0.42 * g);
         tmpPose.q.copy(guard.q).premultiply(_q);
-        slerpPose(hand, fromPose, tmpPose, easeOutQuad(clamp(t / slashTm.ta, 0, 1)));
-        const wOut = ramp(slashTm.recover, slashTm.back, t);
+        slerpPose(hand, fromPose, tmpPose, easeOutQuad(clamp(t / (a.motion ? tm.blendIn : tm.ta), 0, 1)));
+        const wOut = ramp(tm.recover, tm.back, t);
         if (wOut > 0) slerpPose(hand, hand, guard, wOut);
         break;
       }
       case 'thrust': {
-        const tm = TIMING.thrust;
-        const c = thrustCurve(t, tm.strike, tm.total);
-        tmpPose.p.lerpVectors(POSES.thrustBack.p, POSES.thrustOut.p, c);
-        tmpPose.q.slerpQuaternions(POSES.thrustBack.q, POSES.thrustOut.q, clamp(c, 0, 1));
-        slerpPose(hand, fromPose, tmpPose, easeOutQuad(clamp(t / 0.045, 0, 1)));
-        const wOut = ramp(tm.total * 0.62, tm.total, t);
+        const c = thrustExt(a);
+        if (a.motion && t < a.strike) {
+          // Straight from the guard to the extended pose: no chamber (the phone already drew back).
+          slerpPose(tmpPose, guard, POSES.thrustOut, c);
+        } else {
+          tmpPose.p.lerpVectors(POSES.thrustBack.p, POSES.thrustOut.p, c);
+          tmpPose.q.slerpQuaternions(POSES.thrustBack.q, POSES.thrustOut.q, clamp(c, 0, 1));
+        }
+        slerpPose(hand, fromPose, tmpPose, easeOutQuad(clamp(t / a.blendIn, 0, 1)));
+        const wOut = ramp(a.total * 0.62, a.total, t);
         if (wOut > 0) slerpPose(hand, hand, guard, wOut);
         break;
       }
       case 'spearThrust': {
-        const tm = TIMING.spearThrust;
-        const c = thrustCurve(t, tm.strike, tm.total);
+        const c = thrustExt(a);
         tmpPose.p.lerpVectors(guard.p, POSES.spearOut.p, c);
         tmpPose.q.slerpQuaternions(guard.q, POSES.spearOut.q, clamp(c, 0, 1));
-        slerpPose(hand, fromPose, tmpPose, easeOutQuad(clamp(t / 0.05, 0, 1)));
+        slerpPose(hand, fromPose, tmpPose, easeOutQuad(clamp(t / a.blendIn, 0, 1)));
         break;
       }
       case 'bash': {
         // The sword arm draws back and tucks in as the body drives the shield forward.
-        const c = bashCurve(t, TIMING.bash.strike, TIMING.bash.total);
+        const c = a.motion ? bashCurveMotion(t, a.strike, a.total) : bashCurve(t, a.strike, a.total);
         tmpPose.p.copy(guard.p).add(_a.set(0.03 * c, -0.03 * c, 0.07 * c));
         tmpPose.q.copy(guard.q);
-        slerpPose(hand, fromPose, tmpPose, easeOutQuad(clamp(t / 0.06, 0, 1)));
+        slerpPose(hand, fromPose, tmpPose, easeOutQuad(clamp(t / a.blendIn, 0, 1)));
         break;
       }
       case 'throwWindup': {
@@ -601,7 +657,7 @@ export function createViewmodel(ctx) {
         break;
       }
       case 'throwRelease':
-        keyed(keysRelease, t, hand);
+        keyed(releaseKeys(a), t, hand);
         if (!st.released && t >= a.hideAt) st.released = true;
         if (st.shown === 'spear' && st.released) st.shown = null;
         break;
@@ -763,10 +819,10 @@ export function createViewmodel(ctx) {
       }
       const t = f.t;
       if (f.kind === 'bash') {
-        const tm = TIMING.bash;
-        const c = bashCurve(t, tm.strike, tm.total);
-        raise = Math.max(raise, 0.92 * bump(t, 0, 0.06, tm.total - 0.15, tm.total));
-        const hit = t >= tm.strike ? jolt(t - tm.strike, 9, 16) : 0;
+        // Motion: no pull-back, the punch lands at strikeIn (f.strike); touch: TIMING.bash.
+        const c = f.motion ? bashCurveMotion(t, f.strike, f.total) : bashCurve(t, f.strike, f.total);
+        raise = Math.max(raise, 0.92 * bump(t, 0, f.motion ? MOTION_SWING.blendIn : 0.06, f.total - 0.15, f.total));
+        const hit = t >= f.strike ? jolt(t - f.strike, 9, 16) : 0;
         shieldOff.p.x += 0.05 * c;
         shieldOff.p.y += 0.035 * c;
         shieldOff.p.z += -0.26 * c + 0.03 * hit;
@@ -826,16 +882,17 @@ export function createViewmodel(ctx) {
       return false;
     }
     const win = 0.07;
-    const t1 = Math.min(a.t, slashTm.tc - 0.025);
-    const t0 = Math.max(slashTm.ta, a.t - win);
+    const tm = a.tm; // the touch slashTm, or this motion swing's own timeline (ta = 0: a trail from the first frame)
+    const t1 = Math.min(a.t, tm.tc - 0.025);
+    const t0 = Math.max(tm.ta, a.t - win);
     if (t1 - t0 < 0.004) {
       trail.hide();
       return false;
     }
-    const fadeOut = 1 - ramp(slashTm.tc - 0.07, slashTm.tc, a.t);
+    const fadeOut = 1 - ramp(tm.tc - 0.07, tm.tc, a.t);
     for (let i = 0; i < n; i++) {
       const tau = t0 + (t1 - t0) * (i / (n - 1));
-      const s = slashParam(tau, slashTm);
+      const s = slashParam(tau, tm);
       const age = (a.t - tau) / win + (1 - fadeOut);
       if (a.kind === 'slash') {
         slashGeometry(a.dir, s, slashOut, SWORD_REACH);
@@ -1015,10 +1072,7 @@ export function createViewmodel(ctx) {
     }
     // Lunge into thrusts.
     const a = st.arm;
-    if (a && (a.kind === 'thrust' || a.kind === 'spearThrust')) {
-      const tm = TIMING[a.kind];
-      rigOff.p.z -= 0.035 * clamp(thrustCurve(a.t, tm.strike, tm.total), 0, 1);
-    }
+    if (a && (a.kind === 'thrust' || a.kind === 'spearThrust')) rigOff.p.z -= 0.035 * a.ext; // set by evalArm this frame
     _q.setFromEuler(rigOff.r);
     sway.quaternion.copy(_q);
     sway.position.copy(PIVOT).applyQuaternion(_q).negate().add(PIVOT).add(rigOff.p);

@@ -196,13 +196,74 @@ test('player: the chain caps at 3.0, lapses after 4 s without a hit and resets o
   assert.equal(P().score, 140);
 });
 
-// ---- 4/5. Twin/Fury/Storm need flowing swings; motion has a 1.7 s window -------------------------
+// ---- 4/5. Twin/Fury/Storm need flowing swings; motion has 1.7 s windows (2.6 s for the Cleave) -----
 
-test('combos: COMBO_WINDOWS and the flow rows', () => {
-  assert.deepEqual({ ...COMBO_WINDOWS.touch }, { chain: 1.25, flow: 0.6 });
-  assert.deepEqual({ ...COMBO_WINDOWS.motion }, { chain: 1.7, flow: 1.7 });
+test('combos: COMBO_WINDOWS, the flow rows and the slow row', () => {
+  assert.deepEqual({ ...COMBO_WINDOWS.touch }, { chain: 1.25, flow: 0.6, step: 1.25 });
+  assert.deepEqual({ ...COMBO_WINDOWS.motion }, { chain: 2.6, flow: 1.7, step: 1.7 });
   const flow = new Set(COMBOS.filter((r) => r.flow).map((r) => r.id));
   assert.deepEqual([...flow].sort(), ['fury', 'storm', 'twin']);
+  const slow = new Set(COMBOS.filter((r) => r.slow).map((r) => r.id));
+  assert.deepEqual([...slow], ['cleave'], 'only the Cleave may span the whole 2.6 s motion window');
+  assert.ok(COMBOS.every((r) => !(r.flow && r.slow)));
+});
+
+test('combos: motion Cleave as the Agoge teaches it (uppercut, raise overhead, chop ~2.5 s later)', () => {
+  const m = () => {
+    const c = new ComboTracker();
+    c.setWindows(COMBO_WINDOWS.motion);
+    return c;
+  };
+  const pair = (a, b, gap) => {
+    const c = m();
+    c.push(a, 10);
+    const r = c.push(b, 10 + gap);
+    return r ? r.id : null;
+  };
+  for (const gap of [0.4, 1.5, 2.0, 2.5, 2.6]) assert.equal(pair('U', 'D', gap), 'cleave', `U, D ${gap} s apart`);
+  assert.equal(pair('UL', 'DR', 2.5), 'cleave', 'diagonal uppercut then chop');
+  assert.equal(pair('U', 'D', 2.7), null, 'beyond 2.6 s');
+  // touch keeps 1.25 s for the Cleave
+  const t = new ComboTracker();
+  t.setWindows(COMBO_WINDOWS.touch);
+  t.push('U', 10);
+  assert.equal(t.push('D', 11.5), null);
+});
+
+test('combos: in motion no row but the Cleave spans a gap over 1.7 s (no unintended chaining)', () => {
+  const rep = (set) => [...set].sort()[0]; // a deterministic token from each step set
+  for (const row of COMBOS) {
+    if (row.slow) continue;
+    const toks = row.seq.map(rep);
+    for (let j = 1; j < toks.length; j++) {
+      for (const gap of [1.75, 2.0, 2.5, 2.6]) {
+        const c = new ComboTracker();
+        c.setWindows(COMBO_WINDOWS.motion);
+        let t = 20;
+        let r = null;
+        toks.forEach((tok, i) => {
+          if (i) t += i === j ? gap : 0.5;
+          r = c.push(tok, t);
+        });
+        // whatever matches on the last token must lie wholly after the long gap
+        const after = toks.length - j;
+        assert.ok(!r || r.seq.length <= after, `${row.id} [${toks}] with ${gap} s before token ${j}: got ${r && r.id}`);
+      }
+    }
+    // and the same row with 1.6 s gaps still completes (motion keeps its 1.7 s flow and step)
+    const c = new ComboTracker();
+    c.setWindows(COMBO_WINDOWS.motion);
+    let r = null;
+    toks.forEach((tok, i) => (r = c.push(tok, 30 + 1.6 * i)));
+    assert.ok(r && r.seq.length === toks.length, `${row.id} at 1.6 s gaps: got ${r && r.id}`);
+  }
+  // Two unrelated slashes 2.5 s apart are no combo; the earlier token still never joins a later row.
+  const c = new ComboTracker();
+  c.setWindows(COMBO_WINDOWS.motion);
+  assert.equal(c.push('R', 0), null);
+  assert.equal(c.push('L', 2.5), null, 'R, L 2.5 s apart: no Twin');
+  assert.equal(c.push('R', 3.5).id, 'twin', 'L, R 1.0 s apart');
+  assert.equal(c.push('L', 4.5).id, 'fury', 'fury from the last three (the 2.5 s gap is outside it)');
 });
 
 test('combos: with the touch windows, slow alternation is no combo; other rows keep the 1.25 s window', () => {
@@ -237,13 +298,16 @@ test('combos: with the touch windows, slow alternation is no combo; other rows k
   m2.setWindows(COMBO_WINDOWS.motion);
   assert.deepEqual(ids(m2, ['U', 'D'], [1.5]), [null, 'cleave']);
   assert.deepEqual(ids(m2, ['R', 'L'], [1.8]), [null, null], 'beyond 1.7 s');
-  // Defaults are unchanged (no flow limit) and setWindows keeps omitted fields.
+  assert.deepEqual(ids(m2, ['DR', 'DL'], [1.8]), [null, null], 'xcut: beyond 1.7 s');
+  // Defaults are unchanged (no flow or step limit) and setWindows keeps omitted fields.
   const d = new ComboTracker();
   assert.equal(d.window, 1.25);
   assert.equal(d.flow, Infinity);
+  assert.equal(d.step, Infinity);
   d.setWindows({ flow: 0.6 });
   assert.equal(d.window, 1.25);
   assert.equal(d.flow, 0.6);
+  assert.equal(d.step, Infinity);
 });
 
 function slashes(dirs, gap) {
@@ -274,6 +338,18 @@ test('player: in motion mode R, L, R with a return to guard (1.5 s apart) is Twi
   h.ctx.input.motion = true;
   spawnAt('levy', 0, 1.6);
   assert.deepEqual(slashes([PI / 2, -PI / 2], 1.5), ['cleave'], 'U then D 1.5 s apart');
+  h.reset();
+  h.ctx.input.motion = true;
+  spawnAt('levy', 0, 1.6);
+  assert.deepEqual(slashes([PI / 2, -PI / 2], 2.5), ['cleave'], 'U, raise overhead, chop: 2.5 s apart');
+  h.reset();
+  h.ctx.input.motion = true;
+  spawnAt('levy', 0, 1.6);
+  assert.deepEqual(slashes([0, PI], 2.5), [], 'R then L 2.5 s apart: no Twin');
+  h.reset();
+  h.ctx.input.motion = true;
+  spawnAt('levy', 0, 1.6);
+  assert.deepEqual(slashes([-PI / 4, -3 * PI / 4], 2.5), [], 'DR then DL 2.5 s apart: no Cross');
   h.reset();
   h.ctx.input.motion = false;
   spawnAt('levy', 0, 1.6);

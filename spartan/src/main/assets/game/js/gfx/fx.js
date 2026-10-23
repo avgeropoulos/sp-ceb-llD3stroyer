@@ -17,7 +17,7 @@ export { TimeControl, SPEAR_CAM, HITSTOP_REARM, Shake, PARTICLE_CAP, DECAL_CAP }
 /** Hit-stop durations in seconds (DESIGN.md §11). */
 export const HITSTOP = Object.freeze({ hit: 0.05, kill: 0.085, crit: 0.085, block: 0.035, perfect: 0.11, hurt: 0.06 });
 
-/** Shake [radians, seconds], halved in motion mode. block and perfect are fx's own additions. */
+/** Shake [radians, seconds], scaled by MOTION_SHAKE in motion mode. block and perfect are fx's own additions. */
 export const SHAKE = Object.freeze({
   hit: Object.freeze([0.006, 0.12]),
   kill: Object.freeze([0.01, 0.2]),
@@ -27,6 +27,16 @@ export const SHAKE = Object.freeze({
   block: Object.freeze([0.008, 0.14]),
   perfect: Object.freeze([0.012, 0.2]),
 });
+
+/**
+ * Shake multipliers in motion mode, where the "camera" is the phone in the player's swinging hand
+ * and their eyes are already moving with it. The player's own blows (hit, kill, bash) get 0.4: the
+ * physical swing, the haptic, the sound and the blade's contact pose already confirm them, and a
+ * synthetic shake on top of the real one only blurs the next target and reads as a jumpy view. A
+ * block lands while the phone is held still in guard: 0.6. Blows the player takes hard (hurt,
+ * guard break) stay full, an outside jolt they must notice. `other` is the public shake() call.
+ */
+export const MOTION_SHAKE = Object.freeze({ hit: 0.4, kill: 0.4, bash: 0.4, block: 0.6, perfect: 0.6, hurt: 1, guardBreak: 1, other: 0.5 });
 
 /** Gameplay haptics: [ms, strength] pulses or vibration patterns (DESIGN.md §11 table). */
 export const HAPTICS = Object.freeze({
@@ -98,8 +108,8 @@ export function createFx(ctx) {
     return w && w.groundHeight ? w.groundHeight(x, z) : 0;
   }
 
-  function motionMul() {
-    return ctx.input && ctx.input.motion ? 0.5 : 1;
+  function motionMul(key) {
+    return ctx.input && ctx.input.motion ? MOTION_SHAKE[key] ?? MOTION_SHAKE.other : 1;
   }
 
   function haptic(entry) {
@@ -113,8 +123,10 @@ export function createFx(ctx) {
     }
   }
 
-  function addShake(entry) {
-    shake.add(entry[0] * motionMul(), entry[1]);
+  /** Adds the SHAKE row `key`, scaled for motion mode. */
+  function addShake(key) {
+    const entry = SHAKE[key];
+    shake.add(entry[0] * motionMul(key), entry[1]);
   }
 
   /** Writes the event point (or the target's chest) into `out`. Returns false if none. */
@@ -550,6 +562,9 @@ export function createFx(ctx) {
     lastSwingKind = e.kind || '';
     lastSwingDir = Number.isFinite(e.dir) ? e.dir : 0;
     lastSwingT = time.now;
+    // A motion swing ends a running hit-stop: the phone is already swinging again, and the new
+    // attack (and its viewmodel animation, which runs on pdt) must start now, not after the freeze.
+    if (e.src === 'motion') tc.endHitStop();
   }
   let lastHitTarget = null;
   let lastHitDx = 0;
@@ -617,7 +632,7 @@ export function createFx(ctx) {
       return;
     }
     tc.hitStop(e.critical ? HITSTOP.crit : HITSTOP.hit);
-    addShake(kind === 'bash' ? SHAKE.bash : SHAKE.hit);
+    addShake(kind === 'bash' ? 'bash' : 'hit');
     if (!spear) haptic(e.guarded ? HAPTICS.guarded : HAPTICS.fleshHit);
   }
 
@@ -650,7 +665,7 @@ export function createFx(ctx) {
     if (!e.byPlayer) return;
     if (cause !== 'bleed') {
       tc.hitStop(HITSTOP.kill);
-      addShake(SHAKE.kill);
+      addShake('kill');
     }
     if (!e.spear) haptic(HAPTICS.kill);
   }
@@ -674,15 +689,15 @@ export function createFx(ctx) {
     if (!byPlayer) return;
     if (e.perfect) {
       tc.hitStop(HITSTOP.perfect);
-      addShake(SHAKE.perfect);
+      addShake('perfect');
       haptic(HAPTICS.perfect);
     } else if (guardBreak) {
       tc.hitStop(HITSTOP.block); // player.guardBreak() pushes the view itself
-      addShake(SHAKE.guardBreak);
+      addShake('guardBreak');
       haptic(HAPTICS.block);
     } else {
       tc.hitStop(HITSTOP.block);
-      addShake(SHAKE.block);
+      addShake('block');
       haptic(HAPTICS.block);
     }
   }
@@ -690,7 +705,7 @@ export function createFx(ctx) {
   function onPlayerHurt() {
     // player.applyCamera adds the directional flinch; fx adds the hit-stop and the shake.
     tc.hitStop(HITSTOP.hurt);
-    addShake(SHAKE.hurt);
+    addShake('hurt');
     haptic(HAPTICS.hurt);
   }
 
@@ -789,7 +804,7 @@ export function createFx(ctx) {
   events.on('shield', onShield);
   events.on('spearThrown', onSpearThrown);
   events.on('volley', onVolley);
-  events.on('swing', onSwing); // only to aim blood along the player's blade
+  events.on('swing', onSwing); // aims blood along the player's blade; a motion swing ends a hit-stop
 
   // --- camera ----------------------------------------------------------------------------------
 
@@ -939,7 +954,7 @@ export function createFx(ctx) {
       decals.add(point, kind, size);
     },
     shake(intensity, duration = 0.2) {
-      shake.add((+intensity || 0) * motionMul(), +duration || 0.2);
+      shake.add((+intensity || 0) * motionMul('other'), +duration || 0.2);
     },
     hitStop(seconds) {
       return tc.hitStop(+seconds || 0);

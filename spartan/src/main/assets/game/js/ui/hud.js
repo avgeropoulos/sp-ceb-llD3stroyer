@@ -2,6 +2,7 @@
 // Polls ctx.player and ctx.fx.cameraOverridden every frame; events drive only transient effects.
 // DOM text changes only when its value changes, and only transform/opacity animate.
 import { clamp, smoothstep } from '../core/math.js';
+import { GESTURE_DEFAULTS, SENSITIVITY_MIN, SENSITIVITY_MAX } from '../motion/gestures.js';
 // Namespace import: a renamed export degrades to "no fade" instead of breaking the module graph.
 import * as campaign from '../game/campaign.js';
 
@@ -596,11 +597,11 @@ export function createHud(ctx) {
     if (dbgClock > 0) return;
     dbgClock = 1 / 15;
     const d = g.debug || {};
-    const s = clamp(settings.sensitivity || 1, 0.5, 2);
+    const s = clamp(settings.sensitivity || 1, SENSITIVITY_MIN, SENSITIVITY_MAX);
     const span = 14;
     dbg.m.style.transform = `scaleX(${clamp((d.m || 0) / span, 0, 1).toFixed(3)})`;
-    dbg.m1.style.transform = `translateX(${((3.5 / s / span) * 100).toFixed(1)}%)`;
-    dbg.m2.style.transform = `translateX(${((5.0 / s / span) * 100).toFixed(1)}%)`;
+    dbg.m1.style.transform = `translateX(${((GESTURE_DEFAULTS.swingStart / s / span) * 100).toFixed(1)}%)`;
+    dbg.m2.style.transform = `translateX(${((GESTURE_DEFAULTS.swingPeak / s / span) * 100).toFixed(1)}%)`;
     dbg.f.style.transform = `scaleX(${clamp((d.fwdAcc || 0) / 30, 0, 1).toFixed(3)})`;
     dbg.f1.style.transform = `translateX(${((12 / s / 30) * 100).toFixed(1)}%)`;
     dbg.b.style.transform = `scaleX(${clamp(((d.beta || 0) + 1.6) / 3.2, 0, 1).toFixed(3)})`;

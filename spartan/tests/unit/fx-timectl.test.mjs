@@ -56,6 +56,29 @@ test('hit-stop re-arm: none within 0.08 s of the last one ending', () => {
   assert.equal(HITSTOP_REARM, 0.08);
 });
 
+test('endHitStop (a motion swing) ends a running hit-stop at once and leaves the re-arm open', () => {
+  const { time, tc, step } = rig();
+  assert.equal(tc.endHitStop(), false, 'nothing to end');
+  tc.hitStop(0.11);
+  step(1);
+  assert.ok(time.hitStop > 0);
+  assert.equal(tc.endHitStop(), true);
+  assert.equal(time.hitStop, 0);
+  step(1);
+  assert.ok(time.pdt > 0 && time.gdt > 0, 'time runs on the next frame');
+  step(2); // the new blow strikes ~0.05 s later: it gets its own freeze
+  assert.equal(tc.hitStop(0.05), true, 'the next hit-stop is not blocked by the re-arm rule');
+});
+
+test('endHitStop never ends the spear-cam impact freeze', () => {
+  const { time, tc } = rig();
+  tc.camStart(false, 0.6, () => 0.6);
+  tc.camImpact();
+  assert.ok(tc.camActive && time.hitStop > 0);
+  assert.equal(tc.endHitStop(), false);
+  assert.ok(time.hitStop > 0);
+});
+
 test('hit-stop freezes gdt for its duration', () => {
   const { time, tc, step } = rig();
   tc.hitStop(0.1);

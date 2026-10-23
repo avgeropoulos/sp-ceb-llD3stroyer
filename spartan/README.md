@@ -60,6 +60,10 @@ blade points where you look.
 The corner buttons are **pause** (top left), **sword/spear** with your spear count (top right)
 and **recenter** (top middle).
 
+Gentle swings count too: the Agoge measures how hard you swing and suggests a sensitivity. If your
+slashes come out mirrored, turn on **Swap swing left/right** (or **up/down**) under Settings →
+Controls; the Agoge also notices and fixes a mirrored phone by itself.
+
 **Safety:** hold the phone firmly and use a wrist strap if you have one. Clear the space around
 you. **Never let go when you throw:** a firm flick is enough.
 

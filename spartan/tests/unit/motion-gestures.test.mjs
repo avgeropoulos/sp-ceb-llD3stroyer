@@ -49,16 +49,18 @@ function run(script, synthOpts, { kind = 'android', weapon = 'sword', sensitivit
   const frames = new MotionFrames({ platformKind: kind });
   const g = new GestureRecognizer({ sensitivity, weapon, gyroRange: synthOpts.gyroRange || 34.9 });
   const events = [];
+  const candidates = [];
   let look = 0;
   let maxLook = 0;
   for (const r of raw) {
     const s = frames.process(r);
     for (const e of g.push(s)) events.push({ ...e });
+    for (const c of g.consumeCandidates()) candidates.push({ ...c });
     look += g.consumeLook().yaw;
     maxLook = Math.max(maxLook, Math.abs(look));
     if (onSample) onSample(s, g, look);
   }
-  return { events, look, maxLook, g, frames };
+  return { events, candidates, look, maxLook, g, frames };
 }
 
 const describe = (events) => events.map((e) => (e.type === 'slash' ? `slash:${token(e.dir)}` : e.type)).join(' ') || '(none)';
@@ -99,11 +101,18 @@ test('R,L,R,L at about 2 Hz (arc 1.0, speed 9) gives 4 alternating slashes', () 
 });
 
 test('a slow return after a strike is not a slash; a deliberate reverse slash is', () => {
+  // The strike stays out (ret 0): the next stroke is its way back. (A 4 rad/s swing from the guard
+  // 1 s later is a gentle slash in its own right: see the gentle tests.)
   overMatrix((v) => {
-    const a = run([swing(0, { speed: 10 }), idle(0.05), swing(Math.PI, { speed: 4 }), idle(0.3)], v.s, { kind: v.kind });
+    const a = run([swing(0, { speed: 10, ret: 0 }), idle(0.05), swing(Math.PI, { speed: 4 }), idle(0.3)], v.s, { kind: v.kind });
     if (describe(a.events) !== 'slash:R') return `R10,L4 → ${describe(a.events)}`;
-    const b = run([swing(0, { speed: 10 }), idle(0.05), swing(Math.PI, { speed: 9 }), idle(0.3)], v.s, { kind: v.kind });
+    const b = run([swing(0, { speed: 10, ret: 0 }), idle(0.05), swing(Math.PI, { speed: 9 }), idle(0.3)], v.s, { kind: v.kind });
     if (describe(b.events) !== 'slash:R slash:L') return `R10,L9 → ${describe(b.events)}`;
+    // a gentle strike's own unhurried return to guard (1–2 rad/s) is never a slash
+    for (const ret of [1, 2]) {
+      const c = run([swing(0, { speed: 4, arc: 0.9 , ret }), idle(0.3), swing(Math.PI, { speed: 4, arc: 0.9, ret }), idle(0.3)], v.s, { kind: v.kind });
+      if (describe(c.events) !== 'slash:R slash:L') return `gentle R,L with returns at ${ret} → ${describe(c.events)}`;
+    }
     return null;
   });
 });
@@ -201,7 +210,7 @@ for (const sens of [0.6, 1, 1.6]) {
         if (describe(events) !== `slash:${tok}`) return `${tok} → ${describe(events)}`;
       }
       for (const speed of [9, 13, 18]) {
-        const { events } = run([{ kind: 'throw', speed: speed / sens, windupSpeed: 6 / sens }, idle(0.5)], v.s, { kind: v.kind, weapon: 'spear', sensitivity: sens });
+        const { events } = run([{ kind: 'throw', speed: speed / sens, windupSpeed: 6 / sens, lookBack: 0.7 * sens }, idle(0.5 * sens)], v.s, { kind: v.kind, weapon: 'spear', sensitivity: sens });
         if (describe(events) !== 'windup throw') return `throw ${speed} → ${describe(events)}`;
       }
       const { events } = run([{ kind: 'thrust', duration: 0.18 * sens, retract: 0.3 * sens }, idle(0.6)], v.s, { kind: v.kind, sensitivity: sens });
@@ -398,26 +407,41 @@ test('repeated gentle slashes (speed 5–6, default wind-up) do not turn the vie
   }, LIGHT);
 });
 
-test('a body turn just before a strike is kept, whichever way the strike goes', () => {
+test('a body turn just before a strike is kept; one that ends right before an opposite slash is its cock-back', () => {
   overMatrix((v) => {
-    for (const [yaw, dur] of [[0.4, 0.35], [-0.3, 1.0], [0.8, 0.6]]) {
-      for (const pause of [0.1, 0.3]) {
-        for (const dir of [0, Math.PI, Math.PI / 2]) {
-          const { look } = run([{ kind: 'turn', yaw, duration: dur }, idle(pause), swing(dir), idle(1.2)], v.s, { kind: v.kind });
-          if (Math.abs(look - yaw) > 0.06) return `turn ${yaw} in ${dur} s, ${pause} s, ${token(dir)}: look ${look.toFixed(3)}`;
-        }
+    // moderate turns (≤ 2 rad/s): kept whatever the strike when the pause is long enough to be no cock-back
+    for (const [yaw, dur] of [[0.4, 0.5], [-0.3, 1.0], [0.8, 0.9]]) {
+      for (const dir of [0, Math.PI, Math.PI / 2]) {
+        const { look } = run([{ kind: 'turn', yaw, duration: dur }, idle(0.35), swing(dir), idle(1.2)], v.s, { kind: v.kind });
+        if (Math.abs(look - yaw) > 0.06) return `turn ${yaw} in ${dur} s, 0.35 s, ${token(dir)}: look ${look.toFixed(3)}`;
       }
+      // right before the strike: kept when the slash goes the same way or up; dropped (a cock-back) when it goes back
+      const same = yaw > 0 ? Math.PI : 0;
+      for (const dir of [same, Math.PI / 2]) {
+        const { look } = run([{ kind: 'turn', yaw, duration: dur }, idle(0.1), swing(dir, { windup: 0 }), idle(1.2)], v.s, { kind: v.kind });
+        if (Math.abs(look - yaw) > 0.06) return `turn ${yaw} in ${dur} s, 0.1 s, ${token(dir)}: look ${look.toFixed(3)}`;
+      }
+      // ...against the slash: if it ended within lookCockGap of the strike it was the cock-back and
+      // is dropped, else kept; either way all or nothing, never part of it
+      const back = run([{ kind: 'turn', yaw, duration: dur }, idle(0.05), swing(same + Math.PI, { windup: 0 }), idle(1.2)], v.s, { kind: v.kind });
+      if (Math.min(Math.abs(back.look), Math.abs(back.look - yaw)) > 0.06) return `turn ${yaw} in ${dur} s, then the other way: look ${back.look.toFixed(3)}`;
+      if (dur <= 0.5 && Math.abs(back.look) > 0.06) return `turn ${yaw} in ${dur} s, then the other way at once: look ${back.look.toFixed(3)} (a cock-back)`;
     }
-    // and a brisk short turn on its own is still released once the phone holds still
-    const { look } = run([{ kind: 'turn', yaw: 0.4, duration: 0.35 }, idle(1.0)], v.s, { kind: v.kind });
-    return Math.abs(look - 0.4) <= 0.05 ? null : `brisk 0.4 rad turn: look ${look.toFixed(3)}`;
+    // a moderate short turn on its own is followed once the phone holds still; a brisk one (> 2 rad/s) is no turn
+    const { look } = run([{ kind: 'turn', yaw: 0.4, duration: 0.45 }, idle(1.0)], v.s, { kind: v.kind });
+    if (Math.abs(look - 0.4) > 0.05) return `moderate 0.4 rad turn: look ${look.toFixed(3)}`;
+    const brisk = run([{ kind: 'turn', yaw: 0.4, duration: 0.25 }, idle(1.0)], v.s, { kind: v.kind });
+    return Math.abs(brisk.look) <= 0.03 ? null : `brisk 0.4 rad turn in 0.25 s: look ${brisk.look.toFixed(3)}`;
   }, LIGHT);
 });
 
-test('a body turn after a strike is followed once the phone stays there', () => {
-  // strike right and stay (no return): after swingSettleTime the view follows the new heading
-  const { look } = run([swing(0, { ret: 0 }), idle(1.5)], { rate: 100, tilt: 0.5 });
-  assert.ok(look < -0.8, `look ${look}`);
+test('a strike that stays out never turns the view; a body turn after the arm has rested does', () => {
+  // strike right and stay there (no return): the view does not follow the arm
+  const a = run([swing(0, { ret: 0 }), idle(1.5)], { rate: 100, tilt: 0.5 });
+  assert.ok(Math.abs(a.look) < 0.03, `look ${a.look}`);
+  // ...then, once the arm has rested, a deliberate turn is followed 1:1
+  const b = run([swing(0, { ret: 0 }), idle(0.8), { kind: 'turn', yaw: -0.6, duration: 1.0 }, idle(0.8)], { rate: 100, tilt: 0.5 });
+  assert.ok(Math.abs(b.look + 0.6) < 0.06, `look ${b.look}`);
 });
 
 test('reset() clears recoil memory, the post-throw lock and look hold, without moving the view', () => {
@@ -428,8 +452,9 @@ test('reset() clears recoil memory, the post-throw lock and look hold, without m
     const g = new GestureRecognizer({ weapon });
     const ev = [];
     let tCut = null;
+    const keep = () => true;
     for (const r of first) {
-      for (const e of g.push(frames.process(r))) ev.push({ ...e });
+      for (const e of g.push(frames.process(r))) if (keep(e)) ev.push({ ...e });
       if (tCut === null && ev.length && when(g)) {
         tCut = r.t;
         between(g);
@@ -437,15 +462,15 @@ test('reset() clears recoil memory, the post-throw lock and look hold, without m
       }
     }
     assert.notEqual(tCut, null, 'cut point reached');
-    if (second) for (const r of second(tCut)) for (const e of g.push(frames.process(r))) ev.push({ ...e });
+    if (second) for (const r of second(tCut)) for (const e of g.push(frames.process(r))) if (keep(e)) ev.push({ ...e });
     return { ev: describe(ev), g };
   };
   const strikeIdle = (g) => g.debug.phase === 'idle';
 
-  // recoil memory: L at 52% of the R's speed right after it is a return, unless reset() came between
+  // recoil memory: L at 42% of the R's speed right after it is a return, unless reset() came between
   const strike = synthesize([idle(LEAD), swing(0, { speed: 12, ret: 0, recoil: 0 }), idle(0.2)], s);
-  const back = (t0) => synthesize([swing(Math.PI, { speed: 6.2, windup: 0, ret: 0 }), idle(0.3)], { ...s, t0: t0 + 0.01 });
-  assert.equal(play(strike, back, { when: strikeIdle, between: () => {} }).ev, 'slash:R', 'a 52% reverse is a return');
+  const back = (t0) => synthesize([swing(Math.PI, { speed: 5, windup: 0, ret: 0 }), idle(0.3)], { ...s, t0: t0 + 0.01 });
+  assert.equal(play(strike, back, { when: strikeIdle, between: () => {} }).ev, 'slash:R', 'a 42% reverse is a return');
   assert.equal(play(strike, back, { when: strikeIdle, between: (g) => g.reset() }).ev, 'slash:R slash:L');
 
   // post-throw lock and look hold
@@ -571,7 +596,7 @@ test('settled requires calm, no swing and an upright screen', () => {
 
 test('API: sensitivity clamps and scales, push returns a reused array, debug is populated', () => {
   const g = new GestureRecognizer({ sensitivity: 9 });
-  assert.equal(g.sens, 2);
+  assert.equal(g.sens, 2.2);
   g.setSensitivity(0.1);
   assert.equal(g.sens, 0.5);
   assert.equal(g._start, GESTURE_DEFAULTS.swingStart / 0.5);

@@ -1,6 +1,7 @@
 // ui/menus.js: title, settings, pause, game over, how to play, motion safety notice (#menus, z 30).
 // DESIGN.md §9, §10 (pause/back), §11 ui/*. Settings apply live and are saved with ctx.saveSettings().
 import { clamp } from '../core/math.js';
+import { SENSITIVITY_MIN, SENSITIVITY_MAX } from '../motion/gestures.js';
 
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V'];
 const ORDINAL = ['', 'first', 'second', 'third', 'fourth', 'fifth'];
@@ -31,11 +32,17 @@ export function pauseKicker(w) {
   return k;
 }
 
-/** Settings fields (§9). `tab` groups them; every field is live-applied. */
+/**
+ * Settings fields (§9). `tab` groups them; every field is live-applied. `motionOnly` rows grey out
+ * outside motion mode. The sensitivity range is the recognizer's (and the Agoge calibration's), and
+ * the two swap toggles fix a mirrored sensor setup (the Agoge also sets them when it sees mirrored swings).
+ */
 export const FIELDS = [
   { tab: 'controls', key: 'control', type: 'seg', label: 'Controls', options: [['motion', 'Motion'], ['touch', 'Touch']] },
-  { tab: 'controls', key: 'sensitivity', type: 'range', label: 'Sensitivity', hint: 'Motion: higher lets gentler swings count', min: 0.5, max: 2, step: 0.05, fmt: (v) => `${v.toFixed(2)}×` },
-  { tab: 'controls', key: 'gyroLook', type: 'toggle', label: 'Gyro look', hint: 'Motion: turn your body to turn the view' },
+  { tab: 'controls', key: 'sensitivity', type: 'range', label: 'Sensitivity', hint: 'Motion: higher lets gentler swings count', min: SENSITIVITY_MIN, max: SENSITIVITY_MAX, step: 0.05, fmt: (v) => `${v.toFixed(2)}×`, motionOnly: true },
+  { tab: 'controls', key: 'gyroLook', type: 'toggle', label: 'Gyro look', hint: 'Motion: turn your body to turn the view', motionOnly: true },
+  { tab: 'controls', key: 'motionFlipX', type: 'toggle', label: 'Swap swing left/right', hint: 'Motion: if your slashes come out mirrored', motionOnly: true },
+  { tab: 'controls', key: 'motionFlipY', type: 'toggle', label: 'Swap swing up/down', hint: 'Motion: if chops come out as uppercuts', motionOnly: true },
   { tab: 'controls', key: 'aimAssist', type: 'toggle', label: 'Aim assist', hint: 'Touch and keyboard: turn toward your foe' },
   { tab: 'controls', key: 'leftHanded', type: 'toggle', label: 'Left-handed', hint: 'Mirror the touch layout and demos' },
   { tab: 'controls', key: 'haptics', type: 'toggle', label: 'Haptics', hint: 'Feel every blow' },
@@ -491,7 +498,7 @@ export function createMenus(ctx) {
         row.querySelector('output').textContent = f.fmt(val);
         paintRange(input, f);
       }
-      if (f.key === 'sensitivity' || f.key === 'gyroLook') row.classList.toggle('is-off', settings.control !== 'motion');
+      if (f.motionOnly) row.classList.toggle('is-off', settings.control !== 'motion');
       if (f.key === 'aimAssist') row.classList.toggle('is-off', settings.control === 'motion');
     }
   }

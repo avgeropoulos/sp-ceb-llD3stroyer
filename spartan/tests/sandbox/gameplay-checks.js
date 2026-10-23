@@ -636,8 +636,8 @@ export const CHECKS = {
     h.action({ type: 'slash', dir: 0 });
     h.stepTime(0.12);
     ok(h.player.yaw === 0, 'no pull without aimAssist');
-    // Motion: the camera never moves; the attack yaw turns up to 0.44 rad.
-    for (const [ang, want] of [[0.3, 0.3], [0.6, 0.44], [-0.5, -0.44]]) {
+    // Motion: the camera never moves; the attack yaw turns up to 0.52 rad (±30°).
+    for (const [ang, want] of [[0.3, 0.3], [0.48, 0.48], [0.6, 0.52], [-0.6, -0.52]]) {
       h.reset();
       h.ctx.input.motion = true;
       const t = spawnAt(h, 'levy', ang, 1.8);
@@ -649,12 +649,15 @@ export const CHECKS = {
       const hit = h.events('hit').pop();
       ok(hit && hit.payload.target === t, 'motion hit');
     }
-    // Motion pitch eases toward the chest within [-0.26, 0.17].
+    // Motion pitch is steady and slightly lowered, whatever foe is near (no easing toward targets).
     h.reset();
     h.ctx.input.motion = true;
+    h.stepTime(0.5);
+    const steady = h.player.pitch;
+    near(steady, -0.07, 1e-9, 'steady, slightly lowered pitch');
     spawnAt(h, 'levy', 0, 1.5);
     h.stepTime(0.5);
-    ok(h.player.pitch < 0 && h.player.pitch >= -0.26, `pitch toward the chest (${h.player.pitch})`);
+    ok(h.player.pitch === steady, `a foe does not move the pitch (${h.player.pitch})`);
   },
 
   lungeAndDrift(h) {
@@ -701,21 +704,20 @@ export const CHECKS = {
   },
 
   autoFaceMotion(h) {
+    // No auto-face in either mode: in motion mode the view turns only with the player's body.
     h.reset();
     h.ctx.input.motion = true;
     const lv = h.spawn('levy', 0, 1.6, { blockChance: 0, hp: 1000, state: 'windup' });
     h.ctx.events.emit('enemyWindup', { actor: lv, timeToStrike: 2.5, targetIsPlayer: true });
-    h.stepTime(0.5);
-    near(Math.abs(h.player.yaw), 0.75, 0.03, 'turns at 1.5 rad/s');
-    h.stepTime(1.5);
-    near(Math.abs(h.player.yaw), Math.PI - 1.0, 0.03, 'stops once within 1.0 rad');
+    h.stepTime(2.0);
+    ok(h.player.yaw === 0, `motion: no auto-face (${h.player.yaw})`);
     // Touch mode: no auto-face.
     h.reset();
     const lv2 = h.spawn('levy', 0, 1.6, { blockChance: 0, hp: 1000, state: 'windup' });
     h.ctx.events.emit('enemyWindup', { actor: lv2, timeToStrike: 2.5, targetIsPlayer: true });
     h.stepTime(0.5);
     ok(h.player.yaw === 0, 'touch: no auto-face');
-    // A hostile in view blocks auto-face.
+    // Nor with a hostile in view (this blocked the old motion auto-face).
     h.reset();
     h.ctx.input.motion = true;
     spawnAt(h, 'levy', 0.2, 2.0);
@@ -999,6 +1001,8 @@ export function validateEvent(name, p, synthetic) {
       if (!['slash', 'thrust', 'spearThrust', 'bash', 'throw'].includes(p.kind)) return `kind ${p.kind}`;
       if (!Number.isFinite(p.dir) || !Number.isFinite(p.power) || p.power < 0 || p.power > 1) return 'dir/power';
       if (!['sword', 'spear', 'shield'].includes(p.weapon) || typeof p.src !== 'string') return 'weapon/src';
+      // seconds until the strike resolves (a throw: until the release); the viewmodel lands its contact pose on it
+      if (!Number.isFinite(p.strikeIn) || p.strikeIn < 0 || p.strikeIn > 0.5) return `strikeIn ${p.strikeIn}`;
       return null;
     case 'combo':
       if (typeof p.id !== 'string' || typeof p.name !== 'string' || !Array.isArray(p.seq)) return 'row fields';

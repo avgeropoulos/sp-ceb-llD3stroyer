@@ -4,6 +4,7 @@
 // above #controls so its buttons work in the motion layout.
 import { clamp } from '../core/math.js';
 import { dirToken, TOKEN_SETS } from '../game/rules.js';
+import { GESTURE_DEFAULTS, SENSITIVITY_MIN, SENSITIVITY_MAX } from '../motion/gestures.js';
 
 const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
 const WORD = { R: 'right', UR: 'up-right', U: 'up', UL: 'up-left', L: 'left', DL: 'down-left', D: 'down', DR: 'down-right' };
@@ -14,14 +15,49 @@ const FAR = { x: 1.5, z: -18 };
 const ASIDE_X = -1.4;
 const ASIDE_SPEED = 3.5; // m/s
 
-/** Sensitivity suggested by the calibration swings: clamp(9 / median(peak), 0.6, 1.8), to 0.05. */
-export function suggestSensitivity(peaks) {
+/**
+ * Sensitivity from calibration peaks: clamp(target / median(peak), min, max), to 0.05. The
+ * defaults are the original contract (9 rad/s, 0.6–1.8); the Agoge passes CALIBRATION.
+ */
+export function suggestSensitivity(peaks, { target = 9, min = 0.6, max = 1.8 } = {}) {
   if (!peaks || !peaks.length) return 1;
   const s = peaks.slice().sort((a, b) => a - b);
   const mid = s.length >> 1;
   const median = s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
   if (!(median > 0)) return 1;
-  return Math.round(clamp(9 / median, 0.6, 1.8) * 20) / 20;
+  return Math.round(clamp(target / median, min, max) * 20) / 20;
+}
+
+/**
+ * The Agoge's calibration: the threshold a slash must reach (swingPeak / s) lands at 60% of the
+ * player's median swing, so their weaker swings still count while returns and cock-backs do not.
+ */
+export const CALIBRATION = Object.freeze({ target: GESTURE_DEFAULTS.swingPeak / 0.6, min: 0.6, max: 2.2 });
+
+/**
+ * Picks the strokes out of the calibration's swing candidates ({ peak, t0, t } from gestures,
+ * oldest first): a stroke is at least STROKE_SHARE as fast as every candidate that touches it in
+ * time (within STROKE_GAP before its start or after its end). A cock-back just before a stroke
+ * and the return after it are slower, so they drop out; strokes of a steady rhythm all stay.
+ * Returns the strokes' peaks.
+ */
+const STROKE_SHARE = 0.8;
+export const STROKE_GAP = 0.45;
+function isStroke(cands, i) {
+  const c = cands[i];
+  let best = 0;
+  for (let j = 0; j < cands.length; j++) {
+    if (j === i) continue;
+    const o = cands[j];
+    const near = o.t0 <= c.t + STROKE_GAP && o.t >= c.t0 - STROKE_GAP;
+    if (near && o.peak > best) best = o.peak;
+  }
+  return c.peak >= STROKE_SHARE * best;
+}
+export function pickStrokes(cands) {
+  const out = [];
+  for (let i = 0; i < cands.length; i++) if (isStroke(cands, i)) out.push(cands[i].peak);
+  return out;
 }
 
 const swing = (dir, extra) => Object.assign({ kind: 'swing', dir }, extra);
@@ -38,7 +74,7 @@ export const STEPS = [
     touch: 'Left thumb: the stick moves you, SHIELD blocks. Right thumb: swipe to slash, tap to stab, drag slowly to look.',
     voice: 'Welcome to the Agoge. Take up your arms.', demo: null },
   { id: 'calibrate', title: 'Calibrate', n: 5, motionOnly: true,
-    motion: 'Slash 5 times, as hard as you would in battle.', touch: '',
+    motion: 'Slash 5 times, the way you will in battle. Gentle is fine.', touch: '',
     voice: 'Strike five times, as you would in battle.',
     demo: () => [idle(0.3), swing(0, { ret: 0 }), idle(0.3), swing(PI, { ret: 0 }), idle(0.3), swing(0), idle(0.3)] },
   { id: 'slashLR', title: 'Right and left', n: 4,
@@ -108,7 +144,7 @@ export function createTraining(ctx) {
       <div class="tr-tools">
         <div class="tr-last"><span class="tr-last-g"></span><span class="tr-last-t">No move yet</span></div>
         <div class="tr-meters"><i class="tr-meter"><b class="tr-mm"></b><em class="tr-mt"></em></i><i class="tr-meter"><b class="tr-mf"></b><em class="tr-ft"></em></i></div>
-        <label class="tr-sens"><span>Sens.</span><input type="range" min="0.5" max="2" step="0.05" aria-label="Sensitivity"><output></output></label>
+        <label class="tr-sens"><span>Sens.</span><input type="range" min="${SENSITIVITY_MIN}" max="${SENSITIVITY_MAX}" step="0.05" aria-label="Sensitivity"><output></output></label>
         <span class="tr-gap"></span>
         <button type="button" class="tr-btn tr-primary tr-ok" data-act="ok">I'm ready</button>
         <button type="button" class="tr-btn tr-demo" data-act="demo">Demo</button>
@@ -155,6 +191,8 @@ export function createTraining(ctx) {
   let volleyHit = false;
   let volleyLive = false;
   let peaks = [];
+  let cands = []; // calibration swing candidates (see pickStrokes)
+  let candAt = 0; // real time of the last one
   let suggestion = 1;
   let calibrating = false;
   let finished = false;
@@ -176,7 +214,7 @@ export function createTraining(ctx) {
   function paintSens(v) {
     el.sens.value = String(v);
     el.sensOut.textContent = `${(+v).toFixed(2)}×`;
-    el.sens.style.backgroundSize = `${(((v - 0.5) / 1.5) * 100).toFixed(1)}% 3px, 100% 3px`;
+    el.sens.style.backgroundSize = `${(((v - SENSITIVITY_MIN) / (SENSITIVITY_MAX - SENSITIVITY_MIN)) * 100).toFixed(1)}% 3px, 100% 3px`;
   }
 
   function renderStep() {
@@ -246,8 +284,9 @@ export function createTraining(ctx) {
     }
     count = 0;
     doneWait = 0;
-    sub = { r: 0, l: 0, switched: false, thrusts: 0, thrown: false };
+    sub = { r: 0, l: 0, switched: false, thrusts: 0, thrown: false, dirs: [] };
     peaks = [];
+    cands = [];
     calibrating = false;
     expects = [];
     enterStep();
@@ -342,21 +381,79 @@ export function createTraining(ctx) {
   ev.on('gesture', (g) => {
     if (!active || !g) return;
     showGesture(g.type, g.dir, g.power, g.type === 'windup' ? 'Wind-up' : '');
-    if (!counting()) return;
-    if (step.id === 'calibrate' && g.type === 'slash' && !calibrating) {
-      peaks.push(g.peak || 0);
-      count = Math.min(step.n, peaks.length);
-      renderCount();
-      if (peaks.length >= step.n) {
-        calibrating = true;
-        suggestion = suggestSensitivity(peaks);
-        const med = peaks.slice().sort((a, b) => a - b)[peaks.length >> 1];
-        el.calibT.textContent = `Your swings peak near ${med.toFixed(1)} rad/s. Suggested sensitivity ${suggestion.toFixed(2)}× (now ${(+settings.sensitivity).toFixed(2)}×).`;
-        el.calib.classList.add('is-shown');
-        root.classList.add('is-calib');
-      }
-    }
   });
+
+  // Calibration counts every swing-like motion, slash or not: a gentle swinger below the
+  // thresholds still calibrates (the 'gesture' slashes would never come).
+  ev.on('swingCandidate', (c) => {
+    if (!active || !c || !counting() || step.id !== 'calibrate' || calibrating) return;
+    cands.push({ peak: c.peak || 0, t0: Number.isFinite(c.t0) ? c.t0 : c.t, t: c.t });
+    candAt = ctx.time.now;
+    calibrateFromCandidates();
+  });
+
+  /**
+   * Counts the strokes among the candidates whose neighbours are all known: a later one started
+   * more than STROKE_GAP after it ended, or that long has passed (real time) since the last one.
+   */
+  function calibrateFromCandidates() {
+    const n = cands.length;
+    const quiet = ctx.time.now - candAt > STROKE_GAP + 0.05;
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const known = quiet || cands[n - 1].t0 > cands[i].t + STROKE_GAP;
+      if (known && isStroke(cands, i)) out.push(cands[i].peak);
+    }
+    peaks = out;
+    count = Math.min(step.n, peaks.length);
+    renderCount();
+    if (peaks.length < step.n) return;
+    calibrating = true;
+    suggestion = suggestSensitivity(peaks, CALIBRATION);
+    const med = peaks.slice().sort((a, b) => a - b)[peaks.length >> 1];
+    el.calibT.textContent = `Your swings peak near ${med.toFixed(1)} rad/s. Suggested sensitivity ${suggestion.toFixed(2)}× (now ${(+settings.sensitivity).toFixed(2)}×).`;
+    el.calib.classList.add('is-shown');
+    root.classList.add('is-calib');
+  }
+
+  /**
+   * Mirrored-setup check (motion only): in the directional steps, each slash is compared with
+   * what the instruction asked for. If 3 of a step's first 4 telling slashes went the opposite
+   * way, the matching setting (motionFlipX / motionFlipY) is toggled and saved.
+   * "Right and left" asks R, R, L, L; the overhead step D; the uppercut step U.
+   */
+  function checkMirrored(s, tok) {
+    const id = step.id;
+    if (s.src !== 'motion' || (id !== 'slashLR' && id !== 'overhead' && id !== 'uppercut')) return false;
+    let opposite;
+    if (id === 'slashLR') {
+      if (!TOKEN_SETS.Rish.has(tok) && !TOKEN_SETS.Lish.has(tok)) return false;
+      const want = sub.dirs.length < 2 ? 'R' : 'L';
+      opposite = want === 'R' ? TOKEN_SETS.Lish.has(tok) : TOKEN_SETS.Rish.has(tok);
+    } else {
+      if (!TOKEN_SETS.Uish.has(tok) && !TOKEN_SETS.Dish.has(tok)) return false;
+      opposite = id === 'overhead' ? TOKEN_SETS.Uish.has(tok) : TOKEN_SETS.Dish.has(tok);
+    }
+    if (sub.dirs.length >= 4) return false;
+    sub.dirs.push(opposite);
+    if (sub.dirs.filter((x) => x).length < 3) return false;
+    const key = id === 'slashLR' ? 'motionFlipX' : 'motionFlipY';
+    settings[key] = !settings[key];
+    if (ctx.saveSettings) ctx.saveSettings();
+    if (ctx.gestures && ctx.gestures.setFlip) ctx.gestures.setFlip(!!settings.motionFlipX, !!settings.motionFlipY);
+    // the slashes counted so far were mirrored: count them the right way round
+    if (id === 'slashLR') {
+      const r = sub.r;
+      sub.r = sub.l;
+      sub.l = r;
+    } else {
+      count = 0;
+      renderCount();
+    }
+    sub.dirs = [];
+    setHint('Swing direction corrected', 3);
+    return true;
+  }
 
   ev.on('swing', (s) => {
     if (!active || !s) return;
@@ -365,6 +462,7 @@ export function createTraining(ctx) {
     const id = step.id;
     if (s.kind === 'slash') {
       const tok = dirToken(s.dir);
+      if (checkMirrored(s, tok)) return;
       if (id === 'slashLR') {
         if (TOKEN_SETS.Rish.has(tok)) {
           if (sub.r < 2) {
@@ -502,7 +600,7 @@ export function createTraining(ctx) {
     }
   });
   el.sens.addEventListener('input', () => {
-    const v = clamp(parseFloat(el.sens.value), 0.5, 2);
+    const v = clamp(parseFloat(el.sens.value), SENSITIVITY_MIN, SENSITIVITY_MAX);
     settings.sensitivity = v;
     if (ctx.gestures && ctx.gestures.setSensitivity) ctx.gestures.setSensitivity(v);
     paintSens(v);
@@ -524,11 +622,12 @@ export function createTraining(ctx) {
     if (meterClock > 0) return;
     meterClock = 1 / 20;
     const d = (ctx.gestures && ctx.gestures.debug) || {};
-    const s = clamp(settings.sensitivity || 1, 0.5, 2);
+    const s = clamp(settings.sensitivity || 1, SENSITIVITY_MIN, SENSITIVITY_MAX);
     el.mm.style.transform = `scaleX(${clamp((d.m || 0) / 12, 0, 1).toFixed(3)})`;
     el.mf.style.transform = `scaleX(${clamp((d.fwdAcc || 0) / 30, 0, 1).toFixed(3)})`;
-    el.mt.style.transform = `translateX(${clamp((3.5 / s / 12) * 100, 0, 100).toFixed(1)}%)`;
-    el.ft.style.transform = `translateX(${clamp((12 / s / 30) * 100, 0, 100).toFixed(1)}%)`;
+    // the mark is where a swing becomes a slash (swingPeak at this sensitivity)
+    el.mt.style.transform = `translateX(${clamp((GESTURE_DEFAULTS.swingPeak / s / 12) * 100, 0, 100).toFixed(1)}%)`;
+    el.ft.style.transform = `translateX(${clamp((GESTURE_DEFAULTS.thrustAcc / s / 30) * 100, 0, 100).toFixed(1)}%)`;
   }
 
   const api = {
@@ -599,6 +698,7 @@ export function createTraining(ctx) {
       updateMeters(dt);
       slideDummy(dt);
       if (finished) return;
+      if (step && step.id === 'calibrate' && !calibrating && cands.length && counting()) calibrateFromCandidates();
       if (doneWait > 0) {
         doneWait -= dt;
         if (doneWait <= 0) goTo(index + 1);

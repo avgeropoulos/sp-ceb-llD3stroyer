@@ -41,6 +41,8 @@ const DEFAULT_SETTINGS = {
   sfx: 1.0,
   sensorDebug: false,
   safetyAccepted: false,
+  motionFlipX: false, // a mirrored sensor setup: swing directions left↔right (dir → π − dir)
+  motionFlipY: false, // ... and up↔down (dir → −dir)
 };
 
 const PIXEL_RATIO_CAP = { low: 1.0, medium: 1.25, high: 1.5 };
@@ -397,6 +399,9 @@ async function boot() {
     const overridden = ctx.fx.cameraOverridden;
     gestures.setSensitivity(settings.sensitivity);
     gestures.setWeapon(player.weapon === 'spear' && player.hasSpearInHand ? 'spear' : 'sword');
+    // A mirrored setup is corrected on the rates themselves, so every directional decision
+    // (uppercut, chop, throw, recoil) and gyro look agree: flipX gives dir → π − dir, flipY dir → −dir.
+    gestures.setFlip?.(!!settings.motionFlipX, !!settings.motionFlipY);
     const raw = platform.motion.poll();
     for (let i = 0; i < raw.length; i++) {
       const sample = ctx.motionFrames.process(raw[i]);
@@ -414,6 +419,9 @@ async function boot() {
         else if (g.type === 'throw') ctx.actions.push({ type: 'throw', power: g.power, src: 'motion' });
       }
     }
+    // any swing-like excursion, slash or not: the Agoge calibrates from these
+    const cands = gestures.consumeCandidates ? gestures.consumeCandidates() : null;
+    if (cands) for (let i = 0; i < cands.length; i++) ctx.events.emit('swingCandidate', cands[i]);
     if (wasOverridden && !overridden) gestures.resumeLook();
     wasOverridden = overridden;
     const look = gestures.consumeLook();

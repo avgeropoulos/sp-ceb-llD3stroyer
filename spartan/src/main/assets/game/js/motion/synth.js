@@ -154,8 +154,26 @@ function makeRig(o) {
   const rq = qAxisAngle(b, o.roll * hs);
   R = qRot(rq, R);
   U = qRot(rq, U);
-  const Q0 = qFromBasis(R, U, scale(b, -1));
-  return { hs, P0, Q0, S0 };
+  let Q0 = qFromBasis(R, U, scale(b, -1));
+  // aim: the forearm (and the phone with it) points off the body's forward by this yaw, so the
+  // screen faces partly sideways; swings follow the forearm (mirrored for the left hand)
+  if (o.aim) Q0 = qNorm(qMul(qAxisAngle(UP, o.aim * hs), Q0));
+  return { hs, P0, Q0, S0, G: gripQuat(o.grip, hs) };
+}
+
+/**
+ * The phone's attitude in the hand (body frame of the hand → phone), from opts.grip =
+ * { pitch, roll, yaw } in radians: pitch > 0 tilts the screen back (top edge away from the
+ * player, screen facing up toward the eyes, the back of the phone pointing down), roll turns the
+ * phone about its own back axis, yaw turns the screen to face partly sideways (positive: the
+ * screen faces right). Roll and yaw are mirrored for the left hand. The arm's motion is unchanged:
+ * only what the sensors see differs (a gripped phone reports the hand's rotation in its own frame).
+ */
+function gripQuat(grip, hs) {
+  if (!grip) return null;
+  const pitch = grip.pitch || 0, roll = (grip.roll || 0) * hs, yaw = (grip.yaw || 0) * hs;
+  if (!pitch && !roll && !yaw) return null;
+  return qNorm(qMul(qMul(qAxisAngle([0, 1, 0], yaw), qAxisAngle([1, 0, 0], -pitch)), qAxisAngle([0, 0, 1], roll)));
 }
 
 const guardPose = (rig, yaw) => ({ p: yawAbout(rig.P0, yaw), q: qNorm(qMul(qAxisAngle(UP, yaw), rig.Q0)) });
@@ -174,8 +192,19 @@ function push(st, pieces, dur, f) {
   st.t += dur;
 }
 
-function pushReturn(st, rig, pieces, dur) {
-  const g = guardPose(rig, st.yaw);
+/**
+ * The guard a return goes back to: the true guard, or (sloppy returns) one off by `offYaw` about
+ * the trunk and `offPitch` about the body's right axis. The body has not turned: st.yaw stays.
+ */
+function returnPose(rig, yaw, offYaw = 0, offPitch = 0) {
+  if (!offYaw && !offPitch) return guardPose(rig, yaw);
+  const g = guardPose(rig, yaw + offYaw);
+  if (!offPitch) return g;
+  const r = qAxisAngle(rightOf(yaw + offYaw), offPitch);
+  return { p: g.p, q: qNorm(qMul(r, g.q)) };
+}
+
+function pushReturn(st, rig, pieces, dur, g = guardPose(rig, st.yaw)) {
   const p0 = st.p, q0 = st.q;
   let qg = g.q;
   if (qDot(q0, qg) < 0) qg = qg.map((c) => -c);
@@ -246,8 +275,16 @@ function buildSwing(seg, st, rig, pieces) {
   const ret = seg.ret ?? 2.5;
   const wrist = seg.wrist ?? 0.3;
   const pronate = seg.pronate ?? 0.3;
+  // Wrist roll about the forearm (horizontal and forward at the swing's start, then carried by the
+  // arm): wristRoll·sin(π·progress) during the stroke, plus rollEnd·progress that stays until the
+  // return (mirrored for the left hand). A hand-local rotation: it does not tilt the arm's sweep.
+  const wristRoll = (seg.wristRoll ?? 0) * rig.hs;
+  const rollEnd = (seg.rollEnd ?? 0) * rig.hs;
   const p0 = st.p, q0 = st.q;
   const b = blade(q0);
+  let fore = [b[0], 0, b[2]];
+  fore = len(fore) > 0.2 ? norm(fore) : forwardOf(st.yaw);
+  const foreLocal = qRot(qConj(q0), fore);
   // View frame at the blade, gravity-aligned and unwrapped past vertical like §5.3:
   // R = s·normalize(b × up), U = R × b is the direction in which the blade elevation rises.
   const sgn = qRot(q0, UP)[1] >= 0 ? 1 : -1;
@@ -283,12 +320,17 @@ function buildSwing(seg, st, rig, pieces) {
       // roll about the blade (body −z)
       q = qMul(q, qAxisAngle(zBody, -pronate * diag * Math.sin(Math.PI * s5((tl - t2) / ts))));
     }
+    if ((wristRoll || rollEnd) && tl > t2) {
+      const k = tl < t3 ? s5((tl - t2) / ts) : 1;
+      const r = wristRoll * Math.sin(Math.PI * k) + rollEnd * k;
+      if (r) q = qMul(q, qAxisAngle(foreLocal, r));
+    }
     return { p, q: qNorm(q) };
   });
   if (ret > 0) {
-    const g = guardPose(rig, st.yaw);
+    const g = returnPose(rig, st.yaw, seg.retYaw || 0, seg.retPitch || 0);
     const ang = qAngle(st.q, g.q);
-    pushReturn(st, rig, pieces, Math.max(0.15, (1.875 * ang) / ret));
+    pushReturn(st, rig, pieces, Math.max(0.15, (1.875 * ang) / ret), g);
   }
 }
 
@@ -366,7 +408,7 @@ const BUILDERS = {
 
 function normOpts(opts = {}) {
   return {
-    rate: 100, rot: 90, tilt: 0, roll: 0, hand: 'right', noise: 1, seed: 1, gravitySign: 1,
+    rate: 100, rot: 90, tilt: 0, roll: 0, aim: 0, grip: null, hand: 'right', noise: 1, seed: 1, gravitySign: 1,
     includeLinear: true, includeGravity: true, gyroRange: 34.9, jitter: 0, t0: 0,
     ...opts,
   };
@@ -396,7 +438,13 @@ function compile(script, o) {
     }
     return pieces[lo].f(t - pieces[lo].t0);
   };
-  return { pose, duration: st.t, rng, rig };
+  // the phone as gripped in the hand (opts.grip): what the sensors see
+  const G = rig.G;
+  const phonePose = G ? (t) => {
+    const h = pose(t);
+    return { p: h.p, q: qMul(h.q, G) };
+  } : pose;
+  return { pose: phonePose, duration: st.t, rng, rig };
 }
 
 /** Total length of a script in seconds (with default synth options unless given). */
@@ -407,8 +455,8 @@ export function scriptDuration(script, opts) {
 /**
  * Simulates the phone sensors for a script (DESIGN.md §5.4).
  * @param {object[]} script segments, back-to-back
- * @param {object} [opts] { rate, rot, tilt, roll, hand, noise, seed, gravitySign, includeLinear,
- *   includeGravity, gyroRange, jitter, t0 }
+ * @param {object} [opts] { rate, rot, tilt, roll, aim, grip: { pitch, roll, yaw }, hand, noise, seed,
+ *   gravitySign, includeLinear, includeGravity, gyroRange, jitter, t0 }
  * @returns {{t:number, gyro:number[], acc:number[]|null, accG:number[]|null, grav:number[]|null, rot:number}[]}
  *   RawSamples in the device frame (§5.1)
  */

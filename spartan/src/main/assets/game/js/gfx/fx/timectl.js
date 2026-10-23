@@ -110,6 +110,21 @@ export class TimeControl {
     return true;
   }
 
+  /**
+   * Ends a running hit-stop now. Used when a motion swing starts: the player has moved on, and the
+   * new attack (and its viewmodel animation, which runs on pdt) must not wait out the old freeze.
+   * The freeze was cut short, so the re-arm rule does not apply to the next one: the new blow
+   * strikes ~50 ms later and gets its own hit-stop. Never ends the spear cam's impact freeze.
+   * Returns true if a hit-stop was running.
+   */
+  endHitStop() {
+    const t = this.time;
+    if (!(t.hitStop > 0) || this.camPhase !== 'off') return false;
+    t.hitStop = 0;
+    this.hsEndAt = -Infinity;
+    return true;
+  }
+
   /** Forces a freeze of at least `s` (spear-cam impact). Ignores the re-arm rule. */
   freeze(s) {
     const t = this.time;
