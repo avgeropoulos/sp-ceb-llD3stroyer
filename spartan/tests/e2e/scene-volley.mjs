@@ -77,7 +77,8 @@ try {
   await setVis(true);
   const sky0 = band(ref, ...SKY);
   const ground0 = band(ref, ...GROUND);
-  console.log('reference', JSON.stringify({ t: await ev(() => +window.__game.ctx.time.gnow.toFixed(2)), skyLuma: +sky0.toFixed(1), groundLuma: +ground0.toFixed(1) }));
+  const programs0 = await ev(() => window.__game.ctx.renderer.info.programs.length);
+  console.log('reference', JSON.stringify({ t: await ev(() => +window.__game.ctx.time.gnow.toFixed(2)), skyLuma: +sky0.toFixed(1), groundLuma: +ground0.toFixed(1), programs: programs0 }));
   for (let i = 0; i < 80; i++) {
     const loosed = await ev(() => window.__game.ctx.__vol.some((p) => p[0] === 'loosed'));
     if (loosed) break;
@@ -114,6 +115,10 @@ try {
     await page.screenshot({ path: file, timeout: 300000 });
     console.log(file, JSON.stringify(facts));
   }
+  // The streaks' program was compiled behind the boot screen: a volley compiles nothing new.
+  const programs1 = await ev(() => window.__game.ctx.renderer.info.programs.length);
+  console.log('programs', programs0, '->', programs1, programs1 === programs0 ? 'ok' : 'NEW PROGRAM COMPILED DURING THE VOLLEY');
+  if (programs1 !== programs0) process.exitCode = 1;
   const errs = page.errors.concat(await ev(() => window.__game.errors));
   if (errs.length) {
     console.error(errs.slice(0, 5).join('\n'));

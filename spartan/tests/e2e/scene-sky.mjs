@@ -3,7 +3,8 @@
 // each shot it prints mean luma and HSV saturation of the upper sky, the horizon band, the lit
 // cliff and the ground, read back from the canvas, plus the upper-sky/cliff luma ratio
 // (target about 0.5–0.8: a sky that neither blows out nor reads as night over a lit cliff).
-// Usage: node spartan/tests/e2e/scene-sky.mjs <outDir> [WxH=915x412] [todList=dawn,morning,noon,afternoon,dusk] [patchJSON]
+// Usage: node spartan/tests/e2e/scene-sky.mjs <outDir> [WxH=915x412] [todList=dawn,morning,noon,afternoon,dusk]
+//   [patchJSON, e.g. '{"dusk":[{"exposure":1.3},{"exposure":1.1}]}']
 import fs from 'node:fs';
 import path from 'node:path';
 import { launch } from './lib.mjs';
@@ -14,7 +15,14 @@ fs.mkdirSync(outDir, { recursive: true });
 const l = await launch();
 const PATCH = JSON.parse(patchArg);
 const DAY = { dawn: 3, morning: 1, noon: 2, afternoon: 2, dusk: 1 };
-const VARIANTS = Object.fromEntries(todArg.split(',').map((t) => [t, [[PATCH[t] ? 'patched' : 'shipped', PATCH[t] || {}]]]));
+// A patch per time of day is an object, or an array of objects to compare several variants.
+const VARIANTS = Object.fromEntries(
+  todArg.split(',').map((t) => {
+    const p = PATCH[t];
+    if (Array.isArray(p)) return [t, p.map((v, i) => [`v${i}`, v])];
+    return [t, [[p ? 'patched' : 'shipped', p || {}]]];
+  }),
+);
 try {
   const page = await l.newPage({ width, height });
   const ev = (fn, arg) => page.evaluate(fn, arg);

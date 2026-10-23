@@ -636,7 +636,11 @@ export function buildSprings(layout, poolMat, crustMat, steamMat, quality) {
   return { pools: poolMesh, crust: crustMesh, steam };
 }
 
-/** Steam shader: rising, expanding, fading puffs lit by the sun and sky colours. */
+/**
+ * Steam shader: rising, expanding, fading puffs lit by the sun and sky colours. `uniforms.maxSize`
+ * is the size a puff grows to (m; default 3.2). Puffs near the eye fade and shrink away, and are
+ * collapsed when gone, so standing in a spring's plume doesn't stack 20 screen-filling layers.
+ */
 export function makeSteamMaterial(map, uniforms) {
   return new THREE.ShaderMaterial({
     name: 'steam',
@@ -647,6 +651,7 @@ export function makeSteamMaterial(map, uniforms) {
       uShade: uniforms.shade,
       uWind: { value: new THREE.Vector2(-0.35, 0.12) },
       uSunDir: uniforms.sunDir,
+      uMaxSize: { value: uniforms.maxSize || 3.2 },
     },
     vertexShader: /* glsl */ `
       attribute vec4 iBase;
@@ -654,6 +659,7 @@ export function makeSteamMaterial(map, uniforms) {
       uniform float uTime;
       uniform vec2 uWind;
       uniform vec3 uSunDir;
+      uniform float uMaxSize;
       varying vec2 vUv;
       varying float vAlpha;
       varying float vLit;
@@ -666,14 +672,18 @@ export function makeSteamMaterial(map, uniforms) {
         p.xz += uWind * rise * rise * 0.45;
         p.x += sin( uTime * 0.6 + iSeed.w * 6.283 ) * 0.35 * age;
         p.z += cos( uTime * 0.45 + iSeed.y * 6.283 ) * 0.35 * age;
-        float size = mix( 0.5, 3.2, sqrt( age ) ) * ( 0.7 + iSeed.z * 0.6 ) * iBase.w;
+        float size = mix( 0.5, uMaxSize, sqrt( age ) ) * ( 0.7 + iSeed.z * 0.6 ) * iBase.w;
         vec4 mv = viewMatrix * vec4( p, 1.0 );
+        // Close to the eye a puff fades and shrinks (it would fill the view with overdraw), and
+        // once it has faded out the quad collapses so it rasterizes nothing at all.
+        float near = smoothstep( 1.0, 3.5, length( mv.xyz ) );
+        size *= mix( 0.5, 1.0, near );
         float rot = iSeed.w * 6.283 + uTime * 0.15 * ( iSeed.x - 0.5 );
-        vec2 c = ( uv - 0.5 ) * size;
+        vec2 c = ( uv - 0.5 ) * size * step( 0.01, near );
         mv.xy += mat2( cos( rot ), sin( rot ), -sin( rot ), cos( rot ) ) * c;
         gl_Position = projectionMatrix * mv;
         vUv = uv;
-        vAlpha = smoothstep( 0.0, 0.12, age ) * ( 1.0 - smoothstep( 0.3, 1.0, age ) ) * iBase.w;
+        vAlpha = smoothstep( 0.0, 0.12, age ) * ( 1.0 - smoothstep( 0.3, 1.0, age ) ) * iBase.w * near;
         // Puffs between the eye and the sun glow (forward scattering).
         vec3 toCam = normalize( cameraPosition - p );
         vLit = 0.55 + 0.45 * max( 0.0, -dot( toCam, uSunDir ) );
@@ -688,8 +698,10 @@ export function makeSteamMaterial(map, uniforms) {
       varying float vLit;
       void main() {
         vec4 t = texture2D( map, vUv );
+        float a = t.a * vAlpha * 0.78;
+        if ( a < 0.004 ) discard;
         vec3 col = mix( uShade, uLight, vLit );
-        gl_FragColor = vec4( col, t.a * vAlpha * 0.78 );
+        gl_FragColor = vec4( col, a );
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }

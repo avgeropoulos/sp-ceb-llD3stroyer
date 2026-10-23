@@ -283,7 +283,7 @@ export function createTextures(ctx, opts = {}) {
         report(name);
       }
     };
-    const count = gens.length ? (opts.workers ?? textureWorkerCount()) : 0;
+    const count = gens.length ? (opts.workers ?? textureWorkerCount(quality)) : 0;
     const onWorkers = count > 0
       ? runOnWorkers(gens, {
         count,

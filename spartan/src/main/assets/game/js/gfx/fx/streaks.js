@@ -13,8 +13,9 @@ import * as THREE from 'three';
 
 /** Companion streaks drawn around each arrow's own streak. */
 export const PACK = 3;
-/** Floats per instance: iHead xyz, iTail xyz, iPar (opacity, seed). */
-const STRIDE = 8;
+/** Floats per instance in `data`: iHead xyz (0–2), iTail xyz (3–5), opacity (6), seed (7). */
+export const STREAK_STRIDE = 8;
+const STRIDE = STREAK_STRIDE;
 
 const VERT = /* glsl */ `
 #include <common>
@@ -109,7 +110,8 @@ void main() {
  * Creates the streak batch for up to `cap` arrows.
  * @param {number} cap arrows (each draws 1 + PACK streaks)
  * @param {object} [opts] { renderer, color (linear), width (m), minPx, renderOrder }
- * @returns {{ mesh, set(i, hx, hy, hz, tx, ty, tz, alpha, seed), commit(n) }}
+ * @returns {{ mesh, data, set(i, hx, hy, hz, tx, ty, tz, alpha, seed), commit(n) }} `data` is the
+ *   instance array (STREAK_STRIDE floats per arrow), for hot loops that write it in place.
  */
 export function createArrowStreaks(cap, opts = {}) {
   const geom = new THREE.InstancedBufferGeometry();
@@ -162,6 +164,7 @@ export function createArrowStreaks(cap, opts = {}) {
 
   return {
     mesh,
+    data,
     /** Writes arrow i: head (the tip), tail (back along the flight), opacity 0..1, seed 0..1. */
     set(i, hx, hy, hz, tx, ty, tz, alpha, seed) {
       const o = i * STRIDE;

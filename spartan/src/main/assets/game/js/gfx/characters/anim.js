@@ -9,7 +9,9 @@
  *   flinch additive damped springs on the torso and head, by hit direction
  * Arms and legs are two-bone IK (hands in chest space, feet on the ground in mesh space);
  * the weapon and shield are aimed by direction. Lying poses are ground-corrected so bodies
- * rest on the ground. Nothing here allocates per frame.
+ * rest on the ground. Nothing here allocates per frame: in the hot paths, scalars cross helper
+ * calls through the Float64Array scratch _f (or as a typed array and an index) rather than as
+ * arguments or return values, which V8 would box when the call is not inlined.
  */
 import * as THREE from 'three';
 import { B, BONES } from './rig.js';
@@ -27,10 +29,58 @@ const _v = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map(() => new THREE.Ve
 const _sx = new THREE.Vector3(), _sy = new THREE.Vector3(), _sz = new THREE.Vector3();
 const _ua = new THREE.Vector3(), _ub = new THREE.Vector3(), _uc = new THREE.Vector3(), _ud = new THREE.Vector3();
 const _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion(), _qc = new THREE.Quaternion(), _qd = new THREE.Quaternion();
+// scalar scratch: Euler angles for eulerQa(q, _f, F_E), solve2's lengths in and angle out, dt
+const _f = new Float64Array(8);
+const F_E = 0, F_L1 = 3, F_L2 = 4, F_PHI = 5, F_DT = 6, F_W = 7;
+
+/** v.normalize(), written out (bit for bit: three.js scales by 1 / length). */
+function normalizeV(v) {
+  const inv = 1 / (Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z) || 1);
+  v.x *= inv;
+  v.y *= inv;
+  v.z *= inv;
+  return v;
+}
 
 function eulerQ(q, x, y, z, order = 'YXZ') {
   _e.set(x, y, z, order);
   return q.setFromEuler(_e);
+}
+
+/**
+ * q from the YXZ Euler angles a[i], a[i + 1], a[i + 2] (x pitch, y yaw, z roll): the same as
+ * eulerQ(q, a[i], a[i + 1], a[i + 2]) (three.js setFromEuler, bit for bit), without passing
+ * the angles as arguments.
+ */
+function eulerQa(q, a, i) {
+  const x = a[i], y = a[i + 1], z = a[i + 2];
+  const c1 = Math.cos(x / 2), c2 = Math.cos(y / 2), c3 = Math.cos(z / 2);
+  const s1 = Math.sin(x / 2), s2 = Math.sin(y / 2), s3 = Math.sin(z / 2);
+  q._x = s1 * c2 * c3 + c1 * s2 * s3;
+  q._y = c1 * s2 * c3 - s1 * c2 * s3;
+  q._z = c1 * c2 * s3 - s1 * s2 * c3;
+  q._w = c1 * c2 * c3 + s1 * s2 * s3;
+  q._onChangeCallback();
+  return q;
+}
+
+/** v = (a[i], a[i + 1], a[i + 2]) without passing the values as arguments. */
+function setA(v, a, i) {
+  v.x = a[i];
+  v.y = a[i + 1];
+  v.z = a[i + 2];
+  return v;
+}
+
+/** q = rotation by a[i] about +X (as setFromAxisAngle((1, 0, 0), a[i])). */
+function axisXQ(q, a, i) {
+  const h = a[i] / 2;
+  q._x = Math.sin(h);
+  q._y = 0;
+  q._z = 0;
+  q._w = Math.cos(h);
+  q._onChangeCallback();
+  return q;
 }
 
 function basisQ(q, x, y, z) {
@@ -40,56 +90,84 @@ function basisQ(q, x, y, z) {
 
 /** Orthonormal frame with Z along `z` and Y as close as possible to `yHint`. */
 function frameQ(q, z, yHint, fallback) {
-  _sz.copy(z).normalize();
+  normalizeV(_sz.copy(z));
   _sy.copy(yHint);
-  _sy.addScaledVector(_sz, -_sy.dot(_sz));
-  if (_sy.lengthSq() < 1e-6) {
+  // _sy.addScaledVector(_sz, -_sy.dot(_sz)), without passing the double to a call
+  const k = -(_sy.x * _sz.x + _sy.y * _sz.y + _sy.z * _sz.z);
+  _sy.x += _sz.x * k;
+  _sy.y += _sz.y * k;
+  _sy.z += _sz.z * k;
+  if (_sy.x * _sy.x + _sy.y * _sy.y + _sy.z * _sy.z < 1e-6) {
     _sy.copy(fallback);
     _sy.addScaledVector(_sz, -_sy.dot(_sz));
     if (_sy.lengthSq() < 1e-6) _sy.set(0, 1, 0).addScaledVector(_sz, -_sz.y);
     if (_sy.lengthSq() < 1e-6) _sy.set(1, 0, 0);
   }
-  _sy.normalize();
+  normalizeV(_sy);
   _sx.crossVectors(_sy, _sz);
   return basisQ(q, _sx, _sy, _sz);
 }
 
 /**
- * Two-bone IK in the frame of S/T/pole. Writes the upper bone's rotation (rest direction −Y)
- * into qOut, the elbow/knee into elbow and the lower direction into lowerDir; returns the
- * lower bone's flex angle about its local X. sign: +1 knees (bend forward), −1 elbows.
+ * Two-bone IK in the frame of S/T/pole, bone lengths _f[F_L1] and _f[F_L2]. Writes the upper
+ * bone's rotation (rest direction −Y) into qOut, the elbow/knee into elbow, the lower direction
+ * into lowerDir and the lower bone's flex angle about its local X into _f[F_PHI].
+ * sign: +1 knees (bend forward), −1 elbows.
  */
-function solve2(S, T, pole, l1, l2, sign, qOut, elbow, lowerDir) {
+function solve2(S, T, pole, sign, qOut, elbow, lowerDir) {
+  const l1 = _f[F_L1], l2 = _f[F_L2];
   const d = _ua.subVectors(T, S);
-  let dist = d.length();
+  let dist = Math.sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
   if (dist < 1e-6) {
     d.set(0, -1, 0);
     dist = 1e-3;
-  } else d.multiplyScalar(1 / dist);
+  } else {
+    const inv = 1 / dist;
+    d.x *= inv;
+    d.y *= inv;
+    d.z *= inv;
+  }
   dist = clamp(dist, Math.abs(l1 - l2) + 1e-4, (l1 + l2) * 0.9995);
   const cosB = clamp((l1 * l1 + dist * dist - l2 * l2) / (2 * l1 * dist), -1, 1);
   const sinB = Math.sqrt(1 - cosB * cosB);
-  const p = _ub.copy(pole).addScaledVector(d, -pole.dot(d));
-  if (p.lengthSq() < 1e-8) {
+  // (the Vector3 calls that take a scalar are written out: a double argument is boxed when the
+  // call is not inlined)
+  const p = _ub.copy(pole);
+  const pd = -(pole.x * d.x + pole.y * d.y + pole.z * d.z);
+  p.x += d.x * pd;
+  p.y += d.y * pd;
+  p.z += d.z * pd;
+  if (p.x * p.x + p.y * p.y + p.z * p.z < 1e-8) {
     p.set(0, 0, sign).addScaledVector(d, -d.z * sign);
     if (p.lengthSq() < 1e-8) p.set(1, 0, 0);
   }
-  p.normalize();
-  const u = _uc.copy(d).multiplyScalar(cosB).addScaledVector(p, sinB);
-  elbow.copy(S).addScaledVector(u, l1);
-  lowerDir.copy(S).addScaledVector(d, dist).sub(elbow).normalize();
+  normalizeV(p);
+  const u = _uc;
+  u.x = d.x * cosB + p.x * sinB;
+  u.y = d.y * cosB + p.y * sinB;
+  u.z = d.z * cosB + p.z * sinB;
+  elbow.x = S.x + u.x * l1;
+  elbow.y = S.y + u.y * l1;
+  elbow.z = S.z + u.z * l1;
+  lowerDir.x = S.x + d.x * dist - elbow.x;
+  lowerDir.y = S.y + d.y * dist - elbow.y;
+  lowerDir.z = S.z + d.z * dist - elbow.z;
+  normalizeV(lowerDir);
   const X = _ud;
   if (sign > 0) X.crossVectors(p, d);
   else X.crossVectors(d, p);
-  X.normalize();
+  normalizeV(X);
   _sy.copy(u).negate();
   _sz.crossVectors(X, _sy);
   basisQ(qOut, X, _sy, _sz);
-  return Math.atan2(-lowerDir.dot(_sz), lowerDir.dot(u));
+  const lz = lowerDir.x * _sz.x + lowerDir.y * _sz.y + lowerDir.z * _sz.z;
+  const lu = lowerDir.x * u.x + lowerDir.y * u.y + lowerDir.z * u.z;
+  _f[F_PHI] = Math.atan2(-lz, lu);
 }
 
-/** Hermite evaluation of keyframes at normalised time t into out. */
-function sampleKeys(keys, tans, t, out) {
+/** Hermite evaluation of keyframes at normalised time ta[ti] into out. */
+function sampleKeys(keys, tans, ta, ti, out) {
+  const t = ta[ti];
   const n = keys.length;
   if (t <= keys[0].t) {
     out.set(keys[0].pose);
@@ -319,19 +397,29 @@ export class Animator {
 
   /** Maps real clip time to the authored normalised time (strike window keeps its speed). */
   clipTime() {
+    this.clipTimeF();
+    return _f[F_W];
+  }
+
+  /** clipTime() into _f[F_W]. */
+  clipTimeF() {
     const def = this.clipDef;
     const D = this.clipD, t = this.clipT;
     const rig = def.rigid;
-    if (!rig || def.strikeAt <= 0) return clamp(t / D, 0, 1);
-    const D0 = def.duration, a = rig[0], b = rig[1], sa = def.strikeAt;
-    const k = Math.min(1, D / D0);
-    const S = sa * D;
-    const pre = (sa - a) * D0 * k, post = (b - sa) * D0 * k;
-    const E1 = S - pre, E2 = D - S - post;
-    if (E1 <= 1e-4 || E2 <= 1e-4) return clamp(t / D, 0, 1);
-    if (t < E1) return (a * t) / E1;
-    if (t < S + post) return a + (t - E1) / (D0 * k);
-    return clamp(b + ((1 - b) * (t - S - post)) / E2, 0, 1);
+    let u = clamp(t / D, 0, 1);
+    if (rig && def.strikeAt > 0) {
+      const D0 = def.duration, a = rig[0], b = rig[1], sa = def.strikeAt;
+      const k = Math.min(1, D / D0);
+      const S = sa * D;
+      const pre = (sa - a) * D0 * k, post = (b - sa) * D0 * k;
+      const E1 = S - pre, E2 = D - S - post;
+      if (E1 > 1e-4 && E2 > 1e-4) {
+        if (t < E1) u = (a * t) / E1;
+        else if (t < S + post) u = a + (t - E1) / (D0 * k);
+        else u = clamp(b + ((1 - b) * (t - S - post)) / E2, 0, 1);
+      }
+    }
+    _f[F_W] = u;
   }
 
   update(gdt) {
@@ -342,7 +430,8 @@ export class Animator {
     this.dirty = false;
     this.t += dt;
     if (this.isDummy) {
-      this.springs(dt);
+      _f[F_DT] = dt;
+      this.springs();
       this.applyDummy();
       this.advanceClip(step);
       return;
@@ -353,15 +442,16 @@ export class Animator {
     const target = clamp((aspd - 0.05) / 0.55, 0, 1);
     this.moveW += (smooth(target) - this.moveW) * (1 - Math.exp(-8 * dt));
     this.guardW += ((this.guardOn ? 1 : 0) - this.guardW) * (1 - Math.exp(-9 * dt));
-    this.buildBase(dt);
+    _f[F_DT] = dt;
+    this.buildBase();
     const out = this.out;
     out.set(this.base);
     // clip layer (evaluate at the time reached this frame, then fire callbacks)
     const prevClip = this.clipName;
     if (this.clipName) {
       this.clipT += step;
-      const ct = this.clipTime();
-      sampleKeys(this.clipData.keys, this.clipData.tans, ct, this.cpose);
+      this.clipTimeF();
+      sampleKeys(this.clipData.keys, this.clipData.tans, _f, F_W, this.cpose);
       const cp = this.cpose;
       const def = this.clipDef;
       let upper = def.layer === 'upper';
@@ -377,9 +467,10 @@ export class Animator {
       for (let c = 0; c < N; c++) out[c] += (this.snap[c] - out[c]) * w;
       this.snapW = Math.max(0, this.snapW - dt * this.snapRate);
     }
-    this.springs(dt);
+    _f[F_DT] = dt;
+    this.springs();
     this.applyFlinch(out);
-    this.solve(out, dt);
+    this.solve(out);
     this.last.set(out);
     if (prevClip) this.fireCallbacks();
   }
@@ -417,7 +508,9 @@ export class Animator {
     }
   }
 
-  springs(dt) {
+  /** Advances the flinch springs by _f[F_DT]. */
+  springs() {
+    const dt = _f[F_DT];
     if (dt <= 0) return;
     const w = this.isDummy ? 9 : 15, z = this.isDummy ? 0.16 : 0.62;
     const fl = this.fl;
@@ -459,7 +552,8 @@ export class Animator {
   // -------------------------------------------------------------------------------------
   // Base layer: stance + guard + idle life + gait
 
-  buildBase(dt) {
+  /** Base pose for this frame (time step _f[F_DT]). */
+  buildBase() {
     const b = this.base;
     const st = this.st;
     b.set(st.stance);
@@ -489,10 +583,11 @@ export class Animator {
     b[CH.head + 1] += Math.sin(T * PI * 2 * this.lookRate) * 0.12 * idle * (1 - gw * 0.6);
     b[CH.head] += Math.sin(T * PI * 2 * this.lookRate * 0.7 + 2) * 0.04 * idle;
     if (this.moveW < 0.001 && Math.abs(this.speed) < 0.01) return;
-    this.gaitLayer(b, dt);
+    this.gaitLayer(b);
   }
 
-  gaitLayer(b, dt) {
+  gaitLayer(b) {
+    const dt = _f[F_DT];
     const v = this.speed;
     const av = Math.abs(v);
     const dir = v < 0 ? -1 : 1;
@@ -561,20 +656,25 @@ export class Animator {
   // -------------------------------------------------------------------------------------
   // Solve the pose onto the bones
 
-  solve(p, dt) {
+  /** Solves pose p onto the bones (time step _f[F_DT], for the cloak). */
+  solve(p) {
+    const dt = _f[F_DT];
     const bones = this.bones, s = this.s, r = this.r;
     const q = _q, v = _v;
     // pelvis (mesh space)
     const pel = bones[B.pelvis];
-    pel.position.set(r.pelvis.x + p[CH.pelP] * s, r.pelvis.y + p[CH.pelP + 1] * s, r.pelvis.z + p[CH.pelP + 2] * s);
-    const qP = eulerQ(q[0], p[CH.pelR], p[CH.pelR + 1], p[CH.pelR + 2]);
+    const pp = pel.position;
+    pp.x = r.pelvis.x + p[CH.pelP] * s;
+    pp.y = r.pelvis.y + p[CH.pelP + 1] * s;
+    pp.z = r.pelvis.z + p[CH.pelP + 2] * s;
+    const qP = eulerQa(q[0], p, CH.pelR);
     pel.quaternion.copy(qP);
-    eulerQ(bones[B.spine].quaternion, p[CH.spine], p[CH.spine + 1], p[CH.spine + 2]);
-    eulerQ(bones[B.chest].quaternion, p[CH.chest], p[CH.chest + 1], p[CH.chest + 2]);
+    eulerQa(bones[B.spine].quaternion, p, CH.spine);
+    eulerQa(bones[B.chest].quaternion, p, CH.chest);
     // chest orientation in mesh space, to bring actor-space aims into chest space
     this.qChestInv.copy(qP).multiply(bones[B.spine].quaternion).multiply(bones[B.chest].quaternion).invert();
-    eulerQ(bones[B.neck].quaternion, p[CH.neck], p[CH.neck + 1], p[CH.neck + 2]);
-    eulerQ(bones[B.head].quaternion, p[CH.head], p[CH.head + 1], p[CH.head + 2]);
+    eulerQa(bones[B.neck].quaternion, p, CH.neck);
+    eulerQa(bones[B.head].quaternion, p, CH.head);
     // ---- legs (pelvis frame)
     const legFK = clamp(p[CH.legFK], 0, 1);
     const qPinv = q[1].copy(qP).invert();
@@ -593,25 +693,38 @@ export class Animator {
         const cp = Math.cos(fp), sp = Math.sin(fp);
         const dy = PIV_Y * (1 - cp) + pz * sp;
         const dz = pz - PIV_Y * sp - pz * cp;
-        const T = v[0].set(
-          (p[fch] + Math.sin(yaw) * dz) * s,
-          this.rest.ankle + (Math.max(0, p[fch + 1]) + dy) * s,
-          (p[fch + 2] + Math.cos(yaw) * dz) * s,
-        ).sub(pel.position).applyQuaternion(qPinv);
-        const pole = v[1].set(Math.sin(yaw), 0, Math.cos(yaw)).applyQuaternion(qPinv);
-        phi = solve2(hip, T, pole, this.len.thigh, this.len.shin, 1, qThigh, v[2], v[3]);
+        const T = v[0];
+        T.x = (p[fch] + Math.sin(yaw) * dz) * s;
+        T.y = this.rest.ankle + (Math.max(0, p[fch + 1]) + dy) * s;
+        T.z = (p[fch + 2] + Math.cos(yaw) * dz) * s;
+        T.sub(pel.position).applyQuaternion(qPinv);
+        const pole = v[1];
+        pole.x = Math.sin(yaw);
+        pole.y = 0;
+        pole.z = Math.cos(yaw);
+        pole.applyQuaternion(qPinv);
+        _f[F_L1] = this.len.thigh;
+        _f[F_L2] = this.len.shin;
+        solve2(hip, T, pole, 1, qThigh, v[2], v[3]);
+        phi = _f[F_PHI];
         // foot: flat on the ground with yaw and heel pitch, relative to the shin
-        const qFootW = eulerQ(q[3], p[fch + 4], yaw, 0);
-        const qShinW = q[4].copy(qP).multiply(qThigh).multiply(_qa.setFromAxisAngle(_sx.set(1, 0, 0), phi));
+        _f[F_E] = p[fch + 4];
+        _f[F_E + 1] = yaw;
+        _f[F_E + 2] = 0;
+        const qFootW = eulerQa(q[3], _f, F_E);
+        const qShinW = q[4].copy(qP).multiply(qThigh).multiply(axisXQ(_qa, _f, F_PHI));
         foot.quaternion.copy(qShinW.invert().multiply(qFootW));
       } else {
         foot.quaternion.identity();
       }
       if (legFK > 0.001) {
         const tch = L ? CH.thighL : CH.thighR;
-        const qFK = eulerQ(q[5], p[tch], p[tch + 1], p[tch + 2]);
+        const qFK = eulerQa(q[5], p, tch);
         const shinFK = p[L ? CH.shinL : CH.shinR];
-        const footFK = eulerQ(q[6], p[L ? CH.footFKL : CH.footFKR], 0, 0);
+        _f[F_E] = p[L ? CH.footFKL : CH.footFKR];
+        _f[F_E + 1] = 0;
+        _f[F_E + 2] = 0;
+        const footFK = eulerQa(q[6], _f, F_E);
         if (legFK >= 0.999) {
           qThigh.copy(qFK);
           phi = shinFK;
@@ -623,15 +736,20 @@ export class Animator {
         }
       }
       thigh.quaternion.copy(qThigh);
-      shin.quaternion.setFromAxisAngle(_sx.set(1, 0, 0), phi);
+      _f[F_PHI] = phi;
+      axisXQ(shin.quaternion, _f, F_PHI);
       // skirt panels follow the thigh: front panels when it swings forward, back when back
       const u = v[4].set(0, -1, 0).applyQuaternion(qThigh);
       const pitch = Math.atan2(u.z, -u.y), roll = Math.atan2(u.x, -u.y);
       const sf = bones[L ? B.skirtFL : B.skirtFR], sb = bones[L ? B.skirtBL : B.skirtBR];
       // lying down, the cloth drapes instead of standing out on a raised thigh
       const follow = 1 - 0.65 * clamp(p[CH.ground], 0, 1);
-      eulerQ(sf.quaternion, -Math.max(0, pitch) * 0.85 * follow, 0, roll * 0.5);
-      eulerQ(sb.quaternion, -Math.min(0, pitch) * 0.8 * follow, 0, roll * 0.5);
+      _f[F_E] = -Math.max(0, pitch) * 0.85 * follow;
+      _f[F_E + 1] = 0;
+      _f[F_E + 2] = roll * 0.5;
+      eulerQa(sf.quaternion, _f, F_E);
+      _f[F_E] = -Math.min(0, pitch) * 0.8 * follow;
+      eulerQa(sb.quaternion, _f, F_E);
     }
     // ---- arms (chest space)
     this.solveArms(p);
@@ -651,7 +769,10 @@ export class Animator {
       this.cloakA += this.cloakV * dt;
     }
     const flutter = Math.sin(this.t * 9.3) * 0.03 * this.moveW * Math.min(1, Math.abs(this.speed) / 2);
-    eulerQ(bones[B.cloak].quaternion, Math.max(-0.05, this.cloakA + flutter), 0, clamp(-dyaw * 4, -0.2, 0.2));
+    _f[F_E] = Math.max(-0.05, this.cloakA + flutter);
+    _f[F_E + 1] = 0;
+    _f[F_E + 2] = clamp(-dyaw * 4, -0.2, 0.2);
+    eulerQa(bones[B.cloak].quaternion, _f, F_E);
     // item visibility
     const ws = clamp(p[CH.wscale], 0, 1), ls = clamp(p[CH.lscale], 0, 1);
     bones[B.weaponR].scale.setScalar(ws < 0.5 ? 1e-4 : 1);
@@ -661,52 +782,78 @@ export class Animator {
       for (let i = 0; i < CLOTH_BONES.length; i++) bones[CLOTH_BONES[i]].scale.set(1, 1, 1);
       this.clothSquashed = false;
     }
-    const gw = p[CH.ground];
-    if (gw > 0.01) this.groundCorrect(gw);
+    if (p[CH.ground] > 0.01) {
+      _f[F_W] = p[CH.ground];
+      this.groundCorrect();
+    }
   }
 
-  /** Brings an aim/up vector from actor space into chest space by the pose's aimSpace weight. */
-  toChest(vec, w) {
-    if (w <= 0.001 || vec.lengthSq() < 1e-8) return vec;
+  /** Brings an aim/up vector from actor space into chest space by the aimSpace weight _f[F_W]. */
+  toChest(vec) {
+    const w = _f[F_W];
+    if (w <= 0.001 || vec.x * vec.x + vec.y * vec.y + vec.z * vec.z < 1e-8) return vec;
     const a = this._aim.copy(vec).applyQuaternion(this.qChestInv);
     if (w >= 0.999) return vec.copy(a);
     const l = vec.length();
-    return vec.lerp(a, w).setLength(l);
+    // vec.lerp(a, w).setLength(l), written out (no double arguments)
+    vec.x += (a.x - vec.x) * w;
+    vec.y += (a.y - vec.y) * w;
+    vec.z += (a.z - vec.z) * w;
+    const inv = 1 / (vec.length() || 1);
+    vec.x *= inv;
+    vec.y *= inv;
+    vec.z *= inv;
+    vec.x *= l;
+    vec.y *= l;
+    vec.z *= l;
+    return vec;
   }
 
   solveArms(p) {
     const bones = this.bones, r = this.r, s = this.s, q = _q, v = _v;
     const len = this.len;
     const draw = clamp(p[CH.draw], 0, 1);
-    const asw = clamp(p[CH.aimSpace], 0, 1);
+    _f[F_W] = clamp(p[CH.aimSpace], 0, 1);
     for (let arm = 0; arm < 2; arm++) {
       const L = arm === 0;
       const side = L ? 1 : -1;
       const hch = L ? CH.handL : CH.handR, ech = L ? CH.elbL : CH.elbR;
-      const T = v[5].set(p[hch] * s, p[hch + 1] * s, p[hch + 2] * s);
-      const pole = v[6].set(p[ech], p[ech + 1], p[ech + 2]);
+      const T = v[5], pole = v[6];
+      T.x = p[hch] * s;
+      T.y = p[hch + 1] * s;
+      T.z = p[hch + 2] * s;
+      setA(pole, p, ech);
       // clavicle: shrug when the hand is high, protract when reaching forward
       const sh0 = L ? r.shL0 : r.shR0;
       const elev = clamp((T.y - sh0.y) / (0.45 * s), -0.3, 1);
       const reach = clamp(T.z / (0.5 * s), -0.6, 1);
-      const qClav = eulerQ(bones[L ? B.clavL : B.clavR].quaternion, 0, -side * 0.22 * reach, side * 0.2 * Math.max(0, elev));
+      _f[F_E] = 0;
+      _f[F_E + 1] = -side * 0.22 * reach;
+      _f[F_E + 2] = side * 0.2 * Math.max(0, elev);
+      const qClav = eulerQa(bones[L ? B.clavL : B.clavR].quaternion, _f, F_E);
       const S = v[7].copy(L ? r.shL : r.shR).applyQuaternion(qClav).add(L ? r.clavL : r.clavR);
       const qU = q[7], elbow = v[8], low = v[9];
       // pass 1 to the grip with a straight wrist, to get the forearm direction
-      solve2(S, T, pole, len.upperArm, len.forearm + this.gripLen, -1, qU, elbow, low);
+      _f[F_L1] = len.upperArm;
+      _f[F_L2] = len.forearm + this.gripLen;
+      solve2(S, T, pole, -1, qU, elbow, low);
       // hand / item orientation in chest space
       const qH = q[8];
       const mode = L ? this.left : this.right;
       const toElbow = v[10].copy(low).negate();
       if (L) {
-        const aim = this.toChest(v[11].set(p[CH.aimL], p[CH.aimL + 1], p[CH.aimL + 2]), asw);
-        const up = this.toChest(v[12].set(p[CH.upL], p[CH.upL + 1], p[CH.upL + 2]), asw);
+        const aim = this.toChest(setA(v[11], p, CH.aimL));
+        const up = this.toChest(setA(v[12], p, CH.upL));
         if (mode === 'aspis') {
           // shield plane contains the forearm: X → elbow, Z ≈ aim
-          _ua.copy(toElbow).normalize();
-          _uc.copy(aim).addScaledVector(_ua, -aim.dot(_ua));
-          if (_uc.lengthSq() < 1e-6) _uc.set(0, 0, 1);
-          _uc.normalize();
+          normalizeV(_ua.copy(toElbow));
+          // _uc = aim − (aim·_ua) _ua
+          const k = -(aim.x * _ua.x + aim.y * _ua.y + aim.z * _ua.z);
+          _uc.x = aim.x + _ua.x * k;
+          _uc.y = aim.y + _ua.y * k;
+          _uc.z = aim.z + _ua.z * k;
+          if (_uc.x * _uc.x + _uc.y * _uc.y + _uc.z * _uc.z < 1e-6) _uc.set(0, 0, 1);
+          normalizeV(_uc);
           _ub.crossVectors(_uc, _ua);
           basisQ(q[9], _ua, _ub, _uc); // item
           // hand grips the antilabe: grip axis along the shield's Y, wrist toward the elbow
@@ -731,26 +878,28 @@ export class Animator {
           q[9].copy(qH);
         }
       } else {
-        const aim = this.toChest(v[11].set(p[CH.aimR], p[CH.aimR + 1], p[CH.aimR + 2]), asw);
+        const aim = this.toChest(setA(v[11], p, CH.aimR));
         if (mode === 'arrow' && draw > 0.01) {
           // arrow lies from the draw hand through the bow grip
           aim.set(p[CH.handL] - p[CH.handR], p[CH.handL + 1] - p[CH.handR + 1], p[CH.handL + 2] - p[CH.handR + 2]);
         }
-        const up = this.toChest(v[12].set(p[CH.upR], p[CH.upR + 1], p[CH.upR + 2]), asw);
-        if (up.lengthSq() < 1e-6) up.copy(toElbow);
+        const up = this.toChest(setA(v[12], p, CH.upR));
+        if (up.x * up.x + up.y * up.y + up.z * up.z < 1e-6) up.copy(toElbow);
         frameQ(qH, aim, up, toElbow);
         q[9].copy(qH);
       }
       // pass 2: wrist target so that the fist centre lands on the grip target
       const wrist = v[13].copy(r.grip).applyQuaternion(qH);
       wrist.subVectors(T, wrist);
-      const phi = solve2(S, wrist, pole, len.upperArm, len.forearm, -1, qU, elbow, low);
+      _f[F_L1] = len.upperArm;
+      _f[F_L2] = len.forearm;
+      solve2(S, wrist, pole, -1, qU, elbow, low);
       // locals
       const qClavInv = _qb.copy(qClav).invert();
       const upper = bones[L ? B.upperArmL : B.upperArmR];
       upper.quaternion.copy(qClavInv).multiply(qU);
       const fore = bones[L ? B.forearmL : B.forearmR];
-      fore.quaternion.setFromAxisAngle(_sx.set(1, 0, 0), phi);
+      axisXQ(fore.quaternion, _f, F_PHI);
       const qFore = _qc.copy(qU).multiply(fore.quaternion);
       const hand = bones[L ? B.handL : B.handR];
       hand.quaternion.copy(qFore).invert().multiply(qH);
@@ -758,7 +907,11 @@ export class Animator {
       item.quaternion.copy(qH).invert().multiply(q[9]);
       if (L) {
         // remember the bow grip (chest space) for the nock
-        this._gripL.copy(r.grip).applyQuaternion(qH).add(wrist.copy(low).multiplyScalar(len.forearm).add(elbow));
+        const lf = len.forearm;
+        wrist.x = low.x * lf + elbow.x;
+        wrist.y = low.y * lf + elbow.y;
+        wrist.z = low.z * lf + elbow.z;
+        this._gripL.copy(r.grip).applyQuaternion(qH).add(wrist);
         this._qItemL.copy(q[9]);
       } else if (this.left === 'bow') {
         // nock follows the drawing fist
@@ -774,7 +927,9 @@ export class Animator {
     }
   }
 
-  groundCorrect(weight) {
+  /** Settles a lying pose (ground weight _f[F_W]) onto the ground. */
+  groundCorrect() {
+    const weight = _f[F_W];
     const bones = this.bones, mats = this.mats, s = this.s;
     for (let i = 0; i < bones.length; i++) {
       const bn = bones[i];
@@ -902,7 +1057,9 @@ export class Animator {
 
   applyDummy() {
     const fl = this.fl;
-    const spine = this.bones[B.spine];
-    eulerQ(spine.quaternion, fl[0] * 0.35, fl[2] * 0.2, fl[1] * 0.35);
+    _f[F_E] = fl[0] * 0.35;
+    _f[F_E + 1] = fl[2] * 0.2;
+    _f[F_E + 2] = fl[1] * 0.35;
+    eulerQa(this.bones[B.spine].quaternion, _f, F_E);
   }
 }

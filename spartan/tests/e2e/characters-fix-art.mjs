@@ -6,16 +6,29 @@
 //            shoulder) and the thrust 'back' key (the fist must stay behind the shoulder: chambered).
 //   corpses  eight Persians cut down in a heap, looked down at: blood-stain variety (each corpse's
 //            uBloodSeed) and the closest distance between lying bodies (capsule model of ai.js).
-// Usage: node spartan/tests/e2e/characters-fix-art.mjs <outDir> [WxH=915x412] [line|guard|corpses ...]
+// --rev=<git rev> serves the characters fixer's files (ai.js, characters.js, characters/*.js) from
+// that revision, so 'before' and 'after' run against the same tree otherwise.
+// Usage: node spartan/tests/e2e/characters-fix-art.mjs <outDir> [WxH=915x412] [--rev=7f85c80] [line|guard|corpses ...]
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { launch } from './lib.mjs';
 
-const [, , outDir = '.', size = '915x412', ...wanted] = process.argv;
+const [, , outDir = '.', size = '915x412', ...rest] = process.argv;
+const rev = (rest.find((a) => a.startsWith('--rev=')) || '').slice(6);
+const wanted = rest.filter((a) => !a.startsWith('--rev='));
 const [width, height] = size.split('x').map(Number);
 fs.mkdirSync(outDir, { recursive: true });
 const l = await launch();
 const page = await l.newPage({ width, height });
+if (rev) {
+  const OWN = /\/js\/(game\/ai\.js|gfx\/characters\.js|gfx\/characters\/[a-z]+\.js)$/;
+  await page.route(OWN, async (route) => {
+    const rel = new URL(route.request().url()).pathname.replace(/^\//, '');
+    const body = execFileSync('git', ['show', `${rev}:spartan/${rel}`], { encoding: 'utf8', maxBuffer: 1 << 26 });
+    await route.fulfill({ status: 200, contentType: 'text/javascript', body });
+  });
+}
 const ev = (fn, arg) => page.evaluate(fn, arg);
 
 // Mean luma (Rec.709 on sRGB bytes) of axis-aligned boxes read back from the drawn canvas.
@@ -132,8 +145,25 @@ const runs = {
         const sh = w(a, 12), el = w(a, 13), hand = w(a, 14);
         return { elbowBelowShoulder: +(sh.y - el.y).toFixed(3), handAboveShoulder: +(hand.y - sh.y).toFixed(3) };
       };
-      return { levy: arm(lv), sparabara: arm(sp) };
+      const toPx = (v) => { const p = v.clone().project(c.camera); return [((p.x + 1) / 2) * innerWidth, ((1 - p.y) / 2) * innerHeight]; };
+      const box = (a) => {
+        const item = a.visual._animator.bones[9];
+        const s = a.visual._animator.s;
+        const h = a.kind === 'sparabara' ? [0.25, 0.3, -0.9] : [0.2, 0.32, -0.32];
+        const pts = [[h[0], h[1]], [-h[0], h[1]], [h[0], h[2]], [-h[0], h[2]]].map(([x, y]) => toPx(item.localToWorld(new T.Vector3(x * s, y * s, 0.07 * s))));
+        const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+        const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+        const hw = (Math.max(...xs) - Math.min(...xs)) * 0.25, hh = (Math.max(...ys) - Math.min(...ys)) * 0.25;
+        return [cx - hw, cy - hh, cx + hw, cy + hh];
+      };
+      return { levy: arm(lv), sparabara: arm(sp), boxes: [box(lv), box(sp)] };
     });
+    // a clear ground patch between the two, above the player's shadow
+    const lum = await lumaBoxes([...facts.boxes, [width * 0.41, height * 0.6, width * 0.49, height * 0.67]]);
+    facts.levy.shieldLuma = lum[0];
+    facts.sparabara.shieldLuma = lum[1];
+    facts.groundLuma = lum[2];
+    delete facts.boxes;
     await shot('guard', facts);
     // the thrust's 'back' key (t = 0.36–0.5 of 1.4 s): the fist must be chambered behind the shoulder
     const chamber = await ev(() => {
@@ -162,11 +192,15 @@ const runs = {
       const g = window.__game;
       const c = g.ctx;
       const kinds = ['levy', 'sparabara', 'levy', 'immortal', 'levy', 'levy', 'sparabara', 'levy'];
-      const v = [];
-      for (let i = 0; i < kinds.length; i++) v.push(g.spawn(kinds[i], -0.9 + (i % 4) * 0.6, -2.4 - Math.floor(i / 4) * 0.7, kinds[i] === 'levy' ? { variant: 'mede' } : {}));
-      g.step(5);
-      for (const a of v) c.combat.actorStrike({ alive: true, pos: { x: a.pos.x, y: 0, z: a.pos.z + 1 }, facing: Math.PI }, { target: a, damage: 9999, reach: 2 });
-      g.step(200);
+      // one at a time, like a fight at the player's front: each walks up, is cut down and falls
+      // where the last ones fell
+      for (let i = 0; i < kinds.length; i++) {
+        const a = g.spawn(kinds[i], -0.4 + ((i * 0.37) % 1), -2.0, kinds[i] === 'levy' ? { variant: 'mede' } : {});
+        g.step(40);
+        c.combat.actorStrike({ alive: true, pos: { x: c.player.pos.x, y: 0, z: c.player.pos.z }, facing: Math.PI }, { target: a, damage: 9999, reach: 4 });
+        g.step(30);
+      }
+      g.step(150);
       c.player.pitch = -0.5;
       g.step(2);
       // lying bodies as capsules (head–feet segments of the settled skeleton, radius 0.2 m)
@@ -191,17 +225,19 @@ const runs = {
         if (s1 * s2 < 0 && s3 * s4 < 0) m = 0;
         return m;
       };
-      let overl = 0, minD = Infinity;
+      let overl = 0, minD = Infinity, cost = 0;
       for (let i = 0; i < segs.length; i++) for (let j = i + 1; j < segs.length; j++) {
         const dd = segDist(segs[i], segs[j]);
         minD = Math.min(minD, dd);
         if (dd < 0.4) overl++;
+        cost += Math.max(0, 0.5 - dd);
       }
       const seeds = c.ai.corpses.map((k) => {
         const sk = k.visual.mesh.skeleton;
         return +(sk.boneMatrices[28 * 16] || 0).toFixed(3);
       });
-      return { corpses: c.ai.corpses.length, overlappingPairs: overl, closestBodies: +minD.toFixed(2), bloodSeeds: seeds };
+      const clips = c.ai.corpses.map((k) => k.deathClip || '?');
+      return { corpses: c.ai.corpses.length, overlappingPairs: overl, overlapCost: +cost.toFixed(2), closestBodies: +minD.toFixed(2), clips, bloodSeeds: seeds };
     });
     await shot('corpses', facts);
   },

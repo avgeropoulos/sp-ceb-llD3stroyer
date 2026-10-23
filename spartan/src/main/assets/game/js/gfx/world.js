@@ -124,7 +124,9 @@ export function createWorld(ctx) {
     dust: { value: new THREE.Color(0.6, 0.5, 0.4) },
     dustAlpha: { value: 0.25 },
   };
-  const steamMat = makeSteamMaterial(tex.get('smoke'), { time, light: lit.light, shade: lit.shade, sunDir: lit.sunDir });
+  const steamMat = makeSteamMaterial(tex.get('smoke'), {
+    time, light: lit.light, shade: lit.shade, sunDir: lit.sunDir, maxSize: quality === 'high' ? 3.2 : 2.4,
+  });
 
   // --- Geometry ---
   const terrain = buildTerrain(layout, terrainMat);

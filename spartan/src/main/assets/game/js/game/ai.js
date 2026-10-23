@@ -92,14 +92,21 @@ function clipStrikeAt(name) {
   return c && c.strikeAt > 0 && c.strikeAt <= 1 ? c.strikeAt : 0.6;
 }
 
-// Lying-body segments (die-time only): SEG holds two bodies [hx, hz, fx, fz] at 0 and 4, and
-// segGap leaves the closest points in SEG[8..11] (on the first body, then the second).
-const SEG = new Float64Array(12);
+// Lying-body segments (die-time only; scalars go through SEG so that nothing is boxed): SEG holds
+// two bodies [hx, hz, fx, fz] at 0 and 4; segGap leaves the closest points in SEG[8..11] (on the
+// first body, then the second) and their distance in SEG[12].
+const SEG = new Float64Array(13);
 
-/** Writes the lying segment of a body with death clip `clip` at (x, z), facing f, into SEG[o..]. */
-function bodySeg(o, clip, x, z, f, h) {
-  const d = DEATH_SEGS[clip];
+/**
+ * Writes into SEG[o..o+3] where body b will lie: after its remaining shove and pile nudge. False
+ * if its death clip leaves no known lying pose.
+ */
+function bodySeg(o, b) {
+  const d = DEATH_SEGS[b.deathClip];
   if (!d) return false;
+  const k = 1 - b.nudgeT;
+  const x = b.pos.x + b.kbx / 9 + b.nudgeX * k, z = b.pos.z + b.kbz / 9 + b.nudgeZ * k;
+  const f = b.facing, h = b.height;
   const c = Math.cos(f), sn = Math.sin(f);
   // actor space (x left, z front) → world: x·(cos f, −sin f) + z·(sin f, cos f)
   SEG[o] = x + (d[0] * c + d[1] * sn) * h;
@@ -109,7 +116,7 @@ function bodySeg(o, clip, x, z, f, h) {
   return true;
 }
 
-/** Closest distance between the segments in SEG[0..3] and SEG[4..7] (2D). */
+/** Closest distance between the segments in SEG[0..3] and SEG[4..7] (2D), into SEG[12]. */
 function segGap() {
   const ax = SEG[0], az = SEG[1], bx = SEG[4], bz = SEG[5];
   const ux = SEG[2] - ax, uz = SEG[3] - az, vx = SEG[6] - bx, vz = SEG[7] - bz;
@@ -129,7 +136,7 @@ function segGap() {
   SEG[8] = ax + ux * s; SEG[9] = az + uz * s;
   SEG[10] = bx + vx * t; SEG[11] = bz + vz * t;
   const dx = SEG[8] - SEG[10], dz = SEG[9] - SEG[11];
-  return Math.sqrt(dx * dx + dz * dz);
+  SEG[12] = Math.sqrt(dx * dx + dz * dz);
 }
 
 /** A visual that does nothing, used if gfx/characters is missing or throws. */
@@ -420,9 +427,7 @@ export function createAI(ctx) {
     a.attackClip = stats.attackClip || 'thrust';
     a.manualStrike = !clipInfo(a.attackClip);
     a.homeX = x;
-    // The two neighbours stand a little forward, so the line shows at the frame's edges (their
-    // shoulders and shields) rather than as bare dory shafts with no one holding them.
-    a.homeZ = (Math.abs(x) < 1.5 ? -0.45 : -0.05) + (ctx.rng.next() - 0.5) * 0.12;
+    a.homeZ = -0.05 + (ctx.rng.next() - 0.5) * 0.12;
     a.protected = a.name === LEONIDAS;
     a.thinkT = ctx.rng.next() * 0.3;
     if (opts.walkIn) {
@@ -653,16 +658,10 @@ export function createAI(ctx) {
     releaseAll(a);
     a.targetIsPlayer = false;
     const clip = clipOverride || deathClipFor(a, cause, dx, dz, kind);
-    a.playDeath.duration = clipDuration(clip, 1.2);
-    a.animDone = false;
-    a.deathT = 0;
     a.deathClip = clip;
-    const an = a.visual.anim;
-    an.setLocomotion(0);
-    an.setGuard(false);
-    a.guardOn = false;
-    if (!play(a, clip, a.playDeath)) a.animDone = true;
-    if (a.visual.setBloodied && cause !== 'sea') a.visual.setBloodied(1);
+    a.nudgeX = 0;
+    a.nudgeZ = 0;
+    a.nudgeT = 1;
     if (cause === 'sea') {
       a.fall = 1;
       a.fallDX = dx;
@@ -674,32 +673,33 @@ export function createAI(ctx) {
       a.kbz *= 0.5;
       clearOfBodies(a);
     }
-  }
-
-  /** Where a body will lie: its position after the remaining shove and pile nudge. */
-  function restSeg(o, b) {
-    const k = 1 - b.nudgeT;
-    return bodySeg(o, b.deathClip, b.pos.x + b.kbx / 9 + b.nudgeX * k, b.pos.z + b.kbz / 9 + b.nudgeZ * k, b.facing, b.height);
+    a.playDeath.duration = clipDuration(clip, 1.2);
+    a.animDone = false;
+    a.deathT = 0;
+    const an = a.visual.anim;
+    an.setLocomotion(0);
+    an.setGuard(false);
+    a.guardOn = false;
+    if (!play(a, clip, a.playDeath)) a.animDone = true;
+    if (a.visual.setBloodied && cause !== 'sea') a.visual.setBloodied(1);
   }
 
   /**
-   * Heaps of dead must not pass through each other: the dying body's final pose is nudged (up to
-   * NUDGE_MAX, applied during its fall in updateCorpses) away from the bodies already down or
-   * falling within BODY_GAP of where it will lie.
+   * Accumulates into PUSH[0..1] the way out of the bodies in `pile` for the lying segment in
+   * SEG[0..3] (each overlap BODY_GAP − gap, away from the other body), and their sum into PUSH[2].
    */
-  function clearOfBodies(a) {
-    a.nudgeX = 0;
-    a.nudgeZ = 0;
-    a.nudgeT = 1;
-    if (!restSeg(0, a)) return;
+  const PUSH = new Float64Array(3);
+  const pile = [];   // the bodies near a dying one (die-time scratch)
+  let pileN = 0;
+  function pileOverlap() {
     const mx = (SEG[0] + SEG[2]) * 0.5, mz = (SEG[1] + SEG[3]) * 0.5;
-    let px = 0, pz = 0;
-    const n = corpses.length + actors.length;
-    for (let i = 0; i < n; i++) {
-      const b = i < corpses.length ? corpses[i] : actors[i - corpses.length];
-      if (b === a || b.alive || b.fall !== 0 || b.sinkT >= 0 || !restSeg(4, b)) continue;
-      const d = segGap();
+    let cost = 0;
+    for (let i = 0; i < pileN; i++) {
+      bodySeg(4, pile[i]);
+      segGap();
+      const d = SEG[12];
       if (d >= BODY_GAP) continue;
+      cost += BODY_GAP - d;
       let ux = SEG[8] - SEG[10], uz = SEG[9] - SEG[11];
       if (d < 1e-3) {
         // crossing: away from the other body's axis, on the side of this body's middle
@@ -709,16 +709,47 @@ export function createAI(ctx) {
       }
       const l = Math.sqrt(ux * ux + uz * uz);
       if (l < 1e-6) continue;
-      const k = (BODY_GAP - d) / l;
-      px += ux * k;
-      pz += uz * k;
+      PUSH[0] += (ux * (BODY_GAP - d)) / l;
+      PUSH[1] += (uz * (BODY_GAP - d)) / l;
     }
+    PUSH[2] = cost;
+  }
+
+  /**
+   * Heaps of dead must not pass through each other: the dying body's final pose slides (up to
+   * NUDGE_MAX, during its fall in updateCorpses) out of the bodies already down or falling that
+   * lie within BODY_GAP of where it will lie. Die-time only.
+   */
+  function clearOfBodies(a) {
+    if (!DEATH_SEGS[a.deathClip]) return;
+    // the bodies down or falling within reach of this one (a lying body spans < 1.3 m)
+    pileN = 0;
+    const n = corpses.length + actors.length;
+    for (let i = 0; i < n; i++) {
+      const b = i < corpses.length ? corpses[i] : actors[i - corpses.length];
+      if (b === a || b.alive || b.fall !== 0 || b.sinkT >= 0 || !DEATH_SEGS[b.deathClip]) continue;
+      const dx = b.pos.x - a.pos.x, dz = b.pos.z - a.pos.z;
+      if (dx * dx + dz * dz > 9) continue;
+      if (pileN < pile.length) pile[pileN] = b;
+      else pile.push(b);
+      pileN++;
+    }
+    if (pileN === 0) return;
+    bodySeg(0, a);
+    PUSH[0] = 0;
+    PUSH[1] = 0;
+    pileOverlap();
+    let px = PUSH[0], pz = PUSH[1];
     const pl = Math.sqrt(px * px + pz * pz);
-    if (pl < 0.02) return;
-    const k = pl > NUDGE_MAX ? NUDGE_MAX / pl : 1;
-    a.nudgeX = px * k;
-    a.nudgeZ = pz * k;
-    a.nudgeT = 0;
+    if (pl > NUDGE_MAX) {
+      px *= NUDGE_MAX / pl;
+      pz *= NUDGE_MAX / pl;
+    }
+    for (let i = 0; i < pileN; i++) pile[i] = null;
+    const moved = px * px + pz * pz >= 0.0004;
+    a.nudgeX = moved ? px : 0;
+    a.nudgeZ = moved ? pz : 0;
+    a.nudgeT = moved ? 0 : 1;
   }
 
   /** Scripted death (Leonidas on Day 3, phase B). Returns the actor or null. */

@@ -18,19 +18,12 @@ const check = (cond, msg) => {
   console.log(`${cond ? 'ok  ' : 'FAIL'} ${msg}`);
 };
 
-/** In the page: per-texture SHA-1 of the uploaded pixels, plus the module's stats and GPU state. */
-const FINGERPRINT = async () => {
-  const ctx = window.__game.ctx;
-  const t = ctx.textures;
-  const r = ctx.renderer;
-  const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
-  const out = {};
-  for (const name of t.names) {
-    if (t.has ? !t.has(name) : ['water', 'blood', 'spark', 'bronzeNormal', 'wickerNormal'].includes(name)) continue;
-    const tex = t.get(name);
+/** Init script: a texture's pixels as the GPU gets them (row 0 = v 0), copied. */
+const SNAPSHOT = () => {
+  window.__snapshot = (tex) => {
     const img = tex.image;
     let px;
-    if (img.data) px = new Uint8Array(img.data.buffer, img.data.byteOffset, img.data.length);
+    if (img.data) px = new Uint8Array(img.data.buffer.slice(img.data.byteOffset, img.data.byteOffset + img.data.length));
     else {
       const S = img.width;
       const top = img.getContext('2d').getImageData(0, 0, S, img.height).data;
@@ -39,16 +32,67 @@ const FINGERPRINT = async () => {
       const row = S * 4;
       for (let y = 0; y < img.height; y++) px.set(top.subarray(y * row, (y + 1) * row), (img.height - 1 - y) * row);
     }
-    const mips = tex.mipmaps && tex.mipmaps.length ? tex.mipmaps.length : 0;
-    out[name] = {
-      hash: hex(await crypto.subtle.digest('SHA-1', px)),
+    const mips = tex.mipmaps && tex.mipmaps.length ? tex.mipmaps : [];
+    return {
+      px,
+      mipPx: mips.length ? new Uint8Array(mips.map((m) => [...m.data.subarray(0, 64)]).flat()) : null,
       size: img.width,
       kind: tex.isDataTexture ? 'data' : tex.isCanvasTexture ? 'canvas' : 'other',
       colorSpace: tex.colorSpace,
-      mips,
-      mipHash: mips ? hex(await crypto.subtle.digest('SHA-1', new Uint8Array(tex.mipmaps.map((m) => [...m.data.subarray(0, 64)]).flat()))) : null,
+      mips: mips.length,
       meanLum: tex.userData.meanLum == null ? null : +tex.userData.meanLum.toFixed(6),
-      uploaded: !!r.properties.get(tex).__webglTexture,
+    };
+  };
+};
+
+/**
+ * textures.js with release() wrapped so a released texture's pixels are kept (window.__released)
+ * for FINGERPRINT: the character atlas hands its sources back right after boot.
+ */
+function instrument(src) {
+  if (!src.includes('export function createTextures(')) return src;
+  return src.replace('export function createTextures(', 'function createTexturesInner(') + `
+export function createTextures(ctx, opts) {
+  const t = createTexturesInner(ctx, opts);
+  window.__released = {};
+  if (t.release) {
+    const release = t.release;
+    t.release = (name) => {
+      if (t.has(name)) window.__released[name] = window.__snapshot(t.get(name));
+      return release(name);
+    };
+  }
+  return t;
+}
+`;
+}
+const CURRENT = instrument(fs.readFileSync(new URL('../../src/main/assets/game/js/gfx/textures.js', import.meta.url), 'utf8'));
+
+/** Serves `src` as gfx/textures.js on this page. */
+async function serve(page, src) {
+  await page.addInitScript(SNAPSHOT);
+  await page.route('**/js/gfx/textures.js', (route) => route.fulfill({ status: 200, contentType: 'text/javascript', body: src }));
+}
+
+/** In the page: per-texture SHA-1 of the uploaded pixels (released ones too), plus the module's stats. */
+const FINGERPRINT = async () => {
+  const ctx = window.__game.ctx;
+  const t = ctx.textures;
+  const r = ctx.renderer;
+  const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+  const snaps = {};
+  for (const name of t.names) {
+    if (t.has ? t.has(name) : !['water', 'blood', 'spark', 'bronzeNormal', 'wickerNormal'].includes(name)) {
+      const tex = t.get(name);
+      snaps[name] = { ...window.__snapshot(tex), uploaded: !!r.properties.get(tex).__webglTexture, released: false };
+    } else if (window.__released && window.__released[name]) snaps[name] = { ...window.__released[name], uploaded: false, released: true };
+  }
+  const out = {};
+  for (const [name, s] of Object.entries(snaps)) {
+    out[name] = {
+      hash: hex(await crypto.subtle.digest('SHA-1', s.px)),
+      mipHash: s.mipPx ? hex(await crypto.subtle.digest('SHA-1', s.mipPx)) : null,
+      size: s.size, kind: s.kind, colorSpace: s.colorSpace, mips: s.mips, meanLum: s.meanLum, uploaded: s.uploaded, released: s.released,
     };
   }
   const est = navigator.storage && navigator.storage.estimate ? await navigator.storage.estimate() : {};
@@ -76,6 +120,7 @@ const l = await launch();
 try {
   // 1 + 2: first and second launch share one browser context (and so one IndexedDB).
   const page = await l.newPage({ width: 480, height: 270 });
+  await serve(page, CURRENT);
   const first = await boot(page, 'first launch');
   const names = Object.keys(first.tex);
   const bootN = first.boot.length;
@@ -85,10 +130,12 @@ try {
   for (const n of ['water', 'blood', 'spark']) check(!first.tex[n], `${n} is not built at boot`);
   const notUploaded = names.filter((n) => !first.tex[n].uploaded);
   console.log('not uploaded:', notUploaded.join(' '));
+  console.log('released after the atlas was built:', names.filter((n) => first.tex[n].released).join(' ') || 'none');
+  check(names.length === bootN, `all ${bootN} boot textures fingerprinted (${names.length}, released ones included)`);
   for (const n of ['dirt', 'dirtNormal', 'rock', 'cliffStrata', 'sand', 'stone', 'waterNormal', 'cloud', 'smoke', 'grass', 'scrub', 'sulphur', 'foam']) {
     check(first.tex[n] && first.tex[n].uploaded, `${n} (sampled by a material) is uploaded`);
   }
-  for (const n of ['bronze', 'linen', 'skinGreek', 'persianRobeA', 'blazonFly']) check(!first.tex[n] || !first.tex[n].uploaded, `${n} (atlas source) is not uploaded by the textures module`);
+  for (const n of ['bronze', 'linen', 'skinGreek', 'persianRobeA', 'blazonFly']) check(!first.tex[n].uploaded, `${n} (atlas source) is not uploaded`);
   // Give the background IndexedDB writes a moment, then launch again.
   await page.waitForTimeout(1500);
   const second = await boot(page, 'second launch');
@@ -98,6 +145,7 @@ try {
 
   // 3: no Worker support (main-thread fallback), fresh context so nothing is cached.
   const p3 = await l.newPage({ width: 480, height: 270 });
+  await serve(p3, CURRENT);
   await p3.addInitScript(() => {
     window.Worker = undefined;
   });
@@ -110,7 +158,7 @@ try {
   if (refFile) {
     const src = fs.readFileSync(refFile, 'utf8');
     const p4 = await l.newPage({ width: 480, height: 270 });
-    await p4.route('**/js/gfx/textures.js', (route) => route.fulfill({ status: 200, contentType: 'text/javascript', body: src }));
+    await serve(p4, instrument(src));
     const ref = await boot(p4, 'reference textures.js');
     same(ref, first, 'reference vs current', names);
     await p4.context().close();

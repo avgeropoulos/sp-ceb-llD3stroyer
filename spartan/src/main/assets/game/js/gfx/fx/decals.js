@@ -19,6 +19,13 @@ const KIND_SCUFF = 3;
 const DEFAULT_SIZE = [0.5, 1.3, 0.1, 0.7];
 const LIFE = [70, 120, 45, 35];
 const GROW = [0.08, 4.5, 0.05, 0.1];
+/** A new pool this close (m) to a live one feeds it instead of stacking a second pool. */
+export const POOL_MERGE_DIST = 0.35;
+/** Largest a merged pool grows (m). */
+const POOL_MAX = 2.4;
+/** At most this many live decals overlap one spot; a new one fades out the oldest of them. */
+export const MAX_OVERLAP = 4;
+const FADE_OUT = 4; // s: the shader's end-of-life fade
 
 /** Maps a decal kind name to its shader kind. */
 function kindIndex(kind) {
@@ -232,11 +239,16 @@ export function createDecals(ctx) {
 
   const birth = new Float32Array(DECAL_CAP);
   const life = new Float32Array(DECAL_CAP);
+  const centreX = new Float32Array(DECAL_CAP);
+  const centreZ = new Float32Array(DECAL_CAP);
   const kinds = new Int8Array(DECAL_CAP).fill(-1);
   let used = 0; // slots [0, used) have been written at least once
   let expiryCheck = 0;
   let seedN = 0;
   const heights = new Float32Array(GRID * GRID);
+  let fitX = 0; // ground slope of the last sampleGround (dh/dx, dh/dz) and its normal length
+  let fitZ = 0;
+  let fitL = 1;
   const m4 = new THREE.Matrix4();
 
   function ground(x, z) {
@@ -246,6 +258,51 @@ export function createDecals(ctx) {
 
   function isLive(i) {
     return kinds[i] >= 0 && clock - birth[i] < life[i];
+  }
+
+  /**
+   * Keeps stains in one spot from stacking deeper than MAX_OVERLAP: when that many live decals
+   * already overlap a new one at (x, z) of `size`, the oldest of them fades out over FADE_OUT s
+   * (the shader's end-of-life fade) instead of popping.
+   */
+  function thinCrowd(x, z, size) {
+    const sh = aShape.array;
+    let n = 0;
+    let oldest = -1;
+    let oldestBirth = Infinity;
+    for (let i = 0; i < used; i++) {
+      if (!isLive(i) || birth[i] + life[i] - clock <= FADE_OUT) continue; // gone or already going
+      const dx = centreX[i] - x;
+      const dz = centreZ[i] - z;
+      const r = 0.4 * (sh[i * 4] + size);
+      if (dx * dx + dz * dz >= r * r) continue;
+      n++;
+      if (birth[i] < oldestBirth) {
+        oldestBirth = birth[i];
+        oldest = i;
+      }
+    }
+    if (n < MAX_OVERLAP || oldest < 0) return;
+    life[oldest] = Math.max(0, clock - birth[oldest]) + FADE_OUT;
+    aLife.array[oldest * 4 + 2] = life[oldest];
+    touch(aLife);
+  }
+
+  /** The nearest live pool within POOL_MERGE_DIST of (x, z), or -1. */
+  function poolNear(x, z) {
+    let best = -1;
+    let bestD = POOL_MERGE_DIST * POOL_MERGE_DIST;
+    for (let i = 0; i < used; i++) {
+      if (kinds[i] !== KIND_POOL || !isLive(i) || clock < birth[i]) continue;
+      const dx = centreX[i] - x;
+      const dz = centreZ[i] - z;
+      const d = dx * dx + dz * dz;
+      if (d <= bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    return best;
   }
 
   function pickSlot() {
@@ -286,6 +343,52 @@ export function createDecals(ctx) {
     const g0 = ground(x, z);
     if (!(g0 > -2.9)) return -1; // sea or invalid
     if (y - g0 > 1.5) return -1;
+    if (k === KIND_POOL) {
+      const m = poolNear(x, z);
+      if (m >= 0 && mergePool(m, x, z, size)) return m;
+    }
+    if (!sampleGround(x, z, size)) return -1;
+    thinCrowd(x, z, size);
+    const s = pickSlot();
+    write(s, x, z, k, size, clock + Math.max(0, delay));
+    return s;
+  }
+
+  /**
+   * A new pool feeds the live pool `m`: it spreads (area-weighted, up to POOL_MAX) toward the new
+   * blood, from the size it shows now, and turns fresh and wet again. False if the bigger pool
+   * wouldn't fit the ground there (the caller then places a separate one).
+   */
+  function mergePool(m, x, z, size) {
+    const sh = aShape.array;
+    const old = sh[m * 4];
+    const add = 0.5 * size * size;
+    const total = old * old + add;
+    const grown = Math.min(POOL_MAX, Math.sqrt(total));
+    if (!(grown > old + 1e-3)) {
+      // Already as big as it gets: just keep it fresh.
+      birth[m] = clock - GROW[KIND_POOL];
+      life[m] = LIFE[KIND_POOL];
+      aLife.array[m * 4] = birth[m];
+      aLife.array[m * 4 + 2] = life[m];
+      touch(aLife);
+      return true;
+    }
+    const w = add / total;
+    const nx = centreX[m] + (x - centreX[m]) * w;
+    const nz = centreZ[m] + (z - centreZ[m]) * w;
+    if (!sampleGround(nx, nz, grown)) return false;
+    // Pool growth in the shader: 0.15 + 0.85·(1 − (1 − g)³) of its size at g = age / GROW.
+    const g = clamp((clock - birth[m]) / GROW[KIND_POOL], 0, 1);
+    const shown = (0.15 + 0.85 * (1 - (1 - g) * (1 - g) * (1 - g))) * old;
+    const r = shown / grown;
+    const g0 = r <= 0.15 ? 0 : 1 - Math.cbrt(Math.max(0, 1 - (r - 0.15) / 0.85));
+    write(m, nx, nz, KIND_POOL, grown, clock - g0 * GROW[KIND_POOL], sh[m * 4 + 2]);
+    return true;
+  }
+
+  /** Samples the ground under a decal into `heights`; false if the spot is unsuitable. */
+  function sampleGround(x, z, size) {
     let lo = Infinity;
     let hi = -Infinity;
     for (let j = 0; j < GRID; j++) {
@@ -296,7 +399,7 @@ export function createDecals(ctx) {
         if (h > hi) hi = h;
       }
     }
-    if (lo < -2.9 || hi - lo > 0.35 * size + 0.12) return -1;
+    if (lo < -2.9 || hi - lo > 0.35 * size + 0.12) return false;
     // Plane fit from the outer columns and rows.
     let sx = 0;
     let sz = 0;
@@ -306,15 +409,28 @@ export function createDecals(ctx) {
     }
     sx /= GRID * size;
     sz /= GRID * size;
-    const nl = Math.hypot(sx, 1, sz);
-    if (1 / nl < 0.55) return -1;
+    const nl = Math.sqrt(sx * sx + 1 + sz * sz);
+    if (1 / nl < 0.55) return false;
+    fitX = sx;
+    fitZ = sz;
+    fitL = nl;
+    return true;
+  }
 
-    const s = pickSlot();
+  /** Writes slot s from the last sampleGround (seed: keep a merged pool's shape, else a new one). */
+  function write(s, x, z, k, size, born, seed) {
+    const sx = fitX;
+    const sz = fitZ;
+    const nl = fitL;
     kinds[s] = k;
-    birth[s] = clock + Math.max(0, delay);
+    birth[s] = born;
     life[s] = LIFE[k];
-    seedN = (seedN + 1) % 997;
-    const seed = ((seedN * 0.6180339887) % 1) * 0.999;
+    centreX[s] = x;
+    centreZ[s] = z;
+    if (seed === undefined) {
+      seedN = (seedN + 1) % 997;
+      seed = ((seedN * 0.6180339887) % 1) * 0.999;
+    }
     for (let r = 0; r < 4; r++) {
       const arr = aH[r].array;
       for (let c = 0; c < 4; c++) arr[s * 4 + c] = heights[r * 4 + c];
@@ -341,7 +457,6 @@ export function createDecals(ctx) {
     mesh.setMatrixAt(s, m4);
     mesh.instanceMatrix.needsUpdate = true;
     if (s + 1 > mesh.count) mesh.count = s + 1;
-    return s;
   }
 
   /** Frees a slot. The shader already discards it (age > life); no upload needed. */

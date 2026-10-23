@@ -6,12 +6,15 @@
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
-/** How many generator workers this device gets (none without module worker support). */
-export function textureWorkerCount() {
+/**
+ * How many generator workers this device gets (none without module worker support). High
+ * quality gets at most 2: a 1024² generator allocates 50–90 MB of scratch fields while it runs.
+ */
+export function textureWorkerCount(quality = 'medium') {
   if (typeof Worker === 'undefined') return 0;
   const nav = typeof navigator !== 'undefined' ? navigator : null;
   const cores = (nav && nav.hardwareConcurrency) || 4;
-  return Math.max(1, Math.min(3, cores - 1));
+  return Math.max(1, Math.min(quality === 'high' ? 2 : 3, cores - 1));
 }
 
 /**

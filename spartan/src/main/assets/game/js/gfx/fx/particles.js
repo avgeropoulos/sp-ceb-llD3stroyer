@@ -18,6 +18,8 @@ export const CAP_SOFT = 240;
 export const PARTICLE_CAP = CAP_STREAK + CAP_SPARK + CAP_SOFT;
 
 const G = 9.81;
+/** Dust bursts this close to the camera (m, on the ground plane) emit half their puffs. */
+export const DUST_NEAR = 1.5;
 
 // Kinds.
 const BLOOD = 1;
@@ -594,12 +596,26 @@ export function createParticles(ctx, hooks = {}) {
       0.6, 0.04, 0.22, 0.32, 0.3, 0.27, 0.12, 4, -0.05, 0.8, R(-1, 1));
   }
 
+  /**
+   * How much of a dust burst to emit at the origin: half within DUST_NEAR m (on the ground plane)
+   * of the camera, where each puff covers a large part of the view, ramping to all of it at twice
+   * that distance.
+   */
+  function nearDustScale() {
+    const c = camera.position;
+    const ddx = ox - c.x;
+    const ddz = oz - c.z;
+    const d = Math.sqrt(ddx * ddx + ddz * ddz);
+    return d <= DUST_NEAR ? 0.5 : d >= 2 * DUST_NEAR ? 1 : 0.5 + (0.5 * (d - DUST_NEAR)) / DUST_NEAR;
+  }
+
   /** Dust puffs with grit, and a slow wisp for bigger amounts. */
   function dust(point, amount = 1) {
     if (!readPoint(point) || tooFar()) return;
     amount = clamp(+amount || 1, 0.1, 3);
     const sq = Math.sqrt(amount);
-    const puffs = Math.max(1, n(2 + 3 * amount));
+    const near = nearDustScale();
+    const puffs = Math.max(1, Math.round(n(2 + 3 * amount) * near));
     for (let k = 0; k < puffs; k++) {
       const a = rng.next() * Math.PI * 2;
       const sp = R(0.3, 1.3) * sq;
@@ -618,7 +634,7 @@ export function createParticles(ctx, hooks = {}) {
         1.4, w, w, 0.22, 0.18, 0.13, 1, 0.3, 1);
       streaks.len[i] = 0.015;
     }
-    if (amount >= 0.6) wisp(WISP, ox, oy + 0.15, oz, 0.72, 0.65, 0.53, 0.16);
+    if (amount >= 0.6 && near > 0.75) wisp(WISP, ox, oy + 0.15, oz, 0.72, 0.65, 0.53, 0.16);
   }
 
   function wisp(kind, x, y, z, r, g, b, alpha) {
@@ -740,9 +756,12 @@ export function createParticles(ctx, hooks = {}) {
       let y = pool.py[i] + vy * gdt;
       const z = pool.pz[i] + vz * gdt;
       let gy;
+      const moved = Math.abs(x - pool.gx[i]) + Math.abs(z - pool.gz[i]);
       if (flags & FIXED_GROUND) {
         gy = pool.gy[i];
-      } else if (Math.abs(x - pool.gx[i]) + Math.abs(z - pool.gz[i]) > 0.25) {
+      } else if (moved > 0.25 && (moved > 1.5 || y < pool.gy[i] + 1)) {
+        // Re-sampled every 0.25 m near the ground; a particle a metre or more above its last
+        // sample can't reach the ground within 1.5 m, so it skips the (allocating) call.
         gy = ground(x, z);
         pool.gx[i] = x;
         pool.gz[i] = z;

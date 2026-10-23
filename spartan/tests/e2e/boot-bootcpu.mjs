@@ -16,7 +16,9 @@ try {
   for (let run = 0; run < runs; run++) {
     const metric = async () => Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map((x) => [x.name, x.value]));
     const t0 = Date.now();
-    await page.goto(`${l.game}?seed=7&quality=${quality}`, { waitUntil: 'commit' });
+    // Leave the previous launch completely first (the machine may be loaded; be patient).
+    if (run > 0) await page.goto('about:blank', { timeout: 300000 });
+    await page.goto(`${l.game}?seed=7&quality=${quality}`, { waitUntil: 'commit', timeout: 300000 });
     const marks = [];
     let last = null;
     const m0 = await metric();

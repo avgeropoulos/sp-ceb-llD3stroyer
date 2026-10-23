@@ -24,10 +24,16 @@ export const subtitleSeconds = (text, greek) => clamp(1.8 + 0.055 * String(text 
 const HELMET = '<svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2C9 2 5 7.5 5 14v12c0 2 1.5 3.5 3.5 3.5H12V22l-3-1.5V15h5.5v13.5h3V15H23v5.5L20 22v7.5h3.5c2 0 3.5-1.5 3.5-3.5V14c0-6.5-4-12-11-12Z" fill="currentColor"/><path d="M5.5 10C3 6 6 1.5 10 1M26.5 10C29 6 26 1.5 22 1" stroke="currentColor" stroke-width="1.2" fill="none" opacity=".55"/></svg>';
 const SPEAR = '<svg viewBox="0 0 10 40" aria-hidden="true"><path d="M5 1 7.4 9 5 11.5 2.6 9Z" fill="currentColor"/><path d="M5 11v25" stroke="currentColor" stroke-width="1.6"/><path d="M3.8 35.5h2.4V39H3.8z" fill="currentColor"/></svg>';
 const CHEVRON = '<svg viewBox="-20 -20 40 40" aria-hidden="true"><path d="M-11-11 0-1 11-11M-11-2 0 8 11-2" fill="none" stroke="#120806" stroke-width="7" stroke-linejoin="miter"/><path d="M-11-11 0-1 11-11M-11-2 0 8 11-2" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linejoin="miter"/></svg>';
-const ARC = '<svg viewBox="-100 -100 200 200" aria-hidden="true"><path d="M-50.5-72.1A88 88 0 0 1 50.5-72.1" fill="none" stroke="url(#hud-arc-g)" stroke-width="9" stroke-linecap="round"/><path d="M-30-80.6A86 86 0 0 1 30-80.6" fill="none" stroke="#ffb59a" stroke-width="2" stroke-linecap="round" opacity=".55"/></svg>';
+// Hurt arc: a dark backing stroke under the red one keeps it reading as dark red over the sky.
+const ARC = '<svg viewBox="-100 -100 200 200" aria-hidden="true"><path d="M-50.5-72.1A88 88 0 0 1 50.5-72.1" fill="none" stroke="url(#hud-arc-b)" stroke-width="13" stroke-linecap="round"/><path d="M-50.5-72.1A88 88 0 0 1 50.5-72.1" fill="none" stroke="url(#hud-arc-g)" stroke-width="9" stroke-linecap="round"/><path d="M-30-80.6A86 86 0 0 1 30-80.6" fill="none" stroke="#ffb59a" stroke-width="2" stroke-linecap="round" opacity=".55"/></svg>';
 
 const MAX_CHEV = 6;
 const MAX_ARCS = 4;
+const ARC_LIFE = 1.4;
+const ARC_FLOOR = 0.25;      // the arc stays at least this opaque…
+const ARC_FLOOR_UNTIL = 1.2; // …until this age, then fades out over the rest of its life
+const ARC_W0 = 9;            // red stroke width (viewBox units) when fresh…
+const ARC_W1 = 3;            // …and at the end of its life
 
 /** Seconds of a Day 3 phase's fade (§13 Phase C: "A 2 s fade"), from the payload or campaign data. */
 export function phaseFade(e) {
@@ -39,6 +45,23 @@ export function phaseFade(e) {
     for (const p of d.phases) if (p.id === e.phase) return Math.max(0, +p.fade || 0);
   }
   return 0;
+}
+
+/**
+ * Opacity of a hurt arc `age` seconds into its `life`: linear from `peak`, but held at ARC_FLOOR
+ * or more until ARC_FLOOR_UNTIL (so the red never thins out over the sky), then down to 0.
+ */
+export function arcOpacity(age, life = ARC_LIFE, peak = 1) {
+  if (!(age >= 0) || age >= life) return 0;
+  const lin = peak * (1 - age / life);
+  const until = Math.min(ARC_FLOOR_UNTIL, life);
+  const floor = age < until ? ARC_FLOOR : ARC_FLOOR * clamp((life - age) / Math.max(1e-3, life - until), 0, 1);
+  return Math.max(lin, floor);
+}
+
+/** Width of the arc's red stroke (viewBox units): it thins from ARC_W0 to ARC_W1 as it fades. */
+export function arcWidth(age, life = ARC_LIFE) {
+  return ARC_W1 + (ARC_W0 - ARC_W1) * clamp(1 - age / life, 0, 1);
 }
 
 /**
@@ -68,6 +91,10 @@ export function createHud(ctx) {
       <linearGradient id="hud-arc-g" x1="0" x2="1" y1="0" y2="0">
         <stop offset="0" stop-color="#c0261b" stop-opacity="0"/><stop offset=".3" stop-color="#d8331f"/>
         <stop offset=".5" stop-color="#ff5a36"/><stop offset=".7" stop-color="#d8331f"/><stop offset="1" stop-color="#c0261b" stop-opacity="0"/>
+      </linearGradient>
+      <linearGradient id="hud-arc-b" x1="0" x2="1" y1="0" y2="0">
+        <stop offset="0" stop-color="#140000" stop-opacity="0"/><stop offset=".3" stop-color="#140000" stop-opacity=".55"/>
+        <stop offset=".7" stop-color="#140000" stop-opacity=".55"/><stop offset="1" stop-color="#140000" stop-opacity="0"/>
       </linearGradient></defs></svg>
     <div class="hud-curtain"></div>
     <div class="hud-letterbox"><i class="hud-lb-top"></i><i class="hud-lb-bot"></i></div>
@@ -145,7 +172,8 @@ export function createHud(ctx) {
     el.className = 'hud-arc';
     el.innerHTML = ARC;
     arcsEl.appendChild(el);
-    arcs.push({ el, age: 9, life: 1.4, peak: 1, lastOp: -1 });
+    const [back, red, hi] = el.querySelectorAll('path');
+    arcs.push({ el, back, red, hi, age: 9, life: ARC_LIFE, peak: 1, lastOp: -1, lastW: ARC_W0 });
   }
   const chevs = [];
   const chevsEl = q('.hud-chevs');
@@ -251,6 +279,13 @@ export function createHud(ctx) {
     }
     hurt = 0;
     clearCurtain();
+  }
+
+  function setArcWidth(a, w) {
+    a.lastW = w;
+    a.red.setAttribute('stroke-width', String(w));
+    a.back.setAttribute('stroke-width', String(w + 4));
+    a.hi.setAttribute('stroke-width', String(Math.round(w * 2 / ARC_W0 * 4) / 4));
   }
 
   function endRespite() {
@@ -390,6 +425,11 @@ export function createHud(ctx) {
     if ((e && e.title) || (e && e.subtitle)) showBanner(dayKicker(e), (e && e.title) || 'Respite', e && e.subtitle, 3, 'small');
   });
   ev.on('gameOver', hideTransients);
+  // The player falls: clear the transients (a day card would still welcome them) and fade the HUD out.
+  ev.on('playerDeath', () => {
+    hideTransients();
+    root.classList.add('is-fallen');
+  });
 
   ev.on('voice', (e) => {
     if (!e || !e.text) return;
@@ -705,11 +745,14 @@ export function createHud(ctx) {
     for (const a of arcs) {
       if (a.age < a.life) {
         a.age += dt;
-        const op = Math.round(a.peak * clamp(1 - a.age / a.life, 0, 1) * 100) / 100;
+        const op = Math.round(arcOpacity(a.age, a.life, a.peak) * 100) / 100;
         if (op !== a.lastOp) {
           a.lastOp = op;
           a.el.style.opacity = String(op);
         }
+        // The stroke thins as it fades (quarter-unit steps, so only a few attribute writes per hit).
+        const w = Math.round(arcWidth(a.age, a.life) * 4) / 4;
+        if (w !== a.lastW) setArcWidth(a, w);
       }
     }
     // Volley warning: bronze and steady once the shield is up.
@@ -782,6 +825,7 @@ export function createHud(ctx) {
 
   function reset() {
     hideTransients();
+    root.classList.remove('is-fallen');
     daysSeen = 0;
     for (const k of Object.keys(last)) delete last[k];
     volleyRaised = null;

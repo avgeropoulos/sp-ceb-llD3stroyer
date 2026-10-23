@@ -68,6 +68,60 @@ const handNdc = (page) =>
     return { ndcX: +v.x.toFixed(2), ndcY: +v.y.toFixed(2), onScreen: Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1 };
   });
 
+// Pixels the first-person rig (and the spear alone) covers: whole frame, the HUD's top-right block
+// (score, kills) and the shaft's run at column W-40 (the "plank from the bezel" measure).
+async function cover(page) {
+  const full = await grab(page);
+  const hide = (name) =>
+    page.evaluate((name) => {
+      const g = window.__game;
+      const o = g.ctx.vm.scene.getObjectByName(name);
+      const was = o.visible;
+      o.visible = false;
+      g.render();
+      o.visible = was;
+      return was;
+    }, name);
+  await hide('vmSpear');
+  const noSpear = await grab(page);
+  await hide('vmRig');
+  const noRig = await grab(page);
+  await page.evaluate(() => window.__game.render());
+  const hud = await page.evaluate(() => {
+    const b = document.querySelector('.hud-top-r').getBoundingClientRect();
+    const c = document.getElementById('scene');
+    const k = c.width / c.clientWidth;
+    return { x0: Math.floor(b.left * k), y0: Math.floor(b.top * k), x1: Math.ceil(b.right * k), y1: Math.ceil(b.bottom * k) };
+  });
+  const W = full.w;
+  const X = W - 40;
+  let rig = 0;
+  let spear = 0;
+  let rigHud = 0;
+  let edge = 0;
+  let hudN = 0;
+  for (let i = 0, p = 0; i < full.data.length; i += 4, p++) {
+    const d = (a) => Math.max(Math.abs(full.data[i] - a.data[i]), Math.abs(full.data[i + 1] - a.data[i + 1]), Math.abs(full.data[i + 2] - a.data[i + 2])) > 24;
+    const x = p % W;
+    const y = (p - x) / W;
+    const inHud = x >= hud.x0 && x < hud.x1 && y >= hud.y0 && y < hud.y1;
+    if (inHud) hudN++;
+    if (d(noRig)) {
+      rig++;
+      if (inHud) rigHud++;
+    }
+    if (d(noSpear)) {
+      spear++;
+      if (x === X) edge++;
+    }
+  }
+  const n = full.data.length / 4;
+  return {
+    rigPct: +((100 * rig) / n).toFixed(2), spearPct: +((100 * spear) / n).toFixed(2),
+    rigInHudTopRightPct: hudN ? +((100 * rigHud) / hudN).toFixed(1) : 0, shaftPxAtRightEdge: edge,
+  };
+}
+
 const runs = {
   async title(page) {
     await page.evaluate(() => {
@@ -191,13 +245,13 @@ const runs = {
       g.spawn('levy', 0.0, -2.4, { variant: 'kissian' });
       g.step(30);
     });
-    await shot(page, 'spear-idle', await handNdc(page));
+    await shot(page, 'spear-idle', Object.assign(await handNdc(page), await cover(page)));
     await page.evaluate(() => {
       const g = window.__game;
       g.ctx.input.shieldHeld = true;
       g.step(30);
     });
-    await shot(page, 'spear-idle-raised', await handNdc(page));
+    await shot(page, 'spear-idle-raised', Object.assign(await handNdc(page), await cover(page)));
     await page.evaluate(() => {
       const g = window.__game;
       g.ctx.input.shieldHeld = false;
@@ -207,7 +261,7 @@ const runs = {
     });
     await shot(page, 'spear-thrust-a', await handNdc(page));
     await page.evaluate(() => window.__game.step(3));
-    await shot(page, 'spear-thrust-b', await handNdc(page));
+    await shot(page, 'spear-thrust-b', Object.assign(await handNdc(page), await cover(page)));
     await page.evaluate(() => window.__game.step(30));
     // Motion wind-up held (the hand draws back over the shoulder).
     await page.evaluate(() => {
@@ -253,10 +307,10 @@ const runs = {
       g.step(40);
       g.action({ type: 'switchWeapon', weapon: 'sword' });
       g.step(60);
-      g.action({ type: 'slash', dir: -Math.PI / 2, power: 0.9 });
-      g.step(7);
+      g.action({ type: 'slash', dir: 0, power: 0.9 });
+      g.step(5);
     });
-    await shot(page, 'skin-slash-down');
+    await shot(page, 'skin-slash-right');
   },
 };
 

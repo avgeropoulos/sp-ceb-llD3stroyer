@@ -214,6 +214,17 @@ html, body {
   visibility: visible;
   transition: opacity 0.4s ease;
 }
+/* The player has fallen: the HUD fades away while the view drops to the ground, and so do the
+   fighting controls (#controls follows #hud; pause stays). */
+#hud.is-visible.is-fallen,
+#hud.is-visible.is-fallen ~ #controls .ctl-btn:not(.ctl-pause),
+#hud.is-visible.is-fallen ~ #controls .ctl-stick,
+#hud.is-visible.is-fallen ~ #controls .ctl-shield,
+#hud.is-visible.is-fallen ~ #controls .ctl-bash,
+#hud.is-visible.is-fallen ~ #controls .ctl-throw {
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
 #hud .hud-defs { position: absolute; }
 #hud button { pointer-events: none; }
 
@@ -1335,8 +1346,8 @@ html, body {
   font-size: clamp(11px, 3.2vh, 16px);
   letter-spacing: 0.9em;
   padding-left: 0.9em;
-  color: var(--bronze);
-  text-shadow: var(--text-shadow);
+  color: var(--bronze-hi);
+  text-shadow: 0 1px 2px #000, 0 0 12px rgba(0, 0, 0, 0.85);
 }
 .mn-logo {
   margin: clamp(0px, 1vh, 8px) 0 0;
@@ -1365,13 +1376,15 @@ html, body {
 }
 .mn-epigraph { margin: clamp(8px, 3vh, 26px) 0 0; text-shadow: var(--text-shadow); }
 .mn-epigraph p { margin: 0; font-size: clamp(16px, 5.2vh, 26px); font-style: italic; letter-spacing: 0.03em; color: var(--cream); }
+/* Small text over the bright sky: parchment with a tight dark shadow and a wide soft halo. */
 .mn-epigraph cite {
   display: block;
   margin-top: 4px;
-  font-size: clamp(10px, 2.9vh, 13px);
+  font-size: clamp(11px, 3.2vh, 14px);
   font-style: normal;
   letter-spacing: 0.12em;
-  color: var(--bronze-hi);
+  color: var(--parchment);
+  text-shadow: 0 1px 2px #000, 0 0 12px rgba(0, 0, 0, 0.85);
 }
 .mn-title-bar {
   position: relative;

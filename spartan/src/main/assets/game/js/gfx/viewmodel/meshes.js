@@ -244,7 +244,7 @@ const Z = [0, 0, 1];
 export function forearmParts(len, { ring = false } = {}) {
   // [t, a (radial-ulnar half width), b (dorso-palmar half depth), zOffset]
   const prof = [
-    [0, 0.041, 0.039, 0],
+    [0, 0.0402, 0.0375, 0],
     [0.12, 0.045, 0.041, -0.002],
     [0.3, 0.046, 0.040, -0.003],
     [0.5, 0.041, 0.034, -0.002],
@@ -290,14 +290,19 @@ export function forearmParts(len, { ring = false } = {}) {
   return parts;
 }
 
-/** Upper arm along +Y from the shoulder (0) to the elbow (len), with the crimson chiton sleeve. */
+/**
+ * Upper arm along +Y from the shoulder (0) to the elbow (len), with the crimson chiton sleeve. Its
+ * end tapers inside the forearm's rounded start (forearmParts), so the elbow shows one clean crease
+ * instead of two near-coincident tubes cutting a sawtooth through each other.
+ */
 export function upperArmParts(len) {
   const prof = [
     [0, 0.054, 0.05],
     [0.25, 0.051, 0.048],
     [0.5, 0.048, 0.046],
-    [0.8, 0.044, 0.041],
-    [1, 0.041, 0.038],
+    [0.8, 0.0435, 0.0405],
+    [0.92, 0.0402, 0.0372],
+    [1, 0.0368, 0.0338],
   ];
   const st = prof.map(([t, a, b]) => ({ c: [0, t * len, 0], ax: X, ay: Z, a, b, v: 0.5 + 0.5 * (1 - t) }));
   const skin = loft(st, 18, ARM_UV.arm, { capStart: 3, capEnd: 4, capLen: 0.8 });

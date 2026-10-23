@@ -50,17 +50,19 @@ void main() {
     // (binocular vision); the brow arches and dips to the nasal guard, which both eyes see past as
     // a faint blurred shadow; the cheek-pieces close in only at the lower outer corners. The bronze
     // is ~3 cm from the eye, so every edge is far out of focus, with a dull glint on its inner lip.
+    // The mask keeps to the outer frame (≤ ~4% of a phone screen darkened by more than 40%): the top
+    // edge and the corners are where flankers and the HUD sit.
     float ax = max(uAspect, 1.0);
     vec2 q = vec2(p.x * ax, p.y);              // 1 unit = half the screen height
     float side = abs(p.x);                     // 0 centre .. 1 screen edge
-    float brow = 0.99 - 0.07 * exp(-pow(q.x / 0.3, 2.0)) - 0.3 * pow(side, 3.0);
+    float brow = 1.08 - 0.07 * exp(-pow(q.x / 0.3, 2.0)) - 0.3 * pow(side, 3.0);
     float top = smoothstep(brow - 0.15, brow + 0.08, q.y);
-    float cheekEdge = -1.15 + 0.52 * smoothstep(0.62, 1.0, side);
+    float cheekEdge = -1.25 + 0.45 * smoothstep(0.62, 1.0, side);
     float bottom = 1.0 - smoothstep(cheekEdge - 0.1, cheekEdge + 0.18, q.y);
-    float sides = smoothstep(0.9, 1.05, side + 0.05 * q.y * q.y);
+    float sides = smoothstep(0.95, 1.08, side + 0.05 * q.y * q.y);
     float mask = max(max(top, bottom), sides);
     float nasal = 0.16 * exp(-pow(q.x / 0.13, 2.0)) * smoothstep(0.2, 1.0, q.y);
-    mask = max(mask, nasal) * 0.94;
+    mask = max(mask, nasal) * 0.85;
     float rim = clamp(mask * (1.0 - mask) * 4.0, 0.0, 1.0);
     vec3 inside = vec3(0.03, 0.022, 0.015) + vec3(0.3, 0.19, 0.08) * rim * 0.2;
     col = over(vec4(inside * mask, mask), col);

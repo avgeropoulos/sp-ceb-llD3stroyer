@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/BufferGeometryUtils.js';
 import { WEAPONS, slashProfile, sectorHit, segmentCapsule, computeDamage, ballisticPitch } from './rules.js';
 import { clamp, facingToYaw, angleDiff, yawTo } from '../core/math.js';
-import { createArrowStreaks } from '../gfx/fx/streaks.js';
+import { createArrowStreaks, STREAK_STRIDE } from '../gfx/fx/streaks.js';
 
 const G = 9.81;
 const SEA_X = 8.6;
@@ -1069,24 +1069,30 @@ export function createCombat(ctx) {
     groundCount = Math.min(GROUND_ARROWS, groundCount + 1);
   }
 
+  // Flight arrows are written straight into the instance arrays (rotation taking +Z to the flight
+  // direction, then the LOD scale): no quaternion, compose or setter calls in a loop over 600
+  // slots, so nothing is boxed or allocated per arrow.
   function stepVolleyArrows() {
     if (flyingActive === 0) return false;
     const cam = ctx.camera;
     const cx = cam ? cam.position.x : 0;
     const cy = cam ? cam.position.y : 0;
     const cz = cam ? cam.position.z : 0;
+    const M = volleyMesh.instanceMatrix.array;
+    const S = streaks.data;
     let high = 0;
     for (let s = 0; s < flyingHigh; s++) {
+      const so = s * STREAK_STRIDE;
       if (!fl.on[s]) {
-        streaks.set(s, 0, 0, 0, 0, 0, 0, 0, 0);
+        S[so + 6] = 0;
         continue;
       }
       const v = fl.vol[s];
       const tau = v.t - fl.t0[s];
-      const idx = GROUND_ARROWS + s;
+      const o = (GROUND_ARROWS + s) * 16;
       if (tau < 0) {
-        volleyMesh.setMatrixAt(idx, ZERO_SCALE);
-        streaks.set(s, 0, 0, 0, 0, 0, 0, 0, 0);
+        for (let e = 0; e < 16; e++) M[o + e] = 0;
+        S[so + 6] = 0;
         high = s + 1;
         continue;
       }
@@ -1095,8 +1101,8 @@ export function createCombat(ctx) {
         fl.on[s] = 0;
         fl.vol[s] = null;
         flyingActive--;
-        volleyMesh.setMatrixAt(idx, ZERO_SCALE);
-        streaks.set(s, 0, 0, 0, 0, 0, 0, 0, 0);
+        for (let e = 0; e < 16; e++) M[o + e] = 0;
+        S[so + 6] = 0;
         const x = fl.px[s] + fl.vx[s] * T;
         const y = fl.py[s] + fl.vy[s] * T - 0.5 * VOLLEY_G * T * T;
         const z = fl.pz[s] + fl.vz[s] * T;
@@ -1114,25 +1120,57 @@ export function createCombat(ctx) {
       const ux = fvx / l;
       const uy = dvy / l;
       const uz = fvz / l;
-      tmp.set(ux, uy, uz);
-      quat.setFromUnitVectors(Z_AXIS, tmp);
-      tmp2.set(x, y, z);
       // Distance LOD: thicker and a little longer far away (×1 within LOD_NEAR metres).
       const ex = x - cx;
       const ey = y - cy;
       const ez = z - cz;
-      const k = clamp(Math.sqrt(ex * ex + ey * ey + ez * ez) / LOD_NEAR, 1, LOD_MAX);
+      let k = Math.sqrt(ex * ex + ey * ey + ez * ez) / LOD_NEAR;
+      k = k < 1 ? 1 : k > LOD_MAX ? LOD_MAX : k;
       const kz = 1 + 0.5 * (k - 1);
-      scl.set(k, k, kz);
-      mat4.compose(tmp2, quat, scl);
-      volleyMesh.setMatrixAt(idx, mat4);
+      // Shortest rotation of +Z onto u (Rodrigues about z × u); u = -Z turns about Y.
+      let r00 = -1;
+      let r01 = 0;
+      let r10 = 0;
+      let r11 = 1;
+      let r22 = -1;
+      if (uz > -0.99999) {
+        const q = 1 / (1 + uz);
+        r00 = 1 - q * ux * ux;
+        r01 = -q * ux * uy;
+        r10 = r01;
+        r11 = 1 - q * uy * uy;
+        r22 = uz;
+      }
+      // Column-major: columns are R·(k,0,0), R·(0,k,0), R·(0,0,kz) and the position.
+      M[o] = r00 * k;
+      M[o + 1] = r10 * k;
+      M[o + 2] = -ux * k;
+      M[o + 3] = 0;
+      M[o + 4] = r01 * k;
+      M[o + 5] = r11 * k;
+      M[o + 6] = -uy * k;
+      M[o + 7] = 0;
+      M[o + 8] = ux * kz;
+      M[o + 9] = uy * kz;
+      M[o + 10] = r22 * kz;
+      M[o + 11] = 0;
+      M[o + 12] = x;
+      M[o + 13] = y;
+      M[o + 14] = z;
+      M[o + 15] = 1;
       // Streak: from the tip back over the arrow and its last VOLLEY_BLUR seconds of flight.
       const hx = x + ux * ARROW_HALF * kz;
       const hy = y + uy * ARROW_HALF * kz;
       const hz = z + uz * ARROW_HALF * kz;
       const back = 2 * ARROW_HALF * kz + l * VOLLEY_BLUR;
-      const fade = tau < 0.1 ? tau * 10 : 1;
-      streaks.set(s, hx, hy, hz, hx - ux * back, hy - uy * back, hz - uz * back, fade, ((s * 0.618034) % 1));
+      S[so] = hx;
+      S[so + 1] = hy;
+      S[so + 2] = hz;
+      S[so + 3] = hx - ux * back;
+      S[so + 4] = hy - uy * back;
+      S[so + 5] = hz - uz * back;
+      S[so + 6] = tau < 0.1 ? tau * 10 : 1;
+      S[so + 7] = (s * 0.618034) % 1;
     }
     flyingHigh = high;
     streaks.commit(high);

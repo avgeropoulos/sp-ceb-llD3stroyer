@@ -211,6 +211,9 @@ function skinBase(P, i, u, v, n1, n2, dors) {
   P.setAlb(i, r, g, b);
 }
 
+/** 1 on the elbow row of the arm tube (v = 0.5), fading out by |v - 0.5| = 0.1. */
+const elbowBand = (v) => 1 - smoothstep(0.03, 0.1, Math.abs(v - 0.5));
+
 export function paintArmAtlas(size, seed = 11) {
   const P = new Paint(size, size, seed);
   const N = P.noise;
@@ -224,13 +227,17 @@ export function paintArmAtlas(size, seed = 11) {
   R.bronze = P.region(...ARM_UV.bronze, true, 0.8);
   R.spare = P.region(0.5, 0.75, 1, 1, false, 0.5);
 
-  // Arm skin: mottling, tan on the dorsal side, pores.
+  // Arm skin: mottling, tan on the dorsal side, fine pores. The pores stay faint: at 2-3 px per
+  // cycle a strong bump reads as orange peel on the forearm, the most-seen surface in the game.
+  // The upper arm and the forearm meet at v = 0.5 with their u axes turned against each other, so
+  // around the elbow the skin is the same all the way round (no tan side, softer mottling, no hair).
   P.each(R.arm, (i, u, v) => {
-    const n1 = N.pfbm2(u * 4, v * 8, 4, 8, 3);
+    const el = elbowBand(v);
+    const n1 = N.pfbm2(u * 4, v * 8, 4, 8, 3) * (1 - 0.6 * el);
     const n2 = N.pnoise2(u * 24, v * 48, 24, 48);
-    const dors = 0.5 + 0.5 * Math.cos(2 * Math.PI * (u - 0.75));
+    const dors = lerp(0.5 + 0.5 * Math.cos(2 * Math.PI * (u - 0.75)), 0.5, el);
     skinBase(P, i, u, v, n1, n2, dors);
-    P.hgt[i] = 0.25 * N.pnoise2(u * 90, v * 180, 90, 180) + 0.12 * (N.hash2(i, 7) - 0.5);
+    P.hgt[i] = 0.08 * N.pnoise2(u * 90, v * 180, 90, 180) + 0.04 * (N.hash2(i, 7) - 0.5);
     P.rough[i] = 0.5 + 0.05 * n1 + 0.04 * dors;
     P.metal[i] = 0;
   });
@@ -241,7 +248,7 @@ export function paintArmAtlas(size, seed = 11) {
     const u = (x - R.arm.x0) / R.arm.w;
     const v = 1 - (y - R.arm.y0) / R.arm.h;
     const dors = 0.5 + 0.5 * Math.cos(2 * Math.PI * (u - 0.75));
-    const fore = v < 0.5 ? smoothstep(0.02, 0.12, v) : 0.35;
+    const fore = (v < 0.5 ? smoothstep(0.02, 0.12, v) : 0.35) * (1 - elbowBand(v));
     if (P.rng.next() > dors * dors * fore) continue;
     const len = (3 + P.rng.next() * 4) * px;
     const ang = Math.PI / 2 + (P.rng.next() - 0.5) * 0.7 + (u - 0.75) * 0.6;

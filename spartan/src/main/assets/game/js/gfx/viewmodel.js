@@ -6,7 +6,8 @@
  * Everything lives in ctx.vm.scene, in vm.camera space (camera at the origin, -Z forward). The rig
  * is authored in real metres and drawn under a uniform scale about the eye (RIG.scale), which is
  * perspective-neutral. One-shots are event-driven and advance with ctx.time.pdt (frozen by
- * hit-stop); sway, bob and breathing use dt.
+ * hit-stop); sway, bob and breathing use dt. On 'playerDeath' the hand and the aspis fall out of
+ * view and the rig hides until reset().
  *
  * Draw calls in the vm pass: arms (1, skinned), sword or spear (1), aspis bronze + wood (2),
  * stuck arrows (1 when any), trail (1 while visible), overlay (1 when active) — at most 7.
@@ -16,7 +17,7 @@ import { TIMING } from '../game/rules.js';
 import { clamp, wrapAngle, createRng } from '../core/math.js';
 import {
   RIG, slashTimes, slashParam, slashGeometry, createSlashOut, slashEdgeSign,
-  thrustCurve, bashCurve, jolt, bump, ramp, easeOutCubic, easeOutQuad, easeInOutSine, smootherstep,
+  thrustCurve, bashCurve, jolt, bump, ramp, easeInQuad, easeOutCubic, easeOutQuad, easeInOutSine, smootherstep,
 } from './viewmodel/motion.js';
 import {
   paintArmAtlas, paintWeaponAtlas, paintShieldBronze, paintShieldInterior, paintArrowAtlas, compositeBlazon,
@@ -32,6 +33,9 @@ import { mergeGeometries } from 'three/addons/BufferGeometryUtils.js';
 export { RIG } from './viewmodel/motion.js';
 
 const MAX_ARROWS = 8;
+// Death: the sword hand drops out of view and the aspis swings out and down (rig metres, radians),
+// then the rig hides while the camera rolls to the ground.
+const FALL = { dur: 0.5, drop: 0.45, outX: 0.1, roll: 0.7, yaw: 0.25 };
 const SWORD_REACH = SWORD.tipY; // grip centre → tip
 const BLADE_BASE = SWORD.guardHi + 0.25; // trail inner edge along the blade
 
@@ -73,16 +77,16 @@ function spearAim(p, at, wrist) {
 const POSES = {
   swordLow: pose([0.27, -0.235, -0.42], [-0.11, 0.7, -0.7], [0.35, -0.6, 0.7]),
   swordHigh: pose([0.285, -0.165, -0.41], [-0.12, 0.68, -0.72], [0.35, -0.6, 0.7]),
-  // Overhand dory: the fist above the shoulder, just out of view; the shaft comes in from the upper
-  // right and the head points at an enemy's chest.
-  spearLow: spearAim([0.28, 0.06, -0.12], [0.0, -0.42, -2.4], [0.3, -1, 0.3]),
-  spearHigh: spearAim([0.28, 0.075, -0.15], [0.0, -0.36, -2.4], [0.3, -1, 0.3]),
+  // Overhand dory: the fist high in the upper right of the view (the forearm rising into it), the
+  // shaft running down from it to the head at an enemy's chest, the butt rising out of the frame.
+  spearLow: spearAim([0.19, 0.08, -0.3], [0.0, -0.55, -2.4], [0.3, -1, 0.3]),
+  spearHigh: spearAim([0.19, 0.095, -0.32], [0.0, -0.5, -2.4], [0.3, -1, 0.3]),
   empty: pose([0.27, -0.66, -0.2], [-0.1, 0.4, -0.9], [0.3, -0.6, 0.7]),
   // Sword thrust: chambered back, then driven out with the point at the centre.
   thrustBack: pose([0.24, -0.17, -0.32], [-0.12, 0.2, -0.97], [0.4, -0.8, 0.4]),
   thrustOut: pose([0.13, -0.165, -0.55], [-0.21, 0.23, -0.95], [0.4, -0.8, 0.35]),
   // Spear: thrust extended, throw drawn back over the shoulder, release, follow-through.
-  spearOut: spearAim([0.15, -0.06, -0.56], [-0.02, -0.18, -2.8], [0.3, -1, 0.3]),
+  spearOut: spearAim([0.17, 0.03, -0.52], [-0.02, -0.4, -2.8], [0.3, -1, 0.3]),
   windup: spearAim([0.3, 0.13, 0.13], [0.12, 0.5, -2.6], [0.25, -1, -0.1]),
   release: spearAim([0.3, 0.12, -0.2], [0.05, 0.25, -3], [0.3, -1, 0.3]),
   follow: pose([0.06, -0.34, -0.42], [-0.5, -0.3, -0.8], [0.55, -0.55, 0.45]),
@@ -258,6 +262,8 @@ export function createViewmodel(ctx) {
     first: true,
     snap: 0.2,                 // seconds after reset during which weapon changes snap (no draw)
     lightScan: 0,
+    fallen: false,             // the player died: the rig falls away, then hides until reset()
+    fallT: 0,
   };
   const worldLights = { sun: null, hemi: null };
   // Stuck arrows: a fixed pool; the oldest is replaced once all eight are in use.
@@ -313,6 +319,7 @@ export function createViewmodel(ctx) {
       a.hideAt = opts.motion ? 0.03 : 0.012;
       st.released = false;
     } else if (kind === 'draw') a.dur = 0.55;
+    else if (kind === 'fall') a.dur = FALL.dur;
     st.arm = a;
     return a;
   }
@@ -326,6 +333,7 @@ export function createViewmodel(ctx) {
 
   function play(kind, opts = NO_OPTS) {
     if (!opts) opts = NO_OPTS;
+    if (st.fallen) return; // nothing more until reset()
     switch (kind) {
       case 'slash':
         if (st.shown === 'spear') startArm('spearSlash', opts);
@@ -362,6 +370,11 @@ export function createViewmodel(ctx) {
         }
         break;
       }
+      case 'fall':
+        st.fallen = true;
+        st.fallT = 0;
+        startArm('fall', opts);
+        break;
       case 'hurt':
         if (st.rigFx.length >= 4) st.rigFx.shift();
         st.rigFx.push({ kind: 'hurt', t: 0, dur: 0.6, rel: opts.relYaw ?? 0, amp: clamp(0.55 + (opts.damage ?? 10) / 40, 0.6, 1.3) });
@@ -408,6 +421,7 @@ export function createViewmodel(ctx) {
     if (p && p.target === 'shield') addStuckArrow();
   });
   ev.on('respite', () => clearStuckArrows());
+  ev.on('playerDeath', () => play('fall'));
 
   /** -1..1: which side of the view an attacker is on (positive = right). */
   function attackerSide(att) {
@@ -483,8 +497,10 @@ export function createViewmodel(ctx) {
       out.p.copy(POSES.empty.p);
       out.q.copy(POSES.empty.q);
     }
-    // Composition across phone aspects: spread the hand a little wider on wide screens.
-    out.p.x += clamp((cam.aspect - 1.78) * 0.05, -0.03, 0.025);
+    // Composition across phone aspects: spread the hand a little wider on wide screens. The spear
+    // fist sits near the right edge, so it keeps its place on screen (authored for 19.5:9).
+    if (kind === 'spear') out.p.x += clamp((cam.aspect - 2.17) * 0.12, -0.07, 0.01);
+    else out.p.x += clamp((cam.aspect - 1.78) * 0.05, -0.03, 0.025);
     return out;
   }
 
@@ -587,6 +603,10 @@ export function createViewmodel(ctx) {
         keyed(keysRelease, t, hand);
         if (!st.released && t >= a.hideAt) st.released = true;
         if (st.shown === 'spear' && st.released) st.shown = null;
+        break;
+      case 'fall':
+        // The sword arm goes limp: the hand drops out of view, slowly at first (gravity).
+        slerpPose(hand, fromPose, st.shown === 'spear' ? POSES.drawLowSpear : POSES.drawLow, easeInQuad(clamp(t / a.dur, 0, 1)));
         break;
       case 'draw': {
         // Down and out of view with the old weapon, swap there, and come back up with the new one.
@@ -773,6 +793,16 @@ export function createViewmodel(ctx) {
         shieldOff.p.z += 0.014 * j;
         shieldOff.r.x += 0.03 * j;
       }
+    }
+    if (st.fallen) {
+      // The shield arm drops with the body: the aspis lowers, swings out and its top rolls outward.
+      st.fallT += pdt;
+      const k = easeInQuad(clamp(st.fallT / FALL.dur, 0, 1));
+      raise *= 1 - k;
+      shieldOff.p.y -= FALL.drop * k;
+      shieldOff.p.x -= FALL.outX * k;
+      shieldOff.r.z += FALL.roll * k;
+      shieldOff.r.y += FALL.yaw * k;
     }
     slerpPose(shieldPose, SHIELD_POSES.low, SHIELD_POSES.high, easeInOutSine(raise));
     shieldPose.p.x -= clamp((cam.aspect - 1.78) * 0.04, -0.02, 0.02);
@@ -1004,7 +1034,7 @@ export function createViewmodel(ctx) {
       if (!st.arm) st.shown = target;
     }
     const a0 = st.arm;
-    const busy = a0 && (a0.kind === 'draw' || a0.kind === 'throwRelease' || (a0.kind === 'throwWindup'));
+    const busy = st.fallen || (a0 && (a0.kind === 'draw' || a0.kind === 'throwRelease' || (a0.kind === 'throwWindup')));
     if (target !== st.shown && !busy) {
       if (target === null) st.shown = null;
       else play('draw');
@@ -1028,6 +1058,7 @@ export function createViewmodel(ctx) {
         evalArm(r);
       } else if (a.t >= a.dur) {
         if (a.kind === 'draw' && !a.swapped) st.shown = targetShown();
+        if (a.kind === 'fall') st.visible = false; // fallen out of view: hide (reset() shows it again)
         if (a.kind === 'throwRelease') st.released = false;
         st.arm = null;
       } else {
@@ -1103,6 +1134,9 @@ export function createViewmodel(ctx) {
     },
     reset() {
       st.arm = null;
+      st.fallen = false;
+      st.fallT = 0;
+      st.visible = true;
       st.shieldFx.length = 0;
       st.rigFx.length = 0;
       st.forceUp = 0;
@@ -1131,7 +1165,7 @@ export function createViewmodel(ctx) {
     update,
     /** Debug/test view of the internal state (not part of the contract). */
     get debug() {
-      return { shown: st.shown, arm: st.arm && { kind: st.arm.kind, t: st.arm.t }, arrows: stuckCount, raise: st.raise, hand, shieldPose };
+      return { shown: st.shown, arm: st.arm && { kind: st.arm.kind, t: st.arm.t }, arrows: stuckCount, raise: st.raise, hand, shieldPose, fallen: st.fallen, visible: st.visible, poses: POSES };
     },
   };
 }
