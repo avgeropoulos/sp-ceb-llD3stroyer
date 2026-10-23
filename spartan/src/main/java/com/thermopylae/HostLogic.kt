@@ -71,6 +71,7 @@ object HostLogic {
             "png" -> "image/png"
             "jpg" -> "image/jpeg"
             "webp" -> "image/webp"
+            "ogg", "opus" -> "audio/ogg"
             "woff2" -> "font/woff2"
             "wasm" -> "application/wasm"
             "txt" -> "text/plain"

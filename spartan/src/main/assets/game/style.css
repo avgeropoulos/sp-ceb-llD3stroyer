@@ -665,6 +665,14 @@ html, body {
   text-shadow: 0 2px 0 #2a1708, 0 0 12px rgba(0, 0, 0, 0.8);
 }
 .hud-sub.has-g .hud-sub-g { display: block; }
+/* Long Greek lines (most of the recorded ones): tighter, smaller capitals, centred when they wrap. */
+.hud-sub-g { text-align: center; }
+.hud-sub.g-long .hud-sub-g {
+  font-size: clamp(13px, 4.2vh, 19px);
+  line-height: 1.25;
+  letter-spacing: 0.13em;
+  padding-left: 0.13em;
+}
 .hud-sub-l {
   padding: 5px 14px 6px;
   background: rgba(12, 7, 4, 0.66);

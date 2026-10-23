@@ -8,27 +8,33 @@ export const ALLY_SLOTS = Object.freeze([-4.2, -2.8, -1.4, 1.4, 2.8, 4.2, 5.6]);
 /** Leonidas holds the slot on the player's left. */
 export const LEONIDAS_X = -1.4;
 
-/** Every spoken line. `speaker` is one of the §12 voice speakers. */
+/**
+ * Every spoken line. `speaker` is one of the §12 voice speakers. The Greeks speak Greek from
+ * recorded clips (audio/voicebank.js: the variants, their Greek and English); `text` and `greek`
+ * here are the fallback when a line has no clip. The Narrator stays English text-to-speech.
+ */
 export const VOICE = Object.freeze({
-  herald: { speaker: 'Herald', text: 'The King commands: hand over your arms.' },
+  herald: { speaker: 'Herald', text: 'Thus says King Xerxes to Leonidas: hand over your arms.' },
   molonLabe: { speaker: 'Leonidas', text: 'Come and take them.', greek: 'ΜΟΛΩΝ ΛΑΒΕ' },
-  arrowsHideSun: { speaker: 'Trachinian', text: 'Their arrows will hide the sun!' },
-  fightInShade: { speaker: 'Dienekes', text: 'Good. Then we shall fight in the shade.' },
+  arrowsHideSun: { speaker: 'Trachinian', text: 'Their arrows are so many they hide the sun!' },
+  fightInShade: { speaker: 'Dienekes', text: 'Good news. Then we shall fight in the shade.' },
   holdTheLine: { speaker: 'Leonidas', text: 'Hold the line!' },
   shieldsUp: { speaker: 'Leonidas', text: 'Shields up!' },
   warcry: { speaker: 'Leonidas', text: 'Alalai!' },
-  immortals: { speaker: 'Lookout', text: 'The Immortals! Hydarnes leads them.' },
+  immortals: { speaker: 'Lookout', text: 'The Immortals! Hydarnes leads them!' },
   anopaia: {
     speaker: 'Lookout',
-    text: 'The Phocians have fled the Anopaia path! Ephialtes has led the Immortals over the mountain!',
+    text: 'The Phocians have abandoned the Anopaia path! Ephialtes is leading the Immortals over the mountain!',
   },
   breakfast: { speaker: 'Leonidas', text: 'Eat your breakfast as men who will dine in Hades.' },
   tegeans: { speaker: 'Narrator', text: 'The Tegeans take the line.' },
   swords: { speaker: 'Dienekes', text: 'Our spears are broken. Swords!' },
+  respite: { speaker: 'Leonidas', text: 'You proved yourselves brave men.' },
+  kolonos: { speaker: 'Dienekes', text: 'Fall back to the hillock! Close ranks, all of you!' }, // Herodotus 7.225
 });
 
 /** Lines Leonidas speaks in battle; Dienekes takes them over once Leonidas has fallen. */
-export const LEONIDAS_BATTLE_LINES = Object.freeze(['holdTheLine', 'shieldsUp', 'warcry']);
+export const LEONIDAS_BATTLE_LINES = Object.freeze(['holdTheLine', 'shieldsUp', 'warcry', 'respite']);
 
 /** Melee kinds a wave can contain (archers are listed separately and never count toward `alive`). */
 export const MELEE_KINDS = Object.freeze(['levy', 'sparabara', 'immortal', 'captain']);
@@ -100,6 +106,7 @@ export const DAYS = [
         // Herodotus 7.225
         subtitle: 'They defended themselves with swords, those who still had them, and with hands and teeth.',
         fade: 2, endless: true, swordOnly: true,
+        intro: ['kolonos'], // spoken as the fade ends
         endlessWave: { levy: 0.3, immortal: 0.7, alive: 12, behindShare: 0.4 },
         // Volleys never overlap (each lasts 5.5 s from warning to end).
         volley: { first: 10, start: 10, step: 0.5, min: 7 },

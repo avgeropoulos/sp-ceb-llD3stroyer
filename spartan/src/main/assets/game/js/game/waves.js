@@ -8,6 +8,8 @@ import {
   DAYS, VOICE, LEONIDAS_BATTLE_LINES, MELEE_KINDS, RESPITE, SPAWN, CARD_SECONDS, GAME_OVER_DELAY,
   ALLY_SLOTS, firstEntryOfDay, meleeCount,
 } from './campaign.js';
+import { VOICEBANK } from '../audio/voicebank.js';
+import { pickVoiceLine, clipFiles } from '../audio/voicelines.js';
 
 const WAVE_CARD_SECONDS = 3;
 const CLEARED_SECONDS = 3;
@@ -18,10 +20,19 @@ const ENDLESS_WAVE_SECONDS = 25;  // phase C: the director's wave count rises th
 const SPAWN_CLEARANCE = 1.3;
 const SHIELDS_UP_EVERY = 12;      // 'Shields up!' is spoken at most this often (s)
 const VANGUARD_STAGGER = 0.3;     // the pre-placed front rank sets out one man at a time (s)
+const VOICE_GAP = 0.35;           // a breath after a recorded line before the next one (s)
+const PHASE_VOICE_LEAD = 0.6;     // a phase's first line follows its fade (s)
+const RESPITE_VOICE_AT = 1.0;     // the praise after a wave, into the respite (s)
 
 /** Rough spoken length of a line, so lines don't cut each other off (TTS uses QUEUE_FLUSH). */
 export function voiceSeconds(text) {
   return 0.7 + 0.062 * text.length;
+}
+
+/** Seconds a line holds the voice queue: its recorded clip and a breath, else the TTS estimate. */
+export function lineSeconds(line) {
+  const d = line.clip ? Number(line.clip.dur) : NaN;
+  return d > 0 ? d + VOICE_GAP : voiceSeconds(line.text);
 }
 
 /**
@@ -72,6 +83,8 @@ export function createWaves(ctx) {
   let campaignVolleys = 0;
   let holdLineSaid = false;
   let tegeansSaid = false;
+  let respitesSeen = 0;     // respites and lulls between surges; every other one gets a word of praise
+  const voiceUses = new Map(); // key → times said this run (picks the next variant)
 
   const timeline = [];      // { at, fn }
   const voiceQ = [];        // line objects
@@ -102,25 +115,85 @@ export function createWaves(ctx) {
     events.emit(name, { day, phase: phaseId(), wave: waveNum, title, subtitle, seconds });
   }
 
+  /** Who says `key` now: Dienekes takes Leonidas' battle lines once the king has fallen. */
+  function speakerFor(key) {
+    const sp = VOICE[key].speaker;
+    return leonidasFallen && sp === 'Leonidas' && LEONIDAS_BATTLE_LINES.includes(key) ? 'Dienekes' : sp;
+  }
+
+  /**
+   * The `n`-th saying of `key`: the speaker's next recorded variant (round-robin), with its Greek
+   * and English; without a clip, the VOICE text for text-to-speech.
+   */
+  function lineFor(key, n) {
+    const src = VOICE[key];
+    const speaker = speakerFor(key);
+    const v = pickVoiceLine(VOICEBANK, key, speaker, n);
+    return {
+      key,
+      n,
+      speaker,
+      text: (v && v.en) || src.text,
+      greek: (v && v.greek) || src.greek,
+      clip: v && v.file ? { file: v.file, dur: v.dur } : null,
+    };
+  }
+
   /** Queues a line. `now` speaks it at once, cutting off whatever is being said. */
   function say(key, now = false) {
-    const src = VOICE[key];
-    if (!src) return;
-    let speaker = src.speaker;
-    if (leonidasFallen && speaker === 'Leonidas' && LEONIDAS_BATTLE_LINES.includes(key)) speaker = 'Dienekes';
-    const line = { key, text: src.text, speaker, greek: src.greek };
+    if (!VOICE[key]) return;
+    if (!now && key === 'holdTheLine' && voiceQ.length > 0) return; // not worth waiting for
+    const n = voiceUses.get(key) || 0;
+    voiceUses.set(key, n + 1);
+    const line = lineFor(key, n);
     if (now) speak(line);
-    else {
-      if (key === 'holdTheLine' && voiceQ.length > 0) return; // not worth waiting for
-      voiceQ.push(line);
-    }
+    else voiceQ.push(line);
   }
 
   function speak(line) {
-    const payload = { text: line.text, speaker: line.speaker };
+    // A battle line still queued when the king fell is Dienekes' now.
+    if (line.speaker !== speakerFor(line.key)) line = lineFor(line.key, line.n);
+    const payload = { key: line.key, text: line.text, speaker: line.speaker };
     if (line.greek) payload.greek = line.greek;
+    if (line.clip) payload.clip = line.clip;
     events.emit('voice', payload);
-    T.voiceBusy = voiceSeconds(line.text);
+    T.voiceBusy = lineSeconds(line);
+  }
+
+  /** Schedules `keys` to be said from `lead` s on; returns when the last will have ended (s). */
+  function scheduleLines(keys, lead) {
+    let end = lead;
+    for (const key of keys || []) {
+      if (!VOICE[key]) continue;
+      later(lead, () => say(key));
+      end += lineSeconds(lineFor(key, voiceUses.get(key) || 0));
+    }
+    return end;
+  }
+
+  /** Asks audio to decode, ahead of need, the clips this part of the campaign will use. */
+  function prefetch(e) {
+    const a = ctx.audio;
+    if (!a || typeof a.preloadVoice !== 'function') return;
+    const files = [];
+    const add = (key, speaker) => {
+      for (const f of clipFiles(VOICEBANK, [key], [speaker])) if (!files.includes(f)) files.push(f);
+    };
+    const kingFalls = !!(e.phases && e.phases.some((p) => p.killAlly === 'Leonidas'));
+    for (const key of e.intro || []) add(key, VOICE[key] ? VOICE[key].speaker : '');
+    for (const key of LEONIDAS_BATTLE_LINES) {
+      add(key, 'Leonidas');
+      if (kingFalls) add(key, 'Dienekes');
+    }
+    if (campaignVolleys === 0 && (e.phases || (e.waves || []).some((w) => w.volleyEvery > 0))) {
+      add('arrowsHideSun', VOICE.arrowsHideSun.speaker);
+      add('fightInShade', VOICE.fightInShade.speaker);
+    }
+    for (const p of e.phases || []) {
+      if (p.noRefill) add('swords', VOICE.swords.speaker);
+      for (const key of p.intro || []) add(key, VOICE[key] ? VOICE[key].speaker : '');
+    }
+    a.preloadVoice(files);
   }
 
   function pumpVoice(gdt) {
@@ -171,13 +244,9 @@ export function createWaves(ctx) {
     lull = false;
     music(day === 3 ? 'lastStand' : 'battle');
     card('dayStart', e.title, e.subtitle, CARD_SECONDS, 0);
+    prefetch(e);
     // dayStart heals, refills and restores the line; world changes happen behind the card.
-    let speech = 0;
-    for (const key of e.intro || []) {
-      later(VOICE_LEAD, () => say(key));
-      speech += voiceSeconds(VOICE[key].text);
-    }
-    T.timer = Math.max(CARD_SECONDS + 1, VOICE_LEAD + speech + 1.2);
+    T.timer = Math.max(CARD_SECONDS + 1, scheduleLines(e.intro, VOICE_LEAD) + 1.2);
     afterTimer = e.phases ? 'phase' : 'wave';
     const restore = () => {
       setTime(e.time);
@@ -251,6 +320,8 @@ export function createWaves(ctx) {
       ctx.player?.dropSpears?.({ keepInHand: false });
     }
     T.timer = (p.fade || 0) + CARD_SECONDS - 1;
+    // Phase C: Dienekes calls them back to the hillock (7.225) as the fade ends.
+    if (p.intro) T.timer = Math.max(T.timer, scheduleLines(p.intro, (p.fade || 0) + PHASE_VOICE_LEAD) + 0.3);
     afterTimer = p.endless ? 'endless' : 'wave';
   }
 
@@ -466,8 +537,12 @@ export function createWaves(ctx) {
     else card('waveCleared', 'They fall back', `Wave ${n} of ${list.length}`, CLEARED_SECONDS, n);
 
     if (waveIdx + 1 < list.length) {
-      if (p && p.lull) beginLull(p.lull, 'wave');
-      else beginRespite();
+      if (p && p.lull) {
+        beginLull(p.lull, 'wave');
+        praise();
+      } else {
+        beginRespite();
+      }
     } else if (entry().phases && phaseIdx + 1 < entry().phases.length) {
       beginLull(PHASE_GAP, 'phase');
     } else {
@@ -482,6 +557,12 @@ export function createWaves(ctx) {
     readyRequested = false;
     T.timer = seconds;
     afterTimer = next;
+  }
+
+  /** Every other respite (or lull between surges), the king, or Dienekes after him, has a word for the line. */
+  function praise() {
+    respitesSeen++;
+    if (respitesSeen % 2 === 1) later(RESPITE_VOICE_AT, () => say('respite'));
   }
 
   function beginRespite() {
@@ -501,6 +582,7 @@ export function createWaves(ctx) {
     if (cfg.allies && ctx.ai) ctx.ai.ensureAllies(ALLY_SLOTS, { walkIn: true });
     const sub = cfg.refill && refillAllowed ? 'Bind your wounds. Take up fresh spears.' : 'Bind your wounds.';
     card('respite', 'Respite', sub, T.timer, waveIdx + 1);
+    praise();
     if (day === 2 && !tegeansSaid) {
       tegeansSaid = true;
       later(1.5, () => say('tegeans'));
@@ -606,6 +688,8 @@ export function createWaves(ctx) {
     refillAllowed = true;
     leonidasFallen = false;
     tegeansSaid = false;
+    respitesSeen = 0;
+    voiceUses.clear();
     campaignVolleys = 0;
     wavesToday = 0;
     const first = firstEntryOfDay(day);

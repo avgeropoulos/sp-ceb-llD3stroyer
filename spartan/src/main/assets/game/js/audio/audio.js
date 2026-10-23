@@ -1,16 +1,19 @@
 /**
  * WebAudio engine (DESIGN.md §11 audio/audio.js): synthesized SFX, ambience beds, music and
- * voice dispatch. Nothing is loaded from files: sfx.js and loops.js render every sound once
- * into AudioBuffers, in a module worker when possible, else time-sliced on the main thread.
+ * voice dispatch. sfx.js and loops.js render every sound once into AudioBuffers, in a module
+ * worker when possible, else time-sliced on the main thread. The only files are the Greeks'
+ * recorded voice lines (audio/voice/*.ogg, listed in voicebank.js), decoded when first needed.
  *
  * Graph: voices → sfx bus ─┐                      ┌→ convolver (the pass) → sfx bus
  *        loops → music bus → duck ─┼→ master → limiter → out
  *        beds  → ambience bus → duck → muffle ─┘
+ *        voice clips → pan → voice bus ─┘ (+ reverb send)
  *        distant host events → low-pass → ambience bus (+ reverb)
  *
  * audio subscribes itself to the bus events (§12) and is the only caller of platform.voice.say.
  */
 import { createRng, clamp, lerp, smoothstep } from '../core/math.js';
+import { LEONIDAS_X } from '../game/campaign.js';
 import { SFX, SFX_NAMES, sfxLength, sfxRate, renderSfxGen } from './sfx.js';
 import { LOOPS, MUSIC_NAMES, AMBIENCE_LAYERS, loopLength, renderLoopGen, renderImpulse } from './loops.js';
 
@@ -26,6 +29,23 @@ export const SPEAKERS = {
   Narrator: { pitch: 0.92, rate: 0.95 },
 };
 const DEFAULT_SPEAKER = { pitch: 0.9, rate: 0.95 };
+
+/**
+ * Where each speaker of recorded lines stands, relative to the player's place in the line (x
+ * right, −z toward the enemy): Leonidas on his left (§13), Dienekes a little to his right, the
+ * herald and the lookout ahead and farther off. `pan` is how far the voice may pan; `gain` its
+ * level; `wet` its send into the pass's reverb.
+ */
+export const VOICE_PLACES = {
+  Leonidas: { x: LEONIDAS_X, z: 0, pan: 0.35, gain: 1, wet: 0.1 },
+  Dienekes: { x: 2.8, z: 0, pan: 0.2, gain: 1, wet: 0.1 },
+  Trachinian: { x: 4.2, z: 0.4, pan: 0.3, gain: 0.95, wet: 0.14 },
+  Herald: { x: 0.3, z: -15, pan: 0.25, gain: 0.8, wet: 0.32 },
+  Lookout: { x: -1, z: -9, pan: 0.25, gain: 0.82, wet: 0.28 },
+};
+const DEFAULT_PLACE = { x: 0, z: -2, pan: 0, gain: 0.95, wet: 0.14 };
+const VOICE_LATE = 0.6; // s: a line whose clip is still loading after this long is dropped
+const CLIP_CACHE = 8 * 1048576; // bytes of decoded clips kept (least recently used go first)
 
 /** Ambience beds: layer → level. */
 export const AMBIENCE = {
@@ -74,7 +94,7 @@ export function createAudio(ctx) {
   // ------------------------------------------------------------------------------------------
   // Graph
 
-  let master, limiter, sfxBus, musicBus, musicDuck, ambBus, ambDuck, ambMuffle, verbIn, distIn, analyser = null;
+  let master, limiter, sfxBus, voiceBus, musicBus, musicDuck, ambBus, ambDuck, ambMuffle, verbIn, distIn, analyser = null;
   const OPEN = ac ? Math.min(20000, ac.sampleRate * 0.45) : 20000; // an open low-pass
   if (ac) {
     try {
@@ -102,6 +122,7 @@ export function createAudio(ctx) {
     limiter.connect(ac.destination);
     master = gain(0.9, limiter);
     sfxBus = gain(1, master);
+    voiceBus = gain(1, master);
     musicDuck = gain(1, master);
     musicBus = gain(0.5, musicDuck);
     ambMuffle = ac.createBiquadFilter();
@@ -828,6 +849,276 @@ export function createAudio(ctx) {
   }
 
   // ------------------------------------------------------------------------------------------
+  // Voice lines. The Greeks' lines are recorded clips (§13), decoded on first need or preloaded
+  // for a battle, played one at a time like the text-to-speech they replace (a new line cuts
+  // off the one being said). Anything else, or a clip that can't be had, goes to platform TTS.
+
+  const clips = new Map(); // file → { file, buf, bytes, used, plays, failed, promise }
+  const vstats = { started: 0, tts: 0, late: 0, failed: 0 };
+  let clipBytes = 0;
+  let decodeFails = 0;
+  let speech = null; // the clip being said: { v, entry, src, g, out, sg, t0 }
+  let held = null; // the line the pause menu cut: { v, entry, offset }
+  let waiting = null; // a line whose clip is still loading: { v, sp, at }
+  let ttsUntil = 0; // now() until which a TTS line may still be talking
+
+  const voiceOff = () => !!ctx.settings && ctx.settings.voice === false;
+  /** Clip files are relative to the game root (index.html's folder). */
+  const clipUrl = (file) => new URL('../../' + String(file).replace(/^\/+/, ''), import.meta.url).href;
+
+  function decode(data) {
+    return new Promise((resolve, reject) => {
+      // Callbacks for old WebKit; the promise newer engines also return is caught so it can't go unhandled.
+      const p = ac.decodeAudioData(data, resolve, (err) => reject(err || new Error('decode failed')));
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    });
+  }
+
+  /** The decoded clip for `file` (loading it once): resolves to its cache entry, or rejects. */
+  function loadClip(file) {
+    let e = clips.get(file);
+    if (e) {
+      e.used = now();
+      return e.promise;
+    }
+    e = { file, buf: null, bytes: 0, used: now(), plays: 0, failed: false, promise: null };
+    clips.set(file, e);
+    const entry = e;
+    e.promise = Promise.resolve()
+      .then(() => fetch(clipUrl(file)))
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.arrayBuffer();
+      })
+      .then((data) =>
+        decode(data).catch((err) => {
+          decodeFails++;
+          throw err;
+        }),
+      )
+      .then((buf) => {
+        entry.buf = buf;
+        entry.bytes = buf.length * buf.numberOfChannels * 4;
+        clipBytes += entry.bytes;
+        trimClips();
+        return entry;
+      })
+      .catch((err) => {
+        entry.failed = true;
+        vstats.failed++;
+        warnOnce(`voice clip ${file} unavailable (${(err && err.message) || err}); speaking it with text-to-speech`);
+        throw err;
+      });
+    e.promise.catch(() => {}); // a preload nobody waits on
+    return e.promise;
+  }
+
+  /**
+   * Keeps decoded clips under CLIP_CACHE: lines already spoken go first (least recently used
+   * first), then preloaded ones still waiting for their turn. The line being said stays.
+   */
+  function trimClips() {
+    while (clipBytes > CLIP_CACHE) {
+      let victim = null;
+      for (const e of clips.values()) {
+        if (!e.buf || (speech && speech.entry === e) || (held && held.entry === e)) continue;
+        if (!victim || (e.plays > 0) > (victim.plays > 0) || ((e.plays > 0) === (victim.plays > 0) && e.used < victim.used)) victim = e;
+      }
+      if (!victim) return;
+      clipBytes -= victim.bytes;
+      clips.delete(victim.file);
+    }
+  }
+
+  /** Two clips that won't decode: this engine can't play Ogg Opus, so every line goes to TTS. */
+  const clipsBroken = () => decodeFails >= 2;
+
+  /** Pan for a speaker's place, from where the player stands and looks (−1 left … 1 right). */
+  function placePan(place) {
+    const p = ctx.player && ctx.player.pos;
+    const dx = place.x - num(p && p.x, 0), dz = place.z - num(p && p.z, 0);
+    const d = Math.hypot(dx, dz);
+    return d < 0.3 ? 0 : clamp(sideOf(dx, dz) / d, -1, 1) * place.pan;
+  }
+
+  function duckFor(seconds) {
+    mix.duckUntil = Math.max(mix.duckUntil, ac.currentTime + Math.max(0, seconds) + 0.25);
+  }
+
+  /** Fades out the clip being said (if any). */
+  function cutSpeech() {
+    const s = speech;
+    if (!s) return;
+    speech = null;
+    const t = ac.currentTime;
+    try {
+      const p = s.g.gain;
+      p.cancelScheduledValues(t);
+      p.setValueAtTime(p.value, t);
+      p.linearRampToValueAtTime(0, t + 0.08);
+      s.src.stop(t + 0.1);
+    } catch { /* already stopped */ }
+  }
+
+  /** Starts a decoded line `offset` s in, through the voice bus with a send into the pass. */
+  function startClip(v, entry, offset) {
+    const buf = entry.buf;
+    if (!buf || !live() || voiceOff() || offset >= buf.duration - 0.05) return false;
+    cutSpeech();
+    if (ttsUntil > now()) stopTts();
+    const place = VOICE_PLACES[v.speaker] || DEFAULT_PLACE;
+    const pan = placePan(place);
+    const t = ac.currentTime;
+    const src = ac.createBufferSource();
+    src.buffer = buf;
+    const g = gain(0);
+    src.connect(g);
+    let out = g;
+    if (pan && ac.createStereoPanner) {
+      out = ac.createStereoPanner();
+      out.pan.value = pan;
+      g.connect(out);
+    }
+    out.connect(voiceBus);
+    const sg = gain(place.wet, verbIn);
+    out.connect(sg);
+    // A line resumed after the pause menu fades back in rather than clicking in mid-word.
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(place.gain, t + (offset > 0 ? 0.06 : 0.008));
+    const s = { v, entry, src, g, out, sg, t0: t - offset };
+    src.onended = () => {
+      if (speech === s) speech = null;
+      try {
+        src.disconnect();
+        g.disconnect();
+        if (out !== g) out.disconnect();
+        sg.disconnect();
+      } catch { /* already disconnected */ }
+    };
+    src.start(t, offset);
+    speech = s;
+    entry.used = now();
+    entry.plays++;
+    vstats.started++;
+    duckFor(buf.duration - offset);
+    if (log.length >= 200) log.shift();
+    log.push({ name: 'voice', key: v.key || null, speaker: v.speaker, file: entry.file, volume: place.gain, pan, offset, t });
+    return true;
+  }
+
+  /** A recorded line: now if decoded, else when it arrives (if that's soon), else TTS if it can't be had. */
+  function sayClip(v, sp) {
+    const file = v.clip.file;
+    const e = clips.get(file);
+    if (e && e.failed) {
+      sayTts(v, sp);
+      return;
+    }
+    cutSpeech();
+    if (e && e.buf) {
+      startClip(v, e, 0);
+      return;
+    }
+    const w = (waiting = { v, sp, at: now() });
+    duckFor(num(v.clip.dur, 2));
+    loadClip(file).then(
+      (entry) => {
+        if (waiting !== w) return; // another line, the pause menu or voices off came first
+        waiting = null;
+        if (now() - w.at > VOICE_LATE * 1000) vstats.late++;
+        else startClip(w.v, entry, 0);
+      },
+      () => {
+        if (waiting !== w) return;
+        waiting = null;
+        sayTts(w.v, w.sp);
+      },
+    );
+  }
+
+  /** The English line through platform TTS (no-op there unless settings.voice). */
+  function sayTts(v, sp) {
+    const text = v.text == null ? '' : String(v.text);
+    if (!text) return;
+    if (ac) cutSpeech();
+    const pv = ctx.platform && ctx.platform.voice;
+    if (pv && typeof pv.say === 'function') {
+      try {
+        pv.say(text, { pitch: sp.pitch, rate: sp.rate });
+        vstats.tts++;
+      } catch (err) {
+        console.warn('audio: voice failed', err);
+      }
+    }
+    const secs = 0.5 + text.length / (14 * sp.rate);
+    ttsUntil = now() + secs * 1000;
+    // Duck the music and the world while someone speaks (TTS lives outside WebAudio).
+    if (ac && !voiceOff()) duckFor(secs - 0.25);
+  }
+
+  function stopTts() {
+    ttsUntil = 0;
+    const pv = ctx.platform && ctx.platform.voice;
+    try {
+      if (pv && typeof pv.stop === 'function') pv.stop();
+    } catch { /* ignore */ }
+  }
+
+  /** §12 `voice`: { key, text, speaker, greek?, clip?: { file, dur } }. Never throws. */
+  function sayLine(v) {
+    try {
+      const sp = SPEAKERS[v.speaker] || DEFAULT_SPEAKER;
+      const clip = v.clip && typeof v.clip.file === 'string' && v.clip.file ? v.clip : null;
+      if (!v.text && !clip) return;
+      held = null; // a new line replaces one the pause menu cut
+      waiting = null;
+      if (clip && ac && !clipsBroken()) {
+        if (voiceOff()) cutSpeech(); // silent; the HUD still shows the subtitles
+        else sayClip(v, sp);
+        return;
+      }
+      sayTts(v, sp);
+    } catch (err) {
+      warnOnce('voice line failed: ' + ((err && err.message) || err));
+    }
+  }
+
+  /** The pause menu stops the line being said; resume() takes it up again a little before the cut. */
+  function holdSpeech() {
+    waiting = null;
+    const s = speech;
+    if (!s) return;
+    const offset = ac.currentTime - s.t0;
+    cutSpeech();
+    if (offset < s.entry.buf.duration - 0.3) held = { v: s.v, entry: s.entry, offset: Math.max(0, offset - 0.25) };
+  }
+
+  function onMode(m) {
+    if (!ac) return;
+    try {
+      if (m.mode === 'paused') {
+        holdSpeech();
+      } else if ((m.mode === 'battle' || m.mode === 'training') && m.prev === 'paused') {
+        const h = held;
+        held = null;
+        if (h) startClip(h.v, h.entry, h.offset);
+      } else {
+        held = null;
+        waiting = null;
+        cutSpeech();
+      }
+    } catch (err) {
+      warnOnce('voice pause failed: ' + ((err && err.message) || err));
+    }
+  }
+
+  /** Decodes clips ahead of need (waves asks for a battle's barks and lines at each dayStart). */
+  function preloadVoice(files) {
+    if (!ac || voiceOff() || clipsBroken() || !Array.isArray(files) || typeof fetch !== 'function') return;
+    for (const f of files) if (typeof f === 'string' && f) loadClip(f);
+  }
+
+  // ------------------------------------------------------------------------------------------
   // Events (§12)
 
   const isPlayer = (e) => !!e.byPlayer || e.attacker === 'player';
@@ -952,23 +1243,15 @@ export function createAudio(ctx) {
     },
     dayStart(d) {
       if (num(d.day, 1) >= 3) queue('loop', 'lastStand', 2); // ready before the Kolonos
-    },
-    voice(v) {
-      if (!v.text) return;
-      const sp = SPEAKERS[v.speaker] || DEFAULT_SPEAKER;
-      const pv = ctx.platform && ctx.platform.voice;
-      if (pv && typeof pv.say === 'function') {
-        try {
-          pv.say(String(v.text), { pitch: sp.pitch, rate: sp.rate });
-        } catch (err) {
-          console.warn('audio: voice failed', err);
-        }
-      }
-      // Duck the music and the world while someone speaks (TTS lives outside WebAudio).
-      if (ac && (!ctx.settings || ctx.settings.voice !== false)) {
-        mix.duckUntil = Math.max(mix.duckUntil, ac.currentTime + 0.5 + String(v.text).length / (14 * sp.rate));
+      // A new day, or a restart from the pause menu: whatever was being said is over.
+      if (ac) {
+        held = null;
+        waiting = null;
+        cutSpeech();
       }
     },
+    voice: sayLine,
+    modeChanged: onMode,
   };
 
   /** The arrows that miss the player still rain down all along the line. */
@@ -1046,6 +1329,10 @@ export function createAudio(ctx) {
       dispatch();
     }
     if (!pool.length) pumpMain(ctx.mode === 'battle' || ctx.mode === 'training' ? 3 : 8);
+    if ((speech || held) && voiceOff()) {
+      held = null;
+      cutSpeech(); // voices turned off in the settings
+    }
     if (ac.state !== 'running') return;
     const d = clamp(num(dt, 0), 0, 0.1);
     for (const L of layers) if (L.nodes) updateLayerPan(L, false);
@@ -1088,6 +1375,7 @@ export function createAudio(ctx) {
     resume,
     update,
     prerender,
+    preloadVoice,
     /** Queues a loop for rendering ahead of need (e.g. 'lastStand'). */
     preload(name) {
       if (LOOPS[name]) queue('loop', name, 2);
@@ -1112,6 +1400,15 @@ export function createAudio(ctx) {
         music: music.cur ? music.cur.name : 'none',
         ambience: amb.kind,
         heartbeat: hb.on,
+        voice: {
+          ...vstats,
+          speaking: speech ? speech.entry.file : null,
+          held: held ? held.entry.file : null,
+          loading: waiting ? waiting.v.clip.file : null,
+          cached: [...clips.values()].filter((e) => e.buf).length,
+          mb: clipBytes / 1048576,
+          broken: clipsBroken(),
+        },
       };
     },
     log,
@@ -1132,6 +1429,7 @@ export function createAudio(ctx) {
     },
     dispose() {
       for (const off of offs) off();
+      if (ac) cutSpeech();
       if (hasWindow && window.removeEventListener) for (const n of ['pointerdown', 'touchend', 'keydown']) window.removeEventListener(n, onGesture, { capture: true });
       for (const slot of pool) slot.w.terminate();
       pool.length = 0;

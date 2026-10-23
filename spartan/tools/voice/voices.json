@@ -1,0 +1,103 @@
+{
+  "_about": "Voice recipes for render.py. A clip's recipe = defaults <- speaker <- defaults.delivery[kind] <- speaker.delivery[kind]; kind is speech, command, shout or cry (render.py maps a line's delivery word onto one, unless the line sets \"kind\"). The speaker sets the voice, the delivery the vocal effort. timbre/prosody: Kokoro voice blend weights (style dims 0-127 condition the decoder = timbre, 128-255 the prosody predictor = rhythm and melody). formant: vocal-tract scale by resampling (<1 = bigger, darker). f0_st: pitch shift in semitones made inside the model (formants untouched); f0_delivery_st adds the delivery's raise. speed x speed_mul: tempo. accent_st: height of the Ancient Greek pitch accent over the accented vowel; accent_energy: its loudness (Kokoro energy units, +2 = about +2 dB). accent_len / final_len: duration scale of the accented / phrase-final vowel. eq: the voice's tone; effort_eq: the delivery's spectral tilt. Bands: {type: highpass|lowpass|peak|lowshelf|highshelf, f Hz, gain dB, q}. saturation (delivery) and grit (speaker, added): tanh drive and wet mix. compressor: threshold dBFS (signal pre-set to -20 LUFS), ratio, attack/release ms, knee dB. max_ms caps phoneme durations. phone_map: optional per-speaker phoneme substitutions (an accent). See RESEARCH.md for the measurements behind each number.",
+  "defaults": {
+    "speed": 0.95,
+    "formant": 1.0,
+    "f0_st": 0.0,
+    "accent_st": 3.0,
+    "eq": [{"type": "highpass", "f": 70, "q": 0.7}],
+    "compressor": {"threshold": -26, "ratio": 2.5, "attack": 6, "release": 90, "knee": 6},
+    "delivery": {
+      "speech": {},
+      "command": {
+        "speed_mul": 1.06, "f0_delivery_st": 3.0, "accent_energy": 1.0, "accent_len": 1.15, "final_len": 1.25,
+        "effort_eq": [
+          {"type": "lowshelf", "f": 250, "gain": -2.5, "q": 0.7},
+          {"type": "peak", "f": 2500, "gain": 4.0, "q": 0.9},
+          {"type": "highshelf", "f": 5000, "gain": 1.0, "q": 0.7}
+        ],
+        "saturation": {"drive": 1.8, "mix": 0.25},
+        "compressor": {"threshold": -28, "ratio": 3.5}
+      },
+      "shout": {
+        "speed_mul": 1.04, "f0_delivery_st": 4.5, "accent_st": 1.5, "accent_energy": 1.5, "accent_len": 1.3, "final_len": 1.8,
+        "effort_eq": [
+          {"type": "lowshelf", "f": 300, "gain": -4.0, "q": 0.7},
+          {"type": "peak", "f": 2200, "gain": 6.0, "q": 0.8},
+          {"type": "highshelf", "f": 4500, "gain": 3.0, "q": 0.7}
+        ],
+        "saturation": {"drive": 2.5, "mix": 0.4},
+        "compressor": {"threshold": -30, "ratio": 4.5, "attack": 4}
+      },
+      "cry": {
+        "speed_mul": 1.0, "f0_delivery_st": 5.0, "accent_st": 1.0, "accent_energy": 1.5, "accent_len": 1.4, "final_len": 2.6,
+        "final_st": 1.0, "max_ms": {"vowel": 950},
+        "effort_eq": [
+          {"type": "lowshelf", "f": 300, "gain": -4.0, "q": 0.7},
+          {"type": "peak", "f": 2200, "gain": 6.0, "q": 0.8},
+          {"type": "highshelf", "f": 4500, "gain": 3.0, "q": 0.7}
+        ],
+        "saturation": {"drive": 3.0, "mix": 0.45},
+        "compressor": {"threshold": -30, "ratio": 5.0, "attack": 4}
+      }
+    }
+  },
+  "speakers": {
+    "Leonidas": {
+      "_why": "The king: deep, dark and clean. am_onyx timbre (lowest pitch of the 23 male voices, F0 ~83 Hz) with 30% am_michael for presence; Italian im_nicola prosody for pure Mediterranean vowels (best intelligibility of the blends tried); slow, with a strong pitch accent. Speech F0 ~100 Hz, commands ~145, shouts and cries ~150-165.",
+      "timbre": {"am_onyx": 0.7, "am_michael": 0.3},
+      "prosody": {"im_nicola": 1.0},
+      "speed": 0.9,
+      "accent_st": 3.5,
+      "eq": [
+        {"type": "highpass", "f": 65, "q": 0.7},
+        {"type": "lowshelf", "f": 140, "gain": -1.5, "q": 0.7},
+        {"type": "peak", "f": 2800, "gain": 2.0, "q": 0.9}
+      ]
+    },
+    "Dienekes": {
+      "_why": "A second veteran, brighter and rougher than the king: am_michael timbre lowered 3 semitones with a 5% bigger vocal tract, Spanish em_alex prosody (livelier, wry), brighter presence at 1.8 kHz. Speech F0 ~105-120 Hz (as low as the king, told apart by timbre: MFCC distance 61 against 14 within one voice). Extra grit (saturation) was tried and dropped: it cost intelligibility (control CER 0.28 vs 0.06).",
+      "timbre": {"am_michael": 1.0},
+      "prosody": {"em_alex": 1.0},
+      "f0_st": -3.0,
+      "formant": 0.95,
+      "eq": [
+        {"type": "highpass", "f": 75, "q": 0.7},
+        {"type": "peak", "f": 1800, "gain": 1.5, "q": 1.0}
+      ]
+    },
+    "Lookout": {
+      "_why": "A young man: am_adam timbre with Portuguese pm_alex prosody, 2% smaller vocal tract, quick. Speech F0 ~140 Hz, alarm calls ~170.",
+      "timbre": {"am_adam": 1.0},
+      "prosody": {"pm_alex": 1.0},
+      "formant": 1.02,
+      "speed": 1.02,
+      "eq": [
+        {"type": "highpass", "f": 90, "q": 0.7},
+        {"type": "highshelf", "f": 4000, "gain": 1.5, "q": 0.7}
+      ]
+    },
+    "Herald": {
+      "_why": "Xerxes' herald, formal and foreign: Hindi hm_psi (an Indo-Iranian rhythm and melody on the Greek), 1.5 semitones lower, slow and measured, slightly nasal.",
+      "timbre": {"hm_psi": 1.0},
+      "f0_st": -1.5,
+      "speed": 0.88,
+      "eq": [
+        {"type": "highpass", "f": 80, "q": 0.7},
+        {"type": "peak", "f": 1100, "gain": 2.0, "q": 1.4}
+      ],
+      "delivery": {"command": {"speed_mul": 1.0, "f0_delivery_st": 2.0, "saturation": {"drive": 1.2, "mix": 0.1}}}
+    },
+    "Trachinian": {
+      "_why": "An ordinary local man of Trachis: a Spanish em_alex / American am_echo timbre blend (60/40) with em_alex prosody, mid pitch (speech F0 ~127 Hz, alarm ~175), a thinner, slightly nasal everyman tone (less chest, +2.5 dB at 1.4 kHz). Plain am_echo was the voice nearest to the king's (MFCC distance 29-33); the blend moves him to 36-51 from every other speaker.",
+      "timbre": {"em_alex": 0.6, "am_echo": 0.4},
+      "prosody": {"em_alex": 1.0},
+      "f0_st": -0.5,
+      "eq": [
+        {"type": "highpass", "f": 100, "q": 0.7},
+        {"type": "lowshelf", "f": 220, "gain": -3.0, "q": 0.7},
+        {"type": "peak", "f": 1400, "gain": 2.5, "q": 1.0}
+      ]
+    }
+  }
+}

@@ -124,12 +124,18 @@ build step. The Android app is a small Kotlin host around a full-screen WebView:
   * `js/game/`: rules, combos, the player, combat, enemy and ally AI, and the campaign.
   * `js/gfx/`: procedural textures, the world, skinned characters, the first-person arms and
     weapons, and particles and camera effects.
-  * `js/audio/`: every sound and the music, synthesized with WebAudio. There are no audio files.
+  * `js/audio/`: every sound and the music, synthesized with WebAudio. The only audio files are
+    the voice lines in `audio/voice/`: Leonidas, Dienekes and the other Greeks speak period
+    Greek (subtitled in Greek capitals over the English); the narrator and the Agoge use the
+    phone's text-to-speech in English.
   * `js/ui/`: HUD, menus, touch and keyboard input, and the Agoge.
 * `src/main/java/com/thermopylae/`: the Android host. It serves the assets from a secure origin
   and bridges the gyroscope, accelerometer and gravity sensors at 200 Hz, plus vibration and
   text-to-speech, to the page.
 * `DESIGN.md`: the full design and module contracts.
+
+Credits: the Greek voices are rendered offline with [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M)
+(Apache-2.0).
 
 ### Building and testing
 
@@ -138,6 +144,7 @@ build step. The Android app is a small Kotlin host around a full-screen WebView:
 node --test spartan/tests/unit/*.test.mjs     # unit tests: gestures, rules, combos, campaign, module graph…
 node spartan/tests/serve.mjs                  # play in a desktop browser at the printed URL
 node spartan/tests/e2e/smoke.mjs              # end-to-end run in headless Chromium (needs Playwright)
+node spartan/tests/e2e/voice-clips.mjs        # the Greeks' recorded voice lines in the running game
 ```
 
 You can also add `?debug=1`, `?control=touch|motion`, `?mode=battle&day=3` or

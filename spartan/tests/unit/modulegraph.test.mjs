@@ -37,6 +37,7 @@ const PURE = new Set([
   'core/math.js', 'core/noise.js',
   'motion/frames.js', 'motion/gestures.js', 'motion/synth.js',
   'game/rules.js', 'game/combos.js',
+  'audio/voicelines.js', 'audio/voicebank.js',
 ]);
 
 const ADDONS = new Set(['three/addons/Sky.js', 'three/addons/BufferGeometryUtils.js']);

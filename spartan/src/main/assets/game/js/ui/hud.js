@@ -28,6 +28,7 @@ const CHEVRON = '<svg viewBox="-20 -20 40 40" aria-hidden="true"><path d="M-11-1
 // Hurt arc: a dark backing stroke under the red one keeps it reading as dark red over the sky.
 const ARC = '<svg viewBox="-100 -100 200 200" aria-hidden="true"><path d="M-50.5-72.1A88 88 0 0 1 50.5-72.1" fill="none" stroke="url(#hud-arc-b)" stroke-width="13" stroke-linecap="round"/><path d="M-50.5-72.1A88 88 0 0 1 50.5-72.1" fill="none" stroke="url(#hud-arc-g)" stroke-width="9" stroke-linecap="round"/><path d="M-30-80.6A86 86 0 0 1 30-80.6" fill="none" stroke="#ffb59a" stroke-width="2" stroke-linecap="round" opacity=".55"/></svg>';
 
+const GREEK_LONG = 24; // a Greek subtitle longer than this is set tighter and smaller
 const MAX_CHEV = 6;
 const MAX_ARCS = 4;
 const ARC_LIFE = 1.4;
@@ -452,6 +453,7 @@ export function createHud(ctx) {
       a.name.textContent = b.name.textContent;
       a.text.textContent = b.text.textContent;
       a.el.classList.toggle('has-g', b.el.classList.contains('has-g'));
+      a.el.classList.toggle('g-long', b.el.classList.contains('g-long'));
       a.el.classList.toggle('no-name', b.el.classList.contains('no-name'));
       a.left = Math.min(b.left, 2.2);
       a.el.classList.add('is-shown');
@@ -460,8 +462,11 @@ export function createHud(ctx) {
     b.name.textContent = narrator ? '' : e.speaker;
     b.text.textContent = e.text;
     b.el.classList.toggle('has-g', !!e.greek);
+    b.el.classList.toggle('g-long', String(e.greek || '').length > GREEK_LONG);
     b.el.classList.toggle('no-name', narrator);
-    b.left = subtitleSeconds(e.text, e.greek);
+    // A recorded line stays up at least as long as it is spoken.
+    const spoken = e.clip && e.clip.dur > 0 ? e.clip.dur + 0.8 : 0;
+    b.left = Math.max(subtitleSeconds(e.text, e.greek), spoken);
     requestShow(b.el);
   });
 

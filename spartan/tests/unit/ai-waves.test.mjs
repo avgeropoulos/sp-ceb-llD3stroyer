@@ -51,10 +51,10 @@ test('campaign data matches §13', () => {
 test('voice lines and speakers are exactly §13', () => {
   const lines = Object.values(VOICE).map((v) => `${v.speaker}: ${v.text}`);
   for (const l of [
-    'Herald: The King commands: hand over your arms.', 'Leonidas: Come and take them.',
-    'Trachinian: Their arrows will hide the sun!', 'Dienekes: Good. Then we shall fight in the shade.',
-    'Leonidas: Hold the line!', 'Leonidas: Shields up!', 'Leonidas: Alalai!', 'Lookout: The Immortals! Hydarnes leads them.',
-    'Lookout: The Phocians have fled the Anopaia path! Ephialtes has led the Immortals over the mountain!',
+    'Herald: Thus says King Xerxes to Leonidas: hand over your arms.', 'Leonidas: Come and take them.',
+    'Trachinian: Their arrows are so many they hide the sun!', 'Dienekes: Good news. Then we shall fight in the shade.',
+    'Leonidas: Hold the line!', 'Leonidas: Shields up!', 'Leonidas: Alalai!', 'Lookout: The Immortals! Hydarnes leads them!',
+    'Lookout: The Phocians have abandoned the Anopaia path! Ephialtes is leading the Immortals over the mountain!',
     'Leonidas: Eat your breakfast as men who will dine in Hades.',
   ]) assert.ok(lines.includes(l), l);
   assert.ok(lines.some((l) => l.endsWith('The Tegeans take the line.')));
@@ -162,11 +162,11 @@ test('the campaign runs from Day 1 to the end of phase C and gameOver 3.2 s afte
   assert.ok(h.calls.banner[0].startsWith('Three times'));
   const voices = h.log.filter((e) => e.n === 'voice');
   // 'Shields up!' at a volley warning, at most once per 12 s.
-  const shields = voices.filter((v) => v.text === 'Shields up!').map((v) => v.t);
+  const shields = voices.filter((v) => v.key === 'shieldsUp').map((v) => v.t);
   assert.ok(shields.length > 10 && shields.length < h.calls.volley.length);
   assert.ok(shields.every((t, i) => i === 0 || t - shields[i - 1] >= 12 - 1e-6));
   assert.ok(shields.every((t) => h.calls.volley.some((v) => Math.abs(v.t - t) < 1e-6)));
-  assert.equal(voices.filter((v) => v.text === 'Their arrows will hide the sun!').length, 1);
+  assert.equal(voices.filter((v) => v.key === 'arrowsHideSun').length, 1);
   assert.equal(voices.filter((v) => v.text === 'The Tegeans take the line.').length, 1);
   assert.ok(voices.filter((v) => v.t > bAt + 1.1).every((v) => v.speaker !== 'Leonidas'));
   assert.deepEqual(h.log.filter((e) => e.n === 'waveCleared' && e.phase === 'B').map((e) => e.title), ['Driven back (1/4)', 'Driven back (2/4)', 'Driven back (3/4)', 'Driven back (4/4)']);
@@ -246,9 +246,10 @@ test('starting on Day 3 begins at dawn with the Anopaia lines, then phase A in t
   const h = harness();
   h.waves.start(3);
   for (let i = 0; i < 30 * 20; i++) h.step(0.05);
-  const voices = h.log.filter((e) => e.n === 'voice').map((v) => v.speaker + ': ' + v.text);
-  assert.equal(voices[0], 'Lookout: The Phocians have fled the Anopaia path! Ephialtes has led the Immortals over the mountain!');
-  assert.equal(voices[1], 'Leonidas: Eat your breakfast as men who will dine in Hades.');
+  // The English of a recorded line comes from the voice bank (voice-waves.test.mjs checks it).
+  const voices = h.log.filter((e) => e.n === 'voice').map((v) => v.speaker + ': ' + v.key);
+  assert.equal(voices[0], 'Lookout: anopaia');
+  assert.equal(voices[1], 'Leonidas: breakfast');
   assert.deepEqual(h.calls.time, ['dawn', 'morning']);
   assert.equal(h.waves.phase, 'A');
   assert.equal(h.calls.ensure.length >= 1, true);

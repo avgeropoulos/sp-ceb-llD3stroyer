@@ -5,7 +5,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DAYS, VOICE, RESPITE, SPAWN, firstEntryOfDay } from '../../src/main/assets/game/js/game/campaign.js';
-import { createWaves, voiceSeconds } from '../../src/main/assets/game/js/game/waves.js';
+import { createWaves, lineSeconds } from '../../src/main/assets/game/js/game/waves.js';
+import { pickVoiceLine } from '../../src/main/assets/game/js/audio/voicelines.js';
+import { VOICEBANK } from '../../src/main/assets/game/js/audio/voicebank.js';
 import { EventBus } from '../../src/main/assets/game/js/core/events.js';
 import { createRng } from '../../src/main/assets/game/js/core/math.js';
 import { pauseKicker } from '../../src/main/assets/game/js/ui/menus.js';
@@ -85,7 +87,9 @@ test('Day 1: the vanguard stands at z ≈ −16 through the intro and sets out a
   const van = h.calls.spawns.filter((s) => s.t === 0);
   assert.equal(van.length, DAYS[0].vanguard.count);
   assert.ok(van.every((s) => s.kind === 'levy' && s.a.state === 'idle' && Math.abs(s.z - -16) <= 0.85 && Math.abs(s.x) < 3.5));
-  const intro = Math.max(5 + 1, 1.2 + DAYS[0].intro.reduce((s, k) => s + voiceSeconds(VOICE[k].text), 0) + 1.2);
+  // The herald and Leonidas: each line holds the intro for its recorded clip (or its TTS estimate).
+  const clipOf = (k) => pickVoiceLine(VOICEBANK, k, VOICE[k].speaker, 0);
+  const intro = Math.max(5 + 1, 1.2 + DAYS[0].intro.reduce((s, k) => s + lineSeconds({ text: VOICE[k].text, clip: clipOf(k) }), 0) + 1.2);
   h.until(() => h.log.some((e) => e.n === 'waveStart'));
   const ws = h.log.find((e) => e.n === 'waveStart').t;
   assert.ok(Math.abs(ws - intro) < 0.06, `waveStart at ${ws}, intro ${intro}`);
@@ -160,10 +164,10 @@ test('volleys need archers: each archer down thins them, all down stops them', (
   assert.equal(h.calls.volley[2].count, 100);
   h.killArchers();
   const n = h.calls.volley.length;
-  const shields = h.log.filter((e) => e.n === 'voice' && e.text === 'Shields up!').length;
+  const shields = h.log.filter((e) => e.n === 'voice' && e.key === 'shieldsUp').length;
   h.run(120);
   assert.equal(h.calls.volley.length, n, 'no volley once every archer is dead');
-  assert.equal(h.log.filter((e) => e.n === 'voice' && e.text === 'Shields up!').length, shields);
+  assert.equal(h.log.filter((e) => e.n === 'voice' && e.key === 'shieldsUp').length, shields);
 });
 
 test('volleys from archers not yet on the field still count; waves without archers keep the clock', () => {
@@ -205,7 +209,7 @@ test('Day 3: phase B drops the bundle (one spear stays in hand) with the line; p
   for (let i = 1; i < cv.length; i++) assert.ok(cv[i].t - cv[i - 1].t >= 7 - 1e-6);
   assert.ok(cv.filter((v) => v.fromBehind).every((v) => v.count === 100));
   // 'Shields up!' at most once per 12 s.
-  const sh = h.log.filter((e) => e.n === 'voice' && e.text === 'Shields up!' && e.t >= cAt).map((e) => e.t);
+  const sh = h.log.filter((e) => e.n === 'voice' && e.key === 'shieldsUp' && e.t >= cAt).map((e) => e.t);
   assert.ok(sh.length >= 5 && sh.length < cv.length);
   for (let i = 1; i < sh.length; i++) assert.ok(sh[i] - sh[i - 1] >= 12 - 1e-6);
 });
