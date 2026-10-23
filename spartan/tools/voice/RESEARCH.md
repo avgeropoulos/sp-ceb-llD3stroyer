@@ -13,6 +13,30 @@ the script into those clips:
 | `qa.py` | measures the rendered clips (loudness, peaks, silence, pitch, artifacts, speech quality, optional Whisper transcript, speaker distinctness) |
 | `setup.sh` | fetches the model into a cache outside the repo and builds a pinned Python venv |
 | `asr.mjs` | the Whisper batch transcriber that `qa.py --asr` drives |
+| `render_google.py` | the same lines read by **native Greek** Google Cloud voices in Modern Greek pronunciation (see below) |
+| `voices_google.json` | one Google voice per speaker, plus the same post-processing per delivery |
+
+## Native Greek voices (Google Cloud)
+
+The player, a Greek speaker, heard the Kokoro voices as foreign: the engine has no Greek voice,
+so English, Spanish and Italian voices read the reconstructed IPA, and the reconstructed
+pronunciation itself (b for β, u for ου, aspirated stops) sounds foreign to a Greek ear. Greeks
+read ancient texts in Modern Greek pronunciation, so `render_google.py` does the same: it converts
+each line's polytonic Greek to monotonic spelling and has a native Greek Chirp 3 HD voice read it,
+then applies render.py's chain (EQ, delivery effort, loudness, Ogg Opus) and writes the same clips
+and voicebank.js. Subtitles are unchanged.
+
+```sh
+export GOOGLE_TTS_API_KEY=...                       # a key with the Cloud Text-to-Speech API enabled
+$PY -I spartan/tools/voice/render_google.py --show-text          # the monotonic text, no API calls
+$PY -I spartan/tools/voice/render_google.py --list-voices        # the el-GR voices the key can use
+$PY -I spartan/tools/voice/render_google.py --audition Leonidas --voices-try el-GR-Chirp3-HD-Charon,el-GR-Chirp3-HD-Fenrir --out /tmp/a
+$PY -I spartan/tools/voice/render_google.py                      # render every line into the game
+```
+
+Responses are cached by request under `$THERMOPYLAE_TTS_CACHE` (default the voice cache's
+`google-tts/`), so re-rendering after a post-processing change costs nothing. The key is sent in a
+request header only.
 
 ## Using it
 

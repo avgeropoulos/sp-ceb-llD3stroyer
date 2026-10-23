@@ -1,0 +1,79 @@
+{
+  "_about": "Speaker recipes for render_google.py: a native Greek Google Cloud TTS voice per speaker (Chirp 3 HD, el-GR) plus render.py's post-processing. voice = Google voice name; rate = speakingRate; pitch_st = formant-preserving pitch shift (semitones) after synthesis; eq = speaker EQ. The delivery blocks set vocal effort: effort EQ, saturation, compression, and a small extra pitch (delivery_pitch_st) and rate (rate_mul) for commands, shouts and cries. Voice choices are confirmed by an audition (render_google.py --audition) once a key is set.",
+  "defaults": {
+    "rate": 0.95,
+    "pitch_st": 0.0,
+    "eq": [{ "type": "highpass", "f": 70, "q": 0.7 }],
+    "compressor": { "threshold": -26, "ratio": 2.5, "attack": 6, "release": 90, "knee": 6 },
+    "delivery": {
+      "speech": {},
+      "command": {
+        "rate_mul": 1.04,
+        "delivery_pitch_st": 0.8,
+        "effort_eq": [
+          { "type": "lowshelf", "f": 250, "gain": -2.0, "q": 0.7 },
+          { "type": "peak", "f": 2500, "gain": 3.5, "q": 0.9 },
+          { "type": "highshelf", "f": 5000, "gain": 1.0, "q": 0.7 }
+        ],
+        "saturation": { "drive": 1.6, "mix": 0.2 },
+        "compressor": { "threshold": -28, "ratio": 3.5 }
+      },
+      "shout": {
+        "rate_mul": 1.03,
+        "delivery_pitch_st": 1.5,
+        "effort_eq": [
+          { "type": "lowshelf", "f": 300, "gain": -3.5, "q": 0.7 },
+          { "type": "peak", "f": 2200, "gain": 5.0, "q": 0.8 },
+          { "type": "highshelf", "f": 4500, "gain": 2.5, "q": 0.7 }
+        ],
+        "saturation": { "drive": 2.2, "mix": 0.35 },
+        "compressor": { "threshold": -30, "ratio": 4.5, "attack": 4 }
+      },
+      "cry": {
+        "rate_mul": 0.9,
+        "delivery_pitch_st": 2.0,
+        "effort_eq": [
+          { "type": "lowshelf", "f": 300, "gain": -3.5, "q": 0.7 },
+          { "type": "peak", "f": 2200, "gain": 5.0, "q": 0.8 },
+          { "type": "highshelf", "f": 4500, "gain": 2.5, "q": 0.7 }
+        ],
+        "saturation": { "drive": 2.6, "mix": 0.4 },
+        "compressor": { "threshold": -30, "ratio": 5.0, "attack": 4 }
+      }
+    }
+  },
+  "speakers": {
+    "Leonidas": {
+      "_why": "The king: the deepest, calmest male voice, a little lower still.",
+      "voice": "el-GR-Chirp3-HD-Charon",
+      "rate": 0.9,
+      "pitch_st": -1.5,
+      "eq": [
+        { "type": "highpass", "f": 65, "q": 0.7 },
+        { "type": "lowshelf", "f": 140, "gain": -1.0, "q": 0.7 },
+        { "type": "peak", "f": 2800, "gain": 1.5, "q": 0.9 }
+      ]
+    },
+    "Dienekes": {
+      "_why": "A veteran: a rougher, different male voice.",
+      "voice": "el-GR-Chirp3-HD-Algenib",
+      "rate": 0.95,
+      "pitch_st": -0.5
+    },
+    "Lookout": {
+      "_why": "A young watchman: lighter and quicker.",
+      "voice": "el-GR-Chirp3-HD-Puck",
+      "rate": 1.05
+    },
+    "Herald": {
+      "_why": "Xerxes' herald: formal and measured.",
+      "voice": "el-GR-Chirp3-HD-Iapetus",
+      "rate": 0.9
+    },
+    "Trachinian": {
+      "_why": "A man of Trachis: an ordinary local voice.",
+      "voice": "el-GR-Chirp3-HD-Achird",
+      "rate": 1.0
+    }
+  }
+}
