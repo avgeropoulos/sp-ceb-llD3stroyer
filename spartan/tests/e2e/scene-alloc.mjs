@@ -4,7 +4,8 @@
 // player. Warms up first so the hot functions are optimized, then samples `frames` frames and
 // prints bytes per frame by function for the scene-owned modules (and the total).
 // SCENE_OVERRIDE='js/game/combat.js=/path/a.js,js/gfx/fx/particles.js=/path/b.js' serves other
-// sources for those files (a before/after comparison).
+// sources for those files (a before/after comparison). Drawing is stubbed out (SwiftShader takes
+// about a second a frame, and none of these hot paths depend on it); SCENE_DRAW=1 keeps it.
 // Usage: node spartan/tests/e2e/scene-alloc.mjs [frames=1200]
 import fs from 'node:fs';
 import { launch } from './lib.mjs';
@@ -21,7 +22,8 @@ try {
   }
   await page.goto(`${l.game}?manual=1&seed=7&quality=medium`);
   await page.waitForFunction(() => window.__game && (window.__game.ready || window.__game.errors.length), null, { timeout: 300000 });
-  await page.evaluate(() => {
+  await page.evaluate((draw) => {
+    window.__sceneDraw = draw;
     const g = window.__game;
     const c = g.ctx;
     g.startBattle(1);
@@ -34,6 +36,13 @@ try {
     let seed = 1;
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     // One driven frame: effects as a busy melee makes them, and a volley every 4 s.
+    const r = c.renderer;
+    if (!window.__sceneDraw) {
+      const noop = () => {};
+      r.render = noop;
+      r.clear = noop;
+      r.clearDepth = noop;
+    }
     window.__sceneFrame = () => {
       const p = c.player.pos;
       if (f % 240 === 0) c.combat.volley({ count: 300, duration: 1.0, warn: 0.5 });
@@ -47,7 +56,7 @@ try {
       f++;
       g.step(1);
     };
-  });
+  }, process.env.SCENE_DRAW === '1');
   const run = (n) => page.evaluate((n) => { for (let i = 0; i < n; i++) window.__sceneFrame(); }, n);
   for (let i = 0; i < 6; i++) await run(100); // warm-up: get the hot paths optimized
   const cdp = await page.context().newCDPSession(page);

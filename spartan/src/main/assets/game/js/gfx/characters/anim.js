@@ -406,7 +406,9 @@ export class Animator {
     const def = this.clipDef;
     const D = this.clipD, t = this.clipT;
     const rig = def.rigid;
-    let u = clamp(t / D, 0, 1);
+    // (clamps written out: a double passed to a call that is not inlined is boxed)
+    let u = t / D;
+    u = u < 0 ? 0 : u > 1 ? 1 : u;
     if (rig && def.strikeAt > 0) {
       const D0 = def.duration, a = rig[0], b = rig[1], sa = def.strikeAt;
       const k = Math.min(1, D / D0);
@@ -416,7 +418,10 @@ export class Animator {
       if (E1 > 1e-4 && E2 > 1e-4) {
         if (t < E1) u = (a * t) / E1;
         else if (t < S + post) u = a + (t - E1) / (D0 * k);
-        else u = clamp(b + ((1 - b) * (t - S - post)) / E2, 0, 1);
+        else {
+          u = b + ((1 - b) * (t - S - post)) / E2;
+          u = u < 0 ? 0 : u > 1 ? 1 : u;
+        }
       }
     }
     _f[F_W] = u;

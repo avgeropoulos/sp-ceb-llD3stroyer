@@ -18,7 +18,10 @@ export const CAP_SOFT = 240;
 export const PARTICLE_CAP = CAP_STREAK + CAP_SPARK + CAP_SOFT;
 
 const G = 9.81;
-/** Dust bursts this close to the camera (m, on the ground plane) emit half their puffs. */
+/**
+ * Dust bursts and blood mist this close to the camera (m, on the ground plane) emit half their
+ * soft puffs (and dust puffs grow less): there each puff covers a large part of the view.
+ */
 export const DUST_NEAR = 1.5;
 
 // Kinds.
@@ -49,16 +52,17 @@ class Pool {
     this.cap = cap;
     this.count = 0;
     this.cursor = 0;
-    this.arrays = [];
+    // Only Float32Arrays here, so remove() copies them with one monomorphic access (a list mixing
+    // element kinds would make it box every float it moves).
+    this.floats = [];
     for (let i = 0; i < FLOATS.length; i++) {
       const arr = new Float32Array(cap);
       this[FLOATS[i]] = arr;
-      this.arrays.push(arr);
+      this.floats.push(arr);
     }
     this.kind = new Uint8Array(cap);
     this.flags = new Uint8Array(cap);
     this.tag = new Int8Array(cap);
-    this.arrays.push(this.kind, this.flags, this.tag);
   }
 
   alloc() {
@@ -71,8 +75,11 @@ class Pool {
   remove(i) {
     const last = --this.count;
     if (i !== last) {
-      const arrays = this.arrays;
-      for (let k = 0; k < arrays.length; k++) arrays[k][i] = arrays[k][last];
+      const floats = this.floats;
+      for (let k = 0; k < floats.length; k++) floats[k][i] = floats[k][last];
+      this.kind[i] = this.kind[last];
+      this.flags[i] = this.flags[last];
+      this.tag[i] = this.tag[last];
     }
     if (this.cursor >= this.count) this.cursor = 0;
   }
@@ -199,6 +206,11 @@ void main() {
   // Cap the on-screen size (about half the view height) so a puff at the eye can't flood the
   // screen with overdraw; such puffs are faded out below anyway.
   float radius = min(iSize.x, max(-mv.z, 0.0) * 0.35 + 0.02);
+  // Fade sprites that reach the eye instead of letting them fill the screen.
+  float near = smoothstep(0.12, 0.9, -mv.z + radius * 0.2);
+  float alpha = iCol.a * near;
+  // A sprite too faint to see (the tail of its fade) collapses and rasterizes nothing.
+  radius *= step(0.004, alpha);
   vec2 q = vec2(c * corner.x - s * corner.y, s * corner.x + c * corner.y) * radius;
   mv.xy += q;
   gl_Position = projectionMatrix * mv;
@@ -213,9 +225,7 @@ void main() {
   vec3 viewDir = normalize(iPos - cameraPosition);
   float mu = max(dot(viewDir, uSunDir), 0.0);
   vLight = 0.8 + iPar.y * pow(mu, 6.0);
-  // Fade sprites that reach the eye instead of letting them fill the screen.
-  float near = smoothstep(0.12, 0.9, -mv.z + radius * 0.2);
-  vCol = vec4(iCol.rgb, iCol.a * near);
+  vCol = vec4(iCol.rgb, alpha);
   vec4 mvPosition = mv;
   #include <fog_vertex>
 }
@@ -425,7 +435,7 @@ export function createParticles(ctx, hooks = {}) {
       dx = dy = dz = 0;
     }
     dy += lift;
-    let l = Math.hypot(dx, dy, dz);
+    let l = Math.sqrt(dx * dx + dy * dy + dz * dz);
     if (l < 1e-5) {
       if (fallbackUp) {
         dx = 0;
@@ -437,7 +447,7 @@ export function createParticles(ctx, hooks = {}) {
         dy = 0.2;
         dz = Math.sin(a);
       }
-      l = Math.hypot(dx, dy, dz);
+      l = Math.sqrt(dx * dx + dy * dy + dz * dz);
     }
     dx /= l;
     dy /= l;
@@ -452,7 +462,7 @@ export function createParticles(ctx, hooks = {}) {
       ay = 0;
       az = dx;
     }
-    l = Math.hypot(ax, ay, az) || 1;
+    l = Math.sqrt(ax * ax + ay * ay + az * az) || 1;
     ax /= l;
     ay /= l;
     az /= l;
@@ -537,7 +547,7 @@ export function createParticles(ctx, hooks = {}) {
       let vx = dx * s + ax * c1 + bx * c2;
       let vy = dy * s + ay * c1 + by * c2;
       let vz = dz * s + az * c1 + bz * c2;
-      const l = Math.hypot(vx, vy, vz) || 1;
+      const l = Math.sqrt(vx * vx + vy * vy + vz * vz) || 1;
       vx = (vx / l) * sp;
       vy = (vy / l) * sp + R(0.3, 1.5);
       vz = (vz / l) * sp;
@@ -558,7 +568,7 @@ export function createParticles(ctx, hooks = {}) {
       streaks.emit[i] = 0.8;
       streaks.tag[i] = tag;
     }
-    const mist = Math.max(1, n(1.5 + amount * 1.5));
+    const mist = Math.max(1, Math.round(n(1.5 + amount * 1.5) * nearDustScale()));
     for (let k = 0; k < mist; k++) {
       const sp = R(0.6, 1.8);
       softPuff(MIST, ox + R(-0.04, 0.04), oy + R(-0.04, 0.04), oz + R(-0.04, 0.04),
@@ -582,7 +592,7 @@ export function createParticles(ctx, hooks = {}) {
         vy = -vy;
         vz = -vz;
       }
-      const l = Math.hypot(vx, vy, vz) || 1;
+      const l = Math.sqrt(vx * vx + vy * vy + vz * vz) || 1;
       const sp = R(2.5, 9) * (0.8 + 0.2 * amount);
       const i = emit(sparks, SPARK, ox + dx * 0.02, oy + dy * 0.02, oz + dz * 0.02, (vx / l) * sp, (vy / l) * sp, (vz / l) * sp,
         R(0.16, 0.55), R(0.006, 0.011), 0, 1, 1, 1, 1, R(0.8, 2.2), 1);
@@ -616,13 +626,14 @@ export function createParticles(ctx, hooks = {}) {
     const sq = Math.sqrt(amount);
     const near = nearDustScale();
     const puffs = Math.max(1, Math.round(n(2 + 3 * amount) * near));
+    const grow = (0.6 + 0.4 * amount) * (0.4 + 0.6 * near); // ×0.7 right at the camera
     for (let k = 0; k < puffs; k++) {
       const a = rng.next() * Math.PI * 2;
       const sp = R(0.3, 1.3) * sq;
       const tint = R(0.9, 1.08);
       softPuff(DUST, ox + R(-0.1, 0.1), oy + R(0, 0.1), oz + R(-0.1, 0.1),
         Math.cos(a) * sp, R(0.3, 0.9), Math.sin(a) * sp,
-        R(1.0, 2.0), 0.12, R(0.5, 1.0) * (0.6 + 0.4 * amount), 0.72 * tint, 0.64 * tint, 0.52 * tint,
+        R(1.0, 2.0), 0.12, R(0.5, 1.0) * grow, 0.72 * tint, 0.64 * tint, 0.52 * tint,
         R(0.6, 0.8), 2.2, -0.04, 1.6, R(-0.6, 0.6));
     }
     const grit = n(3 * amount);
@@ -666,7 +677,7 @@ export function createParticles(ctx, hooks = {}) {
       streaks.spin[i] = R(8, 26) * (rng.next() < 0.5 ? -1 : 1);
       // Random orthonormal pair (u, w): the splinter axis turns in their plane.
       let ux = gauss(), uy = gauss(), uz = gauss();
-      let l = Math.hypot(ux, uy, uz) || 1;
+      let l = Math.sqrt(ux * ux + uy * uy + uz * uz) || 1;
       ux /= l;
       uy /= l;
       uz /= l;
@@ -675,7 +686,7 @@ export function createParticles(ctx, hooks = {}) {
       wx -= d * ux;
       wy -= d * uy;
       wz -= d * uz;
-      l = Math.hypot(wx, wy, wz) || 1;
+      l = Math.sqrt(wx * wx + wy * wy + wz * wz) || 1;
       streaks.ux[i] = ux;
       streaks.uy[i] = uy;
       streaks.uz[i] = uz;
@@ -733,10 +744,22 @@ export function createParticles(ctx, hooks = {}) {
   const world = () => ctx.world;
   function ground(x, z) {
     const w = world();
-    return w && w.groundHeight ? w.groundHeight(x, z) : 0;
+    return w && w.groundHeight ? +w.groundHeight(x, z) : 0;
   }
 
   function step(pool, gdt) {
+    // Ground heights come from the world's near-field grid, looked up inline: a call per particle
+    // would box its double arguments (and its result into gy) every frame.
+    const w = world();
+    const grid = w && w.groundGrid && w.groundGrid.data ? w.groundGrid : null;
+    const gd = grid ? grid.data : null;
+    const gcols = grid ? grid.cols : 0;
+    const gx0 = grid ? grid.x0 : 0;
+    const gx1 = grid ? grid.x1 : 0;
+    const gz0 = grid ? grid.z0 : 0;
+    const gz1 = grid ? grid.z1 : 0;
+    const gstep = grid ? grid.step : 1;
+    const gfloor = grid ? grid.floor : -Infinity;
     for (let i = pool.count - 1; i >= 0; i--) {
       const age = pool.age[i] + gdt;
       if (age >= pool.life[i]) {
@@ -761,8 +784,25 @@ export function createParticles(ctx, hooks = {}) {
         gy = pool.gy[i];
       } else if (moved > 0.25 && (moved > 1.5 || y < pool.gy[i] + 1)) {
         // Re-sampled every 0.25 m near the ground; a particle a metre or more above its last
-        // sample can't reach the ground within 1.5 m, so it skips the (allocating) call.
-        gy = ground(x, z);
+        // sample can't reach the ground within 1.5 m, so it skips the lookup.
+        if (gd !== null && x >= gx0 && x < gx1 && z >= gz0 && z < gz1) {
+          // groundHeight's bilinear cache lookup, inline.
+          const fx = (x - gx0) / gstep;
+          const fz = (z - gz0) / gstep;
+          const ci = fx | 0;
+          const cj = fz | 0;
+          const tx = fx - ci;
+          const tz = fz - cj;
+          const k = cj * gcols + ci;
+          const a = gd[k];
+          const b = gd[k + 1];
+          const c = gd[k + gcols];
+          const d = gd[k + gcols + 1];
+          gy = a + (b - a) * tx + (c - a) * tz + (a - b - c + d) * tx * tz;
+          if (gy < gfloor) gy = gfloor;
+        } else {
+          gy = ground(x, z);
+        }
         pool.gx[i] = x;
         pool.gz[i] = z;
         pool.gy[i] = gy;
@@ -800,7 +840,7 @@ export function createParticles(ctx, hooks = {}) {
           const s = Math.sin(ang);
           let lx = pool.ux[i] * c + pool.wx[i] * s;
           let lz = pool.uz[i] * c + pool.wz[i] * s;
-          const l = Math.hypot(lx, lz);
+          const l = Math.sqrt(lx * lx + lz * lz);
           if (l < 1e-3) {
             lx = 1;
             lz = 0;

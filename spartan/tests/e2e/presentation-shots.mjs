@@ -194,10 +194,17 @@ const runs = {
         const a = [...document.querySelectorAll('.hud-arc')].find((e) => +e.style.opacity > 0);
         if (!a) return null;
         const ps = a.querySelectorAll('path');
-        return { opacity: a.style.opacity, widths: [...ps].map((p) => p.getAttribute('stroke-width')) };
+        return {
+          opacity: a.style.opacity,
+          widths: [...ps].map((p) => p.getAttribute('stroke-width')),
+          pathOpacity: [...ps].map((p) => p.getAttribute('opacity')),
+        };
       });
       await shot(page, `arc-${at}s`, st, 400);
     }
+    // Reference without the arc (the hurt vignette has faded too), for colour measurements.
+    await page.evaluate(() => window.__game.step(150, 1 / 60));
+    await shot(page, 'arc-none', {}, 400);
   },
   async helmet(page) {
     await sandbox(page);

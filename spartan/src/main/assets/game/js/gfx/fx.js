@@ -150,7 +150,7 @@ export function createFx(ctx) {
         z = target.pos.z - src.z;
       }
     }
-    const l = Math.hypot(x, z);
+    const l = Math.sqrt(x * x + z * z);
     hitDir.x = l > 1e-6 ? x / l : 0;
     hitDir.y = 0;
     hitDir.z = l > 1e-6 ? z / l : 1;
@@ -339,7 +339,7 @@ export function createFx(ctx) {
     const vx = pr.vel.x;
     let vy = pr.vel.y;
     const vz = pr.vel.z;
-    let sp = Math.hypot(vx, vy, vz) || 1;
+    let sp = Math.sqrt(vx * vx + vy * vy + vz * vz) || 1;
     let tx = x + (vx / sp) * tip;
     let ty = y + (vy / sp) * tip;
     let tz = z + (vz / sp) * tip;
@@ -355,7 +355,7 @@ export function createFx(ctx) {
       x += vx * h;
       y += vy * h;
       z += vz * h;
-      sp = Math.hypot(vx, vy, vz) || 1;
+      sp = Math.sqrt(vx * vx + vy * vy + vz * vz) || 1;
       tx = x + (vx / sp) * tip;
       ty = y + (vy / sp) * tip;
       tz = z + (vz / sp) * tip;
@@ -484,7 +484,7 @@ export function createFx(ctx) {
       orbitStartQuat.copy(trailQuat);
     }
     vA.subVectors(orbitStartPos, orbitCenter);
-    orbitR0 = clamp(Math.hypot(vA.x, vA.z), 1.2, 2.6);
+    orbitR0 = clamp(Math.sqrt(vA.x * vA.x + vA.z * vA.z), 1.2, 2.6);
     orbitA0 = Math.atan2(vA.x, vA.z);
     orbitH0 = clamp(vA.y, 0.1, 0.9);
     orbitR1 = clamp(orbitR0 * 0.9 + 0.2, 1.6, 2.4);

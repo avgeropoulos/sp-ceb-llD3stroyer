@@ -298,6 +298,8 @@ export function createWorld(ctx) {
 
   return {
     groundHeight: layout.groundHeight,
+    /** groundHeight's near-field grid (see layout.heightGrid), for inline lookups in hot loops. */
+    groundGrid: layout.heightGrid,
     bounds: { minX: -7, maxX: 8.4, minZ: -6, maxZ: 3 },
     colliders,
     sunDirection,

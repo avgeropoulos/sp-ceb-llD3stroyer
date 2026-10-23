@@ -1338,7 +1338,7 @@ html, body {
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(ellipse 70% 55% at 50% 34%, rgba(8, 4, 2, 0.5) 0%, rgba(8, 4, 2, 0.1) 70%, transparent 100%),
+    radial-gradient(ellipse 85% 70% at 50% 34%, rgba(8, 4, 2, 0.6) 0%, rgba(8, 4, 2, 0.1) 70%, transparent 100%),
     linear-gradient(180deg, rgba(8, 4, 2, 0.35) 0%, transparent 30%, transparent 55%, rgba(8, 4, 2, 0.82) 100%);
 }
 .mn-title-main { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; }

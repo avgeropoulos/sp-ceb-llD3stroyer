@@ -78,9 +78,10 @@ const POSES = {
   swordLow: pose([0.27, -0.235, -0.42], [-0.11, 0.7, -0.7], [0.35, -0.6, 0.7]),
   swordHigh: pose([0.285, -0.165, -0.41], [-0.12, 0.68, -0.72], [0.35, -0.6, 0.7]),
   // Overhand dory: the fist high in the upper right of the view (the forearm rising into it), the
-  // shaft running down from it to the head at an enemy's chest, the butt rising out of the frame.
-  spearLow: spearAim([0.19, 0.08, -0.3], [0.0, -0.55, -2.4], [0.3, -1, 0.3]),
-  spearHigh: spearAim([0.19, 0.095, -0.32], [0.0, -0.5, -2.4], [0.3, -1, 0.3]),
+  // shaft running down from it to the head at an enemy's chest, the butt leaving the frame at the
+  // right edge below the score block.
+  spearLow: spearAim([0.24, 0.07, -0.33], [0.0, -0.6, -2.4], [0.3, -1, 0.3]),
+  spearHigh: spearAim([0.24, 0.085, -0.35], [0.0, -0.55, -2.4], [0.3, -1, 0.3]),
   empty: pose([0.27, -0.66, -0.2], [-0.1, 0.4, -0.9], [0.3, -0.6, 0.7]),
   // Sword thrust: chambered back, then driven out with the point at the centre.
   thrustBack: pose([0.24, -0.17, -0.32], [-0.12, 0.2, -0.97], [0.4, -0.8, 0.4]),

@@ -675,15 +675,17 @@ export function makeSteamMaterial(map, uniforms) {
         float size = mix( 0.5, uMaxSize, sqrt( age ) ) * ( 0.7 + iSeed.z * 0.6 ) * iBase.w;
         vec4 mv = viewMatrix * vec4( p, 1.0 );
         // Close to the eye a puff fades and shrinks (it would fill the view with overdraw), and
-        // once it has faded out the quad collapses so it rasterizes nothing at all.
-        float near = smoothstep( 1.0, 3.5, length( mv.xyz ) );
-        size *= mix( 0.5, 1.0, near );
+        // a puff too faint to see (faded out at the eye, or at the end of its life, when it is
+        // biggest) collapses so it rasterizes nothing at all.
+        float dist = length( mv.xyz );
+        float near = smoothstep( 1.0, 3.5, dist );
+        size *= mix( 0.4, 1.0, smoothstep( 1.0, 6.0, dist ) );
+        vAlpha = smoothstep( 0.0, 0.12, age ) * ( 1.0 - smoothstep( 0.3, 1.0, age ) ) * iBase.w * near;
         float rot = iSeed.w * 6.283 + uTime * 0.15 * ( iSeed.x - 0.5 );
-        vec2 c = ( uv - 0.5 ) * size * step( 0.01, near );
+        vec2 c = ( uv - 0.5 ) * size * step( 0.03, vAlpha );
         mv.xy += mat2( cos( rot ), sin( rot ), -sin( rot ), cos( rot ) ) * c;
         gl_Position = projectionMatrix * mv;
         vUv = uv;
-        vAlpha = smoothstep( 0.0, 0.12, age ) * ( 1.0 - smoothstep( 0.3, 1.0, age ) ) * iBase.w * near;
         // Puffs between the eye and the sun glow (forward scattering).
         vec3 toCam = normalize( cameraPosition - p );
         vLit = 0.55 + 0.45 * max( 0.0, -dot( toCam, uSunDir ) );

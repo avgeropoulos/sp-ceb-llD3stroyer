@@ -23,7 +23,10 @@ const GROW = [0.08, 4.5, 0.05, 0.1];
 export const POOL_MERGE_DIST = 0.35;
 /** Largest a merged pool grows (m). */
 const POOL_MAX = 2.4;
-/** At most this many live decals overlap one spot; a new one fades out the oldest of them. */
+/**
+ * At most this many live decals overlap one spot: a new stain there fades out the oldest of them,
+ * and a new drop spot (too small to change the look of a stain that deep) is not placed.
+ */
 export const MAX_OVERLAP = 4;
 const FADE_OUT = 4; // s: the shader's end-of-life fade
 
@@ -63,7 +66,11 @@ int di = int(aIdx + 0.5);
 vec4 dRow = di < 4 ? aH0 : (di < 8 ? aH1 : (di < 12 ? aH2 : aH3));
 int dc = di - (di / 4) * 4;
 float dh = dc == 0 ? dRow.x : (dc == 1 ? dRow.y : (dc == 2 ? dRow.z : dRow.w));
-vec3 transformed = vec3(position.x * aShape.x, dh + 0.03, position.z * aShape.x);
+// A slot not yet born or past its life collapses to a point: freed slots stay in the draw until
+// reused, and would otherwise rasterize (and discard) their whole quad every frame.
+float dAgeV = uDecalTime - aLife.x;
+float dOn = step(0.0, dAgeV) * step(dAgeV, aLife.z);
+vec3 transformed = vec3(position.x * aShape.x * dOn, dh + 0.03, position.z * aShape.x * dOn);
 float dcr = cos(aShape.y);
 float dsr = sin(aShape.y);
 vDUv = mat2(dcr, dsr, -dsr, dcr) * (position.xz * 2.0);
@@ -263,9 +270,10 @@ export function createDecals(ctx) {
   /**
    * Keeps stains in one spot from stacking deeper than MAX_OVERLAP: when that many live decals
    * already overlap a new one at (x, z) of `size`, the oldest of them fades out over FADE_OUT s
-   * (the shader's end-of-life fade) instead of popping.
+   * (the shader's end-of-life fade) instead of popping. With `dropNew` (a small spot) the new
+   * decal is skipped instead: returns true when the caller should not place it.
    */
-  function thinCrowd(x, z, size) {
+  function thinCrowd(x, z, size, dropNew) {
     const sh = aShape.array;
     let n = 0;
     let oldest = -1;
@@ -282,10 +290,12 @@ export function createDecals(ctx) {
         oldest = i;
       }
     }
-    if (n < MAX_OVERLAP || oldest < 0) return;
+    if (n < MAX_OVERLAP || oldest < 0) return false;
+    if (dropNew) return true;
     life[oldest] = Math.max(0, clock - birth[oldest]) + FADE_OUT;
     aLife.array[oldest * 4 + 2] = life[oldest];
     touch(aLife);
+    return false;
   }
 
   /** The nearest live pool within POOL_MERGE_DIST of (x, z), or -1. */
@@ -347,8 +357,8 @@ export function createDecals(ctx) {
       const m = poolNear(x, z);
       if (m >= 0 && mergePool(m, x, z, size)) return m;
     }
+    if (thinCrowd(x, z, size, k === KIND_SPOT)) return -1;
     if (!sampleGround(x, z, size)) return -1;
-    thinCrowd(x, z, size);
     const s = pickSlot();
     write(s, x, z, k, size, clock + Math.max(0, delay));
     return s;

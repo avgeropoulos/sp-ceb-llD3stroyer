@@ -2,14 +2,20 @@
 // Performance ThreadTime main-thread CPU, immune to machine load, next to wall time), but every
 // launch reuses ONE browser context, so launch 2+ find the texture pixels that launch 1 cached in
 // IndexedDB, as on a phone. Also prints what the textures module did (textures.stats).
-// Usage: node spartan/tests/e2e/boot-bootcpu.mjs [quality=medium] [launches=2]
+// Usage: node spartan/tests/e2e/boot-bootcpu.mjs [quality=medium] [launches=2] [reference textures.js to serve instead]
+import fs from 'node:fs';
 import { launch } from './lib.mjs';
 
 const quality = process.argv[2] || 'medium';
 const runs = Number(process.argv[3] || 2);
+const refSrc = process.argv[4] ? fs.readFileSync(process.argv[4], 'utf8') : null;
 const l = await launch();
 try {
   const page = await l.newPage({ width: 915, height: 412 });
+  if (refSrc) {
+    console.log(`(serving ${process.argv[4]} as gfx/textures.js)`);
+    await page.route('**/js/gfx/textures.js', (route) => route.fulfill({ status: 200, contentType: 'text/javascript', body: refSrc }));
+  }
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Performance.enable', { timeDomain: 'threadTicks' });
   await cdp.send('HeapProfiler.enable');

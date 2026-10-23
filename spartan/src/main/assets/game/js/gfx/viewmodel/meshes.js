@@ -253,7 +253,9 @@ export function forearmParts(len, { ring = false } = {}) {
     [1, 0.0295, 0.0205, 0.001],
   ];
   const st = prof.map(([t, a, b, dz]) => ({ c: [0, t * len, dz], ax: X, ay: Z, a, b, v: 0.5 * (1 - t) }));
-  const skin = loft(st, 20, ARM_UV.arm, { capStart: 4, capLen: 0.7 });
+  // 24 sides and a finely ringed start cap: the upper arm's end crosses it at the elbow, and coarse
+  // facets there cut a zig-zag line (see upperArmParts).
+  const skin = loft(st, 24, ARM_UV.arm, { capStart: 6, capLen: 0.7 });
   // Leather wrap from 0.74·len to just past the wrist; slightly flared at the ends.
   const wrap = [];
   const n = 8;
@@ -305,7 +307,7 @@ export function upperArmParts(len) {
     [1, 0.0368, 0.0338],
   ];
   const st = prof.map(([t, a, b]) => ({ c: [0, t * len, 0], ax: X, ay: Z, a, b, v: 0.5 + 0.5 * (1 - t) }));
-  const skin = loft(st, 18, ARM_UV.arm, { capStart: 3, capEnd: 4, capLen: 0.8 });
+  const skin = loft(st, 24, ARM_UV.arm, { capStart: 3, capEnd: 6, capLen: 0.8 });
   const sleeve = [];
   for (let i = 0; i <= 6; i++) {
     const t = -0.05 + 0.27 * i / 6;

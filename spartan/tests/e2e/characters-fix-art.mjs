@@ -6,6 +6,9 @@
 //            shoulder) and the thrust 'back' key (the fist must stay behind the shoulder: chambered).
 //   corpses  eight Persians cut down in a heap, looked down at: blood-stain variety (each corpse's
 //            uBloodSeed) and the closest distance between lying bodies (capsule model of ai.js).
+//   stains   two Mede levies of one variant in the same pose, fully bloodied, each drawn alone at
+//            2 m: the share of their gerron faces that differs in the red-stain mask (before the
+//            fix, the same stains on every body of a variant: about 0).
 // --rev=<git rev> serves the characters fixer's files (ai.js, characters.js, characters/*.js) from
 // that revision, so 'before' and 'after' run against the same tree otherwise.
 // Usage: node spartan/tests/e2e/characters-fix-art.mjs <outDir> [WxH=915x412] [--rev=7f85c80] [line|guard|corpses ...]
@@ -116,8 +119,9 @@ const runs = {
       }
       return { spears, enemies, boxes };
     });
-    // ground: a strip at the bottom-middle in front of the feet, between the shields
-    const ground = [width * 0.42, height * 0.86, width * 0.58, height * 0.94];
+    // ground: a clear patch right of the right-hand levy, under the allies' shafts (as they were)
+    // and above the sword hand
+    const ground = [width * 0.86, height * 0.74, width * 0.98, height * 0.81];
     const lum = await lumaBoxes([...facts.boxes, ground]);
     const shields = lum.slice(0, -1);
     delete facts.boxes;
@@ -184,6 +188,71 @@ const runs = {
       return out;
     });
     await shot('guard-thrust-back', chamber);
+    await ev(() => { window.__game.ctx.ai.update = window.__aiUpdate; });
+  },
+  async stains() {
+    await sandbox();
+    // Two levies of the same variant (same geometry, same materials): before the fix their stains
+    // were identical. Each is drawn alone at the same spot, and its gerron face (same tile, same
+    // pose) is read back as a 32×32 red-stain mask; then both stand side by side for the shot.
+    const setup = await ev(() => {
+      const g = window.__game;
+      const c = g.ctx;
+      window.__aiUpdate = c.ai.update;
+      c.ai.update = (dt) => { for (const a of c.actors) a.visual.anim.update(dt); };
+      const byKey = new Map();
+      let pair = null;
+      for (let i = 0; i < 40 && !pair; i++) {
+        const a = g.spawn('levy', 0, -2.0, { variant: 'mede' });
+        const k = a.visual.variant;
+        if (byKey.has(k)) pair = [byKey.get(k), a];
+        else byKey.set(k, a);
+      }
+      if (!pair) return null;
+      for (const a of c.actors) if (!pair.includes(a)) a.visual.setVisible(false);
+      for (const a of pair) { a.facing = 0; a.visual.setBloodied(1); a.visual.anim.setGuard(false); }
+      window.__pair = pair;
+      return { variant: pair[0].visual.variant, ids: pair.map((a) => a.id) };
+    });
+    if (!setup) { console.log('stains: no two levies of one variant'); return; }
+    const masks = [];
+    for (let k = 0; k < 2; k++) {
+      masks.push(await ev((k) => {
+        const g = window.__game;
+        const c = g.ctx;
+        const T = c.THREE;
+        const pair = window.__pair;
+        pair.forEach((a, j) => { a.visual.setVisible(j === k); a.pos.x = 0; a.pos.z = -2.0; });
+        g.step(30);
+        const a = pair[k];
+        const toPx = (v) => { const p = v.clone().project(c.camera); return [((p.x + 1) / 2) * innerWidth, ((1 - p.y) / 2) * innerHeight]; };
+        const item = a.visual._animator.bones[9];
+        const s = a.visual._animator.s;
+        const pts = [[0.16, 0.26], [-0.16, 0.26], [0.16, -0.26], [-0.16, -0.26]].map(([x, y]) => toPx(item.localToWorld(new T.Vector3(x * s, y * s, 0.07 * s))));
+        const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+        const x0 = Math.min(...xs), y0 = Math.min(...ys), x1 = Math.max(...xs), y1 = Math.max(...ys);
+        const cv = document.getElementById('scene');
+        const tmp = document.createElement('canvas');
+        tmp.width = 32;
+        tmp.height = 32;
+        const g2 = tmp.getContext('2d');
+        const sx = cv.width / innerWidth, sy = cv.height / innerHeight;
+        g2.drawImage(cv, x0 * sx, y0 * sy, (x1 - x0) * sx, (y1 - y0) * sy, 0, 0, 32, 32);
+        const d = g2.getImageData(0, 0, 32, 32).data;
+        const m = [];
+        for (let i = 0; i < d.length; i += 4) m.push(d[i] > 1.6 * d[i + 1] && d[i] > 60 ? 1 : 0);
+        return m;
+      }, k));
+    }
+    const share = (m) => +(m.reduce((s, v) => s + v, 0) / m.length).toFixed(3);
+    const diff = +(masks[0].reduce((s, v, i) => s + (v !== masks[1][i] ? 1 : 0), 0) / masks[0].length).toFixed(3);
+    await ev(() => {
+      const g = window.__game;
+      // (the brains are off: move the visuals' roots too)
+      window.__pair.forEach((a, j) => { a.visual.setVisible(true); a.pos.x = j ? 0.5 : -0.5; a.pos.z = -1.9; a.visual.root.position.x = a.pos.x; a.visual.root.position.z = a.pos.z; });
+      g.step(30);
+    });
+    await shot('stains', { variant: setup.variant, actorIds: setup.ids, stainedShare: masks.map(share), maskDifference: diff });
     await ev(() => { window.__game.ctx.ai.update = window.__aiUpdate; });
   },
   async corpses() {

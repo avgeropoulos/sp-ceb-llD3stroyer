@@ -184,5 +184,12 @@ export function createLayout(seed = 480) {
   /** True where (x, z) is open water. */
   const isSea = (x, z) => terrainHeight(x, z) < SEA_LEVEL;
 
-  return { cliffX, shoreX, terrainHeight, groundHeight, isSea, seabed, calmWeight, fans, springs, noise: N };
+  /**
+   * The near-field cache behind groundHeight, for hot loops that look heights up inline (no call,
+   * so no boxed doubles): inside [x0, x1) × [z0, z1) groundHeight(x, z) is the bilinear blend of
+   * data[j·cols + i …] at fx = (x − x0) / step, fz = (z − z0) / step, clamped to at least `floor`.
+   */
+  const heightGrid = Object.freeze({ data: cache, cols: cw, x0: CACHE_X0, x1: CACHE_X1, z0: CACHE_Z0, z1: CACHE_Z1, step: CACHE_STEP, floor: SEA_LEVEL });
+
+  return { cliffX, shoreX, terrainHeight, groundHeight, heightGrid, isSea, seabed, calmWeight, fans, springs, noise: N };
 }

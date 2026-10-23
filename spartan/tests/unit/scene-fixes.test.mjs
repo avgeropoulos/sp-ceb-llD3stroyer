@@ -29,6 +29,8 @@ const { PRESETS, sunDirectionFor, skyCoefficients, skyRadiance, acesFilmic } = a
 const { createDecals, MAX_OVERLAP } = await import('../../src/main/assets/game/js/gfx/fx/decals.js');
 const { createParticles, DUST_NEAR } = await import('../../src/main/assets/game/js/gfx/fx/particles.js');
 const { createFx } = await import('../../src/main/assets/game/js/gfx/fx.js');
+const { makeSteamMaterial } = await import('../../src/main/assets/game/js/gfx/world/props.js');
+const { createLayout } = await import('../../src/main/assets/game/js/gfx/world/layout.js');
 
 const ctx = createHeadlessCtx({ EventBus, createRng });
 const h = createHarness(ctx);
@@ -264,4 +266,75 @@ test('dust right at the camera emits half the puffs', () => {
   const farSoft = p.counts(counts)[2];
   assert.ok(nearSoft <= Math.ceil(farSoft / 2), `near ${nearSoft} vs far ${farSoft}`);
   assert.ok(nearSoft >= 1);
+});
+
+test('blood mist right at the camera is halved too', () => {
+  const c = fxRig();
+  c.camera.position.set(0, 1.6, 0);
+  const p = createParticles(c);
+  const counts = [0, 0, 0];
+  p.blood({ x: 0.4, y: 1.3, z: -0.6 }, { x: 0, y: 0, z: 1 }, 1);
+  const nearSoft = p.counts(counts)[2];
+  p.reset();
+  p.blood({ x: 0, y: 1.3, z: -4 * DUST_NEAR }, { x: 0, y: 0, z: 1 }, 1);
+  const farSoft = p.counts(counts)[2];
+  assert.ok(nearSoft < farSoft && nearSoft >= 1, `near ${nearSoft} vs far ${farSoft}`);
+});
+
+test('a drop spot where stains already lie MAX_OVERLAP deep is not placed', () => {
+  const c = fxRig();
+  const d = createDecals(c);
+  for (let i = 0; i < MAX_OVERLAP; i++) assert.ok(d.addXYZ(0.02 * i, 0, 0, 'blood', 0.6) >= 0);
+  assert.equal(d.addXYZ(0.03, 0, 0.02, 'spot', 0.1), -1, 'drowned in the stains already there');
+  assert.equal(d.count, MAX_OVERLAP);
+  // On clean ground it lands.
+  assert.ok(d.addXYZ(3, 0, 0, 'spot', 0.1) >= 0);
+});
+
+/** Runs a material's onBeforeCompile on stub chunks and returns the patched vertex shader. */
+function patchedVertex(mat, vertexShader) {
+  const shader = { vertexShader, fragmentShader: '#include <common>\n#include <color_fragment>\n#include <roughnessmap_fragment>', uniforms: {} };
+  mat.onBeforeCompile(shader);
+  return shader.vertexShader;
+}
+
+test('transparent quads too faint to see rasterize nothing (decal slots, steam, soft puffs)', () => {
+  // Decal slots not yet born or past their life collapse to a point in the vertex shader.
+  const d = createDecals(fxRig());
+  const vs = patchedVertex(d.mesh.material, '#include <common>\n#include <beginnormal_vertex>\n#include <begin_vertex>');
+  assert.match(vs, /float dOn = step\(0\.0, dAgeV\) \* step\(dAgeV, aLife\.z\);/);
+  assert.match(vs, /position\.x \* aShape\.x \* dOn/);
+  // Steam: faded puffs collapse, and close puffs shrink and fade.
+  const steam = makeSteamMaterial(null, { time: { value: 0 }, light: { value: null }, shade: { value: null }, sunDir: { value: null } });
+  assert.match(steam.vertexShader, /\* size \* step\( 0\.03, vAlpha \)/);
+  assert.match(steam.vertexShader, /smoothstep\( 1\.0, 3\.5, dist \)/);
+  assert.equal(steam.uniforms.uMaxSize.value, 3.2);
+  assert.equal(makeSteamMaterial(null, { maxSize: 2.4 }).uniforms.uMaxSize.value, 2.4);
+});
+
+test('the ground grid particles look up inline matches groundHeight exactly', () => {
+  const layout = createLayout();
+  const g = layout.heightGrid;
+  const rng = createRng(5);
+  for (let n = 0; n < 4000; n++) {
+    const x = g.x0 + (g.x1 - g.x0) * rng.next();
+    const z = g.z0 + (g.z1 - g.z0) * rng.next();
+    const fx = (x - g.x0) / g.step;
+    const fz = (z - g.z0) / g.step;
+    const i = fx | 0;
+    const j = fz | 0;
+    const tx = fx - i;
+    const tz = fz - j;
+    const k = j * g.cols + i;
+    const [a, b, c, d] = [g.data[k], g.data[k + 1], g.data[k + g.cols], g.data[k + g.cols + 1]];
+    const h = Math.max(g.floor, a + (b - a) * tx + (c - a) * tz + (a - b - c + d) * tx * tz);
+    assert.equal(h, layout.groundHeight(x, z));
+  }
+  // Particles resting on the ground use it: dust slides along the real terrain, not under it.
+  const c = fxRig();
+  c.world = { groundHeight: layout.groundHeight, groundGrid: g };
+  const p = createParticles(c);
+  p.dust({ x: -6, y: layout.groundHeight(-6, 2) + 0.05, z: 2 }, 1);
+  for (let i = 0; i < 30; i++) p.update(1 / 60);
+  assert.ok(p.count > 0);
 });

@@ -30,8 +30,9 @@ const ARC = '<svg viewBox="-100 -100 200 200" aria-hidden="true"><path d="M-50.5
 const MAX_CHEV = 6;
 const MAX_ARCS = 4;
 const ARC_LIFE = 1.4;
-const ARC_FLOOR = 0.25;      // the arc stays at least this opaque…
+const ARC_FLOOR = 0.4;       // the red stays at least this opaque…
 const ARC_FLOOR_UNTIL = 1.2; // …until this age, then fades out over the rest of its life
+const ARC_BACK = 2.2;        // the dark backing fades this much slower than the red (capped at 1)
 const ARC_W0 = 9;            // red stroke width (viewBox units) when fresh…
 const ARC_W1 = 3;            // …and at the end of its life
 
@@ -48,8 +49,8 @@ export function phaseFade(e) {
 }
 
 /**
- * Opacity of a hurt arc `age` seconds into its `life`: linear from `peak`, but held at ARC_FLOOR
- * or more until ARC_FLOOR_UNTIL (so the red never thins out over the sky), then down to 0.
+ * Opacity of a hurt arc's red stroke `age` seconds into its `life`: linear from `peak`, but held at
+ * ARC_FLOOR or more until ARC_FLOOR_UNTIL (so the red never thins out over the sky), then down to 0.
  */
 export function arcOpacity(age, life = ARC_LIFE, peak = 1) {
   if (!(age >= 0) || age >= life) return 0;
@@ -57,6 +58,14 @@ export function arcOpacity(age, life = ARC_LIFE, peak = 1) {
   const until = Math.min(ARC_FLOOR_UNTIL, life);
   const floor = age < until ? ARC_FLOOR : ARC_FLOOR * clamp((life - age) / Math.max(1e-3, life - until), 0, 1);
   return Math.max(lin, floor);
+}
+
+/**
+ * Opacity of the dark backing under the red: it fades slower than the red, so a faded arc darkens
+ * the sky behind it and reads as dark red rather than red-over-blue mauve.
+ */
+export function arcBacking(age, life = ARC_LIFE, peak = 1) {
+  return Math.min(1, ARC_BACK * arcOpacity(age, life, peak));
 }
 
 /** Width of the arc's red stroke (viewBox units): it thins from ARC_W0 to ARC_W1 as it fades. */
@@ -93,8 +102,8 @@ export function createHud(ctx) {
         <stop offset=".5" stop-color="#ff5a36"/><stop offset=".7" stop-color="#d8331f"/><stop offset="1" stop-color="#c0261b" stop-opacity="0"/>
       </linearGradient>
       <linearGradient id="hud-arc-b" x1="0" x2="1" y1="0" y2="0">
-        <stop offset="0" stop-color="#140000" stop-opacity="0"/><stop offset=".3" stop-color="#140000" stop-opacity=".55"/>
-        <stop offset=".7" stop-color="#140000" stop-opacity=".55"/><stop offset="1" stop-color="#140000" stop-opacity="0"/>
+        <stop offset="0" stop-color="#140000" stop-opacity="0"/><stop offset=".3" stop-color="#140000" stop-opacity=".75"/>
+        <stop offset=".7" stop-color="#140000" stop-opacity=".75"/><stop offset="1" stop-color="#140000" stop-opacity="0"/>
       </linearGradient></defs></svg>
     <div class="hud-curtain"></div>
     <div class="hud-letterbox"><i class="hud-lb-top"></i><i class="hud-lb-bot"></i></div>
@@ -745,10 +754,14 @@ export function createHud(ctx) {
     for (const a of arcs) {
       if (a.age < a.life) {
         a.age += dt;
+        // The red and its backing fade separately (not as one group): the backing outlasts the red.
         const op = Math.round(arcOpacity(a.age, a.life, a.peak) * 100) / 100;
         if (op !== a.lastOp) {
           a.lastOp = op;
-          a.el.style.opacity = String(op);
+          a.el.style.opacity = op > 0 ? '1' : '0';
+          a.red.setAttribute('opacity', String(op));
+          a.hi.setAttribute('opacity', String(Math.round(op * 55) / 100));
+          a.back.setAttribute('opacity', String(Math.round(arcBacking(a.age, a.life, a.peak) * 100) / 100));
         }
         // The stroke thins as it fades (quarter-unit steps, so only a few attribute writes per hit).
         const w = Math.round(arcWidth(a.age, a.life) * 4) / 4;

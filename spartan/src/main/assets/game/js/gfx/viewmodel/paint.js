@@ -237,7 +237,9 @@ export function paintArmAtlas(size, seed = 11) {
     const n2 = N.pnoise2(u * 24, v * 48, 24, 48);
     const dors = lerp(0.5 + 0.5 * Math.cos(2 * Math.PI * (u - 0.75)), 0.5, el);
     skinBase(P, i, u, v, n1, n2, dors);
-    P.hgt[i] = 0.08 * N.pnoise2(u * 90, v * 180, 90, 180) + 0.04 * (N.hash2(i, 7) - 0.5);
+    // The upper arm (v > 0.5) is the closest skin to the eye, so its pores are magnified most.
+    const pore = 1 - 0.55 * smoothstep(0.5, 0.62, v);
+    P.hgt[i] = pore * (0.08 * N.pnoise2(u * 90, v * 180, 90, 180) + 0.03 * (N.hash2(i, 7) - 0.5));
     P.rough[i] = 0.5 + 0.05 * n1 + 0.04 * dors;
     P.metal[i] = 0;
   });
