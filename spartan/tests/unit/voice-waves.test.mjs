@@ -231,3 +231,29 @@ test('audio.js without WebAudio speaks a recorded line in English through TTS an
   assert.equal(audio.stats().voice.started, 0);
   audio.dispose();
 });
+
+// ---- Review follow-ups -----------------------------------------------------------------------
+
+test('a recorded line that has to be spoken in English instead holds the queue for the English', () => {
+  const line = { text: 'The Phocians have abandoned the Anopaia path! Ephialtes is leading the Immortals over the mountain!', clip: { file: 'a.ogg', dur: 4.78 } };
+  assert.equal(lineSeconds(line, true), 4.78 + GAP);
+  assert.equal(lineSeconds(line, false), Math.max(4.78 + GAP, voiceSeconds(line.text)));
+  assert.ok(lineSeconds(line, false) > 4.78 + GAP, 'the English is longer than the Greek here');
+  assert.equal(lineSeconds({ text: 'Alalai!', clip: { file: 'a.ogg', dur: 1.9 } }, false), 1.9 + GAP, 'never shorter than the clip');
+});
+
+test('waves times lines by the English when audio says recorded lines cannot play', () => {
+  const h = harness();
+  h.ctx.audio.canPlayClips = () => false;
+  h.waves.start(1);
+  h.until(() => h.voices().length >= 2);
+  const [herald, molon] = h.voices();
+  const want = Math.max(herald.clip.dur + GAP, voiceSeconds(herald.text));
+  assert.ok(Math.abs(molon.t - herald.t - want) < DT + 1e-6, `Leonidas answers ${(molon.t - herald.t).toFixed(2)} s after the herald, want ${want.toFixed(2)}`);
+});
+
+test('audio reports whether recorded lines can play (no WebAudio: no)', () => {
+  const audio = createAudio({ settings: { voice: true }, events: new EventBus() });
+  assert.equal(audio.canPlayClips(), false);
+  audio.dispose();
+});

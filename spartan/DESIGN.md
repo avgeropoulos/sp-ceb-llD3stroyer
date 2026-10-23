@@ -1541,6 +1541,7 @@ createAudio(ctx) → {
   setAmbience('battle'|'calm'|'none'), setMusic('title'|'battle'|'lastStand'|'none'),
   applyVolumes(), suspend(), resume(), update(dt),
   preloadVoice(files),                      // decode voice clips ahead of need (waves, at each dayStart)
+  canPlayClips() → boolean,                 // false without WebAudio or once clips won't decode
 }
 ```
 * Every SFX, bed and piece of music is synthesized with WebAudio, rendered once to AudioBuffers
@@ -1560,8 +1561,9 @@ createAudio(ctx) → {
   * A line with a `clip` (the Greeks: Leonidas, Dienekes, the Trachinian, the herald, the
     lookout) plays the recorded clip through WebAudio and never calls TTS:
     * `fetch` + `decodeAudioData` of `new URL('../../' + file, import.meta.url)` (the game
-      root), decoded on first need and cached (≤ 8 MB of decoded audio: spoken lines are
-      dropped first, least recently used first, then preloaded ones; the line being said stays).
+      root), decoded on first need and cached (≤ 16 MB of decoded audio, so the whole bank fits;
+      over that, spoken lines are dropped first, least recently used first, then preloaded ones;
+      the line being said stays, and a preload marks the clips it asks for as not yet spoken).
     * Clip → gain → stereo pan → a voice bus into master, plus a send into the pass's reverb.
       The pan comes from where the speaker stands relative to the player's position and view:
       Leonidas at (LEONIDAS_X, 0) on the left (pan up to 0.35), Dienekes at (2.8, 0) slightly
@@ -1570,14 +1572,15 @@ createAudio(ctx) → {
     * Music and ambience duck for the clip's length.
     * One line at a time, like the TTS it replaces: a new line (clip or TTS) cuts the clip being
       said with an 80 ms fade, and a clip stops a TTS line that may still be talking.
-    * A clip still loading plays when it arrives only if that is < 0.6 s after the event;
-      otherwise it is dropped. A clip that can't be fetched or decoded falls back to TTS with
-      the English `text`; after two decode failures (an engine without Ogg Opus) every line
-      goes straight to TTS.
+    * A clip still loading plays when it arrives only if that is ≤ 0.3 s after the event (no more
+      than waves' 0.35 s gap, so the next line never cuts its end); otherwise it is dropped. A clip
+      that can't be fetched or decoded, or can't start because the audio context isn't running,
+      falls back to TTS with the English `text`; after two decode failures (an engine without Ogg
+      Opus) every line goes straight to TTS, and `canPlayClips()` turns false.
     * `settings.voice === false`: no sound at all (the HUD still shows the subtitles); turning
       voices off mid-line stops the clip.
-    * Pause: entering `paused` stops the clip and holds it; resuming to battle/training plays it
-      again from 0.25 s before the cut. A dayStart (a new day or a restart), the title screen
+    * Pause: entering `paused` stops the clip and holds it (a line still loading is held from its
+      start); resuming to battle/training plays it again from 0.15 s before the cut. A dayStart (a new day or a restart), the title screen
       or game over drop it. (SFX tails simply ring out under the pause menu; TTS lines too.)
     * `stats().voice` = `{ started, tts, late, failed, speaking, held, loading, cached, mb, broken }`;
       `log` gets `{ name: 'voice', key, speaker, file, volume, pan, offset, t }` per clip.
@@ -1711,8 +1714,9 @@ intro lines, Leonidas' battle lines, and Dienekes' too on Day 3, the first volle
 * **Voice queue**: `say(key)` resolves the speaker (Dienekes for Leonidas' battle lines once
   he has fallen), takes the next variant of that key the speaker has a clip for (round-robin per
   key, counters reset at start(); `voicelines.pickVoiceLine`) and queues it; `say(key, true)`
-  speaks at once, cutting in (shieldsUp). A line holds the queue for `lineSeconds(line)`: its
-  clip's `dur` + 0.35 s, or `voiceSeconds(text)` = 0.7 + 0.062 × length without a clip. An
+  speaks at once, cutting in (shieldsUp). A line holds the queue for `lineSeconds(line, clips)`:
+  its clip's `dur` + 0.35 s, or `voiceSeconds(text)` = 0.7 + 0.062 × length without a clip; when
+  `audio.canPlayClips()` is false the English is spoken instead, so it gets the longer of the two. An
   intro's timer and a phase's are long enough for their lines.
 
 ### ui/hud.js, ui/menus.js, ui/input.js, ui/training.js

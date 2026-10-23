@@ -44,8 +44,13 @@ export const VOICE_PLACES = {
   Lookout: { x: -1, z: -9, pan: 0.25, gain: 0.82, wet: 0.28 },
 };
 const DEFAULT_PLACE = { x: 0, z: -2, pan: 0, gain: 0.95, wet: 0.14 };
-const VOICE_LATE = 0.6; // s: a line whose clip is still loading after this long is dropped
-const CLIP_CACHE = 8 * 1048576; // bytes of decoded clips kept (least recently used go first)
+// s: a line whose clip is still loading after this long is dropped. At most waves' VOICE_GAP (0.35 s),
+// or the next line, scheduled from the clip's length, would cut a late line's end.
+const VOICE_LATE = 0.3;
+// Bytes of decoded clips kept (least recently used go first). The whole bank (~64 s of mono float32,
+// ~11.6 MB at 48 kHz) fits, so a day's preload never evicts the lines it just asked for.
+const CLIP_CACHE = 16 * 1048576;
+const HOLD_REWIND = 0.15; // s: a line cut by the pause menu resumes this far before the cut
 
 /** Ambience beds: layer → level. */
 export const AMBIENCE = {
@@ -1016,7 +1021,7 @@ export function createAudio(ctx) {
     }
     cutSpeech();
     if (e && e.buf) {
-      startClip(v, e, 0);
+      if (!startClip(v, e, 0)) sayTts(v, sp); // the audio context isn't running: say it in English
       return;
     }
     const w = (waiting = { v, sp, at: now() });
@@ -1026,7 +1031,7 @@ export function createAudio(ctx) {
         if (waiting !== w) return; // another line, the pause menu or voices off came first
         waiting = null;
         if (now() - w.at > VOICE_LATE * 1000) vstats.late++;
-        else startClip(w.v, entry, 0);
+        else if (!startClip(w.v, entry, 0)) sayTts(w.v, w.sp);
       },
       () => {
         if (waiting !== w) return;
@@ -1085,12 +1090,16 @@ export function createAudio(ctx) {
 
   /** The pause menu stops the line being said; resume() takes it up again a little before the cut. */
   function holdSpeech() {
-    waiting = null;
+    if (waiting) {
+      // still loading: say it from the start on Resume (from the cache by then, or loading again)
+      held = { v: waiting.v, entry: null, offset: 0 };
+      waiting = null;
+    }
     const s = speech;
     if (!s) return;
     const offset = ac.currentTime - s.t0;
     cutSpeech();
-    if (offset < s.entry.buf.duration - 0.3) held = { v: s.v, entry: s.entry, offset: Math.max(0, offset - 0.25) };
+    if (offset < s.entry.buf.duration - 0.3) held = { v: s.v, entry: s.entry, offset: Math.max(0, offset - HOLD_REWIND) };
   }
 
   function onMode(m) {
@@ -1101,7 +1110,8 @@ export function createAudio(ctx) {
       } else if ((m.mode === 'battle' || m.mode === 'training') && m.prev === 'paused') {
         const h = held;
         held = null;
-        if (h) startClip(h.v, h.entry, h.offset);
+        if (h && h.entry) startClip(h.v, h.entry, h.offset);
+        else if (h && !voiceOff()) sayClip(h.v, SPEAKERS[h.v.speaker] || DEFAULT_SPEAKER);
       } else {
         held = null;
         waiting = null;
@@ -1115,8 +1125,16 @@ export function createAudio(ctx) {
   /** Decodes clips ahead of need (waves asks for a battle's barks and lines at each dayStart). */
   function preloadVoice(files) {
     if (!ac || voiceOff() || clipsBroken() || !Array.isArray(files) || typeof fetch !== 'function') return;
-    for (const f of files) if (typeof f === 'string' && f) loadClip(f);
+    for (const f of files) {
+      if (typeof f !== 'string' || !f) continue;
+      const e = clips.get(f);
+      if (e) e.plays = 0; // wanted again soon: not among the first to be evicted
+      loadClip(f);
+    }
   }
+
+  /** False when recorded lines can't be played (no WebAudio, or this engine can't decode them). */
+  const canPlayClips = () => !!ac && !clipsBroken();
 
   // ------------------------------------------------------------------------------------------
   // Events (§12)
@@ -1376,6 +1394,7 @@ export function createAudio(ctx) {
     update,
     prerender,
     preloadVoice,
+    canPlayClips,
     /** Queues a loop for rendering ahead of need (e.g. 'lastStand'). */
     preload(name) {
       if (LOOPS[name]) queue('loop', name, 2);

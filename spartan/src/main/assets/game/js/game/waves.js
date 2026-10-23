@@ -29,10 +29,15 @@ export function voiceSeconds(text) {
   return 0.7 + 0.062 * text.length;
 }
 
-/** Seconds a line holds the voice queue: its recorded clip and a breath, else the TTS estimate. */
-export function lineSeconds(line) {
+/**
+ * Seconds a line holds the voice queue: its recorded clip and a breath, else the TTS estimate.
+ * `clips` false: recorded lines can't play here (audio.canPlayClips()), so the English is spoken
+ * instead and gets at least its own length.
+ */
+export function lineSeconds(line, clips = true) {
   const d = line.clip ? Number(line.clip.dur) : NaN;
-  return d > 0 ? d + VOICE_GAP : voiceSeconds(line.text);
+  if (!(d > 0)) return voiceSeconds(line.text);
+  return clips ? d + VOICE_GAP : Math.max(d + VOICE_GAP, voiceSeconds(line.text));
 }
 
 /**
@@ -157,7 +162,13 @@ export function createWaves(ctx) {
     if (line.greek) payload.greek = line.greek;
     if (line.clip) payload.clip = line.clip;
     events.emit('voice', payload);
-    T.voiceBusy = lineSeconds(line);
+    T.voiceBusy = lineSeconds(line, clipsPlay());
+  }
+
+  /** Whether audio can play recorded lines (else they fall back to English TTS, timed by the text). */
+  function clipsPlay() {
+    const a = ctx.audio;
+    return !a || typeof a.canPlayClips !== 'function' || a.canPlayClips();
   }
 
   /** Schedules `keys` to be said from `lead` s on; returns when the last will have ended (s). */
@@ -166,7 +177,7 @@ export function createWaves(ctx) {
     for (const key of keys || []) {
       if (!VOICE[key]) continue;
       later(lead, () => say(key));
-      end += lineSeconds(lineFor(key, voiceUses.get(key) || 0));
+      end += lineSeconds(lineFor(key, voiceUses.get(key) || 0), clipsPlay());
     }
     return end;
   }
