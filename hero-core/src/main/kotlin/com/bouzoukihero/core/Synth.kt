@@ -8,9 +8,10 @@ import kotlin.math.pow
 import kotlin.math.sin
 
 /**
- * Synthesizes the built-in songs, so the game needs no audio files. The bouzouki is
- * additive synthesis of a bright plucked string, doubled with a slightly detuned
- * second string like a real paired course. The lead and the backing come out
+ * Renders the built-in songs. The bouzouki is played from real recordings when the
+ * player has some ([Sampler]); otherwise it is additive synthesis of a bright
+ * plucked string, doubled with a slightly detuned second string like a real paired
+ * course. The band (bass, chords, drums) is synthesized. The lead and the backing come out
  * separately, so the game can mute the bouzouki when you miss a note.
  */
 object Synth {
@@ -23,7 +24,11 @@ object Synth {
     private const val TABLE = 4096
     private val sine = FloatArray(TABLE) { sin(2 * PI * it / TABLE).toFloat() }
 
-    fun render(tune: Tune): Rendered {
+    /** The built-in synthesized bouzouki, used when there are no recordings. */
+    val synthVoice = LeadVoice { out, t, midi, len, amp -> pluck(out, t, Tune.freq(midi), len, amp, bright = 1f) }
+
+    /** Renders [tune], playing its melody with [voice] (synthesized or [Sampler]). */
+    fun render(tune: Tune, voice: LeadVoice = synthVoice): Rendered {
         val melody = tune.melody()
         val bars = tune.bars().size
         val unit = tune.unitSec
@@ -37,16 +42,15 @@ object Synth {
         for (n in melody) {
             val t0 = melodyStart + n.start * unit
             val len = n.len * unit
-            val f = Tune.freq(n.midi)
             if (n.tremolo) {
                 // Tremolo: fast alternate picking, about 13 strokes a second.
                 val strokes = max(2, (len * 13).toInt())
                 val step = len / strokes
                 for (k in 0 until strokes) {
-                    pluck(lead, t0 + k * step, f, step + 0.02, if (k % 2 == 0) 0.32f else 0.26f, bright = 1f)
+                    voice.note(lead, t0 + k * step, n.midi, step + 0.02, if (k % 2 == 0) 0.32f else 0.26f)
                 }
             } else {
-                pluck(lead, t0 + 0.004, f, len + 0.15, 0.36f, bright = 1f)
+                voice.note(lead, t0 + 0.004, n.midi, len + 0.15, 0.36f)
             }
         }
 

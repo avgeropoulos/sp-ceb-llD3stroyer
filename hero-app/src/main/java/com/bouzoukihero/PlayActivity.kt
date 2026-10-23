@@ -17,6 +17,7 @@ import com.bouzoukihero.core.CustomSong
 import com.bouzoukihero.core.Difficulty
 import com.bouzoukihero.core.Session
 import com.bouzoukihero.core.SessionListener
+import com.bouzoukihero.core.Sampler
 import com.bouzoukihero.core.Synth
 import com.bouzoukihero.core.Tunes
 import com.bouzoukihero.core.VIEW_W
@@ -65,7 +66,9 @@ class PlayActivity : Activity(), HeroView.Host, SessionListener {
             view = HeroView(this, this)
             root.addView(view)
             thread(name = "synth") {
-                val audio = Synth.render(tune)
+                // Real recorded bouzouki notes if the player has any, else the synth.
+                val samples = store.samples()
+                val audio = Synth.render(tune, if (samples.isNotEmpty()) Sampler(samples) else Synth.synthVoice)
                 runOnUiThread {
                     if (destroyed) return@runOnUiThread
                     clock = SynthSong(audio) { session.leadAudible }

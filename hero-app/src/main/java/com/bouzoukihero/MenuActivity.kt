@@ -118,11 +118,19 @@ class MenuActivity : Activity() {
                 else songMenu(s)
             }
         }
-        list.addView(bigButton("+  Add a YouTube song", ACCENT) { addSongDialog("") })
+        list.addView(bigButton("\uD83D\uDD0D  Search YouTube", ACCENT) {
+            startActivityForResult(Intent(this, SearchActivity::class.java), REQ_SEARCH)
+        })
+        list.addView(bigButton("+  Paste a YouTube link", CARD) { addSongDialog("") })
         list.addView(text("Long-press a YouTube song for more options.", 12f, SUB).apply {
             gravity = Gravity.CENTER
             setPadding(0, dp(6), 0, 0)
         })
+        val real = store.samples().size
+        list.addView(bigButton(
+            if (real > 0) "Bouzouki sound: $real real note${if (real == 1) "" else "s"}" else "Bouzouki sound: record your bouzouki",
+            CARD,
+        ) { startActivity(Intent(this, SoundActivity::class.java)) })
         list.addView(bigButton("Settings", CARD) { settingsDialog() })
     }
 
@@ -142,7 +150,15 @@ class MenuActivity : Activity() {
 
     // ---- YouTube songs ----
 
-    private fun addSongDialog(prefill: String) {
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQ_SEARCH || resultCode != RESULT_OK || data == null) return
+        val id = data.getStringExtra(SearchActivity.RESULT_ID) ?: return
+        list.post { addSongDialog(YouTube.watchUrl(id), data.getStringExtra(SearchActivity.RESULT_TITLE)) }
+    }
+
+    private fun addSongDialog(prefill: String, knownTitle: String? = null) {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(8), dp(20), 0)
@@ -155,7 +171,7 @@ class MenuActivity : Activity() {
         box.addView(start)
         box.addView(end)
         val dialog = AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("Add a YouTube song")
+            .setTitle(knownTitle ?: "Add a YouTube song")
             .setView(box)
             .setPositiveButton("Add", null)
             .setNegativeButton("Cancel", null)
@@ -178,10 +194,10 @@ class MenuActivity : Activity() {
                     return@setOnClickListener
                 }
                 dialog.dismiss()
-                val song = CustomSong(UUID.randomUUID().toString().take(12), "YouTube song", id, start = s ?: 0.0, end = e)
+                val song = CustomSong(UUID.randomUUID().toString().take(12), knownTitle ?: "YouTube song", id, start = s ?: 0.0, end = e)
                 store.save(song)
                 build()
-                thread {
+                if (knownTitle == null) thread {
                     val title = Net.videoTitle(YouTube.watchUrl(id))
                     if (title != null) {
                         store.song(song.id)?.let { store.save(it.copy(title = title)) }
@@ -357,6 +373,13 @@ class MenuActivity : Activity() {
             "Run Bouzouki Tabs on a computer on the same Wi-Fi with\n  bouzouki-tabs-web --host 0.0.0.0\n" +
                 "then enter that computer's address and port.", 12f, SUB,
         ))
+        box.addView(text("YouTube API key (optional)", 14f, 0xFFFFFFFF.toInt(), bold = true).apply { setPadding(0, dp(18), 0, 0) })
+        val apiKey = field("Leave empty to search without one", store.apiKey, InputType.TYPE_CLASS_TEXT)
+        box.addView(apiKey)
+        box.addView(text(
+            "Search works without a key. If it stops working, a free YouTube Data API key from " +
+                "console.cloud.google.com makes it reliable.", 12f, SUB,
+        ))
         val latencyLabel = text("", 14f, 0xFFFFFFFF.toInt(), bold = true).apply { setPadding(0, dp(18), 0, 0) }
         box.addView(latencyLabel)
         val seek = SeekBar(this).apply {
@@ -379,6 +402,7 @@ class MenuActivity : Activity() {
             .setView(ScrollView(this).apply { addView(box) })
             .setPositiveButton("Save") { _, _ ->
                 store.server = server.text.toString()
+                store.apiKey = apiKey.text.toString()
                 store.latencyMs = seek.progress * 10 - 100
                 if (then != null && store.server.isNotBlank()) then()
             }
@@ -454,6 +478,7 @@ class MenuActivity : Activity() {
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_LONG).show()
 
     private companion object {
+        const val REQ_SEARCH = 10
         const val BG = 0xFF0B1530.toInt()
         const val CARD = 0xFF19254F.toInt()
         const val ACCENT = 0xFF2F6FD6.toInt()

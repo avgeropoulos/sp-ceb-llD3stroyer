@@ -37,10 +37,22 @@ files. Each is in a Greek rhythm and dromos:
 *Fast Hands Serviko* (a fast one for Expert). When you miss a note, the bouzouki drops out of
 the mix until you hit one again.
 
+### Real bouzouki sound
+
+Open **Bouzouki sound** in the menu and record notes from your own bouzouki. Pluck one open
+course at a time and let it ring. The app hears each note's pitch, and the built-in songs are
+then played with your real recordings instead of the synthesizer. Each note uses the recording
+closest in pitch, retuned to the right note. One recording per course (C, F, A, D) covers the
+whole neck, and more recordings sound more natural. You can also import single-note
+recordings (WAV, MP3, M4A or OGG). Recordings with licenses that allow it can be bundled with
+the app in `hero-app/src/main/assets/bouzouki/`. The bass, chords and drums are still
+synthesized. YouTube songs play the video's own audio, so you hear the real record.
+
 ### YouTube songs
 
-Tap **+ Add a YouTube song** and paste a link. You can also share a video from the YouTube app
-to Bouzouki Hero. If you only want the bouzouki solo, set a start and end time. The video plays
+Tap **Search YouTube**, type a song or artist, and tap a result. You can also paste a link, or
+share a video from the YouTube app to Bouzouki Hero. Search reads YouTube's results page and
+needs no account. If it ever stops working, add a free YouTube Data API key in **Settings**. If you only want the bouzouki solo, set a start and end time. The video plays
 at the top of the screen and the notes stay in time with it. There are two ways to make the
 chart:
 
@@ -65,6 +77,7 @@ another upload of the same song.
 ### Settings
 
 * **Bouzouki Tabs address**: where your Bouzouki Tabs web app is running.
+* **YouTube API key** (optional): makes search use the official YouTube API.
 * **Sound delay**: if your taps always come out late, for example with Bluetooth headphones,
   raise this.
 
@@ -216,7 +229,8 @@ Bouzouki Hero has the same split:
 
 * `hero-core/`: plain Kotlin. `Chart.kt` turns a melody into notes for each difficulty, `Session.kt`
   is the gameplay and drawing, `Tunes.kt` holds the built-in songs in a small note notation,
-  `Synth.kt` synthesizes them, and `Library.kt` handles YouTube links, saved songs and Bouzouki
-  Tabs results.
+  `Synth.kt` renders them, `Sampler.kt` plays the melody from real recordings (pitch detection,
+  trimming, retuning), `Search.kt` reads YouTube search results, and `Library.kt` handles YouTube
+  links, saved songs and Bouzouki Tabs results.
 * `hero-app/`: the Android layer. The song menu, the game view, the YouTube player (the official
   embedded player in a `WebView`, which reports the video's time to the game), and audio.

@@ -81,6 +81,8 @@ object YouTube {
     }
 
     fun watchUrl(id: String) = "https://www.youtube.com/watch?v=$id"
+
+    fun isId(s: String) = idRe.matches(s)
 }
 
 /** Reads the result of a Bouzouki Tabs job (`GET /api/jobs/{id}` on its web app). */

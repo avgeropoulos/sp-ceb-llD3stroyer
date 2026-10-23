@@ -8,6 +8,9 @@ import com.bouzoukihero.core.BouzoukiTabs
 import com.bouzoukihero.core.CustomSong
 import com.bouzoukihero.core.Difficulty
 import com.bouzoukihero.core.Json
+import com.bouzoukihero.core.Sample
+import com.bouzoukihero.core.Samples
+import com.bouzoukihero.core.YouTubeSearch
 import com.bouzoukihero.core.Synth
 import java.io.File
 import java.io.FileOutputStream
@@ -19,9 +22,10 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.concurrent.thread
 
-/** The player's YouTube songs (one JSON file each), best scores and settings. */
-class Store(context: Context) {
+/** The player's YouTube songs (one JSON file each), bouzouki recordings, best scores and settings. */
+class Store(private val context: Context) {
     private val dir = File(context.filesDir, "songs").apply { mkdirs() }
+    private val sampleDir = File(context.filesDir, "samples").apply { mkdirs() }
     val prefs: SharedPreferences = context.getSharedPreferences("hero", Context.MODE_PRIVATE)
 
     fun songs(): List<CustomSong> = (dir.listFiles() ?: emptyArray())
@@ -58,6 +62,49 @@ class Store(context: Context) {
         if (stars > stars(key, d)) e.putInt("stars_${key}_${d.name}", stars)
         e.apply()
     }
+
+    /**
+     * The real bouzouki notes the songs are played with: the player's own recordings,
+     * plus any 16-bit WAV notes bundled in the app's assets/bouzouki folder.
+     */
+    fun samples(): List<Sample> {
+        val out = ArrayList<Sample>()
+        for (f in sampleDir.listFiles().orEmpty().sortedBy { it.name }) {
+            val root = f.name.removeSuffix(".wav").toDoubleOrNull() ?: continue
+            try { out.add(Sample(Samples.readWav(f.readBytes()).first, root)) } catch (_: Exception) {}
+        }
+        if (out.isEmpty()) {
+            for (name in context.assets.list("bouzouki").orEmpty().filter { it.endsWith(".wav") }) {
+                try {
+                    val (pcm, rate) = Samples.readWav(context.assets.open("bouzouki/$name").use { it.readBytes() })
+                    out.add(Samples.prepare(pcm, rate))
+                } catch (_: Exception) {}
+            }
+        }
+        return out
+    }
+
+    /** Saves a recorded note, replacing an earlier recording of the same note. */
+    fun saveSample(s: Sample) {
+        val semitone = Math.round(s.root)
+        for (f in sampleDir.listFiles().orEmpty()) {
+            val r = f.name.removeSuffix(".wav").toDoubleOrNull() ?: continue
+            if (Math.round(r) == semitone) f.delete()
+        }
+        File(sampleDir, "%.3f.wav".format(java.util.Locale.US, s.root)).writeBytes(Samples.writeWav(s.pcm))
+    }
+
+    fun deleteSample(s: Sample) {
+        for (f in sampleDir.listFiles().orEmpty()) {
+            val r = f.name.removeSuffix(".wav").toDoubleOrNull() ?: continue
+            if (Math.abs(r - s.root) < 0.001) f.delete()
+        }
+    }
+
+    /** Optional YouTube Data API key, for more reliable search. */
+    var apiKey: String
+        get() = prefs.getString("api_key", "") ?: ""
+        set(v) { prefs.edit().putString("api_key", v.trim()).apply() }
 
     var difficulty: Difficulty
         get() = Difficulty.entries.firstOrNull { it.name == prefs.getString("difficulty", null) } ?: Difficulty.EASY
@@ -116,6 +163,38 @@ object Net {
 
     fun job(server: String, id: String): BouzoukiTabs.Job =
         BouzoukiTabs.parseJob(request("${normalizeServer(server)}/api/jobs/$id"))
+
+    /** Searches YouTube: the official API if there's a key, otherwise YouTube's results page. */
+    fun search(query: String, apiKey: String): List<YouTubeSearch.Video> {
+        if (apiKey.isNotBlank()) return YouTubeSearch.parseApi(request(YouTubeSearch.apiUrl(query, apiKey)))
+        val c = URL(YouTubeSearch.pageUrl(query)).openConnection() as HttpURLConnection
+        try {
+            c.connectTimeout = 15_000
+            c.readTimeout = 15_000
+            c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36")
+            c.setRequestProperty("Accept-Language", "en-US,en;q=0.9")
+            // Skips the cookie consent page shown in some countries.
+            c.setRequestProperty("Cookie", "SOCS=CAI; CONSENT=YES+1")
+            if (c.responseCode !in 200..299) throw IOException("YouTube answered ${c.responseCode}")
+            val html = c.inputStream.bufferedReader().use { it.readText() }
+            return YouTubeSearch.parsePage(html)
+        } finally {
+            c.disconnect()
+        }
+    }
+
+    fun image(url: String): ByteArray? = try {
+        val c = URL(url).openConnection() as HttpURLConnection
+        try {
+            c.connectTimeout = 10_000
+            c.readTimeout = 10_000
+            if (c.responseCode in 200..299) c.inputStream.use { it.readBytes() } else null
+        } finally {
+            c.disconnect()
+        }
+    } catch (_: Exception) {
+        null
+    }
 
     /** The video's title from YouTube's oEmbed endpoint, or null. */
     fun videoTitle(videoUrl: String): String? = try {

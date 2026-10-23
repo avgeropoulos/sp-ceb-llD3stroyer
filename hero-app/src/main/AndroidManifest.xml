@@ -3,6 +3,8 @@
 
     <!-- YouTube videos, and talking to a Bouzouki Tabs server for charts. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Recording notes from your own bouzouki, so the songs sound like a real one. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <!-- A Bouzouki Tabs server on your home network is plain http://. -->
     <application
@@ -27,6 +29,17 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".SearchActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:windowSoftInputMode="stateVisible|adjustResize" />
+
+        <activity
+            android:name=".SoundActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
 
         <activity
             android:name=".PlayActivity"
