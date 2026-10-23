@@ -387,7 +387,7 @@ async function boot() {
   }
 
   // ---- Motion glue (DESIGN.md §10 step 1) ----
-  function pumpMotion() {
+  function pumpMotion(dt) {
     const active = ctx.mode === 'battle' || ctx.mode === 'training';
     const fed = active && (motionWanted() || ctx.motionDemo);
     if (!fed) {
@@ -401,7 +401,9 @@ async function boot() {
     gestures.setWeapon(player.weapon === 'spear' && player.hasSpearInHand ? 'spear' : 'sword');
     // A mirrored setup is corrected on the rates themselves, so every directional decision
     // (uppercut, chop, throw, recoil) and gyro look agree: flipX gives dir → π − dir, flipY dir → −dir.
-    gestures.setFlip?.(!!settings.motionFlipX, !!settings.motionFlipY);
+    // The Agoge's demos are synthesized for an unmirrored phone: they are never flipped.
+    const flip = !ctx.motionDemo;
+    gestures.setFlip?.(flip && !!settings.motionFlipX, flip && !!settings.motionFlipY);
     const raw = platform.motion.poll();
     for (let i = 0; i < raw.length; i++) {
       const sample = ctx.motionFrames.process(raw[i]);
@@ -424,7 +426,7 @@ async function boot() {
     if (cands) for (let i = 0; i < cands.length; i++) ctx.events.emit('swingCandidate', cands[i]);
     if (wasOverridden && !overridden) gestures.resumeLook();
     wasOverridden = overridden;
-    const look = gestures.consumeLook();
+    const look = gestures.consumeLook(dt);
     if (settings.gyroLook && motionWanted() && !overridden) ctx.input.lookYaw += look.yaw;
     ctx.input.phoneSettled = gestures.settled;
   }
@@ -443,7 +445,7 @@ async function boot() {
     t.pdt = stopped ? 0 : t.playerRealtime ? dt : t.gdt;
     t.gnow += t.gdt;
 
-    pumpMotion();
+    pumpMotion(dt);
     ctx.inputCtl.update(dt);
 
     if (ctx.mode === 'battle' || ctx.mode === 'training') {

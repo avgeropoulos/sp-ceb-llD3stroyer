@@ -604,8 +604,9 @@ export function createHud(ctx) {
     dbg.m2.style.transform = `translateX(${((GESTURE_DEFAULTS.swingPeak / s / span) * 100).toFixed(1)}%)`;
     dbg.f.style.transform = `scaleX(${clamp((d.fwdAcc || 0) / 30, 0, 1).toFixed(3)})`;
     dbg.f1.style.transform = `translateX(${((12 / s / 30) * 100).toFixed(1)}%)`;
-    dbg.b.style.transform = `scaleX(${clamp(((d.beta || 0) + 1.6) / 3.2, 0, 1).toFixed(3)})`;
-    dbg.b1.style.transform = `translateX(${(((1.0 + 1.6) / 3.2) * 100).toFixed(1)}%)`;
+    const bspan = 1.6 + GESTURE_DEFAULTS.windupBeta + 0.4; // β from −1.6 to a little past the wind-up mark
+    dbg.b.style.transform = `scaleX(${clamp(((d.beta || 0) + 1.6) / bspan, 0, 1).toFixed(3)})`;
+    dbg.b1.style.transform = `translateX(${(((GESTURE_DEFAULTS.windupBeta + 1.6) / bspan) * 100).toFixed(1)}%)`;
     const le = d.lastEvent;
     const evText = le ? (typeof le === 'string' ? le : `${le.type || ''}${Number.isFinite(le.power) ? ' ' + le.power.toFixed(2) : ''}`) : '–';
     const rate = ctx.platform && ctx.platform.motion && ctx.platform.motion.rate ? Math.round(ctx.platform.motion.rate()) : 0;

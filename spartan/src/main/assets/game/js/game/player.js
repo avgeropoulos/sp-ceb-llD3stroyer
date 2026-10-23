@@ -263,6 +263,12 @@ export function createPlayer(ctx) {
   function interruptForMotion(a) {
     if (!isMotionStrike(a) || player.state !== 'attack' || !atk.active || !atk.cancellable || !attackKind(a)) return false;
     if (!atk.struck) {
+      // land the rest of its lunge first, or a foe just out of reach is missed (and the combo lost)
+      if (atk.lungeLeft > 0) {
+        player.pos.x += atk.lungeX * atk.lungeLeft;
+        player.pos.z += atk.lungeZ * atk.lungeLeft;
+        atk.lungeLeft = 0;
+      }
       clampToBounds();
       resolveStrike();
     }
@@ -360,7 +366,9 @@ export function createPlayer(ctx) {
     atk.lungeZ = dz / d;
     atk.lungeLen = len;
     atk.lungeLeft = len;
-    atk.lungeTime = Math.max(atk.strike, 0.05);
+    // over the unscaled strike time: a motion slash strikes sooner, but its step is no faster
+    const tm = ATTACK_TIMING[atk.kind];
+    atk.lungeTime = Math.max(tm ? tm.strike : atk.strike, 0.05);
   }
 
   // Touch/keyboard aim assist: pull the view up to 0.21 rad toward the focus over the first 0.1 s.

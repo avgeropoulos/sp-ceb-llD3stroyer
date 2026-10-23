@@ -201,7 +201,9 @@ export class GestureRecognizer {
     const p = this.p;
     const rs = Math.sqrt(s);
     this._start = p.swingStart / s;
-    this._peak = p.swingPeak / s;
+    // Never below lookMax: a body turn that gyro look accepts (up to lookMax) must not slash, or a
+    // high sensitivity would turn every turn into a strike and stop the view from following it.
+    this._peak = Math.max(p.swingPeak / s, p.lookMax);
     // (never below swingSweepMin: a short, fast wind-up must not pass for a stroke at a high sensitivity)
     this._sweep = Math.max(p.swingSweepMin, p.swingSweep / rs);
     this._sweepFast = p.swingSweepFast / rs;
@@ -475,10 +477,15 @@ export class GestureRecognizer {
     return out;
   }
 
-  /** View heading change released since the last call (radians, positive = turn left), then zeroed. */
-  consumeLook() {
-    // at most lookStep per call: no single frame turns the view by more (the rest follows)
-    const lim = this.p.lookStep;
+  /**
+   * View heading change released since the last call (radians, positive = turn left), then zeroed.
+   * `frameDt`: the frame's duration in seconds (optional; see the per-call limit below).
+   */
+  consumeLook(frameDt = 0) {
+    // At most lookStep per call (a 60 fps frame), so no single frame turns the view by more (the
+    // rest follows). A longer frame (`frameDt`, s) may take its share of lookRate, so at a lower
+    // frame rate the view keeps up with the body instead of trailing behind it.
+    const lim = Math.max(this.p.lookStep, 1.1 * this.p.lookRate * Math.min(frameDt || 0, 0.1));
     const y = clamp(this._L - this._Lc, -lim, lim);
     this._Lc += y;
     this._lookOut.yaw = y;
@@ -556,6 +563,9 @@ export class GestureRecognizer {
       this._holdSince += shift;
       this._quietT += shift;
     }
+    // a slash cut off by the gap ends here (else _pEnd stays Infinity and every later swing against
+    // it would be judged as its return)
+    if (this._pEnd === Infinity) this._pEnd = t;
     this._swActive = false;
     this._upPend = false;
     this._cutRaise = false;
@@ -1049,9 +1059,10 @@ export class GestureRecognizer {
     return true;
   }
 
-  _slashEvent(dir, peak, sweep, t) {
+  _slashEvent(dir, peak, sweep, t, own = false) {
     // Fired early, the stroke is still speeding up: its power counts on a little more to come.
-    const est = this._swActive && this._rising ? Math.max(peak, this.p.powerRise * this._m) : peak;
+    // (`own`: a pending uppercut fired during the next swing: that swing's speed is not its own.)
+    const est = !own && this._swActive && this._rising ? Math.max(peak, this.p.powerRise * this._m) : peak;
     const power = clamp((est - this._peak) / this._slashSpan, 0, 1);
     return { type: 'slash', dir: snapCardinal(dir, this.p.cardinalSnap), rawDir: dir, power, peak, sweep, t };
   }
@@ -1151,7 +1162,7 @@ export class GestureRecognizer {
     this._pPeak = peak;
     this._pEnd = t;
     this._decidePre(Math.cos(this._upDir) * this._upSweep, this._upSweep);
-    this._emit(this._slashEvent(this._upDir, peak, this._upSweep, t));
+    this._emit(this._slashEvent(this._upDir, peak, this._upSweep, t, true));
   }
 
   _swingStep() {

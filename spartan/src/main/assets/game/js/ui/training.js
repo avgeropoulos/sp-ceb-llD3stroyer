@@ -418,9 +418,11 @@ export function createTraining(ctx) {
 
   /**
    * Mirrored-setup check (motion only): in the directional steps, each slash is compared with
-   * what the instruction asked for. If 3 of a step's first 4 telling slashes went the opposite
-   * way, the matching setting (motionFlipX / motionFlipY) is toggled and saved.
-   * "Right and left" asks R, R, L, L; the overhead step D; the uppercut step U.
+   * what the instruction asks for at that moment. If a step's first three telling slashes all went
+   * the opposite way, the matching setting (motionFlipX / motionFlipY) is toggled and saved; one
+   * that went the asked way ends the check for the step (a player who only took the sides in another
+   * order is not mirrored). "Right and left" asks right until two rights have counted, then left;
+   * the overhead step D; the uppercut step U.
    */
   function checkMirrored(s, tok) {
     const id = step.id;
@@ -428,15 +430,15 @@ export function createTraining(ctx) {
     let opposite;
     if (id === 'slashLR') {
       if (!TOKEN_SETS.Rish.has(tok) && !TOKEN_SETS.Lish.has(tok)) return false;
-      const want = sub.dirs.length < 2 ? 'R' : 'L';
+      const want = sub.r < 2 ? 'R' : 'L';
       opposite = want === 'R' ? TOKEN_SETS.Lish.has(tok) : TOKEN_SETS.Rish.has(tok);
     } else {
       if (!TOKEN_SETS.Uish.has(tok) && !TOKEN_SETS.Dish.has(tok)) return false;
       opposite = id === 'overhead' ? TOKEN_SETS.Uish.has(tok) : TOKEN_SETS.Dish.has(tok);
     }
-    if (sub.dirs.length >= 4) return false;
+    if (sub.dirs.length >= 3 || sub.dirs.includes(false)) return false;
     sub.dirs.push(opposite);
-    if (sub.dirs.filter((x) => x).length < 3) return false;
+    if (sub.dirs.length < 3 || sub.dirs.includes(false)) return false;
     const key = id === 'slashLR' ? 'motionFlipX' : 'motionFlipY';
     settings[key] = !settings[key];
     if (ctx.saveSettings) ctx.saveSettings();
