@@ -93,7 +93,9 @@ class YouTubeSong(
     override val ended: Boolean
         get() = videoEnded || (stopAt != null && reportedTime >= stopAt)
 
-    private fun js(code: String) = main.post { web.evaluateJavascript("try{$code}catch(e){}", null) }
+    private fun js(code: String) {
+        main.post { web.evaluateJavascript("try{$code}catch(e){}", null) }
+    }
 
     override fun pause() {
         playing = false
