@@ -1,0 +1,19 @@
+{
+  "_comment": "The game's music cues (audio.js setMusic names) and the brief each loop is checked against by render.mjs and qa.py. loopSeconds: loop length range; bpm: quarter notes per minute; contrastLU: [min, max] LU between the quietest and the loudest 4 bars (qa.py warns outside it: a heuristic, not a rule).",
+  "title": {
+    "brief": "Title screen and menus. Majestic, lyrical, a little ominous: the pass at dawn, 300 against an empire.",
+    "loopSeconds": [60, 100],
+    "contrastLU": [2, 15]
+  },
+  "battle": {
+    "brief": "Days 1-2 fighting and respites. Driving, epic, martial; exciting yet not fatiguing over 20+ minutes (A/B/C sections, a breath before the build).",
+    "loopSeconds": [90, 130],
+    "bpm": [90, 110],
+    "contrastLU": [4, 15]
+  },
+  "lastStand": {
+    "brief": "Day 3 on the Kolonos after Leonidas falls. Heroic lament: grief and defiance, building.",
+    "loopSeconds": [80, 120],
+    "contrastLU": [3, 15]
+  }
+}
