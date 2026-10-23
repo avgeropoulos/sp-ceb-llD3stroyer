@@ -210,7 +210,9 @@ which runs on a WebView IO thread):
   * `exit()`. Calls finish() via runOnUiThread.
 
 **Manifest:**
-* Permissions: `VIBRATE`, `HIGH_SAMPLING_RATE_SENSORS`.
+* Permissions: `VIBRATE`, `HIGH_SAMPLING_RATE_SENSORS`, `INTERNET` (WebView needs it; the only
+  traffic is the updater's) and `REQUEST_INSTALL_PACKAGES`.
+* `<provider .UpdateFileProvider authorities="com.thermopylae.updates" exported="false" grantUriPermissions="true">`.
 * `<queries>` for `android.intent.action.TTS_SERVICE`.
 * Activity:
   * `screenOrientation="sensorLandscape"`
@@ -228,6 +230,42 @@ watchdog: unless `window.__booted` is true by then, it shows the same panel plus
 recorded `window.onerror` message. Then come the import map, modulepreload links for
 three.core.js and three.module.js, and `js/main.js`. main.js shows "This device has no
 WebGL 2" if the renderer throws.
+
+### 2.2 App updates
+
+Installs update themselves in one tap, through Android's own package installer. Game code is
+only ever loaded from the APK: the updater downloads a whole APK and Android installs it after
+the player confirms, checking that it is signed with the same key.
+
+* **Signing.** Every build (debug and release, CI and local) is signed with
+  `spartan/signing.keystore` (alias and passwords `thermopylae`). It is a convenience key for
+  this hobby project, committed on purpose; a store release would need a private key.
+* **Version.** `versionCode` = `GITHUB_RUN_NUMBER` (1 locally), `versionName` = `1.<code>`.
+* **Manifest URL.** A string resource `update_manifest_url` =
+  `https://github.com/<repo>/releases/download/latest-<branch>/thermopylae-update.json`, empty for
+  local and pull-request builds (the updater is then off).
+* **CI** writes `thermopylae-update.json` = `{versionCode, versionName, apkUrl, sha256, size,
+  notes}` for the APK it just built and publishes it to the same release **after** the APKs.
+* **AppUpdater** (Kotlin):
+  * Trusts only `https://github.com/…` and `https://*.githubusercontent.com/…` URLs
+    (`HostLogic.isTrustedDownload`), for the manifest and the APK.
+  * `check()`, 4 s after the first page load: fetches the manifest (64 KB cap). A newer
+    `versionCode` → `available` (or `ready` if a matching APK is already downloaded); otherwise
+    `current`, and any old download is deleted. Network errors are silent (`idle`).
+  * `install()`: downloads to `cacheDir/updates/Thermopylae.apk` (48 MB cap), checks size and
+    SHA-256, then opens the installer with `ACTION_VIEW` on
+    `content://com.thermopylae.updates/Thermopylae.apk` (`UpdateFileProvider`, read-only, not
+    exported, one-off read grant). On API 26+ without `canRequestPackageInstalls()` it opens
+    `ACTION_MANAGE_UNKNOWN_APP_SOURCES` first (state `permission`) and carries on in onResume.
+  * States: `idle`, `checking`, `current`, `available`, `downloading`, `ready`, `permission`,
+    `error`. Each change is pushed to the page as
+    `window.dispatchEvent(new CustomEvent('appupdate', {detail: <stateJson>}))`.
+* **Bridge.** `updateState(): String` (the state JSON
+  `{state, installed, available, name, notes, progress, error, enabled}`), `checkForUpdate()`,
+  `installUpdate()`. JS: `platform.updates.{state, check, install, onChange}`, disabled on the web.
+* **UI** (`ui/updates.js`): a banner in the title screen, between the logo and the buttons, with
+  Update/Install/Try again/Retry and Later. It never shows during a fight. Text goes in with
+  `textContent` only.
 
 ## 3. Conventions
 
@@ -1521,7 +1559,8 @@ The target is 60 fps on a mid-range 2021+ Android phone.
 
 * `settings.gradle.kts`: `include(":spartan")`.
 * `spartan/build.gradle.kts` mirrors `app/build.gradle.kts`, with namespace and applicationId
-  `com.thermopylae` and no dependencies.
+  `com.thermopylae` and no dependencies, plus the fixed signing key, version and update URL
+  of §2.2.
 * `spartan/package.json` is `{ "private": true, "type": "module" }`.
 * `.github/workflows/android.yml`:
   * After setup-gradle, `actions/setup-node@v4` (node 22) and
@@ -1530,6 +1569,8 @@ The target is 60 fps on a mid-range 2021+ Android phone.
   * Copy `spartan/build/outputs/apk/debug/spartan-debug.apk` → `Thermopylae.apk`.
   * Upload it as an artifact and add it to the release `files:` next to RoccosQuest.apk, with
     a line in the release body.
+  * Write `thermopylae-update.json` (§2.2) with `jq`, and publish it to the same release in a
+    second step, after the APKs.
 * `tests/unit/modulegraph.test.mjs` registers a resolve hook (`node:module` `register`) that
   maps `three` and `three/addons/*` to the vendored files. It then imports every `.js` under
   `assets/game/js` except main.js, and fails on any error.

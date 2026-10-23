@@ -35,6 +35,8 @@ import android.window.OnBackInvokedDispatcher
 class MainActivity : Activity() {
     private lateinit var root: FrameLayout
     private lateinit var bridge: NativeBridge
+    private lateinit var updater: AppUpdater
+    private var updateChecked = false
     private var webView: WebView? = null
     private var isResumedNow = false
     private var backCallback: Any? = null
@@ -65,6 +67,12 @@ class MainActivity : Activity() {
         setContentView(root)
 
         bridge = NativeBridge(this)
+        updater = AppUpdater(this) { json ->
+            runOnUiThread {
+                webView?.evaluateJavascript("window.dispatchEvent(new CustomEvent('appupdate',{detail:$json}))", null)
+            }
+        }
+        bridge.updater = updater
         try {
             WebView.setWebContentsDebuggingEnabled((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0)
         } catch (e: Throwable) {
@@ -107,7 +115,7 @@ class MainActivity : Activity() {
         wv.webViewClient = AssetServer(
             assets,
             pageStarted = { bridge.onNewPage() },
-            pageFinished = { pushCutoutInsets() },
+            pageFinished = { onPageFinished() },
             rendererGone = { view, crashed -> onRendererGone(view, crashed) },
         )
         root.addView(wv, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -147,6 +155,7 @@ class MainActivity : Activity() {
             wv.onResume()
         }
         bridge.onResume()
+        updater.onResume()
         applyImmersive()
         wv?.evaluateJavascript("window.dispatchEvent(new Event('nativeresume'))", null)
     }
@@ -228,6 +237,15 @@ class MainActivity : Activity() {
         val b = cutout[3]
         Api28.safeInsets(insets, cutout)
         if (l != cutout[0] || t != cutout[1] || r != cutout[2] || b != cutout[3]) pushCutoutInsets()
+    }
+
+    private fun onPageFinished() {
+        pushCutoutInsets()
+        // Look for a newer version once per launch, after the game has had time to start.
+        if (!updateChecked) {
+            updateChecked = true
+            root.postDelayed({ if (!isFinishing) updater.check() }, UPDATE_CHECK_DELAY_MS)
+        }
     }
 
     /** Sets `--sai-left/top/right/bottom` (CSS px) on the page. Also runs in onPageFinished. */
@@ -411,6 +429,7 @@ class MainActivity : Activity() {
 
     private companion object {
         const val TAG = "Spartan"
+        const val UPDATE_CHECK_DELAY_MS = 4000L
         const val BACK_SCRIPT =
             "(function(){try{return !!(window.__onBack&&window.__onBack())}catch(e){return false}})()"
     }

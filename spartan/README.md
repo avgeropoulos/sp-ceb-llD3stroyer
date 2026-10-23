@@ -22,6 +22,17 @@ Every push builds the APK with GitHub Actions, next to Rocco's Quest:
    in Chrome.
 2. Open the downloaded `Thermopylae.apk`. If Android asks, allow your browser to install unknown apps.
 
+### Updates
+
+You only install it this way once. When a newer build is out, the title screen shows **Update
+available**: tap **Update**, then **Install** in Android's installer. The new version installs
+over the old one and keeps your progress and settings. The first time, Android asks you to allow
+Thermopylae to install apps ("Allow from this source"); turn it on and go back.
+
+Builds made before the updater came in were each signed with a different key, so if you have one
+of those, uninstall it once and install the new APK from the link above. After that, updates are
+one tap.
+
 The game needs Android 7 or newer with an up-to-date Android System WebView, and a gyroscope for
 the motion controls. Touch controls work on any phone.
 

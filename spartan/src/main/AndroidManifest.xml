@@ -1,12 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- The game never goes online: every request is answered from the APK by AssetServer. Without this
-         permission, though, WebView blocks https:// page loads with ERR_CACHE_MISS on some versions. -->
+    <!-- The game itself never goes online: every page request is answered from the APK by AssetServer.
+         The network is used only by AppUpdater to look for and download a newer APK of this app (and
+         WebView needs the permission anyway, or it blocks https:// page loads with ERR_CACHE_MISS). -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- The sensors run at exactly 200 Hz (5000 µs); this keeps Android 12+ from capping them below that. -->
     <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
+    <!-- One-tap updates: lets the app hand a downloaded update to Android's installer, where the player confirms it. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- Motion controls are optional: the game also plays with touch. -->
     <uses-feature android:name="android.hardware.sensor.gyroscope" android:required="false" />
@@ -45,5 +48,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Serves the downloaded update APK to the package installer (read-only, not exported). -->
+        <provider
+            android:name=".UpdateFileProvider"
+            android:authorities="com.thermopylae.updates"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 </manifest>

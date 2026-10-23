@@ -12,6 +12,7 @@ throw bouncing fireballs and take Krag down.
 > melee game set at the Battle of Thermopylae. You can swing your phone like a sword, raise the
 > shield with your thumb, bash, and throw the spear with a real throwing motion.
 > Download: **https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/Thermopylae.apk**
+> (install once; after that the game offers each new build on its title screen).
 
 ## The game
 

@@ -512,6 +512,51 @@ export function createPlatform(opts = {}) {
     },
   };
 
+  // ---------------------------------------------------------------- app updates
+
+  // Android only: AppUpdater looks for a newer APK in the GitHub release and, on the player's tap,
+  // downloads it and opens Android's installer. On the web this reports {enabled:false} and does nothing.
+  const updateFns = [];
+  let updateBound = false;
+  const readUpdate = (raw) => {
+    if (raw && typeof raw === 'object') return raw;
+    try {
+      const o = JSON.parse(raw || '');
+      return o && typeof o === 'object' ? o : null;
+    } catch (err) {
+      return null;
+    }
+  };
+  const noUpdate = () => ({ state: 'idle', enabled: false, installed: 0, available: 0, name: '', notes: '', progress: 0, error: '' });
+  const updates = {
+    /** Current state: {state, enabled, installed, available, name, notes, progress (0..1), error}. */
+    state() {
+      return (N && readUpdate(nat('updateState'))) || noUpdate();
+    },
+    check() {
+      nat('checkForUpdate');
+    },
+    /** Downloads the update and opens Android's installer (the player confirms there). */
+    install() {
+      nat('installUpdate');
+    },
+    /** Called with the new state whenever it changes. Returns an unsubscribe function. */
+    onChange(fn) {
+      if (!updateBound && win && typeof win.addEventListener === 'function') {
+        updateBound = true;
+        win.addEventListener('appupdate', (e) => {
+          const st = readUpdate(e && e.detail);
+          if (st) run(updateFns, st);
+        });
+      }
+      updateFns.push(fn);
+      return () => {
+        const i = updateFns.indexOf(fn);
+        if (i >= 0) updateFns.splice(i, 1);
+      };
+    },
+  };
+
   // ---------------------------------------------------------------- lifecycle
 
   const pauseFns = [];
@@ -519,10 +564,10 @@ export function createPlatform(opts = {}) {
   const resumeFns = [];
   let paused = false;
   let lifeBound = false;
-  const run = (list) => {
+  const run = (list, arg) => {
     for (const fn of list.slice()) {
       try {
-        fn();
+        fn(arg);
       } catch (err) {
         if (typeof console !== 'undefined') console.error('platform lifecycle handler failed', err);
       }
@@ -569,6 +614,7 @@ export function createPlatform(opts = {}) {
     haptics,
     voice,
     storage,
+    updates,
     /** Locks the screen to the current landscape orientation (android) or landscape (web). */
     lockOrientation(lock) {
       if (N) {

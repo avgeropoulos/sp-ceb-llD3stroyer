@@ -49,6 +49,22 @@ jobs:
           name: Thermopylae-apk
           path: Thermopylae.apk
 
+      # Thermopylae's in-app updater reads this from the release below (spartan/DESIGN.md §2.2):
+      # the run number is the APK's version code, and the hash lets the app check the download.
+      - name: Write the Thermopylae update manifest
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          jq -n \
+            --argjson versionCode "$GITHUB_RUN_NUMBER" \
+            --arg versionName "1.$GITHUB_RUN_NUMBER" \
+            --arg apkUrl "https://github.com/$GITHUB_REPOSITORY/releases/download/latest-$GITHUB_REF_NAME/Thermopylae.apk" \
+            --arg sha256 "$(sha256sum Thermopylae.apk | cut -d' ' -f1)" \
+            --argjson size "$(stat -c %s Thermopylae.apk)" \
+            --arg notes "$(git log -1 --format=%s)" \
+            '{versionCode: $versionCode, versionName: $versionName, apkUrl: $apkUrl, sha256: $sha256, size: $size, notes: $notes}' \
+            > thermopylae-update.json
+          cat thermopylae-update.json
+
       - name: Publish downloadable build
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
@@ -64,8 +80,19 @@ jobs:
             * **RoccosQuest.apk**: Rocco's Quest, the platformer.
             * **Thermopylae.apk**: Thermopylae, a first-person Spartan last stand with
               motion controls (needs Android 7.0+ and an up-to-date Android System WebView).
+              Once installed it updates itself: a newer build is offered on the title screen.
 
             Built from ${{ github.sha }}.
           files: |
             RoccosQuest.apk
             Thermopylae.apk
+
+      # Published after the APKs, so the app never sees a manifest for an APK that isn't up yet.
+      - name: Publish Thermopylae update manifest
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest-${{ github.ref_name }}
+          prerelease: false
+          make_latest: true
+          files: thermopylae-update.json

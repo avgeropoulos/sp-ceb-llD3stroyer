@@ -1747,3 +1747,56 @@ input[type='range']::-moz-range-thumb {
   .hud-banner { top: 12%; }
   .hud-banner-s { max-width: 50vw; margin: 0 auto; }
 }
+
+/* ----------------------------- App update banner ----------------------------- */
+/* Sits in the title screen's column, between the logo and the buttons (ui/updates.js). */
+#app-update {
+  position: relative;
+  box-sizing: border-box;
+  width: min(540px, 100%);
+  display: none;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 8px 8px 14px;
+  font-family: var(--serif);
+  color: var(--parchment);
+  text-align: left;
+  background: var(--panel-bg);
+  border: 1px solid var(--edge);
+  border-radius: 4px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.55);
+}
+#app-update.is-on { display: flex; animation: upd-in 0.3s ease; }
+@keyframes upd-in { from { opacity: 0; transform: translateY(6px); } }
+.upd-body { flex: 1; min-width: 0; }
+.upd-h { font-size: 14px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--bronze-hi); }
+.upd-t { margin-top: 2px; font-size: 12.5px; line-height: 1.3; font-style: italic; }
+.upd-bar { margin-top: 6px; height: 5px; background: rgba(0, 0, 0, 0.5); border: 1px solid var(--edge-soft); border-radius: 3px; overflow: hidden; }
+.upd-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--bronze-mid), var(--bronze-hi)); transition: width 0.2s linear; }
+.upd-btns { display: flex; gap: 8px; }
+#app-update .upd-btn {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+  min-width: 84px;
+  min-height: 44px;
+  padding: 0 12px;
+  font-family: var(--serif);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--parchment);
+  background: rgba(14, 9, 5, 0.55);
+  border: 1px solid rgba(201, 162, 74, 0.38);
+  border-radius: 3px;
+  cursor: pointer;
+}
+#app-update .upd-go {
+  order: -1;
+  color: #fff3dc;
+  background: linear-gradient(180deg, #ad2e22 0%, #7b1812 60%, #5f100c 100%);
+  border-color: var(--bronze);
+}
+#app-update .upd-btn:active { transform: scale(0.97); }
+#app-update .upd-btn:focus-visible { outline: 2px solid var(--bronze-hi); outline-offset: 2px; }

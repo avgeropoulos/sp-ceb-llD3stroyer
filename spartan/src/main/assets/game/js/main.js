@@ -20,6 +20,7 @@ import { createHud } from './ui/hud.js';
 import { createMenus } from './ui/menus.js';
 import { createInput } from './ui/input.js';
 import { createTraining } from './ui/training.js';
+import { createUpdates } from './ui/updates.js';
 
 const params = new URLSearchParams(location.search);
 const MANUAL = params.get('manual') === '1';
@@ -189,6 +190,7 @@ async function boot() {
   ctx.menus = createMenus(ctx);
   ctx.inputCtl = createInput(ctx);
   ctx.training = createTraining(ctx);
+  ctx.updates = createUpdates(ctx);
 
   // ---- Mode state machine (DESIGN.md §10) ----
   let pausedFrom = 'battle';

@@ -26,6 +26,9 @@ object HostLogic {
     /** Most values accepted in a vibration pattern. */
     const val MAX_PATTERN_VALUES = 16
 
+    /** Largest app update the updater will download (the APK is about 12 MB). */
+    const val MAX_UPDATE_BYTES = 48L * 1024 * 1024
+
     /** Where a request to the asset server goes: an asset, or an empty error response. */
     sealed class Route {
         data class Asset(val name: String) : Route()
@@ -181,6 +184,28 @@ object HostLogic {
         sb.append(",\"rateHz\":")
         if (rateHz.isFinite() && rateHz > 0) sb.append((rateHz * 10).roundToLong() / 10.0) else sb.append(0)
         return sb.append('}').toString()
+    }
+
+    /**
+     * True for the only places app updates may come from: HTTPS on github.com (releases) or its
+     * download hosts (`*.githubusercontent.com`, where release downloads redirect).
+     */
+    fun isTrustedDownload(url: String?): Boolean {
+        if (url == null) return false
+        val m = Regex("""^https://([A-Za-z0-9.-]+)(?::443)?(/[^\s]*)?$""").matchEntire(url) ?: return false
+        val host = m.groupValues[1].lowercase()
+        return host == "github.com" || (host.endsWith(".githubusercontent.com") && !host.startsWith("."))
+    }
+
+    /** Lower-case hex of [bytes]. */
+    fun hex(bytes: ByteArray): String {
+        val digits = "0123456789abcdef"
+        val sb = StringBuilder(bytes.size * 2)
+        for (b in bytes) {
+            val v = b.toInt() and 0xff
+            sb.append(digits[v ushr 4]).append(digits[v and 0x0f])
+        }
+        return sb.toString()
     }
 
     /** Appends [v] with exactly two decimals and a dot, whatever the locale. */

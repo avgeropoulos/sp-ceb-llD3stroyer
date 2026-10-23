@@ -38,6 +38,10 @@ function fakeNative(lines = []) {
     rotation: () => 270,
     lockOrientation: (b) => calls.push(['lockOrientation', b]),
     exit: () => calls.push(['exit']),
+    updateState: () => (calls.push(['updateState']), N.update),
+    checkForUpdate: () => calls.push(['checkForUpdate']),
+    installUpdate: () => calls.push(['installUpdate']),
+    update: '{"state":"current","installed":41,"available":0,"name":"","notes":"","progress":0,"error":"","enabled":true}',
   };
   return N;
 }
@@ -400,10 +404,36 @@ test('android: every bridge call passes exactly the arguments NativeBridge.kt de
   p.lockOrientation(true);
   p.lockOrientation(false);
   if (p.rotation) p.rotation();
+  p.updates.state();
+  p.updates.check();
+  p.updates.install();
   p.exit();
   assert.deepEqual(misuse, []);
   const used = new Set(N.calls.map((c) => c[0]));
-  for (const name of ['startMotion', 'stopMotion', 'vibrate', 'vibratePattern', 'say', 'stopSpeech', 'lockOrientation', 'exit']) {
+  for (const name of ['startMotion', 'stopMotion', 'vibrate', 'vibratePattern', 'say', 'stopSpeech', 'lockOrientation', 'exit', 'updateState', 'checkForUpdate', 'installUpdate']) {
     assert.ok(used.has(name), `${name} reached the bridge`);
   }
+});
+
+test('updates: state comes from the bridge, changes arrive as appupdate events, the web reports disabled', () => {
+  const N = fakeNative();
+  const win = fakeWindow({ SpartanNative: N });
+  const p = createPlatform({ window: win, now: () => 0 });
+  assert.equal(p.updates.state().state, 'current');
+  assert.equal(p.updates.state().installed, 41);
+  N.update = 'not json';
+  assert.equal(p.updates.state().enabled, false, 'a bad answer reads as "no updater"');
+  const seen = [];
+  const off = p.updates.onChange((st) => seen.push(st.state));
+  win.dispatchEvent(Object.assign(new Event('appupdate'), { detail: { state: 'available', enabled: true, available: 42 } }));
+  win.dispatchEvent(Object.assign(new Event('appupdate'), { detail: '{"state":"downloading","enabled":true}' }));
+  win.dispatchEvent(Object.assign(new Event('appupdate'), { detail: null }));
+  off();
+  win.dispatchEvent(Object.assign(new Event('appupdate'), { detail: { state: 'ready', enabled: true } }));
+  assert.deepEqual(seen, ['available', 'downloading']);
+
+  const web = createPlatform({ window: fakeWindow(), now: () => 0 });
+  assert.deepEqual([web.updates.state().state, web.updates.state().enabled], ['idle', false]);
+  web.updates.check();
+  web.updates.install();
 });

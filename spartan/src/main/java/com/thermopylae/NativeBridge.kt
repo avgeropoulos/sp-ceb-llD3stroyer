@@ -252,6 +252,38 @@ class NativeBridge(private val activity: Activity) {
         }
     }
 
+    /** Set by [MainActivity]; null until then. */
+    @Volatile var updater: AppUpdater? = null
+
+    /** App update state as JSON (see [AppUpdater.stateJson]), or "" if there is no updater. */
+    @JavascriptInterface
+    fun updateState(): String = try {
+        updater?.stateJson() ?: ""
+    } catch (e: Throwable) {
+        Log.w(TAG, e)
+        ""
+    }
+
+    /** Looks for a newer version of the app; the answer arrives as an `appupdate` event. */
+    @JavascriptInterface
+    fun checkForUpdate() {
+        try {
+            updater?.check()
+        } catch (e: Throwable) {
+            Log.w(TAG, e)
+        }
+    }
+
+    /** Downloads the available update and opens Android's installer for the player to confirm. */
+    @JavascriptInterface
+    fun installUpdate() {
+        try {
+            updater?.install()
+        } catch (e: Throwable) {
+            Log.w(TAG, e)
+        }
+    }
+
     @JavascriptInterface
     fun exit() {
         try {
