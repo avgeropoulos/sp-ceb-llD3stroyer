@@ -199,6 +199,10 @@ Every push builds an APK with GitHub Actions (see `.github/workflows/android.yml
    * **https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/BouzoukiHero.apk**
    * **https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/RoccosQuest.apk**
 2. Download the APK and open it. If Android asks, allow your browser to install unknown apps.
+3. To update, download the newest APK and open it. It installs over the old version and keeps
+   your songs, recordings and scores. Every build is signed with the same key
+   (`keystore/debug.keystore`) and has a higher version number. Builds made before this change
+   used a random key, so if you have one of those installed, uninstall it once first.
 
 ## Building it yourself
 

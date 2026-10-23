@@ -13,8 +13,21 @@ android {
         applicationId = "com.roccoquest"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        // Each CI build gets a higher version, so it installs as an update over the last one.
+        val build = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+        versionCode = build
+        versionName = "1.$build"
+    }
+
+    signingConfigs {
+        // One fixed key for every build (CI included). Android only installs an update
+        // signed with the same key as the installed app.
+        getByName("debug") {
+            storeFile = rootProject.file("keystore/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
