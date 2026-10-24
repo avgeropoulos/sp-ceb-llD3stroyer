@@ -44,14 +44,14 @@ Only one of Rocco or Blocky is out at a time, with the Pokemon (`TeamGame.team` 
 | `Sea.kt` | World 5 (levels 85-105: water, pirate ships, Rainbow Road), ship/mast/rainbow tiles (`I` `:` `%`), `Cannon` (`N`), `MetalItem` (`$`), Metal Rocco sprites, sea and space skies |
 | `MoreWorlds.kt` | Worlds 3 and 4 (levels 43-84), built by a seeded level generator plus boss-arena templates. Last level: THE ULTIMATE BATTLE (Y, Q, Z boss rush) |
 | `Monsters.kt` | Newer monsters (Skelly Archer + arrows, Hopper, Gloop, Snapper + seeds, Crusher `z`, Peekaboo `q`, Puffcloud `l`, Spikestack `j`), bonus `Portal`, `Chest`, sunset sky, Dash |
-| `Homes.kt` | `HouseType` (5), `Furniture` (12), `BedStyle`, house outside/inside drawing (the room is 720 wide and scrolls), `PlushieItem` |
-| `Plushies.kt` | The 100 `Plushie`s (characters use sticker art, animals are drawn from a `Species` + color) |
+| `Homes.kt` | `HouseType` (10), `PAINTS` (house colors), the Pokemon mat (`MON_X`), `Furniture` (12), `BedStyle`, house outside/inside drawing (the room is 720 wide and scrolls), `PlushieItem` |
+| `Plushies.kt` | The 150 `Plushie`s (new ones always go at the END: saved by index) (characters use sticker art, animals are drawn from a `Species` + color) |
 | `Actors.kt` | `Power` (flowers), `Mon` (Pokemon), `Sword` (with durability), `Armor`, `Shield`, and `Hero` (Rocco, Blocky, partner) |
 | `Foes.kt` | Enemies with health bars, Krag Jr. and King Krag (normal, Wonder, Dry Bones) |
 | `Extras.kt` | Villagers, Dennis the dog, minecarts, traps, TNT, bubbles, fish, Endermen, Warden, Ender Dragon, Bomb-bombs |
 | `Items.kt` | Shots, pickups (stars, leaf, wing cap, mini mushroom...), house/bed, particles, SUPER effects |
 | `TeamArt.kt` | Pixel art and hand-drawn pictures |
-| `Stickers.kt` | The 40 collectable stickers |
+| `Stickers.kt` | 300 stickers = 60 base pictures x 5 `StickerStyle`s. Add new base pictures only at the end of `base` (index = style*60+base is saved; changing BASE reshuffles saves) |
 | `TeamControls.kt` | Touch buttons and `TeamInput` |
 
 `teamapp/` is the Android wrapper (`GameView.kt` maps keys, `SoundFx.kt` does sounds and the
@@ -88,3 +88,10 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
   CI run number. Don't remove that: a different key (or lower version) makes the phone say
   "App not installed" instead of updating.
 * Keep `README.md` (the "New game: Rocco & Blocky: Team Up!" section) up to date with each feature.
+
+## Pokemon levels and Lugia
+
+* `Mon.LUGIA` is the 10th Pokemon, locked until level 3 is cleared (`monUnlocked`). Switch Pokemon at home
+  (the POKEMON mat: `monMenu`, `monSwitch`). Each Pokemon has its own XP (`monXp`, keys `monXp<i>`), levels 1-10.
+  `superTime()`, `superDmg()` and `monAttack` scale gently with the level.
+* Save keys added: `stk0..stk9` (stickers, 30 bits each), `plush4`, `plush5`, `houseColor`, `monXp<i>`.

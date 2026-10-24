@@ -30,7 +30,19 @@ enum class Rarity(val label: String, val color: Int) {
  * A collectable sticker. [w] x [h] is the natural size of its picture; [draw] paints it
  * with its top-left corner at (0, 0).
  */
-class Sticker(val name: String, val rarity: Rarity, val w: Float, val h: Float, val draw: (TeamGame, Gfx) -> Unit)
+class Sticker(val name: String, val rarity: Rarity, val w: Float, val h: Float, val draw: (TeamGame, Gfx) -> Unit) {
+    /** Which style of card this is: 0 normal, then silver, gold, rainbow and midnight. */
+    var style = 0
+}
+
+/** Every sticker comes in five styles, so there are 5 x 60 = 300 to collect. */
+enum class StickerStyle(val prefix: String, val card: Int) {
+    NORMAL("", 0),
+    SILVER("SILVER ", 0xFFC8D0DC.toInt()),
+    GOLD("GOLD ", 0xFFFFC83A.toInt()),
+    RAINBOW("RAINBOW ", 0),
+    MIDNIGHT("MIDNIGHT ", 0xFF1A1A4A.toInt()),
+}
 
 object Stickers {
     private fun foe(make: () -> Foe, w: Float, h: Float, setup: (Foe) -> Unit = {}): (TeamGame, Gfx) -> Unit = { g, gfx ->
@@ -44,14 +56,15 @@ object Stickers {
     private fun mon(m: Mon): Sticker =
         Sticker(m.label, Rarity.RARE, 32f, 34f) { g, gfx -> TeamArt.mon(gfx, m, 16f, 32f, g.time, 1, false) }
 
-    val all: List<Sticker> = listOf(
+    /** The 60 pictures. The first 40 keep their old order so old saves still have the same stickers. */
+    private val base: List<Sticker> = listOf(
         // Heroes and friends
         Sticker("ROCCO", Rarity.COMMON, 16f, 24f) { _, gfx -> gfx.sprite(TeamArt.rocco(Power.NONE, 2), 0f, 0f) },
         Sticker("BLOCKY", Rarity.COMMON, 26f, 26f) { _, gfx ->
             gfx.sprite(TeamArt.blocky(Power.NONE, false), 2f, 2f)
             TeamArt.sword(gfx, 15f, 15f, -1.2f, Sword.DIAMOND)
         },
-    ) + Mon.entries.map(::mon) + listOf(
+    ) + Mon.entries.take(9).map(::mon) + listOf(
         Sticker("RING-DING FROG", Rarity.RARE, 30f, 58f) { g, gfx -> TeamArt.frog(gfx, 4f, 32f, g.time) },
         Sticker("DENNIS", Rarity.COMMON, 26f, 30f) { g, gfx -> Dennis(1f, 28f).draw(g, gfx, 0f) },
         Sticker("VILLAGER", Rarity.COMMON, 14f, 24f) { g, gfx -> Villager(-1f, 24f, 0).draw(g, gfx, 0f) },
@@ -93,7 +106,42 @@ object Stickers {
         Sticker("DIAMOND SWORD", Rarity.RARE, 22f, 22f) { _, gfx -> TeamArt.sword(gfx, 3f, 19f, -0.8f, Sword.DIAMOND) },
         Sticker("HEART", Rarity.COMMON, 16f, 16f) { _, gfx -> TeamArt.heart(gfx, 1f, 1f, 14f, 0xFFE52521.toInt()) },
         Sticker("HOUSE", Rarity.COMMON, 84f, 80f) { g, gfx -> TeamArt.house(gfx, 6f, 78f, g.time) },
+        // New ones
+        mon(Mon.LUGIA).let { Sticker(it.name, Rarity.SHINY, it.w, it.h, it.draw) },
+        Sticker("METAL ROCCO", Rarity.RARE, 16f, 24f) { _, gfx -> gfx.sprite(Metal.of(TeamArt.rocco(Power.NONE, 2)), 0f, 0f) },
+        Sticker("TANOOKI ROCCO", Rarity.RARE, 26f, 26f) { g, gfx ->
+            gfx.sprite(TeamArt.rocco(Power.NONE, 2), 5f, 2f)
+            TeamArt.tanooki(gfx, 13f, 2f, 26f, 1, g.time, false, false)
+        },
+        Sticker("WING CAP ROCCO", Rarity.RARE, 26f, 30f) { g, gfx ->
+            gfx.sprite(TeamArt.rocco(Power.NONE, 2), 5f, 6f)
+            TeamArt.wingCap(gfx, 13f, 6f, g.time, false)
+        },
+        Sticker("SUPER LEAF", Rarity.COMMON, 16f, 16f) { g, gfx -> TeamArt.leaf(gfx, 0f, 0f, g.time) },
+        Sticker("WING CAP", Rarity.RARE, 16f, 16f) { g, gfx -> TeamArt.wingCapItem(gfx, 0f, 0f, g.time) },
+        Sticker("METAL CAP", Rarity.RARE, 18f, 14f) { g, gfx -> MetalItem(3f, 1f, popOut = false).draw(g, gfx, 0f) },
+        Sticker("BLACK FLOWER", Rarity.SHINY, 16f, 16f) { g, gfx -> TeamArt.blackFlower(gfx, 0f, 0f, 16f, g.time) },
+        Sticker("BOOMERANG FLOWER", Rarity.COMMON, 16f, 16f) { _, gfx -> gfx.sprite(TeamArt.flowerSprite(Power.BOOM), 0f, 0f) },
+        Sticker("GRASS FLOWER", Rarity.COMMON, 16f, 16f) { _, gfx -> gfx.sprite(TeamArt.flowerSprite(Power.GRASS), 0f, 0f) },
+        Sticker("THUNDER FLOWER", Rarity.RARE, 16f, 16f) { _, gfx -> gfx.sprite(TeamArt.flowerSprite(Power.THUNDER), 0f, 0f) },
+        Sticker("CRYSTAL FLOWER", Rarity.RARE, 16f, 16f) { _, gfx -> gfx.sprite(TeamArt.flowerSprite(Power.CRYSTAL), 0f, 0f) },
+        Sticker("GOLD SWORD", Rarity.COMMON, 22f, 22f) { _, gfx -> TeamArt.sword(gfx, 3f, 19f, -0.8f, Sword.GOLD) },
+        Sticker("OBSIDIAN SWORD", Rarity.SHINY, 22f, 22f) { _, gfx -> TeamArt.sword(gfx, 3f, 19f, -0.8f, Sword.OBSIDIAN) },
+        Sticker("IRON PICKAXE", Rarity.COMMON, 22f, 22f) { _, gfx -> TeamArt.pickaxe(gfx, 4f, 18f, -0.8f, 2) },
+        Sticker("IGLOO", Rarity.COMMON, 84f, 62f) { g, gfx -> Homes.drawHouse(gfx, HouseType.IGLOO, 6f, 60f, g.time) },
+        Sticker("MUSHROOM HOUSE", Rarity.RARE, 90f, 76f) { g, gfx -> Homes.drawHouse(gfx, HouseType.MUSHROOM, 9f, 74f, g.time) },
+        Sticker("MINI CASTLE", Rarity.SHINY, 92f, 104f) { g, gfx -> Homes.drawHouse(gfx, HouseType.CASTLE, 10f, 102f, g.time) },
+        Sticker("MINECART", Rarity.COMMON, 24f, 14f) { g, gfx -> Minecart(1f, 13f).draw(g, gfx, 0f) },
+        Sticker("AMETHYST", Rarity.RARE, 16f, 16f) { _, gfx -> TeamArt.oreIcon(gfx, Ore.AMETHYST, 0f, 0f, 16f) },
     )
+
+    val BASE get() = base.size
+
+    /** All 300: the 60 normal ones first, then silver, gold, rainbow and midnight copies. */
+    val all: List<Sticker> = StickerStyle.entries.flatMap { st ->
+        if (st == StickerStyle.NORMAL) base
+        else base.map { b -> Sticker(st.prefix + b.name, b.rarity, b.w, b.h, b.draw).also { it.style = st.ordinal } }
+    }
 
     /** The sticker you're sure to be offered for beating each boss (by its level character). */
     fun forBoss(c: Char): Int = all.indexOfFirst {
@@ -119,14 +167,23 @@ object Stickers {
     /** A whole sticker: a white-edged card with the picture. Shiny ones sparkle. */
     fun drawCard(g: TeamGame, gfx: Gfx, i: Int, x: Float, y: Float, w: Float, h: Float, owned: Boolean = true, label: Boolean = true) {
         val st = all[i]
-        val edge = if (st.rarity == Rarity.SHINY && owned) solidRainbow(g.time * 0.5f, i * 0.1f) else 0xFFFFFFFF.toInt()
+        val style = StickerStyle.entries[st.style]
+        val sparkly = (st.rarity == Rarity.SHINY || st.style >= 2) && owned
+        val edge = if (sparkly) solidRainbow(g.time * 0.5f, i * 0.1f) else if (st.style == 1 && owned) 0xFFE8EEF8.toInt() else 0xFFFFFFFF.toInt()
         gfx.rect(x - 1.5f, y - 1.5f, w + 3, h + 3, 0x66000000)
         gfx.rect(x, y, w, h, edge)
-        gfx.rect(x + 2, y + 2, w - 4, h - 4, if (owned) argb(255, st.rarity.color) else 0xFF3A3A48.toInt())
+        val card = when {
+            !owned -> 0xFF3A3A48.toInt()
+            style == StickerStyle.RAINBOW -> solidRainbow(g.time * 0.2f, i * 0.05f)
+            style.card != 0 -> style.card
+            else -> argb(255, st.rarity.color)
+        }
+        gfx.rect(x + 2, y + 2, w - 4, h - 4, card)
+        if (owned && style == StickerStyle.MIDNIGHT) for (k in 0 until 6) gfx.oval(x + 3 + (k * 13f + i) % (w - 6), y + 3 + (k * 7f) % (h - 16), 1.5f, 1.5f, 0xFFFFF2A0.toInt())
         val picH = if (label) h - 14 else h - 6
         if (owned) {
             drawPicture(g, gfx, i, x + w / 2, y + 3 + picH / 2, minOf(w - 8, picH))
-            if (st.rarity == Rarity.SHINY) {
+            if (sparkly) {
                 val sx = x + 4 + ((g.time * 30 + i * 7) % (w - 8))
                 gfx.oval(sx, y + 4, 3f, 3f, 0xCCFFFFFF.toInt())
             }

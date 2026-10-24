@@ -138,7 +138,7 @@ class MonShot(x: Float, y: Float, private val dir: Int, private val mon: Mon) : 
     override fun update(g: TeamGame, dt: Float) {
         t += dt
         if (g.level.moveX(this, vx * dt) || t > 0.9f) { removed = true; g.puff(cx, cy); return }
-        for (f in g.foes) if (!f.dying && f.active && f.overlaps(this) && f.hit(g, 1)) { removed = true; return }
+        for (f in g.foes) if (!f.dying && f.active && f.overlaps(this) && f.hit(g, g.monAttack)) { removed = true; return }
     }
 
     override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
@@ -349,7 +349,7 @@ class Goal(x: Float, y: Float) : Thing(x + 6, y - 9 * TILE + TILE, 4f, 9f * TILE
 class House(x: Float, bottom: Float, val type: HouseType = HouseType.COTTAGE) : Thing(x, bottom - 56, 72f, 56f) {
     override fun update(g: TeamGame, dt: Float) {}
     override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
-        Homes.drawHouse(gfx, type, x + ox, bottom, g.time)
+        Homes.drawHouse(gfx, type, x + ox, bottom, g.time, g.housePaint)
         if (atDoor(g.leader) && g.state == TeamGame.State.PLAY && (g.time * 2).toInt() % 2 == 0) {
             gfx.shadowText("ENTER?", x + 13 + ox, bottom - 34, 7f, 0xFFFFF2C8.toInt(), 1)
         }
@@ -586,6 +586,15 @@ class SuperFx(x: Float, y: Float, private val mon: Mon, private val dir: Int, pr
                 for (i in 0 until 6) {
                     val gx = x + ox + kotlin.math.cos(i * 1.05f + t * 3) * (40f + t * 120)
                     gfx.oval(gx - 8, y - 30 + sin(i + t * 4) * 20, 16f, 18f, argb(a, 0xE8E0FF))
+                }
+            }
+            Mon.LUGIA -> {
+                // A huge swirl of wind rushing across the screen
+                val len = min(w, t * 900f)
+                for (i in 0 until 10) {
+                    val d = (i * 37f + t * 500f) % maxOf(1f, len)
+                    val r = 8f + (i % 3) * 5f
+                    gfx.oval(x + ox + dir * d - r, y - r + sin(t * 12 + i) * 14, r * 2, r * 1.2f, argb(a, if (i % 2 == 0) 0xDCE6F5 else 0x8AB8FF))
                 }
             }
             Mon.BLOOM -> {

@@ -239,14 +239,20 @@ Walking out of the house puts you on the next level to play (not back on the hou
 
 ![World map](docs/teamup-map.png)
 
-### Your house, the shop and 100 plushies
+### Your house, the shop and 150 plushies
 
 * Walk into your **HOUSE** from the map and **walk around inside** with the arrows. The room is big and the
   view follows you. Walk up to things and press the button:
   * **SHOP** (the counter with the shopkeeper) has its own menu: **FURNITURE** (12 things), **BEDS** (a red
-    bed and a **blue bed**), **PLUSHIES** and **HOUSES** (Cottage, Log Cabin, Igloo, Mushroom House, Mini Castle).
+    bed and a **blue bed**), **PLUSHIES**, **HOUSES** (Cottage, Log Cabin, Igloo, Mushroom House, Mini Castle,
+    Treehouse, Candy House, Beach Hut, Space Dome, Crystal Palace), **COLORS** (paint your house red, orange,
+    yellow, green, blue, purple, pink, white or black for 10 coins: outside and the walls inside) and
+    **STICKERS** (a pack of 3 new stickers for 30 coins).
+  * **POKEMON** (the red mat): **PET** it, **PLAY BALL** or **TRAIN** with a target. It learns a bit each time
+    (and sometimes finds a sticker). After 5 plays it gets sleepy until you play another level.
+    **SWITCH** picks a different Pokemon partner (each one keeps its own level).
   * **SLEEP** in your bed to **save the game**.
-  * **LOOK** at the plushie shelves to open the **PLUSHIE BOOK** with all **100 plushies**.
+  * **LOOK** at the plushie shelves to open the **PLUSHIE BOOK** with all **150 plushies**.
   * **PLAY** the claw machine (30 coins, always a new plushie).
   * The door goes back to the map.
 * **100 plushies**: Rocco, Blocky, all the Pokemon, Ring-Ding Frog, Dennis, bad guys, the 4 bosses, a
@@ -254,6 +260,20 @@ Walking out of the house puts you on the next level to play (not back on the hou
   penguins, duckies, froggies, lions, elephants, unicorns and dragons) in lots of colors, including rare gold
   and rainbow ones. **Save up your coins** to buy them in the shop, or find them in mystery blocks, treasure
   chests and the claw machine. Boss plushies come from beating the bosses (or lots of coins).
+  **50 more**: Lugia, Metal Rocco, Poseidon, villagers, more bad guys, babies (bunny, panda, cat, puppy,
+  penguin, unicorn, dragon, owl, lion), gold and rainbow dragons, and koalas, sheep, monkeys, turtles,
+  hamsters and octopuses.
+
+### Lugia, and Pokemon levels
+
+![Playing with your Pokemon at home](docs/teamup-pokemon-home.png)
+
+* **LUGIA** (legendary sea bird) joins after you beat **level 3**: switch to it at home. It glides and swims,
+  and its SUPER **AEROBLAST** blows a giant wind across the screen.
+* Every Pokemon has a **level from 1 to 10**. It learns from bad guys knocked out, levels finished, bosses and
+  playing at home. Each level makes the SUPER charge a little faster (25s down to about 20s) and hit 4%
+  harder, and from level 6 its normal attack does 1 more damage. Strong, but never too strong. The level
+  shows at the top of the screen.
 
 ![Inside the house](docs/teamup-home.png)
 ![Plushie book](docs/teamup-plushies.png)
@@ -298,7 +318,7 @@ New bad guys (in Worlds 2 to 4):
   one after another, on Rainbow Road.
 * A **sea shanty** plays on the ships.
 
-**Metal Rocco**: grab a **METAL CAP** (in water levels, ships and mystery blocks) and Rocco turns shiny
+**Metal Rocco**: grab a **METAL CAP** (one is waiting in level 1 and level 2 already, plus water levels, ships and mystery blocks) and Rocco turns shiny
 silver for 20 seconds. **Nothing can hurt him**, bad guys he bumps into get knocked out, and he's so heavy
 he **sinks and walks on the sea floor** without needing air.
 
@@ -350,7 +370,7 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
 
 * **Music changes every level** (seven new songs: meadow, jungle, snow, desert, night, beach and a scary
   one), and boss levels take turns with **ominous** boss songs.
-* **Poseidon** speaks Greek: **"Είμαι ο Ποσειδώνας!"** ("I am Poseidon!") using the phone's Greek voice (if
+* **Poseidon** speaks Greek: **"Είμαι ο Ποσειδώνας! Είμαι ο πιο δυνατός της θάλασσας!"** ("I am Poseidon! I am the strongest guy of the sea!") using the phone's Greek voice (if
   the phone has no Greek voice, he says it in English).
 * **Ring-Ding Frog** shows up in a **different color** every time (sometimes rainbow!).
 * The **Blue Shell** is weaker: one shell at a time, slower throws, a smaller blast and a gentler spin.
@@ -361,10 +381,12 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
 
 ### Stickers
 
-After every level you get to **pick one of three stickers**. There are **40** to collect: Rocco, Blocky,
-all nine Pokemon, Ring-Ding Frog, Dennis, villagers, Poseidon, every kind of bad guy, items, and a
-**shiny** sticker for every boss (beat a boss and its shiny sticker is always one of the choices).
-Open your **Sticker Book** from the pause screen to see your collection. Stickers are saved in your
+After every level you get to **pick one of three stickers**. There are **300** to collect: 60 pictures
+(Rocco, Blocky, all the Pokemon and Lugia, Ring-Ding Frog, Dennis, villagers, Poseidon, every kind of bad guy,
+Metal/Tanooki/Wing Cap Rocco, flowers, swords, houses, items, and a **shiny** sticker for every boss), each
+in 5 styles: **NORMAL, SILVER, GOLD, RAINBOW and MIDNIGHT** (fancier ones are rarer). Beat a boss and its
+shiny sticker is always one of the choices. Buy sticker packs in the shop at home, too.
+Open your **Sticker Book** from the pause screen to see your collection (8 pages: tap PREV/NEXT). Stickers are saved in your
 save file.
 
 ![Pick a sticker](docs/teamup-stickers.png)

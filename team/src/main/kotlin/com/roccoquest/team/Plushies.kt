@@ -5,7 +5,7 @@ import com.roccoquest.game.argb
 import com.roccoquest.game.rainbow
 
 /**
- * One of the 100 plushies. [price] is how many coins it costs in the shop at home.
+ * One of the 150 plushies. [price] is how many coins it costs in the shop at home.
  * Character plushies use their sticker picture; animal plushies are drawn from a [species].
  */
 class Plushie(
@@ -20,6 +20,7 @@ enum class Species(val label: String) {
     BEAR("BEAR"), BUNNY("BUNNY"), CAT("CAT"), DOG("PUPPY"), FOX("FOX"), PANDA("PANDA"), PIG("PIGGY"),
     MOUSE("MOUSE"), OWL("OWL"), PENGUIN("PENGUIN"), DUCK("DUCKY"), FROGGY("FROGGY"), LION("LION"),
     ELEPHANT("ELEPHANT"), UNICORN("UNICORN"), DRAGON("DRAGON"),
+    KOALA("KOALA"), SHEEP("SHEEP"), MONKEY("MONKEY"), TURTLE("TURTLE"), HAMSTER("HAMSTER"), OCTOPUS("OCTOPUS"),
 }
 
 object Plushies {
@@ -50,6 +51,16 @@ object Plushies {
         Species.DRAGON to listOf("GREEN", "RED", "BLUE", "PURPLE"),
     )
 
+    /** The second batch of plushies (added later, so they go at the end and old saves keep theirs). */
+    private val moreAnimals = listOf(
+        Species.KOALA to listOf("GREY", "WHITE", "PINK", "BLUE", "RAINBOW"),
+        Species.SHEEP to listOf("WHITE", "BLACK", "PINK", "MINT", "GOLD"),
+        Species.MONKEY to listOf("BROWN", "YELLOW", "PURPLE", "BLUE", "RAINBOW"),
+        Species.TURTLE to listOf("GREEN", "BLUE", "ORANGE", "PINK", "GOLD"),
+        Species.HAMSTER to listOf("ORANGE", "WHITE", "GREY", "PINK", "RAINBOW"),
+        Species.OCTOPUS to listOf("PURPLE", "PINK", "RED", "MINT", "RAINBOW"),
+    )
+
     val all: List<Plushie> = buildList {
         // The team and friends
         val chars = listOf(
@@ -61,6 +72,19 @@ object Plushies {
         for (n in listOf("KRAG JR.", "KING KRAG", "THE WARDEN", "ENDER DRAGON")) add(Plushie(size, n, 80, sticker = n))
         add(Plushie(size, "BABY FOX", 25, species = Species.FOX, color = colorNames.getValue("ORANGE"), baby = true))
         for ((sp, cols) in animalColors) cols.forEachIndexed { i, c ->
+            val price = when { c == "RAINBOW" || c == "GOLD" -> 60; i == 0 -> 15; else -> 30 }
+            add(Plushie(size, "$c ${sp.label}", price, species = sp, color = colorNames.getValue(c), rainbowFur = c == "RAINBOW"))
+        }
+        // ---- Batch 2 (50 more) ----
+        for (n in listOf("LUGIA", "METAL ROCCO", "VILLAGER", "SHELLBACK", "BONEHEAD", "BOMB-BOMB", "FLAPPER", "FISH")) add(Plushie(size, n, 40, sticker = n))
+        add(Plushie(size, "POSEIDON", 70, sticker = "POSEIDON"))
+        add(Plushie(size, "GOLD DRAGON", 60, species = Species.DRAGON, color = colorNames.getValue("GOLD")))
+        add(Plushie(size, "RAINBOW DRAGON", 60, species = Species.DRAGON, color = colorNames.getValue("RAINBOW"), rainbowFur = true))
+        for ((sp, c) in listOf(Species.BUNNY to "WHITE", Species.PANDA to "WHITE", Species.CAT to "ORANGE", Species.DOG to "BROWN",
+            Species.PENGUIN to "BLACK", Species.UNICORN to "PINK", Species.DRAGON to "GREEN", Species.OWL to "BROWN", Species.LION to "GOLD")) {
+            add(Plushie(size, "BABY ${sp.label}", 25, species = sp, color = colorNames.getValue(c), baby = true))
+        }
+        for ((sp, cols) in moreAnimals) cols.forEachIndexed { i, c ->
             val price = when { c == "RAINBOW" || c == "GOLD" -> 60; i == 0 -> 15; else -> 30 }
             add(Plushie(size, "$c ${sp.label}", price, species = sp, color = colorNames.getValue(c), rainbowFur = c == "RAINBOW"))
         }
@@ -147,13 +171,21 @@ object Plushies {
                 gfx.poly(floatArrayOf(3f, 4f, 6f), floatArrayOf(3f, 0f, 2f), dark)
                 gfx.poly(floatArrayOf(15f, 14f, 12f), floatArrayOf(3f, 0f, 2f), dark)
             }
+            Species.KOALA -> { gfx.oval(-0.5f, 0.5f, 7f, 7f, fur); gfx.oval(11.5f, 0.5f, 7f, 7f, fur); gfx.oval(1f, 2f, 4f, 4f, belly); gfx.oval(13f, 2f, 4f, 4f, belly) }
+            Species.SHEEP -> for (k in 0 until 7) gfx.oval(1f + k * 2.3f, 0f + (k % 2) * 1.5f, 5f, 5f, belly)
+            Species.MONKEY -> { gfx.oval(0.5f, 4f, 4.5f, 4.5f, fur); gfx.oval(13f, 4f, 4.5f, 4.5f, fur); gfx.oval(1.5f, 5f, 2.5f, 2.5f, belly); gfx.oval(14f, 5f, 2.5f, 2.5f, belly) }
+            Species.TURTLE -> { gfx.oval(1f, 8f, 16f, 10f, dark); for (k in 0 until 3) gfx.oval(3.5f + k * 4f, 10f, 3f, 3f, belly) }
+            Species.HAMSTER -> { gfx.oval(3f, 1f, 3f, 3f, belly); gfx.oval(12f, 1f, 3f, 3f, belly) }
+            Species.OCTOPUS -> for (k in 0 until 5) gfx.oval(2f + k * 3f, 13f + (k % 2) * 1f, 3f, 5.5f, fur)
             else -> {}
         }
         if (sp == Species.LION) gfx.oval(1.5f, 0.5f, 15f, 13f, darker(fur, 0.25f))
         if (sp == Species.FOX && !p.baby) gfx.oval(13f, 11f, 6f, 4f, fur)
         // Body and head
-        gfx.oval(3.5f, 9f, 11f, 9f, fur)
-        gfx.oval(6f, 11f, 6f, 6f, if (sp == Species.PENGUIN) white else belly)
+        if (sp != Species.OCTOPUS) {
+            gfx.oval(3.5f, 9f, 11f, 9f, fur)
+            gfx.oval(6f, 11f, 6f, 6f, if (sp == Species.PENGUIN) white else belly)
+        }
         gfx.oval(3f, 1.5f, 12f, 10.5f, fur)
         if (sp == Species.PENGUIN || sp == Species.OWL) gfx.oval(5f, 4f, 8f, 7.5f, if (sp == Species.PENGUIN) white else belly)
         if (sp == Species.PANDA) {
@@ -172,6 +204,8 @@ object Plushies {
             Species.PIG -> { gfx.oval(7.2f, 7.8f, 3.6f, 2.6f, 0xFFFF7AA8.toInt()); gfx.rect(8f, 8.6f, 0.6f, 0.8f, dark); gfx.rect(9.4f, 8.6f, 0.6f, 0.8f, dark) }
             Species.ELEPHANT -> gfx.poly(floatArrayOf(8f, 10f, 9.6f, 8.6f), floatArrayOf(7.5f, 7.5f, 13f, 13f), fur)
             Species.FROGGY -> gfx.rect(7f, 9f, 4f, 0.8f, dark)
+            Species.KOALA -> gfx.oval(7.5f, 7f, 3f, 3.5f, black)
+            Species.MONKEY -> { gfx.oval(6.5f, 7f, 5f, 3.5f, belly); gfx.rect(8f, 9f, 2f, 0.6f, dark) }
             else -> {
                 if (sp == Species.BEAR || sp == Species.DOG || sp == Species.LION || sp == Species.FOX) gfx.oval(7.3f, 7.5f, 3.4f, 2.8f, belly)
                 gfx.oval(8.3f, 7.8f, 1.4f, 1f, if (sp == Species.UNICORN || sp == Species.BUNNY || sp == Species.MOUSE || sp == Species.CAT) 0xFFFF7AA8.toInt() else black)

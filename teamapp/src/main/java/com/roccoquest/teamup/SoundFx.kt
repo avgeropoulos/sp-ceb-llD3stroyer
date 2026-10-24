@@ -106,7 +106,7 @@ class SoundFx(context: Context) : SoundSink {
         val greek = text.any { it in '\u0370'..'\u03FF' || it in '\u1F00'..'\u1FFF' }
         if (greek && !useGreek(t)) {
             // No Greek voice on this phone: say it in English instead.
-            say = "I am Poseidon!"
+            say = "I am Poseidon! I am the strongest guy of the sea!"
             useEnglish(t)
         } else if (!greek) useEnglish(t)
         t.setPitch(pitch)

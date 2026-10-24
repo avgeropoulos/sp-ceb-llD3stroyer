@@ -44,13 +44,14 @@ enum class Mon(val label: String, val color: Int, val superName: String, val blu
     MYSTIC("MYSTIC", 0xFFFF9AD0.toInt(), "PSYCHIC", "Pink mystery cat. Floats when you hold JUMP. SUPER hits everyone AND heals!"),
     PUNCHO("PUNCHO", 0xFF8A9AB8.toInt(), "DYNAMIC PUNCH", "Super strong. Punches hard up close. SUPER is the biggest hit in the game!"),
     SPOOKY("SPOOKY", 0xFF7A4AA8.toInt(), "NIGHT SHADE", "Floaty ghost. Glides when you hold JUMP. SUPER scares every bad guy on screen!"),
+    LUGIA("LUGIA", 0xFFDCE6F5.toInt(), "AEROBLAST", "Legendary sea bird! Glides AND swims. SUPER blows a giant wind across the screen!"),
 }
 
 /** Pokemon that are happy in the water: the team's air lasts twice as long. */
-val Mon.swimmer get() = this == Mon.HYDRO || this == Mon.SPLASHY
+val Mon.swimmer get() = this == Mon.HYDRO || this == Mon.SPLASHY || this == Mon.LUGIA
 
 /** Pokemon that float down slowly while JUMP is held. */
-val Mon.floaty get() = this == Mon.BLAZE || this == Mon.MYSTIC || this == Mon.SPOOKY
+val Mon.floaty get() = this == Mon.BLAZE || this == Mon.MYSTIC || this == Mon.SPOOKY || this == Mon.LUGIA
 
 /**
  * Blocky's swords. Each one is crafted from its material and hits harder than the last.
@@ -165,14 +166,14 @@ class Hero(val who: Who, x: Float, y: Float) :
     val speed get() = when (who) {
         Who.ROCCO -> 120f
         Who.BLOCKY -> 108f
-        Who.MON -> when (mon) { Mon.SPARKY, Mon.EMBER -> 128f; Mon.BLAZE, Mon.MYSTIC, Mon.SPOOKY -> 115f; else -> 100f }
+        Who.MON -> when (mon) { Mon.SPARKY, Mon.EMBER -> 128f; Mon.BLAZE, Mon.MYSTIC, Mon.SPOOKY, Mon.LUGIA -> 115f; else -> 100f }
     }
 
     /** Rocco jumps higher; Blocky is the strong one. */
     val jumpV get() = when (who) {
         Who.ROCCO -> -335f
         Who.BLOCKY -> -305f
-        Who.MON -> when (mon) { Mon.SPARKY, Mon.EMBER, Mon.MYSTIC -> -340f; Mon.BLAZE, Mon.PUNCHO -> -310f; else -> -295f }
+        Who.MON -> when (mon) { Mon.SPARKY, Mon.EMBER, Mon.MYSTIC -> -340f; Mon.BLAZE, Mon.PUNCHO, Mon.LUGIA -> -310f; else -> -295f }
     }
 
     fun draw(g: TeamGame, gfx: Gfx, ox: Float) {

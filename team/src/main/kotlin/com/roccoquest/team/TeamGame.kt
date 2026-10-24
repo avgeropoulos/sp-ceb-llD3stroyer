@@ -40,6 +40,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         const val SLOTS = 3
         /** Seconds for the Pokemon's SUPER move to recharge. */
         const val SUPER_TIME = 25f
+        /** Pokemon can grow up to this level (a little stronger each time, never too strong). */
+        const val MON_MAX_LEVEL = 10
+        val STICKER_KEYS = (Stickers.all.size + 29) / 30
+        val PLUSH_KEYS = (Plushies.all.size + 24) / 25
+        val PLUSH_PAGES = (Plushies.all.size + 24) / 25
+        const val STICKERS_PER_PAGE = 40
+        const val STICKER_PACK_COST = 30
+        const val PAINT_COST = 10
         const val STAR_TIME = 10f
         /** Seconds of air underwater before the team starts losing hearts. */
         const val AIR_MAX = 30f
@@ -48,7 +56,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         const val BONUS_TIME = 30f
         const val QUAKE_WARN = 2.2f
         const val CLAW_COST = 30
-        const val POSEIDON_LINE = "Είμαι ο Ποσειδώνας!"
+        const val POSEIDON_LINE = "Είμαι ο Ποσειδώνας! Είμαι ο πιο δυνατός της θάλασσας!"
         const val SCORE_MULT = 3
         /** Houses, beds and furniture are bought in the SHOP at home now, not crafted. */
         val TABS = listOf("FLOWERS", "SUPPLIES", "WEAPONS", "ARMOR", "SHIELDS")
@@ -133,6 +141,21 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     /** Inside the house: is the shop open, and which tab? */
     var homeShop = false
         private set
+    /** The Pokemon menu at home: PET, PLAY BALL, TRAIN and SWITCH POKEMON. */
+    var monMenu = false
+    /** Showing the list of Pokemon to switch to. */
+    var monSwitch = false
+    private var monCursor = 0
+    /** How many more times the Pokemon wants to play before it needs a rest (it's refilled by playing a level). */
+    var monEnergy = 5
+    /** What the Pokemon is doing at home right now ("PET", "BALL", "TRAIN"), and for how long. */
+    private var monPlay = ""
+    private var monPlayT = 0f
+    /** Each Pokemon's experience points (levels 1 to 10). */
+    val monXp = IntArray(Mon.entries.size)
+    /** The color the house is painted (an index into [Homes.PAINTS]; 0 is its normal look). */
+    var houseColor = 0
+    val housePaint get() = Homes.PAINTS.getOrElse(houseColor) { 0 }
     var shopTab = 0
         private set
     private var shopPage = 0
@@ -140,6 +163,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     var plushBook = false
         private set
     private var bookPage = 0
+    private var stickerPage = 0
     var homeX = 120f
         private set
     private var homeFacing = 1
@@ -395,13 +419,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private var spikeT = 0f
 
     // Stickers: one bit per sticker you own, the three on offer, and what comes next.
-    private var stickerBits = 0L
+    private val stickerOwned = BooleanArray(Stickers.all.size)
     var stickerChoices: List<Int> = emptyList()
         private set
     var stickerPicked = -1
         private set
     private var afterSticker = 0
-    fun hasSticker(i: Int) = stickerBits and (1L shl i) != 0L
+    fun hasSticker(i: Int) = stickerOwned.getOrElse(i) { false }
     val stickerCount get() = Stickers.all.indices.count { hasSticker(it) }
     /** Seconds left of Tanooki Rocco and of the Wing Cap. */
     var tanookiT = 0f
@@ -437,6 +461,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             else -> 1
         }
         repeat(n) { i -> spawn(Coin(f.cx - 8 + (i - (n - 1) / 2f) * 7f, f.y - 4, popping = true)) }
+        gainXp(if (f.maxHp >= 10) 3 else 1)
     }
 
     /** Stomping bad guys one after another without landing scores more and more. */
@@ -487,8 +512,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         storage.save(key("coins"), coins)
         storage.save(key("armor"), armor)
         storage.save(key("tnt"), tnt)
-        storage.save(key("stickersLo"), (stickerBits and 0xFFFFFFFFL).toInt())
-        storage.save(key("stickersHi"), (stickerBits ushr 32).toInt())
+        // 30 stickers per number: "stk0", "stk1"... (older saves used "stickersLo"/"stickersHi")
+        for (k in 0 until STICKER_KEYS) storage.save(key("stk$k"), (0 until 30).sumOf { b -> if (hasSticker(k * 30 + b)) 1 shl b else 0 })
+        storage.save(key("stickersLo"), 0)
+        storage.save(key("stickersHi"), 0)
+        for (m in Mon.entries) storage.save(key("monXp${m.ordinal}"), monXp[m.ordinal])
+        storage.save(key("houseColor"), houseColor)
         storage.save(key("swords"), swordsOwned)
         storage.save(key("swordHp"), swordHp)
         storage.save(key("pickHp"), pickHp)
@@ -499,7 +528,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         storage.save(key("shieldType"), shieldType.ordinal)
         storage.save(key("houseType"), houseType.ordinal)
         storage.save(key("furniture"), furnitureBits)
-        for (k in 0 until 4) storage.save(key("plush$k"), (0 until 25).sumOf { b -> val i = k * 25 + b; if (i < plushOwned.size && plushOwned[i]) 1 shl b else 0 })
+        for (k in 0 until PLUSH_KEYS) storage.save(key("plush$k"), (0 until 25).sumOf { b -> val i = k * 25 + b; if (i < plushOwned.size && plushOwned[i]) 1 shl b else 0 })
         storage.save(key("beds"), bedsOwned)
         storage.save(key("bedStyle"), bedStyle.ordinal)
         storage.save(key("unlocked"), unlocked)
@@ -553,7 +582,16 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         coins = storage.load(key("coins"))
         armor = storage.load(key("armor"))
         tnt = storage.load(key("tnt"))
-        stickerBits = (storage.load(key("stickersLo")).toLong() and 0xFFFFFFFFL) or (storage.load(key("stickersHi")).toLong() shl 32)
+        val oldBits = (storage.load(key("stickersLo")).toLong() and 0xFFFFFFFFL) or (storage.load(key("stickersHi")).toLong() shl 32)
+        stickerOwned.fill(false)
+        for (i in 0 until 64) if (oldBits and (1L shl i) != 0L && i < stickerOwned.size) stickerOwned[i] = true
+        for (k in 0 until STICKER_KEYS) {
+            val bits = storage.load(key("stk$k"))
+            for (b in 0 until 30) if (bits and (1 shl b) != 0 && k * 30 + b < stickerOwned.size) stickerOwned[k * 30 + b] = true
+        }
+        for (m in Mon.entries) monXp[m.ordinal] = storage.load(key("monXp${m.ordinal}"))
+        houseColor = storage.load(key("houseColor")).coerceIn(0, Homes.PAINTS.lastIndex)
+        monEnergy = 5
         swordsOwned = storage.load(key("swords"))
         armorType = Armor.entries.getOrElse(storage.load(key("armorType"))) { Armor.NONE }
         armorHp = storage.load(key("armorHp"))
@@ -568,7 +606,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         houseType = HouseType.entries.getOrElse(storage.load(key("houseType"))) { HouseType.COTTAGE }
         furnitureBits = storage.load(key("furniture"))
         plushOwned.fill(false)
-        for (k in 0 until 4) {
+        for (k in 0 until PLUSH_KEYS) {
             // Older saves kept their first 20 plushies in "plushies": the same ones come first now.
             val bits = storage.load(key("plush$k")) or (if (k == 0) storage.load(key("plushies")) else 0)
             for (b in 0 until 25) if (bits and (1 shl b) != 0 && k * 25 + b < plushOwned.size) plushOwned[k * 25 + b] = true
@@ -589,11 +627,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     fun eraseSlot(s: Int) {
-        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "armorType", "armorHp", "blackFlowers", "shieldType", "shieldHp", "swordHp", "pickHp", "houseType", "furniture", "plushies", "plush0", "plush1", "plush2", "plush3", "beds", "bedStyle", "unlocked", "clearedLo", "clearedHi", "cleared2", "cleared3", "cleared4", "cleared5", "stickersLo", "stickersHi", "houseLevel", "houseX", "houseY", "bed", "bedLevel", "spotLevel", "spotX", "spotY")) {
+        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "armorType", "armorHp", "blackFlowers", "shieldType", "shieldHp", "swordHp", "pickHp", "houseType", "furniture", "plushies", "plush0", "plush1", "plush2", "plush3", "beds", "bedStyle", "unlocked", "clearedLo", "clearedHi", "cleared2", "cleared3", "cleared4", "cleared5", "stickersLo", "stickersHi", "houseColor", "houseLevel", "houseX", "houseY", "bed", "bedLevel", "spotLevel", "spotX", "spotY")) {
             storage.save(key(name, s), 0)
         }
         Ore.entries.forEach { storage.save(key("ore_${it.name}", s), 0) }
         Power.entries.forEach { storage.save(key("flower_${it.name}", s), 0) }
+        for (k in 0 until STICKER_KEYS) storage.save(key("stk$k", s), 0)
+        for (k in 0 until PLUSH_KEYS) storage.save(key("plush$k", s), 0)
+        for (m in Mon.entries) storage.save(key("monXp${m.ordinal}", s), 0)
     }
 
     fun newGame(slot: Int = 0, mon: Mon = Mon.SPARKY) {
@@ -608,7 +649,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         score = 0
         armor = 0
         tnt = 0
-        stickerBits = 0L
+        stickerOwned.fill(false)
+        monXp.fill(0)
+        houseColor = 0
+        monEnergy = 5
         swordsOwned = 0
         swordHp = 0
         pickHp = 0
@@ -885,7 +929,16 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 }
             }
             State.STICKER -> updateStickers(tapped, num)
-            State.BOOK -> if ((tapped || pauseE || num > 0) && stateT > 0.3f) setState(State.PLAY)
+            State.BOOK -> {
+                val pages = (Stickers.all.size + STICKERS_PER_PAGE - 1) / STICKERS_PER_PAGE
+                when {
+                    nav.left -> stickerPage = (stickerPage + pages - 1) % pages
+                    nav.right -> stickerPage = (stickerPage + 1) % pages
+                    tapped && input.tapX >= 0f && input.tapY > VIEW_H - 24f && stateT > 0.2f ->
+                        stickerPage = if (input.tapX < viewW / 2) (stickerPage + pages - 1) % pages else (stickerPage + 1) % pages
+                    (tapped || pauseE || num > 0) && stateT > 0.3f -> setState(State.PLAY)
+                }
+            }
             State.VICTORY -> {
                 updateParticles(dt)
                 if (Random.nextFloat() < dt * 12) {
@@ -907,12 +960,16 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             unlocked = maxOf(unlocked, minOf(Levels.all.size, levelIndex + 2))
         }
         stickerPicked = -1
-        val missing = Stickers.all.indices.filter { !hasSticker(it) }.shuffled()
+        // Normal stickers come up most; silver, gold, rainbow and midnight ones get rarer and rarer.
+        val missing = Stickers.all.indices.filter { !hasSticker(it) }.map { it to Stickers.all[it].style + Random.nextFloat() * 2.5f }.sortedBy { it.second }.map { it.first }
         val pool = if (missing.size >= 3) missing else (missing + Stickers.all.indices.shuffled()).distinct()
         // Beating a boss always offers that boss's shiny sticker.
         val bossChar = level.def.rows.firstNotNullOfOrNull { r -> r.firstOrNull { it in "JWKQGYZ" } }
         val bossSticker = bossChar?.let { Stickers.forBoss(it) }?.takeIf { it >= 0 && !hasSticker(it) }
         stickerChoices = (listOfNotNull(bossSticker) + pool).distinct().take(3).shuffled()
+        // The Pokemon learns from every level (and lots from a boss), then it's rested and ready to play.
+        if (away == null) gainXp(if (bossChar != null) 12 else 4)
+        monEnergy = 5
         setState(State.STICKER)
         sfx(Sound.ONEUP)
     }
@@ -921,7 +978,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (stickerPicked >= 0 || n !in stickerChoices.indices) return
         val i = stickerChoices[n]
         stickerPicked = i
-        stickerBits = stickerBits or (1L shl i)
+        stickerOwned[i] = true
         stateT = 0f
         sfx(Sound.POWERUP)
         sound.sayAs("You got the ${Stickers.all[i].name.lowercase()} sticker!", Voice.HERO)
@@ -990,13 +1047,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         gfx.shadowText("STICKER BOOK  $stickerCount / ${Stickers.all.size}", viewW / 2, 22f, 11f, 0xFFFFD21F.toInt(), 1)
         val cols = 8
         val cw = min(46f, (viewW - 24f) / cols)
-        val ch = 50f
         val gx = viewW / 2 - cols * cw / 2
-        Stickers.all.indices.forEach { i ->
-            val c = i % cols
-            val r = i / cols
-            Stickers.drawCard(this, gfx, i, gx + c * cw + 2, 28f + r * (ch - 8f), cw - 4, ch - 12, hasSticker(i))
+        val pages = (Stickers.all.size + STICKERS_PER_PAGE - 1) / STICKERS_PER_PAGE
+        for (k in 0 until STICKERS_PER_PAGE) {
+            val i = stickerPage * STICKERS_PER_PAGE + k
+            if (i >= Stickers.all.size) break
+            Stickers.drawCard(this, gfx, i, gx + (k % cols) * cw + 2, 27f + (k / cols) * 40f, cw - 4, 37f, hasSticker(i))
         }
+        gfx.shadowText("< PREV      PAGE ${stickerPage + 1}/$pages      NEXT >", viewW / 2, VIEW_H - 9f, 8f, 0xFFFFD21F.toInt(), 1)
         gfx.text("Tap to close", viewW - 12f, 22f, 6f, 0xFF4A3018.toInt(), 2)
     }
 
@@ -1040,7 +1098,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (slotLevel(i) >= 0) continueGame(i) else { pickChoice = Mon.SPARKY; setState(State.PICK) }
     }
 
-    private val pickRows = listOf(0..4, 5..8)
+    private val pickRows = listOf(0..4, 5..9)
+    /** Lugia is a legendary: it joins after the 3rd level is beaten (switch to it at home). */
+    fun monUnlocked(m: Mon) = m != Mon.LUGIA || isCleared(2)
     private fun pickCardW() = min(78f, (viewW - 30f) / 5 - 6f)
     private val pickCardH = 74f
     private fun pickCardX(i: Int): Float {
@@ -1083,6 +1143,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     private fun choose(m: Mon) {
+        if (!monUnlocked(m)) {
+            sfx(Sound.BUMP)
+            toast("LUGIA is a legendary! Beat level 3, then switch to it at home.")
+            return
+        }
         sound.sayAs("${m.label}! I choose you!", Voice.HERO)
         newGame(slot, m)
     }
@@ -1102,7 +1167,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             starT -= dt
             invuln = max(invuln, 0.1f)
         }
-        superCharge = min(1f, superCharge + dt / SUPER_TIME)
+        superCharge = min(1f, superCharge + dt / superTime())
         if (swapE) swap()
         if (superE) useSuper()
 
@@ -1405,7 +1470,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             jumpBufT = 0f
             coyoteT = 0f
             jumpHoldT = 0.12f
-            h.vy = h.jumpV * (if (sprint) 1.06f else 1f) * (if (metal && h === this.rocco) (if (inWater(h)) 0.8f else 0.9f) else 1f)
+            h.vy = h.jumpV * (if (sprint) 1.06f else 1f) * (if (metal && h === this.rocco && inWater(h)) 0.8f else 1f)
             sfx(Sound.JUMP)
         }
         if (!input.jump && jumpHoldT <= 0f && h.vy < -130f) h.vy = -130f
@@ -1791,7 +1856,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 particles += SuperFx(mx, my, mon, dir, 0f)
                 for (f in foes.filter(::onScreen)) {
                     particles += Bolt(f.cx, -10f, f.cx, f.cy, 0xFFFFF27A.toInt(), 3f)
-                    f.hit(this, 6)
+                    f.hit(this, superDmg(6))
                 }
                 sfx(Sound.ZAP)
             }
@@ -1799,7 +1864,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 val w = 190f
                 particles += SuperFx(mx, my, mon, dir, w)
                 val zone = Body(if (dir > 0) mx else mx - w, my - 30f, w, 60f)
-                for (f in foes.filter { onScreen(it) && it.overlaps(zone) }) f.hit(this, 9)
+                for (f in foes.filter { onScreen(it) && it.overlaps(zone) }) f.hit(this, superDmg(9))
                 sfx(Sound.BOSS_FIRE)
             }
             Mon.HYDRO -> {
@@ -1807,7 +1872,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 particles += SuperFx(mx, my, mon, dir, w)
                 val zone = Body(mx - w, my - 26f, w * 2, 52f)
                 for (f in foes.filter { onScreen(it) && it.overlaps(zone) }) {
-                    f.hit(this, 8)
+                    f.hit(this, superDmg(8))
                     f.vx += if (f.cx > mx) 120f else -120f
                 }
                 sfx(Sound.BREAK)
@@ -1816,24 +1881,24 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 val w = viewW
                 particles += SuperFx(mx, my, mon, dir, w)
                 val zone = Body(if (dir > 0) mx else mx - w, my - 20f, w, 40f)
-                for (f in foes.filter { onScreen(it) && it.overlaps(zone) }) f.hit(this, 10)
+                for (f in foes.filter { onScreen(it) && it.overlaps(zone) }) f.hit(this, superDmg(10))
                 sfx(Sound.BOSS_HIT)
             }
             Mon.EMBER -> {
                 particles += SuperFx(mx, my, mon, dir, 0f)
-                for (f in foes.filter { onScreen(it) && hypot(it.cx - mx, it.cy - my) < 140f }) f.hit(this, 9)
+                for (f in foes.filter { onScreen(it) && hypot(it.cx - mx, it.cy - my) < 140f }) f.hit(this, superDmg(9))
                 sfx(Sound.BOSS_FIRE)
             }
             Mon.SPLASHY -> {
                 val w = 230f
                 particles += SuperFx(mx, my, mon, dir, w)
                 val zone = Body(if (dir > 0) mx else mx - w, my - 30f, w, 60f)
-                for (f in foes.filter { onScreen(it) && it.overlaps(zone) }) f.hit(this, 8)
+                for (f in foes.filter { onScreen(it) && it.overlaps(zone) }) f.hit(this, superDmg(8))
                 sfx(Sound.SPLASH)
             }
             Mon.MYSTIC -> {
                 particles += SuperFx(mx, my, mon, dir, 0f)
-                for (f in foes.filter(::onScreen)) f.hit(this, 6)
+                for (f in foes.filter(::onScreen)) f.hit(this, superDmg(6))
                 hearts = min(MAX_HEARTS, hearts + 2)
                 particles += FloatText(mx, my - 20, "+2 HEARTS", 0xFFFF9AD0.toInt())
                 sfx(Sound.ONEUP)
@@ -1842,16 +1907,70 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 val w = 110f
                 particles += SuperFx(mx, my, mon, dir, w)
                 val zone = Body(if (dir > 0) mx else mx - w, my - 30f, w, 60f)
-                for (f in foes.filter { onScreen(it) && it.overlaps(zone) }) f.hit(this, 16)
+                for (f in foes.filter { onScreen(it) && it.overlaps(zone) }) f.hit(this, superDmg(16))
                 sfx(Sound.BOSS_HIT)
             }
             Mon.SPOOKY -> {
                 particles += SuperFx(mx, my, mon, dir, 0f)
-                for (f in foes.filter(::onScreen)) f.hit(this, 6)
+                for (f in foes.filter(::onScreen)) f.hit(this, superDmg(6))
                 sfx(Sound.ZAP)
+            }
+            Mon.LUGIA -> {
+                val w = viewW
+                particles += SuperFx(mx, my, mon, dir, w)
+                val zone = Body(if (dir > 0) mx else mx - w, my - 50f, w, 100f)
+                for (f in foes.filter { onScreen(it) && it.overlaps(zone) }) {
+                    f.hit(this, superDmg(8))
+                    f.vx += dir * 160f
+                }
+                if (mon.swimmer) air = AIR_MAX
+                sfx(Sound.BOSS_FIRE)
             }
         }
     }
+
+    // ---------------------------------------------------------------- Pokemon levels
+
+    /** Experience needed to go from level [lv] to the next one. */
+    fun xpToNext(lv: Int) = 10 + 8 * lv
+
+    /** A Pokemon's level (1 to [MON_MAX_LEVEL]) from its experience points. */
+    fun monLevel(m: Mon = mon): Int {
+        var xp = monXp[m.ordinal]
+        var lv = 1
+        while (lv < MON_MAX_LEVEL && xp >= xpToNext(lv)) { xp -= xpToNext(lv); lv++ }
+        return lv
+    }
+
+    /** How far the Pokemon is to its next level, from 0 to 1. */
+    fun monXpFraction(m: Mon = mon): Float {
+        var xp = monXp[m.ordinal]
+        var lv = 1
+        while (lv < MON_MAX_LEVEL && xp >= xpToNext(lv)) { xp -= xpToNext(lv); lv++ }
+        return if (lv >= MON_MAX_LEVEL) 1f else xp / xpToNext(lv).toFloat()
+    }
+
+    /** The Pokemon learns something: at a new level it gets a little stronger. */
+    fun gainXp(n: Int, m: Mon = mon) {
+        if (monLevel(m) >= MON_MAX_LEVEL) return
+        val before = monLevel(m)
+        monXp[m.ordinal] += n
+        val after = monLevel(m)
+        if (after > before) {
+            sfx(Sound.ONEUP)
+            toast("${m.label} grew to LEVEL $after!" + if (after == MON_MAX_LEVEL) " (That's the top level!)" else "")
+            sound.sayAs("${m.label} grew to level $after!", Voice.MON)
+        }
+    }
+
+    /** SUPER moves charge a bit faster as the Pokemon grows: 25 seconds at level 1, about 20 at level 10. */
+    fun superTime() = SUPER_TIME * (1f - 0.024f * (monLevel() - 1))
+
+    /** SUPER moves hit 4% harder per level (at most about a third harder at level 10). */
+    fun superDmg(n: Int) = n + (n * (monLevel() - 1) * 4 + 50) / 100
+
+    /** The Pokemon's normal attack: one more damage from level 6. */
+    val monAttack get() = if (monLevel() >= 6) 2 else 1
 
     // ======================================================================== Crafting
 
@@ -2614,11 +2733,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     internal fun dogForTest() { dogT = 0f }
     internal fun spawnForTest(t: Thing) = spawn(t)
     internal fun pickStickerScreenForTest() = offerStickers(levelIndex + 1)
-    internal fun giveStickerForTest(i: Int) { stickerBits = stickerBits or (1L shl i) }
+    internal fun giveStickerForTest(i: Int) { stickerOwned[i] = true }
     internal fun openBookForTest() = setState(State.BOOK)
     internal fun bedForTest() = bed
     internal fun houseForTest() = house
     internal fun unlockForTest(n: Int) { unlocked = n }
+    internal fun clearForTest(i: Int) { cleared[i] = true }
+    internal fun shopTabForTest(t: Int) { shopTab = t; homeShop = true }
+    internal fun monButtonForTest(i: Int) = monButton(i)
     internal fun isQuakeLevelForTest(i: Int) = isQuakeLevel(i)
     internal fun quakeNowForTest() { quakeT = 0f }
     internal fun safeXForTest() = safeX
@@ -3177,7 +3299,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
         // Home
         val (hx, hy) = mapSpot(-1)
-        Homes.drawHouse(ScaledGfx(gfx, 0.36f, hx - 14f, hy - 22f), houseType, 0f, 56f, time)
+        Homes.drawHouse(ScaledGfx(gfx, 0.36f, hx - 14f, hy - 22f), houseType, 0f, 56f, time, housePaint)
         gfx.shadowText("HOME", hx, hy + 14, 7f, 0xFFFFF2C8.toInt(), 1)
         // Level spots
         for (i in levels) {
@@ -3251,6 +3373,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     fun enterHome() {
         homeShop = false
+        monMenu = false
         plushBook = false
         homeX = Homes.DOOR_X + 40f
         homeFacing = 1
@@ -3262,6 +3385,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     private fun leaveHome() {
         homeShop = false
+        monMenu = false
         plushBook = false
         particles.removeAll { it is FloatText }
         sfx(Sound.KICK)
@@ -3275,6 +3399,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         return when {
             x < Homes.DOOR_X + 36f -> "EXIT"
             x in (Homes.SHOP_X - 4f)..(Homes.SHOP_X + 72f) -> "SHOP"
+            x in (Homes.MON_X - 12f)..(Homes.MON_X + 50f) -> "POKEMON"
             hasBed() && x in (Homes.BED_X - 6f)..(Homes.BED_X + 62f) -> "SLEEP"
             x in Homes.SHELF_X..(Homes.SHELF_X + 210f) && !(hasFurniture(Furniture.TV) && x in 480f..530f) -> "LOOK"
             hasFurniture(Furniture.CLAW_MACHINE) && x in (Homes.spot(Furniture.CLAW_MACHINE) - 10f)..(Homes.spot(Furniture.CLAW_MACHINE) + 40f) -> "PLAY"
@@ -3289,6 +3414,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             "SLEEP" -> sleepAtHome()
             "LOOK" -> { plushBook = true; sfx(Sound.KICK) }
             "PLAY" -> playClaw()
+            "POKEMON" -> { monMenu = true; monSwitch = false; monCursor = 0; sfx(Sound.KICK); sound.sayAs(mon.label, Voice.MON) }
         }
     }
 
@@ -3363,7 +3489,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
     }
 
-    val SHOP_TABS = listOf("FURNITURE", "BEDS", "PLUSHIES", "HOUSES")
+    val SHOP_TABS = listOf("FURNITURE", "BEDS", "PLUSHIES", "HOUSES", "COLORS", "STICKERS")
     private val PLUSH_PER_PAGE = 12
 
     /** One card in the shop grid (3 across, 4 down). */
@@ -3379,18 +3505,201 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         0 -> Furniture.entries.map { f -> f.label to { buyFurniture(f) } }
         1 -> BedStyle.entries.map { b -> b.label to { buyBed(b) } }
         2 -> Plushies.all.drop(shopPage * PLUSH_PER_PAGE).take(PLUSH_PER_PAGE).map { p -> p.name to { buyPlushie(p) } }
-        else -> HouseType.entries.map { t -> t.label to { buyHouse(t) } }
+        3 -> HouseType.entries.map { t -> t.label to { buyHouse(t) } }
+        4 -> Homes.PAINTS.indices.map { i -> Homes.PAINT_NAMES[i] to { paintHouse(i) } }
+        else -> listOf("STICKER PACK" to { buyStickerPack() })
+    }
+
+    /** Painting the house costs a few coins (going back to its normal look is free). */
+    fun paintHouse(i: Int) {
+        if (houseColor == i) { toast("Your house is already ${Homes.PAINT_NAMES[i].lowercase()}!"); return }
+        val cost = if (i == 0) 0 else PAINT_COST
+        if (coins < cost) { needToast(emptyList(), cost); return }
+        coins -= cost
+        houseColor = i
+        sfx(Sound.POWERUP)
+        toast(if (i == 0) "Your house looks like new again!" else "Your house is painted ${Homes.PAINT_NAMES[i]}!")
+        save()
+    }
+
+    /** Three stickers you don't have yet (normal ones first). Returns how many you got. */
+    private fun giveNewStickers(n: Int): List<Int> {
+        val got = Stickers.all.indices.filter { !hasSticker(it) }.map { it to Stickers.all[it].style + Random.nextFloat() * 2.5f }.sortedBy { it.second }.map { it.first }.take(n)
+        for (i in got) stickerOwned[i] = true
+        return got
+    }
+
+    fun buyStickerPack() {
+        if (stickerCount >= Stickers.all.size) { toast("You have every sticker! WOW!"); return }
+        if (coins < STICKER_PACK_COST) { needToast(emptyList(), STICKER_PACK_COST); return }
+        coins -= STICKER_PACK_COST
+        val got = giveNewStickers(3)
+        sfx(Sound.ONEUP)
+        toast("New stickers: " + got.joinToString(", ") { Stickers.all[it].name } + " ($stickerCount/${Stickers.all.size})")
+        save()
+    }
+
+    // ---------------------------------------------------------------- Playing with the Pokemon at home
+
+    private val MON_BUTTONS = listOf("PET", "PLAY BALL", "TRAIN", "SWITCH")
+    private fun monPanelX() = viewW / 2 - 150f
+    private fun monButtonX(i: Int) = monPanelX() + 8f + i * 72f
+
+    /** PET, PLAY BALL or TRAIN with the Pokemon: a little show, then it learns a bit. */
+    fun playWithMon(what: String) {
+        if (monPlayT > 0f) return
+        if (monEnergy <= 0) { sfx(Sound.BUMP); toast("${mon.label} is sleepy. Play a level, then come back!"); return }
+        if (monLevel() >= MON_MAX_LEVEL && what == "TRAIN") { toast("${mon.label} is already the top level! It still loves to play."); }
+        monPlay = what
+        monPlayT = 1.6f
+        monEnergy--
+        sfx(if (what == "TRAIN") Sound.BOSS_HIT else Sound.KICK)
+        sound.sayAs(mon.label + "!", Voice.MON)
+    }
+
+    private fun finishMonPlay() {
+        val (xp, msg) = when (monPlay) {
+            "PET" -> 1 to "${mon.label} loves you!"
+            "BALL" -> 3 to "Great catch, ${mon.label}!"
+            else -> 4 to "${mon.label} trained hard!"
+        }
+        toast(msg)
+        gainXp(xp)
+        // Sometimes the Pokemon finds a sticker while playing.
+        if (monPlay != "PET" && Random.nextInt(5) == 0) {
+            giveNewStickers(1).firstOrNull()?.let { toast("${mon.label} found a sticker: ${Stickers.all[it].name}!"); sfx(Sound.ONEUP) }
+        }
+        monPlay = ""
+        save()
+    }
+
+    fun switchMon(m: Mon) {
+        if (!monUnlocked(m)) { sfx(Sound.BUMP); toast("LUGIA is a legendary! Beat level 3 to meet it."); return }
+        if (m == mon) { monSwitch = false; return }
+        mon = m
+        monSwitch = false
+        sfx(Sound.POWERUP)
+        sound.sayAs("${m.label}! I choose you!", Voice.HERO)
+        toast("${m.label} is your partner now! (Lv${monLevel(m)})")
+        save()
+    }
+
+    private fun monSwitchCard(i: Int): Pair<Float, Float> = (monPanelX() + 8f + (i % 5) * 58f) to (66f + (i / 5) * 58f)
+
+    private fun updateMonMenu(dt: Float, tapped: Boolean) {
+        if (monPlayT > 0f) { monPlayT -= dt; if (monPlayT <= 0f) finishMonPlay(); return }
+        if (monSwitch) {
+            val n = Mon.entries.size
+            if (nav.left) monCursor = (monCursor + n - 1) % n
+            if (nav.right) monCursor = (monCursor + 1) % n
+            if (nav.up || nav.down) monCursor = (monCursor + 5) % n
+            if (nav.a && stateT > 0.2f) { switchMon(Mon.entries[monCursor]); return }
+            if (nav.b) { monSwitch = false; monCursor = 3; return }
+            if (!tapped || input.tapX < 0f) return
+            for (i in Mon.entries.indices) {
+                val (cx, cy) = monSwitchCard(i)
+                if (input.tapX in cx..(cx + 54f) && input.tapY in cy..(cy + 54f)) { switchMon(Mon.entries[i]); return }
+            }
+            monSwitch = false
+            return
+        }
+        if (nav.left) monCursor = (monCursor + 3) % 4
+        if (nav.right) monCursor = (monCursor + 1) % 4
+        if (nav.a && stateT > 0.2f) { monButton(monCursor); return }
+        if (nav.b) { monMenu = false; return }
+        if (!tapped || input.tapX < 0f) return
+        for (i in MON_BUTTONS.indices) {
+            val bx = monButtonX(i)
+            if (input.tapX in bx..(bx + 68f) && input.tapY in 168f..194f) { monButton(i); return }
+        }
+        if (input.tapX !in monPanelX()..(monPanelX() + 300f) || input.tapY !in 40f..200f) monMenu = false
+    }
+
+    private fun monButton(i: Int) {
+        when (i) {
+            0 -> playWithMon("PET")
+            1 -> playWithMon("BALL")
+            2 -> playWithMon("TRAIN")
+            else -> { monSwitch = true; monCursor = mon.ordinal; sfx(Sound.KICK) }
+        }
+    }
+
+    private fun renderMonMenu(gfx: Gfx) {
+        val px = monPanelX()
+        gfx.rect(0f, 22f, viewW, VIEW_H - 22, 0x88000000.toInt())
+        gfx.rect(px - 2, 38f, 304f, 164f, 0xFF1A3A2A.toInt())
+        gfx.rect(px, 40f, 300f, 160f, 0xFFE8F4E0.toInt())
+        if (monSwitch) {
+            gfx.shadowText("SWITCH POKEMON", px + 150, 56f, 10f, 0xFFFFD21F.toInt(), 1)
+            Mon.entries.forEachIndexed { i, m ->
+                val (cx, cy) = monSwitchCard(i)
+                val open = monUnlocked(m)
+                gfx.rect(cx, cy, 54f, 54f, if (m == mon) 0xFFFFD21F.toInt() else argb(255, m.color))
+                gfx.rect(cx + 2, cy + 2, 50f, 50f, 0xEEFFFFFF.toInt())
+                TeamArt.mon(gfx, m, cx + 27f, cy + 36f, time + i, 1, false)
+                gfx.text(m.label, cx + 27f, cy + 44f, 6f, 0xFF202020.toInt(), 1)
+                gfx.text("Lv${monLevel(m)}", cx + 27f, cy + 51f, 5.5f, 0xFF1E5A1E.toInt(), 1)
+                if (!open) {
+                    gfx.rect(cx, cy, 54f, 54f, 0xAA101018.toInt())
+                    gfx.shadowText("LOCKED", cx + 27f, cy + 26f, 7f, 0xFFFFD21F.toInt(), 1)
+                    gfx.text("beat level 3", cx + 27f, cy + 36f, 5f, white, 1)
+                }
+                if (padConnected && monCursor == i) padFrame(gfx, cx - 2, cy - 2, 58f, 58f)
+            }
+            return
+        }
+        val lv = monLevel()
+        gfx.shadowText("${mon.label}   LEVEL $lv" + if (lv >= MON_MAX_LEVEL) " (TOP!)" else "", px + 150, 56f, 10f, argb(255, mon.color) and 0xFF7F7F7F.toInt() or 0xFF000000.toInt(), 1)
+        // Experience bar
+        gfx.rect(px + 60, 62f, 180f, 7f, 0xFF3A3A48.toInt())
+        gfx.rect(px + 60, 62f, 180f * monXpFraction(), 7f, 0xFF4AD8FF.toInt())
+        gfx.text("SUPER: ${superTime().toInt()}s charge, ${superDmg(10) * 10}% power", px + 292, 160f, 6f, 0xFF2A3A2A.toInt(), 2)
+        gfx.text("Play energy:", px + 10, 160f, 6.5f, 0xFF2A3A2A.toInt())
+        for (k in 0 until 5) TeamArt.heart(gfx, px + 62 + k * 10f, 153f, 8f, if (k < monEnergy) 0xFFFF6A9A.toInt() else 0xFF8A8A9A.toInt())
+        // The Pokemon, big, doing whatever you're playing.
+        val k = 1.6f - monPlayT
+        val hop = when (monPlay) { "BALL" -> -abs(sin(k * 6f)) * 14f; "TRAIN" -> sin(k * 30f) * 2f; else -> sin(time * 3) * 1.5f }
+        val mx = px + 150f + (if (monPlay == "TRAIN") sin(k * 10f) * 6f else 0f)
+        TeamArt.mon(ScaledGfx(gfx, 2f, mx, 146f + hop), mon, 0f, 0f, time, 1, monPlay.isNotEmpty(), monPlay == "TRAIN")
+        when (monPlay) {
+            "PET" -> for (i in 0 until 4) TeamArt.heart(gfx, mx - 30 + i * 18f, 120f - k * 30f - (i % 2) * 8f, 9f, 0xFFFF6A9A.toInt())
+            "BALL" -> {
+                val bx = mx - 60f + (k / 1.6f) * 120f
+                val by = 96f - sin(k / 1.6f * 3.14f) * 14f
+                gfx.oval(bx - 6, by - 6, 12f, 12f, 0xFFE84A4A.toInt())
+                gfx.rect(bx - 6, by - 0.5f, 12f, 1.5f, 0xFF202020.toInt())
+                gfx.oval(bx - 6, by, 12f, 6f, 0xFFF4F4F4.toInt())
+                gfx.oval(bx - 2, by - 2, 4f, 4f, 0xFFFFFFFF.toInt())
+            }
+            "TRAIN" -> {
+                val tx = px + 230f
+                gfx.rect(tx, 112f, 4f, 34f, 0xFF7A4A20.toInt())
+                gfx.oval(tx - 12 + sin(k * 25f) * 2f, 98f, 28f, 28f, 0xFFE84A4A.toInt())
+                gfx.oval(tx - 6 + sin(k * 25f) * 2f, 104f, 16f, 16f, 0xFFFFFFFF.toInt())
+                gfx.oval(tx - 1 + sin(k * 25f) * 2f, 109f, 6f, 6f, 0xFFE84A4A.toInt())
+                if ((k * 4).toInt() % 2 == 0) gfx.shadowText("POW!", tx, 94f, 10f, 0xFFFFD21F.toInt(), 1)
+            }
+        }
+        MON_BUTTONS.forEachIndexed { i, b ->
+            val bx = monButtonX(i)
+            val c = if (i == 3) 0xFF3A6AC8.toInt() else if (monEnergy > 0) 0xFF2EB84A.toInt() else 0xFF8A8A9A.toInt()
+            gfx.rect(bx, 168f, 68f, 26f, 0xFF0A1A10.toInt())
+            gfx.rect(bx + 2, 170f, 64f, 22f, c)
+            gfx.text(b, bx + 34f, 185f, 7.5f, white, 1)
+            if (padConnected && monCursor == i) padFrame(gfx, bx - 2, 166f, 72f, 30f)
+        }
     }
 
     private fun updateHome(dt: Float, tapped: Boolean, close: Boolean, actionE: Boolean) {
         if (close) {
-            when { homeShop -> homeShop = false; plushBook -> plushBook = false; else -> leaveHome() }
+            when { monMenu && monSwitch -> monSwitch = false; monMenu -> monMenu = false; homeShop -> homeShop = false; plushBook -> plushBook = false; else -> leaveHome() }
             return
         }
+        if (monMenu) { updateMonMenu(dt, tapped); return }
         if (homeShop) { padShop(); updateShop(tapped); return }
         if (plushBook) {
-            if (nav.left) bookPage = (bookPage + 3) % 4
-            if (nav.right) bookPage = (bookPage + 1) % 4
+            if (nav.left) bookPage = (bookPage + PLUSH_PAGES - 1) % PLUSH_PAGES
+            if (nav.right) bookPage = (bookPage + 1) % PLUSH_PAGES
             if (nav.a || nav.b) { plushBook = false; return }
             updateBook(tapped); return
         }
@@ -3453,7 +3762,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val items = shopItems()
         for (i in items.indices) {
             val (cx, cy) = shopCard(i)
-            if (x in cx..(cx + shopCardW()) && y in cy..(cy + 40f)) { items[i].second(); return }
+            val wide = if (shopTab == 5) shopCardW() * 3 + 8f else shopCardW()
+            if (x in cx..(cx + wide) && y in cy..(cy + (if (shopTab == 5) 84f else 40f))) { items[i].second(); return }
         }
         homeShop = false
     }
@@ -3463,7 +3773,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val x = input.tapX
         val y = input.tapY
         if (y > VIEW_H - 22f) {
-            bookPage = if (x < viewW / 2) (bookPage + 3) % 4 else (bookPage + 1) % 4
+            bookPage = if (x < viewW / 2) (bookPage + PLUSH_PAGES - 1) % PLUSH_PAGES else (bookPage + 1) % PLUSH_PAGES
             sfx(Sound.KICK)
             return
         }
@@ -3491,12 +3801,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun renderHome(gfx: Gfx) {
         val cam = homeCam()
         val ox = -cam
-        Homes.drawRoom(gfx, houseType, ox, viewW, VIEW_H)
+        Homes.drawRoom(gfx, houseType, ox, viewW, VIEW_H, housePaint)
         Homes.drawWindow(gfx, ox + Homes.BED_X - 2f, 40f, time)
         Homes.drawDoor(gfx, ox + Homes.DOOR_X)
         Homes.drawShop(this, gfx, ox + Homes.SHOP_X, time)
         if (hasFurniture(Furniture.RUG)) Homes.drawFurniture(gfx, Furniture.RUG, ox, time)
         for (f in Furniture.entries) if (f != Furniture.RUG && hasFurniture(f)) Homes.drawFurniture(gfx, f, ox, time)
+        Homes.drawMonMat(gfx, ox, time)
         if (hasBed()) Homes.drawBed(gfx, bedStyle, ox + Homes.BED_X)
         Homes.drawShelves(gfx, ox)
         // The newest plushies sit on the shelves (the rest are in the PLUSHIE BOOK).
@@ -3511,7 +3822,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         gfx.sprite(hero, homeX + ox - 8, Homes.FLOOR_Y + 30, flipX = homeFacing < 0, w = 16f, h = 24f)
         TeamArt.mon(gfx, mon, homeX + ox - homeFacing * 26f, Homes.FLOOR_Y + 54, time, homeFacing, false)
         val target = homeTarget()
-        if (target != null && !homeShop && !plushBook) {
+        if (target != null && !homeShop && !plushBook && !monMenu) {
             gfx.shadowText(target + "?", homeX + ox, Homes.FLOOR_Y + 22 + sin(time * 5) * 1.5f, 8f, 0xFFFFF2C8.toInt(), 1)
         }
         // Top bar
@@ -3522,8 +3833,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         gfx.shadowText("PLUSHIES $plushieCount/${Plushies.all.size}", 176f, 15f, 8f, 0xFFFF9AD0.toInt())
         // Controls: walk left/right, and the action button.
         TeamControls.layout(viewW)
-        if (!homeShop && !plushBook) TeamControls.drawHome(gfx, input, target ?: "", time)
+        if (!homeShop && !plushBook && !monMenu) TeamControls.drawHome(gfx, input, target ?: "", time)
         if (homeShop) renderShop(gfx)
+        if (monMenu) renderMonMenu(gfx)
         if (plushBook) renderPlushBook(gfx, true)
         if (toastT > 0) {
             gfx.rect(20f, VIEW_H - 46, viewW - 40, 18f, 0xDD101828.toInt())
@@ -3583,6 +3895,28 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 val pages = (Plushies.all.size + PLUSH_PER_PAGE - 1) / PLUSH_PER_PAGE
                 gfx.shadowText("< PREV      PAGE ${shopPage + 1}/$pages      NEXT >", viewW / 2, VIEW_H - 8f, 8f, white, 1)
             }
+            4 -> Homes.PAINTS.forEachIndexed { i, p ->
+                val (cx, cy) = shopCard(i)
+                val mine = houseColor == i
+                shopCardBg(gfx, cx, cy, mine, !mine && coins >= PAINT_COST)
+                gfx.text(Homes.PAINT_NAMES[i], cx + 4, cy + 11, 7f, 0xFF2A1808.toInt())
+                when {
+                    mine -> gfx.text("YOUR COLOR", cx + 4, cy + 30, 7f, 0xFF1E4A1E.toInt())
+                    i == 0 -> gfx.text("FREE", cx + 4, cy + 30, 7f, 0xFF1E4A1E.toInt())
+                    else -> priceTag(gfx, cx + 4, cy + 21, emptyList(), PAINT_COST)
+                }
+                Homes.drawHouse(ScaledGfx(gfx, 0.32f, cx + cw - 30f, cy + 6f), houseType, 0f, 72f, time, p)
+            }
+            5 -> {
+                val (cx, cy) = shopCard(0)
+                gfx.rect(cx, cy, cw * 3 + 8f, 84f, if (coins >= STICKER_PACK_COST) 0xFFE8C88A.toInt() else 0xFFA8885A.toInt())
+                gfx.text("STICKER PACK: 3 new stickers!", cx + 6, cy + 14, 8f, 0xFF2A1808.toInt())
+                priceTag(gfx, cx + 6, cy + 22, emptyList(), STICKER_PACK_COST)
+                gfx.text("Your sticker book: $stickerCount / ${Stickers.all.size}", cx + 6, cy + 46, 7f, 0xFF2A1808.toInt())
+                gfx.text("Every sticker comes in NORMAL, SILVER, GOLD, RAINBOW and MIDNIGHT!", cx + 6, cy + 58, 5.5f, 0xFF2A1808.toInt())
+                gfx.text("Tap here to buy a pack.", cx + 6, cy + 72, 6f, 0xFF1E4A1E.toInt())
+                for (k in 0 until 3) Stickers.drawCard(this, gfx, Stickers.BASE * (k + 1) + k * 7, cx + cw * 3 - 86f + k * 30f, cy + 6f, 26f, 34f, true, false)
+            }
             else -> HouseType.entries.forEachIndexed { i, t ->
                 val (cx, cy) = shopCard(i)
                 val mine = houseType == t
@@ -3613,7 +3947,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
     }
 
-    /** The PLUSHIE BOOK: all 100 plushies, 25 to a page. */
+    /** The PLUSHIE BOOK: all the plushies, 25 to a page. */
     private fun renderPlushBook(gfx: Gfx, overlay: Boolean) {
         gfx.rect(0f, if (overlay) 22f else 0f, viewW, VIEW_H, 0xEE2A1A30.toInt())
         for (k in 0 until 25) {
@@ -3627,7 +3961,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             else gfx.text("?", bx + bookW() / 2, by + 22f, 12f, 0x66FFFFFF, 1)
             gfx.text(if (owned) p.name else "#${id + 1}", bx + bookW() / 2, by + 32f, if (owned && p.name.length > 12) 4f else 5f, if (owned) 0xFF5A2A4A.toInt() else 0x99FFFFFF.toInt(), 1)
         }
-        gfx.shadowText("< PREV     PLUSHIE BOOK  page ${bookPage + 1}/4  ($plushieCount/${Plushies.all.size})     NEXT >", viewW / 2, VIEW_H - 8f, 8f, 0xFFFF9AD0.toInt(), 1)
+        gfx.shadowText("< PREV     PLUSHIE BOOK  page ${bookPage + 1}/$PLUSH_PAGES  ($plushieCount/${Plushies.all.size})     NEXT >", viewW / 2, VIEW_H - 8f, 8f, 0xFFFF9AD0.toInt(), 1)
     }
 
     // ======================================================================== Earthquakes
@@ -4054,7 +4388,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             (if (wingT > 0) "  •  WINGS ${wingT.toInt() + 1}" else "")
         val swordText = if (sword != Sword.NONE) "  •  ${sword.label.removeSuffix(" SWORD")} SWORD ${swordHp * 100 / sword.durability}%" else ""
         val pickText = if (pickTier > 1) " ${pickHp * 100 / pickDurability(pickTier)}%" else ""
-        gfx.shadowText("${TeamArt.pickName(pickTier)} PICK$pickText$swordText" + (if (powerText.isEmpty()) "" else "  •  $powerText"), max(112f, viewW * 0.25f), 26f, 7f, 0xFFDDEEFF.toInt())
+        gfx.shadowText("${TeamArt.pickName(pickTier)} PICK$pickText$swordText" + (if (powerText.isEmpty()) "" else "  •  $powerText") + "  •  ${mon.label} Lv${monLevel()}", max(112f, viewW * 0.25f), 26f, 7f, 0xFFDDEEFF.toInt())
         // Power-up timers get their own line so they never run under the buttons.
         if (starText.isNotEmpty()) gfx.shadowText(starText.removePrefix("  •  "), 6f, if (level.def.shoreX >= 0 && inWater(leader)) 54f else 41f, 7f, 0xFFFFE14D.toInt())
 
@@ -4237,6 +4571,15 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             TeamArt.mon(gfx, m, x + w / 2, y + 40f, time * 1.5f + i, 1, sel, sel)
             gfx.text(m.label, x + w / 2, y + 56, 8f, 0xFF202020.toInt(), 1)
             gfx.text(m.superName, x + w / 2, y + 67, 5.5f, argb(255, m.color) and 0xFF7F7F7F.toInt() or 0xFF000000.toInt(), 1)
+            if (!monUnlocked(m)) {
+                gfx.rect(x, y, w, pickCardH, 0xAA101018.toInt())
+                gfx.shadowText("LOCKED", x + w / 2, y + 34, 8f, 0xFFFFD21F.toInt(), 1)
+                gfx.text("beat level 3", x + w / 2, y + 46, 5.5f, white, 1)
+            }
+        }
+        if (toastT > 0) {
+            gfx.rect(20f, 186f, viewW - 40, 16f, 0xDD101828.toInt())
+            gfx.text(toast, viewW / 2, 197f, 7f, white, 1)
         }
         // The chosen one's description and a GO button
         val m = pickChoice

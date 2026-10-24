@@ -12,6 +12,11 @@ enum class HouseType(val label: String, val costs: List<Pair<Ore, Int>>, val coi
     IGLOO("IGLOO", listOf(Ore.STONE to 8, Ore.SAPPHIRE to 2), 20, "A round house made of ice"),
     MUSHROOM("MUSHROOM HOUSE", listOf(Ore.EMERALD to 4, Ore.GOLD to 3), 30, "Live inside a giant mushroom!"),
     CASTLE("MINI CASTLE", listOf(Ore.STONE to 20, Ore.GOLD to 4, Ore.OBSIDIAN to 3), 60, "Towers and flags. Fancy!"),
+    TREEHOUSE("TREEHOUSE", listOf(Ore.STONE to 4, Ore.EMERALD to 3), 25, "Up in a big tree!"),
+    CANDY("CANDY HOUSE", listOf(Ore.GOLD to 3, Ore.RUBY to 2), 35, "Walls of cookie, roof of icing"),
+    BEACH("BEACH HUT", listOf(Ore.STONE to 6, Ore.SAPPHIRE to 1), 20, "Sand, palm leaves and sunshine"),
+    SPACE("SPACE DOME", listOf(Ore.IRON to 8, Ore.DIAMOND to 2), 50, "A shiny dome with a rocket"),
+    CRYSTAL("CRYSTAL PALACE", listOf(Ore.AMETHYST to 4, Ore.DIAMOND to 3), 80, "Sparkly purple crystal towers"),
 }
 
 /** Furniture to decorate the inside of the house. Each piece has its own spot in the room. */
@@ -37,16 +42,92 @@ enum class BedStyle(val label: String, val coins: Int, val blanket: Int, val pil
 }
 
 object Homes {
+    /** Paint colors for the house (0 = its normal look). */
+    val PAINTS = listOf(
+        0, 0xFFE84A4A.toInt(), 0xFFF08A3A.toInt(), 0xFFF4D84A.toInt(), 0xFF5AC86A.toInt(),
+        0xFF5A9AF0.toInt(), 0xFFAA7AE8.toInt(), 0xFFFF9AC8.toInt(), 0xFFF4F4F4.toInt(), 0xFF3A3A44.toInt(),
+    )
+    val PAINT_NAMES = listOf("NORMAL", "RED", "ORANGE", "YELLOW", "GREEN", "BLUE", "PURPLE", "PINK", "WHITE", "BLACK")
+
+    /** Where the Pokemon's play mat is in the room. */
+    const val MON_X = 192f
+
     /** The room is wider than the screen: walk around and the view follows you. */
     const val ROOM_W = 720f
     const val FLOOR_Y = 176f
 
     // ------------------------------------------------------------------ Outside
 
-    fun drawHouse(gfx: Gfx, type: HouseType, x: Float, bottom: Float, t: Float) {
+    fun drawHouse(gfx: Gfx, type: HouseType, x: Float, bottom: Float, t: Float, paint: Int = 0) {
+        val top = bottom - 40
+        drawHouseBody(gfx, type, x, bottom, t)
+        // Painted: a coat of the chosen color over the walls.
+        if (paint != 0) {
+            if (type == HouseType.IGLOO || type == HouseType.SPACE) gfx.oval(x - 4, bottom - 56, 80f, 112f, argb(110, paint and 0xFFFFFF))
+            else gfx.rect(x, top + (if (type == HouseType.TREEHOUSE) -14f else 0f), 72f, if (type == HouseType.TREEHOUSE) 30f else 40f, argb(120, paint and 0xFFFFFF))
+        }
+        // Every house has its door in the same spot, on the left.
+        if (type != HouseType.IGLOO) {
+            gfx.rect(x + 6, bottom - 26, 14f, 26f, if (type == HouseType.CASTLE) 0xFF5A3A1A.toInt() else 0xFF7A4A20.toInt())
+            gfx.oval(x + 16, bottom - 14, 2.5f, 2.5f, 0xFFFFD21F.toInt())
+        } else {
+            gfx.oval(x + 6, bottom - 24, 14f, 26f, 0xFF4A6A8A.toInt())
+        }
+    }
+
+    private fun drawHouseBody(gfx: Gfx, type: HouseType, x: Float, bottom: Float, t: Float) {
         val top = bottom - 40
         when (type) {
-            HouseType.COTTAGE -> { TeamArt.house(gfx, x, bottom, t); return }
+            HouseType.COTTAGE -> TeamArt.house(gfx, x, bottom, t)
+            HouseType.TREEHOUSE -> {
+                gfx.rect(x + 28, top - 20, 16f, 60f, 0xFF7A4A20.toInt())
+                gfx.oval(x - 14, top - 62, 100f, 52f, 0xFF2E9A3A.toInt())
+                gfx.oval(x + 4, top - 72, 64f, 36f, 0xFF3CB84A.toInt())
+                gfx.rect(x, top - 14, 72f, 30f, 0xFFB07A3A.toInt())
+                for (i in 0 until 4) gfx.rect(x, top - 14 + i * 7.5f, 72f, 1f, 0xFF8A5A2A.toInt())
+                gfx.rect(x + 44, top - 6, 12f, 10f, 0xFFFFE8A0.toInt())
+                // A rope ladder down to the door
+                gfx.rect(x + 12, top + 16, 1f, 24f, 0xFFC8A060.toInt()); gfx.rect(x + 22, top + 16, 1f, 24f, 0xFFC8A060.toInt())
+                for (i in 0 until 4) gfx.rect(x + 12, top + 20 + i * 5f, 11f, 1f, 0xFFC8A060.toInt())
+            }
+            HouseType.CANDY -> {
+                gfx.rect(x, top, 72f, 40f, 0xFFC8884A.toInt())
+                for (i in 0 until 6) gfx.oval(x + 4 + i * 11f, top + 26, 7f, 7f, if (i % 2 == 0) 0xFFFF6AA8.toInt() else 0xFF6AD8FF.toInt())
+                gfx.poly(floatArrayOf(x - 8, x + 36, x + 80), floatArrayOf(top + 2, top - 24, top + 2), 0xFFFFF4F8.toInt())
+                for (i in 0 until 8) gfx.oval(x - 6 + i * 11f, top - 2, 8f, 8f, 0xFFFFF4F8.toInt())
+                for (i in 0 until 5) gfx.rect(x + 8 + i * 13f, top - 10 + (i % 2) * 6f, 3f, 2f, solidRainbow(i * 0.2f, 0f))
+                gfx.rect(x + 50, top + 6, 3f, 34f, 0xFFFFFFFF.toInt()); gfx.oval(x + 45, top - 2, 13f, 13f, 0xFFE52521.toInt())
+            }
+            HouseType.BEACH -> {
+                gfx.rect(x, top + 4, 72f, 36f, 0xFFF4DCA0.toInt())
+                for (i in 0 until 9) gfx.rect(x + i * 8f, top + 4, 1f, 36f, 0xFFD8B878.toInt())
+                gfx.poly(floatArrayOf(x - 10, x + 36, x + 82), floatArrayOf(top + 8, top - 18, top + 8), 0xFF7AB83A.toInt())
+                for (i in 0 until 9) gfx.poly(floatArrayOf(x - 8 + i * 10f, x - 3 + i * 10f, x + 2 + i * 10f), floatArrayOf(top + 6, top + 13, top + 6), 0xFF5A9A2A.toInt())
+                gfx.oval(x + 74, bottom - 8, 16f, 8f, 0xFFF4E0A8.toInt())
+                gfx.rect(x + 44, top + 14, 14f, 10f, 0xFF7FC8FF.toInt())
+            }
+            HouseType.SPACE -> {
+                val n = 16
+                val xs = FloatArray(n + 1) { i -> x + 36 + kotlin.math.cos(Math.PI * i / n).toFloat() * 38f }
+                val ys = FloatArray(n + 1) { i -> bottom - kotlin.math.sin(Math.PI * i / n).toFloat() * 46f }
+                gfx.poly(xs, ys, 0xFFC8D4E4.toInt())
+                gfx.oval(x + 30, bottom - 40, 20f, 14f, 0xAA7FC8FF.toInt())
+                gfx.rect(x - 2, bottom - 4, 76f, 4f, 0xFF8A94A4.toInt())
+                // A little rocket next to it, ready to blast off
+                gfx.rect(x + 72, bottom - 30, 8f, 26f, 0xFFF4F4F4.toInt())
+                gfx.poly(floatArrayOf(x + 72, x + 76, x + 80), floatArrayOf(bottom - 30, bottom - 40, bottom - 30), 0xFFE52521.toInt())
+                gfx.oval(x + 73, bottom - 4 + sin(t * 20), 6f, 6f, 0xFFFF8A2A.toInt())
+                if ((t * 2).toInt() % 2 == 0) gfx.oval(x + 35, bottom - 52, 3f, 3f, 0xFFFF4A4A.toInt())
+            }
+            HouseType.CRYSTAL -> {
+                gfx.rect(x, top, 72f, 40f, 0xFFB88AF0.toInt())
+                for (tx in listOf(x - 4, x + 26, x + 58)) {
+                    val h = if (tx == x + 26) 40f else 28f
+                    gfx.poly(floatArrayOf(tx, tx + 9, tx + 18), floatArrayOf(top + 4, top - h, top + 4), 0xFFC890FF.toInt())
+                    gfx.poly(floatArrayOf(tx + 9, tx + 13, tx + 9), floatArrayOf(top - h, top + 2, top + 4), 0x66FFFFFF)
+                }
+                for (i in 0 until 3) gfx.oval(x + 10 + i * 22f + sin(t * 3 + i) * 2, top + 10, 3f, 3f, 0xCCFFFFFF.toInt())
+            }
             HouseType.CABIN -> {
                 for (i in 0 until 5) {
                     gfx.rect(x, top + i * 8f, 72f, 8f, if (i % 2 == 0) 0xFF8A5A2A.toInt() else 0xFF7A4A20.toInt())
@@ -95,13 +176,6 @@ object Homes {
                 gfx.rect(x + 34, top + 4, 10f, 12f, 0xFFFFE8A0.toInt())
             }
         }
-        // Every house has its door in the same spot, on the left.
-        if (type != HouseType.IGLOO) {
-            gfx.rect(x + 6, bottom - 26, 14f, 26f, if (type == HouseType.CASTLE) 0xFF5A3A1A.toInt() else 0xFF7A4A20.toInt())
-            gfx.oval(x + 16, bottom - 14, 2.5f, 2.5f, 0xFFFFD21F.toInt())
-        } else {
-            gfx.oval(x + 6, bottom - 24, 14f, 26f, 0xFF4A6A8A.toInt())
-        }
     }
 
     private fun smoke(gfx: Gfx, x: Float, y: Float, t: Float) {
@@ -114,14 +188,22 @@ object Homes {
     // ------------------------------------------------------------------ Inside
 
     /** Wallpaper and floor for each kind of house, scrolled by [ox]. */
-    fun drawRoom(gfx: Gfx, type: HouseType, ox: Float, viewW: Float, viewH: Float) {
-        val (wall, stripe) = when (type) {
+    fun drawRoom(gfx: Gfx, type: HouseType, ox: Float, viewW: Float, viewH: Float, paint: Int = 0) {
+        val (normalWall, normalStripe) = when (type) {
             HouseType.COTTAGE -> 0xFFF2E2C0.toInt() to 0xFFF0D0C8.toInt()
             HouseType.CABIN -> 0xFF9A6A3A.toInt() to 0xFF7A4A20.toInt()
             HouseType.IGLOO -> 0xFFDDEEFF.toInt() to 0xFFB8D4F0.toInt()
             HouseType.MUSHROOM -> 0xFFFFC8D8.toInt() to 0xFFFFFFFF.toInt()
             HouseType.CASTLE -> 0xFF8A8A9A.toInt() to 0xFF6A6A7A.toInt()
+            HouseType.TREEHOUSE -> 0xFFC8985A.toInt() to 0xFFA87A3A.toInt()
+            HouseType.CANDY -> 0xFFFFE0EC.toInt() to 0xFFFF9AC8.toInt()
+            HouseType.BEACH -> 0xFFF8E8C0.toInt() to 0xFF8AD8F0.toInt()
+            HouseType.SPACE -> 0xFF2A3050.toInt() to 0xFFFFFFFF.toInt()
+            HouseType.CRYSTAL -> 0xFFE0C8FF.toInt() to 0xFFB88AF0.toInt()
         }
+        // A painted house gets painted walls inside too.
+        val wall = if (paint != 0) mix(paint, 0xFFFFFFFF.toInt(), 0.35f) else normalWall
+        val stripe = if (paint != 0) mix(paint, 0xFF000000.toInt(), 0.15f) else normalStripe
         gfx.rect(0f, 0f, viewW, viewH, wall)
         val x0 = ox
         val x1 = ox + ROOM_W
@@ -134,6 +216,15 @@ object Homes {
                 while (x < x1) { gfx.rect(x, 24f + i * 16f, 1f, 16f, stripe); x += 36f }
             }
             HouseType.MUSHROOM -> for (i in 0 until 50) gfx.oval(x0 + (i * 53f) % ROOM_W, 30f + (i * 37f) % 140f, 7f, 7f, stripe)
+            HouseType.TREEHOUSE -> for (i in 0 until 24) gfx.rect(x0 + i * 30f, 24f, 2f, FLOOR_Y - 24, stripe)
+            HouseType.CANDY -> for (i in 0 until 40) gfx.rect(x0 + (i * 47f) % ROOM_W, 34f + (i * 29f) % 130f, 8f, 3f, if (i % 3 == 0) 0xFF6AD8FF.toInt() else stripe)
+            HouseType.BEACH -> for (i in 0 until 5) gfx.rect(x0, 40f + i * 28f, ROOM_W, 3f, stripe)
+            HouseType.SPACE -> for (i in 0 until 60) gfx.oval(x0 + (i * 67f) % ROOM_W, 28f + (i * 41f) % 140f, 2f, 2f, stripe)
+            HouseType.CRYSTAL -> for (i in 0 until 30) {
+                val cx = x0 + (i * 59f) % ROOM_W
+                val cy = 36f + (i * 43f) % 120f
+                gfx.poly(floatArrayOf(cx, cx + 4, cx + 8), floatArrayOf(cy + 10, cy, cy + 10), stripe)
+            }
         }
         if (type == HouseType.CASTLE) {
             for (bx in listOf(x0 + 150f, x0 + 600f)) {
@@ -151,11 +242,29 @@ object Homes {
             HouseType.IGLOO -> 0xFFF4F8FF.toInt()
             HouseType.MUSHROOM -> 0xFF5AB85A.toInt()
             HouseType.CASTLE -> 0xFF5A5A6A.toInt()
+            HouseType.TREEHOUSE -> 0xFF8A5A2A.toInt()
+            HouseType.CANDY -> 0xFFC8884A.toInt()
+            HouseType.BEACH -> 0xFFF4DCA0.toInt()
+            HouseType.SPACE -> 0xFF8A94A4.toInt()
+            HouseType.CRYSTAL -> 0xFF9A6AD0.toInt()
         }
         gfx.rect(maxOf(0f, x0), FLOOR_Y, minOf(viewW, x1) - maxOf(0f, x0), viewH - FLOOR_Y, floor)
         gfx.rect(maxOf(0f, x0), FLOOR_Y, minOf(viewW, x1) - maxOf(0f, x0), 3f, 0x55000000)
         var x = x0
         while (x < x1) { if (x > 0 && x < viewW) gfx.rect(x, FLOOR_Y + 3, 1f, viewH, 0x22000000); x += 34f }
+    }
+
+    private fun mix(a: Int, b: Int, k: Float): Int {
+        fun ch(sh: Int) = ((((a shr sh) and 255) * (1 - k)) + (((b shr sh) and 255) * k)).toInt()
+        return argb(255, (ch(16) shl 16) or (ch(8) shl 8) or ch(0))
+    }
+
+    /** The Pokemon's play mat: a round cushion with a ball on it. */
+    fun drawMonMat(gfx: Gfx, ox: Float, t: Float) {
+        val x = MON_X + ox
+        gfx.oval(x - 4, FLOOR_Y + 10, 52f, 14f, 0xFFE84A4A.toInt())
+        gfx.oval(x, FLOOR_Y + 12, 44f, 9f, 0xFFFFFFFF.toInt())
+        gfx.shadowText("POKEMON", x + 22, FLOOR_Y - 4, 6f, 0xFFFFF2C8.toInt(), 1)
     }
 
     /** A window showing the sky outside. */

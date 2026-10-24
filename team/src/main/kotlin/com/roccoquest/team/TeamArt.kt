@@ -439,6 +439,7 @@ object TeamArt {
             Mon.MYSTIC -> mystic(gfx, cx, bottom, t, facing)
             Mon.PUNCHO -> puncho(gfx, cx, bottom, t, facing, walking)
             Mon.SPOOKY -> spooky(gfx, cx, bottom, t, facing)
+            Mon.LUGIA -> lugia(gfx, cx, bottom, t, facing)
         }
     }
 
@@ -541,6 +542,35 @@ object TeamArt {
         gfx.rect(cx - 3 + f * 2, by + 2, 8f, 2.5f, 0xFFE07AB0.toInt())
         gfx.poly(floatArrayOf(cx - 2 + f * 2, cx - 1 + f * 2, cx + f * 2), floatArrayOf(by + 2, by + 4.5f, by + 2), WHITE)
         gfx.poly(floatArrayOf(cx + 3 + f * 2, cx + 4 + f * 2, cx + 5 + f * 2), floatArrayOf(by + 2, by + 4.5f, by + 2), WHITE)
+    }
+
+    /** Lugia: a big white sea bird with blue belly plates and long wings. */
+    private fun lugia(gfx: Gfx, cx: Float, bottom: Float, t: Float, facing: Int) {
+        val f = facing.toFloat()
+        val white = 0xFFF2F6FC.toInt()
+        val blue = 0xFF3A5A9A.toInt()
+        val by = bottom - 14 + sin(t * 2.5f) * 1.5f
+        val flap = sin(t * 6) * 4f
+        // Wings (with dark blue tips like fingers)
+        for (s in intArrayOf(-1, 1)) {
+            gfx.poly(floatArrayOf(cx + s * 4, cx + s * 17, cx + s * 15, cx + s * 4), floatArrayOf(by - 4, by - 10 + flap, by + 2 + flap, by + 4), white)
+            gfx.poly(floatArrayOf(cx + s * 15, cx + s * 19, cx + s * 17), floatArrayOf(by - 10 + flap, by - 8 + flap, by + 1 + flap), blue)
+        }
+        // Tail
+        gfx.poly(floatArrayOf(cx - f * 4, cx - f * 13, cx - f * 11), floatArrayOf(by + 4, by + 6, by + 10), white)
+        // Body with blue belly plates
+        gfx.oval(cx - 7, by - 6, 14f, 18f, white)
+        gfx.oval(cx - 3, by - 1, 6f, 4f, blue)
+        gfx.oval(cx - 3, by + 4, 6f, 4f, blue)
+        // Feet
+        gfx.rect(cx - 5, bottom - 3, 3f, 3f, 0xFF8A9AB8.toInt())
+        gfx.rect(cx + 2, bottom - 3, 3f, 3f, 0xFF8A9AB8.toInt())
+        // Long neck and head with a blue eye mask and back spikes
+        gfx.oval(cx - 3 + f * 3, by - 12, 7f, 9f, white)
+        gfx.oval(cx - 5 + f * 6, by - 18, 11f, 9f, white)
+        gfx.rect(cx - 3 + f * 6, by - 15, 7f, 2.5f, blue)
+        gfx.oval(cx - 0.5f + f * 8, by - 15, 2f, 2f, WHITE)
+        gfx.poly(floatArrayOf(cx - f * 1, cx - f * 5, cx - f * 1), floatArrayOf(by - 18, by - 20, by - 14), blue)
     }
 
     /** Blaze: an orange fire dragon with teal wings and a flame on its tail. */

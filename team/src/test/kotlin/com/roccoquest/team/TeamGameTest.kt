@@ -339,7 +339,9 @@ class TeamGameTest {
     }
 
     @Test fun stickersAfterEveryLevel() {
-        assertEquals(40, Stickers.all.size)
+        assertEquals(300, Stickers.all.size)
+        assertEquals(60, Stickers.BASE)
+        assertEquals(300, Stickers.all.map { it.name }.toSet().size, "all different")
         assertTrue(botRun(0, 100f))
         run(4f)
         assertEquals(TeamGame.State.STICKER, game.state)
@@ -1634,7 +1636,7 @@ class TeamGameTest {
         walkHomeTo(Homes.SHOP_X + 30f)
         input.action = true; game.update(dt); input.action = false; game.update(dt)
         assertTrue(game.homeShop, "the shop opened")
-        assertEquals(listOf("FURNITURE", "BEDS", "PLUSHIES", "HOUSES"), game.SHOP_TABS)
+        assertEquals(listOf("FURNITURE", "BEDS", "PLUSHIES", "HOUSES", "COLORS", "STICKERS"), game.SHOP_TABS)
         game.buyBed(BedStyle.BLUE)
         assertEquals(BedStyle.BLUE, game.bedStyle, "a blue bed!")
         Furniture.entries.forEach { game.buyFurniture(it) }
@@ -1662,9 +1664,54 @@ class TeamGameTest {
         assertEquals(TeamGame.State.MAP, game.state)
     }
 
+    @Test fun lugiaLevelsAndPlayingAtHome() {
+        startPlaying()
+        // Lugia is locked until level 3 is beaten.
+        assertTrue(!game.monUnlocked(Mon.LUGIA))
+        game.switchMon(Mon.LUGIA)
+        assertEquals(Mon.SPARKY, game.mon)
+        game.clearForTest(2)
+        game.switchMon(Mon.LUGIA)
+        assertEquals(Mon.LUGIA, game.mon)
+        // Levels go up to 10 and no further, and make the SUPER move a bit (not too much) better.
+        assertEquals(1, game.monLevel())
+        val slow = game.superTime()
+        game.gainXp(100000)
+        assertEquals(TeamGame.MON_MAX_LEVEL, game.monLevel())
+        assertTrue(game.superTime() < slow && game.superTime() > slow * 0.7f, "a little faster")
+        assertTrue(game.superDmg(10) in 11..14, "a little stronger: ${game.superDmg(10)}")
+        assertEquals(1, game.monLevel(Mon.SPARKY), "each Pokemon has its own level")
+        // Playing at home: PET, PLAY BALL and TRAIN teach Sparky, until it gets sleepy.
+        game.switchMon(Mon.SPARKY)
+        goHome()
+        walkHomeTo(Homes.MON_X + 20f)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        assertTrue(game.monMenu, "the Pokemon menu opened")
+        val xp = game.monXp[Mon.SPARKY.ordinal]
+        for (b in listOf(0, 1, 2, 2, 2, 2)) { game.monButtonForTest(b); run(2f) }
+        assertEquals(xp + 1 + 3 + 4 * 3, game.monXp[Mon.SPARKY.ordinal], "5 plays, then it's sleepy")
+        assertEquals(0, game.monEnergy)
+        // Paint the house and buy a sticker pack; it's all saved.
+        game.coins = 100
+        game.paintHouse(5)
+        val stickers = game.stickerCount
+        game.buyStickerPack()
+        assertEquals(stickers + 3, game.stickerCount)
+        game.giveStickerForTest(299)
+        game.sleepAtHome()
+        game.buyBed(BedStyle.RED)
+        game.sleepAtHome()
+        val g2 = TeamGame(TeamInput(), ears, storage)
+        g2.continueGame(0)
+        assertEquals(5, g2.houseColor)
+        assertEquals(Mon.SPARKY, g2.mon)
+        assertEquals(TeamGame.MON_MAX_LEVEL, g2.monLevel(Mon.LUGIA))
+        assertTrue(g2.hasSticker(299) && g2.stickerCount == game.stickerCount)
+    }
+
     @Test fun aHundredPlushies() {
-        assertEquals(100, Plushies.all.size)
-        assertEquals(100, Plushies.all.map { it.name }.toSet().size, "all different")
+        assertEquals(150, Plushies.all.size)
+        assertEquals(150, Plushies.all.map { it.name }.toSet().size, "all different")
         assertTrue(Plushies.all.any { it.name == "BABY FOX" })
         startPlaying()
         val before = game.plushieCount
@@ -1794,6 +1841,27 @@ class TeamGameTest {
         walkHomeTo(Homes.SHELF_X + 60f)
         input.action = true; game.update(dt); input.action = false; game.update(dt)
         shot("plushie-book")
+        input.pause = true; game.update(dt); input.pause = false; game.update(dt)
+        game.shopTabForTest(3)
+        shot("home-shop-houses")
+        game.shopTabForTest(4)
+        shot("home-shop-colors")
+        game.paintHouse(6)
+        game.buyHouse(HouseType.CRYSTAL)
+        input.pause = true; game.update(dt); input.pause = false; game.update(dt)
+        walkHomeTo(Homes.MON_X + 20f)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        game.monButtonForTest(1)
+        run(0.6f)
+        shot("home-pokemon")
+        run(2f)
+        game.clearForTest(2)
+        game.monButtonForTest(3)
+        shot("home-pokemon-switch")
+        game.switchMon(Mon.LUGIA)
+        input.pause = true; game.update(dt); input.pause = false; game.update(dt)
+        run(0.5f)
+        shot("home-lugia")
         // Dash the dino.
         val lv = Levels.all.indexOfFirst { d -> d.rows.any { 'y' in it } }
         startPlaying(lv)
