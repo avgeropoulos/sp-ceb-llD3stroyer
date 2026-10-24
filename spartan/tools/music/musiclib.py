@@ -289,6 +289,62 @@ def limit_true_peak(x: np.ndarray, sr: int, ceiling_db=-1.5, lookahead_ms=1.5, r
     return x * g[:, None], stats
 
 
+# ----------------------------------------------------------------------------------- meter / bars
+
+def parse_meter(meter: str) -> list[tuple[int, int, int]]:
+    """A loop's time-signature map as [(first bar, numerator, denominator)], bars 1-based in the loop.
+    Accepts '4/4' and maps such as '4/4,5/4@21,4/4@29' (render.mjs `meter`, master.py's METER tag)."""
+    out = []
+    for i, part in enumerate(str(meter or '4/4').replace(' ', '').split(',')):
+        sig, _, at = part.partition('@')
+        num, den = (int(v) for v in sig.split('/'))
+        bar = int(at) if at else 1
+        if num < 1 or den < 1 or (i == 0 and bar != 1) or (out and bar <= out[-1][0]):
+            raise ValueError(f'bad meter map {meter!r}')
+        out.append((bar, num, den))
+    return out
+
+
+def meter_string(sigs: list[tuple[int, int, int]]) -> str:
+    """Inverse of parse_meter: '4/4' for one signature, '4/4,5/4@21,4/4@29' for a map."""
+    return ','.join(f'{n}/{d}' if b == 1 else f'{n}/{d}@{b}' for b, n, d in sigs)
+
+
+def bar_lines(meter: str, bpm: float, n: int, sr: int = SR, bars: int | None = None) -> dict:
+    """Bar starts of a loop of `n` samples from its meter map and tempo (one tempo; quarter notes at
+    `bpm`). Lays bars until the loop is full (or `bars` bars). Returns {'starts': sample index of every
+    bar start, beginning with 0; 'bars': count; 'quarters': quarter notes in the loop; 'samples': the
+    nominal length in samples; 'error_samples': nominal length - n}."""
+    sigs = parse_meter(meter)
+    q_s = 60.0 / bpm
+    starts, t, b, quarters = [], 0.0, 1, 0.0
+    limit = bars if bars else 100000
+    while b <= limit:
+        num, den = next((nu, de) for at, nu, de in reversed(sigs) if at <= b)
+        if not bars and int(round(t * sr)) >= n - 1:
+            break
+        starts.append(int(round(t * sr)))
+        qn = 4.0 * num / den
+        quarters += qn
+        t += qn * q_s
+        b += 1
+    nominal = int(round(t * sr))
+    return {'starts': starts, 'bars': len(starts), 'quarters': round(quarters, 6), 'samples': nominal,
+            'error_samples': nominal - n}
+
+
+def _barline_samples(n: int, sr: int, bars) -> list[int]:
+    """Interior bar lines (sample indices, excluding 0) from a bar length in seconds (uniform meter)
+    or from a sequence of bar-start times in seconds (any meter map)."""
+    if bars is None or bars is False:
+        return []
+    if isinstance(bars, (int, float)):
+        k = int(round(n / (bars * sr)))
+        return [int(round(i * bars * sr)) for i in range(1, k)]
+    cs = sorted({int(round(float(t) * sr)) for t in bars})
+    return [c for c in cs if 0 < c < n]
+
+
 # ------------------------------------------------------------------------------------ seam metrics
 
 def _hf_energy(x: np.ndarray, sr: int, fc=6000.0):
@@ -319,8 +375,11 @@ def local_step_ratios(x: np.ndarray, at: int = 0, half: int = 240, guard: int = 
     return float(np.max(r1)), float(np.max(r2))
 
 
-def seam_metrics(x: np.ndarray, sr: int, bar_seconds: float | None = None) -> dict:
+def seam_metrics(x: np.ndarray, sr: int, bar_seconds=None) -> dict:
     """How the wrap from the last sample to the first compares with the rest of the loop.
+
+    bar_seconds: the bar length in seconds (one meter), or the loop's bar starts in seconds (a meter
+    map such as battle's 4/4 + 5/4: see bar_lines); the other bar lines are the reference for the wrap.
 
     jump_local/curv_local: the step and the second difference across the wrap vs. the largest ones
     within 5 ms of it (local_step_ratios; the primary click detector: about 1 or below is seamless).
@@ -379,20 +438,18 @@ def seam_metrics(x: np.ndarray, sr: int, bar_seconds: float | None = None) -> di
     all_f = np.array([flux(int(c)) for c in grid])
     res['flux_ratio'] = round(seam_f / (float(np.median(all_f)) + 1e-12), 3)
     res['flux_pct'] = round(float(np.mean(all_f < seam_f) * 100), 1)
-    if bar_seconds:
-        bars = int(round(n / (bar_seconds * sr)))
-        if bars >= 2:
-            bf = np.array([flux(int(round(k * bar_seconds * sr))) for k in range(1, bars)])
-            res['flux_vs_barlines'] = round(seam_f / (float(np.median(bf)) + 1e-12), 3)
-            res['flux_barline_max'] = round(float(bf.max()) / (float(np.median(bf)) + 1e-12), 3)
-            # HF burst at other bar lines, for the same reason.
-            bh = []
-            for k in range(1, bars):
-                c = int(round(k * bar_seconds * sr))
-                nb = [win_energy(c + o) for o in range(-ctx, ctx + 1, w) if abs(o) > 2 * w]
-                bh.append(10 * math.log10((win_energy(c) + 1e-20) / (float(np.median(nb)) + 1e-20)))
-            res['hf_barline_db_median'] = round(float(np.median(bh)), 2)
-            res['hf_barline_db_max'] = round(float(np.max(bh)), 2)
+    cs = _barline_samples(n, sr, bar_seconds)
+    if cs:
+        bf = np.array([flux(c) for c in cs])
+        res['flux_vs_barlines'] = round(seam_f / (float(np.median(bf)) + 1e-12), 3)
+        res['flux_barline_max'] = round(float(bf.max()) / (float(np.median(bf)) + 1e-12), 3)
+        # HF burst at other bar lines, for the same reason.
+        bh = []
+        for c in cs:
+            nb = [win_energy(c + o) for o in range(-ctx, ctx + 1, w) if abs(o) > 2 * w]
+            bh.append(10 * math.log10((win_energy(c) + 1e-20) / (float(np.median(nb)) + 1e-20)))
+        res['hf_barline_db_median'] = round(float(np.median(bh)), 2)
+        res['hf_barline_db_max'] = round(float(np.max(bh)), 2)
     m = int(round(0.02 * sr))
 
     def level_step(c):   # RMS of the 20 ms after sample c over the 20 ms before it (dB)
@@ -403,15 +460,12 @@ def seam_metrics(x: np.ndarray, sr: int, bar_seconds: float | None = None) -> di
     res['level_db'] = round(level_step(0), 2)   # first 20 ms over last 20 ms
     lp, lp_ref = lpc_residual_ratio(x, sr, 0)
     res['lpc_ratio'] = round(lp, 3)
-    if bar_seconds:
-        bars = int(round(n / (bar_seconds * sr)))
-        if bars >= 2:
-            cs = [int(round(k * bar_seconds * sr)) for k in range(1, bars)]
-            lv = [level_step(c) for c in cs]
-            res['level_barline_db_max'] = round(float(np.max(lv)), 2)
-            lb = [lpc_residual_ratio(x, sr, c)[0] for c in cs]
-            res['lpc_barline_median'] = round(float(np.median(lb)), 3)
-            res['lpc_barline_max'] = round(float(np.max(lb)), 3)
+    if cs:
+        lv = [level_step(c) for c in cs]
+        res['level_barline_db_max'] = round(float(np.max(lv)), 2)
+        lb = [lpc_residual_ratio(x, sr, c)[0] for c in cs]
+        res['lpc_barline_median'] = round(float(np.median(lb)), 3)
+        res['lpc_barline_max'] = round(float(np.max(lb)), 3)
     return res
 
 

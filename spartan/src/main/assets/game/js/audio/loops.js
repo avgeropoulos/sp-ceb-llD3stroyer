@@ -5,8 +5,11 @@
  * without a seam or a crossfade.
  *
  * Music: 'title' and 'battle' are a Dorian aulos theme over a low sung paean drone (no drum);
- * 'lastStand' is a darker drone with a sparse lament. Ambience layers: 'wind', 'sea', 'din'
- * (the distant army), 'cicadas'.
+ * 'lastStand' is a darker drone with a sparse lament. The game now plays the recorded cues of
+ * musicbank.js (audio/music/*.ogg) under these names; audio.js renders one of these music loops
+ * only when its recording can't be fetched or decoded, or is late (DESIGN.md §11 audio/audio.js),
+ * and trims each recording to the loudness of the loop it replaces. Ambience layers: 'wind',
+ * 'sea', 'din' (the distant army), 'cicadas'; these are always procedural.
  */
 import { createRng } from '../core/math.js';
 import {

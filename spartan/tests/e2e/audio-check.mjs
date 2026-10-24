@@ -5,7 +5,8 @@
 //    loop seams), checks it matches the Node render, and writes WAVs to outDir.
 // 2. The same with the Worker unavailable (main-thread time-sliced fallback).
 // 3. Event wiring with a fake EventBus, voice dispatch to a platform.voice.say stub,
-//    heartbeat, voice cap, volumes and music/ambience output through an AnalyserNode.
+//    heartbeat, voice cap, volumes and music/ambience output through an AnalyserNode (the music is
+//    the recorded cue there; tests/e2e/music-cues.mjs covers the cues in the running game).
 // 4. AudioContext unlock/suspend/resume state transitions (default autoplay policy).
 import fs from 'node:fs';
 import os from 'node:os';
@@ -50,7 +51,8 @@ try {
   const page = await l.newPage({ width: 1100, height: 700 });
   await page.goto(`${l.base}/tests/sandbox/audio-lab.html`);
   await page.waitForFunction(() => window.__audio, null, { timeout: 60000 });
-  await page.evaluate(() => window.__audio.preload('lastStand'));
+  // The procedural music loops are the recorded cues' fallback, rendered only on demand: ask for all three.
+  await page.evaluate(() => ['title', 'battle', 'lastStand'].forEach((n) => window.__audio.preload(n)));
   const st = await waitRendered(page);
   const ra = st.readyAt;
   const combat = ['whoosh', 'flesh', 'clang', 'parry', 'hurt', 'grunt', 'death', 'shieldUp', 'bash'].map((n) => ra['sfx:' + n]);
@@ -230,8 +232,8 @@ try {
   const ai = ev.out.hitAiFlesh[0], pl = ev.out.hitFlesh[0];
   check(ai && ai.at && ai.volume <= 0.5 * 1.0 + 1e-6 && ai.pan < -0.3, `AI-vs-AI hit should be positional, ≤ 0.5 and panned left: ${JSON.stringify(ai)}`);
   check(pl && pl.volume > 0.8, `player hit should be near full volume: ${JSON.stringify(pl)}`);
-  has('kill', 'death'); has('killSea', 'scream', 'splash');
-  check((ev.out.killSea.find((e) => e.name === 'splash') || {}).delay > 0.8, 'sea kill: splash should follow the scream');
+  // Into the Gulf: ai.js plays the scream at the lip and the splash at the water, in game time; audio adds nothing.
+  has('kill', 'death'); none('killSea');
   has('blockPlayer', 'clang'); has('blockPerfect', 'parry'); has('blockBreak', 'guardBreak'); has('blockAlly', 'clang');
   has('shieldUp', 'shieldUp'); none('shieldDown');
   has('spearThrown', 'spearThrow', 'spearWhistle'); has('spearImpactFlesh', 'spearHit'); has('spearImpactGround', 'spearGround'); has('spearImpactWater', 'splash');
@@ -321,6 +323,7 @@ try {
   await p2.addInitScript(() => { window.Worker = undefined; });
   await p2.goto(`${l.base}/tests/sandbox/audio-lab.html`);
   await p2.waitForFunction(() => window.__audio, null, { timeout: 60000 });
+  await p2.evaluate(() => ['title', 'battle'].forEach((n) => window.__audio.preload(n)));
   const st2 = await waitRendered(p2);
   console.log(`\nmain-thread fallback: ${st2.jobsDone} jobs, ${st2.renderMs.toFixed(0)} ms of main-thread slices, boot→all ready ${(st2.doneAt - st2.startedAt).toFixed(0)} ms wall, workers=${st2.workers}`);
   check(st2.workers === 0 && st2.ready >= Object.keys(SFX).length + 6, 'fallback did not render everything');
@@ -339,6 +342,7 @@ try {
   });
   await p3.goto(`${l.base}/tests/sandbox/audio-lab.html`);
   await p3.waitForFunction(() => window.__audio, null, { timeout: 60000 });
+  await p3.evaluate(() => ['title', 'battle'].forEach((n) => window.__audio.preload(n)));
   const st3 = await waitRendered(p3);
   console.log(`silent worker: fell back after the watchdog; workers=${st3.workers}, ${st3.ready} buffers ready, boot→all ready ${(st3.doneAt - st3.startedAt).toFixed(0)} ms`);
   check(st3.workers === 0 && st3.ready >= Object.keys(SFX).length + 6, 'silent-worker fallback did not render everything');

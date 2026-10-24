@@ -16,8 +16,10 @@ own tail, so mastering cannot create a seam):
      and a broad 300 Hz dip of 1-3 dB, sized by how far the 200-400 Hz band stands above the spectrum's
      own trend between 100-150 Hz and 600-1200 Hz (mud from stacked low strings, choir and drones);
   2. glue: stereo-linked 2:1 RMS bus compressor, about 2 dB of gain reduction on the loudest passages;
-  3. gain + true-peak limiter to -1.5 dBTP, iterated until the integrated loudness (BS.1770-4) is on the
-     target (default -16.0 LUFS, the level of the procedural cues, see TARGET_LUFS);
+  3. gain + true-peak limiter, iterated until the integrated loudness (BS.1770-4) is on the target
+     (default -16.0 LUFS, the level of the procedural cues, see TARGET_LUFS) and the DECODED file's true
+     peak is at or under the ceiling (default -1.5 dBTP; the limiter's own ceiling is lowered by the
+     codec's overshoot, typically 0.2-0.7 dB);
   4. Opus at ~80 kb/s (VBR, 20 ms frames), looped in the packet domain when the loop is a whole number
      of 20 ms frames (960 samples): the encoder is fed [pad | loop | loop | loop head] with the pad sized
      so that its frame grid starts exactly on the loop; pass 1 warms the encoder up, pass 2's packets are
@@ -28,7 +30,10 @@ own tail, so mastering cannot create a seam):
      codec noise does not splice. Loops that are not a multiple of 960 samples fall back to circular
      priming ([loop tail | loop | loop head], pre-skip over the tail, the final granule trims the end):
      sample-exact, but the codec noise either side of the wrap comes from different frames (reported);
-  5. checks on the decoded file: length (exactly the loop length), alignment, seam, true peak, loudness;
+  5. checks on the decoded file: length (exactly the loop length), alignment, seam (against the loop's
+     real bar lines, from the meter map in render.json), true peak (<= the ceiling), loudness. The tags
+     then record the decoded file's true peak (TRUEPEAK_DBTP), the meter map (METER, e.g.
+     '4/4,5/4@21,4/4@29'), BARS and BEATS (quarter notes);
   6. `node render.mjs --bank` regenerates js/audio/musicbank.js from the encoded cues.
 """
 from __future__ import annotations
@@ -221,16 +226,25 @@ def encode_opus_loop(y, sr, out_path, bitrate_k, tags, serial):
             facts = {'mode': 'circular-prime', 'encoder_pre_skip': delay, 'pre_skip': pre_skip, 'prime_samples': PRIME,
                      'packets': len(body), 'end_trim': cum - final,
                      'note': f'loop length {n} is not a multiple of {FRAME} samples: the codec noise splices at the wrap'}
-    tags = {**tags, 'LOOPMODE': facts['mode']}
-    data = ml.write_ogg([bytes(head), ml.opus_tags(vendor, tags)] + body, [-1, -1] + granules, serial)
-    Path(out_path).write_bytes(data)
+    mux = {'head': bytes(head), 'vendor': vendor, 'body': body, 'granules': granules, 'serial': serial, 'mode': facts['mode']}
+    data = write_tagged(out_path, mux, tags)
     facts.update({'bytes': len(data), 'kbps': round(len(data) * 8 / (n / sr) / 1000, 1), 'vendor': vendor})
-    return facts, cont
+    return facts, cont, mux
+
+
+def write_tagged(out_path, mux, tags):
+    """(Re)writes the Ogg Opus file from the encoded packets in `mux` with these tags: the audio packets,
+    granules and pre-skip stay byte-identical, so the decode does not change."""
+    tags = {**tags, 'LOOPMODE': mux['mode']}
+    data = ml.write_ogg([mux['head'], ml.opus_tags(mux['vendor'], tags)] + list(mux['body']), [-1, -1] + list(mux['granules']), mux['serial'])
+    Path(out_path).write_bytes(data)
+    return data
 
 
 def verify_decoded(path, y, sr, bar_seconds, cont=None):
     """Decodes the .ogg with ffmpeg and checks it against the master `y`, and (packet-loop mode) its
-    wrap against `cont`, the encoder stream's own continuous decode across the end of the loop."""
+    wrap against `cont`, the encoder stream's own continuous decode across the end of the loop.
+    bar_seconds: the bar length (one meter) or the loop's bar starts in seconds (ml.seam_metrics)."""
     info = ml.ogg_opus_info(path)
     d = ml.ffmpeg_decode(path, sr, 2)
     n = y.shape[0]
@@ -330,11 +344,18 @@ def main():
     if render.get('loopSamples') and render['loopSamples'] != x.shape[0]:
         raise SystemExit(f"{wav}: {x.shape[0]} samples, render.json says {render['loopSamples']}")
     n = x.shape[0]
+    # The time-signature map ('4/4' or e.g. '4/4,5/4@21,4/4@29') and the bar starts (seconds from the
+    # loop start) from render.json; without them, laid out from the map and the tempo.
     meter = render.get('meter', '4/4')
-    num, den = (int(v) for v in meter.split('/'))
-    bar_s = 60.0 / bpm * 4 * num / den
+    grid = ml.bar_lines(meter, bpm, n, SR, render.get('bars'))
+    bar_secs = render.get('barLinesSeconds') or [s / SR for s in grid['starts']]
+    bars = render.get('bars') or grid['bars']
+    quarters = render.get('quarterNotes') or grid['quarters']
+    if abs(grid['error_samples']) > 0.001 * SR or grid['bars'] != bars or len(bar_secs) != bars:
+        raise SystemExit(f'{wav}: meter {meter} at {bpm:g} bpm gives {grid["bars"]} bars = {grid["samples"]} samples, '
+                         f'the loop is {bars} bars = {n} samples')
     rep = {'cue': cue, 'input': str(wav), 'loop_samples': n, 'loop_seconds': n / SR, 'bpm': bpm, 'meter': meter,
-           'bars': render.get('bars'), 'target_lufs': a.target, 'ceiling_dbtp': a.ceiling}
+           'bars': bars, 'quarter_notes': quarters, 'target_lufs': a.target, 'ceiling_dbtp': a.ceiling}
     rep['input_stats'] = {'lufs': round(ml.integrated_lufs(x, sr), 2), 'true_peak_dbtp': round(ml.true_peak_db(x), 2),
                           'lra': round(ml.loudness_range(x, sr), 2)}
     log(f'[{cue}] {n} samples ({n / SR:.3f} s), input {rep["input_stats"]}')
@@ -349,22 +370,37 @@ def main():
     # DECODED file stays under --ceiling (at the same loudness).
     lim_ceiling = a.ceiling
     rep['encode_passes'] = []
-    for attempt in range(4):
-        y, rep['loudness'] = to_target(pre, sr, a.target, lim_ceiling)
-        tags = {'TITLE': f'Thermopylae - {cue}', 'CUE': cue, 'LOOPSTART': 0, 'LOOPLENGTH': n, 'BPM': f'{bpm:g}',
-                'METER': meter, 'BARS': render.get('bars') or round(n / SR / bar_s), 'LUFS': f"{rep['loudness']['lufs']:.1f}",
-                'TRUEPEAK_DBTP': f"{rep['loudness']['true_peak_dbtp']:.2f}",
+
+    def tags_for(tp_dbtp):
+        return {'TITLE': f'Thermopylae - {cue}', 'CUE': cue, 'LOOPSTART': 0, 'LOOPLENGTH': n, 'BPM': f'{bpm:g}',
+                'METER': meter, 'BARS': bars, 'BEATS': f'{quarters:g}', 'LUFS': f"{rep['loudness']['lufs']:.1f}",
+                'TRUEPEAK_DBTP': f'{tp_dbtp:.2f}',
                 'COMMENT': 'Rendered with the GeneralUser GS v1.471 SoundFont by S. Christian Collins (spessasynth_core). Seamless loop.'}
-        rep['opus'], cont = encode_opus_loop(y, sr, ogg_path, a.bitrate, tags, serial)
-        rep['decoded'], _ = verify_decoded(ogg_path, y, sr, bar_s, cont)
+
+    for attempt in range(5):
+        y, rep['loudness'] = to_target(pre, sr, a.target, lim_ceiling)
+        rep['opus'], cont, mux = encode_opus_loop(y, sr, ogg_path, a.bitrate, tags_for(rep['loudness']['true_peak_dbtp']), serial)
+        rep['decoded'], _ = verify_decoded(ogg_path, y, sr, bar_secs, cont)
         tp = rep['decoded']['true_peak_dbtp']
         rep['encode_passes'].append({'limiter_ceiling_db': round(lim_ceiling, 2), 'master_tp_dbtp': rep['loudness']['true_peak_dbtp'],
                                      'decoded_tp_dbtp': tp})
-        if tp <= a.ceiling + 0.05:
+        # The DECODED file must stay at or under the ceiling (the codec overshoots the limiter by a few tenths
+        # of a dB); when it does not, the limiter's ceiling comes down by the excess plus 0.05 dB and the
+        # loop is limited and encoded again.
+        if tp <= a.ceiling:
             break
         lim_ceiling -= tp - a.ceiling + 0.05
         log(f'[{cue}] decoded true peak {tp} dBTP over {a.ceiling}: limiter ceiling down to {lim_ceiling:.2f} dB')
-    rep['master_seam'] = ml.seam_metrics(y, sr, bar_s)
+    # The tags record what ships: the decoded file's true peak (the audio packets are not touched).
+    tags = tags_for(rep['decoded']['true_peak_dbtp'])
+    data = write_tagged(ogg_path, mux, tags)
+    _, packets = ml.read_ogg(data)
+    if packets[2:] != list(mux['body']) or ml.ogg_opus_info(ogg_path)['samples'] != n:
+        raise SystemExit(f'{ogg_path}: rewriting the tags changed the audio packets')
+    rep['opus']['bytes'] = len(data)
+    rep['opus']['kbps'] = round(len(data) * 8 / (n / sr) / 1000, 1)
+    rep['tags'] = {k: str(v) for k, v in tags.items()}
+    rep['master_seam'] = ml.seam_metrics(y, sr, bar_secs)
     rep['master_seam_verdict'], rep['master_seam_notes'] = ml.seam_verdict(rep['master_seam'])
     log(f'[{cue}] EQ {rep["eq"]}, glue {rep["glue"]}, loudness {rep["loudness"]}')
     ml.write_wav(report_dir / f'{cue}.master.wav', y, sr)
@@ -378,7 +414,7 @@ def main():
         problems.append('master seam: ' + '; '.join(rep['master_seam_notes']))
     if dec['seam_verdict'] == 'FAIL':
         problems.append('decoded seam: ' + '; '.join(dec['seam_notes']))
-    if dec['true_peak_dbtp'] > a.ceiling + 0.1:
+    if dec['true_peak_dbtp'] > a.ceiling:
         problems.append(f"decoded true peak {dec['true_peak_dbtp']} dBTP over the {a.ceiling} dBTP ceiling")
     if abs(dec['lufs'] - a.target) > 0.5:
         problems.append(f"decoded loudness {dec['lufs']} LUFS vs target {a.target}")

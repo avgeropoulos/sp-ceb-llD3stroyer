@@ -6,11 +6,13 @@
 Every cue is decoded from its .ogg with ffmpeg (what a player hears) and measured as a LOOP (filters,
 loudness blocks and windows wrap around the end):
 
-  length       decoded samples vs. the LOOPLENGTH tag, the musicbank `dur` (within 1 ms) and the brief
-               in cues.json
+  length       decoded samples vs. the LOOPLENGTH tag, the musicbank `dur` (within 1 ms) and `samples`
+               (exact), and the brief in cues.json; the bar grid from the METER map ('4/4' or e.g.
+               '4/4,5/4@21,4/4@29'), BARS, BEATS and BPM tags must add up to LOOPLENGTH
   loudness     BS.1770-4 integrated, LRA, max momentary/short-term, PLR; vs. the musicbank `lufs`, the
                target and the other cues (one common level)
-  peaks        true peak (4x oversampled), sample peak, clipped samples, flat-topped runs
+  peaks        true peak (4x oversampled), sample peak, clipped samples, flat-topped runs; the
+               TRUEPEAK_DBTP tag vs. the measured decoded true peak
   crest        peak-to-RMS of the whole loop and the median of 400 ms windows
   spectrum     centroid, 85 % roll-off, spread; energy shares: sub (<35 Hz), low (<120 Hz, the
                "low-end ratio"), mud (200-400 Hz), speech band (200 Hz-3.5 kHz), presence, air
@@ -24,8 +26,9 @@ loudness blocks and windows wrap around the end):
   --browser    webcheck.mjs decodes the cues in headless Chromium (the Android WebView's engine) at
                48 kHz and 44.1 kHz and loops the 48 kHz buffer in a 44.1 kHz context: lengths and seams
 
-Verdicts: FAIL (exit status 1) for a broken deliverable: wrong length, a click at the wrap, true peak
-over -1.0 dBTP, clipping, loudness off target or off the bank by more than 0.5 LU, no stereo. WARN for
+Verdicts: FAIL (exit status 1) for a broken deliverable: wrong length, a bar grid that does not add up
+to the loop, a click at the wrap, true peak over the -1.5 dBTP ceiling, clipping, loudness off target or
+off the bank by more than 0.5 LU, no stereo. WARN for
 things a person should judge by ear (the fatigue proxies, a cue outside its brief, a near-mono or
 out-of-phase mix). These measurements cannot replace listening.
 """
@@ -73,9 +76,10 @@ def read_bank(path: Path) -> dict:
     if not path.exists():
         return {}
     rows = {}
-    pat = re.compile(r"(\w+): Object\.freeze\(\{ file: '([^']+)', dur: ([0-9.]+), bpm: ([0-9.]+), lufs: (-?[0-9.]+) \}\)")
+    pat = re.compile(r"(\w+): Object\.freeze\(\{ file: '([^']+)', dur: ([0-9.]+),(?: samples: ([0-9]+),)? bpm: ([0-9.]+), lufs: (-?[0-9.]+) \}\)")
     for m in pat.finditer(path.read_text()):
-        rows[m.group(1)] = {'file': m.group(2), 'dur': float(m.group(3)), 'bpm': float(m.group(4)), 'lufs': float(m.group(5))}
+        rows[m.group(1)] = {'file': m.group(2), 'dur': float(m.group(3)), 'samples': int(m.group(4)) if m.group(4) else None,
+                            'bpm': float(m.group(5)), 'lufs': float(m.group(6))}
     return rows
 
 
@@ -166,12 +170,14 @@ def window_crest(x: np.ndarray, sr: int) -> float:
     return float(np.median(ml.db(pk[ok] / rms[ok]))) if ok.any() else float('nan')
 
 
-def fatigue(x: np.ndarray, sr: int, bar_s: float, xk: np.ndarray) -> dict:
+def fatigue(x: np.ndarray, sr: int, starts: list[int], xk: np.ndarray) -> dict:
     """Section contrast and breath over 8-bar windows (the loop wraps). For a cue heard for 20+
     minutes, windows that all sound alike (small spread) or a loop that sits near its loudest level
-    most of the time are the warning signs; a quiet window whose speech band is low leaves the voice room."""
+    most of the time are the warning signs; a quiet window whose speech band is low leaves the voice room.
+    starts: the sample index of every bar start (ml.bar_lines), so mixed meters window on real bars."""
     n = x.shape[0]
-    bars = max(1, int(round(n / (bar_s * sr))))
+    bars = max(1, len(starts))
+    edge = list(starts) + [n]
     nwin = max(1, math.ceil(bars / 8))
     mono = x.mean(axis=1)
     N, hop = 2048, 512
@@ -185,8 +191,8 @@ def fatigue(x: np.ndarray, sr: int, bar_s: float, xk: np.ndarray) -> dict:
     sp_pow = np.sum(sp ** 2, axis=1)
     rows = []
     for k in range(nwin):
-        a = int(round(8 * k * bar_s * sr))
-        b = min(n, int(round(8 * (k + 1) * bar_s * sr)))
+        a = edge[8 * k]
+        b = edge[min(bars, 8 * (k + 1))]
         sel = (centres >= a) & (centres < b)
         P = pw[sel].sum(axis=0)
         cen = float(np.sum(freqs * P) / (np.sum(P) + 1e-30))
@@ -203,8 +209,8 @@ def fatigue(x: np.ndarray, sr: int, bar_s: float, xk: np.ndarray) -> dict:
     # than 8 bars and would average away in the 8-bar windows).
     four = []
     for k in range(max(1, math.ceil(bars / 4))):
-        a = int(round(4 * k * bar_s * sr))
-        b = min(n, int(round(4 * (k + 1) * bar_s * sr)))
+        a = edge[4 * k]
+        b = edge[min(bars, 4 * (k + 1))]
         v = ml.gated_lufs_of_power(z[(starts >= a) & (starts < b)])
         if math.isfinite(v):
             four.append((v, f'{4 * k + 1}-{min(bars, 4 * k + 4)}'))
@@ -240,7 +246,7 @@ def browser_check(cues, music_dir: Path, out_dir: Path, ref: dict) -> dict:
     rep = json.loads((out_dir / 'webcheck.json').read_text())
     res = {'browser': rep['browser']}
     for cue, e in rep['cues'].items():
-        n, bar_s, dff = ref[cue]['n'], ref[cue]['bar_s'], ref[cue]['decoded']
+        n, bar_secs, dff = ref[cue]['n'], ref[cue]['bar_secs'], ref[cue]['decoded']
         load = lambda k: np.fromfile(e[k]['file'], dtype='<f4').reshape(-1, 2).astype(np.float64)   # noqa: E731
         c = {}
         d48 = load('decode48')
@@ -248,7 +254,7 @@ def browser_check(cues, music_dir: Path, out_dir: Path, ref: dict) -> dict:
         c['decode48_length_ok'] = d48.shape[0] == n
         if d48.shape[0] == n:
             c['decode48_max_diff_vs_ffmpeg'] = float(f'{np.abs(d48 - dff).max():.2e}')
-        sm = ml.seam_metrics(d48, SR, bar_s)
+        sm = ml.seam_metrics(d48, SR, bar_secs)
         c['decode48_seam'], notes = ml.seam_verdict(sm, lossy=not ref[cue]['packet_loop'])
         c['decode48_seam_notes'] = notes
         c['decode48_seam_metrics'] = {k: sm[k] for k in ('jump_local', 'curv_local', 'lpc_ratio', 'flux_vs_barlines') if k in sm}
@@ -256,7 +262,7 @@ def browser_check(cues, music_dir: Path, out_dir: Path, ref: dict) -> dict:
         want44 = n * 44100 / SR
         c['decode44_samples'] = int(d44.shape[0])
         c['decode44_samples_short'] = r(want44 - d44.shape[0], 2)
-        sm = ml.seam_metrics(d44, 44100, bar_s)
+        sm = ml.seam_metrics(d44, 44100, bar_secs)
         c['decode44_seam'], c['decode44_seam_notes'] = ml.seam_verdict(sm, lossy=True)
         c['decode44_seam_metrics'] = {k: sm[k] for k in ('jump_local', 'curv_local', 'lpc_ratio', 'flux_vs_barlines') if k in sm}
         # Looped 48 kHz buffer resampled while playing in a 44.1 kHz context: the wrap is mid-render.
@@ -264,7 +270,7 @@ def browser_check(cues, music_dir: Path, out_dir: Path, ref: dict) -> dict:
         at = int(round(e['loop44']['wrapAt']))
         jl, cl = ml.local_step_ratios(lp, at, half=220)
         lpc, _ = ml.lpc_residual_ratio(lp, 44100, at)
-        bars = [int(round(k * bar_s * 44100)) for k in range(1, int(round(n / SR / bar_s)))]
+        bars = [int(round(t * 44100)) for t in (bar_secs or [])[1:]]
         bl = [ml.lpc_residual_ratio(lp, 44100, b)[0] for b in bars if b < lp.shape[0] - 22050]
         c['loop44_wrap'] = {'jump_local': r(jl, 3), 'curv_local': r(cl, 3), 'lpc_ratio': r(lpc, 3),
                             'lpc_barline_max': r(max(bl), 3) if bl else None}
@@ -284,8 +290,12 @@ def qa_cue(cue: str, ogg: Path, bank: dict, target: float) -> dict:
     n = d.shape[0]
     bpm = float(tags.get('BPM') or bank.get(cue, {}).get('bpm') or 0)
     meter = tags.get('METER', '4/4')
-    num, den = (int(t) for t in meter.split('/'))
-    bar_s = 60.0 / bpm * 4 * num / den if bpm else None
+    tag_bars = int(tags['BARS']) if tags.get('BARS', '').isdigit() else None
+    # The bar grid from the meter map and the tempo: it must add up to the loop (a 4/4 + 5/4 cue tagged
+    # plain 4/4 would put every later bar line mid-bar, and the breath and seam measures with it).
+    grid = ml.bar_lines(meter, bpm, n, SR, tag_bars) if bpm else None
+    starts = grid['starts'] if grid else []
+    bar_secs = [s_ / SR for s_ in starts] if grid else None
     mode = tags.get('LOOPMODE')
     if not mode:   # files from before the tag: a packet loop is whole 20 ms packets with no end trim
         mode = 'packet-loop' if n % 960 == 0 and info['pre_skip'] % 960 == 0 and info['end_trim'] == 0 else 'circular-prime'
@@ -294,12 +304,27 @@ def qa_cue(cue: str, ogg: Path, bank: dict, target: float) -> dict:
                       'end_trim': info['end_trim'], 'loop_mode': mode, 'eos': info['eos'], 'channels': info['channels']}
     # Length.
     length = {'samples': n, 'seconds': r(n / SR, 6), 'container_samples': info['samples'], 'tag_looplength': int(tags.get('LOOPLENGTH', -1)),
-              'bpm': bpm, 'meter': meter, 'bars': r(n / SR / bar_s, 3) if bar_s else None}
+              'bpm': bpm, 'meter': meter, 'bars': grid['bars'] if grid else None, 'tag_bars': tag_bars,
+              'quarter_notes': grid['quarters'] if grid else None, 'tag_beats': tags.get('BEATS'),
+              'grid_error_samples': grid['error_samples'] if grid else None}
+    if grid:
+        if abs(grid['error_samples']) > 0.001 * SR:
+            notes_fail.append(f"{grid['bars']} bars of {meter} at {bpm:g} bpm = {grid['samples']} samples, the loop is {n} "
+                              f"(BARS x beats per bar x 60 / BPM must equal LOOPLENGTH)")
+        if tag_bars is not None and tag_bars != grid['bars']:
+            notes_fail.append(f'BARS tag {tag_bars}, the meter map lays {grid["bars"]} bars')
+        if tags.get('BEATS') and abs(float(tags['BEATS']) - grid['quarters']) > 1e-6:
+            notes_fail.append(f"BEATS tag {tags['BEATS']}, the meter map holds {grid['quarters']:g} quarter notes")
     if cue in bank:
         length['bank_dur'] = bank[cue]['dur']
+        length['bank_samples'] = bank[cue]['samples']
         length['bank_error_ms'] = r((n / SR - bank[cue]['dur']) * 1000, 3)
         if abs(length['bank_error_ms']) > 1.0:
             notes_fail.append(f"decoded length {n / SR:.6f} s, musicbank dur {bank[cue]['dur']}")
+        if bank[cue]['samples'] is None:
+            notes_warn.append('musicbank.js has no samples field (regenerate it: render.mjs --bank)')
+        elif bank[cue]['samples'] != n:
+            notes_fail.append(f"decoded {n} samples, musicbank samples {bank[cue]['samples']}")
     else:
         notes_warn.append('not in musicbank.js')
     if length['tag_looplength'] != n or info['samples'] != n:
@@ -307,8 +332,6 @@ def qa_cue(cue: str, ogg: Path, bank: dict, target: float) -> dict:
     lo, hi = CUES.get(cue, {}).get('loopSeconds', [0, 1e9])
     if not lo <= n / SR <= hi:
         notes_warn.append(f'loop {n / SR:.1f} s; the brief asks for {lo}-{hi} s')
-    if bar_s and abs(n / SR / bar_s - round(n / SR / bar_s)) > 0.01:
-        notes_warn.append(f'the loop is {n / SR / bar_s:.3f} bars of {meter} at {bpm:g} bpm, not a whole number')
     bb = CUES.get(cue, {}).get('bpm')
     if bb and not bb[0] <= bpm <= bb[1]:
         notes_warn.append(f'bpm {bpm:g}; the brief asks for {bb[0]}-{bb[1]}')
@@ -328,10 +351,12 @@ def qa_cue(cue: str, ogg: Path, bank: dict, target: float) -> dict:
     # Peaks and crest.
     pk['crest_400ms_median_db'] = r(window_crest(d, SR))
     v['peaks'] = pk
-    if pk['true_peak_dbtp'] > -1.0:
-        notes_fail.append(f"true peak {pk['true_peak_dbtp']} dBTP (ceiling {master.CEILING_DBTP})")
-    elif pk['true_peak_dbtp'] > master.CEILING_DBTP + 0.1:
-        notes_warn.append(f"true peak {pk['true_peak_dbtp']} dBTP over the {master.CEILING_DBTP} dBTP ceiling")
+    if pk['true_peak_dbtp'] > master.CEILING_DBTP:
+        notes_fail.append(f"true peak {pk['true_peak_dbtp']} dBTP over the {master.CEILING_DBTP} dBTP ceiling")
+    tp_tag = tags.get('TRUEPEAK_DBTP')
+    pk['tag_true_peak_dbtp'] = float(tp_tag) if tp_tag else None
+    if tp_tag and abs(float(tp_tag) - pk['true_peak_dbtp']) > 0.05:
+        notes_warn.append(f"TRUEPEAK_DBTP tag {tp_tag}, the decoded file measures {pk['true_peak_dbtp']} dBTP")
     if pk['clipped_samples']:
         notes_fail.append(f"{pk['clipped_samples']} samples at full scale")
     if pk['flat_top_runs'] > 10:
@@ -348,15 +373,15 @@ def qa_cue(cue: str, ogg: Path, bank: dict, target: float) -> dict:
     if v['stereo']['mono_sum_loudness_change_lu'] < -3.0:
         notes_warn.append(f"loses {-v['stereo']['mono_sum_loudness_change_lu']} LU summed to mono (phone speaker)")
     # Seam.
-    sm = ml.seam_metrics(d, SR, bar_s)
+    sm = ml.seam_metrics(d, SR, bar_secs)
     verdict, notes = ml.seam_verdict(sm, lossy=mode != 'packet-loop')
     v['seam'] = {'verdict': verdict, 'notes': notes, **sm}
     (notes_fail if verdict == 'FAIL' else notes_warn).extend(f'seam: {t}' for t in notes)
     if mode != 'packet-loop':
         notes_warn.append(f'Opus loop mode {mode}: the codec noise splices at the wrap (loop not a multiple of 20 ms)')
     # Fatigue proxies.
-    if bar_s:
-        fa = fatigue(d, SR, bar_s, xk)
+    if starts:
+        fa = fatigue(d, SR, starts, xk)
         v['fatigue'] = fa
         brief = CUES.get(cue, {})
         cmin = brief.get('contrastLU', [2.0, 15.0])
@@ -372,7 +397,7 @@ def qa_cue(cue: str, ogg: Path, bank: dict, target: float) -> dict:
     v['verdict'] = 'FAIL' if notes_fail else 'WARN' if notes_warn else 'PASS'
     v['fail'] = notes_fail
     v['warn'] = notes_warn
-    v['_ref'] = {'n': n, 'bar_s': bar_s, 'decoded': d, 'packet_loop': mode == 'packet-loop'}
+    v['_ref'] = {'n': n, 'bar_secs': bar_secs, 'decoded': d, 'packet_loop': mode == 'packet-loop'}
     return v
 
 

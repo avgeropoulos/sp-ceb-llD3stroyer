@@ -1,11 +1,13 @@
 /**
  * WebAudio engine (DESIGN.md §11 audio/audio.js): synthesized SFX, ambience beds, music and
- * voice dispatch. sfx.js and loops.js render every sound once into AudioBuffers, in a module
- * worker when possible, else time-sliced on the main thread. The only files are the Greeks'
- * recorded voice lines (audio/voice/*.ogg, listed in voicebank.js), decoded when first needed.
+ * voice dispatch. sfx.js and loops.js render sounds once into AudioBuffers, in a module worker
+ * when possible, else time-sliced on the main thread. The files are the Greeks' recorded voice
+ * lines (audio/voice/*.ogg, listed in voicebank.js), decoded when first needed, and the three
+ * music cues (audio/music/*.ogg, listed in musicbank.js), decoded one at a time when wanted; the
+ * procedural music loops of loops.js are rendered only when a cue can't be had.
  *
  * Graph: voices → sfx bus ─┐                      ┌→ convolver (the pass) → sfx bus
- *        loops → music bus → duck ─┼→ master → limiter → out
+ *        music cues → hand → fade → music bus → duck ─┼→ master → limiter → out
  *        beds  → ambience bus → duck → muffle ─┘
  *        voice clips → pan → voice bus ─┘ (+ reverb send)
  *        distant host events → low-pass → ambience bus (+ reverb)
@@ -16,8 +18,9 @@ import { createRng, clamp, lerp, smoothstep } from '../core/math.js';
 import { LEONIDAS_X } from '../game/campaign.js';
 import { SFX, SFX_NAMES, sfxLength, sfxRate, renderSfxGen } from './sfx.js';
 import { LOOPS, MUSIC_NAMES, AMBIENCE_LAYERS, loopLength, renderLoopGen, renderImpulse } from './loops.js';
+import { MUSICBANK } from './musicbank.js';
 
-export { SFX, SFX_NAMES, LOOPS, MUSIC_NAMES, AMBIENCE_LAYERS };
+export { SFX, SFX_NAMES, LOOPS, MUSIC_NAMES, AMBIENCE_LAYERS, MUSICBANK };
 
 /** Text-to-speech pitch and rate per speaker. */
 export const SPEAKERS = {
@@ -74,10 +77,42 @@ const PROJECTILE_KINDS = new Set(['spear', 'throw', 'spearThrow', 'projectile', 
 const SFX_ORDER = ['uiTap', 'uiConfirm', 'whoosh', 'whooshHeavy', 'flesh', 'fleshHeavy', 'clang', 'wicker', 'wood', 'parry', 'shieldUp',
   'bash', 'guardBreak', 'hurt', 'grunt', 'death', 'step', 'arrowThud', 'arrowShield', 'spearThrow', 'spearWhistle', 'spearHit',
   'spearGround', 'splash', 'scream', 'comboSting', 'heartbeat', 'draw', 'drum', 'gull', 'horn', 'volley', 'warcry'];
-const PRELOAD_LOOPS = ['wind', 'sea', 'cicadas', 'title', 'din', 'battle']; // lastStand is rendered on demand
+// The ambience beds render behind the title screen. The procedural music loops render only when a
+// recorded cue can't be had: all three when this engine can't decode the cues at all (the title and
+// battle loops at boot, as before), else the one a failed or late cue needs.
+const PRELOAD_LOOPS = ['wind', 'sea', 'cicadas', 'din'];
+const SYNTH_MUSIC_AT_BOOT = ['title', 'battle'];
+
+// The recorded music cues (MUSICBANK): seamless 48 kHz stereo Ogg Opus loops.
+const CUE_RATE = 48000;
+/**
+ * Integrated loudness (BS.1770, LUFS) of the procedural loops as the game plays them (the mono loop
+ * on both channels), measured by spartan/tools/music (render.mjs --reference, master.py
+ * --measure-reference; tests/unit/music-cues.test.mjs measures it again). Each recorded cue is
+ * trimmed from its MUSICBANK lufs to the level of the loop it replaces, so voices and SFX keep the
+ * balance they had against the music.
+ */
+export const MUSIC_REF_LUFS = Object.freeze({ title: -16.4, battle: -16.0, lastStand: -20.8 });
+/** The music bus's gain while someone speaks: deeper under the recorded cues (louder peaks, LRA ~10 LU). */
+export const MUSIC_DUCK = Object.freeze({ synth: 0.55, file: 0.42 });
+const CUE_TAIL = 10; // s: a cue that gives way plays on from a copy this long, so its full buffer goes at once
+const CUE_WAIT = 3; // s: a wanted cue still loading after this long gets its procedural loop as a stand-in
+const WAIT_STEP = 0.1; // s: the most one tick adds to that wait (a stalled main thread can't render a stand-in either)
+const CUE_LEAD = 0.05; // s: music starts and hand-offs are scheduled this far ahead
+const HANDOFF = 0.02; // s: crossfade from a cue's buffer to its copy (the same samples, within a frame)
+const TAIL_CUT = 0.25; // s: an older copy still fading when another cue hands off fades out this fast
+const HANDOFF_WAIT = 1000; // ms: a handed-off source that hasn't reported its end by then is released anyway
 
 const isGen = (fn) => fn && fn.constructor && fn.constructor.name === 'GeneratorFunction';
 const num = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+/** Files are relative to the game root (index.html's folder). */
+const gameUrl = (file) => new URL('../../' + String(file).replace(/^\/+/, ''), import.meta.url).href;
+
+/** Gain that brings recorded cue `name` from its mastered loudness to the procedural loop's. */
+export function cueLevel(name) {
+  const e = MUSICBANK[name], ref = MUSIC_REF_LUFS[name];
+  return e && typeof ref === 'number' ? Math.pow(10, (ref - e.lufs) / 20) : 1;
+}
 
 export function createAudio(ctx) {
   const rng = createRng(0x5a17);
@@ -109,6 +144,11 @@ export function createAudio(ctx) {
       ac = null;
     }
   }
+  // The recorded music cues need fetch and a 48 kHz decoder: an OfflineAudioContext, or the game's
+  // own context if it runs at 48 kHz (decoding in a 44.1 kHz context resamples the loop as a
+  // one-shot: a sample short, with a click at the wrap).
+  const OAC = hasWindow ? window.OfflineAudioContext || window.webkitOfflineAudioContext : null;
+  const canCue = !!ac && typeof fetch === 'function' && (!!OAC || ac.sampleRate === CUE_RATE);
 
   function gain(v, to) {
     const g = ac.createGain();
@@ -387,6 +427,7 @@ export function createAudio(ctx) {
     SFX_ORDER.forEach((name, i) => queue('sfx', name, i < 2 ? 0 : i < 16 ? 2 : 3));
     for (const name of Object.keys(SFX)) queue('sfx', name, 3);
     for (const name of PRELOAD_LOOPS) queue('loop', name, 4);
+    if (!canCue) for (const name of SYNTH_MUSIC_AT_BOOT) queue('loop', name, 4);
   }
 
   // ------------------------------------------------------------------------------------------
@@ -576,51 +617,468 @@ export function createAudio(ctx) {
   }
 
   // ------------------------------------------------------------------------------------------
-  // Music and ambience beds
+  // Music. The cues are the recorded loops of musicbank.js, fetched and decoded when wanted (the
+  // title already at boot), with a 48 kHz OfflineAudioContext, one at a time. Decoded, a cue is
+  // samples × channels × 4 bytes (battle: 46 MB in stereo), so only one is ever held: a cue that
+  // gives way is swapped, sample-aligned, for a copy of its next CUE_TAIL seconds and its buffer is
+  // released before the next one is decoded; that copy fades out under the next cue. A cue that
+  // can't be fetched or decoded, or is still loading CUE_WAIT s of running game after it was
+  // wanted, has its procedural loop (loops.js) stand in, rendered only then; a late recording
+  // takes over from it.
+  //
+  // A player: { name, source: 'file'|'synth', src, hand, gain, buf, level, t0, len, tail, tailEnd,
+  //             fadeEnd, env, ended }. src → hand (the hand-off) → gain (fades, cue level) → music bus.
 
-  const music = { want: 'none', cur: null };
+  // waited: seconds of running game (ticks, each counted up to WAIT_STEP) the wanted cue has not played from its file.
+  const music = { want: 'none', waited: 0, tickAt: -1, cur: null, outs: [], ahead: null, synthWait: new Set(), history: [] };
+  /** name → { name, entry, state: 'idle'|'loading'|'ready'|'failed', buf, loopEnd, why } */
+  const cues = new Map(MUSIC_NAMES.map((name) => [name, { name, entry: MUSICBANK[name] || null, state: MUSICBANK[name] ? 'idle' : 'failed', buf: null, loopEnd: 0, why: '' }]));
+  const mstats = { decodes: 0, failed: 0, standIns: 0, bytes: 0, peak: 0, decodeMs: 0 };
+  const cueHeld = new Map(); // every decoded music buffer we hold (cues, copies) → bytes
+  const ending = []; // cue sources handed off to their copy, until they have stopped: { name, src, hand, buf, at }
+  let decoding = null; // the cue being fetched and decoded
+  let offline = null; // the 48 kHz OfflineAudioContext cues are decoded with
+  let disposed = false;
+  // Low memory (DESIGN.md §15 'auto' picks low for ≤ 3 GB): cues are down-mixed to one channel.
+  const deviceMemory = hasWindow && window.navigator ? num(window.navigator.deviceMemory, 8) : 8;
+  const monoCues = ctx.quality === 'low' || deviceMemory <= 3;
 
-  function fadeOut(node, src, sec) {
+  function note(ev, name, source) {
+    if (music.history.length >= 40) music.history.shift();
+    music.history.push({ ev, cue: name, source: source || null, t: ac ? +ac.currentTime.toFixed(3) : 0, mb: +(mstats.bytes / 1e6).toFixed(2) });
+  }
+
+  function hold(b) {
+    if (!b || cueHeld.has(b)) return;
+    const n = b.length * b.numberOfChannels * 4;
+    cueHeld.set(b, n);
+    mstats.bytes += n;
+    if (mstats.bytes > mstats.peak) mstats.peak = mstats.bytes;
+  }
+
+  function unhold(b) {
+    const n = cueHeld.get(b);
+    if (n === undefined) return;
+    cueHeld.delete(b);
+    mstats.bytes -= n;
+  }
+
+  const players = () => (music.cur ? [music.cur, ...music.outs] : music.outs);
+  /** A recording of cue `name` is or may become playable (two voice clips that wouldn't decode mean
+   *  this engine can't decode Ogg Opus: no more cues are fetched then). */
+  const cueAvailable = (name) => {
+    const c = cues.get(name);
+    return canCue && !!c && (c.state === 'ready' || (c.state !== 'failed' && !clipsBroken()));
+  };
+
+  /** Drops a decoded cue nobody plays any more. */
+  function releaseCue(c) {
+    if (!c.buf || players().some((p) => p.buf === c.buf) || ending.some((e) => e.buf === c.buf)) return;
+    unhold(c.buf);
+    c.buf = null;
+    c.loopEnd = 0;
+    c.state = 'idle';
+    note('released', c.name);
+  }
+
+  /** Value of a piecewise-linear envelope [[t, v], …] at time t. */
+  function envAt(env, t) {
+    if (t <= env[0][0]) return env[0][1];
+    for (let i = 1; i < env.length; i++) {
+      const [t1, v1] = env[i];
+      if (t <= t1) {
+        const [t0, v0] = env[i - 1];
+        return t1 > t0 ? v0 + (v1 - v0) * (t - t0) / (t1 - t0) : v1;
+      }
+    }
+    return env[env.length - 1][1];
+  }
+
+  /** Schedules a player's gain as the envelope `pts` (ascending, the first at or after now). */
+  function setEnv(p, pts) {
+    const P = p.gain.gain;
+    P.cancelScheduledValues(pts[0][0]);
+    P.setValueAtTime(pts[0][1], pts[0][0]);
+    for (let i = 1; i < pts.length; i++) P.linearRampToValueAtTime(pts[i][1], pts[i][0]);
+    p.env = pts;
+  }
+
+  /** Ramps a player's gain to `to` over [start, start + dur], following its envelope until then. */
+  function fadeTo(p, to, start, dur) {
     const t = ac.currentTime;
-    const p = node.gain;
-    p.cancelScheduledValues(t);
-    p.setValueAtTime(p.value, t);
-    p.linearRampToValueAtTime(0, t + sec);
+    const s = Math.max(start, t);
+    const pts = [[t, envAt(p.env, t)]];
+    for (const q of p.env) if (q[0] > t && q[0] < s) pts.push(q);
+    if (s > t) pts.push([s, envAt(p.env, s)]);
+    pts.push([s + dur, to]);
+    setEnv(p, pts);
+  }
+
+  /** Fades a player out from `at` (never later than already planned) and stops it after. */
+  function fadeOut(p, at) {
+    const s = Math.max(at, ac.currentTime);
+    if (p.fadeEnd <= s + MUSIC_FADE + 1e-6) return;
+    fadeTo(p, 0, s, MUSIC_FADE);
+    p.fadeEnd = s + MUSIC_FADE;
     try {
-      src.stop(t + sec + 0.05);
+      p.src.stop(p.fadeEnd + 0.05);
     } catch { /* not started */ }
   }
 
-  function setMusic(kind) {
-    const k = MUSIC_NAMES.includes(kind) ? kind : 'none';
-    music.want = k;
-    if (!ac) return;
-    if (music.cur && music.cur.name === k) return;
-    if (music.cur) {
-      fadeOut(music.cur.gain, music.cur.src, MUSIC_FADE);
-      music.cur = null;
+  /** Starts `buf` looping, fading in to the cue's level while whatever played before fades out. */
+  function startCue(name, source, buf, loopEnd) {
+    if (music.cur) retire(music.cur);
+    const when = ac.currentTime + CUE_LEAD;
+    const src = ac.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    if (loopEnd) {
+      src.loopStart = 0;
+      src.loopEnd = loopEnd;
     }
-    if (k !== 'none') {
-      queue('loop', k, 1);
-      whenReady('loop:' + k, startMusic);
+    const g = gain(0, musicBus);
+    const hand = gain(1, g);
+    src.connect(hand);
+    const level = source === 'file' ? cueLevel(name) : 1;
+    const len = loopEnd ? Math.round(loopEnd * buf.sampleRate) : buf.length;
+    const p = { name, source, src, hand, gain: g, buf, level, t0: when, len, tail: false, tailEnd: Infinity, fadeEnd: Infinity, env: [[0, 0]], ended: false };
+    src.onended = () => endPlayer(p);
+    src.start(when);
+    setEnv(p, [[when, 0], [when + MUSIC_FADE, level]]);
+    for (const o of music.outs) fadeOut(o, when);
+    music.cur = p;
+    note('start', name, source);
+  }
+
+  /**
+   * The playing cue gives way to another (or to silence). A recording is swapped for a copy of what
+   * comes next, so its buffer can go now; then it fades out under the next cue, or by itself before
+   * the copy runs out. A procedural loop just plays on until then.
+   */
+  function retire(p) {
+    if (music.cur === p) music.cur = null;
+    if (!music.outs.includes(p)) music.outs.push(p);
+    if (p.source === 'file' && !p.tail) {
+      if (ac.state !== 'running') {
+        endPlayer(p, true); // nobody hears it: stop it and release its buffer at once
+        return;
+      }
+      try {
+        toTail(p);
+      } catch (err) {
+        warnOnce('music hand-off failed: ' + ((err && err.message) || err));
+        endPlayer(p, true);
+        return;
+      }
+    }
+    const t = ac.currentTime;
+    fadeOut(p, music.want === 'none' ? t : (p.tail ? p.tailEnd : t + CUE_TAIL) - MUSIC_FADE - 0.05);
+  }
+
+  /** Reads `out.length` frames of channel c from frame `at`. */
+  function readChannel(buf, c, at, out) {
+    if (typeof buf.copyFromChannel === 'function') buf.copyFromChannel(out, c, at);
+    else out.set(buf.getChannelData(c).subarray(at, at + out.length));
+  }
+
+  /**
+   * Swaps a playing recorded cue for a copy of its next CUE_TAIL seconds, sample-aligned, through a
+   * 20 ms crossfade of the two (the same samples), and lets the full buffer go when it has stopped.
+   */
+  function toTail(p) {
+    const buf = p.buf, rate = buf.sampleRate, len = p.len;
+    const T = ac.currentTime + CUE_LEAD;
+    // One copy at a time: a copy still fading from an earlier change (cues switched in quick
+    // succession) goes in a quarter of a second.
+    for (const o of music.outs) {
+      if (o === p || !o.tail || o.fadeEnd <= T + TAIL_CUT) continue;
+      fadeTo(o, 0, ac.currentTime, TAIL_CUT);
+      o.fadeEnd = ac.currentTime + TAIL_CUT;
+      try {
+        o.src.stop(o.fadeEnd + 0.02);
+      } catch { /* not started */ }
+    }
+    const n = Math.min(len, Math.round(CUE_TAIL * rate));
+    let idx = ((T - p.t0) * rate) % len; // where the cue's source is at T, in frames
+    if (idx < 0) idx += len;
+    const from = Math.floor(idx);
+    const tb = ac.createBuffer(buf.numberOfChannels, n + 1, rate);
+    for (let c = 0; c < buf.numberOfChannels; c++) {
+      const d = tb.getChannelData(c);
+      for (let k = 0, at = from; k < d.length; at = 0) {
+        const m = Math.min(d.length - k, len - at); // wraps at the loop end, as the source would
+        readChannel(buf, c, at, d.subarray(k, k + m));
+        k += m;
+      }
+    }
+    hold(tb);
+    const ts = ac.createBufferSource();
+    ts.buffer = tb;
+    const th = gain(0, p.gain);
+    ts.connect(th);
+    th.gain.setValueAtTime(0, T);
+    th.gain.linearRampToValueAtTime(1, T + HANDOFF);
+    p.hand.gain.setValueAtTime(1, T);
+    p.hand.gain.linearRampToValueAtTime(0, T + HANDOFF);
+    const old = { name: p.name, src: p.src, hand: p.hand, buf, at: now() + (CUE_LEAD + HANDOFF) * 1000 + HANDOFF_WAIT };
+    ending.push(old);
+    old.src.onended = () => finishHandoff(old);
+    try {
+      old.src.stop(T + HANDOFF + 0.01);
+    } catch { /* not started */ }
+    ts.onended = () => endPlayer(p);
+    ts.start(T, (idx - from) / rate);
+    Object.assign(p, { src: ts, hand: th, buf: tb, tail: true, tailEnd: T + n / rate });
+    note('tail', p.name, p.source);
+  }
+
+  /** A handed-off cue source has stopped (or never said so): release it and its buffer. */
+  function finishHandoff(o) {
+    const i = ending.indexOf(o);
+    if (i < 0) return;
+    ending.splice(i, 1);
+    try {
+      o.src.disconnect();
+      o.hand.disconnect();
+    } catch { /* already disconnected */ }
+    try {
+      o.src.buffer = null;
+    } catch { /* ignore */ }
+    const c = cues.get(o.name);
+    if (c && c.buf === o.buf) releaseCue(c);
+    pump();
+  }
+
+  function endPlayer(p, stopNow) {
+    if (p.ended) return;
+    p.ended = true;
+    if (stopNow) {
+      try {
+        p.src.stop();
+      } catch { /* not started */ }
+    }
+    if (music.cur === p) music.cur = null;
+    const i = music.outs.indexOf(p);
+    if (i >= 0) music.outs.splice(i, 1);
+    try {
+      p.src.disconnect();
+      p.hand.disconnect();
+      p.gain.disconnect();
+    } catch { /* already disconnected */ }
+    try {
+      p.src.buffer = null;
+    } catch { /* ignore */ }
+    if (p.tail) unhold(p.buf);
+    else if (p.source === 'file') {
+      const c = cues.get(p.name);
+      if (c && c.buf === p.buf) releaseCue(c);
+    }
+    note('end', p.name, p.source);
+    if (!disposed) pump();
+  }
+
+  /** Decodes at 48 kHz whatever the game's context runs at. */
+  function decodeCue(data) {
+    let dc = null;
+    if (OAC) {
+      try {
+        offline = offline || new OAC(2, 1, CUE_RATE);
+        dc = offline;
+      } catch { /* no offline context after all */ }
+    }
+    if (!dc && ac.sampleRate === CUE_RATE) dc = ac;
+    if (!dc) return Promise.reject(new Error('no 48 kHz decoder'));
+    return new Promise((resolve, reject) => {
+      const p = dc.decodeAudioData(data, resolve, (err) => reject(err || new Error('decode failed')));
+      if (p && typeof p.catch === 'function') p.catch(() => {});
+    });
+  }
+
+  /** Down-mixes a decoded stereo cue to one channel (low memory), releasing the stereo buffer. */
+  function toMono(buf) {
+    const n = buf.length;
+    const m = ac.createBuffer(1, n, buf.sampleRate);
+    hold(m);
+    const d = m.getChannelData(0);
+    const B = 65536, a = new Float32Array(B), b = new Float32Array(B);
+    for (let i = 0; i < n; i += B) {
+      const k = Math.min(B, n - i);
+      readChannel(buf, 0, i, a.subarray(0, k));
+      readChannel(buf, 1, i, b.subarray(0, k));
+      for (let j = 0; j < k; j++) d[i + j] = 0.5 * (a[j] + b[j]);
+    }
+    unhold(buf);
+    return m;
+  }
+
+  /** Fetches and decodes a cue: one at a time, and only once no other cue's buffer is held. */
+  function load(c) {
+    if (decoding || c.state !== 'idle' || ending.length) return;
+    for (const o of cues.values()) if (o !== c && o.state === 'ready') return;
+    c.state = 'loading';
+    decoding = c;
+    const t0 = now();
+    note('load', c.name);
+    Promise.resolve()
+      .then(() => fetch(gameUrl(c.entry.file)))
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.arrayBuffer();
+      })
+      .then(decodeCue)
+      .then((buf) => {
+        if (buf.sampleRate !== CUE_RATE) throw new Error(`decoded at ${buf.sampleRate} Hz`);
+        // Exactly the loop; a decoder that left the end padding on gets loopEnd instead.
+        const extra = buf.length - c.entry.samples;
+        if (extra < 0 || extra >= 960) throw new Error(`decoded ${buf.length} samples, not ${c.entry.samples}`);
+        return buf;
+      })
+      .then(
+        (buf) => {
+          decoding = null;
+          if (disposed) return;
+          hold(buf);
+          if (monoCues && buf.numberOfChannels > 1) {
+            try {
+              buf = toMono(buf);
+            } catch (err) {
+              warnOnce('music down-mix failed: ' + ((err && err.message) || err));
+            }
+          }
+          c.buf = buf;
+          c.loopEnd = buf.length > c.entry.samples ? c.entry.samples / CUE_RATE : 0;
+          c.state = 'ready';
+          mstats.decodes++;
+          mstats.decodeMs = Math.round(now() - t0);
+          note('decoded', c.name);
+        },
+        (err) => {
+          decoding = null;
+          c.state = 'failed';
+          c.why = String((err && err.message) || err);
+          mstats.failed++;
+          note('failed', c.name);
+          if (!disposed) warnOnce(`music ${c.name} unavailable (${c.why}); playing the synthesized loop`);
+        },
+      )
+      .then(pump)
+      .catch((err) => warnOnce('music failed: ' + ((err && err.message) || err)));
+  }
+
+  /** The procedural loop of cue k: now if rendered, else when it is. */
+  function standIn(k) {
+    const key = 'loop:' + k;
+    const b = bufs.get(key);
+    if (b) {
+      if (!(music.cur && music.cur.name === k)) {
+        mstats.standIns++;
+        startCue(k, 'synth', b, 0);
+      }
+      return;
+    }
+    if (music.synthWait.has(k)) return;
+    music.synthWait.add(k);
+    queue('loop', k, 1);
+    whenReady(key, () => {
+      music.synthWait.delete(k);
+      pump();
+    });
+  }
+
+  /** Brings the music toward music.want: releases, loads, starts, stands in. Idempotent; a call
+   *  made while it runs (a player ending inside startCue) runs it once more afterwards. */
+  let pumping = false, pumpAgain = false;
+  function pump() {
+    if (!ac || disposed) return;
+    if (pumping) {
+      pumpAgain = true;
+      return;
+    }
+    pumping = true;
+    try {
+      do {
+        pumpAgain = false;
+        pumpOnce();
+      } while (pumpAgain);
+    } catch (err) {
+      warnOnce('music failed: ' + ((err && err.message) || err)); // never into an onended handler or the game
+    } finally {
+      pumping = false;
     }
   }
 
-  function startMusic() {
+  function pumpOnce() {
     const k = music.want;
-    if (music.cur || k === 'none') return;
-    const b = bufs.get('loop:' + k);
-    if (!b) return;
-    const src = ac.createBufferSource();
-    src.buffer = b;
-    src.loop = true;
-    const g = gain(0, musicBus);
-    src.connect(g);
-    const t = ac.currentTime;
-    g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(1, t + MUSIC_FADE);
-    src.start(t);
-    music.cur = { name: k, src, gain: g };
+    for (const c of cues.values()) if (c.state === 'ready' && c.name !== k && c.name !== music.ahead) releaseCue(c);
+    const next = k !== 'none' ? k : music.ahead;
+    if (next && cueAvailable(next) && cues.get(next).state === 'idle') load(cues.get(next));
+    if (k === 'none') return;
+    const c = cues.get(k);
+    const cur = music.cur;
+    if (cur && cur.name === k && (cur.source === 'file' || !cueAvailable(k))) return;
+    if (c.state === 'ready') {
+      startCue(k, 'file', c.buf, c.loopEnd); // also takes over from a stand-in
+      return;
+    }
+    if (!cur && (!cueAvailable(k) || music.waited > CUE_WAIT)) standIn(k);
+  }
+
+  /** §11 setMusic('title'|'battle'|'lastStand'|'none'): crossfades to that cue. Never throws. */
+  function setMusic(kind) {
+    const k = MUSIC_NAMES.includes(kind) ? kind : 'none';
+    if (k !== music.want) music.waited = 0;
+    music.want = k;
+    if (k !== 'none') music.ahead = null;
+    if (!ac) return;
+    try {
+      if (music.cur && music.cur.name !== k) retire(music.cur);
+      pump();
+    } catch (err) {
+      warnOnce('music failed: ' + ((err && err.message) || err));
+    }
+  }
+
+  /** Per frame: releases hand-offs whose end never came, and keeps waiting cues moving. */
+  function tickMusic() {
+    try {
+      const t = now();
+      const gap = music.tickAt < 0 ? 0 : clamp((t - music.tickAt) / 1000, 0, WAIT_STEP);
+      music.tickAt = t;
+      for (let i = ending.length - 1; i >= 0; i--) if (t > ending[i].at) finishHandoff(ending[i]);
+      if (music.want !== 'none' && !(music.cur && music.cur.source === 'file')) {
+        music.waited += gap;
+        pump();
+      }
+    } catch (err) {
+      warnOnce('music failed: ' + ((err && err.message) || err));
+    }
+  }
+
+  function musicStats() {
+    const cur = music.cur;
+    const by = (st) => [...cues.values()].filter((c) => c.state === st).map((c) => c.name);
+    return {
+      want: music.want,
+      playing: cur ? cur.name : 'none',
+      source: cur ? cur.source : null,
+      level: cur ? cur.level : 0,
+      loading: decoding ? decoding.name : null,
+      ready: by('ready'),
+      failed: by('failed'),
+      outgoing: music.outs.length,
+      mono: monoCues,
+      bytes: mstats.bytes,
+      peakBytes: mstats.peak,
+      mb: mstats.bytes / 1048576,
+      decodes: mstats.decodes,
+      decodeMs: mstats.decodeMs,
+      failures: mstats.failed,
+      standIns: mstats.standIns,
+      duck: mix.musicDuck,
+      /** The music duck's gain as the context computes it now (follows the ramp toward `duck`). */
+      duckGain: musicDuck ? musicDuck.gain.value : 1,
+      history: music.history.slice(),
+    };
   }
 
   const amb = { kind: 'none', drumT: 6, hornT: 18, gullT: 4 };
@@ -777,7 +1235,7 @@ export function createAudio(ctx) {
     const t = ac.currentTime;
     const mode = ctx.mode;
     const speaking = t < mix.duckUntil;
-    const md = speaking ? 0.55 : 1;
+    const md = speaking ? (music.cur && music.cur.source === 'file' ? MUSIC_DUCK.file : MUSIC_DUCK.synth) : 1;
     const ad = (mode === 'paused' ? 0.45 : mode === 'gameover' ? 0.6 : 1) * (speaking ? 0.75 : 1);
     if (md !== mix.musicDuck) {
       mix.musicDuck = md;
@@ -869,7 +1327,7 @@ export function createAudio(ctx) {
 
   const voiceOff = () => !!ctx.settings && ctx.settings.voice === false;
   /** Clip files are relative to the game root (index.html's folder). */
-  const clipUrl = (file) => new URL('../../' + String(file).replace(/^\/+/, ''), import.meta.url).href;
+  const clipUrl = gameUrl;
 
   function decode(data) {
     return new Promise((resolve, reject) => {
@@ -1260,7 +1718,8 @@ export function createAudio(ctx) {
       playSfx('draw', { volume: 0.6, prio: 2 });
     },
     dayStart(d) {
-      if (num(d.day, 1) >= 3) queue('loop', 'lastStand', 2); // ready before the Kolonos
+      // Without the recording, the procedural lastStand loop is rendered before the Kolonos.
+      if (num(d.day, 1) >= 3 && !cueAvailable('lastStand')) queue('loop', 'lastStand', 2);
       // A new day, or a restart from the pause menu: whatever was being said is over.
       if (ac) {
         held = null;
@@ -1351,6 +1810,7 @@ export function createAudio(ctx) {
       held = null;
       cutSpeech(); // voices turned off in the settings
     }
+    tickMusic();
     if (ac.state !== 'running') return;
     const d = clamp(num(dt, 0), 0, 0.1);
     for (const L of layers) if (L.nodes) updateLayerPan(L, false);
@@ -1377,6 +1837,12 @@ export function createAudio(ctx) {
 
   if (ac) applyVolumes();
 
+  // The title screen follows the boot: decode its cue ahead of need.
+  if (canCue) {
+    music.ahead = 'title';
+    pump();
+  }
+
   /** Public play() for other modules. One that plays 'step' itself takes over footsteps. */
   function play(name, opts) {
     if (name === 'step') steps.external = true;
@@ -1395,7 +1861,7 @@ export function createAudio(ctx) {
     prerender,
     preloadVoice,
     canPlayClips,
-    /** Queues a loop for rendering ahead of need (e.g. 'lastStand'). */
+    /** Queues a procedural loop (a bed, or a music cue's fallback) or an SFX for rendering ahead of need. */
     preload(name) {
       if (LOOPS[name]) queue('loop', name, 2);
       else if (SFX[name]) queue('sfx', name, 2);
@@ -1417,6 +1883,7 @@ export function createAudio(ctx) {
         ready: bufs.size,
         mb: stats.bytes / 1048576,
         music: music.cur ? music.cur.name : 'none',
+        cues: musicStats(),
         ambience: amb.kind,
         heartbeat: hb.on,
         voice: {
@@ -1449,6 +1916,10 @@ export function createAudio(ctx) {
     dispose() {
       for (const off of offs) off();
       if (ac) cutSpeech();
+      disposed = true;
+      for (const p of players().slice()) endPlayer(p, true);
+      for (const o of ending.slice()) finishHandoff(o);
+      for (const c of cues.values()) releaseCue(c);
       if (hasWindow && window.removeEventListener) for (const n of ['pointerdown', 'touchend', 'keydown']) window.removeEventListener(n, onGesture, { capture: true });
       for (const slot of pool) slot.w.terminate();
       pool.length = 0;

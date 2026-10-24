@@ -124,19 +124,35 @@ build step. The Android app is a small Kotlin host around a full-screen WebView:
   * `js/game/`: rules, combos, the player, combat, enemy and ally AI, and the campaign.
   * `js/gfx/`: procedural textures, the world, skinned characters, the first-person arms and
     weapons, and particles and camera effects.
-  * `js/audio/`: every sound and the music, synthesized with WebAudio. The only audio files are
-    the voice lines in `audio/voice/`: Leonidas, Dienekes and the other Greeks speak the Greek of
-    480 BC, read in Modern Greek pronunciation the way Greek schools read ancient texts
-    (subtitled in Greek capitals over the English); the narrator and the Agoge use the
-    phone's text-to-speech in English.
+  * `js/audio/`: the sound effects and ambience, synthesized with WebAudio, plus two kinds of
+    audio file:
+    * The music: three pre-rendered, seamless Ogg Opus loops in `audio/music/` (the title, the
+      battle, and the last stand on Day 3). They are decoded one at a time and trimmed to the
+      level of the synthesized music they replaced, which stays as the fallback (`loops.js`).
+    * The voice lines in `audio/voice/`: Leonidas, Dienekes and the other Greeks speak the Greek
+      of 480 BC, read in Modern Greek pronunciation the way Greek schools read ancient texts
+      (subtitled in Greek capitals over the English). The narrator and the Agoge use the
+      phone's text-to-speech in English.
   * `js/ui/`: HUD, menus, touch and keyboard input, and the Agoge.
 * `src/main/java/com/thermopylae/`: the Android host. It serves the assets from a secure origin
   and bridges the gyroscope, accelerometer and gravity sensors at 200 Hz, plus vibration and
   text-to-speech, to the page.
+* `tools/music/`: the offline soundtrack pipeline. The scores (`cues/`, with the sources in
+  `cues/NOTES.md`) are rendered, mastered and checked into `audio/music/`. `tools/voice/` makes
+  the voice lines.
 * `DESIGN.md`: the full design and module contracts.
 
-Credits: the Greek voices are rendered offline with [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M)
-(Apache-2.0).
+Credits:
+* The Greek voices are rendered offline with [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M)
+  (Apache-2.0).
+* The music is rendered offline with the **GeneralUser GS** SoundFont v1.471 by S. Christian Collins
+  ([schristiancollins.com](https://schristiancollins.com)). Its licence (v2.0) allows music made with
+  it to be used without restriction, privately or commercially; only the rendered audio ships, never
+  the SoundFont. The licence's note on sample provenance is in `tools/music/README.md`.
+* The music is synthesized from that SoundFont with [spessasynth_core](https://github.com/spessasus/spessasynth_core)
+  (Apache-2.0), a build tool that is not shipped.
+* The music quotes line 1 of the Seikilos epitaph (1st c. AD), an ancient melody in the public domain.
+  Everything else is composed for the game in the ancient Greek idiom.
 
 ### Building and testing
 
@@ -146,6 +162,7 @@ node --test spartan/tests/unit/*.test.mjs     # unit tests: gestures, rules, com
 node spartan/tests/serve.mjs                  # play in a desktop browser at the printed URL
 node spartan/tests/e2e/smoke.mjs              # end-to-end run in headless Chromium (needs Playwright)
 node spartan/tests/e2e/voice-clips.mjs        # the Greeks' recorded voice lines in the running game
+node spartan/tests/e2e/music-cues.mjs         # the recorded music cues in the running game
 ```
 
 You can also add `?debug=1`, `?control=touch|motion`, `?mode=battle&day=3` or
