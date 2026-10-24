@@ -443,6 +443,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         private set
     /** Metal Rocco: can't be hurt, and he's so heavy he walks on the sea floor. */
     var metalT = 0f
+    /** Rocco can't be hurt while spinning in the blue shell (and just after). */
+    private var shellSafeT = 0f
     /** Blocky's bow (made at the crafting table, BOWS tab). */
     var bow = Bow.NONE
     private var bowCooldown = 0f
@@ -612,6 +614,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             for (b in 0 until 30) if (bits and (1 shl b) != 0 && k * 30 + b < stickerOwned.size) stickerOwned[k * 30 + b] = true
         }
         for (m in Mon.entries) monXp[m.ordinal] = storage.load(key("monXp${m.ordinal}"))
+        // Each evolution line shares one level (kept on its first form). Older saves kept it per Pokemon.
+        for (line in MON_LINES) monXp[line[0].ordinal] = line.maxOf { monXp[it.ordinal] }
         houseColor = storage.load(key("houseColor")).coerceIn(0, Homes.PAINTS.lastIndex)
         houseFloors = storage.load(key("floors")).coerceIn(1, Homes.MAX_FLOORS)
         bow = Bow.entries.getOrElse(storage.load(key("bow"))) { Bow.NONE }
@@ -1157,7 +1161,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     private val pickRows = listOf(0..4, 5..9)
     /** Lugia is a legendary: it joins after the 3rd level is beaten (switch to it at home). */
-    fun monUnlocked(m: Mon) = m != Mon.LUGIA || isCleared(2)
+    fun monUnlocked(m: Mon) = when {
+        m == Mon.LUGIA -> isCleared(2)
+        // Evolutions: the line has to reach the right level first.
+        else -> monLevel(m.root) >= m.evolveLevel
+    }
+
+    /** The Pokemon you can pick when starting a new game (evolutions come later, by levelling up). */
+    private val STARTERS = Mon.entries.take(10)
     private fun pickCardW() = min(78f, (viewW - 30f) / 5 - 6f)
     private val pickCardH = 74f
     private fun pickCardX(i: Int): Float {
@@ -1170,25 +1181,25 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun goButtonX() = viewW - 70f
 
     private fun updatePick(tapped: Boolean, num: Int) {
-        if (num in 1..Mon.entries.size) { choose(Mon.entries[num - 1]); return }
-        val n = Mon.entries.size
+        if (num in 1..STARTERS.size) { choose(STARTERS[num - 1]); return }
+        val n = STARTERS.size
         var i = pickChoice.ordinal
         if (nav.left) i = (i + n - 1) % n
         if (nav.right) i = (i + 1) % n
         if (nav.down && i < 5) i = minOf(i + 5, n - 1)
         if (nav.up && i >= 5) i -= 5
-        if (i != pickChoice.ordinal) { pickChoice = Mon.entries[i]; sound.sayAs(pickChoice.label, Voice.MON); sfx(Sound.KICK) }
+        if (i != pickChoice.ordinal) { pickChoice = STARTERS[i]; sound.sayAs(pickChoice.label, Voice.MON); sfx(Sound.KICK) }
         if (nav.a && stateT > 0.4f) { choose(pickChoice); return }
         if (nav.b && stateT > 0.3f) { setState(State.SLOTS); return }
         if (!tapped || stateT < 0.3f) return
         val x = input.tapX
         val y = input.tapY
         if (x > goButtonX() - 30 && y > 206f) { choose(pickChoice); return }
-        for (i in Mon.entries.indices) {
+        for (i in STARTERS.indices) {
             val cx = pickCardX(i)
             val cy = pickCardY(i)
             if (x in cx..(cx + pickCardW()) && y in cy..(cy + pickCardH)) {
-                val m = Mon.entries[i]
+                val m = STARTERS[i]
                 // Tap once to look, tap the same one again (or GO) to pick it.
                 if (pickChoice == m && stateT > 0.6f) { choose(m); return }
                 pickChoice = m
@@ -1530,6 +1541,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         h.vx = approach(h.vx, want, (if (h.onGround) 800f else 520f) * dt)
         // Blue Shell: sprinting on the ground turns Rocco into a spinning shell.
         h.shellSpin = rocco && power == Power.SHELL && sprint && h.onGround && !h.mini && abs(h.vx) > 120f
+        // Still safe for a moment after a spin (jumping out of it, bumping into a wall).
+        if (h.shellSpin) shellSafeT = 0.5f else if (rocco && shellSafeT > 0f) shellSafeT -= dt
         if (jumpBufT > 0f && (h.onGround || (coyoteT > 0f && h.vy >= 0f))) {
             jumpBufT = 0f
             coyoteT = 0f
@@ -1901,7 +1914,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         h.cooldown = 0.45f
         h.swing = 0.2f
         val sx = if (h.facing > 0) h.x + h.w else h.x - 8
-        if (mon == Mon.PUNCHO) {
+        if (mon.base == Mon.PUNCHO) {
             // A strong punch right in front.
             val reach = Body(if (h.facing > 0) h.x + h.w else h.x - 22, h.y, 22f, h.h)
             for (f in foes) if (!f.dying && f.active && f.overlaps(reach)) f.hit(this, 3)
@@ -1909,7 +1922,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             sfx(Sound.KICK)
             return
         }
-        if (mon == Mon.BLOOM) {
+        if (mon.base == Mon.BLOOM) {
             // Vine whip: a short-range lash that hits harder.
             particles += Vine(h.cx, h.y + 8, h.facing)
             val reach = Body(if (h.facing > 0) h.x + h.w else h.x - 34, h.y - 2, 34f, h.h + 4)
@@ -1918,7 +1931,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             return
         }
         spawn(MonShot(sx, h.y + 4, h.facing, mon))
-        sfx(if (mon == Mon.SPARKY) Sound.ZAP else Sound.FIRE)
+        sfx(if (mon.base == Mon.SPARKY) Sound.ZAP else Sound.FIRE)
     }
 
     /** The Pokemon's huge SUPER move. It takes [SUPER_TIME] seconds to charge again. */
@@ -1944,7 +1957,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         bannerT = 1.2f
         shake = 0.4f
         fun onScreen(f: Foe) = f.active && !f.dying && f.x + f.w > camX && f.x < camX + viewW
-        when (mon) {
+        when (mon.base) {
             Mon.SPARKY -> {
                 particles += SuperFx(mx, my, mon, dir, 0f)
                 for (f in foes.filter(::onScreen)) {
@@ -2019,6 +2032,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 if (mon.swimmer) air = AIR_MAX
                 sfx(Sound.BOSS_FIRE)
             }
+            else -> {}
         }
     }
 
@@ -2029,7 +2043,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     /** A Pokemon's level (1 to [MON_MAX_LEVEL]) from its experience points. */
     fun monLevel(m: Mon = mon): Int {
-        var xp = monXp[m.ordinal]
+        var xp = monXp[m.root.ordinal]
         var lv = 1
         while (lv < MON_MAX_LEVEL && xp >= xpToNext(lv)) { xp -= xpToNext(lv); lv++ }
         return lv
@@ -2037,7 +2051,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     /** How far the Pokemon is to its next level, from 0 to 1. */
     fun monXpFraction(m: Mon = mon): Float {
-        var xp = monXp[m.ordinal]
+        var xp = monXp[m.root.ordinal]
         var lv = 1
         while (lv < MON_MAX_LEVEL && xp >= xpToNext(lv)) { xp -= xpToNext(lv); lv++ }
         return if (lv >= MON_MAX_LEVEL) 1f else xp / xpToNext(lv).toFloat()
@@ -2047,12 +2061,18 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     fun gainXp(n: Int, m: Mon = mon) {
         if (monLevel(m) >= MON_MAX_LEVEL) return
         val before = monLevel(m)
-        monXp[m.ordinal] += n
+        monXp[m.root.ordinal] += n
         val after = monLevel(m)
         if (after > before) {
             sfx(Sound.ONEUP)
-            toast("${m.label} grew to LEVEL $after!" + if (after == MON_MAX_LEVEL) " (That's the top level!)" else "")
-            sound.sayAs("${m.label} grew to level $after!", Voice.MON)
+            val evo = m.line.firstOrNull { it.evolveLevel in (before + 1)..after && it != Mon.LUGIA && it.stage > 1 }
+            if (evo != null) {
+                toast("${m.label} can EVOLVE into ${evo.label}! Go to the Pokemon mat at home.")
+                sound.sayAs("What? ${m.label} can evolve!", Voice.HERO)
+            } else {
+                toast("${m.label} grew to LEVEL $after!" + if (after == MON_MAX_LEVEL) " (That's the top level!)" else "")
+                sound.sayAs("${m.label} grew to level $after!", Voice.MON)
+            }
         }
     }
 
@@ -2060,7 +2080,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     fun superTime() = SUPER_TIME * (1f - 0.024f * (monLevel() - 1))
 
     /** SUPER moves hit 4% harder per level (at most about a third harder at level 10). */
-    fun superDmg(n: Int) = n + (n * (monLevel() - 1) * 4 + 50) / 100
+    fun superDmg(n: Int) = n + (n * (monLevel() - 1) * 4 + 50) / 100 + (mon.stage - 1) * (n + 4) / 8
 
     /** The Pokemon's normal attack: one more damage from level 6. */
     val monAttack get() = if (monLevel() >= 6) 2 else 1
@@ -2736,7 +2756,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     f.stomp(this, h)
                     stompCombo(h, f)
                     // Hydro is heavy: his stomps hurt bosses more.
-                    if (h.who == Who.MON && mon == Mon.HYDRO && f.boss) f.hit(this, 2)
+                    if (h.who == Who.MON && mon.base == Mon.HYDRO && f.boss) f.hit(this, 2)
                     // A butt slam lands extra hard.
                     if (h.slamming && f.boss) f.hit(this, 3)
                     h.vy = if (h === leader && input.jump) -340f else -240f
@@ -2823,6 +2843,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (invuln > 0 || starT > 0 || state != State.PLAY) return
         val l = leader
         if (metal && l === rocco) { invuln = 0.5f; sfx(Sound.BUMP); return }
+        // Spinning in the blue shell: nothing can hurt Rocco.
+        if (l === rocco && (rocco.shellSpin || shellSafeT > 0f)) return
         if (dino != null && l === rocco) {
             dismount(scared = true)
             invuln = HURT_SAFE_TIME
@@ -3237,9 +3259,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                             things.any { it is Minecart && abs(it.cx - l.cx) < 24f && abs(it.bottom - l.bottom) < 20f } -> "RIDE"
                             dino != null && l === rocco -> "TONGUE"
                             l === rocco && things.any { it is Dino && it.rider == null && abs(it.cx - l.cx) < 22f } -> "RIDE"
-                            l.who == Who.MON && mon == Mon.PUNCHO -> "PUNCH"
+                            l.who == Who.MON && mon.base == Mon.PUNCHO -> "PUNCH"
                             l.who == Who.BLOCKY -> "MINE"
-                            l.who == Who.MON -> if (mon == Mon.BLOOM) "VINE" else "ATTACK"
+                            l.who == Who.MON -> if (mon.base == Mon.BLOOM) "VINE" else "ATTACK"
                             crazyFireT > 0f -> "FIRE!"
                             crazyIceT > 0f -> "ICE!"
                             power == Power.NONE -> "PUNCH"
@@ -3630,7 +3652,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             near(Furniture.ARCADE) -> "GAME"
             near(Furniture.TRAMPOLINE) -> "BOUNCE"
             near(Furniture.PIANO) -> "MUSIC"
-            homeFloor <= 1 && x in Homes.SHELF_X..(Homes.SHELF_X + 210f) && !near(Furniture.TV) -> "LOOK"
+            x in Homes.SHELF_X..(Homes.SHELF_X + 210f) && !near(Furniture.TV) -> "LOOK"
             else -> null
         }
     }
@@ -3639,10 +3661,22 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
      * The plushie shelves on this floor: the newest plushies downstairs (the rest are in the PLUSHIE BOOK),
      * and the 36 before those in the playroom.
      */
+    /** Draws furniture [f] at [x] in the room (and the plushies, if it's a plushie shelf). */
+    fun drawFurnitureAt(gfx: Gfx, f: Furniture, x: Float, ox: Float = 0f) {
+        Homes.drawFurniture(gfx, f, ox + x - Homes.spot(f), time)
+        val j = f.plushShelf
+        if (j < 0) return
+        // These come after the plushies on the three floors' wall shelves.
+        Plushies.all.filter(::hasPlushie).dropLast(Homes.SHELF_SLOTS * 3 + 12 * j).takeLast(12).forEachIndexed { k, p ->
+            val (px, py) = Homes.plushShelfSpot(x, k)
+            Plushies.draw(this, gfx, p, px + ox, py, 9f)
+        }
+    }
+
     fun drawShelvesWithPlushies(gfx: Gfx, ox: Float) {
         Homes.drawShelves(gfx, ox)
         val owned = Plushies.all.filter(::hasPlushie)
-        val shown = if (homeFloor == 0) owned.takeLast(Homes.SHELF_SLOTS) else owned.dropLast(Homes.SHELF_SLOTS).takeLast(Homes.SHELF_SLOTS)
+        val shown = owned.dropLast(Homes.SHELF_SLOTS * homeFloor).takeLast(Homes.SHELF_SLOTS)
         shown.forEachIndexed { k, p ->
             val (px, py) = Homes.shelfSpot(k)
             Plushies.draw(this, gfx, p, px + ox, py, 14f)
@@ -3810,7 +3844,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
         if (close) { finishPark(); return }
         // Run left and right, jump to reach the high berries.
-        val speed = 150f + if (mon == Mon.SPARKY || mon == Mon.EMBER) 20f else 0f
+        val speed = 150f + if (mon.base == Mon.SPARKY || mon.base == Mon.EMBER) 20f else 0f
         if (input.left) { parkX -= speed * dt; parkFacing = -1 }
         if (input.right) { parkX += speed * dt; parkFacing = 1 }
         parkX = parkX.coerceIn(16f, viewW - 16f)
@@ -4100,7 +4134,35 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         sound.sayAs(mon.label + "!", Voice.MON)
     }
 
+    /** The next form this Pokemon can evolve into right now, if any. */
+    fun evolveReady(): Mon? = mon.nextForm?.takeIf { monUnlocked(it) }
+
+    /** Evolving: the Pokemon flashes white, then it's the next form! (SWITCH can always go back.) */
+    fun evolve() {
+        val next = evolveReady() ?: return
+        if (monPlayT > 0f) return
+        monPlay = "EVOLVE"
+        monPlayT = 1.6f
+        evolveTo = next
+        sfx(Sound.POWERUP)
+        sound.sayAs("What? ${mon.label} is evolving!", Voice.HERO)
+    }
+    private var evolveTo: Mon? = null
+
     private fun finishMonPlay() {
+        if (monPlay == "EVOLVE") {
+            evolveTo?.let { n ->
+                val old = mon.label
+                mon = n
+                sfx(Sound.ONEUP)
+                sound.sayAs("$old evolved into ${n.label}!", Voice.HERO)
+                toast("$old evolved into ${n.label}! (SWITCH can change back any time.)")
+                save()
+            }
+            evolveTo = null
+            monPlay = ""
+            return
+        }
         val (xp, msg) = when (monPlay) {
             "PET" -> 1 to "${mon.label} loves you!"
             "BALL" -> 3 to "Great catch, ${mon.label}!"
@@ -4117,7 +4179,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     fun switchMon(m: Mon) {
-        if (!monUnlocked(m)) { sfx(Sound.BUMP); toast("LUGIA is a legendary! Beat level 3 to meet it."); return }
+        if (!monUnlocked(m)) {
+            sfx(Sound.BUMP)
+            toast(if (m == Mon.LUGIA) "LUGIA is a legendary! Beat level 3 to meet it." else "${m.root.label} has to reach LEVEL ${m.evolveLevel} to evolve into ${m.label}.")
+            return
+        }
         if (m == mon) { monSwitch = false; return }
         mon = m
         monSwitch = false
@@ -4127,7 +4193,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         save()
     }
 
-    private fun monSwitchCard(i: Int): Pair<Float, Float> = (monPanelX() + 8f + (i % 5) * 58f) to (66f + (i / 5) * 58f)
+    private fun monSwitchCard(i: Int): Pair<Float, Float> = (monPanelX() + 6f + (i % 7) * 41.5f) to (62f + (i / 7) * 45f)
+    private val SWITCH_CARD = 39f
 
     private fun updateMonMenu(dt: Float, tapped: Boolean) {
         if (monPlayT > 0f) { monPlayT -= dt; if (monPlayT <= 0f) finishMonPlay(); return }
@@ -4135,13 +4202,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             val n = Mon.entries.size
             if (nav.left) monCursor = (monCursor + n - 1) % n
             if (nav.right) monCursor = (monCursor + 1) % n
-            if (nav.up || nav.down) monCursor = (monCursor + 5) % n
+            if (nav.up) monCursor = (monCursor + n - 7).mod(n)
+            if (nav.down) monCursor = (monCursor + 7) % n
             if (nav.a && stateT > 0.2f) { switchMon(Mon.entries[monCursor]); return }
-            if (nav.b) { monSwitch = false; monCursor = 4; return }
+            if (nav.b) { monSwitch = false; monCursor = 5; return }
             if (!tapped || input.tapX < 0f) return
             for (i in Mon.entries.indices) {
                 val (cx, cy) = monSwitchCard(i)
-                if (input.tapX in cx..(cx + 54f) && input.tapY in cy..(cy + 54f)) { switchMon(Mon.entries[i]); return }
+                if (input.tapX in cx..(cx + SWITCH_CARD) && input.tapY in cy..(cy + 43f)) { switchMon(Mon.entries[i]); return }
             }
             monSwitch = false
             return
@@ -4150,7 +4218,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (nav.right) monCursor = (monCursor + 1) % MON_BUTTONS.size
         if (nav.a && stateT > 0.2f) { monButton(monCursor); return }
         if (nav.b) { monMenu = false; return }
+        if (nav.up && evolveReady() != null) { evolve(); return }
         if (!tapped || input.tapX < 0f) return
+        if (evolveReady() != null && input.tapX in (monPanelX() + 206f)..(monPanelX() + 294f) && input.tapY in 80f..104f) { evolve(); return }
         for (i in MON_BUTTONS.indices) {
             val bx = monButtonX(i)
             if (input.tapX in bx..(bx + 54f) && input.tapY in 168f..194f) { monButton(i); return }
@@ -4175,20 +4245,21 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         gfx.rect(px, 40f, 300f, 160f, 0xFFE8F4E0.toInt())
         if (monSwitch) {
             gfx.shadowText("SWITCH POKEMON", px + 150, 56f, 10f, 0xFFFFD21F.toInt(), 1)
+            val cw = SWITCH_CARD
             Mon.entries.forEachIndexed { i, m ->
                 val (cx, cy) = monSwitchCard(i)
                 val open = monUnlocked(m)
-                gfx.rect(cx, cy, 54f, 54f, if (m == mon) 0xFFFFD21F.toInt() else argb(255, m.color))
-                gfx.rect(cx + 2, cy + 2, 50f, 50f, 0xEEFFFFFF.toInt())
-                TeamArt.mon(gfx, m, cx + 27f, cy + 36f, time + i, 1, false)
-                gfx.text(m.label, cx + 27f, cy + 44f, 6f, 0xFF202020.toInt(), 1)
-                gfx.text("Lv${monLevel(m)}", cx + 27f, cy + 51f, 5.5f, 0xFF1E5A1E.toInt(), 1)
+                gfx.rect(cx, cy, cw, 43f, if (m == mon) 0xFFFFD21F.toInt() else argb(255, m.color))
+                gfx.rect(cx + 1.5f, cy + 1.5f, cw - 3, 40f, 0xEEFFFFFF.toInt())
+                TeamArt.mon(ScaledGfx(gfx, 0.8f, cx + cw / 2, cy + 29f), m, 0f, 0f, time + i, 1, false)
+                gfx.text(m.label, cx + cw / 2, cy + 35f, minOf(5f, (cw - 3) / (m.label.length * 0.62f)), 0xFF202020.toInt(), 1)
+                gfx.text("Lv${monLevel(m)}" + if (m.stage > 1) " ★".repeat(m.stage - 1) else "", cx + cw / 2, cy + 41f, 4.5f, 0xFF1E5A1E.toInt(), 1)
                 if (!open) {
-                    gfx.rect(cx, cy, 54f, 54f, 0xAA101018.toInt())
-                    gfx.shadowText("LOCKED", cx + 27f, cy + 26f, 7f, 0xFFFFD21F.toInt(), 1)
-                    gfx.text("beat level 3", cx + 27f, cy + 36f, 5f, white, 1)
+                    gfx.rect(cx, cy, cw, 43f, 0xAA101018.toInt())
+                    gfx.shadowText("LOCKED", cx + cw / 2, cy + 20f, 6f, 0xFFFFD21F.toInt(), 1)
+                    gfx.text(if (m == Mon.LUGIA) "beat level 3" else "${m.root.label} Lv${m.evolveLevel}", cx + cw / 2, cy + 29f, 4.5f, white, 1)
                 }
-                if (padConnected && monCursor == i) padFrame(gfx, cx - 2, cy - 2, 58f, 58f)
+                if (padConnected && monCursor == i) padFrame(gfx, cx - 2, cy - 2, cw + 4, 47f)
             }
             return
         }
@@ -4205,6 +4276,19 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val hop = when (monPlay) { "BALL" -> -abs(sin(k * 6f)) * 14f; "TRAIN" -> sin(k * 30f) * 2f; else -> sin(time * 3) * 1.5f }
         val mx = px + 150f + (if (monPlay == "TRAIN") sin(k * 10f) * 6f else 0f)
         TeamArt.mon(ScaledGfx(gfx, 2f, mx, 146f + hop), mon, 0f, 0f, time, 1, monPlay.isNotEmpty(), monPlay == "TRAIN")
+        if (monPlay == "EVOLVE") {
+            // Flashing white, and the new form showing through more and more.
+            if ((k * 10).toInt() % 2 == 0) gfx.oval(mx - 34, 90f, 68f, 60f, argb((k / 1.6f * 255).toInt().coerceIn(0, 255), 0xFFFFFF))
+            if (k > 0.8f) evolveTo?.let { TeamArt.mon(ScaledGfx(gfx, 2f, mx, 146f), it, 0f, 0f, time, 1, true) }
+        }
+        evolveReady()?.let { n ->
+            if (monPlay.isEmpty()) {
+                val pulse = (sin(time * 6) * 30).toInt()
+                gfx.rect(px + 206, 80f, 88f, 24f, argb(200 + pulse, 0xFF6AA8))
+                gfx.shadowText("EVOLVE!", px + 250, 92f, 9f, 0xFFFFFFFF.toInt(), 1)
+                gfx.text("into ${n.label}", px + 250, 101f, 5.5f, 0xFFFFFFFF.toInt(), 1)
+            }
+        }
         when (monPlay) {
             "PET" -> for (i in 0 until 4) TeamArt.heart(gfx, mx - 30 + i * 18f, 120f - k * 30f - (i % 2) * 8f, 9f, 0xFFFF6A9A.toInt())
             "BALL" -> {
@@ -4382,14 +4466,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         // Rugs first, then everything else, each wherever it was put.
         for (layerPass in listOf(2, 1, 0)) for (f in Furniture.entries) {
             if (Homes.layer(f) != layerPass || !hasFurniture(f) || furnFloor(f) != homeFloor || f == carrying) continue
-            Homes.drawFurniture(gfx, f, ox + furnX(f) - Homes.spot(f), time)
+            drawFurnitureAt(gfx, f, furnX(f), ox)
         }
         if (homeFloor == 0) {
             Homes.drawMonMat(gfx, ox, time)
             if (hasBed()) Homes.drawBed(gfx, bedStyle, ox + Homes.BED_X)
             drawShelvesWithPlushies(gfx, ox)
         } else {
-            if (homeFloor == 1) drawShelvesWithPlushies(gfx, ox)
+            drawShelvesWithPlushies(gfx, ox)
             if (Furniture.entries.none { furnFloor(it) == homeFloor && hasFurniture(it) }) {
                 gfx.shadowText("An empty floor! Buy furniture for it in the SHOP downstairs.", viewW / 2, 100f, 8f, 0xFFFFF2C8.toInt(), 1)
             }
@@ -5144,7 +5228,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         gfx.sprite(TeamArt.rocco(Power.NONE, 0), viewW / 2 - 84, base - 24 - bob)
         gfx.sprite(TeamArt.blocky(Power.NONE, false), viewW / 2 - 60, base - 24)
         TeamArt.pickaxe(gfx, viewW / 2 - 52, base - 11, -2.3f, 4)
-        Mon.entries.forEachIndexed { i, m -> TeamArt.mon(gfx, m, viewW / 2 - 18 + i * 24f, base, time + i, -1, false) }
+        Mon.entries.take(9).forEachIndexed { i, m -> TeamArt.mon(gfx, m, viewW / 2 - 18 + i * 24f, base, time + i, -1, false) }
         TeamArt.frog(gfx, viewW / 2 + 82, base - 26 - abs(sin(time * 9)) * 4, time)
         if ((time * 2).toInt() % 2 == 0) gfx.shadowText(if (padConnected) "PRESS A TO START" else "TAP TO START", viewW / 2, 222f, 12f, white, 1)
         // Controller setup button (or press - on a controller).
@@ -5186,7 +5270,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF1A3A2A.toInt())
         gfx.shadowText("CHOOSE YOUR POKEMON!", viewW / 2, 24f, 13f, 0xFFFFD21F.toInt(), 1)
         gfx.shadowText("FILE ${slot + 1}  \u2022  tap one to see it, tap again to pick", viewW / 2, 37f, 7f, 0xFFDDDDDD.toInt(), 1)
-        Mon.entries.forEachIndexed { i, m ->
+        STARTERS.forEachIndexed { i, m ->
             val x = pickCardX(i)
             val y = pickCardY(i)
             val w = pickCardW()

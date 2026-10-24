@@ -64,6 +64,14 @@ enum class Furniture(val label: String, val costs: List<Pair<Ore, Int>>, val coi
     FOUNTAIN("FOUNTAIN", listOf(Ore.STONE to 6, Ore.SAPPHIRE to 1), 60, 2, 65),
     ROCKET("ROCKET MODEL", listOf(Ore.IRON to 4), 70, 2, 75),
     CHANDELIER("CHANDELIER", listOf(Ore.GOLD to 3, Ore.DIAMOND to 1), 90, 2, 85),
+    // Shelves for even more plushies (12 each), to put anywhere you like
+    PLUSH_SHELF("PLUSHIE SHELF", listOf(Ore.STONE to 4), 40, 1, 0),
+    PLUSH_SHELF2("BIG PLUSHIE SHELF", listOf(Ore.STONE to 6), 60, 2, 10),
+    PLUSH_SHELF3("PLUSHIE TOWER", listOf(Ore.STONE to 6, Ore.GOLD to 1), 80, 0, 20),
+    ;
+
+    /** The plushie shelves, in order (the plushies on them come after the ones on the wall shelves). */
+    val plushShelf get() = when (this) { PLUSH_SHELF -> 0; PLUSH_SHELF2 -> 1; PLUSH_SHELF3 -> 2; else -> -1 }
 }
 
 /** Beds for the house. Sleep in one to save the game. */
@@ -399,7 +407,7 @@ object Homes {
         Furniture.PIANO -> 170f
         Furniture.TROPHY_CASE -> 280f
         Furniture.HOT_TUB -> 370f
-        Furniture.DISCO_BALL -> 500f
+        Furniture.DISCO_BALL -> 660f
         Furniture.POOL_TABLE -> 560f
         Furniture.FRIDGE -> 704f
         Furniture.STOVE -> 740f
@@ -413,6 +421,9 @@ object Homes {
         Furniture.FOUNTAIN -> 770f
         Furniture.ROCKET -> 832f
         Furniture.CHANDELIER -> 190f
+        Furniture.PLUSH_SHELF -> 278f
+        Furniture.PLUSH_SHELF2 -> 470f
+        Furniture.PLUSH_SHELF3 -> 606f
     }
 
     fun drawFurniture(gfx: Gfx, f: Furniture, ox: Float, t: Float) {
@@ -605,7 +616,8 @@ object Homes {
                 }
             }
             Furniture.FRIDGE, Furniture.STOVE, Furniture.WALL_CLOCK, Furniture.DOG_BED, Furniture.SLIDE, Furniture.ROCKING_HORSE,
-            Furniture.BEAN_BAG, Furniture.STAR_LIGHTS, Furniture.GAMING_PC, Furniture.FOUNTAIN, Furniture.ROCKET, Furniture.CHANDELIER ->
+            Furniture.BEAN_BAG, Furniture.STAR_LIGHTS, Furniture.GAMING_PC, Furniture.FOUNTAIN, Furniture.ROCKET, Furniture.CHANDELIER,
+            Furniture.PLUSH_SHELF, Furniture.PLUSH_SHELF2, Furniture.PLUSH_SHELF3 ->
                 drawMore(gfx, f, x, fy, t)
             Furniture.POOL_TABLE -> {
                 gfx.rect(x, fy - 26, 90f, 8f, 0xFF6A3A1A.toInt())
@@ -722,9 +734,18 @@ object Homes {
                 }
                 gfx.oval(x - 10, 26f, 80f, 40f, 0x22FFF2A0)
             }
+            Furniture.PLUSH_SHELF, Furniture.PLUSH_SHELF2, Furniture.PLUSH_SHELF3 -> {
+                val wood = when (f) { Furniture.PLUSH_SHELF -> 0xFF8A5A2A.toInt(); Furniture.PLUSH_SHELF2 -> 0xFFE8A0C8.toInt(); else -> 0xFFC89A2A.toInt() }
+                gfx.rect(x, fy - 86, 3f, 86f, wood); gfx.rect(x + 37, fy - 86, 3f, 86f, wood)
+                for (k in 0 until 4) gfx.rect(x, fy - 2 - k * 28f, 40f, 3f, wood)
+                gfx.rect(x + 3, fy - 84, 34f, 82f, 0x22000000)
+            }
             else -> {}
         }
     }
+
+    /** Where the plushies sit on a plushie shelf at [x]: [k] from 0 to 11 (4 to a shelf, 3 shelves). */
+    fun plushShelfSpot(x: Float, k: Int): Pair<Float, Float> = (x + 7f + (k % 4) * 9f) to (FLOOR_Y - 4f - (k / 4) * 28f)
 
     /** How wide each piece of furniture is (in the room), for finding space to put it. */
     fun width(f: Furniture): Float = when (f) {
@@ -737,6 +758,7 @@ object Homes {
         Furniture.FRIDGE -> 30f; Furniture.STOVE -> 36f; Furniture.WALL_CLOCK -> 26f; Furniture.DOG_BED -> 50f
         Furniture.SLIDE -> 74f; Furniture.ROCKING_HORSE -> 44f; Furniture.BEAN_BAG -> 36f; Furniture.STAR_LIGHTS -> ROOM_W
         Furniture.GAMING_PC -> 54f; Furniture.FOUNTAIN -> 44f; Furniture.ROCKET -> 24f; Furniture.CHANDELIER -> 60f
+        Furniture.PLUSH_SHELF, Furniture.PLUSH_SHELF2, Furniture.PLUSH_SHELF3 -> 40f
     }
 
     /** 0: stands on the floor, 1: hangs on the wall or ceiling, 2: lies flat on the floor (rugs). */
@@ -755,7 +777,7 @@ object Homes {
         if (hasStairsUp) add((STAIRS_X - 8f)..ROOM_W)
         if (floor == 0 && layer == 0) { add((SHOP_X - 4f)..(SHOP_X + 72f)); add((MON_X - 4f)..(MON_X + 48f)) }
         if (floor == 0 && layer == 0 && hasBed) add((BED_X - 6f)..(BED_X + 62f))
-        if (layer == 1) { add((BED_X - 6f)..(BED_X + 62f)); if (floor <= 1) add(SHELF_X..(SHELF_X + 210f)) }
+        if (layer == 1) { add((BED_X - 6f)..(BED_X + 62f)); add(SHELF_X..(SHELF_X + 210f)) }
         add((ROOM_W - 12f)..(ROOM_W + 100f))
     }
 

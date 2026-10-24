@@ -46,7 +46,7 @@ Only one of Rocco or Blocky is out at a time, with the Pokemon (`TeamGame.team` 
 | `MoreWorlds.kt` | Worlds 3 and 4 (levels 43-84) and World 6 (Spooky World, levels 106-126, `world6`, appended after World 5), built by a seeded level generator plus boss-arena templates. Last level: THE ULTIMATE BATTLE (Y, Q, Z boss rush) |
 | `Monsters.kt` | Newer monsters (Skelly Archer + arrows, Hopper, Gloop, Snapper + seeds, Crusher `z`, Peekaboo `q`, Puffcloud `l`, Spikestack `j`), bonus `Portal`, `Chest`, sunset sky, Dash |
 | `Homes.kt` | `HouseType` (10), `Furniture` (36: `floor` 0-2, `unlock` = levels beaten; `furnitureBits` is a Long saved as `furniture`+`furniture2`), floors (`MAX_FLOORS`, stairs at `STAIRS_X`), `PAINTS` (house colors), the Pokemon mat (`MON_X`), `BedStyle`, house outside/inside drawing (the room is 900 wide and scrolls), `PlushieItem` |
-| `Plushies.kt` | The 250 `Plushie`s (new ones always go at the END: saved by index) (characters use sticker art, animals are drawn from a `Species` + color) |
+| `Plushies.kt` | The 350 `Plushie`s (new ones always go at the END: saved by index) (characters use sticker art, animals are drawn from a `Species` + color) |
 | `Actors.kt` | `Power` (flowers), `Mon` (Pokemon), `Sword` (with durability), `Armor`, `Shield`, and `Hero` (Rocco, Blocky, partner) |
 | `Foes.kt` | Enemies with health bars, Krag Jr. and King Krag (normal, Wonder, Dry Bones) |
 | `Extras.kt` | Villagers, Dennis the dog, minecarts, traps, TNT, bubbles, fish, Endermen, Warden, Ender Dragon, Bomb-bombs |
@@ -115,3 +115,8 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
   `Homes.layer` and `Homes.blocked`.
 * `House3D.kt`: the 3D house (`home3d`, `TeamControls.mode3d` switches the touch layout; blocks saved per floor as
   `b3d<floor>n` + `b3d<floor>_<i>`). It draws the 2D pictures as camera-facing "billboards" (1 block = 30 room px).
+* Evolution (`Evolve.kt`, Actors.kt): `MON_LINES`, `Mon.base` (whose SUPER/physics a form uses; switch on `mon.base`,
+  not `mon`), `root` (XP is kept on the root), `evolveLevel`, `nextForm`. Evolved forms are drawn with `TintGfx` +
+  `ScaledGfx` over their first form. The pick screen only shows `STARTERS` (the first 10).
+* Plushie shelves: wall shelves on every floor (36 each, `drawShelvesWithPlushies`), then the `PLUSH_SHELF*`
+  furniture (12 each, `drawFurnitureAt`).

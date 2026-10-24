@@ -245,7 +245,7 @@ class House3D(private val g: TeamGame) {
             if (g.hasBed()) picture(Homes.BED_X + 28f, 1.3f) { Homes.drawBed(it, g.bedStyle, Homes.BED_X) }
         } else picture(Homes.DOOR_X + 12f, 0.3f) { Homes.drawStairs(it, Homes.DOOR_X - 6f, false) }
         if (g.houseFloors > fl + 1) picture(Homes.STAIRS_X + 12f, 0.3f) { Homes.drawStairs(it, Homes.STAIRS_X - 4f, true) }
-        if (fl <= 1) picture(Homes.SHELF_X + 104f, 0.1f) { g.drawShelvesWithPlushies(it, 0f) }
+        picture(Homes.SHELF_X + 104f, 0.1f) { g.drawShelvesWithPlushies(it, 0f) }
         for (f in Furniture.entries) {
             if (!g.hasFurniture(f) || g.furnFloor(f) != fl) continue
             val fx = g.furnX(f)
@@ -260,7 +260,7 @@ class House3D(private val g: TeamGame) {
                 }
                 continue
             }
-            picture(fx + Homes.width(f) / 2, depth) { Homes.drawFurniture(it, f, fx - Homes.spot(f), time) }
+            picture(fx + Homes.width(f) / 2, depth) { g.drawFurnitureAt(it, f, fx) }
         }
         // Your Pokemon.
         run {

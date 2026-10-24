@@ -45,13 +45,64 @@ enum class Mon(val label: String, val color: Int, val superName: String, val blu
     PUNCHO("PUNCHO", 0xFF8A9AB8.toInt(), "DYNAMIC PUNCH", "Super strong. Punches hard up close. SUPER is the biggest hit in the game!"),
     SPOOKY("SPOOKY", 0xFF7A4AA8.toInt(), "NIGHT SHADE", "Floaty ghost. Glides when you hold JUMP. SUPER scares every bad guy on screen!"),
     LUGIA("LUGIA", 0xFFDCE6F5.toInt(), "AEROBLAST", "Legendary sea bird! Glides AND swims. SUPER blows a giant wind across the screen!"),
+    // Evolutions (unlocked by levelling up their first form)
+    SCORCH("SCORCH", 0xFFE8502A.toInt(), "FIRE FANG", "Ember evolved! A fiery lizard with a horn. SUPER: a bigger ring of fire!"),
+    TIDAL("TIDAL", 0xFF3A6AD8.toInt(), "AQUA TAIL", "Splashy evolved! Fluffy ears, strong swimmer. SUPER: big bubble blast!"),
+    SEEDY("SEEDY", 0xFF5AC8A8.toInt(), "LEAF BLADE", "A little seed dino. Evolves into Sprout, then Bloom!"),
+    SPROUT("SPROUT", 0xFF4AB890.toInt(), "PETAL BEAM", "Seedy evolved! Its bud is about to bloom. SUPER: a beam across the screen!"),
+    ZAPPER("ZAPPER", 0xFFF0942A.toInt(), "THUNDER", "Sparky evolved! Orange and super charged. SUPER zaps everything on screen!"),
+    BRAWLER("BRAWLER", 0xFF7A8AA8.toInt(), "CROSS CHOP", "Puncho evolved! Stronger punches. SUPER: a huge chop!"),
+    MEGAPUNCH("MEGAPUNCH", 0xFF6A7A98.toInt(), "MEGA FISTS", "Four arms! The strongest puncher. SUPER: the biggest hit of all!"),
+    SHADE("SHADE", 0xFF6A3AA8.toInt(), "SHADOW HANDS", "Spooky evolved! Floating ghost hands. SUPER scares everyone!"),
+    PHANTOM("PHANTOM", 0xFF5A2A88.toInt(), "SHADOW BALL", "The grinning ghost! Floats. SUPER: a giant shadow ball!"),
+    PSYKO("PSYKO", 0xFFB8A0D8.toInt(), "PSYSTRIKE", "Mystic's powerful cousin! Floats. SUPER hits everyone AND heals!"),
 }
 
+/** The first-form Pokemon whose moves (SUPER, speed, jumps) an evolution uses. */
+val Mon.base: Mon get() = when (this) {
+    Mon.SCORCH -> Mon.EMBER
+    Mon.TIDAL -> Mon.SPLASHY
+    Mon.SEEDY, Mon.SPROUT -> Mon.BLOOM
+    Mon.ZAPPER -> Mon.SPARKY
+    Mon.BRAWLER, Mon.MEGAPUNCH -> Mon.PUNCHO
+    Mon.SHADE, Mon.PHANTOM -> Mon.SPOOKY
+    Mon.PSYKO -> Mon.MYSTIC
+    else -> this
+}
+
+/** Evolution lines, first form first. All forms in a line share one level. */
+val MON_LINES: List<List<Mon>> = listOf(
+    listOf(Mon.EMBER, Mon.SCORCH, Mon.BLAZE),
+    listOf(Mon.SPLASHY, Mon.TIDAL, Mon.HYDRO),
+    listOf(Mon.SEEDY, Mon.SPROUT, Mon.BLOOM),
+    listOf(Mon.SPARKY, Mon.ZAPPER),
+    listOf(Mon.PUNCHO, Mon.BRAWLER, Mon.MEGAPUNCH),
+    listOf(Mon.SPOOKY, Mon.SHADE, Mon.PHANTOM),
+    listOf(Mon.MYSTIC, Mon.PSYKO),
+    listOf(Mon.LUGIA),
+)
+
+val Mon.line: List<Mon> get() = MON_LINES.first { this in it }
+/** The first form of this Pokemon's line (its level is kept there). */
+val Mon.root: Mon get() = line.first()
+/** 1 for a first form, 2 and 3 for evolutions. */
+val Mon.stage: Int get() = line.indexOf(this) + 1
+/** The level a line has to reach before this form can be used (the first 10 Pokemon are always there). */
+val Mon.evolveLevel: Int get() = when (this) {
+    Mon.SCORCH, Mon.TIDAL, Mon.SPROUT, Mon.BRAWLER, Mon.SHADE -> 4
+    Mon.ZAPPER -> 5
+    Mon.PSYKO -> 6
+    Mon.MEGAPUNCH, Mon.PHANTOM -> 7
+    else -> 1
+}
+/** The Pokemon this one can evolve into next, if any. */
+val Mon.nextForm: Mon? get() = line.getOrNull(line.indexOf(this) + 1)
+
 /** Pokemon that are happy in the water: the team's air lasts twice as long. */
-val Mon.swimmer get() = this == Mon.HYDRO || this == Mon.SPLASHY || this == Mon.LUGIA
+val Mon.swimmer get() = base == Mon.HYDRO || base == Mon.SPLASHY || this == Mon.LUGIA || this == Mon.TIDAL
 
 /** Pokemon that float down slowly while JUMP is held. */
-val Mon.floaty get() = this == Mon.BLAZE || this == Mon.MYSTIC || this == Mon.SPOOKY || this == Mon.LUGIA
+val Mon.floaty get() = base == Mon.BLAZE || base == Mon.MYSTIC || base == Mon.SPOOKY || this == Mon.LUGIA
 
 /**
  * Blocky's swords. Each one is crafted from its material and hits harder than the last.
@@ -166,14 +217,14 @@ class Hero(val who: Who, x: Float, y: Float) :
     val speed get() = when (who) {
         Who.ROCCO -> 120f
         Who.BLOCKY -> 108f
-        Who.MON -> when (mon) { Mon.SPARKY, Mon.EMBER -> 128f; Mon.BLAZE, Mon.MYSTIC, Mon.SPOOKY, Mon.LUGIA -> 115f; else -> 100f }
+        Who.MON -> when (mon.base) { Mon.SPARKY, Mon.EMBER -> 128f; Mon.BLAZE, Mon.MYSTIC, Mon.SPOOKY, Mon.LUGIA -> 115f; else -> 100f }
     }
 
     /** Rocco jumps higher; Blocky is the strong one. */
     val jumpV get() = when (who) {
         Who.ROCCO -> -335f
         Who.BLOCKY -> -305f
-        Who.MON -> when (mon) { Mon.SPARKY, Mon.EMBER, Mon.MYSTIC -> -340f; Mon.BLAZE, Mon.PUNCHO, Mon.LUGIA -> -310f; else -> -295f }
+        Who.MON -> when (mon.base) { Mon.SPARKY, Mon.EMBER, Mon.MYSTIC -> -340f; Mon.BLAZE, Mon.PUNCHO, Mon.LUGIA -> -310f; else -> -295f }
     }
 
     fun draw(g: TeamGame, gfx: Gfx, ox: Float) {

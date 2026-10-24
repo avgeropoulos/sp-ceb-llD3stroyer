@@ -389,6 +389,16 @@ class Frog(x: Float, private val baseY: Float) : Thing(x, baseY, 24f, 24f) {
             g.say(cx, y - 8, lines[line % lines.size], 1.4f)
             line++
             nextLine = 1.6f
+            // Every song line sends out a wave of music notes: bad guys nearby are knocked out,
+            // and even bosses feel it.
+            for (k in 0 until 10) {
+                val a = k * 0.628f
+                g.addParticle(Sparkle(cx, cy, kotlin.math.cos(a) * 130f, sin(a) * 130f, solidRainbow(k * 0.1f, 0f)))
+            }
+            for (f in g.foes) {
+                if (f.dying || !f.active || kotlin.math.hypot(f.cx - cx, f.cy - cy) > 150f) continue
+                f.hit(g, if (f.boss) 6 else 99)
+            }
         }
         if (!gave && x > g.leader.x + 20) {
             gave = true
@@ -541,7 +551,7 @@ class SuperFx(x: Float, y: Float, private val mon: Mon, private val dir: Int, pr
     override fun update(dt: Float) { life -= dt; t += dt }
     override fun draw(gfx: Gfx, ox: Float) {
         val a = (min(1f, life * 2) * 255).toInt()
-        when (mon) {
+        when (mon.base) {
             Mon.SPARKY -> gfx.oval(x + ox - 30, y - 30, 60f, 60f, argb(a / 3, 0xFFF27A))
             Mon.BLAZE -> {
                 // A cone of flames
@@ -604,8 +614,9 @@ class SuperFx(x: Float, y: Float, private val mon: Mon, private val dir: Int, pr
                 gfx.rect(left + ox, y - 8, len, 16f, argb(a, 0xFFFFC8))
                 gfx.rect(left + ox, y - 3, len, 6f, argb(a, 0xFFFFFF))
             }
+            else -> {}
         }
-        if (t < 0.3f && mon == Mon.SPARKY) {
+        if (t < 0.3f && mon.base == Mon.SPARKY) {
             gfx.oval(x + ox - 6, y - 6, 12f, 12f, argb(220, 0xFFFFFF))
         }
     }

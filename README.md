@@ -277,6 +277,21 @@ Walking out of the house puts you on the next level to play (not back on the hou
   penguin, unicorn, dragon, owl, lion), gold and rainbow dragons, and koalas, sheep, monkeys, turtles,
   hamsters and octopuses.
 
+### Evolving Pokemon
+
+* 10 new Pokemon that you get by **evolving**: Ember -> SCORCH -> Blaze, Splashy -> TIDAL -> Hydro,
+  SEEDY -> SPROUT -> Bloom, Sparky -> ZAPPER, Puncho -> BRAWLER -> MEGAPUNCH, Spooky -> SHADE -> PHANTOM,
+  Mystic -> PSYKO. A whole line shares one level; new forms unlock at levels 4 to 7.
+* When one is ready, the Pokemon menu at home shows a glowing **EVOLVE!** button. **SWITCH** goes back and
+  forth between all the forms you've unlocked. Evolved forms hit a little harder.
+* **Ring-Ding Frog** is stronger: every song line sends out a wave of music notes that knocks out nearby bad
+  guys (and hurts bosses a bit). **Blue Shell**: Rocco can't get hurt while spinning.
+* **350 plushies** (Pokemon, Spotty, King Boo-Hoo, Witch Wanda, dinos, whales, crabs, snails, cows, horses,
+  llamas, squirrels, chickens, bees, more babies...), wall shelves on **every floor**, and three new
+  furniture pieces to put anywhere: PLUSHIE SHELF, BIG PLUSHIE SHELF and PLUSHIE TOWER (12 plushies each).
+
+![Evolutions and new plushies](docs/teamup-evolutions.png)
+
 ### Decorate your house, and the 3D house
 
 * **DECORATE** (top-right at home): walk to any piece of furniture and tap **MOVE**, carry it anywhere (even

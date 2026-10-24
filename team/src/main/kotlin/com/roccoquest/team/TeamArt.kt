@@ -440,6 +440,8 @@ object TeamArt {
             Mon.PUNCHO -> puncho(gfx, cx, bottom, t, facing, walking)
             Mon.SPOOKY -> spooky(gfx, cx, bottom, t, facing)
             Mon.LUGIA -> lugia(gfx, cx, bottom, t, facing)
+            Mon.SCORCH, Mon.TIDAL, Mon.SEEDY, Mon.SPROUT, Mon.ZAPPER, Mon.BRAWLER, Mon.MEGAPUNCH, Mon.SHADE, Mon.PHANTOM, Mon.PSYKO ->
+                Evolve.draw(gfx, m, cx, bottom, t, facing, glow, walking)
         }
     }
 

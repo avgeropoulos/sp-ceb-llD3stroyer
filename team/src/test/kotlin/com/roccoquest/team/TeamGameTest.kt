@@ -551,6 +551,34 @@ class TeamGameTest {
         TeamControls.mode3d = false
     }
 
+    @Test fun pokemonEvolveAndSwitchBack() {
+        startPlaying()
+        game.coins = 100
+        // Ember's line: Scorch unlocks at level 4.
+        game.switchMon(Mon.EMBER)
+        assertEquals(Mon.EMBER, game.mon)
+        assertTrue(!game.monUnlocked(Mon.SCORCH))
+        game.switchMon(Mon.SCORCH)
+        assertEquals(Mon.EMBER, game.mon, "not yet")
+        while (game.monLevel() < 4) game.gainXp(5)
+        assertEquals(Mon.SCORCH, game.evolveReady())
+        goHome()
+        walkHomeTo(Homes.MON_X + 20f)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        game.evolve()
+        run(2f)
+        assertEquals(Mon.SCORCH, game.mon, "evolved!")
+        assertEquals(4, game.monLevel(), "evolutions share the level")
+        // And back again.
+        game.switchMon(Mon.EMBER)
+        assertEquals(Mon.EMBER, game.mon)
+        // Every Pokemon can be drawn, and evolved ones use their first form's SUPER.
+        val img = BufferedImage(400, 100, BufferedImage.TYPE_INT_ARGB)
+        Mon.entries.forEachIndexed { i, m -> TeamArt.mon(AwtGfx(img, 1f), m, 10f + i * 19f, 80f, 0f, 1, false) }
+        assertEquals(Mon.EMBER, Mon.SCORCH.base)
+        assertEquals(20, Mon.entries.size)
+    }
+
     @Test fun funnyScenesAndSpotty() {
         // Every scene plays all the way through without trouble, then goes to the map.
         startPlaying()
@@ -2011,8 +2039,8 @@ class TeamGameTest {
     }
 
     @Test fun aHundredPlushies() {
-        assertEquals(250, Plushies.all.size)
-        assertEquals(250, Plushies.all.map { it.name }.toSet().size, "all different")
+        assertEquals(350, Plushies.all.size)
+        assertEquals(350, Plushies.all.map { it.name }.toSet().size, "all different")
         assertTrue(Plushies.all.any { it.name == "BABY FOX" })
         startPlaying()
         val before = game.plushieCount
