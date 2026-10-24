@@ -58,3 +58,20 @@ jobs:
           files: |
             RoccosQuest.apk
             JavelinStrike.apk
+
+      # Javelin Strike also gets its own fixed release, so its download link never
+      # depends on which branch was built last.
+      - name: Publish Javelin Strike
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: javelin-strike
+          name: "Javelin Strike - Download for Android"
+          prerelease: false
+          make_latest: false
+          body: |
+            Install on Android: download **JavelinStrike.apk** on your phone, open it,
+            and allow "install unknown apps" for your browser if asked.
+
+            Built from ${{ github.sha }} on ${{ github.ref_name }}.
+          files: JavelinStrike.apk

@@ -182,7 +182,7 @@ nobody and nothing breakable around you.
 ## Installing
 
 GitHub Actions builds it together with Rocco's Quest. On your phone, open
-**https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/JavelinStrike.apk**,
+**https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/download/javelin-strike/JavelinStrike.apk**,
 then open the downloaded file and allow your browser to install apps if Android asks.
 
 ## Changing the game
