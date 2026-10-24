@@ -9,10 +9,11 @@ export const NATIVE_INIT = String.raw`(() => {
   const SIG = {
     motionAvailable: [], startMotion: [], stopMotion: [], pollMotion: [], motionInfo: [],
     vibrate: ['int', 'int'], vibratePattern: ['String?'], say: ['String?', 'float', 'float'],
-    stopSpeech: [], rotation: [], lockOrientation: ['boolean'], exit: [],
+    stopSpeech: [], rotation: [], lockOrientation: ['boolean', 'String?'], exit: [],
   };
+  // orient: every lockOrientation call as [lock, orientation]; locked/orientation: the last one.
   const st = {
-    wanted: false, resumed: true, ring: [], dropped: 0, rot: 90, locked: false,
+    wanted: false, resumed: true, ring: [], dropped: 0, rot: 90, locked: false, orientation: null,
     vib: [], said: [], exits: 0, warn: [], calls: {}, orient: [], hidden: false, t: 0,
   };
   const conv = (type, v, name, i) => {
@@ -52,7 +53,7 @@ export const NATIVE_INIT = String.raw`(() => {
     say: (text, p, r) => { st.said.push({ text, p, r }); },
     stopSpeech: () => {},
     rotation: () => st.rot,
-    lockOrientation: (b) => { st.locked = b; st.orient.push(b); },
+    lockOrientation: (b, o) => { st.locked = b; st.orientation = o; st.orient.push([b, o]); },
     exit: () => { st.exits++; },
   };
   const N = {};
@@ -124,10 +125,34 @@ export async function loadPlaywright() {
 
 export const BROWSER_ARGS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist', '--autoplay-policy=no-user-gesture-required'];
 
-/** A phone-like context: 915×412 CSS px landscape at DPR 2.75, touch, mobile. */
-export async function phonePage(browser, { width = 915, height = 412, dpr = 2.75, native = true } = {}) {
+/**
+ * Init script of phonePage({ grip }), the same seed as lib.mjs's newPage({ grip }): before each
+ * load, merges { grip, gripChosen: true } into the stored settings unless they already hold a grip,
+ * so the review-device scripts keep the window grip whatever DEFAULT_GRIP is (docs-hilt-grip.md
+ * §H.2). Unreadable stored settings are left alone.
+ */
+function seedGrip(grip) {
+  try {
+    const key = 'thermopylae.settings';
+    const str = localStorage.getItem(key);
+    const s = str == null ? {} : JSON.parse(str);
+    if (!s || typeof s !== 'object' || Array.isArray(s) || 'grip' in s) return;
+    s.grip = grip;
+    s.gripChosen = true;
+    localStorage.setItem(key, JSON.stringify(s));
+  } catch {
+    /* no storage on this page (about:blank), or not JSON */
+  }
+}
+
+/**
+ * A phone-like context: 915×412 CSS px landscape at DPR 2.75, touch, mobile.
+ * grip seeds the stored settings' grip: 'window' (default), 'hilt', or null for none.
+ */
+export async function phonePage(browser, { width = 915, height = 412, dpr = 2.75, native = true, grip = 'window' } = {}) {
   const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: dpr, isMobile: true, hasTouch: true });
   if (native) await context.addInitScript(NATIVE_INIT);
+  if (grip) await context.addInitScript(seedGrip, grip);
   const page = await context.newPage();
   page.errors = [];
   page.logs = [];

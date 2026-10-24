@@ -1,7 +1,7 @@
 <!doctype html>
 <!-- UI sandbox: hud.js, menus.js, input.js and training.js on a stub ctx.
      ?view=title|settings|pause|gameover|howto|safety|hud|hud-banner|hud-wave|hud-dayfade|hud-kolonos|hud-volley|hud-spearcam|touch|motion|training
-     &control=touch|motion &left=1 &tab=<tab> &step=<n> &motion=1 (motion supported) &spear=1 -->
+     &control=touch|motion &grip=hilt|window &left=1 &tab=<tab> &step=<n> &motion=1 (motion supported) &spear=1 -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -45,6 +45,7 @@
     ctx.settings.leftHanded = params.get('left') === '1';
     ctx.settings.safetyAccepted = params.get('safe') === '1';
     ctx.settings.sensorDebug = params.get('debug') === '1';
+    ctx.applyControls();
     ctx.saveSettings = () => { log.saves++; };
     const store = new Map();
     if (params.get('best')) store.set('thermopylae.best', JSON.parse(params.get('best')));
@@ -164,6 +165,7 @@
         if (mode === 'training') ctx.training.start();
       }
       ctx.input.motion = (mode === 'battle' || mode === 'training') && ctx.settings.control === 'motion';
+      ctx.applyControls();
       ctx.events.emit('modeChanged', { mode, prev });
     };
     ctx.resume = () => { if (ctx.mode === 'paused') ctx.setMode(pausedFrom, { resume: true }); };

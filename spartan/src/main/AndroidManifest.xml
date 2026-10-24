@@ -35,6 +35,12 @@
         <meta-data android:name="android.webkit.WebView.EnableSafeBrowsing" android:value="false" />
         <meta-data android:name="android.webkit.WebView.MetricsOptOut" android:value="true" />
 
+        <!-- sensorLandscape is only the cold-start default for a first install (touch, landscape).
+             The game asks for its orientation through NativeBridge.lockOrientation (portrait for the
+             hilt grip), and MainActivity applies the stored one in onCreate before the WebView
+             exists, so a hilt player sees one rotation of the starting window at launch.
+             configChanges holds orientation|screenSize|smallestScreenSize|screenLayout, so a
+             rotation never recreates the Activity or reloads the WebView. -->
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|keyboard|navigation|uiMode|density|fontScale|locale|layoutDirection"

@@ -29,8 +29,8 @@ import android.window.OnBackInvokedDispatcher
 
 /**
  * Hosts the game in a full-screen [WebView] served by [AssetServer], with [NativeBridge] exposed
- * as `window.SpartanNative`. Handles immersive mode, display cutouts, back, the WebView
- * version check and renderer crashes.
+ * as `window.SpartanNative`. Handles the starting orientation, immersive mode, display cutouts,
+ * back, the WebView version check and renderer crashes.
  */
 class MainActivity : Activity() {
     private lateinit var root: FrameLayout
@@ -55,6 +55,14 @@ class MainActivity : Activity() {
         prefer60HzMode(attrs)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) Api28.cutoutShortEdges(attrs)
         window.attributes = attrs
+        // Start in the orientation the game last asked for (portrait for the hilt grip), before any
+        // view exists. The manifest's sensorLandscape is only the first-install default.
+        val orientation = storedOrientation()
+        try {
+            requestedOrientation = HostLogic.requestedOrientation(false, orientation, false)
+        } catch (e: Throwable) {
+            Log.w(TAG, e)
+        }
 
         root = FrameLayout(this)
         root.setBackgroundColor(Color.BLACK)
@@ -66,7 +74,7 @@ class MainActivity : Activity() {
         }
         setContentView(root)
 
-        bridge = NativeBridge(this)
+        bridge = NativeBridge(this, orientation)
         updater = AppUpdater(this) { json ->
             runOnUiThread {
                 webView?.evaluateJavascript("window.dispatchEvent(new CustomEvent('appupdate',{detail:$json}))", null)
@@ -82,6 +90,15 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             backCallback = Api33.registerBack(this) { handleBack() }
         }
+    }
+
+    /** The orientation family NativeBridge.lockOrientation last persisted ("landscape" if none). */
+    private fun storedOrientation(): String = try {
+        val prefs = getSharedPreferences(HostLogic.HOST_PREFS, MODE_PRIVATE)
+        HostLogic.orientationFamily(prefs.getString(HostLogic.PREF_ORIENTATION, null))
+    } catch (e: Throwable) {
+        Log.w(TAG, e)
+        "landscape"
     }
 
     /** Builds the WebView, adds it to the layout and loads the game. False if WebView is unavailable. */
@@ -170,6 +187,7 @@ class MainActivity : Activity() {
         }
     }
 
+    /** A rotation lands here (the manifest's configChanges), never as a recreated Activity. */
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         bridge.updateRotation()

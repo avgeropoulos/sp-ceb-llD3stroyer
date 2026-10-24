@@ -15,6 +15,11 @@
  *   (wv, positive = tip up), and roll about the body-forward axis (wrist roll) is ignored.
  * The blade velocity across the view is (vx, vy) = (−wh, wv); its integral since the swing began is
  * the sweep, whose angle is the slash direction (§3.4).
+ *
+ * A grip profile (GRIPS, setGrip) says how the phone is held. 'window' is all of the above, the blade
+ * out of the back of the phone. 'hilt' (docs-hilt-grip.md B.3) holds it upright in the fist, the
+ * blade out of its top edge: its own elevation and horizontal axis, no look, a cock-back instead of
+ * held-up cuts, a guard learned only from a held guard, and firm-flick thresholds.
  */
 
 const DEG = Math.PI / 180;
@@ -86,6 +91,55 @@ export const GESTURE_DEFAULTS = Object.freeze({
   slashPowerSpan: 10, powerRise: 1.3, thrustPowerSpan: 18,
 });
 
+/**
+ * Grip profiles: the structural switches, plus each grip's thresholds over GESTURE_DEFAULTS
+ * (`params`). The window grip is the recognizer described above. The hilt grip (B.3):
+ * - blade 'top': βabs is the elevation of the blade (+y) in the vertical plane through body-forward;
+ * - sweep 'guardBlade': the horizontal rate is w·A, A = max(cos βc, yawFloor)·up − sin βc·forward
+ *   (βc: the elevation R was captured at), so a roll of the fist and a forearm sweep (yaw) both move
+ *   the tip across the view, and add. Past vertical (cos βc < 0) the up weight is
+ *   cos βc + yawFloor·(1 + cos βc), fading to the true axis as the blade tips back;
+ * - look off; a held-up swing (within upHoldSector of up, from upHoldStartBeta) never slashes:
+ *   tipping the upright blade back is a cock-back, a wind-up once it reaches windupBeta;
+ * - the guard is learned only from a still guard held guardHold (βabs in guardSnap), never in the
+ *   first guardGrace after reset() or setGrip(); settles in range but away from it for guardResnap
+ *   re-snap it. The shift from guardBeta is clamped to guardShift;
+ * - settle 'hilt': still, the screen upright and not facing down;
+ * - a slash or throw whose measured peak is overSpeed or more, or clips the gyro, carries
+ *   `fast: true`. A slash fires early, before its peak: when its swing only gets that fast after
+ *   it fired, the swing's end emits { type: 'overSpeed', fast: true, peak, t } instead;
+ * - throwSettle: after a throw nothing fires until the phone is back at guard (settled) as well as
+ *   postThrowLock, at most AUTO_RESUME. The firm-flick release ends with the blade low, and the way
+ *   back up to the guard would otherwise be an uppercut from a low guard during the spear cam;
+ * - thrustFromGuard: a thrust is a punch from the guard (β′ ≥ upHoldStartBeta). With the blade
+ *   lowered the back of the phone faces down, and the dip before an uppercut moves the fist down and
+ *   forward about the elbow: that is no punch (a punch from there would run along the blade anyway);
+ * - cutThrustLock: no thrust starts this soon after a cut's swing ended. The fist pivots at the
+ *   elbow, below and behind it, so the rebound of a hard chop or uppercut pushes it forward along
+ *   the phone's back, like a punch (a window swing's pivot lies along the blade: no such push);
+ * - params.fastRatio: at the window's 1.5 the next stroke's wind-up can pass for a stroke after its
+ *   own cock-back when it follows a slash's rebound (in the fist the wrist damps that short rebound
+ *   more than the wind-up: 1.5× instead of 1.33×); a real cock-back is 2.5× slower than its stroke,
+ *   and up to 1.65 costs no latency.
+ */
+export const GRIPS = Object.freeze({
+  window: Object.freeze({
+    blade: 'back', sweep: 'gravity', look: true, heldUpCuts: true, upHoldSector: UP_HOLD, yawFloor: 0,
+    guardSnap: Object.freeze([-1.45, 0.9]), guardShift: Object.freeze([-Infinity, Infinity]), settle: 'window',
+    throwSettle: false, thrustFromGuard: false, cutThrustLock: 0, params: Object.freeze({}),
+  }),
+  hilt: Object.freeze({
+    blade: 'top', sweep: 'guardBlade', look: false, heldUpCuts: false, upHoldSector: 60 * DEG,
+    yawFloor: 0.7, overSpeed: 14, throwSettle: true, thrustFromGuard: true, cutThrustLock: 0.15,
+    guardSnap: Object.freeze([0.3, 1.85]), guardShift: Object.freeze([-0.35, 0.25]), settle: 'hilt',
+    guardGrace: 1.0, guardHold: 0.5, guardResnap: 2.0,
+    params: Object.freeze({
+      guardBeta: 1.1, upHoldStartBeta: 0.6, windupBeta: 2.35, dipSector: 0,
+      throwPeak: 4.5, throwFull: 7.5, throwMin: 3.5, slashPowerSpan: 5.5, fastRatio: 1.6,
+    }),
+  }),
+});
+
 /** Sensitivity range (the Agoge calibration may suggest up to 2.2). */
 export const SENSITIVITY_MIN = 0.5;
 export const SENSITIVITY_MAX = 2.2;
@@ -134,17 +188,21 @@ const smoothstep = (a, b, x) => {
   return k * k * (3 - 2 * k);
 };
 
-// Swing modes
-const NORMAL = 0, UP = 1, THROW = 2, DONE = 3;
-const PHASES = ['swing', 'hold-up', 'throw', 'done'];
+// Swing modes (HELD: a hilt cock-back, never a slash; a wind-up if it gets deep enough)
+const NORMAL = 0, UP = 1, THROW = 2, DONE = 3, HELD = 4;
+const PHASES = ['swing', 'hold-up', 'throw', 'done', 'cock-back'];
 
 export class GestureRecognizer {
   /**
-   * @param {{sensitivity?: number, weapon?: 'sword'|'spear', gyroRange?: number, params?: object}} [opts]
-   *   params optionally overrides GESTURE_DEFAULTS (tests, tuning)
+   * @param {{sensitivity?: number, weapon?: 'sword'|'spear', gyroRange?: number, params?: object, grip?: 'window'|'hilt'}} [opts]
+   *   params optionally overrides GESTURE_DEFAULTS and the grip's params (tests, tuning)
    */
-  constructor({ sensitivity = 1, weapon = 'sword', gyroRange = 34.9, params = null } = {}) {
-    this.p = Object.assign({}, GESTURE_DEFAULTS, params || {});
+  constructor({ sensitivity = 1, weapon = 'sword', gyroRange = 34.9, params = null, grip = 'window' } = {}) {
+    this._grip = grip === 'hilt' ? 'hilt' : 'window';
+    this._gp = GRIPS[this._grip];
+    this._hilt = this._gp.blade === 'top';
+    this._params = params;
+    this.p = Object.assign({}, GESTURE_DEFAULTS, this._gp.params, params || {});
     this.gyroRange = gyroRange > 0 ? gyroRange : 34.9;
     this.weapon = 'sword';
     this.setWeapon(weapon);
@@ -158,7 +216,7 @@ export class GestureRecognizer {
     this._lookOut = { yaw: 0 };
     this._dbg = {
       m: 0, yawRate: 0, pitchRate: 0, beta: 0, phase: 'idle', peak: 0, fwdAcc: 0, fwdVel: 0, lookState: 'settled', lastEvent: null,
-      guardBeta: this.p.guardBeta, lastCandidatePeak: 0, lastCandidate: null,
+      guardBeta: this.p.guardBeta, lastCandidatePeak: 0, lastCandidate: null, grip: this._grip,
     };
     this._upY = 1;
     this._upZ = 0;
@@ -171,8 +229,14 @@ export class GestureRecognizer {
     // body-right axis (screen frame), world-fixed between captures
     this._R = [1, 0, 0];
     this._Rok = false;
+    this._rNew = false; // R was captured on this sample
     this._quietT = -Infinity;
     this._wp0 = this._wp1 = this._wp2 = 0;
+    // hilt: the elevation R was last captured at, and the horizontal axis weights it gives (B.1)
+    this._axisBeta = 0;
+    this._axCos = 1;
+    this._axSin = 0;
+    this._axUnit = 1;
     // learned guard elevation (kept across reset: it describes the grip)
     this._guardBeta = this.p.guardBeta;
     this._guardInit = false;
@@ -224,6 +288,40 @@ export class GestureRecognizer {
     this._thrustMaxRate = p.thrustMaxRate / s;
     this._slashSpan = Math.max(0.5, Math.min(p.slashPowerSpan, 0.9 * this.gyroRange - this._peak));
     this._strikeRate = Math.min(p.lookStrike, this._peak);
+  }
+
+  /**
+   * 'window' | 'hilt' (anything else is 'window'): the grip profile (GRIPS). A change rebuilds the
+   * thresholds (GESTURE_DEFAULTS, the grip's params, the constructor's params), re-applies the
+   * sensitivity, resets, forgets the learned guard and drops any look not yet consumed. No-op if
+   * unchanged (main.js calls it on every mode change).
+   */
+  setGrip(grip) {
+    const g = grip === 'hilt' ? 'hilt' : 'window';
+    if (g === this._grip) return;
+    this._grip = g;
+    this._gp = GRIPS[g];
+    this._hilt = this._gp.blade === 'top';
+    this.p = Object.assign({}, GESTURE_DEFAULTS, this._gp.params, this._params || {});
+    const s = this.sens;
+    this.sens = 0;
+    this.setSensitivity(s);
+    this._guardBeta = this.p.guardBeta;
+    this._guardInit = false;
+    this._L = this._Lc;
+    this.reset();
+    this._dbg.grip = g;
+    this._dbg.guardBeta = this._guardBeta;
+  }
+
+  /** The grip profile in use: 'window' | 'hilt'. */
+  get grip() {
+    return this._grip;
+  }
+
+  /** True once the guard the player holds has been learned (the hilt Agoge's grip check waits for it). */
+  get guardLearned() {
+    return this._guardInit;
   }
 
   /** 'sword' | 'spear' (throws only happen with the spear). */
@@ -291,8 +389,20 @@ export class GestureRecognizer {
     this._upRebPeak = 0;
     this._upDir = this._upPeak = this._upSweep = 0;
     this._lockUntil = -Infinity;
+    this._lockGuard = false; // throwSettle: the post-throw lock also waits for the guard
+    this._throwT = -Infinity;
+    this._cutEnd = -Infinity; // the end of the last cut's swing
     this._stillAcc = 0;
     this._settled = false;
+    // hilt guard learning: sample time since reset (the grace), the current settle's length, and
+    // settles in the snap range away from the guard (re-snap)
+    this._gripT = 0;
+    this._holdT = 0;
+    this._resnapT = 0;
+    this._swHeldUp = false; // the current swing is held up (hilt): its candidate says so
+    this._swThrew = false; // the current swing was a throw
+    this._swFast = false; // the current swing's slash or throw carried `fast`
+    this._cHeld = false;
     this._hN = 0;
     // calibration candidate
     this._cActive = false;
@@ -349,28 +459,64 @@ export class GestureRecognizer {
     const wl = Math.sqrt(w[0] * w[0] + w[1] * w[1] + w[2] * w[2]);
     this._upY = u[1];
     this._upZ = u[2];
+    const gp = this._gp;
+    const hilt = this._hilt;
+
+    // Body-right first: the hilt elevation reads it (nothing it reads changes below)
+    this._rNew = false;
+    this._stepRight(w, u, dt, wl, t);
+    const R = this._R;
 
     // Blade elevation, unwrapped past vertical (β > π/2: over the shoulder), and relative to the
     // guard the player holds (expressed as if that guard were at guardBeta).
-    const s = u[1] >= 0 ? 1 : -1;
-    const hxy = Math.sqrt(u[0] * u[0] + u[1] * u[1]);
-    const betaAbs = Math.atan2(-u[2], s * hxy);
-    const locked = t < this._lockUntil;
+    let betaAbs;
+    if (hilt) {
+      // the blade (+y) in the vertical plane through body-forward F = up × R: F.y = u.z·R.x − u.x·R.z
+      betaAbs = Math.atan2(u[1], u[2] * R[0] - u[0] * R[2]);
+      if (this._rNew) {
+        // a strike keeps the horizontal axis of the guard it started from, as it keeps R (B.1).
+        // Past vertical the floor fades out (continuous at π/2, the true axis cos βc at π): a yaw
+        // moves the tip of a blade tipped back the other way, so a chop after a lift keeps its side.
+        const c = Math.cos(betaAbs);
+        this._axisBeta = betaAbs;
+        this._axCos = c >= 0 ? Math.max(c, gp.yawFloor) : c + gp.yawFloor * (1 + c);
+        this._axSin = Math.sin(betaAbs);
+        this._axUnit = 1 / Math.sqrt(this._axCos * this._axCos + this._axSin * this._axSin);
+      }
+    } else {
+      const s = u[1] >= 0 ? 1 : -1;
+      const hxy = Math.sqrt(u[0] * u[0] + u[1] * u[1]);
+      betaAbs = Math.atan2(-u[2], s * hxy);
+    }
     const still = wl < p.settleRate && !this._swActive;
     this._stillAcc = still ? this._stillAcc + dt : 0;
     this._settled = this._stillAcc >= p.settleTime - 1e-9;
-    if (this._settled && !locked && !this._upPend) this._learnGuard(betaAbs, dt);
-    const beta = betaAbs - (this._guardBeta - p.guardBeta);
+    let locked = t < this._lockUntil;
+    if (this._lockGuard) {
+      // throwSettle (hilt): locked until the phone is also back at guard, at most AUTO_RESUME
+      if (!locked && (this.settled || t - this._throwT >= AUTO_RESUME)) this._lockGuard = false;
+      else locked = true;
+    }
+    if (hilt) this._learnGuardHilt(betaAbs, dt, locked);
+    else if (this._settled && !locked && !this._upPend) this._learnGuard(betaAbs, dt);
+    const beta = betaAbs - clamp(this._guardBeta - p.guardBeta, gp.guardShift[0], gp.guardShift[1]);
 
     // Body frame rates
-    this._stepRight(w, u, dt, wl, t);
-    const R = this._R;
     let wh = w[0] * u[0] + w[1] * u[1] + w[2] * u[2];
+    if (hilt) {
+      // w·A, A = max(cos βc, yawFloor)·up − sin βc·F: a roll of the fist about forward and a
+      // forearm sweep (a yaw) both move an upright blade's tip across the view (B.1)
+      const fx = u[1] * R[2] - u[2] * R[1], fy = u[2] * R[0] - u[0] * R[2], fz = u[0] * R[1] - u[1] * R[0];
+      wh = this._axCos * wh - this._axSin * (w[0] * fx + w[1] * fy + w[2] * fz);
+    }
     let wv = w[0] * R[0] + w[1] * R[1] + w[2] * R[2];
     if (this.flipX) wh = -wh;
     if (this.flipY) wv = -wv;
-    const vx = -wh, vy = wv;
-    const m = Math.sqrt(vx * vx + vy * vy);
+    const vx0 = -wh, vy = wv;
+    const m = Math.sqrt(vx0 * vx0 + vy * vy);
+    // (hilt) The rates keep A's yaw floor, so a forearm sweep reaches the slash rate. The sweep is
+    // the tip's path: it uses the unit axis A/|A|, or a cock-back would read up to 1.22× as long.
+    const vx = hilt ? vx0 * this._axUnit : vx0;
     // per-sample values for the helpers (fields, not arguments: no boxed doubles at 200 Hz)
     this._m = m;
     this._beta = beta;
@@ -446,7 +592,8 @@ export class GestureRecognizer {
       }
     } else if (
       !locked && !cutting && m < this._thrustMaxRate && f > this._thrustAcc && this._vf > p.thrustVel &&
-      t - this._lastThrust >= p.thrustRefractory
+      t - this._lastThrust >= p.thrustRefractory && (!gp.thrustFromGuard || beta >= p.upHoldStartBeta) &&
+      t - this._cutEnd >= gp.cutThrustLock
     ) {
       this._cand = true;
       this._candT0 = t;
@@ -490,6 +637,12 @@ export class GestureRecognizer {
    * `frameDt`: the frame's duration in seconds (optional; see the per-call limit below).
    */
   consumeLook(frameDt = 0) {
+    if (!this._gp.look) {
+      // look is off (hilt): still computed for the strike rules (_armQuiet), never shown
+      this._Lc = this._L;
+      this._lookOut.yaw = 0;
+      return this._lookOut;
+    }
     // At most lookStep per call (a 60 fps frame), so no single frame turns the view by more (the
     // rest follows). A longer frame (`frameDt`, s) may take its share of lookRate, so at a lower
     // frame rate the view keeps up with the body instead of trailing behind it.
@@ -524,15 +677,20 @@ export class GestureRecognizer {
     this._prePend = false;
   }
 
-  /** Phone settled (still, no swing) and held in front of the player: screen upright or tilted back toward the eyes. */
+  /**
+   * Phone settled (still, no swing) and held in front of the player. Window: the screen upright or
+   * tilted back toward the eyes. Hilt: the screen upright and not facing down (a held cock-back or a
+   * follow-through below horizontal is not settled).
+   */
   get settled() {
+    if (this._gp.settle === 'hilt') return this._settled && this._upY >= 0.45 && this._upZ >= -0.25;
     return this._settled && (this._upY >= 0.5 || (this._upY >= 0 && this._upZ >= 0.5));
   }
 
   /** Live diagnostics (reused object). */
   get debug() {
     const d = this._dbg;
-    d.phase = this._tLast < this._lockUntil ? 'locked' : this._swActive ? PHASES[this._swMode] : this._cand ? 'thrust' : 'idle';
+    d.phase = this._tLast < this._lockUntil || this._lockGuard ? 'locked' : this._swActive ? PHASES[this._swMode] : this._cand ? 'thrust' : 'idle';
     d.lookState = this._hold
       ? 'hold'
       : this._dlN > 0 || this._target !== this._L
@@ -565,6 +723,8 @@ export class GestureRecognizer {
     if (t < this._tLast) {
       const shift = t - this._tLast;
       this._lockUntil += shift;
+      this._throwT += shift;
+      this._cutEnd += shift;
       this._lastThrust += shift;
       this._lastWindup += shift;
       this._pEnd += shift;
@@ -691,12 +851,14 @@ export class GestureRecognizer {
     R[1] = ry / rl;
     R[2] = rz / rl;
     this._Rok = true;
+    this._rNew = true;
   }
 
   /** Learns the elevation of the guard the player holds (first settle snaps, then slowly). */
   _learnGuard(betaAbs, dt) {
     if (!this._guardInit) {
-      if (betaAbs > -1.45 && betaAbs < 0.9) {
+      const gs = this._gp.guardSnap;
+      if (betaAbs > gs[0] && betaAbs < gs[1]) {
         this._guardBeta = betaAbs;
         this._guardInit = true;
       }
@@ -704,6 +866,43 @@ export class GestureRecognizer {
     }
     if (Math.abs(betaAbs - this._guardBeta) > 0.6) return; // raised, or pointing at the floor: not the guard
     this._guardBeta += (betaAbs - this._guardBeta) * (dt / this.p.guardTau);
+  }
+
+  /**
+   * Hilt guard learning (B.3.3). The pose held while tapping Fight is not the fist guard, so: no
+   * learning during the first guardGrace of samples after reset() or setGrip(); the guard snaps to a
+   * settle held guardHold with βabs in guardSnap; later settles within 0.6 follow it (guardTau); and
+   * settles in the snap range but farther away re-snap it once they add up to more than guardResnap
+   * (counted across settles, cleared by any settle near it), so a wrong first guard heals.
+   */
+  _learnGuardHilt(betaAbs, dt, locked) {
+    const gp = this._gp;
+    this._gripT += dt;
+    if (!this.settled) {
+      this._holdT = 0;
+      return;
+    }
+    this._holdT += dt;
+    if (locked || this._gripT < gp.guardGrace - 1e-9) return;
+    const inSnap = betaAbs >= gp.guardSnap[0] && betaAbs <= gp.guardSnap[1];
+    if (!this._guardInit) {
+      if (inSnap && this._holdT >= gp.guardHold - 1e-9) {
+        this._guardBeta = betaAbs;
+        this._guardInit = true;
+        this._resnapT = 0;
+      }
+      return;
+    }
+    if (Math.abs(betaAbs - this._guardBeta) <= 0.6) {
+      this._guardBeta += (betaAbs - this._guardBeta) * (dt / this.p.guardTau);
+      this._resnapT = 0;
+    } else if (inSnap) {
+      this._resnapT += dt;
+      if (this._resnapT > gp.guardResnap) {
+        this._guardBeta = betaAbs;
+        this._resnapT = 0;
+      }
+    }
   }
 
   /** Records m and says whether it rose by riseRatio over the last riseWindow. */
@@ -789,6 +988,7 @@ export class GestureRecognizer {
         this._cT0 = t;
         this._cLow = -1;
         this._cRev = 0;
+        this._cHeld = this._swActive && this._swHeldUp;
       }
       return;
     }
@@ -809,6 +1009,7 @@ export class GestureRecognizer {
     this._cActive = false;
     if (sweep < p.candSweep) return;
     const e = { type: 'swingCandidate', peak: this._cPeak, sweep, dir: Math.atan2(this._cY, this._cX), t0: this._cT0, t };
+    if (this._cHeld) e.heldUp = true; // hilt: an up swing from the upright guard (the Agoge: lower the blade first)
     this._dbg.lastCandidatePeak = this._cPeak;
     this._dbg.lastCandidate = e;
     if (this._candOut.length >= 32) this._candOut.shift(); // nobody is reading: keep the newest
@@ -1042,6 +1243,9 @@ export class GestureRecognizer {
     this._swFired = false;
     this._swCut = false;
     this._swStrike = false;
+    this._swHeldUp = false;
+    this._swThrew = false;
+    this._swFast = false;
     // a reverse swing soon after a slash, or before the arm has come to rest since, is its way back
     this._swRevWin = this._pValid && (t - this._pEnd <= p.reverseWindow || !this._armQuiet);
     this._swWindMem = t - this._lastWindup <= p.windupMemory || (this._raiseArmed && beta >= p.windupBeta);
@@ -1072,7 +1276,27 @@ export class GestureRecognizer {
     // (`own`: a pending uppercut fired during the next swing: that swing's speed is not its own.)
     const est = !own && this._swActive && this._rising ? Math.max(peak, this.p.powerRise * this._m) : peak;
     const power = clamp((est - this._peak) / this._slashSpan, 0, 1);
-    return { type: 'slash', dir: snapCardinal(dir, this.p.cardinalSnap), rawDir: dir, power, peak, sweep, t };
+    const e = { type: 'slash', dir: snapCardinal(dir, this.p.cardinalSnap), rawDir: dir, power, peak, sweep, t };
+    if (this._isFast(peak)) {
+      e.fast = true;
+      this._swFast = true;
+    }
+    return e;
+  }
+
+  /**
+   * Over-speed (hilt): a measured peak of overSpeed or more, or one that clips the gyro. Nothing
+   * is gained by it (power is long capped): it only warns.
+   */
+  _isFast(peak) {
+    const os = this._gp.overSpeed;
+    return os > 0 && (peak >= os || peak >= 0.95 * this.gyroRange);
+  }
+
+  /** The current swing is held up (hilt): its calibration candidate says so. */
+  _markHeldUp() {
+    this._swHeldUp = true;
+    if (this._cActive) this._cHeld = true;
   }
 
   _fireSlash() {
@@ -1100,6 +1324,8 @@ export class GestureRecognizer {
       if (this._upPend) this._upWindup(); // the overhead swing was this throw's wind-up
       const power = clamp((peak - this._throwPeak) / Math.max(1e-6, this._throwFull - this._throwPeak), 0, 1);
       this._lockUntil = t + this.p.postThrowLock;
+      this._lockGuard = this._gp.throwSettle;
+      this._throwT = t;
       this._lastWindup = -Infinity;
       this._cand = false;
       this._vf = 0;
@@ -1111,7 +1337,13 @@ export class GestureRecognizer {
         this._holdSince = t;
         this._clearLook();
       }
-      this._emit({ type: 'throw', power, peak, t });
+      const e = { type: 'throw', power, peak, t };
+      this._swThrew = true;
+      if (this._isFast(peak)) {
+        e.fast = true;
+        this._swFast = true;
+      }
+      this._emit(e);
     } else if (this._upPend) {
       this._fireUp();
     }
@@ -1210,7 +1442,7 @@ export class GestureRecognizer {
       const pk = this._swPeak;
       // (still speeding up, and still fast: a flicker of the rate as a swing dies out is no stroke)
       const clear = this._rising && m >= this._start && !within(dir, Math.round((dir - Math.PI / 8) / (Math.PI / 4)) * (Math.PI / 4) + Math.PI / 8, p.dirMargin);
-      if (within(dir, -HALF_PI, p.dipSector) && this._swBetaTop <= p.guardBeta + p.dipRaise) {
+      if (p.dipSector > 0 && within(dir, -HALF_PI, p.dipSector) && this._swBetaTop <= p.guardBeta + p.dipRaise) {
         // Down from the guard: maybe a dip to a low guard (an uppercut's cock-back), which peaks
         // at half its short arc. A chop is still clearly speeding up a little further on.
         if (pk >= this._peak && (sweep >= p.dipSweep || (clear && sweep >= p.dipEarlySweep && this._riseAmt >= p.dipRise))) this._swCut = true;
@@ -1232,12 +1464,15 @@ export class GestureRecognizer {
     const cut = this._swCut;
 
     const mode = this._swMode;
+    const gp = this._gp;
     if (mode === NORMAL) {
-      const upHeld = this._swBeta0 >= p.upHoldStartBeta && within(dir, HALF_PI, UP_HOLD);
-      if (upHeld && sweep >= 0.15 && beta >= p.windupBeta && this._raiseArmed && !cut) {
+      const upHeld = this._swBeta0 >= p.upHoldStartBeta && within(dir, HALF_PI, gp.upHoldSector);
+      if (upHeld && sweep >= 0.15 && beta >= p.windupBeta && this._raiseArmed && (!cut || !gp.heldUpCuts)) {
         // phone raised beside or behind the head, too gently for a cut: a wind-up, never a slash
+        // (hilt: the upright blade tipped back is the cock-back, however fast)
         if (this._upPend) this._fireUp();
         this._swMode = DONE;
+        if (!gp.heldUpCuts) this._markHeldUp();
         if (!this._raisedEmitted) this._emitWindup();
         else this._lastWindup = t;
       } else if (this.weapon === 'spear' && this._swWindMem && within(dir, -HALF_PI, p.throwSector)) {
@@ -1247,11 +1482,22 @@ export class GestureRecognizer {
       } else if (cut) {
         if (this._upPend) this._fireUp(); // otherwise it was the uppercut, which comes first
         if (upHeld) {
-          this._swMode = UP;
+          if (gp.heldUpCuts) {
+            this._swMode = UP;
+          } else {
+            // hilt: never a slash; it runs to its end and is a wind-up only if it gets deep enough
+            this._swMode = HELD;
+            this._markHeldUp();
+          }
         } else if (this._slashOk()) {
           this._fireSlash();
         }
       }
+    }
+    if (this._swMode === HELD && sweep >= 0.15 && beta >= p.windupBeta && this._raiseArmed) {
+      this._swMode = DONE;
+      if (!this._raisedEmitted) this._emitWindup();
+      else this._lastWindup = t;
     }
     if (this._swMode === UP && beta < p.windupBeta - 0.3 && sweep >= this._sweep && m <= 0.97 * this._swPeak && !this._rising) {
       // Braking: a minimum-jerk stroke past its peak has remainingRatio(m/peak)·sweep still to
@@ -1265,6 +1511,8 @@ export class GestureRecognizer {
       }
     }
     if (end) {
+      // (hilt: an up swing from the guard too gentle to be a cut is still held up, for the Agoge hint)
+      if (!gp.heldUpCuts && this._swMode === NORMAL && sweep >= 0.15 && this._swBeta0 >= p.upHoldStartBeta && within(dir, HALF_PI, gp.upHoldSector)) this._markHeldUp();
       if (this._upPend) this._fireUp(); // the spear's next swing was no throw: that was the uppercut
       if (this._swMode === UP && this._slashOk()) {
         if (beta >= p.windupBeta && this._raiseArmed) {
@@ -1286,7 +1534,12 @@ export class GestureRecognizer {
         this._pEnd = t;
         this._pPeak = this._swPeak;
       }
+      // (hilt) its slash or throw went out before the swing got that fast: say so now
+      if ((this._swFired || this._swThrew) && !this._swFast && this._isFast(this._swPeak)) {
+        this._emit({ type: 'overSpeed', fast: true, peak: this._swPeak, t });
+      }
       if (!this._upPend) this._prePend = false; // no slash: what it held back was its own run-up
+      if (this._swCut || this._swMode !== NORMAL) this._cutEnd = t; // (cutThrustLock)
       this._swActive = false;
       this._vf = 0;
     }

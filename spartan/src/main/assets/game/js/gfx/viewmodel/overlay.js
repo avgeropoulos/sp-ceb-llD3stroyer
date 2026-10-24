@@ -2,7 +2,8 @@
  * Full-screen overlay quad for the viewmodel pass (DESIGN.md §11): low-HP blood vignette, red hurt
  * flash and the Corinthian-helmet eye-slit mask. Drawn last, depthTest off, in clip space, so it
  * covers the canvas at render scale whatever the vm camera does. Output is premultiplied and in
- * display space (no tone mapping).
+ * display space (no tone mapping). uPortrait (the hilt grip's portrait view, docs-hilt-grip.md
+ * §E.2) switches the helmet to a portrait mask; it is a uniform, so there is no second program.
  */
 import * as THREE from 'three';
 
@@ -19,6 +20,7 @@ uniform float uVignette;
 uniform float uHurt;
 uniform float uHelmet;
 uniform float uAspect;
+uniform float uPortrait;
 uniform float uTime;
 varying vec2 vUv;
 
@@ -52,17 +54,35 @@ void main() {
     // is ~3 cm from the eye, so every edge is far out of focus, with a dull glint on its inner lip.
     // The mask keeps to the outer frame (≤ ~4% of a phone screen darkened by more than 40%): the top
     // edge and the corners are where flankers and the HUD sit.
-    float ax = max(uAspect, 1.0);
-    vec2 q = vec2(p.x * ax, p.y);              // 1 unit = half the screen height
     float side = abs(p.x);                     // 0 centre .. 1 screen edge
-    float brow = 1.08 - 0.07 * exp(-pow(q.x / 0.3, 2.0)) - 0.3 * pow(side, 3.0);
-    float top = smoothstep(brow - 0.15, brow + 0.08, q.y);
-    float cheekEdge = -1.25 + 0.45 * smoothstep(0.62, 1.0, side);
-    float bottom = 1.0 - smoothstep(cheekEdge - 0.1, cheekEdge + 0.18, q.y);
-    float sides = smoothstep(0.95, 1.08, side + 0.05 * q.y * q.y);
-    float mask = max(max(top, bottom), sides);
-    float nasal = 0.16 * exp(-pow(q.x / 0.13, 2.0)) * smoothstep(0.2, 1.0, q.y);
-    mask = max(mask, nasal) * 0.85;
+    float mask;
+    if (uPortrait > 0.5) {
+      // Portrait (~41° across): the eye-opening is wider than the view, so the cheek walls are out
+      // of sight. The brow arches over the top edge, darkest at the corners; the cheek-pieces clip
+      // the lower corners; the edges darken only toward the top and bottom. ≤ ~4% of the screen is
+      // darkened by more than 40%, none of it inside the central 70% × 70%.
+      vec2 q = vec2(p.x * uAspect, p.y);       // 1 unit = half the screen height
+      vec2 n = q.xx / vec2(0.12, 0.07);        // (pow is undefined for a negative base)
+      float y2 = q.y * q.y;
+      float brow = 1.05 - 0.04 * exp(-n.x * n.x) - 0.22 * side * side * side;
+      float top = smoothstep(brow - 0.1, brow + 0.08, q.y);
+      float cheekEdge = -1.14 + 0.34 * smoothstep(0.55, 1.0, side);
+      float bottom = 1.0 - smoothstep(cheekEdge - 0.08, cheekEdge + 0.14, q.y);
+      float sides = smoothstep(0.97, 1.12, side + 0.08 * y2 * y2);
+      float nasal = 0.12 * exp(-n.y * n.y) * smoothstep(0.4, 1.0, q.y);
+      mask = max(max(max(top, bottom), sides), nasal) * 0.85;
+    } else {
+      float ax = max(uAspect, 1.0);
+      vec2 q = vec2(p.x * ax, p.y);            // 1 unit = half the screen height
+      float brow = 1.08 - 0.07 * exp(-pow(q.x / 0.3, 2.0)) - 0.3 * pow(side, 3.0);
+      float top = smoothstep(brow - 0.15, brow + 0.08, q.y);
+      float cheekEdge = -1.25 + 0.45 * smoothstep(0.62, 1.0, side);
+      float bottom = 1.0 - smoothstep(cheekEdge - 0.1, cheekEdge + 0.18, q.y);
+      float sides = smoothstep(0.95, 1.08, side + 0.05 * q.y * q.y);
+      mask = max(max(top, bottom), sides);
+      float nasal = 0.16 * exp(-pow(q.x / 0.13, 2.0)) * smoothstep(0.2, 1.0, q.y);
+      mask = max(mask, nasal) * 0.85;
+    }
     float rim = clamp(mask * (1.0 - mask) * 4.0, 0.0, 1.0);
     vec3 inside = vec3(0.03, 0.022, 0.015) + vec3(0.3, 0.19, 0.08) * rim * 0.2;
     col = over(vec4(inside * mask, mask), col);
@@ -98,6 +118,7 @@ export function createOverlay() {
       uHurt: { value: 0 },
       uHelmet: { value: 0 },
       uAspect: { value: 16 / 9 },
+      uPortrait: { value: 0 },
       uTime: { value: 0 },
     },
     vertexShader,

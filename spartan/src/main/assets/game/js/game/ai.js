@@ -11,8 +11,9 @@
  * object fields, and the math is written inline.
  */
 import * as THREE from 'three';
-import { clamp, TAU } from '../core/math.js';
+import { clamp, TAU, angleDiff, yawTo } from '../core/math.js';
 import { ENEMIES, DIRECTOR } from './rules.js';
+import { LOCK } from './lockon.js';
 import { CLIPS } from '../gfx/characters.js';
 import { ALLY_SLOTS, LEONIDAS_X } from './campaign.js';
 
@@ -47,6 +48,7 @@ const TURTLE_HOLD = 3.0;            // a shield held this long (s) takes player-
 const VOLLEY_COVER = 6.0;           // s after a volley warning (+ its duration) a long hold is not turtling
 const ALLY_RELIEF = 15;             // allies take a player's attacker the player hasn't hit for this long (s)
 const SPEARCAM_GRACE = 0.5;
+const HILT_REAR_GRACE = 0.35;       // s: a hilt player's wind-up grace for an attacker the shield can't cover
 const STRIKE_FALLBACK = 0.3;        // force the blow if a visual never calls onStrike
 const CORPSE_CAP = 20;
 const CORPSE_CAP_LOW = 10;
@@ -1083,17 +1085,31 @@ export function createAI(ctx) {
     return !!(ctx.fx && ctx.fx.cameraOverridden);
   }
 
-  /** §11: timeToStrike = windup × 1.15 in motion mode × 0.9 on Day 3. */
+  /** §11: timeToStrike = windup × 1.15 in motion mode × 0.9 on Day 3 (+ hiltRearGrace). */
   function playerTimeToStrike(a) {
     const base = a.trainer ? 1.2 : a.stats.windup || 0.85;
-    return base * (motionMode() ? 1.15 : 1) * (day === 3 && !a.trainer ? 0.9 : 1);
+    return base * (motionMode() ? 1.15 : 1) * (day === 3 && !a.trainer ? 0.9 : 1) + hiltRearGrace(a);
+  }
+
+  /**
+   * docs-hilt-grip.md §C.6: a hilt player turns only through the lock-on, and its threat turn from
+   * straight behind into the block arc takes ~0.7 s. So a Persian's player-targeted wind-up from
+   * beyond LOCK.threatAngle of the view gets HILT_REAR_GRACE more, judged once at its start. Never
+   * for the trainer, touch, the window grip or headless runs without ctx.input.grip.
+   */
+  function hiltRearGrace(a) {
+    const inp = ctx.input;
+    const p = ctx.player;
+    if (!inp || inp.grip !== 'hilt' || a.trainer || a.team !== 'persian' || !p || !p.pos) return 0;
+    const rel = angleDiff(Number.isFinite(p.yaw) ? p.yaw : 0, yawTo(a.pos.x - p.pos.x, a.pos.z - p.pos.z));
+    return Math.abs(rel) > LOCK.threatAngle ? HILT_REAR_GRACE : 0;
   }
 
   /** Grants the candidate a player-targeted wind-up if the director allows it now. */
   function tryDirector(c) {
     if (cameraOverridden() || !playerAlive || dir.tokens < 1) return;
     const base = c.stats.windup || 0.85;
-    const T = base * (motionMode() ? 1.15 : 1) * (day === 3 ? 0.9 : 1);
+    const T = base * (motionMode() ? 1.15 : 1) * (day === 3 ? 0.9 : 1) + hiltRearGrace(c);
     const strike = F.gnow + T;
     if (Math.abs(strike - dir.lastStrikeAt) < dir.gap) return;
     let active = 0;

@@ -615,17 +615,23 @@ export function createPlatform(opts = {}) {
     voice,
     storage,
     updates,
-    /** Locks the screen to the current landscape orientation (android) or landscape (web). */
-    lockOrientation(lock) {
+    /**
+     * Requests the app orientation (docs-hilt-grip.md §A.5). 'portrait' (the hilt grip) holds
+     * whether locked or not; landscape (anything else) keeps the current side while `lock` (motion
+     * play) and otherwise follows the sensor (android) or is unlocked (web). A web lock only
+     * succeeds in fullscreen, so every refusal is swallowed; menus.js retries once fullscreen lands.
+     */
+    lockOrientation(lock, orientation = 'landscape') {
+      const portrait = orientation === 'portrait';
       if (N) {
-        nat('lockOrientation', !!lock);
+        nat('lockOrientation', !!lock, portrait ? 'portrait' : 'landscape');
         return;
       }
       try {
         const so = win && win.screen && win.screen.orientation;
         if (!so) return;
-        if (lock) {
-          const p = typeof so.lock === 'function' ? so.lock('landscape') : null;
+        if (portrait || lock) {
+          const p = typeof so.lock === 'function' ? so.lock(portrait ? 'portrait-primary' : 'landscape') : null;
           if (p && typeof p.catch === 'function') p.catch(() => {});
         } else if (typeof so.unlock === 'function') {
           so.unlock();

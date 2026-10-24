@@ -4,9 +4,14 @@
  *
  * Particles and decals advance with game time (gdt) and freeze during hit-stop and pause.
  * Shake, slow-mo timers and the spear cam advance with real time (dt), which is 0 while paused.
+ *
+ * In the hilt grip (ctx.input.grip === 'hilt', docs-hilt-grip.md §F) the player swings blind: the
+ * haptics come from HAPTICS_HILT (strong, coalesced, plus the lock, armed-spear and attack-from-
+ * behind cues), and big blows get a brief slow-motion (HILT_SLOWMO). Window and touch are unchanged.
  */
 import * as THREE from 'three';
-import { clamp, lerp, smoothstep } from '../core/math.js';
+import { angleDiff, clamp, lerp, smoothstep, yawTo } from '../core/math.js';
+import { LOCK } from '../game/lockon.js';
 import { TimeControl, SPEAR_CAM, HITSTOP_REARM } from './fx/timectl.js';
 import { Shake } from './fx/shake.js';
 import { createParticles, PARTICLE_CAP } from './fx/particles.js';
@@ -52,6 +57,49 @@ export const HAPTICS = Object.freeze({
   spearImpact: Object.freeze([0, 30, 40, 60]),
   volleyWarning: Object.freeze([0, 20, 90, 20]),
 });
+
+/**
+ * Gameplay haptics in the hilt grip (docs-hilt-grip.md §F.1), where the phone is in the swinging
+ * fist and haptics are the main channel. Every HAPTICS key has its hilt row here, plus the hilt-only
+ * cues. A swing is felt mid-motion and many motors barely render 10 ms, so every "on" segment of a
+ * strike result is ≥ 30 ms, and hit, guarded, kill and hurt have four different shapes.
+ */
+export const HAPTICS_HILT = Object.freeze({
+  fleshHit: Object.freeze([45, 1.0]), // one short knock
+  guarded: Object.freeze([0, 30, 35, 30, 35, 30]), // three short: a rattle
+  kill: Object.freeze([0, 45, 45, 110]), // knock + long
+  hurt: Object.freeze([160, 1.0]), // one long buzz
+  block: Object.freeze([40, 0.8]),
+  perfect: Object.freeze([0, 30, 40, 30, 40, 90]), // tick-tick-long
+  shieldUp: Object.freeze([15, 0.4]),
+  arrowShield: Object.freeze([20, 0.6]),
+  spearArmed: Object.freeze([0, 35, 45, 35]), // a wind-up with the spear in hand: the cock-back counted
+  spearRelease: Object.freeze([0, 30, 60, 30]),
+  spearImpact: Object.freeze([0, 40, 40, 90]), // on a body
+  spearGround: Object.freeze([20, 0.5]), // in the ground or the sea
+  volleyWarning: Object.freeze([0, 40, 90, 40]),
+  lockTick: Object.freeze([30, 0.6]), // the lock moved to a foe (switch or acquire)
+  lockNone: Object.freeze([0, 30, 70, 30]), // a swipe found nobody that way
+  rearThreat: Object.freeze([0, 80, 60, 80]), // a wind-up at the player from beyond LOCK.threatAngle
+});
+
+/** Hilt: a haptic within this many real seconds of the last one is dropped, unless it is urgent. */
+export const HILT_HAPTIC_GAP = 0.04;
+/** Hilt rows that replace the one still playing instead of being dropped. */
+const HILT_URGENT = Object.freeze({ kill: true, hurt: true, perfect: true, rearThreat: true });
+
+/**
+ * Slow motion in the hilt grip (§F.3), [scale, real seconds] with the hero at full speed: a
+ * flourish on a big blow, not the result readout. At most one per minGap real seconds.
+ */
+export const HILT_SLOWMO = Object.freeze({
+  kill: Object.freeze([0.4, 0.22]),
+  heavy: Object.freeze([0.3, 0.3]), // a crit, a captain or Into the Gulf
+  perfect: Object.freeze([0.5, 0.18]),
+  minGap: 2.5,
+});
+/** Hilt: a plain kill gets its slow motion only after a player swing of at least this power. */
+export const HILT_SLOWMO_POWER = 0.55;
 
 const CAM_START = Object.freeze({ phase: 'start' });
 const CAM_IMPACT = Object.freeze({ phase: 'impact' });
@@ -121,6 +169,31 @@ export function createFx(ctx) {
     } catch (err) {
       // Haptics are a nicety; never let them break an event handler.
     }
+  }
+
+  const hiltGrip = () => !!(ctx.input && ctx.input.grip === 'hilt');
+  const spearInHand = () => !!(ctx.player && ctx.player.weapon === 'spear' && ctx.player.hasSpearInHand);
+
+  let hapticAt = -1e9; // real time of the last hilt haptic
+  let hapticRow = null;
+  /**
+   * Plays gameplay haptic `key`: the HAPTICS row, or in the hilt grip the HAPTICS_HILT row with
+   * coalescing (§F.1). A hilt haptic within HILT_HAPTIC_GAP of the last is dropped; an urgent one
+   * (kill, hurt, perfect, attack from behind) replaces it, unless it is the same row again.
+   */
+  function feel(key) {
+    if (!hiltGrip()) {
+      const row = HAPTICS[key];
+      if (row) haptic(row);
+      return;
+    }
+    const row = HAPTICS_HILT[key];
+    if (!row) return;
+    const now = time.now;
+    if (now - hapticAt < HILT_HAPTIC_GAP && (!HILT_URGENT[key] || row === hapticRow)) return;
+    hapticAt = now;
+    hapticRow = row;
+    haptic(row);
   }
 
   /** Adds the SHAKE row `key`, scaled for motion mode. */
@@ -536,7 +609,23 @@ export function createFx(ctx) {
   let lastSwingKind = '';
   let lastSwingDir = 0;
   let lastSwingT = -1e9;
+  let lastSwingPower = 0; // the hilt kill slow-mo needs a firm swing (§F.3)
   let sideFlip = 1;
+  let hiltSlowAt = -1e9; // real time of the last hilt slow-mo
+  let volleyImpacts = 0; // volleys in their impact phase
+  let volleyUntil = -1e9; // gclock: no hilt slow-mo before this (the 'end' clears it; a net if it never comes)
+
+  /**
+   * Hilt slow motion (§F.3): the hero keeps full speed, at most one per minGap real seconds and
+   * none while a volley's arrows land. It merges with combo slow-mo the way TimeControl does, and
+   * the spear cam refuses it. Returns true if it applied.
+   */
+  function hiltSlowMo(row) {
+    if (time.now - hiltSlowAt < HILT_SLOWMO.minGap || gclock < volleyUntil) return false;
+    if (!tc.slowMo(row[0], row[1], true)) return false;
+    hiltSlowAt = time.now;
+    return true;
+  }
 
   /**
    * Which way the blood flies: along the blade for the player's slashes (the swing's screen
@@ -562,6 +651,7 @@ export function createFx(ctx) {
     lastSwingKind = e.kind || '';
     lastSwingDir = Number.isFinite(e.dir) ? e.dir : 0;
     lastSwingT = time.now;
+    lastSwingPower = Number.isFinite(e.power) ? e.power : 0;
     // A motion swing ends a running hit-stop: the phone is already swinging again, and the new
     // attack (and its viewmodel animation, which runs on pdt) must start now, not after the freeze.
     if (e.src === 'motion') tc.endHitStop();
@@ -569,6 +659,7 @@ export function createFx(ctx) {
   let lastHitTarget = null;
   let lastHitDx = 0;
   let lastHitDz = 1;
+  let lastHitCrit = false; // combat emits hit, then kill: the kill reads the crit from here
   let lastArrowDustT = -1e9;
 
   /** A hit by a thrown spear (combat may name the kind 'spear' or 'throw'). */
@@ -590,6 +681,7 @@ export function createFx(ctx) {
     lastHitTarget = tgt;
     lastHitDx = d.x;
     lastHitDz = d.z;
+    lastHitCrit = !!e.critical;
     if (bleed) {
       if (!bloodOff()) particles.blood(hitP, d, 0.2);
     } else if (e.guarded) {
@@ -633,7 +725,7 @@ export function createFx(ctx) {
     }
     tc.hitStop(e.critical ? HITSTOP.crit : HITSTOP.hit);
     addShake(kind === 'bash' ? 'bash' : 'hit');
-    if (!spear) haptic(e.guarded ? HAPTICS.guarded : HAPTICS.fleshHit);
+    if (!spear) feel(e.guarded ? 'guarded' : 'fleshHit');
   }
 
   function onKill(e) {
@@ -661,13 +753,21 @@ export function createFx(ctx) {
       }
       scheduleDust(p.x + fx * 0.9, p.y + 0.05, p.z + fz * 0.9, 0.9, 0.75);
     }
+    const crit = tgt === lastHitTarget && lastHitCrit;
     if (tgt === lastHitTarget) lastHitTarget = null;
     if (!e.byPlayer) return;
     if (cause !== 'bleed') {
       tc.hitStop(HITSTOP.kill);
       addShake('kill');
     }
-    if (!e.spear) haptic(HAPTICS.kill);
+    if (!e.spear) feel('kill');
+    // Hilt (§F.3): a brief slow-motion on a kill by the blade (the spear cam has its own, and a
+    // bleed kill comes long after the swing). Heavy for a crit, a captain or Into the Gulf; a
+    // plain kill only after a firm swing.
+    if (hiltGrip() && !e.spear && cause !== 'bleed') {
+      if (crit || tgt.kind === 'captain' || cause === 'sea') hiltSlowMo(HILT_SLOWMO.heavy);
+      else if (lastSwingPower >= HILT_SLOWMO_POWER) hiltSlowMo(HILT_SLOWMO.kill);
+    }
   }
 
   function onBlock(e) {
@@ -690,15 +790,16 @@ export function createFx(ctx) {
     if (e.perfect) {
       tc.hitStop(HITSTOP.perfect);
       addShake('perfect');
-      haptic(HAPTICS.perfect);
+      feel('perfect');
+      if (hiltGrip()) hiltSlowMo(HILT_SLOWMO.perfect);
     } else if (guardBreak) {
       tc.hitStop(HITSTOP.block); // player.guardBreak() pushes the view itself
       addShake('guardBreak');
-      haptic(HAPTICS.block);
+      feel('block');
     } else {
       tc.hitStop(HITSTOP.block);
       addShake('block');
-      haptic(HAPTICS.block);
+      feel('block');
     }
   }
 
@@ -706,7 +807,7 @@ export function createFx(ctx) {
     // player.applyCamera adds the directional flinch; fx adds the hit-stop and the shake.
     tc.hitStop(HITSTOP.hurt);
     addShake('hurt');
-    haptic(HAPTICS.hurt);
+    feel('hurt');
   }
 
   function onSpearImpact(e) {
@@ -729,7 +830,11 @@ export function createFx(ctx) {
         }
       }
     }
-    if (pr && pr.byPlayer && !e.water) haptic(HAPTICS.spearImpact);
+    if (pr && pr.byPlayer) {
+      // The hilt grip also feels a spear that found no body: a light tap (§F.1).
+      if (hiltGrip()) feel(e.target && !e.water ? 'spearImpact' : 'spearGround');
+      else if (!e.water) feel('spearImpact');
+    }
     if (!tc.camActive || !pr || pr !== camProj) return;
     if (e.target && !e.water && tc.camPhase === 'trail') {
       if (p) orbitCenter.set(p.x, p.y, p.z);
@@ -754,7 +859,7 @@ export function createFx(ctx) {
       return;
     }
     if (tg === 'shield') {
-      haptic(HAPTICS.arrowShield);
+      feel('arrowShield');
       if (!pointOf(e.point, null, hitP)) {
         ctx.camera.getWorldDirection(vA);
         hitP.copy(ctx.camera.position).addScaledVector(vA, 0.8);
@@ -780,18 +885,48 @@ export function createFx(ctx) {
   }
 
   function onShield(e) {
-    if (e && e.up) haptic(HAPTICS.shieldUp);
+    if (e && e.up) feel('shieldUp');
   }
 
   function onSpearThrown(e) {
     const pr = e && e.projectile;
     if (!pr || !pr.byPlayer) return;
-    haptic(HAPTICS.spearRelease);
+    feel('spearRelease');
     startSpearCam(pr);
   }
 
   function onVolley(e) {
-    if (e && e.phase === 'warning') haptic(HAPTICS.volleyWarning);
+    if (!e) return;
+    if (e.phase === 'warning') feel('volleyWarning');
+    // No hilt slow-mo while the arrows land: from 'impact' to 'end', or (should combat be reset
+    // before its 'end') until the impact's game-time duration and a margin have run out.
+    else if (e.phase === 'impact') {
+      volleyImpacts++;
+      volleyUntil = Math.max(volleyUntil, gclock + (+e.duration || 0) + 0.5);
+    } else if (e.phase === 'end' && volleyImpacts > 0 && --volleyImpacts === 0) volleyUntil = -1e9;
+  }
+
+  // --- hilt-only cues (§F.1): the player swings blind, so the lock and the threats are felt ---
+
+  function onLockOn(e) {
+    if (!e || !hiltGrip()) return;
+    if (e.reason === 'none') feel('lockNone');
+    else if (e.target && (e.reason === 'switch' || e.reason === 'acquire')) feel('lockTick');
+    // 'threat' adds nothing: its wind-up already played the attack-from-behind pattern.
+  }
+
+  function onEnemyWindup(e) {
+    if (!e || !e.targetIsPlayer || !hiltGrip()) return;
+    const a = e.actor;
+    const p = ctx.player;
+    if (!a || !a.pos || !p || !p.pos) return;
+    // From beyond the shield's cover, whether or not the lock turns to him (lockAuto, §C.6).
+    if (Math.abs(angleDiff(p.yaw, yawTo(a.pos.x - p.pos.x, a.pos.z - p.pos.z))) > LOCK.threatAngle) feel('rearThreat');
+  }
+
+  function onGesture(g) {
+    // The cock-back counted: a wind-up with the spear in hand (pumpMotion plays its viewmodel pose).
+    if (g && g.type === 'windup' && hiltGrip() && spearInHand() && !tc.camActive) feel('spearArmed');
   }
 
   events.on('hit', onHit);
@@ -805,6 +940,9 @@ export function createFx(ctx) {
   events.on('spearThrown', onSpearThrown);
   events.on('volley', onVolley);
   events.on('swing', onSwing); // aims blood along the player's blade; a motion swing ends a hit-stop
+  events.on('lockOn', onLockOn);
+  events.on('enemyWindup', onEnemyWindup);
+  events.on('gesture', onGesture);
 
   // --- camera ----------------------------------------------------------------------------------
 
@@ -927,7 +1065,14 @@ export function createFx(ctx) {
     offX = offY = offZ = 0;
     jobT.fill(0);
     lastHitTarget = null;
+    lastHitCrit = false;
+    lastSwingPower = 0;
     lastSplashT = -1e9;
+    hapticAt = -1e9;
+    hapticRow = null;
+    hiltSlowAt = -1e9;
+    volleyImpacts = 0;
+    volleyUntil = -1e9;
     if (wasCam) events.emit('spearCam', CAM_END);
   }
 
@@ -977,6 +1122,10 @@ export function createFx(ctx) {
     },
     get shakeOffset() {
       return shake;
+    },
+    /** The power of the player's last swing (the hilt kill slow-mo reads it, §F.3). */
+    get lastSwingPower() {
+      return lastSwingPower;
     },
     applyCamera,
     update,

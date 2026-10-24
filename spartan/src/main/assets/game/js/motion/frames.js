@@ -5,11 +5,29 @@
  * screen toward the user. On the web it also self-calibrates the browser quirks: the sign of
  * the accelerometer (gravitySign), a screen angle reported 180° off (rotFix), and the
  * rotationRate axis order (axisMap). process() allocates nothing.
+ *
+ * The grip (docs-hilt-grip.md B.2) changes only those web heuristics: the hilt grip latches the sign
+ * on its own swing direction, tests its own guard for the provisional sign, and never fixes the
+ * screen angle (a calm blade-down pose is a rest, and portrait is reported right).
  */
 
 const G = 9.81;
 const DIAG = Math.SQRT1_2;
 const AXIS_WIN = 4; // the axis check's verdict: the winner leaves ≤ 1/4 of the loser's residual
+
+/**
+ * Per-grip web heuristics. latch: the direction the centripetal acceleration of a fast swing points
+ * in (toward the user, or in the fist toward the elbow and the body); restUp: up at the grip's
+ * guard, for the provisional sign; rotFix: may detect and apply a screen angle reported 180° off;
+ * latchRuns: the latch decides only at the end of a fast run. In the fist a chop or a cock-back
+ * turns about x, so its tangential acceleration lies along the latch too: over a whole run (speeding
+ * up, then slowing down) it cancels, while over its first 12 samples (a 60 ms part at 200 Hz) it can
+ * outweigh the centripetal part. (A window swing's tangential acceleration is across +z.)
+ */
+export const FRAME_GRIPS = Object.freeze({
+  window: Object.freeze({ latch: Object.freeze([0, 0, 1]), restUp: Object.freeze([0, DIAG, DIAG]), rotFix: true, latchRuns: false }),
+  hilt: Object.freeze({ latch: Object.freeze([0, -0.6, 0.8]), restUp: Object.freeze([0, 0.89, 0.45]), rotFix: false, latchRuns: true }),
+});
 
 /**
  * Remaps a device-frame vector into the screen frame of display rotation `rotDeg`
@@ -51,11 +69,13 @@ function normalizeInto(v) {
 /** Turns RawSamples (§5.1) into screen-frame Samples with a gravity-referenced `up`. */
 export class MotionFrames {
   /**
-   * @param {{tiltTau?: number, platformKind?: 'web'|'android'}} [opts]
+   * @param {{tiltTau?: number, platformKind?: 'web'|'android', grip?: 'window'|'hilt'}} [opts]
    */
-  constructor({ tiltTau = 0.5, platformKind = 'web' } = {}) {
+  constructor({ tiltTau = 0.5, platformKind = 'web', grip = 'window' } = {}) {
     this.tiltTau = tiltTau;
     this.web = platformKind !== 'android';
+    this._grip = grip === 'hilt' ? 'hilt' : 'window';
+    this._fg = FRAME_GRIPS[this._grip];
     /** The reused output Sample: { t, dt, w, a, up, calm, gap }. */
     this.sample = { t: 0, dt: 0, w: [0, 0, 0], a: [0, 0, 0], up: [0, 1, 0], calm: false, gap: false };
     this._dev = [0, 0, 0];
@@ -84,6 +104,7 @@ export class MotionFrames {
     this._wPrev[0] = this._wPrev[1] = this._wPrev[2] = 0;
     this._latchSum = 0;
     this._latchN = 0;
+    this._latchFast = false;
     this._resetAxisCheck();
     const s = this.sample;
     s.t = 0;
@@ -97,6 +118,22 @@ export class MotionFrames {
     s.gap = false;
   }
 
+  /**
+   * 'window' | 'hilt' (anything else is 'window'). A change resets the filters; the device
+   * calibration (axisMap, gravity sign, the window grip's rotFix) is kept. No-op if unchanged.
+   */
+  setGrip(grip) {
+    const g = grip === 'hilt' ? 'hilt' : 'window';
+    if (g === this._grip) return;
+    this._grip = g;
+    this._fg = FRAME_GRIPS[g];
+    this.reset();
+  }
+
+  get grip() {
+    return this._grip;
+  }
+
   /** +1 or −1: the sign applied to acc, accG and grav (always +1 on Android). */
   get gravitySign() {
     return this._sign;
@@ -107,7 +144,7 @@ export class MotionFrames {
     return !this.web || this._signLatched;
   }
 
-  /** Degrees added to the reported screen angle (0 or 180). */
+  /** Degrees added to the reported screen angle (0 or 180), in the window grip (stored, never applied, in the hilt grip). */
   get rotFix() {
     return this._rotFix;
   }
@@ -163,6 +200,7 @@ export class MotionFrames {
       this._axisOk = false;
       this._upOk = false;
       this._latchSum = this._latchN = 0;
+      this._latchFast = false;
       this._resetAxisCheck();
     }
     return applied;
@@ -193,7 +231,8 @@ export class MotionFrames {
       }
       this._rotPrev = rot;
     }
-    const rotEff = rot + this._rotFix;
+    const fg = this._fg;
+    const rotEff = fg.rotFix ? rot + this._rotFix : rot;
 
     // 1. gyro (axis order self-check on the web), remapped; never sign-flipped
     const g = raw.gyro;
@@ -214,11 +253,17 @@ export class MotionFrames {
     const accG = raw.accG ? remapToScreen(raw.accG, rotEff, this._accG) : null;
     const grav = raw.grav ? remapToScreen(raw.grav, rotEff, this._grav) : null;
 
-    // 2. web (a): latch the gravity sign from the centripetal acceleration of fast swings,
-    // which points toward the user (+z) whatever the rotation.
+    // 2. web (a): latch the gravity sign from the centripetal acceleration of fast swings, which
+    // points along the grip's latch direction whatever the rotation (window: toward the user, +z).
     if (this.web && wMag > 7 && (acc || accG)) {
-      this._latchSum += acc ? acc[2] : accG[2];
-      if (++this._latchN >= 12) this._latchStep();
+      const v = acc || accG, L = fg.latch;
+      this._latchSum += L[0] * v[0] + L[1] * v[1] + L[2] * v[2];
+      if (++this._latchN >= 12 && !fg.latchRuns) this._latchStep();
+      this._latchFast = fg.latchRuns;
+    } else if (this._latchFast) {
+      // latchRuns: a fast run just ended (an unfinished one keeps adding to the next)
+      this._latchFast = false;
+      if (this._latchN >= 12) this._latchStep();
     }
 
     // 3. sign (acc, accG and grav only)
@@ -305,17 +350,20 @@ export class MotionFrames {
     this._calmT = o.calm ? this._calmT + dt : 0;
 
     if (this.web) {
+      const ru = fg.restUp;
       if (!this._signLatched) {
-        // (b) provisional: calm for 1 s and the screen seems to face down and away
-        if (this._calmT >= 1 && (up[1] + up[2]) * DIAG < -0.5) {
+        // (b) provisional: calm for 1 s and up seems opposite to the grip's guard (window: the
+        // screen seems to face down and away)
+        if (this._calmT >= 1 && ru[0] * up[0] + ru[1] * up[1] + ru[2] * up[2] < -0.5) {
           this._flipSign();
           a[0] = -a[0];
           a[1] = -a[1];
           a[2] = -a[2];
           this._calmT = 0;
         }
-      } else if (this._calmT >= 1.5 && up[1] < -0.6) {
+      } else if (fg.rotFix && this._calmT >= 1.5 && up[1] < -0.6) {
         // (c) the sign is known, yet the phone looks upside down: the screen angle is off by 180°
+        // (not in the hilt grip, where a calm blade-down pose is a rest)
         this._rotFix = (this._rotFix + 180) % 360;
         up[0] = -up[0];
         up[1] = -up[1];

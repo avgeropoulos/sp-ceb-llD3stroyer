@@ -11,12 +11,17 @@
  *
  * Draw calls in the vm pass: arms (1, skinned), sword or spear (1), aspis bronze + wood (2),
  * stuck arrows (1 when any), trail (1 while visible), overlay (1 when active) — at most 7.
+ *
+ * Portrait (docs-hilt-grip.md §E.2): on a portrait screen the vm camera widens to fov 80, and the
+ * spear, thrust and aspis poses, the slash path and the helmet mask switch to portrait variants
+ * authored for a RIG.portraitAspect phone. In the hilt grip (ctx.input.grip === 'hilt') the sword
+ * is held as the player holds the phone, blade upright. Landscape is unchanged.
  */
 import * as THREE from 'three';
 import { TIMING } from '../game/rules.js';
 import { clamp, wrapAngle, createRng } from '../core/math.js';
 import {
-  RIG, slashTimes, slashParam, slashGeometry, createSlashOut, slashEdgeSign,
+  RIG, SLASH, slashHalf, slashTimes, slashParam, slashGeometry, createSlashOut, slashEdgeSign,
   thrustCurve, bashCurve, jolt, bump, ramp, easeInQuad, easeOutCubic, easeOutQuad, easeInOutSine, smootherstep,
   MOTION_SWING, motionStrike, motionSlashTimes, thrustCurveMotion, bashCurveMotion,
 } from './viewmodel/motion.js';
@@ -106,6 +111,45 @@ const SHIELD_POSES = {
 };
 SHIELD_POSES.low.q = new THREE.Quaternion().setFromEuler(SHIELD_POSES.low.e);
 SHIELD_POSES.high.q = new THREE.Quaternion().setFromEuler(SHIELD_POSES.high.e);
+
+// ---------------------------------------------------------------------------------------------
+// Portrait (docs-hilt-grip.md §E.2): a narrow view (vm fov 80, ~41° across at 0.45), authored for a
+// RIG.portraitAspect phone. Landscape keeps the poses above.
+
+const VM_FOV = { landscape: 60, portrait: 80 };
+// The landscape guard's x pull toward the centre on narrower screens, clamp((aspect − 1.78)·0.05, …),
+// extended into portrait. The portrait poses include it at RIG.portraitAspect.
+const portraitPull = (aspect) => clamp((aspect - 1.78) * 0.05, -0.07, 0);
+const PORTRAIT_PULL = portraitPull(RIG.portraitAspect);
+const shiftX = (src, dx) => ({ p: src.p.clone().setX(src.p.x + dx), q: src.q.clone() });
+
+// The hilt grip's guard: the sword held as the player holds the phone, blade upright, the fist low
+// in the right of the view and the tip above the locked foe's shoulder.
+const POSES_HILT = {
+  swordLow: pose([0.12, -0.27, -0.4], [-0.05, 0.93, -0.36], [0.3, -0.3, 0.9]),
+  swordHigh: pose([0.14, -0.3, -0.38], [-0.05, 0.93, -0.36], [0.3, -0.3, 0.9]),
+};
+// Portrait variants of the landscape poses. The wind-up, release and draw poses are reused.
+const POSES_PORTRAIT = {
+  spearLow: spearAim([0.125, 0.03, -0.33], [0.0, -0.7, -2.4], [0.3, -1, 0.3]),
+  spearHigh: spearAim([0.125, 0.045, -0.35], [0.0, -0.65, -2.4], [0.3, -1, 0.3]),
+  thrustBack: shiftX(POSES.thrustBack, PORTRAIT_PULL),
+  thrustOut: shiftX(POSES.thrustOut, PORTRAIT_PULL),
+  spearOut: shiftX(POSES.spearOut, PORTRAIT_PULL),
+};
+// The aspis: the same angles, nearer the centre. Raised, its rim sits just under the foe's head.
+const SHIELD_PORTRAIT = {
+  low: { p: v3(-0.29, -0.58, -0.4), q: SHIELD_POSES.low.q },
+  high: { p: v3(-0.06, -0.49, -0.37), q: SHIELD_POSES.high.q },
+};
+// The slash tuning with the portrait tip path (slashHalf), refreshed when the aspect changes, and
+// the edge choice made against the hilt guard's wrist (its +Z), which the slash recovers to: with the
+// landscape guard's wrist an upward cut ends with the wrist turned ~170° from it, and the recovery's
+// twist swings the elbow across the eye.
+const SLASH_PORTRAIT = Object.assign({}, SLASH, {
+  half: slashHalf(RIG.portraitAspect),
+  forearm: v3(0, 0, 1).applyQuaternion(POSES_HILT.swordLow.q).toArray(),
+});
 
 // Left hand on the antilabe (aspis space): grip frame X = +Z_s, Y = +Y_s, Z = -X_s.
 const LEFT_GRIP = v3(ANTILABE.x, 0, aspisInnerZ(ANTILABE.x) + 0.046);
@@ -269,6 +313,13 @@ export function createViewmodel(ctx) {
     fallT: 0,
   };
   const worldLights = { sun: null, hemi: null };
+  // Aspect-dependent framing, refreshed by setAspect when vm.camera.aspect changes (main.js sets it):
+  // the slash tuning, the aspis poses and the guard's x spread per hand-held kind.
+  const framing = { aspect: NaN, portrait: false, slash: SLASH, shield: SHIELD_POSES, dxSword: 0, dxHilt: 0, dxSpear: 0, dxShield: 0 };
+  // The spear and thrust poses for the current orientation (copies, so the spread folds in).
+  const live = {};
+  for (const k of Object.keys(POSES_PORTRAIT)) live[k] = { p: new THREE.Vector3(), q: new THREE.Quaternion() };
+  setAspect(cam.aspect);
   // Stuck arrows: a fixed pool; the oldest is replaced once all eight are in use.
   const stuck = [];
   for (let i = 0; i < MAX_ARROWS; i++) stuck.push({ p: new THREE.Vector3(), q: new THREE.Quaternion(), axis: new THREE.Vector3(), t: 0 });
@@ -331,7 +382,7 @@ export function createViewmodel(ctx) {
       a.tm = a.motion ? motionSlashTimes(opts.strikeIn, TIMING.slash, a.mtm, lead) : slashTm;
       a.dur = a.tm.total;
       // Which edge leads is fixed for the whole swing (the side that keeps the wrist natural).
-      if (kind === 'slash') a.sigma = slashEdgeSign(a.dir);
+      if (kind === 'slash') a.sigma = slashEdgeSign(a.dir, framing.slash);
     } else if (kind === 'thrust' || kind === 'spearThrust' || kind === 'bash') {
       const tm = TIMING[kind];
       a.strike = a.motion ? lead + motionStrike(opts.strikeIn, tm.strike) : tm.strike;
@@ -527,16 +578,17 @@ export function createViewmodel(ctx) {
   }
 
   function guardFor(kind, raise, out) {
-    if (kind === 'spear') slerpPose(out, POSES.spearLow, POSES.spearHigh, raise);
+    // The hilt grip holds the sword as the player holds the phone (docs-hilt-grip.md §E.2).
+    const hilt = kind === 'sword' && !!ctx.input && ctx.input.grip === 'hilt';
+    if (kind === 'spear') slerpPose(out, live.spearLow, live.spearHigh, raise);
+    else if (hilt) slerpPose(out, POSES_HILT.swordLow, POSES_HILT.swordHigh, raise);
     else if (kind === 'sword') slerpPose(out, POSES.swordLow, POSES.swordHigh, raise);
     else {
       out.p.copy(POSES.empty.p);
       out.q.copy(POSES.empty.q);
     }
-    // Composition across phone aspects: spread the hand a little wider on wide screens. The spear
-    // fist sits near the right edge, so it keeps its place on screen (authored for 19.5:9).
-    if (kind === 'spear') out.p.x += clamp((cam.aspect - 2.17) * 0.12, -0.07, 0.01);
-    else out.p.x += clamp((cam.aspect - 1.78) * 0.05, -0.03, 0.025);
+    // Composition across phone aspects (setAspect): spread the hand a little wider on wide screens.
+    out.p.x += kind === 'spear' ? framing.dxSpear : hilt ? framing.dxHilt : framing.dxSword;
     return out;
   }
 
@@ -591,7 +643,7 @@ export function createViewmodel(ctx) {
       case 'slash': {
         const tm = a.tm;
         const s = slashParam(t, tm);
-        slashGeometry(a.dir, s, slashOut, SWORD_REACH);
+        slashGeometry(a.dir, s, slashOut, SWORD_REACH, framing.slash);
         _a.fromArray(slashOut.blade);
         _b.fromArray(slashOut.motion).addScaledVector(_a, -_b.dot(_a));
         if (_b.lengthSq() < 1e-6) _b.set(0, 0, 1);
@@ -625,10 +677,10 @@ export function createViewmodel(ctx) {
         const c = thrustExt(a);
         if (a.motion && t < a.strike) {
           // Straight from the guard to the extended pose: no chamber (the phone already drew back).
-          slerpPose(tmpPose, guard, POSES.thrustOut, c);
+          slerpPose(tmpPose, guard, live.thrustOut, c);
         } else {
-          tmpPose.p.lerpVectors(POSES.thrustBack.p, POSES.thrustOut.p, c);
-          tmpPose.q.slerpQuaternions(POSES.thrustBack.q, POSES.thrustOut.q, clamp(c, 0, 1));
+          tmpPose.p.lerpVectors(live.thrustBack.p, live.thrustOut.p, c);
+          tmpPose.q.slerpQuaternions(live.thrustBack.q, live.thrustOut.q, clamp(c, 0, 1));
         }
         slerpPose(hand, fromPose, tmpPose, easeOutQuad(clamp(t / a.blendIn, 0, 1)));
         const wOut = ramp(a.total * 0.62, a.total, t);
@@ -637,8 +689,8 @@ export function createViewmodel(ctx) {
       }
       case 'spearThrust': {
         const c = thrustExt(a);
-        tmpPose.p.lerpVectors(guard.p, POSES.spearOut.p, c);
-        tmpPose.q.slerpQuaternions(guard.q, POSES.spearOut.q, clamp(c, 0, 1));
+        tmpPose.p.lerpVectors(guard.p, live.spearOut.p, c);
+        tmpPose.q.slerpQuaternions(guard.q, live.spearOut.q, clamp(c, 0, 1));
         slerpPose(hand, fromPose, tmpPose, easeOutQuad(clamp(t / a.blendIn, 0, 1)));
         break;
       }
@@ -861,8 +913,8 @@ export function createViewmodel(ctx) {
       shieldOff.r.z += FALL.roll * k;
       shieldOff.r.y += FALL.yaw * k;
     }
-    slerpPose(shieldPose, SHIELD_POSES.low, SHIELD_POSES.high, easeInOutSine(raise));
-    shieldPose.p.x -= clamp((cam.aspect - 1.78) * 0.04, -0.02, 0.02);
+    slerpPose(shieldPose, framing.shield.low, framing.shield.high, easeInOutSine(raise));
+    shieldPose.p.x += framing.dxShield;
     shieldPose.p.add(shieldOff.p);
     _q.setFromEuler(shieldOff.r);
     shieldPose.q.premultiply(_q);
@@ -895,7 +947,7 @@ export function createViewmodel(ctx) {
       const s = slashParam(tau, tm);
       const age = (a.t - tau) / win + (1 - fadeOut);
       if (a.kind === 'slash') {
-        slashGeometry(a.dir, s, slashOut, SWORD_REACH);
+        slashGeometry(a.dir, s, slashOut, SWORD_REACH, framing.slash);
         tt.fromArray(slashOut.tip);
         tb.fromArray(slashOut.hand).addScaledVector(_a.fromArray(slashOut.blade), BLADE_BASE);
       } else {
@@ -996,6 +1048,51 @@ export function createViewmodel(ctx) {
   }
 
   // ---------------------------------------------------------------------------------------------
+  // Framing per aspect (docs-hilt-grip.md §E.2)
+
+  /**
+   * Brings the vm camera's fov, the slash path, the poses and the x spreads in line with the aspect.
+   * Runs on construction and whenever vm.camera.aspect changes (a rotation), never per frame.
+   */
+  function setAspect(aspect) {
+    const portrait = aspect < 1;
+    framing.aspect = aspect;
+    framing.portrait = portrait;
+    const fov = portrait ? VM_FOV.portrait : VM_FOV.landscape;
+    if (cam.fov !== fov) {
+      cam.fov = fov;
+      cam.updateProjectionMatrix();
+    }
+    // Portrait poses are authored at RIG.portraitAspect; a wider portrait screen spreads them out.
+    const spread = portrait ? portraitPull(aspect) - PORTRAIT_PULL : 0;
+    const src = portrait ? POSES_PORTRAIT : POSES;
+    for (const k in live) {
+      live[k].p.copy(src[k].p);
+      live[k].p.x += spread;
+      live[k].q.copy(src[k].q);
+    }
+    if (portrait) {
+      slashHalf(aspect, SLASH_PORTRAIT.half);
+      framing.slash = SLASH_PORTRAIT;
+      framing.shield = SHIELD_PORTRAIT;
+      framing.dxSword = portraitPull(aspect); // the window grip's guard on a portrait screen
+      framing.dxHilt = spread;
+      framing.dxSpear = 0; // folded into live
+      framing.dxShield = -0.8 * spread; // outward, at the landscape rate (0.04 per unit of aspect)
+    } else {
+      // Landscape, as before. The spear fist sits near the right edge, so it keeps its place on
+      // screen (authored for 19.5:9).
+      framing.slash = SLASH;
+      framing.shield = SHIELD_POSES;
+      framing.dxSword = clamp((aspect - 1.78) * 0.05, -0.03, 0.025);
+      framing.dxHilt = framing.dxSword;
+      framing.dxSpear = clamp((aspect - 2.17) * 0.12, -0.07, 0.01);
+      framing.dxShield = -clamp((aspect - 1.78) * 0.04, -0.02, 0.02);
+    }
+    overlay.material.uniforms.uPortrait.value = portrait ? 1 : 0;
+  }
+
+  // ---------------------------------------------------------------------------------------------
   // Per-frame
 
   const rigOff = { p: new THREE.Vector3(), r: new THREE.Euler(0, 0, 0, 'YXZ') };
@@ -1081,6 +1178,7 @@ export function createViewmodel(ctx) {
   function update(dt, gdt) {
     const pdt = Math.max(0, (ctx.time && ctx.time.pdt) || 0);
     if (st.first) firstUpdate();
+    if (cam.aspect !== framing.aspect) setAspect(cam.aspect);
 
     // Weapon displayed / redraw detection.
     const target = targetShown();
@@ -1220,7 +1318,7 @@ export function createViewmodel(ctx) {
     update,
     /** Debug/test view of the internal state (not part of the contract). */
     get debug() {
-      return { shown: st.shown, arm: st.arm && { kind: st.arm.kind, t: st.arm.t }, arrows: stuckCount, raise: st.raise, hand, shieldPose, fallen: st.fallen, visible: st.visible, poses: POSES };
+      return { shown: st.shown, arm: st.arm && { kind: st.arm.kind, t: st.arm.t }, arrows: stuckCount, raise: st.raise, hand, shieldPose, fallen: st.fallen, visible: st.visible, poses: POSES, portrait: framing.portrait };
     },
   };
 }

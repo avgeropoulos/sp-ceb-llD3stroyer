@@ -123,7 +123,8 @@ test('curtainOpacity: in, hold, out, then clear', () => {
 
 test('settings UI covers every §9 field', () => {
   const keys = FIELDS.map((f) => f.key).sort();
-  assert.deepEqual(keys, ['aimAssist', 'blood', 'control', 'gyroLook', 'haptics', 'helmetView', 'leftHanded', 'master', 'motionFlipX', 'motionFlipY', 'music', 'quality', 'sensitivity', 'sensorDebug', 'sfx', 'voice'].sort());
+  assert.deepEqual(keys, ['aimAssist', 'blood', 'control', 'grip', 'gyroLook', 'haptics', 'helmetView', 'leftHanded', 'lockAuto', 'master', 'motionFlipX', 'motionFlipY', 'music', 'quality', 'sensitivity', 'sensorDebug', 'sfx', 'voice'].sort());
+  assert.equal(keys.length, 18);
   assert.equal(new Set(FIELDS.map((f) => f.key)).size, FIELDS.length, 'no duplicate keys');
   const q = FIELDS.find((f) => f.key === 'quality');
   assert.deepEqual(q.options.map((o) => o[0]), ['auto', 'low', 'medium', 'high']);
@@ -138,7 +139,10 @@ test('settings UI covers every §9 field', () => {
   assert.ok(Math.abs(steps - Math.round(steps)) < 1e-9, 'the max is on a slider step');
   // Motion-only rows (greyed out in touch mode), the swap toggles among them, under Controls.
   const motionOnly = FIELDS.filter((f) => f.motionOnly).map((f) => f.key);
-  assert.deepEqual(motionOnly, ['sensitivity', 'gyroLook', 'motionFlipX', 'motionFlipY']);
+  assert.deepEqual(motionOnly, ['grip', 'sensitivity', 'gyroLook', 'motionFlipX', 'motionFlipY']);
+  // The hilt grip's rows (docs-hilt-grip.md §A.1): Grip is a motion row; Auto-turn greys unless the grip is hilt.
+  assert.deepEqual(FIELDS.filter((f) => f.hiltOnly).map((f) => f.key), ['lockAuto']);
+  assert.deepEqual(FIELDS.find((f) => f.key === 'grip').options.map((o) => o[0]), ['hilt', 'window']);
   for (const k of ['motionFlipX', 'motionFlipY']) {
     const f = FIELDS.find((x) => x.key === k);
     assert.equal(f.tab, 'controls');

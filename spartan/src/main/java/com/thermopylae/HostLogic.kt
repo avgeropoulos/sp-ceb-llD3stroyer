@@ -5,7 +5,8 @@ import kotlin.math.roundToLong
 
 /**
  * Android-free logic used by the host classes, kept here so it can be unit-tested on a plain
- * JVM: asset routing, the MIME table, the sensor line format and vibration patterns.
+ * JVM: asset routing, the MIME table, the sensor line format, vibration patterns and the
+ * orientation mapping.
  *
  * Every number that ends up in a string is written with [StringBuilder.append] (never
  * `String.format`), so the output is the same on Greek or German locales with decimal commas.
@@ -28,6 +29,10 @@ object HostLogic {
 
     /** Largest app update the updater will download (the APK is about 12 MB). */
     const val MAX_UPDATE_BYTES = 48L * 1024 * 1024
+
+    /** The host's own SharedPreferences file, and its key for the orientation the game last asked for. */
+    const val HOST_PREFS = "thermopylae.host"
+    const val PREF_ORIENTATION = "orientation"
 
     /** Where a request to the asset server goes: an asset, or an empty error response. */
     sealed class Route {
@@ -128,6 +133,27 @@ object HostLogic {
             dst.fill(Float.NaN)
         }
     }
+
+    /** The orientation family the game asked for: "portrait", or "landscape" for anything else. */
+    fun orientationFamily(orientation: String?): String =
+        if (orientation == "portrait") "portrait" else "landscape"
+
+    /**
+     * The `ActivityInfo.SCREEN_ORIENTATION_*` value for a `lockOrientation(lock, orientation)`
+     * request (docs-hilt-grip.md §A.4). Portrait (the hilt grip) is always portrait-primary, locked
+     * or not. Landscape follows the sensor between both sides unless [lock] (motion play), which
+     * keeps the side the display already shows; the rotation number is never used to pick a side,
+     * since rotation 0 is landscape on natural-landscape tablets. Only when the display is still
+     * portrait as a locked landscape fight starts (the grip was just changed) does it ask for plain
+     * landscape, because LOCKED would lock portrait.
+     */
+    fun requestedOrientation(lock: Boolean, orientation: String?, displayLandscape: Boolean): Int =
+        when {
+            orientation == "portrait" -> 1 // SCREEN_ORIENTATION_PORTRAIT (portrait-primary, never reverse)
+            !lock -> 6 // SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            displayLandscape -> 14 // SCREEN_ORIENTATION_LOCKED: keep the current landscape side
+            else -> 0 // SCREEN_ORIENTATION_LANDSCAPE: still portrait (the grip was just changed)
+        }
 
     /** Clamps a one-shot vibration to 1..400 ms. */
     fun vibrationMs(ms: Int): Long = ms.coerceIn(1, MAX_VIBRATION_MS).toLong()

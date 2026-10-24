@@ -1599,6 +1599,8 @@ export function createAudio(ctx) {
 
   const isPlayer = (e) => !!e.byPlayer || e.attacker === 'player';
   const posOf = (actor) => (actor && actor.pos ? actor.pos : null);
+  const hiltGrip = () => !!(ctx.input && ctx.input.grip === 'hilt');
+  const spearInHand = () => !!(ctx.player && ctx.player.weapon === 'spear' && ctx.player.hasSpearInHand);
   const tmpAt = { x: 0, y: 0, z: 0 };
   let whistle = null;
 
@@ -1716,6 +1718,19 @@ export function createAudio(ctx) {
     },
     weaponSwitch() {
       playSfx('draw', { volume: 0.6, prio: 2 });
+    },
+    // Hilt grip only (docs-hilt-grip.md §F.2): the phone is in the swinging fist, so the lock moving
+    // and the armed spear are also heard. Centred, never panned: in portrait the speakers sit at the
+    // top and bottom and the fist covers one; the turn itself and the HUD arrows give the direction.
+    lockOn(l) {
+      if (!l.target || !hiltGrip()) return;
+      if (l.reason === 'switch' || l.reason === 'acquire') playSfx('uiTap', { volume: 0.6, pan: 0 });
+      else if (l.reason === 'threat') playSfx('uiTap', { volume: 0.8, pan: 0 });
+    },
+    gesture(g) {
+      // The spear armed: a wind-up with the spear in hand (fx plays its haptic under the same rule).
+      if (g.type !== 'windup' || !hiltGrip() || !spearInHand() || (ctx.fx && ctx.fx.cameraOverridden)) return;
+      playSfx('uiConfirm', { volume: 0.5, pan: 0 });
     },
     dayStart(d) {
       // Without the recording, the procedural lastStand loop is rendered before the Kolonos.

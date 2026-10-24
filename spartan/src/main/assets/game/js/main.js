@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { EventBus } from './core/events.js';
 import { createRng, clamp } from './core/math.js';
+import { GRIP_IDS, DEFAULT_GRIP, effectiveGrip, appOrientation, sensitivityKey, flipKeys, migrateSettings } from './core/grip.js';
 import { createPlatform } from './platform.js';
 import { MotionFrames } from './motion/frames.js';
 import { GestureRecognizer } from './motion/gestures.js';
@@ -10,6 +11,7 @@ import { createTextures } from './gfx/textures.js';
 import { createWorld } from './gfx/world.js';
 import { createCharacters } from './gfx/characters.js';
 import { createFx } from './gfx/fx.js';
+import { cameraFov } from './gfx/framing.js';
 import { createViewmodel } from './gfx/viewmodel.js';
 import { createAudio } from './audio/audio.js';
 import { createCombat } from './game/combat.js';
@@ -43,10 +45,19 @@ const DEFAULT_SETTINGS = {
   safetyAccepted: false,
   motionFlipX: false, // a mirrored sensor setup: swing directions left↔right (dir → π − dir)
   motionFlipY: false, // ... and up↔down (dir → −dir)
+  // The grips (docs-hilt-grip.md §A.1). Every reader goes through core/grip.js.
+  grip: DEFAULT_GRIP, // 'hilt' | 'window'. Motion only; touch ignores it
+  gripChosen: false, // the grip chooser has been answered
+  sensitivityHilt: 1.0, // the hilt grip's own sensitivity; `sensitivity` stays the window grip's
+  motionFlipXHilt: false, // the hilt grip's own mirrored-setup flips (flipKeys); motionFlipX/Y stay the window grip's
+  motionFlipYHilt: false,
+  lockAuto: true, // hilt: the lock turns to an attacker the shield can't cover
+  hiltFingerStrip: 44, // px (44–120): the finger-side reject strip, widened by the Agoge grip check
+  hiltAgogeDone: false, // the hilt Agoge has been finished once
+  hiltSafetyAccepted: false, // the hilt safety screen has been accepted
 };
 
 const PIXEL_RATIO_CAP = { low: 1.0, medium: 1.25, high: 1.5 };
-const H_FOV = 100;
 const PROBE_KINDS = ['spartan', 'levy', 'sparabara', 'immortal', 'archer', 'captain', 'dummy', 'helot'];
 const PROBE_PROPS = ['dory', 'arrow', 'persianSpear', 'sagaris'];
 
@@ -78,9 +89,16 @@ function resolveQuality(setting) {
 async function boot() {
   bootProgress('Forging bronze…', 0.02);
   const platform = createPlatform();
-  const settings = Object.assign({}, DEFAULT_SETTINGS, platform.storage.load('thermopylae.settings', {}));
+  // A motion player from before the grips keeps the window grip; a new player gets DEFAULT_GRIP.
+  const stored = migrateSettings(platform.storage.load('thermopylae.settings', {}));
+  const settings = Object.assign({}, DEFAULT_SETTINGS, stored);
   if (params.get('control')) settings.control = params.get('control');
   if (params.get('quality')) settings.quality = params.get('quality');
+  // ?grip=hilt|window (tests) skips the grip chooser too.
+  if (GRIP_IDS.includes(params.get('grip'))) {
+    settings.grip = params.get('grip');
+    settings.gripChosen = true;
+  }
   platform.bindSettings(settings);
   const quality = resolveQuality(settings.quality);
 
@@ -140,6 +158,7 @@ async function boot() {
       shieldPressedAt: -10,
       phoneSettled: true,
       motion: false,
+      grip: null, // effectiveGrip(settings): 'hilt' | 'window' | null (touch), kept by ctx.applyControls()
     },
     actions: {
       push: (a) => actionQueue.push(a),
@@ -165,10 +184,39 @@ async function boot() {
     if (calib && calib.confirmed) platform.storage.save(CALIB_KEY, calib);
   };
   ctx.gestures = new GestureRecognizer({
-    sensitivity: settings.sensitivity,
+    sensitivity: settings[sensitivityKey(settings)],
     weapon: 'sword',
     gyroRange: platform.motion.info().gyroRange,
   });
+
+  /**
+   * Brings everything that depends on the control and the grip in line with the settings
+   * (docs-hilt-grip.md §A.6). Call it after any change to `control` or `grip`; setMode calls it
+   * on every mode change, so the recognizer, ctx.input.grip and the orientation never disagree.
+   *  - the recognizer's grip profile (each setGrip is a no-op if unchanged; a change resets it),
+   *  - ctx.input.grip, in every mode (the viewmodel keeps its hilt pose under the pause menu),
+   *  - the effective grip's flips, <html data-grip="hilt|window|none">,
+   *  - the app orientation: portrait for the hilt grip in every mode, locked while fighting.
+   */
+  let gripAttr = '';
+  ctx.applyControls = () => {
+    const grip = effectiveGrip(settings);
+    const g = grip || 'window';
+    ctx.motionFrames.setGrip?.(g);
+    ctx.gestures.setGrip?.(g);
+    ctx.input.grip = grip;
+    const flip = !ctx.motionDemo;
+    const keys = flipKeys(settings);
+    ctx.gestures.setFlip?.(flip && !!settings[keys.x], flip && !!settings[keys.y]);
+    const attr = grip || 'none';
+    if (attr !== gripAttr) {
+      gripAttr = attr;
+      document.documentElement.dataset.grip = attr;
+    }
+    const active = ctx.mode === 'battle' || ctx.mode === 'training';
+    platform.lockOrientation(active && settings.control === 'motion', appOrientation(settings));
+  };
+  ctx.applyControls();
 
   bootProgress('Weaving cloaks…', 0.06);
   ctx.textures = createTextures(ctx);
@@ -255,7 +303,8 @@ async function boot() {
     } else {
       platform.motion.stop();
     }
-    platform.lockOrientation(active && motionWanted());
+    // The grip profile, ctx.input.grip and the orientation lock follow the settings.
+    ctx.applyControls();
     quietUntil = ctx.time.now + 2;
     ctx.events.emit('modeChanged', { mode, prev });
   };
@@ -332,14 +381,18 @@ async function boot() {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, PIXEL_RATIO_CAP[quality]) * renderScale);
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
-    // A fixed horizontal field of view: a fixed 70° vertical FOV is ~114° across a wide phone,
-    // which shrinks the enemies and stretches the edges. ~100° across (55–70° vertical).
-    camera.fov = clamp((2 * Math.atan(Math.tan((H_FOV * Math.PI) / 360) / camera.aspect) * 180) / Math.PI, 55, 70);
+    // A fixed horizontal field of view: ~100° across in landscape (55–70° vertical), ~46° across
+    // in portrait (72–84° vertical), gfx/framing.js.
+    camera.fov = cameraFov(camera.aspect);
     camera.updateProjectionMatrix();
     vm.camera.aspect = w / h;
     vm.camera.updateProjectionMatrix();
   }
-  window.addEventListener('resize', applySize);
+  window.addEventListener('resize', () => {
+    applySize();
+    // A rotation re-lays out the page over a few slow frames: they must not lower the resolution.
+    quietUntil = ctx.time.now + 2;
+  });
   applySize();
 
   // Only the GPU's share of a slow frame is helped by fewer pixels. When the main thread itself
@@ -397,13 +450,15 @@ async function boot() {
     const player = ctx.player;
     const gestures = ctx.gestures;
     const overridden = ctx.fx.cameraOverridden;
-    gestures.setSensitivity(settings.sensitivity);
+    // Each grip keeps its own sensitivity and flips (core/grip.js; constant keys, no allocation).
+    gestures.setSensitivity(settings[sensitivityKey(settings)]);
     gestures.setWeapon(player.weapon === 'spear' && player.hasSpearInHand ? 'spear' : 'sword');
     // A mirrored setup is corrected on the rates themselves, so every directional decision
     // (uppercut, chop, throw, recoil) and gyro look agree: flipX gives dir → π − dir, flipY dir → −dir.
     // The Agoge's demos are synthesized for an unmirrored phone: they are never flipped.
     const flip = !ctx.motionDemo;
-    gestures.setFlip?.(flip && !!settings.motionFlipX, flip && !!settings.motionFlipY);
+    const keys = flipKeys(settings);
+    gestures.setFlip?.(flip && !!settings[keys.x], flip && !!settings[keys.y]);
     const raw = platform.motion.poll();
     for (let i = 0; i < raw.length; i++) {
       const sample = ctx.motionFrames.process(raw[i]);

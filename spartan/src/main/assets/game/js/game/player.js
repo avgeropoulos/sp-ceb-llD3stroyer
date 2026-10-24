@@ -3,17 +3,25 @@
  * pdt, raises the shield, aims (motion: rotated attacks; touch: a short camera pull), lunges,
  * throws spears, keeps score, and places the first-person camera.
  *
- * Motion mode: the camera only ever turns with the player's own body (gyro look) or a recenter:
- * no auto-face toward attackers and no pitch easing toward targets (a steady, slightly lowered
- * pitch). Aim help rotates the attack instead (up to MOTION_YAW_CLAMP). A detected swing starts
- * its attack at once: it may cut the current one short as soon as that one's strike has resolved
- * (resolving it first if need be), and a motion slash strikes after MOTION_STRIKE_SCALE of the
- * usual delay, since the physical swing is already under way.
+ * Motion mode: in the window grip the camera only ever turns with the player's own body (gyro
+ * look) or a recenter: no auto-face toward attackers and no pitch easing toward targets (a steady,
+ * slightly lowered pitch). Aim help rotates the attack instead (up to MOTION_YAW_CLAMP). A detected
+ * swing starts its attack at once: it may cut the current one short as soon as that one's strike
+ * has resolved (resolving it first if need be), and a motion slash strikes after
+ * MOTION_STRIKE_SCALE of the usual delay, since the physical swing is already under way.
+ *
+ * The hilt grip (docs-hilt-grip.md §C, ctx.input.grip === 'hilt'): the player can't turn his body
+ * to look, so a lock-on camera faces one foe (lockTarget) through lockon.js's rate-limited,
+ * critically damped yaw spring, the only yaw writer there besides the guard-break nudge. Gyro look,
+ * the touch aim pull and the recenter ease never turn the view in that grip. A thumb swipe
+ * (switchTarget) moves the lock, an attacker the shield can't cover may take it (lockAuto), and
+ * strikes and throws aim at it. Touch and the window grip keep lockMode 'off'.
  */
 import * as THREE from 'three';
 import { TIMING, WEAPONS, pickTarget, ballisticPitch, dirToken } from './rules.js';
 import { ComboTracker, COMBO_WINDOWS } from './combos.js';
 import { clamp, lerp, smoothstep, angleDiff, wrapAngle, yawTo, TAU } from '../core/math.js';
+import { LOCK, YawSpring, isLockable, inActors, acquire, nextInDirection } from './lockon.js';
 
 const EYE = 1.66;
 const BUFFER_LIFE = 0.4;
@@ -44,6 +52,8 @@ const START_SPARES = 2;
 const CHAIN_MAX = 3.0;
 const CHAIN_STEP = 0.1;
 const CHAIN_IDLE = 4.0; // s of game time without a player hit before the chain drops back to 1
+const LOCK_SIDES_EVERY = 0.1; // s (pdt): lockSides is recomputed at most this often
+const THREAT_MEMORY = 4; // foes remembered as having lost the lock to a threat switch (≥ threatReturn / threatGap)
 
 const SPEED_FWD = 2.3;
 const SPEED_BACK = 1.5;
@@ -99,6 +109,23 @@ export function createPlayer(ctx) {
   let idleT = 0;
   let idleFrame = false;
 
+  // Lock-on (the hilt grip, §C). lockMode: 'off' (touch, window, dead) | 'target' | 'front' | 'hold'.
+  const spring = new YawSpring(LOCK);
+  const lockSides = { left: null, right: null }; // what a swipe would pick now (mutated in place)
+  const threatLost = new Array(THREAT_MEMORY).fill(null); // foes that lost the lock to a threat switch …
+  const threatLostAt = new Array(THREAT_MEMORY).fill(-Infinity); // … and when (ptime)
+  let threatSlot = 0;
+  let lockTarget = null;
+  let lockMode = 'off';
+  let lockDesired = 0; // the spring's goal
+  let lockBearing = 0; // the target's low-passed bearing
+  let lockKeep = LOCK.keepRange; // the current lock is kept within this
+  let lockFar = 0; // s (pdt) the current lock has been beyond lockKeep
+  let lockHold = 0; // s left facing the last bearing ('hold', after a death) or the front (after a recenter)
+  let lockFast = false; // a threat switch: the spring's fast limits until it comes to rest
+  let lastThreatAt = -Infinity;
+  let sidesLeft = 0;
+
   // The current attack (reused) and the one-slot buffer.
   const atk = {
     active: false, kind: 'slash', weapon: 'sword', dir: 0, power: 0, src: 'test', motion: false,
@@ -137,6 +164,20 @@ export function createPlayer(ctx) {
     combos: new ComboTracker(),
     focusTarget: null,
     attackYaw: 0,
+    /** The hilt grip's lock (§C.2), read-only: the foe the view faces and the strikes aim at. */
+    get lockTarget() {
+      return lockTarget;
+    },
+    /** 'off' (touch, the window grip, dead) | 'target' | 'front' (easing to yaw 0) | 'hold' (a dead lock's last bearing) */
+    get lockMode() {
+      return lockMode;
+    },
+    /** { left, right }: the foe a swipe that way would pick now (HUD arrows). Recomputed at most every 0.1 s. */
+    lockSides,
+    /** The view's YawSpring (read-only; tests and the e2e read `moving`). */
+    get lockSpring() {
+      return spring;
+    },
 
     reset,
     update,
@@ -150,6 +191,8 @@ export function createPlayer(ctx) {
     refillSpears,
     dropSpears,
     recenter,
+    switchTarget,
+    setLock,
   };
   strikeAttack.origin = player.pos;
 
@@ -160,6 +203,8 @@ export function createPlayer(ctx) {
   const motionMode = () => !!(ctx.input && ctx.input.motion);
   const cameraOverridden = () => !!(ctx.fx && ctx.fx.cameraOverridden);
   const shieldLocked = () => ptime < shieldLockUntil;
+  const hiltGrip = () => !!(ctx.input && ctx.input.grip === 'hilt');
+  const lockOn = () => lockMode !== 'off';
 
   function emitScore() {
     ev.emit('scoreChanged', { score: player.score, chain: player.chain, kills: player.kills });
@@ -223,8 +268,167 @@ export function createPlayer(ctx) {
 
   // ---- focus ------------------------------------------------------------------------------
 
+  // The lock is the focus while it is alive, in reach (+ FOCUS_EXTRA) and in front; otherwise a
+  // closer foe in front still gets hit while the lock is on a far one (§C.5).
   function updateFocus() {
+    const t = lockTarget;
+    if (t && t.alive && distTo(t) <= weaponReach() + FOCUS_EXTRA && Math.abs(angleTo(t)) <= FOCUS_ANGLE) {
+      player.focusTarget = t;
+      return;
+    }
     player.focusTarget = pickTarget(ctx.actors, player.pos, player.yaw, FOCUS_ANGLE, weaponReach() + FOCUS_EXTRA, isHostile);
+  }
+
+  // ---- lock-on (the hilt grip, docs-hilt-grip.md §C) -------------------------------------
+
+  function distTo(actor) {
+    return Math.hypot(actor.pos.x - player.pos.x, actor.pos.z - player.pos.z);
+  }
+
+  function bearingOf(actor) {
+    return yawTo(actor.pos.x - player.pos.x, actor.pos.z - player.pos.z);
+  }
+
+  function swipeRange() {
+    return player.weapon === 'spear' && player.hasSpearInHand ? LOCK.spearRange : LOCK.switchRange;
+  }
+
+  // The grip became the hilt: the spring starts at rest where the view is (no jump), facing the
+  // front until stepLock acquires. The recenter ease never runs in this grip.
+  function enterLock() {
+    spring.reset(player.yaw);
+    recenterLeft = 0;
+    lockMode = 'front';
+    lockDesired = 0;
+    lockHold = 0;
+    lockFar = 0;
+    lockFast = false;
+    sidesLeft = 0;
+  }
+
+  // Locks `t` (every new lockTarget comes through here). picked: a swipe, a threat or setLock,
+  // which keep the lock out to max(keepRange, its distance + keepSlack) (≤ spearRange); an
+  // auto-acquired one is kept to keepRange.
+  function lockTo(t, reason, picked) {
+    const prev = lockTarget;
+    lockTarget = t;
+    lockMode = 'target';
+    lockKeep = picked ? Math.min(LOCK.spearRange, Math.max(LOCK.keepRange, distTo(t) + LOCK.keepSlack)) : LOCK.keepRange;
+    lockFar = 0;
+    lockHold = 0;
+    lockBearing = bearingOf(t);
+    lockDesired = lockBearing;
+    sidesLeft = 0;
+    if (t !== prev) ev.emit('lockOn', { target: t, prev, reason });
+  }
+
+  // Drops the lock: mode 'hold' (keep facing the last bearing), 'front' or 'off'; `hold` s before
+  // the next acquisition. A transition under way keeps its spring limits until it rests.
+  function dropLock(reason, mode, hold) {
+    const prev = lockTarget;
+    lockTarget = null;
+    lockMode = mode;
+    lockHold = hold;
+    lockFar = 0;
+    sidesLeft = 0;
+    if (mode === 'off') {
+      lockSides.left = null;
+      lockSides.right = null;
+      lockFast = false;
+    }
+    if (prev) ev.emit('lockOn', { target: null, prev, reason });
+  }
+
+  // Starts and stops with the grip, checks the lock (death, no longer lockable or listed, beyond
+  // its keep range for loseTime) and acquires when there is none and no hold is running. Runs
+  // before the focus, so strikes this frame aim at the lock it leaves.
+  function stepLock(dt) {
+    if (!hiltGrip()) {
+      if (lockOn()) dropLock('clear', 'off', 0);
+      return;
+    }
+    if (!lockOn()) enterLock();
+    const t = lockTarget;
+    if (t) {
+      if (!t.alive || t.state === 'dead') dropLock('death', 'hold', LOCK.deathHold);
+      else if (!isLockable(t) || !inActors(t, ctx.actors)) dropLock('lost', 'front', 0);
+      else if (distTo(t) > lockKeep) {
+        lockFar += dt;
+        if (lockFar >= LOCK.loseTime - 1e-9) dropLock('lost', 'front', 0);
+      } else lockFar = 0;
+    }
+    if (lockTarget) return;
+    if (lockHold > 0) lockHold -= dt;
+    if (lockHold > 1e-9) return;
+    lockHold = 0;
+    const a = acquire(ctx.actors, player.pos, player.yaw, LOCK);
+    if (a) lockTo(a, 'acquire', false);
+    else lockMode = 'front';
+  }
+
+  // What a swipe would pick now, for the HUD's side arrows (at most every LOCK_SIDES_EVERY s).
+  function updateLockSides(dt) {
+    if (!lockOn()) return;
+    sidesLeft -= dt;
+    if (sidesLeft > 0) return;
+    sidesLeft = LOCK_SIDES_EVERY;
+    const cur = lockTarget;
+    const from = cur ? bearingOf(cur) : player.yaw;
+    const range = swipeRange();
+    lockSides.left = nextInDirection(ctx.actors, player.pos, from, cur, -1, range, LOCK);
+    lockSides.right = nextInDirection(ctx.actors, player.pos, from, cur, 1, range, LOCK);
+  }
+
+  // The view's yaw in the hilt grip: the spring toward the lock's low-passed bearing (feet, not
+  // the animated chest), the front, or the held bearing. Frozen (and yaw not written) while the
+  // spear cam owns the camera, so the eye pose it eases back to holds still.
+  function stepLockYaw(dt, overridden) {
+    const t = lockTarget;
+    if (t) {
+      const k = dt > 0 ? 1 - Math.exp(-dt / LOCK.bearingTau) : 0;
+      lockBearing = wrapAngle(lockBearing + angleDiff(lockBearing, bearingOf(t)) * k);
+      lockDesired = lockBearing;
+    } else if (lockMode === 'front') lockDesired = 0;
+    if (overridden) {
+      spring.reset(player.yaw);
+      return;
+    }
+    player.yaw = spring.step(player.yaw, lockDesired, dt, lockFast);
+    if (lockFast && !spring.moving) lockFast = false;
+  }
+
+  /**
+   * Moves the lock to the next foe to the left (dir −1) or right (+1) of the current one (§C.3):
+   * with the spear in hand out to spearRange, else switchRange. Emits lockOn 'switch', or 'none'
+   * (target unchanged, the view doesn't move) when nothing lies that way. Only in the hilt grip,
+   * alive and with the camera not overridden.
+   */
+  function switchTarget(dir) {
+    if (!hiltGrip() || !player.alive || cameraOverridden()) return false;
+    const d = dir > 0 ? 1 : dir < 0 ? -1 : 0;
+    if (d === 0) return false;
+    if (!lockOn()) enterLock();
+    const cur = lockTarget;
+    const next = nextInDirection(ctx.actors, player.pos, cur ? bearingOf(cur) : player.yaw, cur, d, swipeRange(), LOCK);
+    if (!next) {
+      ev.emit('lockOn', { target: cur, prev: cur, reason: 'none' });
+      return false;
+    }
+    lockTo(next, 'switch', true);
+    return true;
+  }
+
+  /**
+   * The Agoge and tests: forces the lock onto `actor` (lockOn 'acquire', kept like a swiped lock),
+   * or with null (or an actor that can't be locked) drops it to 'front' (lockOn 'clear').
+   * Only in the hilt grip and alive. Returns whether `actor` is now the lock.
+   */
+  function setLock(actor) {
+    if (!hiltGrip() || !player.alive) return false;
+    if (!lockOn()) enterLock();
+    if (actor && isLockable(actor)) lockTo(actor, 'acquire', true);
+    else dropLock('clear', 'front', 0);
+    return !!actor && lockTarget === actor;
   }
 
   // ---- attacks ---------------------------------------------------------------------------
@@ -373,8 +577,9 @@ export function createPlayer(ctx) {
   }
 
   // Touch/keyboard aim assist: pull the view up to 0.21 rad toward the focus over the first 0.1 s.
+  // Never with the lock-on, whose spring is the hilt grip's only yaw writer.
   function planPull() {
-    if (atk.motion || !atk.target || (ctx.settings && ctx.settings.aimAssist === false)) return;
+    if (atk.motion || lockOn() || !atk.target || (ctx.settings && ctx.settings.aimAssist === false)) return;
     atk.pull = clamp(angleTo(atk.target), -TOUCH_PULL, TOUCH_PULL);
     atk.pullLeft = atk.pull;
     atk.pullTime = Math.min(TOUCH_PULL_TIME, atk.strike);
@@ -424,7 +629,14 @@ export function createPlayer(ctx) {
 
   // The living hostile with the smallest view angle within 0.262 rad and 45 m. Actors flagged
   // noThrowLock (the Agoge's near dummy while the far target is the aim) are never locked.
+  // The hilt grip throws at the lock instead while it is lockable, listed, not noThrowLock and
+  // within 45 m (§C.5).
   function findThrowTarget() {
+    const lt = lockTarget;
+    if (lt && isLockable(lt) && !lt.noThrowLock && inActors(lt, ctx.actors)) {
+      const d = distTo(lt);
+      if (d <= THROW_RANGE && d >= 0.3) return lt;
+    }
     const actors = ctx.actors || [];
     let best = null;
     let bestA = THROW_ANGLE;
@@ -595,6 +807,10 @@ export function createPlayer(ctx) {
         if (player.alive) switchWeapon(a.weapon);
         continue;
       }
+      if (a.type === 'switchTarget') {
+        switchTarget(a.dir);
+        continue;
+      }
       if (!ATTACK_ACTIONS[a.type] || !player.alive || overridden) continue;
       if (canStartNow() && startAttack(a)) continue;
       if (canStartNow()) continue; // dropped (no spear, bash cooldown)
@@ -651,14 +867,16 @@ export function createPlayer(ctx) {
 
   function updateLook(dt) {
     const inp = ctx.input || {};
-    const motion = motionMode();
+    const lock = lockOn();
+    const motion = motionMode() || lock;
     const overridden = cameraOverridden();
     const dy = Number.isFinite(inp.lookYaw) ? inp.lookYaw : 0;
     const dp = Number.isFinite(inp.lookPitch) ? inp.lookPitch : 0;
     inp.lookYaw = 0;
     inp.lookPitch = 0;
     if (!player.alive) return;
-    if (!overridden) {
+    if (lock) stepLockYaw(dt, overridden); // the hilt grip ignores look input
+    else if (!overridden) {
       player.yaw = wrapAngle(player.yaw + dy);
       if (!motion) player.pitch = clamp(player.pitch + dp, -LOOK_PITCH_LIMIT, LOOK_PITCH_LIMIT);
     }
@@ -683,7 +901,7 @@ export function createPlayer(ctx) {
 
     if (motion) {
       // A steady, slightly lowered pitch (eased back after a recenter or a mode change). Gyro never
-      // looks in pitch, and nothing turns the view toward a foe: the attack turns instead.
+      // looks in pitch, and no foe pulls it: the attack turns instead (the hilt lock turns only yaw).
       const step = MOTION_PITCH_RATE * dt;
       player.pitch += clamp(MOTION_PITCH - player.pitch, -step, step);
     }
@@ -829,6 +1047,14 @@ export function createPlayer(ctx) {
     recenterLeft = 0;
     kickAt = -Infinity;
     throwTrack.target = null;
+    // the lock restarts with the next hilt update (enterLock, then acquire)
+    dropLock('clear', 'off', 0);
+    spring.reset(0);
+    lastThreatAt = -Infinity;
+    for (let i = 0; i < THREAT_MEMORY; i++) {
+      threatLost[i] = null;
+      threatLostAt[i] = -Infinity;
+    }
     emitScore();
     syncViewmodel();
   }
@@ -847,11 +1073,13 @@ export function createPlayer(ctx) {
     }
     decayChain();
     trackShieldHold();
+    stepLock(dt);
     updateFocus();
     stepStates(dt);
     stepAttack(dt);
     drainActions();
     stepBuffer(dt);
+    updateLockSides(dt);
     updateShield(dt);
     updateLook(dt);
     updateMove(dt);
@@ -947,6 +1175,7 @@ export function createPlayer(ctx) {
     buffer.has = false;
     buffer.action = null;
     deathT = 0;
+    dropLock('clear', 'off', 0);
     ev.emit('playerDeath', {});
   }
 
@@ -1029,9 +1258,17 @@ export function createPlayer(ctx) {
     }
   }
 
-  /** Eases the view back to the line (yaw 0, level) and re-anchors the gyro heading. */
+  /**
+   * Eases the view back to the line (yaw 0, level) and re-anchors the gyro heading. In the hilt
+   * grip it drops the lock instead (lockOn 'clear') and faces the front for recenterHold before
+   * acquiring again; the spring stays the only yaw writer there.
+   */
   function recenter() {
-    recenterLeft = 0.25;
+    if (!hiltGrip()) recenterLeft = 0.25;
+    else if (player.alive) {
+      if (!lockOn()) enterLock();
+      dropLock('clear', 'front', LOCK.recenterHold);
+    }
     try {
       if (ctx.gestures && ctx.gestures.recenter) ctx.gestures.recenter();
     } catch (err) {
@@ -1055,6 +1292,39 @@ export function createPlayer(ctx) {
     player.kills++;
     player.score += Math.round(100 * player.chain) + (e.spear ? 250 : 0) + (e.cause === 'sea' ? 150 : 0);
     emitScore();
+  });
+
+  // Phase changes and a new day clear the lock behind the fade (§C.7).
+  const clearLockForPhase = () => {
+    if (lockOn()) dropLock('clear', 'front', 0);
+  };
+  ev.on('phase', clearLockForPhase);
+  ev.on('dayStart', clearLockForPhase);
+
+  // Threat switch (§C.6, settings.lockAuto): a player-targeted wind-up the shield can't cover
+  // (beyond threatAngle of the view) takes the lock at the fast rate, unless the lock itself is
+  // winding up at the player, a threat switch happened within threatGap, or that foe lost the lock
+  // to a threat within threatReturn (no ping-pong between front and rear).
+  ev.on('enemyWindup', (e) => {
+    if (!e || !e.targetIsPlayer || !lockOn() || !hiltGrip() || !player.alive) return;
+    if (ctx.settings && ctx.settings.lockAuto === false) return;
+    const x = e.actor;
+    if (!x || x === lockTarget || !isLockable(x)) return;
+    if (Math.abs(angleTo(x)) <= LOCK.threatAngle) return;
+    const cur = lockTarget;
+    if (cur && cur.state === 'windup' && cur.targetIsPlayer) return;
+    if (ptime - lastThreatAt < LOCK.threatGap - 1e-9) return;
+    for (let i = 0; i < THREAT_MEMORY; i++) {
+      if (threatLost[i] === x && ptime - threatLostAt[i] < LOCK.threatReturn - 1e-9) return;
+    }
+    if (cur) {
+      threatLost[threatSlot] = cur;
+      threatLostAt[threatSlot] = ptime;
+      threatSlot = (threatSlot + 1) % THREAT_MEMORY;
+    }
+    lastThreatAt = ptime;
+    lockFast = true;
+    lockTo(x, 'threat', true);
   });
 
   ev.on('block', (e) => {

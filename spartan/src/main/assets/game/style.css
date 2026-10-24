@@ -351,6 +351,20 @@ html, body {
 .hud-toast.is-shown { opacity: 1; transform: none; }
 .hud-toast.is-sea { color: #bfe3e6; }
 .hud-toast.is-break { color: #ff8a6a; }
+/* Coach toasts and the over-speed warning (hilt): a sentence, so it wraps and is not shouted. */
+.hud-toast.is-coach {
+  max-width: min(250px, 64vw);
+  padding: 4px 9px 5px;
+  font-size: 14px;
+  line-height: 1.3;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  text-align: right;
+  white-space: normal;
+  color: var(--cream);
+  background: rgba(14, 7, 4, 0.72);
+  border-right: 2px solid var(--bronze);
+}
 
 /* Reticle (spear in hand). */
 .hud-reticle {
@@ -457,6 +471,124 @@ html, body {
   background: #c6311f;
   transform-origin: 0 50%;
 }
+
+/* Lock-on marker (hilt grip, docs-hilt-grip.md §E.4): four fixed-size corner brackets, his health
+   above them and the last-strike chip, each moved by its own translate3d from hud.js (the box
+   resizes without layout; the strokes keep their width). Bronze 3 px over a 5 px dark backing. */
+.hud-lock {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.hud-lock.is-shown { opacity: 1; }
+.hud-lock-in { position: absolute; left: 0; top: 0; }
+.hud-lock.is-new .hud-lock-in { animation: hud-lock-new 0.15s ease-out; }
+@keyframes hud-lock-new {
+  from { transform: scale(1.25); }
+  to { transform: scale(1); }
+}
+.hud-lock-c {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 0 solid rgba(18, 8, 6, 0.78);
+}
+.hud-lock-c::after {
+  content: '';
+  position: absolute;
+  width: 13px;
+  height: 13px;
+  box-sizing: border-box;
+  border: 0 solid var(--bronze-hi);
+}
+.hud-lock-tl { border-width: 5px 0 0 5px; }
+.hud-lock-tl::after { left: -4px; top: -4px; border-width: 3px 0 0 3px; }
+.hud-lock-tr { border-width: 5px 5px 0 0; }
+.hud-lock-tr::after { right: -4px; top: -4px; border-width: 3px 3px 0 0; }
+.hud-lock-bl { border-width: 0 0 5px 5px; }
+.hud-lock-bl::after { left: -4px; bottom: -4px; border-width: 0 0 3px 3px; }
+.hud-lock-br { border-width: 0 5px 5px 0; }
+.hud-lock-br::after { right: -4px; bottom: -4px; border-width: 0 3px 3px 0; }
+.hud-lock.is-windup .hud-lock-c::after { border-color: #d8331f; }
+.hud-lock.is-windup .hud-lock-c { animation: hud-lock-pulse 0.3s ease-in-out infinite alternate; }
+@keyframes hud-lock-pulse {
+  from { opacity: 1; }
+  to { opacity: 0.45; }
+}
+.hud-lock-hp {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 48px;
+  height: 5px;
+  background: rgba(10, 5, 3, 0.75);
+  border: 1px solid rgba(201, 162, 74, 0.7);
+  overflow: hidden;
+  display: none;
+}
+.hud-lock.has-hp .hud-lock-hp { display: block; }
+.hud-lock-hp b { position: absolute; inset: 0; background: #c6311f; transform-origin: 0 50%; }
+.hud-lock-arrow {
+  position: absolute;
+  left: -13px;
+  top: -13px;
+  width: 26px;
+  height: 26px;
+  color: var(--bronze-hi);
+  display: none;
+}
+.hud-lock-arrow svg { width: 100%; height: 100%; display: block; }
+.hud-lock.is-off .hud-lock-arrow { display: block; }
+.hud-lock.is-off .hud-lock-hp { display: none; }
+.hud-lock.is-windup .hud-lock-arrow { color: #ff5a36; }
+/* The last strike, under the top-left bracket: it waits there until the phone is back at guard. */
+.hud-lock-res {
+  position: absolute;
+  left: -5px;
+  top: 14px;
+  padding: 2px 5px 1px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.16em;
+  white-space: nowrap;
+  color: var(--cream);
+  background: rgba(14, 7, 4, 0.78);
+  border-left: 2px solid var(--bronze);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.hud-lock-res.is-shown { opacity: 1; }
+.hud-lock-res.is-kill { color: #ffd27a; border-left-color: #ffb347; }
+.hud-lock-res.is-hit { color: #fff1d6; border-left-color: #d8331f; }
+.hud-lock-res.is-guard { color: #c9b89a; border-left-color: #8d7f6a; }
+.hud-lock-res.is-miss { color: rgba(233, 220, 192, 0.7); border-left-color: rgba(233, 220, 192, 0.35); }
+/* A swipe has somewhere to go: ‹ › at the edges. */
+.hud-lock-more {
+  position: absolute;
+  top: 46%;
+  width: 22px;
+  margin-top: -20px;
+  font-size: 34px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 40px;
+  text-align: center;
+  color: var(--bronze-hi);
+  text-shadow: 0 0 2px #120806, 0 1px 3px #000, 0 0 10px rgba(0, 0, 0, 0.7);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.hud-lock-more.is-shown { opacity: 0.9; }
+.hud-lock-more-l { left: calc(var(--safe-l) + 6px); }
+.hud-lock-more-r { right: calc(var(--safe-r) + 6px); }
 
 /* Combo popup: a carved limestone tablet. */
 .hud-combo {
@@ -858,6 +990,14 @@ html, body {
 }
 .ctl-swap.is-empty { opacity: 0.55; }
 .ctl-swap.is-empty .ctl-count { background: #6b5a40; }
+/* Hilt layout (docs-hilt-grip.md §D): pause and the weapon button at the top corners for the off
+   hand, out of the thumb's arc (mirrored for a left hand); no recenter (the lock-on owns the view). */
+#controls.ctl-hilt .ctl-btn { top: calc(var(--safe-t) + 10px); width: 48px; height: 48px; }
+#controls.ctl-hilt .ctl-pause { left: calc(var(--safe-l) + 10px); right: auto; }
+#controls.ctl-hilt .ctl-swap { right: calc(var(--safe-r) + 10px); left: auto; }
+#controls.ctl-hilt.ctl-left .ctl-pause { left: auto; right: calc(var(--safe-r) + 10px); }
+#controls.ctl-hilt.ctl-left .ctl-swap { right: auto; left: calc(var(--safe-l) + 10px); }
+#controls.ctl-hilt .ctl-recenter { display: none; }
 
 /* Touch layout: stick, SHIELD, BASH, THROW (only once the device has shown it can touch). */
 .ctl-stick-home {
@@ -1048,6 +1188,7 @@ html, body {
   color: var(--bronze-hi);
 }
 .ctl-tip.is-shown { opacity: 1; transform: translate(-50%, 0); }
+#controls.ctl-hilt .ctl-tip { width: min(560px, 92vw); }
 
 /* --------------------------------- Agoge --------------------------------- */
 #training {
@@ -1408,6 +1549,14 @@ html, body {
 .mn-title-row2 .mn-btn { min-width: 0; }
 .mn-ctlpick { display: flex; align-items: center; gap: 10px; }
 .mn-ctlpick-l { font-size: 11px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--bronze); text-shadow: var(--text-shadow); }
+/* The Grip segment joins the row when Motion is on; How to play and Settings stay a pair. */
+.mn-grippick { display: none; }
+.mn-title.is-motion .mn-grippick { display: flex; }
+.mn-title-pair { display: flex; gap: clamp(8px, 1.6vw, 14px); }
+.mn-title.is-motion .mn-title-row2, .mn-title.is-motion .mn-title-pair { gap: 10px; }
+.mn-title.is-motion .mn-title-row2 .mn-ctlpick { gap: 8px; }
+.mn-title.is-motion .mn-title-row2 .mn-seg button { padding: 0 11px; }
+.mn-title.is-motion .mn-title-row2 .mn-quiet { padding: 0 16px; }
 .mn-toast {
   position: absolute;
   left: 50%;
@@ -1576,6 +1725,8 @@ input[type='range']::-moz-range-thumb {
 .mn-fl small { margin-top: 2px; font-size: 12px; font-style: italic; color: rgba(233, 220, 192, 0.62); }
 .mn-fl small:empty { display: none; }
 .mn-field[data-key='quality'] small { color: #e7b768; font-style: normal; letter-spacing: 0.06em; }
+/* Controls and Grip lead the Controls tab, each across the whole panel (the Grip options are long). */
+.mn-settings .mn-field[data-key='control'], .mn-settings .mn-field[data-key='grip'] { grid-column: 1 / -1; }
 
 /* How to play: black-figure cards. */
 .mn-lead, .mn-note { margin: 2px 0 10px; font-size: 14px; line-height: 1.35; color: var(--cream); }
@@ -1651,6 +1802,7 @@ input[type='range']::-moz-range-thumb {
 .d-band { fill: none; stroke: var(--cream); stroke-width: 2.5; }
 .d-dash { stroke-dasharray: 5 4; }
 .d-motion { fill: none; stroke: var(--cream); stroke-width: 2.4; stroke-linecap: round; }
+.d-blade { fill: none; stroke: var(--cream); stroke-width: 2.4; stroke-dasharray: 5 4; stroke-linecap: round; }
 .d-frame { fill: none; stroke: var(--figure); stroke-width: 3; }
 .d-screen { fill: none; stroke: var(--figure); stroke-width: 1; opacity: 0.7; }
 .d-throwbtn { stroke: var(--cream); stroke-width: 2; }
@@ -1659,6 +1811,7 @@ input[type='range']::-moz-range-thumb {
 .d-boss { fill: var(--cream); }
 .d-label { font: italic 12px var(--serif); fill: var(--figure); text-anchor: middle; }
 .d-small { font: 9.5px var(--serif); fill: var(--figure); letter-spacing: 0.04em; }
+.d-note { font: 12px var(--serif); fill: var(--figure); }
 .d-tiny { font: bold 6.5px var(--serif); fill: var(--cream); letter-spacing: 0.06em; }
 .d-btn { fill: var(--figure); stroke: var(--figure); stroke-width: 1.5; }
 .d-ring { fill: none; stroke: var(--figure); stroke-width: 2; }
@@ -1689,6 +1842,90 @@ input[type='range']::-moz-range-thumb {
 .mn-safe li.is-warn { color: #ffd2b0; }
 .mn-safe li.is-warn b { color: #ff9466; }
 .mn-safe li.is-warn svg { box-shadow: 0 0 0 2px #c83a22; }
+/* One grip's lines at a time (menus.js showSafety). */
+.mn-safety .mn-safe-hilt, .mn-safety.is-hilt .mn-safe-window { display: none; }
+.mn-safety.is-hilt .mn-safe-hilt { display: grid; }
+
+/* Grip chooser (docs-hilt-grip.md §A.6): two large cards, side by side (stacked in portrait). */
+.mn-grip-cards { display: flex; gap: 12px; text-align: left; }
+#menus .mn-grip-card {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  color: var(--cream);
+  background: var(--figure);
+  border: 1px solid rgba(201, 162, 74, 0.5);
+  border-radius: 3px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  text-align: left;
+  transition: transform 0.08s ease;
+}
+#menus .mn-grip-card:active { transform: scale(0.98); }
+.mn-grip-card.is-rec { border-color: var(--bronze); box-shadow: 0 0 0 1px rgba(201, 162, 74, 0.45), 0 4px 14px rgba(0, 0, 0, 0.45); }
+.mn-grip-card svg {
+  display: block;
+  width: 100%;
+  height: clamp(70px, 22vh, 120px);
+  background: radial-gradient(ellipse at 50% 40%, var(--terracotta-hi), var(--terracotta) 70%);
+  border-bottom: 3px solid var(--figure);
+}
+.mn-grip-card svg * { vector-effect: non-scaling-stroke; }
+.mn-grip-tx { display: flex; flex-direction: column; gap: 4px; padding: 8px 11px 11px; font-family: var(--serif); }
+.mn-grip-tx b { font-size: 15px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--bronze-hi); }
+.mn-grip-tx em {
+  align-self: flex-start;
+  padding: 2px 7px 1px;
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--figure);
+  background: var(--bronze);
+  border-radius: 2px;
+}
+.mn-grip-tx > span { font-size: 13px; line-height: 1.35; letter-spacing: 0.01em; text-transform: none; }
+.mn-grip.is-new .mn-grip-k { color: #ffcf6a; }
+
+/* Rotate prompt (§A.5): its own layer over every screen. */
+.mn-rotate {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(var(--safe-t) + 16px) calc(var(--safe-r) + 16px) calc(var(--safe-b) + 16px) calc(var(--safe-l) + 16px);
+  background: radial-gradient(ellipse at 50% 45%, rgba(26, 14, 8, 0.96) 0%, rgba(4, 2, 1, 0.99) 100%);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.25s ease, visibility 0s linear 0.25s;
+}
+.mn-rotate.is-on { opacity: 1; visibility: visible; pointer-events: auto; transition: opacity 0.25s ease; }
+#menus .mn-rotate:not(.is-on) button { pointer-events: none; }
+.mn-rotate-in { display: flex; flex-direction: column; align-items: center; gap: 14px; max-width: min(440px, 92vw); text-align: center; }
+.mn-rotate-g { width: 92px; height: 92px; }
+.mn-rotate-arc { fill: none; stroke: var(--bronze); stroke-width: 2.5; stroke-dasharray: 4 4; stroke-linecap: round; }
+.mn-rotate-phone { transform-origin: 32px 32px; animation: mn-rotate 2.4s ease-in-out infinite; }
+.mn-rotate-phone rect:first-child { fill: var(--bronze-hi); }
+.mn-rotate-phone rect:last-child { fill: #2a1a0e; }
+@keyframes mn-rotate {
+  0%, 20% { transform: rotate(-90deg); }
+  55%, 100% { transform: rotate(0deg); }
+}
+.mn-rotate-t { margin: 0; font-size: 18px; line-height: 1.35; letter-spacing: 0.04em; color: var(--cream); }
+
+/* How to play, Motion tab: one grip's cards at a time, a small switch for the other. */
+.mn-howgrip { display: flex; align-items: center; gap: 10px; float: right; margin: 0 0 6px 14px; }
+.mn-howset .mn-cards { clear: both; }
+.mn-seg-mini button { min-height: 44px; min-width: 0; padding: 0 12px; font-size: 12px; }
+.mn-howset { display: none; }
+.mn-howset.is-on { display: block; }
 
 /* Game over. */
 .mn-go-sub { margin: -6px 0 clamp(8px, 2.4vh, 16px); font-size: 15px; font-style: italic; color: var(--parchment); }
@@ -1808,3 +2045,183 @@ input[type='range']::-moz-range-thumb {
 }
 #app-update .upd-btn:active { transform: scale(0.97); }
 #app-update .upd-btn:focus-visible { outline: 2px solid var(--bronze-hi); outline-offset: 2px; }
+
+/* ======================================================================================
+   Portrait: the hilt grip (docs-hilt-grip.md §E.3, §E.5). The bottom of the screen is behind the
+   fist and the thumb, so everything that is read sits in the upper part. Every top includes
+   --safe-t (the cutout is at the top) and every bottom --safe-b (the gesture area). The column of
+   subtitles, volley warning, title cards and combos has homes as shares of the height (hud.js COL
+   uses the same) and hud.js pushes one below the other through --push when both show.
+   ====================================================================================== */
+@media (orientation: portrait) {
+  /* ---- HUD rows: [pause] health … score [weapon]; spears … chain, kills, wave ---- */
+  .hud-top-l { left: calc(var(--safe-l) + 66px); }
+  .hud-top-r { right: calc(var(--safe-r) + 66px); }
+  .hud-hp { width: min(42vw, 190px, calc(100vw - 254px)); }
+  .hud-score { flex-direction: column; align-items: flex-end; gap: 0; }
+  .hud-score-n { font-size: 20px; line-height: 1.15; }
+  .hud-chain { font-size: 12px; line-height: 1.25; }
+  .hud-meta { display: flex; flex-direction: column; align-items: flex-end; font-size: 11px; line-height: 1.4; letter-spacing: 0.12em; }
+  .hud-wave::before { content: none; }
+  #hud.is-training .hud-meta { font-size: 12px; }
+  .hud-toasts { margin-top: 4px; }
+  .hud-toast { font-size: 12px; letter-spacing: 0.1em; }
+  .hud-toast.is-coach { font-size: 14px; letter-spacing: 0.02em; }
+
+  /* ---- the column ---- */
+  /* What does not fit above the floor yields until there is room (hud.js layoutColumn). */
+  #hud .is-crowded { opacity: 0; }
+  .hud-subs {
+    top: calc(var(--safe-t) + 13%);
+    bottom: auto;
+    width: 94vw;
+    flex-direction: column-reverse; /* newest on top, the older row fades below it */
+    gap: 6px;
+    transform: translate(-50%, var(--push, 0px));
+    transition: transform 0.3s ease;
+  }
+  .hud-sub-g, .hud-sub.g-long .hud-sub-g { font-size: 14px; line-height: 1.25; letter-spacing: 0.1em; padding-left: 0.1em; }
+  .hud-sub-l { padding: 4px 10px 5px; font-size: 15px; }
+  .hud-volley { top: calc(var(--safe-t) + 19%); transform: translate(-50%, calc(var(--push, 0px) - 6px)); }
+  .hud-volley.is-shown { transform: translate(-50%, var(--push, 0px)); }
+  .hud-volley-t { font-size: 26px; -webkit-text-stroke-width: 1px; text-shadow: 0 2px 0 #2a0703, 0 0 14px rgba(0, 0, 0, 0.7); }
+  .hud-volley-s { font-size: 13px; letter-spacing: 0.24em; }
+  .hud-banner { top: calc(var(--safe-t) + 24%); width: 92vw; transform: translate(-50%, calc(var(--push, 0px) + 10px)) scale(0.98); }
+  .hud-banner.is-shown { transform: translate(-50%, var(--push, 0px)) scale(1); }
+  .hud-banner-k { letter-spacing: 0.4em; padding-left: 0.4em; }
+  .hud-banner-t { font-size: clamp(22px, 7.5vw, 34px); letter-spacing: 0.1em; padding-left: 0.1em; }
+  .hud-banner.is-small .hud-banner-t { font-size: clamp(19px, 6vw, 26px); letter-spacing: 0.14em; }
+  .hud-banner-rule { width: min(220px, 56vw); }
+  .hud-banner.is-small .hud-banner-rule { width: min(130px, 36vw); }
+  .hud-banner-s { font-size: 15px; }
+  .hud-banner.is-quote .hud-banner-t { max-width: 92vw; margin-top: 8px; font-size: clamp(16px, 4.6vw, 20px); }
+  .hud-combo { top: calc(var(--safe-t) + 28%); transform: translate(-50%, var(--push, 0px)) scale(0.96); }
+  .hud-combo.is-shown { transform: translate(-50%, var(--push, 0px)) scale(1); }
+  .hud-combo-in { padding: 12px 18px 6px; }
+  .hud-combo-in::before { top: 3px; height: 6px; background-size: 7.2px 6px; }
+  .hud-combo-n { font-size: clamp(14px, 4.4vw, 19px); letter-spacing: 0.12em; }
+  .hud-combo-b { font-size: 12px; }
+  .hud-combo.is-big .hud-combo-in { padding: 13px 22px 7px; }
+  .hud-combo.is-big .hud-combo-n { font-size: clamp(15px, 4.8vw, 21px); }
+
+  /* Respite: one row, the label left of centre and READY right of it, out of the thumb's arc
+     (READY ends above 35% of the height even under a cutout). */
+  .hud-respite {
+    left: 0;
+    right: 0;
+    top: calc(var(--safe-t) + 26%);
+    bottom: auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 14px;
+    transform: translateY(-8px);
+  }
+  .hud-respite.is-shown { transform: none; }
+  .hud-respite-l { justify-self: end; }
+  #hud .hud-ready { justify-self: start; min-width: 132px; min-height: 48px; padding: 0 18px; }
+
+  .hud-arcs { width: 95.5vmin; height: 95.5vmin; } /* the arc's radius is 0.42·min(vw, vh) */
+  .hud-debug { top: calc(var(--safe-t) + 20%); width: min(260px, 64vw); box-sizing: border-box; }
+  .hud-letterbox i { height: 8vh; }
+
+  /* ---- controls ---- */
+  .ctl-tip { top: calc(var(--safe-t) + 76px); width: min(560px, 92vw); font-size: 14px; }
+
+  /* ---- the Agoge: the panel at the top, under the HUD rows ---- */
+  .tr-panel,
+  #training.is-motion .tr-panel,
+  #training.is-motion.is-left .tr-panel {
+    left: calc(var(--safe-l) + 10px);
+    right: calc(var(--safe-r) + 10px);
+    top: calc(var(--safe-t) + 76px);
+    bottom: auto;
+    width: auto;
+    transform: none;
+    padding: 6px 10px 7px;
+  }
+  .tr-tools { flex-wrap: wrap; row-gap: 6px; }
+  .tr-gap { flex-basis: 0; }
+  .tr-btn { min-height: 44px; padding: 0 12px; }
+  .tr-text, .tr-hint { font-size: 14px; }
+  /* Collapsed during the trainer and volley steps (P9 sets is-compact): the head row and one line,
+     ≤ 56 px, so the target's head ring is never under it. Tapping the head row expands it. */
+  #training.is-compact .tr-head { pointer-events: auto; cursor: pointer; }
+  #training.is-compact .tr-tools,
+  #training.is-compact .tr-calib { display: none; }
+  #training.is-compact .tr-text,
+  #training.is-compact .tr-hint.is-shown { min-height: 0; margin: 1px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* The big gesture glyph sits on the finger side (x 20% for a right hand), off the target and out
+     of the thumb's arc. */
+  .tr-big { left: 20%; top: 42%; width: 104px; margin-left: -52px; }
+  #training.is-left .tr-big { left: 80%; }
+  .tr-big-g { width: 96px; height: 96px; }
+
+  /* ---- menus ---- */
+  .mn-screen { padding: calc(var(--safe-t) + 10px) calc(var(--safe-r) + 12px) calc(var(--safe-b) + 10px) calc(var(--safe-l) + 12px); }
+  /* Title: one centred column. */
+  .mn-title { padding-top: calc(var(--safe-t) + clamp(16px, 6vh, 60px)); }
+  .mn-greek { font-size: 13px; letter-spacing: 0.6em; padding-left: 0.6em; }
+  .mn-logo { font-size: clamp(30px, 11vw, 52px); letter-spacing: 0.06em; padding-left: 0.06em; }
+  .mn-year { gap: 10px; font-size: 14px; letter-spacing: 0.5em; padding-left: 0.5em; }
+  .mn-year i { width: clamp(36px, 14vw, 90px); }
+  .mn-epigraph { max-width: 92vw; margin-top: clamp(10px, 2.4vh, 22px); text-align: center; }
+  .mn-epigraph p { font-size: 18px; }
+  .mn-epigraph cite { font-size: 13px; line-height: 1.35; letter-spacing: 0.06em; }
+  .mn-title-bar { width: min(92vw, 360px); gap: 8px; }
+  .mn-title-row { flex-direction: column; align-items: stretch; width: 100%; gap: 8px; }
+  .mn-title-row .mn-btn, .mn-title-row .mn-primary { width: 100%; min-width: 0; }
+  .mn-ctlpick { justify-content: space-between; }
+  .mn-ctlpick-l { flex: 0 0 auto; }
+  .mn-ctlpick .mn-seg { flex: 0 1 236px; }
+  .mn-ctlpick .mn-seg button { flex: 1 1 0; }
+  .mn-title-pair { display: flex; gap: 8px; }
+  .mn-title-pair .mn-btn { flex: 1 1 0; padding: 0 10px; letter-spacing: 0.12em; }
+  .mn-toast { width: 92vw; }
+  #app-update { width: min(92vw, 360px); flex-wrap: wrap; }
+  .upd-btns { width: 100%; }
+  #app-update .upd-btn { flex: 1 1 0; min-height: 44px; }
+  /* Settings and how-to: a full-screen panel, the tabs row under the header. */
+  .mn-settings, .mn-howto { padding: calc(var(--safe-t) + 6px) calc(var(--safe-r) + 6px) calc(var(--safe-b) + 6px) calc(var(--safe-l) + 6px); }
+  .mn-panel-full { width: 100%; height: 100%; min-height: 0; padding: 0 12px 10px; }
+  .mn-head { flex-wrap: wrap; gap: 0 10px; }
+  .mn-head .mn-h { flex: 1; font-size: 22px; }
+  .mn-tabs { order: 3; flex: 1 1 100%; justify-content: space-between; }
+  .mn-tabs button { flex: 1 1 0; padding: 0 4px; letter-spacing: 0.14em; }
+  .mn-settings .mn-page.is-on { grid-template-columns: 1fr; }
+  .mn-field-seg { flex-direction: column; align-items: stretch; gap: 6px; padding: 8px 0 10px; }
+  .mn-field-seg .mn-seg { display: flex; }
+  .mn-field-seg .mn-seg button { flex: 1 1 0; padding: 0 6px; line-height: 1.15; letter-spacing: 0.08em; }
+  .mn-howgrip { float: none; margin: 0 0 8px; }
+  .mn-cards { display: grid; grid-template-columns: 1fr 1fr; overflow: visible; }
+  .mn-card { min-width: 0; max-width: none; }
+  .mn-note { display: block; }
+  /* Pause, game over, safety and notices: full-width buttons, stacked. */
+  .mn-panel-wide { width: 100%; }
+  .mn-panel { padding: 0 14px 12px; }
+  .mn-panel > .mn-meander:first-child { margin: 0 -14px 12px; }
+  .mn-panel > .mn-meander-b { margin: 14px -14px -12px; }
+  .mn-h { font-size: clamp(22px, 7vw, 30px); letter-spacing: 0.12em; padding-left: 0.12em; }
+  .mn-h-big { font-size: clamp(26px, 8.5vw, 40px); }
+  .mn-row-btns { flex-direction: column; align-items: stretch; gap: 8px; }
+  .mn-row-btns .mn-btn { width: 100%; min-width: 0; }
+  .mn-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 12px; }
+  .mn-epitaph p { font-size: 14px; }
+  .mn-safe { grid-template-columns: 1fr; }
+  .mn-btn small, .mn-stats span, .mn-record, .mn-grip-tx em { font-size: 11px; }
+  .mn-grip-cards { flex-direction: column; }
+  #menus .mn-grip-card { flex: none; }
+  .mn-grip-card svg { height: clamp(80px, 13vh, 120px); }
+
+  /* ---- boot screen and engine failure ---- */
+  .boot-title { letter-spacing: 0.2em; padding-left: 0.2em; }
+  .boot-sub { letter-spacing: 0.4em; padding-left: 0.4em; }
+  .engine-fail h1 { font-size: clamp(22px, 7vw, 32px); letter-spacing: 0.2em; }
+}
+
+/* Narrow screens: one field per row, the control under its label. */
+@media (max-width: 379px) {
+  .mn-field { flex-direction: column; align-items: stretch; gap: 4px; padding: 8px 0 10px; }
+  .mn-fc { align-self: flex-start; }
+  .mn-field-seg .mn-fc, .mn-field-range .mn-fc { align-self: stretch; }
+  .mn-range input { flex: 1; width: auto; }
+}

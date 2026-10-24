@@ -611,13 +611,15 @@ export function createCombat(ctx) {
 
   // Resolves one arrow on the player. The raised shield (≥ 0.4) takes it only if the player
   // faces where it comes from: the shooter's bearing, or for a volley the Persian front (yaw 0)
-  // or, fromBehind, the rear (yaw π). Turning toward the threat is the skill.
+  // or, fromBehind, the rear (yaw π). Turning toward the threat is the skill. The hilt grip can't
+  // turn the body to face a volley (docs-hilt-grip.md §C.7): there a raised shield takes volley
+  // arrows (no shooter) from either side; aimed shots still need it to face the archer.
   function arrowOnPlayer(fromBehind, shooter) {
     const pl = ctx.player;
     if (!pl || !pl.alive) return 'miss';
     const from = shooter && shooter.pos ? yawTo(shooter.pos.x - pl.pos.x, shooter.pos.z - pl.pos.z) : fromBehind ? Math.PI : 0;
     const relYaw = angleDiff(pl.yaw, from);
-    const frontal = Math.abs(relYaw) <= BLOCK_HALF_ANGLE;
+    const frontal = Math.abs(relYaw) <= BLOCK_HALF_ANGLE || (!shooter && !!ctx.input && ctx.input.grip === 'hilt');
     const gy = groundY(pl.pos.x, pl.pos.z);
     const sy = Math.sin(pl.yaw);
     const cy = Math.cos(pl.yaw);

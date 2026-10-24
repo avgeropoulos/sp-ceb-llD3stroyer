@@ -1,8 +1,11 @@
 // ui/input.js: touch, keyboard and mouse → actions and continuous ctx.input (DESIGN.md §6).
 // Owns the #controls root (z 20). Two touch layouts: 'motion' (hold the glass = shield, small
 // corner buttons) and 'touch' (stick, SHIELD/BASH, swipe/tap/drag zone, THROW), mirrored when
-// settings.leftHanded. Keyboard and mouse work in both.
+// settings.leftHanded. Keyboard and mouse work in both. In the hilt grip (docs-hilt-grip.md §D)
+// the motion layout gains `ctl-hilt`: reject strips shaped for a fist, and horizontal thumb
+// strokes on a shield pointer that switch the lock-on target once the phone is calm.
 import { clamp } from '../core/math.js';
+import { effectiveGrip } from '../core/grip.js';
 
 /** Thresholds (DESIGN.md §6). Pixels are CSS px, times are ms unless noted. */
 export const INPUT = Object.freeze({
@@ -30,9 +33,31 @@ export const INPUT = Object.freeze({
   rearmPauseMs: 110,      // …or follow a pause
   keyPower: 0.7,
   maxMouseStep: 300,      // px per mousemove; larger jumps are discarded
+  // Hilt layout reject strips, for a right hand (mirrored with ctl-left):
+  hiltTopStrip: 12,
+  hiltBottomStrip: 24,    // the fist's lower fingers
+  hiltThumbStrip: 20,     // thumb side: the thumb's base and the palm heel
+  hiltFingerStrip: 44,    // finger side, where the fingertips curl onto the glass: settings.hiltFingerStrip
+  hiltFingerStripMax: 120, //   (44–120, widened by the Agoge grip check) over the lower part…
+  hiltFingerFrom: 0.4,    // …below this share of the height,
+  hiltFingerTop: 16,      // …and this wide above it
+  // Hilt thumb strokes on a shield pointer: a switch is |dx| this far…
+  lockSwipePx: 44,
+  lockSwipeMs: 220,       // …within this long,
+  lockSwipeSpeed: 0.35,   // …at least this fast (px/ms, horizontal),
+  lockSwipeRatio: 0.8,    // …and |dx| ≥ this·|dy| (≈ 51° off horizontal: a thumb in a fist strokes in arcs)
+  strokeRearmPx: 20,      // one action per stroke, re-armed after reversing this far,
+  strokeRearmMs: 150,     // …a pause this long, or a lift
+  strokeGapMs: 10,        // thumb trail samples kept at least this far apart (high-rate digitizers)
+  strokeCommitMs: 100,    // a classified stroke waits this long (real time) for the swing's samples…
+  strokeLookbackMs: 50,   // …watching the phone from this long before its first sample…
+  strokeCalm: 2.5,        // …and is dropped if it turned faster than this (rad/s, gestures.debug.m) or a gesture fired
+  fingerSide: 0.35,       // the hilt tip: a shield pointer in this outer share of the width opposite the thumb is a finger
 });
 
 export const MOTION_TIP = 'Your shield is up while you swing. Rest your thumb on the frame, and press the glass to raise the shield.';
+export const HILT_TIP = 'Your shield is up while you swing. Rest your thumb on the edge of the phone, and press the glass to block.';
+export const HILT_TIP_FINGER = 'A finger is touching the glass at the edge. Keep your fingers on the back of the phone.';
 
 /** Fixed-capacity pointer trail (oldest first). */
 export class Trail {
@@ -59,6 +84,22 @@ export class Trail {
     this.x[this.n] = x;
     this.y[this.n] = y;
     this.n++;
+  }
+
+  /**
+   * push(), except that the newest sample is replaced while it is less than `gapMs` after the one
+   * before it, so the kept samples stay `gapMs` apart and the trail spans ≥ (cap − 1)·gapMs even
+   * at 240 Hz touch rates. The first sample is always kept.
+   */
+  pushSpaced(t, x, y, gapMs) {
+    const n = this.n;
+    if (n >= 2 && this.t[n - 1] - this.t[n - 2] < gapMs) {
+      this.t[n - 1] = t;
+      this.x[n - 1] = x;
+      this.y[n - 1] = y;
+      return;
+    }
+    this.push(t, x, y);
   }
 
   /** Keeps only the newest sample. */
@@ -103,6 +144,46 @@ export function findSwipe(trail, out, minPx = INPUT.swipeMinPx, windowMs = INPUT
 /** Touch/mouse slash power from swipe speed (px/ms). */
 export const swipePower = (speed) => clamp(0.45 + (speed - 0.5) * 0.35, 0.45, 1);
 
+/**
+ * Hilt grip: looks for a horizontal thumb stroke ending at the newest trail sample: |dx| ≥
+ * lockSwipePx within lockSwipeMs, at lockSwipeSpeed px/ms or faster horizontally, and |dx| ≥
+ * lockSwipeRatio·|dy|. The oldest qualifying start is used, as in findSwipe.
+ * @returns {{dir:number, dist:number, speed:number, t0:number, t1:number}|null} `out` when found:
+ *   dir +1 right / −1 left, t0 and t1 the stroke's first and last sample times (ms).
+ */
+export function findThumbStroke(trail, out, P = INPUT) {
+  const n = trail.n;
+  if (n < 2) return null;
+  const j = n - 1;
+  const tj = trail.t[j], xj = trail.x[j], yj = trail.y[j];
+  for (let i = 0; i < j; i++) {
+    const dtMs = tj - trail.t[i];
+    if (dtMs > P.lockSwipeMs || dtMs <= 0) continue;
+    const dx = xj - trail.x[i];
+    const adx = Math.abs(dx);
+    if (adx >= P.lockSwipePx && adx / dtMs >= P.lockSwipeSpeed && adx >= P.lockSwipeRatio * Math.abs(yj - trail.y[i])) {
+      out.dir = dx > 0 ? 1 : -1;
+      out.dist = adx;
+      out.speed = adx / dtMs;
+      out.t0 = trail.t[i];
+      out.t1 = tj;
+      return out;
+    }
+  }
+  return null;
+}
+
+/**
+ * Hilt grip: does a touch-down at (x, y) start in a reject strip (§D hand model: the thumb on the
+ * right edge, the fingertips curled onto the left edge over the lower part)? `left` mirrors it
+ * for a left hand; `fingerStrip` is the finger-side width over the lower part (px).
+ */
+export function inHiltStrip(x, y, vw, vh, left, fingerStrip = INPUT.hiltFingerStrip, P = INPUT) {
+  if (y < P.hiltTopStrip || y > vh - P.hiltBottomStrip) return true;
+  if ((left ? x : vw - x) < P.hiltThumbStrip) return true;
+  return (left ? vw - x : x) < (y > vh * P.hiltFingerFrom ? fingerStrip : P.hiltFingerTop);
+}
+
 /** Radial dead zone with rescale: stick offset (px) → [x, y] in −1..1 (y up = forward). */
 export function stickVector(dx, dy, radius = INPUT.stickRadius, dead = INPUT.stickDead, out = [0, 0]) {
   const len = Math.hypot(dx, dy) / radius;
@@ -128,7 +209,10 @@ const ICONS = {
 /**
  * Creates the input controller.
  * @param {object} ctx shared context (§4)
- * @returns {{ update(dt:number):void, reset():void }}
+ * @returns {{ update(dt:number):void, reset():void, readonly shieldPointers:number,
+ *   lastShieldDown:{x:number, y:number, t:number} }} shieldPointers: the motion layout's shield
+ *   pointers now down; lastShieldDown: where and when (ctx.time.now, s) the latest one started
+ *   (one object, mutated in place; t is −1 before the first). Both are for the Agoge grip check.
  */
 export function createInput(ctx) {
   const input = ctx.input;
@@ -168,11 +252,13 @@ export function createInput(ctx) {
   const ringR = q('.ctl-ring-r i');
   const ringL = q('.ctl-ring-l i');
   const tipEl = q('.ctl-tip');
-  q('.ctl-tip span').textContent = MOTION_TIP;
+  const tipTextEl = q('.ctl-tip span');
+  tipTextEl.textContent = MOTION_TIP;
 
   // ---- state ----
   let active = false;
   let layout = '';           // 'touch' | 'motion'
+  let hilt = false;          // the motion layout in the hilt grip (ctl-hilt)
   let mirrored = null;
   let hasTouch = (navigator.maxTouchPoints || 0) > 0;
   let vw = window.innerWidth;
@@ -206,7 +292,26 @@ export function createInput(ctx) {
   let lastWeapon = '';
   let lastCine = false;
   let skipMoves = 0;
+  let tipText = MOTION_TIP;
   const sw = { dir: 0, speed: 0, dist: 0 };
+  const lastShieldDown = { x: 0, y: 0, t: -1 };
+
+  // Hilt thumb strokes (§D). The thumb slides on the glass when the phone is swung, so a
+  // classified stroke is queued, and update() (after the frame's pumpMotion) commits it once
+  // strokeCommitMs of real time have passed, if the phone stayed calm from strokeLookbackMs
+  // before the stroke's first sample on and no gesture fired; otherwise it is dropped silently.
+  // Times are real ms (performance.now() and event timeStamps share that base).
+  const thumb = { dir: 0, dist: 0, speed: 0, t0: 0, t1: 0 };
+  const RING = 8;
+  const ringT = new Float64Array(RING); // per-frame gestures.debug.m and when it was read
+  const ringM = new Float64Array(RING);
+  let ringHead = 0;
+  let lastGestureAt = -Infinity;
+  const QUEUE = 4;
+  const queue = [];                     // FIFO of classified strokes (fixed slots)
+  for (let i = 0; i < QUEUE; i++) queue.push({ dir: 0, at: 0, since: 0, m: 0, swung: false });
+  let qHead = 0;
+  let qLen = 0;
 
   const isActiveMode = () => ctx.mode === 'battle' || ctx.mode === 'training';
   const now = () => ctx.time.now;
@@ -225,6 +330,7 @@ export function createInput(ctx) {
     t.mt = 0; t.mx = 0; t.my = 0;
     t.el = null;
     t.travel = 0;
+    t.sdir = 0; t.ext = 0;      // hilt: the last stroke's direction and furthest x since it fired
     t.trail.clear();
     trackers.set(id, t);
     return t;
@@ -264,6 +370,7 @@ export function createInput(ctx) {
     motionShieldCount = 0;
     holdStart = -1;
     holdSlashes = 0;
+    qLen = 0;
     stickX = stickZ = 0;
     input.moveX = 0;
     input.moveZ = 0;
@@ -291,9 +398,11 @@ export function createInput(ctx) {
 
   function applyLayout() {
     layout = settings.control === 'motion' ? 'motion' : 'touch';
+    hilt = effectiveGrip(settings) === 'hilt';
     mirrored = !!settings.leftHanded;
     root.classList.toggle('ctl-motion', layout === 'motion');
     root.classList.toggle('ctl-touch', layout === 'touch');
+    root.classList.toggle('ctl-hilt', hilt);
     root.classList.toggle('ctl-left', mirrored);
     zero();
     measure();
@@ -376,12 +485,18 @@ export function createInput(ctx) {
     if (layout === 'motion') {
       const r = Math.max(e.width || 0, e.height || 0) / 2;
       const edge = INPUT.edgeStrip;
-      const onEdge = x < edge || y < edge || x > vw - edge || y > vh - edge;
+      const onEdge = hilt
+        ? inHiltStrip(x, y, vw, vh, mirrored, fingerStrip())
+        : x < edge || y < edge || x > vw - edge || y > vh - edge;
       if (onEdge || r > INPUT.maxContactRadius) {
         t.kind = 'rest';
         return;
       }
       t.kind = 'shield';
+      if (hilt) t.trail.push(e.timeStamp, x, y);
+      lastShieldDown.x = x;
+      lastShieldDown.y = y;
+      lastShieldDown.t = now();
       if (motionShieldCount === 0) {
         holdStart = now();
         holdSlashes = 0;
@@ -484,6 +599,78 @@ export function createInput(ctx) {
     }
   }
 
+  // ---- hilt thumb strokes (§D) ----
+  /** The finger-side reject strip over the lower part (settings.hiltFingerStrip, 44–120 px). */
+  function fingerStrip() {
+    const v = Number(settings.hiltFingerStrip);
+    return Number.isFinite(v) ? clamp(v, INPUT.hiltFingerStrip, INPUT.hiltFingerStripMax) : INPUT.hiltFingerStrip;
+  }
+
+  /** The largest gestures.debug.m read at or after `since` (real ms). */
+  function ringMax(since) {
+    let m = 0;
+    for (let i = 0; i < RING; i++) if (ringT[i] > 0 && ringT[i] >= since && ringM[i] > m) m = ringM[i];
+    return m;
+  }
+
+  /**
+   * Queues a classified stroke (dir ±1; t0, t1 its first and last sample times). A future
+   * timeStamp (synthetic input) is clamped to now, and the lookback keeps the stroke's own span.
+   */
+  function queueStroke(dir, t0, t1) {
+    if (qLen === QUEUE) return; // four strokes inside 100 ms: the rest are slips
+    const s = queue[(qHead + qLen) % QUEUE];
+    qLen++;
+    const rnow = performance.now();
+    s.dir = dir;
+    s.at = Math.min(t1, rnow);
+    s.since = Math.min(t0, rnow - (t1 - t0)) - INPUT.strokeLookbackMs;
+    s.m = ringMax(s.since);
+    s.swung = lastGestureAt >= s.since;
+  }
+
+  /** One move sample of a hilt shield pointer: one switch per stroke, re-armed by a reversal or a pause. */
+  function strokeSample(t, ts, x, y) {
+    const n = t.trail.n;
+    if (!t.armed && n > 0 && ts - t.trail.t[n - 1] >= INPUT.strokeRearmMs) t.armed = true;
+    t.trail.pushSpaced(ts, x, y, INPUT.strokeGapMs);
+    t.x = x;
+    t.y = y;
+    if (!t.armed) {
+      if ((x - t.ext) * t.sdir > 0) t.ext = x;
+      else if ((t.ext - x) * t.sdir >= INPUT.strokeRearmPx) t.armed = true;
+      if (!t.armed) return;
+    }
+    if (findThumbStroke(t.trail, thumb)) {
+      queueStroke(thumb.dir, thumb.t0, thumb.t1);
+      t.armed = false;
+      t.sdir = thumb.dir;
+      t.ext = x;
+      t.trail.restart();
+    }
+  }
+
+  /** update(): records this frame's phone rate, then commits or drops the strokes that have waited long enough. */
+  function stepStrokes() {
+    const rnow = performance.now();
+    const d = ctx.gestures && ctx.gestures.debug;
+    const m = d && d.m > 0 ? d.m : 0;
+    ringT[ringHead] = rnow;
+    ringM[ringHead] = m;
+    ringHead = (ringHead + 1) % RING;
+    for (let i = 0; i < qLen; i++) {
+      const s = queue[(qHead + i) % QUEUE];
+      if (m > s.m) s.m = m;
+    }
+    while (qLen > 0) {
+      const s = queue[qHead];
+      if (rnow - s.at < INPUT.strokeCommitMs) break;
+      qHead = (qHead + 1) % QUEUE;
+      qLen--;
+      if (!s.swung && s.m <= INPUT.strokeCalm) push({ type: 'switchTarget', dir: s.dir, src: 'touch' });
+    }
+  }
+
   function onSurfaceMove(e) {
     if (e.pointerType === 'mouse') return;
     const t = trackers.get(e.pointerId);
@@ -496,6 +683,13 @@ export function createInput(ctx) {
         for (let i = 0; i < list.length; i++) swipeSample(t, list[i].timeStamp, list[i].clientX, list[i].clientY);
       } else {
         swipeSample(t, e.timeStamp, e.clientX, e.clientY);
+      }
+    } else if (t.kind === 'shield' && hilt) {
+      const list = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
+      if (list && list.length > 1) {
+        for (let i = 0; i < list.length; i++) strokeSample(t, list[i].timeStamp, list[i].clientX, list[i].clientY);
+      } else {
+        strokeSample(t, e.timeStamp, e.clientX, e.clientY);
       }
     }
   }
@@ -569,7 +763,16 @@ export function createInput(ctx) {
     },
   });
   bindButton(btnRecenter, { down: (t, e) => push({ type: 'recenter', src: srcOf(e) }) });
-  bindButton(btnSwap, { down: (t, e) => push({ type: 'switchWeapon', src: srcOf(e) }) });
+  // The hilt layout's swap sits at the top for the off hand and fires on a tap's release inside
+  // it (sliding off cancels); elsewhere it fires on press.
+  bindButton(btnSwap, {
+    down: (t, e) => {
+      if (!hilt) push({ type: 'switchWeapon', src: srcOf(e) });
+    },
+    up: (t, e, outside) => {
+      if (hilt && !outside) push({ type: 'switchWeapon', src: srcOf(e) });
+    },
+  });
   bindButton(btnBash, { down: (t, e) => push({ type: 'bash', power: INPUT.keyPower, src: srcOf(e) }) });
   bindButton(btnShield, {
     down: (t, e) => {
@@ -734,6 +937,7 @@ export function createInput(ctx) {
         else if (c === 'KeyQ') push({ type: 'switchWeapon', src: 'key' });
         else if (c === 'KeyR') push({ type: 'throw', power: INPUT.keyPower, src: 'key' });
         else if (c === 'KeyC') push({ type: 'recenter', src: 'key' });
+        else if (c === 'KeyZ' || c === 'KeyX') push({ type: 'switchTarget', dir: c === 'KeyX' ? 1 : -1, src: 'key' }); // the player ignores it outside the hilt grip
         else if (c === 'Escape' || c === 'KeyP') ctx.setMode('paused');
         else handled = false;
       }
@@ -767,6 +971,9 @@ export function createInput(ctx) {
   });
   ctx.events.on('gesture', (g) => {
     if (g && g.type === 'slash' && holdStart >= 0) holdSlashes++;
+    // any gesture means the phone was swung: queued thumb strokes are slips
+    lastGestureAt = performance.now();
+    for (let i = 0; i < qLen; i++) queue[(qHead + i) % QUEUE].swung = true;
   });
 
   if (hasTouch) root.classList.add('ctl-hastouch');
@@ -779,7 +986,8 @@ export function createInput(ctx) {
         if (isActiveMode()) setActive(true);
         else return;
       }
-      if ((settings.control === 'motion' ? 'motion' : 'touch') !== layout || !!settings.leftHanded !== mirrored) applyLayout();
+      if ((settings.control === 'motion' ? 'motion' : 'touch') !== layout || (effectiveGrip(settings) === 'hilt') !== hilt || !!settings.leftHanded !== mirrored) applyLayout();
+      if (hilt) stepStrokes();
 
       // Player-driven button state (DOM only on change).
       const p = ctx.player;
@@ -828,10 +1036,22 @@ export function createInput(ctx) {
       }
       refreshShield();
 
-      // The resting-thumb tip (motion layout, once per battle).
+      // The resting-thumb tip (motion layout, once per battle). In the hilt grip it names the
+      // cause from where the longest-held shield pointer is: a finger at the edge, or the thumb.
       if (layout === 'motion' && !tipShown && holdStart >= 0 && now() - holdStart > INPUT.tipHoldS && holdSlashes >= INPUT.tipSlashes) {
         tipShown = true;
         tipUntil = now() + 8;
+        let text = MOTION_TIP;
+        if (hilt) {
+          let first = null;
+          for (const t of trackers.values()) if (t.kind === 'shield' && (!first || t.t0 < first.t0)) first = t;
+          const finger = !!first && (mirrored ? first.x > vw * (1 - INPUT.fingerSide) : first.x < vw * INPUT.fingerSide);
+          text = finger ? HILT_TIP_FINGER : HILT_TIP;
+        }
+        if (text !== tipText) {
+          tipText = text;
+          tipTextEl.textContent = text;
+        }
         tipEl.classList.add('is-shown');
       }
       if (tipUntil > 0 && now() > tipUntil) {
@@ -846,5 +1066,9 @@ export function createInput(ctx) {
       tipUntil = 0;
       tipEl.classList.remove('is-shown');
     },
+    get shieldPointers() {
+      return motionShieldCount;
+    },
+    lastShieldDown,
   };
 }

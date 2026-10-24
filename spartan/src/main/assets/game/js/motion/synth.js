@@ -6,6 +6,9 @@
  * are analytic; the sensors are derived from them exactly as a phone would report them:
  * body rates from q, specific force from p̈ and gravity, then the inverse §3.3 remap into the
  * device frame, noise and clipping. Used by the unit tests and by the training demo.
+ *
+ * Two holds: 'window' (landscape, the blade out of the back of the phone, DESIGN §3.3) and 'hilt'
+ * (portrait, the phone upright in the fist, the blade out of its top edge: docs-hilt-grip.md B.4).
  */
 import { createRng } from '../core/math.js';
 
@@ -22,6 +25,13 @@ const PHONE = [0.12, 1.48, -0.42];
 const SHOULDER = [0.19, 1.45, 0.03];
 const TRUNK_Z = 0.1; // turns and the throw twist rotate about the vertical through (0, ·, 0.1)
 const UP = [0, 1, 0];
+// Hilt rig (right hand): the phone centre at the guard, and the elbow the forearm pivots on.
+const HILT_HAND = [0.15, 1.24, -0.36];
+const HILT_ELBOW = [0.21, 1.02, -0.1];
+const WRIST_DROP = 0.05; // the wrist pivot: this far from the phone centre along its −y
+const THROW_DROP = 0.25; // hilt release: the hand ends this far (rad) below its guard angle about the shoulder
+const COCK_ARC = 1.5; // the hilt cock-back: the top of the phone tips back this far (rad)…
+const COCK_SHOULDER = 1.4; // …while the hand swings up and back this far about the shoulder
 
 // ---- tiny vector / quaternion helpers ([x,y,z] and [x,y,z,w]) ----
 
@@ -162,6 +172,68 @@ function makeRig(o) {
 }
 
 /**
+ * The hilt rig: the phone upright in the fist at H0, screen toward the player, its top edge (the
+ * blade, +y) leaning forward by `lean` from vertical (βg = π/2 − lean). Then roll about the blade
+ * (mirrored for the left hand) and aim (a yaw about the vertical: the forearm and the fist with it).
+ * The elbow (st.el, the strikes' pivot) starts at EL0, behind and below the fist along the aimed
+ * forearm. It stays put for wrist motions and during a strike, turns about the shoulder with a
+ * cock-back and with the trunk, and comes back to the guard with the hand.
+ */
+function makeHiltRig(o) {
+  const hs = o.hand === 'left' ? -1 : 1;
+  const P0 = [HILT_HAND[0] * hs, HILT_HAND[1], HILT_HAND[2]];
+  const S0 = [SHOULDER[0] * hs, SHOULDER[1], SHOULDER[2]];
+  const aim = qAxisAngle(UP, (o.aim || 0) * hs);
+  const EL0 = add(P0, qRot(aim, sub([HILT_ELBOW[0] * hs, HILT_ELBOW[1], HILT_ELBOW[2]], P0)));
+  const bg = Math.PI / 2 - o.lean;
+  const F = [0, 0, -1];
+  const y = add(scale(F, Math.cos(bg)), scale(UP, Math.sin(bg)));
+  const z = add(scale(F, -Math.sin(bg)), scale(UP, Math.cos(bg)));
+  let Q0 = qFromBasis(cross(y, z), y, z);
+  if (o.roll) Q0 = qNorm(qMul(Q0, qAxisAngle([0, 1, 0], o.roll * hs)));
+  if (o.aim) Q0 = qNorm(qMul(aim, Q0));
+  return { hs, hilt: true, P0, Q0, S0, EL0, G: gripQuat(o.grip, hs) };
+}
+
+/** The hilt elbow at the guard after the trunk turned by `yaw`. */
+const guardElbow = (rig, yaw) => yawAbout(rig.EL0, yaw);
+const FOREARM = len(sub(HILT_ELBOW, HILT_HAND));
+
+/**
+ * The recognizer's body-right capture (gestures.js _captureRight) for a phone at attitude q, in the
+ * world: forward is the horizontal part of the phone's −z (negated past vertical), blended with its
+ * +y when it lies nearly flat; R = forward × up. Strikes are built on it, so the recognizer sees
+ * them along the intended axes.
+ */
+function bodyRight(q) {
+  const u = qRot(qConj(q), UP);
+  const ux = u[0], uy = u[1], uz = u[2];
+  const sg = uy >= 0 ? 1 : -1;
+  let fx = sg * uz * ux, fy = sg * uz * uy, fz = sg * (uz * uz - 1);
+  const wy = clamp01((0.35 - Math.sqrt(Math.max(0, 1 - uz * uz))) / 0.25) * (uz >= 0 ? 1 : -1);
+  if (wy !== 0) {
+    fx += wy * -uy * ux;
+    fy += wy * (1 - uy * uy);
+    fz += wy * -uy * uz;
+  }
+  let r = [fy * uz - fz * uy, fz * ux - fx * uz, fx * uy - fy * ux];
+  if (len(r) < 1e-6) r = [1 - ux * ux, -ux * uy, -ux * uz];
+  const w = qRot(q, norm(r));
+  return norm([w[0], 0, w[2]]);
+}
+
+/** The blade elevation βabs as the recognizer measures it for this hold (R: its body-right). */
+function gripBeta(rig, q, R) {
+  if (rig.hilt) {
+    const b = qRot(q, [0, 1, 0]);
+    const F = cross(UP, R);
+    return Math.atan2(b[1], b[0] * F[0] + b[1] * F[1] + b[2] * F[2]);
+  }
+  const u = qRot(qConj(q), UP);
+  return Math.atan2(-u[2], (u[1] >= 0 ? 1 : -1) * Math.hypot(u[0], u[1]));
+}
+
+/**
  * The phone's attitude in the hand (body frame of the hand → phone), from opts.grip =
  * { pitch, roll, yaw } in radians: pitch > 0 tilts the screen back (top edge away from the
  * player, screen facing up toward the eyes, the back of the phone pointing down), roll turns the
@@ -263,6 +335,31 @@ function buildTurn(seg, st, rig, pieces) {
     return { p: yawAbout(p0, a), q: qMul(qAxisAngle(UP, a), q0) };
   });
   st.yaw += yaw;
+  if (st.el) st.el = yawAbout(st.el, yaw); // (hilt: the elbow turns with the trunk)
+}
+
+/**
+ * A swing's stroke angle θ(t): a wind-up of `windup` rad the other way at 0.4·speed, a pause, the
+ * min-jerk stroke (peak `speed`), and a rebound of recoil·arc at 0.3·speed.
+ * t2/t3: the stroke's start and end, ts its duration, t4 the rebound's end.
+ */
+function strokeProfile(speed, arc, windup, recoil) {
+  const tw = windup > 0 ? (1.875 * windup) / (0.4 * speed) : 0;
+  const t1 = tw;
+  const t2 = t1 + (windup > 0 ? SWING_PAUSE : 0);
+  const ts = (1.875 * arc) / speed;
+  const t3 = t2 + ts;
+  const tr = recoil > 0 ? (1.875 * recoil * arc) / (0.3 * speed) : 0;
+  const t4 = t3 + tr;
+  const theta = (t) => {
+    if (t <= 0) return 0;
+    if (t < t1) return -windup * s5(t / tw);
+    if (t < t2) return -windup;
+    if (t < t3) return -windup + arc * s5((t - t2) / ts);
+    if (t < t4) return -windup + arc - recoil * arc * s5((t - t3) / tr);
+    return -windup + arc - recoil * arc;
+  };
+  return { theta, t2, t3, t4, ts };
 }
 
 function buildSwing(seg, st, rig, pieces) {
@@ -294,21 +391,7 @@ function buildSwing(seg, st, rig, pieces) {
   const d = add(scale(R, Math.cos(dir)), scale(U, Math.sin(dir)));
   const n = norm(cross(b, d));
   const pivot = sub(p0, scale(b, radius)); // the blade is radial from the pivot
-  const tw = windup > 0 ? (1.875 * windup) / (0.4 * speed) : 0;
-  const t1 = tw;
-  const t2 = t1 + (windup > 0 ? SWING_PAUSE : 0);
-  const ts = (1.875 * arc) / speed;
-  const t3 = t2 + ts;
-  const tr = recoil > 0 ? (1.875 * recoil * arc) / (0.3 * speed) : 0;
-  const t4 = t3 + tr;
-  const theta = (t) => {
-    if (t <= 0) return 0;
-    if (t < t1) return -windup * s5(t / tw);
-    if (t < t2) return -windup;
-    if (t < t3) return -windup + arc * s5((t - t2) / ts);
-    if (t < t4) return -windup + arc - recoil * arc * s5((t - t3) / tr);
-    return -windup + arc - recoil * arc;
-  };
+  const { theta, t2, t3, t4, ts } = strokeProfile(speed, arc, windup, recoil);
   const diag = Math.sin(2 * dir) * rig.hs; // diagonals only; mirrored for the left hand
   const zBody = [0, 0, 1];
   push(st, pieces, t4 + WRIST_LAG, (tl) => {
@@ -332,6 +415,161 @@ function buildSwing(seg, st, rig, pieces) {
     const ang = qAngle(st.q, g.q);
     pushReturn(st, rig, pieces, Math.max(0.15, (1.875 * ang) / ret), g);
   }
+}
+
+/**
+ * Hilt swing: the tip of the upright blade moves across the view in direction `dir`. With R and b0
+ * the body-right capture and the blade (+y) at the start, the axis is
+ * n = normalize(sin dir·R − cos dir·(R × b0)), so the recognizer sees (cos dir, sin dir); `yawShare`
+ * blends its horizontal part toward a yaw about world up (a forearm sweep). The arm turns
+ * (1 − wrist)·θ about n through the elbow; the wrist adds wrist·θ 30 ms later (orientation only).
+ * Wind-up, profile, recoil, return, pronation, wrist roll and sloppy returns as for the window hold;
+ * the fist rolls (pronation and wrist roll) about the long axis of the phone it grips (its +y, with
+ * opts.grip), as the window hold rolls about the blade.
+ */
+function buildSwingHilt(seg, st, rig, pieces) {
+  const dir = seg.dir ?? 0;
+  const speed = Math.max(0.1, seg.speed ?? 9);
+  const arc = seg.arc ?? 1.4;
+  const windup = seg.windup ?? 0.3;
+  const recoil = seg.recoil ?? 0.15;
+  const ret = seg.ret ?? 2.5;
+  const wrist = seg.wrist ?? 0.45;
+  const pronate = seg.pronate ?? 0.2;
+  const yawShare = clamp01(seg.yawShare ?? 0);
+  const wristRoll = (seg.wristRoll ?? 0) * rig.hs;
+  const rollEnd = (seg.rollEnd ?? 0) * rig.hs;
+  const p0 = st.p, q0 = st.q;
+  const R = bodyRight(q0);
+  const b0 = qRot(q0, [0, 1, 0]);
+  let n = norm(sub(scale(R, Math.sin(dir)), scale(cross(R, b0), Math.cos(dir))));
+  if (yawShare > 0) {
+    const ny = add(scale(n, 1 - yawShare), scale(UP, -yawShare * Math.cos(dir)));
+    if (len(ny) > 1e-6) n = norm(ny);
+  }
+  const elbow = st.el;
+  const { theta, t2, t3, t4, ts } = strokeProfile(speed, arc, windup, recoil);
+  const diag = Math.sin(2 * dir) * rig.hs; // diagonals only; mirrored for the left hand
+  const rollAxis = rig.G ? qRot(rig.G, [0, 1, 0]) : [0, 1, 0]; // the phone's long axis, in the hand
+  push(st, pieces, t4 + WRIST_LAG, (tl) => {
+    const th = theta(tl);
+    const ph = (1 - wrist) * th + wrist * theta(tl - WRIST_LAG);
+    const p = rotAbout(p0, qAxisAngle(n, (1 - wrist) * th), elbow);
+    let q = qMul(qAxisAngle(n, ph), q0);
+    if (diag !== 0 && tl > t2 && tl < t3) {
+      q = qMul(q, qAxisAngle(rollAxis, pronate * diag * Math.sin(Math.PI * s5((tl - t2) / ts))));
+    }
+    if ((wristRoll || rollEnd) && tl > t2) {
+      const k = tl < t3 ? s5((tl - t2) / ts) : 1;
+      const r = wristRoll * Math.sin(Math.PI * k) + rollEnd * k;
+      if (r) q = qMul(q, qAxisAngle(rollAxis, r));
+    }
+    return { p, q: qNorm(q) };
+  });
+  if (ret > 0) {
+    // the arm pivots at the elbow, so the hand travels too: the return covers the blade's turn and
+    // the hand's way back (over the forearm) at `ret` rad/s, whichever takes longer
+    const g = returnPose(rig, st.yaw, seg.retYaw || 0, seg.retPitch || 0);
+    const ang = Math.max(qAngle(st.q, g.q), len(sub(st.p, g.p)) / FOREARM);
+    pushReturn(st, rig, pieces, Math.max(0.15, (1.875 * ang) / ret), g);
+    st.el = guardElbow(rig, st.yaw + (seg.retYaw || 0));
+  }
+}
+
+/** Hilt thrust: the fist punches along the body forward (up × R), the tip dipping forward by `dip`. */
+function buildThrustHilt(seg, st, rig, pieces) {
+  const D = seg.distance ?? 0.3;
+  const T = Math.max(0.03, seg.duration ?? 0.18);
+  const holdT = seg.hold ?? 0.08;
+  const retract = Math.max(0.03, seg.retract ?? 0.3);
+  const dip = seg.dip ?? 0.15;
+  const p0 = st.p, q0 = st.q;
+  const R = bodyRight(q0);
+  const F = cross(UP, R);
+  push(st, pieces, T + holdT + retract, (tl) => {
+    let k;
+    if (tl < T) k = s5(tl / T);
+    else if (tl < T + holdT) k = 1;
+    else k = 1 - s5((tl - T - holdT) / retract);
+    return { p: add(p0, scale(F, D * k)), q: qMul(qAxisAngle(R, -dip * k), q0) };
+  });
+}
+
+/**
+ * Hilt cock-back: the top of the phone tips back by cockArc about R (peak rate `speed`) while the
+ * hand swings up and back by shoulderArc about R through the shoulder (position only).
+ */
+function cockPieces(st, rig, pieces, R, cockArc, shoulderArc, speed) {
+  const p0 = st.p, q0 = st.q;
+  const S = yawAbout(rig.S0, st.yaw);
+  const T = (1.875 * Math.abs(cockArc)) / Math.max(0.1, speed);
+  push(st, pieces, T, (tl) => {
+    const k = s5(tl / T);
+    return { p: rotAbout(p0, qAxisAngle(R, shoulderArc * k), S), q: qMul(qAxisAngle(R, cockArc * k), q0) };
+  });
+  st.el = rotAbout(st.el, qAxisAngle(R, shoulderArc), S); // the whole arm turned about the shoulder
+}
+
+/**
+ * The hand's swing about the shoulder for a cock-back of `cockArc`: 1.4 rad for the full 1.5 rad
+ * cock-back, in proportion for a smaller lift (which barely moves the hand).
+ */
+const shoulderArcOf = (seg, cockArc) => seg.shoulderArc ?? (COCK_SHOULDER * cockArc) / COCK_ARC;
+
+/** Hilt raise: the cock-back alone, held (a small cockArc is the ordinary lift before a chop). */
+function buildRaiseHilt(seg, st, rig, pieces) {
+  const cockArc = seg.cockArc ?? COCK_ARC;
+  cockPieces(st, rig, pieces, bodyRight(st.q), cockArc, shoulderArcOf(seg, cockArc), seg.windupSpeed ?? 5);
+  hold(st, pieces, seg.hold ?? 0.2);
+}
+
+/**
+ * Hilt throw: the cock-back behind the shoulder, a hold, then the release: the phone turns −arc
+ * about R (late-peaking, peak `speed`) while the hand swings down to THROW_DROP below its guard
+ * angle about the advancing shoulder and the trunk twists. Then the follow-through and the return.
+ */
+function buildThrowHilt(seg, st, rig, pieces) {
+  const speed = Math.max(0.1, seg.speed ?? 7);
+  const cockArc = seg.cockArc ?? COCK_ARC;
+  const shoulderArc = shoulderArcOf(seg, cockArc);
+  const arc = seg.arc ?? 3.0;
+  const twist = (seg.twist ?? 0.45) * rig.hs;
+  const lookBack = Math.max(0.1, seg.lookBack ?? 0.7);
+  const q00 = st.q, p00 = st.p;
+  const R = bodyRight(q00);
+  cockPieces(st, rig, pieces, R, cockArc, shoulderArc, seg.windupSpeed ?? 5);
+  hold(st, pieces, seg.hold ?? 0.12);
+  const S = yawAbout(rig.S0, st.yaw);
+  const fwd = forwardOf(st.yaw);
+  const T = (arc * LATE_PEAK) / speed;
+  push(st, pieces, T, (tl) => {
+    const g = late(tl / T);
+    const r = qAxisAngle(R, cockArc - arc * g); // relative to the pose before the cock-back
+    const rp = qAxisAngle(R, shoulderArc - (shoulderArc + THROW_DROP) * g);
+    const zeta = twist * g;
+    const pArm = add(add(S, scale(fwd, 0.25 * g)), qRot(rp, sub(p00, S)));
+    return { p: yawAbout(pArm, zeta), q: qNorm(qMul(qAxisAngle(UP, zeta), qMul(r, q00))) };
+  });
+  hold(st, pieces, THROW_FOLLOW);
+  pushReturn(st, rig, pieces, lookBack);
+  st.el = guardElbow(rig, st.yaw);
+}
+
+/**
+ * Both holds: the blade turns about R through the wrist until its elevation (the hold's βabs, as
+ * the recognizer measures it) is `beta`, min-jerk over `duration`: a slow lower to a low guard, or
+ * back up. With the defaults it peaks below 1.5 rad/s.
+ */
+function buildLower(seg, st, rig, pieces) {
+  const dur = Math.max(0.05, seg.duration ?? 1.4);
+  const p0 = st.p, q0 = st.q;
+  const R = bodyRight(q0);
+  const d = (seg.beta ?? 0.1) - gripBeta(rig, q0, R);
+  const W = add(p0, qRot(q0, [0, -WRIST_DROP, 0]));
+  push(st, pieces, dur, (tl) => {
+    const r = qAxisAngle(R, d * s5(tl / dur));
+    return { p: rotAbout(p0, r, W), q: qMul(r, q0) };
+  });
 }
 
 function buildThrust(seg, st, rig, pieces) {
@@ -404,24 +642,36 @@ const BUILDERS = {
   thrust: buildThrust,
   throw: buildThrow,
   raise: buildRaise,
+  lower: buildLower,
+};
+// what 'hilt' changes (idle, walk, turn and lower are shared)
+const HILT_BUILDERS = {
+  swing: buildSwingHilt,
+  thrust: buildThrustHilt,
+  throw: buildThrowHilt,
+  raise: buildRaiseHilt,
 };
 
 function normOpts(opts = {}) {
-  return {
+  const o = {
     rate: 100, rot: 90, tilt: 0, roll: 0, aim: 0, grip: null, hand: 'right', noise: 1, seed: 1, gravitySign: 1,
-    includeLinear: true, includeGravity: true, gyroRange: 34.9, jitter: 0, t0: 0,
+    includeLinear: true, includeGravity: true, gyroRange: 34.9, jitter: 0, t0: 0, hold: 'window', lean: 0.45,
     ...opts,
   };
+  // the hilt is held in portrait: rot 0 unless given (a natural-landscape tablet reports 90 or 270)
+  if (o.hold === 'hilt' && (opts == null || opts.rot == null)) o.rot = 0;
+  return o;
 }
 
 function compile(script, o) {
-  const rig = makeRig(o);
+  const rig = o.hold === 'hilt' ? makeHiltRig(o) : makeRig(o);
   const rng = createRng((o.seed >>> 0) * 2654435761 + 7);
   const g0 = guardPose(rig, 0);
-  const st = { p: g0.p, q: g0.q, yaw: 0, t: 0 };
+  const st = { p: g0.p, q: g0.q, yaw: 0, t: 0, el: rig.hilt ? rig.EL0 : null };
   const pieces = [];
   for (const seg of script || []) {
-    const build = BUILDERS[seg && seg.kind];
+    const kind = seg && seg.kind;
+    const build = (rig.hilt && HILT_BUILDERS[kind]) || BUILDERS[kind];
     if (!build) throw new Error(`synth: unknown segment kind "${seg && seg.kind}"`);
     build(seg, st, rig, pieces, rng);
   }
@@ -456,7 +706,9 @@ export function scriptDuration(script, opts) {
  * Simulates the phone sensors for a script (DESIGN.md §5.4).
  * @param {object[]} script segments, back-to-back
  * @param {object} [opts] { rate, rot, tilt, roll, aim, grip: { pitch, roll, yaw }, hand, noise, seed,
- *   gravitySign, includeLinear, includeGravity, gyroRange, jitter, t0 }
+ *   gravitySign, includeLinear, includeGravity, gyroRange, jitter, t0, hold, lean }
+ *   hold: 'window' (default) or 'hilt'. In the hilt hold `lean` (0.45) is the blade's forward lean
+ *   from vertical at the guard, rot defaults to 0 and tilt is ignored; 'window' output is unchanged.
  * @returns {{t:number, gyro:number[], acc:number[]|null, accG:number[]|null, grav:number[]|null, rot:number}[]}
  *   RawSamples in the device frame (§5.1)
  */

@@ -3,7 +3,7 @@ package com.thermopylae
 import android.annotation.TargetApi
 import android.app.Activity
 import android.content.Context
-import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -30,9 +30,9 @@ import java.util.concurrent.atomic.AtomicInteger
  * JavaScript calls arrive on the WebView's JavaBridge thread, sensor events on the "sensors"
  * HandlerThread, and lifecycle calls ([onPause], [onResume], [onNewPage], [release]) on the
  * UI thread. Every `@JavascriptInterface` body catches everything, so a bad call can never
- * take the app down.
+ * take the app down. `initialOrientation` is the stored orientation MainActivity started in.
  */
-class NativeBridge(private val activity: Activity) {
+class NativeBridge(private val activity: Activity, initialOrientation: String?) {
     private val app: Context = activity.applicationContext
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -81,6 +81,12 @@ class NativeBridge(private val activity: Activity) {
 
     private val vibrator: Vibrator? = findVibrator()
     private val amplitudeControl: Boolean = hasAmplitudeControl(vibrator)
+
+    /**
+     * The orientation family the game last asked for ("portrait" | "landscape"), persisted in the
+     * host preferences so MainActivity starts the next launch in it. UI thread only.
+     */
+    private var lastOrientation = HostLogic.orientationFamily(initialOrientation)
 
     @Volatile private var tts: TextToSpeech? = null
     @Volatile private var ttsReady = false
@@ -242,11 +248,16 @@ class NativeBridge(private val activity: Activity) {
         }
     }
 
-    /** Locks the current landscape side (during motion play), or allows both again. */
+    /**
+     * Requests the app orientation. orientation: "portrait" | "landscape" (anything else = landscape).
+     * Portrait (the hilt grip) holds whether locked or not; landscape keeps the current side while
+     * [lock] (motion play), or follows the sensor between both sides.
+     */
     @JavascriptInterface
-    fun lockOrientation(lock: Boolean) {
+    fun lockOrientation(lock: Boolean, orientation: String?) {
         try {
-            activity.runOnUiThread { setOrientationLocked(lock) }
+            val family = HostLogic.orientationFamily(orientation)
+            activity.runOnUiThread { applyOrientation(lock, family) }
         } catch (e: Throwable) {
             Log.w(TAG, e)
         }
@@ -320,7 +331,10 @@ class NativeBridge(private val activity: Activity) {
         }
     }
 
-    /** A new document is loading (first load, reload or renderer recovery): drop the old page's state. */
+    /**
+     * A new document is loading (first load, reload or renderer recovery): drop the old page's state.
+     * The orientation stays in the family the game last asked for, unlocked, until the page asks again.
+     */
     fun onNewPage() {
         synchronized(stateLock) {
             wanted = false
@@ -333,7 +347,7 @@ class NativeBridge(private val activity: Activity) {
         } catch (e: Throwable) {
             Log.w(TAG, e)
         }
-        setOrientationLocked(false)
+        applyOrientation(false, lastOrientation)
     }
 
     /** Frees everything that outlives the Activity: sensors, display listener, TTS, the sensor thread. */
@@ -414,10 +428,24 @@ class NativeBridge(private val activity: Activity) {
         false
     }
 
-    private fun setOrientationLocked(lock: Boolean) {
-        if (activity.isFinishing || activity.isDestroyed) return
-        activity.requestedOrientation =
-            if (lock) ActivityInfo.SCREEN_ORIENTATION_LOCKED else ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+    /**
+     * UI thread. Applies an orientation request ([HostLogic.requestedOrientation]) and, when the
+     * family changes, persists it for MainActivity's next onCreate.
+     */
+    private fun applyOrientation(lock: Boolean, family: String) {
+        try {
+            if (activity.isFinishing || activity.isDestroyed) return
+            val displayLandscape = activity.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+            activity.requestedOrientation = HostLogic.requestedOrientation(lock, family, displayLandscape)
+            if (family != lastOrientation) {
+                lastOrientation = family
+                activity.getSharedPreferences(HostLogic.HOST_PREFS, Context.MODE_PRIVATE).edit()
+                    .putString(HostLogic.PREF_ORIENTATION, family)
+                    .apply()
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, e)
+        }
     }
 
     private fun clearRing() {

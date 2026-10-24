@@ -1,6 +1,10 @@
 // ui/menus.js: title, settings, pause, game over, how to play, motion safety notice (#menus, z 30).
 // DESIGN.md §9, §10 (pause/back), §11 ui/*. Settings apply live and are saved with ctx.saveSettings().
+// The grips (docs-hilt-grip.md §A.5, §A.6, §E.5): the grip chooser, the per-grip safety notice, the
+// first hilt Fight notice and the rotate prompt. Every change of control or grip calls
+// ctx.applyControls(), so the app rotates at once and the CSS media queries re-lay out the menus.
 import { clamp } from '../core/math.js';
+import { HILT_RELEASED, effectiveGrip, appOrientation, sensitivityKey, flipKeys } from '../core/grip.js';
 import { SENSITIVITY_MIN, SENSITIVITY_MAX } from '../motion/gestures.js';
 
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V'];
@@ -16,6 +20,9 @@ export const TEXT = Object.freeze({
   epitaphCite: 'Simonides (Herodotus 7.228)',
   noMotion: 'This device did not report a gyroscope, or motion access was refused. You will fight with touch controls.',
   motionOn: 'Motion controls are on. Visit the Agoge to calibrate your swing.',
+  hiltOn: 'Hilt grip on. The Agoge teaches it in a few minutes.',
+  rotate: 'Hold the phone upright for the hilt grip',
+  hiltLead: 'Hold the phone upright in your fist like a sword’s hilt, screen toward you. The blade comes out of the top. Rest your thumb on the edge; press the glass to block. A firm flick is enough, never throw hard. Earbuds help: your fist covers the speaker.',
 });
 
 /**
@@ -34,15 +41,20 @@ export function pauseKicker(w) {
 
 /**
  * Settings fields (§9). `tab` groups them; every field is live-applied. `motionOnly` rows grey out
- * outside motion mode. The sensitivity range is the recognizer's (and the Agoge calibration's), and
- * the two swap toggles fix a mirrored sensor setup (the Agoge also sets them when it sees mirrored swings).
+ * outside motion mode, `hiltOnly` rows unless the effective grip is the hilt. The sensitivity range
+ * is the recognizer's (and the Agoge calibration's), and the two swap toggles fix a mirrored sensor
+ * setup (the Agoge also sets them when it sees mirrored swings). Each grip keeps its own sensitivity
+ * and swaps: `keyOf(settings)` names the settings key a row edits (core/grip.js), `key` names the row.
+ * Gyro look is greyed in the hilt grip, where the view locks onto the foe (`hintHilt`).
  */
 export const FIELDS = [
   { tab: 'controls', key: 'control', type: 'seg', label: 'Controls', options: [['motion', 'Motion'], ['touch', 'Touch']] },
-  { tab: 'controls', key: 'sensitivity', type: 'range', label: 'Sensitivity', hint: 'Motion: higher lets gentler swings count', min: SENSITIVITY_MIN, max: SENSITIVITY_MAX, step: 0.05, fmt: (v) => `${v.toFixed(2)}×`, motionOnly: true },
-  { tab: 'controls', key: 'gyroLook', type: 'toggle', label: 'Gyro look', hint: 'Motion: turn your body to turn the view', motionOnly: true },
-  { tab: 'controls', key: 'motionFlipX', type: 'toggle', label: 'Swap swing left/right', hint: 'Motion: if your slashes come out mirrored', motionOnly: true },
-  { tab: 'controls', key: 'motionFlipY', type: 'toggle', label: 'Swap swing up/down', hint: 'Motion: if chops come out as uppercuts', motionOnly: true },
+  { tab: 'controls', key: 'grip', type: 'seg', label: 'Grip', hint: 'Motion: how you hold the phone', options: [['hilt', 'Hilt (upright)'], ['window', 'Window (sideways)']], motionOnly: true },
+  { tab: 'controls', key: 'sensitivity', type: 'range', label: 'Sensitivity', hint: 'Motion: higher lets gentler swings count', min: SENSITIVITY_MIN, max: SENSITIVITY_MAX, step: 0.05, fmt: (v) => `${v.toFixed(2)}×`, motionOnly: true, keyOf: sensitivityKey },
+  { tab: 'controls', key: 'gyroLook', type: 'toggle', label: 'Gyro look', hint: 'Motion: turn your body to turn the view', hintHilt: 'Hilt grip: the view locks onto your foe', motionOnly: true },
+  { tab: 'controls', key: 'lockAuto', type: 'toggle', label: 'Auto-turn', hint: 'Hilt grip: turn to a foe attacking from behind', hiltOnly: true },
+  { tab: 'controls', key: 'motionFlipX', type: 'toggle', label: 'Swap swing left/right', hint: 'Motion: if your slashes come out mirrored', motionOnly: true, keyOf: (s) => flipKeys(s).x },
+  { tab: 'controls', key: 'motionFlipY', type: 'toggle', label: 'Swap swing up/down', hint: 'Motion: if chops come out as uppercuts', motionOnly: true, keyOf: (s) => flipKeys(s).y },
   { tab: 'controls', key: 'aimAssist', type: 'toggle', label: 'Aim assist', hint: 'Touch and keyboard: turn toward your foe' },
   { tab: 'controls', key: 'leftHanded', type: 'toggle', label: 'Left-handed', hint: 'Mirror the touch layout and demos' },
   { tab: 'controls', key: 'haptics', type: 'toggle', label: 'Haptics', hint: 'Feel every blow' },
@@ -68,6 +80,10 @@ const ARROW = (x1, y1, x2, y2, cls = 'd-arrow') => {
   return `<path class="${cls}" d="M${x1.toFixed(1)} ${y1.toFixed(1)}L${x2.toFixed(1)} ${y2.toFixed(1)}"/><path class="${cls}-head" d="M${x2.toFixed(1)} ${y2.toFixed(1)}L${p1}L${p2}Z"/>`;
 };
 const THUMB = (x, y) => `<path class="d-thumb" d="M${x - 9} ${y + 34}L${x - 8} ${y + 3}Q${x} ${y - 9} ${x + 8} ${y + 3}L${x + 9} ${y + 34}Z"/><ellipse class="d-nail" cx="${x}" cy="${y + 1}" rx="4" ry="5"/><circle class="d-press" cx="${x}" cy="${y - 1}" r="12"/>`;
+// The hilt grip: an upright phone in a fist, the blade (dashed) out of its top edge.
+const PHONE_V = (x, y, w, h) => `<rect x="${x - w / 2}" y="${y - h / 2}" width="${w}" height="${h}" rx="5" class="d-phone"/><rect x="${x - w / 2 + 4}" y="${y - h / 2 + 6}" width="${w - 8}" height="${h - 12}" rx="2" class="d-glass"/>`;
+const FIST = (x, y, w = 30) => `<rect x="${x - w / 2}" y="${y}" width="${w}" height="22" rx="8" class="d-phone"/><path class="d-cut" d="M${x - w / 2 + 3} ${y + 7}h7M${x - w / 2 + 3} ${y + 13}h7"/><rect x="${x - 8}" y="${y + 20}" width="16" height="24" class="d-phone"/>`;
+const HILT = (x, y, blade = 22) => `<path class="d-blade" d="M${x} ${y - 22 - blade}V${y - 24}"/>${PHONE_V(x, y, 22, 46)}${FIST(x, y + 10)}`;
 
 function swingArrows() {
   let s = '';
@@ -101,6 +117,15 @@ export const DIAGRAMS = {
   strap: '<svg viewBox="0 0 64 64"><rect x="10" y="8" width="16" height="28" rx="3" class="d-phone"/><rect x="13" y="11" width="10" height="18" rx="1" class="d-glass"/><path class="d-cord" d="M18 36c0 12 10 17 20 13"/><path class="d-body" d="M44 46 58 60"/><ellipse cx="42" cy="46" rx="6" ry="8" transform="rotate(-45 42 46)" class="d-band"/></svg>',
   space: '<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="25" class="d-ring d-dash"/><circle cx="32" cy="21" r="6" class="d-head"/><path d="M23 46l4-17h10l4 17z" class="d-phone"/><path class="d-arrow" d="M32 4v-1M60 32h1M4 32H3"/></svg>',
   hold: '<svg viewBox="0 0 64 64"><path class="d-motion" d="M8 44q4-22 22-30M14 52q6-18 18-24"/><g transform="rotate(25 40 34)"><rect x="33" y="8" width="14" height="26" rx="3" class="d-phone"/><rect x="28" y="26" width="24" height="18" rx="7" class="d-phone"/><path class="d-cut" d="M31 31h18M31 37h18"/><rect x="32" y="43" width="16" height="14" class="d-phone"/></g></svg>',
+  // The hilt grip (docs-hilt-grip.md §E.5): the thumb rests on the edge, the fingertips stay off the glass.
+  hiltGrip: `<svg viewBox="0 0 160 104">${HILT(70, 46)}<path class="d-thumb" d="M78 80L79 48Q83 40 87 48L88 80Z"/><ellipse class="d-nail" cx="83" cy="47" rx="2.6" ry="3.4"/>
+    <text x="94" y="45" class="d-note">thumb rests</text><text x="94" y="58" class="d-note">on the edge</text><text x="51" y="70" class="d-note" text-anchor="end">fingers</text><text x="51" y="83" class="d-note" text-anchor="end">behind</text><text x="78" y="13" class="d-note">blade</text></svg>`,
+  hiltCut: `<svg viewBox="0 0 160 104"><path class="d-arc" d="M30 34Q80 2 130 34"/>${ARROW(118, 25, 131, 35, 'd-arrow d-hot')}${ARROW(42, 25, 29, 35, 'd-arrow d-hot')}<g transform="rotate(-16 80 86)">${HILT(76, 60, 10)}</g><text x="128" y="74" class="d-label">sweep</text><text x="128" y="88" class="d-label">the top</text></svg>`,
+  hiltBlock: `<svg viewBox="0 0 160 104">${PHONE_V(68, 46, 42, 74)}${THUMB(76, 48)}<g transform="translate(124 44)"><circle r="16" class="d-aspis"/><circle r="10.5" class="d-aspis-in"/><circle r="2.5" class="d-boss"/></g><text x="80" y="99" class="d-label">thumb on the glass</text></svg>`,
+  hiltSwipe: `<svg viewBox="0 0 160 104">${PHONE_V(80, 48, 42, 74)}${THUMB(86, 52)}${ARROW(88, 24, 128, 24, 'd-arrow d-hot')}${ARROW(84, 24, 44, 24, 'd-arrow d-hot')}<text x="80" y="100" class="d-label">swipe: next foe</text></svg>`,
+  hiltThrust: `<svg viewBox="0 0 160 104"><circle class="d-head" cx="24" cy="40" r="13"/><path class="d-body" d="M24 53v44"/><path class="d-arm" d="M24 64 50 60"/><path class="d-blade" d="M55 22V8"/><rect x="51" y="24" width="8" height="28" rx="2" class="d-phone"/><rect x="48" y="50" width="14" height="13" rx="5" class="d-phone"/>${ARROW(72, 56, 146, 56, 'd-arrow d-hot')}<text x="108" y="46" class="d-label">punch</text></svg>`,
+  hiltThrow: `<svg viewBox="0 0 160 104"><circle class="d-head" cx="62" cy="42" r="12"/><path class="d-body" d="M62 54v46"/><path class="d-arm" d="M62 62 46 52 36 36"/><g transform="rotate(-62 36 36)"><rect x="32" y="12" width="8" height="24" rx="2" class="d-phone"/></g><rect x="31" y="31" width="11" height="11" rx="4" class="d-phone"/><path class="d-arc" d="M30 22C62-2 112 6 130 42"/>${ARROW(124, 32, 132, 50, 'd-arrow d-hot')}<text x="118" y="92" class="d-label">cock back, snap</text></svg>`,
+  windowGrip: `<svg viewBox="0 0 160 104"><circle class="d-head" cx="22" cy="44" r="12"/><path class="d-body" d="M22 56v42"/><path class="d-arm" d="M22 66 64 54"/><rect x="64" y="26" width="7" height="44" rx="2" class="d-phone"/><path class="d-arc" d="M36 42H140"/>${ARROW(132, 42, 148, 42, 'd-arrow d-hot')}<text x="110" y="34" class="d-label">look through it</text></svg>`,
 };
 
 const KEYS = [
@@ -128,7 +153,17 @@ export function createMenus(ctx) {
   let newRecord = false;
   let motionSupported = null; // null = unknown
   let probing = false;
-  let pendingMotion = false;
+  // What the grip chooser or a safety notice holds up until it is answered: 'motion' (turn motion
+  // on), 'grip' (switch to the hilt grip), 'start' (pendingStart: a Fight, Continue or Agoge click).
+  let pending = '';
+  let pendingStart = null;   // [mode, opts, act]
+  let safetyGrip = 'window'; // the lines the safety notice shows
+  let gripNew = false;       // the chooser shows 'New' (a motion player from before the grips)
+  let gripOffered = false;   // the chooser was pushed this session
+  let fightNow = false;      // "Fight now" on the first hilt Fight notice (this session only)
+  let rotateWide = window.innerWidth > window.innerHeight;
+  let rotateWait = 0;
+  let rotateOn = false;
   let confirmKey = '';
   let confirmLeft = 0;
   let toastLeft = 0;
@@ -208,14 +243,19 @@ export function createMenus(ctx) {
         <div class="mn-title-row mn-title-row2">
           <div class="mn-ctlpick"><span class="mn-ctlpick-l">Controls</span>
             <div class="mn-seg" data-field="control"><button type="button" data-v="motion">Motion</button><button type="button" data-v="touch">Touch</button></div></div>
-          <button type="button" class="mn-btn mn-quiet" data-act="howto">How to play</button>
-          <button type="button" class="mn-btn mn-quiet" data-act="settings">Settings</button>
+          <div class="mn-ctlpick mn-grippick"><span class="mn-ctlpick-l">Grip</span>
+            <div class="mn-seg" data-field="grip"><button type="button" data-v="hilt">Hilt</button><button type="button" data-v="window">Window</button></div></div>
+          <div class="mn-title-pair">
+            <button type="button" class="mn-btn mn-quiet" data-act="howto">How to play</button>
+            <button type="button" class="mn-btn mn-quiet" data-act="settings">Settings</button>
+          </div>
         </div>
       </div>
       <div class="mn-toast" role="status"></div>`);
     s.querySelector('.mn-epigraph p').textContent = `“${TEXT.epigraph}”`;
     s.querySelector('.mn-epigraph cite').textContent = TEXT.epigraphCite;
-    bindSeg(s.querySelector('.mn-seg'), 'control');
+    bindSeg(s.querySelector('.mn-seg[data-field="control"]'), 'control');
+    bindSeg(s.querySelector('.mn-seg[data-field="grip"]'), 'grip');
   }
 
   function buildPause() {
@@ -300,7 +340,8 @@ export function createMenus(ctx) {
       t.setAttribute('aria-label', f.label);
       t.addEventListener('click', () => {
         sfx('uiTap');
-        setSetting(f.key, !settings[f.key]);
+        const key = fieldKey(f);
+        setSetting(key, !settings[key]);
       });
       fc.appendChild(t);
     } else if (f.type === 'seg') {
@@ -320,7 +361,7 @@ export function createMenus(ctx) {
       const out = el('output');
       input.addEventListener('input', () => {
         const val = clamp(parseFloat(input.value), f.min, f.max);
-        applySetting(f.key, val);
+        applySetting(fieldKey(f), val);
         out.textContent = f.fmt(val);
         paintRange(input, f);
       });
@@ -347,6 +388,7 @@ export function createMenus(ctx) {
       if (!b) return;
       sfx('uiTap');
       if (key === 'control') chooseControl(b.dataset.v);
+      else if (key === 'grip') chooseGrip(b.dataset.v);
       else setSetting(key, b.dataset.v);
     });
   }
@@ -379,15 +421,31 @@ export function createMenus(ctx) {
         <div class="mn-meander mn-meander-thin"></div>
         <div class="mn-body">
           <div class="mn-page" data-page="motion">
-            <p class="mn-lead">Hold the phone in landscape, screen toward you, and look through it: the blade points where you look.</p>
-            <div class="mn-cards">
-              ${card(DIAGRAMS.swing, 'Swing to slash', 'Swing the phone like a blade. You cut the way you swing.')}
-              ${card(DIAGRAMS.stab, 'Push to stab', 'Push it straight forward, then draw it back.')}
-              ${card(DIAGRAMS.shield, 'Thumb = shield', 'Press the glass to raise the aspis. Rest your thumb on the frame to lower it.')}
-              ${card(DIAGRAMS.bash, 'Shield + push = bash', 'With the shield up, push forward to bash.')}
-              ${card(DIAGRAMS.throw, 'Overhand throw', 'Spear in hand: raise it beside your head, then throw overhand.', 'Never let go. A firm flick is enough.')}
+            <div class="mn-howgrip"><span class="mn-ctlpick-l">Grip</span>
+              <div class="mn-seg mn-seg-mini"><button type="button" data-hg="hilt">Hilt grip</button><button type="button" data-hg="window">Window grip</button></div></div>
+            <div class="mn-howset" data-set="hilt">
+              <p class="mn-lead">${TEXT.hiltLead}</p>
+              <div class="mn-cards">
+                ${card(DIAGRAMS.hiltGrip, 'Hold it like a hilt', 'Upright in your fist, screen toward you. Your fingers stay on the back.')}
+                ${card(DIAGRAMS.hiltCut, 'Cut with the top', 'Let the top of the phone lead, like a blade. You cut the way the top moves.')}
+                ${card(DIAGRAMS.hiltBlock, 'Thumb = shield', 'Press the glass to raise the aspis. Rest your thumb on the edge to lower it.')}
+                ${card(DIAGRAMS.hiltSwipe, 'Swipe: change foe', 'The view faces your foe. Swipe your thumb left or right to turn to the next one.')}
+                ${card(DIAGRAMS.hiltThrust, 'Punch to stab', 'Punch the phone straight forward, then draw it back.')}
+                ${card(DIAGRAMS.hiltThrow, 'Cock back, then throw', 'Spear in hand (the top button): cock the phone back behind your shoulder, then snap it forward, fist closed.', 'Never let go. A firm flick is enough.')}
+              </div>
+              <p class="mn-note">Shield + punch = bash. Alternate right and left cuts for combos.</p>
             </div>
-            <p class="mn-note">Turn your body to look around. Alternate right and left cuts for combos.</p>
+            <div class="mn-howset" data-set="window">
+              <p class="mn-lead">Hold the phone in landscape, screen toward you, and look through it: the blade points where you look.</p>
+              <div class="mn-cards">
+                ${card(DIAGRAMS.swing, 'Swing to slash', 'Swing the phone like a blade. You cut the way you swing.')}
+                ${card(DIAGRAMS.stab, 'Push to stab', 'Push it straight forward, then draw it back.')}
+                ${card(DIAGRAMS.shield, 'Thumb = shield', 'Press the glass to raise the aspis. Rest your thumb on the frame to lower it.')}
+                ${card(DIAGRAMS.bash, 'Shield + push = bash', 'With the shield up, push forward to bash.')}
+                ${card(DIAGRAMS.throw, 'Overhand throw', 'Spear in hand: raise it beside your head, then throw overhand.', 'Never let go. A firm flick is enough.')}
+              </div>
+              <p class="mn-note">Turn your body to look around. Alternate right and left cuts for combos.</p>
+            </div>
           </div>
           <div class="mn-page" data-page="touch">
             <div class="mn-touch">
@@ -407,25 +465,95 @@ export function createMenus(ctx) {
         </div>
       </div>`);
     bindTabs(s, settings.control === 'motion' ? 'motion' : 'touch');
+    // The Motion tab shows one grip's cards at a time: the current grip's on opening (howtoGrip).
+    for (const b of s.querySelectorAll('[data-hg]')) {
+      b.addEventListener('click', () => {
+        sfx('uiTap');
+        howtoGrip(b.dataset.hg);
+      });
+    }
+    howtoGrip(settings.grip === 'hilt' ? 'hilt' : 'window');
   }
 
+  function howtoGrip(g) {
+    const s = screens.howto;
+    for (const b of s.querySelectorAll('[data-hg]')) b.classList.toggle('is-on', b.dataset.hg === g);
+    for (const p of s.querySelectorAll('[data-set]')) p.classList.toggle('is-on', p.dataset.set === g);
+  }
+
+  // Lines per grip (docs-hilt-grip.md §A.6); showSafety() shows one list.
   function buildSafety() {
     screen('safety', 'mn-safety mn-dim mn-dark', `
       <div class="mn-panel mn-panel-wide">
         <div class="mn-meander"></div>
-        <div class="mn-kicker">Motion controls</div>
+        <div class="mn-kicker mn-safe-k">Motion controls</div>
         <h2 class="mn-h">Before you take up the phone</h2>
-        <ul class="mn-safe">
+        <ul class="mn-safe mn-safe-window">
           <li>${DIAGRAMS.grip}<span><b>Hold it firmly</b> in your sword hand.</span></li>
           <li>${DIAGRAMS.strap}<span><b>Use a wrist strap</b> if you have one.</span></li>
           <li>${DIAGRAMS.space}<span><b>Clear the space</b> around you: people, lamps, walls.</span></li>
           <li class="is-warn">${DIAGRAMS.hold}<span><b>Never let go when throwing.</b> A firm flick is enough.</span></li>
         </ul>
+        <ul class="mn-safe mn-safe-hilt">
+          <li>${DIAGRAMS.strap}<span><b>Hold it firmly in your fist.</b> A wrist strap, or a ring grip on the back of the phone, is strongly recommended.</span></li>
+          <li>${DIAGRAMS.space}<span><b>Clear the space around you, behind you too:</b> the spear’s cock-back reaches behind your head.</span></li>
+          <li class="is-warn">${DIAGRAMS.hold}<span><b>A firm flick is enough.</b> Swinging harder does nothing more.</span></li>
+        </ul>
         <div class="mn-row-btns">
           <button type="button" class="mn-btn mn-primary" data-act="safety-accept">I understand</button>
-          <button type="button" class="mn-btn mn-quiet" data-act="safety-touch">Use touch instead</button>
+          <button type="button" class="mn-btn mn-quiet mn-safe-alt" data-act="safety-touch">Use touch instead</button>
         </div>
       </div>`);
+  }
+
+  // The grip chooser (docs-hilt-grip.md §A.6): the first Motion choice once the hilt grip is
+  // released, and once ('New') for a motion player from before the grips.
+  function buildGrip() {
+    screen('grip', 'mn-grip mn-dim mn-dark', `
+      <div class="mn-panel mn-panel-wide">
+        <div class="mn-meander"></div>
+        <div class="mn-kicker mn-grip-k"></div>
+        <h2 class="mn-h">How will you hold your sword?</h2>
+        <div class="mn-grip-cards">
+          <button type="button" class="mn-grip-card is-rec" data-act="grip-hilt">${DIAGRAMS.hiltGrip}
+            <span class="mn-grip-tx"><b>Hilt grip</b><em>Recommended</em><span>Hold the phone upright in your fist like a sword handle, screen toward you. Press the glass with your thumb to raise the shield. The view turns to face your foe; swipe to change foe.</span></span></button>
+          <button type="button" class="mn-grip-card" data-act="grip-window">${DIAGRAMS.windowGrip}
+            <span class="mn-grip-tx"><b>Window grip</b><span>Hold the phone sideways and look through it. Turn your body to look around.</span></span></button>
+        </div>
+        <div class="mn-row-btns"><button type="button" class="mn-btn mn-quiet mn-small" data-act="back">Back</button></div>
+      </div>`);
+  }
+
+  // A first hilt Fight before the hilt Agoge (docs-hilt-grip.md §A.6).
+  function buildAgogeFirst() {
+    screen('agogefirst', 'mn-agogefirst mn-dim', `
+      <div class="mn-panel mn-panel-narrow">
+        <div class="mn-meander"></div>
+        <div class="mn-kicker">The hilt grip</div>
+        <h2 class="mn-h">New to the hilt?</h2>
+        <p class="mn-notice-p">The Agoge teaches the cuts, the shield, the lock-on and the spear throw in a few minutes.</p>
+        <div class="mn-stack">
+          <button type="button" class="mn-btn mn-primary" data-act="agoge-first">The Agoge first<small>3 min</small></button>
+          <button type="button" class="mn-btn mn-quiet" data-act="fight-now">Fight now</button>
+        </div>
+        <div class="mn-meander mn-meander-b"></div>
+      </div>`);
+  }
+
+  // The rotate prompt (docs-hilt-grip.md §A.5): its own layer over every screen, outside the stack.
+  function buildRotate() {
+    const r = el('div', 'mn-rotate', `
+      <div class="mn-rotate-in">
+        <svg class="mn-rotate-g" viewBox="0 0 64 64" aria-hidden="true"><path class="mn-rotate-arc" d="M14 18A24 24 0 0 1 50 14"/><path class="mn-rotate-arc" d="M50 46A24 24 0 0 1 14 50"/><g class="mn-rotate-phone"><rect x="22" y="12" width="20" height="40" rx="4"/><rect x="25" y="17" width="14" height="30" rx="1.5"/></g></svg>
+        <p class="mn-rotate-t"></p>
+        <button type="button" class="mn-btn mn-primary" data-act="rotate-window">Use the window grip</button>
+      </div>`);
+    r.id = 'rotate';
+    r.setAttribute('role', 'alertdialog');
+    r.querySelector('.mn-rotate-t').textContent = TEXT.rotate;
+    r.querySelector('button').addEventListener('click', () => act('rotate-window'));
+    root.appendChild(r);
+    return r;
   }
 
   function buildNotice() {
@@ -446,13 +574,20 @@ export function createMenus(ctx) {
   buildHowto();
   buildSafety();
   buildNotice();
+  buildGrip();
+  buildAgogeFirst();
+  const rotateEl = buildRotate();
 
   // ---- settings application ----
+  // The settings key a row edits: the effective grip's sensitivity and swaps (FIELDS keyOf).
+  const fieldKey = (f) => (f.keyOf ? f.keyOf(settings) : f.key);
+
   function applySetting(key, value) {
     settings[key] = value;
     switch (key) {
       case 'sensitivity':
-        if (ctx.gestures && ctx.gestures.setSensitivity) ctx.gestures.setSensitivity(value);
+      case 'sensitivityHilt':
+        if (key === sensitivityKey(settings) && ctx.gestures && ctx.gestures.setSensitivity) ctx.gestures.setSensitivity(value);
         break;
       case 'master':
       case 'music':
@@ -470,57 +605,131 @@ export function createMenus(ctx) {
     }
   }
 
+  // A change of control or grip re-applies the recognizer, ctx.input.grip and the orientation at
+  // once (the probe fallback included), so the app rotates while the menu is still open.
   function setSetting(key, value) {
     applySetting(key, value);
     ctx.saveSettings();
+    if (key === 'control' || key === 'grip') ctx.applyControls?.();
     refreshFields();
   }
 
   function refreshFields() {
-    for (const seg of root.querySelectorAll('.mn-seg')) {
+    const motion = settings.control === 'motion';
+    const hilt = effectiveGrip(settings) === 'hilt';
+    for (const seg of root.querySelectorAll('.mn-seg[data-field]')) {
       const key = seg.dataset.field;
+      // A missing or unknown grip reads as the window grip (core/grip.js).
+      const cur = key === 'grip' ? (settings.grip === 'hilt' ? 'hilt' : 'window') : String(settings[key]);
       for (const b of seg.querySelectorAll('button')) {
-        b.classList.toggle('is-on', String(settings[key]) === b.dataset.v);
+        b.classList.toggle('is-on', cur === b.dataset.v);
         if (key === 'control' && b.dataset.v === 'motion') b.classList.toggle('is-na', motionSupported === false);
       }
     }
+    // The title's Grip segment shows only with Motion on.
+    screens.title.classList.toggle('is-motion', motion);
     for (const row of screens.settings.querySelectorAll('.mn-field[data-key]')) {
       const f = FIELDS.find((x) => x.key === row.dataset.key);
+      const key = fieldKey(f);
       if (f.type === 'toggle') {
-        const on = !!settings[f.key];
+        const on = !!settings[key];
         const t = row.querySelector('.mn-toggle');
         t.classList.toggle('is-on', on);
         t.setAttribute('aria-checked', String(on));
       } else if (f.type === 'range') {
         const input = row.querySelector('input');
-        const val = Number.isFinite(+settings[f.key]) ? +settings[f.key] : f.min;
+        const val = Number.isFinite(+settings[key]) ? +settings[key] : f.min;
         input.value = String(val);
         row.querySelector('output').textContent = f.fmt(val);
         paintRange(input, f);
       }
-      if (f.motionOnly) row.classList.toggle('is-off', settings.control !== 'motion');
-      if (f.key === 'aimAssist') row.classList.toggle('is-off', settings.control === 'motion');
+      if (f.motionOnly) row.classList.toggle('is-off', !motion || (f.hintHilt !== undefined && hilt));
+      if (f.hiltOnly) row.classList.toggle('is-off', !hilt);
+      if (f.hintHilt) {
+        const small = row.querySelector('small');
+        const hint = hilt ? f.hintHilt : f.hint;
+        if (small.textContent !== hint) small.textContent = hint;
+      }
+      if (f.key === 'aimAssist') row.classList.toggle('is-off', motion);
     }
   }
 
-  // ---- motion controls: safety → permission → support → fallback ----
+  // ---- motion controls: (grip chooser →) safety → permission → support → fallback ----
+  // The release gate, or the menus' own test hook (hilt-shots.mjs shows the chooser before release).
+  const released = () => HILT_RELEASED || api.forceRelease === true;
+  // The safety notice shows for a grip that has not been accepted yet: the window lines once, and
+  // the hilt lines once more (docs-hilt-grip.md §A.6), wherever the grip first becomes effective.
+  const needSafety = (grip) => !settings.safetyAccepted || (grip === 'hilt' && settings.hiltSafetyAccepted !== true);
+
   function chooseControl(v) {
     if (v !== 'motion') {
-      pendingMotion = false;
+      clearPending();
       setSetting('control', 'touch');
       return;
     }
-    if (!settings.safetyAccepted) {
-      pendingMotion = true;
-      push('safety');
+    if (released() && settings.gripChosen === false) {
+      pending = 'motion';
+      showGripChooser(false);
+      return;
+    }
+    proceedMotion();
+  }
+
+  function proceedMotion() {
+    const grip = settings.grip === 'hilt' ? 'hilt' : 'window';
+    if (needSafety(grip)) {
+      pending = 'motion';
+      showSafety(grip);
       return;
     }
     enableMotion();
   }
 
+  /** The Grip segment (title, Settings) and the chooser for an existing motion player. */
+  function chooseGrip(v) {
+    const grip = v === 'hilt' ? 'hilt' : 'window';
+    if (grip === 'hilt' && settings.control === 'motion' && needSafety('hilt')) {
+      pending = 'grip';
+      showSafety('hilt');
+      return;
+    }
+    clearPending();
+    const was = effectiveGrip(settings);
+    settings.gripChosen = true;
+    setSetting('grip', grip);
+    const now = effectiveGrip(settings);
+    if (now && now !== was && current() === 'title') toast(now === 'hilt' ? TEXT.hiltOn : TEXT.motionOn);
+  }
+
+  function clearPending() {
+    pending = '';
+    pendingStart = null;
+  }
+
+  function showGripChooser(isNew) {
+    gripNew = isNew;
+    gripOffered = true;
+    screens.grip.querySelector('.mn-grip-k').textContent = isNew ? 'New' : 'Motion controls';
+    screens.grip.classList.toggle('is-new', isNew);
+    push('grip');
+  }
+
+  function showSafety(grip) {
+    const s = screens.safety;
+    const hilt = grip === 'hilt';
+    safetyGrip = hilt ? 'hilt' : 'window';
+    s.classList.toggle('is-hilt', hilt);
+    s.querySelector('.mn-safe-k').textContent = hilt ? 'The hilt grip' : 'Motion controls';
+    // The way out: touch while Motion is not on yet (and for the window notice), else the window grip.
+    const alt = hilt ? 'Use the window grip' : 'Use touch instead';
+    const b = s.querySelector('.mn-safe-alt');
+    if (b.textContent !== alt) b.textContent = alt;
+    if (current() !== 'safety') push('safety');
+  }
+
   // Must run inside the click handler: iOS only grants motion from a user gesture.
   function enableMotion() {
-    pendingMotion = false;
+    pending = '';
     const m = ctx.platform && ctx.platform.motion;
     let perm;
     try {
@@ -537,7 +746,7 @@ export function createMenus(ctx) {
         if (current() === 'notice') pop();
         if (ok) {
           setSetting('control', 'motion');
-          toast(TEXT.motionOn);
+          toast(effectiveGrip(settings) === 'hilt' ? TEXT.hiltOn : TEXT.motionOn);
         } else {
           setSetting('control', 'touch');
           notice('Touch controls', TEXT.noMotion, false);
@@ -686,20 +895,95 @@ export function createMenus(ctx) {
     ctx.setMode(mode, opts);
   }
 
+  /**
+   * A Fight, Continue, Fight again or Agoge click (docs-hilt-grip.md §A.5, §A.6). In the hilt grip:
+   * the hilt safety notice if it has not been accepted, then (a battle before the hilt Agoge) the
+   * "Agoge first / Fight now" notice, then fullscreen on the web, where the portrait lock needs it.
+   */
+  function startFlow(mode, opts, name) {
+    const hilt = effectiveGrip(settings) === 'hilt';
+    if (hilt && needSafety('hilt')) {
+      pending = 'start';
+      pendingStart = [mode, opts, name];
+      showSafety('hilt');
+      return;
+    }
+    if (hilt && mode === 'battle' && name !== 'again' && settings.hiltAgogeDone !== true && !fightNow) {
+      pendingStart = [mode, opts, name];
+      push('agogefirst');
+      return;
+    }
+    clearPending();
+    if (hilt) fullscreen();
+    startMode(mode, opts);
+  }
+
+  // A web orientation lock only succeeds in fullscreen, which resolves later: lock again then.
+  // The mode starts at once; the rotate prompt covers a refusal. Android rotates natively.
+  function fullscreen() {
+    if (!ctx.platform || ctx.platform.kind !== 'web') return;
+    const d = document.documentElement;
+    if (!d.requestFullscreen || document.fullscreenElement) return;
+    try {
+      const p = d.requestFullscreen({ navigationUI: 'hide' });
+      if (p && p.then) p.then(() => ctx.applyControls?.(), () => {});
+    } catch (e) { /* ignore */ }
+  }
+
+  /** Picks up what a safety notice held up, once it is accepted (or the grip changed). */
+  function resumePending() {
+    const p = pending;
+    pending = '';
+    if (p === 'motion') proceedMotion();
+    else if (p === 'grip') chooseGrip('hilt');
+    else if (p === 'start' && pendingStart) startFlow(...pendingStart);
+  }
+
   function act(name, b) {
     if (ctx.audio && ctx.audio.unlock) ctx.audio.unlock();
     switch (name) {
       case 'fight':
         sfx('uiConfirm');
-        startMode('battle', { day: 1 });
+        startFlow('battle', { day: 1 }, name);
         break;
       case 'continue':
         sfx('uiConfirm');
-        startMode('battle', { day: clamp(loadBest().day | 0, 1, 3) });
+        startFlow('battle', { day: clamp(loadBest().day | 0, 1, 3) }, name);
         break;
       case 'agoge':
         sfx('uiConfirm');
-        startMode('training', {});
+        startFlow('training', {}, name);
+        break;
+      case 'agoge-first':
+        sfx('uiConfirm');
+        pop();
+        startFlow('training', {}, 'agoge');
+        break;
+      case 'fight-now':
+        sfx('uiConfirm');
+        fightNow = true;
+        pop();
+        if (pendingStart) startFlow(...pendingStart);
+        break;
+      case 'grip-hilt':
+      case 'grip-window': {
+        sfx('uiConfirm');
+        const grip = name === 'grip-hilt' ? 'hilt' : 'window';
+        settings.gripChosen = true;
+        pop();
+        if (gripNew) chooseGrip(grip);
+        else {
+          // The first Motion choice: Motion is not on yet, so the grip just gets set.
+          applySetting('grip', grip);
+          ctx.saveSettings();
+          proceedMotion();
+        }
+        break;
+      }
+      case 'rotate-window':
+        sfx('uiConfirm');
+        settings.gripChosen = true;
+        setSetting('grip', 'window');
         break;
       case 'settings':
         sfx('uiTap');
@@ -707,6 +991,7 @@ export function createMenus(ctx) {
         break;
       case 'howto':
         sfx('uiTap');
+        howtoGrip(settings.grip === 'hilt' ? 'hilt' : 'window');
         push('howto');
         break;
       case 'back':
@@ -734,7 +1019,7 @@ export function createMenus(ctx) {
         break;
       case 'again':
         sfx('uiConfirm');
-        startMode('battle', { day: clamp((lastRun && lastRun.day) || 1, 1, 3) });
+        startFlow('battle', { day: clamp((lastRun && lastRun.day) || 1, 1, 3) }, name);
         break;
       case 'title':
         sfx('uiTap');
@@ -742,20 +1027,28 @@ export function createMenus(ctx) {
         break;
       case 'safety-read':
         sfx('uiTap');
-        push('safety');
+        showSafety(effectiveGrip(settings) === 'hilt' ? 'hilt' : 'window');
         break;
       case 'safety-accept':
         sfx('uiConfirm');
         settings.safetyAccepted = true;
+        if (safetyGrip === 'hilt') settings.hiltSafetyAccepted = true;
         ctx.saveSettings();
         pop();
-        if (pendingMotion) enableMotion();
+        resumePending();
         break;
       case 'safety-touch':
         sfx('uiTap');
-        pendingMotion = false;
         pop();
-        setSetting('control', 'touch');
+        if (safetyGrip === 'hilt') {
+          // "Use the window grip": what was held up goes on in the window grip (its own notice first).
+          setSetting('grip', 'window');
+          if (pending === 'grip') clearPending();
+          else resumePending();
+        } else {
+          clearPending();
+          setSetting('control', 'touch');
+        }
         break;
       default:
         break;
@@ -766,7 +1059,14 @@ export function createMenus(ctx) {
   /** Handles Android back / Esc. True when a menu consumed it. */
   function back() {
     if (stack.length > 1) {
-      if (current() === 'safety') pendingMotion = false;
+      const top = current();
+      // Backing out of a notice or the chooser cancels what it held up (Motion stays off). An
+      // existing motion player's 'New' chooser counts as answered: they keep the window grip.
+      if (top === 'safety' || top === 'grip' || top === 'agogefirst') clearPending();
+      if (top === 'grip' && gripNew) {
+        settings.gripChosen = true;
+        ctx.saveSettings();
+      }
       pop();
       return true;
     }
@@ -801,6 +1101,25 @@ export function createMenus(ctx) {
     }
   });
 
+  window.addEventListener('resize', () => {
+    rotateWide = window.innerWidth > window.innerHeight;
+  });
+
+  // The rotate prompt (§A.5): the hilt grip wants portrait, but the display has stayed landscape
+  // for 600 ms (Android 16 ignores the request on large screens; a web lock needs fullscreen). In a
+  // fight it also pauses. Recognition keeps working; the prompt is only about the layout.
+  function updateRotate(dt) {
+    const m = ctx.mode;
+    const wrong = rotateWide && (m === 'title' || m === 'battle' || m === 'training' || m === 'paused') && appOrientation(settings) === 'portrait';
+    rotateWait = wrong ? rotateWait + dt : 0;
+    const on = wrong && rotateWait > 0.6;
+    // A fight that starts (or resumes) under the prompt pauses too.
+    if (on && (m === 'battle' || m === 'training')) ctx.setMode('paused');
+    if (on === rotateOn) return;
+    rotateOn = on;
+    rotateEl.classList.toggle('is-on', on);
+  }
+
   window.addEventListener('keydown', (e) => {
     if (e.defaultPrevented || !current()) return;
     if (e.code === 'Escape' || (e.code === 'KeyP' && current() === 'pause')) {
@@ -809,7 +1128,7 @@ export function createMenus(ctx) {
     }
   });
 
-  return {
+  const api = {
     update(dt) {
       if (confirmLeft > 0) {
         confirmLeft -= dt;
@@ -820,8 +1139,14 @@ export function createMenus(ctx) {
         if (toastLeft <= 0) screens.title.querySelector('.mn-toast').classList.remove('is-shown');
       }
       if (!stack.length && baseFor(ctx.mode)) show(baseFor(ctx.mode));
+      // A motion player from before the grips is offered the hilt grip once, on the title.
+      if (!gripOffered && current() === 'title' && settings.control === 'motion' && settings.gripChosen === false && released()) showGripChooser(true);
+      updateRotate(dt);
     },
     back,
     show,
+    /** Test hook (hilt-shots.mjs): offer the grip chooser as if HILT_RELEASED were true. */
+    forceRelease: false,
   };
+  return api;
 }

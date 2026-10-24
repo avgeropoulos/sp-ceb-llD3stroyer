@@ -2,10 +2,12 @@
 // in isolation. It follows DESIGN.md §4. Real modules are loaded when they exist; otherwise
 // light stubs are used.
 //
-// URL params: manual=1 (no RAF; drive with window.__sandbox.step(n)), seed=N, quality=low|medium|high.
+// URL params: manual=1 (no RAF; drive with window.__sandbox.step(n)), seed=N, quality=low|medium|high,
+// grip=hilt|window (the motion grip; default window, docs-hilt-grip.md §H.2).
 import * as THREE from 'three';
 import { EventBus } from '../../src/main/assets/game/js/core/events.js';
 import { createRng } from '../../src/main/assets/game/js/core/math.js';
+import { GRIP_IDS, effectiveGrip } from '../../src/main/assets/game/js/core/grip.js';
 
 const GAME = '../../src/main/assets/game/js/';
 
@@ -43,6 +45,10 @@ export async function createSandboxCtx({ withWorld = false, withLights = true } 
     control: 'touch', sensitivity: 1, gyroLook: true, aimAssist: true, leftHanded: false,
     haptics: true, voice: false, blood: true, helmetView: true, quality: params.get('quality') || 'high',
     master: 0.9, music: 0.55, sfx: 1, sensorDebug: false,
+    // The grip keys (main.js DEFAULT_SETTINGS); the window grip unless ?grip=hilt, chooser answered.
+    grip: GRIP_IDS.includes(params.get('grip')) ? params.get('grip') : 'window', gripChosen: true,
+    sensitivityHilt: 1, motionFlipXHilt: false, motionFlipYHilt: false, lockAuto: true,
+    hiltFingerStrip: 44, hiltAgogeDone: false, hiltSafetyAccepted: false,
   };
   const actionsQ = [];
   const ctx = {
@@ -53,11 +59,17 @@ export async function createSandboxCtx({ withWorld = false, withLights = true } 
     time: { now: 0, gnow: 0, dt: 0, gdt: 0, pdt: 0, scale: 1, hitStop: 0, playerRealtime: false },
     rng: createRng(Number(params.get('seed') || 1)),
     quality: settings.quality === 'auto' ? 'high' : settings.quality,
-    input: { moveX: 0, moveZ: 0, lookYaw: 0, lookPitch: 0, shieldHeld: false, shieldPressedAt: -10, phoneSettled: true, motion: false },
+    input: { moveX: 0, moveZ: 0, lookYaw: 0, lookPitch: 0, shieldHeld: false, shieldPressedAt: -10, phoneSettled: true, motion: false, grip: null },
     actions: { push: (a) => actionsQ.push(a), drain: () => actionsQ.splice(0, actionsQ.length), clear: () => { actionsQ.length = 0; } },
     debug: true,
     motionDemo: false,
     resume() {},
+    // main.js's applyControls without the recognizer and the orientation lock: keeps
+    // ctx.input.grip and <html data-grip> in line with settings.control and settings.grip.
+    applyControls() {
+      ctx.input.grip = effectiveGrip(ctx.settings);
+      document.documentElement.dataset.grip = ctx.input.grip || 'none';
+    },
     mode: 'battle',
     setMode(m) { ctx.mode = m; },
     actors: [],
@@ -164,6 +176,7 @@ export async function createSandboxCtx({ withWorld = false, withLights = true } 
     };
     requestAnimationFrame(frame);
   };
+  ctx.applyControls();
   window.__sandbox = { ctx, step: ctx.step, errors: [] };
   window.__game = window.__sandbox; // EventBus reports handler errors here
   return ctx;

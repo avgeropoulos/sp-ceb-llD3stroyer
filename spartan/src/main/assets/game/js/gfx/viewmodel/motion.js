@@ -19,7 +19,27 @@ export const RIG = {
   swordReach: 0.594,                // grip centre → sword tip (meshes.js SWORD.tipY)
   slashPlaneZ: -0.55,               // vm units: the tip path plane
   slashHalf: 0.35,                  // vm units: the tip path runs from -half·d to +half·d
+  portraitAspect: 0.45,             // the portrait phone the portrait poses are authored for (412×915, 360×800)
+  slashHalfPortrait: [0.22, 0.34],  // vm units: the tip path's [x, y] half-axes there (docs-hilt-grip.md §E.2)
 };
+
+/**
+ * The tip path's half-axes [x, y] in vm units at this aspect (width / height). Landscape keeps the
+ * circle of RIG.slashHalf. Portrait (the hilt grip, vm fov 80, ~41° across at 0.45) narrows the
+ * horizontal axis so a level cut stays within the view: RIG.slashHalfPortrait at 0.45 and below,
+ * easing linearly back to the circle at a square screen. Writes into `out`.
+ */
+export function slashHalf(aspect, out = [0, 0]) {
+  if (!(aspect < 1)) {
+    out[0] = RIG.slashHalf;
+    out[1] = RIG.slashHalf;
+    return out;
+  }
+  const t = clamp((aspect - RIG.portraitAspect) / (1 - RIG.portraitAspect), 0, 1);
+  out[0] = RIG.slashHalfPortrait[0] + (RIG.slashHalf - RIG.slashHalfPortrait[0]) * t;
+  out[1] = RIG.slashHalfPortrait[1] + (RIG.slashHalf - RIG.slashHalfPortrait[1]) * t;
+  return out;
+}
 
 // ---------- easing ----------
 export const easeInQuad = (x) => x * x;
@@ -195,18 +215,22 @@ const _off = [0, 0];
 /**
  * Sword pose for a slash at path parameter s (see slashParam), in rig space.
  * out = { tip:[3], hand:[3], blade:[3] (unit, grip→tip), motion:[3] (unit tip direction of travel) }.
+ * P.half, when present, is the tip path's [x, y] half-axes in vm units (slashHalf): the path ends
+ * lie on an ellipse and the tip travels along (hx·cos dir, hy·sin dir). Without it the path is
+ * today's circle of RIG.slashHalf.
  */
 export function slashGeometry(dir, s, out, reach = RIG.swordReach, P = SLASH) {
   const k = RIG.scale;
   const D = -RIG.slashPlaneZ / k;
-  const E = RIG.slashHalf / k;
+  const Ex = (P.half ? P.half[0] : RIG.slashHalf) / k;
+  const Ey = (P.half ? P.half[1] : RIG.slashHalf) / k;
   const dx = Math.cos(dir);
   const dy = Math.sin(dir);
   const g = shapeParam(s);
   const over = Math.max(0, Math.abs(g) - 1);
   // Tip: on the path for |s| ≤ 1; beyond it, curl toward the body and drop a little.
-  const tx = g * E * dx;
-  const ty = g * E * dy - over * over * 0.3;
+  const tx = g * Ex * dx;
+  const ty = g * Ey * dy - over * over * 0.3;
   const tz = -D + over * 0.6;
   // Hand: offset from the tip's path, following the tip partly.
   const [ox, oy] = slashHandOffset(dir, P, _off);
@@ -228,7 +252,13 @@ export function slashGeometry(dir, s, out, reach = RIG.swordReach, P = SLASH) {
   out.tip[0] = tx; out.tip[1] = ty; out.tip[2] = tz;
   out.hand[0] = hx; out.hand[1] = hy; out.hand[2] = hz;
   out.blade[0] = lx / reach; out.blade[1] = ly / reach; out.blade[2] = (tz - hz) / reach;
-  out.motion[0] = dx; out.motion[1] = dy; out.motion[2] = 0;
+  if (Ex === Ey) {
+    out.motion[0] = dx; out.motion[1] = dy;
+  } else {
+    const m = Math.hypot(Ex * dx, Ey * dy);
+    out.motion[0] = (Ex * dx) / m; out.motion[1] = (Ey * dy) / m;
+  }
+  out.motion[2] = 0;
   return out;
 }
 
