@@ -84,16 +84,22 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
     override fun run() {
         val step = 1f / 60f
+        val frameNanos = 1_000_000_000L / 60L
         var last = System.nanoTime()
         var acc = 0f
         while (running) {
             val now = System.nanoTime()
             acc += ((now - last) / 1e9f).coerceAtMost(0.25f)
             last = now
-            while (acc >= step) {
+            // Bound catch-up work: expensive frames must not trigger an ever-growing
+            // backlog of updates that makes rendering and touch response stutter.
+            var updates = 0
+            while (acc >= step && updates < 3) {
                 game.update(step)
                 acc -= step
+                updates++
             }
+            if (acc >= step) acc = 0f
             val canvas = try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) holder.lockHardwareCanvas() else holder.lockCanvas()
             } catch (_: Exception) { null }
@@ -109,8 +115,12 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             } finally {
                 holder.unlockCanvasAndPost(canvas)
             }
-            val elapsed = (System.nanoTime() - now) / 1_000_000L
-            if (elapsed < 8) Thread.sleep(8 - elapsed)
+            // Cap rendering near 60 FPS instead of busy-rendering at ~125 FPS.
+            // Less GPU/CPU contention leaves more time for complex levels.
+            val remaining = frameNanos - (System.nanoTime() - now)
+            if (remaining > 0) {
+                Thread.sleep(remaining / 1_000_000L, (remaining % 1_000_000L).toInt())
+            }
         }
     }
 
