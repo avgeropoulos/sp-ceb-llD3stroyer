@@ -88,7 +88,7 @@ class Game(
         } else {
             newGame(saved)
             score = storage.load("slot${n}_score")
-            lives = storage.load("slot${n}_lives").coerceAtLeast(3)
+            lives = storage.load("slot${n}_lives").coerceAtLeast(1)
         }
     }
 
