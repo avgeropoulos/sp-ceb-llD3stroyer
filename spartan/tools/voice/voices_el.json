@@ -1,0 +1,106 @@
+{
+  "_about": "Voice recipes for render.py's Modern Greek reading (the default, what the game ships; render.py --reading modern): the ancient text read the way Greek schools read it, from lines.json's ipa_el. Same schema as voices.json: a clip's recipe = defaults <- speaker <- defaults.delivery[kind] <- speaker.delivery[kind]. timbre/prosody: Kokoro voice blend weights (style dims 0-127 condition the decoder = timbre and the sounds themselves, 128-255 the prosody predictor = rhythm and melody). Kokoro has no Greek voice; Whisper's language identification hears the Spanish and Portuguese 'santa' voices as Greek far more often than any other, so every speaker keeps a santa timbre (alone or half-and-half with an English voice, which gives a clearer θ and a different timbre per speaker), and santa prosody (alone or blended with a deeper English one, which lowers the pitch). accent_st: Modern Greek has a stress accent, so the extra pitch on the stressed vowel is moderate (1.5 st; 3 st scored worse); the voices' own stress does the rest. The delivery blocks (vocal effort) are voices.json's, except Leonidas' shout (half the accent energy) and Dienekes' shout and cry (a george/santa prosody), which keep the santa voices' shouts from going breathy. See RESEARCH.md, 'Modern Greek reading', for the measurements behind each number.",
+  "ipa_field": "ipa_el",
+  "defaults": {
+    "speed": 0.95,
+    "formant": 1.0,
+    "f0_st": 0.0,
+    "accent_st": 1.5,
+    "eq": [{"type": "highpass", "f": 70, "q": 0.7}],
+    "compressor": {"threshold": -26, "ratio": 2.5, "attack": 6, "release": 90, "knee": 6},
+    "delivery": {
+      "speech": {},
+      "command": {
+        "speed_mul": 1.06, "f0_delivery_st": 3.0, "accent_energy": 1.0, "accent_len": 1.15, "final_len": 1.25,
+        "effort_eq": [
+          {"type": "lowshelf", "f": 250, "gain": -2.5, "q": 0.7},
+          {"type": "peak", "f": 2500, "gain": 4.0, "q": 0.9},
+          {"type": "highshelf", "f": 5000, "gain": 1.0, "q": 0.7}
+        ],
+        "saturation": {"drive": 1.8, "mix": 0.25},
+        "compressor": {"threshold": -28, "ratio": 3.5}
+      },
+      "shout": {
+        "speed_mul": 1.04, "f0_delivery_st": 4.5, "accent_energy": 1.5, "accent_len": 1.3, "final_len": 1.8,
+        "effort_eq": [
+          {"type": "lowshelf", "f": 300, "gain": -4.0, "q": 0.7},
+          {"type": "peak", "f": 2200, "gain": 6.0, "q": 0.8},
+          {"type": "highshelf", "f": 4500, "gain": 3.0, "q": 0.7}
+        ],
+        "saturation": {"drive": 2.5, "mix": 0.4},
+        "compressor": {"threshold": -30, "ratio": 4.5, "attack": 4}
+      },
+      "cry": {
+        "speed_mul": 1.0, "f0_delivery_st": 5.0, "accent_st": 1.0, "accent_energy": 1.5, "accent_len": 1.4, "final_len": 2.6,
+        "final_st": 1.0, "max_ms": {"vowel": 950},
+        "effort_eq": [
+          {"type": "lowshelf", "f": 300, "gain": -4.0, "q": 0.7},
+          {"type": "peak", "f": 2200, "gain": 6.0, "q": 0.8},
+          {"type": "highshelf", "f": 4500, "gain": 3.0, "q": 0.7}
+        ],
+        "saturation": {"drive": 3.0, "mix": 0.45},
+        "compressor": {"threshold": -30, "ratio": 5.0, "attack": 4}
+      }
+    }
+  },
+  "speakers": {
+    "Leonidas": {
+      "_why": "The king, deep and grave: em_santa timbre (the most Greek-sounding voice to Whisper) with 30% am_onyx, and a prosody half am_onyx, half em_santa. Onyx's prosody brings the pitch down to a deep man's without any pitch shifting (speech F0 ~105 Hz, commands ~136, shouts ~157); onyx's share of the timbre steadies the voice (pure em_santa is breathy: periodicity 0.46-0.57 -> 0.52-0.66), clears θ and sets him apart from the others (MFCC 34-38 instead of 20-29). On the 19-line test set: text CER 0.185, sound CER 0.040, mean P(Greek) 0.49, Greek the top language on 13 of 19 lines. Speed 0.85-0.95 measured alike; 0.9 kept for gravity. His shouts take half the default accent energy (0.5 instead of 1.5): with the full push the shouted vowels went breathy under the shout EQ (shieldsUp 1 had no pYIN-voiced frame at all, DNSMOS SIG 2.74, shouts only +0.6 st over his commands); now shieldsUp 1 SIG 3.11, his shouts SIG 3.11-3.42 (mean 3.31, was 3.23), ~157 Hz, +2.5 st over his commands, same transcripts.",
+      "timbre": {"em_santa": 0.7, "am_onyx": 0.3},
+      "prosody": {"am_onyx": 0.5, "em_santa": 0.5},
+      "speed": 0.9,
+      "eq": [
+        {"type": "highpass", "f": 65, "q": 0.7},
+        {"type": "lowshelf", "f": 140, "gain": -1.5, "q": 0.7},
+        {"type": "peak", "f": 2800, "gain": 2.0, "q": 0.9}
+      ],
+      "delivery": {"shout": {"accent_energy": 0.5}}
+    },
+    "Dienekes": {
+      "_why": "A second veteran, livelier than the king and told apart from him in timbre, melody and pitch (they share ten lines): a bm_george / em_santa timbre (70/30) with pure em_santa prosody, 1.5 semitones lower (speech F0 ~125 Hz, 3 semitones over the king; commands ~150). Text CER 0.18, mean P(Greek) 0.48. A 50/50 timbre was as Greek (0.50) but nearer the king (MFCC 22 instead of 29); -3 st cost a little clarity. His war cry rises less and is less saturated (SIG 2.35 -> 2.64). His shout and cry take a bm_george / em_santa 50/50 prosody: the pure santa melody under the shout EQ came out breathy (shieldsUp SIG 2.84-3.22, cry 2.85 and level with his commands); now shouts SIG 3.21-3.51, cry SIG 3.18 at ~161 Hz, 0.8 st over his commands, same or better transcripts. A 50/50 timbre was tried again for θ (heard as σ): with the respelled lines it wrote θ back on 19 of 30 decodes against 17, but text CER 0.198 against 0.163, sound CER 0.048 against 0.020, and respite 2's δε went back to βε, so 70/30 stays.",
+      "timbre": {"bm_george": 0.7, "em_santa": 0.3},
+      "prosody": {"em_santa": 1.0},
+      "f0_st": -1.5,
+      "eq": [
+        {"type": "highpass", "f": 75, "q": 0.7},
+        {"type": "peak", "f": 1800, "gain": 1.5, "q": 1.0}
+      ],
+      "delivery": {
+        "shout": {"prosody": {"bm_george": 0.5, "em_santa": 0.5}},
+        "cry": {"prosody": {"bm_george": 0.5, "em_santa": 0.5}, "f0_delivery_st": 3.5, "saturation": {"drive": 2.5, "mix": 0.3}}
+      }
+    },
+    "Lookout": {
+      "_why": "A young man, quick and bright: am_michael / em_santa timbre (50/50; Michael's half gives the clearest θ of the cast) with em_santa prosody at full speed. Speech F0 ~144 Hz, alarm calls ~171. Text CER 0.165, the clearest recipe; a 2% smaller vocal tract (formant 1.02) cost clarity (0.22) and was dropped.",
+      "timbre": {"am_michael": 0.5, "em_santa": 0.5},
+      "prosody": {"em_santa": 1.0},
+      "speed": 1.0,
+      "eq": [
+        {"type": "highpass", "f": 90, "q": 0.7},
+        {"type": "highshelf", "f": 4000, "gain": 1.5, "q": 0.7}
+      ]
+    },
+    "Herald": {
+      "_why": "Xerxes' herald reading the King's letter: formal and measured, now in fluent Greek (the Hindi voice he had is gone). bm_george / pm_santa blended (50/50) in timbre and prosody (an even, declaiming melody), slow. Speech F0 ~148 Hz. Text CER 0.19, mean P(Greek) 0.57. Pure pm_santa timbre was as Greek (0.59) but too near Leonidas, who answers him (MFCC 10 instead of 22); 2 semitones lower cost clarity. His proclamation keeps a slower, less raised command delivery.",
+      "timbre": {"bm_george": 0.5, "pm_santa": 0.5},
+      "prosody": {"bm_george": 0.5, "pm_santa": 0.5},
+      "speed": 0.88,
+      "eq": [
+        {"type": "highpass", "f": 80, "q": 0.7},
+        {"type": "peak", "f": 1100, "gain": 2.0, "q": 1.4}
+      ],
+      "delivery": {"command": {"speed_mul": 1.0, "f0_delivery_st": 2.0, "saturation": {"drive": 1.2, "mix": 0.1}}}
+    },
+    "Trachinian": {
+      "_why": "An ordinary local man of Trachis, alarmed: a bm_lewis / em_santa timbre (50/50) with em_santa prosody, a little over full speed (he reports in a hurry). Speed 1.04, not 1.0: at 1.0 his one line sat on the edge of being heard as Croatian (Whisper's language ID at 0 / 150 / 300 ms of lead-in: Greek 0.57 / 0.77 / Croatian with Slavic 0.59); at 1.03-1.05 (identical renders) it is Greek at all three (P 0.91 / 0.69 / 0.80, Slavic at most 0.12). 0.96, 0.98 and 1.06-1.08 flip to Croatian, so this line is on the listening list. Alarm F0 ~189 Hz. Text CER 0.19, mean P(Greek) 0.54, Greek top on 12 of 19 lines; MFCC 34-40 from every other speaker. am_echo or am_adam halves gave a steadier voice but much less Greek (P 0.30-0.40); lewis in the prosody too made him breathier (pYIN voiced 0.08 vs 0.17) and less Greek (0.49). A thinner everyman tone (less chest, +2.5 dB at 1.4 kHz).",
+      "timbre": {"bm_lewis": 0.5, "em_santa": 0.5},
+      "prosody": {"em_santa": 1.0},
+      "speed": 1.04,
+      "eq": [
+        {"type": "highpass", "f": 100, "q": 0.7},
+        {"type": "lowshelf", "f": 220, "gain": -3.0, "q": 0.7},
+        {"type": "peak", "f": 1400, "gain": 2.5, "q": 1.0}
+      ]
+    }
+  }
+}

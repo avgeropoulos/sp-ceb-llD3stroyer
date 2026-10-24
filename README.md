@@ -11,7 +11,7 @@ throw bouncing fireballs and take Krag down.
 > **Also in this repository: [Thermopylae](spartan/README.md)**, a first-person 3D Spartan
 > melee game set at the Battle of Thermopylae. You can swing your phone like a sword, raise the
 > shield with your thumb, bash, and throw the spear with a real throwing motion.
-> Download: **https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/Thermopylae.apk**
+> Download: **https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/download/latest-ccr-9def4096-ln0kio/Thermopylae.apk**
 > (install once; after that the game offers each new build on its title screen).
 
 ## The game

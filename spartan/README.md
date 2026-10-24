@@ -18,7 +18,7 @@ You can swing the phone itself like a sword.
 Every push builds the APK with GitHub Actions, next to Rocco's Quest:
 
 1. On your phone, open
-   **https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/Thermopylae.apk**
+   **https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/download/latest-ccr-9def4096-ln0kio/Thermopylae.apk**
    in Chrome.
 2. Open the downloaded `Thermopylae.apk`. If Android asks, allow your browser to install unknown apps.
 
@@ -125,8 +125,9 @@ build step. The Android app is a small Kotlin host around a full-screen WebView:
   * `js/gfx/`: procedural textures, the world, skinned characters, the first-person arms and
     weapons, and particles and camera effects.
   * `js/audio/`: every sound and the music, synthesized with WebAudio. The only audio files are
-    the voice lines in `audio/voice/`: Leonidas, Dienekes and the other Greeks speak period
-    Greek (subtitled in Greek capitals over the English); the narrator and the Agoge use the
+    the voice lines in `audio/voice/`: Leonidas, Dienekes and the other Greeks speak the Greek of
+    480 BC, read in Modern Greek pronunciation the way Greek schools read ancient texts
+    (subtitled in Greek capitals over the English); the narrator and the Agoge use the
     phone's text-to-speech in English.
   * `js/ui/`: HUD, menus, touch and keyboard input, and the Agoge.
 * `src/main/java/com/thermopylae/`: the Android host. It serves the assets from a secure origin

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Offline renderer for Thermopylae's Ancient Greek voice lines.
 
-lines.json (what is said) + voices.json (who says it, and how) -> one mono Ogg Opus clip per
-(line, speaker) under the game's audio/voice/, plus the generated js/audio/voicebank.js.
+lines.json (what is said) + a recipe file (who says it, and how: voices_el.json by default, or
+voices.json) -> one mono Ogg Opus clip per (line, speaker) under the game's audio/voice/, plus the
+generated js/audio/voicebank.js.
 
 Synthesis is Kokoro-82M v1.0 (Apache-2.0, int8 ONNX), driven straight from the IPA in
 lines.json. The ONNX graph is patched in memory (never saved into the repo) so that the
@@ -14,9 +15,15 @@ saturation, compression, silence trim, EBU R128 loudness, true-peak limiting) is
 scipy, so a render is bit-for-bit repeatable on the same machine.
 
 Run tools/voice/setup.sh once (model + venv), then:
-    <venv>/bin/python -I spartan/tools/voice/render.py              # everything
+    <venv>/bin/python -I spartan/tools/voice/render.py              # everything (Modern Greek reading)
     ... render.py --only warcry                                     # one key (voicebank.js is rebuilt)
     ... render.py --out /tmp/x --qa                                 # render elsewhere + metrics JSON
+    ... render.py --reading reconstructed --out /tmp/old            # the old 5th-century reading
+
+Two readings share the script: the Modern Greek school reading (lines.json "ipa_el",
+voices_el.json; the default and what the game ships) and the reconstructed 5th-century
+pronunciation (lines.json "ipa", voices.json). A recipe file names the field it was tuned for
+("ipa_field"); --ipa-field overrides it.
 """
 from __future__ import annotations
 
@@ -116,12 +123,19 @@ class IPAError(ValueError):
     pass
 
 
+# Kokoro vocabulary symbols that Unicode NFD decomposes, as decomposed -> symbol (only ç in v1.0)
+_NFD_SPLIT = {unicodedata.normalize('NFD', c): c for c in ('ç',)}
+
+
 def parse_ipa(ipa: str, vocab: dict):
     """IPA -> list of tokens [{ch, id, vowel, tone}], plus the substitutions made.
 
     Raises IPAError listing every character that is neither in Kokoro's vocabulary nor in
     SUBSTITUTIONS, so nothing is silently dropped."""
     s = unicodedata.normalize('NFD', ipa.strip())
+    # NFD splits the vocabulary's own precomposed symbols (ç = c + combining cedilla): put them back
+    for dec, ch in _NFD_SPLIT.items():
+        s = s.replace(dec, ch)
     # syllable dots between letters are syllable breaks, not full stops
     s = re.sub(r'(?<=[^\s.,;:!?…—])\.(?=[^\s.,;:!?…—])', '', s)
     s = re.sub(r'\s+', ' ', s)
@@ -799,8 +813,10 @@ def clip_metrics(y, sr=SR_OUT, f0_range=(50, 450)):
     return m
 
 
-def token_flags(info, max_cons_ms=250, max_vowel_ms=700):
-    """Phonemes with suspicious predicted durations (garbled or stuck stretches)."""
+def token_flags(info, max_cons_ms=250, max_vowel_ms=700, recipe=None):
+    """Phonemes with suspicious predicted durations (garbled or stuck stretches). A recipe that allows
+    longer vowels on purpose (the cry's held final, max_ms.vowel 950) raises the vowel limit to its cap."""
+    max_vowel_ms = max(max_vowel_ms, float(((recipe or {}).get('max_ms') or {}).get('vowel', 0)))
     flags = []
     for ch, ms in info['durations_ms'][1:-1]:
         lim = max_vowel_ms if (ch in VOWELS or ch == 'ː') else (600 if ch in PUNCT or ch == ' ' else max_cons_ms)
@@ -841,12 +857,17 @@ def clip_rel(key, variant, speaker):
 
 # ----------------------------------------------------------------------------- main
 
-def load_lines(path: Path):
+def line_ipa(ln: dict, speaker: str, field: str = 'ipa') -> str:
+    """The pronunciation a speaker reads: `<field>_by_speaker[speaker]` when the line has one, else `<field>`."""
+    return (ln.get(f'{field}_by_speaker') or {}).get(speaker, ln[field])
+
+
+def load_lines(path: Path, ipa_field: str = 'ipa'):
     data = json.loads(path.read_text(encoding='utf-8'))
     lines = data['lines'] if isinstance(data, dict) else data
     keys, variants = [], {}
     for ln in lines:
-        for f in ('key', 'variant', 'speakers', 'caps', 'en', 'ipa'):
+        for f in ('key', 'variant', 'speakers', 'caps', 'en', ipa_field):
             if f not in ln:
                 raise SystemExit(f'lines.json: line {ln.get("key")}/{ln.get("variant")} lacks {f!r}')
         if not re.fullmatch(r'[A-Za-z][A-Za-z0-9]*', ln['key']):
@@ -865,10 +886,26 @@ def load_lines(path: Path):
     return keys, variants
 
 
+# Two readings of the same script: a recipe file (tuned for one pronunciation) names the lines.json
+# IPA field it reads with "ipa_field" (default "ipa"). The game ships the Modern Greek reading, so it
+# is the default: a one-key re-render (--only) must not slip the old voices back into the set.
+READINGS = {
+    'reconstructed': HERE / 'voices.json',   # 5th-century Attic/Laconic reconstruction (field ipa)
+    'modern': HERE / 'voices_el.json',       # Modern Greek school reading of the ancient text (field ipa_el)
+}
+DEFAULT_READING = 'modern'
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     ap.add_argument('--lines', type=Path, default=HERE / 'lines.json')
-    ap.add_argument('--voices', type=Path, default=HERE / 'voices.json')
+    ap.add_argument('--reading', choices=sorted(READINGS), default=None,
+                    help="recipe preset: modern = voices_el.json (default, the game's clips), "
+                         "reconstructed = voices.json")
+    ap.add_argument('--voices', type=Path, default=None, help='recipe file (overrides --reading; default voices_el.json)')
+    ap.add_argument('--ipa-field', default=None,
+                    help="lines.json field holding the pronunciation (default: the recipe file's \"ipa_field\", else 'ipa'); "
+                         "a line may override it per speaker with <field>_by_speaker")
     ap.add_argument('--model-dir', type=Path, default=None, help='folder with kokoro-quantized.onnx, voices/, tokenizer.json')
     ap.add_argument('--out', type=Path, default=None, help='game root to write into (default: the repo game assets)')
     ap.add_argument('--only', action='append', default=[], help='render only this key (repeatable)')
@@ -877,8 +914,19 @@ def main(argv=None):
     args = ap.parse_args(argv)
 
     root = (args.out or GAME_ROOT).resolve()
-    keys, variants = load_lines(args.lines)
-    voices = json.loads(args.voices.read_text(encoding='utf-8'))
+    voices_path = args.voices or READINGS[args.reading or DEFAULT_READING]
+    voices = json.loads(voices_path.read_text(encoding='utf-8'))
+    ipa_field = args.ipa_field or voices.get('ipa_field') or 'ipa'
+    if voices.get('ipa_field', 'ipa') != ipa_field:
+        print(f'note: {voices_path.name} was tuned for the field {voices.get("ipa_field", "ipa")!r}; reading {ipa_field!r}',
+              file=sys.stderr)
+    keys, variants = load_lines(args.lines, ipa_field)
+    print(f'recipes {voices_path.name}, pronunciation field {ipa_field!r}')
+    default_path = READINGS[DEFAULT_READING]
+    if args.only and (voices_path.resolve() != default_path.resolve() or ipa_field != 'ipa_el'):
+        print(f'warning: --only re-renders {args.only} with {voices_path.name} / {ipa_field!r}, but the other clips '
+              f'under the output root are not touched: if they come from {default_path.name} / \'ipa_el\' (the game\'s '
+              f'reading), the set will mix two readings.', file=sys.stderr)
     unknown = [k for k in args.only if k not in variants]
     if unknown:
         raise SystemExit(f'--only: unknown key(s) {unknown}; known: {keys}')
@@ -897,20 +945,20 @@ def main(argv=None):
                         missing.append(clip_rel(key, ln['variant'], sp))
                     continue
                 recipe = resolve_recipe(voices, sp, line_kind(ln))
-                ipa = (ln.get('ipa_by_speaker') or {}).get(sp, ln['ipa'])
+                ipa = line_ipa(ln, sp, ipa_field)
                 try:
                     info = render_clip(kok, ipa, recipe, path, args.wav_dir)
                 except IPAError as e:
                     raise SystemExit(f'{key}-{ln["variant"]} ({sp}): {e}')
                 durations[(key, ln['variant'], sp)] = round(info['dur'], 2)
-                flags = token_flags(info)
+                flags = token_flags(info, recipe=recipe)
                 for s in info['substitutions']:
                     problems.append(f'{key}-{ln["variant"]}: substituted {s}')
                 print(f'{path.relative_to(root)}  {info["dur"]:.2f}s  [{recipe["kind"]}]'
                       + (f'  FLAGS {flags}' if flags else ''), flush=True)
                 if args.qa is not None:
                     m = clip_metrics(info['decoded'])
-                    m.update(key=key, variant=ln['variant'], speaker=sp, delivery=recipe['kind'], ipa=ipa,
+                    m.update(key=key, variant=ln['variant'], speaker=sp, delivery=recipe['kind'], ipa_field=ipa_field, ipa=ipa,
                              tokens=info['tokens'], accent=info['accent'], duration_flags=flags,
                              substitutions=info['substitutions'], file=clip_rel(key, ln['variant'], sp),
                              bytes=path.stat().st_size)

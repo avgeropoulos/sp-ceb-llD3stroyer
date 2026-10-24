@@ -5,11 +5,18 @@ Per clip: duration, F0 median/p10/p90 (pYIN), voiced ratio, sample peak and true
 loudness, clipped samples, leading/trailing silence and the longest inner pause, spectral flatness
 and centroid of voiced frames; DNSMOS P.835 SIG/BAK/OVRL (a non-intrusive speech-quality predictor,
 used here as an artifact detector) when its model is installed; and, with --asr, a Whisper-small
-transcript (Greek) scored against the line's IPA with a coarse phonetic character error rate
-(Whisper hears Ancient Greek through Modern Greek spelling, so the score compares sound classes,
-not spelling). Per speaker: F0 and MFCC centroids, and how far apart the five voices are.
+transcript (Greek) scored three ways: against the line's IPA with a coarse phonetic character error
+rate (Whisper hears Ancient Greek through Modern Greek spelling, so the score compares sound classes,
+not spelling), against the line's monotonic Greek spelling (text CER: case, accents, punctuation and
+spaces ignored) and against the Modern Greek sounds of that spelling (sound CER), plus Whisper's own
+language identification of the clip (P(Greek) and its top guess). Per speaker: F0 and MFCC
+centroids, and how far apart the five voices are.
 
-    <venv>/bin/python -I spartan/tools/voice/qa.py [--root <game root>] [--asr] [--report qa.json]
+    <venv>/bin/python -I spartan/tools/voice/qa.py [--root <game root>] [--asr] [--ipa-field ipa_el|ipa] [--report qa.json]
+
+--ipa-field defaults to ipa_el, the Modern Greek reading the game's clips are rendered from; pass
+--ipa-field ipa for clips of the reconstructed reading (render.py --reading reconstructed). Error
+rates are capped at 1 per clip, so one looping transcript cannot swamp the means.
 """
 from __future__ import annotations
 
@@ -43,7 +50,10 @@ _GR = dict(zip('αβγδεζηθικλμνξοπρστυφχψως',
                 'f', 'x', 'ps', 'o', 's']))
 _IPA = [('tʰ', 'T'), ('pʰ', 'f'), ('kʰ', 'x'), ('ð', 'd'), ('θ', 'T'), ('ʎ', 'li'), ('ɣ', 'g'), ('ɡ', 'g'),
         ('β', 'v'), ('ɸ', 'f'), ('ɛ', 'e'), ('ɔ', 'o'), ('y', 'i'), ('h', ''), ('ː', ''), ('ˈ', ''), ('ˌ', ''),
-        ('ŋ', 'n'), ('zd', 'z')]
+        ('ŋ', 'n'), ('zd', 'z'),
+        # Modern Greek reading (ipa_el; none of these occur in the reconstructed ipa): palatals as their letters
+        # (ç is c after accent stripping; κ, χ and γ are written alike before front vowels), tap r
+        ('ʲ', ''), ('c', 'k'), ('ʝ', 'g'), ('ɟ', 'g'), ('ɲ', 'n'), ('ɾ', 'r')]
 # sound classes Whisper's Modern Greek spelling cannot tell apart from the ancient sounds
 _CLASSES = str.maketrans({'b': 'v', 'x': 'k'})
 
@@ -91,6 +101,26 @@ def text_cer(ref: str, hyp: str) -> float:
     return edit_rate(norm(ref), norm(hyp))
 
 
+def spelling_cer(ref: str, hyp: str) -> float:
+    """CER on the letters only (case, accents, punctuation and word spacing ignored): Whisper splits
+    ancient phrases into words arbitrarily ("μενάνθρωποι"), which says nothing about the sounds."""
+    norm = lambda s: re.sub(r'[\W_]', '', _MN(s.lower()).replace('ς', 'σ'))
+    return edit_rate(norm(ref), norm(hyp))
+
+
+def sound_cer(ref: str, hyp: str) -> float:
+    """CER between the Modern Greek sounds of two Greek spellings (η/ι/υ/ει/οι = i, ω = o, αι = e ...)."""
+    return edit_rate(greek_loose(ref), greek_loose(hyp))
+
+
+def _monotonic():
+    """render_google.monotonic: the polytonic line in modern monotonic spelling (the text-CER reference)."""
+    spec = importlib.util.spec_from_file_location('voice_render_google', HERE / 'render_google.py')
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.monotonic
+
+
 # ----------------------------------------------------------------------------- ASR
 
 def asr_paths(asr_dir: Path):
@@ -101,12 +131,13 @@ def asr_paths(asr_dir: Path):
 
 
 def run_asr(items, asr_dir: Path):
-    """items: [(id, float array at 48 kHz)] -> {id: transcript}; {} when ASR is not set up."""
+    """items: [(id, float array at 48 kHz)] -> ({id: transcript}, {id: {language: probability}});
+    ({}, {}) when ASR is not set up."""
     from scipy import signal
     paths = asr_paths(asr_dir)
     if not paths:
         print(f'ASR not set up in {asr_dir} (run setup.sh --asr); skipping intelligibility.', file=sys.stderr)
-        return {}
+        return {}, {}
     with tempfile.TemporaryDirectory() as td:
         lst = []
         for i, (cid, y) in enumerate(items):
@@ -115,8 +146,9 @@ def run_asr(items, asr_dir: Path):
             lst.append({'id': cid, 'f32': str(f), 'lang': 'greek'})
         (Path(td) / 'list.json').write_text(json.dumps(lst))
         subprocess.run(['node', str(HERE / 'asr.mjs'), str(paths[0]), str(paths[1]), str(Path(td) / 'list.json'),
-                        str(Path(td) / 'out.json')], check=True)
-        return json.loads((Path(td) / 'out.json').read_text(encoding='utf-8'))
+                        str(Path(td) / 'out.json'), str(Path(td) / 'lid.json')], check=True)
+        return (json.loads((Path(td) / 'out.json').read_text(encoding='utf-8')),
+                json.loads((Path(td) / 'lid.json').read_text(encoding='utf-8')))
 
 
 # ----------------------------------------------------------------------------- DNSMOS
@@ -200,6 +232,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description='QA metrics for the rendered voice clips')
     ap.add_argument('--root', type=Path, default=R.GAME_ROOT, help='game root holding audio/voice (default: the repo)')
     ap.add_argument('--lines', type=Path, default=HERE / 'lines.json')
+    ap.add_argument('--ipa-field', default='ipa_el', help="the pronunciation the clips were rendered from: 'ipa_el' "
+                    "(Modern Greek reading, voices_el.json; the game's clips, default) or 'ipa' (reconstructed, voices.json)")
     ap.add_argument('--report', type=Path, default=None, help='metrics JSON (default <root>/voice-qa.json outside the repo, '
                                                                  'tools/voice/qa-report.json for the repo)')
     ap.add_argument('--asr', action='store_true', help='add Whisper-small transcripts (needs setup.sh --asr)')
@@ -207,7 +241,8 @@ def main(argv=None):
     ap.add_argument('--strict', action='store_true', help='exit 1 when a hard check fails')
     args = ap.parse_args(argv)
 
-    keys, variants = R.load_lines(args.lines)
+    keys, variants = R.load_lines(args.lines, args.ipa_field)
+    monotonic = _monotonic()
     mos_model = args.asr_dir / 'dnsmos' / 'sig_bak_ovr.onnx'
     mos = DNSMOS(mos_model) if mos_model.exists() else None
     if not mos:
@@ -227,20 +262,27 @@ def main(argv=None):
                 if mos:
                     m.update(mos(y))
                 m.update(key=key, variant=ln['variant'], speaker=sp, file=rel, bytes=path.stat().st_size,
-                         ipa=(ln.get('ipa_by_speaker') or {}).get(sp, ln['ipa']), caps=ln['caps'],
-                         delivery=R.line_kind(ln))
+                         ipa_field=args.ipa_field, ipa=R.line_ipa(ln, sp, args.ipa_field), caps=ln['caps'],
+                         text=monotonic(ln.get('spoken') or ln['polytonic']), delivery=R.line_kind(ln))
                 if ln.get('asr_ref'):
                     m['asr_ref'] = ln['asr_ref']
                 clips.append(m)
                 items.append((rel, y))
     if args.asr:
-        tr = run_asr(items, args.asr_dir)
+        tr, lid = run_asr(items, args.asr_dir)
         for m in clips:
             if m['file'] in tr:
+                # error rates are capped at 1: a transcript stuck in a loop ('Αλλά λεεεε...') can run to 15+,
+                # and one such clip would swamp the means
                 m['asr'] = tr[m['file']]
-                m['asr_loose_cer'] = round(edit_rate(ipa_loose(m['ipa']), greek_loose(m['asr'])), 3)
+                m['asr_loose_cer'] = round(min(1.0, edit_rate(ipa_loose(m['ipa']), greek_loose(m['asr']))), 3)
+                m['asr_text_cer'] = round(min(1.0, spelling_cer(m['text'], m['asr'])), 3)
+                m['asr_sound_cer'] = round(min(1.0, sound_cer(m['text'], m['asr'])), 3)
                 if m.get('asr_ref'):
-                    m['asr_cer'] = round(text_cer(m['asr_ref'], m['asr']), 3)
+                    m['asr_cer'] = round(min(1.0, text_cer(m['asr_ref'], m['asr'])), 3)
+            if lid.get(m['file']):   # {} when the language identification failed for this clip
+                m['asr_lang'] = lid[m['file']]
+                m['asr_p_el'] = lid[m['file']].get('el', 0.0)
 
     hard = []
     for m in clips:
@@ -270,7 +312,21 @@ def main(argv=None):
         print(f'{m["file"][12:]:40s} {m["dur_s"]:5.2f} {m["lufs"]:6.1f} {m["true_peak_dbtp"]:6.1f} '
               f'{m.get("f0_median", 0):6.0f} {m.get("f0_p10", 0):5.0f} {m.get("f0_p90", 0):5.0f} {m["voiced_ratio"]:5.2f} '
               f'{(m["flatness_voiced"] or 0):6.3f} {m.get("mos_sig", 0):5.2f} {m.get("mos_ovrl", 0):5.2f}  '
-              f'{m.get("asr", "")} {("[" + str(m["asr_loose_cer"]) + "]") if "asr_loose_cer" in m else ""}')
+              f'{m.get("asr", "")} {("[" + str(m["asr_loose_cer"]) + "]") if "asr_loose_cer" in m else ""}'
+              + (f' text {m["asr_text_cer"]} P(el) {m.get("asr_p_el", 0):.2f} ({next(iter(m["asr_lang"]))})' if "asr_lang" in m else ''))
+    scored = [m for m in clips if 'asr_text_cer' in m]
+    if scored:
+        mean = lambda f, ms: sum(m.get(f, 0.0) for m in ms) / len(ms)
+        print(f'\nWhisper, {len(scored)} clips: text CER mean {mean("asr_text_cer", scored):.3f} (median '
+              f'{float(np.median([m["asr_text_cer"] for m in scored])):.3f}), sound CER '
+              f'{mean("asr_sound_cer", scored):.3f}, loose CER vs {args.ipa_field} {mean("asr_loose_cer", scored):.3f}, '
+              f'P(Greek) mean {mean("asr_p_el", scored):.2f}, Greek the top language on '
+              f'{sum(1 for m in scored if m.get("asr_lang") and next(iter(m["asr_lang"])) == "el")}/{len(scored)}')
+        for s in sorted({m['speaker'] for m in scored}):
+            ms = [m for m in scored if m['speaker'] == s]
+            print(f'  {s:10s} {len(ms):2d} clips  text CER {mean("asr_text_cer", ms):.3f}  sound CER '
+                  f'{mean("asr_sound_cer", ms):.3f}  P(Greek) {mean("asr_p_el", ms):.2f}  '
+                  f'LUFS {min(m["lufs"] for m in ms):.2f}..{max(m["lufs"] for m in ms):.2f}')
     print('\nspeakers (F0 median by delivery, spectral centroid):')
     for s, v in cent.items():
         print(f'  {s:10s} ' + ', '.join(f'{k} {f} Hz' for k, f in v['f0_by_delivery'].items())

@@ -15,6 +15,7 @@
       "attested": false,
       "source": "composed entirely from transmitted phrases: Thucydides 1.129.3, the opening of Xerxes' letter to Pausanias ('Ὧδε λέγει βασιλεὺς Ξέρξης Παυσανίᾳ', given by Thucydides in Attic), and Plutarch, Apophthegmata Laconica, Moralia 225C-D (Leonidas 11), Xerxes' written demand 'πέμψον τὰ ὅπλα'; cf. the royal formula 'τάδε λέγει' of Darius' letter to Gadatas (ML 12, a Roman-period copy of disputed authenticity)",
       "ipa": "ˈɔːde ˈleɡeː basiˌleus ˈkserksɛːs leɔːˈnidɛːj, ˈpempson ta ˈopla.",
+      "ipa_el": "ˈoðe lˈeʝi vasilˈefs ksˈeɾksiz leonˈiði, pˈempson ta ˈopla.",
       "delivery": "formal: loud, measured royal proclamation, read from the King's letter",
       "confidence": "high",
       "notes": "The herald reads Xerxes' letter aloud. It opens with the transmitted formula of Xerxes' letter to Pausanias, with Λεωνίδῃ in place of Παυσανίᾳ, and continues with Xerxes' demand from Plutarch, unchanged. πέμψον is singular because it is addressed to Leonidas. Leonidas' μολὼν λαβέ follows directly, as it does in Plutarch. The dative Λεωνίδῃ is the Ionic form of Λεωνίδης. East Ionic is chosen as the Greek of the King's Ionian subjects and interpreters; the letters give the formula, not the dialect (see method). The polytonic text keeps the editors' breathings, but the IPA has psilosis: ὧδε is [ɔːde] and ὅπλα [opla]. λέγει is pronounced [eː]. The English follows the Loeb rendering 'Hand over your arms'. In Herodotus 7.208 Xerxes sends a mounted scout, not a herald, so the herald scene is the game's own. Alternative that stays closer to the old subtitle: Βασιλεὺς Ξέρξης τάδε λέγει· παράδοτε τὰ ὅπλα (ΒΑΣΙΛΕΥΣ ΞΕΡΞΗΣ ΤΑΔΕ ΛΕΓΕΙ· ΠΑΡΑΔΟΤΕ ΤΑ ΟΠΛΑ; IPA basiˌleus ˈkserksɛːs ˈtade ˈleɡeː, paˈradote ta ˈopla.). 18 syllables."
@@ -34,6 +35,8 @@
       "source": "Plutarch, Apophthegmata Laconica, Moralia 225C-D (Leonidas 11), Leonidas' written answer to Xerxes",
       "sourceText": "μολὼν λαβέ",
       "ipa": "moˌlɔːn laˈbe.",
+      "ipa_el": "molˈon lavˈe",
+      "ipa_el_editor": "molˈon lavˈe.",
       "delivery": "defiant: low, slow, contemptuous, not shouted",
       "kind": "speech",
       "confidence": "high",
@@ -54,6 +57,7 @@
       "source": "Herodotus 7.226.1 (the Trachinian's report, in Herodotus' reported speech)",
       "sourceText": "ὡς ἐπεὰν οἱ βάρβαροι ἀπίωσι τὰ τοξεύματα, τὸν ἥλιον ὑπὸ τοῦ πλήθεος τῶν ὀιστῶν ἀποκρύπτουσι",
       "ipa": "ton ˈhaːlion hupo toː ˈplɛːtʰeos tɔːn oisˈtɔːn apoˈkruptonti!",
+      "ipa_el": "ton ˈalion ipˈo tu plˈiθeos ton istˈon apokɾˈiptondi!",
       "delivery": "urgent-report: alarmed and fast, a frightened local man pointing at the sky",
       "confidence": "medium",
       "notes": "Herodotus' ὡς-clause already has a finite verb, so its main clause becomes direct speech in his own word order. The temporal clause (ἐπεὰν ... τοξεύματα) is dropped. Dialect changes: ἥλιον becomes ἅλιον (West Greek ᾱ); ἀποκρύπτουσι becomes ἀποκρύπτοντι (West Greek 3pl). τοῦ is pronounced [oː], the mild Northwest Greek vowel. πλῆθος keeps η, which is original *ē. The uncontracted πλήθεος is kept, as Northwest Greek inscriptions keep -εος. υ = [u], θ = [tʰ]. Herodotus' three-syllable Ionic ὀιστῶν is given in the ordinary two-syllable form οἰστῶν; Malian usage is unknown either way, and the renderer would merge ὀι anyway. The Greek present is general, so the English is not a future. Malian is barely attested: medium confidence for the dialect, but the grammar is secure. 18 syllables, ~3 s."
@@ -72,6 +76,8 @@
       "attested": false,
       "source": "composed from Herodotus 7.226.2 (Dienekes, reported speech: 'πάντα σφι ἀγαθὰ ὁ Τρηχίνιος ξεῖνος ἀγγέλλοι, εἰ ... ὑπὸ σκιῇ ἔσοιτο πρὸς αὐτοὺς ἡ μάχη καὶ οὐκ ἐν ἡλίῳ') and Plutarch, Apophth. Lac., Moralia 225B (the same jest given to Leonidas: '... εἰ ὑπὸ σκιᾷ αὐτοῖς μαχούμεθα'); cf. Cicero, Tusc. 1.101 'in umbra igitur pugnabimus'",
       "ipa": "aɡaˌθa aŋˈɡelleis. hupo skiˈaːj ɔːn maˈkʰomeθa.",
+      "ipa_el": "aɣaθˈa aɲɟˈelis. ipˈo skʲiˈa on maxˈomeθa.",
+      "ipa_el_editor": "aɣaθˈa aɲɟˈelis. ipˈo sciˈa on maxˈomeθa.",
       "delivery": "calm: dry, deadpan Laconic wit",
       "confidence": "high",
       "notes": "The first half is Herodotus' ἀγαθὰ ... ἀγγέλλοι, addressed directly to the Trachinian. The second half takes Herodotus' ὑπὸ σκιῇ (Doric σκιᾷ) and Plutarch's verb. Every source states what will follow (Hdt. ἔσοιτο, Plut. μαχούμεθα, Cic. pugnabimus), so the line keeps that sense with the futuristic present μαχόμεθα, used for a confident statement about the future (Smyth §1879). It also sidesteps the Laconian future of μάχομαι, which cannot be recovered: Attic has μαχοῦμαι, Ionic μαχέσομαι, and Laconian might add ε > ι or σ > h. The present has the same form in every dialect. ὦν is the general Doric form of οὖν. The English matches the game's existing subtitle except for 'Good news', which renders ἀγαθὰ ἀγγέλλεις. The speaker is Dienekes, as in Herodotus and in the game; Plutarch gives the line to Leonidas. A fuller Herodotean version was set aside: πάντα ἀγαθὰ ὁ Τραχίνιος ἀγγέλλει· ὑπὸ σκιᾷ ἐσσῆται ἁ μάχα καὶ οὐκ ἐν ἁλίῳ. At 26 syllables it loses the Laconic punch, and it rests on the uncertain Laconian future ἐσσῆται. θ = [θ]. 15 syllables."
@@ -91,6 +97,7 @@
       "attested": false,
       "source": "adapted from Herodotus 7.104.5 (Demaratus to Xerxes on the Spartan law: 'ἀλλὰ μένοντας ἐν τῇ τάξι ἐπικρατέειν ἢ ἀπόλλυσθαι'); participle made imperative",
       "ipa": "ˈmenete en taːj ˈtaksi!",
+      "ipa_el": "mˈenete en da tˈaksi!",
       "delivery": "command: hard bark over the din, clipped",
       "confidence": "high",
       "notes": "This is the Spartan law in Herodotus' own words: never flee, but stay in the line and conquer or die. Changes: μένοντας becomes μένετε; Ionic τῇ becomes Doric τᾷ, spoken [taːj]. Herodotus' i-stem dative τάξι is kept, since Doric has both -ι and -ει. No elision is added. This is variant 1, the one heard first. 7 syllables."
@@ -110,6 +117,7 @@
       "attested": false,
       "source": "adapted from Tyrtaeus fr. 10.15 W ('ὦ νέοι, ἀλλὰ μάχεσθε παρ' ἀλλήλοισι μένοντες'); participle made imperative",
       "ipa": "par alˈlaːlois ˈmenete!",
+      "ipa_el": "paɾ alˈaliz mˈenete!",
       "delivery": "command: urgent, to the men on either side",
       "confidence": "high",
       "notes": "Tyrtaeus wrote in Ionic epic, and Spartan armies heard his elegies on campaign (Lycurgus, Leocr. 107; Athenaeus 14.630f). Epic ἀλλήλοισι becomes Laconian prose ἀλλάλοις (ᾱ), and Tyrtaeus' word order is kept. ἀλλάλοις is paroxytone because the ultima is long. 7 syllables."
@@ -129,6 +137,7 @@
       "attested": false,
       "source": "adapted from Tyrtaeus fr. 11.31 W ('καὶ πόδα πὰρ ποδὶ θεὶς καὶ ἐπ' ἀσπίδος ἀσπίδ' ἐρείσας'), with the verb of fr. 11.21 W (μενέτω)",
       "ipa": "ˈpoda par poˌdi ˈθentes, ˈmenete!",
+      "ipa_el": "pˈoða paɾ poðˈi θˈendes, mˈenete!",
       "delivery": "command: steady rhythm, each word hit",
       "confidence": "high",
       "notes": "The hoplite's foot-to-foot line, in the words of Sparta's own war poet. Tyrtaeus' singular θείς becomes the plural θέντες, and the imperative μένετε is added. The apocopated πάρ is also Doric. ποδὶ takes a grave before θέντες, hence the ˌ. θ = [θ]. 10 syllables."
@@ -148,6 +157,7 @@
       "attested": false,
       "source": "adapted from the Laconian embaterion (marching song), Carmina popularia PMG 856.3 ('λαιᾷ μὲν ἴτυν προβάλεσθε', 'with the left thrust forward the shield-rim')",
       "ipa": "asˈpidas proˈbalesθe!",
+      "ipa_el": "aspˈiðas pɾovˈalesθe!",
       "delivery": "shout: sharp warning as the volley rises",
       "confidence": "high",
       "notes": "The exact verb form comes from a Spartan marching song, where it is said of the shield. Its ἴτυν is replaced by ἀσπίδας because ἴτυς had an initial digamma (*ϝίτυν) that a Laconian of 480 probably still pronounced. προβάλεσθε is the second aorist middle imperative and is proparoxytone. With a fricative θ, σθ is pronounced [sθ]. Variant 1 is heard first, so it carries the game's subtitle 'Shields up!'. 7 syllables."
@@ -167,6 +177,7 @@
       "attested": false,
       "source": "composed (elliptic order: ὑπό + accusative of motion); situation after Herodotus 9.61-62, 9.72 (Spartans enduring Persian arrows in line at Plataea)",
       "ipa": "hupo taːs asˈpidas!",
+      "ipa_el": "ipˈo tas aspˈiðas!",
       "delivery": "shout: urgent warning, arrows in the air",
       "confidence": "medium",
       "notes": "Two of the three drafts proposed this line. ὑπό with the accusative means motion into a place ('get in under'), with the verb understood. The grammar is certain, but there is no attested parallel for the exact phrase. τάς has long ᾱ in Laconian, as in Attic-Ionic (from *tans with compensatory lengthening; cf. τὼς in Thuc. 5.77); other dialects differ (Cretan and Argive τάνς, Lesbian -αις, Arcadian short -ας; Buck, Greek Dialects §78). Laconian ὑ is [hu]. At 6 syllables it is the shortest variant."
@@ -186,6 +197,7 @@
       "attested": false,
       "source": "adapted from Tyrtaeus fr. 11.23-24 W ('μηρούς τε κνήμας τε κάτω καὶ στέρνα καὶ ὤμους / ἀσπίδος εὐρείης γαστρὶ καλυψάμενος'); participle made imperative",
       "ipa": "asˈpidos euˈreiaːs ɡasˌtri kaˈlupsasθe!",
+      "ipa_el": "aspˈiðos evɾˈiaz ɣastɾˈi kalˈipsasθe!",
       "delivery": "shout: urgent, carried down the line",
       "confidence": "high",
       "notes": "Tyrtaeus' steadfast hoplite covers 'thighs, shins, chest and shoulders with the belly of his broad shield', which is exactly the drill against an arrow volley. Changes: the participle καλυψάμενος becomes the aorist middle imperative καλύψασθε; Ionic εὐρείης becomes Doric εὐρείας. The ει of εὐρεῖα is a genuine diphthong [ei]. γαστρὶ takes a grave, hence the ˌ. 12 syllables, about 2 s when shouted. That fits: the volley lands about 4.5 s after the warning (combat.js: warn 2.5 s plus 2 s flight)."
@@ -206,6 +218,7 @@
       "source": "the interjection: Aristophanes, Lysistrata 1291 and Birds 1763 ('ἀλαλαὶ ἰὴ παιών', closing victory songs); its use in battle: Pindar fr. 78 S-M (Ἀλαλά personified, daughter of War) and the verb ἀλαλάζω 'raise the war cry' (Xen. Anab. 5.2.14)",
       "sourceText": "ἀλαλαὶ ἰὴ παιών",
       "ipa": "alaˈlai!",
+      "ipa_el": "alalˈe!",
       "delivery": "shout: full-throated war cry, final diphthong held long",
       "kind": "cry",
       "confidence": "high",
@@ -227,6 +240,7 @@
       "source": "Laconian embateria (marching songs): Carmina popularia PMG 857 and PMG 856.1-2; the opening words common to both",
       "sourceText": "ἄγετ' ὦ Σπάρτας ἔνοπλοι κοῦροι ποτὶ τὰν Ἄρεως κίνασιν (PMG 857) | ἄγετ' ὦ Σπάρτας εὐάνδρου κοῦροι πατέρων πολιατᾶν (PMG 856)",
       "ipa": "ˈaɡet ɔː ˈspartaːs ˈkɔːroj!",
+      "ipa_el": "ˈaʝet o spˈaɾtas kˈoɾi!",
       "ipa_editor": "ˈaɡet ɔː ˈspartaːs ˈkɔːroi!",
       "delivery": "shout: rallying call as the line advances",
       "confidence": "medium",
@@ -246,6 +260,7 @@
       "attested": false,
       "source": "composed from Herodotus 7.211.1 ('τοὺς ἀθανάτους ἐκάλεε βασιλεύς, τῶν ἦρχε Ὑδάρνης'), 7.83.1 and 7.215",
       "ipa": "aˈθanatoi! huˈdarnaːs ˈarkʰei!",
+      "ipa_el": "aθˈanati! iðˈaɾnas ˈaɾçi!",
       "delivery": "urgent-report: alarm shouted down from the heights",
       "confidence": "medium",
       "notes": "Herodotus' own words: the King called them the Immortals, and Hydarnes commanded them. ἦρχε becomes the present ἄρχει. The shout is a bare Ἀθάνατοι, with no article. The Ionic Ὑδάρνης (Old Persian Vidarna) gets the Doric first-declension form Ὑδάρνας, as Λεωνίδης becomes Λεωνίδας; that form is a guess, hence medium confidence. ἄρχει has a genuine diphthong [ei]; υ = [u], θ = [θ]. Assumption: the Lookout is a Spartan. 9 syllables."
@@ -264,6 +279,8 @@
       "attested": false,
       "source": "composed from Herodotus 7.218.3 (the Phocians, struck by arrows, give up the path and flee to the summit: 'οἴχοντο φεύγοντες ἐπὶ τοῦ ὄρεος τὸν κόρυμβον'), 7.216 (mountain and path both called Ἀνόπαια), 7.213 (Ephialtes), 7.219.1 (the day-watchers run down at dawn)",
       "ipa": "toi pʰɔːˈkɛːs taːn aˈnopaian ˈelipon! epʰiˈaltaːs tɔːs aθaˈnatɔːs ˈaɡei huper to ˈoros!",
+      "ipa_el": "ti fokʲˈis tan anˈopean ˈelipon! efiˈaltas tos aθanˈatos ˈaʝi ipˈeɾ to ˈoɾos!",
+      "ipa_el_editor": "ti focˈis tan anˈopean ˈelipon! efiˈaltas tos aθanˈatos ˈaʝi ipˈeɾ to ˈoɾos!",
       "delivery": "urgent-report: breathless runner come down from the mountain, a beat between the two sentences",
       "confidence": "medium",
       "notes": "Herodotus' vocabulary throughout. The Phocians did not flee off the mountain; they fled up to its summit and left the path open (7.218.3). Since Ἀνόπαια names both mountain and path (7.216), 'they fled from the Anopaia' would mislead, so the line says they abandoned it: λείπω is the ordinary verb for deserting a post (cf. λιπεῖν τὴν τάξιν). Ἀνόπαια is feminine singular with short final α in Herodotus (ἡ Ἀνόπαια αὕτη), so the accusative is the proparoxytone Ἀνόπαιαν. The present ἄγει ('is leading') suits scouts who arrive as the Persians come down, so the English is adjusted to match. Laconian features: τοί; τάν with ᾱ; Φωκῆς, with the severior contraction of Ionic Φωκέες (Laconian may even have kept *Φωκῆϝες); the accusative plural τὼς Ἀθανάτως; Doric Ἐφιάλτας (Herodotus' psilotic Ionic has Ἐπιάλτης). ὑπὲρ τὸ ὄρος replaces Herodotus' διὰ τοῦ ὄρεος because the Laconian genitive is uncertain. 27 syllables, ~5 s. If it must be shorter, replace the first sentence with Τοὶ Φωκῆς ἔφυγον! (ΤΟΙ ΦΩΚΗΣ ΕΦΥΓΟΝ; IPA toi pʰɔːˈkɛːs ˈepʰuɡon!) and the English 'The Phocians have fled!'; without an object, 'fled' is no longer ambiguous."
@@ -283,6 +300,7 @@
       "source": "Diodorus 11.9.4; Plutarch, Apophth. Lac., Moralia 225D (Leonidas); cf. Cicero, Tusc. 1.101 ('hodie apud inferos fortasse cenabimus')",
       "sourceText": "ἀριστοποιεῖσθαι, ὡς ἐν ᾅδου δειπνησομένους",
       "ipa": "aːristopoiˈɛːsθe hɔːs en aˈidaː deipnɛːˈsomenoi.",
+      "ipa_el": "aɾistopiˈisθe os en aˈiða ðipnisˈomeni.",
       "delivery": "calm: grave and steady, a king's last order at dawn, a hint of dark humour",
       "confidence": "medium",
       "notes": "Leonidas' reported order is made direct by regular grammar, keeping the transmitted words. Changes: (1) the infinitive becomes the 2pl middle imperative ἀριστοποιῆσθε ('take breakfast'), with Laconian εε > η; (2) the transmitted future middle participle δειπνησομένους becomes the nominative δειπνησόμενοι, agreeing with the 2pl subject; (3) ἐν ᾅδου becomes Doric ἐν Ἀΐδα, the genitive of Ἀΐδας, with short ᾰ and ῐ and smooth breathing. Ἀΐδας probably had an intervocalic ϝ (*Ἀϝίδας; compare the epic hiatus Ἀΐ- against Attic ᾍδης), which a Laconian of 480 may still have pronounced; it is kept in its literary Doric shape, like δόρατα. If the digamma is to be voiced, use IPA aːristopoiˈɛːsθe hɔːs en aˈwidaː deipnɛːˈsomenoi. The first α of ἀριστο- is long (ἄριστον 'breakfast', Od. 16.2), unlike ἄρῐστος 'best'. Diodorus' ταχέως is dropped. σ stays [s] (see method). The exact wording and section in both sources are from memory. 16 syllables."
@@ -301,6 +319,8 @@
       "attested": false,
       "source": "composed from Herodotus 7.224.1 ('δόρατα μέν νυν τοῖσι πλέοσι αὐτῶν τηνικαῦτα ἤδη ἐτύγχανε κατεηγότα, οἱ δὲ τοῖσι ξίφεσι διεργάζοντο τοὺς Πέρσας') and Xenophon, Agesilaus 2.14 ('δόρατα συντεθραυσμένα', a Spartan battlefield)",
       "ipa": "ta ˈdorata sunˈteθraustai! tois ˈksipʰesi ˈmakʰesθe!",
+      "ipa_el": "ta ðˈoɾata sindˈeθɾafste! tis ksˈifesi mˈaxesθe!",
+      "ipa_el_editor": "ta ðˈoɾata sindˈeθɾafste! tis ksˈifesi mˈaçesθe!",
       "delivery": "command: hoarse and urgent, the last phase of the fight",
       "confidence": "medium",
       "notes": "Herodotus: by then most of the Spartans' spears were broken and they killed Persians with their swords (7.224.1). Later, on the hillock, they fought with daggers (μαχαίρῃσι) for those who still had them, and with hands and teeth (7.225.3). His κατεηγότα is avoided because the Laconian form of the perfect stem *ϝεϝᾱγ- cannot be recovered. The verb comes instead from Xenophon's account of a Spartan battlefield, used as a finite perfect with a singular verb after the neuter plural subject. The second sentence keeps Herodotus' instrumental τοῖσι ξίφεσι (Laconian τοῖς ξίφεσι) with a verb, as he does, because a bare instrumental dative is not a Greek command: μάχεσθε is the present imperative, the same in every dialect. The English 'Swords!' is the idiomatic English bark for this order and keeps the game's subtitle. δόρατα keeps its classical shape because the Laconian form of the stem *dorw- is unknown. The word order follows Herodotus, opening with the spears. 15 syllables."
@@ -320,6 +340,7 @@
       "attested": false,
       "source": "composed on the battle-praise formula ἀνὴρ ἀγαθὸς γενέσθαι (Tyrtaeus fr. 12.10 and 12.20 W 'ἀνὴρ ἀγαθὸς γίνεται ἐν πολέμῳ'; Herodotus 6.114, Callimachus at Marathon, 'ἀνὴρ γενόμενος ἀγαθός'; cf. the superlative 'ἀνὴρ γενόμενος ἄριστος' of Leonidas and Dienekes, 7.224.1 and 7.226.1)",
       "ipa": "ˈandres aɡaˌθoi eˈɡenesθe.",
+      "ipa_el": "ˈanðɾes aɣaθˈi eʝˈenesθe.",
       "delivery": "calm: proud, terse praise as the dust settles",
       "confidence": "high",
       "notes": "'To prove a good man' was the standard Greek, and above all Spartan, praise of courage in battle. Two of the three drafts proposed it. It is identical in Doric. ἀγαθοὶ takes a grave, hence the ˌ. Section numbers are from memory. 9 syllables, spoken calmly."
@@ -340,6 +361,8 @@
       "source": "Herodotus 7.210.2 (his verdict on the first day's assault at Thermopylae)",
       "sourceText": "δῆλον δ' ἐποίευν παντί τεῳ καὶ οὐκ ἥκιστα αὐτῷ βασιλέι ὅτι πολλοὶ μὲν ἄνθρωποι εἶεν, ὀλίγοι δὲ ἄνδρες.",
       "ipa": "polˌloi men ˈanθrɔːpoi, oˈliɡoi de ˈandres.",
+      "ipa_el": "polˈi men ˈanθɾopi, olˈiʝi ððe ˈanðɾes.",
+      "ipa_el_editor": "polˈi men ˈanθɾopi, olˈiʝi ðe ˈanðɾes.",
       "delivery": "calm: dry and grim, a sneer at the beaten enemy",
       "confidence": "high",
       "notes": "Herodotus' own comment on the first day's fighting, here spoken by a Spartan after a wave is beaten. Only εἶεν is dropped, and δὲ ἄνδρες stays unelided as transmitted. Two of the three drafts proposed it. The English matches the game's existing wave subtitle 'Many men, but few warriors' (Day 1, wave 2). ἄνθρωποι has the standard accent; the Doric ἀνθρώποι reported by the grammarians is not used (see method). θ = [θ]. 12 syllables."
@@ -358,6 +381,8 @@
       "attested": false,
       "source": "adapted from Herodotus 7.225.2 ('ἔς τε γὰρ τὸ στεινὸν τῆς ὁδοῦ ἀνεχώρεον ὀπίσω ... ἐλθόντες ἵζοντο ἐπὶ τὸν κολωνὸν πάντες ἁλέες οἱ ἄλλοι πλὴν Θηβαίων'); narrative made an order",
       "ipa": "anakʰɔːˈrɛːte epi ton kolɔːˈnon! ˈpantes haˈlɛːs!",
+      "ipa_el": "anaxoɾˈite epˈi ton kolonˈon! pˈandes alˈis!",
+      "ipa_el_editor": "anaxoɾˈite epˈi toŋ ɡolonˈon! pˈandes alˈis!",
       "delivery": "command: hoarse, desperate, rallying the last survivors",
       "confidence": "medium",
       "notes": "Herodotus' narrative becomes Dienekes' order. The imperfect ἀνεχώρεον becomes the imperative ἀναχωρῆτε, with Laconian εε > η. ἐπὶ τὸν κολωνὸν πάντες ἁλέες is kept, except that Ionic ἁλέες ('in a mass') becomes ἁλῆς by the same contraction; Attic has ἁλεῖς. κολωνόν keeps its acute before the pause. Herodotus adds that the stone lion for Leonidas later stood on this hillock. ἁλής may have had an initial digamma in Laconian. A safe, commoner alternative is ἀθρόοι πάντες (ΑΘΡΟΟΙ ΠΑΝΤΕΣ; IPA aˈθrooi ˈpantes), the standard tactical word. 15 syllables."
@@ -390,6 +415,7 @@
     "Stress marks: render.py now moves every ˈ/ˌ from the syllable onset to just before the vowel (kokoro_stress), because Kokoro was trained on espeak-style IPA, where the mark stands before the stressed vowel (mˈenete, aspˈidas). The ipa fields keep the editor's convention; the accent plan (which nucleus gets the pitch peak) is identical either way, checked on all 19 lines. Whisper's loose error rate on the 29 clips, median of three decodes per clip: mean 0.26 -> 0.16, median 0.23 -> 0.12. The worst cases were ΜΟΛΩΝ ΛΑΒΕ (0.44 -> 0.00), Dienekes' holdTheLine 3 (0.59 -> 0.27), swords (0.42 -> 0.22) and Leonidas' holdTheLine 1 (0.57 -> 0.29).",
     "kind: an optional per-line field that overrides the delivery kind render.py reads off the delivery text (speech, command, shout or cry). Used for molonLabe (speech) and warcry 1 (cry), as the editor's renderer notes 1 and 2 recommend.",
     "ipa_editor: the editor's IPA, kept where ipa was respelled for Kokoro (warcry 2 only).",
-    "Duration clamp: render.py's cap on over-long phonemes rounded to one frame over the cap (a 0.725 s shouted final e in shieldsUp 3, Leonidas); it now lands at or under the cap. Changed clips: shieldsUp 2 and 3 and respite 2 (Leonidas)."
+    "Duration clamp: render.py's cap on over-long phonemes rounded to one frame over the cap (a 0.725 s shouted final e in shieldsUp 3, Leonidas); it now lands at or under the cap. Changed clips: shieldsUp 2 and 3 and respite 2 (Leonidas).",
+    "ipa_el render respellings (2026-10-24): ipa_el is what Kokoro reads; where it differs from the Modern Greek reading as transcribed, that reading is kept in ipa_el_editor. Each change was checked with Whisper-small (Greek forced, three lead-in offsets, voices_el.json recipes): (1) palatal c -> kʲ (Kokoro renders c as ts or t): anopaia Φωκής, heard as 'τυφωτσίς' 3/3, now 'φωκείς' 3/3, sound CER 0.075 -> 0.038, P(Greek) 0.41 -> 0.64; fightInShade σκιά, heard as 'στιά' 3/3, now 'σκια/σκυά' 3/3. (2) swords μάχεσθε: ç between vowels comes out voiced ('ημάγεστε' 3/3); x gives 'ημάχεστε' 3/3 (sound CER 0.056 -> 0.028, DNSMOS SIG 3.49 -> 3.58). xʲ was also tried: heard as 'μάχιεστε' 3/3, an extra glide, and lower quality, so x. ç after ρ (immortals ˈaɾçi) is heard right and stays. (3) kolonos: the colloquial sandhi toŋ ɡolonˈon comes out as γολωνόν and swallows the p of πάντες; the careful reading ton kolonˈon is heard 'επί των κολονών, πάντε...' (text CER 0.219 -> 0.094). The sandhi en da in holdTheLine 1 is heard right and stays. (4) respite 2 δε: the weak ð after ʝi is heard as β ('ο Λύγης Βεάνδρες'); the doubled ðð (a slightly longer ð, a rendering device) is heard 'ολίγιδε άντρες' (Leonidas text CER 0.258 -> 0.161, Dienekes 0.290 -> 0.161). (5) molonLabe without the final period: Leonidas' stressed final é no longer dies into a whispered tail ('λαβές', 'λαβερ' -> 'Μολών, λαβε' 3/3, text CER 0.111 -> 0.000; unvoiced tail 180 -> 60 ms); the line end is still phrase-final for the renderer."
   ]
 }

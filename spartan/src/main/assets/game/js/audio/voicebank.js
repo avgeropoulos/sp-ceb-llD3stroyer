@@ -2,48 +2,48 @@
 /** Ancient Greek voice lines: key -> variants (in order). Each variant has its Greek (epigraphic capitals), English subtitle and one clip per speaker. */
 export const VOICEBANK = Object.freeze({
   herald: Object.freeze([
-    Object.freeze({ greek: 'ΩΔΕ ΛΕΓΕΙ ΒΑΣΙΛΕΥΣ ΞΕΡΞΗΣ ΛΕΩΝΙΔΗΙ· ΠΕΜΨΟΝ ΤΑ ΟΠΛΑ', en: 'Thus says King Xerxes to Leonidas: hand over your arms.', clips: Object.freeze({ Herald: Object.freeze({ file: 'audio/voice/herald-1-herald.ogg', dur: 4.62 }) }) }),
+    Object.freeze({ greek: 'ΩΔΕ ΛΕΓΕΙ ΒΑΣΙΛΕΥΣ ΞΕΡΞΗΣ ΛΕΩΝΙΔΗΙ· ΠΕΜΨΟΝ ΤΑ ΟΠΛΑ', en: 'Thus says King Xerxes to Leonidas: hand over your arms.', clips: Object.freeze({ Herald: Object.freeze({ file: 'audio/voice/herald-1-herald.ogg', dur: 4.31 }) }) }),
   ]),
   molonLabe: Object.freeze([
-    Object.freeze({ greek: 'ΜΟΛΩΝ ΛΑΒΕ', en: 'Come and take them.', clips: Object.freeze({ Leonidas: Object.freeze({ file: 'audio/voice/molonLabe-1-leonidas.ogg', dur: 1.05 }) }) }),
+    Object.freeze({ greek: 'ΜΟΛΩΝ ΛΑΒΕ', en: 'Come and take them.', clips: Object.freeze({ Leonidas: Object.freeze({ file: 'audio/voice/molonLabe-1-leonidas.ogg', dur: 1.24 }) }) }),
   ]),
   arrowsHideSun: Object.freeze([
-    Object.freeze({ greek: 'ΤΟΝ ΑΛΙΟΝ ΥΠΟ ΤΟΥ ΠΛΗΘΕΟΣ ΤΩΝ ΟΙΣΤΩΝ ΑΠΟΚΡΥΠΤΟΝΤΙ', en: 'Their arrows are so many they hide the sun!', clips: Object.freeze({ Trachinian: Object.freeze({ file: 'audio/voice/arrowsHideSun-1-trachinian.ogg', dur: 3.22 }) }) }),
+    Object.freeze({ greek: 'ΤΟΝ ΑΛΙΟΝ ΥΠΟ ΤΟΥ ΠΛΗΘΕΟΣ ΤΩΝ ΟΙΣΤΩΝ ΑΠΟΚΡΥΠΤΟΝΤΙ', en: 'Their arrows are so many they hide the sun!', clips: Object.freeze({ Trachinian: Object.freeze({ file: 'audio/voice/arrowsHideSun-1-trachinian.ogg', dur: 2.75 }) }) }),
   ]),
   fightInShade: Object.freeze([
-    Object.freeze({ greek: 'ΑΓΑΘΑ ΑΓΓΕΛΛΕΙΣ· ΥΠΟ ΣΚΙΑΙ ΩΝ ΜΑΧΟΜΕΘΑ', en: 'Good news. Then we shall fight in the shade.', clips: Object.freeze({ Dienekes: Object.freeze({ file: 'audio/voice/fightInShade-1-dienekes.ogg', dur: 2.69 }) }) }),
+    Object.freeze({ greek: 'ΑΓΑΘΑ ΑΓΓΕΛΛΕΙΣ· ΥΠΟ ΣΚΙΑΙ ΩΝ ΜΑΧΟΜΕΘΑ', en: 'Good news. Then we shall fight in the shade.', clips: Object.freeze({ Dienekes: Object.freeze({ file: 'audio/voice/fightInShade-1-dienekes.ogg', dur: 2.51 }) }) }),
   ]),
   holdTheLine: Object.freeze([
-    Object.freeze({ greek: 'ΜΕΝΕΤΕ ΕΝ ΤΑΙ ΤΑΞΙ', en: 'Hold the line!', clips: Object.freeze({ Leonidas: Object.freeze({ file: 'audio/voice/holdTheLine-1-leonidas.ogg', dur: 1.69 }), Dienekes: Object.freeze({ file: 'audio/voice/holdTheLine-1-dienekes.ogg', dur: 1.54 }) }) }),
-    Object.freeze({ greek: 'ΠΑΡ ΑΛΛΑΛΟΙΣ ΜΕΝΕΤΕ', en: 'Stand together!', clips: Object.freeze({ Leonidas: Object.freeze({ file: 'audio/voice/holdTheLine-2-leonidas.ogg', dur: 1.58 }), Dienekes: Object.freeze({ file: 'audio/voice/holdTheLine-2-dienekes.ogg', dur: 1.39 }) }) }),
-    Object.freeze({ greek: 'ΠΟΔΑ ΠΑΡ ΠΟΔΙ ΘΕΝΤΕΣ ΜΕΝΕΤΕ', en: 'Foot beside foot. Stand fast!', clips: Object.freeze({ Leonidas: Object.freeze({ file: 'audio/voice/holdTheLine-3-leonidas.ogg', dur: 2.16 }), Dienekes: Object.freeze({ file: 'audio/voice/holdTheLine-3-dienekes.ogg', dur: 1.89 }) }) }),
+    Object.freeze({ greek: 'ΜΕΝΕΤΕ ΕΝ ΤΑΙ ΤΑΞΙ', en: 'Hold the line!', clips: Object.freeze({ Leonidas: Object.freeze({ file: 'audio/voice/holdTheLine-1-leonidas.ogg', dur: 1.85 }), Dienekes: Object.freeze({ file: 'audio/voice/holdTheLine-1-dienekes.ogg', dur: 1.43 }) }) }),
+    Object.freeze({ greek: 'ΠΑΡ ΑΛΛΑΛΟΙΣ ΜΕΝΕΤΕ', en: 'Stand together!', clips: Object.freeze({ Leonidas: Object.freeze({ file: 'audio/voice/holdTheLine-2-leonidas.ogg', dur: 1.70 }), Dienekes: Object.freeze({ file: 'audio/voice/holdTheLine-2-dienekes.ogg', dur: 1.31 }) }) }),
+    Object.freeze({ greek: 'ΠΟΔΑ ΠΑΡ ΠΟΔΙ ΘΕΝΤΕΣ ΜΕΝΕΤΕ', en: 'Foot beside foot. Stand fast!', clips: Object.freeze({ Leonidas: Object.freeze({ file: 'audio/voice/holdTheLine-3-leonidas.ogg', dur: 2.40 }), Dienekes: Object.freeze({ file: 'audio/voice/holdTheLine-3-dienekes.ogg', dur: 1.92 }) }) }),
   ]),
   shieldsUp: Object.freeze([
-    Object.freeze({ greek: 'ΑΣΠΙΔΑΣ ΠΡΟΒΑΛΕΣΘΕ', en: 'Shields up!', clips: Object.freeze({ Leonidas: Object.freeze({ file: 'audio/voice/shieldsUp-1-leonidas.ogg', dur: 1.82 }), Dienekes: Object.freeze({ file: 'audio/voice/shieldsUp-1-dienekes.ogg', dur: 1.51 }) }) }),
-    Object.freeze({ greek: 'ΥΠΟ ΤΑΣ ΑΣΠΙΔΑΣ', en: 'Get under your shields!', clips: Object.freeze({ Leonidas: Object.freeze({ file: 'audio/voice/shieldsUp-2-leonidas.ogg', dur: 1.52 }), Dienekes: Object.freeze({ file: 'audio/voice/shieldsUp-2-dienekes.ogg', dur: 1.50 }) }) }),
-    Object.freeze({ greek: 'ΑΣΠΙΔΟΣ ΕΥΡΕΙΑΣ ΓΑΣΤΡΙ ΚΑΛΥΨΑΣΘΕ', en: 'Cover yourselves with your broad shields!', clips: Object.freeze({ Leonidas: Object.freeze({ file: 'audio/voice/shieldsUp-3-leonidas.ogg', dur: 2.83 }), Dienekes: Object.freeze({ file: 'audio/voice/shieldsUp-3-dienekes.ogg', dur: 2.60 }) }) }),
+    Object.freeze({ greek: 'ΑΣΠΙΔΑΣ ΠΡΟΒΑΛΕΣΘΕ', en: 'Shields up!', clips: Object.freeze({ Leonidas: Object.freeze({ file: 'audio/voice/shieldsUp-1-leonidas.ogg', dur: 2.06 }), Dienekes: Object.freeze({ file: 'audio/voice/shieldsUp-1-dienekes.ogg', dur: 1.86 }) }) }),
+    Object.freeze({ greek: 'ΥΠΟ ΤΑΣ ΑΣΠΙΔΑΣ', en: 'Get under your shields!', clips: Object.freeze({ Leonidas: Object.freeze({ file: 'audio/voice/shieldsUp-2-leonidas.ogg', dur: 1.85 }), Dienekes: Object.freeze({ file: 'audio/voice/shieldsUp-2-dienekes.ogg', dur: 1.65 }) }) }),
+    Object.freeze({ greek: 'ΑΣΠΙΔΟΣ ΕΥΡΕΙΑΣ ΓΑΣΤΡΙ ΚΑΛΥΨΑΣΘΕ', en: 'Cover yourselves with your broad shields!', clips: Object.freeze({ Leonidas: Object.freeze({ file: 'audio/voice/shieldsUp-3-leonidas.ogg', dur: 3.02 }), Dienekes: Object.freeze({ file: 'audio/voice/shieldsUp-3-dienekes.ogg', dur: 2.75 }) }) }),
   ]),
   warcry: Object.freeze([
-    Object.freeze({ greek: 'ΑΛΑΛΑΙ', en: 'Alalai!', clips: Object.freeze({ Leonidas: Object.freeze({ file: 'audio/voice/warcry-1-leonidas.ogg', dur: 1.33 }), Dienekes: Object.freeze({ file: 'audio/voice/warcry-1-dienekes.ogg', dur: 1.19 }) }) }),
-    Object.freeze({ greek: 'ΑΓΕΤ Ω ΣΠΑΡΤΑΣ ΚΩΡΟΙ', en: 'Forward, sons of Sparta!', clips: Object.freeze({ Leonidas: Object.freeze({ file: 'audio/voice/warcry-2-leonidas.ogg', dur: 1.75 }), Dienekes: Object.freeze({ file: 'audio/voice/warcry-2-dienekes.ogg', dur: 1.79 }) }) }),
+    Object.freeze({ greek: 'ΑΛΑΛΑΙ', en: 'Alalai!', clips: Object.freeze({ Leonidas: Object.freeze({ file: 'audio/voice/warcry-1-leonidas.ogg', dur: 1.30 }), Dienekes: Object.freeze({ file: 'audio/voice/warcry-1-dienekes.ogg', dur: 1.30 }) }) }),
+    Object.freeze({ greek: 'ΑΓΕΤ Ω ΣΠΑΡΤΑΣ ΚΩΡΟΙ', en: 'Forward, sons of Sparta!', clips: Object.freeze({ Leonidas: Object.freeze({ file: 'audio/voice/warcry-2-leonidas.ogg', dur: 2.26 }), Dienekes: Object.freeze({ file: 'audio/voice/warcry-2-dienekes.ogg', dur: 1.88 }) }) }),
   ]),
   immortals: Object.freeze([
-    Object.freeze({ greek: 'ΑΘΑΝΑΤΟΙ· ΥΔΑΡΝΑΣ ΑΡΧΕΙ', en: 'The Immortals! Hydarnes leads them!', clips: Object.freeze({ Lookout: Object.freeze({ file: 'audio/voice/immortals-1-lookout.ogg', dur: 1.76 }) }) }),
+    Object.freeze({ greek: 'ΑΘΑΝΑΤΟΙ· ΥΔΑΡΝΑΣ ΑΡΧΕΙ', en: 'The Immortals! Hydarnes leads them!', clips: Object.freeze({ Lookout: Object.freeze({ file: 'audio/voice/immortals-1-lookout.ogg', dur: 1.67 }) }) }),
   ]),
   anopaia: Object.freeze([
-    Object.freeze({ greek: 'ΤΟΙ ΦΩΚΗΣ ΤΑΝ ΑΝΟΠΑΙΑΝ ΕΛΙΠΟΝ· ΕΦΙΑΛΤΑΣ ΤΩΣ ΑΘΑΝΑΤΩΣ ΑΓΕΙ ΥΠΕΡ ΤΟ ΟΡΟΣ', en: 'The Phocians have abandoned the Anopaia path! Ephialtes is leading the Immortals over the mountain!', clips: Object.freeze({ Lookout: Object.freeze({ file: 'audio/voice/anopaia-1-lookout.ogg', dur: 4.78 }) }) }),
+    Object.freeze({ greek: 'ΤΟΙ ΦΩΚΗΣ ΤΑΝ ΑΝΟΠΑΙΑΝ ΕΛΙΠΟΝ· ΕΦΙΑΛΤΑΣ ΤΩΣ ΑΘΑΝΑΤΩΣ ΑΓΕΙ ΥΠΕΡ ΤΟ ΟΡΟΣ', en: 'The Phocians have abandoned the Anopaia path! Ephialtes is leading the Immortals over the mountain!', clips: Object.freeze({ Lookout: Object.freeze({ file: 'audio/voice/anopaia-1-lookout.ogg', dur: 4.50 }) }) }),
   ]),
   breakfast: Object.freeze([
-    Object.freeze({ greek: 'ΑΡΙΣΤΟΠΟΙΗΣΘΕ ΩΣ ΕΝ ΑΙΔΑ ΔΕΙΠΝΗΣΟΜΕΝΟΙ', en: 'Eat your breakfast as men who will dine in Hades.', clips: Object.freeze({ Leonidas: Object.freeze({ file: 'audio/voice/breakfast-1-leonidas.ogg', dur: 3.00 }) }) }),
+    Object.freeze({ greek: 'ΑΡΙΣΤΟΠΟΙΗΣΘΕ ΩΣ ΕΝ ΑΙΔΑ ΔΕΙΠΝΗΣΟΜΕΝΟΙ', en: 'Eat your breakfast as men who will dine in Hades.', clips: Object.freeze({ Leonidas: Object.freeze({ file: 'audio/voice/breakfast-1-leonidas.ogg', dur: 2.91 }) }) }),
   ]),
   swords: Object.freeze([
-    Object.freeze({ greek: 'ΤΑ ΔΟΡΑΤΑ ΣΥΝΤΕΘΡΑΥΣΤΑΙ· ΤΟΙΣ ΞΙΦΕΣΙ ΜΑΧΕΣΘΕ', en: 'Our spears are broken. Swords!', clips: Object.freeze({ Dienekes: Object.freeze({ file: 'audio/voice/swords-1-dienekes.ogg', dur: 3.07 }) }) }),
+    Object.freeze({ greek: 'ΤΑ ΔΟΡΑΤΑ ΣΥΝΤΕΘΡΑΥΣΤΑΙ· ΤΟΙΣ ΞΙΦΕΣΙ ΜΑΧΕΣΘΕ', en: 'Our spears are broken. Swords!', clips: Object.freeze({ Dienekes: Object.freeze({ file: 'audio/voice/swords-1-dienekes.ogg', dur: 2.93 }) }) }),
   ]),
   respite: Object.freeze([
-    Object.freeze({ greek: 'ΑΝΔΡΕΣ ΑΓΑΘΟΙ ΕΓΕΝΕΣΘΕ', en: 'You proved yourselves brave men.', clips: Object.freeze({ Leonidas: Object.freeze({ file: 'audio/voice/respite-1-leonidas.ogg', dur: 1.93 }), Dienekes: Object.freeze({ file: 'audio/voice/respite-1-dienekes.ogg', dur: 1.81 }) }) }),
-    Object.freeze({ greek: 'ΠΟΛΛΟΙ ΜΕΝ ΑΝΘΡΩΠΟΙ ΟΛΙΓΟΙ ΔΕ ΑΝΔΡΕΣ', en: 'Many men, but few warriors.', clips: Object.freeze({ Leonidas: Object.freeze({ file: 'audio/voice/respite-2-leonidas.ogg', dur: 2.34 }), Dienekes: Object.freeze({ file: 'audio/voice/respite-2-dienekes.ogg', dur: 2.46 }) }) }),
+    Object.freeze({ greek: 'ΑΝΔΡΕΣ ΑΓΑΘΟΙ ΕΓΕΝΕΣΘΕ', en: 'You proved yourselves brave men.', clips: Object.freeze({ Leonidas: Object.freeze({ file: 'audio/voice/respite-1-leonidas.ogg', dur: 2.09 }), Dienekes: Object.freeze({ file: 'audio/voice/respite-1-dienekes.ogg', dur: 1.72 }) }) }),
+    Object.freeze({ greek: 'ΠΟΛΛΟΙ ΜΕΝ ΑΝΘΡΩΠΟΙ ΟΛΙΓΟΙ ΔΕ ΑΝΔΡΕΣ', en: 'Many men, but few warriors.', clips: Object.freeze({ Leonidas: Object.freeze({ file: 'audio/voice/respite-2-leonidas.ogg', dur: 2.58 }), Dienekes: Object.freeze({ file: 'audio/voice/respite-2-dienekes.ogg', dur: 2.24 }) }) }),
   ]),
   kolonos: Object.freeze([
-    Object.freeze({ greek: 'ΑΝΑΧΩΡΗΤΕ ΕΠΙ ΤΟΝ ΚΟΛΩΝΟΝ· ΠΑΝΤΕΣ ΑΛΗΣ', en: 'Fall back to the hillock! Close ranks, all of you!', clips: Object.freeze({ Dienekes: Object.freeze({ file: 'audio/voice/kolonos-1-dienekes.ogg', dur: 2.68 }) }) }),
+    Object.freeze({ greek: 'ΑΝΑΧΩΡΗΤΕ ΕΠΙ ΤΟΝ ΚΟΛΩΝΟΝ· ΠΑΝΤΕΣ ΑΛΗΣ', en: 'Fall back to the hillock! Close ranks, all of you!', clips: Object.freeze({ Dienekes: Object.freeze({ file: 'audio/voice/kolonos-1-dienekes.ogg', dur: 2.57 }) }) }),
   ]),
 });
