@@ -111,14 +111,22 @@ class CannonBall(x: Float, y: Float, private val dir: Int) : Foe(x, y, 9f, 9f, 1
 // ============================================================================ Tiles and skies
 
 object SeaArt {
+    /** One plank tile as a ready-made picture (drawing it shape by shape made ship levels slow). */
+    private fun plankSprite(deck: Boolean, odd: Boolean): Sprite {
+        val line = 0xFF5A3410.toInt()
+        val px = IntArray(16 * 16) { if (deck) 0xFFA8703A.toInt() else 0xFF7A4A20.toInt() }
+        for (x in 0 until 16) { px[7 * 16 + x] = line; px[15 * 16 + x] = line }
+        val seam = if (odd) 11 else 4
+        for (y in 0 until 7) px[y * 16 + seam] = line
+        if (deck) for (y in 0 until 2) for (x in 0 until 16) px[y * 16 + x] = 0xFFC8904A.toInt()
+        px[10 * 16 + 2] = 0xFF3A2410.toInt()
+        return Sprite(16, 16, px)
+    }
+    private val planks = Array(4) { plankSprite(it >= 2, it % 2 == 1) }
+
     /** Ship deck and hull planks. */
-    fun plank(gfx: Gfx, x: Float, y: Float, deck: Boolean) {
-        gfx.rect(x, y, 16f, 16f, if (deck) 0xFFA8703A.toInt() else 0xFF7A4A20.toInt())
-        gfx.rect(x, y + 7, 16f, 1f, 0xFF5A3410.toInt())
-        gfx.rect(x, y + 15, 16f, 1f, 0xFF5A3410.toInt())
-        gfx.rect(x + (if (((x / 16).toInt() and 1) == 0) 4f else 11f), y, 1f, 7f, 0xFF5A3410.toInt())
-        if (deck) gfx.rect(x, y, 16f, 2f, 0xFFC8904A.toInt())
-        gfx.oval(x + 2, y + 10, 1.5f, 1.5f, 0xFF3A2410.toInt())
+    fun plank(gfx: Gfx, x: Float, y: Float, deck: Boolean, tx: Int) {
+        gfx.sprite(planks[(if (deck) 2 else 0) + (tx and 1)], x, y)
     }
 
     /** The mast: a tall pole. The top piece has a pirate flag, the next ones carry a big sail. */
@@ -142,9 +150,24 @@ object SeaArt {
     }
 
     /** Rainbow Road: glowing stripes that shimmer. */
+    private const val RAINBOW_FRAMES = 48
+
+    /** Ready-made rainbow tiles, one per shade, so a long Rainbow Road is quick to draw. */
+    private val rainbowTiles = Array(RAINBOW_FRAMES) { k ->
+        val px = IntArray(16 * 16)
+        for (y in 0 until 16) {
+            val c = rainbow(k * 4f / RAINBOW_FRAMES, (y / 4) / 4f)
+            val (r, g, b) = Triple((c shr 16) and 255, (c shr 8) and 255, c and 255)
+            // The top row is lighter: the shine along the edge.
+            fun lit(v: Int) = if (y == 0) v + (255 - v) * 6 / 10 else v
+            for (x in 0 until 16) px[y * 16 + x] = argb(if (y == 0) 245 else 235, (lit(r) shl 16) or (lit(g) shl 8) or lit(b))
+        }
+        Sprite(16, 16, px)
+    }
+
     fun rainbowTile(gfx: Gfx, x: Float, y: Float, t: Float, tx: Int) {
-        for (i in 0 until 4) gfx.rect(x, y + i * 4f, 16f, 4f, argb(235, rainbow(t * 0.6f + tx * 0.05f, i / 4f)))
-        gfx.rect(x, y, 16f, 1f, 0x99FFFFFF.toInt())
+        val u = (((t * 0.6f + tx * 0.05f) / 4f) % 1f + 1f) % 1f
+        gfx.sprite(rainbowTiles[(u * RAINBOW_FRAMES).toInt() % RAINBOW_FRAMES], x, y)
         if (((t * 6).toInt() + tx) % 9 == 0) gfx.oval(x + 6, y + 3, 4f, 4f, 0xDDFFFFFF.toInt())
     }
 

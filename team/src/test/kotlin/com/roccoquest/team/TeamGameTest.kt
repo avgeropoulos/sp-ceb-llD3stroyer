@@ -1031,7 +1031,7 @@ class TeamGameTest {
         val hearts = game.hearts
         repeat(Armor.IRON.durability) {
             game.hurt()
-            run(2f)
+            run(TeamGame.HURT_SAFE_TIME + 0.4f)
         }
         assertEquals(hearts, game.hearts, "the armor took every hit")
         assertEquals(Armor.NONE, game.armorType, "then it broke")
@@ -1330,7 +1330,7 @@ class TeamGameTest {
     }
 
     @Test fun earthquakesCrackTheGroundIntoPits() {
-        val quakeLevel = Levels.all.indices.first { it > 0 && it % 2 == 1 && Levels.all[it].shoreX < 0 && Levels.all[it].place != Place.SKY }
+        val quakeLevel = Levels.all.indices.first { it > 0 && it % 4 == 1 && Levels.all[it].shoreX < 0 && Levels.all[it].place != Place.SKY }
         startPlaying(quakeLevel)
         assertTrue(game.quakeLevel)
         game.foes.clear()
@@ -1767,6 +1767,18 @@ class TeamGameTest {
         assertTrue(g2.hasFurniture(Furniture.ARCADE))
     }
 
+    @Test fun lotsOfDifferentMusic() {
+        // Every new song gets played somewhere: levels, the map, home or the park.
+        val used = Levels.all.indices.filter { !Levels.all[it].isBossLevel }.map { TeamGame.Tunes.levelMusic(it) }.toSet() +
+            setOf(Music.ADVENTURE, Music.COZY, Music.PARK)
+        for (m in listOf(Music.HEROIC, Music.FUNKY, Music.SPACE, Music.CRYSTAL, Music.TROPICAL)) assertTrue(m in used, "$m is used")
+        assertTrue(used.size >= 20, "${used.size} different songs")
+        startPlaying()
+        game.goToMap(0)
+        run(0.3f)
+        assertEquals(Music.ADVENTURE, ears.music)
+    }
+
     @Test fun aHundredPlushies() {
         assertEquals(250, Plushies.all.size)
         assertEquals(250, Plushies.all.map { it.name }.toSet().size, "all different")
@@ -1935,6 +1947,17 @@ class TeamGameTest {
         walkHomeTo(400f)
         run(0.3f)
         shot("home-floor3")
+        walkHomeTo(800f)
+        run(0.3f)
+        shot("home-floor3-more")
+        game.changeFloor(1)
+        walkHomeTo(800f)
+        run(0.3f)
+        shot("home-floor2-more")
+        game.changeFloor(0)
+        walkHomeTo(780f)
+        run(0.3f)
+        shot("home-kitchen")
         game.goToMap(-1)
         run(0.5f)
         shot("map-tall-house")

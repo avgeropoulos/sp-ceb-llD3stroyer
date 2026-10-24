@@ -90,8 +90,9 @@ object TeamControls {
     val superB = Button(0f, 160f, 16f)
     val tntB = Button(0f, 210f, 14f)
     val longB = Button(0f, 166f, 15f)
-    val poseidonB = Button(30f, 150f, 17f)
-    val blackB = Button(76f, 150f, 16f)
+    /** Poseidon and the Black Flower sit up in the top-right corner, out of the way of your thumbs. */
+    val poseidonB = Button(0f, 52f, 14f)
+    val blackB = Button(0f, 52f, 13f)
     val pause = Button(0f, 14f, 10f)
     val music = Button(0f, 14f, 10f)
     /** The CRAFT button is a pill [CRAFT_W] wide. */
@@ -108,6 +109,8 @@ object TeamControls {
         pause.cx = viewW - 16f
         music.cx = viewW - 42f
         craft.cx = viewW - 82f
+        poseidonB.cx = viewW - 20f
+        blackB.cx = viewW - 54f
     }
 
     fun inCraft(x: Float, y: Float) = x > craft.cx - CRAFT_W / 2 - 3 && x < craft.cx + CRAFT_W / 2 + 3 && y < 30f
@@ -236,8 +239,8 @@ object TeamControls {
             val bb = blackB
             gfx.oval(bb.cx - bb.r - 1, bb.cy - bb.r - 1, bb.r * 2 + 2, bb.r * 2 + 2, 0x55000000)
             gfx.oval(bb.cx - bb.r, bb.cy - bb.r, bb.r * 2, bb.r * 2, if (input.blackFlower) 0xCCFFFFFF.toInt() else 0xCC2A1A3A.toInt())
-            TeamArt.blackFlower(gfx, bb.cx - 10, bb.cy - 11, 20f, t)
-            gfx.text("x$blackFlowers", bb.cx + 10, bb.cy + 14, 5f, c, 1)
+            TeamArt.blackFlower(gfx, bb.cx - 8, bb.cy - 9, 16f, t)
+            gfx.text("x$blackFlowers", bb.cx + 9, bb.cy + 13, 5f, c, 1)
         }
         if (poseidonReady) {
             val pb = poseidonB

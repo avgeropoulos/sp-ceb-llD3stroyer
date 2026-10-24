@@ -51,6 +51,19 @@ enum class Furniture(val label: String, val costs: List<Pair<Ore, Int>>, val coi
     HOT_TUB("HOT TUB", listOf(Ore.SAPPHIRE to 2), 70, 2, 45),
     DISCO_BALL("DISCO BALL", listOf(Ore.DIAMOND to 1), 50, 2, 50),
     POOL_TABLE("POOL TABLE", listOf(Ore.EMERALD to 2), 60, 2, 60),
+    // The second batch (the rooms got wider to fit them)
+    FRIDGE("FRIDGE", listOf(Ore.IRON to 3), 30, 0, 0),
+    STOVE("STOVE", listOf(Ore.IRON to 2, Ore.COPPER to 1), 30, 0, 8),
+    WALL_CLOCK("WALL CLOCK", listOf(Ore.GOLD to 1), 20, 0, 12),
+    DOG_BED("PUPPY BED", emptyList(), 25, 0, 18),
+    SLIDE("SLIDE", listOf(Ore.IRON to 3), 45, 1, 22),
+    ROCKING_HORSE("ROCKING HORSE", listOf(Ore.STONE to 3), 35, 1, 28),
+    BEAN_BAG("BEAN BAG", emptyList(), 25, 1, 32),
+    STAR_LIGHTS("STAR LIGHTS", listOf(Ore.COPPER to 2), 30, 1, 36),
+    GAMING_PC("GAMING PC", listOf(Ore.IRON to 2, Ore.DIAMOND to 1), 80, 2, 55),
+    FOUNTAIN("FOUNTAIN", listOf(Ore.STONE to 6, Ore.SAPPHIRE to 1), 60, 2, 65),
+    ROCKET("ROCKET MODEL", listOf(Ore.IRON to 4), 70, 2, 75),
+    CHANDELIER("CHANDELIER", listOf(Ore.GOLD to 3, Ore.DIAMOND to 1), 90, 2, 85),
 }
 
 /** Beds for the house. Sleep in one to save the game. */
@@ -74,10 +87,10 @@ object Homes {
     /** Houses can have up to 3 floors. */
     const val MAX_FLOORS = 3
     /** Where the stairs are (at the right end of the room). */
-    const val STAIRS_X = 690f
+    const val STAIRS_X = 870f
 
     /** The room is wider than the screen: walk around and the view follows you. */
-    const val ROOM_W = 720f
+    const val ROOM_W = 900f
     const val FLOOR_Y = 176f
 
     // ------------------------------------------------------------------ Outside
@@ -381,6 +394,18 @@ object Homes {
         Furniture.HOT_TUB -> 370f
         Furniture.DISCO_BALL -> 500f
         Furniture.POOL_TABLE -> 560f
+        Furniture.FRIDGE -> 704f
+        Furniture.STOVE -> 740f
+        Furniture.WALL_CLOCK -> 744f
+        Furniture.DOG_BED -> 790f
+        Furniture.SLIDE -> 700f
+        Furniture.ROCKING_HORSE -> 785f
+        Furniture.BEAN_BAG -> 830f
+        Furniture.STAR_LIGHTS -> 0f
+        Furniture.GAMING_PC -> 700f
+        Furniture.FOUNTAIN -> 770f
+        Furniture.ROCKET -> 832f
+        Furniture.CHANDELIER -> 190f
     }
 
     fun drawFurniture(gfx: Gfx, f: Furniture, ox: Float, t: Float) {
@@ -572,12 +597,125 @@ object Homes {
                     gfx.oval(x + 20 + kotlin.math.cos(a) * 90, 110f + sin(a) * 40, 6f, 6f, argb(110, rainbow(t + i * 0.2f)))
                 }
             }
+            Furniture.FRIDGE, Furniture.STOVE, Furniture.WALL_CLOCK, Furniture.DOG_BED, Furniture.SLIDE, Furniture.ROCKING_HORSE,
+            Furniture.BEAN_BAG, Furniture.STAR_LIGHTS, Furniture.GAMING_PC, Furniture.FOUNTAIN, Furniture.ROCKET, Furniture.CHANDELIER ->
+                drawMore(gfx, f, x, fy, t)
             Furniture.POOL_TABLE -> {
                 gfx.rect(x, fy - 26, 90f, 8f, 0xFF6A3A1A.toInt())
                 gfx.rect(x + 3, fy - 28, 84f, 4f, 0xFF2E9A4A.toInt())
                 gfx.rect(x + 6, fy - 18, 6f, 18f, 0xFF6A3A1A.toInt()); gfx.rect(x + 78, fy - 18, 6f, 18f, 0xFF6A3A1A.toInt())
                 for (i in 0 until 4) gfx.oval(x + 30 + i * 6f, fy - 32, 5f, 5f, listOf(0xFFFFD82A, 0xFFE84A4A, 0xFF3A6AC8, 0xFFFFFFFF)[i].toInt())
             }
+        }
+    }
+
+    private fun drawMore(gfx: Gfx, f: Furniture, x: Float, fy: Float, t: Float) {
+        when (f) {
+            Furniture.FRIDGE -> {
+                gfx.rect(x, fy - 72, 30f, 72f, 0xFFE8EEF4.toInt())
+                gfx.rect(x, fy - 48, 30f, 2f, 0xFFA8B0BC.toInt())
+                gfx.rect(x + 24, fy - 66, 2f, 12f, 0xFF8A94A4.toInt()); gfx.rect(x + 24, fy - 40, 2f, 16f, 0xFF8A94A4.toInt())
+                gfx.oval(x + 6, fy - 64, 6f, 6f, 0xFFE84A4A.toInt()); gfx.rect(x + 5, fy - 36, 8f, 6f, 0xFFFFD21F.toInt())
+            }
+            Furniture.STOVE -> {
+                gfx.rect(x, fy - 32, 34f, 32f, 0xFF3A3A44.toInt())
+                gfx.rect(x + 4, fy - 24, 26f, 16f, 0xFF1A1A20.toInt())
+                gfx.rect(x - 1, fy - 34, 36f, 3f, 0xFF5A5A64.toInt())
+                gfx.oval(x + 4, fy - 42, 14f, 9f, 0xFF8A94A4.toInt())
+                for (i in 0 until 2) {
+                    val p = (t * 0.7f + i * 0.5f) % 1f
+                    gfx.oval(x + 8 + sin(p * 6) * 2, fy - 46 - p * 16, 5f, 5f, argb(((1 - p) * 150).toInt(), 0xFFFFFF))
+                }
+            }
+            Furniture.WALL_CLOCK -> {
+                gfx.oval(x, 40f, 26f, 26f, 0xFF7A4A20.toInt())
+                gfx.oval(x + 2, 42f, 22f, 22f, 0xFFFFF8E8.toInt())
+                val a = t * 0.5f
+                gfx.poly(floatArrayOf(x + 12, x + 14, x + 13 + kotlin.math.cos(a) * 9), floatArrayOf(53f, 53f, 53f + sin(a) * 9), 0xFF1A1A1A.toInt())
+                gfx.rect(x + 12.5f, 46f, 1f, 7f, 0xFF1A1A1A.toInt())
+            }
+            Furniture.DOG_BED -> {
+                gfx.oval(x, fy - 14, 50f, 16f, 0xFF3A6AC8.toInt())
+                gfx.oval(x + 4, fy - 12, 42f, 10f, 0xFF8AB8F0.toInt())
+                // A sleepy puppy curled up
+                gfx.oval(x + 12, fy - 20, 24f, 12f, 0xFFC8904A.toInt())
+                gfx.oval(x + 30, fy - 22, 10f, 9f, 0xFFC8904A.toInt())
+                gfx.oval(x + 34, fy - 23, 4f, 6f, 0xFF7A4A20.toInt())
+                gfx.rect(x + 32, fy - 18, 4f, 1f, 0xFF1A1A1A.toInt())
+                val z = (t * 0.8f) % 1f
+                gfx.shadowText("z", x + 40 + z * 6, fy - 26 - z * 14, 6f + z * 3, argb(((1 - z) * 255).toInt(), 0xFFFFFF))
+            }
+            Furniture.SLIDE -> {
+                gfx.rect(x, fy - 60, 4f, 60f, 0xFFE84A4A.toInt()); gfx.rect(x + 14, fy - 60, 4f, 60f, 0xFFE84A4A.toInt())
+                for (i in 0 until 5) gfx.rect(x, fy - 52 + i * 11f, 18f, 2f, 0xFFE84A4A.toInt())
+                gfx.poly(floatArrayOf(x + 16, x + 22, x + 72, x + 66), floatArrayOf(fy - 62, fy - 58, fy - 2, fy - 2), 0xFFFFD21F.toInt())
+                gfx.rect(x - 2, fy - 64, 22f, 4f, 0xFF3A6AC8.toInt())
+            }
+            Furniture.ROCKING_HORSE -> {
+                val rock = sin(t * 2) * 2f
+                gfx.oval(x - 2, fy - 8 + rock * 0.3f, 44f, 10f, 0xFF7A4A20.toInt())
+                gfx.rect(x + 8, fy - 22 + rock, 3f, 16f, 0xFF8A5A2A.toInt()); gfx.rect(x + 28, fy - 22 - rock, 3f, 16f, 0xFF8A5A2A.toInt())
+                gfx.oval(x + 4, fy - 30, 32f, 12f, 0xFFF4F4F4.toInt())
+                gfx.oval(x + 28, fy - 40 - rock, 12f, 14f, 0xFFF4F4F4.toInt())
+                gfx.rect(x + 26, fy - 42 - rock, 4f, 10f, 0xFFE84A4A.toInt())
+                gfx.oval(x + 35, fy - 36 - rock, 2f, 2f, 0xFF1A1A1A.toInt())
+                gfx.rect(x + 2, fy - 28, 6f, 10f, 0xFFE84A4A.toInt())
+            }
+            Furniture.BEAN_BAG -> {
+                gfx.oval(x, fy - 22, 36f, 24f, 0xFF8A3AC8.toInt())
+                gfx.oval(x + 6, fy - 18, 16f, 10f, 0xFFAA6AE8.toInt())
+            }
+            Furniture.STAR_LIGHTS -> {
+                var lx = x + 20f
+                var i = 0
+                while (lx < x + ROOM_W - 20f) {
+                    val sag = sin((lx - x) / 60f * 3.1416f) * 6f
+                    gfx.rect(lx, 30f + kotlin.math.abs(sag), 30f, 1f, 0xFF3A5A3A.toInt())
+                    val on = ((t * 3).toInt() + i) % 3 != 0
+                    gfx.oval(lx + 13, 31f + kotlin.math.abs(sag), 5f, 5f, if (on) solidRainbow(i * 0.13f, 0f) else 0xFF5A5A5A.toInt())
+                    lx += 30f
+                    i++
+                }
+            }
+            Furniture.GAMING_PC -> {
+                gfx.rect(x, fy - 26, 54f, 4f, 0xFF3A3A44.toInt())
+                gfx.rect(x + 4, fy - 22, 3f, 22f, 0xFF3A3A44.toInt()); gfx.rect(x + 47, fy - 22, 3f, 22f, 0xFF3A3A44.toInt())
+                gfx.rect(x + 10, fy - 54, 34f, 24f, 0xFF1A1A20.toInt())
+                gfx.rect(x + 12, fy - 52, 30f, 20f, solidRainbow(t * 0.3f, 0f))
+                gfx.sprite(TeamArt.rocco(Power.NONE, (t * 4).toInt() % 3), x + 21, fy - 50, w = 9f, h = 15f)
+                gfx.rect(x + 25, fy - 30, 4f, 4f, 0xFF3A3A44.toInt())
+                gfx.rect(x + 12, fy - 29, 22f, 3f, 0xFF5A5A64.toInt())
+            }
+            Furniture.FOUNTAIN -> {
+                gfx.oval(x, fy - 14, 44f, 14f, 0xFFB8C0CC.toInt())
+                gfx.oval(x + 4, fy - 12, 36f, 8f, 0xFF4AB8F0.toInt())
+                gfx.rect(x + 19, fy - 36, 6f, 26f, 0xFFB8C0CC.toInt())
+                gfx.oval(x + 12, fy - 40, 20f, 6f, 0xFFB8C0CC.toInt())
+                for (i in 0 until 6) {
+                    val p = (t * 1.2f + i / 6f) % 1f
+                    val side = if (i % 2 == 0) -1 else 1
+                    gfx.oval(x + 21 + side * p * 14, fy - 42 - sin(p * 3.1416f) * 10 + p * 28, 3f, 3f, 0xCC8AD8FF.toInt())
+                }
+            }
+            Furniture.ROCKET -> {
+                gfx.rect(x + 6, fy - 58, 12f, 46f, 0xFFF4F4F4.toInt())
+                gfx.poly(floatArrayOf(x + 6, x + 12, x + 18), floatArrayOf(fy - 58, fy - 72, fy - 58), 0xFFE84A4A.toInt())
+                gfx.oval(x + 8, fy - 48, 8f, 8f, 0xFF4AB8F0.toInt())
+                gfx.poly(floatArrayOf(x + 6, x, x + 6), floatArrayOf(fy - 26, fy - 10, fy - 14), 0xFFE84A4A.toInt())
+                gfx.poly(floatArrayOf(x + 18, x + 24, x + 18), floatArrayOf(fy - 26, fy - 10, fy - 14), 0xFFE84A4A.toInt())
+                gfx.rect(x + 4, fy - 12, 16f, 12f, 0xFF5A5A64.toInt())
+            }
+            Furniture.CHANDELIER -> {
+                gfx.rect(x + 29, 24f, 2f, 14f, 0xFFC8A030.toInt())
+                gfx.oval(x + 8, 36f, 44f, 10f, 0xFFFFD21F.toInt())
+                for (i in 0 until 5) {
+                    gfx.rect(x + 10 + i * 9f, 30f, 2f, 7f, 0xFFF4F4F4.toInt())
+                    gfx.oval(x + 9.5f + i * 9f, 26f + sin(t * 8 + i), 3f, 4f, 0xFFFFC83A.toInt())
+                    gfx.poly(floatArrayOf(x + 9 + i * 9f, x + 11 + i * 9f, x + 13 + i * 9f), floatArrayOf(46f, 52f, 46f), 0xCCDDEEFF.toInt())
+                }
+                gfx.oval(x - 10, 26f, 80f, 40f, 0x22FFF2A0)
+            }
+            else -> {}
         }
     }
 

@@ -259,8 +259,10 @@ Walking out of the house puts you on the next level to play (not back on the hou
   * **Bigger house**: in the HOUSES tab, **ADD A FLOOR** (up to 3 floors). Take the **stairs** on the right.
     Floor 2 is the **playroom** (more plushie shelves, and its furniture: toy chest, bunk beds, **arcade game**,
     **trampoline** to BOUNCE, ball pit, toy train). Floor 3 is the **top floor** (telescope, piano, trophy case,
-    hot tub, disco ball, pool table). The FURNITURE tab has a page per floor. Fancy furniture is **LOCKED**
-    until you beat enough levels (5, 10, 15... up to 60). Outside, the house gets taller too.
+    hot tub, disco ball, pool table). Every room is wider now, with **12 more** pieces: a fridge, stove, wall
+    clock and puppy bed downstairs; a slide, rocking horse, bean bag and star lights in the playroom; a gaming PC,
+    fountain, rocket model and chandelier on the top floor. The FURNITURE tab has pages for each floor. Fancy
+    furniture is **LOCKED** until you beat enough levels (up to 85). Outside, the house gets taller too.
   * **PLAY** the claw machine (30 coins, always a new plushie).
   * The door goes back to the map.
 * **100 plushies**: Rocco, Blocky, all the Pokemon, Ring-Ding Frog, Dennis, bad guys, the 4 bosses, a
@@ -391,6 +393,16 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
   blocks are plain bricks, and mystery blocks are mostly coins.
 * Bad guys are a little tougher (40% more health, 75% in World 2).
 * The screen is **less crowded**: see-through buttons, only the materials you have are shown, no hint text.
+
+### Smoother, calmer, and more music
+
+* **Less lag**: ship decks and Rainbow Road are drawn from ready-made tiles (they used to take over 1,000
+  drawing steps a frame), and only the newest 12 floating score numbers stay on screen during big combos.
+* **A bit easier**: later worlds' bad guys don't keep getting tougher (at most 1.7x health instead of up to
+  2.8x), earthquakes only happen every 4th level, and after getting hurt you're safe a little longer.
+* **Poseidon's button** (and the Black Flower) moved to the top-right corner, out of the way of your thumbs.
+* **8 new songs**: Park, Cozy (home), Adventure (world map), Heroic, Funky, Space, Crystal and Tropical.
+  Each kind of level now takes turns between 3 or 4 tunes.
 
 ### Stickers
 

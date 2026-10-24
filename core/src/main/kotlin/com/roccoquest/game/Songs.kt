@@ -448,6 +448,238 @@ object Songs {
         leadDuty = 0.25f,
     )
 
+    // ------------------------------------------------------------------ Pokemon Park: a happy bouncy tune
+    private val parkChords = listOf(
+        "C3 G3 E4 G4",
+        "A2 E3 C4 E4",
+        "F2 C3 F4 A4",
+        "G2 D3 B3 D4",
+        "C3 G3 E4 G4",
+        "A2 E3 C4 E4",
+        "F2 C3 A4 C5",
+        "G2 D3 B3 D4",
+    )
+    val park = Song(
+        bpm = 168,
+        lead = """
+            C5/2 E5/2 G5/2 E5/2 C6/4 G5/4
+            A5/2 G5/2 E5/2 C5/2 E5/4 -/4
+            F5/2 A5/2 C6/2 A5/2 F5/2 A5/2 C6/4
+            B5/2 A5/2 G5/2 D5/2 G5/8
+            C6/2 B5/2 A5/2 G5/2 E5/2 G5/2 C6/4
+            A5/2 C6/2 E6/2 C6/2 A5/4 -/4
+            F5/2 G5/2 A5/2 C6/2 A5/2 G5/2 F5/4
+            D5/2 E5/2 F5/2 B4/2 C5/8
+        """,
+        harmony = offbeats(parkChords),
+        bass = oomPahBass(parkChords),
+        drums = "k.h.s.h.k.k.s.hh",
+        leadDuty = 0.25f,
+    )
+
+    // ------------------------------------------------------------------ Home: calm and cozy
+    private val cozyChords = listOf(
+        "F2 C3 A4 C5",
+        "D3 A3 F4 A4",
+        "Bb1 F2 D4 F4",
+        "C2 G2 E4 G4",
+        "F2 C3 A4 C5",
+        "A2 E3 C4 E4",
+        "Bb1 F2 D4 F4",
+        "C2 G2 E4 G4",
+    )
+    val cozy = Song(
+        bpm = 96,
+        lead = """
+            A5/4 C6/4 A5/4 F5/4
+            F5/4 A5/4 D5/8
+            D5/4 F5/4 Bb5/4 A5/4
+            G5/8 E5/8
+            A5/4 C6/4 F6/4 E6/4
+            E6/4 C6/4 A5/8
+            Bb5/4 A5/4 G5/4 F5/4
+            E5/4 G5/4 F5/8
+        """,
+        harmony = sustained(cozyChords),
+        bass = oomPahBass(cozyChords),
+        drums = "k.......s.......",
+        leadDuty = 0.5f,
+    )
+
+    // ------------------------------------------------------------------ World map: off on an adventure
+    private val adventureChords = listOf(
+        "D3 A3 F4 A4",
+        "Bb1 F2 D4 F4",
+        "C2 G2 E4 G4",
+        "A2 E3 C#4 E4",
+        "D3 A3 F4 A4",
+        "Bb1 F2 D4 F4",
+        "G2 D3 Bb3 D4",
+        "A2 E3 C#4 E4",
+    )
+    val adventure = Song(
+        bpm = 140,
+        lead = """
+            D5/4 A5/4 F5/2 E5/2 D5/4
+            Bb4/2 D5/2 F5/4 Bb5/8
+            C5/2 E5/2 G5/4 E5/2 C5/2 G5/4
+            A5/4 G5/2 F5/2 E5/8
+            F5/2 A5/2 D6/4 C6/2 A5/2 F5/4
+            D6/4 Bb5/4 F5/4 D5/4
+            G5/2 Bb5/2 D6/4 C6/2 Bb5/2 G5/4
+            A5/4 C#6/4 E6/8
+        """,
+        harmony = offbeats(adventureChords),
+        bass = drivingBass(adventureChords),
+        drums = "k.h.s.h.k.h.s.h.",
+        leadDuty = 0.25f,
+    )
+
+    // ------------------------------------------------------------------ Brave and heroic
+    private val heroicChords = listOf(
+        "C3 G3 E4 G4",
+        "Ab2 Eb3 C4 Eb4",
+        "Bb2 F3 D4 F4",
+        "C3 G3 E4 G4",
+        "F2 C3 A4 C5",
+        "Ab2 Eb3 C4 Eb4",
+        "Bb2 F3 D4 F4",
+        "G2 D3 B3 D4",
+    )
+    val heroic = Song(
+        bpm = 150,
+        lead = """
+            C5/2 C5/2 G5/4 C6/6 -/2
+            Eb6/4 C6/2 Ab5/2 Eb5/8
+            D5/2 F5/2 Bb5/4 D6/4 C6/4
+            C6/8 G5/8
+            F5/2 A5/2 C6/4 F6/4 E6/4
+            Eb6/4 C6/4 Ab5/4 C6/4
+            D6/2 C6/2 Bb5/2 F5/2 D6/4 F6/4
+            G6/8 D6/4 B5/4
+        """,
+        harmony = offbeats(heroicChords),
+        bass = drivingBass(heroicChords),
+        drums = "k.h.s.hkk.h.s.h.",
+        leadDuty = 0.25f,
+    )
+
+    // ------------------------------------------------------------------ Funky and groovy
+    private val funkyChords = listOf(
+        "E2 B2 G4 B4",
+        "E2 B2 G4 B4",
+        "A2 E3 C4 E4",
+        "B2 F#3 D#4 F#4",
+        "E2 B2 G4 B4",
+        "D3 A3 F#4 A4",
+        "C3 G3 E4 G4",
+        "B2 F#3 D#4 F#4",
+    )
+    val funky = Song(
+        bpm = 118,
+        lead = """
+            E5/2 -/2 E5/1 G5/1 A5/2 -/2 B5/2 A5/2 G5/2
+            E5/4 -/2 D5/2 E5/8
+            A5/2 -/2 A5/1 B5/1 C6/2 -/2 B5/2 A5/2 E5/2
+            F#5/4 D#5/4 B4/8
+            E5/2 G5/2 B5/2 E6/2 -/2 D6/2 B5/4
+            A5/2 F#5/2 D5/2 F#5/2 A5/8
+            G5/2 E5/2 C5/2 E5/2 G5/2 C6/2 B5/4
+            F#5/2 A5/2 B5/2 D#6/2 E6/8
+        """,
+        harmony = offbeats(funkyChords),
+        bass = drivingBass(funkyChords),
+        drums = "k..hs.hkk.hhs.h.",
+        leadDuty = 0.125f,
+    )
+
+    // ------------------------------------------------------------------ Floating in space
+    private val spaceChords = listOf(
+        "A2 E3 C4 E4",
+        "F2 C3 A4 C5",
+        "C3 G3 E4 G4",
+        "G2 D3 B3 D4",
+        "A2 E3 C4 E4",
+        "F2 C3 A4 C5",
+        "D3 A3 F4 A4",
+        "E2 B2 G#4 B4",
+    )
+    val space = Song(
+        bpm = 110,
+        lead = """
+            E5/2 A5/2 C6/2 E6/2 D6/4 C6/4
+            A5/8 F5/8
+            G5/2 C6/2 E6/2 G6/2 E6/8
+            D6/4 B5/4 G5/8
+            C6/2 E6/2 A6/4 G6/2 E6/2 C6/4
+            F6/4 E6/4 C6/8
+            D6/2 F6/2 A6/4 F6/4 D6/4
+            E6/8 G#5/8
+        """,
+        harmony = sustained(spaceChords),
+        bass = oomPahBass(spaceChords),
+        drums = "k...h...s...h...",
+        leadDuty = 0.5f,
+    )
+
+    // ------------------------------------------------------------------ Sparkly ice and crystals
+    private val crystalChords = listOf(
+        "E2 B2 G4 B4",
+        "C3 G3 E4 G4",
+        "D3 A3 F#4 A4",
+        "B2 F#3 D4 F#4",
+        "E2 B2 G4 B4",
+        "C3 G3 E4 G4",
+        "A2 E3 C4 E4",
+        "B2 F#3 D#4 F#4",
+    )
+    val crystal = Song(
+        bpm = 132,
+        lead = """
+            B5/1 G5/1 E5/1 G5/1 B5/2 E6/2 D6/4 B5/4
+            C6/2 G5/2 E5/2 G5/2 C6/8
+            A5/1 F#5/1 D5/1 F#5/1 A5/2 D6/2 C6/4 A5/4
+            B5/8 F#5/8
+            E6/2 D6/2 B5/2 G5/2 E5/4 G5/4
+            G5/2 C6/2 E6/2 G6/2 E6/8
+            C6/2 A5/2 E5/2 A5/2 C6/4 E6/4
+            D#6/4 B5/4 F#5/4 B5/4
+        """,
+        harmony = offbeats(crystalChords),
+        bass = oomPahBass(crystalChords),
+        drums = "k.h.s.h.k.h.shhh",
+        leadDuty = 0.125f,
+    )
+
+    // ------------------------------------------------------------------ Sunny beach islands
+    private val tropicalChords = listOf(
+        "G2 D3 B3 D4",
+        "C3 G3 E4 G4",
+        "D3 A3 F#4 A4",
+        "G2 D3 B3 D4",
+        "E2 B2 G4 B4",
+        "C3 G3 E4 G4",
+        "D3 A3 F#4 A4",
+        "G2 D3 B3 D4",
+    )
+    val tropical = Song(
+        bpm = 126,
+        lead = """
+            D5/2 G5/2 B5/3 A5/1 G5/4 D5/4
+            E5/2 G5/2 C6/3 B5/1 A5/4 G5/4
+            F#5/2 A5/2 D6/3 C6/1 A5/4 F#5/4
+            G5/8 -/4 D5/4
+            E5/2 G5/2 B5/3 A5/1 G5/4 E5/4
+            C6/3 B5/1 A5/2 G5/2 E5/4 C5/4
+            D5/2 F#5/2 A5/2 C6/2 B5/2 A5/2 F#5/4
+            G5/8 B5/4 D6/4
+        """,
+        harmony = offbeats(tropicalChords),
+        bass = oomPahBass(tropicalChords),
+        drums = "k..sk.h.k..sk.h.",
+        leadDuty = 0.25f,
+    )
+
     fun of(m: Music): Song? = when (m) {
         Music.NONE -> null
         Music.OVERWORLD -> overworld
@@ -468,5 +700,13 @@ object Songs {
         Music.BEACH -> beach
         Music.DOOM -> doom
         Music.SHANTY -> shanty
+        Music.PARK -> park
+        Music.COZY -> cozy
+        Music.ADVENTURE -> adventure
+        Music.HEROIC -> heroic
+        Music.FUNKY -> funky
+        Music.SPACE -> space
+        Music.CRYSTAL -> crystal
+        Music.TROPICAL -> tropical
     }
 }

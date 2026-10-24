@@ -29,7 +29,8 @@ Every jump has a minimum height (`jumpHoldT`).
 Each level has its own tune (`TeamGame.Tunes`); boss levels alternate scary songs.
 
 Gear wears out (swords, pickaxes, armor, shields) and crafting never lets a weaker item replace a
-better one. Earthquakes happen on odd-numbered level indexes (`isQuakeLevel`).
+better one. Earthquakes happen on every 4th level (`index % 4 == 1`, `isQuakeLevel`). Foe toughness is capped at 1.7x;
+after a hit you're safe for `HURT_SAFE_TIME`.
 
 Only one of Rocco or Blocky is out at a time, with the Pokemon (`TeamGame.team` is the live pair,
 `allHeroes` is everybody; `switchTo` swaps them).
@@ -44,7 +45,7 @@ Only one of Rocco or Blocky is out at a time, with the Pokemon (`TeamGame.team` 
 | `Sea.kt` | World 5 (levels 85-105: water, pirate ships, Rainbow Road), ship/mast/rainbow tiles (`I` `:` `%`), `Cannon` (`N`), `MetalItem` (`$`), Metal Rocco sprites, sea and space skies |
 | `MoreWorlds.kt` | Worlds 3 and 4 (levels 43-84), built by a seeded level generator plus boss-arena templates. Last level: THE ULTIMATE BATTLE (Y, Q, Z boss rush) |
 | `Monsters.kt` | Newer monsters (Skelly Archer + arrows, Hopper, Gloop, Snapper + seeds, Crusher `z`, Peekaboo `q`, Puffcloud `l`, Spikestack `j`), bonus `Portal`, `Chest`, sunset sky, Dash |
-| `Homes.kt` | `HouseType` (10), `Furniture` (24: `floor` 0-2, `unlock` = levels beaten), floors (`MAX_FLOORS`, stairs at `STAIRS_X`), `PAINTS` (house colors), the Pokemon mat (`MON_X`), `Furniture` (12), `BedStyle`, house outside/inside drawing (the room is 720 wide and scrolls), `PlushieItem` |
+| `Homes.kt` | `HouseType` (10), `Furniture` (36: `floor` 0-2, `unlock` = levels beaten; `furnitureBits` is a Long saved as `furniture`+`furniture2`), floors (`MAX_FLOORS`, stairs at `STAIRS_X`), `PAINTS` (house colors), the Pokemon mat (`MON_X`), `BedStyle`, house outside/inside drawing (the room is 900 wide and scrolls), `PlushieItem` |
 | `Plushies.kt` | The 250 `Plushie`s (new ones always go at the END: saved by index) (characters use sticker art, animals are drawn from a `Species` + color) |
 | `Actors.kt` | `Power` (flowers), `Mon` (Pokemon), `Sword` (with durability), `Armor`, `Shield`, and `Hero` (Rocco, Blocky, partner) |
 | `Foes.kt` | Enemies with health bars, Krag Jr. and King Krag (normal, Wonder, Dry Bones) |
@@ -99,3 +100,6 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
   `State.PARK` is the Pokemon Park mini game BERRY CATCH (`startPark`/`updatePark`/`renderPark`), opened from
   the Pokemon menu's MINI GAME button or the ARCADE upstairs. Prizes only while `monEnergy` > 0.
 * `score` is a Long; `particles` are capped at `MAX_PARTICLES` (too many floating texts made phones lag).
+* Performance: draw repeated tiles as cached `Sprite`s (see `SeaArt.plank`/`rainbowTile`), not many shapes per
+  tile. Floating texts are capped at `MAX_FLOAT_TEXTS`. Poseidon/Black Flower buttons are top-right (`TeamControls.layout`).
+* Music: 27 songs in `Songs.kt` (`Music` enum in `Gfx.kt`); `Tunes.tunes(place)` lists 3-4 per place.
