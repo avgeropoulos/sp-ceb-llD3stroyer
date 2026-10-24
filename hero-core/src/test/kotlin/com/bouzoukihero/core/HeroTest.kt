@@ -249,7 +249,7 @@ class HeroTest {
         }
         val tune = Tunes.all[1]
         for (d in listOf(Difficulty.EASY, Difficulty.EXPERT)) {
-            val gems = Charts.build(tune.sourceNotes(), d)
+            val gems = Charts.build(tune.sourceNotes(), d, buttons = Buttons.TAB)
             val s = Session(tune.title, d, gems, tempo = tune.bpm.toDouble())
             val t0 = gems[6].time
             var t = t0 - 2.0

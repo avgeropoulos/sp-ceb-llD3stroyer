@@ -516,8 +516,22 @@ class Session(
             g.panel(x + 4, y, l.laneW - 8, h, if (on) mix(c, 0xFFFFFFFF.toInt(), 0.3f) else mix(c, 0xFF000000.toInt(), 0.45f), 12f)
             val face = if (on) mix(c, 0xFFFFFFFF.toInt(), 0.3f) else mix(c, 0xFF000000.toInt(), 0.45f)
             g.panel(x + 10, y + 6, l.laneW - 20, h * 0.3f, mix(face, 0xFFFFFFFF.toInt(), if (on) 0.4f else 0.15f), 8f)
+            // Tab buttons: which fret each button is right now (it follows the hand's position).
+            if (base >= 0 && h > 40) {
+                val label = Charts.tabButtonLabel(lane, lanes, base)
+                g.text(label, x + l.laneW / 2, y + h * 0.68f, if (label.length > 3) 15f else 22f, 0xFFFFFFFF.toInt(), 1)
+            }
         }
+        if (base >= 0 && h > 40) g.text("FRET", VIEW_W / 2, viewH - 4, 9f, 0x99FFFFFF.toInt(), 1)
     }
+
+    /** The hand position of the next note to play, or -1 when the buttons aren't the tab. */
+    private val base: Int
+        get() {
+            if (record || gems.isEmpty() || gems[0].base < 0) return -1
+            for (i in nextMiss until gems.size) if (gems[i].judged == null) return gems[i].base
+            return gems.last().base
+        }
 
     private fun notes(g: Gfx, l: Layout) {
         val la = difficulty.lookahead

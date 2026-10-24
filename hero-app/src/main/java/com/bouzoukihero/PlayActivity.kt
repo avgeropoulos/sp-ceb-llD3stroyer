@@ -64,7 +64,7 @@ class PlayActivity : Activity(), HeroView.Host, SessionListener {
             val tune = Tunes.byId(id) ?: return finish()
             scoreKey = "b:$id"
             session = Session(
-                tune.title, difficulty, Charts.build(tune.sourceNotes(), difficulty),
+                tune.title, difficulty, Charts.build(tune.sourceNotes(), difficulty, buttons = store.buttons),
                 tempo = tune.bpm.toDouble(), bestScore = store.best(scoreKey, difficulty), listener = this,
             )
             session.state = Session.State.LOADING
@@ -85,7 +85,7 @@ class PlayActivity : Activity(), HeroView.Host, SessionListener {
             val song = store.song(id) ?: return finish()
             custom = song
             scoreKey = "c:$id"
-            val gems = if (record) emptyList() else Charts.build(song.notes, difficulty, labels = song.labelled)
+            val gems = if (record) emptyList() else Charts.build(song.notes, difficulty, labels = song.labelled, buttons = store.buttons)
             session = Session(
                 song.title, difficulty, gems, record = record, hasVideo = true,
                 tempo = song.tempo, bestScore = store.best(scoreKey, difficulty), listener = this, listen = listen,

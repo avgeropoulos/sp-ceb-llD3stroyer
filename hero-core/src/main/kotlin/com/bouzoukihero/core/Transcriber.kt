@@ -38,6 +38,8 @@ object Transcriber {
     /** A possible note, with what was measured about it. */
     internal class Candidate(
         val note: SourceNote,
+        /** The pitch before rounding, as a fractional MIDI number. */
+        val frac: Double,
         /** Share of the pitch frames that agreed on the note. */
         val agree: Double,
         /** How much of the sound the note's harmonics explain (tonal vs. noisy). */
@@ -56,10 +58,22 @@ object Transcriber {
         for (tier in TIERS) {
             val kept = cands.filter { tier.keeps(it) }
             if (kept.size >= seconds * MIN_NOTES_PER_SECOND || tier === TIERS.last()) {
-                return mergeTremolo(kept.map { it.note })
+                return mergeTremolo(retune(kept))
             }
         }
         return emptyList()
+    }
+
+    /**
+     * Records are often a little sharp or flat of A440 (Bouzouki Tabs does the same):
+     * find the band's tuning from how far the notes sit from the nearest semitone, and
+     * round each note relative to that.
+     */
+    private fun retune(kept: List<Candidate>): List<SourceNote> {
+        if (kept.isEmpty()) return emptyList()
+        val devs = kept.map { it.frac - Math.round(it.frac) }.sorted()
+        val tuning = devs[devs.size / 2]
+        return kept.map { c -> c.note.copy(pitch = Fretboard.fitToRange(Math.round(c.frac - tuning).toInt())) }
     }
 
     internal class Tier(val agree: Double, val tonal: Double, val loud: Double) {
@@ -154,6 +168,7 @@ object Transcriber {
             notes.add(
                 Candidate(
                     SourceNote(t0 + frameTime(on), (end - on).toDouble() * HOP / RATE, midi),
+                    frac = (sums[best.key] ?: 0.0) / best.value,
                     agree = best.value / total,
                     tonal = tonal / count,
                     loud = (peak / max(ref, 1e-9f)).toDouble(),

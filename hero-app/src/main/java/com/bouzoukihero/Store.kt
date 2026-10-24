@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.media.AudioAttributes
 import android.media.SoundPool
 import com.bouzoukihero.core.BouzoukiTabs
+import com.bouzoukihero.core.Buttons
 import com.bouzoukihero.core.CustomSong
 import com.bouzoukihero.core.Difficulty
 import com.bouzoukihero.core.Json
@@ -105,6 +106,11 @@ class Store(private val context: Context) {
     var apiKey: String
         get() = prefs.getString("api_key", "") ?: ""
         set(v) { prefs.edit().putString("api_key", v.trim()).apply() }
+
+    /** What the game's buttons stand for: the tab (open + fingers on a fret position) or pitch. */
+    var buttons: Buttons
+        get() = Buttons.entries.firstOrNull { it.name == prefs.getString("buttons", null) } ?: Buttons.TAB
+        set(v) { prefs.edit().putString("buttons", v.name).apply() }
 
     var difficulty: Difficulty
         get() = Difficulty.entries.firstOrNull { it.name == prefs.getString("difficulty", null) } ?: Difficulty.EASY

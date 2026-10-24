@@ -11,8 +11,16 @@ This repository has two Android games:
 <img src="docs/hero.png" width="300" alt="Bouzouki Hero gameplay">
 
 Notes shaped like plectrums come down a bouzouki neck. When a note reaches the bottom, tap
-the button in its lane. Higher notes are further right, and each note shows its name
-(D, Eb, F#...). If you hit notes in a row, your multiplier goes up to x4. Long notes and
+the button in its lane.
+
+The buttons follow the tab, worked out the way [Bouzouki Tabs](https://github.com/avgeropoulos/bouzouki-tabs)
+does it (the same course-and-fret search, ported to the phone). Each note shows its tab, like
+`D7` for the D course, fret 7. The buttons are your fingers: the left one is the open string,
+then fingers 1 to 4 at the hand's current position, and each button shows which fret it is
+right now (e.g. `0 5 6 7 8`). When the tab moves up or down the neck, the fret numbers on the
+buttons move with it. Easy and Medium have fewer buttons, so some buttons cover two frets. In
+**Settings** you can switch to note buttons instead: low notes on the left, high notes on the
+right. If you hit notes in a row, your multiplier goes up to x4. Long notes and
 tremolo become **hold notes**: keep your finger down until the tail ends. Hitting notes
 fills the **OPA!** meter. Once it's half full, tap it to score double points and send plates
 flying.
@@ -252,7 +260,7 @@ Bouzouki Hero has the same split:
 * `hero-core/`: plain Kotlin. `Chart.kt` turns a melody into notes for each difficulty, `Session.kt`
   is the gameplay and drawing, `Tunes.kt` holds the built-in songs in a small note notation,
   `Synth.kt` renders them, `Sampler.kt` plays the melody from real recordings (pitch detection,
-  trimming, retuning), `Search.kt` reads YouTube search results, `Transcriber.kt` finds the bouzouki notes in a
+  trimming, retuning), `Search.kt` reads YouTube search results, `Fretboard.kt` is Bouzouki Tabs' tab search, `Transcriber.kt` finds the bouzouki notes in a
   song's audio (also while it plays), and `Library.kt` handles YouTube
   links, saved songs and Bouzouki Tabs results.
 * `hero-app/`: the Android layer. The song menu, the game view, the YouTube player (the official

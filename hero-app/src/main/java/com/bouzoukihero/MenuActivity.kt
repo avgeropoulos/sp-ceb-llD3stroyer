@@ -19,6 +19,7 @@ import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import com.bouzoukihero.core.BouzoukiTabs
+import com.bouzoukihero.core.Buttons
 import com.bouzoukihero.core.CustomSong
 import com.bouzoukihero.core.Difficulty
 import com.bouzoukihero.core.Tunes
@@ -365,6 +366,26 @@ class MenuActivity : Activity() {
             "Run Bouzouki Tabs on a computer on the same Wi-Fi with\n  bouzouki-tabs-web --host 0.0.0.0\n" +
                 "then enter that computer's address and port.", 12f, SUB,
         ))
+        box.addView(text("Buttons", 14f, 0xFFFFFFFF.toInt(), bold = true).apply { setPadding(0, dp(18), 0, 0) })
+        var buttons = store.buttons
+        val buttonsToggle = text("", 14f, GOLD, bold = true).apply {
+            setPadding(0, dp(8), 0, dp(4))
+            fun show() {
+                text = if (buttons == Buttons.TAB) "\u25C9 The tab: open string + fingers 1-4 (tap to change)"
+                else "\u25C9 Notes: low on the left, high on the right (tap to change)"
+            }
+            show()
+            setOnClickListener {
+                buttons = if (buttons == Buttons.TAB) Buttons.NOTES else Buttons.TAB
+                show()
+            }
+        }
+        box.addView(buttonsToggle)
+        box.addView(text(
+            "The tab is worked out like Bouzouki Tabs does it. The buttons show which frets they are " +
+                "and follow your hand up and down the neck; each note shows its course and fret (D7 = D course, fret 7).",
+            12f, SUB,
+        ))
         box.addView(text("YouTube API key (optional)", 14f, 0xFFFFFFFF.toInt(), bold = true).apply { setPadding(0, dp(18), 0, 0) })
         val apiKey = field("Leave empty to search without one", store.apiKey, InputType.TYPE_CLASS_TEXT)
         box.addView(apiKey)
@@ -395,6 +416,7 @@ class MenuActivity : Activity() {
             .setPositiveButton("Save") { _, _ ->
                 store.server = server.text.toString()
                 store.apiKey = apiKey.text.toString()
+                store.buttons = buttons
                 store.latencyMs = seek.progress * 10 - 100
                 if (then != null && store.server.isNotBlank()) then()
             }
