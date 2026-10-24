@@ -237,7 +237,21 @@ object Homes {
     // ------------------------------------------------------------------ Inside
 
     /** Wallpaper and floor for each kind of house, scrolled by [ox]. */
-    fun drawRoom(gfx: Gfx, type: HouseType, ox: Float, viewW: Float, viewH: Float, paint: Int = 0) {
+    private fun floorColor(type: HouseType): Int = when (type) {
+        HouseType.COTTAGE -> 0xFFB98A52.toInt()
+        HouseType.CABIN -> 0xFF6A3A1A.toInt()
+        HouseType.IGLOO -> 0xFFF4F8FF.toInt()
+        HouseType.MUSHROOM -> 0xFF5AB85A.toInt()
+        HouseType.CASTLE -> 0xFF5A5A6A.toInt()
+        HouseType.TREEHOUSE -> 0xFF8A5A2A.toInt()
+        HouseType.CANDY -> 0xFFC8884A.toInt()
+        HouseType.BEACH -> 0xFFF4DCA0.toInt()
+        HouseType.SPACE -> 0xFF8A94A4.toInt()
+        HouseType.CRYSTAL -> 0xFF9A6AD0.toInt()
+    }
+
+    /** The wall, wallpaper stripe and floor colors inside a house (a painted house gets painted walls). */
+    fun roomColors(type: HouseType, paint: Int = 0): Triple<Int, Int, Int> {
         val (normalWall, normalStripe) = when (type) {
             HouseType.COTTAGE -> 0xFFF2E2C0.toInt() to 0xFFF0D0C8.toInt()
             HouseType.CABIN -> 0xFF9A6A3A.toInt() to 0xFF7A4A20.toInt()
@@ -250,9 +264,13 @@ object Homes {
             HouseType.SPACE -> 0xFF2A3050.toInt() to 0xFFFFFFFF.toInt()
             HouseType.CRYSTAL -> 0xFFE0C8FF.toInt() to 0xFFB88AF0.toInt()
         }
-        // A painted house gets painted walls inside too.
         val wall = if (paint != 0) mix(paint, 0xFFFFFFFF.toInt(), 0.35f) else normalWall
         val stripe = if (paint != 0) mix(paint, 0xFF000000.toInt(), 0.15f) else normalStripe
+        return Triple(wall, stripe, floorColor(type))
+    }
+
+    fun drawRoom(gfx: Gfx, type: HouseType, ox: Float, viewW: Float, viewH: Float, paint: Int = 0) {
+        val (wall, stripe, _) = roomColors(type, paint)
         gfx.rect(0f, 0f, viewW, viewH, wall)
         val x0 = ox
         val x1 = ox + ROOM_W
@@ -285,18 +303,7 @@ object Homes {
         // Darker outside the room's walls.
         if (x0 > 0) gfx.rect(0f, 0f, x0, viewH, 0xFF2A1A10.toInt())
         if (x1 < viewW) gfx.rect(x1, 0f, viewW - x1, viewH, 0xFF2A1A10.toInt())
-        val floor = when (type) {
-            HouseType.COTTAGE -> 0xFFB98A52.toInt()
-            HouseType.CABIN -> 0xFF6A3A1A.toInt()
-            HouseType.IGLOO -> 0xFFF4F8FF.toInt()
-            HouseType.MUSHROOM -> 0xFF5AB85A.toInt()
-            HouseType.CASTLE -> 0xFF5A5A6A.toInt()
-            HouseType.TREEHOUSE -> 0xFF8A5A2A.toInt()
-            HouseType.CANDY -> 0xFFC8884A.toInt()
-            HouseType.BEACH -> 0xFFF4DCA0.toInt()
-            HouseType.SPACE -> 0xFF8A94A4.toInt()
-            HouseType.CRYSTAL -> 0xFF9A6AD0.toInt()
-        }
+        val floor = floorColor(type)
         gfx.rect(maxOf(0f, x0), FLOOR_Y, minOf(viewW, x1) - maxOf(0f, x0), viewH - FLOOR_Y, floor)
         gfx.rect(maxOf(0f, x0), FLOOR_Y, minOf(viewW, x1) - maxOf(0f, x0), 3f, 0x55000000)
         var x = x0
@@ -717,6 +724,39 @@ object Homes {
             }
             else -> {}
         }
+    }
+
+    /** How wide each piece of furniture is (in the room), for finding space to put it. */
+    fun width(f: Furniture): Float = when (f) {
+        Furniture.RUG -> 150f; Furniture.LAMP -> 24f; Furniture.TABLE -> 36f; Furniture.CHAIRS -> 68f
+        Furniture.COUCH -> 66f; Furniture.BOOKSHELF -> 30f; Furniture.FIREPLACE -> 56f; Furniture.PAINTING -> 42f
+        Furniture.TV -> 38f; Furniture.FISH_TANK -> 32f; Furniture.PLANT -> 24f; Furniture.CLAW_MACHINE -> 32f
+        Furniture.TOY_CHEST -> 44f; Furniture.BUNK_BEDS -> 64f; Furniture.ARCADE -> 34f; Furniture.TRAMPOLINE -> 56f
+        Furniture.BALL_PIT -> 70f; Furniture.TOY_TRAIN -> 110f; Furniture.TELESCOPE -> 34f; Furniture.PIANO -> 70f
+        Furniture.TROPHY_CASE -> 50f; Furniture.HOT_TUB -> 80f; Furniture.DISCO_BALL -> 40f; Furniture.POOL_TABLE -> 90f
+        Furniture.FRIDGE -> 30f; Furniture.STOVE -> 36f; Furniture.WALL_CLOCK -> 26f; Furniture.DOG_BED -> 50f
+        Furniture.SLIDE -> 74f; Furniture.ROCKING_HORSE -> 44f; Furniture.BEAN_BAG -> 36f; Furniture.STAR_LIGHTS -> ROOM_W
+        Furniture.GAMING_PC -> 54f; Furniture.FOUNTAIN -> 44f; Furniture.ROCKET -> 24f; Furniture.CHANDELIER -> 60f
+    }
+
+    /** 0: stands on the floor, 1: hangs on the wall or ceiling, 2: lies flat on the floor (rugs). */
+    fun layer(f: Furniture): Int = when (f) {
+        Furniture.PAINTING, Furniture.WALL_CLOCK, Furniture.DISCO_BALL, Furniture.CHANDELIER, Furniture.STAR_LIGHTS -> 1
+        Furniture.RUG, Furniture.TOY_TRAIN -> 2
+        else -> 0
+    }
+
+    /** Everything can be moved around except the star lights (they go all the way across the room). */
+    fun movable(f: Furniture) = f != Furniture.STAR_LIGHTS
+
+    /** Places on each floor where furniture can't go (doors, stairs, the shop counter, the bed and the window). */
+    fun blocked(floor: Int, layer: Int, hasBed: Boolean, hasStairsUp: Boolean): List<ClosedFloatingPointRange<Float>> = buildList {
+        add(0f..(DOOR_X + 36f))
+        if (hasStairsUp) add((STAIRS_X - 8f)..ROOM_W)
+        if (floor == 0 && layer == 0) { add((SHOP_X - 4f)..(SHOP_X + 72f)); add((MON_X - 4f)..(MON_X + 48f)) }
+        if (floor == 0 && layer == 0 && hasBed) add((BED_X - 6f)..(BED_X + 62f))
+        if (layer == 1) { add((BED_X - 6f)..(BED_X + 62f)); if (floor <= 1) add(SHELF_X..(SHELF_X + 210f)) }
+        add((ROOM_W - 12f)..(ROOM_W + 100f))
     }
 
     /** Stairs at the end of the room, to go up (or down) a floor. */

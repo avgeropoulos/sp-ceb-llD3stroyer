@@ -459,6 +459,98 @@ class TeamGameTest {
         }
     }
 
+    @Test fun decorateAnywhereAndBuildIn3D() {
+        startPlaying()
+        game.coins = 5000
+        Ore.entries.forEach { game.inventory[it.ordinal] = 90 }
+        goHome()
+        game.buyFloor()
+        game.buyFurniture(Furniture.COUCH)
+        game.buyFurniture(Furniture.TABLE)
+        // Pick up the couch and carry it upstairs.
+        game.toggleDecorate()
+        assertTrue(game.decorating)
+        walkHomeTo(Homes.spot(Furniture.COUCH) + 20f)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        assertEquals(Furniture.COUCH, game.carrying)
+        // No room on top of the table!
+        walkHomeTo(Homes.spot(Furniture.TABLE) + 18f)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        assertEquals(Furniture.COUCH, game.carrying, "it doesn't fit there")
+        walkHomeTo(Homes.STAIRS_X + 8f)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        assertEquals(1, game.homeFloor)
+        walkHomeTo(600f)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        assertNull(game.carrying)
+        assertEquals(1, game.furnFloor(Furniture.COUCH))
+        assertTrue(kotlin.math.abs(game.furnX(Furniture.COUCH) + Homes.width(Furniture.COUCH) / 2 - 600f) < 6f)
+        game.toggleDecorate()
+        // 3D: put down a block, break it, put down another; it's saved.
+        game.enter3d()
+        assertTrue(game.home3d)
+        val h = game.house3d
+        h.pitch = -0.7f
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        assertEquals(1, h.blocks.size, "a block was placed")
+        input.jump = true; game.update(dt); input.jump = false; game.update(dt)
+        assertEquals(0, h.blocks.size, "and broken")
+        h.selected = Block3D.GOLD.ordinal
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        // Walk and turn around, then render (no crash).
+        input.up = true; run(1f); input.up = false
+        input.left = true; run(1f); input.left = false
+        val img = BufferedImage((game.viewW * 2).toInt(), 480, BufferedImage.TYPE_INT_ARGB)
+        game.render(AwtGfx(img, 2f))
+        game.exit3d()
+        assertTrue(!game.home3d)
+        game.buyBed(BedStyle.RED)
+        game.sleepAtHome()
+        val g2 = TeamGame(TeamInput(), ears, storage)
+        g2.continueGame(0)
+        assertEquals(1, g2.furnFloor(Furniture.COUCH))
+        g2.enterHome(); g2.changeFloor(1); g2.enter3d()
+        assertEquals(Block3D.GOLD.ordinal, g2.house3d.blocks.values.single())
+        TeamControls.mode3d = false
+    }
+
+    @Test fun house3dScreenshots() {
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 240 * 3, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f))
+            ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        startPlaying()
+        game.coins = 9000
+        Ore.entries.forEach { game.inventory[it.ordinal] = 99 }
+        repeat(60) { game.clearForTest(it) }
+        goHome()
+        Furniture.entries.forEach { game.buyFurniture(it) }
+        game.buyBed(BedStyle.BLUE)
+        repeat(80) { game.givePlushie() }
+        game.toggleDecorate()
+        walkHomeTo(Homes.spot(Furniture.LAMP) + 10f)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        walkHomeTo(150f)
+        run(0.2f)
+        shot("home-decorate")
+        game.toggleDecorate()
+        game.enter3d()
+        val h = game.house3d
+        h.x = 12f; h.z = 8.5f; h.yaw = -1.9f
+        for (bx in 6..10) for (by in 0..2) h.blocks[h.key(bx, by, 5)] = if (by == 2) Block3D.GLASS.ordinal else Block3D.BRICK.ordinal
+        h.blocks[h.key(11, 0, 6)] = Block3D.GOLD.ordinal
+        h.blocks[h.key(12, 0, 6)] = Block3D.DIAMOND.ordinal
+        run(0.3f)
+        shot("home-3d")
+        h.x = 20f; h.z = 8f; h.yaw = -1.3f
+        run(0.3f)
+        shot("home-3d-shelves")
+        game.exit3d()
+        TeamControls.mode3d = false
+    }
+
     @Test fun funnyScenesAndSpotty() {
         // Every scene plays all the way through without trouble, then goes to the map.
         startPlaying()

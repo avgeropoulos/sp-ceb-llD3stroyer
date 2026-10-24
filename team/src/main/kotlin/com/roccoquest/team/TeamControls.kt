@@ -2,6 +2,7 @@ package com.roccoquest.team
 
 import com.roccoquest.game.Gfx
 import kotlin.concurrent.Volatile
+import kotlin.math.abs
 import kotlin.math.hypot
 
 /**
@@ -50,6 +51,9 @@ class TeamInput {
     @Volatile var craft = false; set(v) { field = hold(B_CRAFT, field, v) }
     @Volatile var pause = false; set(v) { field = hold(B_PAUSE, field, v) }
     @Volatile var musicToggle = false; set(v) { field = hold(B_MUSIC, field, v) }
+    /** Looking up and down in the 3D house. */
+    @Volatile var lookUp = false
+    @Volatile var lookDown = false
     /** Set on any new touch or key press; menus use it. */
     @Volatile var tap = false
     @Volatile var tapX = -1f
@@ -118,8 +122,67 @@ object TeamControls {
     private val startY = HashMap<Int, Float>()
     private const val SWIPE = 14f
 
+    /** True while the house is shown in 3D: the touch buttons work differently there. */
+    @Volatile var mode3d = false
+
+    /** Where the 3D house's buttons are. */
+    private const val PAD_X = 64f
+    private const val PAD_Y = 186f
+    private fun look3d(viewW: Float) = Button(viewW - 150f, 196f, 16f)
+
+    /** The 3D house: a 4-way pad on the left (walk and turn), PLACE, BREAK and LOOK buttons on the right. */
+    private fun apply3d(input: TeamInput, xs: FloatArray, ys: FloatArray, count: Int, viewW: Float) {
+        var u = false; var d = false; var l = false; var r = false; var a = false; var j = false; var lu = false; var ld = false; var p = false
+        val look = look3d(viewW)
+        for (i in 0 until count) {
+            val x = xs[i]
+            val y = ys[i]
+            if (hypot(x - pause.cx, y - pause.cy) < pause.r * 1.3f && y < 30f) { p = true; continue }
+            if (y < 110f) continue
+            if (x < viewW / 2 - 40f) {
+                val dx = x - PAD_X
+                val dy = y - PAD_Y
+                if (hypot(dx, dy) < 10f) continue
+                if (abs(dy) > abs(dx)) { if (dy < 0) u = true else d = true } else { if (dx < 0) l = true else r = true }
+            } else if (hypot(x - look.cx, y - (look.cy - 22f)) < look.r * 1.3f) lu = true
+            else if (hypot(x - look.cx, y - (look.cy + 14f)) < look.r * 1.3f) ld = true
+            else if (hypot(x - jump.cx, y - jump.cy) < hypot(x - action.cx, y - action.cy)) j = true
+            else a = true
+        }
+        input.touching = count > 0
+        input.up = u; input.down = d; input.left = l; input.right = r
+        input.action = a; input.jump = j
+        input.lookUp = lu; input.lookDown = ld
+        input.pause = p
+    }
+
+    fun draw3d(gfx: Gfx, input: TeamInput, viewW: Float, viewH: Float) {
+        layout(viewW)
+        val c = 0xCCFFFFFF.toInt()
+        val bg = 0x55FFFFFF
+        for ((dx, dy, on) in listOf(Triple(0f, -1f, input.up), Triple(0f, 1f, input.down), Triple(-1f, 0f, input.left), Triple(1f, 0f, input.right))) {
+            val bx = PAD_X + dx * 30f
+            val by = PAD_Y + dy * 26f
+            gfx.oval(bx - 15, by - 15, 30f, 30f, if (on) 0x99FFFFFF.toInt() else bg)
+            gfx.poly(floatArrayOf(bx + dx * 8 + dy * 0, bx - dx * 5 - dy * 7, bx - dx * 5 + dy * 7), floatArrayOf(by + dy * 8, by - dy * 5 + dx * 7, by - dy * 5 - dx * 7), c)
+        }
+        gfx.text("WALK / TURN", PAD_X, PAD_Y + 50f, 6f, c, 1)
+        gfx.oval(jump.cx - jump.r, jump.cy - jump.r, jump.r * 2, jump.r * 2, if (input.jump) 0xCCFFFFFF.toInt() else 0x99E84A4A.toInt())
+        gfx.text("BREAK", jump.cx, jump.cy + 3, 8f, c, 1)
+        gfx.oval(action.cx - action.r, action.cy - action.r, action.r * 2, action.r * 2, if (input.action) 0xCCFFFFFF.toInt() else 0x992EB84A.toInt())
+        gfx.text("PLACE", action.cx, action.cy + 3, 7f, c, 1)
+        val look = look3d(viewW)
+        for ((dy, up, on) in listOf(Triple(-22f, true, input.lookUp), Triple(14f, false, input.lookDown))) {
+            val by = look.cy + dy
+            gfx.oval(look.cx - look.r, by - look.r, look.r * 2, look.r * 2, if (on) 0x99FFFFFF.toInt() else bg)
+            gfx.poly(floatArrayOf(look.cx - 6, look.cx + 6, look.cx), if (up) floatArrayOf(by + 4, by + 4, by - 5) else floatArrayOf(by - 4, by - 4, by + 5), c)
+        }
+        gfx.text("LOOK", look.cx - 26f, look.cy - 2f, 6f, c, 1)
+    }
+
     fun apply(input: TeamInput, ids: IntArray, xs: FloatArray, ys: FloatArray, count: Int, viewW: Float) {
         layout(viewW)
+        if (mode3d) { apply3d(input, xs, ys, count, viewW); return }
         startY.keys.retainAll((0 until count).map { ids[it] }.toSet())
         var l = false
         var r = false

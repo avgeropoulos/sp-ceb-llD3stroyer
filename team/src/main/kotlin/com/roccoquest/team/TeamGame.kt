@@ -538,6 +538,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         storage.save(key("houseColor"), houseColor)
         storage.save(key("floors"), houseFloors)
         storage.save(key("bow"), bow.ordinal)
+        for (f in Furniture.entries) storage.save(key("fpos${f.ordinal}"), furnPos[f.ordinal])
         storage.save(key("swords"), swordsOwned)
         storage.save(key("swordHp"), swordHp)
         storage.save(key("pickHp"), pickHp)
@@ -614,6 +615,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         houseColor = storage.load(key("houseColor")).coerceIn(0, Homes.PAINTS.lastIndex)
         houseFloors = storage.load(key("floors")).coerceIn(1, Homes.MAX_FLOORS)
         bow = Bow.entries.getOrElse(storage.load(key("bow"))) { Bow.NONE }
+        for (f in Furniture.entries) furnPos[f.ordinal] = storage.load(key("fpos${f.ordinal}"))
         monEnergy = 5
         swordsOwned = storage.load(key("swords"))
         armorType = Armor.entries.getOrElse(storage.load(key("armorType"))) { Armor.NONE }
@@ -658,6 +660,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         for (k in 0 until STICKER_KEYS) storage.save(key("stk$k", s), 0)
         for (k in 0 until PLUSH_KEYS) storage.save(key("plush$k", s), 0)
         for (m in Mon.entries) storage.save(key("monXp${m.ordinal}", s), 0)
+        for (f in Furniture.entries) storage.save(key("fpos${f.ordinal}", s), 0)
     }
 
     fun newGame(slot: Int = 0, mon: Mon = Mon.SPARKY) {
@@ -677,6 +680,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         houseColor = 0
         houseFloors = 1
         bow = Bow.NONE
+        furnPos.fill(0)
         monEnergy = 5
         swordsOwned = 0
         swordHp = 0
@@ -714,6 +718,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun setState(s: State) {
         // Coming back to the title picks the next title song, so it changes every now and then.
         if (s == State.TITLE && state != State.TITLE) nextTitleSong()
+        // Leaving the house switches the 3D view (and its touch buttons) off.
+        if (s != State.HOME && home3d) { home3d = false; TeamControls.mode3d = false }
         state = s
         stateT = 0f
     }
@@ -948,7 +954,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 }
                 updateTrade(tapped, pauseE || craftE || nav.b, num)
             }
-            State.HOME -> { updateParticles(dt); updateHome(dt, tapped, pauseE || craftE, actionE) }
+            State.HOME -> { updateParticles(dt); jumpE3d = jumpE; updateHome(dt, tapped, pauseE || craftE, actionE) }
             State.PARK -> { updateParticles(dt); updatePark(dt, tapped, jumpE || actionE, pauseE || craftE) }
             State.SCENE -> updateScene(tapped, pauseE || nav.a || nav.b)
             State.MAP -> updateMap(tapped, pauseE, num)
@@ -3583,6 +3589,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     fun enterHome() {
         homeFloor = 0
+        decorating = false
+        carrying = null
         homeShop = false
         monMenu = false
         plushBook = false
@@ -3608,28 +3616,128 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun homeTarget(): String? {
         val x = homeX
         val upstairs = houseFloors > homeFloor + 1 && x >= Homes.STAIRS_X + 2f
-        if (homeFloor > 0) {
-            fun near(f: Furniture) = hasFurniture(f) && x in (Homes.spot(f) - 8f)..(Homes.spot(f) + 44f)
-            return when {
-                x < Homes.DOOR_X + 36f -> "DOWNSTAIRS"
-                upstairs -> "UPSTAIRS"
-                near(Furniture.ARCADE) -> "GAME"
-                near(Furniture.TRAMPOLINE) -> "BOUNCE"
-                near(Furniture.PIANO) -> "MUSIC"
-                else -> null
-            }
+        fun near(f: Furniture) = hasFurniture(f) && furnFloor(f) == homeFloor && x in (furnX(f) - 8f)..(furnX(f) + Homes.width(f) + 8f)
+        if (x < Homes.DOOR_X + 36f) return if (homeFloor == 0) (if (carrying != null) null else "EXIT") else "DOWNSTAIRS"
+        if (upstairs) return "UPSTAIRS"
+        if (decorating) return if (carrying != null) "PLACE" else if (furnitureAt(x) != null) "MOVE" else null
+        if (homeFloor == 0) when {
+            x in (Homes.SHOP_X - 4f)..(Homes.SHOP_X + 72f) -> return "SHOP"
+            x in (Homes.MON_X - 12f)..(Homes.MON_X + 50f) -> return "POKEMON"
+            hasBed() && x in (Homes.BED_X - 6f)..(Homes.BED_X + 62f) -> return "SLEEP"
         }
         return when {
-            x < Homes.DOOR_X + 36f -> "EXIT"
-            upstairs -> "UPSTAIRS"
-            x in (Homes.SHOP_X - 4f)..(Homes.SHOP_X + 72f) -> "SHOP"
-            x in (Homes.MON_X - 12f)..(Homes.MON_X + 50f) -> "POKEMON"
-            hasBed() && x in (Homes.BED_X - 6f)..(Homes.BED_X + 62f) -> "SLEEP"
-            x in Homes.SHELF_X..(Homes.SHELF_X + 210f) && !(hasFurniture(Furniture.TV) && x in 480f..530f) -> "LOOK"
-            hasFurniture(Furniture.CLAW_MACHINE) && x in (Homes.spot(Furniture.CLAW_MACHINE) - 10f)..(Homes.spot(Furniture.CLAW_MACHINE) + 40f) -> "PLAY"
+            near(Furniture.CLAW_MACHINE) -> "PLAY"
+            near(Furniture.ARCADE) -> "GAME"
+            near(Furniture.TRAMPOLINE) -> "BOUNCE"
+            near(Furniture.PIANO) -> "MUSIC"
+            homeFloor <= 1 && x in Homes.SHELF_X..(Homes.SHELF_X + 210f) && !near(Furniture.TV) -> "LOOK"
             else -> null
         }
     }
+
+    /**
+     * The plushie shelves on this floor: the newest plushies downstairs (the rest are in the PLUSHIE BOOK),
+     * and the 36 before those in the playroom.
+     */
+    fun drawShelvesWithPlushies(gfx: Gfx, ox: Float) {
+        Homes.drawShelves(gfx, ox)
+        val owned = Plushies.all.filter(::hasPlushie)
+        val shown = if (homeFloor == 0) owned.takeLast(Homes.SHELF_SLOTS) else owned.dropLast(Homes.SHELF_SLOTS).takeLast(Homes.SHELF_SLOTS)
+        shown.forEachIndexed { k, p ->
+            val (px, py) = Homes.shelfSpot(k)
+            Plushies.draw(this, gfx, p, px + ox, py, 14f)
+        }
+    }
+
+    // ---------------------------------------------------------------- The house in 3D
+
+    /** JUMP this frame (BREAK in the 3D house). */
+    private var jumpE3d = false
+
+    /** Showing the house in 3D (walk around and build with blocks). */
+    var home3d = false
+        private set
+    val house3d = House3D(this)
+
+    fun enter3d() {
+        if (decorating) toggleDecorate()
+        home3d = true
+        house3d.enter()
+        TeamControls.mode3d = true
+        sfx(Sound.PORTAL)
+        toast("3D HOUSE! Arrows walk and turn, PLACE and BREAK blocks. Tap 2D to go back.")
+    }
+
+    fun exit3d() {
+        home3d = false
+        TeamControls.mode3d = false
+        homeX = (house3d.x * House3D.PX).coerceIn(Homes.DOOR_X + 40f, Homes.ROOM_W - 30f)
+        sfx(Sound.KICK)
+    }
+
+    internal fun slotLoad(name: String) = storage.load(key(name))
+    internal fun slotSave(name: String, v: Int) = storage.save(key(name), v)
+    internal fun toastFrom3D(s: String) = toast(s)
+    internal fun inputForDraw() = input
+
+    // ---------------------------------------------------------------- Decorating: move furniture anywhere
+
+    /** Moving furniture around (the DECORATE button at home). */
+    var decorating = false
+        private set
+    /** The piece of furniture you're carrying while decorating. */
+    var carrying: Furniture? = null
+        private set
+    /** Where each piece of furniture is: 0 for its usual spot, else (x + 1) + floor * 10000. */
+    private val furnPos = IntArray(Furniture.entries.size)
+
+    fun furnX(f: Furniture): Float = if (furnPos[f.ordinal] == 0) Homes.spot(f) else ((furnPos[f.ordinal] - 1) % 10000).toFloat()
+    fun furnFloor(f: Furniture): Int = if (furnPos[f.ordinal] == 0) f.floor else (furnPos[f.ordinal] - 1) / 10000
+
+    /** The piece of furniture you're standing in front of on this floor (if any). */
+    private fun furnitureAt(x: Float): Furniture? = Furniture.entries
+        .filter { hasFurniture(it) && Homes.movable(it) && furnFloor(it) == homeFloor && x in furnX(it)..(furnX(it) + Homes.width(it)) }
+        .minByOrNull { Homes.layer(it) }
+
+    /** True if [f] has room at [x] on [floor]: not on the stairs, doors, shop or bed, and not on other furniture. */
+    fun fits(f: Furniture, x: Float, floor: Int): Boolean {
+        val w = Homes.width(f)
+        val layer = Homes.layer(f)
+        if (x < 0f || x + w > Homes.ROOM_W) return false
+        if (Homes.blocked(floor, layer, hasBed(), houseFloors > floor + 1).any { x + w > it.start && x < it.endInclusive }) return false
+        return Furniture.entries.none { g ->
+            g != f && hasFurniture(g) && Homes.movable(g) && furnFloor(g) == floor && Homes.layer(g) == layer &&
+                x + w - 2f > furnX(g) && x + 2f < furnX(g) + Homes.width(g)
+        }
+    }
+
+    fun toggleDecorate() {
+        decorating = !decorating
+        carrying = null
+        sfx(Sound.KICK)
+        toast(if (decorating) "DECORATE: walk to furniture and tap MOVE, then walk somewhere and tap PLACE!" else "All done decorating!")
+    }
+
+    private fun pickUp() {
+        val f = furnitureAt(homeX) ?: return
+        carrying = f
+        sfx(Sound.KICK)
+        toast("Carrying the ${f.label}. Walk anywhere (even up the stairs) and tap PLACE.")
+    }
+
+    /** Puts what you're carrying down right where you're standing, if there's room. */
+    fun placeCarried(at: Float = homeX) {
+        val f = carrying ?: return
+        val x = (at - Homes.width(f) / 2).coerceAtLeast(0f).toInt().toFloat()
+        if (!fits(f, x, homeFloor)) { sfx(Sound.BUMP); toast("No room for the ${f.label} here! Try another spot."); return }
+        furnPos[f.ordinal] = (x.toInt() + 1) + homeFloor * 10000
+        carrying = null
+        sfx(Sound.POWERUP)
+        toast("${f.label} placed!")
+        save()
+    }
+
+    internal fun pickUpForTest(f: Furniture) { carrying = f }
 
     private fun homeAction(what: String?) {
         when (what) {
@@ -3643,6 +3751,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             "GAME" -> startPark()
             "BOUNCE" -> if (homeHopT <= 0f) { homeHopT = 0.8f; sfx(Sound.JUMP) }
             "MUSIC" -> { sfx(Sound.ONEUP); sound.say("Do re mi fa so la ti do!") }
+            "MOVE" -> pickUp()
+            "PLACE" -> placeCarried()
             "POKEMON" -> { monMenu = true; monSwitch = false; monCursor = 0; sfx(Sound.KICK); sound.sayAs(mon.label, Voice.MON) }
         }
     }
@@ -4126,7 +4236,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     private fun updateHome(dt: Float, tapped: Boolean, close: Boolean, actionE: Boolean) {
         if (close) {
-            when { monMenu && monSwitch -> monSwitch = false; monMenu -> monMenu = false; homeShop -> homeShop = false; plushBook -> plushBook = false; else -> leaveHome() }
+            when { home3d -> exit3d(); monMenu && monSwitch -> monSwitch = false; monMenu -> monMenu = false; homeShop -> homeShop = false; plushBook -> plushBook = false; else -> leaveHome() }
             return
         }
         if (homeHopT > 0f) homeHopT -= dt
@@ -4137,6 +4247,17 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (nav.right) bookPage = (bookPage + 1) % PLUSH_PAGES
             if (nav.a || nav.b) { plushBook = false; return }
             updateBook(tapped); return
+        }
+        if (home3d) {
+            if (tapped && input.tapX >= 0f && house3d.tap(input.tapX, input.tapY, viewW)) return
+            house3d.update(dt, input, actionE, jumpE3d)
+            return
+        }
+        if (nav.rb) { toggleDecorate(); return }
+        if (nav.lb) { enter3d(); return }
+        if (tapped && input.tapX >= 0f && input.tapY < 22f && stateT > 0.2f) {
+            if (input.tapX > viewW - 84f) { toggleDecorate(); return }
+            if (input.tapX in (viewW - 122f)..(viewW - 88f)) { enter3d(); return }
         }
         if (nav.a) { homeAction(homeTarget()); return }
         // Walk around the room.
@@ -4243,6 +4364,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     private fun renderHome(gfx: Gfx) {
+        if (home3d) {
+            house3d.render(gfx, viewW, VIEW_H)
+            if (toastT > 0) {
+                gfx.rect(20f, 40f, viewW - 40, 16f, 0xDD101828.toInt())
+                gfx.text(toast, viewW / 2, 51f, 7f, white, 1)
+            }
+            return
+        }
         val cam = homeCam()
         val ox = -cam
         Homes.drawRoom(gfx, houseType, ox, viewW, VIEW_H, housePaint)
@@ -4250,33 +4379,29 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (homeFloor == 0) Homes.drawDoor(gfx, ox + Homes.DOOR_X) else Homes.drawStairs(gfx, ox + Homes.DOOR_X - 6f, false)
         if (houseFloors > homeFloor + 1) Homes.drawStairs(gfx, ox + Homes.STAIRS_X - 4f, true)
         if (homeFloor == 0) Homes.drawShop(this, gfx, ox + Homes.SHOP_X, time)
-        for (f in listOf(Furniture.RUG, Furniture.TOY_TRAIN)) if (f.floor == homeFloor && hasFurniture(f)) Homes.drawFurniture(gfx, f, ox, time)
-        for (f in Furniture.entries) {
-            if (f != Furniture.RUG && f != Furniture.TOY_TRAIN && f.floor == homeFloor && hasFurniture(f)) Homes.drawFurniture(gfx, f, ox, time)
+        // Rugs first, then everything else, each wherever it was put.
+        for (layerPass in listOf(2, 1, 0)) for (f in Furniture.entries) {
+            if (Homes.layer(f) != layerPass || !hasFurniture(f) || furnFloor(f) != homeFloor || f == carrying) continue
+            Homes.drawFurniture(gfx, f, ox + furnX(f) - Homes.spot(f), time)
         }
         if (homeFloor == 0) {
             Homes.drawMonMat(gfx, ox, time)
             if (hasBed()) Homes.drawBed(gfx, bedStyle, ox + Homes.BED_X)
-            Homes.drawShelves(gfx, ox)
-            // The newest plushies sit on the shelves (the rest are in the PLUSHIE BOOK).
-            val shown = Plushies.all.filter(::hasPlushie).takeLast(Homes.SHELF_SLOTS)
-            shown.forEachIndexed { k, p ->
-                val (px, py) = Homes.shelfSpot(k)
-                Plushies.draw(this, gfx, p, px + ox, py, 14f)
-            }
+            drawShelvesWithPlushies(gfx, ox)
         } else {
-            // The playroom has more plushie shelves: the next 36 after the ones downstairs.
-            if (homeFloor == 1) {
-                Homes.drawShelves(gfx, ox)
-                Plushies.all.filter(::hasPlushie).dropLast(Homes.SHELF_SLOTS).takeLast(Homes.SHELF_SLOTS).forEachIndexed { k, p ->
-                    val (px, py) = Homes.shelfSpot(k)
-                    Plushies.draw(this, gfx, p, px + ox, py, 14f)
-                }
-            }
-            if (Furniture.entries.none { it.floor == homeFloor && hasFurniture(it) }) {
+            if (homeFloor == 1) drawShelvesWithPlushies(gfx, ox)
+            if (Furniture.entries.none { furnFloor(it) == homeFloor && hasFurniture(it) }) {
                 gfx.shadowText("An empty floor! Buy furniture for it in the SHOP downstairs.", viewW / 2, 100f, 8f, 0xFFFFF2C8.toInt(), 1)
             }
         }
+        // The furniture you're carrying (green: it fits here, red: no room).
+        carrying?.let { f ->
+            val fx = homeX - Homes.width(f) / 2
+            Homes.drawFurniture(gfx, f, ox + fx - Homes.spot(f), time)
+            val ok = fits(f, fx.coerceAtLeast(0f).toInt().toFloat(), homeFloor)
+            gfx.rect(fx + ox, Homes.FLOOR_Y - 4f, Homes.width(f), 4f, if (ok) 0xCC3CE070.toInt() else 0xCCFF4A4A.toInt())
+        }
+        if (decorating) gfx.shadowText(if (carrying != null) "Walk to a spot and tap PLACE" else "DECORATING: walk to furniture and tap MOVE", viewW / 2, 34f, 7f, 0xFFFFE14D.toInt(), 1)
         // You (and your Pokemon) walking around.
         val step = if ((homeAnim * 8).toInt() % 2 == 0) 0 else 1
         val hero = if (heroOut == Who.BLOCKY) TeamArt.blocky(power, step == 1) else TeamArt.rocco(power, if (input.left || input.right) 1 + step else 0)
@@ -4293,6 +4418,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         gfx.sprite(com.roccoquest.game.Sprites.coin, 120f, 5f, w = 8f, h = 11f)
         gfx.shadowText("x$coins", 130f, 15f, 8f, white)
         gfx.shadowText("PLUSHIES $plushieCount/${Plushies.all.size}", 176f, 15f, 8f, 0xFFFF9AD0.toInt())
+        // DECORATE and 3D buttons
+        gfx.rect(viewW - 84f, 2f, 80f, 18f, if (decorating) 0xFFE8A82A.toInt() else 0xFF7A4A20.toInt())
+        gfx.text(if (decorating) "DONE" else "DECORATE", viewW - 44f, 15f, 7.5f, white, 1)
+        gfx.rect(viewW - 122f, 2f, 34f, 18f, 0xFF2EB84A.toInt())
+        gfx.text("3D", viewW - 105f, 15f, 9f, white, 1)
         // Controls: walk left/right, and the action button.
         TeamControls.layout(viewW)
         if (!homeShop && !plushBook && !monMenu) TeamControls.drawHome(gfx, input, target ?: "", time)

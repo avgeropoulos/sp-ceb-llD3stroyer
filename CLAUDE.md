@@ -110,3 +110,8 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
   (spawned in `onBossEngaged`) and `CrazyBall`. `Foe.frozenT` freezes a foe (no update, no touch damage).
 * `Spooky.kt`: `Witch` (`2`), `Potion`, and the World 6 bosses `KingBooHoo` (`3`), `WitchBoss` (`4`); the Warden Twins are
   `Warden(hp = 55)` (`5`). All boss characters are in `BOSS_CHARS` (TeamLevel.kt).
+* Decorating: furniture positions are `furnPos` (keys `fpos<i>`: 0 = usual spot, else x+1 + floor*10000); use
+  `furnX`/`furnFloor` (never `Homes.spot` directly) when drawing or checking furniture. `fits()` uses `Homes.width`,
+  `Homes.layer` and `Homes.blocked`.
+* `House3D.kt`: the 3D house (`home3d`, `TeamControls.mode3d` switches the touch layout; blocks saved per floor as
+  `b3d<floor>n` + `b3d<floor>_<i>`). It draws the 2D pictures as camera-facing "billboards" (1 block = 30 room px).

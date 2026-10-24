@@ -277,6 +277,18 @@ Walking out of the house puts you on the next level to play (not back on the hou
   penguin, unicorn, dragon, owl, lion), gold and rainbow dragons, and koalas, sheep, monkeys, turtles,
   hamsters and octopuses.
 
+### Decorate your house, and the 3D house
+
+* **DECORATE** (top-right at home): walk to any piece of furniture and tap **MOVE**, carry it anywhere (even
+  up the stairs to another floor), and tap **PLACE**. A green line means it fits; red means there's no room
+  (furniture can't go on the stairs, the door, the shop, the bed, or on top of other furniture).
+* **3D** (top-right at home): see your house in 3D, like a block game! The pad on the left walks and turns,
+  LOOK tilts up and down, and you can **PLACE** and **BREAK** blocks (planks, stone, brick, glass, grass,
+  wool, gold and diamond; up to 300 per floor). Your furniture, plushie shelves and Pokemon are there too.
+  UP/DOWN change floors, and **2D** goes back.
+
+![The house in 3D](docs/teamup-house-3d.png)
+
 ### Lugia, and Pokemon levels
 
 ![Playing with your Pokemon at home](docs/teamup-pokemon-home.png)
