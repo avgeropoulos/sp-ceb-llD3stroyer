@@ -1721,9 +1721,55 @@ class TeamGameTest {
         assertTrue(g2.hasSticker(299) && g2.stickerCount == game.stickerCount)
     }
 
+    @Test fun moreFloorsUnlockFurnitureAndPokemonPark() {
+        startPlaying()
+        goHome()
+        game.coins = 1000
+        Ore.entries.forEach { game.inventory[it.ordinal] = 60 }
+        // Upstairs furniture needs its floor, and the fancy pieces unlock as you beat levels.
+        game.buyFurniture(Furniture.TOY_CHEST)
+        assertTrue(!game.hasFurniture(Furniture.TOY_CHEST), "no floor 2 yet")
+        game.buyFloor()
+        assertEquals(2, game.houseFloors)
+        game.buyFurniture(Furniture.TOY_CHEST)
+        assertTrue(game.hasFurniture(Furniture.TOY_CHEST))
+        game.buyFurniture(Furniture.ARCADE)
+        assertTrue(!game.hasFurniture(Furniture.ARCADE), "locked until 10 levels are beaten")
+        repeat(10) { game.clearForTest(it) }
+        game.buyFurniture(Furniture.ARCADE)
+        assertTrue(game.hasFurniture(Furniture.ARCADE))
+        game.buyFloor(); game.buyFloor()
+        assertEquals(Homes.MAX_FLOORS, game.houseFloors, "3 floors at most")
+        // Walk up the stairs to the playroom and play the arcade: it's the Pokemon Park game.
+        walkHomeTo(Homes.STAIRS_X + 8f)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        assertEquals(1, game.homeFloor)
+        walkHomeTo(Homes.spot(Furniture.ARCADE) + 10f)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        assertEquals(TeamGame.State.PARK, game.state)
+        // Stand still for the whole game: whatever lands on the Pokemon counts, then back home with prizes.
+        val coins = game.coins
+        run(45f)
+        assertTrue(game.parkDone)
+        assertTrue(game.coins >= coins)
+        run(1.2f)
+        tap(game.viewW / 2, 120f)
+        assertEquals(TeamGame.State.HOME, game.state)
+        // It's all saved.
+        game.buyBed(BedStyle.RED)
+        walkHomeTo(Homes.DOOR_X + 10f)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        assertEquals(0, game.homeFloor, "back downstairs")
+        game.sleepAtHome()
+        val g2 = TeamGame(TeamInput(), ears, storage)
+        g2.continueGame(0)
+        assertEquals(3, g2.houseFloors)
+        assertTrue(g2.hasFurniture(Furniture.ARCADE))
+    }
+
     @Test fun aHundredPlushies() {
-        assertEquals(150, Plushies.all.size)
-        assertEquals(150, Plushies.all.map { it.name }.toSet().size, "all different")
+        assertEquals(250, Plushies.all.size)
+        assertEquals(250, Plushies.all.map { it.name }.toSet().size, "all different")
         assertTrue(Plushies.all.any { it.name == "BABY FOX" })
         startPlaying()
         val before = game.plushieCount
@@ -1868,12 +1914,34 @@ class TeamGameTest {
         shot("home-pokemon")
         run(2f)
         game.clearForTest(2)
-        game.monButtonForTest(3)
+        game.monButtonForTest(4)
         shot("home-pokemon-switch")
         game.switchMon(Mon.LUGIA)
         input.pause = true; game.update(dt); input.pause = false; game.update(dt)
         run(0.5f)
         shot("home-lugia")
+        // Build two more floors and fill them with furniture.
+        repeat(60) { game.clearForTest(it) }
+        game.coins = 5000
+        Ore.entries.forEach { game.inventory[it.ordinal] = 90 }
+        game.buyFloor(); game.buyFloor()
+        Furniture.entries.forEach { game.buyFurniture(it) }
+        repeat(150) { game.givePlushie() }
+        game.changeFloor(1)
+        walkHomeTo(330f)
+        run(0.3f)
+        shot("home-floor2")
+        game.changeFloor(2)
+        walkHomeTo(400f)
+        run(0.3f)
+        shot("home-floor3")
+        game.goToMap(-1)
+        run(0.5f)
+        shot("map-tall-house")
+        goHome()
+        game.startPark()
+        run(6f)
+        shot("pokemon-park")
         // Dash the dino.
         val lv = Levels.all.indexOfFirst { d -> d.rows.any { 'y' in it } }
         startPlaying(lv)

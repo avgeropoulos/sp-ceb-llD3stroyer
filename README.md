@@ -239,7 +239,7 @@ Walking out of the house puts you on the next level to play (not back on the hou
 
 ![World map](docs/teamup-map.png)
 
-### Your house, the shop and 150 plushies
+### Your house, the shop and 250 plushies
 
 * Walk into your **HOUSE** from the map and **walk around inside** with the arrows. The room is big and the
   view follows you. Walk up to things and press the button:
@@ -251,8 +251,16 @@ Walking out of the house puts you on the next level to play (not back on the hou
   * **POKEMON** (the red mat): **PET** it, **PLAY BALL** or **TRAIN** with a target. It learns a bit each time
     (and sometimes finds a sticker). After 5 plays it gets sleepy until you play another level.
     **SWITCH** picks a different Pokemon partner (each one keeps its own level).
+    **MINI GAME** (or the arcade game upstairs) goes to the **POKEMON PARK** for **BERRY CATCH**: run and jump
+    to catch falling berries (gold ones are worth 5) and dodge the rocks, for 40 seconds. Berries turn into XP
+    and coins (and 40+ berries win a sticker). When your Pokemon is sleepy it's just for fun.
   * **SLEEP** in your bed to **save the game**.
-  * **LOOK** at the plushie shelves to open the **PLUSHIE BOOK** with all **150 plushies**.
+  * **LOOK** at the plushie shelves to open the **PLUSHIE BOOK** with all **250 plushies**.
+  * **Bigger house**: in the HOUSES tab, **ADD A FLOOR** (up to 3 floors). Take the **stairs** on the right.
+    Floor 2 is the **playroom** (more plushie shelves, and its furniture: toy chest, bunk beds, **arcade game**,
+    **trampoline** to BOUNCE, ball pit, toy train). Floor 3 is the **top floor** (telescope, piano, trophy case,
+    hot tub, disco ball, pool table). The FURNITURE tab has a page per floor. Fancy furniture is **LOCKED**
+    until you beat enough levels (5, 10, 15... up to 60). Outside, the house gets taller too.
   * **PLAY** the claw machine (30 coins, always a new plushie).
   * The door goes back to the map.
 * **100 plushies**: Rocco, Blocky, all the Pokemon, Ring-Ding Frog, Dennis, bad guys, the 4 bosses, a
@@ -260,6 +268,9 @@ Walking out of the house puts you on the next level to play (not back on the hou
   penguins, duckies, froggies, lions, elephants, unicorns and dragons) in lots of colors, including rare gold
   and rainbow ones. **Save up your coins** to buy them in the shop, or find them in mystery blocks, treasure
   chests and the claw machine. Boss plushies come from beating the bosses (or lots of coins).
+  **100 more** (250 in all): item plushies (super star, fire flower, golden apple, TNT, Tanooki Rocco...),
+  the Wonder and Dry Bones bosses, 13 more babies, and tigers, zebras, giraffes, deer, hedgehogs, seals, chicks,
+  axolotls, sloths, otters, raccoons, hippos, bats and sharks.
   **50 more**: Lugia, Metal Rocco, Poseidon, villagers, more bad guys, babies (bunny, panda, cat, puppy,
   penguin, unicorn, dragon, owl, lion), gold and rainbow dragons, and koalas, sheep, monkeys, turtles,
   hamsters and octopuses.
@@ -267,6 +278,8 @@ Walking out of the house puts you on the next level to play (not back on the hou
 ### Lugia, and Pokemon levels
 
 ![Playing with your Pokemon at home](docs/teamup-pokemon-home.png)
+![Pokemon Park: Berry Catch](docs/teamup-pokemon-park.png)
+![The playroom upstairs](docs/teamup-playroom.png)
 
 * **LUGIA** (legendary sea bird) joins after you beat **level 3**: switch to it at home. It glides and swims,
   and its SUPER **AEROBLAST** blows a giant wind across the screen.

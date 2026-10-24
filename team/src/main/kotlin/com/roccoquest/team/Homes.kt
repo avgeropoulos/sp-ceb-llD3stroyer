@@ -2,6 +2,7 @@ package com.roccoquest.team
 
 import com.roccoquest.game.Gfx
 import com.roccoquest.game.argb
+import com.roccoquest.game.rainbow
 import com.roccoquest.game.shadowText
 import kotlin.math.sin
 
@@ -19,8 +20,11 @@ enum class HouseType(val label: String, val costs: List<Pair<Ore, Int>>, val coi
     CRYSTAL("CRYSTAL PALACE", listOf(Ore.AMETHYST to 4, Ore.DIAMOND to 3), 80, "Sparkly purple crystal towers"),
 }
 
-/** Furniture to decorate the inside of the house. Each piece has its own spot in the room. */
-enum class Furniture(val label: String, val costs: List<Pair<Ore, Int>>, val coins: Int) {
+/**
+ * Furniture to decorate the inside of the house. Each piece has its own spot on its [floor].
+ * Fancier pieces unlock after beating [unlock] levels.
+ */
+enum class Furniture(val label: String, val costs: List<Pair<Ore, Int>>, val coins: Int, val floor: Int = 0, val unlock: Int = 0) {
     RUG("RUG", emptyList(), 10),
     LAMP("LAMP", listOf(Ore.GOLD to 1), 10),
     TABLE("TABLE", listOf(Ore.STONE to 4), 12),
@@ -33,6 +37,20 @@ enum class Furniture(val label: String, val costs: List<Pair<Ore, Int>>, val coi
     PAINTING("PAINTING", listOf(Ore.GOLD to 1), 25),
     FISH_TANK("FISH TANK", listOf(Ore.DIAMOND to 1), 30),
     CLAW_MACHINE("CLAW MACHINE", listOf(Ore.IRON to 4, Ore.GOLD to 2), 50),
+    // Floor 2: the playroom
+    TOY_CHEST("TOY CHEST", listOf(Ore.STONE to 4), 15, 1, 0),
+    BUNK_BEDS("BUNK BEDS", listOf(Ore.IRON to 2), 30, 1, 5),
+    ARCADE("ARCADE GAME", listOf(Ore.IRON to 3, Ore.COPPER to 2), 50, 1, 10),
+    TRAMPOLINE("TRAMPOLINE", listOf(Ore.IRON to 2), 40, 1, 15),
+    BALL_PIT("BALL PIT", emptyList(), 40, 1, 20),
+    TOY_TRAIN("TOY TRAIN", listOf(Ore.IRON to 2), 35, 1, 25),
+    // Floor 3: the top floor
+    TELESCOPE("TELESCOPE", listOf(Ore.GOLD to 1, Ore.DIAMOND to 1), 40, 2, 30),
+    PIANO("PIANO", listOf(Ore.STONE to 4), 50, 2, 35),
+    TROPHY_CASE("TROPHY CASE", listOf(Ore.GOLD to 3), 60, 2, 40),
+    HOT_TUB("HOT TUB", listOf(Ore.SAPPHIRE to 2), 70, 2, 45),
+    DISCO_BALL("DISCO BALL", listOf(Ore.DIAMOND to 1), 50, 2, 50),
+    POOL_TABLE("POOL TABLE", listOf(Ore.EMERALD to 2), 60, 2, 60),
 }
 
 /** Beds for the house. Sleep in one to save the game. */
@@ -51,6 +69,12 @@ object Homes {
 
     /** Where the Pokemon's play mat is in the room. */
     const val MON_X = 192f
+    /** How tall each extra floor looks from outside. */
+    const val STORY_H = 26f
+    /** Houses can have up to 3 floors. */
+    const val MAX_FLOORS = 3
+    /** Where the stairs are (at the right end of the room). */
+    const val STAIRS_X = 690f
 
     /** The room is wider than the screen: walk around and the view follows you. */
     const val ROOM_W = 720f
@@ -58,16 +82,28 @@ object Homes {
 
     // ------------------------------------------------------------------ Outside
 
-    fun drawHouse(gfx: Gfx, type: HouseType, x: Float, bottom: Float, t: Float, paint: Int = 0) {
-        val top = bottom - 40
-        drawHouseBody(gfx, type, x, bottom, t)
+    fun drawHouse(gfx: Gfx, type: HouseType, x: Float, bottom: Float, t: Float, paint: Int = 0, floors: Int = 1) {
+        // Extra floors stack under the house, each with two windows.
+        val lift = (floors - 1) * STORY_H
+        for (k in 0 until floors - 1) {
+            val sy = bottom - (k + 1) * STORY_H
+            gfx.rect(x, sy, 72f, STORY_H, 0xFFD8C8A8.toInt())
+            gfx.rect(x, sy, 72f, 2f, 0xFFA89878.toInt())
+            for (wx in listOf(x + 28, x + 50)) {
+                gfx.rect(wx, sy + 6, 14f, 12f, 0xFF5A3A1A.toInt())
+                gfx.rect(wx + 1.5f, sy + 7.5f, 11f, 9f, 0xFFFFE8A0.toInt())
+            }
+            if (paint != 0) gfx.rect(x, sy, 72f, STORY_H, argb(120, paint and 0xFFFFFF))
+        }
+        val top = bottom - lift - 40
+        drawHouseBody(gfx, type, x, bottom - lift, t)
         // Painted: a coat of the chosen color over the walls.
         if (paint != 0) {
-            if (type == HouseType.IGLOO || type == HouseType.SPACE) gfx.oval(x - 4, bottom - 56, 80f, 112f, argb(110, paint and 0xFFFFFF))
+            if (type == HouseType.IGLOO || type == HouseType.SPACE) gfx.oval(x - 4, bottom - lift - 56, 80f, 112f, argb(110, paint and 0xFFFFFF))
             else gfx.rect(x, top + (if (type == HouseType.TREEHOUSE) -14f else 0f), 72f, if (type == HouseType.TREEHOUSE) 30f else 40f, argb(120, paint and 0xFFFFFF))
         }
         // Every house has its door in the same spot, on the left.
-        if (type != HouseType.IGLOO) {
+        if (type != HouseType.IGLOO || floors > 1) {
             gfx.rect(x + 6, bottom - 26, 14f, 26f, if (type == HouseType.CASTLE) 0xFF5A3A1A.toInt() else 0xFF7A4A20.toInt())
             gfx.oval(x + 16, bottom - 14, 2.5f, 2.5f, 0xFFFFD21F.toInt())
         } else {
@@ -333,6 +369,18 @@ object Homes {
         Furniture.FISH_TANK -> 536f
         Furniture.PLANT -> 580f
         Furniture.CLAW_MACHINE -> 650f
+        Furniture.TOY_CHEST -> 70f
+        Furniture.BUNK_BEDS -> 140f
+        Furniture.ARCADE -> 240f
+        Furniture.TRAMPOLINE -> 320f
+        Furniture.BALL_PIT -> 430f
+        Furniture.TOY_TRAIN -> 540f
+        Furniture.TELESCOPE -> 80f
+        Furniture.PIANO -> 170f
+        Furniture.TROPHY_CASE -> 280f
+        Furniture.HOT_TUB -> 370f
+        Furniture.DISCO_BALL -> 500f
+        Furniture.POOL_TABLE -> 560f
     }
 
     fun drawFurniture(gfx: Gfx, f: Furniture, ox: Float, t: Float) {
@@ -431,7 +479,116 @@ object Homes {
                 gfx.rect(x + 3, fy - 22, 26f, 10f, 0xFFB01A1A.toInt())
                 gfx.text("PLAY", x + 16, fy - 15, 6f, 0xFFFFFFFF.toInt(), 1)
             }
+            Furniture.TOY_CHEST -> {
+                gfx.rect(x, fy - 20, 40f, 20f, 0xFFB0702A.toInt())
+                gfx.rect(x - 2, fy - 26, 44f, 7f, 0xFF8A5020.toInt())
+                gfx.rect(x + 17, fy - 22, 6f, 6f, 0xFFFFD21F.toInt())
+                gfx.oval(x + 4, fy - 34, 10f, 10f, 0xFFE52521.toInt())
+                gfx.rect(x + 26, fy - 36, 4f, 12f, 0xFF3A6AC8.toInt())
+            }
+            Furniture.BUNK_BEDS -> {
+                gfx.rect(x, fy - 64, 4f, 64f, 0xFF7A4A20.toInt()); gfx.rect(x + 60, fy - 64, 4f, 64f, 0xFF7A4A20.toInt())
+                for ((y, c) in listOf(fy - 14 to 0xFF3CB84A.toInt(), fy - 46 to 0xFFFF8A3A.toInt())) {
+                    gfx.rect(x, y, 64f, 5f, 0xFF7A4A20.toInt())
+                    gfx.rect(x + 4, y - 6, 56f, 6f, 0xFFF4F4F4.toInt())
+                    gfx.rect(x + 18, y - 7, 42f, 7f, c)
+                }
+                for (i in 0 until 4) gfx.rect(x + 54, fy - 42 + i * 8f, 10f, 1.5f, 0xFF7A4A20.toInt())
+            }
+            Furniture.ARCADE -> {
+                gfx.rect(x, fy - 62, 34f, 62f, 0xFF3A2A8A.toInt())
+                gfx.rect(x + 4, fy - 56, 26f, 20f, 0xFF101018.toInt())
+                gfx.oval(x + 8 + ((t * 20) % 16), fy - 50, 6f, 6f, 0xFFE84A4A.toInt())
+                gfx.rect(x + 6, fy - 40, 22f, 2f, 0xFF4AC86A.toInt())
+                gfx.rect(x + 2, fy - 32, 30f, 8f, 0xFF2A1A6A.toInt())
+                gfx.oval(x + 8, fy - 31, 5f, 5f, 0xFFFF4A4A.toInt()); gfx.oval(x + 20, fy - 31, 5f, 5f, 0xFF4AD8FF.toInt())
+                gfx.text("GAME", x + 17, fy - 64, 6f, if ((t * 3).toInt() % 2 == 0) 0xFFFFD21F.toInt() else 0xFFFF6AA8.toInt(), 1)
+            }
+            Furniture.TRAMPOLINE -> {
+                gfx.rect(x + 4, fy - 12, 3f, 12f, 0xFF3A3A3A.toInt()); gfx.rect(x + 49, fy - 12, 3f, 12f, 0xFF3A3A3A.toInt())
+                gfx.oval(x, fy - 16, 56f, 10f, 0xFF2E6BE6.toInt())
+                gfx.oval(x + 4, fy - 15, 48f, 7f, 0xFF1A1A2A.toInt())
+                gfx.oval(x + 22, fy - 40 - kotlin.math.abs(sin(t * 4)) * 20, 10f, 10f, 0xFFFFD21F.toInt())
+            }
+            Furniture.BALL_PIT -> {
+                gfx.rect(x, fy - 22, 70f, 22f, 0xFFFF9AC8.toInt())
+                for (i in 0 until 18) gfx.oval(x + 2 + (i * 11f) % 64, fy - 26 + (i / 6) * 6f, 7f, 7f, listOf(0xFFE84A4A, 0xFF4A8AE8, 0xFFFFD82A, 0xFF3CB878)[i % 4].toInt())
+                gfx.rect(x, fy - 22, 70f, 2f, 0xFFFF6AA8.toInt())
+            }
+            Furniture.TOY_TRAIN -> {
+                gfx.oval(x - 10, fy + 8, 120f, 34f, 0xFF6A5A4A.toInt())
+                gfx.oval(x - 6, fy + 11, 112f, 28f, 0xFFB98A52.toInt())
+                val a = t * 1.2f
+                for (k in 0 until 3) {
+                    val tx = x + 50 + kotlin.math.cos(a - k * 0.35f) * 50 - 6
+                    val ty = fy + 22 + sin(a - k * 0.35f) * 13 - 6
+                    gfx.rect(tx, ty, 12f, 9f, if (k == 0) 0xFFE52521.toInt() else 0xFF3A6AC8.toInt())
+                    if (k == 0) gfx.rect(tx + 7, ty - 4, 3f, 4f, 0xFF3A3A3A.toInt())
+                }
+            }
+            Furniture.TELESCOPE -> {
+                gfx.rect(x + 12, fy - 26, 2f, 26f, 0xFF5A5A5A.toInt())
+                gfx.poly(floatArrayOf(x + 4, x + 22, x + 13), floatArrayOf(fy, fy, fy - 10), 0xFF5A5A5A.toInt())
+                gfx.poly(floatArrayOf(x, x + 30, x + 32, x + 2), floatArrayOf(fy - 30, fy - 46, fy - 42, fy - 25), 0xFFC89A2A.toInt())
+                gfx.oval(x + 28, fy - 47, 6f, 6f, 0xFF7FC8FF.toInt())
+            }
+            Furniture.PIANO -> {
+                gfx.rect(x, fy - 44, 70f, 30f, 0xFF1A1A1A.toInt())
+                gfx.rect(x, fy - 18, 70f, 8f, 0xFFF4F4F4.toInt())
+                for (i in 0 until 10) gfx.rect(x + 3 + i * 7f, fy - 18, 3f, 5f, 0xFF1A1A1A.toInt())
+                gfx.rect(x + 2, fy - 10, 4f, 10f, 0xFF1A1A1A.toInt()); gfx.rect(x + 64, fy - 10, 4f, 10f, 0xFF1A1A1A.toInt())
+                // A music note floating up
+                val nx = x + 50 + sin(t * 2) * 4
+                val ny = fy - 50 - (t * 10 % 10)
+                gfx.oval(nx, ny + 6, 5f, 4f, 0xFF3A3A8A.toInt())
+                gfx.rect(nx + 4, ny, 1.5f, 8f, 0xFF3A3A8A.toInt())
+                gfx.rect(nx + 4, ny, 4f, 1.5f, 0xFF3A3A8A.toInt())
+            }
+            Furniture.TROPHY_CASE -> {
+                gfx.rect(x, fy - 64, 50f, 64f, 0xFF7A4A20.toInt())
+                gfx.rect(x + 3, fy - 61, 44f, 58f, 0xAADDEEFF.toInt())
+                for (row in 0 until 2) for (k in 0 until 3) {
+                    val tx = x + 8 + k * 14f
+                    val ty = fy - 34 + row * 28f
+                    gfx.rect(x + 3, ty + 2, 44f, 2f, 0xFF7A4A20.toInt())
+                    gfx.poly(floatArrayOf(tx, tx + 8, tx + 6, tx + 2), floatArrayOf(ty - 14, ty - 14, ty - 6, ty - 6), 0xFFFFD21F.toInt())
+                    gfx.rect(tx + 3, ty - 6, 2f, 6f, 0xFFE8B82A.toInt())
+                }
+            }
+            Furniture.HOT_TUB -> {
+                gfx.rect(x, fy - 22, 80f, 22f, 0xFF8A5A2A.toInt())
+                gfx.rect(x + 4, fy - 20, 72f, 8f, 0xFF4AD8FF.toInt())
+                for (i in 0 until 5) {
+                    val p = (t * 0.8f + i * 0.2f) % 1f
+                    gfx.oval(x + 8 + i * 14f, fy - 22 - p * 18, 5f, 5f, argb(((1 - p) * 200).toInt(), 0xFFFFFF))
+                }
+            }
+            Furniture.DISCO_BALL -> {
+                gfx.rect(x + 19, 24f, 1f, 24f, 0xFF3A3A3A.toInt())
+                gfx.oval(x + 8, 46f, 24f, 24f, 0xFFC8D0DC.toInt())
+                for (i in 0 until 6) gfx.rect(x + 11 + (i % 3) * 6f, 50f + (i / 3) * 8f, 4f, 4f, solidRainbow(t + i * 0.15f, 0f))
+                for (i in 0 until 5) {
+                    val a = t * 2 + i * 1.26f
+                    gfx.oval(x + 20 + kotlin.math.cos(a) * 90, 110f + sin(a) * 40, 6f, 6f, argb(110, rainbow(t + i * 0.2f)))
+                }
+            }
+            Furniture.POOL_TABLE -> {
+                gfx.rect(x, fy - 26, 90f, 8f, 0xFF6A3A1A.toInt())
+                gfx.rect(x + 3, fy - 28, 84f, 4f, 0xFF2E9A4A.toInt())
+                gfx.rect(x + 6, fy - 18, 6f, 18f, 0xFF6A3A1A.toInt()); gfx.rect(x + 78, fy - 18, 6f, 18f, 0xFF6A3A1A.toInt())
+                for (i in 0 until 4) gfx.oval(x + 30 + i * 6f, fy - 32, 5f, 5f, listOf(0xFFFFD82A, 0xFFE84A4A, 0xFF3A6AC8, 0xFFFFFFFF)[i].toInt())
+            }
         }
+    }
+
+    /** Stairs at the end of the room, to go up (or down) a floor. */
+    fun drawStairs(gfx: Gfx, x: Float, up: Boolean) {
+        for (i in 0 until 6) {
+            val sx = if (up) x + i * 4f else x + 24f - i * 4f
+            gfx.rect(sx, FLOOR_Y - (i + 1) * 12f, 8f, (i + 1) * 12f, 0xFF8A5A2A.toInt())
+            gfx.rect(sx, FLOOR_Y - (i + 1) * 12f, 8f, 2f, 0xFFB98A52.toInt())
+        }
+        gfx.shadowText(if (up) "UP" else "DOWN", x + 16, FLOOR_Y - 78, 7f, 0xFFFFF2C8.toInt(), 1)
     }
 
     /** The plushie shelves on the wall: 3 rows of 12 show off your newest plushies. */

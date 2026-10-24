@@ -349,7 +349,7 @@ class Goal(x: Float, y: Float) : Thing(x + 6, y - 9 * TILE + TILE, 4f, 9f * TILE
 class House(x: Float, bottom: Float, val type: HouseType = HouseType.COTTAGE) : Thing(x, bottom - 56, 72f, 56f) {
     override fun update(g: TeamGame, dt: Float) {}
     override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
-        Homes.drawHouse(gfx, type, x + ox, bottom, g.time, g.housePaint)
+        Homes.drawHouse(gfx, type, x + ox, bottom, g.time, g.housePaint, g.houseFloors)
         if (atDoor(g.leader) && g.state == TeamGame.State.PLAY && (g.time * 2).toInt() % 2 == 0) {
             gfx.shadowText("ENTER?", x + 13 + ox, bottom - 34, 7f, 0xFFFFF2C8.toInt(), 1)
         }
