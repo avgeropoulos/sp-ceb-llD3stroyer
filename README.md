@@ -2,6 +2,8 @@
 
 A retro side-scrolling platformer for Android.
 
+*This repository also has a second game, **[Javelin Strike](#javelin-strike)**, a motion-controlled javelin throw.*
+
 Rocco, a plumber in a red cap, has to rescue **Princess Rosalie** (she wears pink) from
 **King Krag**, a giant spiky-shelled turtle dragon. Grab the **Blaze Blossom** to
 throw bouncing fireballs and take Krag down.
@@ -136,3 +138,66 @@ You can also open the folder in Android Studio and press Run.
   renderer, sound effects that are synthesized at startup, and a streaming music player.
 
 Levels are built in `core/.../Level.kt` with a small builder, so adding a new one is a few lines.
+
+---
+
+# Javelin Strike
+
+A javelin throwing competition for Android that you play by actually throwing. Hold the phone,
+pull your arm back and whip it forward. The harder you throw, the further the javelin flies.
+
+![Javelin Strike](docs/javelin.png)
+
+## How it plays
+
+* Each level has a **target** painted on the field and a **time limit**. You have unlimited
+  javelins, so keep throwing until you hit it. Some levels need 2 or 3 hits, and the target
+  moves to a new spot after each one.
+* **Aim** by tilting the phone like a steering wheel. The javelin in the athlete's hand and the
+  dotted line on the grass show where you're aiming.
+* **Throw**: press and hold the screen with your thumb to grip the javelin, pull your arm back
+  until the DRAW bar turns green, then throw your arm forward. The javelin leaves your hand at
+  the end of the swing (or when you lift your thumb).
+* The camera follows the javelin, and the **TARGET CAM** in the corner shows the target close
+  up. If you miss, it tells you by how much ("6 m SHORT", "3 m LEFT").
+* Rings score **50 / 100 / 250** (bullseye) points times the level number, plus a time bonus
+  when you clear the level.
+* You have 3 lives. Running out of time costs one, and you get an extra life every 3 levels.
+  The top 5 scores are saved on the phone.
+* Difficulty goes up level by level: the target moves further away and gets smaller, then
+  crosswind arrives (watch the wind arrow and the flag), then moving targets. After the 12
+  hand-made levels come endless levels that keep getting harder.
+
+On the title screen:
+
+* **CONTROLS: MOTION / TOUCH**. Touch mode is for phones without a gyroscope or for playing
+  sitting down: press, pull your finger down, then flick up. A faster flick throws further, and
+  flicking a little sideways aims.
+* **ARM: NORMAL / GENTLE / STRONG** sets how hard you need to swing for full power. Use GENTLE
+  for small, wrist-flick throws indoors, and STRONG if you keep overthrowing.
+
+**Safety:** grip the phone tightly (a wrist strap or a phone grip helps) and make sure there's
+nobody and nothing breakable around you.
+
+## Installing
+
+GitHub Actions builds it together with Rocco's Quest. On your phone, open
+**https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/JavelinStrike.apk**,
+then open the downloaded file and allow your browser to install apps if Android asks.
+
+## Changing the game
+
+* `javelin-core/.../Levels.kt`: the level list. Each line sets the target distance, size,
+  time limit, number of hits, wind and target movement, so new levels or difficulty tweaks are
+  a one-line change.
+* `javelin-core/.../ThrowDetector.kt`: how arm motion turns into power. `SPIN_FULL` and
+  `PUSH_FULL` set how hard a full-power throw is.
+* `javelin-core/.../World.kt`: javelin physics (release angle, speeds, how much wind pushes).
+* `javelin-core/.../Game.kt` and `Scene.kt`: game rules, screens and drawing.
+* `javelin-app/`: the Android layer, covering sensors, touch, the `Canvas` renderer, sounds
+  and vibration.
+
+```sh
+./gradlew :javelin-core:test       # tests; also renders screenshots to javelin-core/build/screens
+./gradlew :javelin-app:assembleDebug
+```
