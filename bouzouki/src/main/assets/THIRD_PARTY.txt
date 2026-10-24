@@ -1,0 +1,6 @@
+basic_pitch.onnx is the Basic Pitch note transcription model (icassp_2022 nmp.onnx)
+by Spotify, https://github.com/spotify/basic-pitch, licensed under the Apache License 2.0.
+
+The vocal removal model (UVR-MDX-NET-Inst_HQ_3.onnx, Ultimate Vocal Remover project,
+https://github.com/TRvlvr/model_repo) is downloaded by the app on first use; it is not
+included in this repository.

@@ -24,13 +24,20 @@ jobs:
       - name: Run game logic tests
         run: ./gradlew :core:test :hero-core:test --console=plain
 
-      - name: Build APKs
-        run: ./gradlew :app:assembleDebug :hero-app:assembleDebug --console=plain
+      - name: Run bouzouki and Bouzouki Hero tests
+        run: ./gradlew :bouzouki-core:test --console=plain
+
+      - name: Build APK
+        run: ./gradlew :app:assembleDebug --console=plain
+
+      - name: Build bouzouki APK
+        run: ./gradlew :bouzouki:assembleDebug --console=plain
 
       - name: Rename APKs
         run: |
           cp app/build/outputs/apk/debug/app-debug.apk RoccosQuest.apk
-          cp hero-app/build/outputs/apk/debug/hero-app-debug.apk BouzoukiHero.apk
+          cp bouzouki/build/outputs/apk/debug/bouzouki-debug.apk Bouzouki.apk
+          echo "$GITHUB_RUN_NUMBER" > bouzouki-version.txt
 
       - uses: actions/upload-artifact@v4
         with:
@@ -39,22 +46,26 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: BouzoukiHero-apk
-          path: BouzoukiHero.apk
+          name: Bouzouki-apk
+          path: Bouzouki.apk
 
       - name: Publish downloadable build
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-${{ github.ref_name }}
-          name: "Rocco's Quest and Bouzouki Hero - Download for Android"
+          name: "Rocco's Quest and Μπουζούκι - Download for Android"
           prerelease: false
           make_latest: true
           body: |
-            Install on Android: download **RoccosQuest.apk** or **BouzoukiHero.apk** on your
+            Install on Android: download **RoccosQuest.apk** or **Bouzouki.apk** on your
             phone, open it, and allow "install unknown apps" for your browser if asked.
+
+            **Bouzouki.apk** is the Greek bouzouki app (trichordo and tetrachordo with the dromoi),
+            with the Bouzouki Hero game inside.
 
             Built from ${{ github.sha }}.
           files: |
             RoccosQuest.apk
-            BouzoukiHero.apk
+            Bouzouki.apk
+            bouzouki-version.txt

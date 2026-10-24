@@ -255,13 +255,71 @@ You can also open the folder in Android Studio and press Run.
 
 Levels are built in `core/.../Level.kt` with a small builder, so adding a new one is a few lines.
 
-Bouzouki Hero has the same split:
+The Bouzouki Hero game lives in `hero-core/`, in plain Kotlin: `Chart.kt` turns a bouzouki line into notes
+and buttons for each difficulty, `Session.kt` is the gameplay and drawing, `Tunes.kt` holds the built-in
+songs, and `Synth.kt` plays them. The Μπουζούκι app (below) hosts it.
 
-* `hero-core/`: plain Kotlin. `Chart.kt` turns a melody into notes for each difficulty, `Session.kt`
-  is the gameplay and drawing, `Tunes.kt` holds the built-in songs in a small note notation,
-  `Synth.kt` renders them, `Sampler.kt` plays the melody from real recordings (pitch detection,
-  trimming, retuning), `Search.kt` reads YouTube search results, `Fretboard.kt` is Bouzouki Tabs' tab search, `Transcriber.kt` finds the bouzouki notes in a
-  song's audio (also while it plays), and `Library.kt` handles YouTube
-  links, saved songs and Bouzouki Tabs results.
-* `hero-app/`: the Android layer. The song menu, the game view, the YouTube player (the official
-  embedded player in a `WebView`, which reports the video's time to the game), and audio.
+## Μπουζούκι: the Greek bouzouki app
+
+The repository also builds a second app, **Bouzouki.apk**, a playable Greek bouzouki:
+
+**https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/Bouzouki.apk**
+
+To update, tap the **⬆ Update** button at the bottom of the first screen. The app downloads the new
+version from GitHub itself and Android asks you to confirm, so you don't need the browser. The first time,
+Android asks you to allow Bouzouki to install apps. Updates install over the old version and keep your settings.
+Every build is signed with the same key (`bouzouki/signing/`) and gets a higher version number. The version is shown under the title.
+
+* **Τρίχορδο / Τετράχορδο**: switch between the three-course trichordo (D A D, 26 frets) and the
+  four-course tetrachordo (C F A D, 27 frets). The bass courses are octave pairs, like the real instruments.
+* **Zoom**: pinch the neck with two fingers to fit more or fewer frets on screen. **⤢ Whole neck** fits
+  every fret at once (the song screen starts that way). **⤡ Bigger** goes back to normal size.
+* **Two screens**: on the first, pick the bouzouki, the dromos and the root note. It also spells out the
+  scale and its arpeggio. **Παίξε ▶ Play the bouzouki** opens the neck on its own screen.
+* **The whole neck**: the neck runs top to bottom with the nut at the top. Scroll down to reach the
+  high frets by dragging the fret numbers on either side. Touch a course anywhere to pluck it,
+  slide along it to glide between frets, and use several fingers for chords.
+* **Δρόμοι (scales)**: the scale's notes are marked on the neck (root in red) for any root note. The Greek name
+  comes first and the Western equivalent follows in parentheses:
+
+  | Dromos | | Dromos | |
+  |---|---|---|---|
+  | Matzore (Major) | Ματζόρε | Sabah (Minor with flat 4th) | Σαμπάχ |
+  | Minore (Natural Minor) | Μινόρε | Houzam (Major with sharp 2nd) | Χουζάμ |
+  | Nihavent (Harmonic Minor) | Νιαβέντ | Segiah (Harmonic Major with sharp 2nd) | Σεγκιά |
+  | Hitzaz (Phrygian Dominant) | Χιτζάζ | Pireotikos (Double Harmonic with sharp 4th) | Πειραιώτικος |
+  | Hitzazkiar (Double Harmonic) | Χιτζαζκιάρ | Nikriz (Ukrainian Dorian) | Νικρίζ |
+  | Ousak (Phrygian) | Ουσάκ | Tsinganikos (Hungarian Minor) | Τσιγγάνικος |
+  | Kiourdi (Phrygian) | Κιουρντί | Kartsigar (Dorian with flat 5th) | Καρσιγάρ |
+  | Rast (Mixolydian) | Ραστ | | |
+
+* **The scale player** on the neck screen plays the dromos up and back down:
+  * **⇣ Down the neck**: all the way up one string, from its first root to its highest root (two
+    octaves). Choose the string with the buttons under it. The string is shaded on the neck.
+  * **⇄ Across the neck**: across all the strings in one hand position, root to root. Move the
+    position with ◀ ▶. The frets are shaded on the neck.
+  * **Scale / Arpeggio**: play the whole dromos, or just its 1st, 3rd, 5th and 7th. The neck marks
+    only the arpeggio notes when it's selected.
+  * **Tremolo** re-picks held notes fast, bouzouki style. **✋ Mute** stops everything ringing.
+* **🎵 Play along with a YouTube song** (like Chordify): paste a YouTube link, or tap **Share → Μπουζούκι**
+  in the YouTube app. The first time, the app prepares the song in the background (a few minutes, with a
+  progress notification):
+  1. it reads the song's audio from YouTube,
+  2. removes the singer's voice with an AI vocal remover (UVR MDX-Net, downloaded once, 67 MB),
+  3. transcribes what's left into notes with Spotify's Basic Pitch (an old record tuned off A = 440 Hz is
+     put back in tune for it first, or it would miss many of the notes),
+  4. keeps the bouzouki line (the top melodic line in the bouzouki's range) and chooses frets that keep
+     the hand moving as little as possible.
+
+  Then the video plays with that line on the neck: a gold ring on the note playing now, a hollow ring
+  on the next one, and a moving tab strip of the upcoming notes (tap it to jump). **0.5× / 0.75×** slow
+  the song down to learn it, and **🔊 Bouzouki** plays the line on the app's bouzouki too. Prepared songs
+  are kept on the phone (**🕘 My songs**) and open instantly; the song's audio itself is deleted once the
+  notes are worked out. **📁 Audio file** does the same with a song file on the phone.
+* **Ντο Ρε Μι / C D E** switches note names, and **All notes** shows the notes outside the scale too.
+* **The sound** is synthesized (no recordings). Each course is a pair of plucked steel strings,
+  slightly detuned or an octave apart, picked near the bridge with a plectrum click, and shaped
+  by a bowl-body EQ and a small room. Listen to `docs/bouzouki-demo.wav`.
+
+Code: `bouzouki-core/` holds the scales, tunings and synthesizer in plain Kotlin (tested with
+`./gradlew :bouzouki-core:test`). `bouzouki/` is the Android app (`./gradlew :bouzouki:assembleDebug`).

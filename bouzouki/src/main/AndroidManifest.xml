@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- The in-app updater downloads new versions from GitHub and hands them to the installer. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!-- Preparing a song keeps running in the background, with a progress notification. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:allowBackup="true"
+        android:largeHeap="true"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:theme="@android:style/Theme.Material.NoActionBar">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:screenOrientation="portrait"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".PlayActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation" />
+
+        <!-- Share a video from the YouTube app to Μπουζούκι to play along with it; or share (or open
+             with Μπουζούκι) a song's bouzouki tab, as a PDF, text or a picture, from WhatsApp, Files, Gmail or Drive.
+             One song screen, in the app's own task: a share comes to the screen with the song open (Android
+             would otherwise start a new one in the sending app's task). Turned sideways (as auto-rotate
+             allows) it shows the whole bouzouki, without being made again. -->
+        <activity
+            android:name=".SongActivity"
+            android:exported="true"
+            android:label="Μπουζούκι · play along"
+            android:launchMode="singleTask"
+            android:screenOrientation="fullUser"
+            android:windowSoftInputMode="adjustPan"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden|keyboard|navigation">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+            <!-- A picture of a tab (a screenshot), read from the picture. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+        </activity>
+
+        <!-- Hands a song's data (never audio) to the app picked in the share sheet: Send song data. -->
+        <provider
+            android:name=".ExportProvider"
+            android:authorities="com.bouzouki.export"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
+        <service
+            android:name=".PrepareService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync|mediaProcessing" />
+    </application>
+</manifest>
