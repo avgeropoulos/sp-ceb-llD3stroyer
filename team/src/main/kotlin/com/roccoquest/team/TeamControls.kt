@@ -190,6 +190,7 @@ object TeamControls {
         gfx: Gfx, input: TeamInput, viewW: Float, actionLabel: String, swapLabel: String, swapColor: Int,
         superCharge: Float, superColor: Int, t: Float, tntCount: Int = 0, poseidonReady: Boolean = false,
         showLong: Boolean = false, sprinting: Boolean = false, blackFlowers: Int = 0,
+        longLabel: Pair<String, String> = "LONG" to "JUMP",
     ) {
         layout(viewW)
         val c = 0xBBFFFFFF.toInt()
@@ -224,8 +225,8 @@ object TeamControls {
             val lb = longB
             gfx.oval(lb.cx - lb.r - 1, lb.cy - lb.r - 1, lb.r * 2 + 2, lb.r * 2 + 2, 0x55000000)
             gfx.oval(lb.cx - lb.r, lb.cy - lb.r, lb.r * 2, lb.r * 2, if (input.longJump) 0xCCFFFFFF.toInt() else 0x55E52521)
-            gfx.text("LONG", lb.cx, lb.cy + 1, 6f, c, 1)
-            gfx.text("JUMP", lb.cx, lb.cy + 8, 5f, c, 1)
+            gfx.text(longLabel.first, lb.cx, lb.cy + 1, 6f, c, 1)
+            gfx.text(longLabel.second, lb.cx, lb.cy + 8, 4.5f, c, 1)
         }
         if (sprinting) gfx.text("SPRINT!", (left.cx + right.cx) / 2, 178f, 8f, 0xFFFFD21F.toInt(), 1)
         if (tntCount > 0) {

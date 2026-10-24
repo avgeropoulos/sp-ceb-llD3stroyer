@@ -106,3 +106,5 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
 * `Fun.kt`: `Spotty` (the Toad look-alike, `Voice.TOAD`; `planSpotty`/`updateSpotty`, 40% of non-boss levels) and
   `Scenes` (10 five-second funny scenes, `State.SCENE`, after the sticker on odd level indexes; `funnyScenes` flag).
 * `thinCrowds()` spreads out bunched-up bad guys at level start (32px gap in World 1, 48px later).
+* `Weapons.kt`: `Bow` (Blocky; key `bow`; fired with the long-jump button as SHOOT), `HeroArrow`, `CrazyMushroom`
+  (spawned in `onBossEngaged`) and `CrazyBall`. `Foe.frozenT` freezes a foe (no update, no touch damage).

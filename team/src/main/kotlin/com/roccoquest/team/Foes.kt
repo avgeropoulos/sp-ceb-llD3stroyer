@@ -32,6 +32,8 @@ abstract class Foe(x: Float, y: Float, w: Float, h: Float, baseHp: Int) : Thing(
         hp = maxHp
     }
     var dying = false
+    /** Frozen solid by a crazy ice ball: it can't move (or hurt you) until this runs out. */
+    var frozenT = 0f
     /** Flashes white for a moment after being hit. */
     var flash = 0f
     open val stompable = true

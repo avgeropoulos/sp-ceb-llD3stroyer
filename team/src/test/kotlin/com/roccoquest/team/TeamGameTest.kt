@@ -345,6 +345,67 @@ class TeamGameTest {
         assertEquals(4, game.mapSel, "the map is ready for the next level")
     }
 
+    @Test fun blockysBowsAndRoccosCrazyMushrooms() {
+        startPlaying()
+        game.foes.clear()
+        Ore.entries.forEach { game.inventory[it.ordinal] = 50 }
+        game.coins = 500
+        // Craft a crossbow: Blocky gets a SHOOT button.
+        val tab = TeamGame.TABS.indexOf("BOWS")
+        val i = game.recipes(tab).indexOfFirst { it.bow == Bow.CROSSBOW }
+        game.craft(i, tab)
+        assertEquals(Bow.CROSSBOW, game.bow)
+        assertTrue(game.recipes(tab).first { it.bow == Bow.BOW }.button == "BETTER", "no going back to a weaker bow")
+        game.switchTo(Who.BLOCKY)
+        val b = game.blocky
+        val g = Grumbler(b.x + 70f, b.bottom, false).also { it.active = true; it.vx = 0f }
+        game.foes += g
+        b.facing = 1
+        input.longJump = true; game.update(dt); input.longJump = false
+        run(1f) { game.hurtProof() }
+        assertTrue(g.hp < g.maxHp || g.dying, "the bolt hit")
+        // Crazy ice: giant ice balls freeze bad guys.
+        game.foes.clear()
+        game.switchTo(Who.ROCCO)
+        game.startCrazy(false)
+        val r = game.rocco
+        val g2 = Grumbler(r.x + 40f, r.bottom, false).also { it.active = true; it.vx = 0f }
+        game.foes += g2
+        r.facing = 1
+        input.action = true; game.update(dt); input.action = false
+        run(0.6f) { game.hurtProof() }
+        assertTrue(g2.frozenT > 0f || g2.dying, "frozen solid")
+    }
+
+    @Test fun weaponScreenshots() {
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 240 * 3, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f))
+            ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        startPlaying()
+        Ore.entries.forEach { game.inventory[it.ordinal] = 50 }
+        game.coins = 500
+        game.openCraftForTest(TeamGame.TABS.indexOf("BOWS"))
+        shot("craft-bows")
+        game.closeCraftForTest()
+        game.craft(game.recipes(TeamGame.TABS.indexOf("BOWS")).indexOfFirst { it.bow == Bow.ENCHANTED }, TeamGame.TABS.indexOf("BOWS"))
+        game.switchTo(Who.BLOCKY)
+        game.blocky.facing = 1
+        input.longJump = true; game.update(dt); input.longJump = false
+        run(0.15f) { game.hurtProof() }
+        shot("blocky-enchanted-bow")
+        game.switchTo(Who.ROCCO)
+        game.startCrazy(true)
+        game.rocco.facing = 1
+        input.action = true; game.update(dt); input.action = false
+        run(0.3f) { game.hurtProof() }
+        game.spawnForTest(CrazyMushroom(game.rocco.x - 40f, game.rocco.y, false))
+        run(0.4f) { game.hurtProof() }
+        shot("rocco-crazy-fire")
+    }
+
     @Test fun funnyScenesAndSpotty() {
         // Every scene plays all the way through without trouble, then goes to the map.
         startPlaying()

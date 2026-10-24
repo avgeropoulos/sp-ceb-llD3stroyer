@@ -407,6 +407,10 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
 * **Calmer levels**: bad guys standing in a big bunch get spread out, so no two are right on top of each other.
 * **Spotty** (a little mushroom guy with a red-spotted cap) pops up in random levels, runs up to Rocco and
   yells things like **"OH ROCCO, YOU'RE CRAZY!!!"** in a squeaky voice.
+* **Blocky's bows** (crafting table, BOWS tab): BOW, CROSSBOW (fast bolts), ENCHANTED BOW (3 magic arrows that go
+  through bad guys) and FLAME BOW. Switch to Blocky and tap **SHOOT**.
+* **Crazy mushrooms** for boss fights: when a boss fight starts, a CRAZY FIRE and a CRAZY ICE mushroom pop out.
+  Rocco throws three GIANT bouncing fireballs, or giant ice balls that **freeze** bad guys solid, for 20 seconds.
 * **Funny scenes** every couple of levels (5 seconds, tap to skip): Rocco eats a donut ("OH YA!"), slips on a
   banana peel, sneezes his hat off (and knocks Blocky over), has a dance party with his Pokemon, gets a pie
   in the face, does a giant burp, naps on a mushroom, has his mustache stolen by Dennis, gets tickled by his

@@ -63,7 +63,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         /** After getting hurt, nothing can hurt you again for this long (a bit longer than before). */
         const val HURT_SAFE_TIME = 2.1f
         /** Houses, beds and furniture are bought in the SHOP at home now, not crafted. */
-        val TABS = listOf("FLOWERS", "SUPPLIES", "WEAPONS", "ARMOR", "SHIELDS")
+        val TABS = listOf("FLOWERS", "SUPPLIES", "WEAPONS", "BOWS", "ARMOR", "SHIELDS")
         /** How close bad guys have to be for the Black Flower to get them. */
         const val BLACK_RANGE = 170f
     }
@@ -443,6 +443,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         private set
     /** Metal Rocco: can't be hurt, and he's so heavy he walks on the sea floor. */
     var metalT = 0f
+    /** Blocky's bow (made at the crafting table, BOWS tab). */
+    var bow = Bow.NONE
+    private var bowCooldown = 0f
+    /** Crazy mushrooms (in boss fights): giant fireballs or ice balls for a while. */
+    var crazyFireT = 0f
+    var crazyIceT = 0f
         private set
     val metal get() = metalT > 0f
     var wingT = 0f
@@ -531,6 +537,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         for (m in Mon.entries) storage.save(key("monXp${m.ordinal}"), monXp[m.ordinal])
         storage.save(key("houseColor"), houseColor)
         storage.save(key("floors"), houseFloors)
+        storage.save(key("bow"), bow.ordinal)
         storage.save(key("swords"), swordsOwned)
         storage.save(key("swordHp"), swordHp)
         storage.save(key("pickHp"), pickHp)
@@ -606,6 +613,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         for (m in Mon.entries) monXp[m.ordinal] = storage.load(key("monXp${m.ordinal}"))
         houseColor = storage.load(key("houseColor")).coerceIn(0, Homes.PAINTS.lastIndex)
         houseFloors = storage.load(key("floors")).coerceIn(1, Homes.MAX_FLOORS)
+        bow = Bow.entries.getOrElse(storage.load(key("bow"))) { Bow.NONE }
         monEnergy = 5
         swordsOwned = storage.load(key("swords"))
         armorType = Armor.entries.getOrElse(storage.load(key("armorType"))) { Armor.NONE }
@@ -642,7 +650,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     fun eraseSlot(s: Int) {
-        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "armorType", "armorHp", "blackFlowers", "shieldType", "shieldHp", "swordHp", "pickHp", "houseType", "furniture", "furniture2", "plushies", "plush0", "plush1", "plush2", "plush3", "beds", "bedStyle", "unlocked", "clearedLo", "clearedHi", "cleared2", "cleared3", "cleared4", "cleared5", "stickersLo", "stickersHi", "houseColor", "floors", "scenes", "houseLevel", "houseX", "houseY", "bed", "bedLevel", "spotLevel", "spotX", "spotY")) {
+        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "armorType", "armorHp", "blackFlowers", "shieldType", "shieldHp", "swordHp", "pickHp", "houseType", "furniture", "furniture2", "plushies", "plush0", "plush1", "plush2", "plush3", "beds", "bedStyle", "unlocked", "clearedLo", "clearedHi", "cleared2", "cleared3", "cleared4", "cleared5", "stickersLo", "stickersHi", "houseColor", "floors", "scenes", "bow", "houseLevel", "houseX", "houseY", "bed", "bedLevel", "spotLevel", "spotX", "spotY")) {
             storage.save(key(name, s), 0)
         }
         Ore.entries.forEach { storage.save(key("ore_${it.name}", s), 0) }
@@ -668,6 +676,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         monXp.fill(0)
         houseColor = 0
         houseFloors = 1
+        bow = Bow.NONE
         monEnergy = 5
         swordsOwned = 0
         swordHp = 0
@@ -1219,6 +1228,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
         if (tanookiT > 0) tanookiT -= dt
         if (metalT > 0) { metalT -= dt; if (metalT <= 0f) toast("Metal Rocco wore off!") }
+        if (crazyFireT > 0) crazyFireT -= dt
+        if (crazyIceT > 0) crazyIceT -= dt
+        if (bowCooldown > 0) bowCooldown -= dt
         if (wingT > 0) {
             wingT -= dt
             if (wingT in 0f..3f && (wingT * 4).toInt() != ((wingT + dt) * 4).toInt()) sfx(Sound.BUMP)
@@ -1264,6 +1276,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             actionBufT = 0f
             action(l)
         }
+        // Blocky's bow uses the button Rocco uses for his long jump.
+        if (longE && l.who == Who.BLOCKY && bow != Bow.NONE && bowCooldown <= 0f && riding == null) shootBow(l)
         updateWater(dt)
         updateSpikes(dt)
         updateDog(dt)
@@ -1281,6 +1295,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         pending.clear()
         for (f in foes) {
             if (!f.active && f.x < camX + viewW + 48 && f.x + f.w > camX - 48) f.active = true
+            if (f.frozenT > 0f) { f.frozenT -= dt; continue }
             if (f.active) f.update(this, dt)
         }
         for (t in things) if (t.active || (t.x < camX + viewW + 32)) { t.active = true; t.update(this, dt) }
@@ -1304,7 +1319,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun swap() = switchTo(nextWho())
 
     /** Puts [who] in charge. Rocco and Blocky trade places, since only one of them is out at a time. */
-    private fun switchTo(who: Who) {
+    internal fun switchTo(who: Who) {
         if (who == leaderWho) return
         if (dino != null) dismount()
         val old = leader
@@ -1803,9 +1818,38 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
     }
 
+    private fun shootBow(h: Hero) {
+        bowCooldown = bow.cooldown
+        h.swing = 0.15f
+        val sx = if (h.facing > 0) h.x + h.w else h.x - 12
+        val sy = h.y + 9
+        if (bow == Bow.ENCHANTED) for (k in -1..1) spawn(HeroArrow(sx, sy, h.facing, bow, k * 70f))
+        else spawn(HeroArrow(sx, sy, h.facing, bow))
+        sfx(Sound.KICK)
+    }
+
+    /** A crazy mushroom: giant fireballs (or ice balls) for 20 seconds. */
+    fun startCrazy(fire: Boolean) {
+        if (riding == null && dino == null) switchTo(Who.ROCCO)
+        if (fire) { crazyFireT = 20f; crazyIceT = 0f } else { crazyIceT = 20f; crazyFireT = 0f }
+        sfx(Sound.POWERUP)
+        sound.sayAs(if (fire) "Crazy fire! Wahoo!" else "Crazy ice! Brrr!", Voice.HERO)
+        toast(if (fire) "CRAZY FIRE MUSHROOM! Throw GIANT bouncing fireballs!" else "CRAZY ICE MUSHROOM! Throw GIANT ice balls that freeze bad guys!")
+    }
+
+    private fun throwCrazy(h: Hero) {
+        val fire = crazyFireT > 0f
+        h.cooldown = 0.35f
+        if (things.count { it is CrazyBall } >= 6) return
+        val sx = if (h.facing > 0) h.x + h.w else h.x - 16
+        for (k in 0 until 3) spawn(CrazyBall(sx, h.y + 4, h.facing, fire, -20f - k * 120f))
+        sfx(if (fire) Sound.BOSS_FIRE else Sound.FIRE)
+    }
+
     private fun throwPower(h: Hero) {
         h.cooldown = 0.3f
         h.swing = 0.15f
+        if ((crazyFireT > 0f || crazyIceT > 0f) && !h.mini) { throwCrazy(h); return }
         if (tanookiT > 0 && !h.mini) { tailSpin(h); return }
         if (power == Power.NONE) {
             val reach = Body(if (h.facing > 0) h.x + h.w - 2 else h.x - 10, h.y + 4, 12f, 12f)
@@ -2013,12 +2057,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     // ======================================================================== Crafting
 
-    enum class Kind { FLOWER, PICK, HEART, APPLE, TNT, TRAP, STAR, MINI, HOUSE, BED, SWORD, ARMOR, BLACK, SHIELD }
+    enum class Kind { FLOWER, PICK, HEART, APPLE, TNT, TRAP, STAR, MINI, HOUSE, BED, SWORD, ARMOR, BLACK, SHIELD, BOW }
 
     class Recipe(
         val title: String, val note: String, val costs: List<Pair<Ore, Int>>, val coinCost: Int,
         val button: String, val enabled: Boolean, val icon: Power?, val kind: Kind, val sword: Sword = Sword.NONE,
         val armor: Armor = Armor.NONE, val shield: Shield = Shield.NONE, val house: HouseType = HouseType.COTTAGE,
+        val bow: Bow = Bow.NONE,
     )
 
     private fun has(costs: List<Pair<Ore, Int>>, coinCost: Int) =
@@ -2088,6 +2133,15 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             // Rare and pricey: the one-time Black Flower.
             val c = listOf(Ore.DIAMOND to 3, Ore.AMETHYST to 3, Ore.EMERALD to 3)
             listOf(Recipe("BLACK FLOWER", "One use: gets EVERY bad guy near you! Have $blackFlowers", c, 20, "MAKE", has(c, 20), null, Kind.BLACK))
+        }
+        "BOWS" -> Bow.entries.filter { it != Bow.NONE }.map { b ->
+            val (button, enabled) = when {
+                bow == b -> "READY" to false
+                bow != Bow.NONE && b.ordinal < bow.ordinal -> "BETTER" to false
+                else -> "MAKE" to has(b.costs, b.coins)
+            }
+            val note = if (bow == b) "Blocky's SHOOT button fires it" else "${b.note}. Blocky only"
+            Recipe(b.label, note, b.costs, b.coins, button, enabled, null, Kind.BOW, bow = b)
         }
         "ARMOR" -> Armor.entries.filter { it != Armor.NONE }.map { a ->
             val c = listOf(a.ore!! to a.cost)
@@ -2177,6 +2231,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 blackFlowers++
                 toast("A BLACK FLOWER! Tap its button to use it (just once).")
                 color = 0xFFC060FF.toInt()
+            }
+            Kind.BOW -> {
+                bow = r.bow
+                toast("${r.bow.label}! Switch to Blocky and tap SHOOT.")
+                color = r.bow.color
             }
             Kind.SWORD -> {
                 swordsOwned = 1 shl r.sword.ordinal
@@ -2678,6 +2737,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                         starT > 0 -> f.hit(this, 3)
                         metal && h === rocco -> f.hit(this, 4)
                         h.shellSpin && !f.boss -> { f.hit(this, 1 + flowerLevel[Power.SHELL.ordinal] / 2); h.vx = -h.vx * 0.5f }
+                        f.frozenT > 0f -> {}
                         else -> f.touch(this)
                     }
                 }
@@ -2843,6 +2903,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     internal fun houseForTest() = house
     internal fun unlockForTest(n: Int) { unlocked = n }
     internal fun clearForTest(i: Int) { cleared[i] = true }
+    internal fun openCraftForTest(tab: Int) { craftTab = tab; setState(State.CRAFT) }
+    internal fun closeCraftForTest() = setState(State.PLAY)
     internal fun shopTabForTest(t: Int) { shopTab = t; homeShop = true }
     internal fun monButtonForTest(i: Int) = monButton(i)
     internal fun isQuakeLevelForTest(i: Int) = isQuakeLevel(i)
@@ -2915,6 +2977,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     fun onBossEngaged(f: Foe) {
         if (boss != null) return
         boss = f
+        // Two crazy mushrooms pop out to help: fire and ice.
+        spawn(CrazyMushroom(leader.cx - 30f, leader.y - 20f, true))
+        spawn(CrazyMushroom(leader.cx + 10f, leader.y - 20f, false))
         val home = when (f) {
             is KragJr -> f.homeX
             is KingKrag -> f.homeX
@@ -3146,13 +3211,16 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                             l.who == Who.MON && mon == Mon.PUNCHO -> "PUNCH"
                             l.who == Who.BLOCKY -> "MINE"
                             l.who == Who.MON -> if (mon == Mon.BLOOM) "VINE" else "ATTACK"
+                            crazyFireT > 0f -> "FIRE!"
+                            crazyIceT > 0f -> "ICE!"
                             power == Power.NONE -> "PUNCH"
                             else -> "THROW"
                         }
                         val next = allHeroes.first { it.who == nextWho() }
                         TeamControls.draw(
                             gfx, input, viewW, label, next.label, next.color, superCharge, mon.color, time,
-                            tnt, coins >= POSEIDON_COST, l.who == Who.ROCCO && riding == null, l.sprinting, blackFlowers,
+                            tnt, coins >= POSEIDON_COST, (l.who == Who.ROCCO || (l.who == Who.BLOCKY && bow != Bow.NONE)) && riding == null,
+                            l.sprinting, blackFlowers, if (l.who == Who.BLOCKY) "SHOOT" to bow.short else "LONG" to "JUMP",
                         )
                         TeamControls.drawTop(gfx, viewW, musicOn, canCraftSomething, time)
                     }
@@ -3228,6 +3296,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         for (t in things) if (t !is Shot && t !is MonShot && t !is Frog && t !is House) t.draw(this, gfx, ox)
         for (f in foes) if (f.x + f.w > cam - 40 && f.x < cam + viewW + 40) {
             f.draw(this, gfx, ox)
+            if (f.frozenT > 0f) gfx.rect(f.x + ox - 2, f.y - 2, f.w + 4, f.h + 4, 0x887FD8FF.toInt())
             f.drawHealth(gfx, ox)
         }
         for (h in followers) h.draw(this, gfx, ox)
@@ -4865,6 +4934,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 r.kind == Kind.HOUSE -> Homes.drawHouse(ScaledGfx(gfx, 0.28f, px + 3, y + 3), r.house, 4f, 72f, time)
                 r.kind == Kind.BED -> TeamArt.bed(gfx, px + 2, y + 20)
                 r.kind == Kind.SWORD -> TeamArt.sword(gfx, px + 7, y + 20, -0.8f, r.sword)
+                r.kind == Kind.BOW -> drawBowIcon(gfx, px + 6, y + 4, r.bow)
                 r.kind == Kind.BLACK -> TeamArt.blackFlower(gfx, px + 5, y + 3, 19f, time)
                 r.kind == Kind.SHIELD -> TeamArt.shieldIcon(gfx, px + 7, y + 4, 15f, r.shield)
                 r.kind == Kind.ARMOR -> {
