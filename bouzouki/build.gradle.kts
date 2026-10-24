@@ -73,6 +73,7 @@ kotlin {
 
 dependencies {
     implementation(project(":bouzouki-core"))
+    implementation(project(":hero-core"))
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.31.0")
     implementation("com.github.teamnewpipe:NewPipeExtractor:v0.26.5")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.5")

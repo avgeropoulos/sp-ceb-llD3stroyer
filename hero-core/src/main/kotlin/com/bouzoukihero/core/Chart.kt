@@ -124,6 +124,32 @@ object Charts {
     private fun buildTab(sorted: List<SourceNote>, difficulty: Difficulty): List<Gem> {
         val pitches = sorted.map { Fretboard.fitToRange(it.pitch) }
         val pos = Fretboard.assign(pitches, sorted.map { it.time })
+        return tabGems(sorted, pos, difficulty, Fretboard.labels)
+    }
+
+    /**
+     * A note that already has its place on the neck, from a tab (e.g. a song prepared by the
+     * Μπουζούκι app): [course] counts from the lowest course.
+     */
+    data class TabNote(val time: Double, val duration: Double, val midi: Int, val course: Int, val fret: Int, val tremolo: Boolean = false)
+
+    /** Notes for [difficulty] from a ready-made tab, keeping its frets; [courseLabels] lowest first. */
+    fun fromTab(notes: List<TabNote>, difficulty: Difficulty, courseLabels: List<String>): List<Gem> {
+        val sorted = notes.filter { it.duration >= 0 && it.time >= 0 && it.fret >= 0 }.sortedBy { it.time }
+        if (sorted.isEmpty()) return emptyList()
+        return tabGems(
+            sorted.map { SourceNote(it.time, it.duration, it.midi, it.tremolo) },
+            sorted.map { Fretboard.Position(it.course, it.fret) }, difficulty, courseLabels,
+        )
+    }
+
+    /** Course names from their open notes, lowest first; a repeated name is lowercase on the lower course (d A D). */
+    fun courseLabels(openMidi: List<Int>): List<String> {
+        val names = openMidi.map { noteName(it) }
+        return names.mapIndexed { i, n -> if (names.drop(i + 1).contains(n)) n.lowercase() else n }
+    }
+
+    private fun tabGems(sorted: List<SourceNote>, pos: List<Fretboard.Position>, difficulty: Difficulty, labels: List<String>): List<Gem> {
         val keep = thin(sorted, difficulty)
         val gems = ArrayList<Gem>(keep.size)
         var base = pos.firstOrNull { it.fret > 0 }?.fret ?: 1
@@ -140,7 +166,7 @@ object Charts {
             gems.add(
                 Gem(
                     n.time, holdEnd(n, next, difficulty), FINGER_LANES[difficulty.lanes]!![finger],
-                    Fretboard.labels[p.course] + p.fret, n.tremolo, base,
+                    labels.getOrElse(p.course) { "" } + p.fret, n.tremolo, base,
                 )
             )
         }

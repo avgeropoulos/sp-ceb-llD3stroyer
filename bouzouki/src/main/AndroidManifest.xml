@@ -42,6 +42,19 @@
              would otherwise start a new one in the sending app's task). Turned sideways (as auto-rotate
              allows) it shows the whole bouzouki, without being made again. -->
         <activity
+            android:name=".hero.HeroMenuActivity"
+            android:exported="false"
+            android:label="Bouzouki Hero"
+            android:screenOrientation="portrait" />
+
+        <activity
+            android:name=".hero.HeroActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation" />
+
+        <activity
             android:name=".SongActivity"
             android:exported="true"
             android:label="Μπουζούκι · play along"

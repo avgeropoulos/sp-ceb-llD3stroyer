@@ -41,6 +41,23 @@ class TabTest {
         }
     }
 
+    @Test fun keepsTheFretsOfAPreparedSong() {
+        // A song prepared by the Μπουζούκι app on a trichordo: its frets are used as they are.
+        val labels = Charts.courseLabels(listOf(50, 57, 62))
+        assertEquals(listOf("d", "A", "D"), labels)
+        assertEquals(listOf("C", "F", "A", "D"), Charts.courseLabels(listOf(48, 53, 57, 62)))
+        val notes = listOf(
+            Charts.TabNote(1.0, 0.2, 69, 1, 12), Charts.TabNote(1.5, 0.2, 67, 2, 5),
+            Charts.TabNote(2.0, 1.2, 66, 2, 4, tremolo = true), Charts.TabNote(3.5, 0.2, 62, 2, 0),
+        )
+        val gems = Charts.fromTab(notes, Difficulty.HARD, labels)
+        assertEquals(listOf("A12", "D5", "D4", "D0"), gems.map { it.label })
+        // The hand starts with finger 1 at fret 12, then moves down to 5 and 4.
+        assertEquals(listOf(12, 5, 4, 4), gems.map { it.base })
+        assertEquals(listOf(1, 1, 1, 0), gems.map { it.lane })
+        assertTrue(gems[2].isHold && gems[2].tremolo)
+    }
+
     @Test fun recordedChartsKeepTheirLanes() {
         val notes = listOf(0, 4, 2).mapIndexed { i, p -> SourceNote(i.toDouble(), 0.1, p) }
         val g = Charts.build(notes, Difficulty.EXPERT, labels = false, buttons = Buttons.TAB)

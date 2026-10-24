@@ -1,113 +1,39 @@
-# Rocco's Quest and Bouzouki Hero
+# Rocco's Quest and Μπουζούκι
 
-This repository has two Android games:
+This repository has two Android apps:
 
-* **[Bouzouki Hero](#bouzouki-hero)**: a rhythm game like Guitar Hero, but for bouzouki. Play it
-  with built-in songs or with any song from YouTube.
+* **[Μπουζούκι](#μπουζούκι-the-greek-bouzouki-app)**: a playable Greek bouzouki that prepares the
+  bouzouki tab of YouTube songs on the phone, with the **Bouzouki Hero** game inside.
 * **[Rocco's Quest](#roccos-quest)**: a retro side-scrolling platformer.
 
-## Bouzouki Hero
+## Bouzouki Hero (in Μπουζούκι)
 
 <img src="docs/hero.png" width="300" alt="Bouzouki Hero gameplay">
 
-Notes shaped like plectrums come down a bouzouki neck. When a note reaches the bottom, tap
-the button in its lane.
+A rhythm game like Guitar Hero, for bouzouki. Open it from **🎮 Bouzouki Hero** on Μπουζούκι's first
+screen, or tap **🎮** on the song screen to play the song you're looking at.
 
-The buttons follow the tab, worked out the way [Bouzouki Tabs](https://github.com/avgeropoulos/bouzouki-tabs)
-does it (the same course-and-fret search, ported to the phone). Each note shows its tab, like
-`D7` for the D course, fret 7. The buttons are your fingers: the left one is the open string,
-then fingers 1 to 4 at the hand's current position, and each button shows which fret it is
-right now (e.g. `0 5 6 7 8`). When the tab moves up or down the neck, the fret numbers on the
-buttons move with it. Easy and Medium have fewer buttons, so some buttons cover two frets. In
-**Settings** you can switch to note buttons instead: low notes on the left, high notes on the
-right. If you hit notes in a row, your multiplier goes up to x4. Long notes and
-tremolo become **hold notes**: keep your finger down until the tail ends. Hitting notes
-fills the **OPA!** meter. Once it's half full, tap it to score double points and send plates
-flying.
+**Songs come from Μπουζούκι's own analysis.** Prepare a song in **🎵 Play along with a YouTube song**
+(search or paste a link). Μπουζούκι reads its audio, removes the singer, transcribes it with Basic Pitch
+and fingers the bouzouki line. Every prepared YouTube song then appears in Bouzouki Hero, and its notes
+are that tab, fingered for the bouzouki you chose (trichordo or tetrachordo). The video plays at the top
+while you play. Four original built-in songs are there too.
 
-### Difficulties
+**The buttons follow the tab.** Each note shows its course and fret (`D7` is the D course, fret 7;
+trichordo courses are `d A D`). The buttons are your fingers: the left one is the open string, then
+fingers 1 to 4 at the hand's current position, and each button shows which fret it is right now
+(e.g. `0 5 6 7 8`). When the tab moves up or down the neck, the numbers move with it.
 
 | | Buttons | Notes |
 |---|---|---|
-| Easy | 3 | Only the main notes, falling slowly, with a wide timing window |
-| Medium | 4 | More of the melody |
+| Easy | 3 (some cover two frets) | Only the main notes, falling slowly, with a wide timing window |
+| Medium | 4 | More of the line |
 | Hard | 5 | Fast runs included |
 | Expert | 5 | Every note, falling fast, with tight timing |
 
-Every chart is made from the song's real melody, so the same song works on all four
-difficulties. Each one gets a 1 to 5 star rating and a best score.
-
-### Songs
-
-Four original songs come with the game. The phone synthesizes them, so there are no audio
-files. Each is in a Greek rhythm and dromos:
-*Kafeneio Tsifteteli* (Ousak), *Harbour Hasapiko* (Hitzaz), *Kalamatiano by the Sea* (7/8) and
-*Fast Hands Serviko* (a fast one for Expert). When you miss a note, the bouzouki drops out of
-the mix until you hit one again.
-
-### Real bouzouki sound
-
-Open **Bouzouki sound** in the menu and record notes from your own bouzouki. Pluck one open
-course at a time and let it ring. The app hears each note's pitch, and the built-in songs are
-then played with your real recordings instead of the synthesizer. Each note uses the recording
-closest in pitch, retuned to the right note. One recording per course (C, F, A, D) covers the
-whole neck, and more recordings sound more natural. You can also import single-note
-recordings (WAV, MP3, M4A or OGG). Recordings with licenses that allow it can be bundled with
-the app in `hero-app/src/main/assets/bouzouki/`. The bass, chords and drums are still
-synthesized. YouTube songs play the video's own audio, so you hear the real record.
-
-### YouTube songs
-
-Tap **Search YouTube**, type a song or artist (or paste a link), and tap a result. You can also
-share a video from the YouTube app to Bouzouki Hero. If the right video isn't in the list, tap
-**Search on YouTube** to browse YouTube's own site inside the app; opening a video picks it. A
-free YouTube Data API key in **Settings** makes the built-in search use YouTube's official API.
-
-Once you pick a song, the app plays the video once and listens to make the chart (see
-**Automatic** below), then starts the game. If you only want the bouzouki solo, set a start and end time. The video plays
-at the top of the screen and the notes stay in time with it. There are three ways to make the
-chart:
-
-* **Automatic** (what happens when you add a song). The app listens to the video as it plays and
-  finds the bouzouki notes itself,
-  like Bouzouki Tabs does, but on the phone. On Android 10 and newer, it captures its own sound
-  directly. Android asks once per song whether the app may capture what it plays. On older
-  phones, or if you say no, it listens through the microphone, so turn the volume up. It finds
-  plucks by the plectrum's bright attack, works out each note's pitch from its harmonics, and
-  turns fast repeated picking into tremolo. The notes appear on the neck as they're found, and
-  when the video ends (or you tap DONE) the chart is saved. The phone can't run Bouzouki Tabs'
-  neural network that separates the instruments, so a loud singer or another string instrument
-  can add extra notes. On busy records it loosens its filter until it has enough notes to play,
-  so the notes stay in time with the music even when some pitches come from the singer. A meter
-  at the top shows that the app can hear the video. For the cleanest result, set a start and end
-  around a bouzouki solo, or use Bouzouki Tabs (long-press the song).
-
-* **From Bouzouki Tabs.** Your [Bouzouki Tabs](https://github.com/avgeropoulos/bouzouki-tabs)
-  app finds the bouzouki notes for you. Run its web app on a computer on the same Wi-Fi:
-
-  ```sh
-  bouzouki-tabs-web --host 0.0.0.0
-  ```
-
-  In Bouzouki Hero, open **Settings** and enter the computer's address, e.g.
-  `http://192.168.1.20:8000`. Then pick **Bouzouki Tabs** for a song. The phone sends the video
-  to Bouzouki Tabs, shows its progress, and builds the chart from the notes it finds, including
-  tremolo.
-* **Tap along.** Play the video and tap a button for each note you hear: higher buttons for
-  higher notes, and hold the button for long notes. Tap **DONE** to save the chart. You can then
-  play it on any difficulty.
-
-Some uploaders don't allow their videos to play inside other apps. If a video won't play, try
-another upload of the same song.
-
-### Settings
-
-* **Bouzouki Tabs address**: where your Bouzouki Tabs web app is running.
-* **YouTube API key** (optional): makes search use the official YouTube API.
-* **Sound delay**: if your taps always come out late, for example with Bluetooth headphones,
-  raise this.
-
-Keyboards also work: keys 1-5 (or A S D F G) are the five buttons.
+Long notes and tremolo are hold notes. Hitting notes in a row raises a multiplier up to x4, and the
+**OPA!** meter, once half full, gives double points for a while. Each song and difficulty keeps a best
+score and a 1 to 5 star rating.
 
 # Rocco's Quest
 
@@ -222,7 +148,7 @@ Every push builds an APK with GitHub Actions (see `.github/workflows/android.yml
 
 1. On your phone, open one of these links in Chrome. Both APKs are also in the latest release
    on the repository page.
-   * **https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/BouzoukiHero.apk**
+   * **https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/Bouzouki.apk** (Μπουζούκι, with Bouzouki Hero)
    * **https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/RoccosQuest.apk**
 2. Download the APK and open it. If Android asks, allow your browser to install unknown apps.
 3. To update, download the newest APK and open it. It installs over the old version and keeps
@@ -236,7 +162,7 @@ You need JDK 17 and the Android SDK (Android Studio installs both).
 
 ```sh
 ./gradlew :app:assembleDebug       # Rocco's Quest: app/build/outputs/apk/debug/app-debug.apk
-./gradlew :hero-app:assembleDebug  # Bouzouki Hero: hero-app/build/outputs/apk/debug/hero-app-debug.apk
+./gradlew :bouzouki:assembleDebug  # Μπουζούκι with Bouzouki Hero: bouzouki/build/outputs/apk/debug/bouzouki-debug.apk
 ./gradlew :core:test               # game-logic tests; also renders screenshots to core/build/screens
                                    # and the music to core/build/music/*.wav
 ./gradlew :hero-core:test          # the same for Bouzouki Hero (hero-core/build/screens and /music)

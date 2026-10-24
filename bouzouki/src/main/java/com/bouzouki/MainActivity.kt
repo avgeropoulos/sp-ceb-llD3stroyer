@@ -144,6 +144,16 @@ class MainActivity : Activity() {
             topMargin = px(10)
         })
 
+        // Bouzouki Hero: play a prepared song's tab as a game.
+        controls.addView(ui.chip("🎮  Bouzouki Hero") {
+            startActivity(Intent(this, com.bouzouki.hero.HeroMenuActivity::class.java))
+        }.apply {
+            textSize = 16f
+            minHeight = px(56)
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = px(10)
+        })
+
         // Update straight from GitHub, no browser needed.
         updateButton = ui.chip("Checking for updates…") { onUpdateClicked() }
         controls.addView(updateButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {

@@ -341,6 +341,8 @@ class SongActivity : Activity() {
             addView(dromosText, ui.weighted(3f))
             addView(useDromosButton, wrapped())
             addView(tabButton, wrapped())
+            // Play this song's tab in Bouzouki Hero.
+            addView(ui.chip("🎮") { playHero() }.apply { contentDescription = "Play in Bouzouki Hero" }, wrapped())
         })
         // How far the record is tuned from A = 440 Hz, only when that's clearly off (old records often are).
         tuningText = TextView(this).apply {
@@ -561,6 +563,21 @@ class SongActivity : Activity() {
     }
 
     // --- loading a song ---
+
+    /** Opens Bouzouki Hero with the song shown here, once it's prepared (YouTube songs: the game plays the video). */
+    private fun playHero() {
+        val id = currentId
+        when {
+            id == null || song == null -> status.text = "Prepare a YouTube song first: then 🎮 plays its tab in Bouzouki Hero."
+            id.startsWith("file-") -> status.text = "Bouzouki Hero plays YouTube songs (it shows the video while you play)."
+            else -> {
+                val d = getSharedPreferences("hero", MODE_PRIVATE).getString("difficulty", null)
+                    ?.let { n -> com.bouzoukihero.core.Difficulty.entries.firstOrNull { it.name == n } }
+                    ?: com.bouzoukihero.core.Difficulty.EASY
+                startActivity(com.bouzouki.hero.HeroActivity.intent(this, com.bouzouki.hero.HeroActivity.KIND_SONG, id, d))
+            }
+        }
+    }
 
     private fun openYouTube(id: String, startJob: Boolean) {
         stopFile()
