@@ -670,7 +670,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     fun eraseSlot(s: Int) {
-        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "armorType", "armorHp", "blackFlowers", "shieldType", "shieldHp", "swordHp", "pickHp", "houseType", "furniture", "furniture2", "plushies", "plush0", "plush1", "plush2", "plush3", "beds", "bedStyle", "unlocked", "clearedLo", "clearedHi", "cleared2", "cleared3", "cleared4", "cleared5", "stickersLo", "stickersHi", "houseColor", "floors", "scenes", "bow", "houseLevel", "houseX", "houseY", "bed", "bedLevel", "spotLevel", "spotX", "spotY")) {
+        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "armorType", "armorHp", "blackFlowers", "shieldType", "shieldHp", "swordHp", "pickHp", "houseType", "furniture", "furniture2", "plushies", "plush0", "plush1", "plush2", "plush3", "beds", "bedStyle", "unlocked", "clearedLo", "clearedHi", "cleared2", "cleared3", "cleared4", "cleared5", "cleared6", "stickersLo", "stickersHi", "houseColor", "floors", "scenes", "bow", "houseLevel", "houseX", "houseY", "bed", "bedLevel", "spotLevel", "spotX", "spotY")) {
             storage.save(key(name, s), 0)
         }
         Ore.entries.forEach { storage.save(key("ore_${it.name}", s), 0) }
@@ -804,6 +804,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 '3' -> foes += KingBooHoo(px, bottom)
                 '4' -> foes += WitchBoss(px, bottom)
                 '2' -> foes += Witch(px, bottom)
+                '6' -> foes += Snowman(px, bottom)
+                '7' -> foes += Penguin(px, bottom)
+                '8' -> foes += HammerHank(px, bottom)
+                '9' -> foes += Chompy(px, bottom)
+                '0' -> foes += ZoomerLauncher(px, bottom)
+                '1' -> foes += Gummy(px, bottom)
+                'S' -> foes += RockStarKrag(px, bottom)
                 'Z' -> foes += EnderDragon(px, ty * TILE.toFloat())
                 'n' -> foes += Enderman(px, bottom)
                 'f' -> foes += Fish(px, bottom)
@@ -3163,6 +3170,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             is Warden -> f.homeX
             is WitchBoss -> f.homeX
             is KingBooHoo -> f.homeX
+            is RockStarKrag -> f.homeX
             is EnderDragon -> f.homeX + f.w / 2 - 16f
             else -> f.x
         }
@@ -3209,6 +3217,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             f is KingBooHoo -> {
                 bannerTitle = "KING BOO-HOO!"
                 bannerSub = "He hides his face when you look at him: that's when you hit him!"
+                sfx(Sound.BOSS_FIRE)
+            }
+            f is RockStarKrag -> {
+                bannerTitle = "ROCK STAR KRAG!"
+                bannerSub = "Dodge the music notes and JUMP over the power chord waves!"
                 sfx(Sound.BOSS_FIRE)
             }
             f is WitchBoss -> {
@@ -3320,6 +3333,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             boss is Warden && !bossDone -> Music.WARDEN
             boss is WitchBoss && !bossDone -> Music.WITCHY
             boss is KingBooHoo && !bossDone -> Music.SPOOKY
+            boss is RockStarKrag && !bossDone -> Music.RACE
             wonder -> Music.WONDER
             boss != null && !bossDone -> Tunes.bossMusic(levelIndex, fighting = true)
             frog?.singing == true -> Music.FROG
@@ -3348,6 +3362,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             Place.SUNSET -> listOf(Music.STAR, Music.TROPICAL, Music.ADVENTURE)
             Place.SHIP -> listOf(Music.SHANTY, Music.BEACH, Music.TROPICAL, Music.ADVENTURE)
             Place.RAINBOW -> listOf(Music.RACE, Music.STAR, Music.SPACE, Music.WONDER)
+            Place.BLIZZARD -> listOf(Music.SNOW, Music.HEROIC, Music.CRYSTAL)
+            Place.AURORA -> listOf(Music.DREAMY, Music.CRYSTAL, Music.SNOW)
+            Place.CANDY -> listOf(Music.SILLY, Music.PARK, Music.FUNKY)
         }
 
         /** Every level's tune, worked out once in order so it's never the same as the level before. */
@@ -3658,13 +3675,18 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             1 -> Triple(0xFF2A1E48, 0xFF4A3A6A, 0xFF5A4A7A)
             2 -> Triple(0xFF3A8AC8, 0xFFD8A85A, 0xFFE8BA6A)
             4 -> Triple(0xFF1A4A8A, 0xFF3AA8C8, 0xFF5AC8E0)
+            // Spooky World: dark purple. Winter World: snowy white.
+            5 -> Triple(0xFF120A20, 0xFF3A2A4A, 0xFF4A3A5A)
+            6 -> Triple(0xFF3A5A8A, 0xFFE8F0FF, 0xFFFFFFFF)
             else -> Triple(0xFF1A2A4A, 0xFF8AB8D8, 0xFFA8D0E8)
         }
         gfx.rect(0f, 0f, viewW, VIEW_H, sea.toInt())
         // Land
         gfx.oval(-40f, 30f, viewW + 80f, 230f, land.toInt())
         gfx.oval(-20f, 44f, viewW + 40f, 204f, land2.toInt())
-        if (w2) for (k in 0 until 20) gfx.rect((k * 71f) % viewW, (k * 37f) % 30f + 4f, 1.5f, 1.5f, 0xFFFFFFFF.toInt())
+        if (w2 || mapWorld == 5) for (k in 0 until 20) gfx.rect((k * 71f) % viewW, (k * 37f) % 30f + 4f, 1.5f, 1.5f, 0xFFFFFFFF.toInt())
+        // Snow falling on the Winter World map.
+        if (mapWorld == 6) for (k in 0 until 40) gfx.oval((k * 61f + time * 8f) % viewW, (k * 43f + time * 25f) % VIEW_H, 2.5f, 2.5f, 0xDDFFFFFF.toInt())
         // The path between levels
         val levels = mapLevels().toList()
         var prev = if (mapWorld == 0) mapSpot(-1) else null
@@ -5095,6 +5117,49 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 }
             }
             Place.SUNSET -> Sunset.drawSky(gfx, viewW, VIEW_H, cam, time)
+            Place.BLIZZARD -> {
+                gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF8A9CB4.toInt())
+                layer(cam, 0.2f, 220f) { i, x ->
+                    gfx.poly(floatArrayOf(x, x + 90, x + 180), floatArrayOf(210f, 100f - (i % 3) * 15, 210f), 0xFF6A7C94.toInt())
+                    gfx.poly(floatArrayOf(x + 70, x + 90, x + 110), floatArrayOf(120f - (i % 3) * 15, 100f - (i % 3) * 15, 120f - (i % 3) * 15), white)
+                }
+                // Snow blowing sideways in the wind.
+                for (i in 0 until 45) {
+                    val fx = (i * 73f - time * 140f - cam * 0.6f).mod(viewW + 20f) - 10f
+                    val fy = (i * 37f + time * 40f + i * i) % VIEW_H
+                    gfx.rect(fx, fy, 6f, 1.5f, 0xCCFFFFFF.toInt())
+                }
+            }
+            Place.AURORA -> {
+                gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF0A1A30.toInt())
+                for (i in 0 until 30) gfx.rect((i * 97f - cam * 0.05f).mod(viewW), (i * 53f) % 120f, 1.5f, 1.5f, white)
+                // The northern lights: wavy green and purple curtains.
+                for (band in 0 until 3) {
+                    val n = 12
+                    val xs = FloatArray(n * 2)
+                    val ys = FloatArray(n * 2)
+                    for (k in 0 until n) {
+                        val x = k * viewW / (n - 1)
+                        val y = 40f + band * 18f + sin(time * 0.8f + k * 0.6f + band) * 10f
+                        xs[k] = x; ys[k] = y
+                        xs[n * 2 - 1 - k] = x; ys[n * 2 - 1 - k] = y + 26f
+                    }
+                    gfx.poly(xs, ys, if (band == 1) 0x44C870FF else 0x553CF0A0)
+                }
+                layer(cam, 0.25f, 200f) { i, x -> gfx.oval(x, 165f - (i % 3) * 12f, 220f, 140f, 0xFFDDEEFF.toInt()) }
+            }
+            Place.CANDY -> {
+                gfx.rect(0f, 0f, viewW, VIEW_H, 0xFFFFD0E8.toInt())
+                layer(cam, 0.15f, 170f) { i, x -> cloud(gfx, x, 30f + (i % 3) * 25f) }
+                layer(cam, 0.3f, 130f) { i, x ->
+                    // Gumdrop hills and lollipop trees
+                    gfx.oval(x, 170f - (i % 2) * 14f, 120f, 90f, if (i % 2 == 0) 0xFFB8F0C8.toInt() else 0xFFFFE0A0.toInt())
+                    gfx.rect(x + 60, 110f, 4f, 70f, 0xFFF4F4F4.toInt())
+                    gfx.oval(x + 46, 86f, 32f, 32f, listOf(0xFFFF6A9A, 0xFF6AC8FF, 0xFFFFC82A)[i % 3].toInt())
+                    gfx.oval(x + 54, 94f, 16f, 16f, 0xFFFFFFFF.toInt())
+                    gfx.oval(x + 58, 98f, 8f, 8f, listOf(0xFFFF6A9A, 0xFF6AC8FF, 0xFFFFC82A)[i % 3].toInt())
+                }
+            }
             Place.SHIP -> SeaArt.seaSky(gfx, viewW, VIEW_H, cam, time)
             Place.RAINBOW -> SeaArt.space(gfx, viewW, VIEW_H, cam, time)
             Place.END -> {
@@ -5152,7 +5217,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     Place.DEEP -> TeamArt.deepStone
                     Place.END -> TeamArt.endStone
                     Place.DESERT -> if (under) Sprites.sandstone else Sprites.sandTop
-                    Place.SNOW -> if (under) Sprites.frozenDirt else Sprites.snowTop
+                    Place.SNOW, Place.BLIZZARD, Place.AURORA -> if (under) Sprites.frozenDirt else Sprites.snowTop
+                    Place.CANDY -> if (under) TeamArt.candyDirt else TeamArt.candyTop
                     else -> if (under) Sprites.dirt else Sprites.grassTop
                 }
                 Tile.DIRT -> Sprites.dirt
@@ -5271,6 +5337,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 b is EnderDragon -> "ENDER DRAGON"
                 b is KingBooHoo -> "KING BOO-HOO"
                 b is WitchBoss -> "WITCH WANDA"
+                b is RockStarKrag -> "ROCK STAR KRAG"
                 else -> "KING KRAG"
             }
             val wonderBoss = (b is KragJr && b.wonderStyle) || (b is KingKrag && b.wonderStyle)

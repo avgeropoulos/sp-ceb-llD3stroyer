@@ -104,6 +104,12 @@ enum class Place(val music: Music) {
     SHIP(Music.SHANTY),
     /** Rainbow Road, up among the stars. */
     RAINBOW(Music.STAR),
+    /** World 7: a snowstorm with the wind howling. */
+    BLIZZARD(Music.SNOW),
+    /** World 7: a snowy night with colorful northern lights. */
+    AURORA(Music.DREAMY),
+    /** World 7: Candy Land, with lollipop trees and gumdrop hills. */
+    CANDY(Music.SILLY),
 }
 
 /**
@@ -160,8 +166,8 @@ class Builder(private val w: Int) {
 }
 
 /** Level characters that are bosses: Krag Jr. (J, W), King Krag (K, Q, Y), the Warden (G, and the twins 5),
- * the Ender Dragon (Z), King Boo-Hoo (3) and Witch Wanda (4). */
-const val BOSS_CHARS = "JWKQGYZ345"
+ * the Ender Dragon (Z), King Boo-Hoo (3), Witch Wanda (4) and Rock Star Krag (S). */
+const val BOSS_CHARS = "JWKQGYZ345S"
 
 object Levels {
     val all: List<LevelDef> by lazy {
@@ -171,7 +177,7 @@ object Levels {
             mushroomJungle(), lavaLake(), wonderCastle(),
             villagerValley(), coralReef(), minecartMine(), enderPlains(), deepDark(),
             treasureLagoon(), spikeTemple(), fireFortress(), boneCastle(), theEnd(),
-        ).plus(World2.all).plus(MoreWorlds.all).plus(World5.all).plus(MoreWorlds.world6).mapIndexed { i, d -> remix(d, i) }
+        ).plus(World2.all).plus(MoreWorlds.all).plus(World5.all).plus(MoreWorlds.world6).plus(MoreWorlds.world7).mapIndexed { i, d -> remix(d, i) }
     }
 
     /**
@@ -188,8 +194,16 @@ object Levels {
         for (x in 0 until d.w) for (y in 0 until ROWS) {
             val below = if (y + 1 < ROWS) g[y + 1][x] else '#'
             when (g[y][x]) {
-                'g' -> if (nth('g', 3)) g[y][x] = 'H'
-                'k' -> if (index >= 3 && nth('k', 2)) g[y][x] = 'A'
+                'g' -> when {
+                    nth('g', 3) -> g[y][x] = 'H'
+                    // Worlds 2 to 5 get some of the new World 7 bad guys too.
+                    index in 21..104 && (d.place == Place.SNOW) && nth('S', 2) -> g[y][x] = if (x % 2 == 0) '6' else '7'
+                    index in 21..104 && nth('G', 6) -> g[y][x] = '8'
+                }
+                'k' -> when {
+                    index >= 3 && nth('k', 2) -> g[y][x] = 'A'
+                    index in 42..104 && nth('K', 4) && below in GROUND_CHARS -> g[y][x] = '9'
+                }
                 // Fewer prize blocks: some become plain bricks.
                 'm' -> if (nth('m', 2)) g[y][x] = '?'
                 '?' -> if (nth('?', 3)) g[y][x] = 'B'

@@ -687,6 +687,10 @@ object TeamArt {
         }
     })
 
+    /** Candy Land ground: pink frosting on top, strawberry cake below. */
+    val candyTop: Sprite by lazy { tint(Sprites.grassTop, 1.5f, 0.75f, 1.2f) }
+    val candyDirt: Sprite by lazy { tint(Sprites.dirt, 1.4f, 0.95f, 0.85f) }
+
     /** Dark purple-black obsidian. */
     val obsidian: Sprite = tint(Sprites.hard, 0.35f, 0.22f, 0.5f)
 

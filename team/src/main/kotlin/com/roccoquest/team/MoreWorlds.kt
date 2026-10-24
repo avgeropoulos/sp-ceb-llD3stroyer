@@ -83,6 +83,33 @@ object MoreWorlds {
         Plan("WARDEN TWINS", Place.DEEP, "TWO WARDENS at once! Stay quiet and keep moving!", boss = "55"),
     )
 
+    private val world7Plans = listOf(
+        Plan("SNOWBALL VILLAGE", Place.SNOW, "WORLD 7: WINTER WORLD! Snowmen throw snowballs. Brrr!"),
+        Plan("PENGUIN SLIDE", Place.SNOW, "Penguins slide on their bellies. Jump over them!"),
+        Plan("BLIZZARD PASS", Place.BLIZZARD, "A big snowstorm! Keep going!"),
+        Plan("NORTHERN LIGHTS", Place.AURORA, "Look up: the sky is dancing with colors!"),
+        Plan("CANDY LANE", Place.CANDY, "CANDY LAND! Wobbly gummies hop around."),
+        Plan("ICE CAVERN", Place.CAVE, "A frozen cave full of gems."),
+        Plan("FROZEN FORTRESS", Place.SKY, "KRAG JR. is back, high up in the frozen sky!", boss = "J"),
+        Plan("HAMMER HILLS", Place.SNOW, "HAMMER HANK throws hammers. Watch out!"),
+        Plan("CHOMPY CHASE", Place.HILLS, "CHOMPY is on a chain. Don't get too close!"),
+        Plan("ZOOMER ZONE", Place.BLIZZARD, "ZOOMERS come flying out of the black cannons. Stomp them!"),
+        Plan("GUMDROP MOUNTAINS", Place.CANDY, "Lollipops and gumdrops everywhere."),
+        Plan("AURORA PEAKS", Place.AURORA, "The northern lights over the mountains."),
+        Plan("YETI CAVES", Place.CAVE, "Something big lives in these icy caves..."),
+        Plan("ICE QUEEN'S TOWER", Place.CASTLE, "The Warden came north to freeze you!", boss = "G"),
+        Plan("CHOCOLATE RIVER", Place.CANDY, "Don't fall in the chocolate!"),
+        Plan("SNOWY SKIES", Place.SKY, "Cloud jumping in the snow."),
+        Plan("WHITEOUT", Place.BLIZZARD, "So much snow you can hardly see!"),
+        Plan("FROSTY FOREST", Place.SNOW, "Snowy pine trees and lots of bad guys."),
+        Plan("SUGAR RUSH", Place.CANDY, "Super sweet and super fast!"),
+        Plan("STARLIGHT SUMMIT", Place.AURORA, "The top of the world. The big show is next!"),
+        Plan("ROCK STAR STAGE", Place.CASTLE, "ROCK STAR KRAG! Dodge his music notes and jump the shockwaves!", boss = "S"),
+    )
+
+    /** World 7, Winter World: snow, blizzards, northern lights, Candy Land, and ROCK STAR KRAG. */
+    val world7: List<LevelDef> by lazy { world7Plans.mapIndexed { i, p -> make(p, world = 7, seed = 7000 + i * 31) } }
+
     /** World 6, Spooky World: Peekaboo ghosts, witches, and three new bosses. */
     val world6: List<LevelDef> by lazy { world6Plans.mapIndexed { i, p -> make(p, world = 6, seed = 6000 + i * 29) } }
 
@@ -97,6 +124,7 @@ object MoreWorlds {
         "G" -> deepBoss(p)
         "Z" -> dragonBoss(p)
         "K", "Q", "Y", "3", "4" -> castleBoss(p, p.boss[0])
+        "S" -> rockStage(p)
         "55" -> twinBoss(p)
         else -> rush(p, p.boss)
     }
@@ -104,6 +132,14 @@ object MoreWorlds {
     /** The bad guys each world uses. Air ones go up high; the rest stand on the ground. */
     private fun groundFoes(world: Int, place: Place) = buildString {
         if (world == 6) { append("gkbH2"); if (place == Place.NIGHT || place == Place.CAVE) append("2"); return@buildString }
+        if (world == 7) {
+            append(when (place) {
+                Place.CANDY -> "1g1kH0"
+                Place.SNOW, Place.BLIZZARD, Place.AURORA -> "6789g0"
+                else -> "89gkH0"
+            })
+            return@buildString
+        }
         append("gkbAHUjj")
         if (world >= 4) append("bAnpj")
         if (place == Place.NIGHT || place == Place.END) append("nn")
@@ -111,7 +147,7 @@ object MoreWorlds {
         if (place == Place.DESERT) append("jjb")
     }
 
-    private fun airFoes(place: Place, world: Int = 0) = if (world == 6) "qqv" else when (place) {
+    private fun airFoes(place: Place, world: Int = 0) = if (world == 6) "qqv" else if (world == 7) "vll" else when (place) {
         Place.CAVE, Place.DEEP -> "vvq"
         Place.NIGHT, Place.CASTLE, Place.END -> "qqv"
         else -> "llw"
@@ -252,6 +288,19 @@ object MoreWorlds {
         .row(104, 8, "h").row(122, 8, "h")
         .fill(133, 133, 2, 12, 'X')
         .at(122, 12, boss)
+        .build(p.name, p.place, p.tip)
+
+    /** ROCK STAR KRAG's concert: a long road with bad guys, then a big flat stage (no lava). */
+    private fun rockStage(p: Plan) = Builder(170)
+        .ground(0, 169).fill(0, 169, 0, 1, 'X')
+        .at(3, 12, '@').rock(7, 12, "DoxD", "ssss").row(14, 9, "?h?")
+        .at(22, 12, '8').at(28, 12, '6').at(33, 8, 'v').at(38, 12, '7')
+        .rock(44, 12, "aRe", "sss").at(50, 12, 'r').at(54, 12, '|')
+        .at(60, 12, '1').at(66, 12, '8').row(70, 9, "BhB").at(78, 12, '0')
+        .rock(84, 12, "eDo", "sss").at(92, 12, '|').row(96, 9, "m*m")
+        .row(112, 8, "h").row(134, 8, "h")
+        .fill(150, 150, 2, 12, 'X')
+        .at(128, 12, 'S')
         .build(p.name, p.place, p.tip)
 
     /** The Warden Twins: two Wardens in one dark cave (each one has less health than the big Warden). */

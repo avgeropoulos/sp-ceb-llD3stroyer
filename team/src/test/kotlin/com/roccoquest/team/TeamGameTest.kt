@@ -63,7 +63,7 @@ class TeamGameTest {
         assertTrue(Levels.all.any { d -> d.rows.any { 'Q' in it } }, "Wonder King Krag")
         assertTrue(Levels.all.any { d -> d.rows.any { 'G' in it } }, "the Warden")
         assertTrue(Levels.all.any { d -> d.rows.any { 'Y' in it } }, "Dry Bones King Krag")
-        assertTrue(Levels.all.last().rows.any { '5' in it }, "the Warden Twins are the final bosses")
+        assertTrue(Levels.all.last().rows.any { 'S' in it }, "Rock Star Krag is the final boss")
         assertTrue(Levels.all.any { it.place == Place.WATER && it.shoreX > 0 }, "an underwater level")
         // Every level has Ring-Ding Frog and ore to mine.
         for (def in Levels.all) {
@@ -410,6 +410,7 @@ class TeamGameTest {
         assertEquals("SPOOKY STREET", Levels.all[105].name)
         for ((name, check) in listOf<Pair<String, (Foe) -> Boolean>>(
             "BOO-HOO'S THRONE" to { it is KingBooHoo }, "THE WITCH'S TOWER" to { it is WitchBoss }, "WARDEN TWINS" to { it is Warden },
+            "ROCK STAR STAGE" to { it is RockStarKrag },
         )) {
             startPlaying(Levels.all.indexOfFirst { it.name == name })
             val bosses = game.foes.filter { check(it) }
@@ -423,7 +424,8 @@ class TeamGameTest {
             run(8f) { game.hurtProof() }
             if (name == "THE WITCH'S TOWER") assertTrue(ears.played.contains(Sound.FIRE), "potions thrown")
             if (name == "BOO-HOO'S THRONE") assertTrue(game.foes.any { it is Peekaboo }, "ghosts called")
-            assertEquals(if (name == "THE WITCH'S TOWER") Music.WITCHY else if (name == "WARDEN TWINS") Music.WARDEN else Music.SPOOKY, ears.music)
+            if (name == "ROCK STAR STAGE") assertTrue(game.foes.any { it is NoteShot }, "music notes!")
+            assertEquals(when (name) { "THE WITCH'S TOWER" -> Music.WITCHY; "WARDEN TWINS" -> Music.WARDEN; "ROCK STAR STAGE" -> Music.RACE; else -> Music.SPOOKY }, ears.music)
             var t = 0f
             while (game.state == TeamGame.State.PLAY && t < 60f) {
                 game.hurtProof()
@@ -647,6 +649,31 @@ class TeamGameTest {
         game.spawnForTest(MegaItem(r.x + 30f, r.y)); game.spawnForTest(PropellerItem(r.x + 60f, r.y))
         run(0.2f) { game.hurtProof() }
         shot("power-propeller")
+    }
+
+    @Test fun winterScreenshots() {
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 240 * 3, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f))
+            ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        for (name in listOf("HAMMER HILLS", "BLIZZARD PASS", "NORTHERN LIGHTS", "CANDY LANE", "CHOMPY CHASE")) {
+            startPlaying(Levels.all.indexOfFirst { it.name == name })
+            val f = game.foes.firstOrNull { it is Snowman || it is HammerHank || it is Chompy || it is Gummy || it is Penguin }
+            if (f != null) { game.leader.x = f.x - 100f; game.leader.y = f.y - 20f }
+            run(2.5f) { game.hurtProof() }
+            shot("w7-" + name.lowercase().replace(" ", "-"))
+        }
+        startPlaying(Levels.all.indexOfFirst { it.name == "ROCK STAR STAGE" })
+        val b = game.foes.first { it is RockStarKrag }
+        game.leader.x = b.x - 140f; game.leader.y = 120f
+        run(6.3f) { game.hurtProof() }
+        shot("w7-rock-star")
+        game.unlockForTest(Levels.all.size)
+        game.goToMap(140)
+        run(0.5f)
+        shot("w7-map")
     }
 
     @Test fun funnyScenesAndSpotty() {
@@ -2446,8 +2473,8 @@ class TeamGameTest {
     }
 
     @Test fun fourWorldsAndNewEnemies() {
-        assertEquals(126, Levels.all.size)
-        assertEquals(6, worldCount())
+        assertEquals(147, Levels.all.size)
+        assertEquals(7, worldCount())
         val ultimate = Levels.all.first { it.name == "THE ULTIMATE BATTLE" }
         assertTrue(ultimate.rows.any { 'Z' in it } && ultimate.rows.any { 'Q' in it })
         for (c in "zqlj") assertTrue(Levels.all.count { d -> d.rows.any { c in it } } >= 3, "new monster $c is in levels")

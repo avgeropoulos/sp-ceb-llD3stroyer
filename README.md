@@ -467,6 +467,22 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
 
 ![Witch Wanda](docs/teamup-witch-wanda.png)
 
+### World 7: Winter World (levels 127-147)
+
+* 21 new levels with three new kinds of places: **BLIZZARD** (a snowstorm with snow blowing sideways),
+  **NORTHERN LIGHTS** (a snowy night with green and purple lights dancing in the sky) and **CANDY LAND**
+  (lollipop trees, gumdrop hills and pink frosting ground), plus lots of snowy hills, ice caves and sky levels.
+  The world map is covered in snow.
+* New bad guys: **Snowman** (throws snowballs), **Penguin** (slides on its belly), **Hammer Hank** (throws
+  hammers), **Chompy** (lunges on its chain), **Zoomer** launchers (fire flying bullets: stomp them!) and
+  **Gummies** (hopping candy jellies). Some of them sneak into Worlds 2 to 5 as well.
+* Bosses: Krag Jr. in the frozen sky, the Warden in the Ice Queen's Tower, and at the very end
+  **ROCK STAR KRAG**: King Krag with sunglasses and an electric guitar, blasting wiggly music notes at
+  Rocco and doing POWER CHORD jumps that send shockwaves along the ground (jump over them!).
+
+![Rock Star Krag](docs/teamup-rock-star-krag.png)
+![Candy Land](docs/teamup-candy-land.png)
+
 ### Stickers
 
 After every level you get to **pick one of three stickers**. There are **300** to collect: 60 pictures

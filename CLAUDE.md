@@ -43,7 +43,7 @@ Only one of Rocco or Blocky is out at a time, with the Pokemon (`TeamGame.team` 
 | `TeamLevel.kt` | Tiles, ores, places, the 21 World 1 levels (character grids built with `Builder`), the `remix` pass that sprinkles new monsters/materials/portals into every level, and the bonus room |
 | `World2.kt` | The 21 World 2 levels (22-42) and `WORLD_SIZE`/`worldCount()`/`clearedKey()` |
 | `Sea.kt` | World 5 (levels 85-105: water, pirate ships, Rainbow Road), ship/mast/rainbow tiles (`I` `:` `%`), `Cannon` (`N`), `MetalItem` (`$`), Metal Rocco sprites, sea and space skies |
-| `MoreWorlds.kt` | Worlds 3 and 4 (levels 43-84) and World 6 (Spooky World, levels 106-126, `world6`, appended after World 5), built by a seeded level generator plus boss-arena templates. Last level: THE ULTIMATE BATTLE (Y, Q, Z boss rush) |
+| `MoreWorlds.kt` | Worlds 3 and 4 (levels 43-84) World 6 (Spooky World, levels 106-126, `world6`) and World 7 (Winter World, 127-147, `world7`), appended after World 5, built by a seeded level generator plus boss-arena templates. Last level: THE ULTIMATE BATTLE (Y, Q, Z boss rush) |
 | `Monsters.kt` | Newer monsters (Skelly Archer + arrows, Hopper, Gloop, Snapper + seeds, Crusher `z`, Peekaboo `q`, Puffcloud `l`, Spikestack `j`), bonus `Portal`, `Chest`, sunset sky, Dash |
 | `Homes.kt` | `HouseType` (10), `Furniture` (36: `floor` 0-2, `unlock` = levels beaten; `furnitureBits` is a Long saved as `furniture`+`furniture2`), floors (`MAX_FLOORS`, stairs at `STAIRS_X`), `PAINTS` (house colors), the Pokemon mat (`MON_X`), `BedStyle`, house outside/inside drawing (the room is 900 wide and scrolls), `PlushieItem` |
 | `Plushies.kt` | The 350 `Plushie`s (new ones always go at the END: saved by index) (characters use sticker art, animals are drawn from a `Species` + color) |
@@ -122,3 +122,6 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
   furniture (12 each, `drawFurnitureAt`).
 * `Powers.kt`: `CaptureKind` + `CappyHat` (Power.CAPPY; `capture`/`releaseCapture`/`captureAction`, the captured foe is
   drawn at Rocco by `drawCapture`), `MegaItem` (`megaT`), `PropellerItem` (`propT`), `HeroPotion`. Power.GOLD shots make coins.
+* `Winter.kt`: World 7 foes `Snowman` (6), `Penguin` (7), `HammerHank` (8), `Chompy` (9), `ZoomerLauncher` (0) + `Zoomer`,
+  `Gummy` (1), projectiles `Lob`/`NoteShot`/`ChordWave`, and the final boss `RockStarKrag` (S, drawn as a `KingKrag` plus
+  sunglasses and guitar). New places BLIZZARD, AURORA, CANDY (backgrounds in `renderBackground`).
