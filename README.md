@@ -401,8 +401,16 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
 * **A bit easier**: later worlds' bad guys don't keep getting tougher (at most 1.7x health instead of up to
   2.8x), earthquakes only happen every 4th level, and after getting hurt you're safe a little longer.
 * **Poseidon's button** (and the Black Flower) moved to the top-right corner, out of the way of your thumbs.
-* **8 new songs**: Park, Cozy (home), Adventure (world map), Heroic, Funky, Space, Crystal and Tropical.
-  Each kind of level now takes turns between 3 or 4 tunes.
+* **14 new songs**: Park, Cozy (home), Adventure (world map), Heroic, Funky, Space, Crystal, Tropical,
+  Fanfare, Dreamy, Spooky, Witchy, Silly (funny scenes) and Race. Each kind of level takes turns between 3 to
+  5 tunes, and the **title song changes** every time you come back to the title.
+* **Calmer levels**: bad guys standing in a big bunch get spread out, so no two are right on top of each other.
+* **Spotty** (a little mushroom guy with a red-spotted cap) pops up in random levels, runs up to Rocco and
+  yells things like **"OH ROCCO, YOU'RE CRAZY!!!"** in a squeaky voice.
+* **Funny scenes** every couple of levels (5 seconds, tap to skip): Rocco eats a donut ("OH YA!"), slips on a
+  banana peel, sneezes his hat off (and knocks Blocky over), has a dance party with his Pokemon, gets a pie
+  in the face, does a giant burp, naps on a mushroom, has his mustache stolen by Dennis, gets tickled by his
+  Pokemon, and floats away on a bubble gum bubble.
 
 ### Stickers
 

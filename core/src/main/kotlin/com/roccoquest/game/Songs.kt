@@ -680,6 +680,180 @@ object Songs {
         leadDuty = 0.25f,
     )
 
+    // ------------------------------------------------------------------ Title: a big happy fanfare
+    private val fanfareChords = listOf(
+        "C3 G3 E4 G4",
+        "F2 C3 A4 C5",
+        "G2 D3 B3 D4",
+        "C3 G3 E4 G4",
+        "A2 E3 C4 E4",
+        "F2 C3 A4 C5",
+        "D3 A3 F4 A4",
+        "G2 D3 B3 D4",
+    )
+    val fanfare = Song(
+        bpm = 152,
+        lead = """
+            G4/2 C5/2 E5/2 G5/2 C6/6 G5/2
+            A5/4 F5/4 C6/4 A5/4
+            B5/2 G5/2 D5/2 G5/2 B5/4 D6/4
+            C6/8 -/4 G5/4
+            A5/2 C6/2 E6/4 C6/2 A5/2 E5/4
+            F5/2 A5/2 C6/2 F6/2 E6/4 C6/4
+            D6/2 C6/2 A5/2 F5/2 D5/4 F5/4
+            G5/2 B5/2 D6/2 G6/2 F6/4 D6/4
+        """,
+        harmony = offbeats(fanfareChords),
+        bass = drivingBass(fanfareChords),
+        drums = "k.h.s.h.k.k.s.h.",
+        leadDuty = 0.25f,
+    )
+
+    // ------------------------------------------------------------------ Title: soft and dreamy
+    private val dreamyChords = listOf(
+        "C3 G3 E4 G4",
+        "E2 B2 G4 B4",
+        "A2 E3 C4 E4",
+        "F2 C3 A4 C5",
+        "C3 G3 E4 G4",
+        "E2 B2 G4 B4",
+        "F2 C3 A4 C5",
+        "G2 D3 B3 D4",
+    )
+    val dreamy = Song(
+        bpm = 100,
+        lead = """
+            E5/2 G5/2 C6/4 B5/4 G5/4
+            B5/2 G5/2 E5/4 G5/8
+            A5/2 C6/2 E6/4 D6/4 C6/4
+            A5/8 F5/8
+            G5/2 C6/2 E6/4 D6/2 C6/2 B5/4
+            B5/4 G5/4 E5/8
+            F5/2 A5/2 C6/4 F6/4 E6/4
+            D6/8 B5/8
+        """,
+        harmony = sustained(dreamyChords),
+        bass = oomPahBass(dreamyChords),
+        drums = "k...h...s...h...",
+        leadDuty = 0.5f,
+    )
+
+    // ------------------------------------------------------------------ Ghost levels: spooky but silly
+    private val spookyChords = listOf(
+        "E2 B2 G4 B4",
+        "E2 B2 G4 B4",
+        "C3 G3 E4 G4",
+        "B2 F#3 D#4 F#4",
+        "E2 B2 G4 B4",
+        "A2 E3 C4 E4",
+        "C3 G3 E4 G4",
+        "B2 F#3 D#4 F#4",
+    )
+    val spooky = Song(
+        bpm = 112,
+        lead = """
+            E5/3 G5/1 B5/4 A#5/2 A5/2 G5/4
+            E5/2 F#5/2 G5/2 B5/2 E6/8
+            C6/3 B5/1 G5/4 E5/2 G5/2 C6/4
+            B5/4 A5/2 F#5/2 D#5/8
+            E6/2 D6/2 B5/2 G5/2 E5/2 G5/2 B5/4
+            A5/2 C6/2 E6/4 C6/2 A5/2 E5/4
+            G5/2 E5/2 C5/2 E5/2 G5/2 B5/2 C6/4
+            B5/8 -/4 B4/4
+        """,
+        harmony = offbeats(spookyChords),
+        bass = oomPahBass(spookyChords),
+        drums = "k...s..hk...s.hh",
+        leadDuty = 0.125f,
+    )
+
+    // ------------------------------------------------------------------ The witch's cackling boss song
+    private val witchyChords = listOf(
+        "D3 A3 F4 A4",
+        "D3 A3 F4 A4",
+        "Bb2 F3 D4 F4",
+        "A2 E3 C#4 E4",
+        "D3 A3 F4 A4",
+        "G2 D3 Bb3 D4",
+        "Bb2 F3 D4 F4",
+        "A2 E3 C#4 E4",
+    )
+    val witchy = Song(
+        bpm = 138,
+        lead = """
+            D5/2 F5/2 A5/2 D6/2 C#6/2 D6/2 A5/4
+            F5/2 E5/2 D5/2 F5/2 A5/8
+            Bb5/2 A5/2 F5/2 D5/2 Bb5/4 D6/4
+            C#6/4 E6/4 A5/8
+            D6/2 C6/2 A5/2 F5/2 D5/2 F5/2 A5/4
+            G5/2 Bb5/2 D6/4 C6/2 Bb5/2 G5/4
+            F5/2 D5/2 Bb4/2 D5/2 F5/4 Bb5/4
+            A5/2 C#6/2 E6/2 A6/2 G6/4 E6/4
+        """,
+        harmony = offbeats(witchyChords),
+        bass = drivingBass(witchyChords),
+        drums = "k.hhs.hkk.hhs.hs",
+        leadDuty = 0.25f,
+    )
+
+    // ------------------------------------------------------------------ Funny scenes: a silly circus tune
+    private val sillyChords = listOf(
+        "F2 C3 A4 C5",
+        "C2 G2 E4 G4",
+        "F2 C3 A4 C5",
+        "C2 G2 E4 G4",
+        "Bb1 F2 D4 F4",
+        "F2 C3 A4 C5",
+        "C2 G2 E4 G4",
+        "F2 C3 A4 C5",
+    )
+    val silly = Song(
+        bpm = 176,
+        lead = """
+            F5/1 -/1 F5/1 -/1 A5/2 C6/2 F6/4 C6/4
+            E5/2 G5/2 C6/2 E6/2 D6/4 -/4
+            A5/1 -/1 A5/1 -/1 C6/2 A5/2 F5/4 A5/4
+            G5/2 E5/2 C5/2 E5/2 G5/8
+            Bb5/2 D6/2 F6/4 D6/2 Bb5/2 F5/4
+            A5/2 F5/2 C5/2 F5/2 A5/4 C6/4
+            G5/2 Bb5/2 C6/2 E6/2 G6/4 E6/4
+            F6/4 C6/4 F5/8
+        """,
+        harmony = offbeats(sillyChords),
+        bass = oomPahBass(sillyChords),
+        drums = "k.s.k.s.k.s.k.ss",
+        leadDuty = 0.25f,
+    )
+
+    // ------------------------------------------------------------------ Fast and racing
+    private val raceChords = listOf(
+        "A2 E3 C4 E4",
+        "F2 C3 A4 C5",
+        "G2 D3 B3 D4",
+        "E2 B2 G#4 B4",
+        "A2 E3 C4 E4",
+        "F2 C3 A4 C5",
+        "D3 A3 F4 A4",
+        "E2 B2 G#4 B4",
+    )
+    val race = Song(
+        bpm = 184,
+        lead = """
+            A5/1 B5/1 C6/2 E6/2 A6/2 G6/2 E6/2 C6/4
+            F5/1 G5/1 A5/2 C6/2 F6/2 E6/2 C6/2 A5/4
+            G5/1 A5/1 B5/2 D6/2 G6/2 F6/2 D6/2 B5/4
+            G#5/4 B5/4 E6/8
+            E6/2 C6/2 A5/2 C6/2 E6/2 A6/2 G6/4
+            F6/2 C6/2 A5/2 C6/2 F6/2 A6/2 G6/4
+            F6/2 D6/2 A5/2 D6/2 F6/2 A6/2 F6/4
+            E6/4 G#6/4 B6/8
+        """,
+        harmony = offbeats(raceChords),
+        bass = drivingBass(raceChords),
+        drums = "khs.khs.khs.khss",
+        leadDuty = 0.25f,
+    )
+
     fun of(m: Music): Song? = when (m) {
         Music.NONE -> null
         Music.OVERWORLD -> overworld
@@ -708,5 +882,11 @@ object Songs {
         Music.SPACE -> space
         Music.CRYSTAL -> crystal
         Music.TROPICAL -> tropical
+        Music.FANFARE -> fanfare
+        Music.DREAMY -> dreamy
+        Music.SPOOKY -> spooky
+        Music.WITCHY -> witchy
+        Music.SILLY -> silly
+        Music.RACE -> race
     }
 }

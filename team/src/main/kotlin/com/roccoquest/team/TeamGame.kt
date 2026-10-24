@@ -29,7 +29,7 @@ import kotlin.random.Random
  * and sleeping in the bed saves the game into one of three save slots.
  */
 class TeamGame(private val input: TeamInput, private val sound: SoundSink, private val storage: Storage = Storage.Memory()) {
-    enum class State { TITLE, SLOTS, PICK, INTRO, PLAY, CRAFT, TRADE, SLEEP, OUCH, CLEAR, STICKER, BOOK, VICTORY, HOME, MAP, CONTROLS, PARK }
+    enum class State { TITLE, SLOTS, PICK, INTRO, PLAY, CRAFT, TRADE, SLEEP, OUCH, CLEAR, STICKER, BOOK, VICTORY, HOME, MAP, CONTROLS, PARK, SCENE }
 
     companion object {
         const val MAX_HEARTS = 5
@@ -642,7 +642,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     fun eraseSlot(s: Int) {
-        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "armorType", "armorHp", "blackFlowers", "shieldType", "shieldHp", "swordHp", "pickHp", "houseType", "furniture", "furniture2", "plushies", "plush0", "plush1", "plush2", "plush3", "beds", "bedStyle", "unlocked", "clearedLo", "clearedHi", "cleared2", "cleared3", "cleared4", "cleared5", "stickersLo", "stickersHi", "houseColor", "floors", "houseLevel", "houseX", "houseY", "bed", "bedLevel", "spotLevel", "spotX", "spotY")) {
+        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "armorType", "armorHp", "blackFlowers", "shieldType", "shieldHp", "swordHp", "pickHp", "houseType", "furniture", "furniture2", "plushies", "plush0", "plush1", "plush2", "plush3", "beds", "bedStyle", "unlocked", "clearedLo", "clearedHi", "cleared2", "cleared3", "cleared4", "cleared5", "stickersLo", "stickersHi", "houseColor", "floors", "scenes", "houseLevel", "houseX", "houseY", "bed", "bedLevel", "spotLevel", "spotX", "spotY")) {
             storage.save(key(name, s), 0)
         }
         Ore.entries.forEach { storage.save(key("ore_${it.name}", s), 0) }
@@ -702,7 +702,22 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     // ======================================================================== Levels
 
-    private fun setState(s: State) { state = s; stateT = 0f }
+    private fun setState(s: State) {
+        // Coming back to the title picks the next title song, so it changes every now and then.
+        if (s == State.TITLE && state != State.TITLE) nextTitleSong()
+        state = s
+        stateT = 0f
+    }
+
+    /** The title songs take turns (remembered between games). */
+    private val TITLE_SONGS = listOf(Music.OVERWORLD, Music.FANFARE, Music.DREAMY, Music.ADVENTURE, Music.HEROIC)
+    var titleSong = TITLE_SONGS[(storage.load("titleSong") % TITLE_SONGS.size + TITLE_SONGS.size) % TITLE_SONGS.size]
+        private set
+    private fun nextTitleSong() {
+        val n = storage.load("titleSong") + 1
+        storage.save("titleSong", n)
+        titleSong = TITLE_SONGS[n % TITLE_SONGS.size]
+    }
 
     fun startLevel(index: Int, fromCheckpoint: Boolean = false, restoreHome: Boolean = false) {
         // Knocked out in a bonus room? Go back to the real level's checkpoint.
@@ -721,7 +736,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         boss = null; bossDone = false; wonder = false; camLock = null; frog = null; goal = null
         house = null; bed = null
         if (dino != null) dismount()
-        riding = null; trader = null; floodT = 0f; air = AIR_MAX; dogT = 10f; ventT.clear()
+        riding = null; trader = null; floodT = 0f; air = AIR_MAX; dogT = 10f; ventT.clear(); planSpotty(index)
         if (rocco.mini) setMini(false)
         miniT = 0f
         tanookiT = 0f
@@ -774,6 +789,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         // (it used to keep climbing and got too hard).
         val tough = minOf(1.4f + 0.1f * (index / WORLD_SIZE), 1.7f)
         for (f in foes) if (!f.boss) f.toughen(tough)
+        thinCrowds()
         if (fromCheckpoint) {
             respawnX = keepX
             respawnY = keepY
@@ -921,6 +937,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
             State.HOME -> { updateParticles(dt); updateHome(dt, tapped, pauseE || craftE, actionE) }
             State.PARK -> { updateParticles(dt); updatePark(dt, tapped, jumpE || actionE, pauseE || craftE) }
+            State.SCENE -> updateScene(tapped, pauseE || nav.a || nav.b)
             State.MAP -> updateMap(tapped, pauseE, num)
             State.SLEEP -> {
                 updateParticles(dt)
@@ -1020,7 +1037,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             return
         }
         if (stateT > 2.5f || ((tapped || num > 0) && stateT > 0.8f)) {
-            if (afterSticker >= 0) { save(); goToMap(afterSticker) } else {
+            if (afterSticker >= 0) {
+                save()
+                // Every couple of levels: a short funny scene before the map.
+                if (levelIndex % 2 == 1 && funnyScenes) startScene(afterSticker) else goToMap(afterSticker)
+            } else {
                 setState(State.VICTORY)
                 sound.say("Ring ding ding ding! You did it! Ding ding!")
             }
@@ -1246,6 +1267,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         updateWater(dt)
         updateSpikes(dt)
         updateDog(dt)
+        updateSpotty(dt)
         for (h in team) {
             if (h.onGround) h.combo = 0
             h.anim += dt
@@ -2348,6 +2370,57 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
     }
 
+    // ---------------------------------------------------------------- Spotty and the funny scenes
+
+    fun sayAs(text: String, voice: Voice) = sound.sayAs(text, voice)
+
+    /** Counts down to Spotty showing up (negative: not in this level). */
+    private var spottyT = -1f
+
+    /** Spotty pops up in some levels (about 4 in 10), a little while after the start. */
+    private fun planSpotty(index: Int) {
+        spottyT = if (Random.nextFloat() < 0.4f && !Levels.all[index].isBossLevel) 8f + Random.nextFloat() * 20f else -1f
+    }
+
+    private fun updateSpotty(dt: Float) {
+        if (spottyT < 0f || boss != null || level.def.shoreX >= 0) return
+        spottyT -= dt
+        if (spottyT > 0f) return
+        val l = leader
+        if (!l.onGround) { spottyT = 1f; return }
+        spottyT = -1f
+        spawn(Spotty(camX + viewW + 20f, l.bottom, Spotty.LINES.random()))
+    }
+
+    internal fun spottyForTest() { spottyT = 0.01f }
+
+    /** The funny scenes can be turned off (for tests). */
+    var funnyScenes = true
+    var sceneKind = 0
+        private set
+    private var sceneNext = 0
+    private var sceneCue = 0
+
+    fun startScene(next: Int) {
+        // They take turns, so each one is a surprise.
+        val n = storage.load(key("scenes"))
+        storage.save(key("scenes"), n + 1)
+        sceneKind = n % Scenes.titles.size
+        sceneNext = next
+        sceneCue = 0
+        setState(State.SCENE)
+    }
+
+    private fun updateScene(tapped: Boolean, skip: Boolean) {
+        val cues = Scenes.cues(sceneKind, mon.label)
+        while (sceneCue < cues.size && stateT >= cues[sceneCue].at) {
+            val c = cues[sceneCue++]
+            sound.sayAs(c.text, c.voice)
+            c.sound?.let { sfx(it) }
+        }
+        if (stateT > Scenes.LENGTH || ((tapped || skip) && stateT > 0.6f)) goToMap(sceneNext)
+    }
+
     private fun updateDog(dt: Float) {
         if (boss != null || level.def.shoreX >= 0 || things.any { it is Dennis }) return
         dogT -= dt
@@ -2662,6 +2735,20 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (coins == POSEIDON_COST) toast("50 COINS! Tap the trident to call POSEIDON!")
     }
 
+    /**
+     * Bad guys standing in a big bunch made some levels too wild: they get spread out, so no two
+     * stand closer than a little gap (bosses always stay). From World 2 on, the gap is a bit bigger.
+     */
+    private fun thinCrowds() {
+        val gap = if (levelIndex < WORLD_SIZE) 32f else 48f
+        var lastX = -1000f
+        val gone = HashSet<Foe>()
+        for (f in foes.filter { !it.boss }.sortedBy { it.x }) {
+            if (f.x - lastX < gap) gone += f else lastX = f.x
+        }
+        foes.removeAll(gone)
+    }
+
     fun hurt(from: Body? = null) {
         if (invuln > 0 || starT > 0 || state != State.PLAY) return
         val l = leader
@@ -2961,11 +3048,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun updateMusic() {
         val m = when {
             !musicOn -> Music.NONE
-            state == State.TITLE || state == State.SLOTS || state == State.PICK -> Music.OVERWORLD
+            state == State.TITLE || state == State.SLOTS || state == State.PICK -> titleSong
             state == State.VICTORY -> Music.FROG
             state == State.STICKER -> Music.STAR
             state == State.HOME -> Music.COZY
             state == State.PARK -> Music.PARK
+            state == State.SCENE -> Music.SILLY
             state == State.MAP -> Music.ADVENTURE
             state == State.OUCH || state == State.CLEAR || state == State.SLEEP -> Music.NONE
             starT > 0 -> Music.STAR
@@ -2986,19 +3074,19 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         private fun tunes(p: Place): List<Music> = when (p) {
             Place.HILLS -> listOf(Music.OVERWORLD, Music.MEADOW, Music.HEROIC, Music.FUNKY)
             Place.CAVE -> listOf(Music.UNDERGROUND, Music.CRYSTAL, Music.NIGHT, Music.FUNKY)
-            Place.SKY -> listOf(Music.SKY, Music.HEROIC, Music.MEADOW, Music.SPACE)
+            Place.SKY -> listOf(Music.SKY, Music.HEROIC, Music.RACE, Music.MEADOW, Music.SPACE)
             Place.CASTLE -> listOf(Music.CASTLE, Music.DOOM, Music.HEROIC)
-            Place.DESERT -> listOf(Music.DESERT, Music.FUNKY, Music.OVERWORLD, Music.ADVENTURE)
+            Place.DESERT -> listOf(Music.DESERT, Music.FUNKY, Music.RACE, Music.OVERWORLD, Music.ADVENTURE)
             Place.SNOW -> listOf(Music.SNOW, Music.CRYSTAL, Music.SKY)
             Place.JUNGLE -> listOf(Music.JUNGLE, Music.TROPICAL, Music.MEADOW, Music.ADVENTURE)
             Place.VOLCANO -> listOf(Music.DESERT, Music.HEROIC, Music.CASTLE)
             Place.WATER -> listOf(Music.BEACH, Music.TROPICAL, Music.SKY)
-            Place.NIGHT -> listOf(Music.NIGHT, Music.FUNKY, Music.UNDERGROUND, Music.SPACE)
+            Place.NIGHT -> listOf(Music.NIGHT, Music.SPOOKY, Music.FUNKY, Music.UNDERGROUND, Music.SPACE)
             Place.DEEP -> listOf(Music.WARDEN, Music.CRYSTAL, Music.NIGHT)
             Place.END -> listOf(Music.SPACE, Music.NIGHT, Music.DOOM)
             Place.SUNSET -> listOf(Music.STAR, Music.TROPICAL, Music.ADVENTURE)
             Place.SHIP -> listOf(Music.SHANTY, Music.BEACH, Music.TROPICAL, Music.ADVENTURE)
-            Place.RAINBOW -> listOf(Music.STAR, Music.SPACE, Music.WONDER)
+            Place.RAINBOW -> listOf(Music.RACE, Music.STAR, Music.SPACE, Music.WONDER)
         }
 
         /** Every level's tune, worked out once in order so it's never the same as the level before. */
@@ -3038,6 +3126,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             State.BOOK -> renderBook(gfx)
             State.HOME -> renderHome(gfx)
             State.PARK -> renderPark(gfx)
+            State.SCENE -> Scenes.draw(this, gfx, sceneKind, stateT, viewW, VIEW_H, mon)
             State.MAP -> renderMap(gfx)
             State.CONTROLS -> renderControls(gfx)
             else -> {
@@ -4559,7 +4648,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             Place.RAINBOW -> SeaArt.space(gfx, viewW, VIEW_H, cam, time)
             Place.END -> {
                 gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF0A0614.toInt())
-                for (i in 0 until 50) gfx.rect((i * 89f - cam * 0.03f).mod(viewW), (i * 41f) % 200f, 1.5f, 1.5f, 0xFFE0D0FF.toInt())
+                for (i in 0 until 30) gfx.rect((i * 89f - cam * 0.03f).mod(viewW), (i * 41f) % 200f, 1.5f, 1.5f, 0xFFE0D0FF.toInt())
                 layer(cam, 0.2f, 160f) { i, x ->
                     gfx.rect(x + 40, 90f - (i % 3) * 20f, 24f, 160f, 0xFF1A1028.toInt())
                 }

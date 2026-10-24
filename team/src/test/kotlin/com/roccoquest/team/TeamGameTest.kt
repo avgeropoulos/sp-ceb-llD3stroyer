@@ -4,6 +4,7 @@ import com.roccoquest.game.Music
 import com.roccoquest.game.Sound
 import com.roccoquest.game.SoundSink
 import com.roccoquest.game.Storage
+import com.roccoquest.game.Voice
 import com.roccoquest.game.TILE
 import com.roccoquest.game.tileOf
 import java.awt.image.BufferedImage
@@ -24,6 +25,8 @@ class TeamGameTest {
         override fun play(s: Sound) { played += s }
         override fun music(m: Music) { music = m }
         override fun say(text: String) { said += text }
+        val voices = ArrayList<Voice>()
+        override fun sayAs(text: String, voice: Voice) { voices += voice; say(text) }
     }
 
     private val dt = 1f / 60f
@@ -334,8 +337,30 @@ class TeamGameTest {
         assertTrue(game.stickerChoices.contains(Stickers.forBoss('K')), "King Krag's shiny sticker is on offer")
         game.pickSticker(0)
         run(3f)
+        // Level 4 is an even one: a funny scene plays first, then the map.
+        assertEquals(TeamGame.State.SCENE, game.state)
+        run(1f)
+        tap(game.viewW / 2, 120f)
         assertEquals(TeamGame.State.MAP, game.state)
         assertEquals(4, game.mapSel, "the map is ready for the next level")
+    }
+
+    @Test fun funnyScenesAndSpotty() {
+        // Every scene plays all the way through without trouble, then goes to the map.
+        startPlaying()
+        for (k in Scenes.titles.indices) {
+            game.startScene(1)
+            assertEquals(k, game.sceneKind)
+            run(Scenes.LENGTH + 0.2f)
+            assertEquals(TeamGame.State.MAP, game.state)
+        }
+        // Spotty runs up and yells something silly.
+        startPlaying()
+        game.foes.clear()
+        game.spottyForTest()
+        run(3f) { game.hurtProof() }
+        assertTrue(game.thingsForTest().any { it is Spotty }, "Spotty showed up")
+        assertTrue(Voice.TOAD in ears.voices, "he yelled")
     }
 
     @Test fun stickersAfterEveryLevel() {

@@ -700,9 +700,14 @@ object TeamArt {
     }
 
     /** Minecart rails across one tile whose bottom is [bottom]. */
-    fun rail(gfx: Gfx, x: Float, bottom: Float) {
-        for (i in 0 until 3) gfx.rect(x + 1 + i * 5.5f, bottom - 4, 3f, 4f, 0xFF7A4A20.toInt())
-        gfx.rect(x, bottom - 4, 16f, 1.5f, 0xFF9A9AA8.toInt())
+    fun rail(gfx: Gfx, x: Float, bottom: Float) = gfx.sprite(railSprite, x, bottom - 4, w = 16f, h = 4f)
+
+    /** Rails as one ready-made picture (quicker to draw than its pieces). Two pixels per unit. */
+    private val railSprite: Sprite = run {
+        val px = IntArray(32 * 8)
+        for (i in 0 until 3) for (yy in 0 until 8) for (xx in 0 until 6) px[yy * 32 + (2 + i * 11 + xx).coerceAtMost(31)] = 0xFF7A4A20.toInt()
+        for (yy in 0 until 3) for (xx in 0 until 32) px[yy * 32 + xx] = 0xFF9A9AA8.toInt()
+        Sprite(32, 8, px)
     }
 
     /** Poseidon rising from the waves with his golden trident. [cx] is his middle, [baseY] the water line. */

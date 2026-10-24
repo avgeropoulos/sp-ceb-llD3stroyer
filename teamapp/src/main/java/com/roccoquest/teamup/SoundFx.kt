@@ -101,6 +101,8 @@ class SoundFx(context: Context) : SoundSink {
             Voice.GOD -> 0.62f to 0.82f
             Voice.MON -> 1.5f to 1.05f
             Voice.HERO -> 1.1f to 0.95f
+            // Spotty: a squeaky, shouty mushroom voice.
+            Voice.TOAD -> 2.0f to 1.3f
         }
         var say = text
         val greek = text.any { it in '\u0370'..'\u03FF' || it in '\u1F00'..'\u1FFF' }

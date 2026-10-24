@@ -102,4 +102,7 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
 * `score` is a Long; `particles` are capped at `MAX_PARTICLES` (too many floating texts made phones lag).
 * Performance: draw repeated tiles as cached `Sprite`s (see `SeaArt.plank`/`rainbowTile`), not many shapes per
   tile. Floating texts are capped at `MAX_FLOAT_TEXTS`. Poseidon/Black Flower buttons are top-right (`TeamControls.layout`).
-* Music: 27 songs in `Songs.kt` (`Music` enum in `Gfx.kt`); `Tunes.tunes(place)` lists 3-4 per place.
+* Music: 33 songs in `Songs.kt`; the title song rotates (`titleSong`, global key `titleSong`) (`Music` enum in `Gfx.kt`); `Tunes.tunes(place)` lists 3-4 per place.
+* `Fun.kt`: `Spotty` (the Toad look-alike, `Voice.TOAD`; `planSpotty`/`updateSpotty`, 40% of non-boss levels) and
+  `Scenes` (10 five-second funny scenes, `State.SCENE`, after the sticker on odd level indexes; `funnyScenes` flag).
+* `thinCrowds()` spreads out bunched-up bad guys at level start (32px gap in World 1, 48px later).

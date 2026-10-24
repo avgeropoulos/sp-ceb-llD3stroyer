@@ -200,7 +200,7 @@ object SeaArt {
         gfx.rect(0f, 0f, viewW, viewH, 0xFF0A0620.toInt())
         gfx.oval(viewW * 0.1f - cam * 0.03f, 20f, 260f, 120f, 0x332A3AC8)
         gfx.oval(viewW * 0.55f - cam * 0.04f, 90f, 300f, 110f, 0x33C82A9A)
-        for (i in 0 until 70) {
+        for (i in 0 until 40) {
             val sx = ((i * 97f - cam * (0.05f + (i % 3) * 0.03f)) % viewW + viewW) % viewW
             val tw = if (((t * 3 + i) % 4) < 2) 0xFFFFFFFF.toInt() else 0x88FFFFFF.toInt()
             gfx.rect(sx, (i * 53f) % (viewH - 20f), 1.5f, 1.5f, tw)

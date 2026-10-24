@@ -51,10 +51,11 @@ fun argb(a: Int, rgb: Int): Int = (a shl 24) or (rgb and 0xFFFFFF)
 enum class Sound { JUMP, COIN, FIRE, STOMP, KICK, POWERUP, HURT, BUMP, BREAK, BOSS_HIT, BOSS_FIRE, DIE, CLEAR, VICTORY, ONEUP, FLUSH, ZAP, CHOMP, BARK, SPLASH, ARROW, WAVE, PORTAL }
 
 enum class Music { NONE, OVERWORLD, UNDERGROUND, SKY, CASTLE, BOSS, STAR, WONDER, FROG, KRAG, WARDEN, MEADOW, JUNGLE, SNOW, DESERT, NIGHT, BEACH, DOOM, SHANTY,
-    PARK, COZY, ADVENTURE, HEROIC, FUNKY, SPACE, CRYSTAL, TROPICAL }
+    PARK, COZY, ADVENTURE, HEROIC, FUNKY, SPACE, CRYSTAL, TROPICAL,
+    FANFARE, DREAMY, SPOOKY, WITCHY, SILLY, RACE }
 
 /** Speaking voices: each one gets its own pitch and speed. */
-enum class Voice { HERO, FROG, VILLAGER, GOD, MON }
+enum class Voice { HERO, FROG, VILLAGER, GOD, MON, TOAD }
 
 fun interface SoundSink {
     fun play(s: Sound)
