@@ -120,3 +120,5 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
   `ScaledGfx` over their first form. The pick screen only shows `STARTERS` (the first 10).
 * Plushie shelves: wall shelves on every floor (36 each, `drawShelvesWithPlushies`), then the `PLUSH_SHELF*`
   furniture (12 each, `drawFurnitureAt`).
+* `Powers.kt`: `CaptureKind` + `CappyHat` (Power.CAPPY; `capture`/`releaseCapture`/`captureAction`, the captured foe is
+  drawn at Rocco by `drawCapture`), `MegaItem` (`megaT`), `PropellerItem` (`propT`), `HeroPotion`. Power.GOLD shots make coins.

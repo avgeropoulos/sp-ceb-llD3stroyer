@@ -443,6 +443,20 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         private set
     /** Metal Rocco: can't be hurt, and he's so heavy he walks on the sea floor. */
     var metalT = 0f
+    /** A bad guy Cappy captured: Rocco is that bad guy (with his cap on) for a while. */
+    var capture: Foe? = null
+        private set
+    var captureKind: CaptureKind? = null
+        private set
+    private var captureT = 0f
+    /** Shellback capture: dashing in a spinning shell. */
+    private var captureDashT = 0f
+    /** Mega Mushroom: giant Rocco. */
+    var megaT = 0f
+    /** Propeller Mushroom, and whether the spin-up was used in this jump. */
+    var propT = 0f
+    private var propUsed = false
+
     /** Rocco can't be hurt while spinning in the blue shell (and just after). */
     private var shellSafeT = 0f
     /** Blocky's bow (made at the crafting table, BOWS tab). */
@@ -761,6 +775,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         tanookiT = 0f
         metalT = 0f
         wingT = 0f
+        megaT = 0f
+        propT = 0f
+        capture = null; captureKind = null; captureDashT = 0f
         hearts = MAX_HEARTS
         if (power == Power.GRASS) armor = max(armor, 2)
         invuln = 0f
@@ -1236,7 +1253,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             invuln = max(invuln, 0.1f)
         }
         superCharge = min(1f, superCharge + dt / superTime())
-        if (swapE) swap()
+        if (swapE) { if (capture != null) releaseCapture() else swap() }
         if (superE) useSuper()
 
         if (floodT > 0) { floodT -= dt; updateWave(dt) }
@@ -1250,6 +1267,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (tanookiT > 0) tanookiT -= dt
         if (metalT > 0) { metalT -= dt; if (metalT <= 0f) toast("Metal Rocco wore off!") }
         if (crazyFireT > 0) crazyFireT -= dt
+        if (megaT > 0) { megaT -= dt; if (megaT <= 0f) { toast("Back to normal size."); sfx(Sound.KICK) } }
+        if (propT > 0) { propT -= dt; if (propT <= 0f) toast("The propeller wore off!") }
+        if (captureDashT > 0) captureDashT -= dt
+        if (capture != null) { captureT -= dt; if (captureT <= 0f) releaseCapture() }
         if (crazyIceT > 0) crazyIceT -= dt
         if (bowCooldown > 0) bowCooldown -= dt
         if (wingT > 0) {
@@ -1480,6 +1501,19 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (rocco) {
             if (h.onGround) h.doubleJumped = false
             if (h.flipT > 0) h.flipT -= dt
+            if (h.onGround) propUsed = false
+            // Propeller: JUMP in mid-air spins Rocco way up high.
+            if (propT > 0f && jumpE && !h.onGround && coyoteT <= 0f && !propUsed && !h.slamming) {
+                jumpBufT = 0f
+                propUsed = true
+                h.doubleJumped = true
+                h.vy = -520f
+                h.flipT = 0.6f
+                sfx(Sound.JUMP)
+                for (i in 0 until 8) particles += Sparkle(h.cx, h.y, (i - 3.5f) * 30f, 60f, 0xFFFFD21F.toInt())
+                moveHero(h, dt)
+                return
+            }
             // Double jump: press JUMP again in mid-air.
             if (jumpE && !h.onGround && coyoteT <= 0f && !h.doubleJumped && !h.slamming) {
                 jumpBufT = 0f
@@ -1536,7 +1570,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (h.onGround) h.longJumping = false
             return
         }
-        val top = h.speed * (if (sprint) 1.5f else 1f)
+        val top = h.speed * (if (sprint) 1.5f else 1f) * (if (rocco) (captureKind?.speed ?: 1f) * (if (megaT > 0f) 1.2f else 1f) else 1f) *
+            (if (rocco && captureDashT > 0f) 2.2f else 1f)
         val want = if (h.crouching) 0f else dir * top
         h.vx = approach(h.vx, want, (if (h.onGround) 800f else 520f) * dt)
         // Blue Shell: sprinting on the ground turns Rocco into a spinning shell.
@@ -1547,7 +1582,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             jumpBufT = 0f
             coyoteT = 0f
             jumpHoldT = 0.12f
-            h.vy = h.jumpV * (if (sprint) 1.06f else 1f) * (if (metal && h === this.rocco && inWater(h)) 0.8f else 1f)
+            h.vy = h.jumpV * (if (sprint) 1.06f else 1f) * (if (metal && h === this.rocco && inWater(h)) 0.8f else 1f) *
+                (if (rocco) captureKind?.jump ?: 1f else 1f)
             sfx(Sound.JUMP)
         }
         if (!input.jump && jumpHoldT <= 0f && h.vy < -130f) h.vy = -130f
@@ -1560,8 +1596,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             for (ty in tileOf(h.y + 2)..tileOf(h.bottom - 2)) if (level[tx, ty] == Tile.BRICK) bump(tx, ty)
         }
         if (rocco && !h.mini) {
-            // Wing Cap: hold JUMP to fly up into the sky.
-            if (wingT > 0 && input.jump && !jumpE) h.vy = approach(h.vy, -170f, 1400f * dt)
+            // Wing Cap (or a captured Flapper): hold JUMP to fly up into the sky.
+            if ((wingT > 0 || captureKind == CaptureKind.FLAPPER) && input.jump && !jumpE) h.vy = approach(h.vy, -170f, 1400f * dt)
+            // Propeller (or a captured ghost): hold JUMP to float down.
+            else if ((propT > 0 || captureKind == CaptureKind.GHOST) && input.jump && h.vy > 50f) h.vy = 50f
             // Tanooki: hold JUMP to float down slowly, wagging the tail.
             else if (tanookiT > 0 && input.jump && h.vy > 45f) h.vy = 45f
             if (h.y < 34f) { h.y = 34f; h.vy = max(h.vy, 0f) }
@@ -1671,7 +1709,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 sfx(Sound.POWERUP)
                 // A surprise every time!
                 // Most of the time it's just a couple of coins: the good stuff is rare.
-                when (Random.nextInt(14)) {
+                when (Random.nextInt(16)) {
+                    14 -> spawn(MegaItem(px, above))
+                    15 -> spawn(PropellerItem(px, above))
                     8 -> spawn(if (Plushies.all.any { !hasPlushie(it) && !it.boss }) PlushieItem(px, above) else GiftBox(px, above))
                     in 9..13 -> repeat(2) { i -> spawn(Coin(px + (i - 1) * 6f, ty * TILE - 16f, popping = true)) }
                     0 -> spawn(StarItem(px, above))
@@ -1703,6 +1743,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     private fun action(h: Hero) {
         if (h.who == Who.ROCCO && dino != null) { dinoTongue(h); return }
+        if (h.who == Who.ROCCO && capture != null) { captureAction(h); return }
         when (h.who) {
             Who.BLOCKY -> swingPick(h)
             Who.ROCCO -> throwPower(h)
@@ -1851,6 +1892,96 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         sfx(Sound.KICK)
     }
 
+    // ---------------------------------------------------------------- Cappy, Mega and Propeller
+
+    /** Cappy caught a bad guy: Rocco turns into it for 20 seconds. */
+    fun capture(f: Foe) {
+        val kind = CaptureKind.of(f) ?: return
+        if (capture != null) releaseCapture()
+        if (riding == null && dino == null) switchTo(Who.ROCCO)
+        foes.remove(f)
+        capture = f
+        captureKind = kind
+        captureT = 20f
+        f.vx = 0f
+        sfx(Sound.PORTAL)
+        sound.sayAs("Capture! I'm a ${kind.label.lowercase()}!", Voice.HERO)
+        toast("CAPTURED a ${kind.label}! ${kind.how}  (SWAP lets go)")
+        for (i in 0 until 8) particles += Sparkle(rocco.cx, rocco.cy, (i - 3.5f) * 40f, -60f, 0xFFE52521.toInt())
+    }
+
+    /** Rocco pops back out (the bad guy runs off in a puff of smoke). */
+    fun releaseCapture() {
+        if (capture == null) return
+        capture = null
+        captureKind = null
+        captureDashT = 0f
+        puff(rocco.cx, rocco.cy)
+        sfx(Sound.KICK)
+    }
+
+    private fun captureAction(h: Hero) {
+        h.cooldown = 0.4f
+        when (captureKind) {
+            CaptureKind.SHELLBACK -> { captureDashT = 0.8f; sfx(Sound.KICK) }
+            CaptureKind.BOMB -> {
+                // KA-BOOM: every bad guy nearby, then Rocco pops out.
+                shake = 0.5f
+                sfx(Sound.BREAK)
+                for (i in 0 until 14) particles += Sparkle(h.cx, h.cy, kotlin.math.cos(i * 0.45f) * 150f, sin(i * 0.45f) * 150f, 0xFFFF8A2A.toInt())
+                for (f in foes) if (!f.dying && f.active && hypot(f.cx - h.cx, f.cy - h.cy) < 90f) f.hit(this, if (f.boss) 6 else 99)
+                releaseCapture()
+            }
+            CaptureKind.ENDERMAN -> {
+                val nx = h.x + h.facing * 80f
+                if (!level.solidAt(nx + h.w / 2, h.cy)) { puff(h.cx, h.cy); h.x = nx; sfx(Sound.PORTAL) } else sfx(Sound.BUMP)
+            }
+            CaptureKind.WITCH -> {
+                val tx = h.cx + h.facing * 90f
+                spawn(HeroPotion(h.cx - 5, h.y - 2, tx))
+                sfx(Sound.FIRE)
+            }
+            else -> throwPowerPlain(h)
+        }
+    }
+
+    /** Captured bad guys without a special move still punch. */
+    private fun throwPowerPlain(h: Hero) {
+        val reach = Body(if (h.facing > 0) h.x + h.w - 2 else h.x - 10, h.y + 4, 12f, 12f)
+        for (f in foes) if (!f.dying && f.active && f.overlaps(reach)) f.hit(this, 2)
+        sfx(Sound.KICK)
+    }
+
+    /** Draws Rocco as the bad guy he captured, wearing his cap. */
+    fun drawCapture(gfx: Gfx, h: Hero, ox: Float) {
+        val f = capture ?: return
+        f.x = h.cx - f.w / 2
+        f.y = h.bottom - f.h
+        f.vx = h.facing * 30f
+        if (captureDashT > 0f) gfx.oval(f.x + ox - 4, f.y - 4, f.w + 8, f.h + 8, 0x66FFFFFF)
+        f.draw(this, gfx, ox)
+        CappyHat.drawCap(gfx, h.cx - 6 + ox, f.y - 6, 0f, false)
+    }
+
+    fun startMega() {
+        if (dino != null) dismount()
+        if (riding == null) switchTo(Who.ROCCO)
+        if (rocco.mini) { miniT = 0f; setMini(false) }
+        megaT = 12f
+        sfx(Sound.POWERUP)
+        sound.sayAs("Mega Rocco! Stomp stomp!", Voice.HERO)
+        toast("MEGA MUSHROOM! Giant Rocco squashes everything!")
+        shake = 0.6f
+    }
+
+    fun startPropeller() {
+        if (riding == null) switchTo(Who.ROCCO)
+        propT = 20f
+        sfx(Sound.POWERUP)
+        sound.sayAs("Propeller! Wheee!", Voice.HERO)
+        toast("PROPELLER! Press JUMP in the air to spin up high, hold JUMP to float down.")
+    }
+
     /** A crazy mushroom: giant fireballs (or ice balls) for 20 seconds. */
     fun startCrazy(fire: Boolean) {
         if (riding == null && dino == null) switchTo(Who.ROCCO)
@@ -1873,6 +2004,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         h.cooldown = 0.3f
         h.swing = 0.15f
         if ((crazyFireT > 0f || crazyIceT > 0f) && !h.mini) { throwCrazy(h); return }
+        if (power == Power.CAPPY) {
+            if (things.none { it is CappyHat }) { spawn(CappyHat(if (h.facing > 0) h.x + h.w else h.x - 12, h.y + 4, h.facing, h)); sfx(Sound.KICK) }
+            return
+        }
         if (tanookiT > 0 && !h.mini) { tailSpin(h); return }
         if (power == Power.NONE) {
             val reach = Body(if (h.facing > 0) h.x + h.w - 2 else h.x - 10, h.y + 4, 12f, 12f)
@@ -2101,7 +2236,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     /** The recipes on one tab of the crafting table. */
     fun recipes(tab: Int = craftTab): List<Recipe> = when (TABS.getOrNull(tab)) {
-        "FLOWERS" -> listOf(Power.BOOM, Power.FIRE, Power.ICE, Power.GRASS, Power.THUNDER, Power.CRYSTAL, Power.SHELL).map { p ->
+        "FLOWERS" -> listOf(Power.BOOM, Power.FIRE, Power.ICE, Power.GRASS, Power.THUNDER, Power.CRYSTAL, Power.SHELL, Power.CAPPY, Power.GOLD).map { p ->
             val lvl = flowerLevel[p.ordinal]
             val ore = p.ore!!
             val note = when (p) {
@@ -2111,6 +2246,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 Power.GRASS -> "Emerald: GREEN ARMOR + leaves"
                 Power.THUNDER -> "Copper: zaps jump to more bad guys"
                 Power.SHELL -> "Diamond: homing shells + sprint to spin!"
+                Power.CAPPY -> "Throw Cappy: BECOME a bad guy and use its power!"
+                Power.GOLD -> "Golden fireballs: every hit makes coins!"
                 else -> "Amethyst: three crystal shards"
             }
             val costs = listOf(ore to COST)
@@ -2765,6 +2902,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 if (h === leader) {
                     when {
                         starT > 0 -> f.hit(this, 3)
+                        h === rocco && megaT > 0f -> { f.hit(this, if (f.boss) 3 else 99); shake = 0.15f }
+                        h === rocco && captureDashT > 0f -> f.hit(this, if (f.boss) 2 else 6)
+                        h === rocco && captureKind == CaptureKind.BONEHEAD && !f.boss -> {}
                         metal && h === rocco -> f.hit(this, 4)
                         h.shellSpin && !f.boss -> { f.hit(this, 1 + flowerLevel[Power.SHELL.ordinal] / 2); h.vx = -h.vx * 0.5f }
                         f.frozenT > 0f -> {}
@@ -2843,6 +2983,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (invuln > 0 || starT > 0 || state != State.PLAY) return
         val l = leader
         if (metal && l === rocco) { invuln = 0.5f; sfx(Sound.BUMP); return }
+        // Giant Rocco can't be hurt; a captured bad guy just pops Rocco back out.
+        if (l === rocco && megaT > 0f) return
+        if (l === rocco && capture != null) { releaseCapture(); invuln = 1.5f; sfx(Sound.HURT); return }
+        if (l === rocco && captureDashT > 0f) return
         // Spinning in the blue shell: nothing can hurt Rocco.
         if (l === rocco && (rocco.shellSpin || shellSafeT > 0f)) return
         if (dino != null && l === rocco) {
@@ -2935,6 +3079,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     internal fun houseForTest() = house
     internal fun unlockForTest(n: Int) { unlocked = n }
     internal fun clearForTest(i: Int) { cleared[i] = true }
+    internal fun noInvulnForTest() { invuln = 0f }
     internal fun openCraftForTest(tab: Int) { craftTab = tab; setState(State.CRAFT) }
     internal fun closeCraftForTest() = setState(State.PLAY)
     internal fun shopTabForTest(t: Int) { shopTab = t; homeShop = true }
@@ -5092,7 +5237,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             (if (miniT > 0) "  •  MINI ${miniT.toInt() + 1}" else "") +
             (if (tanookiT > 0) "  •  TANOOKI ${tanookiT.toInt() + 1}" else "") +
             (if (metalT > 0) "  •  METAL ${metalT.toInt() + 1}" else "") +
-            (if (wingT > 0) "  •  WINGS ${wingT.toInt() + 1}" else "")
+            (if (wingT > 0) "  •  WINGS ${wingT.toInt() + 1}" else "") +
+            (if (megaT > 0) "  •  MEGA ${megaT.toInt() + 1}" else "") +
+            (if (propT > 0) "  •  PROPELLER ${propT.toInt() + 1}" else "") +
+            (captureKind?.let { "  •  ${it.label} ${captureT.toInt() + 1}" } ?: "")
         val swordText = if (sword != Sword.NONE) "  •  ${sword.label.removeSuffix(" SWORD")} SWORD ${swordHp * 100 / sword.durability}%" else ""
         val pickText = if (pickTier > 1) " ${pickHp * 100 / pickDurability(pickTier)}%" else ""
         gfx.shadowText("${TeamArt.pickName(pickTier)} PICK$pickText$swordText" + (if (powerText.isEmpty()) "" else "  •  $powerText") + "  •  ${mon.label} Lv${monLevel()}", max(112f, viewW * 0.25f), 26f, 7f, 0xFFDDEEFF.toInt())

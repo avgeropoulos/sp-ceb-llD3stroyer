@@ -579,6 +579,76 @@ class TeamGameTest {
         assertEquals(20, Mon.entries.size)
     }
 
+    @Test fun cappyMegaPropellerAndGold() {
+        startPlaying()
+        game.foes.clear()
+        game.inventory[Ore.SAPPHIRE.ordinal] = 20
+        game.inventory[Ore.GOLD.ordinal] = 20
+        val tab = TeamGame.TABS.indexOf("FLOWERS")
+        game.craft(game.recipes(tab).indexOfFirst { it.icon == Power.CAPPY }, tab)
+        assertEquals(Power.CAPPY, game.power)
+        // Throw Cappy at a Hopper: Rocco becomes a Hopper and jumps way higher.
+        val r = game.rocco
+        r.facing = 1
+        val hop = Hopper(r.x + 40f, r.bottom).also { it.active = true; it.vx = 0f }
+        game.foes += hop
+        input.action = true; game.update(dt); input.action = false
+        run(0.6f) { game.hurtProof() }
+        assertEquals(CaptureKind.HOPPER, game.captureKind, "captured!")
+        assertTrue(hop !in game.foes)
+        // Getting hit just pops Rocco out (no heart lost).
+        val hearts = game.hearts
+        game.noInvulnForTest()
+        game.hurt()
+        assertNull(game.capture)
+        assertEquals(hearts, game.hearts)
+        // Mega Rocco squashes bad guys and can't be hurt.
+        game.startMega()
+        val g = Grumbler(r.x + 10f, r.bottom, false).also { it.active = true }
+        game.foes += g
+        game.noInvulnForTest()
+        run(0.5f)
+        assertTrue(g.dying, "squashed")
+        assertEquals(hearts, game.hearts)
+        game.megaT = 0f
+        // Propeller: JUMP in the air spins way up.
+        game.startPropeller()
+        input.jump = true; game.update(dt); input.jump = false
+        run(0.2f)
+        input.jump = true; game.update(dt); input.jump = false
+        assertTrue(r.vy < -400f, "spun up: ${r.vy}")
+        // Gold flower: hits make coins.
+        run(2f)
+        game.craft(game.recipes(tab).indexOfFirst { it.icon == Power.GOLD }, tab)
+        assertEquals(Power.GOLD, game.power)
+    }
+
+    @Test fun powerScreenshots() {
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 240 * 3, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f))
+            ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        startPlaying()
+        game.foes.clear()
+        val r = game.rocco
+        val g = Grumbler(r.x + 10f, r.bottom, false).also { it.active = true }
+        game.foes += g
+        game.capture(g)
+        run(0.3f) { game.hurtProof() }
+        shot("power-capture")
+        game.releaseCapture()
+        game.startMega()
+        run(0.3f) { game.hurtProof() }
+        shot("power-mega")
+        game.megaT = 0f
+        game.startPropeller()
+        game.spawnForTest(MegaItem(r.x + 30f, r.y)); game.spawnForTest(PropellerItem(r.x + 60f, r.y))
+        run(0.2f) { game.hurtProof() }
+        shot("power-propeller")
+    }
+
     @Test fun funnyScenesAndSpotty() {
         // Every scene plays all the way through without trouble, then goes to the map.
         startPlaying()

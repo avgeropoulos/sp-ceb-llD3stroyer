@@ -28,6 +28,10 @@ enum class Power(val label: String, val ore: Ore?, val damage: Int) {
     CRYSTAL("CRYSTAL FLOWER", Ore.AMETHYST, 2),
     /** Rocco wears a blue shell: homing shells to throw, and a spin dash when sprinting. */
     SHELL("BLUE SHELL", Ore.DIAMOND, 2),
+    /** Cappy: throw Rocco's cap to capture a bad guy and use its power. */
+    CAPPY("CAPPY", Ore.SAPPHIRE, 2),
+    /** Gold Flower: golden fireballs that turn hits into coins. */
+    GOLD("GOLD FLOWER", Ore.GOLD, 3),
 }
 
 /**
@@ -241,6 +245,15 @@ class Hero(val who: Who, x: Float, y: Float) :
                 // Metal Rocco is all shiny silver.
                 fun rs(f: Int) = if (g.metal) Metal.of(TeamArt.rocco(g.power, f)) else TeamArt.rocco(g.power, f)
                 val frame = if (!onGround) 2 else if (walking) 1 else 0
+                if (g.capture != null) { g.drawCapture(gfx, this, ox); return }
+                if (g.megaT > 0f) {
+                    // MEGA: twice as big, growing up from the feet.
+                    val flash = g.megaT < 2f && (g.megaT * 8).toInt() % 2 == 0
+                    gfx.sprite(rs(frame), px - 8, bottom - 48, flipX = facing < 0, w = 32f, h = 48f)
+                    if (flash) gfx.rect(px - 8, bottom - 48, 32f, 48f, 0x55FFFFFF)
+                    return
+                }
+                if (g.propT > 0f && !mini) PropellerItem.drawPropeller(gfx, cx + ox, bottom - 24, g.time)
                 if (g.dino != null) {
                     // Riding Dash: Dash runs along below, Rocco sits in the saddle.
                     Dino.drawBody(gfx, cx + ox, bottom, facing, anim, walking || !onGround)

@@ -277,6 +277,17 @@ Walking out of the house puts you on the next level to play (not back on the hou
   penguin, unicorn, dragon, owl, lion), gold and rainbow dragons, and koalas, sheep, monkeys, turtles,
   hamsters and octopuses.
 
+### Rocco's new powers
+
+* **CAPPY** (crafting table, FLOWERS tab, made with sapphire): THROW Rocco's cap. If it hits a bad guy, Rocco
+  **becomes** that bad guy (wearing his cap) for 20 seconds and gets its power: Grumbler runs super fast,
+  Hopper mega-jumps, Flapper flies, Peekaboo floats, Shellback shell-dashes, Bomb-bomb goes KA-BOOM,
+  Enderman teleports, Witch throws potions, Bonehead can't be hurt... Getting hit (or SWAP) pops him back out
+  without losing a heart. Bosses just get bonked.
+* **GOLD FLOWER** (FLOWERS tab): golden bouncing fireballs, and every hit makes coins.
+* **MEGA MUSHROOM** (mystery blocks): giant Rocco for 12 seconds, squashing everything he touches.
+* **PROPELLER MUSHROOM** (mystery blocks): press JUMP in the air to spin way up, hold JUMP to float down.
+
 ### Evolving Pokemon
 
 * 10 new Pokemon that you get by **evolving**: Ember -> SCORCH -> Blaze, Splashy -> TIDAL -> Hydro,

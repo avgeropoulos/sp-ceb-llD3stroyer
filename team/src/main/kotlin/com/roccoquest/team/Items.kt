@@ -39,13 +39,13 @@ class Shot(
             Power.CRYSTAL -> 240f
             else -> 230f
         }
-        vy = if (kind == Power.FIRE) 60f else spread
+        vy = if (kind == Power.FIRE || kind == Power.GOLD) 60f else spread
     }
 
     override fun update(g: TeamGame, dt: Float) {
         t += dt
         when (kind) {
-            Power.FIRE -> {
+            Power.FIRE, Power.GOLD -> {
                 vy = min(vy + GRAVITY * dt, 300f)
                 if (g.level.moveX(this, vx * dt)) { gone(g); return }
                 if (g.level.moveY(this, vy * dt) == 1) vy = -170f
@@ -78,6 +78,8 @@ class Shot(
                 hitAlready += f
                 when (kind) {
                     Power.ICE -> if (!f.boss) g.iceBurst(f.cx, f.cy)
+                    // Gold: every hit turns into coins!
+                    Power.GOLD -> repeat(2) { g.spawn(Coin(f.cx - 4 + it * 8f, f.y - 6, popping = true)) }
                     // Thunder jumps to the next closest bad guy.
                     Power.THUNDER -> g.foes.filter { it !== f && !it.dying && it.active && hypot(it.cx - f.cx, it.cy - f.cy) < 120f }
                         .minByOrNull { hypot(it.cx - f.cx, it.cy - f.cy) }?.let {
@@ -102,6 +104,11 @@ class Shot(
     override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
         when (kind) {
             Power.FIRE -> gfx.sprite(Sprites.fireball, x + ox, y, flipX = (t * 12).toInt() % 2 == 0, w = 9f, h = 9f)
+            Power.GOLD -> {
+                gfx.oval(x + ox - 1, y - 1, 11f, 11f, 0x66FFE14D)
+                gfx.oval(x + ox, y, 9f, 9f, 0xFFFFD21F.toInt())
+                gfx.oval(x + ox + 2, y + 2, 3f, 3f, 0xFFFFFFFF.toInt())
+            }
             Power.ICE -> gfx.sprite(Sprites.iceball, x + ox, y, flipY = (t * 12).toInt() % 2 == 0, w = 9f, h = 9f)
             Power.BOOM -> gfx.sprite(Sprites.boomerang, x + ox - 1, y, flipY = (t * 10).toInt() % 2 == 0, w = 12f, h = 9f)
             Power.THUNDER -> {

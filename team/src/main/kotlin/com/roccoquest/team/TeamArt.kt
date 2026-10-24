@@ -70,6 +70,8 @@ object TeamArt {
         Power.THUNDER -> 0xFFFFE14D.toInt() to 0xFFC87A10.toInt()
         Power.CRYSTAL -> 0xFFC890FF.toInt() to 0xFF7A3AC0.toInt()
         Power.SHELL -> 0xFF2E6BE6.toInt() to 0xFF1A3A9A.toInt()
+        Power.CAPPY -> 0xFFE52521.toInt() to 0xFFB01A1A.toInt()
+        Power.GOLD -> 0xFFFFD21F.toInt() to 0xFFC89A10.toInt()
     }
 
     private val blockyCache = HashMap<Power, Pair<Sprite, Sprite>>()
@@ -91,9 +93,11 @@ object TeamArt {
     private val thunder = arrayOf(Sprites.bigStand, Sprites.bigWalk, Sprites.bigJump).map { it.recolor(thunderMap) }
     private val crystalMap = mapOf(RED to 0xFFC890FF.toInt(), BLUE to 0xFF5A2A9A.toInt())
     private val crystal = arrayOf(Sprites.bigStand, Sprites.bigWalk, Sprites.bigJump).map { it.recolor(crystalMap) }
+    private val goldMap = mapOf(RED to 0xFFF4F4F4.toInt(), BLUE to 0xFFE8B82A.toInt())
+    private val goldSuit = arrayOf(Sprites.bigStand, Sprites.bigWalk, Sprites.bigJump).map { it.recolor(goldMap) }
 
     /** frame: 0 stand, 1 walk, 2 jump */
-    fun rocco(p: Power, frame: Int): Sprite = if (p == Power.THUNDER) thunder[frame] else if (p == Power.CRYSTAL) crystal[frame] else when (p) {
+    fun rocco(p: Power, frame: Int): Sprite = if (p == Power.THUNDER) thunder[frame] else if (p == Power.CRYSTAL) crystal[frame] else if (p == Power.GOLD) goldSuit[frame] else when (p) {
         Power.NONE -> arrayOf(Sprites.bigStand, Sprites.bigWalk, Sprites.bigJump)
         Power.FIRE -> arrayOf(Sprites.fireStand, Sprites.fireWalk, Sprites.fireJump)
         Power.ICE -> arrayOf(Sprites.iceStand, Sprites.iceWalk, Sprites.iceJump)
@@ -157,6 +161,7 @@ object TeamArt {
     )
 
     private val thunderFlower = Sprites.blossom1.recolor(mapOf(0xFFFF8A00.toInt() to 0xFFFFE14D.toInt(), RED to 0xFFE8803A.toInt()))
+    private val goldFlower = Sprites.blossom1.recolor(mapOf(0xFFFF8A00.toInt() to 0xFFFFD21F.toInt(), RED to 0xFFE8B82A.toInt()))
     private val crystalFlower = Sprites.blossom1.recolor(mapOf(0xFFFF8A00.toInt() to 0xFFC890FF.toInt(), RED to 0xFF7A3AC0.toInt()))
 
     fun flowerSprite(p: Power): Sprite = when (p) {
@@ -166,6 +171,8 @@ object TeamArt {
         Power.THUNDER -> thunderFlower
         Power.CRYSTAL -> crystalFlower
         Power.SHELL -> Sprites.blueShell
+        Power.CAPPY -> CappyHat.icon
+        Power.GOLD -> goldFlower
         Power.GRASS, Power.NONE -> grassFlower
     }
 
