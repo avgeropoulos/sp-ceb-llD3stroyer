@@ -109,14 +109,14 @@ class MenuActivity : Activity() {
         }
         for (s in songs) {
             val status = when {
-                !s.hasChart -> "No chart yet. Tap to make one"
+                !s.hasChart -> "No chart yet. Tap to listen and make one"
                 s.source == CustomSong.SOURCE_TABS -> "Chart from Bouzouki Tabs · ${s.notes.size} notes"
                 s.source == CustomSong.SOURCE_AUTO -> "Chart heard by the app · ${s.notes.size} notes"
                 else -> "Chart you tapped in · ${s.notes.size} notes"
             }
             card(s.title, status, if (s.hasChart) scoreLine("c:${s.id}", d) else "", onLong = { songMenu(s) }) {
                 if (s.hasChart) startActivity(PlayActivity.playIntent(this, PlayActivity.KIND_CUSTOM, s.id, d))
-                else songMenu(s)
+                else listen(s)
             }
         }
         list.addView(bigButton("\uD83D\uDD0D  Search YouTube", ACCENT) {
@@ -207,24 +207,11 @@ class MenuActivity : Activity() {
                         }
                     }
                 }
-                chartChoice(song)
+                // Straight to the automatic chart: listen once, then play.
+                listen(song)
             }
         }
         dialog.show()
-    }
-
-    /** Right after adding a song: how should we make its chart? */
-    private fun chartChoice(song: CustomSong) {
-        val options = listOf(
-            "Automatic: the app listens and finds the notes" to { listen(song) },
-            "Bouzouki Tabs on your computer (most accurate)" to { transcribe(song) },
-            "Tap along to the video yourself" to { record(song) },
-        )
-        AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
-            .setTitle("Make the chart")
-            .setItems(options.map { it.first }.toTypedArray()) { _, i -> options[i].second() }
-            .setNegativeButton("Later", null)
-            .show()
     }
 
     /** The video plays once while the app hears it and writes the chart. */

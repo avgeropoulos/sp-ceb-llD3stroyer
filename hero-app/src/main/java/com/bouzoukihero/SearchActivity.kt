@@ -73,6 +73,8 @@ class SearchActivity : Activity() {
         val q = box.text.toString().trim()
         if (q.isEmpty()) return
         (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(box.windowToken, 0)
+        // A pasted link: no need to search, that's the song.
+        YouTubeSearch.linkIn(q)?.let { pick(it, null); return }
         val id = ++searchId
         results.removeAllViews()
         results.addView(label("Searching…", 15f, Ui.SUB).apply { setPadding(dp(4), dp(12), 0, 0) })
@@ -81,19 +83,23 @@ class SearchActivity : Activity() {
             val found = try {
                 Net.search(q, key)
             } catch (e: Exception) {
-                runOnUiThread { if (id == searchId) message("Search didn't work: ${e.message ?: e.javaClass.simpleName}") }
+                runOnUiThread {
+                    if (id == searchId) {
+                        message("Search didn't work here (${e.message ?: e.javaClass.simpleName}). Search on YouTube itself instead:")
+                        results.addView(browseButton(q))
+                    }
+                }
                 return@thread
             }
             runOnUiThread {
                 if (id != searchId || isFinishing) return@runOnUiThread
                 results.removeAllViews()
                 if (found.isEmpty()) {
-                    message(
-                        if (key.isBlank()) "No results. If YouTube search keeps failing, add a YouTube API key in Settings, or paste a link instead."
-                        else "No results for \"$q\"."
-                    )
+                    message("No results here for \"$q\". Search on YouTube itself instead:")
                 }
                 for (v in found) results.addView(row(v))
+                // Always offer YouTube's own search too, in case the right video isn't listed.
+                results.addView(browseButton(q))
             }
         }
     }
@@ -121,10 +127,7 @@ class SearchActivity : Activity() {
             if (sub.isNotEmpty()) addView(label(sub, 12f, Ui.SUB))
         }
         addView(text, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        setOnClickListener {
-            setResult(RESULT_OK, Intent().putExtra(RESULT_ID, v.id).putExtra(RESULT_TITLE, v.title))
-            finish()
-        }
+        setOnClickListener { pick(v.id, v.title) }
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             setMargins(0, dp(8), 0, 0)
         }
@@ -135,7 +138,33 @@ class SearchActivity : Activity() {
         }
     }
 
+    private fun pick(id: String, title: String?) {
+        setResult(RESULT_OK, Intent().putExtra(RESULT_ID, id).putExtra(RESULT_TITLE, title))
+        finish()
+    }
+
+    private fun browseButton(q: String) = label("\u25B6  Search on YouTube", 15f, Ui.WHITE, bold = true).apply {
+        gravity = Gravity.CENTER
+        background = rounded(0xFFC4302B.toInt(), 24)
+        setPadding(dp(16), dp(14), dp(16), dp(14))
+        setOnClickListener {
+            startActivityForResult(Intent(this@SearchActivity, BrowseActivity::class.java).putExtra(EXTRA_QUERY, q), REQ_BROWSE)
+        }
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            setMargins(0, dp(14), 0, 0)
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_BROWSE && resultCode == RESULT_OK && data != null) {
+            pick(data.getStringExtra(RESULT_ID) ?: return, data.getStringExtra(RESULT_TITLE))
+        }
+    }
+
     companion object {
+        private const val REQ_BROWSE = 1
         const val EXTRA_QUERY = "query"
         const val RESULT_ID = "videoId"
         const val RESULT_TITLE = "title"

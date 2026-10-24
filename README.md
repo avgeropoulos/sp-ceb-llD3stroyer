@@ -50,13 +50,18 @@ synthesized. YouTube songs play the video's own audio, so you hear the real reco
 
 ### YouTube songs
 
-Tap **Search YouTube**, type a song or artist, and tap a result. You can also paste a link, or
-share a video from the YouTube app to Bouzouki Hero. Search reads YouTube's results page and
-needs no account. If it ever stops working, add a free YouTube Data API key in **Settings**. If you only want the bouzouki solo, set a start and end time. The video plays
+Tap **Search YouTube**, type a song or artist (or paste a link), and tap a result. You can also
+share a video from the YouTube app to Bouzouki Hero. If the right video isn't in the list, tap
+**Search on YouTube** to browse YouTube's own site inside the app; opening a video picks it. A
+free YouTube Data API key in **Settings** makes the built-in search use YouTube's official API.
+
+Once you pick a song, the app plays the video once and listens to make the chart (see
+**Automatic** below), then starts the game. If you only want the bouzouki solo, set a start and end time. The video plays
 at the top of the screen and the notes stay in time with it. There are three ways to make the
 chart:
 
-* **Automatic.** The app listens to the video as it plays and finds the bouzouki notes itself,
+* **Automatic** (what happens when you add a song). The app listens to the video as it plays and
+  finds the bouzouki notes itself,
   like Bouzouki Tabs does, but on the phone. On Android 10 and newer, it captures its own sound
   directly. Android asks once per song whether the app may capture what it plays. On older
   phones, or if you say no, it listens through the microphone, so turn the volume up. It finds
@@ -64,8 +69,10 @@ chart:
   turns fast repeated picking into tremolo. The notes appear on the neck as they're found, and
   when the video ends (or you tap DONE) the chart is saved. The phone can't run Bouzouki Tabs'
   neural network that separates the instruments, so a loud singer or another string instrument
-  can add extra notes. For the cleanest result, set a start and end around a bouzouki solo, or
-  use Bouzouki Tabs.
+  can add extra notes. On busy records it loosens its filter until it has enough notes to play,
+  so the notes stay in time with the music even when some pitches come from the singer. A meter
+  at the top shows that the app can hear the video. For the cleanest result, set a start and end
+  around a bouzouki solo, or use Bouzouki Tabs (long-press the song).
 
 * **From Bouzouki Tabs.** Your [Bouzouki Tabs](https://github.com/avgeropoulos/bouzouki-tabs)
   app finds the bouzouki notes for you. Run its web app on a computer on the same Wi-Fi:

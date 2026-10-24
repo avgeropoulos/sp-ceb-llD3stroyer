@@ -73,18 +73,58 @@ object YouTubeSearch {
         }
     }
 
-    /** The JSON object assigned to [name] in one of the page's scripts. */
+    /**
+     * The JSON object assigned to [name] in one of the page's scripts. The desktop site
+     * writes it as an object (`var ytInitialData = {...};`); the mobile site writes it as
+     * an escaped string (`var ytInitialData = '\x7b\x22...';`).
+     */
     fun embeddedJson(html: String, name: String): String? {
         var i = html.indexOf(name)
         while (i >= 0) {
-            val brace = html.indexOf('{', i)
-            val eq = html.indexOf('=', i)
-            if (brace > 0 && eq in (i + 1) until brace && html.substring(eq + 1, brace).isBlank()) {
-                return objectAt(html, brace)
+            var j = i + name.length
+            while (j < html.length && (html[j] == ' ' || html[j] == '"' || html[j] == ']')) j++
+            if (j < html.length && html[j] == '=') {
+                j++
+                while (j < html.length && html[j].isWhitespace()) j++
+                if (j < html.length) {
+                    when (html[j]) {
+                        '{' -> return objectAt(html, j)
+                        '\'', '"' -> jsString(html, j)?.trim()?.let { if (it.startsWith("{")) return it }
+                    }
+                }
             }
             i = html.indexOf(name, i + name.length)
         }
         return null
+    }
+
+    /** Decodes the JavaScript string literal starting at [start] (its opening quote). */
+    private fun jsString(s: String, start: Int): String? {
+        val q = s[start]
+        val out = StringBuilder()
+        var i = start + 1
+        while (i < s.length) {
+            val c = s[i]
+            if (c == q) return out.toString()
+            if (c != '\\') { out.append(c); i++; continue }
+            if (i + 1 >= s.length) return null
+            when (val e = s[i + 1]) {
+                'x' -> { out.append(s.substring(i + 2, i + 4).toInt(16).toChar()); i += 4 }
+                'u' -> { out.append(s.substring(i + 2, i + 6).toInt(16).toChar()); i += 6 }
+                'n' -> { out.append('\n'); i += 2 }
+                't' -> { out.append('\t'); i += 2 }
+                'r' -> { out.append('\r'); i += 2 }
+                else -> { out.append(e); i += 2 }
+            }
+        }
+        return null
+    }
+
+    /** If [query] is a YouTube link (or video id) rather than words, its video id. */
+    fun linkIn(query: String): String? {
+        val q = query.trim()
+        if (q.contains(' ')) return null
+        return YouTube.videoId(q)
     }
 
     /** The balanced {...} starting at [start], skipping braces inside strings. */

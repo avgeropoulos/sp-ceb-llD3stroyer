@@ -96,6 +96,35 @@ class SamplerSearchTest {
         assertEquals(emptyList(), YouTubeSearch.parsePage("<html>consent page</html>").map { it.id })
     }
 
+    @Test fun parsesMobileYouTubePage() {
+        // m.youtube.com embeds the same data as an escaped JavaScript string.
+        val json = """{"contents":{"sectionListRenderer":{"contents":[{"itemSectionRenderer":{"contents":[""" +
+            """{"videoRenderer":{"videoId":"abcdefghijk","title":{"runs":[{"text":"Bouzouki it's \"great\""}]},""" +
+            """"lengthText":{"simpleText":"4:01"}}}]}}]}}}"""
+        val escaped = json.map { c ->
+            when {
+                c == '{' || c == '}' || c == '"' || c == '\'' -> "\\x%02x".format(c.code)
+                c == '\\' -> "\\\\"
+                else -> c.toString()
+            }
+        }.joinToString("")
+        val html = "<script>var ytInitialData = '$escaped';</script>"
+        val v = YouTubeSearch.parsePage(html)
+        assertEquals(listOf("abcdefghijk"), v.map { it.id })
+        assertEquals("Bouzouki it's \"great\"", v[0].title)
+        assertEquals("4:01", v[0].duration)
+        // Window-style assignment used on some pages.
+        val v2 = YouTubeSearch.parsePage("<script>window[\"ytInitialData\"] = $json;</script>")
+        assertEquals(listOf("abcdefghijk"), v2.map { it.id })
+    }
+
+    @Test fun recognisesLinksTypedIntoSearch() {
+        assertEquals("dQw4w9WgXcQ", YouTubeSearch.linkIn(" https://youtu.be/dQw4w9WgXcQ?si=x "))
+        assertEquals("dQw4w9WgXcQ", YouTubeSearch.linkIn("https://m.youtube.com/watch?v=dQw4w9WgXcQ"))
+        assertEquals(null, YouTubeSearch.linkIn("bouzouki solo"))
+        assertEquals(null, YouTubeSearch.linkIn("zeibekiko"))
+    }
+
     @Test fun parsesYouTubeApiReply() {
         val reply = """{"items":[{"id":{"kind":"youtube#video","videoId":"abcdefghijk"},
             "snippet":{"title":"Ta &quot;Matia&quot;","channelTitle":"Ch &amp; Co"}}]}"""

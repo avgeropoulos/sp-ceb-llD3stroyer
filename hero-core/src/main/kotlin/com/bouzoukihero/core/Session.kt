@@ -52,6 +52,12 @@ class Session(
     /** A short line under the HUD, e.g. which way the app is listening. */
     @Volatile var banner = ""
 
+    /** Listen mode: how loud the sound the app hears is, 0..1, for the meter. */
+    @Volatile var level = 0f
+
+    /** Listen mode: replaces the usual line on the finished screen (e.g. why there's no chart). */
+    @Volatile var doneNote = ""
+
     /** Virtual screen height; the width is always [VIEW_W]. */
     var viewH = 640f
 
@@ -632,6 +638,12 @@ class Session(
             g.shadowText(if (listen) "LISTENING" else "REC", 32f, y + 21, 16f, 0xFFFFFFFF.toInt())
             g.shadowText("${recorded.size} notes", if (listen) 128f else 76f, y + 21, 13f, 0xFFCCD6F6.toInt())
             if (banner.isNotEmpty()) g.shadowText(banner, VIEW_W / 2, l.top + 64, 11f, 0xFFFFD23F.toInt(), 1)
+            if (listen) {
+                // Sound meter: proof the app can hear the video.
+                g.panel(VIEW_W - 136 - 48, y + 9, 40f, 12f, 0xFF000000.toInt(), 5f)
+                val w = (38f * level.coerceIn(0f, 1f)).coerceAtLeast(2f)
+                g.panel(VIEW_W - 135 - 48, y + 10, w, 10f, if (level > 0.02f) 0xFF3FD46B.toInt() else 0xFF8A2F3A.toInt(), 4f)
+            }
             button(g, VIEW_W - 136, y, 82f, 30f, "DONE", 0xFF2E9B57.toInt(), Action.DONE)
         } else {
             g.shadowText("%,d".format(score), 10f, y + 20, 20f, 0xFFFFFFFF.toInt())
@@ -738,6 +750,7 @@ class Session(
         g.shadowText(if (recorded.size >= 4) "CHART SAVED" else "NO CHART", VIEW_W / 2, y0 + 44, 22f, 0xFFFFFFFF.toInt(), 1)
         g.text(
             when {
+                doneNote.isNotEmpty() -> doneNote
                 recorded.size < 4 && listen -> "Couldn't hear the bouzouki."
                 listen -> "Heard ${recorded.size} bouzouki notes."
                 else -> "You tapped ${recorded.size} notes."

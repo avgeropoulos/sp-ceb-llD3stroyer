@@ -135,6 +135,7 @@ class PlayActivity : Activity(), HeroView.Host, SessionListener {
     private var mic: MicListener? = null
     @Volatile private var capturing = false
     @Volatile private var quietSince = -1.0
+    @Volatile private var loudest = 0.0
 
     private fun startListening() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
@@ -218,6 +219,8 @@ class PlayActivity : Activity(), HeroView.Host, SessionListener {
         var e = 0.0
         for (v in pcm) e += v * v
         val rms = Math.sqrt(e / pcm.size.coerceAtLeast(1))
+        session.level = (rms * 8).toFloat().coerceIn(0f, 1f)
+        if (rms > loudest) loudest = rms
         if (capturing) {
             // Hearing nothing while the video plays: this phone won't let us capture it.
             if (rms < 1e-4) {
@@ -289,6 +292,14 @@ class PlayActivity : Activity(), HeroView.Host, SessionListener {
             runOnUiThread { stopCapture() }
             if (notes.size >= 4) {
                 store.save(song.copy(notes = notes, source = CustomSong.SOURCE_AUTO, tempo = 0.0))
+                // Straight into the game with the new chart.
+                session.doneNote = "Found ${notes.size} notes. Starting the game\u2026"
+                runOnUiThread {
+                    window.decorView.postDelayed({ if (!destroyed) onAction(Session.Action.PLAY_CHART) }, 1800)
+                }
+            } else {
+                session.doneNote = if (loudest < 0.002) "The app couldn't hear the video's sound."
+                else "Heard the music, but no clear notes."
             }
         } else if (session.record) {
             val song = custom ?: return

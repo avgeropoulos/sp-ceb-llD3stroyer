@@ -47,12 +47,36 @@ object Transcriber {
         val flux: Double,
     )
 
-    fun transcribe(input: FloatArray, t0: Double = 0.0): List<SourceNote> =
-        mergeTremolo(candidates(input, t0).filter { keep(it) }.map { it.note })
+    fun transcribe(input: FloatArray, t0: Double = 0.0): List<SourceNote> {
+        val cands = candidates(input, t0)
+        val seconds = input.size.toDouble() / RATE
+        // Strictest first: only the clear bouzouki line. On busy records (a loud singer, a
+        // full band) that can leave almost nothing, so loosen step by step until there are
+        // enough notes to play, ending with every pitched pluck in time with the music.
+        for (tier in TIERS) {
+            val kept = cands.filter { tier.keeps(it) }
+            if (kept.size >= seconds * MIN_NOTES_PER_SECOND || tier === TIERS.last()) {
+                return mergeTremolo(kept.map { it.note })
+            }
+        }
+        return emptyList()
+    }
 
-    // A steady, tonal note, about as loud as the loudest playing around it: the melody
-    // (not the band strumming behind it, or a drum).
-    internal fun keep(c: Candidate) = c.agree >= 0.55 && c.tonal >= 5.0 && c.loud >= 0.85
+    internal class Tier(val agree: Double, val tonal: Double, val loud: Double) {
+        fun keeps(c: Candidate) = c.agree >= agree && c.tonal >= tonal && c.loud >= loud
+    }
+
+    /**
+     * Strict: a steady, tonal note about as loud as the loudest playing around it (the
+     * melody, not the band strumming behind it or a drum). Then looser; the last one only
+     * rejects noise (drums), which measures about 3.4 for tonality.
+     */
+    internal val TIERS = listOf(Tier(0.55, 5.0, 0.85), Tier(0.5, 4.2, 0.6), Tier(0.45, 3.9, 0.3))
+
+    /** Below this, a stretch of music is treated as too sparse and the filter loosens. */
+    private const val MIN_NOTES_PER_SECOND = 0.6
+
+    internal fun keep(c: Candidate) = TIERS.first().keeps(c)
 
     internal fun candidates(input: FloatArray, t0: Double = 0.0): List<Candidate> {
         if (input.size < N + 4 * HOP) return emptyList()

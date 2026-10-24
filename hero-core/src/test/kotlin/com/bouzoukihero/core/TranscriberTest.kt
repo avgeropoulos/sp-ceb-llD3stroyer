@@ -68,6 +68,21 @@ class TranscriberTest {
         println(report)
     }
 
+    @Test fun quietBouzoukiUnderALoudSingerStillGivesAChart() {
+        // A real record: the singer and band louder than the bouzouki. The strict filter
+        // would keep almost nothing; the looser ones must still give a playable chart.
+        val tune = Tunes.all[0]
+        val r = Synth.render(tune)
+        val mix = FloatArray(r.lead.size) { r.lead[it] * 0.35f + r.backing[it] * 1.3f }
+        singer(mix, tune, 0.3f)
+        val found = Transcriber.transcribe(mix)
+        val secs = mix.size.toDouble() / Synth.RATE
+        val s = score(truthOf(tune), found)
+        println("quiet bouzouki: ${found.size} notes in %.0f s, $s".format(secs))
+        assertTrue(found.size >= secs * 0.5, "only ${found.size} notes")
+        assertTrue(s.recall > 0.5, "quiet bouzouki: $s")
+    }
+
     @Test fun liveMatchesWholeSong() {
         val tune = Tunes.all[1]
         val r = Synth.render(tune)

@@ -41,6 +41,11 @@
             android:windowSoftInputMode="stateVisible|adjustResize" />
 
         <activity
+            android:name=".BrowseActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
+        <activity
             android:name=".SoundActivity"
             android:exported="false"
             android:screenOrientation="portrait" />

@@ -171,7 +171,8 @@ object Net {
         try {
             c.connectTimeout = 15_000
             c.readTimeout = 15_000
-            c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36")
+            // A desktop browser gets the desktop results page (not a redirect to m.youtube.com).
+            c.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
             c.setRequestProperty("Accept-Language", "en-US,en;q=0.9")
             // Skips the cookie consent page shown in some countries.
             c.setRequestProperty("Cookie", "SOCS=CAI; CONSENT=YES+1")
