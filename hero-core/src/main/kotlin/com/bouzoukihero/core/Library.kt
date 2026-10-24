@@ -1,8 +1,9 @@
 package com.bouzoukihero.core
 
 /**
- * A song the player added from YouTube. Its chart comes from the Bouzouki Tabs app
- * ([SOURCE_TABS]) or from tapping along to the video ([SOURCE_RECORDED]).
+ * A song the player added from YouTube. Its chart is heard by the app itself
+ * ([SOURCE_AUTO]), comes from the Bouzouki Tabs app ([SOURCE_TABS]), or is tapped
+ * along to the video ([SOURCE_RECORDED]).
  */
 data class CustomSong(
     val id: String,
@@ -18,7 +19,7 @@ data class CustomSong(
     val hasChart get() = notes.isNotEmpty()
 
     /** Charts tapped in by hand have lanes, not real pitches, so no note names. */
-    val labelled get() = source == SOURCE_TABS
+    val labelled get() = source == SOURCE_TABS || source == SOURCE_AUTO
 
     fun toJson(): String = Json.write(
         mapOf(
@@ -44,6 +45,9 @@ data class CustomSong(
         const val SOURCE_NONE = "none"
         const val SOURCE_TABS = "tabs"
         const val SOURCE_RECORDED = "recorded"
+
+        /** Heard by the app itself while the video played ([LiveTranscriber]). */
+        const val SOURCE_AUTO = "auto"
 
         fun fromJson(text: String): CustomSong {
             val m = Json.parse(text) as? Map<*, *> ?: throw Json.ParseError("Not a song")

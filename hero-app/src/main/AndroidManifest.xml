@@ -5,6 +5,10 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Recording notes from your own bouzouki, so the songs sound like a real one. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Hearing the YouTube video to find its notes: Android's audio capture runs in a
+         foreground service. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
 
     <!-- A Bouzouki Tabs server on your home network is plain http://. -->
     <application
@@ -47,5 +51,9 @@
             android:screenOrientation="portrait"
             android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation" />
+        <service
+            android:name=".CaptureService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
     </application>
 </manifest>

@@ -111,6 +111,7 @@ class MenuActivity : Activity() {
             val status = when {
                 !s.hasChart -> "No chart yet. Tap to make one"
                 s.source == CustomSong.SOURCE_TABS -> "Chart from Bouzouki Tabs · ${s.notes.size} notes"
+                s.source == CustomSong.SOURCE_AUTO -> "Chart heard by the app · ${s.notes.size} notes"
                 else -> "Chart you tapped in · ${s.notes.size} notes"
             }
             card(s.title, status, if (s.hasChart) scoreLine("c:${s.id}", d) else "", onLong = { songMenu(s) }) {
@@ -214,18 +215,21 @@ class MenuActivity : Activity() {
 
     /** Right after adding a song: how should we make its chart? */
     private fun chartChoice(song: CustomSong) {
+        val options = listOf(
+            "Automatic: the app listens and finds the notes" to { listen(song) },
+            "Bouzouki Tabs on your computer (most accurate)" to { transcribe(song) },
+            "Tap along to the video yourself" to { record(song) },
+        )
         AlertDialog.Builder(this, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle("Make the chart")
-            .setMessage(
-                "Bouzouki Tabs listens to the song and finds the bouzouki notes for you " +
-                    "(needs your Bouzouki Tabs app running on a computer).\n\n" +
-                    "Or tap along to the video yourself: tap a button for every note you hear, " +
-                    "higher buttons for higher notes, and hold for long ones."
-            )
-            .setPositiveButton("Bouzouki Tabs") { _, _ -> transcribe(song) }
-            .setNeutralButton("Tap along") { _, _ -> record(song) }
+            .setItems(options.map { it.first }.toTypedArray()) { _, i -> options[i].second() }
             .setNegativeButton("Later", null)
             .show()
+    }
+
+    /** The video plays once while the app hears it and writes the chart. */
+    private fun listen(song: CustomSong) {
+        startActivity(PlayActivity.playIntent(this, PlayActivity.KIND_CUSTOM, song.id, Difficulty.EXPERT, listen = true))
     }
 
     private fun songMenu(song: CustomSong) {
@@ -235,6 +239,7 @@ class MenuActivity : Activity() {
                 startActivity(PlayActivity.playIntent(this, PlayActivity.KIND_CUSTOM, song.id, store.difficulty))
             })
         }
+        options.add("Make the chart automatically (listen)" to { listen(song) })
         options.add("Get the chart from Bouzouki Tabs" to { transcribe(song) })
         options.add("Tap along to make the chart" to { record(song) })
         options.add("Rename" to { renameDialog(song) })

@@ -53,8 +53,19 @@ synthesized. YouTube songs play the video's own audio, so you hear the real reco
 Tap **Search YouTube**, type a song or artist, and tap a result. You can also paste a link, or
 share a video from the YouTube app to Bouzouki Hero. Search reads YouTube's results page and
 needs no account. If it ever stops working, add a free YouTube Data API key in **Settings**. If you only want the bouzouki solo, set a start and end time. The video plays
-at the top of the screen and the notes stay in time with it. There are two ways to make the
+at the top of the screen and the notes stay in time with it. There are three ways to make the
 chart:
+
+* **Automatic.** The app listens to the video as it plays and finds the bouzouki notes itself,
+  like Bouzouki Tabs does, but on the phone. On Android 10 and newer, it captures its own sound
+  directly. Android asks once per song whether the app may capture what it plays. On older
+  phones, or if you say no, it listens through the microphone, so turn the volume up. It finds
+  plucks by the plectrum's bright attack, works out each note's pitch from its harmonics, and
+  turns fast repeated picking into tremolo. The notes appear on the neck as they're found, and
+  when the video ends (or you tap DONE) the chart is saved. The phone can't run Bouzouki Tabs'
+  neural network that separates the instruments, so a loud singer or another string instrument
+  can add extra notes. For the cleanest result, set a start and end around a bouzouki solo, or
+  use Bouzouki Tabs.
 
 * **From Bouzouki Tabs.** Your [Bouzouki Tabs](https://github.com/avgeropoulos/bouzouki-tabs)
   app finds the bouzouki notes for you. Run its web app on a computer on the same Wi-Fi:
@@ -234,7 +245,8 @@ Bouzouki Hero has the same split:
 * `hero-core/`: plain Kotlin. `Chart.kt` turns a melody into notes for each difficulty, `Session.kt`
   is the gameplay and drawing, `Tunes.kt` holds the built-in songs in a small note notation,
   `Synth.kt` renders them, `Sampler.kt` plays the melody from real recordings (pitch detection,
-  trimming, retuning), `Search.kt` reads YouTube search results, and `Library.kt` handles YouTube
+  trimming, retuning), `Search.kt` reads YouTube search results, `Transcriber.kt` finds the bouzouki notes in a
+  song's audio (also while it plays), and `Library.kt` handles YouTube
   links, saved songs and Bouzouki Tabs results.
 * `hero-app/`: the Android layer. The song menu, the game view, the YouTube player (the official
   embedded player in a `WebView`, which reports the video's time to the game), and audio.

@@ -37,6 +37,8 @@ class Session(
     val tempo: Double = 0.0,
     val bestScore: Int = 0,
     var listener: SessionListener = object : SessionListener {},
+    /** Record mode where the app listens to the song and finds the notes itself. */
+    val listen: Boolean = false,
 ) {
     enum class State { LOADING, PLAYING, PAUSED, FINISHED, ERROR }
     enum class Action { NONE, PAUSE, RESUME, RESTART, QUIT, OPA, DONE, PLAY_CHART }
@@ -46,6 +48,9 @@ class Session(
     }
 
     val lanes = if (record) 5 else difficulty.lanes
+
+    /** A short line under the HUD, e.g. which way the app is listening. */
+    @Volatile var banner = ""
 
     /** Virtual screen height; the width is always [VIEW_W]. */
     var viewH = 640f
@@ -135,7 +140,7 @@ class Session(
     /** Which lane a touch at (x, y) presses, or -1 if it's not on the buttons. */
     fun laneAt(x: Float, y: Float): Int {
         val l = layout()
-        if (y < l.hitY - 80 || state != State.PLAYING) return -1
+        if (y < l.hitY - 80 || state != State.PLAYING || listen) return -1
         val i = floor((x - (VIEW_W / 2 - l.width / 2)) / l.laneW).toInt()
         return i.coerceIn(0, lanes - 1)
     }
@@ -317,6 +322,16 @@ class Session(
         releaseAll(time)
         state = State.FINISHED
         listener.finished(this)
+    }
+
+    /** Notes the app heard (listen mode), shown rising up the neck as they're found. */
+    @Synchronized fun heard(notes: List<SourceNote>) {
+        for (n in notes) {
+            val r = RecNote(n.time, ((n.pitch - 57) / 4).coerceIn(0, 4))
+            r.end = n.time + n.duration
+            recorded.add(r)
+            pressFlash[r.lane] = 1f
+        }
     }
 
     /** The recorded taps as a melody (each lane stands in for a pitch). */
@@ -613,9 +628,10 @@ class Session(
         g.rect(0f, l.top, VIEW_W, 46f, 0x66000000)
         if (record) {
             val blink = sin(anim * 6) > 0
-            g.circle(18f, y + 15, 7f, if (blink) 0xFFFF3B3B.toInt() else 0xFF7A1A1A.toInt())
-            g.shadowText("REC", 32f, y + 21, 16f, 0xFFFFFFFF.toInt())
-            g.shadowText("${recorded.size} notes", 76f, y + 21, 13f, 0xFFCCD6F6.toInt())
+            g.circle(18f, y + 15, 7f, if (blink) (if (listen) 0xFF56A8FF else 0xFFFF3B3B).toInt() else 0xFF1A2A5A.toInt())
+            g.shadowText(if (listen) "LISTENING" else "REC", 32f, y + 21, 16f, 0xFFFFFFFF.toInt())
+            g.shadowText("${recorded.size} notes", if (listen) 128f else 76f, y + 21, 13f, 0xFFCCD6F6.toInt())
+            if (banner.isNotEmpty()) g.shadowText(banner, VIEW_W / 2, l.top + 64, 11f, 0xFFFFD23F.toInt(), 1)
             button(g, VIEW_W - 136, y, 82f, 30f, "DONE", 0xFF2E9B57.toInt(), Action.DONE)
         } else {
             g.shadowText("%,d".format(score), 10f, y + 20, 20f, 0xFFFFFFFF.toInt())
@@ -719,11 +735,22 @@ class Session(
         dim(g, l)
         val y0 = (l.top + viewH) / 2 - 120
         g.panel(24f, y0, VIEW_W - 48, 230f, 0xF0121A3A.toInt(), 16f)
-        g.shadowText("CHART SAVED", VIEW_W / 2, y0 + 44, 22f, 0xFFFFFFFF.toInt(), 1)
-        g.text("You tapped ${recorded.size} notes.", VIEW_W / 2, y0 + 80, 13f, 0xFFB9C6EE.toInt(), 1)
-        g.text("Play it on any difficulty.", VIEW_W / 2, y0 + 100, 13f, 0xFFB9C6EE.toInt(), 1)
-        button(g, 48f, y0 + 150, 120f, 42f, "PLAY IT", 0xFF2E9B57.toInt(), Action.PLAY_CHART)
-        button(g, 192f, y0 + 150, 120f, 42f, "SONGS", 0xFF2F6FD6.toInt(), Action.QUIT)
+        g.shadowText(if (recorded.size >= 4) "CHART SAVED" else "NO CHART", VIEW_W / 2, y0 + 44, 22f, 0xFFFFFFFF.toInt(), 1)
+        g.text(
+            when {
+                recorded.size < 4 && listen -> "Couldn't hear the bouzouki."
+                listen -> "Heard ${recorded.size} bouzouki notes."
+                else -> "You tapped ${recorded.size} notes."
+            }, VIEW_W / 2, y0 + 80, 13f, 0xFFB9C6EE.toInt(), 1,
+        )
+        if (recorded.size >= 4) {
+            g.text("Play it on any difficulty.", VIEW_W / 2, y0 + 100, 13f, 0xFFB9C6EE.toInt(), 1)
+            button(g, 48f, y0 + 150, 120f, 42f, "PLAY IT", 0xFF2E9B57.toInt(), Action.PLAY_CHART)
+            button(g, 192f, y0 + 150, 120f, 42f, "SONGS", 0xFF2F6FD6.toInt(), Action.QUIT)
+        } else {
+            g.text(if (listen) "Try the Bouzouki Tabs app, or tap along." else "Tap at least 4 notes.", VIEW_W / 2, y0 + 100, 13f, 0xFFB9C6EE.toInt(), 1)
+            button(g, 110f, y0 + 150, 140f, 42f, "SONGS", 0xFF2F6FD6.toInt(), Action.QUIT)
+        }
     }
 
     private fun star(g: Gfx, cx: Float, cy: Float, r: Float, color: Int) {
