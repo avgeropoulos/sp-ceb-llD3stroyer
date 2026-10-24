@@ -59,6 +59,33 @@ object MoreWorlds {
         Plan("THE ULTIMATE BATTLE", Place.END, "THREE BOSSES: Dry Bones King Krag, Wonder King Krag, then THE ENDER DRAGON!", boss = "YQZ"),
     )
 
+    private val world6Plans = listOf(
+        Plan("SPOOKY STREET", Place.NIGHT, "WORLD 6: SPOOKY WORLD! Peekaboo ghosts hide when you look at them."),
+        Plan("BOO MANSION", Place.CASTLE, "A haunted mansion full of Peekaboos. Face them to make them stop!"),
+        Plan("CREAKY ATTIC", Place.CASTLE, "Creak... creak... who's up here?"),
+        Plan("PUMPKIN PATCH", Place.NIGHT, "Pumpkins, bats and spooky ghosts."),
+        Plan("WITCH WOODS", Place.NIGHT, "WITCHES throw potions! Jump over the splashes."),
+        Plan("FOGGY GRAVEYARD", Place.NIGHT, "Boneheads keep getting back up..."),
+        Plan("BOO-HOO'S THRONE", Place.CASTLE, "KING BOO-HOO! Hit him while he hides his face!", boss = "3"),
+        Plan("GHOSTLY GARDEN", Place.NIGHT, "A garden full of shy ghosts."),
+        Plan("CANDY CASTLE", Place.CASTLE, "A haunted castle made of candy. Yum... and spooky!"),
+        Plan("BAT CAVE", Place.CAVE, "Bats everywhere! Duck!"),
+        Plan("CAULDRON CAVES", Place.CAVE, "The witches brew their potions down here."),
+        Plan("MOONLIGHT MAZE", Place.NIGHT, "A big full moon and lots of ghosts."),
+        Plan("BROOMSTICK BRIDGE", Place.SKY, "Way up high, where the witches fly."),
+        Plan("THE WITCH'S TOWER", Place.CASTLE, "WITCH WANDA! Jump on her when she swoops down low!", boss = "4"),
+        Plan("SCULK HOLLOW", Place.DEEP, "Shhh... something big is listening."),
+        Plan("ECHO CAVES", Place.DEEP, "Every step echoes..."),
+        Plan("SHADOW SWAMP", Place.JUNGLE, "A dark swamp with snappers."),
+        Plan("SPOOKY SKIES", Place.SKY, "Ghosts in the clouds!"),
+        Plan("PHANTOM PALACE", Place.CASTLE, "The biggest haunted house of all."),
+        Plan("THE DARK DEPTHS", Place.DEEP, "The deepest, darkest cave. Two Wardens are waiting..."),
+        Plan("WARDEN TWINS", Place.DEEP, "TWO WARDENS at once! Stay quiet and keep moving!", boss = "55"),
+    )
+
+    /** World 6, Spooky World: Peekaboo ghosts, witches, and three new bosses. */
+    val world6: List<LevelDef> by lazy { world6Plans.mapIndexed { i, p -> make(p, world = 6, seed = 6000 + i * 29) } }
+
     val all: List<LevelDef> by lazy {
         world3.mapIndexed { i, p -> make(p, world = 3, seed = 3000 + i * 17) } +
             world4.mapIndexed { i, p -> make(p, world = 4, seed = 4000 + i * 23) }
@@ -69,12 +96,14 @@ object MoreWorlds {
         "W", "J" -> skyBoss(p, p.boss[0])
         "G" -> deepBoss(p)
         "Z" -> dragonBoss(p)
-        "K", "Q", "Y" -> castleBoss(p, p.boss[0])
+        "K", "Q", "Y", "3", "4" -> castleBoss(p, p.boss[0])
+        "55" -> twinBoss(p)
         else -> rush(p, p.boss)
     }
 
     /** The bad guys each world uses. Air ones go up high; the rest stand on the ground. */
     private fun groundFoes(world: Int, place: Place) = buildString {
+        if (world == 6) { append("gkbH2"); if (place == Place.NIGHT || place == Place.CAVE) append("2"); return@buildString }
         append("gkbAHUjj")
         if (world >= 4) append("bAnpj")
         if (place == Place.NIGHT || place == Place.END) append("nn")
@@ -82,7 +111,7 @@ object MoreWorlds {
         if (place == Place.DESERT) append("jjb")
     }
 
-    private fun airFoes(place: Place) = when (place) {
+    private fun airFoes(place: Place, world: Int = 0) = if (world == 6) "qqv" else when (place) {
         Place.CAVE, Place.DEEP -> "vvq"
         Place.NIGHT, Place.CASTLE, Place.END -> "qqv"
         else -> "llw"
@@ -102,7 +131,7 @@ object MoreWorlds {
         if (place == Place.CAVE || place == Place.CASTLE) b.fill(0, w - 1, 0, 1, if (place == Place.CAVE) 's' else 'X')
         val lava = place == Place.VOLCANO || place == Place.CASTLE
         val ground = groundFoes(world, place)
-        val air = airFoes(place)
+        val air = airFoes(place, world)
         b.ground(0, 16).at(3, 12, '@')
         // The first rock always has iron, gold, diamond or emerald in it.
         b.rock(8, 12, *rocks[listOf(0, 1, 2, 6)[r.nextInt(4)]])
@@ -110,7 +139,8 @@ object MoreWorlds {
         var lastGap = true
         var checkpoints = 0
         var frog = false
-        val busy = 1 + world - 3 // World 4 has more bad guys
+        // World 4 has more bad guys; Spooky World (6) is calmer, with just a few.
+        val busy = if (world >= 6) 1 else 1 + world - 3
         while (x < w - 28) {
             val kind = r.nextInt(7)
             when {
@@ -222,6 +252,18 @@ object MoreWorlds {
         .row(104, 8, "h").row(122, 8, "h")
         .fill(133, 133, 2, 12, 'X')
         .at(122, 12, boss)
+        .build(p.name, p.place, p.tip)
+
+    /** The Warden Twins: two Wardens in one dark cave (each one has less health than the big Warden). */
+    private fun twinBoss(p: Plan) = Builder(190)
+        .ground(0, 189).fill(0, 189, 0, 1, 's').fill(0, 0, 2, 12, 'X')
+        .at(3, 12, '@').rock(8, 12, "DxD", "sss").row(14, 9, "?h?")
+        .at(20, 12, 'b').at(24, 8, 'q').at(28, 12, 'n').rock(33, 12, "aea", "sss")
+        .at(44, 12, 'r').at(48, 12, '|').at(58, 12, 'n').at(62, 8, 'v')
+        .rock(66, 12, "oDo", "sss").at(72, 12, 'b').at(88, 12, '|').row(92, 9, "m*m")
+        .row(110, 8, "h").row(130, 8, "h").row(120, 6, "h")
+        .fill(147, 147, 2, 12, 'X')
+        .at(118, 12, '5').at(136, 12, '5')
         .build(p.name, p.place, p.tip)
 
     /** Several bosses one after another (your hearts fill up between them). */

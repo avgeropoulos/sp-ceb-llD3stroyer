@@ -129,7 +129,7 @@ class LevelDef(val name: String, val place: Place, val rows: List<String>, val t
     /** Column where the water ends, or -1 if this isn't an underwater level. */
     val shoreX: Int = rows.map { it.indexOf('S') }.filter { it >= 0 }.minOrNull() ?: -1
     /** Levels with a boss fight get scary music. */
-    val isBossLevel: Boolean get() = rows.any { r -> r.any { it in "JWKQGYZ" } }
+    val isBossLevel: Boolean get() = rows.any { r -> r.any { it in BOSS_CHARS } }
 }
 
 /** Characters that make solid ground a bad guy (or a portal) can stand on. */
@@ -159,6 +159,10 @@ class Builder(private val w: Int) {
     fun build(name: String, place: Place, tip: String) = LevelDef(name, place, g.map { String(it) }, tip)
 }
 
+/** Level characters that are bosses: Krag Jr. (J, W), King Krag (K, Q, Y), the Warden (G, and the twins 5),
+ * the Ender Dragon (Z), King Boo-Hoo (3) and Witch Wanda (4). */
+const val BOSS_CHARS = "JWKQGYZ345"
+
 object Levels {
     val all: List<LevelDef> by lazy {
         listOf(
@@ -167,7 +171,7 @@ object Levels {
             mushroomJungle(), lavaLake(), wonderCastle(),
             villagerValley(), coralReef(), minecartMine(), enderPlains(), deepDark(),
             treasureLagoon(), spikeTemple(), fireFortress(), boneCastle(), theEnd(),
-        ).plus(World2.all).plus(MoreWorlds.all).plus(World5.all).mapIndexed { i, d -> remix(d, i) }
+        ).plus(World2.all).plus(MoreWorlds.all).plus(World5.all).plus(MoreWorlds.world6).mapIndexed { i, d -> remix(d, i) }
     }
 
     /**
@@ -216,7 +220,7 @@ object Levels {
             if (spot != null) g[spot.second][spot.first] = 'P'
         }
         // Dash the dino waits near the start of every fourth level.
-        val boss = d.rows.any { r -> r.any { it in "JWKQGYZ" } }
+        val boss = d.rows.any { r -> r.any { it in BOSS_CHARS } }
         if (index % 4 == 2 && d.shoreX < 0 && d.place != Place.SKY && !boss) {
             val spot = (10 until minOf(d.w - 4, 45)).firstNotNullOfOrNull { x ->
                 val y = (ROWS - 2 downTo 2).firstOrNull { y ->

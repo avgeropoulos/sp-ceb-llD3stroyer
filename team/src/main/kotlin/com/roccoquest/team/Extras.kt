@@ -390,7 +390,8 @@ class SonicBoom(x: Float, y: Float, private val dir: Int) : Foe(x, y, 18f, 18f, 
  * THE WARDEN: a huge, blind cave monster. He hears you when you run or jump and
  * charges up sonic booms that fly through walls.
  */
-class Warden(x: Float, bottom: Float) : Foe(x - 8, bottom - 46, 32f, 46f, 110) {
+/** The Warden. The Warden Twins (World 6) each have less health ([hp]). */
+class Warden(x: Float, bottom: Float, hp: Int = 110) : Foe(x - 8, bottom - 46, 32f, 46f, hp) {
     var awake = false
         private set
     private var t = 0f

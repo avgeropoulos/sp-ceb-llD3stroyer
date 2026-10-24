@@ -416,6 +416,19 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
   in the face, does a giant burp, naps on a mushroom, has his mustache stolen by Dennis, gets tickled by his
   Pokemon, and floats away on a bubble gum bubble.
 
+### World 6: Spooky World (levels 106-126)
+
+* 21 haunted levels: Spooky Street, Boo Mansion, Witch Woods, Bat Cave, Candy Castle, Sculk Hollow and more.
+  Lots of **Peekaboo ghosts** (they cover their faces when you look at them) and **witches** that throw
+  potions. A little calmer than World 4: fewer bad guys at once.
+* Three new bosses:
+  * **KING BOO-HOO**: a giant ghost with a crown. He hides his face when you look at him (hit him then!),
+    chases you when you look away, and calls Peekaboos to help.
+  * **WITCH WANDA**: flies on her broom throwing potions and calling bats. Jump on her when she swoops down!
+  * **THE WARDEN TWINS**: two Wardens at once, at the very end of the game.
+
+![Witch Wanda](docs/teamup-witch-wanda.png)
+
 ### Stickers
 
 After every level you get to **pick one of three stickers**. There are **300** to collect: 60 pictures

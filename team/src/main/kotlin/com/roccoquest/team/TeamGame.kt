@@ -773,6 +773,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 'Q' -> foes += KingKrag(px, bottom, wonderStyle = true)
                 'Y' -> foes += KingKrag(px, bottom, dry = true)
                 'G' -> foes += Warden(px, bottom)
+                '5' -> foes += Warden(px, bottom, hp = 55)
+                '3' -> foes += KingBooHoo(px, bottom)
+                '4' -> foes += WitchBoss(px, bottom)
+                '2' -> foes += Witch(px, bottom)
                 'Z' -> foes += EnderDragon(px, ty * TILE.toFloat())
                 'n' -> foes += Enderman(px, bottom)
                 'f' -> foes += Fish(px, bottom)
@@ -1007,7 +1011,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val missing = Stickers.all.indices.filter { !hasSticker(it) }.map { it to Stickers.all[it].style + Random.nextFloat() * 2.5f }.sortedBy { it.second }.map { it.first }
         val pool = if (missing.size >= 3) missing else (missing + Stickers.all.indices.shuffled()).distinct()
         // Beating a boss always offers that boss's shiny sticker.
-        val bossChar = level.def.rows.firstNotNullOfOrNull { r -> r.firstOrNull { it in "JWKQGYZ" } }
+        val bossChar = level.def.rows.firstNotNullOfOrNull { r -> r.firstOrNull { it in BOSS_CHARS } }
         val bossSticker = bossChar?.let { Stickers.forBoss(it) }?.takeIf { it >= 0 && !hasSticker(it) }
         stickerChoices = (listOfNotNull(bossSticker) + pool).distinct().take(3).shuffled()
         // The Pokemon learns from every level (and lots from a boss), then it's rested and ready to play.
@@ -2978,12 +2982,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (boss != null) return
         boss = f
         // Two crazy mushrooms pop out to help: fire and ice.
-        spawn(CrazyMushroom(leader.cx - 30f, leader.y - 20f, true))
-        spawn(CrazyMushroom(leader.cx + 10f, leader.y - 20f, false))
+        spawn(CrazyMushroom(leader.cx + 40f, leader.y - 20f, true))
+        spawn(CrazyMushroom(leader.cx + 80f, leader.y - 20f, false))
         val home = when (f) {
             is KragJr -> f.homeX
             is KingKrag -> f.homeX
             is Warden -> f.homeX
+            is WitchBoss -> f.homeX
+            is KingBooHoo -> f.homeX
             is EnderDragon -> f.homeX + f.w / 2 - 16f
             else -> f.x
         }
@@ -3006,6 +3012,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 bannerSub = "Knock him into a pile of bones... and then do it again!"
                 sfx(Sound.BREAK)
             }
+            f is Warden && f.maxHp < 100 -> {
+                bannerTitle = "THE WARDEN TWINS!"
+                bannerSub = "TWO Wardens! Walk slowly and dodge the sonic booms!"
+                sfx(Sound.BOSS_FIRE)
+            }
             f is Warden -> {
                 bannerTitle = "THE WARDEN!"
                 bannerSub = "Walk slowly, he follows noise! Dodge his sonic booms!"
@@ -3020,6 +3031,16 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 wonder = true
                 bannerTitle = "WONDER KING KRAG!"
                 bannerSub = "He's HUGE! Rainbow fire and spike ball rain!"
+                sfx(Sound.BOSS_FIRE)
+            }
+            f is KingBooHoo -> {
+                bannerTitle = "KING BOO-HOO!"
+                bannerSub = "He hides his face when you look at him: that's when you hit him!"
+                sfx(Sound.BOSS_FIRE)
+            }
+            f is WitchBoss -> {
+                bannerTitle = "WITCH WANDA!"
+                bannerSub = "Dodge the potions! Jump on her when she swoops down low!"
                 sfx(Sound.BOSS_FIRE)
             }
             else -> {
@@ -3124,6 +3145,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             starT > 0 -> Music.STAR
             // The Warden has his creepy heartbeat; other bosses take turns with the scary songs.
             boss is Warden && !bossDone -> Music.WARDEN
+            boss is WitchBoss && !bossDone -> Music.WITCHY
+            boss is KingBooHoo && !bossDone -> Music.SPOOKY
             wonder -> Music.WONDER
             boss != null && !bossDone -> Tunes.bossMusic(levelIndex, fighting = true)
             frog?.singing == true -> Music.FROG
@@ -4434,7 +4457,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun isQuakeLevel(index: Int): Boolean {
         val d = Levels.all[index]
         // Every fourth level (it used to be every other one, which got too wild).
-        return index % 4 == 1 && d.shoreX < 0 && d.place != Place.SKY && d.rows.none { r -> r.any { it in "JWKQGYZ" } }
+        return index % 4 == 1 && d.shoreX < 0 && d.place != Place.SKY && d.rows.none { r -> r.any { it in BOSS_CHARS } }
     }
 
     private fun updateQuake(dt: Float) {
@@ -4881,8 +4904,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 b is KragJr -> "KRAG JR."
                 b is KingKrag && b.wonderStyle -> "WONDER KING KRAG"
                 b is KingKrag && b.dry -> "DRY BONES KING KRAG"
+                b is Warden && b.maxHp < 100 -> "WARDEN TWIN"
                 b is Warden -> "THE WARDEN"
                 b is EnderDragon -> "ENDER DRAGON"
+                b is KingBooHoo -> "KING BOO-HOO"
+                b is WitchBoss -> "WITCH WANDA"
                 else -> "KING KRAG"
             }
             val wonderBoss = (b is KragJr && b.wonderStyle) || (b is KingKrag && b.wonderStyle)

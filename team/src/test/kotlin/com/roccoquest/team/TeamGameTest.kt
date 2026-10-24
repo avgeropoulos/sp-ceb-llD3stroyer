@@ -63,7 +63,7 @@ class TeamGameTest {
         assertTrue(Levels.all.any { d -> d.rows.any { 'Q' in it } }, "Wonder King Krag")
         assertTrue(Levels.all.any { d -> d.rows.any { 'G' in it } }, "the Warden")
         assertTrue(Levels.all.any { d -> d.rows.any { 'Y' in it } }, "Dry Bones King Krag")
-        assertTrue(Levels.all.last().rows.any { 'Z' in it }, "the Ender Dragon is the final boss")
+        assertTrue(Levels.all.last().rows.any { '5' in it }, "the Warden Twins are the final bosses")
         assertTrue(Levels.all.any { it.place == Place.WATER && it.shoreX > 0 }, "an underwater level")
         // Every level has Ring-Ding Frog and ore to mine.
         for (def in Levels.all) {
@@ -247,7 +247,7 @@ class TeamGameTest {
     }
 
     /** The bot can walk and jump all the way to each boss arena. */
-    private val BOSSES = "JWKQGYZ"
+    private val BOSSES = BOSS_CHARS
 
     @Test fun bossArenasCanBeReached() {
         val bossLevels = Levels.all.indices.filter { i -> Levels.all[i].rows.any { r -> r.any { it in BOSSES } } }
@@ -404,6 +404,59 @@ class TeamGameTest {
         game.spawnForTest(CrazyMushroom(game.rocco.x - 40f, game.rocco.y, false))
         run(0.4f) { game.hurtProof() }
         shot("rocco-crazy-fire")
+    }
+
+    @Test fun spookyWorldBosses() {
+        assertEquals("SPOOKY STREET", Levels.all[105].name)
+        for ((name, check) in listOf<Pair<String, (Foe) -> Boolean>>(
+            "BOO-HOO'S THRONE" to { it is KingBooHoo }, "THE WITCH'S TOWER" to { it is WitchBoss }, "WARDEN TWINS" to { it is Warden },
+        )) {
+            startPlaying(Levels.all.indexOfFirst { it.name == name })
+            val bosses = game.foes.filter { check(it) }
+            assertTrue(bosses.isNotEmpty(), "$name has its boss")
+            game.foes.retainAll(bosses.toSet())
+            val l = game.leader
+            l.x = bosses.first().x - 140f; l.y = 120f
+            run(4f) { game.hurtProof() }
+            assertNotNull(game.boss, "$name: the boss noticed us")
+            // The witch throws potions, King Boo-Hoo calls his ghosts.
+            run(8f) { game.hurtProof() }
+            if (name == "THE WITCH'S TOWER") assertTrue(ears.played.contains(Sound.FIRE), "potions thrown")
+            if (name == "BOO-HOO'S THRONE") assertTrue(game.foes.any { it is Peekaboo }, "ghosts called")
+            assertEquals(if (name == "THE WITCH'S TOWER") Music.WITCHY else if (name == "WARDEN TWINS") Music.WARDEN else Music.SPOOKY, ears.music)
+            var t = 0f
+            while (game.state == TeamGame.State.PLAY && t < 60f) {
+                game.hurtProof()
+                // Walk up to the last boss so the second Warden twin hears us too.
+                l.x = bosses.last().x - 60f
+                for (b in bosses) if (!b.dying) b.hit(game, 5)
+                run(0.4f) { game.hurtProof() }
+                t += 0.4f
+            }
+            assertTrue(bosses.all { it.dying || it.hp <= 0 }, "$name: beaten")
+            assertTrue(game.state == TeamGame.State.CLEAR || game.state == TeamGame.State.STICKER, "$name: level clear (${game.state})")
+        }
+    }
+
+    @Test fun spookyScreenshots() {
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 240 * 3, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f))
+            ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        startPlaying(Levels.all.indexOfFirst { it.name == "WITCH WOODS" })
+        val w = game.foes.firstOrNull { it is Witch }
+        if (w != null) { game.leader.x = w.x - 90f; game.leader.y = w.y - 30f }
+        run(4f) { game.hurtProof() }
+        shot("w6-witch-woods")
+        for (name in listOf("BOO-HOO'S THRONE", "THE WITCH'S TOWER", "WARDEN TWINS")) {
+            startPlaying(Levels.all.indexOfFirst { it.name == name })
+            val b = game.foes.first { it.boss }
+            game.leader.x = b.x - 120f; game.leader.y = 120f
+            run(5f) { game.hurtProof() }
+            shot("w6-" + name.lowercase().replace(" ", "-").replace("'", ""))
+        }
     }
 
     @Test fun funnyScenesAndSpotty() {
@@ -2203,9 +2256,10 @@ class TeamGameTest {
     }
 
     @Test fun fourWorldsAndNewEnemies() {
-        assertEquals(105, Levels.all.size)
-        assertEquals(5, worldCount())
-        assertTrue(Levels.all.last().rows.any { 'Z' in it } && Levels.all.last().rows.any { 'Q' in it })
+        assertEquals(126, Levels.all.size)
+        assertEquals(6, worldCount())
+        val ultimate = Levels.all.first { it.name == "THE ULTIMATE BATTLE" }
+        assertTrue(ultimate.rows.any { 'Z' in it } && ultimate.rows.any { 'Q' in it })
         for (c in "zqlj") assertTrue(Levels.all.count { d -> d.rows.any { c in it } } >= 3, "new monster $c is in levels")
         // Beating a World 3 level is saved.
         startPlaying()
@@ -2288,7 +2342,7 @@ class TeamGameTest {
     }
 
     @Test fun world5HasWaterShipsAndRainbowRoad() {
-        val w5 = Levels.all.drop(4 * WORLD_SIZE)
+        val w5 = Levels.all.drop(4 * WORLD_SIZE).take(WORLD_SIZE)
         assertEquals(21, w5.size)
         assertTrue(w5.count { it.place == Place.WATER && it.shoreX > 0 } >= 9, "lots of water levels")
         assertTrue(w5.count { it.place == Place.SHIP } >= 8, "pirate ship levels")
