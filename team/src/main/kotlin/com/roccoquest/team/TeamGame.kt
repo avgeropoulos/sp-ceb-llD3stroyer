@@ -58,6 +58,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         const val CLAW_COST = 30
         const val POSEIDON_LINE = "Είμαι ο Ποσειδώνας! Είμαι ο πιο δυνατός της θάλασσας!"
         const val SCORE_MULT = 3
+        const val MAX_PARTICLES = 240
         /** Houses, beds and furniture are bought in the SHOP at home now, not crafted. */
         val TABS = listOf("FLOWERS", "SUPPLIES", "WEAPONS", "ARMOR", "SHIELDS")
         /** How close bad guys have to be for the Black Flower to get them. */
@@ -112,7 +113,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     var starT = 0f
         private set
     var coins = 0
-    var score = 0
+    /** A Long, so even huge scores never wrap around to negative numbers. */
+    var score = 0L
         private set
     val inventory = IntArray(Ore.entries.size)
     var pickTier = 1
@@ -467,7 +469,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     /** Stomping bad guys one after another without landing scores more and more. */
     private fun stompCombo(h: Hero, f: Foe) {
         h.combo++
-        val bonus = min(8000, 100 shl (h.combo - 1))
+        // Doubles each stomp up to 8000 (shifting further would overflow and go negative).
+        val bonus = if (h.combo >= 8) 8000 else min(8000, 100 shl (h.combo - 1))
         addScore(bonus, f.cx, f.y - 8)
         if (h.combo >= 2) particles += FloatText(f.cx, f.y - 18, "COMBO x${h.combo}!", solidRainbow(time))
         if (h.combo == 5) {
@@ -2934,6 +2937,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun updateParticles(dt: Float) {
         for (p in particles) p.update(dt)
         particles.removeAll { it.life <= 0 }
+        // Too many floating numbers and sparkles slow the phone down: the oldest ones go first.
+        if (particles.size > MAX_PARTICLES) particles.subList(0, particles.size - MAX_PARTICLES).clear()
     }
 
     private fun updateMusic() {

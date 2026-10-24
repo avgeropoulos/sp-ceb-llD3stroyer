@@ -902,6 +902,18 @@ class TeamGameTest {
             game.update(dt)
         }
         assertTrue(r.combo >= 3, "combo ${r.combo}")
+        // A super long combo (Wing Cap!) never wraps around to negative points.
+        val (sx, sb) = r.x to r.bottom
+        for (c in listOf(26, 31, 40)) {
+            val f = Grumbler(sx, sb - 60f, false).also { f -> f.active = true; f.vx = 0f }
+            r.combo = c
+            r.x = f.cx - r.w / 2; r.y = f.y - r.h + 4; r.vy = 200f; r.onGround = false
+            game.foes.clear(); game.foes += f
+            val s0 = game.score
+            game.update(dt)
+            assertEquals(c + 1, r.combo)
+            assertTrue(game.score > s0, "stomp number ${c + 1} still scores: ${game.score - s0}")
+        }
         assertTrue(game.score - before >= (100 + 200 + 400) * TeamGame.SCORE_MULT, "combo points: ${game.score - before}")
         // Finishing a level gives a heart bonus.
         assertTrue(botRun(0, 100f))
