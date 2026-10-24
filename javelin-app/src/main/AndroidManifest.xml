@@ -4,6 +4,9 @@
     <!-- A little buzz when you throw and when you hit. -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- Lets Android 12+ give the throw detector fast gyroscope readings. -->
+    <uses-permission android:name="android.permission.HIGH_SAMPLING_RATE_SENSORS" />
+
     <!-- Motion controls use these, but the game falls back to touch controls without them. -->
     <uses-feature android:name="android.hardware.sensor.gyroscope" android:required="false" />
     <uses-feature android:name="android.hardware.sensor.accelerometer" android:required="false" />

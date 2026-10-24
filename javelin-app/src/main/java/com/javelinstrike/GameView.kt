@@ -61,10 +61,23 @@ class GameView(private val activity: Activity) : SurfaceView(activity), SurfaceH
 
     fun resume() {
         resumed = true
-        gyro?.let { sensors.registerListener(this, it, SensorManager.SENSOR_DELAY_FASTEST) }
-        linear?.let { sensors.registerListener(this, it, SensorManager.SENSOR_DELAY_FASTEST) }
-        gravity?.let { sensors.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME) }
+        listen(gyro, FAST_SENSOR_US)
+        listen(linear, FAST_SENSOR_US)
+        listen(gravity, SensorManager.SENSOR_DELAY_GAME)
         startLoop()
+    }
+
+    /**
+     * 200 Hz is the fastest rate Android 12+ allows without an extra permission; asking for
+     * SENSOR_DELAY_FASTEST there throws and crashes the app on launch.
+     */
+    private fun listen(sensor: Sensor?, periodUs: Int) {
+        if (sensor == null) return
+        try {
+            sensors.registerListener(this, sensor, periodUs)
+        } catch (_: SecurityException) {
+            sensors.registerListener(this, sensor, SensorManager.SENSOR_DELAY_GAME)
+        }
     }
 
     fun pause() {
@@ -203,5 +216,9 @@ class GameView(private val activity: Activity) : SurfaceView(activity), SurfaceH
         if (hypot(sx, sy) < 3f) return
         input.tilt = atan2(-sx, sy)
         input.hasTilt = true
+    }
+
+    private companion object {
+        const val FAST_SENSOR_US = 5_000
     }
 }
