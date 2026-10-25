@@ -126,6 +126,11 @@ are exactly like Team Up!.
 
 * It's a **separate app** (`com.roccoquest.teamup3d`, called "Team Up! 3D"), so it installs next to
   Team Up! instead of replacing it. It keeps its own save files.
+* **Head start**: File 1 picks up about where the 2D game was: it starts at **level 9** with
+  **1500 coins**, **40 of every ore**, an **iron pickaxe** and **10 TNT** (once).
+* **Smooth on phones**: shapes are kept light (rounded blocks, merged pixels in 3D models, simple
+  shadows), new 3D models are built a few per frame, and it draws at 2 pixels per game pixel. A test
+  plays every level and fails if a frame gets too heavy.
 * Download **TeamUp3D.apk** from the same release as the other games:
   https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/download/latest-ccr-12025816-jglq5w/TeamUp3D.apk
 * **Updates install over the old one**: it's signed with the same fixed key as the other games and

@@ -48,7 +48,7 @@ class PaperGfx(private val list: DrawList) : Gfx {
         val big = isBody(color) && w * h > 40f
         val (z, d) = if (big) bodyDepth(min(w, h) * 0.5f) else nextDecal() to DECAL * 2
         m.identity().translate(x + w / 2, -(y + h / 2), z).scale(w / 2, h / 2, d / 2)
-        list.add(Prims.ball, m, color, glow(color))
+        list.add(Prims.ballFor(maxOf(w, h)), m, color, glow(color))
     }
 
     override fun poly(xs: FloatArray, ys: FloatArray, color: Int) {
@@ -79,7 +79,14 @@ class PaperGfx(private val list: DrawList) : Gfx {
         m.identity()
             .translate(if (flipX) x + w else x, if (flipY) -(y + h) else -y, z)
             .scale(if (flipX) -sx else sx, if (flipY) -sy else sy, zScale)
-        list.add(Voxels.mesh(s), m, -1, emissive)
+        val mesh = Voxels.meshOrNull(s)
+        if (mesh != null) {
+            list.add(mesh, m, -1, emissive)
+        } else {
+            m.scale(1f, 1f, 0f)
+            val c = list.add(Voxels.card(s), m, -1, emissive)
+            c.cutout = true
+        }
     }
 
     override fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Int) {
@@ -111,15 +118,15 @@ class PaperGfx(private val list: DrawList) : Gfx {
     }
 
     // Polygons change shape as things animate, so cache them by their (rounded) outline.
-    private val polys = LinkedHashMap<String, Mesh>(64, 0.75f, true)
-    private val key = StringBuilder()
+    private val polys = LinkedHashMap<Long, Mesh>(64, 0.75f, true)
 
     private fun polyMesh(xs: FloatArray, ys: FloatArray, ox: Float, oy: Float): Mesh {
-        key.setLength(0)
+        // A hash of the rounded outline (no strings, so nothing is thrown away every frame).
+        var k = 1469598103934665603L
         for (i in xs.indices) {
-            key.append(((xs[i] - ox) * 2).toInt()).append(',').append(((ys[i] - oy) * 2).toInt()).append(';')
+            k = (k xor ((xs[i] - ox) * 2).toInt().toLong()) * 1099511628211L
+            k = (k xor ((ys[i] - oy) * 2).toInt().toLong()) * 1099511628211L
         }
-        val k = key.toString()
         polys[k]?.let { return it }
         val px = FloatArray(xs.size) { xs[it] - ox }
         val py = FloatArray(ys.size) { -(ys[it] - oy) }

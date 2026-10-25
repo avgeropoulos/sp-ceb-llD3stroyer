@@ -63,10 +63,10 @@ class FlatGfx(private val list: DrawList) : Gfx {
         val zz = next()
         val dome = min(THICK, min(w, h) * 0.35f).coerceAtLeast(0.4f)
         if ((color ushr 24) == 255 && w * h < BIG) {
-            shadow(zz) { translate(x + w / 2 + SHADOW_X, -(y + h / 2) - SHADOW_Y, 0f).scale(w / 2, h / 2, 0.1f); Prims.ball }
+            shadow(zz) { translate(x + w / 2 + SHADOW_X, -(y + h / 2) - SHADOW_Y, 0f).scale(w / 2, h / 2, 1f); Prims.faceDisc }
         }
         m.identity().translate(x + w / 2, -(y + h / 2), zz - dome).scale(w / 2, h / 2, dome)
-        list.add(Prims.ball, m, color, shine = 0.35f)
+        list.add(Prims.ballFor(maxOf(w, h)), m, color, shine = 0.35f)
     }
 
     override fun poly(xs: FloatArray, ys: FloatArray, color: Int) {
@@ -84,7 +84,14 @@ class FlatGfx(private val list: DrawList) : Gfx {
         val sy = h / s.h
         // Puffy, but never thicker than the gap to the next shape.
         val zScale = THICK / Voxels.MAX_HALF / 2
-        val mesh = Voxels.mesh(s)
+        val mesh = Voxels.meshOrNull(s)
+        if (mesh == null) {
+            // Not built yet (too many new pictures this frame): a flat picture for now.
+            m.identity().translate(if (flipX) x + w else x, if (flipY) -(y + h) else -y, zz)
+                .scale(if (flipX) -sx else sx, if (flipY) -sy else sy, 1f)
+            list.add(Voxels.card(s), m, -1).cutout = true
+            return
+        }
         shadow(zz) {
             translate(if (flipX) x + w + SHADOW_X else x + SHADOW_X, if (flipY) -(y + h) - SHADOW_Y else -y - SHADOW_Y, 0f)
                 .scale(if (flipX) -sx else sx, if (flipY) -sy else sy, 0.05f)
@@ -167,15 +174,15 @@ class FlatGfx(private val list: DrawList) : Gfx {
         return mesh
     }
 
-    private val polys = LinkedHashMap<String, Mesh>(64, 0.75f, true)
-    private val key = StringBuilder()
+    private val polys = LinkedHashMap<Long, Mesh>(64, 0.75f, true)
 
     private fun polyMesh(xs: FloatArray, ys: FloatArray, ox: Float, oy: Float): Mesh {
-        key.setLength(0)
+        // A hash of the rounded outline (no strings, so nothing is thrown away every frame).
+        var k = 1469598103934665603L
         for (i in xs.indices) {
-            key.append(((xs[i] - ox) * 2).toInt()).append(',').append(((ys[i] - oy) * 2).toInt()).append(';')
+            k = (k xor ((xs[i] - ox) * 2).toInt().toLong()) * 1099511628211L
+            k = (k xor ((ys[i] - oy) * 2).toInt().toLong()) * 1099511628211L
         }
-        val k = key.toString()
         polys[k]?.let { return it }
         val px = FloatArray(xs.size) { xs[it] - ox }
         val py = FloatArray(ys.size) { -(ys[it] - oy) }

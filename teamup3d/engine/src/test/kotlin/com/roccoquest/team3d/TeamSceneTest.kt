@@ -42,7 +42,7 @@ class TeamSceneTest {
     }
 
     @Test fun everyScreenIn3d() {
-        val scene = TeamScene()
+        val scene = TeamScene().apply { voxelsPerFrame = Int.MAX_VALUE }
         val flat = FlatScreen()
         repeat(90) { game.update(dt) }
         shot3d(scene, flat, "screen-title")
@@ -103,11 +103,30 @@ class TeamSceneTest {
         ImageIO.write(img, "png", File(dir, "$name.png"))
     }
 
+    @Test fun file1GetsTheHeadStartOnce() {
+        val fresh = TeamGame(TeamInput(), SoundSink {}, Storage.Memory())
+        fresh.headStart = TeamGame.HeadStart(8, 1500, 40, 2, 10, "HEAD START")
+        fresh.newGame(0, Mon.SPARKY)
+        assertEquals(8, fresh.levelIndex, "starts at level 9")
+        assertEquals(1500, fresh.coins)
+        assertEquals(2, fresh.pickTier)
+        assertEquals(10, fresh.tnt)
+        assertTrue(fresh.unlocked >= 9)
+        // Not given again, and the 2D game's World 7 present never comes on top.
+        fresh.continueGame(0)
+        assertEquals(1500, fresh.coins)
+        assertEquals(8, fresh.levelIndex)
+    }
+
     @Test fun titleScreen() {
-        val scene = TeamScene()
+        val scene = TeamScene().apply { voxelsPerFrame = Int.MAX_VALUE }
         repeat(90) { game.update(dt) }
         assertEquals(TeamGame.State.TITLE, game.state)
         shot(scene, "title")
+        val list = scene.build(game)
+        var points = 0
+        for (k in 0 until list.count) points += list.cmd(k).mesh.vertexCount
+        assertTrue(points < 150_000, "the title screen draws $points points")
         repeat(70) { game.update(dt) }
         shot(scene, "title-later")
     }
@@ -117,7 +136,7 @@ class TeamSceneTest {
      * the 3D frame stays fast, doesn't use too many draws and doesn't keep making new models.
      */
     @Test fun noLagInAnyLevel() {
-        val scene = TeamScene()
+        val scene = TeamScene().apply { voxelsPerFrame = Int.MAX_VALUE }
         val report = StringBuilder()
         var worstMs = 0.0
         var worstDraws = 0
@@ -129,6 +148,7 @@ class TeamSceneTest {
             val models = Voxels.built
             var maxMs = 0.0
             var maxDraws = 0
+            var maxVerts = 0
             for (f in 0 until 240) {
                 input.jump = f % 50 < 12
                 input.action = f % 30 < 3
@@ -137,10 +157,14 @@ class TeamSceneTest {
                 val list = scene.build(game)
                 maxMs = maxOf(maxMs, (System.nanoTime() - t0) / 1e6)
                 maxDraws = maxOf(maxDraws, list.count)
+                var v = 0
+                for (k in 0 until list.count) v += list.cmd(k).mesh.vertexCount
+                maxVerts = maxOf(maxVerts, v)
             }
             input.right = false; input.jump = false; input.action = false
             val made = Voxels.built - models
-            report.append("%3d %-28s %6.2f ms %5d draws %4d new models\n".format(i, Levels.all[i].name, maxMs, maxDraws, made))
+            report.append("%3d %-28s %6.2f ms %5d draws %7d points %4d new models\n".format(i, Levels.all[i].name, maxMs, maxDraws, maxVerts, made))
+            assertTrue(maxVerts < 200_000, "level $i draws $maxVerts points: that would lag on phones")
             if (i > 0) { worstMs = maxOf(worstMs, maxMs); worstDraws = maxOf(worstDraws, maxDraws); worstModels = maxOf(worstModels, made) }
         }
         File(dir, "performance.txt").writeText(report.toString())
@@ -149,7 +173,7 @@ class TeamSceneTest {
     }
 
     @Test fun screenshots() {
-        val scene = TeamScene()
+        val scene = TeamScene().apply { voxelsPerFrame = Int.MAX_VALUE }
         val picks = listOf(0, 3, 21, 43, 70, 85, 106, 127, 150, 170, 190, 211, 232)
         for (i in picks) {
             if (i >= Levels.all.size) continue
@@ -162,7 +186,7 @@ class TeamSceneTest {
     }
 
     @Test fun everyLevelBuilds() {
-        val scene = TeamScene()
+        val scene = TeamScene().apply { voxelsPerFrame = Int.MAX_VALUE }
         for (i in Levels.all.indices) {
             startPlaying(i)
             val list = scene.build(game)
@@ -171,7 +195,7 @@ class TeamSceneTest {
     }
 
     @Test fun framesAreQuickAndDontKeepMakingModels() {
-        val scene = TeamScene()
+        val scene = TeamScene().apply { voxelsPerFrame = Int.MAX_VALUE }
         startPlaying(0)
         game.leader.x += 40f
         input.right = true

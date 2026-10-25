@@ -924,7 +924,40 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
      * World 7 with 1000 coins and supplies. (The first version, `gift1`, gave 5000 coins at Frosty Peaks: if that was
      * already given, the extra 4000 coins are taken back, but never below 1000.) Returns true if it was given now.
      */
+    /** A one-time head start for File 1: start at [level] (an index) with some coins and supplies. */
+    class HeadStart(val level: Int, val coins: Int, val ore: Int, val pickTier: Int, val tnt: Int, val message: String)
+
+    /**
+     * Set by Team Up! 3D: instead of the World 7 present, File 1 gets this head start once (global key
+     * `start3d`), so the 3D game picks up about where the 2D one was.
+     */
+    var headStart: HeadStart? = null
+
+    private fun giveHeadStart(h: HeadStart): Boolean {
+        if (slot != 0 || storage.load("start3d") != 0) return false
+        storage.save("start3d", 1)
+        // The 2D game's World 7 present never comes on top of this.
+        storage.save("gift1", 1)
+        storage.save("gift2", 1)
+        unlocked = maxOf(unlocked, h.level + 1)
+        for (i in 0 until h.level) cleared[i] = true
+        levelIndex = h.level
+        coins = maxOf(coins, h.coins)
+        Ore.entries.forEach { inventory[it.ordinal] = maxOf(inventory[it.ordinal], h.ore) }
+        if (h.pickTier > pickTier) {
+            pickTier = h.pickTier
+            pickHp = pickDurability(pickTier)
+        }
+        tnt = maxOf(tnt, h.tnt)
+        hearts = MAX_HEARTS
+        save()
+        sound.sayAs("Let's-a go!", Voice.HERO)
+        toast(h.message)
+        return true
+    }
+
     private fun welcomeBackGift(): Boolean {
+        headStart?.let { return giveHeadStart(it) }
         if (slot != 0 || storage.load("gift2") != 0) return false
         val hadFirst = storage.load("gift1") != 0
         storage.save("gift1", 1)

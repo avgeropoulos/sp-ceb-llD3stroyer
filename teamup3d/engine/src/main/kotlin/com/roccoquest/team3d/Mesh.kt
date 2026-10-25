@@ -190,7 +190,8 @@ class MeshBuilder {
         color: Int, faces: Array<Region>,
     ) {
         val b = min(bevel, min(hx, min(hy, hz)))
-        fun steps(h: Float) = floatArrayOf(-h, -h + b * 0.3f, -h + b, h - b, h - b * 0.3f, h)
+        // One bevel step per edge: smooth enough at game size, and far fewer points to draw.
+        fun steps(h: Float) = floatArrayOf(-h, -h + b, h - b, h)
         val sx = steps(hx); val sy = steps(hy); val sz = steps(hz)
         val pos = FloatArray(3); val nrm = FloatArray(3)
         fun round(x: Float, y: Float, z: Float) {
@@ -284,11 +285,22 @@ object Prims {
     /** Box from -0.5 to 0.5 on every axis. */
     val cube: Mesh by lazy { MeshBuilder().apply { box(-0.5f, -0.5f, -0.5f, 0.5f, 0.5f, 0.5f, WHITE) }.build() }
     /** Sphere of radius 1. */
-    val ball: Mesh by lazy { MeshBuilder().apply { sphere(0f, 0f, 0f, 1f, WHITE, 16, 10) }.build() }
+    val ball: Mesh by lazy { MeshBuilder().apply { sphere(0f, 0f, 0f, 1f, WHITE, 12, 8) }.build() }
+    /** A lighter sphere for small round shapes, where the extra detail can't be seen anyway. */
+    val smallBall: Mesh by lazy { MeshBuilder().apply { sphere(0f, 0f, 0f, 1f, WHITE, 8, 5) }.build() }
+
+    /** The right sphere for something [size] pixels across. */
+    fun ballFor(size: Float) = if (size < 14f) smallBall else ball
+
     /** Cylinder of radius 1 from y = 0 to y = 1. */
     val tube: Mesh by lazy { MeshBuilder().apply { cylinder(0f, 0f, 0f, 1f, 1f, WHITE, slices = 18) }.build() }
     /** Flat disc of radius 1 facing up (used for blob shadows). */
     val disc: Mesh by lazy { MeshBuilder().apply { disc(0f, 0f, 0f, 1f, 1f, WHITE, 24) }.build() }
+
+    /** Flat disc of radius 1 facing the camera (+z), for cheap round shadows. */
+    val faceDisc: Mesh by lazy {
+        MeshBuilder().apply { place { rotateX(kotlin.math.PI.toFloat() / 2) }; disc(0f, 0f, 0f, 1f, 1f, WHITE, 20) }.build()
+    }
 
     const val WHITE = -1
 }

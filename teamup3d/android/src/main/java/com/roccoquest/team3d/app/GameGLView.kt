@@ -40,6 +40,11 @@ class GameGLView(context: Context) : GLSurfaceView(context), GLSurfaceView.Rende
         override fun keys(): Set<String> = prefs.all.keys.toSet()
     })
 
+    init {
+        // File 1 picks up about where the 2D game was: level 9, with coins and supplies.
+        game.headStart = HEAD_START
+    }
+
     private val scene = TeamScene()
     private val screen = FlatScreen()
     private val glScene = GlScene()
@@ -99,9 +104,10 @@ class GameGLView(context: Context) : GLSurfaceView(context), GLSurfaceView.Rende
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        // At most 3 screen pixels per game pixel: plenty sharp, and much less work on big screens.
+        // 2 screen pixels per game pixel: still sharp for 3D, and less than half the drawing work
+        // of full resolution on most phones, so the game stays smooth.
         if (w > 0 && h > 0) {
-            val targetH = minOf(h, (VIEW_H * 3).toInt())
+            val targetH = minOf(h, (VIEW_H * 2).toInt())
             holder.setFixedSize((w.toLong() * targetH / h).toInt().coerceAtLeast(1), targetH)
         }
     }
@@ -232,6 +238,10 @@ class GameGLView(context: Context) : GLSurfaceView(context), GLSurfaceView.Rende
     /** Controller buttons for JUMP, THROW, SWITCH and SUPER (changeable on the CONTROLLER screen). */
     private val padKeys = IntArray(4)
     private companion object {
+        val HEAD_START = TeamGame.HeadStart(
+            level = 8, coins = 1500, ore = 40, pickTier = 2, tnt = 10,
+            message = "3D HEAD START: LEVEL 9, 1500 COINS, 40 OF EVERY ORE, IRON PICK, 10 TNT!",
+        )
         const val STICK_ON = 0.35f
         const val STICK_OFF = 0.25f
     }

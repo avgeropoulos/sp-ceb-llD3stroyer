@@ -30,17 +30,21 @@ object TitleLetters {
 
     /**
      * The mesh for [c], centred on its middle, one grid square = 1 unit, white (tint it).
+     * (Rows run downward, so row y sits between 3.5 - y and 2.5 - y.)
      * Null for a space or a letter the font doesn't have.
      */
     fun mesh(c: Char): Mesh? {
         val rows = font[c] ?: return null
         return meshes.getOrPut(c) {
             MeshBuilder().apply {
+                // Each run of filled squares in a row is one long block (few points to draw).
                 rows.forEachIndexed { y, row ->
-                    row.forEachIndexed { x, ch ->
-                        if (ch == '#') {
-                            roundBox(x - 2f, 3f - y, 0f, 0.56f, 0.56f, 0.8f, 0.12f, -1, Array(6) { Atlas.white })
-                        }
+                    var x = 0
+                    while (x < row.length) {
+                        if (row[x] != '#') { x++; continue }
+                        val start = x
+                        while (x < row.length && row[x] == '#') x++
+                        box(start - 2.5f, 2.5f - y, -0.8f, x - 2.5f, 3.5f - y, 0.8f, -1)
                     }
                 }
             }.build()

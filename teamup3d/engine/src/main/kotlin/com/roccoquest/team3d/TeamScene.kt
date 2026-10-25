@@ -23,12 +23,15 @@ class TeamScene {
     private val paper = PaperGfx(list)
     private val tiles = TileGfx(list, paper)
     private val mark: (Any) -> Unit = { paper.begin(0f) }
+    /** New 3D models built per frame at most (each new picture costs a moment to build). */
+    var voxelsPerFrame = 3
     private val castMark: (Any) -> Unit = { paper.begin(CAST_Z) }
     /** The 2D title draws the team a bit above the ground; in 3D they stand right on it. */
     private val castGfx = ShiftGfx(paper, TITLE_DROP)
 
     fun build(g: TeamGame): DrawList {
         list.clear()
+        Voxels.newFrame(voxelsPerFrame)
         if (g.state == TeamGame.State.TITLE) {
             title(g)
             list.finish()
