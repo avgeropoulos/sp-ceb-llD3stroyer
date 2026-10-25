@@ -9,20 +9,28 @@ import kotlin.math.sin
 /** The kinds of house the team can build. They all have the same size and the door on the left. */
 enum class HouseType(val label: String, val costs: List<Pair<Ore, Int>>, val coins: Int, val note: String) {
     COTTAGE("COTTAGE", listOf(Ore.STONE to 10, Ore.IRON to 2), 0, "A cozy stone house"),
-    CABIN("LOG CABIN", listOf(Ore.STONE to 6, Ore.COPPER to 5), 15, "Warm wooden logs"),
-    IGLOO("IGLOO", listOf(Ore.STONE to 8, Ore.SAPPHIRE to 2), 20, "A round house made of ice"),
-    MUSHROOM("MUSHROOM HOUSE", listOf(Ore.EMERALD to 4, Ore.GOLD to 3), 30, "Live inside a giant mushroom!"),
-    CASTLE("MINI CASTLE", listOf(Ore.STONE to 20, Ore.GOLD to 4, Ore.OBSIDIAN to 3), 60, "Towers and flags. Fancy!"),
-    TREEHOUSE("TREEHOUSE", listOf(Ore.STONE to 4, Ore.EMERALD to 3), 25, "Up in a big tree!"),
-    CANDY("CANDY HOUSE", listOf(Ore.GOLD to 3, Ore.RUBY to 2), 35, "Walls of cookie, roof of icing"),
-    BEACH("BEACH HUT", listOf(Ore.STONE to 6, Ore.SAPPHIRE to 1), 20, "Sand, palm leaves and sunshine"),
-    SPACE("SPACE DOME", listOf(Ore.IRON to 8, Ore.DIAMOND to 2), 50, "A shiny dome with a rocket"),
-    CRYSTAL("CRYSTAL PALACE", listOf(Ore.AMETHYST to 4, Ore.DIAMOND to 3), 80, "Sparkly purple crystal towers"),
-    LIGHTHOUSE("LIGHTHOUSE", listOf(Ore.STONE to 12, Ore.GOLD to 2), 45, "A striped tower with a spinning light"),
-    WINDMILL("WINDMILL", listOf(Ore.STONE to 8, Ore.COPPER to 4), 35, "Big sails that go round and round"),
-    PIRATE("PIRATE SHIP", listOf(Ore.COPPER to 6, Ore.GOLD to 4), 70, "Live on a pirate ship! Arrr!"),
-    BARN("RED BARN", listOf(Ore.STONE to 6, Ore.IRON to 3), 30, "A farm barn with a big X door"),
-    PYRAMID("PYRAMID", listOf(Ore.GOLD to 6, Ore.RUBY to 2), 90, "A golden pyramid from the desert"),
+    CABIN("LOG CABIN", listOf(Ore.STONE to 6, Ore.COPPER to 5), 40, "Warm wooden logs"),
+    IGLOO("IGLOO", listOf(Ore.STONE to 8, Ore.SAPPHIRE to 2), 50, "A round house made of ice"),
+    MUSHROOM("MUSHROOM HOUSE", listOf(Ore.EMERALD to 4, Ore.GOLD to 3), 100, "Live inside a giant mushroom!"),
+    CASTLE("MINI CASTLE", listOf(Ore.STONE to 20, Ore.GOLD to 4, Ore.OBSIDIAN to 3), 300, "Towers and flags. Fancy!"),
+    TREEHOUSE("TREEHOUSE", listOf(Ore.STONE to 4, Ore.EMERALD to 3), 80, "Up in a big tree!"),
+    CANDY("CANDY HOUSE", listOf(Ore.GOLD to 3, Ore.RUBY to 2), 120, "Walls of cookie, roof of icing"),
+    BEACH("BEACH HUT", listOf(Ore.STONE to 6, Ore.SAPPHIRE to 1), 60, "Sand, palm leaves and sunshine"),
+    SPACE("SPACE DOME", listOf(Ore.IRON to 8, Ore.DIAMOND to 2), 250, "A shiny dome with a rocket"),
+    CRYSTAL("CRYSTAL PALACE", listOf(Ore.AMETHYST to 4, Ore.DIAMOND to 3), 400, "Sparkly purple crystal towers"),
+    LIGHTHOUSE("LIGHTHOUSE", listOf(Ore.STONE to 12, Ore.GOLD to 2), 180, "A striped tower with a spinning light"),
+    WINDMILL("WINDMILL", listOf(Ore.STONE to 8, Ore.COPPER to 4), 140, "Big sails that go round and round"),
+    PIRATE("PIRATE SHIP", listOf(Ore.COPPER to 6, Ore.GOLD to 4), 350, "Live on a pirate ship! Arrr!"),
+    BARN("RED BARN", listOf(Ore.STONE to 6, Ore.IRON to 3), 90, "A farm barn with a big X door"),
+    PYRAMID("PYRAMID", listOf(Ore.GOLD to 6, Ore.RUBY to 2), 450, "A golden pyramid from the desert"),
+    HAUNTED("HAUNTED HOUSE", listOf(Ore.STONE to 10, Ore.OBSIDIAN to 2), 220, "Creaky, spooky and full of bats"),
+    CLOUD("CLOUD CASTLE", listOf(Ore.DIAMOND to 3, Ore.SAPPHIRE to 3), 500, "A castle floating on a cloud"),
+    UNDERSEA("UNDERSEA DOME", listOf(Ore.SAPPHIRE to 5, Ore.IRON to 4), 380, "A glass bubble with fish all around"),
+    ROBOT("ROBOT HOUSE", listOf(Ore.IRON to 10, Ore.COPPER to 4), 320, "Beep boop! A house that's a robot"),
+    BOUNCY("BOUNCY CASTLE", listOf(Ore.RUBY to 2, Ore.EMERALD to 2), 160, "Boing boing! A blow-up castle"),
+    VOLCANO("VOLCANO LAIR", listOf(Ore.OBSIDIAN to 5, Ore.RUBY to 3), 550, "A secret lair inside a volcano"),
+    TOYBLOCK("TOY BLOCK HOUSE", listOf(Ore.STONE to 6, Ore.GOLD to 2), 110, "Built from giant toy blocks"),
+    TEEPEE("TEEPEE", listOf(Ore.STONE to 3, Ore.COPPER to 2), 30, "A cozy tent with poles on top"),
 }
 
 /**
@@ -30,58 +38,58 @@ enum class HouseType(val label: String, val costs: List<Pair<Ore, Int>>, val coi
  * Fancier pieces unlock after beating [unlock] levels.
  */
 enum class Furniture(val label: String, val costs: List<Pair<Ore, Int>>, val coins: Int, val floor: Int = 0, val unlock: Int = 0) {
-    RUG("RUG", emptyList(), 10),
-    LAMP("LAMP", listOf(Ore.GOLD to 1), 10),
-    TABLE("TABLE", listOf(Ore.STONE to 4), 12),
-    CHAIRS("CHAIRS", listOf(Ore.STONE to 4), 12),
-    COUCH("COUCH", listOf(Ore.EMERALD to 1), 30),
-    BOOKSHELF("BOOKSHELF", listOf(Ore.STONE to 6), 20),
-    PLANT("PLANT", listOf(Ore.EMERALD to 1), 10),
-    TV("TV", listOf(Ore.IRON to 3, Ore.COPPER to 2), 40),
-    FIREPLACE("FIREPLACE", listOf(Ore.STONE to 10), 25),
-    PAINTING("PAINTING", listOf(Ore.GOLD to 1), 25),
-    FISH_TANK("FISH TANK", listOf(Ore.DIAMOND to 1), 30),
-    CLAW_MACHINE("CLAW MACHINE", listOf(Ore.IRON to 4, Ore.GOLD to 2), 50),
+    RUG("RUG", emptyList(), 25),
+    LAMP("LAMP", listOf(Ore.GOLD to 1), 15),
+    TABLE("TABLE", listOf(Ore.STONE to 4), 30),
+    CHAIRS("CHAIRS", listOf(Ore.STONE to 4), 30),
+    COUCH("COUCH", listOf(Ore.EMERALD to 1), 70),
+    BOOKSHELF("BOOKSHELF", listOf(Ore.STONE to 6), 45),
+    PLANT("PLANT", listOf(Ore.EMERALD to 1), 15),
+    TV("TV", listOf(Ore.IRON to 3, Ore.COPPER to 2), 90),
+    FIREPLACE("FIREPLACE", listOf(Ore.STONE to 10), 80),
+    PAINTING("PAINTING", listOf(Ore.GOLD to 1), 35),
+    FISH_TANK("FISH TANK", listOf(Ore.DIAMOND to 1), 70),
+    CLAW_MACHINE("CLAW MACHINE", listOf(Ore.IRON to 4, Ore.GOLD to 2), 150),
     // Floor 2: the playroom
-    TOY_CHEST("TOY CHEST", listOf(Ore.STONE to 4), 15, 1, 0),
-    BUNK_BEDS("BUNK BEDS", listOf(Ore.IRON to 2), 30, 1, 5),
-    ARCADE("ARCADE GAME", listOf(Ore.IRON to 3, Ore.COPPER to 2), 50, 1, 10),
-    TRAMPOLINE("TRAMPOLINE", listOf(Ore.IRON to 2), 40, 1, 15),
-    BALL_PIT("BALL PIT", emptyList(), 40, 1, 20),
-    TOY_TRAIN("TOY TRAIN", listOf(Ore.IRON to 2), 35, 1, 25),
+    TOY_CHEST("TOY CHEST", listOf(Ore.STONE to 4), 30, 1, 0),
+    BUNK_BEDS("BUNK BEDS", listOf(Ore.IRON to 2), 90, 1, 5),
+    ARCADE("ARCADE GAME", listOf(Ore.IRON to 3, Ore.COPPER to 2), 150, 1, 10),
+    TRAMPOLINE("TRAMPOLINE", listOf(Ore.IRON to 2), 80, 1, 15),
+    BALL_PIT("BALL PIT", emptyList(), 100, 1, 20),
+    TOY_TRAIN("TOY TRAIN", listOf(Ore.IRON to 2), 70, 1, 25),
     // Floor 3: the top floor
-    TELESCOPE("TELESCOPE", listOf(Ore.GOLD to 1, Ore.DIAMOND to 1), 40, 2, 30),
-    PIANO("PIANO", listOf(Ore.STONE to 4), 50, 2, 35),
-    TROPHY_CASE("TROPHY CASE", listOf(Ore.GOLD to 3), 60, 2, 40),
-    HOT_TUB("HOT TUB", listOf(Ore.SAPPHIRE to 2), 70, 2, 45),
-    DISCO_BALL("DISCO BALL", listOf(Ore.DIAMOND to 1), 50, 2, 50),
-    POOL_TABLE("POOL TABLE", listOf(Ore.EMERALD to 2), 60, 2, 60),
+    TELESCOPE("TELESCOPE", listOf(Ore.GOLD to 1, Ore.DIAMOND to 1), 90, 2, 30),
+    PIANO("PIANO", listOf(Ore.STONE to 4), 160, 2, 35),
+    TROPHY_CASE("TROPHY CASE", listOf(Ore.GOLD to 3), 110, 2, 40),
+    HOT_TUB("HOT TUB", listOf(Ore.SAPPHIRE to 2), 200, 2, 45),
+    DISCO_BALL("DISCO BALL", listOf(Ore.DIAMOND to 1), 90, 2, 50),
+    POOL_TABLE("POOL TABLE", listOf(Ore.EMERALD to 2), 170, 2, 60),
     // The second batch (the rooms got wider to fit them)
-    FRIDGE("FRIDGE", listOf(Ore.IRON to 3), 30, 0, 0),
-    STOVE("STOVE", listOf(Ore.IRON to 2, Ore.COPPER to 1), 30, 0, 8),
+    FRIDGE("FRIDGE", listOf(Ore.IRON to 3), 60, 0, 0),
+    STOVE("STOVE", listOf(Ore.IRON to 2, Ore.COPPER to 1), 55, 0, 8),
     WALL_CLOCK("WALL CLOCK", listOf(Ore.GOLD to 1), 20, 0, 12),
-    DOG_BED("PUPPY BED", emptyList(), 25, 0, 18),
-    SLIDE("SLIDE", listOf(Ore.IRON to 3), 45, 1, 22),
-    ROCKING_HORSE("ROCKING HORSE", listOf(Ore.STONE to 3), 35, 1, 28),
-    BEAN_BAG("BEAN BAG", emptyList(), 25, 1, 32),
-    STAR_LIGHTS("STAR LIGHTS", listOf(Ore.COPPER to 2), 30, 1, 36),
-    GAMING_PC("GAMING PC", listOf(Ore.IRON to 2, Ore.DIAMOND to 1), 80, 2, 55),
-    FOUNTAIN("FOUNTAIN", listOf(Ore.STONE to 6, Ore.SAPPHIRE to 1), 60, 2, 65),
-    ROCKET("ROCKET MODEL", listOf(Ore.IRON to 4), 70, 2, 75),
-    CHANDELIER("CHANDELIER", listOf(Ore.GOLD to 3, Ore.DIAMOND to 1), 90, 2, 85),
+    DOG_BED("PUPPY BED", emptyList(), 35, 0, 18),
+    SLIDE("SLIDE", listOf(Ore.IRON to 3), 90, 1, 22),
+    ROCKING_HORSE("ROCKING HORSE", listOf(Ore.STONE to 3), 45, 1, 28),
+    BEAN_BAG("BEAN BAG", emptyList(), 30, 1, 32),
+    STAR_LIGHTS("STAR LIGHTS", listOf(Ore.COPPER to 2), 40, 1, 36),
+    GAMING_PC("GAMING PC", listOf(Ore.IRON to 2, Ore.DIAMOND to 1), 180, 2, 55),
+    FOUNTAIN("FOUNTAIN", listOf(Ore.STONE to 6, Ore.SAPPHIRE to 1), 150, 2, 65),
+    ROCKET("ROCKET MODEL", listOf(Ore.IRON to 4), 120, 2, 75),
+    CHANDELIER("CHANDELIER", listOf(Ore.GOLD to 3, Ore.DIAMOND to 1), 200, 2, 85),
     // Shelves for even more plushies (12 each), to put anywhere you like
-    PLUSH_SHELF("PLUSHIE SHELF", listOf(Ore.STONE to 4), 40, 1, 0),
-    PLUSH_SHELF2("BIG PLUSHIE SHELF", listOf(Ore.STONE to 6), 60, 2, 10),
-    PLUSH_SHELF3("PLUSHIE TOWER", listOf(Ore.STONE to 6, Ore.GOLD to 1), 80, 0, 20),
+    PLUSH_SHELF("PLUSHIE SHELF", listOf(Ore.STONE to 4), 50, 1, 0),
+    PLUSH_SHELF2("BIG PLUSHIE SHELF", listOf(Ore.STONE to 6), 80, 2, 10),
+    PLUSH_SHELF3("PLUSHIE TOWER", listOf(Ore.STONE to 6, Ore.GOLD to 1), 110, 0, 20),
     // Turns everybody into babies (and back again)
-    BABY_MACHINE("BABY MACHINE", listOf(Ore.IRON to 3, Ore.DIAMOND to 1), 60, 0, 0),
+    BABY_MACHINE("BABY MACHINE", listOf(Ore.IRON to 3, Ore.DIAMOND to 1), 200, 0, 0),
     // Floor 4: the sky room
-    MOVIE_SCREEN("MOVIE SCREEN", listOf(Ore.IRON to 2), 60, 3, 0),
-    DRUM_SET("DRUM SET", listOf(Ore.IRON to 2), 50, 3, 0),
-    CANDY_MACHINE("CANDY MACHINE", listOf(Ore.GOLD to 1), 40, 3, 0),
-    HAMMOCK("HAMMOCK", emptyList(), 35, 3, 0),
-    BUBBLE_MACHINE("BUBBLE MACHINE", listOf(Ore.SAPPHIRE to 1), 45, 3, 0),
-    TREASURE_CHEST("TREASURE CHEST", listOf(Ore.GOLD to 2), 70, 3, 0),
+    MOVIE_SCREEN("MOVIE SCREEN", listOf(Ore.IRON to 2), 140, 3, 0),
+    DRUM_SET("DRUM SET", listOf(Ore.IRON to 2), 110, 3, 0),
+    CANDY_MACHINE("CANDY MACHINE", listOf(Ore.GOLD to 1), 45, 3, 0),
+    HAMMOCK("HAMMOCK", emptyList(), 50, 3, 0),
+    BUBBLE_MACHINE("BUBBLE MACHINE", listOf(Ore.SAPPHIRE to 1), 60, 3, 0),
+    TREASURE_CHEST("TREASURE CHEST", listOf(Ore.GOLD to 2), 120, 3, 0),
     ;
 
     /** The plushie shelves, in order (the plushies on them come after the ones on the wall shelves). */
@@ -258,6 +266,58 @@ object Homes {
                 gfx.oval(x + 34, top - 19, 4f, 4f, 0xFF1A1A1A.toInt())
                 if ((t * 2).toInt() % 2 == 0) gfx.oval(x + 34, top - 38, 4f, 4f, 0xFFFFF2A0.toInt())
             }
+            HouseType.HAUNTED -> {
+                gfx.rect(x, top, 72f, 40f, 0xFF4A3A54.toInt())
+                gfx.poly(floatArrayOf(x - 6, x + 30, x + 78), floatArrayOf(top + 2, top - 26, top + 2), 0xFF2A1E30.toInt())
+                gfx.rect(x + 50, top - 22, 10f, 24f, 0xFF3A2A44.toInt())
+                for (wx in listOf(x + 28, x + 48)) { gfx.rect(wx, top + 8, 12f, 12f, if ((t * 2).toInt() % 3 == 0) 0xFFFFE87A.toInt() else 0xFF1A1420.toInt()) }
+                for (k in 0 until 2) { val bx = x + 20 + k * 30f + sin(t * 3 + k) * 6; gfx.poly(floatArrayOf(bx - 6, bx, bx + 6, bx), floatArrayOf(top - 30, top - 27, top - 30, top - 25), 0xFF1A1420.toInt()) }
+            }
+            HouseType.CLOUD -> {
+                for (k in 0 until 5) gfx.oval(x - 12 + k * 20f, bottom - 14, 30f, 18f, 0xFFF4F8FF.toInt())
+                gfx.rect(x + 6, top + 4, 60f, 26f, 0xFFDDEEFF.toInt())
+                for (tx in listOf(x + 2, x + 54)) { gfx.rect(tx, top - 14, 16f, 44f, 0xFFE8F0FF.toInt()); gfx.poly(floatArrayOf(tx - 2, tx + 8, tx + 18), floatArrayOf(top - 14, top - 30, top - 14), 0xFF8AC8FF.toInt()) }
+                gfx.oval(x + 30, top + 8, 12f, 12f, 0xFFFFE87A.toInt())
+            }
+            HouseType.UNDERSEA -> {
+                gfx.oval(x - 6, top - 20, 84f, 70f, 0x887FD8FF.toInt())
+                gfx.oval(x - 6, top - 20, 84f, 70f, 0x22FFFFFF)
+                gfx.rect(x + 4, top + 10, 64f, 30f, 0xFFE8D8A0.toInt())
+                for (k in 0 until 3) { val fx = x + 10 + ((t * 20 + k * 25) % 60); gfx.oval(fx, top - 6 + k * 9f, 8f, 5f, listOf(0xFFFF8A3A, 0xFFF4D84A, 0xFFE84A6A)[k].toInt()) }
+                gfx.rect(x - 6, bottom - 4, 84f, 4f, 0xFFB8A070.toInt())
+            }
+            HouseType.ROBOT -> {
+                gfx.rect(x + 4, top - 4, 64f, 44f, 0xFF9AA4B8.toInt())
+                gfx.rect(x + 16, top - 28, 40f, 24f, 0xFFB8C0CC.toInt())
+                gfx.oval(x + 22, top - 22, 10f, 10f, if ((t * 3).toInt() % 2 == 0) 0xFF4AE8F0.toInt() else 0xFF2A8A90.toInt())
+                gfx.oval(x + 40, top - 22, 10f, 10f, if ((t * 3).toInt() % 2 == 0) 0xFF4AE8F0.toInt() else 0xFF2A8A90.toInt())
+                gfx.rect(x + 35, top - 40, 2f, 12f, 0xFF5A6070.toInt()); gfx.oval(x + 32, top - 44, 8f, 8f, 0xFFE84A4A.toInt())
+                gfx.rect(x - 4, top + 6, 8f, 20f, 0xFF7A8494.toInt()); gfx.rect(x + 68, top + 6, 8f, 20f, 0xFF7A8494.toInt())
+            }
+            HouseType.BOUNCY -> {
+                val sq = sin(t * 6) * 1.5f
+                gfx.rect(x, top + sq, 72f, 40f - sq, 0xFF5AB0F0.toInt())
+                for (tx in listOf(x - 4, x + 26, x + 56)) { gfx.oval(tx, top - 16 + sq, 20f, 26f, listOf(0xFFE84A4A, 0xFFF4D84A, 0xFF4AB85A)[((tx - x) / 30).toInt().coerceIn(0, 2)].toInt()) }
+                for (k in 0 until 6) gfx.oval(x + 2 + k * 12f, top + 30 + sq, 10f, 8f, 0xFFE84A4A.toInt())
+            }
+            HouseType.VOLCANO -> {
+                gfx.poly(floatArrayOf(x - 14, x + 20, x + 52, x + 86), floatArrayOf(bottom, top - 30, top - 30, bottom), 0xFF4A2A20.toInt())
+                gfx.poly(floatArrayOf(x + 20, x + 28, x + 44, x + 52), floatArrayOf(top - 30, top - 20, top - 20, top - 30), 0xFFFF6A2A.toInt())
+                for (k in 0 until 3) { val p = (t * 0.5f + k / 3f) % 1f; gfx.oval(x + 30 + sin(p * 6) * 4, top - 34 - p * 30, 8f + p * 8, 8f + p * 8, argb(((1 - p) * 160).toInt(), 0x8A8A8A)) }
+                gfx.rect(x + 40, top + 10, 14f, 12f, 0xFFFF8A3A.toInt())
+            }
+            HouseType.TOYBLOCK -> {
+                val c = listOf(0xFFE84A4A, 0xFF3A7AE8, 0xFFF4C83A, 0xFF4AB85A)
+                for (k in 0 until 8) gfx.rect(x + (k % 4) * 18f, top + (k / 4) * 20f, 18f, 20f, c[(k + k / 4) % 4].toInt())
+                for (k in 0 until 4) gfx.rect(x + k * 18f, top + (k % 2) * 20f, 18f, 1f, 0x55000000)
+                gfx.poly(floatArrayOf(x - 4, x + 36, x + 76), floatArrayOf(top, top - 24, top), 0xFFE84A4A.toInt())
+                gfx.text("ABC", x + 50, top + 16, 8f, 0xFFFFFFFF.toInt(), 1)
+            }
+            HouseType.TEEPEE -> {
+                gfx.poly(floatArrayOf(x - 4, x + 36, x + 76), floatArrayOf(bottom, top - 30, bottom), 0xFFF0DCB0.toInt())
+                for (k in 0 until 3) gfx.rect(x + 8 + k * 2f, top + 6 + k * 10f, 56f - k * 4f, 3f, listOf(0xFFC86A3A, 0xFF3A8AC8, 0xFFC86A3A)[k].toInt())
+                for (k in 0 until 3) gfx.poly(floatArrayOf(x + 32 + k * 4f, x + 33 + k * 4f, x + 28 + k * 6f, x + 27 + k * 6f), floatArrayOf(top - 26, top - 26, top - 40, top - 40), 0xFF7A4A20.toInt())
+            }
             HouseType.CABIN -> {
                 for (i in 0 until 5) {
                     gfx.rect(x, top + i * 8f, 72f, 8f, if (i % 2 == 0) 0xFF8A5A2A.toInt() else 0xFF7A4A20.toInt())
@@ -334,6 +394,14 @@ object Homes {
         HouseType.PIRATE -> 0xFF7A4A20.toInt()
         HouseType.BARN -> 0xFFC8A04A.toInt()
         HouseType.PYRAMID -> 0xFFD8B860.toInt()
+        HouseType.HAUNTED -> 0xFF4A3A44.toInt()
+        HouseType.CLOUD -> 0xFFF4F8FF.toInt()
+        HouseType.UNDERSEA -> 0xFFE8D8A0.toInt()
+        HouseType.ROBOT -> 0xFF7A8494.toInt()
+        HouseType.BOUNCY -> 0xFF5AB0F0.toInt()
+        HouseType.VOLCANO -> 0xFF3A2A28.toInt()
+        HouseType.TOYBLOCK -> 0xFF3A7AE8.toInt()
+        HouseType.TEEPEE -> 0xFFB8905A.toInt()
     }
 
     /** The wall, wallpaper stripe and floor colors inside a house (a painted house gets painted walls). */
@@ -354,6 +422,14 @@ object Homes {
             HouseType.PIRATE -> 0xFFA87A4A.toInt() to 0xFF8A5A2A.toInt()
             HouseType.BARN -> 0xFFC84A3A.toInt() to 0xFFA83A2A.toInt()
             HouseType.PYRAMID -> 0xFFF0D890.toInt() to 0xFFC8A860.toInt()
+            HouseType.HAUNTED -> 0xFF5A4A6A.toInt() to 0xFF3A2A4A.toInt()
+            HouseType.CLOUD -> 0xFFDDEEFF.toInt() to 0xFFFFFFFF.toInt()
+            HouseType.UNDERSEA -> 0xFF4A9AD8.toInt() to 0xFF8AD0F8.toInt()
+            HouseType.ROBOT -> 0xFFB8C0CC.toInt() to 0xFF8A94A4.toInt()
+            HouseType.BOUNCY -> 0xFFFFE07A.toInt() to 0xFFFF6A6A.toInt()
+            HouseType.VOLCANO -> 0xFF5A2A20.toInt() to 0xFFFF6A2A.toInt()
+            HouseType.TOYBLOCK -> 0xFFFFF0C8.toInt() to 0xFFE84A4A.toInt()
+            HouseType.TEEPEE -> 0xFFF0DCB0.toInt() to 0xFFC86A3A.toInt()
         }
         val wall = if (paint != 0) mix(paint, 0xFFFFFFFF.toInt(), 0.35f) else normalWall
         val stripe = if (paint != 0) mix(paint, 0xFF000000.toInt(), 0.15f) else normalStripe
@@ -386,6 +462,12 @@ object Homes {
                 var x = x0 + if (i % 2 == 0) 0f else 24f
                 while (x < x1) { gfx.rect(x, 24f + i * 16f, 1f, 16f, stripe); x += 48f }
             }
+            HouseType.HAUNTED, HouseType.ROBOT -> { var x = x0; while (x < x1) { gfx.rect(x, 24f, 2f, FLOOR_Y - 24, stripe); x += 40f } }
+            HouseType.CLOUD -> for (i in 0 until 14) gfx.oval(x0 + (i * 67f) % ROOM_W, 30f + (i * 41f) % 120f, 40f, 16f, stripe)
+            HouseType.UNDERSEA -> for (i in 0 until 30) gfx.oval(x0 + (i * 61f) % ROOM_W, 30f + (i * 37f) % 140f, 5f, 5f, stripe)
+            HouseType.BOUNCY, HouseType.TEEPEE -> { var x = x0; var k = 0; while (x < x1) { if (k++ % 2 == 0) gfx.rect(x, 24f, 30f, FLOOR_Y - 24, stripe); x += 30f } }
+            HouseType.VOLCANO -> for (i in 0 until 12) gfx.rect(x0 + (i * 79f) % ROOM_W, 24f, 3f, 40f + (i * 23f) % 90f, stripe)
+            HouseType.TOYBLOCK -> for (i in 0 until 18) gfx.rect(x0 + (i * 53f) % ROOM_W, 40f + (i * 29f) % 110f, 18f, 18f, listOf(0xFFE84A4A, 0xFF3A7AE8, 0xFFF4C83A, 0xFF4AB85A)[i % 4].toInt())
             HouseType.CRYSTAL -> for (i in 0 until 30) {
                 val cx = x0 + (i * 59f) % ROOM_W
                 val cy = 36f + (i * 43f) % 120f
@@ -937,6 +1019,19 @@ object Homes {
         if (floor == 0 && layer == 0 && hasBed) add((BED_X - 6f)..(BED_X + 62f))
         if (layer == 1) { add((BED_X - 6f)..(BED_X + 62f)); add(SHELF_X..(SHELF_X + 210f)) }
         add((ROOM_W - 12f)..(ROOM_W + 100f))
+    }
+
+    /** The elevator at the end of the room: shiny doors and an arrow light. */
+    fun drawElevator(gfx: Gfx, x: Float, t: Float, floorY: Float = FLOOR_Y) {
+        gfx.rect(x - 2, floorY - 74, 38f, 74f, 0xFF5A6070.toInt())
+        gfx.rect(x, floorY - 70, 34f, 70f, 0xFFB8C0CC.toInt())
+        val open = ((sin(t * 0.8f) + 1f) * 0.5f).let { if (it > 0.85f) (it - 0.85f) * 6f else 0f }
+        gfx.rect(x + 1, floorY - 64, 16f - open * 10f, 64f, 0xFF9AA4B8.toInt())
+        gfx.rect(x + 17 + open * 10f, floorY - 64, 16f - open * 10f, 64f, 0xFF9AA4B8.toInt())
+        gfx.rect(x + 16.5f, floorY - 64, 1f, 64f, 0xFF7A8494.toInt())
+        gfx.oval(x + 13, floorY - 72, 8f, 6f, if ((t * 2).toInt() % 2 == 0) 0xFFFFD21F.toInt() else 0xFFFF8A3A.toInt())
+        gfx.oval(x + 36, floorY - 40, 5f, 5f, 0xFFE8E8F0.toInt())
+        gfx.oval(x + 36, floorY - 32, 5f, 5f, 0xFFE8E8F0.toInt())
     }
 
     fun drawBuildSign(gfx: Gfx, x: Float) {

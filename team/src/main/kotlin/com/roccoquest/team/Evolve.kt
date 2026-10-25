@@ -89,6 +89,31 @@ object Evolve {
                 baseAs(Mon.MYSTIC, 0xFFB8A0D8.toInt(), 0.5f, 1.35f)
                 gfx.oval(cx - 3, bottom - 30, 6f, 6f, argb(if (glow) 220 else 120, 0xC890FF))
             }
+            Mon.MEGA_BLAZE -> {
+                // Black and blue, with blue flames.
+                baseAs(Mon.BLAZE, 0xFF1E1E2A.toInt(), 0.72f, 1.15f)
+                for (k in 0 until 3) {
+                    val fl = sin(t * 12 + k) * 2f
+                    gfx.oval(cx - f * (8 + k * 4) - 3, bottom - 30 - k * 3 + fl, 6f, 8f, 0xFF3AA8FF.toInt())
+                    gfx.oval(cx - f * (8 + k * 4) - 1.5f, bottom - 27 - k * 3 + fl, 3f, 4f, 0xFFB8E8FF.toInt())
+                }
+            }
+            Mon.MEGA_HYDRO -> {
+                baseAs(Mon.HYDRO, 0xFF2A4AC8.toInt(), 0.2f, 1.15f)
+                // One giant cannon on its back
+                gfx.rect(cx - f * 6 - 4, bottom - 32, 8f, 10f, 0xFF7A8494.toInt())
+                gfx.rect(cx - f * 6 - 4 + f * 4, bottom - 33, 12f, 5f, 0xFF5A6070.toInt())
+                gfx.oval(cx - f * 6 + f * 12 - 2.5f, bottom - 33, 5f, 5f, 0xFF1A1A22.toInt())
+            }
+            Mon.MEGA_BLOOM -> {
+                baseAs(Mon.BLOOM, 0xFF2E9A6A.toInt(), 0.2f, 1.15f)
+                // A giant flower with a yellow middle
+                for (k in 0 until 6) {
+                    val a = k * 1.047f + t * 0.3f
+                    gfx.oval(cx - f * 2 + kotlin.math.cos(a) * 7 - 4, bottom - 30 + sin(a) * 4 - 3, 8f, 6f, 0xFFFF6A9A.toInt())
+                }
+                gfx.oval(cx - f * 2 - 3, bottom - 32, 6f, 5f, 0xFFFFD21F.toInt())
+            }
             else -> TeamArt.mon(gfx, m, cx, bottom, t, facing, glow, walking, outline = false)
         }
     }

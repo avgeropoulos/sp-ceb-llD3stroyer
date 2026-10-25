@@ -81,6 +81,61 @@ enum class Mon(val label: String, val color: Int, val superName: String, val blu
     BLOBBY("BLOBBY", 0xFFC8A0E8.toInt(), "TRANSFORM", "Purple goo that copies things. SUPER: a big squishy hit!"),
     SEASONG("SEASONG", 0xFF5AA0E8.toInt(), "ICE BEAM", "Gentle sea ride with a shell. Swims. SUPER blasts both ways!"),
     PENGI("PENGI", 0xFF4A8AD8.toInt(), "BUBBLE", "Little blue penguin. Swims great. SUPER blasts bubbles!"),
+    // Mega evolutions (a line at LEVEL 10)
+    MEGA_BLAZE("MEGA BLAZE", 0xFF2A2A3A.toInt(), "BLAST BURN", "Mega Blaze! Black wings and blue fire. SUPER burns everything!"),
+    MEGA_HYDRO("MEGA HYDRO", 0xFF2A4AC8.toInt(), "MEGA LAUNCHER", "Mega Hydro! A giant cannon on its back. SUPER blasts both ways!"),
+    MEGA_BLOOM("MEGA BLOOM", 0xFF2E9A6A.toInt(), "FRENZY PLANT", "Mega Bloom! A huge flower. SUPER: the biggest beam ever!"),
+    // 50 more (one joins every 2 levels after the first 18)
+    LEAFLING("LEAFLING", 0xFF8CD86A.toInt(), "RAZOR LEAF", "Little leaf deer with a leaf on its head. SUPER: razor leaf!"),
+    FLAMEBACK("FLAMEBACK", 0xFF2A3A6A.toInt(), "FLAME WHEEL", "Shy hedgehog with fire on its back! SUPER: flame wheel!"),
+    CHOMPODILE("CHOMPODILE", 0xFF4A8AE8.toInt(), "WATER GUN", "Snappy blue gator. Loves to chomp! SUPER: water gun!"),
+    MUDKIPPY("MUDKIPPY", 0xFF5AA0E8.toInt(), "MUD SHOT", "Blue mud fish with orange cheeks. SUPER: mud shot!"),
+    GECKLE("GECKLE", 0xFF5AB85A.toInt(), "BULLET SEED", "Cool green gecko with a leafy tail. SUPER: bullet seed!"),
+    CHIRPY("CHIRPY", 0xFFFF9A3A.toInt(), "EMBER", "Fluffy orange chick. Hot hot hot! SUPER: ember!"),
+    TURTLEAF("TURTLEAF", 0xFF7AC85A.toInt(), "LEAF STORM", "Tiny turtle with a sprout on its head. SUPER: leaf storm!"),
+    MONKEYFIRE("MONKEYFIRE", 0xFFF08A3A.toInt(), "FLAME PUNCH", "Cheeky fire monkey! SUPER: flame punch!"),
+    SNIVVY("SNIVVY", 0xFF5AB85A.toInt(), "VINE WHIP", "A proud little grass snake. SUPER: vine whip!"),
+    TEPPY("TEPPY", 0xFFF08A3A.toInt(), "FLAME CHARGE", "Fire piglet! Oink oink! SUPER: flame charge!"),
+    OTTERSHELL("OTTERSHELL", 0xFFF4F4F4.toInt(), "RAZOR SHELL", "Brave otter with a shell sword. SUPER: razor shell!"),
+    FENNEX("FENNEX", 0xFFF4D86A.toInt(), "FLAMETHROWER", "Fox with giant ears and a fiery tail. SUPER: flamethrower!"),
+    HOOTLET("HOOTLET", 0xFFC8A06A.toInt(), "LEAFAGE", "Round baby owl with a leaf bowtie. SUPER: leafage!"),
+    LITTY("LITTY", 0xFF2A2A30.toInt(), "FIRE FANG", "Cool kitty with red stripes. SUPER: fire fang!"),
+    SEALY("SEALY", 0xFF5AB0F0.toInt(), "BUBBLE BEAM", "Silly baby seal with a clown nose! SUPER: bubble beam!"),
+    GROOKY("GROOKY", 0xFF6AC85A.toInt(), "DRUM BEATING", "Monkey that drums with a stick! SUPER: drum beating!"),
+    BUNBUN("BUNBUN", 0xFFF4F4F4.toInt(), "PYRO BALL", "Super fast fire bunny! SUPER: pyro ball!"),
+    SOBBY("SOBBY", 0xFF6AA8E8.toInt(), "WATER GUN", "Shy lizard. Cries when it's scared. SUPER: water gun!"),
+    KITTLEAF("KITTLEAF", 0xFF7AC85A.toInt(), "MAGICAL LEAF", "Grass kitty with a flower on its face. SUPER: magical leaf!"),
+    CROCO("CROCO", 0xFFF05A3A.toInt(), "FIRE BLAST", "Happy fire croc. Loves snacks! SUPER: fire blast!"),
+    DUCKLY("DUCKLY", 0xFFF4F4F4.toInt(), "AQUA STEP", "Neat little duck with blue hair. SUPER: aqua step!"),
+    PICHI("PICHI", 0xFFF4E04A.toInt(), "THUNDERSHOCK", "Tiny baby electric mouse! SUPER: thundershock!"),
+    PACHI("PACHI", 0xFFF4F4F4.toInt(), "SPARK", "Electric squirrel with a fluffy tail. SUPER: spark!"),
+    SHINXY("SHINXY", 0xFF4A8AE8.toInt(), "SPARK", "Little lion cub with a star tail. SUPER: spark!"),
+    SHEEPZAP("SHEEPZAP", 0xFFF4F0D8.toInt(), "THUNDER WAVE", "Fluffy sheep full of static! SUPER: thunder wave!"),
+    MORPO("MORPO", 0xFFF4D84A.toInt(), "AURA WHEEL", "Always hungry hamster. GRUMBLE! SUPER: aura wheel!"),
+    YAMPY("YAMPY", 0xFFF4D86A.toInt(), "SPARK", "Zippy corgi puppy. Bark bark! SUPER: spark!"),
+    JOLTEO("JOLTEO", 0xFFF4D84A.toInt(), "PIN MISSILE", "Spiky electric fox! SUPER: pin missile!"),
+    FLAREO("FLAREO", 0xFFF08A3A.toInt(), "LAVA PLUME", "Fluffy fire fox. SUPER: lava plume!"),
+    VAPEO("VAPEO", 0xFF5AB0E8.toInt(), "AQUA RING", "Mermaid fox. Swims great! SUPER: aqua ring!"),
+    LEAFEO("LEAFEO", 0xFFF4E0A0.toInt(), "LEAF BLADE", "Leafy fox with a leaf tail. SUPER: leaf blade!"),
+    GLACEO("GLACEO", 0xFF8AD8F0.toInt(), "ICE SHARD", "Icy fox. Brrr! SUPER: ice shard!"),
+    ESPEO("ESPEO", 0xFFE8B8F0.toInt(), "PSYBEAM", "Purple fox with a red gem. Floats! SUPER: psybeam!"),
+    MARRY("MARRY", 0xFF4A8AE8.toInt(), "BUBBLE", "Bouncy blue water mouse. SUPER: bubble!"),
+    WOOPY("WOOPY", 0xFF6AB8F0.toInt(), "MUD BOMB", "Happy little mudfish. Always smiling. SUPER: mud bomb!"),
+    TEDDO("TEDDO", 0xFFC8884A.toInt(), "FURY SWIPES", "Teddy bear with a moon on its head. SUPER: fury swipes!"),
+    MUNCHY("MUNCHY", 0xFF2A5A6A.toInt(), "BODY SLAM", "Baby Snoozer. Eats EVERYTHING! SUPER: body slam!"),
+    RIOLITTLE("RIOLITTLE", 0xFF4A8AE8.toInt(), "FORCE PALM", "Little aura pup. Practices every day! SUPER: force palm!"),
+    GIBBLE("GIBBLE", 0xFF3A6AA8.toInt(), "DRAGON RAGE", "Little land shark. Chomp chomp! SUPER: dragon rage!"),
+    SHARKCHOMP("SHARKCHOMP", 0xFF2A4A8A.toInt(), "DRAGON RUSH", "Gibble evolved! A super fast land shark! SUPER: dragon rush!"),
+    ZORRY("ZORRY", 0xFF4A4A5A.toInt(), "NIGHT DAZE", "Tricky fox that plays pranks. SUPER: night daze!"),
+    AXEY("AXEY", 0xFF6AA84A.toInt(), "DRAGON CLAW", "Little dragon with big tusks. SUPER: dragon claw!"),
+    DEDDY("DEDDY", 0xFFF0A04A.toInt(), "NUZZLE", "Antenna mouse with giant ears. SUPER: nuzzle!"),
+    WOOLY("WOOLY", 0xFFF4F4F4.toInt(), "ROLLOUT", "Fluffy sheep that rolls around! SUPER: rollout!"),
+    PECKY("PECKY", 0xFF2A2A30.toInt(), "PECK", "Woodpecker. Tap tap tap! SUPER: peck!"),
+    PUPROCK("PUPROCK", 0xFFC8A06A.toInt(), "ROCK THROW", "Puppy with a rocky collar. Good dog! SUPER: rock throw!"),
+    BONEKID("BONEKID", 0xFFC8A06A.toInt(), "BONE CLUB", "Wears a skull helmet. Brave! SUPER: bone club!"),
+    MEWLY("MEWLY", 0xFFFFB8D8.toInt(), "PSYCHIC", "Legendary pink cat. Floats everywhere! SUPER: psychic!"),
+    TOGEKISSY("TOGEKISSY", 0xFFF4F4F4.toInt(), "AIR SLASH", "Happy white bird of joy. SUPER: air slash!"),
+    DRATINY("DRATINY", 0xFF8AB8F0.toInt(), "TWISTER", "Rare little sea dragon. SUPER: twister!"),
 }
 
 /** The first-form Pokemon whose moves (SUPER, speed, jumps) an evolution uses. */
@@ -101,14 +156,17 @@ val Mon.base: Mon get() = when (this) {
     Mon.DRAGOBUD -> Mon.BLAZE
     Mon.RAGEFISH, Mon.SEASONG -> Mon.HYDRO
     Mon.FOXFIRE, Mon.FIREPUP -> Mon.EMBER
-    else -> this
+    Mon.MEGA_BLAZE -> Mon.BLAZE
+    Mon.MEGA_HYDRO -> Mon.HYDRO
+    Mon.MEGA_BLOOM -> Mon.BLOOM
+    else -> Pokedex.specs[this]?.base ?: this
 }
 
 /** Evolution lines, first form first. All forms in a line share one level. */
 val MON_LINES: List<List<Mon>> = listOf(
-    listOf(Mon.EMBER, Mon.SCORCH, Mon.BLAZE),
-    listOf(Mon.SPLASHY, Mon.TIDAL, Mon.HYDRO),
-    listOf(Mon.SEEDY, Mon.SPROUT, Mon.BLOOM),
+    listOf(Mon.EMBER, Mon.SCORCH, Mon.BLAZE, Mon.MEGA_BLAZE),
+    listOf(Mon.SPLASHY, Mon.TIDAL, Mon.HYDRO, Mon.MEGA_HYDRO),
+    listOf(Mon.SEEDY, Mon.SPROUT, Mon.BLOOM, Mon.MEGA_BLOOM),
     listOf(Mon.SPARKY, Mon.ZAPPER),
     listOf(Mon.PUNCHO, Mon.BRAWLER, Mon.MEGAPUNCH),
     listOf(Mon.SPOOKY, Mon.SHADE, Mon.PHANTOM),
@@ -116,7 +174,11 @@ val MON_LINES: List<List<Mon>> = listOf(
     listOf(Mon.LUGIA),
     listOf(Mon.EEVO, Mon.RIBBON),
     listOf(Mon.FLOPFISH, Mon.RAGEFISH),
-) + NEW_SINGLES.map { listOf(it) }
+    listOf(Mon.GIBBLE, Mon.SHARKCHOMP),
+) + NEW_SINGLES.map { listOf(it) } + POKEDEX_SINGLES.map { listOf(it) }
+
+/** The 50 newest Pokemon that don't evolve. */
+private val POKEDEX_SINGLES get() = listOf(Mon.LEAFLING, Mon.FLAMEBACK, Mon.CHOMPODILE, Mon.MUDKIPPY, Mon.GECKLE, Mon.CHIRPY, Mon.TURTLEAF, Mon.MONKEYFIRE, Mon.SNIVVY, Mon.TEPPY, Mon.OTTERSHELL, Mon.FENNEX, Mon.HOOTLET, Mon.LITTY, Mon.SEALY, Mon.GROOKY, Mon.BUNBUN, Mon.SOBBY, Mon.KITTLEAF, Mon.CROCO, Mon.DUCKLY, Mon.PICHI, Mon.PACHI, Mon.SHINXY, Mon.SHEEPZAP, Mon.MORPO, Mon.YAMPY, Mon.JOLTEO, Mon.FLAREO, Mon.VAPEO, Mon.LEAFEO, Mon.GLACEO, Mon.ESPEO, Mon.MARRY, Mon.WOOPY, Mon.TEDDO, Mon.MUNCHY, Mon.RIOLITTLE, Mon.ZORRY, Mon.AXEY, Mon.DEDDY, Mon.WOOLY, Mon.PECKY, Mon.PUPROCK, Mon.BONEKID, Mon.MEWLY, Mon.TOGEKISSY, Mon.DRATINY)
 
 /** Newer Pokemon with no evolution. */
 private val NEW_SINGLES get() = listOf(Mon.NIGHTFUR, Mon.SNOOZER, Mon.PUFFLE, Mon.PSYQUACK, Mon.LUKO, Mon.SHURIKEN, Mon.MIMIC,
@@ -125,10 +187,15 @@ private val NEW_SINGLES get() = listOf(Mon.NIGHTFUR, Mon.SNOOZER, Mon.PUFFLE, Mo
 /** The newer first forms in the order they join the team (one every [NEW_MON_EVERY] levels beaten). */
 val NEW_MONS: List<Mon> = listOf(Mon.EEVO, Mon.PUFFLE, Mon.MEOWZER, Mon.FLOPFISH, Mon.FIREPUP, Mon.PSYQUACK, Mon.SNOOZER,
     Mon.PENGI, Mon.EGGBABY, Mon.LUKO, Mon.FOXFIRE, Mon.SHURIKEN, Mon.NIGHTFUR, Mon.BLOBBY, Mon.DRAGOBUD, Mon.MIMIC,
-    Mon.SEASONG, Mon.RAYZOR)
+    Mon.SEASONG, Mon.RAYZOR,
+    // The 50 newest (one every 2 levels after the first 18)
+    Mon.LEAFLING, Mon.FLAMEBACK, Mon.CHOMPODILE, Mon.MUDKIPPY, Mon.GECKLE, Mon.CHIRPY, Mon.TURTLEAF, Mon.MONKEYFIRE, Mon.SNIVVY, Mon.TEPPY, Mon.OTTERSHELL, Mon.FENNEX, Mon.HOOTLET, Mon.LITTY, Mon.SEALY, Mon.GROOKY, Mon.BUNBUN, Mon.SOBBY, Mon.KITTLEAF, Mon.CROCO, Mon.DUCKLY, Mon.PICHI, Mon.PACHI, Mon.SHINXY, Mon.SHEEPZAP, Mon.MORPO, Mon.YAMPY, Mon.JOLTEO, Mon.FLAREO, Mon.VAPEO, Mon.LEAFEO, Mon.GLACEO, Mon.ESPEO, Mon.MARRY, Mon.WOOPY, Mon.TEDDO, Mon.MUNCHY, Mon.RIOLITTLE, Mon.GIBBLE, Mon.ZORRY, Mon.AXEY, Mon.DEDDY, Mon.WOOLY, Mon.PECKY, Mon.PUPROCK, Mon.BONEKID, Mon.MEWLY, Mon.TOGEKISSY, Mon.DRATINY)
 const val NEW_MON_EVERY = 3
 
-val Mon.line: List<Mon> get() = MON_LINES.first { this in it }
+private val LINE_OF: Map<Mon, List<Mon>> by lazy { MON_LINES.flatMap { l -> l.map { it to l } }.toMap() }
+val Mon.line: List<Mon> get() = LINE_OF.getValue(this)
+/** The three MEGA forms (a line at its top level). */
+val Mon.isMega get() = this == Mon.MEGA_BLAZE || this == Mon.MEGA_HYDRO || this == Mon.MEGA_BLOOM
 /** The first form of this Pokemon's line (its level is kept there). */
 val Mon.root: Mon get() = line.first()
 /** 1 for a first form, 2 and 3 for evolutions. */
@@ -139,6 +206,8 @@ val Mon.evolveLevel: Int get() = when (this) {
     Mon.ZAPPER, Mon.RIBBON, Mon.RAGEFISH -> 5
     Mon.PSYKO -> 6
     Mon.MEGAPUNCH, Mon.PHANTOM -> 7
+    Mon.SHARKCHOMP -> 6
+    Mon.MEGA_BLAZE, Mon.MEGA_HYDRO, Mon.MEGA_BLOOM -> 10
     else -> 1
 }
 /** The Pokemon this one can evolve into next, if any. */
@@ -218,6 +287,9 @@ fun solidRainbow(t: Float, offset: Float = 0f) = argb(255, rainbow(t, offset))
 
 // ============================================================================ Heroes
 
+/** Rocco is drawn at this size (his sprite is a bit tall next to Blocky and the Pokemon). */
+const val ROCCO_SCALE = 0.88f
+
 class Hero(val who: Who, x: Float, y: Float) :
     Body(x, y, if (who == Who.MON) 14f else 12f, if (who == Who.MON) 18f else 23f) {
     var facing = 1
@@ -278,9 +350,12 @@ class Hero(val who: Who, x: Float, y: Float) :
 
     fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
         if (this === g.leader && g.inCannon != null) return
-        if (!g.babyMode || mini || (who == Who.ROCCO && (g.megaT > 0f || g.capture != null))) { drawBody(g, gfx, ox); return }
+        // Rocco is drawn a little shorter than his box, so he isn't taller than everybody else.
+        val small = who == Who.ROCCO && !mini && g.megaT <= 0f && g.capture == null && g.dino == null
+        val base = if (small) ScaledGfx(gfx, ROCCO_SCALE, (cx + ox) * (1 - ROCCO_SCALE), bottom * (1 - ROCCO_SCALE)) else gfx
+        if (!g.babyMode || mini || (who == Who.ROCCO && (g.megaT > 0f || g.capture != null))) { drawBody(g, base, ox); return }
         // Baby time (the BABY MACHINE at home): little, with a bonnet and a pacifier.
-        drawBody(g, Baby.shrink(gfx, cx + ox, bottom), ox)
+        drawBody(g, Baby.shrink(base, cx + ox, bottom), ox)
         if (!shellSpin && !crouching && !(who == Who.ROCCO && g.dino != null) && !(this === g.leader && g.invuln > 0 && g.starT <= 0 && (g.invuln * 20).toInt() % 2 == 0)) {
             Baby.dress(gfx, cx + ox, bottom, facing, who == Who.MON)
         }

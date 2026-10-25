@@ -439,9 +439,16 @@ object TeamArt {
     fun mon(gfx: Gfx, m: Mon, cx: Float, bottom: Float, t: Float, facing: Int, glow: Boolean, walking: Boolean = false, outline: Boolean = true) {
         if (glow) gfx.oval(cx - 14, bottom - 26, 28f, 28f, argb(70, m.color))
         // A dark outline first (a slightly bigger silhouette), then the Pokemon on top.
-        if (outline && gfx !is SilhouetteGfx) monShapes(SilhouetteGfx(gfx, 0.8f), m, cx, bottom, t, facing, glow, walking)
-        monShapes(gfx, m, cx, bottom, t, facing, glow, walking)
+        // Every Pokemon is drawn at a sensible size: little ones small, evolved ones bigger, legends biggest.
+        // (Evolutions draw their first form inside themselves with outline = false: that one stays natural size.)
+        val k = if (outline) MonSize.scale(m) else 1f
+        val g = if (k == 1f) gfx else ScaledGfx(gfx, k, cx * (1 - k), bottom * (1 - k))
+        if (outline && gfx !is SilhouetteGfx) monShapes(SilhouetteGfx(g, 0.8f / k), m, cx, bottom, t, facing, glow, walking)
+        monShapes(g, m, cx, bottom, t, facing, glow, walking)
     }
+
+    /** The Pokemon's own drawing at its natural size (used to measure it). */
+    internal fun monNatural(gfx: Gfx, m: Mon) = monShapes(gfx, m, 0f, 0f, 0f, 1, false, false)
 
     private fun monShapes(gfx: Gfx, m: Mon, cx: Float, bottom: Float, t: Float, facing: Int, glow: Boolean, walking: Boolean) {
         when (m) {
@@ -457,7 +464,8 @@ object TeamArt {
             Mon.LUGIA -> lugia(gfx, cx, bottom, t, facing)
             Mon.SCORCH, Mon.TIDAL, Mon.SEEDY, Mon.SPROUT, Mon.ZAPPER, Mon.BRAWLER, Mon.MEGAPUNCH, Mon.SHADE, Mon.PHANTOM, Mon.PSYKO ->
                 Evolve.draw(gfx, m, cx, bottom, t, facing, glow, walking)
-            else -> MonArt.draw(gfx, m, cx, bottom, t, facing, walking)
+            Mon.MEGA_BLAZE, Mon.MEGA_HYDRO, Mon.MEGA_BLOOM -> Evolve.draw(gfx, m, cx, bottom, t, facing, glow, walking)
+            else -> if (m in Pokedex.specs) Pokedex.draw(gfx, m, cx, bottom, t, facing, walking) else MonArt.draw(gfx, m, cx, bottom, t, facing, walking)
         }
     }
 

@@ -76,7 +76,7 @@ class TeamGameTest {
             assertEquals(1, game.houseFloors, "the first tap only picks it")
             tap(game.viewW / 2, 200f)
             assertEquals(2, game.houseFloors)
-            assertEquals(coins - 80, game.coins)
+            assertEquals(coins - 150, game.coins)
             game.enterHome()
             walkHomeTo(Homes.ROOM_W - 20f)
             input.action = true; game.update(dt); input.action = false; game.update(dt)
@@ -676,7 +676,19 @@ class TeamGameTest {
         val img = BufferedImage(400, 100, BufferedImage.TYPE_INT_ARGB)
         Mon.entries.forEachIndexed { i, m -> TeamArt.mon(AwtGfx(img, 1f), m, 10f + i * 19f, 80f, 0f, 1, false) }
         assertEquals(Mon.EMBER, Mon.SCORCH.base)
-        assertEquals(40, Mon.entries.size)
+        assertEquals(93, Mon.entries.size)
+        // The 50 newest and the three MEGAs, all at their in-game sizes (with Rocco for scale).
+        val dex = BufferedImage(1500, 1450, BufferedImage.TYPE_INT_ARGB)
+        java.awt.Graphics2D::class.java.cast(dex.graphics).apply { color = java.awt.Color(0xDDEEFF); fillRect(0, 0, 1500, 1450) }
+        val dg = AwtGfx(dex, 3f)
+        Mon.entries.forEachIndexed { i, m ->
+            val x = 25f + (i % 12) * 40f
+            val y = 40f + (i / 12) * 60f
+            TeamArt.mon(dg, m, x, y, 0f, 1, false)
+            dg.text(m.label, x, y + 9f, 4.5f, 0xFF202020.toInt(), 1)
+        }
+        dg.sprite(TeamArt.rocco(Power.NONE, 0), 460f, 460f, w = 16f * ROCCO_SCALE, h = 24f * ROCCO_SCALE)
+        ImageIO.write(dex, "png", File("build/screens/pokedex.png"))
         // The newer Pokemon draw too (a big picture to look at), and join one every few levels beaten.
         val big = BufferedImage(1200, 260, BufferedImage.TYPE_INT_ARGB)
         Mon.entries.drop(20).forEachIndexed { i, m ->
@@ -2114,7 +2126,7 @@ class TeamGameTest {
     @Test fun walkAroundTheHouseShopAndSleepToSave() {
         game.newGame(1, Mon.BLAZE)
         run(3.2f)
-        game.coins = 500
+        game.coins = 1500
         Ore.entries.forEach { game.inventory[it.ordinal] = 60 }
         goHome()
         // Walk to the shop counter and open the shop.
@@ -2378,7 +2390,7 @@ class TeamGameTest {
     @Test fun moreFloorsUnlockFurnitureAndPokemonPark() {
         startPlaying()
         goHome()
-        game.coins = 1000
+        game.coins = 3000
         Ore.entries.forEach { game.inventory[it.ordinal] = 60 }
         // Upstairs furniture needs its floor, and the fancy pieces unlock as you beat levels.
         game.buyFurniture(Furniture.TOY_CHEST)
