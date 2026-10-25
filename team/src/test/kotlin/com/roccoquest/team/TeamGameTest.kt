@@ -72,6 +72,8 @@ class TeamGameTest {
             assertEquals(1, game.houseFloors, "opening shop must not spend materials")
             val coins = game.coins
             tap(game.viewW / 2, 200f)
+            assertEquals(1, game.houseFloors, "the first tap only picks it")
+            tap(game.viewW / 2, 200f)
             assertEquals(2, game.houseFloors)
             assertEquals(coins - 80, game.coins)
             game.enterHome()
@@ -156,7 +158,7 @@ class TeamGameTest {
         assertTrue(Levels.all.any { d -> d.rows.any { 'Q' in it } }, "Wonder King Krag")
         assertTrue(Levels.all.any { d -> d.rows.any { 'G' in it } }, "the Warden")
         assertTrue(Levels.all.any { d -> d.rows.any { 'Y' in it } }, "Dry Bones King Krag")
-        assertTrue(Levels.all.last().rows.any { 'S' in it }, "Rock Star Krag is the final boss")
+        assertTrue(Levels.all.last().rows.any { '!' in it }, "Rock Star Krag is the final boss")
         assertTrue(Levels.all.any { it.place == Place.WATER && it.shoreX > 0 }, "an underwater level")
         // Every level has Ring-Ding Frog and ore to mine.
         for (def in Levels.all) {
@@ -252,6 +254,8 @@ class TeamGameTest {
         game.inventory[Ore.IRON.ordinal] = 5
         // Tap the first row (the Boomerang Flower).
         run(0.3f)
+        tap(game.viewW / 2, 72f + 13f)
+        assertEquals(Power.NONE, game.power, "the first tap only picks it")
         tap(game.viewW / 2, 72f + 13f)
         assertEquals(Power.BOOM, game.power)
         input.craft = true; game.update(dt); input.craft = false; game.update(dt)
@@ -679,7 +683,12 @@ class TeamGameTest {
         game.foes.clear()
         game.inventory[Ore.SAPPHIRE.ordinal] = 20
         game.inventory[Ore.GOLD.ordinal] = 20
+        game.inventory[Ore.DIAMOND.ordinal] = 20
+        game.inventory[Ore.AMETHYST.ordinal] = 20
         val tab = TeamGame.TABS.indexOf("FLOWERS")
+        game.craft(game.recipes(tab).indexOfFirst { it.icon == Power.CAPPY }, tab)
+        assertEquals(Power.NONE, game.power, "Cappy is locked at first")
+        repeat(TeamGame.CAPPY_LEVELS) { game.clearForTest(it) }
         game.craft(game.recipes(tab).indexOfFirst { it.icon == Power.CAPPY }, tab)
         assertEquals(Power.CAPPY, game.power)
         // Throw Cappy at a Hopper: Rocco becomes a Hopper and jumps way higher.

@@ -104,7 +104,7 @@ object MoreWorlds {
         Plan("FROSTY FOREST", Place.SNOW, "Snowy pine trees and lots of bad guys."),
         Plan("SUGAR RUSH", Place.CANDY, "Super sweet and super fast!"),
         Plan("STARLIGHT SUMMIT", Place.AURORA, "The top of the world. The big show is next!"),
-        Plan("ROCK STAR STAGE", Place.CASTLE, "ROCK STAR KRAG! Dodge his music notes and jump the shockwaves!", boss = "S"),
+        Plan("ROCK STAR STAGE", Place.CASTLE, "ROCK STAR KRAG! Dodge his music notes and jump the shockwaves!", boss = "!"),
     )
 
     /** World 7, Winter World: snow, blizzards, northern lights, Candy Land, and ROCK STAR KRAG. */
@@ -124,7 +124,7 @@ object MoreWorlds {
         "G" -> deepBoss(p)
         "Z" -> dragonBoss(p)
         "K", "Q", "Y", "3", "4" -> castleBoss(p, p.boss[0])
-        "S" -> rockStage(p)
+        "!" -> rockStage(p)
         "55" -> twinBoss(p)
         else -> rush(p, p.boss)
     }
@@ -300,7 +300,7 @@ object MoreWorlds {
         .rock(84, 12, "eDo", "sss").at(92, 12, '|').row(96, 9, "m*m")
         .row(112, 8, "h").row(134, 8, "h")
         .fill(150, 150, 2, 12, 'X')
-        .at(128, 12, 'S')
+        .at(128, 12, '!')
         .build(p.name, p.place, p.tip)
 
     /** The Warden Twins: two Wardens in one dark cave (each one has less health than the big Warden). */

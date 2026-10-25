@@ -110,7 +110,7 @@ class CrazyBall(x: Float, y: Float, private val dir: Int, private val fire: Bool
         if (t > 3f) { removed = true; return }
         for (f in g.foes) {
             if (f.dying || f.removed || !f.overlaps(this) || f in hitAlready) continue
-            if (f.hit(g, if (fire) 6 else 5)) {
+            if (f.hit(g, if (f.boss) 3 else if (fire) 6 else 5)) {
                 hitAlready += f
                 if (fire) repeat(6) { g.addParticle(Sparkle(cx, cy, (it - 2.5f) * 40f, -80f, 0xFFFF8A2A.toInt())) }
                 else { f.frozenT = if (f.boss) 0.8f else 3f; g.iceBurst(f.cx, f.cy) }

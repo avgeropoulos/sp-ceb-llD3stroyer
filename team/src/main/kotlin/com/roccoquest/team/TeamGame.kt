@@ -60,6 +60,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         const val SCORE_MULT = 3
         const val MAX_PARTICLES = 240
         const val MAX_FLOAT_TEXTS = 12
+        /** Levels to beat before Cappy can be made. */
+        const val CAPPY_LEVELS = 15
         /** After getting hurt, nothing can hurt you again for this long (a bit longer than before). */
         const val HURT_SAFE_TIME = 2.1f
         /** Houses, beds and furniture are bought in the SHOP at home now, not crafted. */
@@ -812,7 +814,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 '9' -> foes += Chompy(px, bottom)
                 '0' -> foes += ZoomerLauncher(px, bottom)
                 '1' -> foes += Gummy(px, bottom)
-                'S' -> foes += RockStarKrag(px, bottom)
+                '!' -> foes += RockStarKrag(px, bottom)
                 'Z' -> foes += EnderDragon(px, ty * TILE.toFloat())
                 'n' -> foes += Enderman(px, bottom)
                 'f' -> foes += Fish(px, bottom)
@@ -1911,7 +1913,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         foes.remove(f)
         capture = f
         captureKind = kind
-        captureT = 20f
+        captureT = 12f
         f.vx = 0f
         sfx(Sound.PORTAL)
         sound.sayAs("Capture! I'm a ${kind.label.lowercase()}!", Voice.HERO)
@@ -1994,18 +1996,20 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     /** A crazy mushroom: giant fireballs (or ice balls) for 20 seconds. */
     fun startCrazy(fire: Boolean) {
         if (riding == null && dino == null) switchTo(Who.ROCCO)
-        if (fire) { crazyFireT = 20f; crazyIceT = 0f } else { crazyIceT = 20f; crazyFireT = 0f }
+        // A little weaker than it was: 12 seconds, two balls at a time.
+        if (fire) { crazyFireT = 12f; crazyIceT = 0f } else { crazyIceT = 12f; crazyFireT = 0f }
         sfx(Sound.POWERUP)
         sound.sayAs(if (fire) "Crazy fire! Wahoo!" else "Crazy ice! Brrr!", Voice.HERO)
-        toast(if (fire) "CRAZY FIRE MUSHROOM! Throw GIANT bouncing fireballs!" else "CRAZY ICE MUSHROOM! Throw GIANT ice balls that freeze bad guys!")
+        toast(if (fire) "CRAZY FIRE MUSHROOM! Giant bouncing fireballs for 12 seconds!" else "CRAZY ICE MUSHROOM! Giant ice balls that freeze bad guys, for 12 seconds!")
     }
 
     private fun throwCrazy(h: Hero) {
         val fire = crazyFireT > 0f
         h.cooldown = 0.35f
-        if (things.count { it is CrazyBall } >= 6) return
+        h.cooldown = 0.5f
+        if (things.count { it is CrazyBall } >= 4) return
         val sx = if (h.facing > 0) h.x + h.w else h.x - 16
-        for (k in 0 until 3) spawn(CrazyBall(sx, h.y + 4, h.facing, fire, -20f - k * 120f))
+        for (k in 0 until 2) spawn(CrazyBall(sx, h.y + 4, h.facing, fire, -20f - k * 140f))
         sfx(if (fire) Sound.BOSS_FIRE else Sound.FIRE)
     }
 
@@ -2255,12 +2259,15 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 Power.GRASS -> "Emerald: GREEN ARMOR + leaves"
                 Power.THUNDER -> "Copper: zaps jump to more bad guys"
                 Power.SHELL -> "Diamond: homing shells + sprint to spin!"
-                Power.CAPPY -> "Throw Cappy: BECOME a bad guy and use its power!"
+                Power.CAPPY -> if (clearedCount() < CAPPY_LEVELS) "LOCKED: beat $CAPPY_LEVELS levels (${clearedCount()} so far)" else "Throw Cappy: BECOME a bad guy and use its power!"
                 Power.GOLD -> "Golden fireballs: every hit makes coins!"
                 else -> "Amethyst: three crystal shards"
             }
-            val costs = listOf(ore to COST)
+            // Cappy is special: it costs a lot more, and only after beating 15 levels.
+            val costs = if (p == Power.CAPPY) listOf(Ore.SAPPHIRE to 8, Ore.DIAMOND to 4, Ore.AMETHYST to 3) else listOf(ore to COST)
+            val cappyLocked = p == Power.CAPPY && lvl == 0 && clearedCount() < CAPPY_LEVELS
             val (button, enabled) = when {
+                cappyLocked -> "LOCKED" to false
                 lvl == 0 -> "MAKE" to has(costs, 0)
                 power != p -> "EQUIP" to true
                 lvl >= MAX_FLOWER_LV -> "MAX" to false
@@ -2346,6 +2353,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             toast(
                 when {
                     r.button == "MAX" -> "That's already the best!"
+                    r.button == "LOCKED" -> "Cappy unlocks after beating $CAPPY_LEVELS levels."
                     r.button == "READY" -> "Blocky is already holding that sword!"
                     r.button == "BETTER" -> "You already have a better one! Making this would waste your stuff."
                     r.kind == Kind.HEART && hearts >= MAX_HEARTS -> "Hearts are full!"
@@ -2735,7 +2743,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val y = input.tapY
         if (hypot(x - (px + pw - 14), y - (panelTop + 10)) < 14f || x < px || x > px + pw || y < panelTop) { endTrade(); return }
         val i = ((y - rowsTop) / rowH).toInt()
-        if (y >= rowsTop && i in trades.indices) doTrade(trades[i])
+        if (y >= rowsTop && i in trades.indices && confirmTap("trade:$i", "This trade", "make")) doTrade(trades[i])
     }
 
     /** For tests and keyboards: trade with whoever we're talking to. */
@@ -2888,8 +2896,24 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             return
         }
         val i = ((y - rowsTop) / craftRowH()).toInt()
-        if (y >= rowsTop && i in recipes().indices) craft(i)
+        if (y >= rowsTop && i in recipes().indices && confirmTap("craft:$craftTab:$i", recipes()[i].title, "make")) craft(i)
     }
+
+    /**
+     * Menus don't buy on the first tap: the first tap picks something (it gets a yellow frame), and tapping
+     * the same thing again buys or makes it. Returns true on that second tap.
+     */
+    private var pendingPick: String? = null
+
+    private fun confirmTap(key: String, name: String, verb: String): Boolean {
+        if (pendingPick == key) { pendingPick = null; return true }
+        pendingPick = key
+        sfx(Sound.KICK)
+        toast("$name: tap it again to $verb it!")
+        return false
+    }
+
+    private fun picked(key: String) = pendingPick == key
 
     // ======================================================================== Interactions
 
@@ -3385,9 +3409,15 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         /** The tune for a normal level, never the same as the level right before it. */
         fun levelMusic(i: Int): Music = levelTunes[i]
 
+        /** How many boss levels come before each level (worked out once). */
+        private val bossesBefore: IntArray by lazy {
+            var n = 0
+            IntArray(Levels.all.size) { i -> n.also { if (Levels.all[i].isBossLevel) n++ } }
+        }
+
         /** Boss levels take turns between the scary songs. */
         fun bossMusic(i: Int, fighting: Boolean): Music {
-            val n = (0 until i).count { Levels.all[it].isBossLevel }
+            val n = bossesBefore[i]
             return if (fighting) listOf(Music.KRAG, Music.DOOM, Music.BOSS)[n % 3]
             else listOf(Music.DOOM, Music.CASTLE, Music.NIGHT)[n % 3]
         }
@@ -3534,8 +3564,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 gfx.rect(0f, 32f, wEnd, VIEW_H - 32f, 0x442E8AC8)
                 var wx = 0f
                 while (wx < wEnd) {
-                    gfx.rect(wx, 32f + sin(time * 3 + (wx - ox) * 0.08f) * 2f, 8f, 2f, 0xAABFE8FF.toInt())
-                    wx += 8f
+                    gfx.rect(wx, 32f + sin(time * 3 + (wx - ox) * 0.08f) * 2f, 16f, 2f, 0xAABFE8FF.toInt())
+                    wx += 16f
                 }
             }
         }
@@ -4596,7 +4626,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         for (i in items.indices) {
             val (cx, cy) = shopCard(i)
             val wide = if (shopTab == 5) shopCardW() * 3 + 8f else shopCardW()
-            if (x in cx..(cx + wide) && y in cy..(cy + (if (shopTab == 5) 84f else 40f))) { items[i].second(); return }
+            if (x in cx..(cx + wide) && y in cy..(cy + (if (shopTab == 5) 84f else 40f))) {
+                if (confirmTap("shop:$shopTab:$shopPage:$i", items[i].first, "buy")) items[i].second()
+                return
+            }
         }
         homeShop = false
     }
@@ -4813,6 +4846,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
         }
         if (padConnected) { val (fx, fy) = shopCard(shopCursor); padFrame(gfx, fx - 2, fy - 2, shopCardW() + 4, 44f) }
+        for (i in shopItems().indices) if (picked("shop:$shopTab:$shopPage:$i")) {
+            val (fx, fy) = shopCard(i)
+            padFrame(gfx, fx - 2, fy - 2, (if (shopTab == 5) shopCardW() * 3 + 8f else shopCardW()) + 4, if (shopTab == 5) 88f else 44f)
+            gfx.shadowText("TAP AGAIN TO BUY", fx + shopCardW() / 2, fy + 46f, 6f, 0xFFFFE14D.toInt(), 1)
+        }
     }
 
     private fun shopCardBg(gfx: Gfx, cx: Float, cy: Float, owned: Boolean, can: Boolean) {
@@ -5387,6 +5425,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             gfx.text(name, tx + tw / 2, tabTop + 12, 8f, if (i == craftTab) 0xFFFFF2C8.toInt() else 0xFFE0C8A0.toInt(), 1)
         }
         if (padConnected && rows.isNotEmpty()) padFrame(gfx, px + 1, rowsTop + craftCursor.coerceAtMost(rows.lastIndex) * rh, pw - 2, rh)
+        for (i in rows.indices) if (picked("craft:$craftTab:$i")) padFrame(gfx, px + 1, rowsTop + i * rh, pw - 2, rh)
         rows.forEachIndexed { i, r ->
             val y = rowsTop + i * rh
             gfx.rect(px, y + rh - 1, pw, 1f, 0x55000000)
@@ -5550,6 +5589,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         gfx.text("X", px + pw - 14, panelTop + 14, 10f, white, 1)
         gfx.text("\"" + greetings[v.seed % greetings.size] + "\"", px + pw / 2, panelTop + 32, 7f, 0xFF2A1808.toInt(), 1)
         if (padConnected && trades.isNotEmpty()) padFrame(gfx, px + 1, rowsTop + tradeCursor.coerceAtMost(trades.lastIndex) * rowH, pw - 2, rowH)
+        for (i in trades.indices) if (picked("trade:$i")) padFrame(gfx, px + 1, rowsTop + i * rowH, pw - 2, rowH)
         trades.forEachIndexed { i, t ->
             val y = rowsTop + i * rowH
             gfx.rect(px, y + rowH - 1, pw, 1f, 0x55000000)

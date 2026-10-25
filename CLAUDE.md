@@ -125,3 +125,6 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
 * `Winter.kt`: World 7 foes `Snowman` (6), `Penguin` (7), `HammerHank` (8), `Chompy` (9), `ZoomerLauncher` (0) + `Zoomer`,
   `Gummy` (1), projectiles `Lob`/`NoteShot`/`ChordWave`, and the final boss `RockStarKrag` (S, drawn as a `KingKrag` plus
   sunglasses and guitar). New places BLIZZARD, AURORA, CANDY (backgrounds in `renderBackground`).
+* Never scan level rows every frame: `LevelDef.isBossLevel` is lazy and `Tunes.bossesBefore` is precomputed (a per-frame
+  scan made late boss levels lag). Level letters must be unique: 'S' is the shore marker (Rock Star Krag is '!').
+* Menus use `confirmTap(key, ...)`: first tap picks (yellow frame via `picked`), second tap on the same thing buys.

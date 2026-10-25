@@ -467,6 +467,18 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
 
 ![Witch Wanda](docs/teamup-witch-wanda.png)
 
+### Fixes (bugs, lag and balance)
+
+* **Big lag fix**: during boss fights the game was re-counting every boss level before it, every frame, to
+  pick the boss music. Late levels (the sea, ships and space) got slow. Now it's worked out once: about 170
+  times faster.
+* The underwater levels were accidentally getting Rock Star Krag (his level letter was also the "shore" marker).
+* Heart blocks floating alone in boss arenas now sit between bricks.
+* Menus ask first: the first tap on something in the shop, crafting table or villager trades only picks it
+  (yellow frame, "tap again"); tapping it again buys or makes it.
+* Crazy mushrooms are a bit weaker (12 seconds, two balls, less damage to bosses). **Cappy** costs more
+  (8 sapphire, 4 diamond, 3 amethyst) and unlocks after beating 15 levels; captures last 12 seconds.
+
 ### World 7: Winter World (levels 127-147)
 
 * 21 new levels with three new kinds of places: **BLIZZARD** (a snowstorm with snow blowing sideways),

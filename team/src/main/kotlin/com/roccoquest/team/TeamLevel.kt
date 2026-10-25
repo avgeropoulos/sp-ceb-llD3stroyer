@@ -135,7 +135,8 @@ class LevelDef(val name: String, val place: Place, val rows: List<String>, val t
     /** Column where the water ends, or -1 if this isn't an underwater level. */
     val shoreX: Int = rows.map { it.indexOf('S') }.filter { it >= 0 }.minOrNull() ?: -1
     /** Levels with a boss fight get scary music. */
-    val isBossLevel: Boolean get() = rows.any { r -> r.any { it in BOSS_CHARS } }
+    /** Worked out once (it used to scan the whole level every frame, which made late levels lag). */
+    val isBossLevel: Boolean by lazy { rows.any { r -> r.any { it in BOSS_CHARS } } }
 }
 
 /** Characters that make solid ground a bad guy (or a portal) can stand on. */
@@ -166,8 +167,8 @@ class Builder(private val w: Int) {
 }
 
 /** Level characters that are bosses: Krag Jr. (J, W), King Krag (K, Q, Y), the Warden (G, and the twins 5),
- * the Ender Dragon (Z), King Boo-Hoo (3), Witch Wanda (4) and Rock Star Krag (S). */
-const val BOSS_CHARS = "JWKQGYZ345S"
+ * the Ender Dragon (Z), King Boo-Hoo (3), Witch Wanda (4) and Rock Star Krag (!). */
+const val BOSS_CHARS = "JWKQGYZ345!"
 
 object Levels {
     val all: List<LevelDef> by lazy {
@@ -219,6 +220,10 @@ object Levels {
                 'v' -> if (index >= 14 && nth('v', 3)) g[y][x] = 'q'
                 's' -> if (index >= 4 && y >= 2 && nth('s', 8)) g[y][x] = newOres[oreTurn++ % newOres.length]
             }
+        }
+        // In boss arenas, a heart block floating all alone looked like a glitch: give it bricks on each side.
+        if (d.isBossLevel) for (y in 1 until ROWS) for (x in 1 until d.w - 1) {
+            if (g[y][x] == 'h' && g[y][x - 1] == '.' && g[y][x + 1] == '.') { g[y][x - 1] = 'B'; g[y][x + 1] = 'B' }
         }
         // A bonus portal a little way past the first checkpoint, standing on open ground.
         val cp = (0 until d.w).firstOrNull { x -> (0 until ROWS).any { d.rows[it][x] == '|' } }
