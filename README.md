@@ -487,6 +487,14 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
   skateboard crash, Blocky's magic trick (with your Pokemon!), Rocco singing (Dennis howls along), a balloon
   ride, Spotty saying BOO!, a whoopee cushion, and a giant pizza falling from the sky.
 
+### 20 more Pokemon (40 in all)
+
+* Eevo (evolves into Ribbon at level 5), Nightfur, Snoozer, Puffle, Psyquack, Luko, Shuriken, Mimic,
+  Rayzor (a legendary sky dragon), Dragobud, Flopfish (evolves into Ragefish at level 5), Eggbaby, Meowzer,
+  Foxfire, Firepup, Blobby, Seasong and Pengi.
+* A new one joins your team every 3 levels you beat ("A wild EEVO joined your team!"). Switch to them at home
+  on the POKEMON mat; the switch screen now has two pages (tap the arrows).
+
 ### World 7: Winter World (levels 127-147)
 
 * 21 new levels with three new kinds of places: **BLIZZARD** (a snowstorm with snow blowing sideways),

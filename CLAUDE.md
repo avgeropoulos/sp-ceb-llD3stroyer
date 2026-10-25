@@ -118,6 +118,8 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
 * Evolution (`Evolve.kt`, Actors.kt): `MON_LINES`, `Mon.base` (whose SUPER/physics a form uses; switch on `mon.base`,
   not `mon`), `root` (XP is kept on the root), `evolveLevel`, `nextForm`. Evolved forms are drawn with `TintGfx` +
   `ScaledGfx` over their first form. The pick screen only shows `STARTERS` (the first 10).
+* 20 newer Pokemon (EEVO..PENGI, drawn in `MonArt.kt`): `NEW_MONS` join one every `NEW_MON_EVERY` (3) levels beaten
+  (`newMonNeeds`, notice in `offerStickers`). The switch grid pages 21 at a time (`PAGE_MONS`, `monPage()`).
 * Plushie shelves: wall shelves on every floor (36 each, `drawShelvesWithPlushies`), then the `PLUSH_SHELF*`
   furniture (12 each, `drawFurnitureAt`).
 * `Powers.kt`: `CaptureKind` + `CappyHat` (Power.CAPPY; `capture`/`releaseCapture`/`captureAction`, the captured foe is

@@ -449,6 +449,7 @@ object TeamArt {
             Mon.LUGIA -> lugia(gfx, cx, bottom, t, facing)
             Mon.SCORCH, Mon.TIDAL, Mon.SEEDY, Mon.SPROUT, Mon.ZAPPER, Mon.BRAWLER, Mon.MEGAPUNCH, Mon.SHADE, Mon.PHANTOM, Mon.PSYKO ->
                 Evolve.draw(gfx, m, cx, bottom, t, facing, glow, walking)
+            else -> MonArt.draw(gfx, m, cx, bottom, t, facing, walking)
         }
     }
 

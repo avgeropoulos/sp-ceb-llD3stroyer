@@ -60,6 +60,27 @@ enum class Mon(val label: String, val color: Int, val superName: String, val blu
     SHADE("SHADE", 0xFF6A3AA8.toInt(), "SHADOW HANDS", "Spooky evolved! Floating ghost hands. SUPER scares everyone!"),
     PHANTOM("PHANTOM", 0xFF5A2A88.toInt(), "SHADOW BALL", "The grinning ghost! Floats. SUPER: a giant shadow ball!"),
     PSYKO("PSYKO", 0xFFB8A0D8.toInt(), "PSYSTRIKE", "Mystic's powerful cousin! Floats. SUPER hits everyone AND heals!"),
+    // 20 more (a new one joins every 3 levels you beat)
+    EEVO("EEVO", 0xFFB8885A.toInt(), "SWIFT", "Fluffy brown fox pup. Fast! Evolves into Ribbon. SUPER zaps every bad guy!"),
+    RIBBON("RIBBON", 0xFFFFB8D8.toInt(), "FAIRY WIND", "Eevo evolved! Pink ribbons. Floats. SUPER hits everyone AND heals!"),
+    NIGHTFUR("NIGHTFUR", 0xFF2A2A3A.toInt(), "DARK PULSE", "Black fox with glowing rings. Floats. SUPER scares every bad guy!"),
+    SNOOZER("SNOOZER", 0xFF3A6A7A.toInt(), "BODY SLAM", "Big sleepy blob. Super strong. SUPER is a giant body slam!"),
+    PUFFLE("PUFFLE", 0xFFFFA8C8.toInt(), "SING", "Round pink singer. Floats. SUPER sings everyone to sleep AND heals!"),
+    PSYQUACK("PSYQUACK", 0xFFF4D84A.toInt(), "CONFUSION", "Yellow duck with a headache. SUPER confuses everyone AND heals!"),
+    LUKO("LUKO", 0xFF3A6AC8.toInt(), "AURA SPHERE", "Blue fighter dog. Strong punches. SUPER: a big aura blast!"),
+    SHURIKEN("SHURIKEN", 0xFF2A4A8A.toInt(), "WATER SHURIKEN", "Ninja frog! Great swimmer. SUPER throws water stars!"),
+    MIMIC("MIMIC", 0xFFE8D088.toInt(), "SHADOW CLAW", "Wears a Sparky costume! Floats. SUPER scares everyone!"),
+    RAYZOR("RAYZOR", 0xFF2E9A4A.toInt(), "DRAGON ASCENT", "Legendary sky dragon! Glides AND swims. SUPER: a giant wind!"),
+    DRAGOBUD("DRAGOBUD", 0xFFF0A040.toInt(), "HURRICANE", "Friendly orange dragon. Glides. SUPER breathes a big blast!"),
+    FLOPFISH("FLOPFISH", 0xFFE8603A.toInt(), "SPLASH", "Floppy red fish. Evolves into Ragefish at level 5!"),
+    RAGEFISH("RAGEFISH", 0xFF3A7AD8.toInt(), "HYPER BEAM", "Flopfish evolved! A giant sea dragon. SUPER blasts both ways!"),
+    EGGBABY("EGGBABY", 0xFFF4F0D8.toInt(), "METRONOME", "Baby in an egg shell. Floats. SUPER: who knows! (It heals too.)"),
+    MEOWZER("MEOWZER", 0xFFF0E0B0.toInt(), "PAY DAY", "Cat with a gold coin. Fast. SUPER zaps everyone on screen!"),
+    FOXFIRE("FOXFIRE", 0xFFE8603A.toInt(), "FIRE SPIN", "Fox with six curly tails. SUPER spins fire all around!"),
+    FIREPUP("FIREPUP", 0xFFF08A3A.toInt(), "FLARE BLITZ", "Striped fire puppy. SUPER: a ring of fire!"),
+    BLOBBY("BLOBBY", 0xFFC8A0E8.toInt(), "TRANSFORM", "Purple goo that copies things. SUPER: a big squishy hit!"),
+    SEASONG("SEASONG", 0xFF5AA0E8.toInt(), "ICE BEAM", "Gentle sea ride with a shell. Swims. SUPER blasts both ways!"),
+    PENGI("PENGI", 0xFF4A8AD8.toInt(), "BUBBLE", "Little blue penguin. Swims great. SUPER blasts bubbles!"),
 }
 
 /** The first-form Pokemon whose moves (SUPER, speed, jumps) an evolution uses. */
@@ -71,6 +92,15 @@ val Mon.base: Mon get() = when (this) {
     Mon.BRAWLER, Mon.MEGAPUNCH -> Mon.PUNCHO
     Mon.SHADE, Mon.PHANTOM -> Mon.SPOOKY
     Mon.PSYKO -> Mon.MYSTIC
+    Mon.EEVO, Mon.MEOWZER -> Mon.SPARKY
+    Mon.RIBBON, Mon.PUFFLE, Mon.PSYQUACK, Mon.EGGBABY -> Mon.MYSTIC
+    Mon.NIGHTFUR, Mon.MIMIC -> Mon.SPOOKY
+    Mon.SNOOZER, Mon.LUKO, Mon.BLOBBY -> Mon.PUNCHO
+    Mon.SHURIKEN, Mon.FLOPFISH, Mon.PENGI -> Mon.SPLASHY
+    Mon.RAYZOR -> Mon.LUGIA
+    Mon.DRAGOBUD -> Mon.BLAZE
+    Mon.RAGEFISH, Mon.SEASONG -> Mon.HYDRO
+    Mon.FOXFIRE, Mon.FIREPUP -> Mon.EMBER
     else -> this
 }
 
@@ -84,7 +114,19 @@ val MON_LINES: List<List<Mon>> = listOf(
     listOf(Mon.SPOOKY, Mon.SHADE, Mon.PHANTOM),
     listOf(Mon.MYSTIC, Mon.PSYKO),
     listOf(Mon.LUGIA),
-)
+    listOf(Mon.EEVO, Mon.RIBBON),
+    listOf(Mon.FLOPFISH, Mon.RAGEFISH),
+) + NEW_SINGLES.map { listOf(it) }
+
+/** Newer Pokemon with no evolution. */
+private val NEW_SINGLES get() = listOf(Mon.NIGHTFUR, Mon.SNOOZER, Mon.PUFFLE, Mon.PSYQUACK, Mon.LUKO, Mon.SHURIKEN, Mon.MIMIC,
+    Mon.RAYZOR, Mon.DRAGOBUD, Mon.EGGBABY, Mon.MEOWZER, Mon.FOXFIRE, Mon.FIREPUP, Mon.BLOBBY, Mon.SEASONG, Mon.PENGI)
+
+/** The newer first forms in the order they join the team (one every [NEW_MON_EVERY] levels beaten). */
+val NEW_MONS: List<Mon> = listOf(Mon.EEVO, Mon.PUFFLE, Mon.MEOWZER, Mon.FLOPFISH, Mon.FIREPUP, Mon.PSYQUACK, Mon.SNOOZER,
+    Mon.PENGI, Mon.EGGBABY, Mon.LUKO, Mon.FOXFIRE, Mon.SHURIKEN, Mon.NIGHTFUR, Mon.BLOBBY, Mon.DRAGOBUD, Mon.MIMIC,
+    Mon.SEASONG, Mon.RAYZOR)
+const val NEW_MON_EVERY = 3
 
 val Mon.line: List<Mon> get() = MON_LINES.first { this in it }
 /** The first form of this Pokemon's line (its level is kept there). */
@@ -94,7 +136,7 @@ val Mon.stage: Int get() = line.indexOf(this) + 1
 /** The level a line has to reach before this form can be used (the first 10 Pokemon are always there). */
 val Mon.evolveLevel: Int get() = when (this) {
     Mon.SCORCH, Mon.TIDAL, Mon.SPROUT, Mon.BRAWLER, Mon.SHADE -> 4
-    Mon.ZAPPER -> 5
+    Mon.ZAPPER, Mon.RIBBON, Mon.RAGEFISH -> 5
     Mon.PSYKO -> 6
     Mon.MEGAPUNCH, Mon.PHANTOM -> 7
     else -> 1

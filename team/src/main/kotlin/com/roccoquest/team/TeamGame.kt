@@ -1041,7 +1041,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun offerStickers(next: Int) {
         afterSticker = next
         if (away == null) {
+            val before = clearedCount()
             cleared[levelIndex] = true
+            // A new Pokemon joins every few levels beaten.
+            NEW_MONS.firstOrNull { newMonNeeds(it) in (before + 1)..clearedCount() }?.let {
+                toast("A wild ${it.label} joined your team! Switch at home.")
+                sound.sayAs("A wild ${it.label} joined your team!", Voice.HERO)
+            }
             unlocked = maxOf(unlocked, minOf(Levels.all.size, levelIndex + 2))
         }
         stickerPicked = -1
@@ -1191,9 +1197,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     /** Lugia is a legendary: it joins after the 3rd level is beaten (switch to it at home). */
     fun monUnlocked(m: Mon) = when {
         m == Mon.LUGIA -> isCleared(2)
+        m.root in NEW_MONS && clearedCount() < newMonNeeds(m.root) -> false
         // Evolutions: the line has to reach the right level first.
         else -> monLevel(m.root) >= m.evolveLevel
     }
+
+    /** Levels to beat before one of the 20 newer Pokemon joins. */
+    fun newMonNeeds(m: Mon) = NEW_MON_EVERY * (NEW_MONS.indexOf(m) + 1)
 
     /** The Pokemon you can pick when starting a new game (evolutions come later, by levelling up). */
     private val STARTERS = Mon.entries.take(10)
@@ -4411,7 +4421,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     fun switchMon(m: Mon) {
         if (!monUnlocked(m)) {
             sfx(Sound.BUMP)
-            toast(if (m == Mon.LUGIA) "LUGIA is a legendary! Beat level 3 to meet it." else "${m.root.label} has to reach LEVEL ${m.evolveLevel} to evolve into ${m.label}.")
+            toast(if (m == Mon.LUGIA) "LUGIA is a legendary! Beat level 3 to meet it."
+                else if (m.root in NEW_MONS && clearedCount() < newMonNeeds(m.root)) "Beat ${newMonNeeds(m.root)} levels and ${m.root.label} joins you!"
+                else "${m.root.label} has to reach LEVEL ${m.evolveLevel} to evolve into ${m.label}.")
             return
         }
         if (m == mon) { monSwitch = false; return }
@@ -4423,8 +4435,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         save()
     }
 
-    private fun monSwitchCard(i: Int): Pair<Float, Float> = (monPanelX() + 6f + (i % 7) * 41.5f) to (62f + (i / 7) * 45f)
+    private fun monSwitchCard(i: Int): Pair<Float, Float> { val j = i % PAGE_MONS; return (monPanelX() + 6f + (j % 7) * 41.5f) to (62f + (j / 7) * 45f) }
     private val SWITCH_CARD = 39f
+    /** The switch grid shows 21 Pokemon per page; the page follows the cursor. */
+    private val PAGE_MONS = 21
+    private fun monPage() = monCursor.coerceIn(0, Mon.entries.size - 1) / PAGE_MONS
+    private fun monPages() = (Mon.entries.size + PAGE_MONS - 1) / PAGE_MONS
 
     private fun updateMonMenu(dt: Float, tapped: Boolean) {
         if (monPlayT > 0f) { monPlayT -= dt; if (monPlayT <= 0f) finishMonPlay(); return }
@@ -4437,7 +4453,16 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (nav.a && stateT > 0.2f) { switchMon(Mon.entries[monCursor]); return }
             if (nav.b) { monSwitch = false; monCursor = 5; return }
             if (!tapped || input.tapX < 0f) return
-            for (i in Mon.entries.indices) {
+            if (input.tapY in 38f..62f && input.tapX in monPanelX()..(monPanelX() + 300f)) {
+                // The page arrows in the title row.
+                val dir = if (input.tapX < monPanelX() + 150f) -1 else 1
+                val page = (monPage() + dir + monPages()) % monPages()
+                monCursor = minOf(page * PAGE_MONS, Mon.entries.size - 1)
+                sfx(Sound.KICK)
+                return
+            }
+            val first = monPage() * PAGE_MONS
+            for (i in first until minOf(first + PAGE_MONS, Mon.entries.size)) {
                 val (cx, cy) = monSwitchCard(i)
                 if (input.tapX in cx..(cx + SWITCH_CARD) && input.tapY in cy..(cy + 43f)) { switchMon(Mon.entries[i]); return }
             }
@@ -4476,7 +4501,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (monSwitch) {
             gfx.shadowText("SWITCH POKEMON", px + 150, 56f, 10f, 0xFFFFD21F.toInt(), 1)
             val cw = SWITCH_CARD
+            if (monPages() > 1) {
+                gfx.shadowText("◀", px + 20, 56f, 12f, white, 1)
+                gfx.shadowText("▶", px + 280, 56f, 12f, white, 1)
+                gfx.text("page ${monPage() + 1}/${monPages()}", px + 240, 56f, 5f, 0xFF2A3A2A.toInt(), 2)
+            }
+            val first = monPage() * PAGE_MONS
             Mon.entries.forEachIndexed { i, m ->
+                if (i !in first until first + PAGE_MONS) return@forEachIndexed
                 val (cx, cy) = monSwitchCard(i)
                 val open = monUnlocked(m)
                 gfx.rect(cx, cy, cw, 43f, if (m == mon) 0xFFFFD21F.toInt() else argb(255, m.color))
@@ -4487,7 +4519,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 if (!open) {
                     gfx.rect(cx, cy, cw, 43f, 0xAA101018.toInt())
                     gfx.shadowText("LOCKED", cx + cw / 2, cy + 20f, 6f, 0xFFFFD21F.toInt(), 1)
-                    gfx.text(if (m == Mon.LUGIA) "beat level 3" else "${m.root.label} Lv${m.evolveLevel}", cx + cw / 2, cy + 29f, 4.5f, white, 1)
+                    gfx.text(when {
+                        m == Mon.LUGIA -> "beat level 3"
+                        m.root in NEW_MONS && clearedCount() < newMonNeeds(m.root) -> "beat ${newMonNeeds(m.root)} lvls"
+                        else -> "${m.root.label} Lv${m.evolveLevel}"
+                    }, cx + cw / 2, cy + 29f, 4.5f, white, 1)
                 }
                 if (padConnected && monCursor == i) padFrame(gfx, cx - 2, cy - 2, cw + 4, 47f)
             }

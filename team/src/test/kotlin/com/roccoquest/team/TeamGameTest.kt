@@ -13,6 +13,7 @@ import javax.imageio.ImageIO
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -675,7 +676,21 @@ class TeamGameTest {
         val img = BufferedImage(400, 100, BufferedImage.TYPE_INT_ARGB)
         Mon.entries.forEachIndexed { i, m -> TeamArt.mon(AwtGfx(img, 1f), m, 10f + i * 19f, 80f, 0f, 1, false) }
         assertEquals(Mon.EMBER, Mon.SCORCH.base)
-        assertEquals(20, Mon.entries.size)
+        assertEquals(40, Mon.entries.size)
+        // The newer Pokemon draw too (a big picture to look at), and join one every few levels beaten.
+        val big = BufferedImage(1200, 260, BufferedImage.TYPE_INT_ARGB)
+        Mon.entries.drop(20).forEachIndexed { i, m ->
+            TeamArt.mon(ScaledGfx(AwtGfx(big, 1f), 2.5f, 30f + (i % 10) * 115f, 110f + (i / 10) * 120f), m, 0f, 0f, 0f, 1, false)
+        }
+        File("build/screens").mkdirs(); ImageIO.write(big, "png", File("build/screens/newmons.png"))
+        assertFalse(game.monUnlocked(Mon.EEVO))
+        repeat(NEW_MON_EVERY) { game.clearForTest(it) }
+        assertTrue(game.monUnlocked(Mon.EEVO))
+        assertFalse(game.monUnlocked(Mon.RIBBON), "Ribbon needs Eevo at level 5")
+        assertFalse(game.monUnlocked(Mon.RAYZOR))
+        game.switchMon(Mon.EEVO)
+        assertEquals(Mon.EEVO, game.mon)
+        assertEquals(Mon.SPARKY, Mon.EEVO.base)
     }
 
     @Test fun cappyMegaPropellerAndGold() {
