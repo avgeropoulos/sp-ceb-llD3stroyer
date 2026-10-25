@@ -48,21 +48,27 @@ object Roof {
     private val near by lazy { skyline(11, 480, 110, 0xFF2A2A44.toInt(), 0xFFFFE07A.toInt(), 0xFF3A3A58.toInt(), 30) }
 
     /** The roof and the city, for a house with [floors] floors (the higher it is, the lower the city looks). */
-    fun draw(gfx: Gfx, ox: Float, viewW: Float, viewH: Float, t: Float, floors: Int, fireworksT: Float) {
-        drawSky(gfx, ox, viewW, viewH, t, floors, fireworksT)
+    fun draw(gfx: Gfx, ox: Float, viewW: Float, viewH: Float, t: Float, floors: Int, fireworksT: Float, planet: HomePlanet = HomePlanet.EARTH) {
+        drawSky(gfx, ox, viewW, viewH, t, floors, fireworksT, planet)
         if (floors < Homes.MAX_FLOORS) Homes.drawBuildSign(gfx, ox + SIGN_X, "A FLOOR")
     }
 
-    private fun drawSky(gfx: Gfx, ox: Float, viewW: Float, viewH: Float, t: Float, floors: Int, fireworksT: Float) {
+    private fun drawSky(gfx: Gfx, ox: Float, viewW: Float, viewH: Float, t: Float, floors: Int, fireworksT: Float, planet: HomePlanet) {
         val fy = Homes.FLOOR_Y
-        // Sunset sky with a few early stars and the moon
-        gfx.gradient(0f, 0f, viewW, fy, 0xFF2A3A8A.toInt(), 0xFFF4A878.toInt())
-        for (k in 0 until 14) {
-            val sx = (k * 97f + 13f) % viewW
-            if ((t * 1.5f + k).toInt() % 7 != 0) gfx.rect(sx, 6f + (k * 37f) % 50f, 1.5f, 1.5f, 0xCCFFFFFF.toInt())
+        if (planet == HomePlanet.EARTH) {
+            // Sunset sky with a few early stars and the moon
+            gfx.gradient(0f, 0f, viewW, fy, 0xFF2A3A8A.toInt(), 0xFFF4A878.toInt())
+            for (k in 0 until 14) {
+                val sx = (k * 97f + 13f) % viewW
+                if ((t * 1.5f + k).toInt() % 7 != 0) gfx.rect(sx, 6f + (k * 37f) % 50f, 1.5f, 1.5f, 0xCCFFFFFF.toInt())
+            }
+            gfx.oval(viewW - 70f, 18f, 22f, 22f, 0xFFFFF4D0.toInt())
+            gfx.oval(viewW - 64f, 15f, 20f, 20f, 0xFF3A4A94.toInt())
+        } else {
+            // Another planet's sky over the city.
+            gfx.gradient(0f, 0f, viewW, fy, planet.skyTop, planet.skyBottom)
+            planet.drawSky(gfx, viewW, fy, t)
         }
-        gfx.oval(viewW - 70f, 18f, 22f, 22f, 0xFFFFF4D0.toInt())
-        gfx.oval(viewW - 64f, 15f, 20f, 20f, 0xFF3A4A94.toInt())
         // Fireworks (after looking through the telescope)
         if (fireworksT > 0f) for (b in 0 until 3) {
             val age = (3f - fireworksT + b * 0.4f) % 1.2f

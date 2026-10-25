@@ -137,18 +137,19 @@ class Garden(private val g: TeamGame) {
     // ------------------------------------------------------------------ Drawing
 
     fun draw(gfx: Gfx, ox: Float, viewW: Float, viewH: Float, t: Float) {
-        // Sky, sun, clouds
-        gfx.gradient(0f, 0f, viewW, Homes.FLOOR_Y, 0xFF4AA4F0.toInt(), 0xFFD8F0FF.toInt())
-        gfx.oval(viewW - 60f, 16f, 34f, 34f, 0xFFFFE14D.toInt())
-        for (c in 0 until 4) {
+        // Sky, sun, clouds: whatever planet the house is on.
+        val pl = g.homePlanet
+        gfx.gradient(0f, 0f, viewW, Homes.FLOOR_Y, pl.skyTop, pl.skyBottom)
+        pl.drawSky(gfx, viewW, Homes.FLOOR_Y, t)
+        if (pl == HomePlanet.EARTH || pl == HomePlanet.CANDY || pl == HomePlanet.ICE) for (c in 0 until 4) {
             val cx = ((c * 260f + t * 6f) % (viewW + 120f)) - 60f
             gfx.oval(cx, 28f + c * 9f, 46f, 14f, 0xEEFFFFFF.toInt()); gfx.oval(cx + 14, 22f + c * 9f, 26f, 14f, 0xEEFFFFFF.toInt())
         }
         // Hills far away, then the lawn
-        gfx.oval(ox * 0.3f - 100f, 120f, 500f, 120f, 0xFF7AC86A.toInt())
-        gfx.oval(ox * 0.3f + 350f, 110f, 600f, 140f, 0xFF6AB85A.toInt())
-        gfx.rect(0f, Homes.FLOOR_Y - 20f, viewW, viewH, 0xFF5AB84A.toInt())
-        gfx.rect(0f, Homes.FLOOR_Y + 30f, viewW, viewH, 0xFF4AA83A.toInt())
+        gfx.oval(ox * 0.3f - 100f, 120f, 500f, 120f, pl.hill1)
+        gfx.oval(ox * 0.3f + 350f, 110f, 600f, 140f, pl.hill2)
+        gfx.rect(0f, Homes.FLOOR_Y - 20f, viewW, viewH, pl.ground)
+        gfx.rect(0f, Homes.FLOOR_Y + 30f, viewW, viewH, pl.ground2)
         // The white fence along the back
         var fx = ox
         while (fx < ox + WIDTH) {

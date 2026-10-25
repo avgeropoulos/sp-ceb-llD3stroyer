@@ -138,6 +138,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private var swordsOwned = 0
     /** The kind of house the team builds, the furniture inside, and the plushies collected (one bit each). */
     var houseType = HouseType.COTTAGE
+    /** Every house you've bought (move back into any of them for free). */
+    var housesOwned = 1L
+    /** The planet your house is on, and the planets you've bought. */
+    var homePlanet = HomePlanet.EARTH
+    var planetsOwned = 1
         private set
     var furnitureBits = 0L
         private set
@@ -655,6 +660,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         storage.save(key("sword"), sword.ordinal)
         storage.save(key("shieldType"), shieldType.ordinal)
         storage.save(key("houseType"), houseType.ordinal)
+        storage.save(key("houses"), housesOwned.toInt())
+        storage.save(key("houses2"), (housesOwned ushr 32).toInt())
+        storage.save(key("planet"), homePlanet.ordinal)
+        storage.save(key("planets"), planetsOwned)
         storage.save(key("furniture"), (furnitureBits and 0xFFFFFFFFL).toInt())
         storage.save(key("furniture2"), (furnitureBits ushr 32).toInt())
         for (k in 0 until PLUSH_KEYS) storage.save(key("plush$k"), (0 until 25).sumOf { b -> val i = k * 25 + b; if (i < plushOwned.size && plushOwned[i]) 1 shl b else 0 })
@@ -738,6 +747,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         pickHp = storage.load(key("pickHp")).let { if (it <= 0) pickDurability(pickTier) else it }
         shieldType = Shield.entries.getOrElse(storage.load(key("shieldType"))) { Shield.NONE }
         houseType = HouseType.entries.getOrElse(storage.load(key("houseType"))) { HouseType.COTTAGE }
+        housesOwned = (storage.load(key("houses")).toLong() and 0xFFFFFFFFL) or (storage.load(key("houses2")).toLong() shl 32) or 1L or (1L shl houseType.ordinal)
+        homePlanet = HomePlanet.entries.getOrElse(storage.load(key("planet"))) { HomePlanet.EARTH }
+        planetsOwned = storage.load(key("planets")) or 1 or (1 shl homePlanet.ordinal)
         furnitureBits = (storage.load(key("furniture")).toLong() and 0xFFFFFFFFL) or (storage.load(key("furniture2")).toLong() shl 32)
         plushOwned.fill(false)
         for (k in 0 until PLUSH_KEYS) {
@@ -824,7 +836,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     fun eraseSlot(s: Int) {
-        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "armorType", "armorHp", "blackFlowers", "shieldType", "shieldHp", "swordHp", "pickHp", "houseType", "furniture", "furniture2", "plushies", "plush0", "plush1", "plush2", "plush3", "beds", "bedStyle", "unlocked", "clearedLo", "clearedHi", "cleared2", "cleared3", "cleared4", "cleared5", "cleared6", "stickersLo", "stickersHi", "houseColor", "floors", "scenes", "bow", "houseLevel", "houseX", "houseY", "bed", "bedLevel", "spotLevel", "spotX", "spotY", "baby", "seed", "elevator", "decorN", "outfits", "skins", "costumes", "outfit", "skin", "costume", "scenesSeen")) {
+        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "armorType", "armorHp", "blackFlowers", "shieldType", "shieldHp", "swordHp", "pickHp", "houseType", "furniture", "furniture2", "plushies", "plush0", "plush1", "plush2", "plush3", "beds", "bedStyle", "unlocked", "clearedLo", "clearedHi", "cleared2", "cleared3", "cleared4", "cleared5", "cleared6", "stickersLo", "stickersHi", "houseColor", "floors", "scenes", "bow", "houseLevel", "houseX", "houseY", "bed", "bedLevel", "spotLevel", "spotX", "spotY", "baby", "seed", "elevator", "decorN", "outfits", "skins", "costumes", "outfit", "skin", "costume", "scenesSeen", "houses", "houses2", "planet", "planets")) {
             storage.save(key(name, s), 0)
         }
         Ore.entries.forEach { storage.save(key("ore_${it.name}", s), 0) }
@@ -872,6 +884,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         shieldType = Shield.NONE
         shieldHp = 0
         houseType = HouseType.COTTAGE
+        housesOwned = 1L
+        homePlanet = HomePlanet.EARTH
+        planetsOwned = 1
+        housePicker = false
         furnitureBits = 0L
         garden.load()
         babyMode = false
@@ -5026,15 +5042,158 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         save()
     }
 
+    fun ownsHouse(t: HouseType) = housesOwned and (1L shl t.ordinal) != 0L
+
     fun buyHouse(t: HouseType) {
         if (houseType == t) { toast("You already live in the ${t.label}!"); return }
+        if (ownsHouse(t)) {
+            houseType = t
+            sfx(Sound.POWERUP)
+            toast("You moved back into your ${t.label}!")
+            save()
+            return
+        }
         if (!has(t.costs, t.coins)) { needToast(t.costs, t.coins); return }
         for ((o, n) in t.costs) inventory[o.ordinal] -= n
         coins -= t.coins
         houseType = t
+        housesOwned = housesOwned or (1L shl t.ordinal)
         sfx(Sound.POWERUP)
         toast("Welcome to your new ${t.label}! (Your furniture and plushies moved in too.)")
         save()
+    }
+
+    fun ownsPlanet(p: HomePlanet) = planetsOwned and (1 shl p.ordinal) != 0
+
+    /** Moving the house to another planet (buy it once, then move back and forth for free). */
+    fun moveToPlanet(p: HomePlanet) {
+        if (homePlanet == p) { toast("You already live on ${p.label}!"); return }
+        if (!ownsPlanet(p)) {
+            if (coins < p.coins) { needToast(emptyList(), p.coins); return }
+            coins -= p.coins
+            planetsOwned = planetsOwned or (1 shl p.ordinal)
+        }
+        homePlanet = p
+        sfx(Sound.POWERUP)
+        sound.sayAs("Blast off! We live on ${p.label.lowercase()} now!", Voice.HERO)
+        toast("WHOOSH! Your house flew to ${p.label}!")
+        save()
+    }
+
+    // ---------------------------------------------------------------- The house & planet picker
+
+    /** The big HOUSE PICKER: one house at a time, big, with arrows (and the PLANET picker on its other tab). */
+    var housePicker = false
+        private set
+    var pickerPlanets = false
+        private set
+    private var pickerHouse = 0
+    private var pickerPlanet = 0
+
+    fun openHousePicker(t: HouseType = houseType, planets: Boolean = false) {
+        housePicker = true
+        pickerPlanets = planets
+        pickerHouse = t.ordinal
+        pickerPlanet = homePlanet.ordinal
+        sfx(Sound.KICK)
+    }
+
+    private fun pickerCount() = if (pickerPlanets) HomePlanet.entries.size else HouseType.entries.size
+    private fun pickerStep(d: Int) {
+        val n = pickerCount()
+        if (pickerPlanets) pickerPlanet = (pickerPlanet + d + n) % n else pickerHouse = (pickerHouse + d + n) % n
+        sfx(Sound.KICK)
+    }
+    private fun pickerChoose() {
+        if (pickerPlanets) moveToPlanet(HomePlanet.entries[pickerPlanet]) else buyHouse(HouseType.entries[pickerHouse])
+    }
+    /** The little pictures along the top: the 7 around the one you're looking at. */
+    private fun pickerThumbX(k: Int) = viewW / 2 - 7 * 52f / 2 + k * 52f
+
+    private fun updateHousePicker(tapped: Boolean) {
+        if (nav.left) pickerStep(-1)
+        if (nav.right) pickerStep(1)
+        if (nav.lb || nav.rb || nav.up || nav.down) { pickerPlanets = !pickerPlanets; sfx(Sound.KICK) }
+        if (nav.a) { pickerChoose(); return }
+        if (nav.b) { housePicker = false; return }
+        if (!tapped || input.tapX < 0f || stateT < 0.2f) return
+        val x = input.tapX; val y = input.tapY
+        when {
+            y < 24f -> pickerPlanets = x > viewW / 2
+            y in 26f..62f -> {
+                val k = ((x - pickerThumbX(0)) / 52f).toInt()
+                if (x >= pickerThumbX(0) && k in 0 until 7) pickerStep(k - 3)
+            }
+            x < 56f && y in 70f..170f -> pickerStep(-1)
+            x > viewW - 56f && y in 70f..170f -> pickerStep(1)
+            y > 204f && x > viewW - 130f -> pickerChoose()
+            y > 204f && x < 90f -> housePicker = false
+        }
+    }
+
+    private fun renderHousePicker(gfx: Gfx) {
+        val pl = HomePlanet.entries[if (pickerPlanets) pickerPlanet else homePlanet.ordinal]
+        val t = HouseType.entries[if (pickerPlanets) houseType.ordinal else pickerHouse]
+        // The planet it would be on, with the house standing in the middle.
+        gfx.gradient(0f, 0f, viewW, 172f, pl.skyTop, pl.skyBottom)
+        pl.drawSky(gfx, viewW, 172f, time)
+        gfx.oval(-60f, 140f, viewW * 0.6f, 70f, pl.hill1); gfx.oval(viewW * 0.5f, 132f, viewW * 0.7f, 80f, pl.hill2)
+        gfx.rect(0f, 172f, viewW, VIEW_H - 172f, pl.ground)
+        gfx.rect(0f, 186f, viewW, VIEW_H - 186f, pl.ground2)
+        val scale = 1.15f
+        Homes.drawHouse(ScaledGfx(gfx, scale, viewW / 2 - 36f * scale, 174f - 172f * scale), t, 0f, 172f, time, housePaint, houseFloors)
+        // Tabs
+        gfx.rect(0f, 0f, viewW, 24f, 0xCC1A1008.toInt())
+        for ((i, name) in listOf("PICK YOUR HOUSE", "PICK YOUR PLANET").withIndex()) {
+            val on = pickerPlanets == (i == 1)
+            gfx.rect(i * viewW / 2 + 4f, 3f, viewW / 2 - 8f, 18f, if (on) 0xFFE8A82A.toInt() else 0xFF7A4A20.toInt())
+            gfx.text(name, i * viewW / 2 + viewW / 4, 16f, 8f, white, 1)
+        }
+        // The ones around it, small: tap one to jump there.
+        val n = pickerCount()
+        val cur = if (pickerPlanets) pickerPlanet else pickerHouse
+        for (k in 0 until 7) {
+            val i = (cur + k - 3 + n * 3) % n
+            val bx = pickerThumbX(k)
+            gfx.rect(bx + 2f, 27f, 48f, 34f, if (k == 3) 0xEEFFD21F.toInt() else 0x88000000.toInt())
+            if (pickerPlanets) {
+                val p = HomePlanet.entries[i]
+                gfx.oval(bx + 13f, 30f, 26f, 26f, p.ground)
+                gfx.oval(bx + 16f, 33f, 10f, 8f, p.hill1)
+                if (p.extra == 2) gfx.rect(bx + 6f, 42f, 40f, 2f, 0xCCF4E0B0.toInt())
+                if (ownsPlanet(p)) gfx.text("✓", bx + 45f, 37f, 6f, 0xFF3CE070.toInt(), 2)
+            } else {
+                val h = HouseType.entries[i]
+                Homes.drawHouse(ScaledGfx(gfx, 0.3f, bx + 15f, 60f - 172f * 0.3f), h, 0f, 172f, time)
+                if (ownsHouse(h)) gfx.text("✓", bx + 47f, 37f, 6f, 0xFF3CE070.toInt(), 2)
+            }
+        }
+        gfx.shadowText("${cur + 1} / $n", viewW / 2, 70f, 7f, white, 1)
+        // Big arrows
+        for ((x, label) in listOf(8f to "<", viewW - 48f to ">")) {
+            gfx.oval(x, 96f, 40f, 40f, 0xCC1A1008.toInt())
+            gfx.shadowText(label, x + 20f, 124f, 18f, white, 1)
+        }
+        // Name, note and price, and the big button
+        gfx.rect(0f, 196f, viewW, 44f, 0xDD1A1008.toInt())
+        val mine: Boolean; val owned: Boolean; val label: String; val note: String
+        if (pickerPlanets) {
+            val p = HomePlanet.entries[pickerPlanet]
+            mine = homePlanet == p; owned = ownsPlanet(p); label = p.label; note = p.note
+            if (!owned) priceTag(gfx, viewW / 2 - 40f, 220f, emptyList(), p.coins)
+        } else {
+            mine = houseType == t; owned = ownsHouse(t); label = t.label; note = t.note
+            if (!owned) priceTag(gfx, viewW / 2 - 40f, 220f, t.costs, t.coins)
+        }
+        gfx.shadowText(label, viewW / 2, 208f, 9f, 0xFFFFD21F.toInt(), 1)
+        gfx.text(note, viewW / 2, 218f, 5.5f, 0xFFFFF2C8.toInt(), 1)
+        if (owned && !mine) gfx.text("Yours already: moving is free!", viewW / 2, 234f, 5.5f, 0xFF3CE070.toInt(), 1)
+        gfx.rect(viewW - 126f, 204f, 120f, 30f, if (mine) 0xFF5A5A6A.toInt() else 0xFF2EB84A.toInt())
+        gfx.text(if (mine) "YOU LIVE HERE" else if (owned) "MOVE HERE!" else "BUY & MOVE IN", viewW - 66f, 223f, 7.5f, white, 1)
+        gfx.rect(6f, 204f, 80f, 30f, 0xFF8A3A2A.toInt())
+        gfx.text("CLOSE", 46f, 223f, 8f, white, 1)
+        if (padConnected) gfx.text("< > pick   A choose   up/down: houses / planets   B close", viewW / 2, 192f, 5f, white, 1)
+        renderHomeToast(gfx)
     }
 
     private fun needToast(costs: List<Pair<Ore, Int>>, coinsNeeded: Int) {
@@ -5111,8 +5270,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         1 -> bedPage().map { b -> b.label to { buyBed(b) } }
         2 -> Plushies.all.drop(shopPage * PLUSH_PER_PAGE).take(PLUSH_PER_PAGE).map { p -> p.name to { buyPlushie(p) } }
         // (The ADD A FLOOR card always sits in the same spot: the middle of the bottom row.)
-        3 -> housePage().map { t -> t.label to { buyHouse(t) } }.let { it + List(HOUSES_PER_PAGE - it.size) { "" to {} } } + listOf("ADD A FLOOR" to { buyFloor() }, "ELEVATOR" to { buyElevator() })
-        4 -> Homes.PAINTS.indices.map { i -> Homes.PAINT_NAMES[i] to { paintHouse(i) } }
+        3 -> housePage().map { t -> t.label to { openHousePicker(t) } }.let { it + List(HOUSES_PER_PAGE - it.size) { "" to {} } } + listOf("ADD A FLOOR" to { buyFloor() }, "ELEVATOR" to { buyElevator() })
+        4 -> Homes.PAINTS.indices.map { i -> Homes.PAINT_NAMES[i] to { paintHouse(i) } } + listOf("PLANET" to { openHousePicker(planets = true) })
         6, 7 -> decorPage().map { d -> d.label to { buyDecor(d) } }
         8 -> stylePage().map { it -> styleLabel(it) to { buyStyle(it) } }
         else -> listOf("STICKER PACK" to { buyStickerPack() })
@@ -5402,13 +5561,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun updateHome(dt: Float, tapped: Boolean, close: Boolean, actionE: Boolean) {
         if (carver != null) { updateCarving(dt, tapped, close); return }
         if (close) {
-            when { home3d -> exit3d(); theater -> theater = false; elevatorMenu -> elevatorMenu = false; building -> toggleBuild(); inGarden -> leaveGarden(); onRoof && !homeShop -> leaveRoof(); monMenu && gamePick -> gamePick = false; monMenu && monSwitch -> monSwitch = false; monMenu -> monMenu = false; homeShop -> homeShop = false; plushBook -> plushBook = false; else -> leaveHome() }
+            when { home3d -> exit3d(); housePicker -> housePicker = false; theater -> theater = false; elevatorMenu -> elevatorMenu = false; building -> toggleBuild(); inGarden -> leaveGarden(); onRoof && !homeShop -> leaveRoof(); monMenu && gamePick -> gamePick = false; monMenu && monSwitch -> monSwitch = false; monMenu -> monMenu = false; homeShop -> homeShop = false; plushBook -> plushBook = false; else -> leaveHome() }
             return
         }
         if (homeHopT > 0f) homeHopT -= dt
         if (monMenu) { updateMonMenu(dt, tapped); return }
         if (elevatorMenu) { updateElevator(tapped); return }
         if (theater) { updateTheater(tapped); return }
+        if (housePicker) { updateHousePicker(tapped); return }
         if (homeShop) { padShop(); updateShop(tapped); return }
         if (plushBook) {
             if (nav.left) bookPage = (bookPage + PLUSH_PAGES - 1) % PLUSH_PAGES
@@ -5731,6 +5891,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             val wide = if (shopTab == 5) shopCardW() * 3 + 8f else shopCardW()
             if (x in cx..(cx + wide) && y in cy..(cy + (if (shopTab == 5) 84f else 40f))) {
                 if (items[i].first.isEmpty()) return
+                // Houses open the big picker straight away (nothing is bought until MOVE IN there).
+                if ((shopTab == 3 && i < HOUSES_PER_PAGE) || (shopTab == 4 && i == Homes.PAINTS.size)) { items[i].second(); return }
                 if (confirmTap("shop:$shopTab:$shopPage:$i", items[i].first, "buy")) items[i].second()
                 return
             }
@@ -5787,7 +5949,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 for (l in lanterns) if (l.x + ox > -50f && l.x + ox < viewW + 10f) Pumpkins.draw(gfx, l, l.x + ox, Homes.FLOOR_Y + 2f, time)
             }
             onRoof -> {
-                Roof.draw(gfx, ox, viewW, VIEW_H, time, houseFloors, fireworksT)
+                Roof.draw(gfx, ox, viewW, VIEW_H, time, houseFloors, fireworksT, homePlanet)
                 drawDecor(gfx, ox, Decor.ROOF)
                 if (decorating) gfx.shadowText(if (carryingDecor != null) "Walk to a spot and tap PLACE" else "DECORATING: walk to a decoration and tap MOVE", viewW / 2, 34f, 7f, 0xFFFFE14D.toInt(), 1)
             }
@@ -5835,6 +5997,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (!homeShop && !plushBook && !monMenu && !elevatorMenu && !theater) TeamControls.drawHome(gfx, input, if (building) "BUILD" else target ?: "", time)
         if (building && !homeShop) renderBuildPalette(gfx)
         if (homeShop) renderShop(gfx)
+        if (housePicker) renderHousePicker(gfx)
         if (monMenu) renderMonMenu(gfx)
         if (plushBook) renderPlushBook(gfx, true)
         if (elevatorMenu) renderElevator(gfx)
@@ -5844,7 +6007,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     private fun drawRoomInside(gfx: Gfx, ox: Float) {
         Homes.drawRoom(gfx, houseType, ox, viewW, VIEW_H, housePaint)
-        Homes.drawWindow(gfx, ox + Homes.BED_X - 2f, 40f, time)
+        Homes.drawWindow(gfx, ox + Homes.BED_X - 2f, 40f, time, homePlanet)
         if (homeFloor == 0) Homes.drawDoor(gfx, ox + Homes.DOOR_X) else Homes.drawStairs(gfx, ox + Homes.DOOR_X - 6f, false)
         drawBlocks(gfx, ox)
         if (hasElevator) Homes.drawElevator(gfx, ox + Homes.STAIRS_X - 8f, time)
@@ -6033,6 +6196,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     else -> priceTag(gfx, cx + 4, cy + 21, emptyList(), PAINT_COST)
                 }
                 Homes.drawHouse(ScaledGfx(gfx, 0.32f, cx + cw - 30f, cy + 6f), houseType, 0f, 72f, time, p)
+            }.also {
+                // Moving the whole house to another planet.
+                val (cx, cy) = shopCard(Homes.PAINTS.size)
+                shopCardBg(gfx, cx, cy, false, true)
+                gfx.text("MOVE TO A PLANET", cx + 4, cy + 11, 6.5f, 0xFF2A1808.toInt())
+                gfx.text("Now: ${homePlanet.label}", cx + 4, cy + 26, 5.5f, 0xFF1E4A1E.toInt())
+                gfx.oval(cx + cw - 30f, cy + 8f, 24f, 24f, homePlanet.ground); gfx.oval(cx + cw - 26f, cy + 12f, 9f, 7f, homePlanet.hill1)
             }
             5 -> {
                 val (cx, cy) = shopCard(0)

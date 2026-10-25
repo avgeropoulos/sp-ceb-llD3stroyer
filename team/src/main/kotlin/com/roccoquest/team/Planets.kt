@@ -1,0 +1,75 @@
+package com.roccoquest.team
+
+import com.roccoquest.game.Gfx
+import kotlin.math.sin
+
+/**
+ * The planet your house is on (saved by index: new ones at the END). It changes the sky and ground in the garden,
+ * the backyard, the window view, the roof and the 3D yard. [extra] picks something special in the sky:
+ * 0 nothing, 1 the Earth, 2 a ringed planet, 3 two moons, 4 lava glow, 5 floating crystals, 6 a rainbow.
+ */
+enum class HomePlanet(
+    val label: String, val coins: Int, val note: String,
+    val skyTop: Int, val skyBottom: Int, val ground: Int, val ground2: Int, val hill1: Int, val hill2: Int,
+    val sun: Int, val extra: Int,
+) {
+    EARTH("PLANET EARTH", 0, "Blue sky, green grass. Home sweet home!",
+        0xFF4AA4F0.toInt(), 0xFFD8F0FF.toInt(), 0xFF5AB84A.toInt(), 0xFF4AA83A.toInt(), 0xFF7AC86A.toInt(), 0xFF6AB85A.toInt(), 0xFFFFE14D.toInt(), 0),
+    MOON("THE MOON", 300, "Grey craters, black sky, and the Earth up above!",
+        0xFF02020A.toInt(), 0xFF1A1A30.toInt(), 0xFF9A9AA8.toInt(), 0xFF7A7A88.toInt(), 0xFF6A6A7A.toInt(), 0xFF5A5A6A.toInt(), 0xFFFFF4D0.toInt(), 1),
+    MARS("PLANET MARS", 400, "The red planet: red sand and pink sky.",
+        0xFFD87A5A.toInt(), 0xFFF4C8A0.toInt(), 0xFFC8582A.toInt(), 0xFFA8481E.toInt(), 0xFFB85A3A.toInt(), 0xFF9A4A2A.toInt(), 0xFFFFE8C0.toInt(), 3),
+    ICE("ICE PLANET", 400, "Snow and ice everywhere. Brrr!",
+        0xFF8AC8F0.toInt(), 0xFFF0FAFF.toInt(), 0xFFF4F8FF.toInt(), 0xFFD0E4F4.toInt(), 0xFFDDEEFF.toInt(), 0xFFBFD8F0.toInt(), 0xFFFFFFFF.toInt(), 3),
+    CANDY("CANDY PLANET", 500, "Pink sky, frosting grass and gumdrop hills.",
+        0xFFFF9AC8.toInt(), 0xFFFFF0F8.toInt(), 0xFFB8F0C8.toInt(), 0xFFFFB8D8.toInt(), 0xFFFFE0A0.toInt(), 0xFFB8F0C8.toInt(), 0xFFFFF4A0.toInt(), 6),
+    JUNGLE("JUNGLE PLANET", 400, "Purple jungle and a green sky. Very alien!",
+        0xFF3AA87A.toInt(), 0xFFC8F0B8.toInt(), 0xFF8A4AD8.toInt(), 0xFF6A3AB8.toInt(), 0xFF5A2A9A.toInt(), 0xFF7A3AC8.toInt(), 0xFFFFE14D.toInt(), 2),
+    RINGS("RINGED PLANET", 600, "A giant planet with rings fills the sky!",
+        0xFF1A1A4A.toInt(), 0xFF8A6AC8.toInt(), 0xFFE8C88A.toInt(), 0xFFC8A86A.toInt(), 0xFFA88A5A.toInt(), 0xFF8A6A4A.toInt(), 0xFFFFE8A0.toInt(), 2),
+    LAVA("LAVA PLANET", 600, "Hot hot hot! Glowing lava rivers in the distance.",
+        0xFF3A1A1A.toInt(), 0xFFE86A2A.toInt(), 0xFF4A3A38.toInt(), 0xFF3A2A28.toInt(), 0xFF5A3A30.toInt(), 0xFF6A2A1A.toInt(), 0xFFFFB04A.toInt(), 4),
+    CRYSTAL("CRYSTAL PLANET", 800, "Sparkly floating crystals and a purple sky.",
+        0xFF4A2A8A.toInt(), 0xFFE0C8FF.toInt(), 0xFFB88AF0.toInt(), 0xFF9A6AD8.toInt(), 0xFFC8A8FF.toInt(), 0xFF8A5AD8.toInt(), 0xFFFFFFFF.toInt(), 5),
+    ;
+
+    /** Things in the sky (drawn after the sky gradient, before the hills). [w] is the screen width, [h] where the sky ends. */
+    fun drawSky(gfx: Gfx, w: Float, h: Float, t: Float, sunX: Float = w - 60f) {
+        if (skyTop.toLong() and 0xFFFFFF < 0x303030) for (i in 0 until 24) gfx.rect((i * 89f) % w, (i * 37f) % (h * 0.6f), 1.5f, 1.5f, 0xCCFFFFFF.toInt())
+        when (extra) {
+            1 -> {
+                gfx.oval(sunX - 4, 12f, 34f, 34f, 0xFF2A6AD8.toInt())
+                gfx.oval(sunX + 2, 18f, 12f, 10f, 0xFF3AA84A.toInt()); gfx.oval(sunX + 14, 28f, 10f, 12f, 0xFF3AA84A.toInt())
+            }
+            2 -> {
+                gfx.oval(sunX - 30, 8f, 60f, 60f, 0xFFE8B86A.toInt())
+                gfx.oval(sunX - 30, 24f, 60f, 10f, 0x66FFFFFF)
+                gfx.poly(floatArrayOf(sunX - 56, sunX + 56, sunX + 50, sunX - 50), floatArrayOf(40f, 34f, 40f, 46f), 0xCCF4E0B0.toInt())
+            }
+            3 -> { gfx.oval(sunX, 14f, 26f, 26f, sun); gfx.oval(sunX - 70, 26f, 14f, 14f, 0xFFE8E0F0.toInt()) }
+            4 -> { gfx.oval(sunX, 14f, 30f, 30f, sun); gfx.oval(sunX - 6, 8f, 42f, 42f, 0x44FF6A1A) }
+            5 -> for (k in 0 until 6) {
+                val cx = (k * 83f + 20f) % w; val cy = 20f + (k * 29f) % 50f + sin(t * 1.5f + k) * 4f
+                gfx.poly(floatArrayOf(cx, cx + 6, cx, cx - 6), floatArrayOf(cy - 10, cy, cy + 10, cy), if (k % 2 == 0) 0xFFF0C8FF.toInt() else 0xFF8AE8F0.toInt())
+            }
+            6 -> {
+                gfx.oval(sunX, 14f, 30f, 30f, sun)
+                // A rainbow: five arc bands.
+                val rb = intArrayOf(0x99FF6A6A.toInt(), 0x99FFB04A.toInt(), 0x99FFE14D.toInt(), 0x996AD86A.toInt(), 0x996AA8FF.toInt())
+                val cx = w * 0.35f; val cy = h
+                for (k in rb.indices) {
+                    val r0 = 110f - k * 6f; val r1 = r0 - 6f
+                    val n = 12
+                    val xs = FloatArray(2 * (n + 1)); val ys = FloatArray(2 * (n + 1))
+                    for (i in 0..n) {
+                        val a = Math.PI.toFloat() * i / n
+                        xs[i] = cx - kotlin.math.cos(a) * r0; ys[i] = cy - sin(a) * r0
+                        xs[2 * n + 1 - i] = cx - kotlin.math.cos(a) * r1; ys[2 * n + 1 - i] = cy - sin(a) * r1
+                    }
+                    gfx.poly(xs, ys, rb[k])
+                }
+            }
+            else -> gfx.oval(sunX, 16f, 34f, 34f, sun)
+        }
+    }
+}

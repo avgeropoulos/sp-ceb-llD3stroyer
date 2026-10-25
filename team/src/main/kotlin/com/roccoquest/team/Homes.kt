@@ -524,12 +524,15 @@ object Homes {
     }
 
     /** A window showing the sky outside. */
-    fun drawWindow(gfx: Gfx, x: Float, y: Float, t: Float) {
+    fun drawWindow(gfx: Gfx, x: Float, y: Float, t: Float, planet: HomePlanet = HomePlanet.EARTH) {
         gfx.rect(x - 3, y - 3, 62f, 46f, 0xFF5A3A1A.toInt())
-        gfx.rect(x, y, 56f, 40f, 0xFF7FC8FF.toInt())
-        gfx.oval(x + 38, y + 6, 12f, 12f, 0xFFFFE87A.toInt())
+        // The view outside: the sky and ground of the planet the house is on.
+        gfx.gradient(x, y, 56f, 40f, planet.skyTop, planet.skyBottom)
+        gfx.rect(x, y + 30, 56f, 10f, planet.ground)
+        gfx.oval(x + 38, y + 6, 12f, 12f, if (planet.extra == 1) 0xFF2A6AD8.toInt() else planet.sun)
+        if (planet.extra == 2) gfx.rect(x + 33, y + 11, 22f, 2f, 0xCCF4E0B0.toInt())
         val cx = x + ((t * 6) % 70f) - 14f
-        if (cx > x - 6 && cx < x + 50) gfx.oval(cx.coerceIn(x, x + 40), y + 18, 16f, 8f, 0xFFFFFFFF.toInt())
+        if (planet == HomePlanet.EARTH && cx > x - 6 && cx < x + 50) gfx.oval(cx.coerceIn(x, x + 40), y + 18, 16f, 8f, 0xFFFFFFFF.toInt())
         gfx.rect(x + 27, y, 2f, 40f, 0xFF5A3A1A.toInt())
         gfx.rect(x, y + 19, 56f, 2f, 0xFF5A3A1A.toInt())
         gfx.rect(x - 5, y + 40, 66f, 4f, 0xFF7A4A20.toInt())

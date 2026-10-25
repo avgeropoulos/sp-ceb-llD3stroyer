@@ -257,7 +257,7 @@ class House3D(private val g: TeamGame) {
         fun picture(cx2: Float, wz: Float, draw: (Gfx) -> Unit) = picture(gfx, items, cx2, wz, draw = draw)
         val fl = loadedArea
         val time = g.time
-        picture(Homes.BED_X + 26f, 0.05f) { Homes.drawWindow(it, Homes.BED_X - 2f, 40f, time) }
+        picture(Homes.BED_X + 26f, 0.05f) { Homes.drawWindow(it, Homes.BED_X - 2f, 40f, time, g.homePlanet) }
         if (fl == 0) {
             picture(Homes.DOOR_X + 15f, 0.05f) { Homes.drawDoor(it, Homes.DOOR_X) }
             picture(Homes.SHOP_X + 33f, 1.2f) { Homes.drawShop(g, it, Homes.SHOP_X, time) }
@@ -324,8 +324,8 @@ class House3D(private val g: TeamGame) {
         val hy = horizonY()
         val w = width.toFloat(); val d = D.toFloat()
         if (roof) gfx.gradient(0f, minOf(0f, hy - 400f), viewW, maxOf(hy, 1f) - minOf(0f, hy - 400f), 0xFF2A3A8A.toInt(), 0xFFF4A878.toInt())
-        else gfx.gradient(0f, minOf(0f, hy - 400f), viewW, maxOf(hy, 1f) - minOf(0f, hy - 400f), 0xFF4AA4F0.toInt(), 0xFFD8F0FF.toInt())
-        gfx.rect(0f, hy, viewW, maxOf(0f, viewH - hy), if (roof) 0xFF22223A.toInt() else 0xFF6AB85A.toInt())
+        else gfx.gradient(0f, minOf(0f, hy - 400f), viewW, maxOf(hy, 1f) - minOf(0f, hy - 400f), g.homePlanet.skyTop, g.homePlanet.skyBottom)
+        gfx.rect(0f, hy, viewW, maxOf(0f, viewH - hy), if (roof) 0xFF22223A.toInt() else g.homePlanet.hill2)
         // Far away things that turn with you
         if (roof) {
             for (k in 0 until 8) {
@@ -336,13 +336,13 @@ class House3D(private val g: TeamGame) {
         } else {
             for (k in 0 until 10) {
                 val sx = around(k * 0.628f + 0.3f) ?: continue
-                gfx.oval(sx - 90f, hy - 26f - (k % 3) * 8f, 180f, 60f + (k % 3) * 16f, if (k % 2 == 0) 0xFF7AC86A.toInt() else 0xFF62B05A.toInt())
+                gfx.oval(sx - 90f, hy - 26f - (k % 3) * 8f, 180f, 60f + (k % 3) * 16f, if (k % 2 == 0) g.homePlanet.hill1 else g.homePlanet.hill2)
             }
             for (k in 0 until 6) {
                 val sx = around(k * 1.05f + time * 0.01f) ?: continue
                 gfx.oval(sx - 30f, hy - 110f - (k % 3) * 18f, 60f, 18f, 0xEEFFFFFF.toInt())
             }
-            around(-1.0f)?.let { gfx.oval(it - 16f, hy - 170f, 32f, 32f, 0xFFFFE14D.toInt()) }
+            around(-1.0f)?.let { gfx.oval(it - 16f, hy - 170f, 32f, 32f, g.homePlanet.sun) }
         }
         // The ground you stand on
         if (roof) {
@@ -364,7 +364,7 @@ class House3D(private val g: TeamGame) {
             picture(gfx, items, Roof.SCOPE_X + 12f, 1.5f) { sg -> Roof.drawTelescope(sg, 0f) }
             picture(gfx, items, Homes.STAIRS_X + 7f, 1.5f) { sg -> Roof.drawHatch(sg, Homes.STAIRS_X - 6f, Homes.FLOOR_Y) }
         } else {
-            poly(gfx, listOf(floatArrayOf(-60f, 0f, -60f), floatArrayOf(w + 60f, 0f, -60f), floatArrayOf(w + 60f, 0f, d + 60f), floatArrayOf(-60f, 0f, d + 60f)), 0xFF5AB84A.toInt())
+            poly(gfx, listOf(floatArrayOf(-60f, 0f, -60f), floatArrayOf(w + 60f, 0f, -60f), floatArrayOf(w + 60f, 0f, d + 60f), floatArrayOf(-60f, 0f, d + 60f)), g.homePlanet.ground)
             // The white fence along the back, and the house's back wall at the start
             poly(gfx, listOf(floatArrayOf(0f, 0.9f, 0.02f), floatArrayOf(w, 0.9f, 0.02f), floatArrayOf(w, 1.0f, 0.02f), floatArrayOf(0f, 1.0f, 0.02f)), 0xFFE4E4E4.toInt())
             poly(gfx, listOf(floatArrayOf(0f, 0.45f, 0.02f), floatArrayOf(w, 0.45f, 0.02f), floatArrayOf(w, 0.55f, 0.02f), floatArrayOf(0f, 0.55f, 0.02f)), 0xFFE4E4E4.toInt())

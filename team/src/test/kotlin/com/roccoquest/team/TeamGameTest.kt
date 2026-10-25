@@ -916,6 +916,57 @@ class TeamGameTest {
         assertEquals(g4.giftLevel, g4.slotLevel(0))
     }
 
+    @Test fun housePickerAndPlanets() {
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 240 * 3, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f))
+            ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        startPlaying()
+        goHome()
+        game.coins = 5000
+        Ore.entries.forEach { game.inventory[it.ordinal] = 99 }
+        // Tap a house in the HOUSES tab: the big picker opens on it (nothing bought yet).
+        game.openHousePicker(HouseType.CASTLE)
+        run(0.3f)
+        assertTrue(game.housePicker)
+        assertEquals(HouseType.COTTAGE, game.houseType)
+        shot("house-picker")
+        // Arrow to the next house, then BUY & MOVE IN.
+        tap(game.viewW - 28f, 116f)
+        tap(game.viewW - 60f, 220f)
+        assertEquals(HouseType.entries[HouseType.CASTLE.ordinal + 1], game.houseType)
+        val coins = game.coins
+        // Moving back to the cottage is free (you own it).
+        game.buyHouse(HouseType.COTTAGE)
+        assertEquals(coins, game.coins)
+        // The PLANET tab: move to Mars.
+        tap(game.viewW * 0.75f, 12f)
+        assertTrue(game.pickerPlanets)
+        repeat(HomePlanet.MARS.ordinal) { tap(game.viewW - 28f, 116f) }
+        shot("planet-picker")
+        tap(game.viewW - 60f, 220f)
+        assertEquals(HomePlanet.MARS, game.homePlanet)
+        assertEquals(coins - HomePlanet.MARS.coins, game.coins)
+        tap(40f, 220f)
+        assertFalse(game.housePicker)
+        game.enterGarden(); run(0.3f)
+        shot("garden-mars")
+        game.moveToPlanet(HomePlanet.RINGS)
+        game.leaveGarden()
+        game.enterRoof(); run(0.3f)
+        shot("roof-rings")
+        game.leaveRoof()
+        // Saved.
+        game.buyBed(BedStyle.RED); game.sleepAtHome()
+        val g2 = TeamGame(TeamInput(), ears, storage)
+        g2.continueGame(0)
+        assertEquals(HomePlanet.RINGS, g2.homePlanet)
+        assertTrue(g2.ownsPlanet(HomePlanet.MARS))
+        assertTrue(g2.ownsHouse(HouseType.entries[HouseType.CASTLE.ordinal + 1]))
+    }
+
     @Test fun pokemonEvolveAndSwitchBack() {
         startPlaying()
         game.coins = 100
