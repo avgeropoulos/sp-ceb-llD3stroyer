@@ -31,6 +31,30 @@ enum class HouseType(val label: String, val costs: List<Pair<Ore, Int>>, val coi
     VOLCANO("VOLCANO LAIR", listOf(Ore.OBSIDIAN to 5, Ore.RUBY to 3), 550, "A secret lair inside a volcano"),
     TOYBLOCK("TOY BLOCK HOUSE", listOf(Ore.STONE to 6, Ore.GOLD to 2), 110, "Built from giant toy blocks"),
     TEEPEE("TEEPEE", listOf(Ore.STONE to 3, Ore.COPPER to 2), 30, "A cozy tent with poles on top"),
+    // The second batch (drawn in MoreHouses.kt)
+    ICE_CREAM("ICE CREAM SHOP", listOf(Ore.STONE to 6, Ore.RUBY to 1), 130, "A giant cone on the roof. Yum!"),
+    SHOE("GIANT SHOE", listOf(Ore.STONE to 5, Ore.RUBY to 2), 90, "Live in a big red sneaker"),
+    ROCKET("ROCKET SHIP", listOf(Ore.IRON to 10, Ore.DIAMOND to 2), 420, "3, 2, 1... home sweet home!"),
+    DINO_EGG("DINO EGG", listOf(Ore.STONE to 8, Ore.EMERALD to 3), 200, "A giant egg. Someone's peeking out!"),
+    LILY_PAD("LILY PAD HUT", listOf(Ore.EMERALD to 2, Ore.SAPPHIRE to 1), 70, "A flower hut on a pond, with a frog"),
+    PUMPKIN("PUMPKIN HOUSE", listOf(Ore.STONE to 4, Ore.COPPER to 3), 100, "A glowing jack-o-lantern home"),
+    CUPCAKE("CUPCAKE TOWER", listOf(Ore.GOLD to 2, Ore.RUBY to 2), 150, "Pink frosting and a cherry on top"),
+    PAGODA("PAGODA", listOf(Ore.STONE to 12, Ore.GOLD to 3), 280, "Three roofs and swinging lanterns"),
+    ADOBE("DESERT ADOBE", listOf(Ore.STONE to 10, Ore.COPPER to 2), 60, "A warm clay house with a ladder"),
+    STILT("STILT HOUSE", listOf(Ore.STONE to 6, Ore.COPPER to 3), 110, "Up on legs over the water"),
+    HOUSEBOAT("HOUSEBOAT", listOf(Ore.IRON to 4, Ore.SAPPHIRE to 2), 240, "A floating home with a flag"),
+    TRAIN("TRAIN CAR HOUSE", listOf(Ore.IRON to 8, Ore.COPPER to 3), 210, "Choo choo! A red caboose"),
+    TEAPOT("GIANT TEAPOT", listOf(Ore.STONE to 6, Ore.SAPPHIRE to 2), 170, "A china teapot with steam"),
+    CLOCK_TOWER("CLOCK TOWER", listOf(Ore.STONE to 14, Ore.GOLD to 3), 330, "A ticking clock and a little bell"),
+    SNOW_GLOBE("SNOW GLOBE", listOf(Ore.DIAMOND to 2, Ore.SAPPHIRE to 2), 360, "It's always snowing inside!"),
+    BEEHIVE("BEEHIVE", listOf(Ore.GOLD to 4), 140, "Buzz buzz! Sweet as honey"),
+    BALLOON("HOT AIR BALLOON", listOf(Ore.COPPER to 4, Ore.RUBY to 2), 260, "A basket home under a big balloon"),
+    FAIRY("FAIRY FLOWER", listOf(Ore.AMETHYST to 3, Ore.EMERALD to 2), 300, "A tulip house with a tiny fairy"),
+    HILL("HILL HOUSE", listOf(Ore.STONE to 8, Ore.EMERALD to 2), 160, "A round door in a grassy hill"),
+    GLASS("GLASS HOUSE", listOf(Ore.IRON to 6, Ore.DIAMOND to 3), 480, "Super modern with big windows"),
+    SKYSCRAPER("SKYSCRAPER", listOf(Ore.IRON to 12, Ore.GOLD to 4, Ore.DIAMOND to 2), 600, "So tall! With a garden on top"),
+    CACTUS("CACTUS HOUSE", listOf(Ore.EMERALD to 3, Ore.STONE to 4), 80, "Prickly outside, cozy inside"),
+    STUMP("TREE STUMP", listOf(Ore.STONE to 3, Ore.EMERALD to 1), 45, "A cozy home in an old stump"),
 }
 
 /**
@@ -365,6 +389,7 @@ object Homes {
                 for (row in 0 until 5) gfx.rect(x, top - 4 + row * 9f, 72f, 1f, 0xFF6A6A7A.toInt())
                 gfx.rect(x + 34, top + 4, 10f, 12f, 0xFFFFE8A0.toInt())
             }
+            else -> MoreHouses.drawBody(gfx, type, x, bottom, t)
         }
     }
 
@@ -402,6 +427,7 @@ object Homes {
         HouseType.VOLCANO -> 0xFF3A2A28.toInt()
         HouseType.TOYBLOCK -> 0xFF3A7AE8.toInt()
         HouseType.TEEPEE -> 0xFFB8905A.toInt()
+        else -> MoreHouses.room(type).third
     }
 
     /** The wall, wallpaper stripe and floor colors inside a house (a painted house gets painted walls). */
@@ -430,6 +456,7 @@ object Homes {
             HouseType.VOLCANO -> 0xFF5A2A20.toInt() to 0xFFFF6A2A.toInt()
             HouseType.TOYBLOCK -> 0xFFFFF0C8.toInt() to 0xFFE84A4A.toInt()
             HouseType.TEEPEE -> 0xFFF0DCB0.toInt() to 0xFFC86A3A.toInt()
+            else -> MoreHouses.room(type).let { it.first to it.second }
         }
         val wall = if (paint != 0) mix(paint, 0xFFFFFFFF.toInt(), 0.35f) else normalWall
         val stripe = if (paint != 0) mix(paint, 0xFF000000.toInt(), 0.15f) else normalStripe
@@ -473,6 +500,7 @@ object Homes {
                 val cy = 36f + (i * 43f) % 120f
                 gfx.poly(floatArrayOf(cx, cx + 4, cx + 8), floatArrayOf(cy + 10, cy, cy + 10), stripe)
             }
+            else -> MoreHouses.wallpaper(gfx, type, x0, x1, stripe)
         }
         if (type == HouseType.CASTLE) {
             for (bx in listOf(x0 + 150f, x0 + 600f)) {
