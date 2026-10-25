@@ -15,6 +15,7 @@ enum class MonGame(val label: String, val blurb: String) {
     MEMORY("MEMORY MATCH", "Flip the cards and find the pairs"),
     BALLOON("BALLOON POP", "Tap the balloons before they fly away"),
     DANCE("DANCE PARTY", "Copy your Pokemon's dance moves"),
+    SING("SING-ALONG", "Tap to the beat of the TEAM UP! theme song"),
 }
 
 /** Plays MEMORY MATCH, BALLOON POP and DANCE PARTY (BERRY CATCH is the Pokemon Park). */
@@ -48,6 +49,22 @@ class MonGames(private val g: TeamGame) {
     private var zapT = 0f
     private val BALLOON_TIME = 30f
 
+    // SING-ALONG: the theme song's syllables come along; tap as each one reaches the circle.
+    private val unitSec = 60f / com.roccoquest.game.Songs.THEME_BPM / 4f
+    private val lyrics = com.roccoquest.game.Songs.themeLyrics
+    private val songLength = com.roccoquest.game.Chiptune.length(com.roccoquest.game.Songs.theme.lead) * unitSec
+    private val hitState = IntArray(lyrics.size) // 0 waiting, 1 good, 2 perfect, 3 missed
+    var combo = 0
+        private set
+    private var judgeText = ""
+    private var judgeT = 0f
+    /** Which line of the song each syllable is on (a new line starts after a comma or an exclamation mark). */
+    private val lineOf = IntArray(lyrics.size).also { arr ->
+        var line = 0
+        for (i in lyrics.indices) { arr[i] = line; if (lyrics[i].first.endsWith(",") || lyrics[i].first.endsWith("!")) line++ }
+    }
+    private fun noteTime(i: Int) = lyrics[i].second * unitSec + SING_DELAY
+
     // DANCE PARTY: 0 left, 1 up, 2 right, 3 down
     private val moves4 = ArrayList<Int>()
     private var showIdx = 0
@@ -73,6 +90,7 @@ class MonGames(private val g: TeamGame) {
             }
             MonGame.BALLOON -> { balloons.clear(); spawnT = 0f; zapT = 0f }
             MonGame.DANCE -> { moves4.clear(); repeat(3) { moves4 += Random.nextInt(4) }; startShow() }
+            MonGame.SING -> { hitState.fill(0); combo = 0; judgeT = 0f }
             MonGame.BERRY -> {}
         }
     }
@@ -95,6 +113,7 @@ class MonGames(private val g: TeamGame) {
             MonGame.MEMORY -> updateMemory(dt, viewW, tap, tx, ty, left, right, up, down, a)
             MonGame.BALLOON -> updateBalloons(dt, viewW, tap, tx, ty, left, right, a)
             MonGame.DANCE -> updateDance(dt, viewW, tap, tx, ty, left, right, up, down)
+            MonGame.SING -> updateSing(dt, tap || a)
             MonGame.BERRY -> {}
         }
         return false
@@ -197,11 +216,32 @@ class MonGames(private val g: TeamGame) {
         }
     }
 
+    private fun updateSing(dt: Float, hit: Boolean) {
+        if (judgeT > 0f) judgeT -= dt
+        // Notes that went by without a tap.
+        for (i in lyrics.indices) if (hitState[i] == 0 && t > noteTime(i) + 0.22f) { hitState[i] = 3; combo = 0 }
+        if (hit) {
+            val i = lyrics.indices.filter { hitState[it] == 0 }.minByOrNull { abs(noteTime(it) - t) }
+            if (i != null && abs(noteTime(i) - t) < 0.2f) {
+                val perfect = abs(noteTime(i) - t) < 0.08f
+                hitState[i] = if (perfect) 2 else 1
+                combo++
+                score += (if (perfect) 3 else 1) + minOf(combo / 10, 3)
+                judgeText = if (perfect) "PERFECT!" else "GOOD!"
+                judgeT = 0.4f
+            }
+        }
+        if (t > songLength + 0.5f) finish()
+    }
+
+    /** How many syllables were hit (for the results). */
+    fun singHits() = hitState.count { it == 1 || it == 2 }
+
     private fun finish() {
         done = true
         t = 0f
-        val xp = when (game) { MonGame.MEMORY -> score / 2 + 3; MonGame.BALLOON -> minOf(20, score / 3); else -> minOf(20, score * 2) }
-        val prize = when (game) { MonGame.MEMORY -> score + 5; MonGame.BALLOON -> minOf(40, score); else -> minOf(40, score * 4) }
+        val xp = when (game) { MonGame.MEMORY -> score / 2 + 3; MonGame.BALLOON -> minOf(20, score / 3); MonGame.SING -> minOf(25, score / 6); else -> minOf(20, score * 2) }
+        val prize = when (game) { MonGame.MEMORY -> score + 5; MonGame.BALLOON -> minOf(40, score); MonGame.SING -> minOf(50, score / 3); else -> minOf(40, score * 4) }
         result = if (!rewards) "Just for fun! (Play a level so ${g.mon.label} has energy again.)" else "+$xp XP for ${g.mon.label}   +$prize coins"
         if (rewards) g.rewardMonGame(xp, prize)
         g.sfx(Sound.CLEAR)
@@ -209,7 +249,7 @@ class MonGames(private val g: TeamGame) {
 
     // ------------------------------------------------------------------ Drawing
     fun render(gfx: Gfx, viewW: Float, viewH: Float, time: Float) {
-        val bg = when (game) { MonGame.MEMORY -> 0xFF3A6AC8.toInt() to 0xFF8AC8F0.toInt(); MonGame.BALLOON -> 0xFF4AA4F0.toInt() to 0xFFD0F0FF.toInt(); else -> 0xFF2A1A4A.toInt() to 0xFF8A3AD8.toInt() }
+        val bg = when (game) { MonGame.MEMORY -> 0xFF3A6AC8.toInt() to 0xFF8AC8F0.toInt(); MonGame.BALLOON -> 0xFF4AA4F0.toInt() to 0xFFD0F0FF.toInt(); MonGame.SING -> 0xFF1A1050.toInt() to 0xFFE85A8A.toInt(); else -> 0xFF2A1A4A.toInt() to 0xFF8A3AD8.toInt() }
         gfx.gradient(0f, 0f, viewW, viewH, bg.first, bg.second)
         gfx.shadowText(game.label, viewW / 2, 18f, 12f, 0xFFFFD21F.toInt(), 1)
         when (game) {
@@ -263,13 +303,65 @@ class MonGames(private val g: TeamGame) {
                 gfx.shadowText(if (watching) "WATCH..." else "YOUR TURN! (${inputIdx}/${moves4.size})", viewW / 2, 40f, 9f, 0xFFFFFFFF.toInt(), 1)
                 gfx.shadowText("Dances in a row: $score", viewW / 2, 228f, 8f, 0xFFFFD21F.toInt(), 1)
             }
+            MonGame.SING -> renderSing(gfx, viewW, viewH, time)
             MonGame.BERRY -> {}
         }
         if (done) {
+            if (game == MonGame.SING) result = result.substringBefore("  (") + "  (${singHits()}/${lyrics.size} notes)"
             gfx.rect(viewW / 2 - 150f, 80f, 300f, 80f, 0xEE1A1420.toInt())
             gfx.shadowText(if (game == MonGame.MEMORY) "ALL PAIRS FOUND!" else "GREAT GAME!", viewW / 2, 104f, 12f, 0xFFFFD21F.toInt(), 1)
             gfx.text(result, viewW / 2, 126f, 7f, 0xFFFFFFFF.toInt(), 1)
             if (t > 1f) gfx.text("Tap to go back home", viewW / 2, 148f, 7f, 0xFFDDDDDD.toInt(), 1)
         }
+    }
+
+    private fun renderSing(gfx: Gfx, viewW: Float, viewH: Float, time: Float) {
+        // A stage with spotlights.
+        for (k in 0 until 4) {
+            val sx = viewW * (0.15f + k * 0.23f) + sin(time + k) * 30f
+            gfx.poly(floatArrayOf(sx - 6, sx + 6, sx + 50, sx - 50), floatArrayOf(0f, 0f, 200f, 200f), argb(40, solidRainbow(time * 0.2f + k * 0.25f, 0f) and 0xFFFFFF))
+        }
+        gfx.rect(0f, 168f, viewW, 6f, 0xFF8A3AD8.toInt())
+        // Rocco, Blocky and the Pokemon bopping to the beat.
+        val beat = abs(sin(t / (unitSec * 4) * 3.1416f))
+        gfx.sprite(TeamArt.rocco(Power.NONE, if (beat > 0.5f) 2 else 0), viewW / 2 - 90f, 168f - 36f - beat * 6f, w = 24f, h = 36f)
+        gfx.sprite(TeamArt.blocky(Power.NONE, beat > 0.5f), viewW / 2 + 66f, 168f - 36f - (1 - beat) * 6f, w = 24f, h = 36f)
+        TeamArt.mon(ScaledGfx(gfx, 2f, -(viewW / 2), -168f + beat * 8f), g.mon, viewW / 2, 168f - beat * 4f, time, 1, combo >= 10, true)
+        // The note lane: syllables slide to the circle.
+        val hitX = 70f
+        val laneY = 52f
+        gfx.rect(0f, laneY - 16f, viewW, 32f, 0x55000000)
+        gfx.oval(hitX - 15f, laneY - 15f, 30f, 30f, 0xFFFFFFFF.toInt())
+        gfx.oval(hitX - 12f, laneY - 12f, 24f, 24f, if (judgeT > 0f) 0xFFFFD21F.toInt() else 0xFF1A1050.toInt())
+        for (i in lyrics.indices) {
+            if (hitState[i] != 0) continue
+            val x = hitX + (noteTime(i) - t) * 140f
+            if (x < -20f || x > viewW + 20f) continue
+            gfx.oval(x - 11f, laneY - 11f, 22f, 22f, solidRainbow(i * 0.07f, 0f))
+            gfx.text(lyrics[i].first.trimEnd(',', '!', '-'), x, laneY + 3f, 5f, 0xFF1A1050.toInt(), 1)
+        }
+        if (judgeT > 0f) gfx.shadowText(judgeText, hitX, laneY - 22f, 9f, 0xFFFFD21F.toInt(), 1)
+        gfx.shadowText("SCORE $score", viewW - 50f, 30f, 8f, 0xFFFFFFFF.toInt(), 1)
+        if (combo >= 5) gfx.shadowText("COMBO $combo!", viewW - 50f, 82f, 7f, 0xFFFFD21F.toInt(), 1)
+        // Karaoke words: the line being sung, lighting up syllable by syllable.
+        val now = lyrics.indices.lastOrNull { noteTime(it) <= t + 0.3f } ?: 0
+        val line = lineOf[now]
+        val words = lyrics.indices.filter { lineOf[it] == line }
+        var text = ""
+        val parts = words.map { val sy = lyrics[it].first; (if (sy.endsWith("-")) sy.dropLast(1) else "$sy ") to (noteTime(it) <= t) }
+        val total = parts.sumOf { it.first.length }
+        var x = viewW / 2 - total * 3.05f
+        gfx.rect(0f, 184f, viewW, 40f, 0xAA000000.toInt())
+        for ((p, sung) in parts) {
+            gfx.text(p, x, 208f, 10f, if (sung) 0xFFFFD21F.toInt() else 0xFFFFFFFF.toInt())
+            x += p.length * 6.1f
+            text += p
+        }
+        if (t < SING_DELAY + 2f * 16 * unitSec) gfx.shadowText("Get ready to sing!", viewW / 2, 120f, 10f, 0xFFFFFFFF.toInt(), 1)
+    }
+
+    private companion object {
+        /** The song is a tiny bit behind the game's clock (sound takes a moment to come out). */
+        const val SING_DELAY = 0.12f
     }
 }

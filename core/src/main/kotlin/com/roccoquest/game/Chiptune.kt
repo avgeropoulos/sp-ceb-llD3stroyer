@@ -21,6 +21,10 @@ class Song(
     val bass: String,
     val drums: String,
     val leadDuty: Float = 0.25f,
+    /** An optional SUNG melody (same NOTE/LEN tokens), one syllable per note. */
+    val vocal: String = "",
+    /** The vowel each sung note is sung on (a, e, i, o, u), one letter per note. */
+    val vowels: String = "",
 )
 
 object Chiptune {
@@ -55,7 +59,13 @@ object Chiptune {
         val total = (units * perUnit).toInt()
         val mix = FloatArray(total)
 
-        voice(mix, parse(song.lead), perUnit, 0.17f) { phase, _ -> if (phase < song.leadDuty) 1f else -1f }
+        // With a singer, the lead plays softly underneath.
+        val leadVol = if (song.vocal.isNotBlank()) 0.05f else 0.17f
+        voice(mix, parse(song.lead), perUnit, leadVol) { phase, _ -> if (phase < song.leadDuty) 1f else -1f }
+        if (song.vocal.isNotBlank()) {
+            require(length(song.vocal) == units) { "vocal is ${length(song.vocal)} steps, lead is $units" }
+            sing(mix, parse(song.vocal), song.vowels, perUnit)
+        }
         if (song.harmony.isNotBlank()) {
             voice(mix, parse(song.harmony), perUnit, 0.07f) { phase, _ -> if (phase < 0.5f) 1f else -1f }
         }
@@ -85,6 +95,79 @@ object Chiptune {
                 val release = if (i < gate) 1f else 1f - (i - gate).toFloat() / (len - gate).coerceAtLeast(1)
                 out[start + i] += wave(phase, t) * vol * attack * decay * release
             }
+        }
+    }
+
+    /** Vowel sounds: the two loudest "formant" pitches of a singing voice. */
+    private fun formants(v: Char) = when (v) {
+        'e' -> 440f to 1950f
+        'i' -> 330f to 2300f
+        'o' -> 500f to 850f
+        'u' -> 350f to 700f
+        else -> 760f to 1200f // 'a'
+    }
+
+    /**
+     * A singing voice: a soft buzzy source shaped by two vowel resonances (like a mouth), gentle vibrato
+     * that grows on long notes, smooth glides between notes, and a second voice a tiny bit out of tune
+     * singing along (so it sounds like people, not a robot), plus a little room echo.
+     */
+    private fun sing(out: FloatArray, notes: List<Note>, vowels: String, perUnit: Double) {
+        val voc = FloatArray(out.size)
+        var unit = 0
+        var sung = 0
+        var prevFreq = 0f
+        for (n in notes) {
+            val start = (unit * perUnit).toInt()
+            val end = min(out.size, ((unit + n.len) * perUnit).toInt())
+            unit += n.len
+            if (n.freq <= 0f) { prevFreq = 0f; continue }
+            val vowel = vowels.getOrElse(sung++) { 'a' }
+            val (f1, f2) = formants(vowel)
+            val len = end - start
+            val gate = len - min(len / 5, (RATE * 0.05f).toInt())
+            for (copy in 0..1) {
+                val detune = if (copy == 0) 1f else 1.0045f
+                val vol = if (copy == 0) 0.55f else 0.35f
+                // Two resonators per copy (the vowel), as simple two-pole filters.
+                var y1a = 0f; var y2a = 0f; var y1b = 0f; var y2b = 0f
+                fun coeffs(f: Float, bw: Float): Pair<Float, Float> {
+                    val r = kotlin.math.exp(-PI.toFloat() * bw / RATE)
+                    return (2f * r * kotlin.math.cos(2f * PI.toFloat() * f / RATE)) to (-r * r)
+                }
+                val (a1a, a2a) = coeffs(f1, 90f)
+                val (a1b, a2b) = coeffs(f2, 120f)
+                var phase = copy * 0.37f
+                for (i in 0 until len) {
+                    val t = i.toFloat() / RATE
+                    // Slide up from the last note for the first 40 ms, like a real singer.
+                    val glide = if (prevFreq > 0f && t < 0.04f) prevFreq + (n.freq - prevFreq) * (t / 0.04f) else n.freq
+                    val depth = 0.004f + 0.012f * min(1f, t / 0.5f)
+                    val vib = 1f + depth * sin(2f * PI.toFloat() * 5.2f * t + copy)
+                    phase = (phase + glide * detune * vib / RATE) % 1f
+                    // A soft source: a rounded sawtooth (less harsh than a square wave).
+                    val src = (2f * phase - 1f) - (2f * phase - 1f) * (2f * phase - 1f) * (2f * phase - 1f) * 0.3f
+                    val ya = src * 0.12f + a1a * y1a + a2a * y2a; y2a = y1a; y1a = ya
+                    val yb = src * 0.08f + a1b * y1b + a2b * y2b; y2b = y1b; y1b = yb
+                    val attack = min(1f, t / 0.035f)
+                    val release = if (i < gate) 1f else 1f - (i - gate).toFloat() / (len - gate).coerceAtLeast(1)
+                    voc[start + i] += (ya + yb * 0.7f) * vol * attack * release
+                }
+            }
+            prevFreq = n.freq
+        }
+        // Set the singer's loudness from how loud the voice really came out (the vowel filters ring a lot).
+        var sum = 0.0
+        var count = 0
+        for (v in voc) if (v != 0f) { sum += v * v; count++ }
+        val rms = if (count == 0) 1.0 else kotlin.math.sqrt(sum / count)
+        val gain = (0.16 / rms).toFloat()
+        // A short room echo, then into the mix (gently squashed so it never crackles).
+        val delay = (RATE * 0.09f).toInt()
+        for (i in voc.indices) {
+            val wet = if (i >= delay) voc[i - delay] * 0.25f else 0f
+            val x = (voc[i] + wet) * gain
+            out[i] += x / (1f + abs(x))
         }
     }
 

@@ -3695,7 +3695,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             state == State.STICKER -> Music.STAR
             state == State.HOME -> Music.COZY
             state == State.PARK -> Music.PARK
-            state == State.GAMES -> if (monGames.game == MonGame.DANCE) Music.FUNKY else Music.PARK
+            state == State.GAMES -> when (monGames.game) { MonGame.DANCE -> Music.FUNKY; MonGame.SING -> if (monGames.done) Music.PARK else Music.THEME; else -> Music.PARK }
             state == State.SCENE -> Music.SILLY
             state == State.MAP -> Music.ADVENTURE
             state == State.OUCH || state == State.CLEAR || state == State.SLEEP -> Music.NONE
@@ -5134,7 +5134,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (nav.a && stateT > 0.2f) { startMonGame(MonGame.entries[monCursor]); return }
             if (nav.b) { gamePick = false; return }
             if (!tapped || input.tapX < 0f) return
-            MonGame.entries.forEachIndexed { i, g -> if (input.tapX in (monPanelX() + 20f)..(monPanelX() + 280f) && input.tapY in (64f + i * 32f)..(92f + i * 32f)) { startMonGame(g); return } }
+            MonGame.entries.forEachIndexed { i, g -> if (input.tapX in (monPanelX() + 20f)..(monPanelX() + 280f) && input.tapY in (62f + i * 27f)..(87f + i * 27f)) { startMonGame(g); return } }
             gamePick = false
             return
         }
@@ -5195,11 +5195,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (gamePick) {
             gfx.shadowText("PICK A GAME", px + 150, 56f, 10f, 0xFFFFD21F.toInt(), 1)
             MonGame.entries.forEachIndexed { i, g ->
-                val y = 64f + i * 32f
-                gfx.rect(px + 20, y, 260f, 28f, listOf(0xFFE84A4A, 0xFF3A7AE8, 0xFF4AB85A, 0xFF8A3AD8)[i].toInt())
-                gfx.text(g.label, px + 30, y + 12, 9f, white)
-                gfx.text(g.blurb, px + 30, y + 23, 6f, 0xFFF4F4F4.toInt())
-                if (padConnected && monCursor == i) padFrame(gfx, px + 18, y - 2, 264f, 32f)
+                val y = 62f + i * 27f
+                gfx.rect(px + 20, y, 260f, 25f, listOf(0xFFE84A4A, 0xFF3A7AE8, 0xFF4AB85A, 0xFF8A3AD8, 0xFFE8A82A)[i].toInt())
+                gfx.text(g.label, px + 30, y + 11, 8.5f, white)
+                gfx.text(g.blurb, px + 30, y + 21, 5.5f, 0xFFF4F4F4.toInt())
+                if (padConnected && monCursor == i) padFrame(gfx, px + 18, y - 2, 264f, 29f)
             }
             if (monEnergy <= 0) gfx.text("${mon.label} is sleepy: games are just for fun (no prizes)", px + 150, 196f, 5.5f, 0xFF8A1010.toInt(), 1)
             return

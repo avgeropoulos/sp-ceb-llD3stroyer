@@ -2457,6 +2457,23 @@ class TeamGameTest {
         assertTrue(game.monGames.done)
         assertTrue(game.monGames.score > 0, "popped some")
         run(1.2f); tap(game.viewW / 2, 120f)
+        // SING-ALONG: tap right on every syllable.
+        game.startMonGame(MonGame.SING)
+        game.update(dt)
+        assertEquals(com.roccoquest.game.Music.THEME, ears.music)
+        val unit = 60f / com.roccoquest.game.Songs.THEME_BPM / 4f
+        val times = com.roccoquest.game.Songs.themeLyrics.map { it.second * unit + 0.12f }
+        var clock = dt
+        var shotTaken = false
+        while (!game.monGames.done && clock < 40f) {
+            val hit = times.any { kotlin.math.abs(it - (clock + dt)) < dt / 2 }
+            game.monGames.update(dt, game.viewW, false, -1f, -1f, false, false, false, false, hit, false)
+            clock += dt
+            if (!shotTaken && clock > 12f) { shot("game-sing"); shotTaken = true }
+        }
+        assertTrue(game.monGames.done)
+        assertEquals(times.size, game.monGames.singHits(), "hit every note")
+        run(1.2f); tap(game.viewW / 2, 120f)
         // DANCE PARTY
         game.startMonGame(MonGame.DANCE)
         run(1.5f)
