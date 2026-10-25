@@ -312,6 +312,11 @@ Walking out of the house puts you on the next level to play (not back on the hou
   LOOK tilts up and down, and you can **PLACE** and **BREAK** blocks (planks, stone, brick, glass, grass,
   wool, gold and diamond; up to 300 per floor). Your furniture, plushie shelves and Pokemon are there too.
   UP/DOWN change floors, and **2D** goes back.
+* **152 decorations** in the shop's DECOR and YARD tabs (76 new ones!): bunk beds, a pinball machine, a robot
+  butler, an aquarium wall, bean bags, a piano, a harp, a drum set, a dino skeleton, a DJ booth, a ball pit, a
+  blanket fort, a fireplace, a disco ball, pictures and rugs... and outside a treehouse, a zip line, a water
+  slide, a hot tub, a windmill, a fountain, a rocket launch pad, a Dash statue, a chicken coop, a greenhouse
+  and more.
 
 ![The house in 3D](docs/teamup-house-3d.png)
 
