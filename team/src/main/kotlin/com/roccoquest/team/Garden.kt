@@ -160,11 +160,26 @@ class Garden(private val g: TeamGame) {
         }
         gfx.rect(ox, Homes.FLOOR_Y - 40f, WIDTH, 3f, 0xFFE4E4E4.toInt())
         gfx.rect(ox, Homes.FLOOR_Y - 26f, WIDTH, 3f, 0xFFE4E4E4.toInt())
-        // The back door of the house
+        drawBackDoor(gfx, ox)
+        drawSeedStand(gfx, ox)
+        for (i in 0 until PLOTS) {
+            val px = ox + plotX(i)
+            if (px < -60f || px > viewW + 10f) continue
+            drawPlot(gfx, i, ox, t)
+        }
+        drawYardSign(gfx, ox)
+        drawPicnic(gfx, ox)
+    }
+
+    /** The back door of the house. */
+    fun drawBackDoor(gfx: Gfx, ox: Float) {
         gfx.rect(ox + DOOR_X - 10f, Homes.FLOOR_Y - 90f, 60f, 90f, 0xFFC8A070.toInt())
         gfx.rect(ox + DOOR_X + 4f, Homes.FLOOR_Y - 52f, 22f, 52f, 0xFF7A4A20.toInt())
         gfx.oval(ox + DOOR_X + 20f, Homes.FLOOR_Y - 28f, 3f, 3f, 0xFFFFD21F.toInt())
-        // The seed stand
+    }
+
+    /** The seed stand. */
+    fun drawSeedStand(gfx: Gfx, ox: Float) {
         val sx = ox + SEEDS_X
         gfx.rect(sx, Homes.FLOOR_Y - 30f, 70f, 30f, 0xFF8A5A2A.toInt())
         gfx.rect(sx - 4f, Homes.FLOOR_Y - 58f, 78f, 8f, 0xFFE84A4A.toInt())
@@ -177,22 +192,30 @@ class Garden(private val g: TeamGame) {
         }
         gfx.shadowText("SEEDS", sx + 35f, Homes.FLOOR_Y - 34f, 7f, 0xFFFFF2C8.toInt(), 1)
         gfx.text("in hand: ${seed.label}", sx + 35f, Homes.FLOOR_Y + 8f, 5.5f, 0xFF1E3A1E.toInt(), 1)
-        // The plots
-        for (i in 0 until PLOTS) {
+    }
+
+    /** Plot [i] and whatever is growing in it. */
+    fun drawPlot(gfx: Gfx, i: Int, ox: Float, t: Float) {
+        run {
             val px = ox + plotX(i)
-            if (px < -60f || px > viewW + 10f) continue
             gfx.oval(px - 2f, Homes.FLOOR_Y - 6f, PLOT_W + 4f, 14f, 0xFF5A3A1A.toInt())
             gfx.oval(px + 2f, Homes.FLOOR_Y - 4f, PLOT_W - 4f, 9f, if (wetT[i] > 0f) 0xFF3A2410.toInt() else 0xFF7A5030.toInt())
             val k = kind[i]
             if (k >= 0) drawPlant(gfx, Crop.entries[k], px + PLOT_W / 2, Homes.FLOOR_Y - 1f, growth[i], t + i)
             if (wetT[i] > 0f && (t * 3 + i).toInt() % 4 == 0) gfx.oval(px + PLOT_W / 2 + 6f, Homes.FLOOR_Y - 10f, 3f, 4f, 0xCC6AC8FF.toInt())
         }
-        // The picnic blanket and basket
-        // The sign for the backyard
+    }
+
+    /** The sign for the backyard. */
+    fun drawYardSign(gfx: Gfx, ox: Float) {
         val sx2 = ox + YARD_X - 24f
         gfx.rect(sx2 + 8, Homes.FLOOR_Y - 34f, 3f, 34f, 0xFF7A4A20.toInt())
         gfx.rect(sx2 - 14, Homes.FLOOR_Y - 48f, 48f, 16f, 0xFFF4E8C8.toInt())
         gfx.text("BACKYARD >", sx2 + 10, Homes.FLOOR_Y - 37f, 5.5f, 0xFF2A1808.toInt(), 1)
+    }
+
+    /** The picnic blanket and basket. */
+    fun drawPicnic(gfx: Gfx, ox: Float) {
         val bx = ox + PICNIC_X
         gfx.oval(bx - 6f, Homes.FLOOR_Y + 2f, 72f, 18f, 0xFFE84A4A.toInt())
         for (k in 0 until 4) gfx.rect(bx + 4f + k * 14f, Homes.FLOOR_Y + 4f, 6f, 14f, 0x88FFFFFF.toInt())

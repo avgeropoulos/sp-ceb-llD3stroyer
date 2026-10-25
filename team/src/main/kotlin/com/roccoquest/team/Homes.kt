@@ -114,8 +114,8 @@ object Homes {
     const val MON_X = 192f
     /** How tall each extra floor looks from outside. */
     const val STORY_H = 26f
-    /** Houses can have up to 4 floors. */
-    const val MAX_FLOORS = 4
+    /** Houses can have up to 10 floors (and a roof on top). */
+    const val MAX_FLOORS = 10
     /** Where the stairs are (at the right end of the room). */
     const val STAIRS_X = 870f
 
@@ -128,15 +128,17 @@ object Homes {
     fun drawHouse(gfx: Gfx, type: HouseType, x: Float, bottom: Float, t: Float, paint: Int = 0, floors: Int = 1) {
         // Painted houses really are painted: walls and roof turn the new color, but keep their light and shadow.
         val pg = if (paint != 0) PaintGfx(gfx, paint) else gfx
-        // Extra floors stack under the house, each with two windows.
-        val lift = (floors - 1) * STORY_H
+        // Extra floors stack under the house, each with two windows (tall houses squeeze them a little).
+        val storyH = storyHeight(floors)
+        val lift = (floors - 1) * storyH
+        val wh = minOf(12f, storyH - 4f)
         for (k in 0 until floors - 1) {
-            val sy = bottom - (k + 1) * STORY_H
-            pg.rect(x, sy, 72f, STORY_H, 0xFFD8C8A8.toInt())
+            val sy = bottom - (k + 1) * storyH
+            pg.rect(x, sy, 72f, storyH, 0xFFD8C8A8.toInt())
             pg.rect(x, sy, 72f, 2f, 0xFFA89878.toInt())
             for (wx in listOf(x + 28, x + 50)) {
-                gfx.rect(wx, sy + 6, 14f, 12f, 0xFF5A3A1A.toInt())
-                gfx.rect(wx + 1.5f, sy + 7.5f, 11f, 9f, 0xFFFFE8A0.toInt())
+                gfx.rect(wx, sy + (storyH - wh) / 2 + 1f, 14f, wh, 0xFF5A3A1A.toInt())
+                gfx.rect(wx + 1.5f, sy + (storyH - wh) / 2 + 2.5f, 11f, wh - 3f, 0xFFFFE8A0.toInt())
             }
         }
         drawHouseBody(pg, type, x, bottom - lift, t)
@@ -148,6 +150,9 @@ object Homes {
             gfx.oval(x + 6, bottom - 24, 14f, 26f, 0xFF4A6A8A.toInt())
         }
     }
+
+    /** How tall each extra floor looks from outside: up to 4 floors full size, then squeezed so 10 still fit. */
+    fun storyHeight(floors: Int) = if (floors <= 4) STORY_H else 3 * STORY_H / (floors - 1) + 4f
 
     private fun drawHouseBody(gfx: Gfx, type: HouseType, x: Float, bottom: Float, t: Float) {
         val top = bottom - 40
@@ -1029,11 +1034,11 @@ object Homes {
         gfx.oval(x + 36, floorY - 32, 5f, 5f, 0xFFE8E8F0.toInt())
     }
 
-    fun drawBuildSign(gfx: Gfx, x: Float) {
+    fun drawBuildSign(gfx: Gfx, x: Float, line2: String = "UPSTAIRS") {
         gfx.rect(x + 3f, FLOOR_Y - 40f, 4f, 40f, 0xFF8A5A2A.toInt())
         gfx.rect(x - 28f, FLOOR_Y - 52f, 56f, 24f, 0xFFFFD21F.toInt())
         gfx.text("BUILD", x, FLOOR_Y - 42f, 7f, 0xFF2A1808.toInt(), 1)
-        gfx.text("UPSTAIRS", x, FLOOR_Y - 32f, 6f, 0xFF2A1808.toInt(), 1)
+        gfx.text(line2, x, FLOOR_Y - 32f, 6f, 0xFF2A1808.toInt(), 1)
     }
 
     /** Stairs at the end of the room, to go up (or down) a floor. */

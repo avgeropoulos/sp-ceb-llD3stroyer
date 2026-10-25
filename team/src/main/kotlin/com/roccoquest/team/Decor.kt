@@ -47,11 +47,15 @@ enum class DecorItem(val label: String, val coins: Int, val w: Float, val yard: 
     MAILBOX("MAILBOX", 15, 14f, true),
 }
 
-/** One decoration that's been put down: [floor] is a floor of the house, or [YARD]. */
+/** One decoration that's been put down: [floor] is a floor of the house, the [Decor.YARD] or the [Decor.ROOF]. */
 class Placed(val item: DecorItem, var x: Float, var floor: Int)
 
 object Decor {
-    const val YARD = 9
+    /** Not house floors (those are 0-9). Old saves (before 10 floors) used 9 for the yard: see [unpack]. */
+    const val YARD = 20
+    const val ROOF = 21
+    /** True for the places outside (backyard things go there). */
+    fun outside(floor: Int) = floor == YARD || floor == ROOF
     /** Most decorations you can have out at once (saves stay small). */
     const val MAX = 120
     private const val INK = 0xFF1A1420.toInt()
@@ -59,11 +63,12 @@ object Decor {
     /** Saved as one number: item + x * 128 + floor * 128 * 8192 (plus 1, so 0 means "nothing"). */
     private const val FLOOR_STEP = 128 * 8192
     fun pack(p: Placed) = 1 + p.item.ordinal + p.x.toInt().coerceIn(0, 8191) * 128 + p.floor * FLOOR_STEP
-    fun unpack(v: Int): Placed? {
+    fun unpack(v: Int, oldSave: Boolean = false): Placed? {
         if (v <= 0) return null
         val n = v - 1
         val item = DecorItem.entries.getOrNull(n % 128) ?: return null
-        return Placed(item, ((n % FLOOR_STEP) / 128).toFloat(), n / FLOOR_STEP)
+        val floor = n / FLOOR_STEP
+        return Placed(item, ((n % FLOOR_STEP) / 128).toFloat(), if (oldSave && floor == 9) YARD else floor)
     }
 
     /** Draws [d] standing on the ground at [fy], its left edge at [x]. Wall things hang at the usual height. */

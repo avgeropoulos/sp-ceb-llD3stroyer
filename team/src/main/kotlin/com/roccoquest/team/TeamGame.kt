@@ -212,6 +212,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     val garden = Garden(this)
     var inGarden = false
         private set
+    /** Up on the ROOF (the ladder at the end of the top floor), looking out over the city. */
+    var onRoof = false
+        private set
+    private var fireworksT = 0f
     /** The BABY MACHINE turned everyone into babies (toggle it back at the machine). */
     var babyMode = false
     /** The house has an elevator (it goes to every floor and the backyard). */
@@ -619,6 +623,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         storage.save(key("scenesSeen"), scenesSeen)
         storage.save(key("decorN"), decor.size)
         decor.forEachIndexed { i, d -> storage.save(key("decor_$i"), Decor.pack(d)) }
+        storage.save(key("decorV"), 2)
         garden.save()
         storage.save(key("bow"), bow.ordinal)
         for (f in Furniture.entries) storage.save(key("fpos${f.ordinal}"), furnPos[f.ordinal])
@@ -755,7 +760,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
         }
         decor.clear()
-        for (i in 0 until storage.load(key("decorN")).coerceIn(0, Decor.MAX)) Decor.unpack(storage.load(key("decor_$i")))?.let { decor += it }
+        val oldDecor = storage.load(key("decorV")) < 2
+        for (i in 0 until storage.load(key("decorN")).coerceIn(0, Decor.MAX)) Decor.unpack(storage.load(key("decor_$i")), oldDecor)?.let { decor += it }
     }
 
     // ---------------------------------------------------------------- Safety copies: erased saves can be recovered
@@ -807,6 +813,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         for (f in Furniture.entries) storage.save(key("fpos${f.ordinal}", s), 0)
         // Old block entries are ignored once the per-floor count is cleared.
         for (floor in 0 until Homes.MAX_FLOORS) storage.save(key("b3d${floor}n", s), 0)
+        storage.save(key("b3dyardn", s), 0); storage.save(key("b3droofn", s), 0)
         // Every world's beaten levels (the list above only knew the first ones).
         for (w in 0 until worldCount()) storage.save(key(clearedKey(w), s), 0)
         for (f in 0 until Homes.MAX_FLOORS) storage.save(key("bld${f}n", s), 0)
@@ -856,6 +863,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         theater = false
         Style.rocco = RoccoOutfit.CLASSIC; Style.blocky = BlockySkin.CLASSIC; Style.monCostume = null
         inGarden = false
+        onRoof = false
         plushOwned.fill(false)
         bedsOwned = 0
         bedStyle = BedStyle.RED
@@ -4173,6 +4181,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     fun enterHome() {
         homeFloor = 0
+        onRoof = false
+        inGarden = false
         decorating = false
         carrying = null
         homeShop = false
@@ -4204,7 +4214,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (x < Homes.DOOR_X + 36f) return if (homeFloor == 0) (if (carrying != null) null else "EXIT") else "DOWNSTAIRS"
         if (hasElevator && !decorating && x >= Homes.STAIRS_X + 2f) return "ELEVATOR"
         if (upstairs) return "UPSTAIRS"
-        if (!decorating && houseFloors < Homes.MAX_FLOORS && x >= Homes.STAIRS_X + 2f) return "BUILD STAIRS"
+        if (!decorating && x >= Homes.STAIRS_X + 2f) return "ROOF"
         if (decorating) return if (carrying != null || carryingDecor != null) "PLACE" else if (furnitureAt(x) != null || decorAt(x) != null) "MOVE" else null
         if (homeFloor == 0) when {
             x in (Homes.SHOP_X - 4f)..(Homes.SHOP_X + 72f) -> return "SHOP"
@@ -4267,13 +4277,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         house3d.enter()
         TeamControls.mode3d = true
         sfx(Sound.PORTAL)
-        toast("3D HOUSE! Arrows walk and turn, PLACE and BREAK blocks. Tap 2D to go back.")
+        toast("3D! Arrows walk and turn, PLACE and BREAK blocks. Tap 2D to go back.")
     }
 
     fun exit3d() {
         home3d = false
         TeamControls.mode3d = false
-        homeX = (house3d.x * House3D.PX).coerceIn(Homes.DOOR_X + 40f, Homes.ROOM_W - 30f)
+        homeX = (house3d.x * House3D.PX).coerceIn(Homes.DOOR_X + 40f, (if (inGarden) Garden.WIDTH else Homes.ROOM_W) - 30f)
         sfx(Sound.KICK)
     }
 
@@ -4319,7 +4329,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val w = Homes.width(f)
         val layer = Homes.layer(f)
         if (x < 0f || x + w > Homes.ROOM_W) return false
-        if (Homes.blocked(floor, layer, hasBed(), houseFloors > floor + 1).any { x + w > it.start && x < it.endInclusive }) return false
+        if (Homes.blocked(floor, layer, hasBed(), true).any { x + w > it.start && x < it.endInclusive }) return false
         return Furniture.entries.none { g ->
             g != f && hasFurniture(g) && Homes.movable(g) && furnFloor(g) == floor && Homes.layer(g) == layer &&
                 x + w - 2f > furnX(g) && x + 2f < furnX(g) + Homes.width(g)
@@ -4462,7 +4472,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     // ---------------------------------------------------------------- Decorations (DECOR and YARD shop tabs)
 
     /** Where you are: a floor of the house, or the backyard. */
-    private fun hereFloor() = if (inGarden) Decor.YARD else homeFloor
+    private fun hereFloor() = if (inGarden) Decor.YARD else if (onRoof) Decor.ROOF else homeFloor
 
     private fun decorAt(x: Float): Placed? = decor
         .filter { it !== carryingDecor && it.floor == hereFloor() && x in it.x..(it.x + it.item.w) }
@@ -4472,9 +4482,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     fun decorFits(d: DecorItem, x: Float, floor: Int, ignore: Placed? = null): Boolean {
         if (floor == Decor.YARD) {
             if (x < Garden.YARD_X || x + d.w > Garden.WIDTH - 10f) return false
+        } else if (floor == Decor.ROOF) {
+            if (x < Roof.DECOR_MIN_X || x + d.w > Roof.DECOR_MAX_X) return false
         } else {
             if (x < 0f || x + d.w > Homes.ROOM_W) return false
-            if (Homes.blocked(floor, d.layer, hasBed(), houseFloors > floor + 1 || hasElevator).any { x + d.w > it.start && x < it.endInclusive }) return false
+            if (Homes.blocked(floor, d.layer, hasBed(), true).any { x + d.w > it.start && x < it.endInclusive }) return false
             if (Furniture.entries.any { g -> hasFurniture(g) && Homes.movable(g) && furnFloor(g) == floor && Homes.layer(g) == d.layer && x + d.w - 2f > furnX(g) && x + 2f < furnX(g) + Homes.width(g) }) return false
         }
         return decor.none { o -> o !== ignore && o.floor == floor && o.item.layer == d.layer && x + d.w - 2f > o.x && x + 2f < o.x + o.item.w }
@@ -4492,16 +4504,17 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     fun buyDecor(d: DecorItem) {
         if (coins < d.coins) { needToast(emptyList(), d.coins); return }
         if (decor.size >= Decor.MAX) { sfx(Sound.BUMP); toast("That's a LOT of decorations! Move some around instead."); return }
-        val floor = if (d.yard) Decor.YARD else if (inGarden) 0 else homeFloor
+        val floor = if (d.yard) (if (onRoof) Decor.ROOF else Decor.YARD) else if (inGarden || onRoof) houseFloors - 1 else homeFloor
         val near = if (floor == hereFloor()) homeX else if (floor == Decor.YARD) Garden.YARD_X + 60f else 300f
         val x = freeSpot(d, floor, near)
-        if (x == null) { sfx(Sound.BUMP); toast("No room for the ${d.label} ${if (floor == Decor.YARD) "in the backyard" else "on this floor"}!"); return }
+        if (x == null) { sfx(Sound.BUMP); toast("No room for the ${d.label} ${when (floor) { Decor.YARD -> "in the backyard"; Decor.ROOF -> "on the roof"; else -> "on this floor" }}!"); return }
         coins -= d.coins
         decor += Placed(d, x, floor)
         sfx(Sound.POWERUP)
         toast(when {
             floor == Decor.YARD && !inGarden -> "New ${d.label}! It's out in the BACKYARD (GARDEN button, then walk right)."
             floor == Decor.YARD -> "New ${d.label} in the backyard!"
+            floor == Decor.ROOF -> "New ${d.label} up on the roof!"
             else -> "New ${d.label}! Use DECORATE to move it anywhere."
         })
         save()
@@ -4516,8 +4529,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     private fun placeDecor(at: Float) {
         val d = carryingDecor ?: return
-        if (d.item.yard != (hereFloor() == Decor.YARD)) {
-            sfx(Sound.BUMP); toast(if (d.item.yard) "The ${d.item.label} goes outside in the backyard!" else "The ${d.item.label} goes inside the house!"); return
+        if (d.item.yard != Decor.outside(hereFloor())) {
+            sfx(Sound.BUMP); toast(if (d.item.yard) "The ${d.item.label} goes outside (backyard or roof)!" else "The ${d.item.label} goes inside the house!"); return
         }
         val x = (at - d.item.w / 2).toInt().toFloat()
         if (!decorFits(d.item, x, hereFloor(), d)) { sfx(Sound.BUMP); toast("No room for the ${d.item.label} here! Try another spot."); return }
@@ -4539,14 +4552,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         carryingDecor?.let { d ->
             val fx = homeX - d.item.w / 2
             Decor.draw(gfx, d.item, fx + ox, Homes.FLOOR_Y, time)
-            val ok = d.item.yard == (floor == Decor.YARD) && decorFits(d.item, fx.toInt().toFloat(), floor, d)
+            val ok = d.item.yard == Decor.outside(floor) && decorFits(d.item, fx.toInt().toFloat(), floor, d)
             gfx.rect(fx + ox, Homes.FLOOR_Y - 4f, d.item.w, 4f, if (ok) 0xCC3CE070.toInt() else 0xCCFF4A4A.toInt())
         }
     }
 
     /** Fun things to do with backyard decorations. */
-    private fun yardTarget(x: Float): String? {
-        val d = decor.firstOrNull { it.floor == Decor.YARD && x in (it.x - 6f)..(it.x + it.item.w + 6f) } ?: return null
+    private fun yardTarget(x: Float, floor: Int = Decor.YARD): String? {
+        val d = decor.firstOrNull { it.floor == floor && x in (it.x - 6f)..(it.x + it.item.w + 6f) } ?: return null
         return when (d.item) {
             DecorItem.KIDDIE_POOL, DecorItem.ROUND_POOL, DecorItem.BIG_POOL, DecorItem.SLIDE_POOL, DecorItem.LAZY_RIVER, DecorItem.POND -> "SWIM"
             DecorItem.HOT_SPRING -> "RELAX"
@@ -4575,6 +4588,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             "LOOK" -> { plushBook = true; sfx(Sound.KICK) }
             "PLAY" -> playClaw()
             "BUILD STAIRS" -> openFloorShop()
+            "ROOF" -> enterRoof()
             "UPSTAIRS" -> changeFloor(homeFloor + 1)
             "ELEVATOR" -> { elevatorMenu = true; sfx(Sound.COIN); sound.say("Ding!") }
             "DOWNSTAIRS" -> changeFloor(homeFloor - 1)
@@ -4771,7 +4785,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         homeX = if (up) Homes.DOOR_X + 42f else Homes.STAIRS_X - 12f
         homeFacing = if (up) 1 else -1
         sfx(Sound.KICK)
-        toast(if (f == 0) "Back downstairs." else "FLOOR ${f + 1}: " + when (f) { 1 -> "the playroom!"; 2 -> "the big room!"; else -> "the sky room!" })
+        toast(if (f == 0) "Back downstairs." else "FLOOR ${f + 1}: " + FLOOR_NAMES.getOrElse(f) { "way up high!" } +
+            if (f == houseFloors - 1) " (The ladder on the right goes up to the ROOF.)" else "")
     }
 
     /** The BABY MACHINE: ZAP! Everyone is a baby (zap again to grow back up). */
@@ -4806,8 +4821,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         when (houseFloors) {
             1 -> listOf(Ore.STONE to 12, Ore.IRON to 4) to 150
             2 -> listOf(Ore.STONE to 20, Ore.GOLD to 5) to 300
-            else -> listOf(Ore.STONE to 20, Ore.DIAMOND to 2) to 500
+            3 -> listOf(Ore.STONE to 20, Ore.DIAMOND to 2) to 500
+            // Skyscraper floors: each one a bit more.
+            else -> listOf(Ore.STONE to 25, Ore.GOLD to houseFloors, Ore.DIAMOND to houseFloors / 2) to 500 + (houseFloors - 3) * 200
         }
+
+    private val FLOOR_NAMES = listOf("downstairs", "the playroom!", "the big room!", "the sky room!", "the cloud room!",
+        "the bird's nest!", "the airplane level!", "the rainbow room!", "the star room!", "the very top floor!")
 
     fun buyFloor() {
         if (houseFloors >= Homes.MAX_FLOORS) { toast("Your house is as tall as it can be!"); return }
@@ -4817,7 +4837,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         coins -= c
         houseFloors++
         sfx(Sound.POWERUP)
-        toast("FLOOR $houseFloors built! Take the stairs (on the right) up to decorate it.")
+        toast("FLOOR $houseFloors built! Take the stairs (on the right) up to decorate it." + if (houseFloors == Homes.MAX_FLOORS) " Your house is a SKYSCRAPER!" else "")
         save()
     }
 
@@ -4838,37 +4858,44 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     /** The elevator's buttons: every floor, the backyard, and BUILD if the house can get taller. */
     private fun elevatorStops(): List<Pair<String, () -> Unit>> =
         (0 until houseFloors).map { f -> "${f + 1}F" to { elevatorMenu = false; if (f != homeFloor) { changeFloor(f); homeX = Homes.STAIRS_X - 12f; homeFacing = -1 } } } +
-            listOf("YARD" to { elevatorMenu = false; enterGarden() }) +
+            listOf("ROOF" to { elevatorMenu = false; enterRoof() }, "YARD" to { elevatorMenu = false; enterGarden() }) +
             (if (houseFloors < Homes.MAX_FLOORS) listOf("BUILD" to { elevatorMenu = false; openFloorShop() }) else emptyList())
 
-    private fun elevatorButtonX(i: Int, n: Int) = viewW / 2 - n * 48f / 2 + i * 48f + 4f
+    /** The elevator buttons go in rows of up to 7. */
+    private fun elevatorButtonX(i: Int, n: Int): Float { val per = minOf(n, 7); return viewW / 2 - per * 48f / 2 + (i % 7) * 48f + 4f }
+    private fun elevatorButtonY(i: Int) = 92f + (i / 7) * 40f
 
     private fun updateElevator(tapped: Boolean) {
         val stops = elevatorStops()
         if (nav.left) shopCursor = (shopCursor + stops.size - 1) % stops.size
         if (nav.right) shopCursor = (shopCursor + 1) % stops.size
+        if (nav.down && shopCursor + 7 < stops.size) shopCursor += 7
+        if (nav.up && shopCursor >= 7) shopCursor -= 7
         if (nav.a) { stops.getOrNull(shopCursor)?.second?.invoke(); sfx(Sound.COIN); return }
         if (nav.b) { elevatorMenu = false; return }
         if (!tapped || input.tapX < 0f) return
         for (i in stops.indices) {
             val bx = elevatorButtonX(i, stops.size)
-            if (input.tapX in bx..(bx + 40f) && input.tapY in 92f..126f) { stops[i].second(); sfx(Sound.COIN); return }
+            val by = elevatorButtonY(i)
+            if (input.tapX in bx..(bx + 40f) && input.tapY in by..(by + 34f)) { stops[i].second(); sfx(Sound.COIN); return }
         }
         elevatorMenu = false
     }
 
     private fun renderElevator(gfx: Gfx) {
         val stops = elevatorStops()
-        val w = stops.size * 48f + 16f
-        gfx.rect(viewW / 2 - w / 2, 62f, w, 74f, 0xEE2A2A34.toInt())
-        gfx.rect(viewW / 2 - w / 2 + 2, 64f, w - 4, 70f, 0xFF4A4A58.toInt())
+        val w = minOf(stops.size, 7) * 48f + 16f
+        val h = 74f + (stops.size - 1) / 7 * 40f
+        gfx.rect(viewW / 2 - w / 2, 62f, w, h, 0xEE2A2A34.toInt())
+        gfx.rect(viewW / 2 - w / 2 + 2, 64f, w - 4, h - 4, 0xFF4A4A58.toInt())
         gfx.shadowText("ELEVATOR: WHERE TO?", viewW / 2, 80f, 9f, 0xFFFFD21F.toInt(), 1)
         stops.forEachIndexed { i, (label, _) ->
             val bx = elevatorButtonX(i, stops.size)
+            val by = elevatorButtonY(i)
             val here = label == "${homeFloor + 1}F"
-            gfx.oval(bx, 92f, 40f, 34f, if (here) 0xFFFFD21F.toInt() else 0xFFE8E8F0.toInt())
-            gfx.text(label, bx + 20f, 113f, if (label.length > 3) 7f else 10f, 0xFF2A2A34.toInt(), 1)
-            if (padConnected && shopCursor == i) padFrame(gfx, bx - 2, 90f, 44f, 38f)
+            gfx.oval(bx, by, 40f, 34f, if (here) 0xFFFFD21F.toInt() else 0xFFE8E8F0.toInt())
+            gfx.text(label, bx + 20f, by + 21f, if (label.length > 3) 7f else 10f, 0xFF2A2A34.toInt(), 1)
+            if (padConnected && shopCursor == i) padFrame(gfx, bx - 2, by - 2f, 44f, 38f)
         }
     }
 
@@ -5293,7 +5320,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     private fun updateHome(dt: Float, tapped: Boolean, close: Boolean, actionE: Boolean) {
         if (close) {
-            when { home3d -> exit3d(); theater -> theater = false; elevatorMenu -> elevatorMenu = false; building -> toggleBuild(); inGarden -> leaveGarden(); monMenu && gamePick -> gamePick = false; monMenu && monSwitch -> monSwitch = false; monMenu -> monMenu = false; homeShop -> homeShop = false; plushBook -> plushBook = false; else -> leaveHome() }
+            when { home3d -> exit3d(); theater -> theater = false; elevatorMenu -> elevatorMenu = false; building -> toggleBuild(); inGarden -> leaveGarden(); onRoof && !homeShop -> leaveRoof(); monMenu && gamePick -> gamePick = false; monMenu && monSwitch -> monSwitch = false; monMenu -> monMenu = false; homeShop -> homeShop = false; plushBook -> plushBook = false; else -> leaveHome() }
             return
         }
         if (homeHopT > 0f) homeHopT -= dt
@@ -5313,6 +5340,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             return
         }
         if (inGarden) { updateGarden(dt, tapped, actionE); return }
+        if (onRoof) { updateRoof(dt, tapped, actionE); return }
         if (nav.up) { enterGarden(); return }
         if (nav.rb) { toggleDecorate(); return }
         if (nav.lb) { enter3d(); return }
@@ -5347,12 +5375,86 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     fun enterGarden() {
         if (decorating) toggleDecorate()
         if (building) toggleBuild()
+        onRoof = false
         inGarden = true
         homeFloor = 0
         homeX = Garden.DOOR_X + 44f
         homeFacing = 1
         sfx(Sound.KICK)
         toast("The GARDEN! Get SEEDS, PLANT them in the dirt, WATER them, then PICK!")
+    }
+
+    // ---------------------------------------------------------------- The ROOF
+
+    fun enterRoof() {
+        if (building) toggleBuild()
+        carrying?.let { sfx(Sound.BUMP); toast("Put the ${it.label} down first!"); return }
+        inGarden = false
+        onRoof = true
+        homeFloor = houseFloors - 1
+        homeX = Homes.STAIRS_X - 14f
+        homeFacing = -1
+        sfx(Sound.KICK)
+        toast("The ROOF! Look at the city! (Pools and yard things can go up here too.)")
+    }
+
+    fun leaveRoof() {
+        onRoof = false
+        homeFloor = houseFloors - 1
+        homeX = Homes.STAIRS_X - 12f
+        homeFacing = -1
+        sfx(Sound.KICK)
+    }
+
+    private fun roofTarget(): String? = when {
+        decorating -> if (carryingDecor != null) "PLACE" else if (decorAt(homeX) != null) "MOVE" else null
+        homeX >= Homes.STAIRS_X - 10f -> "DOWNSTAIRS"
+        houseFloors < Homes.MAX_FLOORS && homeX in (Roof.SIGN_X - 30f)..(Roof.SIGN_X + 30f) -> "BUILD STAIRS"
+        homeX < Roof.SCOPE_X + 34f -> "TELESCOPE"
+        else -> yardTarget(homeX, Decor.ROOF)
+    }
+
+    private fun roofAction(t: String?) {
+        when (t) {
+            null -> {}
+            "DOWNSTAIRS" -> leaveRoof()
+            "BUILD STAIRS" -> openFloorShop()
+            "MOVE" -> pickUpDecor()
+            "PLACE" -> placeDecor(homeX)
+            "TELESCOPE" -> {
+                val what = Roof.SIGHTS.random()
+                sfx(Sound.ONEUP)
+                toast("Through the telescope you see... $what")
+                sound.sayAs("Whoa! I can see " + what.trimEnd('!'), Voice.HERO)
+                if (what.startsWith("the stadium") || Random.nextInt(3) == 0) fireworksT = 3f
+            }
+            else -> yardAction(t)
+        }
+    }
+
+    private fun updateRoof(dt: Float, tapped: Boolean, actionE: Boolean) {
+        if (fireworksT > 0f) fireworksT -= dt
+        if (nav.rb) { toggleDecorate(); return }
+        if (nav.lb) { enter3d(); return }
+        if (tapped && input.tapX >= 0f && input.tapY < 22f && stateT > 0.2f) {
+            if (input.tapX in (viewW - 176f)..(viewW - 126f)) { leaveRoof(); return }
+            if (input.tapX > viewW - 84f) { toggleDecorate(); return }
+            if (input.tapX in (viewW - 122f)..(viewW - 88f)) { enter3d(); return }
+            if (input.tapX in (viewW - 214f)..(viewW - 180f)) { homeShop = true; shopTab = SHOP_TABS.indexOf("YARD"); shopPage = 0; sfx(Sound.KICK); return }
+        }
+        if (nav.a) { roofAction(roofTarget()); return }
+        val speed = 110f
+        if (input.left) { homeX -= speed * dt; homeFacing = -1; homeAnim += dt }
+        if (input.right) { homeX += speed * dt; homeFacing = 1; homeAnim += dt }
+        homeX = homeX.coerceIn(Homes.DOOR_X + 14f, Homes.ROOM_W - 20f)
+        if (actionE) { roofAction(roofTarget()); return }
+        if (!tapped || stateT < 0.3f || input.tapX < 0f) return
+        if (input.tapY in 30f..(Homes.FLOOR_Y + 4f)) {
+            val old = homeX
+            homeX = (input.tapX + homeCam()).coerceIn(Homes.DOOR_X + 14f, Homes.ROOM_W - 20f)
+            val t = roofTarget()
+            if (t != null && !(input.left || input.right)) roofAction(t) else homeX = old
+        }
     }
 
     fun leaveGarden() {
@@ -5363,7 +5465,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     /** What the action button does where you're standing (in the house or the garden). */
-    private fun hereTarget(): String? = if (inGarden) gardenTarget() else homeTarget()
+    private fun hereTarget(): String? = if (inGarden) gardenTarget() else if (onRoof) roofTarget() else homeTarget()
 
     /** What the action button does in the garden or backyard. */
     private fun gardenTarget(): String? = when {
@@ -5386,7 +5488,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun updateGarden(dt: Float, tapped: Boolean, actionE: Boolean) {
         if (nav.up) { leaveGarden(); return }
         if (nav.rb) { toggleDecorate(); return }
+        if (nav.lb) { enter3d(); return }
         if (tapped && input.tapX >= 0f && input.tapY < 22f && stateT > 0.2f) {
+            if (input.tapX in (viewW - 122f)..(viewW - 88f)) { enter3d(); return }
             if (input.tapX in (viewW - 176f)..(viewW - 126f)) { leaveGarden(); return }
             if (input.tapX > viewW - 84f) { toggleDecorate(); return }
             if (input.tapX in (viewW - 214f)..(viewW - 180f)) { homeShop = true; shopTab = SHOP_TABS.indexOf("YARD"); shopPage = 0; sfx(Sound.KICK); return }
@@ -5516,7 +5620,15 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
         val cam = homeCam()
         val ox = -cam
-        if (inGarden) { garden.draw(gfx, ox, viewW, VIEW_H, time); drawDecor(gfx, ox, Decor.YARD) } else drawRoomInside(gfx, ox)
+        when {
+            inGarden -> { garden.draw(gfx, ox, viewW, VIEW_H, time); drawDecor(gfx, ox, Decor.YARD) }
+            onRoof -> {
+                Roof.draw(gfx, ox, viewW, VIEW_H, time, houseFloors, fireworksT)
+                drawDecor(gfx, ox, Decor.ROOF)
+                if (decorating) gfx.shadowText(if (carryingDecor != null) "Walk to a spot and tap PLACE" else "DECORATING: walk to a decoration and tap MOVE", viewW / 2, 34f, 7f, 0xFFFFE14D.toInt(), 1)
+            }
+            else -> drawRoomInside(gfx, ox)
+        }
         // You (and your Pokemon) walking around.
         drawHomeHero(gfx, ox)
         val target = hereTarget()
@@ -5526,10 +5638,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
         // Top bar
         gfx.rect(0f, 0f, viewW, 22f, 0xCC1A1008.toInt())
-        gfx.shadowText(if (inGarden) "MY GARDEN" else "MY ${houseType.label}" + if (houseFloors > 1) " ${homeFloor + 1}F" else "", 8f, 15f, 9f, 0xFFFFD21F.toInt())
+        gfx.shadowText(if (inGarden) "MY GARDEN" else if (onRoof) "ON THE ROOF" else "MY ${houseType.label}" + if (houseFloors > 1) " ${homeFloor + 1}F" else "", 8f, 15f, 9f, 0xFFFFD21F.toInt())
         gfx.sprite(com.roccoquest.game.Sprites.coin, 120f, 5f, w = 8f, h = 11f)
         gfx.shadowText("x$coins", 130f, 15f, 8f, white)
-        if (!inGarden) {
+        if (!inGarden && !onRoof) {
             gfx.rect(viewW - 254f, 2f, 38f, 18f, if (building) 0xFFF4C83A.toInt() else 0xFF8A6A3A.toInt())
             gfx.text(if (building) "DONE" else "BUILD", viewW - 235f, 15f, 7f, if (building) 0xFF2A1808.toInt() else white, 1)
         }
@@ -5541,13 +5653,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             gfx.text(if (decorating) "DONE" else "DECORATE", viewW - 44f, 15f, 7.5f, white, 1)
         }
         gfx.rect(viewW - 176f, 2f, 50f, 18f, 0xFF5AB84A.toInt())
-        gfx.text(if (inGarden) "INSIDE" else "GARDEN", viewW - 151f, 15f, 7f, white, 1)
+        gfx.text(if (inGarden) "INSIDE" else if (onRoof) "DOWN" else "GARDEN", viewW - 151f, 15f, 7f, white, 1)
         if (!inGarden) {
             gfx.rect(viewW - 84f, 2f, 80f, 18f, if (decorating) 0xFFE8A82A.toInt() else 0xFF7A4A20.toInt())
             gfx.text(if (decorating) "DONE" else "DECORATE", viewW - 44f, 15f, 7.5f, white, 1)
-            gfx.rect(viewW - 122f, 2f, 34f, 18f, 0xFF2EB84A.toInt())
-            gfx.text("3D", viewW - 105f, 15f, 9f, white, 1)
         }
+        gfx.rect(viewW - 122f, 2f, 34f, 18f, 0xFF2EB84A.toInt())
+        gfx.text("3D", viewW - 105f, 15f, 9f, white, 1)
         if (babyZapT > 0f) {
             // The Baby Machine's zap: a flash of pink sparkles.
             gfx.rect(0f, 0f, viewW, VIEW_H, argb((babyZapT / 1.2f * 160).toInt().coerceIn(0, 255), 0xFFB8E0))
@@ -5572,7 +5684,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         drawBlocks(gfx, ox)
         if (hasElevator) Homes.drawElevator(gfx, ox + Homes.STAIRS_X - 8f, time)
         else if (houseFloors > homeFloor + 1) Homes.drawStairs(gfx, ox + Homes.STAIRS_X - 4f, true)
-        else if (houseFloors < Homes.MAX_FLOORS) Homes.drawBuildSign(gfx, ox + Homes.STAIRS_X)
+        else Roof.drawLadderUp(gfx, ox + Homes.STAIRS_X - 4f, Homes.FLOOR_Y)
         if (homeFloor == 0) Homes.drawShop(this, gfx, ox + Homes.SHOP_X, time)
         // Rugs first, then everything else, each wherever it was put.
         for (layerPass in listOf(2, 1, 0)) for (f in Furniture.entries) {

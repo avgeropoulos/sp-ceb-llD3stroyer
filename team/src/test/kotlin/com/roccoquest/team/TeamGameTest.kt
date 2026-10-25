@@ -67,6 +67,10 @@ class TeamGameTest {
                 File("build/screens").mkdirs()
                 ImageIO.write(image, "png", File("build/screens/teamup-build-upstairs.png"))
             }
+            // Up the ladder to the roof: the BUILD A FLOOR sign is up there.
+            input.action = true; game.update(dt); input.action = false; game.update(dt)
+            assertTrue(game.onRoof, "ladder goes to the roof: $type")
+            walkHomeTo(Roof.SIGN_X)
             input.action = true; game.update(dt); input.action = false; game.update(dt)
             assertTrue(game.homeShop, "build sign opens shop: $type")
             assertEquals(3, game.shopTab)
@@ -651,6 +655,89 @@ class TeamGameTest {
         TeamControls.mode3d = false
     }
 
+    @Test fun tenFloorsAndTheRoofWithACityView() {
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 240 * 3, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f))
+            ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        startPlaying()
+        game.coins = 30000
+        Ore.entries.forEach { game.inventory[it.ordinal] = 400 }
+        goHome()
+        // An old save had its backyard things on "floor 9": they stay in the backyard.
+        game.slotSave("decorV", 0)
+        game.slotSave("decorN", 1)
+        game.slotSave("decor_0", 1 + DecorItem.GNOME.ordinal + 1000 * 128 + 9 * 128 * 8192)
+        game.continueGame(0)
+        assertEquals(Decor.YARD, game.decor.single().floor)
+        goHome()
+        game.coins = 30000
+        Ore.entries.forEach { game.inventory[it.ordinal] = 400 }
+        repeat(12) { game.buyFloor() }
+        assertEquals(Homes.MAX_FLOORS, game.houseFloors, "10 floors at most")
+        assertEquals(10, Homes.MAX_FLOORS)
+        // The ladder at the end of the top floor goes up to the roof.
+        repeat(9) { game.changeFloor(game.homeFloor + 1) }
+        assertEquals(9, game.homeFloor)
+        walkHomeTo(Homes.STAIRS_X + 8f)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        assertTrue(game.onRoof)
+        // Pools can go on the roof. Look through the telescope.
+        game.buyDecor(DecorItem.ROUND_POOL)
+        assertTrue(game.decor.any { it.item == DecorItem.ROUND_POOL && it.floor == Decor.ROOF })
+        walkHomeTo(Roof.SCOPE_X + 10f)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        run(0.5f)
+        shot("roof")
+        // In 3D: the roof with the city all around.
+        game.enter3d()
+        val h = game.house3d
+        h.x = 10f; h.z = 5f; h.yaw = 1.2f; h.pitch = -0.25f
+        h.blocks[h.key(12, 0, 5)] = Block3D.GOLD.ordinal
+        run(0.3f)
+        shot("roof-3d")
+        h.yaw = -1.6f
+        run(0.1f)
+        shot("roof-3d-back")
+        game.exit3d()
+        // Down the hatch, then the elevator has a ROOF button too.
+        walkHomeTo(Homes.STAIRS_X)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        assertFalse(game.onRoof)
+        assertEquals(9, game.homeFloor)
+        // The garden in 3D.
+        game.enterGarden()
+        walkHomeTo(400f)
+        game.enter3d()
+        h.x = 8f; h.z = 8f; h.yaw = -1.2f; h.pitch = -0.2f
+        run(0.3f)
+        shot("garden-3d")
+        h.x = 40f; h.yaw = -1.9f
+        run(0.1f)
+        shot("yard-3d")
+        h.blocks[h.key(60, 0, 3)] = Block3D.BRICK.ordinal
+        h.pitch = -0.7f
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        game.exit3d()
+        TeamControls.mode3d = false
+        // Everything is saved: floors, the roof pool and the backyard blocks (even far down the yard).
+        game.buyBed(BedStyle.RED)
+        game.sleepAtHome()
+        val g2 = TeamGame(TeamInput(), ears, storage)
+        g2.continueGame(0)
+        assertEquals(10, g2.houseFloors)
+        assertTrue(g2.decor.any { it.item == DecorItem.ROUND_POOL && it.floor == Decor.ROOF })
+        assertTrue(g2.decor.any { it.item == DecorItem.GNOME && it.floor == Decor.YARD })
+        g2.enterHome(); g2.enterGarden(); g2.enter3d()
+        assertTrue(g2.house3d.blocks.containsKey(g2.house3d.key(60, 0, 3)), "a block far down the yard is kept")
+        TeamControls.mode3d = false
+        // The map shows the tall house.
+        game.goToMap(-1); run(0.5f)
+        shot("map-skyscraper")
+    }
+
     @Test fun pokemonEvolveAndSwitchBack() {
         startPlaying()
         game.coins = 100
@@ -1060,7 +1147,8 @@ class TeamGameTest {
         assertTrue(game.air < full - 4f, "air goes down underwater")
         // A bubble from a vent fills it back up.
         run(2f)
-        val b = game.thingsForTest().filterIsInstance<Bubble>().firstOrNull()
+        val bubbles = game.thingsForTest().filterIsInstance<Bubble>().filter { game.inWater(it) }
+        val b = bubbles.filter { it.y > 60f }.minByOrNull { it.y } ?: bubbles.firstOrNull()
         assertNotNull(b, "vents make bubbles")
         val l = game.leader
         val low = game.air
@@ -2677,7 +2765,7 @@ class TeamGameTest {
         game.buyFurniture(Furniture.ARCADE)
         assertTrue(game.hasFurniture(Furniture.ARCADE))
         game.buyFloor(); game.buyFloor()
-        assertEquals(Homes.MAX_FLOORS, game.houseFloors, "3 floors at most")
+        assertEquals(4, game.houseFloors)
         // Walk up the stairs to the playroom and play the arcade: it's the Pokemon Park game.
         walkHomeTo(Homes.STAIRS_X + 8f)
         input.action = true; game.update(dt); input.action = false; game.update(dt)
@@ -2701,7 +2789,7 @@ class TeamGameTest {
         game.sleepAtHome()
         val g2 = TeamGame(TeamInput(), ears, storage)
         g2.continueGame(0)
-        assertEquals(Homes.MAX_FLOORS, g2.houseFloors)
+        assertEquals(4, g2.houseFloors)
         assertTrue(g2.hasFurniture(Furniture.ARCADE))
     }
 
