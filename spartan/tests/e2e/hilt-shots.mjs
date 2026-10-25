@@ -468,7 +468,11 @@ async function portraitPass(size) {
       console.log(`note ${tag} the Agoge has no '${id}' step yet (training.js, P9)`);
       continue;
     }
-    for (let i = 0; i < 20 && (await ev(() => window.__game.ctx.training.stepIndex)) < want; i++) await click('#training [data-act="skip"]');
+    for (let i = 0; i < 20 && (await ev(() => window.__game.ctx.training.stepIndex)) < want; i++) {
+      // The collapsed panel of the shield steps shows Skip once its head row is tapped (§E.5).
+      if (await ev(() => document.querySelector('#training').classList.contains('is-compact'))) await click('#training .tr-head');
+      await click('#training [data-act="skip"]');
+    }
     await settle(30);
     if (id === 'perfect') {
       let r = false;

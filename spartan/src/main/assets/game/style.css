@@ -2139,6 +2139,9 @@ input[type='range']::-moz-range-thumb {
     transform: none;
     padding: 6px 10px 7px;
   }
+  /* Tighter spacing in the head row, so "The overhead chop" fits beside its pips at 360 px. */
+  .tr-num { letter-spacing: 0.12em; }
+  .tr-title { font-size: 14px; letter-spacing: 0.1em; }
   .tr-tools { flex-wrap: wrap; row-gap: 6px; }
   .tr-gap { flex-basis: 0; }
   .tr-btn { min-height: 44px; padding: 0 12px; }

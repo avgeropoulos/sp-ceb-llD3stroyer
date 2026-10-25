@@ -332,9 +332,14 @@ try {
     await t.click('#training [data-act="ok"]');
     await t.step(90);
     check('confirm → calibrate (motion mode)', (await idx()) === 1 && /Calibrate/.test(await t.text('.tr-title')));
-    // Calibration: 5 slashes, median 7.5 → 1.20.
-    for (const peak of [6, 7, 7.5, 8, 30]) await t.ev((p) => window.__ui.emit('gesture', { type: 'slash', dir: 0, power: 0.6, peak: p, sweep: 0.5, t: 0 }), peak);
-    check('5 slashes → suggestion 1.20×', (await t.has('#training', 'is-calib')) && /1\.20×/.test(await t.text('.tr-calib-t')));
+    // Calibration counts swing candidates (slash or not) and aims the threshold at 60% of their
+    // median (CALIBRATION: 2.8 / 0.6 / median). 5 strokes 2 s apart, median 3.9 → 1.20; each is
+    // counted once the next has started, the last once 0.5 s have passed.
+    for (const [i, peak] of [3, 3.5, 3.9, 4.2, 12].entries()) {
+      await t.ev(([k, p]) => window.__ui.emit('swingCandidate', { type: 'swingCandidate', peak: p, sweep: 0.5, dir: 0, t0: 2 * k, t: 2 * k + 0.3 }), [i, peak]);
+    }
+    await t.step(40);
+    check('5 swing candidates → suggestion 1.20×', (await t.has('#training', 'is-calib')) && /1\.20×/.test(await t.text('.tr-calib-t')));
     await t.click('#training [data-act="apply"]');
     let s = await t.settings();
     check('Apply sets + saves sensitivity, tells gestures', s.sensitivity === 1.2 && (await t.ev(() => window.__ui.ctx.gestures.sens)) === 1.2);

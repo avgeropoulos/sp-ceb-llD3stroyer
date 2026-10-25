@@ -5,6 +5,10 @@
 //  - sources: 'inject' (g.injectMotion → platform queue, web-kind frames), 'android' (a fake
 //    window.SpartanNative whose pollMotion() returns CSV lines, android-kind frames), 'web'
 //    (DeviceMotionEvents dispatched on window, with screen.orientation.angle overridden).
+//  - grips: the window grip by default. openGame({ grip: 'hilt' }) seeds the stored settings, and
+//    R.arena({ grip: 'hilt' }) switches the running game (settings.grip + ctx.applyControls()) and
+//    reports portrait-primary (rotation 0) through the fake sources. Synthesize with hold: 'hilt'.
+//  - the fake bridge records haptics in window.__haptics: { t (virtual s), kind: 'pulse'|'pattern', v }.
 import { launch } from './lib.mjs';
 
 const INIT_ANDROID = () => {
@@ -12,6 +16,7 @@ const INIT_ANDROID = () => {
   window.__nativeQ = q;
   window.__nativeRot = 90;
   window.__nativeCalls = [];
+  window.__haptics = [];
   window.SpartanNative = {
     motionAvailable: () => true,
     startMotion: () => window.__nativeCalls.push('start'),
@@ -26,8 +31,8 @@ const INIT_ANDROID = () => {
       return due.slice(Math.max(0, due.length - 512)).map((e) => e.line).join('\n') + '\n';
     },
     motionInfo: () => '{"gyroRange":34.9,"accRange":78.4,"rateHz":100}',
-    vibrate: () => {},
-    vibratePattern: () => {},
+    vibrate: (ms, amp) => window.__haptics.push({ t: performance.now() / 1000, kind: 'pulse', v: `${ms},${amp}` }),
+    vibratePattern: (csv) => window.__haptics.push({ t: performance.now() / 1000, kind: 'pattern', v: String(csv) }),
     say: () => {},
     stopSpeech: () => {},
     rotation: () => window.__nativeRot,
@@ -60,7 +65,7 @@ function installHarness() {
   const brief = (name, e) => {
     if (!e || typeof e !== 'object') return {};
     const o = {};
-    for (const k of ['type', 'kind', 'dir', 'power', 'peak', 'sweep', 'src', 'weapon', 'phase', 'id', 'name', 'perfect', 'by', 'damage', 'timeToStrike', 'targetIsPlayer', 'mode', 'prev', 'up', 'cause', 'spear']) {
+    for (const k of ['type', 'kind', 'dir', 'power', 'peak', 'sweep', 'src', 'weapon', 'phase', 'id', 'name', 'perfect', 'by', 'damage', 'timeToStrike', 'targetIsPlayer', 'mode', 'prev', 'up', 'cause', 'spear', 'reason', 'fast']) {
       if (e[k] !== undefined && typeof e[k] !== 'object') o[k] = e[k];
     }
     if (e.target && typeof e.target === 'object') o.target = e.target.kind || e.target.role || 'obj';
@@ -69,7 +74,7 @@ function installHarness() {
     if (e.attacker && e.attacker.kind) o.attacker = e.attacker.kind;
     return o;
   };
-  const NAMES = ['gesture', 'swing', 'combo', 'hit', 'spearCam', 'block', 'playerHurt', 'enemyWindup', 'kill', 'spearImpact', 'weaponSwitch', 'modeChanged', 'shield', 'voice'];
+  const NAMES = ['gesture', 'swing', 'combo', 'hit', 'spearCam', 'block', 'playerHurt', 'enemyWindup', 'kill', 'spearImpact', 'weaponSwitch', 'modeChanged', 'shield', 'voice', 'lockOn', 'spearThrown'];
   for (const n of NAMES) ctx.events.on(n, (e) => log.push(Object.assign({ ev: n, t: +(vt / 1000).toFixed(4), gnow: +ctx.time.gnow.toFixed(4), frame: R.frameNo }, brief(n, e))));
 
   // web DeviceMotion feed: [{ t(sec, virtual), init }]
@@ -180,11 +185,25 @@ function installHarness() {
       R.frames(n, dt, each);
       return { start, dur, n };
     },
-    /** Clean arena: battle with no waves and no actors, player reset at the line. */
-    arena({ mode = 'battle', day = 1 } = {}) {
+    /**
+     * Clean arena: battle with no waves and no actors, player reset at the line.
+     * grip: 'hilt' | 'window' switches the grip first (settings.grip + ctx.applyControls()); the
+     * default keeps the stored one (the window grip, seeded by lib.mjs). The hilt grip runs in
+     * portrait-primary, so the fake android and web sources then report rotation 0.
+     */
+    arena({ mode = 'battle', day = 1, grip = null } = {}) {
       // headless Chromium has no gyroscope: the title screen's isSupported() probe reverts the
       // setting to touch. A phone with a gyro keeps 'motion'.
       ctx.settings.control = 'motion';
+      if (grip) {
+        ctx.settings.grip = grip;
+        ctx.settings.gripChosen = true;
+        if (grip === 'hilt') {
+          window.__nativeRot = 0;
+          window.__webRot = 0;
+        }
+        ctx.applyControls();
+      }
       if (mode === 'battle') g.startBattle(day);
       else g.startTraining();
       ctx.waves.stop();
@@ -215,12 +234,13 @@ function installHarness() {
 }
 
 /**
- * Opens the game. opts: { source: 'inject'|'android'|'web', query, width, height, mobile }.
+ * Opens the game. opts: { source: 'inject'|'android'|'web', query, width, height, mobile, grip }.
+ * grip seeds the stored settings (lib.mjs newPage): 'window' (default) or 'hilt'.
  * Returns { l, page, ev(fn, arg), close() } where ev runs fn(R, g, ctx, arg) in the page.
  */
-export async function openGame({ source = 'inject', query = '', width = 960, height = 540, mobile = true, l: shared } = {}) {
+export async function openGame({ source = 'inject', query = '', width = 960, height = 540, mobile = true, grip = 'window', l: shared } = {}) {
   const l = shared || (await launch());
-  const page = await l.newPage({ width, height, mobile });
+  const page = await l.newPage({ width, height, mobile, grip });
   if (source === 'android') await page.addInitScript(INIT_ANDROID);
   if (source === 'web') await page.addInitScript(INIT_WEB);
   await page.goto(`${l.game}?manual=1&seed=7&quality=low&control=motion${query ? `&${query}` : ''}`);
