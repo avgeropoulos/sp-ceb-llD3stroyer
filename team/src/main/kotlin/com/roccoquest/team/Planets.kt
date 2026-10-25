@@ -149,8 +149,9 @@ object PlanetArt {
         gfx.oval(px - 2f, 132f, 14f, 10f, pl.hill2)
         if (pl.extra == 2) gfx.poly(floatArrayOf(px - 40f, px + 40f, px + 36f, px - 36f), floatArrayOf(132f, 126f, 131f, 137f), 0xCCF4E0B0.toInt())
         val k = (t / 2.5f).coerceAtMost(1f)
-        val rx = 60f + (px - 100f) * k
-        val ry = 150f - sin(k * 3.14f) * 30f
+        // (It stays on the right side, clear of the heroes in the middle.)
+        val rx = px - 150f + 105f * k
+        val ry = 150f - sin(k * 3.14f) * 24f
         gfx.oval(rx - 22f, ry + 2f, 12f, 6f, 0xFFFF8A2A.toInt())
         gfx.rect(rx - 12f, ry, 22f, 10f, 0xFFF4F4F4.toInt())
         gfx.poly(floatArrayOf(rx + 10f, rx + 18f, rx + 10f), floatArrayOf(ry, ry + 5f, ry + 10f), 0xFFE84A4A.toInt())

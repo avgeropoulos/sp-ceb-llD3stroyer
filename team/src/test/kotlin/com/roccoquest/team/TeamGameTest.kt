@@ -967,6 +967,101 @@ class TeamGameTest {
         assertTrue(g2.ownsHouse(HouseType.entries[HouseType.CASTLE.ordinal + 1]))
     }
 
+    @Test fun dinoWorldCaptureEveryDinoAndRexKrag() {
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 240 * 3, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f))
+            ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        val w11 = WORLD_SIZE * 10
+        assertEquals("DINO VALLEY", Levels.all[w11].name)
+        startPlaying(w11)
+        // A free Cappy hat at the start.
+        val cap = game.thingsForTest().filterIsInstance<CappyPickup>().first()
+        val l = game.leader
+        l.x = cap.x; l.y = cap.y
+        run(0.3f) { game.hurtProof() }
+        assertEquals(Power.CAPPY, game.power)
+        shot("dino-world")
+        // Every dinosaur can be captured, and gives its own power.
+        val kinds = listOf(
+            Raptor(0f, 0f) to CaptureKind.RAPTOR, Triceratops(0f, 0f) to CaptureKind.TRICERA, Pterodactyl(0f, 0f) to CaptureKind.PTERO,
+            Stegosaurus(0f, 0f) to CaptureKind.STEGO, Ankylosaurus(0f, 0f) to CaptureKind.ANKYLO, BabyRex(0f, 0f) to CaptureKind.REX,
+        )
+        for ((d, k) in kinds) assertEquals(k, CaptureKind.of(d))
+        val rap = game.foes.filterIsInstance<Raptor>().firstOrNull() ?: Raptor(l.x + 30f, l.bottom).also { game.foes += it }
+        game.capture(rap)
+        assertEquals(CaptureKind.RAPTOR, game.captureKind)
+        run(0.5f) { game.hurtProof() }
+        shot("dino-captured-raptor")
+        game.releaseCapture()
+        // Every dino behaves for a while without crashing (and draws).
+        for (c in "()[]_`") {
+            startPlaying(w11)
+            game.foes.clear()
+            val f = spawnTestDino(c, l.x + 80f, l.bottom)
+            game.foes += f
+            run(3f) { game.hurtProof() }
+            val img = BufferedImage((game.viewW * 2).toInt(), 480, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 2f))
+        }
+        // REX KRAG: he roars waves and drops rocks, then goes down.
+        startPlaying(Levels.all.indexOfFirst { it.name == "REX KRAG" })
+        val b = game.foes.single { it is RexKrag }
+        game.foes.retainAll(setOf(b))
+        l.x = b.x - 140f; l.y = 120f
+        run(8f) { game.hurtProof() }
+        assertTrue(game.boss === b, "Rex Krag noticed us")
+        assertTrue(game.foes.any { it is ChordWave || it is Meteor }, "Rex Krag attacks")
+        shot("boss-rex-krag")
+        var t = 0f
+        while (game.state == TeamGame.State.PLAY && t < 60f) {
+            game.hurtProof()
+            if (!b.dying) b.hit(game, 5)
+            run(0.4f) { game.hurtProof() }
+            t += 0.4f
+        }
+        assertTrue(b.dying, "Rex Krag beaten")
+    }
+
+    private fun spawnTestDino(c: Char, x: Float, bottom: Float): Foe = when (c) {
+        '(' -> Raptor(x, bottom); ')' -> Triceratops(x, bottom); '[' -> Pterodactyl(x, bottom)
+        ']' -> Stegosaurus(x, bottom); '_' -> Ankylosaurus(x, bottom); else -> BabyRex(x, bottom)
+    }
+
+    @Test fun planetWorldRocketTripsAndGravity() {
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 240 * 3, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f))
+            ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        val w12 = WORLD_SIZE * 11
+        assertEquals(Place.MARS, Levels.all[w12].place)
+        val planets = Levels.all.drop(w12).map { it.place }.toSet()
+        assertTrue(planets.count { PlanetArt.planetOf(it) != null } >= 7, "7 planets")
+        startPlaying(w12)
+        game.startLevel(w12)
+        run(1.5f)
+        shot("planet-trip")
+        for (name in listOf("LIFT OFF TO MARS", "FROZEN PLANET", "CANDY PLANET", "ALIEN JUNGLE", "RING RIDE", "LAVA PLANET", "PRISM PATH")) {
+            startPlaying(Levels.all.indexOfFirst { it.name == name })
+            run(0.5f) { game.hurtProof() }
+            shot("planet-" + name.lowercase().replace(" ", "-"))
+        }
+        // Floaty on the ringed planet.
+        startPlaying(Levels.all.indexOfFirst { it.name == "RING RIDE" })
+        game.foes.clear()
+        val l = game.leader
+        val ground = l.bottom
+        var top = ground
+        input.jump = true
+        run(1.5f) { game.hurtProof(); top = minOf(top, l.bottom) }
+        input.jump = false
+        assertTrue(ground - top > 90f, "ring planet jump: ${ground - top}")
+    }
+
     @Test fun pokemonEvolveAndSwitchBack() {
         startPlaying()
         game.coins = 100
@@ -3372,8 +3467,8 @@ class TeamGameTest {
     }
 
     @Test fun fourWorldsAndNewEnemies() {
-        assertEquals(210, Levels.all.size)
-        assertEquals(10, worldCount())
+        assertEquals(252, Levels.all.size)
+        assertEquals(12, worldCount())
         val ultimate = Levels.all.first { it.name == "THE ULTIMATE BATTLE" }
         assertTrue(ultimate.rows.any { 'Z' in it } && ultimate.rows.any { 'Q' in it })
         for (c in "zqlj") assertTrue(Levels.all.count { d -> d.rows.any { c in it } } >= 3, "new monster $c is in levels")

@@ -45,7 +45,7 @@ Only one of Rocco or Blocky is out at a time, with the Pokemon (`TeamGame.team` 
 | `Sea.kt` | World 5 (levels 85-105: water, pirate ships, Rainbow Road), ship/mast/rainbow tiles (`I` `:` `%`), `Cannon` (`N`), `MetalItem` (`$`), Metal Rocco sprites, sea and space skies |
 | `MoreWorlds.kt` | Worlds 3 and 4 (levels 43-84) World 6 (Spooky World, levels 106-126, `world6`) and World 7 (Winter World, 127-147, `world7`), appended after World 5, built by a seeded level generator plus boss-arena templates. Last level: THE ULTIMATE BATTLE (Y, Q, Z boss rush) |
 | `Monsters.kt` | Newer monsters (Skelly Archer + arrows, Hopper, Gloop, Snapper + seeds, Crusher `z`, Peekaboo `q`, Puffcloud `l`, Spikestack `j`), bonus `Portal`, `Chest`, sunset sky, Dash |
-| `Homes.kt` | `HouseType` (23), `Furniture` (46: `floor` 0-3, `unlock` = levels beaten; `furnitureBits` is a Long saved as `furniture`+`furniture2`), floors (`MAX_FLOORS`, stairs at `STAIRS_X`), `PAINTS` (house colors), the Pokemon mat (`MON_X`), `BedStyle`, house outside/inside drawing (the room is 900 wide and scrolls), `PlushieItem` |
+| `Homes.kt` | `HouseType` (46; the newer 23 are drawn in `MoreHouses.kt`), `Furniture` (46: `floor` 0-3, `unlock` = levels beaten; `furnitureBits` is a Long saved as `furniture`+`furniture2`), floors (`MAX_FLOORS`, stairs at `STAIRS_X`), `PAINTS` (house colors), the Pokemon mat (`MON_X`), `BedStyle`, house outside/inside drawing (the room is 900 wide and scrolls), `PlushieItem` |
 | `Plushies.kt` | The 350 `Plushie`s (new ones always go at the END: saved by index) (characters use sticker art, animals are drawn from a `Species` + color) |
 | `Actors.kt` | `Power` (flowers), `Mon` (Pokemon), `Sword` (with durability), `Armor`, `Shield`, and `Hero` (Rocco, Blocky, partner) |
 | `Foes.kt` | Enemies with health bars, Krag Jr. and King Krag (normal, Wonder, Dry Bones) |
@@ -172,3 +172,16 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
   to `giftLevel` (start of World 7) with 1000 coins/ores/pickaxe/TNT (if the old `gift1` 5000-coin gift was given, it takes
   4000 back); tests pre-set `gift1`/`gift2` in their Storage.
 * `MonSize.target` has per-Pokemon overrides for the little ones (Sparky 12.5).
+* Coins: `TeamGame.COIN_VALUE` (2) per coin, plus a level bonus in `offerStickers`. `Voice.HERO` (Rocco) uses an Italian
+  TTS voice in `SoundFx.useItalian`; Rocco's lines `GO_LINES`/`OUCH_LINES`.
+* Decor (`DecorItem`, 152; the newer 76 drawn in `MoreDecor.kt`) is saved as version 3 (`decorV` = 3: 256 kinds per slot).
+  Beds: `BedStyle` (16) has `frame`/`pattern`/`head`. Style: 22 outfits, 18 skins, 21 costumes (`HatKind` has 31).
+* `Planets.kt`: `HomePlanet` (9; `homePlanet`/`planetsOwned`, keys `planet`/`planets`) colors the garden, window, roof
+  and 3D yard; `PlanetArt` gives World 12's planet Places (MARS..CRYSTAL_PLANET) their sky, ground tiles, gravity and
+  the rocket trip on the title card. HOUSE PICKER: `openHousePicker`, `housePicker`/`pickerPlanets`
+  (`updateHousePicker`/`renderHousePicker`); `housesOwned` is a Long (keys `houses`/`houses2`).
+* `Dinos.kt` (World 11, `MoreWorlds.world11`, Place PREHISTORIC): `DinoFoe`s Raptor `(`, Triceratops `)`, Pterodactyl `[`,
+  Stegosaurus `]`, Ankylosaurus `_`, BabyRex `` ` ``, `CappyPickup` `"` (`giveCappy`), boss `RexKrag` `'` (implements
+  `NamedBoss`: newer bosses give their own name/banner/home through that interface). CaptureKind has RAPTOR..REX.
+  World 12 is `MoreWorlds.world12`; the last level (THE GALAXY GRAND FINALE) still ends with Galaxy Krag `}`.
+

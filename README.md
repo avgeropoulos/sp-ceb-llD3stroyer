@@ -500,6 +500,29 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
 * A new one joins your team every 3 levels you beat ("A wild EEVO joined your team!"). Switch to them at home
   on the POKEMON mat; the switch screen now has two pages (tap the arrows).
 
+### Dino World, Planet World, a house & planet picker, and twice as much of everything
+
+* **World 11: DINO WORLD** (levels 211-231): raptors, triceratops (they CHARGE), pterodactyls (they SWOOP),
+  spiky stegosauruses, ankylosauruses with tail clubs, and roaring baby rexes. **Every dinosaur can be captured
+  with Cappy** (a free Cappy hat waits at the start of every level): RAPTOR runs super fast, TRICERATOPS horn-charges,
+  PTERODACTYL flies, STEGOSAURUS can't be hurt by bad guys, ANKYLOSAURUS smashes with its tail club and BABY REX
+  ROARS. Dash the dino shows up too. Boss: **REX KRAG**, King Krag as a giant T-rex (roar waves and falling rocks).
+* **World 12: PLANET WORLD** (levels 232-252): a **rocket trip** to a different planet each level: Mars, an Ice
+  Planet, a Candy Planet, an Alien Jungle, a Ringed Planet, a Lava Planet and a Crystal Planet, each with its own
+  gravity (super floaty on the ringed planet!). The last level is THE GALAXY GRAND FINALE (Rex Krag, Rock Star Krag
+  and Galaxy Krag).
+* **Coins are easier**: every coin is worth 2, and beating a level gives a coin bonus.
+* **Rocco talks like an Italian guy** (an Italian voice: "Mamma mia!", "Let's-a go!").
+* **HOUSE PICKER**: tap any house in the HOUSES tab to see it big, flip through them with the arrows, and BUY & MOVE
+  IN. Houses you've bought stay yours: move back any time for free. **46 houses** now (23 new, like the Rocket Ship,
+  Giant Shoe, Snow Globe, Skyscraper and Dino Egg).
+* **Pick your planet**: the picker's PLANET tab (or MOVE TO A PLANET in the COLORS tab) moves your whole house to
+  one of 9 planets (Earth, the Moon, Mars, Ice, Candy, Jungle, Ringed, Lava, Crystal). The garden, backyard, window
+  view, roof and 3D yard all change.
+* **Twice as much of everything**: 22 Rocco outfits, 18 Blocky skins, 21 Pokemon costumes (16 new hats like a
+  viking helmet, headphones, bunny ears and a dino hood), 16 beds (race car, princess, cloud, rocket...), and 152
+  decorations (76 new, like a pinball machine, DJ booth, ball pit, robot butler, zip line, hot tub and a greenhouse).
+
 ### File 1 is safe, a welcome-back present, and a smaller Sparky
 
 * **File 1 can't be erased** any more (no ERASE button on it).
