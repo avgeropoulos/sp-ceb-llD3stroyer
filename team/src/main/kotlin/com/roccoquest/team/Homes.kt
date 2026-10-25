@@ -126,25 +126,20 @@ object Homes {
     // ------------------------------------------------------------------ Outside
 
     fun drawHouse(gfx: Gfx, type: HouseType, x: Float, bottom: Float, t: Float, paint: Int = 0, floors: Int = 1) {
+        // Painted houses really are painted: walls and roof turn the new color, but keep their light and shadow.
+        val pg = if (paint != 0) PaintGfx(gfx, paint) else gfx
         // Extra floors stack under the house, each with two windows.
         val lift = (floors - 1) * STORY_H
         for (k in 0 until floors - 1) {
             val sy = bottom - (k + 1) * STORY_H
-            gfx.rect(x, sy, 72f, STORY_H, 0xFFD8C8A8.toInt())
-            gfx.rect(x, sy, 72f, 2f, 0xFFA89878.toInt())
+            pg.rect(x, sy, 72f, STORY_H, 0xFFD8C8A8.toInt())
+            pg.rect(x, sy, 72f, 2f, 0xFFA89878.toInt())
             for (wx in listOf(x + 28, x + 50)) {
                 gfx.rect(wx, sy + 6, 14f, 12f, 0xFF5A3A1A.toInt())
                 gfx.rect(wx + 1.5f, sy + 7.5f, 11f, 9f, 0xFFFFE8A0.toInt())
             }
-            if (paint != 0) gfx.rect(x, sy, 72f, STORY_H, argb(120, paint and 0xFFFFFF))
         }
-        val top = bottom - lift - 40
-        drawHouseBody(gfx, type, x, bottom - lift, t)
-        // Painted: a coat of the chosen color over the walls.
-        if (paint != 0) {
-            if (type == HouseType.IGLOO || type == HouseType.SPACE) gfx.oval(x - 4, bottom - lift - 56, 80f, 112f, argb(110, paint and 0xFFFFFF))
-            else gfx.rect(x, top + (if (type == HouseType.TREEHOUSE) -14f else 0f), 72f, if (type == HouseType.TREEHOUSE) 30f else 40f, argb(120, paint and 0xFFFFFF))
-        }
+        drawHouseBody(pg, type, x, bottom - lift, t)
         // Every house has its door in the same spot, on the left.
         if (type != HouseType.IGLOO || floors > 1) {
             gfx.rect(x + 6, bottom - 26, 14f, 26f, if (type == HouseType.CASTLE) 0xFF5A3A1A.toInt() else 0xFF7A4A20.toInt())
@@ -1082,4 +1077,33 @@ class PlushieItem(x: Float, y: Float) : Pickup(x, y, false) {
         gfx.oval(px + 8, y + 6, 4f, 4f, 0xFFFF6A9A.toInt())
         if ((t * 4).toInt() % 2 == 0) gfx.oval(px + 10, y - 6, 2.5f, 2.5f, 0xFFFFFFFF.toInt())
     }
+}
+
+/**
+ * Draws through to [inner] in house paint: every wall-ish color becomes [paint], just as light or dark as it
+ * was (so stripes, logs and bricks still show). Windows, glass, very dark outlines and see-through bits stay.
+ */
+class PaintGfx(private val inner: Gfx, private val paint: Int) : Gfx {
+    private fun lum(c: Int) = (((c shr 16) and 255) * 0.3f + ((c shr 8) and 255) * 0.59f + (c and 255) * 0.11f) / 255f
+    private val paintLum = lum(paint).coerceAtLeast(0.15f)
+    private val cache = HashMap<Int, Int>()
+
+    private fun recolor(c: Int): Int = cache.getOrPut(c) {
+        val a = c ushr 24
+        val l = lum(c)
+        val r = (c shr 16) and 255; val g = (c shr 8) and 255; val b = c and 255
+        // Leave alone: see-through things, near-black lines, bright windows and lights, and sky-blue glass.
+        if (a < 0xC0 || l < 0.13f || l > 0.9f || (r > 230 && g > 200 && b < 170) || (b > r + 50 && b > g + 10 && l > 0.55f && r < 170)) return@getOrPut c
+        val k = (l / paintLum) * 0.95f
+        fun ch(sh: Int) = (((paint shr sh) and 255) * k).toInt().coerceIn(0, 255)
+        val target = (ch(16) shl 16) or (ch(8) shl 8) or ch(0)
+        com.roccoquest.game.mixColor(c, (a shl 24) or target, 0.82f)
+    }
+
+    override fun rect(x: Float, y: Float, w: Float, h: Float, color: Int) = inner.rect(x, y, w, h, recolor(color))
+    override fun oval(x: Float, y: Float, w: Float, h: Float, color: Int) = inner.oval(x, y, w, h, recolor(color))
+    override fun poly(xs: FloatArray, ys: FloatArray, color: Int) = inner.poly(xs, ys, recolor(color))
+    override fun sprite(s: com.roccoquest.game.Sprite, x: Float, y: Float, flipX: Boolean, flipY: Boolean, w: Float, h: Float) = inner.sprite(s, x, y, flipX, flipY, w, h)
+    override fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Int) = inner.text(s, x, y, size, color, align)
+    override fun gradient(x: Float, y: Float, w: Float, h: Float, top: Int, bottom: Int) = inner.gradient(x, y, w, h, recolor(top), recolor(bottom))
 }
