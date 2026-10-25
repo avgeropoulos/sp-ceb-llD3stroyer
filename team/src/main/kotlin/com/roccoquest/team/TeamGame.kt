@@ -679,6 +679,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         for (k in 0 until PLUSH_KEYS) storage.save(key("plush$k", s), 0)
         for (m in Mon.entries) storage.save(key("monXp${m.ordinal}", s), 0)
         for (f in Furniture.entries) storage.save(key("fpos${f.ordinal}", s), 0)
+        // Old block entries are ignored once the per-floor count is cleared.
+        for (floor in 0 until Homes.MAX_FLOORS) storage.save(key("b3d${floor}n", s), 0)
     }
 
     fun newGame(slot: Int = 0, mon: Mon = Mon.SPARKY) {
@@ -841,7 +843,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             respawnX = keepX
             respawnY = keepY
             things.filterIsInstance<Checkpoint>().forEach { if (it.x <= keepX + 1) it.reached = true }
-            keepHouse?.let { house = House(it.x, it.bottom); things += house!! }
+            keepHouse?.let { house = House(it.x, it.bottom, it.type); things += house!! }
             keepBed?.let { bed = Bed(it.x, it.bottom); things += bed!! }
         }
         // Pick up right where SAVE GAME was pressed.
@@ -2559,8 +2561,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun updateWater(dt: Float) {
         if (level.def.shoreX < 0) return
         val l = leader
-        if (metal && l === rocco) { air = AIR_MAX; return }
-        if (inWater(l)) {
+        if (metal && l === rocco) { air = AIR_MAX }
+        else if (inWater(l)) {
             air -= dt * (if (mon.swimmer) 0.5f else 1f)
             if (air <= 0f) {
                 air = 10f
@@ -2573,9 +2575,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         // Bubble vents puff out a bubble every so often.
         val first = (camX / TILE).toInt() - 1
         val last = ((camX + viewW) / TILE).toInt() + 1
-        for (ty in 0 until ROWS) for (tx in first..last) {
-            if (level[tx, ty] != Tile.VENT) continue
-            val k = ty * level.w + tx
+        for (k in level.vents) {
+            val tx = k % level.w
+            if (tx !in first..last) continue
+            val ty = k / level.w
             val t = (ventT[k] ?: Random.nextFloat()) - dt
             if (t <= 0) {
                 spawn(Bubble(tx * TILE + 3f, ty * TILE - 10f))
@@ -3498,6 +3501,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
     }
 
+    // Generous margin includes glows, flags, roofs and projectile trails beyond collision bounds.
+    private fun visibleThing(t: Thing, cam: Float) = !t.removed && t.x + t.w >= cam - 128f && t.x <= cam + viewW + 128f
+
     private fun renderWorld(gfx: Gfx) {
         val sx = if (shake > 0) sin(time * 80) * 3f else 0f
         val cam = camX + sx
@@ -3505,8 +3511,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         renderTiles(gfx, cam)
         if (quakeWarn >= 0f) drawQuake(gfx, -cam)
         val ox = -cam
-        for (t in things) if (t is House) t.draw(this, gfx, ox)
-        for (t in things) if (t !is Shot && t !is MonShot && t !is Frog && t !is House) t.draw(this, gfx, ox)
+        for (t in things) if (t is House && visibleThing(t, cam)) t.draw(this, gfx, ox)
+        for (t in things) if (t !is Shot && t !is MonShot && t !is Frog && t !is House && visibleThing(t, cam)) t.draw(this, gfx, ox)
         for (f in foes) if (f.x + f.w > cam - 40 && f.x < cam + viewW + 40) {
             f.draw(this, gfx, ox)
             if (f.frozenT > 0f) gfx.rect(f.x + ox - 2, f.y - 2, f.w + 4, f.h + 4, 0x887FD8FF.toInt())
@@ -3518,7 +3524,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             val hh = if (heroOut == Who.BLOCKY) blocky else rocco
             if (!hh.mini) TeamArt.shieldIcon(gfx, hh.cx + ox + hh.facing * 6f - 4f, hh.y + hh.h * 0.3f, 11f, shieldType)
         }
-        for (t in things) if (t is Shot || t is MonShot || t is Frog) t.draw(this, gfx, ox)
+        for (t in things) if ((t is Shot || t is MonShot || t is Frog) && visibleThing(t, cam)) t.draw(this, gfx, ox)
         for (p in particles) p.draw(gfx, ox)
         // Underwater tint up to the shore, with a wavy surface line.
         if (level.def.shoreX >= 0) {
@@ -3808,6 +3814,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         fun near(f: Furniture) = hasFurniture(f) && furnFloor(f) == homeFloor && x in (furnX(f) - 8f)..(furnX(f) + Homes.width(f) + 8f)
         if (x < Homes.DOOR_X + 36f) return if (homeFloor == 0) (if (carrying != null) null else "EXIT") else "DOWNSTAIRS"
         if (upstairs) return "UPSTAIRS"
+        if (!decorating && houseFloors < Homes.MAX_FLOORS && x >= Homes.STAIRS_X + 2f) return "BUILD STAIRS"
         if (decorating) return if (carrying != null) "PLACE" else if (furnitureAt(x) != null) "MOVE" else null
         if (homeFloor == 0) when {
             x in (Homes.SHOP_X - 4f)..(Homes.SHOP_X + 72f) -> return "SHOP"
@@ -3947,6 +3954,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             "SLEEP" -> sleepAtHome()
             "LOOK" -> { plushBook = true; sfx(Sound.KICK) }
             "PLAY" -> playClaw()
+            "BUILD STAIRS" -> openFloorShop()
             "UPSTAIRS" -> changeFloor(homeFloor + 1)
             "DOWNSTAIRS" -> changeFloor(homeFloor - 1)
             "GAME" -> startPark()
@@ -4143,6 +4151,15 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     /** How many levels you've beaten (furniture unlocks as this goes up). */
     fun clearedCount() = cleared.count { it }
+
+    /** Opens the priced upgrade card; building always requires an explicit purchase. */
+    fun openFloorShop() {
+        homeShop = true
+        shopTab = 3
+        shopPage = 0
+        shopCursor = HouseType.entries.size
+        toast("Build an upstairs room + stairs for your ${houseType.label}.")
+    }
 
     /** Adding a floor to the house: a playroom first, then a top floor. */
     fun floorCost(): Pair<List<Pair<Ore, Int>>, Int> =
@@ -4629,6 +4646,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         Homes.drawWindow(gfx, ox + Homes.BED_X - 2f, 40f, time)
         if (homeFloor == 0) Homes.drawDoor(gfx, ox + Homes.DOOR_X) else Homes.drawStairs(gfx, ox + Homes.DOOR_X - 6f, false)
         if (houseFloors > homeFloor + 1) Homes.drawStairs(gfx, ox + Homes.STAIRS_X - 4f, true)
+        else if (houseFloors < Homes.MAX_FLOORS) Homes.drawBuildSign(gfx, ox + Homes.STAIRS_X)
         if (homeFloor == 0) Homes.drawShop(this, gfx, ox + Homes.SHOP_X, time)
         // Rugs first, then everything else, each wherever it was put.
         for (layerPass in listOf(2, 1, 0)) for (f in Furniture.entries) {
@@ -4789,7 +4807,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 val full = houseFloors >= Homes.MAX_FLOORS
                 val (costs, c) = floorCost()
                 shopCardBg(gfx, cx, cy, full, !full && has(costs, c))
-                gfx.text("ADD A FLOOR (${houseFloors}/${Homes.MAX_FLOORS})", cx + 4, cy + 11, 6.5f, 0xFF2A1808.toInt())
+                gfx.text("UPSTAIRS + STAIRS", cx + 4, cy + 11, 6.5f, 0xFF2A1808.toInt())
                 if (full) gfx.text("SO TALL!", cx + 4, cy + 30, 7f, 0xFF1E4A1E.toInt()) else priceTag(gfx, cx + 4, cy + 21, costs, c)
                 Homes.drawHouse(ScaledGfx(gfx, 0.22f, cx + cw - 22f, cy + 6f), houseType, 0f, 150f, time, housePaint, minOf(houseFloors + 1, Homes.MAX_FLOORS))
             }

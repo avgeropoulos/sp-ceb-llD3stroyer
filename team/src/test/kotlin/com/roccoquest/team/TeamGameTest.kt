@@ -51,6 +51,84 @@ class TeamGameTest {
         assertEquals(TeamGame.State.PLAY, game.state)
     }
 
+    @Test fun upstairsCanBeBuiltFromTheRoomInEveryHouseStyle() {
+        for (type in HouseType.entries) {
+            game.newGame(0)
+            game.coins = 1000
+            game.inventory.fill(100)
+            game.buyHouse(type)
+            game.enterHome()
+            run(0.4f)
+            walkHomeTo(Homes.ROOM_W - 20f)
+            input.action = true; game.update(dt); input.action = false; game.update(dt)
+            assertTrue(game.homeShop, "build sign opens shop: $type")
+            assertEquals(3, game.shopTab)
+            assertEquals(1, game.houseFloors, "opening shop must not spend materials")
+            val coins = game.coins
+            game.buyFloor()
+            assertEquals(2, game.houseFloors)
+            assertEquals(coins - 80, game.coins)
+            game.enterHome()
+            walkHomeTo(Homes.ROOM_W - 20f)
+            input.action = true; game.update(dt); input.action = false; game.update(dt)
+            assertEquals(1, game.homeFloor, "stairs work: $type")
+            game.changeFloor(0)
+            val restored = TeamGame(TeamInput(), ears, storage)
+            restored.continueGame(0)
+            assertEquals(type, restored.houseType)
+            assertEquals(2, restored.houseFloors)
+        }
+    }
+
+    @Test fun newSaveDoesNotInheritOldThreeDimensionalHouseBlocks() {
+        game.newGame(0)
+        game.slotSave("b3d0n", 1)
+        game.slotSave("b3d0_0", 1)
+        game.newGame(0)
+        game.enterHome(); game.enter3d()
+        assertTrue(game.house3d.blocks.isEmpty())
+    }
+
+    @Test fun ventIndexTracksTileEdits() {
+        val level = Level(Levels.all.first { it.place == Place.WATER })
+        val expected = (0 until level.w * ROWS).filter { level[it % level.w, it / level.w] == Tile.VENT }.toSet()
+        assertEquals(expected, level.vents)
+        assertTrue(expected.isNotEmpty())
+        val k = expected.first()
+        level[k % level.w, k / level.w] = Tile.EMPTY
+        assertTrue(k !in level.vents)
+        level[k % level.w, k / level.w] = Tile.VENT
+        assertEquals(expected, level.vents)
+    }
+
+    @Test fun metalRoccoDoesNotSwitchOffAirVents() {
+        startPlaying(Levels.all.indexOfFirst { it.place == Place.WATER })
+        game.foes.clear()
+        game.startMetal()
+        val tx = (game.rocco.x / TILE).toInt() + 2
+        game.level[tx, 12] = Tile.VENT
+        run(2f)
+        assertTrue(game.thingsForTest().any { it is Bubble }, "air bubbles still spawn during metal mode")
+    }
+
+    @Test fun distantThingsAreNotDrawnInWaterAndSpace() {
+        for (place in listOf(Place.WATER, Place.RAINBOW)) {
+            startPlaying(Levels.all.indexOfFirst { it.place == place })
+            var nearDraws = 0
+            var farDraws = 0
+            fun probe(x: Float, draw: () -> Unit) = object : Thing(x, 80f, 16f, 16f) {
+                override fun update(g: TeamGame, dt: Float) {}
+                override fun draw(g: TeamGame, gfx: com.roccoquest.game.Gfx, ox: Float) { draw() }
+            }
+            game.spawn(probe(game.camX + 100f) { nearDraws++ })
+            repeat(200) { game.spawn(probe(game.camX + game.viewW + 1000f + it * 20f) { farDraws++ }) }
+            game.update(dt)
+            game.render(AwtGfx(BufferedImage(480, 240, BufferedImage.TYPE_INT_ARGB), 1f))
+            assertEquals(1, nearDraws)
+            assertEquals(0, farDraws, "$place should only submit nearby objects")
+        }
+    }
+
     @Test fun levelsAreWellFormed() {
         assertTrue(Levels.all.size >= 21, "a nice long game: ${Levels.all.size} levels")
         for (def in Levels.all) {

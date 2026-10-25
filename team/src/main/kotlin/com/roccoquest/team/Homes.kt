@@ -781,6 +781,13 @@ object Homes {
         add((ROOM_W - 12f)..(ROOM_W + 100f))
     }
 
+    fun drawBuildSign(gfx: Gfx, x: Float) {
+        gfx.rect(x + 3f, FLOOR_Y - 40f, 4f, 40f, 0xFF8A5A2A.toInt())
+        gfx.rect(x - 28f, FLOOR_Y - 52f, 56f, 24f, 0xFFFFD21F.toInt())
+        gfx.text("BUILD", x, FLOOR_Y - 42f, 7f, 0xFF2A1808.toInt(), 1)
+        gfx.text("UPSTAIRS", x, FLOOR_Y - 32f, 6f, 0xFF2A1808.toInt(), 1)
+    }
+
     /** Stairs at the end of the room, to go up (or down) a floor. */
     fun drawStairs(gfx: Gfx, x: Float, up: Boolean) {
         for (i in 0 until 6) {

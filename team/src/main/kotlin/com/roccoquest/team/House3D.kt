@@ -69,7 +69,11 @@ class House3D(private val g: TeamGame) {
         val n = g.slotLoad("b3d${floor}n").coerceIn(0, MAX_BLOCKS)
         for (i in 0 until n) {
             val v = g.slotLoad("b3d${floor}_$i") - 1
-            if (v >= 0) blocks[v and 0xFFF] = (v shr 12) and 0xF
+            if (v >= 0) {
+                val k = v and 0xFFF
+                val type = (v shr 12) and 0xF
+                if (type in Block3D.entries.indices && inRoom(k and 31, (k shr 5) and 7, (k shr 8) and 15)) blocks[k] = type
+            }
         }
         loadedFloor = floor
     }
@@ -336,6 +340,7 @@ class House3D(private val g: TeamGame) {
         gfx.rect(viewW - 36f, 2f, 32f, 18f, 0xFF2EB84A.toInt())
         gfx.text("2D", viewW - 20f, 15f, 9f, 0xFFFFFFFF.toInt(), 1)
         if (g.houseFloors > g.homeFloor + 1) { gfx.rect(viewW - 74f, 2f, 34f, 18f, 0xFF3A6AC8.toInt()); gfx.text("UP", viewW - 57f, 15f, 8f, 0xFFFFFFFF.toInt(), 1) }
+        else if (g.houseFloors < Homes.MAX_FLOORS) { gfx.rect(viewW - 74f, 2f, 34f, 18f, 0xFFE8B83A.toInt()); gfx.text("BUILD", viewW - 57f, 15f, 6f, 0xFF2A1808.toInt(), 1) }
         if (g.homeFloor > 0) { gfx.rect(viewW - 112f, 2f, 34f, 18f, 0xFF3A6AC8.toInt()); gfx.text("DOWN", viewW - 95f, 15f, 7f, 0xFFFFFFFF.toInt(), 1) }
         TeamControls.draw3d(gfx, g.inputForDraw(), viewW, viewH)
     }
@@ -347,6 +352,7 @@ class House3D(private val g: TeamGame) {
         when {
             tx > viewW - 38f -> g.exit3d()
             tx in (viewW - 76f)..(viewW - 38f) && g.houseFloors > g.homeFloor + 1 -> { saveFloor(); g.changeFloor(g.homeFloor + 1); enter() }
+            tx in (viewW - 76f)..(viewW - 38f) && g.houseFloors < Homes.MAX_FLOORS -> { g.exit3d(); g.openFloorShop() }
             tx in (viewW - 114f)..(viewW - 76f) && g.homeFloor > 0 -> { saveFloor(); g.changeFloor(g.homeFloor - 1); enter() }
             else -> return false
         }

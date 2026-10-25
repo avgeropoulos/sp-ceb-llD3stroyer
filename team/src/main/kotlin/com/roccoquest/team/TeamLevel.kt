@@ -758,6 +758,8 @@ class Level(val def: LevelDef) {
     private val tiles = IntArray(w * h)
     /** Pickaxe damage taken so far, keyed by tile index. */
     val cracks = HashMap<Int, Int>()
+    /** Sparse vent index: water updates visit vents, not every visible tile. */
+    val vents = linkedSetOf<Int>()
 
     init {
         for (y in 0 until h) for (x in 0 until w) {
@@ -794,6 +796,7 @@ class Level(val def: LevelDef) {
     }
 
     init {
+        for (i in tiles.indices) if (tiles[i] == Tile.VENT) vents.add(i)
         // A bad guy standing on the rails still has rails under him.
         for (y in 0 until h) for (x in 1 until w - 1) {
             val c = def.rows[y][x]
@@ -811,7 +814,9 @@ class Level(val def: LevelDef) {
 
     operator fun set(tx: Int, ty: Int, t: Int) {
         if (tx in 0 until w && ty in 0 until h) {
-            tiles[ty * w + tx] = t
+            val index = ty * w + tx
+            if (t == Tile.VENT) vents.add(index) else vents.remove(index)
+            tiles[index] = t
             cracks.remove(ty * w + tx)
         }
     }

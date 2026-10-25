@@ -10,6 +10,7 @@ import android.view.SurfaceHolder
 import android.view.SurfaceView
 import com.roccoquest.game.Storage
 import com.roccoquest.game.VIEW_H
+import com.roccoquest.team.FrameClock
 import com.roccoquest.team.TeamControls
 import com.roccoquest.team.TeamGame
 import com.roccoquest.team.TeamInput
@@ -84,7 +85,20 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         thread = null
     }
 
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        // Pixel art needs no more than 3 physical pixels per game pixel. In particular,
+        // water tint and space glows should not blend a full 1440p phone buffer each frame.
+        if (w > 0 && h > 0) {
+            val targetH = minOf(h, (VIEW_H * 3).toInt())
+            holder.setFixedSize((w.toLong() * targetH / h).toInt().coerceAtLeast(1), targetH)
+        }
+    }
+
     override fun surfaceCreated(holder: SurfaceHolder) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try { holder.surface.setFrameRate(60f, android.view.Surface.FRAME_RATE_COMPATIBILITY_DEFAULT) } catch (_: Exception) {}
+        }
         surfaceReady = true
         startLoop()
     }
@@ -115,8 +129,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
         // stopLoop() may have happened while this thread was starting.
         if (!running || myId != loopId) return
         val choreographer = android.view.Choreographer.getInstance()
-        var last = 0L
-        var acc = 0f
+        val clock = FrameClock()
         var frames = 0
         var fpsStart = System.nanoTime()
         val step = 1f / 60f
@@ -127,19 +140,10 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                     return
                 }
                 val now = System.nanoTime()
-                if (last == 0L) last = now - (step * 1e9f).toLong()
-                acc += ((now - last) / 1e9f).coerceAtMost(0.1f)
-                last = now
-                // Never run more than 3 game steps for one picture: after a slow frame the game slows
-                // down for a moment instead of jumping ahead.
-                var steps = 0
-                while (acc >= step && steps < 3) {
-                    // Never let one bad frame close the whole game: recover to the title screen instead.
+                val steps = clock.steps(frameTimeNanos)
+                repeat(steps) {
                     try { game.update(step) } catch (t: Throwable) { recover(t) }
-                    acc -= step
-                    steps++
                 }
-                if (steps == 3) acc = acc.coerceAtMost(step)
                 if (now - fpsStart >= 1_000_000_000L) {
                     game.fps = (frames * 1_000_000_000L / (now - fpsStart)).toInt()
                     frames = 0

@@ -665,3 +665,16 @@ Levels are built in `core/.../Level.kt` with a small builder, so adding a new on
   Pokemon in `Actors.kt`, the bad guys and bosses in `Foes.kt`, villagers, Dennis, minecarts, TNT,
   Endermen, the Warden and the Ender Dragon in `Extras.kt`, shots, items and effects in `Items.kt`, and the crafting table, save files and menus in `TeamGame.kt`.
 * `teamapp/`: the Android layer for Team Up!, a copy of `app/` wired to the new game.
+
+### Team Up performance and upstairs update
+
+* Water and space levels skip drawing distant objects. Water vents use a sparse tile index;
+  Metal Rocco no longer stops the vents from making air bubbles.
+* Android uses vsync timestamps for fixed 60 Hz physics, requests a 60 Hz display rate,
+  and caps its drawing surface at 720 pixels high to reduce water/space transparency cost.
+* In any house style, walk to the BUILD UPSTAIRS sign at the far right (or use BUILD in
+  the 3D view). The shop opens on UPSTAIRS + STAIRS. The second floor costs 12 stone,
+  4 iron and 80 coins. Purchase it, then use the stairs at the right to go up; stairs
+  at the left take you down. House changes preserve your floors and furniture.
+* Starting a new save clears old 3D house blocks; checkpoint respawns preserve the
+  built house style.
