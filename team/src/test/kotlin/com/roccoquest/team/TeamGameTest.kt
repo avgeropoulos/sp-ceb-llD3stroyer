@@ -33,7 +33,8 @@ class TeamGameTest {
     private val dt = 1f / 60f
     private val input = TeamInput()
     private val ears = Ears()
-    private val storage = Storage.Memory()
+    // (The one-time File 1 welcome-back gift is already given, so it doesn't change the other tests.)
+    private val storage = Storage.Memory().apply { save("gift1", 1) }
     private val game = TeamGame(input, ears, storage)
 
     private fun run(seconds: Float, each: () -> Unit = {}) {
@@ -865,6 +866,43 @@ class TeamGameTest {
         assertFalse(Style.spaceSuit, "spacesuits off on the map")
         // The last level is the big boss rush, still ending with Galaxy Krag.
         assertTrue(Levels.all.last().rows.any { '}' in it } && Levels.all.last().rows.any { '!' in it })
+    }
+
+    @Test fun file1CantBeErasedAndGetsAWelcomeBackGiftOnce() {
+        val st = Storage.Memory()
+        val inp = TeamInput()
+        val g = TeamGame(inp, ears, st)
+        // An existing File 1 at level 2: it moves on to the snow level with lots of coins and supplies.
+        g.newGame(1)
+        st.save("slot0_level", 2)
+        st.save("slot0_coins", 40)
+        g.continueGame(0)
+        assertEquals(TeamGame.State.MAP, g.state)
+        assertEquals("FROSTY PEAKS", Levels.all[g.giftLevel].name)
+        assertTrue(g.unlocked > g.giftLevel)
+        assertTrue(g.coins >= 5040, "coins ${g.coins}")
+        assertTrue(Ore.entries.all { g.inventory[it.ordinal] >= 50 })
+        // Only once.
+        val coins = g.coins
+        g.continueGame(0)
+        assertEquals(coins, g.coins)
+        // File 1 has no ERASE button: tapping where it would be does nothing.
+        val g2 = TeamGame(inp, ears, st)
+        g2.continueGame(0)
+        assertTrue(g2.slotLevel(0) >= g.giftLevel)
+        val before = g2.slotLevel(0)
+        for (k in 0 until 2) {
+            g2.slotsForTest()
+            inp.tapX = g2.slotCardXForTest(0) + 20f; inp.tapY = 188f; inp.tap = true
+            g2.update(dt)
+        }
+        assertEquals(before, g2.slotLevel(0), "File 1 can't be erased")
+        // A brand-new File 1 also starts at the snow level (if the gift wasn't used yet).
+        val st3 = Storage.Memory()
+        val g3 = TeamGame(TeamInput(), ears, st3)
+        g3.newGame(0)
+        assertEquals(g3.giftLevel, g3.levelIndex)
+        assertTrue(g3.coins >= 5000)
     }
 
     @Test fun pokemonEvolveAndSwitchBack() {
@@ -2528,8 +2566,8 @@ class TeamGameTest {
     }
 
     @Test fun erasedSavesCanBeRecovered() {
-        // A game with some progress in file 1.
-        game.newGame(0, Mon.BLAZE)
+        // A game with some progress in file 2 (file 1 can't be erased at all).
+        game.newGame(1, Mon.BLAZE)
         repeat(5) { game.clearForTest(it) }
         game.startLevel(5)
         game.coins = 777 + 60 + BedStyle.RED.coins
@@ -2541,27 +2579,27 @@ class TeamGameTest {
         menu.update(0.5f); input.tapX = 10f; input.tapY = 10f; input.tap = true; menu.update(dt)
         assertEquals(TeamGame.State.SLOTS, menu.state)
         menu.update(0.5f)
-        val x = menu.slotCardXForTest(0) + 20f
+        val x = menu.slotCardXForTest(1) + 20f
         fun tapAt(y: Float) { input.tapX = x; input.tapY = y; input.tap = true; menu.update(dt); menu.update(dt) }
         // Oops! ERASE (two taps)...
         tapAt(188f); tapAt(188f)
-        assertEquals(-1, menu.slotLevel(0), "erased")
-        assertTrue(menu.hasBackup(0))
+        assertEquals(-1, menu.slotLevel(1), "erased")
+        assertTrue(menu.hasBackup(1))
         val img = BufferedImage((menu.viewW * 3).toInt(), 720, BufferedImage.TYPE_INT_ARGB)
         menu.render(AwtGfx(img, 3f)); File("build/screens").mkdirs(); ImageIO.write(img, "png", File("build/screens/slots-recover.png"))
         // ...RECOVER (two taps) brings it all back.
         tapAt(188f); tapAt(188f)
-        assertEquals(5, menu.slotLevel(0))
+        assertEquals(5, menu.slotLevel(1))
         val g2 = TeamGame(TeamInput(), ears, storage)
-        g2.continueGame(0)
+        g2.continueGame(1)
         assertEquals(777, g2.coins)
         assertEquals(Mon.BLAZE, g2.mon)
         assertTrue(g2.decor.any { it.item == DecorItem.GIANT_TEDDY })
         // Starting a new game over a file keeps the old one as a safety copy too.
-        g2.newGame(0, Mon.SPARKY)
+        g2.newGame(1, Mon.SPARKY)
         assertEquals(0, g2.coins)
-        assertTrue(g2.recoverSlot(0))
-        g2.continueGame(0)
+        assertTrue(g2.recoverSlot(1))
+        g2.continueGame(1)
         assertEquals(777, g2.coins)
     }
 

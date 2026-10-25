@@ -8,6 +8,18 @@ import kotlin.test.assertTrue
 
 class PaintTest {
     /** Every house in a few paints, so the paint can be eyeballed (build/screens/house-paints.png). */
+    /** Rocco next to the first 10 Pokemon, to check sizes (build/screens/mon-sizes.png). */
+    @Test fun monSizes() {
+        val img = BufferedImage(11 * 40 * 3, 50 * 3, BufferedImage.TYPE_INT_ARGB)
+        val g = AwtGfx(img, 3f)
+        g.rect(0f, 0f, 440f, 50f, 0xFF9AD8F0.toInt())
+        g.rect(0f, 40f, 440f, 10f, 0xFF5AB84A.toInt())
+        g.sprite(TeamArt.rocco(Power.NONE, 0), 10f, 40f - 24f * ROCCO_SCALE, w = 16f * ROCCO_SCALE, h = 24f * ROCCO_SCALE)
+        for ((i, m) in Mon.entries.take(10).withIndex()) TeamArt.mon(g, m, 60f + i * 38f, 40f, 0f, 1, false)
+        File("build/screens").mkdirs()
+        ImageIO.write(img, "png", File("build/screens/mon-sizes.png"))
+    }
+
     @Test fun paintedHouses() {
         val types = HouseType.entries
         val paints = listOf(0, 1, 3, 5, 7, 9)

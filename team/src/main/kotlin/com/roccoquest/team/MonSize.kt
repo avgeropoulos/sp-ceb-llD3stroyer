@@ -14,6 +14,9 @@ object MonSize {
 
     /** How tall (in game pixels) each kind of Pokemon should look. */
     fun target(m: Mon): Float = when {
+        // Little Pokemon really are little: Sparky comes up to about Rocco's middle.
+        m == Mon.SPARKY -> 12.5f
+        m == Mon.EMBER || m == Mon.SPLASHY || m == Mon.MYSTIC -> 14f
         m.isMega -> 30f
         m == Mon.LUGIA || m == Mon.RAYZOR -> 27f
         m.stage >= 3 -> 25f

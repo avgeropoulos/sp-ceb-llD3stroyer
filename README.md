@@ -495,6 +495,13 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
 * A new one joins your team every 3 levels you beat ("A wild EEVO joined your team!"). Switch to them at home
   on the POKEMON mat; the switch screen now has two pages (tap the arrows).
 
+### File 1 is safe, a welcome-back present, and a smaller Sparky
+
+* **File 1 can't be erased** any more (no ERASE button on it).
+* **Welcome back!** The first time File 1 is opened after this update, it goes to **FROSTY PEAKS** (the snow level)
+  with **5000 coins, 50 of every ore, an iron pickaxe and 10 TNT** to win back what was lost.
+* **Sparky is smaller** (about up to Rocco's middle), and so are Ember, Splashy and Mystic.
+
 ### World 10, a 10-floor house with a rooftop, 3D outside, pumpkin carving and a sing-along
 
 * **World 10: Fire & Space World** (levels 190-210): 21 **longer** levels (most are 300-500 tiles, with more

@@ -893,7 +893,35 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         cleared.fill(false)
         mapWorld = 0
         mapSel = 0
-        startLevel(0)
+        levelIndex = 0
+        welcomeBackGift()
+        startLevel(levelIndex)
+    }
+
+    /** FROSTY PEAKS, the snow level File 1 was on when its game got erased by accident. */
+    val giftLevel by lazy { Levels.all.indexOfFirst { it.name == "FROSTY PEAKS" }.coerceAtLeast(0) }
+
+    /**
+     * One time only (global key `gift1`): File 1's game was lost by accident, so it picks up again at the snow
+     * level with lots of coins and supplies to win back what was lost. Returns true if it was given now.
+     */
+    private fun welcomeBackGift(): Boolean {
+        if (slot != 0 || storage.load("gift1") != 0) return false
+        storage.save("gift1", 1)
+        if (unlocked < giftLevel + 1) {
+            unlocked = giftLevel + 1
+            for (i in 0 until giftLevel) cleared[i] = true
+        }
+        levelIndex = maxOf(levelIndex, giftLevel)
+        coins += 5000
+        Ore.entries.forEach { inventory[it.ordinal] += 50 }
+        pickTier = maxOf(pickTier, 3)
+        tnt += 10
+        hearts = MAX_HEARTS
+        save()
+        sound.sayAs("Welcome back! Here's a big present!", Voice.HERO)
+        toast("WELCOME BACK! 5000 coins, 50 of every ore, an iron pickaxe and 10 TNT!")
+        return true
     }
 
     fun continueGame(slot: Int = this.slot) {
@@ -902,6 +930,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         score = 0
         val lv = slotLevel(slot).coerceIn(0, Levels.all.lastIndex)
         levelIndex = lv
+        if (welcomeBackGift()) { val msg = toast; goToMap(levelIndex); toast(msg); return }
         // Back to the world map, standing on the level you were playing.
         goToMap(lv)
     }
@@ -1354,7 +1383,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             val cx = slotCardX(i)
             if (x < cx || x > cx + slotCardW()) continue
             // The ERASE strip at the bottom of a used card.
-            if (slotLevel(i) >= 0 && y > 176f && y < 200f) {
+            // (File 1 can't be erased: it's the kid's main game.)
+            if (slotLevel(i) >= 0 && i != 0 && y > 176f && y < 200f) {
                 if (eraseArmed == i) {
                     eraseWithBackup(i)
                     eraseArmed = -1
@@ -3456,6 +3486,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     internal fun chargeSuper() { superCharge = 1f }
 
     internal fun slotCardXForTest(i: Int) = slotCardX(i)
+    internal fun slotsForTest() { setState(State.SLOTS); stateT = 1f }
     internal fun pickCardXForTest(i: Int) = pickCardX(i)
     internal fun pickCardYForTest(i: Int) = pickCardY(i)
     internal fun thingsForTest(): List<Thing> = things + pending
@@ -6719,9 +6750,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 gfx.shadowText(m.label, x + w / 2, 160f, 7f, m.color, 1)
                 if (slotSlept(i)) gfx.shadowText("Saved in bed ♥", x + w / 2, 170f, 6f, 0xFFFFC8D8.toInt(), 1)
                 else if (slotSpotSaved(i)) gfx.shadowText("Saved mid-level", x + w / 2, 170f, 6f, 0xFFC8FFD8.toInt(), 1)
-                val armed = eraseArmed == i
-                gfx.rect(x + 8, 180f, w - 16, 16f, if (armed) 0xFFE53A1E.toInt() else 0x66000000)
-                gfx.text(if (armed) "TAP AGAIN TO ERASE" else "ERASE", x + w / 2, 191f, 6f, white, 1)
+                if (i == 0) {
+                    gfx.text("♥ SAFE: CAN'T BE ERASED", x + w / 2, 191f, 5.5f, 0xFFC8FFD8.toInt(), 1)
+                } else {
+                    val armed = eraseArmed == i
+                    gfx.rect(x + 8, 180f, w - 16, 16f, if (armed) 0xFFE53A1E.toInt() else 0x66000000)
+                    gfx.text(if (armed) "TAP AGAIN TO ERASE" else "ERASE", x + w / 2, 191f, 6f, white, 1)
+                }
             }
         }
         if (padConnected) padFrame(gfx, slotCardX(slotCursor) - 4, 56f, slotCardW() + 8, 148f)

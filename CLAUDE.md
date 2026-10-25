@@ -168,3 +168,6 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
 * `Pumpkin.kt`: `Carver` (carving screen, `input.fingerX/fingerY` = the finger while it's down), `Lantern`s
   (`game.lanterns`, keys `jolN`, `jol<i>x`, `jol<i>_<row>`), table at `Pumpkins.TABLE_X` in the backyard.
 * Houses are painted through `PaintGfx` (recolors wall colors keeping their brightness).
+* File 1 (slot 0) has no ERASE (`updateSlots`/`renderSlots`). `welcomeBackGift()` (global key `gift1`, once): File 1 jumps
+  to `giftLevel` (FROSTY PEAKS) with coins/ores/pickaxe/TNT; tests pre-set `gift1` in their Storage.
+* `MonSize.target` has per-Pokemon overrides for the little ones (Sparky 12.5).
