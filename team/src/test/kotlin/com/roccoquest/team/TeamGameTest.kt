@@ -60,12 +60,18 @@ class TeamGameTest {
             game.enterHome()
             run(0.4f)
             walkHomeTo(Homes.ROOM_W - 20f)
+            if (type == HouseType.COTTAGE) {
+                val image = BufferedImage(960, 480, BufferedImage.TYPE_INT_ARGB)
+                game.render(AwtGfx(image, 2f))
+                File("build/screens").mkdirs()
+                ImageIO.write(image, "png", File("build/screens/teamup-build-upstairs.png"))
+            }
             input.action = true; game.update(dt); input.action = false; game.update(dt)
             assertTrue(game.homeShop, "build sign opens shop: $type")
             assertEquals(3, game.shopTab)
             assertEquals(1, game.houseFloors, "opening shop must not spend materials")
             val coins = game.coins
-            game.buyFloor()
+            tap(game.viewW / 2, 200f)
             assertEquals(2, game.houseFloors)
             assertEquals(coins - 80, game.coins)
             game.enterHome()
@@ -85,6 +91,15 @@ class TeamGameTest {
         game.slotSave("b3d0n", 1)
         game.slotSave("b3d0_0", 1)
         game.newGame(0)
+        game.enterHome(); game.enter3d()
+        assertTrue(game.house3d.blocks.isEmpty())
+    }
+
+    @Test fun invalidSavedHouseBlocksAreIgnored() {
+        game.newGame(0)
+        game.slotSave("b3d0n", 2)
+        game.slotSave("b3d0_0", (15 shl 12) + 1)
+        game.slotSave("b3d0_1", game.house3d.key(31, 0, 0) + 1)
         game.enterHome(); game.enter3d()
         assertTrue(game.house3d.blocks.isEmpty())
     }
