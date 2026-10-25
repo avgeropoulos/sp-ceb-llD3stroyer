@@ -130,6 +130,8 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
 * `Style.kt`: `RoccoOutfit`, `BlockySkin`, `MonCostume` (current ones in the `Style` object; keys outfits/skins/costumes
   bits + outfit/skin/costume), `HatKind` drawing. `LongScenes.kt`: scenes 20-25 (10-12 s); MOVIES (TV / movie screen)
   replays seen scenes (`scenesSeen`, `playScene(kind, BACK_HOME)`, `theater`).
+* Safety copies: ERASE and starting a new game over a file copy the whole file to `trash<s>_*` first (`eraseWithBackup`,
+  needs `Storage.keys()`); RECOVER on the save screen swaps it back (`recoverSlot`, undoable). Never erase without it.
 * On a controller B is also ACTION, so modes that use ACTION (build mode) must not close on `nav.b`.
 * `Galaxy.kt`: Worlds 8-9 (`MoreWorlds.world8/world9`; places TOYS, FUNGI, MOON (hero gravity 0.6), STATION; `GalaxyArt`
   ground tiles + skies), foes `ToySoldier` (`;`), `JackBox` (`,`), `Ufo` (`/`) + `Beam`, `MoonHopper` (`<`), bosses

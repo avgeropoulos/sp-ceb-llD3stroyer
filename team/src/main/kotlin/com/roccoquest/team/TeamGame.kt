@@ -321,6 +321,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         private set
     private var craftTab = 0
     private var eraseArmed = -1
+    private var recoverArmed = -1
     private var eraseT = 0f
     private var pickChoice = Mon.SPARKY
     private val prev = BooleanArray(16)
@@ -757,6 +758,43 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         for (i in 0 until storage.load(key("decorN")).coerceIn(0, Decor.MAX)) Decor.unpack(storage.load(key("decor_$i")))?.let { decor += it }
     }
 
+    // ---------------------------------------------------------------- Safety copies: erased saves can be recovered
+
+    /** True if file [s] has a safety copy from before it was erased (or started over). */
+    fun hasBackup(s: Int) = storage.load("trash${s}_level") > 0
+
+    /** Copies everything in file [s] to its safety copy (replacing an older one). */
+    private fun backupSlot(s: Int) {
+        val from = "slot${s}_"
+        val to = "trash${s}_"
+        val keys = storage.keys()
+        for (k in keys) if (k.startsWith(to)) storage.save(k, 0)
+        for (k in keys) if (k.startsWith(from)) storage.save(to + k.removePrefix(from), storage.load(k))
+    }
+
+    /** Erases file [s], but keeps a safety copy first (if there was a game in it). */
+    fun eraseWithBackup(s: Int) {
+        if (slotLevel(s) >= 0) backupSlot(s)
+        eraseSlot(s)
+    }
+
+    /** Brings back the safety copy of file [s]. Whatever is in the file now becomes the safety copy (so this can be undone too). */
+    fun recoverSlot(s: Int): Boolean {
+        if (!hasBackup(s)) return false
+        val slotP = "slot${s}_"
+        val trashP = "trash${s}_"
+        val keys = storage.keys()
+        val names = keys.filter { it.startsWith(slotP) }.map { it.removePrefix(slotP) }.toSet() +
+            keys.filter { it.startsWith(trashP) }.map { it.removePrefix(trashP) }.toSet()
+        for (n in names) {
+            val a = storage.load(slotP + n)
+            val b = storage.load(trashP + n)
+            storage.save(slotP + n, b)
+            storage.save(trashP + n, a)
+        }
+        return true
+    }
+
     fun eraseSlot(s: Int) {
         for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "armorType", "armorHp", "blackFlowers", "shieldType", "shieldHp", "swordHp", "pickHp", "houseType", "furniture", "furniture2", "plushies", "plush0", "plush1", "plush2", "plush3", "beds", "bedStyle", "unlocked", "clearedLo", "clearedHi", "cleared2", "cleared3", "cleared4", "cleared5", "cleared6", "stickersLo", "stickersHi", "houseColor", "floors", "scenes", "bow", "houseLevel", "houseX", "houseY", "bed", "bedLevel", "spotLevel", "spotX", "spotY", "baby", "seed", "elevator", "decorN", "outfits", "skins", "costumes", "outfit", "skin", "costume", "scenesSeen")) {
             storage.save(key(name, s), 0)
@@ -778,7 +816,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     fun newGame(slot: Int = 0, mon: Mon = Mon.SPARKY) {
         this.slot = slot
-        eraseSlot(slot)
+        eraseWithBackup(slot)
         this.mon = mon
         inventory.fill(0)
         flowerLevel.fill(0)
@@ -1035,7 +1073,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         nav.lb = tntE && pad
         nav.rb = longE && pad
         if (toastT > 0) toastT -= dt
-        if (eraseT > 0) eraseT -= dt else eraseArmed = -1
+        if (eraseT > 0) eraseT -= dt else { eraseArmed = -1; recoverArmed = -1 }
 
         when (state) {
             State.TITLE -> when {
@@ -1285,11 +1323,26 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             // The ERASE strip at the bottom of a used card.
             if (slotLevel(i) >= 0 && y > 176f && y < 200f) {
                 if (eraseArmed == i) {
-                    eraseSlot(i)
+                    eraseWithBackup(i)
                     eraseArmed = -1
                     sfx(Sound.BREAK)
                 } else {
                     eraseArmed = i
+                    eraseT = 3f
+                    sfx(Sound.BUMP)
+                }
+                return
+            }
+            // RECOVER: on an empty card (the strip at the bottom), or under a used card (an older save).
+            val recoverHere = hasBackup(i) && ((slotLevel(i) < 0 && y > 176f && y < 200f) || (slotLevel(i) >= 0 && y in 202f..222f))
+            if (recoverHere) {
+                if (recoverArmed == i) {
+                    recoverSlot(i)
+                    recoverArmed = -1
+                    sfx(Sound.ONEUP)
+                    sound.sayAs("Your save is back! Wahoo!", Voice.HERO)
+                } else {
+                    recoverArmed = i
                     eraseT = 3f
                     sfx(Sound.BUMP)
                 }
@@ -6423,10 +6476,19 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             gfx.rect(x - 2, 58f, w + 4, 144f, 0xFF0A1428.toInt())
             gfx.rect(x, 60f, w, 140f, if (lv >= 0) 0xFF2E6BE6.toInt() else 0xFF3A4A6A.toInt())
             gfx.shadowText("FILE ${i + 1}", x + w / 2, 76f, 11f, white, 1)
+            val armedR = recoverArmed == i
             if (lv < 0) {
                 gfx.shadowText("NEW GAME", x + w / 2, 130f, 10f, 0xFFDDEEFF.toInt(), 1)
                 gfx.shadowText("+", x + w / 2, 160f, 22f, 0xFFDDEEFF.toInt(), 1)
+                if (hasBackup(i)) {
+                    gfx.rect(x + 8, 180f, w - 16, 16f, if (armedR) 0xFF2EB84A.toInt() else 0xFF1E7A2E.toInt())
+                    gfx.text(if (armedR) "TAP AGAIN: RECOVER" else "RECOVER ERASED SAVE", x + w / 2, 191f, 5.5f, white, 1)
+                }
             } else {
+                if (hasBackup(i)) {
+                    gfx.rect(x + 8, 204f, w - 16, 14f, if (armedR) 0xFF2EB84A.toInt() else 0xFF1E7A2E.toInt())
+                    gfx.text(if (armedR) "TAP AGAIN: SWAP BACK" else "RECOVER OLDER SAVE", x + w / 2, 214f, 5.5f, white, 1)
+                }
                 val m = slotMon(i)
                 gfx.shadowText("LEVEL ${lv + 1}", x + w / 2, 94f, 9f, white, 1)
                 gfx.shadowText(Levels.all[lv].name, x + w / 2, 106f, 6f, 0xFFDDEEFF.toInt(), 1)
@@ -6440,7 +6502,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
         }
         if (padConnected) padFrame(gfx, slotCardX(slotCursor) - 4, 56f, slotCardW() + 8, 148f)
-        gfx.shadowText(if (padConnected) "Pick a file and press A" else "Tap a file to play", viewW / 2, 222f, 9f, 0xFFDDDDDD.toInt(), 1)
+        gfx.shadowText(if (padConnected) "Pick a file and press A" else "Tap a file to play", viewW / 2, 232f, 9f, 0xFFDDDDDD.toInt(), 1)
     }
 
     private fun renderPick(gfx: Gfx) {

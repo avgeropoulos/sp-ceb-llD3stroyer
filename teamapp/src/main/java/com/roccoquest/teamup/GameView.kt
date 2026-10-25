@@ -24,6 +24,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     private val game = TeamGame(input, sound, object : Storage {
         override fun load(key: String) = prefs.getInt(key, 0)
         override fun save(key: String, value: Int) { prefs.edit().putInt(key, value).apply() }
+        override fun keys(): Set<String> = prefs.all.keys.toSet()
     })
     private val gfx = CanvasGfx()
 

@@ -119,10 +119,14 @@ interface Storage {
     fun load(key: String): Int
     fun save(key: String, value: Int)
 
+    /** Every key saved so far (used to make safety copies of a whole save file). */
+    fun keys(): Set<String> = emptySet()
+
     /** In-memory storage (used by tests and as a fallback). */
     class Memory : Storage {
         private val mem = HashMap<String, Int>()
         override fun load(key: String) = mem[key] ?: 0
         override fun save(key: String, value: Int) { mem[key] = value }
+        override fun keys(): Set<String> = mem.keys.toSet()
     }
 }

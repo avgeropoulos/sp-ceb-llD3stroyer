@@ -2310,6 +2310,44 @@ class TeamGameTest {
         assertTrue(game.state == TeamGame.State.CLEAR || game.state == TeamGame.State.STICKER, "level clear (${game.state})")
     }
 
+    @Test fun erasedSavesCanBeRecovered() {
+        // A game with some progress in file 1.
+        game.newGame(0, Mon.BLAZE)
+        repeat(5) { game.clearForTest(it) }
+        game.startLevel(5)
+        game.coins = 777 + 60 + BedStyle.RED.coins
+        game.buyDecor(DecorItem.GIANT_TEDDY)
+        game.buyBed(BedStyle.RED)
+        game.sleepAtHome()
+        assertEquals(777, game.coins)
+        val menu = TeamGame(input, ears, storage)
+        menu.update(0.5f); input.tapX = 10f; input.tapY = 10f; input.tap = true; menu.update(dt)
+        assertEquals(TeamGame.State.SLOTS, menu.state)
+        menu.update(0.5f)
+        val x = menu.slotCardXForTest(0) + 20f
+        fun tapAt(y: Float) { input.tapX = x; input.tapY = y; input.tap = true; menu.update(dt); menu.update(dt) }
+        // Oops! ERASE (two taps)...
+        tapAt(188f); tapAt(188f)
+        assertEquals(-1, menu.slotLevel(0), "erased")
+        assertTrue(menu.hasBackup(0))
+        val img = BufferedImage((menu.viewW * 3).toInt(), 720, BufferedImage.TYPE_INT_ARGB)
+        menu.render(AwtGfx(img, 3f)); File("build/screens").mkdirs(); ImageIO.write(img, "png", File("build/screens/slots-recover.png"))
+        // ...RECOVER (two taps) brings it all back.
+        tapAt(188f); tapAt(188f)
+        assertEquals(5, menu.slotLevel(0))
+        val g2 = TeamGame(TeamInput(), ears, storage)
+        g2.continueGame(0)
+        assertEquals(777, g2.coins)
+        assertEquals(Mon.BLAZE, g2.mon)
+        assertTrue(g2.decor.any { it.item == DecorItem.GIANT_TEDDY })
+        // Starting a new game over a file keeps the old one as a safety copy too.
+        g2.newGame(0, Mon.SPARKY)
+        assertEquals(0, g2.coins)
+        assertTrue(g2.recoverSlot(0))
+        g2.continueGame(0)
+        assertEquals(777, g2.coins)
+    }
+
     @Test fun moviesAndLongerScenes() {
         startPlaying()
         goHome()

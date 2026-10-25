@@ -520,6 +520,8 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
   new longer ones (The Birthday Cake, Krag's Bad Hair Day, Dance-Off, The Stinky Cheese, Rocco's Dream and The
   Wrong Pipe).
 * Prices are fairer: small things are cheap, big fancy things (and houses) cost more.
+* **Erased a save by accident?** The save screen now has a **RECOVER** button: erasing a file (or starting a new
+  game over it) keeps a safety copy, and RECOVER brings it back.
 
 ### World 8: Toy World and World 9: Galaxy World (levels 148-189)
 
