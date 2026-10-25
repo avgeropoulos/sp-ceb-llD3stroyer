@@ -26,6 +26,12 @@ class TileGfx(private val list: DrawList, private val paper: PaperGfx) : Gfx {
     private val tops = IdentityHashMap<Region, Mesh>()
     private var epoch = -1
 
+    /**
+     * Title screen: only the ground and blocks high in the sky are shown, so nothing in the
+     * level ever walks through the team standing in front.
+     */
+    var titleMode = false
+
     fun begin(g: TeamGame) {
         game = g
         cam = g.worldCam
@@ -44,6 +50,7 @@ class TileGfx(private val list: DrawList, private val paper: PaperGfx) : Gfx {
         val ty = floor((y + TILE / 2f) / TILE).toInt()
         val level = game.level
         val t = level[tx, ty]
+        if (titleMode && !isGround(t) && ty >= TITLE_CLEAR_ROW) return
         enterCell(tx, ty, if (isGround(t)) LevelDepth.FRONT + 0.3f else HALF + 0.3f)
         val cx = x + w / 2
         val cy = -(y + h / 2)
@@ -77,6 +84,14 @@ class TileGfx(private val list: DrawList, private val paper: PaperGfx) : Gfx {
         paper.begin(z)
     }
 
+    /** A ground tile at screen [x] in row [ty], used to fill in pits under the title screen's team. */
+    fun fillGround(x: Float, ty: Int, s: Sprite, top: Boolean) {
+        val r = Atlas.region(s)
+        m.identity().translate(x + HALF, -(ty * TILE + HALF), 0f)
+        list.add(slabs.getOrPut(r) { slab(r) }, m).cutout = true
+        if (top) list.add(tops.getOrPut(r) { top(r) }, m).cutout = true
+    }
+
     private fun shapeCell(x: Float, y: Float) {
         val tx = floor((x + cam) / TILE).toInt()
         val ty = floor(y / TILE).toInt()
@@ -88,9 +103,9 @@ class TileGfx(private val list: DrawList, private val paper: PaperGfx) : Gfx {
         })
     }
 
-    override fun rect(x: Float, y: Float, w: Float, h: Float, color: Int) { shapeCell(x, y); paper.rect(x, y, w, h, color) }
-    override fun oval(x: Float, y: Float, w: Float, h: Float, color: Int) { shapeCell(x, y); paper.oval(x, y, w, h, color) }
-    override fun poly(xs: FloatArray, ys: FloatArray, color: Int) { shapeCell(xs[0], ys[0]); paper.poly(xs, ys, color) }
+    override fun rect(x: Float, y: Float, w: Float, h: Float, color: Int) { if (titleMode) return; shapeCell(x, y); paper.rect(x, y, w, h, color) }
+    override fun oval(x: Float, y: Float, w: Float, h: Float, color: Int) { if (titleMode) return; shapeCell(x, y); paper.oval(x, y, w, h, color) }
+    override fun poly(xs: FloatArray, ys: FloatArray, color: Int) { if (titleMode) return; shapeCell(xs[0], ys[0]); paper.poly(xs, ys, color) }
     override fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Int) = paper.text(s, x, y, size, color, align)
 
     private fun cloud(cx: Float, cy: Float) {
@@ -139,6 +154,7 @@ class TileGfx(private val list: DrawList, private val paper: PaperGfx) : Gfx {
 
     private companion object {
         const val HALF = TILE / 2f
+        const val TITLE_CLEAR_ROW = 8
     }
 }
 

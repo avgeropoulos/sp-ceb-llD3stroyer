@@ -21,6 +21,64 @@ class TeamSceneTest {
     private val game = TeamGame(input, SoundSink {}, storage)
     private val dir = File("build/screens3d").apply { mkdirs() }
 
+    init { Glyphs.rasterizer = AwtGlyphs }
+
+    /** Draws a frame exactly like the phone: sky, 3D level (if any), then the screen in 3D on top. */
+    private fun shot3d(scene: TeamScene, flat: FlatScreen, name: String) {
+        val scale = 2f
+        val w = (game.viewW * scale).toInt()
+        val h = (VIEW_H * scale).toInt()
+        val raster = SoftRaster(w, h)
+        val world = scene.build(game)
+        if (world.showWorld) {
+            val sky = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
+            game.renderLevelBackdrop(AwtGfx(sky, scale))
+            raster.render(world, sky)
+        } else {
+            raster.render(DrawList().apply { showWorld = false; finish() })
+        }
+        val img = raster.overlay(flat.build(game, world))
+        ImageIO.write(img, "png", File(dir, "$name.png"))
+    }
+
+    @Test fun everyScreenIn3d() {
+        val scene = TeamScene()
+        val flat = FlatScreen()
+        repeat(90) { game.update(dt) }
+        shot3d(scene, flat, "screen-title")
+        game.newGame(0, Mon.SPARKY)
+        game.update(dt)
+        shot3d(scene, flat, "screen-intro")
+        repeat((3.2f / dt).toInt()) { game.update(dt) }
+        shot3d(scene, flat, "screen-level-hud")
+        game.goToMap()
+        repeat(30) { game.update(dt) }
+        shot3d(scene, flat, "screen-map")
+        game.enterHome()
+        repeat(30) { game.update(dt) }
+        shot3d(scene, flat, "screen-home")
+        game.enterGarden()
+        repeat(30) { game.update(dt) }
+        shot3d(scene, flat, "screen-garden")
+        game.openControllerSetup()
+        repeat(10) { game.update(dt) }
+        shot3d(scene, flat, "screen-controls")
+        game.startPark()
+        repeat(60) { game.update(dt) }
+        shot3d(scene, flat, "screen-park")
+        game.playScene(0, 0)
+        repeat(60) { game.update(dt) }
+        shot3d(scene, flat, "screen-scene")
+        // Busy screens must still be quick to build.
+        game.enterHome()
+        repeat(30) { game.update(dt) }
+        repeat(20) { flat.build(game, null) }
+        val t0 = System.nanoTime()
+        repeat(100) { flat.build(game, null) }
+        val ms = (System.nanoTime() - t0) / 1e6 / 100
+        File(dir, "flat-performance.txt").writeText("home: %.2f ms, %d draws\n".format(ms, flat.list.count))
+    }
+
     private fun run(seconds: Float) = repeat((seconds / dt).toInt()) { game.update(dt) }
 
     private fun startPlaying(level: Int) {

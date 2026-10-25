@@ -36,7 +36,16 @@ class SoftRaster(private val w: Int, private val h: Int) {
         return image
     }
 
+    /** Draws [list] on top of what's already there (for the HUD and menus over a 3D level). */
+    fun overlay(list: DrawList): BufferedImage {
+        zb.fill(Float.MAX_VALUE)
+        for (i in 0 until list.count) draw(list, list.cmd(i))
+        image.setRGB(0, 0, w, h, px, 0, w)
+        return image
+    }
+
     private var cutout = false
+    private var glyphs = false
 
     private class V { var sx = 0f; var sy = 0f; var z = 0f; var w = 0f; var r = 0f; var g = 0f; var b = 0f; var a = 0f; var u = 0f; var v = 0f }
 
@@ -52,6 +61,7 @@ class SoftRaster(private val w: Int, private val h: Int) {
         val tb = (c.tint and 255) / 255f; val ta = (c.tint ushr 24) / 255f
         val translucent = c.translucent
         cutout = c.cutout
+        glyphs = c.texture == DrawList.TEX_GLYPHS
         var i = 0
         while (i < c.mesh.vertexCount) {
             var ok = true
@@ -109,6 +119,11 @@ class SoftRaster(private val w: Int, private val h: Int) {
     }
 
     private fun texel(u: Float, v: Float): Int {
+        if (glyphs) {
+            val x = (u * Glyphs.SIZE).toInt().coerceIn(0, Glyphs.SIZE - 1)
+            val y = (v * Glyphs.SIZE).toInt().coerceIn(0, Glyphs.SIZE - 1)
+            return Glyphs.pixels[y * Glyphs.SIZE + x]
+        }
         val x = (u * Atlas.SIZE).toInt().coerceIn(0, Atlas.SIZE - 1)
         val y = (v * Atlas.SIZE).toInt().coerceIn(0, Atlas.SIZE - 1)
         return Atlas.pixels[y * Atlas.SIZE + x]
@@ -137,7 +152,8 @@ class SoftRaster(private val w: Int, private val h: Int) {
             val g = ((a.g * w0 + b.g * w1 + c.g * w2) * (tex shr 8 and 255) / 255f).coerceIn(0f, 1f)
             val bl = ((a.b * w0 + b.b * w1 + c.b * w2) * (tex and 255) / 255f).coerceIn(0f, 1f)
             if (blend) {
-                val al = (a.a * w0 + b.a * w1 + c.a * w2).coerceIn(0f, 1f)
+                val al = ((a.a * w0 + b.a * w1 + c.a * w2) * (tex ushr 24) / 255f).coerceIn(0f, 1f)
+                if (al <= 0.01f) continue
                 val dst = px[idx]
                 fun mixc(s: Float, sh: Int) = ((dst shr sh and 255) * (1 - al) + s * 255 * al).toInt().coerceIn(0, 255)
                 px[idx] = (0xFF shl 24) or (mixc(r, 16) shl 16) or (mixc(g, 8) shl 8) or mixc(bl, 0)

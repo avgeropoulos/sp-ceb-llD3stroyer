@@ -15,15 +15,18 @@ import com.roccoquest.team.FrameClock
 import com.roccoquest.team.TeamControls
 import com.roccoquest.team.TeamGame
 import com.roccoquest.team.TeamInput
+import com.roccoquest.team3d.FlatScreen
+import com.roccoquest.team3d.Glyphs
 import com.roccoquest.team3d.TeamScene
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
 /**
- * Team Up! 3D's screen. It runs the normal Team Up! game and draws each frame in three
- * layers: the painted sky (Team Up!'s own 2D drawing), the level in real 3D with OpenGL,
- * and the HUD, buttons and menus on top (2D again). Screens that aren't a level (title,
- * map, home, mini games) are drawn exactly like Team Up!.
+ * Team Up! 3D's screen. It runs the normal Team Up! game and draws each frame with OpenGL:
+ * in a level (and on the title screen) the painted sky goes in the back and the level is real
+ * 3D; then everything else (HUD, buttons, menus, map, house, mini games) is drawn on top as
+ * chunky lit 3D by [FlatScreen], in exactly the places the 2D game puts it, so taps still work.
+ * If 3D ever goes wrong, that moment is drawn in plain 2D instead.
  * Touch, keyboard and controller handling is the same as Team Up!'s GameView.
  */
 @SuppressLint("ViewConstructor")
@@ -38,6 +41,7 @@ class GameGLView(context: Context) : GLSurfaceView(context), GLSurfaceView.Rende
     })
 
     private val scene = TeamScene()
+    private val screen = FlatScreen()
     private val glScene = GlScene()
     private val sky = CanvasLayer()
     private val front = CanvasLayer()
@@ -53,6 +57,7 @@ class GameGLView(context: Context) : GLSurfaceView(context), GLSurfaceView.Rende
     private val touchId = IntArray(10)
 
     init {
+        Glyphs.rasterizer = AndroidGlyphs()
         setEGLContextClientVersion(2)
         setEGLConfigChooser(8, 8, 8, 8, 16, 0)
         setRenderer(this)
@@ -148,41 +153,32 @@ class GameGLView(context: Context) : GLSurfaceView(context), GLSurfaceView.Rende
     private fun drawFrame(scale: Float) {
         GLES20.glClearColor(0f, 0f, 0f, 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
-        val in3d = game.showsLevel || game.state == TeamGame.State.TITLE
-        if (!in3d || failed3d > 0) {
-            // Map, home and the rest (or a frame where 3D went wrong): the normal Team Up! picture.
-            if (failed3d > 0) failed3d--
+        if (failed3d > 0) {
+            // 3D had a problem a moment ago: draw the normal Team Up! picture for a little while.
+            failed3d--
             draw2d(scale)
             return
         }
-        val list = try {
-            scene.build(game)
+        try {
+            val world = scene.build(game)
+            val top = screen.build(game, world)
+            if (world.showWorld) {
+                // The level (or the title screen): painted sky, then the 3D world.
+                sky.paint { c -> gfx.begin(c, scale); game.renderLevelBackdrop(gfx) }
+                sky.draw(blend = false)
+                GLES20.glClear(GLES20.GL_DEPTH_BUFFER_BIT)
+                glScene.render(world)
+            }
+            // Everything else (HUD, buttons, menus, map, house...) as chunky 3D on top.
+            GLES20.glClear(GLES20.GL_DEPTH_BUFFER_BIT)
+            glScene.render(top)
         } catch (t: Throwable) {
             // Never let a 3D drawing problem stop the game: show this moment in 2D instead.
-            android.util.Log.e("TeamUp3D", "3D scene failed, drawing in 2D", t)
+            android.util.Log.e("TeamUp3D", "3D drawing failed, drawing in 2D", t)
             failed3d = 30
+            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
             draw2d(scale)
-            return
         }
-        sky.paint { c -> gfx.begin(c, scale); game.renderLevelBackdrop(gfx) }
-        front.paint { c ->
-            gfx.begin(c, scale)
-            // Words floating in the level (scores, names) were placed by the 3D scene.
-            for (i in 0 until list.labelCount) {
-                val l = list.label(i)
-                gfx.text(l.text, l.x, l.y, l.size, l.color, l.align)
-            }
-            try { game.render(gfx, drawWorld = false) } catch (t: Throwable) { recover(t) }
-        }
-        sky.draw(blend = false)
-        GLES20.glClear(GLES20.GL_DEPTH_BUFFER_BIT)
-        try {
-            glScene.render(list)
-        } catch (t: Throwable) {
-            android.util.Log.e("TeamUp3D", "3D drawing failed", t)
-            failed3d = 30
-        }
-        front.draw(blend = true)
     }
 
     /** Frames left to draw in plain 2D after the 3D scene had a problem. */

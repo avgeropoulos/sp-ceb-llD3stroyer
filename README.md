@@ -115,9 +115,14 @@ are exactly like Team Up!.
 
 ![Team Up! 3D title screen](docs/teamup3d-title.png)
 ![Team Up! 3D](docs/teamup3d.png)
+![Team Up! 3D world map](docs/teamup3d-map.png)
 
-* The **title screen is 3D** too: chunky block letters that bob and turn, the team standing in front
-  of a 3D level, and a slowly swaying camera.
+* The **title screen is 3D** too: chunky block letters that bob and turn, the team standing on the
+  ground in front of a 3D level, and a slowly swaying camera.
+* **Every other screen is 3D as well**: the world map, the house, garden and roof, shops, the sticker
+  book, mini games, the HUD and the touch buttons. Buttons are shiny rounded slabs, circles are domes,
+  pictures are puffy 3D models, and everything casts a soft shadow. Everything stays in the same place
+  as in Team Up!, so all the buttons work the same.
 
 * It's a **separate app** (`com.roccoquest.teamup3d`, called "Team Up! 3D"), so it installs next to
   Team Up! instead of replacing it. It keeps its own save files.

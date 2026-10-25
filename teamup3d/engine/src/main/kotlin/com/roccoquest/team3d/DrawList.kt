@@ -35,6 +35,8 @@ class DrawCmd {
     var emissive = 0f
     /** Strength of the specular highlight. */
     var shine = 0f
+    /** Which texture the mesh's uv coordinates point into. */
+    var texture = DrawList.TEX_TILES
     /** Throw away see-through texels (for pixel-art blocks with holes, like clouds). */
     var cutout = false
     /** Distance from the camera, for sorting translucent draws. */
@@ -57,6 +59,11 @@ class DrawList {
     val camPos = FloatArray(3)
     /** When false the backend clears to black and draws no 3D at all. */
     var showWorld = true
+    /**
+     * Draw in exactly the order things were added (for flat screens, where later things
+     * cover earlier ones like in 2D) instead of sorting see-through things last.
+     */
+    var keepOrder = false
     var viewW = 400f
 
     private val pool = ArrayList<DrawCmd>()
@@ -88,6 +95,7 @@ class DrawList {
         c.emissive = emissive
         c.shine = shine
         c.cutout = false
+        c.texture = DrawList.TEX_TILES
         val dx = c.model[12] - camPos[0]; val dy = c.model[13] - camPos[1]; val dz = c.model[14] - camPos[2]
         c.dist = dx * dx + dy * dy + dz * dz
         return c
@@ -101,6 +109,10 @@ class DrawList {
 
     fun finish() {
         if (order.size < count) order = IntArray(count * 2)
+        if (keepOrder) {
+            for (i in 0 until count) order[i] = i
+            return
+        }
         var n = 0
         for (i in 0 until count) if (!pool[i].translucent) order[n++] = i
         val firstClear = n
@@ -137,6 +149,24 @@ class DrawList {
         camPos[0] = ex; camPos[1] = ey; camPos[2] = ez
     }
 
+    /**
+     * A straight-on camera without perspective, for whole screens: x and y map exactly to the
+     * 2D game's pixels (so buttons stay under your finger) and z only decides what's in front.
+     */
+    fun setFlatCamera(viewW: Float, depth: Float) {
+        this.viewW = viewW
+        val far = depth + 200f
+        view.identity().translate(0f, 0f, -far + 50f)
+        proj.identity()
+        val p = proj.m
+        p[0] = 2f / viewW; p[12] = -1f
+        p[5] = 2f / VIEW_H; p[13] = 1f
+        p[10] = -2f / far; p[14] = -1f
+        viewProj.set(proj).mul(view)
+        // Light and highlights as if the camera were straight in front.
+        camPos[0] = viewW / 2; camPos[1] = -VIEW_H / 2; camPos[2] = 1e5f
+    }
+
     /** Projects a world point to virtual screen pixels; returns false when behind the camera. */
     fun project(x: Float, y: Float, z: Float, out: FloatArray): Boolean {
         val w = viewProj.transform(x, y, z, tmp)
@@ -153,6 +183,8 @@ class DrawList {
     }
 
     companion object {
+        const val TEX_TILES = 0
+        const val TEX_GLYPHS = 1
         val FOV = (40.0 * PI / 180.0).toFloat()
     }
 }
