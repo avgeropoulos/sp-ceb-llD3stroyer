@@ -344,7 +344,8 @@ class TeamGameTest {
     @Test fun everyFlagLevelCanBeFinished() {
         for (i in Levels.all.indices) {
             if (Levels.all[i].rows.any { r -> r.any { it in BOSSES } }) continue
-            assertTrue(botRun(i, 120f), "${Levels.all[i].name}: stuck at x=${game.leader.x / TILE}")
+            // Long levels (World 10) get time in proportion to their length.
+            assertTrue(botRun(i, 120f * maxOf(1f, Levels.all[i].w / 220f)), "${Levels.all[i].name}: stuck at x=${game.leader.x / TILE}")
         }
     }
 

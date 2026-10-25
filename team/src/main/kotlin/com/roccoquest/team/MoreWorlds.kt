@@ -283,6 +283,7 @@ object MoreWorlds {
         b.rock(8, 12, *rocks[listOf(0, 1, 2, 6)[r.nextInt(4)]])
         var x = 17
         var lastGap = true
+        var lastHill = false
         var checkpoints = 0
         var frog = false
         // World 4 has more bad guys; Spooky World (6) and later are calmer, with just a few.
@@ -290,7 +291,8 @@ object MoreWorlds {
         while (x < w - 28) {
             val kind = r.nextInt(7)
             when {
-                kind == 0 && !lastGap && x > 24 -> {
+                // (World 10: never a gap right after a hill: floaty space jumps would land in it.)
+                kind == 0 && !lastGap && x > 24 && !(world >= 10 && lastHill) -> {
                     // A gap (or a lava pit) to jump over.
                     val gw = 2 + r.nextInt(2)
                     if (lava) b.fill(x, x + gw - 1, 13, 14, 'L')
@@ -298,6 +300,7 @@ object MoreWorlds {
                     if (world >= 8) b.fill(x - 10, x - 1, 9, 9, '.')
                     x += gw
                     lastGap = true
+                    lastHill = false
                     continue
                 }
                 kind == 1 -> {
@@ -333,6 +336,7 @@ object MoreWorlds {
                 }
             }
             lastGap = false
+            lastHill = kind == 2
         }
         // The end: a staircase and the flag.
         b.ground(x, w - 1)
