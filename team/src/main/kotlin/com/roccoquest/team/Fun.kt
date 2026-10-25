@@ -102,9 +102,12 @@ object Scenes {
         "THE GIANT BURP", "NAP TIME", "WHERE'S MY MUSTACHE?!", "TICKLE ATTACK!", "BUBBLE GUM TROUBLE",
         "SPAGHETTI SLURP", "THE HICCUPS", "BIRD ON MY HAT", "SKATEBOARD CRASH", "MAGIC TRICK",
         "ROCCO SINGS", "BALLOON RIDE", "SPOTTY SAYS BOO!", "WHOOPEE CUSHION", "PIZZA PARTY",
-    )
+    ) + LongScenes.titles
 
-    fun cues(kind: Int, monName: String): List<Cue> = when (kind) {
+    /** How long scene [kind] lasts (the newer story scenes are longer). */
+    fun length(kind: Int) = if (kind >= LongScenes.FIRST) LongScenes.length(kind) else LENGTH
+
+    fun cues(kind: Int, monName: String): List<Cue> = if (kind >= LongScenes.FIRST) LongScenes.cues(kind, monName) else when (kind) {
         0 -> listOf(Cue(0.8f, "A donut!", sound = Sound.COIN), Cue(2.0f, "Nom nom nom...", sound = Sound.KICK), Cue(3.6f, "Mmmm... OH YA!", sound = Sound.ONEUP))
         1 -> listOf(Cue(0.6f, "La la la, what a nice day..."), Cue(2.0f, "WHOOOAAA!", sound = Sound.JUMP), Cue(3.8f, "Oof! My bottom!", sound = Sound.BUMP))
         2 -> listOf(Cue(0.6f, "Ah... ah..."), Cue(1.8f, "AAAH..."), Cue(2.8f, "AH-CHOOOOO!", sound = Sound.BREAK), Cue(4.2f, "Hey! Come back, hat!"))
@@ -138,6 +141,7 @@ object Scenes {
 
     /** Draws scene [kind] at time [t]. */
     fun draw(g: TeamGame, gfx: Gfx, kind: Int, t: Float, viewW: Float, viewH: Float, mon: Mon) {
+        if (kind >= LongScenes.FIRST) { LongScenes.draw(g, gfx, kind, t, viewW, viewH, mon); drawTitle(gfx, kind, t, viewW); return }
         // A sunny meadow stage
         gfx.gradient(0f, 0f, viewW, viewH, 0xFF4AA4F0.toInt(), 0xFFD0F0FF.toInt())
         gfx.oval(viewW - 70, 24f, 34f, 34f, 0xFFFFE87A.toInt())
@@ -388,6 +392,10 @@ object Scenes {
                 if (t >= 4.8f) gfx.shadowText("POP!", cx, 60f, 24f, 0xFFFF6AA8.toInt(), 1)
             }
         }
+        drawTitle(gfx, kind, t, viewW)
+    }
+
+    private fun drawTitle(gfx: Gfx, kind: Int, t: Float, viewW: Float) {
         gfx.rect(0f, 0f, viewW, 22f, 0xAA000000.toInt())
         gfx.shadowText("FUNNY TIME: " + titles[kind], 8f, 15f, 9f, 0xFFFFD21F.toInt())
         gfx.shadowText("tap to skip", viewW - 8f, 15f, 7f, 0xFFDDDDDD.toInt(), 2)

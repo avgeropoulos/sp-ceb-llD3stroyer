@@ -2310,6 +2310,37 @@ class TeamGameTest {
         assertTrue(game.state == TeamGame.State.CLEAR || game.state == TeamGame.State.STICKER, "level clear (${game.state})")
     }
 
+    @Test fun moviesAndLongerScenes() {
+        startPlaying()
+        goHome()
+        game.coins = 2000
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 720, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f)); ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        assertEquals(26, Scenes.titles.size)
+        // Every long scene plays all the way through, then it's back home to the movies.
+        for (k in LongScenes.FIRST until Scenes.titles.size) {
+            game.playScene(k, -2)
+            assertEquals(TeamGame.State.SCENE, game.state)
+            var now = 0f
+            for ((i, at) in listOf(3.5f, 7.7f, 10.8f).withIndex()) {
+                run(at - now); now = at
+                if (game.state == TeamGame.State.SCENE) shot("scene-${k - LongScenes.FIRST}-$i")
+            }
+            run(3f)
+            assertEquals(TeamGame.State.HOME, game.state)
+            assertTrue(game.theater)
+        }
+        shot("movies")
+        // Locked scenes can't be watched; seen ones can.
+        assertTrue(game.scenesSeen and 1 == 0)
+        game.buyFurniture(Furniture.TV)
+        game.playScene(0, -2); run(6f)
+        assertTrue(game.scenesSeen and 1 != 0)
+    }
+
     @Test fun outfitsAndPokemonCostumes() {
         startPlaying()
         goHome()

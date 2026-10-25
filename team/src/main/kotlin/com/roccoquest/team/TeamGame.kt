@@ -615,6 +615,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         storage.save(key("outfit"), Style.rocco.ordinal)
         storage.save(key("skin"), Style.blocky.ordinal)
         storage.save(key("costume"), (Style.monCostume?.ordinal ?: -1) + 1)
+        storage.save(key("scenesSeen"), scenesSeen)
         storage.save(key("decorN"), decor.size)
         decor.forEachIndexed { i, d -> storage.save(key("decor_$i"), Decor.pack(d)) }
         garden.save()
@@ -735,6 +736,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         garden.load()
         babyMode = storage.load(key("baby")) == 1
         hasElevator = storage.load(key("elevator")) == 1
+        scenesSeen = storage.load(key("scenesSeen"))
+        // Older saves: every scene played so far (they came in order) counts as seen.
+        if (scenesSeen == 0) for (k in 0 until minOf(20, storage.load(key("scenes")))) scenesSeen = scenesSeen or (1 shl k)
         outfitsOwned = storage.load(key("outfits")) or 1
         skinsOwned = storage.load(key("skins")) or 1
         costumesOwned = storage.load(key("costumes"))
@@ -754,7 +758,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     fun eraseSlot(s: Int) {
-        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "armorType", "armorHp", "blackFlowers", "shieldType", "shieldHp", "swordHp", "pickHp", "houseType", "furniture", "furniture2", "plushies", "plush0", "plush1", "plush2", "plush3", "beds", "bedStyle", "unlocked", "clearedLo", "clearedHi", "cleared2", "cleared3", "cleared4", "cleared5", "cleared6", "stickersLo", "stickersHi", "houseColor", "floors", "scenes", "bow", "houseLevel", "houseX", "houseY", "bed", "bedLevel", "spotLevel", "spotX", "spotY", "baby", "seed", "elevator", "decorN", "outfits", "skins", "costumes", "outfit", "skin", "costume")) {
+        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "armorType", "armorHp", "blackFlowers", "shieldType", "shieldHp", "swordHp", "pickHp", "houseType", "furniture", "furniture2", "plushies", "plush0", "plush1", "plush2", "plush3", "beds", "bedStyle", "unlocked", "clearedLo", "clearedHi", "cleared2", "cleared3", "cleared4", "cleared5", "cleared6", "stickersLo", "stickersHi", "houseColor", "floors", "scenes", "bow", "houseLevel", "houseX", "houseY", "bed", "bedLevel", "spotLevel", "spotX", "spotY", "baby", "seed", "elevator", "decorN", "outfits", "skins", "costumes", "outfit", "skin", "costume", "scenesSeen")) {
             storage.save(key(name, s), 0)
         }
         Ore.entries.forEach { storage.save(key("ore_${it.name}", s), 0) }
@@ -810,6 +814,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         blocks.forEach { it.clear() }
         building = false
         outfitsOwned = 1; skinsOwned = 1; costumesOwned = 0
+        scenesSeen = 0
+        theater = false
         Style.rocco = RoccoOutfit.CLASSIC; Style.blocky = BlockySkin.CLASSIC; Style.monCostume = null
         inGarden = false
         plushOwned.fill(false)
@@ -2803,10 +2809,72 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         // They take turns, so each one is a surprise.
         val n = storage.load(key("scenes"))
         storage.save(key("scenes"), n + 1)
-        sceneKind = n % Scenes.titles.size
+        playScene(n % Scenes.titles.size, next)
+    }
+
+    /** Scenes you've seen (bits), so you can watch them again at the MOVIES. */
+    var scenesSeen = 0
+        private set
+
+    /** Plays scene [kind]; [next] is the level to go to after (or [BACK_HOME] for the movies). */
+    fun playScene(kind: Int, next: Int) {
+        sceneKind = kind
         sceneNext = next
         sceneCue = 0
+        if (scenesSeen and (1 shl kind) == 0) { scenesSeen = scenesSeen or (1 shl kind); storage.save(key("scenesSeen"), scenesSeen) }
         setState(State.SCENE)
+    }
+
+    private val BACK_HOME = -2
+
+    /** The MOVIES menu (the TV or the movie screen at home): watch every funny scene you've unlocked. */
+    var theater = false
+        private set
+    private var theaterPage = 0
+    private val THEATER_PER_PAGE = 10
+
+    private fun theaterX(i: Int) = viewW / 2 - 156f + (i % 2) * 160f
+    private fun theaterY(i: Int) = 46f + (i / 2) * 32f
+
+    private fun updateTheater(tapped: Boolean) {
+        val pages = (Scenes.titles.size + THEATER_PER_PAGE - 1) / THEATER_PER_PAGE
+        if (nav.left || nav.right) { theaterPage = (theaterPage + (if (nav.right) 1 else pages - 1)) % pages; shopCursor = 0 }
+        if (nav.up) shopCursor = maxOf(0, shopCursor - 1)
+        if (nav.down) shopCursor = minOf(THEATER_PER_PAGE - 1, shopCursor + 1)
+        if (nav.a) { watch(theaterPage * THEATER_PER_PAGE + shopCursor); return }
+        if (nav.b) { theater = false; return }
+        if (!tapped || input.tapX < 0f) return
+        if (input.tapY > VIEW_H - 22f) { theaterPage = (theaterPage + (if (input.tapX > viewW / 2) 1 else pages - 1)) % pages; sfx(Sound.KICK); return }
+        for (i in 0 until THEATER_PER_PAGE) {
+            if (input.tapX in theaterX(i)..(theaterX(i) + 152f) && input.tapY in theaterY(i)..(theaterY(i) + 28f)) { watch(theaterPage * THEATER_PER_PAGE + i); return }
+        }
+        theater = false
+    }
+
+    private fun watch(kind: Int) {
+        if (kind !in Scenes.titles.indices) return
+        if (scenesSeen and (1 shl kind) == 0) { sfx(Sound.BUMP); toast("You haven't unlocked that one yet! Keep beating levels."); return }
+        theater = false
+        playScene(kind, BACK_HOME)
+    }
+
+    private fun renderTheater(gfx: Gfx) {
+        gfx.rect(0f, 22f, viewW, VIEW_H - 22, 0xEE120A1A.toInt())
+        gfx.shadowText("MOVIES: YOUR FUNNY SCENES (${Integer.bitCount(scenesSeen)}/${Scenes.titles.size})", viewW / 2, 38f, 9f, 0xFFFFD21F.toInt(), 1)
+        for (i in 0 until THEATER_PER_PAGE) {
+            val k = theaterPage * THEATER_PER_PAGE + i
+            if (k >= Scenes.titles.size) break
+            val seen = scenesSeen and (1 shl k) != 0
+            val x = theaterX(i); val y = theaterY(i)
+            gfx.rect(x, y, 152f, 28f, if (seen) 0xFFE84A4A.toInt() else 0xFF3A2A44.toInt())
+            gfx.rect(x + 2, y + 2, 24f, 24f, if (seen) 0xFFF4F4F4.toInt() else 0xFF2A1A34.toInt())
+            gfx.text(if (seen) "▶" else "?", x + 14, y + 19, 12f, if (seen) 0xFFE84A4A.toInt() else 0xFF8A7A9A.toInt(), 1)
+            gfx.text(if (seen) Scenes.titles[k] else "???", x + 32, y + 13, 7f, white)
+            gfx.text(if (seen) (if (k >= LongScenes.FIRST) "a long one!" else "") else "beat more levels", x + 32, y + 23, 5f, 0xFFE0D0E8.toInt())
+            if (padConnected && shopCursor == i) padFrame(gfx, x - 2, y - 2, 156f, 32f)
+        }
+        val pages = (Scenes.titles.size + THEATER_PER_PAGE - 1) / THEATER_PER_PAGE
+        gfx.shadowText("< PREV      PAGE ${theaterPage + 1}/$pages      NEXT >", viewW / 2, VIEW_H - 8f, 8f, white, 1)
     }
 
     private fun updateScene(tapped: Boolean, skip: Boolean) {
@@ -2816,7 +2884,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             sound.sayAs(c.text, c.voice)
             c.sound?.let { sfx(it) }
         }
-        if (stateT > Scenes.LENGTH || ((tapped || skip) && stateT > 0.6f)) goToMap(sceneNext)
+        if (stateT > Scenes.length(sceneKind) || ((tapped || skip) && stateT > 0.6f)) {
+            if (sceneNext == BACK_HOME) { setState(State.HOME); theater = true } else goToMap(sceneNext)
+        }
     }
 
     private fun updateDog(dt: Float) {
@@ -4094,6 +4164,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             near(Furniture.TRAMPOLINE) -> "BOUNCE"
             near(Furniture.PIANO) -> "MUSIC"
             near(Furniture.BABY_MACHINE) -> "BABY"
+            near(Furniture.TV) || near(Furniture.MOVIE_SCREEN) -> "MOVIES"
             near(Furniture.DRUM_SET) -> "DRUMS"
             near(Furniture.CANDY_MACHINE) -> "CANDY"
             x in Homes.SHELF_X..(Homes.SHELF_X + 210f) && !near(Furniture.TV) -> "LOOK"
@@ -4458,6 +4529,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             "BOUNCE" -> if (homeHopT <= 0f) { homeHopT = 0.8f; sfx(Sound.JUMP) }
             "MUSIC" -> { sfx(Sound.ONEUP); sound.say("Do re mi fa so la ti do!") }
             "BABY" -> babyMachine()
+            "MOVIES" -> { theater = true; theaterPage = 0; shopCursor = 0; sfx(Sound.KICK); sound.sayAs("Movie time!", Voice.HERO) }
             "DRUMS" -> { sfx(Sound.STOMP); sound.say("Boom boom bap! Boom boom bap!") }
             "CANDY" -> { sfx(Sound.COIN); sound.sayAs("Yummy candy!", Voice.HERO); toast("A gumball! Yum!") }
             "MOVE" -> pickUp()
@@ -5168,12 +5240,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     private fun updateHome(dt: Float, tapped: Boolean, close: Boolean, actionE: Boolean) {
         if (close) {
-            when { home3d -> exit3d(); elevatorMenu -> elevatorMenu = false; building -> toggleBuild(); inGarden -> leaveGarden(); monMenu && gamePick -> gamePick = false; monMenu && monSwitch -> monSwitch = false; monMenu -> monMenu = false; homeShop -> homeShop = false; plushBook -> plushBook = false; else -> leaveHome() }
+            when { home3d -> exit3d(); theater -> theater = false; elevatorMenu -> elevatorMenu = false; building -> toggleBuild(); inGarden -> leaveGarden(); monMenu && gamePick -> gamePick = false; monMenu && monSwitch -> monSwitch = false; monMenu -> monMenu = false; homeShop -> homeShop = false; plushBook -> plushBook = false; else -> leaveHome() }
             return
         }
         if (homeHopT > 0f) homeHopT -= dt
         if (monMenu) { updateMonMenu(dt, tapped); return }
         if (elevatorMenu) { updateElevator(tapped); return }
+        if (theater) { updateTheater(tapped); return }
         if (homeShop) { padShop(); updateShop(tapped); return }
         if (plushBook) {
             if (nav.left) bookPage = (bookPage + PLUSH_PAGES - 1) % PLUSH_PAGES
@@ -5429,12 +5502,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
         // Controls: walk left/right, and the action button.
         TeamControls.layout(viewW)
-        if (!homeShop && !plushBook && !monMenu && !elevatorMenu) TeamControls.drawHome(gfx, input, if (building) "BUILD" else target ?: "", time)
+        if (!homeShop && !plushBook && !monMenu && !elevatorMenu && !theater) TeamControls.drawHome(gfx, input, if (building) "BUILD" else target ?: "", time)
         if (building && !homeShop) renderBuildPalette(gfx)
         if (homeShop) renderShop(gfx)
         if (monMenu) renderMonMenu(gfx)
         if (plushBook) renderPlushBook(gfx, true)
         if (elevatorMenu) renderElevator(gfx)
+        if (theater) renderTheater(gfx)
         renderHomeToast(gfx)
     }
 
