@@ -97,9 +97,28 @@ enum class Furniture(val label: String, val costs: List<Pair<Ore, Int>>, val coi
 }
 
 /** Beds for the house. Sleep in one to save the game. */
-enum class BedStyle(val label: String, val coins: Int, val blanket: Int, val pillow: Int) {
+/**
+ * Beds (saved by index: new ones at the END). [pattern]: 0 plain, 1 stripes, 2 dots, 3 stars, 4 hearts, 5 checkers,
+ * 6 spots. [head]: 0 plain, 1 round, 2 castle, 3 canopy, 4 race car, 5 cloud, 6 ball.
+ */
+enum class BedStyle(val label: String, val coins: Int, val blanket: Int, val pillow: Int, val frame: Int = 0xFF7A4A20.toInt(),
+                    val pattern: Int = 0, val head: Int = 0, val second: Int = 0xFFFFFFFF.toInt()) {
     RED("RED BED", 20, 0xFFE52521.toInt(), 0xFFFFFFFF.toInt()),
     BLUE("BLUE BED", 20, 0xFF2E6BE6.toInt(), 0xFFDDEEFF.toInt()),
+    PINK("PINK BED", 25, 0xFFFF8AC0.toInt(), 0xFFFFFFFF.toInt(), 0xFFF4F4F4.toInt(), 4, 1, 0xFFFFFFFF.toInt()),
+    GREEN("GREEN BED", 25, 0xFF3AB84A.toInt(), 0xFFE8FFE0.toInt(), pattern = 1, second = 0xFF2A8A3A.toInt()),
+    PURPLE("PURPLE BED", 25, 0xFF8A4AD8.toInt(), 0xFFF0E0FF.toInt(), pattern = 2, second = 0xFFE0C8FF.toInt()),
+    SUNNY("SUNNY BED", 30, 0xFFF4D84A.toInt(), 0xFFFFFFFF.toInt(), 0xFFF4F4F4.toInt(), 1, 1, 0xFFF08A3A.toInt()),
+    STARRY("STARRY NIGHT BED", 60, 0xFF1A2A6A.toInt(), 0xFFDDEEFF.toInt(), 0xFF3A3A5A.toInt(), 3, 1, 0xFFFFE14D.toInt()),
+    RAINBOW("RAINBOW BED", 80, 0xFFE84A4A.toInt(), 0xFFFFFFFF.toInt(), 0xFFF4F4F4.toInt(), 7, 1),
+    DINO("DINO BED", 70, 0xFF5AB84A.toInt(), 0xFFF4D84A.toInt(), 0xFF8A5A2A.toInt(), 6, 0, 0xFF2A7A2A.toInt()),
+    PRINCESS("PRINCESS BED", 120, 0xFFFFB8D8.toInt(), 0xFFFFFFFF.toInt(), 0xFFF4D84A.toInt(), 4, 3, 0xFFFF6A9A.toInt()),
+    CASTLE("CASTLE BED", 120, 0xFF3A5AA8.toInt(), 0xFFE8E8F0.toInt(), 0xFF8A8A9A.toInt(), 0, 2),
+    RACE_CAR("RACE CAR BED", 150, 0xFFE84A3A.toInt(), 0xFFFFFFFF.toInt(), 0xFFE84A3A.toInt(), 5, 4, 0xFF1A1A20.toInt()),
+    CLOUD("CLOUD BED", 100, 0xFFF4F8FF.toInt(), 0xFFBFE8FF.toInt(), 0xFFDDEEFF.toInt(), 0, 5),
+    POKEBALL("BALL BED", 90, 0xFFE84A4A.toInt(), 0xFFFFFFFF.toInt(), 0xFF2A2A30.toInt(), 0, 6),
+    GOLD("GOLDEN BED", 250, 0xFFF4D84A.toInt(), 0xFFFFF4C8.toInt(), 0xFFC8A030.toInt(), 3, 2, 0xFFFFFFFF.toInt()),
+    SPACE("ROCKET BED", 140, 0xFF2A3A6A.toInt(), 0xFFDDEEFF.toInt(), 0xFFB8C0CC.toInt(), 3, 1, 0xFFFFFFFF.toInt()),
 }
 
 object Homes {
@@ -546,11 +565,37 @@ object Homes {
 
     fun drawBed(gfx: Gfx, style: BedStyle, x: Float) {
         val fy = FLOOR_Y
-        gfx.rect(x, fy - 24, 5f, 24f, 0xFF7A4A20.toInt())
-        gfx.rect(x + 51, fy - 16, 5f, 16f, 0xFF7A4A20.toInt())
-        gfx.rect(x, fy - 10, 56f, 6f, 0xFF7A4A20.toInt())
+        val fr = style.frame
+        // The headboard
+        when (style.head) {
+            1 -> gfx.oval(x - 3, fy - 32, 12f, 22f, fr)
+            2 -> { gfx.rect(x - 2, fy - 30, 9f, 30f, fr); for (k in 0 until 2) gfx.rect(x - 2 + k * 6f, fy - 34, 3f, 4f, fr) }
+            3 -> {
+                gfx.rect(x - 1, fy - 44, 2f, 44f, fr); gfx.rect(x + 54, fy - 44, 2f, 44f, fr)
+                gfx.poly(floatArrayOf(x - 2, x + 28, x + 57), floatArrayOf(fy - 44, fy - 52, fy - 44), style.second)
+                gfx.rect(x + 1, fy - 44, 6f, 26f, 0x88FFFFFF.toInt()); gfx.rect(x + 48, fy - 44, 6f, 26f, 0x88FFFFFF.toInt())
+            }
+            4 -> { gfx.rect(x - 4, fy - 18, 64f, 12f, fr); gfx.oval(x + 2, fy - 8, 10f, 10f, 0xFF1A1A20.toInt()); gfx.oval(x + 44, fy - 8, 10f, 10f, 0xFF1A1A20.toInt()); gfx.rect(x - 4, fy - 24, 8f, 8f, fr) }
+            5 -> { gfx.oval(x - 6, fy - 30, 20f, 16f, 0xFFF4F8FF.toInt()); gfx.oval(x + 2, fy - 34, 16f, 14f, 0xFFFFFFFF.toInt()); gfx.oval(x - 8, fy - 14, 72f, 12f, 0xFFF4F8FF.toInt()) }
+            6 -> { gfx.oval(x - 6, fy - 30, 20f, 20f, 0xFFE84A4A.toInt()); gfx.rect(x - 6, fy - 20, 20f, 10f, 0xFFF4F4F4.toInt()); gfx.rect(x - 6, fy - 21, 20f, 2f, 0xFF1A1A20.toInt()); gfx.oval(x + 1, fy - 23, 6f, 6f, 0xFFF4F4F4.toInt()) }
+            else -> gfx.rect(x, fy - 24, 5f, 24f, fr)
+        }
+        gfx.rect(x + 51, fy - 16, 5f, 16f, fr)
+        if (style.head != 4) gfx.rect(x, fy - 10, 56f, 6f, fr)
         gfx.rect(x + 5, fy - 17, 46f, 8f, 0xFFF4F4F4.toInt())
         gfx.rect(x + 18, fy - 18, 33f, 9f, style.blanket)
+        // The blanket's pattern
+        val c2 = style.second
+        when (style.pattern) {
+            1 -> for (k in 0 until 4) gfx.rect(x + 20 + k * 8f, fy - 18, 3f, 9f, c2)
+            2 -> for (k in 0 until 5) gfx.oval(x + 20 + k * 6f, fy - 16 + (k % 2) * 3f, 3f, 3f, c2)
+            3 -> for (k in 0 until 4) gfx.text("★", x + 23 + k * 8f, fy - 11 + (k % 2) * -2f, 5f, c2, 1)
+            4 -> for (k in 0 until 3) gfx.text("♥", x + 24 + k * 10f, fy - 11f, 5.5f, c2, 1)
+            5 -> for (k in 0 until 8) gfx.rect(x + 18 + k * 4f, fy - 18 + (k % 2) * 4f, 4f, 4f, c2)
+            6 -> for (k in 0 until 4) gfx.oval(x + 21 + k * 8f, fy - 17 + (k % 2) * 3f, 5f, 4f, c2)
+            7 -> { val rb = intArrayOf(0xFFE84A4A.toInt(), 0xFFF08A3A.toInt(), 0xFFF4D84A.toInt(), 0xFF3AB84A.toInt(), 0xFF3A6AD8.toInt(), 0xFF8A4AD8.toInt())
+                for (k in 0 until 6) gfx.rect(x + 18 + k * 5.5f, fy - 18, 5.5f, 9f, rb[k]) }
+        }
         gfx.rect(x + 18, fy - 18, 33f, 2f, 0x33FFFFFF)
         gfx.oval(x + 6, fy - 21, 12f, 7f, style.pillow)
         gfx.shadowText("SLEEP", x + 28, fy - 26, 6f, 0xFFFFF2C8.toInt(), 1)

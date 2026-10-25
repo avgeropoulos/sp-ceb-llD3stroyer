@@ -5061,6 +5061,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     /** Everything in the STYLE tab: Rocco's outfits, Blocky's skins and the Pokemon costumes. */
     private val styleItems: List<Any> = RoccoOutfit.entries + BlockySkin.entries + MonCostume.entries
+    private fun bedPage() = BedStyle.entries.drop(shopPage * PLUSH_PER_PAGE).take(PLUSH_PER_PAGE)
     private fun stylePage() = styleItems.drop(shopPage * PLUSH_PER_PAGE).take(PLUSH_PER_PAGE)
     private fun styleLabel(it: Any) = when (it) { is RoccoOutfit -> it.label; is BlockySkin -> it.label; is MonCostume -> it.label; else -> "" }
     private fun styleOwned(it: Any) = when (it) {
@@ -5107,7 +5108,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     /** The things for sale on the current shop tab, each with what tapping it does. */
     private fun shopItems(): List<Pair<String, () -> Unit>> = when (shopTab) {
         0 -> furniturePage().map { f -> f.label to { buyFurniture(f) } }
-        1 -> BedStyle.entries.map { b -> b.label to { buyBed(b) } }
+        1 -> bedPage().map { b -> b.label to { buyBed(b) } }
         2 -> Plushies.all.drop(shopPage * PLUSH_PER_PAGE).take(PLUSH_PER_PAGE).map { p -> p.name to { buyPlushie(p) } }
         // (The ADD A FLOOR card always sits in the same spot: the middle of the bottom row.)
         3 -> housePage().map { t -> t.label to { buyHouse(t) } }.let { it + List(HOUSES_PER_PAGE - it.size) { "" to {} } } + listOf("ADD A FLOOR" to { buyFloor() }, "ELEVATOR" to { buyElevator() })
@@ -5673,7 +5674,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val n = shopItems().size
         if (nav.lb || nav.rb) { shopTab = (shopTab + (if (nav.rb) 1 else SHOP_TABS.size - 1)) % SHOP_TABS.size; shopPage = 0; shopCursor = 0; sfx(Sound.KICK) }
         val pages = shopPages()
-        val paged = shopTab == 0 || shopTab == 2 || shopTab == 3 || shopTab >= 6
+        val paged = shopTab <= 3 || shopTab >= 6
         when {
             nav.left && shopCursor % 3 == 0 && paged -> { shopPage = (shopPage + pages - 1) % pages; shopCursor += 2 }
             nav.right && (shopCursor % 3 == 2 || shopCursor == n - 1) && paged -> { shopPage = (shopPage + 1) % pages; shopCursor -= shopCursor % 3 }
@@ -5695,6 +5696,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     /** The FURNITURE tab has pages for each floor; PLUSHIES has 12 to a page. */
     private fun shopPages() = when (shopTab) {
         0 -> furniturePages().size
+        1 -> (BedStyle.entries.size + PLUSH_PER_PAGE - 1) / PLUSH_PER_PAGE
         3 -> (HouseType.entries.size + HOUSES_PER_PAGE - 1) / HOUSES_PER_PAGE
         6, 7 -> (decorTab(shopTab).size + PLUSH_PER_PAGE - 1) / PLUSH_PER_PAGE
         8 -> (styleItems.size + PLUSH_PER_PAGE - 1) / PLUSH_PER_PAGE
@@ -5717,7 +5719,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (t in SHOP_TABS.indices) { shopTab = t; shopPage = 0; sfx(Sound.KICK) }
             return
         }
-        if ((shopTab == 2 || shopTab == 0 || shopTab == 3 || shopTab >= 6) && y > VIEW_H - 22f) {
+        if ((shopTab <= 3 || shopTab >= 6) && y > VIEW_H - 22f) {
             val pages = shopPages()
             shopPage = if (x < viewW / 2) (shopPage + pages - 1) % pages else (shopPage + 1) % pages
             sfx(Sound.KICK)
@@ -5997,7 +5999,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     }
                 }
             }.also { gfx.shadowText("< PREV      PAGE ${shopPage + 1}/${shopPages()}      NEXT >", viewW / 2, VIEW_H - 8f, 8f, white, 1) }
-            1 -> BedStyle.entries.forEachIndexed { i, b ->
+            1 -> bedPage().forEachIndexed { i, b ->
                 val (cx, cy) = shopCard(i)
                 val owned = ownsBed(b)
                 shopCardBg(gfx, cx, cy, owned, !owned && coins >= b.coins)
@@ -6008,7 +6010,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     else -> priceTag(gfx, cx + 4, cy + 21, emptyList(), b.coins)
                 }
                 Homes.drawBed(ScaledGfx(gfx, 0.5f, cx + cw - 34f, cy + 38f - Homes.FLOOR_Y * 0.5f), b, 0f)
-            }
+            }.also { gfx.shadowText("< PREV      PAGE ${shopPage + 1}/${shopPages()}      NEXT >", viewW / 2, VIEW_H - 8f, 8f, white, 1) }
             2 -> {
                 Plushies.all.drop(shopPage * PLUSH_PER_PAGE).take(PLUSH_PER_PAGE).forEachIndexed { i, p ->
                     val (cx, cy) = shopCard(i)
