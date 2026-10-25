@@ -237,7 +237,7 @@ class Coin(x: Float, y: Float, private val popping: Boolean = false) : Thing(x +
         if (popping) {
             vy += GRAVITY * dt
             y += vy * dt
-            if (t > 0.45f) { removed = true; g.coins += 1 }
+            if (t > 0.45f) { removed = true; g.coins += TeamGame.COIN_VALUE }
         }
     }
 

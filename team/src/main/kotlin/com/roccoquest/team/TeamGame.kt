@@ -35,6 +35,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     companion object {
         const val MAX_HEARTS = 5
+        /** What one coin is worth. */
+        const val COIN_VALUE = 2
         /** The states where you're in a level (playing, paused in a menu, or just hurt). */
         private val IN_LEVEL = setOf(State.INTRO, State.PLAY, State.CRAFT, State.TRADE, State.SLEEP, State.OUCH, State.CLEAR)
         /** How fast a BlastCannon shoots you out. */
@@ -635,7 +637,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         storage.save(key("scenesSeen"), scenesSeen)
         storage.save(key("decorN"), decor.size)
         decor.forEachIndexed { i, d -> storage.save(key("decor_$i"), Decor.pack(d)) }
-        storage.save(key("decorV"), 2)
+        storage.save(key("decorV"), 3)
         storage.save(key("jolN"), lanterns.size)
         lanterns.forEachIndexed { i, l ->
             storage.save(key("jol${i}x"), l.x.toInt())
@@ -780,8 +782,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         lanterns.clear()
         for (i in 0 until storage.load(key("jolN")).coerceIn(0, Pumpkins.MAX))
             lanterns += Lantern(IntArray(Pumpkins.GH) { storage.load(key("jol${i}_$it")) }, storage.load(key("jol${i}x")).toFloat())
-        val oldDecor = storage.load(key("decorV")) < 2
-        for (i in 0 until storage.load(key("decorN")).coerceIn(0, Decor.MAX)) Decor.unpack(storage.load(key("decor_$i")), oldDecor)?.let { decor += it }
+        val decorVersion = storage.load(key("decorV"))
+        for (i in 0 until storage.load(key("decorN")).coerceIn(0, Decor.MAX)) Decor.unpack(storage.load(key("decor_$i")), decorVersion)?.let { decor += it }
     }
 
     // ---------------------------------------------------------------- Safety copies: erased saves can be recovered
@@ -1075,6 +1077,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             storage.save(key("spotLevel"), if (spotSaved) index + 1 else 0)
             storage.save(key("bedLevel"), if (restoreHome && storage.load(key("bedLevel")) == index + 1) index + 1 else 0)
             save()
+            sound.sayAs(GO_LINES.random(), Voice.HERO)
         }
         setState(State.INTRO)
     }
@@ -1260,6 +1263,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         afterSticker = next
         if (away == null) {
             val before = clearedCount()
+            // A coin bonus for every level beaten (a big one the first time).
+            val bonus = if (cleared[levelIndex]) 15 else 40 + (levelIndex / WORLD_SIZE) * 5
+            coins += bonus
+            toast("LEVEL BONUS: +$bonus coins!")
             cleared[levelIndex] = true
             // A new Pokemon joins every few levels beaten.
             NEW_MONS.firstOrNull { newMonNeeds(it) in (before + 1)..clearedCount() }?.let {
@@ -3384,10 +3391,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     private fun collectCoin() {
-        coins++
+        val before = coins
+        // Coins are worth 2 now (they were too slow to save up).
+        coins += COIN_VALUE
         points(50)
         sfx(Sound.COIN)
-        if (coins == POSEIDON_COST) toast("50 COINS! Tap the trident to call POSEIDON!")
+        if (before < POSEIDON_COST && coins >= POSEIDON_COST) toast("50 COINS! Tap the trident to call POSEIDON!")
     }
 
     /**
@@ -3464,10 +3473,16 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
         invuln = HURT_SAFE_TIME
         sfx(Sound.HURT)
+        if (leader.who == Who.ROCCO && time - lastOuchSaid > 6f) { lastOuchSaid = time; sound.sayAs(OUCH_LINES.random(), Voice.HERO) }
         leader.vy = -180f
         leader.vx = -leader.facing * 90f
         if (hearts <= 0) knockedOut()
     }
+
+    private var lastOuchSaid = -99f
+    /** Rocco is Italian: what he says. */
+    private val OUCH_LINES = listOf("Mamma mia!", "Oh no!", "Ow ow ow!", "Mamma mia, that hurt!")
+    private val GO_LINES = listOf("Let's-a go!", "Here we go!", "It's-a me, Rocco!", "Andiamo! Let's go!", "Okey dokey!")
 
     /** Something went wrong: tidy up and go back to the title screen instead of closing the game. */
     fun recover() {

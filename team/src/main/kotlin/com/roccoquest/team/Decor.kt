@@ -62,13 +62,19 @@ object Decor {
 
     /** Saved as one number: item + x * 128 + floor * 128 * 8192 (plus 1, so 0 means "nothing"). */
     private const val FLOOR_STEP = 128 * 8192
-    fun pack(p: Placed) = 1 + p.item.ordinal + p.x.toInt().coerceIn(0, 8191) * 128 + p.floor * FLOOR_STEP
-    fun unpack(v: Int, oldSave: Boolean = false): Placed? {
+    /** Since save version 3 there's room for 256 kinds: item + x * 256 + floor * 256 * 8192. */
+    private const val STEP3 = 256 * 8192
+    fun pack(p: Placed) = 1 + p.item.ordinal + p.x.toInt().coerceIn(0, 8191) * 256 + p.floor * STEP3
+
+    /** [version] is the save's `decorV`: below 3 it's the old 128-kinds packing, below 2 the yard was floor 9. */
+    fun unpack(v: Int, version: Int = 3): Placed? {
         if (v <= 0) return null
         val n = v - 1
-        val item = DecorItem.entries.getOrNull(n % 128) ?: return null
-        val floor = n / FLOOR_STEP
-        return Placed(item, ((n % FLOOR_STEP) / 128).toFloat(), if (oldSave && floor == 9) YARD else floor)
+        val kinds = if (version >= 3) 256 else 128
+        val step = if (version >= 3) STEP3 else FLOOR_STEP
+        val item = DecorItem.entries.getOrNull(n % kinds) ?: return null
+        val floor = n / step
+        return Placed(item, ((n % step) / kinds).toFloat(), if (version < 2 && floor == 9) YARD else floor)
     }
 
     /** Draws [d] standing on the ground at [fy], its left edge at [x]. Wall things hang at the usual height. */
