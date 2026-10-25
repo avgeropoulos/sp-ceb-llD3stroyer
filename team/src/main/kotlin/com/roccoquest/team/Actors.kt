@@ -277,6 +277,15 @@ class Hero(val who: Who, x: Float, y: Float) :
     }
 
     fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
+        if (!g.babyMode || mini || (who == Who.ROCCO && (g.megaT > 0f || g.capture != null))) { drawBody(g, gfx, ox); return }
+        // Baby time (the BABY MACHINE at home): little, with a bonnet and a pacifier.
+        drawBody(g, Baby.shrink(gfx, cx + ox, bottom), ox)
+        if (!shellSpin && !crouching && !(who == Who.ROCCO && g.dino != null) && !(this === g.leader && g.invuln > 0 && g.starT <= 0 && (g.invuln * 20).toInt() % 2 == 0)) {
+            Baby.dress(gfx, cx + ox, bottom, facing, who == Who.MON)
+        }
+    }
+
+    private fun drawBody(g: TeamGame, gfx: Gfx, ox: Float) {
         val flicker = this === g.leader && g.invuln > 0 && g.starT <= 0 && (g.invuln * 20).toInt() % 2 == 0
         if (flicker) return
         val walking = onGround && abs(vx) > 10 && (anim * 10).toInt() % 2 == 0

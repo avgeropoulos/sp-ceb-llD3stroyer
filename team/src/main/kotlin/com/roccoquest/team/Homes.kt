@@ -18,6 +18,11 @@ enum class HouseType(val label: String, val costs: List<Pair<Ore, Int>>, val coi
     BEACH("BEACH HUT", listOf(Ore.STONE to 6, Ore.SAPPHIRE to 1), 20, "Sand, palm leaves and sunshine"),
     SPACE("SPACE DOME", listOf(Ore.IRON to 8, Ore.DIAMOND to 2), 50, "A shiny dome with a rocket"),
     CRYSTAL("CRYSTAL PALACE", listOf(Ore.AMETHYST to 4, Ore.DIAMOND to 3), 80, "Sparkly purple crystal towers"),
+    LIGHTHOUSE("LIGHTHOUSE", listOf(Ore.STONE to 12, Ore.GOLD to 2), 45, "A striped tower with a spinning light"),
+    WINDMILL("WINDMILL", listOf(Ore.STONE to 8, Ore.COPPER to 4), 35, "Big sails that go round and round"),
+    PIRATE("PIRATE SHIP", listOf(Ore.COPPER to 6, Ore.GOLD to 4), 70, "Live on a pirate ship! Arrr!"),
+    BARN("RED BARN", listOf(Ore.STONE to 6, Ore.IRON to 3), 30, "A farm barn with a big X door"),
+    PYRAMID("PYRAMID", listOf(Ore.GOLD to 6, Ore.RUBY to 2), 90, "A golden pyramid from the desert"),
 }
 
 /**
@@ -68,6 +73,15 @@ enum class Furniture(val label: String, val costs: List<Pair<Ore, Int>>, val coi
     PLUSH_SHELF("PLUSHIE SHELF", listOf(Ore.STONE to 4), 40, 1, 0),
     PLUSH_SHELF2("BIG PLUSHIE SHELF", listOf(Ore.STONE to 6), 60, 2, 10),
     PLUSH_SHELF3("PLUSHIE TOWER", listOf(Ore.STONE to 6, Ore.GOLD to 1), 80, 0, 20),
+    // Turns everybody into babies (and back again)
+    BABY_MACHINE("BABY MACHINE", listOf(Ore.IRON to 3, Ore.DIAMOND to 1), 60, 0, 0),
+    // Floor 4: the sky room
+    MOVIE_SCREEN("MOVIE SCREEN", listOf(Ore.IRON to 2), 60, 3, 0),
+    DRUM_SET("DRUM SET", listOf(Ore.IRON to 2), 50, 3, 0),
+    CANDY_MACHINE("CANDY MACHINE", listOf(Ore.GOLD to 1), 40, 3, 0),
+    HAMMOCK("HAMMOCK", emptyList(), 35, 3, 0),
+    BUBBLE_MACHINE("BUBBLE MACHINE", listOf(Ore.SAPPHIRE to 1), 45, 3, 0),
+    TREASURE_CHEST("TREASURE CHEST", listOf(Ore.GOLD to 2), 70, 3, 0),
     ;
 
     /** The plushie shelves, in order (the plushies on them come after the ones on the wall shelves). */
@@ -92,8 +106,8 @@ object Homes {
     const val MON_X = 192f
     /** How tall each extra floor looks from outside. */
     const val STORY_H = 26f
-    /** Houses can have up to 3 floors. */
-    const val MAX_FLOORS = 3
+    /** Houses can have up to 4 floors. */
+    const val MAX_FLOORS = 4
     /** Where the stairs are (at the right end of the room). */
     const val STAIRS_X = 870f
 
@@ -185,6 +199,65 @@ object Homes {
                 }
                 for (i in 0 until 3) gfx.oval(x + 10 + i * 22f + sin(t * 3 + i) * 2, top + 10, 3f, 3f, 0xCCFFFFFF.toInt())
             }
+            HouseType.LIGHTHOUSE -> {
+                // A red and white striped tower with a light that sweeps around.
+                gfx.rect(x, top + 10, 72f, 30f, 0xFFF4F4F4.toInt())
+                gfx.rect(x + 40, top - 46, 26f, 86f, 0xFFF4F4F4.toInt())
+                for (i in 0 until 4) gfx.rect(x + 40, top - 40 + i * 22f, 26f, 10f, 0xFFE84A4A.toInt())
+                gfx.rect(x + 37, top - 50, 32f, 4f, 0xFF3A3A44.toInt())
+                gfx.rect(x + 42, top - 62, 22f, 12f, 0xFFFFE89A.toInt())
+                gfx.poly(floatArrayOf(x + 38, x + 53, x + 68), floatArrayOf(top - 62, top - 74, top - 62), 0xFFE84A4A.toInt())
+                val beam = sin(t * 2f)
+                gfx.poly(floatArrayOf(x + 53, x + 53 + beam * 60, x + 53 + beam * 60), floatArrayOf(top - 56, top - 66, top - 46), 0x55FFF2A0)
+                gfx.poly(floatArrayOf(x - 4, x + 20, x + 44), floatArrayOf(top + 12, top - 6, top + 12), 0xFF3A6AC8.toInt())
+            }
+            HouseType.WINDMILL -> {
+                gfx.poly(floatArrayOf(x + 4, x + 18, x + 54, x + 68), floatArrayOf(top + 40, top - 20, top - 20, top + 40), 0xFFF4E8C8.toInt())
+                gfx.poly(floatArrayOf(x + 14, x + 36, x + 58), floatArrayOf(top - 18, top - 38, top - 18), 0xFF8A3A2A.toInt())
+                gfx.rect(x + 30, top, 12f, 12f, 0xFF7FC8FF.toInt())
+                // The sails, turning
+                val cx = x + 36; val cy = top - 18
+                for (k in 0 until 4) {
+                    val a = t * 1.5f + k * 1.5708f
+                    val ex = cx + kotlin.math.cos(a) * 40f; val ey = cy + sin(a) * 40f
+                    val nx = -sin(a) * 6f; val ny = kotlin.math.cos(a) * 6f
+                    gfx.poly(floatArrayOf(cx, ex, ex + nx, cx + nx * 0.3f), floatArrayOf(cy, ey, ey + ny, cy + ny * 0.3f), 0xFFF4F4F4.toInt())
+                    gfx.poly(floatArrayOf(cx, ex), floatArrayOf(cy, ey), 0xFF7A4A20.toInt())
+                }
+                gfx.oval(cx - 4, cy - 4, 8f, 8f, 0xFF5A3A1A.toInt())
+            }
+            HouseType.PIRATE -> {
+                // The hull, masts and a skull flag
+                gfx.poly(floatArrayOf(x - 10, x + 82, x + 72, x), floatArrayOf(top + 8, top + 8, bottom, bottom), 0xFF7A4A20.toInt())
+                gfx.rect(x - 10, top + 8, 92f, 4f, 0xFFE8C83A.toInt())
+                for (i in 0 until 4) gfx.oval(x + 30 + i * 11f, top + 18, 6f, 6f, 0xFF2A1808.toInt())
+                gfx.rect(x + 36, top - 50, 3f, 58f, 0xFF5A3A1A.toInt())
+                gfx.poly(floatArrayOf(x + 14, x + 62, x + 58, x + 18), floatArrayOf(top - 40, top - 40, top - 4, top - 4), 0xFFF4ECD8.toInt())
+                gfx.rect(x + 39, top - 50, 16f + sin(t * 4) * 1.5f, 10f, 0xFF1A1A1A.toInt())
+                gfx.oval(x + 44, top - 48, 5f, 5f, 0xFFF4F4F4.toInt())
+            }
+            HouseType.BARN -> {
+                gfx.rect(x, top, 72f, 40f, 0xFFC83A2A.toInt())
+                gfx.poly(floatArrayOf(x - 6, x + 10, x + 36, x + 62, x + 78), floatArrayOf(top + 2, top - 16, top - 26, top - 16, top + 2), 0xFF5A3A2A.toInt())
+                gfx.poly(floatArrayOf(x, x + 12, x + 36, x + 60, x + 72), floatArrayOf(top + 2, top - 12, top - 21, top - 12, top + 2), 0xFFC83A2A.toInt())
+                gfx.rect(x + 30, top - 14, 12f, 10f, 0xFFF4F4F4.toInt())
+                gfx.rect(x + 34, top + 10, 30f, 30f, 0xFFF4F4F4.toInt())
+                gfx.rect(x + 36, top + 12, 26f, 26f, 0xFFC83A2A.toInt())
+                gfx.poly(floatArrayOf(x + 36, x + 38, x + 62, x + 60), floatArrayOf(top + 12, top + 12, top + 38, top + 38), 0xFFF4F4F4.toInt())
+                gfx.poly(floatArrayOf(x + 60, x + 62, x + 38, x + 36), floatArrayOf(top + 12, top + 12, top + 38, top + 38), 0xFFF4F4F4.toInt())
+            }
+            HouseType.PYRAMID -> {
+                gfx.poly(floatArrayOf(x - 14, x + 36, x + 86), floatArrayOf(bottom, top - 34, bottom), 0xFFE8C860.toInt())
+                gfx.poly(floatArrayOf(x + 36, x + 86, x + 50), floatArrayOf(top - 34, bottom, bottom), 0xFFC8A040.toInt())
+                for (i in 1 until 7) {
+                    val y = top - 34 + i * 11f
+                    val half = 50f * i * 11f / 74f
+                    gfx.rect(x + 36 - half, y, half * 2, 1f, 0xFFB8903A.toInt())
+                }
+                gfx.oval(x + 31, top - 20, 10f, 6f, 0xFF3AA8E8.toInt())
+                gfx.oval(x + 34, top - 19, 4f, 4f, 0xFF1A1A1A.toInt())
+                if ((t * 2).toInt() % 2 == 0) gfx.oval(x + 34, top - 38, 4f, 4f, 0xFFFFF2A0.toInt())
+            }
             HouseType.CABIN -> {
                 for (i in 0 until 5) {
                     gfx.rect(x, top + i * 8f, 72f, 8f, if (i % 2 == 0) 0xFF8A5A2A.toInt() else 0xFF7A4A20.toInt())
@@ -256,6 +329,11 @@ object Homes {
         HouseType.BEACH -> 0xFFF4DCA0.toInt()
         HouseType.SPACE -> 0xFF8A94A4.toInt()
         HouseType.CRYSTAL -> 0xFF9A6AD0.toInt()
+        HouseType.LIGHTHOUSE -> 0xFF8A94A4.toInt()
+        HouseType.WINDMILL -> 0xFFA87A4A.toInt()
+        HouseType.PIRATE -> 0xFF7A4A20.toInt()
+        HouseType.BARN -> 0xFFC8A04A.toInt()
+        HouseType.PYRAMID -> 0xFFD8B860.toInt()
     }
 
     /** The wall, wallpaper stripe and floor colors inside a house (a painted house gets painted walls). */
@@ -271,6 +349,11 @@ object Homes {
             HouseType.BEACH -> 0xFFF8E8C0.toInt() to 0xFF8AD8F0.toInt()
             HouseType.SPACE -> 0xFF2A3050.toInt() to 0xFFFFFFFF.toInt()
             HouseType.CRYSTAL -> 0xFFE0C8FF.toInt() to 0xFFB88AF0.toInt()
+            HouseType.LIGHTHOUSE -> 0xFFF4F4F4.toInt() to 0xFFE84A4A.toInt()
+            HouseType.WINDMILL -> 0xFFF4E8C8.toInt() to 0xFFD8B88A.toInt()
+            HouseType.PIRATE -> 0xFFA87A4A.toInt() to 0xFF8A5A2A.toInt()
+            HouseType.BARN -> 0xFFC84A3A.toInt() to 0xFFA83A2A.toInt()
+            HouseType.PYRAMID -> 0xFFF0D890.toInt() to 0xFFC8A860.toInt()
         }
         val wall = if (paint != 0) mix(paint, 0xFFFFFFFF.toInt(), 0.35f) else normalWall
         val stripe = if (paint != 0) mix(paint, 0xFF000000.toInt(), 0.15f) else normalStripe
@@ -295,6 +378,14 @@ object Homes {
             HouseType.CANDY -> for (i in 0 until 40) gfx.rect(x0 + (i * 47f) % ROOM_W, 34f + (i * 29f) % 130f, 8f, 3f, if (i % 3 == 0) 0xFF6AD8FF.toInt() else stripe)
             HouseType.BEACH -> for (i in 0 until 5) gfx.rect(x0, 40f + i * 28f, ROOM_W, 3f, stripe)
             HouseType.SPACE -> for (i in 0 until 60) gfx.oval(x0 + (i * 67f) % ROOM_W, 28f + (i * 41f) % 140f, 2f, 2f, stripe)
+            HouseType.LIGHTHOUSE -> for (i in 0 until 3) gfx.rect(x0, 40f + i * 50f, ROOM_W, 14f, stripe)
+            HouseType.WINDMILL, HouseType.BARN -> { var x = x0; while (x < x1) { gfx.rect(x, 24f, 2f, FLOOR_Y - 24, stripe); x += 22f } }
+            HouseType.PIRATE -> for (i in 0 until 12) gfx.rect(x0, 24f + i * 13f, ROOM_W, 1.5f, stripe)
+            HouseType.PYRAMID -> for (i in 0 until 10) {
+                gfx.rect(x0, 24f + i * 16f, ROOM_W, 1f, stripe)
+                var x = x0 + if (i % 2 == 0) 0f else 24f
+                while (x < x1) { gfx.rect(x, 24f + i * 16f, 1f, 16f, stripe); x += 48f }
+            }
             HouseType.CRYSTAL -> for (i in 0 until 30) {
                 val cx = x0 + (i * 59f) % ROOM_W
                 val cy = 36f + (i * 43f) % 120f
@@ -424,6 +515,13 @@ object Homes {
         Furniture.PLUSH_SHELF -> 278f
         Furniture.PLUSH_SHELF2 -> 470f
         Furniture.PLUSH_SHELF3 -> 606f
+        Furniture.BABY_MACHINE -> 610f
+        Furniture.MOVIE_SCREEN -> 120f
+        Furniture.DRUM_SET -> 250f
+        Furniture.CANDY_MACHINE -> 340f
+        Furniture.HAMMOCK -> 420f
+        Furniture.BUBBLE_MACHINE -> 540f
+        Furniture.TREASURE_CHEST -> 640f
     }
 
     fun drawFurniture(gfx: Gfx, f: Furniture, ox: Float, t: Float) {
@@ -617,7 +715,8 @@ object Homes {
             }
             Furniture.FRIDGE, Furniture.STOVE, Furniture.WALL_CLOCK, Furniture.DOG_BED, Furniture.SLIDE, Furniture.ROCKING_HORSE,
             Furniture.BEAN_BAG, Furniture.STAR_LIGHTS, Furniture.GAMING_PC, Furniture.FOUNTAIN, Furniture.ROCKET, Furniture.CHANDELIER,
-            Furniture.PLUSH_SHELF, Furniture.PLUSH_SHELF2, Furniture.PLUSH_SHELF3 ->
+            Furniture.PLUSH_SHELF, Furniture.PLUSH_SHELF2, Furniture.PLUSH_SHELF3, Furniture.BABY_MACHINE, Furniture.MOVIE_SCREEN,
+            Furniture.DRUM_SET, Furniture.CANDY_MACHINE, Furniture.HAMMOCK, Furniture.BUBBLE_MACHINE, Furniture.TREASURE_CHEST ->
                 drawMore(gfx, f, x, fy, t)
             Furniture.POOL_TABLE -> {
                 gfx.rect(x, fy - 26, 90f, 8f, 0xFF6A3A1A.toInt())
@@ -740,6 +839,63 @@ object Homes {
                 for (k in 0 until 4) gfx.rect(x, fy - 2 - k * 28f, 40f, 3f, wood)
                 gfx.rect(x + 3, fy - 84, 34f, 82f, 0x22000000)
             }
+            Furniture.BABY_MACHINE -> {
+                // A big pink machine with a dish on top that zaps out baby rays.
+                gfx.rect(x, fy - 44, 34f, 44f, 0xFFFF9AC8.toInt())
+                gfx.rect(x + 2, fy - 42, 30f, 3f, 0xFFFFC8E0.toInt())
+                gfx.rect(x + 5, fy - 34, 24f, 14f, 0xFF2A2A44.toInt())
+                gfx.text("BABY", x + 17, fy - 24, 6f, solidRainbow(t * 0.5f, 0f), 1)
+                for (k in 0 until 3) gfx.oval(x + 7 + k * 8f, fy - 14, 5f, 5f, if ((t * 3).toInt() % 3 == k) 0xFFFFE14D.toInt() else 0xFF8A5AA0.toInt())
+                gfx.rect(x + 15, fy - 54, 4f, 10f, 0xFF8A8A9A.toInt())
+                gfx.oval(x + 5, fy - 62, 24f, 10f, 0xFFB8C0CC.toInt())
+                gfx.oval(x + 14, fy - 60, 6f, 6f, if ((t * 4).toInt() % 2 == 0) 0xFFFF5A9A.toInt() else 0xFFFFE14D.toInt())
+                // A little pacifier painted on the side
+                gfx.oval(x + 13, fy - 8, 8f, 6f, 0xFFFFFFFF.toInt())
+            }
+            Furniture.MOVIE_SCREEN -> {
+                gfx.rect(x, 30f, 90f, 4f, 0xFF3A3A44.toInt())
+                gfx.rect(x + 4, 34f, 82f, 52f, 0xFFF4F4F4.toInt())
+                // A cartoon is playing: Rocco runs across, chased by a Grumbler.
+                val p = (t * 0.3f) % 1f
+                gfx.rect(x + 4, 74f, 82f, 12f, 0xFF7AC86A.toInt())
+                gfx.sprite(TeamArt.rocco(Power.NONE, 1 + (t * 6).toInt() % 2), x + 6 + p * 66, 60f, w = 9f, h = 14f)
+                gfx.oval(x + p * 66 - 6, 66f, 10f, 8f, 0xFF9A5A2A.toInt())
+            }
+            Furniture.DRUM_SET -> {
+                gfx.oval(x + 12, fy - 26, 26f, 26f, 0xFFE84A4A.toInt())
+                gfx.oval(x + 16, fy - 22, 18f, 18f, 0xFFF4F4F4.toInt())
+                gfx.rect(x, fy - 22, 12f, 14f, 0xFF3A6AC8.toInt()); gfx.rect(x + 38, fy - 22, 12f, 14f, 0xFF3A6AC8.toInt())
+                gfx.rect(x - 2, fy - 24, 16f, 3f, 0xFFF4F4F4.toInt()); gfx.rect(x + 36, fy - 24, 16f, 3f, 0xFFF4F4F4.toInt())
+                gfx.rect(x + 46, fy - 44, 1.5f, 44f, 0xFF8A8A9A.toInt())
+                gfx.oval(x + 38, fy - 46 + sin(t * 8) * 1f, 18f, 4f, 0xFFE8C83A.toInt())
+            }
+            Furniture.CANDY_MACHINE -> {
+                gfx.rect(x + 4, fy - 20, 18f, 20f, 0xFFE84A4A.toInt())
+                gfx.oval(x, fy - 46, 26f, 28f, 0xCCDDEEFF.toInt())
+                for (k in 0 until 9) gfx.oval(x + 4 + (k % 3) * 6f, fy - 40 + (k / 3) * 6f, 5f, 5f, solidRainbow(k * 0.11f, 0f))
+                gfx.rect(x + 10, fy - 12, 6f, 4f, 0xFFC8C8D0.toInt())
+            }
+            Furniture.HAMMOCK -> {
+                val swing = sin(t * 1.5f) * 3f
+                gfx.rect(x, fy - 50, 4f, 50f, 0xFF8A5A2A.toInt()); gfx.rect(x + 66, fy - 50, 4f, 50f, 0xFF8A5A2A.toInt())
+                gfx.poly(floatArrayOf(x + 4, x + 35 + swing, x + 66), floatArrayOf(fy - 44, fy - 22, fy - 44), 0xFF4AB8A0.toInt())
+                gfx.poly(floatArrayOf(x + 10, x + 35 + swing, x + 60), floatArrayOf(fy - 42, fy - 26, fy - 42), 0xFFF4D84A.toInt())
+            }
+            Furniture.BUBBLE_MACHINE -> {
+                gfx.rect(x + 2, fy - 22, 26f, 22f, 0xFF3A8AD8.toInt())
+                gfx.oval(x + 8, fy - 30, 14f, 10f, 0xFF5AA8F0.toInt())
+                for (k in 0 until 6) {
+                    val p = (t * 0.4f + k / 6f) % 1f
+                    gfx.oval(x + 12 + sin(p * 9 + k) * 14, fy - 34 - p * 110, 6f + k % 3 * 2f, 6f + k % 3 * 2f, argb(((1 - p) * 140).toInt(), 0xBFE8FF))
+                }
+            }
+            Furniture.TREASURE_CHEST -> {
+                gfx.rect(x, fy - 22, 44f, 22f, 0xFF8A5A2A.toInt())
+                gfx.oval(x, fy - 32, 44f, 20f, 0xFF7A4A20.toInt())
+                gfx.rect(x, fy - 22, 44f, 3f, 0xFFE8C83A.toInt())
+                gfx.rect(x + 19, fy - 24, 6f, 8f, 0xFFE8C83A.toInt())
+                if ((t * 2).toInt() % 3 == 0) gfx.shadowText("✦", x + 34, fy - 30, 7f, 0xFFFFE14D.toInt(), 1)
+            }
             else -> {}
         }
     }
@@ -759,11 +915,13 @@ object Homes {
         Furniture.SLIDE -> 74f; Furniture.ROCKING_HORSE -> 44f; Furniture.BEAN_BAG -> 36f; Furniture.STAR_LIGHTS -> ROOM_W
         Furniture.GAMING_PC -> 54f; Furniture.FOUNTAIN -> 44f; Furniture.ROCKET -> 24f; Furniture.CHANDELIER -> 60f
         Furniture.PLUSH_SHELF, Furniture.PLUSH_SHELF2, Furniture.PLUSH_SHELF3 -> 40f
+        Furniture.BABY_MACHINE -> 34f; Furniture.MOVIE_SCREEN -> 90f; Furniture.DRUM_SET -> 50f; Furniture.CANDY_MACHINE -> 26f
+        Furniture.HAMMOCK -> 70f; Furniture.BUBBLE_MACHINE -> 30f; Furniture.TREASURE_CHEST -> 44f
     }
 
     /** 0: stands on the floor, 1: hangs on the wall or ceiling, 2: lies flat on the floor (rugs). */
     fun layer(f: Furniture): Int = when (f) {
-        Furniture.PAINTING, Furniture.WALL_CLOCK, Furniture.DISCO_BALL, Furniture.CHANDELIER, Furniture.STAR_LIGHTS -> 1
+        Furniture.PAINTING, Furniture.WALL_CLOCK, Furniture.DISCO_BALL, Furniture.CHANDELIER, Furniture.STAR_LIGHTS, Furniture.MOVIE_SCREEN -> 1
         Furniture.RUG, Furniture.TOY_TRAIN -> 2
         else -> 0
     }

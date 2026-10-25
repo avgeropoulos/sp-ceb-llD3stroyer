@@ -45,7 +45,7 @@ Only one of Rocco or Blocky is out at a time, with the Pokemon (`TeamGame.team` 
 | `Sea.kt` | World 5 (levels 85-105: water, pirate ships, Rainbow Road), ship/mast/rainbow tiles (`I` `:` `%`), `Cannon` (`N`), `MetalItem` (`$`), Metal Rocco sprites, sea and space skies |
 | `MoreWorlds.kt` | Worlds 3 and 4 (levels 43-84) World 6 (Spooky World, levels 106-126, `world6`) and World 7 (Winter World, 127-147, `world7`), appended after World 5, built by a seeded level generator plus boss-arena templates. Last level: THE ULTIMATE BATTLE (Y, Q, Z boss rush) |
 | `Monsters.kt` | Newer monsters (Skelly Archer + arrows, Hopper, Gloop, Snapper + seeds, Crusher `z`, Peekaboo `q`, Puffcloud `l`, Spikestack `j`), bonus `Portal`, `Chest`, sunset sky, Dash |
-| `Homes.kt` | `HouseType` (10), `Furniture` (36: `floor` 0-2, `unlock` = levels beaten; `furnitureBits` is a Long saved as `furniture`+`furniture2`), floors (`MAX_FLOORS`, stairs at `STAIRS_X`), `PAINTS` (house colors), the Pokemon mat (`MON_X`), `BedStyle`, house outside/inside drawing (the room is 900 wide and scrolls), `PlushieItem` |
+| `Homes.kt` | `HouseType` (15), `Furniture` (46: `floor` 0-3, `unlock` = levels beaten; `furnitureBits` is a Long saved as `furniture`+`furniture2`), floors (`MAX_FLOORS`, stairs at `STAIRS_X`), `PAINTS` (house colors), the Pokemon mat (`MON_X`), `BedStyle`, house outside/inside drawing (the room is 900 wide and scrolls), `PlushieItem` |
 | `Plushies.kt` | The 350 `Plushie`s (new ones always go at the END: saved by index) (characters use sticker art, animals are drawn from a `Species` + color) |
 | `Actors.kt` | `Power` (flowers), `Mon` (Pokemon), `Sword` (with durability), `Armor`, `Shield`, and `Hero` (Rocco, Blocky, partner) |
 | `Foes.kt` | Enemies with health bars, Krag Jr. and King Krag (normal, Wonder, Dry Bones) |
@@ -118,6 +118,9 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
 * Evolution (`Evolve.kt`, Actors.kt): `MON_LINES`, `Mon.base` (whose SUPER/physics a form uses; switch on `mon.base`,
   not `mon`), `root` (XP is kept on the root), `evolveLevel`, `nextForm`. Evolved forms are drawn with `TintGfx` +
   `ScaledGfx` over their first form. The pick screen only shows `STARTERS` (the first 10).
+* `Garden.kt`: `Crop` + `Garden` (10 plots; keys `plot<i>`, `grow<i>`, `food<i>`, `seed`), shown at home when `inGarden`
+  (GARDEN button, `updateGarden`). Plants grow in `update` everywhere. `babyMode` (key `baby`, the `BABY_MACHINE`
+  furniture) draws heroes through `Baby.shrink`/`Baby.dress` (Powers.kt). Houses have up to 4 floors.
 * 20 newer Pokemon (EEVO..PENGI, drawn in `MonArt.kt`): `NEW_MONS` join one every `NEW_MON_EVERY` (3) levels beaten
   (`newMonNeeds`, notice in `offerStickers`). The switch grid pages 21 at a time (`PAGE_MONS`, `monPage()`).
 * Plushie shelves: wall shelves on every floor (36 each, `drawShelvesWithPlushies`), then the `PLUSH_SHELF*`

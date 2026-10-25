@@ -495,6 +495,18 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
 * A new one joins your team every 3 levels you beat ("A wild EEVO joined your team!"). Switch to them at home
   on the POKEMON mat; the switch screen now has two pages (tap the arrows).
 
+### Garden, Baby Machine and a bigger house
+
+* **The garden**: tap GARDEN at home. Pick seeds at the SEEDS stand (carrots, strawberries, tomatoes, corn,
+  pumpkins, watermelons, sunflowers, tulips, roses and apple trees), PLANT them in the dirt, WATER them (they
+  grow 3 times faster for a while), and PICK them when they're ready. Plants keep growing while you play
+  levels. Fruits and veggies go in the basket: have a PICNIC and your Pokemon eats them all for XP.
+* **The BABY MACHINE** (furniture, downstairs): ZAP! Rocco, Blocky and the Pokemon turn into babies with
+  bonnets and pacifiers, at home and in the levels. Zap again to grow back up.
+* **A 4th floor**: the sky room, with a movie screen, drum set, candy machine, hammock, bubble machine and
+  treasure chest.
+* **5 more house styles**: Lighthouse, Windmill, Pirate Ship, Red Barn and Pyramid (the HOUSES tab has two pages).
+
 ### World 7: Winter World (levels 127-147)
 
 * 21 new levels with three new kinds of places: **BLIZZARD** (a snowstorm with snow blowing sideways),

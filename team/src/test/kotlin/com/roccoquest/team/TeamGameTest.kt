@@ -2194,6 +2194,83 @@ class TeamGameTest {
         assertTrue(g2.hasSticker(299) && g2.stickerCount == game.stickerCount)
     }
 
+    @Test fun gardenBabyMachineAndTheSkyRoom() {
+        startPlaying()
+        goHome()
+        game.coins = 2000
+        Ore.entries.forEach { game.inventory[it.ordinal] = 80 }
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 720, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f)); ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        // The garden: plant, water, wait, pick, then a picnic for the Pokemon.
+        run(0.5f)
+        tap(game.viewW - 150f, 10f)
+        assertTrue(game.inGarden)
+        walkHomeTo(Garden.plotX(0) + 20f)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        assertEquals(Crop.CARROT.ordinal, game.garden.kind[0], "planted")
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        walkHomeTo(Garden.plotX(1) + 20f)
+        game.garden.seed = Crop.SUNFLOWER
+        game.garden.plant(1)
+        game.garden.seed = Crop.APPLE_TREE
+        game.garden.plant(2)
+        game.garden.seed = Crop.PUMPKIN
+        game.garden.plant(3)
+        run(16f)
+        assertTrue(game.garden.growth[0] > game.garden.growth[1] * 1.5f, "watered plants grow faster")
+        shot("garden-growing")
+        run(120f)
+        assertEquals(1f, game.garden.growth[0])
+        shot("garden")
+        game.garden.pick(0)
+        assertEquals(-1, game.garden.kind[0])
+        assertEquals(2, game.garden.basket[Crop.CARROT.ordinal])
+        val xp = game.monXp[game.mon.root.ordinal]
+        game.garden.picnic()
+        assertTrue(game.monXp[game.mon.root.ordinal] > xp)
+        assertEquals(0, game.garden.basket.sum())
+        // Back inside, buy and use the Baby Machine.
+        walkHomeTo(Garden.DOOR_X + 10f)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        assertFalse(game.inGarden)
+        game.buyFurniture(Furniture.BABY_MACHINE)
+        assertTrue(game.hasFurniture(Furniture.BABY_MACHINE))
+        walkHomeTo(Homes.spot(Furniture.BABY_MACHINE) + 16f)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        assertTrue(game.babyMode)
+        run(1.5f)
+        shot("baby-home")
+        // Up to the fourth floor: the sky room.
+        repeat(3) { game.buyFloor() }
+        assertEquals(4, game.houseFloors)
+        for (f in Furniture.entries.filter { it.floor == 3 }) game.buyFurniture(f)
+        assertTrue(game.hasFurniture(Furniture.MOVIE_SCREEN))
+        repeat(3) { game.changeFloor(game.homeFloor + 1) }
+        assertEquals(3, game.homeFloor)
+        walkHomeTo(400f)
+        shot("sky-room")
+        game.buyHouse(HouseType.LIGHTHOUSE)
+        assertEquals(HouseType.LIGHTHOUSE, game.houseType)
+        // Saved: the garden, the babies and the floors.
+        game.buyBed(BedStyle.RED)
+        game.sleepAtHome()
+        val g2 = TeamGame(TeamInput(), ears, storage)
+        g2.continueGame(0)
+        assertTrue(g2.babyMode)
+        assertEquals(4, g2.houseFloors)
+        assertEquals(Crop.SUNFLOWER.ordinal, g2.garden.kind[1])
+        // A baby level, and every new house drawn.
+        game.goToMap(-1); run(0.4f)
+        game.startLevel(0); run(3.5f)
+        shot("baby-level")
+        val img = BufferedImage(1500, 300, BufferedImage.TYPE_INT_ARGB)
+        HouseType.entries.drop(10).forEachIndexed { i, t -> Homes.drawHouse(ScaledGfx(AwtGfx(img, 1f), 2.5f, 20f + i * 290f, 20f), t, 0f, 100f, 1f, 0, 2) }
+        ImageIO.write(img, "png", File(dir, "newhouses.png"))
+    }
+
     @Test fun moreFloorsUnlockFurnitureAndPokemonPark() {
         startPlaying()
         goHome()
@@ -2236,7 +2313,7 @@ class TeamGameTest {
         game.sleepAtHome()
         val g2 = TeamGame(TeamInput(), ears, storage)
         g2.continueGame(0)
-        assertEquals(3, g2.houseFloors)
+        assertEquals(Homes.MAX_FLOORS, g2.houseFloors)
         assertTrue(g2.hasFurniture(Furniture.ARCADE))
     }
 

@@ -160,3 +160,25 @@ class HeroPotion(x: Float, y: Float, tx: Float) : Thing(x, y, 10f, 10f) {
         gfx.rect(x + ox + 3.5f, y - 1, 3f, 4f, 0xFFC8D8E8.toInt())
     }
 }
+
+/** The BABY MACHINE's look: everyone smaller, with a bonnet and a pacifier. */
+object Baby {
+    const val SCALE = 0.7f
+
+    /** Draws through this to shrink something standing at ([cx], [bottom]) down to baby size. */
+    fun shrink(gfx: Gfx, cx: Float, bottom: Float): Gfx = ScaledGfx(gfx, SCALE, cx * (1 - SCALE), bottom * (1 - SCALE))
+
+    fun dress(gfx: Gfx, cx: Float, bottom: Float, facing: Int, mon: Boolean) {
+        val f = facing.toFloat()
+        if (!mon) {
+            // A frilly bonnet
+            gfx.oval(cx - 7f, bottom - 20f, 14f, 8f, 0xFFBFE4FF.toInt())
+            gfx.rect(cx - 7f, bottom - 16f, 14f, 2f, 0xFFFFFFFF.toInt())
+        }
+        val py = if (mon) bottom - 9f else bottom - 10.5f
+        val px = cx + f * (if (mon) 6f else 4f)
+        gfx.oval(px - 2.5f, py - 2.5f, 5f, 5f, 0xFFFF8AC0.toInt())
+        gfx.oval(px - 1.2f, py - 1.2f, 2.4f, 2.4f, 0xFFFFF0F6.toInt())
+        gfx.oval(px + f * 2f - 1f, py - 1f, 2f, 2f, 0xFFFF5A9A.toInt())
+    }
+}
