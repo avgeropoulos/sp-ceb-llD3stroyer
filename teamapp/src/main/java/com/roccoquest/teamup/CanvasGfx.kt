@@ -1,6 +1,8 @@
 package com.roccoquest.teamup
 
 import android.graphics.Bitmap
+import android.graphics.LinearGradient
+import android.graphics.Shader
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
@@ -48,6 +50,22 @@ class CanvasGfx : Gfx {
         path.close()
         paint.color = color
         canvas.drawPath(path, paint)
+    }
+
+    /** Gradients are cached (skies are the same every frame), and dropped when the screen scale changes. */
+    private data class GradKey(val y: Float, val h: Float, val top: Int, val bottom: Int)
+    private val gradients = HashMap<GradKey, LinearGradient>()
+    private var gradScale = 0f
+    private val gradPaint = Paint().apply { isDither = true }
+
+    override fun gradient(x: Float, y: Float, w: Float, h: Float, top: Int, bottom: Int) {
+        if (gradScale != s) { gradients.clear(); gradScale = s }
+        if (gradients.size > 64) gradients.clear()
+        val shader = gradients.getOrPut(GradKey(y, h, top, bottom)) {
+            LinearGradient(0f, y * s, 0f, (y + h) * s, top, bottom, Shader.TileMode.CLAMP)
+        }
+        gradPaint.shader = shader
+        canvas.drawRect(x * s, y * s, (x + w) * s, (y + h) * s, gradPaint)
     }
 
     override fun sprite(s: Sprite, x: Float, y: Float, flipX: Boolean, flipY: Boolean, w: Float, h: Float) {

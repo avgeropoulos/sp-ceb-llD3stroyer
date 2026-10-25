@@ -173,8 +173,7 @@ object SeaArt {
 
     /** A sunny sky over the sea, with islands far away and waves along the bottom. */
     fun seaSky(gfx: Gfx, viewW: Float, viewH: Float, cam: Float, t: Float) {
-        gfx.rect(0f, 0f, viewW, viewH, 0xFF7FC8FF.toInt())
-        gfx.rect(0f, viewH * 0.55f, viewW, viewH, 0xFF9AD8FF.toInt())
+        gfx.gradient(0f, 0f, viewW, viewH * 0.7f, 0xFF4AA4F0.toInt(), 0xFFC8ECFF.toInt())
         gfx.oval(viewW * 0.75f - cam * 0.02f, 30f, 40f, 40f, 0xFFFFE87A.toInt())
         var x = -((cam * 0.15f) % 300f)
         while (x < viewW + 300f) {
@@ -183,7 +182,7 @@ object SeaArt {
             gfx.oval(x + 86, viewH * 0.6f - 24, 20f, 8f, 0xFF3C9A3A.toInt())
             x += 300f
         }
-        gfx.rect(0f, viewH * 0.68f, viewW, viewH, 0xFF2E7AC8.toInt())
+        gfx.gradient(0f, viewH * 0.68f, viewW, viewH * 0.32f, 0xFF3A8AD8.toInt(), 0xFF1A4A8A.toInt())
         var wx = -((cam * 0.5f + t * 20f) % 40f)
         while (wx < viewW) {
             gfx.oval(wx, viewH * 0.68f - 3 + sin(t * 2 + wx * 0.05f) * 2f, 30f, 8f, 0xFF4A9AE0.toInt())
@@ -197,7 +196,7 @@ object SeaArt {
 
     /** Space, for Rainbow Road: stars, a big planet and colorful clouds. */
     fun space(gfx: Gfx, viewW: Float, viewH: Float, cam: Float, t: Float) {
-        gfx.rect(0f, 0f, viewW, viewH, 0xFF0A0620.toInt())
+        gfx.gradient(0f, 0f, viewW, viewH, 0xFF04020E.toInt(), 0xFF1A0E3A.toInt())
         gfx.oval(viewW * 0.1f - cam * 0.03f, 20f, 260f, 120f, 0x332A3AC8)
         gfx.oval(viewW * 0.55f - cam * 0.04f, 90f, 300f, 110f, 0x33C82A9A)
         for (i in 0 until 40) {

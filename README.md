@@ -495,6 +495,20 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
 * A new one joins your team every 3 levels you beat ("A wild EEVO joined your team!"). Switch to them at home
   on the POKEMON mat; the switch screen now has two pages (tap the arrows).
 
+### World 8: Toy World and World 9: Galaxy World (levels 148-189)
+
+* **Toy World**: a giant toy room (building blocks, teddy bears, spinning tops) and a forest of giant glowing
+  mushrooms. New bad guys: wind-up **Toy Soldiers** and **Jack-in-the-boxes** (BOING!). At the end: **MECHA KRAG**,
+  a giant wind-up robot King Krag who fires missiles and stomps out shockwaves.
+* **Galaxy World**: the **Moon** (low gravity: everyone jumps way higher!) with the Earth in the sky, and a
+  **space station** with big round windows. New bad guys: **UFOs** that zap lasers down and bouncy **Moon
+  Hoppers**. The final boss is **GALAXY KRAG**: he floats in the sky shooting fans of stars, and SWOOPS down low
+  so you can jump on him.
+* **6 new songs**: Toy Box, Moon, Fungi, Parade (it's in the title song rotation too), and Robot and Galaxy for
+  the two new bosses.
+* **Smoother, sharper graphics**: every sky is now a real smooth gradient (no more stripes of color), and
+  Rocco, Blocky, the Pokemon, the bad guys and King Krag have crisp dark outlines so they stand out.
+
 ### Cannons and the TAIL SPIN
 
 * **Blast cannons**: every fourth level has a cannon near the start. Press ACTION next to it to climb in,

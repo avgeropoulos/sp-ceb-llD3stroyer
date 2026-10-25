@@ -107,6 +107,60 @@ object MoreWorlds {
         Plan("ROCK STAR STAGE", Place.CASTLE, "ROCK STAR KRAG! Dodge his music notes and jump the shockwaves!", boss = "!"),
     )
 
+    private val world8Plans = listOf(
+        Plan("TOY BOX TOWN", Place.TOYS, "WORLD 8: TOY WORLD! Wind-up soldiers march back and forth."),
+        Plan("BUILDING BLOCKS", Place.TOYS, "Giant toy blocks everywhere. Jack-in-the-boxes go BOING!"),
+        Plan("TEDDY BEAR HILLS", Place.TOYS, "Soft, fluffy and full of bad guys."),
+        Plan("GLOWSHROOM GROVE", Place.FUNGI, "A dark forest of giant glowing mushrooms."),
+        Plan("MARBLE RUN", Place.TOYS, "Jump from block to block!"),
+        Plan("SPORE CAVES", Place.FUNGI, "Glowing spores float in the air. So pretty!"),
+        Plan("KITE CLOUDS", Place.SKY, "KRAG JR. flew his clown car into the toy sky!", boss = "W"),
+        Plan("CRAYON CANYON", Place.TOYS, "Everything is drawn in crayon."),
+        Plan("PUPPET THEATER", Place.TOYS, "The show is about to start..."),
+        Plan("MUSHROOM MAZE", Place.FUNGI, "Purple moss and bouncy bad guys."),
+        Plan("TOY TRAIN TRACKS", Place.TOYS, "Choo choo! Watch out for the soldiers."),
+        Plan("FAIRY RING", Place.FUNGI, "A ring of mushrooms... is it magic?"),
+        Plan("BALLOON BRIDGE", Place.SKY, "High up with the balloons."),
+        Plan("THE TOY CHEST", Place.CASTLE, "DRY BONES KING KRAG is hiding in the toy chest!", boss = "Y"),
+        Plan("ROBOT FACTORY", Place.STATION, "Somebody is building something BIG in here..."),
+        Plan("GLOWING SWAMP", Place.FUNGI, "Glowing mushrooms over a dark swamp."),
+        Plan("JACK'S ATTIC", Place.TOYS, "So many jack-in-the-boxes!"),
+        Plan("SHROOM SUMMIT", Place.FUNGI, "The tallest mushroom of all."),
+        Plan("TOY SOLDIER FORT", Place.TOYS, "A whole army of wind-up soldiers!"),
+        Plan("WIND-UP WORKSHOP", Place.STATION, "Clank, clank... Mecha Krag is almost ready!"),
+        Plan("MECHA KRAG", Place.STATION, "MECHA KRAG! A giant robot King Krag. Dodge the missiles!", boss = "{"),
+    )
+
+    private val world9Plans = listOf(
+        Plan("MOON LANDING", Place.MOON, "WORLD 9: GALAXY WORLD! On the Moon you jump WAY higher!"),
+        Plan("CRATER HOP", Place.MOON, "Moon hoppers bounce around. Floaty!"),
+        Plan("SPACE STATION", Place.STATION, "UFOs zap lasers down. Keep moving!"),
+        Plan("STARDUST ROAD", Place.RAINBOW, "A rainbow road through the stars."),
+        Plan("UFO VALLEY", Place.MOON, "So many flying saucers!"),
+        Plan("ASTEROID BELT", Place.MOON, "Hop across the space rocks."),
+        Plan("GALAXY FORTRESS", Place.SKY, "WONDER KRAG JR. took off into space!", boss = "W"),
+        Plan("DOCKING BAY", Place.STATION, "Rockets and robots everywhere."),
+        Plan("DARK SIDE OF THE MOON", Place.MOON, "Hardly any light over here..."),
+        Plan("COMET CHASE", Place.RAINBOW, "Catch the comet!"),
+        Plan("ALIEN GARDEN", Place.FUNGI, "Space mushrooms! Do aliens eat them?"),
+        Plan("ZERO-G LAB", Place.STATION, "The science lab. Don't touch anything!"),
+        Plan("METEOR SHOWER", Place.MOON, "Look at all the shooting stars!"),
+        Plan("THE STAR CASTLE", Place.CASTLE, "WONDER KING KRAG guards the Star Castle!", boss = "Q"),
+        Plan("NEBULA NOOK", Place.RAINBOW, "Swirly clouds of every color."),
+        Plan("ROBOT REPAIR SHOP", Place.STATION, "Robots, robots, robots."),
+        Plan("MOON BASE", Place.MOON, "The last base before the big battle."),
+        Plan("SATURN RINGS", Place.RAINBOW, "Running around the rings of a giant planet!"),
+        Plan("BLACK HOLE BRIDGE", Place.END, "Don't fall in!"),
+        Plan("THE LAST STAR", Place.MOON, "Galaxy Krag is waiting at the edge of the galaxy..."),
+        Plan("GALAXY KRAG", Place.MOON, "GALAXY KRAG! The final battle! Jump on him when he swoops down!", boss = "}"),
+    )
+
+    /** World 8, Toy World: wind-up soldiers, jack-in-the-boxes, glowing mushrooms and MECHA KRAG. */
+    val world8: List<LevelDef> by lazy { world8Plans.mapIndexed { i, p -> make(p, world = 8, seed = 8000 + i * 37) } }
+
+    /** World 9, Galaxy World: the Moon (low gravity!), UFOs, a space station and GALAXY KRAG. */
+    val world9: List<LevelDef> by lazy { world9Plans.mapIndexed { i, p -> make(p, world = 9, seed = 9000 + i * 41) } }
+
     /** World 7, Winter World: snow, blizzards, northern lights, Candy Land, and ROCK STAR KRAG. */
     val world7: List<LevelDef> by lazy { world7Plans.mapIndexed { i, p -> make(p, world = 7, seed = 7000 + i * 31) } }
 
@@ -125,6 +179,8 @@ object MoreWorlds {
         "Z" -> dragonBoss(p)
         "K", "Q", "Y", "3", "4" -> castleBoss(p, p.boss[0])
         "!" -> rockStage(p)
+        "{" -> mechaStage(p)
+        "}" -> galaxyArena(p)
         "55" -> twinBoss(p)
         else -> rush(p, p.boss)
     }
@@ -132,6 +188,22 @@ object MoreWorlds {
     /** The bad guys each world uses. Air ones go up high; the rest stand on the ground. */
     private fun groundFoes(world: Int, place: Place) = buildString {
         if (world == 6) { append("gkbH2"); if (place == Place.NIGHT || place == Place.CAVE) append("2"); return@buildString }
+        if (world == 8) {
+            append(when (place) {
+                Place.TOYS -> ";,;gkH,"
+                Place.FUNGI -> "gUT;Hk"
+                else -> ";,8gk"
+            })
+            return@buildString
+        }
+        if (world == 9) {
+            append(when (place) {
+                Place.MOON -> "<<gk<A"
+                Place.STATION -> "<A8;k,"
+                else -> "<gkAH"
+            })
+            return@buildString
+        }
         if (world == 7) {
             append(when (place) {
                 Place.CANDY -> "1g1kH0"
@@ -147,7 +219,8 @@ object MoreWorlds {
         if (place == Place.DESERT) append("jjb")
     }
 
-    private fun airFoes(place: Place, world: Int = 0) = if (world == 6) "qqv" else if (world == 7) "vll" else when (place) {
+    private fun airFoes(place: Place, world: Int = 0) = if (world == 6) "qqv" else if (world == 7) "vll" else if (world == 8) "llv"
+        else if (world == 9) "//l" else when (place) {
         Place.CAVE, Place.DEEP -> "vvq"
         Place.NIGHT, Place.CASTLE, Place.END -> "qqv"
         else -> "llw"
@@ -164,7 +237,7 @@ object MoreWorlds {
         val w = 200 + r.nextInt(30)
         val b = Builder(w)
         val place = p.place
-        if (place == Place.CAVE || place == Place.CASTLE) b.fill(0, w - 1, 0, 1, if (place == Place.CAVE) 's' else 'X')
+        if (place == Place.CAVE || place == Place.CASTLE || place == Place.STATION) b.fill(0, w - 1, 0, 1, if (place == Place.CAVE) 's' else 'X')
         val lava = place == Place.VOLCANO || place == Place.CASTLE
         val ground = groundFoes(world, place)
         val air = airFoes(place, world)
@@ -175,7 +248,7 @@ object MoreWorlds {
         var lastGap = true
         var checkpoints = 0
         var frog = false
-        // World 4 has more bad guys; Spooky World (6) is calmer, with just a few.
+        // World 4 has more bad guys; Spooky World (6) and later are calmer, with just a few.
         val busy = if (world >= 6) 1 else 1 + world - 3
         while (x < w - 28) {
             val kind = r.nextInt(7)
@@ -184,6 +257,8 @@ object MoreWorlds {
                     // A gap (or a lava pit) to jump over.
                     val gw = 2 + r.nextInt(2)
                     if (lava) b.fill(x, x + gw - 1, 13, 14, 'L')
+                    // (Newer worlds: no prize blocks right before a gap, so you can't jump short off them.)
+                    if (world >= 8) b.fill(x - 10, x - 1, 9, 9, '.')
                     x += gw
                     lastGap = true
                     continue
@@ -301,6 +376,33 @@ object MoreWorlds {
         .row(112, 8, "h").row(134, 8, "h")
         .fill(150, 150, 2, 12, 'X')
         .at(128, 12, '!')
+        .build(p.name, p.place, p.tip)
+
+    /** MECHA KRAG's workshop: a long factory floor, then a big flat arena. */
+    private fun mechaStage(p: Plan) = Builder(170)
+        .ground(0, 169).fill(0, 169, 0, 1, 'X')
+        .at(3, 12, '@').rock(7, 12, "DoxD", "ssss").row(14, 9, "?h?")
+        .at(22, 12, ';').at(28, 12, ',').at(33, 8, 'l').at(38, 12, ';')
+        .rock(44, 12, "aRe", "sss").at(50, 12, 'r').at(54, 12, '|')
+        .at(60, 12, ',').at(66, 12, ';').row(70, 9, "BhB").at(78, 12, '8')
+        .rock(84, 12, "eDo", "sss").at(92, 12, '|').row(96, 9, "m*m")
+        .row(112, 8, "h").row(134, 8, "h")
+        .fill(150, 150, 2, 12, 'X')
+        .at(128, 12, '{')
+        .build(p.name, p.place, p.tip)
+
+    /** GALAXY KRAG's arena on the Moon: floaty jumps, and moon-rock ledges to jump on him from. */
+    private fun galaxyArena(p: Plan) = Builder(180)
+        .ground(0, 179)
+        .at(3, 12, '@').rock(7, 12, "DoxD", "ssss").row(14, 9, "?h?")
+        .at(22, 12, '<').at(28, 6, '/').at(34, 12, '<')
+        .rock(44, 12, "aRe", "sss").at(50, 12, 'r').at(54, 12, '|')
+        .at(62, 12, '<').at(68, 5, '/').row(72, 9, "BhB").at(80, 12, 'A')
+        .rock(86, 12, "eDo", "sss").at(94, 12, '|').row(98, 9, "m*m")
+        .row(110, 9, "OOOO").row(122, 7, "OOOO").row(134, 9, "OOOO").row(146, 7, "OOOO")
+        .row(112, 8, "h").row(148, 6, "h")
+        .fill(160, 160, 2, 12, 'X')
+        .at(132, 12, '}')
         .build(p.name, p.place, p.tip)
 
     /** The Warden Twins: two Wardens in one dark cave (each one has less health than the big Warden). */

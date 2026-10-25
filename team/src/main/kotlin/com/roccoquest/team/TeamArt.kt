@@ -81,7 +81,7 @@ object TeamArt {
             val m = mapOf(SHIRT to a, SHIRT_DARK to b)
             blockyStand.recolor(m) to blockyWalk.recolor(m)
         }
-        return if (walking) pair.second else pair.first
+        return Outline.of(if (walking) pair.second else pair.first)
     }
 
     // ---------------------------------------------------------------- Rocco outfits
@@ -97,7 +97,9 @@ object TeamArt {
     private val goldSuit = arrayOf(Sprites.bigStand, Sprites.bigWalk, Sprites.bigJump).map { it.recolor(goldMap) }
 
     /** frame: 0 stand, 1 walk, 2 jump */
-    fun rocco(p: Power, frame: Int): Sprite = if (p == Power.THUNDER) thunder[frame] else if (p == Power.CRYSTAL) crystal[frame] else if (p == Power.GOLD) goldSuit[frame] else when (p) {
+    fun rocco(p: Power, frame: Int): Sprite = Outline.of(roccoPlain(p, frame))
+
+    private fun roccoPlain(p: Power, frame: Int): Sprite = if (p == Power.THUNDER) thunder[frame] else if (p == Power.CRYSTAL) crystal[frame] else if (p == Power.GOLD) goldSuit[frame] else when (p) {
         Power.NONE -> arrayOf(Sprites.bigStand, Sprites.bigWalk, Sprites.bigJump)
         Power.FIRE -> arrayOf(Sprites.fireStand, Sprites.fireWalk, Sprites.fireJump)
         Power.ICE -> arrayOf(Sprites.iceStand, Sprites.iceWalk, Sprites.iceJump)
@@ -434,8 +436,14 @@ object TeamArt {
     // ---------------------------------------------------------------- Pokemon partners
 
     /** Draws a Pokemon standing with its feet at ([cx], [bottom]). */
-    fun mon(gfx: Gfx, m: Mon, cx: Float, bottom: Float, t: Float, facing: Int, glow: Boolean, walking: Boolean = false) {
+    fun mon(gfx: Gfx, m: Mon, cx: Float, bottom: Float, t: Float, facing: Int, glow: Boolean, walking: Boolean = false, outline: Boolean = true) {
         if (glow) gfx.oval(cx - 14, bottom - 26, 28f, 28f, argb(70, m.color))
+        // A dark outline first (a slightly bigger silhouette), then the Pokemon on top.
+        if (outline && gfx !is SilhouetteGfx) monShapes(SilhouetteGfx(gfx, 0.8f), m, cx, bottom, t, facing, glow, walking)
+        monShapes(gfx, m, cx, bottom, t, facing, glow, walking)
+    }
+
+    private fun monShapes(gfx: Gfx, m: Mon, cx: Float, bottom: Float, t: Float, facing: Int, glow: Boolean, walking: Boolean) {
         when (m) {
             Mon.SPARKY -> sparky(gfx, cx - 8, bottom - 17, t, facing, glow)
             Mon.BLAZE -> blaze(gfx, cx, bottom, t, facing, walking)

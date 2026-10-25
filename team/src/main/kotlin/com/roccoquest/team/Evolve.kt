@@ -9,7 +9,7 @@ import kotlin.math.sin
  * Draws through to [inner] with every color moved part of the way ([k]) toward [target]. Very dark and
  * very light colors (eyes, outlines, shines) stay as they are, so faces still look right.
  */
-class TintGfx(private val inner: Gfx, private val target: Int, private val k: Float) : Gfx {
+class TintGfx(internal val inner: Gfx, private val target: Int, private val k: Float) : Gfx {
     private fun tint(c: Int): Int {
         val a = (c ushr 24) and 255
         val r = (c shr 16) and 255
@@ -33,7 +33,7 @@ object Evolve {
     fun draw(gfx: Gfx, m: Mon, cx: Float, bottom: Float, t: Float, facing: Int, glow: Boolean, walking: Boolean) {
         val f = facing.toFloat()
         fun baseAs(base: Mon, color: Int, k: Float, scale: Float) =
-            TeamArt.mon(ScaledGfx(TintGfx(gfx, color, k), scale, cx, bottom), base, 0f, 0f, t, facing, false, walking)
+            TeamArt.mon(ScaledGfx(TintGfx(gfx, color, k), scale, cx, bottom), base, 0f, 0f, t, facing, false, walking, outline = false)
         when (m) {
             Mon.SCORCH -> {
                 baseAs(Mon.EMBER, 0xFFD8402A.toInt(), 0.45f, 1.25f)
@@ -89,7 +89,7 @@ object Evolve {
                 baseAs(Mon.MYSTIC, 0xFFB8A0D8.toInt(), 0.5f, 1.35f)
                 gfx.oval(cx - 3, bottom - 30, 6f, 6f, argb(if (glow) 220 else 120, 0xC890FF))
             }
-            else -> TeamArt.mon(gfx, m, cx, bottom, t, facing, glow, walking)
+            else -> TeamArt.mon(gfx, m, cx, bottom, t, facing, glow, walking, outline = false)
         }
     }
 }

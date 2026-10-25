@@ -1,6 +1,7 @@
 package com.roccoquest.team
 
 import com.roccoquest.game.Gfx
+import com.roccoquest.game.gradientStops
 import com.roccoquest.game.Sound
 import com.roccoquest.game.Sprites
 import com.roccoquest.game.TILE
@@ -199,7 +200,7 @@ class Hopper(x: Float, bottom: Float) : Foe(x + 1, bottom - 14, 14f, 14f, 4) {
 
     override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
         val s = Sprites.grumbler
-        if (squashed >= 0) { gfx.sprite(s, x - 1 + ox, bottom - 7, h = 7f); return }
+        if (squashed >= 0) { gfx.sprite(Outline.of(s), x - 1 + ox, bottom - 7, h = 7f); return }
         // Squash down before a jump, stretch tall in the air.
         val sh = when {
             crouch >= 0f -> 16f - crouch * 14f
@@ -209,7 +210,7 @@ class Hopper(x: Float, bottom: Float) : Foe(x + 1, bottom - 14, 14f, 14f, 4) {
         val sw = if (crouch >= 0f) 16f + crouch * 8f else if (!onGround) 14f else 16f
         val px = cx + ox - sw / 2
         val py = bottom - sh
-        gfx.sprite(s, px, py, w = sw, h = sh, flipX = vx > 0 || (vx == 0f && g.leader.cx > cx), flipY = dying)
+        gfx.sprite(Outline.of(s), px, py, w = sw, h = sh, flipX = vx > 0 || (vx == 0f && g.leader.cx > cx), flipY = dying)
         if (!dying) {
             // Red headband with flapping ties.
             gfx.rect(px + 1, py + sh * 0.18f, sw - 2, 2.2f, 0xFFE52521.toInt())
@@ -451,9 +452,8 @@ class Chest(x: Float, bottom: Float) : Thing(x, bottom - 13, 16f, 13f) {
 object Sunset {
     fun drawSky(gfx: Gfx, viewW: Float, viewH: Float, cam: Float, time: Float) {
         val bands = listOf(0xFF2A1450, 0xFF4A1E6A, 0xFF7A2A7A, 0xFFB8406A, 0xFFE8605A, 0xFFFF8A4A, 0xFFFFB04A)
-        val bh = viewH * 0.75f / bands.size
-        bands.forEachIndexed { i, c -> gfx.rect(0f, i * bh, viewW, bh + 1, c.toInt()) }
-        gfx.rect(0f, bands.size * bh, viewW, viewH, 0xFFFFC85A.toInt())
+        gfx.gradientStops(0f, 0f, viewW, viewH * 0.75f, *IntArray(bands.size) { bands[it].toInt() })
+        gfx.gradient(0f, viewH * 0.75f, viewW, viewH * 0.25f, 0xFFFFB04A.toInt(), 0xFFFFD87A.toInt())
         // The sun, half behind the hills, with a shimmer.
         val sx = viewW * 0.62f - cam * 0.05f
         gfx.oval(sx - 54, viewH * 0.52f, 108f, 108f, 0x55FFE08A)
@@ -486,6 +486,10 @@ internal fun spawnMonster(c: Char, px: Float, bottom: Float): Foe? = when (c) {
     'l' -> Puffcloud(px, bottom)
     'j' -> Spikestack(px, bottom)
     'N' -> Cannon(px, bottom)
+    ';' -> ToySoldier(px, bottom)
+    ',' -> JackBox(px, bottom)
+    '/' -> Ufo(px, bottom)
+    '<' -> MoonHopper(px, bottom)
     else -> null
 }
 

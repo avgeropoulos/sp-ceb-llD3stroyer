@@ -142,7 +142,7 @@ class Grumbler(x: Float, y: Float, private var winged: Boolean) : Foe(x + 1, y -
     override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
         val s = if (g.level.def.place == Place.CAVE) Sprites.grumblerBlue else Sprites.grumbler
         if (squashed >= 0) {
-            gfx.sprite(s, x - 1 + ox, bottom - 7, h = 7f)
+            gfx.sprite(Outline.of(s), x - 1 + ox, bottom - 7, h = 7f)
             return
         }
         if (winged && !dying) {
@@ -150,7 +150,7 @@ class Grumbler(x: Float, y: Float, private var winged: Boolean) : Foe(x + 1, y -
             gfx.oval(x + ox - 6, y - 2 + if (up) -3f else 2f, 7f, 9f, 0xFFFFFFFF.toInt())
             gfx.oval(x + ox + 13, y - 2 + if (up) -3f else 2f, 7f, 9f, 0xFFFFFFFF.toInt())
         }
-        gfx.sprite(s, x - 1 + ox, bottom - 16, flipX = (anim * 6).toInt() % 2 == 0, flipY = dying)
+        gfx.sprite(Outline.of(s), x - 1 + ox, bottom - 16, flipX = (anim * 6).toInt() % 2 == 0, flipY = dying)
         drawFlash(gfx, ox)
     }
 }
@@ -205,10 +205,10 @@ class Shellback(x: Float, y: Float) : Foe(x + 1, y - 22, 14f, 22f, 4) {
 
     override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
         if (shell) {
-            gfx.sprite(Sprites.shell, x - 1 + ox, bottom - 16, flipY = dying)
+            gfx.sprite(Outline.of(Sprites.shell), x - 1 + ox, bottom - 16, flipY = dying)
         } else {
             val s = if ((anim * 5).toInt() % 2 == 0) Sprites.shellback1 else Sprites.shellback2
-            gfx.sprite(s, x - 1 + ox, bottom - 24, flipX = vx > 0, flipY = dying)
+            gfx.sprite(Outline.of(s), x - 1 + ox, bottom - 24, flipX = vx > 0, flipY = dying)
         }
         drawFlash(gfx, ox)
     }
@@ -340,7 +340,7 @@ class SpikeBall(x: Float, y: Float) : Foe(x, y, 12f, 12f, 1) {
     }
 
     override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
-        gfx.sprite(Sprites.spikeBall, x + ox, y, w = 12f, h = 12f, flipY = dying)
+        gfx.sprite(Outline.of(Sprites.spikeBall), x + ox, y, w = 12f, h = 12f, flipY = dying)
     }
 }
 
@@ -474,6 +474,13 @@ class KragJr(x: Float, y: Float, val wonderStyle: Boolean = false) :
     override fun touch(g: TeamGame) { if (mode == Mode.FLY || mode == Mode.SWOOP || mode == Mode.WINDUP) g.hurt(this) }
 
     override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
+        // A crisp dark outline first, then the real thing on top.
+        // (A tinted Krag, like Mecha Krag, still gets a dark outline, not a tinted one.)
+        if (gfx !is SilhouetteGfx) drawShapes(g, SilhouetteGfx(if (gfx is TintGfx) gfx.inner else gfx, 0.8f), ox)
+        drawShapes(g, gfx, ox)
+    }
+
+    private fun drawShapes(g: TeamGame, gfx: Gfx, ox: Float) {
         val px = x + ox + if (mode == Mode.WINDUP) sin(t * 60) * 2f else 0f
         val hurt = mode == Mode.HURT && (modeTime * 20).toInt() % 2 == 0
         if (mode == Mode.WINDUP) gfx.shadowText("!", px + 15, y - 18, 16f, 0xFFFF3A3A.toInt(), 1)
@@ -650,6 +657,13 @@ class KingKrag(x: Float, y: Float, val wonderStyle: Boolean = false, val dry: Bo
     override fun stomp(g: TeamGame, stomper: Hero) { hit(g, 1) }
 
     override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
+        // A crisp dark outline first, then the real thing on top.
+        // (A tinted Krag, like Mecha Krag, still gets a dark outline, not a tinted one.)
+        if (gfx !is SilhouetteGfx) drawShapes(g, SilhouetteGfx(if (gfx is TintGfx) gfx.inner else gfx, 0.8f), ox)
+        drawShapes(g, gfx, ox)
+    }
+
+    private fun drawShapes(g: TeamGame, gfx: Gfx, ox: Float) {
         val flash = hurtFlash > 0 && (hurtFlash * 30).toInt() % 2 == 0
         val f = facing < 0
         if (bonesT >= 0) {

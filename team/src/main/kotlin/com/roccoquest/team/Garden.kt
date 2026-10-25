@@ -138,7 +138,7 @@ class Garden(private val g: TeamGame) {
 
     fun draw(gfx: Gfx, ox: Float, viewW: Float, viewH: Float, t: Float) {
         // Sky, sun, clouds
-        for (b in 0 until 8) gfx.rect(0f, b * 20f, viewW, 21f, mix(0xFF6AB8F0.toInt(), 0xFFCDEBFF.toInt(), b / 7f))
+        gfx.gradient(0f, 0f, viewW, Homes.FLOOR_Y, 0xFF4AA4F0.toInt(), 0xFFD8F0FF.toInt())
         gfx.oval(viewW - 60f, 16f, 34f, 34f, 0xFFFFE14D.toInt())
         for (c in 0 until 4) {
             val cx = ((c * 260f + t * 6f) % (viewW + 120f)) - 60f
@@ -208,11 +208,6 @@ class Garden(private val g: TeamGame) {
         const val PICNIC_X = 810f
         const val PLOT_W = 44f
         fun plotX(i: Int) = 180f + i * 62f
-
-        private fun mix(a: Int, b: Int, k: Float): Int {
-            fun ch(s: Int) = (((a ushr s) and 0xFF) * (1 - k) + ((b ushr s) and 0xFF) * k).toInt() shl s
-            return (0xFF shl 24) or ch(16) or ch(8) or ch(0)
-        }
 
         /** A plant in the ground at ([cx], [bottom]), from a tiny sprout (0) to ripe (1). */
         fun drawPlant(gfx: Gfx, c: Crop, cx: Float, bottom: Float, growth: Float, t: Float) {

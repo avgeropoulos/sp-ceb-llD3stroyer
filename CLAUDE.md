@@ -102,7 +102,7 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
 * `score` is a Long; `particles` are capped at `MAX_PARTICLES` (too many floating texts made phones lag).
 * Performance: draw repeated tiles as cached `Sprite`s (see `SeaArt.plank`/`rainbowTile`), not many shapes per
   tile. Floating texts are capped at `MAX_FLOAT_TEXTS`. Poseidon/Black Flower buttons are top-right (`TeamControls.layout`).
-* Music: 33 songs in `Songs.kt`; the title song rotates (`titleSong`, global key `titleSong`) (`Music` enum in `Gfx.kt`); `Tunes.tunes(place)` lists 3-4 per place.
+* Music: 39 songs in `Songs.kt`; the title song rotates (`titleSong`, global key `titleSong`) (`Music` enum in `Gfx.kt`); `Tunes.tunes(place)` lists 3-4 per place.
 * `Fun.kt`: `Spotty` (the Toad look-alike, `Voice.TOAD`; `planSpotty`/`updateSpotty`, 40% of non-boss levels) and
   `Scenes` (10 five-second funny scenes, `State.SCENE`, after the sticker on odd level indexes; `funnyScenes` flag).
 * `thinCrowds()` spreads out bunched-up bad guys at level start (32px gap in World 1, 48px later).
@@ -118,6 +118,11 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
 * Evolution (`Evolve.kt`, Actors.kt): `MON_LINES`, `Mon.base` (whose SUPER/physics a form uses; switch on `mon.base`,
   not `mon`), `root` (XP is kept on the root), `evolveLevel`, `nextForm`. Evolved forms are drawn with `TintGfx` +
   `ScaledGfx` over their first form. The pick screen only shows `STARTERS` (the first 10).
+* `Galaxy.kt`: Worlds 8-9 (`MoreWorlds.world8/world9`; places TOYS, FUNGI, MOON (hero gravity 0.6), STATION; `GalaxyArt`
+  ground tiles + skies), foes `ToySoldier` (`;`), `JackBox` (`,`), `Ufo` (`/`) + `Beam`, `MoonHopper` (`<`), bosses
+  `MechaKrag` (`{`, `Missile`) and `GalaxyKrag` (`}`, the last level; `StarShot`). Also `Outline.of(sprite)` (cached
+  outlined sprites for Rocco/Blocky/foes) and `SilhouetteGfx` (draw shapes through it first for a dark outline:
+  `TeamArt.mon`, KingKrag, KragJr). Skies use `Gfx.gradient`/`gradientStops` (real gradients on Android, never bands).
 * `Spin.kt`: `BlastCannon` (`>`, added to every 4th level by `remix`; `inCannon`, `fireCannon`, `cannonFlight`/`cannonFlyT`),
   `SpikeBomb` (`+`) and `TailKrag` (`&`, level 28 "KRAG'S TAIL SPIN": only thrown-into-a-bomb hurts him;
   `grabbing`, `actionTap`, `heldDir()`). While `busy` (cannon or tail) the normal ACTION/JUMP moves are skipped.

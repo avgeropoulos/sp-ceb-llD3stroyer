@@ -159,7 +159,7 @@ class TeamGameTest {
         assertTrue(Levels.all.any { d -> d.rows.any { 'Q' in it } }, "Wonder King Krag")
         assertTrue(Levels.all.any { d -> d.rows.any { 'G' in it } }, "the Warden")
         assertTrue(Levels.all.any { d -> d.rows.any { 'Y' in it } }, "Dry Bones King Krag")
-        assertTrue(Levels.all.last().rows.any { '!' in it }, "Rock Star Krag is the final boss")
+        assertTrue(Levels.all.last().rows.any { '}' in it }, "Galaxy Krag is the final boss")
         assertTrue(Levels.all.any { it.place == Place.WATER && it.shoreX > 0 }, "an underwater level")
         // Every level has Ring-Ding Frog and ore to mine.
         for (def in Levels.all) {
@@ -2194,6 +2194,49 @@ class TeamGameTest {
         assertTrue(g2.hasSticker(299) && g2.stickerCount == game.stickerCount)
     }
 
+    @Test fun toyWorldAndGalaxyWorld() {
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 720, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f)); ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        for ((name, file) in listOf("TOY BOX TOWN" to "w8-toys", "GLOWSHROOM GROVE" to "w8-fungi", "MOON LANDING" to "w9-moon", "SPACE STATION" to "w9-station")) {
+            startPlaying(Levels.all.indexOfFirst { it.name == name })
+            run(2.5f) { game.hurtProof(); input.right = true }
+            input.right = false
+            shot(file)
+        }
+        // Jumping on the Moon goes way higher.
+        startPlaying(Levels.all.indexOfFirst { it.name == "MOON LANDING" })
+        game.foes.clear()
+        val l = game.leader
+        val ground = l.bottom
+        var top = ground
+        input.jump = true
+        run(1.2f) { game.hurtProof(); top = minOf(top, l.bottom) }
+        input.jump = false
+        assertTrue(ground - top > 90f, "moon jump: ${ground - top}")
+        // The two new bosses fight, then go down.
+        for ((name, check) in listOf<Pair<String, (Foe) -> Boolean>>("MECHA KRAG" to { it is MechaKrag }, "GALAXY KRAG" to { it is GalaxyKrag })) {
+            startPlaying(Levels.all.indexOfFirst { it.name == name })
+            val b = game.foes.single { check(it) }
+            game.foes.retainAll(setOf(b))
+            l.x = b.x - 140f; l.y = 120f
+            run(6f) { game.hurtProof() }
+            assertTrue(game.boss === b, "$name noticed us")
+            assertTrue(game.foes.any { it is Missile || it is StarShot || it is ChordWave }, "$name attacks")
+            shot("boss-" + name.lowercase().replace(" ", "-"))
+            var t = 0f
+            while (game.state == TeamGame.State.PLAY && t < 60f) {
+                game.hurtProof()
+                if (!b.dying) b.hit(game, 5)
+                run(0.4f) { game.hurtProof() }
+                t += 0.4f
+            }
+            assertTrue(b.dying, "$name beaten")
+        }
+    }
+
     @Test fun blastCannonsAndTheTailSpin() {
         val dir = File("build/screens").apply { mkdirs() }
         fun shot(name: String) {
@@ -2728,8 +2771,8 @@ class TeamGameTest {
     }
 
     @Test fun fourWorldsAndNewEnemies() {
-        assertEquals(147, Levels.all.size)
-        assertEquals(7, worldCount())
+        assertEquals(189, Levels.all.size)
+        assertEquals(9, worldCount())
         val ultimate = Levels.all.first { it.name == "THE ULTIMATE BATTLE" }
         assertTrue(ultimate.rows.any { 'Z' in it } && ultimate.rows.any { 'Q' in it })
         for (c in "zqlj") assertTrue(Levels.all.count { d -> d.rows.any { c in it } } >= 3, "new monster $c is in levels")

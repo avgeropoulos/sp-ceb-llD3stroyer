@@ -854,6 +854,136 @@ object Songs {
         leadDuty = 0.25f,
     )
 
+
+    // ------------------------------------------------------------------ Toy World: a tinkly music-box march
+    private val toyChords = listOf(C, G, Am, F, C, Dm, G, C)
+    val toybox = Song(
+        bpm = 150,
+        lead = """
+            C6/2 E6/2 G6/2 E6/2 C6/2 E6/2 G6/4
+            B5/2 D6/2 G6/2 D6/2 B5/2 D6/2 G6/4
+            A5/2 C6/2 E6/2 C6/2 A5/2 C6/2 E6/4
+            F5/2 A5/2 C6/2 A5/2 F5/2 A5/2 C6/4
+            E6/2 D6/2 C6/2 D6/2 E6/2 E6/2 E6/4
+            D6/2 D6/2 D6/4 F6/2 A6/2 F6/4
+            G6/2 F6/2 E6/2 D6/2 B5/2 D6/2 G5/4
+            C6/4 G5/2 E5/2 C5/8
+        """,
+        harmony = offbeats(toyChords),
+        bass = oomPahBass(toyChords),
+        drums = "k.h.s.h.k.h.s.hh",
+        leadDuty = 0.125f,
+    )
+
+    // ------------------------------------------------------------------ The Moon: slow and floaty
+    private val moonChords = listOf(Am, F, C, G, Am, F, Dm, "E2 B2 G#4 B4")
+    val moon = Song(
+        bpm = 96,
+        lead = """
+            E5/4 A5/4 C6/4 B5/4
+            A5/4 F5/4 C5/8
+            G5/4 E5/4 C6/6 -/2
+            B5/4 D6/4 G5/8
+            E6/4 C6/4 A5/4 E5/4
+            F5/2 A5/2 C6/4 F6/8
+            D6/4 F6/2 E6/2 D6/4 A5/4
+            G#5/4 B5/4 E6/8
+        """,
+        harmony = offbeats(moonChords),
+        bass = oomPahBass(moonChords),
+        drums = "k.......s.......",
+        leadDuty = 0.5f,
+    )
+
+    // ------------------------------------------------------------------ Mecha Krag: a clanky robot battle
+    private val robotChords = listOf(
+        "E2 B2 G4 B4", "C2 G2 E4 G4", "D2 A2 F#4 A4", "B1 F#2 D#4 F#4",
+        "E2 B2 G4 B4", "C2 G2 E4 G4", "D2 A2 F#4 A4", "B1 F#2 D#4 F#4",
+    )
+    val robot = Song(
+        bpm = 168,
+        lead = """
+            E5/1 E5/1 -/2 E5/1 E5/1 -/2 G5/2 F#5/2 E5/2 D5/2
+            C5/2 E5/2 G5/2 C6/2 B5/4 G5/4
+            D5/1 D5/1 -/2 D5/1 D5/1 -/2 F#5/2 A5/2 D6/4
+            D#5/4 F#5/4 B5/8
+            E6/2 B5/2 G5/2 E5/2 E6/2 B5/2 G5/2 B5/2
+            C6/2 G5/2 E5/2 G5/2 C6/4 E6/4
+            D6/2 A5/2 F#5/2 A5/2 D6/2 F#6/2 A6/4
+            B5/2 A5/2 F#5/2 D#5/2 B4/8
+        """,
+        harmony = offbeats(robotChords),
+        bass = drivingBass(robotChords),
+        drums = "k.k.s.k.k.k.s.hs",
+        leadDuty = 0.5f,
+    )
+
+    // ------------------------------------------------------------------ Galaxy Krag: the big final battle
+    private val galaxyChords = listOf(
+        "D3 A3 F4 A4", "Bb1 F2 D4 F4", "C3 G3 E4 G4", "A2 E3 C#4 E4",
+        "D3 A3 F4 A4", "G2 D3 Bb3 D4", "A2 E3 C#4 E4", "D3 A3 F4 A4",
+    )
+    val galaxy = Song(
+        bpm = 150,
+        lead = """
+            D6/4 A5/2 D6/2 F6/4 E6/2 D6/2
+            Bb5/4 F5/2 Bb5/2 D6/8
+            C6/4 G5/2 C6/2 E6/4 D6/2 C6/2
+            C#6/4 E6/4 A6/8
+            F6/2 E6/2 D6/2 A5/2 F6/2 E6/2 D6/4
+            G6/2 F6/2 D6/2 Bb5/2 G5/4 Bb5/4
+            A5/2 C#6/2 E6/2 A6/2 G6/2 F6/2 E6/4
+            D6/8 A5/4 D5/4
+        """,
+        harmony = offbeats(galaxyChords),
+        bass = drivingBass(galaxyChords),
+        drums = "k.hsk.hsk.hsk.ss",
+        leadDuty = 0.25f,
+    )
+
+    // ------------------------------------------------------------------ Mushroom Forest: bouncy and funky
+    private val fungiChords = listOf(Dm, G, Dm, G, Am, Dm, G, Dm)
+    val fungi = Song(
+        bpm = 128,
+        lead = """
+            D5/2 F5/2 A5/2 C6/2 A5/4 F5/4
+            G5/2 B5/2 D6/4 B5/4 G5/4
+            A5/1 -/1 A5/1 -/1 C6/2 A5/2 F5/2 D5/2 F5/4
+            G5/2 A5/2 B5/2 D6/2 G6/8
+            E6/2 C6/2 A5/2 E5/2 A5/4 C6/4
+            D6/2 F6/2 A6/2 F6/2 D6/8
+            B5/2 G5/2 D5/2 G5/2 B5/2 D6/2 G6/4
+            F6/4 E6/2 D6/2 D6/8
+        """,
+        harmony = offbeats(fungiChords),
+        bass = drivingBass(fungiChords),
+        drums = "k..hs.h.k.khs.h.",
+        leadDuty = 0.25f,
+    )
+
+    // ------------------------------------------------------------------ A happy marching parade
+    private val paradeChords = listOf(
+        "Bb1 F2 D4 F4", "F2 C3 A4 C5", "Eb2 Bb2 G4 Bb4", "F2 C3 A4 C5",
+        "Bb1 F2 D4 F4", "G2 D3 Bb3 D4", "Eb2 Bb2 G4 Bb4", "Bb1 F2 D4 F4",
+    )
+    val parade = Song(
+        bpm = 170,
+        lead = """
+            Bb5/2 F5/2 D5/2 F5/2 Bb5/4 D6/4
+            C6/2 A5/2 F5/2 A5/2 C6/4 F6/4
+            Eb6/2 D6/2 C6/2 Bb5/2 G5/4 Bb5/4
+            A5/2 C6/2 F6/2 C6/2 A5/8
+            D6/2 D6/2 F6/2 D6/2 Bb5/4 D6/4
+            Bb5/2 D6/2 G6/2 F6/2 D6/4 Bb5/4
+            G5/2 Bb5/2 Eb6/2 G6/2 F6/2 Eb6/2 C6/4
+            Bb5/4 F5/4 Bb4/8
+        """,
+        harmony = offbeats(paradeChords),
+        bass = oomPahBass(paradeChords),
+        drums = "k.s.k.s.k.s.ksss",
+        leadDuty = 0.25f,
+    )
+
     fun of(m: Music): Song? = when (m) {
         Music.NONE -> null
         Music.OVERWORLD -> overworld
@@ -888,5 +1018,11 @@ object Songs {
         Music.WITCHY -> witchy
         Music.SILLY -> silly
         Music.RACE -> race
+        Music.TOYBOX -> toybox
+        Music.MOON -> moon
+        Music.ROBOT -> robot
+        Music.GALAXY -> galaxy
+        Music.FUNGI -> fungi
+        Music.PARADE -> parade
     }
 }

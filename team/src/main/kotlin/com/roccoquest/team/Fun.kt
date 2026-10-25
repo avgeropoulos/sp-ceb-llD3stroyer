@@ -139,7 +139,7 @@ object Scenes {
     /** Draws scene [kind] at time [t]. */
     fun draw(g: TeamGame, gfx: Gfx, kind: Int, t: Float, viewW: Float, viewH: Float, mon: Mon) {
         // A sunny meadow stage
-        gfx.rect(0f, 0f, viewW, viewH, 0xFF8AD0FF.toInt())
+        gfx.gradient(0f, 0f, viewW, viewH, 0xFF4AA4F0.toInt(), 0xFFD0F0FF.toInt())
         gfx.oval(viewW - 70, 24f, 34f, 34f, 0xFFFFE87A.toInt())
         for (i in 0 until 3) gfx.oval(((t * 10 + i * 170f) % (viewW + 80f)) - 40f, 30f + i * 16f, 50f, 14f, 0xEEFFFFFF.toInt())
         val ground = 196f

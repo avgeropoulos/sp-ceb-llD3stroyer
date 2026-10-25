@@ -18,6 +18,31 @@ interface Gfx {
 
     /** [y] is the text baseline. [align]: 0 = left, 1 = center, 2 = right. */
     fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Int = 0)
+
+    /**
+     * A rectangle fading smoothly from [top] to [bottom]. Platforms draw a real gradient; this fallback uses
+     * many thin bands (fine for tests and wrappers).
+     */
+    fun gradient(x: Float, y: Float, w: Float, h: Float, top: Int, bottom: Int) {
+        val n = 48
+        val bh = h / n
+        for (i in 0 until n) rect(x, y + i * bh, w, bh + 0.5f, mixColor(top, bottom, i / (n - 1f)))
+    }
+}
+
+/** A smooth gradient through several [colors], spread evenly from top to bottom. */
+fun Gfx.gradientStops(x: Float, y: Float, w: Float, h: Float, vararg colors: Int) {
+    val n = colors.size - 1
+    if (n <= 0) { rect(x, y, w, h, colors.firstOrNull() ?: 0); return }
+    val sh = h / n
+    // Each piece overlaps the next by a hair so no seam shows between them.
+    for (i in 0 until n) gradient(x, y + i * sh, w, sh + if (i < n - 1) 0.5f else 0f, colors[i], colors[i + 1])
+}
+
+/** Blends two ARGB colors: [k] = 0 gives [a], 1 gives [b]. */
+fun mixColor(a: Int, b: Int, k: Float): Int {
+    fun ch(sh: Int) = ((((a ushr sh) and 255) * (1 - k) + ((b ushr sh) and 255) * k).toInt() and 255) shl sh
+    return ch(24) or ch(16) or ch(8) or ch(0)
 }
 
 /** A small ARGB bitmap. [cache] lets a platform keep its own converted copy. */
@@ -52,7 +77,8 @@ enum class Sound { JUMP, COIN, FIRE, STOMP, KICK, POWERUP, HURT, BUMP, BREAK, BO
 
 enum class Music { NONE, OVERWORLD, UNDERGROUND, SKY, CASTLE, BOSS, STAR, WONDER, FROG, KRAG, WARDEN, MEADOW, JUNGLE, SNOW, DESERT, NIGHT, BEACH, DOOM, SHANTY,
     PARK, COZY, ADVENTURE, HEROIC, FUNKY, SPACE, CRYSTAL, TROPICAL,
-    FANFARE, DREAMY, SPOOKY, WITCHY, SILLY, RACE }
+    FANFARE, DREAMY, SPOOKY, WITCHY, SILLY, RACE,
+    TOYBOX, MOON, ROBOT, GALAXY, FUNGI, PARADE }
 
 /** Speaking voices: each one gets its own pitch and speed. */
 enum class Voice { HERO, FROG, VILLAGER, GOD, MON, TOAD }

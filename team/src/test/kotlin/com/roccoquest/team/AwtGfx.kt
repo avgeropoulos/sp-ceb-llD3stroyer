@@ -39,6 +39,13 @@ class AwtGfx(val image: BufferedImage, private val scale: Float) : Gfx {
         color(color); g.fill(p)
     }
 
+    override fun gradient(x: Float, y: Float, w: Float, h: Float, top: Int, bottom: Int) {
+        val old = g.paint
+        g.paint = java.awt.GradientPaint(0f, y * scale, Color(top, true), 0f, (y + h) * scale, Color(bottom, true))
+        g.fill(Rectangle2D.Float(x * scale, y * scale, w * scale, h * scale))
+        g.paint = old
+    }
+
     override fun sprite(s: Sprite, x: Float, y: Float, flipX: Boolean, flipY: Boolean, w: Float, h: Float) {
         val img = s.cache as? BufferedImage ?: BufferedImage(s.w, s.h, BufferedImage.TYPE_INT_ARGB).also {
             it.setRGB(0, 0, s.w, s.h, s.pixels, 0, s.w)

@@ -11,6 +11,8 @@ import com.roccoquest.game.Voice
 import com.roccoquest.game.TILE
 import com.roccoquest.game.VIEW_H
 import com.roccoquest.game.argb
+import com.roccoquest.game.gradientStops
+import com.roccoquest.game.mixColor
 import com.roccoquest.game.shadowText
 import com.roccoquest.game.tileOf
 import kotlin.math.abs
@@ -776,7 +778,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     /** The title songs take turns (remembered between games). */
-    private val TITLE_SONGS = listOf(Music.OVERWORLD, Music.FANFARE, Music.DREAMY, Music.ADVENTURE, Music.HEROIC)
+    private val TITLE_SONGS = listOf(Music.OVERWORLD, Music.FANFARE, Music.DREAMY, Music.ADVENTURE, Music.HEROIC, Music.PARADE)
     var titleSong = TITLE_SONGS[(storage.load("titleSong") % TITLE_SONGS.size + TITLE_SONGS.size) % TITLE_SONGS.size]
         private set
     private fun nextTitleSong() {
@@ -845,6 +847,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 '1' -> foes += Gummy(px, bottom)
                 '!' -> foes += RockStarKrag(px, bottom)
                 '&' -> foes += TailKrag(px, bottom)
+                '{' -> foes += MechaKrag(px, bottom)
+                '}' -> foes += GalaxyKrag(px, bottom)
                 '+' -> things += SpikeBomb(px, bottom)
                 '>' -> things += BlastCannon(px, bottom)
                 'Z' -> foes += EnderDragon(px, ty * TILE.toFloat())
@@ -1338,7 +1342,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             // Grow back once there's room above Rocco.
             if (miniT <= 0 && !level.solidAt(rocco.cx, rocco.bottom - 24f)) endMini() else if (miniT <= 0) miniT = 0.1f
         }
-        val grav = if (wonder) 0.75f else 1f
+        // On the Moon everyone floats: way higher jumps.
+        val grav = if (wonder) 0.75f else if (level.def.place == Place.MOON) 0.6f else 1f
         val cart = riding
         val cn = inCannon
         val tail = grabbing
@@ -3282,6 +3287,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val target = foes.filter {
             it.active && !it.dying && it.x + it.w > camX && it.x < camX + viewW &&
                 (it !is KragJr || it.engaged) && (it !is KingKrag || it.awake) && it !is TailKrag &&
+                (it !is MechaKrag || it.awake) && (it !is GalaxyKrag || it.awake) && (it !is RockStarKrag || it.awake) &&
                 (it !is Warden || it.awake) && (it !is EnderDragon || it.engaged)
         }.minByOrNull { hypot(it.cx - sx, it.cy - sy) }
         if (target == null || hypot(target.cx - sx, target.cy - sy) > 180f) {
@@ -3325,6 +3331,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             is KingBooHoo -> f.homeX
             is RockStarKrag -> f.homeX
             is TailKrag -> f.homeX
+            is MechaKrag -> f.homeX
+            is GalaxyKrag -> f.homeX
             is EnderDragon -> f.homeX + f.w / 2 - 16f
             else -> f.x
         }
@@ -3378,6 +3386,16 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 bannerSub = "Dodge the music notes and JUMP over the power chord waves!"
                 sfx(Sound.BOSS_FIRE)
             }
+            f is MechaKrag -> {
+                bannerTitle = "MECHA KRAG!"
+                bannerSub = "A giant wind-up robot! Dodge the missiles and JUMP over the stomp waves!"
+                sfx(Sound.BOSS_FIRE)
+            }
+            f is GalaxyKrag -> {
+                bannerTitle = "GALAXY KRAG!"
+                bannerSub = "The final battle! Dodge the stars, and jump on him when he SWOOPS down!"
+                sfx(Sound.BOSS_FIRE)
+            }
             f is TailKrag -> {
                 bannerTitle = "KING KRAG: TAIL SPIN!"
                 bannerSub = "Sneak BEHIND him, grab his TAIL (ACTION), spin him round and throw him into a SPIKE BOMB!"
@@ -3409,7 +3427,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         givePlushie(
             when (f) {
                 is KragJr -> Plushies.KRAG_JR
-                is KingKrag, is TailKrag -> Plushies.KING_KRAG
+                is KingKrag, is TailKrag, is MechaKrag, is GalaxyKrag -> Plushies.KING_KRAG
                 is Warden -> Plushies.WARDEN
                 is EnderDragon -> Plushies.DRAGON
                 else -> null
@@ -3493,6 +3511,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             boss is WitchBoss && !bossDone -> Music.WITCHY
             boss is KingBooHoo && !bossDone -> Music.SPOOKY
             boss is RockStarKrag && !bossDone -> Music.RACE
+            boss is MechaKrag && !bossDone -> Music.ROBOT
+            boss is GalaxyKrag && !bossDone -> Music.GALAXY
             wonder -> Music.WONDER
             boss != null && !bossDone -> Tunes.bossMusic(levelIndex, fighting = true)
             frog?.singing == true -> Music.FROG
@@ -3524,6 +3544,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             Place.BLIZZARD -> listOf(Music.SNOW, Music.HEROIC, Music.CRYSTAL)
             Place.AURORA -> listOf(Music.DREAMY, Music.CRYSTAL, Music.SNOW)
             Place.CANDY -> listOf(Music.SILLY, Music.PARK, Music.FUNKY)
+            Place.TOYS -> listOf(Music.TOYBOX, Music.PARADE, Music.SILLY, Music.FUNKY)
+            Place.FUNGI -> listOf(Music.FUNGI, Music.DREAMY, Music.JUNGLE, Music.MEADOW)
+            Place.MOON -> listOf(Music.MOON, Music.SPACE, Music.DREAMY, Music.CRYSTAL)
+            Place.STATION -> listOf(Music.SPACE, Music.RACE, Music.HEROIC, Music.MOON)
         }
 
         /** Every level's tune, worked out once in order so it's never the same as the level before. */
@@ -3848,13 +3872,16 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             // Spooky World: dark purple. Winter World: snowy white.
             5 -> Triple(0xFF120A20, 0xFF3A2A4A, 0xFF4A3A5A)
             6 -> Triple(0xFF3A5A8A, 0xFFE8F0FF, 0xFFFFFFFF)
+            // Toy World: bright toy colors. Galaxy World: deep space and grey moon rock.
+            7 -> Triple(0xFF6AC8FF, 0xFFF4C83A, 0xFFFF8A8A)
+            8 -> Triple(0xFF060418, 0xFF8A8A9A, 0xFFB8B8C8)
             else -> Triple(0xFF1A2A4A, 0xFF8AB8D8, 0xFFA8D0E8)
         }
-        gfx.rect(0f, 0f, viewW, VIEW_H, sea.toInt())
+        gfx.gradient(0f, 0f, viewW, VIEW_H, mixColor(sea.toInt(), 0xFFFFFFFF.toInt(), 0.15f), mixColor(sea.toInt(), 0xFF000000.toInt(), 0.3f))
         // Land
         gfx.oval(-40f, 30f, viewW + 80f, 230f, land.toInt())
         gfx.oval(-20f, 44f, viewW + 40f, 204f, land2.toInt())
-        if (w2 || mapWorld == 5) for (k in 0 until 20) gfx.rect((k * 71f) % viewW, (k * 37f) % 30f + 4f, 1.5f, 1.5f, 0xFFFFFFFF.toInt())
+        if (w2 || mapWorld == 5 || mapWorld == 8) for (k in 0 until 20) gfx.rect((k * 71f) % viewW, (k * 37f) % 30f + 4f, 1.5f, 1.5f, 0xFFFFFFFF.toInt())
         // Snow falling on the Winter World map.
         if (mapWorld == 6) for (k in 0 until 40) gfx.oval((k * 61f + time * 8f) % viewW, (k * 43f + time * 25f) % VIEW_H, 2.5f, 2.5f, 0xDDFFFFFF.toInt())
         // The path between levels
@@ -4252,7 +4279,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun renderPark(gfx: Gfx) {
         val sx = if (shake > 0) sin(time * 80) * 3f else 0f
         // Sky, sun, hills and trees
-        gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF8AD0FF.toInt())
+        gfx.gradient(0f, 0f, viewW, VIEW_H, 0xFF4AA4F0.toInt(), 0xFFD0F0FF.toInt())
         gfx.oval(viewW - 70, 30f, 34f, 34f, 0xFFFFE87A.toInt())
         for (i in 0 until 3) {
             val cx = ((time * 8 + i * 160f) % (viewW + 80f)) - 40f
@@ -5351,23 +5378,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         gfx.oval(cx - w * 0.6f, bottom - 2f, w * 1.2f, 4f, 0x33000000)
     }
 
-    /** A smooth sky: [top] color at the top fading to [bottom] at the horizon, in soft bands. */
-    private fun sky(gfx: Gfx, top: Int, bottom: Int) {
-        val bands = 18
-        val bh = VIEW_H / bands
-        for (i in 0 until bands) {
-            val k = i / (bands - 1f)
-            fun ch(sh: Int) = (((top shr sh) and 255) * (1 - k) + ((bottom shr sh) and 255) * k).toInt()
-            gfx.rect(0f, i * bh, viewW, bh + 1f, argb(255, (ch(16) shl 16) or (ch(8) shl 8) or ch(0)))
-        }
-    }
+    /** A smooth sky: [top] color at the top fading to [bottom] at the horizon (a real gradient, no stripes). */
+    private fun sky(gfx: Gfx, top: Int, bottom: Int) = gfx.gradient(0f, 0f, viewW, VIEW_H, top, bottom)
 
     private fun renderBackground(gfx: Gfx, cam: Float) {
         if (wonder || state == State.VICTORY) {
-            val bands = 7
-            for (i in 0 until bands) {
-                gfx.rect(0f, i * VIEW_H / bands, viewW, VIEW_H / bands + 1, solidRainbow(time * 0.2f, i / bands.toFloat()))
-            }
+            gfx.gradientStops(0f, 0f, viewW, VIEW_H, *IntArray(7) { solidRainbow(time * 0.2f, it / 7f) })
             // Wonder bosses tint the sky purple and green.
             val b = boss
             val wonderBoss = (b is KragJr && b.wonderStyle) || (b is KingKrag && b.wonderStyle)
@@ -5431,9 +5447,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 layer(cam, 0.3f, 210f) { i, x -> cloud(gfx, x + 20, 170f + (i % 2) * 20f) }
             }
             Place.WATER -> {
-                gfx.rect(0f, 0f, viewW, 32f, 0xFF8ED0FF.toInt())
-                gfx.rect(0f, 32f, viewW, VIEW_H - 32f, 0xFF1E5A9A.toInt())
-                gfx.rect(0f, 140f, viewW, 100f, 0xFF184A82.toInt())
+                gfx.gradient(0f, 0f, viewW, 32f, 0xFF6AB8F0.toInt(), 0xFFB8E4FF.toInt())
+                gfx.gradientStops(0f, 32f, viewW, VIEW_H - 32f, 0xFF2A78C0.toInt(), 0xFF1E5A9A.toInt(), 0xFF123C6E.toInt())
+                // Sunbeams shining down through the water
+                for (k in 0 until 4) {
+                    val bx = (k * 150f - cam * 0.1f).mod(viewW + 100f) - 50f
+                    gfx.poly(floatArrayOf(bx, bx + 24f, bx + 70f, bx + 30f), floatArrayOf(32f, 32f, 220f, 220f), 0x14FFFFFF)
+                }
                 layer(cam, 0.3f, 110f) { i, x ->
                     // Swaying seaweed and coral
                     for (k in 0 until 4) gfx.oval(x + 20 + sin(time * 2 + k + i) * 3, 200f - k * 12, 6f, 14f, 0xFF2E9E5A.toInt())
@@ -5506,6 +5526,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 }
             }
             Place.SHIP -> SeaArt.seaSky(gfx, viewW, VIEW_H, cam, time)
+            Place.TOYS, Place.FUNGI, Place.MOON, Place.STATION -> GalaxyArt.drawSky(gfx, level.def.place, viewW, VIEW_H, cam, time)
             Place.RAINBOW -> SeaArt.space(gfx, viewW, VIEW_H, cam, time)
             Place.END -> {
                 sky(gfx, 0xFF04020A.toInt(), 0xFF1E1030.toInt())
@@ -5516,7 +5537,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
             Place.CASTLE, Place.VOLCANO -> {
                 val volcano = level.def.place == Place.VOLCANO
-                gfx.rect(0f, 0f, viewW, VIEW_H, if (volcano) 0xFF3A1208.toInt() else 0xFF2A0E12.toInt())
+                if (volcano) gfx.gradient(0f, 0f, viewW, VIEW_H, 0xFF1E0804.toInt(), 0xFF6A2410.toInt())
+                else gfx.gradient(0f, 0f, viewW, VIEW_H, 0xFF14060A.toInt(), 0xFF3A141A.toInt())
                 if (volcano) {
                     layer(cam, 0.2f, 260f) { _, x ->
                         gfx.poly(floatArrayOf(x, x + 100, x + 200), floatArrayOf(220f, 90f, 220f), 0xFF5A2A18.toInt())
@@ -5564,6 +5586,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     Place.DESERT -> if (under) Sprites.sandstone else Sprites.sandTop
                     Place.SNOW, Place.BLIZZARD, Place.AURORA -> if (under) Sprites.frozenDirt else Sprites.snowTop
                     Place.CANDY -> if (under) TeamArt.candyDirt else TeamArt.candyTop
+                    Place.TOYS, Place.FUNGI, Place.MOON, Place.STATION -> GalaxyArt.ground(place, under)
                     else -> if (under) Sprites.dirt else Sprites.grassTop
                 }
                 Tile.DIRT -> Sprites.dirt
@@ -5572,7 +5595,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 Tile.QMYSTERY -> Sprites.question1
                 Tile.USED -> Sprites.used
                 Tile.HARD -> when (place) {
-                    Place.CASTLE, Place.VOLCANO -> Sprites.hardGrey
+                    Place.CASTLE, Place.VOLCANO, Place.STATION -> Sprites.hardGrey
                     Place.END, Place.DEEP -> TeamArt.obsidian
                     else -> Sprites.hard
                 }
@@ -5683,6 +5706,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 b is KingBooHoo -> "KING BOO-HOO"
                 b is WitchBoss -> "WITCH WANDA"
                 b is RockStarKrag -> "ROCK STAR KRAG"
+                b is MechaKrag -> "MECHA KRAG"
+                b is GalaxyKrag -> "GALAXY KRAG"
                 else -> "KING KRAG"
             }
             val wonderBoss = (b is KragJr && b.wonderStyle) || (b is KingKrag && b.wonderStyle)

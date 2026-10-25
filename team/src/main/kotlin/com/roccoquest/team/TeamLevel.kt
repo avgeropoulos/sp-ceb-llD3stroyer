@@ -110,6 +110,14 @@ enum class Place(val music: Music) {
     AURORA(Music.DREAMY),
     /** World 7: Candy Land, with lollipop trees and gumdrop hills. */
     CANDY(Music.SILLY),
+    /** World 8: a giant toy room with building blocks, teddy bears and spinning tops. */
+    TOYS(Music.TOYBOX),
+    /** World 8: a dark forest of giant glowing mushrooms. */
+    FUNGI(Music.FUNGI),
+    /** World 9: the Moon! Low gravity: everyone jumps way higher. */
+    MOON(Music.MOON),
+    /** World 9: a space station with big round windows. */
+    STATION(Music.SPACE),
 }
 
 /**
@@ -130,6 +138,7 @@ enum class Place(val music: Music) {
  *  'z' crusher   'q' peekaboo ghost   'l' puffcloud   'j' spikestack
  *  'I' ship plank   ':' mast   '%' rainbow road   'N' cannon   '$' metal cap
  *  '>' cannon you can ride   '&' tail-spin King Krag   '+' spike bomb
+ *  ';' toy soldier   ',' jack-in-the-box   '/' UFO   '<' moon hopper   '{' Mecha Krag   '}' Galaxy Krag
  */
 class LevelDef(val name: String, val place: Place, val rows: List<String>, val tip: String) {
     val w get() = rows[0].length
@@ -169,7 +178,7 @@ class Builder(private val w: Int) {
 
 /** Level characters that are bosses: Krag Jr. (J, W), King Krag (K, Q, Y), the Warden (G, and the twins 5),
  * the Ender Dragon (Z), King Boo-Hoo (3), Witch Wanda (4) and Rock Star Krag (!). */
-const val BOSS_CHARS = "JWKQGYZ345!&"
+const val BOSS_CHARS = "JWKQGYZ345!&{}"
 
 object Levels {
     val all: List<LevelDef> by lazy {
@@ -179,7 +188,7 @@ object Levels {
             mushroomJungle(), lavaLake(), wonderCastle(),
             villagerValley(), coralReef(), minecartMine(), enderPlains(), deepDark(),
             treasureLagoon(), spikeTemple(), fireFortress(), boneCastle(), theEnd(),
-        ).plus(World2.all).plus(MoreWorlds.all).plus(World5.all).plus(MoreWorlds.world6).plus(MoreWorlds.world7).mapIndexed { i, d -> remix(d, i) }
+        ).plus(World2.all).plus(MoreWorlds.all).plus(World5.all).plus(MoreWorlds.world6).plus(MoreWorlds.world7).plus(MoreWorlds.world8).plus(MoreWorlds.world9).mapIndexed { i, d -> remix(d, i) }
     }
 
     /**

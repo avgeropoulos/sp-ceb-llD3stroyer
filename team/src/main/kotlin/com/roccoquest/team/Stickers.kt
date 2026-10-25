@@ -18,6 +18,8 @@ class ScaledGfx(private val inner: Gfx, private val s: Float, private val ox: Fl
         inner.sprite(s, x(x), y(y), flipX, flipY, w * this.s, h * this.s)
     override fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Int) =
         inner.text(s, x(x), y(y), size * this.s, color, align)
+    override fun gradient(x: Float, y: Float, w: Float, h: Float, top: Int, bottom: Int) =
+        inner.gradient(x(x), y(y), w * s, h * s, top, bottom)
 }
 
 enum class Rarity(val label: String, val color: Int) {
