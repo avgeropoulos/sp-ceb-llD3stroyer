@@ -9,7 +9,8 @@ import kotlin.random.Random
  * The very last level is THE ULTIMATE BATTLE: Dry Bones King Krag, Wonder King Krag and the Ender Dragon.
  */
 object MoreWorlds {
-    private class Plan(val name: String, val place: Place, val tip: String, val boss: String? = null)
+    /** [extra] makes a level longer (in tiles): World 10's levels are long, and some are REALLY long. */
+    private class Plan(val name: String, val place: Place, val tip: String, val boss: String? = null, val extra: Int = 0)
 
     private val world3 = listOf(
         Plan("PALM BEACH", Place.HILLS, "WORLD 3: the Mystery Islands! New bad guys live here."),
@@ -155,6 +156,33 @@ object MoreWorlds {
         Plan("GALAXY KRAG", Place.MOON, "GALAXY KRAG! The final battle! Jump on him when he swoops down!", boss = "}"),
     )
 
+    private val world10Plans = listOf(
+        Plan("LAVA LANDING", Place.VOLCANO, "WORLD 10: FIRE & SPACE WORLD! When the volcano ERUPTS, jump over the lava!", extra = 100),
+        Plan("ASH FIELDS", Place.VOLCANO, "Rumble rumble... here comes the lava again!", extra = 120),
+        Plan("SPACE WALK", Place.ORBIT, "A SPACE WALK above the Earth! Spacesuits on. Super floaty!", extra = 100),
+        Plan("MAGMA MARATHON", Place.VOLCANO, "The longest volcano of all. Keep going!", extra = 220),
+        Plan("METEOR MOUNTAIN", Place.VOLCANO, "Lava AND meteors! Watch for the red X!", extra = 140),
+        Plan("SATELLITE HOP", Place.ORBIT, "Hop from satellite to satellite.", extra = 120),
+        Plan("FIRE FORT", Place.VOLCANO, "KING KRAG is hiding in the fire fort!", boss = "K"),
+        Plan("OBSIDIAN BRIDGE", Place.VOLCANO, "Shiny black rock over bubbling lava.", extra = 150),
+        Plan("SOLAR PANEL PATH", Place.ORBIT, "Walking on the space station's solar panels!", extra = 140),
+        Plan("THE LONG CLIMB", Place.HILLS, "A long, long walk. Look up: shooting stars!", extra = 240),
+        Plan("SPACE JUNK ALLEY", Place.ORBIT, "Old rockets and space junk everywhere.", extra = 150),
+        Plan("LAVA LAKE", Place.VOLCANO, "Don't fall in the lake!", extra = 160),
+        Plan("MOON CHASE", Place.MOON, "Back on the Moon! Meteors are falling here too.", extra = 160),
+        Plan("ROCKET RIDGE", Place.SKY, "WONDER KRAG JR. is flying over the volcanoes!", boss = "W"),
+        Plan("COMET COAST", Place.RAINBOW, "Surf the comet's rainbow tail!", extra = 160),
+        Plan("VOLCANO VILLAGE", Place.VOLCANO, "Who would live next to a volcano?!", extra = 170),
+        Plan("THE BIG SPACE WALK", Place.ORBIT, "The longest space walk ever. Don't float away!", extra = 260),
+        Plan("FIRE FALLS", Place.VOLCANO, "Waterfalls... of LAVA!", extra = 180),
+        Plan("THE LONGEST ROAD", Place.HILLS, "The longest level in the whole game! You can do it!", extra = 300),
+        Plan("KRAG'S VOLCANO", Place.VOLCANO, "The biggest volcano. King Krag is waiting at the top...", extra = 200),
+        Plan("THE FINAL ERUPTION", Place.VOLCANO, "THE FINAL ERUPTION! Wonder King Krag, Rock Star Krag and GALAXY KRAG, one after another!", boss = "Q!}"),
+    )
+
+    /** World 10, Fire & Space World: long levels, volcano ERUPTIONS, meteor showers and SPACE WALKS. */
+    val world10: List<LevelDef> by lazy { world10Plans.mapIndexed { i, p -> make(p, world = 10, seed = 10000 + i * 43) } }
+
     /** World 8, Toy World: wind-up soldiers, jack-in-the-boxes, glowing mushrooms and MECHA KRAG. */
     val world8: List<LevelDef> by lazy { world8Plans.mapIndexed { i, p -> make(p, world = 8, seed = 8000 + i * 37) } }
 
@@ -196,6 +224,15 @@ object MoreWorlds {
             })
             return@buildString
         }
+        if (world == 10) {
+            append(when (place) {
+                Place.VOLCANO -> "gkbAH9j"
+                Place.ORBIT -> "<A;,<8"
+                Place.MOON -> "<<gk<A"
+                else -> "gkbAHU8"
+            })
+            return@buildString
+        }
         if (world == 9) {
             append(when (place) {
                 Place.MOON -> "<<gk<A"
@@ -220,7 +257,7 @@ object MoreWorlds {
     }
 
     private fun airFoes(place: Place, world: Int = 0) = if (world == 6) "qqv" else if (world == 7) "vll" else if (world == 8) "llv"
-        else if (world == 9) "//l" else when (place) {
+        else if (world == 9 || (world == 10 && place in setOf(Place.ORBIT, Place.MOON))) "//l" else when (place) {
         Place.CAVE, Place.DEEP -> "vvq"
         Place.NIGHT, Place.CASTLE, Place.END -> "qqv"
         else -> "llw"
@@ -234,7 +271,7 @@ object MoreWorlds {
     /** A normal level: pieces one after another, then a staircase and the flag. */
     private fun level(p: Plan, world: Int, seed: Int): LevelDef {
         val r = Random(seed)
-        val w = 200 + r.nextInt(30)
+        val w = 200 + r.nextInt(30) + p.extra
         val b = Builder(w)
         val place = p.place
         if (place == Place.CAVE || place == Place.CASTLE || place == Place.STATION) b.fill(0, w - 1, 0, 1, if (place == Place.CAVE) 's' else 'X')
@@ -289,7 +326,9 @@ object MoreWorlds {
                     if (r.nextInt(3) == 0) b.at(x + 6, if (air[0] == 'l') 3 else 8, air[r.nextInt(air.length)])
                     if (!blocks && len >= 13 && r.nextInt(3) == 0) b.at(x + len - 4, 8, 'z')
                     if (!frog && x > 40) { b.at(x + 2, 12, 'r'); frog = true }
-                    if (checkpoints < 2 && x > w * (checkpoints + 1) / 3) { b.at(x + 3, 12, '|'); checkpoints++ }
+                    // Long levels get more checkpoints (one about every 80 tiles).
+                    val cps = maxOf(2, w / 80)
+                    if (checkpoints < cps && x > w * (checkpoints + 1) / (cps + 1)) { b.at(x + 3, 12, '|'); checkpoints++ }
                     x += len
                 }
             }

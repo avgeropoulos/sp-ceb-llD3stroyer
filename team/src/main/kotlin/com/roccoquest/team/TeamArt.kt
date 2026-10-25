@@ -78,7 +78,7 @@ object TeamArt {
     private val skinCache = HashMap<BlockySkin, Pair<Sprite, Sprite>>()
 
     fun blocky(p: Power, walking: Boolean): Sprite {
-        val sk = Style.blocky
+        val sk = Style.blockyNow
         if (p == Power.NONE && sk != BlockySkin.CLASSIC) return blockySkin(sk, walking)
         val pair = blockyCache.getOrPut(p) {
             val (a, b) = blockyShirt(p)
@@ -113,7 +113,7 @@ object TeamArt {
     private val goldSuit = arrayOf(Sprites.bigStand, Sprites.bigWalk, Sprites.bigJump).map { it.recolor(goldMap) }
 
     /** frame: 0 stand, 1 walk, 2 jump */
-    fun rocco(p: Power, frame: Int): Sprite = Outline.of(if (p == Power.NONE && Style.rocco != RoccoOutfit.CLASSIC) roccoOutfit(Style.rocco, frame) else roccoPlain(p, frame))
+    fun rocco(p: Power, frame: Int): Sprite = Outline.of(if (p == Power.NONE && Style.roccoNow != RoccoOutfit.CLASSIC) roccoOutfit(Style.roccoNow, frame) else roccoPlain(p, frame))
 
     private val outfitCache = HashMap<RoccoOutfit, List<Sprite>>()
     /** Rocco in an outfit: his red and blue swapped for the outfit's colors. */

@@ -372,6 +372,7 @@ class Hero(val who: Who, x: Float, y: Float) :
         }
         // Outfits: some hats (and Super Rocco's cape) go on top, the cape behind.
         val outfitHat = when {
+            Style.spaceSuit && !mini && g.megaT <= 0f && g.capture == null && (g.dino == null || who != Who.ROCCO) -> HatKind.SPACE
             mini || shellSpin || crouching || g.power != Power.NONE -> HatKind.NONE
             who == Who.ROCCO && g.megaT <= 0f && g.capture == null && g.dino == null -> Style.rocco.hat
             who == Who.BLOCKY -> Style.blocky.hat

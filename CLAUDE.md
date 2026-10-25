@@ -156,3 +156,15 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
 * Never scan level rows every frame: `LevelDef.isBossLevel` is lazy and `Tunes.bossesBefore` is precomputed (a per-frame
   scan made late boss levels lag). Level letters must be unique: 'S' is the shore marker (Rock Star Krag is '!').
 * Menus use `confirmTap(key, ...)`: first tap picks (yellow frame via `picked`), second tap on the same thing buys.
+* World 10 (`MoreWorlds.world10`, levels 190-210, `Hazards.WORLD10` = first index): `Plan.extra` makes levels longer
+  (more checkpoints, `w / 80`). `Hazards.kt`: `Meteor` (red X target), `LavaWave` (eruptions in World 10 VOLCANO
+  levels), `Hazards` (per-level director, `game.hazards`; `meteorLevel`/`eruptionLevel`). `Place.ORBIT` = space walk
+  (gravity 0.48, `Style.spaceSuit` forces the astronaut outfit/helmet while in the level, `roccoNow`/`blockyNow`).
+* `Homes.MAX_FLOORS` = 10 (`storyHeight` squeezes tall houses). `Decor.YARD` = 20 and `Decor.ROOF` = 21 (old saves
+  used 9 for the yard: `decorV` < 2 migrates). `Roof.kt`: the roof (`onRoof`, `enterRoof`/`leaveRoof`, ladder at the
+  top floor's stairs spot, BUILD A FLOOR sign `Roof.SIGN_X`, telescope). `House3D` areas: floors, `Decor.YARD`,
+  `Decor.ROOF` (`area()`, key = x 7 bits | y<<7 | z<<10; floors keep the old save packing, outside saves are
+  `b3dyard*`/`b3droof*`).
+* `Pumpkin.kt`: `Carver` (carving screen, `input.fingerX/fingerY` = the finger while it's down), `Lantern`s
+  (`game.lanterns`, keys `jolN`, `jol<i>x`, `jol<i>_<row>`), table at `Pumpkins.TABLE_X` in the backyard.
+* Houses are painted through `PaintGfx` (recolors wall colors keeping their brightness).

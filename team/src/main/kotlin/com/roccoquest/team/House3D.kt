@@ -416,6 +416,9 @@ class House3D(private val g: TeamGame) {
         for (t in towers) {
             val c = cam((t.x0 + t.x1) / 2, t.top, (t.z0 + t.z1) / 2)
             if (c[2] < -4f) continue
+            // Off to the side, out of view: skip it (keeps the 3D roof fast on phones).
+            if (c[2] > 0f && abs(c[0]) > c[2] * midX / focal + 5f) continue
+            val windows = if (c[2] < 22f) 3 else if (c[2] < 40f) 1 else 0
             items += Item(c[2]) {
                 val col = t.color
                 fun side(a: FloatArray, b: FloatArray, k: Float) {
@@ -423,7 +426,7 @@ class House3D(private val g: TeamGame) {
                     // Rows of lit windows
                     var wy = t.top - 1f
                     var n = 0
-                    while (wy > maxOf(ground, t.top - 9f) && n < 5) {
+                    while (wy > maxOf(ground, t.top - 9f) && n < windows) {
                         poly(gfx, listOf(floatArrayOf(a[0] + (b[0] - a[0]) * 0.1f, wy, a[1] + (b[1] - a[1]) * 0.1f), floatArrayOf(a[0] + (b[0] - a[0]) * 0.9f, wy, a[1] + (b[1] - a[1]) * 0.9f),
                             floatArrayOf(a[0] + (b[0] - a[0]) * 0.9f, wy + 0.45f, a[1] + (b[1] - a[1]) * 0.9f), floatArrayOf(a[0] + (b[0] - a[0]) * 0.1f, wy + 0.45f, a[1] + (b[1] - a[1]) * 0.1f)), 0xFFFFE07A.toInt())
                         wy -= 1.6f; n++

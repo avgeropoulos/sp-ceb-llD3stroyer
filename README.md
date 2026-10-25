@@ -495,6 +495,31 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
 * A new one joins your team every 3 levels you beat ("A wild EEVO joined your team!"). Switch to them at home
   on the POKEMON mat; the switch screen now has two pages (tap the arrows).
 
+### World 10, a 10-floor house with a rooftop, 3D outside, pumpkin carving and a sing-along
+
+* **World 10: Fire & Space World** (levels 190-210): 21 **longer** levels (most are 300-500 tiles, with more
+  checkpoints; THE LONGEST ROAD is the longest in the game).
+  * **Volcano levels**: the volcano ERUPTS every few seconds (the screen rumbles and a warning shows), then a wave
+    of lava rolls along the ground at you. **Jump over it!**
+  * **SPACE WALKS**: levels outside a space station high above the Earth. Rocco and Blocky **wear spacesuits**
+    (Pokemon get a bubble helmet) and jumps are super floaty.
+  * **METEOR SHOWERS** come now and then in levels out under the sky (always in World 10's volcano and space
+    levels): a red **X** shows where each meteor will land. Get out from under it!
+  * Bosses: King Krag in the FIRE FORT, Wonder Krag Jr. over the volcanoes, and **THE FINAL ERUPTION**: Wonder King
+    Krag, Rock Star Krag and Galaxy Krag one after another.
+* **Up to 10 floors** (each new floor costs a bit more), and a **ROOF**: climb the ladder at the end of the top
+  floor (or take the elevator). Look out over a big city at sunset, look through the **telescope** (fireworks!),
+  build more floors from the BUILD A FLOOR sign up there, and put **pools and yard things on the roof**.
+* **3D everywhere at home**: the 3D button works in the garden, the backyard and on the roof too. On the roof
+  you're up high with 3D skyscrapers all around you. Build with blocks outside as well.
+* **Pumpkin carving**: at the CARVING table at the start of the backyard, draw on a big pumpkin **with your finger**
+  to carve it (or tap FACE for a quick spooky face). DONE puts a glowing **jack-o'-lantern** in the yard (uses a
+  pumpkin from your garden, or 15 coins). Walk to one and press twice to **remove** it.
+* **Houses are really painted** now: the walls and roof take the new color (with their light and shadow), instead
+  of a see-through color on top.
+* **SING-ALONG** (Pokemon GAMES): the new **TEAM UP! theme song**, sung by a smooth singing voice (with vibrato,
+  a second voice and a little echo). Tap when each word reaches the circle!
+
 ### A bigger house, a backyard, outfits and 50 more Pokemon
 
 * **50 more Pokemon** (93 in all), like Leafling, Flameback, Chompodile, Mudkippy, Pichi, Jolteo, Vapeo, Flareo,

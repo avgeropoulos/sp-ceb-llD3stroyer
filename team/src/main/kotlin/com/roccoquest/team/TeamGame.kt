@@ -35,6 +35,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     companion object {
         const val MAX_HEARTS = 5
+        /** The states where you're in a level (playing, paused in a menu, or just hurt). */
+        private val IN_LEVEL = setOf(State.INTRO, State.PLAY, State.CRAFT, State.TRADE, State.SLEEP, State.OUCH, State.CLEAR)
         /** How fast a BlastCannon shoots you out. */
         const val CANNON_SPEED = 520f
         const val MAX_ARMOR = 5
@@ -538,6 +540,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     fun sfx(s: Sound) = sound.play(s)
     fun spawn(t: Thing) { pending += t }
     fun puff(x: Float, y: Float) { particles += Puff(x, y) }
+    /** Meteor showers and volcano eruptions. */
+    val hazards = Hazards()
+    internal fun sayWarning(s: String) = sound.say(s)
     fun addParticle(p: Particle) { particles += p }
     fun say(x: Float, y: Float, text: String, dur: Float = 1.8f) { particles += Speech(x, y, text, dur) }
     /** Every point is worth [SCORE_MULT] times as much: lots of points! */
@@ -1004,6 +1009,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
         }
         quakeLevel = isQuakeLevel(index)
+        hazards.start(index, level.def)
         quakeT = 14f
         quakeWarn = -1f
         quakeCols.clear()
@@ -1067,6 +1073,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     fun update(dt: Float) {
         time += dt
         stateT += dt
+        // Spacesuits on during a space walk (and only then).
+        Style.spaceSuit = level.def.place == Place.ORBIT && state in IN_LEVEL
         garden.grow(dt)
         if (babyZapT > 0f) babyZapT -= dt
         val jumpE = edge(0, input.jump)
@@ -1497,7 +1505,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (miniT <= 0 && !level.solidAt(rocco.cx, rocco.bottom - 24f)) endMini() else if (miniT <= 0) miniT = 0.1f
         }
         // On the Moon everyone floats: way higher jumps.
-        val grav = if (wonder) 0.75f else if (level.def.place == Place.MOON) 0.6f else 1f
+        val grav = if (wonder) 0.75f else if (level.def.place == Place.MOON) 0.6f else if (level.def.place == Place.ORBIT) 0.48f else 1f
         val cart = riding
         val cn = inCannon
         val tail = grabbing
@@ -1558,6 +1566,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         updateSpikes(dt)
         updateDog(dt)
         updateSpotty(dt)
+        if (away == null) hazards.update(this, dt)
         for (h in team) {
             if (h.onGround) h.combo = 0
             h.anim += dt
@@ -3767,6 +3776,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             Place.FUNGI -> listOf(Music.FUNGI, Music.DREAMY, Music.JUNGLE, Music.MEADOW)
             Place.MOON -> listOf(Music.MOON, Music.SPACE, Music.DREAMY, Music.CRYSTAL)
             Place.STATION -> listOf(Music.SPACE, Music.RACE, Music.HEROIC, Music.MOON)
+            Place.ORBIT -> listOf(Music.SPACE, Music.MOON, Music.DREAMY, Music.STAR)
         }
 
         /** Every level's tune, worked out once in order so it's never the same as the level before. */
@@ -3819,6 +3829,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             else -> {
                 renderWorld(gfx)
                 renderHud(gfx)
+                if (state == State.PLAY) hazards.draw(this, gfx, viewW)
                 when (state) {
                     State.PLAY -> {
                         val l = leader
@@ -6382,7 +6393,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 }
             }
             Place.SHIP -> SeaArt.seaSky(gfx, viewW, VIEW_H, cam, time)
-            Place.TOYS, Place.FUNGI, Place.MOON, Place.STATION -> GalaxyArt.drawSky(gfx, level.def.place, viewW, VIEW_H, cam, time)
+            Place.TOYS, Place.FUNGI, Place.MOON, Place.STATION, Place.ORBIT -> GalaxyArt.drawSky(gfx, level.def.place, viewW, VIEW_H, cam, time)
             Place.RAINBOW -> SeaArt.space(gfx, viewW, VIEW_H, cam, time)
             Place.END -> {
                 sky(gfx, 0xFF04020A.toInt(), 0xFF1E1030.toInt())
@@ -6442,7 +6453,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     Place.DESERT -> if (under) Sprites.sandstone else Sprites.sandTop
                     Place.SNOW, Place.BLIZZARD, Place.AURORA -> if (under) Sprites.frozenDirt else Sprites.snowTop
                     Place.CANDY -> if (under) TeamArt.candyDirt else TeamArt.candyTop
-                    Place.TOYS, Place.FUNGI, Place.MOON, Place.STATION -> GalaxyArt.ground(place, under)
+                    Place.TOYS, Place.FUNGI, Place.MOON, Place.STATION, Place.ORBIT -> GalaxyArt.ground(place, under)
                     else -> if (under) Sprites.dirt else Sprites.grassTop
                 }
                 Tile.DIRT -> Sprites.dirt
@@ -6805,6 +6816,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         TeamArt.mon(gfx, mon, viewW / 2 + 18, 136f, time, -1, false)
         gfx.shadowText(level.def.tip, viewW / 2, 162f, 8f, white, 1)
         if (isQuakeLevel(levelIndex)) gfx.shadowText("EARTHQUAKE LEVEL! When the ground cracks red, MOVE!", viewW / 2, 196f, 8f, 0xFFFF6A4A.toInt(), 1)
+        else if (Hazards.eruptionLevel(levelIndex, level.def)) gfx.shadowText("VOLCANO LEVEL! When it ERUPTS, jump over the lava!", viewW / 2, 196f, 8f, 0xFFFF6A4A.toInt(), 1)
+        else if (level.def.place == Place.ORBIT) gfx.shadowText("SPACE WALK! Spacesuits on. Super floaty jumps!", viewW / 2, 196f, 8f, 0xFF8AD8FF.toInt(), 1)
         gfx.shadowText("FILE ${slot + 1}   Hearts: $MAX_HEARTS   Pickaxe: ${TeamArt.pickName(pickTier)}", viewW / 2, 180f, 8f, 0xFFAADDFF.toInt(), 1)
     }
 

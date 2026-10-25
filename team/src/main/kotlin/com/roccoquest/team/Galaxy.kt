@@ -97,7 +97,7 @@ object GalaxyArt {
         Place.TOYS -> if (under) toyUnder else toyTop
         Place.FUNGI -> if (under) fungiUnder else fungiTop
         Place.MOON -> if (under) moonUnder else moonTop
-        Place.STATION -> if (under) stationUnder else stationTop
+        Place.STATION, Place.ORBIT -> if (under) stationUnder else stationTop
         else -> null
     }
 
@@ -178,6 +178,33 @@ object GalaxyArt {
                 layer(viewW, cam, 0.25f, 210f) { i, x ->
                     gfx.oval(x - 20, 160f - (i % 3) * 14f, 250f, 120f, 0xFF6A6A7A.toInt())
                     gfx.oval(x + 50, 176f - (i % 3) * 14f, 40f, 10f, 0xFF4A4A5A.toInt())
+                }
+            }
+            Place.ORBIT -> {
+                // Space walk: black space, lots of stars, and the big blue Earth curving along the bottom.
+                gfx.gradient(0f, 0f, viewW, viewH, 0xFF000006.toInt(), 0xFF0A0E2A.toInt())
+                for (i in 0 until 40) {
+                    val tw = if ((t * 2 + i) % 6 < 1) 0x88FFFFFF.toInt() else 0xFFFFFFFF.toInt()
+                    gfx.rect((i * 73f - cam * 0.02f).mod(viewW), (i * 37f) % 150f, 1.5f, 1.5f, tw)
+                }
+                val ex = -cam * 0.04f
+                gfx.oval(ex - 200f, 120f, viewW + 400f, 420f, 0x442A8AFF)
+                gfx.oval(ex - 190f, 128f, viewW + 380f, 400f, 0xFF2A6AD8.toInt())
+                layer(viewW, cam, 0.05f, 180f) { i, x ->
+                    gfx.oval(x, 140f + (i % 3) * 8f, 70f + (i % 2) * 30f, 22f, 0xFF3AA84A.toInt())
+                    gfx.oval(x + 60, 132f + (i % 2) * 10f, 80f, 10f, 0xCCFFFFFF.toInt())
+                }
+                // Space station modules and solar panels floating behind
+                layer(viewW, cam, 0.2f, 260f) { i, x ->
+                    if (i % 2 == 0) {
+                        gfx.rect(x + 40, 60f, 90f, 22f, 0xFFB8C0CC.toInt())
+                        gfx.rect(x + 10, 52f, 26f, 38f, 0xFF2A4A9A.toInt()); gfx.rect(x + 134, 52f, 26f, 38f, 0xFF2A4A9A.toInt())
+                        for (k in 0 until 3) { gfx.rect(x + 10, 60f + k * 10f, 26f, 1f, 0xFF6A8AD8.toInt()); gfx.rect(x + 134, 60f + k * 10f, 26f, 1f, 0xFF6A8AD8.toInt()) }
+                        gfx.oval(x + 76, 64f, 14f, 14f, 0xFF04060E.toInt())
+                        if ((t * 2).toInt() % 2 == 0) gfx.oval(x + 126, 58f, 4f, 4f, 0xFFFF4A4A.toInt())
+                    } else {
+                        gfx.oval(x + 80, 40f, 16f, 10f, 0xFF8A8A9A.toInt())
+                    }
                 }
             }
             Place.STATION -> {

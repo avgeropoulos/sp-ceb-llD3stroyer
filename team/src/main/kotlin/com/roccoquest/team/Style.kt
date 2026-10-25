@@ -53,6 +53,10 @@ object Style {
     var rocco = RoccoOutfit.CLASSIC
     var blocky = BlockySkin.CLASSIC
     var monCostume: MonCostume? = null
+    /** On a SPACE WALK everyone has to wear a spacesuit (set by the game while that level is on). */
+    @Volatile var spaceSuit = false
+    val roccoNow get() = if (spaceSuit) RoccoOutfit.ASTRONAUT else rocco
+    val blockyNow get() = if (spaceSuit) BlockySkin.ASTRONAUT else blocky
 
     /**
      * Draws [hat] on a head whose top middle is at ([cx], [top]); [size] is how wide the head is.

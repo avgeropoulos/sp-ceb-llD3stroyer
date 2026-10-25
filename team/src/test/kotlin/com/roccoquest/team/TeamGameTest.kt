@@ -806,6 +806,66 @@ class TeamGameTest {
         assertEquals(before, game.coins)
     }
 
+    @Test fun world10VolcanoesMeteorsAndSpaceWalks() {
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 240 * 3, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f))
+            ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        val w10 = Hazards.WORLD10
+        assertEquals("LAVA LANDING", Levels.all[w10].name)
+        // Longer levels: most of World 10 is way longer than the old levels (about 200 tiles).
+        assertTrue(Levels.all.drop(w10).count { it.w >= 300 } >= 14)
+        assertTrue(Levels.all.drop(w10).any { it.w >= 480 }, "some are REALLY long")
+        // A volcano ERUPTS: a lava wave rolls in. Standing still, it hurts.
+        startPlaying(w10)
+        game.foes.clear()
+        assertTrue(game.hazards.eruptions)
+        var t = 0f
+        while (game.foes.none { it is LavaWave } && t < 15f) { game.foes.removeAll { it !is LavaWave && it !is Meteor }; game.update(dt); t += dt }
+        val wave = game.foes.filterIsInstance<LavaWave>().first()
+        assertTrue(wave.x > game.camX + game.viewW, "it starts off the screen, so you can see it coming")
+        run(1.2f)
+        shot("w10-eruption")
+        val hearts = game.hearts
+        run(4f)
+        assertTrue(game.hearts < hearts, "standing still, the lava gets you")
+        // Jumping over it is safe.
+        startPlaying(w10)
+        game.foes.clear()
+        t = 0f
+        while (game.foes.none { it is LavaWave } && t < 15f) { game.foes.removeAll { it !is LavaWave }; game.update(dt); t += dt }
+        val full = game.hearts
+        var jumps = 0
+        repeat((5f / dt).toInt()) {
+            game.foes.removeAll { it !is LavaWave }
+            val w2 = game.foes.filterIsInstance<LavaWave>().firstOrNull()
+            val l = game.leader
+            if (w2 != null && w2.x - l.x in 0f..30f && l.onGround) { input.jump = true; jumps++ }
+            game.update(dt)
+            input.jump = false
+        }
+        assertTrue(jumps > 0)
+        assertEquals(full, game.hearts, "jumped over the lava")
+        // METEOR SHOWER: red X marks, then meteors.
+        val m = (w10 until Levels.all.size).first { Hazards.meteorLevel(it, Levels.all[it], 1) && Levels.all[it].place == Place.ORBIT }
+        startPlaying(m)
+        game.foes.clear()
+        assertTrue(game.hazards.meteors)
+        assertTrue(Style.spaceSuit, "spacesuits on for the space walk")
+        t = 0f
+        while (game.foes.none { it is Meteor } && t < 40f) { game.hurtProof(); game.foes.removeAll { it !is Meteor }; game.update(dt); t += dt }
+        assertTrue(game.foes.any { it is Meteor }, "a meteor shower came")
+        run(0.6f) { game.hurtProof() }
+        shot("w10-spacewalk-meteors")
+        // Walking away from every X: no meteor hits you.
+        game.goToMap(-1); run(0.3f)
+        assertFalse(Style.spaceSuit, "spacesuits off on the map")
+        // The last level is the big boss rush, still ending with Galaxy Krag.
+        assertTrue(Levels.all.last().rows.any { '}' in it } && Levels.all.last().rows.any { '!' in it })
+    }
+
     @Test fun pokemonEvolveAndSwitchBack() {
         startPlaying()
         game.coins = 100
@@ -3211,8 +3271,8 @@ class TeamGameTest {
     }
 
     @Test fun fourWorldsAndNewEnemies() {
-        assertEquals(189, Levels.all.size)
-        assertEquals(9, worldCount())
+        assertEquals(210, Levels.all.size)
+        assertEquals(10, worldCount())
         val ultimate = Levels.all.first { it.name == "THE ULTIMATE BATTLE" }
         assertTrue(ultimate.rows.any { 'Z' in it } && ultimate.rows.any { 'Q' in it })
         for (c in "zqlj") assertTrue(Levels.all.count { d -> d.rows.any { c in it } } >= 3, "new monster $c is in levels")

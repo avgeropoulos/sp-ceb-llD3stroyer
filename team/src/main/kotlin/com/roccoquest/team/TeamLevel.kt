@@ -118,6 +118,8 @@ enum class Place(val music: Music) {
     MOON(Music.MOON),
     /** World 9: a space station with big round windows. */
     STATION(Music.SPACE),
+    /** World 10: a SPACE WALK outside a space station, high above the Earth. Spacesuits on! Very floaty. */
+    ORBIT(Music.SPACE),
 }
 
 /**
@@ -188,7 +190,7 @@ object Levels {
             mushroomJungle(), lavaLake(), wonderCastle(),
             villagerValley(), coralReef(), minecartMine(), enderPlains(), deepDark(),
             treasureLagoon(), spikeTemple(), fireFortress(), boneCastle(), theEnd(),
-        ).plus(World2.all).plus(MoreWorlds.all).plus(World5.all).plus(MoreWorlds.world6).plus(MoreWorlds.world7).plus(MoreWorlds.world8).plus(MoreWorlds.world9).mapIndexed { i, d -> remix(d, i) }
+        ).plus(World2.all).plus(MoreWorlds.all).plus(World5.all).plus(MoreWorlds.world6).plus(MoreWorlds.world7).plus(MoreWorlds.world8).plus(MoreWorlds.world9).plus(MoreWorlds.world10).mapIndexed { i, d -> remix(d, i) }
     }
 
     /**
