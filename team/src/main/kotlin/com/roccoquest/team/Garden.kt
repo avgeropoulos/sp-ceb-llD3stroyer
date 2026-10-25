@@ -188,6 +188,11 @@ class Garden(private val g: TeamGame) {
             if (wetT[i] > 0f && (t * 3 + i).toInt() % 4 == 0) gfx.oval(px + PLOT_W / 2 + 6f, Homes.FLOOR_Y - 10f, 3f, 4f, 0xCC6AC8FF.toInt())
         }
         // The picnic blanket and basket
+        // The sign for the backyard
+        val sx2 = ox + YARD_X - 24f
+        gfx.rect(sx2 + 8, Homes.FLOOR_Y - 34f, 3f, 34f, 0xFF7A4A20.toInt())
+        gfx.rect(sx2 - 14, Homes.FLOOR_Y - 48f, 48f, 16f, 0xFFF4E8C8.toInt())
+        gfx.text("BACKYARD >", sx2 + 10, Homes.FLOOR_Y - 37f, 5.5f, 0xFF2A1808.toInt(), 1)
         val bx = ox + PICNIC_X
         gfx.oval(bx - 6f, Homes.FLOOR_Y + 2f, 72f, 18f, 0xFFE84A4A.toInt())
         for (k in 0 until 4) gfx.rect(bx + 4f + k * 14f, Homes.FLOOR_Y + 4f, 6f, 14f, 0x88FFFFFF.toInt())
@@ -202,7 +207,9 @@ class Garden(private val g: TeamGame) {
 
     companion object {
         const val PLOTS = 10
-        const val WIDTH = 900f
+        /** The garden plus the big backyard after it (pools, trees and swings go from [YARD_X] on). */
+        const val WIDTH = 2000f
+        const val YARD_X = 900f
         const val DOOR_X = 10f
         const val SEEDS_X = 80f
         const val PICNIC_X = 810f

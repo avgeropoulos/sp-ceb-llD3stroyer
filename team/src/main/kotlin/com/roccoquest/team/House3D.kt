@@ -266,6 +266,13 @@ class House3D(private val g: TeamGame) {
             }
             picture(fx + Homes.width(f) / 2, depth) { g.drawFurnitureAt(it, f, fx) }
         }
+        // Decorations from the DECOR shop.
+        for (d in g.decor) {
+            if (d.floor != fl) continue
+            val depth = when (d.item.layer) { 1 -> 0.15f; 2 -> 2.2f; else -> 1.4f }
+            picture(d.x + d.item.w / 2, depth) { Decor.draw(it, d.item, d.x, Homes.FLOOR_Y, time) }
+        }
+        if (g.hasElevator) picture(Homes.STAIRS_X + 10f, 0.3f) { Homes.drawElevator(it, Homes.STAIRS_X - 8f, time) }
         // Your Pokemon.
         run {
             val c = cam(monX, 0f, monZ)

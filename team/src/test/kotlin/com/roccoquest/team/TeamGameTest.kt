@@ -2310,6 +2310,71 @@ class TeamGameTest {
         assertTrue(game.state == TeamGame.State.CLEAR || game.state == TeamGame.State.STICKER, "level clear (${game.state})")
     }
 
+    @Test fun decorationsBackyardPoolsAndElevator() {
+        startPlaying()
+        goHome()
+        game.coins = 20000
+        Ore.entries.forEach { game.inventory[it.ordinal] = 99 }
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 720, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f)); ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        run(0.5f)
+        // Inside: lots of new decorations, more than one of the same is fine.
+        walkHomeTo(500f)
+        for (d in listOf(DecorItem.RED_SOFA, DecorItem.RED_SOFA, DecorItem.AQUARIUM, DecorItem.ROCCO_POSTER, DecorItem.RAINBOW_RUG, DecorItem.GIANT_TEDDY, DecorItem.JUKEBOX, DecorItem.FLOOR_LAMP)) game.buyDecor(d)
+        assertEquals(2, game.decor.count { it.item == DecorItem.RED_SOFA })
+        assertTrue(game.decor.all { it.floor == 0 })
+        shot("decor-room")
+        // The shop has DECOR and YARD tabs with pages; the SHOP button works upstairs too.
+        tap(game.viewW - 197f, 10f)
+        assertTrue(game.homeShop)
+        tap(10f, 120f)
+        // Yard things go to the backyard (pools, trees...)
+        for (d in listOf(DecorItem.SLIDE_POOL, DecorItem.PALM_TREE, DecorItem.CHERRY_TREE, DecorItem.SWING_SET, DecorItem.BOUNCY_HOUSE, DecorItem.LAZY_RIVER, DecorItem.HOT_SPRING)) game.buyDecor(d)
+        assertTrue(game.decor.filter { it.item.yard }.all { it.floor == Decor.YARD && it.x >= Garden.YARD_X })
+        game.enterGarden()
+        walkHomeTo(Garden.YARD_X + 200f)
+        shot("backyard")
+        // Move a tree with DECORATE.
+        val tree = game.decor.first { it.item == DecorItem.PALM_TREE }
+        walkHomeTo(tree.x + tree.item.w / 2)
+        game.toggleDecorate()
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        assertNotNull(game.carryingDecor)
+        walkHomeTo(1900f)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        assertNull(game.carryingDecor)
+        assertTrue(tree.x > 1800f, "moved to ${tree.x}")
+        game.toggleDecorate()
+        // The elevator goes to every floor (and the backyard).
+        game.leaveGarden()
+        repeat(3) { game.buyFloor() }
+        game.buyElevator()
+        assertTrue(game.hasElevator)
+        walkHomeTo(Homes.STAIRS_X + 10f)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        shot("elevator")
+        tap(game.viewW / 2 - 5 * 24f + 3 * 48f + 4f + 20f, 108f) // the 4F button (5 stops: 1F..4F, YARD)
+        assertEquals(3, game.homeFloor)
+        // Saved.
+        game.buyBed(BedStyle.BLUE)
+        game.sleepAtHome()
+        val g2 = TeamGame(TeamInput(), ears, storage)
+        g2.continueGame(0)
+        assertEquals(game.decor.map { it.item to it.floor }, g2.decor.map { it.item to it.floor })
+        assertTrue(g2.hasElevator)
+        assertTrue(g2.decor.any { it.item == DecorItem.PALM_TREE && it.x > 1800f })
+        // Shop pages for the screenshots.
+        game.enterHome(); run(0.4f)
+        tap(game.viewW - 197f, 10f)
+        val tabW = (minOf(130f, (game.viewW - 40f) / 3f) * 3) / 8
+        val left = game.viewW / 2 - (minOf(130f, (game.viewW - 40f) / 3f) * 3 + 8f) / 2
+        tap(left + tabW * 6.5f, 38f); shot("shop-decor")
+        tap(left + tabW * 7.5f, 38f); shot("shop-yard")
+    }
+
     @Test fun gardenBabyMachineAndTheSkyRoom() {
         startPlaying()
         goHome()
