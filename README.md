@@ -542,6 +542,11 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
   floor and the backyard.
 * **8 more house styles**: Haunted House, Cloud Castle, Undersea Dome, Robot House, Bouncy Castle, Volcano Lair,
   Toy Block House and Teepee.
+* **23 more house styles** (twice as many!): Ice Cream Shop, Giant Shoe, Rocket Ship, Dino Egg (a baby dino peeks
+  out), Lily Pad Hut (with a hopping frog), Pumpkin House, Cupcake Tower, Pagoda, Desert Adobe, Stilt House,
+  Houseboat, Train Car House, Giant Teapot, Clock Tower (the hands really move), Snow Globe (it snows inside),
+  Beehive (with buzzing bees), Hot Air Balloon, Fairy Flower, Hill House, Glass House, Skyscraper, Cactus House and
+  Tree Stump. Each one has its own wallpaper and floor inside, and they can all be painted.
 * **CONSTRUCTION ROCCO**: tap BUILD at home and Rocco puts on a hard hat. Tap the wall to place brick, wood, stone,
   glass, gold or diamond blocks (tap a block to take it back).
 * **Pokemon GAMES**: Berry Catch, Memory Match, Balloon Pop and Dance Party.
