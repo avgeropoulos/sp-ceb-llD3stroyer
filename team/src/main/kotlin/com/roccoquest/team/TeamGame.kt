@@ -582,6 +582,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         storage.save(key("floors"), houseFloors)
         storage.save(key("baby"), if (babyMode) 1 else 0)
         storage.save(key("elevator"), if (hasElevator) 1 else 0)
+        for (f in 0 until Homes.MAX_FLOORS) {
+            storage.save(key("bld${f}n"), blocks[f].size)
+            blocks[f].entries.forEachIndexed { i, (c, b) -> storage.save(key("bld${f}_$i"), 1 + c + b.ordinal * 100_000) }
+        }
         storage.save(key("decorN"), decor.size)
         decor.forEachIndexed { i, d -> storage.save(key("decor_$i"), Decor.pack(d)) }
         garden.save()
@@ -702,6 +706,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         garden.load()
         babyMode = storage.load(key("baby")) == 1
         hasElevator = storage.load(key("elevator")) == 1
+        for (f in 0 until Homes.MAX_FLOORS) {
+            blocks[f].clear()
+            for (i in 0 until storage.load(key("bld${f}n")).coerceIn(0, Build.MAX)) {
+                val v = storage.load(key("bld${f}_$i")) - 1
+                val b = BuildBlock.entries.getOrNull(v / 100_000) ?: continue
+                if (v >= 0 && v % 100_000 < Build.COLS * Build.ROWS) blocks[f][v % 100_000] = b
+            }
+        }
         decor.clear()
         for (i in 0 until storage.load(key("decorN")).coerceIn(0, Decor.MAX)) Decor.unpack(storage.load(key("decor_$i")))?.let { decor += it }
     }
@@ -720,6 +732,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         for (floor in 0 until Homes.MAX_FLOORS) storage.save(key("b3d${floor}n", s), 0)
         // Every world's beaten levels (the list above only knew the first ones).
         for (w in 0 until worldCount()) storage.save(key(clearedKey(w), s), 0)
+        for (f in 0 until Homes.MAX_FLOORS) storage.save(key("bld${f}n", s), 0)
         for (i in 0 until Garden.PLOTS) { storage.save(key("plot$i", s), 0); storage.save(key("grow$i", s), 0) }
         for (c in Crop.entries) storage.save(key("food${c.ordinal}", s), 0)
     }
@@ -759,6 +772,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         hasElevator = false
         decor.clear()
         carryingDecor = null
+        blocks.forEach { it.clear() }
+        building = false
         inGarden = false
         plushOwned.fill(false)
         bedsOwned = 0
@@ -4108,6 +4123,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     /** Moving furniture around (the DECORATE button at home). */
     var decorating = false
         private set
+    /** CONSTRUCTION ROCCO: placing blocks on the walls (the BUILD button at home). */
+    var building = false
+        private set
+    var buildBlock = BuildBlock.BRICK
+    /** The blocks built on each floor: cell (row * COLS + column) to block. */
+    val blocks = Array(Homes.MAX_FLOORS) { HashMap<Int, BuildBlock>() }
+
     /** Decorations put down around the house and backyard (you can have lots of each). */
     val decor = ArrayList<Placed>()
     /** The decoration you're carrying while decorating. */
@@ -4169,6 +4191,109 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     internal fun pickUpForTest(f: Furniture) { carrying = f }
+
+    // ---------------------------------------------------------------- Construction Rocco (the BUILD button)
+
+    fun toggleBuild() {
+        building = !building
+        if (building && decorating) toggleDecorate()
+        sfx(Sound.KICK)
+        if (building) {
+            sound.sayAs("Let's-a build!", Voice.HERO)
+            toast("CONSTRUCTION ROCCO! Tap the wall to build!")
+        } else toast("All done building!")
+    }
+
+    private fun paletteX(i: Int) = viewW / 2 - BuildBlock.entries.size * 26f / 2 + i * 26f
+
+    fun canAfford(b: BuildBlock) = coins >= b.coins && (b.ore == null || inventory[b.ore.ordinal] >= 1)
+
+    /** Puts a [buildBlock] in [cell] on this floor (it costs one material, or a few coins). */
+    fun placeBlock(cell: Int): Boolean {
+        val here = blocks[homeFloor]
+        if (cell < 0 || here.containsKey(cell)) return false
+        if (here.size >= Build.MAX) { toast("That's a lot of blocks! Take some down first."); return false }
+        val b = buildBlock
+        if (!canAfford(b)) { needToast(listOfNotNull(b.ore?.let { it to 1 }), b.coins); return false }
+        b.ore?.let { inventory[it.ordinal] -= 1 }
+        coins -= b.coins
+        here[cell] = b
+        sfx(Sound.BUMP)
+        return true
+    }
+
+    /** Takes a block back down (you get its material back). */
+    fun removeBlock(cell: Int): Boolean {
+        val b = blocks[homeFloor].remove(cell) ?: return false
+        b.ore?.let { inventory[it.ordinal] += 1 }
+        coins += b.coins
+        sfx(Sound.BREAK)
+        return true
+    }
+
+    /** The cell in front of Rocco, on top of whatever is already built there. */
+    private fun frontCell(): Int {
+        val col = ((homeX + homeFacing * 14f) / Build.CELL).toInt().coerceIn(0, Build.COLS - 1)
+        val row = (0 until Build.ROWS).firstOrNull { !blocks[homeFloor].containsKey(it * Build.COLS + col) } ?: return -1
+        return row * Build.COLS + col
+    }
+
+    private fun updateBuild(dt: Float, tapped: Boolean, actionE: Boolean) {
+        // (B is the ACTION button on a controller, so it builds too: PAUSE or DONE stops building.)
+        if (nav.up || nav.down) {
+            val i = (buildBlock.ordinal + (if (nav.down) 1 else BuildBlock.entries.size - 1)) % BuildBlock.entries.size
+            buildBlock = BuildBlock.entries[i]; sfx(Sound.KICK)
+        }
+        val speed = 110f
+        if (input.left) { homeX -= speed * dt; homeFacing = -1; homeAnim += dt }
+        if (input.right) { homeX += speed * dt; homeFacing = 1; homeAnim += dt }
+        homeX = homeX.coerceIn(Homes.DOOR_X + 4f, Homes.ROOM_W - 20f)
+        if (actionE || nav.a) { if (placeBlock(frontCell())) save(); return }
+        if (!tapped || stateT < 0.2f || input.tapX < 0f) return
+        val x = input.tapX
+        val y = input.tapY
+        // The block picker along the bottom.
+        if (y in 24f..56f && x in paletteX(0)..(paletteX(BuildBlock.entries.size))) {
+            BuildBlock.entries.forEachIndexed { i, b -> if (x in paletteX(i)..(paletteX(i) + 24f)) { buildBlock = b; sfx(Sound.KICK); toast("${b.label} blocks"); return } }
+        }
+        val cell = Build.cellAt(x + homeCam(), y)
+        if (cell < 0) return
+        if (removeBlock(cell) || placeBlock(cell)) save()
+    }
+
+    private fun drawBlocks(gfx: Gfx, ox: Float) {
+        for ((cell, b) in blocks[homeFloor]) {
+            val x = Build.cellX(cell % Build.COLS) + ox
+            if (x < -16f || x > viewW) continue
+            Build.draw(gfx, b, x, Build.cellY(cell / Build.COLS), time)
+        }
+        if (!building) return
+        // Building: a faint grid, and the block that ACTION would place.
+        var gx = (-ox / Build.CELL).toInt() * Build.CELL + ox
+        while (gx < viewW) { gfx.rect(gx, Build.cellY(Build.ROWS - 1), 0.6f, Build.ROWS * Build.CELL, 0x22000000); gx += Build.CELL }
+        for (r in 0..Build.ROWS) gfx.rect(0f, Build.cellY(r - 1), viewW, 0.6f, 0x22000000)
+        val fc = frontCell()
+        if (fc >= 0) {
+            val fx = Build.cellX(fc % Build.COLS) + ox
+            val fy = Build.cellY(fc / Build.COLS)
+            gfx.rect(fx, fy, 16f, 16f, 0x55FFFFFF)
+            gfx.rect(fx, fy, 16f, 1.5f, 0xFFFFE14D.toInt()); gfx.rect(fx, fy + 14.5f, 16f, 1.5f, 0xFFFFE14D.toInt())
+            gfx.rect(fx, fy, 1.5f, 16f, 0xFFFFE14D.toInt()); gfx.rect(fx + 14.5f, fy, 1.5f, 16f, 0xFFFFE14D.toInt())
+        }
+    }
+
+    private fun renderBuildPalette(gfx: Gfx) {
+        val w = BuildBlock.entries.size * 26f + 8f
+        // The block picker sits at the top, under the buttons (out of Rocco's way).
+        gfx.rect(viewW / 2 - w / 2, 24f, w, 34f, 0xCC1A1008.toInt())
+        BuildBlock.entries.forEachIndexed { i, b ->
+            val x = paletteX(i)
+            if (b == buildBlock) gfx.rect(x - 1, 26f, 26f, 22f, 0xFFFFD21F.toInt())
+            Build.draw(gfx, b, x + 4, 28f, time)
+            gfx.text(if (b.ore != null) "1 ${b.ore.label.take(5)}" else "${b.coins}c", x + 12, 55f, 4.5f, if (canAfford(b)) white else 0xFFFF8A8A.toInt(), 1)
+        }
+        gfx.shadowText("Tap the wall to build, tap a block to take it back. ACTION builds in front of you!", viewW / 2, 66f, 6f, 0xFFFFE14D.toInt(), 1)
+    }
 
     // ---------------------------------------------------------------- Decorations (DECOR and YARD shop tabs)
 
@@ -4939,7 +5064,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     private fun updateHome(dt: Float, tapped: Boolean, close: Boolean, actionE: Boolean) {
         if (close) {
-            when { home3d -> exit3d(); elevatorMenu -> elevatorMenu = false; inGarden -> leaveGarden(); monMenu && monSwitch -> monSwitch = false; monMenu -> monMenu = false; homeShop -> homeShop = false; plushBook -> plushBook = false; else -> leaveHome() }
+            when { home3d -> exit3d(); elevatorMenu -> elevatorMenu = false; building -> toggleBuild(); inGarden -> leaveGarden(); monMenu && monSwitch -> monSwitch = false; monMenu -> monMenu = false; homeShop -> homeShop = false; plushBook -> plushBook = false; else -> leaveHome() }
             return
         }
         if (homeHopT > 0f) homeHopT -= dt
@@ -4966,7 +5091,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (input.tapX in (viewW - 122f)..(viewW - 88f)) { enter3d(); return }
             if (input.tapX in (viewW - 176f)..(viewW - 126f)) { enterGarden(); return }
             if (input.tapX in (viewW - 214f)..(viewW - 180f)) { homeShop = true; sfx(Sound.KICK); return }
+            if (input.tapX in (viewW - 254f)..(viewW - 216f)) { toggleBuild(); return }
         }
+        if (building) { updateBuild(dt, tapped, actionE); return }
         if (nav.a) { homeAction(homeTarget()); return }
         // Walk around the room.
         val speed = 110f
@@ -4989,6 +5116,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     fun enterGarden() {
         if (decorating) toggleDecorate()
+        if (building) toggleBuild()
         inGarden = true
         homeFloor = 0
         homeX = Garden.DOOR_X + 44f
@@ -5170,7 +5298,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         gfx.shadowText(if (inGarden) "MY GARDEN" else "MY ${houseType.label}" + if (houseFloors > 1) " ${homeFloor + 1}F" else "", 8f, 15f, 9f, 0xFFFFD21F.toInt())
         gfx.sprite(com.roccoquest.game.Sprites.coin, 120f, 5f, w = 8f, h = 11f)
         gfx.shadowText("x$coins", 130f, 15f, 8f, white)
-        gfx.shadowText("PLUSH $plushieCount", 166f, 15f, 7f, 0xFFFF9AD0.toInt())
+        if (!inGarden) {
+            gfx.rect(viewW - 254f, 2f, 38f, 18f, if (building) 0xFFF4C83A.toInt() else 0xFF8A6A3A.toInt())
+            gfx.text(if (building) "DONE" else "BUILD", viewW - 235f, 15f, 7f, if (building) 0xFF2A1808.toInt() else white, 1)
+        }
         // SHOP (works on every floor), GARDEN, DECORATE and 3D buttons
         gfx.rect(viewW - 214f, 2f, 34f, 18f, 0xFFE8A82A.toInt())
         gfx.text("SHOP", viewW - 197f, 15f, 7f, white, 1)
@@ -5193,7 +5324,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
         // Controls: walk left/right, and the action button.
         TeamControls.layout(viewW)
-        if (!homeShop && !plushBook && !monMenu && !elevatorMenu) TeamControls.drawHome(gfx, input, target ?: "", time)
+        if (!homeShop && !plushBook && !monMenu && !elevatorMenu) TeamControls.drawHome(gfx, input, if (building) "BUILD" else target ?: "", time)
+        if (building && !homeShop) renderBuildPalette(gfx)
         if (homeShop) renderShop(gfx)
         if (monMenu) renderMonMenu(gfx)
         if (plushBook) renderPlushBook(gfx, true)
@@ -5205,6 +5337,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         Homes.drawRoom(gfx, houseType, ox, viewW, VIEW_H, housePaint)
         Homes.drawWindow(gfx, ox + Homes.BED_X - 2f, 40f, time)
         if (homeFloor == 0) Homes.drawDoor(gfx, ox + Homes.DOOR_X) else Homes.drawStairs(gfx, ox + Homes.DOOR_X - 6f, false)
+        drawBlocks(gfx, ox)
         if (hasElevator) Homes.drawElevator(gfx, ox + Homes.STAIRS_X - 8f, time)
         else if (houseFloors > homeFloor + 1) Homes.drawStairs(gfx, ox + Homes.STAIRS_X - 4f, true)
         else if (houseFloors < Homes.MAX_FLOORS) Homes.drawBuildSign(gfx, ox + Homes.STAIRS_X)
@@ -5246,6 +5379,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val sc = if (heroOut == Who.BLOCKY) 1f else ROCCO_SCALE
         hg.sprite(hero, hx - 8 * sc, feet + hop - 24 * sc, flipX = homeFacing < 0, w = 16f * sc, h = 24f * sc)
         if (babyMode) Baby.dress(gfx, hx, feet + hop, homeFacing, false)
+        // Construction Rocco wears a hard hat.
+        if (building) Build.hardHat(gfx, hx, feet + hop - 24f * sc - (if (babyMode) -7f else 0f))
         TeamArt.mon(if (babyMode) Baby.shrink(gfx, mx, feet) else gfx, mon, mx, feet, time, homeFacing, false)
         if (babyMode) Baby.dress(gfx, mx, feet, homeFacing, true)
     }

@@ -2133,7 +2133,7 @@ class TeamGameTest {
         walkHomeTo(Homes.SHOP_X + 30f)
         input.action = true; game.update(dt); input.action = false; game.update(dt)
         assertTrue(game.homeShop, "the shop opened")
-        assertEquals(listOf("FURNITURE", "BEDS", "PLUSHIES", "HOUSES", "COLORS", "STICKERS"), game.SHOP_TABS)
+        assertEquals(listOf("FURNITURE", "BEDS", "PLUSHIES", "HOUSES", "COLORS", "STICKERS", "DECOR", "YARD"), game.SHOP_TABS)
         game.buyBed(BedStyle.BLUE)
         assertEquals(BedStyle.BLUE, game.bedStyle, "a blue bed!")
         Furniture.entries.forEach { game.buyFurniture(it) }
@@ -2308,6 +2308,42 @@ class TeamGameTest {
         assertTrue(k.dying, "thrown into the spike bombs 3 times (${k.hp} left after $tries tries)")
         run(6f) { game.hurtProof() }
         assertTrue(game.state == TeamGame.State.CLEAR || game.state == TeamGame.State.STICKER, "level clear (${game.state})")
+    }
+
+    @Test fun constructionRoccoBuildsBlocks() {
+        startPlaying()
+        goHome()
+        game.coins = 500
+        game.inventory[Ore.STONE.ordinal] = 40
+        game.inventory[Ore.GOLD.ordinal] = 5
+        run(0.5f)
+        walkHomeTo(380f)
+        tap(game.viewW - 235f, 10f)
+        assertTrue(game.building)
+        // ACTION stacks blocks in front of Rocco.
+        repeat(4) { input.action = true; game.update(dt); input.action = false; game.update(dt) }
+        assertEquals(4, game.blocks[0].size)
+        assertEquals(36, game.inventory[Ore.STONE.ordinal])
+        // Tap the wall to build a little gold house; tap a block to take it back.
+        game.buildBlock = BuildBlock.GOLD
+        assertTrue(game.placeBlock(5 * Build.COLS + 30))
+        game.buildBlock = BuildBlock.WOOD
+        for (c in 20..28) game.placeBlock(c)
+        for (r in 1..4) { game.placeBlock(r * Build.COLS + 20); game.placeBlock(r * Build.COLS + 28) }
+        game.buildBlock = BuildBlock.GLASS
+        game.placeBlock(2 * Build.COLS + 24)
+        val n = game.blocks[0].size
+        assertTrue(game.removeBlock(5 * Build.COLS + 30))
+        assertEquals(n - 1, game.blocks[0].size)
+        assertEquals(5, game.inventory[Ore.GOLD.ordinal], "got the gold back")
+        val img = BufferedImage((game.viewW * 3).toInt(), 720, BufferedImage.TYPE_INT_ARGB)
+        game.render(AwtGfx(img, 3f)); File("build/screens").mkdirs(); ImageIO.write(img, "png", File("build/screens/construction-rocco.png"))
+        // Saved with the house.
+        game.buyBed(BedStyle.RED)
+        game.sleepAtHome()
+        val g2 = TeamGame(TeamInput(), ears, storage)
+        g2.continueGame(0)
+        assertEquals(game.blocks[0], g2.blocks[0])
     }
 
     @Test fun decorationsBackyardPoolsAndElevator() {
