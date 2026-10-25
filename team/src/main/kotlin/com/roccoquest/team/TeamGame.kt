@@ -609,6 +609,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             storage.save(key("bld${f}n"), blocks[f].size)
             blocks[f].entries.forEachIndexed { i, (c, b) -> storage.save(key("bld${f}_$i"), 1 + c + b.ordinal * 100_000) }
         }
+        storage.save(key("outfits"), outfitsOwned)
+        storage.save(key("skins"), skinsOwned)
+        storage.save(key("costumes"), costumesOwned)
+        storage.save(key("outfit"), Style.rocco.ordinal)
+        storage.save(key("skin"), Style.blocky.ordinal)
+        storage.save(key("costume"), (Style.monCostume?.ordinal ?: -1) + 1)
         storage.save(key("decorN"), decor.size)
         decor.forEachIndexed { i, d -> storage.save(key("decor_$i"), Decor.pack(d)) }
         garden.save()
@@ -729,6 +735,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         garden.load()
         babyMode = storage.load(key("baby")) == 1
         hasElevator = storage.load(key("elevator")) == 1
+        outfitsOwned = storage.load(key("outfits")) or 1
+        skinsOwned = storage.load(key("skins")) or 1
+        costumesOwned = storage.load(key("costumes"))
+        Style.rocco = RoccoOutfit.entries.getOrElse(storage.load(key("outfit"))) { RoccoOutfit.CLASSIC }
+        Style.blocky = BlockySkin.entries.getOrElse(storage.load(key("skin"))) { BlockySkin.CLASSIC }
+        Style.monCostume = MonCostume.entries.getOrNull(storage.load(key("costume")) - 1)
         for (f in 0 until Homes.MAX_FLOORS) {
             blocks[f].clear()
             for (i in 0 until storage.load(key("bld${f}n")).coerceIn(0, Build.MAX)) {
@@ -742,7 +754,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     fun eraseSlot(s: Int) {
-        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "armorType", "armorHp", "blackFlowers", "shieldType", "shieldHp", "swordHp", "pickHp", "houseType", "furniture", "furniture2", "plushies", "plush0", "plush1", "plush2", "plush3", "beds", "bedStyle", "unlocked", "clearedLo", "clearedHi", "cleared2", "cleared3", "cleared4", "cleared5", "cleared6", "stickersLo", "stickersHi", "houseColor", "floors", "scenes", "bow", "houseLevel", "houseX", "houseY", "bed", "bedLevel", "spotLevel", "spotX", "spotY", "baby", "seed", "elevator", "decorN")) {
+        for (name in listOf("level", "mon", "pick", "power", "coins", "armor", "tnt", "swords", "sword", "armorType", "armorHp", "blackFlowers", "shieldType", "shieldHp", "swordHp", "pickHp", "houseType", "furniture", "furniture2", "plushies", "plush0", "plush1", "plush2", "plush3", "beds", "bedStyle", "unlocked", "clearedLo", "clearedHi", "cleared2", "cleared3", "cleared4", "cleared5", "cleared6", "stickersLo", "stickersHi", "houseColor", "floors", "scenes", "bow", "houseLevel", "houseX", "houseY", "bed", "bedLevel", "spotLevel", "spotX", "spotY", "baby", "seed", "elevator", "decorN", "outfits", "skins", "costumes", "outfit", "skin", "costume")) {
             storage.save(key(name, s), 0)
         }
         Ore.entries.forEach { storage.save(key("ore_${it.name}", s), 0) }
@@ -797,6 +809,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         carryingDecor = null
         blocks.forEach { it.clear() }
         building = false
+        outfitsOwned = 1; skinsOwned = 1; costumesOwned = 0
+        Style.rocco = RoccoOutfit.CLASSIC; Style.blocky = BlockySkin.CLASSIC; Style.monCostume = null
         inGarden = false
         plushOwned.fill(false)
         bedsOwned = 0
@@ -4806,7 +4820,46 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
     }
 
-    val SHOP_TABS = listOf("FURNITURE", "BEDS", "PLUSHIES", "HOUSES", "COLORS", "STICKERS", "DECOR", "YARD")
+    val SHOP_TABS = listOf("FURNITURE", "BEDS", "PLUSHIES", "HOUSES", "COLORS", "STICKERS", "DECOR", "YARD", "STYLE")
+
+    /** Outfits and costumes bought so far (bits), saved as outfits / skins / costumes. */
+    var outfitsOwned = 1
+    var skinsOwned = 1
+    var costumesOwned = 0
+
+    /** Everything in the STYLE tab: Rocco's outfits, Blocky's skins and the Pokemon costumes. */
+    private val styleItems: List<Any> = RoccoOutfit.entries + BlockySkin.entries + MonCostume.entries
+    private fun stylePage() = styleItems.drop(shopPage * PLUSH_PER_PAGE).take(PLUSH_PER_PAGE)
+    private fun styleLabel(it: Any) = when (it) { is RoccoOutfit -> it.label; is BlockySkin -> it.label; is MonCostume -> it.label; else -> "" }
+    private fun styleOwned(it: Any) = when (it) {
+        is RoccoOutfit -> outfitsOwned and (1 shl it.ordinal) != 0
+        is BlockySkin -> skinsOwned and (1 shl it.ordinal) != 0
+        is MonCostume -> costumesOwned and (1 shl it.ordinal) != 0
+        else -> false
+    }
+    private fun styleWorn(it: Any) = it == Style.rocco || it == Style.blocky || it == Style.monCostume
+    private fun styleCost(it: Any) = when (it) { is RoccoOutfit -> it.coins; is BlockySkin -> it.coins; is MonCostume -> it.coins; else -> 0 }
+
+    /** Buys an outfit or costume, or puts on one you already have (tap a worn costume to take it off). */
+    fun buyStyle(it: Any) {
+        if (!styleOwned(it)) {
+            val c = styleCost(it)
+            if (coins < c) { needToast(emptyList(), c); return }
+            coins -= c
+            when (it) {
+                is RoccoOutfit -> outfitsOwned = outfitsOwned or (1 shl it.ordinal)
+                is BlockySkin -> skinsOwned = skinsOwned or (1 shl it.ordinal)
+                is MonCostume -> costumesOwned = costumesOwned or (1 shl it.ordinal)
+            }
+            sfx(Sound.POWERUP)
+        } else sfx(Sound.KICK)
+        when (it) {
+            is RoccoOutfit -> { Style.rocco = it; toast("Rocco is wearing: ${it.label}!") }
+            is BlockySkin -> { Style.blocky = it; toast("Blocky is wearing: ${it.label}!") }
+            is MonCostume -> if (Style.monCostume == it && styleOwned(it)) { Style.monCostume = null; toast("${mon.label} took off the ${it.label}.") } else { Style.monCostume = it; toast("${mon.label} is wearing the ${it.label}!") }
+        }
+        save()
+    }
     private fun decorTab(tab: Int) = DecorItem.entries.filter { it.yard == (tab == 7) }
     private fun decorPage() = decorTab(shopTab).drop(shopPage * PLUSH_PER_PAGE).take(PLUSH_PER_PAGE)
     private val PLUSH_PER_PAGE = 12
@@ -4828,6 +4881,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         3 -> housePage().map { t -> t.label to { buyHouse(t) } }.let { it + List(HOUSES_PER_PAGE - it.size) { "" to {} } } + listOf("ADD A FLOOR" to { buyFloor() }, "ELEVATOR" to { buyElevator() })
         4 -> Homes.PAINTS.indices.map { i -> Homes.PAINT_NAMES[i] to { paintHouse(i) } }
         6, 7 -> decorPage().map { d -> d.label to { buyDecor(d) } }
+        8 -> stylePage().map { it -> styleLabel(it) to { buyStyle(it) } }
         else -> listOf("STICKER PACK" to { buyStickerPack() })
     }
 
@@ -5069,6 +5123,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val hop = when (monPlay) { "BALL" -> -abs(sin(k * 6f)) * 14f; "TRAIN" -> sin(k * 30f) * 2f; else -> sin(time * 3) * 1.5f }
         val mx = px + 150f + (if (monPlay == "TRAIN") sin(k * 10f) * 6f else 0f)
         TeamArt.mon(ScaledGfx(gfx, 2f, mx, 146f + hop), mon, 0f, 0f, time, 1, monPlay.isNotEmpty(), monPlay == "TRAIN")
+        Style.drawCostume(ScaledGfx(gfx, 2f, mx, 146f + hop), mon, 0f, 0f, 1, time)
         if (monPlay == "EVOLVE") {
             // Flashing white, and the new form showing through more and more.
             if ((k * 10).toInt() % 2 == 0) gfx.oval(mx - 34, 90f, 68f, 60f, argb((k / 1.6f * 255).toInt().coerceIn(0, 255), 0xFFFFFF))
@@ -5255,6 +5310,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         0 -> furniturePages().size
         3 -> (HouseType.entries.size + HOUSES_PER_PAGE - 1) / HOUSES_PER_PAGE
         6, 7 -> (decorTab(shopTab).size + PLUSH_PER_PAGE - 1) / PLUSH_PER_PAGE
+        8 -> (styleItems.size + PLUSH_PER_PAGE - 1) / PLUSH_PER_PAGE
         else -> (Plushies.all.size + PLUSH_PER_PAGE - 1) / PLUSH_PER_PAGE
     }
 
@@ -5430,7 +5486,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (babyMode) Baby.dress(gfx, hx, feet + hop, homeFacing, false)
         // Construction Rocco wears a hard hat.
         if (building) Build.hardHat(gfx, hx, feet + hop - 24f * sc - (if (babyMode) -7f else 0f))
-        TeamArt.mon(if (babyMode) Baby.shrink(gfx, mx, feet) else gfx, mon, mx, feet, time, homeFacing, false)
+        val heroHat = if (power != Power.NONE) HatKind.NONE else if (heroOut == Who.BLOCKY) Style.blocky.hat else Style.rocco.hat
+        if (!building) {
+            Style.hat(hg, heroHat, hx, Homes.FLOOR_Y + 30 + hop + 24f * (1 - sc), 12f * sc, homeFacing, time, behind = true)
+            Style.hat(hg, heroHat, hx, Homes.FLOOR_Y + 30 + hop + 24f * (1 - sc), 12f * sc, homeFacing, time)
+        }
+        val mg = if (babyMode) Baby.shrink(gfx, mx, feet) else gfx
+        TeamArt.mon(mg, mon, mx, feet, time, homeFacing, false)
+        Style.drawCostume(mg, mon, mx, feet, homeFacing, time)
         if (babyMode) Baby.dress(gfx, mx, feet, homeFacing, true)
     }
 
@@ -5502,6 +5565,35 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     else -> cy + 37f - Homes.FLOOR_Y * k
                 }
                 Decor.draw(ScaledGfx(gfx, k, cx + cw - 6f - d.w * k, oy), d, 0f, Homes.FLOOR_Y, time)
+            }.also { gfx.shadowText("< PREV      PAGE ${shopPage + 1}/${shopPages()}      NEXT >", viewW / 2, VIEW_H - 8f, 8f, white, 1) }
+            8 -> stylePage().forEachIndexed { i, it ->
+                val (cx, cy) = shopCard(i)
+                val owned = styleOwned(it)
+                val worn = styleWorn(it)
+                shopCardBg(gfx, cx, cy, worn, !owned && coins >= styleCost(it))
+                gfx.text(styleLabel(it), cx + 4, cy + 11, 6.5f, 0xFF2A1808.toInt())
+                when {
+                    worn -> gfx.text(if (it is MonCostume) "WEARING (tap: off)" else "WEARING!", cx + 4, cy + 30, 6f, 0xFF1E4A1E.toInt())
+                    owned -> gfx.text("TAP TO WEAR", cx + 4, cy + 30, 6.5f, 0xFF1E4A1E.toInt())
+                    else -> priceTag(gfx, cx + 4, cy + 21, emptyList(), styleCost(it))
+                }
+                val px = cx + cw - 20f
+                when (it) {
+                    is RoccoOutfit -> {
+                        val sp = Outline.of(if (it == RoccoOutfit.CLASSIC) com.roccoquest.game.Sprites.bigStand else TeamArt.roccoOutfit(it, 0))
+                        Style.hat(gfx, it.hat, px, cy + 12f, 12f, 1, time, behind = true)
+                        gfx.sprite(sp, px - 8f, cy + 12f)
+                        Style.hat(gfx, it.hat, px, cy + 12f, 12f, 1, time)
+                    }
+                    is BlockySkin -> {
+                        gfx.sprite(TeamArt.blockySkin(it, false), px - 8f, cy + 12f)
+                        Style.hat(gfx, it.hat, px, cy + 12f, 12f, 1, time)
+                    }
+                    is MonCostume -> {
+                        TeamArt.mon(gfx, mon, px, cy + 36f, time, 1, false)
+                        Style.drawCostume(gfx, mon, px, cy + 36f, 1, time, it)
+                    }
+                }
             }.also { gfx.shadowText("< PREV      PAGE ${shopPage + 1}/${shopPages()}      NEXT >", viewW / 2, VIEW_H - 8f, 8f, white, 1) }
             1 -> BedStyle.entries.forEachIndexed { i, b ->
                 val (cx, cy) = shopCard(i)

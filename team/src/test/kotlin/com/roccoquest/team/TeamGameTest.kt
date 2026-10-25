@@ -2310,6 +2310,48 @@ class TeamGameTest {
         assertTrue(game.state == TeamGame.State.CLEAR || game.state == TeamGame.State.STICKER, "level clear (${game.state})")
     }
 
+    @Test fun outfitsAndPokemonCostumes() {
+        startPlaying()
+        goHome()
+        game.coins = 5000
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 720, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f)); ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        game.buyStyle(RoccoOutfit.SUPERHERO)
+        assertEquals(RoccoOutfit.SUPERHERO, Style.rocco)
+        assertEquals(5000 - 400, game.coins)
+        game.buyStyle(BlockySkin.DIAMOND)
+        game.buyStyle(MonCostume.CROWN)
+        assertEquals(MonCostume.CROWN, Style.monCostume)
+        // Tapping a worn costume takes it off (no charge); tapping again puts it back on.
+        val c = game.coins
+        game.buyStyle(MonCostume.CROWN); assertNull(Style.monCostume)
+        game.buyStyle(MonCostume.CROWN); assertEquals(MonCostume.CROWN, Style.monCostume)
+        assertEquals(c, game.coins)
+        run(0.5f)
+        shot("style-home")
+        tap(game.viewW - 197f, 10f)
+        val tabW = (minOf(130f, (game.viewW - 40f) / 3f) * 3) / 9
+        val left = game.viewW / 2 - (minOf(130f, (game.viewW - 40f) / 3f) * 3 + 8f) / 2
+        tap(left + tabW * 8.5f, 38f); shot("shop-style")
+        tap(game.viewW / 2 + 60f, 232f); tap(game.viewW / 2 + 60f, 232f); shot("shop-style-costumes")
+        // In a level too, and saved.
+        game.buyBed(BedStyle.RED); game.sleepAtHome()
+        Style.rocco = RoccoOutfit.CLASSIC
+        val g2 = TeamGame(TeamInput(), ears, storage)
+        g2.continueGame(0)
+        assertEquals(RoccoOutfit.SUPERHERO, Style.rocco)
+        assertEquals(MonCostume.CROWN, Style.monCostume)
+        game.startLevel(0); run(3.5f)
+        shot("style-level")
+        // A new game starts in the classic clothes.
+        game.newGame(1)
+        assertEquals(RoccoOutfit.CLASSIC, Style.rocco)
+        assertNull(Style.monCostume)
+    }
+
     @Test fun pokemonMiniGames() {
         startPlaying()
         goHome()

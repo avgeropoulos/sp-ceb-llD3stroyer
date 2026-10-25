@@ -370,6 +370,14 @@ class Hero(val who: Who, x: Float, y: Float) :
         if (g.starT > 0) {
             gfx.oval(px - 3, py - 3, w + 10, h + 8, argb(110, rainbow(g.time * 2)))
         }
+        // Outfits: some hats (and Super Rocco's cape) go on top, the cape behind.
+        val outfitHat = when {
+            mini || shellSpin || crouching || g.power != Power.NONE -> HatKind.NONE
+            who == Who.ROCCO && g.megaT <= 0f && g.capture == null && g.dino == null -> Style.rocco.hat
+            who == Who.BLOCKY -> Style.blocky.hat
+            else -> HatKind.NONE
+        }
+        Style.hat(gfx, outfitHat, cx + ox, py, 12f, facing, g.time, behind = true)
         when (who) {
             Who.ROCCO -> {
                 // Metal Rocco is all shiny silver.
@@ -449,6 +457,8 @@ class Hero(val who: Who, x: Float, y: Float) :
             }
             Who.MON -> TeamArt.mon(gfx, mon, cx + ox, bottom, g.time + x * 0.01f, facing, swing > 0 || g.superFlash > 0, walking)
         }
+        Style.hat(gfx, outfitHat, cx + ox, py, 12f, facing, g.time)
+        if (who == Who.MON) Style.drawCostume(gfx, mon, cx + ox, bottom, facing, g.time)
         // Worn armor: a helmet and a chest plate in the armor's color.
         if (g.armorType != Armor.NONE && who != Who.MON && !mini && !shellSpin && !crouching) {
             val c = (g.armorType.color and 0x00FFFFFF) or 0xE0000000.toInt()

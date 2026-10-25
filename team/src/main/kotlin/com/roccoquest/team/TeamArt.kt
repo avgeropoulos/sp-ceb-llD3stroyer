@@ -75,10 +75,26 @@ object TeamArt {
     }
 
     private val blockyCache = HashMap<Power, Pair<Sprite, Sprite>>()
+    private val skinCache = HashMap<BlockySkin, Pair<Sprite, Sprite>>()
+
     fun blocky(p: Power, walking: Boolean): Sprite {
+        val sk = Style.blocky
+        if (p == Power.NONE && sk != BlockySkin.CLASSIC) return blockySkin(sk, walking)
         val pair = blockyCache.getOrPut(p) {
             val (a, b) = blockyShirt(p)
             val m = mapOf(SHIRT to a, SHIRT_DARK to b)
+            blockyStand.recolor(m) to blockyWalk.recolor(m)
+        }
+        return Outline.of(if (walking) pair.second else pair.first)
+    }
+
+    /** Blocky wearing a skin from the STYLE shop. */
+    fun blockySkin(sk: BlockySkin, walking: Boolean): Sprite {
+        if (sk == BlockySkin.CLASSIC) return Outline.of(if (walking) blockyWalk else blockyStand)
+        val pair = skinCache.getOrPut(sk) {
+            val m = HashMap<Int, Int>()
+            m[SHIRT] = sk.shirt; m[SHIRT_DARK] = sk.shirtDark; m[0xFF3A3AA8.toInt()] = sk.legs
+            if (sk.skin != 0) { m[0xFFC89070.toInt()] = sk.skin; m[0xFFA87050.toInt()] = com.roccoquest.game.mixColor(sk.skin, 0xFF000000.toInt(), 0.2f) }
             blockyStand.recolor(m) to blockyWalk.recolor(m)
         }
         return Outline.of(if (walking) pair.second else pair.first)
@@ -97,7 +113,14 @@ object TeamArt {
     private val goldSuit = arrayOf(Sprites.bigStand, Sprites.bigWalk, Sprites.bigJump).map { it.recolor(goldMap) }
 
     /** frame: 0 stand, 1 walk, 2 jump */
-    fun rocco(p: Power, frame: Int): Sprite = Outline.of(roccoPlain(p, frame))
+    fun rocco(p: Power, frame: Int): Sprite = Outline.of(if (p == Power.NONE && Style.rocco != RoccoOutfit.CLASSIC) roccoOutfit(Style.rocco, frame) else roccoPlain(p, frame))
+
+    private val outfitCache = HashMap<RoccoOutfit, List<Sprite>>()
+    /** Rocco in an outfit: his red and blue swapped for the outfit's colors. */
+    fun roccoOutfit(o: RoccoOutfit, frame: Int): Sprite = outfitCache.getOrPut(o) {
+        val m = mapOf(RED to o.shirt, BLUE to o.overalls)
+        listOf(Sprites.bigStand, Sprites.bigWalk, Sprites.bigJump).map { it.recolor(m) }
+    }[frame]
 
     private fun roccoPlain(p: Power, frame: Int): Sprite = if (p == Power.THUNDER) thunder[frame] else if (p == Power.CRYSTAL) crystal[frame] else if (p == Power.GOLD) goldSuit[frame] else when (p) {
         Power.NONE -> arrayOf(Sprites.bigStand, Sprites.bigWalk, Sprites.bigJump)
