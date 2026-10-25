@@ -45,6 +45,39 @@ enum class DecorItem(val label: String, val coins: Int, val w: Float, val yard: 
     LAWN_CHAIRS("LAWN CHAIRS", 35, 50f, true), SOCCER_GOAL("SOCCER GOAL", 40, 50f, true), LAMP_POST("LAMP POST", 30, 14f, true),
     POND("FISH POND", 150, 90f, true, 2), BOUNCY_HOUSE("BOUNCY HOUSE", 200, 90f, true), SNOWMAN("SNOWMAN", 15, 24f, true),
     MAILBOX("MAILBOX", 15, 14f, true),
+    // ---- More inside things (drawn in MoreDecor.kt)
+    BUNK_BEDS("BUNK BEDS", 140, 56f), GAMING_CHAIR("GAMING CHAIR", 70, 24f), PINBALL("PINBALL MACHINE", 150, 40f),
+    ROBOT_BUTLER("ROBOT BUTLER", 180, 24f), FISH_WALL("AQUARIUM WALL", 200, 60f, layer = 1),
+    RED_BEANBAG("RED BEAN BAG", 30, 28f), BLUE_BEANBAG("BLUE BEAN BAG", 30, 28f), PURPLE_BEANBAG("PURPLE BEAN BAG", 30, 28f),
+    FISH_BOWL("FISH BOWL", 25, 18f), PIANO("PIANO", 160, 50f), HARP("GOLDEN HARP", 120, 28f), DRUM_SET("DRUM SET", 130, 48f),
+    DINO_SKELETON("DINO SKELETON", 220, 70f), ROCKET_MODEL("ROCKET MODEL", 60, 18f), TELESCOPE("TELESCOPE", 70, 28f),
+    CUCKOO_CLOCK("CUCKOO CLOCK", 50, 22f, layer = 1), NEON_SIGN("NEON STAR SIGN", 60, 34f, layer = 1),
+    VOLCANO_PICTURE("VOLCANO PICTURE", 30, 30f, layer = 1), PLANET_PICTURE("PLANET PICTURE", 30, 30f, layer = 1),
+    DASH_PICTURE("DASH PICTURE", 30, 30f, layer = 1), SUNSET_PICTURE("SUNSET PICTURE", 30, 34f, layer = 1),
+    STAR_RUG("STAR RUG", 40, 70f, layer = 2), GREEN_RUG("ROUND GREEN RUG", 25, 80f, layer = 2),
+    YELLOW_RUG("ROUND YELLOW RUG", 25, 80f, layer = 2), PURPLE_RUG("ROUND PURPLE RUG", 25, 80f, layer = 2),
+    CHECKER_RUG("CHECKER RUG", 35, 80f, layer = 2), BEAR_RUG("TEDDY BEAR RUG", 45, 70f, layer = 2),
+    BOOKSHELF("BOOKSHELF", 60, 36f), TOY_BOX("TOY BOX", 40, 34f), INDOOR_SLIDE("INDOOR SLIDE", 120, 56f),
+    BALL_PIT("BALL PIT", 130, 64f), POPCORN("POPCORN MACHINE", 90, 24f), COTTON_CANDY("COTTON CANDY CART", 100, 32f),
+    ARCADE_RACER("ARCADE RACER", 170, 40f), DJ_BOOTH("DJ BOOTH", 160, 52f), HAMMOCK("HAMMOCK", 60, 60f),
+    BLANKET_FORT("BLANKET FORT", 70, 56f), BONSAI("BONSAI TREE", 40, 24f), SUNFLOWER_POT("SUNFLOWER POT", 20, 16f),
+    FIREPLACE("FIREPLACE", 150, 52f), TROPHY_CASE("TROPHY CASE", 120, 36f), DISCO_BALL("DISCO BALL", 80, 24f, layer = 1),
+    KNIGHT_ARMOR("KNIGHT ARMOR", 120, 24f), GUMBALL("GUMBALL MACHINE", 50, 18f), BIG_TV("BIG TV", 100, 52f),
+    TREASURE_MAP("TREASURE MAP", 30, 40f, layer = 1), RAINBOW_WINDOW("RAINBOW WINDOW", 60, 30f, layer = 1),
+    TOY_TRAIN("TOY TRAIN", 50, 56f),
+    // ---- More backyard things
+    TREEHOUSE("TREEHOUSE", 300, 64f, true), ZIP_LINE("ZIP LINE", 150, 120f, true), SANDCASTLE("SANDCASTLE", 40, 44f, true),
+    MERRY_GO_ROUND("MERRY-GO-ROUND", 140, 64f, true), SEESAW("SEESAW", 50, 64f, true),
+    SPLASH_PAD("SPLASH PAD", 120, 90f, true, 2), WATER_SLIDE("WATER SLIDE", 280, 120f, true), HOT_TUB("HOT TUB", 220, 60f, true),
+    FLOWER_ARCH("FLOWER ARCH", 60, 40f, true), SCARECROW("SCARECROW", 30, 34f, true), WINDMILL("WINDMILL", 120, 44f, true),
+    FLAMINGO("PINK FLAMINGO", 15, 16f, true), DASH_STATUE("DASH STATUE", 200, 50f, true), FOUNTAIN("FOUNTAIN", 180, 56f, true),
+    CAMPFIRE("CAMPFIRE AND LOGS", 50, 64f, true), CAMP_TENT("CAMPING TENT", 70, 56f, true),
+    LAUNCH_PAD("ROCKET LAUNCH PAD", 300, 54f, true), MINI_GOLF("MINI GOLF HOLE", 50, 70f, true, 2),
+    BIG_HOOP("BIG BASKETBALL HOOP", 60, 34f, true), TIRE_SWING("TIRE SWING", 70, 56f, true),
+    LEMONADE("LEMONADE STAND", 70, 50f, true), CHICKEN_COOP("CHICKEN COOP", 100, 66f, true),
+    GREENHOUSE("GREENHOUSE", 160, 70f, true), BEEHIVE("BEEHIVE", 40, 24f, true), PUMPKIN_PATCH("PUMPKIN PATCH", 40, 60f, true),
+    PICNIC_BLANKET("PICNIC BLANKET", 30, 64f, true, 2), KITE("FLYING KITE", 25, 30f, true),
+    BLOCKY_STATUE("SILVER BLOCKY STATUE", 250, 30f, true),
 }
 
 /** One decoration that's been put down: [floor] is a floor of the house, the [Decor.YARD] or the [Decor.ROOF]. */
@@ -343,6 +376,8 @@ object Decor {
             }
             DecorItem.SNOWMAN -> { gfx.oval(x, fy - 16, w, 16f, 0xFFF4F8FF.toInt()); gfx.oval(x + 3, fy - 28, w - 6, 14f, 0xFFF4F8FF.toInt()); gfx.oval(x + 6, fy - 37, w - 12, 11f, 0xFFF4F8FF.toInt()); gfx.poly(floatArrayOf(x + 12, x + 18, x + 12), floatArrayOf(fy - 33, fy - 32, fy - 31), 0xFFF08A3A.toInt()); gfx.rect(x + 6, fy - 42, 12f, 6f, INK) }
             DecorItem.MAILBOX -> { gfx.rect(x + 6, fy - 20, 2f, 20f, 0xFF7A4A20.toInt()); gfx.rect(x, fy - 28, 14f, 9f, 0xFF3A6AD8.toInt()); gfx.oval(x, fy - 31, 14f, 7f, 0xFF3A6AD8.toInt()); gfx.rect(x + 12, fy - 34, 1.5f, 8f, 0xFFE84A4A.toInt()) }
+            // ---- The newer ones
+            else -> MoreDecor.draw(gfx, d, x, fy, t)
         }
     }
 
