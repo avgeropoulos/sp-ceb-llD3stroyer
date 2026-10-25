@@ -216,6 +216,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     var onRoof = false
         private set
     private var fireworksT = 0f
+    /** Jack-o'-lanterns carved at the CARVING table, standing in the backyard. */
+    val lanterns = ArrayList<Lantern>()
+    /** The pumpkin being carved (the carving screen is open). */
+    var carver: Carver? = null
+        private set
+    private var removeArmT = 0f
+    private var removeArm: Lantern? = null
     /** The BABY MACHINE turned everyone into babies (toggle it back at the machine). */
     var babyMode = false
     /** The house has an elevator (it goes to every floor and the backyard). */
@@ -624,6 +631,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         storage.save(key("decorN"), decor.size)
         decor.forEachIndexed { i, d -> storage.save(key("decor_$i"), Decor.pack(d)) }
         storage.save(key("decorV"), 2)
+        storage.save(key("jolN"), lanterns.size)
+        lanterns.forEachIndexed { i, l ->
+            storage.save(key("jol${i}x"), l.x.toInt())
+            for (r in 0 until Pumpkins.GH) storage.save(key("jol${i}_$r"), l.rows[r])
+        }
         garden.save()
         storage.save(key("bow"), bow.ordinal)
         for (f in Furniture.entries) storage.save(key("fpos${f.ordinal}"), furnPos[f.ordinal])
@@ -760,6 +772,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
         }
         decor.clear()
+        lanterns.clear()
+        for (i in 0 until storage.load(key("jolN")).coerceIn(0, Pumpkins.MAX))
+            lanterns += Lantern(IntArray(Pumpkins.GH) { storage.load(key("jol${i}_$it")) }, storage.load(key("jol${i}x")).toFloat())
         val oldDecor = storage.load(key("decorV")) < 2
         for (i in 0 until storage.load(key("decorN")).coerceIn(0, Decor.MAX)) Decor.unpack(storage.load(key("decor_$i")), oldDecor)?.let { decor += it }
     }
@@ -855,6 +870,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         babyMode = false
         hasElevator = false
         decor.clear()
+        lanterns.clear()
+        carver = null
         carryingDecor = null
         blocks.forEach { it.clear() }
         building = false
@@ -4481,7 +4498,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     /** True if [d] has room at [x] on [floor] (in the yard: past the garden; inside: not on doors, stairs or furniture). */
     fun decorFits(d: DecorItem, x: Float, floor: Int, ignore: Placed? = null): Boolean {
         if (floor == Decor.YARD) {
-            if (x < Garden.YARD_X || x + d.w > Garden.WIDTH - 10f) return false
+            if (x < Pumpkins.TABLE_X + Pumpkins.TABLE_W + 4f || x + d.w > Garden.WIDTH - 10f) return false
         } else if (floor == Decor.ROOF) {
             if (x < Roof.DECOR_MIN_X || x + d.w > Roof.DECOR_MAX_X) return false
         } else {
@@ -5319,6 +5336,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     private fun updateHome(dt: Float, tapped: Boolean, close: Boolean, actionE: Boolean) {
+        if (carver != null) { updateCarving(dt, tapped, close); return }
         if (close) {
             when { home3d -> exit3d(); theater -> theater = false; elevatorMenu -> elevatorMenu = false; building -> toggleBuild(); inGarden -> leaveGarden(); onRoof && !homeShop -> leaveRoof(); monMenu && gamePick -> gamePick = false; monMenu && monSwitch -> monSwitch = false; monMenu -> monMenu = false; homeShop -> homeShop = false; plushBook -> plushBook = false; else -> leaveHome() }
             return
@@ -5470,6 +5488,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     /** What the action button does in the garden or backyard. */
     private fun gardenTarget(): String? = when {
         decorating -> if (carryingDecor != null) "PLACE" else if (decorAt(homeX) != null) "MOVE" else null
+        homeX in Pumpkins.TABLE_X..(Pumpkins.TABLE_X + Pumpkins.TABLE_W) -> "CARVE"
+        lanternAt(homeX) != null -> if (removeArmT > 0f && removeArm === lanternAt(homeX)) "REMOVE!" else "PUMPKIN"
         homeX >= Garden.YARD_X -> yardTarget(homeX)
         else -> garden.target(homeX)
     }
@@ -5481,11 +5501,85 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             "MOVE" -> pickUpDecor()
             "PLACE" -> placeDecor(homeX)
             "SWIM", "RELAX", "BOUNCE", "SLIDE", "SWING", "COOK" -> yardAction(t)
+            "CARVE" -> startCarving()
+            "PUMPKIN", "REMOVE!" -> removeLantern()
             else -> garden.action(t, homeX)
         }
     }
 
+    // ---------------------------------------------------------------- Pumpkin carving
+
+    private fun lanternAt(x: Float) = lanterns.firstOrNull { x in (it.x - 4f)..(it.x + Pumpkins.LANTERN_W + 4f) }
+
+    fun startCarving() {
+        if (lanterns.size >= Pumpkins.MAX) { sfx(Sound.BUMP); toast("That's a lot of jack-o'-lanterns! Remove one first (walk to it)."); return }
+        if (garden.basket[Crop.PUMPKIN.ordinal] <= 0 && coins < Pumpkins.COINS) { needToast(emptyList(), Pumpkins.COINS); return }
+        carver = Carver()
+        sfx(Sound.KICK)
+        sound.sayAs("Let's carve a pumpkin!", Voice.HERO)
+    }
+
+    /** DONE on the carving screen: the pumpkin goes out in the yard, glowing. */
+    fun finishCarving() {
+        val c = carver ?: return
+        if (c.cuts == 0) { sfx(Sound.BUMP); toast("Carve something first! (Or tap FACE.)"); return }
+        val fromGarden = garden.basket[Crop.PUMPKIN.ordinal] > 0
+        if (fromGarden) garden.basket[Crop.PUMPKIN.ordinal]--
+        else if (coins >= Pumpkins.COINS) coins -= Pumpkins.COINS
+        else { needToast(emptyList(), Pumpkins.COINS); return }
+        var x = Pumpkins.TABLE_X + Pumpkins.TABLE_W + 8f
+        while (x < Garden.WIDTH - 50f && lanterns.any { kotlin.math.abs(it.x - x) < Pumpkins.LANTERN_W + 4f }) x += 10f
+        lanterns += Lantern(c.rows.copyOf(), x)
+        carver = null
+        sfx(Sound.POWERUP)
+        sound.sayAs("A spooky jack-o-lantern!", Voice.HERO)
+        toast("JACK-O'-LANTERN! It's glowing in the yard. ${if (fromGarden) "(Used a pumpkin from your garden.)" else "(${Pumpkins.COINS} coins for the pumpkin.)"}")
+        save()
+    }
+
+    /** Walk up to a jack-o'-lantern and press twice to take it away. */
+    private fun removeLantern() {
+        val l = lanternAt(homeX) ?: return
+        if (removeArmT > 0f && removeArm === l) {
+            lanterns.remove(l)
+            removeArmT = 0f; removeArm = null
+            sfx(Sound.BREAK)
+            toast("Jack-o'-lantern removed. Carve a new one any time!")
+            save()
+        } else {
+            removeArm = l
+            removeArmT = 3f
+            sfx(Sound.KICK)
+            toast("Press again to REMOVE this jack-o'-lantern.")
+        }
+    }
+
+    private fun updateCarving(dt: Float, tapped: Boolean, close: Boolean) {
+        val c = carver ?: return
+        if (close || nav.b) { carver = null; sfx(Sound.KICK); toast("No carving today."); return }
+        if (nav.rb) { finishCarving(); return }
+        if (nav.lb) { c.face(); sfx(Sound.KICK) }
+        if (tapped && input.tapX >= 0f) when (c.buttonAt(input.tapX, input.tapY, viewW)) {
+            "DONE" -> { finishCarving(); return }
+            "FACE" -> { c.face(); sfx(Sound.KICK) }
+            "CLEAR" -> { c.clear(); sfx(Sound.BREAK) }
+            "CANCEL" -> { carver = null; sfx(Sound.KICK); return }
+        }
+        val fx = input.fingerX; val fy = input.fingerY
+        if (input.touching && fx >= 0f) c.touch(fx, fy, viewW)
+        else if (padConnected) {
+            val sp = 14f * dt
+            if (input.left) c.curX -= sp
+            if (input.right) c.curX += sp
+            if (input.up) c.curY -= sp
+            if (input.down) c.curY += sp
+            c.curX = c.curX.coerceIn(0f, Pumpkins.GW.toFloat()); c.curY = c.curY.coerceIn(0f, Pumpkins.GH.toFloat())
+            if (input.jump) c.drag(c.curX, c.curY) else c.lift()
+        } else c.lift()
+    }
+
     private fun updateGarden(dt: Float, tapped: Boolean, actionE: Boolean) {
+        if (removeArmT > 0f) removeArmT -= dt
         if (nav.up) { leaveGarden(); return }
         if (nav.rb) { toggleDecorate(); return }
         if (nav.lb) { enter3d(); return }
@@ -5621,7 +5715,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val cam = homeCam()
         val ox = -cam
         when {
-            inGarden -> { garden.draw(gfx, ox, viewW, VIEW_H, time); drawDecor(gfx, ox, Decor.YARD) }
+            inGarden -> {
+                garden.draw(gfx, ox, viewW, VIEW_H, time)
+                Pumpkins.drawTable(gfx, ox + Pumpkins.TABLE_X, Homes.FLOOR_Y)
+                drawDecor(gfx, ox, Decor.YARD)
+                for (l in lanterns) if (l.x + ox > -50f && l.x + ox < viewW + 10f) Pumpkins.draw(gfx, l, l.x + ox, Homes.FLOOR_Y + 2f, time)
+            }
             onRoof -> {
                 Roof.draw(gfx, ox, viewW, VIEW_H, time, houseFloors, fireworksT)
                 drawDecor(gfx, ox, Decor.ROOF)
@@ -5667,6 +5766,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
         // Controls: walk left/right, and the action button.
         TeamControls.layout(viewW)
+        carver?.let { it.draw(gfx, viewW, VIEW_H, time, padConnected && !input.touching); renderHomeToast(gfx); return }
         if (!homeShop && !plushBook && !monMenu && !elevatorMenu && !theater) TeamControls.drawHome(gfx, input, if (building) "BUILD" else target ?: "", time)
         if (building && !homeShop) renderBuildPalette(gfx)
         if (homeShop) renderShop(gfx)

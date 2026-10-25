@@ -60,6 +60,9 @@ class TeamInput {
     @Volatile var tapY = -1f
     /** True while a finger is on the screen (so menus can tell taps from keyboard keys). */
     @Volatile var touching = false
+    /** Where the first finger is right now (-1 when none): for drawing, like carving pumpkins. */
+    @Volatile var fingerX = -1f
+    @Volatile var fingerY = -1f
     /** A number key 1-9 pressed in a menu (10 for the 0 key), or 0 for none. */
     @Volatile var numberKey = 0
 
@@ -182,6 +185,8 @@ object TeamControls {
 
     fun apply(input: TeamInput, ids: IntArray, xs: FloatArray, ys: FloatArray, count: Int, viewW: Float) {
         layout(viewW)
+        input.fingerX = if (count > 0) xs[0] else -1f
+        input.fingerY = if (count > 0) ys[0] else -1f
         if (mode3d) { apply3d(input, xs, ys, count, viewW); return }
         startY.keys.retainAll((0 until count).map { ids[it] }.toSet())
         var l = false

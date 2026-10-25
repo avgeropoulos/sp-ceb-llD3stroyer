@@ -380,6 +380,8 @@ class House3D(private val g: TeamGame) {
             for (i in 0 until Garden.PLOTS) picture(gfx, items, Garden.plotX(i) + Garden.PLOT_W / 2, 3f) { gd.drawPlot(it, i, 0f, time) }
             picture(gfx, items, Garden.YARD_X - 14f, 1.0f) { gd.drawYardSign(it, 0f) }
             picture(gfx, items, Garden.PICNIC_X + 30f, 4f) { gd.drawPicnic(it, 0f) }
+            picture(gfx, items, Pumpkins.TABLE_X + Pumpkins.TABLE_W / 2, 1.2f) { Pumpkins.drawTable(it, Pumpkins.TABLE_X, Homes.FLOOR_Y) }
+            for (l in g.lanterns) picture(gfx, items, l.x + Pumpkins.LANTERN_W / 2, 5.5f) { Pumpkins.draw(it, l, l.x, Homes.FLOOR_Y, time) }
         }
         for (dd in g.decor) {
             if (dd.floor != loadedArea) continue

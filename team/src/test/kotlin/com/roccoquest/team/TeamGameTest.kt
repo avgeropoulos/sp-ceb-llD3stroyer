@@ -738,6 +738,74 @@ class TeamGameTest {
         shot("map-skyscraper")
     }
 
+    @Test fun carvePumpkinsWithYourFingerAndRemoveThem() {
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 240 * 3, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f))
+            ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        startPlaying()
+        goHome()
+        game.coins = 100
+        game.enterGarden()
+        walkHomeTo(Pumpkins.TABLE_X + 30f)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        val c = assertNotNull(game.carver, "the carving screen opens")
+        // Draw a smile with a finger: a swipe across the pumpkin.
+        val bx = c.boardX(game.viewW); val by = c.boardY()
+        input.touching = true
+        for (k in 0..20) {
+            input.fingerX = bx + 50f + k * 4.5f; input.fingerY = by + 100f + kotlin.math.sin(k / 20f * 3.14f) * 14f
+            game.update(dt)
+        }
+        // Two eyes, one dab each.
+        for ((ex, ey) in listOf(70f to 50f, 120f to 50f)) {
+            input.touching = false; input.fingerX = -1f; game.update(dt)
+            input.touching = true; input.fingerX = bx + ex; input.fingerY = by + ey
+            repeat(3) { game.update(dt) }
+        }
+        input.touching = false; input.fingerX = -1f; game.update(dt)
+        assertTrue(c.cuts > 30, "carved ${c.cuts} bits")
+        shot("pumpkin-carving")
+        // DONE: it costs a pumpkin (15 coins, none grown yet) and glows in the yard.
+        tap(c.buttonX(game.viewW) + 30f, c.buttonY(0) + 10f)
+        assertNull(game.carver)
+        assertEquals(1, game.lanterns.size)
+        assertEquals(100 - Pumpkins.COINS, game.coins)
+        // A grown pumpkin is used before coins. FACE carves a classic face.
+        game.garden.basket[Crop.PUMPKIN.ordinal] = 1
+        walkHomeTo(Pumpkins.TABLE_X + 30f)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        tap(game.carver!!.buttonX(game.viewW) + 30f, game.carver!!.buttonY(1) + 10f)
+        tap(game.carver!!.buttonX(game.viewW) + 30f, game.carver!!.buttonY(0) + 10f)
+        assertEquals(2, game.lanterns.size)
+        assertEquals(0, game.garden.basket[Crop.PUMPKIN.ordinal])
+        assertEquals(100 - Pumpkins.COINS, game.coins)
+        walkHomeTo(game.lanterns[1].x + 50f)
+        run(0.3f)
+        shot("jack-o-lanterns")
+        // Saved.
+        game.buyBed(BedStyle.RED); game.sleepAtHome()
+        val g2 = TeamGame(TeamInput(), ears, storage)
+        g2.continueGame(0)
+        assertEquals(2, g2.lanterns.size)
+        assertTrue(g2.lanterns[1].rows.contentEquals(game.lanterns[1].rows))
+        // Remove one: walk to it and press twice.
+        walkHomeTo(game.lanterns[0].x + 15f)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        assertEquals(2, game.lanterns.size, "the first press only asks")
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        assertEquals(1, game.lanterns.size)
+        // Cancel gives the pumpkin back (nothing spent).
+        val before = game.coins
+        walkHomeTo(Pumpkins.TABLE_X + 30f)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        tap(game.carver!!.buttonX(game.viewW) + 30f, game.carver!!.buttonY(3) + 10f)
+        assertNull(game.carver)
+        assertEquals(before, game.coins)
+    }
+
     @Test fun pokemonEvolveAndSwitchBack() {
         startPlaying()
         game.coins = 100
