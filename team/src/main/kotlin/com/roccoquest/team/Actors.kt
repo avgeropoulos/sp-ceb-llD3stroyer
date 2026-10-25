@@ -277,6 +277,7 @@ class Hero(val who: Who, x: Float, y: Float) :
     }
 
     fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
+        if (this === g.leader && g.inCannon != null) return
         if (!g.babyMode || mini || (who == Who.ROCCO && (g.megaT > 0f || g.capture != null))) { drawBody(g, gfx, ox); return }
         // Baby time (the BABY MACHINE at home): little, with a bonnet and a pacifier.
         drawBody(g, Baby.shrink(gfx, cx + ox, bottom), ox)

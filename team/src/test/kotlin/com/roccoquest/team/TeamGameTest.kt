@@ -2194,6 +2194,67 @@ class TeamGameTest {
         assertTrue(g2.hasSticker(299) && g2.stickerCount == game.stickerCount)
     }
 
+    @Test fun blastCannonsAndTheTailSpin() {
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 720, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f)); ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        // 1-1 has a cannon near the start: hop in and BLAST OFF.
+        startPlaying(0)
+        game.foes.clear()
+        val c = game.thingsForTest().filterIsInstance<BlastCannon>().first()
+        val l = game.leader
+        l.x = c.cx - 20f; l.y = c.bottom - l.h
+        run(0.3f) { game.hurtProof() }
+        input.action = true; game.update(dt); input.action = false
+        assertNotNull(game.inCannon, "in the cannon")
+        run(0.5f) { game.hurtProof() }
+        var wait = 0
+        while (c.aim > 0.5f && wait++ < 300) { game.hurtProof(); game.update(dt) }
+        shot("cannon-aim")
+        val x0 = l.x
+        input.jump = true; game.update(dt); input.jump = false
+        assertNull(game.inCannon)
+        assertTrue(game.cannonFlyT > 0f, "flying!")
+        run(0.25f) { game.hurtProof() }
+        shot("cannon-fly")
+        run(1.5f) { game.hurtProof() }
+        assertTrue(l.x > x0 + 120f, "flew a long way (${l.x - x0})")
+        assertEquals(0f, game.cannonFlyT, "landed")
+
+        // KRAG'S TAIL SPIN: punches don't work, the spike bombs do.
+        startPlaying(Levels.all.indexOfFirst { it.name == "KRAG'S TAIL SPIN" })
+        val k = game.foes.filterIsInstance<TailKrag>().single()
+        game.foes.retainAll(setOf(k))
+        l.x = k.x - 120f; l.y = 120f
+        run(4f) { game.hurtProof() }
+        assertTrue(game.boss === k, "he noticed us")
+        k.hit(game, 50)
+        assertEquals(3, k.hp, "hits just tickle")
+        var tries = 0
+        while (!k.dying && tries++ < 60) {
+            game.hurtProof()
+            if (k.mode == 0 || k.mode == 3) {
+                // Sneak behind him (any side works while he's dizzy).
+                val side = if (k.mode == 3) 1 else if (k.vx >= 0f) -1 else 1
+                l.x = k.cx + side * 22f - l.w / 2; l.y = k.bottom - l.h; l.vx = 0f
+                input.action = true; game.update(dt); input.action = false
+                game.update(dt)
+            }
+            if (k.mode == 1) {
+                run(0.4f + (tries % 5) * 0.13f) { game.hurtProof(); input.right = true }
+                if (tries == 1) shot("tail-spin")
+                input.right = false
+                input.action = true; game.update(dt); input.action = false
+            }
+            run(1.6f) { game.hurtProof() }
+        }
+        assertTrue(k.dying, "thrown into the spike bombs 3 times (${k.hp} left after $tries tries)")
+        run(6f) { game.hurtProof() }
+        assertTrue(game.state == TeamGame.State.CLEAR || game.state == TeamGame.State.STICKER, "level clear (${game.state})")
+    }
+
     @Test fun gardenBabyMachineAndTheSkyRoom() {
         startPlaying()
         goHome()

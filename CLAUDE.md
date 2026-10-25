@@ -118,6 +118,9 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
 * Evolution (`Evolve.kt`, Actors.kt): `MON_LINES`, `Mon.base` (whose SUPER/physics a form uses; switch on `mon.base`,
   not `mon`), `root` (XP is kept on the root), `evolveLevel`, `nextForm`. Evolved forms are drawn with `TintGfx` +
   `ScaledGfx` over their first form. The pick screen only shows `STARTERS` (the first 10).
+* `Spin.kt`: `BlastCannon` (`>`, added to every 4th level by `remix`; `inCannon`, `fireCannon`, `cannonFlight`/`cannonFlyT`),
+  `SpikeBomb` (`+`) and `TailKrag` (`&`, level 28 "KRAG'S TAIL SPIN": only thrown-into-a-bomb hurts him;
+  `grabbing`, `actionTap`, `heldDir()`). While `busy` (cannon or tail) the normal ACTION/JUMP moves are skipped.
 * `Garden.kt`: `Crop` + `Garden` (10 plots; keys `plot<i>`, `grow<i>`, `food<i>`, `seed`), shown at home when `inGarden`
   (GARDEN button, `updateGarden`). Plants grow in `update` everywhere. `babyMode` (key `baby`, the `BABY_MACHINE`
   furniture) draws heroes through `Baby.shrink`/`Baby.dress` (Powers.kt). Houses have up to 4 floors.

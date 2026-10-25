@@ -175,12 +175,13 @@ object World2 {
         .at(55, 12, 'r').at(58, 12, '|')
         .fill(61, 64, 13, 14, 'L').at(67, 12, 'k').at(70, 12, 'b').row(73, 9, "BhB").at(77, 12, 'w').at(80, 12, 'b')
         .rock(84, 12, "eDo", "sss").at(90, 12, '|')
-        .row(104, 8, "h").row(122, 8, "h")
+        .row(104, 8, "h")
         .fill(131, 131, 2, 12, 'X')
-        .at(122, 12, 'K')
+        .at(122, 12, '&')
+        .at(112, 12, '+').at(117, 12, '+').at(126, 12, '+').at(130, 12, '+')
         .build(
-            "KRAG'S RETURN", Place.CASTLE,
-            "KING KRAG built a NEW castle! Stop him again!",
+            "KRAG'S TAIL SPIN", Place.CASTLE,
+            "Sneak behind KING KRAG, grab his TAIL, spin him round and throw him into a SPIKE BOMB!",
         )
 
     private fun jungleRuins() = Builder(210)

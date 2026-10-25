@@ -33,6 +33,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     companion object {
         const val MAX_HEARTS = 5
+        /** How fast a BlastCannon shoots you out. */
+        const val CANNON_SPEED = 520f
         const val MAX_ARMOR = 5
         const val COST = 5
         /** How many blocks each pickaxe can mine before it breaks (the wooden one never breaks). */
@@ -431,6 +433,17 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         private set
     var riding: Minecart? = null
         private set
+    /** Sitting in a BlastCannon, waiting to fire. */
+    var inCannon: BlastCannon? = null
+        private set
+    /** Flying out of a cannon (no steering until you land). */
+    var cannonFlyT = 0f
+        private set
+    /** Holding King Krag by the tail (the TAIL SPIN boss). */
+    var grabbing: TailKrag? = null
+    /** ACTION was pressed this frame (for things like grabbing a tail). */
+    var actionTap = false
+        private set
     var floodT = 0f
         private set
     private var trader: Villager? = null
@@ -789,7 +802,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         boss = null; bossDone = false; wonder = false; camLock = null; frog = null; goal = null
         house = null; bed = null
         if (dino != null) dismount()
-        riding = null; trader = null; floodT = 0f; air = AIR_MAX; dogT = 10f; ventT.clear(); planSpotty(index)
+        riding = null; inCannon = null; cannonFlyT = 0f; grabbing = null; trader = null; floodT = 0f; air = AIR_MAX; dogT = 10f; ventT.clear(); planSpotty(index)
         if (rocco.mini) setMini(false)
         miniT = 0f
         tanookiT = 0f
@@ -831,6 +844,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 '0' -> foes += ZoomerLauncher(px, bottom)
                 '1' -> foes += Gummy(px, bottom)
                 '!' -> foes += RockStarKrag(px, bottom)
+                '&' -> foes += TailKrag(px, bottom)
+                '+' -> things += SpikeBomb(px, bottom)
+                '>' -> things += BlastCannon(px, bottom)
                 'Z' -> foes += EnderDragon(px, ty * TILE.toFloat())
                 'n' -> foes += Enderman(px, bottom)
                 'f' -> foes += Fish(px, bottom)
@@ -921,6 +937,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (edge(4, input.musicToggle)) musicOn = !musicOn
         val superE = edge(5, input.superMove)
         val actionE = edge(6, input.action)
+        actionTap = actionE
         val tntE = edge(7, input.tnt)
         val poseidonE = edge(8, input.poseidon)
         val blackE = edge(11, input.blackFlower)
@@ -1323,7 +1340,24 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
         val grav = if (wonder) 0.75f else 1f
         val cart = riding
-        if (cart != null) {
+        val cn = inCannon
+        val tail = grabbing
+        if (tail != null && (tail.mode != 1 || tail.dying)) grabbing = null
+        // Busy in a cannon or holding a tail: the usual buttons do something else.
+        val busy = cn != null || grabbing != null
+        if (cn != null) {
+            // Inside a cannon: wait for the barrel to point where you want, then JUMP to blast off.
+            val l = leader
+            l.x = cn.cx - l.w / 2; l.y = cn.y - l.h + 8
+            l.vx = 0f; l.vy = 0f; l.onGround = true
+            if ((jumpE || actionE) && cn.loadT > 0.3f) fireCannon(cn)
+        } else if (grabbing != null) {
+            // Swinging King Krag round and round: stay put (he does the moving).
+            val l = leader
+            l.vx = 0f
+            l.vy = minOf(l.vy + GRAVITY * grav * dt, MAX_FALL)
+            moveHero(l, dt)
+        } else if (cart != null) {
             // Riding a minecart: the leader sits in the cart, JUMP hops out.
             val l = leader
             l.x = cart.cx - l.w / 2
@@ -1333,18 +1367,20 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         } else updateLeader(leader, dt, jumpE, grav)
         for ((i, f) in followers.withIndex()) updateFollower(f, dt, grav, i)
         val l = leader
-        if (actionE && riding == null) {
+        if (actionE && riding == null && cannonFlyT <= 0f && !busy) {
             val v = things.firstOrNull { it is Villager && abs(it.cx - l.cx) < 22f && abs(it.bottom - l.bottom) < 20f } as Villager?
+            val bc = things.firstOrNull { it is BlastCannon && abs(it.cx - l.cx) < 22f && abs(it.bottom - l.bottom) < 20f } as BlastCannon?
             val mc = things.firstOrNull { it is Minecart && it.rider == null && abs(it.cx - l.cx) < 24f && abs(it.bottom - l.bottom) < 20f } as Minecart?
             when {
                 bed?.overlaps(l) == true && l.onGround -> { sleep(); return }
                 house?.atDoor(l) == true && l.onGround -> { enterHome(); return }
                 v != null -> { startTrade(v); return }
                 mc != null -> { rideCart(mc); return }
+                bc != null && l.onGround -> { enterCannon(bc); return }
             }
         }
         // Hop onto Dash: land on his back, or press ACTION next to him.
-        if (l === rocco && dino == null && riding == null && !rocco.mini) {
+        if (l === rocco && dino == null && riding == null && !rocco.mini && !busy) {
             val d = things.firstOrNull { it is Dino && it.rider == null && it.mountCooldown <= 0f && it.scaredT <= 0f } as Dino?
             if (d != null) {
                 val landed = l.vy > 0f && l.overlaps(d) && l.bottom < d.cy
@@ -1353,12 +1389,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
         }
         dino?.let { d -> d.x = rocco.cx - d.w / 2; d.y = rocco.bottom - d.h }
-        if ((input.action || actionBufT > 0f) && l.cooldown <= 0f && riding == null) {
+        if ((input.action || actionBufT > 0f) && l.cooldown <= 0f && riding == null && !busy && inCannon == null && foes.none { it is TailKrag && it.mode == 2 }) {
             actionBufT = 0f
             action(l)
         }
         // Blocky's bow uses the button Rocco uses for his long jump.
-        if (longE && l.who == Who.BLOCKY && bow != Bow.NONE && bowCooldown <= 0f && riding == null) shootBow(l)
+        if (longE && l.who == Who.BLOCKY && bow != Bow.NONE && bowCooldown <= 0f && riding == null && !busy) shootBow(l)
         updateWater(dt)
         updateSpikes(dt)
         updateDog(dt)
@@ -1491,6 +1527,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     fun inWater(h: Body) = level.def.shoreX >= 0 && h.cx < level.def.shoreX * TILE
 
     private fun updateLeader(h: Hero, dt: Float, jumpE: Boolean, grav: Float) {
+        if (cannonFlyT > 0f && h === leader) { cannonFlight(h, dt, grav); return }
         val dir = (if (input.right) 1 else 0) - (if (input.left) 1 else 0)
         if (dir != 0) h.facing = dir
         if (h.onGround) coyoteT = 0.1f else if (coyoteT > 0f) coyoteT -= dt
@@ -2717,6 +2754,50 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         spawn(Dennis(camX - 30f, l.bottom))
     }
 
+    private fun enterCannon(c: BlastCannon) {
+        inCannon = c
+        c.loaded = true
+        actionBufT = 0f
+        sfx(Sound.KICK)
+        toast("In the cannon! JUMP to BLAST OFF when it points where you want!")
+    }
+
+    private fun fireCannon(c: BlastCannon) {
+        inCannon = null
+        c.fired()
+        val l = leader
+        val a = c.aim
+        l.x = c.muzzleX() - l.w / 2
+        l.y = c.muzzleY() - l.h / 2
+        l.vx = kotlin.math.cos(a) * CANNON_SPEED
+        l.vy = -kotlin.math.sin(a) * CANNON_SPEED
+        l.onGround = false
+        cannonFlyT = 3f
+        jumpBufT = 0f
+        shake = 0.25f
+        sfx(Sound.BOSS_FIRE)
+        say(l.cx, l.y - 12, "WAHOOOO!", 1.2f)
+    }
+
+    /** Flying out of a cannon: smash through bad guys, and land wherever you land. */
+    private fun cannonFlight(h: Hero, dt: Float, grav: Float) {
+        cannonFlyT -= dt
+        h.vy = min(h.vy + GRAVITY * grav * 0.8f * dt, MAX_FALL)
+        val before = h.x
+        moveHero(h, dt)
+        invuln = max(invuln, 0.2f)
+        for (f in foes) if (f.active && !f.dying && f !is TailKrag && f.overlaps(h)) f.hit(this, if (f.boss) 3 else 99)
+        if ((time * 30).toInt() % 2 == 0) particles += Sparkle(h.cx, h.cy, -h.vx * 0.1f, 20f, 0xFFFFE14D.toInt())
+        // Bumped into a wall, or landed: back to normal.
+        if (abs(h.x - before) < abs(h.vx * dt) * 0.3f) h.vx = 0f
+        if ((h.onGround && h.vy >= 0f) || h.vx == 0f) { cannonFlyT = 0f; h.vx *= 0.3f }
+    }
+
+    /** Which way LEFT/RIGHT are held (-1, 0 or 1). */
+    fun heldDir() = (if (input.right) 1 else 0) - (if (input.left) 1 else 0)
+    internal fun thingsForBosses(): List<Thing> = things
+    fun toastFromGame(s: String) = toast(s)
+
     private fun rideCart(c: Minecart) {
         c.rider = leader
         riding = c
@@ -3200,7 +3281,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val sy = partner.cy
         val target = foes.filter {
             it.active && !it.dying && it.x + it.w > camX && it.x < camX + viewW &&
-                (it !is KragJr || it.engaged) && (it !is KingKrag || it.awake) &&
+                (it !is KragJr || it.engaged) && (it !is KingKrag || it.awake) && it !is TailKrag &&
                 (it !is Warden || it.awake) && (it !is EnderDragon || it.engaged)
         }.minByOrNull { hypot(it.cx - sx, it.cy - sy) }
         if (target == null || hypot(target.cx - sx, target.cy - sy) > 180f) {
@@ -3231,8 +3312,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (boss != null) return
         boss = f
         // Two crazy mushrooms pop out to help: fire and ice.
-        spawn(CrazyMushroom(leader.cx + 40f, leader.y - 20f, true))
-        spawn(CrazyMushroom(leader.cx + 80f, leader.y - 20f, false))
+        // (Not for the tail spin: only spike bombs hurt that King Krag.)
+        if (f !is TailKrag) {
+            spawn(CrazyMushroom(leader.cx + 40f, leader.y - 20f, true))
+            spawn(CrazyMushroom(leader.cx + 80f, leader.y - 20f, false))
+        }
         val home = when (f) {
             is KragJr -> f.homeX
             is KingKrag -> f.homeX
@@ -3240,6 +3324,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             is WitchBoss -> f.homeX
             is KingBooHoo -> f.homeX
             is RockStarKrag -> f.homeX
+            is TailKrag -> f.homeX
             is EnderDragon -> f.homeX + f.w / 2 - 16f
             else -> f.x
         }
@@ -3293,6 +3378,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 bannerSub = "Dodge the music notes and JUMP over the power chord waves!"
                 sfx(Sound.BOSS_FIRE)
             }
+            f is TailKrag -> {
+                bannerTitle = "KING KRAG: TAIL SPIN!"
+                bannerSub = "Sneak BEHIND him, grab his TAIL (ACTION), spin him round and throw him into a SPIKE BOMB!"
+                sfx(Sound.BOSS_FIRE)
+            }
             f is WitchBoss -> {
                 bannerTitle = "WITCH WANDA!"
                 bannerSub = "Dodge the potions! Jump on her when she swoops down low!"
@@ -3319,7 +3409,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         givePlushie(
             when (f) {
                 is KragJr -> Plushies.KRAG_JR
-                is KingKrag -> Plushies.KING_KRAG
+                is KingKrag, is TailKrag -> Plushies.KING_KRAG
                 is Warden -> Plushies.WARDEN
                 is EnderDragon -> Plushies.DRAGON
                 else -> null

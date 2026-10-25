@@ -495,6 +495,14 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
 * A new one joins your team every 3 levels you beat ("A wild EEVO joined your team!"). Switch to them at home
   on the POKEMON mat; the switch screen now has two pages (tap the arrows).
 
+### Cannons and the TAIL SPIN
+
+* **Blast cannons**: every fourth level has a cannon near the start. Press ACTION next to it to climb in,
+  watch the barrel swing up and down, and press JUMP to BLAST OFF. You smash through bad guys on the way.
+* **KRAG'S TAIL SPIN** (level 28, it used to be KRAG'S RETURN): punches don't hurt King Krag here. Sneak
+  BEHIND him, grab his TAIL with ACTION, hold LEFT or RIGHT to spin him faster, then press ACTION to let go
+  and throw him into a SPIKE BOMB. Three bombs and he's beaten!
+
 ### Garden, Baby Machine and a bigger house
 
 * **The garden**: tap GARDEN at home. Pick seeds at the SEEDS stand (carrots, strawberries, tomatoes, corn,

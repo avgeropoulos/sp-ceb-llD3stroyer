@@ -129,6 +129,7 @@ enum class Place(val music: Music) {
  *  'A' skelly archer   'H' hopper   'U' gloop slime   'T' snapper plant   'y' Dash the dino
  *  'z' crusher   'q' peekaboo ghost   'l' puffcloud   'j' spikestack
  *  'I' ship plank   ':' mast   '%' rainbow road   'N' cannon   '$' metal cap
+ *  '>' cannon you can ride   '&' tail-spin King Krag   '+' spike bomb
  */
 class LevelDef(val name: String, val place: Place, val rows: List<String>, val tip: String) {
     val w get() = rows[0].length
@@ -168,7 +169,7 @@ class Builder(private val w: Int) {
 
 /** Level characters that are bosses: Krag Jr. (J, W), King Krag (K, Q, Y), the Warden (G, and the twins 5),
  * the Ender Dragon (Z), King Boo-Hoo (3), Witch Wanda (4) and Rock Star Krag (!). */
-const val BOSS_CHARS = "JWKQGYZ345!"
+const val BOSS_CHARS = "JWKQGYZ345!&"
 
 object Levels {
     val all: List<LevelDef> by lazy {
@@ -248,6 +249,18 @@ object Levels {
                 y?.let { x to it }
             }
             if (spot != null) g[spot.second][spot.first] = 'y'
+        }
+        // A cannon you can ride, near the start of every fourth level (Dash gets the others).
+        if (index % 4 == 0 && d.shoreX < 0 && d.place != Place.SKY && !boss) {
+            val spot = (14 until minOf(d.w - 30, 60)).firstNotNullOfOrNull { x ->
+                val y = (ROWS - 2 downTo 4).firstOrNull { y ->
+                    (x - 1..x + 1).all { cx -> (y - 3..y).all { cy -> g[cy][cx] == '.' } && g[y + 1][cx] in GROUND_CHARS } &&
+                        // Open sky ahead, so you don't bonk your head right away.
+                        (x..minOf(d.w - 1, x + 10)).all { cx -> (maxOf(0, y - 7)..y - 1).all { cy -> g[cy][cx] == '.' || g[cy][cx] == 'c' } }
+                }
+                y?.let { x to it }
+            }
+            if (spot != null) g[spot.second][spot.first] = '>'
         }
         return LevelDef(d.name, d.place, g.map { String(it) }, d.tip)
     }

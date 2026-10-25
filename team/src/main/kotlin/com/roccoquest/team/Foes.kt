@@ -551,7 +551,7 @@ class KingKrag(x: Float, y: Float, val wonderStyle: Boolean = false, val dry: Bo
     private var jumpTimer = 5f
     private var mouth = 0f
     private var hurtFlash = 0f
-    private var facing = -1
+    internal var facing = -1
     private var turnDelay = 0f
     val homeX = x
 
