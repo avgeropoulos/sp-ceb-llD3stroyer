@@ -2310,6 +2310,49 @@ class TeamGameTest {
         assertTrue(game.state == TeamGame.State.CLEAR || game.state == TeamGame.State.STICKER, "level clear (${game.state})")
     }
 
+    @Test fun pokemonMiniGames() {
+        startPlaying()
+        goHome()
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 720, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f)); ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        // MEMORY MATCH: flip every card (a cheat: try every pair).
+        game.startMonGame(MonGame.MEMORY)
+        assertEquals(TeamGame.State.GAMES, game.state)
+        run(0.3f)
+        shot("game-memory")
+        val coins = game.coins
+        // One wrong guess (they flip back), then every pair.
+        val cards = game.monGames.cardsForTest()
+        val wrong = (1 until 12).first { cards[it] != cards[0] }
+        game.monGames.flipCard(0); game.monGames.flipCard(wrong)
+        run(1f)
+        for (i in 0 until 12) {
+            val j = (i + 1 until 12).firstOrNull { cards[it] == cards[i] } ?: continue
+            game.monGames.flipCard(i); game.monGames.flipCard(j)
+            run(0.1f)
+        }
+        assertTrue(game.monGames.done, "found every pair")
+        assertTrue(game.coins > coins, "won coins")
+        run(1.2f); tap(game.viewW / 2, 120f)
+        assertEquals(TeamGame.State.HOME, game.state)
+        // BALLOON POP: pop balloons with A until time runs out.
+        game.startMonGame(MonGame.BALLOON)
+        run(5f) { game.monGames.update(0f, game.viewW, false, -1f, -1f, false, false, false, false, true, false) }
+        shot("game-balloons")
+        run(27f)
+        assertTrue(game.monGames.done)
+        assertTrue(game.monGames.score > 0, "popped some")
+        run(1.2f); tap(game.viewW / 2, 120f)
+        // DANCE PARTY
+        game.startMonGame(MonGame.DANCE)
+        run(1.5f)
+        shot("game-dance")
+        assertEquals(TeamGame.State.GAMES, game.state)
+    }
+
     @Test fun constructionRoccoBuildsBlocks() {
         startPlaying()
         goHome()

@@ -31,7 +31,7 @@ import kotlin.random.Random
  * and sleeping in the bed saves the game into one of three save slots.
  */
 class TeamGame(private val input: TeamInput, private val sound: SoundSink, private val storage: Storage = Storage.Memory()) {
-    enum class State { TITLE, SLOTS, PICK, INTRO, PLAY, CRAFT, TRADE, SLEEP, OUCH, CLEAR, STICKER, BOOK, VICTORY, HOME, MAP, CONTROLS, PARK, SCENE }
+    enum class State { TITLE, SLOTS, PICK, INTRO, PLAY, CRAFT, TRADE, SLEEP, OUCH, CLEAR, STICKER, BOOK, VICTORY, HOME, MAP, CONTROLS, PARK, SCENE, GAMES }
 
     companion object {
         const val MAX_HEARTS = 5
@@ -156,6 +156,29 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     var monMenu = false
     /** Showing the list of Pokemon to switch to. */
     var monSwitch = false
+    /** Choosing which mini game to play (the MINI GAME button). */
+    private var gamePick = false
+    val monGames = MonGames(this)
+    val padConnectedForGames get() = padConnected
+
+    /** A mini game's prize: XP for the Pokemon and some coins. */
+    fun rewardMonGame(xp: Int, prize: Int) {
+        coins += prize
+        gainXp(xp)
+        save()
+    }
+
+    fun startMonGame(which: MonGame) {
+        gamePick = false
+        if (which == MonGame.BERRY) { startPark(); return }
+        monMenu = false
+        val energy = monEnergy > 0
+        if (energy) monEnergy--
+        monGames.start(which, energy)
+        setState(State.GAMES)
+        sfx(Sound.POWERUP)
+        sound.sayAs("${which.label}!", Voice.MON)
+    }
     private var monCursor = 0
     /** How many more times the Pokemon wants to play before it needs a rest (it's refilled by playing a level). */
     var monEnergy = 5
@@ -1056,6 +1079,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
             State.HOME -> { updateParticles(dt); jumpE3d = jumpE; updateHome(dt, tapped, pauseE || craftE, actionE) }
             State.PARK -> { updateParticles(dt); updatePark(dt, tapped, jumpE || actionE, pauseE || craftE) }
+            State.GAMES -> if (monGames.update(dt, viewW, tapped && input.tapX >= 0f, input.tapX, input.tapY, nav.left, nav.right, nav.up, nav.down, nav.a, pauseE || craftE || nav.b)) { setState(State.HOME); sfx(Sound.KICK) }
             State.SCENE -> updateScene(tapped, pauseE || nav.a || nav.b)
             State.MAP -> updateMap(tapped, pauseE, num)
             State.SLEEP -> {
@@ -3534,6 +3558,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             state == State.STICKER -> Music.STAR
             state == State.HOME -> Music.COZY
             state == State.PARK -> Music.PARK
+            state == State.GAMES -> if (monGames.game == MonGame.DANCE) Music.FUNKY else Music.PARK
             state == State.SCENE -> Music.SILLY
             state == State.MAP -> Music.ADVENTURE
             state == State.OUCH || state == State.CLEAR || state == State.SLEEP -> Music.NONE
@@ -3625,6 +3650,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             State.BOOK -> renderBook(gfx)
             State.HOME -> renderHome(gfx)
             State.PARK -> renderPark(gfx)
+            State.GAMES -> monGames.render(gfx, viewW, VIEW_H, time)
             State.SCENE -> Scenes.draw(this, gfx, sceneKind, stateT, viewW, VIEW_H, mon)
             State.MAP -> renderMap(gfx)
             State.CONTROLS -> renderControls(gfx)
@@ -4836,7 +4862,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     // ---------------------------------------------------------------- Playing with the Pokemon at home
 
-    private val MON_BUTTONS = listOf("PET", "PLAY BALL", "TRAIN", "MINI GAME", "SWITCH")
+    private val MON_BUTTONS = listOf("PET", "PLAY BALL", "TRAIN", "GAMES", "SWITCH")
     private fun monPanelX() = viewW / 2 - 150f
     private fun monButtonX(i: Int) = monPanelX() + 6f + i * 58f
 
@@ -4922,6 +4948,17 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     private fun updateMonMenu(dt: Float, tapped: Boolean) {
         if (monPlayT > 0f) { monPlayT -= dt; if (monPlayT <= 0f) finishMonPlay(); return }
+        if (gamePick) {
+            val n = MonGame.entries.size
+            if (nav.up) monCursor = (monCursor + n - 1) % n
+            if (nav.down) monCursor = (monCursor + 1) % n
+            if (nav.a && stateT > 0.2f) { startMonGame(MonGame.entries[monCursor]); return }
+            if (nav.b) { gamePick = false; return }
+            if (!tapped || input.tapX < 0f) return
+            MonGame.entries.forEachIndexed { i, g -> if (input.tapX in (monPanelX() + 20f)..(monPanelX() + 280f) && input.tapY in (64f + i * 32f)..(92f + i * 32f)) { startMonGame(g); return } }
+            gamePick = false
+            return
+        }
         if (monSwitch) {
             val n = Mon.entries.size
             if (nav.left) monCursor = (monCursor + n - 1) % n
@@ -4966,7 +5003,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             0 -> playWithMon("PET")
             1 -> playWithMon("BALL")
             2 -> playWithMon("TRAIN")
-            3 -> startPark()
+            3 -> { gamePick = true; monCursor = 0; sfx(Sound.KICK) }
             else -> { monSwitch = true; monCursor = mon.ordinal; sfx(Sound.KICK) }
         }
     }
@@ -4976,6 +5013,18 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         gfx.rect(0f, 22f, viewW, VIEW_H - 22, 0x88000000.toInt())
         gfx.rect(px - 2, 38f, 304f, 164f, 0xFF1A3A2A.toInt())
         gfx.rect(px, 40f, 300f, 160f, 0xFFE8F4E0.toInt())
+        if (gamePick) {
+            gfx.shadowText("PICK A GAME", px + 150, 56f, 10f, 0xFFFFD21F.toInt(), 1)
+            MonGame.entries.forEachIndexed { i, g ->
+                val y = 64f + i * 32f
+                gfx.rect(px + 20, y, 260f, 28f, listOf(0xFFE84A4A, 0xFF3A7AE8, 0xFF4AB85A, 0xFF8A3AD8)[i].toInt())
+                gfx.text(g.label, px + 30, y + 12, 9f, white)
+                gfx.text(g.blurb, px + 30, y + 23, 6f, 0xFFF4F4F4.toInt())
+                if (padConnected && monCursor == i) padFrame(gfx, px + 18, y - 2, 264f, 32f)
+            }
+            if (monEnergy <= 0) gfx.text("${mon.label} is sleepy: games are just for fun (no prizes)", px + 150, 196f, 5.5f, 0xFF8A1010.toInt(), 1)
+            return
+        }
         if (monSwitch) {
             gfx.shadowText("SWITCH POKEMON", px + 150, 56f, 10f, 0xFFFFD21F.toInt(), 1)
             val cw = SWITCH_CARD
@@ -5064,7 +5113,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     private fun updateHome(dt: Float, tapped: Boolean, close: Boolean, actionE: Boolean) {
         if (close) {
-            when { home3d -> exit3d(); elevatorMenu -> elevatorMenu = false; building -> toggleBuild(); inGarden -> leaveGarden(); monMenu && monSwitch -> monSwitch = false; monMenu -> monMenu = false; homeShop -> homeShop = false; plushBook -> plushBook = false; else -> leaveHome() }
+            when { home3d -> exit3d(); elevatorMenu -> elevatorMenu = false; building -> toggleBuild(); inGarden -> leaveGarden(); monMenu && gamePick -> gamePick = false; monMenu && monSwitch -> monSwitch = false; monMenu -> monMenu = false; homeShop -> homeShop = false; plushBook -> plushBook = false; else -> leaveHome() }
             return
         }
         if (homeHopT > 0f) homeHopT -= dt
