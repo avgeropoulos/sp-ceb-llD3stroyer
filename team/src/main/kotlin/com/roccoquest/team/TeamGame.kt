@@ -3927,7 +3927,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     private val white = 0xFFFFFFFF.toInt()
 
-    fun render(gfx: Gfx) {
+    /**
+     * Draws the current frame. With [drawWorld] false a level's picture is left out (only the HUD,
+     * buttons and messages are drawn), so Team Up! 3D can draw the level itself underneath.
+     */
+    fun render(gfx: Gfx, drawWorld: Boolean = true) {
         when (state) {
             State.TITLE -> renderTitle(gfx)
             State.SLOTS -> renderSlots(gfx)
@@ -3942,7 +3946,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             State.MAP -> renderMap(gfx)
             State.CONTROLS -> renderControls(gfx)
             else -> {
-                renderWorld(gfx)
+                if (drawWorld) renderWorld(gfx)
                 renderHud(gfx)
                 if (state == State.PLAY) hazards.draw(this, gfx, viewW)
                 when (state) {
@@ -4037,29 +4041,51 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun visibleThing(t: Thing, cam: Float) = !t.removed && t.x + t.w >= cam - 128f && t.x <= cam + viewW + 128f
 
     private fun renderWorld(gfx: Gfx) {
-        val sx = if (shake > 0) sin(time * 80) * 3f else 0f
-        val cam = camX + sx
+        val cam = worldCam
         renderBackground(gfx, cam)
         renderTiles(gfx, cam)
-        if (quakeWarn >= 0f) drawQuake(gfx, -cam)
+        renderWorldActors(gfx, cam)
+    }
+
+    // ---------------------------------------------------------------- hooks for Team Up! 3D
+    // The 3D edition (teamup3d/) runs this same game and draws a level's pieces separately:
+    // the backdrop flat behind, then tiles and characters turned into 3D shapes.
+
+    /** The camera position a level is drawn from, including the earthquake shake. */
+    val worldCam get() = camX + if (shake > 0) sin(time * 80) * 3f else 0f
+
+    /** True when [render] draws a level (playing, or a menu or message on top of one). */
+    val showsLevel get() = state in IN_LEVEL && state != State.INTRO || state == State.VICTORY
+
+    fun renderLevelBackdrop(gfx: Gfx) = renderBackground(gfx, worldCam)
+    fun renderLevelTiles(gfx: Gfx) = renderTiles(gfx, worldCam)
+
+    /** Draws everything in the level except backdrop and tiles; [mark] is called before each object. */
+    fun renderLevelActors(gfx: Gfx, mark: (Any) -> Unit) = renderWorldActors(gfx, worldCam, mark)
+
+    private fun renderWorldActors(gfx: Gfx, cam: Float, mark: (Any) -> Unit = {}) {
+        if (quakeWarn >= 0f) { mark(this); drawQuake(gfx, -cam) }
         val ox = -cam
-        for (t in things) if (t is House && visibleThing(t, cam)) t.draw(this, gfx, ox)
-        for (t in things) if (t !is Shot && t !is MonShot && t !is Frog && t !is House && visibleThing(t, cam)) t.draw(this, gfx, ox)
+        for (t in things) if (t is House && visibleThing(t, cam)) { mark(t); t.draw(this, gfx, ox) }
+        for (t in things) if (t !is Shot && t !is MonShot && t !is Frog && t !is House && visibleThing(t, cam)) { mark(t); t.draw(this, gfx, ox) }
         for (f in foes) if (f.x + f.w > cam - 40 && f.x < cam + viewW + 40) {
+            mark(f)
             if (f.onGround && !f.dying) softShadow(gfx, f.cx + ox, f.bottom, f.w)
             f.draw(this, gfx, ox)
             if (f.frozenT > 0f) gfx.rect(f.x + ox - 2, f.y - 2, f.w + 4, f.h + 4, 0x887FD8FF.toInt())
             f.drawHealth(gfx, ox)
         }
-        for (h in team) if (h.onGround) softShadow(gfx, h.cx + ox, h.bottom, if (h === rocco && megaT > 0f) h.w * 2 else h.w)
-        for (h in followers) h.draw(this, gfx, ox)
+        for (h in team) if (h.onGround) { mark(h); softShadow(gfx, h.cx + ox, h.bottom, if (h === rocco && megaT > 0f) h.w * 2 else h.w) }
+        for (h in followers) { mark(h); h.draw(this, gfx, ox) }
+        mark(leader)
         leader.draw(this, gfx, ox)
         if (shieldType != Shield.NONE) {
             val hh = if (heroOut == Who.BLOCKY) blocky else rocco
             if (!hh.mini) TeamArt.shieldIcon(gfx, hh.cx + ox + hh.facing * 6f - 4f, hh.y + hh.h * 0.3f, 11f, shieldType)
         }
-        for (t in things) if ((t is Shot || t is MonShot || t is Frog) && visibleThing(t, cam)) t.draw(this, gfx, ox)
-        for (p in particles) p.draw(gfx, ox)
+        for (t in things) if ((t is Shot || t is MonShot || t is Frog) && visibleThing(t, cam)) { mark(t); t.draw(this, gfx, ox) }
+        for (p in particles) { mark(p); p.draw(gfx, ox) }
+        mark(this)
         // Underwater tint up to the shore, with a wavy surface line.
         if (level.def.shoreX >= 0) {
             val sx0 = level.def.shoreX * TILE + ox

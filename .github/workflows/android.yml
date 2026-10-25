@@ -22,15 +22,16 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Run game logic tests
-        run: ./gradlew :core:test :team:test --console=plain
+        run: ./gradlew :core:test :team:test :teamup3d:engine:test --console=plain
 
       - name: Build APKs
-        run: ./gradlew :app:assembleDebug :teamapp:assembleDebug --console=plain
+        run: ./gradlew :app:assembleDebug :teamapp:assembleDebug :teamup3d:android:assembleDebug --console=plain
 
       - name: Rename APKs
         run: |
           cp app/build/outputs/apk/debug/app-debug.apk RoccosQuest.apk
           cp teamapp/build/outputs/apk/debug/teamapp-debug.apk TeamUp.apk
+          cp teamup3d/android/build/outputs/apk/debug/android-debug.apk TeamUp3D.apk
 
       - uses: actions/upload-artifact@v4
         with:
@@ -42,19 +43,26 @@ jobs:
           name: TeamUp-apk
           path: TeamUp.apk
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TeamUp3D-apk
+          path: TeamUp3D.apk
+
       - name: Publish downloadable build
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-${{ github.ref_name }}
-          name: "Rocco's Quest and Team Up! - Download for Android"
+          name: "Rocco's Quest, Team Up! and Team Up! 3D - Download for Android"
           prerelease: false
           make_latest: true
           body: |
-            Install on Android: download **RoccosQuest.apk** or **TeamUp.apk** on your phone,
-            open it, and allow "install unknown apps" for your browser if asked.
+            Install on Android: download **RoccosQuest.apk**, **TeamUp.apk** or **TeamUp3D.apk** on your
+            phone, open it, and allow "install unknown apps" for your browser if asked.
+            Team Up! 3D is a separate app, so it installs next to Team Up! instead of replacing it.
 
             Built from ${{ github.sha }}.
           files: |
             RoccosQuest.apk
             TeamUp.apk
+            TeamUp3D.apk

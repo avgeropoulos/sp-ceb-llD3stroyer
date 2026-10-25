@@ -35,6 +35,17 @@ after a hit you're safe for `HURT_SAFE_TIME`.
 Only one of Rocco or Blocky is out at a time, with the Pokemon (`TeamGame.team` is the live pair,
 `allHeroes` is everybody; `switchTo` swaps them).
 
+## Team Up! 3D (`teamup3d/`)
+
+A separate app (`com.roccoquest.teamup3d`) that runs the same `TeamGame` and draws levels in 3D.
+`TeamGame` exposes hooks for it (`showsLevel`, `worldCam`, `renderLevelBackdrop`, `renderLevelTiles`,
+`renderLevelActors(gfx, mark)`, `render(gfx, drawWorld = false)`); keep them working when changing
+`renderWorld`. `teamup3d/engine` (`TeamScene`, `TileGfx` = tiles to 3D blocks, `PaperGfx` = any 2D drawing to
+3D shapes, `Voxels` = sprites to puffy models) is plain Kotlin; its tests render PNGs with `SoftRaster` to
+`teamup3d/engine/build/screens3d`. `teamup3d/android` draws the sky and HUD with Canvas into
+`SurfaceTexture`s (`CanvasLayer`) and the level with GLES 2.0 (`GlScene`). Add `:teamup3d:engine` to the
+scratch build to test it locally.
+
 ## Where things are in Team Up! (`team/src/main/kotlin/com/roccoquest/team/`)
 
 | File | What's in it |

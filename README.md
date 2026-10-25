@@ -105,6 +105,25 @@ waves, a triangle bass and noise drums, so there are no audio files. Tap the **â
 * Keyboards and game controllers also work: arrow keys or WASD, Shift to run,
   Down or S to crouch/slam, Space to jump, X to fire, M for music.
 
+## Team Up! 3D
+
+**Team Up! 3D** is the same Team Up! game (same levels, heroes, Pokemon, shop, house and saves
+format) with the levels drawn in real 3D, like the newer Mario games: blocks are chunky 3D cubes,
+the ground is a deep slab with a rounded grassy edge, and every hero, monster and item is a puffy
+3D model with light and shine. The painted skies stay behind, and the HUD, buttons, map and menus
+are exactly like Team Up!.
+
+![Team Up! 3D](docs/teamup3d.png)
+
+* It's a **separate app** (`com.roccoquest.teamup3d`, called "Team Up! 3D"), so it installs next to
+  Team Up! instead of replacing it. It keeps its own save files.
+* Download **TeamUp3D.apk** from the same release as the other games:
+  https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/download/latest-ccr-12025816-jglq5w/TeamUp3D.apk
+* **Updates install over the old one**: it's signed with the same fixed key as the other games and
+  every build has a bigger version number, so just download the new APK and open it. No uninstalling.
+* Code: `teamup3d/engine` (the 3D renderer in plain Kotlin, with tests that render screenshots to
+  `teamup3d/engine/build/screens3d`) and `teamup3d/android` (the Android app, OpenGL ES 2.0).
+
 ## New game: Rocco & Blocky: Team Up!
 
 A second game in the same repository. **Rocco** the plumber, **Blocky** the miner and a
