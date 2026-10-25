@@ -22,6 +22,13 @@ enum class CaptureKind(val label: String, val speed: Float, val jump: Float, val
     WITCH("WITCH", 1f, 1f, "THROW: potions!"),
     FISH("FISH", 1.3f, 1f, "Swim super fast!"),
     OTHER("BAD GUY", 1.2f, 1.1f, "A bit faster!"),
+    // Dino World: every dinosaur can be captured!
+    RAPTOR("RAPTOR", 1.9f, 1.25f, "Super fast raptor run!"),
+    TRICERA("TRICERATOPS", 1.2f, 1f, "THROW: horn CHARGE!"),
+    PTERO("PTERODACTYL", 1.2f, 1.1f, "Hold JUMP to fly!"),
+    STEGO("STEGOSAURUS", 1f, 1f, "Spiky back: bad guys can't hurt you!"),
+    ANKYLO("ANKYLOSAURUS", 1f, 1f, "THROW: tail club SMASH!"),
+    REX("BABY REX", 1.15f, 1.1f, "THROW: a big ROAR!"),
     ;
 
     companion object {
@@ -38,6 +45,12 @@ enum class CaptureKind(val label: String, val speed: Float, val jump: Float, val
             f is Enderman -> ENDERMAN
             f is Witch -> WITCH
             f is Fish -> FISH
+            f is Raptor -> RAPTOR
+            f is Triceratops -> TRICERA
+            f is Pterodactyl -> PTERO
+            f is Stegosaurus -> STEGO
+            f is Ankylosaurus -> ANKYLO
+            f is BabyRex -> REX
             f.maxHp > 20 -> null
             else -> OTHER
         }

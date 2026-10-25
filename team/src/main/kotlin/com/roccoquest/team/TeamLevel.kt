@@ -120,6 +120,16 @@ enum class Place(val music: Music) {
     STATION(Music.SPACE),
     /** World 10: a SPACE WALK outside a space station, high above the Earth. Spacesuits on! Very floaty. */
     ORBIT(Music.SPACE),
+    /** World 11: Dino World, long ago: volcanoes, giant ferns and dinosaurs. */
+    PREHISTORIC(Music.JUNGLE),
+    // World 12: Planet World. Each planet looks like the one you can live on (HomePlanet), with its own gravity.
+    MARS(Music.SPACE),
+    ICE_PLANET(Music.SNOW),
+    CANDY_PLANET(Music.SILLY),
+    JUNGLE_PLANET(Music.JUNGLE),
+    RING_PLANET(Music.DREAMY),
+    LAVA_PLANET(Music.HEROIC),
+    CRYSTAL_PLANET(Music.CRYSTAL),
 }
 
 /**
@@ -180,7 +190,7 @@ class Builder(private val w: Int) {
 
 /** Level characters that are bosses: Krag Jr. (J, W), King Krag (K, Q, Y), the Warden (G, and the twins 5),
  * the Ender Dragon (Z), King Boo-Hoo (3), Witch Wanda (4) and Rock Star Krag (!). */
-const val BOSS_CHARS = "JWKQGYZ345!&{}"
+const val BOSS_CHARS = "JWKQGYZ345!&{}'"
 
 object Levels {
     val all: List<LevelDef> by lazy {
@@ -190,7 +200,7 @@ object Levels {
             mushroomJungle(), lavaLake(), wonderCastle(),
             villagerValley(), coralReef(), minecartMine(), enderPlains(), deepDark(),
             treasureLagoon(), spikeTemple(), fireFortress(), boneCastle(), theEnd(),
-        ).plus(World2.all).plus(MoreWorlds.all).plus(World5.all).plus(MoreWorlds.world6).plus(MoreWorlds.world7).plus(MoreWorlds.world8).plus(MoreWorlds.world9).plus(MoreWorlds.world10).mapIndexed { i, d -> remix(d, i) }
+        ).plus(World2.all).plus(MoreWorlds.all).plus(World5.all).plus(MoreWorlds.world6).plus(MoreWorlds.world7).plus(MoreWorlds.world8).plus(MoreWorlds.world9).plus(MoreWorlds.world10).plus(MoreWorlds.world11).plus(MoreWorlds.world12).mapIndexed { i, d -> remix(d, i) }
     }
 
     /**

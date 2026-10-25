@@ -180,6 +180,60 @@ object MoreWorlds {
         Plan("THE FINAL ERUPTION", Place.VOLCANO, "THE FINAL ERUPTION! Wonder King Krag, Rock Star Krag and GALAXY KRAG, one after another!", boss = "Q!}"),
     )
 
+    private val world11Plans = listOf(
+        Plan("DINO VALLEY", Place.PREHISTORIC, "WORLD 11: DINO WORLD! Grab CAPPY and throw it at a dinosaur to BECOME it!", extra = 60),
+        Plan("RAPTOR RUN", Place.PREHISTORIC, "Raptors are FAST. Capture one and run super fast!", extra = 80),
+        Plan("FERN FOREST", Place.JUNGLE, "Giant ferns... and something big is stomping around.", extra = 80),
+        Plan("TRICERATOPS TRAIL", Place.PREHISTORIC, "When a triceratops scrapes its foot, it's about to CHARGE!", extra = 90),
+        Plan("PTERODACTYL PEAKS", Place.HILLS, "Capture a pterodactyl and FLY!", extra = 90),
+        Plan("TAR PITS", Place.DESERT, "Sticky black tar and bones. Don't fall in!", extra = 100),
+        Plan("REX'S NEST", Place.PREHISTORIC, "Baby Rexes roar... and so does their dad!", extra = 100),
+        Plan("STEGO SWAMP", Place.JUNGLE, "Stegosauruses have spiky backs: don't jump on them!", extra = 110),
+        Plan("DINO EGG HUNT", Place.PREHISTORIC, "So many eggs! Who laid them all?", extra = 110),
+        Plan("VOLCANO VALLEY", Place.VOLCANO, "Dinosaurs AND volcanoes!", extra = 120),
+        Plan("FOSSIL CAVE", Place.CAVE, "Old bones in the walls of the cave.", extra = 110),
+        Plan("ANKYLO ALLEY", Place.PREHISTORIC, "Ankylosaurus has a club on its tail. Don't stand behind it!", extra = 120),
+        Plan("PREHISTORIC PLAINS", Place.HILLS, "A whole herd of dinosaurs!", extra = 130),
+        Plan("THE DINO STAMPEDE", Place.PREHISTORIC, "RUN! Everybody's charging!", extra = 140),
+        Plan("JURASSIC JUNGLE", Place.JUNGLE, "The deepest, greenest jungle.", extra = 140),
+        Plan("METEOR CRATER", Place.PREHISTORIC, "Uh oh... a meteor shower is coming!", extra = 150),
+        Plan("LONG NECK LAKE", Place.PREHISTORIC, "Long-necked dinosaurs drink at the lake.", extra = 150),
+        Plan("BONE BRIDGE", Place.DESERT, "A bridge made of giant bones.", extra = 160),
+        Plan("THE BIG DIG", Place.CAVE, "Dig for fossils with Blocky!", extra = 160),
+        Plan("REX KRAG'S MOUNTAIN", Place.PREHISTORIC, "The top of the mountain... it's shaking...", extra = 180),
+        Plan("REX KRAG", Place.PREHISTORIC, "REX KRAG! King Krag turned into a giant T-REX!", boss = "'"),
+    )
+
+    private val world12Plans = listOf(
+        Plan("LIFT OFF TO MARS", Place.MARS, "WORLD 12: PLANET WORLD! A rocket trip to the red planet. Floaty jumps!", extra = 80),
+        Plan("RED SAND DUNES", Place.MARS, "Martian sand as far as you can see.", extra = 100),
+        Plan("FROZEN PLANET", Place.ICE_PLANET, "An ice planet! Brrr!", extra = 90),
+        Plan("ICICLE CAVES", Place.ICE_PLANET, "Giant icicles everywhere.", extra = 110),
+        Plan("CANDY PLANET", Place.CANDY_PLANET, "A whole planet made of candy!", extra = 100),
+        Plan("LOLLIPOP LANE", Place.CANDY_PLANET, "Don't eat the scenery!", extra = 110),
+        Plan("MARS BASE", Place.MARS, "MECHA KRAG built a base on Mars!", boss = "{"),
+        Plan("ALIEN JUNGLE", Place.JUNGLE_PLANET, "Purple trees and a green sky. Weird!", extra = 110),
+        Plan("GLOWING VINES", Place.JUNGLE_PLANET, "The plants glow in the dark.", extra = 120),
+        Plan("RING RIDE", Place.RING_PLANET, "Running around the rings of a giant planet. SO floaty!", extra = 120),
+        Plan("STORM CLOUDS", Place.RING_PLANET, "Big swirly storms below.", extra = 130),
+        Plan("LAVA PLANET", Place.LAVA_PLANET, "The hottest planet of all. Watch the lava!", extra = 120),
+        Plan("MAGMA MOONS", Place.LAVA_PLANET, "Two moons and a sea of lava.", extra = 130),
+        Plan("CRYSTAL PLANET", Place.CRYSTAL_PLANET, "Everything sparkles!", boss = "Q"),
+        Plan("PRISM PATH", Place.CRYSTAL_PLANET, "Rainbow light bouncing everywhere.", extra = 140),
+        Plan("MARS CANYON", Place.MARS, "The biggest canyon in the galaxy.", extra = 150),
+        Plan("ICE RINK PLANET", Place.ICE_PLANET, "A planet that's one big skating rink.", extra = 150),
+        Plan("CANDY CRATERS", Place.CANDY_PLANET, "Craters full of sprinkles.", extra = 160),
+        Plan("THE LAST RINGS", Place.RING_PLANET, "Almost at the edge of the galaxy...", extra = 170),
+        Plan("GALAXY ROAD", Place.CRYSTAL_PLANET, "The road to the final battle!", extra = 200),
+        Plan("THE GALAXY GRAND FINALE", Place.CRYSTAL_PLANET, "THE GRAND FINALE! Rex Krag, Rock Star Krag and Galaxy Krag, one after another!", boss = "'!}"),
+    )
+
+    /** World 11, Dino World: dinosaurs to capture with Cappy, Dash to ride, and REX KRAG. */
+    val world11: List<LevelDef> by lazy { world11Plans.mapIndexed { i, p -> make(p, world = 11, seed = 11000 + i * 47) } }
+
+    /** World 12, Planet World: a rocket trip to a different planet in every level. */
+    val world12: List<LevelDef> by lazy { world12Plans.mapIndexed { i, p -> make(p, world = 12, seed = 12000 + i * 53) } }
+
     /** World 10, Fire & Space World: long levels, volcano ERUPTIONS, meteor showers and SPACE WALKS. */
     val world10: List<LevelDef> by lazy { world10Plans.mapIndexed { i, p -> make(p, world = 10, seed = 10000 + i * 43) } }
 
@@ -209,6 +263,7 @@ object MoreWorlds {
         "!" -> rockStage(p)
         "{" -> mechaStage(p)
         "}" -> galaxyArena(p)
+        "'" -> rexArena(p)
         "55" -> twinBoss(p)
         else -> rush(p, p.boss)
     }
@@ -221,6 +276,26 @@ object MoreWorlds {
                 Place.TOYS -> ";,;gkH,"
                 Place.FUNGI -> "gUT;Hk"
                 else -> ";,8gk"
+            })
+            return@buildString
+        }
+        if (world == 11) {
+            append(when (place) {
+                Place.CAVE -> "(`_gk"
+                Place.DESERT -> "()_`b"
+                else -> "()`]_(("
+            })
+            return@buildString
+        }
+        if (world == 12) {
+            append(when (place) {
+                Place.MARS -> "<A;g<"
+                Place.ICE_PLANET -> "67g6"
+                Place.CANDY_PLANET -> "1g1k"
+                Place.JUNGLE_PLANET -> "TUHg"
+                Place.RING_PLANET -> "<<gk"
+                Place.LAVA_PLANET -> "gkb9"
+                else -> "AH<g,"
             })
             return@buildString
         }
@@ -257,7 +332,7 @@ object MoreWorlds {
     }
 
     private fun airFoes(place: Place, world: Int = 0) = if (world == 6) "qqv" else if (world == 7) "vll" else if (world == 8) "llv"
-        else if (world == 9 || (world == 10 && place in setOf(Place.ORBIT, Place.MOON))) "//l" else when (place) {
+        else if (world == 9 || world == 12 || (world == 10 && place in setOf(Place.ORBIT, Place.MOON))) "//l" else if (world == 11) "[[l" else when (place) {
         Place.CAVE, Place.DEEP -> "vvq"
         Place.NIGHT, Place.CASTLE, Place.END -> "qqv"
         else -> "llw"
@@ -275,10 +350,12 @@ object MoreWorlds {
         val b = Builder(w)
         val place = p.place
         if (place == Place.CAVE || place == Place.CASTLE || place == Place.STATION) b.fill(0, w - 1, 0, 1, if (place == Place.CAVE) 's' else 'X')
-        val lava = place == Place.VOLCANO || place == Place.CASTLE
+        val lava = place == Place.VOLCANO || place == Place.CASTLE || place == Place.LAVA_PLANET
         val ground = groundFoes(world, place)
         val air = airFoes(place, world)
         b.ground(0, 16).at(3, 12, '@')
+        // Dino World: a free Cappy hat right at the start (and sometimes Dash to ride).
+        if (world == 11) { b.at(13, 12, '"'); if (r.nextInt(3) == 0) b.at(15, 12, 'y') }
         // The first rock always has iron, gold, diamond or emerald in it.
         b.rock(8, 12, *rocks[listOf(0, 1, 2, 6)[r.nextInt(4)]])
         var x = 17
@@ -446,6 +523,19 @@ object MoreWorlds {
         .row(112, 8, "h").row(148, 6, "h")
         .fill(160, 160, 2, 12, 'X')
         .at(132, 12, '}')
+        .build(p.name, p.place, p.tip)
+
+    /** REX KRAG's mountain top: a short run in, then a big flat arena (room to dodge the falling rocks). */
+    private fun rexArena(p: Plan) = Builder(190)
+        .ground(0, 189)
+        .at(3, 12, '@').at(9, 12, '"').rock(13, 12, "DoxD", "ssss").row(19, 9, "?h?")
+        .at(26, 12, '(').at(32, 6, '[').at(38, 12, ')')
+        .rock(44, 12, "aRe", "sss").at(50, 12, 'r').at(54, 12, '|')
+        .at(62, 12, '`').at(68, 12, '_').row(72, 9, "BhB").at(80, 12, ']')
+        .rock(86, 12, "eDo", "sss").at(94, 12, '|').row(98, 9, "m*m")
+        .row(116, 8, "h").row(150, 8, "h")
+        .fill(170, 170, 2, 12, 'X')
+        .at(136, 12, '\'')
         .build(p.name, p.place, p.tip)
 
     /** The Warden Twins: two Wardens in one dark cave (each one has less health than the big Warden). */

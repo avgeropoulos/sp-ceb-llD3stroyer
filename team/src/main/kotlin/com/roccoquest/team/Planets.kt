@@ -73,3 +73,89 @@ enum class HomePlanet(
         }
     }
 }
+
+/** World 12's planets: each level Place has a planet look, a gravity, and a name for the rocket trip. */
+object PlanetArt {
+    fun planetOf(p: Place): HomePlanet? = when (p) {
+        Place.MARS -> HomePlanet.MARS
+        Place.ICE_PLANET -> HomePlanet.ICE
+        Place.CANDY_PLANET -> HomePlanet.CANDY
+        Place.JUNGLE_PLANET -> HomePlanet.JUNGLE
+        Place.RING_PLANET -> HomePlanet.RINGS
+        Place.LAVA_PLANET -> HomePlanet.LAVA
+        Place.CRYSTAL_PLANET -> HomePlanet.CRYSTAL
+        else -> null
+    }
+
+    /** How heavy everyone is on this planet (1 = Earth). */
+    fun gravity(p: Place): Float = when (p) {
+        Place.MARS -> 0.7f
+        Place.RING_PLANET -> 0.55f
+        Place.CRYSTAL_PLANET, Place.JUNGLE_PLANET -> 0.85f
+        else -> 1f
+    }
+
+    private val tiles = HashMap<Pair<HomePlanet, Boolean>, com.roccoquest.game.Sprite>()
+
+    /** A ground tile in the planet's colors (cached: drawn once per planet). */
+    fun ground(p: Place, under: Boolean): com.roccoquest.game.Sprite? {
+        val pl = planetOf(p) ?: return null
+        return tiles.getOrPut(pl to under) {
+            com.roccoquest.game.Sprite(16, 16, IntArray(256) { i ->
+                val x = i % 16; val y = i / 16
+                val speck = (x * 7 + y * 13) % 11 == 0
+                when {
+                    !under && y < 3 -> if ((x + y) % 5 == 0) com.roccoquest.game.mixColor(pl.ground, 0xFFFFFFFF.toInt(), 0.25f) else pl.ground
+                    speck -> com.roccoquest.game.mixColor(pl.ground2, 0xFF000000.toInt(), 0.25f)
+                    else -> pl.ground2
+                }
+            })
+        }
+    }
+
+    /** The planet's sky and hills behind a level. */
+    fun drawSky(gfx: Gfx, p: Place, viewW: Float, viewH: Float, cam: Float, t: Float) {
+        val pl = planetOf(p) ?: return
+        gfx.gradient(0f, 0f, viewW, viewH, pl.skyTop, pl.skyBottom)
+        pl.drawSky(gfx, viewW, 150f, t, viewW - 80f - cam * 0.01f)
+        val off1 = cam * 0.15f
+        var i = (off1 / 260f).toInt() - 1
+        while (i * 260f - off1 < viewW) { gfx.oval(i * 260f - off1 - 40f, 150f + (i and 1) * 10f, 340f, 120f, pl.hill1); i++ }
+        val off2 = cam * 0.3f
+        i = (off2 / 200f).toInt() - 1
+        while (i * 200f - off2 < viewW) {
+            val x = i * 200f - off2
+            gfx.oval(x, 172f + (i and 1) * 8f, 240f, 100f, pl.hill2)
+            // Something special on each planet
+            when (pl) {
+                HomePlanet.CRYSTAL -> gfx.poly(floatArrayOf(x + 90f, x + 102f, x + 114f), floatArrayOf(178f, 136f, 178f), 0xFFE0C8FF.toInt())
+                HomePlanet.CANDY -> { gfx.rect(x + 100f, 140f, 4f, 40f, 0xFFF4F4F4.toInt()); gfx.oval(x + 88f, 124f, 28f, 28f, 0xFFFF6A9A.toInt()) }
+                HomePlanet.JUNGLE -> { gfx.rect(x + 100f, 130f, 6f, 50f, 0xFF4A2A6A.toInt()); gfx.oval(x + 80f, 116f, 46f, 26f, 0xFF3AA87A.toInt()) }
+                HomePlanet.ICE -> gfx.poly(floatArrayOf(x + 80f, x + 100f, x + 120f), floatArrayOf(180f, 130f, 180f), 0xFFF4F8FF.toInt())
+                HomePlanet.LAVA -> gfx.rect(x + 60f, 176f, 80f, 4f, 0xFFFF8A2A.toInt())
+                HomePlanet.MARS -> gfx.oval(x + 90f, 168f, 30f, 8f, 0xFF8A3A1A.toInt())
+                else -> {}
+            }
+            i++
+        }
+    }
+
+    /** The rocket trip on the level's title card: the rocket flies to the planet. */
+    fun drawTrip(gfx: Gfx, p: Place, viewW: Float, t: Float) {
+        val pl = planetOf(p) ?: return
+        val px = viewW - 70f
+        gfx.oval(px - 26f, 104f, 52f, 52f, pl.ground)
+        gfx.oval(px - 18f, 112f, 18f, 12f, pl.hill1)
+        gfx.oval(px - 2f, 132f, 14f, 10f, pl.hill2)
+        if (pl.extra == 2) gfx.poly(floatArrayOf(px - 40f, px + 40f, px + 36f, px - 36f), floatArrayOf(132f, 126f, 131f, 137f), 0xCCF4E0B0.toInt())
+        val k = (t / 2.5f).coerceAtMost(1f)
+        val rx = 60f + (px - 100f) * k
+        val ry = 150f - sin(k * 3.14f) * 30f
+        gfx.oval(rx - 22f, ry + 2f, 12f, 6f, 0xFFFF8A2A.toInt())
+        gfx.rect(rx - 12f, ry, 22f, 10f, 0xFFF4F4F4.toInt())
+        gfx.poly(floatArrayOf(rx + 10f, rx + 18f, rx + 10f), floatArrayOf(ry, ry + 5f, ry + 10f), 0xFFE84A4A.toInt())
+        gfx.oval(rx - 2f, ry + 2f, 6f, 6f, 0xFF6AC8FF.toInt())
+        gfx.poly(floatArrayOf(rx - 12f, rx - 16f, rx - 6f), floatArrayOf(ry, ry - 5f, ry), 0xFFE84A4A.toInt())
+        gfx.poly(floatArrayOf(rx - 12f, rx - 16f, rx - 6f), floatArrayOf(ry + 10f, ry + 15f, ry + 10f), 0xFFE84A4A.toInt())
+    }
+}
