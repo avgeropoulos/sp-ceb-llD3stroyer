@@ -45,7 +45,7 @@ Only one of Rocco or Blocky is out at a time, with the Pokemon (`TeamGame.team` 
 | `Sea.kt` | World 5 (levels 85-105: water, pirate ships, Rainbow Road), ship/mast/rainbow tiles (`I` `:` `%`), `Cannon` (`N`), `MetalItem` (`$`), Metal Rocco sprites, sea and space skies |
 | `MoreWorlds.kt` | Worlds 3 and 4 (levels 43-84) World 6 (Spooky World, levels 106-126, `world6`) and World 7 (Winter World, 127-147, `world7`), appended after World 5, built by a seeded level generator plus boss-arena templates. Last level: THE ULTIMATE BATTLE (Y, Q, Z boss rush) |
 | `Monsters.kt` | Newer monsters (Skelly Archer + arrows, Hopper, Gloop, Snapper + seeds, Crusher `z`, Peekaboo `q`, Puffcloud `l`, Spikestack `j`), bonus `Portal`, `Chest`, sunset sky, Dash |
-| `Homes.kt` | `HouseType` (15), `Furniture` (46: `floor` 0-3, `unlock` = levels beaten; `furnitureBits` is a Long saved as `furniture`+`furniture2`), floors (`MAX_FLOORS`, stairs at `STAIRS_X`), `PAINTS` (house colors), the Pokemon mat (`MON_X`), `BedStyle`, house outside/inside drawing (the room is 900 wide and scrolls), `PlushieItem` |
+| `Homes.kt` | `HouseType` (23), `Furniture` (46: `floor` 0-3, `unlock` = levels beaten; `furnitureBits` is a Long saved as `furniture`+`furniture2`), floors (`MAX_FLOORS`, stairs at `STAIRS_X`), `PAINTS` (house colors), the Pokemon mat (`MON_X`), `BedStyle`, house outside/inside drawing (the room is 900 wide and scrolls), `PlushieItem` |
 | `Plushies.kt` | The 350 `Plushie`s (new ones always go at the END: saved by index) (characters use sticker art, animals are drawn from a `Species` + color) |
 | `Actors.kt` | `Power` (flowers), `Mon` (Pokemon), `Sword` (with durability), `Armor`, `Shield`, and `Hero` (Rocco, Blocky, partner) |
 | `Foes.kt` | Enemies with health bars, Krag Jr. and King Krag (normal, Wonder, Dry Bones) |
@@ -96,7 +96,7 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
   (the POKEMON mat: `monMenu`, `monSwitch`). Each Pokemon has its own XP (`monXp`, keys `monXp<i>`), levels 1-10.
   `superTime()`, `superDmg()` and `monAttack` scale gently with the level.
 * Save keys added: `stk0..stk9` (stickers, 30 bits each), `plush4`, `plush5`, `houseColor`, `monXp<i>`.
-* Houses have 1-3 floors (`houseFloors`, key `floors`; `homeFloor` is where you are, `changeFloor`).
+* Houses have 1-4 floors (`houseFloors`, key `floors`; `homeFloor` is where you are, `changeFloor`).
   `State.PARK` is the Pokemon Park mini game BERRY CATCH (`startPark`/`updatePark`/`renderPark`), opened from
   the Pokemon menu's MINI GAME button or the ARCADE upstairs. Prizes only while `monEnergy` > 0.
 * `score` is a Long; `particles` are capped at `MAX_PARTICLES` (too many floating texts made phones lag).
@@ -118,6 +118,19 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
 * Evolution (`Evolve.kt`, Actors.kt): `MON_LINES`, `Mon.base` (whose SUPER/physics a form uses; switch on `mon.base`,
   not `mon`), `root` (XP is kept on the root), `evolveLevel`, `nextForm`. Evolved forms are drawn with `TintGfx` +
   `ScaledGfx` over their first form. The pick screen only shows `STARTERS` (the first 10).
+* `Pokedex.kt`: the 50 newest Pokemon (LEAFLING..DRATINY) built from parts (`Spec`: `Body`, `Ears`, `Tail`, extras `X`,
+  `base`). `MonSize.kt` scales every Pokemon to a target height (`TeamArt.mon` with `outline = false` draws the natural
+  size, used inside evolutions) and finds the head (`MonSize.head`) for costumes. MEGA_BLAZE/HYDRO/BLOOM (Evolve.kt,
+  `isMega`, level 10). Rocco is drawn at `ROCCO_SCALE`.
+* `Decor.kt`: `DecorItem` (76, saved by index; `yard` ones go in the backyard past `Garden.YARD_X`; Garden.WIDTH 2000)
+  placed as `Placed` in `TeamGame.decor` (keys `decorN`/`decor_<i>`, `Decor.pack`). DECOR/YARD/STYLE shop tabs 6/7/8.
+  `hasElevator` (key `elevator`, replaces the stairs, `elevatorMenu`). SHOP button on every floor.
+* `Build.kt`: Construction Rocco (`building`, `blocks[floor]` cell -> `BuildBlock`, keys `bld<f>n`/`bld<f>_<i>`).
+* `MonGames.kt`: Memory Match, Balloon Pop, Dance Party (`State.GAMES`, `startMonGame`; GAMES button in the Pokemon menu).
+* `Style.kt`: `RoccoOutfit`, `BlockySkin`, `MonCostume` (current ones in the `Style` object; keys outfits/skins/costumes
+  bits + outfit/skin/costume), `HatKind` drawing. `LongScenes.kt`: scenes 20-25 (10-12 s); MOVIES (TV / movie screen)
+  replays seen scenes (`scenesSeen`, `playScene(kind, BACK_HOME)`, `theater`).
+* On a controller B is also ACTION, so modes that use ACTION (build mode) must not close on `nav.b`.
 * `Galaxy.kt`: Worlds 8-9 (`MoreWorlds.world8/world9`; places TOYS, FUNGI, MOON (hero gravity 0.6), STATION; `GalaxyArt`
   ground tiles + skies), foes `ToySoldier` (`;`), `JackBox` (`,`), `Ufo` (`/`) + `Beam`, `MoonHopper` (`<`), bosses
   `MechaKrag` (`{`, `Missile`) and `GalaxyKrag` (`}`, the last level; `StarShot`). Also `Outline.of(sprite)` (cached

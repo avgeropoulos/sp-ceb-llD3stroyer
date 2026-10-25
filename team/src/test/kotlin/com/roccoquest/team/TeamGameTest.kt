@@ -811,7 +811,7 @@ class TeamGameTest {
         for (k in Scenes.titles.indices) {
             game.startScene(1)
             assertEquals(k, game.sceneKind)
-            run(Scenes.LENGTH + 0.2f)
+            run(Scenes.length(k) + 0.2f)
             assertEquals(TeamGame.State.MAP, game.state)
         }
         // Spotty runs up and yells something silly.
@@ -2133,7 +2133,7 @@ class TeamGameTest {
         walkHomeTo(Homes.SHOP_X + 30f)
         input.action = true; game.update(dt); input.action = false; game.update(dt)
         assertTrue(game.homeShop, "the shop opened")
-        assertEquals(listOf("FURNITURE", "BEDS", "PLUSHIES", "HOUSES", "COLORS", "STICKERS", "DECOR", "YARD"), game.SHOP_TABS)
+        assertEquals(listOf("FURNITURE", "BEDS", "PLUSHIES", "HOUSES", "COLORS", "STICKERS", "DECOR", "YARD", "STYLE"), game.SHOP_TABS)
         game.buyBed(BedStyle.BLUE)
         assertEquals(BedStyle.BLUE, game.bedStyle, "a blue bed!")
         Furniture.entries.forEach { game.buyFurniture(it) }

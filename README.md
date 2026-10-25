@@ -495,6 +495,32 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
 * A new one joins your team every 3 levels you beat ("A wild EEVO joined your team!"). Switch to them at home
   on the POKEMON mat; the switch screen now has two pages (tap the arrows).
 
+### A bigger house, a backyard, outfits and 50 more Pokemon
+
+* **50 more Pokemon** (93 in all), like Leafling, Flameback, Chompodile, Mudkippy, Pichi, Jolteo, Vapeo, Flareo,
+  Gibble (evolves into Sharkchomp), Mewly and Dratiny. One joins every 2 levels after the first 18.
+* **MEGA BLAZE, MEGA HYDRO and MEGA BLOOM**: the starters' lines evolve once more at LEVEL 10.
+* Every Pokemon is now **in proportion** (little ones small, evolutions bigger, legends biggest), and Rocco is
+  drawn a bit shorter.
+* **DECOR and YARD shop tabs**: 76 new things (7 pages) you can buy as many of as you like and put anywhere:
+  sofas, rugs, posters, an aquarium, a jukebox, statues, a race car bed... and for the **backyard** (walk right
+  past the garden): 6 pools (kiddie pool, round, big, pool with a slide, hot spring, lazy river), 7 kinds of
+  trees, swings, a slide tower, a trampoline, a bouncy house and more. SWIM, BOUNCE and SWING in the yard!
+* **The SHOP button works on every floor**, and you can buy an **ELEVATOR** (HOUSES tab) that goes to every
+  floor and the backyard.
+* **8 more house styles**: Haunted House, Cloud Castle, Undersea Dome, Robot House, Bouncy Castle, Volcano Lair,
+  Toy Block House and Teepee.
+* **CONSTRUCTION ROCCO**: tap BUILD at home and Rocco puts on a hard hat. Tap the wall to place brick, wood, stone,
+  glass, gold or diamond blocks (tap a block to take it back).
+* **Pokemon GAMES**: Berry Catch, Memory Match, Balloon Pop and Dance Party.
+* **STYLE shop tab**: 10 outfits for Rocco (Green Brother, Tuxedo, Pirate, Astronaut, Chef, Cowboy, Ninja,
+  Super Rocco with a cape...), 8 skins for Blocky (Diamond and Gold armor, Zombie, Knight, Santa...) and 10
+  expensive Pokemon costumes (party hat, sunglasses, witch hat, top hat, a royal crown...).
+* **MOVIES**: walk to the TV or the movie screen at home to rewatch every funny scene you've unlocked, plus 6
+  new longer ones (The Birthday Cake, Krag's Bad Hair Day, Dance-Off, The Stinky Cheese, Rocco's Dream and The
+  Wrong Pipe).
+* Prices are fairer: small things are cheap, big fancy things (and houses) cost more.
+
 ### World 8: Toy World and World 9: Galaxy World (levels 148-189)
 
 * **Toy World**: a giant toy room (building blocks, teddy bears, spinning tops) and a forest of giant glowing
