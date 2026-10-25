@@ -34,7 +34,7 @@ class TeamGameTest {
     private val input = TeamInput()
     private val ears = Ears()
     // (The one-time File 1 welcome-back gift is already given, so it doesn't change the other tests.)
-    private val storage = Storage.Memory().apply { save("gift1", 1) }
+    private val storage = Storage.Memory().apply { save("gift1", 1); save("gift2", 1) }
     private val game = TeamGame(input, ears, storage)
 
     private fun run(seconds: Float, each: () -> Unit = {}) {
@@ -872,15 +872,16 @@ class TeamGameTest {
         val st = Storage.Memory()
         val inp = TeamInput()
         val g = TeamGame(inp, ears, st)
-        // An existing File 1 at level 2: it moves on to the snow level with lots of coins and supplies.
+        // An existing File 1 at level 2: it moves on to the start of World 7 with 1000 coins and supplies.
         g.newGame(1)
         st.save("slot0_level", 2)
         st.save("slot0_coins", 40)
         g.continueGame(0)
         assertEquals(TeamGame.State.MAP, g.state)
-        assertEquals("FROSTY PEAKS", Levels.all[g.giftLevel].name)
+        assertEquals("7-1", g.levelLabel(g.giftLevel))
+        assertEquals(g.giftLevel, g.slotLevel(0))
         assertTrue(g.unlocked > g.giftLevel)
-        assertTrue(g.coins >= 5040, "coins ${g.coins}")
+        assertEquals(1040, g.coins)
         assertTrue(Ore.entries.all { g.inventory[it.ordinal] >= 50 })
         // Only once.
         val coins = g.coins
@@ -897,12 +898,22 @@ class TeamGameTest {
             g2.update(dt)
         }
         assertEquals(before, g2.slotLevel(0), "File 1 can't be erased")
-        // A brand-new File 1 also starts at the snow level (if the gift wasn't used yet).
+        // A brand-new File 1 also starts in World 7 (if the gift wasn't used yet).
         val st3 = Storage.Memory()
         val g3 = TeamGame(TeamInput(), ears, st3)
         g3.newGame(0)
         assertEquals(g3.giftLevel, g3.levelIndex)
-        assertTrue(g3.coins >= 5000)
+        assertEquals(1000, g3.coins)
+        // Got the first (5000 coin) present already? The extra 4000 go away, and it still moves on to World 7.
+        val st4 = Storage.Memory()
+        val g4 = TeamGame(TeamInput(), ears, st4)
+        g4.newGame(1)
+        st4.save("slot0_level", 6)
+        st4.save("slot0_coins", 5100)
+        st4.save("gift1", 1)
+        g4.continueGame(0)
+        assertEquals(1100, g4.coins)
+        assertEquals(g4.giftLevel, g4.slotLevel(0))
     }
 
     @Test fun pokemonEvolveAndSwitchBack() {

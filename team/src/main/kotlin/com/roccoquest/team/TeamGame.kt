@@ -898,29 +898,35 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         startLevel(levelIndex)
     }
 
-    /** FROSTY PEAKS, the snow level File 1 was on when its game got erased by accident. */
-    val giftLevel by lazy { Levels.all.indexOfFirst { it.name == "FROSTY PEAKS" }.coerceAtLeast(0) }
+    /** The start of World 7 (Winter World): where File 1's game was when it got erased by accident. */
+    val giftLevel get() = WORLD_SIZE * 6
 
     /**
-     * One time only (global key `gift1`): File 1's game was lost by accident, so it picks up again at the snow
-     * level with lots of coins and supplies to win back what was lost. Returns true if it was given now.
+     * One time only (global key `gift2`): File 1's game was lost by accident, so it picks up again at the start of
+     * World 7 with 1000 coins and supplies. (The first version, `gift1`, gave 5000 coins at Frosty Peaks: if that was
+     * already given, the extra 4000 coins are taken back, but never below 1000.) Returns true if it was given now.
      */
     private fun welcomeBackGift(): Boolean {
-        if (slot != 0 || storage.load("gift1") != 0) return false
+        if (slot != 0 || storage.load("gift2") != 0) return false
+        val hadFirst = storage.load("gift1") != 0
         storage.save("gift1", 1)
+        storage.save("gift2", 1)
         if (unlocked < giftLevel + 1) {
             unlocked = giftLevel + 1
             for (i in 0 until giftLevel) cleared[i] = true
         }
         levelIndex = maxOf(levelIndex, giftLevel)
-        coins += 5000
-        Ore.entries.forEach { inventory[it.ordinal] += 50 }
-        pickTier = maxOf(pickTier, 3)
-        tnt += 10
+        if (hadFirst) coins = maxOf(1000, coins - 4000)
+        else {
+            coins += 1000
+            Ore.entries.forEach { inventory[it.ordinal] += 50 }
+            pickTier = maxOf(pickTier, 3)
+            tnt += 10
+        }
         hearts = MAX_HEARTS
         save()
-        sound.sayAs("Welcome back! Here's a big present!", Voice.HERO)
-        toast("WELCOME BACK! 5000 coins, 50 of every ore, an iron pickaxe and 10 TNT!")
+        sound.sayAs("Welcome back! Off to Winter World!", Voice.HERO)
+        toast(if (hadFirst) "WELCOME BACK to WORLD 7: WINTER WORLD!" else "WELCOME BACK to WORLD 7! 1000 coins, 50 of every ore, an iron pickaxe and 10 TNT!")
         return true
     }
 
