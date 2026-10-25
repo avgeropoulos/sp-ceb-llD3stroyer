@@ -449,6 +449,17 @@ class Puff(x: Float, y: Float) : Particle(x, y) {
     }
 }
 
+/** A little puff of dust from running or landing. */
+class Dust(x: Float, y: Float, private val dir: Int) : Particle(x, y) {
+    init { life = 0.35f }
+    override fun update(dt: Float) { life -= dt; x += dir * 25f * dt; y -= 10f * dt }
+    override fun draw(gfx: Gfx, ox: Float) {
+        val k = 1f - life / 0.35f
+        val r = 2f + k * 4f
+        gfx.oval(x + ox - r, y - r * 1.2f, r * 2, r * 1.6f, argb(((1 - k) * 150).toInt().coerceIn(0, 255), 0xF4ECDC))
+    }
+}
+
 /** A big TNT explosion. */
 class Boom(x: Float, y: Float, private val size: Float = 30f) : Particle(x, y) {
     override fun update(dt: Float) { life -= dt * 2f }

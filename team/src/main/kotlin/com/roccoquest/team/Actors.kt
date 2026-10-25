@@ -196,6 +196,9 @@ class Hero(val who: Who, x: Float, y: Float) :
     var combo = 0
     /** Counts down while the double-jump flip is showing. */
     var flipT = 0f
+    /** Squash-and-stretch: counts down after landing. */
+    var squash = 0f
+    var dustT = 0f
     var sprinting = false
     /** Rocco's blue shell spin dash. */
     var shellSpin = false
@@ -288,7 +291,11 @@ class Hero(val who: Who, x: Float, y: Float) :
                         gfx.sprite(rs(2), px - 3, py + 6, flipX = facing < 0, w = 22f, h = 18f)
                         gfx.rect(px - facing * 10 + 4, py + 14, 8f, 1.5f, 0x99FFFFFF.toInt())
                     }
-                    else -> gfx.sprite(rs(frame), px, py, flipX = facing < 0)
+                    else -> {
+                        // Squash when landing, stretch when jumping up fast (like the newer games).
+                        val k = if (squash > 0f) squash * 1.6f else if (!onGround && vy < -150f) -minOf(0.12f, -vy / 3000f) else 0f
+                        gfx.sprite(rs(frame), px - 8f * k, py + 24f * k, flipX = facing < 0, w = 16f * (1 + k), h = 24f * (1 - k))
+                    }
                 }
                 if (!mini && !shellSpin) {
                     if (g.tanookiT > 0) TeamArt.tanooki(gfx, cx + ox, py, bottom, facing, anim, swing > 0, crouching)

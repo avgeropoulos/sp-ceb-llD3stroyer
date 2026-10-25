@@ -479,6 +479,14 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
 * Crazy mushrooms are a bit weaker (12 seconds, two balls, less damage to bosses). **Cappy** costs more
   (8 sapphire, 4 diamond, 3 amethyst) and unlocks after beating 15 levels; captures last 12 seconds.
 
+### A new look
+
+* Smooth gradient skies in every kind of level, soft shadows under everyone's feet, Rocco squashes when he
+  lands and stretches when he jumps, and little dust puffs when running and landing.
+* **10 more funny scenes** (20 in all): spaghetti slurp, the hiccups, a bird nesting on Rocco's hat, a
+  skateboard crash, Blocky's magic trick (with your Pokemon!), Rocco singing (Dennis howls along), a balloon
+  ride, Spotty saying BOO!, a whoopee cushion, and a giant pizza falling from the sky.
+
 ### World 7: Winter World (levels 127-147)
 
 * 21 new levels with three new kinds of places: **BLIZZARD** (a snowstorm with snow blowing sideways),

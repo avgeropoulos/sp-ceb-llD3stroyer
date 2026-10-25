@@ -100,6 +100,8 @@ object Scenes {
     val titles = listOf(
         "DONUT TIME!", "BANANA PEEL!", "THE BIG SNEEZE", "DANCE PARTY!", "PIE IN THE FACE!",
         "THE GIANT BURP", "NAP TIME", "WHERE'S MY MUSTACHE?!", "TICKLE ATTACK!", "BUBBLE GUM TROUBLE",
+        "SPAGHETTI SLURP", "THE HICCUPS", "BIRD ON MY HAT", "SKATEBOARD CRASH", "MAGIC TRICK",
+        "ROCCO SINGS", "BALLOON RIDE", "SPOTTY SAYS BOO!", "WHOOPEE CUSHION", "PIZZA PARTY",
     )
 
     fun cues(kind: Int, monName: String): List<Cue> = when (kind) {
@@ -112,7 +114,26 @@ object Scenes {
         6 -> listOf(Cue(0.6f, "So... sleepy..."), Cue(2.2f, "Zzzz... spaghetti... meatballs..."), Cue(4.2f, "POP! Huh? Who's there?!", sound = Sound.KICK))
         7 -> listOf(Cue(0.6f, "La la la..."), Cue(1.8f, "Woof! Woof!", Voice.MON, Sound.BARK), Cue(3.0f, "Hey! My MUSTACHE! Come back, Dennis!"))
         8 -> listOf(Cue(0.6f, "$monName! What are you doing?"), Cue(1.8f, "$monName!!", Voice.MON, Sound.JUMP), Cue(3.0f, "Ha ha ha ha! It tickles!"))
+        10 -> listOf(Cue(0.6f, "Spaghetti!", sound = Sound.COIN), Cue(1.8f, "Slurrrrrrp!"), Cue(3.6f, "Mamma mia, delizioso!", sound = Sound.ONEUP))
+        11 -> listOf(Cue(0.8f, "Hic!", sound = Sound.JUMP), Cue(1.8f, "Hic!", sound = Sound.JUMP), Cue(2.8f, "Hic!", sound = Sound.JUMP), Cue(3.9f, "Oh no, I can't stop! HIC!", sound = Sound.JUMP))
+        12 -> listOf(Cue(0.6f, "Tweet tweet!", Voice.TOAD), Cue(2.2f, "Uh... hello, birdie?"), Cue(3.8f, "An egg? On my hat?!", sound = Sound.POWERUP))
+        13 -> listOf(Cue(0.5f, "Wheeee! Look at me!"), Cue(2.4f, "Uh oh... BUSH!", sound = Sound.BUMP), Cue(3.6f, "I'm okay!"))
+        14 -> listOf(Cue(0.6f, "Ladies and gentlemen...", Voice.VILLAGER), Cue(2.0f, "Abracadabra!", Voice.VILLAGER, Sound.PORTAL), Cue(3.2f, "$monName!!", Voice.MON, Sound.ONEUP), Cue(4.2f, "Ta-da!", Voice.VILLAGER))
+        15 -> listOf(Cue(0.6f, "La la LAAAAA!"), Cue(2.2f, "Aroooooo!", Voice.MON, Sound.BARK), Cue(3.8f, "Everybody's a critic!"))
+        16 -> listOf(Cue(0.6f, "So many balloons!"), Cue(2.2f, "Whoa... I'm going up!", sound = Sound.JUMP), Cue(4.0f, "Bye bye! Wahooo!"))
+        17 -> listOf(Cue(1.0f, "What's in this box?"), Cue(2.0f, "BOO!", Voice.TOAD, Sound.BOSS_HIT), Cue(2.4f, "WAAAAAH!", sound = Sound.JUMP), Cue(4.0f, "Hee hee! Got you, Rocco!", Voice.TOAD))
+        18 -> listOf(Cue(0.6f, "Ah, time to sit down..."), Cue(2.0f, "PFFFFFFT!", Voice.FROG, Sound.BREAK), Cue(3.2f, "It wasn't me!"), Cue(4.3f, "Ha ha ha ha!", Voice.MON))
+        19 -> listOf(Cue(0.6f, "What's that in the sky?"), Cue(1.8f, "SPLAT!", sound = Sound.BOSS_HIT), Cue(3.0f, "Om nom nom nom..."), Cue(4.4f, "Best day EVER!", sound = Sound.ONEUP))
         else -> listOf(Cue(0.6f, "Chew chew chew..."), Cue(2.0f, "Look at my big bubble!"), Cue(3.6f, "Uh oh... I'm flying! WAHOOO!", sound = Sound.JUMP), Cue(4.8f, "POP!", sound = Sound.BREAK))
+    }
+
+    /** A giant pizza, [left] from 1 (whole) down to 0 (all eaten), centered at [cx], top at [y]. */
+    private fun drawPizza(gfx: Gfx, cx: Float, y: Float, left: Float) {
+        if (left <= 0f) return
+        val w = 120f * left
+        gfx.oval(cx - w / 2, y, w, 34f, 0xFFD8A050.toInt())
+        gfx.oval(cx - w / 2 + 6, y + 4, w - 12, 26f, 0xFFF0C060.toInt())
+        for (k in 0 until (8 * left).toInt()) gfx.oval(cx - w / 2 + 12 + (k * 23f) % (w - 24).coerceAtLeast(1f), y + 8 + (k % 3) * 6f, 9f, 7f, 0xFFC8302A.toInt())
     }
 
     /** Draws scene [kind] at time [t]. */
@@ -152,8 +173,19 @@ object Scenes {
                 frame = 1 + ((t * 6).toInt() % 2)
             }
             9 -> if (t > 3.4f) { ry -= minOf(90f, (t - 3.4f) * 90f); if (t > 4.8f) ry = ground - 24 * s - (5.5f - t) * 40f }
+            11 -> { val hic = listOf(0.8f, 1.8f, 2.8f, 3.9f).firstOrNull { t in it..(it + 0.35f) }; if (hic != null) { ry -= sin((t - hic) / 0.35f * 3.1416f) * 30f; frame = 2 } }
+            13 -> if (t < 2.4f) { rx = -60f + t * 110f; frame = 2 } else { rx = 204f; upside = t < 3.2f; ry += 6f }
+            16 -> if (t > 2.2f) ry -= minOf(200f, (t - 2.2f) * 70f)
+            17 -> if (t in 2.0f..3.4f) { ry -= sin((t - 2f) / 1.4f * 3.1416f) * 90f; frame = 2 }
             2 -> if (t in 2.8f..3.4f) rx -= (t - 2.8f) * 30f
         }
+        if (kind == 13) {
+            // The bush he's about to crash into
+            gfx.oval(cx + 20, ground - 40, 70f, 44f, 0xFF2E9A3A.toInt())
+            gfx.oval(cx + 34, ground - 50, 44f, 30f, 0xFF3CB84A.toInt())
+        }
+        // A giant pizza falling from the sky
+        if (kind == 19 && t < 1.8f) drawPizza(gfx, cx, -80f + t / 1.8f * (ground - 30f + 80f), 1f)
         if (kind == 6 && t > 1.2f) {
             // Napping on a giant mushroom
             gfx.rect(cx + 36, ground - 30, 20f, 30f, 0xFFF4E8D0.toInt())
@@ -278,7 +310,79 @@ object Scenes {
                     for (i in 0 until 3) TeamArt.heart(gfx, rx + 10 + i * 18f, ry - 10 - ((t * 30 + i * 12) % 40), 10f, 0xFFFF6A9A.toInt())
                 }
             }
-            else -> { // bubble gum
+            10 -> { // spaghetti
+                gfx.oval(rx + 40, face + 34, 50f, 12f, 0xFFF4F4F4.toInt())
+                gfx.oval(rx + 44, face + 28, 42f, 14f, 0xFFF0D080.toInt())
+                gfx.oval(rx + 56, face + 26, 12f, 8f, 0xFFD8402A.toInt())
+                val len = if (t in 1.8f..3.4f) 1f - (t - 1.8f) / 1.6f else if (t < 1.8f) 1f else 0f
+                if (len > 0f) gfx.poly(floatArrayOf(mouthX + 4, rx + 62, rx + 64, mouthX + 6), floatArrayOf(face + 16, face + 28 - (1 - len) * 10, face + 28 - (1 - len) * 10, face + 17), 0xFFF0D080.toInt())
+                if (t > 3.0f) { gfx.oval(rx + 20, face + 14, 10f, 5f, 0xFFD8402A.toInt()); gfx.oval(rx + 36, face + 15, 8f, 4f, 0xFFD8402A.toInt()) }
+            }
+            11 -> if (listOf(0.8f, 1.8f, 2.8f, 3.9f).any { t in it..(it + 0.35f) }) gfx.shadowText("HIC!", rx + 60, ry, 14f, 0xFFFFFFFF.toInt(), 1)
+            12 -> { // a bird lands on his hat
+                val bx = if (t < 1.6f) viewW - t / 1.6f * (viewW - rx - 24) else rx + 24f
+                val by = if (t < 1.6f) 30f + t / 1.6f * (ry - 40f) else ry - 10f
+                if (t > 2.6f) { gfx.oval(rx + 14, ry - 4, 24f, 8f, 0xFF8A5A2A.toInt()) }
+                if (t > 3.8f) gfx.oval(rx + 20, ry - 10, 8f, 9f, 0xFFF4F0E0.toInt())
+                gfx.oval(bx - 6, by - 6, 14f, 10f, 0xFF4A8AE8.toInt())
+                gfx.oval(bx + 3, by - 9, 7f, 7f, 0xFF4A8AE8.toInt())
+                gfx.poly(floatArrayOf(bx + 9, bx + 13, bx + 9), floatArrayOf(by - 7, by - 5.5f, by - 4), 0xFFFFA82A.toInt())
+                gfx.poly(floatArrayOf(bx - 4, bx - 12 , bx - 2), floatArrayOf(by - 4, by - 10 + sin(t * 20) * 4, by), 0xFF3A6AC8.toInt())
+            }
+            13 -> { // skateboard
+                val sbx = if (t < 2.4f) rx + 4 else cx + 80f
+                gfx.rect(sbx, (if (t < 2.4f) ry + 72f else ground - 6f), 42f, 4f, 0xFFE84A4A.toInt())
+                if (t >= 2.4f) for (k in 0 until 4) gfx.oval(cx + 40 + k * 12f, ground - 60 - k * 6f, 6f, 4f, 0xFF3CB84A.toInt())
+            }
+            14 -> { // magic trick: Blocky pulls the Pokemon out of a hat
+                gfx.sprite(TeamArt.blocky(Power.NONE, false), cx + 70, ground - 26 * 2.5f, w = 16 * 2.5f, h = 26 * 2.5f)
+                gfx.rect(cx + 120, ground - 30, 30f, 30f, 0xFF1A1A1A.toInt()); gfx.rect(cx + 114, ground - 32, 42f, 5f, 0xFF1A1A1A.toInt())
+                if (t > 2.0f && t < 2.8f) for (k in 0 until 8) gfx.oval(cx + 135 + kotlin.math.cos(k * 0.8f) * (t - 2f) * 60, ground - 40 + sin(k * 0.8f) * (t - 2f) * 40, 4f, 4f, solidRainbow(k * 0.1f, 0f))
+                if (t > 3.0f) TeamArt.mon(ScaledGfx(gfx, 2.2f, cx + 135, ground - 34 - minOf(1f, t - 3f) * 30f), mon, 0f, 0f, t, -1, true, false)
+                if (t > 4.2f) gfx.shadowText("TA-DA!", cx + 135, 60f, 18f, 0xFFFFD21F.toInt(), 1)
+            }
+            15 -> { // singing
+                for (k in 0 until 3) gfx.shadowText("~", mouthX + 20 + k * 14f + sin(t * 5 + k) * 4, face - 10 - ((t * 30 + k * 12) % 40), 16f, solidRainbow(k * 0.3f, 0f), 1)
+                if (t > 2.2f) {
+                    Dennis(0f, 14f).draw(g, ScaledGfx(gfx, 2.4f, cx + 80, ground - 14 * 2.4f), 0f)
+                    gfx.shadowText("AROOO!", cx + 110, ground - 50, 12f, 0xFFFFFFFF.toInt(), 1)
+                }
+            }
+            16 -> { // balloons
+                for (k in 0 until 6) {
+                    val bx = rx + 6 + k * 8f - 16
+                    val by = ry - 50 - (k % 3) * 14f + sin(t * 3 + k) * 2
+                    gfx.rect(bx + 6, by + 14, 0.8f, ry + 20 - by - 14, 0xFFDDDDDD.toInt())
+                    gfx.oval(bx, by, 13f, 15f, listOf(0xFFE84A4A, 0xFF4A8AE8, 0xFFFFD21F, 0xFF3CB84A, 0xFFFF6AA8, 0xFFAA6AE8)[k].toInt())
+                }
+            }
+            17 -> { // Spotty in a box
+                val bx = cx + 60f
+                if (t < 2.0f) {
+                    gfx.rect(bx, ground - 30, 34f, 30f, 0xFFC8904A.toInt()); gfx.rect(bx - 2, ground - 34, 38f, 6f, 0xFFA87030.toInt())
+                    gfx.text("?", bx + 17, ground - 10, 14f, 0xFF7A4A20.toInt(), 1)
+                } else {
+                    gfx.rect(bx, ground - 30, 34f, 30f, 0xFFC8904A.toInt())
+                    Spotty.draw(ScaledGfx(gfx, 2.4f, bx + 1, ground - 70f - minOf(1f, (t - 2f) * 4f) * 10f), 0f, 0f, t, false, false)
+                    if (t < 3.0f) gfx.shadowText("BOO!", bx + 17, 50f, 22f, 0xFFE84A4A.toInt(), 1)
+                }
+            }
+            18 -> { // whoopee cushion
+                if (t < 2.0f) gfx.oval(rx + 6, ground - 6, 36f, 10f, 0xFFFF6AA8.toInt())
+                else {
+                    gfx.oval(rx + 10, ground - 3, 28f, 4f, 0xFFFF6AA8.toInt())
+                    if (t < 3.2f) {
+                        gfx.shadowText("PFFFFFT!", cx, 56f, 22f, 0xFF8AD86A.toInt(), 1)
+                        for (k in 0 until 4) gfx.oval(rx - 10 - (t - 2f) * 40 - k * 6, ground - 20 - k * 5f, 10f, 8f, 0x668AD86A)
+                    }
+                }
+            }
+            19 -> { // pizza
+                if (t in 1.8f..3.0f) drawPizza(gfx, cx, ground - 30f, 1f)
+                if (t in 3.0f..4.4f) drawPizza(gfx, cx, ground - 30f, 1f - (t - 3f) / 1.4f)
+                if (t > 3.0f) for (k in 0 until 3) gfx.oval(mouthX + k * 8f, face + 20 + ((t * 40 + k * 9) % 20), 3f, 3f, 0xFFF0C060.toInt())
+            }
+            9 -> { // bubble gum
                 val r = when { t < 2f -> 3f; t < 3.4f -> 3f + (t - 2f) * 24f; t < 4.8f -> 36f; else -> 0f }
                 if (r > 0f) gfx.oval(mouthX + 8 - r * 0.3f, face + 12 - r, r * 1.6f, r * 1.6f, 0xEEFF9AC8.toInt())
                 if (t >= 4.8f) gfx.shadowText("POP!", cx, 60f, 24f, 0xFFFF6AA8.toInt(), 1)

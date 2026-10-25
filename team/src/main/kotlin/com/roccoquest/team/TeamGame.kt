@@ -1339,6 +1339,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (h.onGround) h.combo = 0
             h.anim += dt
             if (h.swing > 0) h.swing -= dt
+            if (h.squash > 0) h.squash -= dt
             if (h.cooldown > 0) h.cooldown -= dt
             if (h.jumpCooldown > 0) h.jumpCooldown -= dt
         }
@@ -1692,7 +1693,20 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         level.moveX(h, h.vx * dt)
         camLock?.let { lock -> h.x = h.x.coerceIn(lock, lock + viewW - h.w) }
         h.x = h.x.coerceIn(0f, level.w * TILE - h.w)
+        val wasGround = h.onGround
+        val fall = h.vy
         if (level.moveY(h, h.vy * dt) == -1) bump(level.bumpX, level.bumpY, h)
+        // Landing: a little squash and a puff of dust.
+        if (!wasGround && h.onGround && fall > 180f) {
+            h.squash = 0.14f
+            particles += Dust(h.cx - 6, h.bottom, -1)
+            particles += Dust(h.cx + 6, h.bottom, 1)
+        }
+        // Running fast kicks up dust now and then.
+        if (h.onGround && abs(h.vx) > 150f && h === leader) {
+            h.dustT -= dt
+            if (h.dustT <= 0f) { h.dustT = 0.15f; particles += Dust(h.cx - (if (h.vx > 0) 6 else -6), h.bottom, if (h.vx > 0) -1 else 1) }
+        }
     }
 
     private fun bump(tx: Int, ty: Int, by: Hero? = null) {
@@ -3544,10 +3558,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         for (t in things) if (t is House && visibleThing(t, cam)) t.draw(this, gfx, ox)
         for (t in things) if (t !is Shot && t !is MonShot && t !is Frog && t !is House && visibleThing(t, cam)) t.draw(this, gfx, ox)
         for (f in foes) if (f.x + f.w > cam - 40 && f.x < cam + viewW + 40) {
+            if (f.onGround && !f.dying) softShadow(gfx, f.cx + ox, f.bottom, f.w)
             f.draw(this, gfx, ox)
             if (f.frozenT > 0f) gfx.rect(f.x + ox - 2, f.y - 2, f.w + 4, f.h + 4, 0x887FD8FF.toInt())
             f.drawHealth(gfx, ox)
         }
+        for (h in team) if (h.onGround) softShadow(gfx, h.cx + ox, h.bottom, if (h === rocco && megaT > 0f) h.w * 2 else h.w)
         for (h in followers) h.draw(this, gfx, ox)
         leader.draw(this, gfx, ox)
         if (shieldType != Shield.NONE) {
@@ -5072,6 +5088,22 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         sound.sayAs("Treasure! You got $prize!", Voice.HERO)
     }
 
+    /** A soft shadow on the ground under someone's feet. */
+    private fun softShadow(gfx: Gfx, cx: Float, bottom: Float, w: Float) {
+        gfx.oval(cx - w * 0.6f, bottom - 2f, w * 1.2f, 4f, 0x33000000)
+    }
+
+    /** A smooth sky: [top] color at the top fading to [bottom] at the horizon, in soft bands. */
+    private fun sky(gfx: Gfx, top: Int, bottom: Int) {
+        val bands = 18
+        val bh = VIEW_H / bands
+        for (i in 0 until bands) {
+            val k = i / (bands - 1f)
+            fun ch(sh: Int) = (((top shr sh) and 255) * (1 - k) + ((bottom shr sh) and 255) * k).toInt()
+            gfx.rect(0f, i * bh, viewW, bh + 1f, argb(255, (ch(16) shl 16) or (ch(8) shl 8) or ch(0)))
+        }
+    }
+
     private fun renderBackground(gfx: Gfx, cam: Float) {
         if (wonder || state == State.VICTORY) {
             val bands = 7
@@ -5087,7 +5119,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         when (level.def.place) {
             Place.HILLS, Place.JUNGLE -> {
                 val jungle = level.def.place == Place.JUNGLE
-                gfx.rect(0f, 0f, viewW, VIEW_H, if (jungle) 0xFF8FD8A0.toInt() else 0xFF6FB6FF.toInt())
+                if (jungle) sky(gfx, 0xFF3EA878.toInt(), 0xFFC8F0C8.toInt()) else sky(gfx, 0xFF3A86F0.toInt(), 0xFFC8ECFF.toInt())
                 layer(cam, 0.2f, 260f) { i, x ->
                     gfx.oval(x, 150f - (i % 3) * 18f, 220f, 160f, if (jungle) 0xFF3E8A4A.toInt() else 0xFF7FCB6A.toInt())
                 }
@@ -5105,7 +5137,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 layer(cam, 0.1f, 200f) { i, x -> cloud(gfx, x + 30, 30f + (i % 3) * 22f) }
             }
             Place.DESERT -> {
-                gfx.rect(0f, 0f, viewW, VIEW_H, 0xFFFFB870.toInt())
+                sky(gfx, 0xFFFF7A4A.toInt(), 0xFFFFE4A8.toInt())
                 gfx.oval(viewW * 0.7f, 30f, 40f, 40f, 0xFFFFF0A0.toInt())
                 layer(cam, 0.2f, 240f) { i, x ->
                     gfx.poly(floatArrayOf(x, x + 70, x + 140), floatArrayOf(200f, 120f - (i % 2) * 20, 200f), 0xFFD88A4A.toInt())
@@ -5117,7 +5149,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 }
             }
             Place.SNOW -> {
-                gfx.rect(0f, 0f, viewW, VIEW_H, 0xFFB8D8F8.toInt())
+                sky(gfx, 0xFF6A9CE0.toInt(), 0xFFEAF4FF.toInt())
                 layer(cam, 0.2f, 220f) { i, x ->
                     gfx.poly(floatArrayOf(x, x + 90, x + 180), floatArrayOf(210f, 90f - (i % 3) * 15, 210f), 0xFF8AA8C8.toInt())
                     gfx.poly(floatArrayOf(x + 70, x + 90, x + 110), floatArrayOf(110f - (i % 3) * 15, 90f - (i % 3) * 15, 110f - (i % 3) * 15), white)
@@ -5129,15 +5161,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 }
             }
             Place.CAVE -> {
-                gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF1E1A2E.toInt())
+                sky(gfx, 0xFF0C0A16.toInt(), 0xFF2E2844.toInt())
                 layer(cam, 0.3f, 90f) { i, x ->
                     gfx.poly(floatArrayOf(x, x + 18, x + 9), floatArrayOf(32f, 32f, 60f + (i % 4) * 14f), 0xFF2E2840.toInt())
                     if (i % 3 == 0) gfx.oval(x + 40, 120f + (i % 5) * 12f, 3f, 3f, Ore.entries[i % Ore.entries.size].color)
                 }
             }
             Place.SKY -> {
-                gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF8ED0FF.toInt())
-                gfx.rect(0f, 160f, viewW, 80f, 0xFFB8E4FF.toInt())
+                sky(gfx, 0xFF4AA4FF.toInt(), 0xFFE0F4FF.toInt())
                 layer(cam, 0.15f, 150f) { i, x -> cloud(gfx, x, 40f + (i % 4) * 30f) }
                 layer(cam, 0.3f, 210f) { i, x -> cloud(gfx, x + 20, 170f + (i % 2) * 20f) }
             }
@@ -5156,7 +5187,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 }
             }
             Place.NIGHT -> {
-                gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF141838.toInt())
+                sky(gfx, 0xFF060A22.toInt(), 0xFF2E2A5C.toInt())
                 for (i in 0 until 40) gfx.rect((i * 97f - cam * 0.05f).mod(viewW), (i * 53f) % 150f, 1.5f, 1.5f, white)
                 gfx.oval(viewW * 0.75f, 24f, 28f, 28f, 0xFFF0F0D0.toInt())
                 layer(cam, 0.25f, 200f) { i, x ->
@@ -5164,7 +5195,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 }
             }
             Place.DEEP -> {
-                gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF06121A.toInt())
+                sky(gfx, 0xFF02060A.toInt(), 0xFF0C2630.toInt())
                 layer(cam, 0.3f, 80f) { i, x ->
                     // Glowing sculk
                     val glow = (120 + sin(time * 2 + i) * 80).toInt().coerceIn(0, 255)
@@ -5174,7 +5205,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
             Place.SUNSET -> Sunset.drawSky(gfx, viewW, VIEW_H, cam, time)
             Place.BLIZZARD -> {
-                gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF8A9CB4.toInt())
+                sky(gfx, 0xFF56688A.toInt(), 0xFFC0CEDE.toInt())
                 layer(cam, 0.2f, 220f) { i, x ->
                     gfx.poly(floatArrayOf(x, x + 90, x + 180), floatArrayOf(210f, 100f - (i % 3) * 15, 210f), 0xFF6A7C94.toInt())
                     gfx.poly(floatArrayOf(x + 70, x + 90, x + 110), floatArrayOf(120f - (i % 3) * 15, 100f - (i % 3) * 15, 120f - (i % 3) * 15), white)
@@ -5187,7 +5218,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 }
             }
             Place.AURORA -> {
-                gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF0A1A30.toInt())
+                sky(gfx, 0xFF040A18.toInt(), 0xFF1E3458.toInt())
                 for (i in 0 until 30) gfx.rect((i * 97f - cam * 0.05f).mod(viewW), (i * 53f) % 120f, 1.5f, 1.5f, white)
                 // The northern lights: wavy green and purple curtains.
                 for (band in 0 until 3) {
@@ -5205,7 +5236,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 layer(cam, 0.25f, 200f) { i, x -> gfx.oval(x, 165f - (i % 3) * 12f, 220f, 140f, 0xFFDDEEFF.toInt()) }
             }
             Place.CANDY -> {
-                gfx.rect(0f, 0f, viewW, VIEW_H, 0xFFFFD0E8.toInt())
+                sky(gfx, 0xFFFF9AC8.toInt(), 0xFFFFF0F8.toInt())
                 layer(cam, 0.15f, 170f) { i, x -> cloud(gfx, x, 30f + (i % 3) * 25f) }
                 layer(cam, 0.3f, 130f) { i, x ->
                     // Gumdrop hills and lollipop trees
@@ -5219,7 +5250,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             Place.SHIP -> SeaArt.seaSky(gfx, viewW, VIEW_H, cam, time)
             Place.RAINBOW -> SeaArt.space(gfx, viewW, VIEW_H, cam, time)
             Place.END -> {
-                gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF0A0614.toInt())
+                sky(gfx, 0xFF04020A.toInt(), 0xFF1E1030.toInt())
                 for (i in 0 until 30) gfx.rect((i * 89f - cam * 0.03f).mod(viewW), (i * 41f) % 200f, 1.5f, 1.5f, 0xFFE0D0FF.toInt())
                 layer(cam, 0.2f, 160f) { i, x ->
                     gfx.rect(x + 40, 90f - (i % 3) * 20f, 24f, 160f, 0xFF1A1028.toInt())
