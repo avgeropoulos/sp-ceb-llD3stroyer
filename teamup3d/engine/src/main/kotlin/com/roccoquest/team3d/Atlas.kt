@@ -20,6 +20,19 @@ object Atlas {
     var epoch = 0
         private set
 
+    /** Rows changed since the GPU copy was last refreshed ([takeDirtyRows]); empty when none. */
+    private var dirtyFrom = 0
+    private var dirtyTo = SIZE
+
+    /** Returns the changed rows (and forgets them), so only that strip needs sending to the GPU. */
+    fun takeDirtyRows(): IntRange? {
+        if (dirtyFrom >= dirtyTo) return null
+        val r = dirtyFrom until dirtyTo
+        dirtyFrom = SIZE
+        dirtyTo = 0
+        return r
+    }
+
     private val regions = IdentityHashMap<Sprite, Region>()
     private var penX = 0
     private var penY = 0
@@ -35,6 +48,8 @@ object Atlas {
         regions.clear()
         for (y in 0 until 4) for (x in 0 until 4) pixels[y * SIZE + x] = -1
         penX = 4; penY = 0; rowH = 4
+        dirtyFrom = 0
+        dirtyTo = SIZE
         version++
     }
 
@@ -53,6 +68,8 @@ object Atlas {
         }
         penX += w
         rowH = maxOf(rowH, h)
+        dirtyFrom = minOf(dirtyFrom, oy)
+        dirtyTo = maxOf(dirtyTo, oy + h)
         version++
         val r = Region((ox + 1f) / SIZE, (oy + 1f) / SIZE, (ox + 1f + s.w) / SIZE, (oy + 1f + s.h) / SIZE)
         regions[s] = r

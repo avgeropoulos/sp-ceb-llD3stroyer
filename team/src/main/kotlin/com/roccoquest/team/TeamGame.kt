@@ -3933,7 +3933,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
      */
     fun render(gfx: Gfx, drawWorld: Boolean = true) {
         when (state) {
-            State.TITLE -> renderTitle(gfx)
+            State.TITLE -> renderTitle(gfx, drawWorld)
             State.SLOTS -> renderSlots(gfx)
             State.PICK -> renderPick(gfx)
             State.INTRO -> renderIntro(gfx)
@@ -6969,26 +6969,44 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
     }
 
-    private fun renderTitle(gfx: Gfx) {
+    /** The title screen shows level 1 scrolling slowly by. */
+    fun prepareTitle() {
         if (level.def !== Levels.all[0]) level = Level(Levels.all[0])
         camX = time * 20f % (level.w * TILE - viewW)
-        renderBackground(gfx, camX)
-        renderTiles(gfx, camX)
+    }
+
+    /** With [drawWorld] false only the words and buttons are drawn (Team Up! 3D draws the rest in 3D). */
+    private fun renderTitle(gfx: Gfx, drawWorld: Boolean = true) {
+        prepareTitle()
+        if (drawWorld) {
+            renderBackground(gfx, camX)
+            renderTiles(gfx, camX)
+        }
         gfx.rect(0f, 0f, viewW, VIEW_H, 0x44000000)
-        gfx.shadowText("ROCCO & BLOCKY", viewW / 2, 52f, 24f, 0xFFFFD21F.toInt(), 1)
-        gfx.shadowText("TEAM UP!", viewW / 2, 78f, 18f, solidRainbow(time * 0.3f), 1)
+        if (drawWorld) {
+            gfx.shadowText("ROCCO & BLOCKY", viewW / 2, 52f, 24f, 0xFFFFD21F.toInt(), 1)
+            gfx.shadowText("TEAM UP!", viewW / 2, 78f, 18f, solidRainbow(time * 0.3f), 1)
+        }
         gfx.shadowText("Mine • Craft • Build • Stop Wonder King Krag", viewW / 2, 94f, 8f, white, 1)
-        val bob = abs(sin(time * 4)) * 3f
-        val base = 190f
-        gfx.sprite(TeamArt.rocco(Power.NONE, 0), viewW / 2 - 84, base - 24 - bob)
-        gfx.sprite(TeamArt.blocky(Power.NONE, false), viewW / 2 - 60, base - 24)
-        TeamArt.pickaxe(gfx, viewW / 2 - 52, base - 11, -2.3f, 4)
-        Mon.entries.take(9).forEachIndexed { i, m -> TeamArt.mon(gfx, m, viewW / 2 - 18 + i * 24f, base, time + i, -1, false) }
-        TeamArt.frog(gfx, viewW / 2 + 82, base - 26 - abs(sin(time * 9)) * 4, time)
+        if (drawWorld) renderTitleCast(gfx)
         if ((time * 2).toInt() % 2 == 0) gfx.shadowText(if (padConnected) "PRESS A TO START" else "TAP TO START", viewW / 2, 222f, 12f, white, 1)
         // Controller setup button (or press - on a controller).
         gfx.rect(viewW - 110f, 6f, 102f, 18f, 0xCC1A1A2E.toInt())
         gfx.text("CONTROLLER", viewW - 59f, 18.5f, 7f, if (padConnected) 0xFF7FE07F.toInt() else white, 1)
+    }
+
+    /** Rocco, Blocky, the Pokemon and Ring-Ding Frog lined up on the title screen. */
+    fun renderTitleCast(gfx: Gfx, mark: (Any) -> Unit = {}) {
+        val bob = abs(sin(time * 4)) * 3f
+        val base = 190f
+        mark(rocco)
+        gfx.sprite(TeamArt.rocco(Power.NONE, 0), viewW / 2 - 84, base - 24 - bob)
+        mark(blocky)
+        gfx.sprite(TeamArt.blocky(Power.NONE, false), viewW / 2 - 60, base - 24)
+        TeamArt.pickaxe(gfx, viewW / 2 - 52, base - 11, -2.3f, 4)
+        Mon.entries.take(9).forEachIndexed { i, m -> mark(m); TeamArt.mon(gfx, m, viewW / 2 - 18 + i * 24f, base, time + i, -1, false) }
+        mark(this)
+        TeamArt.frog(gfx, viewW / 2 + 82, base - 26 - abs(sin(time * 9)) * 4, time)
     }
 
     private fun renderSlots(gfx: Gfx) {

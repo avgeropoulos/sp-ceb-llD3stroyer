@@ -1,7 +1,9 @@
 package com.roccoquest.team3d
 
+import com.roccoquest.game.rainbow
 import com.roccoquest.team.Place
 import com.roccoquest.team.TeamGame
+import kotlin.math.sin
 
 /**
  * Builds a 3D frame of a Team Up! level from the live game. The game itself (heroes,
@@ -16,9 +18,15 @@ class TeamScene {
     private val paper = PaperGfx(list)
     private val tiles = TileGfx(list, paper)
     private val mark: (Any) -> Unit = { paper.begin(0f) }
+    private val castMark: (Any) -> Unit = { paper.begin(CAST_Z) }
 
     fun build(g: TeamGame): DrawList {
         list.clear()
+        if (g.state == TeamGame.State.TITLE) {
+            title(g)
+            list.finish()
+            return list
+        }
         list.showWorld = g.showsLevel
         if (!list.showWorld) {
             list.finish()
@@ -32,6 +40,43 @@ class TeamScene {
         g.renderLevelActors(paper, mark)
         list.finish()
         return list
+    }
+
+    /**
+     * The title screen in 3D: level 1 drifting by under a gently swaying camera, the team in
+     * front, and the game's name in big bobbing block letters.
+     */
+    private fun title(g: TeamGame) {
+        list.showWorld = true
+        g.prepareTitle()
+        val t = g.time
+        list.setCamera(0f, g.viewW, yaw = sin(t * 0.4f) * 0.07f, pitch = 0.2f + sin(t * 0.3f) * 0.03f)
+        lighting(Place.HILLS)
+        tiles.begin(g)
+        g.renderLevelTiles(tiles)
+        // The team stands in front of the level, so the blocks never hide anyone.
+        paper.begin(CAST_Z)
+        g.renderTitleCast(paper, castMark)
+        word("ROCCO & BLOCKY", g.viewW / 2, -48f, 2.8f, t, 0) { 0xFFFFC81A.toInt() }
+        word("TEAM UP!", g.viewW / 2, -74f, 2.5f, t, 14) { i -> rainbow(t * 0.3f, i / 8f) or 0xFF000000.toInt() }
+    }
+
+    private val m = Mat4()
+
+    /** Draws [text] in 3D block letters centred on ([cx], [cy]); each letter bobs on its own. */
+    private inline fun word(text: String, cx: Float, cy: Float, size: Float, t: Float, seed: Int, color: (Int) -> Int) {
+        val width = text.length * TitleLetters.ADVANCE * size
+        for ((i, c) in text.withIndex()) {
+            val mesh = TitleLetters.mesh(c) ?: continue
+            val k = i + seed
+            val x = cx - width / 2 + (i + 0.5f) * TitleLetters.ADVANCE * size
+            val bob = sin(t * 3f + k * 0.55f) * 2.2f
+            m.identity().translate(x, cy + bob, 10f).rotateY(sin(t * 1.6f + k * 0.4f) * 0.25f).scale(size)
+            list.add(mesh, m, color(i), emissive = 0.15f, shine = 0.7f)
+            // A dark outline just behind, so the letters stand out from the sky.
+            m.scale(1.12f, 1.1f, 0.9f).translate(0f, 0f, -0.6f)
+            list.add(mesh, m, 0xFF3A1A08.toInt())
+        }
     }
 
     private fun lighting(place: Place) {
@@ -52,6 +97,9 @@ class TeamScene {
     }
 
     private companion object {
+        /** How far in front of the level the title screen's team stands. */
+        const val CAST_Z = 20f
+
         val DARK = setOf(
             Place.CAVE, Place.CASTLE, Place.VOLCANO, Place.NIGHT, Place.DEEP, Place.END,
             Place.AURORA, Place.FUNGI, Place.ORBIT,

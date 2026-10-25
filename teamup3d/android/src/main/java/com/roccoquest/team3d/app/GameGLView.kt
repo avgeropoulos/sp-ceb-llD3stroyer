@@ -148,13 +148,22 @@ class GameGLView(context: Context) : GLSurfaceView(context), GLSurfaceView.Rende
     private fun drawFrame(scale: Float) {
         GLES20.glClearColor(0f, 0f, 0f, 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
-        if (!game.showsLevel) {
-            // Title, map, home and the rest: exactly the normal Team Up! picture.
-            front.paint { c -> gfx.begin(c, scale); game.render(gfx) }
-            front.draw(blend = false)
+        val in3d = game.showsLevel || game.state == TeamGame.State.TITLE
+        if (!in3d || failed3d > 0) {
+            // Map, home and the rest (or a frame where 3D went wrong): the normal Team Up! picture.
+            if (failed3d > 0) failed3d--
+            draw2d(scale)
             return
         }
-        val list = scene.build(game)
+        val list = try {
+            scene.build(game)
+        } catch (t: Throwable) {
+            // Never let a 3D drawing problem stop the game: show this moment in 2D instead.
+            android.util.Log.e("TeamUp3D", "3D scene failed, drawing in 2D", t)
+            failed3d = 30
+            draw2d(scale)
+            return
+        }
         sky.paint { c -> gfx.begin(c, scale); game.renderLevelBackdrop(gfx) }
         front.paint { c ->
             gfx.begin(c, scale)
@@ -163,12 +172,28 @@ class GameGLView(context: Context) : GLSurfaceView(context), GLSurfaceView.Rende
                 val l = list.label(i)
                 gfx.text(l.text, l.x, l.y, l.size, l.color, l.align)
             }
-            game.render(gfx, drawWorld = false)
+            try { game.render(gfx, drawWorld = false) } catch (t: Throwable) { recover(t) }
         }
         sky.draw(blend = false)
         GLES20.glClear(GLES20.GL_DEPTH_BUFFER_BIT)
-        glScene.render(list)
+        try {
+            glScene.render(list)
+        } catch (t: Throwable) {
+            android.util.Log.e("TeamUp3D", "3D drawing failed", t)
+            failed3d = 30
+        }
         front.draw(blend = true)
+    }
+
+    /** Frames left to draw in plain 2D after the 3D scene had a problem. */
+    private var failed3d = 0
+
+    private fun draw2d(scale: Float) {
+        front.paint { c ->
+            gfx.begin(c, scale)
+            try { game.render(gfx) } catch (t: Throwable) { recover(t) }
+        }
+        front.draw(blend = false)
     }
 
     private var errors = 0

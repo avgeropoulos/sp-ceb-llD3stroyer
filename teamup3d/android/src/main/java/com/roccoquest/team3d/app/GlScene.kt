@@ -67,14 +67,25 @@ class GlScene {
         atlasVersion = -1
     }
 
-    /** Copies the tile atlas to the GPU when new tile pictures were added to it. */
+    /**
+     * Copies the tile atlas to the GPU: all of it once, then only the rows where new tile
+     * pictures were added, so a new kind of block never makes the game stutter.
+     */
     private fun uploadAtlas() {
         if (atlasVersion == Atlas.version) return
-        atlasVersion = Atlas.version
+        val rows = Atlas.takeDirtyRows()
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
-        val bmp = Bitmap.createBitmap(Atlas.pixels, Atlas.SIZE, Atlas.SIZE, Bitmap.Config.ARGB_8888)
-        GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bmp, 0)
-        bmp.recycle()
+        if (atlasVersion < 0 || rows == null || rows.first == 0 && rows.last == Atlas.SIZE - 1) {
+            val bmp = Bitmap.createBitmap(Atlas.pixels, Atlas.SIZE, Atlas.SIZE, Bitmap.Config.ARGB_8888)
+            GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bmp, 0)
+            bmp.recycle()
+        } else {
+            val n = rows.last - rows.first + 1
+            val bmp = Bitmap.createBitmap(Atlas.pixels, rows.first * Atlas.SIZE, Atlas.SIZE, Atlas.SIZE, n, Bitmap.Config.ARGB_8888)
+            GLUtils.texSubImage2D(GLES20.GL_TEXTURE_2D, 0, 0, rows.first, bmp)
+            bmp.recycle()
+        }
+        atlasVersion = Atlas.version
     }
 
     fun render(list: DrawList) {

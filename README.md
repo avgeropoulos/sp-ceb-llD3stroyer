@@ -113,7 +113,11 @@ the ground is a deep slab with a rounded grassy edge, and every hero, monster an
 3D model with light and shine. The painted skies stay behind, and the HUD, buttons, map and menus
 are exactly like Team Up!.
 
+![Team Up! 3D title screen](docs/teamup3d-title.png)
 ![Team Up! 3D](docs/teamup3d.png)
+
+* The **title screen is 3D** too: chunky block letters that bob and turn, the team standing in front
+  of a 3D level, and a slowly swaying camera.
 
 * It's a **separate app** (`com.roccoquest.teamup3d`, called "Team Up! 3D"), so it installs next to
   Team Up! instead of replacing it. It keeps its own save files.

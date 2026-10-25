@@ -45,6 +45,51 @@ class TeamSceneTest {
         ImageIO.write(img, "png", File(dir, "$name.png"))
     }
 
+    @Test fun titleScreen() {
+        val scene = TeamScene()
+        repeat(90) { game.update(dt) }
+        assertEquals(TeamGame.State.TITLE, game.state)
+        shot(scene, "title")
+        repeat(70) { game.update(dt) }
+        shot(scene, "title-later")
+    }
+
+    /**
+     * Plays a few seconds of every level (walking, jumping, attacking) and checks that building
+     * the 3D frame stays fast, doesn't use too many draws and doesn't keep making new models.
+     */
+    @Test fun noLagInAnyLevel() {
+        val scene = TeamScene()
+        val report = StringBuilder()
+        var worstMs = 0.0
+        var worstDraws = 0
+        var worstModels = 0
+        for (i in Levels.all.indices) {
+            startPlaying(i)
+            input.right = true
+            repeat(60) { game.update(dt); scene.build(game) }
+            val models = Voxels.built
+            var maxMs = 0.0
+            var maxDraws = 0
+            for (f in 0 until 240) {
+                input.jump = f % 50 < 12
+                input.action = f % 30 < 3
+                game.update(dt)
+                val t0 = System.nanoTime()
+                val list = scene.build(game)
+                maxMs = maxOf(maxMs, (System.nanoTime() - t0) / 1e6)
+                maxDraws = maxOf(maxDraws, list.count)
+            }
+            input.right = false; input.jump = false; input.action = false
+            val made = Voxels.built - models
+            report.append("%3d %-28s %6.2f ms %5d draws %4d new models\n".format(i, Levels.all[i].name, maxMs, maxDraws, made))
+            if (i > 0) { worstMs = maxOf(worstMs, maxMs); worstDraws = maxOf(worstDraws, maxDraws); worstModels = maxOf(worstModels, made) }
+        }
+        File(dir, "performance.txt").writeText(report.toString())
+        assertTrue(worstDraws < 1500, "too many draws: $worstDraws")
+        assertTrue(worstModels < 400, "too many new models in one level: $worstModels")
+    }
+
     @Test fun screenshots() {
         val scene = TeamScene()
         val picks = listOf(0, 3, 21, 43, 70, 85, 106, 127, 150, 170, 190, 211, 232)
