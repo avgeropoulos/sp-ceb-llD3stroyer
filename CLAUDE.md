@@ -48,7 +48,9 @@ attempt looked darker and lagged on the sticker book, so it was removed). The ti
 level with GLES 2.0 (`GlScene`); frames are requested from a `Choreographer` callback with the vsync time (smooth
 sprinting); on any 3D error it draws plain 2D for half a second. Lighting keeps camera-facing surfaces at their
 exact 2D colour (`lit` in the shader / `SoftRaster`). File 1's head start is `TeamGame.HeadStart` (World 9-1,
-key `start3d_world9`). Add `:teamup3d:engine` to the
+key `start3d_world9`). Sung theme: `ThemeSinger` (3D app) has a TTS voice say each `Songs.themeSpoken` syllable
+into a WAV, `Autotune.fit` (core) retunes it to `Chiptune.sungNotes` (two octaves down) and `Chiptune.render(song,
+words)` mixes them in; `TeamGame.titleMusic` = THEME makes the 3D title play it. Add `:teamup3d:engine` to the
 scratch build to test it locally.
 
 ## Where things are in Team Up! (`team/src/main/kotlin/com/roccoquest/team/`)

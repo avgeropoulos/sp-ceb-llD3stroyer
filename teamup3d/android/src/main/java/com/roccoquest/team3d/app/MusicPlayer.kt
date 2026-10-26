@@ -35,6 +35,16 @@ class MusicPlayer {
 
     fun play(m: Music) { wanted = m }
 
+    /**
+     * A real voice sings the TEAM UP! theme song from now on: [words] are the recorded, tuned
+     * words (one per sung note). The song is made again with them and swapped in.
+     */
+    fun singTheme(words: List<FloatArray?>) {
+        val song = Songs.of(Music.THEME) ?: return
+        val made = Chiptune.render(song, words)
+        songs[Music.THEME] = made
+    }
+
     fun setForeground(on: Boolean) { foreground = on }
 
     fun release() { released = true }

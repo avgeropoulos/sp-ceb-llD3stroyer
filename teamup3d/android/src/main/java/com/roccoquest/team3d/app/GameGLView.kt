@@ -44,6 +44,8 @@ class GameGLView(context: Context) : GLSurfaceView(context), GLSurfaceView.Rende
     init {
         // File 1 picks up about where the 2D game was: level 9, with coins and supplies.
         game.headStart = HEAD_START
+        // The title screen sings the TEAM UP! theme song.
+        game.titleMusic = com.roccoquest.game.Music.THEME
     }
 
     private val scene = TeamScene()

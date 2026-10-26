@@ -1018,6 +1018,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private val TITLE_SONGS = listOf(Music.OVERWORLD, Music.FANFARE, Music.DREAMY, Music.ADVENTURE, Music.HEROIC, Music.PARADE)
     var titleSong = TITLE_SONGS[(storage.load("titleSong") % TITLE_SONGS.size + TITLE_SONGS.size) % TITLE_SONGS.size]
         private set
+    /** Team Up! 3D sets this to always open with the (sung) TEAM UP! theme song. */
+    var titleMusic: Music? = null
+
     private fun nextTitleSong() {
         val n = storage.load("titleSong") + 1
         storage.save("titleSong", n)
@@ -3875,7 +3878,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun updateMusic() {
         val m = when {
             !musicOn -> Music.NONE
-            state == State.TITLE || state == State.SLOTS || state == State.PICK -> titleSong
+            state == State.TITLE || state == State.SLOTS || state == State.PICK -> titleMusic ?: titleSong
             state == State.VICTORY -> Music.FROG
             state == State.STICKER -> Music.STAR
             state == State.HOME -> Music.COZY

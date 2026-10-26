@@ -49,8 +49,30 @@ object Chiptune {
 
     fun length(track: String) = parse(track).sumOf { it.len }
 
-    /** Renders one full loop of [song] as 16-bit mono PCM at [RATE]. */
-    fun render(song: Song): ShortArray {
+    /**
+     * Each sung note of [song]'s vocal track: its pitch in Hz, and how many seconds there is
+     * to sing it (the note plus any rest right after it, so words can finish).
+     */
+    fun sungNotes(song: Song): List<Pair<Float, Float>> {
+        val notes = parse(song.vocal)
+        val unitSec = 60f / song.bpm / 4f
+        val out = ArrayList<Pair<Float, Float>>()
+        for ((i, n) in notes.withIndex()) {
+            if (n.freq <= 0f) continue
+            var len = n.len
+            var j = i + 1
+            while (j < notes.size && notes[j].freq <= 0f) { len += notes[j].len; j++ }
+            out += n.freq to min(len * unitSec, 0.7f)
+        }
+        return out
+    }
+
+    /**
+     * Renders one full loop of [song] as 16-bit mono PCM at [RATE]. With [words] (one recorded,
+     * tuned word per sung note, see [Autotune]), a real voice sings the vocal track; otherwise
+     * the built-in "ooh-aah" singer does.
+     */
+    fun render(song: Song, words: List<FloatArray?>? = null): ShortArray {
         val units = length(song.lead)
         require(length(song.bass) == units) { "bass is ${length(song.bass)} steps, lead is $units" }
         require(song.harmony.isBlank() || length(song.harmony) == units) { "harmony length mismatch" }
@@ -59,12 +81,17 @@ object Chiptune {
         val total = (units * perUnit).toInt()
         val mix = FloatArray(total)
 
-        // With a singer, the lead plays softly underneath.
-        val leadVol = if (song.vocal.isNotBlank()) 0.05f else 0.17f
+        // With a singer, the lead plays softly underneath (a bit louder under real words, to carry the tune).
+        val leadVol = when {
+            song.vocal.isBlank() -> 0.17f
+            words != null -> 0.08f
+            else -> 0.05f
+        }
         voice(mix, parse(song.lead), perUnit, leadVol) { phase, _ -> if (phase < song.leadDuty) 1f else -1f }
         if (song.vocal.isNotBlank()) {
             require(length(song.vocal) == units) { "vocal is ${length(song.vocal)} steps, lead is $units" }
-            sing(mix, parse(song.vocal), song.vowels, perUnit)
+            if (words != null) singWords(mix, parse(song.vocal), words, perUnit)
+            else sing(mix, parse(song.vocal), song.vowels, perUnit)
         }
         if (song.harmony.isNotBlank()) {
             voice(mix, parse(song.harmony), perUnit, 0.07f) { phase, _ -> if (phase < 0.5f) 1f else -1f }
@@ -166,6 +193,39 @@ object Chiptune {
         val delay = (RATE * 0.09f).toInt()
         for (i in voc.indices) {
             val wet = if (i >= delay) voc[i - delay] * 0.25f else 0f
+            val x = (voc[i] + wet) * gain
+            out[i] += x / (1f + abs(x))
+        }
+    }
+
+    /**
+     * A real voice: each recorded word starts right on its note, a second copy a moment later
+     * makes it sound like a little choir, and a short echo makes it sound like a room.
+     */
+    private fun singWords(out: FloatArray, notes: List<Note>, words: List<FloatArray?>, perUnit: Double) {
+        val voc = FloatArray(out.size)
+        var unit = 0
+        var sung = 0
+        val chorus = (RATE * 0.018f).toInt()
+        for (n in notes) {
+            val start = (unit * perUnit).toInt()
+            unit += n.len
+            if (n.freq <= 0f) continue
+            val w = words.getOrNull(sung++) ?: continue
+            for (i in w.indices) {
+                val at = start + i
+                if (at < voc.size) voc[at] += w[i]
+                if (at + chorus < voc.size) voc[at + chorus] += w[i] * 0.45f
+            }
+        }
+        var sum = 0.0
+        var count = 0
+        for (v in voc) if (v != 0f) { sum += v * v; count++ }
+        val rms = if (count == 0) 1.0 else kotlin.math.sqrt(sum / count)
+        val gain = (0.2 / rms).toFloat()
+        val delay = (RATE * 0.11f).toInt()
+        for (i in voc.indices) {
+            val wet = if (i >= delay) voc[i - delay] * 0.2f else 0f
             val x = (voc[i] + wet) * gain
             out[i] += x / (1f + abs(x))
         }

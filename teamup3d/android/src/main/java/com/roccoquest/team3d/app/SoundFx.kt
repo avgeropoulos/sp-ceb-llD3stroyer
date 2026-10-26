@@ -35,6 +35,10 @@ class SoundFx(context: Context) : SoundSink {
     private val ids = IntArray(Sound.entries.size)
     private val musicPlayer = MusicPlayer()
 
+    /** The phone's voice learns the theme song's words in the background, then sings them. */
+    @Suppress("unused")
+    private val singer = ThemeSinger(context) { words -> musicPlayer.singTheme(words) }
+
     /** Ring-Ding Frog's singing: the phone's text-to-speech, sped up and pitched high. */
     @Volatile private var ttsReady = false
     private var tts: TextToSpeech? = null

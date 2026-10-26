@@ -1001,6 +1001,28 @@ object Songs {
     val themeLyrics: List<Pair<String, Int>> = listOf("We" to 32, "are" to 34, "the" to 36, "team," to 38, "Roc-" to 48, "co" to 50, "and" to 52, "Block-" to 54, "y" to 56, "too," to 58, "Po-" to 64, "ke-" to 66, "mon" to 68, "friends," to 70, "there's" to 80, "noth-" to 82, "ing" to 84, "we" to 86, "can't" to 88, "do!" to 90, "Jump" to 96, "on" to 98, "the" to 100, "bad" to 102, "guys," to 104, "climb" to 112, "up" to 114, "to" to 116, "the" to 118, "stars," to 120, "King" to 128, "Krag" to 130, "can't" to 132, "stop" to 134, "us," to 136, "we'll" to 144, "go" to 146, "real-" to 148, "ly" to 150, "far!" to 152, "TEAM" to 160, "UP!" to 164, "team" to 168, "up!" to 170, "To-" to 176, "geth-" to 178, "er" to 180, "we" to 182, "are" to 184, "strong," to 186, "TEAM" to 192, "UP!" to 196, "come" to 200, "on" to 202, "and" to 208, "sing" to 210, "a-" to 212, "long!" to 214, "From" to 224, "the" to 226, "hills" to 228, "up" to 230, "to" to 232, "the" to 234, "moon" to 236, "we'll" to 240, "fly," to 242, "Roc-" to 256, "co," to 258, "Block-" to 260, "y," to 262, "reach" to 264, "for" to 266, "the" to 268, "sky!" to 272)
     const val THEME_BPM = 136
 
+    /**
+     * How a phone's voice should say each sung syllable of [themeLyrics] (spelled so that a
+     * single syllable on its own comes out right, e.g. "Block-" "y" -> "block" "ee").
+     */
+    val themeSpoken: List<String> = themeLyrics.map { (syl, _) ->
+        when (val w = syl.trimEnd(',', '!', '-').lowercase()) {
+            "y" -> "ee"
+            "ly" -> "lee"
+            "ke" -> "keh"
+            "po" -> "poh"
+            "co" -> "co"
+            "roc" -> "rock"
+            "to" -> if (syl.endsWith("-")) "too" else "to"
+            "a" -> "uh"
+            "real" -> "ree"
+            "noth" -> "nuth"
+            "geth" -> "geth"
+            "er" -> "er"
+            else -> w
+        }
+    }
+
     fun of(m: Music): Song? = when (m) {
         Music.NONE -> null
         Music.OVERWORLD -> overworld

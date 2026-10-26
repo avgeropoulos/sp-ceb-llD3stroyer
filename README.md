@@ -124,6 +124,9 @@ are exactly like Team Up!.
 * **Head start**: File 1 picks up about where the 2D game was: it starts at **World 9-1** with
   **5000 coins**, **99 of every ore**, a **diamond pickaxe**, **diamond sword**, **diamond armor**,
   a **sapphire shield** and **30 TNT** (once).
+* **A real voice sings the TEAM UP! theme song**: on the title screen and in the SING-ALONG game, the
+  phone's own voice sings the words, tuned to every note and right on the beat (it learns the song
+  in the background in the first seconds; until then the "ooh-aah" singer sings).
 * **Smooth on phones and tablets**: the game moves in step with the screen's refresh (no stutter when
   sprinting), shapes are kept light, new 3D models are built a few per frame, and a test plays every
   level and fails if a frame gets too heavy.
