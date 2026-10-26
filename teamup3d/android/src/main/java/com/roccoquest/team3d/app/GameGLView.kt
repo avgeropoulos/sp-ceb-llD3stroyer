@@ -15,17 +15,18 @@ import com.roccoquest.team.FrameClock
 import com.roccoquest.team.TeamControls
 import com.roccoquest.team.TeamGame
 import com.roccoquest.team.TeamInput
-import com.roccoquest.team3d.FlatScreen
-import com.roccoquest.team3d.Glyphs
+import com.roccoquest.team.Armor
+import com.roccoquest.team.Shield
+import com.roccoquest.team.Sword
+import com.roccoquest.team.WORLD_SIZE
 import com.roccoquest.team3d.TeamScene
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
 /**
- * Team Up! 3D's screen. It runs the normal Team Up! game and draws each frame with OpenGL:
- * in a level (and on the title screen) the painted sky goes in the back and the level is real
- * 3D; then everything else (HUD, buttons, menus, map, house, mini games) is drawn on top as
- * chunky lit 3D by [FlatScreen], in exactly the places the 2D game puts it, so taps still work.
+ * Team Up! 3D's screen. It runs the normal Team Up! game. In a level (and on the title screen)
+ * each frame is the painted sky in the back, the level in real 3D with OpenGL, and the HUD and
+ * buttons on top. Other screens (map, house, menus, sticker book) are Team Up!'s crisp 2D picture.
  * If 3D ever goes wrong, that moment is drawn in plain 2D instead.
  * Touch, keyboard and controller handling is the same as Team Up!'s GameView.
  */
@@ -46,7 +47,6 @@ class GameGLView(context: Context) : GLSurfaceView(context), GLSurfaceView.Rende
     }
 
     private val scene = TeamScene()
-    private val screen = FlatScreen()
     private val glScene = GlScene()
     private val sky = CanvasLayer()
     private val front = CanvasLayer()
@@ -62,11 +62,12 @@ class GameGLView(context: Context) : GLSurfaceView(context), GLSurfaceView.Rende
     private val touchId = IntArray(10)
 
     init {
-        Glyphs.rasterizer = AndroidGlyphs()
         setEGLContextClientVersion(2)
         setEGLConfigChooser(8, 8, 8, 8, 16, 0)
         setRenderer(this)
-        renderMode = RENDERMODE_CONTINUOUSLY
+        // Frames are asked for by [vsync] once per screen refresh, with the refresh's own time,
+        // so the game moves the same amount every frame (smooth even when sprinting).
+        renderMode = RENDERMODE_WHEN_DIRTY
         isFocusable = true
         isFocusableInTouchMode = true
         holder.addCallback(object : SurfaceHolder.Callback {
@@ -90,13 +91,32 @@ class GameGLView(context: Context) : GLSurfaceView(context), GLSurfaceView.Rende
         requestFocus()
     }
 
+    /** Time of the latest screen refresh, from the [Choreographer]. */
+    @Volatile private var vsyncNanos = 0L
+    @Volatile private var ticking = false
+
+    private val vsync = object : android.view.Choreographer.FrameCallback {
+        override fun doFrame(frameTimeNanos: Long) {
+            if (!ticking) return
+            vsyncNanos = frameTimeNanos
+            requestRender()
+            android.view.Choreographer.getInstance().postFrameCallback(this)
+        }
+    }
+
     fun resume() {
         sound.setForeground(true)
         onResume()
+        if (!ticking) {
+            ticking = true
+            android.view.Choreographer.getInstance().postFrameCallback(vsync)
+        }
     }
 
     fun pause() {
         sound.setForeground(false)
+        ticking = false
+        android.view.Choreographer.getInstance().removeFrameCallback(vsync)
         onPause()
     }
 
@@ -104,10 +124,10 @@ class GameGLView(context: Context) : GLSurfaceView(context), GLSurfaceView.Rende
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
-        // 2 screen pixels per game pixel: still sharp for 3D, and less than half the drawing work
-        // of full resolution on most phones, so the game stays smooth.
+        // At most 3 screen pixels per game pixel, like Team Up!: sharp, without the extra work of
+        // drawing every pixel of a big tablet screen.
         if (w > 0 && h > 0) {
-            val targetH = minOf(h, (VIEW_H * 2).toInt())
+            val targetH = minOf(h, (VIEW_H * 3).toInt())
             holder.setFixedSize((w.toLong() * targetH / h).toInt().coerceAtLeast(1), targetH)
         }
     }
@@ -136,7 +156,7 @@ class GameGLView(context: Context) : GLSurfaceView(context), GLSurfaceView.Rende
 
     override fun onDrawFrame(unused: GL10?) {
         val now = System.nanoTime()
-        val steps = clock.steps(now)
+        val steps = clock.steps(if (vsyncNanos != 0L) vsyncNanos else now)
         repeat(steps) {
             try { game.update(1f / 60f) } catch (t: Throwable) { recover(t) }
         }
@@ -159,32 +179,41 @@ class GameGLView(context: Context) : GLSurfaceView(context), GLSurfaceView.Rende
     private fun drawFrame(scale: Float) {
         GLES20.glClearColor(0f, 0f, 0f, 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
-        if (failed3d > 0) {
-            // 3D had a problem a moment ago: draw the normal Team Up! picture for a little while.
-            failed3d--
+        val in3d = game.showsLevel || game.state == TeamGame.State.TITLE
+        if (!in3d || failed3d > 0) {
+            // Map, house, menus, sticker book...: the crisp normal Team Up! picture (fast).
+            // Also used for a moment if 3D ever has a problem.
+            if (failed3d > 0) failed3d--
             draw2d(scale)
             return
         }
-        try {
-            val world = scene.build(game)
-            val top = screen.build(game, world)
-            if (world.showWorld) {
-                // The level (or the title screen): painted sky, then the 3D world.
-                sky.paint { c -> gfx.begin(c, scale); game.renderLevelBackdrop(gfx) }
-                sky.draw(blend = false)
-                GLES20.glClear(GLES20.GL_DEPTH_BUFFER_BIT)
-                glScene.render(world)
-            }
-            // Everything else (HUD, buttons, menus, map, house...) as chunky 3D on top.
-            GLES20.glClear(GLES20.GL_DEPTH_BUFFER_BIT)
-            glScene.render(top)
+        val list = try {
+            scene.build(game)
         } catch (t: Throwable) {
-            // Never let a 3D drawing problem stop the game: show this moment in 2D instead.
-            android.util.Log.e("TeamUp3D", "3D drawing failed, drawing in 2D", t)
+            android.util.Log.e("TeamUp3D", "3D scene failed, drawing in 2D", t)
             failed3d = 30
-            GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
             draw2d(scale)
+            return
         }
+        sky.paint { c -> gfx.begin(c, scale); game.renderLevelBackdrop(gfx) }
+        front.paint { c ->
+            gfx.begin(c, scale)
+            // Words floating in the level (scores, names) were placed by the 3D scene.
+            for (i in 0 until list.labelCount) {
+                val l = list.label(i)
+                gfx.text(l.text, l.x, l.y, l.size, l.color, l.align)
+            }
+            try { game.render(gfx, drawWorld = false) } catch (t: Throwable) { recover(t) }
+        }
+        sky.draw(blend = false)
+        GLES20.glClear(GLES20.GL_DEPTH_BUFFER_BIT)
+        try {
+            glScene.render(list)
+        } catch (t: Throwable) {
+            android.util.Log.e("TeamUp3D", "3D drawing failed", t)
+            failed3d = 30
+        }
+        front.draw(blend = true)
     }
 
     /** Frames left to draw in plain 2D after the 3D scene had a problem. */
@@ -238,9 +267,11 @@ class GameGLView(context: Context) : GLSurfaceView(context), GLSurfaceView.Rende
     /** Controller buttons for JUMP, THROW, SWITCH and SUPER (changeable on the CONTROLLER screen). */
     private val padKeys = IntArray(4)
     private companion object {
+        /** World 9-1, with plenty to pick up where the 2D game was. */
         val HEAD_START = TeamGame.HeadStart(
-            level = 8, coins = 1500, ore = 40, pickTier = 2, tnt = 10,
-            message = "3D HEAD START: LEVEL 9, 1500 COINS, 40 OF EVERY ORE, IRON PICK, 10 TNT!",
+            level = WORLD_SIZE * 8, coins = 5000, ore = 99, pickTier = 4, tnt = 30,
+            sword = Sword.DIAMOND, armor = Armor.DIAMOND, shield = Shield.SAPPHIRE, key = "start3d_world9",
+            message = "WORLD 9! 5000 COINS, 99 OF EVERY ORE, DIAMOND GEAR AND 30 TNT!",
         )
         const val STICK_ON = 0.35f
         const val STICK_OFF = 0.25f

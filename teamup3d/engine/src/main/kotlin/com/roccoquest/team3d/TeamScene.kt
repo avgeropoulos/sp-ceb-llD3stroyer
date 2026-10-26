@@ -42,7 +42,7 @@ class TeamScene {
             list.finish()
             return list
         }
-        list.setCamera(0f, g.viewW)
+        list.setCamera(0f, g.viewW, pitch = LEVEL_PITCH)
         lighting(g.level.def.place)
         tiles.begin(g)
         g.renderLevelTiles(tiles)
@@ -108,20 +108,15 @@ class TeamScene {
         // No fog: the painted sky behind already gives the distance.
         e.fogNear = 1e6f
         e.fogFar = 2e6f
-        if (place in DARK) {
-            e.sun = 0xFFC8D0F0.toInt()
-            e.ambientSky = 0xFF8C9CC8.toInt()
-            e.ambientGround = 0xFF544C64.toInt()
-        } else {
-            e.sun = 0xFFFFF2DC.toInt()
-            e.ambientSky = 0xFFB0C0E0.toInt()
-            e.ambientGround = 0xFF786652.toInt()
-        }
+        // A touch cooler and dimmer in dark places, plain white light everywhere else.
+        e.sun = if (place in DARK) 0xFFE2E6F4.toInt() else 0xFFFFFFFF.toInt()
     }
 
     private companion object {
         /** How far in front of the level the title screen's team stands. */
         const val CAST_Z = 20f
+        /** How far the camera looks down on a level: shows the tops of the ground and blocks. */
+        const val LEVEL_PITCH = 0.22f
         const val GROUND_ROW = 13
         const val TITLE_DROP = GROUND_ROW * 16f - 190f
 

@@ -924,18 +924,25 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
      * World 7 with 1000 coins and supplies. (The first version, `gift1`, gave 5000 coins at Frosty Peaks: if that was
      * already given, the extra 4000 coins are taken back, but never below 1000.) Returns true if it was given now.
      */
-    /** A one-time head start for File 1: start at [level] (an index) with some coins and supplies. */
-    class HeadStart(val level: Int, val coins: Int, val ore: Int, val pickTier: Int, val tnt: Int, val message: String)
+    /**
+     * A one-time head start for File 1: start at [level] (an index) with coins, ore, gear and TNT.
+     * [key] is the save key that remembers it was given; a new key gives a new head start.
+     */
+    class HeadStart(
+        val level: Int, val coins: Int, val ore: Int, val pickTier: Int, val tnt: Int, val message: String,
+        val sword: Sword = Sword.NONE, val armor: Armor = Armor.NONE, val shield: Shield = Shield.NONE,
+        val key: String = "start3d",
+    )
 
     /**
      * Set by Team Up! 3D: instead of the World 7 present, File 1 gets this head start once (global key
-     * `start3d`), so the 3D game picks up about where the 2D one was.
+     * [HeadStart.key]), so the 3D game picks up about where the 2D one was.
      */
     var headStart: HeadStart? = null
 
     private fun giveHeadStart(h: HeadStart): Boolean {
-        if (slot != 0 || storage.load("start3d") != 0) return false
-        storage.save("start3d", 1)
+        if (slot != 0 || storage.load(h.key) != 0) return false
+        storage.save(h.key, 1)
         // The 2D game's World 7 present never comes on top of this.
         storage.save("gift1", 1)
         storage.save("gift2", 1)
@@ -948,6 +955,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             pickTier = h.pickTier
             pickHp = pickDurability(pickTier)
         }
+        // Gear only ever gets better, never swapped for something weaker.
+        if (h.sword.damage > sword.damage) { sword = h.sword; swordHp = h.sword.durability }
+        if (h.armor.durability > armorType.durability) { armorType = h.armor; armorHp = h.armor.durability }
+        if (h.shield.durability > shieldType.durability) { shieldType = h.shield; shieldHp = h.shield.durability }
         tnt = maxOf(tnt, h.tnt)
         hearts = MAX_HEARTS
         save()

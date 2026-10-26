@@ -45,7 +45,6 @@ class SoftRaster(private val w: Int, private val h: Int) {
     }
 
     private var cutout = false
-    private var glyphs = false
 
     private class V { var sx = 0f; var sy = 0f; var z = 0f; var w = 0f; var r = 0f; var g = 0f; var b = 0f; var a = 0f; var u = 0f; var v = 0f }
 
@@ -61,7 +60,6 @@ class SoftRaster(private val w: Int, private val h: Int) {
         val tb = (c.tint and 255) / 255f; val ta = (c.tint ushr 24) / 255f
         val translucent = c.translucent
         cutout = c.cutout
-        glyphs = c.texture == DrawList.TEX_GLYPHS
         var i = 0
         while (i < c.mesh.vertexCount) {
             var ok = true
@@ -90,21 +88,17 @@ class SoftRaster(private val w: Int, private val h: Int) {
                 val bg = d[o + 7] * tg
                 val bb = d[o + 8] * tb
                 val l = env.light
-                val diff = max(0f, nx * l[0] + ny * l[1] + nz * l[2])
-                val hemi = ny * 0.5f + 0.5f
+                // Same lighting as the phone's shader.
+                val lit = (1f + 0.4f * (nx * l[0] + ny * l[1] + nz * l[2] - l[2])).coerceIn(0.55f, 1.2f)
                 fun ch(c: Int, s: Int) = (c shr s and 255) / 255f
-                val ar = ch(env.ambientGround, 16) + (ch(env.ambientSky, 16) - ch(env.ambientGround, 16)) * hemi
-                val ag = ch(env.ambientGround, 8) + (ch(env.ambientSky, 8) - ch(env.ambientGround, 8)) * hemi
-                val ab = ch(env.ambientGround, 0) + (ch(env.ambientSky, 0) - ch(env.ambientGround, 0)) * hemi
-                // Specular (Blinn) and a soft rim light.
                 var hx = l[0] + vx; var hy = l[1] + vy; var hz = l[2] + vz
                 val hl = sqrt(hx * hx + hy * hy + hz * hz).coerceAtLeast(1e-6f)
                 hx /= hl; hy /= hl; hz /= hl
                 val spec = max(0f, nx * hx + ny * hy + nz * hz).pow(28f) * c.shine
-                val rim = (1f - max(0f, nx * vx + ny * vy + nz * vz)).pow(3f) * 0.25f
-                var r = br * (ar * 0.75f + diff * ch(env.sun, 16)) + spec + rim * ch(env.ambientSky, 16)
-                var g = bg * (ag * 0.75f + diff * ch(env.sun, 8)) + spec + rim * ch(env.ambientSky, 8)
-                var b = bb * (ab * 0.75f + diff * ch(env.sun, 0)) + spec + rim * ch(env.ambientSky, 0)
+                val rim = (1f - max(0f, nx * vx + ny * vy + nz * vz)).pow(3f) * 0.12f
+                var r = br * lit * ch(env.sun, 16) + spec + rim
+                var g = bg * lit * ch(env.sun, 8) + spec + rim
+                var b = bb * lit * ch(env.sun, 0) + spec + rim
                 r += (br - r) * c.emissive; g += (bg - g) * c.emissive; b += (bb - b) * c.emissive
                 // Fully glowing things (sun, moon, stars) shine through the haze.
                 val f = if (c.emissive >= 0.99f) 0f else ((dist - env.fogNear) / (env.fogFar - env.fogNear)).coerceIn(0f, 1f) * 0.85f
@@ -119,11 +113,7 @@ class SoftRaster(private val w: Int, private val h: Int) {
     }
 
     private fun texel(u: Float, v: Float): Int {
-        if (glyphs) {
-            val x = (u * Glyphs.SIZE).toInt().coerceIn(0, Glyphs.SIZE - 1)
-            val y = (v * Glyphs.SIZE).toInt().coerceIn(0, Glyphs.SIZE - 1)
-            return Glyphs.pixels[y * Glyphs.SIZE + x]
-        }
+
         val x = (u * Atlas.SIZE).toInt().coerceIn(0, Atlas.SIZE - 1)
         val y = (v * Atlas.SIZE).toInt().coerceIn(0, Atlas.SIZE - 1)
         return Atlas.pixels[y * Atlas.SIZE + x]

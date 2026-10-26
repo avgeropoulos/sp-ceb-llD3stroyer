@@ -45,6 +45,13 @@ class PaperGfx(private val list: DrawList) : Gfx {
 
     override fun oval(x: Float, y: Float, w: Float, h: Float, color: Int) {
         if (w <= 0f || h <= 0f) return
+        if (isShadow(color) && h < w) {
+            // A soft shadow under someone's feet: lay it flat on the ground, like in the Mario games.
+            m.identity().translate(x + w / 2, -(y + h / 2) + 0.35f, 0f).scale(w / 2, 1f, w * 0.4f)
+            // A little darker than the 2D one, so it reads on bright 3D ground.
+            list.add(Prims.disc, m, (maxOf(color ushr 24, 0x60) shl 24) or (color and 0xFFFFFF))
+            return
+        }
         val big = isBody(color) && w * h > 40f
         val (z, d) = if (big) bodyDepth(min(w, h) * 0.5f) else nextDecal() to DECAL * 2
         m.identity().translate(x + w / 2, -(y + h / 2), z).scale(w / 2, h / 2, d / 2)
@@ -99,6 +106,12 @@ class PaperGfx(private val list: DrawList) : Gfx {
     override fun gradient(x: Float, y: Float, w: Float, h: Float, top: Int, bottom: Int) {
         // One slab in the middle colour is plenty for the few in-level gradients.
         rect(x, y, w, h, mixColor(top, bottom, 0.5f))
+    }
+
+    /** A see-through dark oval: the 2D game's shadow under a character. */
+    private fun isShadow(color: Int): Boolean {
+        val dark = (color shr 16 and 255) + (color shr 8 and 255) + (color and 255) < 120
+        return (color ushr 24) < 200 && dark
     }
 
     private fun isBody(color: Int) = !hasBody && (color ushr 24) == 255

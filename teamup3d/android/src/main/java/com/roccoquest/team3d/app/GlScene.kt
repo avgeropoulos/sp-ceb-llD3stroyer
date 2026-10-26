@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import android.opengl.GLES20
 import android.opengl.GLUtils
 import com.roccoquest.team3d.Atlas
-import com.roccoquest.team3d.Glyphs
 import com.roccoquest.team3d.DrawList
 import com.roccoquest.team3d.Mesh
 import java.nio.ByteBuffer
@@ -33,9 +32,6 @@ class GlScene {
     private var uTex = 0
     private var uCutout = 0
     private var texture = 0
-    /** Texture holding the characters for text ([Glyphs]). */
-    private var glyphTexture = 0
-    private var glyphVersion = -1
     /** The [Atlas.version] the GPU copy of the atlas matches. */
     private var atlasVersion = -1
 
@@ -69,33 +65,6 @@ class GlScene {
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
         atlasVersion = -1
-        GLES20.glGenTextures(1, ids, 0)
-        glyphTexture = ids[0]
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, glyphTexture)
-        // Text is drawn at many sizes, so it's smoothed both ways.
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
-        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
-        glyphVersion = -1
-    }
-
-    /** Copies the text characters to the GPU when new ones were drawn. */
-    private fun uploadGlyphs() {
-        if (glyphVersion == Glyphs.version) return
-        glyphVersion = Glyphs.version
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, glyphTexture)
-        // Sent as plain RGBA bytes (a Bitmap would premultiply and give letters dark edges).
-        val src = Glyphs.pixels
-        val bytes = ByteBuffer.allocateDirect(src.size * 4).order(ByteOrder.nativeOrder())
-        for (c in src) {
-            bytes.put((c shr 16 and 255).toByte()).put((c shr 8 and 255).toByte()).put((c and 255).toByte()).put((c ushr 24).toByte())
-        }
-        bytes.position(0)
-        GLES20.glTexImage2D(
-            GLES20.GL_TEXTURE_2D, 0, GLES20.GL_RGBA, Glyphs.SIZE, Glyphs.SIZE, 0,
-            GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, bytes,
-        )
     }
 
     /**
@@ -128,10 +97,8 @@ class GlScene {
         GLES20.glDepthFunc(GLES20.GL_LEQUAL)
         GLES20.glDisable(GLES20.GL_CULL_FACE)
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
-        uploadGlyphs()
         uploadAtlas()
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, texture)
-        var bound = DrawList.TEX_TILES
         GLES20.glUniform1i(uTex, 0)
         GLES20.glUniformMatrix4fv(uViewProj, 1, false, list.viewProj.m, 0)
         GLES20.glUniform3f(uLight, env.light[0], env.light[1], env.light[2])
@@ -161,10 +128,6 @@ class GlScene {
                     GLES20.glDisable(GLES20.GL_BLEND)
                     GLES20.glDepthMask(true)
                 }
-            }
-            if (c.texture != bound) {
-                bound = c.texture
-                GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, if (bound == DrawList.TEX_GLYPHS) glyphTexture else texture)
             }
             bind(mesh)
             GLES20.glUniformMatrix4fv(uModel, 1, false, c.model, 0)
@@ -280,12 +243,13 @@ class GlScene {
                 vec3 toCam = uCam - vWorld;
                 float dist = length(toCam);
                 vec3 v = toCam / dist;
-                float diff = max(dot(n, uLight), 0.0);
-                vec3 amb = mix(uGroundAmb, uSkyAmb, n.y * 0.5 + 0.5);
+                // Faces toward the camera keep exactly their 2D colour; tops catch the sun and
+                // sides get gentle shade. Bright and cheerful, like the Mario games.
+                float lit = clamp(1.0 + 0.4 * (dot(n, uLight) - uLight.z), 0.55, 1.2);
                 vec3 h = normalize(uLight + v);
                 float spec = pow(max(dot(n, h), 0.0), 28.0) * uShine;
-                float rim = pow(1.0 - max(dot(n, v), 0.0), 3.0) * 0.25;
-                vec3 c = base.rgb * (amb * 0.75 + diff * uSun) + vec3(spec) + rim * uSkyAmb;
+                float rim = pow(1.0 - max(dot(n, v), 0.0), 3.0) * 0.12;
+                vec3 c = base.rgb * lit * uSun + vec3(spec + rim);
                 c = mix(c, base.rgb, uEmissive);
                 float f = clamp((dist - uFogRange.x) / (uFogRange.y - uFogRange.x), 0.0, 1.0) * 0.85;
                 f *= 1.0 - step(0.99, uEmissive);

@@ -4,6 +4,10 @@ import com.roccoquest.game.SoundSink
 import com.roccoquest.game.Storage
 import com.roccoquest.game.VIEW_H
 import com.roccoquest.team.Levels
+import com.roccoquest.team.Armor
+import com.roccoquest.team.Shield
+import com.roccoquest.team.Sword
+import com.roccoquest.team.WORLD_SIZE
 import com.roccoquest.team.Mon
 import com.roccoquest.team.TeamGame
 import com.roccoquest.team.TeamInput
@@ -20,64 +24,6 @@ class TeamSceneTest {
     private val storage = Storage.Memory().apply { save("gift1", 1); save("gift2", 1) }
     private val game = TeamGame(input, SoundSink {}, storage)
     private val dir = File("build/screens3d").apply { mkdirs() }
-
-    init { Glyphs.rasterizer = AwtGlyphs }
-
-    /** Draws a frame exactly like the phone: sky, 3D level (if any), then the screen in 3D on top. */
-    private fun shot3d(scene: TeamScene, flat: FlatScreen, name: String) {
-        val scale = 2f
-        val w = (game.viewW * scale).toInt()
-        val h = (VIEW_H * scale).toInt()
-        val raster = SoftRaster(w, h)
-        val world = scene.build(game)
-        if (world.showWorld) {
-            val sky = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
-            game.renderLevelBackdrop(AwtGfx(sky, scale))
-            raster.render(world, sky)
-        } else {
-            raster.render(DrawList().apply { showWorld = false; finish() })
-        }
-        val img = raster.overlay(flat.build(game, world))
-        ImageIO.write(img, "png", File(dir, "$name.png"))
-    }
-
-    @Test fun everyScreenIn3d() {
-        val scene = TeamScene().apply { voxelsPerFrame = Int.MAX_VALUE }
-        val flat = FlatScreen()
-        repeat(90) { game.update(dt) }
-        shot3d(scene, flat, "screen-title")
-        game.newGame(0, Mon.SPARKY)
-        game.update(dt)
-        shot3d(scene, flat, "screen-intro")
-        repeat((3.2f / dt).toInt()) { game.update(dt) }
-        shot3d(scene, flat, "screen-level-hud")
-        game.goToMap()
-        repeat(30) { game.update(dt) }
-        shot3d(scene, flat, "screen-map")
-        game.enterHome()
-        repeat(30) { game.update(dt) }
-        shot3d(scene, flat, "screen-home")
-        game.enterGarden()
-        repeat(30) { game.update(dt) }
-        shot3d(scene, flat, "screen-garden")
-        game.openControllerSetup()
-        repeat(10) { game.update(dt) }
-        shot3d(scene, flat, "screen-controls")
-        game.startPark()
-        repeat(60) { game.update(dt) }
-        shot3d(scene, flat, "screen-park")
-        game.playScene(0, 0)
-        repeat(60) { game.update(dt) }
-        shot3d(scene, flat, "screen-scene")
-        // Busy screens must still be quick to build.
-        game.enterHome()
-        repeat(30) { game.update(dt) }
-        repeat(20) { flat.build(game, null) }
-        val t0 = System.nanoTime()
-        repeat(100) { flat.build(game, null) }
-        val ms = (System.nanoTime() - t0) / 1e6 / 100
-        File(dir, "flat-performance.txt").writeText("home: %.2f ms, %d draws\n".format(ms, flat.list.count))
-    }
 
     private fun run(seconds: Float) = repeat((seconds / dt).toInt()) { game.update(dt) }
 
@@ -105,17 +51,24 @@ class TeamSceneTest {
 
     @Test fun file1GetsTheHeadStartOnce() {
         val fresh = TeamGame(TeamInput(), SoundSink {}, Storage.Memory())
-        fresh.headStart = TeamGame.HeadStart(8, 1500, 40, 2, 10, "HEAD START")
+        fresh.headStart = TeamGame.HeadStart(
+            WORLD_SIZE * 8, 5000, 99, 4, 30, "HEAD START",
+            Sword.DIAMOND, Armor.DIAMOND, Shield.SAPPHIRE, key = "start3d_world9",
+        )
         fresh.newGame(0, Mon.SPARKY)
-        assertEquals(8, fresh.levelIndex, "starts at level 9")
-        assertEquals(1500, fresh.coins)
-        assertEquals(2, fresh.pickTier)
-        assertEquals(10, fresh.tnt)
-        assertTrue(fresh.unlocked >= 9)
+        assertEquals(WORLD_SIZE * 8, fresh.levelIndex, "starts at World 9-1")
+        assertEquals("9-1", Levels.all[fresh.levelIndex].let { "${fresh.levelIndex / WORLD_SIZE + 1}-${fresh.levelIndex % WORLD_SIZE + 1}" })
+        assertEquals(5000, fresh.coins)
+        assertEquals(4, fresh.pickTier)
+        assertEquals(30, fresh.tnt)
+        assertEquals(Sword.DIAMOND, fresh.sword)
+        assertEquals(Armor.DIAMOND, fresh.armorType)
+        assertEquals(Shield.SAPPHIRE, fresh.shieldType)
+        assertTrue(fresh.unlocked >= WORLD_SIZE * 8 + 1)
         // Not given again, and the 2D game's World 7 present never comes on top.
         fresh.continueGame(0)
-        assertEquals(1500, fresh.coins)
-        assertEquals(8, fresh.levelIndex)
+        assertEquals(5000, fresh.coins)
+        assertEquals(WORLD_SIZE * 8, fresh.levelIndex)
     }
 
     @Test fun titleScreen() {
