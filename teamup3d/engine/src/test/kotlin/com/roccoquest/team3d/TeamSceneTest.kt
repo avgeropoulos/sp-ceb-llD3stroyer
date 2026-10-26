@@ -71,6 +71,21 @@ class TeamSceneTest {
         assertEquals(WORLD_SIZE * 8, fresh.levelIndex)
     }
 
+    @Test fun updateButtonOnTheTitle() {
+        var asked = 0
+        game.onUpdate = { asked++; game.updateStatus = "CHECKING FOR AN UPDATE..." }
+        repeat(60) { game.update(dt) }
+        input.tapX = 30f; input.tapY = 14f; input.tap = true
+        game.update(dt)
+        assertEquals(1, asked, "UPDATE was pressed")
+        assertEquals(TeamGame.State.TITLE, game.state, "pressing UPDATE doesn't start the game")
+        input.tapX = 200f; input.tapY = 150f; input.tap = true
+        game.update(dt)
+        assertEquals(1, asked)
+        assertEquals(TeamGame.State.SLOTS, game.state, "tapping anywhere else still starts")
+        game.onUpdate = null
+    }
+
     @Test fun titleScreen() {
         val scene = TeamScene().apply { voxelsPerFrame = Int.MAX_VALUE }
         repeat(90) { game.update(dt) }

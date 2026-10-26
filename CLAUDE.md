@@ -35,6 +35,13 @@ after a hit you're safe for `HURT_SAFE_TIME`.
 Only one of Rocco or Blocky is out at a time, with the Pokemon (`TeamGame.team` is the live pair,
 `allHeroes` is everybody; `switchTo` swaps them).
 
+## UPDATE button
+
+Both Android apps set `TeamGame.onUpdate` (title screen UPDATE button, top left; status in `updateStatus`).
+`Updater.kt` (a copy in `teamapp/` and `teamup3d/android/`) reads `version.txt` from the `latest-<BuildConfig.BRANCH>`
+release (CI writes the run number), compares it with `VERSION_CODE - 100`, downloads the APK and installs it with
+`PackageInstaller` (needs `REQUEST_INSTALL_PACKAGES`; first time it opens the "install unknown apps" setting).
+
 ## Team Up! 3D (`teamup3d/`)
 
 A separate app (`com.roccoquest.teamup3d`) that runs the same `TeamGame` and draws levels in 3D.

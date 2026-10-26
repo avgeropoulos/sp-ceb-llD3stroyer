@@ -15,6 +15,8 @@ android {
         targetSdk = 35
         // Every GitHub build gets a bigger number, so a new APK always installs as an update.
         versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.plus(100) ?: 1
+        // The branch this was built from: the UPDATE button gets newer builds of the same branch.
+        buildConfigField("String", "BRANCH", "\"" + (System.getenv("GITHUB_REF_NAME") ?: "") + "\"")
         versionName = "1." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
     }
 
@@ -37,6 +39,10 @@ android {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("games")
         }
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     compileOptions {

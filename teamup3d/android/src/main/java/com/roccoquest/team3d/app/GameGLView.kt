@@ -59,7 +59,15 @@ class GameGLView(context: Context) : GLSurfaceView(context), GLSurfaceView.Rende
     private var surfaceW = 0
     private var surfaceH = 0
 
+    /** The title screen's UPDATE button: gets the newest version from GitHub. */
+    private val updater = Updater(context, game, "TeamUp3D.apk", com.roccoquest.team3d.BuildConfig.BRANCH, com.roccoquest.team3d.BuildConfig.VERSION_CODE - 100)
+
     private val touchX = FloatArray(10)
+
+    init {
+        game.onUpdate = { updater.start() }
+    }
+
     private val touchY = FloatArray(10)
     private val touchId = IntArray(10)
 
@@ -122,7 +130,10 @@ class GameGLView(context: Context) : GLSurfaceView(context), GLSurfaceView.Rende
         onPause()
     }
 
-    fun release() = sound.release()
+    fun release() {
+        sound.release()
+        updater.release()
+    }
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)

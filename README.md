@@ -105,6 +105,14 @@ waves, a triangle bass and noise drums, so there are no audio files. Tap the **â
 * Keyboards and game controllers also work: arrow keys or WASD, Shift to run,
   Down or S to crouch/slam, Space to jump, X to fire, M for music.
 
+## UPDATE button (Team Up! and Team Up! 3D)
+
+Tap **UPDATE** at the top left of the title screen. The game asks GitHub whether a newer build was
+made, downloads it inside the game and Android asks "Do you want to update this app?". Your saves
+stay. The first time, Android asks you to **allow** the game to install updates (turn it on, come
+back, tap UPDATE again). Each build updates from the branch it was built from (CI puts a
+`version.txt` with the build number next to the APKs).
+
 ## Team Up! 3D
 
 **Team Up! 3D** is the same Team Up! game (same levels, heroes, Pokemon, shop, house and saves

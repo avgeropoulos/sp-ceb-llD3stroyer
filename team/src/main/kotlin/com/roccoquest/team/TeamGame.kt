@@ -35,6 +35,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     companion object {
         const val MAX_HEARTS = 5
+        /** Width of the title screen's UPDATE button. */
+        const val UPDATE_W = 70f
         /** What one coin is worth. */
         const val COIN_VALUE = 2
         /** The states where you're in a level (playing, paused in a menu, or just hurt). */
@@ -1221,6 +1223,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             State.TITLE -> when {
                 stateT < 0.4f -> {}
                 craftE || (tapped && input.tapX > viewW - 112f && input.tapY < 28f) -> openControllerSetup()
+                tapped && onUpdate != null && input.tapX in 0f..UPDATE_W + 12f && input.tapY in 0f..28f -> onUpdate?.invoke()
                 tapped || num > 0 -> setState(State.SLOTS)
             }
             State.CONTROLS -> updateControls(tapped)
@@ -7040,7 +7043,23 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         // Controller setup button (or press - on a controller).
         gfx.rect(viewW - 110f, 6f, 102f, 18f, 0xCC1A1A2E.toInt())
         gfx.text("CONTROLLER", viewW - 59f, 18.5f, 7f, if (padConnected) 0xFF7FE07F.toInt() else white, 1)
+        // UPDATE button: gets the newest version of the game (when the app knows how).
+        if (onUpdate != null) {
+            gfx.rect(8f, 6f, UPDATE_W, 18f, 0xCC1E6E2E.toInt())
+            gfx.text("UPDATE", 8f + UPDATE_W / 2, 18.5f, 7f, white, 1)
+            val status = updateStatus
+            if (status.isNotEmpty()) gfx.shadowText(status, 8f, 36f, 7f, 0xFFFFE070.toInt())
+        }
     }
+
+    /**
+     * Set by the Android apps: checks GitHub for a newer version of the game and installs it.
+     * When set, the title screen shows an UPDATE button (top left).
+     */
+    @Volatile var onUpdate: (() -> Unit)? = null
+
+    /** What the updater is doing right now, shown under the UPDATE button (empty: nothing). */
+    @Volatile var updateStatus = ""
 
     /** Rocco, Blocky, the Pokemon and Ring-Ding Frog lined up on the title screen. */
     fun renderTitleCast(gfx: Gfx, mark: (Any) -> Unit = {}) {

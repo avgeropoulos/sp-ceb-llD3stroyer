@@ -32,6 +32,8 @@ jobs:
           cp app/build/outputs/apk/debug/app-debug.apk RoccosQuest.apk
           cp teamapp/build/outputs/apk/debug/teamapp-debug.apk TeamUp.apk
           cp teamup3d/android/build/outputs/apk/debug/android-debug.apk TeamUp3D.apk
+          # The UPDATE button in the games compares this with its own build number.
+          echo "${{ github.run_number }}" > version.txt
 
       - uses: actions/upload-artifact@v4
         with:
@@ -66,3 +68,4 @@ jobs:
             RoccosQuest.apk
             TeamUp.apk
             TeamUp3D.apk
+            version.txt
