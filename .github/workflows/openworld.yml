@@ -1,0 +1,41 @@
+name: Build Team Up Open World
+on:
+  push:
+    branches: [codex/team-up-open-world]
+    paths: ['openworld/**', 'teamup3d/engine/**', 'settings.gradle.kts', '.github/workflows/openworld.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Test open-world physics and rendering
+        run: ./gradlew :teamup3d:engine:test --tests '*OpenWorldTest*' --console=plain
+      - name: Build standalone Android game
+        run: ./gradlew :openworld:assembleDebug --console=plain
+      - name: Name installable APK
+        run: cp openworld/build/outputs/apk/debug/openworld-debug.apk TeamUpOpenWorld.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TeamUpOpenWorld-apk
+          path: TeamUpOpenWorld.apk
+      - name: Publish standalone game download
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: openworld-latest
+          name: 'Team Up: Open World — Android prototype'
+          prerelease: true
+          make_latest: false
+          body: |
+            Download TeamUpOpenWorld.apk on your Android phone and open it to install.
+            This is a separate app with its own icon and saves. No other game is replaced.
+            First playable island: six Team Stars, 40 coins, Rocco and Blocky, free-roaming movement, orbit camera, team boost, touch and controller support.
+            Built from ${{ github.sha }}.
+          files: TeamUpOpenWorld.apk

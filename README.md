@@ -885,3 +885,20 @@ Levels are built in `core/.../Level.kt` with a small builder, so adding a new on
   at the left take you down. House changes preserve your floors and furniture.
 * Starting a new save clears old 3D house blocks; checkpoint respawns preserve the
   built house style.
+
+## Team Up: Open World — standalone Android prototype
+
+`openworld/` installs as **Team Up: Open World** (`com.roccoquest.teamup.openworld`),
+with its own icon and save data. It does not replace the other three games.
+This first playable island has camera-relative movement, an orbit camera,
+Rocco/Blocky swapping, jumping and a midair team boost, a summit route, lagoon,
+floating platforms, a home rooftop, 40 coins and six Team Stars. The meadow star
+appears after 20 coins. Progress saves on pickup; returning starts at the meadow.
+
+Touch: left joystick moves; drag the right side to orbit; JUMP, TEAM, SWAP buttons.
+Controller: left stick moves, right stick orbits, A jumps, Y boosts, X swaps, Start pauses.
+Keyboard: WASD/arrows, Space, E, Q, Escape. Pause offers a return to the meadow.
+This is a bounded exploration prototype, not yet the full classic game's content or multiplayer.
+
+The dedicated Open World workflow produces **TeamUpOpenWorld.apk**, signed with the existing game key, as a separate
+release asset. Build with `./gradlew :openworld:assembleDebug`.
