@@ -1054,7 +1054,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         wingT = 0f
         megaT = 0f
         propT = 0f
-        capture = null; captureKind = null; captureDashT = 0f
+        capture = null; captureKind = null; captureDashT = 0f; wonderForm = false
         hearts = MAX_HEARTS
         if (power == Power.GRASS) armor = max(armor, 2)
         invuln = 0f
@@ -1948,6 +1948,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 (if (rocco) captureKind?.jump ?: 1f else 1f)
             sfx(Sound.JUMP)
         }
+        // A floppy fish can't stop flopping: little hops all the time.
+        if (rocco && captureKind == CaptureKind.FLOPPY && h.onGround && h.vy >= 0f) {
+            h.vy = -150f - Random.nextFloat() * 60f
+            jumpHoldT = 0.05f
+        }
         if (!input.jump && jumpHoldT <= 0f && h.vy < -130f) h.vy = -130f
         // Mini Rocco is light as a feather: he floats way up high.
         val g2 = if (h.mini) grav * 0.5f else grav
@@ -2269,20 +2274,58 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     // ---------------------------------------------------------------- Cappy, Mega and Propeller
 
-    /** Cappy caught a bad guy: Rocco turns into it for 20 seconds. */
+    /** Cappy caught a bad guy: Rocco turns into it for 12 seconds. */
     fun capture(f: Foe) {
         val kind = CaptureKind.of(f) ?: return
+        becomeFoe(f, kind, 12f)
+        sound.sayAs("Capture! I'm a ${kind.label.lowercase()}!", Voice.HERO)
+        toast("CAPTURED a ${kind.label}! ${kind.how}  (SWAP lets go)")
+    }
+
+    /** True while the capture is Wonder King Krag's doing (not Cappy's). */
+    var wonderForm = false
+        private set
+
+    /** Rocco turns into [f] (as a [kind]) for [seconds]. */
+    private fun becomeFoe(f: Foe, kind: CaptureKind, seconds: Float) {
         if (capture != null) releaseCapture()
         if (riding == null && dino == null) switchTo(Who.ROCCO)
         foes.remove(f)
         capture = f
         captureKind = kind
-        captureT = 12f
+        captureT = seconds
         f.vx = 0f
         sfx(Sound.PORTAL)
-        sound.sayAs("Capture! I'm a ${kind.label.lowercase()}!", Voice.HERO)
-        toast("CAPTURED a ${kind.label}! ${kind.how}  (SWAP lets go)")
         for (i in 0 until 8) particles += Sparkle(rocco.cx, rocco.cy, (i - 3.5f) * 40f, -60f, 0xFFE52521.toInt())
+    }
+
+    /**
+     * Wonder King Krag's magic: a rainbow blast turns the team into a random bad guy for 8
+     * seconds (a floppy fish, a Grumbler, a Shellback...). Getting hit, or SWAP, turns you back.
+     */
+    fun wonderTransform(k: Body) {
+        if (capture != null || riding != null || dino != null || state != State.PLAY) return
+        val l = rocco
+        val (f, kind) = when (Random.nextInt(6)) {
+            0 -> Fish(l.x, l.bottom) to CaptureKind.FLOPPY
+            1 -> Grumbler(l.x, l.bottom, false) to CaptureKind.GRUMBLER
+            2 -> Shellback(l.x, l.bottom) to CaptureKind.SHELLBACK
+            3 -> Hopper(l.x, l.bottom) to CaptureKind.HOPPER
+            4 -> Bonehead(l.x, l.bottom) to CaptureKind.BONEHEAD
+            else -> Peekaboo(l.x, l.bottom) to CaptureKind.GHOST
+        }
+        // A rainbow ring flies from King Krag to the team.
+        for (i in 0 until 16) {
+            val a = i * 0.3927f
+            particles += Sparkle(k.cx, k.cy, kotlin.math.cos(a) * 160f, sin(a) * 160f, solidRainbow(i / 16f, 0f))
+        }
+        becomeFoe(f, kind, 8f)
+        wonderForm = true
+        for (i in 0 until 12) particles += Sparkle(rocco.cx, rocco.cy, kotlin.math.cos(i * 0.52f) * 110f, sin(i * 0.52f) * 110f, solidRainbow(i / 12f, 0f))
+        shake = 0.3f
+        say(k.cx, k.y - 12, "WONDER MAGIC!", 1.6f)
+        sound.sayAs(if (kind == CaptureKind.FLOPPY) "Mamma mia! I'm a fish!" else "Mamma mia! I'm a ${kind.label.lowercase()}!", Voice.HERO)
+        toast("WONDER! King Krag turned you into a ${kind.label}! ${kind.how}")
     }
 
     /** A free Cappy hat (Dino World): Rocco puts it on, ready to capture dinosaurs. */
@@ -2301,6 +2344,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         capture = null
         captureKind = null
         captureDashT = 0f
+        wonderForm = false
         puff(rocco.cx, rocco.cy)
         sfx(Sound.KICK)
     }
@@ -2359,6 +2403,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         f.y = h.bottom - f.h
         f.vx = h.facing * 30f
         if (captureDashT > 0f) gfx.oval(f.x + ox - 4, f.y - 4, f.w + 8, f.h + 8, 0x66FFFFFF)
+        // Wonder magic: a little rainbow twinkle around the changed hero.
+        if (wonderForm) {
+            gfx.oval(f.x + ox - 3, f.y - 3, f.w + 6, f.h + 6, argb(70, solidRainbow(time, 0f)))
+        }
         f.draw(this, gfx, ox)
         CappyHat.drawCap(gfx, h.cx - 6 + ox, f.y - 6, 0f, false)
     }

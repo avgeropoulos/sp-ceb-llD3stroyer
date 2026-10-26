@@ -29,6 +29,8 @@ enum class CaptureKind(val label: String, val speed: Float, val jump: Float, val
     STEGO("STEGOSAURUS", 1f, 1f, "Spiky back: bad guys can't hurt you!"),
     ANKYLO("ANKYLOSAURUS", 1f, 1f, "THROW: tail club SMASH!"),
     REX("BABY REX", 1.15f, 1.1f, "THROW: a big ROAR!"),
+    /** A fish out of water (Wonder King Krag's magic): slow, and it can't stop flopping! */
+    FLOPPY("FLOPPY FISH", 0.6f, 0.75f, "Flop flop flop! You can still stomp him!"),
     ;
 
     companion object {

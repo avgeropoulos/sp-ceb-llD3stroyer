@@ -409,6 +409,38 @@ class TeamGameTest {
 
     @Test fun wonderKragJrFight() = fightJr(7, wonderStyle = true)
 
+    @Test fun dryBonesKragBreathesFire() {
+        startPlaying()
+        val l = game.leader
+        game.foes += KingKrag(l.x + 120f, l.bottom, dry = true)
+        var sawFire = false
+        run(6f) { game.hurtProof(); if (game.foes.any { it is Flame }) sawFire = true }
+        assertTrue(sawFire, "Dry Bones King Krag breathes fire")
+    }
+
+    @Test fun wonderKragChangesTheTeam() {
+        startPlaying()
+        val l = game.leader
+        game.foes += KingKrag(l.x + 150f, l.bottom, wonderStyle = true)
+        var changed = false
+        run(9f) { game.hurtProof(); if (game.wonderForm) changed = true }
+        assertTrue(changed, "Wonder King Krag's magic changed the team into a bad guy")
+        // The floppy fish keeps flopping (little hops) and turns back after a while.
+        game.foes.removeAll { it is KingKrag || it is Flame }
+        var tries = 0
+        while (game.captureKind != CaptureKind.FLOPPY && tries++ < 200) {
+            game.releaseCapture()
+            game.wonderTransform(game.leader)
+        }
+        assertEquals(CaptureKind.FLOPPY, game.captureKind)
+        var hopped = false
+        run(1.5f) { game.hurtProof(); if (!game.rocco.onGround) hopped = true }
+        assertTrue(hopped, "a floppy fish flops")
+        run(8f) { game.hurtProof() }
+        assertEquals(null, game.captureKind, "turns back after 8 seconds")
+        assertTrue(!game.wonderForm)
+    }
+
     private fun fightKrag(level: Int): KingKrag {
         startPlaying(level)
         val krag = game.foes.filterIsInstance<KingKrag>().single()

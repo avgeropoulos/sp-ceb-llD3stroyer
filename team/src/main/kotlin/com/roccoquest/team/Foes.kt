@@ -345,14 +345,21 @@ class SpikeBall(x: Float, y: Float) : Foe(x, y, 12f, 12f, 1) {
 }
 
 /** King Krag's fire breath. Wonder King Krag breathes rainbow fire. */
-class Flame(x: Float, y: Float, private val dir: Int, private val rainbowFire: Boolean = false) : Foe(x, y, 20f, 8f, 1), Projectile {
+class Flame(
+    x: Float, y: Float, private val dir: Int, private val rainbowFire: Boolean = false,
+    /** Dry Bones King Krag's spooky blue skeleton fire. */
+    private val blue: Boolean = false,
+    /** Up/down drift, for a fan of flames. */
+    private val drift: Float = 0f,
+) : Foe(x, y, 20f, 8f, 1), Projectile {
     override val stompable = false
     private var t = 0f
     init { active = true }
 
     override fun update(g: TeamGame, dt: Float) {
         t += dt
-        x += dir * (if (rainbowFire) 140f else 120f) * dt
+        x += dir * (if (rainbowFire || blue) 140f else 120f) * dt
+        y += drift * dt
         if (t > 5f) removed = true
     }
 
@@ -360,9 +367,13 @@ class Flame(x: Float, y: Float, private val dir: Int, private val rainbowFire: B
 
     override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
         val wob = sin(t * 30) * 1.5f
-        val outer = if (rainbowFire) solidRainbow(t * 2) else 0xFFFF6A00.toInt()
+        val outer = when {
+            blue -> 0xFF2E7BFF.toInt()
+            rainbowFire -> solidRainbow(t * 2)
+            else -> 0xFFFF6A00.toInt()
+        }
         gfx.oval(x + ox, y - 1 + wob, w, h + 2, outer)
-        gfx.oval(x + ox + 3, y + 1, w - 6, h - 2, 0xFFFFD21F.toInt())
+        gfx.oval(x + ox + 3, y + 1, w - 6, h - 2, if (blue) 0xFF9FE0FF.toInt() else 0xFFFFD21F.toInt())
         gfx.oval(x + ox + if (dir > 0) w - 8 else 2f, y + 2, 6f, 4f, 0xFFFFFFFF.toInt())
     }
 }
@@ -555,6 +566,8 @@ class KingKrag(x: Float, y: Float, val wonderStyle: Boolean = false, val dry: Bo
         private set
     private var t = 0f
     private var fireTimer = 2.5f
+    /** Wonder King Krag: time until his next Wonder blast changes the team. */
+    private var wonderTimer = 6f
     private var jumpTimer = 5f
     private var mouth = 0f
     private var hurtFlash = 0f
@@ -599,20 +612,38 @@ class KingKrag(x: Float, y: Float, val wonderStyle: Boolean = false, val dry: Bo
             if (turnDelay > (if (wonderStyle) 0.55f else 0.7f)) { facing = want; turnDelay = 0f }
         } else turnDelay = 0f
         if (onGround) vx = facing * (if (angry) 34f else 24f) * (if (wonderStyle) 1.2f else 1f)
+        if (wonderStyle) {
+            // Wonder magic: every so often, a rainbow blast turns the team into a bad guy!
+            wonderTimer -= dt
+            if (wonderTimer <= 0f) {
+                wonderTimer = if (angry) 8f else 11f
+                g.wonderTransform(this)
+            }
+        }
         fireTimer -= dt
         if (fireTimer <= 0) {
-            mouth = 0.5f
+            mouth = 0.6f
             val fx = if (facing < 0) x - 18 else x + w - 2
-            if ((wonderStyle || dry) && angry) {
+            if (dry) {
+                // Dry Bones King Krag breathes blue skeleton fire: one big blast, or a spray of three when he's angry.
+                val fy = if (Random.nextBoolean()) bottom - 12 else bottom - 26 * s
+                if (angry) for (k in -1..1) g.spawn(Flame(fx, bottom - 24 * s, facing, blue = true, drift = k * 45f))
+                else g.spawn(Flame(fx, fy, facing, blue = true))
+                if (Random.nextInt(4) == 0) g.say(cx, y - 10, "HISSSS!", 0.8f)
+            } else if (wonderStyle && angry) {
                 // Two flames at once, low and high: stand in the gap or jump!
                 g.spawn(Flame(fx, bottom - 10, facing, true))
                 g.spawn(Flame(fx, bottom - 44, facing, true))
             } else {
                 val fy = if (Random.nextBoolean()) bottom - 10 else bottom - 26 * s
-                g.spawn(Flame(fx, fy, facing, wonderStyle || dry))
+                g.spawn(Flame(fx, fy, facing, wonderStyle))
             }
             g.sfx(Sound.BOSS_FIRE)
-            fireTimer = if (angry) 1.8f else 2.6f
+            fireTimer = when {
+                dry -> if (angry) 1.5f else 2.0f
+                angry -> 1.8f
+                else -> 2.6f
+            }
         }
         jumpTimer -= dt
         if (jumpTimer <= 0 && onGround) {
@@ -721,6 +752,15 @@ class KingKrag(x: Float, y: Float, val wonderStyle: Boolean = false, val dry: Bo
         if (jaw > 0) {
             r(-5f, 10f, 12f, jaw, 0xFF8A1010.toInt())
             o(-6f, 9f + jaw, 15f, 6f, skin)
+            // A burst of fire coming out of his mouth.
+            val fire = when {
+                dry -> 0xFF2E7BFF.toInt()
+                wonderStyle -> solidRainbow(t * 2)
+                else -> 0xFFFF6A00.toInt()
+            }
+            val puff = 1f + sin(t * 40) * 0.15f
+            o(-16f, 8f, 13f * puff, 9f * puff, fire)
+            o(-12f, 10f, 7f, 5f, if (dry) 0xFF9FE0FF.toInt() else 0xFFFFD21F.toInt())
         }
         p(floatArrayOf(-3f, -1f, 1f), floatArrayOf(11f, 14f + jaw, 11f), horn)
         p(floatArrayOf(3f, 5f, 7f), floatArrayOf(11f, 14f + jaw, 11f), horn)

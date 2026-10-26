@@ -263,6 +263,15 @@ nearby bad guy every few seconds. Tap **ERASE** twice on a file to delete it.
 * **Harder to get things**: flowers and pickaxes cost 5 ore, armor 12 ore + 25 coins, shields cost about
   twice as much, swords more, and bosses, chests and bonus rooms give out less.
 
+### Dry Bones and Wonder King Krag
+
+* **Dry Bones King Krag breathes blue skeleton fire**: you can see it burst out of his mouth, he
+  breathes more often, and when he's angry he sprays three flames at once (up, straight and down).
+* **Wonder King Krag's WONDER MAGIC**: every 8 to 11 seconds a rainbow blast changes you into a bad guy
+  for 8 seconds: a **floppy fish** (slow, and it can't stop flopping!), a **Grumbler**, a **Shellback**, a
+  **Hopper**, a **Bonehead** or a **Peekaboo**, each with its own moves. Getting hit (or SWAP) turns
+  you back. In both Team Up! and Team Up! 3D.
+
 ### Earthquakes
 
 Every other level (not boss, underwater or cloud levels) has **EARTHQUAKES**. The screen rumbles, the ground

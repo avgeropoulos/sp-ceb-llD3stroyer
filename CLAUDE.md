@@ -196,6 +196,10 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
 * File 1 (slot 0) has no ERASE (`updateSlots`/`renderSlots`). `welcomeBackGift()` (global key `gift2`, once): File 1 jumps
   to `giftLevel` (start of World 7) with 1000 coins/ores/pickaxe/TNT (if the old `gift1` 5000-coin gift was given, it takes
   4000 back); tests pre-set `gift1`/`gift2` in their Storage.
+* King Krag: Dry Bones (`dry`) breathes blue `Flame(blue = true)` (a `drift` fan of 3 when angry) with fire drawn in
+  his mouth while `mouth > 0`; Wonder (`wonderStyle`) calls `TeamGame.wonderTransform` every 8-11 s, which reuses the
+  capture system (`becomeFoe`) for 8 s: FLOPPY (fish out of water, auto-hops), Grumbler, Shellback, Hopper, Bonehead,
+  Peekaboo; `wonderForm` is true meanwhile (rainbow twinkle in `drawCapture`).
 * `MonSize.target` has per-Pokemon overrides for the little ones (Sparky 12.5).
 * Coins: `TeamGame.COIN_VALUE` (2) per coin, plus a level bonus in `offerStickers`. `Voice.HERO` (Rocco) uses an Italian
   TTS voice in `SoundFx.useItalian`; Rocco's lines `GO_LINES`/`OUCH_LINES`.
