@@ -1,0 +1,82 @@
+name: Build Team Up Godot Test
+on:
+  push:
+    branches: [codex/team-up-open-world]
+    paths: ['godot-test/**', '.github/workflows/godot.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: godot-android
+  cancel-in-progress: true
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GODOT_VERSION: 4.5.1
+      GODOT_ANDROID_KEYSTORE_RELEASE_PATH: ${{ github.workspace }}/keystore/games.keystore
+      GODOT_ANDROID_KEYSTORE_RELEASE_USER: games
+      GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD: roccoquest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android build tools
+        run: sdkmanager 'platform-tools' 'platforms;android-35' 'build-tools;35.0.1'
+      - name: Install pinned Godot editor and Android templates
+        run: |
+          curl --retry 3 -fL "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" -o editor.zip
+          unzip -q editor.zip -d "$RUNNER_TEMP/godot"
+          echo "$RUNNER_TEMP/godot" >> "$GITHUB_PATH"
+          mv "$RUNNER_TEMP/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" "$RUNNER_TEMP/godot/godot"
+          curl --retry 3 -fL "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz" -o templates.tpz
+          mkdir -p "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          unzip -j -q templates.tpz 'templates/android_release.apk' 'templates/android_debug.apk' -d "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          rm editor.zip templates.tpz
+      - name: Configure Android export and version
+        run: |
+          mkdir -p "$HOME/.config/godot"
+          cat > "$HOME/.config/godot/editor_settings-4.5.tres" <<EOFSETTINGS
+          [gd_resource type="EditorSettings" format=3]
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/java_sdk_path = "$JAVA_HOME"
+          EOFSETTINGS
+          python3 - <<'PY'
+          import os, pathlib
+          p=pathlib.Path('godot-test/export_presets.cfg')
+          s=p.read_text().replace('version/code=1', 'version/code='+os.environ['GITHUB_RUN_NUMBER'])
+          p.write_text(s)
+          PY
+      - name: Import and validate Godot project
+        run: |
+          godot --headless --path godot-test --editor --import 2>&1 | tee import.log
+          ! grep -E 'SCRIPT ERROR|Parse Error|Failed to load script' import.log
+          timeout 60s godot --headless --path godot-test --script res://tests/smoke.gd 2>&1 | tee test.log
+          ! grep -E 'SCRIPT ERROR|Parse Error|TEST FAILED' test.log
+      - name: Build signed Android APK
+        run: |
+          godot --headless --path godot-test --export-release Android ../TeamUpGodotTest.apk
+          test -s TeamUpGodotTest.apk
+          "$ANDROID_HOME/build-tools/35.0.1/apksigner" verify TeamUpGodotTest.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TeamUpGodotTest-apk
+          path: TeamUpGodotTest.apk
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: godot-test-latest
+          name: 'Team Up: Godot graphics test — Android'
+          prerelease: true
+          make_latest: false
+          body: |
+            Install TeamUpGodotTest.apk on Android. This is a separate one-level graphics test with its own icon.
+            Sunset Garden: animated Rocco, two enemies, three crystals, mobile lighting and shadows, touch controls and an FPS counter.
+            Uses Godot 4.5.1 Mobile rendering. No Godot editor installation is needed on your phone.
+            This small test has no save system or in-app updater; the existing Team Up apps are unchanged.
+            Built from ${{ github.sha }}.
+          files: TeamUpGodotTest.apk

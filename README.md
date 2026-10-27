@@ -923,3 +923,12 @@ Android to install it. The first update-enabled version must be installed manual
 subsequent versions can be obtained in-app. Android may require a one-time
 "Install unknown apps" permission, and still requires installation confirmation.
 The application ID, signing key and existing preferences remain unchanged.
+
+### Separate Godot graphics test
+
+`godot-test/` contains Sunset Garden, a small Godot 4.5.1 Android prototype:
+one playable character, two enemies, three crystals, animated models, textured
+terrain, mobile shadows and an FPS counter. The dedicated `godot.yml` workflow
+exports **TeamUpGodotTest.apk** to the `godot-test-latest` prerelease. It installs
+as a separate app and leaves all existing games unchanged. See
+[the test project README](godot-test/README.md) for controls and build details.
