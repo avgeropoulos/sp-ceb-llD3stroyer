@@ -509,6 +509,9 @@ func _physics_process(dt: float) -> void:
 			body.velocity.z = delta.normalized().z * 1.8
 			body.rotation.y = atan2(delta.x, delta.z)
 		body.move_and_slide()
+		if body.position.y < -5 or absf(body.position.x) > 17 or absf(body.position.z) > 17:
+			body.position = enemy.home
+			body.velocity = Vector3.ZERO
 		enemy.visual.scale.y = 1 + sin(walk_time * 5) * 0.08
 		if delta.length() < 1.1 and absf(body.position.y - hero.position.y) < 1.5 and hurt_time <= 0:
 			health -= 1

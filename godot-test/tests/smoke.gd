@@ -56,6 +56,9 @@ func run() -> void:
 	Input.action_release("right")
 	verify(scene.hero.position.is_equal_approx(before), "Pause stops movement")
 	scene.toggle_pause()
+	scene.enemies[0].body.position.y = -10
+	await frames(3)
+	verify(scene.enemies[0].body.position.y > -1, "Fallen enemy returns to arena")
 	for enemy in scene.enemies:
 		scene.hero.position = enemy.body.position + Vector3(0, 0, 1.8)
 		scene.attack_time = 0

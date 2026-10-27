@@ -24,9 +24,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
       - name: Install Android build tools
-        run: sdkmanager 'platform-tools' 'platforms;android-35' 'build-tools;35.0.1'
+        run: |
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | sort -V | tail -n 1)
+          test -n "$SDKMANAGER"
+          "$SDKMANAGER" 'platform-tools' 'platforms;android-35' 'build-tools;35.0.1' 
       - name: Install pinned Godot editor and Android templates
         run: |
           curl --retry 3 -fL "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" -o editor.zip
