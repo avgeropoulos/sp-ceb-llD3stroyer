@@ -885,3 +885,50 @@ Levels are built in `core/.../Level.kt` with a small builder, so adding a new on
   at the left take you down. House changes preserve your floors and furniture.
 * Starting a new save clears old 3D house blocks; checkpoint respawns preserve the
   built house style.
+
+## Team Up: Open World — standalone Android prototype
+
+`openworld/` installs as **Team Up: Open World** (`com.roccoquest.teamup.openworld`),
+with its own icon and save data. It does not replace the other three games.
+This first playable island has camera-relative movement, an orbit camera,
+Rocco/Blocky swapping, jumping and a midair team boost, a summit route, lagoon,
+floating platforms, a home rooftop, 40 coins and six Team Stars. The meadow star
+appears after 20 coins. Progress saves on pickup; returning starts at the meadow.
+
+Touch: left joystick moves; drag the right side to orbit; JUMP, TEAM, SWAP buttons.
+Controller: left stick moves, right stick orbits, A jumps, Y boosts, X swaps, Start pauses.
+Keyboard: WASD/arrows, Space, E, Q, Escape. Pause offers a return to the meadow.
+This is a bounded exploration prototype, not yet the full classic game's content or multiplayer.
+
+The dedicated Open World workflow produces **TeamUpOpenWorld.apk**, signed with the existing game key, as a separate
+release asset. Build with `./gradlew :openworld:assembleDebug`.
+
+### Open World combat and updates
+
+The standalone app now includes THROW, SWORD, BOW, TNT, SUPER, BLACK FLOWER and
+POSEIDON in its POWERS menu, plus a dedicated ATTACK button and LEAP (long jump).
+These are 3D adaptations with rechargeable cooldowns; they do not import the
+classic games' inventories, costs, or save files. Eight enemies including King
+Krag patrol the island, with health bars, player damage protection and safe respawn.
+Stars and collected coins survive defeat. Enemies respawn after a delay when the
+player is away, so combat remains available after collecting the stars.
+
+Controller B attacks, L1 cycles weapons, L2 uses Black Flower, R2 uses Poseidon,
+R1 long jumps. Keyboard F attacks, R cycles weapons, T throws TNT, G uses Super,
+B uses Black Flower, P uses Poseidon and L long jumps. Existing controls remain.
+
+UPDATE on the title or pause screen checks the dedicated Open World release,
+streams the new APK, verifies its SHA-256, size, package ID and version, and asks
+Android to install it. The first update-enabled version must be installed manually;
+subsequent versions can be obtained in-app. Android may require a one-time
+"Install unknown apps" permission, and still requires installation confirmation.
+The application ID, signing key and existing preferences remain unchanged.
+
+### Separate Godot graphics test
+
+`godot-test/` contains Sunset Garden, a small Godot 4.5.1 Android prototype:
+one playable character, two enemies, three crystals, animated models, textured
+terrain, mobile shadows and an FPS counter. The dedicated `godot.yml` workflow
+exports **TeamUpGodotTest.apk** to the `godot-test-latest` prerelease. It installs
+as a separate app and leaves all existing games unchanged. See
+[the test project README](godot-test/README.md) for controls and build details.
