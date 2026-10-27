@@ -902,3 +902,24 @@ This is a bounded exploration prototype, not yet the full classic game's content
 
 The dedicated Open World workflow produces **TeamUpOpenWorld.apk**, signed with the existing game key, as a separate
 release asset. Build with `./gradlew :openworld:assembleDebug`.
+
+### Open World combat and updates
+
+The standalone app now includes THROW, SWORD, BOW, TNT, SUPER, BLACK FLOWER and
+POSEIDON in its POWERS menu, plus a dedicated ATTACK button and LEAP (long jump).
+These are 3D adaptations with rechargeable cooldowns; they do not import the
+classic games' inventories, costs, or save files. Eight enemies including King
+Krag patrol the island, with health bars, player damage protection and safe respawn.
+Stars and collected coins survive defeat. Enemies respawn after a delay when the
+player is away, so combat remains available after collecting the stars.
+
+Controller B attacks, L1 cycles weapons, L2 uses Black Flower, R2 uses Poseidon,
+R1 long jumps. Keyboard F attacks, R cycles weapons, T throws TNT, G uses Super,
+B uses Black Flower, P uses Poseidon and L long jumps. Existing controls remain.
+
+UPDATE on the title or pause screen checks the dedicated Open World release,
+streams the new APK, verifies its SHA-256, size, package ID and version, and asks
+Android to install it. The first update-enabled version must be installed manually;
+subsequent versions can be obtained in-app. Android may require a one-time
+"Install unknown apps" permission, and still requires installation confirmation.
+The application ID, signing key and existing preferences remain unchanged.

@@ -30,6 +30,8 @@ class OpenWorld(savedStars: Int = 0, savedCoins: Long = 0L) {
     private var jumpBuffer = 0f
     private var boostReady = true
     private var boostRequested = false
+    private var dashTime=0f
+    fun longJump() { if(grounded && !inWater) { vy=9f; grounded=false; coyote=0f; dashTime=0.65f; say("LONG JUMP! Hold a direction to leap forward.") } }
     var boostCooldown = 0f; private set
     var saveRevision = 0; private set
     val won get() = starCount == 6
@@ -71,13 +73,20 @@ class OpenWorld(savedStars: Int = 0, savedCoins: Long = 0L) {
     fun jump() { jumpBuffer = 0.16f }
     fun boost() { boostRequested = true }
     fun swap() { blocky = !blocky; say(if(blocky) "Blocky takes the lead!" else "Rocco takes the lead!") }
-    fun home() { x=checkpointX; z=checkpointZ; y=0f; vy=0f; grounded=true; boostReady=true; say("Back at your meadow checkpoint") }
+    fun home() { dashTime=0f; jumpBuffer=0f; boostRequested=false; x=checkpointX; z=checkpointZ; y=0f; vy=0f; grounded=true; boostReady=true; say("Back at your meadow checkpoint") }
     fun say(s: String) { notice=s; noticeTime=4f }
     private fun baseHeight(px: Float,pz: Float) = if(px>14 && px<30 && pz> -6 && pz<14) -1.2f else 0f
     fun floorAt(px: Float,pz: Float, ceiling: Float = Float.POSITIVE_INFINITY): Float {
         var h = baseHeight(px,pz)
         for(p in platforms) if(abs(px-p.x)<p.w/2+0.28f && abs(pz-p.z)<p.d/2+0.28f && p.top<=ceiling) h=max(h,p.top)
         return h
+    }
+    fun solidAt(px:Float,py:Float,pz:Float):Boolean {
+        if(py<baseHeight(px,pz)) return true
+        return platforms.withIndex().any { (i,p) ->
+            val bottom=if(i<4 || p.x==9f || p.x==4.5f) 0f else p.top-0.7f
+            abs(px-p.x)<p.w/2 && abs(pz-p.z)<p.d/2 && py>bottom && py<p.top
+        }
     }
     private fun blocked(px: Float,pz: Float): Boolean = platforms.any {
         abs(px-it.x)<it.w/2+0.32f && abs(pz-it.z)<it.d/2+0.32f && y<it.top-0.12f && y+1.7f>it.top-0.7f
@@ -88,6 +97,7 @@ class OpenWorld(savedStars: Int = 0, savedCoins: Long = 0L) {
     }
     /** Caller uses a fixed 60 Hz step. Axes are camera-relative, forward is negative Z. */
     fun update(dt: Float, inputX: Float, inputZ: Float) {
+        dashTime=max(0f,dashTime-dt)
         time+=dt; noticeTime=max(0f,noticeTime-dt); boostCooldown=max(0f,boostCooldown-dt)
         jumpBuffer=max(0f,jumpBuffer-dt)
         if(grounded) { coyote=0.12f; boostReady=true } else coyote=max(0f,coyote-dt)
@@ -97,9 +107,9 @@ class OpenWorld(savedStars: Int = 0, savedCoins: Long = 0L) {
             boostRequested=false
         }
         val len=max(1f,sqrt(inputX*inputX+inputZ*inputZ))
-        val speed=if(inWater) 4f else 7.5f
-        val dx=(cos(yaw)*inputX+sin(yaw)*inputZ)/len*speed*dt
-        val dz=(-sin(yaw)*inputX+cos(yaw)*inputZ)/len*speed*dt
+        val speed=if(inWater) 4f else if(dashTime>0) 14f else 7.5f
+        val dx=if(dashTime>0 && abs(inputX)+abs(inputZ)<0.1f) sin(facing)*speed*dt else (cos(yaw)*inputX+sin(yaw)*inputZ)/len*speed*dt
+        val dz=if(dashTime>0 && abs(inputX)+abs(inputZ)<0.1f) cos(facing)*speed*dt else (-sin(yaw)*inputX+cos(yaw)*inputZ)/len*speed*dt
         if(abs(dx)+abs(dz)>0.0001f) facing=atan2(dx,dz)
         if(!blocked(x+dx,z)) x+=dx
         if(!blocked(x,z+dz)) z+=dz

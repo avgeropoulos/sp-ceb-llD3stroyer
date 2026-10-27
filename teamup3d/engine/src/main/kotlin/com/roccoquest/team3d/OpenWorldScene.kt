@@ -3,7 +3,7 @@ package com.roccoquest.team3d
 import kotlin.math.*
 
 /** Static scenery is uploaded once; only transforms change while playing. */
-class OpenWorldScene(private val world: OpenWorld) {
+class OpenWorldScene(private val world: OpenWorld, private val combat: OpenWorldCombat? = null) {
     private val list = DrawList()
     private val model = Mat4()
     private val worldMesh = MeshBuilder().apply {
@@ -51,6 +51,21 @@ class OpenWorldScene(private val world: OpenWorld) {
     }.build()
     private val heroRocco = hero(false)
     private val heroBlocky = hero(true)
+    private val foeMesh=MeshBuilder().apply {
+        ellipsoid(0f,0.65f,0f,0.65f,0.65f,0.55f,0xFFAE684E.toInt(),10,6)
+        ellipsoid(0f,1.05f,0f,0.8f,0.4f,0.65f,0xFFB95C69.toInt(),10,5)
+        box(-0.35f,0.75f,0.5f,-0.1f,1.0f,0.62f,-1)
+        box(0.1f,0.75f,0.5f,0.35f,1.0f,0.62f,-1)
+        box(-0.23f,0.77f,0.6f,-0.1f,0.95f,0.65f,0xFF26344A.toInt())
+        box(0.1f,0.77f,0.6f,0.23f,0.95f,0.65f,0xFF26344A.toInt())
+    }.build()
+    private val bossMesh=MeshBuilder().apply {
+        ellipsoid(0f,0.9f,0f,1.1f,0.9f,0.85f,0xFF76A45E.toInt(),12,7)
+        sphere(0f,1.5f,0.65f,0.7f,0xFFDFB570.toInt(),10,6)
+        for(i in -1..1) cylinder(i*0.65f,1.5f,-0.3f,2.2f,0.22f,0xFFF1E8BD.toInt(),rTop=0f,slices=6)
+        box(-0.45f,1.55f,1.15f,-0.12f,1.75f,1.28f,0xFF302C43.toInt())
+        box(0.12f,1.55f,1.15f,0.45f,1.75f,1.28f,0xFF302C43.toInt())
+    }.build()
     private val star = MeshBuilder().apply {
         val xs=FloatArray(10); val ys=FloatArray(10)
         for(i in 0..9) { val a=PI.toFloat()/2+i*PI.toFloat()/5; val r=if(i%2==0) 0.68f else 0.32f; xs[i]=cos(a)*r; ys[i]=sin(a)*r }
@@ -99,6 +114,20 @@ class OpenWorldScene(private val world: OpenWorld) {
         list.add(if(world.blocky) heroRocco else heroBlocky,model.identity().translate(world.buddyX,buddyY,world.buddyZ).rotateY(world.facing))
         list.add(if(world.blocky) heroBlocky else heroRocco,model.identity().translate(world.x,world.y,world.z).rotateY(world.facing))
         list.add(Prims.disc,model.identity().translate(world.x,world.floorAt(world.x,world.z,world.y+0.1f)+0.025f,world.z).scale(0.65f,1f,0.5f),0x44334754)
+        combat?.let { battle ->
+            for(e in battle.enemies) if(e.hp>0) {
+                list.add(if(e.boss) bossMesh else foeMesh,model.identity().translate(e.x,e.y,e.z).rotateY(atan2(world.x-e.x,world.z-e.z)),if(e.hurt>0) 0xFFFFB5B5.toInt() else -1)
+                val width=if(e.boss) 2.2f else 1.3f
+                list.add(Prims.cube,model.identity().translate(e.x,e.y+2.6f,e.z).rotateY(world.yaw).scale(width,0.13f,0.1f),0xFF533D51.toInt(),1f)
+                list.add(Prims.cube,model.identity().translate(e.x,e.y+2.6f,e.z).rotateY(world.yaw).scale(width*e.hp/e.maxHp,0.15f,0.12f),0xFF8DE09B.toInt(),1f)
+            }
+            for(s in battle.shots) list.add(if(s.kind==OpenWorldCombat.Attack.TNT) Prims.cube else Prims.smallBall,model.identity().translate(s.x,s.y,s.z).scale(if(s.kind==OpenWorldCombat.Attack.BOW) 0.16f else 0.3f),s.kind.color,0.55f)
+            for(e in battle.effects) {
+                val radius=e.radius*(1f-e.life/0.6f).coerceIn(0.2f,1f)
+                list.add(Prims.ball,model.identity().translate(e.x,e.y,e.z).scale(radius,radius*0.35f,radius),(e.color and 0x00FFFFFF) or 0x66000000,0.7f)
+            }
+            if(battle.swing>0) list.add(Prims.cube,model.identity().translate(world.x,world.y+1f,world.z).rotateY(world.facing+battle.swing*10).translate(0.7f,0f,1f).scale(0.12f,0.18f,2.2f),0xFFE4F7FF.toInt(),0.7f)
+        }
         list.finish()
         return list
     }

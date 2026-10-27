@@ -1,6 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-feature android:glEsVersion="0x00020000" android:required="true" />
     <application android:allowBackup="true" android:icon="@drawable/ic_launcher" android:label="Team Up: Open World" android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen">
+        <receiver android:name=".UpdateReceiver" android:exported="false" />
         <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="sensorLandscape" android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation">
             <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
         </activity>

@@ -16,6 +16,7 @@ android {
             storePassword = "roccoquest"; keyAlias = "games"; keyPassword = "roccoquest"
         }
     }
+    buildFeatures { buildConfig = true }
     buildTypes { debug { signingConfig = signingConfigs.getByName("games") }; release { signingConfig = signingConfigs.getByName("games") } }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }
