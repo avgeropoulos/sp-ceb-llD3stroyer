@@ -205,6 +205,11 @@ See `teamup-paper/README.md`. Run the robot test in both looks (`-- paper`, `-- 
 Three save files (`scripts/saves.gd`, JSON in user://saveN.json; ERASE keeps a .bak for UNDO ERASE) and a pause
 menu (RESUME / SAVE / SAVE & QUIT). Saves store the level as a diff from the generated one (`original_cells`),
 plus `coins_taken` / `foes_gone` by number (coin meta "i", foe meta "spawn"). `tests/save_check.gd` covers it.
+Partners (`scripts/mons.gd`): water SPLASHY/TIDAL/HYDRO, grass SEEDY/SPROUT/BLOOM, fire EMBER/SCORCH/BLAZE (evolve Lv 4, 8),
+electric SPARKY/ZAPPER (Lv 6). The partner hero is `heroes.mon` (`who == "mon"`, `line`, `stage`, `set_form`); XP per line in
+`mon_xp` (saved as `mon_xp`, partner as `mon`). PICK YOUR PARTNER (`state == "partner"`) comes after picking a file that isn't
+mid-level. Tests that press buttons must call functions (`_action`, `_thunderbolt`) because `_gather_input` overwrites flags.
+Screenshots of effects need `--fixed-fps 60` (software Vulkan is slow, so effects end between frames otherwise).
 Characters are original designs (drawn by `tools/gen_art.py`), not copies of the real-game characters.
 Builds with `.github/workflows/teamup-paper.yml` to the `teamup-paper-latest` release (`TeamUpPaper.apk`,
 package `com.roccoquest.teamup.paper`). Run the robot test before pushing:

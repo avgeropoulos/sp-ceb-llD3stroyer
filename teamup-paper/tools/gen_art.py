@@ -204,18 +204,30 @@ SPK, SPK_D = rgb("#ffd83b"), rgb("#e8aa1c")
 SPARK = rgb("#54c8ff")
 
 
-def sparky(name, hop=0.0, feetA=0.0, zap=False, rot=0):
+def sparky(name, hop=0.0, feetA=0.0, zap=False, rot=0, stage=0):
     p = Pen()
     cx, cy = 32, 50 - hop
+    if stage == 1:
+        for i in range(3):   # spiky crest
+            x = cx - 6 + i * 6
+            p.poly([(x - 4, cy - 13), (x + 1, cy - 25 + abs(i - 1) * 3), (x + 4, cy - 13)], rgb("#f5c518"))
     for a in (-0.5, 0.5):  # antennae
         tx, ty = cx + 4 + math.sin(a) * 12, cy - 22 - math.cos(a) * 6
         p.line([(cx + 3 + a * 5, cy - 14), (tx, ty)], INK, 2.6)
-        p.oval(tx, ty, 3.8, 3.8, SPARK)
-        p.oval(tx - 1, ty - 1, 1.2, 1.2, rgb("#ffffff"), ink=False)
+        if stage == 1:
+            p.poly([(tx - 2, ty - 6), (tx + 4, ty - 6), (tx, ty), (tx + 4, ty), (tx - 3, ty + 8), (tx - 1, ty + 1), (tx - 5, ty + 1)], SPARK)
+        else:
+            p.oval(tx, ty, 3.8, 3.8, SPARK)
+            p.oval(tx - 1, ty - 1, 1.2, 1.2, rgb("#ffffff"), ink=False)
     for a in (feetA, -feetA):
         p.oval(cx - 2 + a * 6, cy + 15, 4.6, 3, rgb("#ff9a3c"))
-    p.poly([(cx - 17, cy), (cx - 24, cy - 6), (cx - 21, cy + 1), (cx - 27, cy + 2), (cx - 17, cy + 6)], SPK_D)  # zig tail
-    p.oval(cx, cy, 17, 16, SPK)
+    if stage == 1:
+        p.oval(cx - 21, cy + 2, 7, 6, rgb("#f5c518"))
+        p.oval(cx - 25, cy + 1, 3.2, 3.2, SPARK)
+        p.oval(cx, cy, 17, 16, rgb("#f5c518"))
+    else:
+        p.poly([(cx - 17, cy), (cx - 24, cy - 6), (cx - 21, cy + 1), (cx - 27, cy + 2), (cx - 17, cy + 6)], SPK_D)  # zig tail
+        p.oval(cx, cy, 17, 16, SPK)
     p.oval(cx + 3, cy + 6, 9, 7, rgb("#fff1a8"), ink=False)
     # blue zigzag belly stripe
     p.line([(cx - 6, cy + 5), (cx - 2, cy + 1), (cx + 2, cy + 6), (cx + 6, cy + 1), (cx + 10, cy + 5)], SPARK, 2.4)
@@ -229,6 +241,145 @@ def sparky(name, hop=0.0, feetA=0.0, zap=False, rot=0):
             p.line([(x0, y0), (x0 + math.cos(a + .5) * 6, y0 + math.sin(a + .5) * 6),
                     (x0 + math.cos(a) * 10, y0 + math.sin(a) * 10)], SPARK, 2.2)
     p.done(name, rot=rot)
+
+
+# ---------------------------------------------------------------- partner creatures (our own designs)
+CRIT = {
+    "water": {"body": "#8fd3ff", "dark": "#5aa9df", "belly": "#e6f6ff", "shell": ["#2fb5a8", "#1f8f9c", "#1d5f8a"]},
+    "grass": {"body": "#8fdc6a", "dark": "#5cb04a", "belly": "#e6f5b0"},
+    "fire":  {"body": "#ff8a4a", "dark": "#e0602e", "belly": "#ffd9a0"},
+}
+STAGE_BODY = [["#8fd3ff", "#5fb8f5", "#3d7fd9"], ["#8fdc6a", "#5cc05a", "#3a9d5d"], ["#ff8a4a", "#e85a3a", "#b83a3a"]]
+
+
+def flame(p, x, y, h, w=None):
+    w = w or h * 0.55
+    p.poly([(x - w, y), (x - w * 0.7, y - h * 0.55), (x - w * 0.15, y - h * 0.35), (x, y - h),
+            (x + w * 0.25, y - h * 0.45), (x + w * 0.75, y - h * 0.6), (x + w, y)], rgb("#ffb02e"))
+    p.poly([(x - w * 0.45, y), (x, y - h * 0.55), (x + w * 0.45, y)], rgb("#ffe36a"), ink=False)
+
+
+def leaf(p, x, y, length, ang, col="#4fb35a"):
+    dx, dy = math.cos(ang), math.sin(ang)
+    nx, ny = -dy, dx
+    tip = (x + dx * length, y + dy * length)
+    mid = (x + dx * length * 0.5, y + dy * length * 0.5)
+    p.poly([(x, y), (mid[0] + nx * length * 0.28, mid[1] + ny * length * 0.28), tip,
+            (mid[0] - nx * length * 0.28, mid[1] - ny * length * 0.28)], rgb(col))
+    p.line([(x, y), tip], rgb("#2f7a3a"), 1.0)
+
+
+def critter(name, line, stage, pose="idle"):
+    """A four-legged partner seen from the side, facing right."""
+    p = Pen(84, 80)
+    li = ["water", "grass", "fire"].index(line)
+    BODY = rgb(STAGE_BODY[li][stage])
+    DARK = rgb(CRIT[line]["dark"])
+    BELLY = rgb(CRIT[line]["belly"])
+    hop = {"jump": 6, "run1": 2, "run2": 0, "act": 1}.get(pose, 0)
+    bx, by = 38, 55 - hop          # body centre
+    hx, hy = 58, 42 - hop          # head centre
+    if pose == "act":
+        hx += 3
+    # tail
+    if line == "fire":
+        p.poly([(bx - 14, by - 2), (bx - 26, by - 12 - stage * 2), (bx - 24, by - 8), (bx - 13, by + 4)], BODY)
+        if stage >= 1:
+            flame(p, bx - 26, by - 10 - stage * 2, 8 + stage * 3)
+    elif line == "grass":
+        p.poly([(bx - 14, by - 3), (bx - 25, by + 2), (bx - 13, by + 6)], BODY)
+    else:
+        p.poly([(bx - 15, by + 1), (bx - 21, by + 4), (bx - 14, by + 6)], BODY)
+    # legs: far pair first (darker), near pair last
+    sw = {"run1": 4, "run2": -4, "jump": 5}.get(pose, 0)
+    for (lx, near) in ((bx - 9, False), (bx + 9, False), (bx - 6, True), (bx + 12, True)):
+        dx = (sw if (lx < bx) == near else -sw)
+        col = BODY if near else DARK
+        p.rect(lx - 4 + dx * 0.5, by + 4, lx + 4 + dx, by + 15 - (3 if pose == "jump" and near else 0), col, r=3.5)
+    # body
+    p.oval(bx, by, 17 + stage, 12 + stage * 0.6, BODY)
+    p.oval(bx + 3, by + 5, 11, 5.5, BELLY, ink=False)
+    # back features
+    if line == "water":
+        SH = rgb(CRIT["water"]["shell"][stage])
+        p.d.chord(p._b(bx - 18 - stage, by - 16 - stage, bx + 16 + stage, by + 8), 180, 360, fill=SH, outline=INK, width=int(LW * SS))
+        for k in range(3):
+            p.oval(bx - 9 + k * 9, by - 7 - (2 if k == 1 else 0), 3.4, 2.6, rgb("#7fe0d0"), ink=False)
+        if stage == 2:   # two blowholes that spray
+            for k in (-6, 6):
+                p.rect(bx + k - 2.5, by - 22, bx + k + 2.5, by - 13, rgb("#9aa6b2"), r=1)
+                for j in range(3):
+                    p.oval(bx + k + (j - 1) * 2.5, by - 26 - j * 2, 2.2, 2.2, rgb("#7fd0ff"), ink=False)
+    elif line == "grass":
+        n = [0, 3, 5][stage]
+        for k in range(n):
+            leaf(p, bx - 10 + k * 5, by - 9 - (k % 2), 8 + stage * 2, -math.pi / 2 - 0.4 + k * 0.15)
+        for (sx, sy) in ((bx - 6, by - 2), (bx + 4, by - 4), (bx - 1, by + 1)):
+            p.oval(sx, sy, 1.8, 1.4, DARK, ink=False)
+    elif line == "fire" and stage >= 1:
+        for k in range(1 + stage * 2):
+            flame(p, bx - 9 + k * (14 / max(1, stage * 2)), by - 10, 6 + stage * 2)
+        if stage == 2:   # gliding fins on the side
+            p.poly([(bx - 4, by - 2), (bx - 16, by - 14), (bx + 4, by - 6)], rgb("#ff9a3c"))
+    # head
+    p.oval(hx, hy, 11 + stage * 0.5, 10 + stage * 0.4, BODY)
+    p.oval(hx + 6, hy + 4, 5.5, 4, BELLY, ink=False)
+    # crest on the head
+    if line == "water":
+        if stage == 0:
+            p.poly([(hx - 1, hy - 9), (hx + 1, hy - 18), (hx + 4, hy - 9)], rgb("#5ac8ff"))
+            p.oval(hx + 1.5, hy - 9, 3, 2.4, rgb("#5ac8ff"))
+        elif stage == 1:
+            p.poly([(hx - 7, hy - 7), (hx - 4, hy - 16), (hx + 2, hy - 17), (hx - 1, hy - 13), (hx + 4, hy - 9)], rgb("#e6f6ff"))
+    elif line == "grass":
+        if stage == 0:
+            p.line([(hx - 1, hy - 9), (hx, hy - 14)], rgb("#2f7a3a"), 1.4)
+            leaf(p, hx, hy - 14, 9, -math.pi / 2 + 0.6)
+        elif stage == 1:
+            leaf(p, hx - 1, hy - 9, 10, -math.pi / 2 - 0.5)
+            leaf(p, hx + 1, hy - 9, 10, -math.pi / 2 + 0.5)
+            p.oval(hx, hy - 12, 2.6, 3.2, rgb("#ff8fc0"))
+        else:
+            for k in range(5):
+                a = -math.pi / 2 + (k - 2) * 0.55
+                p.oval(hx + math.cos(a) * 7, hy - 12 + math.sin(a) * 6, 4.2, 4.2, rgb("#ff7fb5"))
+            p.oval(hx, hy - 12, 3.4, 3.4, rgb("#ffd23a"))
+    elif line == "fire":
+        if stage < 2:
+            for k in range(3):
+                flame(p, hx - 5 + k * 4, hy - 7, 6 + stage * 3 + (2 if k == 1 else 0))
+        else:
+            for k in range(7):
+                a = math.pi * (0.75 + k * 0.25)
+                flame(p, hx + math.cos(a) * 9, hy + math.sin(a) * 9 + 3, 9)
+            p.oval(hx, hy, 11.5, 10.4, BODY)
+            p.oval(hx + 6, hy + 4, 5.5, 4, BELLY, ink=False)
+    # face
+    p.eye(hx + 5, hy - 2, 3.0, 3.8, 0.9)
+    if pose == "act":
+        p.oval(hx + 9, hy + 5, 3, 2.6, rgb("#7a1f2b"))
+        if line == "water":
+            for j in range(4):
+                p.oval(hx + 15 + j * 4, hy + 4 - j * 0.5, 2.4, 2.0, rgb("#7fd0ff"), ink=False)
+        elif line == "fire":
+            flame(p, hx + 16, hy + 8, 9, 4)
+        else:
+            p.line([(hx + 10, hy + 5), (hx + 16, hy - 2), (hx + 23, hy + 4), (hx + 30, hy - 3)], rgb("#3a9d3a"), 2.2)
+    else:
+        p.d.arc(p._b(hx + 5, hy + 2, hx + 11, hy + 7), 20, 160, fill=INK, width=int(1.5 * SS))
+    p.done(name)
+
+
+def partners():
+    for line in ("water", "grass", "fire"):
+        for st in range(3):
+            for pose in ("idle", "run1", "run2", "jump", "act"):
+                critter("mon_%s%d_%s" % (line, st, pose), line, st, pose)
+    sparky("mon_spark1_idle", 0, 0.3, stage=1)
+    sparky("mon_spark1_run1", 3, 0.7, stage=1)
+    sparky("mon_spark1_run2", 0, -0.7, stage=1)
+    sparky("mon_spark1_jump", 8, 0.4, stage=1)
+    sparky("mon_spark1_act", 2, 0.3, zap=True, stage=1)
 
 
 # ---------------------------------------------------------------- foes
@@ -336,6 +487,23 @@ def spark_shot():
         a = i * math.tau / 5
         p.line([(20 + math.cos(a) * 10, 20 + math.sin(a) * 10), (20 + math.cos(a + .4) * 16, 20 + math.sin(a + .4) * 16)], SPARK, 2.2)
     p.done("spark", border=1.5)
+
+
+def shot_water():
+    p = Pen(40, 40)
+    p.poly([(20, 4), (30, 22), (20, 34), (10, 22)], rgb("#5ab4ff"))
+    p.oval(20, 24, 10, 10, rgb("#5ab4ff"))
+    p.oval(16, 20, 3, 4, rgb("#ffffff"), ink=False)
+    p.done("shot_water", border=1.5)
+
+
+def shot_fire():
+    p = Pen(40, 40)
+    p.oval(20, 22, 12, 12, rgb("#ff7a2a"))
+    p.oval(20, 22, 7, 7, rgb("#ffd23a"), ink=False)
+    for a in (-0.6, 0.0, 0.6):
+        p.poly([(20 + a * 14 - 4, 14), (20 + a * 18, 3), (20 + a * 14 + 4, 14)], rgb("#ff9a2a"))
+    p.done("shot_fire", border=1.5)
 
 
 def arrow():
@@ -555,6 +723,7 @@ def main():
     sparky("sparky_run2", 0, -0.7)
     sparky("sparky_jump", 8, 0.4)
     sparky("sparky_zap", 2, 0.3, zap=True)
+    partners()
     # foes
     grumbler("grumbler_1", 1)
     grumbler("grumbler_2", -1)
@@ -567,7 +736,7 @@ def main():
     krag_jr("kragjr_angry", 0, angry=True)
     krag_jr("kragjr_hurt", 0, hurt=True)
     # bits
-    coin(); heart(); heart("heart_empty", "#5b4b63"); spark_shot(); arrow(); spikeball()
+    shot_water(); shot_fire(); coin(); heart(); heart("heart_empty", "#5b4b63"); spark_shot(); arrow(); spikeball()
     tree("tree_a"); tree("tree_b", "#3b9d52", "#62c76a"); tree("tree_c", "#7fbf3f", "#a7dc5c")
     bush(); flower("flower_pink", "#ff8fc0"); flower("flower_blue", "#7fb8ff"); flower("flower_white", "#ffffff")
     cloud(); flag(); dennis()

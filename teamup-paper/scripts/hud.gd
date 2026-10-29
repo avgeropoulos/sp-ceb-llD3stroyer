@@ -30,6 +30,20 @@ func _ready() -> void:
 		tex[n] = load("res://art/" + n + ".png")
 
 
+## Any picture from art/, loaded once.
+func img(name: String) -> Texture2D:
+	if not tex.has(name):
+		tex[name] = load("res://art/" + name + ".png")
+	return tex[name]
+
+
+## Draws a picture inside a box, keeping its shape (critters are wider than tall).
+func fit(t: Texture2D, r: Rect2) -> void:
+	var k := minf(r.size.x / t.get_width(), r.size.y / t.get_height())
+	var sz := Vector2(t.get_width(), t.get_height()) * k
+	draw_texture_rect(t, Rect2(r.position + (r.size - sz) * 0.5, sz), false)
+
+
 func say(text: String, sub: String = "", time: float = 2.2) -> void:
 	message = text
 	sub_message = sub
@@ -74,6 +88,9 @@ func _input(event: InputEvent) -> void:
 					return
 				if game.state == "slots":
 					_slots_tap(e.position)
+					return
+				if game.state == "partner":
+					_partner_tap(e.position)
 					return
 				if game.state == "paused":
 					for i in 3:
@@ -130,6 +147,9 @@ func _draw() -> void:
 	if game.state == "slots":
 		_draw_slots()
 		return
+	if game.state == "partner":
+		_draw_partner()
+		return
 	_draw_hud()
 	if game.state == "play":
 		_draw_controls()
@@ -160,8 +180,18 @@ func _draw_hud() -> void:
 	# who's out
 	var who: String = game.leader_name()
 	draw_circle(Vector2(x + 40, 162), 36, Color(1, 1, 1, 0.85))
-	draw_texture_rect(tex[who + "_idle"], Rect2(x + 14, 122, 56, 70), false)
-	txt(who.to_upper(), Vector2(x + 82, 172), 26, Color(1, 0.95, 0.7))
+	fit(img(game.face(who)), Rect2(x + 8, 124, 66, 70))
+	txt(game.display_name(who), Vector2(x + 82, 172), 26, Color(1, 0.95, 0.7))
+	# the partner's level and XP
+	var m = game.heroes.mon
+	var py := 214.0
+	draw_rect(Rect2(x, py, 250, 58), Color(0.08, 0.12, 0.25, 0.55))
+	fit(img(game.face("mon")), Rect2(x + 4, py + 2, 60, 54))
+	var lv: int = game.mon_level()
+	txt("%s  Lv %d" % [Mons.name_of(m.line, m.stage), lv], Vector2(x + 70, py + 26), 22, Color.WHITE)
+	var xp: int = game.mon_xp[game.mon_line]
+	draw_rect(Rect2(x + 70, py + 36, 170, 12), Color(0.1, 0.1, 0.15))
+	draw_rect(Rect2(x + 70, py + 36, 170 * Mons.progress(xp), 12), Color("54c8ff"))
 	# boss bar
 	var boss = game.boss
 	if game.boss_on and boss != null and is_instance_valid(boss) and boss.dying < 0:
@@ -202,7 +232,7 @@ func _draw_controls() -> void:
 		draw_arc(c, rad, 0, TAU, 48, Color(1, 1, 1, 0.8), 3, true)
 		if k == "swap":
 			var nxt: String = game.next_swap_name()
-			draw_texture_rect(tex[nxt + "_idle"], Rect2(c - Vector2(rad * 0.62, rad * 0.95), Vector2(rad * 1.24, rad * 1.55)), false)
+			fit(img(game.face(nxt)), Rect2(c - Vector2(rad * 0.8, rad * 0.95), Vector2(rad * 1.6, rad * 1.55)))
 			txt("SWAP", Vector2(c.x - rad, c.y + rad + 26), 22, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, rad * 2)
 		else:
 			var n := String(labels[k]).length()
@@ -392,7 +422,11 @@ func _draw_slots() -> void:
 		else:
 			var who: String = d.get("human", "rocco")
 			draw_texture_rect(tex[who + "_idle"], Rect2(r.position.x + 16, r.position.y + 78, 90, 112), false)
-			draw_texture_rect(tex["sparky_idle"], Rect2(r.position.x + 92, r.position.y + 112, 66, 82), false)
+			var ml := String(d.get("mon", "spark"))
+			if not ml in Mons.ORDER:
+				ml = "spark"
+			var mxp := int((d.get("mon_xp", {}) as Dictionary).get(ml, 0))
+			fit(img(Mons.face(ml, Mons.stage_of(ml, Mons.level_of(mxp)))), Rect2(r.position.x + 84, r.position.y + 112, 84, 82))
 			var tx := r.position.x + 170
 			txt("1-1", Vector2(tx, r.position.y + 118), 40, Color("ff4a3a"), HORIZONTAL_ALIGNMENT_LEFT, -1, 6)
 			txt("MEADOW MINE", Vector2(tx, r.position.y + 150), 20, Color(0.13, 0.09, 0.18), HORIZONTAL_ALIGNMENT_LEFT, -1, 0)
@@ -426,3 +460,78 @@ func _draw_slots() -> void:
 			draw_rect(er, Color(0.15, 0.3, 0.2, 0.85))
 			draw_rect(er, Color.WHITE, false, 2.0)
 			txt("UNDO ERASE", Vector2(er.position.x, er.position.y + 40), 26, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, er.size.x, 6)
+
+
+# ------------------------------------------------------------------ PICK YOUR PARTNER
+func partner_rect(i: int) -> Rect2:
+	var gap := 20.0
+	var w := minf(290.0, (size.x - 60 - gap * 3) / 4.0)
+	var h := minf(420.0, size.y * 0.62)
+	var x0 := (size.x - (w * 4 + gap * 3)) * 0.5
+	return Rect2(x0 + i * (w + gap), size.y * 0.2, w, h)
+
+
+func go_rect() -> Rect2:
+	return Rect2(size.x * 0.5 - 150, size.y * 0.2 + minf(420.0, size.y * 0.62) + 18, 300, 76)
+
+
+func _partner_tap(p: Vector2) -> void:
+	if back_rect().has_point(p):
+		game.state = "slots"
+		return
+	if go_rect().has_point(p):
+		game.choose_partner(Mons.ORDER[game.partner_sel])
+		return
+	for i in 4:
+		if partner_rect(i).has_point(p):
+			game.partner_tap(i)
+			return
+
+
+func _draw_partner() -> void:
+	var s := size
+	draw_rect(Rect2(Vector2.ZERO, s), Color(0.05, 0.08, 0.15, 0.5))
+	txt("PICK YOUR PARTNER", Vector2(0, s.y * 0.14), 54, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 12)
+	var b := back_rect()
+	draw_rect(b, Color(0.1, 0.15, 0.3, 0.85))
+	draw_rect(b, Color.WHITE, false, 3.0)
+	txt("BACK", Vector2(b.position.x, b.position.y + 48), 34, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, b.size.x, 7)
+	for i in 4:
+		var l: String = Mons.ORDER[i]
+		var info: Dictionary = Mons.LINES[l]
+		var xp: int = game.mon_xp[l]
+		var lv := Mons.level_of(xp)
+		var st := Mons.stage_of(l, lv)
+		var r := partner_rect(i)
+		var sel: bool = game.partner_sel == i
+		if sel:
+			draw_rect(r.grow(8), Color(1, 0.9, 0.4, 0.95))
+		draw_rect(r, Color("fdf4e3"))
+		draw_rect(Rect2(r.position, Vector2(r.size.x, 56)), info.color)
+		draw_rect(r, Color(0.13, 0.09, 0.18), false, 4.0)
+		txt(info.type, Vector2(r.position.x, r.position.y + 40), 28, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 7)
+		var bob := sin(title_t * 4 + i) * 4 if sel else 0.0
+		fit(img(Mons.face(l, st)), Rect2(r.position.x + 10, r.position.y + 62 + bob, r.size.x - 20, r.size.y * 0.36))
+		var y := r.position.y + 62 + r.size.y * 0.36 + 34
+		txt(Mons.name_of(l, st), Vector2(r.position.x, y), 34, Color(0.13, 0.09, 0.18), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
+		y += 32
+		txt("Lv %d" % lv, Vector2(r.position.x, y), 28, Color("3f7fd9"), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
+		y += 12
+		draw_rect(Rect2(r.position.x + 20, y, r.size.x - 40, 12), Color(0.15, 0.15, 0.2))
+		draw_rect(Rect2(r.position.x + 20, y, (r.size.x - 40) * Mons.progress(xp), 12), Color("54c8ff"))
+		y += 38
+		txt(info.action, Vector2(r.position.x, y), 20, Color(0.13, 0.09, 0.18), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
+		y += 26
+		txt("SUPER: " + info.super, Vector2(r.position.x, y), 19, Color("c0392b"), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
+		var nxt := ""
+		for e in info.evolve:
+			if lv < e:
+				nxt = "Evolves at Lv %d" % e
+				break
+		if nxt != "":
+			txt(nxt, Vector2(r.position.x, r.end.y - 12), 18, Color(0.35, 0.3, 0.4), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
+	var g := go_rect()
+	var l2: String = Mons.ORDER[game.partner_sel]
+	draw_rect(g, Color("3fc06a"))
+	draw_rect(g, Color.WHITE, false, 3.0)
+	txt("GO WITH %s!" % Mons.name_of(l2, Mons.stage_of(l2, Mons.level_of(game.mon_xp[l2]))), Vector2(g.position.x, g.position.y + 52), 32, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, g.size.x, 8)

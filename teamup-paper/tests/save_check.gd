@@ -32,7 +32,9 @@ func _process(_dt: float) -> bool:
 		5:
 			check(not Saves.exists(1), "file 1 should start empty")
 			a.slot_pick(1)
-			check(a.state == "play" and a.slot == 1, "picking an empty file should start a new game")
+			check(a.state == "partner" and a.slot == 1, "picking an empty file should ask for a partner")
+			a.choose_partner("spark")
+			check(a.state == "play" and a.slot == 1, "choosing a partner should start the game")
 			# change things
 			a.level.set_cell(20, 4, 6, Level.AIR)
 			var c = a.coin_nodes[0]

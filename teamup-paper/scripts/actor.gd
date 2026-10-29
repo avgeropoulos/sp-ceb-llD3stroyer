@@ -38,27 +38,14 @@ static var _shadow_mat: StandardMaterial3D
 
 func setup(lv: Level, tex_names: Dictionary, size: float, feet_px: float = 18.0, toy_kind: String = "") -> void:
 	level = lv
-	sprite_h = size
-	for k in tex_names:
-		var list: Array[Texture2D] = []
-		for n in tex_names[k]:
-			list.append(load("res://art/" + n + ".png"))
-		frames[k] = list
 	sprite = Sprite3D.new()
 	sprite.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
 	sprite.shaded = false
 	sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_OPAQUE_PREPASS
 	sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	sprite.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var first: Texture2D = frames.values()[0][0]
-	sprite.texture = first
-	sprite.pixel_size = size / first.get_height()
-	sprite.position.y = (first.get_height() * 0.5 - feet_px) * sprite.pixel_size
 	add_child(sprite)
-	if Look.toy and toy_kind != "":
-		model = Toys.build(toy_kind)
-		add_child(model)
-		sprite.visible = false
+	reskin(tex_names, size, feet_px, toy_kind)
 	if _shadow_mesh == null:
 		_shadow_mesh = QuadMesh.new()
 		_shadow_mesh.size = Vector2(1, 1)
@@ -73,6 +60,31 @@ func setup(lv: Level, tex_names: Dictionary, size: float, feet_px: float = 18.0,
 	shadow.material_override = _shadow_mat
 	shadow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	lv.add_child(shadow)
+
+
+## Changes how this character looks (new pictures and/or 3D model), e.g. when a partner evolves.
+func reskin(tex_names: Dictionary, size: float, feet_px: float, toy_kind: String = "") -> void:
+	sprite_h = size
+	frames.clear()
+	for k in tex_names:
+		var list: Array[Texture2D] = []
+		for n in tex_names[k]:
+			list.append(load("res://art/" + n + ".png"))
+		frames[k] = list
+	var first: Texture2D = frames.values()[0][0]
+	sprite.texture = first
+	sprite.pixel_size = size / first.get_height()
+	sprite.position.y = (first.get_height() * 0.5 - feet_px) * sprite.pixel_size
+	if model:
+		model.queue_free()
+		model = null
+	if Look.toy and toy_kind != "":
+		model = Toys.build(toy_kind)
+		add_child(model)
+	sprite.visible = model == null
+	if bar:
+		bar.position.y = sprite_h + 0.15
+	anim = ""
 
 
 static func _round_shadow_tex() -> Texture2D:

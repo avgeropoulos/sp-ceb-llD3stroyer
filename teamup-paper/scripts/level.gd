@@ -345,7 +345,7 @@ func _hide(c: Vector3i, e: Vector2i) -> void:
 
 # ------------------------------------------------------------------ scenery
 const TOY_PROPS := ["tree_a", "tree_b", "tree_c", "bush", "flower_pink", "flower_blue", "flower_white", "cloud",
-	"hill_a", "hill_b", "hill_c", "coin", "heart", "flag", "sign", "spark", "arrow", "spikeball", "dennis"]
+	"hill_a", "hill_b", "hill_c", "coin", "heart", "flag", "sign", "spark", "arrow", "spikeball", "dennis", "shot_water", "shot_fire"]
 
 
 ## A prop standing with its bottom at pos: a 3D toy in the toy look, else a paper cutout.

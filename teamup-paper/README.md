@@ -27,6 +27,26 @@ Both looks run exactly the same game code; only the pictures change (`Actor.mode
 * Dennis the dog shows you the way. Rocco talks with the phone's Italian voice.
 * The music is the real Team Up! songs (rendered from `core/` Songs.kt).
 
+## Partners: pick one, level up, evolve
+
+After picking a save file (and after every finished run) you **PICK YOUR PARTNER**: tap a card to look,
+tap again (or **GO WITH ...!**) to play. Each partner has its own level, saved in the file, and evolves:
+
+| Type | Lv 1 | Lv 4 | Lv 8 | ACTION | SUPER |
+|---|---|---|---|---|---|
+| Water | SPLASHY | TIDAL | HYDRO | WATER GUN | HYDRO WAVE (waves roll both ways) |
+| Grass | SEEDY | SPROUT | BLOOM | VINE WHIP (hits and digs) | SOLAR BEAM (huge beam in front) |
+| Fire | EMBER | SCORCH | BLAZE (glides) | FIREBALL (bounces) | FIRE SPIN (ring of fire) |
+| Electric | SPARKY | ZAPPER (Lv 6) | | ZAP | THUNDERBOLT |
+
+* XP: 12 per bad guy, 60 for Krag Jr., 40 for finishing the level (`Mons.need(level)` = 20 + 10 x level, max Lv 15).
+* Each stage is bigger, faster and hits harder; Hydro's stomps hurt more. Evolving plays a short scene
+  ("WHAT? SPLASHY is evolving!") and saves. When it's the helper, the partner uses its own attack.
+* Code: `scripts/mons.gd` (lines, XP, evolve levels), `Hero.set_form()`, `main.gd` `_mon_attack` / `_thunderbolt`
+  (all SUPERs) / `gain_xp` / `start_evolve`, `hud.gd` `_draw_partner`. Art: `gen_art.py` `critter()` (paper) and
+  `toys.gd` `_critter()` (3D). Our own designs that keep the real game's partner names.
+* Test: `tests/partner_check.gd` (pick, evolve, every ACTION and SUPER at every stage, saved levels).
+
 ## Save files and pause menu
 
 * **Three save files** (like Team Up!): TAP TO START opens PICK A SAVE FILE. An empty file starts a new game;

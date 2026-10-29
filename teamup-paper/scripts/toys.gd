@@ -145,12 +145,20 @@ static func build(kind: String) -> Node3D:
 			_blocky(body, p)
 		"sparky":
 			_sparky(body, p)
+		"sparky:1":
+			var inner := piv(body, Vector3.ZERO)
+			inner.scale = Vector3.ONE * 1.3
+			_sparky(inner, p, 1)
 		"grumbler":
 			_grumbler(body, p)
 		"skelly":
 			_skelly(body, p)
 		"kragjr":
 			_kragjr(body, p)
+	if kind.begins_with("mon:"):
+		var bits := kind.split(":")
+		_critter(body, p, bits[1], int(bits[2]))
+		kind = "mon"
 	root.set_meta("p", p)
 	root.set_meta("kind", kind)
 	for mi in _all_meshes(root):
@@ -237,8 +245,8 @@ static func _blocky(b: Node3D, p: Dictionary) -> void:
 	part(head, cyl(0.07, 0.07, 0.05), Vector3(0, 0.55, 0.25), Color("fff6b0"), Vector3.ONE, Vector3(PI / 2 - 0.4, 0, 0), true, 1.5)
 
 
-static func _sparky(b: Node3D, p: Dictionary) -> void:
-	var Y := Color("ffd83b")
+static func _sparky(b: Node3D, p: Dictionary, stage := 0) -> void:
+	var Y := Color("ffd83b") if stage == 0 else Color("f5c518")
 	var BLUE := Color("54c8ff")
 	for s in [-1, 1]:
 		var foot := piv(b, Vector3(s * 0.15, 0.06, 0.06))
@@ -254,7 +262,11 @@ static func _sparky(b: Node3D, p: Dictionary) -> void:
 	for s in [-1, 1]:
 		var ant := piv(core, Vector3(s * 0.12, 0.32, 0))
 		part(ant, cyl(0.02, 0.02, 0.3, 6), Vector3(s * 0.04, 0.14, 0), INK, Vector3.ONE, Vector3(0, 0, -s * 0.3), false)
-		part(ant, sph(0.075), Vector3(s * 0.09, 0.3, 0), BLUE, Vector3.ONE, Vector3.ZERO, true, 0.8)
+		if stage == 0:
+			part(ant, sph(0.075), Vector3(s * 0.09, 0.3, 0), BLUE, Vector3.ONE, Vector3.ZERO, true, 0.8)
+		else:   # lightning-bolt tips
+			part(ant, box(Vector3(0.05, 0.16, 0.05)), Vector3(s * 0.08, 0.3, 0), BLUE, Vector3.ONE, Vector3(0, 0, 0.5), true, 0.8)
+			part(ant, box(Vector3(0.05, 0.16, 0.05)), Vector3(s * 0.11, 0.42, 0), BLUE, Vector3.ONE, Vector3(0, 0, -0.5), true, 0.8)
 		p["antL" if s < 0 else "antR"] = ant
 	var tail := piv(core, Vector3(0, 0, -0.36))
 	part(tail, box(Vector3(0.08, 0.22, 0.06)), Vector3(0, 0.06, -0.05), Color("e8aa1c"), Vector3.ONE, Vector3(0.6, 0, 0))
@@ -370,8 +382,10 @@ static func pose(a, dt: float) -> void:
 	match kind:
 		"rocco", "blocky", "skelly":
 			_pose_person(p, kind, anim, t)
-		"sparky":
+		"sparky", "sparky:1":
 			_pose_sparky(p, anim, t)
+		"mon":
+			_pose_critter(p, anim, t)
 		"grumbler":
 			var s := sin(t * 10)
 			p.legL.position.z = 0.05 + s * 0.1
@@ -526,6 +540,12 @@ static func prop(kind: String, size: float) -> Node3D:
 		"sign":
 			part(r, box(Vector3(0.12, 1.0, 0.12)), Vector3(0, 0.5, 0), Color("8a5a35"))
 			part(r, box(Vector3(2.0, 1.0, 0.1)), Vector3(0, 1.35, 0), Color("c98d55"))
+		"shot_water":
+			part(r, sph(0.16), Vector3(0, 0.25, 0), Color("5ab4ff"), Vector3(1, 1, 1.3), Vector3.ZERO, false, 1.0)
+			part(r, sph(0.07), Vector3(0.04, 0.29, 0.1), Color.WHITE, Vector3.ONE, Vector3.ZERO, false, 1.0)
+		"shot_fire":
+			part(r, sph(0.2), Vector3(0, 0.27, 0), Color("ff7a2a"), Vector3.ONE, Vector3.ZERO, false, 1.6)
+			part(r, sph(0.12), Vector3(0, 0.27, 0.1), Color("ffe36a"), Vector3.ONE, Vector3.ZERO, false, 2.0)
 		"spark":
 			part(r, sph(0.17), Vector3(0, 0.25, 0), Color("54c8ff"), Vector3.ONE, Vector3.ZERO, false, 2.0)
 			part(r, sph(0.09), Vector3(0, 0.25, 0.1), Color.WHITE, Vector3.ONE, Vector3.ZERO, false, 2.0)
@@ -559,3 +579,141 @@ static func prop(kind: String, size: float) -> Node3D:
 	for mi in _all_meshes(r):
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if kind.begins_with("tree") or kind in ["flag", "sign"] else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return r
+
+
+# ------------------------------------------------------------------ partner creatures
+## A four-legged partner (water turtle, grass dino, fire lizard), stage 0-2.
+## Built facing +Z; each stage is bigger and adds features.
+static func _critter(b: Node3D, p: Dictionary, line: String, stage: int) -> void:
+	var BODIES := {"water": ["8fd3ff", "5fb8f5", "3d7fd9"], "grass": ["8fdc6a", "5cc05a", "3a9d5d"], "fire": ["ff8a4a", "e85a3a", "b83a3a"]}
+	var BELLY := {"water": "e6f6ff", "grass": "e6f5b0", "fire": "ffd9a0"}
+	var C := Color(BODIES[line][stage])
+	var BL := Color(BELLY[line])
+	var inner := piv(b, Vector3.ZERO)
+	inner.scale = Vector3.ONE * [1.0, 1.22, 1.5][stage]
+	p["inner"] = inner
+	var core := piv(inner, Vector3(0, 0.36, 0))
+	p["core"] = core
+	part(core, sph(0.3), Vector3.ZERO, C, Vector3(1.0, 0.82, 1.3))
+	part(core, sph(0.22), Vector3(0, -0.1, 0.06), BL, Vector3(1.0, 0.6, 1.3), Vector3.ZERO, false)
+	# legs: front pair is legL/legR, back pair backL/backR
+	for leg in [["legL", -1, 1], ["legR", 1, 1], ["backL", -1, -1], ["backR", 1, -1]]:
+		var lp := piv(inner, Vector3(leg[1] * 0.17, 0.26, leg[2] * 0.2))
+		part(lp, cap(0.085, 0.24), Vector3(0, -0.13, 0), C)
+		p[leg[0]] = lp
+	# tail
+	var tail := piv(core, Vector3(0, 0.0, -0.36))
+	p["tail"] = tail
+	if line == "fire":
+		part(tail, cyl(0.03, 0.08, 0.4, 8), Vector3(0, 0.12, -0.12), C, Vector3.ONE, Vector3(-0.9, 0, 0))
+		if stage >= 1:
+			_flame(tail, Vector3(0, 0.3, -0.28), 0.14 + stage * 0.05)
+	else:
+		part(tail, cyl(0.0, 0.08, 0.22, 8), Vector3(0, 0, -0.08), C, Vector3.ONE, Vector3(-PI / 2 - 0.3, 0, 0))
+	# back features
+	match line:
+		"water":
+			var SH := Color(["2fb5a8", "1f8f9c", "1d5f8a"][stage])
+			part(core, hemi(0.33), Vector3(0, 0.05, -0.02), SH, Vector3(1.05, 0.95, 1.35))
+			for k in 3:
+				part(core, sph(0.07), Vector3((k - 1) * 0.14, 0.27, -0.02 + (k % 2) * 0.1), Color("7fe0d0"), Vector3(1, 0.4, 1), Vector3.ZERO, false)
+			if stage == 2:
+				for sx in [-0.12, 0.12]:
+					part(core, cyl(0.05, 0.06, 0.16, 10), Vector3(sx, 0.34, -0.05), Color("9aa6b2"))
+					part(core, sph(0.05), Vector3(sx, 0.48, -0.05), Color("7fd0ff"), Vector3.ONE, Vector3.ZERO, false, 0.6)
+					part(core, sph(0.035), Vector3(sx, 0.58, -0.07), Color("7fd0ff"), Vector3.ONE, Vector3.ZERO, false, 0.6)
+		"grass":
+			for k in [0, 3, 5][stage]:
+				_leaf(core, Vector3(0, 0.22, -0.2 + k * 0.1), 0.12 + stage * 0.04, -0.3 + k * 0.12)
+			for sp in [Vector3(-0.15, 0.12, 0.05), Vector3(0.18, 0.08, -0.1), Vector3(0.05, 0.2, 0.2)]:
+				part(core, sph(0.04), sp, Color("4f9d3e"), Vector3(1, 0.5, 1), Vector3.ZERO, false)
+		"fire":
+			if stage >= 1:
+				for k in 1 + stage * 2:
+					_flame(core, Vector3(0, 0.25, -0.22 + k * (0.44 / maxi(1, stage * 2))), 0.08 + stage * 0.03)
+			if stage == 2:
+				for sx in [-1, 1]:
+					var pm := PrismMesh.new()
+					pm.size = Vector3(0.36, 0.3, 0.03)
+					part(core, pm, Vector3(sx * 0.3, 0.05, -0.05), Color("ff9a3c"), Vector3.ONE, Vector3(0, PI / 2, sx * 1.1))
+	# head
+	var head := piv(inner, Vector3(0, 0.6, 0.34))
+	p["head"] = head
+	part(head, sph(0.24), Vector3.ZERO, C)
+	part(head, sph(0.13), Vector3(0, -0.08, 0.17), BL, Vector3(1.2, 0.8, 0.8), Vector3.ZERO, false)
+	eyes(head, 0.04, 0.19, 0.1, 0.07)
+	match line:
+		"water":
+			if stage == 0:
+				part(head, cyl(0.0, 0.06, 0.16, 10), Vector3(0, 0.29, 0), Color("5ac8ff"))
+			elif stage == 1:
+				var pm := PrismMesh.new()
+				pm.size = Vector3(0.05, 0.22, 0.28)
+				part(head, pm, Vector3(0, 0.3, -0.05), Color("e6f6ff"), Vector3.ONE, Vector3(-0.3, 0, 0))
+		"grass":
+			if stage == 0:
+				part(head, cyl(0.012, 0.012, 0.12, 5), Vector3(0, 0.28, 0), Color("2f7a3a"), Vector3.ONE, Vector3.ZERO, false)
+				_leaf(head, Vector3(0, 0.34, 0), 0.12, 0.6)
+			elif stage == 1:
+				_leaf(head, Vector3(-0.04, 0.24, 0), 0.13, -0.6)
+				_leaf(head, Vector3(0.04, 0.24, 0), 0.13, 0.6)
+				part(head, sph(0.05), Vector3(0, 0.29, 0), Color("ff8fc0"))
+			else:
+				for k in 5:
+					var a := k * TAU / 5
+					part(head, sph(0.075), Vector3(cos(a) * 0.1, 0.3, sin(a) * 0.1), Color("ff7fb5"), Vector3(1, 0.5, 1))
+				part(head, sph(0.05), Vector3(0, 0.33, 0), Color("ffd23a"))
+		"fire":
+			if stage < 2:
+				for k in 3:
+					_flame(head, Vector3((k - 1) * 0.08, 0.2, -0.02), 0.07 + stage * 0.03 + (0.02 if k == 1 else 0.0))
+			else:
+				for k in 7:
+					var a := PI * (0.0 + k / 6.0)
+					_flame(head, Vector3(cos(a) * 0.22, 0.05 + sin(a) * 0.2, -0.08), 0.1)
+
+
+static func _flame(parent: Node3D, pos: Vector3, h: float) -> void:
+	part(parent, cyl(0.0, h * 0.45, h, 8), pos + Vector3(0, h * 0.5, 0), Color("ffb02e"), Vector3.ONE, Vector3.ZERO, true, 0.9)
+	part(parent, cyl(0.0, h * 0.25, h * 0.6, 6), pos + Vector3(0, h * 0.4, 0.02), Color("ffe36a"), Vector3.ONE, Vector3.ZERO, false, 1.2)
+
+
+static func _leaf(parent: Node3D, pos: Vector3, size: float, tilt: float) -> void:
+	part(parent, sph(size), pos + Vector3(sin(tilt) * size * 0.6, size * 0.8, 0), Color("4fb35a"), Vector3(0.25, 1.0, 0.55), Vector3(0, 0, -tilt))
+
+
+static func _pose_critter(p: Dictionary, anim: String, t: float) -> void:
+	var b: Node3D = p.body
+	for k in ["backL", "backR"]:
+		p[k].rotation = Vector3.ZERO
+	p.tail.rotation = Vector3.ZERO
+	p.head.position.z = 0.34
+	match anim:
+		"run":
+			var s := sin(t * 13)
+			p.legL.rotation.x = s * 0.7
+			p.backR.rotation.x = s * 0.7
+			p.legR.rotation.x = -s * 0.7
+			p.backL.rotation.x = -s * 0.7
+			b.position.y = absf(cos(t * 13)) * 0.06
+			p.tail.rotation.y = sin(t * 13) * 0.3
+		"jump", "fall":
+			p.legL.rotation.x = -0.7
+			p.legR.rotation.x = -0.7
+			p.backL.rotation.x = 0.7
+			p.backR.rotation.x = 0.7
+			p.core.rotation.x = -0.15
+			return
+		"zap", "hurt":
+			p.head.position.z = 0.34 + absf(sin(t * 18)) * 0.08
+			p.core.scale = Vector3.ONE * (1.0 + sin(t * 30) * 0.04)
+			return
+		"win":
+			b.position.y = absf(sin(t * 7)) * 0.3
+			p.tail.rotation.y = sin(t * 14) * 0.5
+		_:
+			b.position.y = sin(t * 3) * 0.01
+			p.tail.rotation.y = sin(t * 4) * 0.35
+			p.head.rotation.y = sin(t * 0.9) * 0.2
+	p.core.rotation.x = 0.0
+	p.core.scale = Vector3.ONE

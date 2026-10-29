@@ -8,7 +8,7 @@ const SUPER_TIME := 25.0
 const STATS := {
 	"rocco": {"speed": 5.6, "jump": 12.6, "hw": 0.3, "h": 1.45, "size": 1.8, "feet": 28.0},
 	"blocky": {"speed": 5.0, "jump": 10.8, "hw": 0.32, "h": 1.5, "size": 1.9, "feet": 30.0},
-	"sparky": {"speed": 6.6, "jump": 13.2, "hw": 0.32, "h": 0.9, "size": 1.95, "feet": 48.0},
+	"mon": {"speed": 6.6, "jump": 13.2, "hw": 0.32, "h": 0.9, "size": 1.95, "feet": 48.0},
 }
 const ORE_OF := {Level.STONE: "stone", Level.IRON: "iron", Level.GOLD: "gold", Level.DIAMOND: "diamond"}
 const GO_LINES := ["Here we go!", "Andiamo! Let's go!", "Okey dokey!"]
@@ -58,6 +58,14 @@ var coins_taken: Array = []   # which coins (by number) are collected
 var foes_gone: Array = []     # which bad guys (by spawn number) are beaten
 var cleared := 0              # times this file finished the level
 
+# partners
+var mon_line := "spark"       # water / grass / fire / spark
+var mon_xp := {"water": 0, "grass": 0, "fire": 0, "spark": 0}
+var partner_sel := 0          # highlighted card on PICK YOUR PARTNER
+var evolve_t := -1.0          # >= 0 while the evolution scene plays
+var evolve_to := 0
+var evolve_from := ""
+
 # input for this frame
 var move_vec := Vector2.ZERO
 var jump_held := false
@@ -89,7 +97,7 @@ func _ready() -> void:
 	level.generate()
 	fx = Fx.new()
 	add_child(fx)
-	for w in ["rocco", "blocky", "sparky"]:
+	for w in ["rocco", "blocky", "mon"]:
 		var h := Hero.new()
 		level.add_child(h)
 		h.init(level, w, STATS[w])
@@ -97,7 +105,7 @@ func _ready() -> void:
 	heroes.blocky.visible = false
 	heroes.rocco.position = Vector3(4, 5, 6.8)
 	heroes.blocky.position = heroes.rocco.position
-	heroes.sparky.position = Vector3(2.6, 5, 5.6)
+	heroes.mon.position = Vector3(2.6, 5, 5.6)
 	original_cells = level.cells.duplicate()
 	for si in level.spawns.size():
 		var s: Dictionary = level.spawns[si]
@@ -233,18 +241,18 @@ func speak(text: String, who: String) -> void:
 		v = voice_en
 	if v == "" or bot:
 		return
-	var pitch := {"rocco": 1.15, "blocky": 0.8, "sparky": 1.9}.get(who, 1.0) as float
+	var pitch := {"rocco": 1.15, "blocky": 0.8, "mon": 1.8}.get(who, 1.0) as float
 	DisplayServer.tts_stop()
-	DisplayServer.tts_speak(text, v, 80, pitch, 1.1 if who == "sparky" else 1.0)
+	DisplayServer.tts_speak(text, v, 80, pitch, 1.1 if who == "mon" else 1.0)
 
 
 # ------------------------------------------------------------------ who's who
 func leader() -> Hero:
-	return heroes.sparky if control == "mon" else heroes[human]
+	return heroes.mon if control == "mon" else heroes[human]
 
 
 func follower() -> Hero:
-	return heroes[human] if control == "mon" else heroes.sparky
+	return heroes[human] if control == "mon" else heroes.mon
 
 
 func leader_name() -> String:
@@ -254,7 +262,7 @@ func leader_name() -> String:
 func next_swap_name() -> String:
 	if control == "mon":
 		return "rocco"
-	return "blocky" if human == "rocco" else "sparky"
+	return "blocky" if human == "rocco" else "mon"
 
 
 func action_label() -> String:
@@ -263,7 +271,24 @@ func action_label() -> String:
 			return "LONG JUMP" if leader().on_floor else "SLAM"
 		"blocky":
 			return "MINE"
-	return "ZAP"
+	return Mons.LINES[mon_line].action
+
+
+## The picture for a hero on menus ("rocco", "blocky" or "mon").
+func face(who: String) -> String:
+	if who == "mon":
+		return Mons.face(heroes.mon.line, heroes.mon.stage)
+	return who + "_idle"
+
+
+func display_name(who: String) -> String:
+	if who == "mon":
+		return Mons.name_of(heroes.mon.line, heroes.mon.stage)
+	return who.to_upper()
+
+
+func mon_level(l: String = "") -> int:
+	return Mons.level_of(int(mon_xp[mon_line if l == "" else l]))
 
 
 func do_swap() -> void:
@@ -277,21 +302,20 @@ func do_swap() -> void:
 		speak("Let's dig!", "blocky")
 	elif control == "human":
 		control = "mon"
-		heroes.sparky.position = heroes.sparky.position   # Sparky is already out
-		speak("Sparky!", "sparky")
+		speak(display_name("mon").capitalize() + "!", "mon")
 	else:
 		control = "human"
 		var was := human
 		human = "rocco"
 		heroes[was].visible = false
 		heroes[was].shadow.visible = false
-		var f: Vector3 = heroes.sparky.position
+		var f: Vector3 = heroes.mon.position
 		_pop_in(heroes.rocco, heroes[was].position, heroes[was].facing)
-		heroes.sparky.position = f
+		heroes.mon.position = f
 		speak("Okey dokey!", "rocco")
 	sfx("swap")
 	fx.burst(leader().position + Vector3(0, 0.8, 0), Color.WHITE, 14, 4, 4)
-	hud.say(leader_name().to_upper() + "!", "", 0.8)
+	hud.say(display_name(leader_name()) + "!", "", 0.8)
 
 
 func _pop_in(h: Hero, p: Vector3, f: Vector3) -> void:
@@ -347,9 +371,35 @@ func open_slots() -> void:
 func slot_pick(n: int) -> void:
 	erase_armed = 0
 	var d := Saves.read(n)
-	start_game(n)
-	if not d.is_empty():
+	if d.get("in_level", false):   # in the middle of the level: carry on with the same partner
+		start_game(n)
 		_apply_save(d)
+		return
+	slot = n
+	_apply_save(d)   # coins, ores, partner levels
+	partner_sel = maxi(0, Mons.ORDER.find(mon_line))
+	state = "partner"
+	sfx("swap", -6)
+
+
+## PICK YOUR PARTNER: tap once to look, again (or GO!) to start with it.
+func partner_tap(i: int) -> void:
+	if partner_sel == i:
+		choose_partner(Mons.ORDER[i])
+	else:
+		partner_sel = i
+		sfx("bonk", -8)
+
+
+func choose_partner(l: String) -> void:
+	set_partner(l)
+	start_game(slot)
+	hud.say("1-1  MEADOW MINE", display_name("mon") + " joins the team! Lv %d" % mon_level(), 2.6)
+
+
+func set_partner(l: String) -> void:
+	mon_line = l
+	heroes.mon.set_form(l, Mons.stage_of(l, mon_level()))
 
 
 ## ERASE needs two taps; the file goes to a backup so UNDO ERASE can bring it back.
@@ -375,7 +425,8 @@ func slot_undo(n: int) -> void:
 func save_data(in_level := true) -> Dictionary:
 	var d := {"v": 1, "level": "1-1", "time": Time.get_unix_time_from_system(),
 		"hearts": hearts, "coins": coins, "ores": ores.duplicate(), "beaten": beaten,
-		"super": super_charge, "cleared": cleared, "human": human if in_level else "rocco", "in_level": in_level}
+		"super": super_charge, "cleared": cleared, "human": human if in_level else "rocco", "in_level": in_level,
+		"mon": mon_line, "mon_xp": mon_xp.duplicate()}
 	if in_level:
 		var cells := []
 		var lc := level.cells
@@ -406,6 +457,13 @@ func _apply_save(d: Dictionary) -> void:
 	beaten = int(d.get("beaten", 0))
 	super_charge = clampf(float(d.get("super", 0)), 0, 1)
 	cleared = int(d.get("cleared", 0))
+	var mx: Dictionary = d.get("mon_xp", {})
+	for k in mon_xp:
+		mon_xp[k] = int(mx.get(k, 0))
+	mon_line = String(d.get("mon", "spark"))
+	if not mon_line in Mons.ORDER:
+		mon_line = "spark"
+	set_partner(mon_line)
 	if not d.get("in_level", false):
 		if cleared > 0:
 			hud.say("1-1  MEADOW MINE", "Cleared %d time%s! Go again!" % [cleared, "" if cleared == 1 else "s"], 2.6)
@@ -486,9 +544,13 @@ func _warm_up() -> void:
 	if warm_t == 2:
 		fx.burst(at, Color.WHITE, 4, 0.1, 0.0, 0.2)
 		fx.bolt(at + Vector3(0, -6, 0))
+		fx.wave(at, null)
+		fx.beam(at, 1.0, 2.0)
+		fx.ring(at, 1.0)
+		fx.vine(at, Vector3.RIGHT, 1.0)
 		for sz in [36, 48, 52, 56, 60, 64]:
 			fx.text(at, "+0123456789/ABCDEFGHIJKLMNOPQRSTUVWXYZ!→", Color.WHITE, sz, 0.3)
-		for k in ["spark", "arrow", "spikeball", "coin", "heart"]:
+		for k in ["spark", "arrow", "spikeball", "coin", "heart", "shot_water", "shot_fire"]:
 			var n := level.prop(k, at, 0.3)
 			n.scale = Vector3.ONE * 0.05
 			warm_nodes.append(n)
@@ -506,6 +568,57 @@ func _warm_up() -> void:
 		for h in heroes.values():
 			h.bar.visible = false
 		warm_t = -1
+
+
+## The partner earns XP. Level ups pop up; at Lv 4 and Lv 8 it evolves (the evolution scene).
+func gain_xp(n: int) -> void:
+	var before := mon_level()
+	mon_xp[mon_line] = int(mon_xp[mon_line]) + n
+	var after := mon_level()
+	var m: Hero = heroes.mon
+	fx.text(m.position + Vector3(0, m.sprite_h * 0.6 + 0.3, 0.3), "+%d XP" % n, Color("9fe8ff"), 40, 0.8)
+	if after > before:
+		sfx("heart")
+		fx.text(m.position + Vector3(0, m.sprite_h * 0.6 + 1.0, 0.3), "LEVEL UP! Lv %d" % after, Color("fff2a8"), 56, 1.4)
+		var st := Mons.stage_of(mon_line, after)
+		if st > m.stage and state == "play":
+			start_evolve(st)
+
+
+func start_evolve(st: int) -> void:
+	evolve_from = display_name("mon")
+	evolve_to = st
+	evolve_t = 0.0
+	state = "evolve"
+	hud.say("WHAT?", evolve_from + " is evolving!", 1.6)
+	speak("Whoa! " + evolve_from.capitalize() + " is evolving!", "rocco")
+	sfx("alert")
+
+
+func _step_evolve(dt: float) -> void:
+	var m: Hero = heroes.mon
+	var was := evolve_t
+	evolve_t += dt
+	var pulse := 1.0 + sin(evolve_t * (8 + evolve_t * 10)) * 0.25
+	m.squash = Vector2(pulse, pulse)
+	if m.sprite.visible:
+		m.sprite.modulate = Color(3, 3, 3) if int(evolve_t * 12) % 2 == 0 else Color.WHITE
+	m.animate(dt)
+	if was < 1.8 and evolve_t >= 1.8:
+		m.set_form(mon_line, evolve_to)
+		m.squash = Vector2(1.4, 1.4)
+		fx.shake = 0.6
+		sfx("clear")
+		for i in 5:
+			fx.burst(m.position + Vector3(randf_range(-0.6, 0.6), randf_range(0.3, 1.6), 0.4), Color.from_hsv(randf(), 0.4, 1), 12, 5, 4)
+		hud.say(display_name("mon") + "!", evolve_from + " evolved into " + display_name("mon") + "!", 2.4)
+		speak(display_name("mon").capitalize() + "!", "mon")
+		save_game()
+	if evolve_t > 3.4:
+		evolve_t = -1
+		m.sprite.modulate = Color.WHITE
+		state = "play"
+	_update_camera(dt)
 
 
 ## PAPER <-> 3D TOYS (title screen). Rebuilds everything in the other look.
@@ -555,6 +668,22 @@ func _step(dt: float) -> void:
 			toggle_look()
 		elif jump_pressed or action_pressed:
 			open_slots()
+		_update_camera(dt)
+		return
+	if state == "evolve":
+		_step_evolve(dt)
+		return
+	if state == "partner":
+		if Input.is_action_just_pressed("left"):
+			partner_sel = (partner_sel + 3) % 4
+		if Input.is_action_just_pressed("right"):
+			partner_sel = (partner_sel + 1) % 4
+		if jump_pressed or action_pressed:
+			choose_partner(Mons.ORDER[partner_sel])
+		elif pause_pressed:
+			state = "slots"
+		for h in heroes.values():
+			h.animate(dt)
 		_update_camera(dt)
 		return
 	if state == "slots":
@@ -664,6 +793,8 @@ func _update_leader(h: Hero, dt: float) -> void:
 			jump_buf = 0
 			h.spin()
 			sfx("jump2")
+	if h.who == "mon" and h.line == "fire" and h.stage == 2 and jump_held and h.vel.y < -2.5:
+		h.vel.y = -2.5   # BLAZE glides while you hold JUMP
 	if not jump_held and h.vel.y > 0 and h.long_t <= 0:
 		h.vel.y -= Actor.GRAVITY * 1.4 * dt
 	h.vel.y = maxf(h.vel.y - Actor.GRAVITY * dt, -26)
@@ -689,7 +820,7 @@ func _update_leader(h: Hero, dt: float) -> void:
 		h.play("hurt")
 	elif h.action_t > 0 and h.who == "blocky":
 		h.play("mine")
-	elif h.action_t > 0 and h.who == "sparky":
+	elif h.action_t > 0 and h.who == "mon":
 		h.play("zap")
 	elif h.slam == "fall":
 		h.play("slam")
@@ -733,19 +864,62 @@ func _action(h: Hero) -> void:
 				h.action_t = 0.3
 				h.anim_t = 0
 				_mine(h)
-		"sparky":
+		"mon":
 			if h.action_t <= 0:
 				h.action_t = 0.28
-				var aim := h.facing
-				var best := 9.0
-				for f in foes:
-					if f.dying < 0 and is_instance_valid(f):
-						var d := f.position + Vector3(0, f.height * 0.5, 0) - h.position - Vector3(0, 0.5, 0)
-						if d.length() < best and d.normalized().dot(Vector3(h.facing.x, 0, h.facing.z).normalized()) > 0.5:
-							best = d.length()
-							aim = d.normalized()
-				spawn_shot("spark", h.position + Vector3(0, 0.55, 0), aim * 13.0, h)
-				sfx("zap", -4)
+				h.anim_t = 0
+				_mon_attack(h, null)
+
+
+## The partner's attack: as the hero you steer (target = null: aim in front) or as the helper.
+func _mon_attack(h: Hero, target: Foe) -> void:
+	var dmg := 1 + h.stage
+	var from := h.position + Vector3(0, h.height * 0.6, 0)
+	var aim := Vector3(h.facing.x, 0, h.facing.z).normalized()
+	if aim.length() < 0.1:
+		aim = Vector3.RIGHT
+	if target == null:   # auto-aim at a bad guy roughly in front
+		var best := 9.0
+		for f in foes:
+			if is_instance_valid(f) and f.dying < 0:
+				var d := f.position + Vector3(0, f.height * 0.5, 0) - from
+				if d.length() < best and Vector3(d.x, 0, d.z).normalized().dot(aim) > 0.5:
+					best = d.length()
+					target = f
+	if target:
+		aim = (target.position + Vector3(0, target.height * 0.5, 0) - from).normalized()
+	match h.line:
+		"water":
+			spawn_shot("water", from, aim * 14.0, h, dmg)
+			sfx("zap", -6)
+		"fire":
+			var flat := Vector3(aim.x, 0, aim.z).normalized()
+			spawn_shot("fireball", from, flat * 8.0 + Vector3(0, 2, 0), h, dmg)
+			sfx("jump2", -6)
+		"grass":
+			_vine_whip(h, aim, dmg + 1)
+		_:
+			spawn_shot("spark", from, aim * 13.0, h, dmg)
+			sfx("zap", -4)
+
+
+## Grass: a vine lashes out in front. It hits bad guys and digs one block.
+func _vine_whip(h: Hero, aim: Vector3, dmg: int) -> void:
+	var reach := 2.2 + h.stage * 0.4
+	var flat := Vector3(aim.x, 0, aim.z).normalized()
+	fx.vine(h.position + Vector3(0, h.height * 0.55, 0), flat, reach)
+	sfx("mine", -4)
+	var hit := false
+	for f in foes:
+		if is_instance_valid(f) and f.dying < 0:
+			var d := f.position - h.position
+			if absf(d.y) < 1.8 and Vector2(d.x, d.z).length() < reach + f.hw and Vector2(d.x, d.z).normalized().dot(Vector2(flat.x, flat.z)) > 0.3:
+				f.hurt(dmg, self)
+				hit = true
+	if not hit and h == leader():
+		var c := Vector3i(floori(h.position.x + flat.x * (h.hw + 0.6)), floori(h.position.y + 0.3), floori(h.position.z + flat.z * (h.hw + 0.6)))
+		if level.get_cell(c.x, c.y, c.z) != Level.AIR:
+			hit_block(c, 1, h)
 
 
 func _slam_land(h: Hero) -> void:
@@ -853,20 +1027,46 @@ func _pop_away(s: Node3D) -> void:
 
 func _thunderbolt() -> void:
 	super_charge = 0
-	sfx("thunder")
+	var m: Hero = heroes.mon
+	var info: Dictionary = Mons.LINES[m.line]
+	var power := 4 + m.stage
 	fx.shake = 0.9
-	hud.say("THUNDERBOLT!", "Sparky's SUPER", 1.6)
-	speak("Spar-ky!", "sparky")
-	var lx := leader().position.x
-	var hit := 0
-	for f in foes:
-		if is_instance_valid(f) and f.dying < 0 and absf(f.position.x - lx) < 15:
-			fx.bolt(f.position)
-			f.hurt(3 if f.is_boss else 4, self)
-			hit += 1
-	for i in maxi(0, 4 - hit):
-		var x := lx + randf_range(-8, 8)
-		fx.bolt(Vector3(x, level.ground_below(x, 6, 16), randf_range(4, 9)))
+	hud.say(info.super + "!", display_name("mon") + "'s SUPER", 1.6)
+	speak(display_name("mon").capitalize() + "!", "mon")
+	var at := m.position if m.visible else leader().position
+	var lx := at.x
+	match m.line:
+		"water":
+			sfx("slam")
+			fx.wave(at, level)
+			for f in foes:
+				if is_instance_valid(f) and f.dying < 0 and absf(f.position.x - lx) < 14 and f.position.y < at.y + 4:
+					f.hurt(power - (1 if f.is_boss else 0), self)
+		"grass":
+			sfx("thunder")
+			var dir := 1.0 if leader().facing.x >= 0 else -1.0
+			fx.beam(at + Vector3(0, 0.8, 0), dir, 18.0)
+			for f in foes:
+				if is_instance_valid(f) and f.dying < 0 and (f.position.x - lx) * dir > -1 and absf(f.position.x - lx) < 18 and absf(f.position.y - at.y) < 6:
+					f.hurt(power - (1 if f.is_boss else 0), self)
+		"fire":
+			sfx("boss_down")
+			fx.ring(at, 7.0)
+			for f in foes:
+				if is_instance_valid(f) and f.dying < 0 and f.position.distance_to(at) < 7.5:
+					f.hurt(power - (1 if f.is_boss else 0), self)
+		_:
+			sfx("thunder")
+			var hit := 0
+			for f in foes:
+				if is_instance_valid(f) and f.dying < 0 and absf(f.position.x - lx) < 15:
+					fx.bolt(f.position)
+					f.hurt(power - (1 if f.is_boss else 0), self)
+					hit += 1
+			for i in maxi(0, 4 - hit):
+				var x := lx + randf_range(-8, 8)
+				fx.bolt(Vector3(x, level.ground_below(x, 6, 16), randf_range(4, 9)))
+	super_charge = 0   # bad guys beaten by the SUPER don't refill it
 
 
 # ------------------------------------------------------------------ the friend who follows
@@ -900,8 +1100,8 @@ func _update_follower(h: Hero, dt: float) -> void:
 	if boss_on and not boss_done:
 		h.position.x = clampf(h.position.x, Level.BOSS_X0 + 0.6, Level.BOSS_X1 + 0.4)
 	h.action_t = maxf(0, h.action_t - dt)
-	# Sparky zaps a nearby bad guy every few seconds when he's the helper
-	if h.who == "sparky":
+	# the partner attacks a nearby bad guy every few seconds when it's the helper
+	if h.who == "mon":
 		h.zap_t -= dt
 		if h.zap_t <= 0:
 			var best: Foe = null
@@ -913,16 +1113,14 @@ func _update_follower(h: Hero, dt: float) -> void:
 						bd = dd
 						best = f
 			if best:
-				var from := h.position + Vector3(0, 0.55, 0)
-				var to := best.position + Vector3(0, best.height * 0.5, 0)
-				spawn_shot("spark", from, (to - from).normalized() * 13.0, h)
+				h.facing = Vector3(signf(best.position.x - h.position.x), 0, 0)
+				_mon_attack(h, best)
 				h.action_t = 0.3
 				h.zap_t = 3.0
-				sfx("zap", -6)
 			else:
 				h.zap_t = 0.5
 	if h.action_t > 0:
-		h.play("zap" if h.who == "sparky" else "mine")
+		h.play("zap" if h.who == "mon" else "mine")
 	elif not h.on_floor:
 		h.play("jump")
 	elif Vector2(h.vel.x, h.vel.z).length() > 0.5:
@@ -952,6 +1150,8 @@ func _update_foes(dt: float) -> void:
 			var falling: bool = l.vel.y < -1.0 and l.position.y > f.position.y + f.height * 0.45
 			if falling and f.stompable:
 				var dmg := 3 if l.slam == "fall" else 2
+				if l.who == "mon" and l.line == "water":
+					dmg += l.stage   # heavy turtle stomps
 				if not f.is_boss:
 					dmg = 3 if f.kind == "grumbler" else dmg
 				f.hurt(dmg, self)
@@ -965,9 +1165,13 @@ func _update_foes(dt: float) -> void:
 				hurt_hero(f.position)
 
 
-func spawn_shot(kind: String, pos: Vector3, v: Vector3, owner: Node3D) -> void:
-	var size := {"spark": 0.55, "arrow": 0.32, "spikeball": 0.8}[kind] as float
-	var s := level.prop({"spark": "spark", "arrow": "arrow", "spikeball": "spikeball"}[kind], pos - Vector3(0, size * 0.5, 0), size)
+const FRIENDLY_SHOTS := ["spark", "water", "fireball"]
+
+
+func spawn_shot(kind: String, pos: Vector3, v: Vector3, owner: Node3D, dmg: int = 1) -> void:
+	var size := {"spark": 0.55, "arrow": 0.32, "spikeball": 0.8, "water": 0.5, "fireball": 0.55}[kind] as float
+	var pic: String = {"spark": "spark", "arrow": "arrow", "spikeball": "spikeball", "water": "shot_water", "fireball": "shot_fire"}[kind]
+	var s := level.prop(pic, pos - Vector3(0, size * 0.5, 0), size)
 	if not (s is Sprite3D):   # 3D shots: put the node's origin at the shot's middle, like the paper ones
 		s.position = pos
 		for ch in s.get_children():
@@ -977,7 +1181,8 @@ func spawn_shot(kind: String, pos: Vector3, v: Vector3, owner: Node3D) -> void:
 			s.flip_h = v.x < 0
 		else:
 			s.look_at(s.global_position - v, Vector3.UP)
-	shots.append({"node": s, "vel": v, "kind": kind, "owner": owner, "life": 5.0 if kind == "spikeball" else 2.0, "bounces": 0})
+	shots.append({"node": s, "vel": v, "kind": kind, "owner": owner, "life": 5.0 if kind == "spikeball" else (2.4 if kind == "fireball" else 2.0),
+		"bounces": 0, "dmg": dmg})
 
 
 func _update_shots(dt: float) -> void:
@@ -1003,6 +1208,19 @@ func _update_shots(dt: float) -> void:
 			s.rotation.z -= v.x * dt * 2
 			if nxt.y < -4:
 				gone = true
+		elif sh.kind == "fireball":   # bounces along the ground
+			v.y -= 24 * dt
+			var nxt: Vector3 = center + v * dt
+			var g := level.ground_below(nxt.x, nxt.z, center.y + 0.4)
+			if nxt.y - 0.25 < g and g > -50:
+				nxt.y = g + 0.25
+				v.y = 6.5
+			if level.solid(floori(nxt.x + signf(v.x) * 0.3), floori(nxt.y), floori(nxt.z)):
+				gone = true
+				fx.burst(nxt, Color("ffb02e"), 6, 3)
+			s.position = nxt
+			if nxt.y < -4:
+				gone = true
 		else:
 			s.position += v * dt
 			if sh.kind == "spark":
@@ -1012,11 +1230,11 @@ func _update_shots(dt: float) -> void:
 				fx.burst(s.position, Color(0.85, 0.85, 0.85), 4, 2)
 		sh.vel = v
 		if not gone:
-			if sh.kind == "spark":
+			if sh.kind in FRIENDLY_SHOTS:
 				for f in foes:
 					if is_instance_valid(f) and f.dying < 0 and absf(f.position.x - s.position.x) < f.hw + 0.35 \
 							and absf(f.position.z - s.position.z) < f.hw + 0.7 and s.position.y > f.position.y - 0.2 and s.position.y < f.position.y + f.height + 0.3:
-						f.hurt(2 if sh.owner == leader() else 1, self)
+						f.hurt(int(sh.dmg) + (1 if sh.owner == leader() else 0), self)
 						gone = true
 						break
 			else:
@@ -1099,6 +1317,7 @@ func _knocked_out() -> void:
 
 
 func on_foe_beaten(f: Foe) -> void:
+	gain_xp(Mons.XP_BOSS if f.is_boss else Mons.XP_FOE)
 	beaten += 1
 	foes_gone.append(int(f.get_meta("spawn")))
 	coins += 2
@@ -1137,6 +1356,7 @@ func _update_progress(dt: float) -> void:
 		state = "clear"
 		clear_t = 0
 		cleared += 1
+		gain_xp(Mons.XP_CLEAR)
 		save_game(false)   # keeps coins and ores; the level starts fresh next time
 		play_music("fanfare", false)
 		sfx("clear")

@@ -75,12 +75,12 @@ func _next(p: String) -> void:
 
 
 func _unit_checks() -> void:
-	# SWAP cycles Rocco -> Blocky -> Sparky -> Rocco
+	# SWAP cycles Rocco -> Blocky -> partner -> Rocco
 	var order := []
 	for i in 3:
 		main.do_swap()
 		order.append(main.leader_name())
-	if order != ["blocky", "sparky", "rocco"]:
+	if order != ["blocky", "mon", "rocco"]:
 		fail("swap order was %s" % str(order))
 	# stone takes 2 hits, iron 3, bedrock never breaks
 	var lv: Level = main.level
