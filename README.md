@@ -511,6 +511,15 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
   * **Vault**: run into a low wall (one block high) and Rocco vaults right over it.
   * **Landing roll**: drop from way up high while running and he rolls instead of thudding.
 
+### Parkour and moving platforms in 3D
+
+* The 3D house, garden and roof now **show Rocco** (VIEW: ROCCO, tap it for VIEW: EYES to look through his eyes).
+* A **JUMP** button: jump around, and stand on top of the blocks you build (build stairs and climb them!).
+* **Parkour in 3D**: walk into a one-block step and Rocco **vaults** up onto it, every third running jump is a
+  **flip**, jump at a wall and press JUMP again in the air for a **wall jump**, and land from up high for a **roll**.
+* **MOVING PLATFORM** in the block palette (the last one): place it and it slides back and forth. Jump on and ride it!
+  (BREAK takes it away.)
+
 ### Dino World, Planet World, a house & planet picker, and twice as much of everything
 
 * **World 11: DINO WORLD** (levels 211-231): raptors, triceratops (they CHARGE), pterodactyls (they SWOOP),

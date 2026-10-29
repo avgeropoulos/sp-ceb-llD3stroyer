@@ -190,4 +190,9 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
   platforms. Parkour (Rocco, in `updateLeader`'s Rocco block): wall slide/jump (`Hero.wallSlide`, `wallKickT`), running
   flips (`runJumps`, `flipT`/`flipDur`), vault (`vaultT`, `vaultCool`), landing roll (`rollT`, in `moveHero`). Flips and
   rolls draw with `Gfx.spriteRotated` (real rotation on Android/AWT; `ScaledGfx` forwards it).
+* 3D parkour (`House3D`): feet height `feet`/`vy`/`onGround` (gravity `G3`, `JUMP_V`), `solidAt` checks the body's
+  4 corners at feet..head, `groundUnder` = highest block top or mover top under you. JUMP comes in as `hop` (3D JUMP
+  button sets `input.longJump`; controller Y/long-jump key: `hopE3d`). Vault, running flips, wall jump (`kickX/Z`), roll.
+  `thirdPerson` camera (`ex/ey/ez` behind Rocco; all face culling uses the camera, not the player) draws Rocco with
+  `spriteRotated`. `Mover`s (palette slot `MOVER_SLOT`, saved as `<area>mvn`/`<area>mv_<i>`) slide 3 blocks and carry you.
 

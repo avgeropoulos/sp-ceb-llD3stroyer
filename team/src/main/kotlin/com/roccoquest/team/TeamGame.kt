@@ -1231,7 +1231,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 }
                 updateTrade(tapped, pauseE || craftE || nav.b, num)
             }
-            State.HOME -> { updateParticles(dt); jumpE3d = jumpE; updateHome(dt, tapped, pauseE || craftE, actionE) }
+            State.HOME -> { updateParticles(dt); jumpE3d = jumpE; hopE3d = longE || superE; updateHome(dt, tapped, pauseE || craftE, actionE) }
             State.PARK -> { updateParticles(dt); updatePark(dt, tapped, jumpE || actionE, pauseE || craftE) }
             State.GAMES -> if (monGames.update(dt, viewW, tapped && input.tapX >= 0f, input.tapX, input.tapY, nav.left, nav.right, nav.up, nav.down, nav.a, pauseE || craftE || nav.b)) { setState(State.HOME); sfx(Sound.KICK) }
             State.SCENE -> updateScene(tapped, pauseE || nav.a || nav.b)
@@ -4467,6 +4467,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     /** JUMP this frame (BREAK in the 3D house). */
     private var jumpE3d = false
+    /** JUMP in the 3D house (the 3D JUMP button, or Y / the long-jump key on a controller or keyboard). */
+    private var hopE3d = false
 
     /** Showing the house in 3D (walk around and build with blocks). */
     var home3d = false
@@ -5684,7 +5686,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
         if (home3d) {
             if (tapped && input.tapX >= 0f && house3d.tap(input.tapX, input.tapY, viewW)) return
-            house3d.update(dt, input, actionE, jumpE3d)
+            house3d.update(dt, input, actionE, jumpE3d, hopE3d)
             return
         }
         if (inGarden) { updateGarden(dt, tapped, actionE); return }

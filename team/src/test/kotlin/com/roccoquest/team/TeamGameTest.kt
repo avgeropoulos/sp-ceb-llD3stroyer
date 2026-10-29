@@ -1173,6 +1173,71 @@ class TeamGameTest {
         assertTrue(flips >= 1, "a running front flip")
     }
 
+    @Test fun parkourAndMovingPlatformsIn3D() {
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 240 * 3, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f))
+            ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        startPlaying()
+        goHome()
+        game.enter3d()
+        val h = game.house3d
+        assertTrue(h.thirdPerson, "you can see Rocco")
+        h.x = 5.5f; h.z = 5.5f; h.yaw = 0f; h.pitch = -0.2f
+        // JUMP: up and back down.
+        input.longJump = true; game.update(dt); input.longJump = false
+        var top = 0f
+        run(1f) { top = maxOf(top, h.feet) }
+        assertTrue(top > 1.1f, "jumped ${top} blocks high")
+        assertEquals(0f, h.feet)
+        // Walk into a one-block step: VAULT up onto it.
+        h.blocks[h.key(7, 0, 5)] = Block3D.BRICK.ordinal
+        var vaulted = false
+        input.up = true
+        run(1f) { if (h.vaultT > 0f) vaulted = true }
+        input.up = false
+        assertTrue(vaulted, "vaulted onto the block: x ${h.x} feet ${h.feet} ground ${h.onGround}")
+        assertTrue(h.feet >= 1f || h.x > 8f, "up on it or past it: feet ${h.feet} x ${h.x}")
+        // A tall wall: jump at it, then JUMP again in the air for a WALL JUMP.
+        h.blocks.clear()
+        for (by in 0..4) h.blocks[h.key(9, by, 5)] = Block3D.STONE.ordinal
+        h.x = 8.3f; h.z = 5.5f; h.feet = 0f; h.yaw = 0f
+        run(0.2f)
+        input.longJump = true; game.update(dt); input.longJump = false
+        input.up = true
+        run(0.2f)
+        input.longJump = true; game.update(dt); input.longJump = false
+        input.up = false
+        assertTrue(h.flipT > 0f, "a wall jump flip")
+        run(0.05f)
+        shot("home-3d-wall-jump")
+        run(0.2f)
+        assertTrue(h.x < 8.25f, "pushed back off the wall: ${h.x}")
+        run(1.5f)
+        // Build a MOVING PLATFORM, jump on it, and ride it.
+        h.blocks.clear()
+        h.x = 3.5f; h.z = 5.5f; h.feet = 0f; h.yaw = 0f; h.pitch = -0.7f
+        h.selected = House3D.MOVER_SLOT
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        assertEquals(1, h.movers.size)
+        val m = h.movers[0]
+        h.x = m.x0 + 0.5f; h.z = m.z0 + 0.5f; h.feet = m.top + 0.5f
+        run(0.4f)
+        assertEquals(m.top, h.feet, 0.01f)
+        val x0 = h.x
+        run(1.2f)
+        assertTrue(kotlin.math.abs(h.x - x0) > 0.4f, "carried along: ${h.x - x0}")
+        h.pitch = -0.35f
+        shot("home-3d-moving-platform")
+        // It's saved, and BREAK takes it away.
+        h.selected = 0
+        game.exit3d(); game.enter3d()
+        assertEquals(1, game.house3d.movers.size)
+        TeamControls.mode3d = false
+    }
+
     @Test fun pokemonEvolveAndSwitchBack() {
         startPlaying()
         game.coins = 100
