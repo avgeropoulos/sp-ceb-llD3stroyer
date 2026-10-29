@@ -200,9 +200,9 @@ static func _rocco(b: Node3D, p: Dictionary) -> void:
 
 
 static func _blocky(b: Node3D, p: Dictionary) -> void:
-	var SHIRT := Color("7c8794")
+	var SHIRT := Color("3f7fd9")
 	var VEST := Color("ff8a1f")
-	var PANTS := Color("7a5634")
+	var PANTS := Color("2f4a9c")
 	var SKIN := Color("e2a77c")
 	for s in [-1, 1]:
 		var leg := piv(b, Vector3(s * 0.12, 0.52, 0))
@@ -557,5 +557,5 @@ static func prop(kind: String, size: float) -> Node3D:
 				part(r, sph(0.09), Vector3(0.36, 0.72, z), Color("8a5a35"), Vector3(0.6, 1.6, 0.5))
 			part(r, cyl(0.03, 0.03, 0.3, 6), Vector3(-0.42, 0.62, 0), Color("c48a4a"), Vector3.ONE, Vector3(0, 0, 0.8))
 	for mi in _all_meshes(r):
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if kind.begins_with("tree") or kind in ["flag", "sign", "coin"] else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if kind.begins_with("tree") or kind in ["flag", "sign"] else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return r

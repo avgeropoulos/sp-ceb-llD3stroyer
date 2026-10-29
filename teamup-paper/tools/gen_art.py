@@ -143,8 +143,8 @@ def rocco(name, legA=0.0, legB=0.0, armA=0.0, armB=0.0, squash=0.0, rot=0, blink
 
 # ---------------------------------------------------------------- Blocky
 VEST, VEST_D = rgb("#ff8a1f"), rgb("#d06a10")
-SHIRT = rgb("#7c8794")
-PANTS, PANTS_D = rgb("#7a5634"), rgb("#5c3f24")
+SHIRT = rgb("#3f7fd9")
+PANTS, PANTS_D = rgb("#2f4a9c"), rgb("#233a7c")
 BOOT = rgb("#4a3424")
 HAT = rgb("#ffd23a")
 BSKIN, BSKIN_S = rgb("#e2a77c"), rgb("#c4845a")

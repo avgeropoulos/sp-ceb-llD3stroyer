@@ -43,6 +43,8 @@ var cam_focus := Vector3.ZERO
 var jump_buf := 0.0
 var last_ouch := -10.0
 var dennis_done := false
+var warm_t := 0
+var warm_nodes: Array = []
 
 # input for this frame
 var move_vec := Vector2.ZERO
@@ -165,7 +167,7 @@ func _setup_world() -> void:
 	sun.shadow_enabled = true
 	sun.shadow_opacity = 0.75
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
-	sun.directional_shadow_max_distance = 40
+	sun.directional_shadow_max_distance = 30
 	add_child(sun)
 	cam = Camera3D.new()
 	cam.fov = 50
@@ -320,6 +322,37 @@ func on_tap() -> void:
 				get_tree().reload_current_scene()
 
 
+## Shows every effect, shot, prop and text size once (tiny, behind the title) so the
+## tablet gets them ready before play. Otherwise the first sparkle / thunderbolt / "+1"
+## would freeze the game for a moment while the graphics chip prepares it.
+func _warm_up() -> void:
+	warm_t += 1
+	var at := cam.global_position + (-cam.global_basis.z) * 70.0   # far away = a few pixels big
+	if warm_t == 2:
+		fx.burst(at, Color.WHITE, 4, 0.1, 0.0, 0.2)
+		fx.bolt(at + Vector3(0, -6, 0))
+		for sz in [36, 48, 52, 56, 60, 64]:
+			fx.text(at, "+0123456789/ABCDEFGHIJKLMNOPQRSTUVWXYZ!→", Color.WHITE, sz, 0.3)
+		for k in ["spark", "arrow", "spikeball", "coin", "heart"]:
+			var n := level.prop(k, at, 0.3)
+			n.scale = Vector3.ONE * 0.05
+			warm_nodes.append(n)
+		for h in heroes.values():
+			h.show_health()
+			h.bar.visible = true
+		for name in ["jump", "jump2", "coin", "stomp", "break", "mine", "bonk", "hurt", "zap", "swap", "slam",
+				"thunder", "boss_hit", "arrow", "item", "heart", "woof", "alert", "clear", "boss_down"]:
+			if not sfx_cache.has(name):
+				sfx_cache[name] = load("res://sfx/%s.wav" % name)
+	elif warm_t == 12:
+		for n in warm_nodes:
+			n.queue_free()
+		warm_nodes.clear()
+		for h in heroes.values():
+			h.bar.visible = false
+		warm_t = -1
+
+
 ## PAPER <-> 3D TOYS (title screen). Rebuilds everything in the other look.
 func toggle_look() -> void:
 	Look.toy = not Look.toy
@@ -335,8 +368,25 @@ func start_game() -> void:
 	speak(GO_LINES.pick_random(), "rocco")
 
 
-func _physics_process(dt: float) -> void:
+## Runs once per screen refresh (60, 90 or 120 times a second, whatever the tablet does),
+## so movement is smooth on fast screens. Long frames are split into small steps so
+## nothing can fly through a block; taps only count in the first step.
+func _process(delta: float) -> void:
 	_gather_input()
+	var dt := minf(delta, 0.1)
+	var steps := maxi(1, ceili(dt * 60.0 - 0.01))
+	for i in steps:
+		_step(dt / steps)
+		jump_pressed = false
+		action_pressed = false
+		swap_pressed = false
+		super_pressed = false
+		pause_pressed = false
+	if warm_t >= 0:
+		_warm_up()
+
+
+func _step(dt: float) -> void:
 	if state == "title":
 		for h in heroes.values():
 			h.vel = Vector3.ZERO

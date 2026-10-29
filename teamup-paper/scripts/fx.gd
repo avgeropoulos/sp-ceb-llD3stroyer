@@ -89,12 +89,7 @@ func bolt(pos: Vector3) -> void:
 		root.add_child(seg)
 		x = nx
 		y -= 1.5
-	var light := OmniLight3D.new()
-	light.light_color = Color(0.6, 0.85, 1)
-	light.light_energy = 6
-	light.omni_range = 7
-	light.position.y = 1
-	root.add_child(light)
+	# (no real light here: a new kind of light makes phones rebuild every material = a freeze)
 	burst(pos + Vector3(0, 0.3, 0), Color(0.55, 0.85, 1.0), 12, 6)
 	var tw := create_tween()
 	tw.tween_property(root, "scale", Vector3(1.6, 1, 1.6), 0.08)

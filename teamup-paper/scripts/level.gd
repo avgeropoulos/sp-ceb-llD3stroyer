@@ -29,7 +29,9 @@ var cells := PackedByteArray()
 var damage := {}
 var heights := PackedInt32Array()
 var mm_nodes: Array[MultiMeshInstance3D] = []
-var dirty := true
+var built := false
+var slots: Array = []        # per block type: which cell is drawn in each MultiMesh slot
+var slot_of := {}           # cell -> Vector2i(type, slot)
 var spawns: Array = []
 var coin_spots: Array[Vector3] = []
 var signs: Array = []
@@ -54,7 +56,12 @@ func set_cell(x: int, y: int, z: int, t: int) -> void:
 	if inside(x, y, z):
 		cells[idx(x, y, z)] = t
 		damage.erase(Vector3i(x, y, z))
-		dirty = true
+		if built:
+			# only this block and its 6 neighbours can change how they look
+			var c := Vector3i(x, y, z)
+			_refresh(c)
+			for d in [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)]:
+				_refresh(c + d)
 
 
 func solid(x: int, y: int, z: int) -> bool:
@@ -266,29 +273,74 @@ func _exposed(x: int, y: int, z: int) -> bool:
 	return false
 
 
-## Re-draws every visible block (only after something changed).
+## Draws every visible block once (at the start). After that, set_cell() only
+## touches the few blocks around a change, so mining never freezes the game.
+## Each block type's MultiMesh keeps spare room; slots[t] says which block is in each slot.
 func rebuild() -> void:
-	dirty = false
+	built = true
+	slot_of.clear()
+	slots.clear()
 	var lists := []
 	for t in ATLAS_TILES:
-		lists.append(PackedVector3Array())
+		lists.append([])
+		slots.append([])
 	for z in LZ:
 		for y in LY:
 			for x in LX:
 				var t: int = cells[idx(x, y, z)]
 				if t != AIR and _exposed(x, y, z):
-					lists[t].append(Vector3(x, y, z))
+					lists[t].append(Vector3i(x, y, z))
 	for t in range(1, ATLAS_TILES):
 		var mm := mm_nodes[t].multimesh
-		var pts: PackedVector3Array = lists[t]
-		mm.instance_count = pts.size()
+		var pts: Array = lists[t]
+		mm.instance_count = pts.size() + SPARE
 		for i in pts.size():
-			mm.set_instance_transform(i, Transform3D(Basis.IDENTITY, pts[i]))
+			mm.set_instance_transform(i, Transform3D(Basis.IDENTITY, Vector3(pts[i])))
+			slot_of[pts[i]] = Vector2i(t, i)
+		slots[t] = pts
+		mm.visible_instance_count = pts.size()
 
 
-func _process(_dt: float) -> void:
-	if dirty:
-		rebuild()
+const SPARE := 2000
+
+
+func _refresh(c: Vector3i) -> void:
+	if not inside(c.x, c.y, c.z):
+		return
+	var t := get_cell(c.x, c.y, c.z)
+	var show := t != AIR and _exposed(c.x, c.y, c.z)
+	if slot_of.has(c):
+		var e: Vector2i = slot_of[c]
+		if show and e.x == t:
+			return
+		_hide(c, e)
+	if show:
+		_show(c, t)
+
+
+func _show(c: Vector3i, t: int) -> void:
+	var arr: Array = slots[t]
+	var mm := mm_nodes[t].multimesh
+	if arr.size() >= mm.instance_count:
+		rebuild()   # ran out of spare room (lots of digging): redraw once with fresh room
+		return
+	mm.set_instance_transform(arr.size(), Transform3D(Basis.IDENTITY, Vector3(c)))
+	slot_of[c] = Vector2i(t, arr.size())
+	arr.append(c)
+	mm.visible_instance_count = arr.size()
+
+
+func _hide(c: Vector3i, e: Vector2i) -> void:
+	var arr: Array = slots[e.x]
+	var mm := mm_nodes[e.x].multimesh
+	var last: Vector3i = arr.back()
+	if last != c:   # move the last block into the freed slot
+		arr[e.y] = last
+		mm.set_instance_transform(e.y, Transform3D(Basis.IDENTITY, Vector3(last)))
+		slot_of[last] = Vector2i(e.x, e.y)
+	arr.pop_back()
+	slot_of.erase(c)
+	mm.visible_instance_count = arr.size()
 
 
 # ------------------------------------------------------------------ scenery
