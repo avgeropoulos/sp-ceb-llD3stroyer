@@ -32,6 +32,13 @@ Every push that changes `teamup-paper/` builds a signed APK (`.github/workflows/
 https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/download/teamup-paper-latest/TeamUpPaper.apk
 It's a separate app (`com.roccoquest.teamup.paper`), so it sits next to Team Up!.
 
+**Updates inside the game:** on the title screen the game checks `version.txt` in that release (CI writes the
+run number there, after uploading the APK). If it's newer than this build (`application/config/version`,
+stamped by CI), a big **UPDATE!** button appears. Tapping it downloads the APK inside the game
+(`scripts/updater.gd`) and opens Android's installer; the save data stays because it's the same app and key.
+The first time, Android asks to allow installs from this app: turn it on, come back, tap UPDATE! again.
+Builds made on a computer (version 0) never check. Test: `godot --headless --path . --script res://tests/update_check.gd -- 1`.
+
 ## Making changes
 
 * `scripts/level.gd`: the block world (grid, mining, the level layout in `generate()`, scenery).

@@ -48,6 +48,10 @@ jobs:
           export/android/java_sdk_path = "$JAVA_HOME"
           EOF
           sed -i "s/^version\/code=1$/version\/code=${GITHUB_RUN_NUMBER}/; s/^version\/name=\"0.1\"$/version\/name=\"0.${GITHUB_RUN_NUMBER}\"/" teamup-paper/export_presets.cfg
+          # The game reads this to know which build it is (for in-app updates)
+          sed -i "s/^config\/version=\"0\"$/config\/version=\"${GITHUB_RUN_NUMBER}\"/" teamup-paper/project.godot
+          grep -q "config/version=\"${GITHUB_RUN_NUMBER}\"" teamup-paper/project.godot
+          echo "${GITHUB_RUN_NUMBER}" > version.txt
       - name: Import and play-test the level
         run: |
           godot --headless --path teamup-paper --editor --import 2>&1 | tee import.log
@@ -63,7 +67,10 @@ jobs:
         with:
           name: TeamUpPaper-apk
           path: TeamUpPaper.apk
-      - uses: softprops/action-gh-release@v2
+      # The APK goes up first and version.txt second, so the game never sees a new
+      # version number before its APK is there to download.
+      - name: Publish the APK
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: teamup-paper-latest
           name: 'Team Up! Paper 3D — Android'
@@ -71,6 +78,14 @@ jobs:
           make_latest: false
           body: |
             Install TeamUpPaper.apk on an Android tablet or phone. It's its own app, so it doesn't replace Team Up!.
-            One paper-style 3D level: Rocco, Blocky and Sparky with SWAP, mining, ? blocks and a Krag Jr. fight.
-            Built from ${{ github.sha }} (${{ github.ref_name }}).
+            After this first install, the game updates itself: tap UPDATE! on the title screen.
+            Build ${{ github.run_number }} from ${{ github.sha }} (${{ github.ref_name }}).
           files: TeamUpPaper.apk
+      - name: Publish version.txt (tells installed games an update is ready)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: teamup-paper-latest
+          name: 'Team Up! Paper 3D — Android'
+          prerelease: true
+          make_latest: false
+          files: version.txt

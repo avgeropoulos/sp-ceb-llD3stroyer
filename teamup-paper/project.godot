@@ -2,6 +2,7 @@ config_version=5
 
 [application]
 config/name="Team Up! Paper"
+config/version="0"
 run/main_scene="res://main.tscn"
 config/features=PackedStringArray("4.5", "Mobile")
 config/icon="res://icon.svg"

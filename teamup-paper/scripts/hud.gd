@@ -66,6 +66,9 @@ func _input(event: InputEvent) -> void:
 		var e := event as InputEventScreenTouch
 		if e.pressed:
 			if game.state != "play":
+				if game.state == "title" and update_showing() and update_rect().grow(20).has_point(e.position):
+					game.updater.download()
+					return
 				game.on_tap()
 				return
 			var b := button_at(e.position)
@@ -195,12 +198,45 @@ func _draw_controls() -> void:
 			txt(labels[k], Vector2(c.x - rad, c.y + fs * 0.36), fs, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, rad * 2, 6)
 
 
+func update_showing() -> bool:
+	return game.updater != null and game.updater.status in ["available", "downloading", "installing", "error"]
+
+
+func update_rect() -> Rect2:
+	return Rect2(size.x - 330, size.y - 150, 300, 104)
+
+
+func _draw_update() -> void:
+	var u = game.updater
+	if u == null:
+		return
+	if u.can_update():
+		txt("v0.%d" % u.my_version, Vector2(20, size.y - 20), 22, Color(1, 1, 1, 0.8))
+	if u.message != "" and u.status != "checking":
+		txt(u.message, Vector2(0, size.y - 170 if update_showing() else size.y - 22), 26, Color("fff2a8") if u.status == "available" else Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT, size.x - 30, 8)
+	if not update_showing():
+		return
+	var r := update_rect()
+	var glow := 0.5 + 0.5 * sin(title_t * 6)
+	var col := Color("3fc06a") if u.status != "downloading" else Color("6a7cff")
+	if u.status == "available":
+		draw_rect(r.grow(6 + glow * 6), Color(1, 0.95, 0.4, 0.35))
+	draw_rect(r, col)
+	draw_rect(r, Color.WHITE, false, 4.0)
+	if u.status == "downloading":
+		draw_rect(Rect2(r.position + Vector2(10, r.size.y - 26), Vector2((r.size.x - 20) * u.progress, 14)), Color("ffd23a"))
+		txt("%d%%" % int(u.progress * 100), Vector2(r.position.x, r.position.y + 58), 40, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 8)
+	else:
+		txt("UPDATE!", Vector2(r.position.x, r.position.y + 66), 52, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 10)
+
+
 func _draw_title() -> void:
 	var s := size
 	var bob := sin(title_t * 2.5) * 6
 	txt("ROCCO & BLOCKY", Vector2(0, s.y * 0.24 + bob), 92, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 18)
 	txt("TEAM UP!", Vector2(0, s.y * 0.24 + 92 + bob), 84, Color("ff4a3a"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 18)
 	txt("PAPER 3D", Vector2(0, s.y * 0.24 + 150), 40, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, s.x, 10)
+	_draw_update()
 	if int(title_t * 2) % 2 == 0:
 		txt("TAP TO START", Vector2(0, s.y * 0.9), 46, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, s.x, 12)
 

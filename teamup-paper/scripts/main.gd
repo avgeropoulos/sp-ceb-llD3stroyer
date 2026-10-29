@@ -57,6 +57,7 @@ var pause_pressed := false
 var bot := false
 var invincible := false
 
+var updater: Updater
 var sfx_players: Array[AudioStreamPlayer] = []
 var sfx_cache := {}
 var music: AudioStreamPlayer
@@ -100,6 +101,10 @@ func _ready() -> void:
 	hl.add_child(hud)
 	_setup_audio()
 	play_music("theme")
+	updater = Updater.new()
+	add_child(updater)
+	if not bot:
+		updater.check()
 	cam_focus = heroes.rocco.position
 	_update_camera(1.0)
 
@@ -329,7 +334,9 @@ func _physics_process(dt: float) -> void:
 			h.play("idle")
 			h.animate(dt)
 			h.update_shadow()
-		if jump_pressed or action_pressed:
+		if Input.is_key_pressed(KEY_U):
+			updater.download()
+		elif jump_pressed or action_pressed:
 			start_game()
 		_update_camera(dt)
 		return
