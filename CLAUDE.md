@@ -202,6 +202,9 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
 A separate 3D version (one level so far: 1-1 Meadow Mine) with two looks, 3D TOYS (default, `scripts/toys.gd`)
 and PAPER cutouts, switched on the title screen. It updates itself (UPDATE! button, `scripts/updater.gd`).
 See `teamup-paper/README.md`. Run the robot test in both looks (`-- paper`, `-- toy`).
+Three save files (`scripts/saves.gd`, JSON in user://saveN.json; ERASE keeps a .bak for UNDO ERASE) and a pause
+menu (RESUME / SAVE / SAVE & QUIT). Saves store the level as a diff from the generated one (`original_cells`),
+plus `coins_taken` / `foes_gone` by number (coin meta "i", foe meta "spawn"). `tests/save_check.gd` covers it.
 Characters are original designs (drawn by `tools/gen_art.py`), not copies of the real-game characters.
 Builds with `.github/workflows/teamup-paper.yml` to the `teamup-paper-latest` release (`TeamUpPaper.apk`,
 package `com.roccoquest.teamup.paper`). Run the robot test before pushing:

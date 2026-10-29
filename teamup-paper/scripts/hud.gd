@@ -72,6 +72,14 @@ func _input(event: InputEvent) -> void:
 				if game.state == "title" and look_rect().grow(16).has_point(e.position):
 					game.toggle_look()
 					return
+				if game.state == "slots":
+					_slots_tap(e.position)
+					return
+				if game.state == "paused":
+					for i in 3:
+						if pause_rect(i).has_point(e.position):
+							game.pause_choice(i)
+					return
 				game.on_tap()
 				return
 			var b := button_at(e.position)
@@ -119,6 +127,9 @@ func _draw() -> void:
 	if game.state == "title":
 		_draw_title()
 		return
+	if game.state == "slots":
+		_draw_slots()
+		return
 	_draw_hud()
 	if game.state == "play":
 		_draw_controls()
@@ -129,9 +140,7 @@ func _draw() -> void:
 		if sub_message != "":
 			txt(sub_message, Vector2(0, s.y * 0.36 + 52), 30, Color(1, 1, 1, a), HORIZONTAL_ALIGNMENT_CENTER, s.x, 8)
 	if game.state == "paused":
-		draw_rect(Rect2(Vector2.ZERO, s), Color(0.05, 0.08, 0.15, 0.6))
-		txt("PAUSED", Vector2(0, s.y * 0.42), 80, Color(1, 0.86, 0.3), HORIZONTAL_ALIGNMENT_CENTER, s.x, 14)
-		txt("Tap to keep playing", Vector2(0, s.y * 0.42 + 60), 32, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, s.x)
+		_draw_pause()
 	if game.state == "clear":
 		_draw_clear()
 
@@ -280,3 +289,140 @@ func _draw_clear() -> void:
 	txt("Bad guys beaten: %d" % game.beaten, Vector2(0, y + 100), 34, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, s.x)
 	if game.clear_t > 1.5 and int(title_t * 2) % 2 == 0:
 		txt("TAP TO PLAY AGAIN", Vector2(0, s.y * 0.9), 44, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, s.x, 12)
+
+
+# ------------------------------------------------------------------ pause menu
+const PAUSE_LABELS := ["RESUME", "SAVE", "SAVE & QUIT"]
+const PAUSE_COLORS := [Color("3fc06a"), Color("3f7fd9"), Color("ff8a1f")]
+
+
+func pause_rect(i: int) -> Rect2:
+	var w := minf(460.0, size.x * 0.6)
+	return Rect2((size.x - w) * 0.5, size.y * 0.3 + i * 108, w, 88)
+
+
+func _draw_pause() -> void:
+	var s := size
+	draw_rect(Rect2(Vector2.ZERO, s), Color(0.05, 0.08, 0.15, 0.7))
+	txt("PAUSED", Vector2(0, s.y * 0.22), 76, Color(1, 0.86, 0.3), HORIZONTAL_ALIGNMENT_CENTER, s.x, 14)
+	for i in 3:
+		var r := pause_rect(i)
+		var sel: bool = game.pause_sel == i
+		draw_rect(r.grow(6) if sel else r, Color.WHITE if sel else Color(1, 1, 1, 0.0))
+		draw_rect(r, PAUSE_COLORS[i])
+		draw_rect(r, Color.WHITE, false, 3.0)
+		txt(PAUSE_LABELS[i], Vector2(r.position.x, r.position.y + 60), 44, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 9)
+	var y := pause_rect(2).end.y + 50
+	if game.save_note_t > 0:
+		txt(game.save_note, Vector2(0, y), 38, Color("fff2a8"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 9)
+	elif game.slot > 0:
+		txt("Playing FILE %d" % game.slot, Vector2(0, y), 28, Color(1, 1, 1, 0.8), HORIZONTAL_ALIGNMENT_CENTER, s.x, 6)
+
+
+# ------------------------------------------------------------------ save files screen
+func slot_rect(i: int) -> Rect2:
+	var gap := 28.0
+	var w := minf(360.0, (size.x - 80 - gap * 2) / 3.0)
+	var h := minf(400.0, size.y * 0.6)
+	var x0 := (size.x - (w * 3 + gap * 2)) * 0.5
+	return Rect2(x0 + i * (w + gap), size.y * 0.24, w, h)
+
+
+func slot_erase_rect(i: int) -> Rect2:
+	var r := slot_rect(i)
+	return Rect2(r.position.x + 20, r.end.y + 16, r.size.x - 40, 58)
+
+
+func back_rect() -> Rect2:
+	return Rect2(24, 24, 170, 70)
+
+
+func _slots_tap(p: Vector2) -> void:
+	_slot_cache_t = -1.0   # show ERASE / UNDO results right away
+	if back_rect().has_point(p):
+		game.state = "title"
+		return
+	for i in 3:
+		var n := i + 1
+		if slot_erase_rect(i).has_point(p):
+			if Saves.exists(n):
+				game.slot_erase(n)
+			elif Saves.can_undo(n):
+				game.slot_undo(n)
+			return
+		if slot_rect(i).has_point(p):
+			game.slot_sel = i
+			game.slot_pick(n)
+			return
+
+
+var _slot_cache := [{}, {}, {}]
+var _slot_cache_t := 0.0
+
+
+func _draw_slots() -> void:
+	var s := size
+	if title_t - _slot_cache_t > 0.3 or _slot_cache_t == 0.0:   # re-read the files a few times a second, not every frame
+		_slot_cache_t = title_t
+		for i in 3:
+			_slot_cache[i] = Saves.read(i + 1)
+	draw_rect(Rect2(Vector2.ZERO, s), Color(0.05, 0.08, 0.15, 0.45))
+	txt("PICK A SAVE FILE", Vector2(0, s.y * 0.17), 56, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 12)
+	var b := back_rect()
+	draw_rect(b, Color(0.1, 0.15, 0.3, 0.85))
+	draw_rect(b, Color.WHITE, false, 3.0)
+	txt("BACK", Vector2(b.position.x, b.position.y + 48), 34, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, b.size.x, 7)
+	for i in 3:
+		var n := i + 1
+		var r := slot_rect(i)
+		var d: Dictionary = _slot_cache[i]
+		var sel: bool = game.slot_sel == i
+		if sel:
+			draw_rect(r.grow(8), Color(1, 0.9, 0.4, 0.9))
+		draw_rect(r, Color("fdf4e3") if not d.is_empty() else Color(1, 1, 1, 0.75))
+		draw_rect(r, Color(0.13, 0.09, 0.18), false, 4.0)
+		draw_rect(Rect2(r.position, Vector2(r.size.x, 64)), Color("3f7fd9"))
+		txt("FILE %d" % n, Vector2(r.position.x, r.position.y + 47), 40, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 8)
+		var cx := r.position.x + r.size.x * 0.5
+		if d.is_empty():
+			draw_circle(Vector2(cx, r.position.y + r.size.y * 0.5), 46, Color("3fc06a"))
+			draw_rect(Rect2(cx - 28, r.position.y + r.size.y * 0.5 - 8, 56, 16), Color.WHITE)
+			draw_rect(Rect2(cx - 8, r.position.y + r.size.y * 0.5 - 28, 16, 56), Color.WHITE)
+			txt("NEW GAME", Vector2(r.position.x, r.end.y - 40), 38, Color(0.13, 0.09, 0.18), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
+		else:
+			var who: String = d.get("human", "rocco")
+			draw_texture_rect(tex[who + "_idle"], Rect2(r.position.x + 16, r.position.y + 78, 90, 112), false)
+			draw_texture_rect(tex["sparky_idle"], Rect2(r.position.x + 92, r.position.y + 112, 66, 82), false)
+			var tx := r.position.x + 170
+			txt("1-1", Vector2(tx, r.position.y + 118), 40, Color("ff4a3a"), HORIZONTAL_ALIGNMENT_LEFT, -1, 6)
+			txt("MEADOW MINE", Vector2(tx, r.position.y + 150), 20, Color(0.13, 0.09, 0.18), HORIZONTAL_ALIGNMENT_LEFT, -1, 0)
+			var cl := int(d.get("cleared", 0))
+			if cl > 0:
+				txt("CLEARED x%d" % cl, Vector2(tx, r.position.y + 182), 24, Color("e0a800"), HORIZONTAL_ALIGNMENT_LEFT, -1, 4)
+			elif d.get("checkpoint_hit", false):
+				txt("CHECKPOINT", Vector2(tx, r.position.y + 182), 22, Color("3f9a48"), HORIZONTAL_ALIGNMENT_LEFT, -1, 0)
+			var y := r.position.y + 210
+			for k in 5:
+				draw_texture_rect(tex["heart" if k < int(d.get("hearts", 5)) else "heart_empty"], Rect2(r.position.x + 20 + k * 34, y, 36, 36), false)
+			y += 48
+			draw_texture_rect(tex["coin"], Rect2(r.position.x + 20, y, 38, 38), false)
+			txt("x %d" % int(d.get("coins", 0)), Vector2(r.position.x + 64, y + 30), 30, Color(0.13, 0.09, 0.18), HORIZONTAL_ALIGNMENT_LEFT, -1, 0)
+			y += 52
+			var ox := r.position.x + 20
+			var o: Dictionary = d.get("ores", {})
+			for k in ["stone", "iron", "gold", "diamond"]:
+				draw_texture_rect(tex["t_" + k], Rect2(ox, y, 30, 30), false)
+				txt(str(int(o.get(k, 0))), Vector2(ox + 34, y + 25), 24, Color(0.13, 0.09, 0.18), HORIZONTAL_ALIGNMENT_LEFT, -1, 0)
+				ox += (r.size.x - 40) / 4.0
+			txt("TAP TO PLAY", Vector2(r.position.x, r.end.y - 18), 26, Color("3f7fd9"), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
+		# ERASE (two taps) or UNDO ERASE
+		var er := slot_erase_rect(i)
+		if not d.is_empty():
+			var armed: bool = game.erase_armed == n
+			draw_rect(er, Color("e8413b") if armed else Color(0.35, 0.12, 0.15, 0.85))
+			draw_rect(er, Color.WHITE, false, 2.0)
+			txt("TAP AGAIN TO ERASE" if armed else "ERASE", Vector2(er.position.x, er.position.y + 40), 24 if armed else 28, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, er.size.x, 6)
+		elif Saves.can_undo(n):
+			draw_rect(er, Color(0.15, 0.3, 0.2, 0.85))
+			draw_rect(er, Color.WHITE, false, 2.0)
+			txt("UNDO ERASE", Vector2(er.position.x, er.position.y + 40), 26, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, er.size.x, 6)

@@ -56,6 +56,8 @@ jobs:
         run: |
           godot --headless --path teamup-paper --editor --import 2>&1 | tee import.log
           ! grep -E 'SCRIPT ERROR|Parse Error|Failed to load script' import.log
+          timeout 120s godot --headless --path teamup-paper --script res://tests/save_check.gd 2>&1 | tee test-save.log
+          grep -q 'TEST PASSED' test-save.log
           for look in paper toy; do
             timeout 300s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/smoke.gd -- $look 2>&1 | tee test-$look.log
             grep -q 'TEST PASSED' test-$look.log

@@ -27,6 +27,17 @@ Both looks run exactly the same game code; only the pictures change (`Actor.mode
 * Dennis the dog shows you the way. Rocco talks with the phone's Italian voice.
 * The music is the real Team Up! songs (rendered from `core/` Songs.kt).
 
+## Save files and pause menu
+
+* **Three save files** (like Team Up!): TAP TO START opens PICK A SAVE FILE. An empty file starts a new game;
+  a used one shows who was out, hearts, coins, ores and how many times 1-1 was cleared, and continues the run.
+  **ERASE** needs two taps and keeps a backup, so **UNDO ERASE** brings the file back.
+* **Pause (II)**: RESUME, **SAVE** and **SAVE & QUIT** (back to the title). A save keeps where you are,
+  hearts, coins, ores, the blocks you mined, coins picked up, bad guys beaten, the checkpoint and who's out.
+* It also saves by itself at the checkpoint and after beating Krag Jr. Touching the flag saves a fresh
+  1-1 for next time but keeps your coins and ores (`scripts/saves.gd`, `main.gd` `save_data`/`_apply_save`).
+* Test: `godot --headless --path . --script res://tests/save_check.gd` (save, quit, load, erase, undo, clear).
+
 ## Controls
 
 Touch: thumb stick on the left (anywhere on the left half), JUMP / ACTION / SWAP / SUPER on the right, II pauses.

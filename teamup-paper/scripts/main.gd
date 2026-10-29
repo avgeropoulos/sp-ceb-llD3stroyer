@@ -46,6 +46,18 @@ var dennis_done := false
 var warm_t := 0
 var warm_nodes: Array = []
 
+# save files
+var slot := 0                 # 1-3 while playing a save file (0 = not saving, e.g. tests)
+var slot_sel := 0             # highlighted file on the save screen (controller)
+var erase_armed := 0          # the file whose ERASE was tapped once (tap again to erase)
+var erase_t := 0.0
+var pause_sel := 0
+var save_note := ""           # "SAVED!" under the pause buttons
+var save_note_t := 0.0
+var coins_taken: Array = []   # which coins (by number) are collected
+var foes_gone: Array = []     # which bad guys (by spawn number) are beaten
+var cleared := 0              # times this file finished the level
+
 # input for this frame
 var move_vec := Vector2.ZERO
 var jump_held := false
@@ -60,6 +72,7 @@ var bot := false
 var invincible := false
 
 var updater: Updater
+var original_cells := PackedByteArray()
 var sfx_players: Array[AudioStreamPlayer] = []
 var sfx_cache := {}
 var music: AudioStreamPlayer
@@ -85,15 +98,19 @@ func _ready() -> void:
 	heroes.rocco.position = Vector3(4, 5, 6.8)
 	heroes.blocky.position = heroes.rocco.position
 	heroes.sparky.position = Vector3(2.6, 5, 5.6)
-	for s in level.spawns:
+	original_cells = level.cells.duplicate()
+	for si in level.spawns.size():
+		var s: Dictionary = level.spawns[si]
 		var f := Foe.new()
 		level.add_child(f)
 		f.init(level, s.kind, s.pos)
+		f.set_meta("spawn", si)
 		foes.append(f)
 		if s.kind == "kragjr":
 			boss = f
-	for p in level.coin_spots:
-		var c := level.prop("coin", p - Vector3(0, 0.35, 0), 0.7)
+	for ci in level.coin_spots.size():
+		var c := level.prop("coin", level.coin_spots[ci] - Vector3(0, 0.35, 0), 0.7)
+		c.set_meta("i", ci)
 		coin_nodes.append(c)
 	level.prop("flag", Vector3(Level.CHECKPOINT_X, 5, 3.9), 3.2)
 	level.prop("flag", Vector3(Level.FLAG_X, 5, 3.9), 4.6)
@@ -314,12 +331,150 @@ func _gather_input() -> void:
 func on_tap() -> void:
 	match state:
 		"title":
-			start_game()
-		"paused":
-			state = "play"
+			open_slots()
 		"clear":
 			if clear_t > 1.5:
 				get_tree().reload_current_scene()
+
+
+# ------------------------------------------------------------------ save files
+func open_slots() -> void:
+	state = "slots"
+	erase_armed = 0
+	sfx("swap", -6)
+
+
+func slot_pick(n: int) -> void:
+	erase_armed = 0
+	var d := Saves.read(n)
+	start_game(n)
+	if not d.is_empty():
+		_apply_save(d)
+
+
+## ERASE needs two taps; the file goes to a backup so UNDO ERASE can bring it back.
+func slot_erase(n: int) -> void:
+	if not Saves.exists(n):
+		return
+	if erase_armed == n:
+		Saves.erase(n)
+		erase_armed = 0
+		sfx("break")
+	else:
+		erase_armed = n
+		erase_t = 3.0
+		sfx("alert")
+
+
+func slot_undo(n: int) -> void:
+	Saves.undo_erase(n)
+	sfx("heart")
+
+
+## Everything about this run, so SAVE & QUIT comes back to the same spot.
+func save_data(in_level := true) -> Dictionary:
+	var d := {"v": 1, "level": "1-1", "time": Time.get_unix_time_from_system(),
+		"hearts": hearts, "coins": coins, "ores": ores.duplicate(), "beaten": beaten,
+		"super": super_charge, "cleared": cleared, "human": human if in_level else "rocco", "in_level": in_level}
+	if in_level:
+		var cells := []
+		var lc := level.cells
+		for i in lc.size():
+			if lc[i] != original_cells[i]:
+				var x := i % Level.LX
+				var y := (i / Level.LX) % Level.LY
+				var z := i / (Level.LX * Level.LY)
+				cells.append([x, y, z, lc[i]])
+		d.merge({"control": control, "pos": _v2a(safe_pos), "checkpoint": _v2a(checkpoint),
+			"checkpoint_hit": checkpoint_hit, "boss_done": boss_done, "cells": cells,
+			"coins_taken": coins_taken.duplicate(), "foes_gone": foes_gone.duplicate()})
+	return d
+
+
+func save_game(in_level := true) -> bool:
+	if slot <= 0:
+		return false
+	return Saves.write(slot, save_data(in_level))
+
+
+func _apply_save(d: Dictionary) -> void:
+	hearts = clampi(int(d.get("hearts", MAX_HEARTS)), 1, MAX_HEARTS)
+	coins = int(d.get("coins", 0))
+	var o: Dictionary = d.get("ores", {})
+	for k in ores:
+		ores[k] = int(o.get(k, 0))
+	beaten = int(d.get("beaten", 0))
+	super_charge = clampf(float(d.get("super", 0)), 0, 1)
+	cleared = int(d.get("cleared", 0))
+	if not d.get("in_level", false):
+		if cleared > 0:
+			hud.say("1-1  MEADOW MINE", "Cleared %d time%s! Go again!" % [cleared, "" if cleared == 1 else "s"], 2.6)
+		return
+	for c in d.get("cells", []):
+		level.set_cell(int(c[0]), int(c[1]), int(c[2]), int(c[3]))
+	coins_taken = []
+	for i in d.get("coins_taken", []):
+		coins_taken.append(int(i))
+	for c in coin_nodes.duplicate():
+		if int(c.get_meta("i")) in coins_taken:
+			c.queue_free()
+			coin_nodes.erase(c)
+	foes_gone = []
+	for i in d.get("foes_gone", []):
+		foes_gone.append(int(i))
+	for f in foes:
+		if is_instance_valid(f) and int(f.get_meta("spawn")) in foes_gone:
+			f.remove()
+	boss_done = bool(d.get("boss_done", false))
+	checkpoint_hit = bool(d.get("checkpoint_hit", false))
+	checkpoint = _a2v(d.get("checkpoint", [3, 5, 6.5]))
+	# who's out
+	var h := String(d.get("human", "rocco"))
+	if h != human and h in ["rocco", "blocky"]:
+		heroes[human].visible = false
+		heroes[human].shadow.visible = false
+		human = h
+		heroes[human].visible = true
+	control = String(d.get("control", "human"))
+	if control != "mon":
+		control = "human"
+	var p := _a2v(d.get("pos", [4, 5, 6.8]))
+	if level.box_hit(p, 0.35, 1.5) != null:   # somehow inside a block: use the checkpoint
+		p = checkpoint
+	safe_pos = p
+	leader().position = p
+	follower().position = p + Vector3(-1.2, 0.3, -0.8)
+	cam_focus = p
+	dennis_done = true
+	hud.say("WELCOME BACK!", "File %d" % slot, 2.2)
+
+
+static func _v2a(v: Vector3) -> Array:
+	return [snappedf(v.x, 0.01), snappedf(v.y, 0.01), snappedf(v.z, 0.01)]
+
+
+static func _a2v(a) -> Vector3:
+	if a is Array and a.size() == 3:
+		return Vector3(float(a[0]), float(a[1]), float(a[2]))
+	return Vector3(3, 5, 6.5)
+
+
+## Pause menu: 0 RESUME, 1 SAVE, 2 SAVE & QUIT.
+func pause_choice(i: int) -> void:
+	match i:
+		0:
+			state = "play"
+		1:
+			if save_game():
+				save_note = "SAVED TO FILE %d!" % slot
+				sfx("heart")
+			else:
+				save_note = "COULDN'T SAVE"
+				sfx("bonk")
+			save_note_t = 2.5
+		2:
+			save_game()
+			get_tree().reload_current_scene()
 
 
 ## Shows every effect, shot, prop and text size once (tiny, behind the title) so the
@@ -360,7 +515,8 @@ func toggle_look() -> void:
 	get_tree().reload_current_scene()
 
 
-func start_game() -> void:
+func start_game(n: int = 0) -> void:
+	slot = n
 	state = "play"
 	play_t = 0
 	play_music("meadow")
@@ -398,11 +554,32 @@ func _step(dt: float) -> void:
 		elif Input.is_action_just_pressed("swap"):
 			toggle_look()
 		elif jump_pressed or action_pressed:
-			start_game()
+			open_slots()
+		_update_camera(dt)
+		return
+	if state == "slots":
+		erase_t -= dt
+		if erase_t <= 0:
+			erase_armed = 0
+		if Input.is_action_just_pressed("left"):
+			slot_sel = (slot_sel + 2) % 3
+		if Input.is_action_just_pressed("right"):
+			slot_sel = (slot_sel + 1) % 3
+		if jump_pressed or action_pressed:
+			slot_pick(slot_sel + 1)
+		elif pause_pressed:
+			state = "title"
 		_update_camera(dt)
 		return
 	if state == "paused":
-		if jump_pressed or pause_pressed:
+		save_note_t -= dt
+		if Input.is_action_just_pressed("up"):
+			pause_sel = (pause_sel + 2) % 3
+		if Input.is_action_just_pressed("down"):
+			pause_sel = (pause_sel + 1) % 3
+		if jump_pressed or action_pressed:
+			pause_choice(pause_sel)
+		elif pause_pressed:
 			state = "play"
 		return
 	if state == "clear":
@@ -422,6 +599,8 @@ func _step(dt: float) -> void:
 		return
 	if pause_pressed:
 		state = "paused"
+		pause_sel = 0
+		save_note_t = 0
 		return
 	play_t += dt
 	hurt_t = maxf(0, hurt_t - dt)
@@ -863,6 +1042,7 @@ func _update_coins(dt: float) -> void:
 			var cc: Vector3 = c.position if c is Sprite3D else c.position + Vector3(0, 0.35, 0)
 			if cc.distance_to(p.position + Vector3(0, p.height * 0.5, 0)) < 0.9:
 				coins += 1
+				coins_taken.append(int(c.get_meta("i")))
 				sfx("coin", -3)
 				fx.burst(c.position, Color("ffd23a"), 5, 2.5, 6)
 				c.queue_free()
@@ -920,6 +1100,7 @@ func _knocked_out() -> void:
 
 func on_foe_beaten(f: Foe) -> void:
 	beaten += 1
+	foes_gone.append(int(f.get_meta("spawn")))
 	coins += 2
 	super_charge = minf(1.0, super_charge + 0.06)
 	fx.text(f.position + Vector3(0, f.height + 0.4, 0.4), "+2", Color("ffd23a"), 48)
@@ -929,6 +1110,7 @@ func on_foe_beaten(f: Foe) -> void:
 		hud.say("KRAG JR. BEATEN!", "Run to the flag!", 3.0)
 		play_music("meadow")
 		speak("We did it! Woo hoo!", "rocco")
+		save_game()
 		for i in 6:
 			fx.burst(f.position + Vector3(randf_range(-1, 1), randf_range(0, 2), 0), Color.from_hsv(randf(), 0.6, 1), 14, 6, 8)
 
@@ -947,11 +1129,15 @@ func _update_progress(dt: float) -> void:
 	if not checkpoint_hit and l.position.x > Level.CHECKPOINT_X:
 		checkpoint_hit = true
 		checkpoint = Vector3(Level.CHECKPOINT_X + 0.5, 5, 6.5)
-		hud.say("CHECKPOINT!", "", 1.4)
+		hud.say("CHECKPOINT!", "Saved" if slot > 0 else "", 1.4)
 		sfx("heart")
+		safe_pos = checkpoint
+		save_game()
 	if boss_done and l.position.x > Level.FLAG_X - 0.4:
 		state = "clear"
 		clear_t = 0
+		cleared += 1
+		save_game(false)   # keeps coins and ores; the level starts fresh next time
 		play_music("fanfare", false)
 		sfx("clear")
 		speak("Wahoo! Team up!", "rocco")
