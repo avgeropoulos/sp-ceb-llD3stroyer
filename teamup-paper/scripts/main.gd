@@ -14,7 +14,7 @@ const ORE_OF := {Level.STONE: "stone", Level.IRON: "iron", Level.GOLD: "gold", L
 const GO_LINES := ["Here we go!", "Andiamo! Let's go!", "Okey dokey!"]
 const OUCH_LINES := ["Mamma mia!", "Oh no!", "Ow ow ow!"]
 
-var state := "title"
+var state := "loading"   # a short LOADING... screen first, then "title"
 var level: Level
 var fx: Fx
 var hud: Hud
@@ -81,6 +81,12 @@ var invincible := false
 
 var updater: Updater
 var original_cells := PackedByteArray()
+
+# lag finder: remembers slow frames and what was happening (shown in the pause menu)
+var doing := "starting"        # what's happening right now, e.g. "SUPER HYDRO WAVE"
+var doing_t := 0.0
+var slow: Array = []           # [ms, what] for the last few slow frames
+var slow_count := 0
 var sfx_players: Array[AudioStreamPlayer] = []
 var sfx_cache := {}
 var music: AudioStreamPlayer
@@ -292,6 +298,7 @@ func mon_level(l: String = "") -> int:
 
 
 func do_swap() -> void:
+	note("SWAP")
 	var l := leader()
 	var p := l.position
 	if control == "human" and human == "rocco":
@@ -548,8 +555,7 @@ func _warm_up() -> void:
 		fx.beam(at, 1.0, 2.0)
 		fx.ring(at, 1.0)
 		fx.vine(at, Vector3.RIGHT, 1.0)
-		for sz in [36, 48, 52, 56, 60, 64]:
-			fx.text(at, "+0123456789/ABCDEFGHIJKLMNOPQRSTUVWXYZ!→", Color.WHITE, sz, 0.3)
+
 		for k in ["spark", "arrow", "spikeball", "coin", "heart", "shot_water", "shot_fire"]:
 			var n := level.prop(k, at, 0.3)
 			n.scale = Vector3.ONE * 0.05
@@ -561,13 +567,19 @@ func _warm_up() -> void:
 				"thunder", "boss_hit", "arrow", "item", "heart", "woof", "alert", "clear", "boss_down"]:
 			if not sfx_cache.has(name):
 				sfx_cache[name] = load("res://sfx/%s.wav" % name)
+	elif warm_t >= 4 and warm_t < 10:   # one text size per frame, so the title never stutters
+		var sz: int = [36, 40, 48, 52, 56, 60][warm_t - 4]
+		fx.text(at, "+0123456789/ABCDEFGHIJKLMNOPQRSTUVWXYZ!→", Color.WHITE, sz, 0.3)
 	elif warm_t == 12:
 		for n in warm_nodes:
 			n.queue_free()
 		warm_nodes.clear()
 		for h in heroes.values():
 			h.bar.visible = false
+	elif warm_t > 12 and (hud.warm_sizes.is_empty() or state not in ["loading", "title"]):
 		warm_t = -1
+		if state == "loading":
+			state = "title"
 
 
 ## The partner earns XP. Level ups pop up; at Lv 4 and Lv 8 it evolves (the evolution scene).
@@ -586,6 +598,7 @@ func gain_xp(n: int) -> void:
 
 
 func start_evolve(st: int) -> void:
+	note("evolving")
 	evolve_from = display_name("mon")
 	evolve_to = st
 	evolve_t = 0.0
@@ -621,6 +634,24 @@ func _step_evolve(dt: float) -> void:
 	_update_camera(dt)
 
 
+## Remembers a frame that took longer than 50 ms (a visible hitch) and what was happening.
+func _watch_lag(delta: float) -> void:
+	doing_t -= delta
+	if doing_t <= 0:
+		doing = state.to_upper() if state != "play" else "playing"
+	if delta > 0.05 and state in ["title", "play", "evolve"] and not bot:
+		slow_count += 1
+		slow.push_front([int(delta * 1000), doing])
+		if slow.size() > 5:
+			slow.pop_back()
+
+
+## Marks what's happening for the next second (for the lag finder).
+func note(what: String) -> void:
+	doing = what
+	doing_t = 1.0
+
+
 ## PAPER <-> 3D TOYS (title screen). Rebuilds everything in the other look.
 func toggle_look() -> void:
 	Look.toy = not Look.toy
@@ -629,6 +660,7 @@ func toggle_look() -> void:
 
 
 func start_game(n: int = 0) -> void:
+	note("starting the level")
 	slot = n
 	state = "play"
 	play_t = 0
@@ -641,6 +673,7 @@ func start_game(n: int = 0) -> void:
 ## so movement is smooth on fast screens. Long frames are split into small steps so
 ## nothing can fly through a block; taps only count in the first step.
 func _process(delta: float) -> void:
+	_watch_lag(delta)
 	_gather_input()
 	var dt := minf(delta, 0.1)
 	var steps := maxi(1, ceili(dt * 60.0 - 0.01))
@@ -656,6 +689,9 @@ func _process(delta: float) -> void:
 
 
 func _step(dt: float) -> void:
+	if state == "loading":
+		_update_camera(dt)
+		return
 	if state == "title":
 		for h in heroes.values():
 			h.vel = Vector3.ZERO
@@ -923,6 +959,7 @@ func _vine_whip(h: Hero, aim: Vector3, dmg: int) -> void:
 
 
 func _slam_land(h: Hero) -> void:
+	note("butt slam")
 	h.slam = ""
 	h.vel.y = 5
 	h.squash = Vector2(1.35, 0.7)
@@ -998,6 +1035,7 @@ func hit_block(c: Vector3i, power: int, by: Hero) -> bool:
 
 
 func _open_mystery(c: Vector3i) -> void:
+	note("? block")
 	level.set_cell(c.x, c.y, c.z, Level.USED)
 	var top := Vector3(c) + Vector3(0.5, 1.1, 0.5)
 	if hearts < MAX_HEARTS and randf() < 0.4:
@@ -1028,6 +1066,7 @@ func _pop_away(s: Node3D) -> void:
 func _thunderbolt() -> void:
 	super_charge = 0
 	var m: Hero = heroes.mon
+	note("SUPER " + Mons.LINES[m.line].super)
 	var info: Dictionary = Mons.LINES[m.line]
 	var power := 4 + m.stage
 	fx.shake = 0.9
@@ -1335,6 +1374,7 @@ func on_foe_beaten(f: Foe) -> void:
 
 
 func start_boss(f: Foe) -> void:
+	note("Krag Jr. arrives")
 	boss_on = true
 	checkpoint = Vector3(Level.BOSS_X0 + 2, 5, 6.5)
 	hud.say("KRAG JR.!", "Stomp him when he swoops down!", 2.8)

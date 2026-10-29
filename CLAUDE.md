@@ -210,6 +210,15 @@ electric SPARKY/ZAPPER (Lv 6). The partner hero is `heroes.mon` (`who == "mon"`,
 `mon_xp` (saved as `mon_xp`, partner as `mon`). PICK YOUR PARTNER (`state == "partner"`) comes after picking a file that isn't
 mid-level. Tests that press buttons must call functions (`_action`, `_thunderbolt`) because `_gather_input` overwrites flags.
 Screenshots of effects need `--fixed-fps 60` (software Vulkan is slow, so effects end between frames otherwise).
+Performance rules learned the hard way (each one was a visible freeze on the tablet):
+* Never change a font size from frame to frame (pop-in text): draw at a fixed size and scale with `draw_set_transform`.
+  New sizes make the tablet redraw every letter; that was the lag at game start, on SUPERs and at Krag Jr.
+* Every text size, picture and HUD shape is drawn once on the LOADING screen (`hud.gd` `_draw_loading`, `warm_sizes`,
+  `WARM_TEXT`); effects/shots/props are shown once there too (`main.gd` `_warm_up`). Add new ones there.
+* Effects never cast shadows and share materials (`fx.gd` `_glow`, `_no_shadows`); no real lights in effects.
+* Block changes only touch neighbours (`level.gd` `_refresh`), never `rebuild()` in play.
+* Lag finder: frames over 50 ms are listed with `note()` labels in the pause menu (bottom left).
+* Measure with the real renderer: `Performance.PIPELINE_COMPILATIONS_*` per frame and timing `Hud._draw`.
 Characters are original designs (drawn by `tools/gen_art.py`), not copies of the real-game characters.
 Builds with `.github/workflows/teamup-paper.yml` to the `teamup-paper-latest` release (`TeamUpPaper.apk`,
 package `com.roccoquest.teamup.paper`). Run the robot test before pushing:

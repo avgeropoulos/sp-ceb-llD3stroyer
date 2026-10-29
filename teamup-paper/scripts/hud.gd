@@ -141,6 +141,9 @@ func _draw() -> void:
 	var s := size
 	if game == null:
 		return
+	if game.state == "loading":
+		_draw_loading()
+		return
 	if game.state == "title":
 		_draw_title()
 		return
@@ -153,10 +156,16 @@ func _draw() -> void:
 	_draw_hud()
 	if game.state == "play":
 		_draw_controls()
-	if message_t > 0:
+	if message_t > 0 and game.state != "paused":
 		var a := clampf(message_t * 3, 0, 1)
+		# The pop-in grows the picture, never the font size: a new font size every frame makes
+		# the tablet redraw every letter from scratch (that was the lag at the start, on SUPERs
+		# and when Krag Jr. shows up).
 		var pop := 1.0 + maxf(0, (message_t - 1.9)) * 1.5
-		txt(message, Vector2(0, s.y * 0.36), int(64 * pop), Color(1, 0.86, 0.3, a), HORIZONTAL_ALIGNMENT_CENTER, s.x, 14)
+		var mid := Vector2(s.x * 0.5, s.y * 0.36 - 22)
+		draw_set_transform(mid * (1.0 - pop), 0.0, Vector2(pop, pop))
+		txt(message, Vector2(0, s.y * 0.36), 64, Color(1, 0.86, 0.3, a), HORIZONTAL_ALIGNMENT_CENTER, s.x, 14)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		if sub_message != "":
 			txt(sub_message, Vector2(0, s.y * 0.36 + 52), 30, Color(1, 1, 1, a), HORIZONTAL_ALIGNMENT_CENTER, s.x, 8)
 	if game.state == "paused":
@@ -289,6 +298,43 @@ func _draw_update() -> void:
 		txt("UPDATE!", Vector2(r.position.x, r.position.y + 66), 52, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 10)
 
 
+## Every text size the game uses later, drawn invisibly on the title screen (one per frame),
+## so the letters are ready before play and nothing has to be prepared mid-game.
+var warm_sizes := [18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 32, 33, 34, 35, 36, 38, 40, 44, 46, 52, 54, 56, 64, 76, 80, 84, 88, 92]
+const WARM_TEXT := "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 %!?&.,:;'/+-→()"
+
+
+## The first few frames: a plain screen while every text size and effect gets ready.
+## Freezing here is invisible, so the title and the game run smoothly afterwards.
+func _draw_loading() -> void:
+	var s := size
+	draw_rect(Rect2(Vector2.ZERO, s), Color("2a6fb8"))
+	txt("LOADING...", Vector2(0, s.y * 0.5), 48, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, s.x, 10)
+	# pictures and shapes the game screen uses (so starting a game doesn't hitch)
+	for l in Mons.ORDER:
+		for st in Mons.LINES[l].names.size():
+			draw_texture_rect(img(Mons.face(l, st)), Rect2(-500, -500, 40, 40), false)
+	for n in ["rocco_idle", "blocky_idle", "heart", "heart_empty", "coin", "kragjr_1"]:
+		draw_texture_rect(img(n), Rect2(-500, -500, 40, 40), false)
+	draw_circle(Vector2(-300, -300), 40, Color(1, 1, 1, 0.01))
+	draw_arc(Vector2(-300, -300), 40, 0, TAU, 48, Color(1, 1, 1, 0.01), 3, true)
+	draw_arc(Vector2(-300, -300), 30, -PI / 2, 1.0, 48, Color(1, 1, 1, 0.01), 8, true)
+	draw_rect(Rect2(-300, -300, 30, 30), Color(1, 1, 1, 0.01), false, 2.0)
+	# the game screen's buttons and panels once, off-screen
+	draw_set_transform(Vector2(-6000, -6000), 0.0, Vector2.ONE)
+	_draw_hud()
+	_draw_controls()
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	for i in 7:
+		if warm_sizes.is_empty():
+			break
+		var sz: int = warm_sizes.pop_back()
+		for o in [0, 6, 7, 8, 9, 10, 12, 14, 16, 18]:
+			if o <= sz / 3:
+				draw_string_outline(font, Vector2(-4000, -4000), WARM_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, o, Color(0, 0, 0, 0.01))
+		draw_string(font, Vector2(-4000, -4000), WARM_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, Color(0, 0, 0, 0.01))
+
+
 func _draw_title() -> void:
 	var s := size
 	var bob := sin(title_t * 2.5) * 6
@@ -342,6 +388,15 @@ func _draw_pause() -> void:
 		draw_rect(r, PAUSE_COLORS[i])
 		draw_rect(r, Color.WHITE, false, 3.0)
 		txt(PAUSE_LABELS[i], Vector2(r.position.x, r.position.y + 60), 44, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 9)
+	# lag finder (bottom left): screenshot this if the game stutters
+	if game.slow_count > 0:
+		var ly: float = s.y - 24.0 - game.slow.size() * 24.0
+		txt("Slow moments: %d" % game.slow_count, Vector2(20, ly), 20, Color(1, 1, 1, 0.75), HORIZONTAL_ALIGNMENT_LEFT, -1, 5)
+		for e in game.slow:
+			ly += 24
+			txt("%d ms  %s" % [e[0], e[1]], Vector2(20, ly), 18, Color(1, 1, 1, 0.6), HORIZONTAL_ALIGNMENT_LEFT, -1, 5)
+	else:
+		txt("No slow moments", Vector2(20, s.y - 24), 18, Color(1, 1, 1, 0.5), HORIZONTAL_ALIGNMENT_LEFT, -1, 5)
 	var y := pause_rect(2).end.y + 50
 	if game.save_note_t > 0:
 		txt(game.save_note, Vector2(0, y), 38, Color("fff2a8"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 9)

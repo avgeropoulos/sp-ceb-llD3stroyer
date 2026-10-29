@@ -58,6 +58,12 @@ tap again (or **GO WITH ...!**) to play. Each partner has its own level, saved i
   1-1 for next time but keeps your coins and ores (`scripts/saves.gd`, `main.gd` `save_data`/`_apply_save`).
 * Test: `godot --headless --path . --script res://tests/save_check.gd` (save, quit, load, erase, undo, clear).
 
+## Smoothness
+
+The game opens with a short LOADING screen that prepares every text size, picture and effect, so nothing
+has to be prepared mid-game. If it still stutters, the pause menu lists the slow moments (bottom left:
+how long the frame took and what was happening) - take a screenshot of it.
+
 ## Controls
 
 Touch: thumb stick on the left (anywhere on the left half), JUMP / ACTION / SWAP / SUPER on the right, II pauses.

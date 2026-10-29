@@ -69,9 +69,7 @@ func text(pos: Vector3, s: String, color: Color = Color.WHITE, size: int = 64, l
 
 ## A thunderbolt crashing down onto a spot (Sparky's SUPER).
 func bolt(pos: Vector3) -> void:
-	var m := StandardMaterial3D.new()
-	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.albedo_color = Color(0.6, 0.9, 1.0)
+	var m := _glow(Color(0.6, 0.9, 1.0))
 	var root := Node3D.new()
 	root.position = pos
 	add_child(root)
@@ -89,6 +87,7 @@ func bolt(pos: Vector3) -> void:
 		root.add_child(seg)
 		x = nx
 		y -= 1.5
+	_no_shadows(root)
 	# (no real light here: a new kind of light makes phones rebuild every material = a freeze)
 	burst(pos + Vector3(0, 0.3, 0), Color(0.55, 0.85, 1.0), 12, 6)
 	var tw := create_tween()
@@ -97,11 +96,26 @@ func bolt(pos: Vector3) -> void:
 	tw.tween_callback(root.queue_free)
 
 
+var _glows := {}
+
+
+## Effects glow and never cast shadows (shadows of new effect shapes made the tablet
+## prepare a new shadow pipeline mid-game = a hitch on the first SUPER).
 func _glow(c: Color) -> StandardMaterial3D:
-	var m := StandardMaterial3D.new()
-	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.albedo_color = c
-	return m
+	var k := c.to_html()
+	if not _glows.has(k):
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.albedo_color = c
+		_glows[k] = m
+	return _glows[k]
+
+
+func _no_shadows(n: Node) -> void:
+	for c in n.get_children():
+		if c is GeometryInstance3D:
+			c.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_no_shadows(c)
 
 
 ## HYDRO WAVE: two big waves roll out both ways from the partner.
@@ -141,6 +155,7 @@ func wave(at: Vector3, _lv) -> void:
 		foam.rotation.x = PI / 2
 		foam.position = Vector3(dir * 0.85, 1.75, 0)
 		w.add_child(foam)
+		_no_shadows(w)
 		var tw := create_tween()
 		tw.tween_property(w, "position:x", at.x + dir * 14.0, 0.9).set_ease(Tween.EASE_OUT)
 		tw.parallel().tween_property(w, "scale", Vector3(1, 0.4, 1), 0.9)
@@ -164,6 +179,7 @@ func beam(from: Vector3, dir: float, length: float) -> void:
 		mi.rotation.z = PI / 2
 		mi.position.x = dir * 0.5
 		b.add_child(mi)
+	_no_shadows(b)
 	b.scale = Vector3(0.01, 1, 1)
 	var tw := create_tween()
 	tw.tween_property(b, "scale:x", length, 0.25)
@@ -185,6 +201,7 @@ func ring(at: Vector3, radius: float) -> void:
 	r.mesh = tm
 	r.material_override = _glow(Color("ff8a2a"))
 	r.position = at + Vector3(0, 0.5, 0)
+	r.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(r)
 	r.scale = Vector3(0.3, 1.5, 0.3)
 	var tw := create_tween()
@@ -210,6 +227,7 @@ func vine(from: Vector3, dir: Vector3, reach: float) -> void:
 		mi.material_override = _glow(Color("3fae4a") if k < n - 1 else Color("7fe05a"))
 		mi.position = dir * (reach * (k + 1) / n) + Vector3(0, sin(k * 1.3) * 0.12, 0)
 		v.add_child(mi)
+	_no_shadows(v)
 	v.scale = Vector3.ONE * 0.05
 	var tw := create_tween()
 	tw.tween_property(v, "scale", Vector3.ONE, 0.1)
