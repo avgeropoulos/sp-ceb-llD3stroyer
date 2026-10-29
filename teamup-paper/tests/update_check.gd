@@ -6,19 +6,21 @@ var u: Updater
 var t := 0.0
 var want_download := false
 var started := false
+var pretend := 1
 
 
 func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
 	u = Updater.new()
 	root.add_child(u)
-	u.my_version = int(args[0]) if args.size() > 0 else 1
+	pretend = int(args[0]) if args.size() > 0 else 1
 	want_download = args.size() > 1 and args[1] == "download"
 
 
 func _process(dt: float) -> bool:
 	if not started:   # wait until the updater is really in the scene
 		started = true
+		u.my_version = pretend   # after _ready, which reads the real (computer = 0) version
 		if want_download:
 			u.status = "available"
 			u.download()
