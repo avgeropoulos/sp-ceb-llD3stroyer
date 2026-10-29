@@ -6428,6 +6428,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (c !in 2 until level.w - 3) return false
             if (abs(c - tileOf(respawnX)) < 3) return false
             if (blocked.any { abs(it - c) <= 3 }) return false
+            // Never crack the ground where you get on or off a moving platform.
+            if (level.platforms.any { p -> c >= tileOf(p.startX) - 4 && c <= tileOf(p.startX + MovingPlatform.W + MovingPlatform.RANGE) + 7 }) return false
             if (surfaceRow(c) < 0 || surfaceRow(c + 1) < 0) return false
             return !isPit(c - 1) && !isPit(c + 2) && !isPit(c - 2) && !isPit(c + 3)
         }
