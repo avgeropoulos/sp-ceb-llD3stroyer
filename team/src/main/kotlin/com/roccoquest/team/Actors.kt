@@ -310,6 +310,15 @@ class Hero(val who: Who, x: Float, y: Float) :
     var combo = 0
     /** Counts down while the double-jump flip is showing. */
     var flipT = 0f
+    /** How long the current flip lasts (the flip turns all the way round in that time). */
+    var flipDur = 0.35f
+    // PARKOUR (Rocco): sliding down a wall (-1 / 1 = which side), the push off a wall, a landing roll, a vault.
+    var wallSlide = 0
+    var wallKickT = 0f
+    var rollT = 0f
+    var vaultT = 0f
+    var vaultCool = 0f
+    var runJumps = 0
     /** Squash-and-stretch: counts down after landing. */
     var squash = 0f
     var dustT = 0f
@@ -417,10 +426,22 @@ class Hero(val who: Who, x: Float, y: Float) :
                         gfx.sprite(rs(2), px, py + 4, flipX = (anim * 20).toInt() % 2 == 0, h = 20f)
                         if (slamPause <= 0) for (i in 0 until 3) gfx.rect(px + 2 + i * 5, py - 10, 1.5f, 10f, 0xAAFFFFFF.toInt())
                     }
-                    // Double jump: a quick spinning flip.
+                    // Flips (double jump, running flip, wall jump): Rocco turns all the way round.
                     flipT > 0 && !onGround -> {
-                        val spin = (flipT * 24).toInt() % 4
-                        gfx.sprite(rs(2), px, py, flipX = spin >= 2, flipY = spin == 1 || spin == 2)
+                        val a = 360f * (1f - flipT / flipDur).coerceIn(0f, 1f) * facing
+                        gfx.spriteRotated(rs(2), px, py, 16f, 24f, a, flipX = facing < 0)
+                    }
+                    // Landing roll: a tumble along the ground.
+                    rollT > 0f && onGround -> {
+                        val a = 360f * (1f - rollT / 0.4f) * facing
+                        gfx.spriteRotated(rs(2), px, py + 6f, 16f, 18f, a, flipX = facing < 0)
+                    }
+                    // Vaulting over a low wall: tipped over sideways, hand down.
+                    vaultT > 0f && !onGround -> gfx.spriteRotated(rs(2), px, py, 16f, 24f, 70f * facing, flipX = facing < 0)
+                    // Sliding down a wall: facing away from it, one hand on the wall.
+                    wallSlide != 0 && !onGround -> {
+                        gfx.sprite(rs(2), px, py, flipX = wallSlide > 0)
+                        gfx.rect(if (wallSlide > 0) px + 13f else px, py + 8f, 3f, 3f, 0xFFF4F4F4.toInt())
                     }
                     // Long jump: stretched out flat like a superhero.
                     longJumping && !onGround -> {

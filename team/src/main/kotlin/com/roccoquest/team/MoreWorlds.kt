@@ -372,6 +372,17 @@ object MoreWorlds {
                 kind == 0 && !lastGap && x > 24 && !(world >= 10 && lastHill) -> {
                     // A gap (or a lava pit) to jump over.
                     val gw = 2 + r.nextInt(2)
+                    // Some gaps are way too wide to jump: ride the MOVING PLATFORM across (land on it, then hop off).
+                    if ((x * 7 + w) % 4 == 0 && x < w - 40) {
+                        val pw = ((MovingPlatform.W + MovingPlatform.RANGE) / 16f).toInt()
+                        if (lava) b.fill(x, x + pw - 1, 13, 14, 'L')
+                        b.fill(x - 10, x - 1, 9, 9, '.')
+                        b.at(x, 12, '-')
+                        x += pw
+                        lastGap = true
+                        lastHill = false
+                        continue
+                    }
                     if (lava) b.fill(x, x + gw - 1, 13, 14, 'L')
                     // (Newer worlds: no prize blocks right before a gap, so you can't jump short off them.)
                     if (world >= 8) b.fill(x - 10, x - 1, 9, 9, '.')
@@ -405,6 +416,8 @@ object MoreWorlds {
                     repeat(busy + r.nextInt(2)) { k -> b.onGround(ground[r.nextInt(ground.length)], x + 5 + k * 3) }
                     if (r.nextInt(3) == 0) b.at(x + 6, if (air[0] == 'l') 3 else 8, air[r.nextInt(air.length)])
                     if (!blocks && len >= 13 && r.nextInt(3) == 0) b.at(x + len - 4, 8, 'z')
+                    // Now and then a LIFT goes up to a row of coins.
+                    else if (!blocks && len >= 14 && (x * 5 + w) % 5 == 0) { b.at(x + len - 6, 12, '\\'); b.row(x + len - 6, 6, "ccc") }
                     if (!frog && x > 40) { b.at(x + 2, 12, 'r'); frog = true }
                     // Long levels get more checkpoints (one about every 80 tiles).
                     val cps = maxOf(2, w / 80)

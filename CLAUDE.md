@@ -184,4 +184,10 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
   Stegosaurus `]`, Ankylosaurus `_`, BabyRex `` ` ``, `CappyPickup` `"` (`giveCappy`), boss `RexKrag` `'` (implements
   `NamedBoss`: newer bosses give their own name/banner/home through that interface). CaptureKind has RAPTOR..REX.
   World 12 is `MoreWorlds.world12`; the last level (THE GALAXY GRAND FINALE) still ends with Galaxy Krag `}`.
+* `Platforms.kt`: `MovingPlatform` (`-` side to side over an 8-tile gap, `\` a lift; `Level.platforms`, landed on in
+  `Level.moveY` like a one-way cloud; it carries heroes/foes standing on it). `MoreWorlds.level` makes some gaps platform
+  gaps (`(x * 7 + w) % 4 == 0`) and adds lifts to coin rows. The test bot (`botStep`) waits for, rides and steers onto
+  platforms. Parkour (Rocco, in `updateLeader`'s Rocco block): wall slide/jump (`Hero.wallSlide`, `wallKickT`), running
+  flips (`runJumps`, `flipT`/`flipDur`), vault (`vaultT`, `vaultCool`), landing roll (`rollT`, in `moveHero`). Flips and
+  rolls draw with `Gfx.spriteRotated` (real rotation on Android/AWT; `ScaledGfx` forwards it).
 

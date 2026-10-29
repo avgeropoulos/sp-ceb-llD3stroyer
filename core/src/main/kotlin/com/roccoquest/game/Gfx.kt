@@ -20,6 +20,15 @@ interface Gfx {
     fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Int = 0)
 
     /**
+     * Draws [s] (size [w] x [h], top-left at [x], [y]) turned [deg] degrees clockwise around its middle: for flips and
+     * rolls. This fallback can't turn, so it just shows it upside down for the middle of the turn.
+     */
+    fun spriteRotated(s: Sprite, x: Float, y: Float, w: Float, h: Float, deg: Float, flipX: Boolean = false) {
+        val a = ((deg % 360f) + 360f) % 360f
+        sprite(s, x, y, flipX, a in 90f..270f, w, h)
+    }
+
+    /**
      * A rectangle fading smoothly from [top] to [bottom]. Platforms draw a real gradient; this fallback uses
      * many thin bands (fine for tests and wrappers).
      */

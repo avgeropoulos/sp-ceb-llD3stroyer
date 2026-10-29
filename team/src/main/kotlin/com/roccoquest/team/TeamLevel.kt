@@ -799,6 +799,8 @@ class Level(val def: LevelDef) {
     val cracks = HashMap<Int, Int>()
     /** Sparse vent index: water updates visit vents, not every visible tile. */
     val vents = linkedSetOf<Int>()
+    /** Moving platforms: things land on them from above (see [MovingPlatform]). */
+    val platforms = ArrayList<MovingPlatform>()
 
     init {
         for (y in 0 until h) for (x in 0 until w) {
@@ -897,6 +899,15 @@ class Level(val def: LevelDef) {
                 val t = get(tx, ty)
                 if (Tile.solid(t) || (t == Tile.CLOUD && oldBottom <= ty * TILE + 0.5f)) {
                     b.y = ty * TILE - b.h
+                    b.vy = 0f
+                    b.onGround = true
+                    return 1
+                }
+            }
+            for (p in platforms) {
+                if (b === p || b.x + b.w <= p.x + 1f || b.x >= p.x + p.w - 1f) continue
+                if (oldBottom <= p.y + 3f && b.bottom >= p.y) {
+                    b.y = p.y - b.h
                     b.vy = 0f
                     b.onGround = true
                     return 1

@@ -60,6 +60,13 @@ class AwtGfx(val image: BufferedImage, private val scale: Float) : Gfx {
         g.drawImage(img, dx1, dy1, dx2, dy2, 0, 0, s.w, s.h, null)
     }
 
+    override fun spriteRotated(s: Sprite, x: Float, y: Float, w: Float, h: Float, deg: Float, flipX: Boolean) {
+        val old = g.transform
+        g.rotate(Math.toRadians(deg.toDouble()), ((x + w / 2) * scale).toDouble(), ((y + h / 2) * scale).toDouble())
+        sprite(s, x, y, flipX, false, w, h)
+        g.transform = old
+    }
+
     override fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Int) {
         g.font = Font(Font.MONOSPACED, Font.BOLD, (size * scale).toInt().coerceAtLeast(1))
         val w = g.fontMetrics.stringWidth(s)

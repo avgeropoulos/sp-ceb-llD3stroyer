@@ -89,6 +89,13 @@ class CanvasGfx : Gfx {
         canvas.restore()
     }
 
+    override fun spriteRotated(s: Sprite, x: Float, y: Float, w: Float, h: Float, deg: Float, flipX: Boolean) {
+        canvas.save()
+        canvas.rotate(deg, (x + w / 2) * this.s, (y + h / 2) * this.s)
+        sprite(s, x, y, flipX, false, w, h)
+        canvas.restore()
+    }
+
     override fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Int) {
         textPaint.color = color
         textPaint.textSize = size * this.s

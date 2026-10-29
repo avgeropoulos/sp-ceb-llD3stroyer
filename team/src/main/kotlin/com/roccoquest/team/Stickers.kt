@@ -16,6 +16,8 @@ class ScaledGfx(private val inner: Gfx, private val s: Float, private val ox: Fl
         inner.poly(FloatArray(xs.size) { x(xs[it]) }, FloatArray(ys.size) { y(ys[it]) }, color)
     override fun sprite(s: Sprite, x: Float, y: Float, flipX: Boolean, flipY: Boolean, w: Float, h: Float) =
         inner.sprite(s, x(x), y(y), flipX, flipY, w * this.s, h * this.s)
+    override fun spriteRotated(s: Sprite, x: Float, y: Float, w: Float, h: Float, deg: Float, flipX: Boolean) =
+        inner.spriteRotated(s, x(x), y(y), w * this.s, h * this.s, deg, flipX)
     override fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Int) =
         inner.text(s, x(x), y(y), size * this.s, color, align)
     override fun gradient(x: Float, y: Float, w: Float, h: Float, top: Int, bottom: Int) =

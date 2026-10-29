@@ -1048,6 +1048,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 '_' -> foes += Ankylosaurus(px, bottom)
                 '`' -> foes += BabyRex(px, bottom)
                 '"' -> things += CappyPickup(px, bottom)
+                '-', '\\' -> MovingPlatform(px, bottom - 16f, vertical = c != '-').let { things += it; level.platforms += it }
                 '\'' -> foes += RexKrag(px, bottom)
                 '}' -> foes += GalaxyKrag(px, bottom)
                 '+' -> things += SpikeBomb(px, bottom)
@@ -1813,6 +1814,53 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (rocco) {
             if (h.onGround) h.doubleJumped = false
             if (h.flipT > 0) h.flipT -= dt
+            if (h.wallKickT > 0) h.wallKickT -= dt
+            if (h.rollT > 0) h.rollT -= dt
+            if (h.vaultT > 0) h.vaultT -= dt
+            if (h.vaultCool > 0) h.vaultCool -= dt
+            // PARKOUR: slide down walls, and JUMP off them.
+            val parkour = !h.mini && megaT <= 0f && capture == null && !h.slamming && !h.longJumping && inCannon == null && grabbing == null && !inWater(h)
+            fun wallOn(side: Int): Boolean {
+                val wx = if (side > 0) h.x + h.w + 1.5f else h.x - 1.5f
+                return level.solidAt(wx, h.y + 5) && level.solidAt(wx, h.bottom - 5)
+            }
+            h.wallSlide = if (parkour && !h.onGround && h.vy > 0f && dir != 0 && wallOn(dir)) dir else 0
+            if (h.wallSlide != 0) {
+                if (h.vy > 90f) h.vy = 90f
+                h.dustT -= dt
+                if (h.dustT <= 0f) { h.dustT = 0.12f; particles += Dust(if (h.wallSlide > 0) h.x + h.w else h.x, h.y + 6, -h.wallSlide) }
+            }
+            val wallSide = if (wallOn(1)) 1 else if (wallOn(-1)) -1 else 0
+            if (parkour && jumpE && !h.onGround && coyoteT <= 0f && wallSide != 0 && (h.wallSlide != 0 || dir == wallSide)) {
+                jumpBufT = 0f
+                h.vy = h.jumpV * 0.95f
+                h.vx = -wallSide * 190f
+                h.facing = -wallSide
+                h.wallKickT = 0.22f
+                h.wallSlide = 0
+                h.doubleJumped = false
+                h.flipT = 0.4f; h.flipDur = 0.4f
+                jumpHoldT = 0.1f
+                sfx(Sound.JUMP)
+                particles += FloatText(h.cx, h.y - 4, "WALL JUMP!", 0xFF8AE8FF.toInt())
+                for (i in 0 until 4) particles += Dust(if (wallSide > 0) h.x + h.w else h.x, h.cy + i * 3f, -wallSide)
+                moveHero(h, dt)
+                return
+            }
+            // Running into a low wall (one block high): VAULT right over it.
+            if (parkour && h.onGround && dir != 0 && abs(h.vx) > 90f && h.vaultCool <= 0f && !input.jump && !input.down) {
+                val ax = if (dir > 0) h.x + h.w + 4f else h.x - 4f
+                if (level.solidAt(ax, h.bottom - 4) && !level.solidAt(ax, h.bottom - 20) && !level.solidAt(ax, h.bottom - 36) &&
+                    !level.solidAt(h.cx, h.y - 10)) {
+                    h.vy = -235f
+                    // (Not cut short like a tapped jump: a vault always clears the block.)
+                    jumpHoldT = 0.22f
+                    h.vaultT = 0.32f
+                    h.vaultCool = 0.6f
+                    sfx(Sound.JUMP)
+                    if (Random.nextInt(3) == 0) particles += FloatText(h.cx, h.y - 4, "VAULT!", 0xFF8AE8FF.toInt())
+                }
+            }
             if (h.onGround) propUsed = false
             // Propeller: JUMP in mid-air spins Rocco way up high.
             if (propT > 0f && jumpE && !h.onGround && coyoteT <= 0f && !propUsed && !h.slamming) {
@@ -1820,7 +1868,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 propUsed = true
                 h.doubleJumped = true
                 h.vy = -520f
-                h.flipT = 0.6f
+                h.flipT = 0.6f; h.flipDur = 0.6f
                 sfx(Sound.JUMP)
                 for (i in 0 until 8) particles += Sparkle(h.cx, h.y, (i - 3.5f) * 30f, 60f, 0xFFFFD21F.toInt())
                 moveHero(h, dt)
@@ -1832,7 +1880,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 h.doubleJumped = true
                 h.longJumping = false
                 h.vy = h.jumpV * (if (h.mini) 0.75f else 0.9f)
-                h.flipT = 0.35f
+                h.flipT = 0.35f; h.flipDur = 0.35f
                 jumpHoldT = 0.1f
                 sfx(Sound.JUMP)
                 for (i in 0 until 6) particles += Sparkle(h.cx, h.bottom, (i - 2.5f) * 30f, 40f, 0xFFFFFFFF.toInt())
@@ -1885,7 +1933,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val top = h.speed * (if (sprint) 1.5f else 1f) * (if (rocco) (captureKind?.speed ?: 1f) * (if (megaT > 0f) 1.2f else 1f) else 1f) *
             (if (rocco && captureDashT > 0f) 2.2f else 1f)
         val want = if (h.crouching) 0f else dir * top
-        h.vx = approach(h.vx, want, (if (h.onGround) 800f else 520f) * dt)
+        // (Just after kicking off a wall, the kick keeps going for a moment.)
+        if (h.wallKickT <= 0f) h.vx = approach(h.vx, want, (if (h.onGround) 800f else 520f) * dt)
         // Blue Shell: sprinting on the ground turns Rocco into a spinning shell.
         h.shellSpin = rocco && power == Power.SHELL && sprint && h.onGround && !h.mini && abs(h.vx) > 120f
         // Still safe for a moment after a spin (jumping out of it, bumping into a wall).
@@ -1897,6 +1946,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             h.vy = h.jumpV * (if (sprint) 1.06f else 1f) * (if (metal && h === this.rocco && inWater(h)) 0.8f else 1f) *
                 (if (rocco) captureKind?.jump ?: 1f else 1f)
             sfx(Sound.JUMP)
+            // PARKOUR: every third running jump, Rocco does a front flip.
+            if (rocco && !h.mini && capture == null && megaT <= 0f && abs(h.vx) > 110f && ++h.runJumps % 3 == 0) {
+                h.flipT = 0.5f; h.flipDur = 0.5f
+                particles += FloatText(h.cx, h.y - 4, listOf("FLIP!", "PARKOUR!", "WAHOO!")[h.runJumps / 3 % 3], 0xFF8AE8FF.toInt())
+            }
         }
         if (!input.jump && jumpHoldT <= 0f && h.vy < -130f) h.vy = -130f
         // Mini Rocco is light as a feather: he floats way up high.
@@ -1997,7 +2051,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val fall = h.vy
         if (level.moveY(h, h.vy * dt) == -1) bump(level.bumpX, level.bumpY, h)
         // Landing: a little squash and a puff of dust.
-        if (!wasGround && h.onGround && fall > 180f) {
+        // A big drop while running: land in a ROLL (parkour!) instead of a thud.
+        if (!wasGround && h.onGround && fall > 380f && h === rocco && !h.mini && abs(h.vx) > 60f && capture == null && megaT <= 0f) {
+            h.rollT = 0.4f
+            particles += FloatText(h.cx, h.y - 4, "ROLL!", 0xFF8AE8FF.toInt())
+        } else if (!wasGround && h.onGround && fall > 180f) {
             h.squash = 0.14f
             particles += Dust(h.cx - 6, h.bottom, -1)
             particles += Dust(h.cx + 6, h.bottom, 1)
@@ -3557,6 +3615,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     internal fun slotCardXForTest(i: Int) = slotCardX(i)
     internal fun slotsForTest() { setState(State.SLOTS); stateT = 1f }
+    internal fun centerCamForTest() { camX = (leader.cx - viewW * 0.4f).coerceIn(0f, max(0f, level.w * TILE - viewW)) }
     internal fun pickCardXForTest(i: Int) = pickCardX(i)
     internal fun pickCardYForTest(i: Int) = pickCardY(i)
     internal fun thingsForTest(): List<Thing> = things + pending

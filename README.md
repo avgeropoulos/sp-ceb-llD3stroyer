@@ -500,6 +500,17 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
 * A new one joins your team every 3 levels you beat ("A wild EEVO joined your team!"). Switch to them at home
   on the POKEMON mat; the switch screen now has two pages (tap the arrows).
 
+### Moving platforms and Rocco's parkour
+
+* **Moving platforms**: lots of levels (Worlds 3 and up) have gaps that are too wide to jump. Hop onto the yellow
+  platform that slides across, ride it, and jump off at the other side. Some places have a **lift** that goes up and
+  down to a row of coins.
+* **Rocco does parkour**:
+  * **Wall jump**: jump at a wall and hold toward it to slide down slowly, then press JUMP to kick off it (with a flip!).
+  * **Front flips**: every third running jump is a flip.
+  * **Vault**: run into a low wall (one block high) and Rocco vaults right over it.
+  * **Landing roll**: drop from way up high while running and he rolls instead of thudding.
+
 ### Dino World, Planet World, a house & planet picker, and twice as much of everything
 
 * **World 11: DINO WORLD** (levels 211-231): raptors, triceratops (they CHARGE), pterodactyls (they SWOOP),

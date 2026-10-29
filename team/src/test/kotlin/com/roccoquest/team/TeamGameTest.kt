@@ -296,6 +296,8 @@ class TeamGameTest {
     private var held = 0f
 
     /** One frame of a simple bot that holds right and jumps over walls and gaps. */
+    private var botPlatJump = false
+
     private fun botStep() {
         val h = game.leader
         val lv = game.level
@@ -320,6 +322,40 @@ class TeamGameTest {
             game.update(dt)
             input.down = false
             return
+        }
+        // Moving platforms: wait at the edge for it, ride it, hop off at the far side.
+        val plat = lv.platforms.firstOrNull { !it.vertical && it.startX + MovingPlatform.W + MovingPlatform.RANGE > h.x - 4f && it.startX < h.x + 90f }
+        if (plat != null) {
+            // Jumping onto it: steer to land in the middle.
+            if (botPlatJump && !h.onGround) {
+                val mid = plat.x + plat.w / 2
+                input.right = h.cx < mid - 4f
+                input.left = h.cx > mid + 4f
+                input.jump = held > 0f
+                held -= dt
+                game.update(dt)
+                input.left = false
+                return
+            }
+            botPlatJump = false
+            if (plat.carries(h)) {
+                held -= dt
+                if (plat.x >= plat.startX + MovingPlatform.RANGE - 4f && held <= 0f) held = 0.3f
+                input.right = held > 0f || h.cx < plat.x + plat.w / 2 - 6f
+                input.left = held <= 0f && h.cx > plat.x + plat.w / 2 + 6f
+                input.jump = held > 0.15f
+                game.update(dt)
+                input.left = false
+                return
+            }
+            if (h.onGround && gap && h.cx < plat.startX) {
+                if (plat.x <= plat.startX + 6f && held <= 0f) { held = 0.3f; botPlatJump = true }
+                input.right = held > 0f
+                input.jump = held > 0f
+                held -= dt
+                game.update(dt)
+                return
+            }
         }
         if (h.onGround && (wall || gap) && held <= 0f) held = 0.45f
         input.right = true
@@ -1062,6 +1098,81 @@ class TeamGameTest {
         assertTrue(ground - top > 90f, "ring planet jump: ${ground - top}")
     }
 
+    @Test fun movingPlatformsAndParkour() {
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 240 * 3, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f))
+            ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        // Lots of levels have moving platforms and lifts now.
+        val withPlats = Levels.all.count { d -> d.rows.any { '-' in it } }
+        val withLifts = Levels.all.count { d -> d.rows.any { '\\' in it } }
+        assertTrue(withPlats >= 40, "levels with moving platforms: $withPlats")
+        assertTrue(withLifts >= 10, "levels with lifts: $withLifts")
+        // Stand on a platform: it carries Rocco across the gap.
+        val idx = Levels.all.indexOfFirst { d -> d.rows.any { '-' in it } }
+        startPlaying(idx)
+        game.foes.clear()
+        val p = game.level.platforms.first { !it.vertical }
+        val r = game.rocco
+        r.x = p.x + 16f; r.y = p.y - r.h - 4f; r.vy = 0f
+        run(0.2f) { game.hurtProof() }
+        assertTrue(p.carries(r), "landed on the platform")
+        val x0 = r.x
+        run(1.5f) { game.hurtProof() }
+        assertTrue(p.carries(r), "still riding")
+        assertTrue(kotlin.math.abs(r.x - x0) > 20f, "carried along: ${r.x - x0}")
+        game.centerCamForTest()
+        shot("moving-platform")
+        // WALL JUMP: slide down the tall wall in Rex Krag's arena, then kick off it.
+        startPlaying(Levels.all.indexOfFirst { it.name == "REX KRAG" })
+        game.foes.clear()
+        val wallX = 170 * TILE.toFloat()
+        r.x = wallX - r.w - 2f; r.y = 100f; r.vy = 0f
+        input.right = true
+        run(0.3f) { game.hurtProof() }
+        assertEquals(1, r.wallSlide, "sliding down the wall")
+        assertTrue(r.vy <= 120f, "sliding slowly: ${r.vy}")
+        game.centerCamForTest()
+        shot("parkour-wall-slide")
+        input.jump = true; game.update(dt); input.jump = false
+        input.right = false
+        game.update(dt)
+        assertTrue(r.vx < -100f && r.vy < 0f, "kicked off the wall: ${r.vx}, ${r.vy}")
+        run(0.1f) { game.hurtProof() }
+        game.centerCamForTest()
+        shot("parkour-wall-jump")
+        // VAULT over a one-block step while running.
+        val (vl, vx) = Levels.all.indices.asSequence().mapNotNull { i ->
+            val rows = Levels.all[i].rows
+            (2 until rows[12].length - 2).firstOrNull { x -> rows[12][x] == 'X' && rows[11][x] == '.' && rows[12][x - 1] == '.' && rows[13][x - 1] == '#' }
+                ?.let { i to it }
+        }.first()
+        startPlaying(vl)
+        game.foes.clear()
+        r.x = (vx - 4) * TILE.toFloat(); r.y = 13 * TILE - r.h - 1f; r.vy = 0f
+        var vaulted = false
+        input.right = true
+        run(1.2f) { game.hurtProof(); if (r.vaultT > 0f) vaulted = true }
+        input.right = false
+        assertTrue(vaulted, "vaulted over the step")
+        assertTrue(r.x > vx * TILE, "got up and over it: ${r.x / TILE} vs $vx")
+        // Running jumps: every third one is a FLIP.
+        startPlaying(0)
+        game.foes.clear()
+        var flips = 0
+        input.right = true; input.run = true
+        repeat(3) {
+            run(0.3f) { game.hurtProof() }
+            input.jump = true; game.update(dt); input.jump = false
+            if (r.flipT > 0f) flips++
+            run(0.3f) { game.hurtProof() }
+        }
+        input.right = false; input.run = false
+        assertTrue(flips >= 1, "a running front flip")
+    }
+
     @Test fun pokemonEvolveAndSwitchBack() {
         startPlaying()
         game.coins = 100
@@ -1642,6 +1753,9 @@ class TeamGameTest {
         assertTrue(long > 90f, "long jump distance: $long")
         // Crouch + jump while moving is a long jump too, like in Mario 64.
         run(0.6f) { input.right = true }
+        // (Running might VAULT over a little block: wait until Rocco is back on the ground.)
+        var w = 0
+        while ((!r.onGround || r.vaultCool > 0.3f) && w++ < 120) { input.right = true; game.update(dt) }
         input.down = true; game.update(dt)
         input.jump = true; game.update(dt); input.jump = false; input.down = false; input.right = false
         assertTrue(r.longJumping, "crouch + jump = long jump")
