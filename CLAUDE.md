@@ -199,7 +199,9 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
 
 ## Team Up! Paper 3D (`teamup-paper/`, Godot 4.5.1)
 
-A separate 3D paper-cutout version (one level so far: 1-1 Meadow Mine). See `teamup-paper/README.md`.
+A separate 3D version (one level so far: 1-1 Meadow Mine) with two looks, 3D TOYS (default, `scripts/toys.gd`)
+and PAPER cutouts, switched on the title screen. It updates itself (UPDATE! button, `scripts/updater.gd`).
+See `teamup-paper/README.md`. Run the robot test in both looks (`-- paper`, `-- toy`).
 Characters are original designs (drawn by `tools/gen_art.py`), not copies of the real-game characters.
 Builds with `.github/workflows/teamup-paper.yml` to the `teamup-paper-latest` release (`TeamUpPaper.apk`,
 package `com.roccoquest.teamup.paper`). Run the robot test before pushing:

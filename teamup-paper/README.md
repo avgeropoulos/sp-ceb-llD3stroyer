@@ -1,7 +1,14 @@
-# Team Up! Paper 3D (Godot)
+# Team Up! 3D (Godot) — 3D TOYS and PAPER looks
 
-A 3D, paper-cutout version of **Rocco & Blocky: Team Up!**, built with Godot 4.5 (Mobile renderer).
-The characters are flat stickers standing in a world of real 3D blocks, like a pop-up book.
+A 3D version of **Rocco & Blocky: Team Up!**, built with Godot 4.5 (Mobile renderer), in two looks
+you switch with the **LOOK** buttons on the title screen (remembered in `user://look.cfg`, `scripts/look.gd`):
+
+* **3D TOYS** (the default): chunky 3D models built from shapes in `scripts/toys.gd` (cartoon shading,
+  dark outlines, hand-written walk / jump / mine / slam animations, 3D trees, coins, flags and shots).
+* **PAPER**: flat sticker cutouts standing in the world of real 3D blocks, like a pop-up book.
+
+Both looks run exactly the same game code; only the pictures change (`Actor.model` vs `Actor.sprite`,
+`Level.prop()` builds a toy or a paper prop).
 
 ## The level: 1-1 Meadow Mine
 
@@ -47,5 +54,8 @@ Builds made on a computer (version 0) never check. Test: `godot --headless --pat
 * `scripts/hud.gd`: hearts/ores/boss bar, title and clear screens, multi-touch controls.
 * `tools/gen_art.py` draws every sticker and block texture (`python3 tools/gen_art.py`);
   `tools/gen_sfx.py` makes the sound effects. Characters are our own designs.
-* Test: `godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/smoke.gd` (a robot plays the level).
-  `tests/shot.gd` saves screenshots (needs a display or xvfb).
+* Test: `godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/smoke.gd -- toy` (or `-- paper`):
+  a robot plays the level. `tests/shot.gd -- <dir> toy` saves screenshots. For screenshots that match the tablet,
+  use the real Mobile renderer with a software Vulkan driver (`apt-get install mesa-vulkan-drivers`, then
+  `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json xvfb-run godot --rendering-driver vulkan --rendering-method mobile ...`);
+  the OpenGL preview hides lighting mistakes (the sun once lit everything from behind and only Vulkan showed it).

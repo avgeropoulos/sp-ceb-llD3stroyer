@@ -29,7 +29,7 @@ func init(lv: Level, w: String, stats: Dictionary) -> void:
 		"sparky":
 			f = {"idle": ["sparky_idle"], "run": ["sparky_run1", "sparky_run2"], "jump": ["sparky_jump"], "fall": ["sparky_jump"],
 				"zap": ["sparky_zap"], "hurt": ["sparky_zap"], "win": ["sparky_jump"]}
-	setup(lv, f, stats.size, stats.feet)
+	setup(lv, f, stats.size, stats.feet, w)
 	speed = stats.speed
 	jump_v = stats.jump
 	hw = stats.hw

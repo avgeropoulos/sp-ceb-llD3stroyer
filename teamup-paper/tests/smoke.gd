@@ -10,6 +10,10 @@ var failed := ""
 
 
 func _initialize() -> void:
+	var a := OS.get_cmdline_user_args()
+	Look.loaded = true
+	Look.toy = a.has("toy")
+	print("look: ", "3D toys" if Look.toy else "paper")
 	main = load("res://main.tscn").instantiate()
 	root.add_child(main)
 

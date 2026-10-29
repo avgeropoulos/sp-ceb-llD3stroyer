@@ -22,13 +22,13 @@ func init(lv: Level, k: String, pos: Vector3) -> void:
 	home = pos
 	match k:
 		"grumbler":
-			setup(lv, {"walk": ["grumbler_1", "grumbler_2"], "flat": ["grumbler_flat"]}, 1.2, 16)
+			setup(lv, {"walk": ["grumbler_1", "grumbler_2"], "flat": ["grumbler_flat"]}, 1.2, 16, k)
 			hw = 0.42; height = 0.95; hp = 3
 		"skelly":
-			setup(lv, {"walk": ["skelly_1", "skelly_2"], "aim": ["skelly_aim"]}, 1.9, 21)
+			setup(lv, {"walk": ["skelly_1", "skelly_2"], "aim": ["skelly_aim"]}, 1.9, 21, k)
 			hw = 0.3; height = 1.5; hp = 4
 		"kragjr":
-			setup(lv, {"fly": ["kragjr_1", "kragjr_2"], "angry": ["kragjr_angry"], "hurt": ["kragjr_hurt"]}, 2.6, 46)
+			setup(lv, {"fly": ["kragjr_1", "kragjr_2"], "angry": ["kragjr_angry"], "hurt": ["kragjr_hurt"]}, 2.6, 46, k)
 			hw = 0.95; height = 1.7; hp = 18; is_boss = true; state = "sleep"
 	max_hp = hp
 	position = pos

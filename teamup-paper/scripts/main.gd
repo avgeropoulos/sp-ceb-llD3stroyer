@@ -66,6 +66,7 @@ var voice_en := ""
 
 
 func _ready() -> void:
+	Look.load_choice()
 	_setup_input()
 	_setup_world()
 	level = Level.new()
@@ -90,10 +91,10 @@ func _ready() -> void:
 		if s.kind == "kragjr":
 			boss = f
 	for p in level.coin_spots:
-		var c := level.paper("coin", p - Vector3(0, 0.35, 0), 0.7)
+		var c := level.prop("coin", p - Vector3(0, 0.35, 0), 0.7)
 		coin_nodes.append(c)
-	level.paper("flag", Vector3(Level.CHECKPOINT_X, 5, 3.9), 3.2)
-	level.paper("flag", Vector3(Level.FLAG_X, 5, 3.9), 4.6)
+	level.prop("flag", Vector3(Level.CHECKPOINT_X, 5, 3.9), 3.2)
+	level.prop("flag", Vector3(Level.FLAG_X, 5, 3.9), 4.6)
 	var hl := CanvasLayer.new()
 	add_child(hl)
 	hud = Hud.new()
@@ -139,8 +140,9 @@ func _setup_world() -> void:
 	sm.sun_angle_max = 20
 	sky.sky_material = sm
 	env.sky = sky
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.45
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color("dce8f5")
+	env.ambient_light_energy = 0.55
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.tonemap_exposure = 1.0
 	env.tonemap_white = 6.0
@@ -157,7 +159,7 @@ func _setup_world() -> void:
 	we.environment = env
 	add_child(we)
 	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-52, -28, 0)
+	sun.rotation_degrees = Vector3(-50, 152, 0)   # from above and behind the camera, a bit to the left
 	sun.light_color = Color("fff1d6")
 	sun.light_energy = 1.0
 	sun.shadow_enabled = true
@@ -318,6 +320,13 @@ func on_tap() -> void:
 				get_tree().reload_current_scene()
 
 
+## PAPER <-> 3D TOYS (title screen). Rebuilds everything in the other look.
+func toggle_look() -> void:
+	Look.toy = not Look.toy
+	Look.save_choice()
+	get_tree().reload_current_scene()
+
+
 func start_game() -> void:
 	state = "play"
 	play_t = 0
@@ -336,6 +345,8 @@ func _physics_process(dt: float) -> void:
 			h.update_shadow()
 		if Input.is_key_pressed(KEY_U):
 			updater.download()
+		elif Input.is_action_just_pressed("swap"):
+			toggle_look()
 		elif jump_pressed or action_pressed:
 			start_game()
 		_update_camera(dt)
@@ -589,21 +600,25 @@ func _open_mystery(c: Vector3i) -> void:
 	if hearts < MAX_HEARTS and randf() < 0.4:
 		hearts += 1
 		sfx("heart")
-		var h := level.paper("heart", top, 0.8)
+		var h := level.prop("heart", top, 0.8)
 		_pop_away(h)
 		fx.text(top + Vector3(0, 0.6, 0.6), "+1 HEART", Color("ff8fa6"), 52)
 	else:
 		coins += 3
 		sfx("item")
-		var cn := level.paper("coin", top, 0.8)
+		var cn := level.prop("coin", top, 0.8)
 		_pop_away(cn)
 		fx.text(top + Vector3(0, 0.6, 0.6), "+3", Color("ffd23a"), 56)
 
 
-func _pop_away(s: Sprite3D) -> void:
+func _pop_away(s: Node3D) -> void:
 	var tw := create_tween()
 	tw.tween_property(s, "position", s.position + Vector3(0, 1.4, 0), 0.35).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
-	tw.tween_property(s, "modulate:a", 0.0, 0.25)
+	if s is Sprite3D:
+		tw.tween_property(s, "modulate:a", 0.0, 0.25)
+	else:
+		tw.parallel().tween_property(s, "rotation:y", TAU * 2, 0.35)
+		tw.tween_property(s, "scale", Vector3.ONE * 0.01, 0.2)
 	tw.tween_callback(s.queue_free)
 
 
@@ -723,16 +738,23 @@ func _update_foes(dt: float) -> void:
 
 func spawn_shot(kind: String, pos: Vector3, v: Vector3, owner: Node3D) -> void:
 	var size := {"spark": 0.55, "arrow": 0.32, "spikeball": 0.8}[kind] as float
-	var s := level.paper({"spark": "spark", "arrow": "arrow", "spikeball": "spikeball"}[kind], pos - Vector3(0, size * 0.5, 0), size)
+	var s := level.prop({"spark": "spark", "arrow": "arrow", "spikeball": "spikeball"}[kind], pos - Vector3(0, size * 0.5, 0), size)
+	if not (s is Sprite3D):   # 3D shots: put the node's origin at the shot's middle, like the paper ones
+		s.position = pos
+		for ch in s.get_children():
+			ch.position.y -= size * 0.5
 	if kind == "arrow":
-		s.flip_h = v.x < 0
+		if s is Sprite3D:
+			s.flip_h = v.x < 0
+		else:
+			s.look_at(s.global_position - v, Vector3.UP)
 	shots.append({"node": s, "vel": v, "kind": kind, "owner": owner, "life": 5.0 if kind == "spikeball" else 2.0, "bounces": 0})
 
 
 func _update_shots(dt: float) -> void:
 	var l := leader()
 	for sh in shots.duplicate():
-		var s: Sprite3D = sh.node
+		var s: Node3D = sh.node
 		sh.life -= dt
 		var gone: bool = sh.life <= 0
 		var v: Vector3 = sh.vel
@@ -782,10 +804,14 @@ func _update_coins(dt: float) -> void:
 	var t := play_t
 	var people := [leader(), follower()]
 	for i in range(coin_nodes.size() - 1, -1, -1):
-		var c: Sprite3D = coin_nodes[i]
-		c.scale.x = cos(t * 3.5 + i * 0.7)
+		var c: Node3D = coin_nodes[i]
+		if c is Sprite3D:
+			c.scale.x = cos(t * 3.5 + i * 0.7)
+		else:
+			c.rotation.y = t * 3.0 + i * 0.7
 		for p in people:
-			if c.position.distance_to(p.position + Vector3(0, p.height * 0.5, 0)) < 0.9:
+			var cc: Vector3 = c.position if c is Sprite3D else c.position + Vector3(0, 0.35, 0)
+			if cc.distance_to(p.position + Vector3(0, p.height * 0.5, 0)) < 0.9:
 				coins += 1
 				sfx("coin", -3)
 				fx.burst(c.position, Color("ffd23a"), 5, 2.5, 6)
@@ -887,7 +913,7 @@ func _update_progress(dt: float) -> void:
 
 
 func _dennis() -> void:
-	var d := level.paper("dennis", Vector3(-1, 5, 8.8), 1.0)
+	var d := level.prop("dennis", Vector3(-1, 5, 8.8), 1.0)
 	var tw := create_tween()
 	tw.tween_property(d, "position:x", 10.0, 1.4)
 	tw.tween_callback(func():

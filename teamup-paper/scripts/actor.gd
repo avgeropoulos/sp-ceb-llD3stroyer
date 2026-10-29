@@ -30,12 +30,13 @@ var squash := Vector2.ONE   # stretch/squash of the cutout (x, y)
 var turn := 1.0             # -1..1: the paper flips around when you change direction
 var turn_to := 1.0
 var spin_t := 0.0
+var model: Node3D          # the 3D toy (when Look.toy), else null
 
 static var _shadow_mesh: QuadMesh
 static var _shadow_mat: StandardMaterial3D
 
 
-func setup(lv: Level, tex_names: Dictionary, size: float, feet_px: float = 18.0) -> void:
+func setup(lv: Level, tex_names: Dictionary, size: float, feet_px: float = 18.0, toy_kind: String = "") -> void:
 	level = lv
 	sprite_h = size
 	for k in tex_names:
@@ -54,6 +55,10 @@ func setup(lv: Level, tex_names: Dictionary, size: float, feet_px: float = 18.0)
 	sprite.pixel_size = size / first.get_height()
 	sprite.position.y = (first.get_height() * 0.5 - feet_px) * sprite.pixel_size
 	add_child(sprite)
+	if Look.toy and toy_kind != "":
+		model = Toys.build(toy_kind)
+		add_child(model)
+		sprite.visible = false
 	if _shadow_mesh == null:
 		_shadow_mesh = QuadMesh.new()
 		_shadow_mesh.size = Vector2(1, 1)
@@ -98,6 +103,15 @@ func play(name: String) -> void:
 
 func animate(dt: float, fps: float = 8.0) -> void:
 	anim_t += dt
+	if model:
+		if absf(facing.x) > 0.2:
+			turn_to = -1.0 if facing.x < 0 else 1.0
+		if spin_t > 0:
+			spin_t -= dt
+		if flash_t > 0:
+			flash_t -= dt
+		Toys.pose(self, dt)
+		return
 	if not frames.has(anim):
 		return
 	var list: Array = frames[anim]

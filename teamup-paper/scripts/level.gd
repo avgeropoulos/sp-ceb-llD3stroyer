@@ -291,7 +291,23 @@ func _process(_dt: float) -> void:
 		rebuild()
 
 
-# ------------------------------------------------------------------ paper scenery
+# ------------------------------------------------------------------ scenery
+const TOY_PROPS := ["tree_a", "tree_b", "tree_c", "bush", "flower_pink", "flower_blue", "flower_white", "cloud",
+	"hill_a", "hill_b", "hill_c", "coin", "heart", "flag", "sign", "spark", "arrow", "spikeball", "dennis"]
+
+
+## A prop standing with its bottom at pos: a 3D toy in the toy look, else a paper cutout.
+func prop(tex_name: String, pos: Vector3, size: float, shadow := false, flip := false) -> Node3D:
+	if Look.toy and tex_name in TOY_PROPS:
+		var t := Toys.prop(tex_name, size)
+		t.position = pos
+		if flip:
+			t.rotation.y = PI
+		add_child(t)
+		return t
+	return paper(tex_name, pos, size, shadow, flip)
+
+
 func paper(tex_name: String, pos: Vector3, size: float, shadow := false, flip := false) -> Sprite3D:
 	var s := Sprite3D.new()
 	s.texture = load("res://art/" + tex_name + ".png")
@@ -313,27 +329,29 @@ func _scenery() -> void:
 	while x < LX - 2:
 		var cx := int(x)
 		if solid(cx, heights[cx] - 1, 1):
-			paper(trees[rng.randi() % 3], Vector3(x, heights[cx], rng.randf_range(0.8, 2.2)), rng.randf_range(3.2, 4.4), true, rng.randf() < 0.5)
+			prop(trees[rng.randi() % 3], Vector3(x, heights[cx], rng.randf_range(0.8, 2.2)), rng.randf_range(3.2, 4.4), true, rng.randf() < 0.5)
 		x += rng.randf_range(3.0, 7.0)
 	x = 1.0
 	while x < LX - 1:
 		var cx := int(x)
 		if solid(cx, heights[cx] - 1, 2):
 			var what: String = ["bush", "flower_pink", "flower_blue", "flower_white", "flower_pink"][rng.randi() % 5]
-			paper(what, Vector3(x, heights[cx], rng.randf_range(2.1, 2.9)), 0.8 if what == "bush" else 0.6)
+			prop(what, Vector3(x, heights[cx], rng.randf_range(2.1, 2.9)), 0.8 if what == "bush" else 0.6)
 		x += rng.randf_range(1.2, 3.0)
 	# far hills and clouds (they're big and far so they move slowly: parallax for free)
 	var hx := -20.0
 	while hx < LX + 40:
 		var h: String = ["hill_a", "hill_b", "hill_c"][rng.randi() % 3]
-		var hs := paper(h, Vector3(hx, -2, rng.randf_range(-34, -22)), rng.randf_range(9, 16))
-		hs.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+		var hs := prop(h, Vector3(hx, -2, rng.randf_range(-34, -22)), rng.randf_range(9, 16))
+		if hs is Sprite3D:
+			hs.billboard = BaseMaterial3D.BILLBOARD_DISABLED
 		hx += rng.randf_range(10, 18)
 	for i in 34:
-		var c := paper("cloud", Vector3(rng.randf_range(-20, LX + 30), rng.randf_range(13, 20), rng.randf_range(-30, -10)), rng.randf_range(2.5, 4.5))
-		c.modulate = Color(1, 1, 1, 0.95)
+		var c := prop("cloud", Vector3(rng.randf_range(-20, LX + 30), rng.randf_range(13, 20), rng.randf_range(-30, -10)), rng.randf_range(2.5, 4.5))
+		if c is Sprite3D:
+			c.modulate = Color(1, 1, 1, 0.95)
 	for s in signs:
-		var board := paper("sign", s[0], 2.3)
+		var board := prop("sign", s[0], 2.3)
 		var label := Label3D.new()
 		label.text = s[1]
 		label.font_size = 34
@@ -342,6 +360,9 @@ func _scenery() -> void:
 		label.modulate = Color("4a2c14")
 		label.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
 		label.position = board.position + Vector3(0, 0.43, 0.03)
+		if Look.toy:
+			label.position = s[0] + Vector3(0, 1.36, 0.07)
+			label.billboard = BaseMaterial3D.BILLBOARD_DISABLED
 		label.width = 320
 		label.no_depth_test = false
 		add_child(label)

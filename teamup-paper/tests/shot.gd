@@ -26,6 +26,10 @@ func _initialize() -> void:
 	var args := OS.get_cmdline_user_args()
 	if args.size() > 0:
 		out = args[0]
+	var a := OS.get_cmdline_user_args()
+	Look.loaded = true
+	Look.toy = a.has("toy")
+	print("look: ", "3D toys" if Look.toy else "paper")
 	main = load("res://main.tscn").instantiate()
 	root.add_child(main)
 	main.invincible = true
