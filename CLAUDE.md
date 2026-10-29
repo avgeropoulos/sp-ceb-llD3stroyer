@@ -196,3 +196,11 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
   `thirdPerson` camera (`ex/ey/ez` behind Rocco; all face culling uses the camera, not the player) draws Rocco with
   `spriteRotated`. `Mover`s (palette slot `MOVER_SLOT`, saved as `<area>mvn`/`<area>mv_<i>`) slide 3 blocks and carry you.
 
+
+## Team Up! Paper 3D (`teamup-paper/`, Godot 4.5.1)
+
+A separate 3D paper-cutout version (one level so far: 1-1 Meadow Mine). See `teamup-paper/README.md`.
+Characters are original designs (drawn by `tools/gen_art.py`), not copies of the real-game characters.
+Builds with `.github/workflows/teamup-paper.yml` to the `teamup-paper-latest` release (`TeamUpPaper.apk`,
+package `com.roccoquest.teamup.paper`). Run the robot test before pushing:
+`godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/smoke.gd`.

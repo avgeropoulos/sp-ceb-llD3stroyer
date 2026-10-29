@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="24" fill="#5fb0ef"/>
+  <rect x="0" y="86" width="128" height="42" fill="#96643f"/>
+  <rect x="0" y="80" width="128" height="12" fill="#60be50"/>
+  <rect x="16" y="56" width="26" height="26" fill="#2cbec8" stroke="#2b2233" stroke-width="3"/>
+  <text x="29" y="76" font-family="sans-serif" font-weight="bold" font-size="20" fill="#fff" text-anchor="middle">?</text>
+  <circle cx="84" cy="56" r="22" fill="#ffd83b" stroke="#2b2233" stroke-width="4"/>
+  <circle cx="90" cy="51" r="4" fill="#1e2a44"/>
+  <circle cx="99" cy="51" r="3.5" fill="#1e2a44"/>
+  <polyline points="72,62 77,58 82,63 87,58 92,63" fill="none" stroke="#54c8ff" stroke-width="4"/>
+  <line x1="80" y1="36" x2="74" y2="22" stroke="#2b2233" stroke-width="3"/>
+  <line x1="88" y1="36" x2="94" y2="22" stroke="#2b2233" stroke-width="3"/>
+  <circle cx="74" cy="21" r="5" fill="#54c8ff" stroke="#2b2233" stroke-width="2"/>
+  <circle cx="94" cy="21" r="5" fill="#54c8ff" stroke="#2b2233" stroke-width="2"/>
+</svg>

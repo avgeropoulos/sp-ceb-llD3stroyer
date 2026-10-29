@@ -1,0 +1,44 @@
+# Team Up! Paper 3D (Godot)
+
+A 3D, paper-cutout version of **Rocco & Blocky: Team Up!**, built with Godot 4.5 (Mobile renderer).
+The characters are flat stickers standing in a world of real 3D blocks, like a pop-up book.
+
+## The level: 1-1 Meadow Mine
+
+* **One hero at a time**, like the real game: Rocco **or** Blocky is out, with **Sparky**.
+  **SWAP** goes Rocco → Blocky → Sparky → Rocco (the button shows who's next).
+* **Rocco** jumps high and has a **double jump**. ACTION is a **LONG JUMP** on the ground and a
+  **BUTT SLAM** in the air (it breaks the block under him and knocks over bad guys nearby).
+  Jumping up into a **? block** bonks it open.
+* **Blocky** swings his pickaxe (**MINE**): the block in front, or the one under him if nothing's in front.
+  Stone takes 2 hits, iron and gold 3, diamond 4. Bedrock never breaks. A wall early on is there for Blocky.
+* **Sparky** is fast and jumps highest. As the helper he zaps a nearby bad guy every few seconds;
+  played himself, ACTION is **ZAP**. **SUPER** fills up over 25 seconds: **Thunderbolt** hits everything nearby.
+* Bad guys: **Grumblers** (stomp them), **Skelly Archers** (they flash a red **!** and shoot), and
+  **Krag Jr.** in his hover-pot at the end. He drops spike balls and swoops down: stomp him when he's low.
+* 5 hearts. Run out and you go back to the checkpoint with full hearts. Falling in a pit costs one heart.
+* Dennis the dog shows you the way. Rocco talks with the phone's Italian voice.
+* The music is the real Team Up! songs (rendered from `core/` Songs.kt).
+
+## Controls
+
+Touch: thumb stick on the left (anywhere on the left half), JUMP / ACTION / SWAP / SUPER on the right, II pauses.
+Keyboard: arrows/WASD, Space jump, X action, C swap, V super, Esc pause. Controller: stick, A jump, B action,
+X swap, Y super, Start pause.
+
+## Install
+
+Every push that changes `teamup-paper/` builds a signed APK (`.github/workflows/teamup-paper.yml`):
+https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/download/teamup-paper-latest/TeamUpPaper.apk
+It's a separate app (`com.roccoquest.teamup.paper`), so it sits next to Team Up!.
+
+## Making changes
+
+* `scripts/level.gd`: the block world (grid, mining, the level layout in `generate()`, scenery).
+* `scripts/main.gd`: the team, SWAP, moves, SUPER, coins, the boss fight, camera, sound.
+* `scripts/foes.gd`: Grumbler, Skelly Archer, Krag Jr.
+* `scripts/hud.gd`: hearts/ores/boss bar, title and clear screens, multi-touch controls.
+* `tools/gen_art.py` draws every sticker and block texture (`python3 tools/gen_art.py`);
+  `tools/gen_sfx.py` makes the sound effects. Characters are our own designs.
+* Test: `godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/smoke.gd` (a robot plays the level).
+  `tests/shot.gd` saves screenshots (needs a display or xvfb).
