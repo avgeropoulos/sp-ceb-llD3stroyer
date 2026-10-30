@@ -80,6 +80,7 @@ func _layout() -> void:
 			buttons = {"jump": jump, "place": act, "done": sw, "remove": sup, "pause": pz, "fly": fly}
 			if game.home.mode == "decor":
 				buttons["rotate"] = [Vector2(s.x - 445 * u, s.y - 175 * u), 46 * u]
+				buttons["paint"] = [Vector2(s.x - 445 * u, s.y - 290 * u), 46 * u]
 		if game.flying:
 			buttons["down"] = [Vector2(s.x - 445 * u, s.y - 70 * u), 52 * u]
 	else:
@@ -310,13 +311,14 @@ func _draw_controls() -> void:
 	draw_circle(base + stick * r, r * 0.55, Color("ffd6a8") if game.sprinting else Color(1, 1, 1, 0.75))
 	# buttons
 	var labels := {"jump": "JUMP", "action": game.action_label(), "swap": "SWAP", "super": "SUPER", "pause": "II",
-		"build": "BUILD", "decor": "DECOR", "partner": "PARTNER", "place": "PLACE", "remove": "REMOVE", "done": "DONE", "rotate": "TURN", "land": "LAND",
+		"build": "BUILD", "decor": "DECOR", "partner": "PARTNER", "place": "PLACE", "remove": "REMOVE", "done": "DONE", "rotate": "TURN", "land": "LAND", "paint": "PAINT",
 		"fly": "LAND" if game.flying else "FLY", "down": "DOWN"}
 	if game.flying:
 		labels["jump"] = "UP"
 	var colors := {"jump": Color("3fc06a"), "action": Color("ff8a1f"), "swap": Color("6a7cff"), "super": Color("ffcf33"), "pause": Color(0.2, 0.25, 0.4),
 		"build": Color("ff8a1f"), "decor": Color("ff6fa8"), "partner": Color("2cbec8"), "place": Color("3fc06a"), "remove": Color("e8413b"),
 		"done": Color("3f7fd9"), "rotate": Color("8a5bc4"), "land": Color("3fc06a"),
+		"paint": Decor.PAINTS[game.home.paint] if game.home and game.home.paint > 0 else Color("ff6fa8"),
 		"fly": Color("ffb020") if game.flying else Color("54c8ff"), "down": Color("3f7fd9")}
 	for k in buttons:
 		var c: Vector2 = buttons[k][0]
@@ -384,15 +386,49 @@ static func _tex_name(t: int) -> String:
 
 func _pal_rect(i: int, n: int) -> Rect2:
 	var x0 := 560.0
-	var per := maxi(1, int((size.x - 110 - x0) / (PAL_BOX + PAL_GAP)))
-	per = maxi(per, int(ceil(n / 3.0)))   # never more than 3 rows
+	var room := size.x - 110 - x0
+	var per := maxi(1, int(room / (PAL_BOX + PAL_GAP)))
+	per = maxi(per, int(ceil(n / 3.0)))   # never more than 3 rows: the boxes get a bit smaller instead
+	var bx := minf(PAL_BOX, room / per - PAL_GAP)
 	var row := i / per
 	var col := i % per
-	return Rect2(x0 + col * (PAL_BOX + PAL_GAP), 12 + row * (PAL_BOX + PAL_GAP), PAL_BOX, PAL_BOX)
+	return Rect2(x0 + col * (bx + PAL_GAP), 12 + row * (bx + PAL_GAP), bx, bx)
+
+
+## DECOR mode: the paint pots under the decorations (0 = the item's own colours).
+const SWATCH := 34.0
+
+
+func _swatch_rect(i: int) -> Rect2:
+	var n := _pal_items().size()
+	var y := _pal_rect(n - 1, n).end.y + 12
+	return Rect2(560 + i * (SWATCH + 10), y, SWATCH, SWATCH)
+
+
+func _draw_swatches() -> void:
+	var h = game.home
+	for i in Decor.PAINTS.size():
+		var r := _swatch_rect(i)
+		var c := r.get_center()
+		if h.paint == i:
+			draw_circle(c, SWATCH * 0.5 + 6, Color("ffd23a"))
+		draw_circle(c, SWATCH * 0.5 + 2, Color(0.1, 0.12, 0.25, 0.8))
+		if i == 0:   # its own colours: a little rainbow
+			var cols := [Color("e8413b"), Color("ffd23a"), Color("4cb048"), Color("3f7fd9")]
+			for k in 4:
+				draw_arc(c, SWATCH * 0.3, k * TAU / 4, (k + 1) * TAU / 4, 10, cols[k], SWATCH * 0.36)
+		else:
+			draw_circle(c, SWATCH * 0.5, Decor.PAINTS[i])
 
 
 func _palette_tap(p: Vector2) -> bool:
 	var items := _pal_items()
+	if game.home.mode == "decor":
+		for i in Decor.PAINTS.size():
+			if _swatch_rect(i).grow(4).has_point(p):
+				game.home.paint = i
+				game.sfx("bonk", -10)
+				return true
 	for i in items.size():
 		if _pal_rect(i, items.size()).grow(4).has_point(p):
 			game.home.sel[game.home.mode] = i
@@ -425,11 +461,18 @@ func _draw_palette() -> void:
 		fit(items[i].icon, r.grow(-6))
 		if items[i].get("locked", false):
 			draw_rect(r, Color(0.1, 0.1, 0.2, 0.55))
-			txt("?", Vector2(r.position.x, r.position.y + 46), 36, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 6)
+			txt("?", Vector2(r.position.x, r.position.y + r.size.y * 0.7), 36, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 6)
 	# the chosen one: name and price, and why it can't go there
 	var it: Dictionary = items[h.sel[h.mode]]
 	var y := last.end.y + 34
-	txt("%s  -  %s" % [it.name, _cost_text(it.cost)], Vector2(560, y), 24, Color("fff2a8"), HORIZONTAL_ALIGNMENT_LEFT, -1, 7)
+	var name: String = it.name
+	if h.mode == "decor":
+		_draw_swatches()
+		y = _swatch_rect(0).end.y + 30
+		var id: String = Decor.ITEMS[h.sel.decor].id
+		if h.paint > 0 and Decor.paintable(id):
+			name = "%s %s" % [Decor.PAINT_NAMES[h.paint], name]
+	txt("%s  -  %s" % [name, _cost_text(it.cost)], Vector2(560, y), 24, Color("fff2a8"), HORIZONTAL_ALIGNMENT_LEFT, -1, 7)
 	txt("TAP to place   HOLD to break   DRAG to look around", Vector2(560, y + 28), 20, Color(1, 1, 1, 0.8), HORIZONTAL_ALIGNMENT_LEFT, -1, 6)
 	if not h.can_place and h.why != "" and h.has_under:
 		txt(h.why, Vector2(560, y + 56), 22, Color("ffb0a8"), HORIZONTAL_ALIGNMENT_LEFT, -1, 6)

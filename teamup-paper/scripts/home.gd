@@ -40,6 +40,7 @@ var game
 var level: Level
 var mode := ""               # "", "build", "decor"
 var sel := {"build": 0, "decor": 0}
+var paint := 0               # the paint colour for new decorations (Decor.PAINTS, 0 = their own colours)
 var decor := {}              # Vector3i -> {"id": String, "r": int, "node": Node3D}
 var edits := {}              # Vector3i -> block type, everything changed from the starting world
 var ghost: MeshInstance3D
@@ -297,7 +298,8 @@ func place() -> bool:
 		game.fx.burst(Vector3(target) + Vector3(0.5, 0.5, 0.5), Level.COLORS[BLOCKS[sel.build].t], 6, 2.5)
 		game.sfx("mine", -2)
 	else:
-		_put_decor(target, Decor.ITEMS[sel.decor].id, _auto_rot())
+		var id: String = Decor.ITEMS[sel.decor].id
+		_put_decor(target, id, _auto_rot(), paint if Decor.paintable(id) else 0)
 		game.fx.burst(Vector3(target) + Vector3(0.5, 0.4, 0.5), Color.WHITE, 8, 3, 4)
 		game.sfx("item", -4)
 	can_place = false   # aim again before the next one (no double blocks on one tap)
@@ -341,6 +343,24 @@ func rotate_front() -> void:
 		game.sfx("swap", -8)
 
 
+## PAINT: gives the decoration you point at the chosen colour (free).
+func paint_front() -> bool:
+	if not has_under or not decor.has(under) or not Decor.paintable(decor[under].id):
+		game.sfx("bonk", -4)
+		var p: Vector3 = Vector3(under) if has_under else game.leader().position
+		game.fx.text(p + Vector3(0.5, 1.6, 0.6), "Point at furniture to paint it", Color("ffb0a8"), 40, 1.0)
+		return false
+	var d: Dictionary = decor[under]
+	if int(d.get("col", 0)) == paint:
+		return false
+	d.node.queue_free()
+	_put_decor(under, d.id, int(d.r), paint)
+	var c: Color = Decor.PAINTS[paint] if paint > 0 else Color.WHITE
+	game.fx.burst(Vector3(under) + Vector3(0.5, 0.6, 0.5), c, 10, 3, 4)
+	game.sfx("item", -6)
+	return true
+
+
 ## New decorations face the hero (so you see the front of a bench or a bed).
 func _auto_rot() -> int:
 	var f: Vector3 = game.leader().facing
@@ -349,10 +369,17 @@ func _auto_rot() -> int:
 	return 2 if f.z > 0 else 0
 
 
-func _put_decor(c: Vector3i, id: String, r: int) -> void:
+func _put_decor(c: Vector3i, id: String, r: int, col := 0) -> void:
 	var n: Node3D
+	if col < 0 or col >= Decor.PAINTS.size() or not Decor.paintable(id):
+		col = 0
+	var h: float = Decor.find(id).get("h", 1.0)
 	if Look.toy:
 		n = Decor.model(id)
+		Decor.recolour(n, col)
+	elif col > 0 and ResourceLoader.exists("res://art/decor_%s_mask.png" % id):
+		n = Node3D.new()
+		n.add_child(_painted_picture(id, h, Decor.PAINTS[col]))
 	else:
 		var s := Sprite3D.new()
 		s.texture = load("res://art/decor_%s.png" % id)
@@ -360,7 +387,6 @@ func _put_decor(c: Vector3i, id: String, r: int) -> void:
 		s.shaded = false
 		s.alpha_cut = SpriteBase3D.ALPHA_CUT_OPAQUE_PREPASS
 		s.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-		var h := 2.6 if id in ["tree", "lamp"] else (1.4 if id in ["fountain", "mailbox", "trophy"] else 1.0)
 		s.pixel_size = h / s.texture.get_height()
 		s.position.y = h * 0.5
 		n = Node3D.new()
@@ -368,7 +394,53 @@ func _put_decor(c: Vector3i, id: String, r: int) -> void:
 	n.position = Vector3(c) + Vector3(0.5, 0, 0.5)
 	n.rotation.y = r * PI / 2 if Look.toy else 0.0
 	add_child(n)
-	decor[c] = {"id": id, "r": r, "node": n}
+	decor[c] = {"id": id, "r": r, "node": n, "col": col}
+
+
+static var _paint_shader: Shader
+
+
+## PAPER look: the decoration's picture with its paint parts coloured in (art/decor_<id>_mask.png
+## says which pixels are paint, and how shaded). A flat card that turns to face the camera.
+func _painted_picture(id: String, h: float, tint: Color) -> MeshInstance3D:
+	if _paint_shader == null:
+		_paint_shader = Shader.new()
+		_paint_shader.code = """
+shader_type spatial;
+render_mode unshaded, cull_disabled, depth_draw_opaque, shadows_disabled;
+uniform sampler2D tex : source_color, filter_linear_mipmap;
+uniform sampler2D mask : filter_linear_mipmap;
+uniform vec4 tint : source_color;
+void vertex() {
+	MODELVIEW_MATRIX = VIEW_MATRIX * mat4(vec4(normalize(cross(vec3(0.0, 1.0, 0.0), INV_VIEW_MATRIX[2].xyz)), 0.0),
+		vec4(0.0, 1.0, 0.0, 0.0), vec4(normalize(cross(INV_VIEW_MATRIX[0].xyz, vec3(0.0, 1.0, 0.0))), 0.0), MODEL_MATRIX[3]);
+	MODELVIEW_NORMAL_MATRIX = mat3(MODELVIEW_MATRIX);
+}
+void fragment() {
+	vec4 c = texture(tex, UV);
+	vec4 m = texture(mask, UV);
+	float shade = m.r;
+	float k = smoothstep(0.06, 0.16, shade) * step(0.5, m.a);
+	vec3 painted = tint.rgb * clamp(shade * 1.12, 0.0, 1.0) + vec3(0.04) * shade;
+	ALBEDO = mix(c.rgb, painted, k);
+	ALPHA = c.a;
+	ALPHA_SCISSOR_THRESHOLD = 0.5;
+}
+"""
+	var tex: Texture2D = load("res://art/decor_%s.png" % id)
+	var m := ShaderMaterial.new()
+	m.shader = _paint_shader
+	m.set_shader_parameter("tex", tex)
+	m.set_shader_parameter("mask", load("res://art/decor_%s_mask.png" % id))
+	m.set_shader_parameter("tint", tint)
+	var q := QuadMesh.new()
+	q.size = Vector2(h * tex.get_width() / tex.get_height(), h)
+	var mi := MeshInstance3D.new()
+	mi.mesh = q
+	mi.material_override = m
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.position.y = h * 0.5
+	return mi
 
 
 # ------------------------------------------------------------------ saving
@@ -379,7 +451,7 @@ func data() -> Dictionary:
 		blocks.append([c.x, c.y, c.z, edits[c]])
 	var ds := []
 	for c in decor:
-		ds.append([decor[c].id, c.x, c.y, c.z, decor[c].r])
+		ds.append([decor[c].id, c.x, c.y, c.z, decor[c].r, int(decor[c].get("col", 0))])
 	return {"v": 2, "blocks": blocks, "decor": ds}
 
 
@@ -401,8 +473,8 @@ func load_data(d: Dictionary) -> void:
 	if not edits.is_empty():
 		level.rebuild()
 	for e in d.get("decor", []):
-		if e is Array and e.size() == 5 and not Decor.find(String(e[0])).is_empty():
-			_put_decor(Vector3i(int(e[1]), int(e[2]), int(e[3])) + off, String(e[0]), int(e[4]))
+		if e is Array and e.size() >= 5 and not Decor.find(String(e[0])).is_empty():   # 6th = paint colour (newer saves)
+			_put_decor(Vector3i(int(e[1]), int(e[2]), int(e[3])) + off, String(e[0]), int(e[4]), int(e[5]) if e.size() > 5 else 0)
 
 
 ## A new home gets a mailbox and some flowers by the sign.

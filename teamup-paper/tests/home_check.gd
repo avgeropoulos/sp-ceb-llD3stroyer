@@ -45,6 +45,13 @@ func cell(x: int, y: int, z: int) -> int:
 	return g.level.get_cell(O3.x + x, y, O3.z + z)
 
 
+func _decor_index(id: String) -> int:
+	for i in Decor.ITEMS.size():
+		if Decor.ITEMS[i].id == id:
+			return i
+	return -1
+
+
 ## Aims straight down at a column of the (old) home area.
 func down_at(x: int, z: int) -> void:
 	g.home.aim_ray(O + Vector3(x + 0.5, 12, z + 0.5), Vector3.DOWN, g.leader())
@@ -148,12 +155,39 @@ func _process(_dt: float) -> bool:
 				g.home.has_under = true
 				check(not g.home.remove() and cell(27, 4, 5) == Level.GRASS, "can't dig out the ground under a decoration")
 				g.home.mode = "decor"
+				# PAINT: a blue bunk bed, then paint it red; a bush can't be painted
+				g.coins += 100
+				g.home.sel.decor = _decor_index("bed_bunk")
+				g.home.paint = 6   # blue
+				down_at(29, 5)
+				var bunk: Vector3i = g.home.target
+				check(g.home.place(), "placing a bunk bed failed (%s)" % g.home.why)
+				check(g.home.decor.has(bunk) and int(g.home.decor[bunk].col) == 6, "the bunk bed should be blue")
+				g.home.paint = 1   # red
+				down_at(29, 5)
+				check(g.home.under == bunk and g.home.paint_front(), "PAINT should repaint the bunk bed")
+				check(int(g.home.decor[bunk].col) == 1 and g.home.decor.size() == 6, "the bunk bed should now be red (and still one bed)")
+				g.home.sel.decor = 1   # bush: no paint
+				down_at(31, 5)
+				var bush: Vector3i = g.home.target
+				g.home.place()
+				check(int(g.home.decor[bush].col) == 0, "a bush keeps its own colours")
+				down_at(31, 5)
+				check(not g.home.paint_front(), "a bush can't be painted")
+				g.home.under = bush
+				g.home.remove()
+				g.home.paint = 0
 				placed = [cell(16, 5, 6), g.home.decor.size()]
 				g.taps = {"done": true}
 				g._step_home(1.0 / 60)
 				check(g.home.mode == "", "DONE should leave build mode")
 				var d := Saves.read(1)
-				check(d.get("home", {}).get("decor", []).size() == 5, "DONE should save the home (decor count %d)" % d.get("home", {}).get("decor", []).size())
+				check(d.get("home", {}).get("decor", []).size() == 6, "DONE should save the home (decor count %d)" % d.get("home", {}).get("decor", []).size())
+				var saved_col := -1
+				for e in d.get("home", {}).get("decor", []):
+					if e[0] == "bed_bunk":
+						saved_col = int(e[5])
+				check(saved_col == 1, "the save should keep the bunk bed's colour")
 				check(int(d.get("home", {}).get("v", 0)) == 2, "the home should be saved in the new way")
 				# the camera turns, and the stick follows the camera
 				g.cam_yaw = PI / 2
@@ -220,10 +254,10 @@ func _process(_dt: float) -> bool:
 			if ready_in("play"):
 				check(not g.level.is_home and g.slot == 1 and g.level.world == "meadow", "landing should start Meadow Mine with file 1")
 				check(g.heroes.mon.line == "fire", "the partner should come along")
-				check(g.home_saved.get("decor", []).size() == 5, "the home should be remembered during the level")
+				check(g.home_saved.get("decor", []).size() == 6, "the home should be remembered during the level")
 				g._pause("play")
 				g.pause_choice(1)
-				check(Saves.read(1).get("home", {}).get("decor", []).size() == 5, "SAVE in the level lost the home")
+				check(Saves.read(1).get("home", {}).get("decor", []).size() == 6, "SAVE in the level lost the home")
 				check(Saves.read(1).get("level", "") == "meadow", "a level save should say which world")
 				g.state = "play"
 				g.boss_done = true
@@ -246,7 +280,7 @@ func _process(_dt: float) -> bool:
 		6:
 			if ready_in("home"):
 				check(cell(16, 5, 6) == Level.PLANKS and cell(18, 4, 7) == Level.AIR, "the planks (and the hole) should still be there")
-				check(g.home.decor.size() == 5, "the decorations should still be there (%d)" % g.home.decor.size())
+				check(g.home.decor.size() == 6 and int(g.home.decor[O3 + Vector3i(29, 5, 5)].col) == 1, "the decorations (and the red bunk bed) should still be there (%d)" % g.home.decor.size())
 				check(g.cleared == 1, "clearing should count")
 				g.home.mode = "decor"
 				g.home.sel.decor = 17
@@ -263,6 +297,7 @@ func _process(_dt: float) -> bool:
 			if ready_in("home"):
 				check(cell(16, 5, 6) == Level.BRICK and cell(16, 6, 6) == Level.BRICK, "old blocks should move into the big home")
 				check(g.home.decor.has(O3 + Vector3i(20, 5, 5)), "old decorations should move too")
+				check(int(g.home.decor[O3 + Vector3i(20, 5, 5)].get("col", -1)) == 0, "an old decoration (no colour saved) keeps its own colours")
 				check(g.home.data().blocks.size() == 2, "only the changes are saved")
 				step = 8
 				wait = 3
