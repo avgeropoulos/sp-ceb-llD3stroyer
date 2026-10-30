@@ -938,6 +938,20 @@ func _warm_up() -> void:
 			var n := _shot_node(k, at, 0.3)
 			n.scale = Vector3.ONE * 0.05
 			warm_nodes.append(n)
+		var seen := {}
+		for sp in level.spawns:   # one of each of this world's newer bad guys (their models / pictures)
+			if sp.kind in Foe.FOES2 and not seen.has(sp.kind):
+				seen[sp.kind] = true
+				var wf := Foe.new()
+				level.add_child(wf)
+				wf.init(level, sp.kind, at)
+				wf.process_mode = Node.PROCESS_MODE_DISABLED
+				wf.shadow.queue_free()
+				if wf.chain_root:
+					wf.chain_root.queue_free()
+					wf.chain_root = null
+				wf.scale = Vector3.ONE * 0.05
+				warm_nodes.append(wf)
 		for h in heroes.values():
 			h.show_health()
 			h.bar.visible = true

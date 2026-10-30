@@ -480,6 +480,33 @@ const OPEN_S := 96
 const STAR_COINS := 40        # coins to collect for the COIN HUNT star
 
 
+## Who wanders about in each open world (picked in turn). New worlds: add a line here.
+const FOES_BY_WORLD := {
+	"meadow": ["grumbler", "buzzer", "hopper", "grumbler", "bomber", "skelly", "spiky", "buzzer"],
+	"frost": ["penguin", "roller", "boohoo", "penguin", "bomber", "skelly", "spiky", "roller"],
+	"dunes": ["scorpion", "mummy", "cactusman", "scorpion", "bomber", "skelly", "spiky", "mummy"],
+	"default": ["grumbler", "buzzer", "hopper", "bomber", "skelly", "spiky", "boohoo", "mummy"],
+}
+
+
+## The bad guys that live in one special spot: bats under the sky steps, a Chompy on
+## its post, and a BIG GRUMBLER guarding a ? block.
+func _special_foes(start: Vector2i) -> void:
+	for i in [2, 4]:
+		if i < step_tops.size():
+			var st: Vector3 = step_tops[i]
+			spawns.append({"kind": "bat", "pos": Vector3(st.x, st.y - 1.0 - 0.75, st.z)})
+	var c := _free_spot(8)
+	if c.x >= 0 and Vector2(c).distance_to(Vector2(start)) > 14:
+		spawns.append({"kind": "chompy", "pos": Vector3(c.x + 0.5, ground_at(c.x, c.y) + 0.01, c.y + 0.5)})
+	var b := _free_spot(10)
+	if b.x >= 0 and Vector2(b).distance_to(Vector2(start)) > 16:
+		var g := ground_at(b.x, b.y)
+		spawns.append({"kind": "biggrumbler", "pos": Vector3(b.x + 0.5, g + 0.01, b.y + 0.5)})
+		set_cell(b.x, g + 3, b.y + 2, MYSTERY)   # the ? block it guards
+		keep_out.append([Vector2(b), 5.0])
+
+
 func ground_at(x: int, z: int) -> int:
 	if x < 0 or z < 0 or x >= sx or z >= sz:
 		return 0
@@ -624,8 +651,9 @@ func generate_open(w: String) -> void:
 			var o := _free_spot(1)
 			if o.x >= 0:
 				prop(["bush", "flower_pink", "flower_blue", "flower_white"][i % 4], Vector3(o.x + 0.5, ground_at(o.x, o.y), o.y + 0.5), 0.8 if i % 4 == 0 else 0.6)
-	# bad guys wandering about
-	var kinds := ["grumbler", foe2, "grumbler", foe2, "skelly", foe2]
+	# bad guys wandering about (which ones depends on the world: FOES_BY_WORLD)
+	var kinds: Array = FOES_BY_WORLD.get(w, FOES_BY_WORLD["default"])
+	_special_foes(start)
 	for i in 16:
 		var o := _free_spot(6)
 		if o.x < 0 or Vector2(o).distance_to(Vector2(start)) < 14:

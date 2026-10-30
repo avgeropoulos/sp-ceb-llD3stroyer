@@ -167,6 +167,8 @@ static func build(kind: String) -> Node3D:
 			_skelly(body, p)
 		"kragjr":
 			_kragjr(body, p)
+		"buzzer", "hopper", "boohoo", "bomber", "chompy", "spiky", "bat", "mummy", "roller", "cactusman", "biggrumbler":
+			_foe2(body, p, kind)
 	if kind.begins_with("mon:"):
 		var bits := kind.split(":")
 		_critter(body, p, bits[1], int(bits[2]))
@@ -463,6 +465,8 @@ static func pose(a, dt: float) -> void:
 				p.head.rotation.z = sin(t * 40) * 0.15
 				p.armL.rotation.x = -2.6
 				p.armR.rotation.x = -2.6
+	if kind in FOES2:
+		_pose_foe2(p, kind, anim, t)
 	if a.spin_t > 0:   # flip around the middle of the body (not around the feet)
 		var mid := Vector3(0, a.height * 0.5, 0)
 		b.position += mid - b.basis * mid
@@ -1219,3 +1223,228 @@ static func _scorpion(b: Node3D, p: Dictionary) -> void:
 		var a := i * 0.5
 		part(tail, sph(0.09 - i * 0.01), Vector3(0, sin(a) * 0.32 + i * 0.05, -cos(a) * 0.1 * i), BODY)
 	part(tail, cyl(0.0, 0.06, 0.18, 6), Vector3(0, 0.5, 0.12), Color("5a2a14"), Vector3.ONE, Vector3(1.6, 0, 0))
+
+
+# ------------------------------------------------------------------ more bad guys (foes.gd FOES2)
+const FOES2 := ["buzzer", "hopper", "boohoo", "bomber", "chompy", "spiky", "bat", "mummy", "roller", "cactusman", "biggrumbler"]
+
+
+static func _foe2(b: Node3D, p: Dictionary, kind: String) -> void:
+	var core := piv(b, Vector3.ZERO)
+	p["core"] = core
+	match kind:
+		"buzzer":
+			core.position.y = 0.55
+			part(core, sph(0.34), Vector3.ZERO, Color("ffd23a"), Vector3(0.95, 0.9, 1.15))
+			for i in 3:
+				part(core, cyl(0.335, 0.335, 0.07, 18), Vector3(0, 0, -0.2 + i * 0.17), Color("3a2a20"), Vector3(0.96, 1, 0.92), Vector3(PI / 2, 0, 0), false)
+			part(core, cyl(0.0, 0.07, 0.22, 6), Vector3(0, 0, -0.45), Color("3a2a20"), Vector3.ONE, Vector3(-PI / 2, 0, 0))
+			eyes(core, 0.08, 0.32, 0.12, 0.08)
+			for s in [-1, 1]:
+				var w := piv(core, Vector3(s * 0.12, 0.28, 0))
+				part(w, sph(0.2), Vector3(s * 0.12, 0.08, 0), Color(0.88, 0.96, 1.0), Vector3(1.0, 0.25, 0.65), Vector3.ZERO, false, 0.3)
+				p["wL" if s < 0 else "wR"] = w
+				part(core, cyl(0.012, 0.012, 0.2, 5), Vector3(s * 0.08, 0.36, 0.2), INK, Vector3.ONE, Vector3(0.6, 0, 0), false)
+		"hopper":
+			part(core, sph(0.42), Vector3(0, 0.38, 0), Color("4cb048"), Vector3(1.15, 0.8, 1.05))
+			part(core, sph(0.3), Vector3(0, 0.32, 0.2), Color("9be07a"), Vector3(1.1, 0.7, 0.7), Vector3.ZERO, false)
+			for s in [-1, 1]:
+				part(core, sph(0.15), Vector3(s * 0.2, 0.72, 0.12), Color("4cb048"))
+				part(core, sph(0.1), Vector3(s * 0.2, 0.75, 0.22), Color.WHITE, Vector3.ONE, Vector3.ZERO, false)
+				part(core, sph(0.055), Vector3(s * 0.2, 0.75, 0.3), Color("1e2a44"), Vector3.ONE, Vector3.ZERO, false)
+				var leg := piv(core, Vector3(s * 0.32, 0.18, -0.1))
+				part(leg, sph(0.16), Vector3(0, 0, 0), Color("4cb048"), Vector3(0.8, 0.6, 1.5))
+				p["legL" if s < 0 else "legR"] = leg
+			part(core, box(Vector3(0.42, 0.03, 0.03)), Vector3(0, 0.42, 0.45), Color("2a5a2a"), Vector3.ONE, Vector3.ZERO, false)
+		"boohoo":
+			core.position.y = 0.75
+			part(core, sph(0.45), Vector3.ZERO, Color("f4f6ff"), Vector3(1, 1, 1), Vector3.ZERO, true, 0.25)
+			for i in 5:
+				var a := TAU * i / 5.0
+				part(core, cyl(0.0, 0.1, 0.22, 6), Vector3(sin(a) * 0.3, -0.42, cos(a) * 0.3), Color("f4f6ff"), Vector3.ONE, Vector3(PI, 0, 0))
+			var face := piv(core, Vector3.ZERO)
+			p["face"] = face
+			eyes(face, 0.1, 0.38, 0.14, 0.09)
+			part(face, sph(0.12), Vector3(0, -0.12, 0.38), Color("7a1f2b"), Vector3(1, 0.9, 0.5), Vector3.ZERO, false)
+			for s in [-1, 1]:
+				var arm := piv(core, Vector3(s * 0.4, -0.05, 0.1))
+				part(arm, sph(0.13), Vector3.ZERO, Color("f4f6ff"))
+				p["armL" if s < 0 else "armR"] = arm
+		"bomber":
+			part(core, sph(0.42), Vector3(0, 0.55, 0), Color("2b2f3c"))
+			part(core, sph(0.12), Vector3(-0.15, 0.75, 0.3), Color("6a7080"), Vector3(1, 0.6, 0.5), Vector3.ZERO, false)
+			eyes(core, 0.6, 0.38, 0.12, 0.08)
+			part(core, cyl(0.08, 0.08, 0.12), Vector3(0, 0.98, 0), Color("9aa0aa"))
+			part(core, cyl(0.015, 0.015, 0.16, 5), Vector3(0.03, 1.1, 0), Color("c49a6a"), Vector3.ONE, Vector3(0, 0, -0.4), false)
+			p["spark"] = part(core, sph(0.07), Vector3(0.07, 1.2, 0), Color("ffd23a"), Vector3.ONE, Vector3.ZERO, false, 2.0)
+			var key := piv(core, Vector3(0, 0.55, -0.45))
+			part(key, cyl(0.03, 0.03, 0.16, 6), Vector3(0, 0, 0), Color("c4c8d0"), Vector3.ONE, Vector3(PI / 2, 0, 0))
+			part(key, box(Vector3(0.3, 0.14, 0.04)), Vector3(0, 0, -0.1), Color("c4c8d0"))
+			p["key"] = key
+			for s in [-1, 1]:
+				var leg := piv(core, Vector3(s * 0.18, 0.08, 0.05))
+				part(leg, sph(0.12), Vector3.ZERO, Color("ff9a2a"), Vector3(1, 0.6, 1.5))
+				p["legL" if s < 0 else "legR"] = leg
+		"chompy":
+			core.position.y = 0.6
+			part(core, sph(0.6), Vector3.ZERO, Color("2b2f3c"))
+			part(core, sph(0.16), Vector3(-0.2, 0.28, 0.4), Color("6a7080"), Vector3(1, 0.6, 0.5), Vector3.ZERO, false)
+			eyes(core, 0.18, 0.5, 0.18, 0.13)
+			var jaw := piv(core, Vector3(0, -0.05, 0.3))
+			part(jaw, box(Vector3(0.7, 0.05, 0.3)), Vector3(0, -0.02, 0.12), Color("a8243a"), Vector3.ONE, Vector3.ZERO, false)
+			for i in 5:
+				part(core, cyl(0.0, 0.045, 0.1, 4), Vector3(-0.24 + i * 0.12, -0.02, 0.52), Color.WHITE, Vector3.ONE, Vector3(PI, 0, 0), false)
+			p["jaw"] = jaw
+		"spiky":
+			part(core, hemi(0.42), Vector3(0, 0.2, 0), Color("e8413b"), Vector3(1, 0.9, 1.05))
+			part(core, cyl(0.44, 0.44, 0.08, 18), Vector3(0, 0.2, 0), Color("ffe8c8"))
+			for i in 7:
+				var a := TAU * i / 7.0
+				var up := 0.55 if i % 2 == 0 else 0.4
+				part(core, cyl(0.0, 0.08, 0.22, 6), Vector3(sin(a) * 0.26, up, cos(a) * 0.26), Color.WHITE, Vector3.ONE, Vector3(cos(a) * 0.5, 0, -sin(a) * 0.5))
+			part(core, cyl(0.0, 0.09, 0.26, 6), Vector3(0, 0.66, 0), Color.WHITE)
+			part(core, sph(0.15), Vector3(0, 0.2, 0.44), Color("ffcf8a"))
+			eyes(core, 0.24, 0.55, 0.06, 0.045)
+			for s in [-1, 1]:
+				var leg := piv(core, Vector3(s * 0.22, 0.07, 0.05))
+				part(leg, sph(0.09), Vector3.ZERO, Color("ffcf8a"), Vector3(1, 0.7, 1.4))
+				p["legL" if s < 0 else "legR"] = leg
+		"bat":
+			core.position.y = 0.5
+			part(core, sph(0.22), Vector3.ZERO, Color("7a52b0"))
+			for s in [-1, 1]:
+				part(core, cyl(0.0, 0.07, 0.16, 4), Vector3(s * 0.1, 0.24, 0), Color("7a52b0"))
+				var w := piv(core, Vector3(s * 0.18, 0.02, 0))
+				part(w, box(Vector3(0.42, 0.03, 0.3)), Vector3(s * 0.2, 0, 0), Color("5b3a8a"))
+				part(w, box(Vector3(0.24, 0.03, 0.18)), Vector3(s * 0.46, -0.04, -0.02), Color("5b3a8a"), Vector3.ONE, Vector3(0, 0, s * 0.4))
+				p["wL" if s < 0 else "wR"] = w
+			eyes(core, 0.04, 0.17, 0.08, 0.055)
+			for s in [-1, 1]:
+				part(core, cyl(0.0, 0.025, 0.06, 4), Vector3(s * 0.04, -0.09, 0.19), Color.WHITE, Vector3.ONE, Vector3(PI, 0, 0), false)
+		"mummy":
+			var BAND := Color("ece2c6")
+			for s in [-1, 1]:
+				var leg := piv(core, Vector3(s * 0.12, 0.52, 0))
+				part(leg, box(Vector3(0.18, 0.5, 0.2)), Vector3(0, -0.25, 0), BAND)
+				p["legL" if s < 0 else "legR"] = leg
+			part(core, box(Vector3(0.48, 0.6, 0.3)), Vector3(0, 0.82, 0), BAND)
+			for i in 4:
+				part(core, box(Vector3(0.5, 0.03, 0.32)), Vector3(0, 0.6 + i * 0.15, 0), Color("bfb08a"), Vector3.ONE, Vector3(0, 0, 0.12 * (1 if i % 2 else -1)), false)
+			for s in [-1, 1]:
+				var arm := piv(core, Vector3(s * 0.32, 1.05, 0))
+				part(arm, box(Vector3(0.14, 0.14, 0.5)), Vector3(0, 0, 0.22), BAND)
+				p["armL" if s < 0 else "armR"] = arm
+			var head := piv(core, Vector3(0, 1.12, 0))
+			p["head"] = head
+			part(head, box(Vector3(0.42, 0.4, 0.4)), Vector3(0, 0.2, 0), BAND)
+			part(head, box(Vector3(0.44, 0.03, 0.42)), Vector3(0, 0.12, 0), Color("bfb08a"), Vector3.ONE, Vector3(0, 0, 0.15), false)
+			for s in [-1, 1]:
+				part(head, sph(0.06), Vector3(s * 0.1, 0.22, 0.2), Color("1e1a14"), Vector3(1, 1, 0.5), Vector3.ZERO, false)
+				part(head, sph(0.025), Vector3(s * 0.1, 0.23, 0.23), Color("ffe14a"), Vector3.ONE, Vector3.ZERO, false, 2.0)
+		"roller":
+			core.position.y = 0.55
+			var ball := piv(core, Vector3.ZERO)
+			p["ball"] = ball
+			part(ball, sph(0.55), Vector3.ZERO, Color("f4f8ff"))
+			for i in 6:
+				var a := TAU * i / 6.0
+				part(ball, sph(0.1), Vector3(sin(a) * 0.48, cos(a) * 0.48, 0.2), Color("d4e2f2"), Vector3(1, 1, 0.4), Vector3.ZERO, false)
+			var face := piv(core, Vector3.ZERO)
+			eyes(face, 0.12, 0.5, 0.15, 0.1)
+			_cross_brows(face, 0.12, 0.5, 0.15, 0.1)
+			part(face, box(Vector3(0.22, 0.04, 0.04)), Vector3(0, -0.12, 0.53), INK, Vector3.ONE, Vector3.ZERO, false)
+		"cactusman":
+			var G := Color("4caa5c")
+			part(core, cap(0.26, 1.3), Vector3(0, 0.65, 0), G)
+			for i in 6:
+				var a := i * 1.1
+				part(core, cyl(0.0, 0.02, 0.1, 4), Vector3(sin(a) * 0.26, 0.4 + i * 0.13, cos(a) * 0.26), Color("fff6c0"), Vector3.ONE, Vector3(cos(a) * 1.3, 0, -sin(a) * 1.3), false)
+			for s in [-1, 1]:
+				var arm := piv(core, Vector3(s * 0.26, 0.75, 0))
+				part(arm, cap(0.1, 0.24), Vector3(s * 0.14, 0, 0), G, Vector3.ONE, Vector3(0, 0, PI / 2))
+				part(arm, cap(0.1, 0.34), Vector3(s * 0.26, 0.15, 0), G)
+				p["armL" if s < 0 else "armR"] = arm
+			eyes(core, 1.0, 0.24, 0.08, 0.06)
+			_cross_brows(core, 1.0, 0.24, 0.08, 0.06)
+			for i in 5:
+				var a := TAU * i / 5.0
+				part(core, sph(0.07), Vector3(sin(a) * 0.08, 1.32, cos(a) * 0.08), Color("ff7aa8"), Vector3.ONE, Vector3.ZERO, false)
+			part(core, sph(0.05), Vector3(0, 1.34, 0), Color("ffd23a"), Vector3.ONE, Vector3.ZERO, false)
+		"biggrumbler":
+			var inner := piv(core, Vector3.ZERO)
+			inner.scale = Vector3.ONE * 2.2
+			var sub := {}
+			_grumbler(inner, sub)
+			p["legL"] = sub.legL
+			p["legR"] = sub.legR
+			p["inner"] = sub.core
+			part(inner, cyl(0.12, 0.2, 0.18, 6), Vector3(0, 0.98, 0), Color("ffcf33"), Vector3.ONE, Vector3.ZERO, true, 0.4)   # a little crown
+
+
+## Grumpy eyebrows (inner ends down).
+static func _cross_brows(head: Node3D, y: float, z: float, gap: float, r: float) -> void:
+	for s in [-1, 1]:
+		part(head, box(Vector3(r * 2.2, r * 0.45, r * 0.4)), Vector3(s * gap, y + r * 1.45, z + r * 0.2), INK, Vector3.ONE, Vector3(0, 0, s * 0.45), false)
+
+
+static func _pose_foe2(p: Dictionary, kind: String, anim: String, t: float) -> void:
+	var c: Node3D = p.core
+	match kind:
+		"buzzer":
+			var f := sin(t * 60) * 0.6
+			p.wL.rotation.z = f
+			p.wR.rotation.z = -f
+			c.rotation.x = 0.6 if anim == "dive" else sin(t * 4) * 0.1
+		"hopper":
+			var air := anim == "jump"
+			p.legL.rotation.x = -0.9 if air else 0.0
+			p.legR.rotation.x = -0.9 if air else 0.0
+			c.scale = Vector3(0.9, 1.15, 0.9) if air else Vector3(1.0 + sin(t * 3) * 0.03, 1.0 - sin(t * 3) * 0.03, 1.0)
+		"boohoo":
+			c.position.y = 0.75 + sin(t * 3) * 0.08
+			var shy := anim == "shy"
+			p.armL.position = Vector3(-0.14, 0.1, 0.36) if shy else Vector3(-0.4, -0.05 + sin(t * 4) * 0.05, 0.1)
+			p.armR.position = Vector3(0.14, 0.1, 0.36) if shy else Vector3(0.4, -0.05 - sin(t * 4) * 0.05, 0.1)
+		"bomber":
+			var s := sin(t * (16 if anim == "lit" else 9))
+			p.legL.position.z = 0.05 + s * 0.1
+			p.legR.position.z = 0.05 - s * 0.1
+			p.key.rotation.z = t * 4
+			p.spark.visible = anim == "lit" and int(t * 12) % 2 == 0
+			c.scale = Vector3.ONE * (1.0 + (sin(t * 30) * 0.05 if anim == "lit" else 0.0))
+		"chompy":
+			p.jaw.rotation.x = 0.7 if anim == "bite" else absf(sin(t * 6)) * 0.25
+			c.position.y = 0.6 + absf(sin(t * 5)) * 0.25
+		"spiky":
+			var s := sin(t * 10)
+			p.legL.position.z = 0.05 + s * 0.08
+			p.legR.position.z = 0.05 - s * 0.08
+		"bat":
+			if anim == "hang":
+				c.rotation.x = PI
+				p.wL.rotation.z = 1.2
+				p.wR.rotation.z = -1.2
+			else:
+				c.rotation.x = 0.0
+				var f := sin(t * 22) * 0.7
+				p.wL.rotation.z = f
+				p.wR.rotation.z = -f
+		"mummy":
+			var s := sin(t * 5)
+			p.legL.rotation.x = s * 0.4
+			p.legR.rotation.x = -s * 0.4
+			p.armL.rotation.x = -0.1 + s * 0.1
+			p.armR.rotation.x = -0.1 - s * 0.1
+			p.head.rotation.z = sin(t * 2) * 0.15
+		"roller":
+			p.ball.rotation.x += 0.2
+		"cactusman":
+			var throw := anim == "throw"
+			p.armR.rotation.z = -1.0 if throw else sin(t * 2) * 0.1
+			p.armL.rotation.z = sin(t * 2 + 1) * 0.1
+			c.rotation.z = sin(t * 1.5) * 0.04
+		"biggrumbler":
+			var s := sin(t * (14 if anim == "charge" else 8))
+			p.legL.position.z = 0.05 + s * 0.1
+			p.legR.position.z = 0.05 - s * 0.1
+			p.inner.rotation.z = s * 0.12

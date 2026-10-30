@@ -1194,6 +1194,236 @@ def atlas():
     im.save(os.path.join(OUT, "atlas.png"))
 
 
+
+# ---------------------------------------------------------------- more bad guys (all face right, feet at y=76)
+def buzzer(name, wing=0.0, dive=False):
+    """A round striped bee with a stinger."""
+    p = Pen()
+    cx, cy = 32, 44
+    for s_ in (-1, 1):   # wings
+        p.oval(cx - 2 + s_ * 3, cy - 15 - wing * 3, 7, 10 - wing * 3, rgb("#dff4ff", 220))
+    p.poly([(cx - 20, cy + 1), (cx - 29, cy + 4), (cx - 20, cy + 6)], rgb("#3a2a20"))
+    p.oval(cx, cy + 2, 18, 14, rgb("#ffd23a"))
+    for x in (-10, -2, 6):
+        p.line([(cx + x, cy - 10), (cx + x - 2, cy + 14)], rgb("#3a2a20"), 3.4)
+    p.eye(cx + 11, cy - 2, 3.2, 4.2, 1.0)
+    if dive:
+        p.line([(cx + 8, cy - 8), (cx + 15, cy - 6)], INK, 2.2)
+    p.line([(cx + 10, cy - 12), (cx + 14, cy - 20)], INK, 1.6)
+    p.oval(cx + 14, cy - 21, 2, 2, INK, ink=False)
+    p.d.arc(p._b(cx + 9, cy + 3, cx + 17, cy + 9), 20, 160, fill=INK, width=int(1.5 * SS))
+    p.done(name)
+
+
+def hopper(name, jump=False):
+    """A big green frog with a wide grin."""
+    p = Pen()
+    G, GL = rgb("#4cb048"), rgb("#9be07a")
+    cy = 60 if not jump else 52
+    if jump:
+        p.limb(24, cy + 8, 14, cy + 22, 6, G)
+        p.limb(40, cy + 8, 50, cy + 22, 6, G)
+    else:
+        for s_ in (-1, 1):
+            p.oval(32 + s_ * 13, 72, 9, 4, G)
+    p.oval(32, cy, 20, 15, G)
+    p.oval(34, cy + 5, 12, 8, GL, ink=False)
+    for s_ in (-1, 1):
+        p.oval(32 + s_ * 9, cy - 14, 7, 7, G)
+        p.eye(32 + s_ * 9 + 1, cy - 14, 3.6, 4.2, 0.8)
+    p.d.arc(p._b(20, cy - 4, 46, cy + 8), 15, 165, fill=INK, width=int(2 * SS))
+    p.oval(18, cy, 2.2, 1.6, rgb("#ff9db0"), ink=False)
+    p.oval(46, cy, 2.2, 1.6, rgb("#ff9db0"), ink=False)
+    p.done(name)
+
+
+def boohoo(name, shy=False):
+    """A round shy ghost. It covers its face when you look at it."""
+    p = Pen()
+    cx, cy = 32, 44
+    W_ = rgb("#f4f6ff")
+    pts = []
+    for i in range(25):
+        a = math.pi + math.pi * i / 24
+        pts.append((cx + math.cos(a) * 19, cy + math.sin(a) * 20))
+    for i in range(7):
+        pts.append((cx + 19 - i * 6.3, cy + 14 + (4 if i % 2 == 0 else 0)))
+    p.poly(pts, W_)
+    if shy:
+        for s_ in (-1, 1):
+            p.oval(cx + s_ * 6, cy - 2, 7, 6, W_)
+        p.oval(cx - 12, cy + 4, 3, 2, rgb("#ff9db0"), ink=False)
+        p.oval(cx + 12, cy + 4, 3, 2, rgb("#ff9db0"), ink=False)
+    else:
+        p.eye(cx + 3, cy - 4, 3.2, 4.6, 1.0)
+        p.eye(cx + 12, cy - 4, 2.8, 4.2, 1.0)
+        p.oval(cx + 8, cy + 7, 6, 5, rgb("#7a1f2b"))
+        p.poly([(cx + 4, cy + 3), (cx + 6, cy + 7), (cx + 8, cy + 3)], rgb("#ffffff"), ink=False)
+        p.oval(cx - 18, cy + 2, 5, 4, W_)
+    p.done(name)
+
+
+def bomber(name, step=0.0, lit=False):
+    """A walking black bomb with a wind-up key."""
+    p = Pen()
+    cx, cy = 32, 52
+    for s_ in (-1, 1):
+        p.oval(cx + s_ * 8 + step * s_ * 3, 73, 7, 4, rgb("#ff9a2a"))
+    p.rect(cx - 21, cy - 4, cx - 15, cy + 4, rgb("#c4c8d0"), r=1)
+    p.oval(cx - 24, cy, 4, 6, rgb("#c4c8d0"))
+    p.oval(cx, cy, 18, 18, rgb("#2b2f3c") if not lit else rgb("#6a2f3c"))
+    p.oval(cx - 7, cy - 8, 5, 3, rgb("#5a6070"), ink=False)
+    p.rect(cx - 3, cy - 23, cx + 3, cy - 16, rgb("#9aa0aa"), r=1)
+    p.line([(cx, cy - 23), (cx + 4, cy - 30)], rgb("#c49a6a"), 2)
+    if lit:
+        p.star(cx + 5, cy - 32, 6, rgb("#ffd23a"))
+        p.eye(cx + 6, cy - 2, 3.0, 4.2, 1.2)
+        p.eye(cx + 14, cy - 2, 2.6, 3.8, 1.2)
+        p.oval(cx + 10, cy + 8, 4, 3, rgb("#7a1f2b"))
+    else:
+        p.eye(cx + 6, cy - 2, 2.6, 3.6, 0.9)
+        p.eye(cx + 14, cy - 2, 2.2, 3.2, 0.9)
+    p.done(name)
+
+
+def chompy(name, bite=False):
+    """A big iron ball with teeth, on a chain."""
+    p = Pen()
+    cx, cy = 32, 50
+    p.oval(cx, cy, 25, 24, rgb("#2b2f3c"))
+    p.oval(cx - 9, cy - 11, 7, 4, rgb("#5a6070"), ink=False)
+    if bite:
+        p.poly([(cx + 2, cy - 4), (cx + 26, cy - 14), (cx + 26, cy + 16), (cx + 2, cy + 6)], rgb("#a8243a"))
+        for i in range(4):
+            p.poly([(cx + 6 + i * 5, cy - 6 - i * 2), (cx + 9 + i * 5, cy + 1 - i), (cx + 12 + i * 5, cy - 8 - i * 2)], rgb("#ffffff"), ink=False)
+            p.poly([(cx + 6 + i * 5, cy + 7 + i * 2), (cx + 9 + i * 5, cy + 1 + i), (cx + 12 + i * 5, cy + 9 + i * 2)], rgb("#ffffff"), ink=False)
+    else:
+        p.line([(cx + 4, cy + 6), (cx + 24, cy + 4)], INK, 2.4)
+        for i in range(4):
+            p.poly([(cx + 6 + i * 5, cy + 5), (cx + 8.5 + i * 5, cy + 10), (cx + 11 + i * 5, cy + 5)], rgb("#ffffff"))
+    p.eye(cx + 8, cy - 10, 5, 5.5, 1.6)
+    p.done(name)
+
+
+def spiky(name, step=0.0):
+    """A red shell covered in white spikes (don't stomp it!)."""
+    p = Pen()
+    cx, cy = 32, 60
+    for s_ in (-1, 1):
+        p.oval(cx + s_ * 10 + step * s_ * 3, 73, 6, 4, rgb("#ffcf8a"))
+    p.oval(cx + 16, cy + 4, 7, 7, rgb("#ffcf8a"))
+    p.eye(cx + 18, cy + 2, 2.2, 3, 0.8)
+    for i in range(5):
+        a = math.pi + math.pi * (i + 0.5) / 5
+        x, y = cx + math.cos(a) * 17, cy + math.sin(a) * 15
+        p.poly([(x - 4, y + 2), (cx + math.cos(a) * 27, cy + math.sin(a) * 25), (x + 4, y + 2)], rgb("#ffffff"))
+    p.d.chord(p._b(cx - 18, cy - 16, cx + 18, cy + 16), 180, 360, fill=rgb("#e8413b"), outline=INK, width=int(LW * SS))
+    p.rect(cx - 19, cy - 1, cx + 19, cy + 4, rgb("#ffe8c8"), r=2)
+    p.done(name)
+
+
+def bat(name, flap=0.0, hang=False):
+    """A little purple bat."""
+    p = Pen()
+    cx, cy = 32, (40 if not hang else 30)
+    if hang:
+        p.oval(cx, cy, 10, 14, rgb("#5b3a8a"))
+        p.line([(cx - 3, cy - 14), (cx - 3, cy - 20)], INK, 2)
+        p.line([(cx + 3, cy - 14), (cx + 3, cy - 20)], INK, 2)
+        p.oval(cx - 4, cy + 4, 2, 1.4, INK, ink=False)
+        p.oval(cx + 4, cy + 4, 2, 1.4, INK, ink=False)
+        p.done(name)
+        return
+    for s_ in (-1, 1):
+        y_ = cy - 6 - flap * 8
+        p.poly([(cx + s_ * 6, cy - 2), (cx + s_ * 28, y_), (cx + s_ * 22, cy + 4), (cx + s_ * 14, cy + 2), (cx + s_ * 10, cy + 6)], rgb("#5b3a8a"))
+    p.oval(cx, cy, 10, 10, rgb("#7a52b0"))
+    for s_ in (-1, 1):
+        p.poly([(cx + s_ * 3, cy - 8), (cx + s_ * 8, cy - 18), (cx + s_ * 9, cy - 6)], rgb("#7a52b0"))
+    p.eye(cx - 3, cy - 1, 2.4, 3.0, 0.6)
+    p.eye(cx + 4, cy - 1, 2.4, 3.0, 0.6)
+    p.poly([(cx - 2, cy + 5), (cx - 1, cy + 8), (cx, cy + 5)], rgb("#ffffff"), ink=False)
+    p.poly([(cx + 2, cy + 5), (cx + 3, cy + 8), (cx + 4, cy + 5)], rgb("#ffffff"), ink=False)
+    p.done(name)
+
+
+def mummy(name, step=0.0):
+    """A wobbly bandaged mummy with an arm out."""
+    p = Pen()
+    cx = 30
+    BAND, LINE = rgb("#ece2c6"), rgb("#bfb08a")
+    for a in (step, -step):
+        p.limb(cx, 54, cx + math.sin(a) * 8, 72, 7, BAND)
+    p.rect(cx - 10, 30, cx + 10, 56, BAND, r=4)
+    for y in (35, 41, 47, 52):
+        p.line([(cx - 9, y), (cx + 9, y + 2)], LINE, 1.4)
+    p.limb(cx + 4, 36, cx + 22, 38 + step * 3, 6, BAND)
+    p.oval(cx + 1, 20, 12, 12, BAND)
+    p.line([(cx - 10, 16), (cx + 12, 19)], LINE, 1.4)
+    p.line([(cx - 10, 26), (cx + 12, 23)], LINE, 1.4)
+    p.oval(cx + 3, 20, 3.4, 3.4, rgb("#1e1a14"), ink=False)
+    p.oval(cx + 9, 20, 3.0, 3.0, rgb("#1e1a14"), ink=False)
+    p.oval(cx + 3.6, 19.6, 1.3, 1.3, rgb("#ffe14a"), ink=False)
+    p.oval(cx + 9.4, 19.6, 1.2, 1.2, rgb("#ffe14a"), ink=False)
+    p.line([(cx - 8, 54), (cx - 16, 66)], BAND, 2)   # loose bandage
+    p.done(name)
+
+
+def roller(name, spin=0.0):
+    """A rolling snowball with an angry face."""
+    p = Pen()
+    cx, cy = 32, 52
+    p.oval(cx, cy, 23, 23, rgb("#f4f8ff"))
+    for i in range(5):
+        a = spin + i * 1.25
+        p.oval(cx + math.cos(a) * 14, cy + math.sin(a) * 14, 3, 2, rgb("#d4e2f2"), ink=False)
+    p.eye(cx + 6, cy - 5, 3.2, 4.2, 1.2)
+    p.eye(cx + 15, cy - 5, 2.8, 3.8, 1.2)
+    p.line([(cx + 2, cy - 12), (cx + 9, cy - 9)], INK, 2.2)
+    p.line([(cx + 13, cy - 9), (cx + 19, cy - 12)], INK, 2.2)
+    p.d.arc(p._b(cx + 4, cy + 4, cx + 18, cy + 12), 200, 340, fill=INK, width=int(1.8 * SS))
+    p.done(name)
+
+
+def cactusman(name, throw=False):
+    """A grumpy cactus with a flower hat that throws needles."""
+    p = Pen()
+    cx = 32
+    G = rgb("#4caa5c")
+    p.rect(cx - 10, 24, cx + 10, 76, G, r=9)
+    for y in (32, 44, 56, 68):
+        for x in (-5, 4):
+            p.line([(cx + x, y), (cx + x + 2, y - 2)], rgb("#fff6c0"), 1.2)
+    if throw:
+        p.limb(cx + 9, 44, cx + 24, 30, 7, G)
+        p.limb(cx - 9, 48, cx - 18, 40, 7, G)
+    else:
+        p.limb(cx + 9, 46, cx + 18, 36, 7, G)
+        p.limb(cx - 9, 50, cx - 18, 42, 7, G)
+    p.eye(cx - 1, 36, 2.6, 3.4, 0.9)
+    p.eye(cx + 6, 36, 2.4, 3.2, 0.9)
+    p.line([(cx - 4, 31), (cx + 2, 33)], INK, 2)
+    p.line([(cx + 4, 33), (cx + 9, 31)], INK, 2)
+    p.d.arc(p._b(cx - 2, 42, cx + 8, 48), 200, 340, fill=INK, width=int(1.6 * SS))
+    for i in range(5):
+        a = i * math.tau / 5
+        p.oval(cx + math.cos(a) * 4, 21 + math.sin(a) * 4, 3.4, 3.4, rgb("#ff7aa8"))
+    p.oval(cx, 21, 2.2, 2.2, rgb("#ffd23a"), ink=False)
+    p.done(name)
+
+
+def foes2():
+    buzzer("buzzer_1", 0); buzzer("buzzer_2", 1); buzzer("buzzer_dive", 0.5, dive=True)
+    hopper("hopper_1"); hopper("hopper_jump", jump=True)
+    boohoo("boohoo_1"); boohoo("boohoo_shy", shy=True)
+    bomber("bomber_1", 1); bomber("bomber_2", -1); bomber("bomber_lit", 0.5, lit=True)
+    chompy("chompy_1"); chompy("chompy_bite", bite=True)
+    spiky("spiky_1", 1); spiky("spiky_2", -1)
+    bat("bat_hang", hang=True); bat("bat_1", 0); bat("bat_2", 1)
+    mummy("mummy_1", 0.4); mummy("mummy_2", -0.4)
+    roller("roller_1", 0); roller("roller_2", 0.6)
+    cactusman("cactusman_1"); cactusman("cactusman_throw", throw=True)
+
 # ---------------------------------------------------------------- build everything
 def main():
     # Rocco
@@ -1230,6 +1460,7 @@ def main():
     skelly("skelly_2", -0.4)
     skelly("skelly_aim", 0.1, aim=True)
     penguin("penguin_1", 1); penguin("penguin_2", -1); penguin("penguin_slide", slide=True); penguin("penguin_flat", flat=True)
+    foes2()
     scorpion("scorpion_1", 1); scorpion("scorpion_2", -1); scorpion("scorpion_strike", strike=True); scorpion("scorpion_flat", flat=True)
     krag_jr("kragjr_1", 0)
     krag_jr("kragjr_2", 2)

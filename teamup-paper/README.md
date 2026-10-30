@@ -79,6 +79,27 @@ saved with the file (`stars`). Frosty Peaks is a mirror image of the layout, tal
 * Test: `tests/open_check.gd -- [toy] meadow|frost|dunes`: Rocco really jumps every sky step and tower stair
   (real physics), Blocky digs the cave, the camp, 40 coins, the gate, Krag Jr. and the flag.
 
+### More bad guys (open worlds)
+
+| Bad guy | What it does | How to beat it | Where |
+|---|---|---|---|
+| BUZZER (bee) | buzzes in wavy circles, then "!" and dives at you | stomp / attacks | Meadow |
+| HOPPER (frog) | big frog hops toward you | stomp / attacks | Meadow |
+| BOOHOO (ghost) | hides its face when the camera looks at it; floats after you (through walls) when you look away | stomp / attacks | Frost |
+| BOMBER (walking bomb) | lights up when you're close, chases you, then BOOM: breaks blocks around it (not the castle) | hitting or stomping it lights the fuse: run! | everywhere |
+| CHOMPY (ball on a chain) | bounces round its post, lunges when you come close (the chain stops it) | attacks only (too hard to stomp) | one per world |
+| SPIKY (spiky shell) | wanders about | attacks only: stomping it hurts YOU | everywhere |
+| BAT | hangs under the sky steps, swoops at you when you're below | stomp / attacks | sky steps |
+| MUMMY | shuffles after you | stomp / attacks | Dunes |
+| SNOWBALL ROLLER | "!" then rolls at you, getting bigger, crumbles when it hits something | stomp / attacks | Frost |
+| CACTUS-MAN | stands still and throws needles | attacks only (spiky) | Dunes |
+| BIG GRUMBLER (mini-boss) | a huge crowned Grumbler with a health bar; "!" then charges | lots of stomps / attacks (+10 coins) | guards a ? block in every world |
+
+Which bad guys wander each world: `level.gd` `FOES_BY_WORLD` (add a line for a new world; `"default"` otherwise).
+Code: `foes.gd` `FOES2` / `_tick_foe2`, models `toys.gd` `_foe2` / `_pose_foe2`, pictures `gen_art.py` `foes2()`.
+Test: `tests/foes_check.gd -- [toy]` (each one moves/attacks, is beaten the right way, the bomb breaks blocks,
+the ghost hides when looked at).
+
 ## Home base: build and decorate
 
 Picking a save file takes you **home**: a big **96 x 96** world (40 blocks tall) to build a whole city on, with
