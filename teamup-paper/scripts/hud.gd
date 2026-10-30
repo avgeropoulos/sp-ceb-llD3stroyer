@@ -405,7 +405,8 @@ static func _tex_name(t: int) -> String:
 	return ["", "grass_top", "dirt", "stone", "iron", "gold", "diamond", "bedrock", "brick", "mystery", "used",
 		"planks", "wool_red", "wool_blue", "wool_yellow", "wool_white", "window", "iron_block", "gold_block", "diamond_block", "stone_brick",
 		"snow_top", "ice", "sand", "sandstone", "log_side", "leaves", "wool_green", "wool_black", "road",
-		"swamp_top", "mud", "moon_top", "moon_rock"][t]
+		"swamp_top", "mud", "moon_top", "moon_rock",
+		"lava", "basalt", "frosting_top", "cake", "candy_cane", "water", "cloud"][t]
 
 
 func _pal_rect(i: int, n: int) -> Rect2:
@@ -533,11 +534,22 @@ func _draw_map_info() -> void:
 
 
 ## The island buttons sit in a row along the bottom middle (between the stick and LAND).
+## The island buttons along the bottom: one row if they fit between the stick and LAND,
+## else two rows (there are lots of worlds now).
 func island_button_rect(i: int, n: int) -> Rect2:
-	var w := clampf((size.x - 560.0) / maxf(1, n) - 10.0, 110.0, 190.0)
-	var total := n * (w + 10.0) - 10.0
+	var room := size.x - 560.0
+	var per := maxi(1, int((room + 10.0) / 120.0))
+	var rows := 1 if n <= per else 2
+	var in_row := int(ceil(float(n) / rows))
+	var w := clampf((room + 10.0) / in_row - 10.0, 100.0, 190.0)
+	var row := i / in_row
+	var col := i % in_row
+	var count := in_row if row < rows - 1 else n - in_row * (rows - 1)
+	var total := count * (w + 10.0) - 10.0
 	var x0 := (size.x - total) * 0.5
-	return Rect2(x0 + i * (w + 10.0), size.y - 86.0, w, 64.0)
+	var h := 64.0 if rows == 1 else 52.0
+	var y := size.y - 86.0 if rows == 1 else size.y - 132.0 + row * 62.0
+	return Rect2(x0 + col * (w + 10.0), y, w, h)
 
 
 func island_button_at(p: Vector2) -> String:

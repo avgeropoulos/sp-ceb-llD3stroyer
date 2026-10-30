@@ -2,7 +2,7 @@ class_name Worlds
 ## The worlds you fly to in the rocket. Each one is a level with its own look, song,
 ## bad guys and a Krag Jr. fight at the end. They unlock in order.
 
-const ORDER := ["meadow", "frost", "dunes", "swamp", "moon"]
+const ORDER := ["meadow", "frost", "dunes", "swamp", "moon", "lava", "candy", "beach", "jungle", "cloud"]
 
 const INFO := {
 	"meadow": {"name": "1-1  MEADOW MINE", "short": "MEADOW MINE", "song": "meadow", "after": "",
@@ -27,6 +27,29 @@ const INFO := {
 		"fog_begin": 60.0, "fog_end": 220.0, "fog_density": 0.3, "gravity": 0.6,
 		"map": Vector3(-22, 0, 20), "top": "moon_top", "side": "moon_rock", "boss_hp": 42,
 		"hello": "Low gravity! Jump super high!"},
+	"lava": {"name": "6-1  LAVA LAND", "short": "LAVA LAND", "song": "krag", "after": "moon",
+		"sky": ["3a0c10", "c8502a", "6a1c14"], "fog": "a8442a", "sun": "ffb27a", "ambient": "f0b8a0", "cloud": "ff9a7a",
+		"fog_begin": 30.0, "fog_end": 130.0, "fog_density": 0.6,
+		"map": Vector3(-34, 0, -26), "top": "basalt", "side": "basalt", "boss_hp": 48,
+		"hello": "HOT! Don't touch the lava, or OUCH! you bounce!"},
+	"candy": {"name": "7-1  CANDY KINGDOM", "short": "CANDY KINGDOM", "song": "silly", "after": "lava",
+		"sky": ["ff9ad2", "fff0fa", "ffc8e8"], "fog": "ffe2f2", "sun": "fff4fa", "ambient": "fbe4f2", "cloud": "ffd6ec",
+		"map": Vector3(-4, 0, -40), "top": "frosting_top", "side": "frosting_side", "boss_hp": 54,
+		"hello": "Yum! Lollipops, gumdrops and cake hills!"},
+	"beach": {"name": "8-1  BEACH BAY", "short": "BEACH BAY", "song": "cozy", "after": "candy",
+		"sky": ["2a9ef0", "c8f0ff", "8ad0f0"], "fog": "c8ecff", "sun": "fff6e0", "ambient": "e0f0f8",
+		"map": Vector3(36, 0, -26), "top": "sand", "side": "sandstone", "boss_hp": 60,
+		"hello": "Splash! Wade in the shallow water!"},
+	"jungle": {"name": "9-1  JUNGLE JAMBOREE", "short": "JUNGLE JAMBOREE", "song": "theme", "after": "beach",
+		"sky": ["3aa070", "d6f5c0", "84c894"], "fog": "c4e8bc", "sun": "fff8d0", "ambient": "d4ecd0", "cloud": "e8ffe0",
+		"fog_begin": 24.0, "fog_end": 110.0, "fog_density": 0.6,
+		"map": Vector3(0, 0, 36), "top": "grass_top", "side": "grass_side", "boss_hp": 66,
+		"hello": "Giant mushrooms and flowers everywhere!"},
+	"cloud": {"name": "10-1  CLOUD CASTLE", "short": "CLOUD CASTLE", "song": "moon", "after": "jungle",
+		"sky": ["5a8cf0", "fbe8ff", "c6d8ff"], "fog": "f4ecff", "sun": "fffaf2", "ambient": "fff6ff", "cloud": "fff0fa",
+		"fog_begin": 60.0, "fog_end": 220.0, "fog_density": 0.3, "gravity": 0.85,
+		"map": Vector3(40, 0, 10), "top": "cloud", "side": "cloud", "boss_hp": 72,
+		"hello": "High in the sky! Don't fall off the clouds!"},
 }
 
 ## The home island on the sky map.
