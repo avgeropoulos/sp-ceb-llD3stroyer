@@ -118,11 +118,18 @@ static func piv(parent: Node3D, pos: Vector3) -> Node3D:
 	return n
 
 
+## Eyes being built right now go here (build() collects them so characters can blink).
+static var _eye_sink = null
+
+
 static func eyes(head: Node3D, y: float, z: float, gap: float, r: float, angry := false) -> void:
 	for s in [-1, 1]:
-		part(head, sph(r), Vector3(s * gap, y, z), Color.WHITE, Vector3(1, 1.25, 0.6), Vector3.ZERO, false)
-		part(head, sph(r * 0.55), Vector3(s * gap, y - r * 0.1, z + r * 0.35), Color("1e2a44"), Vector3(1, 1.2, 0.6), Vector3.ZERO, false)
-		part(head, sph(r * 0.18), Vector3(s * gap + r * 0.2, y + r * 0.35, z + r * 0.6), Color.WHITE, Vector3.ONE, Vector3.ZERO, false)
+		var e := piv(head, Vector3(s * gap, y, z))   # each eye is one piece: squash it to blink
+		part(e, sph(r), Vector3.ZERO, Color.WHITE, Vector3(1, 1.25, 0.6), Vector3.ZERO, false)
+		part(e, sph(r * 0.55), Vector3(0, -r * 0.1, r * 0.35), Color("1e2a44"), Vector3(1, 1.2, 0.6), Vector3.ZERO, false)
+		part(e, sph(r * 0.18), Vector3(r * 0.2, r * 0.35, r * 0.6), Color.WHITE, Vector3.ONE, Vector3.ZERO, false)
+		if _eye_sink != null:
+			_eye_sink.append(e)
 		if angry:
 			part(head, box(Vector3(r * 2.2, r * 0.45, r * 0.4)), Vector3(s * gap, y + r * 1.45, z + r * 0.2), INK, Vector3.ONE, Vector3(0, 0, -s * 0.45), false)
 
@@ -138,6 +145,7 @@ static func build(kind: String) -> Node3D:
 	root.name = "Toy"
 	var body := piv(root, Vector3.ZERO)
 	var p := {"body": body}
+	_eye_sink = []
 	match kind:
 		"rocco":
 			_rocco(body, p)
@@ -163,6 +171,9 @@ static func build(kind: String) -> Node3D:
 		var bits := kind.split(":")
 		_critter(body, p, bits[1], int(bits[2]))
 		kind = "mon"
+	p["eyes"] = _eye_sink
+	_eye_sink = null
+	p["seed"] = randf() * 10.0   # so not everyone blinks at the same moment
 	root.set_meta("p", p)
 	root.set_meta("kind", kind)
 	for mi in _all_meshes(root):
@@ -238,8 +249,11 @@ static func _blocky(b: Node3D, p: Dictionary) -> void:
 	part(head, box(Vector3(0.45, 0.14, 0.43)), Vector3(0, 0.38, -0.02), Color("3b2a20"), Vector3.ONE, Vector3.ZERO, false)
 	part(head, box(Vector3(0.44, 0.12, 0.08)), Vector3(0, 0.05, 0.2), Color("5a3e2c"), Vector3.ONE, Vector3.ZERO, false)
 	for s in [-1, 1]:
-		part(head, box(Vector3(0.09, 0.08, 0.02)), Vector3(s * 0.1, 0.24, 0.215), Color.WHITE, Vector3.ONE, Vector3.ZERO, false)
-		part(head, box(Vector3(0.05, 0.07, 0.02)), Vector3(s * 0.1 + 0.02, 0.235, 0.225), Color("1e2a44"), Vector3.ONE, Vector3.ZERO, false)
+		var e := piv(head, Vector3(s * 0.1, 0.24, 0.215))
+		part(e, box(Vector3(0.09, 0.08, 0.02)), Vector3.ZERO, Color.WHITE, Vector3.ONE, Vector3.ZERO, false)
+		part(e, box(Vector3(0.05, 0.07, 0.02)), Vector3(0.02, -0.005, 0.01), Color("1e2a44"), Vector3.ONE, Vector3.ZERO, false)
+		if _eye_sink != null:
+			_eye_sink.append(e)
 		part(head, box(Vector3(0.11, 0.025, 0.02)), Vector3(s * 0.1, 0.31, 0.215), Color("3b2a20"), Vector3.ONE, Vector3.ZERO, false)
 	# blocky brown hair: a flat top, the back of the head, and a fringe at the front
 	part(head, box(Vector3(0.47, 0.1, 0.46)), Vector3(0, 0.46, -0.01), Color("3b2a20"))
@@ -369,14 +383,37 @@ static func pose(a, dt: float) -> void:
 	var b: Node3D = p.body
 	# turn to face where we're going (a little toward the camera so you see faces)
 	var f: Vector3 = a.facing
+	var yaw0: float = toy.rotation.y
 	if f.length() > 0.1:
 		var fv: Vector3 = f + Actor.view_back * 0.55
 		var want := atan2(fv.x, fv.z)
-		toy.rotation.y = lerp_angle(toy.rotation.y, want, 1 - exp(-dt * 14))
+		toy.rotation.y = lerp_angle(toy.rotation.y, want, 1 - exp(-dt * 12))
+	# how fast we're going and turning: lean forward when running, bank into turns
+	var spd := Vector2(a.vel.x, a.vel.z).length()
+	var turning := wrapf(toy.rotation.y - yaw0, -PI, PI) / maxf(dt, 0.001)
+	var moving: bool = anim in ["run", "walk"]
+	var lean_to := clampf(spd / 7.0, 0.0, 1.5) * 0.13 if moving else 0.0
+	var roll_to := clampf(-turning * 0.05, -0.3, 0.3) * clampf(spd / 4.0, 0.0, 1.0)
+	var ease_k := 1 - exp(-dt * 10)
+	p["lean"] = lerpf(p.get("lean", 0.0), lean_to, ease_k)
+	p["roll"] = lerpf(p.get("roll", 0.0), roll_to, ease_k)
+	p["vy"] = a.vel.y
+	p["spd"] = spd
 	# somersault for double jumps / slams, and squash & stretch
-	b.scale = Vector3(a.squash.x, a.squash.y, a.squash.x)
+	var sq: Vector2 = a.squash
+	if anim == "jump" and a.vel.y > 5.0:   # stretch on the way up
+		sq *= Vector2(0.93, 1.08)
+	b.scale = Vector3(sq.x, sq.y, sq.x)
 	b.position = Vector3.ZERO
 	b.rotation.x = a._ease_spin() * TAU if a.spin_t > 0 else 0.0
+	b.rotation.x += p.lean
+	b.rotation.z = p.roll
+	b.rotation.y = 0.0
+	# blink every few seconds (and keep the eyes shut while hurt)
+	var clock: float = Time.get_ticks_msec() * 0.001 + p.seed
+	var shut := fmod(clock, 3.3 + fmod(p.seed, 1.0)) < 0.12 or anim == "hurt"
+	for e in p.eyes:
+		e.scale.y = 0.15 if shut else 1.0
 	toy.position.x = a.sprite.position.x   # the shake Krag Jr. does before a dive
 	toy.visible = not (a.flash_t > 0 and int(a.flash_t * 20) % 2 == 1)
 	for k in ["legL", "legR", "armL", "armR", "head"]:
@@ -433,57 +470,110 @@ static func pose(a, dt: float) -> void:
 
 static func _pose_person(p: Dictionary, kind: String, anim: String, t: float) -> void:
 	var b: Node3D = p.body
+	var vy: float = p.get("vy", 0.0)
+	for k in ["armL", "armR"]:
+		p[k].rotation = Vector3.ZERO
 	match anim:
 		"run", "walk":
 			var spd := 13.0 if anim == "run" else 7.0
 			var s := sin(t * spd)
-			p.legL.rotation.x = s * 0.85
-			p.legR.rotation.x = -s * 0.85
-			p.armL.rotation.x = -s * 0.9
-			p.armR.rotation.x = s * 0.9
-			b.position.y = absf(cos(t * spd)) * 0.05
-			p.head.rotation.x = 0.08
+			var c := cos(t * spd)
+			p.legL.rotation.x = s * 0.95
+			p.legR.rotation.x = -s * 0.95
+			p.armL.rotation.x = -s * 1.0 - 0.15   # arms swing opposite the legs, elbows a bit forward
+			p.armR.rotation.x = s * 1.0 - 0.15
+			p.armL.rotation.z = -0.12
+			p.armR.rotation.z = 0.12
+			b.position.y = absf(c) * 0.07           # bounce on every step
+			b.rotation.y = s * 0.12                  # hips twist with the stride
+			p.head.rotation.y = -s * 0.1             # the head stays looking ahead
+			p.head.rotation.x = 0.06 - absf(c) * 0.05
 		"jump":
-			p.legL.rotation.x = -0.9
-			p.legR.rotation.x = 0.4
-			p.armR.rotation.x = -2.9
-			p.armL.rotation.x = 0.5
-			p.armL.rotation.z = -0.4
-		"fall":
-			p.legL.rotation.x = 0.3
-			p.legR.rotation.x = -0.3
-			p.armL.rotation.z = -1.3
-			p.armR.rotation.z = 1.3
+			if vy > 3.0:   # going up: one knee up, one arm punching the sky
+				p.legL.rotation.x = -1.1
+				p.legR.rotation.x = 0.35
+				p.armR.rotation.x = -2.9
+				p.armL.rotation.x = 0.6
+				p.armL.rotation.z = -0.5
+				p.head.rotation.x = -0.15
+			else:          # near the top: tuck in
+				p.legL.rotation.x = -1.3
+				p.legR.rotation.x = -1.0
+				p.armL.rotation.x = -0.9
+				p.armR.rotation.x = -0.9
+				p.armL.rotation.z = -0.6
+				p.armR.rotation.z = 0.6
+				b.position.y = 0.12
+		"fall":   # arms out like wings, legs reaching for the ground
+			var w := sin(t * 14) * 0.15
+			p.legL.rotation.x = 0.25
+			p.legR.rotation.x = -0.35
+			p.armL.rotation.z = -1.35 + w
+			p.armR.rotation.z = 1.35 - w
+			p.head.rotation.x = 0.2
 		"slam":
 			p.legL.rotation.x = -1.4
 			p.legR.rotation.x = -1.4
 			p.armL.rotation.x = -1.3
 			p.armR.rotation.x = -1.3
 			b.position.y = 0.25
-		"hurt":
+		"hurt":   # flinch back, head shaking
 			p.armL.rotation.z = -2.2
 			p.armR.rotation.z = 2.2
 			p.head.rotation.x = -0.4
-			p.legL.rotation.x = 0.4
-		"win":
-			p.armL.rotation.x = -2.9
-			p.armR.rotation.x = -2.9
-			b.position.y = absf(sin(t * 6)) * 0.25
-		"mine":
+			p.head.rotation.z = sin(t * 30) * 0.15
+			p.legL.rotation.x = 0.5
+			b.rotation.x -= 0.25
+		"win":   # a little dance: hop, wave one arm then the other, wiggle
+			var beat := t * 5.0
+			var side := 1.0 if int(beat / PI) % 2 == 0 else -1.0
+			b.position.y = absf(sin(beat)) * 0.28
+			b.rotation.z += sin(beat) * 0.12
+			b.rotation.y = sin(t * 2.5) * 0.5
+			p.armL.rotation.x = -2.9 if side > 0 else -0.4
+			p.armR.rotation.x = -2.9 if side < 0 else -0.4
+			p.armL.rotation.z = -0.3 + sin(t * 18) * 0.25 * (1 if side > 0 else 0)
+			p.armR.rotation.z = 0.3 - sin(t * 18) * 0.25 * (1 if side < 0 else 0)
+			p.legL.rotation.x = -absf(sin(beat)) * 0.6
+			p.head.rotation.z = sin(beat) * 0.2
+		"mine":   # wind up, strike hard, follow through
 			var ph := fmod(t, 0.3) / 0.3
-			p.armR.rotation.x = lerpf(-2.8, 0.5, ease(ph, 0.4))
-			p.armL.rotation.x = -0.4
-			b.rotation.x += lerpf(-0.1, 0.25, ph)
+			var arm := 0.0
+			var bend := 0.0
+			if ph < 0.4:
+				arm = lerpf(-0.8, -3.0, ease(ph / 0.4, 0.6))
+				bend = lerpf(0.0, -0.12, ph / 0.4)
+			elif ph < 0.6:
+				arm = lerpf(-3.0, 0.8, ease((ph - 0.4) / 0.2, 2.5))
+				bend = lerpf(-0.12, 0.3, (ph - 0.4) / 0.2)
+			else:
+				arm = lerpf(0.8, -0.8, ease((ph - 0.6) / 0.4, 0.5))
+				bend = lerpf(0.3, 0.0, (ph - 0.6) / 0.4)
+			p.armR.rotation.x = arm
+			p.armL.rotation.x = arm * 0.5 - 0.3
+			b.rotation.x += bend
+			p.legL.rotation.x = -0.25
+			p.legR.rotation.x = 0.2
 		"aim":
 			p.armL.rotation.x = -1.55
 			p.armR.rotation.x = -1.5
 			p.armR.rotation.y = 0.5
 			p.head.rotation.y = 0.2
-		_:   # idle / blink
-			b.position.y = sin(t * 3.0) * 0.012
-			p.armL.rotation.z = -0.12 - sin(t * 3.0) * 0.04
-			p.armR.rotation.z = 0.12 + sin(t * 3.0) * 0.04
-			p.head.rotation.y = sin(t * 0.9) * 0.15
+		_:   # idle: breathing, arms swaying, looking around now and then
+			var br := sin(t * 2.6)
+			b.position.y = br * 0.012
+			b.scale.y *= 1.0 + br * 0.015
+			p.armL.rotation.z = -0.12 - br * 0.05
+			p.armR.rotation.z = 0.12 + br * 0.05
+			var look := fmod(t, 6.0)
+			var hy := 0.0
+			if look > 2.0 and look < 3.4:
+				hy = 0.45
+			elif look > 4.0 and look < 5.2:
+				hy = -0.4
+			p.head.rotation.y = lerpf(p.get("head_y", 0.0), hy, 0.08)
+			p["head_y"] = p.head.rotation.y
+			p.head.rotation.x = br * 0.03
 	if kind == "blocky" and anim != "mine":
 		p.armR.rotation.x -= 0.5   # holds the pickaxe up a bit
 
@@ -491,11 +581,16 @@ static func _pose_person(p: Dictionary, kind: String, anim: String, t: float) ->
 static func _pose_sparky(p: Dictionary, anim: String, t: float) -> void:
 	var b: Node3D = p.body
 	match anim:
-		"run":
-			b.position.y = absf(sin(t * 14)) * 0.16
+		"run":   # boing boing: squashes when it lands, ears flop behind
+			var hop := absf(sin(t * 14))
+			b.position.y = hop * 0.16
+			b.scale.y *= 0.88 + hop * 0.16
+			b.scale.x *= 1.08 - hop * 0.1
 			p.legL.position.z = 0.06 + sin(t * 14) * 0.12
 			p.legR.position.z = 0.06 - sin(t * 14) * 0.12
 			p.tail.rotation.x = sin(t * 14) * 0.3
+			p.antL.rotation.x = -0.3 - hop * 0.3
+			p.antR.rotation.x = -0.3 - hop * 0.3
 		"jump", "fall":
 			b.position.y = 0.05
 			p.core.rotation.x = -0.25
@@ -511,9 +606,15 @@ static func _pose_sparky(p: Dictionary, anim: String, t: float) -> void:
 			b.position.y = absf(sin(t * 7)) * 0.35
 		_:
 			b.position.y = sin(t * 3) * 0.02
+			b.scale.y *= 1.0 + sin(t * 3) * 0.025
 			p.antL.rotation.z = sin(t * 2.5) * 0.15
 			p.antR.rotation.z = -sin(t * 2.5 + 0.5) * 0.15
+			p.antL.rotation.x = 0.0
+			p.antR.rotation.x = 0.0
 			p.tail.rotation.x = sin(t * 4) * 0.2
+			var hop := fmod(t, 6.0)
+			if hop > 5.5:   # bounces in place now and then
+				b.position.y = sin((hop - 5.5) / 0.5 * PI) * 0.2
 	p.core.scale = Vector3.ONE
 	p.core.rotation.x = 0.0 if anim != "jump" and anim != "fall" else p.core.rotation.x
 
@@ -1009,46 +1110,68 @@ static func _leaf(parent: Node3D, pos: Vector3, size: float, tilt: float) -> voi
 
 static func _pose_critter(p: Dictionary, anim: String, t: float) -> void:
 	var b: Node3D = p.body
+	var vy: float = p.get("vy", 0.0)
 	if p.has("wingL"):   # wings flap: fast in the air, a little on the ground
-		var fl := sin(t * (22.0 if anim in ["jump", "fall"] else 6.0)) * (0.7 if anim in ["jump", "fall"] else 0.15)
+		var air: bool = anim in ["jump", "fall"]
+		var fl := sin(t * (22.0 if air else 6.0)) * (0.8 if air else 0.15)
+		if anim == "run":
+			fl = sin(t * 16.0) * 0.45
 		p.wingL.rotation.z = fl
 		p.wingR.rotation.z = -fl
-	if p.has("floaty"):   # ghosts bob in the air
-		p.core.position.y = 0.5 + sin(t * 3.0) * 0.06
+	if p.has("floaty"):   # ghosts bob and sway in the air
+		p.core.position.y = 0.5 + sin(t * 3.0) * 0.08
+		p.core.rotation.z = sin(t * 1.7) * 0.08
 	for k in ["backL", "backR"]:
 		p[k].rotation = Vector3.ZERO
 	p.tail.rotation = Vector3.ZERO
+	p.head.rotation = Vector3.ZERO
 	var hz: float = p.get("head_z", 0.34)
 	p.head.position.z = hz
+	p.core.rotation.x = 0.0
+	p.core.scale = Vector3.ONE
 	match anim:
-		"run":
-			var s := sin(t * 13)
-			p.legL.rotation.x = s * 0.7
-			p.backR.rotation.x = s * 0.7
-			p.legR.rotation.x = -s * 0.7
-			p.backL.rotation.x = -s * 0.7
-			b.position.y = absf(cos(t * 13)) * 0.06
-			p.tail.rotation.y = sin(t * 13) * 0.3
+		"run":   # a bouncy gallop: front and back legs out of step, body hops and squashes
+			var s := sin(t * 14)
+			var hop := absf(cos(t * 14))
+			p.legL.rotation.x = s * 0.8
+			p.backR.rotation.x = s * 0.8
+			p.legR.rotation.x = -s * 0.8
+			p.backL.rotation.x = -s * 0.8
+			b.position.y = hop * 0.09
+			b.scale.y *= 0.94 + hop * 0.1
+			p.core.rotation.x = s * 0.06
+			p.head.rotation.x = -s * 0.1
+			p.tail.rotation.y = sin(t * 14) * 0.45
+			p.tail.rotation.x = 0.2 * hop
 		"jump", "fall":
-			p.legL.rotation.x = -0.7
-			p.legR.rotation.x = -0.7
-			p.backL.rotation.x = 0.7
-			p.backR.rotation.x = 0.7
-			p.core.rotation.x = -0.15
-			return
+			var up := vy > 0
+			p.legL.rotation.x = -0.9 if up else -0.4
+			p.legR.rotation.x = -0.9 if up else -0.4
+			p.backL.rotation.x = 0.9 if up else 0.4
+			p.backR.rotation.x = 0.9 if up else 0.4
+			p.core.rotation.x = -0.2 if up else 0.15
+			p.head.rotation.x = -0.25 if up else 0.15
+			p.tail.rotation.x = 0.5 if up else -0.3
 		"zap", "hurt":
 			p.head.position.z = hz + absf(sin(t * 18)) * 0.08
 			p.core.scale = Vector3.ONE * (1.0 + sin(t * 30) * 0.04)
-			return
-		"win":
-			b.position.y = absf(sin(t * 7)) * 0.3
-			p.tail.rotation.y = sin(t * 14) * 0.5
-		_:
-			b.position.y = sin(t * 3) * 0.01
-			p.tail.rotation.y = sin(t * 4) * 0.35
-			p.head.rotation.y = sin(t * 0.9) * 0.2
-	p.core.rotation.x = 0.0
-	p.core.scale = Vector3.ONE
+			p.tail.rotation.y = sin(t * 30) * 0.4
+		"win":   # happy hops and spins
+			b.position.y = absf(sin(t * 7)) * 0.35
+			b.rotation.y = t * 4.0
+			p.tail.rotation.y = sin(t * 18) * 0.6
+			p.head.rotation.x = -0.25
+		_:   # idle: breathing, tail wagging, looking around, a little hop now and then
+			var br := sin(t * 2.8)
+			b.position.y = br * 0.012
+			b.scale.y *= 1.0 + br * 0.02
+			p.tail.rotation.y = sin(t * 5) * 0.4
+			var look := fmod(t, 5.0)
+			p.head.rotation.y = 0.4 if look > 1.5 and look < 2.6 else (-0.35 if look > 3.2 and look < 4.0 else 0.0)
+			p.head.rotation.z = sin(t * 1.3) * 0.08
+			var hop := fmod(t, 7.0)
+			if hop > 6.4:   # a happy little hop
+				b.position.y = sin((hop - 6.4) / 0.6 * PI) * 0.18
 
 
 static func _penguin(b: Node3D, p: Dictionary) -> void:

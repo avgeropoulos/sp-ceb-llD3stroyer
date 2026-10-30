@@ -235,7 +235,7 @@ func _after_loading() -> void:
 			sky.refresh()
 			state = "map"
 			note("sky map")
-			hud.say("SKY MAP", "Fly to a world and LAND!", 2.4)
+			hud.say("SKY MAP", "Tap an island and the rocket flies there!", 2.4)
 		"level":
 			var d := Saves.read(Boot.slot)
 			start_game(Boot.slot)
@@ -1260,6 +1260,8 @@ func _update_leader(h: Hero, dt: float) -> void:
 	if h.ceiling_hit != null:
 		hit_block(h.ceiling_hit, 1, h)
 		sfx("bonk")
+	if h.landed and h.land_v < -9.0 and h.slam == "":   # a puff of dust when landing from high up
+		fx.burst(h.position + Vector3(0, 0.05, 0), Color(0.92, 0.88, 0.8), 6, 2.2, 2, 0.6)
 	if h.landed and h.slam == "fall":
 		_slam_land(h)
 	if h.on_floor:

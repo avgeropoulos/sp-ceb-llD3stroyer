@@ -70,7 +70,7 @@ func _layout() -> void:
 	var sup := [Vector2(s.x - 300 * u, s.y - 255 * u), 56 * u]
 	var pz := [Vector2(s.x - 52 * u, 52 * u), 34 * u]
 	if game and game.state == "map":
-		buttons = {"land": jump, "pause": pz}
+		buttons = {"land": [Vector2(s.x - 125 * u, s.y - 215 * u), 82 * u], "pause": pz}
 	elif game and game.state == "home" and game.home:
 		var fly := [Vector2(s.x - 52 * u, 252 * u), 42 * u]
 		if game.home.mode == "":   # walking around the home: BUILD, DECOR, PARTNER, FLY
@@ -105,6 +105,13 @@ func _input(event: InputEvent) -> void:
 		if e.pressed:
 			if game.state == "home" and game.home and game.home.mode != "" and _palette_tap(e.position):
 				return
+			if game.state == "map" and game.sky:   # island buttons, or tap an island itself
+				var ib := island_button_at(e.position)
+				if ib != "":
+					game.sky.fly_to(ib)
+					return
+				if button_at(e.position) == "" and game.sky.tap_screen(e.position, game.cam):
+					return
 			if game.state != "play" and game.state != "home" and game.state != "map":
 				if game.state == "title" and update_showing() and update_rect().grow(20).has_point(e.position):
 					game.updater.download()
@@ -479,17 +486,51 @@ func _draw_palette() -> void:
 
 
 func _draw_map_info() -> void:
-	var ni: Dictionary = game.sky.near_info()
+	var sky = game.sky
+	var ni: Dictionary = sky.near_info()
 	var s := size
-	if ni.is_empty():
-		txt("Fly over an island to land", Vector2(0, 120), 30, Color(1, 1, 1, 0.85), HORIZONTAL_ALIGNMENT_CENTER, s.x, 8)
-		txt("Push the stick all the way for a BOOST!", Vector2(0, 156), 22, Color(1, 1, 1, 0.65), HORIZONTAL_ALIGNMENT_CENTER, s.x, 6)
+	if sky.auto_to != "":
+		txt("Flying to " + sky.short_name(sky.auto_to) + "...", Vector2(0, 120), 36, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 9)
+	elif ni.is_empty():
+		txt("Tap an island to fly there!", Vector2(0, 120), 32, Color(1, 1, 1, 0.9), HORIZONTAL_ALIGNMENT_CENTER, s.x, 8)
+		txt("or steer with the stick (all the way = BOOST)", Vector2(0, 156), 22, Color(1, 1, 1, 0.65), HORIZONTAL_ALIGNMENT_CENTER, s.x, 6)
 	else:
 		txt(ni.name, Vector2(0, 120), 44, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 10)
 		if ni.ok:
 			txt("Tap LAND!", Vector2(0, 160), 28, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, s.x, 8)
 		else:
 			txt("LOCKED - " + ni.why, Vector2(0, 160), 28, Color("ffb0a8"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 8)
+	# a button for every island along the bottom: tap one and the rocket flies there by itself
+	var n: int = sky.order.size()
+	for i in n:
+		var id: String = sky.order[i]
+		var r := island_button_rect(i, n)
+		var ok: bool = sky.can_land(id)
+		var col := Color("3fc06a") if id == "home" else (Color("3f7fd9") if ok else Color(0.35, 0.38, 0.45))
+		if sky.auto_to == id or sky.near_id == id:
+			draw_rect(r.grow(5), Color("ffd23a"))
+		draw_rect(r, Color(col, 0.92))
+		draw_rect(r, Color(1, 1, 1, 0.8), false, 3.0)
+		var label: String = sky.short_name(id) if ok else "LOCKED"
+		txt(label, Vector2(r.position.x, r.position.y + r.size.y * 0.5 + 8), 22, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 6)
+
+
+## The island buttons sit in a row along the bottom middle (between the stick and LAND).
+func island_button_rect(i: int, n: int) -> Rect2:
+	var w := clampf((size.x - 560.0) / maxf(1, n) - 10.0, 110.0, 190.0)
+	var total := n * (w + 10.0) - 10.0
+	var x0 := (size.x - total) * 0.5
+	return Rect2(x0 + i * (w + 10.0), size.y - 86.0, w, 64.0)
+
+
+func island_button_at(p: Vector2) -> String:
+	if game.sky == null:
+		return ""
+	var n: int = game.sky.order.size()
+	for i in n:
+		if island_button_rect(i, n).grow(6).has_point(p):
+			return game.sky.order[i]
+	return ""
 
 
 func update_showing() -> bool:

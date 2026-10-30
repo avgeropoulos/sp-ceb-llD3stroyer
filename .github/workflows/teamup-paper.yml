@@ -72,6 +72,10 @@ jobs:
           done
           timeout 120s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/world_check.gd 2>&1 | tee test-world.log
           grep -q 'TEST PASSED' test-world.log
+          for look in paper toy; do
+            timeout 120s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/map_check.gd -- $look 2>&1 | tee test-map-$look.log
+            grep -q 'TEST PASSED' test-map-$look.log
+          done
       - name: Build signed Android APK
         run: |
           godot --headless --path teamup-paper --export-release Android ../TeamUpPaper.apk

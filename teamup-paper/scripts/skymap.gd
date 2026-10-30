@@ -7,7 +7,9 @@ extends Node3D
 const HEIGHT := 7.0          # how high the rocket flies above the islands
 const SPEED := 9.0
 const BOOST := 15.0
-const NEAR := 4.5            # how close (sideways) you must be to land
+const NEAR := 7.0            # how close (sideways) you must be to land (generous!)
+const PULL := 2.2            # over an island with the stick let go, the rocket drifts to its middle
+const AUTO_SPEED := 13.0     # autopilot (tap an island or its button)
 const BOUNDS := Rect2(-36, -36, 72, 64)
 
 var game
@@ -19,14 +21,19 @@ var near_id := ""            # the island under the rocket ("" = none)
 var landing_t := -1.0
 var landing_to := ""
 var t := 0.0
+var auto_to := ""            # autopilot: flying to this island, then landing
+## The islands in button order: home first, then every world (new worlds show up by themselves).
+var order: Array = []
 
 
 func setup(g, lv: Level) -> void:
 	game = g
 	level = lv
 	_island("home", Worlds.HOME_MAP)
+	order = ["home"]
 	for w in Worlds.ORDER:
 		_island(w, Worlds.info(w).map)
+		order.append(w)
 	rocket = level.prop("rocket", Vector3.ZERO, 3.0)
 	var start: Vector3 = Worlds.HOME_MAP
 	for isl in islands:
@@ -151,8 +158,50 @@ func near_info() -> Dictionary:
 	return {"id": near_id, "name": info.name, "ok": ok, "why": why}
 
 
+## Is this island open to land on? (home always is)
+func can_land(id: String) -> bool:
+	return id == "home" or Worlds.unlocked(id, game.cleared_w)
+
+
+func short_name(id: String) -> String:
+	return "HOME" if id == "home" else String(Worlds.info(id).short)
+
+
+## Autopilot: fly to an island by itself and land there. Locked worlds say why instead.
+func fly_to(id: String) -> bool:
+	if landing_t >= 0 or not id in order:
+		return false
+	if not can_land(id):
+		game.sfx("bonk")
+		game.hud.say("LOCKED", "Beat %s first!" % Worlds.info(Worlds.info(id).after).short, 1.6)
+		return false
+	auto_to = id
+	game.sfx("swap", -6)
+	return true
+
+
+## A tap on the screen: if it's on (or near) an island or its name, fly there.
+func tap_screen(pos: Vector2, cam: Camera3D) -> bool:
+	var best := ""
+	var bd := 110.0
+	for isl in islands:
+		for pt in [isl.pos, isl.pos + Vector3(0, 4.4, 0)]:   # the island and its floating name
+			if cam.is_position_behind(pt):
+				continue
+			var d := cam.unproject_position(pt).distance_to(pos)
+			if d < bd:
+				bd = d
+				best = isl.id
+	if best == "":
+		return false
+	fly_to(best)
+	return true
+
+
 func step(dt: float, move: Vector2, boost: bool) -> void:
 	t += dt
+	if move.length() > 0.25:
+		auto_to = ""   # the stick always wins over the autopilot
 	if landing_t >= 0:   # going down onto the island
 		landing_t += dt
 		rocket.position = rocket.position.move_toward(_island_pos(landing_to) + Vector3(0, 0.2, 0), dt * 9.0)
@@ -162,6 +211,19 @@ func step(dt: float, move: Vector2, boost: bool) -> void:
 			game.land_on(landing_to)
 		return
 	var want := Vector3(move.x, 0, move.y) * (BOOST if boost else SPEED)
+	if auto_to != "":
+		var to := _island_pos(auto_to) - rocket.position
+		to.y = 0
+		var d := to.length()
+		want = to.normalized() * minf(AUTO_SPEED, d * 2.0 + 2.0)
+		if d < 1.2:
+			near_id = auto_to
+			_begin_land(auto_to)
+			return
+	elif move.length() < 0.15 and near_id != "" and can_land(near_id):   # gently drift to the middle
+		var to := _island_pos(near_id) - rocket.position
+		to.y = 0
+		want = to * PULL
 	vel = vel.lerp(want, 1 - exp(-dt * 2.5))
 	rocket.position += vel * dt
 	rocket.position.x = clampf(rocket.position.x, BOUNDS.position.x, BOUNDS.end.x)
@@ -173,10 +235,10 @@ func step(dt: float, move: Vector2, boost: bool) -> void:
 		rocket.rotation.z = lerpf(rocket.rotation.z, -vel.x / BOOST * 0.6, 1 - exp(-dt * 5))
 		if rocket.has_meta("flame"):
 			var fl: Node3D = rocket.get_meta("flame")
-			fl.scale = Vector3.ONE * (1.0 + (0.6 if boost else 0.2) + sin(t * 40) * 0.15)
+			fl.scale = Vector3.ONE * (1.0 + (0.6 if boost or auto_to != "" else 0.2) + sin(t * 40) * 0.15)
 	elif rocket is Sprite3D:
 		rocket.rotation.z = lerpf(rocket.rotation.z, -vel.x / BOOST * 0.5, 1 - exp(-dt * 5))
-	if boost and move.length() > 0.3 and int(t * 20) % 2 == 0:
+	if (boost and move.length() > 0.3 or auto_to != "") and int(t * 20) % 2 == 0:
 		game.fx.burst(rocket.position + Vector3(0, -0.2, 0), Color(1, 0.8, 0.4), 2, 1.5, -2, 1.2)
 	near_id = ""
 	var best := NEAR
@@ -206,7 +268,14 @@ func land() -> bool:
 		game.sfx("bonk")
 		game.hud.say("LOCKED", ni.why, 1.6)
 		return false
-	landing_to = ni.id
+	_begin_land(ni.id)
+	return true
+
+
+func _begin_land(id: String) -> void:
+	if landing_t >= 0:
+		return
+	auto_to = ""
+	landing_to = id
 	landing_t = 0.0
 	game.sfx("item")
-	return true

@@ -31,6 +31,8 @@ var sprite_h := 1.6
 var walls_hit := false
 var ceiling_hit = null
 var landed := false
+var land_v := 0.0          # how fast we were falling when we landed (for the landing squash)
+var sprite_base_y := 0.0   # paper look: where the picture sits when not bouncing
 var squash := Vector2.ONE   # stretch/squash of the cutout (x, y)
 var turn := 1.0             # -1..1: the paper flips around when you change direction
 var turn_to := 1.0
@@ -80,6 +82,7 @@ func reskin(tex_names: Dictionary, size: float, feet_px: float, toy_kind: String
 	sprite.texture = first
 	sprite.pixel_size = size / first.get_height()
 	sprite.position.y = (first.get_height() * 0.5 - feet_px) * sprite.pixel_size
+	sprite_base_y = sprite.position.y
 	if model:
 		model.queue_free()
 		model = null
@@ -126,6 +129,8 @@ func play(name: String) -> void:
 
 func animate(dt: float, fps: float = 8.0) -> void:
 	anim_t += dt
+	if landed and land_v < -8.0:   # squash when landing from a big jump
+		squash = Vector2(1.22, 0.8)
 	if model:
 		if spin_t > 0:
 			spin_t -= dt
@@ -146,7 +151,20 @@ func animate(dt: float, fps: float = 8.0) -> void:
 	else:
 		turn = move_toward(turn, turn_to, dt * 9.0)
 	var tx := turn if absf(turn) > 0.08 else 0.08 * signf(turn_to)
-	sprite.scale = Vector3(tx * squash.x, squash.y, 1)
+	# paper look: bounce while running, breathe while standing, stretch going up
+	var sq := squash
+	var bob := 0.0
+	if anim == "run":
+		bob = absf(sin(anim_t * 13.0)) * 0.06 * sprite_h
+		sq *= Vector2(1.0 + absf(cos(anim_t * 13.0)) * 0.05, 1.0 - absf(cos(anim_t * 13.0)) * 0.04)
+	elif anim == "idle" or anim == "blink" or anim == "walk":
+		sq.y *= 1.0 + sin(anim_t * 2.8) * 0.02
+	elif anim == "jump" and vel.y > 5.0:
+		sq *= Vector2(0.92, 1.09)
+	elif anim == "win":
+		bob = absf(sin(anim_t * 6.0)) * 0.15 * sprite_h
+	sprite.position.y = sprite_base_y + bob * absf(sq.y)
+	sprite.scale = Vector3(tx * sq.x, sq.y, 1)
 	if flash_t > 0:
 		flash_t -= dt
 		sprite.modulate = Color(1, 0.55, 0.55) if int(flash_t * 20) % 2 == 0 else Color(1, 1, 1, 0.75)
@@ -183,6 +201,7 @@ func move(dt: float) -> void:
 		else:
 			p.y = hit.y + 1.0
 			landed = true
+			land_v = vel.y
 		vel.y = 0
 	position = p
 	on_floor = landed or (vel.y <= 0 and level.box_hit(p - Vector3(0, 0.05, 0), hw * 0.9, 0.1) != null)

@@ -27,11 +27,25 @@ Both looks run exactly the same game code; only the pictures change (`Actor.mode
 * Dennis the dog shows you the way. Rocco talks with the phone's Italian voice.
 * The music is the real Team Up! songs (rendered from `core/` Songs.kt).
 
+## Character animation (3D toys)
+
+Everyone blinks (eyes are their own little pieces, `Toys.eyes` / `p.eyes`), breathes and looks around when
+standing. Running: arms swing against the legs, hips twist, the body bounces, leans forward with speed and banks
+into turns (`p.lean` / `p.roll` in `Toys.pose`). Jumps stretch on the way up and tuck at the top, falls spread
+the arms, landings from high up squash and puff dust (`Actor.land_v`). Blocky's pickaxe winds up, strikes and
+follows through. Partners gallop with a hop and a wagging tail, Sparky boings, ghosts sway, birds flap. The
+clear screen has a little victory dance. The paper look bounces, breathes and stretches the cutouts too.
+
 ## Worlds and the rocket
 
-At home, walk onto the **ROCKET** launch pad to take off. On the **sky map** you steer the rocket yourself
-with the stick (all the way = BOOST) over floating islands: your **home** and one island per world. Fly over
-one and tap **LAND** (or JUMP). Worlds unlock in order; finishing one puts you back in the rocket over it.
+At home, walk onto the **ROCKET** launch pad to take off. The **sky map** has floating islands: your **home**
+and one island per world. Landing is easy:
+
+* **Tap an island** (or its floating name), or one of the **island buttons** along the bottom (HOME, then every
+  world; locked ones say LOCKED): the rocket flies there by itself and lands (autopilot, `SkyMap.fly_to`).
+* Or steer with the stick (all the way = BOOST; the stick always takes over from the autopilot). Over an island,
+  let go and the rocket drifts to its middle; **LAND** (or JUMP) works anywhere within 7 blocks of the middle.
+* Worlds unlock in order; finishing one puts you back in the rocket over it. Test: `tests/map_check.gd`.
 
 | World | Look | New bad guy | Krag Jr. |
 |---|---|---|---|
