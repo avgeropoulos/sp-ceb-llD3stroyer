@@ -40,15 +40,30 @@ one and tap **LAND** (or JUMP). Worlds unlock in order; finishing one puts you b
 | 3-1 Sunset Dunes | sand, cacti, palms, sunset sky, sandstone pillars to hop | **Scorpion**: raises its tail "!" then lunges | 30 HP |
 
 * Each world has its own song (the real Team Up! snow and desert tunes). Ice: slow to start, slow to stop.
-* The new worlds are built by `level.gd` `_generate_world()` from pieces (hills, pits, a platform pit, ? blocks,
-  an ore hill, a mine-through wall, ice fields / pillars) with the start, checkpoint and boss arena in the same
-  places as 1-1. The robot test beats every world (`smoke.gd -- toy frost`).
-* Saves remember worlds cleared (`cleared_w`) and which world a mid-level save is in (`level`); continuing that
-  file goes straight back into that world (`tests/world_check.gd`).
-* Code: `scripts/worlds.gd` (the list: names, songs, skies, map spots, unlock order, boss HP), `scripts/skymap.gd`
-  (islands, rocket flying, LAND), `main.gd` `_ready_map` / `_step_map` / `land_on`, `Boot.level` / `Boot.from_level`.
-  Adding a world: add it to `Worlds.ORDER` / `INFO`, give `_generate_world` its blocks / special piece and
-  `_scenery` its props, then add it to the CI world loop.
+
+### Open worlds and stars
+
+Every world is a big **open 96 x 96 world** (like the home) with the turning camera: drag the right side of
+the screen to look around, the stick walks where the camera looks. Hills, block trees, ore rocks to mine and bad
+guys wandering about (they walk in any direction now). Find the **5 stars** (top of the screen); floating gold
+names show where each challenge is from far away, and the closest one's hint shows under the stars:
+
+| Star | How |
+|---|---|
+| BAD GUY CAMP | beat all 5 bad guys at the camp, then grab the star |
+| TALL TOWER | climb the stairs round the tower (a ? block above the top) |
+| SECRET CAVE | the tunnel into the big hill is blocked by rock: dig through with Blocky |
+| SKY STEPS | jump up 7 floating steps to a little island (Rocco's jump) |
+| COIN HUNT | collect 40 coins (coin trails lead from the start to every challenge); the star is at the start |
+
+All 5 open the **gold gate** of **Krag Jr.'s castle** (its walls can't be mined). Inside, Krag Jr. circles,
+throws spike balls and dives; beat him and the flag comes down: touch it to finish the world. Stars found are
+saved with the file (`stars`). Frosty Peaks is a mirror image of the layout, taller and peaky, with ice ponds.
+
+* Code: `level.gd` `generate_open()` (+ `_castle`, `_camp`, `_tower`, `_cave`, `_sky_steps`, `keep_out`),
+  `scripts/openplay.gd` (stars, floating names, gate, flag), `foes.gd` `_tick_open` / `_kragjr_open`.
+* Test: `tests/open_check.gd -- [toy] meadow|frost|dunes`: Rocco really jumps every sky step and tower stair
+  (real physics), Blocky digs the cave, the camp, 40 coins, the gate, Krag Jr. and the flag.
 
 ## Home base: build and decorate
 

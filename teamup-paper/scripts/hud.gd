@@ -284,11 +284,11 @@ func _draw_stars() -> void:
 		return
 	var o: Dictionary = op.nearest()
 	if not o.is_empty():
-		txt(o.name + ":  " + o.hint, Vector2(0, 98), 26, Color("fff2a8"), HORIZONTAL_ALIGNMENT_CENTER, size.x, 7)
+		txt(o.name + ":  " + o.hint, Vector2(0, 150), 26, Color("fff2a8"), HORIZONTAL_ALIGNMENT_CENTER, size.x, 7)
 	elif n >= OpenPlay.STARS_NEEDED:
-		txt("The gold gate is open! Go to Krag Jr.'s castle!", Vector2(0, 98), 26, Color("fff2a8"), HORIZONTAL_ALIGNMENT_CENTER, size.x, 7)
+		txt("The gold gate is open! Go to Krag Jr.'s castle!", Vector2(0, 150), 26, Color("fff2a8"), HORIZONTAL_ALIGNMENT_CENTER, size.x, 7)
 	else:
-		txt("Follow the floating stars to find the challenges", Vector2(0, 98), 22, Color(1, 1, 1, 0.75), HORIZONTAL_ALIGNMENT_CENTER, size.x, 6)
+		txt("Follow the floating stars to find the challenges", Vector2(0, 150), 22, Color(1, 1, 1, 0.75), HORIZONTAL_ALIGNMENT_CENTER, size.x, 6)
 
 
 func _star_shape(c: Vector2, r: float, col: Color) -> void:

@@ -213,7 +213,9 @@ Screenshots of effects need `--fixed-fps 60` (software Vulkan is slow, so effect
 Flow: title -> file -> (new: partner, 30 coins) -> HOME (`level.is_home`, `state == "home"`, `HomeBase`) -> rocket pad
 -> SKY MAP (`state == "map"`, `SkyMap`, steer the rocket, LAND) -> a world (`Boot.level`: meadow / frost / dunes, see
 `worlds.gd`) -> clear -> sky map over that island. Worlds unlock in order (`cleared_w`). Frost/Dunes are generated
-(`level.gd` `_generate_world`) with the same checkpoint/arena x as 1-1; new foes Penguin and Scorpion (`foes.gd`). Switching places reloads the scene via `main.go(place, slot)` + static `Boot` (tests follow `Boot.current`).
+(old side-scroll code, unused now): all 3 worlds are OPEN worlds (`level.open`, `generate_open`, `OpenPlay` in
+`openplay.gd`: 5 stars -> gold gate -> Krag Jr.'s castle -> flag; `tests/open_check.gd`). `level.open` (home too)
+means turning camera, free z movement and foes walking any way (`foes.gd` `_tick_open`). Switching places reloads the scene via `main.go(place, slot)` + static `Boot` (tests follow `Boot.current`).
 Home = big world (`Level.HOME_SX/SY/SZ` 96x40x96; `level.sx/sy/sz` are per level, use them not LX/LY/LZ),
 orbit camera (`cam_yaw/cam_pitch`, `_update_home_camera`, `Actor.view_right/view_back`), Minecraft aiming
 (`HomeBase.aim_ray` voxel walk; HUD `world_taps` = tap to place, `hold_pos` = hold to break, `look_delta` = drag),
