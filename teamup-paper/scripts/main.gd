@@ -69,6 +69,7 @@ var cleared := 0              # times this file finished the level
 var home: HomeBase            # only at home
 var open_play: OpenPlay       # only in the open worlds (stars, gate, flag)
 var gate_open := false        # Krag Jr.'s gold gate (5 stars)
+var powers: Powers            # power-ups (open worlds)
 var sky: SkyMap               # only on the sky map
 var cleared_w := {}           # world id -> times cleared
 var home_saved := {}          # the home from the save file (kept while you're in 1-1)
@@ -214,6 +215,7 @@ func _ready_level() -> void:
 		open_play = OpenPlay.new()
 		level.add_child(open_play)
 		open_play.setup(self, level)
+		_setup_powers()
 	else:
 		level.prop("flag", Vector3(Level.CHECKPOINT_X, 5, 3.9), 3.2)
 		level.prop("flag", Vector3(Level.FLAG_X, 5, 3.9), 4.6)
@@ -934,6 +936,12 @@ func _warm_up() -> void:
 			var n := level.prop(k, at, 0.3)
 			n.scale = Vector3.ONE * 0.05
 			warm_nodes.append(n)
+		for k in Powers.KINDS:
+			var n := Powers.item_model(k)
+			n.position = at
+			n.scale = Vector3.ONE * 0.05
+			level.add_child(n)
+			warm_nodes.append(n)
 		for k in NEW_SHOT_PICS.values():
 			var n := _shot_node(k, at, 0.3)
 			n.scale = Vector3.ONE * 0.05
@@ -1185,6 +1193,8 @@ func _step(dt: float) -> void:
 	_update_foes(dt)
 	_update_shots(dt)
 	_update_coins(dt)
+	if powers:
+		powers.step(dt)
 	_update_progress(dt)
 	_update_camera(dt)
 
@@ -1212,7 +1222,7 @@ func _update_leader(h: Hero, dt: float) -> void:
 	if h.long_t > 0 and not h.on_floor:
 		h.long_t -= dt
 	else:
-		var target := dir * h.speed * (SPRINT_SPEED if sprinting else 1.0)
+		var target := dir * h.speed * (SPRINT_SPEED if sprinting else 1.0) * _power_speed()
 		var accel := 45.0 if h.on_floor else 25.0
 		if h.on_floor and level.get_cell(floori(h.position.x), floori(h.position.y - 0.1), floori(h.position.z)) == Level.ICE:
 			accel = 7.0   # ice: slow to start, slow to stop
@@ -1235,7 +1245,7 @@ func _update_leader(h: Hero, dt: float) -> void:
 		jump_buf = 0.14
 	if jump_buf > 0 and h.slam == "":
 		if h.coyote > 0:
-			h.vel.y = h.jump_v
+			h.vel.y = h.jump_v * _power_jump()
 			h.coyote = 0
 			jump_buf = 0
 			jump_hold_t = 0.12
@@ -1272,7 +1282,7 @@ func _update_leader(h: Hero, dt: float) -> void:
 	if boss_on and not boss_done:
 		_keep_in_arena(h)
 	if h.ceiling_hit != null:
-		hit_block(h.ceiling_hit, 1, h)
+		hit_block(h.ceiling_hit, powers.block_power() if powers else 1, h)
 		sfx("bonk")
 	if h.landed and h.land_v < -9.0 and h.slam == "":   # a puff of dust when landing from high up
 		fx.burst(h.position + Vector3(0, 0.05, 0), Color(0.92, 0.88, 0.8), 6, 2.2, 2, 0.6)
@@ -1314,6 +1324,22 @@ func _update_leader(h: Hero, dt: float) -> void:
 	h.update_shadow()
 
 
+# ------------------------------------------------------------------ power-ups (see powers.gd)
+func _setup_powers() -> void:
+	powers = Powers.new()
+	level.add_child(powers)
+	powers.setup(self, level)
+	powers.place_items()
+
+
+func _power_speed() -> float:
+	return powers.speed_mult() if powers and leader() == powers.worn_by else 1.0
+
+
+func _power_jump() -> float:
+	return powers.jump_mult() if powers and leader() == powers.worn_by else 1.0
+
+
 func _keep_in_arena(h: Hero) -> void:
 	if level.open:
 		var ar := level.arena
@@ -1344,6 +1370,8 @@ func _fly(h: Hero, dir: Vector3, dt: float) -> void:
 
 
 func _action(h: Hero) -> void:
+	if powers and powers.on_action(h):   # FIRE / ICE FLOWER throw instead
+		return
 	match h.who:
 		"rocco":
 			if h.on_floor:
@@ -1575,6 +1603,8 @@ func _open_mystery(c: Vector3i) -> void:
 	note("? block")
 	level.set_cell(c.x, c.y, c.z, Level.USED)
 	var top := Vector3(c) + Vector3(0.5, 1.1, 0.5)
+	if powers and powers.from_block(top):   # a power-up comes out
+		return
 	if hearts < MAX_HEARTS and randf() < 0.4:
 		hearts += 1
 		sfx("heart")
@@ -1785,8 +1815,12 @@ func _update_foes(dt: float) -> void:
 	for f in foes.duplicate():
 		if not is_instance_valid(f) or not f.alive:
 			continue
+		if powers and powers.is_frozen(f):   # an ice block for now
+			continue
 		f.tick(dt, self)
 		if not is_instance_valid(f) or f.dying >= 0 or not f.alive:
+			continue
+		if l.overlaps(f) and powers and powers.on_touch(f):   # SUPER STAR / METAL CAP
 			continue
 		if l.overlaps(f):
 			var falling: bool = l.vel.y < -1.0 and l.position.y > f.position.y + f.height * 0.45
@@ -1975,6 +2009,8 @@ func _update_coins(dt: float) -> void:
 # ------------------------------------------------------------------ getting hurt
 func hurt_hero(from: Vector3) -> void:
 	if hurt_t > 0 or invincible or state != "play":
+		return
+	if powers and powers.on_hurt():   # STAR / METAL: nothing; MUSHROOM / FLOWER: the power takes the hit
 		return
 	var l := leader()
 	hearts -= 1

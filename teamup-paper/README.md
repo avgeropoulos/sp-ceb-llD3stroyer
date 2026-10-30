@@ -100,6 +100,30 @@ Code: `foes.gd` `FOES2` / `_tick_foe2`, models `toys.gd` `_foe2` / `_pose_foe2`,
 Test: `tests/foes_check.gd -- [toy]` (each one moves/attacks, is beaten the right way, the bomb breaks blocks,
 the ghost hides when looked at).
 
+## Power-ups
+
+? blocks often give a power-up (it rises out of the block; mushrooms slide off along the ground like the
+2D game), and about 8 lie around each open world (one near the start, one on the tower stairs, one in the
+secret cave). Whoever you steer gets it, and it moves to the next hero when you SWAP. The HUD (top right)
+shows the power and a ring for the time left.
+
+| Power | What it does | How long |
+|---|---|---|
+| FIRE FLOWER | ACTION throws bouncing fireballs | until you're hit |
+| ICE FLOWER | ACTION throws ice balls: bad guys become ice blocks you can stand on (4.5 s) | until you're hit |
+| SUPER MUSHROOM | big, one free hit, head-bumps smash blocks | until you're hit |
+| MINI MUSHROOM | tiny (fits small gaps), jumps 30% higher | 15 s |
+| SUPER STAR | rainbow, nothing hurts, touching bad guys beats them, faster, faster music | 12 s |
+| WING CAP | hold JUMP to fly up | 12 s |
+| PROPELLER | JUMP in the air = a big spin up, hold JUMP to float down | 15 s |
+| METAL CAP | shiny and heavy: nothing hurts, flattens bad guys, stomps shake, no double jump | 12 s |
+| LIFE MUSHROOM | all hearts back | right away |
+
+* Code: `scripts/powers.gd` (`Powers`: items, effects, frozen bad guys, HUD ring; toy models in `item_model`,
+  paper pictures `art/pw_*.png` from `tools/gen_art.py` `power_items()`). `main.gd` only calls into it
+  (`_setup_powers`, `_power_speed` / `_power_jump`, and one line each in `_open_mystery`, `_action`, `hurt_hero`,
+  `_update_foes`, `_step`). Test: `tests/power_check.gd`.
+
 ## Home base: build and decorate
 
 Picking a save file takes you **home**: a big **96 x 96** world (40 blocks tall) to build a whole city on, with
