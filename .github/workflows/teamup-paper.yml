@@ -65,13 +65,15 @@ jobs:
             grep -q 'TEST PASSED' test-partner-$look.log
             timeout 300s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/home_check.gd -- $look 2>&1 | tee test-home-$look.log
             grep -q 'TEST PASSED' test-home-$look.log
-            for world in meadow frost dunes; do
+            for world in meadow frost dunes swamp moon; do
               timeout 300s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/open_check.gd -- $look $world 2>&1 | tee test-open-$world-$look.log
               grep -q 'TEST PASSED' test-open-$world-$look.log
             done
           done
           timeout 120s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/world_check.gd 2>&1 | tee test-world.log
           grep -q 'TEST PASSED' test-world.log
+          timeout 300s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/scene_check.gd 2>&1 | tee test-scene.log
+          grep -q 'TEST PASSED' test-scene.log
       - name: Build signed Android APK
         run: |
           godot --headless --path teamup-paper --export-release Android ../TeamUpPaper.apk

@@ -118,10 +118,10 @@ static func _star_mesh() -> ArrayMesh:
 			var b: Vector3 = pts[(i + 1) % 10]
 			var nrm: Vector3 = (b - a).cross(c - a).normalized() * side
 			st.set_normal(nrm)
-			if side > 0:
-				st.add_vertex(a); st.add_vertex(b); st.add_vertex(c)
-			else:
+			if side > 0:   # Godot's front faces go clockwise
 				st.add_vertex(b); st.add_vertex(a); st.add_vertex(c)
+			else:
+				st.add_vertex(a); st.add_vertex(b); st.add_vertex(c)
 	st.generate_normals()
 	return st.commit()
 
@@ -188,6 +188,8 @@ func _collect(id: String) -> void:
 	else:
 		game.hud.say("STAR %d / %d!" % [count(), STARS_NEEDED], o.name, 2.4)
 	game.save_game()
+	if count() < STARS_NEEDED:
+		game.maybe_funny()
 
 
 func open_gate() -> void:

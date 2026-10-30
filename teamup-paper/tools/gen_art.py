@@ -1026,7 +1026,8 @@ def sign():
 ATLAS = ["grass_top", "grass_side", "dirt", "stone", "iron", "gold", "diamond", "bedrock", "brick", "mystery", "used",
          "planks", "wool_red", "wool_blue", "wool_yellow", "wool_white", "window", "iron_block", "gold_block", "diamond_block", "stone_brick",
          "snow_top", "snow_side", "ice", "sand", "sandstone",
-         "log_top", "log_side", "leaves", "wool_green", "wool_black", "road"]
+         "log_top", "log_side", "leaves", "wool_green", "wool_black", "road",
+         "swamp_top", "swamp_side", "mud", "moon_top", "moon_rock"]
 
 
 def world_textures():
@@ -1121,6 +1122,44 @@ def city_textures():
         px[7, y] = (250, 206, 60)
         px[8, y] = (250, 206, 60)
     im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_road.png"))
+
+
+def spooky_moon_textures():
+    """Ground for the Spooky Swamp (dark mossy grass, mud) and the Moon Base (grey dust, moon rock)."""
+    MOSS = (98, 128, 90)
+    MUD = (84, 62, 58)
+    tex("swamp_top", MOSS, speck=(120, 92, 150), specks=22, seed=51)
+    tex("swamp_side", MUD, speck=(60, 44, 42), specks=20, top=MOSS, seed=52)
+    tex("mud", MUD, speck=(60, 44, 42), specks=30, seed=53)
+    DUST = (196, 198, 206)
+    ROCK = (150, 152, 162)
+    tex("moon_top", DUST, speck=(232, 234, 240), specks=24, seed=54)
+    # moon rock with little craters
+    rnd = random.Random(55)
+    im = Image.new("RGB", (16, 16), ROCK)
+    px = im.load()
+    for y in range(16):
+        for x in range(16):
+            v = rnd.randint(-8, 8)
+            px[x, y] = tuple(max(0, min(255, c + v)) for c in ROCK)
+    for cx, cy, r in ((4, 4, 2), (11, 9, 3), (5, 12, 1)):
+        for y in range(16):
+            for x in range(16):
+                d = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
+                if d <= r:
+                    px[x, y] = (118, 120, 130)
+                elif d <= r + 1 and y < cy:
+                    px[x, y] = (178, 180, 190)
+    im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_moon_rock.png"))
+
+
+def banana():
+    """A banana peel for a funny cutscene."""
+    p = Pen(64, 40)
+    p.poly([(6, 30), (20, 22), (32, 20), (44, 22), (58, 30), (52, 34), (40, 28), (32, 27), (24, 28), (12, 34)], rgb("#ffd84a"))
+    p.poly([(28, 26), (22, 12), (30, 22), (34, 10), (36, 24)], rgb("#ffe680"))
+    p.oval(6, 31, 2.4, 2.4, rgb("#6a4a2e"), ink=False)
+    p.done("banana", border=2)
 
 
 def build_textures():
@@ -1247,6 +1286,8 @@ def main():
     build_textures()
     world_textures()
     city_textures()
+    spooky_moon_textures()
+    banana()
     atlas()
     print("art written to", os.path.abspath(OUT))
 

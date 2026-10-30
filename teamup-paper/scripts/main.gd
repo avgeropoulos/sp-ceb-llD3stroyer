@@ -76,6 +76,16 @@ var paused_from := "play"     # "play" or "home": where RESUME goes back to
 var partner_from := ""        # "new" (new file), "home" or "" (tests)
 var taps := {}                # touch buttons pressed this frame (home buttons)
 
+# cutscenes (scripts/cutscene.gd)
+var cutscene: Cutscene
+var scene_back := ""          # the state to go back to when the scene ends
+var scenes_seen: Array = []   # scene ids seen on this file (MOVIES replays them)
+var victory_t := -1.0         # counts down to the victory scene after Krag Jr. is beaten
+var gate_scene_done := false
+var movie_sel := 0
+var grav := 1.0               # gravity for the heroes (the Moon is 0.6)
+const MOVIE_SPOT := Vector3(Level.HOME_OX + 1.5, 5, Level.HOME_OZ + 8.5)   # the MOVIES TV at home
+
 # partners
 var mon_line := "spark"       # one of Mons.ORDER
 var mon_xp := _new_mon_xp()   # XP for every partner line (Mons.ORDER)
@@ -276,6 +286,126 @@ func enter_home() -> void:
 	play_t = 0
 	note("home")
 	hud.say("HOME", "BUILD and DECOR your base. Walk to the ROCKET to fly to the worlds!", 2.8)
+	_make_movie_tv()
+	if not "intro" in scenes_seen:
+		play_scene("intro")
+	else:
+		maybe_funny()
+
+
+# ------------------------------------------------------------------ cutscenes and MOVIES
+## Plays a cutscene; when it ends the game goes back to `back` (default: the state now).
+## Returns false (and plays nothing) when scenes are switched off (tests, the robot).
+func play_scene(id: String, back := "") -> bool:
+	if not Cutscene.enabled or bot or cutscene != null:
+		return false
+	scene_back = back if back != "" else state
+	state = "scene"
+	hud.message_t = 0
+	cutscene = Cutscene.new()
+	add_child(cutscene)
+	cutscene.start(self, id)
+	return true
+
+
+func _scene_done(id: String) -> void:
+	if not id in scenes_seen:
+		scenes_seen.append(id)
+	if cutscene:
+		cutscene.queue_free()
+		cutscene = null
+	state = scene_back
+	if state == "movies":
+		return
+	if level.open:
+		cam_focus = leader().position + Vector3(0, 1.4, 0)
+	if state == "home":
+		save_game(false)
+		play_music("cozy")
+	elif state == "play":
+		if id == "krag":
+			hud.say("KRAG JR.!", "Stomp him when he swoops down!", 2.8)
+			play_music("boss")
+		elif id == "victory":
+			hud.say("HOORAY!", "Touch the flag to finish the world!", 2.8)
+			play_music(world_info().song)
+		elif id == "intro":
+			play_music(world_info().song)
+
+
+## Sometimes (not too often) a funny little scene plays: at home, or after a star.
+func maybe_funny(chance := 0.3) -> void:
+	if not Cutscene.enabled or bot or cutscene != null or not (state in ["home", "play"]):
+		return
+	if Time.get_ticks_msec() - Cutscene.last_funny_ms < 90000 or randf() > chance:
+		return
+	var l := leader()
+	if not l.on_floor:
+		return
+	for d in [Vector2(-2.5, 0), Vector2(2.5, 0), Vector2(0, 1.5), Vector2(-4, 1), Vector2(3, -4)]:
+		var g := level.ground_below(l.position.x + d.x, l.position.z + d.y, l.position.y + 3)
+		if absf(g - l.position.y) > 0.6:
+			return   # not flat enough here for a little show
+	var pool := []
+	for id in Cutscene.FUNNY:
+		if id != Cutscene.last_funny:
+			pool.append(id)
+	var pick: String = pool.pick_random()
+	Cutscene.last_funny = pick
+	Cutscene.last_funny_ms = Time.get_ticks_msec()
+	play_scene(pick)
+
+
+## The MOVIES TV at home (any TV you place works too).
+func _make_movie_tv() -> void:
+	var tv: Node3D
+	if Look.toy:
+		tv = Decor.model("tv")
+		tv.position = MOVIE_SPOT
+		tv.rotation.y = 0
+		level.add_child(tv)
+	else:
+		tv = level.paper("decor_tv", MOVIE_SPOT, 1.0)
+	var label := Label3D.new()
+	label.text = "MOVIES"
+	label.font_size = 44
+	label.outline_size = 12
+	label.pixel_size = 0.008
+	label.modulate = Color("ffd23a")
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.position = MOVIE_SPOT + Vector3(0, 2.1, 0)
+	level.add_child(label)
+
+
+func near_tv() -> bool:
+	if home == null or home.mode != "":
+		return false
+	var p := leader().position
+	if Vector2(p.x - MOVIE_SPOT.x, p.z - MOVIE_SPOT.z).length() < 2.6:
+		return true
+	for c in home.decor:
+		if home.decor[c].id == "tv" and Vector3(c).distance_to(p) < 2.6:
+			return true
+	return false
+
+
+func open_movies() -> void:
+	state = "movies"
+	movie_sel = 0
+	sfx("swap", -6)
+
+
+func movie_pick(i: int) -> void:
+	var id: String = Cutscene.ORDER[i]
+	if id in scenes_seen:
+		play_scene(id, "movies")
+	else:
+		sfx("bonk", -6)
+
+
+func scene_tap() -> void:
+	if cutscene and cutscene.t > 1.0:
+		cutscene.finish()
 
 
 func _step_home(dt: float) -> void:
@@ -297,6 +427,9 @@ func _step_home(dt: float) -> void:
 		sfx("heart", -6)
 	if taps.has("fly") or Input.is_action_just_pressed("fly"):
 		set_flying(not flying)
+	if taps.has("movies"):
+		open_movies()
+		return
 	if taps.has("partner"):
 		partner_from = "home"
 		partner_sel = maxi(0, Mons.ORDER.find(mon_line))
@@ -487,6 +620,11 @@ func _setup_world() -> void:
 	env.fog_depth_begin = 28.0
 	env.fog_depth_end = 140.0
 	env.fog_density = 0.55
+	if Boot.place == "level":
+		env.fog_depth_begin = float(wi.get("fog_begin", 28.0))
+		env.fog_depth_end = float(wi.get("fog_end", 140.0))
+		env.fog_density = float(wi.get("fog_density", 0.55))
+		grav = float(wi.get("gravity", 1.0))
 	if Boot.place == "home":   # the big home: see your whole city
 		env.fog_depth_begin = 50.0
 		env.fog_depth_end = 200.0
@@ -792,7 +930,7 @@ func save_data(in_level := true) -> Dictionary:
 	var d := {"v": 2, "level": level.world if level else "meadow", "cleared_w": cleared_w.duplicate(), "time": Time.get_unix_time_from_system(),
 		"hearts": hearts, "coins": coins, "ores": ores.duplicate(), "beaten": beaten,
 		"super": super_charge, "cleared": cleared, "human": human if in_level else "rocco", "in_level": in_level,
-		"mon": mon_line, "mon_xp": mon_xp.duplicate(),
+		"mon": mon_line, "mon_xp": mon_xp.duplicate(), "scenes_seen": scenes_seen.duplicate(),
 		"home": home.data() if home else home_saved}
 	if in_level:
 		var cells := []
@@ -833,6 +971,10 @@ func _apply_save(d: Dictionary) -> void:
 	var mx: Dictionary = d.get("mon_xp", {})
 	for k in mon_xp:
 		mon_xp[k] = int(mx.get(k, 0))
+	scenes_seen = []
+	for sid in d.get("scenes_seen", []):
+		if String(sid) in Cutscene.ORDER and not String(sid) in scenes_seen:
+			scenes_seen.append(String(sid))
 	mon_line = String(d.get("mon", "spark"))
 	if not mon_line in Mons.ORDER:
 		mon_line = "spark"
@@ -1091,6 +1233,24 @@ func _step(dt: float) -> void:
 	if state == "evolve":
 		_step_evolve(dt)
 		return
+	if state == "scene":
+		if cutscene:
+			if (jump_pressed or action_pressed or pause_pressed) and cutscene.t > 1.0:
+				cutscene.finish()
+			else:
+				cutscene.step(dt)
+		return
+	if state == "movies":
+		var n := Cutscene.ORDER.size()
+		if Input.is_action_just_pressed("left"):
+			movie_sel = (movie_sel + n - 1) % n
+		if Input.is_action_just_pressed("right"):
+			movie_sel = (movie_sel + 1) % n
+		if jump_pressed or action_pressed:
+			movie_pick(movie_sel)
+		elif pause_pressed:
+			state = "home"
+		return
 	if state == "partner":
 		var n := Mons.ORDER.size()
 		if Input.is_action_just_pressed("left"):
@@ -1248,8 +1408,8 @@ func _update_leader(h: Hero, dt: float) -> void:
 	if h.who == "mon" and h.line == "ghost" and h.vel.y < -6.0:
 		h.vel.y = -6.0   # ghosts float down slowly
 	if not jump_held and h.vel.y > 0 and h.long_t <= 0 and jump_hold_t <= 0:
-		h.vel.y -= Actor.GRAVITY * 1.4 * dt   # let go of JUMP early = smaller jump
-	h.vel.y = maxf(h.vel.y - Actor.GRAVITY * dt, -26)
+		h.vel.y -= Actor.GRAVITY * grav * 1.4 * dt   # let go of JUMP early = smaller jump
+	h.vel.y = maxf(h.vel.y - Actor.GRAVITY * grav * dt, -26)
 	if action_pressed:
 		_action(h)
 	h.move(dt)
@@ -1721,7 +1881,7 @@ func _update_follower(h: Hero, dt: float) -> void:
 	var pit_ahead := absf(h.vel.x) > 0.5 and level.ground_below(ahead, h.position.z, h.position.y + 0.2) < h.position.y - 1.5
 	if h.on_floor and (h.walls_hit or d.y > 0.8 or pit_ahead):
 		h.vel.y = h.jump_v
-	h.vel.y = maxf(h.vel.y - Actor.GRAVITY * dt, -26)
+	h.vel.y = maxf(h.vel.y - Actor.GRAVITY * grav * dt, -26)
 	h.move(dt)
 	if boss_on and not boss_done:
 		_keep_in_arena(h)
@@ -2021,6 +2181,7 @@ func on_foe_beaten(f: Foe) -> void:
 		boss_done = true
 		fx.shake = 1.2
 		hud.say("KRAG JR. BEATEN!", "Run to the flag!", 3.0)
+		victory_t = 1.8
 		play_music(world_info().song)
 		speak("We did it! Woo hoo!", "rocco")
 		save_game()
@@ -2034,15 +2195,27 @@ func start_boss(f: Foe) -> void:
 	checkpoint = Vector3(Level.BOSS_X0 + 2, 5, 6.5)
 	if level.open:   # just inside the castle gate
 		checkpoint = Vector3(level.arena.get_center().x + 0.5, level.arena_y, level.arena.end.y - 2.5)
-	hud.say("KRAG JR.!", "Stomp him when he swoops down!", 2.8)
 	play_music("boss")
 	sfx("alert")
+	if not play_scene("krag"):
+		hud.say("KRAG JR.!", "Stomp him when he swoops down!", 2.8)
 
 
 # ------------------------------------------------------------------ checkpoint, flag, camera
 func _update_progress(dt: float) -> void:
 	var l := leader()
 	if level.open:
+		if victory_t > 0:
+			victory_t -= dt
+			if victory_t <= 0:
+				play_scene("victory")
+				return
+		if not gate_scene_done and not gate_open and level.gate.size() > 0 \
+				and Vector3(level.gate[0]).distance_to(l.position) < 8:
+			gate_scene_done = true
+			if not "gate" in scenes_seen:
+				play_scene("gate")
+				return
 		open_play.step(dt)
 		return
 	if not checkpoint_hit and l.position.x > Level.CHECKPOINT_X:

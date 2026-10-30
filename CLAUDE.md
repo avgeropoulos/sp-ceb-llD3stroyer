@@ -223,7 +223,10 @@ Flow: title -> file -> (new: partner, 30 coins) -> HOME (`level.is_home`, `state
 `worlds.gd`) -> clear -> sky map over that island. Worlds unlock in order (`cleared_w`). Frost/Dunes are generated
 (old side-scroll code, unused now): all 3 worlds are OPEN worlds (`level.open`, `generate_open`, `OpenPlay` in
 `openplay.gd`: 5 stars -> gold gate -> Krag Jr.'s castle -> flag; `tests/open_check.gd`). `level.open` (home too)
-means turning camera, free z movement and foes walking any way (`foes.gd` `_tick_open`). Switching places reloads the scene via `main.go(place, slot)` + static `Boot` (tests follow `Boot.current`).
+means turning camera, free z movement and foes walking any way (`foes.gd` `_tick_open`). Worlds: meadow, frost, dunes,
+swamp (4-1, misty) and moon (5-1, `gravity` 0.6 -> `main.grav`); a world's fog/gravity come from `Worlds.INFO`.
+Cutscenes (`cutscene.gd`, state "scene", `play_scene(id, back)`, `_scene_done`, `scenes_seen` saved, MOVIES state
+"movies" by the TV at `MOVIE_SPOT`); tests that don't test scenes set `Cutscene.enabled = false`. Switching places reloads the scene via `main.go(place, slot)` + static `Boot` (tests follow `Boot.current`).
 Home = big world (`Level.HOME_SX/SY/SZ` 96x40x96; `level.sx/sy/sz` are per level, use them not LX/LY/LZ),
 orbit camera (`cam_yaw/cam_pitch`, `_update_home_camera`, `Actor.view_right/view_back`), Minecraft aiming
 (`HomeBase.aim_ray` voxel walk; HUD `world_taps` = tap to place, `hold_pos` = hold to break, `look_delta` = drag),

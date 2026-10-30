@@ -68,7 +68,7 @@ func _island(id: String, pos: Vector3) -> void:
 	var sb := BoxMesh.new()
 	sb.size = Vector3(size - 0.02, 1.6, size - 0.02)
 	side.mesh = sb
-	side.material_override = _tex_mat("dirt" if id != "dunes" else "sandstone", 0.25 * size)
+	side.material_override = _tex_mat({"dunes": "sandstone", "swamp": "mud", "moon": "moon_rock"}.get(id, "dirt"), 0.25 * size)
 	side.position.y = -1.3
 	n.add_child(side)
 	var rock := MeshInstance3D.new()
@@ -85,7 +85,9 @@ func _island(id: String, pos: Vector3) -> void:
 	var things: Array = {"home": [["tree_a", -2.6, -2.4, 2.6], ["rocket", 2.4, 1.6, 2.0]],
 		"meadow": [["tree_a", -2.8, -2.8, 2.8], ["tree_b", 2.6, -2.0, 2.4], ["bush", -1.0, 2.6, 0.8], ["flag", 2.6, 2.6, 2.2]],
 		"frost": [["pine_a", -2.6, -2.6, 3.0], ["pine_b", 2.4, -2.4, 2.6], ["snowman", -2.0, 2.4, 1.4], ["flag", 2.6, 2.6, 2.2]],
-		"dunes": [["palm", -2.6, -2.4, 3.0], ["cactus_a", 2.4, -2.2, 2.6], ["desert_rock", -1.4, 2.6, 0.8], ["flag", 2.6, 2.6, 2.2]]}[id]
+		"dunes": [["palm", -2.6, -2.4, 3.0], ["cactus_a", 2.4, -2.2, 2.6], ["desert_rock", -1.4, 2.6, 0.8], ["flag", 2.6, 2.6, 2.2]],
+		"swamp": [["pine_b", -2.6, -2.4, 3.0], ["tree_c", 2.4, -2.2, 2.4], ["desert_rock", -1.4, 2.6, 0.8], ["flag", 2.6, 2.6, 2.2]],
+		"moon": [["desert_rock", -2.4, -2.2, 1.6], ["desert_rock", 2.2, -1.8, 1.1], ["rocket", -1.6, 2.2, 2.0], ["flag", 2.6, 2.6, 2.2]]}.get(id, [])
 	for th in things:
 		level.prop(th[0], pos + Vector3(th[1], 0, th[2]), th[3], true)
 	if id == "home":   # a little house

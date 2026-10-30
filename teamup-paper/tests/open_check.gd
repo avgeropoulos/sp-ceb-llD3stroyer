@@ -17,6 +17,7 @@ var tops: Array = []
 func _initialize() -> void:
 	var a := OS.get_cmdline_user_args()
 	Look.loaded = true
+	Cutscene.enabled = false   # tests/scene_check.gd covers the cutscenes
 	Look.toy = a.has("toy")
 	Boot.place = "level"
 	Boot.level = "meadow"
