@@ -13,6 +13,7 @@ var failed := ""
 func _initialize() -> void:
 	Look.loaded = true
 	Look.toy = OS.get_cmdline_user_args().has("toy")
+	Cutscene.enabled = false   # tests/scene_check.gd covers the cutscenes
 	Saves.prefix = "user://test_map"
 	_clean()
 	Saves.write(1, {"v": 2, "cleared_w": {}, "coins": 5, "mon": "fire", "mon_xp": {}})
