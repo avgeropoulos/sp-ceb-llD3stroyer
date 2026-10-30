@@ -27,6 +27,12 @@ func init(lv: Level, k: String, pos: Vector3) -> void:
 		"skelly":
 			setup(lv, {"walk": ["skelly_1", "skelly_2"], "aim": ["skelly_aim"]}, 1.9, 21, k)
 			hw = 0.3; height = 1.5; hp = 4
+		"penguin":
+			setup(lv, {"walk": ["penguin_1", "penguin_2"], "slide": ["penguin_slide"], "flat": ["penguin_flat"]}, 1.5, 18, k)
+			hw = 0.36; height = 1.0; hp = 3
+		"scorpion":
+			setup(lv, {"walk": ["scorpion_1", "scorpion_2"], "aim": ["scorpion_strike"], "flat": ["scorpion_flat"]}, 1.2, 16, k)
+			hw = 0.45; height = 0.7; hp = 4
 		"kragjr":
 			setup(lv, {"fly": ["kragjr_1", "kragjr_2"], "angry": ["kragjr_angry"], "hurt": ["kragjr_hurt"]}, 2.6, 46, k)
 			hw = 0.95; height = 1.7; hp = 18; is_boss = true; state = "sleep"
@@ -70,7 +76,7 @@ func die(game) -> void:
 	if bar:
 		bar.visible = false
 	game.sfx("boss_down" if is_boss else "stomp")
-	if kind == "grumbler":
+	if kind in ["grumbler", "penguin", "scorpion"]:
 		play("flat")
 	game.on_foe_beaten(self)
 
@@ -80,7 +86,7 @@ func tick(dt: float, game) -> void:
 	safe_t = maxf(0, safe_t - dt)
 	if dying >= 0:
 		dying += dt
-		if kind == "grumbler":
+		if kind in ["grumbler", "penguin", "scorpion"]:
 			squash = Vector2(1.0, 1.0)
 		elif kind == "skelly":
 			spin_t = 0.3
@@ -101,11 +107,90 @@ func tick(dt: float, game) -> void:
 			_skelly(dt, game, lead)
 		"kragjr":
 			_kragjr(dt, game, lead)
+		"penguin":
+			_penguin(dt, game, lead)
+		"scorpion":
+			_scorpion(dt, game, lead)
 	if position.y < -6:
 		remove()
 		return
 	animate(dt, 5 if kind != "kragjr" else 6)
 	update_shadow()
+
+
+## Penguin: waddles about; when you're close it shouts "!" and belly-slides at you.
+func _penguin(dt: float, game, lead: Actor) -> void:
+	vel.y -= GRAVITY * dt
+	state_t += dt
+	var dx := lead.position.x - position.x
+	match state:
+		"idle":
+			play("walk")
+			vel.x = dir * 1.2
+			vel.z = 0
+			if absf(dx) < 7 and absf(lead.position.y - position.y) < 1.6 and state_t > 1.5:
+				state = "ready"
+				state_t = 0
+				dir = signf(dx)
+				alert.visible = true
+				game.sfx("alert")
+		"ready":
+			vel.x = 0
+			if state_t > 0.45:
+				alert.visible = false
+				state = "slide"
+				state_t = 0
+		"slide":
+			play("slide")
+			vel.x = dir * 7.5
+			if state_t > 1.1 or walls_hit:
+				state = "idle"
+				state_t = 0
+	facing = Vector3(dir, 0, 0)
+	move(dt)
+	if walls_hit and state == "idle":
+		dir = -dir
+	if on_floor and state == "idle":
+		var ax := position.x + dir * (hw + 0.2)
+		if not level.solid(floori(ax), floori(position.y - 0.5), floori(position.z)):
+			dir = -dir
+
+
+## Scorpion: creeps along; when you're close it raises its tail ("!") and lunges.
+func _scorpion(dt: float, game, lead: Actor) -> void:
+	vel.y -= GRAVITY * dt
+	state_t += dt
+	var dx := lead.position.x - position.x
+	match state:
+		"idle":
+			play("walk")
+			vel.x = dir * 1.4
+			if absf(dx) < 3.6 and absf(lead.position.y - position.y) < 1.2 and state_t > 1.2:
+				state = "ready"
+				state_t = 0
+				dir = signf(dx)
+				alert.visible = true
+				game.sfx("alert")
+		"ready":
+			play("aim")
+			vel.x = 0
+			if state_t > 0.5:
+				alert.visible = false
+				state = "lunge"
+				state_t = 0
+		"lunge":
+			vel.x = dir * 8.0
+			if state_t > 0.35:
+				state = "idle"
+				state_t = 0
+	facing = Vector3(dir, 0, 0)
+	move(dt)
+	if walls_hit and state == "idle":
+		dir = -dir
+	if on_floor and state == "idle":
+		var ax := position.x + dir * (hw + 0.2)
+		if not level.solid(floori(ax), floori(position.y - 0.5), floori(position.z)):
+			dir = -dir
 
 
 func _grumbler(dt: float, game, lead: Actor) -> void:

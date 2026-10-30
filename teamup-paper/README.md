@@ -27,10 +27,33 @@ Both looks run exactly the same game code; only the pictures change (`Actor.mode
 * Dennis the dog shows you the way. Rocco talks with the phone's Italian voice.
 * The music is the real Team Up! songs (rendered from `core/` Songs.kt).
 
+## Worlds and the rocket
+
+At home, walk onto the **ROCKET** launch pad to take off. On the **sky map** you steer the rocket yourself
+with the stick (all the way = BOOST) over floating islands: your **home** and one island per world. Fly over
+one and tap **LAND** (or JUMP). Worlds unlock in order; finishing one puts you back in the rocket over it.
+
+| World | Look | New bad guy | Krag Jr. |
+|---|---|---|---|
+| 1-1 Meadow Mine | grass, trees, ore hill | Grumblers, Skelly Archers | 18 HP |
+| 2-1 Frosty Peaks | snow, pine trees, snowmen, slippery **ice** fields, ice platforms | **Penguin**: "!" then a belly slide | 24 HP |
+| 3-1 Sunset Dunes | sand, cacti, palms, sunset sky, sandstone pillars to hop | **Scorpion**: raises its tail "!" then lunges | 30 HP |
+
+* Each world has its own song (the real Team Up! snow and desert tunes). Ice: slow to start, slow to stop.
+* The new worlds are built by `level.gd` `_generate_world()` from pieces (hills, pits, a platform pit, ? blocks,
+  an ore hill, a mine-through wall, ice fields / pillars) with the start, checkpoint and boss arena in the same
+  places as 1-1. The robot test beats every world (`smoke.gd -- toy frost`).
+* Saves remember worlds cleared (`cleared_w`) and which world a mid-level save is in (`level`); continuing that
+  file goes straight back into that world (`tests/world_check.gd`).
+* Code: `scripts/worlds.gd` (the list: names, songs, skies, map spots, unlock order, boss HP), `scripts/skymap.gd`
+  (islands, rocket flying, LAND), `main.gd` `_ready_map` / `_step_map` / `land_on`, `Boot.level` / `Boot.from_level`.
+  Adding a world: add it to `Worlds.ORDER` / `INFO`, give `_generate_world` its blocks / special piece and
+  `_scenery` its props, then add it to the CI world loop.
+
 ## Home base: build and decorate
 
 Picking a save file takes you **home** (a new file picks a partner first and gets 30 coins). Walk around
-with the team, then walk into the purple **portal** to play 1-1; finishing 1-1 brings you back home.
+with the team, then walk onto the **rocket** pad to fly to the worlds.
 
 * **BUILD**: pick a block at the top and **PLACE** it in the spot in front of you (the see-through block shows
   where; green = OK, red = it says why). Blocks stack up to 4 above your feet. **REMOVE** takes the top one back

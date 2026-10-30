@@ -12,17 +12,22 @@ const WALK_Z0 := 3.35
 const WALK_Z1 := 9.65
 
 enum { AIR, GRASS, DIRT, STONE, IRON, GOLD, DIAMOND, BEDROCK, BRICK, MYSTERY, USED,
-	PLANKS, WOOL_RED, WOOL_BLUE, WOOL_YELLOW, WOOL_WHITE, WINDOW, IRON_BLOCK, GOLD_BLOCK, DIAMOND_BLOCK, STONE_BRICK }
+	PLANKS, WOOL_RED, WOOL_BLUE, WOOL_YELLOW, WOOL_WHITE, WINDOW, IRON_BLOCK, GOLD_BLOCK, DIAMOND_BLOCK, STONE_BRICK,
+	SNOW, ICE, SAND, SANDSTONE }
 const NAMES := ["", "GRASS", "DIRT", "STONE", "IRON", "GOLD", "DIAMOND", "BEDROCK", "BRICK", "?", "BLOCK",
-	"PLANKS", "RED", "BLUE", "YELLOW", "WHITE", "WINDOW", "IRON", "GOLD", "DIAMOND", "STONE BRICK"]
+	"PLANKS", "RED", "BLUE", "YELLOW", "WHITE", "WINDOW", "IRON", "GOLD", "DIAMOND", "STONE BRICK",
+	"SNOW", "ICE", "SAND", "SANDSTONE"]
 ## How many pickaxe hits each block takes (999 = can't be mined).
-const HITS := [0, 1, 1, 2, 3, 3, 4, 999, 2, 999, 999, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2]
+const HITS := [0, 1, 1, 2, 3, 3, 4, 999, 2, 999, 999, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 1, 2, 1, 2]
 ## Atlas tile for the top, sides and bottom of each block type.
 const FACES := [[0, 0, 0], [0, 1, 2], [2, 2, 2], [3, 3, 3], [4, 4, 4], [5, 5, 5], [6, 6, 6], [7, 7, 7], [8, 8, 8], [9, 9, 9], [10, 10, 10],
-	[11, 11, 11], [12, 12, 12], [13, 13, 13], [14, 14, 14], [15, 15, 15], [16, 16, 16], [17, 17, 17], [18, 18, 18], [19, 19, 19], [20, 20, 20]]
+	[11, 11, 11], [12, 12, 12], [13, 13, 13], [14, 14, 14], [15, 15, 15], [16, 16, 16], [17, 17, 17], [18, 18, 18], [19, 19, 19], [20, 20, 20],
+	[21, 22, 2], [23, 23, 23], [24, 24, 24], [25, 25, 25]]
 const COLORS := [Color.WHITE, Color("60be50"), Color("96663f"), Color("8a8e96"), Color("dfbaa0"), Color("ffd23c"), Color("5ae6e6"), Color("3c3c46"), Color("c45c3a"), Color("2cbec8"), Color("967860"),
-	Color("c4925a"), Color("de423c"), Color("3e6edc"), Color("face3c"), Color("ececf0"), Color("96d2f5"), Color("dcdce2"), Color("ffce3a"), Color("60e8e6"), Color("96989e")]
-const ATLAS_TILES := 21
+	Color("c4925a"), Color("de423c"), Color("3e6edc"), Color("face3c"), Color("ececf0"), Color("96d2f5"), Color("dcdce2"), Color("ffce3a"), Color("60e8e6"), Color("96989e"),
+	Color("eef4fc"), Color("96d2f0"), Color("ecce8c"), Color("d6aa6a")]
+const ATLAS_TILES := 26       # pictures in art/atlas.png
+const BLOCK_TYPES := 25       # block kinds (AIR .. SANDSTONE)
 const HOME_W := 44            # the home plot is 44 blocks wide
 const PORTAL_X := 40.5
 
@@ -44,6 +49,9 @@ var signs: Array = []
 var rng := RandomNumberGenerator.new()
 var width := LX               # walls stop you at x = 0 and x = width
 var is_home := false
+var world := "meadow"         # which world this level is (see worlds.gd)
+var top_block := GRASS        # what the ground is made of here
+var sub_block := DIRT
 
 
 func idx(x: int, y: int, z: int) -> int:
@@ -107,7 +115,11 @@ func ground_below(x: float, z: float, y: float) -> float:
 
 
 # ------------------------------------------------------------------ building the level
-func generate() -> void:
+func generate(w: String = "meadow") -> void:
+	world = w
+	if w != "meadow":
+		_generate_world(w)
+		return
 	rng.seed = 2026
 	cells.resize(LX * LY * LZ)
 	cells.fill(AIR)
@@ -188,6 +200,149 @@ func generate() -> void:
 	rebuild()
 
 
+# ------------------------------------------------------------------ the other worlds
+## Builds a world from pieces that are known to be fun and beatable. The start, the
+## checkpoint (x 86-96) and the Krag Jr. arena (x 150-200) are always flat, like 1-1.
+func _generate_world(w: String) -> void:
+	rng.seed = {"frost": 4242, "dunes": 9001}.get(w, 7)
+	top_block = SNOW if w == "frost" else SAND
+	sub_block = DIRT if w == "frost" else SANDSTONE
+	var foe2 := "penguin" if w == "frost" else "scorpion"
+	cells.resize(LX * LY * LZ)
+	cells.fill(AIR)
+	heights.resize(LX)
+	heights.fill(5)
+	var pits := []
+	var tops := {}        # x -> special top block (ice)
+	var extra := []       # [x, y, z0, z1, block] rows to add after the ground
+	var foes := []        # [kind, x]
+	var pieces := ["hill", "pit", "qblocks", "hill2", "special", "orehill", "pit", "wall", "special", "bigpit", "qblocks", "hill", "special", "pit", "hill2"]
+	var x := 15
+	var used_big := false
+	for piece in pieces:
+		if x > 140:
+			break
+		if x >= 73 and x < 98:   # keep the checkpoint flat
+			x = 98
+			continue
+		var wdt := 0
+		match piece:
+			"hill":
+				wdt = rng.randi_range(6, 9)
+				_hgt(x, x + wdt - 1, 6)
+				for i in 4:
+					coin_spots.append(Vector3(x + 1.5 + i * 1.2, 7.6, 6.5))
+				foes.append(["grumbler", x + wdt - 2])
+			"hill2":
+				wdt = 8
+				_hgt(x, x + 1, 6)
+				_hgt(x + 2, x + 5, 7)
+				_hgt(x + 6, x + 7, 6)
+				foes.append([foe2, x + 4])
+			"pit":
+				wdt = 3 + rng.randi_range(0, 1) * 2
+				pits.append([x + 1, x + wdt - 2 if wdt > 3 else x + 2])
+				for i in 3:
+					coin_spots.append(Vector3(x + 0.8 + i * 1.0, 7.6 + sin(i * 1.4) * 0.5, 6.5))
+			"bigpit":
+				if used_big or x + 12 > 150:
+					continue
+				used_big = true
+				wdt = 12
+				pits.append([x + 1, x + 10])
+				var plat := ICE if w == "frost" else SANDSTONE
+				for px in [x + 3, x + 4, x + 7, x + 8]:
+					extra.append([px, 5, 4, 8, plat])
+				for i in 8:
+					coin_spots.append(Vector3(x + 1.5 + i * 1.2, 7.5 + sin(i * 0.8) * 0.8, 6.5))
+			"qblocks":
+				wdt = 8
+				for i in 3:
+					extra.append([x + 2 + i * 2, 8, 5, 7, MYSTERY])
+				extra.append([x + 3, 8, 5, 7, BRICK])
+				foes.append([foe2, x + 6])
+			"orehill":
+				wdt = 10
+				_hgt(x, x + 1, 6)
+				_hgt(x + 2, x + 7, 8)
+				_hgt(x + 8, x + 9, 6)
+				for i in 4:
+					coin_spots.append(Vector3(x + 2.5 + i * 1.5, 9.5, 5.5 + (i % 2) * 2))
+				foes.append(["skelly", x + 5])
+			"wall":
+				wdt = 6
+				for y in range(6, 9):
+					extra.append([x + 3, y, 3, LZ - 1, STONE])
+				foes.append(["grumbler", x + 1])
+			"special":
+				wdt = 10
+				if w == "frost":   # a slippery ice field
+					for i in range(x + 1, x + 9):
+						tops[i] = ICE
+					for i in 5:
+						coin_spots.append(Vector3(x + 1.5 + i * 1.6, 6.5, 4.5 + i))
+				else:              # sandstone pillars to hop over
+					for px in [x + 2, x + 5, x + 8]:
+						for y in [5, 6]:
+							extra.append([px, y, 3, LZ - 1, SANDSTONE])
+						coin_spots.append(Vector3(px + 0.5, 8.6, 6.5))
+				foes.append([foe2, x + 6])
+		x += wdt + rng.randi_range(1, 3)
+	# the ground
+	for cx in LX:
+		var pit := false
+		for p in pits:
+			if cx >= p[0] and cx <= p[1]:
+				pit = true
+		if pit:
+			continue
+		var h: int = heights[cx]
+		for z in LZ:
+			set_cell(cx, 0, z, BEDROCK)
+			for y in range(1, h):
+				var t := STONE
+				if y >= h - 2:
+					t = sub_block
+				if y == h - 1:
+					t = tops.get(cx, top_block)
+				if t == STONE:
+					t = _ore(cx, y)
+				set_cell(cx, y, z, t)
+	for e in extra:
+		for z in range(e[2], e[3] + 1):
+			set_cell(e[0], e[1], z, e[4])
+	_row(170, 9, MYSTERY, 5, 7)
+	for i in 5:
+		coin_spots.append(Vector3(145.5 + i * 1.3, 6.5, 4.5 + i))
+	# a few more along the way
+	for i in 5:
+		foes.append([[foe2, "grumbler", foe2, "skelly", foe2][i], [27, 58, 104, 120, 137][i]])
+	# who lives where (never on top of a pit or inside a block)
+	for f in foes:
+		var fx: int = clampi(f[1], 20, 148)
+		if heights[fx] > 0 and get_cell(fx, heights[fx] - 1, 6) != AIR and get_cell(fx, heights[fx], 6) == AIR:
+			spawns.append({"kind": f[0], "pos": Vector3(fx + 0.5, heights[fx] + 0.01, 5.5 + rng.randf_range(0, 2))})
+	spawns.append({"kind": "kragjr", "pos": Vector3(176, 10, 6.5)})
+	var hello: String = {"frost": "FROSTY PEAKS\nThe ice is slippery!\nWatch the penguins!",
+		"dunes": "SUNSET DUNES\nHop the pillars!\nScorpions lunge!"}.get(w, "")
+	signs = [[Vector3(6.5, 5, 3.6), hello], [Vector3(89.0, 5, 3.6), "CHECKPOINT!"],
+		[Vector3(152.0, 5, 3.6), "DANGER!\nKrag Jr. ahead!"]]
+	_build_mesh_nodes()
+	_scenery()
+	rebuild()
+
+
+## The sky map has no ground of its own (the islands are separate).
+func generate_empty() -> void:
+	world = "map"
+	cells.resize(LX * LY * LZ)
+	cells.fill(AIR)
+	heights.resize(LX)
+	heights.fill(0)
+	_build_mesh_nodes()
+	rebuild()
+
+
 ## The home plot: flat grass, a few trees at the back, a mailbox and the portal to 1-1.
 func generate_home() -> void:
 	is_home = true
@@ -203,7 +358,7 @@ func generate_home() -> void:
 			for y in range(1, 5):
 				set_cell(x, y, z, GRASS if y == 4 else (DIRT if y == 3 else STONE))
 	signs = [[Vector3(3.5, 5, 3.6), "HOME SWEET HOME\nBUILD and DECOR\nto make it yours!"],
-		[Vector3(37.5, 5, 3.6), "PORTAL\nto 1-1\nMEADOW MINE"]]
+		[Vector3(37.5, 5, 3.6), "ROCKET\nFly to\nthe worlds!"]]
 	_build_mesh_nodes()
 	_scenery()
 	rebuild()
@@ -274,7 +429,7 @@ func _build_mesh_nodes() -> void:
 	mat.vertex_color_use_as_albedo = true
 	mat.roughness = 1.0
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	for t in ATLAS_TILES:
+	for t in BLOCK_TYPES:
 		var mmi := MultiMeshInstance3D.new()
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
@@ -310,7 +465,7 @@ func rebuild() -> void:
 	slot_of.clear()
 	slots.clear()
 	var lists := []
-	for t in ATLAS_TILES:
+	for t in BLOCK_TYPES:
 		lists.append([])
 		slots.append([])
 	for z in LZ:
@@ -319,7 +474,7 @@ func rebuild() -> void:
 				var t: int = cells[idx(x, y, z)]
 				if t != AIR and _exposed(x, y, z):
 					lists[t].append(Vector3i(x, y, z))
-	for t in range(1, ATLAS_TILES):
+	for t in range(1, BLOCK_TYPES):
 		var mm := mm_nodes[t].multimesh
 		var pts: Array = lists[t]
 		mm.instance_count = pts.size() + SPARE
@@ -374,7 +529,8 @@ func _hide(c: Vector3i, e: Vector2i) -> void:
 
 # ------------------------------------------------------------------ scenery
 const TOY_PROPS := ["tree_a", "tree_b", "tree_c", "bush", "flower_pink", "flower_blue", "flower_white", "cloud",
-	"hill_a", "hill_b", "hill_c", "coin", "heart", "flag", "sign", "spark", "arrow", "spikeball", "dennis", "shot_water", "shot_fire"]
+	"hill_a", "hill_b", "hill_c", "coin", "heart", "flag", "sign", "spark", "arrow", "spikeball", "dennis", "shot_water", "shot_fire",
+	"pine_a", "pine_b", "snowman", "snowpile", "cactus_a", "cactus_b", "palm", "desert_rock", "hill_snow", "hill_sand", "rocket"]
 
 
 ## A prop standing with its bottom at pos: a 3D toy in the toy look, else a paper cutout.
@@ -405,24 +561,27 @@ func paper(tex_name: String, pos: Vector3, size: float, shadow := false, flip :=
 
 
 func _scenery() -> void:
-	var trees := ["tree_a", "tree_b", "tree_c"]
+	var trees: Array = {"frost": ["pine_a", "pine_b", "pine_a", "snowman"], "dunes": ["cactus_a", "palm", "cactus_b", "palm"]}.get(world, ["tree_a", "tree_b", "tree_c"])
+	var smalls: Array = {"frost": ["snowpile", "snowpile", "desert_rock"], "dunes": ["desert_rock", "cactus_b", "desert_rock"]}.get(world, ["bush", "flower_pink", "flower_blue", "flower_white", "flower_pink"])
+	var hills: Array = {"frost": ["hill_snow", "hill_snow", "hill_c"], "dunes": ["hill_sand", "hill_sand", "hill_sand"]}.get(world, ["hill_a", "hill_b", "hill_c"])
 	var x := 2.0
 	while x < width - 2:
 		var cx := int(x)
 		if solid(cx, heights[cx] - 1, 1):
-			prop(trees[rng.randi() % 3], Vector3(x, heights[cx], rng.randf_range(0.8, 2.2)), rng.randf_range(3.2, 4.4), true, rng.randf() < 0.5)
+			var tk: String = trees[rng.randi() % trees.size()]
+			prop(tk, Vector3(x, heights[cx], rng.randf_range(0.8, 2.2)), rng.randf_range(3.2, 4.4) * (0.5 if tk == "snowman" else 1.0), true, rng.randf() < 0.5)
 		x += rng.randf_range(3.0, 7.0)
 	x = 1.0
 	while x < width - 1:
 		var cx := int(x)
 		if solid(cx, heights[cx] - 1, 2):
-			var what: String = ["bush", "flower_pink", "flower_blue", "flower_white", "flower_pink"][rng.randi() % 5]
-			prop(what, Vector3(x, heights[cx], rng.randf_range(2.1, 2.9)), 0.8 if what == "bush" else 0.6)
+			var what: String = smalls[rng.randi() % smalls.size()]
+			prop(what, Vector3(x, heights[cx], rng.randf_range(2.1, 2.9)), 0.8 if what in ["bush", "snowpile", "desert_rock"] else (1.2 if what == "cactus_b" else 0.6))
 		x += rng.randf_range(1.2, 3.0)
 	# far hills and clouds (they're big and far so they move slowly: parallax for free)
 	var hx := -20.0
 	while hx < width + 40:
-		var h: String = ["hill_a", "hill_b", "hill_c"][rng.randi() % 3]
+		var h: String = hills[rng.randi() % hills.size()]
 		var hs := prop(h, Vector3(hx, -2, rng.randf_range(-34, -22)), rng.randf_range(9, 16))
 		if hs is Sprite3D:
 			hs.billboard = BaseMaterial3D.BILLBOARD_DISABLED

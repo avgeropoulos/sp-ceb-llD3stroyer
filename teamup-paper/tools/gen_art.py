@@ -434,6 +434,71 @@ def skelly(name, step=0.0, aim=False):
     p.done(name)
 
 
+def penguin(name, step=0.0, slide=False, flat=False):
+    """A round penguin. It belly-slides at you!"""
+    p = Pen()
+    BLK, WHT, ORG = rgb("#2b3550"), rgb("#f4f8ff"), rgb("#ff9a2a")
+    if flat:
+        p.oval(32, 70, 20, 6, BLK)
+        p.done(name)
+        return
+    if slide:   # lying on its belly, flippers back
+        p.oval(32, 62, 24, 11, BLK)
+        p.oval(36, 66, 18, 6, WHT, ink=False)
+        p.oval(52, 58, 9, 8, BLK)
+        p.poly([(60, 58), (68, 60), (60, 62)], ORG)
+        p.eye(55, 55, 2.0, 2.6, 0.8)
+        p.poly([(10, 58), (2, 52), (12, 62)], BLK)
+        p.done(name)
+        return
+    for s_ in (-1, 1):
+        p.oval(32 + s_ * 7 + step * s_ * 2, 74, 6, 3, ORG)
+    p.oval(32, 54, 16, 19, BLK)
+    p.oval(34, 58, 11, 14, WHT, ink=False)
+    for s_ in (-1, 1):
+        p.oval(32 + s_ * 16, 54 + step * s_ * 2, 4, 10, BLK)
+    p.oval(32, 36, 12, 11, BLK)
+    p.oval(35, 38, 7, 6, WHT, ink=False)
+    p.eye(31, 35, 2.4, 3.2, 0.8)
+    p.eye(39, 35, 2.2, 3.0, 0.8)
+    p.poly([(36, 41), (46, 43), (36, 45)], ORG)
+    p.oval(32, 26, 9, 3.5, rgb("#e8413b"))   # a red winter hat
+    p.oval(32, 21, 3.5, 3.5, WHT)
+    p.done(name)
+
+
+def scorpion(name, step=0.0, strike=False, flat=False):
+    """A sandy scorpion with a curled tail."""
+    p = Pen()
+    BODY, DARK = rgb("#d88a3a"), rgb("#a8602a")
+    if flat:
+        p.oval(32, 70, 22, 5, BODY)
+        p.done(name)
+        return
+    cy = 64
+    for i in range(3):   # legs
+        for s_ in (-1, 1):
+            x = 24 + i * 7
+            p.line([(x, cy), (x + s_ * 3 + step * 2, cy + 8)], DARK, 2.2)
+    # tail: up over the back; straight forward when it strikes
+    pts = [(14, cy - 2), (8, cy - 12), (10, cy - 24), (20, cy - 30)] if not strike else [(14, cy - 2), (10, cy - 14), (22, cy - 26), (36, cy - 28)]
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        p.line([(x0, y0), (x1, y1)], BODY, 6)
+    tx, ty = pts[-1]
+    p.poly([(tx - 2, ty - 4), (tx + 8, ty), (tx - 2, ty + 4)], rgb("#5a2a14"))
+    p.oval(32, cy, 16, 8, BODY)
+    for i in range(3):
+        p.line([(22 + i * 8, cy - 7), (24 + i * 8, cy + 7)], DARK, 1.4)
+    # claws
+    for s_ in (-1, 1):
+        cx_ = 50 + (4 if strike else 0)
+        p.oval(cx_, cy + s_ * 4, 6, 3.5, BODY)
+        p.poly([(cx_ + 5, cy + s_ * 4 - 3), (cx_ + 11, cy + s_ * 4), (cx_ + 5, cy + s_ * 4 + 1)], DARK)
+    p.eye(42, cy - 6, 2.2, 2.8, 0.8)
+    p.eye(47, cy - 6, 2.0, 2.6, 0.8)
+    p.done(name)
+
+
 def krag_jr(name, bob=0.0, hurt=False, angry=False):
     """Krag Jr.: a little green dragon kid riding a hover-pot with a propeller."""
     p = Pen(80, 90)
@@ -683,7 +748,45 @@ def sign():
 
 
 ATLAS = ["grass_top", "grass_side", "dirt", "stone", "iron", "gold", "diamond", "bedrock", "brick", "mystery", "used",
-         "planks", "wool_red", "wool_blue", "wool_yellow", "wool_white", "window", "iron_block", "gold_block", "diamond_block", "stone_brick"]
+         "planks", "wool_red", "wool_blue", "wool_yellow", "wool_white", "window", "iron_block", "gold_block", "diamond_block", "stone_brick",
+         "snow_top", "snow_side", "ice", "sand", "sandstone"]
+
+
+def world_textures():
+    """Ground for the other worlds: snow, ice, sand and sandstone."""
+    SNOW = (238, 244, 252)
+    DIRT = (150, 102, 64)
+    tex("snow_top", SNOW, speck=(214, 226, 242), specks=26, seed=31)
+    tex("snow_side", DIRT, speck=(120, 80, 50), specks=20, top=SNOW, seed=32)
+    # ice: light blue with white streaks
+    rnd = random.Random(33)
+    im = Image.new("RGB", (16, 16), (150, 210, 240))
+    px = im.load()
+    for y in range(16):
+        for x in range(16):
+            v = rnd.randint(-6, 6)
+            px[x, y] = (150 + v, 210 + v, 240)
+    for k in range(3):
+        for i in range(5):
+            x, y = 2 + k * 5 + i, 3 + k * 4 + i // 2
+            if x < 16 and y < 16:
+                px[x, y] = (235, 248, 255)
+    for i in range(16):
+        px[i, 0] = (200, 236, 255)
+        px[0, i] = (200, 236, 255)
+    im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_ice.png"))
+    tex("sand", (236, 206, 140), speck=(214, 180, 112), specks=40, seed=34)
+    # sandstone: layered bands
+    im = Image.new("RGB", (16, 16))
+    px = im.load()
+    for y in range(16):
+        for x in range(16):
+            band = [(222, 186, 120), (210, 170, 106), (228, 196, 132), (204, 162, 98)][(y // 4) % 4]
+            v = rnd.randint(-5, 5)
+            px[x, y] = tuple(max(0, min(255, c + v)) for c in band)
+            if y % 4 == 3:
+                px[x, y] = (180, 140, 82)
+    im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_sandstone.png"))
 
 
 def build_textures():
@@ -791,6 +894,8 @@ def main():
     skelly("skelly_1", 0.4)
     skelly("skelly_2", -0.4)
     skelly("skelly_aim", 0.1, aim=True)
+    penguin("penguin_1", 1); penguin("penguin_2", -1); penguin("penguin_slide", slide=True); penguin("penguin_flat", flat=True)
+    scorpion("scorpion_1", 1); scorpion("scorpion_2", -1); scorpion("scorpion_strike", strike=True); scorpion("scorpion_flat", flat=True)
     krag_jr("kragjr_1", 0)
     krag_jr("kragjr_2", 2)
     krag_jr("kragjr_angry", 0, angry=True)
@@ -800,10 +905,11 @@ def main():
     tree("tree_a"); tree("tree_b", "#3b9d52", "#62c76a"); tree("tree_c", "#7fbf3f", "#a7dc5c")
     bush(); flower("flower_pink", "#ff8fc0"); flower("flower_blue", "#7fb8ff"); flower("flower_white", "#ffffff")
     cloud(); flag(); dennis()
-    hill("hill_a", "#7cc96a", "#9bde84"); hill("hill_b", "#5fb46a", "#82cc7d", 260, 150); hill("hill_c", "#a4d36f", "#c3e690", 160, 80)
+    hill("hill_snow", "#eef4fc", "#ffffff", 240, 140); hill("hill_sand", "#e8c47e", "#f2d69a", 260, 120); hill("hill_a", "#7cc96a", "#9bde84"); hill("hill_b", "#5fb46a", "#82cc7d", 260, 150); hill("hill_c", "#a4d36f", "#c3e690", 160, 80)
     sign()
     textures()
     build_textures()
+    world_textures()
     atlas()
     print("art written to", os.path.abspath(OUT))
 

@@ -14,6 +14,11 @@ func _initialize() -> void:
 	Look.loaded = true
 	Look.toy = a.has("toy")
 	print("look: ", "3D toys" if Look.toy else "paper")
+	for w in Worlds.ORDER:   # "-- frost" plays Frosty Peaks, and so on
+		if a.has(w):
+			Boot.place = "level"
+			Boot.level = w
+	print("world: ", Boot.level)
 	main = load("res://main.tscn").instantiate()
 	root.add_child(main)
 

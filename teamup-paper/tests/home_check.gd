@@ -123,29 +123,56 @@ func _process(_dt: float) -> bool:
 				check(g.home.mode == "", "DONE should leave build mode")
 				var d := Saves.read(1)
 				check(d.get("home", {}).get("decor", []).size() == 5, "DONE should save the home (decor count %d)" % d.get("home", {}).get("decor", []).size())
-				# walk into the portal
+				# walk onto the rocket's launch pad
 				g.leader().position = Vector3(Level.PORTAL_X - 0.2, 5, 6.5)
 				g.play_t = 5.0
 				step = 2
 		2:
+			if ready_in("map"):
+				check(g.sky != null, "the rocket pad should open the sky map")
+				check(g.sky.islands.size() == 1 + Worlds.ORDER.size(), "home + every world should be an island")
+				# fly over Frosty Peaks: it's locked
+				g.sky.rocket.position = Worlds.info("frost").map + Vector3(0, 7, 0)
+				g.sky.step(1.0 / 60, Vector2.ZERO, false)
+				check(g.sky.near_id == "frost", "should be over Frosty Peaks")
+				check(not g.sky.land(), "Frosty Peaks should be locked before Meadow is beaten")
+				# fly with the stick for a second: the rocket moves
+				var p0: Vector3 = g.sky.rocket.position
+				for i in 60:
+					g.sky.step(1.0 / 60, Vector2(1, 0), true)
+				check(g.sky.rocket.position.x > p0.x + 4, "the stick should fly the rocket")
+				g.sky.rocket.position = Worlds.info("meadow").map + Vector3(0, 7, 0)
+				g.sky.step(1.0 / 60, Vector2.ZERO, false)
+				check(g.sky.land(), "should land on Meadow Mine")
+				step = 3
+		3:
 			if ready_in("play"):
-				check(not g.level.is_home and g.slot == 1, "the portal should start 1-1 with file 1")
+				check(not g.level.is_home and g.slot == 1 and g.level.world == "meadow", "landing should start Meadow Mine with file 1")
 				check(g.heroes.mon.line == "fire", "the partner should come along")
-				check(g.home_saved.get("decor", []).size() == 5, "the home should be remembered during 1-1")
-				# a mid-level SAVE must keep the home too
+				check(g.home_saved.get("decor", []).size() == 5, "the home should be remembered during the level")
 				g._pause("play")
 				g.pause_choice(1)
-				check(Saves.read(1).get("home", {}).get("decor", []).size() == 5, "SAVE in 1-1 lost the home")
+				check(Saves.read(1).get("home", {}).get("decor", []).size() == 5, "SAVE in the level lost the home")
+				check(Saves.read(1).get("level", "") == "meadow", "a level save should say which world")
 				g.state = "play"
 				g.boss_done = true
 				g.leader().position = Vector3(Level.FLAG_X, 5.1, 6.5)
-				step = 3
-		3:
+				step = 4
+		4:
 			if ready_in("clear"):
 				g.clear_t = 2.0
 				g.on_tap()
-				step = 4
-		4:
+				step = 5
+		5:
+			if ready_in("map"):
+				check(int(g.cleared_w.get("meadow", 0)) == 1, "clearing should count for Meadow")
+				check(Worlds.unlocked("frost", g.cleared_w), "Frosty Peaks should unlock")
+				check(g.sky.rocket.position.distance_to(Worlds.info("meadow").map) < 9, "the rocket should start over Meadow")
+				g.sky.rocket.position = Worlds.HOME_MAP + Vector3(0, 7, 0)
+				g.sky.step(1.0 / 60, Vector2.ZERO, false)
+				check(g.sky.land(), "should land at home")
+				step = 6
+		6:
 			if ready_in("home"):
 				check(g.level.get_cell(16, 5, 6) == Level.PLANKS, "the planks should still be there")
 				check(g.home.decor.size() == 5, "the decorations should still be there (%d)" % g.home.decor.size())
@@ -156,9 +183,9 @@ func _process(_dt: float) -> bool:
 				face(Vector3.FORWARD)
 				g.home.aim(g.leader())
 				check(g.home.can_place, "the trophy unlocks after clearing 1-1 (%s)" % g.home.why)
-				step = 5
+				step = 7
 				wait = 3
-		5:
+		7:
 			_clean()
 			print("TEST FAILED: " + failed if failed != "" else "TEST PASSED")
 			quit(1 if failed != "" else 0)

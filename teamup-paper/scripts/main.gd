@@ -62,6 +62,8 @@ var cleared := 0              # times this file finished the level
 
 # home base
 var home: HomeBase            # only at home
+var sky: SkyMap               # only on the sky map
+var cleared_w := {}           # world id -> times cleared
 var home_saved := {}          # the home from the save file (kept while you're in 1-1)
 var paused_from := "play"     # "play" or "home": where RESUME goes back to
 var partner_from := ""        # "new" (new file), "home" or "" (tests)
@@ -115,8 +117,12 @@ func _ready() -> void:
 	add_child(level)
 	if Boot.place == "home":
 		level.generate_home()
+	elif Boot.place == "map":
+		level.generate_empty()
+	elif Boot.place == "level":
+		level.generate(Boot.level)
 	else:
-		level.generate()
+		level.generate("meadow")
 	fx = Fx.new()
 	add_child(fx)
 	for w in ["rocco", "blocky", "mon"]:
@@ -132,7 +138,20 @@ func _ready() -> void:
 	if level.is_home:
 		_ready_home()
 		return
+	if Boot.place == "map":
+		_ready_map()
+		return
 	_ready_level()
+
+
+func _ready_map() -> void:
+	for h in heroes.values():
+		h.visible = false
+	_ready_common()
+	sky = SkyMap.new()
+	add_child(sky)
+	sky.setup(self, level)
+	play_music("theme")
 
 
 ## The parts of the scene every place has (HUD, sound, updater, camera).
@@ -170,6 +189,8 @@ func _ready_level() -> void:
 		foes.append(f)
 		if s.kind == "kragjr":
 			boss = f
+			f.hp = int(world_info().boss_hp)
+			f.max_hp = f.hp
 	for ci in level.coin_spots.size():
 		var c := level.prop("coin", level.coin_spots[ci] - Vector3(0, 0.35, 0), 0.7)
 		c.set_meta("i", ci)
@@ -188,12 +209,20 @@ func _after_loading() -> void:
 	match Boot.place:
 		"home":
 			enter_home()
+		"map":
+			slot = Boot.slot
+			_apply_save(Saves.read(slot))
+			sky.refresh()
+			state = "map"
+			note("sky map")
+			hud.say("SKY MAP", "Fly to a world and LAND!", 2.4)
 		"level":
 			var d := Saves.read(Boot.slot)
 			start_game(Boot.slot)
 			if not d.is_empty():
 				_apply_save(d)
-				hud.say("1-1  MEADOW MINE", "Go, team, go!", 2.6)
+				if not d.get("in_level", false):
+					hud.say(world_info().name, world_info().hello, 2.6)
 		_:
 			state = "title"
 
@@ -226,7 +255,7 @@ func enter_home() -> void:
 	state = "home"
 	play_t = 0
 	note("home")
-	hud.say("HOME", "BUILD and DECOR your base. Walk into the portal to play!", 2.8)
+	hud.say("HOME", "BUILD and DECOR your base. Walk to the ROCKET to fly to the worlds!", 2.8)
 
 
 func _step_home(dt: float) -> void:
@@ -269,12 +298,38 @@ func _step_home(dt: float) -> void:
 	_update_leader(leader(), dt)
 	_update_follower(follower(), dt)
 	if home.mode == "" and home.at_portal(leader().position) and play_t > 0.8:
-		note("going to 1-1")
+		note("taking off")
 		sfx("item")
 		save_game(false)
-		go("level", slot)
+		Boot.from_level = "home"
+		go("map", slot)
 		return
 	_update_camera(dt)
+
+
+## The rocket landed on an island.
+func land_on(id: String) -> void:
+	save_game(false)
+	if id == "home":
+		go("home", slot)
+	else:
+		Boot.level = id
+		go("level", slot)
+
+
+func _step_map(dt: float) -> void:
+	if pause_pressed:
+		_pause("map")
+		return
+	play_t += dt
+	var land_tap: bool = taps.has("land") or jump_pressed or action_pressed
+	if land_tap:
+		sky.land()
+	sky.step(dt, move_vec, sprinting)
+	var r := sky.rocket.position
+	cam_focus = cam_focus.lerp(r, 1 - exp(-dt * 4))
+	cam.position = cam_focus + Vector3(0, 7.5, 12.5)
+	cam.look_at(cam_focus + Vector3(0, -1.5, 0), Vector3.UP)
 
 
 func _pause(from: String) -> void:
@@ -305,26 +360,27 @@ func _setup_input() -> void:
 
 
 func _setup_world() -> void:
+	var wi: Dictionary = Worlds.info(Boot.level if Boot.place == "level" else "meadow")
 	var env := Environment.new()
 	env.background_mode = Environment.BG_SKY
 	var sky := Sky.new()
 	var sm := ProceduralSkyMaterial.new()
-	sm.sky_top_color = Color("3f8fe6")
-	sm.sky_horizon_color = Color("c5e6ff")
-	sm.ground_horizon_color = Color("c5e6ff")
-	sm.ground_bottom_color = Color("7fb2dd")
+	sm.sky_top_color = Color(wi.sky[0])
+	sm.sky_horizon_color = Color(wi.sky[1])
+	sm.ground_horizon_color = Color(wi.sky[1])
+	sm.ground_bottom_color = Color(wi.sky[2])
 	sm.sun_angle_max = 20
 	sky.sky_material = sm
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color("dce8f5")
+	env.ambient_light_color = Color(wi.ambient)
 	env.ambient_light_energy = 0.55
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	env.tonemap_exposure = 1.0
 	env.tonemap_white = 6.0
 	env.fog_enabled = true
 	env.fog_mode = Environment.FOG_MODE_DEPTH
-	env.fog_light_color = Color("bfe0ff")
+	env.fog_light_color = Color(wi.fog)
 	env.fog_depth_begin = 28.0
 	env.fog_depth_end = 140.0
 	env.fog_density = 0.55
@@ -336,7 +392,7 @@ func _setup_world() -> void:
 	add_child(we)
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-50, 152, 0)   # from above and behind the camera, a bit to the left
-	sun.light_color = Color("fff1d6")
+	sun.light_color = Color(wi.sun)
 	sun.light_energy = 1.0
 	sun.shadow_enabled = true
 	sun.shadow_opacity = 0.75
@@ -525,7 +581,8 @@ func on_tap() -> void:
 # ------------------------------------------------------------------ save files
 func _after_clear() -> void:
 	if slot > 0:
-		go("home", slot)
+		Boot.from_level = level.world
+		go("map", slot)
 	else:
 		get_tree().reload_current_scene()
 
@@ -539,7 +596,14 @@ func open_slots() -> void:
 func slot_pick(n: int) -> void:
 	erase_armed = 0
 	var d := Saves.read(n)
-	if d.get("in_level", false):   # in the middle of the level: carry on with the same partner
+	if d.get("in_level", false):   # in the middle of a level: carry on with the same partner
+		var w := String(d.get("level", "meadow"))
+		if not w in Worlds.ORDER:
+			w = "meadow"
+		if w != level.world:
+			Boot.level = w
+			go("level", n)
+			return
 		start_game(n)
 		_apply_save(d)
 		return
@@ -610,7 +674,7 @@ func slot_undo(n: int) -> void:
 
 ## Everything about this run, so SAVE & QUIT comes back to the same spot.
 func save_data(in_level := true) -> Dictionary:
-	var d := {"v": 1, "level": "1-1", "time": Time.get_unix_time_from_system(),
+	var d := {"v": 2, "level": level.world if level else "meadow", "cleared_w": cleared_w.duplicate(), "time": Time.get_unix_time_from_system(),
 		"hearts": hearts, "coins": coins, "ores": ores.duplicate(), "beaten": beaten,
 		"super": super_charge, "cleared": cleared, "human": human if in_level else "rocco", "in_level": in_level,
 		"mon": mon_line, "mon_xp": mon_xp.duplicate(),
@@ -645,6 +709,10 @@ func _apply_save(d: Dictionary) -> void:
 	beaten = int(d.get("beaten", 0))
 	super_charge = clampf(float(d.get("super", 0)), 0, 1)
 	cleared = int(d.get("cleared", 0))
+	cleared_w = {}
+	var cw: Dictionary = d.get("cleared_w", {"meadow": cleared} if cleared > 0 else {})
+	for k in cw:
+		cleared_w[k] = int(cw[k])
 	home_saved = d.get("home", {})
 	var mx: Dictionary = d.get("mon_xp", {})
 	for k in mon_xp:
@@ -710,7 +778,7 @@ func pause_choice(i: int) -> void:
 		0:
 			state = paused_from
 		1:
-			if save_game(paused_from == "play"):
+			if save_game(paused_from == "play"):   # home / map saves don't keep a level
 				save_note = "SAVED TO FILE %d!" % slot
 				sfx("heart")
 			else:
@@ -847,13 +915,17 @@ func toggle_look() -> void:
 	get_tree().reload_current_scene()
 
 
+func world_info() -> Dictionary:
+	return Worlds.info(level.world)
+
+
 func start_game(n: int = 0) -> void:
-	note("starting the level")
+	note("starting " + level.world)
 	slot = n
 	state = "play"
 	play_t = 0
-	play_music("meadow")
-	hud.say("1-1  MEADOW MINE", "Go, team, go!", 2.6)
+	play_music(world_info().song)
+	hud.say(world_info().name, world_info().hello, 2.6)
 	speak(GO_LINES.pick_random(), "rocco")
 
 
@@ -953,6 +1025,9 @@ func _step(dt: float) -> void:
 	if state == "home":
 		_step_home(dt)
 		return
+	if state == "map":
+		_step_map(dt)
+		return
 	if pause_pressed:
 		_pause("play")
 		return
@@ -992,6 +1067,8 @@ func _update_leader(h: Hero, dt: float) -> void:
 	else:
 		var target := dir * h.speed * (SPRINT_SPEED if sprinting else 1.0)
 		var accel := 45.0 if h.on_floor else 25.0
+		if h.on_floor and level.get_cell(floori(h.position.x), floori(h.position.y - 0.1), floori(h.position.z)) == Level.ICE:
+			accel = 7.0   # ice: slow to start, slow to stop
 		h.vel.x = move_toward(h.vel.x, target.x, accel * dt)
 		h.vel.z = move_toward(h.vel.z, target.z, accel * dt)
 	if dir.length() > 0.15:
@@ -1560,7 +1637,7 @@ func on_foe_beaten(f: Foe) -> void:
 		boss_done = true
 		fx.shake = 1.2
 		hud.say("KRAG JR. BEATEN!", "Run to the flag!", 3.0)
-		play_music("meadow")
+		play_music(world_info().song)
 		speak("We did it! Woo hoo!", "rocco")
 		save_game()
 		for i in 6:
@@ -1590,6 +1667,7 @@ func _update_progress(dt: float) -> void:
 		state = "clear"
 		clear_t = 0
 		cleared += 1
+		cleared_w[level.world] = int(cleared_w.get(level.world, 0)) + 1
 		gain_xp(Mons.XP_CLEAR)
 		save_game(false)   # keeps coins and ores; the level starts fresh next time
 		play_music("fanfare", false)
@@ -1615,6 +1693,8 @@ func _dennis() -> void:
 
 
 func _update_camera(dt: float) -> void:
+	if sky:
+		return
 	var l := leader()
 	var want := l.position + Vector3(clampf(l.facing.x, -1, 1) * 1.6, 0, 0)
 	if state == "title":

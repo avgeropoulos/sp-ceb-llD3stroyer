@@ -151,6 +151,10 @@ static func build(kind: String) -> Node3D:
 			_sparky(inner, p, 1)
 		"grumbler":
 			_grumbler(body, p)
+		"penguin":
+			_penguin(body, p)
+		"scorpion":
+			_scorpion(body, p)
 		"skelly":
 			_skelly(body, p)
 		"kragjr":
@@ -393,6 +397,27 @@ static func pose(a, dt: float) -> void:
 			p.core.rotation.z = s * 0.12
 			if anim == "flat":
 				b.scale = Vector3(1.5, 0.22, 1.5)
+		"penguin":
+			var s := sin(t * 9)
+			p.core.rotation.z = s * 0.15
+			p.legL.position.z = 0.1 + s * 0.08
+			p.legR.position.z = 0.1 - s * 0.08
+			if anim == "slide":
+				b.rotation.x = PI / 2 * 0.95
+				b.position.y = 0.3
+				b.position.z = -0.1
+			elif anim == "flat":
+				b.scale = Vector3(1.5, 0.22, 1.5)
+		"scorpion":
+			var s := sin(t * 14)
+			p.legL.rotation.y = s * 0.3
+			p.legR.rotation.y = -s * 0.3
+			p.tail.rotation.x = -0.2 + sin(t * 3) * 0.1
+			if anim == "aim":
+				p.tail.rotation.x = 0.7
+				p.core.position.z = -0.05
+			elif anim == "flat":
+				b.scale = Vector3(1.5, 0.22, 1.5)
 		"kragjr":
 			p.prop.rotation.y += dt * 30
 			b.position.y = sin(t * 3) * 0.06
@@ -519,6 +544,69 @@ static func prop(kind: String, size: float) -> Node3D:
 			var k := size / 3.0
 			for c in [[0.0, 0.0, 1.0], [-1.0, -0.2, 0.75], [1.0, -0.15, 0.8], [0.4, 0.45, 0.65]]:
 				part(r, sph(c[2] * k), Vector3(c[0] * k, c[1] * k, 0), Color.WHITE, Vector3.ONE, Vector3.ZERO, false, 0.35)
+		"pine_a", "pine_b":
+			var k := size / 4.0
+			var g := Color("2f7a52") if kind == "pine_a" else Color("3a8a5a")
+			part(r, cyl(0.12 * k, 0.16 * k, 1.0 * k, 8), Vector3(0, 0.5 * k, 0), Color("6b4226"))
+			for i in 3:
+				var w := (1.1 - i * 0.3) * k
+				part(r, cyl(0.0, w, 1.2 * k, 10), Vector3(0, (1.3 + i * 0.75) * k, 0), g)
+				part(r, cyl(0.0, w * 0.85, 0.35 * k, 10), Vector3(0, (1.55 + i * 0.75) * k, 0), Color("f4f8ff"), Vector3.ONE, Vector3.ZERO, false)
+		"snowman":
+			var k := size / 2.0
+			part(r, sph(0.42 * k), Vector3(0, 0.4 * k, 0), Color("f4f8ff"))
+			part(r, sph(0.3 * k), Vector3(0, 1.0 * k, 0), Color("f4f8ff"))
+			part(r, sph(0.22 * k), Vector3(0, 1.45 * k, 0), Color("f4f8ff"))
+			part(r, cyl(0.0, 0.05 * k, 0.25 * k, 6), Vector3(0, 1.45 * k, 0.28 * k), Color("ff8a1f"), Vector3.ONE, Vector3(PI / 2, 0, 0))
+			for sx in [-0.08, 0.08]:
+				part(r, sph(0.035 * k), Vector3(sx * k, 1.52 * k, 0.19 * k), INK, Vector3.ONE, Vector3.ZERO, false)
+			part(r, cyl(0.16 * k, 0.16 * k, 0.22 * k, 12), Vector3(0, 1.7 * k, 0), Color("2b2233"))
+			part(r, cyl(0.26 * k, 0.26 * k, 0.04 * k, 12), Vector3(0, 1.6 * k, 0), Color("2b2233"))
+			part(r, cyl(0.24 * k, 0.24 * k, 0.08 * k, 12), Vector3(0, 1.25 * k, 0), Color("e8413b"))
+		"snowpile":
+			for c in [[-0.2, 0.14, 0.22], [0.18, 0.12, 0.2], [0.0, 0.2, 0.25]]:
+				part(r, sph(c[2]), Vector3(c[0], c[1], 0), Color("f4f8ff"), Vector3(1.3, 0.8, 1))
+		"cactus_a", "cactus_b":
+			var k := size / (4.0 if kind == "cactus_a" else 1.6)
+			var g := Color("4fa85a")
+			part(r, cap(0.22 * k, 2.2 * k), Vector3(0, 1.1 * k, 0), g)
+			if kind == "cactus_a":
+				for sx in [-1, 1]:
+					part(r, cap(0.13 * k, 0.6 * k), Vector3(sx * 0.42 * k, 1.0 * k + (0.2 * k if sx > 0 else 0.0), 0), g, Vector3.ONE, Vector3(0, 0, sx * PI / 2))
+					part(r, cap(0.13 * k, 0.7 * k), Vector3(sx * 0.62 * k, 1.35 * k + (0.2 * k if sx > 0 else 0.0), 0), g)
+				part(r, sph(0.12 * k), Vector3(0, 2.25 * k, 0), Color("ff6fa8"))
+		"palm":
+			var k := size / 4.0
+			for i in 5:
+				part(r, cyl(0.13 * k, 0.16 * k, 0.65 * k, 8), Vector3(i * 0.06 * k, (0.32 + i * 0.6) * k, 0), Color("a8743f"), Vector3.ONE, Vector3(0, 0, -0.06 * i))
+			for i in 6:
+				var a := i * TAU / 6
+				part(r, sph(0.55 * k), Vector3(0.3 * k + cos(a) * 0.55 * k, 3.05 * k - 0.15 * k, sin(a) * 0.55 * k), Color("3fae4a"), Vector3(1.4, 0.18, 0.5), Vector3(0, -a, -0.35))
+			for i in 3:
+				part(r, sph(0.12 * k), Vector3(0.3 * k + cos(i * 2.1) * 0.15 * k, 2.85 * k, sin(i * 2.1) * 0.15 * k), Color("8a5a35"))
+		"desert_rock":
+			part(r, sph(0.3), Vector3(0, 0.18, 0), Color("c4925a"), Vector3(1.3, 0.75, 1))
+			part(r, sph(0.18), Vector3(0.25, 0.12, 0.1), Color("b07a48"), Vector3(1.2, 0.8, 1))
+		"rocket":
+			var k := size / 3.0
+			var body := piv(r, Vector3.ZERO)
+			body.scale = Vector3.ONE * k
+			r.set_meta("body", body)
+			part(body, cyl(0.42, 0.48, 1.4, 20), Vector3(0, 1.0, 0), Color("f4f4f8"))
+			part(body, cyl(0.0, 0.42, 0.8, 20), Vector3(0, 2.1, 0), Color("e8413b"))
+			part(body, cyl(0.48, 0.36, 0.3, 20), Vector3(0, 0.2, 0), Color("e8413b"))
+			part(body, cyl(0.2, 0.2, 0.06, 16), Vector3(0, 1.25, 0.44), Color("5ab4ff"), Vector3.ONE, Vector3(PI / 2, 0, 0), true, 0.4)
+			star_badge(body, Vector3(0, 0.75, 0.47), 0.12)
+			for i in 3:
+				var a := i * TAU / 3
+				var fin := part(body, box(Vector3(0.06, 0.6, 0.5)), Vector3(sin(a) * 0.5, 0.35, cos(a) * 0.5), Color("e8413b"))
+				fin.rotation.y = a
+			var flame := piv(body, Vector3(0, -0.05, 0))
+			_flame(flame, Vector3(0, -0.55, 0), 0.5)
+			flame.rotation.x = PI
+			r.set_meta("flame", flame)
+		"hill_snow", "hill_sand":
+			part(r, hemi(size * 0.6), Vector3.ZERO, Color("eef4fc") if kind == "hill_snow" else Color("e8c47e"), Vector3(1.4, 1.2, 0.6), Vector3.ZERO, false)
 		"hill_a", "hill_b", "hill_c":
 			var cols := {"hill_a": Color("7cc96a"), "hill_b": Color("5fb46a"), "hill_c": Color("a4d36f")}
 			part(r, hemi(size * 0.6), Vector3.ZERO, cols[kind], Vector3(1.4, 1.2, 0.6), Vector3.ZERO, false)
@@ -577,7 +665,7 @@ static func prop(kind: String, size: float) -> Node3D:
 				part(r, sph(0.09), Vector3(0.36, 0.72, z), Color("8a5a35"), Vector3(0.6, 1.6, 0.5))
 			part(r, cyl(0.03, 0.03, 0.3, 6), Vector3(-0.42, 0.62, 0), Color("c48a4a"), Vector3.ONE, Vector3(0, 0, 0.8))
 	for mi in _all_meshes(r):
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if kind.begins_with("tree") or kind in ["flag", "sign"] else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if kind.begins_with("tree") or kind.begins_with("pine") or kind.begins_with("cactus") or kind in ["flag", "sign", "snowman", "palm", "rocket"] else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return r
 
 
@@ -717,3 +805,50 @@ static func _pose_critter(p: Dictionary, anim: String, t: float) -> void:
 			p.head.rotation.y = sin(t * 0.9) * 0.2
 	p.core.rotation.x = 0.0
 	p.core.scale = Vector3.ONE
+
+
+static func _penguin(b: Node3D, p: Dictionary) -> void:
+	var BLK := Color("2b3550")
+	for s in [-1, 1]:
+		var foot := piv(b, Vector3(s * 0.14, 0.04, 0.1))
+		part(foot, sph(0.09), Vector3.ZERO, Color("ff9a2a"), Vector3(1, 0.5, 1.6))
+		p["legL" if s < 0 else "legR"] = foot
+	var core := piv(b, Vector3(0, 0.0, 0))
+	p["core"] = core
+	part(core, sph(0.36), Vector3(0, 0.45, 0), BLK, Vector3(1, 1.15, 0.95))
+	part(core, sph(0.27), Vector3(0, 0.42, 0.14), Color("f4f8ff"), Vector3(1, 1.2, 0.8), Vector3.ZERO, false)
+	for s in [-1, 1]:
+		part(core, sph(0.12), Vector3(s * 0.36, 0.48, 0), BLK, Vector3(0.45, 1.3, 0.8), Vector3(0, 0, s * 0.3))
+	part(core, sph(0.24), Vector3(0, 0.92, 0.02), BLK)
+	part(core, sph(0.15), Vector3(0, 0.9, 0.14), Color("f4f8ff"), Vector3(1.1, 0.9, 0.7), Vector3.ZERO, false)
+	eyes(core, 0.96, 0.2, 0.08, 0.055)
+	part(core, cyl(0.0, 0.06, 0.16, 6), Vector3(0, 0.88, 0.28), Color("ff9a2a"), Vector3.ONE, Vector3(PI / 2, 0, 0))
+	part(core, hemi(0.2), Vector3(0, 1.08, 0), Color("e8413b"), Vector3(1, 0.9, 1))
+	part(core, sph(0.06), Vector3(0, 1.26, 0), Color("f4f8ff"))
+
+
+static func _scorpion(b: Node3D, p: Dictionary) -> void:
+	var BODY := Color("d88a3a")
+	var core := piv(b, Vector3(0, 0.2, 0))
+	p["core"] = core
+	part(core, sph(0.32), Vector3.ZERO, BODY, Vector3(0.9, 0.5, 1.3))
+	for i in 3:
+		part(core, box(Vector3(0.5, 0.03, 0.04)), Vector3(0, 0.14, -0.2 + i * 0.16), Color("a8602a"), Vector3.ONE, Vector3.ZERO, false)
+	eyes(core, 0.12, 0.38, 0.07, 0.05)
+	for s in [-1, 1]:   # claws
+		part(core, sph(0.1), Vector3(s * 0.2, 0.0, 0.52), BODY, Vector3(0.9, 0.6, 1.4))
+		part(core, cyl(0.0, 0.05, 0.14, 5), Vector3(s * 0.2, 0.0, 0.66), Color("a8602a"), Vector3.ONE, Vector3(PI / 2, 0, 0))
+	var legs := []
+	for s in [-1, 1]:
+		var lp := piv(core, Vector3.ZERO)
+		for i in 3:
+			part(lp, cap(0.03, 0.34), Vector3(s * 0.3, -0.1, -0.15 + i * 0.15), Color("a8602a"), Vector3.ONE, Vector3(0, 0, s * 1.0))
+		legs.append(lp)
+	p["legL"] = legs[0]
+	p["legR"] = legs[1]
+	var tail := piv(core, Vector3(0, 0.05, -0.38))
+	p["tail"] = tail
+	for i in 4:
+		var a := i * 0.5
+		part(tail, sph(0.09 - i * 0.01), Vector3(0, sin(a) * 0.32 + i * 0.05, -cos(a) * 0.1 * i), BODY)
+	part(tail, cyl(0.0, 0.06, 0.18, 6), Vector3(0, 0.5, 0.12), Color("5a2a14"), Vector3.ONE, Vector3(1.6, 0, 0))

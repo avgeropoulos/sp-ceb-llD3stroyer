@@ -38,26 +38,44 @@ func _initialize() -> void:
 	vp.add_child(holder)
 
 
+## Scenery and the rocket for the PAPER look (rendered from their 3D models too).
+const PROPS := ["pine_a", "pine_b", "snowman", "snowpile", "cactus_a", "cactus_b", "palm", "desert_rock", "rocket"]
+
+
+func _jobs() -> Array:
+	var out := []
+	for it in Decor.ITEMS:
+		out.append(["decor_" + it.id, Decor.model(it.id)])
+	for k in PROPS:
+		out.append([k, Toys.prop(k, 3.0)])
+	return out
+
+
+var jobs := []
+
+
 func _process(_dt: float) -> bool:
+	if jobs.is_empty() and i < 0:
+		jobs = _jobs()
 	if wait > 0:
 		wait -= 1
 		if wait == 0:
-			var it: Dictionary = Decor.ITEMS[i]
 			var img := vp.get_texture().get_image()
-			img.save_png("res://art/decor_%s.png" % it.id)
-			print("rendered ", it.id)
+			img.save_png("res://art/%s.png" % jobs[i][0])
+			print("rendered ", jobs[i][0])
 		return false
 	i += 1
-	if i >= Decor.ITEMS.size():
+	if i >= jobs.size():
 		return true
 	for c in holder.get_children():
 		c.queue_free()
-	var it: Dictionary = Decor.ITEMS[i]
-	var m := Decor.model(it.id)
-	var big := ["tree", "lamp", "bed"]
-	m.scale = Vector3.ONE * (0.62 if it.id in big else 1.0)
-	if it.id == "tree":
-		m.scale = Vector3.ONE * 0.6
+	var m: Node3D = jobs[i][1]
 	holder.add_child(m)
+	# make it fit the picture: scale by its height
+	var top := 0.0
+	for mi in Toys._all_meshes(m):
+		var bb: AABB = mi.get_aabb()
+		top = maxf(top, (mi.global_transform * bb).end.y)
+	m.scale = Vector3.ONE * (1.9 / maxf(top, 0.6) if top > 1.9 else 1.0)
 	wait = 4
 	return false

@@ -60,44 +60,46 @@ func _make_portal() -> void:
 	portal = Node3D.new()
 	portal.position = Vector3(Level.PORTAL_X, 5, 6.5)
 	add_child(portal)
+	var pad := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 1.5
+	cm.bottom_radius = 1.6
+	cm.height = 0.16
+	pad.mesh = cm
+	pad.material_override = Toys.mat(Color("8a8e96"))
+	pad.position.y = 0.08
+	portal.add_child(pad)
 	var ring := MeshInstance3D.new()
 	var tm := TorusMesh.new()
-	tm.inner_radius = 1.05
+	tm.inner_radius = 1.2
 	tm.outer_radius = 1.35
 	ring.mesh = tm
-	ring.material_override = Toys.mat(Color("8a5bc4"), true, 0.4)
-	ring.rotation.x = PI / 2
-	ring.rotation.y = PI / 2
-	ring.position.y = 1.4
+	ring.material_override = Toys.mat(Color("ffcf33"), false, 0.8)
+	ring.position.y = 0.18
 	portal.add_child(ring)
-	for k in 3:
-		var disc := MeshInstance3D.new()
-		var cm := CylinderMesh.new()
-		cm.top_radius = 1.05 - k * 0.3
-		cm.bottom_radius = cm.top_radius
-		cm.height = 0.04
-		disc.mesh = cm
-		disc.material_override = Toys.mat([Color("b48cff"), Color("e0c8ff"), Color.WHITE][k], false, 1.2)
-		disc.rotation.z = PI / 2
-		disc.position = Vector3(k * 0.02, 1.4, 0)
-		disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		portal.add_child(disc)
+	var r := level.prop("rocket", Vector3(Level.PORTAL_X, 5.16, 6.5), 3.0)
+	r.set_meta("rocket", true)
+	rocket_node = r
 	var label := Label3D.new()
-	label.text = "1-1  MEADOW MINE"
-	label.font_size = 48
+	label.text = "ROCKET\nfly to the worlds!"
+	label.font_size = 44
 	label.outline_size = 12
 	label.pixel_size = 0.008
 	label.modulate = Color("ffd23a")
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	label.position.y = 3.2
+	label.position.y = 4.0
 	portal.add_child(label)
+
+
+var rocket_node: Node3D
 
 
 func _process(dt: float) -> void:
 	spin += dt
 	if portal:
-		portal.get_child(0).rotation.z = spin * 0.6
-		portal.scale = Vector3.ONE * (1.0 + sin(spin * 3) * 0.03)
+		portal.get_child(1).scale = Vector3.ONE * (1.0 + sin(spin * 4) * 0.06)
+	if rocket_node:
+		rocket_node.position.y = 5.16 + absf(sin(spin * 2.0)) * 0.05
 
 
 ## True when the hero walks into the portal.

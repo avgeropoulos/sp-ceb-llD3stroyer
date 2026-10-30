@@ -14,14 +14,14 @@ func _process(_dt):
 	var worst := 0.0
 	for i in 800:
 		var c := Vector3i(rng.randi_range(0, Level.LX - 1), rng.randi_range(0, 10), rng.randi_range(0, Level.LZ - 1))
-		var t := Level.AIR if rng.randf() < 0.75 else rng.randi_range(1, Level.ATLAS_TILES - 1)
+		var t := Level.AIR if rng.randf() < 0.75 else rng.randi_range(1, Level.BLOCK_TYPES - 1)
 		var t0 := Time.get_ticks_usec()
 		lv.set_cell(c.x, c.y, c.z, t)
 		worst = maxf(worst, (Time.get_ticks_usec() - t0) / 1000.0)
 	var quick := {}
 	for k in lv.slot_of:
 		quick[k] = lv.slot_of[k].x
-	for t in range(1, Level.ATLAS_TILES):
+	for t in range(1, Level.BLOCK_TYPES):
 		var mm: MultiMesh = lv.mm_nodes[t].multimesh
 		for i in lv.slots[t].size():
 			if Vector3i(mm.get_instance_transform(i).origin) != lv.slots[t][i]:

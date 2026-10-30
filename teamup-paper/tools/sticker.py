@@ -4,7 +4,9 @@ import glob, os
 from PIL import Image, ImageFilter
 
 ART = os.path.join(os.path.dirname(__file__), "..", "art")
-for path in sorted(glob.glob(os.path.join(ART, "decor_*.png"))):
+PROPS = ["pine_a", "pine_b", "snowman", "snowpile", "cactus_a", "cactus_b", "palm", "desert_rock", "rocket"]
+paths = sorted(glob.glob(os.path.join(ART, "decor_*.png"))) + [os.path.join(ART, p + ".png") for p in PROPS]
+for path in paths:
     im = Image.open(path).convert("RGBA")
     box = im.getchannel("A").point(lambda v: 255 if v > 20 else 0).getbbox()
     if not box:

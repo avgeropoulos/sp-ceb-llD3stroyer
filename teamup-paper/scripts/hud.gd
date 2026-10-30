@@ -59,7 +59,9 @@ func _layout() -> void:
 	var sw := [Vector2(s.x - 145 * u, s.y - 315 * u), 56 * u]
 	var sup := [Vector2(s.x - 300 * u, s.y - 255 * u), 56 * u]
 	var pz := [Vector2(s.x - 52 * u, 52 * u), 34 * u]
-	if game and game.state == "home" and game.home:
+	if game and game.state == "map":
+		buttons = {"land": jump, "pause": pz}
+	elif game and game.state == "home" and game.home:
 		if game.home.mode == "":   # walking around the home: BUILD, DECOR, PARTNER
 			buttons = {"jump": jump, "build": act, "swap": sw, "decor": sup, "pause": pz,
 				"partner": [Vector2(s.x - 52 * u, 150 * u), 46 * u]}
@@ -89,7 +91,7 @@ func _input(event: InputEvent) -> void:
 		if e.pressed:
 			if game.state == "home" and game.home and game.home.mode != "" and _palette_tap(e.position):
 				return
-			if game.state != "play" and game.state != "home":
+			if game.state != "play" and game.state != "home" and game.state != "map":
 				if game.state == "title" and update_showing() and update_rect().grow(20).has_point(e.position):
 					game.updater.download()
 					return
@@ -164,8 +166,10 @@ func _draw() -> void:
 		_draw_partner()
 		return
 	_draw_hud()
-	if game.state == "play" or game.state == "home":
+	if game.state == "play" or game.state == "home" or game.state == "map":
 		_draw_controls()
+	if game.state == "map" and game.sky:
+		_draw_map_info()
 	if game.state == "home" and game.home and game.home.mode != "":
 		_draw_palette()
 	if message_t > 0 and game.state != "paused":
@@ -235,14 +239,16 @@ func _draw_controls() -> void:
 	draw_circle(base + stick * r, r * 0.55, Color("ffd6a8") if game.sprinting else Color(1, 1, 1, 0.75))
 	# buttons
 	var labels := {"jump": "JUMP", "action": game.action_label(), "swap": "SWAP", "super": "SUPER", "pause": "II",
-		"build": "BUILD", "decor": "DECOR", "partner": "PARTNER", "place": "PLACE", "remove": "REMOVE", "done": "DONE", "rotate": "TURN"}
+		"build": "BUILD", "decor": "DECOR", "partner": "PARTNER", "place": "PLACE", "remove": "REMOVE", "done": "DONE", "rotate": "TURN", "land": "LAND"}
 	var colors := {"jump": Color("3fc06a"), "action": Color("ff8a1f"), "swap": Color("6a7cff"), "super": Color("ffcf33"), "pause": Color(0.2, 0.25, 0.4),
 		"build": Color("ff8a1f"), "decor": Color("ff6fa8"), "partner": Color("2cbec8"), "place": Color("3fc06a"), "remove": Color("e8413b"),
-		"done": Color("3f7fd9"), "rotate": Color("8a5bc4")}
+		"done": Color("3f7fd9"), "rotate": Color("8a5bc4"), "land": Color("3fc06a")}
 	for k in buttons:
 		var c: Vector2 = buttons[k][0]
 		var rad: float = buttons[k][1]
 		var col: Color = colors[k]
+		if k == "land" and (game.sky == null or game.sky.near_info().is_empty() or not game.sky.near_info().ok):
+			col = Color(0.35, 0.38, 0.45)   # nothing to land on here
 		var down := is_held(k)
 		if k == "super" and game.state == "play":
 			var f: float = game.super_charge
@@ -288,7 +294,8 @@ func _pal_items() -> Array:
 
 static func _tex_name(t: int) -> String:
 	return ["", "grass_top", "dirt", "stone", "iron", "gold", "diamond", "bedrock", "brick", "mystery", "used",
-		"planks", "wool_red", "wool_blue", "wool_yellow", "wool_white", "window", "iron_block", "gold_block", "diamond_block", "stone_brick"][t]
+		"planks", "wool_red", "wool_blue", "wool_yellow", "wool_white", "window", "iron_block", "gold_block", "diamond_block", "stone_brick",
+		"snow_top", "ice", "sand", "sandstone"][t]
 
 
 func _pal_rect(i: int, n: int) -> Rect2:
@@ -340,6 +347,20 @@ func _draw_palette() -> void:
 	txt("%s  -  %s" % [it.name, _cost_text(it.cost)], Vector2(600, y), 24, Color("fff2a8"), HORIZONTAL_ALIGNMENT_LEFT, -1, 7)
 	if not h.can_place and h.why != "":
 		txt(h.why, Vector2(600, y + 30), 22, Color("ffb0a8"), HORIZONTAL_ALIGNMENT_LEFT, -1, 6)
+
+
+func _draw_map_info() -> void:
+	var ni: Dictionary = game.sky.near_info()
+	var s := size
+	if ni.is_empty():
+		txt("Fly over an island to land", Vector2(0, 120), 30, Color(1, 1, 1, 0.85), HORIZONTAL_ALIGNMENT_CENTER, s.x, 8)
+		txt("Push the stick all the way for a BOOST!", Vector2(0, 156), 22, Color(1, 1, 1, 0.65), HORIZONTAL_ALIGNMENT_CENTER, s.x, 6)
+	else:
+		txt(ni.name, Vector2(0, 120), 44, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 10)
+		if ni.ok:
+			txt("Tap LAND!", Vector2(0, 160), 28, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, s.x, 8)
+		else:
+			txt("LOCKED - " + ni.why, Vector2(0, 160), 28, Color("ffb0a8"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 8)
 
 
 func update_showing() -> bool:
@@ -580,13 +601,18 @@ func _draw_slots() -> void:
 			var mxp := int((d.get("mon_xp", {}) as Dictionary).get(ml, 0))
 			fit(img(Mons.face(ml, Mons.stage_of(ml, Mons.level_of(mxp)))), Rect2(r.position.x + 84, r.position.y + 112, 84, 82))
 			var tx := r.position.x + 170
-			txt("1-1", Vector2(tx, r.position.y + 118), 40, Color("ff4a3a"), HORIZONTAL_ALIGNMENT_LEFT, -1, 6)
-			txt("MEADOW MINE", Vector2(tx, r.position.y + 150), 20, Color(0.13, 0.09, 0.18), HORIZONTAL_ALIGNMENT_LEFT, -1, 0)
-			var cl := int(d.get("cleared", 0))
-			if cl > 0:
-				txt("CLEARED x%d" % cl, Vector2(tx, r.position.y + 182), 24, Color("e0a800"), HORIZONTAL_ALIGNMENT_LEFT, -1, 4)
-			elif d.get("checkpoint_hit", false):
-				txt("CHECKPOINT", Vector2(tx, r.position.y + 182), 22, Color("3f9a48"), HORIZONTAL_ALIGNMENT_LEFT, -1, 0)
+			# how far this file has got: worlds cleared, and where a level was left off
+			var cw: Dictionary = d.get("cleared_w", {"meadow": int(d.get("cleared", 0))} if int(d.get("cleared", 0)) > 0 else {})
+			var done := 0
+			for w in Worlds.ORDER:
+				if int(cw.get(w, 0)) > 0:
+					done += 1
+			txt("WORLDS", Vector2(tx, r.position.y + 112), 22, Color(0.13, 0.09, 0.18), HORIZONTAL_ALIGNMENT_LEFT, -1, 0)
+			txt("%d / %d" % [done, Worlds.ORDER.size()], Vector2(tx, r.position.y + 150), 38, Color("ff4a3a"), HORIZONTAL_ALIGNMENT_LEFT, -1, 6)
+			if d.get("in_level", false):
+				txt("IN " + String(Worlds.info(String(d.get("level", "meadow"))).short), Vector2(tx, r.position.y + 182), 16, Color("3f9a48"), HORIZONTAL_ALIGNMENT_LEFT, -1, 0)
+			elif done > 0:
+				txt("CLEARED!", Vector2(tx, r.position.y + 182), 22, Color("e0a800"), HORIZONTAL_ALIGNMENT_LEFT, -1, 4)
 			var y := r.position.y + 210
 			for k in 5:
 				draw_texture_rect(tex["heart" if k < int(d.get("hearts", 5)) else "heart_empty"], Rect2(r.position.x + 20 + k * 34, y, 36, 36), false)

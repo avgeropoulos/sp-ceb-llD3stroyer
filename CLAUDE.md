@@ -210,8 +210,10 @@ electric SPARKY/ZAPPER (Lv 6). The partner hero is `heroes.mon` (`who == "mon"`,
 `mon_xp` (saved as `mon_xp`, partner as `mon`). PICK YOUR PARTNER (`state == "partner"`) comes after picking a file that isn't
 mid-level. Tests that press buttons must call functions (`_action`, `_thunderbolt`) because `_gather_input` overwrites flags.
 Screenshots of effects need `--fixed-fps 60` (software Vulkan is slow, so effects end between frames otherwise).
-Flow: title -> file -> (new: partner, 30 coins) -> HOME (`level.is_home`, `state == "home"`, `HomeBase`) -> portal -> 1-1
--> clear -> home. Switching places reloads the scene via `main.go(place, slot)` + static `Boot` (tests follow `Boot.current`).
+Flow: title -> file -> (new: partner, 30 coins) -> HOME (`level.is_home`, `state == "home"`, `HomeBase`) -> rocket pad
+-> SKY MAP (`state == "map"`, `SkyMap`, steer the rocket, LAND) -> a world (`Boot.level`: meadow / frost / dunes, see
+`worlds.gd`) -> clear -> sky map over that island. Worlds unlock in order (`cleared_w`). Frost/Dunes are generated
+(`level.gd` `_generate_world`) with the same checkpoint/arena x as 1-1; new foes Penguin and Scorpion (`foes.gd`). Switching places reloads the scene via `main.go(place, slot)` + static `Boot` (tests follow `Boot.current`).
 The save always carries `home` ({blocks, decor}); 1-1 keeps it in `home_saved`. New decor: add to `Decor.ITEMS` + `model()`,
 then render paper pictures (`tools/render_decor.gd`, `tools/sticker.py`). Sprint = full-tilt stick (`tilt_t`), Shift, R1/R2.
 Performance rules learned the hard way (each one was a visible freeze on the tablet):
