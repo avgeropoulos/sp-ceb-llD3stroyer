@@ -90,22 +90,35 @@ dust puffs, the stick ring glows orange with SPRINT!). Keyboard: hold Shift. Con
 ## Partners: pick one, level up, evolve
 
 After picking a save file (and after every finished run) you **PICK YOUR PARTNER**: tap a card to look,
-tap again (or **GO WITH ...!**) to play. Each partner has its own level, saved in the file, and evolves:
+tap again (or **GO WITH ...!**) to play. 12 partners on 2 rows of cards (the picked one's moves are shown
+under them). Each has its own level, saved in the file, and evolves (it takes a while now):
 
-| Type | Lv 1 | Lv 4 | Lv 8 | ACTION | SUPER |
+| Type | Lv 1 | Lv 7 | Lv 14 | ACTION | SUPER |
 |---|---|---|---|---|---|
 | Water | SPLASHY | TIDAL | HYDRO | WATER GUN | HYDRO WAVE (waves roll both ways) |
 | Grass | SEEDY | SPROUT | BLOOM | VINE WHIP (hits and digs) | SOLAR BEAM (huge beam in front) |
 | Fire | EMBER | SCORCH | BLAZE (glides) | FIREBALL (bounces) | FIRE SPIN (ring of fire) |
-| Electric | SPARKY | ZAPPER (Lv 6) | | ZAP | THUNDERBOLT |
+| Electric | SPARKY | ZAPPER (Lv 10) | | ZAP | THUNDERBOLT |
+| Rock | PEBBLIT | BOULDRO | TERRADON | ROCK THROW (bounces, smashes blocks) | EARTHQUAKE (bad guys on the ground) |
+| Ghost | BOOLET | SPOOKLE | PHANTOMA | SHADOW BALL (through walls); floats down slowly | BIG SCARE |
+| Flying | PIPWING | SWOOPER | SKYHAWK | GUST (knocks back); all glide | TORNADO |
+| Psychic | MYSTIKIT | FOXSEER | ASTRAFOX | PSY ORB (chases bad guys) | MIND BLAST (everyone near) |
+| Ice | SNOWPUP | FROSTEAL | BLIZZARC | ICE BEAM (goes through a line of bad guys) | BLIZZARD |
+| Bug | BUZZLET | BEETLEBUD | TITANBUG | STRING SHOT (long, pulls in) | BUG SWARM |
+| Dragon | DRAKLET | WYVERNO | DRAGOROAR | DRAGON BREATH (fire in front) | DRAGON METEOR |
+| Fairy | PIXIBUN | FLUFFAIRY | STARABBIT | SPARKLE (3 in a fan) | HEAL BLOOM (hearts full) |
 
-* XP: 12 per bad guy, 60 for Krag Jr., 40 for finishing the level (`Mons.need(level)` = 20 + 10 x level, max Lv 15).
+* XP: 12 per bad guy, 60 for Krag Jr., 40 for finishing a world (`Mons.need(level)` = 30 + 18 x level, max Lv 20).
+  Old saves keep their XP; a partner can go back a stage because evolving moved to Lv 7 / 14.
 * Each stage is bigger, faster and hits harder; Hydro's stomps hurt more. Evolving plays a short scene
   ("WHAT? SPLASHY is evolving!") and saves. When it's the helper, the partner uses its own attack.
-* Code: `scripts/mons.gd` (lines, XP, evolve levels), `Hero.set_form()`, `main.gd` `_mon_attack` / `_thunderbolt`
-  (all SUPERs) / `gain_xp` / `start_evolve`, `hud.gd` `_draw_partner`. Art: `gen_art.py` `critter()` (paper) and
-  `toys.gd` `_critter()` (3D). Our own designs that keep the real game's partner names.
-* Test: `tests/partner_check.gd` (pick, evolve, every ACTION and SUPER at every stage, saved levels).
+* Code: `scripts/mons.gd` (lines, XP, evolve levels), `Hero.set_form()`, `main.gd` `_mon_attack` (+ `_gust`,
+  `_string_shot`, `_dragon_breath`) / `_thunderbolt` + `_new_super` / new shots in `spawn_shot` + `_update_shots`
+  (rock, shadow, orb, ice, sparkle) / `gain_xp` / `start_evolve`, `hud.gd` `_draw_partner` (`PARTNER_COLS`).
+  Art: `gen_art.py` `critter()` + `beast()` + `new_shots()` (paper) and `toys.gd` `_critter()` + `_beast()` (3D).
+  Our own designs with made-up names.
+* Test: `tests/partner_check.gd` (pick the dragon, evolve at Lv 7, every ACTION and SUPER of all 12 lines at every
+  stage, saved levels).
 
 ## Save files and pause menu
 

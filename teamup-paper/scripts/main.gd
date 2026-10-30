@@ -75,8 +75,8 @@ var partner_from := ""        # "new" (new file), "home" or "" (tests)
 var taps := {}                # touch buttons pressed this frame (home buttons)
 
 # partners
-var mon_line := "spark"       # water / grass / fire / spark
-var mon_xp := {"water": 0, "grass": 0, "fire": 0, "spark": 0}
+var mon_line := "spark"       # one of Mons.ORDER
+var mon_xp := _new_mon_xp()   # XP for every partner line (Mons.ORDER)
 var partner_sel := 0          # highlighted card on PICK YOUR PARTNER
 var evolve_t := -1.0          # >= 0 while the evolution scene plays
 var evolve_to := 0
@@ -729,6 +729,14 @@ func partner_back() -> void:
 	state = "home" if partner_from == "home" else "slots"
 
 
+## Every partner line starts at 0 XP.
+static func _new_mon_xp() -> Dictionary:
+	var d := {}
+	for l in Mons.ORDER:
+		d[l] = 0
+	return d
+
+
 func set_partner(l: String) -> void:
 	mon_line = l
 	heroes.mon.set_form(l, Mons.stage_of(l, mon_level()))
@@ -897,6 +905,10 @@ func _warm_up() -> void:
 			var n := level.prop(k, at, 0.3)
 			n.scale = Vector3.ONE * 0.05
 			warm_nodes.append(n)
+		for k in NEW_SHOT_PICS.values():
+			var n := _shot_node(k, at, 0.3)
+			n.scale = Vector3.ONE * 0.05
+			warm_nodes.append(n)
 		for h in heroes.values():
 			h.show_health()
 			h.bar.visible = true
@@ -1051,10 +1063,13 @@ func _step(dt: float) -> void:
 		_step_evolve(dt)
 		return
 	if state == "partner":
+		var n := Mons.ORDER.size()
 		if Input.is_action_just_pressed("left"):
-			partner_sel = (partner_sel + 3) % 4
+			partner_sel = (partner_sel + n - 1) % n
 		if Input.is_action_just_pressed("right"):
-			partner_sel = (partner_sel + 1) % 4
+			partner_sel = (partner_sel + 1) % n
+		if Input.is_action_just_pressed("up") or Input.is_action_just_pressed("down"):
+			partner_sel = (partner_sel + Hud.PARTNER_COLS) % n
 		if jump_pressed or action_pressed:
 			choose_partner(Mons.ORDER[partner_sel])
 		elif pause_pressed:
@@ -1196,8 +1211,10 @@ func _update_leader(h: Hero, dt: float) -> void:
 			h.spin()
 			fx.burst(h.position + Vector3(0, 0.05, 0), Color(1, 1, 1), 8, 2.6, 1.5, 0.7)
 			sfx("jump2")
-	if h.who == "mon" and h.line == "fire" and h.stage == 2 and jump_held and h.vel.y < -2.5:
-		h.vel.y = -2.5   # BLAZE glides while you hold JUMP
+	if h.who == "mon" and ((h.line == "fire" and h.stage == 2) or h.line == "bird") and jump_held and h.vel.y < -2.5:
+		h.vel.y = -2.5   # BLAZE and the bird line glide while you hold JUMP
+	if h.who == "mon" and h.line == "ghost" and h.vel.y < -6.0:
+		h.vel.y = -6.0   # ghosts float down slowly
 	if not jump_held and h.vel.y > 0 and h.long_t <= 0 and jump_hold_t <= 0:
 		h.vel.y -= Actor.GRAVITY * 1.4 * dt   # let go of JUMP early = smaller jump
 	h.vel.y = maxf(h.vel.y - Actor.GRAVITY * dt, -26)
@@ -1326,9 +1343,80 @@ func _mon_attack(h: Hero, target: Foe) -> void:
 			sfx("jump2", -6)
 		"grass":
 			_vine_whip(h, aim, dmg + 1)
+		"rock":   # a boulder that bounces along and smashes blocks
+			var flat := Vector3(aim.x, 0, aim.z).normalized()
+			spawn_shot("rock", from, flat * 7.5 + Vector3(0, 3, 0), h, dmg + 1)
+			sfx("break", -8)
+		"ghost":   # flies straight through walls
+			spawn_shot("shadow", from, aim * 11.0, h, dmg)
+			sfx("zap", -8)
+		"bird":
+			_gust(h, aim, dmg)
+		"mind":   # an orb that chases the nearest bad guy
+			spawn_shot("orb", from, aim * 9.0, h, dmg)
+			sfx("zap", -6)
+		"ice":   # a fast beam that goes through a whole line of bad guys
+			spawn_shot("ice", from, aim * 18.0, h, dmg)
+			sfx("zap", -2)
+		"bug":
+			_string_shot(h, aim, dmg)
+		"dragon":
+			_dragon_breath(h, aim, dmg + 1)
+		"fairy":   # three sparkles in a fan
+			for a in [-0.3, 0.0, 0.3]:
+				spawn_shot("sparkle", from, aim.rotated(Vector3.UP, a) * 12.0, h, dmg)
+			sfx("coin", -8)
 		_:
 			spawn_shot("spark", from, aim * 13.0, h, dmg)
 			sfx("zap", -4)
+
+
+## Bad guys in front of a partner (within reach, inside a cone), for the close-up moves.
+func _foes_in_front(h: Hero, flat: Vector3, reach: float, cone: float) -> Array:
+	var out := []
+	for f in foes:
+		if is_instance_valid(f) and f.dying < 0:
+			var d := f.position - h.position
+			var fl := Vector2(d.x, d.z)
+			if absf(d.y) < 1.8 and fl.length() < reach + f.hw and (fl.length() < 0.6 or fl.normalized().dot(Vector2(flat.x, flat.z)) > cone):
+				out.append(f)
+	return out
+
+
+## Bird: a gust of wind that knocks bad guys back.
+func _gust(h: Hero, aim: Vector3, dmg: int) -> void:
+	var flat := Vector3(aim.x, 0, aim.z).normalized()
+	var reach := 3.5 + h.stage * 0.6
+	for i in 3:
+		fx.burst(h.position + Vector3(0, h.height * 0.6, 0) + flat * (0.8 + i * 1.0), Color(1, 1, 1), 4, 3, 0, 0.8)
+	sfx("swap", -4)
+	for f in _foes_in_front(h, flat, reach, 0.4):
+		f.hurt(dmg, self)
+		if not f.is_boss:
+			f.vel += flat * 9.0 + Vector3(0, 5, 0)
+
+
+## Bug: a long sticky string (longer than a vine) that pulls bad guys in.
+func _string_shot(h: Hero, aim: Vector3, dmg: int) -> void:
+	var flat := Vector3(aim.x, 0, aim.z).normalized()
+	var reach := 4.0 + h.stage * 0.6
+	fx.vine(h.position + Vector3(0, h.height * 0.55, 0), flat, reach)
+	sfx("arrow", -6)
+	for f in _foes_in_front(h, flat, reach, 0.6):
+		f.hurt(dmg, self)
+		if not f.is_boss:
+			f.vel -= flat * 6.0
+
+
+## Dragon: a short blast of fire breath that hits everything in front.
+func _dragon_breath(h: Hero, aim: Vector3, dmg: int) -> void:
+	var flat := Vector3(aim.x, 0, aim.z).normalized()
+	var reach := 2.6 + h.stage * 0.5
+	for i in 4:
+		fx.burst(h.position + Vector3(0, h.height * 0.6, 0) + flat * (0.5 + i * reach / 4.0), [Color("ffb02e"), Color("ff6a2a")][i % 2], 5, 2.5, 0, 0.9)
+	sfx("jump2", -4)
+	for f in _foes_in_front(h, flat, reach, 0.35):
+		f.hurt(dmg, self)
 
 
 ## Grass: a vine lashes out in front. It hits bad guys and digs one block.
@@ -1486,6 +1574,8 @@ func _thunderbolt() -> void:
 			for f in foes:
 				if is_instance_valid(f) and f.dying < 0 and f.position.distance_to(at) < 7.5:
 					f.hurt(power - (1 if f.is_boss else 0), self)
+		"rock", "ghost", "bird", "mind", "ice", "bug", "dragon", "fairy":
+			_new_super(m.line, at, power)
 		_:
 			sfx("thunder")
 			var hit := 0
@@ -1498,6 +1588,63 @@ func _thunderbolt() -> void:
 				var x := lx + randf_range(-8, 8)
 				fx.bolt(Vector3(x, level.ground_below(x, 6, 16), randf_range(4, 9)))
 	super_charge = 0   # bad guys beaten by the SUPER don't refill it
+
+
+## The SUPERs of the newer partners (they reach all round, not just left and right).
+func _new_super(line: String, at: Vector3, power: int) -> void:
+	var reach := {"rock": 12.0, "ghost": 14.0, "bird": 9.0, "mind": 18.0, "ice": 12.0, "bug": 14.0, "dragon": 15.0, "fairy": 8.0}[line] as float
+	match line:
+		"rock":
+			sfx("slam")
+			fx.shake = 1.6
+			fx.wave(at, level)
+		"ghost":
+			sfx("alert")
+			fx.text(at + Vector3(0, 2.4, 0.4), "BOO!", Color("b98cff"), 88, 1.4)
+		"bird":
+			sfx("swap")
+			fx.ring(at, reach)
+			fx.ring(at + Vector3(0, 1.5, 0), reach * 0.7)
+		"mind":
+			sfx("thunder")
+			fx.ring(at, 4.0)
+		"ice":
+			sfx("thunder")
+			for i in 24:
+				fx.burst(at + Vector3(randf_range(-reach, reach) * 0.7, randf_range(1, 5), randf_range(-reach, reach) * 0.7), Color("e8faff"), 4, 1.5, 6, 1.2)
+		"bug":
+			sfx("arrow")
+		"dragon":
+			sfx("boss_down")
+			for i in 4:   # meteors where there's no one to hit
+				var p := at + Vector3(randf_range(-9, 9), 0, randf_range(-4, 4))
+				fx.bolt(p)
+				fx.burst(p + Vector3(0, 0.5, 0), Color("ff7a2a"), 10, 4)
+		"fairy":
+			sfx("heart")
+			fx.ring(at, reach)
+			if hearts < MAX_HEARTS:
+				hearts = MAX_HEARTS
+				fx.text(at + Vector3(0, 2.2, 0.4), "HEARTS FULL!", Color("ff8fc8"), 56, 1.4)
+	for f in foes:
+		if not is_instance_valid(f) or f.dying >= 0 or f.position.distance_to(at) > reach:
+			continue
+		if line == "rock" and f.position.y > at.y + 3:
+			continue   # the quake only gets bad guys on the ground
+		match line:
+			"ghost":
+				fx.burst(f.position + Vector3(0, f.height, 0), Color("8a6fd6"), 10, 3)
+			"mind":
+				fx.burst(f.position + Vector3(0, f.height * 0.5, 0), Color("e05fb0"), 12, 4)
+			"bug":
+				fx.burst(f.position + Vector3(0, f.height * 0.5, 0), Color("7cb342"), 14, 3, 2)
+			"dragon":
+				fx.bolt(f.position)
+				fx.burst(f.position + Vector3(0, 0.5, 0), Color("ff7a2a"), 10, 4)
+			"bird":
+				if not f.is_boss:
+					f.vel += Vector3(0, 10, 0)
+		f.hurt(power - (1 if f.is_boss else 0), self)
 
 
 # ------------------------------------------------------------------ the friend who follows
@@ -1603,13 +1750,29 @@ func _update_foes(dt: float) -> void:
 				hurt_hero(f.position)
 
 
-const FRIENDLY_SHOTS := ["spark", "water", "fireball"]
+const FRIENDLY_SHOTS := ["spark", "water", "fireball", "rock", "shadow", "orb", "ice", "sparkle"]
+const NEW_SHOT_PICS := {"rock": "shot_rock", "shadow": "shot_shadow", "orb": "shot_orb", "ice": "shot_ice", "sparkle": "shot_sparkle"}
+
+
+## A shot for the newer partners: a 3D toy in the toy look, else a paper picture.
+func _shot_node(pic: String, pos: Vector3, size: float) -> Node3D:
+	if Look.toy:
+		var t := Toys.prop(pic, size)
+		t.position = pos
+		level.add_child(t)
+		return t
+	return level.paper(pic, pos, size)
 
 
 func spawn_shot(kind: String, pos: Vector3, v: Vector3, owner: Node3D, dmg: int = 1) -> void:
-	var size := {"spark": 0.55, "arrow": 0.32, "spikeball": 0.8, "water": 0.5, "fireball": 0.55}[kind] as float
-	var pic: String = {"spark": "spark", "arrow": "arrow", "spikeball": "spikeball", "water": "shot_water", "fireball": "shot_fire"}[kind]
-	var s := level.prop(pic, pos - Vector3(0, size * 0.5, 0), size)
+	var size := {"spark": 0.55, "arrow": 0.32, "spikeball": 0.8, "water": 0.5, "fireball": 0.55,
+		"rock": 0.6, "shadow": 0.55, "orb": 0.55, "ice": 0.5, "sparkle": 0.5}[kind] as float
+	var s: Node3D
+	if NEW_SHOT_PICS.has(kind):
+		s = _shot_node(NEW_SHOT_PICS[kind], pos - Vector3(0, size * 0.5, 0), size)
+	else:
+		var pic: String = {"spark": "spark", "arrow": "arrow", "spikeball": "spikeball", "water": "shot_water", "fireball": "shot_fire"}[kind]
+		s = level.prop(pic, pos - Vector3(0, size * 0.5, 0), size)
 	if not (s is Sprite3D):   # 3D shots: put the node's origin at the shot's middle, like the paper ones
 		s.position = pos
 		for ch in s.get_children():
@@ -1619,8 +1782,9 @@ func spawn_shot(kind: String, pos: Vector3, v: Vector3, owner: Node3D, dmg: int 
 			s.flip_h = v.x < 0
 		else:
 			s.look_at(s.global_position - v, Vector3.UP)
-	shots.append({"node": s, "vel": v, "kind": kind, "owner": owner, "life": 5.0 if kind == "spikeball" else (2.4 if kind == "fireball" else 2.0),
-		"bounces": 0, "dmg": dmg})
+	var life := {"spikeball": 5.0, "fireball": 2.4, "rock": 2.6, "shadow": 1.6, "orb": 2.6, "ice": 1.0, "sparkle": 1.2}.get(kind, 2.0) as float
+	shots.append({"node": s, "vel": v, "kind": kind, "owner": owner, "life": life,
+		"bounces": 0, "dmg": dmg, "hit": []})
 
 
 func _update_shots(dt: float) -> void:
@@ -1646,6 +1810,40 @@ func _update_shots(dt: float) -> void:
 			s.rotation.z -= v.x * dt * 2
 			if nxt.y < -4:
 				gone = true
+		elif sh.kind == "rock":   # a boulder: bounces along, smashes the block it runs into
+			v.y -= 24 * dt
+			var nxt: Vector3 = center + v * dt
+			var g := level.ground_below(nxt.x, nxt.z, center.y + 0.4)
+			if nxt.y - 0.3 < g and g > -50:
+				nxt.y = g + 0.3
+				v.y = 5.0
+			var c := Vector3i(floori(nxt.x + signf(v.x) * 0.3), floori(nxt.y), floori(nxt.z + signf(v.z) * 0.3))
+			if level.solid(c.x, c.y, c.z):
+				gone = true
+				if not level.is_home and sh.owner is Hero:
+					hit_block(c, 2, sh.owner)
+				fx.burst(nxt, Color("8a7a6a"), 8, 3)
+			s.position = nxt
+			s.rotation.x += dt * 8
+			if nxt.y < -4:
+				gone = true
+		elif sh.kind == "shadow":   # ghost shots fly straight through walls
+			s.position += v * dt
+			s.scale = Vector3.ONE * (1.0 + sin(sh.life * 30) * 0.12)
+		elif sh.kind == "orb":   # chases the nearest bad guy
+			var best: Foe = null
+			var bd := 10.0
+			for f in foes:
+				if is_instance_valid(f) and f.dying < 0 and f.position.distance_to(center) < bd:
+					bd = f.position.distance_to(center)
+					best = f
+			if best:
+				var want := (best.position + Vector3(0, best.height * 0.5, 0) - center).normalized() * 10.0
+				v = v.lerp(want, 1 - exp(-dt * 5))
+			s.position += v * dt
+			if level.solid(floori(s.position.x), floori(s.position.y), floori(s.position.z)):
+				gone = true
+				fx.burst(s.position, Color("e05fb0"), 6, 2)
 		elif sh.kind == "fireball":   # bounces along the ground
 			v.y -= 24 * dt
 			var nxt: Vector3 = center + v * dt
@@ -1672,6 +1870,13 @@ func _update_shots(dt: float) -> void:
 				for f in foes:
 					if is_instance_valid(f) and f.dying < 0 and absf(f.position.x - s.position.x) < f.hw + 0.35 \
 							and absf(f.position.z - s.position.z) < f.hw + 0.7 and s.position.y > f.position.y - 0.2 and s.position.y < f.position.y + f.height + 0.3:
+						if sh.kind == "ice":   # ice goes through: each bad guy is hit once
+							if f in sh.hit:
+								continue
+							sh.hit.append(f)
+							f.hurt(int(sh.dmg) + (1 if sh.owner == leader() else 0), self)
+							fx.burst(f.position + Vector3(0, f.height * 0.5, 0), Color("bff4ff"), 8, 3)
+							continue
 						f.hurt(int(sh.dmg) + (1 if sh.owner == leader() else 0), self)
 						gone = true
 						break
