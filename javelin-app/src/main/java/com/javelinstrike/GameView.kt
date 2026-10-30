@@ -33,7 +33,7 @@ class GameView(private val activity: Activity) : SurfaceView(activity), SurfaceH
     private val game = Game(input, sound, object : Storage {
         override fun load(key: String) = prefs.getInt(key, 0)
         override fun save(key: String, value: Int) { prefs.edit().putInt(key, value).apply() }
-    })
+    }, AppUpdater(activity))
     private val gfx = CanvasGfx()
 
     private val sensors = activity.getSystemService(Context.SENSOR_SERVICE) as SensorManager

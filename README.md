@@ -209,6 +209,19 @@ GitHub Actions builds it on every push. On your phone, open
 **https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/download/javelin-strike/JavelinStrike.apk**,
 then open the downloaded file and allow your browser to install apps if Android asks.
 
+### Updating from inside the app
+
+After that first install you never need the link again. The bottom button on the title screen
+checks GitHub for a newer build. When there is one it says **UPDATE TO BUILD N**: tap it, and
+the app downloads the new version and Android asks you to confirm the update. The first time,
+Android asks you to allow "Install unknown apps" for Javelin Strike.
+
+Every build is signed with the same key (`javelin-app/javelin.keystore`), which is what lets
+Android install one build over another. The key is committed on purpose so the cloud build can
+use it. It isn't a secret, and the app only ever downloads updates from this repository's own
+release. If you installed a build from before this was added, uninstall it once and install
+from the link above; updates work from then on.
+
 ## Changing the game
 
 * `javelin-core/.../Levels.kt`: the level list. Each line sets the target distance, size,

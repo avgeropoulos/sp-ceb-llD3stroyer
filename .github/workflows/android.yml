@@ -25,12 +25,16 @@ jobs:
         run: ./gradlew :core:test :javelin-core:test --console=plain
 
       - name: Build APKs
+        env:
+          # Javelin Strike's version number, so the app can tell when a newer build exists.
+          BUILD_NUMBER: ${{ github.run_number }}
         run: ./gradlew :app:assembleDebug :javelin-app:assembleDebug --console=plain
 
       - name: Rename APKs
         run: |
           cp app/build/outputs/apk/debug/app-debug.apk RoccosQuest.apk
           cp javelin-app/build/outputs/apk/debug/javelin-app-debug.apk JavelinStrike.apk
+          echo "${{ github.run_number }}" > javelin-version.txt
 
       - uses: actions/upload-artifact@v4
         with:
@@ -73,5 +77,9 @@ jobs:
             Install on Android: download **JavelinStrike.apk** on your phone, open it,
             and allow "install unknown apps" for your browser if asked.
 
-            Built from ${{ github.sha }} on ${{ github.ref_name }}.
-          files: JavelinStrike.apk
+            Once installed, the app updates itself: the title screen offers each new build.
+
+            Build ${{ github.run_number }}, from ${{ github.sha }} on ${{ github.ref_name }}.
+          files: |
+            JavelinStrike.apk
+            javelin-version.txt

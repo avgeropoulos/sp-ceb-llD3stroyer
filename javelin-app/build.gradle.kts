@@ -13,15 +13,32 @@ android {
         applicationId = "com.javelinstrike"
         minSdk = 24
         targetSdk = 35
-        versionCode = 3
-        versionName = "2.0"
+        // GitHub Actions sets BUILD_NUMBER, so every published build has a higher version
+        // than the last one. The app compares it with the newest build to offer updates.
+        val build = System.getenv("BUILD_NUMBER")?.toIntOrNull() ?: 3
+        versionCode = build
+        versionName = "2.1 (build $build)"
+    }
+
+    signingConfigs {
+        // One fixed key for every build. Android only installs an update over an app signed
+        // with the same key; the default debug key is different on every CI machine.
+        // It's committed on purpose so CI and local builds can sign; it isn't a secret.
+        create("shared") {
+            storeFile = file("javelin.keystore")
+            storePassword = "javelinstrike"
+            keyAlias = "javelin"
+            keyPassword = "javelinstrike"
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("shared")
+        }
         release {
             isMinifyEnabled = false
-            // Signed with the debug key so the release APK installs without extra setup.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("shared")
         }
     }
 

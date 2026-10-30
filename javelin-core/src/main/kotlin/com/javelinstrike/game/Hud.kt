@@ -231,8 +231,14 @@ internal fun Game.drawTitle(g: Gfx) {
     button(g, titleButton(1), "CONTROLS: $ctl", CREAM)
     button(g, titleButton(2), "ARM: ${arm.label}", CREAM)
     button(g, titleButton(3), "HOW TO PLAY", CREAM)
+    val up = titleButton(4)
+    val pulse = updater.available && (clock * 2f).toInt() % 2 == 0
+    button(g, up, updater.label, if (updater.available) (if (pulse) Game.GOLD else Game.GREEN) else 0xFFD9C9A3.toInt())
+    updater.detail?.let { d ->
+        for ((i, l) in wrap(d, 46).take(2).withIndex()) g.shadowText(l, cx, up[1] + up[3] + 13f + i * 12f, 9f, CREAM, 1)
+    }
 
-    val top = titleButton(3)[1] + 62f
+    val top = up[1] + up[3] + 34f
     val pw = 220f
     g.rect(cx - pw / 2f, top, pw, 150f, PANEL)
     meander(g, cx - pw / 2f + 4f, top + 4f, pw - 8f)

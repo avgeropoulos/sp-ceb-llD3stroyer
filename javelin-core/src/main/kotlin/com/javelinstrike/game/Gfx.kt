@@ -73,6 +73,28 @@ interface SoundSink {
     fun vibrate(ms: Int) {}
 }
 
+/**
+ * Updates the app from inside it. The platform checks for a newer build, downloads it and
+ * installs it; the game just shows [label] on a title-screen button and calls [tap].
+ */
+interface Updater {
+    /** Button text, such as "UPDATE TO BUILD 12". */
+    val label: String
+    /** A line of extra detail under the button, or null. */
+    val detail: String?
+    /** True when there's an update waiting, so the button stands out. */
+    val available: Boolean
+    fun tap()
+
+    /** For tests and platforms that can't update themselves. */
+    object None : Updater {
+        override val label = "NO UPDATES"
+        override val detail: String? = null
+        override val available = false
+        override fun tap() {}
+    }
+}
+
 /** Tiny key/value store so settings and high scores survive restarts. */
 interface Storage {
     fun load(key: String): Int

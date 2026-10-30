@@ -139,6 +139,24 @@ class GameTest {
         }
     }
 
+    @Test fun updateButtonOnTheTitleScreen() {
+        var taps = 0
+        val updater = object : Updater {
+            override val label = "UPDATE TO BUILD 200"
+            override val detail = "You have build 190. Tap to download and install."
+            override val available = true
+            override fun tap() { taps++ }
+        }
+        val input = Input()
+        val g = Game(input, Sounds(), Storage.Memory(), updater, seed = 1).apply { viewH = 780f }
+        tap(g, input, g.titleButton(4))
+        assertEquals(1, taps)
+        assertEquals(Game.Screen.TITLE, g.screen)
+        val img = BufferedImage(720, 1560, BufferedImage.TYPE_INT_ARGB)
+        g.render(AwtGfx(img, 2f))
+        ImageIO.write(img, "png", File(File("build/screens").apply { mkdirs() }, "0_update.png"))
+    }
+
     @Test fun javelinPhysics() {
         val (_, weak) = Javelin.landing(0f)
         val (_, strong) = Javelin.landing(1f)

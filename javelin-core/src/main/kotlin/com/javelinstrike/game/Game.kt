@@ -27,6 +27,7 @@ class Game(
     private val input: Input,
     private val sound: SoundSink,
     private val store: Storage,
+    internal val updater: Updater = Updater.None,
     seed: Long = System.nanoTime(),
 ) {
     enum class Screen { TITLE, HOWTO, INTRO, PLAY, CLEAR, TIME_UP, GAME_OVER }
@@ -449,6 +450,10 @@ class Game(
                 playAfterHowTo = false
                 go(Screen.HOWTO)
             }
+            inside(titleButton(4), x, y) -> {
+                sound.play(Sound.CLICK)
+                updater.tap()
+            }
         }
     }
 
@@ -528,7 +533,7 @@ class Game(
 
     // ---------------------------------------------------------------- layout (portrait)
 
-    internal fun titleButton(i: Int) = floatArrayOf(viewW / 2f - 130f, viewH * 0.40f + i * 52f, 260f, 42f)
+    internal fun titleButton(i: Int) = floatArrayOf(viewW / 2f - 130f, max(200f, viewH * 0.3f) + i * 48f, 260f, 40f)
     internal fun pauseButton() = floatArrayOf(viewW - 44f, 8f, 36f, 32f)
     internal fun resumeButton() = floatArrayOf(viewW / 2f - 110f, viewH * 0.45f, 220f, 44f)
     internal fun quitButton() = floatArrayOf(viewW / 2f - 110f, viewH * 0.45f + 58f, 220f, 44f)
