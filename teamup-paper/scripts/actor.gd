@@ -4,6 +4,11 @@ extends Node3D
 ## box for bumping into blocks and a soft round shadow on the ground.
 
 const GRAVITY := 30.0
+const SPIN_TIME := 0.42      # how long a double-jump flip takes
+
+## Which way is "right" and "toward the camera" on screen (the home camera turns around).
+static var view_right := Vector3.RIGHT
+static var view_back := Vector3.BACK
 
 var level: Level
 var vel := Vector3.ZERO
@@ -102,9 +107,15 @@ static func _round_shadow_tex() -> Texture2D:
 	return t
 
 
+## 0..1 through a flip: quick at the start, gently finishing (feels like a real flip).
+func _ease_spin() -> float:
+	var k := clampf(1.0 - spin_t / SPIN_TIME, 0, 1)
+	return 1.0 - pow(1.0 - k, 2.2)
+
+
 ## A full paper twirl (double jump, butt slam).
 func spin() -> void:
-	spin_t = 0.35
+	spin_t = SPIN_TIME
 
 
 func play(name: String) -> void:
@@ -116,8 +127,6 @@ func play(name: String) -> void:
 func animate(dt: float, fps: float = 8.0) -> void:
 	anim_t += dt
 	if model:
-		if absf(facing.x) > 0.2:
-			turn_to = -1.0 if facing.x < 0 else 1.0
 		if spin_t > 0:
 			spin_t -= dt
 		if flash_t > 0:
@@ -128,11 +137,12 @@ func animate(dt: float, fps: float = 8.0) -> void:
 		return
 	var list: Array = frames[anim]
 	sprite.texture = list[int(anim_t * fps) % list.size()]
-	if absf(facing.x) > 0.2:
-		turn_to = -1.0 if facing.x < 0 else 1.0
+	var fx := facing.dot(view_right)
+	if absf(fx) > 0.2:
+		turn_to = -1.0 if fx < 0 else 1.0
 	if spin_t > 0:
 		spin_t -= dt
-		turn = cos((0.35 - spin_t) / 0.35 * TAU) * turn_to
+		turn = cos(_ease_spin() * TAU) * turn_to
 	else:
 		turn = move_toward(turn, turn_to, dt * 9.0)
 	var tx := turn if absf(turn) > 0.08 else 0.08 * signf(turn_to)
@@ -157,7 +167,8 @@ func move(dt: float) -> void:
 		vel.x = 0
 		walls_hit = true
 	p.z += vel.z * dt
-	p.z = clampf(p.z, Level.WALK_Z0, Level.WALK_Z1)
+	if not level.is_home:
+		p.z = clampf(p.z, Level.WALK_Z0, Level.WALK_Z1)
 	hit = level.box_hit(p, hw, height)
 	if hit != null:
 		p.z = (hit.z - hw - 0.001) if vel.z > 0 else (hit.z + 1 + hw + 0.001)

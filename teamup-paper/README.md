@@ -52,22 +52,35 @@ one and tap **LAND** (or JUMP). Worlds unlock in order; finishing one puts you b
 
 ## Home base: build and decorate
 
-Picking a save file takes you **home** (a new file picks a partner first and gets 30 coins). Walk around
-with the team, then walk onto the **rocket** pad to fly to the worlds.
+Picking a save file takes you **home**: a big **96 x 96** world (40 blocks tall) to build a whole city on, with
+block trees to chop. A new file picks a partner first and gets 30 coins. Walk onto the **rocket** pad to fly
+to the worlds.
 
-* **BUILD**: pick a block at the top and **PLACE** it in the spot in front of you (the see-through block shows
-  where; green = OK, red = it says why). Blocks stack up to 4 above your feet. **REMOVE** takes the top one back
-  and refunds it. Planks, 4 wool colours (1 coin), windows (2 coins); brick, stone brick and stone (1 stone each);
-  iron, gold and diamond blocks (1 of that ore, mined in 1-1).
+* **Camera**: drag anywhere on the right side of the screen to turn it around (controller: right stick). The
+  stick walks the way the camera looks.
+* **BUILD** (like Minecraft): pick a block at the top. **Tap** a spot on the screen to put the block on the side
+  of the block you tapped; **hold** a finger on a block to break it (keep holding and slide to break more).
+  The cross in the middle + **PLACE / REMOVE** does the same for the block in the middle of the screen
+  (the black outline shows which). You can dig the ground too (not the bottom bedrock layer). Reach: 9 blocks.
+  23 blocks: planks, log, stone brick, brick, stone, window, road, grass, dirt, leaves, sand, sandstone, snow,
+  ice and 6 wool colours are **free**; iron, gold and diamond blocks cost 1 of that ore (refunded on REMOVE).
+* **FLY** (top right): fly like Minecraft creative. **UP** (the jump button) rises, **DOWN** sinks; hold DOWN on
+  the ground to land. Keyboard F / Q, controller L1 / R1.
 * **DECOR**: 18 decorations bought with coins (flower pot, bush, fence, tree, pumpkin, lamp, chair, table, bench,
   bed, campfire, mailbox, fountain, 4 partner plushies, and a Krag Jr. trophy that unlocks after beating 1-1).
   **TURN** spins the one in front of you; REMOVE picks it up (coins back). Nothing stacks on a decoration.
 * **PARTNER** (top right) switches partners at home. **DONE** saves the home. A controller's B places and
   Y removes while building.
-* Code: `scripts/home.gd` (HomeBase: aim/place/remove/rotate, costs, save data), `scripts/decor.gd` (items + 3D
+* The home saves only what changed from the starting world (`home.edits`, `"v": 2`). Old saves from the small
+  44 x 10 home are moved into the middle of the big one (`Level.HOME_OX/OZ`).
+* Code: `scripts/home.gd` (HomeBase: `aim_ray` voxel walk, place/remove/rotate, costs, save data), `scripts/decor.gd` (items + 3D
   models), `scripts/boot.gd` (title / home / level switching via `main.go()`), `level.gd` `generate_home()`.
   Paper-look decor pictures are rendered from the 3D models: `tools/render_decor.gd` then `tools/sticker.py`.
-* Test: `tests/home_check.gd` (new file -> home, build costs/refunds/limits, decor, portal, back home).
+* Test: `tests/home_check.gd` (new file -> home, aiming, stacking, side placing, digging, costs/refunds, decor,
+  camera-relative walking, flying, Rocco's double jump, rocket, back home, old-save moving).
+
+Rocco's **double jump** is a full-strength second jump with a flip around his middle; the stick can steer it,
+and every jump (even a quick tap) goes up a minimum amount (`jump_hold_t`).
 
 ## Sprint
 

@@ -372,12 +372,13 @@ static func pose(a, dt: float) -> void:
 	# turn to face where we're going (a little toward the camera so you see faces)
 	var f: Vector3 = a.facing
 	if f.length() > 0.1:
-		var want := atan2(f.x, f.z + 0.55)
+		var fv: Vector3 = f + Actor.view_back * 0.55
+		var want := atan2(fv.x, fv.z)
 		toy.rotation.y = lerp_angle(toy.rotation.y, want, 1 - exp(-dt * 14))
 	# somersault for double jumps / slams, and squash & stretch
-	b.rotation.x = (0.35 - a.spin_t) / 0.35 * TAU if a.spin_t > 0 else 0.0
 	b.scale = Vector3(a.squash.x, a.squash.y, a.squash.x)
 	b.position = Vector3.ZERO
+	b.rotation.x = a._ease_spin() * TAU if a.spin_t > 0 else 0.0
 	toy.position.x = a.sprite.position.x   # the shake Krag Jr. does before a dive
 	toy.visible = not (a.flash_t > 0 and int(a.flash_t * 20) % 2 == 1)
 	for k in ["legL", "legR", "armL", "armR", "head"]:
@@ -427,6 +428,9 @@ static func pose(a, dt: float) -> void:
 				p.head.rotation.z = sin(t * 40) * 0.15
 				p.armL.rotation.x = -2.6
 				p.armR.rotation.x = -2.6
+	if a.spin_t > 0:   # flip around the middle of the body (not around the feet)
+		var mid := Vector3(0, a.height * 0.5, 0)
+		b.position += mid - b.basis * mid
 
 
 static func _pose_person(p: Dictionary, kind: String, anim: String, t: float) -> void:

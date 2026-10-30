@@ -749,7 +749,8 @@ def sign():
 
 ATLAS = ["grass_top", "grass_side", "dirt", "stone", "iron", "gold", "diamond", "bedrock", "brick", "mystery", "used",
          "planks", "wool_red", "wool_blue", "wool_yellow", "wool_white", "window", "iron_block", "gold_block", "diamond_block", "stone_brick",
-         "snow_top", "snow_side", "ice", "sand", "sandstone"]
+         "snow_top", "snow_side", "ice", "sand", "sandstone",
+         "log_top", "log_side", "leaves", "wool_green", "wool_black", "road"]
 
 
 def world_textures():
@@ -787,6 +788,63 @@ def world_textures():
             if y % 4 == 3:
                 px[x, y] = (180, 140, 82)
     im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_sandstone.png"))
+
+
+def city_textures():
+    """More building blocks for the big home: logs, leaves, green/black wool and road."""
+    rnd = random.Random(41)
+    # log side: brown bark stripes
+    im = Image.new("RGB", (16, 16))
+    px = im.load()
+    for y in range(16):
+        for x in range(16):
+            base = (112, 80, 46) if (x * 7 // 16 + (y // 5)) % 3 else (94, 66, 38)
+            v = rnd.randint(-8, 8)
+            px[x, y] = tuple(max(0, min(255, c + v)) for c in base)
+        for x in (2, 7, 12):
+            px[x, y] = (78, 54, 30)
+    im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_log_side.png"))
+    # log top: tree rings
+    im = Image.new("RGB", (16, 16))
+    px = im.load()
+    for y in range(16):
+        for x in range(16):
+            d = max(abs(x - 7.5), abs(y - 7.5))
+            if d > 6.5:
+                c = (100, 72, 42)
+            else:
+                c = (204, 164, 104) if int(d) % 2 == 0 else (178, 136, 82)
+            v = rnd.randint(-5, 5)
+            px[x, y] = tuple(max(0, min(255, k + v)) for k in c)
+    im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_log_top.png"))
+    # leaves: bumpy greens
+    im = Image.new("RGB", (16, 16))
+    px = im.load()
+    for y in range(16):
+        for x in range(16):
+            r = rnd.random()
+            c = (52, 140, 56) if r < 0.45 else ((74, 170, 70) if r < 0.8 else (36, 108, 44))
+            px[x, y] = c
+    im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_leaves.png"))
+    for name, col in (("wool_green", (76, 176, 72)), ("wool_black", (52, 52, 62))):
+        im = Image.new("RGB", (16, 16), col)
+        px = im.load()
+        for y in range(16):
+            for x in range(16):
+                v = rnd.randint(-10, 10) + (8 if (x * 3 + y * 5) % 7 == 0 else 0)
+                px[x, y] = tuple(max(0, min(255, c + v)) for c in col)
+        im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_" + name + ".png"))
+    # road: dark grey with a yellow dash down the middle
+    im = Image.new("RGB", (16, 16))
+    px = im.load()
+    for y in range(16):
+        for x in range(16):
+            v = rnd.randint(-7, 7)
+            px[x, y] = (72 + v, 74 + v, 80 + v)
+    for y in range(2, 14):
+        px[7, y] = (250, 206, 60)
+        px[8, y] = (250, 206, 60)
+    im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_road.png"))
 
 
 def build_textures():
@@ -910,6 +968,7 @@ def main():
     textures()
     build_textures()
     world_textures()
+    city_textures()
     atlas()
     print("art written to", os.path.abspath(OUT))
 

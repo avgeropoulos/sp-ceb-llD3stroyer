@@ -43,6 +43,11 @@ var clear_t := 0.0
 var play_t := 0.0
 var cam_focus := Vector3.ZERO
 var jump_buf := 0.0
+var jump_hold_t := 0.0        # every jump goes at least this high, even on a quick tap
+var cam_yaw := 0.0            # the home camera turns around the hero (drag the screen)
+var cam_pitch := 0.42
+var flying := false           # FLY at home, like Minecraft creative
+var break_t := 0.0            # holding a finger on a block breaks it (then keeps breaking)
 var last_ouch := -10.0
 var dennis_done := false
 var warm_t := 0
@@ -169,9 +174,10 @@ func _ready_common() -> void:
 
 
 func _ready_home() -> void:
-	heroes.rocco.position = Vector3(10, 5, 6.8)
+	var o := Vector3(Level.HOME_OX, 0, Level.HOME_OZ)
+	heroes.rocco.position = o + Vector3(10, 5, 6.8)
 	heroes.blocky.position = heroes.rocco.position
-	heroes.mon.position = Vector3(8.4, 5, 5.6)
+	heroes.mon.position = o + Vector3(8.4, 5, 5.6)
 	home = HomeBase.new()
 	level.add_child(home)
 	home.setup(self, level)
@@ -264,6 +270,7 @@ func _step_home(dt: float) -> void:
 		return
 	play_t += dt
 	hurt_t = maxf(0, hurt_t - dt)
+	_turn_camera(dt)
 	if taps.has("build"):
 		home.mode = "" if home.mode == "build" else "build"
 		sfx("swap", -6)
@@ -274,6 +281,8 @@ func _step_home(dt: float) -> void:
 		home.mode = ""
 		save_game(false)
 		sfx("heart", -6)
+	if taps.has("fly") or Input.is_action_just_pressed("fly"):
+		set_flying(not flying)
 	if taps.has("partner"):
 		partner_from = "home"
 		partner_sel = maxi(0, Mons.ORDER.find(mon_line))
@@ -281,30 +290,98 @@ func _step_home(dt: float) -> void:
 		return
 	if swap_pressed:
 		do_swap()
-	# controller / keyboard: ACTION places, SUPER removes while building
+	# building: the middle of the screen aims; a quick tap places where you tapped,
+	# holding a finger on a block breaks it. Controller: ACTION places, SUPER removes.
 	if home.mode != "":
-		home.aim(leader())
+		var vs := get_viewport().get_visible_rect().size
+		_aim_at(vs * 0.5)
 		if taps.has("place") or action_pressed:
 			home.place()
 		if taps.has("remove") or super_pressed:
 			home.remove()
 		if taps.has("rotate"):
 			home.rotate_front()
+		for p in hud.world_taps:
+			_aim_at(p)
+			home.place()
+		if hud.hold_pos.x >= 0:
+			break_t -= dt
+			if break_t <= 0:
+				break_t = 0.3
+				_aim_at(hud.hold_pos)
+				home.remove()
+		else:
+			break_t = 0.0
+		if hud.world_taps.size() > 0 or hud.hold_pos.x >= 0:
+			_aim_at(vs * 0.5)   # back to showing the middle of the screen
 		action_pressed = false
 	else:
 		home.ghost.visible = false
+		home.outline.visible = false
 		if Input.is_action_just_pressed("action"):
 			home.mode = "build"
+	hud.world_taps.clear()
 	_update_leader(leader(), dt)
 	_update_follower(follower(), dt)
-	if home.mode == "" and home.at_portal(leader().position) and play_t > 0.8:
+	if home.mode == "" and not flying and home.at_portal(leader().position) and play_t > 0.8:
 		note("taking off")
 		sfx("item")
 		save_game(false)
 		Boot.from_level = "home"
 		go("map", slot)
 		return
-	_update_camera(dt)
+	_update_home_camera(dt)
+
+
+## Points the building aim through a spot on the screen.
+func _aim_at(p: Vector2) -> void:
+	home.aim_ray(cam.project_ray_origin(p), cam.project_ray_normal(p), leader())
+
+
+func set_flying(on: bool) -> void:
+	flying = on
+	sfx("swap" if on else "heart", -6)
+	if on:
+		leader().vel.y = 6.0
+		hud.say("FLYING!", "Hold UP to go higher, DOWN to go lower", 1.8)
+
+
+## Drag on the right side of the screen (or the right stick) to turn the camera.
+func _turn_camera(dt: float) -> void:
+	var look: Vector2 = hud.look_delta * 0.0065
+	hud.look_delta = Vector2.ZERO
+	var pads := Input.get_connected_joypads()
+	if pads.size() > 0:
+		var r := Vector2(Input.get_joy_axis(pads[0], JOY_AXIS_RIGHT_X), Input.get_joy_axis(pads[0], JOY_AXIS_RIGHT_Y))
+		if r.length() > 0.2:
+			look += r * dt * 2.6
+	cam_yaw -= look.x
+	cam_pitch = clampf(cam_pitch + look.y, -0.25, 1.35)
+	Actor.view_right = Vector3.RIGHT.rotated(Vector3.UP, cam_yaw)
+	Actor.view_back = Vector3.BACK.rotated(Vector3.UP, cam_yaw)
+
+
+## The home camera: behind the hero, turned by cam_yaw / cam_pitch, pulled in when
+## a wall is in the way. While building it looks a little over the shoulder.
+func _update_home_camera(dt: float) -> void:
+	var l := leader()
+	var dist := 6.5 if home.mode != "" else 8.0
+	var want := l.position + Vector3(0, 1.4, 0)
+	if home.mode != "":
+		want += Actor.view_right * 0.9
+	cam_focus = cam_focus.lerp(want, 1 - exp(-dt * 10))
+	var back := Vector3(sin(cam_yaw) * cos(cam_pitch), sin(cam_pitch), cos(cam_yaw) * cos(cam_pitch))
+	var d := dist
+	var step := 0.25
+	var t := 0.6
+	while t < dist:   # stop in front of a wall instead of going through it
+		var q := cam_focus + back * t
+		if level.solid(floori(q.x), floori(q.y), floori(q.z)) and q.y > 0:
+			d = maxf(t - 0.35, 0.8)
+			break
+		t += step
+	cam.position = cam_focus + back * d
+	cam.look_at(cam_focus, Vector3.UP)
 
 
 ## The rocket landed on an island.
@@ -342,10 +419,10 @@ func _pause(from: String) -> void:
 func _setup_input() -> void:
 	var keys := {"left": [KEY_LEFT, KEY_A], "right": [KEY_RIGHT, KEY_D], "up": [KEY_UP, KEY_W], "down": [KEY_DOWN, KEY_S],
 		"jump": [KEY_SPACE, KEY_K], "action": [KEY_X, KEY_J], "swap": [KEY_C, KEY_L], "super": [KEY_V, KEY_I], "pause": [KEY_ESCAPE, KEY_P],
-		"sprint": [KEY_SHIFT, KEY_SEMICOLON]}
+		"sprint": [KEY_SHIFT, KEY_SEMICOLON], "fly": [KEY_F], "sink": [KEY_Q]}
 	var pads := {"jump": JOY_BUTTON_A, "action": JOY_BUTTON_B, "swap": JOY_BUTTON_X, "super": JOY_BUTTON_Y, "pause": JOY_BUTTON_START,
 		"left": JOY_BUTTON_DPAD_LEFT, "right": JOY_BUTTON_DPAD_RIGHT, "up": JOY_BUTTON_DPAD_UP, "down": JOY_BUTTON_DPAD_DOWN,
-		"sprint": JOY_BUTTON_RIGHT_SHOULDER}
+		"sprint": JOY_BUTTON_RIGHT_SHOULDER, "fly": JOY_BUTTON_LEFT_SHOULDER}
 	for a in keys:
 		if not InputMap.has_action(a):
 			InputMap.add_action(a)
@@ -384,6 +461,10 @@ func _setup_world() -> void:
 	env.fog_depth_begin = 28.0
 	env.fog_depth_end = 140.0
 	env.fog_density = 0.55
+	if Boot.place == "home":   # the big home: see your whole city
+		env.fog_depth_begin = 50.0
+		env.fog_depth_end = 200.0
+		env.fog_density = 0.35
 	env.fog_sky_affect = 0.0
 	env.adjustment_enabled = true
 	env.adjustment_saturation = 1.12
@@ -684,9 +765,9 @@ func save_data(in_level := true) -> Dictionary:
 		var lc := level.cells
 		for i in lc.size():
 			if lc[i] != original_cells[i]:
-				var x := i % Level.LX
-				var y := (i / Level.LX) % Level.LY
-				var z := i / (Level.LX * Level.LY)
+				var x := i % level.sx
+				var y := (i / level.sx) % level.sy
+				var z := i / (level.sx * level.sy)
 				cells.append([x, y, z, lc[i]])
 		d.merge({"control": control, "pos": _v2a(safe_pos), "checkpoint": _v2a(checkpoint),
 			"checkpoint_hit": checkpoint_hit, "boss_done": boss_done, "cells": cells,
@@ -1050,6 +1131,11 @@ func _step(dt: float) -> void:
 # ------------------------------------------------------------------ the hero you steer
 func _update_leader(h: Hero, dt: float) -> void:
 	var dir := Vector3(move_vec.x, 0, move_vec.y)
+	if level.is_home:   # the stick goes where the camera looks
+		dir = dir.rotated(Vector3.UP, cam_yaw)
+	if flying:
+		_fly(h, dir, dt)
+		return
 	h.action_t = maxf(0, h.action_t - dt)
 	if h.slam == "wind":
 		h.slam_t += dt
@@ -1073,6 +1159,8 @@ func _update_leader(h: Hero, dt: float) -> void:
 		h.vel.z = move_toward(h.vel.z, target.z, accel * dt)
 	if dir.length() > 0.15:
 		h.facing = dir.normalized()
+	elif level.is_home and home and home.mode != "":
+		h.facing = -Actor.view_back   # building: look where the camera looks
 	# jumping (with a little forgiveness: buffer + coyote time)
 	if h.on_floor:
 		h.coyote = 0.1
@@ -1081,6 +1169,7 @@ func _update_leader(h: Hero, dt: float) -> void:
 	else:
 		h.coyote -= dt
 	jump_buf -= dt
+	jump_hold_t -= dt
 	if jump_pressed:
 		jump_buf = 0.14
 	if jump_buf > 0 and h.slam == "":
@@ -1088,17 +1177,29 @@ func _update_leader(h: Hero, dt: float) -> void:
 			h.vel.y = h.jump_v
 			h.coyote = 0
 			jump_buf = 0
+			jump_hold_t = 0.12
+			h.squash = Vector2(0.85, 1.18)
 			sfx("jump")
-		elif h.jumps_left > 0:
+		elif h.jumps_left > 0 and h.vel.y < h.jump_v * 0.75:
+			# DOUBLE JUMP: a full, snappy second jump with a flip. You can change
+			# direction with the stick, and it always goes up a good amount.
 			h.jumps_left -= 1
-			h.vel.y = h.jump_v * 0.83
+			h.vel.y = h.jump_v * 0.98
 			jump_buf = 0
+			jump_hold_t = 0.2
+			var want := dir * h.speed * (SPRINT_SPEED if sprinting else 1.0)
+			if dir.length() > 0.15:
+				h.vel.x = lerpf(h.vel.x, want.x, 0.7)
+				h.vel.z = lerpf(h.vel.z, want.z, 0.7)
+			h.long_t = 0
+			h.squash = Vector2(0.8, 1.22)
 			h.spin()
+			fx.burst(h.position + Vector3(0, 0.05, 0), Color(1, 1, 1), 8, 2.6, 1.5, 0.7)
 			sfx("jump2")
 	if h.who == "mon" and h.line == "fire" and h.stage == 2 and jump_held and h.vel.y < -2.5:
 		h.vel.y = -2.5   # BLAZE glides while you hold JUMP
-	if not jump_held and h.vel.y > 0 and h.long_t <= 0:
-		h.vel.y -= Actor.GRAVITY * 1.4 * dt
+	if not jump_held and h.vel.y > 0 and h.long_t <= 0 and jump_hold_t <= 0:
+		h.vel.y -= Actor.GRAVITY * 1.4 * dt   # let go of JUMP early = smaller jump
 	h.vel.y = maxf(h.vel.y - Actor.GRAVITY * dt, -26)
 	if action_pressed:
 		_action(h)
@@ -1145,6 +1246,26 @@ func _update_leader(h: Hero, dt: float) -> void:
 			h.play("idle")
 	h.squash = Vector2.ONE.lerp(h.squash, exp(-dt * 12))
 	h.animate(dt * (1.45 if sprinting and h.anim == "run" else 1.0), 10 if h.who != "blocky" or h.action_t <= 0 else 7)
+	h.update_shadow()
+
+
+## Flying at home: no gravity, UP (JUMP) to rise, DOWN to sink, faster sideways.
+func _fly(h: Hero, dir: Vector3, dt: float) -> void:
+	var target := dir * h.speed * 1.7
+	h.vel.x = move_toward(h.vel.x, target.x, 40 * dt)
+	h.vel.z = move_toward(h.vel.z, target.z, 40 * dt)
+	var down: bool = hud.is_held("down") or Input.is_action_pressed("sink") or Input.is_action_pressed("sprint")
+	var up := 7.0 if jump_held else (-7.0 if down else 0.0)
+	h.vel.y = move_toward(h.vel.y, up, 30 * dt)
+	if dir.length() > 0.15:
+		h.facing = dir.normalized()
+	h.move(dt)
+	h.position.y = minf(h.position.y, level.sy + 4)
+	if h.on_floor and down:
+		set_flying(false)
+	h.play("jump")
+	h.squash = Vector2.ONE.lerp(h.squash, exp(-dt * 12))
+	h.animate(dt)
 	h.update_shadow()
 
 
@@ -1384,9 +1505,14 @@ func _update_follower(h: Hero, dt: float) -> void:
 	var l := leader()
 	var side := 1.0 if l.position.z < 6.5 else -1.0
 	var want := l.position + Vector3(-signf(l.facing.x if absf(l.facing.x) > 0.1 else 1.0) * 1.4, 0, 0.9 * side)
+	if level.is_home:   # in the open world: just behind and beside you
+		var f := Vector3(l.facing.x, 0, l.facing.z).normalized()
+		want = l.position - f * 1.4 + Vector3(-f.z, 0, f.x) * 0.9
+		want.y = h.position.y
 	var d := want - h.position
 	var flat := Vector2(d.x, d.z)
-	var far := h.position.distance_to(l.position) > 10 or h.position.y < -3
+	var hd := Vector2(h.position.x - l.position.x, h.position.z - l.position.z).length()
+	var far := hd > 10 or (not flying and h.position.distance_to(l.position) > 10) or h.position.y < -3
 	if far:
 		h.position = l.position + Vector3(0, 0.5, 0)
 		h.vel = Vector3.ZERO
@@ -1396,7 +1522,9 @@ func _update_follower(h: Hero, dt: float) -> void:
 		var v := flat.normalized() * sp
 		h.vel.x = move_toward(h.vel.x, v.x, 40 * dt)
 		h.vel.z = move_toward(h.vel.z, v.y, 40 * dt)
-		if absf(v.x) > 0.3:
+		if level.is_home:
+			h.facing = Vector3(v.x, 0, v.y).normalized()
+		elif absf(v.x) > 0.3:
 			h.facing = Vector3(signf(v.x), 0, 0)
 	else:
 		h.vel.x = move_toward(h.vel.x, 0, 30 * dt)
@@ -1695,14 +1823,15 @@ func _dennis() -> void:
 func _update_camera(dt: float) -> void:
 	if sky:
 		return
+	if level.is_home and home:
+		_update_home_camera(dt)
+		return
 	var l := leader()
 	var want := l.position + Vector3(clampf(l.facing.x, -1, 1) * 1.6, 0, 0)
 	if state == "title":
 		want = Vector3(7, 5, 6.5)
 	if boss_on and not boss_done:
 		want.x = clampf(want.x, Level.BOSS_X0 + 7.5, Level.BOSS_X1 - 6.5)
-	if level.is_home:
-		want.x = clampf(want.x, 8.0, Level.HOME_W - 8.0)
 	cam_focus.x = lerpf(cam_focus.x, want.x, 1 - exp(-dt * 4))
 	var wy := want.y
 	if not l.on_floor and l.position.y > cam_focus.y - 1.5 and l.position.y < cam_focus.y + 2.5:

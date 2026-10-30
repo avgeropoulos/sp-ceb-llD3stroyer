@@ -214,7 +214,10 @@ Flow: title -> file -> (new: partner, 30 coins) -> HOME (`level.is_home`, `state
 -> SKY MAP (`state == "map"`, `SkyMap`, steer the rocket, LAND) -> a world (`Boot.level`: meadow / frost / dunes, see
 `worlds.gd`) -> clear -> sky map over that island. Worlds unlock in order (`cleared_w`). Frost/Dunes are generated
 (`level.gd` `_generate_world`) with the same checkpoint/arena x as 1-1; new foes Penguin and Scorpion (`foes.gd`). Switching places reloads the scene via `main.go(place, slot)` + static `Boot` (tests follow `Boot.current`).
-The save always carries `home` ({blocks, decor}); 1-1 keeps it in `home_saved`. New decor: add to `Decor.ITEMS` + `model()`,
+Home = big world (`Level.HOME_SX/SY/SZ` 96x40x96; `level.sx/sy/sz` are per level, use them not LX/LY/LZ),
+orbit camera (`cam_yaw/cam_pitch`, `_update_home_camera`, `Actor.view_right/view_back`), Minecraft aiming
+(`HomeBase.aim_ray` voxel walk; HUD `world_taps` = tap to place, `hold_pos` = hold to break, `look_delta` = drag),
+FLY (`flying`, `_fly`). The save always carries `home` ({v:2, blocks = changes only, decor}); 1-1 keeps it in `home_saved`. New decor: add to `Decor.ITEMS` + `model()`,
 then render paper pictures (`tools/render_decor.gd`, `tools/sticker.py`). Sprint = full-tilt stick (`tilt_t`), Shift, R1/R2.
 Performance rules learned the hard way (each one was a visible freeze on the tablet):
 * Never change a font size from frame to frame (pop-in text): draw at a fixed size and scale with `draw_set_transform`.

@@ -15,6 +15,16 @@ var stick := Vector2.ZERO
 var held := {}            # finger index -> button name
 var pressed_now := {}     # button name -> true (cleared by the game each frame)
 var buttons := {}         # name -> [center, radius]
+# home: a finger that isn't on the stick or a button turns the camera (drag),
+# places a block (quick tap) or breaks one (hold still)
+var look_id := -1
+var look_last := Vector2.ZERO
+var look_start := Vector2.ZERO
+var look_t0 := 0
+var look_moved := false
+var look_delta := Vector2.ZERO          # camera drag this frame (the game takes it)
+var world_taps: Array[Vector2] = []     # quick taps on the world (the game takes them)
+var hold_pos := Vector2(-1, -1)         # where a finger is held still (breaking)
 
 var message := ""
 var message_t := 0.0
@@ -62,13 +72,16 @@ func _layout() -> void:
 	if game and game.state == "map":
 		buttons = {"land": jump, "pause": pz}
 	elif game and game.state == "home" and game.home:
-		if game.home.mode == "":   # walking around the home: BUILD, DECOR, PARTNER
+		var fly := [Vector2(s.x - 52 * u, 252 * u), 42 * u]
+		if game.home.mode == "":   # walking around the home: BUILD, DECOR, PARTNER, FLY
 			buttons = {"jump": jump, "build": act, "swap": sw, "decor": sup, "pause": pz,
-				"partner": [Vector2(s.x - 52 * u, 150 * u), 46 * u]}
+				"partner": [Vector2(s.x - 52 * u, 150 * u), 46 * u], "fly": fly}
 		else:                      # building: PLACE, REMOVE, DONE (and TURN for decorations)
-			buttons = {"jump": jump, "place": act, "done": sw, "remove": sup, "pause": pz}
+			buttons = {"jump": jump, "place": act, "done": sw, "remove": sup, "pause": pz, "fly": fly}
 			if game.home.mode == "decor":
 				buttons["rotate"] = [Vector2(s.x - 445 * u, s.y - 175 * u), 46 * u]
+		if game.flying:
+			buttons["down"] = [Vector2(s.x - 445 * u, s.y - 70 * u), 52 * u]
 	else:
 		buttons = {"jump": jump, "action": act, "swap": sw, "super": sup, "pause": pz}
 
@@ -119,13 +132,33 @@ func _input(event: InputEvent) -> void:
 				stick_id = e.index
 				stick_base = e.position
 				stick = Vector2.ZERO
+			elif game.state == "home" and look_id == -1:
+				look_id = e.index
+				look_last = e.position
+				look_start = e.position
+				look_t0 = Time.get_ticks_msec()
+				look_moved = false
 		else:
 			held.erase(e.index)
 			if e.index == stick_id:
 				stick_id = -1
 				stick = Vector2.ZERO
+			if e.index == look_id:
+				if not look_moved and hold_pos.x < 0 and Time.get_ticks_msec() - look_t0 < 350:
+					world_taps.append(e.position)
+				look_id = -1
+				hold_pos = Vector2(-1, -1)
 	elif event is InputEventScreenDrag:
 		var e := event as InputEventScreenDrag
+		if e.index == look_id:
+			if hold_pos.x >= 0:   # breaking: slide the finger to break the next block
+				hold_pos = e.position
+			else:
+				if e.position.distance_to(look_start) > 22:
+					look_moved = true
+				if look_moved:
+					look_delta += e.position - look_last
+			look_last = e.position
 		if e.index == stick_id:
 			var r := 70.0 * clampf(size.y / 720.0, 0.75, 1.6)
 			var d := e.position - stick_base
@@ -137,6 +170,12 @@ func _input(event: InputEvent) -> void:
 
 func _process(dt: float) -> void:
 	message_t = maxf(0, message_t - dt)
+	if look_id >= 0 and not look_moved and hold_pos.x < 0 and Time.get_ticks_msec() - look_t0 > 420 \
+			and game and game.home and game.home.mode != "":
+		hold_pos = look_last   # held still on a block: start breaking it
+	if game and game.state != "home":
+		look_id = -1
+		hold_pos = Vector2(-1, -1)
 	title_t += dt
 	size = get_viewport_rect().size
 	_layout()
@@ -172,6 +211,7 @@ func _draw() -> void:
 		_draw_map_info()
 	if game.state == "home" and game.home and game.home.mode != "":
 		_draw_palette()
+		_draw_crosshair()
 	if message_t > 0 and game.state != "paused":
 		var a := clampf(message_t * 3, 0, 1)
 		# The pop-in grows the picture, never the font size: a new font size every frame makes
@@ -239,10 +279,14 @@ func _draw_controls() -> void:
 	draw_circle(base + stick * r, r * 0.55, Color("ffd6a8") if game.sprinting else Color(1, 1, 1, 0.75))
 	# buttons
 	var labels := {"jump": "JUMP", "action": game.action_label(), "swap": "SWAP", "super": "SUPER", "pause": "II",
-		"build": "BUILD", "decor": "DECOR", "partner": "PARTNER", "place": "PLACE", "remove": "REMOVE", "done": "DONE", "rotate": "TURN", "land": "LAND"}
+		"build": "BUILD", "decor": "DECOR", "partner": "PARTNER", "place": "PLACE", "remove": "REMOVE", "done": "DONE", "rotate": "TURN", "land": "LAND",
+		"fly": "LAND" if game.flying else "FLY", "down": "DOWN"}
+	if game.flying:
+		labels["jump"] = "UP"
 	var colors := {"jump": Color("3fc06a"), "action": Color("ff8a1f"), "swap": Color("6a7cff"), "super": Color("ffcf33"), "pause": Color(0.2, 0.25, 0.4),
 		"build": Color("ff8a1f"), "decor": Color("ff6fa8"), "partner": Color("2cbec8"), "place": Color("3fc06a"), "remove": Color("e8413b"),
-		"done": Color("3f7fd9"), "rotate": Color("8a5bc4"), "land": Color("3fc06a")}
+		"done": Color("3f7fd9"), "rotate": Color("8a5bc4"), "land": Color("3fc06a"),
+		"fly": Color("ffb020") if game.flying else Color("54c8ff"), "down": Color("3f7fd9")}
 	for k in buttons:
 		var c: Vector2 = buttons[k][0]
 		var rad: float = buttons[k][1]
@@ -273,9 +317,18 @@ func _draw_controls() -> void:
 			txt(labels[k], Vector2(c.x - rad, c.y + fs * 0.36), fs, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, rad * 2, 6)
 
 
+func _draw_crosshair() -> void:
+	var c := size * 0.5
+	for w in [[6.0, Color(0.05, 0.05, 0.1, 0.7)], [3.0, Color.WHITE]]:
+		draw_line(c - Vector2(16, 0), c + Vector2(16, 0), w[1], w[0])
+		draw_line(c - Vector2(0, 16), c + Vector2(0, 16), w[1], w[0])
+	if hold_pos.x >= 0:   # breaking ring under the finger
+		draw_arc(hold_pos, 34, 0, TAU, 32, Color("ff8a6a"), 5, true)
+
+
 # ------------------------------------------------------------------ BUILD / DECOR palette
-const PAL_BOX := 66.0
-const PAL_GAP := 8.0
+const PAL_BOX := 54.0
+const PAL_GAP := 6.0
 
 
 func _pal_items() -> Array:
@@ -295,12 +348,13 @@ func _pal_items() -> Array:
 static func _tex_name(t: int) -> String:
 	return ["", "grass_top", "dirt", "stone", "iron", "gold", "diamond", "bedrock", "brick", "mystery", "used",
 		"planks", "wool_red", "wool_blue", "wool_yellow", "wool_white", "window", "iron_block", "gold_block", "diamond_block", "stone_brick",
-		"snow_top", "ice", "sand", "sandstone"][t]
+		"snow_top", "ice", "sand", "sandstone", "log_side", "leaves", "wool_green", "wool_black", "road"][t]
 
 
 func _pal_rect(i: int, n: int) -> Rect2:
-	var x0 := 600.0
+	var x0 := 560.0
 	var per := maxi(1, int((size.x - 110 - x0) / (PAL_BOX + PAL_GAP)))
+	per = maxi(per, int(ceil(n / 3.0)))   # never more than 3 rows
 	var row := i / per
 	var col := i % per
 	return Rect2(x0 + col * (PAL_BOX + PAL_GAP), 12 + row * (PAL_BOX + PAL_GAP), PAL_BOX, PAL_BOX)
@@ -324,7 +378,7 @@ func _cost_text(cost: Dictionary) -> String:
 			parts.append("FREE")
 		else:
 			parts.append("%d %s" % [n, "coin" + ("s" if n > 1 else "") if k == "coins" else k.to_upper()])
-	return ", ".join(parts)
+	return ", ".join(parts) if parts.size() > 0 else "FREE"
 
 
 func _draw_palette() -> void:
@@ -344,9 +398,10 @@ func _draw_palette() -> void:
 	# the chosen one: name and price, and why it can't go there
 	var it: Dictionary = items[h.sel[h.mode]]
 	var y := last.end.y + 34
-	txt("%s  -  %s" % [it.name, _cost_text(it.cost)], Vector2(600, y), 24, Color("fff2a8"), HORIZONTAL_ALIGNMENT_LEFT, -1, 7)
-	if not h.can_place and h.why != "":
-		txt(h.why, Vector2(600, y + 30), 22, Color("ffb0a8"), HORIZONTAL_ALIGNMENT_LEFT, -1, 6)
+	txt("%s  -  %s" % [it.name, _cost_text(it.cost)], Vector2(560, y), 24, Color("fff2a8"), HORIZONTAL_ALIGNMENT_LEFT, -1, 7)
+	txt("TAP to place   HOLD to break   DRAG to look around", Vector2(560, y + 28), 20, Color(1, 1, 1, 0.8), HORIZONTAL_ALIGNMENT_LEFT, -1, 6)
+	if not h.can_place and h.why != "" and h.has_under:
+		txt(h.why, Vector2(560, y + 56), 22, Color("ffb0a8"), HORIZONTAL_ALIGNMENT_LEFT, -1, 6)
 
 
 func _draw_map_info() -> void:
