@@ -260,6 +260,8 @@ func _draw_hud() -> void:
 	draw_rect(Rect2(x + 70, py + 36, 170 * Mons.progress(xp), 12), Color("54c8ff"))
 	if game.open_play and game.state != "title":
 		_draw_stars()
+	if game.powers and game.state == "play":
+		game.powers.draw_hud(self)
 	# boss bar
 	var boss = game.boss
 	if game.boss_on and boss != null and is_instance_valid(boss) and boss.dying < 0:
@@ -561,6 +563,8 @@ func _draw_loading() -> void:
 		draw_texture_rect(img(n), Rect2(-500, -500, 40, 40), false)
 	for it in Decor.ITEMS:
 		draw_texture_rect(img("decor_" + it.id), Rect2(-500, -500, 40, 40), false)
+	for k in Powers.KINDS:
+		draw_texture_rect(img("pw_" + k), Rect2(-500, -500, 40, 40), false)
 	for b in HomeBase.BLOCKS:
 		draw_texture_rect(img("t_" + _tex_name(b.t)), Rect2(-500, -500, 40, 40), false)
 	draw_circle(Vector2(-300, -300), 40, Color(1, 1, 1, 0.01))

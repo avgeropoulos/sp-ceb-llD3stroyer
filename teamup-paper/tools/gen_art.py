@@ -1014,6 +1014,61 @@ def star():
     p.done("star", border=2)
 
 
+def power_items():
+    """Power-ups (pw_<kind>.png): flowers, mushrooms, the rainbow star, caps and the propeller."""
+    W_ = rgb("#ffffff")
+    for kind, petal, mid in (("fire", "#ff5a3a", "#ffd23a"), ("ice", "#6ec8ff", "#e9f8ff")):
+        p = Pen(64, 64)
+        p.limb(32, 40, 32, 60, 4, rgb("#3fae4a"))
+        p.oval(24, 52, 8, 3.5, rgb("#4cc85a"))
+        p.oval(40, 52, 8, 3.5, rgb("#4cc85a"))
+        for i in range(6):
+            a = math.tau * i / 6
+            p.oval(32 + math.cos(a) * 10, 26 + math.sin(a) * 10, 8, 8, rgb(petal))
+        p.oval(32, 26, 8.5, 8.5, rgb(mid))
+        p.oval(29, 26, 1.4, 2.6, rgb("#1e2a44"), ink=False)
+        p.oval(35, 26, 1.4, 2.6, rgb("#1e2a44"), ink=False)
+        p.done("pw_" + kind, border=2)
+    for kind, cap, k in (("mushroom", "#e8413b", 1.0), ("mini", "#3f7fd9", 0.75), ("life", "#3fc06a", 1.0)):
+        p = Pen(64, 64)
+        cy = 62 - 24 * k
+        p.rect(32 - 10 * k, cy, 32 + 10 * k, 60, rgb("#fff3dc"), r=4 * k)
+        p.d.chord(p._b(32 - 24 * k, cy - 22 * k, 32 + 24 * k, cy + 18 * k), 180, 360, fill=rgb(cap), outline=INK, width=int(LW * SS))
+        for dx, dy, r in ((0, -14, 5), (-13, -6, 4), (13, -6, 4)):
+            p.oval(32 + dx * k, cy + dy * k, r * k, r * 0.8 * k, W_, ink=False)
+        p.rect(29 - 1 * k, cy + 4 * k, 30 + 0.5 * k, cy + 10 * k, rgb("#1e2a44"), r=1, ink=False)
+        p.rect(34 - 0.5 * k, cy + 4 * k, 35 + 1 * k, cy + 10 * k, rgb("#1e2a44"), r=1, ink=False)
+        p.done("pw_" + kind, border=2)
+    # SUPER STAR: rainbow-edged star
+    p = Pen(64, 64)
+    for r, col in ((30, "#ff5a8a"), (26, "#ffb020"), (22, "#ffe14a")):
+        p.star(32, 34, r, rgb(col))
+    p.eye(27, 34, 2.2, 4)
+    p.eye(37, 34, 2.2, 4)
+    p.done("pw_star", border=2)
+    # WING CAP and METAL CAP
+    for kind, cap, brim in (("wing", "#e8413b", "#c22f2a"), ("metal", "#c8d0d8", "#98a2ac")):
+        p = Pen(64, 64)
+        if kind == "wing":
+            for sx in (-1, 1):
+                for i in range(3):
+                    p.oval(32 + sx * (20 + i * 6), 30 - i * 4, 8, 4, W_)
+        p.d.chord(p._b(14, 18, 50, 56), 180, 360, fill=rgb(cap), outline=INK, width=int(LW * SS))
+        p.rect(10, 35, 54, 41, rgb(brim), r=3)
+        p.oval(32, 28, 5, 5, W_)
+        if kind == "metal":
+            p.line([(22, 26), (26, 22)], W_, 2.5)
+        p.done("pw_" + kind, border=2)
+    # PROPELLER cap
+    p = Pen(64, 64)
+    p.d.chord(p._b(16, 30, 48, 62), 180, 360, fill=rgb("#ffb020"), outline=INK, width=int(LW * SS))
+    p.rect(30, 16, 34, 32, rgb("#8a8e96"), r=1)
+    p.poly([(8, 14), (32, 16), (8, 20)], rgb("#3f7fd9"))
+    p.poly([(56, 14), (32, 16), (56, 20)], rgb("#3f7fd9"))
+    p.oval(32, 16, 3.5, 3.5, rgb("#ffd23a"))
+    p.done("pw_propeller", border=2)
+
+
 def sign():
     p = Pen(70, 70)
     p.rect(32, 30, 38, 68, rgb("#8a5a35"), r=1.5)
@@ -1243,6 +1298,7 @@ def main():
     hill("hill_snow", "#eef4fc", "#ffffff", 240, 140); hill("hill_sand", "#e8c47e", "#f2d69a", 260, 120); hill("hill_a", "#7cc96a", "#9bde84"); hill("hill_b", "#5fb46a", "#82cc7d", 260, 150); hill("hill_c", "#a4d36f", "#c3e690", 160, 80)
     sign()
     star()
+    power_items()
     textures()
     build_textures()
     world_textures()
