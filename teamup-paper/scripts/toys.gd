@@ -213,7 +213,6 @@ static func _rocco(b: Node3D, p: Dictionary) -> void:
 
 static func _blocky(b: Node3D, p: Dictionary) -> void:
 	var SHIRT := Color("3f7fd9")
-	var VEST := Color("ff8a1f")
 	var PANTS := Color("2f4a9c")
 	var SKIN := Color("e2a77c")
 	for s in [-1, 1]:
@@ -222,9 +221,7 @@ static func _blocky(b: Node3D, p: Dictionary) -> void:
 		part(leg, box(Vector3(0.21, 0.13, 0.3)), Vector3(0, -0.44, 0.04), Color("4a3424"))
 		p["legL" if s < 0 else "legR"] = leg
 	part(b, box(Vector3(0.5, 0.55, 0.3)), Vector3(0, 0.82, 0), SHIRT)
-	for s in [-1, 1]:
-		part(b, box(Vector3(0.17, 0.5, 0.32)), Vector3(s * 0.165, 0.84, 0), VEST, Vector3.ONE, Vector3.ZERO, false)
-		part(b, box(Vector3(0.17, 0.05, 0.33)), Vector3(s * 0.165, 0.78, 0), Color("e9f3f5"), Vector3.ONE, Vector3.ZERO, false)
+	part(b, box(Vector3(0.51, 0.06, 0.31)), Vector3(0, 0.57, 0), Color("6a4a2e"), Vector3.ONE, Vector3.ZERO, false)   # belt
 	for s in [-1, 1]:
 		var arm := piv(b, Vector3(s * 0.33, 1.03, 0))
 		part(arm, box(Vector3(0.14, 0.42, 0.16)), Vector3(0, -0.17, 0), SHIRT)
@@ -244,9 +241,10 @@ static func _blocky(b: Node3D, p: Dictionary) -> void:
 		part(head, box(Vector3(0.09, 0.08, 0.02)), Vector3(s * 0.1, 0.24, 0.215), Color.WHITE, Vector3.ONE, Vector3.ZERO, false)
 		part(head, box(Vector3(0.05, 0.07, 0.02)), Vector3(s * 0.1 + 0.02, 0.235, 0.225), Color("1e2a44"), Vector3.ONE, Vector3.ZERO, false)
 		part(head, box(Vector3(0.11, 0.025, 0.02)), Vector3(s * 0.1, 0.31, 0.215), Color("3b2a20"), Vector3.ONE, Vector3.ZERO, false)
-	part(head, hemi(0.29), Vector3(0, 0.42, 0), Color("ffd23a"), Vector3(1, 0.8, 1))
-	part(head, cyl(0.33, 0.33, 0.035), Vector3(0, 0.43, 0), Color("ffd23a"))
-	part(head, cyl(0.07, 0.07, 0.05), Vector3(0, 0.55, 0.25), Color("fff6b0"), Vector3.ONE, Vector3(PI / 2 - 0.4, 0, 0), true, 1.5)
+	# blocky brown hair: a flat top, the back of the head, and a fringe at the front
+	part(head, box(Vector3(0.47, 0.1, 0.46)), Vector3(0, 0.46, -0.01), Color("3b2a20"))
+	part(head, box(Vector3(0.47, 0.3, 0.1)), Vector3(0, 0.3, -0.19), Color("3b2a20"), Vector3.ONE, Vector3.ZERO, false)
+	part(head, box(Vector3(0.47, 0.06, 0.06)), Vector3(0, 0.39, 0.2), Color("3b2a20"), Vector3.ONE, Vector3.ZERO, false)
 
 
 static func _sparky(b: Node3D, p: Dictionary, stage := 0) -> void:

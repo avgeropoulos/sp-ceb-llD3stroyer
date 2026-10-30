@@ -173,10 +173,7 @@ def blocky(name, legA=0.0, legB=0.0, armA=0.0, pick=0.3, squash=0.0, rot=0):
         p.rect(fx - 4, fy, fx + 6.5, fy + 5.5, BOOT, r=2)
     # body: square-ish
     p.rect(cx - 10, 36, cx + 10, 57 - squash * 4, SHIRT, r=3)
-    p.rect(cx - 10, 36, cx - 2, 57 - squash * 4, VEST, r=2)
-    p.rect(cx + 3, 36, cx + 10, 57 - squash * 4, VEST, r=2)
-    p.rect(cx - 10, 47, cx - 2, 49.5, rgb("#e9f3f5"), r=0.5, ink=False)
-    p.rect(cx + 3, 47, cx + 10, 49.5, rgb("#e9f3f5"), r=0.5, ink=False)
+    p.rect(cx - 10, 51 - squash * 4, cx + 10, 53.5 - squash * 4, rgb("#6a4a2e"), r=0.5, ink=False)   # belt
     p.rect(cx - 10, 53 - squash * 4, cx + 10, 58 - squash * 4, PANTS, r=1.5)
     # head: blocky rounded square
     hy = 24 + squash * 5
@@ -186,11 +183,9 @@ def blocky(name, legA=0.0, legB=0.0, armA=0.0, pick=0.3, squash=0.0, rot=0):
     p.eye(cx + 6, hy, 2.3, 3.2)
     p.line([(cx + 3, hy - 4.6), (cx + 9, hy - 5.2)], rgb("#3b2a20"), 1.8)  # eyebrow
     p.d.arc(p._b(cx + 5, hy + 2.5, cx + 11, hy + 8), 30, 150, fill=INK, width=int(1.5 * SS))
-    # hard hat + lamp
-    p.d.chord(p._b(cx - 13, hy - 22, cx + 15, hy + 2), 180, 360, fill=HAT, outline=INK, width=int(LW * SS))
-    p.rect(cx - 15, hy - 11, cx + 17, hy - 7.5, HAT, r=1.5)
-    p.oval(cx + 13, hy - 14, 3.6, 3.6, rgb("#fff6b0"))
-    p.oval(cx + 13, hy - 14, 1.8, 1.8, rgb("#ffffff"), ink=False)
+    # blocky brown hair on top (no hat)
+    p.rect(cx - 12, hy - 13, cx + 14, hy - 5, rgb("#3b2a20"), r=3)
+    p.rect(cx - 12, hy - 8, cx - 3, hy + 2, rgb("#3b2a20"), r=2)
     # front arm + pickaxe
     hx, hy2 = cx + 5 + math.sin(armA) * 6, 46 - math.cos(armA) * 2
     pickaxe(p, hx, hy2, pick)
