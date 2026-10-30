@@ -73,7 +73,10 @@ var arena_y := 6              # its floor
 var flag_pos := Vector3.ZERO
 var gate: Array[Vector3i] = []   # the gold gate that 5 stars open
 var locked := {}              # Vector3i -> true: blocks that can't be mined (castle walls)
-var objectives: Array = []    # the 5 star challenges: {id, name, hint, pos}
+var objectives: Array = []    # the star challenges (Mario 64 style missions): {id, name, hint, pos}
+var red_spots: Array = []     # RED COINS: where the 8 red coins float
+var dog_spot := Vector3.ZERO  # LOST DOG: where Dennis is lost
+var dog_home := Vector3.ZERO  # ... and his doghouse
 var keep_out: Array = []      # [center, radius]: the challenges' space
 var step_tops: Array = []     # SKY STEPS: where you stand on each step (for the test robot)
 var tower_tops: Array = []    # TALL TOWER: the same for the stairs
@@ -557,6 +560,67 @@ func _special_foes(start: Vector2i) -> void:
 		keep_out.append([Vector2(b), 5.0])
 
 
+## The extra Mario 64-style missions: RED COINS, BIG GRUMBLER and LOST DOG.
+func _more_quests(start: Vector2i) -> void:
+	# RED COINS: 8 of them, some up high (tower, sky steps, little pillars), star on a red circle
+	red_spots = []
+	if tower_tops.size() > 8:
+		red_spots.append(tower_tops[tower_tops.size() - 1] + Vector3(0, 0.6, 0))
+		red_spots.append(tower_tops[8] + Vector3(0, 0.6, 0))
+	if step_tops.size() > 4:
+		red_spots.append(step_tops[3] + Vector3(0, 0.6, 0))
+		red_spots.append(step_tops[step_tops.size() - 1] + Vector3(0, 0.6, 0))
+	var tries := 0
+	while red_spots.size() < 8 and tries < 40:
+		tries += 1
+		var o := _free_spot(6)
+		if o.x < 0:
+			continue
+		var g := ground_at(o.x, o.y)
+		var hgt := 0 if red_spots.size() % 2 == 0 else 2   # every other one on a little pillar (one jump up)
+		for y in hgt:
+			set_cell(o.x, g + y, o.y, STONE_BRICK if y < hgt - 1 else GOLD_BLOCK)
+		red_spots.append(Vector3(o.x + 0.5, g + hgt + 0.6, o.y + 0.5))
+		keep_out.append([Vector2(o), 3.0])
+	var rs := _free_spot(6)
+	if rs.x >= 0 and red_spots.size() >= 6:
+		var g := ground_at(rs.x, rs.y)
+		for dx in range(-2, 3):
+			for dz in range(-2, 3):
+				var d := Vector2(dx, dz).length()
+				if d > 1.4 and d < 2.4 and get_cell(rs.x + dx, g - 1, rs.y + dz) != AIR and get_cell(rs.x + dx, g, rs.y + dz) == AIR:
+					set_cell(rs.x + dx, g - 1, rs.y + dz, WOOL_RED)
+		keep_out.append([Vector2(rs), 4.0])
+		objectives.append({"id": "reds", "name": "RED COINS", "hint": "Find the 8 red coins! The star appears in the red circle.",
+			"pos": Vector3(rs.x + 0.5, g + 1.2, rs.y + 0.5)})
+	# BIG GRUMBLER: the mini-boss guarding a ? block; beat him for a star
+	for sp in spawns:
+		if sp.kind == "biggrumbler":
+			objectives.append({"id": "boss", "name": "BIG GRUMBLER", "hint": "Beat the BIG GRUMBLER!",
+				"pos": sp.pos + Vector3(0, 1.4, 0)})
+			break
+	# LOST DOG: Dennis wandered far away; find him and walk him back to his doghouse
+	var far := Vector2i(-1, -1)
+	for i in 40:
+		var o := _free_spot(4)
+		if o.x >= 0 and Vector2(o).distance_to(Vector2(start)) > 34:
+			far = o
+			break
+	if far.x >= 0:
+		dog_spot = Vector3(far.x + 0.5, ground_at(far.x, far.y), far.y + 0.5)
+		keep_out.append([Vector2(far), 3.0])
+		var hx := start.x + 6
+		var hz := start.y + 3
+		var g := ground_at(hx, hz)
+		for dx in 2:   # a little doghouse: planks with a red roof, open at the front
+			for dz in 2:
+				set_cell(hx + dx, g, hz + dz + 1, PLANKS)
+				set_cell(hx + dx, g + 1, hz + dz + 1, WOOL_RED)
+		dog_home = Vector3(hx + 1.0, g, hz + 0.3)
+		objectives.append({"id": "dog", "name": "LOST DOG", "hint": "Dennis is lost! Find him and bring him to his doghouse.",
+			"pos": dog_home + Vector3(0, 1.2, -0.6)})
+
+
 func ground_at(x: int, z: int) -> int:
 	if x < 0 or z < 0 or x >= sx or z >= sz:
 		return 0
@@ -785,6 +849,7 @@ func generate_open(w: String) -> void:
 	# bad guys wandering about (which ones depends on the world: FOES_BY_WORLD)
 	var kinds: Array = FOES_BY_WORLD.get(w, FOES_BY_WORLD["default"])
 	_special_foes(start)
+	_more_quests(start)
 	for i in 16:
 		var o := _free_spot(6)
 		if o.x < 0 or Vector2(o).distance_to(Vector2(start)) < 14:

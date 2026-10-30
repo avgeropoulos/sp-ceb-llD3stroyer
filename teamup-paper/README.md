@@ -100,6 +100,30 @@ saved with the file (`stars`). Frosty Peaks is a mirror image of the layout, tal
 * Test: `tests/open_check.gd -- [toy] meadow|frost|dunes`: Rocco really jumps every sky step and tower stair
   (real physics), Blocky digs the cave, the camp, 40 coins, the gate, Krag Jr. and the flag.
 
+### Quests, Mario 64 style
+
+Each world now has **8 stars** (5 still open the gate) and you go for **one quest at a time**:
+
+* **STAR SELECT** when you land: a card per star (name, GOT IT! if found), tap a card then tap again (or GO!).
+  Stars are kept for good per world (`stars_w` in the save), so a second visit shows them gold and the gate is
+  already open. Pause -> **STARS** switches quest any time. Continuing a mid-world save keeps your quest.
+* The **current quest** shows everywhere: a big banner ("STAR 2: TALL TOWER"), a gold **light beam** on the spot
+  (it follows the nearest red coin / the BIG GRUMBLER / Dennis), an **arrow at the screen edge** with the
+  distance when it's off screen (a bouncing arrow over it when it's on screen), its floating name, sparkles when
+  you're close, and a panel at the top with the goal and progress ("Left: 3", "Red coins 5 / 8").
+* **YOU GOT A STAR!**: everything stops, the camera swings round, Rocco holds the star up, fanfare, star count;
+  then the next quest not done yet is picked by itself. Any star still counts, in any order.
+* New stars: **RED COINS** (8 red coins: on the tower, the sky steps and little pillars; the star appears on a red
+  circle), **BIG GRUMBLER** (beat the mini-boss), **LOST DOG** (Dennis is lost far away: find him, he follows
+  you, walk him back to his doghouse by the start).
+* Code: `openplay.gd` (`open_select`, `pick`, `target_pos`, `progress`, beam, red coins, `_dog_step`,
+  `celebrate`), `level.gd` `_more_quests`, `hud.gd` `_draw_stars` / `_draw_quest_arrow` / `_draw_select` /
+  `_draw_stargot`, states `starselect` and `stargot` in `main.gd`. Tests that enter worlds without testing
+  this set `OpenPlay.select_enabled = false` (the robot and `Cutscene.enabled = false` skip it too).
+* Test: `tests/quest_check.gd` (star select, picking, beam, arrow, the star moment, next quest, pause STARS,
+  save and continue); `open_check.gd` now also collects every red coin (and really jumps onto a pillar), beats
+  the BIG GRUMBLER and walks Dennis home.
+
 ### More bad guys (open worlds)
 
 | Bad guy | What it does | How to beat it | Where |

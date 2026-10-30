@@ -78,7 +78,10 @@ func _process(_dt: float) -> bool:
 				g.invincible = true
 				var lv: Level = g.level
 				check(lv.open and lv.sx == Level.OPEN_S, "the world should be open")
-				check(lv.objectives.size() == 5, "there should be 5 star challenges")
+				check(lv.objectives.size() >= 7, "there should be 7+ star challenges, Mario 64 style (got %d)" % lv.objectives.size())
+				check(lv.red_spots.size() == OpenPlay.RED_COINS, "there should be 8 red coins (got %d)" % lv.red_spots.size())
+				for rp in lv.red_spots:
+					check(not lv.solid(floori(rp.x), floori(rp.y), floori(rp.z)), "a red coin is inside a block at %s" % rp)
 				check(lv.coin_spots.size() >= Level.STAR_COINS + 5, "not enough coins (%d)" % lv.coin_spots.size())
 				check(not lv.solid(floori(lv.start_pos.x), floori(lv.start_pos.y + 0.3), floori(lv.start_pos.z)), "the start is inside a block")
 				for o in lv.objectives:
@@ -161,6 +164,71 @@ func _process(_dt: float) -> bool:
 				check(g.open_play.count() == 5 and g.gate_open, "5 stars should open the gate")
 				var gc: Vector3i = g.level.gate[0]
 				check(g.level.get_cell(gc.x, gc.y, gc.z) == Level.AIR, "the gate should be gone")
+				# the red coins on the little pillars must be reachable: really jump up onto one
+				tops = []
+				for rp in g.level.red_spots:
+					var top := Vector3(rp.x, rp.y - 0.6, rp.z)
+					var gy: int = g.level.ground_at(floori(rp.x), floori(rp.z))
+					if top.y > gy + 1.5 and top.y < gy + 2.5:
+						for dd in [Vector2i(-2, 0), Vector2i(2, 0), Vector2i(0, -2), Vector2i(0, 2)]:
+							var bx: int = floori(rp.x) + dd.x
+							var bz: int = floori(rp.z) + dd.y
+							var by: int = g.level.ground_at(bx, bz)
+							if by >= gy and by <= gy + 1 and not g.level.solid(bx, by, bz) and not g.level.solid(bx, by + 1, bz) \
+									and not g.level.solid(bx, by + 2, bz):
+								tops = [Vector3(bx + 0.5, by, bz + 0.5), top]
+								break
+					if tops.size() == 2:
+						break
+				check(tops.size() == 2, "couldn't find a red coin pillar to jump onto")
+				hop = 0
+				hop_f = 0
+				g.process_mode = Node.PROCESS_MODE_DISABLED
+				step = 8
+				f = 0
+		8:   # jump onto a red coin pillar for real
+			if tops.size() < 2:
+				step = 9
+				f = 0
+			else:
+				for i in 4:
+					if _hop_frame():
+						print("red coin pillar: jumped on OK")
+						g.process_mode = Node.PROCESS_MODE_INHERIT
+						step = 9
+						f = 0
+						break
+		9:   # RED COINS, BIG GRUMBLER, LOST DOG
+			if f == 2:
+				for c in g.open_play.reds.duplicate():
+					place_at(c.position - Vector3(0, 0.4, 0))
+					g.open_play.step(1.0 / 60)
+				check(g.open_play.red_count == OpenPlay.RED_COINS, "all 8 red coins should be picked up (%d)" % g.open_play.red_count)
+				check(g.open_play.stars.has("reds"), "the red coin star should appear")
+				var bf: Foe = g.open_play.boss_foe()
+				if not g.open_play.objective("boss").is_empty():
+					check(bf != null, "the BIG GRUMBLER should be there")
+					if bf:
+						bf.hurt(99, g)
+				# LOST DOG: find Dennis
+				place_at(g.level.dog_spot + Vector3(1.5, 0.01, 0))
+				g.open_play.step(1.0 / 60)
+				check(g.open_play.dog_following, "Dennis should follow you when you find him")
+			if f > 2 and f < 700 and not (g.open_play.stars.has("dog") or g.open_play.got.has("dog")):   # walk him home (the hero jumps ahead, Dennis catches up)
+				var home: Vector3 = g.level.dog_home
+				var d: Vector3 = g.open_play.dennis.position
+				var to := Vector3(home.x - d.x, 0, home.z - d.z)
+				if to.length() > 2:
+					place_at(Vector3(d.x, 0, d.z) + to.normalized() * minf(to.length(), 6.0) + Vector3(0, g.level.ground_below(d.x + to.normalized().x * minf(to.length(), 6.0), d.z + to.normalized().z * minf(to.length(), 6.0), 30) + 0.01, 0))
+			if f > 2 and (f == 700 or g.open_play.stars.has("dog")):
+				f = 1000
+				check(g.open_play.stars.has("dog") or g.open_play.got.has("dog"), "bringing Dennis home should make a star (Dennis at %s, home %s)" % [g.open_play.dennis.position, g.level.dog_home])
+				for id in ["reds", "boss", "dog"]:
+					if g.open_play.stars.has(id):
+						place_at(g.open_play.stars[id].position - Vector3(0, 0.8, 0))
+						g.open_play.step(1.0 / 60)
+				check(g.open_play.count() == g.level.objectives.size(), "every star should be found (%d / %d)" % [g.open_play.count(), g.level.objectives.size()])
+				check(g.open_play.current == "", "no quest left: the castle is next")
 				# into the castle
 				var ar: Rect2 = g.level.arena
 				place_at(Vector3(ar.get_center().x, g.level.arena_y + 0.01, ar.end.y - 3))

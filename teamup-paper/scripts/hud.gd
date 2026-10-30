@@ -134,9 +134,16 @@ func _input(event: InputEvent) -> void:
 					_movies_tap(e.position)
 					return
 				if game.state == "paused":
-					for i in 3:
+					for i in game.pause_count():
 						if pause_rect(i).has_point(e.position):
 							game.pause_choice(i)
+					return
+				if game.state == "starselect":
+					_select_tap(e.position)
+					return
+				if game.state == "stargot":
+					if game.open_play.cel_t > 0.8:
+						game.open_play.end_celebrate()
 					return
 				game.on_tap()
 				return
@@ -248,6 +255,10 @@ func _draw() -> void:
 			txt(sub_message, Vector2(0, s.y * 0.36 + 52), 30, Color(1, 1, 1, a), HORIZONTAL_ALIGNMENT_CENTER, s.x, 8)
 	if game.state == "paused":
 		_draw_pause()
+	if game.state == "starselect":
+		_draw_select()
+	if game.state == "stargot":
+		_draw_stargot()
 	if game.state == "clear":
 		_draw_clear()
 
@@ -279,7 +290,7 @@ func _draw_hud() -> void:
 	var xp: int = game.mon_xp[game.mon_line]
 	draw_rect(Rect2(x + 70, py + 36, 170, 12), Color(0.1, 0.1, 0.15))
 	draw_rect(Rect2(x + 70, py + 36, 170 * Mons.progress(xp), 12), Color("54c8ff"))
-	if game.open_play and game.state != "title":
+	if game.open_play and game.state in ["play", "paused", "clear"]:
 		_draw_stars()
 	if game.powers and game.state == "play":
 		game.powers.draw_hud(self)
@@ -293,25 +304,160 @@ func _draw_hud() -> void:
 		draw_rect(Rect2(bx, 60, w * float(boss.hp) / boss.max_hp, 16), Color("ff4f6d"))
 
 
-## Open worlds: the 5 stars at the top (gold = found), and a hint for the nearest challenge.
+## Open worlds, Mario 64 style: every star of this world at the top (gold = found),
+## how many open the gate, then the CURRENT QUEST with its goal and progress, and an
+## arrow pointing the way when the quest is off the screen.
 func _draw_stars() -> void:
 	var op = game.open_play
+	var all: Array = op.ids()
 	var n: int = op.count()
-	var w := 5 * 58.0
-	var x0 := (size.x - w) * 0.5
-	for i in OpenPlay.STARS_NEEDED:
-		var c := Vector2(x0 + 29 + i * 58, 40)
-		_star_shape(c, 25, Color(0.1, 0.08, 0.2, 0.8))
-		_star_shape(c, 20, Color("ffd23a") if i < n else Color(1, 1, 1, 0.25))
-	if game.boss_on or game.boss_done:
+	var gap := 50.0
+	var x0 := (size.x - all.size() * gap) * 0.5
+	for i in all.size():
+		var c := Vector2(x0 + gap * 0.5 + i * gap, 34)
+		var mine: bool = op.got.has(all[i])
+		var cur: bool = all[i] == op.current
+		if cur:
+			draw_circle(c, 24, Color(1, 0.9, 0.4, 0.35 + 0.15 * sin(title_t * 6)))
+		_star_shape(c, 22, Color(0.1, 0.08, 0.2, 0.8))
+		_star_shape(c, 17, Color("ffd23a") if mine else Color(1, 1, 1, 0.25))
+	var gate_txt := "GATE OPEN!" if game.gate_open else "%d more for the gate" % maxi(0, OpenPlay.STARS_NEEDED - n)
+	txt("%d / %d   %s" % [n, all.size(), gate_txt], Vector2(0, 76), 20, Color(1, 1, 1, 0.85), HORIZONTAL_ALIGNMENT_CENTER, size.x, 6)
+	if game.boss_on or game.boss_done or game.state != "play":
 		return
-	var o: Dictionary = op.nearest()
-	if not o.is_empty():
-		txt(o.name + ":  " + o.hint, Vector2(0, 150), 26, Color("fff2a8"), HORIZONTAL_ALIGNMENT_CENTER, size.x, 7)
-	elif n >= OpenPlay.STARS_NEEDED:
-		txt("The gold gate is open! Go to Krag Jr.'s castle!", Vector2(0, 150), 26, Color("fff2a8"), HORIZONTAL_ALIGNMENT_CENTER, size.x, 7)
-	else:
-		txt("Follow the floating stars to find the challenges", Vector2(0, 150), 22, Color(1, 1, 1, 0.75), HORIZONTAL_ALIGNMENT_CENTER, size.x, 6)
+	# the quest panel
+	var title: String = op.quest_title(op.current)
+	var w := minf(760.0, size.x - 640.0)
+	var r := Rect2((size.x - w) * 0.5, 118, w, 70)
+	draw_rect(r, Color(0.08, 0.06, 0.2, 0.62))
+	draw_rect(r, Color(1, 0.86, 0.3, 0.9), false, 3.0)
+	_star_shape(r.position + Vector2(30, 35), 18, Color("ffd23a"))
+	txt(title, Vector2(r.position.x + 52, r.position.y + 30), 26, Color("ffe14a"), HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 60, 7)
+	txt(op.progress(), Vector2(r.position.x + 52, r.position.y + 58), 20, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 60, 6)
+	_draw_quest_arrow()
+
+
+## Where the quest is on the screen: a bouncing arrow over it, or an arrow at the
+## edge of the screen pointing the way (with how many blocks away it is).
+func _draw_quest_arrow() -> void:
+	var op = game.open_play
+	var cam: Camera3D = game.cam
+	var tp: Vector3 = op.target_pos()
+	var dist := Vector2(tp.x - game.leader().position.x, tp.z - game.leader().position.z).length()
+	var p := cam.unproject_position(tp + Vector3(0, 1.4, 0))
+	var behind := cam.is_position_behind(tp + Vector3(0, 1.4, 0))
+	var margin := 70.0
+	var area := Rect2(Vector2(margin, 210), size - Vector2(margin * 2, 210 + margin))
+	var col := Color("ffe14a")
+	if not behind and area.has_point(p):
+		if dist < 2.5:
+			return
+		var b := sin(title_t * 7) * 8
+		var tip := p + Vector2(0, b)
+		draw_colored_polygon(PackedVector2Array([tip, tip + Vector2(-20, -30), tip + Vector2(20, -30)]), Color(0.1, 0.06, 0.15, 0.8))
+		draw_colored_polygon(PackedVector2Array([tip + Vector2(0, -5), tip + Vector2(-14, -27), tip + Vector2(14, -27)]), col)
+		txt("%d" % int(dist), Vector2(tip.x - 40, tip.y - 38), 22, col, HORIZONTAL_ALIGNMENT_CENTER, 80, 6)
+		return
+	var c := size * 0.5
+	var d := p - c
+	if behind:
+		d = -d
+	if d.length() < 1:
+		d = Vector2(0, 1)
+	d = d.normalized()
+	# push out to the edge of the area
+	var k := INF
+	if absf(d.x) > 0.001:
+		k = minf(k, ((area.end.x if d.x > 0 else area.position.x) - c.x) / d.x)
+	if absf(d.y) > 0.001:
+		k = minf(k, ((area.end.y if d.y > 0 else area.position.y) - c.y) / d.y)
+	var at := c + d * k
+	var side := Vector2(-d.y, d.x)
+	var pulse := 1.0 + 0.12 * sin(title_t * 8)
+	var tip := at + d * 26 * pulse
+	draw_colored_polygon(PackedVector2Array([tip + d * 6, at - d * 14 + side * 30, at - d * 14 - side * 30]), Color(0.1, 0.06, 0.15, 0.85))
+	draw_colored_polygon(PackedVector2Array([tip, at - d * 8 + side * 22, at - d * 8 - side * 22]), col)
+	txt("%d" % int(dist), Vector2(at.x - 50 - d.x * 30, at.y - d.y * 34 + 8), 22, col, HORIZONTAL_ALIGNMENT_CENTER, 100, 6)
+	arrow_at = at   # for tests
+
+
+var arrow_at := Vector2(-1, -1)
+
+
+# ------------------------------------------------------------------ STAR SELECT (Mario 64 style)
+func select_rect(i: int, n: int) -> Rect2:
+	var per := mini(n, 4)
+	var rows := int(ceil(n / float(per)))
+	var gap := 18.0
+	var w := minf(270.0, (size.x - 80 - gap * (per - 1)) / per)
+	var h := minf(190.0, (size.y - 300) / rows - gap)
+	var row := i / per
+	var in_row := mini(per, n - row * per)
+	var x0 := (size.x - (w * in_row + gap * (in_row - 1))) * 0.5
+	return Rect2(x0 + (i % per) * (w + gap), 150 + row * (h + gap), w, h)
+
+
+func select_go_rect() -> Rect2:
+	return Rect2(size.x * 0.5 - 170, size.y - 96, 340, 76)
+
+
+func _select_tap(p: Vector2) -> void:
+	var op = game.open_play
+	var n: int = op.ids().size()
+	for i in n:
+		if select_rect(i, n).has_point(p):
+			op.select_tap(i)
+			return
+	if select_go_rect().has_point(p):
+		op.choose(op.sel)
+
+
+func _draw_select() -> void:
+	var op = game.open_play
+	var s := size
+	draw_rect(Rect2(Vector2.ZERO, s), Color(0.04, 0.05, 0.14, 0.82))
+	var wi: Dictionary = game.world_info()
+	txt(String(wi.name), Vector2(0, 74), 56, Color(1, 0.86, 0.3), HORIZONTAL_ALIGNMENT_CENTER, s.x, 12)
+	txt("PICK A STAR TO GO FOR   (%d / %d found, 5 open Krag Jr.'s gate)" % [op.count(), op.ids().size()], Vector2(0, 118), 22, Color(1, 1, 1, 0.85), HORIZONTAL_ALIGNMENT_CENTER, s.x, 6)
+	var all: Array = op.ids()
+	for i in all.size():
+		var r := select_rect(i, all.size())
+		var o: Dictionary = op.objective(all[i])
+		var mine: bool = op.got.has(all[i])
+		var sel: bool = op.sel == i
+		if sel:
+			draw_rect(r.grow(7), Color("ffd23a"))
+		draw_rect(r, Color(0.98, 0.95, 0.86) if not mine else Color(1.0, 0.93, 0.6))
+		draw_rect(r, Color(0.15, 0.1, 0.2), false, 3.0)
+		_star_shape(r.position + Vector2(r.size.x * 0.5, 44), 30, Color(0.15, 0.1, 0.2))
+		_star_shape(r.position + Vector2(r.size.x * 0.5, 44), 24, Color("ffd23a") if mine else Color(0.82, 0.82, 0.86))
+		txt("STAR %d" % (i + 1), Vector2(r.position.x, r.position.y + 98), 20, Color(0.35, 0.3, 0.45), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
+		txt(String(o.name), Vector2(r.position.x + 6, r.position.y + 126), 24, Color(0.15, 0.1, 0.2), HORIZONTAL_ALIGNMENT_CENTER, r.size.x - 12, 0)
+		if mine:
+			txt("GOT IT!", Vector2(r.position.x, r.position.y + 156), 20, Color("c07a00"), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
+	var cur: Dictionary = op.objective(all[op.sel]) if all.size() > 0 else {}
+	if not cur.is_empty():
+		txt(String(cur.get("hint", "")), Vector2(0, s.y - 118), 26, Color("fff2a8"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 7)
+	var g := select_go_rect()
+	draw_rect(g, Color("3fc06a"))
+	draw_rect(g, Color.WHITE, false, 4.0)
+	txt("GO!", Vector2(g.position.x, g.position.y + 54), 44, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, g.size.x, 9)
+
+
+## "YOU GOT A STAR!"
+func _draw_stargot() -> void:
+	var op = game.open_play
+	var s := size
+	var k := clampf(op.cel_t / 0.35, 0, 1)
+	draw_rect(Rect2(0, 0, s.x, 70 * k), Color(0, 0, 0, 0.85))
+	draw_rect(Rect2(0, s.y - 90 * k, s.x, 90 * k), Color(0, 0, 0, 0.85))
+	var pop := 1.0 + maxf(0.0, 0.4 - op.cel_t) * 1.5
+	var mid := Vector2(s.x * 0.5, s.y * 0.22)
+	draw_set_transform(mid * (1.0 - pop), 0.0, Vector2(pop, pop))
+	txt("YOU GOT A STAR!", Vector2(0, s.y * 0.22 + 22), 64, Color(1, 0.86, 0.3), HORIZONTAL_ALIGNMENT_CENTER, s.x, 14)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	txt(String(op.objective(op.cel_id).get("name", "")), Vector2(0, s.y * 0.22 + 66), 30, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, s.x, 8)
+	txt("★ %d / %d" % [op.count(), op.ids().size()], Vector2(0, s.y - 30), 38, Color("ffe14a"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 9)
 
 
 func _star_shape(c: Vector2, r: float, col: Color) -> void:
@@ -687,20 +833,21 @@ func _draw_clear() -> void:
 
 
 # ------------------------------------------------------------------ pause menu
-const PAUSE_LABELS := ["RESUME", "SAVE", "SAVE & QUIT"]
-const PAUSE_COLORS := [Color("3fc06a"), Color("3f7fd9"), Color("ff8a1f")]
+const PAUSE_LABELS := ["RESUME", "SAVE", "SAVE & QUIT", "STARS"]
+const PAUSE_COLORS := [Color("3fc06a"), Color("3f7fd9"), Color("ff8a1f"), Color("e0a800")]
 
 
 func pause_rect(i: int) -> Rect2:
 	var w := minf(460.0, size.x * 0.6)
-	return Rect2((size.x - w) * 0.5, size.y * 0.3 + i * 108, w, 88)
+	var step := 108.0 if game.pause_count() <= 3 else 92.0
+	return Rect2((size.x - w) * 0.5, size.y * 0.27 + i * step, w, step - 18)
 
 
 func _draw_pause() -> void:
 	var s := size
 	draw_rect(Rect2(Vector2.ZERO, s), Color(0.05, 0.08, 0.15, 0.7))
 	txt("PAUSED", Vector2(0, s.y * 0.22), 76, Color(1, 0.86, 0.3), HORIZONTAL_ALIGNMENT_CENTER, s.x, 14)
-	for i in 3:
+	for i in game.pause_count():
 		var r := pause_rect(i)
 		var sel: bool = game.pause_sel == i
 		draw_rect(r.grow(6) if sel else r, Color.WHITE if sel else Color(1, 1, 1, 0.0))
@@ -716,7 +863,7 @@ func _draw_pause() -> void:
 			txt("%d ms  %s" % [e[0], e[1]], Vector2(20, ly), 18, Color(1, 1, 1, 0.6), HORIZONTAL_ALIGNMENT_LEFT, -1, 5)
 	else:
 		txt("No slow moments", Vector2(20, s.y - 24), 18, Color(1, 1, 1, 0.5), HORIZONTAL_ALIGNMENT_LEFT, -1, 5)
-	var y := pause_rect(2).end.y + 50
+	var y := pause_rect(game.pause_count() - 1).end.y + 50
 	if game.save_note_t > 0:
 		txt(game.save_note, Vector2(0, y), 38, Color("fff2a8"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 9)
 	elif game.slot > 0:

@@ -69,6 +69,7 @@ var cleared := 0              # times this file finished the level
 var home: HomeBase            # only at home
 var open_play: OpenPlay       # only in the open worlds (stars, gate, flag)
 var gate_open := false        # Krag Jr.'s gold gate (5 stars)
+var stars_w := {}             # world id -> star ids found there (kept for good, like Mario 64)
 var powers: Powers            # power-ups (open worlds)
 var sky: SkyMap               # only on the sky map
 var cleared_w := {}           # world id -> times cleared
@@ -255,6 +256,8 @@ func _after_loading() -> void:
 				_apply_save(d)
 				if not d.get("in_level", false):
 					hud.say(world_info().name, world_info().hello, 2.6)
+			if open_play and not d.get("in_level", false):
+				open_play.open_select("start")   # Mario 64 style: pick a star first
 		_:
 			state = "title"
 
@@ -934,6 +937,10 @@ func save_data(in_level := true) -> Dictionary:
 		"super": super_charge, "cleared": cleared, "human": human if in_level else "rocco", "in_level": in_level,
 		"mon": mon_line, "mon_xp": mon_xp.duplicate(), "scenes_seen": scenes_seen.duplicate(),
 		"home": home.data() if home else home_saved}
+	if open_play:
+		stars_w[level.world] = open_play.got.keys()
+		d["quest"] = open_play.current
+	d["stars_w"] = stars_w.duplicate(true)
 	if in_level:
 		var cells := []
 		var lc := level.cells
@@ -981,6 +988,12 @@ func _apply_save(d: Dictionary) -> void:
 	if not mon_line in Mons.ORDER:
 		mon_line = "spark"
 	set_partner(mon_line)
+	stars_w = {}
+	var sw: Dictionary = d.get("stars_w", {})
+	for k in sw:
+		stars_w[String(k)] = Array(sw[k]).map(func(x): return String(x))
+	if open_play:   # stars found on an earlier visit stay found
+		open_play.restore(stars_w.get(level.world, []))
 	if not d.get("in_level", false):
 		return
 	for c in d.get("cells", []):
@@ -1001,6 +1014,9 @@ func _apply_save(d: Dictionary) -> void:
 	boss_done = bool(d.get("boss_done", false))
 	if open_play:
 		open_play.restore(d.get("stars", []))
+		var q := String(d.get("quest", ""))
+		if q == "" or open_play.ids().has(q):
+			open_play.pick(q if q != "" and not open_play.got.has(q) else open_play.first_open(), false)
 	checkpoint_hit = bool(d.get("checkpoint_hit", false))
 	checkpoint = _a2v(d.get("checkpoint", [3, 5, 6.5]))
 	# who's out
@@ -1034,9 +1050,17 @@ static func _a2v(a) -> Vector3:
 	return Vector3(3, 5, 6.5)
 
 
-## Pause menu: 0 RESUME, 1 SAVE, 2 SAVE & QUIT.
+## How many pause buttons: RESUME, SAVE, SAVE & QUIT (+ STARS in an open world).
+func pause_count() -> int:
+	return 4 if paused_from == "play" and open_play != null and not boss_on else 3
+
+
+## Pause menu: 0 RESUME, 1 SAVE, 2 SAVE & QUIT, 3 STARS (pick another quest).
 func pause_choice(i: int) -> void:
 	match i:
+		3:
+			if pause_count() > 3:
+				open_play.open_select("pause")
 		0:
 			state = paused_from
 		1:
@@ -1255,6 +1279,23 @@ func _step(dt: float) -> void:
 	if state == "evolve":
 		_step_evolve(dt)
 		return
+	if state == "starselect":
+		var n: int = open_play.ids().size()
+		if Input.is_action_just_pressed("left"):
+			open_play.select_move(-1)
+		if Input.is_action_just_pressed("right"):
+			open_play.select_move(1)
+		if jump_pressed or action_pressed:
+			open_play.choose(open_play.sel)
+		elif pause_pressed and open_play.select_from == "pause":
+			state = "play"
+		return
+	if state == "stargot":
+		if (jump_pressed or action_pressed) and open_play.cel_t > 0.8:
+			open_play.end_celebrate()
+		else:
+			open_play.step_celebrate(dt)
+		return
 	if state == "scene":
 		if cutscene:
 			if (jump_pressed or action_pressed or pause_pressed) and cutscene.t > 1.0:
@@ -1306,9 +1347,9 @@ func _step(dt: float) -> void:
 	if state == "paused":
 		save_note_t -= dt
 		if Input.is_action_just_pressed("up"):
-			pause_sel = (pause_sel + 2) % 3
+			pause_sel = (pause_sel + pause_count() - 1) % pause_count()
 		if Input.is_action_just_pressed("down"):
-			pause_sel = (pause_sel + 1) % 3
+			pause_sel = (pause_sel + 1) % pause_count()
 		if jump_pressed or action_pressed:
 			pause_choice(pause_sel)
 		elif pause_pressed:
