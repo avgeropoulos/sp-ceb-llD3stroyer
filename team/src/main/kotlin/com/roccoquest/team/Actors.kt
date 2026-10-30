@@ -136,6 +136,47 @@ enum class Mon(val label: String, val color: Int, val superName: String, val blu
     MEWLY("MEWLY", 0xFFFFB8D8.toInt(), "PSYCHIC", "Legendary pink cat. Floats everywhere! SUPER: psychic!"),
     TOGEKISSY("TOGEKISSY", 0xFFF4F4F4.toInt(), "AIR SLASH", "Happy white bird of joy. SUPER: air slash!"),
     DRATINY("DRATINY", 0xFF8AB8F0.toInt(), "TWISTER", "Rare little sea dragon. SUPER: twister!"),
+    // 40 more (built from parts in Pokedex.kt / MorePokedex.kt; first forms join one every few levels late in the game)
+    CINDERCUB("CINDERCUB", 0xFFC8502A.toInt(), "EMBER PAW", "Warm little bear cub with a flame on its head. Evolves into Cinderbear!"),
+    CINDERBEAR("CINDERBEAR", 0xFFB8402A.toInt(), "FIRE CLAWS", "Cindercub evolved! Big fiery claws. SUPER: a ring of fire!"),
+    VOLCABEAR("VOLCABEAR", 0xFF6E3428.toInt(), "ERUPTION", "A volcano on legs! Lava rocks on its back. SUPER: a huge ring of fire!"),
+    TADBLUB("TADBLUB", 0xFF3A8AD8.toInt(), "BUBBLE", "Round tadpole with a swirly belly. Evolves into Froggle!"),
+    FROGGLE("FROGGLE", 0xFF3AA8B8.toInt(), "WATER PULSE", "Tadblub evolved! A spotty jumping frog. SUPER: bubbles!"),
+    TORRENTOAD("TORRENTOAD", 0xFF2A6AA8.toInt(), "TIDAL WAVE", "The giant king toad! SUPER blasts water both ways!"),
+    DRAKLET("DRAKLET", 0xFF8A5AD8.toInt(), "DRAGON BREATH", "Purple baby dragon with tiny horns. Glides! Evolves into Drakoon!"),
+    DRAKOON("DRAKOON", 0xFF7A4AC8.toInt(), "DRAGON PULSE", "Draklet evolved! Spikes down its back. Glides. SUPER: dragon fire!"),
+    DRAKONIX("DRAKONIX", 0xFF6A3AB8.toInt(), "DRACO METEOR", "A mighty dragon with big wings! Glides. SUPER burns everything!"),
+    ACORNY("ACORNY", 0xFFA8783A.toInt(), "SEED BOMB", "Squirrel wearing an acorn hat. Evolves into Oakhorn!"),
+    OAKHORN("OAKHORN", 0xFF8A6A3A.toInt(), "WOOD HAMMER", "Acorny evolved! A forest deer with leafy antlers. SUPER: a giant beam!"),
+    VOLTBUG("VOLTBUG", 0xFF3A9AE8.toInt(), "BUG BUZZ", "Little beetle full of sparks. Evolves into Zapwing!"),
+    ZAPWING("ZAPWING", 0xFF2A7AD8.toInt(), "BUG BOLT", "Voltbug evolved! Buzzing wings. SUPER zaps every bad guy!"),
+    FROSTKIT("FROSTKIT", 0xFFB8E0F4.toInt(), "POWDER SNOW", "Icy kitten with a snowflake on its head. Evolves into Blizzacat!"),
+    BLIZZACAT("BLIZZACAT", 0xFF8AC8F0.toInt(), "BLIZZARD", "Frostkit evolved! A big ice cat with icicles. SUPER blasts both ways!"),
+    PEBBLO("PEBBLO", 0xFF9A8A7A.toInt(), "ROCK TOSS", "A tiny grumpy rock. Evolves into Boulderon!"),
+    BOULDERON("BOULDERON", 0xFF8A7A6A.toInt(), "ROCK SMASH", "Pebblo evolved! A huge rock giant. SUPER: a giant smash!"),
+    WISPY("WISPY", 0xFFB8A8F0.toInt(), "WILL-O-WISP", "Little ghost with a blue flame. Floats. Evolves into Lanterno!"),
+    LANTERNO("LANTERNO", 0xFF4A3A6A.toInt(), "SPOOKY GLOW", "Wispy evolved! A ghost living in a lantern. SUPER scares everyone!"),
+    CATERPUFF("CATERPUFF", 0xFF9AD84A.toInt(), "STRING SHOT", "Chubby caterpillar. Munch munch! Evolves into Flutterby!"),
+    FLUTTERBY("FLUTTERBY", 0xFF5A4A8A.toInt(), "SILVER WIND", "Caterpuff evolved! A pretty butterfly. Floats. SUPER heals!"),
+    TWINKLE("TWINKLE", 0xFFFFE0F0.toInt(), "STARDUST", "Tiny star baby. Floats. Evolves into Starfae!"),
+    STARFAE("STARFAE", 0xFFFFC8E8.toInt(), "MOONBLAST", "Twinkle evolved! A star fairy with wings. SUPER hits everyone AND heals!"),
+    COGGY("COGGY", 0xFFA8B0C0.toInt(), "GEAR GRIND", "A floating metal ball with a gear. Evolves into Geargant!"),
+    GEARGANT("GEARGANT", 0xFF8A94A8.toInt(), "IRON HEAD", "Coggy evolved! A big steel robot. SUPER: the biggest punch!"),
+    GUSTLING("GUSTLING", 0xFF8AC8F0.toInt(), "GUST", "Little sky bird. Evolves into Galehawk!"),
+    GALEHAWK("GALEHAWK", 0xFF3A6AC8.toInt(), "HURRICANE", "Gustling evolved! A fast hawk with big wings. SUPER: a giant wind!"),
+    TRIKEY("TRIKEY", 0xFF6AB89A.toInt(), "HORN ATTACK", "Baby dino with a frill and a horn. Evolves into Trikerator!"),
+    TRIKERATOR("TRIKERATOR", 0xFF4A9A7A.toInt(), "HORN DRILL", "Trikey evolved! Three big horns. SUPER: a giant charge!"),
+    SPARKLEEL("SPARKLEEL", 0xFF2A3A6A.toInt(), "DISCHARGE", "Glowing electric eel. SUPER zaps every bad guy on screen!"),
+    MAGMOLE("MAGMOLE", 0xFF5A3A2A.toInt(), "LAVA DIG", "A mole that digs through lava! SUPER: a ring of fire!"),
+    CHILLPUP("CHILLPUP", 0xFFC8E8F8.toInt(), "ICY WIND", "Snowy puppy in a warm red scarf. SUPER blasts both ways!"),
+    CORALLO("CORALLO", 0xFFFF8A9A.toInt(), "CORAL CANNON", "Pink coral friend from the sea. Floats. SUPER: bubbles!"),
+    BEETLEBOP("BEETLEBOP", 0xFF5A6A8A.toInt(), "MEGAHORN", "Steel beetle with a huge horn. SUPER: a mighty hit!"),
+    MUSHBOO("MUSHBOO", 0xFFF0E0C0.toInt(), "SPORE", "Shy mushroom kid with a spotty cap. SUPER: a giant beam!"),
+    HONEYBUN("HONEYBUN", 0xFFF4C83A.toInt(), "HONEY HEAL", "Round little bee. Bzzz! Floats. SUPER hits everyone AND heals!"),
+    SNAILO("SNAILO", 0xFF8AC8E8.toInt(), "SHELL SPLASH", "Slow and happy snail. Loves the rain. SUPER: bubbles!"),
+    BATTY("BATTY", 0xFF4A3A7A.toInt(), "SUPERSONIC", "Night bat with little fangs. Floats. SUPER scares every bad guy!"),
+    STORMWING("STORMWING", 0xFFF4D84A.toInt(), "THUNDER STORM", "Legendary thunder bird! SUPER zaps everything on screen!"),
+    SOLARION("SOLARION", 0xFFF4C86A.toInt(), "SUN BLAST", "Legendary sun lion with a fire mane! Glides. SUPER burns everything!"),
 }
 
 /** The first-form Pokemon whose moves (SUPER, speed, jumps) an evolution uses. */
@@ -175,10 +216,31 @@ val MON_LINES: List<List<Mon>> = listOf(
     listOf(Mon.EEVO, Mon.RIBBON),
     listOf(Mon.FLOPFISH, Mon.RAGEFISH),
     listOf(Mon.GIBBLE, Mon.SHARKCHOMP),
-) + NEW_SINGLES.map { listOf(it) } + POKEDEX_SINGLES.map { listOf(it) }
+    // The 40 newest
+    listOf(Mon.CINDERCUB, Mon.CINDERBEAR, Mon.VOLCABEAR),
+    listOf(Mon.TADBLUB, Mon.FROGGLE, Mon.TORRENTOAD),
+    listOf(Mon.DRAKLET, Mon.DRAKOON, Mon.DRAKONIX),
+    listOf(Mon.ACORNY, Mon.OAKHORN),
+    listOf(Mon.VOLTBUG, Mon.ZAPWING),
+    listOf(Mon.FROSTKIT, Mon.BLIZZACAT),
+    listOf(Mon.PEBBLO, Mon.BOULDERON),
+    listOf(Mon.WISPY, Mon.LANTERNO),
+    listOf(Mon.CATERPUFF, Mon.FLUTTERBY),
+    listOf(Mon.TWINKLE, Mon.STARFAE),
+    listOf(Mon.COGGY, Mon.GEARGANT),
+    listOf(Mon.GUSTLING, Mon.GALEHAWK),
+    listOf(Mon.TRIKEY, Mon.TRIKERATOR),
+) + NEW_SINGLES.map { listOf(it) } + POKEDEX_SINGLES.map { listOf(it) } + MORE_SINGLES.map { listOf(it) }
 
 /** The 50 newest Pokemon that don't evolve. */
 private val POKEDEX_SINGLES get() = listOf(Mon.LEAFLING, Mon.FLAMEBACK, Mon.CHOMPODILE, Mon.MUDKIPPY, Mon.GECKLE, Mon.CHIRPY, Mon.TURTLEAF, Mon.MONKEYFIRE, Mon.SNIVVY, Mon.TEPPY, Mon.OTTERSHELL, Mon.FENNEX, Mon.HOOTLET, Mon.LITTY, Mon.SEALY, Mon.GROOKY, Mon.BUNBUN, Mon.SOBBY, Mon.KITTLEAF, Mon.CROCO, Mon.DUCKLY, Mon.PICHI, Mon.PACHI, Mon.SHINXY, Mon.SHEEPZAP, Mon.MORPO, Mon.YAMPY, Mon.JOLTEO, Mon.FLAREO, Mon.VAPEO, Mon.LEAFEO, Mon.GLACEO, Mon.ESPEO, Mon.MARRY, Mon.WOOPY, Mon.TEDDO, Mon.MUNCHY, Mon.RIOLITTLE, Mon.ZORRY, Mon.AXEY, Mon.DEDDY, Mon.WOOLY, Mon.PECKY, Mon.PUPROCK, Mon.BONEKID, Mon.MEWLY, Mon.TOGEKISSY, Mon.DRATINY)
+
+/** The 40 newest: the ones that don't evolve (and the two legends). */
+private val MORE_SINGLES get() = listOf(Mon.SPARKLEEL, Mon.MAGMOLE, Mon.CHILLPUP, Mon.CORALLO, Mon.BEETLEBOP, Mon.MUSHBOO,
+    Mon.HONEYBUN, Mon.SNAILO, Mon.BATTY, Mon.STORMWING, Mon.SOLARION)
+
+/** The two newest legends (biggest of all). */
+val Mon.isNewLegend get() = this == Mon.STORMWING || this == Mon.SOLARION
 
 /** Newer Pokemon with no evolution. */
 private val NEW_SINGLES get() = listOf(Mon.NIGHTFUR, Mon.SNOOZER, Mon.PUFFLE, Mon.PSYQUACK, Mon.LUKO, Mon.SHURIKEN, Mon.MIMIC,
@@ -189,7 +251,15 @@ val NEW_MONS: List<Mon> = listOf(Mon.EEVO, Mon.PUFFLE, Mon.MEOWZER, Mon.FLOPFISH
     Mon.PENGI, Mon.EGGBABY, Mon.LUKO, Mon.FOXFIRE, Mon.SHURIKEN, Mon.NIGHTFUR, Mon.BLOBBY, Mon.DRAGOBUD, Mon.MIMIC,
     Mon.SEASONG, Mon.RAYZOR,
     // The 50 newest (one every 2 levels after the first 18)
-    Mon.LEAFLING, Mon.FLAMEBACK, Mon.CHOMPODILE, Mon.MUDKIPPY, Mon.GECKLE, Mon.CHIRPY, Mon.TURTLEAF, Mon.MONKEYFIRE, Mon.SNIVVY, Mon.TEPPY, Mon.OTTERSHELL, Mon.FENNEX, Mon.HOOTLET, Mon.LITTY, Mon.SEALY, Mon.GROOKY, Mon.BUNBUN, Mon.SOBBY, Mon.KITTLEAF, Mon.CROCO, Mon.DUCKLY, Mon.PICHI, Mon.PACHI, Mon.SHINXY, Mon.SHEEPZAP, Mon.MORPO, Mon.YAMPY, Mon.JOLTEO, Mon.FLAREO, Mon.VAPEO, Mon.LEAFEO, Mon.GLACEO, Mon.ESPEO, Mon.MARRY, Mon.WOOPY, Mon.TEDDO, Mon.MUNCHY, Mon.RIOLITTLE, Mon.GIBBLE, Mon.ZORRY, Mon.AXEY, Mon.DEDDY, Mon.WOOLY, Mon.PECKY, Mon.PUPROCK, Mon.BONEKID, Mon.MEWLY, Mon.TOGEKISSY, Mon.DRATINY)
+    Mon.LEAFLING, Mon.FLAMEBACK, Mon.CHOMPODILE, Mon.MUDKIPPY, Mon.GECKLE, Mon.CHIRPY, Mon.TURTLEAF, Mon.MONKEYFIRE, Mon.SNIVVY, Mon.TEPPY, Mon.OTTERSHELL, Mon.FENNEX, Mon.HOOTLET, Mon.LITTY, Mon.SEALY, Mon.GROOKY, Mon.BUNBUN, Mon.SOBBY, Mon.KITTLEAF, Mon.CROCO, Mon.DUCKLY, Mon.PICHI, Mon.PACHI, Mon.SHINXY, Mon.SHEEPZAP, Mon.MORPO, Mon.YAMPY, Mon.JOLTEO, Mon.FLAREO, Mon.VAPEO, Mon.LEAFEO, Mon.GLACEO, Mon.ESPEO, Mon.MARRY, Mon.WOOPY, Mon.TEDDO, Mon.MUNCHY, Mon.RIOLITTLE, Mon.GIBBLE, Mon.ZORRY, Mon.AXEY, Mon.DEDDY, Mon.WOOLY, Mon.PECKY, Mon.PUPROCK, Mon.BONEKID, Mon.MEWLY, Mon.TOGEKISSY, Mon.DRATINY,
+    // The 40 newest (their first forms, one every [LATE_MON_EVERY] levels after those)
+    Mon.ACORNY, Mon.TADBLUB, Mon.CINDERCUB, Mon.VOLTBUG, Mon.PEBBLO, Mon.WISPY, Mon.CATERPUFF, Mon.HONEYBUN, Mon.FROSTKIT,
+    Mon.TWINKLE, Mon.DRAKLET, Mon.MAGMOLE, Mon.CORALLO, Mon.COGGY, Mon.GUSTLING, Mon.SNAILO, Mon.TRIKEY, Mon.MUSHBOO,
+    Mon.BATTY, Mon.CHILLPUP, Mon.BEETLEBOP, Mon.SPARKLEEL, Mon.STORMWING, Mon.SOLARION)
+/** How many of [NEW_MONS] came before the 40 newest. */
+const val OLD_NEW_MONS = 68
+/** The 40 newest join one every this many levels beaten. */
+const val LATE_MON_EVERY = 4
 const val NEW_MON_EVERY = 3
 
 private val LINE_OF: Map<Mon, List<Mon>> by lazy { MON_LINES.flatMap { l -> l.map { it to l } }.toMap() }
@@ -207,6 +277,10 @@ val Mon.evolveLevel: Int get() = when (this) {
     Mon.PSYKO -> 6
     Mon.MEGAPUNCH, Mon.PHANTOM -> 7
     Mon.SHARKCHOMP -> 6
+    Mon.CINDERBEAR, Mon.FROGGLE, Mon.DRAKOON -> 4
+    Mon.VOLCABEAR, Mon.TORRENTOAD, Mon.DRAKONIX -> 7
+    Mon.OAKHORN, Mon.ZAPWING, Mon.BLIZZACAT, Mon.BOULDERON, Mon.LANTERNO, Mon.FLUTTERBY, Mon.STARFAE, Mon.GEARGANT,
+    Mon.GALEHAWK, Mon.TRIKERATOR -> 5
     Mon.MEGA_BLAZE, Mon.MEGA_HYDRO, Mon.MEGA_BLOOM -> 10
     else -> 1
 }

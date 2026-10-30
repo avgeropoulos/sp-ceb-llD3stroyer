@@ -1531,7 +1531,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     /** Levels to beat before one of the 20 newer Pokemon joins. */
     fun newMonNeeds(m: Mon): Int {
         val i = NEW_MONS.indexOf(m)
-        return if (i < 18) NEW_MON_EVERY * (i + 1) else 18 * NEW_MON_EVERY + 2 * (i - 17)
+        return when {
+            i < 18 -> NEW_MON_EVERY * (i + 1)
+            i < OLD_NEW_MONS -> 18 * NEW_MON_EVERY + 2 * (i - 17)
+            // The 40 newest: one every few levels after the last of those (spread over the later worlds).
+            else -> 18 * NEW_MON_EVERY + 2 * (OLD_NEW_MONS - 18) + LATE_MON_EVERY * (i - OLD_NEW_MONS + 1)
+        }
     }
 
     /** The Pokemon you can pick when starting a new game (evolutions come later, by levelling up). */
