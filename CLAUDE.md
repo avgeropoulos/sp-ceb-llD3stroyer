@@ -203,3 +203,39 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
   via `painted(gfx, color)` (PaintGfx). Harder evolving: `xpToNext` = 20 + 16 * lv, `monFloor` keeps old levels (`xpV`).
   Blocky no longer gets the hard hat or power shirt colors (`TeamArt.blocky`).
 
+
+## Team Up! Paper 3D (`teamup-paper/`, Godot 4.5.1)
+
+A separate 3D version (one level so far: 1-1 Meadow Mine) with two looks, 3D TOYS (default, `scripts/toys.gd`)
+and PAPER cutouts, switched on the title screen. It updates itself (UPDATE! button, `scripts/updater.gd`).
+See `teamup-paper/README.md`. Run the robot test in both looks (`-- paper`, `-- toy`).
+Three save files (`scripts/saves.gd`, JSON in user://saveN.json; ERASE keeps a .bak for UNDO ERASE) and a pause
+menu (RESUME / SAVE / SAVE & QUIT). Saves store the level as a diff from the generated one (`original_cells`),
+plus `coins_taken` / `foes_gone` by number (coin meta "i", foe meta "spawn"). `tests/save_check.gd` covers it.
+Partners (`scripts/mons.gd`): water SPLASHY/TIDAL/HYDRO, grass SEEDY/SPROUT/BLOOM, fire EMBER/SCORCH/BLAZE (evolve Lv 4, 8),
+electric SPARKY/ZAPPER (Lv 6). The partner hero is `heroes.mon` (`who == "mon"`, `line`, `stage`, `set_form`); XP per line in
+`mon_xp` (saved as `mon_xp`, partner as `mon`). PICK YOUR PARTNER (`state == "partner"`) comes after picking a file that isn't
+mid-level. Tests that press buttons must call functions (`_action`, `_thunderbolt`) because `_gather_input` overwrites flags.
+Screenshots of effects need `--fixed-fps 60` (software Vulkan is slow, so effects end between frames otherwise).
+Flow: title -> file -> (new: partner, 30 coins) -> HOME (`level.is_home`, `state == "home"`, `HomeBase`) -> rocket pad
+-> SKY MAP (`state == "map"`, `SkyMap`, steer the rocket, LAND) -> a world (`Boot.level`: meadow / frost / dunes, see
+`worlds.gd`) -> clear -> sky map over that island. Worlds unlock in order (`cleared_w`). Frost/Dunes are generated
+(`level.gd` `_generate_world`) with the same checkpoint/arena x as 1-1; new foes Penguin and Scorpion (`foes.gd`). Switching places reloads the scene via `main.go(place, slot)` + static `Boot` (tests follow `Boot.current`).
+Home = big world (`Level.HOME_SX/SY/SZ` 96x40x96; `level.sx/sy/sz` are per level, use them not LX/LY/LZ),
+orbit camera (`cam_yaw/cam_pitch`, `_update_home_camera`, `Actor.view_right/view_back`), Minecraft aiming
+(`HomeBase.aim_ray` voxel walk; HUD `world_taps` = tap to place, `hold_pos` = hold to break, `look_delta` = drag),
+FLY (`flying`, `_fly`). The save always carries `home` ({v:2, blocks = changes only, decor}); 1-1 keeps it in `home_saved`. New decor: add to `Decor.ITEMS` + `model()`,
+then render paper pictures (`tools/render_decor.gd`, `tools/sticker.py`). Sprint = full-tilt stick (`tilt_t`), Shift, R1/R2.
+Performance rules learned the hard way (each one was a visible freeze on the tablet):
+* Never change a font size from frame to frame (pop-in text): draw at a fixed size and scale with `draw_set_transform`.
+  New sizes make the tablet redraw every letter; that was the lag at game start, on SUPERs and at Krag Jr.
+* Every text size, picture and HUD shape is drawn once on the LOADING screen (`hud.gd` `_draw_loading`, `warm_sizes`,
+  `WARM_TEXT`); effects/shots/props are shown once there too (`main.gd` `_warm_up`). Add new ones there.
+* Effects never cast shadows and share materials (`fx.gd` `_glow`, `_no_shadows`); no real lights in effects.
+* Block changes only touch neighbours (`level.gd` `_refresh`), never `rebuild()` in play.
+* Lag finder: frames over 50 ms are listed with `note()` labels in the pause menu (bottom left).
+* Measure with the real renderer: `Performance.PIPELINE_COMPILATIONS_*` per frame and timing `Hud._draw`.
+Characters are original designs (drawn by `tools/gen_art.py`), not copies of the real-game characters.
+Builds with `.github/workflows/teamup-paper.yml` to the `teamup-paper-latest` release (`TeamUpPaper.apk`,
+package `com.roccoquest.teamup.paper`). Run the robot test before pushing:
+`godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/smoke.gd`.
