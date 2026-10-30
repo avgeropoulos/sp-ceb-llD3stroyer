@@ -733,6 +733,21 @@ def hill(name, col, col2, w=200, h=110):
     p.done(name, border=1)
 
 
+def star():
+    """The star you collect in the open worlds: a puffy yellow star with eyes."""
+    p = Pen(64, 64)
+    pts = []
+    for i in range(10):
+        a = -math.pi / 2 + math.tau * i / 10
+        r = 29 if i % 2 == 0 else 13
+        pts.append((32 + math.cos(a) * r, 34 + math.sin(a) * r))
+    p.poly(pts, rgb("#ffd23a"))
+    p.oval(32, 30, 9, 7, rgb("#fff3a0"), ink=False)
+    p.eye(27, 34, 2.4, 4.2)
+    p.eye(37, 34, 2.4, 4.2)
+    p.done("star", border=2)
+
+
 def sign():
     p = Pen(70, 70)
     p.rect(32, 30, 38, 68, rgb("#8a5a35"), r=1.5)
@@ -960,6 +975,7 @@ def main():
     cloud(); flag(); dennis()
     hill("hill_snow", "#eef4fc", "#ffffff", 240, 140); hill("hill_sand", "#e8c47e", "#f2d69a", 260, 120); hill("hill_a", "#7cc96a", "#9bde84"); hill("hill_b", "#5fb46a", "#82cc7d", 260, 150); hill("hill_c", "#a4d36f", "#c3e690", 160, 80)
     sign()
+    star()
     textures()
     build_textures()
     world_textures()

@@ -37,6 +37,7 @@ func _process(_dt: float) -> bool:
 			a.choose_partner("spark")
 			check(a.state == "play" and a.slot == 1, "choosing a partner should start the game")
 			# change things
+			expect_pos = a.level.start_pos + Vector3(2, 0, -1)   # flat ground near the start
 			a.level.set_cell(20, 4, 6, Level.AIR)
 			var c = a.coin_nodes[0]
 			a.coins_taken.append(int(c.get_meta("i")))
@@ -69,7 +70,7 @@ func _process(_dt: float) -> bool:
 			check(b.ores.iron == 3, "iron should be 3")
 			check(b.hearts == 3, "hearts should be 3")
 			check(b.human == "blocky" and b.leader().who == "blocky", "Blocky should be out")
-			check(b.leader().position.distance_to(expect_pos) < 0.5, "should be back at x=60, got %s" % b.leader().position)
+			check(b.leader().position.distance_to(expect_pos) < 0.5, "should be back where we saved, got %s" % b.leader().position)
 			check(b.checkpoint_hit, "checkpoint should be reached")
 			var gone := true
 			for foe in b.foes:
@@ -85,7 +86,7 @@ func _process(_dt: float) -> bool:
 			check(Saves.exists(1), "UNDO ERASE didn't bring the file back")
 			# finishing the level saves a fresh level but keeps coins and ores
 			b.boss_done = true
-			b.leader().position = Vector3(Level.FLAG_X, 5.1, 6.5)
+			b.leader().position = b.level.flag_pos + Vector3(0, 0.1, 0)
 		24:
 			check(b.state == "clear", "touching the flag should clear the level")
 			var d := Saves.read(1)

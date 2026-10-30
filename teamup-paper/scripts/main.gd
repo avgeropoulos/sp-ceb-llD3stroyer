@@ -67,6 +67,8 @@ var cleared := 0              # times this file finished the level
 
 # home base
 var home: HomeBase            # only at home
+var open_play: OpenPlay       # only in the open worlds (stars, gate, flag)
+var gate_open := false        # Krag Jr.'s gold gate (5 stars)
 var sky: SkyMap               # only on the sky map
 var cleared_w := {}           # world id -> times cleared
 var home_saved := {}          # the home from the save file (kept while you're in 1-1)
@@ -186,12 +188,19 @@ func _ready_home() -> void:
 
 
 func _ready_level() -> void:
+	if level.open:   # start at the start of the open world
+		heroes.rocco.position = level.start_pos
+		heroes.blocky.position = level.start_pos
+		heroes.mon.position = level.start_pos + Vector3(-1.4, 0.3, 0.6)
+		safe_pos = level.start_pos
+		checkpoint = level.start_pos
 	for si in level.spawns.size():
 		var s: Dictionary = level.spawns[si]
 		var f := Foe.new()
 		level.add_child(f)
 		f.init(level, s.kind, s.pos)
 		f.set_meta("spawn", si)
+		f.set_meta("camp", s.get("camp", false))
 		foes.append(f)
 		if s.kind == "kragjr":
 			boss = f
@@ -201,8 +210,13 @@ func _ready_level() -> void:
 		var c := level.prop("coin", level.coin_spots[ci] - Vector3(0, 0.35, 0), 0.7)
 		c.set_meta("i", ci)
 		coin_nodes.append(c)
-	level.prop("flag", Vector3(Level.CHECKPOINT_X, 5, 3.9), 3.2)
-	level.prop("flag", Vector3(Level.FLAG_X, 5, 3.9), 4.6)
+	if level.open:
+		open_play = OpenPlay.new()
+		level.add_child(open_play)
+		open_play.setup(self, level)
+	else:
+		level.prop("flag", Vector3(Level.CHECKPOINT_X, 5, 3.9), 3.2)
+		level.prop("flag", Vector3(Level.FLAG_X, 5, 3.9), 4.6)
 	_ready_common()
 	if Boot.place == "title":
 		play_music("theme")
@@ -365,10 +379,20 @@ func _turn_camera(dt: float) -> void:
 ## a wall is in the way. While building it looks a little over the shoulder.
 func _update_home_camera(dt: float) -> void:
 	var l := leader()
-	var dist := 6.5 if home.mode != "" else 8.0
+	var building: bool = home != null and home.mode != ""
+	var dist := 6.5 if building else 8.0
 	var want := l.position + Vector3(0, 1.4, 0)
-	if home.mode != "":
+	if building:
 		want += Actor.view_right * 0.9
+	if state == "title" or state == "loading" or state == "slots" or state == "partner":   # a slow turn around the start
+		cam_yaw += dt * 0.08
+		cam_pitch = 0.32
+		dist = 13.0
+		want = level.start_pos + Vector3(0, 2.0, 0)
+	if boss_on and not boss_done:
+		dist = 10.0
+		var b := boss.position if is_instance_valid(boss) else want
+		want = want.lerp(Vector3(b.x, want.y, b.z), 0.3)
 	cam_focus = cam_focus.lerp(want, 1 - exp(-dt * 10))
 	var back := Vector3(sin(cam_yaw) * cos(cam_pitch), sin(cam_pitch), cos(cam_yaw) * cos(cam_pitch))
 	var d := dist
@@ -771,7 +795,8 @@ func save_data(in_level := true) -> Dictionary:
 				cells.append([x, y, z, lc[i]])
 		d.merge({"control": control, "pos": _v2a(safe_pos), "checkpoint": _v2a(checkpoint),
 			"checkpoint_hit": checkpoint_hit, "boss_done": boss_done, "cells": cells,
-			"coins_taken": coins_taken.duplicate(), "foes_gone": foes_gone.duplicate()})
+			"coins_taken": coins_taken.duplicate(), "foes_gone": foes_gone.duplicate(),
+			"stars": open_play.got.keys() if open_play else []})
 	return d
 
 
@@ -820,6 +845,8 @@ func _apply_save(d: Dictionary) -> void:
 		if is_instance_valid(f) and int(f.get_meta("spawn")) in foes_gone:
 			f.remove()
 	boss_done = bool(d.get("boss_done", false))
+	if open_play:
+		open_play.restore(d.get("stars", []))
 	checkpoint_hit = bool(d.get("checkpoint_hit", false))
 	checkpoint = _a2v(d.get("checkpoint", [3, 5, 6.5]))
 	# who's out
@@ -1114,6 +1141,9 @@ func _step(dt: float) -> void:
 		return
 	play_t += dt
 	hurt_t = maxf(0, hurt_t - dt)
+	if level.open:
+		_turn_camera(dt)
+		hud.world_taps.clear()
 	super_charge = minf(1.0, super_charge + dt / SUPER_TIME)
 	if swap_pressed:
 		do_swap()
@@ -1131,7 +1161,7 @@ func _step(dt: float) -> void:
 # ------------------------------------------------------------------ the hero you steer
 func _update_leader(h: Hero, dt: float) -> void:
 	var dir := Vector3(move_vec.x, 0, move_vec.y)
-	if level.is_home:   # the stick goes where the camera looks
+	if level.open:   # the stick goes where the camera looks
 		dir = dir.rotated(Vector3.UP, cam_yaw)
 	if flying:
 		_fly(h, dir, dt)
@@ -1207,7 +1237,7 @@ func _update_leader(h: Hero, dt: float) -> void:
 	if bot or invincible:
 		pass
 	if boss_on and not boss_done:
-		h.position.x = clampf(h.position.x, Level.BOSS_X0 + 0.6, Level.BOSS_X1 + 0.4)
+		_keep_in_arena(h)
 	if h.ceiling_hit != null:
 		hit_block(h.ceiling_hit, 1, h)
 		sfx("bonk")
@@ -1247,6 +1277,15 @@ func _update_leader(h: Hero, dt: float) -> void:
 	h.squash = Vector2.ONE.lerp(h.squash, exp(-dt * 12))
 	h.animate(dt * (1.45 if sprinting and h.anim == "run" else 1.0), 10 if h.who != "blocky" or h.action_t <= 0 else 7)
 	h.update_shadow()
+
+
+func _keep_in_arena(h: Hero) -> void:
+	if level.open:
+		var ar := level.arena
+		h.position.x = clampf(h.position.x, ar.position.x + 1.4, ar.end.x - 0.4)
+		h.position.z = clampf(h.position.z, ar.position.y + 1.4, ar.end.y - 0.4)
+	else:
+		h.position.x = clampf(h.position.x, Level.BOSS_X0 + 0.6, Level.BOSS_X1 + 0.4)
 
 
 ## Flying at home: no gravity, UP (JUMP) to rise, DOWN to sink, faster sideways.
@@ -1401,7 +1440,7 @@ func hit_block(c: Vector3i, power: int, by: Hero) -> bool:
 	if t == Level.MYSTERY:
 		_open_mystery(c)
 		return true
-	if t == Level.BEDROCK or t == Level.USED or c.z < 3:
+	if t == Level.BEDROCK or t == Level.USED or (c.z < 3 and not level.open) or level.locked.has(c):
 		sfx("bonk", -4)
 		fx.burst(center, Color(0.8, 0.8, 0.8), 4, 2)
 		return true
@@ -1505,7 +1544,7 @@ func _update_follower(h: Hero, dt: float) -> void:
 	var l := leader()
 	var side := 1.0 if l.position.z < 6.5 else -1.0
 	var want := l.position + Vector3(-signf(l.facing.x if absf(l.facing.x) > 0.1 else 1.0) * 1.4, 0, 0.9 * side)
-	if level.is_home:   # in the open world: just behind and beside you
+	if level.open:   # in the open world: just behind and beside you
 		var f := Vector3(l.facing.x, 0, l.facing.z).normalized()
 		want = l.position - f * 1.4 + Vector3(-f.z, 0, f.x) * 0.9
 		want.y = h.position.y
@@ -1522,7 +1561,7 @@ func _update_follower(h: Hero, dt: float) -> void:
 		var v := flat.normalized() * sp
 		h.vel.x = move_toward(h.vel.x, v.x, 40 * dt)
 		h.vel.z = move_toward(h.vel.z, v.y, 40 * dt)
-		if level.is_home:
+		if level.open:
 			h.facing = Vector3(v.x, 0, v.y).normalized()
 		elif absf(v.x) > 0.3:
 			h.facing = Vector3(signf(v.x), 0, 0)
@@ -1536,7 +1575,7 @@ func _update_follower(h: Hero, dt: float) -> void:
 	h.vel.y = maxf(h.vel.y - Actor.GRAVITY * dt, -26)
 	h.move(dt)
 	if boss_on and not boss_done:
-		h.position.x = clampf(h.position.x, Level.BOSS_X0 + 0.6, Level.BOSS_X1 + 0.4)
+		_keep_in_arena(h)
 	h.action_t = maxf(0, h.action_t - dt)
 	# the partner attacks a nearby bad guy every few seconds when it's the helper
 	if h.who == "mon":
@@ -1640,6 +1679,10 @@ func _update_shots(dt: float) -> void:
 				v.y = 6.0 if sh.bounces == 0 else 0.0
 				sh.bounces += 1
 				v.x = signf(l.position.x - nxt.x) * 3.5
+				if level.open:
+					var to := Vector3(l.position.x - nxt.x, 0, l.position.z - nxt.z).normalized() * 3.5
+					v.x = to.x
+					v.z = to.z
 			if level.solid(floori(nxt.x + signf(v.x) * 0.4), floori(nxt.y), floori(nxt.z)):
 				v.x = -v.x
 			s.position = nxt
@@ -1716,6 +1759,12 @@ func hurt_hero(from: Vector3) -> void:
 	l.flash_t = 1.4
 	var push := Vector3(l.position.x - from.x, 0, 0)
 	l.vel = Vector3(signf(push.x if push.x != 0 else -l.facing.x) * 6, 7, 0)
+	if level.open:   # pushed straight away from what hit you
+		var away := Vector3(l.position.x - from.x, 0, l.position.z - from.z)
+		if away.length() < 0.05:
+			away = -l.facing
+		away = away.normalized() * 6
+		l.vel = Vector3(away.x, 7, away.z)
 	l.slam = ""
 	l.long_t = 0
 	sfx("hurt")
@@ -1776,6 +1825,8 @@ func start_boss(f: Foe) -> void:
 	note("Krag Jr. arrives")
 	boss_on = true
 	checkpoint = Vector3(Level.BOSS_X0 + 2, 5, 6.5)
+	if level.open:   # just inside the castle gate
+		checkpoint = Vector3(level.arena.get_center().x + 0.5, level.arena_y, level.arena.end.y - 2.5)
 	hud.say("KRAG JR.!", "Stomp him when he swoops down!", 2.8)
 	play_music("boss")
 	sfx("alert")
@@ -1784,6 +1835,9 @@ func start_boss(f: Foe) -> void:
 # ------------------------------------------------------------------ checkpoint, flag, camera
 func _update_progress(dt: float) -> void:
 	var l := leader()
+	if level.open:
+		open_play.step(dt)
+		return
 	if not checkpoint_hit and l.position.x > Level.CHECKPOINT_X:
 		checkpoint_hit = true
 		checkpoint = Vector3(Level.CHECKPOINT_X + 0.5, 5, 6.5)
@@ -1792,20 +1846,28 @@ func _update_progress(dt: float) -> void:
 		safe_pos = checkpoint
 		save_game()
 	if boss_done and l.position.x > Level.FLAG_X - 0.4:
-		state = "clear"
-		clear_t = 0
-		cleared += 1
-		cleared_w[level.world] = int(cleared_w.get(level.world, 0)) + 1
-		gain_xp(Mons.XP_CLEAR)
-		save_game(false)   # keeps coins and ores; the level starts fresh next time
-		play_music("fanfare", false)
-		sfx("clear")
-		speak("Wahoo! Team up!", "rocco")
-		for i in 8:
-			fx.burst(Vector3(Level.FLAG_X + randf_range(-2, 2), 8 + randf_range(0, 3), 4), Color.from_hsv(randf(), 0.6, 1), 16, 6, 6)
-	if not dennis_done and play_t > 1.2:
+		clear_world()
+	if not dennis_done and play_t > 1.2 and not level.open:
 		dennis_done = true
 		_dennis()
+
+
+## Touched the flag: the world is done.
+func clear_world() -> void:
+	if state == "clear":
+		return
+	state = "clear"
+	clear_t = 0
+	cleared += 1
+	cleared_w[level.world] = int(cleared_w.get(level.world, 0)) + 1
+	gain_xp(Mons.XP_CLEAR)
+	save_game(false)   # keeps coins and ores; the level starts fresh next time
+	play_music("fanfare", false)
+	sfx("clear")
+	speak("Wahoo! Team up!", "rocco")
+	var at := leader().position
+	for i in 8:
+		fx.burst(at + Vector3(randf_range(-2, 2), 3 + randf_range(0, 3), randf_range(-2, 2)), Color.from_hsv(randf(), 0.6, 1), 16, 6, 6)
 
 
 func _dennis() -> void:
@@ -1823,7 +1885,7 @@ func _dennis() -> void:
 func _update_camera(dt: float) -> void:
 	if sky:
 		return
-	if level.is_home and home:
+	if level.open:
 		_update_home_camera(dt)
 		return
 	var l := leader()
@@ -1845,6 +1907,20 @@ func _update_camera(dt: float) -> void:
 # ------------------------------------------------------------------ test bot
 func _bot_input() -> void:
 	var l := leader()
+	if level.open:   # head for the nearest challenge, jumping over anything in the way
+		var to: Vector3 = level.objectives[int(play_t / 12) % 4].pos   # camp, tower, cave, sky in turn
+		var d := Vector3(to.x - l.position.x, 0, to.z - l.position.z)
+		cam_yaw = 0
+		move_vec = Vector2(d.x, d.z).normalized() if d.length() > 1 else Vector2(sin(play_t), cos(play_t))
+		jump_held = true
+		var ahead := l.position + Vector3(move_vec.x, 0, move_vec.y) * 0.8
+		if l.on_floor and (level.solid(floori(ahead.x), floori(l.position.y + 0.4), floori(ahead.z)) or l.walls_hit):
+			jump_pressed = true
+		elif not l.on_floor and l.vel.y < 1.0 and l.walls_hit and l.jumps_left > 0:
+			jump_pressed = true
+		if super_charge >= 1.0:
+			super_pressed = true
+		return
 	move_vec = Vector2(1, clampf((6.5 - l.position.z), -1, 1))
 	jump_held = true
 	var ahead_x := l.position.x + 0.9

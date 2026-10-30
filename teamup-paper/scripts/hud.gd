@@ -132,7 +132,7 @@ func _input(event: InputEvent) -> void:
 				stick_id = e.index
 				stick_base = e.position
 				stick = Vector2.ZERO
-			elif game.state == "home" and look_id == -1:
+			elif (game.state == "home" or (game.state == "play" and game.level.open)) and look_id == -1:
 				look_id = e.index
 				look_last = e.position
 				look_start = e.position
@@ -173,7 +173,7 @@ func _process(dt: float) -> void:
 	if look_id >= 0 and not look_moved and hold_pos.x < 0 and Time.get_ticks_msec() - look_t0 > 420 \
 			and game and game.home and game.home.mode != "":
 		hold_pos = look_last   # held still on a block: start breaking it
-	if game and game.state != "home":
+	if game and game.state != "home" and not (game.state == "play" and game.level.open):
 		look_id = -1
 		hold_pos = Vector2(-1, -1)
 	title_t += dt
@@ -257,6 +257,8 @@ func _draw_hud() -> void:
 	var xp: int = game.mon_xp[game.mon_line]
 	draw_rect(Rect2(x + 70, py + 36, 170, 12), Color(0.1, 0.1, 0.15))
 	draw_rect(Rect2(x + 70, py + 36, 170 * Mons.progress(xp), 12), Color("54c8ff"))
+	if game.open_play and game.state != "title":
+		_draw_stars()
 	# boss bar
 	var boss = game.boss
 	if game.boss_on and boss != null and is_instance_valid(boss) and boss.dying < 0:
@@ -265,6 +267,35 @@ func _draw_hud() -> void:
 		txt("KRAG JR.", Vector2(0, 46), 34, Color("ff8c2a"), HORIZONTAL_ALIGNMENT_CENTER, size.x)
 		draw_rect(Rect2(bx - 4, 56, w + 8, 24), Color(0.13, 0.09, 0.18))
 		draw_rect(Rect2(bx, 60, w * float(boss.hp) / boss.max_hp, 16), Color("ff4f6d"))
+
+
+## Open worlds: the 5 stars at the top (gold = found), and a hint for the nearest challenge.
+func _draw_stars() -> void:
+	var op = game.open_play
+	var n: int = op.count()
+	var w := 5 * 58.0
+	var x0 := (size.x - w) * 0.5
+	for i in OpenPlay.STARS_NEEDED:
+		var c := Vector2(x0 + 29 + i * 58, 40)
+		_star_shape(c, 25, Color(0.1, 0.08, 0.2, 0.8))
+		_star_shape(c, 20, Color("ffd23a") if i < n else Color(1, 1, 1, 0.25))
+	if game.boss_on or game.boss_done:
+		return
+	var o: Dictionary = op.nearest()
+	if not o.is_empty():
+		txt(o.name + ":  " + o.hint, Vector2(0, 98), 26, Color("fff2a8"), HORIZONTAL_ALIGNMENT_CENTER, size.x, 7)
+	elif n >= OpenPlay.STARS_NEEDED:
+		txt("The gold gate is open! Go to Krag Jr.'s castle!", Vector2(0, 98), 26, Color("fff2a8"), HORIZONTAL_ALIGNMENT_CENTER, size.x, 7)
+	else:
+		txt("Follow the floating stars to find the challenges", Vector2(0, 98), 22, Color(1, 1, 1, 0.75), HORIZONTAL_ALIGNMENT_CENTER, size.x, 6)
+
+
+func _star_shape(c: Vector2, r: float, col: Color) -> void:
+	var pts := PackedVector2Array()
+	for i in 10:
+		var a := -PI / 2 + TAU * i / 10.0
+		pts.append(c + Vector2(cos(a), sin(a)) * (r if i % 2 == 0 else r * 0.45))
+	draw_colored_polygon(pts, col)
 
 
 func _draw_controls() -> void:

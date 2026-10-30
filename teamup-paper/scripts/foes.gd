@@ -15,6 +15,8 @@ var stompable := true
 var is_boss := false
 var safe_t := 0.0
 var alert: Label3D
+var heading := Vector3.RIGHT  # open worlds: which way it's walking (any direction)
+var turn_t := 0.0
 
 
 func init(lv: Level, k: String, pos: Vector3) -> void:
@@ -100,6 +102,14 @@ func tick(dt: float, game) -> void:
 		animate(dt)
 		return
 	var lead: Actor = game.leader()
+	if level.open:
+		_tick_open(dt, game, lead)
+		if position.y < -6:
+			remove()
+			return
+		animate(dt, 5 if kind != "kragjr" else 6)
+		update_shadow()
+		return
 	match kind:
 		"grumbler":
 			_grumbler(dt, game, lead)
@@ -116,6 +126,162 @@ func tick(dt: float, game) -> void:
 		return
 	animate(dt, 5 if kind != "kragjr" else 6)
 	update_shadow()
+
+
+# ------------------------------------------------------------------ open worlds: walk any way
+func _tick_open(dt: float, game, lead: Actor) -> void:
+	var to := lead.position - position
+	var flat := Vector3(to.x, 0, to.z)
+	var dist := flat.length()
+	if kind != "kragjr" and dist > 40:
+		return   # far away: sleep (saves time on the tablet)
+	state_t += dt
+	match kind:
+		"grumbler":
+			_wander(dt, 1.7)
+			squash = Vector2(1.0 + sin(t * 10) * 0.04, 1.0 - sin(t * 10) * 0.04)
+		"penguin", "scorpion":
+			var near := 7.0 if kind == "penguin" else 3.8
+			var fast := 7.5 if kind == "penguin" else 8.0
+			match state:
+				"idle":
+					play("walk")
+					_wander(dt, 1.2 if kind == "penguin" else 1.4)
+					if dist < near and absf(to.y) < 1.6 and state_t > 1.4:
+						state = "ready"
+						state_t = 0
+						heading = flat.normalized()
+						alert.visible = true
+						game.sfx("alert")
+				"ready":
+					play("aim" if kind == "scorpion" else "walk")
+					facing = heading
+					_walk(dt, 0.0)
+					if state_t > (0.45 if kind == "penguin" else 0.5):
+						alert.visible = false
+						state = "go"
+						state_t = 0
+				"go":
+					if kind == "penguin":
+						play("slide")
+					_walk(dt, fast)
+					if state_t > (1.1 if kind == "penguin" else 0.35) or walls_hit:
+						state = "idle"
+						state_t = 0
+		"skelly":
+			_walk(dt, 0.0)
+			if dist > 0.1:
+				facing = flat.normalized()
+			if dist > 11 or absf(to.y) > 6:
+				state = "idle"
+			match state:
+				"idle":
+					play("walk")
+					if dist < 10 and state_t > 1.6:
+						state = "aim"
+						state_t = 0
+						alert.visible = true
+						game.sfx("alert")
+				"aim":
+					play("aim")
+					if state_t > 0.85:
+						alert.visible = false
+						var from := position + Vector3(0, 1.0, 0) + facing * 0.4
+						var aim := lead.position + Vector3(0, lead.height * 0.5, 0)
+						game.spawn_shot("arrow", from, (aim - from).normalized() * 9.0, self)
+						game.sfx("arrow")
+						state = "idle"
+						state_t = -0.6
+		"kragjr":
+			_kragjr_open(dt, game, lead)
+
+
+## Walks along `heading` at `speed` (turns at walls and cliff edges, wanders back home).
+func _walk(dt: float, speed: float) -> void:
+	vel.x = heading.x * speed
+	vel.z = heading.z * speed
+	vel.y -= GRAVITY * dt
+	move(dt)
+	if speed > 0 and on_floor:
+		var ahead := position + heading * (hw + 0.3)
+		if not level.solid(floori(ahead.x), floori(position.y - 0.5), floori(ahead.z)) and not level.solid(floori(ahead.x), floori(position.y - 1.5), floori(ahead.z)):
+			heading = -heading   # don't walk off a cliff
+	if walls_hit and speed > 0:
+		heading = heading.rotated(Vector3.UP, PI * randf_range(0.6, 1.4))
+	if heading.length() > 0.1:
+		facing = heading
+
+
+func _wander(dt: float, speed: float) -> void:
+	turn_t -= dt
+	if turn_t <= 0:
+		turn_t = randf_range(1.5, 3.5)
+		var back := Vector3(home.x - position.x, 0, home.z - position.z)
+		if back.length() > 7:
+			heading = back.normalized()
+		else:
+			heading = Vector3.RIGHT.rotated(Vector3.UP, randf() * TAU)
+	_walk(dt, speed)
+
+
+## Krag Jr. in his castle: circles above the middle, throws spike balls at you,
+## then shouts "!" and dives where you were standing.
+func _kragjr_open(dt: float, game, lead: Actor) -> void:
+	var ar: Rect2 = level.arena
+	var mid := Vector3(ar.get_center().x + 0.5, level.arena_y, ar.get_center().y + 0.5)
+	var ground := float(level.arena_y)
+	match state:
+		"sleep":
+			position.y = ground + 4.5 + sin(t * 2) * 0.3
+			if ar.grow(-1).has_point(Vector2(lead.position.x, lead.position.z)) and game.gate_open:
+				state = "hover"
+				state_t = 0
+				game.start_boss(self)
+		"hover":
+			play("fly")
+			var want := mid + Vector3(sin(t * 0.7) * 9.0, 4.6 + sin(t * 2.2) * 0.4, cos(t * 0.5) * 5.0)
+			position = position.lerp(want, 1 - exp(-dt * 2.0))
+			var f := Vector3(lead.position.x - position.x, 0, lead.position.z - position.z)
+			if f.length() > 0.1:
+				facing = f.normalized()
+			cool -= dt
+			if cool <= 0:
+				cool = 2.4 if hp > max_hp / 2 else 1.6
+				game.spawn_shot("spikeball", position + Vector3(0, 0.2, 0), facing * 3.0 + Vector3(0, 2, 0), self)
+			if state_t > (4.0 if hp > max_hp / 2 else 2.8):
+				state = "warn"
+				state_t = 0
+				alert.visible = true
+				game.sfx("alert")
+		"warn":
+			play("angry")
+			sprite.position.x = sin(t * 60) * 0.06
+			if state_t > 0.8:
+				sprite.position.x = 0
+				alert.visible = false
+				target = lead.position
+				state = "dive"
+				state_t = 0
+		"dive":
+			var to := target + Vector3(0, 0.2, 0)
+			position = position.move_toward(to, dt * 12.0)
+			if position.distance_to(to) < 0.2 or state_t > 1.4:
+				state = "low"
+				state_t = 0
+		"low":
+			if state_t > 0.9:
+				state = "rise"
+				state_t = 0
+		"rise":
+			play("fly")
+			position.y += dt * 4.5
+			if position.y > ground + 4.4:
+				state = "hover"
+				state_t = 0
+	if flash_t > 0:
+		play("hurt")
+	elif state != "warn":
+		play("fly")
 
 
 ## Penguin: waddles about; when you're close it shouts "!" and belly-slides at you.

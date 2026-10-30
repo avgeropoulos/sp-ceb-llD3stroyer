@@ -7,6 +7,8 @@ var frame := 0
 var phase := "setup"
 var phase_frames := 0
 var failed := ""
+var start_p := Vector3.ZERO
+var far := 0.0
 
 
 func _initialize() -> void:
@@ -41,7 +43,18 @@ func _process(_dt: float) -> bool:
 			main.start_game()
 			_next("run")
 		"run":
-			if main.boss_on:
+			if main.level.open:   # open worlds: roam for a while (tests/open_check.gd plays them to the end)
+				if phase_frames == 1:
+					start_p = main.leader().position
+				far = maxf(far, main.leader().position.distance_to(start_p))
+				if phase_frames > 60 * 25:
+					var moved: float = far
+					print("roamed %.1f blocks, %d coins, %d bad guys, stars %d" % [moved, main.coins, main.beaten, main.open_play.count()])
+					if moved < 12:
+						fail("the robot didn't get anywhere in the open world")
+					else:
+						_next("done")
+			elif main.boss_on:
 				print("reached Krag Jr. after %.1f s at x=%.1f" % [phase_frames / 60.0, main.leader().position.x])
 				_next("boss")
 			elif phase_frames > 60 * 150:

@@ -167,7 +167,7 @@ func move(dt: float) -> void:
 		vel.x = 0
 		walls_hit = true
 	p.z += vel.z * dt
-	if not level.is_home:
+	if not level.open:
 		p.z = clampf(p.z, Level.WALK_Z0, Level.WALK_Z1)
 	hit = level.box_hit(p, hw, height)
 	if hit != null:

@@ -227,7 +227,7 @@ func _process(_dt: float) -> bool:
 				check(Saves.read(1).get("level", "") == "meadow", "a level save should say which world")
 				g.state = "play"
 				g.boss_done = true
-				g.leader().position = Vector3(Level.FLAG_X, 5.1, 6.5)
+				g.leader().position = g.level.flag_pos + Vector3(0, 0.1, 0)
 				step = 4
 		4:
 			if ready_in("clear"):

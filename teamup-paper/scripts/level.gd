@@ -59,6 +59,18 @@ var sy := LY
 var sz := LZ
 var is_home := false
 var world := "meadow"         # which world this level is (see worlds.gd)
+var open := false             # a big open world (home or an open level): turning camera, walk anywhere
+var hmap := PackedInt32Array() # open worlds: ground height for each (x, z)
+var start_pos := Vector3(4, 5, 6.8)
+var arena := Rect2()          # open worlds: Krag Jr.'s castle (x, z)
+var arena_y := 6              # its floor
+var flag_pos := Vector3.ZERO
+var gate: Array[Vector3i] = []   # the gold gate that 5 stars open
+var locked := {}              # Vector3i -> true: blocks that can't be mined (castle walls)
+var objectives: Array = []    # the 5 star challenges: {id, name, hint, pos}
+var keep_out: Array = []      # [center, radius]: the challenges' space
+var step_tops: Array = []     # SKY STEPS: where you stand on each step (for the test robot)
+var tower_tops: Array = []    # TALL TOWER: the same for the stairs
 var top_block := GRASS        # what the ground is made of here
 var sub_block := DIRT
 
@@ -92,8 +104,8 @@ func set_cell(x: int, y: int, z: int, t: int) -> void:
 func solid(x: int, y: int, z: int) -> bool:
 	if x < 0 or x >= width:
 		return y < sy + 6   # invisible walls at both ends of the level
-	if is_home and (z < 0 or z >= sz):
-		return y < sy + 6   # and all round the home
+	if open and (z < 0 or z >= sz):
+		return y < sy + 6   # and all round an open world
 	if y < 0 or y >= sy or z < 0 or z >= sz:
 		return false
 	return cells[idx(x, y, z)] != AIR
@@ -128,6 +140,9 @@ func ground_below(x: float, z: float, y: float) -> float:
 # ------------------------------------------------------------------ building the level
 func generate(w: String = "meadow") -> void:
 	world = w
+	if w in OPEN_WORLDS:
+		generate_open(w)
+		return
 	if w != "meadow":
 		_generate_world(w)
 		return
@@ -358,6 +373,7 @@ func generate_empty() -> void:
 ## chop (or keep), and the rocket pad. The old 44 x 10 plot sits in the middle.
 func generate_home() -> void:
 	is_home = true
+	open = true
 	sx = HOME_SX
 	sy = HOME_SY
 	sz = HOME_SZ
@@ -396,11 +412,11 @@ func generate_home() -> void:
 
 
 ## A Minecraft-style tree: a log trunk with a blob of leaves.
-func _block_tree(x: int, z: int) -> void:
+func _block_tree(x: int, z: int, base := 5, snowy := false) -> void:
 	var h := rng.randi_range(4, 6)
-	for y in range(5, 5 + h):
+	for y in range(base, base + h):
 		cells[idx(x, y, z)] = LOG
-	var top := 5 + h
+	var top := base + h
 	for dy in range(-2, 2):
 		var r := 2 if dy < 0 else 1
 		for dx in range(-r, r + 1):
@@ -408,13 +424,13 @@ func _block_tree(x: int, z: int) -> void:
 				if absi(dx) == r and absi(dz) == r and (dy == 1 or rng.randf() < 0.5):
 					continue
 				if inside(x + dx, top + dy, z + dz) and cells[idx(x + dx, top + dy, z + dz)] == AIR:
-					cells[idx(x + dx, top + dy, z + dz)] = LEAVES
+					cells[idx(x + dx, top + dy, z + dz)] = SNOW if snowy and dy == 1 else LEAVES
 
 
 ## Around the home: grass going off to the hills, trees, far hills and clouds.
-func _home_scenery() -> void:
+func _home_scenery(ground_tex := "grass_top", trees: Array = ["tree_a", "tree_b", "tree_c"], hills: Array = ["hill_a", "hill_b", "hill_c"]) -> void:
 	var m := StandardMaterial3D.new()
-	m.albedo_texture = load("res://art/t_grass_top.png")
+	m.albedo_texture = load("res://art/t_%s.png" % ground_tex)
 	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
 	m.uv1_triplanar = true
 	m.uv1_scale = Vector3(1, 1, 1)
@@ -430,7 +446,6 @@ func _home_scenery() -> void:
 		q.position = Vector3(r.position.x + r.size.x * 0.5, 5.0, r.position.y + r.size.y * 0.5)
 		add_child(q)
 	# a ring of trees just outside the edge, so the edge looks like a forest
-	var trees := ["tree_a", "tree_b", "tree_c"]
 	var a := 0.0
 	for side in 4:
 		var t := -2.0
@@ -442,13 +457,12 @@ func _home_scenery() -> void:
 				1: p = Vector3(t, 5, sz + out)
 				2: p = Vector3(-out, 5, t)
 				_: p = Vector3(sx + out, 5, t)
-			prop(trees[rng.randi() % 3], p, rng.randf_range(3.6, 5.0), false, rng.randf() < 0.5)
+			prop(trees[rng.randi() % trees.size()], p, rng.randf_range(3.6, 5.0), false, rng.randf() < 0.5)
 			t += rng.randf_range(3.2, 5.5)
-	var hills := ["hill_a", "hill_b", "hill_c"]
 	var c := Vector3(sx * 0.5, 0, sz * 0.5)
 	while a < TAU:
 		var d := rng.randf_range(100, 130)
-		var hs := prop(hills[rng.randi() % 3], c + Vector3(cos(a) * d, 2.5, sin(a) * d), rng.randf_range(16, 26))
+		var hs := prop(hills[rng.randi() % hills.size()], c + Vector3(cos(a) * d, 2.5, sin(a) * d), rng.randf_range(16, 26))
 		if hs is Sprite3D:
 			hs.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
 		a += rng.randf_range(0.18, 0.3)
@@ -458,6 +472,303 @@ func _home_scenery() -> void:
 			cl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	for sg in signs:
 		_sign(sg)
+
+
+# ------------------------------------------------------------------ open worlds
+const OPEN_WORLDS := ["meadow", "frost", "dunes"]
+const OPEN_S := 96
+const STAR_COINS := 40        # coins to collect for the COIN HUNT star
+
+
+func ground_at(x: int, z: int) -> int:
+	if x < 0 or z < 0 or x >= sx or z >= sz:
+		return 0
+	return hmap[x + z * sx]
+
+
+## A big open world: rolling hills, trees, five star challenges and Krag Jr.'s castle.
+## Frosty Peaks is a mirror image of the layout so it feels like a new place.
+func generate_open(w: String) -> void:
+	world = w
+	open = true
+	sx = OPEN_S
+	sy = 40
+	sz = OPEN_S
+	width = sx
+	rng.seed = {"meadow": 2026, "frost": 4242, "dunes": 9001}[w]
+	top_block = {"meadow": GRASS, "frost": SNOW, "dunes": SAND}[w]
+	sub_block = {"meadow": DIRT, "frost": DIRT, "dunes": SANDSTONE}[w]
+	var theme: int = {"meadow": PLANKS, "frost": SNOW, "dunes": SANDSTONE}[w]
+	var foe2: String = {"meadow": "grumbler", "frost": "penguin", "dunes": "scorpion"}[w]
+	var mirror := w == "frost"
+	var P := func(x: int, z: int) -> Vector2i: return Vector2i(sx - 1 - x if mirror else x, z)
+	var start: Vector2i = P.call(48, 86)
+	var camp: Vector2i = P.call(18, 64)
+	var tower: Vector2i = P.call(77, 62)
+	var cave: Vector2i = P.call(16, 32)
+	var steps: Vector2i = P.call(78, 36)
+	arena = Rect2(30, 3, 36, 23)
+	arena_y = 6
+	cells.resize(sx * sy * sz)
+	cells.fill(AIR)
+	heights.resize(sx)
+	heights.fill(6)
+	hmap.resize(sx * sz)
+	var n := FastNoiseLite.new()
+	n.seed = rng.seed
+	n.frequency = 0.03
+	n.fractal_octaves = 3
+	# flat places: [center, radius, height]; nothing random (trees, rocks, bad guys) grows there
+	var flats := [[start, 9, 6], [camp, 9, 6], [tower, 6, 6], [steps, 10, 6], [cave, 12, 6]]
+	keep_out = []
+	for fl in flats:
+		keep_out.append([Vector2(fl[0]), float(fl[1]) + 3.0])
+	for z in sz:
+		for x in sx:
+			var h := 6.0 + n.get_noise_2d(x, z) * 6.0
+			if w == "frost":
+				h += 1.0 + absf(n.get_noise_2d(x * 0.5 + 300, z * 0.5)) * 4.0   # taller, peaky
+			for f in flats:
+				var d := Vector2(x - f[0].x, z - f[0].y).length()
+				if d < f[1]:
+					h = f[2]
+				elif d < f[1] + 6:
+					h = lerpf(f[2], h, (d - f[1]) / 6.0)
+			# the castle sits on flat ground too
+			var ad := maxf(maxf(arena.position.x - 4 - x, x - arena.end.x - 4), maxf(arena.position.y - 4 - z, z - arena.end.y - 4))
+			if ad < 0:
+				h = arena_y
+			elif ad < 6:
+				h = lerpf(arena_y, h, ad / 6.0)
+			hmap[x + z * sx] = clampi(int(round(h)), 3, 14)
+	# the secret cave is inside a big hill
+	for z in sz:
+		for x in sx:
+			var d := Vector2(x - cave.x, z - cave.y).length()
+			if d < 9:
+				hmap[x + z * sx] = maxi(hmap[x + z * sx], 6 + int(round(cos(d / 9.0 * PI * 0.5) * 9)))
+	# fill the ground
+	for z in sz:
+		for x in sx:
+			var h := hmap[x + z * sx]
+			cells[idx(x, 0, z)] = BEDROCK
+			for y in range(1, h):
+				var t := STONE
+				if y >= h - 2:
+					t = sub_block
+				if y == h - 1:
+					t = top_block
+					if w == "frost" and h <= 4:
+						t = ICE   # frozen ponds in the low spots
+				if t == STONE:
+					t = _ore(x, y)
+				cells[idx(x, y, z)] = t
+	_castle(theme)
+	_camp(camp, foe2)
+	_tower(tower, theme)
+	_cave(cave)
+	_sky_steps(steps, theme)
+	# coins: trails from the start to every challenge, and the COIN HUNT star at the start
+	for to in [camp, tower, cave, steps, Vector2i(int(arena.get_center().x), int(arena.end.y) + 3)]:
+		var a := Vector2(start)
+		var b := Vector2(to)
+		var k := 3.0
+		while k < a.distance_to(b) - 4:
+			var q := a.lerp(b, k / a.distance_to(b))
+			var g := ground_at(int(q.x), int(q.y))
+			if get_cell(int(q.x), g, int(q.y)) == AIR and get_cell(int(q.x), g + 1, int(q.y)) == AIR:
+				coin_spots.append(Vector3(int(q.x) + 0.5, g + 1.0, int(q.y) + 0.5))
+			k += 3.2
+	objectives.append({"id": "coins", "name": "COIN HUNT", "hint": "Collect %d coins in this world!" % STAR_COINS,
+		"pos": Vector3(start.x + 3.5, 7.0, start.y - 2.5)})
+	# ? blocks to bonk near the start
+	for i in 4:
+		set_cell(start.x - 3 + i * 2, 9, start.y - 6, MYSTERY)
+	# ore rocks to mine
+	for i in 7:
+		var o := _free_spot(10)
+		if o.x < 0:
+			continue
+		var g := ground_at(o.x, o.y)
+		for dx in 2:
+			for dz in 2:
+				for dy in 2:
+					set_cell(o.x + dx, g + dy, o.y + dz, [IRON, GOLD, STONE, DIAMOND, IRON][rng.randi() % 5] if rng.randf() < 0.6 else STONE)
+	# trees
+	for i in {"meadow": 34, "frost": 26, "dunes": 0}[w]:
+		var o := _free_spot(4)
+		if o.x < 3 or o.y < 3 or o.x > sx - 4 or o.y > sz - 4:
+			continue
+		var g := ground_at(o.x, o.y)
+		if get_cell(o.x, g, o.y) == AIR and get_cell(o.x, g - 1, o.y) != ICE:
+			_block_tree(o.x, o.y, g, w == "frost")
+	if w == "dunes":   # sandstone pillars and cacti
+		for i in 14:
+			var o := _free_spot(3)
+			if o.x < 0:
+				continue
+			var g := ground_at(o.x, o.y)
+			for y in rng.randi_range(2, 4):
+				set_cell(o.x, g + y, o.y, SANDSTONE)
+		for i in 26:
+			var o := _free_spot(2)
+			if o.x >= 0:
+				prop(["cactus_a", "cactus_b", "palm", "desert_rock"][i % 4], Vector3(o.x + 0.5, ground_at(o.x, o.y), o.y + 0.5), [2.4, 1.4, 3.6, 0.8][i % 4], true)
+	if w == "frost":
+		for i in 10:
+			var o := _free_spot(2)
+			if o.x >= 0:
+				prop(["snowman", "snowpile"][i % 2], Vector3(o.x + 0.5, ground_at(o.x, o.y), o.y + 0.5), [1.6, 0.8][i % 2], true)
+	if w == "meadow":
+		for i in 30:
+			var o := _free_spot(1)
+			if o.x >= 0:
+				prop(["bush", "flower_pink", "flower_blue", "flower_white"][i % 4], Vector3(o.x + 0.5, ground_at(o.x, o.y), o.y + 0.5), 0.8 if i % 4 == 0 else 0.6)
+	# bad guys wandering about
+	var kinds := ["grumbler", foe2, "grumbler", foe2, "skelly", foe2]
+	for i in 16:
+		var o := _free_spot(6)
+		if o.x < 0 or Vector2(o).distance_to(Vector2(start)) < 14:
+			continue
+		var g := ground_at(o.x, o.y)
+		if get_cell(o.x, g, o.y) == AIR and get_cell(o.x, g + 1, o.y) == AIR:
+			spawns.append({"kind": kinds[i % kinds.size()], "pos": Vector3(o.x + 0.5, g + 0.01, o.y + 0.5)})
+	start_pos = Vector3(start.x + 0.5, ground_at(start.x, start.y) + 0.01, start.y + 0.5)
+	var hello: String = {"meadow": "MEADOW MINE", "frost": "FROSTY PEAKS", "dunes": "SUNSET DUNES"}[w]
+	signs = [[start_pos + Vector3(-3, 0, -2), hello + "\nFind 5 STARS to open\nKrag Jr.'s castle!"]]
+	_build_mesh_nodes()
+	var tex: String = {"meadow": "grass_top", "frost": "snow_top", "dunes": "sand"}[w]
+	var trees: Array = {"meadow": ["tree_a", "tree_b", "tree_c"], "frost": ["pine_a", "pine_b"], "dunes": ["palm", "cactus_a"]}[w]
+	var hills: Array = {"meadow": ["hill_a", "hill_b", "hill_c"], "frost": ["hill_snow", "hill_snow", "hill_c"], "dunes": ["hill_sand"]}[w]
+	_home_scenery(tex, trees, hills)
+	rebuild()
+
+
+## A random spot on open ground away from the challenges and the castle (or -1, -1).
+func _free_spot(keep: float) -> Vector2i:
+	for tries in 60:
+		var x := rng.randi_range(3, sx - 4)
+		var z := rng.randi_range(3, sz - 4)
+		if Rect2(arena.position - Vector2(5, 5), arena.size + Vector2(10, 10)).has_point(Vector2(x, z)):
+			continue
+		var ok := true
+		for k in keep_out:
+			if Vector2(x, z).distance_to(k[0]) < k[1] + keep * 0.3:
+				ok = false
+		if ok and get_cell(x, ground_at(x, z), z) == AIR:
+			return Vector2i(x, z)
+	return Vector2i(-1, -1)
+
+
+## Krag Jr.'s castle: tall stone walls (can't be mined), a gold gate in the front.
+func _castle(theme: int) -> void:
+	var x0 := int(arena.position.x)
+	var x1 := int(arena.end.x)
+	var z0 := int(arena.position.y)
+	var z1 := int(arena.end.y)
+	var top := arena_y + 6
+	var mid := (x0 + x1) / 2
+	for x in range(x0, x1 + 1):
+		for z in range(z0, z1 + 1):
+			var wall := x == x0 or x == x1 or z == z0 or z == z1
+			for y in range(1, top + 1 if wall else arena_y):
+				var c := Vector3i(x, y, z)
+				if wall:
+					var t := STONE_BRICK
+					if z == z1 and absi(x - mid) <= 1 and y >= arena_y and y < arena_y + 4:
+						t = GOLD_BLOCK
+						gate.append(c)
+					elif y == top and (x + z) % 2 == 0:
+						t = AIR   # battlements
+					if t != AIR:
+						cells[idx(x, y, z)] = t
+						locked[c] = true
+				elif y == arena_y - 1:
+					cells[idx(x, y, z)] = STONE_BRICK if (x + z) % 2 == 0 else theme
+					locked[c] = true
+	flag_pos = Vector3(mid + 0.5, arena_y, z0 + 4.5)
+	spawns.append({"kind": "kragjr", "pos": Vector3(mid + 0.5, arena_y + 4.5, (z0 + z1) * 0.5)})
+	signs.append([Vector3(mid + 3.5, arena_y, z1 + 1.6), "KRAG JR.'S CASTLE\n5 STARS open\nthe gold gate!"])
+
+
+func _camp(c: Vector2i, foe2: String) -> void:
+	var g := ground_at(c.x, c.y)
+	for i in 5:
+		var a := TAU * i / 5.0
+		var p := Vector3(c.x + 0.5 + cos(a) * 4.0, g + 0.01, c.y + 0.5 + sin(a) * 4.0)
+		spawns.append({"kind": ["grumbler", foe2, "grumbler", "skelly", foe2][i], "pos": p, "camp": true})
+	objectives.append({"id": "camp", "name": "BAD GUY CAMP", "hint": "Beat all 5 bad guys at the camp!",
+		"pos": Vector3(c.x + 0.5, g + 0.9, c.y + 0.5)})
+
+
+## A tower with stairs going round it; the star is on the top.
+func _tower(c: Vector2i, theme: int) -> void:
+	var g := ground_at(c.x, c.y)
+	var ring := []
+	for i in 4:
+		ring.append(Vector2i(-2 + i, -2))
+	for i in 4:
+		ring.append(Vector2i(2, -2 + i))
+	for i in 4:
+		ring.append(Vector2i(2 - i, 2))
+	for i in 4:
+		ring.append(Vector2i(-2, 2 - i))
+	var height := ring.size() + 1
+	for dx in range(-1, 2):
+		for dz in range(-1, 2):
+			for y in range(g, g + height):
+				set_cell(c.x + dx, y, c.y + dz, STONE_BRICK if (y - g) % 4 else theme)
+	for i in ring.size():
+		var r: Vector2i = ring[i]
+		set_cell(c.x + r.x, g + i, c.y + r.y, theme if i % 2 else STONE_BRICK)
+		tower_tops.append(Vector3(c.x + r.x + 0.5, g + i + 1, c.y + r.y + 0.5))
+	tower_tops.append(Vector3(c.x + 0.5, g + height, c.y + 0.5))
+	set_cell(c.x, g + height + 3, c.y, MYSTERY)
+	objectives.append({"id": "tower", "name": "TALL TOWER", "hint": "Climb the stairs round the tower!",
+		"pos": Vector3(c.x + 0.5, g + height + 0.9, c.y + 0.5)})
+
+
+## A hill with a tunnel; the end is blocked with rock: dig through with Blocky!
+func _cave(c: Vector2i) -> void:
+	var g := 6
+	for z in range(c.y - 2, c.y + 12):
+		for x in range(c.x, c.x + 2):
+			for y in range(g, g + 3):
+				set_cell(x, y, z, AIR)
+	for z in range(c.y - 4, c.y + 1):
+		for x in range(c.x - 2, c.x + 4):
+			for y in range(g, g + 4):
+				set_cell(x, y, z, AIR)
+	for x in range(c.x, c.x + 2):   # the rock plug
+		for y in range(g, g + 3):
+			set_cell(x, y, c.y + 2, [STONE, IRON, STONE][y - g])
+			set_cell(x, y, c.y + 3, [STONE, GOLD, STONE][y - g])
+	for p in [Vector3i(c.x - 3, g + 1, c.y - 2), Vector3i(c.x + 4, g + 1, c.y - 3), Vector3i(c.x, g + 4, c.y - 2)]:
+		set_cell(p.x, p.y, p.z, DIAMOND)
+	objectives.append({"id": "cave", "name": "SECRET CAVE", "hint": "Dig through the rock with Blocky!",
+		"pos": Vector3(c.x + 1.0, g + 0.9, c.y - 2.0)})
+
+
+## Floating platforms going up and up to a little island in the sky.
+func _sky_steps(c: Vector2i, theme: int) -> void:
+	var g := ground_at(c.x, c.y)
+	var p := Vector2i(c.x - 2, c.y + 6)
+	var y := g + 1
+	# each step is 2 blocks higher with a 1-block gap: an easy jump for Rocco
+	var hops := [Vector2i(3, 0), Vector2i(0, -3), Vector2i(-3, 0), Vector2i(0, -3), Vector2i(3, 0), Vector2i(0, -3), Vector2i(-3, 0)]
+	for hop in hops:
+		for dx in 2:
+			for dz in 2:
+				set_cell(p.x + dx, y, p.y + dz, theme)
+		step_tops.append(Vector3(p.x + 1.0, y + 1, p.y + 1.0))
+		p += hop
+		y += 2
+	for dx in range(-2, 2):   # the island (kept out from over the last steps, so no head bumps)
+		for dz in range(-1, 3):
+			set_cell(p.x + dx, y, p.y + dz, theme)
+	step_tops.append(Vector3(p.x, y + 1, p.y + 1.0))
+	objectives.append({"id": "sky", "name": "SKY STEPS", "hint": "Jump up the floating steps! Rocco's double jump helps!",
+		"pos": Vector3(p.x, y + 1.9, p.y + 1.0)})
 
 
 func _hgt(a: int, b: int, h: int) -> void:
