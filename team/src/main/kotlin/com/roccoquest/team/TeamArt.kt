@@ -79,7 +79,8 @@ object TeamArt {
 
     fun blocky(p: Power, walking: Boolean): Sprite {
         val sk = Style.blockyNow
-        if (p == Power.NONE && sk != BlockySkin.CLASSIC) return blockySkin(sk, walking)
+        // Blocky always keeps his own shirt (powers used to recolor it, and the orange one looked like a work vest).
+        if (sk != BlockySkin.CLASSIC || p != Power.NONE) return blockySkin(sk, walking)
         val pair = blockyCache.getOrPut(p) {
             val (a, b) = blockyShirt(p)
             val m = mapOf(SHIRT to a, SHIRT_DARK to b)

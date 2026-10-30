@@ -121,7 +121,8 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
 * `Pokedex.kt`: the 50 newest Pokemon (LEAFLING..DRATINY) built from parts (`Spec`: `Body`, `Ears`, `Tail`, extras `X`,
   `base`). `MonSize.kt` scales every Pokemon to a target height (`TeamArt.mon` with `outline = false` draws the natural
   size, used inside evolutions) and finds the head (`MonSize.head`) for costumes. MEGA_BLAZE/HYDRO/BLOOM (Evolve.kt,
-  `isMega`, level 10). Rocco is drawn at `ROCCO_SCALE`.
+  `isMega`, level 10). The 40 newest (CINDERCUB..SOLARION) are in `MorePokedex.kt` (`MORE_SPECS`; new parts: bodies
+  BUG/GOLEM/SLUG, wings, horns, hats...); they join every `LATE_MON_EVERY` levels after the first `OLD_NEW_MONS` of `NEW_MONS`. Rocco is drawn at `ROCCO_SCALE`.
 * `Decor.kt`: `DecorItem` (76, saved by index; `yard` ones go in the backyard past `Garden.YARD_X`; Garden.WIDTH 2000)
   placed as `Placed` in `TeamGame.decor` (keys `decorN`/`decor_<i>`, `Decor.pack`). DECOR/YARD/STYLE shop tabs 6/7/8.
   `hasElevator` (key `elevator`, replaces the stairs, `elevatorMenu`). SHOP button on every floor.
@@ -195,6 +196,13 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
   button sets `input.longJump`; controller Y/long-jump key: `hopE3d`). Vault, running flips, wall jump (`kickX/Z`), roll.
   `thirdPerson` camera (`ex/ey/ez` behind Rocco; all face culling uses the camera, not the player) draws Rocco with
   `spriteRotated`. `Mover`s (palette slot `MOVER_SLOT`, saved as `<area>mvn`/`<area>mv_<i>`) slide 3 blocks and carry you.
+* `OpenWorld.kt` (State.OPEN3D, `game.openWorld`, `startOpenWorld`/`leaveOpenWorld`, map button `openWorldUnlocked`): a seeded
+  64x64 3D land per world (`Theme`s, `Box`es incl. floating ones, `Mover`s, coins, 8 stars saved as bits in `ow<world>`,
+  `Foe3` bad guys drawn with their 2D `Foe.draw`, wild Pokemon). Same parkour as House3D; buttons PUNCH/SPIN
+  (`TeamControls.labels3d`). Test `openWorlds3D` checks every star is reachable.
+* PAINT: `painting` (while decorating), `furnColor` (keys `fcol<i>`), `bedColor`, `Placed.color` (`decorC_<i>`), drawn
+  via `painted(gfx, color)` (PaintGfx). Harder evolving: `xpToNext` = 20 + 16 * lv, `monFloor` keeps old levels (`xpV`).
+  Blocky no longer gets the hard hat or power shirt colors (`TeamArt.blocky`).
 
 
 ## Team Up! Paper 3D (`teamup-paper/`, Godot 4.5.1)

@@ -18,7 +18,9 @@ object MonSize {
         m == Mon.SPARKY -> 12.5f
         m == Mon.EMBER || m == Mon.SPLASHY || m == Mon.MYSTIC -> 14f
         m.isMega -> 30f
-        m == Mon.LUGIA || m == Mon.RAYZOR -> 27f
+        m == Mon.LUGIA || m == Mon.RAYZOR || m.isNewLegend -> 27f
+        // Some of the newest first forms are extra tiny.
+        m == Mon.TADBLUB || m == Mon.TWINKLE || m == Mon.PEBBLO || m == Mon.COGGY || m == Mon.HONEYBUN || m == Mon.VOLTBUG -> 14f
         m.stage >= 3 -> 25f
         m.stage == 2 -> 21.5f
         else -> 18f

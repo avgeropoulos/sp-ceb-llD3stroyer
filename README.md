@@ -511,6 +511,18 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
   * **Vault**: run into a low wall (one block high) and Rocco vaults right over it.
   * **Landing roll**: drop from way up high while running and he rolls instead of thudding.
 
+### 3D open worlds, painting furniture, harder evolving
+
+* **3D WORLDS**: every world has a big 3D land to explore (the rainbow **3D WORLD** button on the map, once you reach
+  that world). Run around with Rocco's parkour, find the **8 SHINE STARS** (on top of towers, up a wall-jump chimney,
+  on floating islands you reach by riding a moving platform, inside a block maze...), grab coins, stomp or PUNCH/SPIN
+  the bad guys, and say hi to wild Pokemon (XP for your partner). Each star is 50 coins; all 8 = 500 coins and a
+  plushie. Every world looks different (snow, desert, moon with low gravity, dinosaurs, crystal planet...).
+* **PAINT furniture, beds and decorations**: tap DECORATE, then PAINT, walk to something and tap PAINT to change its
+  color (tap again for the next color).
+* **Evolving is harder**: Pokemon need about twice as much experience per level now (levels you already had stay).
+* **Blocky keeps his own look**: no hard hat when building, and powers don't change his shirt any more.
+
 ### Parkour and moving platforms in 3D
 
 * The 3D house, garden and roof now **show Rocco** (VIEW: ROCCO, tap it for VIEW: EYES to look through his eyes).
@@ -519,6 +531,18 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
   **flip**, jump at a wall and press JUMP again in the air for a **wall jump**, and land from up high for a **roll**.
 * **MOVING PLATFORM** in the block palette (the last one): place it and it slides back and forth. Jump on and ride it!
   (BREAK takes it away.)
+
+### 40 more Pokemon (133 in all)
+
+* **Three-stage lines** (evolve at levels 4 and 7): Cindercub -> Cinderbear -> Volcabear (fire bears),
+  Tadblub -> Froggle -> Torrentoad (water frogs), Draklet -> Drakoon -> Drakonix (dragons that glide).
+* **Two-stage lines** (evolve at level 5): Acorny -> Oakhorn, Voltbug -> Zapwing, Frostkit -> Blizzacat,
+  Pebblo -> Boulderon, Wispy -> Lanterno, Caterpuff -> Flutterby, Twinkle -> Starfae, Coggy -> Geargant,
+  Gustling -> Galehawk, Trikey -> Trikerator.
+* **On their own**: Sparkleel, Magmole, Chillpup (in a red scarf), Corallo, Beetlebop, Mushboo, Honeybun, Snailo
+  and Batty, plus two new legends: **Stormwing** (a thunder bird) and **Solarion** (a sun lion with a fire mane).
+* The new ones join late in the game, one every 4 levels after level 154 (the legends come last, near the end of
+  Planet World).
 
 ### Dino World, Planet World, a house & planet picker, and twice as much of everything
 

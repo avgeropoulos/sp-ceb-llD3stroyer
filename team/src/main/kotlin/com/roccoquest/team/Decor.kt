@@ -81,7 +81,10 @@ enum class DecorItem(val label: String, val coins: Int, val w: Float, val yard: 
 }
 
 /** One decoration that's been put down: [floor] is a floor of the house, the [Decor.YARD] or the [Decor.ROOF]. */
-class Placed(val item: DecorItem, var x: Float, var floor: Int)
+class Placed(val item: DecorItem, var x: Float, var floor: Int) {
+    /** Its paint color: an index into [Homes.PAINTS] (0 = its own colors). Saved as `decorC_<i>`. */
+    var color = 0
+}
 
 object Decor {
     /** Not house floors (those are 0-9). Old saves (before 10 floors) used 9 for the yard: see [unpack]. */
