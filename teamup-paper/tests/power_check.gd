@@ -12,6 +12,7 @@ var failed := ""
 
 func _initialize() -> void:
 	Look.loaded = true
+	OpenPlay.select_enabled = false   # tests/quest_check.gd covers the star select
 	Look.toy = OS.get_cmdline_user_args().has("toy")
 	Boot.place = "level"
 	Boot.level = "meadow"
