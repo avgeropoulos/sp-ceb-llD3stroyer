@@ -27,6 +27,30 @@ Both looks run exactly the same game code; only the pictures change (`Actor.mode
 * Dennis the dog shows you the way. Rocco talks with the phone's Italian voice.
 * The music is the real Team Up! songs (rendered from `core/` Songs.kt).
 
+## Home base: build and decorate
+
+Picking a save file takes you **home** (a new file picks a partner first and gets 30 coins). Walk around
+with the team, then walk into the purple **portal** to play 1-1; finishing 1-1 brings you back home.
+
+* **BUILD**: pick a block at the top and **PLACE** it in the spot in front of you (the see-through block shows
+  where; green = OK, red = it says why). Blocks stack up to 4 above your feet. **REMOVE** takes the top one back
+  and refunds it. Planks, 4 wool colours (1 coin), windows (2 coins); brick, stone brick and stone (1 stone each);
+  iron, gold and diamond blocks (1 of that ore, mined in 1-1).
+* **DECOR**: 18 decorations bought with coins (flower pot, bush, fence, tree, pumpkin, lamp, chair, table, bench,
+  bed, campfire, mailbox, fountain, 4 partner plushies, and a Krag Jr. trophy that unlocks after beating 1-1).
+  **TURN** spins the one in front of you; REMOVE picks it up (coins back). Nothing stacks on a decoration.
+* **PARTNER** (top right) switches partners at home. **DONE** saves the home. A controller's B places and
+  Y removes while building.
+* Code: `scripts/home.gd` (HomeBase: aim/place/remove/rotate, costs, save data), `scripts/decor.gd` (items + 3D
+  models), `scripts/boot.gd` (title / home / level switching via `main.go()`), `level.gd` `generate_home()`.
+  Paper-look decor pictures are rendered from the 3D models: `tools/render_decor.gd` then `tools/sticker.py`.
+* Test: `tests/home_check.gd` (new file -> home, build costs/refunds/limits, decor, portal, back home).
+
+## Sprint
+
+Push the thumb stick all the way to the edge and keep it there: after a moment the team sprints (55% faster,
+dust puffs, the stick ring glows orange with SPRINT!). Keyboard: hold Shift. Controller: R1 or R2.
+
 ## Partners: pick one, level up, evolve
 
 After picking a save file (and after every finished run) you **PICK YOUR PARTNER**: tap a card to look,

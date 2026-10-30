@@ -5,6 +5,8 @@ extends Node3D
 
 const MAX_HEARTS := 5
 const SUPER_TIME := 25.0
+const SPRINT_SPEED := 1.55
+const START_COINS := 30       # a new file starts with some coins to build with
 const STATS := {
 	"rocco": {"speed": 5.6, "jump": 12.6, "hw": 0.3, "h": 1.45, "size": 1.8, "feet": 28.0},
 	"blocky": {"speed": 5.0, "jump": 10.8, "hw": 0.32, "h": 1.5, "size": 1.9, "feet": 30.0},
@@ -58,6 +60,13 @@ var coins_taken: Array = []   # which coins (by number) are collected
 var foes_gone: Array = []     # which bad guys (by spawn number) are beaten
 var cleared := 0              # times this file finished the level
 
+# home base
+var home: HomeBase            # only at home
+var home_saved := {}          # the home from the save file (kept while you're in 1-1)
+var paused_from := "play"     # "play" or "home": where RESUME goes back to
+var partner_from := ""        # "new" (new file), "home" or "" (tests)
+var taps := {}                # touch buttons pressed this frame (home buttons)
+
 # partners
 var mon_line := "spark"       # water / grass / fire / spark
 var mon_xp := {"water": 0, "grass": 0, "fire": 0, "spark": 0}
@@ -74,6 +83,9 @@ var action_pressed := false
 var swap_pressed := false
 var super_pressed := false
 var pause_pressed := false
+var sprinting := false        # full-tilt stick for a moment, Shift, or R1 / R2
+var tilt_t := 0.0
+var dust_t := 0.0
 
 # testing helpers
 var bot := false
@@ -95,12 +107,16 @@ var voice_en := ""
 
 
 func _ready() -> void:
+	Boot.current = self
 	Look.load_choice()
 	_setup_input()
 	_setup_world()
 	level = Level.new()
 	add_child(level)
-	level.generate()
+	if Boot.place == "home":
+		level.generate_home()
+	else:
+		level.generate()
 	fx = Fx.new()
 	add_child(fx)
 	for w in ["rocco", "blocky", "mon"]:
@@ -113,6 +129,38 @@ func _ready() -> void:
 	heroes.blocky.position = heroes.rocco.position
 	heroes.mon.position = Vector3(2.6, 5, 5.6)
 	original_cells = level.cells.duplicate()
+	if level.is_home:
+		_ready_home()
+		return
+	_ready_level()
+
+
+## The parts of the scene every place has (HUD, sound, updater, camera).
+func _ready_common() -> void:
+	var hl := CanvasLayer.new()
+	add_child(hl)
+	hud = Hud.new()
+	hud.game = self
+	hl.add_child(hud)
+	_setup_audio()
+	updater = Updater.new()
+	add_child(updater)
+	cam_focus = heroes.rocco.position
+	_update_camera(1.0)
+
+
+func _ready_home() -> void:
+	heroes.rocco.position = Vector3(10, 5, 6.8)
+	heroes.blocky.position = heroes.rocco.position
+	heroes.mon.position = Vector3(8.4, 5, 5.6)
+	home = HomeBase.new()
+	level.add_child(home)
+	home.setup(self, level)
+	_ready_common()
+	play_music("cozy")
+
+
+func _ready_level() -> void:
 	for si in level.spawns.size():
 		var s: Dictionary = level.spawns[si]
 		var f := Foe.new()
@@ -128,26 +176,121 @@ func _ready() -> void:
 		coin_nodes.append(c)
 	level.prop("flag", Vector3(Level.CHECKPOINT_X, 5, 3.9), 3.2)
 	level.prop("flag", Vector3(Level.FLAG_X, 5, 3.9), 4.6)
-	var hl := CanvasLayer.new()
-	add_child(hl)
-	hud = Hud.new()
-	hud.game = self
-	hl.add_child(hud)
-	_setup_audio()
-	play_music("theme")
-	updater = Updater.new()
-	add_child(updater)
-	if not bot:
-		updater.check()
-	cam_focus = heroes.rocco.position
-	_update_camera(1.0)
+	_ready_common()
+	if Boot.place == "title":
+		play_music("theme")
+		if not bot:
+			updater.check()
+
+
+## Called when the LOADING screen is done: go where Boot says.
+func _after_loading() -> void:
+	match Boot.place:
+		"home":
+			enter_home()
+		"level":
+			var d := Saves.read(Boot.slot)
+			start_game(Boot.slot)
+			if not d.is_empty():
+				_apply_save(d)
+				hud.say("1-1  MEADOW MINE", "Go, team, go!", 2.6)
+		_:
+			state = "title"
+
+
+## Switches to the home base, 1-1 or the title (a fresh scene, with a short LOADING screen).
+func go(place: String, n: int = 0) -> void:
+	Boot.place = place
+	Boot.slot = n
+	if get_tree().current_scene == self:
+		get_tree().reload_current_scene()
+	else:   # tests run the game without a current scene
+		var nm: Node = load("res://main.tscn").instantiate()
+		nm.bot = bot
+		nm.invincible = invincible
+		get_parent().add_child(nm)
+		queue_free()
+
+
+# ------------------------------------------------------------------ the home base
+func enter_home() -> void:
+	slot = Boot.slot
+	var d := Saves.read(slot)
+	_apply_save(d)
+	hearts = MAX_HEARTS
+	var hd: Dictionary = d.get("home", {})
+	if hd.get("blocks", []).is_empty() and hd.get("decor", []).is_empty():
+		home.starter()   # a brand-new home
+	else:
+		home.load_data(hd)
+	state = "home"
+	play_t = 0
+	note("home")
+	hud.say("HOME", "BUILD and DECOR your base. Walk into the portal to play!", 2.8)
+
+
+func _step_home(dt: float) -> void:
+	if pause_pressed:
+		_pause("home")
+		return
+	play_t += dt
+	hurt_t = maxf(0, hurt_t - dt)
+	if taps.has("build"):
+		home.mode = "" if home.mode == "build" else "build"
+		sfx("swap", -6)
+	if taps.has("decor"):
+		home.mode = "" if home.mode == "decor" else "decor"
+		sfx("swap", -6)
+	if taps.has("done"):
+		home.mode = ""
+		save_game(false)
+		sfx("heart", -6)
+	if taps.has("partner"):
+		partner_from = "home"
+		partner_sel = maxi(0, Mons.ORDER.find(mon_line))
+		state = "partner"
+		return
+	if swap_pressed:
+		do_swap()
+	# controller / keyboard: ACTION places, SUPER removes while building
+	if home.mode != "":
+		home.aim(leader())
+		if taps.has("place") or action_pressed:
+			home.place()
+		if taps.has("remove") or super_pressed:
+			home.remove()
+		if taps.has("rotate"):
+			home.rotate_front()
+		action_pressed = false
+	else:
+		home.ghost.visible = false
+		if Input.is_action_just_pressed("action"):
+			home.mode = "build"
+	_update_leader(leader(), dt)
+	_update_follower(follower(), dt)
+	if home.mode == "" and home.at_portal(leader().position) and play_t > 0.8:
+		note("going to 1-1")
+		sfx("item")
+		save_game(false)
+		go("level", slot)
+		return
+	_update_camera(dt)
+
+
+func _pause(from: String) -> void:
+	paused_from = from
+	state = "paused"
+	pause_sel = 0
+	save_note_t = 0
 
 
 func _setup_input() -> void:
 	var keys := {"left": [KEY_LEFT, KEY_A], "right": [KEY_RIGHT, KEY_D], "up": [KEY_UP, KEY_W], "down": [KEY_DOWN, KEY_S],
-		"jump": [KEY_SPACE, KEY_K], "action": [KEY_X, KEY_J], "swap": [KEY_C, KEY_L], "super": [KEY_V, KEY_I], "pause": [KEY_ESCAPE, KEY_P]}
+		"jump": [KEY_SPACE, KEY_K], "action": [KEY_X, KEY_J], "swap": [KEY_C, KEY_L], "super": [KEY_V, KEY_I], "pause": [KEY_ESCAPE, KEY_P],
+		"sprint": [KEY_SHIFT, KEY_SEMICOLON]}
 	var pads := {"jump": JOY_BUTTON_A, "action": JOY_BUTTON_B, "swap": JOY_BUTTON_X, "super": JOY_BUTTON_Y, "pause": JOY_BUTTON_START,
-		"left": JOY_BUTTON_DPAD_LEFT, "right": JOY_BUTTON_DPAD_RIGHT, "up": JOY_BUTTON_DPAD_UP, "down": JOY_BUTTON_DPAD_DOWN}
+		"left": JOY_BUTTON_DPAD_LEFT, "right": JOY_BUTTON_DPAD_RIGHT, "up": JOY_BUTTON_DPAD_UP, "down": JOY_BUTTON_DPAD_DOWN,
+		"sprint": JOY_BUTTON_RIGHT_SHOULDER}
 	for a in keys:
 		if not InputMap.has_action(a):
 			InputMap.add_action(a)
@@ -348,12 +491,23 @@ func _gather_input() -> void:
 		if a.length() > 0.2:
 			mv = a
 	move_vec = mv.limit_length(1.0)
+	# SPRINT: push the thumb stick all the way to the edge (keyboard: Shift; controller: R1 or R2)
+	var stick_tilt := hud.stick.length()
+	if pads.size() > 0:
+		stick_tilt = maxf(stick_tilt, Vector2(Input.get_joy_axis(pads[0], JOY_AXIS_LEFT_X), Input.get_joy_axis(pads[0], JOY_AXIS_LEFT_Y)).length())
+	var held_button := Input.is_action_pressed("sprint") or (pads.size() > 0 and Input.get_joy_axis(pads[0], JOY_AXIS_TRIGGER_RIGHT) > 0.5)
+	if stick_tilt > 0.93:
+		tilt_t += get_process_delta_time()
+	else:
+		tilt_t = 0.0
+	sprinting = move_vec.length() > 0.3 and (tilt_t > 0.2 or held_button)
 	jump_held = hud.is_held("jump") or Input.is_action_pressed("jump")
 	jump_pressed = hud.pressed_now.has("jump") or Input.is_action_just_pressed("jump")
 	action_pressed = hud.pressed_now.has("action") or Input.is_action_just_pressed("action")
 	swap_pressed = hud.pressed_now.has("swap") or Input.is_action_just_pressed("swap")
 	super_pressed = hud.pressed_now.has("super") or Input.is_action_just_pressed("super")
 	pause_pressed = hud.pressed_now.has("pause") or Input.is_action_just_pressed("pause")
+	taps = hud.pressed_now.duplicate()
 	hud.pressed_now.clear()
 	if bot:
 		_bot_input()
@@ -365,10 +519,17 @@ func on_tap() -> void:
 			open_slots()
 		"clear":
 			if clear_t > 1.5:
-				get_tree().reload_current_scene()
+				_after_clear()
 
 
 # ------------------------------------------------------------------ save files
+func _after_clear() -> void:
+	if slot > 0:
+		go("home", slot)
+	else:
+		get_tree().reload_current_scene()
+
+
 func open_slots() -> void:
 	state = "slots"
 	erase_armed = 0
@@ -382,8 +543,12 @@ func slot_pick(n: int) -> void:
 		start_game(n)
 		_apply_save(d)
 		return
-	slot = n
-	_apply_save(d)   # coins, ores, partner levels
+	if not d.is_empty():   # an old file: straight to the home base
+		go("home", n)
+		return
+	slot = n   # a new file: pick a partner first
+	_apply_save(d)
+	partner_from = "new"
 	partner_sel = maxi(0, Mons.ORDER.find(mon_line))
 	state = "partner"
 	sfx("swap", -6)
@@ -400,8 +565,23 @@ func partner_tap(i: int) -> void:
 
 func choose_partner(l: String) -> void:
 	set_partner(l)
-	start_game(slot)
-	hud.say("1-1  MEADOW MINE", display_name("mon") + " joins the team! Lv %d" % mon_level(), 2.6)
+	match partner_from:
+		"home":
+			state = "home"
+			save_game(false)
+			hud.say(display_name("mon") + "!", display_name("mon") + " joins the team! Lv %d" % mon_level(), 2.2)
+		"new":
+			coins = START_COINS
+			save_game(false)
+			go("home", slot)
+		_:
+			start_game(slot)
+			hud.say("1-1  MEADOW MINE", display_name("mon") + " joins the team! Lv %d" % mon_level(), 2.6)
+
+
+## BACK on PICK YOUR PARTNER.
+func partner_back() -> void:
+	state = "home" if partner_from == "home" else "slots"
 
 
 func set_partner(l: String) -> void:
@@ -433,7 +613,8 @@ func save_data(in_level := true) -> Dictionary:
 	var d := {"v": 1, "level": "1-1", "time": Time.get_unix_time_from_system(),
 		"hearts": hearts, "coins": coins, "ores": ores.duplicate(), "beaten": beaten,
 		"super": super_charge, "cleared": cleared, "human": human if in_level else "rocco", "in_level": in_level,
-		"mon": mon_line, "mon_xp": mon_xp.duplicate()}
+		"mon": mon_line, "mon_xp": mon_xp.duplicate(),
+		"home": home.data() if home else home_saved}
 	if in_level:
 		var cells := []
 		var lc := level.cells
@@ -464,6 +645,7 @@ func _apply_save(d: Dictionary) -> void:
 	beaten = int(d.get("beaten", 0))
 	super_charge = clampf(float(d.get("super", 0)), 0, 1)
 	cleared = int(d.get("cleared", 0))
+	home_saved = d.get("home", {})
 	var mx: Dictionary = d.get("mon_xp", {})
 	for k in mon_xp:
 		mon_xp[k] = int(mx.get(k, 0))
@@ -472,8 +654,6 @@ func _apply_save(d: Dictionary) -> void:
 		mon_line = "spark"
 	set_partner(mon_line)
 	if not d.get("in_level", false):
-		if cleared > 0:
-			hud.say("1-1  MEADOW MINE", "Cleared %d time%s! Go again!" % [cleared, "" if cleared == 1 else "s"], 2.6)
 		return
 	for c in d.get("cells", []):
 		level.set_cell(int(c[0]), int(c[1]), int(c[2]), int(c[3]))
@@ -528,9 +708,9 @@ static func _a2v(a) -> Vector3:
 func pause_choice(i: int) -> void:
 	match i:
 		0:
-			state = "play"
+			state = paused_from
 		1:
-			if save_game():
+			if save_game(paused_from == "play"):
 				save_note = "SAVED TO FILE %d!" % slot
 				sfx("heart")
 			else:
@@ -538,8 +718,8 @@ func pause_choice(i: int) -> void:
 				sfx("bonk")
 			save_note_t = 2.5
 		2:
-			save_game()
-			get_tree().reload_current_scene()
+			save_game(paused_from == "play")
+			go("title")
 
 
 ## Shows every effect, shot, prop and text size once (tiny, behind the title) so the
@@ -556,6 +736,14 @@ func _warm_up() -> void:
 		fx.ring(at, 1.0)
 		fx.vine(at, Vector3.RIGHT, 1.0)
 
+		if home:
+			for it in Decor.ITEMS:
+				home._put_decor(Vector3i(0, 17, 0), it.id, 0)
+				var n: Node3D = home.decor[Vector3i(0, 17, 0)].node
+				home.decor.erase(Vector3i(0, 17, 0))
+				n.position = at
+				n.scale = Vector3.ONE * 0.05
+				warm_nodes.append(n)
 		for k in ["spark", "arrow", "spikeball", "coin", "heart", "shot_water", "shot_fire"]:
 			var n := level.prop(k, at, 0.3)
 			n.scale = Vector3.ONE * 0.05
@@ -576,10 +764,10 @@ func _warm_up() -> void:
 		warm_nodes.clear()
 		for h in heroes.values():
 			h.bar.visible = false
-	elif warm_t > 12 and (hud.warm_sizes.is_empty() or state not in ["loading", "title"]):
+	elif warm_t > 12 and (hud.warm_sizes.is_empty() or state not in ["loading", "title"] or warm_t > 90):
 		warm_t = -1
 		if state == "loading":
-			state = "title"
+			_after_loading()
 
 
 ## The partner earns XP. Level ups pop up; at Lv 4 and Lv 8 it evolves (the evolution scene).
@@ -717,7 +905,7 @@ func _step(dt: float) -> void:
 		if jump_pressed or action_pressed:
 			choose_partner(Mons.ORDER[partner_sel])
 		elif pause_pressed:
-			state = "slots"
+			partner_back()
 		for h in heroes.values():
 			h.animate(dt)
 		_update_camera(dt)
@@ -745,7 +933,7 @@ func _step(dt: float) -> void:
 		if jump_pressed or action_pressed:
 			pause_choice(pause_sel)
 		elif pause_pressed:
-			state = "play"
+			state = paused_from
 		return
 	if state == "clear":
 		clear_t += dt
@@ -759,13 +947,14 @@ func _step(dt: float) -> void:
 				h.animate(dt)
 				h.update_shadow()
 		if clear_t > 1.5 and (jump_pressed or action_pressed):
-			get_tree().reload_current_scene()
+			_after_clear()
 		_update_camera(dt)
 		return
+	if state == "home":
+		_step_home(dt)
+		return
 	if pause_pressed:
-		state = "paused"
-		pause_sel = 0
-		save_note_t = 0
+		_pause("play")
 		return
 	play_t += dt
 	hurt_t = maxf(0, hurt_t - dt)
@@ -801,7 +990,7 @@ func _update_leader(h: Hero, dt: float) -> void:
 	if h.long_t > 0 and not h.on_floor:
 		h.long_t -= dt
 	else:
-		var target := dir * h.speed
+		var target := dir * h.speed * (SPRINT_SPEED if sprinting else 1.0)
 		var accel := 45.0 if h.on_floor else 25.0
 		h.vel.x = move_toward(h.vel.x, target.x, accel * dt)
 		h.vel.z = move_toward(h.vel.z, target.z, accel * dt)
@@ -864,6 +1053,11 @@ func _update_leader(h: Hero, dt: float) -> void:
 		h.play("jump" if h.vel.y > 0 else "fall")
 	elif Vector2(h.vel.x, h.vel.z).length() > 0.5:
 		h.play("run")
+		if sprinting:   # little dust puffs behind the feet
+			dust_t -= dt
+			if dust_t <= 0:
+				dust_t = 0.09
+				fx.burst(h.position + Vector3(-h.facing.x * 0.3, 0.1, -h.facing.z * 0.3), Color(0.92, 0.88, 0.8), 3, 1.5, 3, 0.8)
 	else:
 		h.blink_t -= dt
 		if h.blink_t < 0:
@@ -873,7 +1067,7 @@ func _update_leader(h: Hero, dt: float) -> void:
 		else:
 			h.play("idle")
 	h.squash = Vector2.ONE.lerp(h.squash, exp(-dt * 12))
-	h.animate(dt, 10 if h.who != "blocky" or h.action_t <= 0 else 7)
+	h.animate(dt * (1.45 if sprinting and h.anim == "run" else 1.0), 10 if h.who != "blocky" or h.action_t <= 0 else 7)
 	h.update_shadow()
 
 
@@ -1121,7 +1315,7 @@ func _update_follower(h: Hero, dt: float) -> void:
 		h.vel = Vector3.ZERO
 		fx.burst(h.position + Vector3(0, 0.5, 0), Color.WHITE, 8, 3, 4)
 	if flat.length() > 0.35:
-		var sp := h.speed * clampf(flat.length() / 1.5, 0.3, 1.15)
+		var sp := h.speed * clampf(flat.length() / 1.5, 0.3, 1.15) * (SPRINT_SPEED if sprinting else 1.0)
 		var v := flat.normalized() * sp
 		h.vel.x = move_toward(h.vel.x, v.x, 40 * dt)
 		h.vel.z = move_toward(h.vel.z, v.y, 40 * dt)
@@ -1427,6 +1621,8 @@ func _update_camera(dt: float) -> void:
 		want = Vector3(7, 5, 6.5)
 	if boss_on and not boss_done:
 		want.x = clampf(want.x, Level.BOSS_X0 + 7.5, Level.BOSS_X1 - 6.5)
+	if level.is_home:
+		want.x = clampf(want.x, 8.0, Level.HOME_W - 8.0)
 	cam_focus.x = lerpf(cam_focus.x, want.x, 1 - exp(-dt * 4))
 	var wy := want.y
 	if not l.on_floor and l.position.y > cam_focus.y - 1.5 and l.position.y < cam_focus.y + 2.5:

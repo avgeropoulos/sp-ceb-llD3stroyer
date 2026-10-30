@@ -54,13 +54,21 @@ func _layout() -> void:
 	var s := size
 	var u := minf(s.y / 720.0, s.x / 1280.0) * 1.0
 	u = clampf(u, 0.75, 1.6)
-	buttons = {
-		"jump": [Vector2(s.x - 125 * u, s.y - 125 * u), 82 * u],
-		"action": [Vector2(s.x - 300 * u, s.y - 92 * u), 70 * u],
-		"swap": [Vector2(s.x - 145 * u, s.y - 315 * u), 56 * u],
-		"super": [Vector2(s.x - 300 * u, s.y - 255 * u), 56 * u],
-		"pause": [Vector2(s.x - 52 * u, 52 * u), 34 * u],
-	}
+	var jump := [Vector2(s.x - 125 * u, s.y - 125 * u), 82 * u]
+	var act := [Vector2(s.x - 300 * u, s.y - 92 * u), 70 * u]
+	var sw := [Vector2(s.x - 145 * u, s.y - 315 * u), 56 * u]
+	var sup := [Vector2(s.x - 300 * u, s.y - 255 * u), 56 * u]
+	var pz := [Vector2(s.x - 52 * u, 52 * u), 34 * u]
+	if game and game.state == "home" and game.home:
+		if game.home.mode == "":   # walking around the home: BUILD, DECOR, PARTNER
+			buttons = {"jump": jump, "build": act, "swap": sw, "decor": sup, "pause": pz,
+				"partner": [Vector2(s.x - 52 * u, 150 * u), 46 * u]}
+		else:                      # building: PLACE, REMOVE, DONE (and TURN for decorations)
+			buttons = {"jump": jump, "place": act, "done": sw, "remove": sup, "pause": pz}
+			if game.home.mode == "decor":
+				buttons["rotate"] = [Vector2(s.x - 445 * u, s.y - 175 * u), 46 * u]
+	else:
+		buttons = {"jump": jump, "action": act, "swap": sw, "super": sup, "pause": pz}
 
 
 func button_at(p: Vector2) -> String:
@@ -79,7 +87,9 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		var e := event as InputEventScreenTouch
 		if e.pressed:
-			if game.state != "play":
+			if game.state == "home" and game.home and game.home.mode != "" and _palette_tap(e.position):
+				return
+			if game.state != "play" and game.state != "home":
 				if game.state == "title" and update_showing() and update_rect().grow(20).has_point(e.position):
 					game.updater.download()
 					return
@@ -154,8 +164,10 @@ func _draw() -> void:
 		_draw_partner()
 		return
 	_draw_hud()
-	if game.state == "play":
+	if game.state == "play" or game.state == "home":
 		_draw_controls()
+	if game.state == "home" and game.home and game.home.mode != "":
+		_draw_palette()
 	if message_t > 0 and game.state != "paused":
 		var a := clampf(message_t * 3, 0, 1)
 		# The pop-in grows the picture, never the font size: a new font size every frame makes
@@ -217,16 +229,22 @@ func _draw_controls() -> void:
 	var base := stick_base if stick_id >= 0 else Vector2(r * 2.1, size.y - r * 2.1)
 	draw_circle(base, r * 1.2, Color(0.1, 0.15, 0.3, 0.28))
 	draw_arc(base, r * 1.2, 0, TAU, 48, Color(1, 1, 1, 0.5), 4, true)
-	draw_circle(base + stick * r, r * 0.55, Color(1, 1, 1, 0.75))
+	if game.sprinting:   # the stick glows orange while sprinting
+		draw_arc(base, r * 1.2, 0, TAU, 48, Color("ff8a1f"), 8, true)
+		txt("SPRINT!", Vector2(base.x - r * 1.2, base.y - r * 1.35), 24, Color("ffb35a"), HORIZONTAL_ALIGNMENT_CENTER, r * 2.4, 6)
+	draw_circle(base + stick * r, r * 0.55, Color("ffd6a8") if game.sprinting else Color(1, 1, 1, 0.75))
 	# buttons
-	var labels := {"jump": "JUMP", "action": game.action_label(), "swap": "SWAP", "super": "SUPER", "pause": "II"}
-	var colors := {"jump": Color("3fc06a"), "action": Color("ff8a1f"), "swap": Color("6a7cff"), "super": Color("ffcf33"), "pause": Color(0.2, 0.25, 0.4)}
+	var labels := {"jump": "JUMP", "action": game.action_label(), "swap": "SWAP", "super": "SUPER", "pause": "II",
+		"build": "BUILD", "decor": "DECOR", "partner": "PARTNER", "place": "PLACE", "remove": "REMOVE", "done": "DONE", "rotate": "TURN"}
+	var colors := {"jump": Color("3fc06a"), "action": Color("ff8a1f"), "swap": Color("6a7cff"), "super": Color("ffcf33"), "pause": Color(0.2, 0.25, 0.4),
+		"build": Color("ff8a1f"), "decor": Color("ff6fa8"), "partner": Color("2cbec8"), "place": Color("3fc06a"), "remove": Color("e8413b"),
+		"done": Color("3f7fd9"), "rotate": Color("8a5bc4")}
 	for k in buttons:
 		var c: Vector2 = buttons[k][0]
 		var rad: float = buttons[k][1]
 		var col: Color = colors[k]
 		var down := is_held(k)
-		if k == "super":
+		if k == "super" and game.state == "play":
 			var f: float = game.super_charge
 			draw_circle(c, rad, Color(0.15, 0.15, 0.25, 0.55))
 			if f < 1.0:
@@ -247,6 +265,81 @@ func _draw_controls() -> void:
 			var n := String(labels[k]).length()
 			var fs := int(rad * (0.44 if n <= 4 else (0.36 if n <= 6 else 0.27)))
 			txt(labels[k], Vector2(c.x - rad, c.y + fs * 0.36), fs, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, rad * 2, 6)
+
+
+# ------------------------------------------------------------------ BUILD / DECOR palette
+const PAL_BOX := 66.0
+const PAL_GAP := 8.0
+
+
+func _pal_items() -> Array:
+	var h = game.home
+	var out := []
+	if h.mode == "build":
+		for b in HomeBase.BLOCKS:
+			var t: int = b.t
+			out.append({"icon": img("t_" + _tex_name(t)), "name": Level.NAMES[t], "cost": b.cost})
+	elif h.mode == "decor":
+		for it in Decor.ITEMS:
+			var locked: bool = it.get("need_clear", false) and game.cleared <= 0
+			out.append({"icon": img("decor_" + it.id), "name": it.name, "cost": {"coins": it.coins}, "locked": locked})
+	return out
+
+
+static func _tex_name(t: int) -> String:
+	return ["", "grass_top", "dirt", "stone", "iron", "gold", "diamond", "bedrock", "brick", "mystery", "used",
+		"planks", "wool_red", "wool_blue", "wool_yellow", "wool_white", "window", "iron_block", "gold_block", "diamond_block", "stone_brick"][t]
+
+
+func _pal_rect(i: int, n: int) -> Rect2:
+	var x0 := 600.0
+	var per := maxi(1, int((size.x - 110 - x0) / (PAL_BOX + PAL_GAP)))
+	var row := i / per
+	var col := i % per
+	return Rect2(x0 + col * (PAL_BOX + PAL_GAP), 12 + row * (PAL_BOX + PAL_GAP), PAL_BOX, PAL_BOX)
+
+
+func _palette_tap(p: Vector2) -> bool:
+	var items := _pal_items()
+	for i in items.size():
+		if _pal_rect(i, items.size()).grow(4).has_point(p):
+			game.home.sel[game.home.mode] = i
+			game.sfx("bonk", -10)
+			return true
+	return false
+
+
+func _cost_text(cost: Dictionary) -> String:
+	var parts := []
+	for k in cost:
+		var n := int(cost[k])
+		if n == 0:
+			parts.append("FREE")
+		else:
+			parts.append("%d %s" % [n, "coin" + ("s" if n > 1 else "") if k == "coins" else k.to_upper()])
+	return ", ".join(parts)
+
+
+func _draw_palette() -> void:
+	var h = game.home
+	var items := _pal_items()
+	var last := Rect2()
+	for i in items.size():
+		var r := _pal_rect(i, items.size())
+		last = r
+		var sel: bool = h.sel[h.mode] == i
+		draw_rect(r.grow(5) if sel else r.grow(1), Color("ffd23a") if sel else Color(0.1, 0.12, 0.25, 0.7))
+		draw_rect(r, Color(1, 1, 1, 0.92))
+		fit(items[i].icon, r.grow(-6))
+		if items[i].get("locked", false):
+			draw_rect(r, Color(0.1, 0.1, 0.2, 0.55))
+			txt("?", Vector2(r.position.x, r.position.y + 46), 36, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 6)
+	# the chosen one: name and price, and why it can't go there
+	var it: Dictionary = items[h.sel[h.mode]]
+	var y := last.end.y + 34
+	txt("%s  -  %s" % [it.name, _cost_text(it.cost)], Vector2(600, y), 24, Color("fff2a8"), HORIZONTAL_ALIGNMENT_LEFT, -1, 7)
+	if not h.can_place and h.why != "":
+		txt(h.why, Vector2(600, y + 30), 22, Color("ffb0a8"), HORIZONTAL_ALIGNMENT_LEFT, -1, 6)
 
 
 func update_showing() -> bool:
@@ -300,7 +393,7 @@ func _draw_update() -> void:
 
 ## Every text size the game uses later, drawn invisibly on the title screen (one per frame),
 ## so the letters are ready before play and nothing has to be prepared mid-game.
-var warm_sizes := [18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 32, 33, 34, 35, 36, 38, 40, 44, 46, 52, 54, 56, 64, 76, 80, 84, 88, 92]
+var warm_sizes := [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 32, 33, 34, 35, 36, 38, 40, 44, 46, 52, 54, 56, 64, 76, 80, 84, 88, 92]
 const WARM_TEXT := "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 %!?&.,:;'/+-→()"
 
 
@@ -316,6 +409,10 @@ func _draw_loading() -> void:
 			draw_texture_rect(img(Mons.face(l, st)), Rect2(-500, -500, 40, 40), false)
 	for n in ["rocco_idle", "blocky_idle", "heart", "heart_empty", "coin", "kragjr_1"]:
 		draw_texture_rect(img(n), Rect2(-500, -500, 40, 40), false)
+	for it in Decor.ITEMS:
+		draw_texture_rect(img("decor_" + it.id), Rect2(-500, -500, 40, 40), false)
+	for b in HomeBase.BLOCKS:
+		draw_texture_rect(img("t_" + _tex_name(b.t)), Rect2(-500, -500, 40, 40), false)
 	draw_circle(Vector2(-300, -300), 40, Color(1, 1, 1, 0.01))
 	draw_arc(Vector2(-300, -300), 40, 0, TAU, 48, Color(1, 1, 1, 0.01), 3, true)
 	draw_arc(Vector2(-300, -300), 30, -PI / 2, 1.0, 48, Color(1, 1, 1, 0.01), 8, true)

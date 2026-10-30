@@ -36,6 +36,7 @@ func _process(_dt: float) -> bool:
 	if f == 5:
 		a.slot_pick(1)
 		check(a.state == "partner", "a new file should open PICK YOUR PARTNER (got %s)" % a.state)
+		a.partner_from = ""   # straight into 1-1 (tests/home_check.gd covers the home)
 		a.partner_tap(0)   # look at the water one
 		check(a.state == "partner" and a.partner_sel == 0, "one tap should only pick")
 		a.partner_tap(0)   # tap again = go

@@ -210,6 +210,10 @@ electric SPARKY/ZAPPER (Lv 6). The partner hero is `heroes.mon` (`who == "mon"`,
 `mon_xp` (saved as `mon_xp`, partner as `mon`). PICK YOUR PARTNER (`state == "partner"`) comes after picking a file that isn't
 mid-level. Tests that press buttons must call functions (`_action`, `_thunderbolt`) because `_gather_input` overwrites flags.
 Screenshots of effects need `--fixed-fps 60` (software Vulkan is slow, so effects end between frames otherwise).
+Flow: title -> file -> (new: partner, 30 coins) -> HOME (`level.is_home`, `state == "home"`, `HomeBase`) -> portal -> 1-1
+-> clear -> home. Switching places reloads the scene via `main.go(place, slot)` + static `Boot` (tests follow `Boot.current`).
+The save always carries `home` ({blocks, decor}); 1-1 keeps it in `home_saved`. New decor: add to `Decor.ITEMS` + `model()`,
+then render paper pictures (`tools/render_decor.gd`, `tools/sticker.py`). Sprint = full-tilt stick (`tilt_t`), Shift, R1/R2.
 Performance rules learned the hard way (each one was a visible freeze on the tablet):
 * Never change a font size from frame to frame (pop-in text): draw at a fixed size and scale with `draw_set_transform`.
   New sizes make the tablet redraw every letter; that was the lag at game start, on SUPERs and at Krag Jr.

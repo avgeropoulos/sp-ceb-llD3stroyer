@@ -682,7 +682,67 @@ def sign():
     p.done("sign", border=1.6)
 
 
-ATLAS = ["grass_top", "grass_side", "dirt", "stone", "iron", "gold", "diamond", "bedrock", "brick", "mystery", "used"]
+ATLAS = ["grass_top", "grass_side", "dirt", "stone", "iron", "gold", "diamond", "bedrock", "brick", "mystery", "used",
+         "planks", "wool_red", "wool_blue", "wool_yellow", "wool_white", "window", "iron_block", "gold_block", "diamond_block", "stone_brick"]
+
+
+def build_textures():
+    """Blocks for building at home."""
+    rnd = random.Random(11)
+    # planks: warm wood boards
+    im = Image.new("RGB", (16, 16))
+    px = im.load()
+    for y in range(16):
+        for x in range(16):
+            board = y // 4
+            base = [(196, 146, 88), (182, 132, 76), (204, 154, 96), (188, 138, 82)][board]
+            v = rnd.randint(-8, 8) + (6 if (x + board * 5) % 9 == 0 else 0)
+            c = tuple(max(0, min(255, b + v)) for b in base)
+            if y % 4 == 3 or (x + board * 7) % 16 == 0:
+                c = (120, 82, 44)
+            px[x, y] = c
+    im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_planks.png"))
+    # wool: soft colored squares with a stitched look
+    for name, col in (("wool_red", (222, 66, 60)), ("wool_blue", (62, 110, 220)), ("wool_yellow", (250, 206, 60)), ("wool_white", (236, 236, 240))):
+        im = Image.new("RGB", (16, 16), col)
+        px = im.load()
+        for y in range(16):
+            for x in range(16):
+                v = rnd.randint(-10, 10) + (8 if (x * 3 + y * 5) % 7 == 0 else 0)
+                px[x, y] = tuple(max(0, min(255, c + v)) for c in col)
+        im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_" + name + ".png"))
+    # window: wooden frame, light blue glass with a shine
+    im = Image.new("RGB", (16, 16), (150, 210, 245))
+    px = im.load()
+    for i in range(16):
+        for (x, y) in ((i, 0), (i, 15), (0, i), (15, i), (i, 7), (i, 8), (7, i), (8, i)):
+            px[x, y] = (150, 100, 56)
+    for k in range(3):
+        px[3 + k, 3 + k - 1 if k else 3] = (235, 248, 255)
+        px[10 + k, 10 + k - 1 if k else 10] = (235, 248, 255)
+    im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_window.png"))
+    # shiny ore blocks
+    for name, col in (("iron_block", (220, 220, 226)), ("gold_block", (255, 206, 58)), ("diamond_block", (96, 232, 230))):
+        im = Image.new("RGB", (16, 16), col)
+        px = im.load()
+        for y in range(16):
+            for x in range(16):
+                v = 18 if (x < 2 or y < 2) else (-26 if (x > 13 or y > 13) else rnd.randint(-6, 6))
+                if (x + y) % 6 == 0 and 2 < x < 13:
+                    v += 12
+                px[x, y] = tuple(max(0, min(255, c + v)) for c in col)
+        im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_" + name + ".png"))
+    # stone bricks
+    im = Image.new("RGB", (16, 16), (150, 152, 158))
+    px = im.load()
+    for y in range(16):
+        for x in range(16):
+            v = rnd.randint(-8, 8)
+            c = (150 + v, 152 + v, 158 + v)
+            if y % 8 == 7 or (x + (4 if (y // 8) % 2 else 0)) % 8 == 7:
+                c = (104, 106, 112)
+            px[x, y] = c
+    im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_stone_brick.png"))
 
 
 def atlas():
@@ -743,6 +803,7 @@ def main():
     hill("hill_a", "#7cc96a", "#9bde84"); hill("hill_b", "#5fb46a", "#82cc7d", 260, 150); hill("hill_c", "#a4d36f", "#c3e690", 160, 80)
     sign()
     textures()
+    build_textures()
     atlas()
     print("art written to", os.path.abspath(OUT))
 

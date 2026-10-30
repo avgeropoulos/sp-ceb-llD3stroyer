@@ -33,6 +33,7 @@ func _process(_dt: float) -> bool:
 			check(not Saves.exists(1), "file 1 should start empty")
 			a.slot_pick(1)
 			check(a.state == "partner" and a.slot == 1, "picking an empty file should ask for a partner")
+			a.partner_from = ""   # this test goes straight into 1-1 (tests/home_check.gd covers the home)
 			a.choose_partner("spark")
 			check(a.state == "play" and a.slot == 1, "choosing a partner should start the game")
 			# change things

@@ -11,14 +11,20 @@ const LZ := 10
 const WALK_Z0 := 3.35
 const WALK_Z1 := 9.65
 
-enum { AIR, GRASS, DIRT, STONE, IRON, GOLD, DIAMOND, BEDROCK, BRICK, MYSTERY, USED }
-const NAMES := ["", "GRASS", "DIRT", "STONE", "IRON", "GOLD", "DIAMOND", "BEDROCK", "BRICK", "?", "BLOCK"]
+enum { AIR, GRASS, DIRT, STONE, IRON, GOLD, DIAMOND, BEDROCK, BRICK, MYSTERY, USED,
+	PLANKS, WOOL_RED, WOOL_BLUE, WOOL_YELLOW, WOOL_WHITE, WINDOW, IRON_BLOCK, GOLD_BLOCK, DIAMOND_BLOCK, STONE_BRICK }
+const NAMES := ["", "GRASS", "DIRT", "STONE", "IRON", "GOLD", "DIAMOND", "BEDROCK", "BRICK", "?", "BLOCK",
+	"PLANKS", "RED", "BLUE", "YELLOW", "WHITE", "WINDOW", "IRON", "GOLD", "DIAMOND", "STONE BRICK"]
 ## How many pickaxe hits each block takes (999 = can't be mined).
-const HITS := [0, 1, 1, 2, 3, 3, 4, 999, 2, 999, 999]
+const HITS := [0, 1, 1, 2, 3, 3, 4, 999, 2, 999, 999, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2]
 ## Atlas tile for the top, sides and bottom of each block type.
-const FACES := [[0, 0, 0], [0, 1, 2], [2, 2, 2], [3, 3, 3], [4, 4, 4], [5, 5, 5], [6, 6, 6], [7, 7, 7], [8, 8, 8], [9, 9, 9], [10, 10, 10]]
-const COLORS := [Color.WHITE, Color("60be50"), Color("96663f"), Color("8a8e96"), Color("dfbaa0"), Color("ffd23c"), Color("5ae6e6"), Color("3c3c46"), Color("c45c3a"), Color("2cbec8"), Color("967860")]
-const ATLAS_TILES := 11
+const FACES := [[0, 0, 0], [0, 1, 2], [2, 2, 2], [3, 3, 3], [4, 4, 4], [5, 5, 5], [6, 6, 6], [7, 7, 7], [8, 8, 8], [9, 9, 9], [10, 10, 10],
+	[11, 11, 11], [12, 12, 12], [13, 13, 13], [14, 14, 14], [15, 15, 15], [16, 16, 16], [17, 17, 17], [18, 18, 18], [19, 19, 19], [20, 20, 20]]
+const COLORS := [Color.WHITE, Color("60be50"), Color("96663f"), Color("8a8e96"), Color("dfbaa0"), Color("ffd23c"), Color("5ae6e6"), Color("3c3c46"), Color("c45c3a"), Color("2cbec8"), Color("967860"),
+	Color("c4925a"), Color("de423c"), Color("3e6edc"), Color("face3c"), Color("ececf0"), Color("96d2f5"), Color("dcdce2"), Color("ffce3a"), Color("60e8e6"), Color("96989e")]
+const ATLAS_TILES := 21
+const HOME_W := 44            # the home plot is 44 blocks wide
+const PORTAL_X := 40.5
 
 const CHECKPOINT_X := 91.0
 const BOSS_X0 := 156
@@ -36,6 +42,8 @@ var spawns: Array = []
 var coin_spots: Array[Vector3] = []
 var signs: Array = []
 var rng := RandomNumberGenerator.new()
+var width := LX               # walls stop you at x = 0 and x = width
+var is_home := false
 
 
 func idx(x: int, y: int, z: int) -> int:
@@ -65,7 +73,7 @@ func set_cell(x: int, y: int, z: int, t: int) -> void:
 
 
 func solid(x: int, y: int, z: int) -> bool:
-	if x < 0 or x >= LX:
+	if x < 0 or x >= width:
 		return y < LY + 6   # invisible walls at both ends of the level
 	if y < 0 or y >= LY or z < 0 or z >= LZ:
 		return false
@@ -175,6 +183,27 @@ func generate() -> void:
 		[Vector3(89.0, 5, 3.6), "CHECKPOINT!"],
 		[Vector3(152.0, 5, 3.6), "DANGER!\nKrag Jr. ahead!"],
 	]
+	_build_mesh_nodes()
+	_scenery()
+	rebuild()
+
+
+## The home plot: flat grass, a few trees at the back, a mailbox and the portal to 1-1.
+func generate_home() -> void:
+	is_home = true
+	width = HOME_W
+	rng.seed = 77
+	cells.resize(LX * LY * LZ)
+	cells.fill(AIR)
+	heights.resize(LX)
+	heights.fill(5)
+	for x in HOME_W:
+		for z in LZ:
+			set_cell(x, 0, z, BEDROCK)
+			for y in range(1, 5):
+				set_cell(x, y, z, GRASS if y == 4 else (DIRT if y == 3 else STONE))
+	signs = [[Vector3(3.5, 5, 3.6), "HOME SWEET HOME\nBUILD and DECOR\nto make it yours!"],
+		[Vector3(37.5, 5, 3.6), "PORTAL\nto 1-1\nMEADOW MINE"]]
 	_build_mesh_nodes()
 	_scenery()
 	rebuild()
@@ -378,13 +407,13 @@ func paper(tex_name: String, pos: Vector3, size: float, shadow := false, flip :=
 func _scenery() -> void:
 	var trees := ["tree_a", "tree_b", "tree_c"]
 	var x := 2.0
-	while x < LX - 2:
+	while x < width - 2:
 		var cx := int(x)
 		if solid(cx, heights[cx] - 1, 1):
 			prop(trees[rng.randi() % 3], Vector3(x, heights[cx], rng.randf_range(0.8, 2.2)), rng.randf_range(3.2, 4.4), true, rng.randf() < 0.5)
 		x += rng.randf_range(3.0, 7.0)
 	x = 1.0
-	while x < LX - 1:
+	while x < width - 1:
 		var cx := int(x)
 		if solid(cx, heights[cx] - 1, 2):
 			var what: String = ["bush", "flower_pink", "flower_blue", "flower_white", "flower_pink"][rng.randi() % 5]
@@ -392,14 +421,14 @@ func _scenery() -> void:
 		x += rng.randf_range(1.2, 3.0)
 	# far hills and clouds (they're big and far so they move slowly: parallax for free)
 	var hx := -20.0
-	while hx < LX + 40:
+	while hx < width + 40:
 		var h: String = ["hill_a", "hill_b", "hill_c"][rng.randi() % 3]
 		var hs := prop(h, Vector3(hx, -2, rng.randf_range(-34, -22)), rng.randf_range(9, 16))
 		if hs is Sprite3D:
 			hs.billboard = BaseMaterial3D.BILLBOARD_DISABLED
 		hx += rng.randf_range(10, 18)
 	for i in 34:
-		var c := prop("cloud", Vector3(rng.randf_range(-20, LX + 30), rng.randf_range(13, 20), rng.randf_range(-30, -10)), rng.randf_range(2.5, 4.5))
+		var c := prop("cloud", Vector3(rng.randf_range(-20, width + 30), rng.randf_range(13, 20), rng.randf_range(-30, -10)), rng.randf_range(2.5, 4.5))
 		if c is Sprite3D:
 			c.modulate = Color(1, 1, 1, 0.95)
 	for s in signs:
