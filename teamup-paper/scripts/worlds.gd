@@ -2,7 +2,7 @@ class_name Worlds
 ## The worlds you fly to in the rocket. Each one is a level with its own look, song,
 ## bad guys and a Krag Jr. fight at the end. They unlock in order.
 
-const ORDER := ["meadow", "frost", "dunes"]
+const ORDER := ["meadow", "frost", "dunes", "swamp", "moon"]
 
 const INFO := {
 	"meadow": {"name": "1-1  MEADOW MINE", "short": "MEADOW MINE", "song": "meadow", "after": "",
@@ -17,6 +17,16 @@ const INFO := {
 		"sky": ["e8704a", "ffd29a", "f2b07a"], "fog": "ffd8a8", "sun": "ffc890", "ambient": "f8dcc0",
 		"map": Vector3(20, 0, -4), "top": "sand", "side": "sandstone", "boss_hp": 30,
 		"hello": "Hot hot hot! Watch for scorpions!"},
+	"swamp": {"name": "4-1  SPOOKY SWAMP", "short": "SPOOKY SWAMP", "song": "spooky", "after": "dunes",
+		"sky": ["2a1f45", "6a4f8a", "4a3a6a"], "fog": "6a5a8c", "sun": "ece0ff", "ambient": "c4b4e8",
+		"fog_begin": 20.0, "fog_end": 85.0, "fog_density": 0.75,
+		"map": Vector3(18, 0, 18), "top": "swamp_top", "side": "swamp_side", "boss_hp": 36,
+		"hello": "Spooky! Watch out for skeletons in the mist!"},
+	"moon": {"name": "5-1  MOON BASE", "short": "MOON BASE", "song": "moon", "after": "swamp",
+		"sky": ["05081a", "1c2450", "101638"], "fog": "1c2450", "sun": "ffffff", "ambient": "b8c0e0",
+		"fog_begin": 60.0, "fog_end": 220.0, "fog_density": 0.3, "gravity": 0.6,
+		"map": Vector3(-22, 0, 20), "top": "moon_top", "side": "moon_rock", "boss_hp": 42,
+		"hello": "Low gravity! Jump super high!"},
 }
 
 ## The home island on the sky map.

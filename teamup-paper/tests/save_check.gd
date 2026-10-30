@@ -12,6 +12,7 @@ var expect_pos := Vector3(60.5, 5, 6.5)
 
 func _initialize() -> void:
 	Look.loaded = true
+	Cutscene.enabled = false   # tests/scene_check.gd covers the cutscenes
 	Look.toy = false
 	Saves.prefix = "user://test_save"
 	for ext in ["", ".bak", ".tmp"]:

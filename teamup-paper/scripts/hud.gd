@@ -76,6 +76,8 @@ func _layout() -> void:
 		if game.home.mode == "":   # walking around the home: BUILD, DECOR, PARTNER, FLY
 			buttons = {"jump": jump, "build": act, "swap": sw, "decor": sup, "pause": pz,
 				"partner": [Vector2(s.x - 52 * u, 150 * u), 46 * u], "fly": fly}
+			if game.near_tv():   # standing by a TV: watch the MOVIES
+				buttons["movies"] = [Vector2(s.x - 445 * u, s.y - 175 * u), 52 * u]
 		else:                      # building: PLACE, REMOVE, DONE (and TURN for decorations)
 			buttons = {"jump": jump, "place": act, "done": sw, "remove": sup, "pause": pz, "fly": fly}
 			if game.home.mode == "decor":
@@ -124,6 +126,12 @@ func _input(event: InputEvent) -> void:
 					return
 				if game.state == "partner":
 					_partner_tap(e.position)
+					return
+				if game.state == "scene":
+					game.scene_tap()
+					return
+				if game.state == "movies":
+					_movies_tap(e.position)
 					return
 				if game.state == "paused":
 					for i in 3:
@@ -208,6 +216,12 @@ func _draw() -> void:
 		return
 	if game.state == "slots":
 		_draw_slots()
+		return
+	if game.state == "scene":
+		_draw_scene()
+		return
+	if game.state == "movies":
+		_draw_movies()
 		return
 	if game.state == "partner":
 		_draw_partner()
@@ -321,14 +335,14 @@ func _draw_controls() -> void:
 	# buttons
 	var labels := {"jump": "JUMP", "action": game.action_label(), "swap": "SWAP", "super": "SUPER", "pause": "II",
 		"build": "BUILD", "decor": "DECOR", "partner": "PARTNER", "place": "PLACE", "remove": "REMOVE", "done": "DONE", "rotate": "TURN", "land": "LAND", "paint": "PAINT",
-		"fly": "LAND" if game.flying else "FLY", "down": "DOWN"}
+		"fly": "LAND" if game.flying else "FLY", "down": "DOWN", "movies": "MOVIES"}
 	if game.flying:
 		labels["jump"] = "UP"
 	var colors := {"jump": Color("3fc06a"), "action": Color("ff8a1f"), "swap": Color("6a7cff"), "super": Color("ffcf33"), "pause": Color(0.2, 0.25, 0.4),
 		"build": Color("ff8a1f"), "decor": Color("ff6fa8"), "partner": Color("2cbec8"), "place": Color("3fc06a"), "remove": Color("e8413b"),
 		"done": Color("3f7fd9"), "rotate": Color("8a5bc4"), "land": Color("3fc06a"),
 		"paint": Decor.PAINTS[game.home.paint] if game.home and game.home.paint > 0 else Color("ff6fa8"),
-		"fly": Color("ffb020") if game.flying else Color("54c8ff"), "down": Color("3f7fd9")}
+		"fly": Color("ffb020") if game.flying else Color("54c8ff"), "down": Color("3f7fd9"), "movies": Color("e8413b")}
 	for k in buttons:
 		var c: Vector2 = buttons[k][0]
 		var rad: float = buttons[k][1]
@@ -390,7 +404,8 @@ func _pal_items() -> Array:
 static func _tex_name(t: int) -> String:
 	return ["", "grass_top", "dirt", "stone", "iron", "gold", "diamond", "bedrock", "brick", "mystery", "used",
 		"planks", "wool_red", "wool_blue", "wool_yellow", "wool_white", "window", "iron_block", "gold_block", "diamond_block", "stone_brick",
-		"snow_top", "ice", "sand", "sandstone", "log_side", "leaves", "wool_green", "wool_black", "road"][t]
+		"snow_top", "ice", "sand", "sandstone", "log_side", "leaves", "wool_green", "wool_black", "road",
+		"swamp_top", "mud", "moon_top", "moon_rock"][t]
 
 
 func _pal_rect(i: int, n: int) -> Rect2:
@@ -900,3 +915,70 @@ func _draw_partner() -> void:
 	draw_rect(g, Color("3fc06a"))
 	draw_rect(g, Color.WHITE, false, 3.0)
 	txt("GO WITH %s!" % Mons.name_of(l2, Mons.stage_of(l2, Mons.level_of(game.mon_xp[l2]))), Vector2(g.position.x, g.position.y + 47), 32, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, g.size.x, 8)
+
+
+# ------------------------------------------------------------------ cutscenes and MOVIES
+## Black bars at the top and bottom, the words at the bottom, and "TAP TO SKIP".
+func _draw_scene() -> void:
+	var cs = game.cutscene
+	var bar := size.y * 0.13
+	draw_rect(Rect2(0, 0, size.x, bar), Color(0, 0, 0, 0.92))
+	draw_rect(Rect2(0, size.y - bar * 1.35, size.x, bar * 1.35), Color(0, 0, 0, 0.92))
+	if cs == null:
+		return
+	if cs.t < 2.5:
+		txt(Cutscene.TITLES.get(cs.id, ""), Vector2(0, bar * 0.62), 30, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, size.x, 6)
+	if cs.t > 1.0:
+		txt("TAP TO SKIP  >>", Vector2(size.x - 260, bar * 0.62), 20, Color(1, 1, 1, 0.7), HORIZONTAL_ALIGNMENT_LEFT, -1, 0)
+	var y := size.y - bar * 1.35 + 44
+	if cs.speaker != "":
+		txt(cs.speaker, Vector2(0, y), 26, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, size.x, 6)
+		y += 36
+	if cs.caption != "":
+		txt(cs.caption, Vector2(40, y), 30, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, size.x - 80, 6)
+
+
+func movie_rect(i: int) -> Rect2:
+	var w := minf(270.0, (size.x - 120) / 4.0)
+	var h := 150.0
+	var x0 := (size.x - w * 4 - 30 * 3) * 0.5
+	return Rect2(x0 + (i % 4) * (w + 30), 150 + (i / 4) * (h + 30), w, h)
+
+
+func movies_back_rect() -> Rect2:
+	return Rect2(24, 24, 170, 70)
+
+
+func _movies_tap(p: Vector2) -> void:
+	if movies_back_rect().grow(10).has_point(p):
+		game.state = "home"
+		return
+	for i in Cutscene.ORDER.size():
+		if movie_rect(i).has_point(p):
+			game.movie_sel = i
+			game.movie_pick(i)
+			return
+
+
+func _draw_movies() -> void:
+	draw_rect(Rect2(Vector2.ZERO, size), Color(0.07, 0.05, 0.14, 0.94))
+	txt("MOVIES", Vector2(0, 92), 64, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, size.x, 12)
+	var br := movies_back_rect()
+	draw_rect(br, Color(0.13, 0.17, 0.33))
+	draw_rect(br, Color.WHITE, false, 3.0)
+	txt("BACK", Vector2(br.position.x, br.position.y + 48), 30, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, br.size.x, 6)
+	for i in Cutscene.ORDER.size():
+		var id: String = Cutscene.ORDER[i]
+		var r := movie_rect(i)
+		var seen: bool = id in game.scenes_seen
+		if game.movie_sel == i:
+			draw_rect(r.grow(6), Color("ffd23a"))
+		draw_rect(r, Color(0.92, 0.88, 0.8) if seen else Color(0.3, 0.3, 0.38))
+		draw_rect(Rect2(r.position + Vector2(10, 10), Vector2(r.size.x - 20, r.size.y - 60)), Color(0.12, 0.12, 0.2))
+		if seen:
+			_star_shape(r.position + Vector2(r.size.x * 0.5, 50), 24, Color("ffd23a"))
+			txt(Cutscene.TITLES[id], Vector2(r.position.x + 6, r.end.y - 18), 20, Color(0.15, 0.1, 0.2), HORIZONTAL_ALIGNMENT_CENTER, r.size.x - 12, 0)
+		else:
+			txt("?", Vector2(r.position.x, r.position.y + 70), 44, Color(1, 1, 1, 0.5), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
+			txt("NOT SEEN YET", Vector2(r.position.x, r.end.y - 18), 20, Color(1, 1, 1, 0.6), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
+	txt("Tap a movie to watch it again!", Vector2(0, size.y - 40), 26, Color(1, 1, 1, 0.8), HORIZONTAL_ALIGNMENT_CENTER, size.x, 6)

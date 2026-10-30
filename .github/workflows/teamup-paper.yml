@@ -11,7 +11,7 @@ concurrency:
 jobs:
   android:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     env:
       GODOT_VERSION: 4.5.1
       GODOT_ANDROID_KEYSTORE_RELEASE_PATH: ${{ github.workspace }}/keystore/games.keystore
@@ -71,7 +71,7 @@ jobs:
             grep -q 'TEST PASSED' test-home-$look.log
             timeout 300s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/foes_check.gd -- $look 2>&1 | tee test-foes-$look.log
             grep -q 'TEST PASSED' test-foes-$look.log
-            for world in meadow frost dunes; do
+            for world in meadow frost dunes swamp moon; do
               timeout 300s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/open_check.gd -- $look $world 2>&1 | tee test-open-$world-$look.log
               grep -q 'TEST PASSED' test-open-$world-$look.log
             done
@@ -82,6 +82,8 @@ jobs:
             timeout 120s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/map_check.gd -- $look 2>&1 | tee test-map-$look.log
             grep -q 'TEST PASSED' test-map-$look.log
           done
+          timeout 300s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/scene_check.gd 2>&1 | tee test-scene.log
+          grep -q 'TEST PASSED' test-scene.log
       - name: Build signed Android APK
         run: |
           godot --headless --path teamup-paper --export-release Android ../TeamUpPaper.apk

@@ -8,6 +8,7 @@ var g
 
 func _initialize() -> void:
 	Look.loaded = true
+	Cutscene.enabled = false   # tests/scene_check.gd covers the cutscenes
 	Look.toy = false
 	Saves.prefix = "user://test_world"
 	Saves.write(1, {"v": 2, "in_level": true, "level": "frost", "cleared_w": {"meadow": 1}, "cleared": 1, "coins": 7,

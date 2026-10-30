@@ -52,6 +52,8 @@ and one island per world. Landing is easy:
 | 1-1 Meadow Mine | grass, trees, ore hill | Grumblers, Skelly Archers | 18 HP |
 | 2-1 Frosty Peaks | snow, pine trees, snowmen, slippery **ice** fields, ice platforms | **Penguin**: "!" then a belly slide | 24 HP |
 | 3-1 Sunset Dunes | sand, cacti, palms, sunset sky, sandstone pillars to hop | **Scorpion**: raises its tail "!" then lunges | 30 HP |
+| 4-1 Spooky Swamp | dark purple sky, thick mist, mossy ground and mud bogs, dead trees, pumpkins, gravestones | lots of Skelly Archers | 36 HP |
+| 5-1 Moon Base | starry black sky, grey moon dust, round craters, moon rock with diamonds; **low gravity** (0.6: jump way higher) | Grumblers in space | 42 HP |
 
 * Each world has its own song (the real Team Up! snow and desert tunes). Ice: slow to start, slow to stop.
 
@@ -123,6 +125,23 @@ shows the power and a ring for the time left.
   paper pictures `art/pw_*.png` from `tools/gen_art.py` `power_items()`). `main.gd` only calls into it
   (`_setup_powers`, `_power_speed` / `_power_jump`, and one line each in `_open_mystery`, `_action`, `hurt_hero`,
   `_update_foes`, `_step`). Test: `tests/power_check.gd`.
+
+## Cutscenes and MOVIES
+
+Little movies with black bars, speech bubbles and the voices (tap to skip after 1 second), in `scripts/cutscene.gd`:
+
+| Scene | When |
+|---|---|
+| KRAG JR. STEALS THE STARS | the first time a file arrives home: Krag Jr. flies in with every world's stars, Dennis leaps into his copter and gets carried off |
+| BONK! | walking up to Krag Jr.'s castle without 5 stars: he bonks his head on his own gold gate |
+| KRAG JR.'S CASTLE | all 5 stars, inside the castle, before the fight |
+| HOORAY, DENNIS! | after beating Krag Jr.: his copter crashes, Dennis pops out, everyone cheers |
+| BANANA PEEL, STUCK PICKAXE, ACHOO!, DENNIS ZOOMIES | funny ones: sometimes when you get home or grab a star (30%, never two within 90 s, never the same twice in a row) |
+
+Seen scenes are saved (`scenes_seen`). At home, stand by the **MOVIES** TV (next to the welcome sign, or any TV you
+place) and tap **MOVIES** to watch them again. A scene is a timeline of tracks (`walk`, `hop`, `say`, `cam`, `pose`...);
+everyone is put back where they were when it ends. Tests switch scenes off with `Cutscene.enabled = false`;
+`tests/scene_check.gd` plays every scene, SKIP, the intro on a new file, MOVIES and a funny scene.
 
 ## Home base: build and decorate
 

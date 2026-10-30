@@ -20,6 +20,7 @@ var end_f := 0
 
 func _initialize() -> void:
 	Look.loaded = true
+	Cutscene.enabled = false   # tests/scene_check.gd covers the cutscenes
 	Look.toy = OS.get_cmdline_user_args().has("toy")
 	Saves.prefix = "user://test_partner"
 	_clean()

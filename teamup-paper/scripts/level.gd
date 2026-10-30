@@ -13,21 +13,23 @@ const WALK_Z1 := 9.65
 
 enum { AIR, GRASS, DIRT, STONE, IRON, GOLD, DIAMOND, BEDROCK, BRICK, MYSTERY, USED,
 	PLANKS, WOOL_RED, WOOL_BLUE, WOOL_YELLOW, WOOL_WHITE, WINDOW, IRON_BLOCK, GOLD_BLOCK, DIAMOND_BLOCK, STONE_BRICK,
-	SNOW, ICE, SAND, SANDSTONE, LOG, LEAVES, WOOL_GREEN, WOOL_BLACK, ROAD }
+	SNOW, ICE, SAND, SANDSTONE, LOG, LEAVES, WOOL_GREEN, WOOL_BLACK, ROAD, SWAMP_GRASS, MUD, MOON_DUST, MOON_ROCK }
 const NAMES := ["", "GRASS", "DIRT", "STONE", "IRON", "GOLD", "DIAMOND", "BEDROCK", "BRICK", "?", "BLOCK",
 	"PLANKS", "RED", "BLUE", "YELLOW", "WHITE", "WINDOW", "IRON", "GOLD", "DIAMOND", "STONE BRICK",
-	"SNOW", "ICE", "SAND", "SANDSTONE", "LOG", "LEAVES", "GREEN", "BLACK", "ROAD"]
+	"SNOW", "ICE", "SAND", "SANDSTONE", "LOG", "LEAVES", "GREEN", "BLACK", "ROAD", "SWAMP GRASS", "MUD", "MOON DUST", "MOON ROCK"]
 ## How many pickaxe hits each block takes (999 = can't be mined).
-const HITS := [0, 1, 1, 2, 3, 3, 4, 999, 2, 999, 999, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 1, 2, 1, 2, 1, 1, 1, 1, 2]
+const HITS := [0, 1, 1, 2, 3, 3, 4, 999, 2, 999, 999, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 1, 2, 1, 2, 1, 1, 1, 1, 2, 1, 1, 1, 2]
 ## Atlas tile for the top, sides and bottom of each block type.
 const FACES := [[0, 0, 0], [0, 1, 2], [2, 2, 2], [3, 3, 3], [4, 4, 4], [5, 5, 5], [6, 6, 6], [7, 7, 7], [8, 8, 8], [9, 9, 9], [10, 10, 10],
 	[11, 11, 11], [12, 12, 12], [13, 13, 13], [14, 14, 14], [15, 15, 15], [16, 16, 16], [17, 17, 17], [18, 18, 18], [19, 19, 19], [20, 20, 20],
-	[21, 22, 2], [23, 23, 23], [24, 24, 24], [25, 25, 25], [26, 27, 26], [28, 28, 28], [29, 29, 29], [30, 30, 30], [31, 31, 31]]
+	[21, 22, 2], [23, 23, 23], [24, 24, 24], [25, 25, 25], [26, 27, 26], [28, 28, 28], [29, 29, 29], [30, 30, 30], [31, 31, 31],
+	[32, 33, 34], [34, 34, 34], [35, 36, 36], [36, 36, 36]]
 const COLORS := [Color.WHITE, Color("60be50"), Color("96663f"), Color("8a8e96"), Color("dfbaa0"), Color("ffd23c"), Color("5ae6e6"), Color("3c3c46"), Color("c45c3a"), Color("2cbec8"), Color("967860"),
 	Color("c4925a"), Color("de423c"), Color("3e6edc"), Color("face3c"), Color("ececf0"), Color("96d2f5"), Color("dcdce2"), Color("ffce3a"), Color("60e8e6"), Color("96989e"),
-	Color("eef4fc"), Color("96d2f0"), Color("ecce8c"), Color("d6aa6a"), Color("70502e"), Color("3e9a44"), Color("4cb048"), Color("34343e"), Color("4a4c52")]
-const ATLAS_TILES := 32       # pictures in art/atlas.png
-const BLOCK_TYPES := 30       # block kinds (AIR .. ROAD)
+	Color("eef4fc"), Color("96d2f0"), Color("ecce8c"), Color("d6aa6a"), Color("70502e"), Color("3e9a44"), Color("4cb048"), Color("34343e"), Color("4a4c52"),
+	Color("4a6046"), Color("543e3a"), Color("c4c6ce"), Color("96989e")]
+const ATLAS_TILES := 37       # pictures in art/atlas.png
+const BLOCK_TYPES := 34       # block kinds (AIR .. MOON_ROCK)
 const HOME_W := 44            # the OLD home plot was 44 x 10 (old saves are moved into the middle of the new one)
 const PORTAL_X := 40.5
 ## The home world: a big square of land to build a whole city on.
@@ -475,7 +477,7 @@ func _home_scenery(ground_tex := "grass_top", trees: Array = ["tree_a", "tree_b"
 
 
 # ------------------------------------------------------------------ open worlds
-const OPEN_WORLDS := ["meadow", "frost", "dunes"]
+const OPEN_WORLDS := ["meadow", "frost", "dunes", "swamp", "moon"]
 const OPEN_S := 96
 const STAR_COINS := 40        # coins to collect for the COIN HUNT star
 
@@ -522,12 +524,12 @@ func generate_open(w: String) -> void:
 	sy = 40
 	sz = OPEN_S
 	width = sx
-	rng.seed = {"meadow": 2026, "frost": 4242, "dunes": 9001}[w]
-	top_block = {"meadow": GRASS, "frost": SNOW, "dunes": SAND}[w]
-	sub_block = {"meadow": DIRT, "frost": DIRT, "dunes": SANDSTONE}[w]
-	var theme: int = {"meadow": PLANKS, "frost": SNOW, "dunes": SANDSTONE}[w]
-	var foe2: String = {"meadow": "grumbler", "frost": "penguin", "dunes": "scorpion"}[w]
-	var mirror := w == "frost"
+	rng.seed = {"meadow": 2026, "frost": 4242, "dunes": 9001, "swamp": 6666, "moon": 1969}[w]
+	top_block = {"meadow": GRASS, "frost": SNOW, "dunes": SAND, "swamp": SWAMP_GRASS, "moon": MOON_DUST}[w]
+	sub_block = {"meadow": DIRT, "frost": DIRT, "dunes": SANDSTONE, "swamp": MUD, "moon": MOON_ROCK}[w]
+	var theme: int = {"meadow": PLANKS, "frost": SNOW, "dunes": SANDSTONE, "swamp": LOG, "moon": IRON_BLOCK}[w]
+	var foe2: String = {"meadow": "grumbler", "frost": "penguin", "dunes": "scorpion", "swamp": "skelly", "moon": "grumbler"}[w]
+	var mirror := w == "frost" or w == "moon"
 	var P := func(x: int, z: int) -> Vector2i: return Vector2i(sx - 1 - x if mirror else x, z)
 	var start: Vector2i = P.call(48, 86)
 	var camp: Vector2i = P.call(18, 64)
@@ -541,6 +543,10 @@ func generate_open(w: String) -> void:
 	heights.resize(sx)
 	heights.fill(6)
 	hmap.resize(sx * sz)
+	var craters := []
+	if w == "moon":
+		for i in 9:
+			craters.append([Vector2(rng.randf_range(8, sx - 8), rng.randf_range(30, sz - 8)), rng.randf_range(3.5, 7.0), rng.randf_range(2.5, 4.0)])
 	var n := FastNoiseLite.new()
 	n.seed = rng.seed
 	n.frequency = 0.03
@@ -555,6 +561,16 @@ func generate_open(w: String) -> void:
 			var h := 6.0 + n.get_noise_2d(x, z) * 6.0
 			if w == "frost":
 				h += 1.0 + absf(n.get_noise_2d(x * 0.5 + 300, z * 0.5)) * 4.0   # taller, peaky
+			elif w == "swamp":
+				h = 5.0 + n.get_noise_2d(x, z) * 4.0   # low and boggy
+			elif w == "moon":   # flat dusty plains with round craters
+				h = 7.0 + n.get_noise_2d(x * 0.6, z * 0.6) * 2.5
+				for cr in craters:
+					var cd := Vector2(x, z).distance_to(cr[0])
+					if cd < cr[1]:
+						h -= cos(cd / cr[1] * PI * 0.5) * cr[2]
+					elif cd < cr[1] + 1.5:
+						h += 1.0   # the rim
 			for f in flats:
 				var d := Vector2(x - f[0].x, z - f[0].y).length()
 				if d < f[1]:
@@ -587,6 +603,8 @@ func generate_open(w: String) -> void:
 					t = top_block
 					if w == "frost" and h <= 4:
 						t = ICE   # frozen ponds in the low spots
+					elif w == "swamp" and h <= 4:
+						t = MUD   # muddy bog in the low spots
 				if t == STONE:
 					t = _ore(x, y)
 				cells[idx(x, y, z)] = t
@@ -622,7 +640,7 @@ func generate_open(w: String) -> void:
 				for dy in 2:
 					set_cell(o.x + dx, g + dy, o.y + dz, [IRON, GOLD, STONE, DIAMOND, IRON][rng.randi() % 5] if rng.randf() < 0.6 else STONE)
 	# trees
-	for i in {"meadow": 34, "frost": 26, "dunes": 0}[w]:
+	for i in {"meadow": 34, "frost": 26, "dunes": 0, "swamp": 0, "moon": 0}[w]:
 		var o := _free_spot(4)
 		if o.x < 3 or o.y < 3 or o.x > sx - 4 or o.y > sz - 4:
 			continue
@@ -646,6 +664,36 @@ func generate_open(w: String) -> void:
 			var o := _free_spot(2)
 			if o.x >= 0:
 				prop(["snowman", "snowpile"][i % 2], Vector3(o.x + 0.5, ground_at(o.x, o.y), o.y + 0.5), [1.6, 0.8][i % 2], true)
+	if w == "swamp":   # dead trees, pumpkins and gravestones
+		for i in 30:
+			var o := _free_spot(4)
+			if o.x < 3 or o.y < 3 or o.x > sx - 4 or o.y > sz - 4:
+				continue
+			var g := ground_at(o.x, o.y)
+			if get_cell(o.x, g, o.y) == AIR:
+				_dead_tree(o.x, o.y, g)
+		for i in 22:
+			var o := _free_spot(2)
+			if o.x < 0:
+				continue
+			var g := ground_at(o.x, o.y)
+			if i % 2 == 0:
+				_decor_prop("pumpkin", Vector3(o.x + 0.5, g, o.y + 0.5), rng.randi() % 4)
+			else:   # a little gravestone
+				set_cell(o.x, g, o.y, STONE_BRICK)
+				set_cell(o.x, g + 1, o.y, STONE_BRICK)
+	if w == "moon":   # moon rocks and shiny ore
+		for i in 18:
+			var o := _free_spot(2)
+			if o.x >= 0:
+				prop("desert_rock", Vector3(o.x + 0.5, ground_at(o.x, o.y), o.y + 0.5), rng.randf_range(0.7, 1.6), true)
+		for i in 10:
+			var o := _free_spot(3)
+			if o.x < 0:
+				continue
+			var g := ground_at(o.x, o.y)
+			for y in rng.randi_range(1, 3):
+				set_cell(o.x, g + y - 1, o.y, [MOON_ROCK, DIAMOND, IRON][rng.randi() % 3])
 	if w == "meadow":
 		for i in 30:
 			var o := _free_spot(1)
@@ -662,14 +710,41 @@ func generate_open(w: String) -> void:
 		if get_cell(o.x, g, o.y) == AIR and get_cell(o.x, g + 1, o.y) == AIR:
 			spawns.append({"kind": kinds[i % kinds.size()], "pos": Vector3(o.x + 0.5, g + 0.01, o.y + 0.5)})
 	start_pos = Vector3(start.x + 0.5, ground_at(start.x, start.y) + 0.01, start.y + 0.5)
-	var hello: String = {"meadow": "MEADOW MINE", "frost": "FROSTY PEAKS", "dunes": "SUNSET DUNES"}[w]
+	var hello: String = {"meadow": "MEADOW MINE", "frost": "FROSTY PEAKS", "dunes": "SUNSET DUNES", "swamp": "SPOOKY SWAMP", "moon": "MOON BASE"}[w]
 	signs = [[start_pos + Vector3(-3, 0, -2), hello + "\nFind 5 STARS to open\nKrag Jr.'s castle!"]]
 	_build_mesh_nodes()
-	var tex: String = {"meadow": "grass_top", "frost": "snow_top", "dunes": "sand"}[w]
-	var trees: Array = {"meadow": ["tree_a", "tree_b", "tree_c"], "frost": ["pine_a", "pine_b"], "dunes": ["palm", "cactus_a"]}[w]
-	var hills: Array = {"meadow": ["hill_a", "hill_b", "hill_c"], "frost": ["hill_snow", "hill_snow", "hill_c"], "dunes": ["hill_sand"]}[w]
+	var tex: String = {"meadow": "grass_top", "frost": "snow_top", "dunes": "sand", "swamp": "swamp_top", "moon": "moon_top"}[w]
+	var trees: Array = {"meadow": ["tree_a", "tree_b", "tree_c"], "frost": ["pine_a", "pine_b"], "dunes": ["palm", "cactus_a"],
+		"swamp": ["pine_b", "tree_c"], "moon": ["desert_rock"]}[w]
+	var hills: Array = {"meadow": ["hill_a", "hill_b", "hill_c"], "frost": ["hill_snow", "hill_snow", "hill_c"], "dunes": ["hill_sand"],
+		"swamp": ["hill_b", "hill_c"], "moon": ["hill_snow"]}[w]
 	_home_scenery(tex, trees, hills)
 	rebuild()
+
+
+## A spooky dead tree: a bare trunk with crooked branches.
+func _dead_tree(x: int, z: int, base: int) -> void:
+	var h := rng.randi_range(4, 6)
+	for y in range(base, base + h):
+		cells[idx(x, y, z)] = LOG
+	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		if rng.randf() < 0.6:
+			var y := base + h - rng.randi_range(1, 2)
+			for k in range(1, 3):
+				var c := Vector3i(x + d.x * k, y + k - 1, z + d.y * k)
+				if inside(c.x, c.y, c.z) and cells[idx(c.x, c.y, c.z)] == AIR:
+					cells[idx(c.x, c.y, c.z)] = LOG
+
+
+## A decoration standing in the world (a 3D toy, or its paper picture).
+func _decor_prop(id: String, pos: Vector3, r := 0) -> Node3D:
+	if Look.toy:
+		var m := Decor.model(id)
+		m.position = pos
+		m.rotation.y = r * PI / 2
+		add_child(m)
+		return m
+	return paper("decor_" + id, pos, 1.0)
 
 
 ## A random spot on open ground away from the challenges and the castle (or -1, -1).
