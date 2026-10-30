@@ -152,6 +152,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     var bedsOwned = 0
         private set
     var bedStyle = BedStyle.RED
+    /** Paint colors (indexes into [Homes.PAINTS], 0 = their own colors) for furniture and the bed. */
+    val furnColor = IntArray(Furniture.entries.size)
+    var bedColor = 0
         private set
     fun hasBed() = bedsOwned != 0
     fun ownsBed(b: BedStyle) = bedsOwned and (1 shl b.ordinal) != 0
@@ -196,6 +199,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private var monPlayT = 0f
     /** Each Pokemon's experience points (levels 1 to 10). */
     val monXp = IntArray(Mon.entries.size)
+    /** Levels already reached before evolving got harder: never taken away (keys `monFloor<i>`). */
+    val monFloor = IntArray(Mon.entries.size)
     /** The color the house is painted (an index into [Homes.PAINTS]; 0 is its normal look). */
     var houseColor = 0
     /** How many floors the house has (1 to [Homes.MAX_FLOORS]), and which one you're on. */
@@ -625,6 +630,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         storage.save(key("stickersLo"), 0)
         storage.save(key("stickersHi"), 0)
         for (m in Mon.entries) storage.save(key("monXp${m.ordinal}"), monXp[m.ordinal])
+        for (m in Mon.entries) if (monFloor[m.ordinal] > 0) storage.save(key("monFloor${m.ordinal}"), monFloor[m.ordinal])
+        storage.save(key("xpV"), 2)
         storage.save(key("houseColor"), houseColor)
         storage.save(key("floors"), houseFloors)
         storage.save(key("baby"), if (babyMode) 1 else 0)
@@ -641,7 +648,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         storage.save(key("costume"), (Style.monCostume?.ordinal ?: -1) + 1)
         storage.save(key("scenesSeen"), scenesSeen)
         storage.save(key("decorN"), decor.size)
-        decor.forEachIndexed { i, d -> storage.save(key("decor_$i"), Decor.pack(d)) }
+        decor.forEachIndexed { i, d -> storage.save(key("decor_$i"), Decor.pack(d)); storage.save(key("decorC_$i"), d.color) }
+        for (f in Furniture.entries) storage.save(key("fcol${f.ordinal}"), furnColor[f.ordinal])
+        storage.save(key("bedColor"), bedColor)
         storage.save(key("decorV"), 3)
         storage.save(key("jolN"), lanterns.size)
         lanterns.forEachIndexed { i, l ->
@@ -730,6 +739,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         for (m in Mon.entries) monXp[m.ordinal] = storage.load(key("monXp${m.ordinal}"))
         // Each evolution line shares one level (kept on its first form). Older saves kept it per Pokemon.
         for (line in MON_LINES) monXp[line[0].ordinal] = line.maxOf { monXp[it.ordinal] }
+        for (m in Mon.entries) monFloor[m.ordinal] = storage.load(key("monFloor${m.ordinal}"))
+        // Leveling up got harder (version 2): keep every level that was already reached with the old, easier numbers.
+        if (storage.load(key("xpV")) < 2) for (m in Mon.entries) {
+            var xp = monXp[m.ordinal]; var lv = 1
+            while (lv < MON_MAX_LEVEL && xp >= 10 + 8 * lv) { xp -= 10 + 8 * lv; lv++ }
+            monFloor[m.ordinal] = maxOf(monFloor[m.ordinal], if (monXp[m.ordinal] > 0) lv else 0)
+        }
         houseColor = storage.load(key("houseColor")).coerceIn(0, Homes.PAINTS.lastIndex)
         houseFloors = storage.load(key("floors")).coerceIn(1, Homes.MAX_FLOORS)
         bow = Bow.entries.getOrElse(storage.load(key("bow"))) { Bow.NONE }
@@ -795,7 +811,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         for (i in 0 until storage.load(key("jolN")).coerceIn(0, Pumpkins.MAX))
             lanterns += Lantern(IntArray(Pumpkins.GH) { storage.load(key("jol${i}_$it")) }, storage.load(key("jol${i}x")).toFloat())
         val decorVersion = storage.load(key("decorV"))
-        for (i in 0 until storage.load(key("decorN")).coerceIn(0, Decor.MAX)) Decor.unpack(storage.load(key("decor_$i")), decorVersion)?.let { decor += it }
+        for (i in 0 until storage.load(key("decorN")).coerceIn(0, Decor.MAX)) Decor.unpack(storage.load(key("decor_$i")), decorVersion)?.let {
+            it.color = storage.load(key("decorC_$i")).coerceIn(0, Homes.PAINTS.lastIndex)
+            decor += it
+        }
+        for (f in Furniture.entries) furnColor[f.ordinal] = storage.load(key("fcol${f.ordinal}")).coerceIn(0, Homes.PAINTS.lastIndex)
+        bedColor = storage.load(key("bedColor")).coerceIn(0, Homes.PAINTS.lastIndex)
     }
 
     // ---------------------------------------------------------------- Safety copies: erased saves can be recovered
@@ -869,6 +890,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         tnt = 0
         stickerOwned.fill(false)
         monXp.fill(0)
+        monFloor.fill(0)
         houseColor = 0
         houseFloors = 1
         bow = Bow.NONE
@@ -2583,15 +2605,15 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     // ---------------------------------------------------------------- Pokemon levels
 
-    /** Experience needed to go from level [lv] to the next one. */
-    fun xpToNext(lv: Int) = 10 + 8 * lv
+    /** Experience needed to go from level [lv] to the next one (it used to be 10 + 8 * lv: evolving is harder now). */
+    fun xpToNext(lv: Int) = 20 + 16 * lv
 
-    /** A Pokemon's level (1 to [MON_MAX_LEVEL]) from its experience points. */
+    /** A Pokemon's level (1 to [MON_MAX_LEVEL]) from its experience points (never below a level it already had). */
     fun monLevel(m: Mon = mon): Int {
         var xp = monXp[m.root.ordinal]
         var lv = 1
         while (lv < MON_MAX_LEVEL && xp >= xpToNext(lv)) { xp -= xpToNext(lv); lv++ }
-        return lv
+        return maxOf(lv, monFloor[m.root.ordinal])
     }
 
     /** How far the Pokemon is to its next level, from 0 to 1. */
@@ -2599,6 +2621,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         var xp = monXp[m.root.ordinal]
         var lv = 1
         while (lv < MON_MAX_LEVEL && xp >= xpToNext(lv)) { xp -= xpToNext(lv); lv++ }
+        if (monFloor[m.root.ordinal] > lv) return 0f
         return if (lv >= MON_MAX_LEVEL) 1f else xp / xpToNext(lv).toFloat()
     }
 
@@ -4417,6 +4440,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (hasElevator && !decorating && x >= Homes.STAIRS_X + 2f) return "ELEVATOR"
         if (upstairs) return "UPSTAIRS"
         if (!decorating && x >= Homes.STAIRS_X + 2f) return "ROOF"
+        if (decorating && painting) return if (paintTargetAt(x) != null) "PAINT" else null
         if (decorating) return if (carrying != null || carryingDecor != null) "PLACE" else if (furnitureAt(x) != null || decorAt(x) != null) "MOVE" else null
         if (homeFloor == 0) when {
             x in (Homes.SHOP_X - 4f)..(Homes.SHOP_X + 72f) -> return "SHOP"
@@ -4443,7 +4467,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
      */
     /** Draws furniture [f] at [x] in the room (and the plushies, if it's a plushie shelf). */
     fun drawFurnitureAt(gfx: Gfx, f: Furniture, x: Float, ox: Float = 0f) {
-        Homes.drawFurniture(gfx, f, ox + x - Homes.spot(f), time)
+        Homes.drawFurniture(painted(gfx, furnColor[f.ordinal]), f, ox + x - Homes.spot(f), time)
         val j = f.plushShelf
         if (j < 0) return
         // These come after the plushies on the three floors' wall shelves.
@@ -4542,10 +4566,51 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     fun toggleDecorate() {
         decorating = !decorating
+        painting = false
         carrying = null
         carryingDecor = null
         sfx(Sound.KICK)
-        toast(if (decorating) "DECORATE: walk to furniture and tap MOVE, then walk somewhere and tap PLACE!" else "All done decorating!")
+        toast(if (decorating) "DECORATE: walk to furniture and tap MOVE, then walk somewhere and tap PLACE! (PAINT changes colors.)" else "All done decorating!")
+    }
+
+    // ---------------------------------------------------------------- Painting furniture, beds and decorations
+
+    /** PAINT mode (the PAINT button while decorating): walk to something and tap PAINT to change its color. */
+    var painting = false
+        private set
+
+    fun togglePaint() {
+        if (!decorating) toggleDecorate()
+        painting = !painting
+        carrying = null; carryingDecor = null
+        sfx(Sound.KICK)
+        toast(if (painting) "PAINT: walk to furniture, a bed or a decoration and tap PAINT to change its color!" else "Painting done.")
+    }
+
+    /** Draws through house paint when [color] isn't 0. */
+    fun painted(gfx: Gfx, color: Int): Gfx = if (color <= 0) gfx else PaintGfx(gfx, Homes.PAINTS[color.coerceAtMost(Homes.PAINTS.lastIndex)])
+
+    /** What PAINT would color at [x] here: furniture, a decoration, or the bed. */
+    private fun paintTargetAt(x: Float): Any? {
+        val f = Furniture.entries.firstOrNull { hasFurniture(it) && furnFloor(it) == homeFloor && x in (furnX(it) - 4f)..(furnX(it) + Homes.width(it) + 4f) }
+        if (f != null) return f
+        decorAt(x)?.let { return it }
+        if (!inGarden && !onRoof && homeFloor == 0 && hasBed() && x in (Homes.BED_X - 6f)..(Homes.BED_X + 62f)) return BedStyle.RED
+        return null
+    }
+
+    private fun paintHere() {
+        val t = (if (inGarden || onRoof) decorAt(homeX) else paintTargetAt(homeX)) ?: return
+        val next = { c: Int -> (c + 1) % Homes.PAINTS.size }
+        val c = when (t) {
+            is Furniture -> next(furnColor[t.ordinal]).also { furnColor[t.ordinal] = it }
+            is Placed -> next(t.color).also { t.color = it }
+            else -> next(bedColor).also { bedColor = it }
+        }
+        sfx(Sound.COIN)
+        for (i in 0 until 6) particles += Sparkle(homeX, Homes.FLOOR_Y - 20f, (i - 2.5f) * 30f, -60f, if (c == 0) 0xFFFFFFFF.toInt() else Homes.PAINTS[c])
+        toast(if (c == 0) "Back to its own colors! (Tap again for more.)" else "Painted ${Homes.PAINT_NAMES[c]}! (Tap again for the next color.)")
+        save()
     }
 
     private fun pickUp() {
@@ -4751,7 +4816,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         for (layerPass in intArrayOf(2, 1, 0)) for (d in decor) {
             if (d.floor != floor || d.item.layer != layerPass || d === carryingDecor) continue
             if (d.x + d.item.w + ox < -60f || d.x + ox > viewW + 60f) continue
-            Decor.draw(gfx, d.item, d.x + ox, Homes.FLOOR_Y, time)
+            Decor.draw(painted(gfx, d.color), d.item, d.x + ox, Homes.FLOOR_Y, time)
         }
         carryingDecor?.let { d ->
             val fx = homeX - d.item.w / 2
@@ -4804,6 +4869,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             "DRUMS" -> { sfx(Sound.STOMP); sound.say("Boom boom bap! Boom boom bap!") }
             "CANDY" -> { sfx(Sound.COIN); sound.sayAs("Yummy candy!", Voice.HERO); toast("A gumball! Yum!") }
             "MOVE" -> pickUp()
+            "PAINT" -> paintHere()
             "PLACE" -> placeCarried()
             "POKEMON" -> { monMenu = true; monSwitch = false; monCursor = 0; sfx(Sound.KICK); sound.sayAs(mon.label, Voice.MON) }
         }
@@ -5693,10 +5759,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (onRoof) { updateRoof(dt, tapped, actionE); return }
         if (nav.up) { enterGarden(); return }
         if (nav.rb) { toggleDecorate(); return }
-        if (nav.lb) { enter3d(); return }
+        if (nav.lb) { if (decorating) togglePaint() else enter3d(); return }
         if (tapped && input.tapX >= 0f && input.tapY < 22f && stateT > 0.2f) {
             if (input.tapX > viewW - 84f) { toggleDecorate(); return }
-            if (input.tapX in (viewW - 122f)..(viewW - 88f)) { enter3d(); return }
+            if (input.tapX in (viewW - 122f)..(viewW - 88f)) { if (decorating) togglePaint() else enter3d(); return }
             if (input.tapX in (viewW - 176f)..(viewW - 126f)) { enterGarden(); return }
             if (input.tapX in (viewW - 214f)..(viewW - 180f)) { homeShop = true; sfx(Sound.KICK); return }
             if (input.tapX in (viewW - 254f)..(viewW - 216f)) { toggleBuild(); return }
@@ -5757,6 +5823,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     private fun roofTarget(): String? = when {
+        decorating && painting -> if (decorAt(homeX) != null) "PAINT" else null
         decorating -> if (carryingDecor != null) "PLACE" else if (decorAt(homeX) != null) "MOVE" else null
         homeX >= Homes.STAIRS_X - 10f -> "DOWNSTAIRS"
         houseFloors < Homes.MAX_FLOORS && homeX in (Roof.SIGN_X - 30f)..(Roof.SIGN_X + 30f) -> "BUILD STAIRS"
@@ -5770,6 +5837,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             "DOWNSTAIRS" -> leaveRoof()
             "BUILD STAIRS" -> openFloorShop()
             "MOVE" -> pickUpDecor()
+            "PAINT" -> paintHere()
             "PLACE" -> placeDecor(homeX)
             "TELESCOPE" -> {
                 val what = Roof.SIGHTS.random()
@@ -5785,11 +5853,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun updateRoof(dt: Float, tapped: Boolean, actionE: Boolean) {
         if (fireworksT > 0f) fireworksT -= dt
         if (nav.rb) { toggleDecorate(); return }
-        if (nav.lb) { enter3d(); return }
+        if (nav.lb) { if (decorating) togglePaint() else enter3d(); return }
         if (tapped && input.tapX >= 0f && input.tapY < 22f && stateT > 0.2f) {
             if (input.tapX in (viewW - 176f)..(viewW - 126f)) { leaveRoof(); return }
             if (input.tapX > viewW - 84f) { toggleDecorate(); return }
-            if (input.tapX in (viewW - 122f)..(viewW - 88f)) { enter3d(); return }
+            if (input.tapX in (viewW - 122f)..(viewW - 88f)) { if (decorating) togglePaint() else enter3d(); return }
             if (input.tapX in (viewW - 214f)..(viewW - 180f)) { homeShop = true; shopTab = SHOP_TABS.indexOf("YARD"); shopPage = 0; sfx(Sound.KICK); return }
         }
         if (nav.a) { roofAction(roofTarget()); return }
@@ -5819,6 +5887,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     /** What the action button does in the garden or backyard. */
     private fun gardenTarget(): String? = when {
+        decorating && painting -> if (decorAt(homeX) != null) "PAINT" else null
         decorating -> if (carryingDecor != null) "PLACE" else if (decorAt(homeX) != null) "MOVE" else null
         homeX in Pumpkins.TABLE_X..(Pumpkins.TABLE_X + Pumpkins.TABLE_W) -> "CARVE"
         lanternAt(homeX) != null -> if (removeArmT > 0f && removeArm === lanternAt(homeX)) "REMOVE!" else "PUMPKIN"
@@ -5831,6 +5900,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             null -> {}
             "INSIDE" -> leaveGarden()
             "MOVE" -> pickUpDecor()
+            "PAINT" -> paintHere()
             "PLACE" -> placeDecor(homeX)
             "SWIM", "RELAX", "BOUNCE", "SLIDE", "SWING", "COOK" -> yardAction(t)
             "CARVE" -> startCarving()
@@ -5914,9 +5984,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (removeArmT > 0f) removeArmT -= dt
         if (nav.up) { leaveGarden(); return }
         if (nav.rb) { toggleDecorate(); return }
-        if (nav.lb) { enter3d(); return }
+        if (nav.lb) { if (decorating) togglePaint() else enter3d(); return }
         if (tapped && input.tapX >= 0f && input.tapY < 22f && stateT > 0.2f) {
-            if (input.tapX in (viewW - 122f)..(viewW - 88f)) { enter3d(); return }
+            if (input.tapX in (viewW - 122f)..(viewW - 88f)) { if (decorating) togglePaint() else enter3d(); return }
             if (input.tapX in (viewW - 176f)..(viewW - 126f)) { leaveGarden(); return }
             if (input.tapX > viewW - 84f) { toggleDecorate(); return }
             if (input.tapX in (viewW - 214f)..(viewW - 180f)) { homeShop = true; shopTab = SHOP_TABS.indexOf("YARD"); shopPage = 0; sfx(Sound.KICK); return }
@@ -6092,8 +6162,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             gfx.rect(viewW - 84f, 2f, 80f, 18f, if (decorating) 0xFFE8A82A.toInt() else 0xFF7A4A20.toInt())
             gfx.text(if (decorating) "DONE" else "DECORATE", viewW - 44f, 15f, 7.5f, white, 1)
         }
-        gfx.rect(viewW - 122f, 2f, 34f, 18f, 0xFF2EB84A.toInt())
-        gfx.text("3D", viewW - 105f, 15f, 9f, white, 1)
+        // While decorating, the 3D button is the PAINT button.
+        if (decorating) {
+            gfx.rect(viewW - 122f, 2f, 34f, 18f, if (painting) 0xFFE8A82A.toInt() else 0xFFD84A9A.toInt())
+            gfx.text(if (painting) "DONE" else "PAINT", viewW - 105f, 15f, 6.5f, white, 1)
+        } else {
+            gfx.rect(viewW - 122f, 2f, 34f, 18f, 0xFF2EB84A.toInt())
+            gfx.text("3D", viewW - 105f, 15f, 9f, white, 1)
+        }
         if (babyZapT > 0f) {
             // The Baby Machine's zap: a flash of pink sparkles.
             gfx.rect(0f, 0f, viewW, VIEW_H, argb((babyZapT / 1.2f * 160).toInt().coerceIn(0, 255), 0xFFB8E0))
@@ -6130,7 +6206,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         drawDecor(gfx, ox, homeFloor)
         if (homeFloor == 0) {
             Homes.drawMonMat(gfx, ox, time)
-            if (hasBed()) Homes.drawBed(gfx, bedStyle, ox + Homes.BED_X)
+            if (hasBed()) Homes.drawBed(painted(gfx, bedColor), bedStyle, ox + Homes.BED_X)
             drawShelvesWithPlushies(gfx, ox)
         } else {
             drawShelvesWithPlushies(gfx, ox)
@@ -6159,8 +6235,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val sc = if (heroOut == Who.BLOCKY) 1f else ROCCO_SCALE
         hg.sprite(hero, hx - 8 * sc, feet + hop - 24 * sc, flipX = homeFacing < 0, w = 16f * sc, h = 24f * sc)
         if (babyMode) Baby.dress(gfx, hx, feet + hop, homeFacing, false)
-        // Construction Rocco wears a hard hat.
-        if (building) Build.hardHat(gfx, hx, feet + hop - 24f * sc - (if (babyMode) -7f else 0f))
+        // Construction Rocco wears a hard hat (Blocky doesn't: he likes his own look).
+        if (building && heroOut != Who.BLOCKY) Build.hardHat(gfx, hx, feet + hop - 24f * sc - (if (babyMode) -7f else 0f))
         val heroHat = if (power != Power.NONE) HatKind.NONE else if (heroOut == Who.BLOCKY) Style.blocky.hat else Style.rocco.hat
         if (!building) {
             Style.hat(hg, heroHat, hx, Homes.FLOOR_Y + 30 + hop + 24f * (1 - sc), 12f * sc, homeFacing, time, behind = true)

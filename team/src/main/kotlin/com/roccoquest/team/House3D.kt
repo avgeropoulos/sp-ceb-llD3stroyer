@@ -416,7 +416,7 @@ class House3D(private val g: TeamGame) {
             picture(Homes.DOOR_X + 15f, 0.05f) { Homes.drawDoor(it, Homes.DOOR_X) }
             picture(Homes.SHOP_X + 33f, 1.2f) { Homes.drawShop(g, it, Homes.SHOP_X, time) }
             picture(Homes.MON_X + 22f, 1.5f) { Homes.drawMonMat(it, 0f, time) }
-            if (g.hasBed()) picture(Homes.BED_X + 28f, 1.3f) { Homes.drawBed(it, g.bedStyle, Homes.BED_X) }
+            if (g.hasBed()) picture(Homes.BED_X + 28f, 1.3f) { Homes.drawBed(g.painted(it, g.bedColor), g.bedStyle, Homes.BED_X) }
         } else picture(Homes.DOOR_X + 12f, 0.3f) { Homes.drawStairs(it, Homes.DOOR_X - 6f, false) }
         if (g.houseFloors > fl + 1) picture(Homes.STAIRS_X + 12f, 0.3f) { Homes.drawStairs(it, Homes.STAIRS_X - 4f, true) }
         else if (!g.hasElevator) picture(Homes.STAIRS_X + 9f, 0.3f) { Roof.drawLadderUp(it, Homes.STAIRS_X - 4f, Homes.FLOOR_Y) }
@@ -441,7 +441,7 @@ class House3D(private val g: TeamGame) {
         for (d in g.decor) {
             if (d.floor != fl) continue
             val depth = when (d.item.layer) { 1 -> 0.15f; 2 -> 2.2f; else -> 1.4f }
-            picture(d.x + d.item.w / 2, depth) { Decor.draw(it, d.item, d.x, Homes.FLOOR_Y, time) }
+            picture(d.x + d.item.w / 2, depth) { Decor.draw(g.painted(it, d.color), d.item, d.x, Homes.FLOOR_Y, time) }
         }
         if (g.hasElevator) picture(Homes.STAIRS_X + 10f, 0.3f) { Homes.drawElevator(it, Homes.STAIRS_X - 8f, time) }
     }
@@ -540,7 +540,7 @@ class House3D(private val g: TeamGame) {
         for (dd in g.decor) {
             if (dd.floor != loadedArea) continue
             val depth = when (dd.item.layer) { 1 -> 0.4f; 2 -> 4.5f; else -> 2.6f }
-            picture(gfx, items, dd.x + dd.item.w / 2, depth) { Decor.draw(it, dd.item, dd.x, Homes.FLOOR_Y, time) }
+            picture(gfx, items, dd.x + dd.item.w / 2, depth) { Decor.draw(g.painted(it, dd.color), dd.item, dd.x, Homes.FLOOR_Y, time) }
         }
     }
 
