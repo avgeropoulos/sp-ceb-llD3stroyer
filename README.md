@@ -511,6 +511,18 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
   * **Vault**: run into a low wall (one block high) and Rocco vaults right over it.
   * **Landing roll**: drop from way up high while running and he rolls instead of thudding.
 
+### 3D open worlds, painting furniture, harder evolving
+
+* **3D WORLDS**: every world has a big 3D land to explore (the rainbow **3D WORLD** button on the map, once you reach
+  that world). Run around with Rocco's parkour, find the **8 SHINE STARS** (on top of towers, up a wall-jump chimney,
+  on floating islands you reach by riding a moving platform, inside a block maze...), grab coins, stomp or PUNCH/SPIN
+  the bad guys, and say hi to wild Pokemon (XP for your partner). Each star is 50 coins; all 8 = 500 coins and a
+  plushie. Every world looks different (snow, desert, moon with low gravity, dinosaurs, crystal planet...).
+* **PAINT furniture, beds and decorations**: tap DECORATE, then PAINT, walk to something and tap PAINT to change its
+  color (tap again for the next color).
+* **Evolving is harder**: Pokemon need about twice as much experience per level now (levels you already had stay).
+* **Blocky keeps his own look**: no hard hat when building, and powers don't change his shirt any more.
+
 ### Parkour and moving platforms in 3D
 
 * The 3D house, garden and roof now **show Rocco** (VIEW: ROCCO, tap it for VIEW: EYES to look through his eyes).

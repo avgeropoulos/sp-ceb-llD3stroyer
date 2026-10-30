@@ -31,7 +31,7 @@ import kotlin.random.Random
  * and sleeping in the bed saves the game into one of three save slots.
  */
 class TeamGame(private val input: TeamInput, private val sound: SoundSink, private val storage: Storage = Storage.Memory()) {
-    enum class State { TITLE, SLOTS, PICK, INTRO, PLAY, CRAFT, TRADE, SLEEP, OUCH, CLEAR, STICKER, BOOK, VICTORY, HOME, MAP, CONTROLS, PARK, SCENE, GAMES }
+    enum class State { TITLE, SLOTS, PICK, INTRO, PLAY, CRAFT, TRADE, SLEEP, OUCH, CLEAR, STICKER, BOOK, VICTORY, HOME, MAP, CONTROLS, PARK, SCENE, GAMES, OPEN3D }
 
     companion object {
         const val MAX_HEARTS = 5
@@ -552,6 +552,38 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     fun sfx(s: Sound) = sound.play(s)
     fun spawn(t: Thing) { pending += t }
     fun puff(x: Float, y: Float) { particles += Puff(x, y) }
+
+    // ---------------------------------------------------------------- 3D open worlds
+
+    /** The 3D WORLD for each world (the button on the map). */
+    val openWorld = OpenWorld(this)
+
+    /** A world's 3D land opens once you reach that world. */
+    fun openWorldUnlocked(w: Int) = w * WORLD_SIZE < unlocked
+
+    fun startOpenWorld(w: Int) {
+        if (!openWorldUnlocked(w)) { sfx(Sound.BUMP); toast("Reach WORLD ${w + 1} first!"); return }
+        openWorld.start(w)
+        TeamControls.mode3d = true
+        TeamControls.labels3d = "PUNCH" to "SPIN"
+        setState(State.OPEN3D)
+        sfx(Sound.PORTAL)
+        sound.sayAs("Let's-a explore!", Voice.HERO)
+    }
+
+    fun leaveOpenWorld() {
+        save()
+        setState(State.MAP)
+        sfx(Sound.KICK)
+    }
+
+    internal fun saveFromOpenWorld() = save()
+
+    /** How many SHINE STARS you have from world [w]'s 3D land. */
+    fun openWorldStars(w: Int) = Integer.bitCount(storage.load(key("ow$w")))
+
+    /** All 8 stars in a 3D world: a plushie too. */
+    internal fun giveOpenWorldPrize() { givePlushie() }
     /** Meteor showers and volcano eruptions. */
     val hazards = Hazards()
     internal fun sayWarning(s: String) = sound.say(s)
@@ -874,6 +906,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         for (f in 0 until Homes.MAX_FLOORS) storage.save(key("bld${f}n", s), 0)
         for (i in 0 until Garden.PLOTS) { storage.save(key("plot$i", s), 0); storage.save(key("grow$i", s), 0) }
         for (c in Crop.entries) storage.save(key("food${c.ordinal}", s), 0)
+        for (w in 0 until worldCount()) storage.save(key("ow$w", s), 0)
     }
 
     fun newGame(slot: Int = 0, mon: Mon = Mon.SPARKY) {
@@ -988,6 +1021,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (s == State.TITLE && state != State.TITLE) nextTitleSong()
         // Leaving the house switches the 3D view (and its touch buttons) off.
         if (s != State.HOME && home3d) { home3d = false; TeamControls.mode3d = false }
+        if (s != State.OPEN3D && state == State.OPEN3D) { TeamControls.mode3d = false; TeamControls.labels3d = "PLACE" to "BREAK" }
         state = s
         stateT = 0f
     }
@@ -1254,6 +1288,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 updateTrade(tapped, pauseE || craftE || nav.b, num)
             }
             State.HOME -> { updateParticles(dt); jumpE3d = jumpE; hopE3d = longE || superE; updateHome(dt, tapped, pauseE || craftE, actionE) }
+            State.OPEN3D -> {
+                if (pauseE || craftE || (tapped && input.tapX >= 0f && openWorld.tapLeaves(input.tapX, input.tapY, viewW))) leaveOpenWorld()
+                else openWorld.update(dt, input, hop = longE || superE, punch = actionE, spin = jumpE)
+            }
             State.PARK -> { updateParticles(dt); updatePark(dt, tapped, jumpE || actionE, pauseE || craftE) }
             State.GAMES -> if (monGames.update(dt, viewW, tapped && input.tapX >= 0f, input.tapX, input.tapY, nav.left, nav.right, nav.up, nav.down, nav.a, pauseE || craftE || nav.b)) { setState(State.HOME); sfx(Sound.KICK) }
             State.SCENE -> updateScene(tapped, pauseE || nav.a || nav.b)
@@ -3921,6 +3959,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             state == State.GAMES -> when (monGames.game) { MonGame.DANCE -> Music.FUNKY; MonGame.SING -> if (monGames.done) Music.PARK else Music.THEME; else -> Music.PARK }
             state == State.SCENE -> Music.SILLY
             state == State.MAP -> Music.ADVENTURE
+            state == State.OPEN3D -> Levels.all[(openWorld.world * WORLD_SIZE).coerceAtMost(Levels.all.lastIndex)].place.music
             state == State.OUCH || state == State.CLEAR || state == State.SLEEP -> Music.NONE
             starT > 0 -> Music.STAR
             // The Warden has his creepy heartbeat; other bosses take turns with the scary songs.
@@ -4020,6 +4059,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             State.HOME -> renderHome(gfx)
             State.PARK -> renderPark(gfx)
             State.GAMES -> monGames.render(gfx, viewW, VIEW_H, time)
+            State.OPEN3D -> openWorld.render(gfx, viewW, VIEW_H)
             State.SCENE -> Scenes.draw(this, gfx, sceneKind, stateT, viewW, VIEW_H, mon)
             State.MAP -> renderMap(gfx)
             State.CONTROLS -> renderControls(gfx)
@@ -4260,6 +4300,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (rightE) mapSel = (mapSel + 1).coerceAtMost(unlocked - 1)
         if (leftE || rightE) { if (mapSel >= 0) mapWorld = mapSel / WORLD_SIZE; sfx(Sound.KICK) }
         if ((jumpE || num > 0) && stateT > 0.3f) { playSelected(); return }
+        if (nav.up && stateT > 0.3f) { startOpenWorld(mapWorld); return }
         if (!tapped || stateT < 0.3f) return
         val x = input.tapX
         val y = input.tapY
@@ -4272,6 +4313,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
         // The PLAY button on the info strip at the bottom.
         if (y > VIEW_H - 26f && x > viewW - 90f) { playSelected(); return }
+        // The 3D WORLD button: explore this world's 3D land.
+        if (y in 26f..48f && x > viewW - 92f) { startOpenWorld(mapWorld); return }
         val spots = listOf(-1) + mapLevels().toList()
         for (i in spots) {
             if (i >= unlocked) continue
@@ -4377,7 +4420,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         gfx.rect(viewW - 86f, VIEW_H - 23f, 80f, 20f, 0xFF1E5A1E.toInt())
         gfx.rect(viewW - 84.5f, VIEW_H - 21.5f, 77f, 17f, 0xFF2EB84A.toInt())
         gfx.text(if (mapSel < 0) "GO HOME" else "PLAY!", viewW - 46f, VIEW_H - 9f, 9f, white, 1)
-        gfx.shadowText("Tap a level, then tap it again (or PLAY!) to go", viewW / 2, 38f, 7f, 0xFFFFF2C8.toInt(), 1)
+        gfx.shadowText("Tap a level, then tap it again (or PLAY!) to go", viewW / 2 - 40f, 38f, 7f, 0xFFFFF2C8.toInt(), 1)
+        // The 3D WORLD button
+        val ow = openWorldUnlocked(mapWorld)
+        gfx.rect(viewW - 90f, 27f, 86f, 20f, 0xFF1A1008.toInt())
+        gfx.rect(viewW - 88.5f, 28.5f, 83f, 17f, if (ow) solidRainbow(time * 0.3f, 0f) else 0xFF5A5A6A.toInt())
+        gfx.text(if (ow) "3D WORLD ★${openWorldStars(mapWorld)}/8" else "3D WORLD (locked)", viewW - 47f, 40f, 6.5f, 0xFF1A1008.toInt(), 1)
         if (toastT > 0) {
             gfx.rect(20f, VIEW_H - 48, viewW - 40, 18f, 0xDD101828.toInt())
             gfx.text(toast, viewW / 2, VIEW_H - 35, 8f, white, 1)
@@ -6165,7 +6213,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         // While decorating, the 3D button is the PAINT button.
         if (decorating) {
             gfx.rect(viewW - 122f, 2f, 34f, 18f, if (painting) 0xFFE8A82A.toInt() else 0xFFD84A9A.toInt())
-            gfx.text(if (painting) "DONE" else "PAINT", viewW - 105f, 15f, 6.5f, white, 1)
+            gfx.text(if (painting) "PAINT ✓" else "PAINT", viewW - 105f, 15f, 6.5f, white, 1)
         } else {
             gfx.rect(viewW - 122f, 2f, 34f, 18f, 0xFF2EB84A.toInt())
             gfx.text("3D", viewW - 105f, 15f, 9f, white, 1)
@@ -6221,7 +6269,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             val ok = fits(f, fx.coerceAtLeast(0f).toInt().toFloat(), homeFloor)
             gfx.rect(fx + ox, Homes.FLOOR_Y - 4f, Homes.width(f), 4f, if (ok) 0xCC3CE070.toInt() else 0xCCFF4A4A.toInt())
         }
-        if (decorating) gfx.shadowText(if (carrying != null || carryingDecor != null) "Walk to a spot and tap PLACE" else "DECORATING: walk to furniture and tap MOVE", viewW / 2, 34f, 7f, 0xFFFFE14D.toInt(), 1)
+        if (decorating) gfx.shadowText(when {
+            painting -> "PAINTING: walk to furniture, the bed or a decoration and tap PAINT"
+            carrying != null || carryingDecor != null -> "Walk to a spot and tap PLACE"
+            else -> "DECORATING: walk to furniture and tap MOVE (or PAINT to color it)"
+        }, viewW / 2, 34f, 7f, 0xFFFFE14D.toInt(), 1)
     }
 
     private fun drawHomeHero(gfx: Gfx, ox: Float) {

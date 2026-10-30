@@ -1238,6 +1238,93 @@ class TeamGameTest {
         TeamControls.mode3d = false
     }
 
+    @Test fun openWorlds3D() {
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 240 * 3, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f))
+            ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        startPlaying()
+        game.unlockForTest(Levels.all.size)
+        game.goToMap(-1); run(0.4f)
+        shot("map-3d-button")
+        // The 3D WORLD button on the map opens World 1's land.
+        tap(game.viewW - 40f, 36f)
+        assertEquals(TeamGame.State.OPEN3D, game.state)
+        val ow = game.openWorld
+        assertEquals(OpenWorld.STARS, ow.stars.size)
+        run(0.5f)
+        shot("open-world-1")
+        // Every star has something to stand on just below it (or is at ground level).
+        for (w in 0 until 12) {
+            ow.start(w)
+            for (st in ow.stars) {
+                // (A box within 2 blocks: stand on it, or wall-jump up it; you can reach about 3.4 blocks above your feet.)
+                val under = ow.boxes.filter { b -> st.x > b.x0 - 2f && st.x < b.x1 + 2f && st.z > b.z0 - 2f && st.z < b.z1 + 2f }.maxOfOrNull { it.top } ?: 0f
+                assertTrue(st.y - under < 3.4f, "world $w: star at ${st.y} is reachable from $under")
+            }
+        }
+        ow.start(0)
+        // Walk and jump around: no crash, and Rocco lands back on the ground.
+        input.up = true; run(1f)
+        input.longJump = true; game.update(dt); input.longJump = false
+        run(1.5f)
+        input.up = false
+        run(0.5f)
+        assertTrue(ow.onGround, "on the ground: feet ${ow.feet} vy ${ow.vy} at ${ow.x}, ${ow.z}")
+        // Grab a star.
+        val st = ow.stars.first()
+        val coins = game.coins
+        ow.x = st.x; ow.z = st.z; ow.feet = st.y - 0.5f; ow.vy = 0f
+        game.update(dt)
+        assertEquals(1, ow.starsGot)
+        assertTrue(game.coins >= coins + 50)
+        // Stomp a bad guy from above.
+        val f = ow.foes.first { it.alive }
+        ow.x = f.x; ow.z = f.z; ow.feet = f.feet + 1f; ow.vy = -5f
+        game.update(dt)
+        assertFalse(f.alive, "stomped")
+        // Meet a wild Pokemon.
+        val wild = ow.wilds.first()
+        ow.x = wild.x; ow.z = wild.z; ow.feet = 0f
+        game.update(dt)
+        assertTrue(wild.found)
+        // Look at a few worlds.
+        for (w in listOf(6, 8, 10)) {
+            ow.start(w); ow.yaw = -1.2f
+            run(0.3f)
+            shot("open-world-${w + 1}")
+        }
+        // Leave with MAP; the star is saved.
+        tap(game.viewW - 20f, 10f)
+        assertEquals(TeamGame.State.MAP, game.state)
+        assertFalse(TeamControls.mode3d)
+        assertTrue(game.openWorldStars(0) >= 1)
+    }
+
+    @Test fun paintFurnitureBedsAndDecorations() {
+        startPlaying()
+        goHome()
+        game.coins = 2000
+        game.buyBed(BedStyle.RED)
+        game.toggleDecorate()
+        game.togglePaint()
+        assertTrue(game.painting)
+        walkHomeTo(Homes.BED_X + 28f)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        assertEquals(1, game.bedColor)
+        input.action = true; game.update(dt); input.action = false; game.update(dt)
+        assertEquals(2, game.bedColor, "tap again: the next color")
+        val img = BufferedImage((game.viewW * 3).toInt(), 720, BufferedImage.TYPE_INT_ARGB)
+        game.render(AwtGfx(img, 3f)); File("build/screens").mkdirs(); ImageIO.write(img, "png", File("build/screens/paint-bed.png"))
+        game.toggleDecorate()
+        game.sleepAtHome()
+        val g2 = TeamGame(TeamInput(), ears, storage)
+        g2.continueGame(0)
+        assertEquals(2, g2.bedColor)
+    }
+
     @Test fun pokemonEvolveAndSwitchBack() {
         startPlaying()
         game.coins = 100

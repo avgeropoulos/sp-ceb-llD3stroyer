@@ -132,6 +132,9 @@ object TeamControls {
     private const val PAD_X = 64f
     private const val PAD_Y = 186f
     private fun look3d(viewW: Float) = Button(viewW - 150f, 196f, 16f)
+    /** What the two big 3D buttons say: PLACE / BREAK in the 3D house, PUNCH / SPIN in the 3D worlds. */
+    var labels3d = "PLACE" to "BREAK"
+
     /** The 3D JUMP button, above PLACE and BREAK. */
     private fun hop3d(viewW: Float) = Button(viewW - 66f, 140f, 19f)
 
@@ -177,9 +180,9 @@ object TeamControls {
         }
         gfx.text("WALK / TURN", PAD_X, PAD_Y + 50f, 6f, c, 1)
         gfx.oval(jump.cx - jump.r, jump.cy - jump.r, jump.r * 2, jump.r * 2, if (input.jump) 0xCCFFFFFF.toInt() else 0x99E84A4A.toInt())
-        gfx.text("BREAK", jump.cx, jump.cy + 3, 8f, c, 1)
+        gfx.text(labels3d.second, jump.cx, jump.cy + 3, 8f, c, 1)
         gfx.oval(action.cx - action.r, action.cy - action.r, action.r * 2, action.r * 2, if (input.action) 0xCCFFFFFF.toInt() else 0x992EB84A.toInt())
-        gfx.text("PLACE", action.cx, action.cy + 3, 7f, c, 1)
+        gfx.text(labels3d.first, action.cx, action.cy + 3, 7f, c, 1)
         val jb = hop3d(viewW)
         gfx.oval(jb.cx - jb.r, jb.cy - jb.r, jb.r * 2, jb.r * 2, if (input.longJump) 0xCCFFFFFF.toInt() else 0x993A6AD8.toInt())
         gfx.text("JUMP", jb.cx, jb.cy + 3, 7f, c, 1)

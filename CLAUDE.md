@@ -195,4 +195,11 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
   button sets `input.longJump`; controller Y/long-jump key: `hopE3d`). Vault, running flips, wall jump (`kickX/Z`), roll.
   `thirdPerson` camera (`ex/ey/ez` behind Rocco; all face culling uses the camera, not the player) draws Rocco with
   `spriteRotated`. `Mover`s (palette slot `MOVER_SLOT`, saved as `<area>mvn`/`<area>mv_<i>`) slide 3 blocks and carry you.
+* `OpenWorld.kt` (State.OPEN3D, `game.openWorld`, `startOpenWorld`/`leaveOpenWorld`, map button `openWorldUnlocked`): a seeded
+  64x64 3D land per world (`Theme`s, `Box`es incl. floating ones, `Mover`s, coins, 8 stars saved as bits in `ow<world>`,
+  `Foe3` bad guys drawn with their 2D `Foe.draw`, wild Pokemon). Same parkour as House3D; buttons PUNCH/SPIN
+  (`TeamControls.labels3d`). Test `openWorlds3D` checks every star is reachable.
+* PAINT: `painting` (while decorating), `furnColor` (keys `fcol<i>`), `bedColor`, `Placed.color` (`decorC_<i>`), drawn
+  via `painted(gfx, color)` (PaintGfx). Harder evolving: `xpToNext` = 20 + 16 * lv, `monFloor` keeps old levels (`xpV`).
+  Blocky no longer gets the hard hat or power shirt colors (`TeamArt.blocky`).
 
