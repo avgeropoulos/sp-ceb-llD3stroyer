@@ -66,9 +66,19 @@ to the worlds.
   ice and 6 wool colours are **free**; iron, gold and diamond blocks cost 1 of that ore (refunded on REMOVE).
 * **FLY** (top right): fly like Minecraft creative. **UP** (the jump button) rises, **DOWN** sinks; hold DOWN on
   the ground to land. Keyboard F / Q, controller L1 / R1.
-* **DECOR**: 18 decorations bought with coins (flower pot, bush, fence, tree, pumpkin, lamp, chair, table, bench,
-  bed, campfire, mailbox, fountain, 4 partner plushies, and a Krag Jr. trophy that unlocks after beating 1-1).
+* **DECOR**: 33 decorations bought with coins (flower pot, bush, fence, tree, pumpkin, lamp, chair, table, bench,
+  bed, campfire, mailbox, fountain, 4 partner plushies, a Krag Jr. trophy that unlocks after beating 1-1, and the
+  furniture: bunk bed, canopy bed, race car bed, sleeping bag, hammock, sofa, armchair, beanbag, bookshelf, TV, rug,
+  desk, wardrobe, plant pot, toy box).
   **TURN** spins the one in front of you; REMOVE picks it up (coins back). Nothing stacks on a decoration.
+* **Colours**: the paint pots under the decorations (the rainbow one = the item's own colours) colour the next
+  furniture you place; **PAINT** (free) repaints the furniture you point at. Only the "paint" parts change (blankets,
+  cushions, seats, frames), not wood legs or metal. Saved as a 6th number in each decor entry (old saves: own colours).
+  Code: `Decor.PAINTS`, `Decor.paint()` marks paintable parts, `Decor.recolour()` (toy look). The paper look uses
+  `art/decor_<id>_mask.png` (rendered by `tools/render_decor.gd`, trimmed by `tools/sticker.py`) and a small shader in
+  `HomeBase._painted_picture` that colours only the mask's pixels. New paintable item: add it with `"paint": true`
+  (and `"h"` = paper height), then `xvfb-run godot --path . --script res://tools/render_decor.gd -- <id>` and
+  `python3 tools/sticker.py <id>`.
 * **PARTNER** (top right) switches partners at home. **DONE** saves the home. A controller's B places and
   Y removes while building.
 * The home saves only what changed from the starting world (`home.edits`, `"v": 2`). Old saves from the small

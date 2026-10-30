@@ -1,7 +1,10 @@
 extends SceneTree
 ## Renders every decoration's 3D model to art/decor_<id>.png (transparent), for the PAPER look
-## and the DECOR palette icons. Then tools/sticker.py gives them the white sticker border.
-## Run (needs a display): xvfb-run godot --path . --script res://tools/render_decor.gd
+## and the DECOR palette icons, plus art/decor_<id>_mask.png for paintable ones (paint parts
+## white and shaded, the rest black: the paper look colours those pixels).
+## Then tools/sticker.py gives them the white sticker border (and crops the masks to match).
+## Run (needs a display): xvfb-run godot --path . --script res://tools/render_decor.gd [-- id id ...]
+## (names after -- render only those decorations, e.g. -- sofa bed)
 
 var vp: SubViewport
 var holder: Node3D
@@ -43,11 +46,17 @@ const PROPS := ["pine_a", "pine_b", "snowman", "snowpile", "cactus_a", "cactus_b
 
 
 func _jobs() -> Array:
+	var only := OS.get_cmdline_user_args()
 	var out := []
 	for it in Decor.ITEMS:
+		if only.size() > 0 and not it.id in only:
+			continue
 		out.append(["decor_" + it.id, Decor.model(it.id)])
-	for k in PROPS:
-		out.append([k, Toys.prop(k, 3.0)])
+		if Decor.paintable(it.id):
+			out.append(["decor_%s_mask" % it.id, Decor.mask_model(it.id)])
+	if only.is_empty():
+		for k in PROPS:
+			out.append([k, Toys.prop(k, 3.0)])
 	return out
 
 

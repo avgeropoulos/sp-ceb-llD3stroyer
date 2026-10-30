@@ -301,6 +301,8 @@ func _step_home(dt: float) -> void:
 			home.remove()
 		if taps.has("rotate"):
 			home.rotate_front()
+		if taps.has("paint"):
+			home.paint_front()
 		for p in hud.world_taps:
 			_aim_at(p)
 			home.place()
@@ -887,7 +889,7 @@ func _warm_up() -> void:
 
 		if home:
 			for it in Decor.ITEMS:
-				home._put_decor(Vector3i(0, 17, 0), it.id, 0)
+				home._put_decor(Vector3i(0, 17, 0), it.id, 0, 1 if it.get("paint", false) else 0)   # painted: warms the paint shader too
 				var n: Node3D = home.decor[Vector3i(0, 17, 0)].node
 				home.decor.erase(Vector3i(0, 17, 0))
 				n.position = at
