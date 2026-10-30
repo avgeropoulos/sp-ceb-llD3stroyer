@@ -520,6 +520,18 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
 * **MOVING PLATFORM** in the block palette (the last one): place it and it slides back and forth. Jump on and ride it!
   (BREAK takes it away.)
 
+### 40 more Pokemon (133 in all)
+
+* **Three-stage lines** (evolve at levels 4 and 7): Cindercub -> Cinderbear -> Volcabear (fire bears),
+  Tadblub -> Froggle -> Torrentoad (water frogs), Draklet -> Drakoon -> Drakonix (dragons that glide).
+* **Two-stage lines** (evolve at level 5): Acorny -> Oakhorn, Voltbug -> Zapwing, Frostkit -> Blizzacat,
+  Pebblo -> Boulderon, Wispy -> Lanterno, Caterpuff -> Flutterby, Twinkle -> Starfae, Coggy -> Geargant,
+  Gustling -> Galehawk, Trikey -> Trikerator.
+* **On their own**: Sparkleel, Magmole, Chillpup (in a red scarf), Corallo, Beetlebop, Mushboo, Honeybun, Snailo
+  and Batty, plus two new legends: **Stormwing** (a thunder bird) and **Solarion** (a sun lion with a fire mane).
+* The new ones join late in the game, one every 4 levels after level 154 (the legends come last, near the end of
+  Planet World).
+
 ### Dino World, Planet World, a house & planet picker, and twice as much of everything
 
 * **World 11: DINO WORLD** (levels 211-231): raptors, triceratops (they CHARGE), pterodactyls (they SWOOP),

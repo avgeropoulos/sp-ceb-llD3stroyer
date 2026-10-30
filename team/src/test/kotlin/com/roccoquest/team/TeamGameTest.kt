@@ -1263,10 +1263,10 @@ class TeamGameTest {
         val img = BufferedImage(400, 100, BufferedImage.TYPE_INT_ARGB)
         Mon.entries.forEachIndexed { i, m -> TeamArt.mon(AwtGfx(img, 1f), m, 10f + i * 19f, 80f, 0f, 1, false) }
         assertEquals(Mon.EMBER, Mon.SCORCH.base)
-        assertEquals(93, Mon.entries.size)
+        assertEquals(133, Mon.entries.size)
         // The 50 newest and the three MEGAs, all at their in-game sizes (with Rocco for scale).
-        val dex = BufferedImage(1500, 1450, BufferedImage.TYPE_INT_ARGB)
-        java.awt.Graphics2D::class.java.cast(dex.graphics).apply { color = java.awt.Color(0xDDEEFF); fillRect(0, 0, 1500, 1450) }
+        val dex = BufferedImage(1500, 2200, BufferedImage.TYPE_INT_ARGB)
+        java.awt.Graphics2D::class.java.cast(dex.graphics).apply { color = java.awt.Color(0xDDEEFF); fillRect(0, 0, 1500, 2200) }
         val dg = AwtGfx(dex, 3f)
         Mon.entries.forEachIndexed { i, m ->
             val x = 25f + (i % 12) * 40f
