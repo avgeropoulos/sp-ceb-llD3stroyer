@@ -190,6 +190,28 @@ and every jump (even a quick tap) goes up a minimum amount (`jump_hold_t`).
 Push the thumb stick all the way to the edge and keep it there: after a moment the team sprints (55% faster,
 dust puffs, the stick ring glows orange with SPRINT!). Keyboard: hold Shift. Controller: R1 or R2.
 
+## Rocco's moves (like Mario 64)
+
+Rocco has the Mario 64 moves. The orange ACTION button shows what it will do right now
+(LONG JUMP / BACKFLIP / DIVE / POUND).
+
+| Move | How (tablet) |
+|---|---|
+| LONG JUMP | run (or sprint) and tap ACTION: a low, fast leap, about 10 blocks from a sprint; steer a little in the air |
+| TRIPLE JUMP | while running, tap JUMP again right as you land, twice: each jump is higher, the third one is a big front flip ("Yahoo!") |
+| BACKFLIP | stand still and tap ACTION: straight up, very high (higher than any other jump) |
+| SIDE FLIP | while running, pull the stick back the other way and tap JUMP: a high side somersault that turns you around |
+| WALL KICK | jump into a wall, then tap JUMP as you touch it: kick off the other way and up; works again and again between two walls |
+| DIVE | in the air while pushing the stick and going fast (e.g. after a long jump), tap ACTION: dive forward, land in a BELLY SLIDE (knocks bad guys over); JUMP during the slide rolls out |
+| GROUND POUND | in the air with the stick let go (or barely pushed), tap ACTION: spin, then drop hard (breaks blocks, flattens bad guys) |
+| DOUBLE JUMP | JUMP again in the air (still works after any jump except a dive) |
+
+Code: `main.gd` `_rocco_action_kind` (what ACTION does), `_rocco_action`, `_rocco_ground_jump` (triple / side flip /
+roll out), `_wall_kick`, `_rocco_steer`, `_rocco_after_move` (wall touches, bonks, landing), `Hero.trick`. Poses: `toys.gd`
+`_pose_person` (long, dive, slide, wallkick, sideflip, flip/backflip tuck) and back/side flips via `Actor.spin(len, kind)`;
+paper pictures `rocco_long/dive/slide/kick/tuck0-7` (`gen_art.py` `rocco_moves()`; the tuck turns through 8 pictures
+during a flip). Test: `tests/moves_check.gd` (real physics: distances and heights for every move).
+
 ## Partners: pick one, level up, evolve
 
 After picking a save file (and after every finished run) you **PICK YOUR PARTNER**: tap a card to look,

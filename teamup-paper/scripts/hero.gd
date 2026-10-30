@@ -15,6 +15,14 @@ var long_t := 0.0
 var action_t := 0.0
 var zap_t := 0.0
 var blink_t := 2.0
+# Rocco's Mario-64 moves (see main.gd _rocco_*)
+var trick := ""         # "", "long", "jump2", "triple", "backflip", "sideflip", "wallkick", "dive", "slide"
+var chain := 0          # jumps in a row for the TRIPLE JUMP
+var land_t := 1.0       # time on the ground since landing
+var rev_t := 1.0        # time since the stick was pulled back the other way (SIDE FLIP)
+var wall_t := 0.0       # > 0 just after touching a wall in the air (WALL KICK)
+var wall_n := Vector3.ZERO
+var lock_t := 0.0       # no steering for a moment after a wall kick
 var line := "spark"     # partner only: water / grass / fire / spark
 var stage := 0          # partner only: 0, 1, 2 (evolutions)
 
@@ -29,7 +37,10 @@ func init(lv: Level, w: String, stats: Dictionary) -> void:
 	match w:
 		"rocco":
 			f = {"idle": ["rocco_idle"], "blink": ["rocco_blink"], "run": ["rocco_run1", "rocco_idle", "rocco_run2", "rocco_idle"],
-				"jump": ["rocco_jump"], "fall": ["rocco_fall"], "slam": ["rocco_slam"], "hurt": ["rocco_hurt"], "win": ["rocco_win"]}
+				"jump": ["rocco_jump"], "fall": ["rocco_fall"], "slam": ["rocco_slam"], "hurt": ["rocco_hurt"], "win": ["rocco_win"],
+				"long": ["rocco_long"], "dive": ["rocco_dive"], "slide": ["rocco_slide"], "wallkick": ["rocco_kick"], "sideflip": ["rocco_jump"],
+				"flip": ["rocco_tuck0", "rocco_tuck1", "rocco_tuck2", "rocco_tuck3", "rocco_tuck4", "rocco_tuck5", "rocco_tuck6", "rocco_tuck7"],
+				"backflip": ["rocco_tuck0", "rocco_tuck7", "rocco_tuck6", "rocco_tuck5", "rocco_tuck4", "rocco_tuck3", "rocco_tuck2", "rocco_tuck1"]}
 		"blocky":
 			f = {"idle": ["blocky_idle"], "run": ["blocky_run1", "blocky_idle", "blocky_run2", "blocky_idle"],
 				"jump": ["blocky_jump"], "fall": ["blocky_jump"], "mine": ["blocky_mine1", "blocky_mine2"], "hurt": ["blocky_hurt"], "win": ["blocky_mine1"]}

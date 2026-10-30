@@ -720,7 +720,7 @@ func next_swap_name() -> String:
 func action_label() -> String:
 	match leader().who:
 		"rocco":
-			return "LONG JUMP" if leader().on_floor else "SLAM"
+			return {"long": "LONG JUMP", "backflip": "BACKFLIP", "dive": "DIVE", "pound": "POUND", "": "ACTION"}[_rocco_action_kind(leader())]
 		"blocky":
 			return "MINE"
 	return Mons.LINES[mon_line].action
@@ -1379,8 +1379,13 @@ func _update_leader(h: Hero, dt: float) -> void:
 		h.animate(dt)
 		h.update_shadow()
 		return
+	var rocco := h.who == "rocco"
+	if rocco:
+		_rocco_timers(h, dir, dt)
 	if h.long_t > 0 and not h.on_floor:
 		h.long_t -= dt
+	elif rocco and _rocco_steer(h, dir, dt):
+		pass   # long jump / dive / belly slide / wall kick steer their own way
 	else:
 		var target := dir * h.speed * (SPRINT_SPEED if sprinting else 1.0) * _power_speed()
 		var accel := 45.0 if h.on_floor else 25.0
@@ -1388,7 +1393,9 @@ func _update_leader(h: Hero, dt: float) -> void:
 			accel = 7.0   # ice: slow to start, slow to stop
 		h.vel.x = move_toward(h.vel.x, target.x, accel * dt)
 		h.vel.z = move_toward(h.vel.z, target.z, accel * dt)
-	if dir.length() > 0.15:
+	if rocco and h.trick in ["long", "dive", "slide"] and Vector2(h.vel.x, h.vel.z).length() > 0.5:
+		h.facing = Vector3(h.vel.x, 0, h.vel.z).normalized()   # face the way he's flying
+	elif dir.length() > 0.15:
 		h.facing = dir.normalized()
 	elif level.is_home and home and home.mode != "":
 		h.facing = -Actor.view_back   # building: look where the camera looks
@@ -1410,8 +1417,13 @@ func _update_leader(h: Hero, dt: float) -> void:
 			jump_buf = 0
 			jump_hold_t = 0.12
 			h.squash = Vector2(0.85, 1.18)
+			if rocco:
+				_rocco_ground_jump(h, dir)   # TRIPLE JUMP / SIDE FLIP / roll out of a slide
 			sfx("jump")
-		elif h.jumps_left > 0 and h.vel.y < h.jump_v * 0.75:
+		elif rocco and h.wall_t > 0 and not h.on_floor:
+			jump_buf = 0
+			_wall_kick(h)
+		elif h.jumps_left > 0 and h.vel.y < h.jump_v * 0.75 and h.trick != "dive":
 			# DOUBLE JUMP: a full, snappy second jump with a flip. You can change
 			# direction with the stick, and it always goes up a good amount.
 			h.jumps_left -= 1
@@ -1433,10 +1445,13 @@ func _update_leader(h: Hero, dt: float) -> void:
 		h.vel.y = -6.0   # ghosts float down slowly
 	if not jump_held and h.vel.y > 0 and h.long_t <= 0 and jump_hold_t <= 0:
 		h.vel.y -= Actor.GRAVITY * grav * 1.4 * dt   # let go of JUMP early = smaller jump
-	h.vel.y = maxf(h.vel.y - Actor.GRAVITY * grav * dt, -26)
+	h.vel.y = maxf(h.vel.y - Actor.GRAVITY * grav * (0.72 if h.trick == "long" else 1.0) * dt, -26)
 	if action_pressed:
 		_action(h)
+	var pre_vel := h.vel
 	h.move(dt)
+	if rocco:
+		_rocco_after_move(h, pre_vel)
 	if bot or invincible:
 		pass
 	if boss_on and not boss_done:
@@ -1462,6 +1477,10 @@ func _update_leader(h: Hero, dt: float) -> void:
 		h.play("zap")
 	elif h.slam == "fall":
 		h.play("slam")
+	elif rocco and h.trick in ["long", "dive", "slide", "wallkick"]:
+		h.play(h.trick)
+	elif rocco and h.trick in ["triple", "backflip", "sideflip"] and h.spin_t > 0:
+		h.play({"triple": "flip", "backflip": "backflip", "sideflip": "sideflip"}[h.trick])
 	elif not h.on_floor:
 		h.play("jump" if h.vel.y > 0 else "fall")
 	elif Vector2(h.vel.x, h.vel.z).length() > 0.5:
@@ -1529,26 +1548,205 @@ func _fly(h: Hero, dir: Vector3, dt: float) -> void:
 	h.update_shadow()
 
 
+# ------------------------------------------------------------------ Rocco's Mario-64 moves
+## Where the stick points in the world (the camera turns in open worlds).
+func _stick_dir() -> Vector3:
+	var d := Vector3(move_vec.x, 0, move_vec.y)
+	return d.rotated(Vector3.UP, cam_yaw) if level.open else d
+
+
+## What ACTION does for Rocco right now: "long", "backflip", "dive", "pound" or "".
+## On the ground: moving = LONG JUMP, standing still = BACKFLIP.
+## In the air: pushing the stick while going fast = DIVE, otherwise = GROUND POUND.
+func _rocco_action_kind(h: Hero) -> String:
+	var d := _stick_dir()
+	var flat := Vector2(h.vel.x, h.vel.z).length()
+	if h.on_floor:
+		if h.trick == "slide":
+			return ""
+		return "long" if d.length() > 0.25 or flat > 2.0 else "backflip"
+	if h.slam != "" or h.trick == "dive":
+		return ""
+	return "dive" if d.length() > 0.6 and (flat > 4.0 or h.trick == "long") else "pound"
+
+
+func _rocco_action(h: Hero) -> void:
+	var d := _stick_dir()
+	var flat := Vector2(h.vel.x, h.vel.z).length()
+	match _rocco_action_kind(h):
+		"long":   # LONG JUMP: low, fast and far (~10 blocks from a sprint)
+			var f := Vector3(h.vel.x, 0, h.vel.z)
+			if f.length() < 0.5:
+				f = d if d.length() > 0.1 else h.facing
+			f = f.normalized()
+			var sp := clampf(flat * 1.55, 10.0, 13.5) * _power_speed()
+			h.vel = Vector3(f.x * sp, 9.0, f.z * sp)
+			h.facing = f
+			_rocco_leave_ground(h, "long", 1.0)
+			h.squash = Vector2(1.2, 0.85)
+			sfx("jump")
+			fx.burst(h.position, Color(1, 1, 1), 8, 3.0, 4, 0.7)
+		"backflip":   # BACKFLIP: straight up, very high, flipping backwards
+			h.vel = Vector3(-h.facing.x * 2.5, h.jump_v * 1.45 * _power_jump(), -h.facing.z * 2.5)
+			_rocco_leave_ground(h, "backflip", 1.0)
+			h.spin(0.75, "back")
+			h.squash = Vector2(0.8, 1.25)
+			sfx("jump2")
+		"dive":   # DIVE: throw yourself forward, then belly slide on landing
+			var f2 := Vector3(h.vel.x, 0, h.vel.z)
+			if f2.length() < 0.5:
+				f2 = d
+			f2 = f2.normalized()
+			var sp2 := maxf(flat, 8.5) + 1.5
+			h.vel = Vector3(f2.x * sp2, maxf(h.vel.y, 0.0) + 3.5, f2.z * sp2)
+			h.trick = "dive"
+			h.spin_t = 0
+			sfx("jump")
+		"pound":   # GROUND POUND: spin, then drop like a rock
+			h.trick = ""
+			h.slam = "wind"
+			h.slam_t = 0
+			h.spin()
+
+
+func _rocco_leave_ground(h: Hero, m: String, hold: float) -> void:
+	h.trick = m
+	h.on_floor = false
+	h.coyote = 0
+	h.chain = 0
+	jump_hold_t = hold   # these go full height even if you're not holding JUMP
+	jump_buf = 0
+
+
+func _rocco_timers(h: Hero, d: Vector3, dt: float) -> void:
+	h.wall_t = maxf(0, h.wall_t - dt)
+	h.lock_t -= dt
+	h.rev_t += dt
+	var flat := Vector3(h.vel.x, 0, h.vel.z)
+	if h.on_floor:
+		h.land_t += dt
+		if h.land_t > 0.3:
+			h.chain = 0   # waited too long: the triple jump starts over
+		if d.length() > 0.5 and flat.length() > 1.0 and d.normalized().dot(flat.normalized()) < -0.5:
+			h.rev_t = 0.0   # pulled the stick back the other way: SIDE FLIP is ready
+
+
+## Steering during the special moves. Returns true when it handled the sideways speed.
+func _rocco_steer(h: Hero, d: Vector3, dt: float) -> bool:
+	if not h.on_floor and h.trick in ["long", "dive"]:
+		var v := Vector2(h.vel.x, h.vel.z)
+		if d.length() > 0.2 and v.length() > 0.5:   # turn a little toward the stick, keep the speed
+			var want := Vector2(d.x, d.z).angle()
+			var turn := clampf(wrapf(want - v.angle(), -PI, PI), -1.6 * dt, 1.6 * dt)
+			v = v.rotated(turn)
+		v = v.move_toward(Vector2.ZERO, 0.6 * dt)
+		h.vel.x = v.x
+		h.vel.z = v.y
+		return true
+	if h.on_floor and h.trick == "slide":   # belly slide: no steering, slows down, then stands up
+		var v2 := Vector2(h.vel.x, h.vel.z).move_toward(Vector2.ZERO, 9.0 * dt)
+		h.vel.x = v2.x
+		h.vel.z = v2.y
+		if v2.length() < 0.6:
+			h.trick = ""
+			h.squash = Vector2(0.9, 1.1)
+		return true
+	if not h.on_floor and h.lock_t > 0:
+		return true   # flying off a wall: no steering for a moment
+	return false
+
+
+## JUMP on the ground: TRIPLE JUMP (jump again right as you land while running),
+## SIDE FLIP (jump while pulling the stick back the other way), or roll out of a slide.
+func _rocco_ground_jump(h: Hero, d: Vector3) -> void:
+	var flat := Vector2(h.vel.x, h.vel.z).length()
+	var pj := _power_jump()
+	if h.trick == "slide":   # roll out of the belly slide
+		h.vel.y = h.jump_v * 0.8 * pj
+		h.vel.x *= 0.6
+		h.vel.z *= 0.6
+		h.trick = ""
+		h.chain = 0
+		h.spin(0.45, "front")
+		return
+	if h.rev_t < 0.2 and d.length() > 0.5:   # SIDE FLIP
+		var nd := d.normalized()
+		h.vel = Vector3(nd.x * 3.5, h.jump_v * 1.3 * pj, nd.z * 3.5)
+		h.facing = nd
+		h.spin(0.6, "side")
+		h.trick = "sideflip"
+		h.chain = 0
+		h.rev_t = 1.0
+		jump_hold_t = 0.5
+		return
+	if h.chain >= 1 and h.land_t < 0.22 and flat > 3.5:   # TRIPLE JUMP
+		h.chain += 1
+		if h.chain == 2:
+			h.vel.y = h.jump_v * 1.15 * pj
+			h.trick = "jump2"
+			jump_hold_t = 0.2
+		else:
+			h.vel.y = h.jump_v * 1.38 * pj
+			h.trick = "triple"
+			h.chain = 0
+			h.spin(0.7, "front")
+			jump_hold_t = 0.35
+			fx.burst(h.position + Vector3(0, 0.05, 0), Color(1, 0.95, 0.6), 10, 3.0, 2, 0.8)
+			if not bot:
+				speak("Yahoo!", "rocco")
+		return
+	h.chain = 1 if flat > 3.5 else 0
+	h.trick = ""
+
+
+func _wall_kick(h: Hero) -> void:
+	var n := h.wall_n
+	h.vel = Vector3(n.x * 6.5, h.jump_v * 1.12 * _power_jump(), n.z * 6.5)
+	h.facing = n
+	h.wall_t = 0
+	h.lock_t = 0.22
+	h.trick = "wallkick"
+	h.jumps_left = 1
+	h.chain = 0
+	jump_hold_t = 0.25
+	h.squash = Vector2(0.85, 1.15)
+	sfx("jump2")
+	fx.burst(h.position + Vector3(0, 0.8, 0) - n * 0.3, Color(1, 1, 1), 8, 2.5, 3, 0.6)
+
+
+## After moving: remember walls touched in the air (WALL KICK), bonk on walls during a
+## long jump / dive, and land (a dive turns into a belly slide).
+func _rocco_after_move(h: Hero, pre: Vector3) -> void:
+	if h.walls_hit and not h.on_floor:
+		var n := Vector3.ZERO
+		if pre.x != 0 and h.vel.x == 0:
+			n.x = -signf(pre.x)
+		if pre.z != 0 and h.vel.z == 0:
+			n.z = -signf(pre.z)
+		if n != Vector3.ZERO:
+			h.wall_n = n.normalized()
+			h.wall_t = 0.15
+			if h.trick in ["long", "dive"] and Vector2(pre.x, pre.z).length() > 7.0:   # BONK!
+				h.trick = ""
+				h.vel.x = h.wall_n.x * 2.5
+				h.vel.z = h.wall_n.z * 2.5
+				sfx("bonk")
+	if h.landed:
+		h.land_t = 0.0
+		if h.trick == "dive":
+			h.trick = "slide"
+			h.squash = Vector2(1.2, 0.85)
+			fx.burst(h.position + Vector3(0, 0.05, 0), Color(0.92, 0.88, 0.8), 8, 2.5, 2, 0.6)
+		elif h.trick != "slide":
+			h.trick = ""
+
+
 func _action(h: Hero) -> void:
 	if powers and powers.on_action(h):   # FIRE / ICE FLOWER throw instead
 		return
 	match h.who:
 		"rocco":
-			if h.on_floor:
-				var f := h.facing
-				if absf(f.x) < 0.3 and absf(f.z) < 0.3:
-					f = Vector3.RIGHT
-				h.vel.x = f.x * 9.5
-				h.vel.z = f.z * 9.5
-				h.vel.y = 9.0
-				h.long_t = 1.0
-				h.on_floor = false
-				sfx("jump")
-				fx.burst(h.position, Color(1, 1, 1), 6, 2.5, 8)
-			elif h.slam == "":
-				h.slam = "wind"
-				h.slam_t = 0
-				h.spin()
+			_rocco_action(h)
 		"blocky":
 			if h.action_t <= 0:
 				h.action_t = 0.3
@@ -1982,6 +2180,10 @@ func _update_foes(dt: float) -> void:
 			continue
 		if l.overlaps(f) and powers and powers.on_touch(f):   # SUPER STAR / METAL CAP
 			continue
+		if l.overlaps(f) and l.who == "rocco" and l.trick in ["dive", "slide"] and Vector2(l.vel.x, l.vel.z).length() > 4.0 and not f.is_boss:
+			f.hurt(2, self)   # a DIVE / belly slide knocks bad guys over
+			sfx("stomp")
+			continue
 		if l.overlaps(f):
 			var falling: bool = l.vel.y < -1.0 and l.position.y > f.position.y + f.height * 0.45
 			if falling and f.stompable:
@@ -2186,6 +2388,7 @@ func hurt_hero(from: Vector3) -> void:
 		l.vel = Vector3(away.x, 7, away.z)
 	l.slam = ""
 	l.long_t = 0
+	l.trick = ""
 	sfx("hurt")
 	fx.shake = 0.3
 	if play_t - last_ouch > 5 and l.who == "rocco":

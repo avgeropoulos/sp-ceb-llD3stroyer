@@ -162,6 +162,17 @@ def pickaxe(p, gx, gy, ang):
     p.poly(head, rgb("#b8c4cf"))
 
 
+def rocco_moves():
+    """Rocco's Mario-64 moves for the paper look: long jump, dive, belly slide, wall kick and a
+    tucked somersault turned 8 ways (the game shows them in order during a flip)."""
+    rocco("rocco_long", 1.3, 1.6, 2.9, 2.6, rot=-55, mouth="open")
+    rocco("rocco_dive", 1.2, 1.4, 3.0, 2.9, rot=-80, mouth="open")
+    rocco("rocco_slide", 1.3, 1.5, 3.0, 2.9, rot=-92, mouth="ow")
+    rocco("rocco_kick", 1.5, -0.8, 1.9, -2.2, mouth="open")
+    for i in range(8):
+        rocco("rocco_tuck%d" % i, 1.4, 1.2, 1.9, 1.7, squash=0.18, rot=-45 * i, mouth="open")
+
+
 def blocky(name, legA=0.0, legB=0.0, armA=0.0, pick=0.3, squash=0.0, rot=0):
     p = Pen()
     cx, hip = 31, 56
@@ -1530,6 +1541,7 @@ def main():
     rocco("rocco_slam", 1.4, 1.2, 1.9, 1.7, squash=0.18, mouth="ow")
     rocco("rocco_hurt", 0.4, -0.4, 2.8, -2.6, mouth="ow")
     rocco("rocco_win", 0.15, -0.15, 3.0, -0.3, mouth="open")
+    rocco_moves()
     # Blocky
     blocky("blocky_idle", 0.1, -0.1, 0.0, 1.25)
     blocky("blocky_run1", 0.7, -0.55, 0.4, 1.4)

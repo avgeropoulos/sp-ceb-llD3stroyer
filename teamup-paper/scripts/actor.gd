@@ -37,6 +37,8 @@ var squash := Vector2.ONE   # stretch/squash of the cutout (x, y)
 var turn := 1.0             # -1..1: the paper flips around when you change direction
 var turn_to := 1.0
 var spin_t := 0.0
+var spin_len := SPIN_TIME   # how long the current flip lasts
+var flip := "front"         # which way it flips: "front", "back" or "side"
 var model: Node3D          # the 3D toy (when Look.toy), else null
 
 static var _shadow_mesh: QuadMesh
@@ -112,13 +114,15 @@ static func _round_shadow_tex() -> Texture2D:
 
 ## 0..1 through a flip: quick at the start, gently finishing (feels like a real flip).
 func _ease_spin() -> float:
-	var k := clampf(1.0 - spin_t / SPIN_TIME, 0, 1)
+	var k := clampf(1.0 - spin_t / spin_len, 0, 1)
 	return 1.0 - pow(1.0 - k, 2.2)
 
 
 ## A full paper twirl (double jump, butt slam).
-func spin() -> void:
-	spin_t = SPIN_TIME
+func spin(length := SPIN_TIME, kind := "front") -> void:
+	spin_len = length
+	spin_t = length
+	flip = kind
 
 
 func play(name: String) -> void:
@@ -141,11 +145,18 @@ func animate(dt: float, fps: float = 8.0) -> void:
 	if not frames.has(anim):
 		return
 	var list: Array = frames[anim]
-	sprite.texture = list[int(anim_t * fps) % list.size()]
+	var rolling: bool = anim in ["flip", "backflip"] and spin_t > 0
+	if rolling:   # paper somersault: the pictures turn round with the flip
+		sprite.texture = list[int(_ease_spin() * list.size()) % list.size()]
+	else:
+		sprite.texture = list[int(anim_t * fps) % list.size()]
 	var fx := facing.dot(view_right)
 	if absf(fx) > 0.2:
 		turn_to = -1.0 if fx < 0 else 1.0
-	if spin_t > 0:
+	if spin_t > 0 and rolling:
+		spin_t -= dt
+		turn = turn_to
+	elif spin_t > 0:
 		spin_t -= dt
 		turn = cos(_ease_spin() * TAU) * turn_to
 	else:

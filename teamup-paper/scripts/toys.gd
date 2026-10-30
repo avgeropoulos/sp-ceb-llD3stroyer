@@ -407,9 +407,18 @@ static func pose(a, dt: float) -> void:
 		sq *= Vector2(0.93, 1.08)
 	b.scale = Vector3(sq.x, sq.y, sq.x)
 	b.position = Vector3.ZERO
-	b.rotation.x = a._ease_spin() * TAU if a.spin_t > 0 else 0.0
+	b.rotation.x = 0.0
+	b.rotation.z = 0.0
+	if a.spin_t > 0:   # front flip, back flip (Rocco's BACKFLIP) or side flip (SIDE FLIP)
+		match a.flip:
+			"back":
+				b.rotation.x = -a._ease_spin() * TAU
+			"side":
+				b.rotation.z = a._ease_spin() * TAU
+			_:
+				b.rotation.x = a._ease_spin() * TAU
 	b.rotation.x += p.lean
-	b.rotation.z = p.roll
+	b.rotation.z += p.roll
 	b.rotation.y = 0.0
 	# blink every few seconds (and keep the eyes shut while hurt)
 	var clock: float = Time.get_ticks_msec() * 0.001 + p.seed
@@ -515,12 +524,49 @@ static func _pose_person(p: Dictionary, kind: String, anim: String, t: float) ->
 			p.armL.rotation.z = -1.35 + w
 			p.armR.rotation.z = 1.35 - w
 			p.head.rotation.x = 0.2
-		"slam":
+		"slam", "flip", "backflip":   # tucked into a ball
 			p.legL.rotation.x = -1.4
 			p.legR.rotation.x = -1.4
 			p.armL.rotation.x = -1.3
 			p.armR.rotation.x = -1.3
 			b.position.y = 0.25
+		"long":   # LONG JUMP: stretched out flat, arms reaching forward, legs trailing
+			b.rotation.x += 1.0
+			b.position.z -= 0.42
+			b.position.y = 0.25
+			p.armL.rotation.x = -2.5
+			p.armR.rotation.x = -2.5
+			p.armL.rotation.z = -0.25
+			p.armR.rotation.z = 0.25
+			p.legL.rotation.x = 0.55
+			p.legR.rotation.x = 0.9
+			p.head.rotation.x = -0.75
+		"dive", "slide":   # DIVE / belly slide: superman flat, arms out front
+			b.rotation.x += 1.42
+			b.position.z -= 0.62
+			b.position.y = 0.3 if anim == "dive" else 0.22
+			p.armL.rotation.x = -2.95
+			p.armR.rotation.x = -2.95
+			p.armL.rotation.z = -0.2
+			p.armR.rotation.z = 0.2
+			p.legL.rotation.x = 0.15 + (sin(t * 20) * 0.08 if anim == "slide" else 0.0)
+			p.legR.rotation.x = 0.25
+			p.head.rotation.x = -1.1
+		"wallkick":   # WALL KICK: one leg kicking back, arms flung out
+			p.legL.rotation.x = 1.2
+			p.legR.rotation.x = -0.6
+			p.armL.rotation.z = -1.7
+			p.armR.rotation.z = 1.7
+			p.armR.rotation.x = -0.6
+			p.head.rotation.x = -0.25
+			b.rotation.x -= 0.15
+		"sideflip":   # SIDE FLIP: arms up, legs together
+			p.armL.rotation.x = -2.9
+			p.armR.rotation.x = -2.9
+			p.armL.rotation.z = -0.3
+			p.armR.rotation.z = 0.3
+			p.legL.rotation.x = -0.3
+			p.legR.rotation.x = -0.3
 		"hurt":   # flinch back, head shaking
 			p.armL.rotation.z = -2.2
 			p.armR.rotation.z = 2.2
