@@ -10,7 +10,7 @@ const BOOST := 15.0
 const NEAR := 7.0            # how close (sideways) you must be to land (generous!)
 const PULL := 2.2            # over an island with the stick let go, the rocket drifts to its middle
 const AUTO_SPEED := 13.0     # autopilot (tap an island or its button)
-const BOUNDS := Rect2(-36, -36, 72, 64)
+const BOUNDS := Rect2(-50, -52, 104, 100)
 
 var game
 var level: Level
@@ -75,7 +75,7 @@ func _island(id: String, pos: Vector3) -> void:
 	var sb := BoxMesh.new()
 	sb.size = Vector3(size - 0.02, 1.6, size - 0.02)
 	side.mesh = sb
-	side.material_override = _tex_mat({"dunes": "sandstone", "swamp": "mud", "moon": "moon_rock"}.get(id, "dirt"), 0.25 * size)
+	side.material_override = _tex_mat({"dunes": "sandstone", "swamp": "mud", "moon": "moon_rock", "lava": "basalt", "candy": "cake", "beach": "sandstone", "cloud": "cloud"}.get(id, "dirt"), 0.25 * size)
 	side.position.y = -1.3
 	n.add_child(side)
 	var rock := MeshInstance3D.new()
@@ -94,7 +94,12 @@ func _island(id: String, pos: Vector3) -> void:
 		"frost": [["pine_a", -2.6, -2.6, 3.0], ["pine_b", 2.4, -2.4, 2.6], ["snowman", -2.0, 2.4, 1.4], ["flag", 2.6, 2.6, 2.2]],
 		"dunes": [["palm", -2.6, -2.4, 3.0], ["cactus_a", 2.4, -2.2, 2.6], ["desert_rock", -1.4, 2.6, 0.8], ["flag", 2.6, 2.6, 2.2]],
 		"swamp": [["pine_b", -2.6, -2.4, 3.0], ["tree_c", 2.4, -2.2, 2.4], ["desert_rock", -1.4, 2.6, 0.8], ["flag", 2.6, 2.6, 2.2]],
-		"moon": [["desert_rock", -2.4, -2.2, 1.6], ["desert_rock", 2.2, -1.8, 1.1], ["rocket", -1.6, 2.2, 2.0], ["flag", 2.6, 2.6, 2.2]]}.get(id, [])
+		"moon": [["desert_rock", -2.4, -2.2, 1.6], ["desert_rock", 2.2, -1.8, 1.1], ["rocket", -1.6, 2.2, 2.0], ["flag", 2.6, 2.6, 2.2]],
+		"lava": [["desert_rock", -2.4, -2.2, 2.0], ["desert_rock", 2.2, -1.8, 1.4], ["spikeball", -1.4, 2.4, 0.9], ["flag", 2.6, 2.6, 2.2]],
+		"candy": [["tree_c", -2.6, -2.4, 2.6], ["flower_pink", 2.0, -2.0, 1.0], ["coin", -1.2, 2.4, 0.9], ["flag", 2.6, 2.6, 2.2]],
+		"beach": [["palm", -2.6, -2.4, 3.2], ["palm", 2.4, -2.2, 2.6], ["desert_rock", -1.4, 2.6, 0.7], ["flag", 2.6, 2.6, 2.2]],
+		"jungle": [["tree_b", -2.6, -2.4, 3.0], ["palm", 2.4, -2.2, 3.0], ["bush", -1.2, 2.6, 1.0], ["flag", 2.6, 2.6, 2.2]],
+		"cloud": [["cloud", -2.2, -2.2, 2.4], ["cloud", 2.2, -1.6, 2.0], ["coin", -1.2, 2.4, 0.9], ["flag", 2.6, 2.6, 2.2]]}.get(id, [])
 	for th in things:
 		level.prop(th[0], pos + Vector3(th[1], 0, th[2]), th[3], true)
 	if id == "home":   # a little house

@@ -13,23 +13,27 @@ const WALK_Z1 := 9.65
 
 enum { AIR, GRASS, DIRT, STONE, IRON, GOLD, DIAMOND, BEDROCK, BRICK, MYSTERY, USED,
 	PLANKS, WOOL_RED, WOOL_BLUE, WOOL_YELLOW, WOOL_WHITE, WINDOW, IRON_BLOCK, GOLD_BLOCK, DIAMOND_BLOCK, STONE_BRICK,
-	SNOW, ICE, SAND, SANDSTONE, LOG, LEAVES, WOOL_GREEN, WOOL_BLACK, ROAD, SWAMP_GRASS, MUD, MOON_DUST, MOON_ROCK }
+	SNOW, ICE, SAND, SANDSTONE, LOG, LEAVES, WOOL_GREEN, WOOL_BLACK, ROAD, SWAMP_GRASS, MUD, MOON_DUST, MOON_ROCK,
+	LAVA, BASALT, FROSTING, CAKE, CANDY_CANE, WATER, CLOUD }
 const NAMES := ["", "GRASS", "DIRT", "STONE", "IRON", "GOLD", "DIAMOND", "BEDROCK", "BRICK", "?", "BLOCK",
 	"PLANKS", "RED", "BLUE", "YELLOW", "WHITE", "WINDOW", "IRON", "GOLD", "DIAMOND", "STONE BRICK",
-	"SNOW", "ICE", "SAND", "SANDSTONE", "LOG", "LEAVES", "GREEN", "BLACK", "ROAD", "SWAMP GRASS", "MUD", "MOON DUST", "MOON ROCK"]
+	"SNOW", "ICE", "SAND", "SANDSTONE", "LOG", "LEAVES", "GREEN", "BLACK", "ROAD", "SWAMP GRASS", "MUD", "MOON DUST", "MOON ROCK",
+	"LAVA", "BASALT", "FROSTING", "CAKE", "CANDY CANE", "WATER", "CLOUD"]
 ## How many pickaxe hits each block takes (999 = can't be mined).
-const HITS := [0, 1, 1, 2, 3, 3, 4, 999, 2, 999, 999, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 1, 2, 1, 2, 1, 1, 1, 1, 2, 1, 1, 1, 2]
+const HITS := [0, 1, 1, 2, 3, 3, 4, 999, 2, 999, 999, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 1, 2, 1, 2, 1, 1, 1, 1, 2, 1, 1, 1, 2, 999, 2, 1, 1, 2, 999, 1]
 ## Atlas tile for the top, sides and bottom of each block type.
 const FACES := [[0, 0, 0], [0, 1, 2], [2, 2, 2], [3, 3, 3], [4, 4, 4], [5, 5, 5], [6, 6, 6], [7, 7, 7], [8, 8, 8], [9, 9, 9], [10, 10, 10],
 	[11, 11, 11], [12, 12, 12], [13, 13, 13], [14, 14, 14], [15, 15, 15], [16, 16, 16], [17, 17, 17], [18, 18, 18], [19, 19, 19], [20, 20, 20],
 	[21, 22, 2], [23, 23, 23], [24, 24, 24], [25, 25, 25], [26, 27, 26], [28, 28, 28], [29, 29, 29], [30, 30, 30], [31, 31, 31],
-	[32, 33, 34], [34, 34, 34], [35, 36, 36], [36, 36, 36]]
+	[32, 33, 34], [34, 34, 34], [35, 36, 36], [36, 36, 36],
+	[37, 37, 37], [38, 38, 38], [39, 40, 41], [41, 41, 41], [42, 42, 42], [43, 43, 43], [44, 44, 44]]
 const COLORS := [Color.WHITE, Color("60be50"), Color("96663f"), Color("8a8e96"), Color("dfbaa0"), Color("ffd23c"), Color("5ae6e6"), Color("3c3c46"), Color("c45c3a"), Color("2cbec8"), Color("967860"),
 	Color("c4925a"), Color("de423c"), Color("3e6edc"), Color("face3c"), Color("ececf0"), Color("96d2f5"), Color("dcdce2"), Color("ffce3a"), Color("60e8e6"), Color("96989e"),
 	Color("eef4fc"), Color("96d2f0"), Color("ecce8c"), Color("d6aa6a"), Color("70502e"), Color("3e9a44"), Color("4cb048"), Color("34343e"), Color("4a4c52"),
-	Color("4a6046"), Color("543e3a"), Color("c4c6ce"), Color("96989e")]
-const ATLAS_TILES := 37       # pictures in art/atlas.png
-const BLOCK_TYPES := 34       # block kinds (AIR .. MOON_ROCK)
+	Color("4a6046"), Color("543e3a"), Color("c4c6ce"), Color("96989e"),
+	Color("ff8a2a"), Color("4a424c"), Color("faa8ce"), Color("ecc48c"), Color("e83440"), Color("3a96de"), Color("f4f8ff")]
+const ATLAS_TILES := 45       # pictures in art/atlas.png
+const BLOCK_TYPES := 41       # block kinds (AIR .. CLOUD)
 const HOME_W := 44            # the OLD home plot was 44 x 10 (old saves are moved into the middle of the new one)
 const PORTAL_X := 40.5
 ## The home world: a big square of land to build a whole city on.
@@ -414,8 +418,8 @@ func generate_home() -> void:
 
 
 ## A Minecraft-style tree: a log trunk with a blob of leaves.
-func _block_tree(x: int, z: int, base := 5, snowy := false) -> void:
-	var h := rng.randi_range(4, 6)
+func _block_tree(x: int, z: int, base := 5, snowy := false, extra := 0) -> void:
+	var h := rng.randi_range(4, 6) + extra
 	for y in range(base, base + h):
 		cells[idx(x, y, z)] = LOG
 	var top := base + h
@@ -429,8 +433,46 @@ func _block_tree(x: int, z: int, base := 5, snowy := false) -> void:
 					cells[idx(x + dx, top + dy, z + dz)] = SNOW if snowy and dy == 1 else LEAVES
 
 
+## Clouds in this world's colour (Worlds.INFO "cloud"; white if not set).
+func _tint_cloud(cl: Node3D) -> void:
+	var tc := Color.WHITE if is_home else Color(String(Worlds.info(world).get("cloud", "ffffff")))
+	if tc == Color.WHITE:
+		return
+	if cl is Sprite3D:
+		cl.modulate = tc
+		return
+	if _cloud_mat == null:
+		_cloud_mat = Toys.mat(tc)
+	for ch in cl.find_children("*", "MeshInstance3D", true, false):
+		(ch as MeshInstance3D).material_override = _cloud_mat
+
+
+var _cloud_mat: Material
+
+
+## Cloud Castle: a sea of clouds far below and around the floating islands.
+func _sky_clouds() -> void:
+	var c := Vector3(sx * 0.5, 0, sz * 0.5)
+	for i in 60:
+		var p := c + Vector3(rng.randf_range(-130, 130), rng.randf_range(-16, -4), rng.randf_range(-130, 130))
+		var cl := prop("cloud", p, rng.randf_range(8, 16))
+		if cl is Sprite3D:
+			cl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		_tint_cloud(cl)
+	for i in 20:
+		var cl := prop("cloud", c + Vector3(rng.randf_range(-120, 120), rng.randf_range(22, 34), rng.randf_range(-120, 120)), rng.randf_range(4, 8))
+		if cl is Sprite3D:
+			cl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		_tint_cloud(cl)
+
+
 ## Around the home: grass going off to the hills, trees, far hills and clouds.
 func _home_scenery(ground_tex := "grass_top", trees: Array = ["tree_a", "tree_b", "tree_c"], hills: Array = ["hill_a", "hill_b", "hill_c"]) -> void:
+	if ground_tex == "":   # up in the sky: no ground around, just clouds below
+		_sky_clouds()
+		for sg in signs:
+			_sign(sg)
+		return
 	var m := StandardMaterial3D.new()
 	m.albedo_texture = load("res://art/t_%s.png" % ground_tex)
 	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
@@ -449,7 +491,7 @@ func _home_scenery(ground_tex := "grass_top", trees: Array = ["tree_a", "tree_b"
 		add_child(q)
 	# a ring of trees just outside the edge, so the edge looks like a forest
 	var a := 0.0
-	for side in 4:
+	for side in (4 if trees.size() > 0 else 0):
 		var t := -2.0
 		while t < float(sx) + 2:
 			var p: Vector3
@@ -472,12 +514,13 @@ func _home_scenery(ground_tex := "grass_top", trees: Array = ["tree_a", "tree_b"
 		var cl := prop("cloud", c + Vector3(rng.randf_range(-110, 110), rng.randf_range(24, 34), rng.randf_range(-110, 110)), rng.randf_range(4, 8))
 		if cl is Sprite3D:
 			cl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		_tint_cloud(cl)
 	for sg in signs:
 		_sign(sg)
 
 
 # ------------------------------------------------------------------ open worlds
-const OPEN_WORLDS := ["meadow", "frost", "dunes", "swamp", "moon"]
+const OPEN_WORLDS := ["meadow", "frost", "dunes", "swamp", "moon", "lava", "candy", "beach", "jungle", "cloud"]
 const OPEN_S := 96
 const STAR_COINS := 40        # coins to collect for the COIN HUNT star
 
@@ -487,6 +530,11 @@ const FOES_BY_WORLD := {
 	"meadow": ["grumbler", "buzzer", "hopper", "grumbler", "bomber", "skelly", "spiky", "buzzer"],
 	"frost": ["penguin", "roller", "boohoo", "penguin", "bomber", "skelly", "spiky", "roller"],
 	"dunes": ["scorpion", "mummy", "cactusman", "scorpion", "bomber", "skelly", "spiky", "mummy"],
+	"lava": ["bomber", "spiky", "skelly", "grumbler", "bomber", "cactusman", "spiky", "buzzer"],
+	"candy": ["hopper", "buzzer", "grumbler", "boohoo", "hopper", "spiky", "bomber", "buzzer"],
+	"beach": ["scorpion", "hopper", "buzzer", "scorpion", "spiky", "grumbler", "penguin", "hopper"],
+	"jungle": ["hopper", "buzzer", "grumbler", "skelly", "hopper", "spiky", "bomber", "buzzer"],
+	"cloud": ["buzzer", "boohoo", "skelly", "buzzer", "spiky", "grumbler", "boohoo", "bomber"],
 	"default": ["grumbler", "buzzer", "hopper", "bomber", "skelly", "spiky", "boohoo", "mummy"],
 }
 
@@ -524,12 +572,17 @@ func generate_open(w: String) -> void:
 	sy = 40
 	sz = OPEN_S
 	width = sx
-	rng.seed = {"meadow": 2026, "frost": 4242, "dunes": 9001, "swamp": 6666, "moon": 1969}[w]
-	top_block = {"meadow": GRASS, "frost": SNOW, "dunes": SAND, "swamp": SWAMP_GRASS, "moon": MOON_DUST}[w]
-	sub_block = {"meadow": DIRT, "frost": DIRT, "dunes": SANDSTONE, "swamp": MUD, "moon": MOON_ROCK}[w]
-	var theme: int = {"meadow": PLANKS, "frost": SNOW, "dunes": SANDSTONE, "swamp": LOG, "moon": IRON_BLOCK}[w]
-	var foe2: String = {"meadow": "grumbler", "frost": "penguin", "dunes": "scorpion", "swamp": "skelly", "moon": "grumbler"}[w]
-	var mirror := w == "frost" or w == "moon"
+	rng.seed = {"meadow": 2026, "frost": 4242, "dunes": 9001, "swamp": 6666, "moon": 1969,
+		"lava": 6161, "candy": 7777, "beach": 8181, "jungle": 9393, "cloud": 1010}[w]
+	top_block = {"meadow": GRASS, "frost": SNOW, "dunes": SAND, "swamp": SWAMP_GRASS, "moon": MOON_DUST,
+		"lava": BASALT, "candy": FROSTING, "beach": SAND, "jungle": GRASS, "cloud": CLOUD}[w]
+	sub_block = {"meadow": DIRT, "frost": DIRT, "dunes": SANDSTONE, "swamp": MUD, "moon": MOON_ROCK,
+		"lava": BASALT, "candy": CAKE, "beach": SANDSTONE, "jungle": DIRT, "cloud": CLOUD}[w]
+	var theme: int = {"meadow": PLANKS, "frost": SNOW, "dunes": SANDSTONE, "swamp": LOG, "moon": IRON_BLOCK,
+		"lava": STONE_BRICK, "candy": CANDY_CANE, "beach": PLANKS, "jungle": LOG, "cloud": GOLD_BLOCK}[w]
+	var foe2: String = {"meadow": "grumbler", "frost": "penguin", "dunes": "scorpion", "swamp": "skelly", "moon": "grumbler",
+		"lava": "grumbler", "candy": "hopper", "beach": "scorpion", "jungle": "hopper", "cloud": "grumbler"}[w]
+	var mirror := w in ["frost", "moon", "candy", "cloud"]
 	var P := func(x: int, z: int) -> Vector2i: return Vector2i(sx - 1 - x if mirror else x, z)
 	var start: Vector2i = P.call(48, 86)
 	var camp: Vector2i = P.call(18, 64)
@@ -563,6 +616,14 @@ func generate_open(w: String) -> void:
 				h += 1.0 + absf(n.get_noise_2d(x * 0.5 + 300, z * 0.5)) * 4.0   # taller, peaky
 			elif w == "swamp":
 				h = 5.0 + n.get_noise_2d(x, z) * 4.0   # low and boggy
+			elif w == "lava":   # rough rocky ground with low lava pools
+				h = 6.0 + n.get_noise_2d(x, z) * 7.0
+			elif w == "candy":   # round cake hills
+				h = 6.0 + absf(n.get_noise_2d(x * 0.7, z * 0.7)) * 9.0 - 1.0
+			elif w == "beach":   # sloping down to the sea in the south-west
+				h = 6.0 + n.get_noise_2d(x, z) * 3.5 - clampf((x * 0.5 + (sz - z)) * 0.0 + (30 - x) * 0.12, 0, 3.5)
+			elif w == "jungle":   # bumpy and lush
+				h = 6.5 + n.get_noise_2d(x * 1.3, z * 1.3) * 5.0
 			elif w == "moon":   # flat dusty plains with round craters
 				h = 7.0 + n.get_noise_2d(x * 0.6, z * 0.6) * 2.5
 				for cr in craters:
@@ -584,6 +645,15 @@ func generate_open(w: String) -> void:
 			elif ad < 6:
 				h = lerpf(arena_y, h, ad / 6.0)
 			hmap[x + z * sx] = clampi(int(round(h)), 3, 14)
+			if w == "cloud":   # floating cloud islands: holes down to the sky
+				var keep := n.get_noise_2d(x * 1.4 + 500, z * 1.4) > -0.12 or ad < 3
+				for f in flats:
+					if Vector2(x - f[0].x, z - f[0].y).length() < f[1] + 2:
+						keep = true
+				for to in [camp, tower, cave, steps, Vector2i(int(arena.get_center().x), int(arena.end.y))]:
+					if _near_line(Vector2(x, z), Vector2(start), Vector2(to), 2.2):
+						keep = true   # cloud bridges from the start to every challenge
+				hmap[x + z * sx] = 6 if keep else 0
 	# the secret cave is inside a big hill
 	for z in sz:
 		for x in sx:
@@ -594,6 +664,12 @@ func generate_open(w: String) -> void:
 	for z in sz:
 		for x in sx:
 			var h := hmap[x + z * sx]
+			if h <= 0:
+				continue   # a hole in the clouds
+			if w == "cloud":   # thin fluffy islands floating in the sky
+				for y in range(3, h):
+					cells[idx(x, y, z)] = CLOUD
+				continue
 			cells[idx(x, 0, z)] = BEDROCK
 			for y in range(1, h):
 				var t := STONE
@@ -605,6 +681,12 @@ func generate_open(w: String) -> void:
 						t = ICE   # frozen ponds in the low spots
 					elif w == "swamp" and h <= 4:
 						t = MUD   # muddy bog in the low spots
+					elif w == "lava" and h <= 4:
+						t = LAVA   # lava pools: don't touch!
+					elif w == "beach" and h <= 4:
+						t = WATER   # the sea and rock pools (shallow: you can wade)
+					elif w == "candy" and h >= 11:
+						t = WOOL_WHITE   # whipped cream on the tallest hills
 				if t == STONE:
 					t = _ore(x, y)
 				cells[idx(x, y, z)] = t
@@ -640,13 +722,13 @@ func generate_open(w: String) -> void:
 				for dy in 2:
 					set_cell(o.x + dx, g + dy, o.y + dz, [IRON, GOLD, STONE, DIAMOND, IRON][rng.randi() % 5] if rng.randf() < 0.6 else STONE)
 	# trees
-	for i in {"meadow": 34, "frost": 26, "dunes": 0, "swamp": 0, "moon": 0}[w]:
+	for i in {"meadow": 34, "frost": 26, "dunes": 0, "swamp": 0, "moon": 0, "jungle": 60, "beach": 0, "lava": 0, "candy": 0, "cloud": 0}[w]:
 		var o := _free_spot(4)
 		if o.x < 3 or o.y < 3 or o.x > sx - 4 or o.y > sz - 4:
 			continue
 		var g := ground_at(o.x, o.y)
 		if get_cell(o.x, g, o.y) == AIR and get_cell(o.x, g - 1, o.y) != ICE:
-			_block_tree(o.x, o.y, g, w == "frost")
+			_block_tree(o.x, o.y, g, w == "frost", 4 if w == "jungle" else 0)
 	if w == "dunes":   # sandstone pillars and cacti
 		for i in 14:
 			var o := _free_spot(3)
@@ -694,6 +776,7 @@ func generate_open(w: String) -> void:
 			var g := ground_at(o.x, o.y)
 			for y in rng.randi_range(1, 3):
 				set_cell(o.x, g + y - 1, o.y, [MOON_ROCK, DIAMOND, IRON][rng.randi() % 3])
+	_world_extras(w)
 	if w == "meadow":
 		for i in 30:
 			var o := _free_spot(1)
@@ -710,16 +793,153 @@ func generate_open(w: String) -> void:
 		if get_cell(o.x, g, o.y) == AIR and get_cell(o.x, g + 1, o.y) == AIR:
 			spawns.append({"kind": kinds[i % kinds.size()], "pos": Vector3(o.x + 0.5, g + 0.01, o.y + 0.5)})
 	start_pos = Vector3(start.x + 0.5, ground_at(start.x, start.y) + 0.01, start.y + 0.5)
-	var hello: String = {"meadow": "MEADOW MINE", "frost": "FROSTY PEAKS", "dunes": "SUNSET DUNES", "swamp": "SPOOKY SWAMP", "moon": "MOON BASE"}[w]
+	var hello: String = Worlds.info(w).short
 	signs = [[start_pos + Vector3(-3, 0, -2), hello + "\nFind 5 STARS to open\nKrag Jr.'s castle!"]]
 	_build_mesh_nodes()
-	var tex: String = {"meadow": "grass_top", "frost": "snow_top", "dunes": "sand", "swamp": "swamp_top", "moon": "moon_top"}[w]
+	var tex: String = {"meadow": "grass_top", "frost": "snow_top", "dunes": "sand", "swamp": "swamp_top", "moon": "moon_top",
+		"lava": "basalt", "candy": "frosting_top", "beach": "water", "jungle": "grass_top", "cloud": ""}[w]
 	var trees: Array = {"meadow": ["tree_a", "tree_b", "tree_c"], "frost": ["pine_a", "pine_b"], "dunes": ["palm", "cactus_a"],
-		"swamp": ["pine_b", "tree_c"], "moon": ["desert_rock"]}[w]
+		"swamp": ["pine_b", "tree_c"], "moon": ["desert_rock"], "lava": ["desert_rock"], "candy": ["tree_c", "tree_b"],
+		"beach": ["palm", "palm", "tree_c"], "jungle": ["tree_b", "palm", "tree_a"], "cloud": []}[w]
 	var hills: Array = {"meadow": ["hill_a", "hill_b", "hill_c"], "frost": ["hill_snow", "hill_snow", "hill_c"], "dunes": ["hill_sand"],
-		"swamp": ["hill_b", "hill_c"], "moon": ["hill_snow"]}[w]
+		"swamp": ["hill_b", "hill_c"], "moon": ["hill_snow"], "lava": ["hill_b"], "candy": ["hill_c", "hill_a"],
+		"beach": ["hill_sand", "hill_a"], "jungle": ["hill_b", "hill_a"], "cloud": []}[w]
 	_home_scenery(tex, trees, hills)
 	rebuild()
+
+
+func _near_line(p: Vector2, a: Vector2, b: Vector2, r: float) -> bool:
+	var ab := b - a
+	var t := clampf((p - a).dot(ab) / maxf(ab.length_squared(), 0.001), 0.0, 1.0)
+	return p.distance_to(a + ab * t) < r
+
+
+## Decorations that make each world look like itself (and colourful).
+func _world_extras(w: String) -> void:
+	match w:
+		"meadow":
+			for i in 5:
+				_block_mushroom(_free_spot(4), [WOOL_RED, WOOL_BLUE, WOOL_YELLOW][i % 3])
+			_flower_patches(8, ["flower_pink", "flower_blue", "flower_white", "flower_pink", "bush"])
+		"lava":   # basalt spikes, some with gold on top, and rocks
+			for i in 22:
+				var o := _free_spot(3)
+				if o.x < 0:
+					continue
+				var g := ground_at(o.x, o.y)
+				var hgt := rng.randi_range(2, 5)
+				for y in hgt:
+					set_cell(o.x, g + y, o.y, BASALT)
+				if rng.randf() < 0.3:
+					set_cell(o.x, g + hgt, o.y, GOLD_BLOCK)
+			for i in 14:
+				var o := _free_spot(2)
+				if o.x >= 0:
+					prop("desert_rock", Vector3(o.x + 0.5, ground_at(o.x, o.y), o.y + 0.5), rng.randf_range(0.8, 1.8), true)
+		"candy":   # lollipop trees, gumdrops and cotton candy trees
+			for i in 26:
+				var o := _free_spot(4)
+				if o.x < 3 or o.y < 3 or o.x > sx - 4 or o.y > sz - 4:
+					continue
+				_lollipop(o.x, o.y, ground_at(o.x, o.y))
+			for i in 30:
+				var o := _free_spot(2)
+				if o.x < 0:
+					continue
+				var g := ground_at(o.x, o.y)
+				var col: int = [WOOL_RED, WOOL_YELLOW, WOOL_GREEN, WOOL_BLUE, WOOL_WHITE][i % 5]
+				set_cell(o.x, g, o.y, col)
+				if rng.randf() < 0.5:
+					set_cell(o.x, g + 1, o.y, col)
+			for i in 8:
+				var o := _free_spot(4)
+				if o.x >= 3 and o.y >= 3 and o.x <= sx - 4 and o.y <= sz - 4:
+					_block_tree(o.x, o.y, ground_at(o.x, o.y), false, 1)
+		"beach":   # palms, sandcastles and beach balls
+			for i in 30:
+				var o := _free_spot(3)
+				if o.x >= 0:
+					prop("palm", Vector3(o.x + 0.5, ground_at(o.x, o.y), o.y + 0.5), rng.randf_range(3.2, 4.6), true, rng.randf() < 0.5)
+			for i in 8:
+				var o := _free_spot(3)
+				if o.x < 0:
+					continue
+				var g := ground_at(o.x, o.y)
+				for dx in 2:
+					for dz in 2:
+						set_cell(o.x + dx, g, o.y + dz, SANDSTONE)
+				set_cell(o.x, g + 1, o.y, SANDSTONE)
+				set_cell(o.x + 1, g + 1, o.y + 1, SANDSTONE)
+			for i in 10:
+				var o := _free_spot(2)
+				if o.x >= 0:
+					set_cell(o.x, ground_at(o.x, o.y), o.y, [WOOL_RED, WOOL_BLUE, WOOL_YELLOW, WOOL_WHITE][i % 4])
+			_flower_patches(3, ["flower_pink", "flower_white", "bush"])
+		"jungle":   # giant mushrooms, flowers everywhere
+			for i in 7:
+				_block_mushroom(_free_spot(4), [WOOL_RED, WOOL_YELLOW, WOOL_BLUE][i % 3])
+			_flower_patches(14, ["flower_pink", "flower_blue", "flower_white", "bush", "bush"])
+		"cloud":   # rainbow arches and gold-and-white pillars
+			for i in 5:
+				var o := _free_spot(8)
+				if o.x < 6 or o.x > sx - 7:
+					continue
+				var g := ground_at(o.x, o.y)
+				var cols := [WOOL_RED, WOOL_YELLOW, WOOL_GREEN, WOOL_BLUE, WOOL_WHITE]
+				for k in cols.size():
+					var r := 5.0 - k
+					for a in 13:
+						var ang := PI * a / 12.0
+						set_cell(o.x + int(round(cos(ang) * r)), g + int(round(sin(ang) * r)), o.y, cols[k])
+			for i in 12:
+				var o := _free_spot(3)
+				if o.x < 0:
+					continue
+				var g := ground_at(o.x, o.y)
+				for y in rng.randi_range(2, 4):
+					set_cell(o.x, g + y, o.y, GOLD_BLOCK if y % 2 else WOOL_WHITE)
+
+
+## Flower patches: a bunch of colourful flowers close together (Mario 64 meadow style).
+func _flower_patches(count: int, kinds: Array) -> void:
+	for i in count:
+		var c := _free_spot(3)
+		if c.x < 0:
+			continue
+		for k in 7:
+			var p := c + Vector2i(rng.randi_range(-2, 2), rng.randi_range(-2, 2))
+			var g := ground_at(p.x, p.y)
+			if g > 0 and get_cell(p.x, g, p.y) == AIR and not get_cell(p.x, g - 1, p.y) in [LAVA, WATER]:
+				var kind: String = kinds[rng.randi() % kinds.size()]
+				prop(kind, Vector3(p.x + 0.5, g, p.y + 0.5), 0.8 if kind == "bush" else 0.6)
+
+
+## A big Minecraft-style mushroom: a white stalk with a coloured cap.
+func _block_mushroom(o: Vector2i, cap: int) -> void:
+	if o.x < 3 or o.y < 3 or o.x > sx - 4 or o.y > sz - 4:
+		return
+	var g := ground_at(o.x, o.y)
+	var h := rng.randi_range(3, 5)
+	for y in h:
+		set_cell(o.x, g + y, o.y, WOOL_WHITE)
+	for dx in range(-2, 3):
+		for dz in range(-2, 3):
+			if absi(dx) == 2 and absi(dz) == 2:
+				continue
+			set_cell(o.x + dx, g + h, o.y + dz, cap)
+	set_cell(o.x, g + h + 1, o.y, cap)
+
+
+## A lollipop tree: a white stick with a big round candy on top.
+func _lollipop(x: int, z: int, g: int) -> void:
+	var h := rng.randi_range(3, 5)
+	for y in h:
+		set_cell(x, g + y, z, WOOL_WHITE)
+	var col: int = [WOOL_RED, WOOL_YELLOW, WOOL_GREEN, WOOL_BLUE, CANDY_CANE][rng.randi() % 5]
+	var top := g + h + 1
+	for dx in range(-1, 2):
+		for dy in range(-1, 2):
+			set_cell(x + dx, top + dy, z, col if (dx + dy) % 2 == 0 else (WOOL_WHITE if col != CANDY_CANE else WOOL_RED))
 
 
 ## A spooky dead tree: a bare trunk with crooked branches.
@@ -758,7 +978,8 @@ func _free_spot(keep: float) -> Vector2i:
 		for k in keep_out:
 			if Vector2(x, z).distance_to(k[0]) < k[1] + keep * 0.3:
 				ok = false
-		if ok and get_cell(x, ground_at(x, z), z) == AIR:
+		var g := ground_at(x, z)
+		if ok and g > 0 and get_cell(x, g, z) == AIR and not get_cell(x, g - 1, z) in [LAVA, WATER]:
 			return Vector2i(x, z)
 	return Vector2i(-1, -1)
 
@@ -943,12 +1164,86 @@ func _build_mesh_nodes() -> void:
 		var mmi := MultiMeshInstance3D.new()
 		var mm := MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.use_colors = true   # every block gets its own gentle colour (see block_color)
 		if t != AIR:
 			mm.mesh = _cube_mesh(t)
 		mmi.multimesh = mm
 		mmi.material_override = mat
+		if t == LAVA:   # lava glows
+			var lm: StandardMaterial3D = mat.duplicate()
+			lm.emission_enabled = true
+			lm.emission_texture = mat.albedo_texture
+			lm.emission_energy_multiplier = 0.9
+			mmi.material_override = lm
+			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		elif t == WATER:   # water is shiny
+			var wm: StandardMaterial3D = mat.duplicate()
+			wm.roughness = 0.15
+			wm.metallic_specular = 0.9
+			mmi.material_override = wm
 		add_child(mmi)
 		mm_nodes.append(mmi)
+
+
+# ------------------------------------------------------------------ colour variation
+## Every block gets a slightly different colour: a tiny random brightness change, plus big
+## soft colour patches across the world (yellow-green to deep-green grass, autumn trees,
+## peach / pink / lavender frosting...). Multiplied into the texture by the block material.
+var _tint: FastNoiseLite
+var _tint2: FastNoiseLite
+
+## [colour A, colour B] for the big patches, per block type. Instance colours can only
+## darken or tint (they're capped at 1), so the textures are bright and these pull them.
+const PATCHES := {
+	GRASS: [Color(1.0, 0.98, 0.52), Color(0.68, 0.9, 0.96)],
+	SWAMP_GRASS: [Color(1.0, 0.94, 0.82), Color(0.82, 0.9, 1.0)],
+	SAND: [Color(1.0, 0.97, 0.86), Color(0.96, 0.86, 0.74)],
+	SNOW: [Color(1.0, 1.0, 1.0), Color(0.86, 0.92, 1.0)],
+	FROSTING: [Color(1.0, 1.0, 0.7), Color(0.82, 0.88, 1.0)],
+	CLOUD: [Color(1.0, 0.92, 0.97), Color(0.9, 0.95, 1.0)],
+	MOON_DUST: [Color(1.0, 0.98, 0.94), Color(0.9, 0.93, 1.0)],
+	BASALT: [Color(1.0, 0.86, 0.84), Color(0.84, 0.84, 0.96)],
+	DIRT: [Color(1.0, 0.96, 0.9), Color(0.88, 0.9, 0.92)],
+	STONE: [Color(1.0, 0.98, 0.95), Color(0.9, 0.93, 1.0)],
+}
+## Leaf colours (the leaf texture is light grey; these colour it).
+const LEAF_GREEN := [Color(0.28, 0.6, 0.27), Color(0.42, 0.7, 0.24)]
+const LEAF_AUTUMN := [Color(0.98, 0.78, 0.22), Color(0.98, 0.52, 0.16), Color(0.86, 0.26, 0.18)]
+const LEAF_CANDY := [Color(1.0, 0.6, 0.82), Color(0.78, 0.66, 1.0), Color(1.0, 0.86, 0.5)]
+
+
+func block_color(c: Vector3i, t: int) -> Color:
+	if _tint == null:
+		_tint = FastNoiseLite.new()
+		_tint.seed = hash(world) & 0xffff
+		_tint.frequency = 0.045
+		_tint2 = FastNoiseLite.new()
+		_tint2.seed = (hash(world) >> 8) & 0xffff
+		_tint2.frequency = 0.2
+	var hh := (c.x * 73856093) ^ (c.y * 19349663) ^ (c.z * 83492791)
+	var j := float(hh & 1023) / 1023.0
+	var b := 0.92 + j * 0.08
+	if t == LEAVES:
+		var v := _tint2.get_noise_2d(c.x * 0.3, c.z * 0.3)   # whole trees share a colour
+		var autumn: bool = world in ["meadow", "frost"] or is_home
+		if autumn and v > 0.12:   # autumn trees: yellow, orange or red leaves
+			return (LEAF_AUTUMN[int((v - 0.12) * 12.0) % 3] as Color) * b
+		if world == "candy":   # cotton candy treetops
+			return (LEAF_CANDY[int(absf(v) * 9.0) % 3] as Color) * b
+		var g: Color = (LEAF_GREEN[0] as Color).lerp(LEAF_GREEN[1], (v + 1.0) * 0.5)
+		if world == "jungle":
+			g = g.lerp(Color(0.2, 0.55, 0.26), 0.4)
+		elif world == "swamp":
+			g = g.lerp(Color(0.36, 0.42, 0.3), 0.5)
+		return g * b
+	if PATCHES.has(t):
+		var p := (_tint.get_noise_2d(c.x, c.z) + 1.0) * 0.5
+		var pc: Array = PATCHES[t]
+		var col: Color = (pc[0] as Color).lerp(pc[1], clampf((p - 0.5) * 2.2 + 0.5, 0.0, 1.0)) * b
+		if t == GRASS and world == "jungle":
+			col *= Color(0.8, 0.96, 0.8)
+		return col
+	return Color(b, b, b)
 
 
 func _exposed(x: int, y: int, z: int) -> bool:
@@ -1001,6 +1296,7 @@ func rebuild() -> void:
 		mm.instance_count = pts.size() + SPARE
 		for i in pts.size():
 			mm.set_instance_transform(i, Transform3D(Basis.IDENTITY, Vector3(pts[i])))
+			mm.set_instance_color(i, block_color(pts[i], t))
 			slot_of[pts[i]] = Vector2i(t, i)
 		slots[t] = pts
 		mm.visible_instance_count = pts.size()
@@ -1029,6 +1325,7 @@ func _show(c: Vector3i, t: int) -> void:
 	if arr.size() >= mm.instance_count:
 		_grow(t)   # ran out of spare room (lots of building): make room for this block type only
 	mm.set_instance_transform(arr.size(), Transform3D(Basis.IDENTITY, Vector3(c)))
+	mm.set_instance_color(arr.size(), block_color(c, t))
 	slot_of[c] = Vector2i(t, arr.size())
 	arr.append(c)
 	mm.visible_instance_count = arr.size()
@@ -1040,6 +1337,7 @@ func _grow(t: int) -> void:
 	mm.instance_count = arr.size() + SPARE
 	for i in arr.size():
 		mm.set_instance_transform(i, Transform3D(Basis.IDENTITY, Vector3(arr[i])))
+		mm.set_instance_color(i, block_color(arr[i], t))
 	mm.visible_instance_count = arr.size()
 
 
@@ -1050,6 +1348,7 @@ func _hide(c: Vector3i, e: Vector2i) -> void:
 	if last != c:   # move the last block into the freed slot
 		arr[e.y] = last
 		mm.set_instance_transform(e.y, Transform3D(Basis.IDENTITY, Vector3(last)))
+		mm.set_instance_color(e.y, block_color(last, e.x))
 		slot_of[last] = Vector2i(e.x, e.y)
 	arr.pop_back()
 	slot_of.erase(c)

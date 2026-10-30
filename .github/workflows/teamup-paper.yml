@@ -73,7 +73,7 @@ jobs:
             grep -q 'TEST PASSED' test-home-$look.log
             timeout 300s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/foes_check.gd -- $look 2>&1 | tee test-foes-$look.log
             grep -q 'TEST PASSED' test-foes-$look.log
-            for world in meadow frost dunes swamp moon; do
+            for world in meadow frost dunes swamp moon lava candy beach jungle cloud; do
               timeout 300s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/open_check.gd -- $look $world 2>&1 | tee test-open-$world-$look.log
               grep -q 'TEST PASSED' test-open-$world-$look.log
             done

@@ -54,8 +54,27 @@ and one island per world. Landing is easy:
 | 3-1 Sunset Dunes | sand, cacti, palms, sunset sky, sandstone pillars to hop | **Scorpion**: raises its tail "!" then lunges | 30 HP |
 | 4-1 Spooky Swamp | dark purple sky, thick mist, mossy ground and mud bogs, dead trees, pumpkins, gravestones | lots of Skelly Archers | 36 HP |
 | 5-1 Moon Base | starry black sky, grey moon dust, round craters, moon rock with diamonds; **low gravity** (0.6: jump way higher) | Grumblers in space | 42 HP |
+| 6-1 Lava Land | dark red sky, basalt rock with glowing cracks, **lava pools** (touch one: OUCH! you bounce up high and lose a heart, like Mario 64), basalt spikes | bombers, spikies, cactus-men | 48 HP |
+| 7-1 Candy Kingdom | pink sky, pink frosting on cake hills (whipped cream on top), **lollipop trees**, gumdrops, cotton-candy trees in pink / lilac / lemon | hoppers, buzzers, boohoos | 54 HP |
+| 8-1 Beach Bay | blue sky, sand sloping down to the **sea** (shallow water: you wade at 2/3 speed), palms, sandcastles, beach balls | scorpions (crabs), hoppers | 60 HP |
+| 9-1 Jungle Jamboree | deep green jungle, tall trees, **giant mushrooms**, flower patches everywhere | hoppers, buzzers, skellies | 66 HP |
+| 10-1 Cloud Castle | high in the sky: **floating cloud islands** with cloud bridges to every challenge (fall off and you're back where you were safe), rainbow arches, gold pillars, gravity 0.85 | buzzers, boohoos | 72 HP |
 
 * Each world has its own song (the real Team Up! snow and desert tunes). Ice: slow to start, slow to stop.
+* Adding a world: `Worlds.ORDER` + `INFO` (name, song, sky, fog, map spot, boss HP, optional `cloud` tint and
+  `gravity`), then the theme dictionaries at the top of `level.gd` `generate_open` (seed, top / sub / theme
+  blocks, foe2, mirror, terrain shape), `_world_extras` (its decorations), `FOES_BY_WORLD`, the sky map island
+  props in `skymap.gd`, and the CI `open_check` world loop.
+
+### Colour
+
+Every block has its own gentle colour (`level.gd` `block_color`, per-instance MultiMesh colours): a tiny random
+brightness change plus big soft patches from noise (yellow-green to deep-green grass, warm / cool sand, peach /
+pink / lavender frosting...). Leaves use a light grey texture (`t_leaves_tint`) coloured per tree: green, or
+**autumn** yellow / orange / red in Meadow, Frosty Peaks and at home, cotton-candy colours in Candy Kingdom.
+Instance colours are capped at 1 (they can only darken / tint), so bright textures + tints. Clouds are tinted
+per world (`INFO.cloud`), lava glows (its own emissive material) and water is shiny. More flower patches and
+giant block mushrooms in Meadow and the Jungle.
 
 ### Open worlds and stars
 

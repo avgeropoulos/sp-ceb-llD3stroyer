@@ -109,6 +109,7 @@ func _unit_checks() -> void:
 	main.hit_block(Vector3i(10, 6, 6), 1, main.leader())
 	if lv.get_cell(10, 6, 6) != Level.AIR or main.ores.stone != 1:
 		fail("stone didn't break / give stone after two hits")
+	lv.set_cell(10, 0, 6, Level.BEDROCK)   # (Cloud Castle has no ground under the clouds)
 	main.hit_block(Vector3i(10, 0, 6), 50, main.leader())
 	if lv.get_cell(10, 0, 6) != Level.BEDROCK:
 		fail("bedrock broke")

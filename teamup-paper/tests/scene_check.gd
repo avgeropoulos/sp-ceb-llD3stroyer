@@ -47,7 +47,7 @@ func _process(_dt: float) -> bool:
 		0:
 			if ready_in("play"):
 				g.invincible = true
-				check(Worlds.ORDER.size() == 5 and float(Worlds.info("moon").get("gravity", 1.0)) < 1.0, "the moon should have low gravity")
+				check(Worlds.ORDER.size() >= 5 and float(Worlds.info("moon").get("gravity", 1.0)) < 1.0, "the moon should have low gravity")
 				queue = Cutscene.ORDER.duplicate()
 				step = 1
 		1:   # play every scene to the end

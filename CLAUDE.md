@@ -224,7 +224,10 @@ Flow: title -> file -> (new: partner, 30 coins) -> HOME (`level.is_home`, `state
 (old side-scroll code, unused now): all 3 worlds are OPEN worlds (`level.open`, `generate_open`, `OpenPlay` in
 `openplay.gd`: 5 stars -> gold gate -> Krag Jr.'s castle -> flag; `tests/open_check.gd`). `level.open` (home too)
 means turning camera, free z movement and foes walking any way (`foes.gd` `_tick_open`). Worlds: meadow, frost, dunes,
-swamp (4-1, misty) and moon (5-1, `gravity` 0.6 -> `main.grav`); a world's fog/gravity come from `Worlds.INFO`.
+swamp (4-1, misty), moon (5-1, `gravity` 0.6 -> `main.grav`), lava (6-1, LAVA blocks bounce + hurt, `main._ground_effects`),
+candy (7-1), beach (8-1, WATER blocks = wading), jungle (9-1), cloud (10-1, floating islands: `hmap` 0 = hole, no ground
+plane); a world's fog/gravity/cloud tint come from `Worlds.INFO`. Block colours: `level.block_color` (MultiMesh
+`use_colors`; keep `_show/_hide/_grow/rebuild` setting colours; instance colours cap at 1, leaves use the grey `t_leaves_tint`).
 Cutscenes (`cutscene.gd`, state "scene", `play_scene(id, back)`, `_scene_done`, `scenes_seen` saved, MOVIES state
 "movies" by the TV at `MOVIE_SPOT`); tests that don't test scenes set `Cutscene.enabled = false`. Switching places reloads the scene via `main.go(place, slot)` + static `Boot` (tests follow `Boot.current`).
 Home = big world (`Level.HOME_SX/SY/SZ` 96x40x96; `level.sx/sy/sz` are per level, use them not LX/LY/LZ),

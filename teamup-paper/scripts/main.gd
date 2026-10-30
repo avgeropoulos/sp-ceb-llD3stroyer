@@ -1350,6 +1350,7 @@ func _step(dt: float) -> void:
 		_thunderbolt()
 	_update_leader(leader(), dt)
 	_update_follower(follower(), dt)
+	_ground_effects(dt)
 	_update_foes(dt)
 	_update_shots(dt)
 	_update_coins(dt)
@@ -1517,6 +1518,32 @@ func _power_speed() -> float:
 
 func _power_jump() -> float:
 	return powers.jump_mult() if powers and leader() == powers.worn_by else 1.0
+
+
+## LAVA LAND and BEACH BAY: lava burns and bounces you up high (OUCH! like Mario 64),
+## shallow water slows you down a little.
+func _ground_effects(dt: float) -> void:
+	if not level.open:
+		return
+	for h in [leader(), follower()]:
+		if not h.visible:
+			continue
+		var below := level.get_cell(floori(h.position.x), floori(h.position.y - 0.1), floori(h.position.z))
+		if below == Level.LAVA and h.on_floor:
+			h.vel.y = 17.0
+			h.on_floor = false
+			h.jumps_left = 0
+			fx.burst(h.position, Color("ff8a2a"), 14, 5, 8)
+			if h == leader():
+				fx.text(h.position + Vector3(0, 2.2, 0), "OUCH! HOT!", Color("ff8a2a"), 56, 1.0)
+				hurt_hero(h.position + Vector3(0, -1, 0))
+				sfx("hurt")
+		elif below == Level.WATER and h.on_floor:
+			var flat := Vector2(h.vel.x, h.vel.z)   # wading: about 2/3 speed
+			if flat.length() > h.speed * 0.65:
+				flat = flat.normalized() * h.speed * 0.65
+				h.vel.x = flat.x
+				h.vel.z = flat.y
 
 
 func _keep_in_arena(h: Hero) -> void:

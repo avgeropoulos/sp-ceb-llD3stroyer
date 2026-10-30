@@ -1092,8 +1092,9 @@ def sign():
 ATLAS = ["grass_top", "grass_side", "dirt", "stone", "iron", "gold", "diamond", "bedrock", "brick", "mystery", "used",
          "planks", "wool_red", "wool_blue", "wool_yellow", "wool_white", "window", "iron_block", "gold_block", "diamond_block", "stone_brick",
          "snow_top", "snow_side", "ice", "sand", "sandstone",
-         "log_top", "log_side", "leaves", "wool_green", "wool_black", "road",
-         "swamp_top", "swamp_side", "mud", "moon_top", "moon_rock"]
+         "log_top", "log_side", "leaves_tint", "wool_green", "wool_black", "road",
+         "swamp_top", "swamp_side", "mud", "moon_top", "moon_rock",
+         "lava", "basalt", "frosting_top", "frosting_side", "cake", "candy_cane", "water", "cloud"]
 
 
 def world_textures():
@@ -1169,6 +1170,16 @@ def city_textures():
             c = (52, 140, 56) if r < 0.45 else ((74, 170, 70) if r < 0.8 else (36, 108, 44))
             px[x, y] = c
     im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_leaves.png"))
+    # the same leaves in light greys: the game colours them per tree (green, autumn, candy...)
+    im = Image.new("RGB", (16, 16))
+    px = im.load()
+    rnd2 = random.Random(42)
+    for y in range(16):
+        for x in range(16):
+            r = rnd2.random()
+            v = 232 if r < 0.45 else (255 if r < 0.8 else 196)
+            px[x, y] = (v, v, v)
+    im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_leaves_tint.png"))
     for name, col in (("wool_green", (76, 176, 72)), ("wool_black", (52, 52, 62))):
         im = Image.new("RGB", (16, 16), col)
         px = im.load()
@@ -1217,6 +1228,96 @@ def spooky_moon_textures():
                 elif d <= r + 1 and y < cy:
                     px[x, y] = (178, 180, 190)
     im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_moon_rock.png"))
+
+
+def world2_textures():
+    """Ground for the newer worlds: lava + basalt, candy (frosting, cake, candy cane), water and cloud."""
+    rnd = random.Random(61)
+    # lava: bright orange with yellow swirls and dark crust bits
+    im = Image.new("RGB", (16, 16))
+    px = im.load()
+    for y in range(16):
+        for x in range(16):
+            w = math.sin(x * 0.8 + y * 0.45) + math.sin(y * 0.9 - x * 0.3)
+            c = (255, 196, 60) if w > 1.1 else ((250, 120, 30) if w > -0.6 else (210, 64, 24))
+            v = rnd.randint(-8, 8)
+            px[x, y] = tuple(max(0, min(255, k + v)) for k in c)
+    for _ in range(5):
+        px[rnd.randrange(16), rnd.randrange(16)] = (120, 36, 20)
+    im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_lava.png"))
+    # basalt: dark grey-purple rock with red glowing cracks
+    im = Image.new("RGB", (16, 16))
+    px = im.load()
+    for y in range(16):
+        for x in range(16):
+            v = rnd.randint(-8, 8)
+            px[x, y] = (70 + v, 62 + v, 72 + v)
+    for (x, y) in ((3, 2), (4, 3), (4, 4), (5, 5), (11, 9), (12, 10), (12, 11), (8, 13), (9, 13)):
+        px[x, y] = (232, 88, 40)
+    im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_basalt.png"))
+    # frosting: pink icing with sprinkles; frosting side drips over the cake
+    PINK = (250, 168, 206)
+    CAKE = (236, 196, 140)
+    im = Image.new("RGB", (16, 16), PINK)
+    px = im.load()
+    for y in range(16):
+        for x in range(16):
+            v = rnd.randint(-6, 6)
+            px[x, y] = tuple(max(0, min(255, k + v)) for k in PINK)
+    for i in range(14):
+        px[rnd.randrange(16), rnd.randrange(16)] = [(255, 255, 255), (110, 200, 255), (255, 228, 90), (140, 230, 140)][i % 4]
+    im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_frosting_top.png"))
+    im = Image.new("RGB", (16, 16), CAKE)
+    px = im.load()
+    for y in range(16):
+        for x in range(16):
+            v = rnd.randint(-7, 7)
+            c = CAKE if (y // 5) % 2 == 0 else (196, 120, 90)   # cake and jam layers
+            px[x, y] = tuple(max(0, min(255, k + v)) for k in c)
+    for x in range(16):
+        d = 3 + (2 if x % 5 == 1 else 0) + (1 if x % 3 == 0 else 0)
+        for y in range(d):
+            px[x, y] = PINK
+    im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_frosting_side.png"))
+    im = Image.new("RGB", (16, 16), CAKE)
+    px = im.load()
+    for y in range(16):
+        for x in range(16):
+            v = rnd.randint(-7, 7)
+            c = CAKE if (y // 5) % 2 == 0 else (196, 120, 90)
+            px[x, y] = tuple(max(0, min(255, k + v)) for k in c)
+    im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_cake.png"))
+    # candy cane: red and white diagonal stripes
+    im = Image.new("RGB", (16, 16))
+    px = im.load()
+    for y in range(16):
+        for x in range(16):
+            px[x, y] = (232, 52, 64) if ((x + y) // 3) % 2 == 0 else (250, 246, 246)
+    im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_candy_cane.png"))
+    # water: blue with light ripples
+    im = Image.new("RGB", (16, 16))
+    px = im.load()
+    for y in range(16):
+        for x in range(16):
+            v = rnd.randint(-5, 5)
+            px[x, y] = (58 + v, 150 + v, 222 + v)
+    for k in range(4):
+        y0 = 2 + k * 4
+        for i in range(5):
+            x = (k * 5 + i) % 16
+            px[x, y0] = (176, 226, 255)
+    im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_water.png"))
+    # cloud: soft white with pale blue shading
+    im = Image.new("RGB", (16, 16))
+    px = im.load()
+    for y in range(16):
+        for x in range(16):
+            v = rnd.randint(-4, 4)
+            shade = 0 if (x + y) % 7 else -10
+            px[x, y] = (246 + v + shade, 248 + v + shade, 255)
+    for (x, y) in ((3, 4), (4, 4), (10, 9), (11, 9), (6, 13)):
+        px[x, y] = (214, 228, 248)
+    im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_cloud.png"))
 
 
 def banana():
@@ -1586,6 +1687,7 @@ def main():
     world_textures()
     city_textures()
     spooky_moon_textures()
+    world2_textures()
     banana()
     atlas()
     print("art written to", os.path.abspath(OUT))
