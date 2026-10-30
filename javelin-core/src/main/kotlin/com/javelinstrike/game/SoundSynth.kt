@@ -30,10 +30,23 @@ object SoundSynth {
             }
         }
 
-        fun notes(freqs: FloatArray, each: Float, vol: Float = 0.3f, lastHold: Float = 0f) {
-            freqs.forEachIndexed { i, f ->
-                val d = if (i == freqs.lastIndex && lastHold > 0f) lastHold else each
-                tone(f, f, d, vol, decay = i == freqs.lastIndex)
+        /** A plucked string, like a lyre: a bright attack that rings away. Each note overlaps the last. */
+        fun pluck(freqs: FloatArray, each: Float, ring: Float = 0.6f, vol: Float = 0.35f) {
+            val start = samples.size
+            val total = (RATE * (each * (freqs.size - 1) + ring)).toInt()
+            repeat(total) { samples += 0f }
+            freqs.forEachIndexed { k, f ->
+                if (f <= 0f) return@forEachIndexed
+                val off = start + (RATE * each * k).toInt()
+                val n = (RATE * ring).toInt()
+                for (i in 0 until n) {
+                    if (off + i >= samples.size) break
+                    val t = i.toFloat() / RATE
+                    val env = kotlin.math.exp(-t * 6f)
+                    val w = 2f * PI.toFloat() * f * t
+                    val v = sin(w) + 0.35f * sin(2f * w) + 0.15f * sin(3f * w)
+                    samples[off + i] = samples[off + i] + v * vol * env * 0.6f
+                }
             }
         }
 
@@ -80,15 +93,15 @@ object SoundSynth {
             Sound.CLICK -> tone(900f, 900f, 0.03f, 0.25f)
             Sound.GRIP -> tone(300f, 450f, 0.06f, 0.2f, square = false)
             Sound.DRAWN -> tone(600f, 1000f, 0.09f, 0.25f)
-            Sound.WHOOSH -> whoosh(0.5f, 0.6f)
+            Sound.WHOOSH -> whoosh(0.5f, 0.42f)
             Sound.THUD -> { tone(150f, 55f, 0.14f, 0.55f, square = false); noise(0.08f, 0.3f, 0.6f) }
-            Sound.HIT -> notes(floatArrayOf(880f, 1320f), 0.07f, lastHold = 0.25f)
-            Sound.BULLSEYE -> notes(floatArrayOf(784f, 988f, 1175f, 1568f), 0.07f, lastHold = 0.4f)
+            Sound.HIT -> pluck(floatArrayOf(587f, 880f), 0.09f)
+            Sound.BULLSEYE -> pluck(floatArrayOf(587f, 740f, 880f, 1175f), 0.08f, ring = 0.9f)
             Sound.CHEER -> cheer(1.8f, 0.45f)
             Sound.TICK -> tone(1250f, 1250f, 0.03f, 0.25f)
-            Sound.CLEAR -> notes(floatArrayOf(523f, 659f, 784f, 1047f, 0f, 784f, 1047f, 1319f), 0.1f, lastHold = 0.6f)
-            Sound.FAIL -> notes(floatArrayOf(440f, 415f, 392f, 330f), 0.16f, lastHold = 0.4f)
-            Sound.GAME_OVER -> notes(floatArrayOf(392f, 370f, 349f, 330f, 0f, 262f, 247f, 196f), 0.15f, lastHold = 0.7f)
+            Sound.CLEAR -> pluck(floatArrayOf(440f, 554f, 659f, 880f, 0f, 659f, 880f, 1109f), 0.13f, ring = 1.2f)
+            Sound.FAIL -> pluck(floatArrayOf(440f, 415f, 392f, 330f), 0.18f, ring = 0.8f)
+            Sound.GAME_OVER -> pluck(floatArrayOf(392f, 370f, 349f, 330f, 0f, 262f, 247f, 196f), 0.18f, ring = 1.2f)
         }
     }.samples.toFloatArray()
 }

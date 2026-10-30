@@ -8,7 +8,6 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.sin
-import kotlin.math.sqrt
 import kotlin.random.Random
 
 enum class ControlMode(val label: String) { MOTION("MOTION"), TOUCH("TOUCH") }
@@ -33,8 +32,9 @@ class Game(
     enum class Screen { TITLE, HOWTO, INTRO, PLAY, CLEAR, TIME_UP, GAME_OVER }
     enum class ThrowState { READY, FLIGHT, LANDED }
 
-    /** Width of the view in virtual pixels; set by the platform from the screen shape. */
-    var viewW = 640f
+    /** Size of the view in virtual pixels. The width is fixed; the height follows the screen's shape. */
+    var viewW = VIEW_W
+    var viewH = 760f
     val detector = ThrowDetector()
 
     /** False when the phone has no gyroscope; touch controls are used instead. */
@@ -55,9 +55,6 @@ class Game(
     var paused = false
         private set
 
-    /** True while a level is under way, so the phone can lock its screen rotation. */
-    val inMatch get() = screen != Screen.TITLE && screen != Screen.HOWTO
-
     internal val rng = Random(seed)
     internal var levelNum = 1
     internal var spec = levelSpec(1)
@@ -67,7 +64,7 @@ class Game(
     internal var hits = 0
     internal var timeLeft = 0f
     internal var wind = 0f
-    internal var target = Target(0f, 40f, 5f, 0f, 0f)
+    internal var target = Target(0f, 40f, 5f)
     internal val stuck = ArrayList<Stuck>()
     internal var javelin: Javelin? = null
     internal var throwState = ThrowState.READY
@@ -104,12 +101,13 @@ class Game(
     private var fingerY = 0f
     private var fingerT = 0f
     private var wasReady = false
-    private var playAfterHowTo = false
+    internal var playAfterHowTo = false
+        private set
     private var lastTickSecond = -1
     private val touches = ArrayList<Input.Touch>()
 
     init {
-        restCam.apply { x = -1.4f; y = 3f; z = -7f; pitch = 0.14f; focal = 420f }
+        restCam.apply { x = -0.6f; y = 3.4f; z = -4.5f; pitch = REST_PITCH; focal = FOCAL }
         cam.set(restCam)
         showTitle()
     }
@@ -311,15 +309,15 @@ class Game(
 
     private fun placeTarget(first: Boolean) {
         val z = if (first) spec.distance else spec.distance * (0.9f + rng.nextFloat() * 0.2f)
-        // Keep the whole sway within reach of the furthest aim.
-        val reach = max(0f, z * 0.4f - spec.sway)
+        // Keep the whole sway within reach of the furthest aim, and on the field.
+        val reach = max(0f, min((z - spec.swayZ) * 0.4f, FIELD_EDGE - spec.radius) - spec.sway)
         val x = ((rng.nextFloat() * 2f - 1f) * spec.spread).coerceIn(-reach, reach)
-        target = Target(x, z, spec.radius, spec.sway, spec.swaySpeed)
+        target = Target(x, z, spec.radius, spec.sway, spec.swayZ, spec.swaySpeed, phase = rng.nextFloat() * 6.28f)
     }
 
     private fun showTitle() {
         paused = false
-        target = Target(4f, 42f, 5f, 0f, 0f)
+        target = Target(3f, 42f, 5f, sway = 4f, speed = 0.5f)
         stuck.clear()
         stuck += Stuck(5f, 43f, 0.05f, -0.6f, 0.8f, true)
         stuck += Stuck(1.5f, 38f, -0.02f, -0.55f, 0.83f, false)
@@ -510,9 +508,9 @@ class Game(
             val far = min(1f, fz / 60f)
             k = 1f - exp(-dt * 3.5f)
             cam.x += (fx * 0.8f + restCam.x * (1f - far) - cam.x) * k
-            cam.y += (3f + far * 4f - cam.y) * k
-            cam.z += (max(restCam.z, fz - 14f) - cam.z) * k
-            cam.pitch += (0.14f + far * 0.16f - cam.pitch) * k
+            cam.y += (3f + far * 5f - cam.y) * k
+            cam.z += (max(restCam.z, fz - 16f) - cam.z) * k
+            cam.pitch += (REST_PITCH + far * 0.12f - cam.pitch) * k
         } else {
             k = 1f - exp(-dt * if (screen == Screen.PLAY) 5f else 2f)
             val sway = if (screen == Screen.TITLE) sin(clock * 0.3f) * 1.2f else 0f
@@ -522,24 +520,26 @@ class Game(
             cam.pitch += (restCam.pitch - cam.pitch) * k
         }
         cam.cx = viewW / 2f
-        cam.cy = VIEW_H / 2f
+        // Puts the horizon about a third of the way down the screen.
+        restCam.cy = viewH * 0.33f + FOCAL * kotlin.math.tan(REST_PITCH)
+        cam.cy = restCam.cy
         cam.focal = restCam.focal
     }
 
-    // ---------------------------------------------------------------- layout
+    // ---------------------------------------------------------------- layout (portrait)
 
-    internal fun titleButton(i: Int) = floatArrayOf(viewW * 0.30f - 120f, 132f + i * 50f, 240f, 40f)
-    internal fun pauseButton() = floatArrayOf(viewW - 46f, 8f, 38f, 32f)
-    internal fun resumeButton() = floatArrayOf(viewW / 2f - 110f, 160f, 220f, 42f)
-    internal fun quitButton() = floatArrayOf(viewW / 2f - 110f, 214f, 220f, 42f)
-    internal fun insetBox() = floatArrayOf(viewW - 168f, 48f, 160f, 104f)
+    internal fun titleButton(i: Int) = floatArrayOf(viewW / 2f - 130f, viewH * 0.40f + i * 52f, 260f, 42f)
+    internal fun pauseButton() = floatArrayOf(viewW - 44f, 8f, 36f, 32f)
+    internal fun resumeButton() = floatArrayOf(viewW / 2f - 110f, viewH * 0.45f, 220f, 44f)
+    internal fun quitButton() = floatArrayOf(viewW / 2f - 110f, viewH * 0.45f + 58f, 220f, 44f)
+    internal fun insetBox() = floatArrayOf(viewW - 150f, 84f, 142f, 112f)
 
     private fun inside(r: FloatArray, x: Float, y: Float) = x >= r[0] && x <= r[0] + r[2] && y >= r[1] && y <= r[1] + r[3]
 
     // ---------------------------------------------------------------- render
 
     fun render(g: Gfx) {
-        drawWorld(g, cam, main = true, 0f, 0f, viewW, VIEW_H)
+        drawWorld(g, cam, main = true, 0f, 0f, viewW, viewH)
         when (screen) {
             Screen.TITLE -> drawTitle(g)
             Screen.HOWTO -> drawHowTo(g)
@@ -565,263 +565,18 @@ class Game(
         else -> flick.drawAmount
     }
 
+    internal fun flickActive() = flick.active
+
     internal fun holdingJavelin() = throwState == ThrowState.READY && sinceRelease > 0.5f
 
-    private fun drawInset(g: Gfx) {
-        val b = insetBox()
-        insetCam.apply {
-            x = target.x
-            y = 13f
-            z = target.z - 11f
-            pitch = 0.85f
-            focal = 110f
-            cx = b[0] + b[2] / 2f
-            cy = b[1] + b[3] / 2f + 6f
-        }
-        g.rect(b[0] - 2f, b[1] - 2f, b[2] + 4f, b[3] + 4f, 0xFFFFFFFF.toInt())
-        g.clip(b[0], b[1], b[2], b[3])
-        drawWorld(g, insetCam, main = false, b[0], b[1], b[2], b[3])
-        g.unclip()
-        g.rect(b[0], b[1], b[2], 13f, 0xA0000000.toInt())
-        g.text("TARGET CAM  ${target.z.roundToInt()} m", b[0] + 4f, b[1] + 10f, 9f, WHITE)
-    }
+    internal fun bestLevel() = store.load(KEY_BEST_LEVEL)
 
-    private fun drawHud(g: Gfx) {
-        g.shadowText("LEVEL $levelNum", 10f, 22f, 16f, GOLD)
-        g.shadowText(spec.name.uppercase(), 10f, 38f, 10f, WHITE)
-        for (i in 0 until lives) heart(g, 14f + i * 16f, 50f)
-
-        // Clock
-        val secs = ceil(timeLeft).toInt()
-        val clockColor = if (secs <= 10 && (secs > 5 || (clock * 4f).toInt() % 2 == 0)) RED else WHITE
-        g.shadowText("${secs / 60}:${(secs % 60).toString().padStart(2, '0')}", viewW / 2f, 30f, 26f, clockColor, 1)
-        // Hits needed
-        val pip = 12f
-        val startX = viewW / 2f - (spec.hits * pip) / 2f
-        for (i in 0 until spec.hits) {
-            val c = if (i < hits) GOLD else 0x80FFFFFF.toInt()
-            g.oval(startX + i * pip + 1f, 38f, pip - 3f, pip - 3f, 0xFF000000.toInt())
-            g.oval(startX + i * pip + 2f, 39f, pip - 5f, pip - 5f, c)
-        }
-
-        g.shadowText("SCORE $score", viewW - 54f, 22f, 13f, WHITE, 2)
-
-        // Pause button
-        val p = pauseButton()
-        g.rect(p[0], p[1], p[2], p[3], 0x90000000.toInt())
-        g.rect(p[0] + 13f, p[1] + 8f, 4f, 16f, WHITE)
-        g.rect(p[0] + 21f, p[1] + 8f, 4f, 16f, WHITE)
-
-        // Wind
-        if (wind != 0f) {
-            val wy = 78f
-            g.shadowText("WIND", 10f, wy, 10f, WHITE)
-            val len = 8f + abs(wind) * 4f
-            val ax = 46f + if (wind > 0) 0f else len
-            val dir = if (wind > 0) 1f else -1f
-            g.line(ax, wy - 4f, ax + dir * len, wy - 4f, 3f, CYAN)
-            g.poly(
-                floatArrayOf(ax + dir * (len + 6f), ax + dir * len, ax + dir * len),
-                floatArrayOf(wy - 4f, wy - 9f, wy + 1f), CYAN,
-            )
-            g.shadowText("${oneDecimal(abs(wind))} m/s", 46f + len + 12f, wy, 10f, CYAN)
-        }
-
-        if (lastDistance > 0f) {
-            g.shadowText(
-                "LAST: ${oneDecimal(lastDistance)} m  POWER ${(lastPower * 100).roundToInt()}%",
-                viewW - 10f, VIEW_H - 10f, 10f, WHITE, 2,
-            )
-        }
-
-        if (msgT > 0f) {
-            val a = min(1f, msgT * 3f)
-            val c = argb((a * 255).toInt(), msgColor)
-            g.text(msg, viewW / 2f + 2f, 112f, 30f, argb((a * 200).toInt(), 0), 1)
-            g.text(msg, viewW / 2f, 110f, 30f, c, 1)
-            if (msgSub.isNotEmpty()) g.shadowText(msgSub, viewW / 2f, 132f, 14f, argb((a * 255).toInt(), WHITE), 1)
-        }
-    }
-
-    private fun heart(g: Gfx, x: Float, y: Float) {
-        g.oval(x - 6f, y - 4f, 7f, 7f, RED)
-        g.oval(x - 1f, y - 4f, 7f, 7f, RED)
-        g.poly(floatArrayOf(x - 6f, x + 6f, x), floatArrayOf(y, y, y + 7f), RED)
-    }
-
-    private fun drawPrompts(g: Gfx) {
-        if (throwState != ThrowState.READY || timeLeft <= 0f) return
-        // Draw meter on the left.
-        val draw = drawPose()
-        val mx = 12f
-        val my = 190f
-        val mh = 120f
-        g.rect(mx - 2f, my - 2f, 18f, mh + 4f, 0xA0000000.toInt())
-        val fill = mh * draw
-        val armed = controls == ControlMode.MOTION && detector.phase >= ThrowDetector.Phase.DRAWN ||
-            controls == ControlMode.TOUCH && draw >= FlickThrow.PULL_MIN / FlickThrow.PULL_FULL
-        g.rect(mx, my + mh - fill, 14f, fill, if (armed) GREEN else GOLD)
-        g.shadowText("DRAW", mx + 7f, my + mh + 14f, 8f, WHITE, 1)
-
-        val (line, sub) = if (controls == ControlMode.MOTION) {
-            when (detector.phase) {
-                ThrowDetector.Phase.IDLE -> "HOLD THE SCREEN" to (if (input.hasTilt) "Tilt the phone to aim" else "")
-                ThrowDetector.Phase.GRIP -> "PULL YOUR ARM BACK" to "Keep holding the screen"
-                ThrowDetector.Phase.DRAWN -> "NOW THROW!" to "Whip it forward"
-                ThrowDetector.Phase.SWING -> "!!!" to ""
-            }
-        } else {
-            if (flick.active) {
-                (if (armed) "FLICK UP!" else "PULL DOWN") to "Flick sideways to aim"
-            } else {
-                "PRESS, PULL DOWN, FLICK UP" to "Faster flick = longer throw"
-            }
-        }
-        if (msgT <= 0f) {
-            val pulse = if (detector.phase == ThrowDetector.Phase.DRAWN || (flick.active && armed)) GREEN else WHITE
-            g.shadowText(line, viewW / 2f, VIEW_H - 34f, 18f, pulse, 1)
-            if (sub.isNotEmpty()) g.shadowText(sub, viewW / 2f, VIEW_H - 18f, 10f, 0xFFDDDDDD.toInt(), 1)
-        }
-    }
-
-    private fun panel(g: Gfx, h: Float): Float {
-        val w = min(420f, viewW - 40f)
-        val x = viewW / 2f - w / 2f
-        val y = VIEW_H / 2f - h / 2f + 10f
-        g.rect(x, y, w, h, 0xD0101828.toInt())
-        g.rect(x, y, w, 3f, GOLD)
-        return y
-    }
-
-    private fun drawIntro(g: Gfx) {
-        val y = panel(g, 150f)
-        g.shadowText("LEVEL $levelNum", viewW / 2f, y + 34f, 26f, GOLD, 1)
-        g.shadowText(spec.name.uppercase(), viewW / 2f, y + 54f, 14f, WHITE, 1)
-        val needs = if (spec.hits == 1) "Hit the target" else "Hit the target ${spec.hits} times"
-        g.shadowText("$needs in ${spec.time.roundToInt()} seconds", viewW / 2f, y + 80f, 13f, WHITE, 1)
-        val extras = buildList {
-            add("${target.z.roundToInt()} m away")
-            if (wind != 0f) add("wind ${oneDecimal(abs(wind))} m/s")
-            if (spec.sway > 0f) add("moving target")
-        }.joinToString("  ·  ")
-        g.shadowText(extras, viewW / 2f, y + 100f, 11f, CYAN, 1)
-        if (screenT > 0.4f) g.shadowText("TAP TO START", viewW / 2f, y + 132f, 12f, blink(), 1)
-    }
-
-    private fun drawClear(g: Gfx) {
-        val y = panel(g, 150f)
-        g.shadowText("LEVEL CLEAR!", viewW / 2f, y + 36f, 26f, GREEN, 1)
-        g.shadowText("Time bonus  +$levelBonus", viewW / 2f, y + 64f, 13f, WHITE, 1)
-        g.shadowText("Score  $score", viewW / 2f, y + 84f, 13f, GOLD, 1)
-        if (gotExtraLife) g.shadowText("EXTRA LIFE!", viewW / 2f, y + 104f, 12f, RED, 1)
-        if (screenT > 1f) g.shadowText("TAP FOR LEVEL ${levelNum + 1}", viewW / 2f, y + 132f, 12f, blink(), 1)
-    }
-
-    private fun drawTimeUp(g: Gfx) {
-        val y = panel(g, 130f)
-        g.shadowText("TIME'S UP!", viewW / 2f, y + 38f, 26f, RED, 1)
-        g.shadowText("$hits of ${spec.hits} hits", viewW / 2f, y + 62f, 13f, WHITE, 1)
-        g.shadowText("$lives ${if (lives == 1) "life" else "lives"} left", viewW / 2f, y + 82f, 13f, WHITE, 1)
-        if (screenT > 1f) g.shadowText("TAP TO TRY AGAIN", viewW / 2f, y + 114f, 12f, blink(), 1)
-    }
-
-    private fun drawGameOver(g: Gfx) {
-        val y = panel(g, 150f)
-        g.shadowText("GAME OVER", viewW / 2f, y + 38f, 28f, RED, 1)
-        g.shadowText("You reached level $levelNum", viewW / 2f, y + 62f, 13f, WHITE, 1)
-        g.shadowText("Score  $score", viewW / 2f, y + 84f, 16f, GOLD, 1)
-        if (newHighRank >= 0) {
-            g.shadowText(if (newHighRank == 0) "NEW HIGH SCORE!" else "TOP 5 SCORE! #${newHighRank + 1}", viewW / 2f, y + 106f, 13f, GREEN, 1)
-        }
-        if (screenT > 1.5f) g.shadowText("TAP TO CONTINUE", viewW / 2f, y + 134f, 12f, blink(), 1)
-    }
-
-    private fun drawPause(g: Gfx) {
-        g.rect(0f, 0f, viewW, VIEW_H, 0x90000000.toInt())
-        g.shadowText("PAUSED", viewW / 2f, 130f, 30f, WHITE, 1)
-        button(g, resumeButton(), "RESUME", GREEN)
-        button(g, quitButton(), "QUIT TO MENU", WHITE)
-    }
-
-    private fun drawTitle(g: Gfx) {
-        g.rect(0f, 0f, viewW, VIEW_H, 0x50000000)
-        val tx = viewW * 0.30f
-        g.text("JAVELIN", tx + 3f, 63f, 44f, 0xFF000000.toInt(), 1)
-        g.text("JAVELIN", tx, 60f, 44f, GOLD, 1)
-        g.text("STRIKE", tx + 3f, 105f, 40f, 0xFF000000.toInt(), 1)
-        g.text("STRIKE", tx, 102f, 40f, RED, 1)
-        button(g, titleButton(0), "PLAY", GREEN)
-        val ctl = if (motionAvailable) controls.label else "TOUCH (NO GYRO)"
-        button(g, titleButton(1), "CONTROLS: $ctl", WHITE)
-        button(g, titleButton(2), "ARM: ${arm.label}", WHITE)
-        button(g, titleButton(3), "HOW TO PLAY", WHITE)
-
-        val hx = viewW * 0.74f
-        val pw = 190f
-        g.rect(hx - pw / 2f, 120f, pw, 160f, 0xB0101828.toInt())
-        g.shadowText("HIGH SCORES", hx, 140f, 14f, GOLD, 1)
-        for (i in 0 until 5) {
-            val yy = 164f + i * 22f
-            val s = highScores[i]
-            g.shadowText("${i + 1}.", hx - 78f, yy, 12f, WHITE)
-            g.shadowText(if (s > 0) "$s" else "---", hx + 30f, yy, 12f, WHITE, 2)
-            if (s > 0) g.shadowText("L${highLevels[i]}", hx + 78f, yy, 11f, CYAN, 2)
-        }
-        val best = store.load(KEY_BEST_LEVEL)
-        if (best > 0) g.shadowText("Best level cleared: $best", viewW / 2f, VIEW_H - 14f, 10f, WHITE, 1)
-    }
-
-    private fun drawHowTo(g: Gfx) {
-        g.rect(0f, 0f, viewW, VIEW_H, 0xE0101828.toInt())
-        val x = 30f
-        var y = 36f
-        g.shadowText("HOW TO PLAY", viewW / 2f, y, 22f, GOLD, 1)
-        y += 26f
-        val lines = if (controls == ControlMode.MOTION) listOf(
-            "1. Hold the phone in your throwing hand, screen facing you.",
-            "2. Tilt it like a steering wheel to aim left or right.",
-            "3. Press and HOLD the screen with your thumb to grip the javelin.",
-            "4. Pull your arm back. The DRAW bar turns green when you're ready.",
-            "5. Throw your arm forward! The faster the swing, the further it flies.",
-            "   The javelin lets go at the end of your swing.",
-        ) else listOf(
-            "1. Press anywhere on the screen to grip the javelin.",
-            "2. Pull your finger down to draw back.",
-            "3. Flick up to throw. A faster flick throws further.",
-            "4. Flick a little left or right to aim.",
-        )
-        for (l in lines) {
-            g.shadowText(l, x, y, 11f, WHITE)
-            y += 18f
-        }
-        y += 6f
-        for (l in listOf(
-            "Hit the target before time runs out. You have unlimited javelins.",
-            "Watch the wind arrow, and the TARGET CAM to see where you landed.",
-            "Too strong or too weak? Change ARM on the title screen.",
-        )) {
-            g.shadowText(l, x, y, 11f, CYAN)
-            y += 18f
-        }
-        y += 6f
-        g.shadowText("SAFETY: grip the phone tightly (a wrist strap or phone grip helps)", x, y, 11f, ORANGE)
-        g.shadowText("and make sure nobody and nothing breakable is around you.", x, y + 16f, 11f, ORANGE)
-        if (screenT > 0.4f) g.shadowText("TAP TO ${if (playAfterHowTo) "PLAY" else "GO BACK"}", viewW / 2f, VIEW_H - 14f, 12f, blink(), 1)
-    }
-
-    private fun button(g: Gfx, r: FloatArray, label: String, color: Int) {
-        g.rect(r[0], r[1], r[2], r[3], argb(0xFF, color))
-        g.rect(r[0] + 2f, r[1] + 2f, r[2] - 4f, r[3] - 4f, 0xE0182838.toInt())
-        g.shadowText(label, r[0] + r[2] / 2f, r[1] + r[3] / 2f + 5f, 14f, color, 1)
-    }
-
-    private fun blink() = if ((clock * 2f).toInt() % 2 == 0) WHITE else 0xFFFFE066.toInt()
-
-    /** Distance from the thrower to the target, for tests and the HUD. */
-    internal fun targetDistance() = sqrt(target.x * target.x + target.z * target.z)
+    internal fun hasTilt() = input.hasTilt
 
     companion object {
         const val START_LIVES = 3
+        const val FOCAL = 420f
+        const val REST_PITCH = 0.3f
         const val MAX_LIVES = 5
         const val MAX_STUCK = 12
         /** Javelins fly faster than real time so you can throw again sooner. */
@@ -836,11 +591,12 @@ class Game(
         const val KEY_BEST_LEVEL = "bestLevel"
 
         const val WHITE = 0xFFFFFFFF.toInt()
-        const val GOLD = 0xFFFFC928.toInt()
+        const val GOLD = 0xFFF2C14E.toInt()
         const val RED = 0xFFFF4B3E.toInt()
         const val GREEN = 0xFF5BE36B.toInt()
         const val ORANGE = 0xFFFF9A3C.toInt()
-        const val CYAN = 0xFF7FE3FF.toInt()
-        val CONFETTI = intArrayOf(0xFFFF4B3E.toInt(), 0xFFFFC928.toInt(), 0xFF5BE36B.toInt(), 0xFF4FA3FF.toInt(), 0xFFFF7AD9.toInt(), 0xFFFFFFFF.toInt())
+        const val CYAN = 0xFF9FE0F0.toInt()
+        /** Olive leaves and flower petals thrown by the crowd. */
+        val CONFETTI = intArrayOf(0xFF7C9A3A.toInt(), 0xFF5E7A2A.toInt(), 0xFFFFD34D.toInt(), 0xFFFFFFFF.toInt(), 0xFFD9443A.toInt())
     }
 }

@@ -14,13 +14,15 @@ const val GRAVITY = 9.81f
 /** Javelins leave the hand at about 36° above level. */
 const val RELEASE_ANGLE = 0.63f
 const val MIN_SPEED = 9f
-const val MAX_SPEED = 36f
+const val MAX_SPEED = 38f
 /** Sideways push per m/s of wind, in m/s². */
 const val WIND_PUSH = 0.3f
 const val RELEASE_X = 0.35f
 const val RELEASE_Y = 2f
 const val RELEASE_Z = 0.4f
 const val JAVELIN_LEN = 2.6f
+/** Targets stay within this far of the middle of the field (metres). */
+const val FIELD_EDGE = 34f
 /** Furthest left or right the player can aim, in radians. */
 const val MAX_AIM = 0.42f
 
@@ -77,14 +79,44 @@ class Javelin(
 /** A javelin stuck in the ground, pointing back along the way it came. */
 class Stuck(val x: Float, val z: Float, val dx: Float, val dy: Float, val dz: Float, val hit: Boolean)
 
-class Target(var baseX: Float, var z: Float, val radius: Float, val sway: Float, val swaySpeed: Float) {
+/**
+ * The target: rings on the ground with a shield on a post in the middle. A moving target
+ * slides [sway] metres side to side and [swayZ] metres nearer and further.
+ */
+class Target(
+    val baseX: Float,
+    val baseZ: Float,
+    val radius: Float,
+    val sway: Float = 0f,
+    val swayZ: Float = 0f,
+    val speed: Float = 0f,
+    phase: Float = 0f,
+) {
+    private var t = phase
     var x = baseX
         private set
-    private var t = 0f
+    var z = baseZ
+        private set
+
+    val moving get() = speed > 0f && (sway > 0f || swayZ > 0f)
+
+    init { place() }
 
     fun update(dt: Float) {
-        t += dt * swaySpeed
-        x = baseX + sway * sin(t)
+        t += dt * speed
+        place()
+    }
+
+    /** Where the target will be [ahead] seconds from now, as (x, z). */
+    fun positionAt(ahead: Float): Pair<Float, Float> {
+        val tt = t + ahead * speed
+        return baseX + sway * sin(tt) to baseZ + swayZ * sin(tt * 0.73f + 1.3f)
+    }
+
+    private fun place() {
+        val (px, pz) = positionAt(0f)
+        x = px
+        z = pz
     }
 
     /** 3 = bullseye, 2 = middle ring, 1 = outer ring, 0 = miss. */
@@ -107,7 +139,7 @@ class Camera {
     var pitch = 0.14f
     var focal = 420f
     var cx = 0f
-    var cy = VIEW_H / 2f
+    var cy = 380f
 
     var sx = 0f
         private set

@@ -42,8 +42,8 @@ class AwtGfx(val image: BufferedImage, private val scale: Float) : Gfx {
         g.draw(Line2D.Float(x1 * scale, y1 * scale, x2 * scale, y2 * scale))
     }
 
-    override fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Int) {
-        g.font = Font(Font.MONOSPACED, Font.BOLD, (size * scale).toInt().coerceAtLeast(1))
+    override fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Int, serif: Boolean) {
+        g.font = Font(if (serif) Font.SERIF else Font.MONOSPACED, Font.BOLD, (size * scale).toInt().coerceAtLeast(1))
         val w = g.fontMetrics.stringWidth(s)
         val px = x * scale - when (align) { 1 -> w / 2f; 2 -> w.toFloat(); else -> 0f }
         color(color); g.drawString(s, px, y * scale)

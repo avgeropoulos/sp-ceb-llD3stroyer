@@ -3,6 +3,7 @@ package com.javelinstrike.game
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.sin
 import kotlin.test.Test
@@ -22,7 +23,7 @@ class GameTest {
     private fun newGame(sounds: SoundSink = Sounds()): Pair<Game, Input> {
         val input = Input()
         val store = Storage.Memory().apply { save(Game.KEY_SEEN_HOWTO, 1) }
-        return Game(input, sounds, store, seed = 42).apply { viewW = 780f } to input
+        return Game(input, sounds, store, seed = 42).apply { viewH = 780f } to input
     }
 
     private fun run(g: Game, seconds: Float) = repeat((seconds * 60).toInt()) { g.update(dt) }
@@ -33,7 +34,7 @@ class GameTest {
         g.update(dt)
     }
 
-    private fun tapMiddle(g: Game, input: Input) = tap(g, input, floatArrayOf(390f, 300f, 0f, 0f))
+    private fun tapMiddle(g: Game, input: Input) = tap(g, input, floatArrayOf(180f, 400f, 0f, 0f))
 
     private fun startPlaying(g: Game, input: Input) {
         tap(g, input, g.titleButton(0))
@@ -43,17 +44,31 @@ class GameTest {
         assertEquals(Game.Screen.PLAY, g.screen)
     }
 
-    /** Finds the power and aim that land on the target, the way a perfect player would. */
+    /** Finds the power and aim that land on the target, leading a moving one, the way a perfect player would. */
     private fun perfectThrow(g: Game): Pair<Float, Float> {
-        val t = g.target
-        val yaw = atan2(t.x, t.z)
-        var lo = 0f
-        var hi = 1f
-        repeat(30) {
-            val mid = (lo + hi) / 2
-            if (Javelin.landing(mid, yaw).second < t.z) lo = mid else hi = mid
+        var (tx, tz) = g.target.x to g.target.z
+        var power = 0f
+        var yaw = 0f
+        repeat(4) {
+            yaw = atan2(tx - RELEASE_X, tz)
+            var lo = 0f
+            var hi = 1f
+            repeat(30) {
+                val mid = (lo + hi) / 2
+                if (Javelin.landing(mid, yaw).second < tz) lo = mid else hi = mid
+            }
+            power = lo
+            val (ax, az) = g.target.positionAt(flightTime(power, yaw) / Game.FLIGHT_SPEED)
+            tx = ax; tz = az
         }
-        return lo to yaw
+        return power to yaw
+    }
+
+    private fun flightTime(power: Float, yaw: Float): Float {
+        val j = Javelin.launch(power, yaw)
+        var t = 0f
+        while (!j.step(1f / 240f, 0f)) t += 1f / 240f
+        return t
     }
 
     /** Sends gyro readings at 200 Hz: spinning about [axis] at [rate](time) rad/s. */
@@ -115,11 +130,20 @@ class GameTest {
         assertTrue(d.takeCancel())
     }
 
+    @Test fun soundsAreAudibleAndNeverClip() {
+        for (snd in Sound.entries) {
+            val samples = SoundSynth.render(snd)
+            assertTrue(samples.isNotEmpty(), "$snd is empty")
+            val peak = samples.maxOf { abs(it) }
+            assertTrue(peak in 0.05f..1f, "$snd peak $peak")
+        }
+    }
+
     @Test fun javelinPhysics() {
         val (_, weak) = Javelin.landing(0f)
         val (_, strong) = Javelin.landing(1f)
         assertTrue(weak in 6f..12f, "weakest throw $weak m")
-        assertTrue(strong in 115f..140f, "strongest throw $strong m")
+        assertTrue(strong in 125f..150f, "strongest throw $strong m")
         var last = 0f
         for (i in 0..10) {
             val z = Javelin.landing(i / 10f).second
@@ -134,7 +158,7 @@ class GameTest {
         val maxRange = Javelin.landing(1f).second
         for (n in 1..40) {
             val s = levelSpec(n)
-            assertTrue(s.distance * 1.1f + s.radius < maxRange - 5f, "level $n too far")
+            assertTrue(s.distance * 1.1f + s.swayZ + s.radius < maxRange - 5f, "level $n too far")
             assertTrue(s.time >= 30f && s.hits >= 1 && s.radius >= 1.5f, "level $n: $s")
         }
         assertTrue(levelSpec(LEVELS.size + 1).name.startsWith("Endless"))
@@ -182,6 +206,22 @@ class GameTest {
         assertTrue(g.target !== first, "a new target should be placed")
     }
 
+    @Test fun leadingAFarMovingTargetHitsIt() {
+        val (g, input) = newGame()
+        g.startLevel(9)
+        run(g, 0.5f)
+        tapMiddle(g, input)
+        assertTrue(g.target.moving)
+        assertTrue(g.target.z > 60f)
+        // Throwing straight at where it is now misses...
+        val now = g.target.x to g.target.z
+        val (p, yaw) = perfectThrow(g)
+        assertTrue(abs(yaw - atan2(now.first - RELEASE_X, now.second)) > 0.01f, "should need to lead the target")
+        g.throwJavelin(p, yaw)
+        run(g, 6f)
+        assertEquals(1, g.hits)
+    }
+
     @Test fun runningOutOfTimeCostsALife() {
         val (g, input) = newGame()
         startPlaying(g, input)
@@ -216,7 +256,7 @@ class GameTest {
         startPlaying(g, input)
         g.update(dt)
         assertTrue(g.detector.enabled)
-        input.push(Input.DOWN, 400f, 250f, 0f)
+        input.push(Input.DOWN, 180f, 450f, 0f)
         g.update(dt)
         assertEquals(ThrowDetector.Phase.GRIP, g.detector.phase)
         val axis = floatArrayOf(0f, 0f, 1f)
@@ -237,12 +277,12 @@ class GameTest {
         tap(g2, input2, g2.titleButton(1))
         assertEquals(ControlMode.TOUCH, g2.controls)
         startPlaying(g2, input2)
-        input2.push(Input.DOWN, 400f, 200f, 0f)
-        input2.push(Input.MOVE, 400f, 240f, 0.1f)
-        input2.push(Input.MOVE, 400f, 260f, 0.2f)
-        input2.push(Input.MOVE, 405f, 200f, 0.25f)
-        input2.push(Input.MOVE, 410f, 120f, 0.3f)
-        input2.push(Input.UP, 412f, 100f, 0.32f)
+        input2.push(Input.DOWN, 180f, 400f, 0f)
+        input2.push(Input.MOVE, 100f, 440f, 0.1f)
+        input2.push(Input.MOVE, 100f, 460f, 0.2f)
+        input2.push(Input.MOVE, 105f, 400f, 0.25f)
+        input2.push(Input.MOVE, 110f, 320f, 0.3f)
+        input2.push(Input.UP, 112f, 300f, 0.32f)
         g2.update(dt)
         assertEquals(Game.ThrowState.FLIGHT, g2.throwState)
         assertTrue(g2.lastPower > 0.5f, "power ${g2.lastPower}")
@@ -253,8 +293,8 @@ class GameTest {
         val dir = File("build/screens").apply { mkdirs() }
         val (g, input) = newGame()
         fun shot(name: String) {
-            val scale = 2.5f
-            val img = BufferedImage((g.viewW * scale).toInt(), (VIEW_H * scale).toInt(), BufferedImage.TYPE_INT_ARGB)
+            val scale = 2f
+            val img = BufferedImage((g.viewW * scale).toInt(), (g.viewH * scale).toInt(), BufferedImage.TYPE_INT_ARGB)
             g.render(AwtGfx(img, scale))
             ImageIO.write(img, "png", File(dir, "$name.png"))
         }
@@ -268,7 +308,7 @@ class GameTest {
         run(g, 0.5f)
         shot("3_intro")
         tapMiddle(g, input)
-        input.push(Input.DOWN, 400f, 250f, 0f)
+        input.push(Input.DOWN, 180f, 450f, 0f)
         g.update(dt)
         spin(g.detector, 0L, 0.3f, floatArrayOf(1f, 0f, 0f)) { -3f }
         run(g, 0.3f)
@@ -286,8 +326,10 @@ class GameTest {
         run(g, 3f)
         shot("8_ready_again")
         g.startLevel(12)
+        run(g, 0.5f)
+        shot("9_intro12")
         tapMiddle(g, input)
         run(g, 1f)
-        shot("9_level12")
+        shot("10_level12")
     }
 }

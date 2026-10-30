@@ -17,9 +17,9 @@ class CanvasGfx : Gfx {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
     }
-    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-    }
+    private val mono = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+    private val serif = Typeface.create(Typeface.SERIF, Typeface.BOLD)
+    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val rectF = RectF()
     private val path = Path()
     private var clipped = false
@@ -56,7 +56,8 @@ class CanvasGfx : Gfx {
         canvas.drawLine(x1 * s, y1 * s, x2 * s, y2 * s, linePaint)
     }
 
-    override fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Int) {
+    override fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Int, serif: Boolean) {
+        textPaint.typeface = if (serif) this.serif else mono
         textPaint.color = color
         textPaint.textSize = size * this.s
         textPaint.textAlign = when (align) {

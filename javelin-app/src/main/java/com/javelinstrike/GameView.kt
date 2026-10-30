@@ -3,7 +3,6 @@ package com.javelinstrike
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
-import android.content.pm.ActivityInfo
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -17,7 +16,7 @@ import android.view.SurfaceView
 import com.javelinstrike.game.Game
 import com.javelinstrike.game.Input
 import com.javelinstrike.game.Storage
-import com.javelinstrike.game.VIEW_H
+import com.javelinstrike.game.VIEW_W
 import kotlin.math.atan2
 import kotlin.math.hypot
 
@@ -43,13 +42,12 @@ class GameView(private val activity: Activity) : SurfaceView(activity), SurfaceH
     private val gravity: Sensor? = sensors.getDefaultSensor(Sensor.TYPE_GRAVITY)
         ?: sensors.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
     private val gx = FloatArray(3)
-    private var displayRotation = Surface.ROTATION_90
+    private var displayRotation = Surface.ROTATION_0
 
     @Volatile private var running = false
     private var resumed = false
     private var surfaceReady = false
     private var thread: Thread? = null
-    private var orientationLocked = false
     private val startMs = SystemClock.uptimeMillis()
 
     init {
@@ -115,7 +113,7 @@ class GameView(private val activity: Activity) : SurfaceView(activity), SurfaceH
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-        if (height > 0) game.viewW = width * VIEW_H / height
+        if (width > 0) game.viewH = height * VIEW_W / width
         display?.let { displayRotation = it.rotation }
     }
 
@@ -136,7 +134,6 @@ class GameView(private val activity: Activity) : SurfaceView(activity), SurfaceH
                 game.update(step)
                 acc -= step
             }
-            lockOrientationDuringMatch()
             val canvas = try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) holder.lockHardwareCanvas() else holder.lockCanvas()
             } catch (_: Exception) { null }
@@ -145,8 +142,8 @@ class GameView(private val activity: Activity) : SurfaceView(activity), SurfaceH
                 continue
             }
             try {
-                val scale = canvas.height / VIEW_H
-                game.viewW = canvas.width / scale
+                val scale = canvas.width / VIEW_W
+                game.viewH = canvas.height / scale
                 gfx.begin(canvas, scale)
                 game.render(gfx)
             } finally {
@@ -157,23 +154,9 @@ class GameView(private val activity: Activity) : SurfaceView(activity), SurfaceH
         }
     }
 
-    /** Swinging the phone around must not flip the screen upside down mid-level. */
-    private fun lockOrientationDuringMatch() {
-        val want = game.inMatch
-        if (want == orientationLocked) return
-        orientationLocked = want
-        activity.runOnUiThread {
-            activity.requestedOrientation = if (want) {
-                ActivityInfo.SCREEN_ORIENTATION_LOCKED
-            } else {
-                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-            }
-        }
-    }
-
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(e: MotionEvent): Boolean {
-        val scale = height / VIEW_H
+        val scale = width / VIEW_W
         if (scale <= 0f) return true
         val t = (e.eventTime - startMs) / 1000f
         when (e.actionMasked) {

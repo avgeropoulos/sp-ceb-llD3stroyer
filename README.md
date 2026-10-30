@@ -143,30 +143,54 @@ Levels are built in `core/.../Level.kt` with a small builder, so adding a new on
 
 # Javelin Strike
 
-A javelin throwing competition for Android that you play by actually throwing. Hold the phone,
-pull your arm back and whip it forward. The harder you throw, the further the javelin flies.
+A javelin throwing competition set at the ancient Olympic Games, played by actually throwing.
+Hold the phone upright, pull your arm back and whip it forward. The harder you throw, the
+further the javelin flies.
 
-![Javelin Strike](docs/javelin.png)
+<img src="docs/javelin-title.png" width="270"> <img src="docs/javelin.png" width="270">
 
 ## How it plays
 
-* Each level has a **target** painted on the field and a **time limit**. You have unlimited
-  javelins, so keep throwing until you hit it. Some levels need 2 or 3 hits, and the target
-  moves to a new spot after each one.
-* **Aim** by tilting the phone like a steering wheel. The javelin in the athlete's hand and the
-  dotted line on the grass show where you're aiming.
+* It's played in **portrait**: hold the phone upright, screen facing you, so you never have
+  to twist your wrist to see it.
+* You throw in the sandy stadium at Olympia, between grassy banks packed with spectators,
+  with the Temple of Zeus and the hill of Kronos behind. The athlete wears a laurel wreath
+  and throws a wooden javelin with a bronze point.
+* Each level has a **target**: painted rings on the sand with a bronze shield on a post in the
+  middle. You have a **time limit** and unlimited javelins. Some levels need 2 or 3 hits, and
+  the target moves to a new spot after each one.
+* **Most targets move.** From level 2 they slide side to side, and later ones also drift
+  nearer and further away. Aim where the target *will be* when your javelin lands.
+* **Aim** by tilting the phone like a steering wheel. The javelin in the athlete's hand and
+  the dotted line on the sand show where you're aiming.
 * **Throw**: press and hold the screen with your thumb to grip the javelin, pull your arm back
   until the DRAW bar turns green, then throw your arm forward. The javelin leaves your hand at
   the end of the swing (or when you lift your thumb).
-* The camera follows the javelin, and the **TARGET CAM** in the corner shows the target close
+* The camera follows the javelin, and the **TARGET** view in the corner shows the target close
   up. If you miss, it tells you by how much ("6 m SHORT", "3 m LEFT").
 * Rings score **50 / 100 / 250** (bullseye) points times the level number, plus a time bonus
   when you clear the level.
-* You have 3 lives. Running out of time costs one, and you get an extra life every 3 levels.
-  The top 5 scores are saved on the phone.
-* Difficulty goes up level by level: the target moves further away and gets smaller, then
-  crosswind arrives (watch the wind arrow and the flag), then moving targets. After the 12
-  hand-made levels come endless levels that keep getting harder.
+* You have 3 laurel wreaths (lives). Running out of time costs one, and you get one back every
+  3 levels. The top 5 scores go in the Hall of Champions.
+
+### Levels
+
+| # | Name | What's new |
+|---|---|---|
+| 1 | Olympia Trials | A still target 25 m away |
+| 2 | First Steps | The target starts sliding side to side |
+| 3 | Hermes Runs | Faster, and 2 hits needed |
+| 4 | Breath of Zephyr | Crosswind (watch the ribbon on the shield) |
+| 5 | The Long Field | 58 m |
+| 6 | Artemis Hunts | Wide, quick slides |
+| 7 | Tides of Poseidon | The target drifts nearer and further away |
+| 8 | Boreas Blows | Strong wind at 68 m |
+| 9 | Chariot Race | A fast target racing across the field |
+| 10 | Apollo's Mark | 82 m, moving both ways, 3 hits |
+| 11 | Labours of Heracles | 88 m with strong wind |
+| 12 | Storm of Zeus | 96 m, moving both ways, gusty |
+| 13 | Olympian Glory | 104 m, the hardest hand-made level |
+| 14+ | Endless Games | Keep getting harder forever |
 
 On the title screen:
 
@@ -181,19 +205,20 @@ nobody and nothing breakable around you.
 
 ## Installing
 
-GitHub Actions builds it together with Rocco's Quest. On your phone, open
+GitHub Actions builds it on every push. On your phone, open
 **https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/download/javelin-strike/JavelinStrike.apk**,
 then open the downloaded file and allow your browser to install apps if Android asks.
 
 ## Changing the game
 
 * `javelin-core/.../Levels.kt`: the level list. Each line sets the target distance, size,
-  time limit, number of hits, wind and target movement, so new levels or difficulty tweaks are
-  a one-line change.
+  time limit, number of hits, wind and how the target moves, so new levels or difficulty
+  tweaks are a one-line change.
 * `javelin-core/.../ThrowDetector.kt`: how arm motion turns into power. `SPIN_FULL` and
   `PUSH_FULL` set how hard a full-power throw is.
-* `javelin-core/.../World.kt`: javelin physics (release angle, speeds, how much wind pushes).
-* `javelin-core/.../Game.kt` and `Scene.kt`: game rules, screens and drawing.
+* `javelin-core/.../World.kt`: javelin physics (release angle, speeds, how much wind pushes)
+  and how targets move.
+* `javelin-core/.../Game.kt`: game rules. `Scene.kt` draws Olympia and `Hud.kt` the screens.
 * `javelin-app/`: the Android layer, covering sensors, touch, the `Canvas` renderer, sounds
   and vibration.
 

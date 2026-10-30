@@ -2,8 +2,8 @@ package com.javelinstrike.game
 
 import kotlin.concurrent.Volatile
 
-/** The view is always this many virtual pixels tall; the width follows the screen's shape. */
-const val VIEW_H = 360f
+/** The game is played in portrait. The view is always this many virtual pixels wide; the height follows the screen. */
+const val VIEW_W = 360f
 
 /**
  * Platform-neutral drawing surface. All coordinates are in virtual pixels;
@@ -17,17 +17,33 @@ interface Gfx {
     /** A thick line with round ends. */
     fun line(x1: Float, y1: Float, x2: Float, y2: Float, width: Float, color: Int)
 
-    /** [y] is the text baseline. [align]: 0 = left, 1 = center, 2 = right. */
-    fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Int = 0)
+    /** [y] is the text baseline. [align]: 0 = left, 1 = center, 2 = right. [serif] for titles. */
+    fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Int = 0, serif: Boolean = false)
 
     /** Restricts drawing to a rectangle until [unclip]. */
     fun clip(x: Float, y: Float, w: Float, h: Float)
     fun unclip()
 }
 
-fun Gfx.shadowText(s: String, x: Float, y: Float, size: Float, color: Int, align: Int = 0) {
-    text(s, x + size * 0.08f, y + size * 0.08f, size, 0xC0000000.toInt(), align)
-    text(s, x, y, size, color, align)
+fun Gfx.shadowText(s: String, x: Float, y: Float, size: Float, color: Int, align: Int = 0, serif: Boolean = false) {
+    text(s, x + size * 0.08f, y + size * 0.08f, size, 0xC0000000.toInt(), align, serif)
+    text(s, x, y, size, color, align, serif)
+}
+
+/** Splits [text] into lines of at most [width] characters, breaking between words. */
+fun wrap(text: String, width: Int): List<String> {
+    val lines = ArrayList<String>()
+    var line = StringBuilder()
+    for (word in text.split(' ')) {
+        if (line.isNotEmpty() && line.length + 1 + word.length > width) {
+            lines += line.toString()
+            line = StringBuilder()
+        }
+        if (line.isNotEmpty()) line.append(' ')
+        line.append(word)
+    }
+    if (line.isNotEmpty()) lines += line.toString()
+    return lines
 }
 
 fun argb(a: Int, rgb: Int): Int = (a shl 24) or (rgb and 0xFFFFFF)
