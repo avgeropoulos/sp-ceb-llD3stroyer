@@ -377,6 +377,244 @@ def partners():
     sparky("mon_spark1_act", 2, 0.3, zap=True, stage=1)
 
 
+# ---------------------------------------------------------------- the newer partner lines
+BEAST = {   # body colour per stage, belly, accent (same as toys.gd BEAST)
+    "rock": (("#b59a74", "#9a7b5a", "#7d6248"), "#e8d8b8", "#6b5a48"),
+    "ghost": (("#e8e4ff", "#c8b8f5", "#a890f0"), "#ffffff", "#5a3f9e"),
+    "bird": (("#8cc8f0", "#5ab0e8", "#3a7fc8"), "#fff4d6", "#ffb02e"),
+    "mind": (("#f7b0d8", "#e88ac4", "#c45fa8"), "#fff0f8", "#7a3fd0"),
+    "ice": (("#d6f2fc", "#a8e2f4", "#7fc8e8"), "#ffffff", "#4aa8d8"),
+    "bug": (("#a6d65c", "#7cb342", "#4f8a2a"), "#e6f5b0", "#3a3a48"),
+    "dragon": (("#8a9cf0", "#5a6fd6", "#3a48b0"), "#ffe0a0", "#ffcf33"),
+    "fairy": (("#ffd0e8", "#ffaad6", "#ff8fc8"), "#ffffff", "#ffd23a"),
+}
+NEW_LINES = ["rock", "ghost", "bird", "mind", "ice", "bug", "dragon", "fairy"]
+
+
+def _darker(c, k=40):
+    return tuple(max(0, v - k) for v in c[:3]) + (255,)
+
+
+def beast(name, line, stage, pose="idle"):
+    """One of the newer partners seen from the side, facing right (like critter())."""
+    p = Pen(84, 80)
+    cols, belly, acc = BEAST[line]
+    BODY, BELLY, ACC = rgb(cols[stage]), rgb(belly), rgb(acc)
+    DARK = _darker(BODY)
+    hop = {"jump": 6, "run1": 2, "run2": 0, "act": 1}.get(pose, 0)
+    if line == "ghost":
+        hop += 6 + (2 if pose == "run1" else 0)
+    bx, by = 38, 55 - hop
+    hx, hy = 58, 42 - hop
+    if pose == "act":
+        hx += 3
+    sw = {"run1": 4, "run2": -4, "jump": 5}.get(pose, 0)
+    g = stage   # grows with each stage
+    # --- behind the body: tails and far wings
+    if line == "rock":
+        p.poly([(bx - 15, by + 2), (bx - 26, by + 8), (bx - 14, by + 7)], ACC)
+    elif line == "bird":
+        for k in range(3):
+            p.poly([(bx - 14, by - 2 + k * 2), (bx - 28 - g * 2, by - 8 + k * 5), (bx - 24, by + 2 + k * 3)], [BODY, ACC, BODY][k])
+    elif line == "mind":
+        for k in range(stage + 1):
+            a = -0.9 + k * 0.45
+            tx, ty = bx - 22 + k * 2, by - 14 + k * 5
+            p.oval(tx, ty, 9, 6, BODY)
+            p.oval(tx - 6, ty - 3, 4, 3.4, BELLY, ink=False)
+    elif line == "ice":
+        p.poly([(bx - 18, by + 3), (bx - 30, by - 3), (bx - 29, by + 9)], BODY)
+    elif line == "dragon":
+        p.poly([(bx - 14, by - 2), (bx - 30, by - 14 - g * 2), (bx - 26, by - 9), (bx - 13, by + 5)], BODY)
+        p.poly([(bx - 30, by - 14 - g * 2), (bx - 36, by - 18 - g * 2), (bx - 31, by - 9 - g * 2)], ACC)
+    elif line == "fairy":
+        p.oval(bx - 16, by - 2, 5, 5, rgb("#ffffff"))
+    elif line == "ghost" and stage >= 1:
+        p.poly([(bx - 10, by + 8), (bx - 24, by + 14), (bx - 30, by + 6), (bx - 22, by + 10), (bx - 12, by)], BODY)
+        if stage == 2:
+            flame(p, bx - 28, by + 4, 8)
+    elif line == "bug":
+        pass
+    # far wing
+    wing = line == "bird" or (line == "dragon" and stage >= 1) or (line in ("fairy", "bug") and stage == 2)
+    flap = {"jump": -8, "run1": -3, "run2": 3}.get(pose, 0)
+    WING = {"fairy": rgb("#ffffff"), "bug": rgb("#cfe8ff"), "dragon": ACC if stage == 2 else rgb("#b8c4ff")}.get(line, DARK)
+    if wing:
+        ws = 14 + g * 3
+        p.poly([(bx - 2, by - 8), (bx - 14, by - 18 - ws * 0.6 + flap), (bx + 8, by - 10)], _darker(WING, 25))
+    # --- legs: far pair first (darker), near pair last
+    if line == "bird":
+        for (lx, near) in ((bx - 2, False), (bx + 4, True)):
+            dx = sw * (1 if near else -1) * 0.5
+            col = ACC if near else _darker(ACC)
+            p.line([(lx, by + 6), (lx + dx, by + 16)], col, 2.2)
+            p.line([(lx + dx - 2, by + 16), (lx + dx + 5, by + 16)], col, 2.2)
+    elif line == "ice":
+        for (lx, near) in ((bx + 8, False), (bx + 12, True), (bx - 10, True)):
+            col = BODY if near else DARK
+            p.oval(lx + (sw * 0.4 if near else 0), by + 9, 6, 3, col)
+    elif line != "ghost":
+        LEG = ACC if line == "bug" else BODY
+        for (lx, near) in ((bx - 9, False), (bx + 9, False), (bx - 6, True), (bx + 12, True)):
+            dx = (sw if (lx < bx) == near else -sw)
+            col = LEG if near else _darker(LEG)
+            p.rect(lx - 4 + dx * 0.5, by + 4, lx + 4 + dx, by + 15 - (3 if pose == "jump" and near else 0), col, r=3.5)
+    # --- body
+    if line == "ghost":
+        pts = [(bx - 15, by - 10), (bx - 15, by + 8)]
+        for k in range(5):
+            x = bx - 15 + k * 7.5
+            pts.append((x + 3.7, by + 14 - (k % 2) * 2))
+            pts.append((x + 7.5, by + 8))
+        pts += [(bx + 15, by - 10)]
+        p.poly(pts, BODY)
+        p.oval(bx, by - 10, 15, 12, BODY)
+        p.rect(bx - 13, by - 10, bx + 13, by + 7, BODY, r=0, ink=False)
+        p.oval(bx + 13, by - 2, 4, 5, BODY)   # little arm
+        if stage == 2:
+            for k in (-7, 5):
+                p.poly([(bx + k - 4, by - 18), (bx + k, by - 30), (bx + k + 4, by - 18)], ACC)
+    elif line == "ice":
+        p.oval(bx, by + 1, 21 + g, 10 + g * 0.6, BODY)
+        p.oval(bx + 4, by + 5, 14, 4.5, BELLY, ink=False)
+        if stage == 2:
+            for k in range(4):
+                p.poly([(bx - 9 + k * 6, by - 8), (bx - 6 + k * 6, by - 19), (bx - 3 + k * 6, by - 8)], rgb("#bff4ff"))
+    elif line == "bug":
+        p.oval(bx, by, 17 + g, 11 + g * 0.6, ACC)
+        p.d.chord(p._b(bx - 18 - g, by - 14 - g, bx + 17 + g, by + 8), 180, 360, fill=BODY, outline=INK, width=int(LW * SS))
+        p.line([(bx - 1, by - 13 - g), (bx - 1, by - 3)], _darker(BODY, 60), 1.4)
+        for (sx, sy) in ((bx - 9, by - 7), (bx + 7, by - 8)):
+            p.oval(sx, sy, 2.6, 2, BELLY, ink=False)
+    elif line == "bird":
+        p.oval(bx + 2, by - 2, 14 + g, 12 + g * 0.6, BODY)
+        p.oval(bx + 6, by + 2, 9, 7, BELLY, ink=False)
+    else:
+        p.oval(bx, by, 17 + g, 12 + g * 0.6, BODY)
+        p.oval(bx + 3, by + 5, 11, 5.5, BELLY, ink=False)
+    # back features
+    if line == "rock":
+        for k in range(3):
+            p.d.chord(p._b(bx - 17 + k * 10, by - 14 - g, bx - 3 + k * 10, by + 6), 180, 360, fill=ACC, outline=INK, width=int(LW * SS))
+        if stage >= 1:
+            for k in range(1 + stage * 2):
+                x = bx - 12 + k * (22 / (stage * 2))
+                p.poly([(x - 2.5, by - 12 - g), (x, by - 19 - g * 2), (x + 2.5, by - 12 - g)], BELLY)
+    elif line == "dragon":
+        for k in range(2 + stage):
+            x = bx - 10 + k * (20 / (1 + stage))
+            p.poly([(x - 3, by - 10), (x, by - 16 - g), (x + 3, by - 10)], ACC)
+    elif line == "mind" and stage >= 1:
+        for k in range(4):
+            p.oval(bx + 12 + k * 2.5, by - 6 + k * 3, 3.6, 3.6, BELLY)
+    elif line == "fairy" and stage >= 1:
+        p.oval(bx + 9, by - 9, 4, 3, rgb("#ff4f8a"))
+        p.oval(bx + 15, by - 9, 4, 3, rgb("#ff4f8a"))
+        p.oval(bx + 12, by - 9, 2, 2, rgb("#ff4f8a"))
+    # near wing
+    if wing:
+        ws = 14 + g * 3
+        p.poly([(bx + 2, by - 6), (bx - 10, by - 16 - ws * 0.6 + flap), (bx - 18, by - 10 - ws * 0.3 + flap * 0.5), (bx + 10, by - 4)], WING)
+    # --- head
+    if line == "ghost":
+        hx, hy = bx + 4, by - 12
+    elif line == "ice":
+        hx, hy = bx + 21, by - 6
+    elif line == "bird":
+        hx, hy = bx + 16, by - 15
+    if line == "fairy":   # ears behind the head
+        el = 16 + g * 3
+        p.oval(hx - 6, hy - 8 - el * 0.5, 4, el * 0.55, BODY)
+        p.oval(hx + 1, hy - 9 - el * 0.5, 4.2, el * 0.58, BODY)
+        p.oval(hx + 1, hy - 9 - el * 0.5, 2, el * 0.4, rgb("#ff8fc8"), ink=False)
+    if line == "mind":
+        es = 8 + g * 1.5
+        p.poly([(hx - 8, hy - 6), (hx - 6, hy - 9 - es * 1.4), (hx + 1, hy - 8)], BODY)
+        p.poly([(hx - 1, hy - 7), (hx + 3, hy - 10 - es * 1.4), (hx + 8, hy - 7)], BODY)
+        p.poly([(hx + 1, hy - 8), (hx + 3, hy - 6 - es), (hx + 6, hy - 8)], BELLY, ink=False)
+    if line == "dragon":
+        for k in (-4, 2):
+            p.poly([(hx + k - 2, hy - 8), (hx + k - 6, hy - 16 - g * 2), (hx + k + 2, hy - 8)], rgb("#fff2d0"))
+    if line != "ghost":
+        r = 9.5 if line == "bird" else 11 + stage * 0.5
+        p.oval(hx, hy, r, r - 1, BODY)
+        if line in ("rock", "mind", "dragon", "fairy", "ice"):
+            p.oval(hx + 6, hy + 4, 5.5, 4, BELLY, ink=False)
+    # head features
+    if line == "rock":
+        p.oval(hx + 11, hy + 2, 3.5, 3, ACC)
+        if stage >= 1:
+            p.d.chord(p._b(hx - 11, hy - 12, hx + 7, hy + 2), 180, 360, fill=ACC, outline=INK, width=int(LW * SS))
+        if stage == 2:
+            p.poly([(hx + 9, hy - 1), (hx + 19, hy - 9), (hx + 13, hy + 2)], BELLY)
+    elif line == "ghost":
+        if stage >= 1:
+            for k in range(3):
+                p.poly([(hx - 9 + k * 6, hy - 8), (hx - 7 + k * 6, hy - 17 - (k == 1) * 3), (hx - 4 + k * 6, hy - 8)], BODY)
+    elif line == "bird":
+        p.poly([(hx + 7, hy - 2), (hx + 16, hy + 1), (hx + 7, hy + 4)], ACC)
+        for k in range(1 + stage):
+            p.poly([(hx - 3 - k * 3, hy - 7), (hx - 9 - k * 4, hy - 16 - k * 2), (hx - k * 3, hy - 8)], [ACC, rgb("#e8413b"), rgb("#ffd23a")][k % 3])
+    elif line == "mind":
+        p.oval(hx + 4, hy - 6, 2.2, 2.6, ACC)
+    elif line == "ice":
+        for k in range(2):
+            p.line([(hx + 9, hy + 3 + k * 2), (hx + 17, hy + 1 + k * 4)], rgb("#9aa6b2"), 1.0)
+        if stage >= 1:
+            p.poly([(hx + 5, hy + 6), (hx + 7, hy + 14), (hx + 9, hy + 6)], rgb("#ffffff"))
+        if stage == 2:
+            for k in range(3):
+                p.poly([(hx - 7 + k * 5, hy - 8), (hx - 5 + k * 5, hy - 17), (hx - 2 + k * 5, hy - 8)], rgb("#bff4ff"))
+    elif line == "bug":
+        p.line([(hx + 2, hy - 8), (hx + 8, hy - 18)], ACC, 1.4)
+        p.oval(hx + 8, hy - 18, 1.8, 1.8, ACC)
+        if stage >= 1:
+            hl = 8 + stage * 5
+            p.poly([(hx + 4, hy - 6), (hx + 12 + hl * 0.4, hy - 8 - hl), (hx + 10, hy - 2)], ACC)
+    elif line == "dragon":
+        p.oval(hx + 9, hy + 3, 5, 4, BODY)
+    elif line == "fairy" and stage == 2:
+        p.star(hx + 2, hy - 7, 3.4, ACC)
+    # face
+    ex, ey = (hx + 6, hy - 3) if line == "ghost" else (hx + 5, hy - 2)
+    p.eye(ex, ey, 3.0, 3.8, 0.9)
+    if line == "ghost":
+        p.eye(ex - 8, ey, 2.6, 3.4, 0.9)
+    if pose == "act":
+        p.oval(hx + 9, hy + 5, 3, 2.6, rgb("#7a1f2b"))
+        fx_ = hx + 17
+        if line == "rock":
+            p.oval(fx_ + 4, hy + 4, 5, 4.5, rgb("#8a7a6a"))
+        elif line == "ghost":
+            p.oval(fx_ + 4, hy + 3, 5, 5, rgb("#5a3f9e"))
+            p.oval(fx_ + 3, hy + 2, 2, 2, rgb("#b98cff"), ink=False)
+        elif line == "bird":
+            for j in range(3):
+                p.d.arc(p._b(fx_ - 2 + j * 4, hy - 4, fx_ + 6 + j * 4, hy + 10), 300, 60, fill=rgb("#ffffff"), width=int(1.8 * SS))
+        elif line == "mind":
+            p.oval(fx_ + 4, hy + 2, 5, 5, rgb("#e05fb0"))
+            p.oval(fx_ + 3, hy + 1, 2, 2, rgb("#ffffff"), ink=False)
+        elif line == "ice":
+            p.line([(hx + 10, hy + 5), (fx_ + 12, hy + 5)], rgb("#7fd8f0"), 3.2)
+            p.line([(hx + 10, hy + 5), (fx_ + 12, hy + 5)], rgb("#ffffff"), 1.2)
+        elif line == "bug":
+            p.line([(hx + 10, hy + 5), (fx_ + 4, hy + 1), (fx_ + 12, hy + 6)], rgb("#f4f4f4"), 1.6)
+        elif line == "dragon":
+            flame(p, fx_, hy + 8, 9, 4)
+        elif line == "fairy":
+            p.star(fx_ + 3, hy + 2, 4.5, rgb("#ff8fc8"))
+    else:
+        p.d.arc(p._b(hx + 5, hy + 2, hx + 11, hy + 7), 20, 160, fill=INK, width=int(1.5 * SS))
+    p.done(name)
+
+
+def new_partners():
+    for line in NEW_LINES:
+        for st in range(3):
+            for pose in ("idle", "run1", "run2", "jump", "act"):
+                beast("mon_%s%d_%s" % (line, st, pose), line, st, pose)
+
+
 # ---------------------------------------------------------------- foes
 def grumbler(name, step=0.0, squished=False):
     """A grumpy purple rock-blob with one horn."""
@@ -564,6 +802,34 @@ def shot_fire():
     for a in (-0.6, 0.0, 0.6):
         p.poly([(20 + a * 14 - 4, 14), (20 + a * 18, 3), (20 + a * 14 + 4, 14)], rgb("#ff9a2a"))
     p.done("shot_fire", border=1.5)
+
+
+
+def new_shots():
+    """Shots of the newer partners: rock, shadow ball, psy orb, ice shard, sparkle."""
+    p = Pen(40, 40)
+    p.oval(20, 22, 13, 11, rgb("#8a7a6a"))
+    p.oval(15, 18, 3, 2.4, rgb("#b0a090"), ink=False)
+    p.oval(25, 26, 2.4, 2, rgb("#6b5a48"), ink=False)
+    p.done("shot_rock", border=1.5)
+    p = Pen(40, 40)
+    p.oval(20, 21, 12, 12, rgb("#5a3f9e"))
+    p.oval(20, 21, 7, 7, rgb("#2b1f50"), ink=False)
+    p.oval(16, 17, 2.5, 2.5, rgb("#b98cff"), ink=False)
+    p.done("shot_shadow", border=1.5)
+    p = Pen(40, 40)
+    p.oval(20, 21, 12, 12, rgb("#e05fb0"))
+    p.oval(20, 21, 7, 7, rgb("#ffc0e8"), ink=False)
+    p.oval(17, 18, 2.5, 2.5, rgb("#ffffff"), ink=False)
+    p.done("shot_orb", border=1.5)
+    p = Pen(40, 40)
+    p.poly([(20, 3), (31, 20), (20, 37), (9, 20)], rgb("#9ae6fa"))
+    p.poly([(20, 8), (25, 20), (20, 30), (15, 20)], rgb("#e8faff"), ink=False)
+    p.done("shot_ice", border=1.5)
+    p = Pen(40, 40)
+    p.star(20, 21, 15, rgb("#ff8fc8"))
+    p.oval(20, 21, 4, 4, rgb("#ffffff"), ink=False)
+    p.done("shot_sparkle", border=1.5)
 
 
 def arrow():
@@ -955,6 +1221,7 @@ def main():
     sparky("sparky_jump", 8, 0.4)
     sparky("sparky_zap", 2, 0.3, zap=True)
     partners()
+    new_partners()
     # foes
     grumbler("grumbler_1", 1)
     grumbler("grumbler_2", -1)
@@ -969,7 +1236,7 @@ def main():
     krag_jr("kragjr_angry", 0, angry=True)
     krag_jr("kragjr_hurt", 0, hurt=True)
     # bits
-    shot_water(); shot_fire(); coin(); heart(); heart("heart_empty", "#5b4b63"); spark_shot(); arrow(); spikeball()
+    shot_water(); shot_fire(); new_shots(); coin(); heart(); heart("heart_empty", "#5b4b63"); spark_shot(); arrow(); spikeball()
     tree("tree_a"); tree("tree_b", "#3b9d52", "#62c76a"); tree("tree_c", "#7fbf3f", "#a7dc5c")
     bush(); flower("flower_pink", "#ff8fc0"); flower("flower_blue", "#7fb8ff"); flower("flower_white", "#ffffff")
     cloud(); flag(); dennis()

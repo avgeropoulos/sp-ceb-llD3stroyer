@@ -770,16 +770,27 @@ func _draw_slots() -> void:
 
 
 # ------------------------------------------------------------------ PICK YOUR PARTNER
+const PARTNER_COLS := 6      # PICK YOUR PARTNER: 2 rows of 6 cards
+const PARTNER_GAP := 14.0
+
+
+func _card_size() -> Vector2:
+	var w := minf(200.0, (size.x - 60 - PARTNER_GAP * (PARTNER_COLS - 1)) / PARTNER_COLS)
+	var h := minf(230.0, (size.y - size.y * 0.17 - 150 - PARTNER_GAP) / 2.0)
+	return Vector2(w, h)
+
+
 func partner_rect(i: int) -> Rect2:
-	var gap := 20.0
-	var w := minf(290.0, (size.x - 60 - gap * 3) / 4.0)
-	var h := minf(420.0, size.y * 0.62)
-	var x0 := (size.x - (w * 4 + gap * 3)) * 0.5
-	return Rect2(x0 + i * (w + gap), size.y * 0.2, w, h)
+	var c := _card_size()
+	var x0 := (size.x - (c.x * PARTNER_COLS + PARTNER_GAP * (PARTNER_COLS - 1))) * 0.5
+	var col := i % PARTNER_COLS
+	var row := i / PARTNER_COLS
+	return Rect2(x0 + col * (c.x + PARTNER_GAP), size.y * 0.17 + row * (c.y + PARTNER_GAP), c.x, c.y)
 
 
 func go_rect() -> Rect2:
-	return Rect2(size.x * 0.5 - 150, size.y * 0.2 + minf(420.0, size.y * 0.62) + 18, 300, 76)
+	var c := _card_size()
+	return Rect2(size.x * 0.5 - 150, size.y * 0.17 + c.y * 2 + PARTNER_GAP + 58, 300, 70)
 
 
 func _partner_tap(p: Vector2) -> void:
@@ -789,7 +800,7 @@ func _partner_tap(p: Vector2) -> void:
 	if go_rect().has_point(p):
 		game.choose_partner(Mons.ORDER[game.partner_sel])
 		return
-	for i in 4:
+	for i in Mons.ORDER.size():
 		if partner_rect(i).has_point(p):
 			game.partner_tap(i)
 			return
@@ -798,12 +809,12 @@ func _partner_tap(p: Vector2) -> void:
 func _draw_partner() -> void:
 	var s := size
 	draw_rect(Rect2(Vector2.ZERO, s), Color(0.05, 0.08, 0.15, 0.5))
-	txt("PICK YOUR PARTNER", Vector2(0, s.y * 0.14), 54, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 12)
+	txt("PICK YOUR PARTNER", Vector2(0, s.y * 0.12), 52, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 12)
 	var b := back_rect()
 	draw_rect(b, Color(0.1, 0.15, 0.3, 0.85))
 	draw_rect(b, Color.WHITE, false, 3.0)
 	txt("BACK", Vector2(b.position.x, b.position.y + 48), 34, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, b.size.x, 7)
-	for i in 4:
+	for i in Mons.ORDER.size():
 		var l: String = Mons.ORDER[i]
 		var info: Dictionary = Mons.LINES[l]
 		var xp: int = game.mon_xp[l]
@@ -812,33 +823,35 @@ func _draw_partner() -> void:
 		var r := partner_rect(i)
 		var sel: bool = game.partner_sel == i
 		if sel:
-			draw_rect(r.grow(8), Color(1, 0.9, 0.4, 0.95))
+			draw_rect(r.grow(7), Color(1, 0.9, 0.4, 0.95))
 		draw_rect(r, Color("fdf4e3"))
-		draw_rect(Rect2(r.position, Vector2(r.size.x, 56)), info.color)
-		draw_rect(r, Color(0.13, 0.09, 0.18), false, 4.0)
-		txt(info.type, Vector2(r.position.x, r.position.y + 40), 28, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 7)
+		draw_rect(Rect2(r.position, Vector2(r.size.x, 34)), info.color)
+		draw_rect(r, Color(0.13, 0.09, 0.18), false, 3.0)
+		txt(info.type, Vector2(r.position.x, r.position.y + 26), 20, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 6)
 		var bob := sin(title_t * 4 + i) * 4 if sel else 0.0
-		fit(img(Mons.face(l, st)), Rect2(r.position.x + 10, r.position.y + 62 + bob, r.size.x - 20, r.size.y * 0.36))
-		var y := r.position.y + 62 + r.size.y * 0.36 + 34
-		txt(Mons.name_of(l, st), Vector2(r.position.x, y), 34, Color(0.13, 0.09, 0.18), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
-		y += 32
-		txt("Lv %d" % lv, Vector2(r.position.x, y), 28, Color("3f7fd9"), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
-		y += 12
-		draw_rect(Rect2(r.position.x + 20, y, r.size.x - 40, 12), Color(0.15, 0.15, 0.2))
-		draw_rect(Rect2(r.position.x + 20, y, (r.size.x - 40) * Mons.progress(xp), 12), Color("54c8ff"))
-		y += 38
-		txt(info.action, Vector2(r.position.x, y), 20, Color(0.13, 0.09, 0.18), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
-		y += 26
-		txt("SUPER: " + info.super, Vector2(r.position.x, y), 19, Color("c0392b"), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
-		var nxt := ""
-		for e in info.evolve:
-			if lv < e:
-				nxt = "Evolves at Lv %d" % e
-				break
-		if nxt != "":
-			txt(nxt, Vector2(r.position.x, r.end.y - 12), 18, Color(0.35, 0.3, 0.4), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
+		var fh := r.size.y - 34 - 74
+		fit(img(Mons.face(l, st)), Rect2(r.position.x + 8, r.position.y + 38 + bob, r.size.x - 16, fh))
+		var y := r.position.y + 38 + fh + 24
+		txt(Mons.name_of(l, st), Vector2(r.position.x, y), 22, Color(0.13, 0.09, 0.18), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
+		y += 24
+		txt("Lv %d" % lv, Vector2(r.position.x, y), 20, Color("3f7fd9"), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
+		y += 8
+		draw_rect(Rect2(r.position.x + 16, y, r.size.x - 32, 9), Color(0.15, 0.15, 0.2))
+		draw_rect(Rect2(r.position.x + 16, y, (r.size.x - 32) * Mons.progress(xp), 9), Color("54c8ff"))
+	# the picked one: its moves, what it does, and when it evolves
+	var ls: String = Mons.ORDER[game.partner_sel]
+	var li: Dictionary = Mons.LINES[ls]
+	var lvs := Mons.level_of(game.mon_xp[ls])
+	var nxt := ""
+	for e in li.evolve:
+		if lvs < e:
+			nxt = "   Evolves at Lv %d" % e
+			break
+	var iy := partner_rect(PARTNER_COLS).end.y + 30
+	txt("%s   SUPER: %s%s" % [li.action, li.super, nxt], Vector2(0, iy), 24, Color("fff2a8"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 7)
+	txt(li.about, Vector2(0, iy + 26), 20, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, s.x, 6)
 	var g := go_rect()
 	var l2: String = Mons.ORDER[game.partner_sel]
 	draw_rect(g, Color("3fc06a"))
 	draw_rect(g, Color.WHITE, false, 3.0)
-	txt("GO WITH %s!" % Mons.name_of(l2, Mons.stage_of(l2, Mons.level_of(game.mon_xp[l2]))), Vector2(g.position.x, g.position.y + 52), 32, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, g.size.x, 8)
+	txt("GO WITH %s!" % Mons.name_of(l2, Mons.stage_of(l2, Mons.level_of(game.mon_xp[l2]))), Vector2(g.position.x, g.position.y + 47), 32, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, g.size.x, 8)
