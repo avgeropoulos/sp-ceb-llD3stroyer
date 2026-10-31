@@ -94,6 +94,12 @@ class HeroTest {
         assertEquals(Judgement.GOOD, gems[2].judged)
         assertTrue(s.leadAudible)
         s.update(10.0, 0.016f)
+        // The song plays on after the last note; SCORE (or the music ending) shows the results.
+        assertEquals(Session.State.PLAYING, s.state)
+        assertTrue(s.partDone)
+        s.render(AwtGfx(BufferedImage(360, 640, BufferedImage.TYPE_INT_ARGB), 1f))
+        assertEquals(Session.Action.DONE, s.tap(225f, 20f))
+        s.finish()
         assertEquals(Session.State.FINISHED, s.state)
         assertEquals(4, s.judgedCount)
     }
@@ -283,6 +289,8 @@ class HeroTest {
             done.release(g.lane, g.time + 0.1)
         }
         done.update(done.gems.last().end + 3, 0.016f)
+        shot("part_done", done)
+        done.finish()
         shot("results", done)
 
         val rec = Session("Recording", Difficulty.EXPERT, emptyList(), record = true, hasVideo = true)

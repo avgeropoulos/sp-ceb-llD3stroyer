@@ -753,6 +753,8 @@ class SongActivity : Activity() {
         sheet.song = s
         resetMarks()
         if (s != null) render(clock.now(SystemClock.elapsedRealtimeNanos()))
+        // Bouzouki Hero plays the same notes as shown here (YouTube songs only: it shows the video).
+        if (s != null && s.notes.isNotEmpty() && !s.id.startsWith("file-")) com.bouzouki.hero.HeroActivity.saveShownLine(this, s)
     }
 
     /**

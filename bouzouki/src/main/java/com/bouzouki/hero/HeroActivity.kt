@@ -77,12 +77,15 @@ class HeroActivity : Activity(), HeroView.Host, SessionListener {
         } else {
             // A song prepared in Μπουζούκι, fingered for the bouzouki chosen there.
             val inst = Settings(this).instrument
-            val song = SongJobs.cached(this, id)?.forInstrument(inst) ?: return finish()
+            // The notes the song screen last showed (its chosen line, or the tab attached to the
+            // song), so the game plays exactly what you saw there; else the analysis itself.
+            val song = shownLine(this, id)
+                ?: SongJobs.cached(this, id)?.forInstrument(inst) ?: return finish()
             scoreKey = "s:$id"
             val notes = song.notes.map {
                 Charts.TabNote(it.start, it.end - it.start, it.midi, it.course, it.fret, it.articulation == Articulation.TREMOLO)
             }
-            val gems = Charts.fromTab(notes, difficulty, Charts.courseLabels(inst.courses.map { it.openMidi }))
+            val gems = Charts.fromTab(notes, difficulty, Charts.courseLabels(song.instrument.courses.map { it.openMidi }))
             session = Session(
                 song.title.ifBlank { "YouTube song" }, difficulty, gems, hasVideo = true,
                 tempo = beatTempo(song.beats), bestScore = best(this, scoreKey, difficulty), listener = this,
@@ -118,7 +121,9 @@ class HeroActivity : Activity(), HeroView.Host, SessionListener {
             Session.Action.PAUSE -> pauseGame()
             Session.Action.RESUME -> { c?.resume(); session.state = Session.State.PLAYING }
             Session.Action.RESTART -> { c?.restart(); session.restart() }
-            Session.Action.QUIT, Session.Action.DONE, Session.Action.PLAY_CHART -> finish()
+            // SCORE: the results now; the song plays on underneath until you leave.
+            Session.Action.DONE -> session.finish()
+            Session.Action.QUIT, Session.Action.PLAY_CHART -> finish()
             Session.Action.OPA, Session.Action.NONE -> {}
         }
     }
@@ -136,7 +141,6 @@ class HeroActivity : Activity(), HeroView.Host, SessionListener {
     }
 
     override fun finished(session: Session) {
-        clock?.pause()
         if (session.gems.isNotEmpty()) saveResult(this, scoreKey, difficulty, session.score, session.stars)
     }
 
@@ -223,6 +227,28 @@ class HeroActivity : Activity(), HeroView.Host, SessionListener {
             val gaps = beats.zipWithNext { a, b -> b - a }.sorted()
             val g = gaps[gaps.size / 2]
             return if (g > 0) 60.0 / g else 0.0
+        }
+
+        private fun linesDir(ctx: Context) = File(ctx.filesDir, "hero-lines").apply { mkdirs() }
+
+        /** Keeps the line the song screen is showing for [song], for the game to play the same notes. */
+        fun saveShownLine(ctx: Context, song: com.bouzouki.core.song.SongAnalysis) {
+            val app = ctx.applicationContext
+            thread(name = "hero-line") {
+                try {
+                    val f = File(linesDir(app), "${song.id}.json")
+                    val tmp = File(linesDir(app), "${song.id}.tmp")
+                    tmp.writeText(song.toJson())
+                    tmp.renameTo(f)
+                } catch (_: Exception) {
+                }
+            }
+        }
+
+        private fun shownLine(ctx: Context, id: String): com.bouzouki.core.song.SongAnalysis? = try {
+            File(linesDir(ctx), "$id.json").takeIf { it.exists() }?.readText()?.let { com.bouzouki.core.song.SongAnalysis.fromJson(it) }
+        } catch (_: Exception) {
+            null
         }
 
         private fun prefs(ctx: Context) = ctx.getSharedPreferences("hero", Context.MODE_PRIVATE)

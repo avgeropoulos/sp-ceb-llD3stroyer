@@ -83,16 +83,7 @@ object Charts {
 
         // Thin out: keep a note only if it's far enough after the last kept one. Within a
         // run of close notes, prefer a change of pitch to a repeated one.
-        val kept = ArrayList<SourceNote>()
-        for (n in sorted) {
-            val last = kept.lastOrNull()
-            if (last == null || n.time - last.time >= difficulty.minGap) {
-                kept.add(n)
-            } else if (n.time - last.time < 0.02 && n.pitch > last.pitch) {
-                // A chord or a double-detected onset: keep the higher (melody) note.
-                kept[kept.size - 1] = n
-            }
-        }
+        val kept = thin(sorted, difficulty).map { sorted[it] }
 
         val laneOf = laneMap(kept.map { it.pitch }, difficulty.lanes)
         val gems = ArrayList<Gem>(kept.size)
@@ -187,16 +178,30 @@ object Charts {
         return if (frets.size == 1) "${frets[0]}" else "${frets.first()}-${frets.last()}"
     }
 
-    /** Indexes of the notes kept for [difficulty] (fast passages thinned out). */
+    /**
+     * Indexes of the notes kept for [difficulty]: a note is kept only if it's far enough after
+     * the last kept one. Within a run of close notes the one that ends a phrase (a pause after
+     * it, or the end of the song) wins over the one before, so a run's landing note, and the
+     * song's last notes, are always there.
+     */
     private fun thin(sorted: List<SourceNote>, difficulty: Difficulty): List<Int> {
+        fun endsPhrase(i: Int) = i == sorted.size - 1 || sorted[i + 1].time - sorted[i].time >= PHRASE_GAP
         val kept = ArrayList<Int>()
         for ((i, n) in sorted.withIndex()) {
-            val last = kept.lastOrNull()?.let { sorted[it] }
-            if (last == null || n.time - last.time >= difficulty.minGap) kept.add(i)
-            else if (n.time - last.time < 0.02 && n.pitch > last.pitch) kept[kept.size - 1] = i
+            val lastIdx = kept.lastOrNull()
+            val last = lastIdx?.let { sorted[it] }
+            when {
+                last == null || n.time - last.time >= difficulty.minGap -> kept.add(i)
+                // A chord or a double-detected onset: keep the higher (melody) note.
+                n.time - last.time < 0.02 && n.pitch > last.pitch -> kept[kept.size - 1] = i
+                endsPhrase(i) && !endsPhrase(lastIdx) -> kept[kept.size - 1] = i
+            }
         }
         return kept
     }
+
+    /** A pause at least this long after a note ends its phrase. */
+    private const val PHRASE_GAP = 0.6
 
     private fun holdEnd(n: SourceNote, next: Double, difficulty: Difficulty): Double {
         val longEnough = n.duration >= difficulty.holdMin || (n.tremolo && n.duration >= 0.45)

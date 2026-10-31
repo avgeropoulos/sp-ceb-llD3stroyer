@@ -87,6 +87,10 @@ class Session(
     @Volatile var leadAudible = true
         private set
 
+    /** True once the last note has gone by: the song may still be playing its outro. */
+    @Volatile var partDone = false
+        private set
+
     val recorded = ArrayList<RecNote>()
     private val pressed = BooleanArray(5)
     private val pressFlash = FloatArray(5)
@@ -137,7 +141,7 @@ class Session(
         }
         score = 0; combo = 0; maxCombo = 0; counts.fill(0); opaMeter = 0f; opaUntil = -1.0
         holdPoints = 0.0; leadAudible = true; recorded.clear(); particles.clear()
-        lastJudgement = null; nextMiss = 0; time = 0.0
+        lastJudgement = null; nextMiss = 0; time = 0.0; partDone = false
         state = State.PLAYING
     }
 
@@ -321,7 +325,9 @@ class Session(
                 if (rnd.nextFloat() < dt * 25) sparks(g.lane, laneColor(g.lane), 1)
             }
         }
-        if (gems.isNotEmpty() && t > lastTime + 2.0) finish()
+        // The bouzouki part is over, but the song plays on to its end (the host finishes the
+        // session then); meanwhile the HUD offers SCORE to see the results early.
+        if (gems.isNotEmpty() && t > lastTime + 2.0) partDone = true
     }
 
     @Synchronized fun finish() {
@@ -696,6 +702,12 @@ class Session(
             g.circle(150f, y + 15, 16f, 0xFF000000.toInt())
             g.circle(150f, y + 15, 14f, mc)
             g.text("x$m", 150f, y + 20, 13f, 0xFF10101A.toInt(), 1)
+            if (partDone && state == State.PLAYING) {
+                button(g, 176f, y, 98f, 30f, "SCORE \u25B8", 0xFF2E9B57.toInt(), Action.DONE)
+                g.shadowText("That's the whole bouzouki part!", VIEW_W / 2, l.top + 64, 11f, 0xFFFFD23F.toInt(), 1)
+                button(g, VIEW_W - 46, y, 38f, 30f, "II", 0xFF39406A.toInt(), Action.PAUSE)
+                return
+            }
             // OPA meter: also the button that sets it off.
             val mx = 176f
             val mw = 98f

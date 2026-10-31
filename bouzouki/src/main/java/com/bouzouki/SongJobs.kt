@@ -83,6 +83,7 @@ object SongJobs {
             File(dir, "$name.tmp").delete()
         }
         Settings(context).forgetSong(id)
+        File(context.filesDir, "hero-lines/$id.json").delete() // the line Bouzouki Hero plays
     }
 
     /**

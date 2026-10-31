@@ -58,6 +58,21 @@ class TabTest {
         assertTrue(gems[2].isHold && gems[2].tremolo)
     }
 
+    @Test fun easyKeepsTheNotesThatEndAPhrase() {
+        // A fast run landing on a held note, and a quick two-note ending: Easy thins the runs
+        // but must keep the landing notes and the song's last note.
+        val run = (0 until 8).map { SourceNote(1.0 + it * 0.12, 0.1, 62 + it) }
+        val landing = SourceNote(1.96, 1.0, 74)
+        val ending = listOf(SourceNote(4.0, 0.15, 69), SourceNote(4.2, 1.0, 62))
+        for (b in Buttons.entries) {
+            val gems = Charts.build(run + landing + ending, Difficulty.EASY, buttons = b)
+            val times = gems.map { it.time }
+            assertTrue(1.96 in times, "$b keeps the run's landing note: $times")
+            assertEquals(4.2, times.last(), "$b keeps the last note: $times")
+            times.zipWithNext().forEach { (a, c) -> assertTrue(c - a >= Difficulty.EASY.minGap - 1e-9) }
+        }
+    }
+
     @Test fun recordedChartsKeepTheirLanes() {
         val notes = listOf(0, 4, 2).mapIndexed { i, p -> SourceNote(i.toDouble(), 0.1, p) }
         val g = Charts.build(notes, Difficulty.EXPERT, labels = false, buttons = Buttons.TAB)
