@@ -162,10 +162,14 @@ class MainActivity : Activity() {
 
         setContentView(root)
         fitSystemBars(this, root)
+        updateNow = intent.getBooleanExtra(EXTRA_UPDATE_NOW, false)
         checkForUpdate()
         handleInstallStatus(intent)
         refresh()
     }
+
+    /** Set when Bouzouki Hero's "Update" was tapped: start updating once the check is done. */
+    private var updateNow = false
 
     private fun checkForUpdate() {
         updateButton.text = "Checking for updates…"
@@ -173,6 +177,10 @@ class MainActivity : Activity() {
         updater.checkLatest { latest ->
             latestBuild = latest
             if (!updating) showUpdateState()
+            if (updateNow) {
+                updateNow = false
+                onUpdateClicked()
+            }
         }
     }
 
@@ -207,6 +215,10 @@ class MainActivity : Activity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleInstallStatus(intent)
+        if (intent.getBooleanExtra(EXTRA_UPDATE_NOW, false)) {
+            updateNow = true
+            checkForUpdate()
+        }
     }
 
     override fun onResume() {
@@ -263,5 +275,10 @@ class MainActivity : Activity() {
     private fun selected(onSelect: (Int) -> Unit) = object : AdapterView.OnItemSelectedListener {
         override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) = onSelect(position)
         override fun onNothingSelected(parent: AdapterView<*>?) {}
+    }
+
+    companion object {
+        /** Start updating straight away (from Bouzouki Hero's update banner). */
+        const val EXTRA_UPDATE_NOW = "update_now"
     }
 }

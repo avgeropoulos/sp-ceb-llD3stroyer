@@ -46,7 +46,17 @@ class HeroMenuActivity : Activity() {
         super.onResume()
         build()
         CrashLog.offer(this)
+        // A newer version waiting? Show a banner that updates in one tap.
+        val updater = com.bouzouki.Updater(this)
+        updater.checkLatest { latest ->
+            if (isFinishing) return@checkLatest
+            newer = latest?.takeIf { it > updater.installedBuild }
+            build()
+        }
     }
+
+    /** The newer build available on the update channel, if there is one. */
+    private var newer: Long? = null
 
     private fun build() {
         col.removeAllViews()
@@ -55,6 +65,16 @@ class HeroMenuActivity : Activity() {
             gravity = Gravity.CENTER
             setPadding(0, dp(2), 0, dp(14))
         })
+        newer?.let { v ->
+            col.addView(button("⬆  Update to v1.$v", 0xFF2E9B57.toInt()) {
+                // Μπουζούκι's first screen does the update (and Android's confirmation).
+                startActivity(
+                    Intent(this, com.bouzouki.MainActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        .putExtra(com.bouzouki.MainActivity.EXTRA_UPDATE_NOW, true)
+                )
+            })
+        }
 
         header("Difficulty")
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
