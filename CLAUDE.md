@@ -22,7 +22,7 @@ Controllers: `GameView` maps gamepad buttons (default A jump, B throw, X switch,
 Input: `TeamInput` setters latch presses (`wasPressed`), and `TeamGame.edge` reads them, so taps shorter
 than a frame still count. Rocco has a jump buffer and coyote time (`jumpBufT`, `coyoteT`) and THROW is
 buffered (`actionBufT`). `GameView.run` is a Choreographer loop (one draw per vsync, at most 3 updates
-per draw); text-to-speech and SoundPool playing run on their own threads in `SoundFx`.
+per draw); text-to-speech (`Speaker`) and SoundPool playing (`SoundFx`) run on their own threads.
 `MainActivity.dispatchKeyEvent`/`dispatchGenericMotionEvent` hand controller input straight to
 `GameView` (no focus needed). The CONTROLS screen has a live tester (`padSaw`, `stickX/Y`, `fps`).
 Every jump has a minimum height (`jumpHoldT`).
@@ -55,9 +55,11 @@ attempt looked darker and lagged on the sticker book, so it was removed). The ti
 level with GLES 2.0 (`GlScene`); frames are requested from a `Choreographer` callback with the vsync time (smooth
 sprinting); on any 3D error it draws plain 2D for half a second. Lighting keeps camera-facing surfaces at their
 exact 2D colour (`lit` in the shader / `SoftRaster`). File 1's head start is `TeamGame.HeadStart` (World 9-1,
-key `start3d_world9`). Sung theme: `ThemeSinger` (3D app) has a TTS voice say each `Songs.themeSpoken` syllable
-into a WAV, `Autotune.fit` (core) retunes it to `Chiptune.sungNotes` (two octaves down) and `Chiptune.render(song,
-words)` mixes them in; `TeamGame.titleMusic` = THEME makes the 3D title play it. Add `:teamup3d:engine` to the
+key `start3d_world9`). Sung theme: `ThemeSinger` (3D app) has the most lifelike English voice
+(`VoiceCast.mostNatural`) say each `Songs.themeSpoken` syllable into a WAV (TTS pitch only nudged 0.85-1.2),
+`Autotune.fit` (core) retunes it (at most 4 semitones, `MIN_SHIFT`/`MAX_SHIFT`) to `Chiptune.sungNotes` in the
+octave nearest the voice (`Autotune.octavesDown`: 2, 4 or 8 times lower), squeezes long words to fit (`squeeze`,
+same pitch) instead of chopping them, and `Chiptune.render(song, words)` mixes them in; `TeamGame.titleMusic` = THEME makes the 3D title play it. Add `:teamup3d:engine` to the
 scratch build to test it locally.
 
 ## Where things are in Team Up! (`team/src/main/kotlin/com/roccoquest/team/`)
@@ -81,9 +83,19 @@ scratch build to test it locally.
 | `Stickers.kt` | 300 stickers = 60 base pictures x 5 `StickerStyle`s. Add new base pictures only at the end of `base` (index = style*60+base is saved; changing BASE reshuffles saves) |
 | `TeamControls.kt` | Touch buttons and `TeamInput` |
 
-`teamapp/` is the Android wrapper (`GameView.kt` maps keys, `SoundFx.kt` does sounds and the
+`teamapp/` is the Android wrapper (`GameView.kt` maps keys, `SoundFx.kt` does sounds, `Speaker.kt` the
 text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound`/`Music`/`Voice`,
 `SoundSynth.kt`, `Songs.kt`).
+
+Voices (`core/.../VoiceCast.kt`, tested in `VoiceCastTest`): `VoiceCast.cast` gives every `Voice` its own real phone
+voice (`Persona`: voice name + pitch/rate kept within `MIN_TWEAK`..`MAX_TWEAK` = 0.85-1.2; big pitch changes are what
+sounded robotic). It ranks the phone's voices (`naturalness`: quality, internet voices when online, never
+`notInstalled`), wants a gender/accent per character (`parts`; Google voice genders by code in `gender`), and avoids
+giving two characters the same person (`speaker` strips `-local`/`-network`). Ties go A-Z so the cast never changes.
+`SpeechText.tidy` makes lines read naturally (CAPS words said normally, end punctuation); `SpeechQueue` makes a new line
+wait for the current one (`QUEUE_ADD`) and only flushes when lines pile up or would be >2.5 s late. `Speaker.kt` (a
+copy in `teamapp/` and `teamup3d/android/`, keep them the same) is the Android side: lists voices, checks online
+(`ACCESS_NETWORK_STATE`), Greek line for Poseidon, falls back to plain English if a voice won't load.
 
 ## Building and testing
 
@@ -203,7 +215,7 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
   Peekaboo; `wonderForm` is true meanwhile (rainbow twinkle in `drawCapture`).
 * `MonSize.target` has per-Pokemon overrides for the little ones (Sparky 12.5).
 * Coins: `TeamGame.COIN_VALUE` (2) per coin, plus a level bonus in `offerStickers`. `Voice.HERO` (Rocco) uses an Italian
-  TTS voice in `SoundFx.useItalian`; Rocco's lines `GO_LINES`/`OUCH_LINES`.
+  TTS voice (a man's, picked by `VoiceCast`); Rocco's lines `GO_LINES`/`OUCH_LINES`.
 * Decor (`DecorItem`, 152; the newer 76 drawn in `MoreDecor.kt`) is saved as version 3 (`decorV` = 3: 256 kinds per slot).
   Beds: `BedStyle` (16) has `frame`/`pattern`/`head`. Style: 22 outfits, 18 skins, 21 costumes (`HatKind` has 31).
 * `Planets.kt`: `HomePlanet` (9; `homePlanet`/`planetsOwned`, keys `planet`/`planets`) colors the garden, window, roof

@@ -1,7 +1,9 @@
 package com.roccoquest.game
 
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.ln
 import kotlin.math.min
 import kotlin.math.sqrt
 
@@ -61,19 +63,30 @@ object Autotune {
         return pcm.copyOfRange(a, b + 1)
     }
 
+    /** How far the tuning may move a voice: 4 semitones down or up. More starts to sound like a cartoon. */
+    const val MIN_SHIFT = 0.79f
+    const val MAX_SHIFT = 1.26f
+
+    /** A word may ring on a little into the next note (smoother than stopping dead on the beat). */
+    const val LEGATO = 1.1f
+
+    /** A long word is sped up at most this much to fit its note; past that its end is faded out. */
+    const val MIN_SQUEEZE = 0.5f
+
     /**
-     * [pcm] (at [rate] Hz) retuned to [freq] Hz and fitted into [seconds], at [Chiptune.RATE].
-     * The retuning is kept gentle (at most half an octave) so the words stay clear: the voice
-     * itself is asked to speak near the right pitch first.
+     * [pcm] (at [rate] Hz) retuned to [freq] Hz and fitted into [seconds] (plus a little [LEGATO]),
+     * at [Chiptune.RATE]. The retuning is kept gentle ([MIN_SHIFT]..[MAX_SHIFT]) so the words stay
+     * clear and human: the voice itself is asked to speak near the right pitch first. A word too
+     * long for its note is sped up without changing its pitch ([squeeze]) instead of having its
+     * end chopped off, so "friends" doesn't come out as "frie".
      */
     fun fit(pcm: FloatArray, rate: Int, freq: Float, seconds: Float): FloatArray {
         val voice = trim(pcm)
         val f0 = pitch(voice, rate)
-        val shift = if (f0 > 0f) (freq / f0).coerceIn(0.7f, 1.42f) else 1f
+        val shift = if (f0 > 0f) (freq / f0).coerceIn(MIN_SHIFT, MAX_SHIFT) else 1f
         // Reading the voice faster raises its pitch; also convert to the music's sample rate.
         val step = shift * rate / Chiptune.RATE
-        val outLen = min((voice.size / step).toInt(), (seconds * Chiptune.RATE).toInt())
-        val out = FloatArray(outLen.coerceAtLeast(0))
+        var out = FloatArray((voice.size / step).toInt().coerceAtLeast(0))
         for (i in out.indices) {
             val p = i * step
             val k = p.toInt()
@@ -82,12 +95,71 @@ object Autotune {
             val b = if (k + 1 < voice.size) voice[k + 1] else a
             out[i] = a + (b - a) * f
         }
-        // Soft start and end, so no clicks.
-        val fadeIn = min(out.size / 4, (Chiptune.RATE * 0.01f).toInt())
-        val fadeOut = min(out.size / 3, (Chiptune.RATE * 0.06f).toInt())
-        for (i in 0 until fadeIn) out[i] *= i.toFloat() / fadeIn
-        for (i in 0 until fadeOut) out[out.size - 1 - i] *= i.toFloat() / fadeOut
+        val room = (seconds * LEGATO * Chiptune.RATE).toInt()
+        if (out.size > room) {
+            val sungHz = if (f0 > 0f) f0 * shift else freq
+            out = squeeze(out, maxOf(MIN_SQUEEZE, room.toFloat() / out.size), (Chiptune.RATE / sungHz).toInt())
+            if (out.size > room) out = out.copyOf(room)
+        }
+        // Soft, rounded start and end, so no clicks and no hard stops.
+        val fadeIn = min(out.size / 4, (Chiptune.RATE * 0.012f).toInt())
+        val fadeOut = min(out.size / 3, (Chiptune.RATE * 0.08f).toInt())
+        for (i in 0 until fadeIn) out[i] *= ease(i.toFloat() / fadeIn)
+        for (i in 0 until fadeOut) out[out.size - 1 - i] *= ease(i.toFloat() / fadeOut)
         return out
+    }
+
+    /** 0 -> 0, 1 -> 1, smoothly (a raised cosine). */
+    private fun ease(t: Float) = 0.5f - 0.5f * cos(PI.toFloat() * t)
+
+    /**
+     * [pcm] made [factor] times as long (less than 1 = shorter) without changing its pitch. Slices
+     * two voice periods long are laid back down one period apart; each one is taken from near where
+     * it belongs, at the spot whose wave best carries on from the slice before it (so the joins
+     * don't buzz, even when the voice's pitch wanders). [period] is the voice's period in samples.
+     */
+    fun squeeze(pcm: FloatArray, factor: Float, period: Int): FloatArray {
+        val win = period * 2
+        val outLen = (pcm.size * factor).toInt()
+        if (factor >= 1f) return pcm
+        if (period < 8 || pcm.size < win * 3) return pcm.copyOf(outLen)
+        val out = FloatArray(outLen + win)
+        val window = FloatArray(win) { 0.5f - 0.5f * cos(2f * PI.toFloat() * it / win) }
+        var prev = -1
+        var o = 0
+        while (o < outLen) {
+            val nominal = (o / factor).toInt().coerceIn(0, pcm.size - win)
+            var src = nominal
+            if (prev >= 0) {
+                // The last slice's second half is still sounding: carry on from where it was in the voice.
+                val want = prev + period
+                var best = -Float.MAX_VALUE
+                for (d in -period / 2..period / 2) {
+                    val s = nominal + d
+                    if (s < 0 || s + win > pcm.size) continue
+                    var c = 0f
+                    for (i in 0 until period) c += pcm[s + i] * pcm[want + i]
+                    if (c > best) { best = c; src = s }
+                }
+            }
+            for (i in 0 until win) out[o + i] += pcm[src + i] * window[i]
+            prev = src
+            o += period
+        }
+        return out.copyOf(outLen)
+    }
+
+    /**
+     * How many times lower than the tune ([notes], in Hz) a voice that speaks at [voiceHz] should
+     * sing: 2, 4 or 8 (whole octaves, so it's still the same tune). It's the one closest to the
+     * voice's own pitch (a man sings an octave below a woman), so the voice needs the least
+     * retuning and sounds the most like itself.
+     */
+    fun octavesDown(notes: List<Float>, voiceHz: Float): Float {
+        val sung = notes.filter { it > 0f }.sorted()
+        if (voiceHz <= 0f || sung.isEmpty()) return 4f
+        val middle = sung[sung.size / 2]
+        return listOf(2f, 4f, 8f).minBy { abs(ln(middle / it / voiceHz)) }
     }
 
     /** A test tone (used by tests): a voice-like buzz at [freq] Hz. */
