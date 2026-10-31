@@ -61,6 +61,8 @@ const COACH = Object.freeze({
   spear: 'Cock back behind your shoulder, then snap forward',
   overSpeed: 'Easy: a firm flick is enough',
 });
+// Spartan rage (game/rage.js): the first full meter of each battle names its key or button.
+const RAGE_READY_TOAST = Object.freeze({ key: 'Rage is ready: press V', button: 'Rage is ready: tap RAGE' });
 const COACH_SECONDS = 4;
 const OVERSPEED_GAP = 60;    // s (real time): the over-speed toast at most this often
 
@@ -589,6 +591,19 @@ export function createHud(ctx) {
     } else if (ph === 'end') {
       volleyLeft = 0;
     }
+  });
+
+  let rageToasted = false;
+  ev.on('rageReady', () => {
+    if (rageToasted || ctx.mode !== 'battle') return;
+    rageToasted = true;
+    toast((navigator.maxTouchPoints || 0) > 0 ? RAGE_READY_TOAST.button : RAGE_READY_TOAST.key, 'is-coach', COACH_SECONDS);
+  });
+  ev.on('rage', (e) => {
+    if (!e || !e.on) return;
+    // The ready hint has done its job: it gives way to the cry.
+    for (const t of toasts) if (t.left > 0 && (t.el.textContent === RAGE_READY_TOAST.button || t.el.textContent === RAGE_READY_TOAST.key)) t.left = 1e-3;
+    toast('Spartan rage!', 'is-coach', 2);
   });
 
   // Lock-on (hilt): a new target scales the marker in (is-new, 150 ms).
@@ -1234,6 +1249,7 @@ export function createHud(ctx) {
   }
 
   function reset() {
+    rageToasted = false;
     hideTransients();
     root.classList.remove('is-fallen');
     daysSeen = 0;

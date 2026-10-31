@@ -1299,7 +1299,16 @@ nothing (HUD buttons are still forwarded; a mouse click never takes the pointer 
 * Bottom-right: the sword pad, 3×3 buttons of 56 px (`PAD` in ui/input.js). Each arrow cuts the
   way it points and pushes `slash` with that direction (0 right, π/2 up, the corners at the
   diagonals); the middle is **STAB** (`thrust`). Power `buttonPower` (0.8); one strike per press.
-* Above the sword pad: **‹ FOE** and **FOE ›** push `switchTarget` −1 and +1.
+* Above the sword pad: **‹ FOE** and **FOE ›** push `switchTarget` −1 and +1. On the bare glass a
+  tap on a foe pushes `{ type:'lockActor', actor }` (lockon.js `pickOnScreen`: his drawn
+  head-to-feet span, padded) and a sideways swipe (≥ 50 px, mostly horizontal, within 600 ms)
+  pushes `switchTarget` that way. The player's `tapLock` locks him as a switch would.
+* **Spartan rage** (game/rage.js, every layout): the RAGE button's ring is `player.rage` (0..1),
+  filled by hits, kills, blocks, combos and blows taken. The `rage` action (button, V) unleashes a
+  full meter for 8 s (events `rageReady`, `rage {on}`): ×2 damage, every cut takes each foe in its
+  arc and staggers ≥ 0.6 s (combat.js `playerStrike`), blows taken ×0.5 (`player.damage`), +6 hp per
+  kill; fx adds a slow-motion burst, a shake and a haptic, waves.js the war cry, input.js the red
+  edge glow.
 * With a spear in hand, **THROW** appears left of the sword pad and works as in the touch layout.
 * The Agoge panel sits between the two clusters (`#training.is-buttons`), and the Agoge uses the
   lock step and each step's `buttons` text (falling back to `touch`).

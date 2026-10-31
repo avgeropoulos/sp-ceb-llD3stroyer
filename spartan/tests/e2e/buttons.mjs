@@ -61,9 +61,9 @@ try {
       return push(a);
     };
     window.__ev = [];
-    for (const n of ['swing', 'hit', 'combo', 'lockOn', 'spearThrown', 'spearImpact', 'weaponSwitch']) {
+    for (const n of ['swing', 'hit', 'combo', 'lockOn', 'spearThrown', 'spearImpact', 'weaponSwitch', 'rage', 'rageReady']) {
       ctx.events.on(n, (e) => window.__ev.push({
-        n, kind: e && e.kind, dir: e && e.dir, reason: e && e.reason, name: e && e.name, id: e && e.id,
+        n, kind: e && e.kind, dir: e && e.dir, reason: e && e.reason, name: e && e.name, id: e && e.id, damage: e && e.damage,
         x: e && e.target && e.target.pos ? +e.target.pos.x.toFixed(2) : null,
       }));
     }
@@ -190,6 +190,121 @@ try {
   check('the view turns to the locked foe (yaw toward −x is positive)', left.yaw > 0.3 && right.yaw < -0.3, `${right.yaw.toFixed(2)} → ${left.yaw.toFixed(2)}`);
   await shoot('02-locked-left');
 
+  // ---- tap a foe, swipe on the open ground ----
+  // A point on the foe at x = fx that is on screen and not under a button (the bare glass there).
+  const screenOf = (fx) => ev((x) => {
+    const c = window.__game.ctx;
+    const a = c.actors.find((b) => Math.abs(b.pos.x - x) < 0.1);
+    for (const k of [0.55, 0.75, 0.9, 0.35, 0.2]) {
+      const v = new c.camera.position.constructor(a.pos.x, a.pos.y + k * (a.height || 1.75), a.pos.z).project(c.camera);
+      const p = { x: (v.x + 1) / 2 * innerWidth, y: (1 - v.y) / 2 * innerHeight };
+      if (p.x < 0 || p.y < 0 || p.x > innerWidth || p.y > innerHeight) continue;
+      const el = document.elementFromPoint(p.x, p.y);
+      if (el && el.classList.contains('ctl-surface')) return p;
+    }
+    return null;
+  }, fx);
+  // Locked on the left foe, the far right foe is on screen (35° either side of the line).
+  await ev(() => window.__game.ctx.player.setLock(window.__game.ctx.actors.find((a) => Math.abs(a.pos.x) < 0.1)));
+  await step(60);
+  const at = await screenOf(-3.5);
+  await touch('touchStart', [{ id: 6, x: at.x, y: at.y }]);
+  await touch('touchEnd', []);
+  await step(60);
+  const tapped = await player();
+  check('tapping a foe on screen locks onto him', !!at && tapped.lock === -3.5, `lock ${tapped.lock} (tapped ${at && at.x.toFixed(0)},${at && at.y.toFixed(0)})`);
+  await touch('touchStart', [{ id: 7, x: 330, y: 80 }]);
+  for (let i = 1; i <= 5; i++) await touch('touchMove', [{ id: 7, x: 330 + i * 24, y: 84 }]);
+  await touch('touchEnd', []);
+  await step(60);
+  const swiped = await player();
+  check('swiping right on the open ground switches to the next foe on the right', swiped.lock === 0, `lock ${swiped.lock}`);
+  await touch('touchStart', [{ id: 8, x: 380, y: 60 }]);
+  await touch('touchEnd', []);
+  await step(10);
+  check('tapping the empty sky keeps the lock', (await player()).lock === 0);
+
+  // ---- Spartan rage ----
+  const rageBtn = await box('.ctl-rage');
+  const rageOver = Object.keys(boxes).filter((s) => {
+    const b = boxes[s];
+    return rageBtn.l < b.r - 1 && b.l < rageBtn.r - 1 && rageBtn.t < b.b - 1 && b.t < rageBtn.b - 1;
+  });
+  check('the RAGE button shows, on screen, over no other button', rageBtn.shown && rageBtn.r <= W && rageBtn.b <= H && rageOver.length === 0, rageOver.join(' '));
+  const rageCls = () => ev(() => ({ cls: document.querySelector('.ctl-rage').className, p: document.querySelector('.ctl-rage').style.getPropertyValue('--p'), root: document.getElementById('controls').className, rage: window.__game.ctx.player.rage, raging: window.__game.ctx.player.raging }));
+  await clearLogs();
+  await tap('.ctl-rage');
+  await step(5);
+  check('an empty meter: RAGE does nothing', !(await rageCls()).raging && (await evs('rage')).length === 0);
+  // Hits fill the meter.
+  await ev(() => window.__game.ctx.player.setLock(window.__game.ctx.actors.find((a) => Math.abs(a.pos.x) < 0.1)));
+  await step(40);
+  await untilIdle();
+  const r0 = (await rageCls()).rage;
+  await tap('.ctl-cut-right');
+  await step(40);
+  const r1 = await rageCls();
+  check('a hit fills the rage meter and its ring', r1.rage > r0 && Number(r1.p) > 0, `${r0} → ${r1.rage}, ring ${r1.p}`);
+  // A blow before rage, for its damage.
+  await untilIdle();
+  await step(90);
+  await clearLogs();
+  await tap('.ctl-cut-stab');
+  await step(40);
+  const calm = (await evs('hit'))[0];
+  await ev(() => { window.__game.ctx.player.rage = 0.99; });
+  await untilIdle();
+  await step(90);
+  await clearLogs();
+  await tap('.ctl-cut-stab');
+  await step(40);
+  const full = await rageCls();
+  check('filling the meter makes RAGE glow and announces it', /is-ready/.test(full.cls) && (await evs('rageReady')).length === 1, full.cls);
+  await shoot('06-rage-ready');
+  await untilIdle();
+  await step(90);
+  // Two foes side by side in reach: raging cuts catch both.
+  await ev(() => {
+    const c = window.__game.ctx;
+    c.ai.spawnDummy(0.7, -1.6);
+  });
+  await step(10);
+  const hp0 = await ev(() => window.__game.ctx.player.hp);
+  await clearLogs();
+  await tap('.ctl-rage');
+  await step(5);
+  const on = await rageCls();
+  check('tapping a glowing RAGE unleashes it: the button burns, the screen edges run red', on.raging && /is-on/.test(on.cls) && /ctl-raging/.test(on.root) && (await evs('rage')).some((e) => e.kind === undefined), JSON.stringify({ cls: on.cls, raging: on.raging }));
+  await shoot('07-raging');
+  await clearLogs();
+  await tap('.ctl-cut-stab');
+  await step(40);
+  const hot = (await evs('hit'))[0];
+  check('raging blows strike twice as hard', calm && hot && hot.damage >= calm.damage * 1.9, `${calm && calm.damage} → ${hot && hot.damage}`);
+  await untilIdle();
+  await clearLogs();
+  await tap('.ctl-cut-right');
+  await step(40);
+  const sweepHits = (await evs('hit')).length;
+  check('a raging cut catches every foe in its arc', sweepHits >= 2, `${sweepHits} hits`);
+  await ev(() => window.__game.ctx.player.damage(20, {}));
+  const hp1 = await ev(() => window.__game.ctx.player.hp);
+  check('raging, blows hurt half as much', Math.abs(hp0 - hp1 - 10) < 1e-6, `${hp0} → ${hp1}`);
+  await step(60 * 8);
+  const off = await rageCls();
+  check('the rage burns out after 8 s and the meter is empty', !off.raging && off.rage === 0 && !/is-on/.test(off.cls) && !/ctl-raging/.test(off.root), JSON.stringify(off));
+  await ev(() => {
+    const c = window.__game.ctx;
+    const extra = c.actors.find((a) => Math.abs(a.pos.x - 0.7) < 0.05);
+    if (extra) extra.alive = false;
+    c.ai.clear();
+    c.ai.spawnDummy(0, -1.7);
+    c.ai.spawnDummy(-3.5, -5);
+    c.ai.spawnDummy(3.5, -5);
+    c.player.hp = c.player.maxHp;
+  });
+  await step(30);
+
   // ---- the move pad ----
   await tap('.ctl-tgt-r'); // face ahead again
   await step(60);
@@ -252,14 +367,14 @@ try {
   await step(5);
   const locked = await ev(() => !!document.pointerLockElement);
   check('a mouse click on a pad button strikes, a click elsewhere does not lock the pointer', clicked && !locked);
-  check('the bare glass does nothing (no swipe slash, no look)', await (async () => {
+  check('the bare glass never slashes, stabs or drags the view (a swipe only switches foe)', await (async () => {
     await clearLogs();
-    const y0 = (await player()).yaw;
     await touch('touchStart', [{ id: 5, x: W / 2, y: 120 }]);
-    for (let i = 1; i <= 6; i++) await touch('touchMove', [{ id: 5, x: W / 2 + i * 30, y: 120 }]);
+    for (let i = 1; i <= 6; i++) await touch('touchMove', [{ id: 5, x: W / 2 + i * 6, y: 120 + i * 20 }]);
     await touch('touchEnd', []);
     await step(10);
-    return (await acts()).length === 0 && Math.abs((await player()).yaw - y0) < 0.05;
+    const a = await acts();
+    return a.every((x) => x.type === 'switchTarget') && !a.some((x) => x.type === 'slash' || x.type === 'thrust');
   })());
 
   // ---- left-handed ----

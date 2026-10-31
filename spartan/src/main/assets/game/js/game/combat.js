@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/BufferGeometryUtils.js';
 import { WEAPONS, slashProfile, sectorHit, segmentCapsule, computeDamage, ballisticPitch } from './rules.js';
+import { RAGE } from './rage.js';
 import { clamp, facingToYaw, angleDiff, yawTo } from '../core/math.js';
 import { createArrowStreaks, STREAK_STRIDE } from '../gfx/fx/streaks.js';
 
@@ -457,6 +458,9 @@ export function createCombat(ctx) {
     }
     const effect = combo ? combo.effect : null;
     const wall = effect === 'stagger_all';
+    // Spartan rage (game/rage.js): double damage, every cut catches each foe in its arc, every hit staggers.
+    const raging = !!(pl && pl.raging);
+    if (raging) stagger = Math.max(stagger, RAGE.stagger);
 
     let targets;
     if (effect === 'sweep') {
@@ -466,6 +470,8 @@ export function createCombat(ctx) {
       ignoreGuard = true;
       knockback = Math.max(knockback, S.bashKnockback);
       stagger = Math.max(stagger, S.bashStagger);
+    } else if (raging) {
+      targets = hostilesInSector(origin, yaw, reach, halfAngle);
     } else {
       const cands = hostilesInSector(origin, yaw, reach, halfAngle);
       const focus = attack.focus !== undefined ? attack.focus : pl ? pl.focusTarget : null;
@@ -497,6 +503,7 @@ export function createCombat(ctx) {
       point.x -= dx * r * 0.9;
       point.z -= dz * r * 0.9;
       let damage = computeDamage({ base, power, comboMul, crit });
+      if (raging) damage *= RAGE.damageMul;
       let hitIgnore = ignoreGuard;
       let hitKb = knockback;
       let hitStagger = stagger;

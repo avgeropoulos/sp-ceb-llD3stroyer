@@ -77,6 +77,7 @@ test('HAPTICS_HILT holds the §F.1 rows and HILT_SLOWMO the §F.3 numbers', () =
     block: [40, 0.8], perfect: [0, 30, 40, 30, 40, 90], shieldUp: [15, 0.4], arrowShield: [20, 0.6],
     spearArmed: [0, 35, 45, 35], spearRelease: [0, 30, 60, 30], spearImpact: [0, 40, 40, 90], spearGround: [20, 0.5],
     volleyWarning: [0, 40, 90, 40], lockTick: [30, 0.6], lockNone: [0, 30, 70, 30], rearThreat: [0, 80, 60, 80],
+    rage: [0, 60, 50, 60, 50, 160], rageReady: [0, 35, 50, 35],
   });
   assert.equal(HILT_HAPTIC_GAP, 0.04);
   assert.ok(Object.isFrozen(HILT_SLOWMO));

@@ -23,6 +23,7 @@ import { TIMING, WEAPONS, pickTarget, ballisticPitch, dirToken } from './rules.j
 import { ComboTracker, COMBO_WINDOWS } from './combos.js';
 import { clamp, lerp, smoothstep, angleDiff, wrapAngle, yawTo, TAU } from '../core/math.js';
 import { LOCK, YawSpring, isLockable, inActors, acquire, nextInDirection } from './lockon.js';
+import { RAGE, gainRage, canUnleash } from './rage.js';
 
 const EYE = 1.66;
 const BUFFER_LIFE = 0.4;
@@ -117,6 +118,7 @@ export function createPlayer(ctx) {
   const threatLostAt = new Array(THREAT_MEMORY).fill(-Infinity); // … and when (ptime)
   let threatSlot = 0;
   let lockTarget = null;
+  let rageLeft = 0; // s of rage left (player time); > 0 while raging
   let lockMode = 'off';
   let lockDesired = 0; // the spring's goal
   let lockBearing = 0; // the target's low-passed bearing
@@ -163,6 +165,11 @@ export function createPlayer(ctx) {
     score: 0,
     chain: 1,
     combos: new ComboTracker(),
+    /** Spartan rage (game/rage.js): the meter 0..1, which drains while it burns. */
+    rage: 0,
+    get raging() {
+      return rageLeft > 0;
+    },
     focusTarget: null,
     attackYaw: 0,
     /** The hilt grip's lock (§C.2), read-only: the foe the view faces and the strikes aim at. */
@@ -194,6 +201,8 @@ export function createPlayer(ctx) {
     recenter,
     switchTarget,
     setLock,
+    tapLock,
+    unleashRage,
   };
   strikeAttack.origin = player.pos;
 
@@ -419,6 +428,50 @@ export function createPlayer(ctx) {
     }
     lockTo(next, 'switch', true);
     return true;
+  }
+
+  /**
+   * The buttons control's tap on a foe (lockActor): the lock moves to him as a switch would
+   * (lockOn 'switch', kept like a swiped lock). Only with the lock-on running, alive, the camera
+   * not overridden and the foe lockable, listed and within reach of a spear.
+   */
+  function tapLock(actor) {
+    if (!lockControl() || !player.alive || cameraOverridden()) return false;
+    if (!isLockable(actor) || !inActors(actor, ctx.actors) || distTo(actor) > LOCK.spearRange) return false;
+    if (!lockOn()) enterLock();
+    if (actor !== lockTarget) lockTo(actor, 'switch', true);
+    return true;
+  }
+
+  // ---- Spartan rage (game/rage.js) -------------------------------------------------------
+
+  /** Unleashes a full meter (the 'rage' action): emits rage { on: true }. */
+  function unleashRage() {
+    if (!player.alive || cameraOverridden() || !canUnleash(player.rage, rageLeft > 0)) return false;
+    rageLeft = RAGE.duration;
+    player.rage = 1;
+    ev.emit('rage', { on: true, duration: RAGE.duration });
+    return true;
+  }
+
+  function endRage() {
+    rageLeft = 0;
+    player.rage = 0;
+    ev.emit('rage', { on: false });
+  }
+
+  function stepRage(dt) {
+    if (rageLeft <= 0) return;
+    rageLeft -= dt;
+    if (rageLeft <= 1e-9) endRage();
+    else player.rage = rageLeft / RAGE.duration;
+  }
+
+  function fillRage(kind) {
+    if (rageLeft > 0 || !player.alive) return;
+    const was = player.rage;
+    player.rage = gainRage(was, kind);
+    if (was < 1 && player.rage >= 1) ev.emit('rageReady', {});
   }
 
   /**
@@ -814,6 +867,14 @@ export function createPlayer(ctx) {
         switchTarget(a.dir);
         continue;
       }
+      if (a.type === 'lockActor') {
+        tapLock(a.actor);
+        continue;
+      }
+      if (a.type === 'rage') {
+        unleashRage();
+        continue;
+      }
       if (!ATTACK_ACTIONS[a.type] || !player.alive || overridden) continue;
       if (canStartNow() && startAttack(a)) continue;
       if (canStartNow()) continue; // dropped (no spear, bash cooldown)
@@ -1019,6 +1080,8 @@ export function createPlayer(ctx) {
     player.kills = 0;
     player.score = 0;
     player.chain = 1;
+    player.rage = 0;
+    rageLeft = 0;
     lastHitAt = -Infinity;
     player.combos.reset();
     player.focusTarget = null;
@@ -1075,6 +1138,7 @@ export function createPlayer(ctx) {
       return;
     }
     decayChain();
+    stepRage(dt);
     trackShieldHold();
     stepLock(dt);
     updateFocus();
@@ -1156,6 +1220,7 @@ export function createPlayer(ctx) {
   /** Applies damage (no-op in training, on the title screen or when dead). */
   function damage(amount, info = {}) {
     if (!player.alive || mode === 'training' || mode === 'title' || !(amount > 0)) return;
+    if (rageLeft > 0) amount *= RAGE.takenMul;
     player.hp = Math.max(0, player.hp - amount);
     const from = info.from || null;
     let relYaw = info.relYaw;
@@ -1171,6 +1236,7 @@ export function createPlayer(ctx) {
   }
 
   function die() {
+    if (rageLeft > 0) endRage();
     player.alive = false;
     player.state = 'dead';
     atk.active = false;
@@ -1283,15 +1349,20 @@ export function createPlayer(ctx) {
 
   ev.on('hit', (e) => {
     if (!e || !e.byPlayer || e.kind === 'bleed') return;
+    fillRage('hit');
     lastHitAt = gnow();
     player.chain = Math.min(CHAIN_MAX, Math.round((player.chain + CHAIN_STEP) * 10) / 10);
     emitScore();
   });
 
   ev.on('waveCleared', resetChain);
+  ev.on('combo', () => fillRage('combo'));
+  ev.on('playerHurt', () => fillRage('hurt'));
 
   ev.on('kill', (e) => {
     if (!e || !e.byPlayer) return;
+    if (rageLeft > 0) heal(RAGE.healPerKill);
+    fillRage('kill');
     player.kills++;
     player.score += Math.round(100 * player.chain) + (e.spear ? 250 : 0) + (e.cause === 'sea' ? 150 : 0);
     emitScore();
@@ -1331,7 +1402,9 @@ export function createPlayer(ctx) {
   });
 
   ev.on('block', (e) => {
-    if (!e || e.by !== 'player' || !e.perfect) return;
+    if (!e || e.by !== 'player') return;
+    if (e.kind !== 'guardBreak') fillRage(e.perfect ? 'perfect' : 'block');
+    if (!e.perfect) return;
     critUntil = ptime + TIMING.critWindow;
     if (player.shieldRaise < 0.7) player.shieldRaise = 0.7;
     addScore(50);

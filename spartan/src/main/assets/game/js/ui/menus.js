@@ -131,7 +131,7 @@ export const DIAGRAMS = {
 const KEYS = [
   ['W A S D', 'Move'], ['Mouse', 'Look (click to capture)'], ['Left-drag', 'Slash that way'], ['Left click', 'Stab'],
   ['Right button · Shift · K', 'Hold the shield'], ['F', 'Shield bash'], ['Q', 'Sword / spear'], ['R · Middle button', 'Throw the spear'],
-  ['← → ↑ ↓', 'Slash'], ['Space', 'Stab'], ['C', 'Recenter'], ['Esc · P', 'Pause'],
+  ['← → ↑ ↓', 'Slash'], ['Space', 'Stab'], ['V', 'Spartan rage'], ['C', 'Recenter'], ['Esc · P', 'Pause'],
 ];
 
 /**
@@ -470,7 +470,8 @@ export function createMenus(ctx) {
                 <li>Every move is a button: nothing to swipe, drag or swing. The view <b>locks onto your foe</b> and turns with him.</li>
                 <li><b>Left thumb</b>: the arrows step you forward, back and to the sides. Hold <b>Shield</b> to block; tap <b>Bash</b> to bash.</li>
                 <li><b>Right thumb</b>: the sword pad. Each arrow cuts the way it points: ← → slash, ↓ chops overhead, ↑ cuts upward, the corners cut diagonally. <b>Stab</b> is in the middle.</li>
-                <li><b>‹ ›</b> above the sword pad turn you to the next foe on that side.</li>
+                <li><b>Change foe</b>: tap a foe to face him, or swipe sideways on the open ground, or tap <b>‹ FOE</b> / <b>FOE ›</b> above the sword pad.</li>
+                <li><b>Spartan rage</b>: fighting fills the ring around <b>RAGE</b>. When it glows, tap it: for 8 seconds you strike twice as hard, every cut catches each foe before you and staggers him, blows hurt you half as much, and each kill heals you.</li>
                 <li><b>Throw</b>: with a spear in hand, hold Throw to wind up, then release. It flies at the foe you face.</li>
                 <li><b>Combos</b>: tap → then ← for Twin Fangs, ↑ then ↓ for Leonidas’ Cleave, the two lower corners for the Cross of Ares.</li>
               </ul>

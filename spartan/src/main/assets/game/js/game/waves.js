@@ -627,6 +627,10 @@ export function createWaves(ctx) {
     T.nextVolley = Infinity;
   }
   events.on('playerDeath', onPlayerDeath);
+  // Spartan rage: the war cry, at once.
+  events.on('rage', (e) => {
+    if (running && e && e.on) say('warcry', true);
+  });
   events.on('ready', () => ready());
 
   function update(gdt) {

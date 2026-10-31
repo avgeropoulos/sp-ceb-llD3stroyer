@@ -125,7 +125,8 @@ a foe and turns with him, and your strikes and spears go at him.
 * **Right thumb:** the sword pad. Each arrow cuts the way it points: ← and → slash, ↓ chops
   overhead (over a wicker shield), ↑ cuts upward, and the corners cut diagonally. **STAB** is in
   the middle.
-* **‹ FOE** and **FOE ›** above the sword pad turn you to the next foe on that side.
+* **Change foe:** tap a foe on screen to face him, swipe sideways on the open ground, or tap
+  **‹ FOE** / **FOE ›** above the sword pad.
 * With a spear in hand, hold **THROW** to wind up and release it: the spear flies at the foe you face.
 * Combos: → then ← (Twin Fangs), ↑ then ↓ (Leonidas' Cleave), the two lower corners (the Cross of
   Ares), STAB three times (Phalanx Drive), BASH then STAB (the Hoplite's Answer).
@@ -141,6 +142,12 @@ a foe and turns with him, and your strikes and spears go at him.
 * Z and X turn the lock to the next foe on the left or right (the hilt grip's thumb swipe).
 
 ## Fighting
+
+* **Spartan rage.** Fighting fills the red ring around the **RAGE** button: hits, kills, blocks
+  (a perfect block most), combos, and a little from the blows you take. When it glows, tap it (V
+  on a keyboard) and Leonidas raises the war cry. For 8 seconds you strike twice as hard, every
+  cut catches each foe in front of you and staggers him, blows hurt you half as much, and every
+  kill heals you. The button is at the bottom right in Buttons and Touch, and at the top in Motion.
 
 * **Watch for the wind-up.** Every enemy telegraphs his blow, with a red chevron when it's
   aimed at you. Raise the shield in time to block.

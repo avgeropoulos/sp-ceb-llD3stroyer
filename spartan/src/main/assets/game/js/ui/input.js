@@ -7,6 +7,7 @@
 // strokes on a shield pointer that switch the lock-on target once the phone is calm.
 import { clamp } from '../core/math.js';
 import { effectiveGrip } from '../core/grip.js';
+import { pickOnScreen } from '../game/lockon.js';
 
 /** Thresholds (DESIGN.md §6). Pixels are CSS px, times are ms unless noted. */
 export const INPUT = Object.freeze({
@@ -34,6 +35,12 @@ export const INPUT = Object.freeze({
   rearmPauseMs: 110,      // …or follow a pause
   keyPower: 0.7,
   buttonPower: 0.8,       // the buttons layout's cuts, stabs and bashes
+  // Buttons layout, the bare glass: a tap on a foe locks him; a sideways swipe switches foe.
+  aimTapPx: 16,           // a tap moves less than this…
+  aimTapMs: 350,          // …within this long
+  aimSwipePx: 50,         // a switch: |dx| at least this,
+  aimSwipeMs: 600,        // …within this long,
+  aimSwipeRatio: 1.2,     // …and |dx| ≥ this·|dy|
   maxMouseStep: 300,      // px per mousemove; larger jumps are discarded
   // Hilt layout reject strips, for a right hand (mirrored with ctl-left):
   hiltTopStrip: 12,
@@ -261,6 +268,8 @@ export function createInput(ctx) {
     <div class="ctl-pad">${PAD.map(([id, dir]) => `<button class="ctl-key ctl-cut ctl-cut-${id}" data-cut="${id}" aria-label="${PAD_LABEL[id]}"${dir === null ? '' : ` style="--a:${(-dir * 180 / Math.PI).toFixed(0)}deg"`}>${dir === null ? `${ICONS.stab}<em>Stab</em>` : ICONS.cut}</button>`).join('')}</div>
     <button class="ctl-key ctl-tgt ctl-tgt-l" aria-label="Turn to the foe on your left"><b>‹</b><em>Foe</em></button>
     <button class="ctl-key ctl-tgt ctl-tgt-r" aria-label="Turn to the foe on your right"><em>Foe</em><b>›</b></button>
+    <button class="ctl-rage" aria-label="Spartan rage"><span class="ctl-rage-ring"></span><span class="ctl-rage-face"><em>Rage</em></span></button>
+    <div class="ctl-rage-glow"></div>
     <div class="ctl-tip" role="status"><b>Shield tip</b><span></span></div>`;
   ctx.overlay.appendChild(root);
   const q = (s) => root.querySelector(s);
@@ -277,6 +286,7 @@ export function createInput(ctx) {
   const btnThrow = q('.ctl-throw');
   const ringR = q('.ctl-ring-r i');
   const ringL = q('.ctl-ring-l i');
+  const btnRage = q('.ctl-rage');
   const tipEl = q('.ctl-tip');
   const tipTextEl = q('.ctl-tip span');
   tipTextEl.textContent = MOTION_TIP;
@@ -318,6 +328,8 @@ export function createInput(ctx) {
   let lastCount = -1;
   let lastWeapon = '';
   let lastCine = false;
+  let rageShown = -1;         // the RAGE ring's fill drawn (0..100)
+  let rageState = '';         // '' | 'ready' | 'on'
   let skipMoves = 0;
   let tipText = MOTION_TIP;
   const sw = { dir: 0, speed: 0, dist: 0 };
@@ -514,7 +526,8 @@ export function createInput(ctx) {
       return;
     }
     if (layout === 'buttons') {
-      t.kind = 'rest'; // nothing is swiped or dragged: only the buttons act
+      // No slash or look here: a tap on a foe locks him, a sideways swipe switches foe.
+      t.kind = 'aim';
       return;
     }
     if (layout === 'motion') {
@@ -710,7 +723,11 @@ export function createInput(ctx) {
     if (e.pointerType === 'mouse') return;
     const t = trackers.get(e.pointerId);
     if (!t) return;
-    if (t.kind === 'stick') {
+    if (t.kind === 'aim') {
+      t.x = e.clientX;
+      t.y = e.clientY;
+      t.travel = Math.max(t.travel, Math.hypot(t.x - t.x0, t.y - t.y0));
+    } else if (t.kind === 'stick') {
       moveStick(t, e.clientX, e.clientY);
     } else if (t.kind === 'swipe') {
       const list = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
@@ -746,11 +763,29 @@ export function createInput(ctx) {
       if (t.state === 'pending' && t.travel < INPUT.tapMaxPx && e.timeStamp - t.t0 < INPUT.tapMaxMs) {
         push({ type: 'thrust', power: 0.6, src: 'touch' });
       }
+    } else if (t.kind === 'aim' && !cancelled) {
+      aimRelease(t, e.clientX, e.clientY, e.timeStamp);
     } else if (t.kind === 'hud') {
       t.el.classList.remove('is-down');
       if (!cancelled && inside(t.el, e.clientX, e.clientY, 8)) t.el.click();
     }
     release(t);
+  }
+
+  /** The buttons layout's bare-glass touch, lifted at (x, y): a tap on a foe, or a sideways swipe. */
+  function aimRelease(t, x, y, ts) {
+    const dx = x - t.x0;
+    const dy = y - t.y0;
+    const ms = ts - t.t0;
+    if (Math.abs(dx) >= INPUT.aimSwipePx && Math.abs(dx) >= INPUT.aimSwipeRatio * Math.abs(dy) && ms <= INPUT.aimSwipeMs) {
+      push({ type: 'switchTarget', dir: dx > 0 ? 1 : -1, src: 'touch' });
+      return;
+    }
+    if (Math.max(t.travel, Math.hypot(dx, dy)) < INPUT.aimTapPx && ms <= INPUT.aimTapMs) {
+      const p = ctx.player;
+      const actor = ctx.camera ? pickOnScreen(ctx.actors, ctx.camera, x, y, vw, vh, p && p.pos) : null;
+      if (actor) push({ type: 'lockActor', actor, src: 'touch' });
+    }
   }
 
   surface.addEventListener('pointerdown', onSurfaceDown);
@@ -825,6 +860,7 @@ export function createInput(ctx) {
       up: () => { mv[id] = Math.max(0, mv[id] - 1); },
     });
   }
+  bindButton(btnRage, { down: (t, e) => push({ type: 'rage', src: srcOf(e) }) });
   bindButton(q('.ctl-tgt-l'), { down: (t, e) => push({ type: 'switchTarget', dir: -1, src: srcOf(e) }) });
   bindButton(q('.ctl-tgt-r'), { down: (t, e) => push({ type: 'switchTarget', dir: 1, src: srcOf(e) }) });
   bindButton(btnShield, {
@@ -991,6 +1027,7 @@ export function createInput(ctx) {
         else if (c === 'KeyQ') push({ type: 'switchWeapon', src: 'key' });
         else if (c === 'KeyR') push({ type: 'throw', power: INPUT.keyPower, src: 'key' });
         else if (c === 'KeyC') push({ type: 'recenter', src: 'key' });
+        else if (c === 'KeyV') push({ type: 'rage', src: 'key' });
         else if (c === 'KeyZ' || c === 'KeyX') push({ type: 'switchTarget', dir: c === 'KeyX' ? 1 : -1, src: 'key' }); // the player ignores it outside the hilt grip
         else if (c === 'Escape' || c === 'KeyP') ctx.setMode('paused');
         else handled = false;
@@ -1064,6 +1101,19 @@ export function createInput(ctx) {
         if (p.weapon !== lastWeapon) {
           lastWeapon = p.weapon;
           btnSwap.classList.toggle('is-spear', p.weapon === 'spear');
+        }
+        // The RAGE button: its ring is the meter; it glows when full and burns while raging.
+        const rf = Math.round((Number(p.rage) || 0) * 100);
+        if (rf !== rageShown) {
+          rageShown = rf;
+          btnRage.style.setProperty('--p', String(rf / 100));
+        }
+        const rs = p.raging ? 'on' : rf >= 100 && p.alive !== false ? 'ready' : '';
+        if (rs !== rageState) {
+          rageState = rs;
+          btnRage.classList.toggle('is-ready', rs === 'ready');
+          btnRage.classList.toggle('is-on', rs === 'on');
+          root.classList.toggle('ctl-raging', rs === 'on');
         }
       }
 

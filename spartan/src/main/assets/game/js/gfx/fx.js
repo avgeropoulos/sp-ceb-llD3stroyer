@@ -31,6 +31,7 @@ export const SHAKE = Object.freeze({
   guardBreak: Object.freeze([0.035, 0.3]),
   block: Object.freeze([0.008, 0.14]),
   perfect: Object.freeze([0.012, 0.2]),
+  rage: Object.freeze([0.03, 0.45]),
 });
 
 /**
@@ -56,6 +57,8 @@ export const HAPTICS = Object.freeze({
   spearRelease: Object.freeze([0, 25, 60, 25]),
   spearImpact: Object.freeze([0, 30, 40, 60]),
   volleyWarning: Object.freeze([0, 20, 90, 20]),
+  rage: Object.freeze([0, 60, 50, 60, 50, 160]),
+  rageReady: Object.freeze([0, 25, 50, 25]),
 });
 
 /**
@@ -78,6 +81,8 @@ export const HAPTICS_HILT = Object.freeze({
   spearImpact: Object.freeze([0, 40, 40, 90]), // on a body
   spearGround: Object.freeze([20, 0.5]), // in the ground or the sea
   volleyWarning: Object.freeze([0, 40, 90, 40]),
+  rage: Object.freeze([0, 60, 50, 60, 50, 160]),
+  rageReady: Object.freeze([0, 35, 50, 35]),
   lockTick: Object.freeze([30, 0.6]), // the lock moved to a foe (switch or acquire)
   lockNone: Object.freeze([0, 30, 70, 30]), // a swipe found nobody that way
   rearThreat: Object.freeze([0, 80, 60, 80]), // a wind-up at the player from beyond LOCK.threatAngle
@@ -86,7 +91,7 @@ export const HAPTICS_HILT = Object.freeze({
 /** Hilt: a haptic within this many real seconds of the last one is dropped, unless it is urgent. */
 export const HILT_HAPTIC_GAP = 0.04;
 /** Hilt rows that replace the one still playing instead of being dropped. */
-const HILT_URGENT = Object.freeze({ kill: true, hurt: true, perfect: true, rearThreat: true });
+const HILT_URGENT = Object.freeze({ kill: true, hurt: true, perfect: true, rearThreat: true, rage: true });
 
 /**
  * Slow motion in the hilt grip (§F.3), [scale, real seconds] with the hero at full speed: a
@@ -936,6 +941,14 @@ export function createFx(ctx) {
   events.on('spearImpact', onSpearImpact);
   events.on('arrowHit', onArrowHit);
   events.on('combo', onCombo);
+  // Spartan rage: a burst of slow motion, a jolt and a long buzz as it is unleashed.
+  events.on('rage', (e) => {
+    if (!e || !e.on) return;
+    tc.slowMo(0.35, 0.6, true);
+    addShake('rage');
+    feel('rage');
+  });
+  events.on('rageReady', () => feel('rageReady'));
   events.on('shield', onShield);
   events.on('spearThrown', onSpearThrown);
   events.on('volley', onVolley);

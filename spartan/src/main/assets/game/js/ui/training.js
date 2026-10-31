@@ -97,7 +97,7 @@ export const STEPS = [
     motion: 'Hold the phone in landscape in your sword hand, screen toward you. Grip it firmly, clear the space around you, and never let go.',
     hilt: 'Hold the phone upright in your sword hand like the hilt of a xiphos, screen toward you. Rest your thumb on the edge; your fingers stay on the back, off the glass. Grip firmly; a wrist strap is strongly recommended. Clear the space around you, behind you too. Then hold your guard still.',
     touch: 'Left thumb: the stick moves you, SHIELD blocks. Right thumb: swipe to slash, tap to stab, drag slowly to look.',
-    buttons: 'Left thumb: the arrows step you, SHIELD blocks, BASH bashes. Right thumb: the sword pad cuts the way each arrow points; STAB is in the middle. The view turns with your foe.',
+    buttons: 'Left thumb: the arrows step you, SHIELD blocks, BASH bashes. Right thumb: the sword pad cuts the way each arrow points; STAB is in the middle. The view turns with your foe: tap another foe to face him.',
     voice: 'Welcome to the Agoge. Take up your arms.', demo: null, demoHilt: null },
   { id: 'calibrate', title: 'Calibrate', n: 5, motionOnly: true,
     motion: 'Slash 5 times, the way you will in battle. Gentle is fine.', touch: '',
@@ -174,7 +174,7 @@ export const HILT_LOCK_STEP = Object.freeze({
   id: 'lock', title: 'Change foe', n: 2, hiltOnly: true,
   hilt: 'Swipe your thumb right to turn to the next foe. Then swipe left.',
   motion: 'Swipe your thumb right to turn to the next foe. Then swipe left.', touch: '',
-  buttons: 'Tap › above the sword pad to turn to the next foe on your right. Then tap ‹.',
+  buttons: 'Tap a foe to face him, or tap FOE › to turn to the next one on your right. Then turn back with ‹ FOE.',
   voice: 'Turn to the next man with your thumb. Then turn back.', demo: null, demoHilt: null,
 });
 

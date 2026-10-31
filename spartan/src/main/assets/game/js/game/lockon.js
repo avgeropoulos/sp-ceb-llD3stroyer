@@ -201,3 +201,64 @@ export class YawSpring {
     return this._moving;
   }
 }
+
+/** Tap to lock (the buttons control): padding and sizes in CSS px, the range in m. */
+export const TAP = Object.freeze({
+  pad: 24,        // px added above the head and below the feet
+  minHalfW: 34,   // px: a far foe is still this wide either side of his centre
+  widthRatio: 0.3, // half-width as a share of his drawn height
+  range: 45,      // m: no farther than a spear flies (LOCK.spearRange)
+});
+
+const tapHead = { x: 0, y: 0, front: false };
+const tapFeet = { x: 0, y: 0, front: false };
+
+// World point → CSS px through a duck-typed camera (three.js's column-major matrixWorldInverse and
+// projectionMatrix elements). out.front is false behind (or nearly at) the eye.
+function projectTo(cam, x, y, z, vw, vh, out) {
+  const m = cam.matrixWorldInverse.elements;
+  const vx = m[0] * x + m[4] * y + m[8] * z + m[12];
+  const vy = m[1] * x + m[5] * y + m[9] * z + m[13];
+  const vz = m[2] * x + m[6] * y + m[10] * z + m[14];
+  out.front = vz < -0.15;
+  if (!out.front) return out;
+  const p = cam.projectionMatrix.elements;
+  const cx = p[0] * vx + p[4] * vy + p[8] * vz + p[12];
+  const cy = p[1] * vx + p[5] * vy + p[9] * vz + p[13];
+  const cw = p[3] * vx + p[7] * vy + p[11] * vz + p[15];
+  out.x = (cx / cw + 1) * 0.5 * vw;
+  out.y = (1 - cy / cw) * 0.5 * vh;
+  return out;
+}
+
+/**
+ * The lockable foe drawn under a tap at (x, y) CSS px on a vw×vh view, or null: within his
+ * projected head-to-feet span padded by TAP.pad, and widthRatio of his drawn height either side of
+ * his centre (at least minHalfW); the nearest centre wins. Archers count (a tap can reach them).
+ * `from` is the player's position: foes beyond TAP.range are skipped. No allocation.
+ */
+export function pickOnScreen(actors, camera, x, y, vw, vh, from, P = TAP) {
+  if (!actors || !camera || !camera.matrixWorldInverse || !camera.projectionMatrix) return null;
+  let best = null;
+  let bestD = Infinity;
+  for (let i = 0; i < actors.length; i++) {
+    const a = actors[i];
+    if (!isLockable(a)) continue;
+    if (from && Math.hypot(a.pos.x - from.x, a.pos.z - from.z) > P.range) continue;
+    const h = a.height || 1.75;
+    const y0 = a.pos.y || 0;
+    projectTo(camera, a.pos.x, y0 + h, a.pos.z, vw, vh, tapHead);
+    projectTo(camera, a.pos.x, y0, a.pos.z, vw, vh, tapFeet);
+    if (!tapHead.front || !tapFeet.front) continue;
+    if (y < tapHead.y - P.pad || y > tapFeet.y + P.pad) continue;
+    const cx = (tapHead.x + tapFeet.x) / 2;
+    const half = Math.max(P.minHalfW, (tapFeet.y - tapHead.y) * P.widthRatio);
+    if (Math.abs(x - cx) > half) continue;
+    const d = Math.hypot(x - cx, y - (tapHead.y + tapFeet.y) / 2);
+    if (d < bestD) {
+      bestD = d;
+      best = a;
+    }
+  }
+  return best;
+}
