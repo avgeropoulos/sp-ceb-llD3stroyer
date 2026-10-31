@@ -797,6 +797,8 @@ func next_swap_name() -> String:
 
 
 func action_label() -> String:
+	if open_play and open_play.extras and open_play.extras.riding and state == "play":
+		return "TONGUE"
 	if grab and state == "play":
 		var gl: String = grab.label()
 		if gl != "":
@@ -1137,6 +1139,8 @@ func save_data(in_level := true) -> Dictionary:
 	if open_play:
 		stars_w[level.world] = open_play.got.keys()
 		d["quest"] = open_play.current
+		if open_play.extras:
+			d["visit_coins"] = open_play.extras.visit_coins()   # the 100 COIN STAR counts this visit
 	d["stars_w"] = stars_w.duplicate(true)
 	if in_level:
 		var cells := []
@@ -1220,6 +1224,9 @@ func _apply_save(d: Dictionary) -> void:
 	boss_done = bool(d.get("boss_done", false))
 	if open_play:
 		open_play.restore(d.get("stars", []))
+		if open_play.extras:
+			open_play.extras.started = true
+			open_play.extras.coins0 = coins - int(d.get("visit_coins", 0))
 		var q := String(d.get("quest", ""))
 		if q == "" or open_play.ids().has(q):
 			open_play.pick(q if q != "" and not open_play.got.has(q) else open_play.first_open(), false)
@@ -1663,7 +1670,7 @@ func _step(dt: float) -> void:
 		_turn_camera(dt)
 		hud.world_taps.clear()
 	super_charge = minf(1.0, super_charge + dt / SUPER_TIME)
-	if swap_pressed:
+	if swap_pressed and not (open_play and open_play.extras and open_play.extras.on_swap()):   # SWAP gets off DASH first
 		do_swap()
 	if super_pressed and super_charge >= 1.0:
 		_thunderbolt()
@@ -1904,11 +1911,18 @@ func _setup_powers() -> void:
 
 
 func _power_speed() -> float:
-	return powers.speed_mult() if powers and leader() == powers.worn_by else 1.0
+	return (powers.speed_mult() if powers and leader() == powers.worn_by else 1.0) * _ride(true)
 
 
 func _power_jump() -> float:
-	return powers.jump_mult() if powers and leader() == powers.worn_by else 1.0
+	return (powers.jump_mult() if powers and leader() == powers.worn_by else 1.0) * _ride(false)
+
+
+## Riding DASH THE DINO (extras.gd): faster and a little higher.
+func _ride(speed: bool) -> float:
+	if open_play and open_play.extras:
+		return open_play.extras.ride_speed() if speed else open_play.extras.ride_jump()
+	return 1.0
 
 
 ## LAVA LAND and BEACH BAY: lava burns and bounces you up high (OUCH! like Mario 64),
@@ -2160,6 +2174,8 @@ func _rocco_after_move(h: Hero, pre: Vector3) -> void:
 
 
 func _action(h: Hero) -> void:
+	if open_play and open_play.extras and open_play.extras.on_action(h):   # riding DASH: the tongue
+		return
 	if grab and grab.on_action(h):   # GRAB / THROW / tail swing first (only when something's there)
 		return
 	if powers and powers.on_action(h):   # FIRE / ICE FLOWER throw instead
@@ -2911,6 +2927,8 @@ func hurt_hero(from: Vector3) -> void:
 	if hurt_t > 0 or invincible or state != "play":
 		return
 	if powers and powers.on_hurt():   # STAR / METAL: nothing; MUSHROOM / FLOWER: the power takes the hit
+		return
+	if open_play and open_play.extras and open_play.extras.on_hurt():   # riding DASH: he runs off instead
 		return
 	var l := leader()
 	hearts -= 1

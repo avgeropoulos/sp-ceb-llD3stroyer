@@ -101,6 +101,12 @@ jobs:
             grep -q 'TEST PASSED' test-grab-$look.log
           done
           for look in paper toy; do
+            for world in meadow frost; do
+              timeout 300s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/extras_check.gd -- $look $world 2>&1 | tee test-extras-$world-$look.log
+              grep -q 'TEST PASSED' test-extras-$world-$look.log
+            done
+          done
+          for look in paper toy; do
             timeout 300s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/minigame_check.gd -- $look 2>&1 | tee test-minigame-$look.log
             grep -q 'TEST PASSED' test-minigame-$look.log
           done

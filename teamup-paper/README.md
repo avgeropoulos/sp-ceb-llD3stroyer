@@ -506,3 +506,25 @@ Builds made on a computer (version 0) never check. Test: `godot --headless --pat
   use the real Mobile renderer with a software Vulkan driver (`apt-get install mesa-vulkan-drivers`, then
   `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json xvfb-run godot --rendering-driver vulkan --rendering-method mobile ...`);
   the OpenGL preview hides lighting mistakes (the sun once lit everything from behind and only Vulkan showed it).
+
+## More Mario 64 fun in every world (`scripts/extras.gd`)
+
+* **100 COIN STAR**: collect 100 coins in one visit (coins from bad guys and stars count too) and a star pops
+  out above you and floats down. It's on the star select as "100 COINS"; the quest panel counts x / 100. The
+  visit's count is saved with a mid-world save (`visit_coins`).
+* **Friends**: MUSHROOM FOLK stand around (start, the foot of the mountain path, the castle gate) and give hints
+  in speech bubbles when you walk up. Each world has one friend with a star quest (`Extras.QUEST`):
+  * **RACE ZOOMY** (meadow, moon, lava, jungle): ZOOMY THE QUICK, a racing turtle in sneakers, waits at the foot
+    of the mountain path. Stand next to him for a second: 3, 2, 1, GO! Beat him to the summit for a star
+    (sprinting makes it easy; walking is close). Lose and he waits at the bottom for a rematch.
+  * **LOST CHICKS** (frost, dunes, swamp, candy, beach, cloud): MAMA CLUCK lost 5 chicks around the world. Touch
+    a chick and it follows you in a line; walk them back to her; all 5 home = a star.
+* **1-UP mushrooms** (green): hidden in 3 places (one on a corner of the summit): all your hearts back.
+* **! CAP BLOCKS** by the start: bump the red one from below for a WING CAP, the grey one for a METAL CAP.
+* **DASH THE DINO** (meadow, dunes, candy, beach, jungle, cloud) waits near the start: JUMP onto him to ride.
+  He's faster and jumps a bit higher, holding JUMP while falling flutters, ACTION (TONGUE) gobbles the bad guy in
+  front (not bosses). SWAP gets off. Getting hit while riding costs no heart: Dash runs off and you jump back on.
+* Butterflies, birds that fly off when you run near, and fish jumping out of ponds and the bay.
+* Test: `tests/extras_check.gd -- [toy] meadow|frost` (Rocco really races ZOOMY up the path with real physics;
+  the chicks; the 100-coin star; 1-UP; ! block; Dash's ride, tongue, SWAP and getting hit; the birds).
+

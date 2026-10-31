@@ -1197,6 +1197,62 @@ def power_items():
     p.done("pw_propeller", border=2)
 
 
+def extras_art():
+    """The Mario 64-style extras: ZOOMY THE QUICK (a racing turtle in sneakers), MAMA CLUCK and
+    her chicks, DASH THE DINO to ride, and the ! cap blocks."""
+    W_ = rgb("#ffffff")
+    for name, leg in (("zoomy_1", 0.6), ("zoomy_2", -0.6)):
+        p = Pen(64, 64)
+        for a, col in ((leg, rgb("#e8413b")), (-leg, rgb("#c22f2a"))):   # sneakers
+            fx = 30 + math.sin(a) * 9
+            p.limb(30, 44, fx, 54, 5, rgb("#ffd96a"))
+            p.oval(fx + 2, 56, 6, 3.5, col)
+        p.d.chord(p._b(12, 22, 48, 58), 180, 360, fill=rgb("#3fae4a"), outline=INK, width=int(LW * SS))   # shell
+        p.rect(12, 38, 48, 44, rgb("#fff3dc"), r=3)
+        for cx in (22, 30, 38):
+            p.oval(cx, 31, 4, 3, rgb("#2f8a3a"), ink=False)
+        p.limb(44, 36, 50, 26, 6, rgb("#ffd96a"))   # neck
+        p.oval(52, 20, 9, 8, rgb("#ffd96a"))       # head
+        p.rect(44, 13, 61, 17, rgb("#3f7fd9"), r=2)   # headband
+        p.eye(55, 19, 1.8, 2.6)
+        p.done(name, border=2)
+    p = Pen(64, 70)   # MAMA CLUCK: a round orange bird with a bonnet
+    p.limb(28, 56, 26, 66, 3, rgb("#ffb020"))
+    p.limb(36, 56, 38, 66, 3, rgb("#ffb020"))
+    p.oval(32, 42, 20, 17, rgb("#ff9a4a"))
+    p.oval(32, 48, 12, 9, rgb("#fff0d8"), ink=False)
+    p.oval(32, 20, 13, 12, rgb("#ff9a4a"))
+    p.d.chord(p._b(18, 4, 46, 24), 180, 360, fill=rgb("#ff8fc0"), outline=INK, width=int(LW * SS))
+    p.poly([(44, 21), (54, 23), (44, 26)], rgb("#ffd23a"))
+    p.eye(38, 18, 1.8, 2.6)
+    p.done("mama", border=2)
+    p = Pen(40, 40)   # a chick
+    p.limb(17, 30, 16, 37, 2.4, rgb("#ffb020"))
+    p.limb(23, 30, 24, 37, 2.4, rgb("#ffb020"))
+    p.oval(20, 22, 12, 11, rgb("#ffe14a"))
+    p.oval(14, 22, 5, 3.5, rgb("#ffd23a"), ink=False)
+    p.poly([(30, 18), (37, 20), (30, 23)], rgb("#ff9a3c"))
+    p.eye(25, 17, 1.6, 2.2)
+    p.done("chick", border=1.6)
+    for name, leg in (("dash_1", 0.5), ("dash_2", -0.5)):   # DASH: a green dino with a red saddle
+        p = Pen(72, 70)
+        for a in (leg, -leg):
+            fx = 30 + math.sin(a) * 9
+            p.limb(30, 46, fx, 58, 6, rgb("#4cc85a"))
+            p.oval(fx + 3, 61, 7, 4, rgb("#ff9a3c"))
+        p.poly([(10, 34), (2, 24), (16, 38)], rgb("#4cc85a"))   # tail
+        p.oval(28, 40, 18, 13, rgb("#4cc85a"))
+        p.oval(30, 45, 11, 7, W_, ink=False)
+        p.oval(26, 29, 9, 5, rgb("#e8413b"))      # saddle
+        p.limb(42, 34, 50, 20, 8, rgb("#4cc85a"))  # neck
+        p.oval(56, 16, 13, 10, rgb("#4cc85a"))     # head + big nose
+        p.oval(66, 18, 6, 6, rgb("#5ad86a"))
+        for i in range(3):
+            p.oval(44 - i * 6, 8 + i * 3, 3.2, 3.2, rgb("#e8413b"))   # spikes on the back of the head
+        p.eye(56, 11, 2.4, 3.4)
+        p.done(name, border=2)
+
+
 def sign():
     p = Pen(70, 70)
     p.rect(32, 30, 38, 68, rgb("#8a5a35"), r=1.5)
@@ -2041,6 +2097,7 @@ def main():
     sign()
     star()
     power_items()
+    extras_art()
     textures()
     build_textures()
     world_textures()

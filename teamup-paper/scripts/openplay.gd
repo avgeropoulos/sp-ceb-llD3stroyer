@@ -36,12 +36,14 @@ var beacons := {}            # star id -> floating name
 var flag: Node3D
 var painting: Painting       # the SECRET PAINTING (jump in for its star)
 var course: CoursePlay       # the cannon, the slide, quicksand (Mario 64-style course parts)
+var extras: Extras           # 100 COIN STAR, friends with quests, 1-UPs, ! blocks, DASH, critters (extras.gd)
 var t := 0.0
 
 
 func setup(g, lv: Level) -> void:
 	game = g
 	level = lv
+	Extras.add_objectives(level)   # 100 COINS + the friend's quest (before the floating names are made)
 	course = CoursePlay.new()
 	add_child(course)
 	course.setup(g, lv)
@@ -81,6 +83,9 @@ func setup(g, lv: Level) -> void:
 		painting = Painting.new()
 		add_child(painting)
 		painting.setup(game, level)
+	extras = Extras.new()
+	add_child(extras)
+	extras.setup(game, level)
 	_make_beam()
 	pick(first_open(), false)
 
@@ -211,6 +216,8 @@ func step(dt: float) -> void:
 		course.step(dt)
 	if painting:
 		painting.step(dt)
+	if extras:
+		extras.step(dt)
 	for id in stars.keys():
 		var s: Node3D = stars[id]
 		s.rotation.y = t * 2.5
@@ -393,6 +400,11 @@ func target_pos(id: String = current) -> Vector3:
 			if dennis and not dog_following:
 				return dennis.position + Vector3(0, 0.8, 0)
 			return level.dog_home + Vector3(0, 0.8, 0)
+		"coins100", "npc":
+			if extras:
+				var ep := extras.target(id)
+				if ep != Vector3.ZERO:
+					return ep
 	return objective(id).pos
 
 
@@ -433,6 +445,9 @@ func progress(id: String = current) -> String:
 			return "Walk Dennis back to his doghouse!" if dog_following else "Dennis is lost! Find him!"
 		"painting":
 			return "JUMP into the painting on the castle wall!"
+		"coins100", "npc":
+			if extras:
+				return extras.progress(id)
 	return objective(id).get("hint", "")
 
 

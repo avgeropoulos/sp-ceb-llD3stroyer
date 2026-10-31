@@ -235,6 +235,11 @@ func _process(_dt: float) -> bool:
 					if g.open_play.stars.has(id):
 						place_at(g.open_play.stars[id].position - Vector3(0, 0.8, 0))
 						g.open_play.step(1.0 / 60)
+				for xid in ["coins100", "npc"]:   # 100 COINS and the friend's quest (tests/extras_check.gd does those)
+					if g.open_play.ids().has(xid):
+						g.open_play.got[xid] = true
+						if g.open_play.current == xid:
+							g.open_play.pick(g.open_play.next_open(xid), false)
 				if g.open_play.ids().has("painting"):   # the PAINTING STAR (tests/painting_check.gd jumps in for it)
 					g.open_play.got["painting"] = true
 					if g.open_play.current == "painting":
