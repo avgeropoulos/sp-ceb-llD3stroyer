@@ -74,6 +74,7 @@ var cleared := 0              # times this file finished the level
 var home: HomeBase            # only at home
 var bonus: Bonus             # only in a painting's BONUS COURSE
 var open_play: OpenPlay       # only in the open worlds (stars, gate, flag)
+var grab: Grab                # open worlds: GRAB / THROW / TAIL SWING (grab.gd)
 var gate_open := false        # Krag Jr.'s gold gate (5 stars)
 var stars_w := {}             # world id -> star ids found there (kept for good, like Mario 64)
 var powers: Powers            # power-ups (open worlds)
@@ -248,6 +249,9 @@ func _ready_level() -> void:
 		level.add_child(open_play)
 		open_play.setup(self, level)
 		_setup_powers()
+		grab = Grab.new()
+		level.add_child(grab)
+		grab.setup(self, level)
 	else:
 		level.prop("flag", Vector3(Level.CHECKPOINT_X, 5, 3.9), 3.2)
 		level.prop("flag", Vector3(Level.FLAG_X, 5, 3.9), 4.6)
@@ -793,6 +797,10 @@ func next_swap_name() -> String:
 
 
 func action_label() -> String:
+	if grab and state == "play":
+		var gl: String = grab.label()
+		if gl != "":
+			return gl
 	match leader().who:
 		"rocco":
 			return {"long": "LONG JUMP", "backflip": "BACKFLIP", "dive": "DIVE", "pound": "POUND", "": "ACTION"}[_rocco_action_kind(leader())]
@@ -1660,6 +1668,8 @@ func _step(dt: float) -> void:
 	if super_pressed and super_charge >= 1.0:
 		_thunderbolt()
 	_update_leader(leader(), dt)
+	if grab:
+		grab.step(dt)
 	_update_follower(follower(), dt)
 	_ground_effects(dt)
 	_update_foes(dt)
@@ -2150,6 +2160,8 @@ func _rocco_after_move(h: Hero, pre: Vector3) -> void:
 
 
 func _action(h: Hero) -> void:
+	if grab and grab.on_action(h):   # GRAB / THROW / tail swing first (only when something's there)
+		return
 	if powers and powers.on_action(h):   # FIRE / ICE FLOWER throw instead
 		return
 	match h.who:
@@ -2689,6 +2701,8 @@ func _update_foes(dt: float) -> void:
 			continue
 		f.tick(dt, self)
 		if not is_instance_valid(f) or f.dying >= 0 or not f.alive:
+			continue
+		if f.grabbed or f.kind == "kingbombo":   # held / thrown / swung, or KING BOMBO (he grabs instead of bumping)
 			continue
 		if l.overlaps(f) and powers and powers.on_touch(f):   # SUPER STAR / METAL CAP
 			continue

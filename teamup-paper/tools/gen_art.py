@@ -1630,6 +1630,47 @@ def bomber(name, step=0.0, lit=False):
     p.done(name)
 
 
+def king_bombo(name, step=0.0, mood="walk"):
+    """KING BOMBO: a big walking bomb with a gold crown, white moustache and little arms."""
+    p = Pen()
+    cx, cy = 32, 48
+    for s_ in (-1, 1):
+        p.oval(cx + s_ * 11 + step * s_ * 3, 74, 9, 5, rgb("#ff9a2a"))
+    p.rect(cx - 27, cy - 5, cx - 20, cy + 5, rgb("#c4c8d0"), r=1)
+    p.oval(cx - 30, cy, 5, 8, rgb("#c4c8d0"))
+    p.oval(cx, cy, 24, 24, rgb("#2b2f3c") if mood != "angry" else rgb("#6a2f3c"))
+    p.oval(cx - 9, cy - 11, 7, 4, rgb("#5a6070"), ink=False)
+    # little arms with white gloves
+    for s_ in (-1, 1):
+        p.line([(cx + s_ * 22, cy + 2), (cx + s_ * 29, cy - 4 if mood == "angry" else cy + 6)], rgb("#2b2f3c"), 2.5)
+        p.oval(cx + s_ * 30, cy - 5 if mood == "angry" else cy + 7, 4, 4, rgb("#f4f4f4"))
+    # crown
+    p.poly([(cx - 13, cy - 22), (cx - 13, cy - 32), (cx - 7, cy - 26), (cx, cy - 35), (cx + 7, cy - 26),
+            (cx + 13, cy - 32), (cx + 13, cy - 22)], rgb("#ffcf33"))
+    p.oval(cx, cy - 29, 2.2, 2.2, rgb("#ff4f6d"), ink=False)
+    # face
+    if mood == "dizzy":
+        for ex in (cx + 4, cx + 14):
+            p.line([(ex - 3, cy - 6), (ex + 3, cy)], INK, 1.8)
+            p.line([(ex + 3, cy - 6), (ex - 3, cy)], INK, 1.8)
+        for i in range(3):
+            p.star(cx - 10 + i * 10, cy - 40, 3.5, rgb("#ffd23a"))
+    else:
+        p.eye(cx + 4, cy - 3, 3.0, 4.2, 1.0)
+        p.eye(cx + 14, cy - 3, 2.6, 3.8, 1.0)
+        if mood == "angry":
+            p.line([(cx, cy - 11), (cx + 8, cy - 8)], INK, 2)
+            p.line([(cx + 18, cy - 10), (cx + 11, cy - 8)], INK, 2)
+    p.oval(cx + 5, cy + 7, 7, 3, rgb("#f4f4f4"))
+    p.oval(cx + 14, cy + 7, 6, 3, rgb("#f4f4f4"))
+    p.done(name)
+
+
+def kings():
+    king_bombo("kingbombo_1", 1); king_bombo("kingbombo_2", -1)
+    king_bombo("kingbombo_angry", 0.5, "angry"); king_bombo("kingbombo_dizzy", 0, "dizzy")
+
+
 def chompy(name, bite=False):
     """A big iron ball with teeth, on a chain."""
     p = Pen()
@@ -1761,6 +1802,7 @@ def foes2():
     hopper("hopper_1"); hopper("hopper_jump", jump=True)
     boohoo("boohoo_1"); boohoo("boohoo_shy", shy=True)
     bomber("bomber_1", 1); bomber("bomber_2", -1); bomber("bomber_lit", 0.5, lit=True)
+    kings()
     chompy("chompy_1"); chompy("chompy_bite", bite=True)
     spiky("spiky_1", 1); spiky("spiky_2", -1)
     bat("bat_hang", hang=True); bat("bat_1", 0); bat("bat_2", 1)

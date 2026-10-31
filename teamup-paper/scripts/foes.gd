@@ -22,6 +22,8 @@ var turn_t := 0.0
 var atk_i := 0                # walking bosses: which attack comes next
 var stomps := 0               # how many jumps left in this stomp attack
 var rebuilt := false          # DRY KRAG falls apart once, then gets back up
+var grabbed := false          # held / swung / thrown by a hero (grab.gd moves it)
+var throw_hit := false        # KING BOMBO: only a throw onto the summit hurts him
 
 
 func init(lv: Level, k: String, pos: Vector3) -> void:
@@ -79,6 +81,9 @@ func init(lv: Level, k: String, pos: Vector3) -> void:
 		"drykragjr":
 			setup(lv, {"fly": ["drykragjr_1", "drykragjr_2"], "angry": ["drykragjr_angry"], "hurt": ["drykragjr_hurt"]}, 2.6, 46, k)
 			hw = 0.95; height = 1.7; hp = 18; is_boss = true; state = "sleep"
+		"kingbombo":   # KING BOMBO: the big bomb king on the summit (grab him from behind!)
+			setup(lv, {"walk": ["kingbombo_1", "kingbombo_2"], "lit": ["kingbombo_angry"], "dizzy": ["kingbombo_dizzy"]}, 3.0, 10, k)
+			hw = 0.9; height = 2.2; hp = 3; state = "sleep"; stompable = false
 		_:
 			if Bosses.is_boss(k):   # a walking boss: a Kragling, King Krag or Dry Krag
 				var big: bool = Bosses.INFO[k].get("big", false)
@@ -123,6 +128,11 @@ func hurt(n: int, game) -> void:
 	if kind == "bomber" and state != "lit":   # hitting a bomb lights its fuse
 		_light(game)
 		return
+	if kind == "kingbombo" and not throw_hit:   # stomps and shots just bounce off him
+		flash_t = 0.15
+		game.sfx("bonk", -6)
+		return
+	throw_hit = false
 
 	if state == "heap":   # DRY KRAG in a heap of bones: can't be hurt
 		return
@@ -182,7 +192,7 @@ func tick(dt: float, game) -> void:
 		dying += dt
 		if kind in ["grumbler", "penguin", "scorpion", "biggrumbler"]:
 			squash = Vector2(1.0, 1.0)
-		elif kind in FOES2:   # squish flat and pop
+		elif kind in FOES2 or kind == "kingbombo":   # squish flat and pop
 			squash = Vector2(1.0 + dying * 1.2, maxf(0.15, 1.0 - dying * 2.5))
 		elif kind == "skelly":
 			spin_t = 0.3
@@ -227,10 +237,14 @@ func _tick_open(dt: float, game, lead: Actor) -> void:
 	var to := lead.position - position
 	var flat := Vector3(to.x, 0, to.z)
 	var dist := flat.length()
-	if not is_boss and dist > 40:
+	if grabbed:
+		return   # in someone's hands (grab.gd moves it)
+	if not is_boss and dist > 40 and kind != "kingbombo":
 		return   # far away: sleep (saves time on the tablet)
 	state_t += dt
 	match kind:
+		"kingbombo":
+			_kingbombo(dt, game, lead, flat, dist)
 		"grumbler":
 			_wander(dt, 1.7)
 			squash = Vector2(1.0 + sin(t * 10) * 0.04, 1.0 - sin(t * 10) * 0.04)
@@ -1122,3 +1136,107 @@ func _boss_shoot(atk: String, game, lead: Actor) -> void:
 				v.y = 1.0
 				game.spawn_shot("bone", from, v, self)
 			cool = 99.0
+
+
+# ------------------------------------------------------------------ KING BOMBO
+## The big bomb king on the summit. He waddles at you, picks you up if you're in front
+## of him and throws you, and lobs little bombs. Grab him from BEHIND (or while he's
+## dizzy) and throw him down onto the summit 3 times. Thrown off the summit, he
+## jumps back up. He only takes damage from throws (`bombo_hit`).
+const BOMBO_SPEED := 1.5
+
+
+func _kingbombo(dt: float, game, lead: Actor, flat: Vector3, dist: float) -> void:
+	var top: Vector3 = level.summit_spot
+	vel.y -= GRAVITY * dt
+	if position.y < top.y - 4 or Vector2(position.x - top.x, position.z - top.z).length() > 9:
+		_bombo_home(game)   # fell (or was thrown) off: back up he jumps
+		return
+	match state:
+		"sleep":
+			play("walk")
+			anim_t = 0
+			_walk(dt, 0.0)
+			if dist < 10 and absf(lead.position.y - position.y) < 4:
+				state = "walk"
+				state_t = 0
+				game.hud.say("KING BOMBO!", "Get BEHIND him, GRAB him and THROW him down!", 3.0)
+				game.speak("Who dares climb my mountain?", "rocco")
+				game.sfx("alert")
+		"walk":
+			play("walk")
+			if dist > 0.1:
+				heading = flat.normalized()
+				facing = heading
+			_walk(dt, BOMBO_SPEED if dist > 1.6 else 0.0)
+			_bombo_stay(top)
+			cool -= dt
+			if cool <= 0 and dist > 3.0 and dist < 12:
+				cool = 3.5 if hp > 1 else 2.2
+				game.spawn_shot("spikeball", position + Vector3(0, 2.0, 0) + facing * 0.6, facing * 3.2 + Vector3(0, 3, 0), self)
+				game.sfx("arrow", -4)
+			# you're right in front of him: he picks you up!
+			if dist < hw + 0.9 and absf(lead.position.y - position.y) < 1.2 and flat.normalized().dot(facing) > 0.5 \
+					and game.grab and game.grab.holding == null and game.grab.tail == null and game.hurt_t <= 0:
+				state = "hold"
+				state_t = 0
+				game.grab.held_by = self
+				game.hud.say("UH OH!", "King Bombo grabbed you!", 1.4)
+				game.speak("Ha ha! Off you go!", "rocco")
+		"hold":   # holding the hero over his head, then a big throw
+			play("lit")
+			_walk(dt, 0.0)
+			lead.position = position + Vector3(0, height + 0.3, 0)
+			lead.vel = Vector3.ZERO
+			if state_t > 1.0:
+				var f := Vector3(facing.x, 0, facing.z).normalized()
+				lead.vel = f * 7.5 + Vector3(0, 9.0, 0)
+				lead.position += f * 0.8
+				game.grab.held_by = null
+				game.hurt_t = 1.0   # a moment to land before he can grab you again
+				game.sfx("jump2")
+				state = "walk"
+				state_t = 0
+				cool = 1.5
+		"dizzy":   # after a throw: stars round his head (grab him from any side!)
+			play("dizzy")
+			_walk(dt, 0.0)
+			if state_t > 2.6:
+				state = "walk"
+				state_t = 0
+
+
+func _bombo_stay(top: Vector3) -> void:
+	var d := Vector2(position.x - top.x, position.z - top.z)
+	if d.length() > 3.6:   # never walks off his summit by himself
+		d = d.normalized() * 3.6
+		position.x = top.x + d.x
+		position.z = top.z + d.y
+
+
+func _bombo_home(game) -> void:
+	var top: Vector3 = level.summit_spot
+	position = top + Vector3(0, 0.05, 0)
+	vel = Vector3.ZERO
+	grabbed = false
+	state = "walk"
+	state_t = 0
+	game.fx.burst(position + Vector3(0, 1.2, 0), Color(1, 1, 1), 14, 4, 5)
+	game.sfx("jump2")
+
+
+## A throw that landed on the summit: one hit (3 beat him).
+func bombo_hit(game) -> void:
+	throw_hit = true
+	safe_t = 0
+	hurt(1, game)
+	game.fx.shake = 0.5
+	if dying < 0:
+		state = "dizzy"
+		state_t = 0
+		game.hud.say("BOOM! %d MORE!" % hp, "Grab him again while he's dizzy!", 1.8)
+		game.speak(["Ow! My crown!", "No fair!", "Grrr!"][hp % 3], "rocco")
+	else:
+		game.speak("You beat the bomb king!", "rocco")
+		game.fx.burst(position + Vector3(0, 1.2, 0), Color("ffb02e"), 40, 8, 7)
+		game.fx.burst(position + Vector3(0, 1.2, 0), Color(0.3, 0.3, 0.32), 20, 5, 5)
