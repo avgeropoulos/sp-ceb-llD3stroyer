@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Quick Invoice</title><link rel="stylesheet" href="shared.css">
+<style>
+#inv{background:#fff;color:#111;border-radius:12px;padding:32px;border:1px solid var(--line)}
+#inv h2{margin:0;font-size:1.8rem}
+#inv table th,#inv table td{border-color:#ddd}
+#inv .right{text-align:right}
+.wm{color:#999;font-size:.8rem;text-align:center;margin-top:24px}
+.items input{padding:6px}
+</style></head>
+<body><main>
+<h1>Quick Invoice</h1>
+<p class="sub">Fill in the form, then print or save the invoice as a PDF.</p>
+
+<div class="card noprint">
+  <div class="row">
+    <div><label>Your name / business</label><input id="from" placeholder="Jane Doe Design"></div>
+    <div><label>Bill to</label><input id="to" placeholder="Acme Corp"></div>
+  </div>
+  <div class="row" style="margin-top:12px">
+    <div><label>Invoice #</label><input id="num"></div>
+    <div><label>Date</label><input id="date" type="date"></div>
+    <div><label>Currency</label><select id="cur"><option>$</option><option>€</option><option>£</option><option>¥</option></select></div>
+    <div><label>Tax %</label><input id="tax" type="number" value="0" min="0"></div>
+  </div>
+  <h3>Line items</h3>
+  <div id="items" class="items"></div>
+  <div class="row" style="margin-top:8px"><button class="ghost" id="add">+ Add item</button><button id="print">Print / Save PDF</button></div>
+</div>
+
+<div id="inv"></div>
+
+<div class="card pro noprint" style="margin-top:16px">
+  <b>Pro, $4.99/mo:</b> remove the footer, add your logo, save clients, send invoices by email, and add payment links (Stripe/PayPal).
+</div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const KEY='quickinvoice.v1';
+let s;try{s=JSON.parse(localStorage.getItem(KEY))}catch{}
+s=s||{from:'',to:'',num:'INV-001',date:new Date().toISOString().slice(0,10),cur:'$',tax:0,items:[{d:'Design work',q:1,p:500}]};
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function save(){try{localStorage.setItem(KEY,JSON.stringify(s))}catch{}}
+function money(n){return s.cur+n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}
+function renderItems(){
+  $('items').innerHTML=s.items.map((it,i)=>`<div class="row" style="margin-bottom:6px">
+   <input style="flex:3 1 200px" data-i="${i}" data-k="d" value="${esc(it.d)}" placeholder="Description">
+   <input style="flex:1 1 60px" data-i="${i}" data-k="q" type="number" value="${it.q}" min="0">
+   <input style="flex:1 1 80px" data-i="${i}" data-k="p" type="number" value="${it.p}" min="0" step="0.01">
+   <button class="danger" style="flex:0 0 auto" data-del="${i}">✕</button></div>`).join('');
+}
+function renderInvoice(){
+  const sub=s.items.reduce((a,it)=>a+(+it.q||0)*(+it.p||0),0), tax=sub*(+s.tax||0)/100;
+  $('inv').innerHTML=`<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px">
+   <div><h2>INVOICE</h2><div>${esc(s.num)}</div><div>${esc(s.date)}</div></div>
+   <div style="text-align:right"><b>${esc(s.from||'Your business')}</b><br>Bill to: ${esc(s.to||'Client')}</div></div>
+   <table style="margin-top:24px"><tr><th>Description</th><th class="right">Qty</th><th class="right">Price</th><th class="right">Amount</th></tr>
+   ${s.items.map(it=>`<tr><td>${esc(it.d)}</td><td class="right">${+it.q||0}</td><td class="right">${money(+it.p||0)}</td><td class="right">${money((+it.q||0)*(+it.p||0))}</td></tr>`).join('')}
+   <tr><td colspan="3" class="right">Subtotal</td><td class="right">${money(sub)}</td></tr>
+   <tr><td colspan="3" class="right">Tax (${+s.tax||0}%)</td><td class="right">${money(tax)}</td></tr>
+   <tr><td colspan="3" class="right"><b>Total</b></td><td class="right"><b>${money(sub+tax)}</b></td></tr></table>
+   <div class="wm">Made with Quick Invoice</div>`;
+}
+function all(){renderItems();renderInvoice();save()}
+['from','to','num','date','cur','tax'].forEach(k=>{$(k).value=s[k];$(k).addEventListener('input',e=>{s[k]=e.target.value;renderInvoice();save()})});
+$('items').addEventListener('input',e=>{const i=e.target.dataset.i;if(i!=null){s.items[i][e.target.dataset.k]=e.target.value;renderInvoice();save()}});
+$('items').addEventListener('click',e=>{const d=e.target.dataset.del;if(d!=null){s.items.splice(d,1);all()}});
+$('add').onclick=()=>{s.items.push({d:'',q:1,p:0});all()};
+$('print').onclick=()=>window.print();
+all();
+</script></body></html>

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Deep Focus</title><link rel="stylesheet" href="shared.css">
+<style>
+#clock{font-size:clamp(3.5rem,18vw,6rem);font-weight:800;text-align:center;font-variant-numeric:tabular-nums;margin:8px 0}
+#mode{text-align:center;color:var(--muted);text-transform:uppercase;letter-spacing:.1em}
+.bars{display:flex;align-items:flex-end;gap:6px;height:100px}
+.bars div{flex:1;background:var(--accent);border-radius:4px 4px 0 0;min-height:2px}
+.lbl{display:flex;gap:6px}.lbl span{flex:1;text-align:center;font-size:.75rem;color:var(--muted)}
+</style></head>
+<body><main>
+<h1>Deep Focus</h1>
+<p class="sub">A Pomodoro timer: 25 minutes of focus, then a 5-minute break. It tracks your focus time each day.</p>
+
+<div class="card">
+  <div id="mode">Focus</div><div id="clock">25:00</div>
+  <div class="row"><button id="go">Start</button><button class="ghost" id="skip">Skip</button><button class="ghost" id="reset">Reset</button></div>
+  <div class="row" style="margin-top:12px">
+    <div><label>Focus (min)</label><input id="fm" type="number" min="1" value="25"></div>
+    <div><label>Break (min)</label><input id="bm" type="number" min="1" value="5"></div>
+  </div>
+</div>
+
+<div class="card"><div class="row"><div><div class="muted">Today</div><div class="big" id="today">0m</div></div>
+  <div><div class="muted">Sessions today</div><div class="big" id="sess">0</div></div></div>
+  <h3>Last 7 days</h3><div class="bars" id="bars"></div><div class="lbl" id="lbls"></div></div>
+
+<div class="card pro"><b>Pro, $2.99/mo:</b> ambient sounds (rain, café, brown noise), site blocker, task labels, monthly reports, and CSV export.</div>
+</main>
+<script>
+const $=id=>document.getElementById(id), KEY='deepfocus.v1';
+let st;try{st=JSON.parse(localStorage.getItem(KEY))}catch{}st=st||{fm:25,bm:5,log:{}};
+const dkey=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+let mode='focus',left=st.fm*60,endAt=null,tick=null;
+function save(){try{localStorage.setItem(KEY,JSON.stringify(st))}catch{}}
+function beep(){try{const a=new AudioContext(),o=a.createOscillator(),g=a.createGain();o.connect(g);g.connect(a.destination);o.frequency.value=880;g.gain.setValueAtTime(.2,a.currentTime);g.gain.exponentialRampToValueAtTime(.001,a.currentTime+1);o.start();o.stop(a.currentTime+1)}catch{}}
+function draw(){const m=Math.floor(left/60),s=left%60;$('clock').textContent=`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  $('mode').textContent=mode==='focus'?'Focus':'Break';document.title=`${$('clock').textContent} · Deep Focus`;
+  $('go').textContent=endAt?'Pause':'Start'}
+function stats(){const k=dkey(new Date()),t=st.log[k]||{m:0,n:0};$('today').textContent=t.m+'m';$('sess').textContent=t.n;
+  const days=[...Array(7)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()-6+i);return d});
+  const vals=days.map(d=>(st.log[dkey(d)]||{m:0}).m),max=Math.max(25,...vals);
+  $('bars').innerHTML=vals.map(v=>`<div style="height:${v/max*100}%" title="${v} min"></div>`).join('');
+  $('lbls').innerHTML=days.map(d=>`<span>${'SMTWTFS'[d.getDay()]}</span>`).join('')}
+function finish(completed){
+  if(mode==='focus'&&completed){const k=dkey(new Date()),t=st.log[k]||{m:0,n:0};t.m+=st.fm;t.n++;st.log[k]=t;save();stats()}
+  mode=mode==='focus'?'break':'focus';left=(mode==='focus'?st.fm:st.bm)*60;stop();draw();
+  if(completed){beep();if(Notification?.permission==='granted')new Notification(mode==='break'?'Time for a break':'Back to focus')}}
+function stop(){clearInterval(tick);tick=null;endAt=null}
+function start(){endAt=Date.now()+left*1000;tick=setInterval(()=>{left=Math.max(0,Math.round((endAt-Date.now())/1000));draw();if(!left)finish(true)},250);
+  if(window.Notification&&Notification.permission==='default')Notification.requestPermission()}
+$('go').onclick=()=>{endAt?stop():start();draw()};
+$('skip').onclick=()=>finish(false);
+$('reset').onclick=()=>{stop();left=(mode==='focus'?st.fm:st.bm)*60;draw()};
+['fm','bm'].forEach(k=>{$(k).value=st[k];$(k).onchange=e=>{st[k]=Math.max(1,+e.target.value||1);save();if(!endAt){left=(mode==='focus'?st.fm:st.bm)*60;draw()}}});
+left=st.fm*60;draw();stats();
+</script></body></html>

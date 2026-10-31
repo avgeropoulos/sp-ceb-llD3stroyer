@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Streaks</title><link rel="stylesheet" href="shared.css">
+<style>
+.habit{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.habit .name{flex:1 1 140px;font-weight:600}
+.days{display:flex;gap:4px}
+.day{width:30px;height:30px;border-radius:6px;border:1px solid var(--line);display:grid;place-items:center;font-size:.7rem;color:var(--muted);cursor:pointer;background:var(--bg)}
+.day.on{background:var(--good);color:#fff;border-color:var(--good)}
+.streak{min-width:70px;text-align:right}
+</style></head>
+<body><main>
+<h1>Streaks</h1>
+<p class="sub">Tap a day to mark it done. Try not to break the chain.</p>
+
+<div class="card row">
+  <input id="name" style="flex:3 1 200px" placeholder="New habit, e.g. Read 10 pages">
+  <button id="add" style="flex:0 0 auto">Add habit</button>
+</div>
+<div id="list"></div>
+<p id="empty" class="muted">No habits yet. Add one above.</p>
+
+<div class="card pro"><b>Pro, $3.99/mo or $29 lifetime:</b> unlimited habits (free plan: 3), daily reminders, yearly heatmaps, streak freezes, and cloud sync.</div>
+</main>
+<script>
+const $=id=>document.getElementById(id), KEY='streaks.v1', FREE_LIMIT=3;
+let habits;try{habits=JSON.parse(localStorage.getItem(KEY))}catch{}habits=habits||[];
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const key=d=>d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+function lastDays(n){const out=[];for(let i=n-1;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);out.push(d)}return out}
+function streak(h){ // consecutive days ending today (or yesterday, if today isn't done yet)
+  const d=new Date();if(!h.done[key(d)])d.setDate(d.getDate()-1);
+  let n=0;while(h.done[key(d)]){n++;d.setDate(d.getDate()-1)}return n;
+}
+function render(){
+  try{localStorage.setItem(KEY,JSON.stringify(habits))}catch{}
+  $('empty').hidden=habits.length>0;
+  const days=lastDays(7);
+  $('list').innerHTML=habits.map((h,i)=>`<div class="card habit"><div class="name">${esc(h.name)}</div>
+    <div class="days">${days.map(d=>`<div class="day ${h.done[key(d)]?'on':''}" data-i="${i}" data-k="${key(d)}" title="${d.toDateString()}">${'SMTWTFS'[d.getDay()]}</div>`).join('')}</div>
+    <div class="streak">🔥 <b>${streak(h)}</b></div><button class="danger" data-del="${i}">✕</button></div>`).join('');
+}
+$('add').onclick=()=>{const name=$('name').value.trim();if(!name)return;
+  if(habits.length>=FREE_LIMIT)return alert('The free plan allows '+FREE_LIMIT+' habits. Upgrade to Pro for unlimited habits.');
+  habits.push({name,done:{}});$('name').value='';render()};
+$('name').onkeydown=e=>{if(e.key==='Enter')$('add').click()};
+$('list').onclick=e=>{const t=e.target;
+  if(t.dataset.del!=null){if(confirm('Delete this habit?')){habits.splice(t.dataset.del,1);render()}return}
+  if(t.dataset.k){const h=habits[t.dataset.i];h.done[t.dataset.k]?delete h.done[t.dataset.k]:h.done[t.dataset.k]=1;render()}};
+render();
+</script></body></html>

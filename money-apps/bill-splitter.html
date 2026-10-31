@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Split It</title><link rel="stylesheet" href="shared.css"></head>
+<body><main>
+<h1>Split It</h1>
+<p class="sub">Log who paid for what on a trip or night out, and see who owes whom.</p>
+
+<div class="card">
+  <label>People (comma separated)</label>
+  <input id="people" placeholder="Alex, Sam, Jordan">
+</div>
+
+<div class="card">
+  <div class="row">
+    <div style="flex:2 1 160px"><label>What</label><input id="what" placeholder="Dinner"></div>
+    <div><label>Amount</label><input id="amt" type="number" step="0.01" min="0"></div>
+    <div><label>Paid by</label><select id="payer"></select></div>
+  </div>
+  <button id="add" style="margin-top:12px">Add expense (split evenly)</button>
+</div>
+
+<div class="card"><h3 style="margin-top:0">Who owes whom</h3><div id="settle" class="muted">Add some expenses first.</div></div>
+<div class="card"><table id="list"></table></div>
+<div class="row noprint"><button class="ghost" id="share">Copy summary</button><button class="danger" id="reset">Start over</button></div>
+
+<div class="card pro" style="margin-top:16px"><b>Pro, $1.99 per trip:</b> uneven splits, multiple currencies, receipt photos, and a share link so everyone can add expenses.</div>
+</main>
+<script>
+const $=id=>document.getElementById(id), KEY='splitit.v1';
+let s;try{s=JSON.parse(localStorage.getItem(KEY))}catch{}s=s||{people:'',exp:[]};
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const people=()=>[...new Set(s.people.split(',').map(p=>p.trim()).filter(Boolean))];
+const fmt=n=>'$'+n.toFixed(2);
+function settle(){
+  const ps=people(),bal={};ps.forEach(p=>bal[p]=0);
+  s.exp.forEach(e=>{const share=e.amt/ps.length;ps.forEach(p=>bal[p]-=share);if(e.payer in bal)bal[e.payer]+=e.amt});
+  const cred=ps.filter(p=>bal[p]>0.005).map(p=>[p,bal[p]]),debt=ps.filter(p=>bal[p]<-0.005).map(p=>[p,-bal[p]]),out=[];
+  let i=0,j=0; // greedy matching gives few transfers
+  while(i<debt.length&&j<cred.length){const x=Math.min(debt[i][1],cred[j][1]);out.push(`${debt[i][0]} pays ${cred[j][0]} ${fmt(x)}`);
+    debt[i][1]-=x;cred[j][1]-=x;if(debt[i][1]<0.005)i++;if(cred[j][1]<0.005)j++}
+  return out;
+}
+function render(){
+  try{localStorage.setItem(KEY,JSON.stringify(s))}catch{}
+  const ps=people(),cur=$('payer').value;
+  $('payer').innerHTML=ps.map(p=>`<option${p===cur?' selected':''}>${esc(p)}</option>`).join('');
+  const total=s.exp.reduce((a,e)=>a+e.amt,0);
+  $('list').innerHTML=s.exp.length?`<tr><th>What</th><th>Paid by</th><th>Amount</th><th></th></tr>`+s.exp.map((e,i)=>
+    `<tr><td>${esc(e.what)}</td><td>${esc(e.payer)}</td><td>${fmt(e.amt)}</td><td><button class="danger" data-del="${i}">✕</button></td></tr>`).join('')+
+    `<tr><td colspan="2"><b>Total</b> (${ps.length?fmt(total/ps.length)+' each':''})</td><td><b>${fmt(total)}</b></td><td></td></tr>`:'<tr><td class="muted">No expenses yet.</td></tr>';
+  const t=settle();$('settle').innerHTML=s.exp.length?(t.length?t.map(x=>`<div style="color:var(--ink)">${esc(x)}</div>`).join(''):'Everyone is even.'):'Add some expenses first.';
+}
+$('people').value=s.people;$('people').oninput=e=>{s.people=e.target.value;render()};
+$('add').onclick=()=>{const amt=parseFloat($('amt').value),payer=$('payer').value;
+  if(!payer)return alert('Add the people first.');if(!(amt>0))return alert('Enter an amount.');
+  s.exp.push({what:$('what').value.trim()||'Expense',amt,payer});$('what').value=$('amt').value='';render()};
+$('list').onclick=e=>{const d=e.target.dataset.del;if(d!=null){s.exp.splice(d,1);render()}};
+$('reset').onclick=()=>{if(confirm('Clear everything?')){s={people:'',exp:[]};$('people').value='';render()}};
+$('share').onclick=()=>{const txt='Split It summary:\n'+(settle().join('\n')||'Everyone is even.');
+  navigator.clipboard?.writeText(txt).then(()=>alert('Copied!'),()=>prompt('Copy this:',txt))};
+render();
+</script></body></html>

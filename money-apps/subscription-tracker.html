@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sub Tracker</title><link rel="stylesheet" href="shared.css"></head>
+<body><main>
+<h1>Sub Tracker</h1>
+<p class="sub">See what your subscriptions really cost you, and what's due next.</p>
+
+<div class="row">
+  <div class="card"><div class="muted">Per month</div><div class="big" id="mo">$0</div></div>
+  <div class="card"><div class="muted">Per year</div><div class="big" id="yr">$0</div></div>
+  <div class="card"><div class="muted">Next due</div><div class="big" id="next" style="font-size:1.2rem">—</div></div>
+</div>
+
+<div class="card">
+  <div class="row">
+    <div style="flex:2 1 160px"><label>Name</label><input id="name" placeholder="Netflix"></div>
+    <div><label>Price</label><input id="price" type="number" step="0.01" min="0" placeholder="15.49"></div>
+    <div><label>Billed</label><select id="cycle"><option value="1">Monthly</option><option value="12">Yearly</option><option value="0.25">Weekly</option></select></div>
+    <div><label>Next payment</label><input id="due" type="date"></div>
+  </div>
+  <button id="add" style="margin-top:12px">Add subscription</button>
+</div>
+
+<div class="card"><table id="list"></table><p id="empty" class="muted">No subscriptions yet. Add one above.</p></div>
+
+<div class="card pro"><b>Pro, $2.99/mo:</b> email reminders 3 days before each charge, bank import, shared family plans, and tips on cheaper plans.</div>
+</main>
+<script>
+const $=id=>document.getElementById(id), KEY='subtracker.v1';
+let subs;try{subs=JSON.parse(localStorage.getItem(KEY))}catch{}subs=subs||[];
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmt=n=>'$'+n.toFixed(2);
+const monthly=s=>s.cycle==12?s.price/12:s.cycle==0.25?s.price*52/12:s.price;
+function rollDue(s){ // move past due dates forward to the next upcoming charge
+  if(!s.due)return null;const d=new Date(s.due+'T00:00'),today=new Date();today.setHours(0,0,0,0);
+  while(d<today){if(s.cycle==0.25)d.setDate(d.getDate()+7);else d.setMonth(d.getMonth()+(+s.cycle))}
+  return d;
+}
+function render(){
+  try{localStorage.setItem(KEY,JSON.stringify(subs))}catch{}
+  const tot=subs.reduce((a,s)=>a+monthly(s),0);
+  $('mo').textContent=fmt(tot);$('yr').textContent=fmt(tot*12);
+  const rows=subs.map((s,i)=>({s,i,d:rollDue(s)})).sort((a,b)=>(a.d||Infinity)-(b.d||Infinity));
+  const n=rows.find(r=>r.d);$('next').textContent=n?`${n.s.name} · ${n.d.toLocaleDateString()}`:'—';
+  $('empty').hidden=subs.length>0;
+  $('list').innerHTML=subs.length?'<tr><th>Name</th><th>Price</th><th class="hide-sm">/month</th><th>Next</th><th></th></tr>'+rows.map(({s,i,d})=>
+   `<tr><td>${esc(s.name)}</td><td>${fmt(s.price)}</td><td class="hide-sm">${fmt(monthly(s))}</td><td>${d?d.toLocaleDateString():'—'}</td><td><button class="danger" data-del="${i}">✕</button></td></tr>`).join(''):'';
+}
+$('add').onclick=()=>{const name=$('name').value.trim(),price=parseFloat($('price').value);
+  if(!name||!(price>=0))return alert('Enter a name and a price.');
+  subs.push({name,price,cycle:+$('cycle').value,due:$('due').value});$('name').value=$('price').value='';render()};
+$('list').onclick=e=>{const d=e.target.dataset.del;if(d!=null){subs.splice(d,1);render()}};
+render();
+</script></body></html>
