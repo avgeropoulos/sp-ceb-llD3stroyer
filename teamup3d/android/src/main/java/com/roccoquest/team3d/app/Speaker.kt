@@ -12,12 +12,14 @@ import com.roccoquest.game.Voice
 import com.roccoquest.game.VoiceCast
 import java.util.Locale
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * The characters' voices: the phone's own text-to-speech, with a real-sounding voice for each
  * character (chosen by [VoiceCast]: the phone's most lifelike voices, a different person each,
  * with only small pitch and speed nudges) and a [SpeechQueue] so a new line waits for the one
- * being said instead of cutting it off. Talking to the speech engine can take a while (it's
+ * being said instead of cutting it off (except [sayNow] lines: cutscenes and warnings, which must
+ * keep up with the pictures, cut in). Talking to the speech engine can take a while (it's
  * another app), so it all happens on its own thread and never holds up the game.
  * (A copy of teamapp's Speaker.kt: keep them the same.)
  */
@@ -29,6 +31,8 @@ class Speaker(context: Context) {
     @Volatile private var ready = false
     private var tts: TextToSpeech? = null
     private val lines = SpeechQueue()
+    /** Bumped by [hush], so lines asked for before it (still waiting for the speech thread) are dropped. */
+    private val hushes = AtomicInteger()
 
     /** An internet voice failed (the phone went offline): use the voices on the phone from now on. */
     @Volatile private var networkTrouble = false
@@ -59,9 +63,32 @@ class Speaker(context: Context) {
     }
 
     /** Says [text] in [voice]'s voice (dropped if the phone's speech isn't ready yet). */
-    fun say(text: String, voice: Voice) {
+    fun say(text: String, voice: Voice) = post { speakNow(text, voice, interrupt = false) }
+
+    /**
+     * Says [text] right away, cutting off whatever is being said: cutscene lines and warnings go with
+     * what's on screen at that moment, so waiting their turn would make them late.
+     */
+    fun sayNow(text: String, voice: Voice) = post { speakNow(text, voice, interrupt = true) }
+
+    /** Stops all talking, and drops lines that were handed over but not said yet (a skipped cutscene). */
+    fun hush() {
+        hushes.incrementAndGet()
+        post {
+            lines.clear()
+            tts?.stop()
+        }
+    }
+
+    /** Runs [job] on the speech thread (unless the phone's speech isn't ready yet, or [hush] came after it). */
+    private fun post(job: () -> Unit) {
         if (tts == null || !ready) return
-        try { speech.execute { try { speakNow(text, voice) } catch (_: Exception) {} } } catch (_: Exception) {}
+        val asked = hushes.get()
+        try {
+            speech.execute {
+                if (asked == hushes.get()) try { job() } catch (_: Exception) {}
+            }
+        } catch (_: Exception) {}
     }
 
     fun release() {
@@ -97,7 +124,8 @@ class Speaker(context: Context) {
         greek = VoiceCast.greek(infos, online)
     }
 
-    private fun speakNow(text: String, voice: Voice) {
+    /** Hands [text] to the phone; [interrupt] = stop what's being said and say this now, without waiting its turn. */
+    private fun speakNow(text: String, voice: Voice, interrupt: Boolean) {
         val t = tts ?: return
         // The phone can go online or offline while playing (internet voices need it): look again now and then.
         val clock = SystemClock.elapsedRealtime()
@@ -121,7 +149,8 @@ class Speaker(context: Context) {
         val line = SpeechText.tidy(say)
         if (line.isEmpty()) return
         val now = now()
-        val mode = lines.plan(line, now)
+        // (A cutscene's "Hic! ... Hic!" is said every time, even while the last one is still going.)
+        val mode = if (interrupt) SpeechQueue.Mode.FLUSH else lines.plan(line, now)
         if (mode == SpeechQueue.Mode.SKIP) return
         val id = "line${nextId++}"
         lines.queued(id, line, SpeechText.seconds(line, persona.rate), now, mode)
