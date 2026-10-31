@@ -102,7 +102,8 @@ sounded robotic). It ranks the phone's voices (`naturalness`: quality, internet 
 `notInstalled`), wants a gender/accent per character (`parts`; Google voice genders by code in `gender`), and avoids
 giving two characters the same person (`speaker` strips `-local`/`-network`). Ties go A-Z so the cast never changes.
 `SpeechText.tidy` makes lines read naturally (CAPS words said normally, end punctuation); `SpeechQueue` makes a new line
-wait for the current one (`QUEUE_ADD`) and only flushes when lines pile up or would be >2.5 s late. `Speaker.kt` (a
+wait for the current one (`QUEUE_ADD`) and only flushes when lines pile up or would be >1 s late. Timed lines (scene cues
+in `updateScene`, `sayWarning`) use `SoundSink.sayNow` (QUEUE_FLUSH, cuts in); skipping a scene calls `hush()`. `Speaker.kt` (a
 copy in `teamapp/` and `teamup3d/android/`, keep them the same) is the Android side: lists voices, checks online
 (`ACCESS_NETWORK_STATE`), Greek line for Poseidon, falls back to plain English if a voice won't load.
 

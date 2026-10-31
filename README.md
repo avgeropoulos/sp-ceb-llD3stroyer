@@ -514,8 +514,10 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
 * **Everyone has their own voice** (when the phone has several): Rocco is an **Italian man**, the bosses and
   Poseidon a **deep man's voice**, the Pokemon a **bright, happy voice**, the villagers a friendly **Australian**
   or **British** voice, and Spotty and Ring-Ding Frog their own voices too. They stay the same every time you play.
-* **Nobody gets cut off**: a new line waits for the one being said to finish (unless lines pile up), shouted
-  words in CAPITALS are said normally instead of spelled out, and every line ends like a real sentence.
+* **Nobody gets cut off**: a new line waits (a second at most) for the one being said to finish (unless lines
+  pile up), shouted words in CAPITALS are said normally instead of spelled out, and every line ends like a real
+  sentence. The funny scenes' lines and warnings like "Eruption! Jump!" are always said **right on time**, and
+  skipping a scene stops its talking too.
 * Poseidon still speaks **Greek** with the phone's Greek voice (or English if it has none).
 * **Team Up! 3D's singer** sings the theme song with that same lifelike voice, in the octave that fits it (a
   man's voice sings lower), with softer tuning, and long words are sung a bit quicker instead of being chopped off.

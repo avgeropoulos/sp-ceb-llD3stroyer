@@ -66,6 +66,10 @@ class SoundFx(context: Context) : SoundSink {
 
     override fun sayAs(text: String, voice: Voice) = speaker.say(text, voice)
 
+    override fun sayNow(text: String, voice: Voice) = speaker.sayNow(text, voice)
+
+    override fun hush() = speaker.hush()
+
     fun setForeground(on: Boolean) = musicPlayer.setForeground(on)
 
     fun release() {

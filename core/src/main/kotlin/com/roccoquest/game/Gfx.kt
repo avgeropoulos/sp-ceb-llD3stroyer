@@ -94,6 +94,17 @@ fun interface SoundSink {
 
     /** Speaks a line in a particular [voice]; platforms without voices fall back to [say]. */
     fun sayAs(text: String, voice: Voice) = say(text)
+
+    /**
+     * Speaks a line right now, cutting off whatever is being said. For lines that go with what's on
+     * the screen at that very moment (cutscene lines, "Eruption! Jump!"): [sayAs] lets a new line wait
+     * politely for the one before it, and these would come too late. Platforms without a speech queue
+     * just use [sayAs].
+     */
+    fun sayNow(text: String, voice: Voice) = sayAs(text, voice)
+
+    /** Stops all talking (a cutscene was skipped, so its lines mustn't go on over the next screen). */
+    fun hush() {}
 }
 
 /** Held-button state written by the platform layer, read by the game loop. */

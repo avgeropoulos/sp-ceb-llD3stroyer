@@ -260,8 +260,12 @@ object SpeechText {
  * right away, so the voices never lag behind the game. The apps tell it when the phone starts and
  * finishes each line; if the phone never says, its own guess of each line's length is used.
  * Safe to use from several threads.
+ *
+ * A line waits at most [maxDelay] seconds: a boss's "Rawr!" or a Talking Flower's tip goes with what's
+ * on screen, and 2.5 s late it came after the flower's bubble was gone. Lines that must be said at an
+ * exact moment (cutscenes, warnings) don't wait at all: the apps say those with FLUSH ([SoundSink.sayNow]).
  */
-class SpeechQueue(private val maxWaiting: Int = 1, private val maxDelay: Double = 2.5) {
+class SpeechQueue(private val maxWaiting: Int = 1, private val maxDelay: Double = 1.0) {
     enum class Mode {
         /** Say it after the line(s) already playing. */
         ADD,
@@ -308,6 +312,9 @@ class SpeechQueue(private val maxWaiting: Int = 1, private val maxDelay: Double 
 
     /** How many lines are playing or waiting. */
     @Synchronized fun count(now: Double): Int { forgetOld(now); return lines.size }
+
+    /** The app stopped all talking ([SoundSink.hush]): nothing is playing or waiting any more. */
+    @Synchronized fun clear() { lines.clear() }
 
     /** The first line left starts now, the rest follow one after another. */
     private fun retime(now: Double) {

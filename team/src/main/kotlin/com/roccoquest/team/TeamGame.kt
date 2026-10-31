@@ -564,7 +564,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     fun puff(x: Float, y: Float) { particles += Puff(x, y) }
     /** Meteor showers and volcano eruptions. */
     val hazards = Hazards()
-    internal fun sayWarning(s: String) = sound.say(s)
+    /** "Eruption! Jump!" is said right away (not queued behind other talk): a late warning is no warning. */
+    internal fun sayWarning(s: String) = sound.sayNow(s, Voice.FROG)
     fun addParticle(p: Particle) { particles += p }
     fun say(x: Float, y: Float, text: String, dur: Float = 1.8f) { particles += Speech(x, y, text, dur) }
     /** Every point is worth [SCORE_MULT] times as much: lots of points! */
@@ -3303,11 +3304,17 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val cues = Scenes.cues(sceneKind, mon.label)
         while (sceneCue < cues.size && stateT >= cues[sceneCue].at) {
             val c = cues[sceneCue++]
+            // Each line goes with the picture at this moment, so it's said right now (cutting off the line
+            // before if that one runs long), never queued up behind it where it would come late or get dropped.
             // (Sound-only cues say nothing: speaking "" would cut off whoever is talking.)
-            if (c.text.isNotEmpty()) sound.sayAs(c.text, c.voice)
+            if (c.text.isNotEmpty()) sound.sayNow(c.text, c.voice)
             c.sound?.let { sfx(it) }
         }
-        if (stateT > Scenes.length(sceneKind) || ((tapped || skip) && stateT > 0.6f)) {
+        val over = stateT > Scenes.length(sceneKind)
+        if (over || ((tapped || skip) && stateT > 0.6f)) {
+            // Skipped: the scene's talking stops too, so it doesn't go on over the map. At the natural end the
+            // last line may finish (some punchlines run a moment past the end, and nothing is queued behind it).
+            if (!over) sound.hush()
             if (sceneNext == BACK_HOME) { setState(State.HOME); theater = true } else goToMap(sceneNext)
         }
     }

@@ -171,8 +171,44 @@ class VoiceCastTest {
         q.queued("1", "Welcome to our village! Take a look at my trades.", 4.0, 0.0, SpeechQueue.Mode.ADD)
         // The villager has a while left to talk: Rocco's "ouch" would come far too late, so it goes now.
         assertEquals(SpeechQueue.Mode.FLUSH, q.plan("Oh no!", 0.5))
-        // Near the end of his line, it's fine to wait.
-        assertEquals(SpeechQueue.Mode.ADD, q.plan("Oh no!", 2.5))
+        // Still a second and a half to go: a Talking Flower's tip (its bubble lasts 1.8 s) can't wait that long.
+        assertEquals(SpeechQueue.Mode.FLUSH, q.plan("A Wonder Flower is coming up!", 2.5))
+        // Near the end of his line (under a second left), it's fine to wait.
+        assertEquals(SpeechQueue.Mode.ADD, q.plan("Oh no!", 3.2))
+    }
+
+    @Test fun hushingForgetsEveryLine() {
+        val q = SpeechQueue()
+        q.queued("1", "Hello!", 0.7, 0.0, SpeechQueue.Mode.ADD)
+        q.queued("2", "Goodbye!", 0.8, 0.1, SpeechQueue.Mode.ADD)
+        q.clear()
+        assertEquals(0, q.count(0.2))
+        // Nothing is playing any more: the same line can be said again, straight away.
+        assertEquals(SpeechQueue.Mode.ADD, q.plan("Hello!", 0.2))
+        // The phone then says the stopped lines are over: that changes nothing.
+        q.finished("2", 0.3)
+        assertEquals(0, q.count(0.3))
+    }
+
+    @Test fun soundsWithoutAQueueSayTimedLinesTheUsualWay() {
+        // (Like Rocco's Quest, and the tests: sayNow is just sayAs there, and hush does nothing.)
+        val said = ArrayList<Pair<String, Voice>>()
+        val sink = object : SoundSink {
+            override fun play(s: Sound) {}
+            override fun sayAs(text: String, voice: Voice) { said += text to voice }
+        }
+        sink.sayNow("Eruption! Jump!", Voice.FROG)
+        sink.hush()
+        assertEquals(listOf("Eruption! Jump!" to Voice.FROG), said)
+        // A sound that only knows say() still hears it.
+        val plain = ArrayList<String>()
+        val old = object : SoundSink {
+            override fun play(s: Sound) {}
+            override fun say(text: String) { plain += text }
+        }
+        old.sayNow("Hic!", Voice.HERO)
+        old.hush()
+        assertEquals(listOf("Hic!"), plain)
     }
 
     @Test fun aPhoneThatNeverSaysWhenItsDoneStillWorks() {
