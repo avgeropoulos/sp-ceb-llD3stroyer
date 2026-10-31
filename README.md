@@ -494,6 +494,21 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
 * **Team Up! 3D's singer** sings the theme song with that same lifelike voice, in the octave that fits it (a
   man's voice sings lower), with softer tuning, and long words are sung a bit quicker instead of being chopped off.
 
+### Smoother running and a gliding camera
+
+* **The camera glides**: it follows the hero on a smooth spring instead of being glued to him, so bumping
+  into a wall or landing never jolts the whole picture. SWAP to the Pokemon, falling back after a pit, and a
+  boss arena locking (or letting go) glide over smoothly too. A level still starts with the camera right in place.
+* **It looks ahead**: running right, there's more room to see in front; run left for a moment and the view
+  slides over to show what's coming. Turning around on the spot doesn't swing it about, and the hero never
+  leaves the screen (a far teleport just cuts straight there).
+* **No more tiny hitches**: the game counts screen refreshes instead of exact nanoseconds. A refresh that came
+  a hair early used to get no update and the next one two (a little stutter while running). Now every refresh
+  at 60 Hz is exactly one update (two every three at 90 Hz, every other one at 120 Hz). On a 120 Hz screen
+  Team Up! 3D no longer draws the same picture twice, so it has more time for each one.
+* **Snappier stops**: on the ground, Rocco, Blocky and the Pokemon stop and turn around quicker. Speeding up,
+  the crouch slide and every jump are just like before.
+
 ### Other changes
 
 * **Music changes every level** (seven new songs: meadow, jungle, snow, desert, night, beach and a scary

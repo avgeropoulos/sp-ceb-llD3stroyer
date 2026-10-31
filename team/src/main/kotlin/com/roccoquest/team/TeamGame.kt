@@ -43,6 +43,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         private val IN_LEVEL = setOf(State.INTRO, State.PLAY, State.CRAFT, State.TRADE, State.SLEEP, State.OUCH, State.CLEAR)
         /** How fast a BlastCannon shoots you out. */
         const val CANNON_SPEED = 520f
+        /** Speeding up on the ground, and stopping or turning around on it (a firmer grip, so it's snappy). */
+        const val GROUND_ACCEL = 800f
+        const val GROUND_BRAKE = 1300f
         const val MAX_ARMOR = 5
         const val COST = 5
         /** How many blocks each pickaxe can mine before it breaks (the wooden one never breaks). */
@@ -281,6 +284,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     // Camera, bosses and Wonder
     var camX = 0f
         private set
+    /** The smooth level camera ([camX] is where it is this frame). */
+    internal val camera = LevelCamera()
     private var camLock: Float? = null
     var shake = 0f
     var boss: Foe? = null
@@ -1160,7 +1165,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         // In a boss rush, a boss behind the checkpoint was already beaten: don't bring it back.
         foes.removeAll { it.boss && it.x + it.w < respawnX }
         placeTeam(respawnX, respawnY)
-        camX = (leader.cx - viewW * 0.4f).coerceIn(0f, max(0f, level.w * TILE - viewW))
+        snapCamera()
         if (!fromCheckpoint) {
             storage.save(key("spotLevel"), if (spotSaved) index + 1 else 0)
             storage.save(key("bedLevel"), if (restoreHome && storage.load(key("bedLevel")) == index + 1) index + 1 else 0)
@@ -1959,7 +1964,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val top = h.speed * (if (sprint) 1.5f else 1f) * (if (rocco) (captureKind?.speed ?: 1f) * (if (megaT > 0f) 1.2f else 1f) else 1f) *
             (if (rocco && captureDashT > 0f) 2.2f else 1f)
         val want = if (h.crouching) 0f else dir * top
-        h.vx = approach(h.vx, want, (if (h.onGround) 800f else 520f) * dt)
+        // Stopping and turning around on the ground grip harder than speeding up, so the hero stops
+        // where you let go instead of sliding. (Not while squatting: that slide is the crouch long jump.
+        // In the air nothing changes, so every jump still goes just as far.)
+        val braking = h.onGround && !h.crouching && (want == 0f || want * h.vx < 0f)
+        h.vx = approach(h.vx, want, (if (braking) GROUND_BRAKE else if (h.onGround) GROUND_ACCEL else 520f) * dt)
         // Blue Shell: sprinting on the ground turns Rocco into a spinning shell.
         h.shellSpin = rocco && power == Power.SHELL && sprint && h.onGround && !h.mini && abs(h.vx) > 120f
         // Still safe for a moment after a spin (jumping out of it, bumping into a wall).
@@ -4033,12 +4042,18 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
     }
 
+    /** The camera glides after the leader (see [LevelCamera]); boss arenas hold it still while they're locked. */
     private fun updateCamera(dt: Float) {
-        val maxCam = max(0f, level.w * TILE - viewW)
-        val target = camLock ?: (leader.cx - viewW * 0.4f).coerceIn(0f, maxCam)
-        val step = (if (camLock != null) 260f else 600f) * dt
-        camX = if (abs(target - camX) < step) target else camX + (if (target > camX) step else -step)
-        camX = camX.coerceIn(0f, maxCam)
+        val l = leader
+        camera.update(dt, l.x, l.w, viewW, level.w * TILE - viewW, camLock)
+        camX = camera.x
+    }
+
+    /** Puts the camera right on the leader with no glide (a level starting, going in or out of a bonus room). */
+    private fun snapCamera() {
+        val l = leader
+        camera.snap(l.x, l.w, l.facing, viewW, level.w * TILE - viewW, camLock)
+        camX = camera.x
     }
 
     private fun updateParticles(dt: Float) {
@@ -6731,7 +6746,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
         }
         placeTeam(respawnX, respawnY)
-        camX = 0f
+        snapCamera()
         bonusT = BONUS_TIME
         sfx(Sound.PORTAL)
         bannerTitle = "SUNSET BONUS!"
@@ -6752,7 +6767,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         goal = a.goal; house = a.house; bed = a.bed
         respawnX = a.respawnX; respawnY = a.respawnY
         placeTeam(a.backX, a.backY)
-        camX = (leader.cx - viewW * 0.4f).coerceIn(0f, max(0f, level.w * TILE - viewW))
+        snapCamera()
         sfx(Sound.PORTAL)
         toast("Back to ${level.def.name}!")
     }

@@ -1783,6 +1783,119 @@ class TeamGameTest {
         assertTrue(!game.sprinting)
     }
 
+    /** Watches the camera every frame: how far it moves at most, and how much that changes from one frame to the next. */
+    private inner class CamWatch {
+        private var lastX = game.camX
+        var lastStep = 0f
+        var biggestStep = 0f
+        var biggestJolt = 0f
+        fun frame() {
+            val l = game.leader
+            assertTrue(l.x >= game.camX - 0.01f && l.x + l.w <= game.camX + game.viewW + 0.01f, "${l.label} is on the screen: x=${l.x}, camera ${game.camX}")
+            val step = game.camX - lastX
+            biggestStep = maxOf(biggestStep, abs(step))
+            biggestJolt = maxOf(biggestJolt, abs(step - lastStep))
+            lastStep = step
+            lastX = game.camX
+        }
+    }
+
+    @Test fun cameraGlidesSmoothlyWhileSprinting() {
+        startPlaying()
+        game.foes.clear()
+        input.run = true
+        val w = CamWatch()
+        repeat(600) {
+            game.hurtProof()
+            botStep()
+            w.frame()
+        }
+        input.run = false; input.right = false; input.jump = false
+        assertTrue(game.leader.x > 900f, "sprinted a long way: ${game.leader.x}")
+        // Sprinting is 3 pixels a frame: the camera never jumps ahead...
+        assertTrue(w.biggestStep < 5f, "biggest camera move in one frame: ${w.biggestStep}")
+        // ...and jumping, landing and bumping into walls never jolt it (the old camera stopped dead with the hero).
+        assertTrue(w.biggestJolt < 1f, "biggest change in camera speed between frames: ${w.biggestJolt}")
+        // Running right, there's more room to see ahead than behind.
+        val onScreen = game.leader.cx - game.camX
+        assertTrue(onScreen < game.viewW * 0.5f, "Rocco is left of the middle: $onScreen of ${game.viewW}")
+    }
+
+    @Test fun cameraIsInstantAtLevelStartAndGlidesAfterASwap() {
+        game.newGame(0, Mon.SPARKY)
+        val start = game.camX
+        run(3.2f)
+        assertEquals(TeamGame.State.PLAY, game.state)
+        assertEquals(start, game.camX, 0.01f, "the level starts with the camera already in place")
+        game.foes.clear()
+        run(1.5f) { input.right = true }
+        input.right = false
+        run(1.5f)
+        // SWAP to the Pokemon, a little way behind: the camera glides over instead of snapping.
+        val w = CamWatch()
+        input.swap = true; game.update(dt); input.swap = false; game.update(dt)
+        input.swap = true; game.update(dt); input.swap = false
+        assertEquals(Who.MON, game.leaderWho)
+        repeat(90) { game.update(dt); w.frame() }
+        assertTrue(w.biggestStep < 3f, "no snap: ${w.biggestStep}")
+        assertTrue(w.biggestJolt < 0.5f, "a gentle glide: ${w.biggestJolt}")
+        val settled = game.camX
+        run(1f)
+        assertEquals(settled, game.camX, 1f, "and it settles on the Pokemon")
+    }
+
+    @Test fun bossArenaStillLocksTheCameraSmoothly() {
+        startPlaying(2)
+        val jr = game.foes.filterIsInstance<KragJr>().single()
+        val h = game.leader
+        h.x = jr.homeX - 150f; h.y = 100f
+        val w = CamWatch()
+        var t = 0f
+        while (!jr.engaged && t < 5f) { game.hurtProof(); game.update(dt); t += dt; w.frame() }
+        assertTrue(jr.engaged, "Krag Jr. noticed the team")
+        // From here on the camera glides over to the arena and stays there while the team runs about.
+        val glide = CamWatch()
+        repeat(150) { i ->
+            game.hurtProof()
+            input.right = i / 40 % 2 == 0; input.left = !input.right
+            game.update(dt)
+            glide.frame()
+        }
+        input.right = false; input.left = false
+        val lock = (jr.homeX + 16f - game.viewW / 2).coerceIn(0f, game.level.w * TILE - game.viewW)
+        assertEquals(lock, game.camX, 1f, "the camera holds the arena")
+        assertTrue(glide.biggestJolt < 1f, "it glides there smoothly: ${glide.biggestJolt}")
+        // The team can't walk out of the arena.
+        repeat(120) { game.hurtProof(); input.left = true; game.update(dt) }
+        input.left = false
+        assertTrue(game.leader.x >= lock - 0.5f, "the arena wall holds: ${game.leader.x} vs $lock")
+    }
+
+    @Test fun stoppingAndTurningAroundAreSnappy() {
+        startPlaying()
+        game.foes.clear()
+        val r = game.rocco
+        run(1f) { input.right = true }
+        assertEquals(r.speed, r.vx, 1f)
+        input.right = false
+        var frames = 0
+        while (r.vx > 0f && frames < 60) { game.update(dt); frames++ }
+        assertTrue(frames <= 6, "Rocco stops right where you let go: $frames frames")
+        run(0.5f)
+        run(1f) { input.right = true }
+        input.right = false
+        var turn = 0
+        while (r.vx > -r.speed + 1f && turn < 60) { input.left = true; game.update(dt); turn++ }
+        input.left = false
+        assertTrue(turn <= 15, "turning around is quick: $turn frames")
+        // Starting off is just as gentle as before (no lurching).
+        run(1f)
+        var start = 0
+        while (r.vx < r.speed - 1f && start < 60) { input.right = true; game.update(dt); start++ }
+        input.right = false
+        assertTrue(start in 7..12, "speeding up takes a moment: $start frames")
+    }
+
     @Test fun roccoSquatsAndButtSlams() {
         startPlaying()
         game.foes.clear()
