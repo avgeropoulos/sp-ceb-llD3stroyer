@@ -476,6 +476,20 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
 * The talking voices, sound effects and the music are made on their own background threads, so they never freeze
   the game for a moment.
 
+### Voices that sound like real people
+
+* **No more robot and chipmunk voices.** Every character now talks with the **most lifelike voice the phone has**
+  (the newest, best-sounding ones, and the even better internet voices when the phone is online), with only a
+  tiny bit higher or lower and faster or slower, so they still sound like people.
+* **Everyone has their own voice** (when the phone has several): Rocco is an **Italian man**, the bosses and
+  Poseidon a **deep man's voice**, the Pokemon a **bright, happy voice**, the villagers a friendly **Australian**
+  or **British** voice, and Spotty and Ring-Ding Frog their own voices too. They stay the same every time you play.
+* **Nobody gets cut off**: a new line waits for the one being said to finish (unless lines pile up), shouted
+  words in CAPITALS are said normally instead of spelled out, and every line ends like a real sentence.
+* Poseidon still speaks **Greek** with the phone's Greek voice (or English if it has none).
+* **Team Up! 3D's singer** sings the theme song with that same lifelike voice, in the octave that fits it (a
+  man's voice sings lower), with softer tuning, and long words are sung a bit quicker instead of being chopped off.
+
 ### Other changes
 
 * **Music changes every level** (seven new songs: meadow, jungle, snow, desert, night, beach and a scary

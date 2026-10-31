@@ -3,8 +3,6 @@ package com.roccoquest.teamup
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.SoundPool
-import android.speech.tts.TextToSpeech
-import java.util.Locale
 import com.roccoquest.game.Chiptune
 import com.roccoquest.game.Music
 import com.roccoquest.game.Sound
@@ -35,21 +33,8 @@ class SoundFx(context: Context) : SoundSink {
     private val ids = IntArray(Sound.entries.size)
     private val musicPlayer = MusicPlayer()
 
-    /** Ring-Ding Frog's singing: the phone's text-to-speech, sped up and pitched high. */
-    @Volatile private var ttsReady = false
-    private var tts: TextToSpeech? = null
-
-    init {
-        tts = TextToSpeech(context.applicationContext) { status ->
-            val t = tts ?: return@TextToSpeech
-            if (status == TextToSpeech.SUCCESS) {
-                t.setLanguage(Locale.US)
-                t.setPitch(1.9f)
-                t.setSpeechRate(1.15f)
-                ttsReady = true
-            }
-        }
-    }
+    /** Everybody's talking (Rocco, Ring-Ding Frog, villagers, Pokemon...): the phone's own voices. */
+    private val speaker = Speaker(context)
 
     init {
         val dir = context.cacheDir
@@ -79,98 +64,15 @@ class SoundFx(context: Context) : SoundSink {
 
     override fun say(text: String) = sayAs(text, Voice.FROG)
 
-    /**
-     * Talking to the phone's speech engine can take a while (it's another app), so it happens on its
-     * own thread and never holds up the game.
-     */
-    private val speech = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
-        Thread(r, "speech").apply { isDaemon = true; priority = Thread.MIN_PRIORITY }
-    }
-
-    override fun sayAs(text: String, voice: Voice) {
-        if (tts == null || !ttsReady) return
-        try { speech.execute { try { speakNow(text, voice) } catch (_: Exception) {} } } catch (_: Exception) {}
-    }
-
-    /** Each voice gets its own pitch and speed so villagers sound clear and Poseidon sounds deep. */
-    private fun speakNow(text: String, voice: Voice) {
-        val t = tts ?: return
-        val (pitch, rate) = when (voice) {
-            Voice.FROG -> 1.9f to 1.15f
-            Voice.VILLAGER -> 0.95f to 0.85f
-            Voice.GOD -> 0.62f to 0.82f
-            Voice.MON -> 1.5f to 1.05f
-            // Rocco: an Italian guy (an Italian voice reading English sounds just like him).
-            Voice.HERO -> 0.95f to 0.92f
-            // Spotty: a squeaky, shouty mushroom voice.
-            Voice.TOAD -> 2.0f to 1.3f
-        }
-        var say = text
-        val greek = text.any { it in '\u0370'..'\u03FF' || it in '\u1F00'..'\u1FFF' }
-        if (greek && !useGreek(t)) {
-            // No Greek voice on this phone: say it in English instead.
-            say = "I am Poseidon! I am the strongest guy of the sea!"
-            useEnglish(t)
-        } else if (!greek && voice == Voice.HERO) {
-            if (!useItalian(t)) useEnglish(t)
-        } else if (!greek) useEnglish(t)
-        t.setPitch(pitch)
-        t.setSpeechRate(rate)
-        t.speak(say, TextToSpeech.QUEUE_FLUSH, null, voice.name)
-    }
-
-    private val greekLocale = Locale("el", "GR")
-    private var englishVoice: android.speech.tts.Voice? = null
-
-    private fun useEnglish(t: TextToSpeech) {
-        if (t.voice?.locale?.language == "en") return
-        val v = englishVoice
-        if (v != null) t.setVoice(v) else t.setLanguage(Locale.US)
-    }
-
-    private var italianVoice: android.speech.tts.Voice? = null
-
-    /**
-     * Switches to an Italian voice (a man's voice if the phone has one: Google's are it-it-x-itc / itd) for
-     * Rocco. Returns false if the phone has no Italian voice.
-     */
-    private fun useItalian(t: TextToSpeech): Boolean {
-        if (t.voice?.locale?.language == "it") return true
-        if (englishVoice == null && t.voice?.locale?.language == "en") englishVoice = t.voice
-        if (italianVoice == null) italianVoice = try {
-            t.voices?.filter { it.locale.language == "it" && !it.features.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED) }
-                ?.maxByOrNull { v ->
-                    val n = v.name.lowercase()
-                    val male = "male" in n && "female" !in n || "itc" in n || "itd" in n
-                    v.quality + (if (male) 200 else 0) - (if (v.isNetworkConnectionRequired) 50 else 0)
-                }
-        } catch (_: Exception) { null }
-        italianVoice?.let { t.setVoice(it); return true }
-        val r = t.setLanguage(Locale.ITALY)
-        return r != TextToSpeech.LANG_MISSING_DATA && r != TextToSpeech.LANG_NOT_SUPPORTED
-    }
-
-    /** Switches to the most natural-sounding Greek voice the phone has. Returns false if there is none. */
-    private fun useGreek(t: TextToSpeech): Boolean {
-        if (t.voice?.locale?.language == "el") return true
-        if (englishVoice == null && t.voice?.locale?.language == "en") englishVoice = t.voice
-        val best = try {
-            t.voices?.filter { it.locale.language == "el" && !it.features.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED) }
-                ?.maxByOrNull { it.quality - (if (it.isNetworkConnectionRequired) 50 else 0) }
-        } catch (_: Exception) { null }
-        if (best != null) { t.setVoice(best); return true }
-        val r = t.setLanguage(greekLocale)
-        return r != TextToSpeech.LANG_MISSING_DATA && r != TextToSpeech.LANG_NOT_SUPPORTED
-    }
+    override fun sayAs(text: String, voice: Voice) = speaker.say(text, voice)
 
     fun setForeground(on: Boolean) = musicPlayer.setForeground(on)
 
     fun release() {
-        speech.shutdownNow()
+        speaker.release()
         sfxThread.quit()
         pool.release()
         musicPlayer.release()
-        tts?.shutdown()
     }
 
     private fun writeWav(file: File, samples: FloatArray) {

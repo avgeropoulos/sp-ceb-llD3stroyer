@@ -4,11 +4,13 @@
     <!-- The UPDATE button downloads the newest version from GitHub and installs it. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- The talking voices check if the phone is online (its best, most lifelike voices need the internet). -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!-- OpenGL ES 2.0 draws the 3D levels. -->
     <uses-feature android:glEsVersion="0x00020000" android:required="true" />
 
-    <!-- Lets the game find the phone's text-to-speech engine for Ring-Ding Frog's singing voice. -->
+    <!-- Lets the game find the phone's text-to-speech engine for the characters' voices and the singer. -->
     <queries>
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
