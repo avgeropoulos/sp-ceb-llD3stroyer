@@ -360,9 +360,29 @@ function createServer(cfg = loadConfig()) {
 
 module.exports = { createServer, loadConfig, signLicense, verifyLicense, PRODUCTS };
 
+// Support tool: re-issue a lost license key for a customer you found in the Stripe dashboard.
+//   node server.js issue-license <product> <cus_...> [sub_...]
+function issueLicenseCli(args, cfg) {
+  const [product, customer, subscription] = args;
+  if (!Object.hasOwn(PRODUCTS, product || '') || !/^cus_\w+$/.test(customer || '') || (subscription && !/^sub_\w+$/.test(subscription))) {
+    console.error(`Usage: node server.js issue-license <product> <cus_...> [sub_...]\nProducts: ${Object.keys(PRODUCTS).join(', ')}`);
+    process.exit(1);
+  }
+  if (PRODUCTS[product].mode === 'subscription' && !subscription) {
+    console.error(`${product} is a subscription: pass the customer's subscription ID (sub_...) too.`);
+    process.exit(1);
+  }
+  if (cfg.licenseSecret.length < 32) { console.error('Set LICENSE_SECRET (the same one the server uses).'); process.exit(1); }
+  const now = Date.now();
+  const sub = PRODUCTS[product].mode === 'subscription' ? subscription : null;
+  // Subscription keys are issued already expired so the app re-checks the subscription with Stripe right away.
+  console.log(signLicense(cfg.licenseSecret, { v: 1, p: product, c: customer, s: sub, iat: 0, exp: sub ? now : null }));
+}
+
 if (require.main === module) {
   let server;
   const cfg = loadConfig();
+  if (process.argv[2] === 'issue-license') { issueLicenseCli(process.argv.slice(3), cfg); process.exit(0); }
   try { server = createServer(cfg); } catch (err) { console.error(err.message); process.exit(1); }
   server.listen(cfg.port, () => {
     console.log(`Money Apps running at http://localhost:${cfg.port}`);

@@ -15,6 +15,8 @@
 #inv .payurl{font-size:.75rem;color:#666;word-break:break-all}
 .wm{color:#999;font-size:.8rem;text-align:center;margin-top:24px}
 .items input{padding:6px}
+.itemrow{display:grid;grid-template-columns:minmax(0,1fr) 64px 96px 40px;gap:8px;margin-bottom:6px}
+.itemrow button{padding:6px 0}
 .locked{position:relative}
 .locked input,.locked select{opacity:.7}
 .swatches{display:flex;gap:8px}
@@ -44,7 +46,7 @@ h3{margin:16px 0 8px}
     <div><label for="tax">Tax %</label><input id="tax" type="number" value="0" min="0" step="0.01"></div>
   </div>
   <h3>Line items</h3>
-  <div class="row muted" style="font-size:.8rem;margin-bottom:4px"><span style="flex:3 1 200px">Description</span><span style="flex:1 1 60px">Qty</span><span style="flex:1 1 80px">Price</span><span style="flex:0 0 40px"></span></div>
+  <div class="itemrow muted" style="font-size:.8rem;margin-bottom:2px" aria-hidden="true"><span>Description</span><span>Qty</span><span>Price</span><span></span></div>
   <div id="items" class="items"></div>
   <button class="ghost" id="add" style="margin-top:4px">+ Add item</button>
   <div style="margin-top:12px"><label for="notes">Notes / payment terms</label><textarea id="notes" rows="2" placeholder="Payment due within 14 days. Bank: …"></textarea></div>
@@ -96,11 +98,11 @@ pro.renderPanel($('proPanel'),{name:'Quick Invoice Pro',price:'$4.99/month',
 function totals(){const sub=s.items.reduce((a,it)=>a+num(it.q)*num(it.p),0),tax=sub*num(s.tax)/100;return{sub,tax,total:sub+tax}}
 
 function renderItems(){
-  $('items').innerHTML=s.items.map((it,i)=>`<div class="row" style="margin-bottom:6px">
-   <input style="flex:3 1 200px" data-i="${i}" data-k="d" value="${esc(it.d)}" placeholder="Description" aria-label="Description">
-   <input style="flex:1 1 60px" data-i="${i}" data-k="q" type="number" value="${esc(it.q)}" min="0" step="any" aria-label="Quantity">
-   <input style="flex:1 1 80px" data-i="${i}" data-k="p" type="number" value="${esc(it.p)}" min="0" step="0.01" aria-label="Price">
-   <button class="danger" style="flex:0 0 40px" data-del="${i}" aria-label="Remove item">✕</button></div>`).join('');
+  $('items').innerHTML=s.items.map((it,i)=>`<div class="itemrow">
+   <input data-i="${i}" data-k="d" value="${esc(it.d)}" placeholder="Description" aria-label="Description">
+   <input data-i="${i}" data-k="q" type="number" value="${esc(it.q)}" min="0" step="any" aria-label="Quantity">
+   <input data-i="${i}" data-k="p" type="number" value="${esc(it.p)}" min="0" step="0.01" aria-label="Price">
+   <button class="danger" data-del="${i}" aria-label="Remove item">✕</button></div>`).join('');
 }
 
 function renderInvoice(){
