@@ -326,6 +326,33 @@ func _draw_hud() -> void:
 		txt(boss.boss_name(), Vector2(0, 46 + by), 34, Color("ff8c2a"), HORIZONTAL_ALIGNMENT_CENTER, size.x)
 		draw_rect(Rect2(bx - 4, 56 + by, w + 8, 24), Color(0.13, 0.09, 0.18))
 		draw_rect(Rect2(bx, 60 + by, w * float(boss.hp) / boss.max_hp, 16), Color("ff4f6d"))
+	_draw_grab_info()
+
+
+## KING BOMBO's health bar (when you're near him) and the tail-swing / grab prompts.
+func _draw_grab_info() -> void:
+	if game.open_play == null or game.state != "play":
+		return
+	var kb = game.open_play.bombo_foe()
+	if kb and not game.boss_on and kb.state != "sleep" and kb.position.distance_to(game.leader().position) < 16:
+		var w := minf(420.0, size.x * 0.35)
+		var bx := (size.x - w) * 0.5
+		txt("KING BOMBO", Vector2(0, 246), 30, Color("ffb02e"), HORIZONTAL_ALIGNMENT_CENTER, size.x)
+		draw_rect(Rect2(bx - 4, 254, w + 8, 22), Color(0.13, 0.09, 0.18))
+		for i in kb.max_hp:   # one block per throw still needed
+			var cw: float = (w - 8.0 * (kb.max_hp - 1)) / kb.max_hp
+			draw_rect(Rect2(bx + i * (cw + 8), 258, cw, 14), Color("ff4f6d") if i < kb.hp else Color(0.3, 0.25, 0.35))
+	var g = game.grab
+	if g == null:
+		return
+	if g.tail:
+		var k: float = clampf(g.spin_w / 13.0, 0, 1)
+		var c := Vector2(size.x * 0.5, size.y * 0.78)
+		draw_arc(c, 46, -PI / 2, -PI / 2 + TAU * k, 40, Color("ffcf33"), 10, true)
+		txt("SPIN!", Vector2(0, c.y + 12), 30, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, size.x, 7)
+		txt("Turn the stick round (or tap ACTION) - JUMP to throw!", Vector2(0, c.y + 74), 22, Color("fff2a8"), HORIZONTAL_ALIGNMENT_CENTER, size.x, 6)
+	elif game.boss_on and is_instance_valid(game.boss) and g._tail_target(game.leader()) != null:
+		txt("GRAB HIS TAIL! (ACTION)", Vector2(0, size.y * 0.78), 30, Color("ffcf33"), HORIZONTAL_ALIGNMENT_CENTER, size.x, 8)
 
 
 ## Open worlds, Mario 64 style: every star of this world at the top (gold = found),

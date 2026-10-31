@@ -210,6 +210,13 @@ func _process(_dt: float) -> bool:
 					check(bf != null, "the BIG GRUMBLER should be there")
 					if bf:
 						bf.hurt(99, g)
+				# KING BOMBO (tests/grab_check.gd really grabs and throws him)
+				var kb: Foe = g.open_play.bombo_foe()
+				if not g.open_play.objective("bombo").is_empty():
+					check(kb != null, "KING BOMBO should be on the summit")
+					for n in 3:
+						if kb and is_instance_valid(kb) and kb.dying < 0:
+							kb.bombo_hit(g)
 				# LOST DOG: find Dennis
 				place_at(g.level.dog_spot + Vector3(1.5, 0.01, 0))
 				g.open_play.step(1.0 / 60)
@@ -223,7 +230,8 @@ func _process(_dt: float) -> bool:
 			if f > 2 and (f == 700 or g.open_play.stars.has("dog")):
 				f = 1000
 				check(g.open_play.stars.has("dog") or g.open_play.got.has("dog"), "bringing Dennis home should make a star (Dennis at %s, home %s)" % [g.open_play.dennis.position, g.level.dog_home])
-				for id in ["reds", "boss", "dog"]:
+				g.open_play.step(1.0 / 60)
+				for id in ["reds", "boss", "dog", "bombo"]:
 					if g.open_play.stars.has(id):
 						place_at(g.open_play.stars[id].position - Vector3(0, 0.8, 0))
 						g.open_play.step(1.0 / 60)

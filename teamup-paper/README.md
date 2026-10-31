@@ -319,6 +319,29 @@ roll out), `_wall_kick`, `_rocco_steer`, `_rocco_after_move` (wall touches, bonk
 paper pictures `rocco_long/dive/slide/kick/tuck0-7` (`gen_art.py` `rocco_moves()`; the tuck turns through 8 pictures
 during a flip). Test: `tests/moves_check.gd` (real physics: distances and heights for every move).
 
+## GRAB, THROW and the TAIL SWING (like Mario 64)
+
+* **GRAB / THROW**: walk right up to a small bad guy and press ACTION (the button says GRAB):
+  Rocco lifts it over his head. ACTION again (THROW) throws it in an arc. A thrown bad guy knocks
+  out whoever it lands on; a thrown walking BOMB blows up where it lands. Rocco can grab Grumblers,
+  bombs, hoppers, mummies, penguins, scorpions and spiky shells; the other heroes keep their own ACTION
+  attack and only grab bombs (and King Bombo). With nothing to grab, ACTION is the normal move
+  (Rocco's long jump, backflip, dive, pound).
+* **KING BOMBO** (new star in every world, "KING BOMBO"): a giant bomb king with a crown on a stone
+  SUMMIT (a mesa with stairs; `level.summit_spot`). He waddles at you, lobs bombs, and if you're in
+  FRONT of him he picks you up and throws you. Get BEHIND him (or grab him while he's dizzy), GRAB
+  him and THROW him down onto the summit: 3 throws and he blows up into a star. Thrown off the
+  summit, he just jumps back up. His health bar shows 3 blocks.
+* **KING KRAG's TAIL** (Cloud Castle): 12 SPIKE BOMBS stand round the edge of his arena. Get BEHIND
+  him (GRAB HIS TAIL!) and press ACTION: you swing him round. Turn the stick round and round (or tap
+  ACTION) to spin faster, then JUMP to let go: he flies off and skids. Into a spike bomb = BOOM, a
+  third of his health. 3 bombs beat him (each bomb comes back after 4 s; touching one hurts you).
+  The same tail grab works on every walking Kragling for a bonus bonk when he lands.
+* Code: `scripts/grab.gd` (`Grab`: `on_action`, `label`, `step`, spike bombs), `foes.gd`
+  `_kingbombo` / `bombo_hit` (`grabbed`, `throw_hit`), `level.gd` `_summit_quest`, `openplay.gd`
+  `bombo_foe`, poses `toys.gd` `_pose_grab` / `_king_bombo`, art `gen_art.py` `kings()`.
+  Test: `tests/grab_check.gd` (grab + throw, bomb, moves still work, King Bombo, King Krag's tail).
+
 ## Your team: 2 heroes + 1 partner
 
 Clear worlds to unlock new friends (our own look-alikes with made-up names). The **TEAM** button at home

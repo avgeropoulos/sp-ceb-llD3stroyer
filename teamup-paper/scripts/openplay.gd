@@ -238,6 +238,9 @@ func step(dt: float) -> void:
 	# the BIG GRUMBLER
 	if not got.has("boss") and not stars.has("boss") and not objective("boss").is_empty() and boss_foe() == null:
 		_drop_star("boss", "You beat the BIG GRUMBLER!")
+	# KING BOMBO on the summit
+	if not got.has("bombo") and not stars.has("bombo") and not objective("bombo").is_empty() and bombo_foe() == null:
+		_drop_star("bombo", "You beat KING BOMBO!")
 	# the lost dog
 	if dennis and not got.has("dog") and not stars.has("dog"):
 		_dog_step(dt, l)
@@ -346,6 +349,13 @@ func pick(id: String, banner := true) -> void:
 		var o := objective(id)
 		game.hud.say(quest_title(id), o.get("hint", "Go and get Krag Jr.!"), 3.2)
 		game.sfx("item", -4)
+
+
+func bombo_foe() -> Foe:
+	for f in game.foes:
+		if is_instance_valid(f) and f.kind == "kingbombo" and f.dying < 0:
+			return f
+	return null
 
 
 func boss_foe() -> Foe:

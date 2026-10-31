@@ -173,6 +173,9 @@ static func build(kind: String) -> Node3D:
 			_foe2(body, p, kind)
 		"lucky", "alix", "petal", "spotty", "brawlo":
 			_friend(body, p, kind)
+		"kingbombo":   # a giant walking bomb with a crown (posed like a BOMBER)
+			_king_bombo(body, p)
+			kind = "bomber"
 	if Bosses.is_boss(kind) and not Bosses.flies(kind):
 		_turtle_boss(body, p, kind)
 	if kind.begins_with("mon:"):
@@ -439,6 +442,7 @@ static func pose(a, dt: float) -> void:
 	match kind:
 		"rocco", "blocky", "skelly", "lucky", "alix", "petal", "spotty", "brawlo":
 			_pose_person(p, kind, anim, t)
+			_pose_grab(a, p, t)
 		"sparky", "sparky:1":
 			_pose_sparky(p, anim, t)
 		"mon":
@@ -1825,3 +1829,43 @@ static func _friend(b0: Node3D, p: Dictionary, kind: String) -> void:
 		part(head, hemi(0.48), Vector3(0, 0.3, 0), Color.WHITE, Vector3(1, 0.85, 1))
 		for sp in [Vector3(0, 0.62, 0.18), Vector3(-0.3, 0.45, 0.2), Vector3(0.3, 0.45, 0.2), Vector3(0.0, 0.5, -0.32), Vector3(-0.36, 0.4, -0.12), Vector3(0.36, 0.4, -0.12)]:
 			part(head, sph(0.1), sp, Color("e8413b"), Vector3(1, 0.5, 1), Vector3.ZERO, false)
+
+
+# ------------------------------------------------------------------ KING BOMBO + grab poses
+## KING BOMBO: a big black bomb with a gold crown, a white moustache, little arms and a
+## lit fuse. Built on the BOMBER, scaled up on an extra pivot (the pose code sets the
+## body/core scale for squash, so the size lives in between).
+static func _king_bombo(b: Node3D, p: Dictionary) -> void:
+	var big := piv(b, Vector3.ZERO)
+	big.scale = Vector3.ONE * 2.3
+	_foe2(big, p, "bomber")
+	var core: Node3D = p.core
+	# crown
+	var crown := piv(core, Vector3(0, 0.98, 0))
+	part(crown, cyl(0.17, 0.15, 0.1, 12), Vector3(0, 0.02, 0), Color("ffcf33"), Vector3.ONE, Vector3.ZERO, true, 0.5)
+	for i in 5:
+		var a := TAU * i / 5.0
+		part(crown, cyl(0.0, 0.05, 0.12, 5), Vector3(sin(a) * 0.14, 0.12, cos(a) * 0.14), Color("ffcf33"), Vector3.ONE, Vector3.ZERO, false, 0.5)
+		part(crown, sph(0.025), Vector3(sin(a) * 0.14, 0.19, cos(a) * 0.14), Color("ff4f6d"), Vector3.ONE, Vector3.ZERO, false, 0.8)
+	# moustache
+	for s in [-1, 1]:
+		part(core, sph(0.1), Vector3(s * 0.11, 0.48, 0.38), Color("f4f4f4"), Vector3(1.4, 0.55, 0.6), Vector3(0, 0, s * 0.35))
+		var arm := piv(core, Vector3(s * 0.42, 0.55, 0))
+		part(arm, cyl(0.03, 0.03, 0.22, 6), Vector3(s * 0.1, 0, 0), Color("2b2f3c"), Vector3.ONE, Vector3(0, 0, PI / 2), false)
+		part(arm, sph(0.07), Vector3(s * 0.22, 0, 0), Color("f4f4f4"))
+		p["armL" if s < 0 else "armR"] = arm
+
+
+## Heroes holding something over their head (both arms up) or swinging a boss by the
+## tail (arms out in front, leaning back).
+static func _pose_grab(a, p: Dictionary, t: float) -> void:
+	if not ("carry" in a) or not p.has("armL"):
+		return
+	if a.carry:
+		p.armL.rotation = Vector3(PI * 0.95, 0, 0.25)
+		p.armR.rotation = Vector3(PI * 0.95, 0, -0.25)
+	elif a.swing:
+		p.armL.rotation = Vector3(PI * 0.5, 0, 0.15)
+		p.armR.rotation = Vector3(PI * 0.5, 0, -0.15)
+		var b: Node3D = p.body
+		b.rotation.x = -0.25 + sin(t * 20) * 0.04

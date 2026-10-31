@@ -107,6 +107,7 @@ var bonus := false            # a painting's BONUS COURSE (see generate_bonus)
 var painting := {}            # the secret painting in an open world: {pos, w, h, x, z, bottom}
 var bonus_tops: Array = []    # BONUS COURSE: where you stand on each platform, start to star
 var bonus_star := Vector3.ZERO
+var summit_spot := Vector3.ZERO   # KING BOMBO's flat summit (centre of its top; ZERO = none)
 var keep_out: Array = []      # [center, radius]: the challenges' space
 var step_tops: Array = []     # SKY STEPS: where you stand on each step (for the test robot)
 var tower_tops: Array = []    # TALL TOWER: the same for the stairs
@@ -1125,6 +1126,38 @@ func _more_quests(start: Vector2i) -> void:
 
 ## The SECRET PAINTING: hung on the outside of the castle's west wall, a little too high
 ## to walk into, so you have to JUMP in (like Mario 64). It's the last star of the world.
+## KING BOMBO ON THE SUMMIT: a 9x9 flat mesa with a staircase up one side. The star
+## appears on top when he's beaten (openplay.gd). Worlds with a real mountain can set
+## `summit_spot` themselves before this runs; then only the quest is added.
+func _summit_quest() -> void:
+	if summit_spot == Vector3.ZERO:
+		var o := _free_spot(14)
+		if o.x < 9 or o.y < 9 or o.x > sx - 16 or o.y > sz - 16:
+			o = _free_spot(14)
+		if o.x < 9 or o.y < 9 or o.x > sx - 16 or o.y > sz - 16:
+			return
+		var g := ground_at(o.x, o.y)
+		var top := g + 6
+		var block: int = STONE_BRICK
+		for dx in range(-4, 5):
+			for dz in range(-4, 5):
+				for y in range(maxi(1, g - 2), top):
+					set_cell(o.x + dx, y, o.y + dz, block if y < top - 1 else top_block)
+				locked[Vector3i(o.x + dx, top - 1, o.y + dz)] = true
+		# a staircase up the south side (one block per step: an easy hop)
+		for i in 6:
+			for w in [-1, 0, 1]:
+				var x: int = o.x + w
+				var z: int = o.y + 5 + (5 - i)
+				for y in range(maxi(1, g - 2), g + i + 1):
+					set_cell(x, y, z, block)
+		summit_spot = Vector3(o.x + 0.5, top, o.y + 0.5)
+		keep_out.append([Vector2(o.x, o.y), 11.0])
+	spawns.append({"kind": "kingbombo", "pos": summit_spot + Vector3(0, 0.05, -1.5)})
+	objectives.append({"id": "bombo", "name": "KING BOMBO", "hint": "Climb the summit, grab King Bombo from BEHIND and throw him 3 times!",
+		"pos": summit_spot + Vector3(0, 0.9, 1.5)})
+
+
 func _painting_spot() -> void:
 	var x0 := int(arena.position.x)
 	var zc := float(int(arena.position.y + arena.size.y * 0.5)) + 0.5
@@ -1447,6 +1480,7 @@ func generate_open(w: String) -> void:
 	_special_foes(start)
 	_more_quests(start)
 	_painting_spot()
+	_summit_quest()
 	for i in 16:
 		var o := _free_spot(6)
 		if o.x < 0 or Vector2(o).distance_to(Vector2(start)) < 14:
