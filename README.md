@@ -177,19 +177,19 @@ further the javelin flies.
 
 | # | Name | What's new |
 |---|---|---|
-| 1 | Olympia Trials | A still target 25 m away |
+| 1 | Olympia Trials | A still target 50 m away |
 | 2 | First Steps | The target starts sliding side to side |
 | 3 | Hermes Runs | Faster, and 2 hits needed |
 | 4 | Breath of Zephyr | Crosswind (watch the ribbon on the shield) |
-| 5 | The Long Field | 58 m |
+| 5 | The Long Field | 75 m |
 | 6 | Artemis Hunts | Wide, quick slides |
 | 7 | Tides of Poseidon | The target drifts nearer and further away |
-| 8 | Boreas Blows | Strong wind at 68 m |
+| 8 | Boreas Blows | Strong wind at 85 m |
 | 9 | Chariot Race | A fast target racing across the field |
-| 10 | Apollo's Mark | 82 m, moving both ways, 3 hits |
-| 11 | Labours of Heracles | 88 m with strong wind |
-| 12 | Storm of Zeus | 96 m, moving both ways, gusty |
-| 13 | Olympian Glory | 104 m, the hardest hand-made level |
+| 10 | Apollo's Mark | 95 m, moving both ways, 3 hits |
+| 11 | Labours of Heracles | 100 m with strong wind |
+| 12 | Storm of Zeus | 106 m, moving both ways, gusty |
+| 13 | Olympian Glory | 112 m, the hardest hand-made level |
 | 14+ | Endless Games | Keep getting harder forever |
 
 On the title screen:

@@ -31,22 +31,23 @@ data class LevelSpec(
 
 /**
  * The hand-made levels, easiest first. Change these numbers, or add lines, to tune the game.
- * The longest throw at full power is about 140 m, so keep distance + swayZ under about 120.
+ * Throws go from about 30 m (gentlest) to about 140 m (full power), so keep distance
+ * between about 45 and 115, and distance + swayZ under about 120.
  */
 val LEVELS = listOf(
-    LevelSpec("Olympia Trials", distance = 25f, spread = 0f, radius = 6f, time = 45f, hits = 1),
-    LevelSpec("First Steps", distance = 30f, spread = 4f, radius = 5.5f, time = 45f, hits = 1, sway = 4f, swaySpeed = 0.6f),
-    LevelSpec("Hermes Runs", distance = 38f, spread = 6f, radius = 5f, time = 45f, hits = 2, sway = 7f, swaySpeed = 0.8f),
-    LevelSpec("Breath of Zephyr", distance = 45f, spread = 6f, radius = 5f, time = 45f, hits = 2, wind = 3f, sway = 5f, swaySpeed = 0.8f),
-    LevelSpec("The Long Field", distance = 58f, spread = 8f, radius = 4.5f, time = 45f, hits = 2, wind = 3f, sway = 6f, swaySpeed = 0.8f),
-    LevelSpec("Artemis Hunts", distance = 52f, spread = 8f, radius = 4.5f, time = 45f, hits = 2, sway = 9f, swaySpeed = 1.1f),
-    LevelSpec("Tides of Poseidon", distance = 62f, spread = 6f, radius = 4.5f, time = 50f, hits = 2, wind = 3f, sway = 4f, swayZ = 10f, swaySpeed = 0.9f),
-    LevelSpec("Boreas Blows", distance = 68f, spread = 10f, radius = 4f, time = 50f, hits = 2, wind = 6f, sway = 7f, swaySpeed = 0.9f),
-    LevelSpec("Chariot Race", distance = 72f, spread = 6f, radius = 4f, time = 50f, hits = 2, sway = 13f, swaySpeed = 1.3f),
-    LevelSpec("Apollo's Mark", distance = 82f, spread = 8f, radius = 3.5f, time = 50f, hits = 3, wind = 4f, sway = 8f, swayZ = 8f, swaySpeed = 1f),
-    LevelSpec("Labours of Heracles", distance = 88f, spread = 10f, radius = 3.5f, time = 55f, hits = 3, wind = 6f, sway = 10f, swaySpeed = 1.2f),
-    LevelSpec("Storm of Zeus", distance = 96f, spread = 8f, radius = 3.2f, time = 55f, hits = 3, wind = 7f, sway = 10f, swayZ = 10f, swaySpeed = 1.3f),
-    LevelSpec("Olympian Glory", distance = 104f, spread = 8f, radius = 3f, time = 55f, hits = 3, wind = 7f, sway = 12f, swayZ = 8f, swaySpeed = 1.4f),
+    LevelSpec("Olympia Trials", distance = 50f, spread = 0f, radius = 7f, time = 45f, hits = 1),
+    LevelSpec("First Steps", distance = 55f, spread = 4f, radius = 6.5f, time = 45f, hits = 1, sway = 4f, swaySpeed = 0.6f),
+    LevelSpec("Hermes Runs", distance = 60f, spread = 6f, radius = 6f, time = 45f, hits = 2, sway = 7f, swaySpeed = 0.8f),
+    LevelSpec("Breath of Zephyr", distance = 65f, spread = 6f, radius = 6f, time = 45f, hits = 2, wind = 3f, sway = 5f, swaySpeed = 0.8f),
+    LevelSpec("The Long Field", distance = 75f, spread = 8f, radius = 5.5f, time = 50f, hits = 2, wind = 3f, sway = 6f, swaySpeed = 0.8f),
+    LevelSpec("Artemis Hunts", distance = 70f, spread = 8f, radius = 5.5f, time = 50f, hits = 2, sway = 9f, swaySpeed = 1.1f),
+    LevelSpec("Tides of Poseidon", distance = 80f, spread = 6f, radius = 5.5f, time = 50f, hits = 2, wind = 3f, sway = 4f, swayZ = 10f, swaySpeed = 0.9f),
+    LevelSpec("Boreas Blows", distance = 85f, spread = 10f, radius = 5f, time = 50f, hits = 2, wind = 6f, sway = 7f, swaySpeed = 0.9f),
+    LevelSpec("Chariot Race", distance = 88f, spread = 6f, radius = 5f, time = 50f, hits = 2, sway = 13f, swaySpeed = 1.3f),
+    LevelSpec("Apollo's Mark", distance = 95f, spread = 8f, radius = 4.5f, time = 55f, hits = 3, wind = 4f, sway = 8f, swayZ = 8f, swaySpeed = 1f),
+    LevelSpec("Labours of Heracles", distance = 100f, spread = 10f, radius = 4.5f, time = 55f, hits = 3, wind = 6f, sway = 10f, swaySpeed = 1.2f),
+    LevelSpec("Storm of Zeus", distance = 106f, spread = 8f, radius = 4f, time = 55f, hits = 3, wind = 7f, sway = 10f, swayZ = 8f, swaySpeed = 1.3f),
+    LevelSpec("Olympian Glory", distance = 112f, spread = 8f, radius = 4f, time = 55f, hits = 3, wind = 7f, sway = 12f, swayZ = 6f, swaySpeed = 1.4f),
 )
 
 /** The level with this number (starting at 1). After the hand-made ones, levels keep getting harder forever. */
@@ -55,14 +56,14 @@ fun levelSpec(number: Int): LevelSpec {
     val k = number - LEVELS.size
     return LevelSpec(
         name = "Endless Games $k",
-        distance = 60f + (k * 23) % 45,
+        distance = 70f + (k * 23) % 40,
         spread = min(14f, 8f + k),
-        radius = max(1.8f, 3f - k * 0.1f),
+        radius = max(3f, 4.2f - k * 0.08f),
         time = max(35f, 55f - k),
         hits = 3,
         wind = min(10f, 6f + k * 0.4f),
         sway = min(16f, 9f + k * 0.5f),
-        swayZ = if (k % 2 == 0) min(12f, 6f + k * 0.5f) else 0f,
+        swayZ = if (k % 2 == 0) min(8f, 4f + k * 0.4f) else 0f,
         swaySpeed = min(2.2f, 1.2f + k * 0.06f),
     )
 }

@@ -13,7 +13,8 @@ import kotlin.math.sqrt
 const val GRAVITY = 9.81f
 /** Javelins leave the hand at about 36° above level. */
 const val RELEASE_ANGLE = 0.63f
-const val MIN_SPEED = 9f
+/** Even the gentlest throw goes about 30 m, so the whole swing range is spent on far targets. */
+const val MIN_SPEED = 17.5f
 const val MAX_SPEED = 38f
 /** Sideways push per m/s of wind, in m/s². */
 const val WIND_PUSH = 0.3f

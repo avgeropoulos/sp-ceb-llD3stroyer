@@ -168,9 +168,9 @@ class ThrowDetector {
         /** A forward spin faster than this (rad/s) starts the throw. */
         const val SWING_START = 3f
         /** Forward spin (rad/s) for full power at normal sensitivity. */
-        const val SPIN_FULL = 18f
+        const val SPIN_FULL = 24f
         /** Push (m/s²) for full power at normal sensitivity. */
-        const val PUSH_FULL = 30f
+        const val PUSH_FULL = 40f
 
         fun powerFor(peakSpin: Float, peakPush: Float, sensitivity: Float): Float {
             val spin = ((peakSpin - SWING_START) / (SPIN_FULL / sensitivity - SWING_START)).coerceIn(0f, 1f)

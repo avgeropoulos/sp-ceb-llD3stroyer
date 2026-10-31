@@ -96,7 +96,7 @@ class GameTest {
     @Test fun pullingBackThenWhippingForwardThrows() {
         val d = ThrowDetector()
         val p = assertNotNull(throwWithGyro(d, 15f))
-        assertTrue(p in 0.6f..0.9f, "power $p")
+        assertTrue(p in 0.45f..0.75f, "power $p")
         assertEquals(ThrowDetector.Phase.IDLE, d.phase)
         val weak = assertNotNull(throwWithGyro(ThrowDetector(), 7f))
         assertTrue(weak < p, "weaker swing should be weaker: $weak vs $p")
@@ -160,7 +160,7 @@ class GameTest {
     @Test fun javelinPhysics() {
         val (_, weak) = Javelin.landing(0f)
         val (_, strong) = Javelin.landing(1f)
-        assertTrue(weak in 6f..12f, "weakest throw $weak m")
+        assertTrue(weak in 25f..40f, "weakest throw $weak m")
         assertTrue(strong in 125f..150f, "strongest throw $strong m")
         var last = 0f
         for (i in 0..10) {
@@ -177,7 +177,8 @@ class GameTest {
         for (n in 1..40) {
             val s = levelSpec(n)
             assertTrue(s.distance * 1.1f + s.swayZ + s.radius < maxRange - 5f, "level $n too far")
-            assertTrue(s.time >= 30f && s.hits >= 1 && s.radius >= 1.5f, "level $n: $s")
+            assertTrue(s.time >= 30f && s.hits >= 1 && s.radius >= 3f, "level $n: $s")
+            assertTrue(s.distance >= 45f, "level $n is closer than the weakest throw lets you hit")
         }
         assertTrue(levelSpec(LEVELS.size + 1).name.startsWith("Endless"))
     }

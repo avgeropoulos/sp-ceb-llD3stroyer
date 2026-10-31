@@ -318,7 +318,7 @@ class Game(
 
     private fun showTitle() {
         paused = false
-        target = Target(3f, 42f, 5f, sway = 4f, speed = 0.5f)
+        target = Target(3f, 70f, 6f, sway = 4f, speed = 0.5f)
         stuck.clear()
         stuck += Stuck(5f, 43f, 0.05f, -0.6f, 0.8f, true)
         stuck += Stuck(1.5f, 38f, -0.02f, -0.55f, 0.83f, false)
