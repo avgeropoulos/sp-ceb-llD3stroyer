@@ -28,12 +28,29 @@ jobs:
         env:
           # Javelin Strike's version number, so the app can tell when a newer build exists.
           BUILD_NUMBER: ${{ github.run_number }}
-        run: ./gradlew :app:assembleDebug :javelin-app:assembleDebug --console=plain
+        run: ./gradlew :app:assembleDebug :javelin-app:assembleGithubRelease --console=plain
+
+      # The Google Play version, as an app bundle. It's signed with the private upload key
+      # when the PLAY_* repository secrets are set, and left unsigned until then.
+      - name: Build Play Store bundle
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+          PLAY_KEYSTORE_BASE64: ${{ secrets.PLAY_KEYSTORE_BASE64 }}
+          PLAY_KEYSTORE_PASSWORD: ${{ secrets.PLAY_KEYSTORE_PASSWORD }}
+          PLAY_KEY_ALIAS: ${{ secrets.PLAY_KEY_ALIAS }}
+          PLAY_KEY_PASSWORD: ${{ secrets.PLAY_KEY_PASSWORD }}
+        run: |
+          if [ -n "$PLAY_KEYSTORE_BASE64" ]; then
+            echo "$PLAY_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/play.keystore"
+            export PLAY_KEYSTORE_FILE="$RUNNER_TEMP/play.keystore"
+          fi
+          ./gradlew :javelin-app:bundlePlayRelease --console=plain
+          cp javelin-app/build/outputs/bundle/playRelease/*.aab JavelinStrike-play.aab
 
       - name: Rename APKs
         run: |
           cp app/build/outputs/apk/debug/app-debug.apk RoccosQuest.apk
-          cp javelin-app/build/outputs/apk/debug/javelin-app-debug.apk JavelinStrike.apk
+          cp javelin-app/build/outputs/apk/github/release/javelin-app-github-release.apk JavelinStrike.apk
           echo "${{ github.run_number }}" > javelin-version.txt
 
       - uses: actions/upload-artifact@v4
@@ -45,6 +62,11 @@ jobs:
         with:
           name: JavelinStrike-apk
           path: JavelinStrike.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JavelinStrike-play-bundle
+          path: JavelinStrike-play.aab
 
       - name: Publish downloadable build
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'

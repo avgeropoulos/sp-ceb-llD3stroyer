@@ -25,18 +25,23 @@ enum class ArmStrength(val label: String, val sensitivity: Float) {
  */
 class Game(
     private val input: Input,
-    private val sound: SoundSink,
-    private val store: Storage,
+    internal val sound: SoundSink,
+    internal val store: Storage,
     internal val updater: Updater = Updater.None,
     seed: Long = System.nanoTime(),
 ) {
-    enum class Screen { TITLE, HOWTO, INTRO, PLAY, CLEAR, TIME_UP, GAME_OVER }
+    enum class Screen { TITLE, EVENTS, EVENT, HOWTO, INTRO, PLAY, CLEAR, TIME_UP, GAME_OVER }
     enum class ThrowState { READY, FLIGHT, LANDED }
 
     /** Size of the view in virtual pixels. The width is fixed; the height follows the screen's shape. */
     var viewW = VIEW_W
     var viewH = 760f
     val detector = ThrowDetector()
+    /** Steps and spins for the discus, sprint and long jump. */
+    val motion = MotionTracker()
+    /** The event being played, other than the javelin. */
+    internal var event: OlympicEvent? = null
+        private set
 
     /** False when the phone has no gyroscope; touch controls are used instead. */
     @Volatile var motionAvailable = true
@@ -122,6 +127,7 @@ class Game(
         if (cheerT > 0f) cheerT -= dt
         sinceRelease += dt
         detector.sensitivity = arm.sensitivity
+        motion.sensitivity = arm.sensitivity
 
         if (input.back) {
             input.back = false
@@ -129,7 +135,13 @@ class Game(
         }
         touches.clear()
         input.drain(touches)
-        for (t in touches) onTouch(t)
+        val ev = event
+        if (screen == Screen.EVENT && ev != null) {
+            ev.update(dt, touches)
+            if (ev.done) showEvents()
+        } else {
+            for (t in touches) onTouch(t)
+        }
 
         val ready = screen == Screen.PLAY && !paused && throwState == ThrowState.READY && timeLeft > 0f
         detector.enabled = ready && controls == ControlMode.MOTION
@@ -347,7 +359,60 @@ class Game(
         when (screen) {
             Screen.PLAY -> paused = !paused
             Screen.TITLE -> {}
-            else -> showTitle()
+            Screen.EVENTS, Screen.HOWTO -> showTitle()
+            else -> showEvents()
+        }
+    }
+
+    /** Back to the menu of events, with the javelin scene reset behind it. */
+    private fun showEvents() {
+        event = null
+        showTitle()
+        go(Screen.EVENTS)
+    }
+
+    // ---------------------------------------------------------------- motion (from the platform)
+
+    /** Gyroscope reading, rad/s in the phone's axes, with the sensor's timestamp. */
+    fun onGyro(nanos: Long, wx: Float, wy: Float, wz: Float) {
+        detector.gyro(nanos, wx, wy, wz)
+        motion.gyro(nanos, wx, wy, wz)
+    }
+
+    /** Linear acceleration (gravity removed), m/s². */
+    fun onAccel(ax: Float, ay: Float, az: Float) {
+        detector.push(ax, ay, az)
+        motion.accel(ax, ay, az)
+    }
+
+    internal fun startEvent(kind: OlympicEventKind) {
+        sound.play(Sound.CLICK)
+        if (kind == OlympicEventKind.JAVELIN) {
+            if (store.load(KEY_SEEN_HOWTO) == 0) {
+                store.save(KEY_SEEN_HOWTO, 1)
+                playAfterHowTo = true
+                go(Screen.HOWTO)
+            } else {
+                startGame()
+            }
+            return
+        }
+        event = when (kind) {
+            OlympicEventKind.DISCUS -> DiscusEvent(this)
+            OlympicEventKind.SPRINT -> SprintEvent(this)
+            else -> LongJumpEvent(this)
+        }
+        particles.clear()
+        go(Screen.EVENT)
+    }
+
+    private fun eventsTap(x: Float, y: Float) {
+        for ((i, kind) in OlympicEventKind.entries.withIndex()) {
+            if (inside(eventButton(i), x, y)) { startEvent(kind); return }
+        }
+        if (inside(backButton(), x, y)) {
+            sound.play(Sound.CLICK)
+            go(Screen.TITLE)
         }
     }
 
@@ -362,6 +427,8 @@ class Game(
         val press = t.type == Input.DOWN || t.type == Input.TAP
         when (screen) {
             Screen.TITLE -> if (press) titleTap(t.x, t.y)
+            Screen.EVENTS -> if (press && screenT > 0.2f) eventsTap(t.x, t.y)
+            Screen.EVENT -> {}
             Screen.HOWTO -> if (press && screenT > 0.4f) {
                 sound.play(Sound.CLICK)
                 if (playAfterHowTo) startGame() else go(Screen.TITLE)
@@ -379,7 +446,7 @@ class Game(
             }
             Screen.GAME_OVER -> if (press && screenT > 1.5f) {
                 sound.play(Sound.CLICK)
-                showTitle()
+                showEvents()
             }
         }
     }
@@ -389,7 +456,7 @@ class Game(
         if (paused) {
             if (!press) return
             if (inside(resumeButton(), t.x, t.y)) { sound.play(Sound.CLICK); paused = false }
-            else if (inside(quitButton(), t.x, t.y)) { sound.play(Sound.CLICK); showTitle() }
+            else if (inside(quitButton(), t.x, t.y)) { sound.play(Sound.CLICK); showEvents() }
             return
         }
         if (press && inside(pauseButton(), t.x, t.y)) {
@@ -425,13 +492,7 @@ class Game(
         when {
             inside(titleButton(0), x, y) -> {
                 sound.play(Sound.CLICK)
-                if (store.load(KEY_SEEN_HOWTO) == 0) {
-                    store.save(KEY_SEEN_HOWTO, 1)
-                    playAfterHowTo = true
-                    go(Screen.HOWTO)
-                } else {
-                    startGame()
-                }
+                go(Screen.EVENTS)
             }
             inside(titleButton(1), x, y) -> {
                 sound.play(Sound.CLICK)
@@ -459,7 +520,7 @@ class Game(
 
     // ---------------------------------------------------------------- effects
 
-    private fun dirt(x: Float, z: Float) {
+    internal fun dirt(x: Float, z: Float) {
         repeat(10) {
             particles += Particle(
                 x, 0.1f, z,
@@ -469,7 +530,7 @@ class Game(
         }
     }
 
-    private fun confetti(x: Float, z: Float) {
+    internal fun confetti(x: Float, z: Float) {
         repeat(40) {
             particles += Particle(
                 x + (rng.nextFloat() - 0.5f) * 3f, 2f + rng.nextFloat() * 3f, z + (rng.nextFloat() - 0.5f) * 3f,
@@ -534,6 +595,8 @@ class Game(
     // ---------------------------------------------------------------- layout (portrait)
 
     internal fun titleButton(i: Int) = floatArrayOf(viewW / 2f - 130f, max(200f, viewH * 0.3f) + i * 48f, 260f, 40f)
+    internal fun eventButton(i: Int) = floatArrayOf(viewW / 2f - 130f, max(150f, viewH * 0.22f) + i * 74f, 260f, 46f)
+    internal fun backButton() = floatArrayOf(viewW / 2f - 80f, eventButton(OlympicEventKind.entries.size)[1] + 10f, 160f, 40f)
     internal fun pauseButton() = floatArrayOf(viewW - 44f, 8f, 36f, 32f)
     internal fun resumeButton() = floatArrayOf(viewW / 2f - 110f, viewH * 0.45f, 220f, 44f)
     internal fun quitButton() = floatArrayOf(viewW / 2f - 110f, viewH * 0.45f + 58f, 220f, 44f)
@@ -544,9 +607,15 @@ class Game(
     // ---------------------------------------------------------------- render
 
     fun render(g: Gfx) {
+        val ev = event
+        if (screen == Screen.EVENT && ev != null) {
+            ev.render(g)
+            return
+        }
         drawWorld(g, cam, main = true, 0f, 0f, viewW, viewH)
         when (screen) {
             Screen.TITLE -> drawTitle(g)
+            Screen.EVENTS -> drawEvents(g)
             Screen.HOWTO -> drawHowTo(g)
             else -> {
                 drawInset(g)

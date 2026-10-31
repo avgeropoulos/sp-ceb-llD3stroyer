@@ -137,7 +137,7 @@ internal fun Game.drawPrompts(g: Gfx) {
 }
 
 /** A dark panel with a gold Greek key border. Returns its top. */
-private fun Game.panel(g: Gfx, h: Float): Float {
+internal fun Game.panel(g: Gfx, h: Float): Float {
     val w = viewW - 32f
     val x = 16f
     val y = viewH * 0.42f - h / 2f
@@ -148,7 +148,7 @@ private fun Game.panel(g: Gfx, h: Float): Float {
 }
 
 /** A strip of the Greek key pattern, 8 px tall. */
-private fun meander(g: Gfx, x: Float, y: Float, w: Float) {
+internal fun meander(g: Gfx, x: Float, y: Float, w: Float) {
     val c = Game.GOLD
     val u = 8f
     val t = 1.5f
@@ -231,11 +231,14 @@ internal fun Game.drawTitle(g: Gfx) {
     button(g, titleButton(1), "CONTROLS: $ctl", CREAM)
     button(g, titleButton(2), "ARM: ${arm.label}", CREAM)
     button(g, titleButton(3), "HOW TO PLAY", CREAM)
-    val up = titleButton(4)
-    val pulse = updater.available && (clock * 2f).toInt() % 2 == 0
-    button(g, up, updater.label, if (updater.available) (if (pulse) Game.GOLD else Game.GREEN) else 0xFFD9C9A3.toInt())
-    updater.detail?.let { d ->
-        for ((i, l) in wrap(d, 46).take(2).withIndex()) g.shadowText(l, cx, up[1] + up[3] + 13f + i * 12f, 9f, CREAM, 1)
+    // The update button (only in the version installed from GitHub)
+    val up = titleButton(if (updater === Updater.None) 3 else 4)
+    if (updater !== Updater.None) {
+        val pulse = updater.available && (clock * 2f).toInt() % 2 == 0
+        button(g, up, updater.label, if (updater.available) (if (pulse) Game.GOLD else Game.GREEN) else 0xFFD9C9A3.toInt())
+        updater.detail?.let { d ->
+            for ((i, l) in wrap(d, 46).take(2).withIndex()) g.shadowText(l, cx, up[1] + up[3] + 13f + i * 12f, 9f, CREAM, 1)
+        }
     }
 
     val top = up[1] + up[3] + 34f
@@ -252,6 +255,28 @@ internal fun Game.drawTitle(g: Gfx) {
     }
     val best = bestLevel()
     if (best > 0) g.shadowText("Best level cleared: $best", cx, viewH - 14f, 10f, Game.WHITE, 1)
+}
+
+/** The menu of events, each with its best result. */
+internal fun Game.drawEvents(g: Gfx) {
+    g.rect(0f, 0f, viewW, viewH, 0x60000000)
+    val cx = viewW / 2f
+    g.shadowText("THE EVENTS", cx, 70f, 30f, Game.GOLD, 1, serif = true)
+    meander(g, cx - 110f, 82f, 220f)
+    g.shadowText("Choose your contest", cx, 112f, 11f, CREAM, 1)
+    for ((i, kind) in OlympicEventKind.entries.withIndex()) {
+        val r = eventButton(i)
+        button(g, r, kind.title, if (i == 0) Game.GREEN else CREAM)
+        val best = when (kind) {
+            OlympicEventKind.JAVELIN -> highScores[0].let { if (it > 0) "High score $it" else "" }
+            else -> store.load(kind.bestKey).let { v ->
+                if (v <= 0) "" else if (kind == OlympicEventKind.SPRINT) "Best ${v / 1000}.${((v % 1000) / 10).toString().padStart(2, '0')} s"
+                else "Best ${v / 100}.${(v % 100).toString().padStart(2, '0')} m"
+            }
+        }
+        g.shadowText(best.ifEmpty { "Not yet competed" }, cx, r[1] + r[3] + 14f, 10f, if (best.isEmpty()) 0xB0FFFFFF.toInt() else Game.CYAN, 1)
+    }
+    button(g, backButton(), "BACK", CREAM)
 }
 
 internal fun Game.drawHowTo(g: Gfx) {
@@ -292,11 +317,11 @@ internal fun Game.drawHowTo(g: Gfx) {
     }
 }
 
-private fun button(g: Gfx, r: FloatArray, label: String, color: Int) {
+internal fun button(g: Gfx, r: FloatArray, label: String, color: Int) {
     g.rect(r[0], r[1], r[2], r[3], INK)
     g.rect(r[0] + 2f, r[1] + 2f, r[2] - 4f, r[3] - 4f, TERRACOTTA)
     g.rect(r[0] + 4f, r[1] + 4f, r[2] - 8f, r[3] - 8f, 0xFF8E3420.toInt())
     g.shadowText(label, r[0] + r[2] / 2f, r[1] + r[3] / 2f + 5f, 14f, color, 1)
 }
 
-private fun Game.blink() = if ((clock * 2f).toInt() % 2 == 0) Game.WHITE else 0xFFFFE066.toInt()
+internal fun Game.blink() = if ((clock * 2f).toInt() % 2 == 0) Game.WHITE else 0xFFFFE066.toInt()

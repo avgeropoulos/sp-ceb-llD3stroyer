@@ -38,6 +38,9 @@ class GameTest {
 
     private fun startPlaying(g: Game, input: Input) {
         tap(g, input, g.titleButton(0))
+        assertEquals(Game.Screen.EVENTS, g.screen)
+        run(g, 0.3f)
+        tap(g, input, g.eventButton(0))
         assertEquals(Game.Screen.INTRO, g.screen)
         run(g, 0.5f)
         tapMiddle(g, input)

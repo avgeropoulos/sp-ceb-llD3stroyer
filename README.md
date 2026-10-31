@@ -149,6 +149,20 @@ further the javelin flies.
 
 <img src="docs/javelin-title.png" width="270"> <img src="docs/javelin.png" width="270">
 
+## The events
+
+PLAY opens the events of the ancient Olympiad. Each is played with real motion (or touch, if you
+switch CONTROLS to TOUCH), and your best result in each is saved.
+
+| Event | How you play it |
+|---|---|
+| **Javelin** | Hold the screen, pull your arm back and throw at targets, level by level (below). |
+| **Discus** | Hold the screen and spin round on the spot with the phone, then let go when you're facing the field. A faster spin throws further; facing the wrong way is a foul. Best of 3. *Touch:* circle your finger fast, lift it when the arrow points up the field. |
+| **Stadion race** | The oldest Olympic event: one length of the stadium, 192 m, against a Spartan, an Athenian and a Corinthian. Pump your arms like a sprinter, phone in hand, and every swing is a step. Moving before **APITE!** ("go!") is a false start. *Touch:* tap left and right in turn. |
+| **Long jump** | Pump your arms to sprint down the runway, then tap the screen to jump just before the white board. A faster run-up jumps further; past the board is a foul. Best of 3. *Touch:* tap left and right to run, and the JUMP button. |
+
+ARM on the title screen (GENTLE / NORMAL / STRONG) sets how hard you need to move in every event.
+
 ## How it plays
 
 * It's played in **portrait**: hold the phone upright, screen facing you, so you never have
@@ -209,6 +223,20 @@ GitHub Actions builds it on every push. On your phone, open
 **https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/download/javelin-strike/JavelinStrike.apk**,
 then open the downloaded file and allow your browser to install apps if Android asks.
 
+### Google Play version
+
+The app comes in two versions, built from the same code:
+
+* **github**: the APK above. It checks this repository for new builds and updates itself.
+* **play**: for the Google Play Store. Play handles updates (Google doesn't allow apps to update
+  themselves), so it has no update button. Every build makes `JavelinStrike-play.aab`, the app
+  bundle you upload to the Play Console; it's in the run's artifacts on the Actions tab.
+
+The Play bundle has to be signed with a private upload key. Add these repository secrets
+(Settings > Secrets and variables > Actions) and the bundle is signed automatically:
+`PLAY_KEYSTORE_BASE64` (the keystore file, base64-encoded), `PLAY_KEYSTORE_PASSWORD`,
+`PLAY_KEY_ALIAS` and `PLAY_KEY_PASSWORD`. Until then it's built unsigned.
+
 ### Updating from inside the app
 
 After that first install you never need the link again. The bottom button on the title screen
@@ -232,10 +260,13 @@ from the link above; updates work from then on.
 * `javelin-core/.../World.kt`: javelin physics (release angle, speeds, how much wind pushes)
   and how targets move.
 * `javelin-core/.../Game.kt`: game rules. `Scene.kt` draws Olympia and `Hud.kt` the screens.
+* `javelin-core/.../Events.kt`: the discus, stadion race and long jump. `Motion.kt` turns arm
+  pumping into running steps and measures spinning.
 * `javelin-app/`: the Android layer, covering sensors, touch, the `Canvas` renderer, sounds
-  and vibration.
+  and vibration. `src/github/` holds the self-updater, which only the GitHub version has.
 
 ```sh
 ./gradlew :javelin-core:test       # tests; also renders screenshots to javelin-core/build/screens
-./gradlew :javelin-app:assembleDebug
+./gradlew :javelin-app:assembleGithubRelease   # the GitHub APK
+./gradlew :javelin-app:bundlePlayRelease       # the Play Store bundle
 ```

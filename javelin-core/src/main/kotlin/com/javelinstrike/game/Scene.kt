@@ -14,8 +14,8 @@ import kotlin.random.Random
  * and the athlete.
  */
 
-/** The sand track ends here, where the far bank rises. */
-private const val END_Z = 160f
+/** The sand ends here, where the far bank rises: just past one stadion (192 m). */
+private const val END_Z = 205f
 /** Half the width of the sand; the grassy banks rise from here. */
 private const val SAND_HALF_W = 40f
 private const val BANK_TOP_X = 66f
@@ -97,10 +97,14 @@ private val pines: List<Pair<Float, Float>> = run {
     }
 }
 
-private val xs = FloatArray(48)
-private val ys = FloatArray(48)
+internal val projXs = FloatArray(48)
+internal val projYs = FloatArray(48)
 
-internal fun Game.drawWorld(g: Gfx, c: Camera, main: Boolean, x0: Float, y0: Float, w: Float, h: Float) {
+/** Draws the stadium. With [javelinScene] false, leaves out the javelin event's target, javelins and athlete. */
+internal fun Game.drawWorld(
+    g: Gfx, c: Camera, main: Boolean, x0: Float, y0: Float, w: Float, h: Float,
+    javelinScene: Boolean = true,
+) {
     val horizon = c.horizon()
     // Sky, warm and hazy near the horizon
     if (horizon > y0) {
@@ -140,11 +144,12 @@ internal fun Game.drawWorld(g: Gfx, c: Camera, main: Boolean, x0: Float, y0: Flo
         drawMarkers(g, c)
     }
 
-    drawTarget(g, c, main)
+    if (javelinScene) {
+        drawTarget(g, c, main)
+        for (s in stuck.sortedByDescending { it.z }) drawStuck(g, c, s)
+    }
 
-    for (s in stuck.sortedByDescending { it.z }) drawStuck(g, c, s)
-
-    javelin?.let { j ->
+    if (javelinScene) javelin?.let { j ->
         val sp = j.speed.coerceAtLeast(0.01f)
         val ux = j.vx / sp
         val uy = j.vy / sp
@@ -163,7 +168,7 @@ internal fun Game.drawWorld(g: Gfx, c: Camera, main: Boolean, x0: Float, y0: Flo
         g.oval(c.sx - s / 2f, c.sy - s / 3f, s, s * 0.66f, argb((a * 255).toInt(), p.color))
     }
 
-    if (main) drawAthlete(g, c)
+    if (main && javelinScene) drawAthlete(g, c)
 }
 
 /** Sun, clouds, mountains, the hill of Kronos, cypresses and the Temple of Zeus. */
@@ -184,17 +189,17 @@ private fun Game.drawBackdrop(g: Gfx, c: Camera) {
     val mx = floatArrayOf(-900f, -700f, -520f, -380f, -200f, -40f, 120f, 300f, 460f, 640f, 820f, 900f, 900f, -900f)
     val my = floatArrayOf(60f, 120f, 80f, 150f, 95f, 140f, 70f, 130f, 100f, 160f, 90f, 60f, -10f, -10f)
     val mz = FloatArray(mx.size) { 700f }
-    if (projectPoly(c, mx, my, mz, mx.size)) g.poly(xs, ys, 0xFFA9B7B4.toInt(), mx.size)
+    if (projectPoly(c, mx, my, mz, mx.size)) g.poly(projXs, projYs, 0xFFA9B7B4.toInt(), mx.size)
     val hx = floatArrayOf(-600f, -420f, -260f, -90f, 60f, 220f, 380f, 600f, 600f, -600f)
     val hy = floatArrayOf(25f, 45f, 30f, 40f, 22f, 48f, 28f, 35f, -5f, -5f)
     val hz = FloatArray(hx.size) { 380f }
-    if (projectPoly(c, hx, hy, hz, hx.size)) g.poly(xs, ys, 0xFF93A578.toInt(), hx.size)
+    if (projectPoly(c, hx, hy, hz, hx.size)) g.poly(projXs, projYs, 0xFF93A578.toInt(), hx.size)
 
     // The hill of Kronos, covered in pines
     val n = 18
     val kx = FloatArray(n + 2)
     val ky = FloatArray(n + 2)
-    val kz = FloatArray(n + 2) { 290f }
+    val kz = FloatArray(n + 2) { 330f }
     for (i in 0..n) {
         val a = i * Math.PI.toFloat() / n
         kx[i] = -150f + cos(a) * 95f
@@ -202,19 +207,19 @@ private fun Game.drawBackdrop(g: Gfx, c: Camera) {
     }
     kx[n + 1] = -150f
     ky[n + 1] = -5f
-    if (projectPoly(c, kx, ky, kz, n + 2)) g.poly(xs, ys, 0xFF6F8A4A.toInt(), n + 2)
+    if (projectPoly(c, kx, ky, kz, n + 2)) g.poly(projXs, projYs, 0xFF6F8A4A.toInt(), n + 2)
     for ((px, py) in pines) {
-        if (!c.project(px, py, 289f)) continue
+        if (!c.project(px, py, 329f)) continue
         val s = max(1.5f, 4f * c.ppm)
         g.oval(c.sx - s / 2f, c.sy - s, s, s * 1.6f, 0xFF3E5A2C.toInt())
     }
 
-    drawTemple(g, c, -48f, 230f)
+    drawTemple(g, c, -48f, 275f)
 
     // Cypress trees beyond the far bank
     for (i in 0 until 14) {
         val tx = -110f + i * 17f + (i * 37 % 7)
-        val tz = 195f + (i * 53 % 25)
+        val tz = 240f + (i * 53 % 25)
         if (abs(tx + 48f) < 22f) continue
         if (!c.project(tx, 0f, tz)) continue
         val bx = c.sx
@@ -269,7 +274,7 @@ private fun drawBanks(g: Gfx, c: Camera) {
     val ex = floatArrayOf(-BANK_TOP_X, BANK_TOP_X, BANK_TOP_X, -BANK_TOP_X)
     val ey = floatArrayOf(0f, 0f, BANK_H, BANK_H)
     val ez = floatArrayOf(END_Z, END_Z, END_Z + 15f, END_Z + 15f)
-    if (projectPoly(c, ex, ey, ez, 4)) g.poly(xs, ys, GRASS_DARK, 4)
+    if (projectPoly(c, ex, ey, ez, 4)) g.poly(projXs, projYs, GRASS_DARK, 4)
     val nearZ = c.z + 3f
     var z1 = END_Z + 15f
     var i = 0
@@ -281,7 +286,7 @@ private fun drawBanks(g: Gfx, c: Camera) {
                 val bx = floatArrayOf(side * SAND_HALF_W, side * SAND_HALF_W, side * BANK_TOP_X, side * BANK_TOP_X)
                 val by = floatArrayOf(0f, 0f, BANK_H, BANK_H)
                 val bz = floatArrayOf(za, z1, z1, za)
-                if (projectPoly(c, bx, by, bz, 4)) g.poly(xs, ys, if (i % 2 == 0) GRASS else GRASS_DARK, 4)
+                if (projectPoly(c, bx, by, bz, 4)) g.poly(projXs, projYs, if (i % 2 == 0) GRASS else GRASS_DARK, 4)
             }
         }
         z1 = z0
@@ -353,7 +358,7 @@ private fun Game.drawTarget(g: Gfx, c: Camera, main: Boolean) {
         val fy = floatArrayOf(postH + 1.3f, postH + 1.0f + flap, postH + 0.8f)
         val fz = floatArrayOf(t.z, t.z, t.z)
         seg(g, c, t.x, postH + 0.9f, t.z, t.x, postH + 1.4f, t.z, 0.08f, 0xFF7A5230.toInt(), 1f)
-        if (projectPoly(c, fx, fy, fz, 3)) g.poly(xs, ys, 0xFFD32F2F.toInt(), 3)
+        if (projectPoly(c, fx, fy, fz, 3)) g.poly(projXs, projYs, 0xFFD32F2F.toInt(), 3)
     }
     if (main && c.project(t.x, postH + 2.2f, t.z)) {
         val size = (c.ppm * 2.5f).coerceIn(10f, 16f)
@@ -470,7 +475,7 @@ private fun Game.drawAthlete(g: Gfx, c: Camera) {
 // ---------------------------------------------------------------- projection helpers
 
 /** A line between two world points, at least [minPx] screen pixels wide. */
-private fun seg(
+internal fun seg(
     g: Gfx, c: Camera,
     x1: Float, y1: Float, z1: Float, x2: Float, y2: Float, z2: Float,
     widthM: Float, color: Int, minPx: Float,
@@ -484,7 +489,7 @@ private fun seg(
 }
 
 /** A line painted on the ground, clipped where it would pass behind the camera. */
-private fun groundLine(g: Gfx, c: Camera, x1: Float, z1: Float, x2: Float, z2: Float, widthM: Float, color: Int) {
+internal fun groundLine(g: Gfx, c: Camera, x1: Float, z1: Float, x2: Float, z2: Float, widthM: Float, color: Int) {
     val near = c.nearGroundZ()
     var ax = x1
     var az = z1
@@ -502,14 +507,14 @@ private fun groundLine(g: Gfx, c: Camera, x1: Float, z1: Float, x2: Float, z2: F
     }
 }
 
-private fun groundQuad(g: Gfx, c: Camera, xa: Float, xb: Float, za: Float, zb: Float, color: Int) {
+internal fun groundQuad(g: Gfx, c: Camera, xa: Float, xb: Float, za: Float, zb: Float, color: Int) {
     val qx = floatArrayOf(xa, xb, xb, xa)
     val qy = floatArrayOf(0f, 0f, 0f, 0f)
     val qz = floatArrayOf(za, za, zb, zb)
-    if (projectPoly(c, qx, qy, qz, 4)) g.poly(xs, ys, color, 4)
+    if (projectPoly(c, qx, qy, qz, 4)) g.poly(projXs, projYs, color, 4)
 }
 
-private fun groundCircle(g: Gfx, c: Camera, cx: Float, cz: Float, r: Float, color: Int) {
+internal fun groundCircle(g: Gfx, c: Camera, cx: Float, cz: Float, r: Float, color: Int) {
     val n = 28
     val px = FloatArray(n)
     val py = FloatArray(n)
@@ -520,15 +525,82 @@ private fun groundCircle(g: Gfx, c: Camera, cx: Float, cz: Float, r: Float, colo
         pz[i] = cz + sin(a) * r
         py[i] = 0.01f
     }
-    if (projectPoly(c, px, py, pz, n)) g.poly(xs, ys, color, n)
+    if (projectPoly(c, px, py, pz, n)) g.poly(projXs, projYs, color, n)
 }
 
-/** Projects a polygon into [xs]/[ys]; false if any corner is behind the camera. */
-private fun projectPoly(c: Camera, px: FloatArray, py: FloatArray, pz: FloatArray, n: Int): Boolean {
+/** Projects a polygon into [projXs]/[projYs]; false if any corner is behind the camera. */
+internal fun projectPoly(c: Camera, px: FloatArray, py: FloatArray, pz: FloatArray, n: Int): Boolean {
     for (i in 0 until n) {
         if (!c.project(px[i], py[i], pz[i])) return false
-        xs[i] = c.sx
-        ys[i] = c.sy
+        projXs[i] = c.sx
+        projYs[i] = c.sy
     }
     return true
+}
+
+/** Colours for one athlete; rivals wear differently coloured loincloths and bands. */
+internal class Look(val skin: Int = SKIN, val cloth: Int = CLOTH, val band: Int = 0xFFB5482E.toInt(), val wreath: Boolean = true)
+
+internal val PLAYER_LOOK = Look()
+
+/**
+ * An athlete at ([ox], [oy], [oz]) facing [yaw] (0 = down the field), seen in any pose:
+ * [stride] swings the legs (-1..1) for running, [armSwing] the arms, [crouch] bends them for
+ * a jump, and [discus] holds the right arm out with a discus in the hand.
+ */
+internal fun drawFigure(
+    g: Gfx, c: Camera, ox: Float, oy: Float, oz: Float, yaw: Float,
+    stride: Float, armSwing: Float, look: Look = PLAYER_LOOK,
+    crouch: Float = 0f, discus: Boolean = false, lean: Float = 0.1f,
+) {
+    val cy = cos(yaw)
+    val sy = sin(yaw)
+    fun limb(x1: Float, y1: Float, z1: Float, x2: Float, y2: Float, z2: Float, w: Float, color: Int, minPx: Float) {
+        seg(
+            g, c,
+            ox + x1 * cy + z1 * sy, oy + y1, oz - x1 * sy + z1 * cy,
+            ox + x2 * cy + z2 * sy, oy + y2, oz - x2 * sy + z2 * cy,
+            w, color, minPx,
+        )
+    }
+    val drop = crouch * 0.25f
+    val hipY = 0.95f - drop
+    for (side in intArrayOf(-1, 1)) {
+        val swing = stride * side
+        val kneeZ = swing * 0.35f + crouch * 0.25f
+        val footZ = swing * 0.55f
+        val lift = max(0f, -swing) * 0.35f
+        limb(side * 0.12f, hipY, 0f, side * 0.15f, 0.5f - drop * 0.5f, kneeZ, 0.16f, look.skin, 1.8f)
+        limb(side * 0.15f, 0.5f - drop * 0.5f, kneeZ, side * 0.16f, 0.06f + lift, footZ, 0.13f, look.skin, 1.6f)
+        limb(side * 0.16f, 0.05f + lift, footZ - 0.08f, side * 0.16f, 0.05f + lift, footZ + 0.12f, 0.12f, SANDAL, 1.5f)
+    }
+    val tz = lean
+    limb(0f, hipY + 0.05f, 0f, 0f, hipY + 0.47f, tz, 0.36f, look.skin, 3f)
+    limb(-0.13f, hipY - 0.03f, 0f, 0.13f, hipY - 0.03f, 0f, 0.25f, look.cloth, 2f)
+    limb(-0.14f, hipY + 0.07f, 0f, 0.14f, hipY + 0.07f, 0f, 0.06f, look.band, 1f)
+    val shY = hipY + 0.5f
+    limb(-0.21f, shY, tz, 0.21f, shY, tz, 0.14f, look.skin, 2f)
+    for (side in intArrayOf(-1, 1)) {
+        if (discus && side == 1) {
+            limb(0.21f, shY, tz, 0.75f, shY - 0.1f, tz - 0.25f, 0.09f, look.skin, 1.5f)
+            if (c.project(ox + 0.8f * cy + (tz - 0.27f) * sy, oy + shY - 0.1f, oz - 0.8f * sy + (tz - 0.27f) * cy)) {
+                val r = max(2f, 0.13f * c.ppm)
+                g.oval(c.sx - r, c.sy - r * 0.6f, r * 2f, r * 1.2f, OUTLINE)
+                g.oval(c.sx - r * 0.85f, c.sy - r * 0.5f, r * 1.7f, r, BRONZE)
+            }
+            continue
+        }
+        val swing = -armSwing * side
+        val handY = shY - 0.42f + crouch * 0.2f
+        limb(side * 0.21f, shY, tz, side * 0.26f, shY - 0.25f, tz + swing * 0.2f, 0.09f, look.skin, 1.5f)
+        limb(side * 0.26f, shY - 0.25f, tz + swing * 0.2f, side * 0.24f, handY, tz + swing * 0.45f, 0.08f, look.skin, 1.4f)
+    }
+    limb(0f, shY + 0.03f, tz, 0f, shY + 0.13f, tz, 0.1f, look.skin, 1.5f)
+    val hx = ox + tz * sy
+    val hz = oz + tz * cy
+    if (c.project(hx, oy + shY + 0.23f, hz)) {
+        val r = 0.12f * c.ppm
+        g.oval(c.sx - r, c.sy - r * 1.1f, r * 2f, r * 2.2f, HAIR)
+        if (look.wreath) g.oval(c.sx - r * 1.05f, c.sy - r * 0.55f, r * 2.1f, r * 0.45f, LAUREL)
+    }
 }

@@ -33,7 +33,7 @@ class GameView(private val activity: Activity) : SurfaceView(activity), SurfaceH
     private val game = Game(input, sound, object : Storage {
         override fun load(key: String) = prefs.getInt(key, 0)
         override fun save(key: String, value: Int) { prefs.edit().putInt(key, value).apply() }
-    }, AppUpdater(activity))
+    }, createUpdater(activity))
     private val gfx = CanvasGfx()
 
     private val sensors = activity.getSystemService(Context.SENSOR_SERVICE) as SensorManager
@@ -174,8 +174,8 @@ class GameView(private val activity: Activity) : SurfaceView(activity), SurfaceH
     override fun onSensorChanged(e: SensorEvent) {
         val v = e.values
         when (e.sensor.type) {
-            Sensor.TYPE_GYROSCOPE -> game.detector.gyro(e.timestamp, v[0], v[1], v[2])
-            Sensor.TYPE_LINEAR_ACCELERATION -> game.detector.push(v[0], v[1], v[2])
+            Sensor.TYPE_GYROSCOPE -> game.onGyro(e.timestamp, v[0], v[1], v[2])
+            Sensor.TYPE_LINEAR_ACCELERATION -> game.onAccel(v[0], v[1], v[2])
             Sensor.TYPE_GRAVITY -> updateTilt(v[0], v[1])
             Sensor.TYPE_ACCELEROMETER -> {
                 // No gravity sensor: smooth the raw accelerometer to find which way is down.

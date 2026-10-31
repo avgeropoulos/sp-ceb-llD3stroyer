@@ -21,8 +21,8 @@ android {
     }
 
     signingConfigs {
-        // One fixed key for every build. Android only installs an update over an app signed
-        // with the same key; the default debug key is different on every CI machine.
+        // One fixed key for every GitHub build. Android only installs an update over an app
+        // signed with the same key; the default debug key is different on every CI machine.
         // It's committed on purpose so CI and local builds can sign; it isn't a secret.
         create("shared") {
             storeFile = file("javelin.keystore")
@@ -30,16 +30,44 @@ android {
             keyAlias = "javelin"
             keyPassword = "javelinstrike"
         }
+        // The private upload key for the Play Store, given to CI as repository secrets.
+        // Without them the Play bundle is built unsigned.
+        val playKey = System.getenv("PLAY_KEYSTORE_FILE")
+        if (playKey != null && file(playKey).exists()) {
+            create("play") {
+                storeFile = file(playKey)
+                storePassword = System.getenv("PLAY_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("PLAY_KEY_ALIAS")
+                keyPassword = System.getenv("PLAY_KEY_PASSWORD")
+            }
+        }
     }
 
-    buildTypes {
-        debug {
+    // Two versions of the app:
+    //  * github: installed from the GitHub release and updates itself from there.
+    //  * play:   for the Google Play Store, which handles updates (self-updating isn't allowed).
+    flavorDimensions += "store"
+    productFlavors {
+        create("github") {
+            dimension = "store"
             signingConfig = signingConfigs.getByName("shared")
         }
+        create("play") {
+            dimension = "store"
+            signingConfig = signingConfigs.findByName("play")
+        }
+    }
+
+    // Published builds are release builds; they take the signing key of their flavor.
+    buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("shared")
         }
+    }
+
+    lint {
+        // Lint still runs with ./gradlew lint, but never stops a build from publishing.
+        checkReleaseBuilds = false
     }
 
     compileOptions {
