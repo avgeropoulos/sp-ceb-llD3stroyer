@@ -603,7 +603,13 @@ export function createHud(ctx) {
     if (!e || !e.on) return;
     // The ready hint has done its job: it gives way to the cry.
     for (const t of toasts) if (t.left > 0 && (t.el.textContent === RAGE_READY_TOAST.button || t.el.textContent === RAGE_READY_TOAST.key)) t.left = 1e-3;
-    toast('Spartan rage!', 'is-coach', 2);
+    toast(`${e.name || 'Spartan rage'}!`, 'is-coach', 2);
+  });
+  // The rage grows as the campaign nears its end (game/rage.js RAGE_TIERS): named on the title card's heels.
+  ev.on('rageTier', (e) => {
+    if (!e || !e.perk || ctx.mode !== 'battle') return;
+    for (const t of toasts) if (t.left > 0 && t.el.textContent.startsWith('Rage grows')) t.left = 1e-3;
+    toast(`Rage grows: ${e.perk}`, 'is-coach', 5);
   });
 
   // Lock-on (hilt): a new target scales the marker in (is-new, 150 ms).

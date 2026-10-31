@@ -51,3 +51,17 @@ test('pickOnScreen: a tap on a foe picks him, the nearest of two, never one behi
   assert.equal(pickOnScreen([behind], cam, W / 2, H / 2, W, H, from), null, 'behind the eye');
   assert.equal(pickOnScreen(null, cam, 0, 0, W, H, from), null);
 });
+
+test('the rage grows with the campaign: one tier a day, the last stand strongest', async () => {
+  const { RAGE_TIERS, rageTier } = await import('../../src/main/assets/game/js/game/rage.js');
+  assert.deepEqual([rageTier(1, null), rageTier(2, null), rageTier(3, 'A'), rageTier(3, 'B'), rageTier(3, 'C'), rageTier(NaN, null)].map((t) => t.tier), [1, 2, 3, 3, 4, 1]);
+  for (let i = 1; i < RAGE_TIERS.length; i++) {
+    const a = RAGE_TIERS[i - 1], b = RAGE_TIERS[i];
+    assert.ok(b.duration >= a.duration && b.damageMul >= a.damageMul && b.takenMul <= a.takenMul && b.healPerKill >= a.healPerKill
+      && b.gainMul >= a.gainMul && b.killExtend >= a.killExtend, `tier ${b.tier} is no weaker than ${a.tier}`);
+    assert.ok(b.perk.length > 0, `tier ${b.tier} announces a perk`);
+  }
+  const last = RAGE_TIERS[3];
+  assert.ok(last.arrowProof && last.shockwave && !RAGE_TIERS[2].arrowProof && !RAGE_TIERS[2].shockwave);
+  assert.equal(gainRage(0, 'kill', 1.5), RAGE.gain.kill * 1.5);
+});

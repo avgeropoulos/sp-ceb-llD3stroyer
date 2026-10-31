@@ -503,7 +503,7 @@ export function createCombat(ctx) {
       point.x -= dx * r * 0.9;
       point.z -= dz * r * 0.9;
       let damage = computeDamage({ base, power, comboMul, crit });
-      if (raging) damage *= RAGE.damageMul;
+      if (raging) damage *= (pl.ragePerks && pl.ragePerks.damageMul) || RAGE.damageMul;
       let hitIgnore = ignoreGuard;
       let hitKb = knockback;
       let hitStagger = stagger;
@@ -1316,6 +1316,28 @@ export function createCombat(ctx) {
     volleyMesh.instanceMatrix.needsUpdate = true;
     streaks.commit(0);
   }
+
+  // Spartan rage at the last stand (game/rage.js tier 4): the war cry hurls back every foe within
+  // shockRadius, no damage, a knockdown and a long stagger.
+  ev.on('rage', (e) => {
+    const pl = ctx.player;
+    if (!e || !e.on || !e.shockwave || !pl || !pl.pos) return;
+    const list = hostilesInSector(pl.pos, pl.yaw || 0, RAGE.shockRadius, Math.PI).slice();
+    for (const target of list) {
+      if (!target.alive) continue;
+      let dx = target.pos.x - pl.pos.x;
+      let dz = target.pos.z - pl.pos.z;
+      const d = Math.hypot(dx, dz) || 1;
+      dx /= d;
+      dz /= d;
+      const hit = makeHit('bash', 0, dx, dz, 1, true, 'player', chestOf(target, new THREE.Vector3()));
+      hit.ignoreGuard = true;
+      hit.knockback = 3;
+      hit.stagger = 1.6;
+      hit.knockdown = true;
+      deliver(target, hit, null, false);
+    }
+  });
 
   return {
     playerStrike,

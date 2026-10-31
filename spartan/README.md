@@ -148,6 +148,17 @@ a foe and turns with him, and your strikes and spears go at him.
   on a keyboard) and Leonidas raises the war cry. For 8 seconds you strike twice as hard, every
   cut catches each foe in front of you and staggers him, blows hurt you half as much, and every
   kill heals you. The button is at the bottom right in Buttons and Touch, and at the top in Motion.
+  The rage grows as the end nears:
+
+  | When | Rage | What it adds |
+  |---|---|---|
+  | Day 1 | Spartan rage | 8 s, double damage, half the harm, +6 health a kill |
+  | Day 2 | Fury of Lakedaimon | 10 s, and every kill adds a second |
+  | Day 3 | Wrath of the Three Hundred | fills 1.5× faster, +10 health a kill |
+  | The Kolonos | The last stand | 12 s, 2.5× damage, a third of the harm, +12 a kill, arrows cannot touch you, and the war cry hurls back every foe within 4 m |
+* **Spears.** You start each day with seven (one in hand) and every respite tops you up to five.
+  On the third day the spears break, as Herodotus tells: the fight over Leonidas' body and the last
+  stand are fought with the sword.
 
 * **Watch for the wind-up.** Every enemy telegraphs his blow, with a red chevron when it's
   aimed at you. Raise the shield in time to block.

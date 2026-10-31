@@ -363,7 +363,7 @@ test('player: dropSpears({ keepInHand: true }) leaves only the spear in hand', (
   P().refillSpears();
   h.action({ type: 'switchWeapon', weapon: 'spear' });
   h.stepTime(0.7);
-  assert.equal(P().spearsLeft, 4);
+  assert.equal(P().spearsLeft, 7);
   P().dropSpears({ keepInHand: true });
   assert.deepEqual([P().spares, P().hasSpearInHand, P().weapon, P().spearsLeft], [0, true, 'spear', 1]);
   h.action({ type: 'throw', power: 0.5, src: 'touch' });
@@ -436,12 +436,13 @@ test('player: refillSpears(total) tops up to total (one in hand) and never takes
   P().refillSpears(2);
   assert.equal(P().spearsLeft, 2, 'idempotent');
   P().refillSpears();
-  assert.deepEqual([P().spares, P().spearsLeft], [3, 4], 'default is the full bundle');
+  assert.deepEqual([P().spares, P().spearsLeft], [6, 7], 'default is the full bundle');
   P().refillSpears(2);
-  assert.equal(P().spearsLeft, 4, 'a smaller refill keeps what is there');
+  assert.equal(P().spearsLeft, 7, 'a smaller refill keeps what is there');
   P().refillSpears(9);
-  assert.equal(P().spearsLeft, 4, 'capped at the bundle');
-  h.reset(); // start: 2 spares, none in hand
+  assert.equal(P().spearsLeft, 7, 'capped at the bundle');
+  h.reset(); // start: 4 spares, none in hand
+  P().dropSpears({ keepInHand: false });
   P().refillSpears(2);
   assert.deepEqual([P().spares, P().hasSpearInHand, P().spearsLeft], [1, true, 2], 'one moves into the hand');
   P().dropSpears({ keepInHand: false });

@@ -119,7 +119,7 @@ export const DAYS = [
  * Respite rules for Days 1–2 (Day 3 phase A carries its own). Motion mode keeps a longer rest for
  * the sword arm. Every respite tops the bundle up to `spears` (dayStart refills it fully).
  */
-export const RESPITE = Object.freeze({ motion: 18, touch: 10, readyAfter: 3, heal: 0.35, spears: 2 });
+export const RESPITE = Object.freeze({ motion: 18, touch: 10, readyAfter: 3, heal: 0.35, spears: 5 });
 
 /**
  * Spawning rules (§13). The front ranks form up 20–26 m out (clear of the fight, a short walk);

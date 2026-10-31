@@ -390,6 +390,46 @@ try {
   await shoot('04-left');
   await ev(() => { window.__game.ctx.settings.leftHanded = false; });
 
+  // ---- the rage grows with the campaign ----
+  await ev(() => {
+    const g = window.__game;
+    g.startBattle(2);
+  });
+  await step(30);
+  const day2 = await ev(() => window.__game.ctx.player.ragePerks.tier);
+  check('a Day 2 battle starts with the second rage tier', day2 === 2, `tier ${day2}`);
+  await ev(() => {
+    const c = window.__game.ctx;
+    c.waves.stop();
+    c.ai.clear();
+    c.player.pos.set(0, 0, 0);
+    c.events.emit('phase', { day: 3, phase: 'C', title: 'The Kolonos' });
+  });
+  await step(5);
+  const last = await ev(() => ({ tier: window.__game.ctx.player.ragePerks.tier, toast: [...document.querySelectorAll('#hud .hud-toast.is-shown')].map((t) => t.textContent).join(' | ') }));
+  check('the Kolonos raises the rage to the last stand, and the HUD says what it gives', last.tier === 4 && /Rage grows/.test(last.toast) && /arrow-proof/.test(last.toast), JSON.stringify(last));
+  await shoot('08-rage-tier');
+  // Three Immortals around the player, one behind: the war cry hurls them all back.
+  await ev(() => {
+    const c = window.__game.ctx;
+    window.__ring = [c.ai.spawnEnemy('immortal', 0, -2.2), c.ai.spawnEnemy('immortal', 2.2, 0.4), c.ai.spawnEnemy('immortal', -0.5, 2.5)];
+    window.__ring0 = window.__ring.map((a) => Math.hypot(a.pos.x, a.pos.z));
+    c.player.rage = 1;
+  });
+  await step(3);
+  await tap('.ctl-rage');
+  await step(30);
+  const ring = await ev(() => ({ states: window.__ring.map((a) => a.state), d: window.__ring.map((a) => Math.hypot(a.pos.x, a.pos.z)), d0: window.__ring0, dur: window.__game.ctx.player.raging }));
+  check('the last stand\'s war cry knocks down every foe around, the one behind too', ring.states.every((st) => st === 'knockdown' || st === 'stagger') && ring.d.every((d, i) => d > ring.d0[i] + 0.5),
+    JSON.stringify(ring));
+  const lhp0 = await ev(() => window.__game.ctx.player.hp);
+  await ev(() => window.__game.ctx.player.damage(10, { kind: 'arrow' }));
+  const lhp1 = await ev(() => window.__game.ctx.player.hp);
+  await ev(() => window.__game.ctx.player.damage(20, { kind: 'melee' }));
+  const lhp2 = await ev(() => window.__game.ctx.player.hp);
+  check('in the last stand, arrows cannot hurt a raging Spartan, and blows hurt a third', lhp1 === lhp0 && Math.abs(lhp1 - lhp2 - 7) < 1e-6, `${lhp0} → ${lhp1} → ${lhp2}`);
+  await shoot('09-last-stand-rage');
+
   // ---- the Agoge ----
   await ev(() => window.__game.startTraining());
   await step(30);

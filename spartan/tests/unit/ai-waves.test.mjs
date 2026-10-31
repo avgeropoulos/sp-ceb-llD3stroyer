@@ -36,7 +36,7 @@ test('campaign data matches §13', () => {
   assert.deepEqual(C.volley, { first: 10, start: 10, step: 0.5, min: 7 });
   assert.equal(C.swordOnly, true);
   assert.equal(C.fade, 2);
-  assert.deepEqual(RESPITE, { motion: 18, touch: 10, readyAfter: 3, heal: 0.35, spears: 2 });
+  assert.deepEqual(RESPITE, { motion: 18, touch: 10, readyAfter: 3, heal: 0.35, spears: 5 });
   assert.deepEqual(SPAWN.interval, [1.2, 2.0]);
   assert.deepEqual(SPAWN.front, { x: [-6, 7], z: [-26, -20] });
   assert.deepEqual(SPAWN.archer, { x: [-6, 7], z: [-45, -35] });

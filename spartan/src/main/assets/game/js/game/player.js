@@ -23,7 +23,7 @@ import { TIMING, WEAPONS, pickTarget, ballisticPitch, dirToken } from './rules.j
 import { ComboTracker, COMBO_WINDOWS } from './combos.js';
 import { clamp, lerp, smoothstep, angleDiff, wrapAngle, yawTo, TAU } from '../core/math.js';
 import { LOCK, YawSpring, isLockable, inActors, acquire, nextInDirection } from './lockon.js';
-import { RAGE, gainRage, canUnleash } from './rage.js';
+import { RAGE, RAGE_TIERS, rageTier, gainRage, canUnleash } from './rage.js';
 
 const EYE = 1.66;
 const BUFFER_LIFE = 0.4;
@@ -49,8 +49,8 @@ const MOTION_STRIKE_SCALE = 0.5;
 const LOOK_PITCH_LIMIT = 1.15;
 const PLAYER_RADIUS = 0.32;
 const SWITCH_TIME = 0.3;
-const MAX_SPARES = 3;
-const START_SPARES = 2;
+const MAX_SPARES = 6;
+const START_SPARES = 4;
 const CHAIN_MAX = 3.0;
 const CHAIN_STEP = 0.1;
 const CHAIN_IDLE = 4.0; // s of game time without a player hit before the chain drops back to 1
@@ -119,6 +119,8 @@ export function createPlayer(ctx) {
   let threatSlot = 0;
   let lockTarget = null;
   let rageLeft = 0; // s of rage left (player time); > 0 while raging
+  let rageDur = RAGE.duration; // s this rage was unleashed for (the meter drains over it)
+  let perks = RAGE_TIERS[0];
   let lockMode = 'off';
   let lockDesired = 0; // the spring's goal
   let lockBearing = 0; // the target's low-passed bearing
@@ -169,6 +171,10 @@ export function createPlayer(ctx) {
     rage: 0,
     get raging() {
       return rageLeft > 0;
+    },
+    /** The rage tier's row (game/rage.js RAGE_TIERS): it grows as the campaign nears its end. */
+    get ragePerks() {
+      return perks;
     },
     focusTarget: null,
     attackYaw: 0,
@@ -448,9 +454,9 @@ export function createPlayer(ctx) {
   /** Unleashes a full meter (the 'rage' action): emits rage { on: true }. */
   function unleashRage() {
     if (!player.alive || cameraOverridden() || !canUnleash(player.rage, rageLeft > 0)) return false;
-    rageLeft = RAGE.duration;
+    rageLeft = rageDur = perks.duration;
     player.rage = 1;
-    ev.emit('rage', { on: true, duration: RAGE.duration });
+    ev.emit('rage', { on: true, duration: rageDur, tier: perks.tier, name: perks.name, shockwave: perks.shockwave });
     return true;
   }
 
@@ -464,13 +470,13 @@ export function createPlayer(ctx) {
     if (rageLeft <= 0) return;
     rageLeft -= dt;
     if (rageLeft <= 1e-9) endRage();
-    else player.rage = rageLeft / RAGE.duration;
+    else player.rage = rageLeft / rageDur;
   }
 
   function fillRage(kind) {
     if (rageLeft > 0 || !player.alive) return;
     const was = player.rage;
-    player.rage = gainRage(was, kind);
+    player.rage = gainRage(was, kind, perks.gainMul);
     if (was < 1 && player.rage >= 1) ev.emit('rageReady', {});
   }
 
@@ -1082,6 +1088,7 @@ export function createPlayer(ctx) {
     player.chain = 1;
     player.rage = 0;
     rageLeft = 0;
+    perks = RAGE_TIERS[0];
     lastHitAt = -Infinity;
     player.combos.reset();
     player.focusTarget = null;
@@ -1220,7 +1227,10 @@ export function createPlayer(ctx) {
   /** Applies damage (no-op in training, on the title screen or when dead). */
   function damage(amount, info = {}) {
     if (!player.alive || mode === 'training' || mode === 'title' || !(amount > 0)) return;
-    if (rageLeft > 0) amount *= RAGE.takenMul;
+    if (rageLeft > 0) {
+      if (perks.arrowProof && info.kind === 'arrow') return; // the last stand: arrows cannot touch him
+      amount *= perks.takenMul;
+    }
     player.hp = Math.max(0, player.hp - amount);
     const from = info.from || null;
     let relYaw = info.relYaw;
@@ -1357,11 +1367,24 @@ export function createPlayer(ctx) {
 
   ev.on('waveCleared', resetChain);
   ev.on('combo', () => fillRage('combo'));
+  // The rage grows with the campaign: a new day or Day 3's phases may raise its tier (rageTier).
+  const raiseTier = (e) => {
+    if (!e || !Number.isFinite(e.day)) return;
+    const next = rageTier(e.day, e.phase);
+    if (next.tier <= perks.tier) return;
+    perks = next;
+    ev.emit('rageTier', { tier: next.tier, name: next.name, perk: next.perk });
+  };
+  ev.on('dayStart', raiseTier);
+  ev.on('phase', raiseTier);
   ev.on('playerHurt', () => fillRage('hurt'));
 
   ev.on('kill', (e) => {
     if (!e || !e.byPlayer) return;
-    if (rageLeft > 0) heal(RAGE.healPerKill);
+    if (rageLeft > 0) {
+      heal(perks.healPerKill);
+      if (perks.killExtend > 0) rageLeft = Math.min(rageDur, rageLeft + perks.killExtend);
+    }
     fillRage('kill');
     player.kills++;
     player.score += Math.round(100 * player.chain) + (e.spear ? 250 : 0) + (e.cause === 'sea' ? 150 : 0);

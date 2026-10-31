@@ -1308,7 +1308,10 @@ nothing (HUD buttons are still forwarded; a mouse click never takes the pointer 
   full meter for 8 s (events `rageReady`, `rage {on}`): ×2 damage, every cut takes each foe in its
   arc and staggers ≥ 0.6 s (combat.js `playerStrike`), blows taken ×0.5 (`player.damage`), +6 hp per
   kill; fx adds a slow-motion burst, a shake and a haptic, waves.js the war cry, input.js the red
-  edge glow.
+  edge glow. The rage grows with the campaign (`RAGE_TIERS`, `rageTier(day, phase)`, raised on
+  `dayStart`/`phase` and announced with `rageTier`): Day 2 lasts 10 s and kills add 1 s; Day 3 fills
+  1.5× faster and kills heal 10; the Kolonos lasts 12 s at ×2.5 damage and ×0.35 harm, arrows do no
+  harm, and the war cry knocks down every foe within 4 m (combat.js).
 * With a spear in hand, **THROW** appears left of the sword pad and works as in the touch layout.
 * The Agoge panel sits between the two clusters (`#training.is-buttons`), and the Agoge uses the
   lock step and each step's `buttons` text (falling back to `touch`).
@@ -1470,7 +1473,7 @@ with power > 0.8, a bash, `breakGuard`, and any hit on a staggered target all ig
 * In training, damage is a no-op.
 
 **Spears.**
-* `spearsLeft = (hasSpearInHand ? 1 : 0) + spares`. Spares start at 2, max 3.
+* `spearsLeft = (hasSpearInHand ? 1 : 0) + spares`. Spares start at 4, max 6 (a full bundle is 7; every respite tops up to `RESPITE.spears`, 5).
 * `switchWeapon('spear')` is allowed iff spearsLeft > 0. If the hand is empty, `spares--`
   and the 0.6 s draw plays.
 * After a throw, `hasSpearInHand = false`. After `redraw` (pdt), a spear is drawn if

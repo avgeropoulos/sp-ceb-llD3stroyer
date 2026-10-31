@@ -515,7 +515,8 @@ export const CHECKS = {
   spearsLeftAccounting(h) {
     h.reset();
     const P = h.player;
-    ok(P.spearsLeft === 2 && P.spares === 2 && !P.hasSpearInHand && P.weapon === 'sword', 'start: 2 spares');
+    ok(P.spearsLeft === 4 && P.spares === 4 && !P.hasSpearInHand && P.weapon === 'sword', 'start: 4 spares');
+    P.spares = 2; // the accounting below walks a 2-spear bundle down to none
     h.action({ type: 'switchWeapon' });
     h.step(1);
     ok(P.weapon === 'spear' && P.hasSpearInHand && P.spares === 1 && P.spearsLeft === 2, 'switch draws a spare');
@@ -548,17 +549,17 @@ export const CHECKS = {
     h.step(2);
     ok(h.events('swing').filter((e) => e.payload.kind === 'throw').length === 2, 'no throw without a spear');
     P.refillSpears();
-    ok(P.spares === 3 && P.hasSpearInHand && P.spearsLeft === 4, 'refill');
+    ok(P.spares === 6 && P.hasSpearInHand && P.spearsLeft === 7, 'refill');
     // Training always redraws.
     h.reset('training');
-    ok(P.spares === 3, 'training spares');
+    ok(P.spares === 6, 'training spares');
     h.action({ type: 'switchWeapon', weapon: 'spear' });
     h.stepTime(0.7);
     for (let i = 0; i < 5; i++) {
       h.action({ type: 'throw', power: 0.5, src: 'touch' });
       h.stepTime(0.9);
     }
-    ok(P.weapon === 'spear' && P.hasSpearInHand && P.spearsLeft === 4, `training redraws forever (${P.spearsLeft})`);
+    ok(P.weapon === 'spear' && P.hasSpearInHand && P.spearsLeft === 7, `training redraws forever (${P.spearsLeft})`);
   },
 
   scoreAndChain(h) {

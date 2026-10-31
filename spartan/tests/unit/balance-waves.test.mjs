@@ -30,7 +30,7 @@ function harness({ motion = false, killAfter = 3, spears = 4, archersApi = true 
     heal() {},
     refillSpears(n) {
       calls.refill.push({ t: t.gnow, n, before: this.spearsLeft });
-      const total = n > 0 ? Math.min(4, n) : 4;
+      const total = n > 0 ? Math.min(7, n) : 7;
       this.hasSpearInHand = true;
       this.spares = Math.max(this.spares, total - 1);
     },
@@ -186,7 +186,7 @@ test('volleys from archers not yet on the field still count; waves without arche
 test('Day 3: phase B drops the bundle (one spear stays in hand) with the line; phase C is sword only', () => {
   const h = harness({ killAfter: 1 });
   h.waves.start(3);
-  assert.equal(h.player.spearsLeft, 4);
+  assert.equal(h.player.spearsLeft, 7);
   h.until(() => h.waves.phase === 'B');
   const bAt = h.log.find((e) => e.n === 'phase' && e.phase === 'B').t;
   h.run(3);
@@ -220,20 +220,20 @@ test('respites top the bundle up to 2 spears (never take any away); dayStart ref
   h.player.spares = 0;
   h.waves.start(1);
   assert.deepEqual(h.calls.refill.map((r) => r.n), [undefined], 'dayStart: full refill');
-  assert.equal(h.player.spearsLeft, 4);
-  // Throw them all, then reach a respite: back to 2.
+  assert.equal(h.player.spearsLeft, 7);
+  // Throw them all, then reach a respite: back to 5.
   h.player.spares = 0;
   h.player.hasSpearInHand = false;
   h.until(() => h.log.some((e) => e.n === 'respite'));
   assert.equal(h.calls.refill.length, 2);
   assert.equal(h.calls.refill[1].n, RESPITE.spears);
-  assert.equal(h.player.spearsLeft, 2);
-  // With 3 spears left, the next respite leaves them alone.
-  h.player.spares = 2;
+  assert.equal(h.player.spearsLeft, 5);
+  // With 6 spears left, the next respite leaves them alone.
+  h.player.spares = 5;
   h.player.hasSpearInHand = true;
   h.until(() => h.log.filter((e) => e.n === 'respite').length === 2);
   assert.equal(h.calls.refill.length, 2);
-  assert.equal(h.player.spearsLeft, 3);
+  assert.equal(h.player.spearsLeft, 6);
 });
 
 test('start(day, entry) restarts at the current part of the day; entryIndex/timeOfDay/waveCount report it', () => {
