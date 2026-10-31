@@ -995,7 +995,7 @@ func _draw_bowling(h) -> void:
 		h.txt("POWER", Vector2(bx - 20, by - 10), 22, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, 84, 6)
 		if turn == "you":
 			var tip := "Tap AIM! when the arrow points at the middle pin" if bphase == "aim" else "Tap ROLL! when the bar is full!"
-			h.txt(tip, Vector2(0, s.y - 150), 28, Color("fff2a8"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 8)
+			h.txt(tip, Vector2(0, s.y - 24), 28, Color("fff2a8"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 8)
 		else:
-			h.txt("The Grumbler is aiming...", Vector2(0, s.y - 150), 28, Color(1, 1, 1, 0.85), HORIZONTAL_ALIGNMENT_CENTER, s.x, 8)
+			h.txt("The Grumbler is aiming...", Vector2(0, s.y - 24), 28, Color(1, 1, 1, 0.85), HORIZONTAL_ALIGNMENT_CENTER, s.x, 8)
 	h.txt("FRAME %d / %d   BALL %d" % [mini(frame + 1, FRAMES), FRAMES, ball_n + 1], Vector2(20, 100), 22, Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, -1, 6)
