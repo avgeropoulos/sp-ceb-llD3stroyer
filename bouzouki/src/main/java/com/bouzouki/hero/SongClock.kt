@@ -3,6 +3,7 @@ package com.bouzouki.hero
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
+import com.bouzouki.core.PlaybackClock
 import com.bouzoukihero.core.Synth
 import kotlin.concurrent.thread
 
@@ -107,6 +108,12 @@ class SynthSong(private val song: Synth.Rendered, private val leadOn: () -> Bool
         }
     }
 
+    /**
+     * The audio's play position moves in buffer-sized steps on many phones, which made the notes
+     * stutter. Μπουζούκι's [PlaybackClock] runs smoothly between those steps.
+     */
+    private val smooth = PlaybackClock()
+
     override fun now(): Double {
         val t = track ?: return wallNow()
         if (restartWanted) return 0.0
@@ -116,7 +123,11 @@ class SynthSong(private val song: Synth.Rendered, private val leadOn: () -> Bool
             headBase = 0
             head = t.playbackHeadPosition.toLong() and 0xFFFFFFFFL
         }
-        return (head - headBase).toDouble() / rate
+        val nanos = android.os.SystemClock.elapsedRealtimeNanos()
+        return synchronized(smooth) {
+            smooth.report((head - headBase).toDouble() / rate, !paused, 1.0, nanos)
+            smooth.now(nanos)
+        }
     }
 
     private fun wallNow(): Double {
@@ -145,6 +156,7 @@ class SynthSong(private val song: Synth.Rendered, private val leadOn: () -> Bool
         wallStart = System.nanoTime()
         wallPausedAt = wallStart
         paused = false
+        synchronized(smooth) { smooth.jump(0.0, android.os.SystemClock.elapsedRealtimeNanos()) }
         restartWanted = true
     }
 

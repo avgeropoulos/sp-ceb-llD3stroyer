@@ -433,13 +433,15 @@ class Session(
         }
         if (opaActive) {
             val a = (90 + 60 * sin(anim * 10)).toInt()
-            g.poly(
-                floatArrayOf(l.edgeX(-1f, P_FAR) - 6, l.edgeX(-1f, P_FAR), l.edgeX(-1f, 1.1f), l.edgeX(-1f, 1.1f) - 22),
-                floatArrayOf(l.farY, l.farY, l.yAt(1.1f), l.yAt(1.1f)), argb(a, 0x56A8FF),
+            g.quad(
+                l.edgeX(-1f, P_FAR) - 6, l.edgeX(-1f, P_FAR), l.edgeX(-1f, 1.1f), l.edgeX(-1f, 1.1f) - 22,
+                l.farY, l.farY, l.yAt(1.1f), l.yAt(1.1f),
+                argb(a, 0x56A8FF),
             )
-            g.poly(
-                floatArrayOf(l.edgeX(1f, P_FAR), l.edgeX(1f, P_FAR) + 6, l.edgeX(1f, 1.1f) + 22, l.edgeX(1f, 1.1f)),
-                floatArrayOf(l.farY, l.farY, l.yAt(1.1f), l.yAt(1.1f)), argb(a, 0x56A8FF),
+            g.quad(
+                l.edgeX(1f, P_FAR), l.edgeX(1f, P_FAR) + 6, l.edgeX(1f, 1.1f) + 22, l.edgeX(1f, 1.1f),
+                l.farY, l.farY, l.yAt(1.1f), l.yAt(1.1f),
+                argb(a, 0x56A8FF),
             )
         }
     }
@@ -448,14 +450,16 @@ class Session(
         val pNear = 1.12f
         val yNear = l.yAt(pNear)
         // Rosewood fretboard with bone binding.
-        g.poly(
-            floatArrayOf(l.edgeX(-1f, P_FAR) - 3, l.edgeX(1f, P_FAR) + 3, l.edgeX(1f, pNear) + 6, l.edgeX(-1f, pNear) - 6),
-            floatArrayOf(l.farY, l.farY, yNear, yNear), 0xFFE9DFC6.toInt(),
-        )
-        g.poly(
-            floatArrayOf(l.edgeX(-1f, P_FAR), l.edgeX(1f, P_FAR), l.edgeX(1f, pNear), l.edgeX(-1f, pNear)),
-            floatArrayOf(l.farY, l.farY, yNear, yNear), 0xFF3A2216.toInt(),
-        )
+        g.quad(
+                l.edgeX(-1f, P_FAR) - 3, l.edgeX(1f, P_FAR) + 3, l.edgeX(1f, pNear) + 6, l.edgeX(-1f, pNear) - 6,
+                l.farY, l.farY, yNear, yNear,
+                0xFFE9DFC6.toInt(),
+            )
+        g.quad(
+                l.edgeX(-1f, P_FAR), l.edgeX(1f, P_FAR), l.edgeX(1f, pNear), l.edgeX(-1f, pNear),
+                l.farY, l.farY, yNear, yNear,
+                0xFF3A2216.toInt(),
+            )
         // Frets, one per beat, sliding toward you.
         val beat = if (tempo in 50.0..240.0) 60.0 / tempo else 0.5
         val la = difficulty.lookahead
@@ -487,9 +491,10 @@ class Session(
         for (i in 0 until 6) {
             val p = P_FAR + i * 0.02f
             val p2 = p + 0.02f
-            g.poly(
-                floatArrayOf(l.edgeX(-1f, p) - 4, l.edgeX(1f, p) + 4, l.edgeX(1f, p2) + 4, l.edgeX(-1f, p2) - 4),
-                floatArrayOf(l.yAt(p), l.yAt(p), l.yAt(p2), l.yAt(p2)), argb(200 - i * 34, 0x0B1D45),
+            g.quad(
+                l.edgeX(-1f, p) - 4, l.edgeX(1f, p) + 4, l.edgeX(1f, p2) + 4, l.edgeX(-1f, p2) - 4,
+                l.yAt(p), l.yAt(p), l.yAt(p2), l.yAt(p2),
+                argb(200 - i * 34, 0x0B1D45),
             )
         }
     }
@@ -584,7 +589,11 @@ class Session(
             val xb = l.laneX(gem.lane, pb) + wb * pb
             val ha = l.laneW * 0.1f * pa
             val hb = l.laneW * 0.1f * pb
-            g.poly(floatArrayOf(xa - ha, xa + ha, xb + hb, xb - hb), floatArrayOf(l.yAt(pa), l.yAt(pa), l.yAt(pb), l.yAt(pb)), c)
+            g.quad(
+                xa - ha, xa + ha, xb + hb, xb - hb,
+                l.yAt(pa), l.yAt(pa), l.yAt(pb), l.yAt(pb),
+                c,
+            )
         }
     }
 
@@ -596,9 +605,9 @@ class Session(
             val rr = r + grow
             val rry = ry + grow
             g.oval(x - rr + dx, y - rry + dy, 2 * rr, 2 * rry, col)
-            g.poly(
-                floatArrayOf(x - rr * 0.78f + dx, x + rr * 0.78f + dx, x + dx),
-                floatArrayOf(y + rry * 0.25f + dy, y + rry * 0.25f + dy, y + rry * 1.75f + dy),
+            g.tri(
+                x - rr * 0.78f + dx, x + rr * 0.78f + dx, x + dx,
+                y + rry * 0.25f + dy, y + rry * 0.25f + dy, y + rry * 1.75f + dy,
                 col,
             )
         }
@@ -647,6 +656,15 @@ class Session(
         }
     }
 
+    private var shownScore = -1
+    private var shownScoreText = ""
+
+    /** The score as text, only re-formatted when it changes (formatting every frame made garbage). */
+    private fun scoreText(): String {
+        if (score != shownScore) { shownScore = score; shownScoreText = "%,d".format(score) }
+        return shownScoreText
+    }
+
     private fun hud(g: Gfx, l: Layout) {
         val y = l.top + 8
         g.rect(0f, l.top, VIEW_W, 46f, 0x66000000)
@@ -664,7 +682,7 @@ class Session(
             }
             button(g, VIEW_W - 136, y, 82f, 30f, "DONE", 0xFF2E9B57.toInt(), Action.DONE)
         } else {
-            g.shadowText("%,d".format(score), 10f, y + 20, 20f, 0xFFFFFFFF.toInt())
+            g.shadowText(scoreText(), 10f, y + 20, 20f, 0xFFFFFFFF.toInt())
             g.shadowText(if (combo > 0) "$combo combo" else difficulty.label, 10f, y + 36, 11f, 0xFFB9C6EE.toInt())
             // Multiplier badge.
             val m = multiplier

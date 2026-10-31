@@ -8,6 +8,7 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import com.bouzouki.core.PlaybackClock
 
 /**
  * Plays a YouTube video with the official embedded player (IFrame Player API) in a
@@ -31,12 +32,16 @@ class YouTubeSong(
     }
 
     private val main = Handler(Looper.getMainLooper())
+    /**
+     * YouTube reports its time in coarse steps on a jittery timer; taking each report as is made
+     * the notes stand still, then jump. Μπουζούκι's [PlaybackClock] runs smoothly between reports,
+     * ignores stale repeats and eases toward each new value. Reports come on the WebView's
+     * thread and the game reads it on its own, so every use is under its lock.
+     */
+    private val smooth = PlaybackClock().also { it.jump(startAt, SystemClock.elapsedRealtimeNanos()) }
     @Volatile private var reportedTime = startAt
-    @Volatile private var reportedAt = SystemClock.elapsedRealtimeNanos()
-    @Volatile private var playing = false
     @Volatile private var videoEnded = false
     @Volatile private var startedOnce = false
-    @Volatile private var lastOut = 0.0
 
     init {
         web.settings.javaScriptEnabled = true
@@ -57,9 +62,9 @@ class YouTubeSong(
     private inner class Bridge {
         @JavascriptInterface
         fun onState(state: Int, time: Double) {
+            val nanos = SystemClock.elapsedRealtimeNanos()
             reportedTime = time
-            reportedAt = SystemClock.elapsedRealtimeNanos()
-            playing = state == 1
+            synchronized(smooth) { smooth.report(time, state == 1, 1.0, nanos) }
             if (state == 0) videoEnded = true
             if (state == 1 && !startedOnce) {
                 startedOnce = true
@@ -81,14 +86,7 @@ class YouTubeSong(
         }
     }
 
-    override fun now(): Double {
-        var t = reportedTime
-        if (playing) t += ((SystemClock.elapsedRealtimeNanos() - reportedAt) / 1e9).coerceAtMost(0.4)
-        // Don't let small reporting jitter move the notes backwards.
-        if (t < lastOut && lastOut - t < 0.08) t = lastOut
-        lastOut = t
-        return t
-    }
+    override fun now(): Double = synchronized(smooth) { smooth.now(SystemClock.elapsedRealtimeNanos()) }
 
     override val ended: Boolean
         get() = videoEnded || (stopAt != null && reportedTime >= stopAt)
@@ -98,7 +96,7 @@ class YouTubeSong(
     }
 
     override fun pause() {
-        playing = false
+        synchronized(smooth) { smooth.report(now(), false, 1.0, SystemClock.elapsedRealtimeNanos()) }
         js("player.pauseVideo()")
     }
 
@@ -106,9 +104,8 @@ class YouTubeSong(
 
     override fun restart() {
         videoEnded = false
-        lastOut = 0.0
         reportedTime = startAt
-        reportedAt = SystemClock.elapsedRealtimeNanos()
+        synchronized(smooth) { smooth.jump(startAt, SystemClock.elapsedRealtimeNanos()) }
         js("player.seekTo($startAt, true); player.playVideo()")
     }
 
