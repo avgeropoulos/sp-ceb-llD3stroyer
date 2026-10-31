@@ -619,7 +619,7 @@ export function createCombat(ctx) {
     if (!pl || !pl.alive) return 'miss';
     const from = shooter && shooter.pos ? yawTo(shooter.pos.x - pl.pos.x, shooter.pos.z - pl.pos.z) : fromBehind ? Math.PI : 0;
     const relYaw = angleDiff(pl.yaw, from);
-    const frontal = Math.abs(relYaw) <= BLOCK_HALF_ANGLE || (!shooter && !!ctx.input && ctx.input.grip === 'hilt');
+    const frontal = Math.abs(relYaw) <= BLOCK_HALF_ANGLE || (!shooter && !!ctx.input && (ctx.input.grip === 'hilt' || ctx.input.lockOn === true));
     const gy = groundY(pl.pos.x, pl.pos.z);
     const sy = Math.sin(pl.yaw);
     const cy = Math.cos(pl.yaw);

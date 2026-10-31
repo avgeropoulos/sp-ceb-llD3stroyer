@@ -1,7 +1,8 @@
 // ui/input.js: touch, keyboard and mouse → actions and continuous ctx.input (DESIGN.md §6).
-// Owns the #controls root (z 20). Two touch layouts: 'motion' (hold the glass = shield, small
-// corner buttons) and 'touch' (stick, SHIELD/BASH, swipe/tap/drag zone, THROW), mirrored when
-// settings.leftHanded. Keyboard and mouse work in both. In the hilt grip (docs-hilt-grip.md §D)
+// Owns the #controls root (z 20). Three touch layouts: 'motion' (hold the glass = shield, small
+// corner buttons), 'touch' (stick, SHIELD/BASH, swipe/tap/drag zone, THROW) and 'buttons' (a move
+// pad, SHIELD/BASH, a sword pad of eight cuts around STAB, target buttons and THROW, with the
+// lock-on camera, so nothing is swiped or dragged), mirrored when settings.leftHanded. Keyboard and mouse work in both. In the hilt grip (docs-hilt-grip.md §D)
 // the motion layout gains `ctl-hilt`: reject strips shaped for a fist, and horizontal thumb
 // strokes on a shield pointer that switch the lock-on target once the phone is calm.
 import { clamp } from '../core/math.js';
@@ -32,6 +33,7 @@ export const INPUT = Object.freeze({
   rearmAngle: 1.75,       // rad: a second swipe in the same touch must turn at least this much
   rearmPauseMs: 110,      // …or follow a pause
   keyPower: 0.7,
+  buttonPower: 0.8,       // the buttons layout's cuts, stabs and bashes
   maxMouseStep: 300,      // px per mousemove; larger jumps are discarded
   // Hilt layout reject strips, for a right hand (mirrored with ctl-left):
   hiltTopStrip: 12,
@@ -203,8 +205,28 @@ const ICONS = {
   recenter: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/><path d="M12 1v5M12 18v5M1 12h5M18 12h5" stroke="currentColor" stroke-width="1.8"/></svg>',
   spear: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20 18.2 5.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M17 4.5 21.5 2.5 19.5 7Z" fill="currentColor"/><path d="M3 21l2.2-.6-.6 2.2z" fill="currentColor"/></svg>',
   sword: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.8 3.2c2-.9 3.4-.6 4 0 .6.6.9 2 0 4L10 18l-4-4Z" fill="currentColor"/><path d="M4.5 13.5l6 6M3 21l3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  // The buttons layout: an arrow pointing right, turned per button by CSS (--a).
+  cut: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h11" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="M13 6.5 20.5 12 13 17.5Z" fill="currentColor"/></svg>',
+  step: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 12 8 5.5v13Z" fill="currentColor"/></svg>',
+  stab: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3.2" fill="currentColor"/></svg>',
   shield: '<svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="17" fill="none" stroke="currentColor" stroke-width="2.4"/><circle cx="20" cy="20" r="12.5" fill="none" stroke="currentColor" stroke-width="1" opacity=".6"/><circle cx="20" cy="20" r="3" fill="currentColor"/></svg>',
 };
+
+/**
+ * The buttons layout's sword pad, row by row: each cut's direction (rad, the slash action's
+ * convention: 0 right, π/2 up) or 'stab' for the middle. The arrows point the way the blade cuts.
+ */
+export const PAD = Object.freeze([
+  ['upLeft', 3 * Math.PI / 4], ['up', Math.PI / 2], ['upRight', Math.PI / 4],
+  ['left', Math.PI], ['stab', null], ['right', 0],
+  ['downLeft', -3 * Math.PI / 4], ['down', -Math.PI / 2], ['downRight', -Math.PI / 4],
+]);
+const PAD_LABEL = {
+  upLeft: 'Cut up and left', up: 'Rising cut', upRight: 'Cut up and right', left: 'Slash left', stab: 'Stab',
+  right: 'Slash right', downLeft: 'Cut down and left', down: 'Overhead chop', downRight: 'Cut down and right',
+};
+/** The buttons layout's move pad: [id, moveX, moveZ, label]. */
+const MOVES = Object.freeze([['f', 0, 1, 'Step forward'], ['l', -1, 0, 'Step left'], ['r', 1, 0, 'Step right'], ['b', 0, -1, 'Step back']]);
 
 /**
  * Creates the input controller.
@@ -235,6 +257,10 @@ export function createInput(ctx) {
       <span class="ctl-ring"><span class="ctl-ring-h ctl-ring-r"><i></i></span><span class="ctl-ring-h ctl-ring-l"><i></i></span></span>
       <span class="ctl-throw-face">${ICONS.spear}<em>Throw</em></span>
     </button>
+    <div class="ctl-dpad">${MOVES.map(([id, , , label]) => `<button class="ctl-key ctl-mv ctl-mv-${id}" data-mv="${id}" aria-label="${label}">${ICONS.step}</button>`).join('')}</div>
+    <div class="ctl-pad">${PAD.map(([id, dir]) => `<button class="ctl-key ctl-cut ctl-cut-${id}" data-cut="${id}" aria-label="${PAD_LABEL[id]}"${dir === null ? '' : ` style="--a:${(-dir * 180 / Math.PI).toFixed(0)}deg"`}>${dir === null ? `${ICONS.stab}<em>Stab</em>` : ICONS.cut}</button>`).join('')}</div>
+    <button class="ctl-key ctl-tgt ctl-tgt-l" aria-label="Turn to the foe on your left"><b>‹</b><em>Foe</em></button>
+    <button class="ctl-key ctl-tgt ctl-tgt-r" aria-label="Turn to the foe on your right"><em>Foe</em><b>›</b></button>
     <div class="ctl-tip" role="status"><b>Shield tip</b><span></span></div>`;
   ctx.overlay.appendChild(root);
   const q = (s) => root.querySelector(s);
@@ -257,7 +283,7 @@ export function createInput(ctx) {
 
   // ---- state ----
   let active = false;
-  let layout = '';           // 'touch' | 'motion'
+  let layout = '';           // 'touch' | 'motion' | 'buttons'
   let hilt = false;          // the motion layout in the hilt grip (ctl-hilt)
   let mirrored = null;
   let hasTouch = (navigator.maxTouchPoints || 0) > 0;
@@ -266,6 +292,7 @@ export function createInput(ctx) {
   const trackers = new Map(); // pointerId → tracker
   const pool = [];
   const keys = { w: false, a: false, s: false, d: false, shiftL: false, shiftR: false, k: false };
+  const mv = { f: 0, b: 0, l: 0, r: 0 }; // the buttons layout's move pad: pointers holding each
   let mouseShield = false;
   let stroke = null;          // left-button mouse stroke
   const mouseTrail = new Trail(24);
@@ -362,6 +389,7 @@ export function createInput(ctx) {
     for (const t of trackers.values()) pool.push(t);
     trackers.clear();
     keys.w = keys.a = keys.s = keys.d = keys.shiftL = keys.shiftR = keys.k = false;
+    mv.f = mv.b = mv.l = mv.r = 0;
     mouseShield = false;
     stroke = null;
     stickPtr = null;
@@ -396,12 +424,15 @@ export function createInput(ctx) {
     if (stickPtr === null) drawStick(homeX, homeY, 0, 0, false);
   }
 
+  const layoutOf = () => (settings.control === 'motion' ? 'motion' : settings.control === 'buttons' ? 'buttons' : 'touch');
+
   function applyLayout() {
-    layout = settings.control === 'motion' ? 'motion' : 'touch';
+    layout = layoutOf();
     hilt = effectiveGrip(settings) === 'hilt';
     mirrored = !!settings.leftHanded;
     root.classList.toggle('ctl-motion', layout === 'motion');
     root.classList.toggle('ctl-touch', layout === 'touch');
+    root.classList.toggle('ctl-buttons', layout === 'buttons');
     root.classList.toggle('ctl-hilt', hilt);
     root.classList.toggle('ctl-left', mirrored);
     zero();
@@ -480,6 +511,10 @@ export function createInput(ctx) {
       t.kind = 'hud';
       t.el = hud;
       hud.classList.add('is-down');
+      return;
+    }
+    if (layout === 'buttons') {
+      t.kind = 'rest'; // nothing is swiped or dragged: only the buttons act
       return;
     }
     if (layout === 'motion') {
@@ -773,7 +808,25 @@ export function createInput(ctx) {
       if (hilt && !outside) push({ type: 'switchWeapon', src: srcOf(e) });
     },
   });
-  bindButton(btnBash, { down: (t, e) => push({ type: 'bash', power: INPUT.keyPower, src: srcOf(e) }) });
+  bindButton(btnBash, { down: (t, e) => push({ type: 'bash', power: layout === 'buttons' ? INPUT.buttonPower : INPUT.keyPower, src: srcOf(e) }) });
+  // The buttons layout: each pad button strikes once per press; a move button walks while held.
+  for (const el of root.querySelectorAll('.ctl-cut')) {
+    const dir = PAD.find(([id]) => id === el.dataset.cut)[1];
+    bindButton(el, {
+      down: (t, e) => push(dir === null
+        ? { type: 'thrust', power: INPUT.buttonPower, src: srcOf(e) }
+        : { type: 'slash', dir, power: INPUT.buttonPower, src: srcOf(e) }),
+    });
+  }
+  for (const el of root.querySelectorAll('.ctl-mv')) {
+    const id = el.dataset.mv;
+    bindButton(el, {
+      down: () => { mv[id]++; },
+      up: () => { mv[id] = Math.max(0, mv[id] - 1); },
+    });
+  }
+  bindButton(q('.ctl-tgt-l'), { down: (t, e) => push({ type: 'switchTarget', dir: -1, src: srcOf(e) }) });
+  bindButton(q('.ctl-tgt-r'), { down: (t, e) => push({ type: 'switchTarget', dir: 1, src: srcOf(e) }) });
   bindButton(btnShield, {
     down: (t, e) => {
       shieldBtnPtr = t;
@@ -836,6 +889,7 @@ export function createInput(ctx) {
       hud.click();
       return;
     }
+    if (layout === 'buttons') return; // the pointer stays free to click the buttons
     if (e.button === 0) {
       stroke = { t0: e.timeStamp, x: 0, y: 0, travel: 0, armed: true, lastDir: 0, fired: false };
       mouseTrail.clear();
@@ -986,7 +1040,7 @@ export function createInput(ctx) {
         if (isActiveMode()) setActive(true);
         else return;
       }
-      if ((settings.control === 'motion' ? 'motion' : 'touch') !== layout || (effectiveGrip(settings) === 'hilt') !== hilt || !!settings.leftHanded !== mirrored) applyLayout();
+      if (layoutOf() !== layout || (effectiveGrip(settings) === 'hilt') !== hilt || !!settings.leftHanded !== mirrored) applyLayout();
       if (hilt) stepStrokes();
 
       // Player-driven button state (DOM only on change).
@@ -1013,9 +1067,9 @@ export function createInput(ctx) {
         }
       }
 
-      // Continuous movement: stick + WASD.
-      let mx = stickX + (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
-      let mz = stickZ + (keys.w ? 1 : 0) - (keys.s ? 1 : 0);
+      // Continuous movement: stick + WASD + the move pad.
+      let mx = stickX + (keys.d || mv.r ? 1 : 0) - (keys.a || mv.l ? 1 : 0);
+      let mz = stickZ + (keys.w || mv.f ? 1 : 0) - (keys.s || mv.b ? 1 : 0);
       const len = Math.hypot(mx, mz);
       if (len > 1) {
         mx /= len;

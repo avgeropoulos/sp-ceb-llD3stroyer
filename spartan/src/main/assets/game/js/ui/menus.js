@@ -41,18 +41,18 @@ export function pauseKicker(w) {
 
 /**
  * Settings fields (§9). `tab` groups them; every field is live-applied. `motionOnly` rows grey out
- * outside motion mode, `hiltOnly` rows unless the effective grip is the hilt. The sensitivity range
+ * outside motion mode, `lockOnly` rows outside the lock-on camera (the hilt grip and the buttons). The sensitivity range
  * is the recognizer's (and the Agoge calibration's), and the two swap toggles fix a mirrored sensor
  * setup (the Agoge also sets them when it sees mirrored swings). Each grip keeps its own sensitivity
  * and swaps: `keyOf(settings)` names the settings key a row edits (core/grip.js), `key` names the row.
  * Gyro look is greyed in the hilt grip, where the view locks onto the foe (`hintHilt`).
  */
 export const FIELDS = [
-  { tab: 'controls', key: 'control', type: 'seg', label: 'Controls', options: [['motion', 'Motion'], ['touch', 'Touch']] },
+  { tab: 'controls', key: 'control', type: 'seg', label: 'Controls', options: [['motion', 'Motion'], ['touch', 'Touch'], ['buttons', 'Buttons']] },
   { tab: 'controls', key: 'grip', type: 'seg', label: 'Grip', hint: 'Motion: how you hold the phone', options: [['hilt', 'Hilt (upright)'], ['window', 'Window (sideways)']], motionOnly: true },
   { tab: 'controls', key: 'sensitivity', type: 'range', label: 'Sensitivity', hint: 'Motion: higher lets gentler swings count', min: SENSITIVITY_MIN, max: SENSITIVITY_MAX, step: 0.05, fmt: (v) => `${v.toFixed(2)}×`, motionOnly: true, keyOf: sensitivityKey },
   { tab: 'controls', key: 'gyroLook', type: 'toggle', label: 'Gyro look', hint: 'Motion: turn your body to turn the view', hintHilt: 'Hilt grip: the view locks onto your foe', motionOnly: true },
-  { tab: 'controls', key: 'lockAuto', type: 'toggle', label: 'Auto-turn', hint: 'Hilt grip: turn to a foe attacking from behind', hiltOnly: true },
+  { tab: 'controls', key: 'lockAuto', type: 'toggle', label: 'Auto-turn', hint: 'Hilt grip and Buttons: turn to a foe attacking from behind', lockOnly: true },
   { tab: 'controls', key: 'motionFlipX', type: 'toggle', label: 'Swap swing left/right', hint: 'Motion: if your slashes come out mirrored', motionOnly: true, keyOf: (s) => flipKeys(s).x },
   { tab: 'controls', key: 'motionFlipY', type: 'toggle', label: 'Swap swing up/down', hint: 'Motion: if chops come out as uppercuts', motionOnly: true, keyOf: (s) => flipKeys(s).y },
   { tab: 'controls', key: 'aimAssist', type: 'toggle', label: 'Aim assist', hint: 'Touch and keyboard: turn toward your foe' },
@@ -242,7 +242,7 @@ export function createMenus(ctx) {
         </div>
         <div class="mn-title-row mn-title-row2">
           <div class="mn-ctlpick"><span class="mn-ctlpick-l">Controls</span>
-            <div class="mn-seg" data-field="control"><button type="button" data-v="motion">Motion</button><button type="button" data-v="touch">Touch</button></div></div>
+            <div class="mn-seg" data-field="control"><button type="button" data-v="motion">Motion</button><button type="button" data-v="touch">Touch</button><button type="button" data-v="buttons">Buttons</button></div></div>
           <div class="mn-ctlpick mn-grippick"><span class="mn-ctlpick-l">Grip</span>
             <div class="mn-seg" data-field="grip"><button type="button" data-v="hilt">Hilt</button><button type="button" data-v="window">Window</button></div></div>
           <div class="mn-title-pair">
@@ -407,7 +407,12 @@ export function createMenus(ctx) {
       });
     }
     pick(first);
+    return pick;
   }
+
+  // How to play opens on the tab of the control in use.
+  let howtoTab = null;
+  const controlTab = () => (settings.control === 'motion' || settings.control === 'buttons' ? settings.control : 'touch');
 
   function buildHowto() {
     const card = (svg, title, text, warn) => `<figure class="mn-card">${svg}<figcaption><b>${title}</b><span>${text}</span>${warn ? `<em>${warn}</em>` : ''}</figcaption></figure>`;
@@ -415,7 +420,7 @@ export function createMenus(ctx) {
       <div class="mn-panel mn-panel-full">
         <header class="mn-head">
           <h2 class="mn-h">How to play</h2>
-          <nav class="mn-tabs"><button type="button" data-tab="motion">Motion</button><button type="button" data-tab="touch">Touch</button><button type="button" data-tab="keys">Keyboard</button></nav>
+          <nav class="mn-tabs"><button type="button" data-tab="motion">Motion</button><button type="button" data-tab="touch">Touch</button><button type="button" data-tab="buttons">Buttons</button><button type="button" data-tab="keys">Keyboard</button></nav>
           <button type="button" class="mn-btn mn-back" data-act="back">Back</button>
         </header>
         <div class="mn-meander mn-meander-thin"></div>
@@ -459,12 +464,24 @@ export function createMenus(ctx) {
               </ul>
             </div>
           </div>
+          <div class="mn-page" data-page="buttons">
+            <div class="mn-touch">
+              <ul class="mn-list">
+                <li>Every move is a button: nothing to swipe, drag or swing. The view <b>locks onto your foe</b> and turns with him.</li>
+                <li><b>Left thumb</b>: the arrows step you forward, back and to the sides. Hold <b>Shield</b> to block; tap <b>Bash</b> to bash.</li>
+                <li><b>Right thumb</b>: the sword pad. Each arrow cuts the way it points: ← → slash, ↓ chops overhead, ↑ cuts upward, the corners cut diagonally. <b>Stab</b> is in the middle.</li>
+                <li><b>‹ ›</b> above the sword pad turn you to the next foe on that side.</li>
+                <li><b>Throw</b>: with a spear in hand, hold Throw to wind up, then release. It flies at the foe you face.</li>
+                <li><b>Combos</b>: tap → then ← for Twin Fangs, ↑ then ↓ for Leonidas’ Cleave, the two lower corners for the Cross of Ares.</li>
+              </ul>
+            </div>
+          </div>
           <div class="mn-page" data-page="keys">
             <div class="mn-keys">${KEYS.map(([k, d]) => `<div><kbd>${k}</kbd><span>${d}</span></div>`).join('')}</div>
           </div>
         </div>
       </div>`);
-    bindTabs(s, settings.control === 'motion' ? 'motion' : 'touch');
+    howtoTab = bindTabs(s, controlTab());
     // The Motion tab shows one grip's cards at a time: the current grip's on opening (howtoGrip).
     for (const b of s.querySelectorAll('[data-hg]')) {
       b.addEventListener('click', () => {
@@ -644,7 +661,7 @@ export function createMenus(ctx) {
         paintRange(input, f);
       }
       if (f.motionOnly) row.classList.toggle('is-off', !motion || (f.hintHilt !== undefined && hilt));
-      if (f.hiltOnly) row.classList.toggle('is-off', !hilt);
+      if (f.lockOnly) row.classList.toggle('is-off', !hilt && settings.control !== 'buttons');
       if (f.hintHilt) {
         const small = row.querySelector('small');
         const hint = hilt ? f.hintHilt : f.hint;
@@ -664,7 +681,7 @@ export function createMenus(ctx) {
   function chooseControl(v) {
     if (v !== 'motion') {
       clearPending();
-      setSetting('control', 'touch');
+      setSetting('control', v === 'buttons' ? 'buttons' : 'touch');
       return;
     }
     if (released() && settings.gripChosen === false) {
@@ -992,6 +1009,7 @@ export function createMenus(ctx) {
       case 'howto':
         sfx('uiTap');
         howtoGrip(settings.grip === 'hilt' ? 'hilt' : 'window');
+        if (howtoTab) howtoTab(controlTab());
         push('howto');
         break;
       case 'back':

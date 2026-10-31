@@ -85,7 +85,8 @@ const idle = (duration) => ({ kind: 'idle', duration });
 const PI = Math.PI;
 
 /**
- * The steps (§11). `n` repetitions complete a step; `motion`/`touch` are the instructions.
+ * The steps (§11). `n` repetitions complete a step; `motion`/`touch`/`buttons` are the
+ * instructions (the buttons control falls back to the touch text).
  * `demo` returns a synth script, or is null when the move isn't a phone motion.
  * `hilt` and `demoHilt` are the hilt grip's instruction and demo (synthesized with hold 'hilt';
  * docs-hilt-grip.md §G). The hilt overhead is a chop straight from the guard (a cock-back would be
@@ -96,6 +97,7 @@ export const STEPS = [
     motion: 'Hold the phone in landscape in your sword hand, screen toward you. Grip it firmly, clear the space around you, and never let go.',
     hilt: 'Hold the phone upright in your sword hand like the hilt of a xiphos, screen toward you. Rest your thumb on the edge; your fingers stay on the back, off the glass. Grip firmly; a wrist strap is strongly recommended. Clear the space around you, behind you too. Then hold your guard still.',
     touch: 'Left thumb: the stick moves you, SHIELD blocks. Right thumb: swipe to slash, tap to stab, drag slowly to look.',
+    buttons: 'Left thumb: the arrows step you, SHIELD blocks, BASH bashes. Right thumb: the sword pad cuts the way each arrow points; STAB is in the middle. The view turns with your foe.',
     voice: 'Welcome to the Agoge. Take up your arms.', demo: null, demoHilt: null },
   { id: 'calibrate', title: 'Calibrate', n: 5, motionOnly: true,
     motion: 'Slash 5 times, the way you will in battle. Gentle is fine.', touch: '',
@@ -104,25 +106,26 @@ export const STEPS = [
     demo: () => [idle(0.3), swing(0, { ret: 0 }), idle(0.3), swing(PI, { ret: 0 }), idle(0.3), swing(0), idle(0.3)],
     demoHilt: () => [idle(0.3), swing(0, { ret: 0 }), idle(0.3), swing(PI, { ret: 0 }), idle(0.3), swing(0), idle(0.3)] },
   { id: 'slashLR', title: 'Right and left', n: 4,
-    motion: 'Swing right twice, then left twice.', touch: 'Swipe right twice, then left twice.',
+    motion: 'Swing right twice, then left twice.', touch: 'Swipe right twice, then left twice.', buttons: 'Tap → twice, then ← twice.',
     hilt: 'Cut right twice, then left twice: sweep the top of the phone across, like a windscreen wiper.',
     voice: 'Cut to the right. Then back to the left.',
     demo: () => [idle(0.3), swing(0, { ret: 4 }), idle(0.3), swing(0, { ret: 0 }), idle(0.3), swing(PI, { ret: 4 }), idle(0.3), swing(PI), idle(0.3)],
     demoHilt: () => [idle(0.3), swing(0, { ret: 4 }), idle(0.3), swing(0, { ret: 0 }), idle(0.3), swing(PI, { ret: 4 }), idle(0.3), swing(PI), idle(0.3)] },
   { id: 'overhead', title: 'The overhead chop', n: 2,
     motion: 'Raise the phone, then chop straight down. Twice. It goes over a wicker shield.', touch: 'Swipe straight down. Twice. It goes over a wicker shield.',
+    buttons: 'Tap ↓ to chop straight down. Twice. It goes over a wicker shield.',
     hilt: 'Chop straight down from your guard: tip the top of the phone forward and down. Twice. It goes over a wicker shield.',
     voice: 'Bring it down from above. The chop goes over their shields.',
     demo: () => [idle(0.3), { kind: 'raise' }, swing(-PI / 2), idle(0.5), { kind: 'raise' }, swing(-PI / 2), idle(0.3)],
     demoHilt: () => [idle(0.3), swing(-PI / 2), idle(0.5), swing(-PI / 2), idle(0.3)] },
   { id: 'uppercut', title: 'The uppercut', n: 1,
-    motion: 'From a low guard, swing upward.', touch: 'Swipe up.',
+    motion: 'From a low guard, swing upward.', touch: 'Swipe up.', buttons: 'Tap ↑ to cut upward.',
     hilt: 'Lower the blade slowly toward the ground ahead, then swing it up.',
     voice: 'From low, strike upward.',
     demo: () => [idle(0.3), swing(PI / 2, { windup: 0.4 }), idle(0.3)],
     demoHilt: () => [idle(0.3), { kind: 'lower', beta: 0.1 }, idle(0.3), swing(PI / 2), idle(0.3)] },
   { id: 'thrust', title: 'The thrust', n: 3,
-    motion: 'Push the phone straight forward, then draw it back. Three times.', touch: 'Tap to stab. Three times.',
+    motion: 'Push the phone straight forward, then draw it back. Three times.', touch: 'Tap to stab. Three times.', buttons: 'Tap STAB. Three times.',
     hilt: 'Punch the phone straight forward, then draw it back. Three times.',
     voice: 'Thrust. Short and straight.',
     demo: () => [idle(0.3), { kind: 'thrust' }, idle(0.4), { kind: 'thrust' }, idle(0.4), { kind: 'thrust' }, idle(0.3)],
@@ -136,7 +139,7 @@ export const STEPS = [
     hilt: 'Press at the last moment, as the red ring around his head closes. Twice.',
     voice: 'Now raise it at the last moment. Let the ring close.', demo: null, demoHilt: null },
   { id: 'bash', title: 'Shield bash', n: 2, trainer: true,
-    motion: 'Shield up, then push the phone forward. Twice.', touch: 'Tap BASH, or swipe up from SHIELD. Twice.',
+    motion: 'Shield up, then push the phone forward. Twice.', touch: 'Tap BASH, or swipe up from SHIELD. Twice.', buttons: 'Tap BASH. Twice.',
     hilt: 'Thumb on the glass, then punch forward. Twice.',
     voice: 'Shield up, and drive it into him.',
     demo: () => [idle(0.4), { kind: 'thrust' }, idle(0.5), { kind: 'thrust' }, idle(0.3)],
@@ -148,13 +151,14 @@ export const STEPS = [
   { id: 'spear', title: 'The dory', n: 4,
     motion: 'Take the spear with the weapon button. Thrust twice. Then raise it beside your head and throw at the far target. Never let go.',
     touch: 'Take the spear with the weapon button. Tap twice to thrust. Then hold THROW and release at the far target.',
+    buttons: 'Take the spear with the weapon button. Tap STAB twice. Then hold THROW and release: it flies at the far target.',
     // The weapon swap is the top button only (the lead's decision: no thumb flick).
     hilt: 'Tap the weapon button at the top to take the spear. Thrust twice. Then cock the phone back behind your shoulder like a javelin, and snap it forward, fist closed.',
     voice: 'Take up the spear.',
     demo: () => [idle(0.9), { kind: 'thrust' }, idle(0.45), { kind: 'thrust' }, idle(0.6), { kind: 'throw' }, idle(0.4)],
     demoHilt: () => [idle(0.9), { kind: 'thrust' }, idle(0.45), { kind: 'thrust' }, idle(0.6), { kind: 'throw' }, idle(0.4)] },
   { id: 'twin', title: 'Twin Fangs', n: 1,
-    motion: 'Slash right, then left, fast, into the dummy.', touch: 'Swipe right, then left, fast.',
+    motion: 'Slash right, then left, fast, into the dummy.', touch: 'Swipe right, then left, fast.', buttons: 'Tap →, then ←, fast.',
     hilt: 'Cut right, then left, fast, into the dummy.',
     voice: 'Right and left, quick as a viper. Twin Fangs.',
     demo: () => [idle(0.3), swing(0, { arc: 1.0, speed: 9 }), swing(PI, { arc: 1.0, speed: 9 }), idle(0.4)],
@@ -163,25 +167,28 @@ export const STEPS = [
 
 /**
  * The hilt grip's extra step, between the thrust and the block (§G): the lock-on and the thumb
- * swipe. It is not in STEPS, so touch and the window grip keep their 12 steps and indices.
+ * swipe (the buttons control's target buttons). It is not in STEPS, so touch and the window grip
+ * keep their 12 steps and indices.
  */
 export const HILT_LOCK_STEP = Object.freeze({
   id: 'lock', title: 'Change foe', n: 2, hiltOnly: true,
   hilt: 'Swipe your thumb right to turn to the next foe. Then swipe left.',
   motion: 'Swipe your thumb right to turn to the next foe. Then swipe left.', touch: '',
+  buttons: 'Tap › above the sword pad to turn to the next foe on your right. Then tap ‹.',
   voice: 'Turn to the next man with your thumb. Then turn back.', demo: null, demoHilt: null,
 });
 
 const HILT_STEPS = Object.freeze([...STEPS.slice(0, 6), HILT_LOCK_STEP, ...STEPS.slice(6)]);
 
 /**
- * The Agoge's runtime step list for a grip (effectiveGrip): the hilt grip gets the lock step at
- * index 6 (13 steps); touch and the window grip get STEPS itself.
- * @param {'hilt'|'window'|null} grip
+ * The Agoge's runtime step list for a grip (effectiveGrip) or 'buttons': the lock-on controls (the
+ * hilt grip and the buttons) get the lock step at index 6 (13 steps); touch and the window grip get
+ * STEPS itself.
+ * @param {'hilt'|'window'|'buttons'|null} grip
  * @returns {ReadonlyArray<object>}
  */
 export function agogeSteps(grip) {
-  return grip === 'hilt' ? HILT_STEPS : STEPS;
+  return grip === 'hilt' || grip === 'buttons' ? HILT_STEPS : STEPS;
 }
 
 const PRAISE = ['Good.', 'Well struck.', 'Again, that is the way.', 'Good. Like a Spartan.', 'Yes.'];
@@ -266,7 +273,7 @@ export function createTraining(ctx) {
 
   // ---- state ----
   let active = false;
-  let grip = null;          // effectiveGrip(settings) the step list was built for
+  let grip = null;          // listKey() the step list was built for: the effective grip, or 'buttons'
   let steps = STEPS;        // the runtime step list: agogeSteps(grip)
   let index = 0;
   let step = STEPS[0];
@@ -312,10 +319,15 @@ export function createTraining(ctx) {
 
   const motionMode = () => settings.control === 'motion';
   const hiltGrip = () => grip === 'hilt';
+  const buttonsMode = () => grip === 'buttons';
+  // The lock-on controls: the view faces the lock, and strikes and throws go at it.
+  const lockMode = () => grip === 'hilt' || grip === 'buttons';
+  // The step list's key: the effective grip, or 'buttons' (agogeSteps).
+  const listKey = () => effectiveGrip(settings) || (settings.control === 'buttons' ? 'buttons' : null);
   const counting = () => active && !finished && doneWait <= 0 && !ctx.motionDemo && demoLeft <= 0;
   const say = (text) => ctx.events.emit('voice', { text, speaker: 'Narrator' });
   // The effective grip's instruction and demo (touch reads the touch text, and its demos are the window grip's).
-  const textOf = (s) => (!motionMode() ? s.touch : hiltGrip() && s.hilt ? s.hilt : s.motion);
+  const textOf = (s) => (buttonsMode() ? s.buttons || s.touch : !motionMode() ? s.touch : hiltGrip() && s.hilt ? s.hilt : s.motion);
   const demoOf = (s) => (hiltGrip() ? s.demoHilt || null : s.demo);
   const sensKey = () => sensitivityKey(settings);
   const spearInHand = () => !!(ctx.player && ctx.player.weapon === 'spear' && ctx.player.hasSpearInHand);
@@ -340,6 +352,7 @@ export function createTraining(ctx) {
     const motion = motionMode();
     root.classList.toggle('is-motion', motion);
     root.classList.toggle('is-hilt', hiltGrip());
+    root.classList.toggle('is-buttons', buttonsMode());
     root.classList.toggle('is-left', !!settings.leftHanded);
     // Collapsed during the shield steps (the stylesheet does it in portrait only): the target's head ring stays clear.
     root.classList.toggle('is-compact', !!(step.trainer || step.id === 'volley') && !expanded);
@@ -512,7 +525,7 @@ export function createTraining(ctx) {
       return;
     }
     step = steps[index];
-    if ((step.motionOnly && !motionMode()) || (step.hiltOnly && !hiltGrip())) {
+    if ((step.motionOnly && !motionMode()) || (step.hiltOnly && !lockMode())) {
       goTo(index + 1);
       return;
     }
@@ -558,7 +571,7 @@ export function createTraining(ctx) {
     volleyWait = 0;
     if (step && step.id === 'spear') {
       stepDummyAside(false);
-      if (hiltGrip()) lockTo(dummy);
+      if (lockMode()) lockTo(dummy);
     }
     // The lock step's extra dummies go the way the trainer does; the player drops the stale lock
     // (no longer in ctx.actors) on its next update and acquires the near dummy again.
@@ -574,7 +587,7 @@ export function createTraining(ctx) {
    * to the step after it.
    */
   function syncGrip() {
-    const g = effectiveGrip(settings);
+    const g = listKey();
     if (g === grip) return;
     grip = g;
     const list = agogeSteps(g);
@@ -709,7 +722,7 @@ export function createTraining(ctx) {
   ev.on('lockOn', (e) => {
     if (!active || !e || !counting() || step.id !== 'lock') return;
     if (e.reason === 'none') {
-      setHint('Nobody stands that way. Swipe the other way.');
+      setHint(buttonsMode() ? 'Nobody stands that way. Tap the other arrow.' : 'Nobody stands that way. Swipe the other way.');
       return;
     }
     const p = ctx.player && ctx.player.pos;
@@ -827,7 +840,7 @@ export function createTraining(ctx) {
       else if (id === 'spear' && s.kind === 'spearThrust' && sub.thrusts < 2) {
         sub.thrusts++;
         if (sub.thrusts === 2) stepDummyAside(true);
-        if (sub.thrusts === 2 && hiltGrip()) {
+        if (sub.thrusts === 2 && lockMode()) {
           // The hilt grip throws at the lock: the view turns to the far target at once, so the near
           // dummy stepping aside never takes the view with it (§G).
           lockTo(farDummy);
@@ -840,7 +853,7 @@ export function createTraining(ctx) {
       else if (id === 'thrust') setHint('Lower the shield to stab.');
     } else if (s.kind === 'throw' && id === 'spear') {
       sub.thrown = true;
-      const lock = hiltGrip() && ctx.player ? ctx.player.lockTarget : null;
+      const lock = lockMode() && ctx.player ? ctx.player.lockTarget : null;
       sub.atFar = !lock || lock === farDummy;
       if (sub.thrusts < 2) setHint('Thrust twice before you throw.');
       else if (!sub.atFar) setHint('Throw at the far target.');
@@ -863,8 +876,8 @@ export function createTraining(ctx) {
       if (!sub.switched) sub.switched = true;
       sub.thrusts = Math.max(sub.thrusts, 2);
       complete();
-    } else if (hiltGrip()) {
-      // the hilt grip throws at the lock: put it back on the far target for the next spear
+    } else if (lockMode()) {
+      // the lock-on controls throw at the lock: put it back on the far target for the next spear
       setHint(sub.atFar ? 'Wide. Another spear is drawn: throw again.' : 'Throw at the far target.');
       if (sub.thrusts >= 2) lockTo(farDummy);
     } else setHint('Wide. Another spear is drawn: aim at the far target.');
@@ -1012,7 +1025,7 @@ export function createTraining(ctx) {
       spawnDummies();
       loadSynth();
       // The step list is the effective grip's (the hilt grip adds the lock step); syncGrip follows a change.
-      grip = effectiveGrip(settings);
+      grip = listKey();
       steps = agogeSteps(grip);
       clearFigure();
       step = null;

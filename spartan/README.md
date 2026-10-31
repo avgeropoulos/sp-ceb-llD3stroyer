@@ -39,10 +39,10 @@ the motion controls. Touch controls work on any phone.
 
 ## Controls
 
-Pick **Motion** or **Touch** under *Controls* on the title screen. Motion has two ways to hold the
+Pick **Motion**, **Touch** or **Buttons** under *Controls* on the title screen. Motion has two ways to hold the
 phone, the **hilt grip** (upright) and the **window grip** (sideways): pick one under *Grip* on the
 title screen or in Settings → Controls. The app turns to portrait for the hilt grip and stays in
-landscape for the window grip and for touch. **The Agoge** (training) walks you through every move
+landscape for the window grip, touch and buttons. **The Agoge** (training) walks you through every move
 with a practice dummy, and calibrates the motion controls to how hard you swing.
 
 ### Motion, hilt grip: the phone is the hilt of your sword
@@ -114,6 +114,21 @@ grip keeps its own). If your slashes come out mirrored, turn on **Swap swing lef
   * A tap stabs.
   * A slow drag looks around.
 * With a spear in hand, hold **THROW** to wind up and release it to throw.
+
+### Buttons
+
+Every move is a button: nothing to swipe, drag or swing. As in the hilt grip, the view locks onto
+a foe and turns with him, and your strikes and spears go at him.
+
+* **Left thumb:** the arrows step you forward, back and to the sides. **SHIELD** (hold) blocks, and
+  **BASH** bashes.
+* **Right thumb:** the sword pad. Each arrow cuts the way it points: ← and → slash, ↓ chops
+  overhead (over a wicker shield), ↑ cuts upward, and the corners cut diagonally. **STAB** is in
+  the middle.
+* **‹ FOE** and **FOE ›** above the sword pad turn you to the next foe on that side.
+* With a spear in hand, hold **THROW** to wind up and release it: the spear flies at the foe you face.
+* Combos: → then ← (Twin Fangs), ↑ then ↓ (Leonidas' Cleave), the two lower corners (the Cross of
+  Ares), STAB three times (Phalanx Drive), BASH then STAB (the Hoplite's Answer).
 
 ### Keyboard and mouse (in a desktop browser)
 
@@ -209,6 +224,7 @@ node spartan/tests/e2e/voice-clips.mjs        # the Greeks' recorded voice lines
 node spartan/tests/e2e/music-cues.mjs         # the recorded music cues in the running game
 node spartan/tests/e2e/hilt-lockon.mjs        # the hilt grip's lock-on camera, up to a minute of Day 3's last stand
 node spartan/tests/e2e/hilt-throw.mjs         # the hilt grip's cock-back spear throw
+node spartan/tests/e2e/buttons.mjs            # the buttons control: layout, every button, the Agoge
 ```
 
 Run the end-to-end scripts one at a time, from a folder outside the repository: some of them save

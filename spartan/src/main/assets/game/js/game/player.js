@@ -15,7 +15,8 @@
  * critically damped yaw spring, the only yaw writer there besides the guard-break nudge. Gyro look,
  * the touch aim pull and the recenter ease never turn the view in that grip. A thumb swipe
  * (switchTarget) moves the lock, an attacker the shield can't cover may take it (lockAuto), and
- * strikes and throws aim at it. Touch and the window grip keep lockMode 'off'.
+ * strikes and throws aim at it. The buttons control (ctx.input.lockOn) runs the same lock-on, its
+ * target buttons sending switchTarget. Touch and the window grip keep lockMode 'off'.
  */
 import * as THREE from 'three';
 import { TIMING, WEAPONS, pickTarget, ballisticPitch, dirToken } from './rules.js';
@@ -203,7 +204,9 @@ export function createPlayer(ctx) {
   const motionMode = () => !!(ctx.input && ctx.input.motion);
   const cameraOverridden = () => !!(ctx.fx && ctx.fx.cameraOverridden);
   const shieldLocked = () => ptime < shieldLockUntil;
-  const hiltGrip = () => !!(ctx.input && ctx.input.grip === 'hilt');
+  // The lock-on runs in the hilt grip and the buttons control (ctx.input.lockOn; contexts that
+  // only set the grip, like the unit tests, get it from the hilt grip).
+  const lockControl = () => !!(ctx.input && (ctx.input.lockOn === true || ctx.input.grip === 'hilt'));
   const lockOn = () => lockMode !== 'off';
 
   function emitScore() {
@@ -343,7 +346,7 @@ export function createPlayer(ctx) {
   // its keep range for loseTime) and acquires when there is none and no hold is running. Runs
   // before the focus, so strikes this frame aim at the lock it leaves.
   function stepLock(dt) {
-    if (!hiltGrip()) {
+    if (!lockControl()) {
       if (lockOn()) dropLock('clear', 'off', 0);
       return;
     }
@@ -404,7 +407,7 @@ export function createPlayer(ctx) {
    * alive and with the camera not overridden.
    */
   function switchTarget(dir) {
-    if (!hiltGrip() || !player.alive || cameraOverridden()) return false;
+    if (!lockControl() || !player.alive || cameraOverridden()) return false;
     const d = dir > 0 ? 1 : dir < 0 ? -1 : 0;
     if (d === 0) return false;
     if (!lockOn()) enterLock();
@@ -424,7 +427,7 @@ export function createPlayer(ctx) {
    * Only in the hilt grip and alive. Returns whether `actor` is now the lock.
    */
   function setLock(actor) {
-    if (!hiltGrip() || !player.alive) return false;
+    if (!lockControl() || !player.alive) return false;
     if (!lockOn()) enterLock();
     if (actor && isLockable(actor)) lockTo(actor, 'acquire', true);
     else dropLock('clear', 'front', 0);
@@ -1264,7 +1267,7 @@ export function createPlayer(ctx) {
    * acquiring again; the spring stays the only yaw writer there.
    */
   function recenter() {
-    if (!hiltGrip()) recenterLeft = 0.25;
+    if (!lockControl()) recenterLeft = 0.25;
     else if (player.alive) {
       if (!lockOn()) enterLock();
       dropLock('clear', 'front', LOCK.recenterHold);
@@ -1306,7 +1309,7 @@ export function createPlayer(ctx) {
   // winding up at the player, a threat switch happened within threatGap, or that foe lost the lock
   // to a threat within threatReturn (no ping-pong between front and rear).
   ev.on('enemyWindup', (e) => {
-    if (!e || !e.targetIsPlayer || !lockOn() || !hiltGrip() || !player.alive) return;
+    if (!e || !e.targetIsPlayer || !lockOn() || !lockControl() || !player.alive) return;
     if (ctx.settings && ctx.settings.lockAuto === false) return;
     const x = e.actor;
     if (!x || x === lockTarget || !isLockable(x)) return;

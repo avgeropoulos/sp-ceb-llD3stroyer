@@ -221,7 +221,8 @@ html, body {
 #hud.is-visible.is-fallen ~ #controls .ctl-stick,
 #hud.is-visible.is-fallen ~ #controls .ctl-shield,
 #hud.is-visible.is-fallen ~ #controls .ctl-bash,
-#hud.is-visible.is-fallen ~ #controls .ctl-throw {
+#hud.is-visible.is-fallen ~ #controls .ctl-throw,
+#hud.is-visible.is-fallen ~ #controls .ctl-key {
   opacity: 0;
   transition: opacity 0.6s ease;
 }
@@ -1154,12 +1155,104 @@ html, body {
 .ctl-ring-l i { left: 0; border-bottom-color: #ffcf6a; border-left-color: #ffcf6a; }
 .ctl-throw:not(.is-held) .ctl-ring { opacity: 0; }
 
+/* Buttons layout: every move is a button. Left thumb: the move pad, with SHIELD and BASH above
+   it (as in the touch layout). Right thumb: the sword pad (eight cuts, each arrow the way the blade cuts, around STAB), the
+   target arrows above it and THROW beside it. Mirrored for a left hand; the lock-on owns the view. */
+.ctl-dpad, .ctl-pad { display: none; }
+#controls.ctl-buttons .ctl-dpad,
+#controls.ctl-buttons .ctl-pad { display: grid; }
+#controls.ctl-buttons .ctl-shield,
+#controls.ctl-buttons .ctl-bash { display: block; }
+#controls.ctl-buttons.ctl-spear .ctl-throw { display: block; }
+#controls.ctl-buttons .ctl-recenter { display: none; }
+.ctl-dpad, .ctl-pad {
+  position: absolute;
+  bottom: calc(var(--safe-b) + 14px);
+  gap: 5px;
+}
+.ctl-dpad {
+  left: calc(var(--safe-l) + 14px);
+  grid-template: repeat(3, 46px) / repeat(3, 46px);
+  gap: 4px;
+  grid-template-areas: ". f ." "l . r" ". b .";
+}
+.ctl-pad {
+  right: calc(var(--safe-r) + 14px);
+  grid-template: repeat(3, 56px) / repeat(3, 56px);
+}
+.ctl-key {
+  position: relative;
+  border-radius: 12px;
+  border: 1.5px solid rgba(201, 162, 74, 0.75);
+  background: radial-gradient(circle at 50% 40%, rgba(40, 26, 15, 0.74), rgba(12, 7, 4, 0.82));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 220, 160, 0.15);
+  color: var(--bronze-hi);
+  opacity: 0.86;
+  transition: transform 0.08s ease, opacity 0.12s ease;
+}
+.ctl-key svg { width: 26px; height: 26px; display: block; margin: auto; transform: rotate(var(--a, 0deg)); }
+#controls .ctl-key.is-down {
+  opacity: 1;
+  color: var(--figure);
+  background: radial-gradient(circle at 40% 35%, #f3d892, #b98c3c 45%, #6a4718 85%);
+}
+.ctl-mv { border-radius: 50%; }
+.ctl-mv-f { grid-area: f; --a: -90deg; }
+.ctl-mv-b { grid-area: b; --a: 90deg; }
+.ctl-mv-l { grid-area: l; --a: 180deg; }
+.ctl-mv-r { grid-area: r; }
+.ctl-cut-stab {
+  border-radius: 50%;
+  border-color: var(--bronze);
+  background: radial-gradient(circle at 50% 42%, rgba(70, 18, 12, 0.85), rgba(24, 8, 5, 0.9));
+}
+.ctl-cut-stab svg { width: 24px; height: 24px; margin-top: 6px; }
+.ctl-cut-stab em {
+  display: block;
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  padding-left: 0.18em;
+  text-transform: uppercase;
+  color: var(--cream);
+}
+#controls .ctl-cut-stab.is-down em { color: var(--figure); }
+.ctl-tgt {
+  position: absolute;
+  bottom: calc(var(--safe-b) + 14px + 3 * 56px + 2 * 5px + 12px);
+  width: 64px;
+  height: 42px;
+  border-radius: 21px;
+}
+.ctl-tgt-r { right: calc(var(--safe-r) + 14px); }
+.ctl-tgt-l { right: calc(var(--safe-r) + 14px + 3 * 56px + 2 * 5px - 64px); }
+/* "‹ FOE" / "FOE ›": a turn to another foe, not a cut. */
+.ctl-tgt { display: none; border-color: rgba(150, 170, 190, 0.7); color: var(--cream); }
+#controls.ctl-buttons .ctl-tgt { display: flex; align-items: center; justify-content: center; gap: 5px; }
+.ctl-tgt b { font: 400 26px/1 var(--serif); margin-top: -3px; color: var(--bronze-hi); }
+.ctl-tgt em { font-style: normal; font-size: 10px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; }
+#controls.ctl-buttons .ctl-shield-up { display: none; }
+#controls.ctl-buttons .ctl-shield { left: calc(var(--safe-l) + 40px); bottom: calc(var(--safe-b) + 170px); width: 88px; height: 88px; }
+#controls.ctl-buttons .ctl-bash { left: calc(var(--safe-l) + 140px); bottom: calc(var(--safe-b) + 176px); width: 58px; height: 58px; }
+#controls.ctl-buttons .ctl-throw { right: calc(var(--safe-r) + 208px); bottom: calc(var(--safe-b) + 18px); }
+#controls.ctl-buttons.ctl-left .ctl-dpad { left: auto; right: calc(var(--safe-r) + 14px); }
+#controls.ctl-buttons.ctl-left .ctl-pad { right: auto; left: calc(var(--safe-l) + 14px); }
+#controls.ctl-buttons.ctl-left .ctl-tgt-r { right: auto; left: calc(var(--safe-l) + 14px + 3 * 56px + 2 * 5px - 64px); }
+#controls.ctl-buttons.ctl-left .ctl-tgt-l { right: auto; left: calc(var(--safe-l) + 14px); }
+#controls.ctl-buttons.ctl-left .ctl-shield { left: auto; right: calc(var(--safe-r) + 40px); }
+#controls.ctl-buttons.ctl-left .ctl-bash { left: auto; right: calc(var(--safe-r) + 140px); }
+#controls.ctl-buttons.ctl-left .ctl-throw { right: auto; left: calc(var(--safe-l) + 208px); }
+#controls.ctl-buttons.ctl-left .ctl-pause { left: auto; right: calc(var(--safe-r) + 12px); }
+#controls.ctl-buttons.ctl-left .ctl-swap { right: auto; left: calc(var(--safe-l) + 12px); }
+
 /* Motion layout: the resting-thumb tip. */
 #controls.is-cinematic .ctl-btn,
 #controls.is-cinematic .ctl-stick,
 #controls.is-cinematic .ctl-shield,
 #controls.is-cinematic .ctl-bash,
-#controls.is-cinematic .ctl-throw { opacity: 0.18; }
+#controls.is-cinematic .ctl-throw,
+#controls.is-cinematic .ctl-key { opacity: 0.18; }
 .ctl-tip {
   position: absolute;
   left: 50%;
@@ -1227,6 +1320,10 @@ html, body {
 }
 #training.is-motion .tr-panel { left: calc(var(--safe-l) + 12px); transform: none; width: min(600px, 64vw); }
 #training.is-motion.is-left .tr-panel { left: auto; right: calc(var(--safe-r) + 12px); }
+/* Buttons: between the left thumb's SHIELD and BASH and the right thumb's THROW, so no button is covered. */
+#training.is-buttons .tr-panel { left: calc(var(--safe-l) + 206px); right: calc(var(--safe-r) + 294px); width: auto; transform: none; }
+#training.is-buttons.is-left .tr-panel { left: calc(var(--safe-l) + 294px); right: calc(var(--safe-r) + 206px); }
+#training.is-buttons .tr-title { white-space: normal; font-size: 14px; letter-spacing: 0.14em; line-height: 1.25; }
 #training.is-finished .tr-panel { display: none; }
 .tr-head { display: flex; align-items: center; gap: 10px; min-height: 24px; }
 .tr-num { font-size: 11px; letter-spacing: 0.22em; color: var(--bronze); white-space: nowrap; }

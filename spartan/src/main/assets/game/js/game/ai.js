@@ -1100,7 +1100,7 @@ export function createAI(ctx) {
   function hiltRearGrace(a) {
     const inp = ctx.input;
     const p = ctx.player;
-    if (!inp || inp.grip !== 'hilt' || a.trainer || a.team !== 'persian' || !p || !p.pos) return 0;
+    if (!inp || (inp.grip !== 'hilt' && inp.lockOn !== true) || a.trainer || a.team !== 'persian' || !p || !p.pos) return 0;
     const rel = angleDiff(Number.isFinite(p.yaw) ? p.yaw : 0, yawTo(a.pos.x - p.pos.x, a.pos.z - p.pos.z));
     return Math.abs(rel) > LOCK.threatAngle ? HILT_REAR_GRACE : 0;
   }

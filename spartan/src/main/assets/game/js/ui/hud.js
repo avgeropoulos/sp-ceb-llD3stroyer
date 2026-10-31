@@ -721,10 +721,13 @@ export function createHud(ctx) {
     }
   }
 
+  // The lock-on marker replaces the focus bar wherever the lock-on camera runs (the hilt grip, buttons).
+  const lockShown = () => ctx.input.grip === 'hilt' || ctx.input.lockOn === true;
+
   function updateFocus(p) {
     const t = p && p.focusTarget;
     // The hilt grip's lock-on marker carries the foe's health instead (§E.4).
-    const show = !!(t && t.alive && t.team !== 'greek' && t.role !== 'dummy' && Number.isFinite(t.maxHp) && t.maxHp > 0) && !cinematic && ctx.input.grip !== 'hilt';
+    const show = !!(t && t.alive && t.team !== 'greek' && t.role !== 'dummy' && Number.isFinite(t.maxHp) && t.maxHp > 0) && !cinematic && !lockShown();
     if (show) {
       project(t, 0.22, pp);
       if (!pp.front || pp.x < 0 || pp.x > vw || pp.y < 0 || pp.y > vh) {
@@ -754,7 +757,7 @@ export function createHud(ctx) {
    * box resizes without layout; every string is written only when its rounded value changes.
    */
   function updateLock(p, dt) {
-    const hilt = ctx.input.grip === 'hilt' && !cinematic && !!p;
+    const hilt = lockShown() && !cinematic && !!p;
     const t = hilt ? p.lockTarget : null;
     const show = !!(t && t.alive !== false && t.pos);
     if (show) {
@@ -852,7 +855,7 @@ export function createHud(ctx) {
       if (strike.rank === 0) strikeResult(1);
     }
     if (strike.rank > 0) {
-      strike.settled = ctx.input.phoneSettled ? strike.settled + dt : 0;
+      strike.settled = ctx.input.phoneSettled || ctx.input.grip !== 'hilt' ? strike.settled + dt : 0;
       if (strike.settled >= CHIP_SETTLED && strike.until < 0) strike.rank = 0;
     }
     if (strike.rank !== strike.shown) {

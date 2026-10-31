@@ -140,8 +140,10 @@ test('settings UI covers every §9 field', () => {
   // Motion-only rows (greyed out in touch mode), the swap toggles among them, under Controls.
   const motionOnly = FIELDS.filter((f) => f.motionOnly).map((f) => f.key);
   assert.deepEqual(motionOnly, ['grip', 'sensitivity', 'gyroLook', 'motionFlipX', 'motionFlipY']);
-  // The hilt grip's rows (docs-hilt-grip.md §A.1): Grip is a motion row; Auto-turn greys unless the grip is hilt.
-  assert.deepEqual(FIELDS.filter((f) => f.hiltOnly).map((f) => f.key), ['lockAuto']);
+  // The hilt grip's rows (docs-hilt-grip.md §A.1): Grip is a motion row; Auto-turn greys outside the
+  // lock-on camera (the hilt grip and the buttons control).
+  assert.deepEqual(FIELDS.filter((f) => f.lockOnly).map((f) => f.key), ['lockAuto']);
+  assert.deepEqual(FIELDS.find((f) => f.key === 'control').options.map((o) => o[0]), ['motion', 'touch', 'buttons']);
   assert.deepEqual(FIELDS.find((f) => f.key === 'grip').options.map((o) => o[0]), ['hilt', 'window']);
   for (const k of ['motionFlipX', 'motionFlipY']) {
     const f = FIELDS.find((x) => x.key === k);

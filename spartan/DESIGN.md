@@ -1196,8 +1196,9 @@ motion glue:
 { type:'switchTarget', dir: -1|1, src } // hilt grip: move the lock-on to the next foe left (−1) or right (+1) (§11 player)
 ```
 `switchTarget` comes from a thumb stroke in the hilt layout (below) or the keys Z / X. Like
-`recenter` it is never buffered, and the player ignores it unless `ctx.input.grip === 'hilt'`, the
-player is alive and the camera isn't overridden.
+`recenter` it is never buffered, and the player ignores it unless the lock-on runs (`ctx.input.lockOn`: the hilt grip or buttons), the
+player is alive and the camera isn't overridden. The buttons layout's ‹ FOE / FOE › push it
+too (`ctx.input.lockOn`, below).
 `ctx.input` is continuous state, owned by ui/input.js. It is zeroed on every `modeChanged`
 (stick, look, shieldHeld = false, tracked pointers forgotten).
 ```js
@@ -1285,6 +1286,23 @@ Nothing but the shield and the thumb strokes lives on the thumb's arc (the hand 
   (power rises from 0 to 1 over 0.7 s, drawn as a ring), then release to throw. Dragging off
   the button cancels.
 * Pause and weapon swap sit in the corners.
+
+**Buttons layout** (`control: 'buttons'`, `#controls.ctl-buttons`, landscape, mirrored when
+leftHanded). Every move is a button, so nothing is swiped, dragged or swung, and the bare glass does
+nothing (HUD buttons are still forwarded; a mouse click never takes the pointer lock).
+* The view is the hilt grip's lock-on camera: main.js sets `ctx.input.lockOn` for the hilt grip and
+  for buttons, and the player, the volley rule (combat.js), the rear-attack grace (ai.js), the HUD's
+  lock marker and the Agoge's lock step all follow `lockOn`. What is specific to holding a phone
+  (the hilt viewmodel, the swing haptics and sounds, portrait) stays with the hilt grip.
+* Bottom-left: a move pad (four 46 px buttons, each walks while held). Above it, **SHIELD** (hold)
+  and **BASH**.
+* Bottom-right: the sword pad, 3×3 buttons of 56 px (`PAD` in ui/input.js). Each arrow cuts the
+  way it points and pushes `slash` with that direction (0 right, π/2 up, the corners at the
+  diagonals); the middle is **STAB** (`thrust`). Power `buttonPower` (0.8); one strike per press.
+* Above the sword pad: **‹ FOE** and **FOE ›** push `switchTarget` −1 and +1.
+* With a spear in hand, **THROW** appears left of the sword pad and works as in the touch layout.
+* The Agoge panel sits between the two clusters (`#training.is-buttons`), and the Agoge uses the
+  lock step and each step's `buttons` text (falling back to `touch`).
 
 **Keyboard and mouse:**
 * WASD moves. The mouse looks with pointer lock, at 0.0025 rad/px.
@@ -1552,7 +1570,7 @@ export class ComboTracker {
 ## 9. Settings (persisted under `thermopylae.settings`)
 
 ```js
-{ control: 'touch',          // 'motion' | 'touch'; motion is offered only if supported
+{ control: 'touch',          // 'motion' | 'touch' | 'buttons'; motion is offered only if supported
   sensitivity: 1.0,          // SENSITIVITY_MIN–MAX = 0.5–2.2 (§5.3); the Agoge suggests 0.6–2.2
   gyroLook: true,            // motion mode: deliberate body turns turn the view 1:1; strikes never do (§5.3)
   aimAssist: true,           // touch/keyboard camera pull (motion always rotates attacks)

@@ -195,6 +195,7 @@ async function boot() {
    * on every mode change, so the recognizer, ctx.input.grip and the orientation never disagree.
    *  - the recognizer's grip profile (each setGrip is a no-op if unchanged; a change resets it),
    *  - ctx.input.grip, in every mode (the viewmodel keeps its hilt pose under the pause menu),
+   *  - ctx.input.lockOn: the lock-on camera (the hilt grip and the buttons control),
    *  - the effective grip's flips, <html data-grip="hilt|window|none">,
    *  - the app orientation: portrait for the hilt grip in every mode, locked while fighting.
    */
@@ -205,6 +206,8 @@ async function boot() {
     ctx.motionFrames.setGrip?.(g);
     ctx.gestures.setGrip?.(g);
     ctx.input.grip = grip;
+    // The lock-on camera runs where the player can't turn to look: the hilt grip and the buttons.
+    ctx.input.lockOn = grip === 'hilt' || settings.control === 'buttons';
     const flip = !ctx.motionDemo;
     const keys = flipKeys(settings);
     ctx.gestures.setFlip?.(flip && !!settings[keys.x], flip && !!settings[keys.y]);
