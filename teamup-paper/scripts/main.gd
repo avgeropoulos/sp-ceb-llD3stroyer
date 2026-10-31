@@ -213,11 +213,14 @@ func _ready_level() -> void:
 		var s: Dictionary = level.spawns[si]
 		var f := Foe.new()
 		level.add_child(f)
-		f.init(level, s.kind, s.pos)
+		var kind: String = s.kind
+		if kind == "kragjr" and level.open:   # each world's castle has its own boss (bosses.gd)
+			kind = Bosses.for_world(level.world, Bosses.cleared_in_save(Boot.slot, level.world))
+		f.init(level, kind, s.pos)
 		f.set_meta("spawn", si)
 		f.set_meta("camp", s.get("camp", false))
 		foes.append(f)
-		if s.kind == "kragjr":
+		if Bosses.is_boss(kind):
 			boss = f
 			f.hp = int(world_info().boss_hp)
 			f.max_hp = f.hp
@@ -339,7 +342,8 @@ func _scene_done(id: String) -> void:
 		play_music("cozy")
 	elif state == "play":
 		if id == "krag":
-			hud.say("KRAG JR.!", "Stomp him when he swoops down!", 2.8)
+			if is_instance_valid(boss):
+				hud.say(boss.boss_name() + "!", Bosses.INFO.get(boss.kind, {}).get("hint", "Stomp him!"), 2.8)
 			play_music("boss")
 		elif id == "victory":
 			hud.say("HOORAY!", "Touch the flag to finish the world!", 2.8)
@@ -2346,6 +2350,8 @@ func _update_foes(dt: float) -> void:
 
 
 const FRIENDLY_SHOTS := ["spark", "water", "fireball", "rock", "shadow", "orb", "ice", "sparkle"]
+## Bosses' shots (they hurt you): fire breath, blue fire, magic and bones.
+const BOSS_SHOT_PICS := {"flame": "shot_fire", "blueflame": "shot_ice", "magic": "shot_orb", "bone": "shot_rock"}
 const NEW_SHOT_PICS := {"rock": "shot_rock", "shadow": "shot_shadow", "orb": "shot_orb", "ice": "shot_ice", "sparkle": "shot_sparkle"}
 
 
@@ -2361,9 +2367,16 @@ func _shot_node(pic: String, pos: Vector3, size: float) -> Node3D:
 
 func spawn_shot(kind: String, pos: Vector3, v: Vector3, owner: Node3D, dmg: int = 1) -> void:
 	var size := {"spark": 0.55, "arrow": 0.32, "spikeball": 0.8, "water": 0.5, "fireball": 0.55,
-		"rock": 0.6, "shadow": 0.55, "orb": 0.55, "ice": 0.5, "sparkle": 0.5}[kind] as float
+		"rock": 0.6, "shadow": 0.55, "orb": 0.55, "ice": 0.5, "sparkle": 0.5,
+		"flame": 0.7, "blueflame": 0.7, "magic": 0.6, "bone": 0.5}[kind] as float
 	var s: Node3D
-	if NEW_SHOT_PICS.has(kind):
+	if BOSS_SHOT_PICS.has(kind):
+		var pic: String = BOSS_SHOT_PICS[kind]
+		if pic == "shot_fire":
+			s = level.prop(pic, pos - Vector3(0, size * 0.5, 0), size)
+		else:
+			s = _shot_node(pic, pos - Vector3(0, size * 0.5, 0), size)
+	elif NEW_SHOT_PICS.has(kind):
 		s = _shot_node(NEW_SHOT_PICS[kind], pos - Vector3(0, size * 0.5, 0), size)
 	else:
 		var pic: String = {"spark": "spark", "arrow": "arrow", "spikeball": "spikeball", "water": "shot_water", "fireball": "shot_fire"}[kind]
@@ -2377,7 +2390,8 @@ func spawn_shot(kind: String, pos: Vector3, v: Vector3, owner: Node3D, dmg: int 
 			s.flip_h = v.x < 0
 		else:
 			s.look_at(s.global_position - v, Vector3.UP)
-	var life := {"spikeball": 5.0, "fireball": 2.4, "rock": 2.6, "shadow": 1.6, "orb": 2.6, "ice": 1.0, "sparkle": 1.2}.get(kind, 2.0) as float
+	var life := {"spikeball": 5.0, "fireball": 2.4, "rock": 2.6, "shadow": 1.6, "orb": 2.6, "ice": 1.0, "sparkle": 1.2,
+		"flame": 1.1, "blueflame": 1.1, "magic": 3.0, "bone": 2.4}.get(kind, 2.0) as float
 	shots.append({"node": s, "vel": v, "kind": kind, "owner": owner, "life": life,
 		"bounces": 0, "dmg": dmg, "hit": []})
 
@@ -2582,7 +2596,7 @@ func on_foe_beaten(f: Foe) -> void:
 	if f.is_boss:
 		boss_done = true
 		fx.shake = 1.2
-		hud.say("KRAG JR. BEATEN!", "Run to the flag!", 3.0)
+		hud.say(f.boss_name() + " BEATEN!", "Run to the flag!", 3.0)
 		victory_t = 1.8
 		play_music(world_info().song)
 		speak("We did it! Woo hoo!", "rocco")
@@ -2592,7 +2606,7 @@ func on_foe_beaten(f: Foe) -> void:
 
 
 func start_boss(f: Foe) -> void:
-	note("Krag Jr. arrives")
+	note(f.boss_name() + " arrives")
 	boss_on = true
 	checkpoint = Vector3(Level.BOSS_X0 + 2, 5, 6.5)
 	if level.open:   # just inside the castle gate
@@ -2600,7 +2614,7 @@ func start_boss(f: Foe) -> void:
 	play_music("boss")
 	sfx("alert")
 	if not play_scene("krag"):
-		hud.say("KRAG JR.!", "Stomp him when he swoops down!", 2.8)
+		hud.say(f.boss_name() + "!", Bosses.INFO.get(f.kind, {}).get("hint", "Stomp him!"), 2.8)
 
 
 # ------------------------------------------------------------------ checkpoint, flag, camera

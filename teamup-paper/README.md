@@ -165,6 +165,30 @@ Code: `foes.gd` `FOES2` / `_tick_foe2`, models `toys.gd` `_foe2` / `_pose_foe2`,
 Test: `tests/foes_check.gd -- [toy]` (each one moves/attacks, is beaten the right way, the bomb breaks blocks,
 the ghost hides when looked at).
 
+## Castle bosses: Krag Jr., the Kraglings, King Krag and Dry Krag
+
+Every world's castle has its own boss (`scripts/bosses.gd`, `Bosses.BY_WORLD`). Our own look-alike designs with
+made-up names. The boss's name is on its health bar (under the star row) and in the castle / victory cutscenes.
+
+| World | Boss | What it does |
+|---|---|---|
+| 1-1 Meadow Mine | KRAG JR. (TINY KRAG on later visits) | flies, throws spike balls, dives |
+| 2-1 Frosty Peaks | ZIPPO KRAG (blue mohawk) | shell spin dashes + magic wand |
+| 3-1 Sunset Dunes | ROCKO KRAG (spiky shell) | double ground-pound jumps (shockwave: jump to dodge!) + spike balls |
+| 4-1 Spooky Swamp | DRY KRAG JR. (skeleton, bony copter) | like Krag Jr. plus blue fire puffs |
+| 5-1 Moon Base | MAESTRO KRAG (wild blue hair) | wand fans + a ring of 8 magic shots |
+| 6-1 Lava Land | DRY KRAG (skeleton King Krag) | blue fire, thrown bones, stomps; **falls apart and gets back up once** |
+| 7-1 Candy Kingdom | GLAMMA KRAG (pink bow) | magic rings, spike balls, shell spins |
+| 8-1 Beach Bay | BRUTO KRAG (big and bald) | fire breath + stomps |
+| 9-1 Jungle Jamboree | SPECS KRAG (glasses, rainbow mohawk) | teleports next to you, then wand shots |
+| 10-1 Cloud Castle | KING KRAG | fire breath, stomps, shell spin, spike balls |
+
+Walking bosses (`foes.gd` `_boss_open`) chase you, shout "!", do an attack, then are **tired** for a moment:
+that's the time to stomp them. They get faster below half health. Bosses' shots: `flame`, `blueflame`, `magic`,
+`bone` (`main.gd` `BOSS_SHOT_PICS`). Models: `toys.gd` `_turtle_boss` / `_drykragjr` (`BOSS_LOOK`); paper pictures:
+`tools/gen_art.py` `bosses()`. Test: `tests/boss_check.gd [-- toy]` fights every world's boss (attacks happen, it
+takes damage, Dry Krag falls apart and comes back once, the flag comes down).
+
 ## Power-ups
 
 A **FIRE FLOWER** always waits near the start of every world, and it's the most common thing in ? blocks.
