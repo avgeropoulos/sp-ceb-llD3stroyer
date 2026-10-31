@@ -291,7 +291,7 @@ func cleanup() -> void:
 # ================================================================== KRAG BOWL
 func _bowling_build() -> void:
 	var o := ORIGIN
-	var wood := _mat_tex("planks", 0.5)
+	var wood := _mat_tex("planks", 1.6)
 	_box(Vector3(LANE_W * 2, 0.2, 22), o + Vector3(0, -0.1, -9), wood)
 	var gut := Toys.mat(Color("3a3f4e"), false)
 	for s in [-1, 1]:
@@ -335,11 +335,10 @@ func _bowling_build() -> void:
 	frame = 0
 	turn = "you"
 	_new_frame()
-	player.position = o + Vector3(0, 0, 1.4)
 	player.facing = Vector3(0, 0, -1)
 	p_floor = 0.0
-	cam_pos = o + Vector3(0, 2.4, 4.6)
-	cam_look = o + Vector3(0, 0.2, -9)
+	cam_pos = o + Vector3(0.3, 2.1, 4.2)
+	cam_look = o + Vector3(0, 0.1, -10)
 	phase = "play"
 	note = "YOUR TURN!"
 	note_t = 1.6
@@ -407,8 +406,9 @@ func _ready_ball() -> void:
 	arrow.visible = true
 	var bowler: Node3D = player if turn == "you" else rivals[0]
 	var waiter: Node3D = rivals[0] if turn == "you" else player
-	bowler.position = o + Vector3(0, 0, 1.4)
-	waiter.position = o + Vector3(2.3, 0, 1.6)
+	bowler.position = o + Vector3(-0.75, 0, 1.0)   # beside the ball, so you can see it
+	waiter.position = o + Vector3(3.4, 0, -1.5)
+	bowler.facing = Vector3(0, 0, -1)
 	if turn == "cpu":
 		cpu_aim = clampf(randfn(0.0, 0.32), -1, 1)
 		cpu_power = randf_range(0.7, 1.0)
@@ -503,8 +503,8 @@ func _bowling_step(dt: float) -> void:
 		cam_pos = o + Vector3(0, 2.6, HEAD_Z + 5.0)
 		cam_look = o + Vector3(0, 0, HEAD_Z - 0.6)
 	else:
-		cam_pos = o + Vector3(0, 2.4, 4.6)
-		cam_look = o + Vector3(0, 0.2, -9)
+		cam_pos = o + Vector3(0.3, 2.1, 4.2)
+		cam_look = o + Vector3(0, 0.1, -10)
 
 
 func _roll_ball(dt: float) -> void:
@@ -677,8 +677,8 @@ func _coins_build() -> void:
 	pvel = Vector3.ZERO
 	p_floor = 0.0
 	time_left = SCRAMBLE_TIME
-	cam_pos = o + Vector3(0, 13, 12)
-	cam_look = o + Vector3(0, 0, 0.5)
+	cam_pos = o + Vector3(0, 11, 10)
+	cam_look = o + Vector3(0, 0, 0.8)
 	phase = "count"
 	note = "READY..."
 	note_t = 2.0
@@ -689,7 +689,7 @@ func _spawn_coin() -> void:
 	var a := randf() * TAU
 	var r := sqrt(randf()) * (ARENA_R - 1.0)
 	var p := o + Vector3(cos(a) * r, 0.4, sin(a) * r)
-	var c := level.prop("coin", p - Vector3(0, 0.35, 0), 0.7)
+	var c := level.prop("coin", p - Vector3(0, 0.4, 0), 0.9)
 	coins_nodes.append({"node": c, "pos": p})
 
 
@@ -934,7 +934,7 @@ func draw(h) -> void:
 			var line := "YOU %d" % counts["you"]
 			for i in 3:
 				line += "     GRUMBLER %d: %d" % [i + 1, counts[i]]
-			h.txt(line, Vector2(0, 44), 26, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, s.x, 6)
+			h.txt(line, Vector2(0, 96), 26, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, s.x, 6)
 			h.txt("%d" % ceili(maxf(0, time_left)), Vector2(s.x - 160, 46), 40, Color("ffd23a") if time_left > 5 else Color("ff6b5a"), HORIZONTAL_ALIGNMENT_CENTER, 100, 8)
 		"race":
 			var o := ORIGIN + Vector3(120, 0, 0)

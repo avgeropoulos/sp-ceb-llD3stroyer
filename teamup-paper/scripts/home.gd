@@ -110,7 +110,9 @@ func place_arcade() -> void:
 				if y == 5:
 					t = Level.GOLD_BLOCK if (x + z) % 2 == 0 else Level.WOOL_WHITE
 				elif edge:
-					t = wall[(x + 3 + y) % wall.size()]
+					t = wall[y % wall.size()]   # bright stripes, one colour per row
+					if absi(x) == 3 and absi(z) == 2:
+						t = Level.WOOL_WHITE   # white corners
 					if z == 2 and x == 0 and y < 2:
 						t = Level.AIR   # the door
 					elif y == 2 and (x == -2 or x == 2) and z == 2:

@@ -1228,8 +1228,8 @@ func _draw_arcade() -> void:
 		draw_rect(r, Color(0.97, 0.94, 0.86))
 		draw_rect(Rect2(r.position, Vector2(r.size.x, 64)), gm.color)
 		txt(gm.name, Vector2(r.position.x, r.position.y + 44), 30, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 7)
-		_game_icon(gm.id, r.position + Vector2(r.size.x * 0.5, 150))
-		txt(gm.vs, Vector2(r.position.x, r.position.y + 236), 24, Color(0.35, 0.15, 0.2), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
+		_game_icon(gm.id, r.position + Vector2(r.size.x * 0.5, 140))
+		txt(gm.vs, Vector2(r.position.x, r.position.y + 254), 24, Color(0.35, 0.15, 0.2), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
 		txt("WIN: +%d coins" % MiniGames.PRIZE_WIN, Vector2(r.position.x, r.end.y - 22), 22, Color(0.55, 0.4, 0.05), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
 	var g: Dictionary = MiniGames.GAMES[game.arcade_sel]
 	txt(g.about, Vector2(0, arcade_rect(0).end.y + 56), 28, Color("fff2a8"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 7)
