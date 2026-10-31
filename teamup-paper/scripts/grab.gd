@@ -136,8 +136,11 @@ func _grab_target(h: Hero) -> Foe:
 
 ## A walking Krag boss whose TAIL you can grab (you're behind him, close).
 func _tail_target(h: Hero) -> Foe:
-	var b: Foe = game.boss
-	if b == null or not is_instance_valid(b) or b.dying >= 0 or not game.boss_on or h.who == "mon":
+	var raw = game.boss   # untyped first: the boss may already be freed (typed vars can't hold that)
+	if raw == null or not is_instance_valid(raw):
+		return null
+	var b: Foe = raw
+	if b.dying >= 0 or not game.boss_on or h.who == "mon":
 		return null
 	if Bosses.flies(b.kind) or not Bosses.is_boss(b.kind) or b.grabbed:
 		return null

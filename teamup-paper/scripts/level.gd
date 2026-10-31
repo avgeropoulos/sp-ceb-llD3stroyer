@@ -107,10 +107,9 @@ var bonus := false            # a painting's BONUS COURSE (see generate_bonus)
 var painting := {}            # the secret painting in an open world: {pos, w, h, x, z, bottom}
 var bonus_tops: Array = []    # BONUS COURSE: where you stand on each platform, start to star
 var bonus_star := Vector3.ZERO
-var summit_spot := Vector3.ZERO   # KING BOMBO's flat summit (centre of its top; ZERO = none)
+var summit_spot := Vector3.ZERO   # the flat 9x9 top of the big mountain (set by _course_build), where KING BOMBO waits
 var keep_out: Array = []      # [center, radius]: the challenges' space
 # Mario 64-style course (see _course_heights / _course_build):
-var summit_spot := Vector3.ZERO  # standing spot in the middle of the flat 9x9 top of the big mountain
 var mountain := Vector2.ZERO     # its centre (x, z)
 var ramp_s := {}                 # Vector2i -> 0..1: cells of the spiral path (0 = bottom, 1 = top)
 var cannon_spot := Vector3.ZERO  # walk into the cannon to fly to the floating island
