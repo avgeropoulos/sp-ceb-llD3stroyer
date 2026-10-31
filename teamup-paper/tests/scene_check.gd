@@ -128,7 +128,7 @@ func _process(_dt: float) -> bool:
 				g.hud._movies_tap(g.hud.movies_back_rect().get_center())
 				check(g.state == "home", "BACK should go home")
 				# a funny scene at home
-				g.leader().position = Vector3(Level.HOME_OX + 20.5, 5.0, Level.HOME_OZ + 7.5)
+				g.leader().position = Vector3(Level.HOME_OX + 20.5, Level.HOME_GY, Level.HOME_OZ + 7.5)
 				g.leader().on_floor = true
 				Cutscene.last_funny_ms = -10000000
 				g.maybe_funny(1.0)

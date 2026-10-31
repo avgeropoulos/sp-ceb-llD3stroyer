@@ -1094,7 +1094,8 @@ ATLAS = ["grass_top", "grass_side", "dirt", "stone", "iron", "gold", "diamond", 
          "snow_top", "snow_side", "ice", "sand", "sandstone",
          "log_top", "log_side", "leaves_tint", "wool_green", "wool_black", "road",
          "swamp_top", "swamp_side", "mud", "moon_top", "moon_rock",
-         "lava", "basalt", "frosting_top", "frosting_side", "cake", "candy_cane", "water", "cloud"]
+         "lava", "basalt", "frosting_top", "frosting_side", "cake", "candy_cane", "water", "cloud",
+         "lantern"]
 
 
 def world_textures():
@@ -1327,6 +1328,26 @@ def banana():
     p.poly([(28, 26), (22, 12), (30, 22), (34, 10), (36, 24)], rgb("#ffe680"))
     p.oval(6, 31, 2.4, 2.4, rgb("#6a4a2e"), ink=False)
     p.done("banana", border=2)
+
+
+def home_textures():
+    """The home caves: a glowing lantern block (wooden frame, warm light)."""
+    im = Image.new("RGB", (16, 16), (255, 214, 120))
+    px = im.load()
+    for y in range(16):
+        for x in range(16):
+            d = max(abs(x - 7.5), abs(y - 7.5))
+            if d > 6.5:
+                px[x, y] = (96, 62, 30)                        # wooden frame
+            elif d > 5.5:
+                px[x, y] = (150, 104, 54)
+            else:
+                g = int(40 * (1 - d / 5.5))
+                px[x, y] = (255, min(255, 200 + g), min(255, 110 + g * 2))   # warm glow, brightest in the middle
+    for i in range(2, 14):                                        # little window bars
+        px[7, i] = (150, 104, 54)
+        px[i, 7] = (150, 104, 54)
+    im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_lantern.png"))
 
 
 def build_textures():
@@ -1866,6 +1887,7 @@ def main():
     city_textures()
     spooky_moon_textures()
     world2_textures()
+    home_textures()
     banana()
     atlas()
     print("art written to", os.path.abspath(OUT))

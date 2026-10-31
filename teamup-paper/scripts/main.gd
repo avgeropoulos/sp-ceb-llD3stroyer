@@ -87,7 +87,7 @@ var victory_t := -1.0         # counts down to the victory scene after Krag Jr. 
 var gate_scene_done := false
 var movie_sel := 0
 var grav := 1.0               # gravity for the heroes (the Moon is 0.6)
-const MOVIE_SPOT := Vector3(Level.HOME_OX + 1.5, 5, Level.HOME_OZ + 8.5)   # the MOVIES TV at home
+const MOVIE_SPOT := Vector3(Level.HOME_OX + 1.5, Level.HOME_GY, Level.HOME_OZ + 8.5)   # the MOVIES TV at home
 
 # partners
 var mon_line := "spark"       # one of Mons.ORDER
@@ -191,10 +191,10 @@ func _ready_common() -> void:
 
 
 func _ready_home() -> void:
-	var o := Vector3(Level.HOME_OX, 0, Level.HOME_OZ)
-	heroes.rocco.position = o + Vector3(10, 5, 6.8)
+	var o := Vector3(Level.HOME_OX, Level.HOME_GY, Level.HOME_OZ)
+	heroes.rocco.position = o + Vector3(10, 0, 6.8)
 	heroes.blocky.position = heroes.rocco.position
-	heroes.mon.position = o + Vector3(8.4, 5, 5.6)
+	heroes.mon.position = o + Vector3(8.4, 0, 5.6)
 	home = HomeBase.new()
 	level.add_child(home)
 	home.setup(self, level)
