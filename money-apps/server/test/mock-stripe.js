@@ -70,6 +70,10 @@ function createMockStripe({ secretKey = 'sk_test_mock' } = {}) {
         sub.status = params.status;
         return json(res, 200, sub);
       }
+      if (parts[1] === 'archive-prices' && req.method === 'POST') {
+        for (const p of db.prices.values()) p.active = false;
+        return json(res, 200, { ok: true });
+      }
       if (parts[1] === 'complete' && req.method === 'POST') {
         const s = db.sessions.get(params.id);
         if (!s) return notFound(res, 'session');
@@ -91,9 +95,11 @@ function createMockStripe({ secretKey = 'sk_test_mock' } = {}) {
       return json(res, 200, { object: 'list', data: [...db.prices.values()].filter(p => p.lookup_key === key && p.active) });
     }
     if (route === 'POST /prices') {
-      if ([...db.prices.values()].some(p => p.lookup_key === params.lookup_key)) {
+      const holder = [...db.prices.values()].find(p => p.lookup_key === params.lookup_key);
+      if (holder && params.transfer_lookup_key !== 'true') {
         return json(res, 400, { error: { type: 'invalid_request_error', message: 'lookup_key already exists' } });
       }
+      if (holder) holder.lookup_key = null;
       const p = { id: id('price_'), object: 'price', active: true, lookup_key: params.lookup_key, currency: params.currency,
         unit_amount: Number(params.unit_amount), recurring: params['recurring[interval]'] ? { interval: params['recurring[interval]'] } : null,
         product: id('prod_'), _name: params['product_data[name]'] };

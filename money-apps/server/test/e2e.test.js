@@ -125,3 +125,83 @@ test('Quick Invoice: a forged license edited into localStorage does not survive 
   await page.waitForFunction(() => document.querySelector('#inv').textContent.includes('Made with Quick Invoice'));
   assert.equal(await page.evaluate(() => localStorage.getItem('moneyapps.license.invoice-pro')), null);
 });
+
+async function buyInvoicePro(page) {
+  await page.click('#proPanel [data-pay="buy"]');
+  await page.waitForURL(/\/pay\/cs_test_/);
+  await page.click('#pay');
+}
+
+test('Quick Invoice: a purchase survives a failed first license exchange', { skip: !chromium && 'playwright not installed' }, async () => {
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  await page.goto(`${base}/invoice-maker.html`);
+  let failures = 0;
+  await page.route('**/api/license', route => { failures++; return route.abort('connectionreset'); });
+  await buyInvoicePro(page);
+  await page.waitForFunction(() => /try again automatically/.test(document.querySelector('.pay-toast')?.textContent || ''), null, { timeout: 15000 });
+  assert.ok(failures >= 1);
+  assert.match(await page.evaluate(() => localStorage.getItem('moneyapps.pending.invoice-pro')), /cs_test_/);
+  assert.match(await page.textContent('#inv'), /Made with Quick Invoice/);
+  // Connection back: the next visit claims the purchase
+  await page.unroute('**/api/license');
+  await page.reload();
+  await page.waitForFunction(() => !document.querySelector('#inv').textContent.includes('Made with Quick Invoice'));
+  assert.equal(await page.evaluate(() => localStorage.getItem('moneyapps.pending.invoice-pro')), null);
+  await ctx.close();
+});
+
+test('Quick Invoice: keys survive server errors, other tabs update, Back re-enables Upgrade', { skip: !chromium && 'playwright not installed' }, async () => {
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  const other = await ctx.newPage();
+  await page.goto(`${base}/invoice-maker.html`);
+  await other.goto(`${base}/invoice-maker.html`);
+  assert.equal(await other.textContent('#proPanel .pay-price'), '$4.99/month'); // price comes from products.json via the server
+
+  // Back from Checkout without paying: the button must not stay stuck on "Opening checkout…"
+  await page.click('#proPanel [data-pay="buy"]');
+  await page.waitForURL(/\/pay\/cs_test_/);
+  await page.goBack();
+  await page.waitForSelector('#proPanel [data-pay="buy"]:not([disabled])');
+
+  await buyInvoicePro(page);
+  await page.waitForFunction(() => !document.querySelector('#inv').textContent.includes('Made with Quick Invoice'));
+  await other.waitForFunction(() => !document.querySelector('#inv').textContent.includes('Made with Quick Invoice'));
+
+  // A misbehaving server or proxy (503, HTML, 401 without our reason) must not delete a paid key
+  for (const reply of [{ status: 503, body: 'Service Unavailable' }, { status: 200, body: '<html>captive portal</html>' }, { status: 401, body: '{"error":"proxy auth"}', contentType: 'application/json' }]) {
+    await page.route('**/api/license/refresh', route => route.fulfill(reply));
+    assert.equal(await page.evaluate(() => pro.refresh(true)), true, JSON.stringify(reply));
+    await page.unroute('**/api/license/refresh');
+  }
+  assert.ok(await page.evaluate(() => localStorage.getItem('moneyapps.license.invoice-pro')));
+  await ctx.close();
+});
+
+test('Quick Invoice: keyboard users can tab past Pro fields; the dialog traps and returns focus', { skip: !chromium && 'playwright not installed' }, async () => {
+  const page = await (await browser.newContext()).newPage();
+  await page.goto(`${base}/invoice-maker.html`);
+  await page.focus('#payLink');
+  await page.keyboard.press('Tab');
+  assert.equal(await page.$('.pay-modal'), null, 'focusing alone must not open the upsell');
+  await page.focus('#payLink');
+  await page.keyboard.press('a');
+  await page.waitForSelector('.pay-modal');
+  assert.equal(await page.inputValue('#payLink'), '');
+  for (let i = 0; i < 6; i++) await page.keyboard.press('Tab');
+  assert.ok(await page.evaluate(() => document.querySelector('.pay-dialog').contains(document.activeElement)), 'focus stays in the dialog');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.evaluate(() => document.activeElement.id), 'payLink');
+});
+
+test('Quick Invoice: printing shows only the invoice', { skip: !chromium && 'playwright not installed' }, async () => {
+  const page = await (await browser.newContext()).newPage();
+  await page.goto(`${base}/invoice-maker.html`);
+  await page.emulateMedia({ media: 'print' });
+  assert.equal(await page.isVisible('h1'), false);
+  assert.equal(await page.isVisible('#proPanel'), false);
+  assert.equal(await page.isVisible('#inv'), true);
+  const today = await page.evaluate(() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); });
+  assert.match(await page.textContent('#inv'), new RegExp(today));
+});

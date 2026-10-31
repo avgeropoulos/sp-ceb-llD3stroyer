@@ -2,29 +2,34 @@
 // Money Apps payments server.
 //
 // Sells "Pro" unlocks with Stripe Checkout and serves the app pages. It has no
-// dependencies (Node 18+) and no database: after checkout it hands the browser a
+// dependencies (Node 18.17+) and no database: after checkout it hands the browser a
 // signed license key, and for subscriptions it re-checks the subscription with
 // Stripe whenever the browser refreshes that key.
 //
-// Environment:
-//   STRIPE_SECRET_KEY   sk_test_... or sk_live_...           (required for payments)
-//   LICENSE_SECRET      long random string used to sign keys (required with a Stripe key)
-//   APP_URL             public URL where the app pages live  (default http://localhost:PORT)
-//   PORT                default 4242
-//   ALLOWED_ORIGINS     comma-separated origins allowed to call the API cross-origin
-//   TRUST_PROXY         set to 1 behind a reverse proxy so rate limits use X-Forwarded-For
-//   RATE_LIMIT_PER_MIN  POST requests allowed per IP per minute (default 30)
-//   STRIPE_PRICE_<KEY>  optional existing Stripe price ID per product, e.g. STRIPE_PRICE_INVOICE_PRO
-//   STRIPE_API_BASE     override the Stripe API URL (used by the tests' mock Stripe)
+// Environment (see README.md):
+//   STRIPE_SECRET_KEY        sk_test_... or sk_live_...           (required for payments)
+//   LICENSE_SECRET           long random string used to sign keys (required with a Stripe key)
+//   APP_URL                  public URL of the folder holding the app pages (required in live mode)
+//   PORT                     default 4242
+//   SUPPORT_EMAIL            shown to customers when something goes wrong
+//   ALLOWED_ORIGINS          comma-separated origins allowed to call the API cross-origin
+//   TRUST_PROXY              number of reverse proxies in front of the server (e.g. 1), so
+//                            rate limits use the client IP your proxy reports in X-Forwarded-For
+//   RATE_LIMIT_PER_MIN       API POSTs allowed per IP per minute (default 30)
+//   PORTAL_LOGIN_URL         optional Stripe customer-portal login link (https://billing.stripe.com/p/login/...)
+//   STRIPE_PRICE_<PRODUCT>   optional existing Stripe price ID per product, e.g. STRIPE_PRICE_INVOICE_PRO
+//   STRIPE_API_BASE          override the Stripe API URL (used by the tests' mock Stripe)
 'use strict';
 
 const http = require('node:http');
+const net = require('node:net');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..');
 const PRODUCTS = JSON.parse(fs.readFileSync(path.join(__dirname, 'products.json'), 'utf8'));
+const isProduct = key => typeof key === 'string' && Object.hasOwn(PRODUCTS, key);
 const ACTIVE_SUB_STATES = new Set(['active', 'trialing', 'past_due']); // past_due: Stripe is still retrying the card
 const LICENSE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // subscription keys must be refreshed within a week
 const STATIC_TYPES = {
@@ -34,21 +39,50 @@ const STATIC_TYPES = {
 
 function loadConfig(env = process.env) {
   const port = Number(env.PORT) || 4242;
+  const stripeKey = env.STRIPE_SECRET_KEY || '';
+  const origins = new Set();
+  for (const raw of (env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean)) {
+    try { origins.add(new URL(raw).origin); } catch { console.warn(`[money-apps] Ignoring invalid ALLOWED_ORIGINS entry: ${raw}`); }
+  }
+  const hops = env.TRUST_PROXY === 'true' ? 1 : Math.max(0, parseInt(env.TRUST_PROXY, 10) || 0);
   return {
     port,
-    stripeKey: env.STRIPE_SECRET_KEY || '',
+    stripeKey,
+    mode: stripeKey ? (/_live_/.test(stripeKey) ? 'live' : 'test') : null,
     stripeApi: (env.STRIPE_API_BASE || 'https://api.stripe.com').replace(/\/+$/, ''),
     licenseSecret: env.LICENSE_SECRET || '',
     appUrl: (env.APP_URL || `http://localhost:${port}`).replace(/\/+$/, ''),
-    allowedOrigins: new Set((env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean)),
-    trustProxy: env.TRUST_PROXY === '1',
+    appUrlSet: Boolean(env.APP_URL),
+    support: (env.SUPPORT_EMAIL || '').trim(),
+    portalLoginUrl: (env.PORTAL_LOGIN_URL || '').trim(),
+    allowedOrigins: origins,
+    trustProxyHops: hops,
     rateLimit: Number(env.RATE_LIMIT_PER_MIN) || 30,
     priceOverrides: Object.fromEntries(Object.keys(PRODUCTS).map(k =>
       [k, env['STRIPE_PRICE_' + k.toUpperCase().replace(/[^A-Z0-9]/g, '_')] || ''])),
   };
 }
 
+// Catches settings that would take money but then strand the customer.
+function checkConfig(cfg) {
+  const problems = [];
+  if (cfg.stripeKey && cfg.licenseSecret.length < 32) {
+    problems.push('LICENSE_SECRET must be set to a random string of at least 32 characters when STRIPE_SECRET_KEY is set.\n' +
+      "Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"");
+  }
+  let app;
+  try { app = new URL(cfg.appUrl); } catch { /* reported below */ }
+  if (!app || !/^https?:$/.test(app.protocol)) problems.push(`APP_URL must be a full http(s) URL, got "${cfg.appUrl}".`);
+  else if (cfg.mode === 'live' && (!cfg.appUrlSet || app.protocol !== 'https:' || /^(localhost|127\.|\[::1\])/.test(app.host))) {
+    problems.push('In live mode APP_URL must be set to the public https:// address of your app pages ' +
+      '(e.g. https://apps.example.com), otherwise Stripe would send paying customers to localhost.');
+  }
+  if (cfg.portalLoginUrl && !/^https:\/\//.test(cfg.portalLoginUrl)) problems.push('PORTAL_LOGIN_URL must start with https://');
+  if (problems.length) throw new Error(problems.join('\n'));
+}
+
 // ---------- Licenses: base64url(JSON payload) + "." + base64url(HMAC-SHA256) ----------
+// Payload: { v: 1, p: product, m: 'test'|'live', c: customer, s: subscription|null, iat, exp|null }
 
 const b64url = buf => Buffer.from(buf).toString('base64url');
 
@@ -57,8 +91,9 @@ function signLicense(secret, payload) {
   return body + '.' + b64url(crypto.createHmac('sha256', secret).update(body).digest());
 }
 
-function verifyLicense(secret, token) {
-  if (typeof token !== 'string' || token.length > 2048) return null;
+// `mode`, when given, must match the key's mode, so keys bought with test cards don't work in live mode.
+function verifyLicense(secret, token, mode) {
+  if (!secret || typeof token !== 'string' || token.length > 2048) return null;
   const [body, sig, extra] = token.split('.');
   if (!body || !sig || extra !== undefined) return null;
   const want = crypto.createHmac('sha256', secret).update(body).digest();
@@ -66,7 +101,9 @@ function verifyLicense(secret, token) {
   if (got.length !== want.length || !crypto.timingSafeEqual(got, want)) return null;
   try {
     const p = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
-    return p && p.v === 1 && typeof p.p === 'string' && PRODUCTS[p.p] ? p : null;
+    if (!p || p.v !== 1 || !isProduct(p.p)) return null;
+    if (mode && p.m !== mode) return null;
+    return p;
   } catch { return null; }
 }
 
@@ -101,6 +138,7 @@ function makeStripe(cfg) {
 
 // Finds (or creates once) the Stripe price for a product, so no dashboard setup is needed.
 // The lookup key includes the amount and interval, so editing products.json makes a new price.
+// If someone archives the price in the dashboard, a new one takes over the lookup key.
 function makePriceResolver(cfg, stripe) {
   const cache = new Map();
   return function priceFor(key) {
@@ -113,7 +151,7 @@ function makePriceResolver(cfg, stripe) {
         const existing = await find();
         if (existing) return existing.id;
         const params = {
-          currency: p.currency, unit_amount: String(p.amount), lookup_key: lookupKey,
+          currency: p.currency, unit_amount: String(p.amount), lookup_key: lookupKey, transfer_lookup_key: 'true',
           'product_data[name]': p.name, 'product_data[metadata][money_apps_product]': key,
         };
         if (p.mode === 'subscription') params['recurring[interval]'] = p.interval;
@@ -176,31 +214,46 @@ function send(res, status, body, headers = {}) {
   res.end(data);
 }
 
-function makeRateLimiter({ perMinute = 30 } = {}) {
+// Fixed-window limiter. The map is capped, so a flood of distinct addresses can't exhaust memory.
+function makeRateLimiter({ perMinute = 30, maxKeys = 50000 } = {}) {
   const hits = new Map();
   setInterval(() => hits.clear(), 60 * 1000).unref();
-  return ip => {
-    const n = (hits.get(ip) || 0) + 1;
-    hits.set(ip, n);
+  return key => {
+    const n = (hits.get(key) || 0) + 1;
+    if (n === 1 && hits.size >= maxKeys) return false;
+    hits.set(key, n);
     return n <= perMinute;
   };
 }
 
-function publicProduct(key) {
-  const p = PRODUCTS[key];
+function expandIPv6(ip) {
+  if (!ip.includes('::')) return ip.split(':');
+  const [head, tail] = ip.split('::');
+  const h = head ? head.split(':') : [];
+  const t = tail ? tail.split(':') : [];
+  return [...h, ...Array(Math.max(0, 8 - h.length - t.length)).fill('0'), ...t];
+}
+
+// IPv6 users usually control a whole /64, so they share one rate-limit bucket.
+function rateKey(ip) {
+  ip = String(ip || '').replace(/%.*$/, '');
+  if (ip.startsWith('::ffff:') && net.isIPv4(ip.slice(7))) return ip.slice(7);
+  if (net.isIPv6(ip)) return expandIPv6(ip.toLowerCase()).slice(0, 4).map(g => g.replace(/^0+(?=.)/, '')).join(':') + '::/64';
+  return ip || '?';
+}
+
+function formatPrice(p) {
   return { name: p.name, mode: p.mode, amount: p.amount, currency: p.currency, interval: p.mode === 'subscription' ? p.interval : null };
 }
 
 // ---------- App ----------
 
 function createServer(cfg = loadConfig()) {
-  if (cfg.stripeKey && cfg.licenseSecret.length < 32) {
-    throw new Error('LICENSE_SECRET must be set to a random string of at least 32 characters when STRIPE_SECRET_KEY is set.\n' +
-      "Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"");
-  }
+  checkConfig(cfg);
   const stripe = makeStripe(cfg);
   const priceFor = makePriceResolver(cfg, stripe);
   const allow = makeRateLimiter({ perMinute: cfg.rateLimit });
+  const contact = cfg.support ? ` Contact ${cfg.support} if you need help.` : '';
 
   function requireStripe() {
     if (!cfg.stripeKey) throw new HttpError(503, 'Payments are not configured on this server (STRIPE_SECRET_KEY is missing).');
@@ -208,13 +261,16 @@ function createServer(cfg = loadConfig()) {
 
   function issue(product, customer, subscription) {
     const now = Date.now();
-    const payload = { v: 1, p: product, c: customer || null, s: subscription || null, iat: now, exp: subscription ? now + LICENSE_TTL_MS : null };
+    const payload = { v: 1, p: product, m: cfg.mode, c: customer || null, s: subscription || null, iat: now, exp: subscription ? now + LICENSE_TTL_MS : null };
     return { license: signLicense(cfg.licenseSecret, payload), product, expires: payload.exp };
   }
 
+  // A key is only called invalid when this server can actually check it, so a
+  // misconfigured server never makes browsers throw away keys people paid for.
   function licenseFrom(body) {
-    const lic = verifyLicense(cfg.licenseSecret, body.license);
-    if (!lic) throw new HttpError(401, 'This license key is not valid.', { reason: 'invalid' });
+    if (!cfg.stripeKey || cfg.licenseSecret.length < 32) throw new HttpError(503, 'Licensing is not configured on this server.');
+    const lic = verifyLicense(cfg.licenseSecret, body.license, cfg.mode);
+    if (!lic) throw new HttpError(401, 'This license key is not valid.' + contact, { reason: 'invalid' });
     return lic;
   }
 
@@ -223,13 +279,14 @@ function createServer(cfg = loadConfig()) {
 
     'GET /api/products': async () => ({
       payments: Boolean(cfg.stripeKey),
-      products: Object.fromEntries(Object.keys(PRODUCTS).map(k => [k, publicProduct(k)])),
+      support: cfg.support || null,
+      products: Object.fromEntries(Object.keys(PRODUCTS).map(k => [k, formatPrice(PRODUCTS[k])])),
     }),
 
     'POST /api/checkout': async (req, body) => {
       requireStripe();
       const key = body.product;
-      if (typeof key !== 'string' || !Object.hasOwn(PRODUCTS, key)) throw new HttpError(400, 'Unknown product.');
+      if (!isProduct(key)) throw new HttpError(400, 'Unknown product.');
       const p = PRODUCTS[key];
       const page = `${cfg.appUrl}/${p.page}`;
       const params = {
@@ -248,27 +305,31 @@ function createServer(cfg = loadConfig()) {
     },
 
     // Exchanges a completed Checkout Session (from the success redirect) for a license key.
+    // Safe to call repeatedly: the browser retries until it gets an answer.
     'POST /api/license': async (req, body) => {
       requireStripe();
+      if (cfg.licenseSecret.length < 32) throw new HttpError(503, 'Licensing is not configured on this server.');
       const id = body.session_id;
       if (typeof id !== 'string' || !/^cs_(test|live)_[A-Za-z0-9]{1,250}$/.test(id)) throw new HttpError(400, 'Invalid checkout session.');
       let session;
       try {
         session = await stripe('GET', `/v1/checkout/sessions/${id}`, { 'expand[]': 'subscription' });
       } catch (err) {
-        if (err instanceof StripeError && err.status === 404) throw new HttpError(404, 'Checkout session not found.');
+        if (err instanceof StripeError && err.status === 404) throw new HttpError(404, 'Checkout session not found.' + contact);
         throw err;
       }
       const key = session.metadata && session.metadata.money_apps_product;
-      if (!key || !Object.hasOwn(PRODUCTS, key) || PRODUCTS[key].mode !== session.mode) throw new HttpError(400, 'This checkout session is not for a Money Apps product.');
-      if (session.status !== 'complete' || !['paid', 'no_payment_required'].includes(session.payment_status)) {
-        throw new HttpError(402, 'Payment has not been completed.', { reason: 'unpaid' });
+      if (!isProduct(key) || PRODUCTS[key].mode !== session.mode) throw new HttpError(400, 'This checkout session is not for a Money Apps product.');
+      if (session.status !== 'complete') throw new HttpError(402, 'Checkout was not completed.', { reason: 'incomplete' });
+      if (!['paid', 'no_payment_required'].includes(session.payment_status)) {
+        // e.g. bank debits that take a few days to clear
+        throw new HttpError(402, 'Your payment is still processing.', { reason: 'unpaid' });
       }
       const customer = typeof session.customer === 'string' ? session.customer : session.customer && session.customer.id;
       if (session.mode === 'subscription') {
         const sub = session.subscription;
         if (!sub || typeof sub !== 'object' || !ACTIVE_SUB_STATES.has(sub.status)) {
-          throw new HttpError(402, 'The subscription is not active.', { reason: 'inactive', status: sub && sub.status });
+          throw new HttpError(402, 'The subscription is not active.' + contact, { reason: 'inactive', status: sub && sub.status });
         }
         return issue(key, customer, sub.id);
       }
@@ -279,7 +340,6 @@ function createServer(cfg = loadConfig()) {
     'POST /api/license/refresh': async (req, body) => {
       const lic = licenseFrom(body);
       if (!lic.s) return { license: body.license, product: lic.p, expires: null };
-      requireStripe();
       let sub;
       try {
         sub = await stripe('GET', `/v1/subscriptions/${encodeURIComponent(lic.s)}`);
@@ -293,13 +353,21 @@ function createServer(cfg = loadConfig()) {
 
     // Opens the Stripe customer portal (cancel, change card, download invoices).
     'POST /api/portal': async (req, body) => {
-      requireStripe();
       const lic = licenseFrom(body);
-      if (!lic.c) throw new HttpError(400, 'This license has no customer account to manage.');
-      const session = await stripe('POST', '/v1/billing_portal/sessions', {
-        customer: lic.c, return_url: `${cfg.appUrl}/${PRODUCTS[lic.p].page}`,
-      });
-      return { url: session.url };
+      if (cfg.portalLoginUrl) return { url: cfg.portalLoginUrl }; // Stripe emails the customer a one-time code
+      if (!lic.c) throw new HttpError(400, 'This license has no customer account to manage.' + contact);
+      try {
+        const session = await stripe('POST', '/v1/billing_portal/sessions', {
+          customer: lic.c, return_url: `${cfg.appUrl}/${PRODUCTS[lic.p].page}`,
+        });
+        return { url: session.url };
+      } catch (err) {
+        if (err instanceof StripeError && err.status >= 400 && err.status < 500) {
+          console.error(`[money-apps] Customer portal unavailable: ${err.message} (activate it under Stripe Settings → Billing → Customer portal)`);
+          throw new HttpError(503, 'Subscription management is not available right now.' + contact);
+        }
+        throw err;
+      }
     },
   };
 
@@ -309,9 +377,16 @@ function createServer(cfg = loadConfig()) {
     return { 'Access-Control-Allow-Origin': origin, 'Vary': 'Origin', 'Access-Control-Allow-Methods': 'GET, POST', 'Access-Control-Allow-Headers': 'Content-Type', 'Access-Control-Max-Age': '600' };
   }
 
+  // With TRUST_PROXY=N, the client is the Nth address from the right of X-Forwarded-For:
+  // each trusted proxy appends what it saw, and everything further left is client-supplied.
   function clientIp(req) {
-    const fwd = cfg.trustProxy && req.headers['x-forwarded-for'];
-    return (fwd ? String(fwd).split(',')[0].trim() : req.socket.remoteAddress) || '?';
+    let ip = req.socket.remoteAddress;
+    if (cfg.trustProxyHops > 0) {
+      const chain = String(req.headers['x-forwarded-for'] || '').split(',').map(s => s.trim()).filter(Boolean);
+      const candidate = chain[chain.length - cfg.trustProxyHops];
+      if (candidate && net.isIP(candidate.replace(/%.*$/, ''))) ip = candidate;
+    }
+    return rateKey(ip);
   }
 
   async function serveStatic(req, res, pathname) {
@@ -331,8 +406,9 @@ function createServer(cfg = loadConfig()) {
     res.end(req.method === 'HEAD' ? undefined : data);
   }
 
-  const server = http.createServer(async (req, res) => {
-    const url = new URL(req.url, 'http://localhost');
+  async function handle(req, res) {
+    let url;
+    try { url = new URL(req.url, 'http://localhost'); } catch { return send(res, 400, 'Bad request'); }
     const isApi = url.pathname.startsWith('/api/');
     const cors = isApi ? corsHeaders(req) : {};
     try {
@@ -341,7 +417,7 @@ function createServer(cfg = loadConfig()) {
         return await serveStatic(req, res, url.pathname);
       }
       if (req.method === 'OPTIONS') { res.writeHead(204, cors); return res.end(); }
-      const handler = api[`${req.method} ${url.pathname}`];
+      const handler = Object.hasOwn(api, `${req.method} ${url.pathname}`) && api[`${req.method} ${url.pathname}`];
       if (!handler) throw new HttpError(404, 'Not found.');
       if (req.method === 'POST' && !/^application\/json\b/i.test(req.headers['content-type'] || '')) throw new HttpError(415, 'Send JSON.');
       if (req.method === 'POST' && !allow(clientIp(req))) throw new HttpError(429, 'Too many requests. Try again in a minute.');
@@ -350,21 +426,29 @@ function createServer(cfg = loadConfig()) {
     } catch (err) {
       if (err instanceof HttpError) return send(res, err.status, { error: err.message, ...err.extra }, { ...cors, 'Cache-Control': 'no-store', ...err.headers });
       console.error(`[money-apps] ${req.method} ${url.pathname} failed:`, err instanceof StripeError ? `${err.status} ${err.code || ''} ${err.message}` : err);
-      send(res, 502, { error: 'The payment provider could not be reached. Please try again.' }, { ...cors, 'Cache-Control': 'no-store' });
+      send(res, 502, { error: 'The payment provider could not be reached. Please try again.' + contact }, { ...cors, 'Cache-Control': 'no-store' });
     }
+  }
+
+  const server = http.createServer((req, res) => {
+    // Last line of defence: nothing a request does may take the whole process down.
+    handle(req, res).catch(err => {
+      console.error('[money-apps] Unhandled error:', err);
+      if (!res.headersSent) send(res, 500, 'Server error'); else res.destroy();
+    });
   });
   server.requestTimeout = 30 * 1000;
   server.headersTimeout = 15 * 1000;
   return server;
 }
 
-module.exports = { createServer, loadConfig, signLicense, verifyLicense, PRODUCTS };
+module.exports = { createServer, loadConfig, signLicense, verifyLicense, rateKey, PRODUCTS };
 
 // Support tool: re-issue a lost license key for a customer you found in the Stripe dashboard.
-//   node server.js issue-license <product> <cus_...> [sub_...]
+//   STRIPE_SECRET_KEY=... LICENSE_SECRET=... node server.js issue-license <product> <cus_...> [sub_...]
 function issueLicenseCli(args, cfg) {
   const [product, customer, subscription] = args;
-  if (!Object.hasOwn(PRODUCTS, product || '') || !/^cus_\w+$/.test(customer || '') || (subscription && !/^sub_\w+$/.test(subscription))) {
+  if (!isProduct(product) || !/^cus_\w+$/.test(customer || '') || (subscription && !/^sub_\w+$/.test(subscription))) {
     console.error(`Usage: node server.js issue-license <product> <cus_...> [sub_...]\nProducts: ${Object.keys(PRODUCTS).join(', ')}`);
     process.exit(1);
   }
@@ -372,21 +456,25 @@ function issueLicenseCli(args, cfg) {
     console.error(`${product} is a subscription: pass the customer's subscription ID (sub_...) too.`);
     process.exit(1);
   }
-  if (cfg.licenseSecret.length < 32) { console.error('Set LICENSE_SECRET (the same one the server uses).'); process.exit(1); }
+  if (cfg.licenseSecret.length < 32 || !cfg.mode) {
+    console.error('Set LICENSE_SECRET and STRIPE_SECRET_KEY to the same values the server uses (the key decides test or live mode).');
+    process.exit(1);
+  }
   const now = Date.now();
   const sub = PRODUCTS[product].mode === 'subscription' ? subscription : null;
   // Subscription keys are issued already expired so the app re-checks the subscription with Stripe right away.
-  console.log(signLicense(cfg.licenseSecret, { v: 1, p: product, c: customer, s: sub, iat: 0, exp: sub ? now : null }));
+  console.log(signLicense(cfg.licenseSecret, { v: 1, p: product, m: cfg.mode, c: customer, s: sub, iat: 0, exp: sub ? now : null }));
 }
 
 if (require.main === module) {
-  let server;
   const cfg = loadConfig();
   if (process.argv[2] === 'issue-license') { issueLicenseCli(process.argv.slice(3), cfg); process.exit(0); }
+  let server;
   try { server = createServer(cfg); } catch (err) { console.error(err.message); process.exit(1); }
   server.listen(cfg.port, () => {
     console.log(`Money Apps running at http://localhost:${cfg.port}`);
     if (!cfg.stripeKey) console.log('Payments are OFF: set STRIPE_SECRET_KEY and LICENSE_SECRET to sell Pro (see README.md).');
-    else console.log(`Stripe ${cfg.stripeKey.startsWith('sk_live_') ? 'LIVE' : 'test'} mode. Checkout returns to ${cfg.appUrl}`);
+    else console.log(`Stripe ${cfg.mode.toUpperCase()} mode. Checkout returns to ${cfg.appUrl}`);
+    if (cfg.stripeKey && !cfg.support) console.log('Tip: set SUPPORT_EMAIL so customers know who to contact.');
   });
 }
