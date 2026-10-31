@@ -4,10 +4,12 @@ import com.roccoquest.game.Gfx
 import com.roccoquest.game.Music
 import com.roccoquest.game.Sound
 import com.roccoquest.game.SoundSink
+import com.roccoquest.game.SpeechText
 import com.roccoquest.game.Sprite
 import com.roccoquest.game.Storage
 import com.roccoquest.game.VIEW_H
 import com.roccoquest.game.Voice
+import com.roccoquest.game.VoiceCast
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
@@ -54,6 +56,9 @@ class SillyScenesTest {
     private val newKinds = SillyScenes.FIRST until Scenes.titles.size
 
     private fun run(seconds: Float) = repeat((seconds / dt).toInt()) { game.update(dt) }
+
+    /** About how long [c]'s line takes to say: the game's own guess, at that voice's natural speed. */
+    private fun saying(c: Scenes.Cue) = SpeechText.seconds(SpeechText.tidy(c.text), VoiceCast.parts.getValue(c.voice).rate)
 
     private fun tap(x: Float, y: Float) {
         input.tapX = x; input.tapY = y; input.tap = true
@@ -106,8 +111,6 @@ class SillyScenesTest {
             assertTrue(cues.all { it.text.isNotEmpty() || it.sound != null }, "$name: no empty cues")
             assertTrue(cues.count { it.sound != null } >= 4, "$name: lots of sounds")
             assertTrue(spoken.map { it.voice }.toSet().size >= 2, "$name: more than one voice")
-            // A new line cuts off the one before it, so they're spaced out.
-            assertTrue(spoken.zipWithNext().all { (a, b) -> b.at - a.at >= 0.75f }, "$name: lines don't step on each other")
         }
         fun cuesOf(n: Int) = Scenes.cues(SillyScenes.FIRST + n, "SPARKY")
         // Each star talks in their own voice.
@@ -122,6 +125,23 @@ class SillyScenesTest {
         assertEquals(Music.WONDER, Scenes.music(SillyScenes.FIRST))
         assertEquals(Music.FROG, Scenes.music(SillyScenes.FIRST + 3))
         assertEquals(Music.SILLY, Scenes.music(0))
+    }
+
+    @Test fun everyLineIsFinishedBeforeTheNextOne() {
+        // Scene lines are said at a natural speed, and a new line cuts off the one before it: so each line has to
+        // be finished before the next one starts, and the last one before the scene ends (and the map comes back).
+        // With the longest Pokemon name, so the lines fit whoever your partner is.
+        val longName = Mon.entries.maxBy { it.label.length }.label
+        for (kind in newKinds) {
+            val name = Scenes.titles[kind]
+            val spoken = Scenes.cues(kind, longName).filter { it.text.isNotEmpty() }
+            for ((a, b) in spoken.zipWithNext()) {
+                val said = "%.2f".format(saying(a))
+                assertTrue(b.at - a.at >= saying(a), "$name: \"${a.text}\" ($said s from ${a.at} s) is said before \"${b.text}\" (${b.at} s)")
+            }
+            val last = spoken.last()
+            assertTrue(last.at + saying(last) <= Scenes.length(kind) - 0.3f, "$name: \"${last.text}\" is said before the scene ends")
+        }
     }
 
     @Test fun newScenesPlayAllTheWayThrough() {
@@ -221,8 +241,8 @@ class SillyScenesTest {
         // Four moments of each new scene on one sheet (2 x 2): build/screens/silly-<n>.png
         val moments = listOf(
             floatArrayOf(3.9f, 6.4f, 9.6f, 11.6f), floatArrayOf(4.8f, 8.4f, 10.6f, 13.0f), floatArrayOf(1.8f, 5.0f, 9.2f, 10.8f),
-            floatArrayOf(2.8f, 5.5f, 8.0f, 10.5f), floatArrayOf(5.9f, 7.2f, 8.7f, 11.0f), floatArrayOf(3.5f, 6.5f, 9.6f, 11.5f),
-            floatArrayOf(2.5f, 6.9f, 10.0f, 12.2f), floatArrayOf(4.0f, 5.8f, 8.7f, 10.6f), floatArrayOf(1.5f, 5.2f, 6.9f, 9.0f),
+            floatArrayOf(4.2f, 5.5f, 8.0f, 10.5f), floatArrayOf(5.9f, 7.2f, 8.7f, 11.0f), floatArrayOf(3.5f, 6.5f, 9.6f, 11.5f),
+            floatArrayOf(2.5f, 6.9f, 10.6f, 13.0f), floatArrayOf(4.0f, 5.8f, 8.7f, 10.6f), floatArrayOf(1.5f, 5.2f, 6.9f, 9.0f),
         )
         val dir = File("build/screens").apply { mkdirs() }
         val w = 427f

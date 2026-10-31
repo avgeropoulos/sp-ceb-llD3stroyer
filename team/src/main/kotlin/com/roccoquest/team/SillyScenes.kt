@@ -75,7 +75,8 @@ object SillyScenes {
         "WONDER OOPS!", "SPOOKY S'MORES", "THE WRONG MUSHROOM", "RING-DING CONCERT", "SAY CHEESE!",
         "BATH TIME, DENNIS!", "WHO ATE MY SPAGHETTI?", "THE BLOCK TOWER", "DASH AND THE BUTTERFLY",
     )
-    private val lengths = floatArrayOf(12.8f, 14.8f, 12.6f, 12.6f, 12.8f, 12.8f, 13.4f, 12.6f, 11.8f)
+    // (Long enough for the last line to be said before the scene ends.)
+    private val lengths = floatArrayOf(13.6f, 15.3f, 13.3f, 13.5f, 12.8f, 13.6f, 14.2f, 13.3f, 12.4f)
 
     fun length(kind: Int) = lengths.getOrElse(kind - FIRST) { 12f }
 
@@ -91,62 +92,67 @@ object SillyScenes {
     /** Just a sound (a ZAP, a SPLASH...) with nobody talking, so it doesn't cut off whoever is speaking. */
     private fun sfx(at: Float, sound: Sound) = Scenes.Cue(at, "", Voice.HERO, sound)
 
-    // Spoken lines are at least a second apart: a new line cuts off the one before it.
+    /*
+     * The voices speak at a natural speed, and a new line cuts off the one before it, so each line is short
+     * enough to be finished before the next one starts (and the last one before the scene ends): about 14
+     * letters a second, a bit slower for King Krag's deep voice (SpeechText.seconds, checked by the tests).
+     * Little shouts that wouldn't fit ("BING-BONG!", "WOOF!", "AH... AAAH...") are written on the screen
+     * with a sound instead.
+     */
     fun cues(kind: Int, monName: String): List<Scenes.Cue> = when (kind - FIRST) {
         0 -> listOf( // WONDER OOPS!
-            cue(0.4f, "Wonder magic! Turn into a fish, Rocco!", Voice.GOD, Sound.PORTAL),
-            cue(2.6f, "Not today! Magic mirror!", sound = Sound.COIN),
+            cue(0.4f, "Wonder magic! Be a fish!", Voice.GOD, Sound.PORTAL),
+            cue(2.7f, "Not today! Magic mirror!", sound = Sound.COIN),
             sfx(3.4f, Sound.ZAP), sfx(4.3f, Sound.KICK),
             cue(5.0f, "Huh? Blub?!", Voice.GOD, Sound.PORTAL),
-            cue(6.3f, "Blub blub! This is NOT wonderful!", Voice.GOD, Sound.SPLASH),
-            cue(7.9f, "Papa! I'll zap him for you!", Voice.TOAD, Sound.KICK),
+            cue(6.3f, "NOT wonderful!", Voice.GOD, Sound.SPLASH),
+            cue(7.9f, "Papa! I'll zap him!", Voice.TOAD, Sound.KICK),
             sfx(9.4f, Sound.ZAP),
             cue(10.1f, "Blub?!", Voice.TOAD, Sound.PORTAL),
-            cue(11.0f, "Ha ha! A whole fish family!", sound = Sound.ONEUP),
+            cue(10.9f, "Ha ha! A whole fish family!", sound = Sound.ONEUP),
         )
         1 -> listOf( // SPOOKY S'MORES
-            cue(0.4f, "Campfire time! Uh oh... no fire!"),
-            cue(2.3f, "And I forgot the matches!", Voice.VILLAGER),
-            cue(3.6f, "Rattle rattle... need a light?", Voice.GOD, Sound.BREAK),
+            cue(0.4f, "Uh oh... no fire!"),
+            cue(2.0f, "And no matches!", Voice.VILLAGER),
+            cue(3.6f, "Rattle! Need a light?", Voice.GOD, Sound.BREAK),
             cue(5.8f, "EEEEK! A skeleton!", sound = Sound.JUMP),
             sfx(6.9f, Sound.BOSS_FIRE),
-            cue(7.9f, "Ooh! Spooky blue marshmallows!", sound = Sound.COIN),
-            cue(9.4f, "Ah... aaah...", Voice.GOD),
+            cue(7.9f, "Ooh! Blue marshmallows!", sound = Sound.COIN),
             cue(10.4f, "AH-CHOOOO!", Voice.GOD, Sound.BOSS_FIRE),
             sfx(10.8f, Sound.BREAK),
-            cue(11.3f, "...Extra crispy."),
-            cue(12.3f, "Woof woof!", Voice.MON, Sound.BARK),
-            cue(13.3f, "Hey! Come back with my leg!", Voice.GOD),
+            cue(11.5f, "...Extra crispy."),
+            sfx(12.3f, Sound.BARK),
+            cue(13.1f, "Hey! That's my leg!", Voice.GOD),
         )
         2 -> listOf( // THE WRONG MUSHROOM
-            cue(0.4f, "Rocco! I found a super mushroom!", Voice.TOAD),
+            cue(0.4f, "Rocco! Super mushroom!", Voice.TOAD),
             cue(2.1f, "Grazie, Spotty! Nom nom!", sound = Sound.CHOMP),
             sfx(3.3f, Sound.POWERUP),
-            cue(4.6f, "I'M... HUGE! MAMMA MIA!", Voice.GOD),
+            cue(4.6f, "HUGE! MAMMA MIA!", Voice.GOD),
             cue(6.3f, "Oops! Wrong one! Try this one!", Voice.TOAD),
             sfx(7.6f, Sound.CHOMP), sfx(7.9f, Sound.HURT),
-            cue(8.8f, "Hey! I'm teeny tiny!", Voice.TOAD),
+            cue(8.7f, "I'm teeny tiny!", Voice.TOAD),
             cue(10.0f, "$monName?", Voice.MON),
-            cue(11.0f, "Hee hee! Mushroom mix-up!", Voice.TOAD, Sound.JUMP),
+            cue(11.1f, "Hee hee! Mushroom mix-up!", Voice.TOAD, Sound.JUMP),
         )
         3 -> listOf( // RING-DING CONCERT
-            cue(0.4f, "Ring-ding-ding-ding! Hello everybody!", Voice.FROG, Sound.ONEUP),
+            cue(0.4f, "Ring-ding! Hello everybody!", Voice.FROG, Sound.ONEUP),
             cue(2.5f, "Woo-hoo! Go, Frog, go!"),
-            cue(3.7f, "Bing-bong-a-dong!", Voice.FROG),
+            sfx(3.7f, Sound.COIN),
             cue(4.9f, "STOP that noise!", Voice.TOAD, Sound.BUMP),
-            cue(6.2f, "Okay! Here's my HIGHEST note...", Voice.FROG),
+            cue(6.2f, "My HIGHEST note!", Voice.FROG),
             cue(7.6f, "DIIIIIIIING!", Voice.FROG, Sound.ZAP),
             cue(8.8f, "WAAAAAAH!", Voice.TOAD, Sound.JUMP),
             cue(10.0f, "Encore! Encore!", sound = Sound.COIN),
-            cue(11.0f, "Thank you! Ring-ding!", Voice.FROG, Sound.ONEUP),
+            cue(11.5f, "Thank you! Ring-ding!", Voice.FROG, Sound.ONEUP),
         )
         4 -> listOf( // SAY CHEESE!
-            cue(0.4f, "Team photo! Everybody squeeze in!"),
+            cue(0.4f, "Team photo time!"),
             cue(2.2f, "Wait for me!", Voice.VILLAGER, Sound.JUMP),
-            cue(3.4f, "Ready? Say CHEESE!"),
-            cue(4.6f, "Cheeeeese!", Voice.MON),
+            cue(3.5f, "Say CHEESE!"),
+            cue(4.7f, "Cheeeeese!", Voice.MON),
             cue(5.7f, "AH-CHOO!", Voice.MON, Sound.ZAP),
-            cue(7.0f, "Hot hot HOT!", Voice.VILLAGER, Sound.FIRE),
+            cue(6.9f, "Hot hot HOT!", Voice.VILLAGER, Sound.FIRE),
             cue(8.2f, "Hydro!", Voice.MON, Sound.SPLASH),
             sfx(8.8f, Sound.KICK),
             sfx(9.4f, Sound.COIN),
@@ -154,12 +160,12 @@ object SillyScenes {
             sfx(11.2f, Sound.ONEUP),
         )
         5 -> listOf( // BATH TIME, DENNIS!
-            cue(0.4f, "Bath time, Dennis! Scrub scrub!"),
+            cue(0.4f, "Bath time, Dennis!"),
             cue(2.1f, "Woof...", Voice.MON, Sound.BARK),
-            cue(3.2f, "Look! A bubble beard!"),
-            cue(4.6f, "Uh oh... Dennis, no shaking!"),
+            cue(3.2f, "A bubble beard!"),
+            cue(4.7f, "Uh oh... no shaking!"),
             sfx(5.9f, Sound.SPLASH),
-            cue(6.4f, "WAAAH! I'm soaked!", sound = Sound.SPLASH),
+            cue(6.5f, "I'm SOAKED!", sound = Sound.SPLASH),
             cue(7.7f, "Woof woof!", Voice.MON, Sound.BARK),
             sfx(8.6f, Sound.SPLASH),
             cue(9.2f, "DENNIS! Not the MUD!"),
@@ -167,32 +173,32 @@ object SillyScenes {
             cue(11.0f, "...Bath time for everybody."),
         )
         6 -> listOf( // WHO ATE MY SPAGHETTI?
-            cue(0.4f, "My spaghetti! It's GONE!"),
-            cue(1.9f, "Detective Rocco is on the case!", sound = Sound.COIN),
-            cue(3.8f, "Not me! I only eat cookies!", Voice.VILLAGER),
-            cue(5.6f, "Not me! I'm a mushroom!", Voice.TOAD, Sound.JUMP),
-            cue(6.8f, "$monName!", Voice.MON),
-            cue(7.8f, "Hmm... that tree looks funny."),
-            cue(9.6f, "I am... a tree.", Voice.GOD, Sound.BREAK),
-            cue(10.9f, "Slurrrrp!", Voice.GOD, Sound.CHOMP),
-            cue(11.9f, "KING KRAG!!", sound = Sound.BUMP),
+            cue(0.4f, "My spaghetti!"),
+            cue(1.9f, "Detective Rocco!", sound = Sound.COIN),
+            cue(3.8f, "I only eat cookies!", Voice.VILLAGER),
+            cue(5.6f, "I'm a mushroom!", Voice.TOAD, Sound.JUMP),
+            cue(6.9f, "$monName!", Voice.MON),
+            cue(8.0f, "That tree looks funny..."),
+            cue(10.1f, "I am... a tree.", Voice.GOD, Sound.BREAK),
+            cue(11.7f, "Slurrrrp!", Voice.GOD, Sound.CHOMP),
+            cue(12.7f, "KING KRAG!!", sound = Sound.BUMP),
         )
         7 -> listOf( // THE BLOCK TOWER
             cue(0.4f, "Watch me build the tallest tower!", Voice.VILLAGER),
             *BLOCK_TIMES.map { sfx(it, Sound.KICK) }.toTypedArray(),
-            cue(3.8f, "Wow! It's sooo tall!"),
+            cue(3.8f, "Wow! So tall!"),
             cue(5.2f, "$monName!", Voice.MON, Sound.JUMP),
             sfx(5.8f, Sound.KICK),
-            cue(6.2f, "No no no! Not on the top!", Voice.VILLAGER),
+            cue(6.25f, "Not on the top!", Voice.VILLAGER),
             cue(7.8f, "Uh oh..."),
             sfx(8.4f, Sound.BREAK), sfx(9.0f, Sound.BOSS_HIT),
             cue(9.8f, "...I'm okay!"),
             cue(11.0f, "Let's build it again!", Voice.VILLAGER, Sound.ONEUP),
         )
         else -> listOf( // DASH AND THE BUTTERFLY
-            cue(0.4f, "Giddy up, Dash! Nice and slow..."),
+            cue(0.4f, "Nice and slow, Dash..."),
             cue(2.6f, "Rawr?!", Voice.MON),
-            cue(3.4f, "Dash? Dash! SLOW DOWN!", sound = Sound.JUMP),
+            cue(3.4f, "Dash! SLOW DOWN!", sound = Sound.JUMP),
             cue(5.0f, "WAAAAAAAH!"),
             sfx(6.3f, Sound.BUMP),
             cue(6.6f, "Wahoooooo!", sound = Sound.JUMP),
@@ -209,7 +215,7 @@ object SillyScenes {
             2 -> wrongMushroom(gfx, t, viewW, viewH, mon)
             3 -> concert(g, gfx, t, viewW, viewH, mon)
             4 -> sayCheese(gfx, t, viewW, viewH)
-            5 -> bathTime(g, gfx, t, viewW, viewH)
+            5 -> bathTime(gfx, t, viewW, viewH)
             6 -> spaghetti(g, gfx, t, viewW, viewH, mon)
             7 -> blockTower(gfx, t, viewW, viewH, mon)
             else -> dashAndButterfly(gfx, t, viewW, viewH)
@@ -230,7 +236,7 @@ object SillyScenes {
         // Rocco's magic mirror comes out whenever a zap is coming.
         val mx = rx + 38f
         val my = G - 62f
-        if (t in 2.6f..5.4f || t in 9.0f..10.6f) mirror(gfx, rx, mx, my, t)
+        if (t in 2.7f..5.4f || t in 9.0f..10.6f) mirror(gfx, rx, mx, my, t)
         if (t < 5f) {
             val wobble = if (t in 4.6f..5f) sin(t * 80) * 3f else 0f
             krag(g, gfx, kx + wobble, G, ks, wonder = true, mouth = t in 3.2f..4.3f)
@@ -238,7 +244,7 @@ object SillyScenes {
                 val a = t * 2 + i * 0.785f
                 gfx.oval(kx + sin(a) * 66f - 4, G - 64f + cos(a) * 60f - 4, 8f, 8f, argb(200, solidRainbow(t + i / 8f)))
             }
-            if (t in 0.4f..2.6f) gfx.shadowText("WONDER MAGIC!", kx - 10, 52f, 15f, solidRainbow(t), 1)
+            if (t in 0.4f..2.7f) gfx.shadowText("WONDER MAGIC!", kx - 10, 52f, 15f, solidRainbow(t), 1)
         }
         // The rainbow zap flies to the mirror... and bounces right back at him!
         if (t in 3.4f..4.3f) beam(gfx, kragMouthX(kx, ks, -1, true), kragMouthY(G, ks, true), mx, my, (t - 3.4f) / 0.9f, t)
@@ -349,16 +355,18 @@ object SillyScenes {
         val dennisX = if (t < 12.7f) -70f + (kx - 40f + 70f) * ((t - 11.9f) / 0.8f) else kx - 40f + (t - 12.7f) * 220f
         val hasBone = t >= 12.7f
         if (inPieces) {
-            val chase = t > 13.3f
-            val skullX = if (chase) kx + 14f + (t - 13.3f) * 70f else kx + 14f
-            val skullUp = if (chase) abs(sin((t - 13.3f) * 9f)) * 16f else 0f
+            val chase = t > 13.1f
+            val skullX = if (chase) kx + 14f + (t - 13.1f) * 70f else kx + 14f
+            val skullUp = if (chase) abs(sin((t - 13.1f) * 9f)) * 16f else 0f
             bonePile(gfx, kx, G, skullX, skullUp, missing = hasBone, t = t)
             if (t in 10.8f..11.5f) puff(gfx, kx, G - 30f, (t - 10.8f) / 0.7f, 1.2f)
             if (chase) gfx.shadowText("HEY!", skullX, G - 50f - skullUp, 16f, 0xFFFF3A3A.toInt(), 1)
         }
         if (t in 11.9f..14.6f) {
-            dennis(g, gfx, dennisX, G)
-            if (hasBone) bone(gfx, dennisX + 44f, G - 30f, 26f)
+            // He runs the whole time: in, grab the leg bone, and away (with the bone in his mouth).
+            dennis(gfx, dennisX, G, t, running = true)
+            if (hasBone) bone(gfx, dennisX + HerculesArt.MOUTH_X * DS, G - (HerculesArt.H - HerculesArt.MOUTH_Y) * DS, 26f)
+            if (t in 12.3f..13.0f) gfx.shadowText("WOOF WOOF!", dennisX + 30f, G - 82f, 12f, WHITE, 1)
         }
     }
 
@@ -429,7 +437,7 @@ object SillyScenes {
         // The big note: he takes a deep breath (and gets bigger), then DIIING!
         val breath = if (t in 6.2f..7.6f) (t - 6.2f) / 1.4f * 0.5f else 0f
         val fs = 3f + breath
-        val bow = if (t > 11f) 6f else 0f
+        val bow = if (t > 11.5f) 6f else 0f
         TeamArt.frog(ScaledGfx(gfx, fs, fx - 11f * fs, top - 26f * fs + bow), 0f, 0f, t, TeamArt.frogColors[0])
         val ding = t in 7.6f..9.2f
         if (ding) {
@@ -444,6 +452,8 @@ object SillyScenes {
             }
             if (k < 1f) gfx.shadowText("DIIIIIIING!", fx, 50f + sin(t * 50) * 2f, 20f, solidRainbow(t), 1)
         }
+        // A silly little song before the big note (written up, so it doesn't talk over the cheering).
+        if (t in 3.7f..4.9f) gfx.shadowText("BING-BONG-A-DONG!", fx - 10f, 58f - abs(sin(t * 9)) * 6f, 13f, solidRainbow(t * 2), 1)
         // The crowd: dancing, then blown back by the big note, then cheering for more.
         val dancing = t < 4.9f || t > 10f
         val blown = if (t in 7.6f..8.6f) sin((t - 7.6f) * PI_F) * 16f else 0f
@@ -538,10 +548,10 @@ object SillyScenes {
             val hopIn = if (t < 1.6f) abs(sin(t * 6 + i)) * 10f else 0f
             val sneezing = m == Mon.SPARKY && t in 5.0f..5.7f
             val jitter = if (sneezing) sin(t * 40) * 1.5f else 0f
-            mon(gfx, m, mx + jitter, G - hopIn, now, -1, t in 4.6f..5.6f)
+            mon(gfx, m, mx + jitter, G - hopIn, now, -1, t in 4.7f..5.6f)
             if (wet) for (k in 0 until 3) gfx.oval(mx - 10 + k * 9f, G - 46f + ((now * 30 + k * 11 + i * 5) % 30), 3f, 5f, 0xCC6AC8FF.toInt())
         }
-        if (t in 4.6f..5.6f) gfx.shadowText("CHEEESE!", cx + 50f, 56f, 16f, YELLOW, 1)
+        if (t in 4.7f..5.6f) gfx.shadowText("CHEEESE!", cx + 50f, 56f, 16f, YELLOW, 1)
         if (t in 5.0f..5.7f) gfx.shadowText("ah... ah...", cx - 28f, G - 50f, 9f, WHITE, 1)
         // Sparky's sneeze: ZAP in every direction!
         if (t in 5.7f..6.4f) {
@@ -567,7 +577,7 @@ object SillyScenes {
     }
 
     /** Dennis's bath: bubbles, a big shake, and then... the mud. */
-    private fun bathTime(g: TeamGame, gfx: Gfx, t: Float, viewW: Float, viewH: Float) {
+    private fun bathTime(gfx: Gfx, t: Float, viewW: Float, viewH: Float) {
         sunny(gfx, viewW, viewH, t)
         fence(gfx, viewW)
         val cx = viewW / 2
@@ -590,23 +600,26 @@ object SillyScenes {
             val f = (t - 10.4f) / 0.4f
             gfx.oval(mudX + (rx - mudX) * f - 4 + k * 4f, G - 20f - sin(f * PI_F) * 70f + k * 5f, 9f, 7f, 0xFF6A4422.toInt())
         }
-        // Where Dennis is
-        val ds = 2.4f
+        // Where Dennis is: his paws are on [dg], and he leaps [lift] above it.
         val inTub = t < 5.4f
         val dx: Float
         val dg: Float
+        var lift = 0f
+        var running = false
         when {
             inTub -> { dx = tubX + 26f; dg = G - 26f }
-            t < 5.9f -> { val k = (t - 5.4f) / 0.5f; dx = tubX + 26f + (cx + 8f - tubX - 26f) * k; dg = G - 26f + 26f * k - sin(k * PI_F) * 50f }
+            t < 5.9f -> { val k = (t - 5.4f) / 0.5f; dx = tubX + 26f + (cx + 8f - tubX - 26f) * k; dg = G - 26f + 26f * k; lift = sin(k * PI_F) * 50f }
             t < 7.6f -> { dx = cx + 8f + (if (t < 7.3f) sin(t * 80) * 3f else 0f); dg = G }
-            t < 8.4f -> { dx = cx + 8f + (mudX - 34f - cx - 8f) * ((t - 7.6f) / 0.8f); dg = G }
-            t < 8.8f -> { val k = (t - 8.4f) / 0.4f; dx = mudX - 34f + 6f * k; dg = G - sin(k * PI_F) * 30f }
+            t < 8.4f -> { dx = cx + 8f + (mudX - 34f - cx - 8f) * ((t - 7.6f) / 0.8f); dg = G; running = true }
+            t < 8.8f -> { val k = (t - 8.4f) / 0.4f; dx = mudX - 34f + 6f * k; dg = G; lift = sin(k * PI_F) * 30f }
+            // SQUISH SQUISH: he shimmies from side to side, stomping and hopping in the mud.
+            t < 10.4f -> { dx = mudX - 28f + sin(t * 12) * 5f; dg = G + 2f; lift = abs(sin(t * 12)) * 6f; running = true }
             else -> { dx = mudX - 28f; dg = G + 2f }
         }
         if (inTub) {
             // The tub: back rim, Dennis, then the front (so only his top shows), then bubbles.
             gfx.oval(tubX - 4, G - 46, 108f, 14f, 0xFF8A94A4.toInt())
-            dennis(g, gfx, dx, dg)
+            dennis(gfx, dx, dg, t)
             gfx.rect(tubX, G - 40, 100f, 36f, 0xFFB8C0CC.toInt())
             gfx.rect(tubX + 6, G - 34, 88f, 3f, 0xFFD8E0E8.toInt())
             gfx.rect(tubX + 6, G - 4, 8f, 4f, 0xFF6A7484.toInt()); gfx.rect(tubX + 86, G - 4, 8f, 4f, 0xFF6A7484.toInt())
@@ -631,10 +644,11 @@ object SillyScenes {
             gfx.rect(tubX, G - 40, 100f, 36f, 0xFFB8C0CC.toInt())
             gfx.oval(tubX + 4, G - 46, 92f, 10f, 0xFF8AD0FF.toInt())
             val inMud = t > 8.8f
-            val wiggle = if (inMud && t < 10.4f) sin(t * 12) * 0.35f else 0f
-            val dg2 = TurnGfx(gfx, dx + 26f, dg - 16f, wiggle)
-            dennis(g, dg2, dx, dg)
-            if (inMud) for (k in 0 until 6) dg2.oval(dx + 4f + (k * 11f) % 44f, dg - 30f + (k * 7f) % 22f, 12f, 9f, 0xFF6A4422.toInt())
+            // (No shadow while he jumps out of the tub: it would hang in the air over the tub's side.)
+            dennis(gfx, dx, dg, t, running, lift = lift, shadow = t >= 5.9f)
+            // Mud splotches on his back, legs, tail and head: they move with him as he shimmies and hops.
+            if (inMud) for ((ax, ay) in MUD_SPOTS) gfx.oval(dx + ax * DS - 6f, dg - lift - (HerculesArt.H - ay) * DS - 4.5f, 12f, 9f, 0xFF6A4422.toInt())
+            if (t in 6.2f..7.2f) gfx.shadowText("WAAAH!", rx, G - 84f, 13f, 0xFF8AD8FF.toInt(), 1)
             if (t in 5.9f..7.3f) {
                 for (k in 0 until 16) {
                     val a = k * 0.39f + t
@@ -669,7 +683,7 @@ object SillyScenes {
         val mx = cx + 52f
         val kx = cx + 152f
         val ks = 1.6f
-        val caught = t > 11.9f
+        val caught = t > 12.7f
         krag(g, gfx, kx, G, ks, -1)
         // Spaghetti hanging out of King Krag's mouth (and sauce all over his face)
         // (His lips: a bit behind where his fire comes out.)
@@ -677,7 +691,7 @@ object SillyScenes {
         val lipY = G - 28f * ks
         gfx.oval(lipX - 8, lipY - 10, 10f, 7f, 0xFFD8402A.toInt())
         gfx.oval(lipX + 4, lipY + 3, 8f, 5f, 0xFFD8402A.toInt())
-        val noodle = 1f - ((t - 10.9f) / 0.8f).coerceIn(0f, 1f)
+        val noodle = 1f - ((t - 11.7f) / 0.8f).coerceIn(0f, 1f)
         if (noodle > 0f) {
             for (k in 0 until 4) {
                 val len = (22f + k * 7f) * noodle
@@ -687,38 +701,38 @@ object SillyScenes {
             }
             gfx.oval(lipX - 2, lipY + 34f * noodle - 4, 9f, 9f, 0xFF8A3A1A.toInt())
         }
-        if (t in 10.9f..11.7f) gfx.shadowText("SLURRRP!", kx, 60f, 16f, 0xFFF0D080.toInt(), 1)
+        if (t in 11.7f..12.5f) gfx.shadowText("SLURRRP!", kx, 60f, 16f, 0xFFF0D080.toInt(), 1)
         if (caught) {
             // Blushing!
             gfx.oval(kx - 14f * ks - 6, G - 33f * ks - 3, 12f, 6f, 0x99FF6A9A.toInt())
             gfx.shadowText("BUSTED!", kx, 54f + sin(t * 12) * 2f, 20f, 0xFFFF3A3A.toInt(), 1)
         }
         // The teeny tree he's "hiding" behind
-        val rustle = if (t in 9.6f..10.9f) sin(t * 34) * 2.5f else 0f
+        val rustle = if (t in 10.1f..11.7f) sin(t * 34) * 2.5f else 0f
         gfx.rect(kx + 2, G - 44, 4f, 44f, 0xFF7A4A24.toInt())
         gfx.oval(kx - 12 + rustle, G - 62, 32f, 24f, 0xFF2E9A3A.toInt())
         gfx.oval(kx - 6 + rustle, G - 70, 22f, 16f, 0xFF3CB84A.toInt())
-        if (t in 9.6f..10.9f) {
+        if (t in 10.1f..11.7f) {
             gfx.shadowText("rustle rustle", kx + 4f, G - 104f, 8f, WHITE, 1)
-            for (k in 0 until 3) gfx.oval(kx - 10 + k * 12f + sin(t * 5 + k) * 6, G - 56f + ((t - 9.6f) * 40 + k * 14) % 50, 6f, 4f, 0xFF3CB84A.toInt())
+            for (k in 0 until 3) gfx.oval(kx - 10 + k * 12f + sin(t * 5 + k) * 6, G - 56f + ((t - 10.1f) * 40 + k * 14) % 50, 6f, 4f, 0xFF3CB84A.toInt())
         }
         blocky(gfx, bx, G)
         if (t in 3.8f..5.4f) gfx.shadowText("NOT ME!", bx, G - 74f, 11f, WHITE, 1)
         val sHop = if (t in 5.6f..6.6f) abs(sin(t * 9)) * 10f else 0f
         spotty(gfx, sx, G, t, lift = sHop)
         if (t in 5.6f..6.7f) gfx.shadowText("NOT ME!", sx, G - 64f - sHop, 11f, WHITE, 1)
-        val shaking = t in 6.8f..7.6f
+        val shaking = t in 6.9f..7.7f
         mon(gfx, mon, mx + (if (shaking) sin(t * 30) * 3f else 0f), G, t, if (shaking && (t * 8).toInt() % 2 == 0) 1 else -1, false)
         // Detective Rocco walks along the line of suspects with his magnifying glass.
         val stops = floatArrayOf(cx - 130f, bx - 42f, sx - 38f, mx - 42f, kx - 80f)
-        val legs = floatArrayOf(3.0f, 4.9f, 6.2f, 7.2f)
+        val legs = floatArrayOf(3.0f, 4.9f, 6.2f, 7.8f)
         var rx = stops[0]
         var walking = false
         for (i in legs.indices) {
             val k = (t - legs[i]) / 0.5f
             if (k >= 1f) rx = stops[i + 1] else if (k > 0f) { rx = stops[i] + (stops[i + 1] - stops[i]) * k; walking = true }
         }
-        val jump = if (caught) abs(sin((t - 11.9f) * 8f)) * 16f else 0f
+        val jump = if (caught) abs(sin((t - 12.7f) * 8f)) * 16f else 0f
         rocco(gfx, rx, G, if (walking) 1 + (t * 8).toInt() % 2 else if (caught) 2 else 0, flip = t < 1.9f, lift = jump)
         if (t >= 1.9f) {
             detectiveHat(gfx, rx, G - 72f - jump)
@@ -728,7 +742,7 @@ object SillyScenes {
             gfx.oval(rx + 31, G - 59f - jump, 5f, 5f, 0xCCFFFFFF.toInt())
         }
         if (t < 1.9f) gfx.shadowText("GONE?!", rx - 20f, 60f, 18f, 0xFFFF3A3A.toInt(), 1)
-        if (t in 7.8f..9.6f) gfx.shadowText("HMMM...", rx, G - 92f, 12f, WHITE, 1)
+        if (t in 8.3f..10.1f) gfx.shadowText("HMMM...", rx, G - 92f, 12f, WHITE, 1)
         if (caught) gfx.shadowText("KING KRAG!!", rx, 84f, 14f, YELLOW, 1)
     }
 
@@ -983,6 +997,10 @@ object SillyScenes {
     private const val YELLOW = 0xFFFFE14D.toInt()
     private const val RED = 0xFFE52521.toInt()
     private const val BROWN = 0xFF8A5A2A.toInt()
+    /** How much bigger Dennis is in the scenes. */
+    private const val DS = 2.4f
+    /** Where the mud sticks to Dennis in BATH TIME (pixels of his art, facing right): back, legs, tail and head. */
+    private val MUD_SPOTS = listOf(7f to 10f, 11f to 13f, 15f to 11f, 6f to 14f, 17f to 14f, 3f to 6f, 14f to 3f)
     private val FLOWERS = intArrayOf(0xFFFF6A9A.toInt(), 0xFFFFFFFF.toInt(), 0xFFAA6AE8.toInt(), 0xFFFF8A2A.toInt())
     /** Mario-style growing (big, small, bigger...) and shrinking. */
     private val GROW = floatArrayOf(4.5f, 3f, 6f, 4.5f, 7.6f, 6f, 7.6f)
@@ -1010,9 +1028,13 @@ object SillyScenes {
     private fun spotty(gfx: Gfx, x: Float, ground: Float, t: Float, running: Boolean = false, lift: Float = 0f, s: Float = 2.4f) =
         Spotty.draw(ScaledGfx(gfx, s, x - 7f * s, ground - 20f * s - lift), 0f, 0f, t, running, false)
 
-    /** Dennis with his left side at [x] and his paws on [ground]. */
-    private fun dennis(g: TeamGame, gfx: Gfx, x: Float, ground: Float) =
-        Dennis(0f, 14f).draw(g, ScaledGfx(gfx, 2.4f, x, ground - 14f * 2.4f), 0f)
+    /**
+     * Dennis, [DS] times his size in the levels, with his left side at [x] and his paws on [ground] (the same
+     * drawing as everywhere else): [running] swaps his legs as [t] ticks on, standing still he wags his tail,
+     * and [lift] (in screen pixels) makes him leap.
+     */
+    private fun dennis(gfx: Gfx, x: Float, ground: Float, t: Float, running: Boolean = false, lift: Float = 0f, shadow: Boolean = true) =
+        Dennis.draw(ScaledGfx(gfx, DS, x, ground), 0f, 0f, t, running = running, lift = lift / DS, shadow = shadow)
 
     /** King Krag standing with his feet at ([cx], [ground]), [s] times his size in the levels. */
     private fun krag(g: TeamGame, gfx: Gfx, cx: Float, ground: Float, s: Float, facing: Int = -1, wonder: Boolean = false, dry: Boolean = false, mouth: Boolean = false) {
