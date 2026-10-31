@@ -1,0 +1,1244 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bingo Card Studio: printable custom bingo cards and caller</title>
+<meta name="description" content="Make printable bingo cards with your own words or numbers: unique numbered cards, a call sheet and a caller. Free, private and works offline.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'%3E%3Ccircle cx='18' cy='18' r='17' fill='%23ef4444'/%3E%3Ccircle cx='18' cy='18' r='10' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="shared.css">
+<style id="pageCss"></style>
+<style id="themeCss"></style>
+<style>
+main{max-width:1200px}
+.sr{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.small{font-size:.85rem}
+.top{display:flex;align-items:center;gap:12px 20px;flex-wrap:wrap;margin-bottom:16px}
+.brand{display:flex;align-items:center;gap:12px;margin-right:auto;min-width:0}
+.brand svg{flex:0 0 auto}
+.brand h1{margin:0;font-size:1.5rem;line-height:1.2}
+.brand p{margin:0;color:var(--muted);font-size:.9rem}
+.gamebar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;min-width:0}
+.gamebar select{width:auto;max-width:260px;min-height:44px}
+.layout{display:grid;grid-template-columns:minmax(0,420px) minmax(0,1fr);gap:24px;align-items:start}
+.side{position:sticky;top:12px;min-width:0}
+.ctl .card{margin-bottom:12px}
+.ctl h2{font-size:1rem;margin:0 0 12px;display:flex;align-items:center;gap:8px}
+.ctl h2 i{font-style:normal;display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-size:.8rem}
+.field{margin-top:12px}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg.g2{display:grid;grid-template-columns:1fr 1fr}
+.seg button{flex:1 1 0;min-height:44px;background:transparent;color:var(--ink);border:1px solid var(--line);padding:8px 10px;font-weight:600}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.seg button:disabled{opacity:.45}
+.check{display:flex;align-items:center;gap:10px;min-height:44px;margin:0;color:var(--ink);font-size:.95rem;cursor:pointer}
+.check input{width:22px;height:22px;flex:0 0 auto;margin:0;accent-color:var(--accent)}
+.check.off{opacity:.5;cursor:default}
+.inline{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.inline>*{flex:1 1 140px}
+.locked{opacity:.78}
+body.is-pro .pro-badge{display:none}
+.counter{font-size:.85rem;color:var(--muted);margin-top:6px}
+.msg{font-size:.9rem;margin-top:8px;padding:8px 12px;border-radius:8px;border:1px solid transparent}
+.msg.bad{background:color-mix(in srgb,var(--bad) 12%,transparent);color:var(--bad);border-color:color-mix(in srgb,var(--bad) 30%,transparent);font-weight:600}
+.msg.warn{background:color-mix(in srgb,#f59e0b 16%,transparent);border-color:color-mix(in srgb,#f59e0b 40%,transparent)}
+.msg.info{background:color-mix(in srgb,var(--accent) 10%,transparent)}
+.msg[hidden]{display:none}
+textarea#items{min-height:170px;resize:vertical;font-size:.95rem;line-height:1.45}
+.pics{display:grid;gap:8px;margin-top:8px}
+.chip{display:grid;grid-template-columns:44px minmax(0,1fr) 44px;gap:8px;align-items:center}
+.chip img,.chip .ph{width:44px;height:44px;object-fit:cover;border-radius:6px;background:var(--line)}
+.chip button{padding:0;min-height:44px}
+.swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:6px}
+.sw{display:flex;flex-direction:column;align-items:center;gap:4px;background:transparent;color:var(--ink);border:2px solid transparent;padding:6px 2px;font-size:.75rem;font-weight:500;min-height:44px;position:relative}
+.sw i{width:30px;height:30px;border-radius:50%;display:block;box-shadow:inset 0 0 0 1px rgba(0,0,0,.15)}
+.sw[aria-pressed="true"]{border-color:var(--accent)}
+.sw .pro-badge{position:absolute;top:0;right:0;margin:0;font-size:.6rem}
+.code{font:700 1.3rem/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.12em;padding:4px 10px;border-radius:8px;background:var(--bg);border:1px solid var(--line)}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.actions button{display:inline-flex;align-items:center;justify-content:center;gap:6px;position:relative;min-height:44px}
+.actions button:not(.primary){background:var(--card);color:var(--ink);border:1px solid var(--line)}
+.actions svg{width:18px;height:18px;flex:0 0 auto}
+.actions .short{display:none}
+.pv{background:color-mix(in srgb,var(--ink) 5%,var(--bg));border:1px solid var(--line);border-radius:12px;padding:16px}
+.paperwrap{position:relative;margin:0 auto;max-width:620px;overflow:hidden}
+.paper{position:absolute;left:0;top:0;transform-origin:0 0;background:#fff;box-shadow:0 2px 14px rgba(0,0,0,.2);box-sizing:border-box;padding:.4in}
+.pvinfo{display:flex;justify-content:space-between;align-items:center;margin-top:12px;font-size:.9rem;color:var(--muted);gap:8px;flex-wrap:wrap}
+.pvnav{display:flex;align-items:center;gap:6px}
+.pvnav button{min-width:44px;min-height:44px;padding:0}
+.empty{display:grid;place-items:center;text-align:center;min-height:300px;color:var(--muted);padding:24px;border:2px dashed var(--line);border-radius:12px}
+.caller[hidden],#preview[hidden]{display:none}
+.caller:focus{outline:none}
+.cl-head{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.cl-head h2{margin:0 auto 0 0;font-size:1.1rem}
+.cl-head select{width:auto;min-height:44px}
+.cl-tools{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.callbig{min-height:190px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:16px;margin:12px 0;gap:6px}
+.callbig .v{font-size:clamp(2.4rem,7vw,4.6rem);font-weight:800;line-height:1.05;overflow-wrap:anywhere}
+.callbig .v.w{font-size:clamp(1.6rem,4.5vw,3rem)}
+.callbig .L{color:var(--accent);margin-right:.18em}
+.callbig .q{font-size:clamp(1.2rem,3.4vw,2rem);font-weight:700;line-height:1.25}
+.callbig .ans{font-size:1.4rem;font-weight:800;color:var(--good)}
+.callbig img{max-height:150px;max-width:100%;object-fit:contain;border-radius:8px}
+.cl-row{display:flex;gap:8px;flex-wrap:wrap}
+.cl-row>button{min-height:52px}
+#cDraw{flex:2 1 160px;font-size:1.15rem}
+#cUndo{flex:1 1 90px}
+.cl-stat{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:12px 0 4px;flex-wrap:wrap}
+.cl-done{font-weight:700;color:var(--good)}
+.hist{display:flex;flex-wrap:wrap;gap:6px;max-height:220px;overflow:auto}
+.hist span{padding:4px 10px;border-radius:999px;background:var(--bg);border:1px solid var(--line);font-size:.9rem}
+.hist span:first-child{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.keys{font-size:.8rem;margin:12px 0 0}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:12px 18px;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.25);z-index:1100;max-width:calc(100vw - 32px);width:max-content}
+.bmodal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:grid;place-items:center;padding:16px;z-index:950}
+.bdialog{position:relative;color:var(--ink);width:min(560px,100%);max-height:calc(100dvh - 32px);overflow:auto;margin:0;border-style:solid}
+.bdialog h3{margin:0 48px 12px 0}
+.bclose{position:absolute;top:8px;right:8px;width:44px;height:44px;padding:0}
+.ck-row{display:flex;gap:8px}
+.ck-row input{flex:1}
+.verdict{font-weight:700;padding:10px 12px;border-radius:8px;margin:12px 0 0;background:var(--bg)}
+.verdict.good{background:var(--good);color:#fff;font-size:1.2rem}
+.verdict.bad{background:color-mix(in srgb,var(--bad) 14%,transparent);color:var(--bad)}
+.ck-card{max-width:400px;margin:12px auto 0}
+.big-bingo{font-size:clamp(3rem,16vw,6rem);font-weight:900;text-align:center;color:var(--accent);line-height:1;margin:8px 0}
+#pending{margin:-4px 0 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+#pending[hidden]{display:none}
+/* ----- Cards: everything is sized in cqw (percent of card width), so print, preview and phone match ----- */
+.bc{container-type:inline-size;background:#fff;color:#111;font-family:var(--ff,system-ui,sans-serif);-webkit-print-color-adjust:exact;print-color-adjust:exact;flex:0 0 auto;width:100%;text-align:left}
+.bc-in{border:.5cqw solid var(--t-frame);border-radius:2cqw;padding:3cqw;background:#fff}
+.bc-title{height:10cqw;line-height:10cqw;text-align:center;font-weight:800;color:var(--t-head);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:1cqw;background:var(--t-titlebg);border-radius:1.4cqw;padding:0 2cqw}
+.bc-let{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.5cqw;height:9cqw;padding:0 .6cqw}
+.bc-let span{display:flex;align-items:center;justify-content:center;font-weight:900;font-size:7cqw;color:var(--t-ink);border-radius:1.2cqw 1.2cqw 0 0;line-height:1}
+.bc-let .l1{background:var(--t-l1)}.bc-let .l2{background:var(--t-l2)}.bc-let .l3{background:var(--t-l3)}.bc-let .l4{background:var(--t-l4)}.bc-let .l5{background:var(--t-l5)}
+.bc-grid{display:grid;grid-template-columns:repeat(var(--n),minmax(0,1fr));grid-template-rows:repeat(var(--n),minmax(0,1fr));aspect-ratio:1/1;border:.6cqw solid var(--t-line);background:var(--t-cell)}
+.c{position:relative;border:.2cqw solid var(--t-line);background:var(--t-cell);display:flex;align-items:center;justify-content:center;text-align:center;overflow:hidden;padding:calc(var(--cw)*.06);font-size:var(--fs);line-height:1.1;font-weight:600;min-width:0;min-height:0;color:#111}
+.c>span{overflow-wrap:anywhere;hyphens:auto;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;position:relative;z-index:1}
+.c.n{font-weight:800}
+.c.free{background:var(--t-free);color:var(--t-freeink);font-weight:800;text-transform:uppercase}
+.c.free b{display:block;font-size:1.35em;line-height:1}
+.c.pic{flex-direction:column;padding:calc(var(--cw)*.04);gap:calc(var(--cw)*.02)}
+.c.pic img,.c.pic .ph{flex:1 1 0;min-height:0;width:100%;object-fit:contain;display:block}
+.c.pic .ph{background:#eee;border-radius:4px}
+.c.pic small{font-size:calc(var(--cw)*.13);line-height:1.1;font-weight:600;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;flex:0 0 auto}
+.c.mk::after{content:"";position:absolute;inset:10%;border-radius:50%;background:rgba(220,38,38,.38);z-index:0}
+.c.win{box-shadow:inset 0 0 0 calc(var(--cw)*.07) #16a34a}
+.c.need{box-shadow:inset 0 0 0 calc(var(--cw)*.05) #f59e0b}
+.bc-meta{display:flex;justify-content:space-between;gap:2cqw;margin-top:1.2cqw;height:3.6cqw;line-height:3.6cqw;font-size:2.5cqw;color:#555;white-space:nowrap;overflow:hidden;font-family:system-ui,sans-serif}
+.bc-meta span{overflow:hidden;text-overflow:ellipsis}
+.bc-meta .id{margin-left:auto;flex:0 0 auto;font-variant-numeric:tabular-nums}
+.f-condensed{font-stretch:condensed}.f-condensed .c,.f-condensed .bc-title{font-weight:800}
+.bc.t90 .bc-in{padding:2cqw}
+.t90 .bc-head{display:flex;justify-content:space-between;align-items:center;gap:2cqw;height:6cqw;margin-bottom:1cqw;white-space:nowrap}
+.t90 .bc-head b{color:var(--t-head);overflow:hidden;text-overflow:ellipsis}
+.t90 .bc-head span{font-size:2.4cqw;color:#555;font-family:system-ui,sans-serif;flex:0 0 auto}
+.t90 .bc-grid{--n:9;--cw:10.2cqw;aspect-ratio:auto;height:24.5cqw;grid-template-rows:repeat(3,minmax(0,1fr))}
+.t90 .c{font-size:5.2cqw;font-weight:800;padding:0}
+.t90 .c.blank{background:color-mix(in srgb,var(--t-l1) 14%,#fff)}
+.bc.lp{--t-head:#000;--t-titlebg:transparent;--t-ink:#fff;--t-line:#000;--t-free:#000;--t-freeink:#fff;--t-cell:#fff;--t-frame:#000;--t-l1:#000;--t-l2:#000;--t-l3:#000;--t-l4:#000;--t-l5:#000}
+.bc.lp .bc-grid{border-width:1.2cqw}.bc.lp .c{border-width:.5cqw;font-weight:800;line-height:1.05}
+.sheet{display:grid;box-sizing:border-box}
+.slot{display:flex;align-items:center;justify-content:center;min-width:0;min-height:0;overflow:hidden}
+.cut.pp2 .slot:first-child,.cut.pp4 .slot:nth-child(-n+2),.cut.pp6 .slot:not(:last-child),.cut.pp3 .slot:not(:last-child){border-bottom:1px dashed #888}
+.cut.pp4 .slot:nth-child(odd){border-right:1px dashed #888}
+.cut.pp1 .slot .bc{outline:1px dashed #888;outline-offset:.12in}
+/* Call sheet */
+.cs{font:11pt/1.35 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#000;background:#fff}
+.cs h1{font-size:20pt;margin:0}
+.cs header p{margin:2pt 0 10pt;color:#333}
+.cs ol{columns:3;column-gap:.3in;list-style:none;padding:0;margin:0}
+.cs li{break-inside:avoid;display:flex;gap:6pt;align-items:flex-start;padding:3pt 0;border-bottom:1px solid #ddd}
+.cs .box{width:11pt;height:11pt;border:1.5px solid #000;flex:0 0 auto;margin-top:2pt;border-radius:2px}
+.cs .no{color:#777;min-width:2.2em;text-align:right;font-variant-numeric:tabular-nums}
+.cs .ans{font-weight:700}
+.cs img{width:.45in;height:.45in;object-fit:contain}
+.cs .grp{display:grid;grid-template-columns:repeat(5,1fr);gap:.18in}
+.cs .grp.g9{grid-template-columns:repeat(3,1fr)}
+.cs .grp h2{font-size:16pt;margin:0 0 4pt;border-bottom:2px solid #000}
+.cs .grp ul{list-style:none;padding:0;margin:0}
+.cs footer{margin-top:12pt;color:#666;font-size:9pt}
+/* Player view */
+body.player-mode #app{display:none}
+#player{max-width:600px;margin:0 auto;padding:12px 12px 32px}
+#player[hidden]{display:none}
+.p-head h1{font-size:1.3rem;margin:0}
+.p-head p{margin:2px 0 12px}
+#player .c{cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none}
+.bingo-btn{width:100%;font-size:1.7rem;padding:16px;margin:14px 0 10px;min-height:64px;letter-spacing:.06em}
+/* Projector stage */
+.stage{position:fixed;inset:0;z-index:900;background:radial-gradient(ellipse at top,#1d2647,#070a14 70%);color:#f8fafc;display:grid;grid-template-rows:auto auto auto auto minmax(0,1fr) auto;gap:1.6vh;padding:2vh 3vw;overflow:hidden}
+.stage[hidden]{display:none}
+.stage:focus{outline:none}
+.st-top{display:flex;align-items:center;gap:8px 16px;flex-wrap:wrap}
+.st-top b{font-size:clamp(1rem,2.6vh,1.7rem)}
+.st-top #stInfo{color:#cbd5e1;font-size:clamp(.85rem,2vh,1.2rem)}
+.st-btns{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.st-btns button,.st-ans button{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.25);min-height:44px}
+.st-btns button[aria-pressed="true"]{background:#fbbf24;color:#111;border-color:#fbbf24}
+.st-call{height:28vh;display:flex;align-items:center;justify-content:center;font-weight:900;line-height:1;text-align:center;overflow:hidden;text-shadow:0 4px 30px rgba(251,191,36,.35)}
+.st-call .L{color:#fbbf24;font-size:.62em;margin-right:.2em}
+.st-call .dim{color:rgba(255,255,255,.35);font-size:9vh}
+.st-call img{height:24vh;max-width:60vw;object-fit:contain;border-radius:12px;background:#fff}
+.st-call .cap{font-size:5vh;margin-top:1vh}
+.st-call.pop{animation:pop .4s ease-out}
+.stage[data-shuffling="1"] .st-call{color:rgba(255,255,255,.55);text-shadow:none}
+@keyframes pop{from{transform:scale(.6);opacity:.2}to{transform:scale(1);opacity:1}}
+.st-ans{display:flex;gap:16px;align-items:center;justify-content:center;min-height:5vh;font-size:4.5vh;font-weight:800;color:#86efac}
+.st-ans:empty{display:none}
+.st-last{display:flex;gap:1vw;justify-content:center;min-height:6vh;flex-wrap:wrap}
+.st-last span{padding:.6vh 1.4vw;border-radius:999px;background:rgba(255,255,255,.1);font-size:3.4vh;font-weight:700;max-width:30vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.st-board{min-height:0;grid-row:5}
+.bd{display:grid;gap:.5vh;height:100%}
+.bd i{font-style:normal;display:flex;align-items:center;justify-content:center;border-radius:.6vh;background:rgba(255,255,255,.06);color:rgba(255,255,255,.32);font-weight:800;font-size:min(3vh,2vw);min-width:0;overflow:hidden;text-align:center;line-height:1.05;padding:0 .3vw}
+.bd b{display:flex;align-items:center;justify-content:center;color:#fbbf24;font-size:min(4vh,2.6vw)}
+.bd i.on{background:#fbbf24;color:#111}
+.bd i.last{background:#fff;color:#111;box-shadow:0 0 0 .4vh #fbbf24}
+.bd.b75{grid-template-columns:repeat(16,minmax(0,1fr));grid-template-rows:repeat(5,minmax(0,1fr))}
+.bd.b90{grid-template-columns:repeat(10,minmax(0,1fr));grid-template-rows:repeat(9,minmax(0,1fr))}
+.bd.bw{grid-template-columns:repeat(auto-fill,minmax(min(16vw,180px),1fr));grid-auto-rows:minmax(4.5vh,auto);align-content:start;overflow:auto}
+.bd.bw i{font-size:min(2.4vh,1.6vw);padding:.6vh .4vw}
+.st-hint{grid-row:6;font-size:1.6vh;color:rgba(255,255,255,.5);text-align:center}
+#print{display:none}
+@media (prefers-reduced-motion:reduce){.st-call.pop{animation:none}}
+@media (max-width:760px){
+  .layout{grid-template-columns:minmax(0,1fr)}
+  .side{position:static}
+  .gamebar{width:100%}
+  .gamebar select{flex:1 1 100%;max-width:none}
+  .gamebar button{flex:1 1 auto}
+  .actions{position:fixed;left:0;right:0;bottom:0;z-index:60;margin:0;background:var(--card);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;box-shadow:0 -4px 16px rgba(0,0,0,.08)}
+  .actions button,.actions button:not(.primary){flex-direction:column;gap:2px;font-size:.72rem;font-weight:600;padding:6px 2px;min-height:54px;background:transparent;color:var(--ink);border:0}
+  .actions button.primary{color:var(--accent)}
+  .actions svg{width:22px;height:22px}
+  .actions .long{display:none}.actions .short{display:inline}
+  .actions .pro-badge{position:absolute;top:2px;right:2px;margin:0;font-size:.55rem}
+  body:not(.player-mode){padding-bottom:84px}
+  .toast{bottom:92px}
+}
+@media print{
+  body.printing>*:not(#print){display:none!important}
+  body.printing>#print{display:block!important}
+  body.printing{background:#fff!important;padding:0!important;margin:0!important}
+  .sheet{break-inside:avoid;overflow:hidden}
+  .sheet:not(:last-child){break-after:page}
+  .bc.lp .c{font-size:max(28pt,var(--fs))!important}
+  .toast,.bmodal,.stage{display:none!important}
+}
+</style></head>
+<body>
+<noscript><p style="padding:16px">Bingo Card Studio needs JavaScript turned on.</p></noscript>
+<div id="app"><main>
+<header class="top noprint">
+  <div class="brand">
+    <svg width="44" height="44" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="17" fill="#ef4444"/><circle cx="18" cy="18" r="10.5" fill="#fff"/><text x="18" y="22.2" text-anchor="middle" font-size="11.5" font-weight="800" fill="#111" font-family="system-ui,sans-serif">B7</text></svg>
+    <div><h1>Bingo Card Studio</h1><p>Printable bingo cards with your own words, plus a caller.</p></div>
+  </div>
+  <div class="gamebar">
+    <label for="gameSel" class="sr">Saved game</label><select id="gameSel"></select>
+    <button class="ghost" id="newGame">New</button>
+    <button class="ghost" id="dupGame" data-pro>Duplicate <span class="pro-badge">PRO</span></button>
+    <button class="danger" id="delGame">Delete</button>
+  </div>
+</header>
+<div id="pending" class="msg warn noprint" hidden><span id="pendingMsg"></span><button class="ghost" id="pendingCancel">Dismiss</button></div>
+
+<div class="layout noprint">
+<div class="ctl">
+  <section class="card" aria-labelledby="h1g">
+    <h2 id="h1g"><i>1</i>Game</h2>
+    <label for="title">Title (printed on every card)</label>
+    <input id="title" maxlength="60" placeholder="BINGO" autocomplete="off">
+    <div class="field"><label id="modeLbl">Type of game</label>
+      <div class="seg g2" id="modeSeg" role="group" aria-labelledby="modeLbl">
+        <button data-mode="words">Words</button>
+        <button data-mode="n75">Numbers 1-75</button>
+        <button data-mode="n90" data-pro>Numbers 1-90 <span class="pro-badge">PRO</span></button>
+        <button data-mode="clue" data-pro>Questions &amp; answers <span class="pro-badge">PRO</span></button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="h2s">
+    <h2 id="h2s"><i>2</i>Squares</h2>
+    <div id="wordsBox">
+      <label for="items" id="itemsLbl">Words, one per line</label>
+      <textarea id="items" spellcheck="true"></textarea>
+      <div class="counter" id="counter" aria-live="polite"></div>
+      <div class="msg" id="itemsMsg" hidden></div>
+      <div class="msg warn" id="itemsWarn" hidden></div>
+      <div class="msg info" id="itemsNote" hidden></div>
+      <div class="inline field">
+        <div style="flex:1 1 220px"><label for="pack">Word packs</label>
+          <select id="pack"><option value="">Load a word pack…</option></select></div>
+        <div style="flex:0 1 auto;align-self:flex-end"><button class="ghost" id="addPics" data-pro style="width:100%">Add pictures <span class="pro-badge">PRO</span></button>
+          <input type="file" id="picInput" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden aria-label="Choose pictures"></div>
+      </div>
+      <div class="pics" id="pics"></div>
+    </div>
+    <p class="muted small" id="numInfo" hidden style="margin:0"></p>
+  </section>
+
+  <section class="card" aria-labelledby="h3c">
+    <h2 id="h3c"><i>3</i>Card</h2>
+    <label id="sizeLbl">Grid</label>
+    <div class="seg" id="sizeSeg" role="group" aria-labelledby="sizeLbl">
+      <button data-size="3">3x3</button><button data-size="4">4x4</button><button data-size="5">5x5</button>
+    </div>
+    <div class="inline field">
+      <label class="check" id="freeWrap"><input type="checkbox" id="freeOn"> Free space in the middle</label>
+      <div><label for="freeLabel" class="sr">Free space label</label><input id="freeLabel" maxlength="16" placeholder="FREE" aria-label="Free space label"></div>
+    </div>
+    <label class="check" id="lettersWrap"><input type="checkbox" id="lettersOn"> BINGO letters on top (5x5)</label>
+  </section>
+
+  <section class="card" aria-labelledby="h4p">
+    <h2 id="h4p"><i>4</i>Print</h2>
+    <div class="inline">
+      <div><label for="count" id="countLbl">Number of cards</label><input id="count" type="number" min="1" max="500" step="1" inputmode="numeric"></div>
+      <div><label id="paperLbl">Paper</label><div class="seg" id="paperSeg" role="group" aria-labelledby="paperLbl"><button data-paper="letter">Letter</button><button data-paper="a4">A4</button></div></div>
+    </div>
+    <div class="field"><label id="perLbl">Cards per page</label>
+      <div class="seg" id="perSeg" role="group" aria-labelledby="perLbl">
+        <button data-per="1" data-pro>1 <span class="pro-badge">PRO</span></button><button data-per="2">2</button><button data-per="4" data-pro>4 <span class="pro-badge">PRO</span></button>
+      </div>
+    </div>
+    <div class="field">
+      <label class="check" data-pro><input type="checkbox" id="cutLines"> Cut lines between cards <span class="pro-badge">PRO</span></label>
+      <label class="check" data-pro><input type="checkbox" id="largePrint"> Large print for seniors (1 per page) <span class="pro-badge">PRO</span></label>
+      <div class="msg warn small" id="lpWarn" hidden></div>
+    </div>
+    <div class="field" data-pro><label for="footerText">Footer text <span class="pro-badge">PRO</span></label>
+      <input id="footerText" maxlength="80" placeholder="e.g. Room 12 Review Day"><div class="muted small" style="margin-top:4px">Leave it empty for no footer at all.</div></div>
+  </section>
+
+  <section class="card" aria-labelledby="h5l">
+    <h2 id="h5l"><i>5</i>Look</h2>
+    <label id="themeLbl">Theme</label>
+    <div class="swatches" id="themes" role="group" aria-labelledby="themeLbl"></div>
+    <div class="field" data-pro><label for="font">Font <span class="pro-badge">PRO</span></label><select id="font"></select></div>
+  </section>
+
+  <section class="card" aria-labelledby="h6c">
+    <h2 id="h6c"><i>6</i>Game code</h2>
+    <div class="inline" style="align-items:center">
+      <p style="margin:0;flex:1 1 auto">Game code <b class="code" id="seedOut"></b></p>
+      <button class="ghost" id="newSeed" style="flex:0 1 auto">New set of cards</button>
+    </div>
+    <p class="muted small" style="margin:10px 0 0">Cards are built from this code, so the same code always gives the same cards, on any device.</p>
+  </section>
+
+  <div id="proPanel"></div>
+  <p class="muted small">Your games stay in this browser. More free tools: <a href="./">all apps</a></p>
+</div>
+
+<div class="side">
+  <div class="actions" id="actions">
+    <button class="primary" id="aPrint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v8H6z"/></svg><span class="long">Print cards / Save PDF</span><span class="short">Print</span></button>
+    <button id="aCalls"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span class="long">Print call sheet</span><span class="short">Call sheet</span></button>
+    <button id="aCaller"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M10 8l6 4-6 4z"/></svg><span class="long" id="aCallerL">Start caller</span><span class="short" id="aCallerS">Caller</span></button>
+    <button id="aShare"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg><span class="long">Share game link</span><span class="short">Share</span></button>
+    <button id="aPlayers" data-pro><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg><span class="long">Player links</span><span class="short">Players</span> <span class="pro-badge">PRO</span></button>
+  </div>
+  <section id="preview" class="pv" aria-label="Print preview">
+    <div class="paperwrap" id="pvWrap"></div>
+    <div class="pvinfo"><span id="pvInfo"></span>
+      <span class="pvnav" id="pvNav"><button class="ghost" id="pvPrev" aria-label="Previous page">‹</button><span id="pvPage"></span><button class="ghost" id="pvNext" aria-label="Next page">›</button></span></div>
+  </section>
+  <section id="caller" class="card caller" hidden tabindex="-1" aria-label="Caller">
+    <div class="cl-head"><h2>Caller</h2>
+      <label for="pattern" class="sr">Winning pattern</label><select id="pattern"></select></div>
+    <div class="cl-tools">
+      <button class="ghost" id="cCheck" data-pro>Check a card <span class="pro-badge">PRO</span></button>
+      <button class="ghost" id="cFull" data-pro>Full screen <span class="pro-badge">PRO</span></button>
+      <label class="check" data-pro><input type="checkbox" id="speakOn"> Read calls aloud <span class="pro-badge">PRO</span></label>
+    </div>
+    <div class="callbig" id="callBig" aria-live="polite"></div>
+    <div class="cl-row"><button id="cDraw">Draw</button><button class="ghost" id="cUndo">Undo</button></div>
+    <div class="cl-stat"><span><b id="cCount"></b> <span class="cl-done" id="cDone" hidden>Everything has been called</span></span><button class="danger" id="cReset">Reset</button></div>
+    <h3 style="margin:12px 0 6px;font-size:.95rem">History <span class="muted small">(newest first)</span></h3>
+    <div class="hist" id="cHist"></div>
+    <p class="muted keys" id="cKeys"></p>
+    <button class="ghost" id="cClose" style="margin-top:8px">Back to the cards</button>
+  </section>
+</div>
+</div>
+</main></div>
+
+<div id="player" hidden></div>
+
+<div id="stage" class="stage noprint" hidden tabindex="-1" role="dialog" aria-modal="true" aria-label="Projector caller">
+  <div class="st-top"><b id="stTitle"></b><span id="stInfo"></span>
+    <div class="st-btns"><button id="stSpeak" aria-pressed="false">Read aloud</button><button id="stCheck">Check a card</button><button id="stUndo">Undo</button><button id="stDraw">Draw</button><button id="stExit">Exit</button></div></div>
+  <div class="st-call" id="stCall" aria-live="assertive"></div>
+  <div class="st-ans" id="stAns"></div>
+  <div class="st-last" id="stLast" aria-label="Last 5 calls"></div>
+  <div class="st-board" id="stBoard"></div>
+  <div class="st-hint">Space, → or Page Down: draw · ← or Page Up: undo · C: check a card · F: full screen · Esc: exit</div>
+</div>
+
+<script src="pay.js"></script>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const esc=t=>String(t??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const KEY='bingo.v1',FREE_GAMES=3,FREE_CARDS=10,MAX_CARDS=500,MAX_ITEMS=1000;
+const CROCK='0123456789ABCDEFGHJKMNPQRSTVWXYZ',LET='BINGO';
+const MODES=['words','clue','n75','n90'],PSQ=['line','corners','x','blackout'],P90=['one','two','full'];
+const PNAME={line:'Any line',corners:'Four corners',x:'X',blackout:'Blackout',one:'One line',two:'Two lines',full:'Full house'};
+const PAPER={letter:{name:'Letter',w:8.5,h:11,css:'letter'},a4:{name:'A4',w:8.2677,h:11.6929,css:'A4'}};
+const FREE_FOOT='Made with Bingo Card Studio'+(location.host?' · '+location.host:'');
+const REASON={
+  count:'Print up to 500 unique cards for a whole class or fundraiser.',
+  per:'Print 1 big card or 4 cards per page, with cut lines.',
+  cut:'Add dashed cut lines between cards.',
+  lp:'Large print for seniors: 1 card per page, 28pt+ text, thick borders and high contrast.',
+  foot:'Remove the “Made with Bingo Card Studio” footer, or print your own, like “Room 12 Review Day”.',
+  n90:'Print UK 90-ball tickets: 3x9, 15 numbers each, 6 per page.',
+  clue:'Questions and answers mode: cards show the answers and the caller reads out the questions.',
+  theme:'Unlock 6 extra themes and 5 font styles.',
+  pics:'Put pictures in squares, with captions. Great for pre-readers and language classes.',
+  players:'Send each player a link to their own card. They mark it on a phone, with no app or sign-up.',
+  projector:'Full-screen projector caller: big animated draws, a call board and clicker keys.',
+  check:'Check a winner by card number: the card is rebuilt from the game code and checked against the calls.',
+  speak:'Have every call read aloud.',
+  dup:'Duplicate a game with all of its settings.',
+  games:'The free plan keeps 3 saved games. Upgrade for unlimited games, or delete one first.',
+};
+const PACKS={
+  'baby-shower':['Baby shower','Baby Shower Bingo','Diapers;Bottle;Pacifier;Onesie;Rattle;Crib;Stroller;Car seat;Bib;Blanket;Teddy bear;Baby monitor;Wipes;Lullaby;Booties;Swaddle;High chair;Burp cloth;Baby powder;Rocking chair;Mobile;Teething ring;Sippy cup;Baby bath;Baby book;Tiny socks;Hooded towel;Nursing pillow;Diaper bag;Play mat;Night light;Sleepsuit'],
+  'bridal-shower':['Bridal shower','Bridal Shower Bingo','Wine glasses;Toaster;Bath towels;Lingerie;Candles;Cookbook;Blender;Picture frame;Bed sheets;Mixing bowls;Cake stand;Champagne;Bouquet;Veil;Honeymoon;Something blue;Garter;Kitchen scale;Coffee maker;Spa basket;Cutting board;Serving tray;Recipe cards;Throw pillow;Napkins;Wedding ring;Photo album;Wine opener;Bathrobe;Tea set;Vase;Slow cooker'],
+  'christmas':['Christmas','Christmas Bingo','Santa;Reindeer;Snowman;Stocking;Candy cane;Mistletoe;Ornament;Elf;Sleigh;Gingerbread;Wreath;Star;Present;Snowflake;Hot cocoa;Jingle bells;Christmas tree;Holly;Fireplace;Cookies;Rudolph;North Pole;Carols;Tinsel;Angel;Nutcracker;Eggnog;Chimney;Bow;Fairy lights;Scarf;Mittens'],
+  'halloween':['Halloween','Halloween Bingo',"Pumpkin;Ghost;Witch;Black cat;Bat;Spider web;Skeleton;Candy corn;Haunted house;Broomstick;Cauldron;Mummy;Vampire;Zombie;Jack-o'-lantern;Full moon;Owl;Costume;Trick or treat;Graveyard;Werewolf;Candle;Monster;Scarecrow;Potion;Spider;Tombstone;Wizard hat;Candy bag;Cobweb;Frankenstein;Crow"],
+  'thanksgiving':['Thanksgiving','Thanksgiving Bingo','Turkey;Pumpkin pie;Stuffing;Cranberry sauce;Mashed potatoes;Gravy;Corn;Pilgrim;Harvest;Fall leaves;Family;Grateful;Parade;Football;Cornucopia;Apple pie;Sweet potato;Green beans;Dinner rolls;Wishbone;Acorn;Scarecrow;Squash;Feast;Thankful;Hayride;Napkin;Oven;Leftovers;Gathering;Autumn;Pecan pie'],
+  'office':['Office / meeting bingo','Meeting Bingo',"Can you hear me?;You're on mute;Let's circle back;Synergy;Deep dive;Take this offline;Quick sync;Low-hanging fruit;Bandwidth;Action items;Per my last email;Touch base;Moving forward;A dog barks;Screen share fail;Someone joins late;Can everyone see my screen?;Let's park that;Win-win;Game changer;Think outside the box;Loop in;End of day;Hard stop;A kid walks in;Frozen video;Next steps;Alignment;Stakeholders;Pivot;Ping me;Double-click on that"],
+  'onboarding':['New-hire onboarding','New Hire Bingo','Met my manager;Set up email;Found the coffee;Got my laptop;Joined team chat;Read the handbook;Lunch with the team;Learned a new acronym;Set up 2FA;Booked a 1:1;Found the restrooms;Met someone from another team;Added a profile photo;Joined a channel;Asked a question;Went to an all-hands;Got a building badge;Reset a password;Shared a fun fact;Set up payroll;Toured the office;Bookmarked the wiki;Met my buddy;Finished a training;Learned the org chart;First meeting;First ticket;Got some swag;Found the printer;Team photo'],
+  'music':['Music (song titles)','Music Bingo',"Hey Jude;Bohemian Rhapsody;Dancing Queen;Billie Jean;Respect;Imagine;Sweet Caroline;Don't Stop Believin';I Will Survive;Hotel California;Like a Prayer;Wonderwall;Uptown Funk;Shake It Off;Rolling in the Deep;Hallelujah;Africa;Livin' on a Prayer;September;Yesterday;Purple Rain;Superstition;Waterloo;Thriller;Happy;Crazy in Love;Mr. Brightside;Valerie;Let It Be;Dancing in the Dark;Stayin' Alive;Total Eclipse of the Heart"],
+  'sight-words':['Classroom sight words','Sight Word Bingo','the;and;a;to;said;in;he;I;of;it;was;you;they;on;she;is;for;at;his;but;that;with;all;we;can;are;up;had;my;her;what;there;out;this;have;went;be;like;some;so'],
+  'esl':['ESL animals and food','Animals & Food Bingo','Dog;Cat;Horse;Cow;Pig;Sheep;Chicken;Duck;Rabbit;Lion;Tiger;Elephant;Monkey;Giraffe;Bear;Fish;Bird;Snake;Apple;Banana;Bread;Cheese;Egg;Milk;Rice;Soup;Carrot;Orange;Tomato;Pizza;Cake;Water'],
+  'seniors':["Seniors 'remember when'",'Remember When Bingo','Rotary phone;Drive-in movie;Milkman;Jukebox;Record player;Soda fountain;Typewriter;Black-and-white TV;Party line;Station wagon;Penny candy;Cassette tape;Sock hop;Hula hoop;Roller skates;Ration book;Phone booth;Radio shows;Slide rule;Polaroid camera;Elvis;Moon landing;Transistor radio;Encyclopedias;Icebox;Five-and-dime;Telegram;Rabbit ears;Film projector;Paper route;Pen pal;Drive-in diner'],
+};
+const THEMES={
+  classic:{name:'Classic',head:'#111827',ink:'#fff',line:'#1f2937',free:'#b91c1c',freeInk:'#fff',frame:'#1f2937',l:['#b91c1c','#b91c1c','#b91c1c','#b91c1c','#b91c1c']},
+  bright:{name:'Bright',head:'#1d4ed8',ink:'#fff',line:'#1e3a8a',free:'#f59e0b',freeInk:'#fff',frame:'#3b82f6',l:['#ef4444','#f59e0b','#10b981','#3b82f6','#8b5cf6']},
+  pastel:{name:'Pastel',head:'#6d28d9',ink:'#3b0764',line:'#a78bfa',free:'#ede9fe',freeInk:'#5b21b6',frame:'#c4b5fd',l:['#fbcfe8','#fde68a','#bbf7d0','#bfdbfe','#ddd6fe']},
+  christmas:{pro:1,name:'Christmas',head:'#b91c1c',ink:'#fff',line:'#14532d',free:'#b91c1c',freeInk:'#fff',frame:'#166534',l:['#166534','#b91c1c','#166534','#b91c1c','#166534']},
+  halloween:{pro:1,name:'Halloween',head:'#1c1917',ink:'#1c1917',line:'#1c1917',free:'#1c1917',freeInk:'#fb923c',frame:'#ea580c',l:['#f97316','#f97316','#f97316','#f97316','#f97316']},
+  babyblue:{pro:1,name:'Baby blue',head:'#075985',ink:'#0c4a6e',line:'#38bdf8',free:'#e0f2fe',freeInk:'#0369a1',frame:'#7dd3fc',l:['#7dd3fc','#7dd3fc','#7dd3fc','#7dd3fc','#7dd3fc']},
+  blush:{pro:1,name:'Blush',head:'#9d174d',ink:'#831843',line:'#f472b6',free:'#fce7f3',freeInk:'#9d174d',frame:'#f9a8d4',l:['#f9a8d4','#f9a8d4','#f9a8d4','#f9a8d4','#f9a8d4']},
+  chalkboard:{pro:1,name:'Chalkboard',head:'#f1f5f2',titleBg:'#2f4538',ink:'#f1f5f2',line:'#2f4538',free:'#2f4538',freeInk:'#f1f5f2',frame:'#8b5e34',l:['#2f4538','#2f4538','#2f4538','#2f4538','#2f4538']},
+  neon:{pro:1,name:'Neon',head:'#db2777',ink:'#fff',line:'#111',free:'#111',freeInk:'#00e5ff',frame:'#ff2bd6',l:['#ff2bd6','#00b8f0','#16c94a','#f5b000','#ff5e00']},
+};
+const EMOJI=",'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji'";
+const FONTS={
+  system:['Standard',"system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"],
+  rounded:['Rounded',"ui-rounded,'SF Pro Rounded','Hiragino Maru Gothic ProN',Quicksand,Comfortaa,Nunito,'Arial Rounded MT Bold',sans-serif"],
+  serif:['Serif',"Georgia,'Iowan Old Style','Palatino Linotype','Book Antiqua',Cambria,'Times New Roman',serif"],
+  hand:['Handwritten',"'Segoe Print','Bradley Hand','Comic Sans MS','Chalkboard SE','Comic Neue',Chilanka,cursive"],
+  type:['Typewriter',"'American Typewriter','Courier New',Courier,ui-monospace,monospace"],
+  condensed:['Bold condensed',"'Arial Narrow','Roboto Condensed','Helvetica Neue',Impact,'Franklin Gothic Medium',sans-serif"],
+};
+
+// ---------- small helpers ----------
+const cut=(s,n)=>s.length<=n?s:Array.from(s).slice(0,n).join('');
+const clean=(v,max)=>typeof v==='string'?cut(v.replace(/[\u0000-\u001f\u007f\u2028\u2029]/g,' ').replace(/\s+/g,' ').trim(),max):'';
+const int=(v,lo,hi,def)=>{v=Math.floor(Number(v));return Number.isFinite(v)?Math.min(hi,Math.max(lo,v)):def};
+const oneOf=(v,list,def)=>list.includes(v)?v:def;
+const pad3=n=>String(n).padStart(3,'0');
+const isNum=m=>m==='n75'||m==='n90';
+const reduced=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
+const rand32=()=>crypto.getRandomValues(new Uint32Array(1))[0];
+const randInt=n=>{const lim=Math.floor(4294967296/n)*n;let x;do{x=rand32()}while(x>=lim);return x%n};
+const newSeed=()=>Array.from(crypto.getRandomValues(new Uint8Array(5)),b=>CROCK[b&31]).join('');
+const newId=()=>Date.now().toString(36)+Array.from(crypto.getRandomValues(new Uint8Array(6)),b=>CROCK[b&31]).join('').toLowerCase();
+const b64e=s=>{let bin='';for(const b of new TextEncoder().encode(s))bin+=String.fromCharCode(b);return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')};
+const b64d=s=>new TextDecoder('utf-8',{fatal:true}).decode(Uint8Array.from(atob(String(s).replace(/-/g,'+').replace(/_/g,'/')),c=>c.charCodeAt(0)));
+let lastToast={m:'',t:0};
+function toast(msg,ms=4500){
+  const now=Date.now();if(msg===lastToast.m&&now-lastToast.t<3000)return;lastToast={m:msg,t:now};
+  document.querySelectorAll('.toast').forEach(t=>t.remove());
+  const el=document.createElement('div');el.className='toast';el.setAttribute('role','status');el.textContent=msg;
+  (document.fullscreenElement||document.body).appendChild(el);setTimeout(()=>el.remove(),ms);
+}
+function openModal(html,onClose){
+  const back=document.createElement('div');back.className='bmodal';
+  back.innerHTML=`<div class="card bdialog" role="dialog" aria-modal="true"><button class="ghost bclose" aria-label="Close">✕</button>${html}</div>`;
+  const prev=document.activeElement;
+  const onKey=e=>{if(e.key==='Escape'){e.stopPropagation();close()}};
+  function close(){if(!back.isConnected)return;back.remove();document.removeEventListener('keydown',onKey,true);onClose&&onClose();if(prev&&prev.focus)prev.focus({preventScroll:true})}
+  back.addEventListener('click',e=>{if(e.target===back||e.target.closest('.bclose'))close()});
+  document.addEventListener('keydown',onKey,true);
+  (document.fullscreenElement||document.body).appendChild(back);
+  const f=back.querySelector('input,textarea,.bdialog button:not(.bclose)');if(f)f.focus();
+  return{el:back.querySelector('.bdialog'),close};
+}
+function choose(title,msg,buttons){
+  return new Promise(res=>{
+    const m=openModal(`<h3>${esc(title)}</h3><p>${esc(msg)}</p><div class="row">${buttons.map((b,i)=>`<button data-c="${esc(b[0])}" class="${i?'ghost':''}">${esc(b[1])}</button>`).join('')}</div>`,()=>res(null));
+    m.el.addEventListener('click',e=>{const b=e.target.closest('[data-c]');if(b){res(b.dataset.c);m.close()}});
+  });
+}
+async function copyText(t){
+  try{await navigator.clipboard.writeText(t);return true}catch{}
+  try{const a=document.createElement('textarea');a.value=t;a.setAttribute('readonly','');a.style.cssText='position:fixed;top:0;left:0;opacity:0';document.body.appendChild(a);a.select();const ok=document.execCommand('copy');a.remove();return ok}catch{return false}
+}
+
+// ---------- card engine: cyrb53 + mulberry32, deterministic from the game code ----------
+function cyrb53(str,seed=0){let h1=0xdeadbeef^seed,h2=0x41c6ce57^seed;for(let i=0,ch;i<str.length;i++){ch=str.charCodeAt(i);h1=Math.imul(h1^ch,2654435761);h2=Math.imul(h2^ch,1597334677)}
+  h1=Math.imul(h1^(h1>>>16),2246822507);h1^=Math.imul(h2^(h2>>>13),3266489909);h2=Math.imul(h2^(h2>>>16),2246822507);h2^=Math.imul(h1^(h1>>>13),3266489909);return 4294967296*(2097151&h2)+(h1>>>0)}
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const rngFor=(seed,no,attempt)=>mulberry32(cyrb53(seed+':'+no+':'+attempt)>>>0);
+function shuffle(a,rng){for(let i=a.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+const range=(n,from=0)=>Array.from({length:n},(_,i)=>from+i);
+const poolSize=g=>g.mode==='n75'?75:g.mode==='n90'?90:g.items.length;
+function needOf(g){const s=g.mode==='n75'?5:g.size;return s*s-(g.free&&s%2?1:0)}
+
+function makeCards(game,n){
+  const g=sanitizeGame(game)||sanitizeGame({});n=int(n,0,MAX_CARDS,0);
+  if(g.mode==='n90')return ticket90(g.seed,n);
+  const out=[];out.error='';
+  const s=g.mode==='n75'?5:g.size,hasFree=g.free&&s%2===1,need=s*s-(hasFree?1:0),mid=(s*s-1)/2,P=poolSize(g),seen=new Set();
+  if(P<need){out.error=`Add ${need-P} more`;return out}
+  for(let no=1;no<=n;no++){
+    let card=null;
+    for(let a=0;a<50&&!card;a++){
+      const rng=rngFor(g.seed,no,a);let cells;
+      if(g.mode==='n75'){
+        cells=new Array(25);
+        for(let c=0;c<5;c++){const nums=shuffle(range(15,15*c),rng);let j=0;
+          for(let r=0;r<5;r++){if(c===2&&r===2&&hasFree){cells[12]=-1;continue}cells[r*5+c]=nums[j++]}}
+      }else{cells=shuffle(range(P),rng).slice(0,need);if(hasFree)cells.splice(mid,0,-1)}
+      const sig=cells.join(',');
+      if(!seen.has(sig)){seen.add(sig);card={no,cells,sig}}
+    }
+    if(!card){out.error=`Add more words to make ${n} unique cards`;break}
+    out.push(card);
+  }
+  return out;
+}
+const R90=[[1,9],[10,19],[20,29],[30,39],[40,49],[50,59],[60,69],[70,79],[80,90]];
+function ticket90(seed,n){
+  seed=typeof seed==='string'&&seed?seed:newSeed();n=int(n,0,5000,0);
+  const out=[],seen=new Set();out.error='';
+  for(let no=1;no<=n;no++){
+    let t=null;
+    for(let a=0;a<50&&!t;a++){
+      const rng=rngFor(seed,no,a);let rows;
+      do{rows=[0,1,2].map(()=>shuffle(range(9),rng).slice(0,5))}while(new Set(rows.flat()).size<9);
+      const grid=[0,1,2].map(()=>Array(9).fill(null));
+      for(let c=0;c<9;c++){
+        const rs=[0,1,2].filter(r=>rows[r].includes(c)),[lo,hi]=R90[c];
+        const nums=shuffle(range(hi-lo+1,lo),rng).slice(0,rs.length).sort((x,y)=>x-y);
+        rs.forEach((r,i)=>{grid[r][c]=nums[i]});
+      }
+      const sig=grid.flat().join(',');
+      if(!seen.has(sig)){seen.add(sig);t={no,rows:grid,cells:grid.flat().map(v=>v==null?null:v-1),sig}}
+    }
+    if(!t){out.error=`Could not make ${n} unique tickets`;break}
+    out.push(t);
+  }
+  return out;
+}
+function callText(g,v){
+  if(g.mode==='n75')return LET[Math.floor(v/15)]+' '+(v+1);
+  if(g.mode==='n90')return String(v+1);
+  const it=g.items[v];return it?(it.t||(it.img?'picture':'?')):'?';
+}
+function patternLines(g,p,card){
+  if(g.mode==='n90'){
+    const rows=[0,1,2].map(r=>({name:`row ${r+1}`,cells:range(9,r*9).filter(i=>card.cells[i]!=null)}));
+    if(p==='two')return[[0,1],[0,2],[1,2]].map(([a,b])=>({name:`two lines (rows ${a+1} and ${b+1})`,cells:[...rows[a].cells,...rows[b].cells]}));
+    if(p==='full')return[{name:'full house',cells:rows.flatMap(r=>r.cells)}];
+    return rows.map(r=>({name:`one line (${r.name})`,cells:r.cells}));
+  }
+  const s=g.mode==='n75'?5:g.size,d1=range(s).map(i=>i*s+i),d2=range(s).map(i=>i*s+s-1-i);
+  if(p==='corners')return[{name:'four corners',cells:[0,s-1,s*(s-1),s*s-1]}];
+  if(p==='x')return[{name:'X',cells:[...new Set([...d1,...d2])]}];
+  if(p==='blackout')return[{name:'blackout',cells:range(s*s)}];
+  const colName=c=>s===5&&g.letters?LET[c]:String(c+1);
+  return[...range(s).map(r=>({name:`row ${r+1}`,cells:range(s).map(c=>r*s+c)})),
+    ...range(s).map(c=>({name:`column ${colName(c)}`,cells:range(s).map(r=>r*s+c)})),
+    {name:'diagonal',cells:d1},{name:'diagonal',cells:d2}];
+}
+function check(game,cardNo,pattern){
+  const g=sanitizeGame(game)||sanitizeGame({}),no=Number(cardNo);
+  const p=oneOf(pattern,g.mode==='n90'?P90:PSQ,g.pattern);
+  const out={no,pattern:p,inGame:false,bingo:false,count:g.count};
+  if(!Number.isInteger(no)||no<1||no>g.count){out.label=`Card #${Number.isFinite(no)?no:'?'} is not in this game (1-${g.count})`;return out}
+  const cards=makeCards(g,no),card=cards[no-1];
+  if(!card){out.label=cards.error||'This card could not be made.';return out}
+  const called=new Set(g.calls),isMarked=i=>{const v=card.cells[i];return v===-1||(v!=null&&called.has(v))};
+  let best=null;const wins=[];
+  for(const L of patternLines(g,p,card)){const miss=L.cells.filter(i=>!isMarked(i));if(!miss.length)wins.push(L);if(!best||miss.length<best.miss.length)best={...L,miss}}
+  Object.assign(out,{inGame:true,card,marked:range(card.cells.length).filter(i=>card.cells[i]!=null&&isMarked(i))});
+  if(wins.length)return Object.assign(out,{bingo:true,label:`BINGO: ${wins[0].name}`,win:[...new Set(wins.flatMap(w=>w.cells))],lines:wins.map(w=>w.name)});
+  const what=p==='line'||p==='one'?'the closest line':p==='x'?'the X':PNAME[p].toLowerCase();
+  const names=best.miss.map(i=>callText(g,card.cells[i]));
+  out.missing=best.miss;out.need=best.miss.length;
+  out.label=`Not yet: ${what} needs ${best.miss.length} more: ${names.slice(0,10).join(', ')}${names.length>10?', …':''}`;
+  return out;
+}
+
+// ---------- data: validate everything read from storage or links ----------
+const SEED_RE=/^[0-9A-Z]{3,16}$/,IMG_RE=/^[a-z0-9]{6,40}$/;
+function cleanItems(arr){
+  if(!Array.isArray(arr))return[];
+  const out=[],seen=new Set();
+  for(const it of arr.slice(0,MAX_ITEMS)){
+    const o=typeof it==='string'?{t:it}:Array.isArray(it)?{t:it[0],clue:it[1]}:(it&&typeof it==='object')?it:null;if(!o)continue;
+    const t=clean(o.t,120),img=typeof o.img==='string'&&IMG_RE.test(o.img)?o.img:'';if(!t&&!img)continue;
+    const k=img?'img:'+img:t.toLowerCase();if(seen.has(k))continue;seen.add(k);
+    const x={t},clue=clean(o.clue,300);if(clue)x.clue=clue;if(img)x.img=img;out.push(x);
+  }
+  return out;
+}
+function sanitizeGame(r){
+  if(!r||typeof r!=='object'||Array.isArray(r))return null;
+  const mode=oneOf(r.mode,MODES,'words');
+  const g={id:typeof r.id==='string'&&/^[a-z0-9]{4,40}$/.test(r.id)?r.id:newId(),title:clean(r.title,60)||'BINGO',mode,items:cleanItems(r.items),
+    size:[3,4,5].includes(+r.size)?+r.size:5,free:r.free!==false,freeLabel:typeof r.freeLabel==='string'?clean(r.freeLabel,16):'FREE',letters:r.letters!==false,
+    count:int(r.count,1,MAX_CARDS,10),perPage:[1,2,4].includes(+r.perPage)?+r.perPage:2,paper:oneOf(r.paper,['letter','a4'],'letter'),
+    cutLines:r.cutLines===true,largePrint:r.largePrint===true,theme:Object.hasOwn(THEMES,r.theme)?r.theme:'classic',font:Object.hasOwn(FONTS,r.font)?r.font:'system',
+    footerText:clean(r.footerText,80),seed:typeof r.seed==='string'&&SEED_RE.test(r.seed)?r.seed:newSeed(),calls:[],pattern:'line'};
+  const P=poolSize(g),seen=new Set();
+  if(Array.isArray(r.calls))for(const c of r.calls.slice(0,MAX_ITEMS))if(Number.isInteger(c)&&c>=0&&c<P&&!seen.has(c)){seen.add(c);g.calls.push(c)}
+  g.pattern=oneOf(r.pattern,mode==='n90'?P90:PSQ,mode==='n90'?'one':'line');
+  return g;
+}
+// What actually prints for this user: Pro settings fall back to the free ones without a license.
+function eff(g,asPro=pro.isPro()){
+  const e={...g,pro:asPro};
+  if(e.mode==='n75')e.size=5;
+  if(asPro)return e;
+  if(e.mode==='n90'){e.mode='n75';e.size=5;e.pattern='line';e.calls=e.calls.filter(c=>c<75)}
+  if(e.mode==='clue')e.mode='words';
+  Object.assign(e,{count:Math.min(e.count,FREE_CARDS),perPage:2,cutLines:false,largePrint:false,footerText:'',font:'system'});
+  if(THEMES[e.theme].pro)e.theme='classic';
+  return e;
+}
+const footText=e=>e.pro?e.footerText:FREE_FOOT;
+function validity(e){
+  if(isNum(e.mode))return{ok:true};
+  const s=e.size,need=needOf(e),have=e.items.length;
+  return have<need?{ok:false,need,have,s}:{ok:true,need,have,s,same:have===need};
+}
+
+let state=loadState();
+function loadState(){
+  let raw=null;try{raw=JSON.parse(localStorage.getItem(KEY))}catch{}
+  const s={games:[],currentId:null,speak:false};
+  if(raw&&typeof raw==='object'&&!Array.isArray(raw)){
+    if(Array.isArray(raw.games))for(const r of raw.games.slice(0,500)){const g=sanitizeGame(r);if(g&&!s.games.some(x=>x.id===g.id))s.games.push(g)}
+    s.currentId=typeof raw.currentId==='string'?raw.currentId:null;s.speak=raw.speak===true;
+  }
+  if(!s.games.some(g=>g.id===s.currentId))s.currentId=s.games[0]?s.games[0].id:null;
+  return s;
+}
+const isQuota=e=>e&&(e.name==='QuotaExceededError'||e.code===22||e.code===1014||/quota/i.test(e.message||''));
+let userActed=false,persistAsked=false;
+['pointerdown','keydown'].forEach(t=>addEventListener(t,()=>{userActed=true},{capture:true,once:true}));
+function save(){
+  try{localStorage.setItem(KEY,JSON.stringify(state))}
+  catch(e){toast(isQuota(e)?'Your browser storage is full. Delete a saved game or some pictures, then try again.':'Could not save: this browser is blocking storage, so changes last until you close the page.')}
+  if(userActed&&!persistAsked){persistAsked=true;try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist().catch(()=>{})}catch{}}
+}
+const cur=()=>state.games.find(g=>g.id===state.currentId)||state.games[0];
+
+// ---------- pictures: downscaled JPEGs in IndexedDB ----------
+const idb=(()=>{let dbp=null;
+  const open=()=>dbp||(dbp=new Promise((res,rej)=>{
+    if(!window.indexedDB)return rej(new Error('IndexedDB is not available'));
+    const r=indexedDB.open('bingo',1);r.onupgradeneeded=()=>r.result.createObjectStore('img');
+    r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);r.onblocked=()=>rej(new Error('blocked'));
+  }).catch(e=>{dbp=null;throw e}));
+  const run=(mode,fn)=>open().then(db=>new Promise((res,rej)=>{
+    const tx=db.transaction('img',mode),req=fn(tx.objectStore('img'));
+    tx.oncomplete=()=>res(req&&req.result);tx.onerror=tx.onabort=()=>rej(tx.error||new Error('aborted'));
+  }));
+  return{get:k=>run('readonly',s=>s.get(k)),put:(k,v)=>run('readwrite',s=>s.put(v,k)),del:k=>run('readwrite',s=>s.delete(k)),keys:()=>run('readonly',s=>s.getAllKeys())};
+})();
+const imgUrls=new Map();
+function downscale(file){
+  return new Promise((res,rej)=>{
+    const url=URL.createObjectURL(file),img=new Image();
+    img.onload=()=>{
+      const k=Math.min(1,240/Math.max(img.naturalWidth,img.naturalHeight)),c=document.createElement('canvas');
+      c.width=Math.max(1,Math.round(img.naturalWidth*k));c.height=Math.max(1,Math.round(img.naturalHeight*k));
+      const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(img,0,0,c.width,c.height);
+      URL.revokeObjectURL(url);c.toBlob(b=>b?res(b):rej(new Error('encode')),'image/jpeg',0.8);
+    };
+    img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('decode'))};
+    img.src=url;
+  });
+}
+async function loadImages(){
+  const ids=new Set(state.games.flatMap(g=>g.items.filter(i=>i.img&&!imgUrls.has(i.img)).map(i=>i.img)));
+  if(!ids.size)return;
+  let got=0;
+  for(const id of ids){try{const b=await idb.get(id);if(b instanceof Blob&&/^image\//.test(b.type)){imgUrls.set(id,URL.createObjectURL(b));got++}}catch{}}
+  if(got)render();
+}
+async function gcImages(){
+  try{const used=new Set(state.games.flatMap(g=>g.items.filter(i=>i.img).map(i=>i.img)));
+    for(const k of await idb.keys())if(!used.has(k)){await idb.del(k);if(imgUrls.has(k)){URL.revokeObjectURL(imgUrls.get(k));imgUrls.delete(k)}}}catch{}
+}
+
+// ---------- rendering cards (shared by preview, print, player view and Check a card) ----------
+// Font size as a fraction of the cell width: the largest size at which the text fits in at most 3 lines
+// without splitting a word. A card shares one size (set by its longest item, but never below 0.2), and only
+// squares whose words cannot fit at that size shrink on their own.
+const Ks=[0.34,0.3,0.26,0.23,0.2,0.18,0.16,0.145,0.13,0.118,0.105,0.095],fitMemo=new Map();
+// Rough width of a word in em for a semi-bold sans-serif (wide, capital, narrow and other letters; emoji = 1em).
+const wordEm=w=>Array.from(w).reduce((a,ch)=>a+(/[mwMW@%]/.test(ch)?0.86:/[A-Z0-9#&]/.test(ch)?0.66:/[iljtfr.,;:'!|I\-]/.test(ch)?0.34:/[\u0000-\u024f]/.test(ch)?0.56:1),0)*1.04;
+const wordsEm=t=>String(t).replace(/-/g,'- ').split(/\s+/).filter(Boolean).map(wordEm);
+function fitOne(t){
+  t=String(t);if(fitMemo.has(t))return fitMemo.get(t);
+  const ws=wordsEm(t);let best=Ks[Ks.length-1];
+  for(const k of Ks){
+    const avail=0.85/k,maxL=Math.min(3,Math.floor(0.9/(1.12*k)));
+    let lines=1,c=0,ok=true;
+    for(const L of ws){if(L>avail){ok=false;break}if(!c)c=L;else if(c+0.28+L<=avail)c+=0.28+L;else{lines++;c=L}}
+    if(ok&&lines<=maxL){best=k;break}
+  }
+  if(fitMemo.size>5000)fitMemo.clear();
+  fitMemo.set(t,best);return best;
+}
+const fitK=texts=>texts.length?Math.max(0.2,Math.min(...texts.map(fitOne))):0.3;
+// Words that will not fit on one line at the 28pt large-print minimum.
+function lpTooLong(e,L){
+  const k=28/(L.W*72*0.918/e.size);
+  return e.items.filter(i=>!i.img).flatMap(i=>i.t.split(/\s+/)).filter((w,n,a)=>a.indexOf(w)===n&&wordEm(w)*k>0.85).sort((a,b)=>b.length-a.length);
+}
+const titleSize=t=>{const L=Array.from(t).length;return L<=10?8:L<=16?6.6:L<=22?5.2:L<=30?4:3.2};
+function cardHTML(e,card,o={}){
+  const n90=e.mode==='n90',cls=`bc th-${e.theme} f-${e.font}${e.largePrint?' lp':''}${n90?' t90':''}`;
+  const w=o.w?` style="width:${o.w}in"`:'',id=`#${pad3(card.no)} · Game ${esc(e.seed)}`,foot=footText(e),title=e.title||'BINGO';
+  const mk=i=>(o.marks&&o.marks.has(i)?' mk':'')+(o.win&&o.win.has(i)?' win':'')+(o.need&&o.need.has(i)?' need':'');
+  if(n90)return `<div class="${cls}"${w} data-no="${card.no}"><div class="bc-in"><div class="bc-head"><b style="font-size:${(titleSize(title)*.55).toFixed(2)}cqw">${esc(title)}</b><span>${id}</span></div><div class="bc-grid">${
+    card.cells.map((v,i)=>v==null?'<div class="c blank"></div>':`<div class="c${mk(i)}" data-i="${i}"><span>${v+1}</span></div>`).join('')}</div>${foot?`<div class="bc-meta"><span>${esc(foot)}</span></div>`:''}</div></div>`;
+  const s=e.mode==='n75'?5:e.size,nums=e.mode==='n75';
+  const k=nums?0.42:fitK(card.cells.filter(v=>v>=0&&e.items[v]&&!e.items[v].img).map(v=>e.items[v].t));
+  const fk=Math.min(0.28,fitOne(e.freeLabel||'★'));
+  const cells=card.cells.map((v,i)=>{
+    if(v===-1)return `<div class="c free${mk(i)}" data-i="${i}" style="font-size:calc(var(--cw)*${fk})"><span><b>★</b>${esc(e.freeLabel)}</span></div>`;
+    if(nums)return `<div class="c n${mk(i)}" data-i="${i}"><span>${v+1}</span></div>`;
+    const it=e.items[v]||{t:'?'};
+    if(it.img){const u=imgUrls.get(it.img);return `<div class="c pic${mk(i)}" data-i="${i}">${u?`<img src="${esc(u)}" alt="${esc(it.t)}">`:'<i class="ph"></i>'}${it.t?`<small>${esc(it.t)}</small>`:''}</div>`}
+    const own=fitOne(it.t);
+    return `<div class="c${mk(i)}" data-i="${i}"${own<k?` style="font-size:calc(var(--cw)*${own})"`:''}><span>${esc(it.t)}</span></div>`;
+  }).join('');
+  const letters=s===5&&e.letters?`<div class="bc-let">${[...LET].map((L,i)=>`<span class="l${i+1}">${L}</span>`).join('')}</div>`:'';
+  return `<div class="${cls}"${w} data-no="${card.no}"><div class="bc-in"><div class="bc-title" style="font-size:${titleSize(title)}cqw">${esc(title)}</div>${letters}<div class="bc-grid" style="--n:${s};--cw:${(91.8/s).toFixed(3)}cqw;--fs:calc(var(--cw) * ${k})">${cells}</div><div class="bc-meta"><span>${esc(foot)}</span><span class="id">${id}</span></div></div></div>`;
+}
+let cardCache={key:'',cards:[]};
+function cardsFor(e,n){
+  const key=[e.mode,e.size,e.free,e.seed,poolSize(e)].join('|');
+  if(cardCache.key!==key||(cardCache.cards.length<n&&!cardCache.cards.error))cardCache={key,cards:makeCards(e,Math.max(n,Math.min(e.count,MAX_CARDS)))};
+  const out=cardCache.cards.slice(0,n);out.error=cardCache.cards.error;return out;
+}
+const ratioCache=new Map();
+function cardRatio(e){
+  const n90=e.mode==='n90',key=[n90,!n90&&(e.mode==='n75'?5:e.size)===5&&e.letters,n90&&!!footText(e)].join();
+  if(ratioCache.has(key))return ratioCache.get(key);
+  const sample=n90?{no:1,cells:Array(27).fill(null)}:{no:1,cells:Array((e.mode==='n75'?25:e.size*e.size)).fill(-1)};
+  const probe=document.createElement('div');probe.style.cssText='position:absolute;left:-12000px;top:0;width:1000px;visibility:hidden';
+  probe.innerHTML=cardHTML(e,sample);document.body.appendChild(probe);
+  const r=probe.firstElementChild.getBoundingClientRect();probe.remove();
+  const R=r.width?r.height/r.width:0;if(R>0.2&&R<2){ratioCache.set(key,R);return R}
+  return n90?0.4:1.26;
+}
+function layoutFor(e){
+  const n90=e.mode==='n90',per=n90?(e.largePrint?3:6):(e.largePrint?1:e.perPage),cols=per===4?2:1,rows=per/cols;
+  const P=PAPER[e.paper],cw=+(P.w-0.8).toFixed(3),ch=+(P.h-0.8-0.12).toFixed(3),R=cardRatio(e),pad=n90?0.14:0.3;
+  const W=Math.floor(Math.min(cw/cols-pad,(ch/rows-pad)/R)*100)/100;
+  return{per,cols,rows,cw,ch,W,P};
+}
+function sheetsHTML(e,cards,L){
+  let h='';
+  for(let i=0;i<cards.length;i+=L.per)h+=`<div class="sheet pp${L.per}${e.cutLines?' cut':''}" style="width:${L.cw}in;height:${L.ch}in;grid-template-columns:repeat(${L.cols},minmax(0,1fr));grid-template-rows:repeat(${L.rows},minmax(0,1fr))">`+
+    cards.slice(i,i+L.per).map(c=>`<div class="slot">${cardHTML(e,c,{w:L.W})}</div>`).join('')+'</div>';
+  return h;
+}
+
+// ---------- Pro ----------
+const pro=Pay.init('bingo-pro',{onChange:()=>{render();retryPending()}});
+const gate=reason=>{if(pro.isPro())return true;pro.upsell(reason);return false};
+
+// ---------- editor ----------
+let view='preview',pvPage=0,stageOpen=false,revealed=false,printing=false,lastDupes=0,picsSig='',pending=null,playerMode=false;
+const canAddGame=()=>pro.isPro()||state.games.length<FREE_GAMES;
+function blankGame(){return sanitizeGame({})}
+function packGame(slug){const p=PACKS[slug],g=blankGame();g.title=p[1];g.items=cleanItems(p[2].split(';'));g.size=5;g.free=true;return g}
+function addGame(g,select=true){state.games.push(g);if(select)state.currentId=g.id;view==='caller'&&renderCaller()}
+const itemKey=it=>it.img?'img:'+it.img:it.t.toLowerCase();
+function setItems(g,items){
+  if(g.calls.length&&!isNum(g.mode)){const old=g.items.map(itemKey),idx=new Map(items.map((it,i)=>[itemKey(it),i]));g.calls=g.calls.map(c=>idx.get(old[c])).filter(v=>v!=null)}
+  g.items=items;
+}
+function parseText(text){
+  const out=[],seen=new Set();let dupes=0;
+  for(const raw of String(text).split(/\r?\n/).slice(0,MAX_ITEMS)){
+    const line=raw.trim();if(!line)continue;
+    const i=line.indexOf('|'),t=clean(i>=0?line.slice(0,i):line,120),clue=i>=0?clean(line.slice(i+1),300):'';
+    if(!t)continue;const k=t.toLowerCase();if(seen.has(k)){dupes++;continue}seen.add(k);out.push(clue?{t,clue}:{t});
+  }
+  return{items:out,dupes};
+}
+const itemsText=g=>g.items.filter(i=>!i.img).map(i=>i.clue?`${i.t} | ${i.clue}`:i.t).join('\n');
+function commit(){save();render()}
+
+function renderGameBar(){
+  const sel=$('gameSel'),g=cur();
+  sel.innerHTML=state.games.map(x=>`<option value="${esc(x.id)}">${esc(x.title)} · ${esc(x.seed)}</option>`).join('');
+  sel.value=g.id;
+  $('newGame').title=canAddGame()?'Start a new game':'Free plan: 3 saved games';
+}
+function setPressed(box,attr,val){box.querySelectorAll(`[data-${attr}]`).forEach(b=>b.setAttribute('aria-pressed',String(b.dataset[attr]===String(val))))}
+function syncControls(){
+  const g=cur(),e=eff(g),isPro=pro.isPro(),words=!isNum(e.mode),v=validity(e);
+  document.body.classList.toggle('is-pro',isPro);
+  document.querySelectorAll('#app [data-pro]').forEach(el=>el.classList.toggle('locked',!isPro));
+  if(document.activeElement!==$('title'))$('title').value=g.title;
+  setPressed($('modeSeg'),'mode',e.mode);
+  $('wordsBox').hidden=!words;$('numInfo').hidden=words;
+  $('numInfo').textContent=e.mode==='n75'?'Classic 75-ball: every card gets 5 numbers per column (B 1-15, I 16-30, N 31-45, G 46-60, O 61-75), with the free space in the middle.':'UK 90-ball tickets: 3 rows of 9 with 15 numbers (5 per row), printed 6 per page.';
+  $('itemsLbl').textContent=e.mode==='clue'?'Answers and clues, one per line: answer | clue':'Words, one per line';
+  $('items').placeholder=e.mode==='clue'?'cat | a pet that meows\ncow | an animal that gives milk\n…':'Diapers\nBottle\nPacifier\n…';
+  if(document.activeElement!==$('items'))$('items').value=itemsText(g);
+  if(words){
+    $('counter').textContent=`${v.have} item${v.have===1?'':'s'} · a ${v.s}x${v.s} card needs ${v.need}`;
+    const m=$('itemsMsg');m.hidden=v.ok;m.className='msg bad';
+    if(!v.ok)m.textContent=`Add ${v.need-v.have} more ${v.need-v.have===1?'item':'items'}: a ${v.s}x${v.s} card${e.free&&v.s%2?' with a free space':''} needs ${v.need}.`;
+    const warns=[];
+    if(v.same)warns.push('Every card has the same words, so many players will win at once. Add more for a fairer game.');
+    const err=v.ok?cardsFor(e,Math.min(e.count,2)).error:'';if(err)warns.push(err);
+    if(e.mode==='clue'){const nc=e.items.filter(i=>!i.clue).length;if(nc)warns.push(`${nc} item${nc===1?' has':'s have'} no clue yet, so the caller will read the answer. Write them as answer | clue.`)}
+    $('itemsWarn').hidden=!warns.length;$('itemsWarn').textContent=warns.join(' ');
+    $('itemsNote').hidden=!lastDupes;$('itemsNote').textContent=`Removed ${lastDupes} duplicate line${lastDupes===1?'':'s'} (case doesn’t matter).`;
+    renderPics(g);
+  }
+  setPressed($('sizeSeg'),'size',e.mode==='n90'?'':e.size);
+  $('sizeSeg').querySelectorAll('button').forEach(b=>b.disabled=isNum(e.mode));
+  const freeOk=e.mode!=='n90'&&e.size%2===1;
+  $('freeOn').checked=freeOk&&e.free;$('freeOn').disabled=!freeOk;$('freeWrap').classList.toggle('off',!freeOk);
+  if(document.activeElement!==$('freeLabel'))$('freeLabel').value=g.freeLabel;$('freeLabel').disabled=!freeOk||!e.free;
+  const letOk=e.mode!=='n90'&&e.size===5;$('lettersOn').checked=letOk&&e.letters;$('lettersOn').disabled=!letOk;$('lettersWrap').classList.toggle('off',!letOk);
+  $('countLbl').textContent=e.mode==='n90'?'Number of tickets':'Number of cards';
+  if(document.activeElement!==$('count'))$('count').value=e.count;
+  const L=layoutFor(e);setPressed($('perSeg'),'per',L.per);
+  $('perSeg').querySelectorAll('button').forEach(b=>b.disabled=e.largePrint||e.mode==='n90');
+  setPressed($('paperSeg'),'paper',e.paper);
+  $('cutLines').checked=e.cutLines;$('largePrint').checked=e.largePrint;
+  const lpLong=e.largePrint&&words?lpTooLong(e,L):[];$('lpWarn').hidden=!lpLong.length;
+  if(lpLong.length)$('lpWarn').textContent=`Large print uses 28pt text, so long words like ${lpLong.slice(0,3).map(t=>`“${t}”`).join(', ')} will break across lines on a ${e.size}x${e.size} card. ${e.size>3?'A smaller grid or shorter words read best.':'Shorter words read best.'}`;
+  if(document.activeElement!==$('footerText'))$('footerText').value=e.footerText;$('footerText').readOnly=!isPro;
+  $('themes').querySelectorAll('[data-theme]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.theme===e.theme)));
+  $('font').value=e.font;
+  $('seedOut').textContent=g.seed;
+  const ok=v.ok&&!(words&&cardsFor(e,1).error&&!cardsFor(e,1).length);
+  ['aPrint','aCaller','aShare','aPlayers'].forEach(id=>{$(id).disabled=!ok&&!(id==='aCaller'&&view==='caller')});
+  $('aCalls').disabled=!poolSize(e);
+  $('aCallerL').textContent=view==='caller'?'Back to the cards':'Start caller';$('aCallerS').textContent=view==='caller'?'Cards':'Caller';
+}
+function renderPics(g){
+  const pics=g.items.filter(i=>i.img),sig=pics.map(p=>p.img+(imgUrls.has(p.img)?'1':'0')).join();
+  if(sig===picsSig&&$('pics').childElementCount===pics.length)return;picsSig=sig;
+  $('pics').innerHTML=pics.map((p,n)=>{const u=imgUrls.get(p.img);return `<div class="chip">${u?`<img src="${esc(u)}" alt="">`:'<i class="ph"></i>'}<input data-cap="${esc(p.img)}" value="${esc(p.t)}" maxlength="120" placeholder="Caption (optional)" aria-label="Caption for picture ${n+1}"><button class="danger" data-rmpic="${esc(p.img)}" aria-label="Remove picture ${n+1}">✕</button></div>`}).join('');
+}
+function renderPreview(){
+  const g=cur(),e=eff(g),v=validity(e),L=layoutFor(e);
+  $('preview').hidden=view==='caller';$('caller').hidden=view!=='caller';
+  if(view==='caller')return;
+  const pages=Math.max(1,Math.ceil(e.count/L.per));pvPage=Math.min(Math.max(0,pvPage),pages-1);
+  const unit=e.mode==='n90'?'ticket':'card';
+  $('pvInfo').textContent=`${e.count} ${unit}${e.count===1?'':'s'} · ${pages} page${pages===1?'':'s'} · ${L.P.name}`;
+  $('pvNav').hidden=pages<2;$('pvPage').textContent=`Page ${pvPage+1} of ${pages}`;
+  $('pvPrev').disabled=pvPage===0;$('pvNext').disabled=pvPage>=pages-1;
+  const wrap=$('pvWrap');
+  if(!v.ok){wrap.style.height='';wrap.innerHTML=`<div class="empty"><div><b>Add ${v.need-v.have} more item${v.need-v.have===1?'':'s'} to see your cards</b><br>A ${v.s}x${v.s} card needs ${v.need} different words.</div></div>`;return}
+  const cards=cardsFor(e,Math.min(e.count,(pvPage+1)*L.per)).slice(pvPage*L.per);
+  wrap.innerHTML=`<div class="paper" style="width:${L.P.w}in;height:${L.P.h}in">${sheetsHTML(e,cards,L)}</div>`;
+  fitPreview();
+}
+function fitPreview(){
+  const wrap=$('pvWrap'),paper=wrap.querySelector('.paper');if(!paper)return;
+  const P=PAPER[eff(cur()).paper],s=Math.min(1,wrap.clientWidth/(P.w*96));
+  const tf=`scale(${s})`,h=Math.ceil(P.h*96*s)+'px';if(paper.style.transform!==tf)paper.style.transform=tf;if(wrap.style.height!==h)wrap.style.height=h;
+}
+function render(){
+  if(playerMode||!state.games.length)return;
+  if(!printing)removePrint();
+  renderGameBar();syncControls();renderPreview();
+  if(view==='caller')renderCaller();
+  if(stageOpen)renderStage();
+}
+
+// ---------- print ----------
+function removePrint(){const p=$('print');if(p)p.remove();document.body.classList.remove('printing')}
+function callSheetHTML(e){
+  const P=poolSize(e),li=(h,n)=>`<li><i class="box"></i>${n?`<span class="no">${n}.</span>`:''}<span>${h}</span></li>`;let body,unit='items';
+  if(e.mode==='n75'){unit='numbers';body=`<div class="grp">${range(5).map(c=>`<div><h2>${LET[c]}</h2><ul>${range(15,15*c+1).map(n=>li(`${LET[c]} ${n}`)).join('')}</ul></div>`).join('')}</div>`}
+  else if(e.mode==='n90'){unit='numbers';body=`<div class="grp g9">${R90.map(([lo,hi])=>`<div><h2>${lo}-${hi}</h2><ul>${range(hi-lo+1,lo).map(n=>li(n)).join('')}</ul></div>`).join('')}</div>`}
+  else{
+    const order=range(P);for(let i=order.length-1;i>0;i--){const j=randInt(i+1);[order[i],order[j]]=[order[j],order[i]]}
+    body=`<ol>${order.map((i,n)=>{const it=e.items[i],u=it.img&&imgUrls.get(it.img),pic=u?`<img src="${esc(u)}" alt=""> `:'';
+      return li(e.mode==='clue'&&it.clue?`${esc(it.clue)} → <span class="ans">${esc(it.t)}</span>`:pic+esc(it.t),n+1)}).join('')}</ol>`;
+  }
+  const foot=footText(e);
+  return `<div class="cs"><header><h1>${esc(e.title||'BINGO')}</h1><p>Call sheet · Game ${esc(e.seed)} · ${P} ${unit}${isNum(e.mode)?'':', in a random order: call from the top and tick each one off'}</p></header>${body}${foot?`<footer>${esc(foot)}</footer>`:''}</div>`;
+}
+function buildPrint(kind='cards'){
+  removePrint();
+  const e=eff(cur()),L=layoutFor(e),el=document.createElement('div');el.id='print';
+  $('pageCss').textContent=`@page{size:${L.P.css} portrait;margin:0.4in}`;
+  el.innerHTML=kind==='calls'?callSheetHTML(e):sheetsHTML(e,cardsFor(e,e.count),L);
+  document.body.appendChild(el);document.body.classList.add('printing');
+  return el;
+}
+function doPrint(kind){
+  const e=eff(cur());if(kind==='cards'&&!validity(e).ok)return;
+  buildPrint(kind);printing=true;
+  try{window.print()}finally{printing=false}
+}
+addEventListener('beforeprint',()=>{if(!playerMode&&!$('print')&&state.games.length&&validity(eff(cur())).ok)buildPrint('cards')});
+addEventListener('afterprint',()=>setTimeout(()=>{if(!printing)removePrint()},0));
+
+// ---------- share links ----------
+function payload(g){return{v:1,title:g.title,mode:g.mode,items:g.items.filter(i=>!i.img).map(i=>i.clue?[i.t,i.clue]:i.t),size:g.size,free:g.free,freeLabel:g.freeLabel,letters:g.letters,seed:g.seed,count:g.count,theme:g.theme,font:g.font}}
+const pageBase=()=>location.href.replace(/[?#].*$/,'');
+const shareUrl=g=>pageBase()+'#g='+b64e(JSON.stringify(payload(g)));
+function readPayload(token){
+  try{if(typeof token!=='string'||token.length>400000)return null;const raw=JSON.parse(b64d(token));if(!raw||raw.v!==1)return null;const g=sanitizeGame({...raw,id:undefined,calls:[]});return g}catch{return null}
+}
+const clearHash=()=>history.replaceState(null,'',location.pathname+location.search);
+async function doShare(){
+  const g=cur();if(!validity(eff(g)).ok)return;
+  const url=shareUrl(g),pics=g.items.some(i=>i.img)?' Pictures are not included in game links.':'',long=url.length>2000?' This link is long, so send it by email or paste it into a document.':'';
+  if(navigator.share&&matchMedia('(pointer:coarse)').matches){
+    try{await navigator.share({title:g.title,text:`${g.title}: bingo game ${g.seed}`,url});if(pics||long)toast((pics+long).trim());return}catch(err){if(err&&err.name==='AbortError')return}
+  }
+  if(await copyText(url))toast('Game link copied. Anyone who opens it gets identical cards.'+pics+long,6000);
+  else prompt('Copy this game link:',url);
+}
+function importShared(token){
+  const g=readPayload(token);
+  if(!g){clearHash();toast('That game link could not be read. Ask the sender for a fresh link.');return}
+  const same=state.games.find(x=>x.seed===g.seed&&x.mode===g.mode&&x.size===g.size&&x.free===g.free&&itemsText(x)===itemsText(g)&&!x.items.some(i=>i.img));
+  if(same){state.currentId=same.id;clearHash();toast(`“${same.title}” is already in your saved games.`);return}
+  if(!canAddGame()){setPending({kind:'link',token,title:g.title});pro.upsell('You already have 3 saved games, the free limit. Delete one to open this shared game, or upgrade for unlimited saved games.');return}
+  addGame(g);clearHash();toast(`Opened the shared game “${g.title}”. Your cards match the sender’s.`);
+}
+function setPending(p){
+  pending=p;const el=$('pending');el.hidden=!p;
+  if(p)$('pendingMsg').textContent=`“${p.title}” is waiting to open. You have 3 saved games, the free limit: delete one or upgrade to open it.`;
+}
+function retryPending(){
+  if(!pending||!canAddGame()||playerMode)return;
+  const p=pending;setPending(null);
+  if(p.kind==='link')importShared(p.token);else createFrom(p);
+  save();render();
+}
+function createFrom(p){
+  if(!canAddGame()){setPending({...p,title:p.kind==='pack'?PACKS[p.slug][1]:'Number bingo'});pro.upsell(REASON.games);return}
+  let g;
+  if(p.kind==='pack')g=packGame(p.slug);
+  else{g=blankGame();g.mode=p.mode;if(p.mode==='n90')g.pattern='one';if(isNum(p.mode))g.title='BINGO'}
+  addGame(g);
+}
+function landing(){
+  const q=new URLSearchParams(location.search),pack=q.get('pack'),mode=q.get('mode');
+  if(!pack&&!mode)return;
+  q.delete('pack');q.delete('mode');history.replaceState(null,'',location.pathname+(q.toString()?'?'+q:'')+location.hash);
+  if(pack&&Object.hasOwn(PACKS,pack))return createFrom({kind:'pack',slug:pack});
+  if(mode==='n75'||mode==='words')return createFrom({kind:'mode',mode});
+  if(mode==='n90'||mode==='clue'){if(pro.isPro())return createFrom({kind:'mode',mode});createFrom({kind:'mode',mode:mode==='n90'?'n75':'words'});pro.upsell(REASON[mode])}
+}
+function openPlayers(){
+  if(!gate(REASON.players))return;
+  const g=cur(),e=eff(g);if(!validity(e).ok)return;
+  const base=shareUrl(g),n=e.count,lines=range(n,1).map(i=>`Card ${i}: ${base}&card=${i}`).join('\n');
+  const m=openModal(`<h3>Player links</h3><p style="margin-top:0">Send each player their own link. They open their card on a phone and tap squares to mark them. No app, account or server needed. Each card matches the printed card with the same number.</p>
+    ${base.length+10>2000?`<p class="msg warn">Each link is about ${(base.length+10).toLocaleString()} characters. Some chat apps cut links longer than 2,000 characters, so email works best (or use fewer, shorter words).</p>`:''}
+    ${g.items.some(i=>i.img)?'<p class="msg warn">Pictures are not included in links, so these cards will not match printed cards that have pictures.</p>':''}
+    <label for="plText">${n} player link${n===1?'':'s'}</label><textarea id="plText" rows="8" readonly wrap="off" style="font-size:.8rem">${esc(lines)}</textarea>
+    <div class="row" style="margin-top:12px"><button id="plCopy">Copy all</button><a class="muted" href="${esc(base)}&amp;card=1" target="_blank" rel="noopener" style="align-self:center">Open card 1 to try it</a></div>`);
+  m.el.querySelector('#plCopy').onclick=async()=>{if(await copyText(lines))toast(`Copied ${n} player link${n===1?'':'s'}.`);else{const t=m.el.querySelector('#plText');t.focus();t.select()}};
+}
+
+// ---------- caller ----------
+const validCalls=e=>{const P=poolSize(e);return e.calls.filter(c=>c<P)};
+function chipText(e,c,isCurrent){
+  if(e.mode==='clue'){const it=e.items[c];if(isCurrent&&!revealed&&it&&it.clue)return'?';return it?it.t||'picture':'?'}
+  return callText(e,c);
+}
+function callHTML(e,c){
+  if(e.mode==='n75')return `<div class="v"><span class="L">${LET[Math.floor(c/15)]}</span>${c+1}</div>`;
+  if(e.mode==='n90')return `<div class="v">${c+1}</div>`;
+  const it=e.items[c]||{t:'?'};
+  if(e.mode==='clue'&&it.clue)return `<div class="q">${esc(it.clue)}</div>${revealed?`<div class="ans">${esc(it.t)}</div>`:''}<button class="ghost" id="cReveal" aria-pressed="${revealed}">${revealed?'Hide answer':'Show answer'}</button>`;
+  if(it.img){const u=imgUrls.get(it.img);return `${u?`<img src="${esc(u)}" alt="${esc(it.t)}">`:''}<div class="v w">${esc(it.t)}</div>`}
+  return `<div class="v w">${esc(it.t)}</div>`;
+}
+function renderCaller(){
+  const g=cur(),e=eff(g),P=poolSize(e),calls=validCalls(e),last=calls[calls.length-1],list=e.mode==='n90'?P90:PSQ,isPro=pro.isPro();
+  $('pattern').innerHTML=list.map(p=>`<option value="${p}">${PNAME[p]}</option>`).join('');$('pattern').value=oneOf(e.pattern,list,list[0]);
+  $('callBig').innerHTML=last==null?`<div class="muted">Press <b>Draw</b> or the space bar to make the first call.</div>`:callHTML(e,last);
+  const done=P>0&&calls.length>=P;
+  $('cDraw').disabled=done||!validity(e).ok;$('cDraw').textContent=done?'Everything has been called':'Draw';$('cDone').hidden=!done;
+  $('cUndo').disabled=!calls.length;$('cReset').disabled=!calls.length;
+  $('cCount').textContent=`${calls.length} of ${P} called`;
+  $('cHist').innerHTML=calls.slice().reverse().map((c,i)=>`<span>${esc(chipText(e,c,i===0))}</span>`).join('')||'<span class="muted" style="background:none;border:0;color:var(--muted)">No calls yet</span>';
+  $('speakOn').checked=isPro&&state.speak;
+  $('cKeys').textContent='Keys: Space or Enter draws, Backspace undoes.'+(isPro?' Clickers and foot pedals: → ↓ Page Down draw, ← Page Up undo. F: full screen, C: check a card.':' Pro adds clicker and foot-pedal keys, full screen (F) and Check a card (C).');
+}
+function boardHTML(e,calls){
+  const on=new Set(calls),last=calls[calls.length-1],hideLast=e.mode==='clue'&&!revealed&&e.items[last]&&e.items[last].clue;
+  const cell=(c,txt)=>`<i class="${on.has(c)&&!(hideLast&&c===last)?(c===last?'on last':'on'):''}">${txt}</i>`;
+  if(e.mode==='n75')return `<div class="bd b75">${range(5).map(r=>`<b>${LET[r]}</b>`+range(15,r*15).map(c=>cell(c,c+1)).join('')).join('')}</div>`;
+  if(e.mode==='n90')return `<div class="bd b90">${range(90).map(c=>cell(c,c+1)).join('')}</div>`;
+  return `<div class="bd bw">${e.items.map((it,c)=>cell(c,esc(it.t||'picture'))).join('')}</div>`;
+}
+function bigCallHTML(e,c){
+  if(c==null)return'<span class="dim">Ready</span>';
+  if(e.mode==='n75')return `<span><span class="L">${LET[Math.floor(c/15)]}</span>${c+1}</span>`;
+  if(e.mode==='n90')return `<span>${c+1}</span>`;
+  const it=e.items[c]||{t:'?'},txt=e.mode==='clue'&&it.clue?it.clue:it.t,L=Array.from(txt).length;
+  if(it.img&&e.mode!=='clue'){const u=imgUrls.get(it.img);return `<div>${u?`<img src="${esc(u)}" alt="">`:''}<div class="cap">${esc(it.t)}</div></div>`}
+  const fs=e.mode==='clue'?(L<=40?'min(8vh,6vw)':L<=90?'min(5.5vh,4.2vw)':'min(4vh,3vw)'):(L<=8?'min(17vh,13vw)':L<=16?'min(11vh,8vw)':L<=30?'min(7.5vh,5.5vw)':'min(5vh,3.8vw)');
+  return `<span style="font-size:${fs};line-height:1.15;max-width:92vw;overflow-wrap:anywhere">${esc(txt)}</span>`;
+}
+function renderStage(){
+  const g=cur(),e=eff(g),calls=validCalls(e),P=poolSize(e),last=calls[calls.length-1];
+  $('stTitle').textContent=e.title||'BINGO';
+  $('stInfo').textContent=`${PNAME[e.pattern]||''} · ${calls.length} of ${P} called${calls.length>=P?' · everything has been called':''}`;
+  if(!anim){const sc=$('stCall');sc.innerHTML=bigCallHTML(e,last);sc.style.fontSize=isNum(e.mode)?'min(24vh,20vw)':''}
+  const it=last!=null&&e.mode==='clue'?e.items[last]:null;
+  $('stAns').innerHTML=it&&it.clue&&!anim?`<button id="stReveal" aria-pressed="${revealed}">${revealed?'Hide answer':'Show answer'}</button>${revealed?`<span>${esc(it.t)}</span>`:''}`:'';
+  $('stLast').innerHTML=calls.slice(Math.max(0,calls.length-6),-1).reverse().map(c=>`<span>${esc(chipText(e,c,false))}</span>`).join('');
+  $('stBoard').innerHTML=boardHTML(e,anim?calls.slice(0,-1):calls);
+  $('stSpeak').setAttribute('aria-pressed',String(state.speak));
+  $('stDraw').disabled=calls.length>=P;
+}
+let anim=null;
+function stopAnim(){if(anim){clearInterval(anim.t);anim=null;$('stage').dataset.shuffling='0'}}
+function animateTo(e,final){
+  stopAnim();
+  if(!stageOpen||reduced())return Promise.resolve();
+  return new Promise(res=>{
+    const sc=$('stCall'),P=poolSize(e),t0=performance.now();$('stage').dataset.shuffling='1';
+    anim={t:setInterval(()=>{
+      if(performance.now()-t0>=600){stopAnim();sc.classList.remove('pop');void sc.offsetWidth;sc.classList.add('pop');res();return}
+      sc.innerHTML=bigCallHTML(e,randInt(P));
+    },70),res};
+    sc.innerHTML=bigCallHTML(e,randInt(P));
+  });
+}
+function speakCall(e,c){
+  if(!state.speak||!pro.isPro())return;
+  try{const s=window.speechSynthesis;if(!s||!window.SpeechSynthesisUtterance)return;
+    const it=e.items[c],text=e.mode==='n75'?`${LET[Math.floor(c/15)]}. ${c+1}`:e.mode==='n90'?String(c+1):e.mode==='clue'&&it&&it.clue?it.clue:(it&&it.t)||'picture';
+    s.cancel();s.speak(new SpeechSynthesisUtterance(text))}catch{}
+}
+function draw(){
+  const g=cur(),e=eff(g),P=poolSize(e);if(!validity(e).ok)return;
+  const calls=validCalls(e);if(calls.length>=P)return;
+  const called=new Set(calls),rem=range(P).filter(i=>!called.has(i)),pick=rem[randInt(rem.length)];
+  g.calls=[...calls,pick];revealed=false;save();renderCaller();
+  if(stageOpen){const p=animateTo(eff(g),pick);renderStage();p.then(()=>{if(stageOpen)renderStage();speakCall(e,pick)})}
+  else speakCall(e,pick);
+}
+function undo(){const g=cur();if(!g.calls.length)return;stopAnim();g.calls.pop();revealed=false;save();renderCaller();if(stageOpen)renderStage()}
+function openCaller(){
+  const e=eff(cur());if(!validity(e).ok)return;
+  view='caller';render();
+  const c=$('caller');c.focus({preventScroll:true});
+  if(matchMedia('(max-width:760px)').matches)c.scrollIntoView({block:'start',behavior:reduced()?'auto':'smooth'});
+}
+function closeCaller(){if(stageOpen)closeStage();view='preview';render()}
+let wasFs=false;
+function openStage(){
+  if(!gate(REASON.projector))return;
+  if(!validity(eff(cur())).ok)return;
+  if(view!=='caller'){view='caller';render()}
+  stageOpen=true;const st=$('stage');st.hidden=false;renderStage();st.focus();
+  try{const p=st.requestFullscreen&&st.requestFullscreen({navigationUI:'hide'});if(p&&p.catch)p.catch(()=>{})}catch{}
+}
+function closeStage(){
+  stageOpen=false;stopAnim();$('stage').hidden=true;
+  if(document.fullscreenElement){try{document.exitFullscreen().catch(()=>{})}catch{}}
+  $('caller').focus({preventScroll:true});
+}
+document.addEventListener('fullscreenchange',()=>{const fs=!!document.fullscreenElement;if(!fs&&wasFs&&stageOpen)closeStage();wasFs=fs});
+function openCheck(){
+  if(!gate(REASON.check))return;
+  const e=eff(cur());if(!validity(e).ok)return;
+  const m=openModal(`<h3>Check a card</h3><p class="muted small" style="margin-top:0">Pattern: <b>${esc(PNAME[e.pattern])}</b> · ${validCalls(e).length} calls so far</p>
+    <form class="ck-row" id="ckForm"><label for="ckNo" class="sr">Card number</label><input id="ckNo" type="number" inputmode="numeric" min="1" max="${e.count}" placeholder="Card number, e.g. 7" required><button>Check</button></form><div id="ckOut" aria-live="polite"></div>`);
+  m.el.querySelector('#ckForm').addEventListener('submit',ev=>{
+    ev.preventDefault();const ge=eff(cur()),r=check(ge,parseInt(m.el.querySelector('#ckNo').value,10),ge.pattern);
+    m.el.querySelector('#ckOut').innerHTML=`<p class="verdict ${r.bingo?'good':r.inGame?'':'bad'}">${esc(r.label)}</p>`+
+      (r.inGame?`<div class="ck-card">${cardHTML(ge,r.card,{marks:new Set(r.marked),win:new Set(r.win||[]),need:new Set(r.missing||[])})}</div>`:'');
+  });
+}
+
+// ---------- events ----------
+function wire(){
+  $('pack').insertAdjacentHTML('beforeend',Object.entries(PACKS).map(([k,p])=>`<option value="${k}">${esc(p[0])}</option>`).join(''));
+  $('themes').innerHTML=Object.entries(THEMES).map(([k,t])=>`<button class="sw" data-theme="${k}" aria-label="${t.name} theme${t.pro?' (Pro)':''}"${t.pro?' data-pro':''}><i style="background:conic-gradient(${t.l[0]} 0 25%,${t.l[2]} 0 50%,${t.free} 0 75%,${t.frame} 0)"></i>${t.name}${t.pro?'<span class="pro-badge">PRO</span>':''}</button>`).join('');
+  $('font').innerHTML=Object.entries(FONTS).map(([k,f])=>`<option value="${k}" style="font-family:${esc(f[1])}">${f[0]}</option>`).join('');
+  const g=()=>cur();
+  $('gameSel').onchange=e=>{if(stageOpen)closeStage();state.currentId=e.target.value;pvPage=0;lastDupes=0;revealed=false;commit();loadImages()};
+  $('newGame').onclick=()=>{if(!canAddGame())return void pro.upsell(REASON.games);addGame(blankGame());pvPage=0;lastDupes=0;commit();$('items').focus()};
+  $('dupGame').onclick=()=>{if(!gate(REASON.dup))return;const c=sanitizeGame(JSON.parse(JSON.stringify(g())));c.id=newId();c.title=cut(g().title+' (copy)',60);c.calls=[];addGame(c);commit();toast(`Duplicated as “${c.title}”.`)};
+  $('delGame').onclick=()=>{
+    const x=g();if(!confirm(`Delete “${x.title}”? Its cards, calls and pictures are removed from this browser.`))return;
+    if(stageOpen)closeStage();
+    state.games=state.games.filter(y=>y.id!==x.id);state.currentId=state.games[0]?state.games[0].id:null;
+    if(pending)retryPending();
+    if(!state.games.length)addGame(blankGame());
+    pvPage=0;commit();gcImages();
+  };
+  $('pendingCancel').onclick=()=>{setPending(null);clearHash()};
+  $('title').addEventListener('input',e=>{g().title=cut(e.target.value,60);save();render()});
+  $('title').addEventListener('change',e=>{g().title=clean(e.target.value,60)||'BINGO';commit()});
+  $('modeSeg').addEventListener('click',ev=>{
+    const b=ev.target.closest('[data-mode]');if(!b)return;const m=b.dataset.mode,x=g();
+    if((m==='n90'||m==='clue')&&!gate(REASON[m]))return;
+    if(m===eff(x).mode)return;
+    const poolChange=(isNum(m)||isNum(x.mode))&&m!==x.mode;
+    if(poolChange&&x.calls.length&&!confirm(`Changing the type of game clears the ${x.calls.length} calls made so far. Continue?`))return;
+    if(poolChange){x.calls=[];revealed=false}
+    x.mode=m;x.pattern=m==='n90'?'one':oneOf(x.pattern,PSQ,'line');pvPage=0;commit();
+  });
+  $('items').addEventListener('input',e=>{const x=g(),r=parseText(e.target.value);setItems(x,[...r.items,...x.items.filter(i=>i.img)]);lastDupes=r.dupes;save();render()});
+  $('items').addEventListener('change',e=>{if(lastDupes)e.target.value=itemsText(g())});
+  $('pack').addEventListener('change',async e=>{
+    const slug=e.target.value;e.target.value='';if(!Object.hasOwn(PACKS,slug))return;
+    const x=g(),p=PACKS[slug],words=cleanItems(p[2].split(';'));
+    let how='replace';
+    if(x.items.some(i=>!i.img))how=await choose(`Load “${p[0]}”`,`Your list already has ${x.items.filter(i=>!i.img).length} items. Replace them with the ${words.length} words in this pack, or add the pack to your list?`,[['replace','Replace'],['add','Add to my list'],['','Cancel']]);
+    if(!how)return;
+    const text=how==='add'?x.items.filter(i=>!i.img):[];
+    setItems(x,cleanItems([...text,...words,...x.items.filter(i=>i.img)]));
+    if(isNum(x.mode)){x.mode='words';x.calls=[];x.pattern='line'}
+    if(x.title==='BINGO'||Object.values(PACKS).some(q=>q[1]===x.title))x.title=p[1];
+    lastDupes=0;commit();toast(`Loaded ${words.length} words from “${p[0]}”.`);
+  });
+  $('addPics').onclick=()=>{if(gate(REASON.pics))$('picInput').click()};
+  $('picInput').addEventListener('change',async e=>{
+    const files=[...e.target.files];e.target.value='';if(!files.length||!gate(REASON.pics))return;
+    const x=g();let added=0;
+    for(const f of files.slice(0,100)){
+      if(!/^image\//.test(f.type)){toast(`“${f.name}” is not a picture.`);continue}
+      try{const blob=await downscale(f),id=newId();await idb.put(id,blob);imgUrls.set(id,URL.createObjectURL(blob));
+        const name=f.name.replace(/\.[^.]+$/,'').replace(/[-_]+/g,' ').trim(),cap=/^(img|dsc|pxl|photo|image|screenshot|whatsapp)\b|^\d+$/i.test(name)?'':clean(name,60);
+        setItems(x,[...x.items,{t:cap,img:id}]);added++}
+      catch(err){toast(isQuota(err)?'Your browser storage is full. Remove some pictures or games first.':`“${f.name}” could not be read as a picture.`)}
+    }
+    if(added){commit();toast(`Added ${added} picture${added===1?'':'s'}. Give ${added===1?'it a caption':'them captions'} if you like.`)}
+  });
+  $('pics').addEventListener('input',e=>{const id=e.target.dataset.cap;if(!id)return;const it=g().items.find(i=>i.img===id);if(it){it.t=clean(e.target.value,120);save();renderPreview();if(view==='caller')renderCaller()}});
+  $('pics').addEventListener('click',e=>{const b=e.target.closest('[data-rmpic]');if(!b)return;const x=g();setItems(x,x.items.filter(i=>i.img!==b.dataset.rmpic));commit();gcImages()});
+  $('sizeSeg').addEventListener('click',e=>{const b=e.target.closest('[data-size]');if(!b||b.disabled)return;g().size=+b.dataset.size;pvPage=0;commit()});
+  $('freeOn').addEventListener('change',e=>{g().free=e.target.checked;commit()});
+  $('freeLabel').addEventListener('input',e=>{g().freeLabel=clean(e.target.value,16);save();renderPreview()});
+  $('lettersOn').addEventListener('change',e=>{g().letters=e.target.checked;commit()});
+  $('count').addEventListener('input',e=>{
+    const v=parseInt(e.target.value,10);if(!Number.isFinite(v))return;const x=g();
+    if(v>FREE_CARDS&&!pro.isPro()){x.count=FREE_CARDS;e.target.value=FREE_CARDS;save();render();pro.upsell(REASON.count);return}
+    x.count=Math.min(MAX_CARDS,Math.max(1,v));save();render();
+  });
+  $('count').addEventListener('change',e=>{e.target.value=eff(g()).count});
+  $('perSeg').addEventListener('click',e=>{const b=e.target.closest('[data-per]');if(!b||b.disabled)return;const v=+b.dataset.per;if(v!==2&&!gate(REASON.per))return;g().perPage=v;pvPage=0;commit()});
+  $('paperSeg').addEventListener('click',e=>{const b=e.target.closest('[data-paper]');if(!b)return;g().paper=b.dataset.paper;commit()});
+  [['cutLines','cut'],['largePrint','lp']].forEach(([id,r])=>{
+    $(id).addEventListener('click',e=>{if(!pro.isPro()){e.preventDefault();pro.upsell(REASON[r])}});
+    $(id).addEventListener('change',e=>{if(!pro.isPro())return;g()[id]=e.target.checked;pvPage=0;commit()});
+  });
+  $('footerText').addEventListener('focus',()=>gate(REASON.foot));
+  $('footerText').addEventListener('input',e=>{if(!pro.isPro())return;g().footerText=clean(e.target.value,80);save();renderPreview()});
+  $('themes').addEventListener('click',e=>{const b=e.target.closest('[data-theme]');if(!b)return;if(THEMES[b.dataset.theme].pro&&!gate(REASON.theme))return;g().theme=b.dataset.theme;commit()});
+  $('font').addEventListener('mousedown',e=>{if(!pro.isPro()){e.preventDefault();gate(REASON.theme)}});
+  $('font').addEventListener('change',e=>{if(!gate(REASON.theme)){e.target.value='system';return}g().font=e.target.value;commit()});
+  $('newSeed').onclick=()=>{const x=g();if(x.calls.length&&!confirm(`Make a new set of cards? The ${x.calls.length} calls so far are cleared, and cards you already printed will not match.`))return;x.seed=newSeed();x.calls=[];revealed=false;commit();toast(`New set of cards: game code ${x.seed}.`)};
+  $('aPrint').onclick=()=>doPrint('cards');
+  $('aCalls').onclick=()=>doPrint('calls');
+  $('aCaller').onclick=()=>view==='caller'?closeCaller():openCaller();
+  $('aShare').onclick=doShare;
+  $('aPlayers').onclick=openPlayers;
+  $('pvPrev').onclick=()=>{pvPage--;renderPreview()};
+  $('pvNext').onclick=()=>{pvPage++;renderPreview()};
+  $('cDraw').onclick=draw;$('cUndo').onclick=undo;$('stDraw').onclick=draw;$('stUndo').onclick=undo;
+  $('cReset').onclick=()=>{const x=g();if(!x.calls.length||!confirm(`Clear all ${x.calls.length} calls and start the game again?`))return;x.calls=[];revealed=false;save();renderCaller();if(stageOpen)renderStage()};
+  $('cClose').onclick=closeCaller;
+  $('pattern').addEventListener('change',e=>{g().pattern=e.target.value;save();if(stageOpen)renderStage()});
+  $('cCheck').onclick=openCheck;$('stCheck').onclick=openCheck;
+  $('cFull').onclick=openStage;$('stExit').onclick=closeStage;
+  $('speakOn').addEventListener('click',e=>{if(!pro.isPro()){e.preventDefault();pro.upsell(REASON.speak)}});
+  $('speakOn').addEventListener('change',e=>{if(!pro.isPro())return;state.speak=e.target.checked;save();if(stageOpen)renderStage()});
+  $('stSpeak').onclick=()=>{state.speak=!state.speak;save();renderStage();renderCaller()};
+  const reveal=()=>{revealed=!revealed;renderCaller();if(stageOpen)renderStage()};
+  $('callBig').addEventListener('click',e=>{if(e.target.closest('#cReveal'))reveal()});
+  $('stAns').addEventListener('click',e=>{if(e.target.closest('#stReveal'))reveal()});
+  let clickerHint=false;
+  document.addEventListener('keydown',e=>{
+    if(playerMode||(view!=='caller'&&!stageOpen)||e.ctrlKey||e.metaKey||e.altKey)return;
+    if(document.querySelector('.pay-modal,.bmodal'))return;
+    const t=e.target,k=e.key;
+    if(t&&t.closest&&t.closest('input,textarea,select,[contenteditable="true"]'))return;
+    const onButton=t&&t.closest&&t.closest('button,a,summary,label');
+    if(k===' '||k==='Enter'){if(onButton)return;e.preventDefault();draw();return}
+    if(k==='Backspace'){e.preventDefault();undo();return}
+    const fwd=['ArrowRight','ArrowDown','PageDown'].includes(k),back=['ArrowLeft','PageUp'].includes(k);
+    if(fwd||back){if(!pro.isPro()){if(!clickerHint){clickerHint=true;toast('Tip: clicker and foot-pedal keys work with Pro.')}return}e.preventDefault();fwd?draw():undo();return}
+    if(k==='f'||k==='F'){e.preventDefault();stageOpen?closeStage():openStage();return}
+    if(k==='c'||k==='C'){e.preventDefault();openCheck();return}
+    if(k==='Escape'&&stageOpen){e.preventDefault();closeStage()}
+  });
+  if(window.ResizeObserver)new ResizeObserver(()=>requestAnimationFrame(fitPreview)).observe($('preview'));else addEventListener('resize',fitPreview);
+}
+
+// ---------- player view (opened from a player link) ----------
+function playerView(token,cardStr){
+  playerMode=true;document.body.classList.add('player-mode');
+  const root=$('player');root.hidden=false;
+  const g=readPayload(token),no=Number(cardStr);
+  const fail=msg=>{root.innerHTML=`<div class="card" style="margin-top:24px"><h1 style="font-size:1.3rem">${esc(msg)}</h1><p>Ask the host for a fresh player link.</p><p><a href="${esc(pageBase())}">Make your own bingo cards</a></p></div>`};
+  if(!g)return fail('This player link could not be read.');
+  if(!Number.isInteger(no)||no<1||no>g.count)return fail(`Card #${Number.isFinite(no)?no:'?'} is not in this game (1-${g.count}).`);
+  const e={...eff(g,true),footerText:''},card=makeCards(e,no)[no-1];
+  if(!card)return fail('This card could not be made.');
+  const key='bingo.daub.'+g.seed+'.'+no,n=card.cells.length;
+  let marks=new Set();
+  try{const a=JSON.parse(localStorage.getItem(key));if(Array.isArray(a))a.forEach(i=>{if(Number.isInteger(i)&&i>=0&&i<n&&card.cells[i]!=null&&card.cells[i]!==-1)marks.add(i)})}catch{}
+  const storeMarks=()=>{try{localStorage.setItem(key,JSON.stringify([...marks]))}catch{}};
+  const free=new Set(range(n).filter(i=>card.cells[i]===-1));
+  document.title=`${g.title} · Card #${pad3(no)}`;
+  const paint=()=>{root.querySelector('.p-card').innerHTML=cardHTML(e,card,{marks:new Set([...marks,...free])})};
+  root.innerHTML=`<header class="p-head"><h1>${esc(g.title)}</h1><p class="muted">Card #${pad3(no)} · Game ${esc(g.seed)}</p></header><div class="p-card"></div>
+    <p class="muted small" style="text-align:center">Tap a square when it is called. Your marks stay on this device.</p>
+    <button class="bingo-btn" id="pBingo">BINGO!</button>
+    <div class="row"><button class="ghost" id="pClear">Clear my marks</button></div>
+    <p class="muted small" style="text-align:center;margin-top:24px">Made with Bingo Card Studio · <a href="${esc(pageBase())}">Make your own cards</a></p>`;
+  paint();
+  root.addEventListener('click',ev=>{
+    const c=ev.target.closest('.p-card .c[data-i]');
+    if(c){const i=+c.dataset.i;if(free.has(i))return;marks.has(i)?marks.delete(i):marks.add(i);storeMarks();paint();return}
+    if(ev.target.closest('#pBingo'))openModal(`<div class="big-bingo">BINGO!</div><p style="text-align:center;font-size:1.4rem;margin:8px 0"><b>Card #${pad3(no)}</b></p><p style="text-align:center" class="muted">Game ${esc(g.seed)}. Show this to the host so they can check card #${no}.</p>`);
+    if(ev.target.closest('#pClear')&&marks.size&&confirm('Clear all your marks on this card?')){marks.clear();storeMarks();paint()}
+  });
+}
+
+// ---------- start ----------
+$('themeCss').textContent=Object.entries(THEMES).map(([k,t])=>`.th-${k}{--t-head:${t.head};--t-titlebg:${t.titleBg||'transparent'};--t-ink:${t.ink};--t-line:${t.line};--t-free:${t.free};--t-freeink:${t.freeInk};--t-cell:#fff;--t-frame:${t.frame};${t.l.map((c,i)=>`--t-l${i+1}:${c}`).join(';')}}`).join('\n')+'\n'+
+  Object.entries(FONTS).map(([k,f])=>`.f-${k}{--ff:${f[1]}${EMOJI}}`).join('\n');
+pro.renderPanel($('proPanel'),{name:'Bingo Card Studio Pro',price:'$14.99 once',
+  perks:['Up to 500 unique numbered cards, checkable by card number','Projector caller, questions-and-answers mode, read-aloud','1, 2 or 4 per page, cut lines, large print, no footer','Pictures in squares, 90-ball, extra themes','Player links for remote games, unlimited saved games'],
+  note:'One payment. No subscription, no trial that renews.'});
+window.BingoApp={makeCards,check,ticket90,buildPrint,removePrint,shareUrl:()=>shareUrl(cur()),game:()=>JSON.parse(JSON.stringify(cur()||null)),packs:Object.keys(PACKS),layout:()=>layoutFor(eff(cur()))};
+(function start(){
+  const hp=new URLSearchParams(location.hash.slice(1));
+  if(hp.get('g')&&hp.get('card'))return playerView(hp.get('g'),hp.get('card'));
+  wire();
+  if(hp.get('g'))importShared(hp.get('g'));else landing();
+  if(!state.games.length){const m=new Date().getMonth();addGame(packGame(m===9?'halloween':m===10?'thanksgiving':m===11?'christmas':'baby-shower'))}
+  if(!state.games.some(x=>x.id===state.currentId))state.currentId=state.games[0].id;
+  save();render();loadImages();
+})();
+</script></body></html>

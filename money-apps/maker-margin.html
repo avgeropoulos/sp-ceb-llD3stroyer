@@ -1,0 +1,1172 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MakerMargin · pricing and profit calculator for makers</title>
+<meta name="description" content="Free product pricing calculator for candle, soap, bakery, jewelry and resin makers: cost per unit, suggested wholesale and retail prices, Etsy fees and what you really keep.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36'%3E%3Crect width='36' height='36' rx='9' fill='%234f46e5'/%3E%3Cpath d='M9 10h9l8.5 8.5L18 27 9 18.5z' fill='none' stroke='white' stroke-width='2.4' stroke-linejoin='round'/%3E%3Ccircle cx='13.5' cy='14.5' r='1.9' fill='white'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="shared.css">
+<style>
+:root{--warn:#b45309;--warn-bg:#fef3c7;--good-bg:#dcfce7;--bad-bg:#fee2e2;--c-mat:#6366f1;--c-lab:#14b8a6;--c-ovh:#f59e0b;--tint:rgba(79,70,229,.06)}
+@media (prefers-color-scheme:dark){:root{--warn:#fbbf24;--warn-bg:rgba(251,191,36,.13);--good:#4ade80;--good-bg:rgba(74,222,128,.13);--bad:#f87171;--bad-bg:rgba(248,113,113,.13);--c-mat:#818cf8;--c-lab:#2dd4bf;--c-ovh:#fbbf24;--tint:rgba(129,140,248,.08)}}
+main{max-width:1060px}
+h2{font-size:1.15rem;margin:0 0 10px}
+h3{font-size:1rem;margin:16px 0 8px}
+.card>h3:first-child,.card>h2:first-child{margin-top:0}
+.small{font-size:.85rem}
+.hint{color:var(--muted);font-size:.85rem;margin:8px 0 0}
+.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+th.n{text-align:right}
+th{font-size:.8rem;color:var(--muted);font-weight:600}
+input,select,textarea{min-width:0}
+input[type=range]{padding:0;border:0;background:transparent;accent-color:var(--accent);height:28px}
+input[type=checkbox]{width:18px;height:18px;padding:0;margin:0;accent-color:var(--accent);flex:none}
+button.sm,.btn.sm{padding:6px 10px;font-size:.85rem}
+.btn{display:inline-block;padding:10px 14px;border-radius:8px;border:1px solid var(--line);font-weight:600;cursor:pointer;color:var(--ink);margin:0;font-size:1rem;line-height:1.5}
+.linkbtn{background:none;border:0;padding:0;color:var(--accent);font-weight:600;text-decoration:underline;cursor:pointer;font-size:inherit;text-align:left}
+.pay-toast.mm{pointer-events:none}
+.vh{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+.btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.grid2,.grid3,.grid4{display:grid;gap:12px}
+.grid2{grid-template-columns:repeat(auto-fill,minmax(200px,1fr))}
+.grid3{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+.grid4{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}
+.check{display:flex;gap:8px;align-items:center;color:var(--ink);font-size:.95rem;margin:12px 0 0;cursor:pointer}
+/* header and tabs */
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+.brand{display:flex;gap:10px;align-items:center;min-width:0}
+.brand svg{flex:none}
+.brand h1{margin:0;font-size:1.45rem;line-height:1.2}
+.brand p{margin:0;color:var(--muted);font-size:.9rem}
+#getPro{flex:none}
+.tabs{position:sticky;top:0;z-index:40;display:flex;gap:4px;overflow-x:auto;background:var(--bg);margin:0 -16px 16px;padding:8px 16px;border-bottom:1px solid var(--line);scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tabs a{flex:none;padding:8px 12px;border-radius:8px;color:var(--ink);text-decoration:none;font-weight:600;font-size:.95rem;white-space:nowrap}
+.tabs a:hover{background:var(--tint)}
+.tabs a[aria-current=page]{background:var(--accent);color:var(--accent-ink)}
+.tabs a[aria-current=page] .pro-badge{background:var(--accent-ink);color:var(--accent)}
+body.is-pro .tabs .pro-badge,body.is-pro .pro-badge.hide-pro{display:none}
+.banner,.warnbox,.note{border-radius:10px;padding:10px 12px;margin-bottom:12px;color:var(--ink)}
+.banner{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;background:var(--warn-bg);border:1px solid var(--warn)}
+.warnbox{background:var(--warn-bg);border:1px solid var(--warn)}
+.note{background:var(--tint);border:1px solid var(--line)}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px}
+.toolbar input[type=search]{flex:1 1 180px;width:auto}
+.toolbar h2{margin:0}
+.count{font-weight:600}
+.count.full{color:var(--warn)}
+.empty{text-align:center;padding:28px 16px}
+.empty p{color:var(--muted);margin:0 0 12px}
+/* first run */
+.hero{padding:24px 20px;background:linear-gradient(135deg,var(--tint),transparent 70%),var(--card)}
+.hero h2{font-size:1.5rem;margin:0 0 6px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+.chip{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:10px 18px;font-weight:600}
+.chip:hover{border-color:var(--accent);color:var(--accent)}
+.chip.alt{border-style:dashed;color:var(--muted)}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:0;padding:0;list-style:none;counter-reset:s}
+.steps li{counter-increment:s;padding-left:34px;position:relative;font-size:.92rem;color:var(--muted)}
+.steps li b{color:var(--ink);display:block}
+.steps li::before{content:counter(s);position:absolute;left:0;top:0;width:24px;height:24px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-weight:700;font-size:.8rem}
+/* product list */
+.plist{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.pcard{display:block;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;color:inherit;text-decoration:none;transition:border-color .1s,transform .1s}
+.pcard:hover{border-color:var(--accent);transform:translateY(-1px)}
+.pc-top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.pc-name{min-width:0;overflow-wrap:anywhere}
+.pc-name span{display:block}
+.pc-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:12px}
+.pc-stats span{display:block;font-size:.75rem;color:var(--muted)}
+.pc-stats b{display:block;text-align:left;font-size:1rem}
+.mb{display:inline-block;padding:2px 9px;border-radius:999px;font-weight:700;font-size:.8rem;font-variant-numeric:tabular-nums;background:var(--line);color:var(--ink);white-space:nowrap}
+.mb.good{background:var(--good-bg);color:var(--good)}
+.mb.warn{background:var(--warn-bg);color:var(--warn)}
+.mb.bad{background:var(--bad-bg);color:var(--bad)}
+.tag{display:inline-block;font-size:.7rem;font-weight:600;padding:1px 7px;border-radius:999px;background:var(--warn-bg);color:var(--warn);vertical-align:middle;margin-left:4px}
+/* editor */
+.ed-head{display:flex;align-items:center;gap:12px;margin-bottom:12px;min-width:0}
+.ed-head h2{margin:0;font-size:1.3rem;overflow-wrap:anywhere;min-width:0}
+.back{flex:none;text-decoration:none;font-weight:600;padding:6px 10px;border:1px solid var(--line);border-radius:8px;color:var(--ink)}
+.editor{display:grid;grid-template-columns:minmax(0,1fr);gap:0 16px}
+@media (min-width:900px){
+  .editor{grid-template-columns:minmax(0,1fr) 360px;grid-template-rows:auto auto auto auto 1fr}
+  .ed-results{grid-column:2;grid-row:1/6;position:sticky;top:60px;align-self:start;max-height:calc(100vh - 68px);overflow:auto;scrollbar-width:thin}
+  .ed-basics{grid-row:1}.ed-recipe{grid-row:2}.ed-labour{grid-row:3}.ed-actions{grid-row:4}
+}
+.ed-actions{margin-bottom:16px}
+.label{font-size:.85rem;color:var(--muted)}
+#rCost{font-size:2.3rem;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums;text-align:left}
+.bar{display:flex;height:12px;border-radius:999px;overflow:hidden;background:var(--line);margin:12px 0 8px}
+.bar span{display:block;height:100%}
+.b-mat{background:var(--c-mat)}.b-lab{background:var(--c-lab)}.b-ovh{background:var(--c-ovh)}
+.legend{list-style:none;padding:0;margin:0;display:grid;gap:2px;font-size:.9rem}
+.legend li{display:flex;align-items:center;gap:8px}
+.legend i{width:10px;height:10px;border-radius:3px;flex:none}
+.legend b{margin-left:auto;font-variant-numeric:tabular-nums}
+details.how{margin-top:10px;font-size:.88rem}
+details.how summary{cursor:pointer;color:var(--accent);font-weight:600}
+.how-list{padding-left:18px;margin:8px 0 0;color:var(--muted)}
+.how-list b{color:var(--ink)}
+.sug{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
+.sug small{display:block;font-size:.75rem}
+.sug .n{font-weight:700;font-size:1.05rem}
+.whatif{margin-top:12px}
+#rWhat{font-size:.9rem;display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.kv td{padding:5px 0;border-bottom:1px solid var(--line)}
+.kv tr.sub td{font-weight:600}
+.kv tr.total td{font-weight:800;font-size:1.15rem;border-bottom:0;padding-top:8px}
+.kv td:first-child{padding-right:10px}
+.chtab{font-size:.85rem}
+.chtab th,.chtab td{padding:6px 4px}
+tr.below td,tr.below td small{color:var(--bad)}
+.lines-head,.line{display:grid;grid-template-columns:minmax(0,1fr) 62px 72px 108px 60px 68px 30px;gap:6px;align-items:center}
+.lines-head{font-size:.75rem;color:var(--muted);margin-bottom:4px}
+.line{margin-bottom:6px}
+.line input,.line select{padding:7px 6px;font-size:.92rem}
+.l-waste{position:relative;margin:0;display:block}
+.l-waste input{padding-right:18px}
+.l-waste span{position:absolute;right:6px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.8rem}
+.l-x{padding:6px 0}
+.l-cost{font-size:.9rem}
+@media (max-width:640px){
+  .lines-head{display:none}
+  .line{grid-template-columns:repeat(4,minmax(0,1fr));grid-template-areas:"m m m x" "q u p p" "w w c c";padding:10px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px}
+  .l-mat{grid-area:m}.l-qty{grid-area:q}.l-unit{grid-area:u}.l-per{grid-area:p}.l-waste{grid-area:w}.l-cost{grid-area:c;font-weight:700}.l-x{grid-area:x}
+  .l-waste span::after{content:" waste"}
+  .l-waste input{padding-right:58px}
+}
+.matform{border:1px solid var(--accent);border-radius:12px;padding:14px;margin:12px 0;background:var(--card)}
+.matform h3{margin-top:0}
+.matform .row{margin-bottom:10px}
+.err{color:var(--bad);font-size:.88rem;min-height:0}
+.hist summary{cursor:pointer;color:var(--accent);font-size:.82rem;font-weight:600}
+.hist ul{margin:4px 0 0;padding-left:18px;font-size:.82rem;color:var(--muted)}
+.ripple{border-color:var(--accent)}
+/* locked previews */
+.locked{opacity:.85}
+.locked-card{border-style:dashed;border-color:var(--accent)}
+.blurwrap{filter:blur(3.5px);opacity:.75;pointer-events:none;user-select:none;overflow:hidden;margin:10px 0 14px}
+.blurwrap table{font-size:.85rem}
+.chan-preview{margin:8px 0 14px;padding-left:20px}
+.chan{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px}
+.chan.off{opacity:.6}
+.chan-head{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+.chan-name{font-weight:700;padding:6px 8px;background:transparent;border-color:transparent}
+.chan-name:hover,.chan-name:focus{border-color:var(--line);background:var(--bg)}
+.chan .grid4{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+/* plan + profit */
+.plan-head,.prow{display:grid;grid-template-columns:minmax(0,1fr) 110px 40px;gap:8px;align-items:center}
+.plan-head{font-size:.75rem;color:var(--muted);margin-bottom:4px}
+.prow{margin-bottom:8px}
+.prow button{padding:8px 0}
+.totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.totals div{background:var(--tint);border-radius:10px;padding:12px}
+.totals span{display:block;font-size:.8rem;color:var(--muted)}
+.totals b{font-size:1.35rem;font-variant-numeric:tabular-nums}
+.drop{display:flex;flex-direction:column;align-items:center;gap:2px;border:2px dashed var(--line);border-radius:12px;padding:26px 16px;text-align:center;cursor:pointer;color:var(--ink);font-size:1rem;margin:12px 0 0}
+.drop:hover,.drop.over{border-color:var(--accent);background:var(--tint)}
+.drop:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.mapper{border:1px solid var(--accent);border-radius:12px;padding:14px;margin-top:12px}
+.mapper h3{margin-top:0}
+.scroll{overflow-x:auto}
+.rep{font-size:.88rem}
+.rep th,.rep td{padding:7px 5px}
+tr.tot td{font-weight:700;border-top:2px solid var(--line)}
+.est{color:var(--warn);font-weight:600;font-size:.75rem}
+.taxline{background:var(--tint);border-radius:10px;padding:10px 12px;margin:12px 0}
+.disclaimer{font-size:.82rem;color:var(--muted);margin:10px 0 0}
+.kv.year td{padding:7px 0}
+/* stacked tables on phones */
+@media (max-width:560px){
+  table.stack thead{display:none}
+  table.stack,table.stack tbody,table.stack tr,table.stack td{display:block;width:100%}
+  table.stack tr{border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin-bottom:8px}
+  table.stack td{display:flex;justify-content:space-between;align-items:baseline;gap:12px;border:0;padding:3px 0;text-align:right;white-space:normal}
+  table.stack td::before{content:attr(data-label);color:var(--muted);text-align:left;font-size:.82rem;flex:none;max-width:55%}
+  table.stack td.lead{display:block;text-align:left;font-size:1rem;padding-bottom:4px}
+  table.stack td.lead::before{display:none}
+  table.stack td.acts{justify-content:flex-end}
+  table.stack td.c-map select{flex:1 1 auto;width:auto;max-width:70%}
+  table.stack td.acts::before{display:none}
+  tr.tot td{border-top:0}
+  .rep,.chtab{font-size:.92rem}
+}
+@media (max-width:420px){.brand p{display:none}.brand h1{font-size:1.25rem}.brand svg{width:32px;height:32px}#getPro{padding:7px 9px;font-size:.8rem}.top{gap:8px}}
+/* print */
+#sheet{display:none}
+@media print{
+  :root{--bg:#fff;--card:#fff;--ink:#000;--muted:#444;--line:#bbb;--accent:#000;--accent-ink:#fff;--good:#000;--bad:#000;--warn:#000;--tint:transparent;--warn-bg:transparent;--good-bg:transparent;--bad-bg:transparent}
+  body{background:#fff;color:#000}
+  body.sheet-mode main{display:none!important}
+  body.sheet-mode #sheet{display:block}
+  main{max-width:none;padding:0}
+  .tabs,#banner,#notice,#getPro,.ed-actions,.l-x,button{display:none!important}
+  .editor{display:block}
+  .ed-results{position:static;max-height:none;overflow:visible}
+  .card{break-inside:avoid}
+  input,select{border:0;padding:0;background:none;color:#000;appearance:none}
+  a{color:#000;text-decoration:none}
+  @page{margin:14mm}
+}
+.sh{font:11pt/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#000;background:#fff}
+.sh-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:12px}
+.sh h1{font-size:18pt;margin:0;color:#000}
+.sh h2{font-size:12pt;margin:14px 0 4px;color:#000}
+.sh-sub{color:#444;font-size:10pt}
+.sh-biz{font-weight:700;font-size:12pt;text-align:right}
+.sh table{width:100%;border-collapse:collapse;margin:6px 0 10px}
+.sh th,.sh td{border-bottom:1px solid #bbb;padding:5px 6px;color:#000;text-align:left;font-size:10pt}
+.sh th{font-weight:700;border-bottom:1.5px solid #000}
+.sh .n{text-align:right}
+.sh .total td,.sh tr.tot td{font-weight:700;border-top:1.5px solid #000}
+.sh p{margin:6px 0;color:#000}
+.sh-foot{margin-top:28px;text-align:center;color:#555!important;font-size:9pt}
+.sh-note{font-size:9pt;color:#444!important}
+.sh table.sum{max-width:480px}
+.sh table.wide th,.sh table.wide td{font-size:8.5pt;padding:4px 3px}
+</style></head>
+<body><main>
+<header class="top">
+  <div class="brand">
+    <svg width="38" height="38" viewBox="0 0 36 36" aria-hidden="true"><rect width="36" height="36" rx="9" style="fill:var(--accent)"/><path d="M9 10h9l8.5 8.5L18 27 9 18.5z" fill="none" style="stroke:var(--accent-ink)" stroke-width="2.4" stroke-linejoin="round"/><circle cx="13.5" cy="14.5" r="1.9" style="fill:var(--accent-ink)"/></svg>
+    <div><h1>MakerMargin</h1><p>Know your cost. Price with confidence. See what you really keep.</p></div>
+  </div>
+  <button class="ghost sm noprint" id="getPro" data-act="getPro">Get Pro</button>
+</header>
+<nav class="tabs noprint" id="tabs" aria-label="Sections">
+  <a href="#products" data-tab="products">Products</a>
+  <a href="#materials" data-tab="materials">Materials</a>
+  <a href="#fees" data-tab="fees">Fees</a>
+  <a href="#plan" data-tab="plan">Plan <span class="pro-badge">PRO</span></a>
+  <a href="#profit" data-tab="profit">Profit <span class="pro-badge">PRO</span></a>
+  <a href="#backup" data-tab="backup">Backup</a>
+</nav>
+<div id="banner"></div>
+<div id="notice"></div>
+<div id="view"></div>
+<p class="muted noprint small" style="margin-top:24px">Your data stays in this browser. More free tools: <a href="./">all apps</a></p>
+</main>
+<div id="sheet"></div>
+<script src="pay.js"></script>
+<script>
+'use strict';
+// ---------- basics ----------
+const $=id=>document.getElementById(id);
+const KEY='makermargin.v1',DAY=864e5,EPS=1e-9,FREE={materials:20,products:5};
+const esc=t=>String(t??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+const dict=()=>Object.create(null);
+const pad=n=>String(n).padStart(2,'0');
+const today=()=>{const d=new Date();return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`};
+const fmtDate=t=>t?new Date(t).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}):'–';
+const MONS=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+const monthLabel=ym=>new Date(+ym.slice(0,4),+ym.slice(5,7)-1,1).toLocaleDateString(undefined,{month:'short',year:'numeric'});
+
+// Units convert to a base of g, ml or each. Maths stays unrounded; only display rounds.
+const UNITS={g:['w',1],kg:['w',1000],oz:['w',28.349523125],lb:['w',453.59237],ml:['v',1],l:['v',1000],'fl oz':['v',29.5735295625],cup:['v',236.5882365],tbsp:['v',14.78676478],tsp:['v',4.92892159],each:['c',1],dozen:['c',12]};
+const FAMS={w:'Weight',v:'Volume',c:'Count'};
+const isUnit=u=>typeof u==='string'&&Object.hasOwn(UNITS,u);
+const fam=u=>(isUnit(u)?UNITS[u]:UNITS.each)[0];
+const base=u=>(isUnit(u)?UNITS[u]:UNITS.each)[1];
+const unitsIn=f=>Object.keys(UNITS).filter(u=>UNITS[u][0]===f);
+const SMALLER={lb:'oz',kg:'g',l:'ml',dozen:'each'};
+const defUnit=u=>SMALLER[u]||u;
+
+// Accepts "1,234.50", "1,5", "$3.12", "-$3.12", "(3.12)" and "--" (zero for money).
+function parseNum(v){
+  if(typeof v==='number')return isFinite(v)?v:NaN;
+  let s=String(v??'').trim().replace(/[\s '’]/g,'');
+  if(!s)return NaN;
+  let neg=false;
+  if(/^\(.*\)$/.test(s)){neg=true;s=s.slice(1,-1)}
+  if(/^[^\d]*-/.test(s)||/-$/.test(s))neg=true;
+  s=s.replace(/[^\d.,]/g,'');
+  if(!/\d/.test(s))return NaN;
+  if(s.includes(',')&&s.includes('.')){s=s.lastIndexOf(',')>s.lastIndexOf('.')?s.replace(/\./g,'').replace(',','.'):s.replace(/,/g,'')}
+  else if(s.includes(',')){const p=s.split(',');s=p.length===2&&!(p[1].length===3&&p[0]!==''&&p[0]!=='0')?p.join('.'):p.join('')}
+  if((s.match(/\./g)||[]).length>1)s=s.replace(/\./g,'');
+  const n=parseFloat(s);return isFinite(n)?(neg?-n:n):NaN;
+}
+const money0=v=>{const n=parseNum(v);return isFinite(n)?n:0};
+const fmtQ=n=>{n=+n||0;return n.toLocaleString(undefined,{maximumFractionDigits:Math.abs(n)<1&&n!==0?3:2})};
+const fmtIn=n=>n==null||!isFinite(n)?'':String(Math.round(n*1e6)/1e6);
+const fmtMoneyIn=n=>n==null||!isFinite(n)?'':Math.abs(n*100-Math.round(n*100))<1e-9?n.toFixed(2):fmtIn(n);
+const cleanCur=v=>String(v??'').replace(/[<>&"'`\\\u0000-\u001f]/g,'').trim().slice(0,4);
+const cur=()=>D.settings.currency||'$';
+function money(n,dp){
+  n=+n||0;dp=dp??2;const k=10**dp,r=Math.round(Math.abs(n)*k)/k;
+  return esc((n<0&&r>0?'-':'')+cur()+r.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:dp}));
+}
+const moneyU=n=>money(n,n<1?4:2);
+const neg=n=>{const r=Math.round(n*100);return r>0?'−'+money(n):r<0?'+'+money(-n):money(0)};
+const pct=m=>esc(((+m||0)*100).toFixed(1)+'%');
+
+// ---------- defaults, kits ----------
+const ETSY_PRESETS={US:{listing:.20,txPct:6.5,procPct:3,fixed:.25,cur:'$',label:'United States'},UK:{listing:.16,txPct:6.5,procPct:4,fixed:.20,cur:'£',label:'United Kingdom'},EU:{listing:.18,txPct:6.5,procPct:4,fixed:.30,cur:'€',label:'Euro countries'}};
+const CH_BLANK={id:'',name:'Custom channel',pct:0,fixed:0,listing:0,minFee:0,extraPct:0,useExtra:false,basis:'retail',boothFee:0,expectedSales:0,on:true};
+const CH_DEFAULTS=[
+  {...CH_BLANK,id:'etsy',name:'Etsy',region:'US',listing:.20,txPct:6.5,procPct:3,pct:9.5,fixed:.25,extraPct:15},
+  {...CH_BLANK,id:'shopify',name:'Shopify',pct:2.9,fixed:.30},
+  {...CH_BLANK,id:'amazon',name:'Amazon Handmade',pct:15,minFee:1},
+  {...CH_BLANK,id:'fair',name:'Craft fair / card reader',pct:2.6,fixed:.15},
+  {...CH_BLANK,id:'wholesale',name:'Wholesale',basis:'wholesale'}];
+const CH_FIELDS={shopify:['pct','fixed'],amazon:['pct','minFee'],fair:['pct','fixed','boothFee','expectedSales'],wholesale:['pct','basis'],custom:['pct','fixed','listing','minFee','boothFee','expectedSales','basis']};
+const FIELD_LABEL={pct:'Fee %',fixed:'Fixed fee per sale',listing:'Listing fee',minFee:'Minimum fee',boothFee:'Booth fee',expectedSales:'Expected sales',basis:'Price used'};
+// [name, pack price, pack size, pack unit]; lines: [material index, qty, unit, 'batch'|'unit', waste %]
+const KITS={
+  candle:{label:'Candles',mats:[['Soy wax',32,10,'lb'],['Fragrance oil',28,16,'oz'],['Cotton wicks',9,100,'each'],['8 oz amber jar',21,12,'each'],['Labels',14,100,'each']],
+    product:{name:'8 oz Soy Candle',sku:'CAN-8',yield:12,laborMin:60,price:24,lines:[[0,72,'oz','batch'],[1,6,'oz','batch'],[2,1,'each','unit'],[3,1,'each','unit'],[4,1,'each','unit']]}},
+  soap:{label:'Soap',mats:[['Olive oil',35,7,'lb'],['Coconut oil',28,7,'lb'],['Shea butter',10,1,'lb'],['Lye (sodium hydroxide)',14,2,'lb'],['Fragrance oil',28,16,'oz'],['Bar wrap',12,100,'each']],
+    product:{name:'Lavender Cold Process Soap',sku:'SOAP-LAV',yield:12,laborMin:60,price:10,lines:[[0,16,'oz','batch'],[1,10,'oz','batch'],[2,4,'oz','batch'],[3,4.3,'oz','batch'],[4,1.5,'oz','batch',5],[5,1,'each','unit']]}},
+  cookies:{label:'Cookies & cakes',mats:[['All-purpose flour',4.5,5,'lb'],['Butter',4.8,1,'lb'],['Sugar',3.6,4,'lb'],['Eggs',4.2,1,'dozen'],['Cookie box',15,25,'each'],['Logo sticker',8,100,'each']],
+    product:{name:'Brown Butter Cookie',sku:'CK-BB',yield:24,laborMin:75,price:4,lines:[[0,280,'g','batch'],[1,227,'g','batch'],[2,300,'g','batch'],[3,2,'each','batch'],[4,1,'each','unit'],[5,1,'each','unit']]}},
+  jewelry:{label:'Jewelry',mats:[['18 in. plated chain',30,12,'each'],['Lobster clasp',9,50,'each'],['Glass beads',12,100,'each'],['Jump rings',6,200,'each'],['Display card',10,100,'each'],['Organza bag',11,100,'each']],
+    product:{name:'Beaded Pendant Necklace',sku:'JW-NECK',yield:1,laborMin:25,price:38,lines:[[0,1,'each','unit'],[1,1,'each','unit'],[2,12,'each','unit'],[3,2,'each','unit'],[4,1,'each','unit'],[5,1,'each','unit']]}},
+  resin:{label:'Resin',mats:[['Epoxy resin kit',45,64,'fl oz'],['Mica pigment',12,50,'g'],['Coaster mold (lasts ~50 pours)',16,1,'each'],['Cork backing pad',8,100,'each'],['Gift bag',13,100,'each']],
+    product:{name:'Resin Coaster',sku:'RS-COAST',yield:4,laborMin:40,price:15,lines:[[0,8,'fl oz','batch',10],[1,2,'g','batch'],[2,0.02,'each','unit'],[3,1,'each','unit'],[4,1,'each','unit']]}}};
+const KIT_ALIAS={candles:'candle',soaps:'soap',cookie:'cookies',cake:'cookies',cakes:'cookies',bakery:'cookies',jewellery:'jewelry',jewelery:'jewelry'};
+const R={cap:'Unlimited products and materials. The free plan includes 5 products and 20 materials.',
+  ch:'See your profit on every channel side by side: Etsy, Etsy with Offsite Ads, Shopify, Amazon Handmade, craft fairs, wholesale and your own channels.',
+  ripple:'See which products just fell below your target margin every time a supplier changes a price.',
+  hist:'Keep a price history for every material, so you can see how supplier prices move.',
+  plan:'Plan a production run: batches, a shopping list in whole packs, leftovers, total spend and expected profit.',
+  profit:'Import your Etsy CSV files to see true profit per listing and per month, plus a year-end summary for tax time.',
+  sheet:'Print a clean price list or wholesale line sheet with your business name, SKUs, wholesale prices and MSRP.'};
+const PANEL={name:'MakerMargin Pro',price:'$24 once',perks:['Unlimited products and materials','Profit on every channel: Etsy, Shopify, Amazon Handmade, craft fairs, wholesale','Price-change alerts and batch shopping lists','Etsy CSV true-profit and year-end report','Printable price list and wholesale line sheet'],note:'Pay once. Your data and your Etsy files never leave this browser.'};
+
+// ---------- loading and validating stored data ----------
+const obj=v=>v&&typeof v==='object'&&!Array.isArray(v)?v:{};
+const arr=(v,max)=>Array.isArray(v)?v.slice(0,max):[];
+const objs=(v,max)=>arr(v,max).filter(x=>x&&typeof x==='object'&&!Array.isArray(x));
+const str=(v,max=120)=>typeof v==='string'?v.replace(/[\u0000-\u001f\u007f]/g,' ').slice(0,max):(typeof v==='number'&&isFinite(v)?String(v).slice(0,max):'');
+const nr=(v,min,max,def)=>{if(v==null||typeof v==='boolean'||typeof v==='object')return def;const n=parseNum(v);return isFinite(n)?Math.min(max,Math.max(min,n)):def};
+const ts=v=>{if(typeof v==='string')v=Date.parse(v);return typeof v==='number'&&isFinite(v)&&v>0&&v<4e12?v:null};
+const okId=v=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,40}$/.test(v);
+const YM=/^\d{4}-(0[1-9]|1[0-2])$/;
+
+function chan(o,d){
+  o=obj(o);
+  const c={id:d.id,name:str(o.name,40).trim()||d.name,pct:nr(o.pct,0,100,d.pct),fixed:nr(o.fixed,0,1e4,d.fixed),listing:nr(o.listing,0,1e4,d.listing),
+    minFee:nr(o.minFee,0,1e4,d.minFee),extraPct:nr(o.extraPct,0,100,d.extraPct),useExtra:typeof o.useExtra==='boolean'?o.useExtra:d.useExtra,
+    basis:o.basis==='wholesale'||o.basis==='retail'?o.basis:d.basis,boothFee:nr(o.boothFee,0,1e7,d.boothFee),expectedSales:nr(o.expectedSales,0,1e7,d.expectedSales),
+    on:typeof o.on==='boolean'?o.on:d.on};
+  if(d.id==='etsy'){c.region=Object.hasOwn(ETSY_PRESETS,o.region)?o.region:d.region;c.txPct=nr(o.txPct,0,100,d.txPct);c.procPct=nr(o.procPct,0,100,d.procPct);c.pct=c.txPct+c.procPct;c.minFee=0;c.on=true;c.basis='retail'}
+  return c;
+}
+function sanitize(raw){
+  raw=obj(raw);const s=obj(raw.settings);
+  const settings={business:str(s.business,80),currency:cleanCur(s.currency)||'$',hourly:nr(s.hourly,0,1e5,20),overheadPct:nr(s.overheadPct,0,500,10),
+    targetMargin:nr(s.targetMargin,0,99,50),wholesaleX:nr(s.wholesaleX,.1,100,2),retailX:nr(s.retailX,.1,100,2),
+    ending:['none','.00','.95','.99'].includes(s.ending)?s.ending:'none',lastBackup:ts(s.lastBackup),changedAt:ts(s.changedAt),createdAt:ts(s.createdAt),snooze:ts(s.snooze)};
+  const seen=new Set(),fresh=id=>{const x=okId(id)&&!seen.has(id)?id:uid()+seen.size;seen.add(x);return x};
+  const materials=objs(raw.materials,5000).map(m=>{m=obj(m);const unit=isUnit(m.packUnit)?m.packUnit:'each';
+    return{id:fresh(m.id),name:str(m.name).trim()||'Material',supplier:str(m.supplier),packPrice:nr(m.packPrice,0,1e7,0),packSize:nr(m.packSize,0,1e9,1)||1,packUnit:unit,
+      updated:ts(m.updated),example:m.example===true,
+      history:objs(m.history,100).map(h=>{h=obj(h);return{date:ts(h.date)||0,packPrice:nr(h.packPrice,0,1e7,0),packSize:nr(h.packSize,1e-6,1e9,null),packUnit:isUnit(h.packUnit)?h.packUnit:null}})}});
+  const mats=new Map(materials.map(m=>[m.id,m]));
+  const products=objs(raw.products,5000).map(p=>{p=obj(p);
+    return{id:fresh(p.id),name:str(p.name).trim()||'Untitled product',sku:str(p.sku,64).trim(),yield:nr(p.yield,0,1e6,1)||1,
+      lines:objs(p.lines,100).map(l=>{l=obj(l);const m=mats.get(l.matId);let unit=isUnit(l.unit)?l.unit:'each';if(m&&fam(unit)!==fam(m.packUnit))unit=defUnit(m.packUnit);
+        return{matId:m?m.id:'',qty:nr(l.qty,0,1e9,0),unit,per:l.per==='unit'?'unit':'batch',waste:nr(l.waste,0,500,0)}}),
+      laborMin:nr(p.laborMin,0,1e6,0),hourly:p.hourly==null||p.hourly===''?null:nr(p.hourly,0,1e5,null),price:nr(p.price,0,1e9,0),shipCharge:nr(p.shipCharge,0,1e9,0)}});
+  const rawCh=objs(raw.channels,60);
+  const channels=CH_DEFAULTS.map(d=>chan(rawCh.find(c=>c.id===d.id),d));
+  for(const c of rawCh)if(okId(c.id)&&c.id.startsWith('c_')&&!channels.some(x=>x.id===c.id))channels.push(chan(c,{...CH_BLANK,id:c.id}));
+  const sl=obj(raw.sales),sales={lines:dict(),months:dict(),statement:dict(),map:dict()};
+  let n=0;
+  for(const [k,v] of Object.entries(obj(sl.lines))){if(++n>50000)break;if(!/^\d{4}-(0[1-9]|1[0-2])\|[^]{1,260}$/.test(k))continue;const o=obj(v);
+    sales.lines[k]={name:str(o.name,200),sku:str(o.sku,64),units:nr(o.units,-1e7,1e7,0),items:nr(o.items,-1e10,1e10,0),disc:nr(o.disc,-1e10,1e10,0)}}
+  for(const [k,v] of Object.entries(obj(sl.months)))if(YM.test(k)){const o=obj(v);sales.months[k]={ship:nr(o.ship,-1e10,1e10,0),tax:nr(o.tax,-1e10,1e10,0),estFees:nr(o.estFees,-1e10,1e10,0)}}
+  for(const [k,v] of Object.entries(obj(sl.statement)))if(YM.test(k)){const o=obj(v),g=f=>nr(o[f],-1e10,1e10,0);sales.statement[k]={fees:g('fees'),ads:g('ads'),postage:g('postage'),refunds:g('refunds'),tax:g('tax'),other:g('other'),otherCount:nr(o.otherCount,0,1e7,0)}}
+  for(const [k,v] of Object.entries(obj(sl.map)))if(k.length<=260&&(v==='ignore'||okId(v)))sales.map[k]=v;
+  const pl=obj(raw.plan);
+  const plan={rows:objs(pl.rows,100).map(r=>{r=obj(r);return{productId:okId(r.productId)?r.productId:'',qty:nr(r.qty,0,1e6,0)}}),channel:typeof pl.channel==='string'&&pl.channel.length<50?pl.channel:'etsy'};
+  return{v:1,settings,materials,products,channels,sales,plan};
+}
+function load(){let raw=null;try{raw=JSON.parse(localStorage.getItem(KEY))}catch{}return sanitize(raw&&raw.v===1?raw:{})}
+
+let D=load();
+let ui={tab:'products',edit:null,matForm:null,matErr:'',ripple:null,teaser:0,mapper:[],lineSheet:false,kitOffer:null,q:'',year:null,inlineMat:null,focus:null};
+let persistAsked=false,saveWarned=false;
+function save(){
+  const now=Date.now();D.settings.changedAt=now;if(!D.settings.createdAt)D.settings.createdAt=now;
+  try{localStorage.setItem(KEY,JSON.stringify(D))}catch{if(!saveWarned){saveWarned=true;toast('Could not save in this browser (storage is full or blocked). Download a backup to keep your work.')}return}
+  if(!persistAsked){persistAsked=true;try{const p=navigator.storage&&navigator.storage.persist&&navigator.storage.persist();if(p&&p.catch)p.catch(()=>{})}catch{}}
+}
+const hasData=()=>D.materials.length>0||D.products.length>0;
+
+const proPanel=document.createElement('div');
+const pro=Pay.init('makermargin-pro',{onChange:render,panel:PANEL});
+pro.renderPanel(proPanel,PANEL);
+const gate=reason=>{if(pro.isPro())return true;pro.upsell(reason);return false};
+
+// ---------- calculations ----------
+const matById=id=>D.materials.find(m=>m.id===id);
+const prodById=id=>D.products.find(p=>p.id===id);
+const chById=id=>D.channels.find(c=>c.id===id);
+const perBase=m=>m.packPrice/(m.packSize*base(m.packUnit));
+const lineUnit=(l,m)=>fam(l.unit)===fam(m.packUnit)?l.unit:defUnit(m.packUnit);
+function lineCost(l){const m=matById(l.matId);return m?l.qty*base(lineUnit(l,m))*perBase(m)*(1+l.waste/100):0}
+function costs(p){
+  const y=p.yield>0?p.yield:1;let batch=0,item=0;
+  for(const l of p.lines){const c=lineCost(l);if(l.per==='unit')item+=c;else batch+=c}
+  const materials=batch/y+item,hourly=p.hourly==null?D.settings.hourly:p.hourly,labour=p.laborMin/60*hourly/y,overhead=(materials+labour)*D.settings.overheadPct/100;
+  return{batch,item,y,materials,hourly,labour,overhead,unit:materials+labour+overhead};
+}
+// Rounds a price up to the chosen ending (.00/.95/.99) or, with 'none', up to the next cent.
+function endUp(x){
+  if(!(x>0))return 0;const e=D.settings.ending;
+  if(e==='none')return Math.ceil(x*100-1e-6)/100;
+  let v=Math.floor(x)+parseFloat('0'+e);if(v<x-1e-9)v+=1;return Math.round(v*100)/100;
+}
+const sugg=c=>({wholesale:endUp(c.unit*D.settings.wholesaleX),retail:endUp(c.unit*D.settings.wholesaleX*D.settings.retailX),triple:endUp(c.unit*3)});
+function fees(ch,price,ship,ads){
+  const b=price+ship,etsy=ch.id==='etsy',rate=etsy?ch.txPct+ch.procPct:ch.pct,pctFee=Math.max(ch.minFee,rate/100*b);
+  const extra=(ads??ch.useExtra)?ch.extraPct/100*b:0,booth=ch.boothFee>0&&ch.expectedSales>0?ch.boothFee/ch.expectedSales:0;
+  return{listing:ch.listing,tx:etsy?ch.txPct/100*b:0,proc:etsy?ch.procPct/100*b+ch.fixed:0,pctFee,fixed:ch.fixed,extra,booth,total:ch.listing+pctFee+ch.fixed+extra+booth,minApplied:ch.minFee>0&&ch.minFee>rate/100*b};
+}
+function calc(p,ch,price,ads){
+  const c=costs(p),wh=ch.basis==='wholesale';
+  if(price==null||!isFinite(price))price=wh?sugg(c).wholesale:(p.price>0?p.price:sugg(c).retail);
+  const ship=wh?0:p.shipCharge,f=fees(ch,price,ship,ads),net=price-f.total-c.unit;
+  return{c,price,ship,f,net,margin:price>0?net/price:0,pph:p.laborMin>0?net*c.y/(p.laborMin/60):null};
+}
+const etsyCalc=(p,price)=>{const E=chById('etsy');return calc(p,E,price??p.price,E.useExtra)};
+function chanRows(){const E=chById('etsy');return[{id:'etsy',label:'Etsy',ch:E,ads:false},{id:'etsy-ads',label:'Etsy + Offsite Ads',ch:E,ads:true},
+  ...D.channels.filter(c=>c.id!=='etsy'&&c.on).map(c=>({id:c.id,label:c.name,ch:c}))]}
+const mClass=m=>{const t=D.settings.targetMargin;return m*100>=t-1e-9?'good':m*100>=t-10?'warn':'bad'};
+const badge=m=>`<span class="mb ${mClass(m)}">${pct(m)}</span>`;
+function planCalc(rows,chId){
+  rows=arr(rows,500).map(r=>Array.isArray(r)?{productId:r[0],qty:r[1]}:obj(r));
+  const out={rows:[],shopping:[],spend:0,revenue:0,profit:0},need=new Map(),list=chanRows(),cr=list.find(r=>r.id===chId)||list[0];
+  for(const r of rows){
+    const p=prodById(r.productId),qty=Math.max(0,Math.round(+r.qty||0));if(!p||!qty)continue;
+    const y=p.yield>0?p.yield:1,batches=Math.ceil(qty/y-EPS),makes=batches*y,x=calc(p,cr.ch,undefined,cr.ads);
+    out.rows.push({productId:p.id,name:p.name,qty,batches,makes,spare:makes-qty,price:x.price,net:x.net});
+    out.revenue+=qty*x.price;out.profit+=qty*x.net;
+    for(const l of p.lines){const m=matById(l.matId);if(!m)continue;
+      need.set(m.id,(need.get(m.id)||0)+l.qty*base(lineUnit(l,m))*(1+l.waste/100)*(l.per==='unit'?qty:batches))}
+  }
+  for(const [id,amt] of need){const m=matById(id),pb=m.packSize*base(m.packUnit),packs=amt>0?Math.ceil(amt/pb-EPS):0;
+    out.shopping.push({materialId:id,name:m.name,unit:m.packUnit,packSize:m.packSize,need:amt/base(m.packUnit),packs,cost:packs*m.packPrice,left:Math.max(0,packs*pb-amt)/base(m.packUnit)});
+    out.spend+=packs*m.packPrice}
+  out.channel=cr.label;return out;
+}
+window.MM={
+  unitCost:id=>{const p=prodById(id);return p?costs(p).unit:NaN},
+  channelNet:(pid,cid,price)=>{const p=prodById(pid);if(!p)return NaN;if(cid==='etsy'||cid==='etsy-ads')return calc(p,chById('etsy'),price,cid==='etsy-ads').net;const c=chById(cid);return c?calc(p,c,price).net:NaN},
+  plan:(rows,chId)=>planCalc(rows,chId||'etsy'),
+  report:y=>report(String(y)),
+};
+
+// ---------- small UI helpers ----------
+function toast(msg,ms){document.querySelectorAll('.pay-toast.mm').forEach(x=>x.remove());const el=document.createElement('div');el.className='pay-toast mm';el.setAttribute('role','status');el.textContent=msg;document.body.appendChild(el);setTimeout(()=>el.remove(),ms||4500)}
+function download(name,text,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1500)}
+function printSheet(html){$('sheet').innerHTML=html;document.body.classList.add('sheet-mode');window.print()}
+window.addEventListener('afterprint',()=>document.body.classList.remove('sheet-mode'));
+const plural=(n,w)=>`${fmtQ(n)} ${w}${n===1?'':'s'}`;
+const unitOptions=sel=>Object.entries(FAMS).map(([f,label])=>`<optgroup label="${label}">${unitsIn(f).map(u=>`<option${u===sel?' selected':''}>${esc(u)}</option>`).join('')}</optgroup>`).join('');
+const usersOf=id=>D.products.filter(p=>p.lines.some(l=>l.matId===id));
+
+// ---------- routing and render ----------
+const TABS=['products','materials','fees','plan','profit','backup'];
+function route(){
+  let h='';try{h=decodeURIComponent(location.hash.slice(1))}catch{}
+  const prev=ui.tab;
+  if(h.startsWith('product=')&&prodById(h.slice(8))){ui.tab='products';ui.edit=h.slice(8)}
+  else{ui.edit=null;ui.tab=TABS.includes(h)?h:'products'}
+  if(prev!==ui.tab){ui.matForm=null;ui.matErr='';ui.ripple=null;ui.teaser=0;ui.lineSheet=false}
+  ui.inlineMat=null;
+}
+function go(h){if(location.hash==='#'+h){route();render()}else location.hash=h}
+window.addEventListener('hashchange',()=>{route();render();window.scrollTo(0,0)});
+
+function render(){
+  const isPro=pro.isPro();
+  document.body.classList.toggle('is-pro',isPro);
+  document.querySelectorAll('#tabs a').forEach(a=>{if(a.dataset.tab===ui.tab)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
+  $('getPro').textContent=isPro?'Pro ✓':'Get Pro · $24 once';
+  $('getPro').disabled=isPro;
+  renderBanner();renderNotice();
+  const v=$('view');v.dataset.view=ui.edit?'editor':ui.tab;
+  if(ui.edit)renderEditor(v);
+  else({products:renderProducts,materials:renderMaterials,fees:renderFees,plan:renderPlan,profit:renderProfit,backup:renderBackup})[ui.tab](v);
+  document.querySelectorAll('[data-pro]').forEach(el=>el.classList.toggle('locked',!isPro));
+  if(ui.focus){const el=$(ui.focus);ui.focus=null;if(el){el.focus();if(el.select)el.select()}}
+}
+function renderBanner(){
+  const S=D.settings,now=Date.now();
+  const show=hasData()&&now>=(S.snooze||0)&&(S.lastBackup?now-S.lastBackup>14*DAY:!!S.createdAt&&now-S.createdAt>DAY);
+  $('banner').innerHTML=show?`<div class="banner noprint" role="status" id="backupBanner"><span>Your data lives only in this browser. Download a backup.</span><span class="btns"><button class="sm" data-act="backup">Back up now</button><button class="ghost sm" data-act="later">Later</button></span></div>`:'';
+}
+function renderNotice(){
+  const k=ui.kitOffer&&KITS[ui.kitOffer];
+  $('notice').innerHTML=k?`<div class="note noprint" id="kitOffer"><b>Add the ${esc(k.label)} starter kit?</b> It adds ${k.mats.length} example materials and a sample product next to what you already have. Nothing is replaced.
+    <div class="btns" style="margin-top:8px"><button class="sm" data-act="addKit" data-kit="${esc(ui.kitOffer)}">Add kit</button><button class="ghost sm" data-act="dismissKit">No thanks</button></div></div>`:'';
+}
+
+// ---------- products ----------
+function firstRunHtml(){
+  return `<section class="card hero" id="firstRun"><h2>What do you make?</h2>
+    <p class="muted" style="margin:0">Pick one to load example materials and a sample product. You will see a real cost per unit in about two minutes, then swap in your own prices.</p>
+    <div class="chips">${Object.entries(KITS).map(([k,v])=>`<button class="chip" data-act="kit" data-kit="${k}">${esc(v.label)}</button>`).join('')}<button class="chip alt" data-act="scratch">Start from scratch</button></div></section>
+  <section class="card"><ol class="steps">
+    <li><b>Add what you buy</b>Pack price and size. MakerMargin works out the cost per gram, ounce or piece.</li>
+    <li><b>Build a recipe</b>What goes into one batch, plus waste, labour and overhead.</li>
+    <li><b>Price it and see what you keep</b>Wholesale and retail suggestions, Etsy fees and your real profit.</li></ol></section>`;
+}
+function productCard(p){
+  const c=costs(p),e=etsyCalc(p),has=p.price>0;
+  return `<a class="pcard" href="#product=${esc(p.id)}" data-pid="${esc(p.id)}"><div class="pc-top"><div class="pc-name"><b>${esc(p.name)}</b>${p.sku?`<span class="muted small">${esc(p.sku)}</span>`:''}</div>${has?badge(e.margin):'<span class="mb">No price yet</span>'}</div>
+    <div class="pc-stats"><div><span>Cost / unit</span><b class="n">${money(c.unit)}</b></div><div><span>Your price</span><b class="n">${has?money(p.price):'–'}</b></div><div><span>Etsy net</span><b class="n">${has?money(e.net):'–'}</b></div></div></a>`;
+}
+function renderPList(){
+  const box=$('plist');if(!box)return;const q=ui.q.trim().toLowerCase();
+  const list=D.products.filter(p=>!q||(p.name+' '+p.sku).toLowerCase().includes(q));
+  box.innerHTML=list.length?`<div class="plist">${list.map(productCard).join('')}</div>`:
+    D.products.length?`<div class="card empty"><p>No products match “${esc(ui.q)}”.</p></div>`:
+    `<div class="card empty"><p>No products yet. Add one and build its recipe from your materials.</p><button data-act="newProduct">+ New product</button></div>`;
+}
+function renderProducts(v){
+  if(!hasData()){v.innerHTML=firstRunHtml();return}
+  const isPro=pro.isPro(),n=D.products.length;
+  v.innerHTML=`<div class="toolbar"><div class="count${!isPro&&n>=FREE.products?' full':''}" id="pCount">${isPro?plural(n,'product'):`${n} of ${FREE.products} products (free)`}</div>
+    <input type="search" id="q" placeholder="Search products" value="${esc(ui.q)}" aria-label="Search products"><button data-act="newProduct">+ New product</button></div>
+    <div id="plist"></div>
+    <div class="btns noprint" style="margin-top:14px"><button class="ghost" data-act="lineSheet" data-pro>Print price list / line sheet <span class="pro-badge hide-pro">PRO</span></button></div>
+    ${ui.lineSheet&&isPro?lineSheetForm():''}`;
+  renderPList();
+}
+function lineSheetForm(){
+  return `<section class="card" id="lsForm" style="margin-top:12px"><h3>Price list / wholesale line sheet</h3>
+    <div class="grid3"><div><label for="lsType">Sheet</label><select id="lsType"><option value="line">Wholesale line sheet (wholesale + MSRP)</option><option value="price">Retail price list</option></select></div>
+    <div><label for="lsBiz">Business name</label><input id="lsBiz" data-set="business" value="${esc(D.settings.business)}" maxlength="80" placeholder="Your shop name"></div>
+    <div><label for="lsMin">Minimum order (optional)</label><input id="lsMin" maxlength="120" placeholder="e.g. $150, or 6 per design"></div></div>
+    <div class="btns" style="margin-top:12px"><button data-act="printLS">Print</button><button class="ghost" data-act="closeLS">Close</button></div></section>`;
+}
+function newProduct(name){
+  if(!pro.isPro()&&D.products.length>=FREE.products){gate(R.cap);return null}
+  const p={id:uid(),name,sku:'',yield:1,lines:[],laborMin:0,hourly:null,price:0,shipCharge:0};
+  D.products.push(p);save();return p;
+}
+function addKit(slug){
+  const k=KITS[slug];if(!k)return null;
+  const find=(name,unit)=>D.materials.find(x=>x.name.toLowerCase()===name.toLowerCase()&&fam(x.packUnit)===fam(unit));
+  const fresh=k.mats.filter(m=>!find(m[0],m[3])).length;
+  if(!pro.isPro()&&(D.materials.length+fresh>FREE.materials||D.products.length>=FREE.products)){gate(R.cap);return null}
+  const now=Date.now();
+  const ids=k.mats.map(([name,price,size,unit])=>{let m=find(name,unit);if(!m){m={id:uid()+D.materials.length,name,supplier:'',packPrice:price,packSize:size,packUnit:unit,updated:now,example:true,history:[]};D.materials.push(m)}return m.id});
+  const kp=k.product,p={id:uid()+'p',name:kp.name,sku:D.products.some(x=>x.sku===kp.sku)?'':kp.sku,yield:kp.yield,laborMin:kp.laborMin,hourly:null,price:kp.price,shipCharge:0,
+    lines:kp.lines.map(([i,qty,unit,per,waste])=>({matId:ids[i],qty,unit,per,waste:waste||0}))};
+  D.products.push(p);save();return p;
+}
+function loadKit(slug){const p=addKit(slug);if(!p)return;toast(`${KITS[slug].label} starter kit added. Example prices, replace with yours.`);ui.focus=null;go('product='+p.id)}
+
+// ---------- product editor ----------
+function renderEditor(v){
+  const p=prodById(ui.edit);if(!p){go('products');return}
+  const S=D.settings,E=chById('etsy'),example=p.lines.some(l=>{const m=matById(l.matId);return m&&m.example});
+  v.innerHTML=`<div class="ed-head"><a href="#products" class="back noprint" aria-label="Back to products">← Products</a><h2 id="edTitle">${esc(p.name)}</h2></div>
+  ${example?`<div class="note noprint" id="exampleNote">Example prices, replace with yours. <a href="#materials">Edit materials</a></div>`:''}
+  <div class="editor">
+    <section class="card ed-basics"><div class="grid3">
+      <div><label for="pName">Name</label><input id="pName" data-pf="name" value="${esc(p.name)}" maxlength="120"></div>
+      <div><label for="pSku">SKU</label><input id="pSku" data-pf="sku" value="${esc(p.sku)}" maxlength="64" placeholder="e.g. CAN-8"></div>
+      <div><label for="pYield">Units per batch</label><input id="pYield" data-pf="yield" inputmode="decimal" value="${fmtIn(p.yield)}"></div></div>
+      <p class="hint">The SKU links this product to your Etsy sales in the Profit report. Units per batch is how many you make at once.</p></section>
+    <aside class="ed-results" id="results" aria-live="polite">
+      <div class="card"><div class="label">Cost per unit</div><div id="rCost"></div><div id="rBar"></div>
+        <details class="how"><summary>How is this calculated?</summary><div id="rHow"></div></details></div>
+      <div class="card"><h3>Suggested prices</h3><div id="rSug"></div>
+        <div class="row" style="margin-top:12px"><div><label for="pPrice">Your price</label><input id="pPrice" data-pf="price" inputmode="decimal" value="${p.price?fmtMoneyIn(p.price):''}" placeholder="0.00"></div>
+        <div><label for="pShip">Shipping you charge</label><input id="pShip" data-pf="shipCharge" inputmode="decimal" value="${p.shipCharge?fmtMoneyIn(p.shipCharge):''}" placeholder="0.00"></div></div>
+        <div class="whatif"><label for="pSlide">What if I charged… (1× to 6× cost)</label><input type="range" id="pSlide" min="1" max="6" step="0.05" value="2"><div id="rWhat"></div></div></div>
+      <div class="card" id="etsyCard"><h3>On Etsy you keep</h3><div id="rEtsy"></div>
+        <label class="check"><input type="checkbox" id="pAds"${E.useExtra?' checked':''}> Include Offsite Ads (${fmtQ(E.extraPct)}%)</label></div>
+      <div class="card" id="chCard"><h3>Every channel <span class="pro-badge hide-pro">PRO</span></h3><div id="rCh"></div></div>
+    </aside>
+    <section class="card ed-recipe"><h3>What goes into it</h3><div id="lines"></div>
+      <button class="ghost" data-act="addLine" style="margin-top:4px">+ Add material</button><div id="inlineMat"></div></section>
+    <section class="card ed-labour"><h3>Labour</h3><div class="grid3">
+      <div><label for="pLabor">Minutes per batch</label><input id="pLabor" data-pf="laborMin" inputmode="decimal" value="${p.laborMin?fmtIn(p.laborMin):''}" placeholder="0"></div>
+      <div><label for="pHourly">Hourly rate (${esc(cur())})</label><input id="pHourly" data-pf="hourly" inputmode="decimal" value="${p.hourly==null?'':fmtIn(p.hourly)}" placeholder="${fmtIn(S.hourly)} (default)"></div></div>
+      <p class="hint">Pay yourself for your time. Overhead of ${fmtQ(S.overheadPct)}% is added on top of materials and labour (change it under <a href="#backup">Backup → Settings</a>).</p></section>
+    <div class="btns ed-actions noprint"><button class="ghost" data-act="dup">Duplicate</button><button class="ghost" data-act="printCost">Print cost sheet</button><button class="danger" data-act="delProduct">Delete</button></div>
+  </div>`;
+  renderLines(p);updateEditor(p);
+  if(ui.inlineMat)$('inlineMat').innerHTML=matFormHtml(null,'inline');
+}
+function renderLines(p){
+  const box=$('lines');if(!box)return;
+  const mats=[...D.materials].sort((a,b)=>a.name.localeCompare(b.name));
+  box.innerHTML=p.lines.length?`<div class="lines-head" aria-hidden="true"><span>Material</span><span>Qty</span><span>Unit</span><span>Per</span><span>Waste</span><span class="n">Cost</span><span></span></div>`+
+    p.lines.map((l,i)=>{const m=matById(l.matId),units=m?unitsIn(fam(m.packUnit)):Object.keys(UNITS);if(m&&!units.includes(l.unit))l.unit=defUnit(m.packUnit);
+      return `<div class="line" data-i="${i}">
+      <select class="l-mat" data-lf="matId" aria-label="Material">${m?'':'<option value="">Choose material…</option>'}${mats.map(x=>`<option value="${esc(x.id)}"${x.id===l.matId?' selected':''}>${esc(x.name)}</option>`).join('')}<option value="__new">+ New material…</option></select>
+      <input class="l-qty" data-lf="qty" inputmode="decimal" value="${fmtIn(l.qty)}" aria-label="Quantity">
+      <select class="l-unit" data-lf="unit" aria-label="Unit">${units.map(u=>`<option${u===l.unit?' selected':''}>${esc(u)}</option>`).join('')}</select>
+      <select class="l-per" data-lf="per" aria-label="Per batch or per item"><option value="batch"${l.per==='batch'?' selected':''}>Per batch</option><option value="unit"${l.per==='unit'?' selected':''}>Per item</option></select>
+      <label class="l-waste"><input data-lf="waste" inputmode="decimal" value="${l.waste?fmtIn(l.waste):''}" placeholder="0" aria-label="Waste %"><span>%</span></label>
+      <span class="l-cost n" data-lc>${money(lineCost(l))}</span>
+      <button type="button" class="ghost l-x" data-act="rmLine" aria-label="Remove line">✕</button></div>`}).join(''):
+    `<p class="muted small" style="margin:0 0 8px">Nothing yet. Add the materials that go into one batch (or one item).</p>`;
+}
+function updateEditor(p){
+  if(!p||!$('rCost'))return;
+  const S=D.settings,c=costs(p),s=sugg(c),E=chById('etsy'),e=etsyCalc(p);
+  $('edTitle').textContent=p.name||'Untitled product';
+  $('rCost').innerHTML=money(c.unit);
+  const tot=c.unit>0?c.unit:1,w=x=>Math.max(0,x/tot*100).toFixed(2)+'%';
+  $('rBar').innerHTML=`<div class="bar" aria-hidden="true"><span class="b-mat" style="width:${w(c.materials)}"></span><span class="b-lab" style="width:${w(c.labour)}"></span><span class="b-ovh" style="width:${w(c.overhead)}"></span></div>
+    <ul class="legend"><li><i class="b-mat"></i>Materials<b id="rMat">${money(c.materials)}</b></li><li><i class="b-lab"></i>Labour<b id="rLab">${money(c.labour)}</b></li><li><i class="b-ovh"></i>Overhead<b id="rOvh">${money(c.overhead)}</b></li></ul>`;
+  $('rHow').innerHTML=`<ol class="how-list">
+    <li><b>Line cost</b> = quantity × (pack price ÷ pack size) × (1 + waste %), after converting units.</li>
+    <li><b>Materials per unit</b> = per-batch lines ${money(c.batch)} ÷ ${fmtQ(c.y)} units + per-item lines ${money(c.item)} = ${money(c.materials)}</li>
+    <li><b>Labour per unit</b> = ${fmtQ(p.laborMin)} min ÷ 60 × ${money(c.hourly)}/h ÷ ${fmtQ(c.y)} = ${money(c.labour)}</li>
+    <li><b>Overhead</b> = (materials + labour) × ${fmtQ(S.overheadPct)}% = ${money(c.overhead)}</li>
+    <li><b>Cost per unit</b> = materials + labour + overhead = ${money(c.unit)}</li>
+    <li><b>Wholesale</b> = cost × ${fmtQ(S.wholesaleX)}; <b>retail</b> = cost × ${fmtQ(S.wholesaleX)} × ${fmtQ(S.retailX)}, each rounded up${S.ending==='none'?' to the cent':' to end in '+esc(S.ending)}.</li>
+    <li><b>Etsy fees</b> = ${money(E.listing)} listing + ${fmtQ(E.txPct)}% transaction + ${fmtQ(E.procPct)}% processing on (price + shipping) + ${money(E.fixed)}${E.useExtra?` + ${fmtQ(E.extraPct)}% Offsite Ads`:''}. Processing charged on sales tax is ignored.</li>
+    <li><b>Net profit</b> = price − fees − cost per unit. Shipping you charge is assumed to cover postage.</li>
+    <li><b>Margin</b> = net ÷ price. <b>Profit per hour</b> = net × units per batch ÷ hours per batch.</li></ol>`;
+  $('rSug').innerHTML=[['Wholesale',`cost × ${fmtQ(S.wholesaleX)}`,s.wholesale,'sugW'],['Retail',`wholesale × ${fmtQ(S.retailX)}`,s.retail,'sugR'],['3× cost','quick check',s.triple,'sug3']]
+    .map(([l,h,val,id])=>`<div class="sug"><div><b>${l}</b><small class="muted">${h}</small></div><span class="n" id="${id}">${money(val)}</span><button type="button" class="ghost sm" data-act="usePrice" data-v="${val}" aria-label="Use ${l.toLowerCase()} price">Use</button></div>`).join('');
+  const sl=$('pSlide');sl.disabled=!(c.unit>0);
+  if(document.activeElement!==sl&&c.unit>0)sl.value=Math.min(6,Math.max(1,(p.price||s.retail)/c.unit));
+  whatIf(p);
+  $('rEtsy').innerHTML=!(p.price>0)?`<p class="muted" style="margin:0">Enter your price, or tap <b>Use</b> on a suggestion, to see your Etsy fees and profit.</p>`:
+    `<table class="kv"><tr><td>Your price${p.shipCharge>0?' + shipping':''}</td><td class="n">${money(e.price+e.ship)}</td></tr>
+    <tr><td>Listing fee</td><td class="n" id="fListing">${neg(e.f.listing)}</td></tr>
+    <tr><td>Transaction fee (${fmtQ(E.txPct)}%)</td><td class="n" id="fTx">${neg(e.f.tx)}</td></tr>
+    <tr><td>Payment processing (${fmtQ(E.procPct)}% + ${money(E.fixed)})</td><td class="n" id="fProc">${neg(e.f.proc)}</td></tr>
+    ${E.useExtra?`<tr><td>Offsite Ads (${fmtQ(E.extraPct)}%)</td><td class="n" id="fAds">${neg(e.f.extra)}</td></tr>`:''}
+    <tr class="sub"><td>Total Etsy fees</td><td class="n" id="fTotal">${money(e.f.total)}</td></tr>
+    ${p.shipCharge>0?`<tr><td>Postage (covered by shipping)</td><td class="n">${neg(e.ship)}</td></tr>`:''}
+    <tr><td>Cost per unit</td><td class="n">${neg(c.unit)}</td></tr>
+    <tr class="total"><td>Net profit per sale</td><td class="n" id="fNet">${money(e.net)}</td></tr>
+    <tr><td>Margin</td><td class="n" id="fMargin">${badge(e.margin)}</td></tr>
+    <tr><td>Profit per hour of labour</td><td class="n" id="fPph">${e.pph==null?'–':money(e.pph)+'/h'}</td></tr></table>`;
+  $('rCh').innerHTML=pro.isPro()?chanTable(p):lockedRows(['Channel','Price','Fees','Net','Margin'],
+    [['Shopify',money(24),money(1),money(16.71),'69.6%'],['Craft fair',money(24),money(.77),money(16.93),'70.5%']],'ch');
+  document.querySelectorAll('#lines .line').forEach(el=>{const l=p.lines[+el.dataset.i];if(l)el.querySelector('[data-lc]').innerHTML=money(lineCost(l))});
+}
+function whatIf(p){
+  const c=costs(p),sl=$('pSlide'),box=$('rWhat');if(!sl||!box)return;
+  if(!(c.unit>0)){box.innerHTML='<span class="muted small">Add materials or labour first.</span>';return}
+  const price=Math.round(c.unit*sl.value*100)/100,e=etsyCalc(p,price);
+  box.innerHTML=`<span>At <b>${money(price)}</b> (${(+sl.value).toFixed(2)}× cost) you keep <b id="wNet">${money(e.net)}</b> on Etsy · ${badge(e.margin)}</span><button type="button" class="ghost sm" data-act="usePrice" data-v="${price}">Use ${money(price)}</button>`;
+}
+function chanTable(p){
+  const T=D.settings.targetMargin;
+  return `<table class="stack chtab"><thead><tr><th>Channel</th><th class="n">Price</th><th class="n">Fees</th><th class="n">Net</th><th class="n">Margin</th></tr></thead><tbody>${chanRows().map(r=>{
+    const x=calc(p,r.ch,undefined,r.ads),below=x.margin*100<T-1e-9;
+    return `<tr data-ch="${esc(r.id)}"${below?' class="below"':''}><td class="lead" data-label="">${esc(r.label)}${r.ch.basis==='wholesale'?' <small class="muted">(wholesale price)</small>':''}${below?' <small>below target</small>':''}</td>
+      <td class="n" data-label="Price">${money(x.price)}</td><td class="n c-fee" data-label="Fees"><span>${money(x.f.total)}${x.f.minApplied?' <small>(min)</small>':''}</span></td><td class="n c-net" data-label="Net">${money(x.net)}</td><td class="n" data-label="Margin">${pct(x.margin)}</td></tr>`}).join('')}</tbody></table>
+    <p class="hint">Rows in red are below your ${fmtQ(T)}% target margin. Retail channels use your price; wholesale uses the suggested wholesale price. <a href="#fees">Edit channels</a></p>`;
+}
+function lockedRows(head,rows,why){
+  return `<div class="blurwrap" aria-hidden="true"><table><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map((x,i)=>`<td${i?' class="n"':''}>${x}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
+    <button data-act="unlock" data-why="${why}">Unlock with Pro</button>`;
+}
+function setPF(p,k,raw){
+  if(k==='name')p.name=String(raw).slice(0,120);
+  else if(k==='sku')p.sku=String(raw).trim().slice(0,64);
+  else if(k==='hourly'){const n=parseNum(raw);p.hourly=String(raw).trim()===''||!isFinite(n)?null:Math.min(1e5,Math.max(0,n))}
+  else{const n=parseNum(raw),val=isFinite(n)?Math.min(1e9,Math.max(0,n)):0;
+    if(k==='yield'){if(!(val>0))return;p.yield=val}else if(['laborMin','price','shipCharge'].includes(k))p[k]=val}
+  save();updateEditor(p);
+}
+function lineSelect(p,t){
+  const i=+t.closest('.line').dataset.i,l=p.lines[i];if(!l)return;const k=t.dataset.lf;
+  if(k==='matId'){
+    if(t.value==='__new'){t.value=l.matId||'';openInlineMat(i);return}
+    const m=matById(t.value),prev=matById(l.matId);if(!m)return;
+    l.matId=m.id;if(!prev||fam(l.unit)!==fam(m.packUnit))l.unit=defUnit(m.packUnit);
+    save();renderLines(p);updateEditor(p);return;
+  }
+  if(k==='unit'&&isUnit(t.value))l.unit=t.value;
+  if(k==='per')l.per=t.value==='unit'?'unit':'batch';
+  save();updateEditor(p);
+}
+function openInlineMat(i){
+  if(!pro.isPro()&&D.materials.length>=FREE.materials){gate(R.cap);return}
+  ui.inlineMat={line:i};$('inlineMat').innerHTML=matFormHtml(null,'inline');
+  const f=$('inlineMat').querySelector('input[name=name]');if(f)f.focus();
+}
+
+// ---------- materials ----------
+function matFormHtml(m,ctx){
+  const v=m||{name:'',supplier:'',packPrice:'',packSize:'',packUnit:'each'};
+  return `<form class="matform" data-form="mat" data-ctx="${ctx}"${m?` data-id="${esc(m.id)}"`:''} novalidate><h3>${m?'Edit material':'New material'}</h3>
+    <div class="grid2" style="margin-bottom:10px"><div><label for="mf_${ctx}_name">Name</label><input id="mf_${ctx}_name" name="name" maxlength="120" value="${esc(v.name)}" placeholder="e.g. Soy wax" autocomplete="off"></div>
+    <div><label for="mf_${ctx}_sup">Supplier (optional)</label><input id="mf_${ctx}_sup" name="supplier" maxlength="120" value="${esc(v.supplier)}" autocomplete="off"></div></div>
+    <div class="grid3"><div><label for="mf_${ctx}_price">Pack price (${esc(cur())})</label><input id="mf_${ctx}_price" name="packPrice" inputmode="decimal" value="${m?fmtMoneyIn(v.packPrice):''}" placeholder="32.00"></div>
+    <div><label for="mf_${ctx}_size">Pack size</label><input id="mf_${ctx}_size" name="packSize" inputmode="decimal" value="${m?fmtIn(v.packSize):''}" placeholder="10"></div>
+    <div><label for="mf_${ctx}_unit">Unit</label><select id="mf_${ctx}_unit" name="packUnit">${unitOptions(v.packUnit)}</select></div></div>
+    <p class="hint" data-preview>${m?matPreviewText(v.packPrice,v.packSize,v.packUnit):'Enter what you pay for one pack, e.g. 32.00 for 10 lb.'}</p><p class="err" data-err role="alert"></p>
+    <div class="btns"><button type="submit">Save material</button><button type="button" class="ghost" data-act="cancelMat">Cancel</button></div></form>`;
+}
+function matPreviewText(price,size,unit){
+  if(!(price>=0)||!(size>0)||!isUnit(unit))return 'Enter what you pay for one pack, e.g. 32.00 for 10 lb.';
+  const show=defUnit(unit);return `= ${moneyU(price/(size*base(unit))*base(show))} per ${esc(show)}`;
+}
+function matPreview(f){const g=n=>f.elements[n].value;f.querySelector('[data-preview]').innerHTML=matPreviewText(parseNum(g('packPrice')),parseNum(g('packSize')),g('packUnit'))}
+function saveMatForm(f){
+  const g=n=>String(f.elements[n].value||'').trim();
+  const name=g('name').slice(0,120),supplier=g('supplier').slice(0,120),price=parseNum(g('packPrice')),size=parseNum(g('packSize')),unit=f.elements.packUnit.value;
+  const err=!name?'Give the material a name.':!(price>=0)?'Enter the pack price, for example 32.00.':!(size>0)?'Enter the pack size, for example 10.':!isUnit(unit)?'Pick a unit.':'';
+  if(err){f.querySelector('[data-err]').textContent=err;return}
+  const id=f.dataset.id,inline=f.dataset.ctx==='inline';
+  if(id){
+    const m=matById(id);if(!m)return;
+    const users=usersOf(id),before=new Map(users.map(p=>[p.id,costs(p).unit]));
+    const changed=price!==m.packPrice||size!==m.packSize||unit!==m.packUnit,famChanged=fam(unit)!==fam(m.packUnit);
+    const old={packPrice:m.packPrice,packSize:m.packSize,packUnit:m.packUnit};
+    if(changed){m.history.unshift({date:Date.now(),...old});m.history=m.history.slice(0,100);m.updated=Date.now()}
+    Object.assign(m,{name,supplier,packPrice:price,packSize:size,packUnit:unit,example:false});
+    if(famChanged)users.forEach(p=>p.lines.forEach(l=>{if(l.matId===id)l.unit=defUnit(unit)}));
+    ui.matForm=null;ui.matErr='';
+    if(changed&&users.length){
+      if(pro.isPro())ui.ripple={name,old,now:{packPrice:price,packSize:size,packUnit:unit},rows:users.map(p=>({id:p.id,name:p.name,old:before.get(p.id),now:costs(p).unit,margin:p.price>0?etsyCalc(p).margin:null}))};
+      else ui.teaser=users.length;
+    }
+    save();render();toast(`Saved ${name}.`);return;
+  }
+  if(!pro.isPro()&&D.materials.length>=FREE.materials){gate(R.cap);return}
+  const m={id:uid()+'m',name,supplier,packPrice:price,packSize:size,packUnit:unit,updated:Date.now(),example:false,history:[]};
+  D.materials.push(m);
+  if(inline){
+    const p=prodById(ui.edit);
+    if(p){const i=ui.inlineMat&&ui.inlineMat.line,l=p.lines[i];if(l)Object.assign(l,{matId:m.id,unit:defUnit(unit)});else p.lines.push({matId:m.id,qty:1,unit:defUnit(unit),per:'batch',waste:0})}
+    ui.inlineMat=null;save();$('inlineMat').innerHTML='';if(p){renderLines(p);updateEditor(p)}toast(`Added ${name}. Now set how much goes in.`);return;
+  }
+  ui.matForm=null;save();render();toast(`Added ${name}.`);
+}
+function historyHtml(m){
+  if(!pro.isPro())return `<button type="button" class="linkbtn small" data-act="unlock" data-why="hist">Price history <span class="pro-badge">PRO</span></button>`;
+  const pk=(h)=>`${money(h.packPrice)}${h.packSize?` for ${fmtQ(h.packSize)} ${esc(h.packUnit||m.packUnit)}`:''}`;
+  return `<details class="hist"><summary>Price history</summary><ul><li>Now: ${pk(m)}${m.updated?` · since ${fmtDate(m.updated)}`:''}</li>${m.history.length?m.history.map(h=>`<li>${pk(h)} · until ${fmtDate(h.date)}</li>`).join(''):'<li>No price changes yet.</li>'}</ul></details>`;
+}
+function rippleHtml(){
+  const r=ui.ripple,T=D.settings.targetMargin,pk=x=>`${money(x.packPrice)} for ${fmtQ(x.packSize)} ${esc(x.packUnit)}`,n=r.rows.length,low=r.rows.filter(x=>x.margin!=null&&x.margin*100<T).length;
+  return `<section class="card ripple" id="ripple"><h2>This price change affects ${plural(n,'product')}</h2><p class="muted small" style="margin-top:0">${esc(r.name)}: ${pk(r.old)} → ${pk(r.now)}${low?` · <b style="color:var(--bad)">${low} now below your ${fmtQ(T)}% target</b>`:''}</p>
+    <table class="stack"><thead><tr><th>Product</th><th class="n">Cost per unit</th><th class="n">Etsy margin at your price</th><th></th></tr></thead><tbody>${r.rows.map(x=>{const below=x.margin!=null&&x.margin*100<T;
+      return `<tr${below?' class="below"':''} data-pid="${esc(x.id)}"><td class="lead" data-label="">${esc(x.name)}${below?' <small>below target</small>':''}</td><td class="n" data-label="Cost per unit">${money(x.old)} → ${money(x.now)}</td><td class="n" data-label="Margin">${x.margin==null?'no price':pct(x.margin)}</td><td class="acts"><a href="#product=${esc(x.id)}">Jump to product</a></td></tr>`}).join('')}</tbody></table>
+    <button class="ghost sm" data-act="closeRipple" style="margin-top:8px">Done</button></section>`;
+}
+function renderMaterials(v){
+  const isPro=pro.isPro(),n=D.materials.length,mats=[...D.materials].sort((a,b)=>a.name.localeCompare(b.name));
+  v.innerHTML=`${ui.ripple&&isPro?rippleHtml():''}${ui.teaser&&!isPro?`<div class="note" id="teaser">Costs updated for ${plural(ui.teaser,'product')}. <button type="button" class="linkbtn" data-act="unlock" data-why="ripple">See which products just fell below your target margin (Pro)</button></div>`:''}${ui.matErr}
+    <div class="toolbar"><div class="count${!isPro&&n>=FREE.materials?' full':''}" id="mCount">${isPro?plural(n,'material'):`${n} of ${FREE.materials} materials (free)`}</div><button data-act="newMat">+ Add material</button></div>
+    ${ui.matForm?matFormHtml(ui.matForm==='new'?null:matById(ui.matForm),'tab'):''}
+    ${n?`<div class="card"><table class="stack" id="matTable"><thead><tr><th>Material</th><th class="n">Pack</th><th class="n">Unit cost</th><th class="n">Used in</th><th>Updated</th><th></th></tr></thead><tbody>${mats.map(m=>{const used=usersOf(m.id).length,show=defUnit(m.packUnit);
+      return `<tr data-mat="${esc(m.id)}"><td class="lead" data-label=""><b>${esc(m.name)}</b>${m.example?'<span class="tag">Example price</span>':''}${m.supplier?`<div class="muted small">${esc(m.supplier)}</div>`:''}<div>${historyHtml(m)}</div></td>
+        <td class="n" data-label="Pack">${money(m.packPrice)} for ${fmtQ(m.packSize)} ${esc(m.packUnit)}</td><td class="n c-unit" data-label="Unit cost">${moneyU(perBase(m)*base(show))} / ${esc(show)}</td>
+        <td class="n" data-label="Used in">${plural(used,'product')}</td><td data-label="Updated">${fmtDate(m.updated)}</td>
+        <td class="acts"><span class="btns" style="justify-content:flex-end;flex-wrap:nowrap"><button class="ghost sm" data-act="editMat" data-id="${esc(m.id)}">Edit</button><button class="danger sm" data-act="delMat" data-id="${esc(m.id)}" aria-label="Delete ${esc(m.name)}">Delete</button></span></td></tr>`}).join('')}</tbody></table></div>`:
+    ui.matForm?'':`<div class="card empty"><p>No materials yet. Add the first thing you buy, like wax, flour or beads.</p><button data-act="newMat">+ Add material</button></div>`}`;
+}
+
+// ---------- fees ----------
+function chField(c,k){
+  const id=`ch_${esc(c.id)}_${k}`;
+  if(k==='basis')return `<div><label for="${id}">${FIELD_LABEL[k]}</label><select id="${id}" data-chf="basis"><option value="retail"${c.basis==='retail'?' selected':''}>Your price</option><option value="wholesale"${c.basis==='wholesale'?' selected':''}>Wholesale</option></select></div>`;
+  const money_=['fixed','listing','minFee','boothFee'].includes(k);
+  return `<div><label for="${id}">${FIELD_LABEL[k]||k}${money_?` (${esc(cur())})`:''}</label><input id="${id}" data-chf="${k}" inputmode="decimal" value="${money_?fmtMoneyIn(c[k]):fmtIn(c[k])}"></div>`;
+}
+function renderFees(v){
+  const E=chById('etsy'),S=D.settings,isPro=pro.isPro(),num=(label,k,val,cls)=>`<div><label for="${cls}_${k}">${label}</label><input id="${cls}_${k}" ${cls==='set'?'data-set':'data-chf'}="${k}" inputmode="decimal" value="${k==='listing'||k==='fixed'?fmtMoneyIn(val):fmtIn(val)}"></div>`;
+  v.innerHTML=`<section class="card" data-chid="etsy" id="etsyFees"><h2>Etsy fees</h2>
+    <div class="grid2"><div><label for="etsyRegion">Region preset</label><select id="etsyRegion" data-chf="region">${Object.entries(ETSY_PRESETS).map(([k,r])=>`<option value="${k}"${E.region===k?' selected':''}>${r.label} (${r.cur})</option>`).join('')}</select></div></div>
+    <div class="grid3" style="margin-top:12px">${num(`Listing fee (${esc(cur())})`,'listing',E.listing,'e')}${num('Transaction fee %','txPct',E.txPct,'e')}${num('Payment processing %','procPct',E.procPct,'e')}${num(`Processing fixed fee (${esc(cur())})`,'fixed',E.fixed,'e')}${num('Offsite Ads %','extraPct',E.extraPct,'e')}</div>
+    <label class="check"><input type="checkbox" id="etsyAds" data-chf="useExtra"${E.useExtra?' checked':''}> Include Offsite Ads in my Etsy profit</label>
+    <p class="hint">Defaults as of Oct 2026. Check Etsy's fee page. Offsite Ads are 15% of the order (12% for shops over $10k a year) and only apply to orders from Etsy's off-site ads. Processing fees charged on sales tax are ignored.</p></section>
+  <section class="card"><h2>Pricing rules</h2><div class="grid3">${num('Target margin %','targetMargin',S.targetMargin,'set')}${num('Wholesale = cost ×','wholesaleX',S.wholesaleX,'set')}${num('Retail = wholesale ×','retailX',S.retailX,'set')}
+    <div><label for="set_ending">Price ending</label><select id="set_ending" data-set="ending">${[['none','None'],['.00','.00'],['.95','.95'],['.99','.99']].map(([k,l])=>`<option value="${k}"${S.ending===k?' selected':''}>${l}</option>`).join('')}</select></div></div>
+    <p class="hint">Suggested prices round up to the ending you pick. Margin badges are green at or above your target, amber within 10 points, red below.</p></section>
+  <section class="card${isPro?'':' locked-card'}" id="channels"><h2>Other sales channels <span class="pro-badge hide-pro">PRO</span></h2>${isPro?
+    D.channels.filter(c=>c.id!=='etsy').map(c=>{const custom=c.id.startsWith('c_');return `<div class="chan${c.on?'':' off'}" data-chid="${esc(c.id)}"><div class="chan-head"><input type="checkbox" data-chf="on"${c.on?' checked':''} aria-label="Show ${esc(c.name)}"><input class="chan-name" data-chf="name" value="${esc(c.name)}" aria-label="Channel name" maxlength="40">${custom?'<button class="danger sm" data-act="delCh">Remove</button>':''}</div>
+      <div class="grid4">${(CH_FIELDS[c.id]||CH_FIELDS.custom).map(k=>chField(c,k)).join('')}</div>${c.id==='fair'?'<p class="hint">The booth fee is spread over the sales you expect at the fair.</p>':c.id==='amazon'?'<p class="hint">Amazon Handmade charges 15% of the total with a $1.00 minimum per item.</p>':c.id==='wholesale'?'<p class="hint">Shops buy at your suggested wholesale price. Add a % if you pay a rep or a platform like Faire.</p>':''}</div>`}).join('')+
+    '<button class="ghost" data-act="addCh">+ Custom channel</button>':
+    `<p style="margin-top:0">See profit on every channel side by side for each product, with rows below your target margin flagged.</p><ul class="chan-preview"><li><b>Shopify</b> 2.9% + $0.30</li><li><b>Amazon Handmade</b> 15%, $1.00 minimum</li><li><b>Craft fair / card reader</b> 2.6% + $0.15, plus your booth fee spread over expected sales</li><li><b>Wholesale</b> no fees, at your wholesale price</li><li><b>Custom channels</b> for markets, consignment or your own site</li></ul><button data-act="unlock" data-why="ch">Unlock with Pro</button>`}</section>`;
+}
+function setSetting(k,v){
+  const S=D.settings;
+  if(k==='business')S.business=String(v).slice(0,80);
+  else if(k==='currency')S.currency=cleanCur(v)||'$';
+  else if(k==='ending'){if(['none','.00','.95','.99'].includes(v))S.ending=v}
+  else{const lim={hourly:[0,1e5],overheadPct:[0,500],targetMargin:[0,99],wholesaleX:[.1,100],retailX:[.1,100]}[k];if(!lim)return;const n=parseNum(v);if(!isFinite(n))return;S[k]=Math.min(lim[1],Math.max(lim[0],n))}
+  save();
+}
+function setChan(t){
+  const box=t.closest('[data-chid]'),c=box&&chById(box.dataset.chid);if(!c)return;const k=t.dataset.chf;
+  if(k==='on'){c.on=t.checked;box.classList.toggle('off',!c.on)}
+  else if(k==='useExtra')c.useExtra=t.checked;
+  else if(k==='name')c.name=String(t.value).slice(0,40)||'Channel';
+  else if(k==='basis')c.basis=t.value==='wholesale'?'wholesale':'retail';
+  else if(k==='region'){const r=ETSY_PRESETS[t.value];if(!r||c.id!=='etsy')return;Object.assign(c,{region:t.value,listing:r.listing,txPct:r.txPct,procPct:r.procPct,fixed:r.fixed,pct:r.txPct+r.procPct});D.settings.currency=r.cur;save();render();toast(`Etsy ${r.label} fees applied. Currency set to ${r.cur}.`);return}
+  else{const lim={pct:100,fixed:1e4,listing:1e4,minFee:1e4,extraPct:100,txPct:100,procPct:100,boothFee:1e7,expectedSales:1e7}[k];if(!lim)return;const n=parseNum(t.value);if(!isFinite(n))return;c[k]=Math.min(lim,Math.max(0,n));if(c.id==='etsy')c.pct=c.txPct+c.procPct}
+  save();
+}
+
+// ---------- plan (Pro) ----------
+function lockedHtml(kind){
+  const L={plan:{t:'Batch planner',d:'Type “make 48 candles + 24 soaps” and get the number of batches, a shopping list in whole packs, leftovers, total spend, and expected revenue and profit for the channel you pick. Printable for your supply run.',
+      head:['Material','Need','Packs to buy','Cost','Left over'],rows:[['Soy wax','18 lb','2 × 10 lb',money(64),'2 lb'],['8 oz amber jar','48 each','4 × 12 each',money(84),'0 each']]},
+    profit:{t:'Etsy true profit and year-end report',d:'Import Etsy’s Sold Order Items CSV (and, if you like, your monthly statements). See true profit per listing and per month with actual fees, ads and postage, then a year-end summary with cost of goods for tax time. No Etsy login: your files never leave this browser.',
+      head:['Month','Units','Sales','Fees','COGS','Net profit'],rows:[['Nov 2025','214',money(5136),money(612.4),money(1347.1),money(2970.25)],['Dec 2025','287',money(6888),money(801.66),money(1806.5),money(4013.84)]]}}[kind];
+  return `<section class="card locked-card" id="locked-${kind}"><h2>${L.t} <span class="pro-badge">PRO</span></h2><p style="margin-top:0">${L.d}</p>${lockedRows(L.head,L.rows,kind)}</section>`;
+}
+function renderPlan(v){
+  if(!pro.isPro()){v.innerHTML=lockedHtml('plan');return}
+  if(!D.products.length){v.innerHTML=`<section class="card empty"><p>Add a product first, then plan how many to make.</p><a class="btn" href="#products">Go to Products</a></section>`;return}
+  if(!D.plan.rows.length)D.plan.rows.push({productId:D.products[0].id,qty:0});
+  const opts=sel=>`${prodById(sel)?'':'<option value="">Choose a product…</option>'}${D.products.map(p=>`<option value="${esc(p.id)}"${p.id===sel?' selected':''}>${esc(p.name)}</option>`).join('')}`;
+  v.innerHTML=`<section class="card"><h2>Batch planner</h2><p class="muted small" style="margin-top:0">List what you want to make. You get batches, a shopping list in whole packs and the expected profit.</p>
+    <div class="plan-head" aria-hidden="true"><span>Product</span><span>How many</span><span></span></div>
+    <div id="planRows">${D.plan.rows.map((r,i)=>`<div class="prow" data-i="${i}"><select data-pl="productId" aria-label="Product">${opts(r.productId)}</select><input data-pl="qty" inputmode="numeric" value="${r.qty||''}" placeholder="e.g. 48" aria-label="Quantity to make"><button class="ghost" data-act="rmPlan" aria-label="Remove row">✕</button></div>`).join('')}</div>
+    <div class="btns" style="justify-content:space-between;margin-top:4px"><button class="ghost" data-act="addPlan">+ Add row</button>
+    <div style="flex:0 1 260px"><label for="planCh">Expected profit if sold on</label><select id="planCh">${chanRows().map(r=>`<option value="${esc(r.id)}"${r.id===D.plan.channel?' selected':''}>${esc(r.label)}</option>`).join('')}</select></div></div></section>
+    <div id="planOut"></div>`;
+  updatePlan();
+}
+function updatePlan(){
+  const box=$('planOut');if(!box)return;const r=planCalc(D.plan.rows,D.plan.channel);
+  if(!r.rows.length){box.innerHTML=`<section class="card empty"><p>Enter how many you want to make to get batches and a shopping list.</p></section>`;return}
+  box.innerHTML=`<section class="card"><h3>Batches</h3><table class="stack" id="batchTable"><thead><tr><th>Product</th><th class="n">Make</th><th class="n">Batches</th><th>Note</th></tr></thead><tbody>${r.rows.map(x=>`<tr data-pid="${esc(x.productId)}"><td class="lead" data-label="">${esc(x.name)}</td><td class="n" data-label="Make">${fmtQ(x.qty)}</td><td class="n c-batches" data-label="Batches">${fmtQ(x.batches)}</td><td data-label="Note" class="c-note">${x.spare>EPS?`makes ${fmtQ(x.makes)}, ${fmtQ(x.spare)} spare`:'exact'}</td></tr>`).join('')}</tbody></table></section>
+  <section class="card"><h3>Shopping list</h3><table class="stack" id="shopTable"><thead><tr><th>Material</th><th class="n">Need</th><th class="n">Packs to buy</th><th class="n">Cost</th><th class="n">Left over</th></tr></thead><tbody>${r.shopping.map(s=>`<tr data-mat="${esc(s.materialId)}"><td class="lead" data-label="">${esc(s.name)}</td><td class="n" data-label="Need">${fmtQ(s.need)} ${esc(s.unit)}</td><td class="n c-packs" data-label="Packs to buy">${s.packs} × ${fmtQ(s.packSize)} ${esc(s.unit)}</td><td class="n c-cost" data-label="Cost">${money(s.cost)}</td><td class="n c-left" data-label="Left over">${fmtQ(s.left)} ${esc(s.unit)}</td></tr>`).join('')}</tbody></table>
+    <div class="totals" style="margin-top:12px"><div><span>Total spend</span><b id="planSpend">${money(r.spend)}</b></div><div><span>Expected revenue (${esc(r.channel)})</span><b id="planRev">${money(r.revenue)}</b></div><div><span>Net profit (${esc(r.channel)})</span><b id="planProfit">${money(r.profit)}</b></div></div>
+    <p class="hint">Net profit uses your full cost per unit (materials, labour and overhead) and the channel's fees, not just this shopping trip.</p>
+    <div class="btns" style="margin-top:12px"><button data-act="printPlan">Print shopping list</button></div></section>`;
+}
+
+// ---------- profit (Pro): CSV parsing and import ----------
+function parseCSV(text){
+  text=String(text);if(text.charCodeAt(0)===0xFEFF)text=text.slice(1);
+  const first=text.slice(0,text.search(/\r|\n|$/)),sep=(first.match(/;/g)||[]).length>(first.match(/,/g)||[]).length?';':',';
+  const rows=[];let row=[],f='',q=false;
+  for(let i=0;i<text.length;i++){const ch=text[i];
+    if(q){if(ch==='"'){if(text[i+1]==='"'){f+='"';i++}else q=false}else f+=ch}
+    else if(ch==='"')q=true;
+    else if(ch===sep){row.push(f);f=''}
+    else if(ch==='\n'||ch==='\r'){if(ch==='\r'&&text[i+1]==='\n')i++;row.push(f);rows.push(row);row=[];f=''}
+    else f+=ch}
+  if(f!==''||row.length){row.push(f);rows.push(row)}
+  return rows.filter(r=>r.some(c=>c.trim()!==''));
+}
+function parseDate(s){
+  s=String(s||'').trim();let m,y,mo,d;
+  if((m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)))[y,mo,d]=[+m[1],+m[2],+m[3]];
+  else if((m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})\b/))){mo=+m[1];d=+m[2];y=+m[3];if(y<100)y+=2000}
+  else if((m=s.match(/^([A-Za-z]{3,})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{4})\b/))){mo=MONS.indexOf(m[1].slice(0,3).toLowerCase())+1;d=+m[2];y=+m[3]}
+  else if((m=s.match(/^(\d{1,2})\s+([A-Za-z]{3,})\.?,?\s+(\d{4})\b/))){d=+m[1];mo=MONS.indexOf(m[2].slice(0,3).toLowerCase())+1;y=+m[3]}
+  else return null;
+  return y>=1990&&y<=2100&&mo>=1&&mo<=12&&d>=1&&d<=31?{y,mo,d,ym:`${y}-${pad(mo)}`}:null;
+}
+const normH=h=>String(h).toLowerCase().replace(/[\s_]+/g,'');
+const SALES_F=[['date','Sale Date',1],['name','Item Name',1],['qty','Quantity',1],['total','Item Total',1],['order','Order ID'],['sku','SKU'],['listing','Listing ID'],['ship','Order Shipping'],['disc','Discount Amount'],['tax','Order Sales Tax'],['cur','Currency']];
+const STMT_F=[['date','Date',1],['type','Type',1],['title','Title',1],['amount','Amount',1],['fees','Fees & Taxes',1],['net','Net']];
+const FIELD_NAMES={date:'Date',name:'Item name',qty:'Quantity',total:'Item total',type:'Type',title:'Title',amount:'Amount',fees:'Fees & Taxes'};
+function autoMap(headers,F){const n=headers.map(normH),m={};for(const [k,label] of F){const i=n.indexOf(normH(label));if(i>=0)m[k]=i}return m}
+function detect(headers){
+  const s=autoMap(headers,SALES_F),t=autoMap(headers,STMT_F),score=(m,F)=>F.reduce((a,f)=>a+(m[f[0]]!=null?(f[2]?2:1):0),0);
+  return score(t,STMT_F)>score(s,SALES_F)?{type:'stmt',map:t}:{type:'sales',map:s};
+}
+const missing=(type,map)=>(type==='stmt'?STMT_F:SALES_F).filter(f=>f[2]&&map[f[0]]==null);
+const normName=s=>String(s).toLowerCase().replace(/\s+/g,' ').trim();
+function rangeLabel(yms){return monthLabel(yms[0])+(yms.length>1?' – '+monthLabel(yms[yms.length-1]):'')}
+function importSales(map,rows){
+  const E=chById('etsy'),lines=dict(),months=dict(),orders=new Map();let n=0,bad=0;
+  for(let r=1;r<rows.length;r++){
+    const row=rows[r],get=k=>map[k]!=null?String(row[map[k]]??'').trim():'';
+    const d=parseDate(get('date'));if(!d){bad++;continue}
+    const qn=parseNum(get('qty')),q=isFinite(qn)?qn:0,total=money0(get('total')),disc=Math.abs(money0(get('disc')));
+    const name=get('name').slice(0,200)||'(no item name)',sku=get('sku').slice(0,64),key=(sku?'sku:'+sku:'name:'+normName(name)).slice(0,250),lk=d.ym+'|'+key;
+    const L=lines[lk]||(lines[lk]={name,sku,units:0,items:0,disc:0});L.units+=q;L.items+=total;L.disc+=disc;
+    const M=months[d.ym]||(months[d.ym]={ship:0,tax:0,estFees:0}),ok=d.ym+'|'+(get('order')||'row'+r);
+    let o=orders.get(ok);
+    if(!o){o={ym:d.ym,qty:0,items:0,ship:money0(get('ship'))};orders.set(ok,o);M.ship+=o.ship;M.tax+=money0(get('tax'))}
+    o.qty+=q;o.items+=total;n++;
+  }
+  for(const o of orders.values())months[o.ym].estFees+=E.listing*o.qty+(E.txPct+E.procPct)/100*(o.items+o.ship)+E.fixed;
+  const yms=Object.keys(months).sort();if(!yms.length)return `No sales rows with a readable date were found${bad?` (${bad} rows skipped)`:''}.`;
+  for(const k of Object.keys(D.sales.lines))if(months[k.slice(0,7)])delete D.sales.lines[k];
+  for(const k of Object.keys(lines))D.sales.lines[k]=lines[k];
+  for(const k of yms)D.sales.months[k]=months[k];
+  ui.year=yms[yms.length-1].slice(0,4);
+  return `Imported ${n} sale${n===1?'':'s'} for ${rangeLabel(yms)}`+(bad?` (${bad} rows skipped: unreadable date)`:'');
+}
+function importStmt(map,rows){
+  const st=dict();let n=0,bad=0;
+  for(let r=1;r<rows.length;r++){
+    const row=rows[r],get=k=>map[k]!=null?String(row[map[k]]??'').trim():'';
+    const d=parseDate(get('date'));if(!d){bad++;continue}
+    const type=get('type').toLowerCase(),title=get('title'),amt=money0(get('amount')),fee=money0(get('fees'));
+    const S=st[d.ym]||(st[d.ym]={fees:0,ads:0,postage:0,refunds:0,tax:0,other:0,otherCount:0});n++;
+    if(type==='sale'||type==='deposit'||type==='payment')continue;
+    if(type==='refund'){S.refunds+=Math.abs(amt!==0?amt:fee);if(amt!==0&&fee>0)S.fees-=fee;continue}
+    const signed=fee!==0?fee:amt,v=Math.abs(signed),credit=signed>0&&/credit|refund/i.test(title)?-1:1;
+    const b=type==='fee'?(/offsite ads/i.test(title)?'ads':'fees'):type==='marketing'?'ads':type==='shipping'?'postage':type==='tax'?'tax':null;
+    if(b)S[b]+=credit*v;else{S.other+=v;S.otherCount++}
+  }
+  const yms=Object.keys(st).sort();if(!yms.length)return `No statement rows with a readable date were found${bad?` (${bad} rows skipped)`:''}.`;
+  for(const k of yms)D.sales.statement[k]=st[k];
+  ui.year=yms[yms.length-1].slice(0,4);
+  return `Imported statement (${n} line${n===1?'':'s'}) for ${rangeLabel(yms)}`;
+}
+const runImport=(type,map,rows)=>type==='stmt'?importStmt(map,rows):importSales(map,rows);
+async function importFiles(files){
+  if(!gate(R.profit))return;
+  const msgs=[];
+  for(const f of files){
+    if(f.size>25e6){msgs.push(`${f.name} is too large`);continue}
+    let text;try{text=await f.text()}catch{msgs.push(`${f.name} could not be read`);continue}
+    const rows=parseCSV(text);if(rows.length<2){msgs.push(`${f.name} has no rows`);continue}
+    const headers=rows[0].slice(0,200).map(h=>h.trim()),d=detect(headers);
+    if(missing(d.type,d.map).length){ui.mapper.push({name:f.name,headers,rows,type:d.type,map:d.map});continue}
+    msgs.push(runImport(d.type,d.map,rows));
+  }
+  save();render();
+  if(msgs.length)toast(msgs.join(' · '),6000);
+  else if(ui.mapper.length)toast('Some columns need matching. Pick them below.');
+}
+function mapperHtml(){
+  const m=ui.mapper[0];if(!m)return '';const F=m.type==='stmt'?STMT_F:SALES_F;
+  return `<div class="mapper" id="mapperBox"><h3>Match the columns in “${esc(m.name)}”</h3><p class="muted small" style="margin-top:0">Some expected columns were not found. Pick the column that holds each field.</p>
+    <div class="grid3"><div><label for="mapType">This file is</label><select id="mapType"><option value="sales"${m.type==='sales'?' selected':''}>Sold Order Items</option><option value="stmt"${m.type==='stmt'?' selected':''}>Monthly statement</option></select></div>
+    ${F.filter(f=>f[2]).map(([k])=>`<div><label for="map_${k}">${FIELD_NAMES[k]}</label><select id="map_${k}" data-map="${k}"><option value="">Choose a column…</option>${m.headers.map((h,i)=>`<option value="${i}"${m.map[k]===i?' selected':''}>${esc(h||'(blank column '+(i+1)+')')}</option>`).join('')}</select></div>`).join('')}</div>
+    <div class="btns" style="margin-top:12px"><button data-act="mapImport">Import</button><button class="ghost" data-act="mapSkip">Skip this file</button></div></div>`;
+}
+function listings(){
+  const by=new Map();
+  for(const k of Object.keys(D.sales.lines)){const key=k.slice(8),l=D.sales.lines[k];const x=by.get(key)||{key,name:l.name,sku:l.sku,units:0};x.units+=l.units;by.set(key,x)}
+  for(const x of by.values()){
+    const v=D.sales.map[x.key];
+    if(v==='ignore'||(v&&prodById(v))){x.pid=v;x.auto=false;continue}
+    const s=x.sku.trim().toLowerCase(),nm=x.name.trim().toLowerCase();
+    const p=(s&&D.products.find(p=>p.sku&&p.sku.trim().toLowerCase()===s))||D.products.find(p=>p.name.trim().toLowerCase()===nm);
+    x.pid=p?p.id:null;x.auto=!!p;
+  }
+  return [...by.values()].sort((a,b)=>b.units-a.units||a.name.localeCompare(b.name));
+}
+function yearsList(){const y=new Set();for(const k of [...Object.keys(D.sales.months),...Object.keys(D.sales.statement)])y.add(k.slice(0,4));return [...y].sort()}
+function report(Y){
+  const eff=new Map(listings().map(x=>[x.key,x])),unitCost=new Map(),uc=p=>{if(!unitCost.has(p.id))unitCost.set(p.id,costs(p).unit);return unitCost.get(p.id)};
+  const ms=new Set([...Object.keys(D.sales.months),...Object.keys(D.sales.statement)].filter(k=>k.startsWith(Y+'-')));
+  const months=[...ms].sort().map(ym=>({ym,units:0,items:0,disc:0,cogs:0}));const byYm=new Map(months.map(m=>[m.ym,m]));
+  const lines=Object.keys(D.sales.lines).filter(k=>byYm.has(k.slice(0,7)));
+  for(const k of lines){const l=D.sales.lines[k],m=byYm.get(k.slice(0,7)),x=eff.get(k.slice(8)),p=x&&x.pid&&x.pid!=='ignore'&&prodById(x.pid);
+    m.units+=l.units;m.items+=l.items;m.disc+=l.disc;if(p)m.cogs+=l.units*uc(p)}
+  const tot={units:0,items:0,disc:0,sales:0,ship:0,fees:0,ads:0,postage:0,refunds:0,cogs:0,net:0,tax:0,other:0,otherCount:0,est:false};
+  for(const m of months){const M=D.sales.months[m.ym]||{ship:0,tax:0,estFees:0},S=D.sales.statement[m.ym];
+    Object.assign(m,{sales:m.items-m.disc,ship:M.ship,est:!S,fees:S?S.fees:M.estFees,ads:S?S.ads:0,postage:S?S.postage:0,refunds:S?S.refunds:0,tax:M.tax||(S?S.tax:0),other:S?S.other:0,otherCount:S?S.otherCount:0});
+    m.net=m.sales+m.ship-m.fees-m.ads-m.postage-m.refunds-m.cogs;
+    for(const k of Object.keys(tot))if(k!=='est')tot[k]+=m[k];if(m.est&&m.fees)tot.est=true}
+  const prods=new Map();
+  for(const k of lines){const l=D.sales.lines[k],m=byYm.get(k.slice(0,7)),key=k.slice(8),x=eff.get(key),p=x&&x.pid&&x.pid!=='ignore'&&prodById(x.pid);
+    const g=p?'p:'+p.id:(x&&x.pid==='ignore'?'i:':'u:')+key,sales=l.items-l.disc,share=m.sales>0?sales/m.sales:0;
+    const G=prods.get(g)||{label:p?p.name:l.name,kind:p?'product':x&&x.pid==='ignore'?'ignored':'unmatched',units:0,sales:0,cogs:0,fees:0};
+    G.units+=l.units;G.sales+=sales;G.cogs+=p?l.units*uc(p):0;G.fees+=(m.fees+m.ads)*share;prods.set(g,G)}
+  const products=[...prods.values()].map(g=>({...g,profit:g.sales-g.fees-g.cogs})).sort((a,b)=>b.sales-a.sales);
+  products.forEach(g=>g.perUnit=g.units?g.profit/g.units:0);
+  return{year:Y,months,tot,products,gross:tot.items+tot.ship-tot.disc};
+}
+function renderProfit(v){
+  if(!pro.isPro()){v.innerHTML=lockedHtml('profit');return}
+  const L=listings(),years=yearsList(),un=L.filter(x=>!x.pid);
+  if(!years.includes(ui.year))ui.year=years[years.length-1]||null;
+  v.innerHTML=`<section class="card"><h2>1. Import your Etsy CSV files</h2>
+    <p class="muted small" style="margin-top:0">On Etsy go to Shop Manager → Settings → Options → Download Data and download <b>Orders → Order Items</b> (the file is called EtsySoldOrderItems…csv). For actual fees, ads and postage, also download each month's statement CSV from Finances → Monthly statements.</p>
+    <label class="drop" id="drop"><input type="file" id="csvFiles" class="vh" accept=".csv,text/csv" multiple><b>Drop CSV files here</b><span class="muted">or tap to choose files</span><span class="muted small">Read in this browser. Nothing is uploaded.</span></label>
+    <div id="mapper">${mapperHtml()}</div></section>
+  ${L.length?`<section class="card"><h2>2. Match listings to products</h2><p class="muted small" style="margin-top:0">Matched by SKU, then by name. Pick a product for anything unmatched so its cost of goods counts, or choose Ignore.</p>
+    ${un.length?`<div class="warnbox" id="unmatched">${un.length} listing${un.length===1?'':'s'} not matched, so ${un.length===1?'its':'their'} cost is missing: ${un.slice(0,6).map(x=>esc(x.name)).join(', ')}${un.length>6?'…':''}</div>`:''}
+    <table class="stack" id="matchTable"><thead><tr><th>Listing</th><th class="n">Units sold</th><th>Product</th></tr></thead><tbody>${L.map(x=>`<tr data-key="${esc(x.key)}"><td class="lead" data-label="">${esc(x.name)}${x.sku?` <small class="muted">${esc(x.sku)}</small>`:''}</td><td class="n" data-label="Units sold">${fmtQ(x.units)}</td>
+      <td data-label="Product" class="c-map"><select data-mapsel aria-label="Product for ${esc(x.name)}"><option value="">Not matched</option><option value="ignore"${x.pid==='ignore'?' selected':''}>Ignore (not a product)</option>${D.products.map(p=>`<option value="${esc(p.id)}"${x.pid===p.id?' selected':''}>${esc(p.name)}</option>`).join('')}</select>${x.auto?' <small class="muted">auto</small>':''}</td></tr>`).join('')}</tbody></table></section>`:''}
+  ${ui.year?reportHtml(years,ui.year):`<section class="card empty"><p>Import your Sold Order Items CSV to see profit by month and by product.</p></section>`}`;
+}
+function reportHtml(years,y){
+  const r=report(y),t=r.tot,M=money,cell=(k,label,val)=>`<td class="n c-${k}" data-label="${label}"><span>${val}</span></td>`;
+  const row=(m,label,attr)=>`<tr ${attr}><td class="lead" data-label="">${label}</td>${cell('units','Units',fmtQ(m.units))}${cell('sales','Sales',M(m.sales))}${cell('ship','Shipping charged',M(m.ship))}${cell('fees','Fees',M(m.fees)+(m.est&&m.fees?' <span class="est">est.</span>':''))}${cell('ads','Ads',M(m.ads))}${cell('postage','Postage',M(m.postage))}${cell('refunds','Refunds',M(m.refunds))}${cell('cogs','COGS',M(m.cogs))}${cell('net','Net profit','<b>'+M(m.net)+'</b>')}</tr>`;
+  return `<section class="card" id="report"><div class="toolbar"><h2>3. Report</h2><div><label for="yearSel" class="vh">Year</label><select id="yearSel">${years.map(x=>`<option${x===y?' selected':''}>${esc(x)}</option>`).join('')}</select></div></div>
+    <div class="scroll"><table class="stack rep" id="monthTable"><thead><tr><th>Month</th><th class="n">Units</th><th class="n">Sales</th><th class="n">Shipping charged</th><th class="n">Fees</th><th class="n">Ads</th><th class="n">Postage</th><th class="n">Refunds</th><th class="n">COGS</th><th class="n">Net profit</th></tr></thead>
+    <tbody>${r.months.map(m=>row(m,esc(monthLabel(m.ym)),`data-month="${m.ym}"`)).join('')}${row(t,'Total','class="tot"')}</tbody></table></div>
+    <p class="hint">Fees marked <span class="est">est.</span> are estimated from your Etsy fee settings because no statement covers that month. Sales are item totals after discounts.${t.otherCount?` ${t.otherCount} other statement line${t.otherCount===1?'':'s'} (${M(t.other)}) are not included.`:''}</p>
+    <h3>By product</h3><div class="scroll"><table class="stack rep" id="prodTable"><thead><tr><th>Product</th><th class="n">Units</th><th class="n">Sales</th><th class="n">COGS</th><th class="n">Profit</th><th class="n">Profit / unit</th></tr></thead><tbody>${r.products.map(g=>`<tr><td class="lead" data-label="">${esc(g.label)}${g.kind!=='product'?` <small class="muted">(${g.kind==='ignored'?'ignored':'not matched, cost missing'})</small>`:''}</td><td class="n" data-label="Units">${fmtQ(g.units)}</td><td class="n" data-label="Sales">${M(g.sales)}</td><td class="n" data-label="COGS">${M(g.cogs)}</td><td class="n" data-label="Profit">${M(g.profit)}</td><td class="n" data-label="Profit / unit">${M(g.perUnit)}</td></tr>`).join('')}</tbody></table></div>
+    <p class="hint">Fees and ads are shared out by each listing's share of the month's sales.</p></section>
+  <section class="card" id="yearEnd"><h2>${esc(y)} year-end summary</h2>${yearTable(r)}
+    <div class="btns noprint" style="margin-top:12px"><button data-act="exportCsv">Export CSV</button><button class="ghost" data-act="printYear">Print summary</button></div>
+    <p class="disclaimer">Estimates for planning, not tax advice. Cost of goods uses your current recipe costs.</p></section>
+  <div class="btns noprint"><button class="danger sm" data-act="clearSales">Clear imported sales data</button></div>`;
+}
+function yearTable(r){
+  const t=r.tot,M=money;
+  return `<table class="kv year"><tr><td>Gross sales <span class="muted small">(items + shipping charged − discounts)</span></td><td class="n" id="yeGross">${M(r.gross)}</td></tr>
+    <tr><td>Refunds</td><td class="n">${neg(t.refunds)}</td></tr><tr><td>Etsy fees${t.est?' <span class="est">partly est.</span>':''}</td><td class="n" id="yeFees">${neg(t.fees)}</td></tr>
+    <tr><td>Advertising</td><td class="n">${neg(t.ads)}</td></tr><tr><td>Postage</td><td class="n">${neg(t.postage)}</td></tr>
+    <tr><td>Cost of goods <span class="muted small">(units × current unit cost)</span></td><td class="n" id="yeCogs">${neg(t.cogs)}</td></tr>
+    <tr class="total"><td>Net profit</td><td class="n" id="yeNet">${M(t.net)}</td></tr></table>
+    <p class="taxline" id="yeTax">Sales tax collected and paid by Etsy: <b>${M(t.tax)}</b> (not your income)</p>`;
+}
+function exportCsv(){
+  const y=ui.year;if(!y)return;const r=report(y),f2=n=>(Math.round(n*100)/100).toFixed(2);
+  const cells=m=>[fmtQ(m.units).replace(/,/g,''),f2(m.sales),f2(m.ship),f2(m.fees),m.est&&m.fees?'yes':'no',f2(m.ads),f2(m.postage),f2(m.refunds),f2(m.cogs),f2(m.net),f2(m.tax)];
+  const rows=[['Month','Units','Sales','Shipping charged','Fees','Fees estimated','Ads','Postage','Refunds','Cost of goods','Net profit','Sales tax (excluded)'],...r.months.map(m=>[m.ym,...cells(m)]),['Total',...cells(r.tot)]];
+  const cell=v=>{v=String(v);if(/^[=+\-@\t\r]/.test(v)&&!/^-?\d/.test(v))v="'"+v;return /[",\r\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+  download(`makermargin-profit-${y}.csv`,rows.map(r=>r.map(cell).join(',')).join('\r\n')+'\r\n','text/csv');
+}
+
+// ---------- backup ----------
+function renderBackup(v){
+  const S=D.settings;
+  v.innerHTML=`<section class="card"><h2>Backup</h2><p style="margin-top:0">Your data lives only in this browser. Download a backup now and then, and after big changes. Restore it here or on another device.</p>
+    <div class="btns"><button data-act="backup">Download backup</button><label class="btn" for="restoreFile">Restore from file</label><input type="file" id="restoreFile" class="vh" accept=".json,application/json"></div>
+    <p class="muted small" id="lastBackup">Last backup: ${S.lastBackup?fmtDate(S.lastBackup):'never'}</p></section>
+  <section class="card"><h2>Settings</h2><div class="grid2">
+    <div><label for="sBiz">Business name</label><input id="sBiz" data-set="business" value="${esc(S.business)}" maxlength="80" placeholder="Shown on printed sheets"></div>
+    <div><label for="sCur">Currency symbol</label><input id="sCur" data-set="currency" value="${esc(S.currency)}" maxlength="4"></div>
+    <div><label for="sHourly">Default hourly rate</label><input id="sHourly" data-set="hourly" inputmode="decimal" value="${fmtIn(S.hourly)}"></div>
+    <div><label for="sOvh">Overhead %</label><input id="sOvh" data-set="overheadPct" inputmode="decimal" value="${fmtIn(S.overheadPct)}"></div></div>
+    <p class="hint">Overhead covers costs you can't pin on one product: rent, utilities, tape, card-reader rental, software. It is added on top of materials and labour.</p></section>
+  <div id="proSlot"></div>
+  <section class="card"><h2>Start over</h2><p class="muted small" style="margin-top:0">Erase every material, product, channel and sales import from this browser. Your Pro license is kept.</p><button class="danger" data-act="wipe">Erase all data</button></section>`;
+  $('proSlot').appendChild(proPanel);
+}
+function backup(){
+  D.settings.lastBackup=Date.now();save();
+  download(`makermargin-backup-${today()}.json`,JSON.stringify({app:'MakerMargin',exported:new Date().toISOString(),...D}),'application/json');
+  render();toast('Backup downloaded. Keep it somewhere safe, like your email or cloud drive.');
+}
+async function restoreFile(file){
+  if(!file)return;if(file.size>20e6){toast('That file is too big to be a MakerMargin backup.');return}
+  let o;try{o=JSON.parse(await file.text())}catch{toast('That file is not a MakerMargin backup (it is not valid JSON).');return}
+  if(!o||typeof o!=='object'||o.v!==1||!Array.isArray(o.materials)||!Array.isArray(o.products)){toast('That file is not a MakerMargin backup.');return}
+  if(!confirm(`Replace everything in this browser with this backup (${plural(o.products.length,'product')}, ${plural(o.materials.length,'material')})?`))return;
+  D=sanitize(o);D.settings.lastBackup=Date.now();save();
+  ui={...ui,matForm:null,matErr:'',ripple:null,teaser:0,mapper:[],year:null,kitOffer:null};render();toast('Backup restored.');
+}
+
+// ---------- print sheets ----------
+function sheetHead(title,sub){const b=D.settings.business&&D.settings.business!==title?D.settings.business:'';return `<div class="sh-head"><div><h1>${esc(title)}</h1>${sub?`<div class="sh-sub">${sub}</div>`:''}</div>${b?`<div class="sh-biz">${esc(b)}</div>`:''}</div>`}
+function costSheet(p){
+  const c=costs(p),s=sugg(c),e=etsyCalc(p);
+  return `<div class="sh">${sheetHead(p.name,`${p.sku?'SKU '+esc(p.sku)+' · ':''}Cost sheet · ${fmtDate(Date.now())}`)}
+    <table><thead><tr><th>Material</th><th class="n">Amount</th><th>Per</th><th class="n">Waste</th><th class="n">Cost</th></tr></thead><tbody>${p.lines.map(l=>{const m=matById(l.matId);return m?`<tr><td>${esc(m.name)}</td><td class="n">${fmtQ(l.qty)} ${esc(l.unit)}</td><td>${l.per==='unit'?'item':'batch'}</td><td class="n">${l.waste?fmtQ(l.waste)+'%':'–'}</td><td class="n">${money(lineCost(l))}</td></tr>`:''}).join('')}</tbody></table>
+    <p>One batch makes ${fmtQ(c.y)} · Labour ${fmtQ(p.laborMin)} min per batch at ${money(c.hourly)}/h · Overhead ${fmtQ(D.settings.overheadPct)}%</p>
+    <table class="sum"><tbody><tr><td>Materials per unit</td><td class="n">${money(c.materials)}</td></tr><tr><td>Labour per unit</td><td class="n">${money(c.labour)}</td></tr><tr><td>Overhead per unit</td><td class="n">${money(c.overhead)}</td></tr><tr class="total"><td>Cost per unit</td><td class="n">${money(c.unit)}</td></tr></tbody></table>
+    <table class="sum"><tbody><tr><td>Suggested wholesale</td><td class="n">${money(s.wholesale)}</td></tr><tr><td>Suggested retail</td><td class="n">${money(s.retail)}</td></tr>
+    ${p.price>0?`<tr><td>Your price</td><td class="n">${money(p.price)}</td></tr><tr><td>Etsy fees</td><td class="n">${money(e.f.total)}</td></tr><tr class="total"><td>Etsy net profit per sale</td><td class="n">${money(e.net)} (${pct(e.margin)})</td></tr>`:''}</tbody></table>
+    ${pro.isPro()?'':'<p class="sh-foot">Made with MakerMargin · free product pricing calculator</p>'}</div>`;
+}
+function lineSheet(type,minOrder){
+  const rows=[...D.products].sort((a,b)=>a.name.localeCompare(b.name)).map(p=>{const s=sugg(costs(p));return{p,wh:s.wholesale,rt:p.price>0?p.price:s.retail}});
+  const title=type==='line'?'Wholesale line sheet':'Price list';
+  return `<div class="sh">${sheetHead(D.settings.business||title,`${D.settings.business?title+' · ':''}${fmtDate(Date.now())}`)}
+    <table><thead><tr><th>Product</th><th>SKU</th>${type==='line'?'<th class="n">Wholesale</th><th class="n">MSRP</th>':'<th class="n">Price</th>'}</tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.p.name)}</td><td>${esc(r.p.sku)||'–'}</td>${type==='line'?`<td class="n">${money(r.wh)}</td>`:''}<td class="n">${money(r.rt)}</td></tr>`).join('')}</tbody></table>
+    ${minOrder?`<p><b>Minimum order:</b> ${esc(minOrder)}</p>`:''}</div>`;
+}
+function shopSheet(){
+  const r=planCalc(D.plan.rows,D.plan.channel);
+  return `<div class="sh">${sheetHead('Shopping list',`Batch plan · ${fmtDate(Date.now())}`)}
+    <h2>What to make</h2><table><thead><tr><th>Product</th><th class="n">Make</th><th class="n">Batches</th><th>Note</th></tr></thead><tbody>${r.rows.map(x=>`<tr><td>${esc(x.name)}</td><td class="n">${fmtQ(x.qty)}</td><td class="n">${fmtQ(x.batches)}</td><td>${x.spare>EPS?`makes ${fmtQ(x.makes)}, ${fmtQ(x.spare)} spare`:''}</td></tr>`).join('')}</tbody></table>
+    <h2>What to buy</h2><table><thead><tr><th>☐</th><th>Material</th><th class="n">Need</th><th class="n">Packs</th><th class="n">Cost</th><th class="n">Left over</th></tr></thead><tbody>${r.shopping.map(s=>`<tr><td>☐</td><td>${esc(s.name)}</td><td class="n">${fmtQ(s.need)} ${esc(s.unit)}</td><td class="n">${s.packs} × ${fmtQ(s.packSize)} ${esc(s.unit)}</td><td class="n">${money(s.cost)}</td><td class="n">${fmtQ(s.left)} ${esc(s.unit)}</td></tr>`).join('')}
+    <tr class="tot"><td></td><td>Total spend</td><td></td><td></td><td class="n">${money(r.spend)}</td><td></td></tr></tbody></table>
+    <p>Expected revenue on ${esc(r.channel)}: ${money(r.revenue)} · Net profit: ${money(r.profit)}</p></div>`;
+}
+function yearSheet(){
+  const r=report(ui.year),M=money;
+  return `<div class="sh">${sheetHead(`${r.year} profit summary`,`Etsy sales · prepared ${fmtDate(Date.now())}`)}
+    <table><tbody><tr><td>Gross sales (items + shipping charged − discounts)</td><td class="n">${M(r.gross)}</td></tr><tr><td>Refunds</td><td class="n">${neg(r.tot.refunds)}</td></tr><tr><td>Etsy fees${r.tot.est?' (partly estimated)':''}</td><td class="n">${neg(r.tot.fees)}</td></tr><tr><td>Advertising</td><td class="n">${neg(r.tot.ads)}</td></tr><tr><td>Postage</td><td class="n">${neg(r.tot.postage)}</td></tr><tr><td>Cost of goods (units × current unit cost)</td><td class="n">${neg(r.tot.cogs)}</td></tr><tr class="total"><td>Net profit</td><td class="n">${M(r.tot.net)}</td></tr></tbody></table>
+    <p>Sales tax collected and paid by Etsy: <b>${M(r.tot.tax)}</b> (not your income)</p>
+    <h2>By month</h2><table class="wide"><thead><tr><th>Month</th><th class="n">Units</th><th class="n">Sales</th><th class="n">Shipping</th><th class="n">Fees</th><th class="n">Ads</th><th class="n">Postage</th><th class="n">Refunds</th><th class="n">COGS</th><th class="n">Net</th></tr></thead><tbody>
+    ${[...r.months,{...r.tot,ym:null}].map(m=>`<tr${m.ym?'':' class="tot"'}><td>${m.ym?esc(monthLabel(m.ym)):'Total'}</td><td class="n">${fmtQ(m.units)}</td><td class="n">${M(m.sales)}</td><td class="n">${M(m.ship)}</td><td class="n">${M(m.fees)}${m.ym&&m.est&&m.fees?' est.':''}</td><td class="n">${M(m.ads)}</td><td class="n">${M(m.postage)}</td><td class="n">${M(m.refunds)}</td><td class="n">${M(m.cogs)}</td><td class="n">${M(m.net)}</td></tr>`).join('')}</tbody></table>
+    <p class="sh-note">Estimates for planning, not tax advice. Cost of goods uses your current recipe costs.</p></div>`;
+}
+
+// ---------- events ----------
+const ACT={
+  kit:a=>loadKit(a.dataset.kit),
+  addKit:a=>{ui.kitOffer=null;loadKit(a.dataset.kit);renderNotice()},
+  dismissKit:()=>{ui.kitOffer=null;renderNotice()},
+  scratch:()=>{const p=newProduct('My first product');if(p){ui.focus='pName';go('product='+p.id)}},
+  newProduct:()=>{const p=newProduct('New product');if(p){ui.focus='pName';go('product='+p.id)}},
+  dup:()=>{const p=prodById(ui.edit);if(!p)return;if(!pro.isPro()&&D.products.length>=FREE.products){gate(R.cap);return}
+    const c=JSON.parse(JSON.stringify(p));c.id=uid()+'d';c.name=(p.name+' (copy)').slice(0,120);c.sku='';D.products.push(c);save();ui.focus='pName';go('product='+c.id);toast('Duplicated. Rename it and change what differs.')},
+  delProduct:()=>{const p=prodById(ui.edit);if(!p||!confirm(`Delete “${p.name}”? This cannot be undone.`))return;
+    D.products=D.products.filter(x=>x!==p);D.plan.rows=D.plan.rows.filter(r=>r.productId!==p.id);save();go('products');toast(`Deleted ${p.name}.`)},
+  printCost:()=>{const p=prodById(ui.edit);if(p)printSheet(costSheet(p))},
+  addLine:()=>{const p=prodById(ui.edit);if(!p)return;p.lines.push({matId:'',qty:1,unit:'each',per:'batch',waste:0});save();renderLines(p);updateEditor(p);
+    if(!D.materials.length){openInlineMat(p.lines.length-1);return}const s=document.querySelector('#lines .line:last-child .l-mat');if(s)s.focus()},
+  rmLine:a=>{const p=prodById(ui.edit);if(!p)return;p.lines.splice(+a.closest('.line').dataset.i,1);save();renderLines(p);updateEditor(p)},
+  usePrice:a=>{const p=prodById(ui.edit);if(!p)return;p.price=Math.max(0,+a.dataset.v||0);save();$('pPrice').value=fmtMoneyIn(p.price);updateEditor(p)},
+  newMat:()=>{if(!pro.isPro()&&D.materials.length>=FREE.materials){gate(R.cap);return}ui.matForm='new';ui.matErr='';ui.ripple=null;ui.teaser=0;ui.focus='mf_tab_name';render()},
+  editMat:a=>{ui.matForm=a.dataset.id;ui.matErr='';ui.ripple=null;ui.teaser=0;ui.focus='mf_tab_price';render();const f=document.querySelector('form[data-form=mat]');if(f)f.scrollIntoView({block:'nearest'})},
+  cancelMat:a=>{if(a.closest('form').dataset.ctx==='inline'){ui.inlineMat=null;$('inlineMat').innerHTML=''}else{ui.matForm=null;render()}},
+  delMat:a=>{const m=matById(a.dataset.id);if(!m)return;const users=usersOf(m.id);
+    if(users.length){ui.matErr=`<div class="warnbox" role="alert" id="matErr">“${esc(m.name)}” is used in ${users.map(p=>`<a href="#product=${esc(p.id)}">${esc(p.name)}</a>`).join(', ')}. Remove it from ${users.length===1?'that product':'those products'} before deleting it.</div>`;render();return}
+    if(!confirm(`Delete “${m.name}”?`))return;D.materials=D.materials.filter(x=>x!==m);ui.matErr='';if(ui.matForm===m.id)ui.matForm=null;save();render()},
+  closeRipple:()=>{ui.ripple=null;render()},
+  unlock:a=>gate(R[a.dataset.why]||R.cap),
+  getPro:()=>pro.upsell('Pay once, use it forever. Unlimited products, every-channel profit, price-change alerts, batch shopping lists and your Etsy year-end report.'),
+  addCh:()=>{if(!gate(R.ch))return;const c={...CH_BLANK,id:'c_'+uid()};D.channels.push(c);save();render();ui.focus=null;const el=document.querySelector(`[data-chid="${c.id}"] .chan-name`);if(el){el.focus();el.select()}},
+  delCh:a=>{const id=a.closest('[data-chid]').dataset.chid,c=chById(id);if(!c||!id.startsWith('c_')||!confirm(`Remove the “${c.name}” channel?`))return;D.channels=D.channels.filter(x=>x!==c);save();render()},
+  addPlan:()=>{D.plan.rows.push({productId:(D.products[D.plan.rows.length]||D.products[0]||{}).id||'',qty:0});save();render();const q=document.querySelectorAll('[data-pl=qty]');if(q.length)q[q.length-1].focus()},
+  rmPlan:a=>{D.plan.rows.splice(+a.closest('.prow').dataset.i,1);save();render()},
+  printPlan:()=>printSheet(shopSheet()),
+  mapImport:()=>{const m=ui.mapper[0];if(!m)return;const miss=missing(m.type,m.map);if(miss.length){toast(`Choose a column for: ${miss.map(f=>FIELD_NAMES[f[0]]).join(', ')}.`);return}
+    const msg=runImport(m.type,m.map,m.rows);ui.mapper.shift();save();render();toast(msg,6000)},
+  mapSkip:()=>{ui.mapper.shift();render()},
+  exportCsv:()=>exportCsv(),
+  printYear:()=>{if(ui.year)printSheet(yearSheet())},
+  clearSales:()=>{if(!confirm('Clear all imported Etsy sales and statements? Your products and materials are kept.'))return;D.sales={lines:dict(),months:dict(),statement:dict(),map:dict()};ui.year=null;save();render()},
+  backup:()=>backup(),
+  later:()=>{D.settings.snooze=Date.now()+3*DAY;save();renderBanner()},
+  wipe:()=>{if(!confirm('Erase all MakerMargin data in this browser? Download a backup first if you might want it back.'))return;try{localStorage.removeItem(KEY)}catch{}D=sanitize({});ui={...ui,matForm:null,ripple:null,teaser:0,mapper:[],year:null,q:''};go('products');render();toast('All data erased.')},
+  lineSheet:()=>{if(!gate(R.sheet))return;ui.lineSheet=!ui.lineSheet;render();if(ui.lineSheet)$('lsForm').scrollIntoView({block:'nearest'})},
+  closeLS:()=>{ui.lineSheet=false;render()},
+  printLS:()=>{if(gate(R.sheet))printSheet(lineSheet($('lsType').value,$('lsMin').value.trim().slice(0,120)))},
+};
+document.addEventListener('click',e=>{const a=e.target.closest('[data-act]');if(!a||a.disabled)return;const fn=ACT[a.dataset.act];if(fn){e.preventDefault();fn(a,e)}});
+document.addEventListener('input',e=>{
+  const t=e.target;if(t.tagName==='SELECT'||t.type==='checkbox'||t.type==='file')return;
+  const p=ui.edit&&prodById(ui.edit);
+  if(p&&t.dataset.pf)return setPF(p,t.dataset.pf,t.value);
+  if(p&&t.dataset.lf){const l=p.lines[+t.closest('.line').dataset.i];if(!l)return;const n=parseNum(t.value);l[t.dataset.lf]=isFinite(n)?Math.min(t.dataset.lf==='waste'?500:1e9,Math.max(0,n)):0;save();updateEditor(p);return}
+  if(p&&t.id==='pSlide')return whatIf(p);
+  if(t.id==='q'){ui.q=t.value;renderPList();return}
+  if(t.dataset.set)return setSetting(t.dataset.set,t.value);
+  if(t.dataset.chf)return setChan(t);
+  if(t.dataset.pl==='qty'){const r=D.plan.rows[+t.closest('.prow').dataset.i];if(r){const n=parseNum(t.value);r.qty=isFinite(n)?Math.min(1e6,Math.max(0,Math.round(n))):0;save();updatePlan()}return}
+  const f=t.closest('form[data-form="mat"]');if(f)matPreview(f);
+});
+document.addEventListener('change',e=>{
+  const t=e.target,p=ui.edit&&prodById(ui.edit);
+  if(p&&t.dataset.lf&&t.tagName==='SELECT')return lineSelect(p,t);
+  if(p&&t.id==='pAds'){chById('etsy').useExtra=t.checked;save();updateEditor(p);return}
+  if(t.dataset.set&&t.tagName==='SELECT')return setSetting(t.dataset.set,t.value);
+  if(t.dataset.chf&&(t.tagName==='SELECT'||t.type==='checkbox'))return setChan(t);
+  if(t.dataset.pl==='productId'){const r=D.plan.rows[+t.closest('.prow').dataset.i];if(r&&prodById(t.value)){r.productId=t.value;save();updatePlan()}return}
+  if(t.id==='planCh'){D.plan.channel=t.value;save();updatePlan();return}
+  if(t.id==='mapType'){const m=ui.mapper[0];if(m){m.type=t.value==='stmt'?'stmt':'sales';m.map=autoMap(m.headers,m.type==='stmt'?STMT_F:SALES_F);$('mapper').innerHTML=mapperHtml()}return}
+  if(t.dataset.map){const m=ui.mapper[0];if(m){if(t.value==='')delete m.map[t.dataset.map];else m.map[t.dataset.map]=+t.value}return}
+  if(t.hasAttribute('data-mapsel')){const key=t.closest('tr').dataset.key;if(t.value==='ignore'||prodById(t.value))D.sales.map[key]=t.value;else delete D.sales.map[key];save();render();return}
+  if(t.id==='yearSel'){ui.year=t.value;render();return}
+  if(t.id==='csvFiles'){const fs=[...t.files];t.value='';importFiles(fs);return}
+  if(t.id==='restoreFile'){const f=t.files[0];t.value='';restoreFile(f);return}
+  if(t.name==='packUnit'){const f=t.closest('form[data-form="mat"]');if(f)matPreview(f);return}
+  if(p&&t.dataset.pf&&!['name','sku'].includes(t.dataset.pf)){const k=t.dataset.pf,val=p[k];t.value=k==='yield'?fmtIn(val):!val?'':k==='price'||k==='shipCharge'?fmtMoneyIn(val):fmtIn(val)}
+});
+document.addEventListener('submit',e=>{const f=e.target.closest('form[data-form="mat"]');if(f){e.preventDefault();saveMatForm(f)}});
+document.addEventListener('dragover',e=>{e.preventDefault();const d=e.target.closest&&e.target.closest('#drop');document.querySelectorAll('.drop').forEach(x=>x.classList.toggle('over',x===d))});
+document.addEventListener('dragleave',e=>{if(e.target.closest&&e.target.closest('#drop'))e.target.closest('#drop').classList.remove('over')});
+document.addEventListener('drop',e=>{e.preventDefault();const d=e.target.closest&&e.target.closest('#drop');if(!d)return;d.classList.remove('over');const fs=[...(e.dataTransfer&&e.dataTransfer.files||[])].filter(f=>/\.csv$/i.test(f.name)||/csv|text/.test(f.type));if(fs.length)importFiles(fs)});
+
+// ---------- start ----------
+(function start(){
+  const q=new URLSearchParams(location.search);let k=String(q.get('kit')||'').toLowerCase().trim();k=KIT_ALIAS[k]||k;
+  if(q.has('kit')){
+    q.delete('kit');let hash=location.hash;
+    if(Object.hasOwn(KITS,k)){if(!hasData()){const p=addKit(k);if(p){hash='#product='+p.id;setTimeout(()=>toast(`${KITS[k].label} starter kit loaded. Example prices, replace with yours.`),0)}}else ui.kitOffer=k}
+    history.replaceState(null,'',location.pathname+(q.toString()?'?'+q:'')+hash);
+  }
+  route();render();
+})();
+</script></body></html>
