@@ -23,6 +23,14 @@ Input: `TeamInput` setters latch presses (`wasPressed`), and `TeamGame.edge` rea
 than a frame still count. Rocco has a jump buffer and coyote time (`jumpBufT`, `coyoteT`) and THROW is
 buffered (`actionBufT`). `GameView.run` is a Choreographer loop (one draw per vsync, at most 3 updates
 per draw); text-to-speech and SoundPool playing run on their own threads in `SoundFx`.
+`FrameClock` (both apps) learns the screen's refresh period from the vsync times and locks onto it as a
+fraction of a 60 Hz update (`p/q`: 1/1 at 60 Hz, 2/3 at 90, 1/2 at 120, 5/12 at 144), counting refreshes, not
+nanoseconds, so vsync wobble can't turn into skip-then-double hitches; odd rates fall back to real time.
+The level camera is `LevelCamera.kt` (`TeamGame.camera`, `camX` = `camera.x`): a critically damped `Spring`
+following the leader with a look-ahead (`lead`, shifts only while he moves), sudden target jumps (SWAP, pit
+respawns, `camLock` on/off) go into `jumpOffset` and glide away, far teleports cut, the leader is always fully
+on screen. Use `snapCamera()` (no glide) when a level starts or a bonus room is entered/left. On the ground,
+stopping/turning uses `GROUND_BRAKE` (not while crouching: the crouch slide makes the crouch long jump).
 `MainActivity.dispatchKeyEvent`/`dispatchGenericMotionEvent` hand controller input straight to
 `GameView` (no focus needed). The CONTROLS screen has a live tester (`padSaw`, `stickX/Y`, `fps`).
 Every jump has a minimum height (`jumpHoldT`).
@@ -52,8 +60,9 @@ A separate app (`com.roccoquest.teamup3d`) that runs the same `TeamGame` and dra
 `teamup3d/engine/build/screens3d`. Other screens (map, house, menus, sticker book) stay Team Up!'s 2D Canvas picture (a 3D-ified menu
 attempt looked darker and lagged on the sticker book, so it was removed). The title uses `prepareTitle`/`renderTitleCast` (`TileGfx.titleMode` hides low blocks, pits are filled).
 `teamup3d/android` draws the level sky and the HUD with Canvas into `SurfaceTexture`s (`CanvasLayer`) and the
-level with GLES 2.0 (`GlScene`); frames are requested from a `Choreographer` callback with the vsync time (smooth
-sprinting); on any 3D error it draws plain 2D for half a second. Lighting keeps camera-facing surfaces at their
+level with GLES 2.0 (`GlScene`); a main-thread `Choreographer` callback runs the `FrameClock` with the vsync
+time and only requests a render when there are updates (`pendingSteps`, run on the GL thread in `onDrawFrame`,
+at most 3), so a 120 Hz screen doesn't draw every picture twice; on any 3D error it draws plain 2D for half a second. Lighting keeps camera-facing surfaces at their
 exact 2D colour (`lit` in the shader / `SoftRaster`). File 1's head start is `TeamGame.HeadStart` (World 9-1,
 key `start3d_world9`). Sung theme: `ThemeSinger` (3D app) has a TTS voice say each `Songs.themeSpoken` syllable
 into a WAV, `Autotune.fit` (core) retunes it to `Chiptune.sungNotes` (two octaves down) and `Chiptune.render(song,

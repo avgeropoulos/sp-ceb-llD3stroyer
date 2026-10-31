@@ -101,15 +101,22 @@ class GameGLView(context: Context) : GLSurfaceView(context), GLSurfaceView.Rende
         requestFocus()
     }
 
-    /** Time of the latest screen refresh, from the [Choreographer]. */
-    @Volatile private var vsyncNanos = 0L
     @Volatile private var ticking = false
+    /**
+     * Game updates owed. The [clock] counts them on the main thread at each screen refresh (with the
+     * refresh's own time), and [onDrawFrame] runs them on the GL thread.
+     */
+    private val pendingSteps = java.util.concurrent.atomic.AtomicInteger(0)
 
     private val vsync = object : android.view.Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
             if (!ticking) return
-            vsyncNanos = frameTimeNanos
-            requestRender()
+            val steps = clock.steps(frameTimeNanos)
+            // On a 120 Hz screen every other refresh has no new update: don't draw the same picture twice.
+            if (steps > 0) {
+                pendingSteps.addAndGet(steps)
+                requestRender()
+            }
             android.view.Choreographer.getInstance().postFrameCallback(this)
         }
     }
@@ -119,6 +126,9 @@ class GameGLView(context: Context) : GLSurfaceView(context), GLSurfaceView.Rende
         onResume()
         if (!ticking) {
             ticking = true
+            // The first refresh back is one normal update, not a jump to catch up on the pause.
+            clock.reset()
+            pendingSteps.set(0)
             android.view.Choreographer.getInstance().postFrameCallback(vsync)
         }
     }
@@ -169,7 +179,8 @@ class GameGLView(context: Context) : GLSurfaceView(context), GLSurfaceView.Rende
 
     override fun onDrawFrame(unused: GL10?) {
         val now = System.nanoTime()
-        val steps = clock.steps(if (vsyncNanos != 0L) vsyncNanos else now)
+        // A slow frame can't pile up more than a few updates (the same limit as the clock's).
+        val steps = minOf(pendingSteps.getAndSet(0), MAX_STEPS_PER_DRAW)
         repeat(steps) {
             try { game.update(1f / 60f) } catch (t: Throwable) { recover(t) }
         }
@@ -288,6 +299,8 @@ class GameGLView(context: Context) : GLSurfaceView(context), GLSurfaceView.Rende
         )
         const val STICK_ON = 0.35f
         const val STICK_OFF = 0.25f
+        /** At most this many game updates before one picture (a slow phone mustn't fall further behind). */
+        const val MAX_STEPS_PER_DRAW = 3
     }
     private val defaultPadKeys = intArrayOf(
         KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BUTTON_X, KeyEvent.KEYCODE_BUTTON_Y,
