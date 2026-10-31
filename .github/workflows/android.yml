@@ -56,7 +56,9 @@ jobs:
           tag_name: latest-${{ github.ref_name }}
           name: "Rocco's Quest and Μπουζούκι - Download for Android"
           prerelease: false
-          make_latest: true
+          # The update channel below is the "latest" release instead, so older copies of the app
+          # (which update from "latest") find it too.
+          make_latest: false
           body: |
             Install on Android: download **RoccosQuest.apk** or **Bouzouki.apk** on your
             phone, open it, and allow "install unknown apps" for your browser if asked.
@@ -79,7 +81,7 @@ jobs:
           tag_name: bouzouki-hero
           name: "Μπουζούκι with Bouzouki Hero - in-app updates"
           prerelease: false
-          make_latest: false
+          make_latest: true
           body: |
             The update channel for Μπουζούκι with Bouzouki Hero. The app's ⬆ Update button installs
             the newest build from here. To install by hand, download **Bouzouki.apk** on your phone.
