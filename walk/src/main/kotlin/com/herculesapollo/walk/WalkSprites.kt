@@ -307,6 +307,65 @@ object WalkSprites {
         "....KK.KK.KK",
     )
 
+    /** A green anole with its pink throat fan. */
+    private val lizardPal = mapOf(
+        'G' to 0xFF5BBF3A.toInt(), 'D' to 0xFF2F7A22.toInt(), 'P' to 0xFFFF6FA0.toInt(), 'K' to K,
+    )
+    val lizard = art(lizardPal,
+        "..........DGG",
+        "....DGGGGGGGKG",
+        "DDGGGGGGGGGGGG",
+        "....GGGGGG.PP",
+        "....G..G..G",
+        "...G..G..G",
+    )
+    val lizardRun = art(lizardPal,
+        "..........DGG",
+        "....DGGGGGGGKG",
+        "DDGGGGGGGGGGGG",
+        "....GGGGGG.PP",
+        "...G..G...G",
+        "....G..G...G",
+    )
+    /** Up the fence, head first. */
+    val lizardClimb = art(lizardPal,
+        "..GG",
+        ".GKGG",
+        "..GG",
+        "G.GGP.G",
+        ".GGGG",
+        "..GG",
+        ".GGGG",
+        "G.GG.G",
+        "..GG",
+        "..GD",
+        "..D",
+        "..D",
+        "...D",
+    )
+
+    private val frogPal = mapOf(
+        'G' to 0xFF4CAF50.toInt(), 'L' to 0xFFC5E1A5.toInt(), 'K' to K, 'W' to WHITE, 'D' to 0xFF2E7D32.toInt(),
+    )
+    val frog = art(frogPal,
+        ".WK....KW",
+        ".GGG..GGG",
+        "GGGGGGGGGG",
+        "GGLLLLLLGG",
+        ".GGLLLLGG",
+        "DG.G..G.GD",
+        "D........D",
+    )
+    val frogHop = art(frogPal,
+        ".WK....KW",
+        ".GGG..GGG",
+        "GGGGGGGGGG",
+        ".GLLLLLLG",
+        "..GLLLLG",
+        ".D......D",
+        "D........D",
+    )
+
     // ---------------------------------------------------------------- Bits and bobs
     val bone = art(mapOf('W' to 0xFFFFF6E0.toInt(), 'G' to 0xFFC9B48A.toInt()),
         "GW.....WG",

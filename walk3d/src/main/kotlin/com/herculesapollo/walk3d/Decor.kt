@@ -77,6 +77,8 @@ object Decor {
             val z = sin(a) * r / sq
             if (abs(x) > level.half + Terrain.SKIRT - 4f || abs(z) > level.half + Terrain.SKIRT - 4f) return@repeat
             if (beach && z > level.half - 2f) return@repeat
+            // Not inside the neighbours' houses.
+            if (level.solids.any { x > it.x0 - 2.5f && x < it.x1 + 2.5f && z > it.z0 - 2.5f && z < it.z1 + 2.5f }) return@repeat
             val y = Terrain.height(level, x, z)
             val pine = rnd.nextInt(3) == 0
             val c = Models.shade(if (pine) pineGreen else treeGreen, 0.8f + rnd.nextFloat() * 0.35f)

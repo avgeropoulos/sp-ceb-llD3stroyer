@@ -6,6 +6,9 @@ import kotlin.math.sin
 
 /** How the critters behave: mind their business, bolt for safety when a dog gets close, run off when caught. */
 object CritterAi {
+    /** How high a lizard climbs the fence: above where Hercules can reach, below Apollo's jump. */
+    const val LIZARD_PERCH = GROUND - 74f
+
     /**
      * [chasers] are the x positions of the dogs; [lookX] is who cats and raccoons keep an
      * eye on. Shared by both game modes.
@@ -60,6 +63,8 @@ object CritterAi {
                 c.x = c.startX + sin(c.t * 2f) * 14f
                 if (near < 70f) c.mood = Mood.FLEE
             }
+            Kind.LIZARD -> if (near < 65f) { c.mood = Mood.FLEE; c.facing = if (c.home > c.x) 1 else -1 }
+            Kind.FROG -> if (near < 55f) { c.mood = Mood.FLEE; c.t = 0f }
             Kind.SKUNK -> {
                 val nx = c.startX + sin(c.t * 0.5f) * 20f
                 if (abs(nx - c.x) > 0.01f) c.facing = if (nx > c.x) 1 else -1
@@ -102,6 +107,27 @@ object CritterAi {
                 else c.x += c.facing * step
             }
             Kind.RACCOON -> if (c.t > 1.1f) { c.hidden = true; c.mood = Mood.SAFE }
+            Kind.LIZARD -> if (!c.climbing) {
+                // Dart to the fence, then straight up it.
+                val step = 160f * dt
+                if (abs(c.home - c.x) <= step) { c.x = c.home; c.climbing = true }
+                else c.x += if (c.home > c.x) step else -step
+            } else {
+                c.y -= 70f * dt
+                if (c.y <= LIZARD_PERCH) { c.y = LIZARD_PERCH; c.mood = Mood.SAFE }
+            }
+            Kind.FROG -> {
+                // Big hops toward the pond, then a splash.
+                val dir = if (c.home > c.x) 1 else -1
+                c.facing = dir
+                if (c.y >= GROUND) {
+                    if (abs(c.home - c.x) < 8f) { c.x = c.home; c.hidden = true; c.mood = Mood.SAFE; return }
+                    c.vy = -190f
+                }
+                c.vy += 700f * dt
+                c.y = min(GROUND, c.y + c.vy * dt)
+                c.x += dir * 110f * dt
+            }
             Kind.CAT, Kind.SKUNK -> {}
         }
     }

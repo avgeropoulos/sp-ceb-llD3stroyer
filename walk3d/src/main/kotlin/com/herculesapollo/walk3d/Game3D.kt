@@ -59,6 +59,8 @@ class Dog3(val herc: Boolean) {
     var jumpBuffer = 0f
     var jumpHeld = false
     var stinkT = 0f
+    /** Seconds left soaked from a sprinkler: a wet dog is a slower dog. */
+    var wetT = 0f
     var hurtT = 0f
     var dashT = 0f
     var barkT = 0f
@@ -111,6 +113,34 @@ class Game3D(
     var viewW = 427f
 
     var dog = Dog3(true)
+        private set
+    /** The other dog, who comes along, trots beside you and helps chase. */
+    var buddy = Dog3(false)
+        private set
+    var buddyTarget: Critter3? = null
+        private set
+    /** Whether the buddy comes along (tests leave it at home to check one dog on its own). */
+    var buddyAlong = true
+    private var buddyChaseT = 0f
+    private var buddyThinkT = 0f
+    private var buddyStuckT = 0f
+    private var buddyBarkT = 0f
+    private var lastPlayerCatch = -10f
+    private var lastBuddyCatch = -10f
+    var teamChases = 0
+        private set
+
+    /** The squeaky toy hidden on each level: bring it home for a bonus. */
+    var toyX = 0f
+        private set
+    var toyY = 0f
+        private set
+    var toyZ = 0f
+        private set
+    var toyCarried = false
+        private set
+    /** Brought home on this level (for the results screen). */
+    var toyHome = false
         private set
     var levelIndex = 0
         private set
@@ -229,6 +259,19 @@ class Game3D(
             vx = 0f; vy = 0f; vz = 0f; onGround = true
             stinkT = 0f; hurtT = 0f; dashT = 0f; barkT = 0f; cooldown = 0f; jumpBuffer = 0f
         }
+        with(buddy) {
+            // Starts beside you.
+            x = level.startX + cos(level.startYaw) * 1.4f; z = level.startZ - sin(level.startYaw) * 1.4f
+            y = 0f; yaw = level.startYaw; vx = 0f; vy = 0f; vz = 0f; onGround = true
+            stinkT = 0f; hurtT = 0f; dashT = 0f; barkT = 0f
+        }
+        buddyTarget = null
+        buddyThinkT = 1f
+        lastPlayerCatch = -10f
+        lastBuddyCatch = -10f
+        toyX = level.toyX; toyY = level.toyY; toyZ = level.toyZ
+        toyCarried = false
+        toyHome = false
         camYaw = dog.yaw
         camX = dog.x - sin(camYaw) * CAM_DIST
         camZ = dog.z - cos(camYaw) * CAM_DIST
@@ -248,6 +291,7 @@ class Game3D(
         treatsGot = 0
         bonus = 0
         combo = 0
+        teamChases = 0
         levelTime = 0f
         levelStartScore = score
         slots.save(mode(dog.herc), i, score)
@@ -257,6 +301,7 @@ class Game3D(
 
     fun choose(herc: Boolean) {
         dog = Dog3(herc)
+        buddy = Dog3(!herc)
         score = slots.score(mode(herc))
         audio.say(if (herc) "Go, Hercules!" else "Go, Apollo!")
         startLevel(savedLevel(herc))
@@ -314,6 +359,13 @@ class Game3D(
             State.HOME -> {
                 dog.vx = 0f; dog.vz = 0f
                 dog.yaw = turnToward(dog.yaw, 0f, dt * 6f)
+                // The buddy comes and sits beside you.
+                val k = min(1f, dt * 3f)
+                buddy.x += (dog.x + 1.3f - buddy.x) * k
+                buddy.z += (dog.z - buddy.z) * k
+                buddy.y += (dog.y - buddy.y) * k
+                buddy.vx = 0f; buddy.vz = 0f
+                buddy.yaw = turnToward(buddy.yaw, 0f, dt * 6f)
                 camYaw = turnToward(camYaw, Math.PI.toFloat(), dt * 2f)
                 followCamera(dt)
                 updatePopups(dt)
@@ -396,15 +448,21 @@ class Game3D(
             showTip(if (dog.herc) "Tap DASH to pounce!" else "Tap BARK to freeze critters in their tracks!")
         }
         if (levelIndex == 0 && stateTime > 10f) showTip("Swipe across the top right of the screen to look around.")
+        if (levelIndex == 0 && stateTime > 16f) showTip("${buddy.name} came along too, and helps you chase!")
         // Swiping across the top right of the screen turns the camera.
         camYaw = wrapAngle(camYaw - look * LOOK_SPEED)
         moveDog(dt, jumpP, actionP)
+        if (buddyAlong) updateBuddy(dt) else { buddy.x = 999f; buddy.z = 999f }
         followCamera(dt)
         for (c in critters) {
-            CritterBrain.update(c, dt, dog.x, dog.z, level, audio)
+            // Critters run from whichever dog is nearer.
+            val near = if (hypot(buddy.x - c.x, buddy.z - c.z) < hypot(dog.x - c.x, dog.z - c.z)) buddy else dog
+            CritterBrain.update(c, dt, near.x, near.z, level, audio)
             maybeTip(c)
         }
         checkCatches()
+        checkToy()
+        checkSprinklers()
         updateBikes(dt)
         if (state != State.PLAYING) return
         collectTreats()
@@ -417,6 +475,7 @@ class Game3D(
         val d = dog
         if (d.cooldown > 0f) d.cooldown -= dt
         if (d.stinkT > 0f) d.stinkT -= dt
+        if (d.wetT > 0f) d.wetT -= dt
         if (d.hurtT > 0f) d.hurtT -= dt
         if (d.barkT > 0f) d.barkT -= dt
         if (actionP && d.cooldown <= 0f) if (d.herc) dash() else bark()
@@ -432,7 +491,7 @@ class Game3D(
         val fx = sin(camYaw); val fz = cos(camYaw)
         val wx = fx * sy - fz * sx
         val wz = fz * sy + fx * sx
-        val top = d.maxSpeed * (if (d.stinkT > 0f) 0.6f else 1f)
+        val top = d.maxSpeed * (if (d.stinkT > 0f) 0.6f else 1f) * (if (d.wetT > 0f) 0.75f else 1f)
 
         if (d.dashT > 0f) {
             d.dashT -= dt
@@ -473,6 +532,17 @@ class Game3D(
             d.vy = max(d.vy - g * dt, -MAX_FALL)
         }
 
+        if (stepPhysics(d, dt)) {
+            audio.play(WalkSound.JUMP)
+            popup("BOING!", d.x, d.y + 1.2f, d.z, WHITE, 8f)
+        }
+    }
+
+    /**
+     * Moves [d] by its velocity: blocked by solid things, kept inside the level, landing on
+     * things it falls onto. Returns true if it bounced off a beach umbrella.
+     */
+    private fun stepPhysics(d: Dog3, dt: Float): Boolean {
         d.x += d.vx * dt
         d.z += d.vz * dt
         pushOut(d)
@@ -483,6 +553,7 @@ class Game3D(
         val prevY = d.y
         d.y += d.vy * dt
         d.onGround = false
+        var bounced = false
         if (d.vy <= 0f) {
             for (s in level.solids) {
                 if (s.top > 30f) continue
@@ -492,8 +563,7 @@ class Game3D(
                     d.y = s.top
                     if (s.bouncy) {
                         d.vy = BOUNCE_V
-                        audio.play(WalkSound.JUMP)
-                        popup("BOING!", d.x, d.y + 1.2f, d.z, WHITE, 8f)
+                        bounced = true
                     } else {
                         d.vy = 0f
                         d.onGround = true
@@ -504,6 +574,7 @@ class Game3D(
         }
         if (d.y <= 0f) { d.y = 0f; d.vy = 0f; d.onGround = true }
         d.stride += d.speed * dt
+        return bounced
     }
 
     /** Pushes the dog out of any solid it's walked into (unless it's up on top). */
@@ -529,7 +600,7 @@ class Game3D(
         // Longer than the freeze, so critters can't be kept frozen forever.
         d.cooldown = 2f
         d.barkT = 0.45f
-        audio.play(WalkSound.ARP)
+        audio.play(WalkSound.ARP_ARP)
         popup("ARP ARP!", d.x, d.y + 1.3f, d.z, WHITE, 10f)
         for (c in critters) {
             if ((c.state == State3.IDLE || c.state == State3.FLEE) && hypot(c.x - d.x, c.z - d.z) < 7f) c.frozenT = 1.6f
@@ -541,6 +612,115 @@ class Game3D(
         dog.dashT = 0.22f
         audio.play(WalkSound.GAV)
         popup("GAV!", dog.x, dog.y + 1.2f, dog.z, WHITE, 9f)
+    }
+
+    // ------------------------------------------------------------------ The buddy
+
+    /**
+     * The other dog: trots along beside you, and when a critter it can reach comes near,
+     * barks and chases it. It never goes after skunks, and it never strays far from you.
+     */
+    private fun updateBuddy(dt: Float) {
+        val b = buddy
+        val d = dog
+        if (buddyThinkT > 0f) buddyThinkT -= dt
+        if (buddyBarkT > 0f) buddyBarkT -= dt
+        val t = buddyTarget
+        if (t != null && (!t.catchable || t.hidden || buddyChaseT > 4f || hypot(t.x - d.x, t.z - d.z) > 14f)) {
+            buddyTarget = null
+            buddyThinkT = 0.8f
+        }
+        if (buddyTarget == null && buddyThinkT <= 0f) {
+            buddyThinkT = 0.4f
+            val reach = b.jumpV * b.jumpV / (2f * HOLD_GRAVITY) + b.height - 0.2f
+            buddyTarget = critters.filter {
+                it.kind != Kind.SKUNK && it.catchable && !it.hidden && it.y < reach &&
+                    hypot(it.x - b.x, it.z - b.z) < 7f && hypot(it.x - d.x, it.z - d.z) < 12f
+            }.minByOrNull { hypot(it.x - b.x, it.z - b.z) }
+            if (buddyTarget != null) {
+                buddyChaseT = 0f
+                if (buddyBarkT <= 0f) {
+                    buddyBarkT = 3f
+                    audio.play(if (b.herc) WalkSound.GAV else WalkSound.ARP)
+                    popup(if (b.herc) "GAV!" else "ARP!", b.x, b.y + 1.2f, b.z, WHITE, 8f)
+                }
+            }
+        }
+        val tg = buddyTarget
+        val gx: Float
+        val gz: Float
+        val speed: Float
+        if (tg != null) {
+            buddyChaseT += dt
+            gx = tg.x; gz = tg.z
+            speed = b.maxSpeed
+        } else {
+            // Trot along beside you, a little behind.
+            gx = d.x - sin(d.yaw) * 1.4f + cos(d.yaw) * 1.3f
+            gz = d.z - cos(d.yaw) * 1.4f - sin(d.yaw) * 1.3f
+            speed = min(b.maxSpeed, max(d.speed + 1f, hypot(gx - b.x, gz - b.z) * 2.5f))
+        }
+        val dx = gx - b.x
+        val dz = gz - b.z
+        val dist = hypot(dx, dz)
+        if (dist > 20f || (tg == null && hypot(d.x - b.x, d.z - b.z) > 20f)) {
+            // Got left behind somewhere: catch up.
+            b.x = d.x - sin(d.yaw) * 1.5f; b.z = d.z - cos(d.yaw) * 1.5f; b.y = d.y
+            b.vx = 0f; b.vz = 0f; b.vy = 0f
+            return
+        }
+        val want = if (tg == null && dist < 0.6f) 0f else speed
+        val tx = if (dist > 0.01f) dx / dist * want else 0f
+        val tz = if (dist > 0.01f) dz / dist * want else 0f
+        val dvx = tx - b.vx; val dvz = tz - b.vz
+        val dl = hypot(dvx, dvz)
+        val step = (if (b.onGround) GROUND_ACCEL else AIR_ACCEL) * dt
+        if (dl <= step) { b.vx = tx; b.vz = tz } else { b.vx += dvx / dl * step; b.vz += dvz / dl * step }
+        if (b.speed > 0.4f) b.yaw = turnToward(b.yaw, atan2(b.vx, b.vz), TURN_RATE * dt)
+        // Jump up at a critter on a perch, or hop over whatever's in the way.
+        if (b.onGround && tg != null && tg.y > 0.3f && dist < 2.2f) b.vy = b.jumpV
+        buddyStuckT = if (want > 1f && b.speed < 0.6f) buddyStuckT + dt else 0f
+        if (b.onGround && buddyStuckT > 0.35f) { b.vy = b.jumpV * 0.8f; buddyStuckT = 0f }
+        b.vy = max(b.vy - (if (b.vy > 0f) HOLD_GRAVITY else GRAVITY) * dt, -MAX_FALL)
+        stepPhysics(b, dt)
+    }
+
+    // ------------------------------------------------------------------ Sprinklers
+
+    /** Which way lawn sprinkler [i] is spraying right now. */
+    fun sprinklerAngle(i: Int) = clock * SPRINKLER_SPIN + i * 2.1f
+
+    private fun checkSprinklers() {
+        val d = dog
+        level.sprinklers.forEachIndexed { i, sp ->
+            val dx = d.x - sp[0]
+            val dz = d.z - sp[1]
+            val dist = hypot(dx, dz)
+            if (dist > SPRINKLER_REACH || dist < 0.3f || d.y > 1.2f || d.wetT > 0.5f) return@forEachIndexed
+            if (abs(wrapAngle(atan2(dx, dz) - sprinklerAngle(i))) < 0.3f) {
+                d.wetT = 2.5f
+                audio.play(WalkSound.SPLASH)
+                popup("SPLASH!", d.x, d.y + 1.3f, d.z, 0xFF8FD8FF.toInt(), 10f)
+                showTip("Soaked! A wet dog runs slower for a bit. Dodge the sprinklers!")
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ The squeaky toy
+
+    val hasToy get() = !toyX.isNaN()
+
+    private fun checkToy() {
+        if (!hasToy || toyCarried) return
+        val d = dog
+        val dy = toyY + 0.15f - (d.y + d.height / 2)
+        if (hypot(toyX - d.x, toyZ - d.z) < d.radius + 0.45f && abs(dy) < 0.9f) {
+            toyCarried = true
+            audio.play(WalkSound.SQUEAK)
+            popup("SQUEAK!", d.x, d.y + 1.4f, d.z, YELLOW, 10f)
+            tip = "You found the squeaky toy! Bring it home for a bonus."
+            tipT = 3.5f
+        }
     }
 
     /** Swings the camera round behind the dog as it runs (but not when running toward the camera). */
@@ -556,13 +736,36 @@ class Game3D(
         // Follow the ground the dog stands on, not every jump.
         if (d.onGround) camFloor += (d.y - camFloor) * min(1f, dt * 5f)
         val k = 1f - exp(-dt * 7f)
-        val tx = d.x - sin(camYaw) * CAM_DIST
-        val tz = d.z - cos(camYaw) * CAM_DIST
+        val dist = cameraRoom(d.x, d.z, camYaw)
+        val tx = d.x - sin(camYaw) * dist
+        val tz = d.z - cos(camYaw) * dist
         val ty = camFloor + CAM_HEIGHT + (d.y - camFloor) * 0.12f
         camX += (tx - camX) * k
         camZ += (tz - camZ) * k
         camY += (ty - camY) * k
         lookY += (camFloor + 0.8f + (d.y - camFloor) * 0.35f - lookY) * k
+    }
+
+    /**
+     * How far back the camera can sit behind ([x], [z]) looking along [yaw] before it would
+     * end up inside a house or a tree: it pulls in closer rather than show the inside of a wall.
+     */
+    private fun cameraRoom(x: Float, z: Float, yaw: Float): Float {
+        val sx = -sin(yaw)
+        val sz = -cos(yaw)
+        var d = 0.8f
+        while (d <= CAM_DIST) {
+            val px = x + sx * d
+            val pz = z + sz * d
+            for (s in level.solids) {
+                if (s.top < 2.5f) continue
+                if (px > s.x0 - 0.35f && px < s.x1 + 0.35f && pz > s.z0 - 0.35f && pz < s.z1 + 0.35f) {
+                    return (d - 0.4f).coerceAtLeast(1.2f)
+                }
+            }
+            d += 0.25f
+        }
+        return CAM_DIST
     }
 
     private fun showTip(text: String) {
@@ -590,6 +793,12 @@ class Game3D(
             Kind.RACCOON -> showTip("Quick! Raccoons hide in the bins.")
             Kind.SKUNK -> showTip("A skunk! Stay away from it!")
             Kind.CRAB -> showTip("Catch the crabs before they hide!")
+            Kind.LIZARD -> if (c.state == State3.SAFE) {
+                showTip(if (h) "Lizard up the wall! Too high for Hercules." else "Lizard up the wall? Jump and grab it!")
+            } else {
+                showTip(if (h) "Lizards dart up the walls. Catch them first!" else "Lizards dart up the walls, but you can jump that high!")
+            }
+            Kind.FROG -> showTip("Frogs hop away. Catch them mid-hop!")
             Kind.SQUIRREL -> if (c.state == State3.SAFE) {
                 showTip(if (h) "Too high for Hercules! Catch them before they climb." else "Up the tree? Jump and grab it!")
             }
@@ -599,20 +808,18 @@ class Game3D(
 
     // ------------------------------------------------------------------ Catching
 
-    private fun touching(c: Critter3): Boolean {
-        val d = dog
-        return hypot(c.x - d.x, c.z - d.z) < d.radius + c.radius + 0.1f &&
-            d.y < c.y + c.height && c.y < d.y + d.height
-    }
+    private fun touching(d: Dog3, c: Critter3): Boolean =
+        hypot(c.x - d.x, c.z - d.z) < d.radius + c.radius + 0.1f && d.y < c.y + c.height && c.y < d.y + d.height
 
     private fun checkCatches() {
         val d = dog
         for (c in critters) {
             if (c.kind == Kind.SKUNK) {
-                if (c.state == State3.IDLE && d.stinkT <= 0f && touching(c)) sprayed(c)
+                if (c.state == State3.IDLE && d.stinkT <= 0f && touching(d, c)) sprayed(c)
                 continue
             }
-            if (c.catchable && touching(c)) caught(c)
+            if (c.catchable && touching(d, c)) caught(c, d)
+            else if (c.catchable && touching(buddy, c)) caught(c, buddy)
         }
     }
 
@@ -629,8 +836,8 @@ class Game3D(
         audio.play(WalkSound.SKUNK)
     }
 
-    private fun caught(c: Critter3) {
-        val d = dog
+    private fun caught(c: Critter3, d: Dog3) {
+        val byBuddy = d === buddy
         c.state = State3.CHASED
         c.t = 0f
         c.climbing = false
@@ -643,11 +850,29 @@ class Game3D(
         c.yaw = atan2(c.vx, c.vz)
         chased++
         score += c.kind.points
-        popup("+${c.kind.points}", c.x, c.y + 1f, c.z, YELLOW, 9f)
+        popup("+${c.kind.points}", c.x, c.y + 1f, c.z, if (byBuddy) 0xFFB8F2FF.toInt() else YELLOW, 9f)
         audio.play(WalkSound.CATCH)
-        combo = if (clock - lastCatch < 2.5f) combo + 1 else 1
-        lastCatch = clock
-        if (combo >= 2) {
+        // Both dogs catching something within two seconds of each other is a TEAM CHASE.
+        val other = if (byBuddy) lastPlayerCatch else lastBuddyCatch
+        if (clock - other < 2f) {
+            score += TEAM_BONUS
+            teamChases++
+            popup("TEAM CHASE! +$TEAM_BONUS", (dog.x + buddy.x) / 2, max(dog.y, buddy.y) + 2.1f, (dog.z + buddy.z) / 2, CYAN, 10f)
+            audio.play(WalkSound.TEAM)
+            lastPlayerCatch = -10f
+            lastBuddyCatch = -10f
+        } else if (byBuddy) {
+            lastBuddyCatch = clock
+        } else {
+            lastPlayerCatch = clock
+        }
+        if (byBuddy) {
+            buddyTarget = null
+            buddyThinkT = 0.6f
+        }
+        if (!byBuddy) combo = if (clock - lastCatch < 2.5f) combo + 1 else 1
+        if (!byBuddy) lastCatch = clock
+        if (!byBuddy && combo >= 2) {
             val extra = 50 * combo
             score += extra
             popup("COMBO x$combo +$extra", d.x, d.y + 1.8f, d.z, CYAN, 9f)
@@ -760,7 +985,8 @@ class Game3D(
 
     private fun finishLevel() {
         val timeBonus = max(0, ((level.def.par - levelTime) * 10f).toInt())
-        bonus = hearts * 100 + timeBonus + (if (chased == level.total) 1000 else 0)
+        toyHome = toyCarried
+        bonus = hearts * 100 + timeBonus + (if (chased == level.total) 1000 else 0) + (if (toyHome) TOY_BONUS else 0)
         score += bonus
         best = max(best, score).also { storage.save("best3d", it) }
         if (levelIndex < Levels.all.lastIndex) slots.save(mode(dog.herc), levelIndex + 1, score)
@@ -807,6 +1033,10 @@ class Game3D(
         const val CAM_TURN = 1.3f
         /** Radians the camera turns per pixel of swipe. */
         const val LOOK_SPEED = 0.012f
+        const val SPRINKLER_REACH = 4.5f
+        const val SPRINKLER_SPIN = 1.4f
+        const val TEAM_BONUS = 150
+        const val TOY_BONUS = 500
         const val HOME_TIP = "That's plenty! Follow the arrow HOME!"
         private const val WHITE = 0xFFFFFFFF.toInt()
         private const val YELLOW = 0xFFFFE14D.toInt()

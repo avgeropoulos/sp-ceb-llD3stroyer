@@ -36,6 +36,8 @@ object Terrain {
     fun height(level: Level, x: Float, z: Float): Float {
         val edge = level.half + 1.5f
         if (level.def.look == Look.BEACH && z > edge) return -0.4f * smooth((z - edge) / 3f)
+        // The backyard's neighbours are on the flat, like a real street.
+        if (level.def.look == Look.BACKYARD) return 0f
         val d = max(abs(x), abs(z)) - edge
         if (d <= 0f) return 0f
         val rise = smooth(d / 14f)

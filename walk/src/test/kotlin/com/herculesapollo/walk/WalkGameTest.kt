@@ -44,7 +44,7 @@ class WalkGameTest {
     }
 
     @Test fun walksLoad() {
-        assertEquals(5, Walks.all.size)
+        assertEquals(6, Walks.all.size)
         for (w in Walks.all) {
             val c = Course(w)
             assertTrue(c.total >= 6, "${w.title} has ${c.total} critters")
@@ -227,6 +227,51 @@ class WalkGameTest {
             assertTrue(Chiptune.render(song).isNotEmpty())
         }
         for (s in WalkSound.entries) assertTrue(WalkSynth.render(s).isNotEmpty(), "$s")
+    }
+
+    /** Pitch of the loudest 80 ms of [y], by summing the first four harmonics of each candidate. */
+    private fun pitch(y: FloatArray, lo: Int, hi: Int): Int {
+        val sr = Chiptune.RATE
+        val win = (0.08f * sr).toInt()
+        var best = 0
+        var bestE = -1.0
+        for (s in 0 until y.size - win step 64) {
+            var e = 0.0
+            for (i in s until s + win) e += y[i] * y[i]
+            if (e > bestE) { bestE = e; best = s }
+        }
+        fun mag(f: Double): Double {
+            var re = 0.0; var im = 0.0
+            for (i in 0 until win) {
+                val w = 0.5 - 0.5 * kotlin.math.cos(2 * Math.PI * i / win)
+                val a = 2 * Math.PI * f * i / sr
+                re += y[best + i] * w * kotlin.math.cos(a); im += y[best + i] * w * kotlin.math.sin(a)
+            }
+            return kotlin.math.sqrt(re * re + im * im)
+        }
+        return (lo..hi step 2).maxBy { f -> (1..4).sumOf { h -> kotlin.math.ln(1e-9 + mag(f * h.toDouble())) } }
+    }
+
+    /** Hercules' GAV is deep, Apollo's ARP is high. Also writes them to build/sounds to listen to. */
+    @Test fun barksAreDeepAndHigh() {
+        val gav = WalkSynth.render(WalkSound.GAV)
+        val arp = WalkSynth.render(WalkSound.ARP)
+        val gp = pitch(gav, 60, 900)
+        val ap = pitch(arp, 60, 900)
+        println("GAV pitch $gp Hz, ARP pitch $ap Hz")
+        assertTrue(gp in 100..170, "GAV is deep: $gp Hz")
+        assertTrue(ap in 420..700, "ARP is high: $ap Hz")
+        val dir = File("build/sounds").apply { mkdirs() }
+        for ((name, s) in listOf("gav" to WalkSound.GAV, "arp" to WalkSound.ARP, "arp-arp" to WalkSound.ARP_ARP)) {
+            val samples = WalkSynth.render(s)
+            val buf = java.nio.ByteBuffer.allocate(44 + samples.size * 2).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+            buf.put("RIFF".toByteArray()).putInt(36 + samples.size * 2).put("WAVE".toByteArray())
+            buf.put("fmt ".toByteArray()).putInt(16).putShort(1).putShort(1)
+                .putInt(Chiptune.RATE).putInt(Chiptune.RATE * 2).putShort(2).putShort(16)
+            buf.put("data".toByteArray()).putInt(samples.size * 2)
+            for (v in samples) buf.putShort((v.coerceIn(-1f, 1f) * 32000f).toInt().toShort())
+            File(dir, "$name.wav").writeBytes(buf.array())
+        }
     }
 
     /** Renders a few frames to build/screens for eyeballing. */

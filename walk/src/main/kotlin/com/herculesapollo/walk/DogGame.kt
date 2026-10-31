@@ -291,7 +291,7 @@ class DogGame(
         // Longer than the freeze, so critters can't be kept frozen forever.
         p.cooldown = 2f
         p.barkT = 0.4f
-        audio.play(WalkSound.ARP)
+        audio.play(WalkSound.ARP_ARP)
         popup("ARP ARP!", p.x, p.y - p.h - 6f, WHITE, 9f)
         for (c in course.critters) {
             if (c.catchable && abs(c.x - p.x) < 120f && abs(c.y - p.y) < 100f) c.frozenT = 1.5f
@@ -330,6 +330,10 @@ class DogGame(
             Kind.RACCOON -> showTip("Quick! Jump on the bin before the raccoon hides.")
             Kind.SKUNK -> showTip("A skunk! Jump over it, DON'T touch it!")
             Kind.CRAB -> showTip("Catch the crabs before they hide!")
+            Kind.LIZARD -> showTip(
+                if (player.herc) "Lizards dart up the fence. Catch them before they climb!" else "Lizard up the fence? Jump and grab it!",
+            )
+            Kind.FROG -> showTip("Frogs hop for the pond. Catch them mid-hop!")
             Kind.SQUIRREL -> if (c.mood == Mood.SAFE) {
                 showTip(if (player.herc) "Too high for Hercules! Catch them before they climb." else "Up the tree? Jump onto the branch!")
             }
@@ -339,8 +343,9 @@ class DogGame(
 
     // ------------------------------------------------------------------ Catching
 
-    /** Squirrels up a tree can still be caught here, if you can jump onto the branch. */
-    private fun reachable(c: Critter) = c.catchable || (c.kind == Kind.SQUIRREL && c.mood == Mood.SAFE)
+    /** Squirrels up a tree and lizards up the fence can still be caught here, if you can jump that high. */
+    private fun reachable(c: Critter) =
+        c.catchable || ((c.kind == Kind.SQUIRREL || c.kind == Kind.LIZARD) && c.mood == Mood.SAFE)
 
     private fun overlaps(c: Critter): Boolean {
         val p = player
@@ -497,6 +502,10 @@ class DogGame(
                 PropKind.MAILBOX -> Ledge(p.x - 7f, p.x + 7f, GROUND - 34f)
                 PropKind.HYDRANT -> Ledge(p.x - 6f, p.x + 6f, GROUND - 22f)
                 PropKind.UMBRELLA -> Ledge(p.x - 24f, p.x + 24f, GROUND - 62f, bouncy = true)
+                // The dog cot's mesh is springy.
+                PropKind.COT -> Ledge(p.x - 32f, p.x + 32f, GROUND - 19f, bouncy = true)
+                PropKind.COUCH -> Ledge(p.x - 30f, p.x + 30f, GROUND - 24f)
+                PropKind.TOYCAR -> Ledge(p.x - 16f, p.x + 16f, GROUND - 37f)
                 else -> null
             }
         }

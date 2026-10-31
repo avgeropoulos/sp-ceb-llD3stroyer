@@ -534,6 +534,8 @@ class WalkGame(
             Kind.RACCOON -> showTip("Quick! Raccoons hide in the bins.")
             Kind.SKUNK -> showTip("Uh oh, a skunk! DON'T chase it!")
             Kind.CRAB -> showTip("Catch the crabs before they hide!")
+            Kind.LIZARD -> showTip("Lizards dart up the fence. Be quick!")
+            Kind.FROG -> showTip("Frogs hop for the pond. Catch them mid-hop!")
             else -> {}
         }
     }

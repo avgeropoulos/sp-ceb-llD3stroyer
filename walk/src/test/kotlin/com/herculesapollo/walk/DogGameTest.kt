@@ -312,6 +312,26 @@ class DogGameTest {
         assertEquals(450, dg2.score)
     }
 
+    /** Lizards run up the backyard fence: too high for Hercules, not for Apollo. */
+    @Test fun onlyApolloReachesLizardsOnTheFence() {
+        val backyard = Walks.all.indexOfFirst { it.theme == Theme.BACKYARD }
+        for (herc in listOf(true, false)) {
+            val (g, dg) = adventure(herc, walk = backyard)
+            val liz = dg.course.critters.first { it.kind == Kind.LIZARD }
+            place(g, dg, liz.x - 60f)
+            run(g, 2f)
+            assertEquals(Mood.SAFE, liz.mood, "up the fence")
+            val before = dg.chased
+            // Jump straight up from right underneath it.
+            place(g, dg, liz.x)
+            g.input.jump = true
+            run(g, 0.75f)
+            g.input.jump = false
+            run(g, 0.6f)
+            if (herc) assertEquals(before, dg.chased, "too high for Hercules") else assertEquals(before + 1, dg.chased, "Apollo got it")
+        }
+    }
+
     @Test fun switchDogFromThePauseScreen() {
         val store = Storage.Memory()
         val (g, dg) = adventure(herc = true, walk = 3, storage = store)
@@ -400,5 +420,16 @@ class DogGameTest {
         g2.input.action = false
         run(g2, 0.1f)
         shot(g2, "8-herc-dash")
+
+        val backyard = Walks.all.indexOfFirst { it.theme == Theme.BACKYARD }
+        val (g3, dg3) = adventure(herc = false, walk = backyard)
+        val pool = dg3.course.props.first { it.kind == PropKind.POOL }
+        place(g3, dg3, pool.x + 40f)
+        run(g3, 0.3f)
+        shot(g3, "9-backyard-pool")
+        val cot = dg3.course.props.first { it.kind == PropKind.COT }
+        place(g3, dg3, cot.x - 40f)
+        run(g3, 0.6f)
+        shot(g3, "9-backyard-cot")
     }
 }

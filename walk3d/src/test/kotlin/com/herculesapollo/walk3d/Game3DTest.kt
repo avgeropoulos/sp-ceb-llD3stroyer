@@ -19,7 +19,7 @@ class Game3DTest {
 
     private fun run(g: Game3D, seconds: Float) = repeat((seconds * 60).toInt()) { g.update(dt) }
 
-    private fun start(herc: Boolean, level: Int = 0, storage: Storage = Storage.Memory()): Game3D {
+    private fun start(herc: Boolean, level: Int = 0, storage: Storage = Storage.Memory(), buddy: Boolean = false): Game3D {
         val g = Game3D(Input3D(), storage = storage)
         g.viewW = 427f
         run(g, 0.5f)
@@ -28,6 +28,8 @@ class Game3DTest {
         g.input.tap = true
         g.update(dt)
         assertEquals(herc, g.dog.herc)
+        // Most tests check one dog on its own; the buddy has its own tests.
+        g.buddyAlong = buddy
         if (level != 0) g.startLevel(level)
         run(g, 2.1f)
         assertEquals(Game3D.State.PLAYING, g.state)
@@ -108,7 +110,7 @@ class Game3DTest {
     }
 
     @Test fun levelsLoad() {
-        assertEquals(4, Levels.all.size)
+        assertEquals(5, Levels.all.size)
         for (def in Levels.all) {
             val l = Level(def)
             assertTrue(l.total >= 8, "${def.title}: ${l.total} critters")
@@ -421,6 +423,99 @@ class Game3DTest {
         assertTrue(!g.atTitle)
     }
 
+    @Test fun lizardsClimbOutOfHerculesReach() {
+        val backyard = Levels.all.indexOfFirst { it.look == Look.BACKYARD }
+        for (herc in listOf(true, false)) {
+            val g = start(herc, level = backyard)
+            g.level.sprinklers.clear()
+            val liz = g.critters.first { it.kind == Kind.LIZARD }
+            g.critters.filter { it !== liz }.forEach { it.state = State3.GONE }
+            place(g, liz.x + 3.5f, liz.z)
+            run(g, 1.5f)
+            assertEquals(State3.SAFE, liz.state, "up the wall")
+            assertEquals(CritterBrain.LIZARD_PERCH, liz.y)
+            // Stand at the foot of the wall under it and jump.
+            place(g, liz.x + (if (liz.x < 0f) 0.45f else -0.45f), liz.z)
+            g.input.jump = true
+            run(g, 1.2f)
+            g.input.jump = false
+            run(g, 0.4f)
+            if (herc) assertEquals(0, g.chased, "too high for Hercules") else assertEquals(1, g.chased, "Apollo got it")
+        }
+    }
+
+    @Test fun sprinklersSoakYou() {
+        val backyard = Levels.all.indexOfFirst { it.look == Look.BACKYARD }
+        val g = start(herc = true, level = backyard)
+        clearCritters(g)
+        val sp = g.level.sprinklers[0]
+        // Stand where the spray will sweep past.
+        place(g, sp[0] + 2.5f, sp[1])
+        var t = 0f
+        while (t < 6f && g.dog.wetT <= 0f) { g.update(dt); t += dt }
+        assertTrue(g.dog.wetT > 0f, "soaked")
+        g.input.stickY = 1f
+        run(g, 0.3f)
+        assertTrue(g.dog.speed < g.dog.maxSpeed * 0.8f, "a wet dog is slower")
+        g.input.stickY = 0f
+    }
+
+    @Test fun theBuddyComesAlong() {
+        val g = start(herc = true, buddy = true)
+        clearCritters(g)
+        g.bikes.clear()
+        assertTrue(!g.buddy.herc, "Apollo comes along with Hercules")
+        g.input.stickY = 1f
+        run(g, 3f)
+        g.input.stickY = 0f
+        run(g, 1.5f)
+        val d = hypot(g.buddy.x - g.dog.x, g.buddy.z - g.dog.z)
+        assertTrue(d < 3.5f, "the buddy kept up: $d away")
+    }
+
+    @Test fun theBuddyCatchesCrittersAndTeamChases() {
+        val g = start(herc = false, buddy = true)
+        g.bikes.clear()
+        // Two critters out in the open: one near the buddy, one right at your nose.
+        val near = g.critters.filter { it.kind == Kind.PIGEON }.take(2)
+        g.critters.filter { it !in near }.forEach { it.state = State3.GONE }
+        place(g, 0f, 0f, 0f)
+        g.buddy.x = 3f; g.buddy.z = 0f
+        near[0].x = 4.2f; near[0].z = 0.3f; near[0].frozenT = 5f
+        near[1].x = 0f; near[1].z = 3f; near[1].frozenT = 5f
+        var t = 0f
+        while (t < 3f && near[0].state != State3.CHASED && near[0].state != State3.GONE) { g.update(dt); t += dt }
+        assertEquals(1, g.chased, "the buddy caught one")
+        // Now you catch the other straight away: a team chase.
+        g.input.stickY = 1f
+        t = 0f
+        while (t < 1.5f && g.chased < 2) { g.update(dt); t += dt }
+        g.input.stickY = 0f
+        assertEquals(2, g.chased)
+        assertEquals(1, g.teamChases)
+    }
+
+    @Test fun bringTheSqueakyToyHome() {
+        val g = start(herc = false)
+        assertTrue(g.hasToy)
+        clearCritters(g)
+        g.bikes.clear()
+        place(g, g.toyX, g.toyZ)
+        run(g, 0.2f)
+        assertTrue(g.toyCarried, "picked it up")
+        // Chase enough (pretend), then go home.
+        repeat(g.level.target) {
+            val c = g.critters[it]
+            c.state = State3.IDLE; c.frozenT = 2f; c.x = g.dog.x; c.z = g.dog.z; c.y = 0f
+            g.update(dt)
+        }
+        place(g, g.level.homeX, g.level.homeZ + 1f)
+        run(g, 3.5f)
+        assertEquals(Game3D.State.RESULTS, g.state)
+        assertTrue(g.toyHome)
+        assertTrue(g.bonus >= Game3D.TOY_BONUS)
+    }
+
     /** A simple bot plays each level as each dog, to check they can all be finished. */
     @Test fun everyLevelCanBeFinished() {
         for (herc in listOf(true, false)) for (i in Levels.all.indices) {
@@ -518,6 +613,43 @@ class Game3DTest {
         a.input.jump = false
         stop(a)
 
+        val bud = start(herc = true, buddy = true)
+        bud.input.stickY = 1f
+        run(bud, 1.2f)
+        bud.input.stickY = 0f
+        run(bud, 0.6f)
+        bud.camYaw = bud.dog.yaw + 0.9f
+        run(bud, 0.6f)
+        shot(bud, "9-buddy")
+        val toy = start(herc = false, level = 1)
+        place(toy, toy.toyX + 0.5f, toy.toyZ - 3.5f, -0.15f)
+        run(toy, 0.2f)
+        shot(toy, "9-toy")
+        run(bud, 0.1f)
+        for ((name, gg, tx, ty, tz) in listOf(
+            listOf("9-toy-close", toy, toy.toyX, toy.toyY, toy.toyZ),
+            listOf("9-buddy-close", bud, bud.buddy.x, bud.buddy.y + 0.4f, bud.buddy.z),
+        ).map { Quint(it[0] as String, it[1] as Game3D, it[2] as Float, it[3] as Float, it[4] as Float) }) {
+            val w = (gg.viewW * 3).toInt()
+            val h = (VIEW_H * 3).toInt()
+            val img = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
+            val f = gg.buildFrame(w.toFloat() / h)
+            f.setCamera(tx + 1.6f, ty + 1.2f, tz - 2.2f, tx, ty, tz, w.toFloat() / h)
+            SoftRenderer.render(f, img)
+            ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+
+        val backyard = Levels.all.indexOfFirst { it.look == Look.BACKYARD }
+        val yard = start(herc = true, level = backyard, buddy = true)
+        run(yard, 0.3f)
+        shot(yard, "10-backyard-start")
+        place(yard, -3f, 12f, 2.6f)
+        run(yard, 0.5f)
+        shot(yard, "10-backyard-pool")
+        place(yard, -4f, -6f, -2.3f)
+        run(yard, 0.5f)
+        shot(yard, "10-backyard-patio")
+
         val b = start(herc = false, level = 2)
         place(b, 2f, 0f, 0.4f)
         run(b, 0.2f)
@@ -530,3 +662,5 @@ class Game3DTest {
         shot(n, "8-night")
     }
 }
+
+private data class Quint(val a: String, val b: Game3D, val c: Float, val d: Float, val e: Float)

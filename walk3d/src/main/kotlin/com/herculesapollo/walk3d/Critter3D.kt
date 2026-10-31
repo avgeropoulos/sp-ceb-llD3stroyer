@@ -71,7 +71,7 @@ object CritterBrain {
             State3.FLEE -> flee(c, dt, dx, dz, dist, level)
             State3.SAFE -> {
                 c.timer -= dt
-                if (c.kind == Kind.SQUIRREL && c.timer <= 0f) {
+                if ((c.kind == Kind.SQUIRREL || c.kind == Kind.LIZARD) && c.timer <= 0f) {
                     // Climb back down once the coast is clear.
                     c.climbing = true
                     c.y -= 2.2f * dt
@@ -115,6 +115,8 @@ object CritterBrain {
                 }
             }
             Kind.RABBIT -> if (dist < 4.5f) startFlee(c)
+            Kind.LIZARD -> if (dist < 4.5f) startFlee(c)
+            Kind.FROG -> if (dist < 4f) startFlee(c)
             Kind.CAT -> {
                 c.yaw = atan2(-dx, -dz)
                 if (dist < 3.5f) { startFlee(c); audio.play(WalkSound.HISS) }
@@ -191,6 +193,38 @@ object CritterBrain {
                 if (ml <= step) { c.x = c.spawn.hx; c.z = c.spawn.hz; c.state = State3.SAFE; c.hidden = true; c.timer = 4f }
                 else { c.x += mx / ml * step; c.z += mz / ml * step }
             }
+            Kind.LIZARD -> if (!c.climbing) {
+                // Dart for the wall (faster than Apollo, not as fast as Hercules), then up it.
+                val mx = c.spawn.hx - c.x; val mz = c.spawn.hz - c.z
+                val ml = hypot(mx, mz)
+                val step = LIZARD_SPEED * dt
+                if (ml <= step) {
+                    c.x = c.spawn.hx; c.z = c.spawn.hz; c.climbing = true
+                    c.yaw = atan2(mx, mz)
+                } else { c.x += mx / ml * step; c.z += mz / ml * step; c.yaw = atan2(mx, mz) }
+            } else {
+                c.y += 2.4f * dt
+                if (c.y >= LIZARD_PERCH) {
+                    c.y = LIZARD_PERCH
+                    c.climbing = false
+                    c.state = State3.SAFE
+                    c.timer = 6f
+                }
+            }
+            Kind.FROG -> {
+                // Big hops away from the dog, then dive under a bush.
+                if (c.y <= 0f && c.vy <= 0f) {
+                    c.y = 0f
+                    if (c.t > 2.6f) { c.state = State3.SAFE; c.hidden = true; c.timer = 4f; return }
+                    val ax = dx / l; val az = dz / l
+                    c.vx = ax * 4.5f; c.vz = az * 4.5f; c.vy = 5.5f
+                    c.yaw = atan2(c.vx, c.vz)
+                }
+                c.vy -= 18f * dt
+                c.x = (c.x + c.vx * dt).coerceIn(-level.half + 0.5f, level.half - 0.5f)
+                c.z = (c.z + c.vz * dt).coerceIn(-level.half + 0.5f, level.half - 0.5f)
+                c.y = (c.y + c.vy * dt).coerceAtLeast(0f)
+            }
             Kind.SKUNK -> {}
         }
     }
@@ -209,10 +243,14 @@ object CritterBrain {
             }
             Kind.RABBIT -> { c.homeX = c.x; c.homeZ = c.z }
             Kind.CRAB -> { c.homeX = c.spawn.hx - 1.5f; c.x = c.homeX; c.z = c.spawn.z }
+            Kind.FROG -> { c.x = c.spawn.x; c.z = c.spawn.z; c.y = 0f; c.vy = 0f }
             else -> {}
         }
     }
 
     const val SQUIRREL_PERCH = 3.1f
+    /** Up the wall: above Hercules' reach, within Apollo's jump. */
+    const val LIZARD_PERCH = 2.5f
+    const val LIZARD_SPEED = 7f
     const val RABBIT_SPEED = 6.4f
 }

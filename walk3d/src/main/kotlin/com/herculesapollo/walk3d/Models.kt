@@ -113,6 +113,16 @@ object Models {
         for (t in g.treats) if (!t.taken) bone(t.x, t.y + sin(g.clock * 3f + t.x) * 0.1f, t.z, g.clock * 2f + t.z)
         for (c in g.critters) critter(g, c)
         for (b in g.bikes) bike(b, g.clock)
+        // Sprinkler spray: a stream of drops arcing out the way it's pointing.
+        g.level.sprinklers.forEachIndexed { i, sp ->
+            val a = g.sprinklerAngle(i)
+            for (k in 1..9) {
+                val r = k * Game3D.SPRINKLER_REACH / 9f
+                val y = 0.3f + r * (Game3D.SPRINKLER_REACH - r) * 0.14f
+                val wob = sin(g.clock * 20f + k) * 0.05f
+                ball(0xFFBFEFFF.toInt(), place(sp[0] + sin(a + wob) * r, y, sp[1] + cos(a + wob) * r), 0f, 0f, 0f, 0.13f + k * 0.01f)
+            }
+        }
 
         if (g.state == Game3D.State.TITLE) {
             dogModel(true, g.level.startX - 0.8f, 0f, g.level.startZ - 2f, 0.4f, 0f, true, g.clock, look.ground)
@@ -120,6 +130,33 @@ object Models {
             return
         }
         drawDog(g, look.ground)
+        // Your buddy, the other dog.
+        val b = g.buddy
+        if (!g.buddyAlong) { drawToy(g); return }
+        groundShadow(b.x, b.z, b.y, b.radius * 1.4f, look.ground, g)
+        dogModel(b.herc, b.x, b.y, b.z, b.yaw, if (b.speed > 0.5f) b.stride else 0f, b.onGround, g.clock + 1.3f, look.ground)
+        drawToy(g)
+    }
+
+    /** The green squeaky toy: lying where it's hidden, or in your dog's mouth. */
+    private fun drawToy(g: Game3D) {
+        if (!g.hasToy || g.toyHome) return
+        val d = g.dog
+        val p = if (g.toyCarried) {
+            place(d.x + sin(d.yaw) * 0.62f, d.y + 0.5f, d.z + cos(d.yaw) * 0.62f, d.yaw + HALF_PI).copyOf()
+        } else {
+            val bob = abs(sin(g.clock * 3f)) * 0.15f
+            // A soft glow ring on the ground so it can be spotted.
+            part(Meshes.disc, 0xFFFFF59A.toInt(), place(g.toyX, g.toyY + 0.04f, g.toyZ), 0f, 0f, 0f, 1f + sin(g.clock * 4f) * 0.15f, 1f, 1f + sin(g.clock * 4f) * 0.15f)
+            place(g.toyX, g.toyY + 0.12f + bob, g.toyZ, g.clock * 1.5f).copyOf()
+        }
+        val green = 0xFF9BE15D.toInt()
+        ball(green, p, 0f, 0.1f, 0f, 0.34f, 0.26f, 0.26f)
+        ball(0xFFE8F5C8.toInt(), p, 0.15f, 0.12f, 0f, 0.2f, 0.18f, 0.2f)
+        box(0xFF6CC93A.toInt(), p, -0.2f, 0.12f, 0.06f, 0.18f, 0.04f, 0.06f, rz = 0.4f)
+        box(0xFF6CC93A.toInt(), p, -0.2f, 0.12f, -0.06f, 0.18f, 0.04f, 0.06f, rz = 0.4f)
+        ball(BLACK, p, 0.22f, 0.16f, 0.05f, 0.03f)
+        ball(BLACK, p, 0.22f, 0.16f, -0.05f, 0.03f)
     }
 
     private fun groundShadow(x: Float, z: Float, above: Float, r: Float, ground: Int, g: Game3D) {
@@ -146,6 +183,13 @@ object Models {
         if (d.dashT > 0f) {
             for (i in 1..3) {
                 box(WHITE, place(d.x - sin(d.yaw) * i * 0.5f, d.y + 0.2f + i * 0.12f, d.z - cos(d.yaw) * i * 0.5f, d.yaw), 0f, 0f, 0f, 0.05f, 0.05f, 0.4f)
+            }
+        }
+        if (d.wetT > 0f) {
+            // Dripping wet.
+            for (i in 0 until 4) {
+                val fall = (g.clock * 1.6f + i * 0.27f) % 1f
+                ball(0xFF8FD8FF.toInt(), place(d.x + cos(i * 1.7f) * 0.3f, d.y + 0.8f - fall * 0.8f, d.z + sin(i * 1.7f) * 0.3f), 0f, 0f, 0f, 0.07f)
             }
         }
         if (d.stinkT > 0f) {
@@ -327,6 +371,38 @@ object Models {
                 ball(BLACK, p, 0.07f, 0.21f, 0.11f, 0.03f)
                 ball(BLACK, p, -0.07f, 0.21f, 0.11f, 0.03f)
             }
+            Kind.LIZARD -> {
+                // A green anole; up a wall it points head-first to the sky.
+                val bob = if (!moving && c.state == State3.IDLE && sin(t * 3f) > 0.8f) 0.04f else 0f
+                val p = place(c.x, c.y + bob, c.z, c.yaw).copyOf()
+                if (c.climbing || c.state == State3.SAFE) Mat4.rotateX(p, -HALF_PI)
+                val green = 0xFF5BBF3A.toInt()
+                val dark = 0xFF2F7A22.toInt()
+                box(green, p, 0f, 0.02f, 0f, 0.1f, 0.07f, 0.3f)
+                box(green, p, 0f, 0.03f, 0.2f, 0.09f, 0.07f, 0.13f)
+                box(BLACK, p, 0.04f, 0.08f, 0.23f, 0.02f, 0.02f, 0.02f)
+                box(BLACK, p, -0.04f, 0.08f, 0.23f, 0.02f, 0.02f, 0.02f)
+                box(dark, p, 0f, 0.025f, -0.3f, 0.05f, 0.04f, 0.36f, ry = sin(t * 9f) * (if (moving) 0.4f else 0.1f))
+                for ((lx, lz) in listOf(0.07f to 0.08f, -0.07f to 0.08f, 0.07f to -0.1f, -0.07f to -0.1f)) box(dark, p, lx, 0f, lz, 0.05f, 0.03f, 0.04f)
+                // The pink throat fan flashes out now and then.
+                if (sin(t * 2.3f + c.phase) > 0.5f) ball(0xFFFF6FA0.toInt(), p, 0f, 0f, 0.22f, 0.08f, 0.1f, 0.1f)
+            }
+            Kind.FROG -> {
+                val p = place(c.x, c.y, c.z, c.yaw).copyOf()
+                val green = 0xFF4CAF50.toInt()
+                val air = c.y > 0.05f
+                ball(green, p, 0f, 0.12f, 0f, 0.34f, 0.22f, 0.36f)
+                ball(0xFFC5E1A5.toInt(), p, 0f, 0.08f, 0.05f, 0.26f, 0.12f, 0.26f)
+                for (ex in floatArrayOf(-0.09f, 0.09f)) {
+                    ball(WHITE, p, ex, 0.24f, 0.12f, 0.1f)
+                    ball(BLACK, p, ex, 0.26f, 0.16f, 0.05f)
+                }
+                val leg = if (air) 0.9f else 0.2f
+                box(0xFF2E7D32.toInt(), p, 0.15f, 0f, -0.12f, 0.08f, 0.06f, 0.22f, rx = -leg)
+                box(0xFF2E7D32.toInt(), p, -0.15f, 0f, -0.12f, 0.08f, 0.06f, 0.22f, rx = -leg)
+                box(0xFF2E7D32.toInt(), p, 0.1f, 0f, 0.14f, 0.05f, 0.08f, 0.05f)
+                box(0xFF2E7D32.toInt(), p, -0.1f, 0f, 0.14f, 0.05f, 0.08f, 0.05f)
+            }
             Kind.SKUNK -> {
                 val p = place(c.x, c.y, c.z, c.yaw).copyOf()
                 box(BLACK, p, 0f, 0.05f, 0f, 0.26f, 0.2f, 0.42f)
@@ -501,6 +577,103 @@ object Models {
                 }
             }
             PropType.WATER, PropType.PATH -> {}
+            PropType.POOL -> {
+                // Coping, water, steps, and the black mesh safety fence (posts and rails, so you can see through).
+                box(0xFFE2DFD8.toInt(), o, 0f, 0f, 0f, p.w - 0.6f, 0.14f, p.d - 0.6f)
+                part(Meshes.plane, 0xFF3FB6E0.toInt(), o, 0f, 0.15f, 0f, p.w - 1.4f, 1f, p.d - 1.4f)
+                part(Meshes.plane, 0xFF7FD6F2.toInt(), o, -p.w / 2 + 1.6f, 0.16f, 0f, 1.2f, 1f, p.d - 1.4f)
+                box(0xFFF4F4F4.toInt(), o, p.w / 2 - 1.2f, 0f, p.d / 2 - 1.3f, 0.9f, 0.2f, 0.5f)
+                val black = 0xFF1E1E1E.toInt()
+                // Each side: (offset x, offset z, runs along x?).
+                for (side in 0 until 4) {
+                    val alongX = side < 2
+                    val len = if (alongX) p.w else p.d
+                    val ox = when (side) { 2 -> -p.w / 2; 3 -> p.w / 2; else -> 0f }
+                    val oz = when (side) { 0 -> -p.d / 2; 1 -> p.d / 2; else -> 0f }
+                    val n = (len / 1.5f).toInt().coerceAtLeast(1)
+                    for (i in 0..n) {
+                        val s = -len / 2 + len * i / n
+                        box(black, o, if (alongX) s else ox, 0f, if (alongX) oz else s, 0.06f, 1.35f, 0.06f)
+                    }
+                    for (y in floatArrayOf(0.05f, 0.68f, 1.3f)) {
+                        box(black, o, ox, y, oz, if (alongX) len else 0.04f, 0.04f, if (alongX) 0.04f else len)
+                    }
+                    for (i in 0 until n * 6) {
+                        val s = -len / 2 + len * (i + 0.5f) / (n * 6)
+                        box(0xFF4A4D50.toInt(), o, if (alongX) s else ox, 0.05f, if (alongX) oz else s, 0.012f, 1.25f, 0.012f)
+                    }
+                }
+            }
+            PropType.COT -> {
+                val black = 0xFF222222.toInt()
+                box(0xFFB8BCC2.toInt(), o, 0f, Level.COT_TOP - 0.05f, 0f, 1.8f, 0.05f, 1.2f)
+                box(black, o, 0f, Level.COT_TOP - 0.07f, -0.6f, 1.9f, 0.06f, 0.06f)
+                box(black, o, 0f, Level.COT_TOP - 0.07f, 0.6f, 1.9f, 0.06f, 0.06f)
+                box(black, o, -0.92f, Level.COT_TOP - 0.07f, 0f, 0.06f, 0.06f, 1.24f)
+                box(black, o, 0.92f, Level.COT_TOP - 0.07f, 0f, 0.06f, 0.06f, 1.24f)
+                for (lx in floatArrayOf(-0.85f, 0.85f)) for (lz in floatArrayOf(-0.55f, 0.55f)) {
+                    box(black, o, lx, 0f, lz, 0.06f, Level.COT_TOP - 0.05f, 0.06f)
+                }
+            }
+            PropType.COUCH -> {
+                // The wicker loveseat, with white cushions.
+                val wicker = 0xFF3A3A3E.toInt()
+                val cushion = 0xFFF2F0EA.toInt()
+                box(wicker, o, 0f, 0f, 0f, 2.4f, 0.42f, 0.9f)
+                box(wicker, o, 0f, 0.42f, -0.38f, 2.4f, 0.6f, 0.16f)
+                box(wicker, o, -1.15f, 0.42f, 0f, 0.16f, 0.3f, 0.9f)
+                box(wicker, o, 1.15f, 0.42f, 0f, 0.16f, 0.3f, 0.9f)
+                box(cushion, o, 0f, 0.42f, 0.05f, 2.1f, 0.13f, 0.75f)
+                box(cushion, o, -0.52f, 0.5f, -0.25f, 1f, 0.5f, 0.14f, rx = -0.15f)
+                box(cushion, o, 0.52f, 0.5f, -0.25f, 1f, 0.5f, 0.14f, rx = -0.15f)
+                for (i in 0 until 12) box(0xFF4D4D52.toInt(), o, -1.1f + i * 0.2f, 0.02f, 0.455f, 0.02f, 0.38f, 0.01f)
+            }
+            PropType.TOYCAR -> {
+                // A little purple ride-on car with a yellow roof and big friendly headlight eyes.
+                val purple = 0xFFB57EDC.toInt()
+                box(purple, o, 0f, 0.18f, -0.15f, 1f, 0.5f, 1.2f)
+                box(purple, o, 0f, 0.18f, 0.55f, 0.95f, 0.32f, 0.5f)
+                box(0xFFE8D8F6.toInt(), o, 0f, 0.68f, -0.2f, 0.8f, 0.12f, 0.4f)
+                for (px in floatArrayOf(-0.42f, 0.42f)) for (pz in floatArrayOf(-0.6f, 0.2f)) box(0xFFFFFFFF.toInt(), o, px, 0.68f, pz, 0.08f, 0.36f, 0.08f)
+                box(0xFFFFD21F.toInt(), o, 0f, 1.04f, -0.2f, 1.06f, 0.08f, 1.0f)
+                for (wx in floatArrayOf(-0.55f, 0.47f)) for (wz in floatArrayOf(-0.55f, 0.55f)) {
+                    part(Meshes.cylinder, 0xFF2A2A2A.toInt(), o, wx, 0.2f, wz, 0.38f, 0.08f, 0.38f, rz = HALF_PI)
+                }
+                for (ex in floatArrayOf(-0.25f, 0.25f)) {
+                    ball(0xFFFFF8D6.toInt(), o, ex, 0.42f, 0.81f, 0.2f)
+                    ball(BLACK, o, ex, 0.44f, 0.9f, 0.08f)
+                }
+            }
+            PropType.PALM -> {
+                for (i in 0 until 6) {
+                    val r = 0.42f - i * 0.03f
+                    part(Meshes.cylinder, dim(if (i % 2 == 0) 0xFF8A6A48.toInt() else 0xFF7A5A3A.toInt()), o, i * 0.06f, i * 0.9f, 0f, r, 0.92f, r)
+                }
+                val top = 5.4f
+                for (i in 0 until 7) {
+                    val a = i * 0.9f
+                    part(Meshes.box, dim(if (i % 2 == 0) 0xFF3E9B3A.toInt() else 0xFF56B84A.toInt()), o,
+                        0.36f + sin(a) * 1.1f, top - 0.35f, cos(a) * 1.1f, 0.5f, 0.06f, 2.6f, rx = 0.45f, ry = a)
+                }
+                for (i in 0 until 3) ball(0xFF6B4A2A.toInt(), o, 0.36f + sin(i * 2.1f) * 0.25f, top - 0.3f, cos(i * 2.1f) * 0.25f, 0.24f)
+            }
+            PropType.SPRINKLER -> {
+                part(Meshes.cylinder, 0xFF6B7078.toInt(), o, 0f, 0f, 0f, 0.22f, 0.18f, 0.22f)
+                ball(0xFF9AA0A8.toInt(), o, 0f, 0.22f, 0f, 0.14f)
+            }
+            PropType.VINYL -> {
+                // A tall white vinyl privacy fence, with posts every couple of metres.
+                val white = 0xFFF7F7F2.toInt()
+                box(white, o, 0f, 0f, 0f, p.w, 2.7f, p.d)
+                val along = p.w >= p.d
+                val len = if (along) p.w else p.d
+                val n = (len / 2.4f).toInt()
+                for (i in 0..n) {
+                    val s = -len / 2 + len * i / n
+                    box(0xFFFFFFFF.toInt(), o, if (along) s else 0f, 0f, if (along) 0f else s, 0.3f, 2.85f, 0.3f)
+                    box(0xFFE8E8E2.toInt(), o, if (along) s else 0f, 2.85f, if (along) 0f else s, 0.36f, 0.08f, 0.36f)
+                }
+            }
         }
     }
 

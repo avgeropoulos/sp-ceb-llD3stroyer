@@ -14,6 +14,8 @@ enum class Theme(
     MEADOW(0xFF9AD0FF.toInt(), 0xFFFFF1C9.toInt(), 0xFFB5D96A.toInt(), 0xFF8CC63F.toInt(), 0xFFC9A26B.toInt(), 0xFF9C7A48.toInt(), WalkTune.DAY),
     BEACH(0xFF5EC8FF.toInt(), 0xFFD2F4FF.toInt(), 0xFF2A8FD8.toInt(), 0xFFF2D49B.toInt(), 0xFFB98A5A.toInt(), 0xFF8A6038.toInt(), WalkTune.DAY),
     NIGHT(0xFF0D1B3D.toInt(), 0xFF2B3A6B.toInt(), 0xFF1E2E4F.toInt(), 0xFF1F4A2E.toInt(), 0xFF6E6A78.toInt(), 0xFF4A4654.toInt(), WalkTune.NIGHT),
+    /** Hercules and Apollo's own backyard: stucco houses, a white vinyl fence, the pool and the lawn. */
+    BACKYARD(0xFF7EC3F2.toInt(), 0xFFE6F3FA.toInt(), 0xFFE9E4D8.toInt(), 0xFF6DB33F.toInt(), 0xFFC9C6C0.toInt(), 0xFFA9A6A0.toInt(), WalkTune.DAY),
 }
 
 enum class Kind(val points: Int, val label: String) {
@@ -24,6 +26,10 @@ enum class Kind(val points: Int, val label: String) {
     CAT(200, "cat"),
     RACCOON(250, "raccoon"),
     CRAB(100, "crab"),
+    /** Florida anoles: dart off and up the fence, where only a high jumper can reach. */
+    LIZARD(150, "lizard"),
+    /** Hops off in big arcs for the pond. */
+    FROG(100, "frog"),
     /** Don't chase the skunk! */
     SKUNK(0, "skunk"),
 }
@@ -62,6 +68,8 @@ class Critter(val kind: Kind, var x: Float, var y: Float, val home: Float) {
         Kind.CAT -> 12f
         Kind.RACCOON -> 14f
         Kind.CRAB -> 9f
+        Kind.LIZARD -> if (climbing) 6f else 14f
+        Kind.FROG -> 10f
         Kind.SKUNK -> 15f
     }
     val h get() = when (kind) {
@@ -71,6 +79,8 @@ class Critter(val kind: Kind, var x: Float, var y: Float, val home: Float) {
         Kind.CAT -> 11f
         Kind.RACCOON -> 9f
         Kind.CRAB -> 6f
+        Kind.LIZARD -> if (climbing) 13f else 6f
+        Kind.FROG -> 7f
         Kind.SKUNK -> 9f
     }
 
@@ -79,7 +89,7 @@ class Critter(val kind: Kind, var x: Float, var y: Float, val home: Float) {
     val counts get() = kind != Kind.SKUNK
 }
 
-enum class PropKind { TREE, FENCE, BIN, BUSH, BENCH, HYDRANT, LAMP, FLOWERS, HOLE, UMBRELLA, SANDCASTLE, MAILBOX, SIGN, HOME }
+enum class PropKind { POND, COT, COUCH, TOYCAR, PALM, POOL, TREE, FENCE, BIN, BUSH, BENCH, HYDRANT, LAMP, FLOWERS, HOLE, UMBRELLA, SANDCASTLE, MAILBOX, SIGN, HOME }
 
 class Prop(val kind: PropKind, val x: Float, val w: Float = 0f)
 
@@ -145,6 +155,15 @@ class Course(val walk: WalkDef) {
     }
 
     fun skunk(x: Float) { critters += Critter(Kind.SKUNK, x, GROUND, x) }
+
+    /** A lizard basking on the path; it darts to the fence behind and climbs up out of reach. */
+    fun lizard(x: Float) { critters += Critter(Kind.LIZARD, x, GROUND, x + 36f) }
+
+    /** A frog that hops off for the little pond up ahead. */
+    fun frog(x: Float) {
+        prop(PropKind.POND, x + 80f)
+        critters += Critter(Kind.FROG, x, GROUND, x + 80f)
+    }
 
     fun bike(x: Float) { bikes += Bike(x) }
 
@@ -213,6 +232,21 @@ object Walks {
             repeatEvery(150f, 300f, 9) { prop(PropKind.LAMP, it) }
             bike(1380f); bike(2150f)
             treats(260f, 4); treats(900f, 3, 34f); treats(1450f, 4); treats(2050f, 3, 34f); treats(2650f, 3)
+        },
+        WalkDef("Our Backyard", Theme.BACKYARD, 2700f) {
+            // The patio: the wicker loveseat and the dog cot.
+            prop(PropKind.COUCH, 220f)
+            prop(PropKind.COT, 560f)
+            prop(PropKind.PALM, 420f); prop(PropKind.PALM, 1300f); prop(PropKind.PALM, 2150f)
+            prop(PropKind.TOYCAR, 1180f)
+            prop(PropKind.POOL, 1560f, 380f)
+            lizard(340f); lizard(760f); lizard(1060f); lizard(1450f); lizard(2050f); lizard(2400f)
+            frog(1580f); frog(1760f)
+            squirrel(980f); squirrel(2280f)
+            birds(700f, 3)
+            cat(2520f)
+            repeatEvery(150f, 450f, 6) { prop(PropKind.FLOWERS, it) }
+            treats(300f, 3); treats(820f, 3, 34f); treats(1400f, 4); treats(1980f, 3, 34f); treats(2480f, 3)
         },
     )
 }

@@ -12,9 +12,14 @@ enum class Look(
     STREET(0xFF7FC0FF.toInt(), 0xFFE4F4FF.toInt(), 0xFF66C152.toInt(), 0xFF8A8A92.toInt(), 0.62f, 0.5f, false, WalkTune.DAY),
     BEACH(0xFF4FC0FF.toInt(), 0xFFD2F4FF.toInt(), 0xFFF2D49B.toInt(), 0xFFB98A5A.toInt(), 0.66f, 0.45f, false, WalkTune.DAY),
     NIGHT(0xFF0A1530.toInt(), 0xFF1B2850.toInt(), 0xFF2A5A38.toInt(), 0xFF5A5664.toInt(), 0.5f, 0.3f, true, WalkTune.NIGHT),
+    BACKYARD(0xFF7EC3F2.toInt(), 0xFFE3F1F8.toInt(), 0xFF6DB33F.toInt(), 0xFFC9C6C0.toInt(), 0.64f, 0.48f, false, WalkTune.DAY),
 }
 
-enum class PropType { TREE, BUSH, BENCH, FENCE, BIN, HOUSE, HOME, LAMP, UMBRELLA, SANDCASTLE, HYDRANT, FLOWERS, ROCK, HOLE, HEDGE, WATER, PATH }
+enum class PropType {
+    TREE, BUSH, BENCH, FENCE, BIN, HOUSE, HOME, LAMP, UMBRELLA, SANDCASTLE, HYDRANT, FLOWERS, ROCK, HOLE, HEDGE, WATER, PATH,
+    /** The backyard: the pool behind its mesh fence, the dog cot, the wicker loveseat, the toy car, palms, sprinklers and the white vinyl fence. */
+    POOL, COT, COUCH, TOYCAR, PALM, SPRINKLER, VINYL,
+}
 
 /**
  * A piece of scenery at ([x], [z]). [w] and [d] are its size along x and z where that
@@ -34,11 +39,20 @@ class Level(val def: LevelDef) {
     val solids = ArrayList<Solid>()
     val spawns = ArrayList<Spawn>()
     val treats = ArrayList<FloatArray>()
+    /** Lawn sprinklers (x, z). */
+    val sprinklers = ArrayList<FloatArray>()
     /** The loop the bikes ride around. */
     val bikeLoop = ArrayList<FloatArray>()
     var bikes = 0
     var homeX = 0f
     var homeZ = 0f
+    /** Where this level's squeaky toy is hidden ([toyY] is how high up), or NaN for none. */
+    var toyX = Float.NaN
+    var toyY = 0f
+    var toyZ = 0f
+
+    fun toy(x: Float, z: Float, y: Float = 0f) { toyX = x; toyY = y; toyZ = z }
+
     /** Where you start, and which way you face. */
     var startX = 0f
     var startZ = 0f
@@ -113,6 +127,54 @@ class Level(val def: LevelDef) {
 
     fun flowers(x: Float, z: Float) { props += Prop(PropType.FLOWERS, x, z) }
 
+    /** A pool [w] x [d] behind a mesh safety fence that goes all the way round. */
+    fun pool(x: Float, z: Float, w: Float, d: Float) {
+        props += Prop(PropType.POOL, x, z, w, d)
+        val t = 0.15f
+        solids += Solid(x - w / 2, x + w / 2, z - d / 2 - t, z - d / 2 + t, 40f)
+        solids += Solid(x - w / 2, x + w / 2, z + d / 2 - t, z + d / 2 + t, 40f)
+        solids += Solid(x - w / 2 - t, x - w / 2 + t, z - d / 2, z + d / 2, 40f)
+        solids += Solid(x + w / 2 - t, x + w / 2 + t, z - d / 2, z + d / 2, 40f)
+    }
+
+    /** The raised dog cot: its mesh is springy. */
+    fun cot(x: Float, z: Float) {
+        props += Prop(PropType.COT, x, z)
+        solids += Solid(x - 0.9f, x + 0.9f, z - 0.6f, z + 0.6f, COT_TOP, bouncy = true)
+    }
+
+    /** The wicker loveseat on the patio. */
+    fun couch(x: Float, z: Float) {
+        props += Prop(PropType.COUCH, x, z)
+        solids += Solid(x - 1.2f, x + 1.2f, z - 0.45f, z + 0.45f, 0.55f)
+    }
+
+    /** A little purple ride-on car. */
+    fun toyCar(x: Float, z: Float) {
+        props += Prop(PropType.TOYCAR, x, z)
+        solids += Solid(x - 0.5f, x + 0.5f, z - 0.8f, z + 0.8f, 1.1f)
+    }
+
+    fun palm(x: Float, z: Float) {
+        props += Prop(PropType.PALM, x, z)
+        solids += Solid(x - 0.25f, x + 0.25f, z - 0.25f, z + 0.25f, 40f)
+    }
+
+    /** A spinning lawn sprinkler: get caught in its spray and you're soaked for a bit. */
+    fun sprinkler(x: Float, z: Float) {
+        props += Prop(PropType.SPRINKLER, x, z)
+        sprinklers += floatArrayOf(x, z)
+    }
+
+    /** A lizard basking at ([x], [z]) that runs to ([wx], [wz]) on a wall or fence and climbs it. */
+    fun lizard(x: Float, z: Float, wx: Float, wz: Float) { spawns += Spawn(Kind.LIZARD, x, z, wx, wz) }
+
+    /** A frog, with a bush to hide under. */
+    fun frog(x: Float, z: Float) {
+        spawns += Spawn(Kind.FROG, x, z)
+        bush(x + 3f, z + 2f)
+    }
+
     fun path(x: Float, z: Float, w: Float, d: Float) { props += Prop(PropType.PATH, x, z, w, d) }
 
     fun birds(x: Float, z: Float, n: Int, kind: Kind = Kind.PIGEON) {
@@ -155,7 +217,7 @@ class Level(val def: LevelDef) {
             listOf(-h - 0.5f, 0f, 1f, 2 * h + 2f), listOf(h + 0.5f, 0f, 1f, 2 * h + 2f),
         )) {
             if (def.look == Look.BEACH && z > 0f) continue
-            props += Prop(PropType.HEDGE, x, z, w, d)
+            props += Prop(if (def.look == Look.BACKYARD) PropType.VINYL else PropType.HEDGE, x, z, w, d)
         }
     }
 
@@ -172,6 +234,7 @@ class Level(val def: LevelDef) {
         const val FENCE_TOP = 1.2f
         const val BIN_TOP = 1.05f
         const val UMBRELLA_TOP = 2.1f
+        const val COT_TOP = 0.45f
     }
 }
 
@@ -194,6 +257,7 @@ object Levels {
             rock(16f, 6f); rock(-18f, -16f)
             treats(0f, 12f, 0f, 3f, 5); treats(-14f, 0f, -4f, 0f, 5); treats(4f, -1f, 16f, -1f, 5)
             bikeLoop(-18f, -14f, 18f, -14f, 18f, 18f, -18f, 18f, count = 2)
+            toy(-18.5f, 18.5f)
         },
         LevelDef("Maple Street", Look.STREET, 22f, 60f) {
             startX = -16f; startZ = 0f; startYaw = (Math.PI / 2).toFloat()
@@ -213,6 +277,8 @@ object Levels {
             birds(0f, 0.5f, 3)
             treats(-14f, 0f, 14f, 0f, 9)
             bikeLoop(-20f, -1.2f, 20f, -1.2f, 20f, 1.2f, -20f, 1.2f, count = 3)
+            // Up on a fence: jump for it.
+            toy(-8.3f, 10f, Level.FENCE_TOP)
         },
         LevelDef("Sunny Beach", Look.BEACH, 22f, 80f) {
             startX = 0f; startZ = -16f; startYaw = 0f
@@ -227,6 +293,8 @@ object Levels {
             rock(-18f, 6f); rock(18f, -10f)
             treats(-16f, -8f, 16f, -8f, 9); treats(-6f, 11f, 4f, 8f, 4)
             bikeLoop(-20f, -8.6f, 20f, -8.6f, 20f, -7.4f, -20f, -7.4f, count = 2)
+            // On top of an umbrella: bounce up to it.
+            toy(14f, 4f, Level.UMBRELLA_TOP)
         },
         LevelDef("Moonlight Walk", Look.NIGHT, 22f, 60f) {
             startX = 0f; startZ = 16f; startYaw = Math.PI.toFloat()
@@ -241,6 +309,36 @@ object Levels {
             for ((x, z) in listOf(3f to 10f, -3f to 1f, 3f to -8f, -3f to -15f, 12f to 5f, -12f to 6f)) lamp(x, z)
             treats(0f, 14f, 0f, -12f, 9); treats(-16f, 4f, 16f, 4f, 7)
             bikeLoop(-19f, 4f, 19f, 4f, count = 1)
+            // Tucked behind a house.
+            toy(-20f, -16f)
+        },
+        LevelDef("Our Backyard", Look.BACKYARD, 20f, 70f) {
+            startX = 0f; startZ = 14f; startYaw = Math.PI.toFloat()
+            home(0f, -17f)
+            // The patio in front of the house, and the pool deck.
+            path(0f, -11.5f, 18f, 5f)
+            path(5f, 6f, 15f, 10f)
+            pool(5f, 6f, 12f, 7f)
+            couch(-6.5f, -11.8f)
+            cot(-8f, 2f)
+            toyCar(11f, -8f)
+            palm(-16.5f, 9f); palm(16.5f, -11f); palm(-15f, -15.5f)
+            tree(-12f, 14f); tree(14f, 15f)
+            sprinkler(-8f, 10f); sprinkler(11f, -2f)
+            // Lizards bask by the walls and fences, and climb them when a dog comes.
+            lizard(-17f, 4f, -19.92f, 4f); lizard(17f, -3f, 19.92f, -3f)
+            lizard(-3f, -12.5f, -2.2f, -14.42f); lizard(4f, -12.6f, 2.2f, -14.42f)
+            lizard(-9f, 17.5f, -9f, 19.92f); lizard(6f, 17f, 6f, 19.92f)
+            frog(-2f, 1f); frog(13f, 3f); frog(6f, 12f)
+            birds(-3f, 15f, 3)
+            flowers(-12f, -6f); flowers(13f, 9f); flowers(-3f, 9f); flowers(8f, -13f)
+            treats(-10f, 7f, -2f, 7f, 5); treats(14f, -6f, 14f, 10f, 5); treats(-4f, -9f, 4f, -9f, 4)
+            // Behind the loveseat on the patio.
+            toy(-9.2f, -12.6f)
+            // The neighbours' houses, over the fence.
+            house(-12f, -27f, 10f, 7f, 0xFFEFEAE0.toInt()); house(4f, -28f, 12f, 7f, 0xFFDCD8D0.toInt())
+            house(18f, -27f, 9f, 7f, 0xFFE8E2D4.toInt()); house(-6f, 28f, 12f, 7f, 0xFFE5E0D6.toInt())
+            house(12f, 28f, 10f, 7f, 0xFFEFEAE0.toInt())
         },
     )
 }

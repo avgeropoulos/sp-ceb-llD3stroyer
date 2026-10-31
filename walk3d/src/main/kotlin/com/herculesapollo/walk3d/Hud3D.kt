@@ -196,10 +196,11 @@ object Hud3D {
             Game3D.State.TITLE -> title(g, gfx)
             Game3D.State.INTRO -> {
                 hud(g, gfx)
-                gfx.rect(0f, 70f, w, 56f, 0x99000000.toInt())
+                gfx.rect(0f, 70f, w, 66f, 0x99000000.toInt())
                 gfx.shadowText("LEVEL ${g.levelIndex + 1}", w / 2, 90f, 10f, YELLOW, 1)
                 gfx.shadowText(g.level.def.title, w / 2, 110f, 16f, WHITE, 1)
-                gfx.shadowText("Chase ${g.level.target} critters, then head home!", w / 2, 122f, 7f, WHITE, 1)
+                gfx.shadowText("Chase ${g.level.target} critters with ${g.buddy.name}, then head home!", w / 2, 122f, 7f, WHITE, 1)
+                if (g.hasToy) gfx.shadowText("And find the squeaky toy for a bonus!", w / 2, 132f, 7f, 0xFF9BE15D.toInt(), 1)
             }
             Game3D.State.PLAYING -> {
                 hud(g, gfx)
@@ -239,6 +240,7 @@ object Hud3D {
         gfx.shadowText("SCORE ${g.score.toString().padStart(6, '0')}", 8f, 26f, 8f, YELLOW)
         for (i in 0 until 3) heart(gfx, 12f + i * 11f, 34f, i < g.hearts)
         gfx.shadowText("CHASED ${g.chased}/${g.level.target}", 46f, 38f, 7f, if (g.goalReached) 0xFF7DF9FF.toInt() else WHITE)
+        if (g.toyCarried && !g.toyHome) gfx.shadowText("+ SQUEAKY TOY", 46f, 48f, 6.5f, 0xFF9BE15D.toInt())
         val secs = g.levelTime.toInt()
         gfx.shadowText("%d:%02d".format(secs / 60, secs % 60), g.viewW - 60f, 14f, 8f, WHITE, 2)
     }
@@ -317,7 +319,7 @@ object Hud3D {
         hud(g, gfx)
         val w = g.viewW
         val cx = w / 2
-        panel(gfx, w, 46f, 156f)
+        panel(gfx, w, 46f, 160f)
         gfx.shadowText("LEVEL ${g.levelIndex + 1} DONE!", cx, 66f, 12f, YELLOW, 1)
         gfx.shadowText(g.level.def.title, cx, 80f, 8f, WHITE, 1)
         val shown = min(3, (g.stateTime / 0.35f).toInt())
@@ -325,10 +327,16 @@ object Hud3D {
         val secs = g.levelTime.toInt()
         gfx.shadowText("Time %d:%02d   (par %d:%02d)".format(secs / 60, secs % 60, g.level.def.par.toInt() / 60, g.level.def.par.toInt() % 60), cx, 124f, 8f, WHITE, 1)
         gfx.shadowText("Critters chased: ${g.chased} / ${g.level.total}", cx, 138f, 8f, WHITE, 1)
-        gfx.shadowText("Treats: ${g.treatsGot}    Bonus: +${g.bonus}", cx, 152f, 8f, WHITE, 1)
-        gfx.shadowText("SCORE ${g.score}", cx, 172f, 10f, YELLOW, 1)
+        gfx.shadowText("Treats: ${g.treatsGot}    Team chases: ${g.teamChases}    Bonus: +${g.bonus}", cx, 150f, 7f, WHITE, 1)
+        if (g.hasToy) {
+            gfx.shadowText(
+                if (g.toyHome) "Squeaky toy brought home! +${Game3D.TOY_BONUS}" else "The squeaky toy is still out there...",
+                cx, 162f, 7f, if (g.toyHome) 0xFF9BE15D.toInt() else 0xCCFFFFFF.toInt(), 1,
+            )
+        }
+        gfx.shadowText("SCORE ${g.score}", cx, 178f, 10f, YELLOW, 1)
         if (g.stateTime > 1.5f) {
-            gfx.shadowText(if (g.levelIndex == Levels.all.lastIndex) "tap to finish" else "tap for the next level", cx, 192f, 7f, WHITE, 1)
+            gfx.shadowText(if (g.levelIndex == Levels.all.lastIndex) "tap to finish" else "tap for the next level", cx, 196f, 7f, WHITE, 1)
         }
     }
 

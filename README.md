@@ -113,9 +113,11 @@ out on five walks, and they chase down everything they see.
 ![Hercules and Apollo chasing a squirrel](docs/walk.png)
 
 * **Hercules** (black curls, white beard, red collar) is the quick one, and the only dog fast
-  enough to catch a bunny. Hercules barks **"GAV!"**
+  enough to catch a bunny. Hercules barks a deep, gruff **"GAV!"**
 * **Apollo** (tan curls, silvery-grey head) jumps high enough to reach cats on fences and
-  raccoons on bins. Apollo barks **"ARP!"**
+  raccoons on bins. Apollo barks a high, bright **"ARP!"** (The barks are synthesized the way a
+  speech synthesizer makes vowels: a gravelly voice at about 135 Hz for Hercules and a yappy one
+  at about 565 Hz for Apollo, shaped into "gahv" and "arp". See `BarkSynth.kt`.)
 * When you play as one of them, each dog has its own music: a fast, pumped-up tune for
   Hercules and a calm stroll for Apollo.
 * Tap **HERC** or **APOLLO** and that dog barks and runs after the nearest critter. Pull too hard
@@ -136,6 +138,7 @@ out on five walks, and they chase down everything they see.
 | 3 | Meadow Trail | Bunnies, squirrels and two skunks. |
 | 4 | Sunny Beach | Seagulls and crabs on the boardwalk. |
 | 5 | Moonlight Walk | Raccoons on bins, cats and skunks at night. |
+| 6 | Our Backyard | Home, with the pool behind its mesh fence, the dog cot, the wicker loveseat and the white vinyl fence. Lizards dart up the fence and frogs hop for the pond. |
 
 Every walk ends at home, with two water bowls by the door. At the end you get 1 to 3 stars
 for how many critters were chased.
@@ -168,6 +171,8 @@ walks, so chase everything on the way home, where your person is waiting at the 
 * **Apollo** jumps high enough to land on tree branches, so squirrels up a tree aren't safe.
   **BARK** ("ARP ARP!") freezes every critter nearby for a moment, which is the way to catch bunnies.
 * Catch critters one after another for a **COMBO**. Jump over the bikes and the skunks.
+* In the backyard the dog cot is springy, and lizards climb the fence: Apollo can jump up and
+  grab them there, Hercules has to catch them first.
 * Each dog keeps track of its own progress.
 
 Keyboard: arrows or A/D to run, Space to jump, and K, Z or Shift (or H/J) for BARK or DASH.
@@ -179,13 +184,21 @@ levels with the camera following behind the dog.
 
 ![Hercules and Apollo in the park](docs/walk3d.png)
 
+![Hercules and Apollo in their backyard, by the pool](docs/walk3d-backyard.png)
+
 | Level | Name | What's there |
 |---|---|---|
 | 1 | The Park | Squirrels in the trees, pigeons, bunnies, benches, a skunk and two bikes. |
 | 2 | Maple Street | Cats on fences, raccoons on bins, squirrels and bikes on the road. |
 | 3 | Sunny Beach | Seagulls, crabs that hide in holes, bunnies, and bouncy beach umbrellas. |
 | 4 | Moonlight Walk | Raccoons, cats and skunks at night, under the street lamps. |
+| 5 | Our Backyard | Home: the pool behind its mesh safety fence, the bouncy dog cot, the wicker loveseat on the patio, the purple toy car, palms, lawn sprinklers and the white vinyl fence. Lizards and frogs! |
 
+* **The other dog comes too.** Whichever dog you're not playing trots along beside you, and
+  when a critter comes near it barks and gives chase. Its catches count, and if you both catch
+  something within two seconds that's a **TEAM CHASE** (+150).
+* **Squeaky toy:** every level has the green squeaky toy hidden somewhere (on a fence, on top of
+  an umbrella, behind a house...). Pick it up and carry it home for +500.
 * Chase all but two of the critters on a level, then follow the arrow home. Critters that get
   away (up a tree, down a burrow, into a bin, off into the sky) come back out after a while.
 * The arrow at the top of the screen points to the nearest critter, then home.
@@ -194,6 +207,9 @@ levels with the camera following behind the dog.
   up in the trees, and **BARK** ("ARP ARP!") freezes everything nearby. Each dog has its own music.
 * Fences, bins, benches, hydrants and sandcastles can be jumped on. Umbrellas bounce you up high.
 * Stay away from skunks, and jump out of the way of the bikes. Three bumps and you redo the level.
+* In the backyard, lizards dart up the walls and fences (faster than Apollo, but up where only
+  Apollo can jump to them), frogs hop away in big arcs, and the lawn sprinklers soak you: a wet
+  dog runs slower for a bit. The camera also pulls in close rather than end up inside a house.
 * Stars for how fast you get home. Three save slots on the title screen, each keeping both
   dogs' progress; saved at the start of every level, and with **SAVE & QUIT** and **SWITCH DOG**
   (save this dog's game and carry on as the other) on the pause screen. Back pauses the game.

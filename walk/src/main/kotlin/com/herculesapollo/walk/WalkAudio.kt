@@ -3,7 +3,7 @@ package com.herculesapollo.walk
 import com.roccoquest.game.SfxBuilder
 import com.roccoquest.game.Song
 
-enum class WalkSound { GAV, ARP, CATCH, TREAT, JUMP, BELL, OUCH, HISS, SKUNK, WHOA, TEAM, HOME }
+enum class WalkSound { GAV, ARP, ARP_ARP, SQUEAK, SPLASH, CATCH, TREAT, JUMP, BELL, OUCH, HISS, SKUNK, WHOA, TEAM, HOME }
 
 /** DAY is the walk with both dogs; HERC (lively) and APOLLO (calm) are each dog's own tune when you play as them. */
 enum class WalkTune { NONE, DAY, NIGHT, HERC, APOLLO }
@@ -21,15 +21,23 @@ fun interface WalkAudio {
 
 /** Synthesizes the walk's sound effects as mono float samples at Chiptune.RATE. */
 object WalkSynth {
-    fun render(s: WalkSound): FloatArray = SfxBuilder().apply {
+    fun render(s: WalkSound): FloatArray = when (s) {
+        // Hercules says a deep, gruff "GAV!"; Apollo a high, bright "ARP!" (see BarkSynth).
+        WalkSound.GAV -> BarkSynth.render(BarkSynth.gav)
+        WalkSound.ARP -> BarkSynth.render(BarkSynth.arp)
+        WalkSound.ARP_ARP -> BarkSynth.twice(BarkSynth.arp)
+        else -> effect(s)
+    }
+
+    private fun effect(s: WalkSound): FloatArray = SfxBuilder().apply {
         when (s) {
-            // Hercules says "GAV GAV!" (a gruff double bark); Apollo says "ARP!" (one bright, quick bark).
-            WalkSound.GAV -> {
-                noise(0.025f, 0.35f, 0.5f); tone(330f, 180f, 0.14f, 0.42f)
-                tone(0f, 0f, 0.06f)
-                noise(0.025f, 0.3f, 0.5f); tone(300f, 160f, 0.16f, 0.38f)
+            WalkSound.GAV, WalkSound.ARP, WalkSound.ARP_ARP -> {}
+            WalkSound.SPLASH -> { noise(0.08f, 0.45f, 0.2f); noise(0.35f, 0.3f, 0.7f) }
+            // A squeaky toy: two quick rubbery squeaks.
+            WalkSound.SQUEAK -> {
+                tone(1500f, 2600f, 0.06f, 0.25f, square = false); tone(0f, 0f, 0.03f)
+                tone(2200f, 1500f, 0.09f, 0.25f, square = false)
             }
-            WalkSound.ARP -> { noise(0.02f, 0.3f, 0.3f); tone(620f, 880f, 0.04f, 0.32f, decay = false); tone(880f, 480f, 0.11f, 0.32f) }
             WalkSound.CATCH -> notes(floatArrayOf(660f, 880f, 1320f), 0.05f, 0.28f, lastHold = 0.12f)
             WalkSound.TREAT -> { tone(1175f, 1175f, 0.05f, decay = false); tone(1568f, 1568f, 0.18f) }
             WalkSound.JUMP -> tone(300f, 560f, 0.12f, 0.25f)

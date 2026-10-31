@@ -145,7 +145,7 @@ object WalkRenderer {
         for (i in first..first + (g.viewW / hillW).toInt() + 2) {
             val x = i * hillW - far
             val rise = (hash(i) % 30).toFloat()
-            if (theme == Theme.BEACH) continue
+            if (theme == Theme.BEACH || theme == Theme.BACKYARD) continue
             gfx.oval(x - 50f, GROUND - 70f - rise, 320f, 140f, theme.hills)
         }
         val mid = g.camX * 0.5f
@@ -181,6 +181,35 @@ object WalkRenderer {
                     gfx.rect(x + hw / 2 - 6f, top + hh - 20f, 12f, 20f, dim(0xFF7A4A24.toInt(), night))
                 }
             }
+            Theme.BACKYARD -> {
+                // The neighbours' two-storey stucco houses, then our white vinyl privacy fence.
+                val step = 150f
+                val start = floor(mid / step).toInt() - 1
+                for (i in start..start + (g.viewW / step).toInt() + 2) {
+                    val h = hash(i + 31)
+                    val x = i * step - mid
+                    val hw = 120f
+                    val top = GROUND - 150f - (h % 3) * 8f
+                    val wall = if (h % 2 == 0) 0xFFEFEAE0.toInt() else 0xFFDCD8D0.toInt()
+                    gfx.rect(x, top, hw, GROUND - 16f - top, wall)
+                    gfx.rect(x - 6f, top - 6f, hw + 12f, 8f, 0xFF8A8F96.toInt())
+                    for (r in 0..1) for (c in 0..2) {
+                        gfx.rect(x + 12f + c * 38f, top + 16f + r * 46f, 22f, 26f, 0xFF4F5A66.toInt())
+                    }
+                }
+                val fence = g.camX * 0.85f
+                gfx.rect(0f, GROUND - 92f, g.viewW, 78f, 0xFFF7F7F2.toInt())
+                gfx.rect(0f, GROUND - 92f, g.viewW, 3f, 0xFFDDDDD6.toInt())
+                val post = 52f
+                val s0 = floor(fence / post).toInt() - 1
+                for (i in s0..s0 + (g.viewW / post).toInt() + 2) {
+                    val x = i * post - fence
+                    gfx.rect(x, GROUND - 96f, 6f, 82f, 0xFFFFFFFF.toInt())
+                    gfx.rect(x - 1f, GROUND - 98f, 8f, 4f, 0xFFE8E8E2.toInt())
+                    gfx.rect(x + 6f, GROUND - 92f, 1f, 78f, 0xFFD6D6CE.toInt())
+                    for (k in 1..3) gfx.rect(x + 6f + k * 11.5f, GROUND - 88f, 1f, 72f, 0xFFE6E6E0.toInt())
+                }
+            }
             Theme.BEACH -> {
                 gfx.rect(0f, GROUND - 58f, g.viewW, 44f, theme.hills)
                 gfx.rect(0f, GROUND - 58f, g.viewW, 3f, 0xFF7FD0FF.toInt())
@@ -213,7 +242,7 @@ object WalkRenderer {
         gfx.rect(0f, GROUND - 7f, g.viewW, 15f, theme.path)
         gfx.rect(0f, GROUND - 7f, g.viewW, 2f, theme.pathEdge)
         gfx.rect(0f, GROUND + 7f, g.viewW, 2f, theme.pathEdge)
-        val seam = when (theme) { Theme.STREET, Theme.NIGHT -> 34f; Theme.BEACH -> 9f; else -> 0f }
+        val seam = when (theme) { Theme.STREET, Theme.NIGHT -> 34f; Theme.BEACH -> 9f; Theme.BACKYARD -> 24f; else -> 0f }
         if (seam > 0f) {
             val s0 = floor(g.camX / seam).toInt()
             for (i in s0..s0 + (g.viewW / seam).toInt() + 1) {
@@ -347,6 +376,70 @@ object WalkRenderer {
                 gfx.text("TRAIL", sx, GROUND - 32f, 7f, 0xFFFFF1C9.toInt(), 1)
             }
             PropKind.HOME -> drawHome(gfx, sx + 30f, night)
+            PropKind.POND -> {
+                gfx.oval(sx - 18f, GROUND + 10f, 36f, 10f, 0xFF2E7D9A.toInt())
+                gfx.oval(sx - 14f, GROUND + 11f, 28f, 7f, 0xFF4FA8C8.toInt())
+                gfx.oval(sx + 2f, GROUND + 12f, 8f, 4f, 0xFF4CAF50.toInt())
+                val frog = g.course.critters.firstOrNull { it.kind == Kind.FROG && it.home == p.x }
+                if (frog != null && frog.hidden) {
+                    // Ripples where it splashed in, and two eyes peeking out.
+                    val r = (g.time * 1.5f) % 1f
+                    gfx.oval(sx - 6f - r * 8f, GROUND + 14f - r * 2f, 12f + r * 16f, 4f + r * 4f, 0x55FFFFFF)
+                    gfx.rect(sx - 4f, GROUND + 13f, 2f, 2f, 0xFF4CAF50.toInt())
+                    gfx.rect(sx + 1f, GROUND + 13f, 2f, 2f, 0xFF4CAF50.toInt())
+                }
+            }
+            PropKind.COT -> {
+                // The raised dog cot from the patio: black tube legs and grey mesh.
+                gfx.rect(sx - 32f, GROUND - 18f, 64f, 4f, 0xFFB8BCC2.toInt())
+                gfx.rect(sx - 32f, GROUND - 19f, 64f, 1.5f, 0xFF2A2A2A.toInt())
+                for (lx in floatArrayOf(-30f, 27f)) gfx.rect(sx + lx, GROUND - 16f, 3f, 12f, 0xFF2A2A2A.toInt())
+            }
+            PropKind.COUCH -> {
+                // The wicker loveseat with its white cushions.
+                val wicker = 0xFF3A3A3E.toInt()
+                gfx.rect(sx - 34f, GROUND - 40f, 68f, 22f, wicker)
+                gfx.rect(sx - 38f, GROUND - 30f, 8f, 26f, wicker)
+                gfx.rect(sx + 30f, GROUND - 30f, 8f, 26f, wicker)
+                gfx.rect(sx - 30f, GROUND - 22f, 60f, 16f, wicker)
+                gfx.rect(sx - 29f, GROUND - 38f, 58f, 16f, 0xFFF2F0EA.toInt())
+                gfx.rect(sx - 30f, GROUND - 24f, 60f, 6f, 0xFFF7F5EF.toInt())
+                for (k in 0 until 7) gfx.rect(sx - 33f + k * 10f, GROUND - 16f, 1f, 10f, 0xFF55555A.toInt())
+            }
+            PropKind.TOYCAR -> {
+                // A little purple ride-on car with a yellow roof.
+                gfx.rect(sx - 18f, GROUND - 22f, 36f, 14f, 0xFFB57EDC.toInt())
+                gfx.rect(sx - 12f, GROUND - 34f, 2f, 12f, 0xFFFFFFFF.toInt())
+                gfx.rect(sx + 10f, GROUND - 34f, 2f, 12f, 0xFFFFFFFF.toInt())
+                gfx.rect(sx - 16f, GROUND - 37f, 32f, 4f, 0xFFFFD21F.toInt())
+                gfx.oval(sx - 16f, GROUND - 12f, 9f, 9f, 0xFF2A2A2A.toInt())
+                gfx.oval(sx + 7f, GROUND - 12f, 9f, 9f, 0xFF2A2A2A.toInt())
+                gfx.oval(sx + 10f, GROUND - 19f, 5f, 5f, 0xFFFFF3B0.toInt())
+            }
+            PropKind.PALM -> {
+                for (k in 0 until 9) gfx.rect(sx - 3f + k * 0.8f, GROUND - 14f - k * 11f, 7f, 12f, if (k % 2 == 0) 0xFF8A6A48.toInt() else 0xFF7A5A3A.toInt())
+                val tx = sx + 4f
+                val ty = GROUND - 112f
+                for (a in 0 until 7) {
+                    val ang = -2.6f + a * 0.85f
+                    val ex = tx + kotlin.math.cos(ang) * 38f
+                    val ey = ty + kotlin.math.sin(ang) * 18f + 14f
+                    gfx.poly(floatArrayOf(tx, ex, tx + (ex - tx) * 0.5f), floatArrayOf(ty, ey, ty + (ey - ty) * 0.5f - 5f), if (a % 2 == 0) 0xFF3E9B3A.toInt() else 0xFF56B84A.toInt())
+                }
+            }
+            PropKind.POOL -> {
+                // The pool, behind its black mesh safety fence.
+                gfx.rect(sx - 6f, GROUND - 24f, p.w + 12f, 10f, 0xFFD9D6CE.toInt())
+                gfx.rect(sx, GROUND - 22f, p.w, 7f, 0xFF3FB6E0.toInt())
+                gfx.rect(sx, GROUND - 22f, p.w, 2f, 0xFFB8ECFF.toInt())
+                gfx.rect(sx - 6f, GROUND - 58f, p.w + 12f, 40f, 0x55303030)
+                var x = sx - 6f
+                while (x <= sx + p.w + 6f) {
+                    gfx.rect(x, GROUND - 60f, 2f, 44f, 0xFF1E1E1E.toInt())
+                    x += 30f
+                }
+                gfx.rect(sx - 6f, GROUND - 60f, p.w + 12f, 2f, 0xFF1E1E1E.toInt())
+            }
         }
     }
 
@@ -447,6 +540,13 @@ object WalkRenderer {
                 val step = moving || sin(c.t * 4f) > 0f
                 sprite(gfx, if (step && flap) WalkSprites.crabStep else WalkSprites.crab, sx, c.y, 1)
             }
+            Kind.LIZARD -> when {
+                c.climbing -> gfx.sprite(WalkSprites.lizardClimb, sx - 3.5f, c.y - 13f)
+                moving -> sprite(gfx, if (flap) WalkSprites.lizardRun else WalkSprites.lizard, sx, c.y, c.facing)
+                // Basking: a little push-up now and then.
+                else -> sprite(gfx, WalkSprites.lizard, sx, c.y - (if (sin(c.t * 3f) > 0.85f) 1f else 0f), c.facing)
+            }
+            Kind.FROG -> sprite(gfx, if (c.y < GROUND - 1f) WalkSprites.frogHop else WalkSprites.frog, sx, c.y, c.facing)
             Kind.SKUNK -> sprite(gfx, WalkSprites.skunk, sx, c.y, c.facing)
         }
         if (c.frozenT > 0f && c.catchable) gfx.shadowText("!?", sx, c.y - c.h - 5f, 7f, YELLOW, 1)
