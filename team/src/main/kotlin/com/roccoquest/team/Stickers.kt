@@ -68,7 +68,11 @@ object Stickers {
         },
     ) + Mon.entries.take(9).map(::mon) + listOf(
         Sticker("RING-DING FROG", Rarity.RARE, 30f, 58f) { g, gfx -> TeamArt.frog(gfx, 4f, 32f, g.time) },
-        Sticker("DENNIS", Rarity.COMMON, 26f, 30f) { g, gfx -> Dennis(1f, 28f).draw(g, gfx, 0f) },
+        // Hercules is 27 pixels wide with his outline: shrunk a hair so he fits the 26-wide box. No name tag
+        // over his head (it stuck out of the card, and the card says DENNIS already).
+        Sticker("DENNIS", Rarity.COMMON, 26f, 30f) { g, gfx ->
+            Dennis.draw(ScaledGfx(gfx, 26f / 27f, 0f, 0f), 1f, 25f, g.time, name = false, shadow = false)
+        },
         Sticker("VILLAGER", Rarity.COMMON, 14f, 24f) { g, gfx -> Villager(-1f, 24f, 0).draw(g, gfx, 0f) },
         Sticker("POSEIDON", Rarity.SHINY, 80f, 170f) { g, gfx -> TeamArt.poseidon(gfx, 30f, 168f, g.time) },
         // Bad guys

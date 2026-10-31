@@ -301,8 +301,12 @@ object Scenes {
                 val stolen = t >= 2.0f
                 // No mustache any more: just a bare lip.
                 if (stolen) gfx.rect(rx + 24, ry + 18, 21f, 4f, 0xFFFCB88A.toInt())
-                Dennis(0f, 14f).draw(g, com.roccoquest.team.ScaledGfx(gfx, 2.4f, dx, ground - 14 * 2.4f), 0f)
-                if (stolen) gfx.rect(dx + 40, ground - 26, 18f, 5f, 0xFF3A2410.toInt())
+                // He turns around each time he changes direction, and the mustache stays in his mouth.
+                val dir = if (t < 1.8f || cos((t - 1.8f) * 2.2f) >= 0f) 1 else -1
+                Dennis.draw(ScaledGfx(gfx, 2.4f, dx, ground), 0f, 0f, t, running = true, facing = dir)
+                val mx = dx + (if (dir > 0) HerculesArt.MOUTH_X - 1 else HerculesArt.W - HerculesArt.MOUTH_X + 1) * 2.4f
+                val my = ground - (HerculesArt.H - HerculesArt.MOUTH_Y) * 2.4f
+                if (stolen) gfx.rect(mx - 9, my - 2, 18f, 5f, 0xFF3A2410.toInt())
                 if (t > 2.2f) gfx.shadowText("HEY!", cx, 56f, 20f, 0xFFE52521.toInt(), 1)
             }
             8 -> { // tickle attack
@@ -348,8 +352,9 @@ object Scenes {
             15 -> { // singing
                 for (k in 0 until 3) gfx.shadowText("~", mouthX + 20 + k * 14f + sin(t * 5 + k) * 4, face - 10 - ((t * 30 + k * 12) % 40), 16f, solidRainbow(k * 0.3f, 0f), 1)
                 if (t > 2.2f) {
-                    Dennis(0f, 14f).draw(g, ScaledGfx(gfx, 2.4f, cx + 80, ground - 14 * 2.4f), 0f)
-                    gfx.shadowText("AROOO!", cx + 110, ground - 50, 12f, 0xFFFFFFFF.toInt(), 1)
+                    // Turned to Rocco, howling along (above his name tag, so they don't overlap).
+                    Dennis.draw(ScaledGfx(gfx, 2.4f, cx + 80, ground), 0f, 0f, t, facing = -1)
+                    gfx.shadowText("AROOO!", cx + 100, ground - 72, 12f, 0xFFFFFFFF.toInt(), 1)
                 }
             }
             16 -> { // balloons

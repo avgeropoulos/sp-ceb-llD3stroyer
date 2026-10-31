@@ -213,7 +213,11 @@ nearby bad guy every few seconds. Tap **ERASE** twice on a file to delete it.
 * **Endermen** are tall, tough mini-bosses. They teleport around, and sometimes they dodge your shots!
 * **Villagers** talk to you out loud and trade. Walk up and press the action button (**TALK**).
   They swap coins and stone for iron, gold, diamonds, TNT, golden apples and even stars.
-* **Dennis the dog** runs up every now and then, barks "WOOF!" and points the way with a big arrow.
+* **Dennis the dog** runs up every now and then, barks "WOOF!" (with a happy little leap) and points the
+  way with a big arrow. He looks just like **Hercules** from the Hercules and Apollo game: a black curly doodle
+  with a white beard, a red collar with a gold tag and a curly tail. His legs swap as he runs, he turns around
+  when he changes direction, he wags his tail when he stands still, and he stops out in the open (not inside a
+  wall) so you can always see him, in 3D too. He's Hercules in the funny scenes and on his sticker as well.
 * **Minecarts**: stand next to one and press **RIDE**. It zooms along the rails and smashes bad guys.
   JUMP hops out.
 * **Traps**: watch out for **spike traps** on the floor (they hurt bad guys too!), and craft your own
@@ -870,7 +874,7 @@ Levels are built in `core/.../Level.kt` with a small builder, so adding a new on
 * `team/`: Team Up!, also plain Kotlin. It reuses the drawing interface, Rocco's pixel art, the
   sound effects and the music from `core/`. Its levels are in `TeamLevel.kt` (World 2 in `World2.kt`), the newer monsters, bonus portals and sunset in `Monsters.kt`, houses, furniture and plushies in `Homes.kt`, the heroes and
   Pokemon in `Actors.kt`, the bad guys and bosses in `Foes.kt`, villagers, Dennis, minecarts, TNT,
-  Endermen, the Warden and the Ender Dragon in `Extras.kt`, shots, items and effects in `Items.kt`, and the crafting table, save files and menus in `TeamGame.kt`.
+  Endermen, the Warden and the Ender Dragon in `Extras.kt` (Dennis's Hercules pixel art in `Hercules.kt`), shots, items and effects in `Items.kt`, and the crafting table, save files and menus in `TeamGame.kt`.
 * `teamapp/`: the Android layer for Team Up!, a copy of `app/` wired to the new game.
 
 ### Team Up performance and upstairs update

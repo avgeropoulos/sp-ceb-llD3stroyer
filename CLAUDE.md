@@ -75,6 +75,7 @@ scratch build to test it locally.
 | `Actors.kt` | `Power` (flowers), `Mon` (Pokemon), `Sword` (with durability), `Armor`, `Shield`, and `Hero` (Rocco, Blocky, partner) |
 | `Foes.kt` | Enemies with health bars, Krag Jr. and King Krag (normal, Wonder, Dry Bones) |
 | `Extras.kt` | Villagers, Dennis the dog, minecarts, traps, TNT, bubbles, fish, Endermen, Warden, Ender Dragon, Bomb-bombs |
+| `Hercules.kt` | `HerculesArt`: Dennis is drawn as Hercules from the Hercules and Apollo game (same rows + palette as its `WalkSprites`) |
 | `Items.kt` | Shots, pickups (stars, leaf, wing cap, mini mushroom...), house/bed, particles, SUPER effects |
 | `TeamArt.kt` | Pixel art and hand-drawn pictures |
 | `Stickers.kt` | 300 stickers = 60 base pictures x 5 `StickerStyle`s. Add new base pictures only at the end of `base` (index = style*60+base is saved; changing BASE reshuffles saves) |
@@ -214,3 +215,8 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
   `NamedBoss`: newer bosses give their own name/banner/home through that interface). CaptureKind has RAPTOR..REX.
   World 12 is `MoreWorlds.world12`; the last level (THE GALAXY GRAND FINALE) still ends with Galaxy Krag `}`.
 
+* Dennis = Hercules (`Hercules.kt`, `HerculesArt`): `stand`/`walk`/`leap`/`wag` sprites (25x18 art + outline pixels on top
+  and sides, paws on the bottom row). `Dennis.draw(gfx, px, ground, t, running, facing, ...)` (companion) is used by the
+  level, the scenes (`ScaledGfx(gfx, 2.4f, x, ground)`, feet at local y 0) and the sticker (shrunk to fit 26x30).
+  He stops at `clearSpot` (out in the open, ground under him) so solid 3D blocks never hide him. `DennisLookTest`
+  renders `build/screens/dennis-*.png`; `TeamSceneTest.dennisIn3D` renders `screens3d/dennis-3d.png`.

@@ -1,8 +1,12 @@
 package com.roccoquest.team3d
 
+import com.roccoquest.game.Gfx
 import com.roccoquest.game.SoundSink
+import com.roccoquest.game.Sprite
 import com.roccoquest.game.Storage
 import com.roccoquest.game.VIEW_H
+import com.roccoquest.team.Dennis
+import com.roccoquest.team.HerculesArt
 import com.roccoquest.team.Levels
 import com.roccoquest.team.Armor
 import com.roccoquest.team.Shield
@@ -151,6 +155,37 @@ class TeamSceneTest {
             val name = Levels.all[i].name.lowercase().replace(Regex("[^a-z0-9]+"), "-")
             shot(scene, "level-%03d-%s".format(i, name))
         }
+    }
+
+    /** Dennis (Hercules from the Hercules and Apollo game) turns into a puffy 3D dog like everyone else. */
+    @Test fun dennisIn3D() {
+        val scene = TeamScene().apply { voxelsPerFrame = Int.MAX_VALUE }
+        val frames = listOf(HerculesArt.stand, HerculesArt.walk, HerculesArt.leap, HerculesArt.wag)
+        for (s in frames) assertTrue(Voxels.mesh(s).vertexCount > 0)
+        startPlaying(0)
+        game.foes.clear()
+        // He runs up about 10 seconds into a level: watch what the level draws until he's there.
+        val noGfx = object : Gfx {
+            override fun rect(x: Float, y: Float, w: Float, h: Float, color: Int) {}
+            override fun oval(x: Float, y: Float, w: Float, h: Float, color: Int) {}
+            override fun poly(xs: FloatArray, ys: FloatArray, color: Int) {}
+            override fun sprite(s: Sprite, x: Float, y: Float, flipX: Boolean, flipY: Boolean, w: Float, h: Float) {}
+            override fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Int) {}
+        }
+        var dennis: Dennis? = null
+        var n = 0
+        while (dennis == null && n++ < 1200) {
+            game.update(dt)
+            game.renderLevelActors(noGfx) { if (it is Dennis) dennis = it }
+        }
+        assertTrue(dennis != null, "Dennis came running")
+        // Then he stops to bark and point the way.
+        run(1.6f)
+        val list = scene.build(game)
+        val models = frames.map { Voxels.mesh(it) }
+        val dog = (0 until list.count).count { k -> models.any { it === list.cmd(k).mesh } }
+        assertEquals(1, dog, "drawn as one puffy model")
+        shot(scene, "dennis-3d")
     }
 
     @Test fun everyLevelBuilds() {
