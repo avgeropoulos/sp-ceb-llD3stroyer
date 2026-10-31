@@ -1,72 +1,187 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Quick Invoice</title><link rel="stylesheet" href="shared.css">
+<title>Quick Invoice</title>
+<meta name="description" content="Free invoice generator. Make a professional invoice in a minute and save it as a PDF.">
+<link rel="stylesheet" href="shared.css">
 <style>
-#inv{background:#fff;color:#111;border-radius:12px;padding:32px;border:1px solid var(--line)}
-#inv h2{margin:0;font-size:1.8rem}
-#inv table th,#inv table td{border-color:#ddd}
+#inv{--ic:#4f46e5;background:#fff;color:#111;border-radius:12px;padding:32px;border:1px solid var(--line);overflow-x:auto}
+#inv h2{margin:0;font-size:1.8rem;color:var(--ic);letter-spacing:.04em}
+#inv table th{color:var(--ic);border-bottom:2px solid var(--ic)}
+#inv table td{border-color:#ddd}
 #inv .right{text-align:right}
+#inv .pre{white-space:pre-line;color:#444;font-size:.9rem}
+#inv .logo{max-width:200px;max-height:80px;display:block;margin-bottom:8px}
+#inv .pay{display:inline-block;margin-top:16px;background:var(--ic);color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:600}
+#inv .payurl{font-size:.75rem;color:#666;word-break:break-all}
 .wm{color:#999;font-size:.8rem;text-align:center;margin-top:24px}
 .items input{padding:6px}
+.locked{position:relative}
+.locked input,.locked select{opacity:.7}
+.swatches{display:flex;gap:8px}
+.swatch{width:32px;height:32px;border-radius:50%;border:3px solid transparent;padding:0;cursor:pointer}
+.swatch.on{border-color:var(--ink)}
+h3{margin:16px 0 8px}
+@media print{#inv{border:0;padding:0}main{padding:0}}
 </style></head>
 <body><main>
 <h1>Quick Invoice</h1>
-<p class="sub">Fill in the form, then print or save the invoice as a PDF.</p>
+<p class="sub noprint">Fill in the form, then print the invoice or save it as a PDF. Your details are saved in this browser.</p>
 
 <div class="card noprint">
   <div class="row">
-    <div><label>Your name / business</label><input id="from" placeholder="Jane Doe Design"></div>
-    <div><label>Bill to</label><input id="to" placeholder="Acme Corp"></div>
+    <div><label for="from">Your name / business</label><input id="from" placeholder="Jane Doe Design"></div>
+    <div><label for="to">Bill to</label><input id="to" placeholder="Acme Corp" list="clientList"><datalist id="clientList"></datalist></div>
   </div>
   <div class="row" style="margin-top:12px">
-    <div><label>Invoice #</label><input id="num"></div>
-    <div><label>Date</label><input id="date" type="date"></div>
-    <div><label>Currency</label><select id="cur"><option>$</option><option>€</option><option>£</option><option>¥</option></select></div>
-    <div><label>Tax %</label><input id="tax" type="number" value="0" min="0"></div>
+    <div><label for="fromInfo">Your address, email, tax ID</label><textarea id="fromInfo" rows="3" placeholder="12 High St, Springfield&#10;jane@example.com"></textarea></div>
+    <div><label for="toInfo">Client address and email</label><textarea id="toInfo" rows="3" placeholder="1 Main Rd, Shelbyville&#10;billing@acme.com"></textarea></div>
+  </div>
+  <div class="row" style="margin-top:12px">
+    <div><label for="num">Invoice #</label><input id="num"></div>
+    <div><label for="date">Date</label><input id="date" type="date"></div>
+    <div><label for="due">Due date</label><input id="due" type="date"></div>
+    <div><label for="cur">Currency</label><select id="cur"><option>$</option><option>€</option><option>£</option><option>¥</option><option>₹</option><option>A$</option><option>C$</option><option>CHF </option></select></div>
+    <div><label for="tax">Tax %</label><input id="tax" type="number" value="0" min="0" step="0.01"></div>
   </div>
   <h3>Line items</h3>
+  <div class="row muted" style="font-size:.8rem;margin-bottom:4px"><span style="flex:3 1 200px">Description</span><span style="flex:1 1 60px">Qty</span><span style="flex:1 1 80px">Price</span><span style="flex:0 0 40px"></span></div>
   <div id="items" class="items"></div>
-  <div class="row" style="margin-top:8px"><button class="ghost" id="add">+ Add item</button><button id="print">Print / Save PDF</button></div>
+  <button class="ghost" id="add" style="margin-top:4px">+ Add item</button>
+  <div style="margin-top:12px"><label for="notes">Notes / payment terms</label><textarea id="notes" rows="2" placeholder="Payment due within 14 days. Bank: …"></textarea></div>
+
+  <h3>Pro tools <span class="pro-badge">PRO</span></h3>
+  <div class="row">
+    <div data-pro><label for="logo">Logo</label><input id="logo" type="file" accept="image/*"><button class="ghost" id="logoClear" style="margin-top:6px;display:none">Remove logo</button></div>
+    <div data-pro><label for="payLink">“Pay online” link (Stripe Payment Link, PayPal.me…)</label><input id="payLink" type="url" placeholder="https://buy.stripe.com/…"></div>
+  </div>
+  <div class="row" style="margin-top:12px;align-items:flex-end">
+    <div data-pro><label>Invoice colour</label><div class="swatches" id="swatches"></div></div>
+    <div data-pro><label for="clientPick">Saved clients</label><select id="clientPick"><option value="">Pick a saved client…</option></select></div>
+    <div data-pro style="flex:0 0 auto"><button class="ghost" id="saveClient">Save this client</button></div>
+  </div>
+
+  <div class="row" style="margin-top:16px">
+    <button id="print">Print / Save PDF</button>
+    <button class="ghost" id="email" data-pro>Email to client <span class="pro-badge">PRO</span></button>
+    <button class="ghost" id="newInv">New invoice</button>
+  </div>
 </div>
 
 <div id="inv"></div>
-
-<div class="card pro noprint" style="margin-top:16px">
-  <b>Pro, $4.99/mo:</b> remove the footer, add your logo, save clients, send invoices by email, and add payment links (Stripe/PayPal).
-</div>
+<div id="proPanel" class="noprint" style="margin-top:16px"></div>
+<p class="muted noprint" style="font-size:.8rem">More free tools: <a href="./">all apps</a></p>
 </main>
+<script src="pay.js"></script>
 <script>
 const $=id=>document.getElementById(id);
-const KEY='quickinvoice.v1';
-let s;try{s=JSON.parse(localStorage.getItem(KEY))}catch{}
-s=s||{from:'',to:'',num:'INV-001',date:new Date().toISOString().slice(0,10),cur:'$',tax:0,items:[{d:'Design work',q:1,p:500}]};
-const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-function save(){try{localStorage.setItem(KEY,JSON.stringify(s))}catch{}}
-function money(n){return s.cur+n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}
+const KEY='quickinvoice.v1', CLIENTS='quickinvoice.clients.v1';
+const COLORS=['#4f46e5','#0f766e','#b91c1c','#1f2937','#c2410c','#7c3aed'];
+const today=()=>new Date().toISOString().slice(0,10);
+const DEFAULTS={from:'',fromInfo:'',to:'',toInfo:'',num:'INV-001',date:today(),due:'',cur:'$',tax:0,notes:'',items:[{d:'Design work',q:1,p:500}],logo:'',payLink:'',color:COLORS[0]};
+const load=k=>{try{return JSON.parse(localStorage.getItem(k))}catch{return null}};
+const store=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
+let s=Object.assign({},DEFAULTS,load(KEY)||{});
+let clients=load(CLIENTS)||[];
+const esc=t=>String(t??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const save=()=>store(KEY,s);
+const num=v=>{const n=parseFloat(v);return isFinite(n)?n:0};
+const money=n=>s.cur+n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const safeUrl=u=>{try{const x=new URL(u);return /^https?:$/.test(x.protocol)?x.href:''}catch{return ''}};
+
+const pro=Pay.init('invoice-pro',{onChange:()=>{renderInvoice();renderProUi()}});
+pro.renderPanel($('proPanel'),{name:'Quick Invoice Pro',price:'$4.99/month',
+  perks:['No “Made with Quick Invoice” footer','Your logo and brand colour on every invoice','“Pay online” button so clients pay you faster','Saved clients and one-click email drafts'],
+  note:'Cancel any time from “Manage subscription”.'});
+
+function totals(){const sub=s.items.reduce((a,it)=>a+num(it.q)*num(it.p),0),tax=sub*num(s.tax)/100;return{sub,tax,total:sub+tax}}
+
 function renderItems(){
   $('items').innerHTML=s.items.map((it,i)=>`<div class="row" style="margin-bottom:6px">
-   <input style="flex:3 1 200px" data-i="${i}" data-k="d" value="${esc(it.d)}" placeholder="Description">
-   <input style="flex:1 1 60px" data-i="${i}" data-k="q" type="number" value="${it.q}" min="0">
-   <input style="flex:1 1 80px" data-i="${i}" data-k="p" type="number" value="${it.p}" min="0" step="0.01">
-   <button class="danger" style="flex:0 0 auto" data-del="${i}">✕</button></div>`).join('');
+   <input style="flex:3 1 200px" data-i="${i}" data-k="d" value="${esc(it.d)}" placeholder="Description" aria-label="Description">
+   <input style="flex:1 1 60px" data-i="${i}" data-k="q" type="number" value="${esc(it.q)}" min="0" step="any" aria-label="Quantity">
+   <input style="flex:1 1 80px" data-i="${i}" data-k="p" type="number" value="${esc(it.p)}" min="0" step="0.01" aria-label="Price">
+   <button class="danger" style="flex:0 0 40px" data-del="${i}" aria-label="Remove item">✕</button></div>`).join('');
 }
+
 function renderInvoice(){
-  const sub=s.items.reduce((a,it)=>a+(+it.q||0)*(+it.p||0),0), tax=sub*(+s.tax||0)/100;
-  $('inv').innerHTML=`<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px">
-   <div><h2>INVOICE</h2><div>${esc(s.num)}</div><div>${esc(s.date)}</div></div>
-   <div style="text-align:right"><b>${esc(s.from||'Your business')}</b><br>Bill to: ${esc(s.to||'Client')}</div></div>
-   <table style="margin-top:24px"><tr><th>Description</th><th class="right">Qty</th><th class="right">Price</th><th class="right">Amount</th></tr>
-   ${s.items.map(it=>`<tr><td>${esc(it.d)}</td><td class="right">${+it.q||0}</td><td class="right">${money(+it.p||0)}</td><td class="right">${money((+it.q||0)*(+it.p||0))}</td></tr>`).join('')}
-   <tr><td colspan="3" class="right">Subtotal</td><td class="right">${money(sub)}</td></tr>
-   <tr><td colspan="3" class="right">Tax (${+s.tax||0}%)</td><td class="right">${money(tax)}</td></tr>
-   <tr><td colspan="3" class="right"><b>Total</b></td><td class="right"><b>${money(sub+tax)}</b></td></tr></table>
-   <div class="wm">Made with Quick Invoice</div>`;
+  const isPro=pro.isPro(),t=totals(),pay=isPro&&safeUrl(s.payLink);
+  $('inv').style.setProperty('--ic',isPro?s.color:COLORS[0]);
+  $('inv').innerHTML=`<div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px">
+   <div>${isPro&&s.logo?`<img class="logo" src="${esc(s.logo)}" alt="">`:''}<b>${esc(s.from||'Your business')}</b><div class="pre">${esc(s.fromInfo)}</div></div>
+   <div style="text-align:right"><h2>INVOICE</h2><div>${esc(s.num)}</div><div>Date: ${esc(s.date)}</div>${s.due?`<div><b>Due: ${esc(s.due)}</b></div>`:''}</div></div>
+   <div style="margin-top:20px"><div class="muted" style="color:#666;font-size:.8rem">BILL TO</div><b>${esc(s.to||'Client')}</b><div class="pre">${esc(s.toInfo)}</div></div>
+   <table style="margin-top:20px"><tr><th>Description</th><th class="right">Qty</th><th class="right">Price</th><th class="right">Amount</th></tr>
+   ${s.items.map(it=>`<tr><td>${esc(it.d)}</td><td class="right">${num(it.q)}</td><td class="right">${money(num(it.p))}</td><td class="right">${money(num(it.q)*num(it.p))}</td></tr>`).join('')}
+   <tr><td colspan="3" class="right">Subtotal</td><td class="right">${money(t.sub)}</td></tr>
+   <tr><td colspan="3" class="right">Tax (${num(s.tax)}%)</td><td class="right">${money(t.tax)}</td></tr>
+   <tr><td colspan="3" class="right"><b>Total due</b></td><td class="right" id="grandTotal"><b>${money(t.total)}</b></td></tr></table>
+   ${s.notes?`<div class="pre" style="margin-top:16px">${esc(s.notes)}</div>`:''}
+   ${pay?`<a class="pay" href="${esc(pay)}" target="_blank" rel="noopener">Pay ${money(t.total)} online →</a><div class="payurl">${esc(pay)}</div>`:''}
+   ${isPro?'':'<div class="wm">Made with Quick Invoice · free invoice generator</div>'}`;
 }
-function all(){renderItems();renderInvoice();save()}
-['from','to','num','date','cur','tax'].forEach(k=>{$(k).value=s[k];$(k).addEventListener('input',e=>{s[k]=e.target.value;renderInvoice();save()})});
+
+function renderClients(){
+  $('clientList').innerHTML=clients.map(c=>`<option value="${esc(c.name)}">`).join('');
+  $('clientPick').innerHTML='<option value="">Pick a saved client…</option>'+clients.map((c,i)=>`<option value="${i}">${esc(c.name)}</option>`).join('');
+}
+
+function renderProUi(){
+  const isPro=pro.isPro();
+  document.querySelectorAll('[data-pro]').forEach(el=>el.classList.toggle('locked',!isPro));
+  $('swatches').innerHTML=COLORS.map(c=>`<button class="swatch ${isPro&&s.color===c?'on':''}" style="background:${c}" data-color="${c}" aria-label="Colour ${c}"></button>`).join('');
+  $('logoClear').style.display=isPro&&s.logo?'':'none';
+  $('payLink').readOnly=!isPro;
+}
+
+function all(){renderItems();renderInvoice();renderProUi();save()}
+const gate=reason=>{if(pro.isPro())return true;pro.upsell(reason);return false};
+
+['from','fromInfo','to','toInfo','num','date','due','cur','tax','notes'].forEach(k=>{$(k).value=s[k];$(k).addEventListener('input',e=>{s[k]=e.target.value;renderInvoice();save()})});
+$('payLink').value=s.payLink;
+$('payLink').addEventListener('focus',()=>gate('Add a “Pay online” button to your invoices so clients can pay by card in one click.'));
+$('payLink').addEventListener('input',e=>{if(!pro.isPro())return;s.payLink=e.target.value.trim();renderInvoice();save()});
 $('items').addEventListener('input',e=>{const i=e.target.dataset.i;if(i!=null){s.items[i][e.target.dataset.k]=e.target.value;renderInvoice();save()}});
-$('items').addEventListener('click',e=>{const d=e.target.dataset.del;if(d!=null){s.items.splice(d,1);all()}});
-$('add').onclick=()=>{s.items.push({d:'',q:1,p:0});all()};
+$('items').addEventListener('click',e=>{const d=e.target.closest('[data-del]');if(d){s.items.splice(+d.dataset.del,1);all()}});
+$('add').onclick=()=>{s.items.push({d:'',q:1,p:0});all();const ins=$('items').querySelectorAll('[data-k="d"]');ins[ins.length-1].focus()};
 $('print').onclick=()=>window.print();
-all();
+
+$('logo').addEventListener('click',e=>{if(!gate('Put your logo on every invoice.'))e.preventDefault()});
+$('logo').addEventListener('change',e=>{
+  const f=e.target.files[0];if(!f||!pro.isPro())return;
+  const img=new Image(),url=URL.createObjectURL(f);
+  img.onload=()=>{const k=Math.min(1,400/img.width,160/img.height),c=document.createElement('canvas');
+    c.width=Math.max(1,Math.round(img.width*k));c.height=Math.max(1,Math.round(img.height*k));
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(url);
+    s.logo=c.toDataURL('image/png');e.target.value='';all()};
+  img.onerror=()=>{URL.revokeObjectURL(url);alert('That file could not be read as an image.')};
+  img.src=url;
+});
+$('logoClear').onclick=()=>{s.logo='';all()};
+$('swatches').addEventListener('click',e=>{const b=e.target.closest('[data-color]');if(b&&gate('Match invoices to your brand colour.')){s.color=b.dataset.color;all()}});
+$('saveClient').onclick=()=>{
+  if(!gate('Save clients and fill in their details with one click.'))return;
+  const name=s.to.trim();if(!name)return alert('Enter the client’s name in “Bill to” first.');
+  const i=clients.findIndex(c=>c.name===name),c={name,info:s.toInfo};
+  i>=0?clients[i]=c:clients.push(c);store(CLIENTS,clients);renderClients();alert('Saved “'+name+'”.');
+};
+$('clientPick').addEventListener('mousedown',e=>{if(!pro.isPro()){e.preventDefault();gate('Save clients and fill in their details with one click.')}});
+$('clientPick').addEventListener('change',e=>{
+  if(!gate('Save clients and fill in their details with one click.')){e.target.value='';return}
+  const c=clients[e.target.value];if(!c)return;s.to=c.name;s.toInfo=c.info;$('to').value=c.name;$('toInfo').value=c.info;e.target.value='';renderInvoice();save();
+});
+$('email').onclick=()=>{
+  if(!gate('Open a ready-to-send email to your client with the invoice details.'))return;
+  const t=totals(),email=(s.toInfo.match(/[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+/)||[''])[0],pay=safeUrl(s.payLink);
+  const body=`Hi ${s.to||''},\n\nPlease find invoice ${s.num} for ${money(t.total)} attached${s.due?`, due ${s.due}`:''}.\n`+
+    (pay?`\nYou can pay online here: ${pay}\n`:'')+`\nThank you!\n${s.from}`;
+  location.href=`mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(`Invoice ${s.num} from ${s.from||''}`.trim())}&body=${encodeURIComponent(body)}`;
+};
+$('newInv').onclick=()=>{
+  if(!confirm('Start a new invoice? Your details and notes are kept; the client and line items are cleared.'))return;
+  const m=String(s.num).match(/^(.*?)(\d+)(\D*)$/);
+  s.num=m?m[1]+String(+m[2]+1).padStart(m[2].length,'0')+m[3]:s.num+'-2';
+  Object.assign(s,{to:'',toInfo:'',date:today(),due:'',items:[{d:'',q:1,p:0}]});
+  ['to','toInfo','num','date','due'].forEach(k=>$(k).value=s[k]);all();
+};
+renderClients();all();
 </script></body></html>

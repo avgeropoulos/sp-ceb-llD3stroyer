@@ -1,0 +1,10 @@
+{
+  "invoice-pro": {
+    "name": "Quick Invoice Pro",
+    "page": "invoice-maker.html",
+    "mode": "subscription",
+    "amount": 499,
+    "currency": "usd",
+    "interval": "month"
+  }
+}

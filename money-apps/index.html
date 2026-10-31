@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Money Apps</title>
+<meta name="description" content="Simple, private tools that run in your browser: invoices, subscriptions, habits, bill splitting and focus.">
+<link rel="stylesheet" href="shared.css">
+<style>
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px}
+.app{display:block;text-decoration:none;color:inherit;margin:0;transition:transform .1s}
+.app:hover{transform:translateY(-2px);border-color:var(--accent)}
+.app h2{margin:0 0 4px;font-size:1.1rem}
+.app p{margin:0;color:var(--muted);font-size:.9rem}
+.tag{display:inline-block;margin-top:10px;font-size:.75rem;color:var(--accent);font-weight:600}
+</style></head>
+<body><main>
+<h1>Money Apps</h1>
+<p class="sub">Simple tools that run in your browser. No sign-up, and your data stays on your device.</p>
+<div class="grid" id="apps">
+  <a class="card app" href="invoice-maker.html"><h2>🧾 Quick Invoice</h2><p>Make a professional invoice and save it as a PDF in a minute.</p><span class="tag">Free · Pro $4.99/mo</span></a>
+  <a class="card app" href="subscription-tracker.html"><h2>💳 Sub Tracker</h2><p>See what your subscriptions really cost and what's due next.</p><span class="tag">Free</span></a>
+  <a class="card app" href="habit-streaks.html"><h2>🔥 Streaks</h2><p>Build habits one day at a time. Don't break the chain.</p><span class="tag">Free</span></a>
+  <a class="card app" href="bill-splitter.html"><h2>🍕 Split It</h2><p>Track shared expenses on a trip and settle up fairly.</p><span class="tag">Free</span></a>
+  <a class="card app" href="focus-timer.html"><h2>⏱️ Deep Focus</h2><p>A Pomodoro timer that tracks your focus time.</p><span class="tag">Free</span></a>
+</div>
+</main></body></html>
