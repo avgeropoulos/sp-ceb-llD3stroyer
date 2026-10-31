@@ -30,6 +30,7 @@ class HeroMenuActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CrashLog.install(this)
         window.statusBarColor = BG
         window.navigationBarColor = BG
         val scroll = ScrollView(this).apply { setBackgroundColor(BG); isFillViewport = true }
@@ -44,6 +45,7 @@ class HeroMenuActivity : Activity() {
     override fun onResume() {
         super.onResume()
         build()
+        CrashLog.offer(this)
     }
 
     private fun build() {

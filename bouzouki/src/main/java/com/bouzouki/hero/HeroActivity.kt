@@ -47,6 +47,7 @@ class HeroActivity : Activity(), HeroView.Host, SessionListener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CrashLog.install(this)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         difficulty = Difficulty.entries.firstOrNull { it.name == intent.getStringExtra(EXTRA_DIFFICULTY) } ?: Difficulty.EASY
         val id = intent.getStringExtra(EXTRA_ID) ?: return finish()

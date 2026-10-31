@@ -275,12 +275,15 @@ class Session(
         streakAge += dt
         opaAge += dt
         for (i in 0 until 5) pressFlash[i] = max(0f, pressFlash[i] - dt * 4)
+        // Shards of smashed plates are added after the loop: adding to the list while going
+        // through it crashes (ConcurrentModificationException).
+        val shards = ArrayList<Particle>()
         val it = particles.iterator()
         while (it.hasNext()) {
             val p = it.next()
             p.life -= dt
             if (p.life <= 0) {
-                if (p.plate) shatter(p)
+                if (p.plate) shatter(p, shards)
                 it.remove()
                 continue
             }
@@ -288,6 +291,7 @@ class Session(
             p.y += p.vy * dt
             p.vy += (if (p.plate) 420f else 300f) * dt
         }
+        particles.addAll(shards)
         if (state != State.PLAYING) return
         val dtSong = (t - time).coerceIn(0.0, 0.25)
         time = t
@@ -356,10 +360,10 @@ class Session(
         }
     }
 
-    private fun shatter(p: Particle) {
+    private fun shatter(p: Particle, into: MutableList<Particle>) {
         repeat(6) {
             val a = rnd.nextFloat() * 2 * PI.toFloat()
-            particles.add(
+            into.add(
                 Particle(p.x, p.y, cos(a) * 120 + p.vx * 0.3f, sin(a) * 120 - 60, 0.6f, 0.6f,
                     if (it % 2 == 0) 0xFFFFFFFF.toInt() else 0xFF2F6FD6.toInt(), 3f, false)
             )
