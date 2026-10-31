@@ -171,6 +171,8 @@ static func build(kind: String) -> Node3D:
 			_drykragjr(body, p)
 		"buzzer", "hopper", "boohoo", "bomber", "chompy", "spiky", "bat", "mummy", "roller", "cactusman", "biggrumbler":
 			_foe2(body, p, kind)
+		"lucky", "alix", "petal", "spotty", "brawlo":
+			_friend(body, p, kind)
 	if Bosses.is_boss(kind) and not Bosses.flies(kind):
 		_turtle_boss(body, p, kind)
 	if kind.begins_with("mon:"):
@@ -435,7 +437,7 @@ static func pose(a, dt: float) -> void:
 		if p.has(k):
 			p[k].rotation = Vector3.ZERO
 	match kind:
-		"rocco", "blocky", "skelly":
+		"rocco", "blocky", "skelly", "lucky", "alix", "petal", "spotty", "brawlo":
 			_pose_person(p, kind, anim, t)
 		"sparky", "sparky:1":
 			_pose_sparky(p, anim, t)
@@ -630,7 +632,7 @@ static func _pose_person(p: Dictionary, kind: String, anim: String, t: float) ->
 			p.head.rotation.y = lerpf(p.get("head_y", 0.0), hy, 0.08)
 			p["head_y"] = p.head.rotation.y
 			p.head.rotation.x = br * 0.03
-	if kind == "blocky" and anim != "mine":
+	if kind in ["blocky", "alix"] and anim != "mine":
 		p.armR.rotation.x -= 0.5   # holds the pickaxe up a bit
 
 
@@ -1726,3 +1728,100 @@ static func _pose_boss(p: Dictionary, anim: String, t: float) -> void:
 			p.armL.rotation.z = -1.6
 			p.armR.rotation.z = 1.6
 			core.rotation.x = 0.3
+
+
+# ------------------------------------------------------------------ friends you unlock (team.gd)
+const FRIENDS := ["lucky", "alix", "petal", "spotty", "brawlo"]
+
+
+## LUCKY, ALIX, PETAL, SPOTTY and BRAWLO: built like Rocco (legs, arms, head pieces), so
+## `_pose_person` animates them the same way.
+static func _friend(b0: Node3D, p: Dictionary, kind: String) -> void:
+	var b := piv(b0, Vector3.ZERO)   # an inner piece for each hero's own size
+	b.scale = {"lucky": Vector3(0.95, 1.15, 0.95), "spotty": Vector3(0.9, 0.82, 0.9), "brawlo": Vector3(1.28, 1.0, 1.15)}.get(kind, Vector3.ONE)
+	var SKIN := Color("f7c69c") if kind != "alix" else Color("f0c49a")
+	var shirt: Color = {"lucky": Color("3cb85a"), "alix": Color("5bbf6a"), "petal": Color("ff8fc0"), "spotty": Color("3f7fd9"), "brawlo": Color("ffd23a")}[kind]
+	var pants: Color = {"lucky": Color("2c4fa8"), "alix": Color("8a5a35"), "petal": Color("ff8fc0"), "spotty": Color("ffffff"), "brawlo": Color("8a4fc4")}[kind]
+	var shoe: Color = {"lucky": Color("7a4a2a"), "alix": Color("6e4527"), "petal": Color("ff5c9a"), "spotty": Color("6e4527"), "brawlo": Color("4a3424")}[kind]
+	var square := kind == "alix"
+	for s in [-1, 1]:
+		var leg := piv(b, Vector3(s * 0.12, 0.5, 0))
+		if square:
+			part(leg, box(Vector3(0.18, 0.42, 0.2)), Vector3(0, -0.2, 0), pants)
+			part(leg, box(Vector3(0.21, 0.13, 0.3)), Vector3(0, -0.44, 0.04), shoe)
+		else:
+			part(leg, cap(0.085, 0.4), Vector3(0, -0.2, 0), pants if kind != "petal" else SKIN)
+			part(leg, sph(0.12), Vector3(0, -0.44, 0.05), shoe, Vector3(1, 0.6, 1.45))
+		p["legL" if s < 0 else "legR"] = leg
+	if kind == "petal":   # a big bell-shaped dress
+		part(b, cyl(0.16, 0.42, 0.62), Vector3(0, 0.62, 0), shirt)
+		part(b, cyl(0.43, 0.43, 0.06), Vector3(0, 0.33, 0), Color("e2669f"))
+		part(b, sph(0.06), Vector3(0, 0.95, 0.15), Color("5ae6e6"), Vector3.ONE, Vector3.ZERO, true, 0.4)
+	elif square:
+		part(b, box(Vector3(0.5, 0.55, 0.3)), Vector3(0, 0.82, 0), shirt)
+		part(b, box(Vector3(0.51, 0.06, 0.31)), Vector3(0, 0.57, 0), Color("6a4a2e"), Vector3.ONE, Vector3.ZERO, false)
+	else:
+		part(b, cyl(0.2, 0.21, 0.16), Vector3(0, 0.56, 0), pants)
+		part(b, cap(0.22, 0.5), Vector3(0, 0.8, 0), shirt, Vector3(1, 1, 0.85))
+		if kind in ["lucky", "brawlo"]:   # overall straps
+			for s in [-1, 1]:
+				part(b, box(Vector3(0.06, 0.3, 0.04)), Vector3(s * 0.1, 0.78, 0.18), pants, Vector3.ONE, Vector3.ZERO, false)
+	for s in [-1, 1]:
+		var arm := piv(b, Vector3(s * (0.33 if square else 0.27), 1.0, 0))
+		if square:
+			part(arm, box(Vector3(0.14, 0.42, 0.16)), Vector3(0, -0.17, 0), shirt)
+			part(arm, box(Vector3(0.14, 0.12, 0.16)), Vector3(0, -0.42, 0), SKIN)
+		elif kind == "petal":
+			part(arm, cap(0.07, 0.36), Vector3(0, -0.15, 0), SKIN)
+			part(arm, sph(0.085), Vector3(0, -0.35, 0), Color.WHITE)
+		else:
+			part(arm, cap(0.07, 0.36), Vector3(0, -0.15, 0), shirt)
+			part(arm, sph(0.085), Vector3(0, -0.35, 0), SKIN if kind != "lucky" else Color.WHITE)
+		p["armL" if s < 0 else "armR"] = arm
+	if kind == "alix":   # a pickaxe like Blocky's
+		var pick := piv(p.armR, Vector3(0, -0.42, 0.02))
+		part(pick, cyl(0.028, 0.028, 0.75, 8), Vector3(0, 0, 0.22), Color("a8743f"), Vector3.ONE, Vector3(PI / 2, 0, 0))
+		part(pick, box(Vector3(0.06, 0.5, 0.07)), Vector3(0, 0, 0.58), Color("8fe0e6"), Vector3.ONE, Vector3(0, 0, 0))
+		p["pick"] = pick
+	var head := piv(b, Vector3(0, 1.1, 0))
+	p["head"] = head
+	if kind == "alix":   # square head, long orange hair
+		var HAIR := Color("ff8a2a")
+		part(head, box(Vector3(0.44, 0.42, 0.42)), Vector3(0, 0.21, 0), SKIN)
+		part(head, box(Vector3(0.47, 0.12, 0.46)), Vector3(0, 0.46, -0.01), HAIR)
+		part(head, box(Vector3(0.47, 0.62, 0.1)), Vector3(0, 0.18, -0.2), HAIR, Vector3.ONE, Vector3.ZERO, false)
+		for s in [-1, 1]:
+			part(head, box(Vector3(0.06, 0.5, 0.3)), Vector3(s * 0.235, 0.18, -0.08), HAIR, Vector3.ONE, Vector3.ZERO, false)
+			var e := piv(head, Vector3(s * 0.1, 0.24, 0.215))
+			part(e, box(Vector3(0.09, 0.08, 0.02)), Vector3.ZERO, Color.WHITE, Vector3.ONE, Vector3.ZERO, false)
+			part(e, box(Vector3(0.05, 0.07, 0.02)), Vector3(0.02, -0.005, 0.01), Color("2e7d3a"), Vector3.ONE, Vector3.ZERO, false)
+			if _eye_sink != null:
+				_eye_sink.append(e)
+		part(head, box(Vector3(0.47, 0.06, 0.06)), Vector3(0, 0.39, 0.2), HAIR, Vector3.ONE, Vector3.ZERO, false)
+		part(head, box(Vector3(0.12, 0.03, 0.02)), Vector3(0, 0.1, 0.215), Color("c46a5a"), Vector3.ONE, Vector3.ZERO, false)
+		return
+	part(head, sph(0.3), Vector3(0, 0.2, 0), SKIN)
+	eyes(head, 0.24, 0.27, 0.1, 0.08)
+	part(head, sph(0.055 if kind != "brawlo" else 0.08), Vector3(0, 0.15, 0.31), Color("e09d74"))
+	if kind == "lucky":
+		part(head, box(Vector3(0.18, 0.04, 0.03)), Vector3(0, 0.08, 0.29), Color("3b2a20"), Vector3.ONE, Vector3.ZERO, false)
+	if kind == "brawlo":   # a zig-zag moustache
+		for s in [-1, 1]:
+			part(head, box(Vector3(0.14, 0.05, 0.03)), Vector3(s * 0.08, 0.08, 0.29), Color("3b2a20"), Vector3.ONE, Vector3(0, 0, s * 0.35), false)
+	if kind in ["lucky", "brawlo"]:   # a cap with a white badge
+		var hc := Color("3cb85a") if kind == "lucky" else Color("ffd23a")
+		var hd := Color("26874a") if kind == "lucky" else Color("d9a91e")
+		part(head, sph(0.25), Vector3(0, 0.24, -0.13), Color("5a3a22") if kind == "lucky" else Color("3b2a20"), Vector3(1.12, 0.92, 0.8))
+		part(head, hemi(0.315), Vector3(0, 0.27, 0), hc, Vector3(1, 0.85, 1))
+		part(head, cyl(0.2, 0.2, 0.035), Vector3(0, 0.29, 0.25), hd, Vector3(1, 1, 1.25))
+		part(head, sph(0.075), Vector3(0, 0.42, 0.24), Color.WHITE, Vector3(1, 1, 0.4))
+	elif kind == "petal":   # long blonde hair and a gold crown
+		var HAIR := Color("ffd23a")
+		part(head, sph(0.32), Vector3(0, 0.28, -0.06), HAIR, Vector3(1.05, 0.9, 1.0))
+		part(head, cap(0.18, 0.55), Vector3(0, 0.02, -0.18), HAIR, Vector3(1.6, 1, 0.8))
+		part(head, cyl(0.15, 0.13, 0.12, 8), Vector3(0, 0.56, 0), Color("ffcf33"), Vector3.ONE, Vector3.ZERO, true, 0.3)
+		part(head, sph(0.035), Vector3(0, 0.57, 0.14), Color("e8413b"))
+	elif kind == "spotty":   # a big white mushroom cap with red spots
+		part(head, hemi(0.48), Vector3(0, 0.3, 0), Color.WHITE, Vector3(1, 0.85, 1))
+		for sp in [Vector3(0, 0.62, 0.18), Vector3(-0.3, 0.45, 0.2), Vector3(0.3, 0.45, 0.2), Vector3(0.0, 0.5, -0.32), Vector3(-0.36, 0.4, -0.12), Vector3(0.36, 0.4, -0.12)]:
+			part(head, sph(0.1), sp, Color("e8413b"), Vector3(1, 0.5, 1), Vector3.ZERO, false)

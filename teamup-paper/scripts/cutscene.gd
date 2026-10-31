@@ -224,6 +224,9 @@ func pose(a: Actor, anim: String, d: float, par := false) -> void:
 
 ## Says something: a speech bubble over them, the words at the bottom, and the voice.
 func say(a: Node3D, who: String, name: String, text: String, d: float, par := false) -> void:
+	if a is Hero and a.who != "mon" and Team.INFO.has(a.who):   # the team may not be Rocco + Blocky
+		who = a.who
+		name = Team.name_of(a.who)
 	_add(d, func(k):
 		if k < 1.0:
 			if bubble_on != a or bubble.text != text:

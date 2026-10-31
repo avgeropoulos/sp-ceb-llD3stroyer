@@ -267,7 +267,7 @@ func _collect(id: String) -> void:
 	game.sfx("clear")
 	game.fx.burst(o.pos, Color("ffe14a"), 24, 6, 8)
 	game.fx.text(o.pos + Vector3(0, 1.2, 0), "+10", Color("ffd23a"), 48)
-	game.speak("We got a star!", "rocco")
+	game.speak("We got a star!", game.leader().who if game.leader().who != "mon" else game.heroes.rocco.who)
 	gate_msg = false
 	if count() >= STARS_NEEDED and not game.gate_open:
 		open_gate()

@@ -22,7 +22,12 @@ var fx: Fx
 var hud: Hud
 var cam: Camera3D
 var heroes := {}
-var human := "rocco"          # which of Rocco / Blocky is out
+var human := "rocco"          # which human SLOT is out: "rocco" = slot 1, "blocky" = slot 2 (see team.gd)
+var team := ["rocco", "blocky"]   # the two heroes in the slots (TEAM screen)
+var heroes_seen := ["rocco", "blocky"]   # friends already announced as unlocked
+var team_sel: Array = []      # TEAM screen: the heroes picked so far (in order)
+var team_from := ""           # "home" or "clear": where the TEAM screen goes back to
+var team_cur := 0             # TEAM screen: highlighted card (controller)
 var control := "human"        # "human" or "mon" (Sparky)
 var hearts := MAX_HEARTS
 var coins := 0
@@ -312,6 +317,8 @@ func enter_home() -> void:
 	_make_movie_tv()
 	if not "intro" in scenes_seen:
 		play_scene("intro")
+	elif not new_friends().is_empty():
+		announce_friends()
 	else:
 		maybe_funny()
 
@@ -499,10 +506,8 @@ func _step_home(dt: float) -> void:
 	if taps.has("movies"):
 		open_movies()
 		return
-	if taps.has("partner"):
-		partner_from = "home"
-		partner_sel = maxi(0, Mons.ORDER.find(mon_line))
-		state = "partner"
+	if taps.has("partner"):   # the TEAM button (2 heroes + 1 partner)
+		open_team("home")
 		return
 	if swap_pressed:
 		do_swap()
@@ -758,12 +763,12 @@ func play_music(name: String, loop := true) -> void:
 
 
 func speak(text: String, who: String) -> void:
-	var v := voice_it if who == "rocco" else voice_en
+	var v := voice_it if Team.info(who).get("italian", false) and Team.INFO.has(who) else voice_en
 	if v == "":
 		v = voice_en
 	if v == "" or bot:
 		return
-	var pitch := {"rocco": 1.15, "blocky": 0.8, "mon": 1.8}.get(who, 1.0) as float
+	var pitch := 1.8 if who == "mon" else (float(Team.info(who).pitch) if Team.INFO.has(who) else 1.0)
 	DisplayServer.tts_stop()
 	DisplayServer.tts_speak(text, v, 80, pitch, 1.1 if who == "mon" else 1.0)
 
@@ -783,8 +788,8 @@ func leader_name() -> String:
 
 func next_swap_name() -> String:
 	if control == "mon":
-		return "rocco"
-	return "blocky" if human == "rocco" else "mon"
+		return heroes.rocco.who
+	return heroes.blocky.who if human == "rocco" else "mon"
 
 
 func action_label() -> String:
@@ -793,6 +798,10 @@ func action_label() -> String:
 			return {"long": "LONG JUMP", "backflip": "BACKFLIP", "dive": "DIVE", "pound": "POUND", "": "ACTION"}[_rocco_action_kind(leader())]
 		"blocky":
 			return "MINE"
+		"alix":
+			return "BOW" if _foe_ahead(leader(), 10.0) != null else "MINE"
+	if Team.INFO.has(leader().who):
+		return String(Team.info(leader().who).action)
 	return Mons.LINES[mon_line].action
 
 
@@ -806,6 +815,8 @@ func face(who: String) -> String:
 func display_name(who: String) -> String:
 	if who == "mon":
 		return Mons.name_of(heroes.mon.line, heroes.mon.stage)
+	if Team.INFO.has(who):
+		return Team.name_of(who)
 	return who.to_upper()
 
 
@@ -822,7 +833,7 @@ func do_swap() -> void:
 		heroes.rocco.visible = false
 		heroes.rocco.shadow.visible = false
 		_pop_in(heroes.blocky, p, heroes.rocco.facing)
-		speak("Let's dig!", "blocky")
+		speak(String(Team.info(heroes.blocky.who).go), heroes.blocky.who)
 	elif control == "human":
 		control = "mon"
 		speak(display_name("mon").capitalize() + "!", "mon")
@@ -835,7 +846,7 @@ func do_swap() -> void:
 		var f: Vector3 = heroes.mon.position
 		_pop_in(heroes.rocco, heroes[was].position, heroes[was].facing)
 		heroes.mon.position = f
-		speak("Okey dokey!", "rocco")
+		speak(String(Team.info(heroes.rocco.who).go), heroes.rocco.who)
 	sfx("swap")
 	fx.burst(leader().position + Vector3(0, 0.8, 0), Color.WHITE, 14, 4, 4)
 	hud.say(display_name(leader_name()) + "!", "", 0.8)
@@ -897,11 +908,117 @@ func on_tap() -> void:
 
 # ------------------------------------------------------------------ save files
 func _after_clear() -> void:
+	if slot > 0 and Cutscene.enabled and not bot and team_from != "done" and Team.unlocked(cleared_w).size() > 2:
+		open_team("clear")   # pick the team for the next world (new friends show up here)
+		return
 	if slot > 0:
 		Boot.from_level = level.world
 		go("map", slot)
 	else:
 		get_tree().reload_current_scene()
+
+
+# ------------------------------------------------------------------ TEAM: 2 heroes + 1 partner
+## Puts these two heroes in the human slots (heroes.rocco = slot 1, heroes.blocky = slot 2).
+func set_team(t: Array) -> void:
+	team = [String(t[0]), String(t[1])]
+	for i in 2:
+		var h: Hero = heroes["rocco" if i == 0 else "blocky"]
+		if h.who != team[i]:
+			h.become(team[i])
+
+
+## Friends unlocked by worlds cleared but not announced yet.
+func new_friends() -> Array:
+	var out := []
+	for id in Team.unlocked(cleared_w):
+		if not id in heroes_seen:
+			out.append(id)
+	return out
+
+
+func announce_friends() -> void:
+	var nf := new_friends()
+	if nf.is_empty():
+		return
+	for id in nf:
+		heroes_seen.append(id)
+	var names := ", ".join(nf.map(func(x): return Team.name_of(x)))
+	hud.say("NEW FRIEND UNLOCKED!", names + " can join the team! Tap TEAM.", 3.4)
+	sfx("clear")
+	speak(String(Team.info(nf[0]).hi), nf[0])
+	save_game(state == "play")
+
+
+func open_team(from: String) -> void:
+	team_from = from
+	team_sel = team.duplicate()
+	team_cur = Team.ORDER.find(team[0])
+	state = "team"
+	if from == "clear":
+		announce_friends()
+
+
+## Tap a hero card: pick it (up to 2, in order) or un-pick it.
+func team_tap(id: String) -> void:
+	if not id in Team.unlocked(cleared_w):
+		sfx("bonk", -4)
+		hud.say("LOCKED", "Clear %d world%s to unlock %s!" % [Team.need(id), "s" if Team.need(id) > 1 else "", Team.name_of(id)], 1.8)
+		return
+	if id in team_sel:
+		team_sel.erase(id)
+	else:
+		if team_sel.size() >= 2:
+			team_sel.remove_at(1)
+		team_sel.append(id)
+		speak(String(Team.info(id).hi), id)
+	sfx("swap", -6)
+
+
+func team_partner() -> void:
+	partner_from = "team"
+	partner_sel = maxi(0, Mons.ORDER.find(mon_line))
+	state = "partner"
+
+
+func team_go() -> void:
+	if team_sel.size() < 2:
+		sfx("bonk", -4)
+		hud.say("PICK 2 HEROES", "Tap two heroes for the team", 1.6)
+		return
+	var p := leader().position
+	set_team(team_sel)
+	sfx("item")
+	if team_from == "clear":
+		save_game(false)
+		team_from = "done"
+		_after_clear()
+		return
+	control = "human"
+	human = "rocco"
+	heroes.blocky.visible = false
+	heroes.blocky.shadow.visible = false
+	heroes.rocco.visible = true
+	heroes.rocco.position = p
+	state = "home"
+	save_game(false)
+	hud.say("TEAM READY!", "%s, %s and %s" % [Team.name_of(team[0]), Team.name_of(team[1]), display_name("mon")], 2.2)
+
+
+func _step_team() -> void:
+	var n := Team.ORDER.size()
+	if Input.is_action_just_pressed("left"):
+		team_cur = (team_cur + n - 1) % n
+	if Input.is_action_just_pressed("right"):
+		team_cur = (team_cur + 1) % n
+	if action_pressed:
+		team_tap(Team.ORDER[team_cur])
+	if Input.is_action_just_pressed("swap"):
+		team_partner()
+	elif jump_pressed:
+		team_go()
+	elif pause_pressed and team_from == "home":
+		state = "home"
 
 
 func open_slots() -> void:
@@ -947,6 +1064,8 @@ func partner_tap(i: int) -> void:
 func choose_partner(l: String) -> void:
 	set_partner(l)
 	match partner_from:
+		"team":
+			state = "team"
 		"home":
 			state = "home"
 			save_game(false)
@@ -962,7 +1081,7 @@ func choose_partner(l: String) -> void:
 
 ## BACK on PICK YOUR PARTNER.
 func partner_back() -> void:
-	state = "home" if partner_from == "home" else "slots"
+	state = "team" if partner_from == "team" else ("home" if partner_from == "home" else "slots")
 
 
 ## Every partner line starts at 0 XP.
@@ -1002,7 +1121,7 @@ func save_data(in_level := true) -> Dictionary:
 	var d := {"v": 2, "level": level.world if level else "meadow", "cleared_w": cleared_w.duplicate(), "time": Time.get_unix_time_from_system(),
 		"hearts": hearts, "coins": coins, "ores": ores.duplicate(), "beaten": beaten,
 		"super": super_charge, "cleared": cleared, "human": human if in_level else "rocco", "in_level": in_level,
-		"mon": mon_line, "mon_xp": mon_xp.duplicate(), "scenes_seen": scenes_seen.duplicate(),
+		"mon": mon_line, "mon_xp": mon_xp.duplicate(), "team": team.duplicate(), "heroes_seen": heroes_seen.duplicate(), "scenes_seen": scenes_seen.duplicate(),
 		"home": home.data() if home else home_saved}
 	if open_play:
 		stars_w[level.world] = open_play.got.keys()
@@ -1055,6 +1174,15 @@ func _apply_save(d: Dictionary) -> void:
 	if not mon_line in Mons.ORDER:
 		mon_line = "spark"
 	set_partner(mon_line)
+	heroes_seen = []
+	for id in d.get("heroes_seen", ["rocco", "blocky"]):
+		if String(id) in Team.INFO and not String(id) in heroes_seen:
+			heroes_seen.append(String(id))
+	var tm: Array = d.get("team", ["rocco", "blocky"])
+	if tm.size() == 2 and String(tm[0]) in Team.INFO and String(tm[1]) in Team.INFO and tm[0] != tm[1]:
+		set_team([String(tm[0]), String(tm[1])])
+	else:
+		set_team(["rocco", "blocky"])
 	stars_w = {}
 	var sw: Dictionary = d.get("stars_w", {})
 	for k in sw:
@@ -1088,6 +1216,8 @@ func _apply_save(d: Dictionary) -> void:
 	checkpoint = _a2v(d.get("checkpoint", [3, 5, 6.5]))
 	# who's out
 	var h := String(d.get("human", "rocco"))
+	if h in Team.INFO and not h in ["rocco", "blocky"]:
+		h = "rocco"
 	if h != human and h in ["rocco", "blocky"]:
 		heroes[human].visible = false
 		heroes[human].shadow.visible = false
@@ -1444,6 +1574,12 @@ func _step(dt: float) -> void:
 		elif pause_pressed:
 			state = "home"
 		return
+	if state == "team":
+		_step_team()
+		for h in heroes.values():
+			h.animate(dt)
+		_update_camera(dt)
+		return
 	if state == "partner":
 		var n := Mons.ORDER.size()
 		if Input.is_action_just_pressed("left"):
@@ -1579,8 +1715,9 @@ func _update_leader(h: Hero, dt: float) -> void:
 	# jumping (with a little forgiveness: buffer + coyote time)
 	if h.on_floor:
 		h.coyote = 0.1
-		h.jumps_left = 1 if h.who == "rocco" else 0
+		h.jumps_left = 1 if h.who in Team.DOUBLE_JUMPERS else 0
 		h.long_t = 0
+		h.float_t = 0
 	else:
 		h.coyote -= dt
 	jump_buf -= dt
@@ -1620,6 +1757,7 @@ func _update_leader(h: Hero, dt: float) -> void:
 		h.vel.y = -2.5   # BLAZE and the bird line glide while you hold JUMP
 	if h.who == "mon" and h.line == "ghost" and h.vel.y < -6.0:
 		h.vel.y = -6.0   # ghosts float down slowly
+	_friend_air(h, dt)
 	if not jump_held and h.vel.y > 0 and h.long_t <= 0 and jump_hold_t <= 0:
 		h.vel.y -= Actor.GRAVITY * grav * 1.4 * dt   # let go of JUMP early = smaller jump
 	h.vel.y = maxf(h.vel.y - Actor.GRAVITY * grav * (0.72 if h.trick == "long" else 1.0) * dt, -26)
@@ -1648,7 +1786,7 @@ func _update_leader(h: Hero, dt: float) -> void:
 	# pick the picture
 	if hurt_t > 1.0:
 		h.play("hurt")
-	elif h.action_t > 0 and h.who == "blocky":
+	elif h.action_t > 0 and h.who in Team.MINERS:
 		h.play("mine")
 	elif h.action_t > 0 and h.who == "mon":
 		h.play("zap")
@@ -1676,7 +1814,7 @@ func _update_leader(h: Hero, dt: float) -> void:
 		else:
 			h.play("idle")
 	h.squash = Vector2.ONE.lerp(h.squash, exp(-dt * 12))
-	h.animate(dt * (1.45 if sprinting and h.anim == "run" else 1.0), 10 if h.who != "blocky" or h.action_t <= 0 else 7)
+	h.animate(dt * (1.45 if sprinting and h.anim == "run" else 1.0), 10 if not h.who in Team.MINERS or h.action_t <= 0 else 7)
 	h.update_shadow()
 
 
@@ -2019,11 +2157,115 @@ func _action(h: Hero) -> void:
 				h.action_t = 0.3
 				h.anim_t = 0
 				_mine(h)
+		"lucky", "alix", "petal", "spotty", "brawlo":
+			_friend_action(h)
 		"mon":
 			if h.action_t <= 0:
 				h.action_t = 0.28
 				h.anim_t = 0
 				_mon_attack(h, null)
+
+
+# ------------------------------------------------------------------ friends you unlock (team.gd)
+## The nearest bad guy roughly in front of h (or null).
+func _foe_ahead(h: Hero, reach: float) -> Foe:
+	var best: Foe = null
+	var bd := reach
+	var f2 := Vector2(h.facing.x, h.facing.z).normalized()
+	for f in foes:
+		if is_instance_valid(f) and f.dying < 0:
+			var d := f.position - h.position
+			var dd := Vector2(d.x, d.z)
+			if absf(d.y) < 3.0 and dd.length() < bd and (dd.length() < 0.5 or dd.normalized().dot(f2) > 0.55):
+				bd = dd.length()
+				best = f
+	return best
+
+
+func _friend_action(h: Hero) -> void:
+	if h.action_t > 0:
+		return
+	match h.who:
+		"lucky":   # SPIN JUMP: a spinning super jump (on the ground), or a flutter in the air
+			h.action_t = 0.45
+			if h.on_floor:
+				h.vel.y = h.jump_v * 1.12
+				h.on_floor = false
+				h.coyote = 0
+				h.spin(0.6, "side")
+				fx.burst(h.position, Color("8ff0a0"), 10, 3, 4)
+				sfx("jump2")
+			elif h.float_t < 0.8:
+				h.vel.y = maxf(h.vel.y, 5.0)
+				h.float_t += 0.4
+				h.spin(0.4, "side")
+				sfx("jump", -6)
+		"alix":   # BOW at a bad guy in front, otherwise MINE like Blocky
+			var f := _foe_ahead(h, 10.0)
+			h.action_t = 0.3
+			h.anim_t = 0
+			if f != null:
+				var from := h.position + Vector3(0, h.height * 0.65, 0)
+				var to := f.position + Vector3(0, f.height * 0.5, 0)
+				spawn_shot("harrow", from, (to - from).normalized() * 16.0, h, 2)
+				sfx("arrow")
+			else:
+				_mine(h)
+		"petal":   # TWIRL: bonks every bad guy close around her
+			h.action_t = 0.45
+			h.spin(0.45, "side")
+			if not h.on_floor:
+				h.vel.y = maxf(h.vel.y, 3.0)
+			fx.burst(h.position + Vector3(0, 0.6, 0), Color("ff8fc0"), 14, 4, 3)
+			fx.ring(h.position + Vector3(0, 0.3, 0), 2.4)
+			for f in foes:
+				if is_instance_valid(f) and f.dying < 0 and f.position.distance_to(h.position) < 2.4:
+					f.hurt(2, self)
+			sfx("swap")
+		"spotty", "brawlo":   # DASH / BASH: a burst forward that knocks bad guys over (BRAWLO also smashes blocks)
+			h.action_t = 0.6 if h.who == "spotty" else 0.75
+			h.dash_t = 0.35 if h.who == "spotty" else 0.4
+			var fw := Vector3(h.facing.x, 0, h.facing.z).normalized()
+			if fw.length() < 0.1:
+				fw = Vector3.RIGHT
+			h.vel.x = fw.x * (16.0 if h.who == "spotty" else 12.0)
+			h.vel.z = fw.z * (16.0 if h.who == "spotty" else 12.0)
+			h.long_t = 0.0
+			fx.burst(h.position + Vector3(0, 0.3, 0), Color(0.95, 0.9, 0.8), 10, 3, 2)
+			sfx("jump" if h.who == "spotty" else "stomp")
+
+
+## Every frame for the hero you steer: PETAL floats while you hold JUMP, LUCKY falls
+## slowly, and a DASH / BASH keeps going and hits whatever it runs into.
+func _friend_air(h: Hero, dt: float) -> void:
+	match h.who:
+		"petal":
+			if jump_held and not h.on_floor and h.vel.y < 0 and h.float_t < 1.6:
+				h.float_t += dt
+				h.vel.y = maxf(h.vel.y, -0.4)   # float!
+				if int(h.float_t * 20) % 4 == 0:
+					fx.burst(h.position + Vector3(0, 0.1, 0), Color("ffd6ea"), 1, 1.0, 1, 0.5)
+		"lucky":
+			if jump_held and h.vel.y < 0:
+				h.vel.y += Actor.GRAVITY * grav * 0.35 * dt   # floaty
+	if h.dash_t > 0:
+		h.dash_t -= dt
+		var fw := Vector3(h.vel.x, 0, h.vel.z)
+		if fw.length() > 1.0:
+			fw = fw.normalized()
+			var keep := 16.0 if h.who == "spotty" else 12.0
+			h.vel.x = fw.x * keep
+			h.vel.z = fw.z * keep
+		for f in foes:
+			if is_instance_valid(f) and f.dying < 0 and not f.is_boss and h.overlaps(f, 0.35):
+				f.hurt(3, self)
+				sfx("stomp")
+			elif is_instance_valid(f) and f.dying < 0 and f.is_boss and h.overlaps(f, 0.2) and h.who == "brawlo":
+				f.hurt(1, self)
+		if h.who == "brawlo" and fw.length() > 0.1:   # smash the block in front
+			var c := Vector3i(floori(h.position.x + fw.x * (h.hw + 0.4)), floori(h.position.y + 0.5), floori(h.position.z + fw.z * (h.hw + 0.4)))
+			if level.get_cell(c.x, c.y, c.z) != Level.AIR:
+				hit_block(c, 3, h)
 
 
 ## The partner's attack: as the hero you steer (target = null: aim in front) or as the helper.
@@ -2462,7 +2704,7 @@ func _update_foes(dt: float) -> void:
 				f.hurt(dmg, self)
 				l.vel.y = 12.0 if jump_held else 8.5
 				l.slam = ""
-				l.jumps_left = 1 if l.who == "rocco" else 0
+				l.jumps_left = 1 if l.who in Team.DOUBLE_JUMPERS else 0
 				l.squash = Vector2(1.25, 0.8)
 				sfx("stomp")
 				fx.burst(l.position, Color(1, 1, 1), 8, 3, 8)
@@ -2470,7 +2712,7 @@ func _update_foes(dt: float) -> void:
 				hurt_hero(f.position)
 
 
-const FRIENDLY_SHOTS := ["spark", "water", "fireball", "rock", "shadow", "orb", "ice", "sparkle"]
+const FRIENDLY_SHOTS := ["spark", "water", "fireball", "rock", "shadow", "orb", "ice", "sparkle", "harrow"]
 ## Bosses' shots (they hurt you): fire breath, blue fire, magic and bones.
 const BOSS_SHOT_PICS := {"flame": "shot_fire", "blueflame": "shot_ice", "magic": "shot_orb", "bone": "shot_rock"}
 const NEW_SHOT_PICS := {"rock": "shot_rock", "shadow": "shot_shadow", "orb": "shot_orb", "ice": "shot_ice", "sparkle": "shot_sparkle"}
@@ -2488,7 +2730,7 @@ func _shot_node(pic: String, pos: Vector3, size: float) -> Node3D:
 
 func spawn_shot(kind: String, pos: Vector3, v: Vector3, owner: Node3D, dmg: int = 1) -> void:
 	var size := {"spark": 0.55, "arrow": 0.32, "spikeball": 0.8, "water": 0.5, "fireball": 0.55,
-		"rock": 0.6, "shadow": 0.55, "orb": 0.55, "ice": 0.5, "sparkle": 0.5,
+		"rock": 0.6, "shadow": 0.55, "orb": 0.55, "ice": 0.5, "sparkle": 0.5, "harrow": 0.32,
 		"flame": 0.7, "blueflame": 0.7, "magic": 0.6, "bone": 0.5}[kind] as float
 	var s: Node3D
 	if BOSS_SHOT_PICS.has(kind):
@@ -2500,13 +2742,13 @@ func spawn_shot(kind: String, pos: Vector3, v: Vector3, owner: Node3D, dmg: int 
 	elif NEW_SHOT_PICS.has(kind):
 		s = _shot_node(NEW_SHOT_PICS[kind], pos - Vector3(0, size * 0.5, 0), size)
 	else:
-		var pic: String = {"spark": "spark", "arrow": "arrow", "spikeball": "spikeball", "water": "shot_water", "fireball": "shot_fire"}[kind]
+		var pic: String = {"spark": "spark", "arrow": "arrow", "spikeball": "spikeball", "water": "shot_water", "fireball": "shot_fire", "harrow": "arrow"}[kind]
 		s = level.prop(pic, pos - Vector3(0, size * 0.5, 0), size)
 	if not (s is Sprite3D):   # 3D shots: put the node's origin at the shot's middle, like the paper ones
 		s.position = pos
 		for ch in s.get_children():
 			ch.position.y -= size * 0.5
-	if kind == "arrow":
+	if kind == "arrow" or kind == "harrow":
 		if s is Sprite3D:
 			s.flip_h = v.x < 0
 		else:

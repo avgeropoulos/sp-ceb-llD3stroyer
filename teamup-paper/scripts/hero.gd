@@ -1,6 +1,6 @@
 class_name Hero
 extends Actor
-## Rocco, Blocky or the partner ("mon": Splashy, Seedy, Ember, Sparky and their
+## A human hero (Rocco, Blocky, or a friend you unlocked: see team.gd) or the partner ("mon": Splashy, Seedy, Ember, Sparky and their
 ## evolutions). The game decides who's being steered; this remembers each hero's
 ## own move timers, and for the partner which line and stage it is.
 
@@ -23,6 +23,8 @@ var rev_t := 1.0        # time since the stick was pulled back the other way (SI
 var wall_t := 0.0       # > 0 just after touching a wall in the air (WALL KICK)
 var wall_n := Vector3.ZERO
 var lock_t := 0.0       # no steering for a moment after a wall kick
+var float_t := 0.0      # PETAL's float / LUCKY's flutter time used this jump
+var dash_t := 0.0       # SPOTTY's DASH / BRAWLO's BASH
 var line := "spark"     # partner only: water / grass / fire / spark
 var stage := 0          # partner only: 0, 1, 2 (evolutions)
 
@@ -33,22 +35,26 @@ func init(lv: Level, w: String, stats: Dictionary) -> void:
 		setup(lv, _mon_frames("spark", 0), 1.95, 48.0, "sparky")
 		set_form("spark", 0)
 		return
-	var f := {}
-	match w:
-		"rocco":
-			f = {"idle": ["rocco_idle"], "blink": ["rocco_blink"], "run": ["rocco_run1", "rocco_idle", "rocco_run2", "rocco_idle"],
-				"jump": ["rocco_jump"], "fall": ["rocco_fall"], "slam": ["rocco_slam"], "hurt": ["rocco_hurt"], "win": ["rocco_win"],
-				"long": ["rocco_long"], "dive": ["rocco_dive"], "slide": ["rocco_slide"], "wallkick": ["rocco_kick"], "sideflip": ["rocco_jump"],
-				"flip": ["rocco_tuck0", "rocco_tuck1", "rocco_tuck2", "rocco_tuck3", "rocco_tuck4", "rocco_tuck5", "rocco_tuck6", "rocco_tuck7"],
-				"backflip": ["rocco_tuck0", "rocco_tuck7", "rocco_tuck6", "rocco_tuck5", "rocco_tuck4", "rocco_tuck3", "rocco_tuck2", "rocco_tuck1"]}
-		"blocky":
-			f = {"idle": ["blocky_idle"], "run": ["blocky_run1", "blocky_idle", "blocky_run2", "blocky_idle"],
-				"jump": ["blocky_jump"], "fall": ["blocky_jump"], "mine": ["blocky_mine1", "blocky_mine2"], "hurt": ["blocky_hurt"], "win": ["blocky_mine1"]}
+	var f := Team.frames(w)
 	setup(lv, f, stats.size, stats.feet, w)
 	speed = stats.speed
 	jump_v = stats.jump
 	hw = stats.hw
 	height = stats.h
+	play("idle")
+
+
+## Turns a human slot into another hero (TEAM screen): new look, size and speed.
+func become(w: String) -> void:
+	var st: Dictionary = Team.info(w)
+	who = w
+	reskin(Team.frames(w), float(st.size), float(st.feet), w)
+	speed = float(st.speed)
+	jump_v = float(st.jump)
+	hw = float(st.hw)
+	height = float(st.h)
+	trick = ""
+	slam = ""
 	play("idle")
 
 
