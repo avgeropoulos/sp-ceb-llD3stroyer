@@ -299,9 +299,10 @@ func _draw_hud() -> void:
 	if game.boss_on and boss != null and is_instance_valid(boss) and boss.dying < 0:
 		var w := minf(560.0, size.x * 0.45)
 		var bx := (size.x - w) * 0.5
-		txt("KRAG JR.", Vector2(0, 46), 34, Color("ff8c2a"), HORIZONTAL_ALIGNMENT_CENTER, size.x)
-		draw_rect(Rect2(bx - 4, 56, w + 8, 24), Color(0.13, 0.09, 0.18))
-		draw_rect(Rect2(bx, 60, w * float(boss.hp) / boss.max_hp, 16), Color("ff4f6d"))
+		var by := 70.0 if game.open_play else 0.0   # under the star row in the open worlds
+		txt(boss.boss_name(), Vector2(0, 46 + by), 34, Color("ff8c2a"), HORIZONTAL_ALIGNMENT_CENTER, size.x)
+		draw_rect(Rect2(bx - 4, 56 + by, w + 8, 24), Color(0.13, 0.09, 0.18))
+		draw_rect(Rect2(bx, 60 + by, w * float(boss.hp) / boss.max_hp, 16), Color("ff4f6d"))
 
 
 ## Open worlds, Mario 64 style: every star of this world at the top (gold = found),

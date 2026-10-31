@@ -275,10 +275,10 @@ func mon_name() -> String:
 	return Mons.name_of(M().line, M().stage)
 
 
-func krag(pos: Vector3) -> Foe:
+func krag(pos: Vector3, kind := "kragjr") -> Foe:
 	var f := Foe.new()
 	add_child(f)
-	f.init(game.level, "kragjr", pos)
+	f.init(game.level, kind, pos)
 	f.position = pos
 	spawned.append(f)
 	actors.append(f)
@@ -391,6 +391,8 @@ func _scene_gate() -> void:
 ## All 5 stars: inside the castle, Krag Jr. is NOT happy.
 func _scene_krag() -> void:
 	var kj: Foe = game.boss
+	var nm: String = kj.boss_name() if is_instance_valid(kj) else "KRAG JR."
+	var short: String = nm.capitalize()
 	var kp: Vector3 = kj.position if is_instance_valid(kj) else P + Vector3(0, 4.5, -6)
 	if is_instance_valid(kj):
 		actors.append(kj)
@@ -403,21 +405,25 @@ func _scene_krag() -> void:
 	if is_instance_valid(kj):
 		pose(kj, "angry", 2.8, true)
 	sfx("alert")
-	say(kj, "", "KRAG JR.", "WHAT?! You found all 5 stars?!", 2.8)
+	say(kj, "", nm, "WHAT?! You found all 5 stars?!", 2.8)
 	cam(P + Vector3(1.5, 2.2, 5.5), P + Vector3(0, 1.4, 0), 1.0)
-	say(game.leader(), "rocco", "ROCCO", "Give back Dennis, Krag Jr.!" if game.level.world == "meadow" else "Here we come, Krag Jr.!", 2.4)
+	say(game.leader(), "rocco", "ROCCO", "Give back Dennis, Krag Jr.!" if game.level.world == "meadow" and nm == "KRAG JR." else "Here we come, %s!" % short, 2.4)
 	cam(kp + Vector3(-1.5, 0.3, 5), kp, 1.0)
 	if is_instance_valid(kj):
 		pose(kj, "angry", 2.8, true)
 	shake(0.6)
-	say(kj, "", "KRAG JR.", "Never! Time for a BIG BOSS FIGHT!", 2.8)
+	say(kj, "", nm, "Never! Time for a BIG BOSS FIGHT!", 2.8)
 
 
 ## Krag Jr. beaten: his copter crashes, Dennis pops out, everybody cheers.
 func _scene_victory() -> void:
 	line_up(1.9)
 	var crash := gp(0.5, -4.5)
-	var kj := krag(P + Vector3(-4, 10, -8))
+	# this world's boss (Krag Jr., a Kragling, King Krag or Dry Krag)
+	var bk: String = game.boss.kind if is_instance_valid(game.boss) else Bosses.for_world(game.level.world)
+	var nm := Bosses.name_of(bk)
+	var flyer := Bosses.flies(bk)
+	var kj := krag(P + Vector3(-4, 10, -8), bk)
 	var dog := dennis(crash + Vector3(0, -5, 0))
 	once(func():
 		dog.visible = false
@@ -430,12 +436,12 @@ func _scene_victory() -> void:
 	burst(crash + Vector3(0, 0.6, 0), Color(0.55, 0.55, 0.6), 24, 5)
 	shake(1.0)
 	pose(kj, "hurt", 2.6, true)
-	say(kj, "", "KRAG JR.", "Ow ow ow... my copter!", 2.4)
+	say(kj, "", nm, "Ow ow ow... my copter!" if flyer else "Ow ow ow... my shell!", 2.4)
 	put(dog, crash + Vector3(0.6, 1.4, 0.4))
 	sfx("woof")
 	walk(dog, gp(1.0, -1.6), 0.7)
 	say(dog, "", "DENNIS", "WOOF! WOOF!", 1.4)
-	say(R(), "rocco", "ROCCO", "Dennis! You're safe!" if game.level.world == "meadow" else "Dennis! Did you sneak into the copter AGAIN?", 2.6)
+	say(R(), "rocco", "ROCCO", "Dennis! You're safe!" if game.level.world == "meadow" else ("Dennis! Did you sneak into the copter AGAIN?" if flyer else "Dennis! Were you hiding in the castle AGAIN?"), 2.6)
 	sfx("clear")
 	for a in [R(), B(), M()]:
 		hop(a, 0.9, 0.55, true, a == R())
@@ -447,10 +453,10 @@ func _scene_victory() -> void:
 	burst(P + Vector3(1, 3.4, -1), Color("54c8ff"), 16, 6)
 	wait(0.7)
 	pose(kj, "angry", 2.6, true)
-	say(kj, "", "KRAG JR.", "I'll get you next time, Team Up!", 2.6)
+	say(kj, "", nm, "I'll get you next time, Team Up!", 2.6)
 	walk(kj, crash + Vector3(-10, 12, -16), 1.8, true, "fly")
 	_add(1.8, func(k): kj.spin_t = 0.3 if k < 1.0 else 0.0, true)
-	say(B(), "blocky", "BLOCKY", "Bye bye, Krag Jr.!", 1.8)
+	say(B(), "blocky", "BLOCKY", "Bye bye, %s!" % nm.capitalize(), 1.8)
 
 
 ## Rocco slips on a banana peel.
