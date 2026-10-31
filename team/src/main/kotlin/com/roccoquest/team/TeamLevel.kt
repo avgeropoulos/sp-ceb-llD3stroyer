@@ -130,6 +130,8 @@ enum class Place(val music: Music) {
     RING_PLANET(Music.DREAMY),
     LAVA_PLANET(Music.HEROIC),
     CRYSTAL_PLANET(Music.CRYSTAL),
+    /** World 13: Wonder World, a flower kingdom with round hills that have eyes, and Talking Flowers. */
+    WONDER(Music.BLOOM),
 }
 
 /**
@@ -151,6 +153,7 @@ enum class Place(val music: Music) {
  *  'I' ship plank   ':' mast   '%' rainbow road   'N' cannon   '$' metal cap
  *  '>' cannon you can ride   '&' tail-spin King Krag   '+' spike bomb
  *  ';' toy soldier   ',' jack-in-the-box   '/' UFO   '<' moon hopper   '{' Mecha Krag   '}' Galaxy Krag
+ *  '-' Wonder Flower   '\\' Talking Flower (World 13)
  */
 class LevelDef(val name: String, val place: Place, val rows: List<String>, val tip: String) {
     val w get() = rows[0].length
@@ -200,7 +203,7 @@ object Levels {
             mushroomJungle(), lavaLake(), wonderCastle(),
             villagerValley(), coralReef(), minecartMine(), enderPlains(), deepDark(),
             treasureLagoon(), spikeTemple(), fireFortress(), boneCastle(), theEnd(),
-        ).plus(World2.all).plus(MoreWorlds.all).plus(World5.all).plus(MoreWorlds.world6).plus(MoreWorlds.world7).plus(MoreWorlds.world8).plus(MoreWorlds.world9).plus(MoreWorlds.world10).plus(MoreWorlds.world11).plus(MoreWorlds.world12).mapIndexed { i, d -> remix(d, i) }
+        ).plus(World2.all).plus(MoreWorlds.all).plus(World5.all).plus(MoreWorlds.world6).plus(MoreWorlds.world7).plus(MoreWorlds.world8).plus(MoreWorlds.world9).plus(MoreWorlds.world10).plus(MoreWorlds.world11).plus(MoreWorlds.world12).plus(MoreWorlds.world13).mapIndexed { i, d -> remix(d, i) }
     }
 
     /**

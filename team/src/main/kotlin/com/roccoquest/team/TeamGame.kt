@@ -289,6 +289,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private var bossDoneT = 0f
     var wonder = false
         private set
+    /** WONDER TIME from a Wonder Flower (World 13): seconds left, and the flower's surprise. */
+    var wonderT = 0f
+        private set
+    var wonderEffect: WonderEffect? = null
+        private set
+    private var coinRainT = 0f
+    /** When a Talking Flower last spoke out loud (so two never talk over each other). */
+    private var lastFlowerVoice = -99f
     private var bannerT = 0f
     private var bannerTitle = ""
     private var bannerSub = ""
@@ -769,6 +777,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val lv = storage.load(key("level"))
         unlocked = maxOf(storage.load(key("unlocked")), lv, 1).coerceAtMost(Levels.all.size)
         for (i in 0 until lv - 1) cleared[i] = true
+        // A beaten level always opens the next one. (Games that beat the old last level, before World 13
+        // was added, saved "unlocked" at the old end of the game: this opens World 13 for them.)
+        val lastBeaten = cleared.lastIndexOf(true)
+        if (lastBeaten >= 0) unlocked = maxOf(unlocked, minOf(Levels.all.size, lastBeaten + 2))
         shieldHp = storage.load(key("shieldHp"))
         if (shieldHp <= 0) shieldType = Shield.NONE
         mon = slotMon(slot)
@@ -1044,6 +1056,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         level = Level(Levels.all[index])
         foes.clear(); things.clear(); pending.clear(); particles.clear(); frogSpots.clear()
         boss = null; bossDone = false; wonder = false; camLock = null; frog = null; goal = null
+        wonderT = 0f; wonderEffect = null; coinRainT = 0f
         house = null; bed = null
         if (dino != null) dismount()
         riding = null; inCannon = null; cannonFlyT = 0f; grabbing = null; trader = null; floodT = 0f; air = AIR_MAX; dogT = 10f; ventT.clear(); planSpotty(index)
@@ -1097,6 +1110,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 '_' -> foes += Ankylosaurus(px, bottom)
                 '`' -> foes += BabyRex(px, bottom)
                 '"' -> things += CappyPickup(px, bottom)
+                '-' -> things += WonderFlower(px, bottom, WonderEffect.at(tx, index))
+                '\\' -> things += TalkingFlower(px, bottom, tx + index)
                 '\'' -> foes += RexKrag(px, bottom)
                 '}' -> foes += GalaxyKrag(px, bottom)
                 '+' -> things += SpikeBomb(px, bottom)
@@ -1607,6 +1622,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (metalT > 0) { metalT -= dt; if (metalT <= 0f) toast("Metal Rocco wore off!") }
         if (crazyFireT > 0) crazyFireT -= dt
         if (megaT > 0) { megaT -= dt; if (megaT <= 0f) { toast("Back to normal size."); sfx(Sound.KICK) } }
+        if (wonderT > 0) updateWonderTime(dt)
         if (propT > 0) { propT -= dt; if (propT <= 0f) toast("The propeller wore off!") }
         if (captureDashT > 0) captureDashT -= dt
         if (capture != null) { captureT -= dt; if (captureT <= 0f) releaseCapture() }
@@ -1622,7 +1638,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (miniT <= 0 && !level.solidAt(rocco.cx, rocco.bottom - 24f)) endMini() else if (miniT <= 0) miniT = 0.1f
         }
         // On the Moon everyone floats: way higher jumps.
-        val grav = if (wonder) 0.75f else if (level.def.place == Place.MOON) 0.6f else if (level.def.place == Place.ORBIT) 0.48f else PlanetArt.gravity(level.def.place)
+        val placeGrav = if (level.def.place == Place.MOON) 0.6f else if (level.def.place == Place.ORBIT) 0.48f else PlanetArt.gravity(level.def.place)
+        val grav = when {
+            // Wonder Time is floaty too (and never heavier than the place already is).
+            wonderT > 0f -> minOf(placeGrav, if (wonderEffect == WonderEffect.FLOATY) 0.5f else 0.75f)
+            wonder -> 0.75f
+            else -> placeGrav
+        }
         val cart = riding
         val cn = inCannon
         val tail = grabbing
@@ -1699,6 +1721,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         for (f in foes) {
             if (!f.active && f.x < camX + viewW + 48 && f.x + f.w > camX - 48) f.active = true
             if (f.frozenT > 0f) { f.frozenT -= dt; continue }
+            // Wonder DANCE PARTY: dancing bad guys don't walk (or hurt anybody) until the music stops.
+            if (f.danceT > 0f && !f.dying) { f.danceT -= dt; if (f.flash > 0f) f.flash -= dt; continue }
             if (f.active) f.update(this, dt)
         }
         for (t in things) if (t.active || (t.x < camX + viewW + 32)) { t.active = true; t.update(this, dt) }
@@ -2326,6 +2350,94 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         say(k.cx, k.y - 12, "WONDER MAGIC!", 1.6f)
         sound.sayAs(if (kind == CaptureKind.FLOPPY) "Mamma mia! I'm a fish!" else "Mamma mia! I'm a ${kind.label.lowercase()}!", Voice.HERO)
         toast("WONDER! King Krag turned you into a ${kind.label}! ${kind.how}")
+    }
+
+    // ---------------------------------------------------------------- Wonder Time (World 13)
+
+    /** True if a Wonder Flower still grows between [x0] and [x1] (Talking Flowers point it out). */
+    internal fun wonderFlowerBetween(x0: Float, x1: Float) = things.any { it is WonderFlower && it.cx in x0..x1 }
+
+    /** A Talking Flower says [text]: a speech bubble, and its little voice (unless another flower just spoke). */
+    internal fun flowerTalk(x: Float, y: Float, text: String) {
+        say(x, y, text.uppercase(), 1.8f)
+        if (time - lastFlowerVoice > 3f) { lastFlowerVoice = time; sound.sayAs(text, Voice.TOAD) }
+    }
+
+    /** A Wonder boss (Wonder Krag Jr. or Wonder King Krag) is being fought: the sky stays Wonder. */
+    private fun wonderBossFight(): Boolean {
+        val b = boss ?: return false
+        return !bossDone && ((b is KragJr && b.wonderStyle) || (b is KingKrag && b.wonderStyle))
+    }
+
+    /** A Wonder Flower was touched: WONDER TIME! The rainbow sky, wobbly ground, floaty jumps, and the flower's surprise. */
+    private fun startWonderTime(f: WonderFlower) {
+        val e = f.effect
+        wonderT = e.seconds
+        wonderEffect = e
+        wonder = true
+        coinRainT = 0f
+        shake = 0.3f
+        sfx(Sound.PORTAL)
+        for (i in 0 until 16) {
+            val a = i * 0.3927f
+            particles += Sparkle(f.cx, f.cy, kotlin.math.cos(a) * 150f, sin(a) * 150f, solidRainbow(i / 16f, 0f))
+        }
+        bannerTitle = "WONDER! ${e.label}"
+        bannerSub = e.how
+        bannerT = 2.5f
+        if (e.line.isNotEmpty()) sound.sayAs(e.line, Voice.HERO)
+        when (e) {
+            WonderEffect.MEGA -> startMega()
+            WonderEffect.STAR -> startStar()
+            WonderEffect.DANCE -> for (foe in foes) if (!foe.boss && !foe.dying) foe.danceT = e.seconds
+            WonderEffect.COIN_POP -> coinPop()
+            WonderEffect.FLOATY, WonderEffect.COIN_RAIN -> {}
+        }
+    }
+
+    /** POP POP POP: every bad guy on the screen turns into coins. */
+    private fun coinPop() {
+        for (f in foes) {
+            if (f.boss || f.dying || f.removed || f.x + f.w < camX || f.x > camX + viewW) continue
+            f.removed = true
+            puff(f.cx, f.cy)
+            repeat(2) { k -> spawn(Coin(f.cx - 8f + k * 8f, f.y, popping = true)) }
+        }
+        sfx(Sound.COIN)
+    }
+
+    private fun updateWonderTime(dt: Float) {
+        wonderT -= dt
+        if (wonderEffect == WonderEffect.COIN_RAIN) {
+            coinRainT -= dt
+            if (coinRainT <= 0f) {
+                coinRainT = 0.18f
+                spawn(RainCoin(camX + 16f + Random.nextFloat() * (viewW - 32f), 34f))
+            }
+        }
+        if (wonderT <= 0f) endWonderTime()
+    }
+
+    /** Wonder Time is over: everything goes back to normal, and a Wonder Seed pops out. */
+    private fun endWonderTime() {
+        wonderT = 0f
+        if (!wonderBossFight()) wonder = false
+        if (wonderEffect == WonderEffect.DANCE) for (f in foes) f.danceT = 0f
+        wonderEffect = null
+        sfx(Sound.KICK)
+        val l = leader
+        spawn(WonderSeed(l.cx + l.facing * 36f, l.y - 18f))
+        toast("Wonder Time is over! Grab the WONDER SEED!")
+    }
+
+    private fun collectWonderSeed(s: WonderSeed) {
+        coins += 20
+        healHeart()
+        sfx(Sound.ONEUP)
+        for (i in 0 until 12) particles += Sparkle(s.cx, s.cy, kotlin.math.cos(i * 0.52f) * 120f, sin(i * 0.52f) * 120f, solidRainbow(i / 12f, 0f))
+        particles += FloatText(s.cx, s.y - 6, "WONDER SEED! +20", 0xFFFFE14D.toInt())
+        toast("WONDER SEED! +20 coins")
+        sound.sayAs("A Wonder Seed!", Voice.HERO)
     }
 
     /** A free Cappy hat (Dino World): Rocco puts it on, ready to capture dinosaurs. */
@@ -3486,7 +3598,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                         h === rocco && (captureKind == CaptureKind.BONEHEAD || captureKind == CaptureKind.STEGO) && !f.boss -> {}
                         metal && h === rocco -> f.hit(this, 4)
                         h.shellSpin && !f.boss -> { f.hit(this, 1 + flowerLevel[Power.SHELL.ordinal] / 2); h.vx = -h.vx * 0.5f }
-                        f.frozenT > 0f -> {}
+                        f.frozenT > 0f || f.danceT > 0f -> {}
                         else -> f.touch(this)
                     }
                 }
@@ -3499,6 +3611,18 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 is Coin -> if (hit) {
                     t.removed = true
                     collectCoin()
+                }
+                is RainCoin -> if (hit) {
+                    t.removed = true
+                    collectCoin()
+                }
+                is WonderFlower -> if (hit && state == State.PLAY) {
+                    t.removed = true
+                    startWonderTime(t)
+                }
+                is WonderSeed -> if (hit) {
+                    t.removed = true
+                    collectWonderSeed(t)
                 }
                 is Bubble -> if (hit) {
                     t.removed = true
@@ -3893,6 +4017,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     heartBonus()
                     val nextName = Levels.all[levelIndex + 1].name
                     clearNote = when {
+                        levelIndex + 1 == Wonder.WORLD13 -> "...but King Krag found a WONDER FLOWER! WORLD 13!"
                         (levelIndex + 1) % WORLD_SIZE == 0 -> "World ${levelIndex / WORLD_SIZE + 1} is beaten... WORLD ${levelIndex / WORLD_SIZE + 2} is waiting!"
                         levelIndex >= WORLD_SIZE -> "Boss beaten! Next up: $nextName!"
                         b is KingKrag && b.dry -> "Only one enemy left... THE ENDER DRAGON!"
@@ -3990,6 +4115,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             Place.RING_PLANET -> listOf(Music.DREAMY, Music.MOON, Music.STAR)
             Place.LAVA_PLANET -> listOf(Music.HEROIC, Music.CASTLE, Music.DOOM)
             Place.CRYSTAL_PLANET -> listOf(Music.CRYSTAL, Music.WONDER, Music.STAR)
+            Place.WONDER -> listOf(Music.BLOOM, Music.PARADE, Music.MEADOW, Music.FUNKY)
         }
 
         /** Every level's tune, worked out once in order so it's never the same as the level before. */
@@ -4169,7 +4295,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         for (f in foes) if (f.x + f.w > cam - 40 && f.x < cam + viewW + 40) {
             mark(f)
             if (f.onGround && !f.dying) softShadow(gfx, f.cx + ox, f.bottom, f.w)
-            f.draw(this, gfx, ox)
+            if (f.danceT > 0f && !f.dying) {
+                // Wonder DANCE PARTY: a little hop to the beat (drawn higher for a moment), with music notes.
+                val hop = abs(sin(time * 9f + f.x * 0.05f)) * 5f
+                f.y -= hop
+                f.draw(this, gfx, ox)
+                f.y += hop
+                gfx.text("♪", f.cx + ox + sin(time * 4f + f.x) * 6f, f.y - 4f - hop, 8f, solidRainbow(time, f.x * 0.01f), 1)
+            } else f.draw(this, gfx, ox)
             if (f.frozenT > 0f) gfx.rect(f.x + ox - 2, f.y - 2, f.w + 4, f.h + 4, 0x887FD8FF.toInt())
             f.drawHealth(gfx, ox)
         }
@@ -4345,6 +4478,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             // Toy World: bright toy colors. Galaxy World: deep space and grey moon rock.
             7 -> Triple(0xFF6AC8FF, 0xFFF4C83A, 0xFFFF8A8A)
             8 -> Triple(0xFF060418, 0xFF8A8A9A, 0xFFB8B8C8)
+            // Wonder World: a violet sea around bright flower meadows.
+            Wonder.WORLD13 / WORLD_SIZE -> Triple(0xFF7A4AE8, 0xFF5AC86A, 0xFF8AE07A)
             else -> Triple(0xFF1A2A4A, 0xFF8AB8D8, 0xFFA8D0E8)
         }
         gfx.gradient(0f, 0f, viewW, VIEW_H, mixColor(sea.toInt(), 0xFFFFFFFF.toInt(), 0.15f), mixColor(sea.toInt(), 0xFF000000.toInt(), 0.3f))
@@ -4354,6 +4489,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (w2 || mapWorld == 5 || mapWorld == 8) for (k in 0 until 20) gfx.rect((k * 71f) % viewW, (k * 37f) % 30f + 4f, 1.5f, 1.5f, 0xFFFFFFFF.toInt())
         // Snow falling on the Winter World map.
         if (mapWorld == 6) for (k in 0 until 40) gfx.oval((k * 61f + time * 8f) % viewW, (k * 43f + time * 25f) % VIEW_H, 2.5f, 2.5f, 0xDDFFFFFF.toInt())
+        // Wonder World: a rainbow over the meadows, and Wonder Flowers growing between the rows of levels.
+        if (mapWorld == Wonder.WORLD13 / WORLD_SIZE) {
+            WonderArt.rainbowArc(gfx, viewW / 2, 210f, viewW * 0.42f, 5f, 110)
+            val step = (viewW - 82f - 36f) / 6f
+            for (c in 0 until 6) WonderArt.wonderFlower(gfx, 82f + (c + 0.5f) * step, if (c % 2 == 0) 106f else 164f, time + c, 0.7f)
+        }
         // The path between levels
         val levels = mapLevels().toList()
         var prev = if (mapWorld == 0) mapSpot(-1) else null
@@ -6791,6 +6932,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             Place.TOYS, Place.FUNGI, Place.MOON, Place.STATION, Place.ORBIT -> GalaxyArt.drawSky(gfx, level.def.place, viewW, VIEW_H, cam, time)
             Place.RAINBOW -> SeaArt.space(gfx, viewW, VIEW_H, cam, time)
             Place.PREHISTORIC -> DinoArt.drawSky(gfx, viewW, VIEW_H, cam, time)
+            Place.WONDER -> WonderArt.drawSky(gfx, viewW, VIEW_H, cam, time)
             Place.MARS, Place.ICE_PLANET, Place.CANDY_PLANET, Place.JUNGLE_PLANET, Place.RING_PLANET, Place.LAVA_PLANET, Place.CRYSTAL_PLANET ->
                 PlanetArt.drawSky(gfx, level.def.place, viewW, VIEW_H, cam, time)
             Place.END -> {
@@ -6853,6 +6995,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     Place.CANDY -> if (under) TeamArt.candyDirt else TeamArt.candyTop
                     Place.TOYS, Place.FUNGI, Place.MOON, Place.STATION, Place.ORBIT -> GalaxyArt.ground(place, under)
                     Place.MARS, Place.ICE_PLANET, Place.CANDY_PLANET, Place.JUNGLE_PLANET, Place.RING_PLANET, Place.LAVA_PLANET, Place.CRYSTAL_PLANET -> PlanetArt.ground(place, under)
+                    Place.WONDER -> WonderArt.ground(under)
                     else -> if (under) Sprites.dirt else Sprites.grassTop
                 }
                 Tile.DIRT -> Sprites.dirt
@@ -6939,6 +7082,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             (if (metalT > 0) "  •  METAL ${metalT.toInt() + 1}" else "") +
             (if (wingT > 0) "  •  WINGS ${wingT.toInt() + 1}" else "") +
             (if (megaT > 0) "  •  MEGA ${megaT.toInt() + 1}" else "") +
+            (if (wonderT > 0) "  •  WONDER ${wonderT.toInt() + 1}" else "") +
             (if (propT > 0) "  •  PROPELLER ${propT.toInt() + 1}" else "") +
             (captureKind?.let { "  •  ${it.label} ${captureT.toInt() + 1}" } ?: "")
         val swordText = if (sword != Sword.NONE) "  •  ${sword.label.removeSuffix(" SWORD")} SWORD ${swordHp * 100 / sword.durability}%" else ""
@@ -7257,6 +7401,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         else if (Hazards.eruptionLevel(levelIndex, level.def)) gfx.shadowText("VOLCANO LEVEL! When it ERUPTS, jump over the lava!", viewW / 2, 196f, 8f, 0xFFFF6A4A.toInt(), 1)
         else if (level.def.place == Place.ORBIT) gfx.shadowText("SPACE WALK! Spacesuits on. Super floaty jumps!", viewW / 2, 196f, 8f, 0xFF8AD8FF.toInt(), 1)
         else if (level.def.place == Place.PREHISTORIC || levelIndex in WORLD_SIZE * 10 until WORLD_SIZE * 11) gfx.shadowText("DINO WORLD! Grab CAPPY and capture a dinosaur!", viewW / 2, 196f, 8f, 0xFF8AE86A.toInt(), 1)
+        else if (Wonder.isWonderLevel(levelIndex) && !level.def.isBossLevel) gfx.shadowText("WONDER FLOWERS: touch them for a surprise!", viewW / 2, 196f, 8f, solidRainbow(time * 0.5f), 1)
+        if (level.def.place == Place.WONDER) WonderArt.wonderFlower(gfx, viewW / 2 + 52f, 150f, time, 1.6f)
         PlanetArt.planetOf(level.def.place)?.let { pl ->
             PlanetArt.drawTrip(gfx, level.def.place, viewW, stateT)
             gfx.shadowText("ROCKET TRIP TO ${pl.label}!", viewW / 2, 208f, 8f, 0xFF8AD8FF.toInt(), 1)

@@ -34,6 +34,8 @@ abstract class Foe(x: Float, y: Float, w: Float, h: Float, baseHp: Int) : Thing(
     var dying = false
     /** Frozen solid by a crazy ice ball: it can't move (or hurt you) until this runs out. */
     var frozenT = 0f
+    /** Dancing at a Wonder DANCE PARTY: it hops on the spot (and can't hurt you) until this runs out. */
+    var danceT = 0f
     /** Flashes white for a moment after being hit. */
     var flash = 0f
     open val stompable = true

@@ -6,7 +6,9 @@ import kotlin.random.Random
  * World 3 (Mystery Islands) and World 4 (the Doom Lands): 21 levels each, built from pieces
  * (flat ground, gaps, lava pits, raised ledges, stairs, ore rocks, prize blocks) with a fixed seed,
  * so every level is always the same. Every world ends with a boss, and there are bosses halfway.
- * The very last level is THE ULTIMATE BATTLE: Dry Bones King Krag, Wonder King Krag and the Ender Dragon.
+ * World 4 ends with THE ULTIMATE BATTLE: Dry Bones King Krag, Wonder King Krag and the Ender Dragon.
+ * The later worlds (6 to 13) are made the same way; the very last level of the game is World 13's
+ * THE WONDER FINALE (Dry Bones King Krag, then Wonder King Krag).
  */
 object MoreWorlds {
     /** [extra] makes a level longer (in tiles): World 10's levels are long, and some are REALLY long. */
@@ -228,11 +230,40 @@ object MoreWorlds {
         Plan("THE GALAXY GRAND FINALE", Place.CRYSTAL_PLANET, "THE GRAND FINALE! Rex Krag, Rock Star Krag and Galaxy Krag, one after another!", boss = "'!}"),
     )
 
+    // World 13: Wonder World. Every normal level has two Wonder Flowers and some Talking Flowers, and mixes in
+    // places (and bad guys) from all the worlds before it.
+    private val world13Plans = listOf(
+        Plan("WONDER WELCOME", Place.WONDER, "WORLD 13: WONDER WORLD! The flowers are magic... and some can TALK!", extra = 40),
+        Plan("TALKING FLOWER FIELDS", Place.WONDER, "The flowers can TALK! Say hi as you go by.", extra = 60),
+        Plan("CANDY WONDERLAND", Place.CANDY, "Candy Land... with Wonder Flowers!", extra = 60),
+        Plan("TOY BOX TWIST", Place.TOYS, "The toys are wide awake today!", extra = 70),
+        Plan("FLOATY FLOWER HILLS", Place.WONDER, "So many flowers. So floaty!", extra = 70),
+        Plan("GLOWSHROOM GROOVE", Place.FUNGI, "The glowing mushrooms are dancing!", extra = 80),
+        Plan("WONDER KRAG JR.", Place.SKY, "WONDER KRAG JR. flew in on a rainbow!", boss = "W"),
+        Plan("DINO DISCO", Place.PREHISTORIC, "The dinosaurs are having a party! CAPPY wants to join in.", extra = 80),
+        Plan("MOON BOUNCE", Place.MOON, "Floaty Moon jumps... and Wonder makes them even floatier!", extra = 80),
+        Plan("RAINBOW RUN", Place.RAINBOW, "Run along the rainbow, way up in the stars!", extra = 90),
+        Plan("SING-ALONG SNOW", Place.SNOW, "Even the snowmen are singing!", extra = 90),
+        Plan("PETAL PARADE", Place.WONDER, "Flowers everywhere! Follow the parade!", extra = 100),
+        Plan("MUSHROOM MEADOW", Place.JUNGLE, "Giant red mushrooms and Wonder Flowers.", extra = 100),
+        Plan("THE WONDER CONCERT", Place.CASTLE, "ROCK STAR KRAG is playing a WONDER SONG! Dodge the notes!", boss = "!"),
+        Plan("RING PLANET ROMP", Place.RING_PLANET, "A rocket trip to the ringed planet. SO floaty!", extra = 100),
+        Plan("DESERT DISCO", Place.DESERT, "The cactuses are dancing in the sun!", extra = 110),
+        Plan("NORTHERN LIGHTS PARTY", Place.AURORA, "The sky is dancing with colors!", extra = 110),
+        Plan("TOY TRAIN WONDER", Place.TOYS, "Choo choo! All aboard the Wonder train!", extra = 120),
+        Plan("THE WONDER ROAD", Place.WONDER, "The longest road in Wonder World!", extra = 140),
+        Plan("KRAG'S WONDER CASTLE", Place.CASTLE, "Wonder King Krag's castle! The big battle is next...", extra = 100),
+        Plan("THE WONDER FINALE", Place.WONDER, "THE WONDER FINALE! Dry Bones King Krag, then WONDER KING KRAG and his Wonder magic!", boss = "YQ"),
+    )
+
     /** World 11, Dino World: dinosaurs to capture with Cappy, Dash to ride, and REX KRAG. */
     val world11: List<LevelDef> by lazy { world11Plans.mapIndexed { i, p -> make(p, world = 11, seed = 11000 + i * 47) } }
 
     /** World 12, Planet World: a rocket trip to a different planet in every level. */
     val world12: List<LevelDef> by lazy { world12Plans.mapIndexed { i, p -> make(p, world = 12, seed = 12000 + i * 53) } }
+
+    /** World 13, Wonder World: Wonder Flowers, Talking Flowers, and WONDER KING KRAG at the very end. */
+    val world13: List<LevelDef> by lazy { world13Plans.mapIndexed { i, p -> make(p, world = 13, seed = 13000 + i * 59) } }
 
     /** World 10, Fire & Space World: long levels, volcano ERUPTIONS, meteor showers and SPACE WALKS. */
     val world10: List<LevelDef> by lazy { world10Plans.mapIndexed { i, p -> make(p, world = 10, seed = 10000 + i * 43) } }
@@ -287,6 +318,22 @@ object MoreWorlds {
             })
             return@buildString
         }
+        if (world == 13) {
+            // The best bad guys from every world, mixed together.
+            append(when (place) {
+                Place.WONDER -> "gHk1;Tg"
+                Place.CANDY -> "1g1kH"
+                Place.TOYS -> ";,;gkH"
+                Place.FUNGI -> "gUT;Hk"
+                Place.MOON, Place.RING_PLANET -> "<<gk<"
+                Place.PREHISTORIC -> "()`]_(("
+                Place.SNOW, Place.AURORA -> "67g8k"
+                Place.DESERT -> "jgbAH8"
+                Place.CASTLE -> "gkbAH2"
+                else -> "gkHUA;1"
+            })
+            return@buildString
+        }
         if (world == 12) {
             append(when (place) {
                 Place.MARS -> "<A;g<"
@@ -332,6 +379,7 @@ object MoreWorlds {
     }
 
     private fun airFoes(place: Place, world: Int = 0) = if (world == 6) "qqv" else if (world == 7) "vll" else if (world == 8) "llv"
+        else if (world == 13) (if (place == Place.MOON || place == Place.RING_PLANET) "//l" else "llv")
         else if (world == 9 || world == 12 || (world == 10 && place in setOf(Place.ORBIT, Place.MOON))) "//l" else if (world == 11) "[[l" else when (place) {
         Place.CAVE, Place.DEEP -> "vvq"
         Place.NIGHT, Place.CASTLE, Place.END -> "qqv"
@@ -354,8 +402,8 @@ object MoreWorlds {
         val ground = groundFoes(world, place)
         val air = airFoes(place, world)
         b.ground(0, 16).at(3, 12, '@')
-        // Dino World: a free Cappy hat right at the start (and sometimes Dash to ride).
-        if (world == 11) { b.at(13, 12, '"'); if (r.nextInt(3) == 0) b.at(15, 12, 'y') }
+        // Dino World (and Wonder World's dino party): a free Cappy hat right at the start (and sometimes Dash to ride).
+        if (world == 11 || (world == 13 && place == Place.PREHISTORIC)) { b.at(13, 12, '"'); if (r.nextInt(3) == 0) b.at(15, 12, 'y') }
         // The first rock always has iron, gold, diamond or emerald in it.
         b.rock(8, 12, *rocks[listOf(0, 1, 2, 6)[r.nextInt(4)]])
         var x = 17
@@ -363,6 +411,8 @@ object MoreWorlds {
         var lastHill = false
         var checkpoints = 0
         var frog = false
+        var wonderFlowers = 0
+        var talkers = 0
         // World 4 has more bad guys; Spooky World (6) and later are calmer, with just a few.
         val busy = if (world >= 6) 1 else 1 + world - 3
         while (x < w - 28) {
@@ -406,6 +456,12 @@ object MoreWorlds {
                     if (r.nextInt(3) == 0) b.at(x + 6, if (air[0] == 'l') 3 else 8, air[r.nextInt(air.length)])
                     if (!blocks && len >= 13 && r.nextInt(3) == 0) b.at(x + len - 4, 8, 'z')
                     if (!frog && x > 40) { b.at(x + 2, 12, 'r'); frog = true }
+                    if (world == 13) {
+                        // Wonder World: a Wonder Flower a third of the way in and another two thirds in, and
+                        // Talking Flowers on some of the other flat bits (always at the end, where nothing else goes).
+                        if (wonderFlowers < 2 && x > w * (wonderFlowers + 1) / 3) { b.at(x + len - 2, 12, '-'); wonderFlowers++ }
+                        else if (talkers < 6 && x > 20 && r.nextInt(3) != 0) { b.at(x + len - 2, 12, '\\'); talkers++ }
+                    }
                     // Long levels get more checkpoints (one about every 80 tiles).
                     val cps = maxOf(2, w / 80)
                     if (checkpoints < cps && x > w * (checkpoints + 1) / (cps + 1)) { b.at(x + 3, 12, '|'); checkpoints++ }

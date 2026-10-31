@@ -984,6 +984,29 @@ object Songs {
         leadDuty = 0.25f,
     )
 
+    // ------------------------------------------------------------------ Wonder World: a bouncy, flowery tune in F
+    private val bloomChords = listOf(
+        "F2 C3 F4 A4", "A2 E3 C4 E4", "Bb1 F2 D4 F4", "C3 G3 E4 Bb4",
+        "F2 C3 F4 A4", "D3 A3 F4 A4", "G2 D3 Bb3 D4", "C3 G3 E4 Bb4",
+    )
+    val bloom = Song(
+        bpm = 150,
+        lead = """
+            C5/2 F5/2 A5/2 C6/2 -/2 A5/2 C6/4
+            E6/2 C6/2 A5/2 E5/2 A5/4 -/2 C6/2
+            D6/2 -/1 D6/1 F6/2 D6/2 Bb5/4 F5/4
+            E5/2 G5/2 Bb5/2 C6/2 E6/4 -/4
+            F6/2 E6/2 C6/2 A5/2 C6/2 A5/2 F5/4
+            D5/2 F5/2 A5/2 D6/2 C6/2 A5/2 F5/4
+            G5/2 Bb5/2 D6/2 G6/2 F6/2 D6/2 Bb5/2 G5/2
+            -/2 C6/2 Bb5/2 G5/2 E5/2 G5/2 C6/4
+        """,
+        harmony = offbeats(bloomChords),
+        bass = oomPahBass(bloomChords),
+        drums = "k..hs.h.k.hhs.hh",
+        leadDuty = 0.25f,
+    )
+
     // ------------------------------------------------------------------ TEAM UP! The theme song (sung!)
     private val themeChords = listOf("D3 A3 F#4 A4", "A2 E3 C#4 E4", "D3 A3 F#4 A4", "A2 E3 C#4 E4", "B2 F#3 D4 F#4", "G2 D3 B3 D4", "D3 A3 F#4 A4", "A2 E3 C#4 E4", "G2 D3 B3 D4", "A2 E3 C#4 E4", "G2 D3 B3 D4", "A2 E3 C#4 E4", "D3 A3 F#4 A4", "B2 F#3 D4 F#4", "G2 D3 B3 D4", "A2 E3 C#4 E4", "D3 A3 F#4 A4", "D3 A3 F#4 A4")
     val theme = Song(
@@ -1064,5 +1087,6 @@ object Songs {
         Music.FUNGI -> fungi
         Music.PARADE -> parade
         Music.THEME -> theme
+        Music.BLOOM -> bloom
     }
 }

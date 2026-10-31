@@ -164,7 +164,8 @@ class TeamGameTest {
         assertTrue(Levels.all.any { d -> d.rows.any { 'Q' in it } }, "Wonder King Krag")
         assertTrue(Levels.all.any { d -> d.rows.any { 'G' in it } }, "the Warden")
         assertTrue(Levels.all.any { d -> d.rows.any { 'Y' in it } }, "Dry Bones King Krag")
-        assertTrue(Levels.all.last().rows.any { '}' in it }, "Galaxy Krag is the final boss")
+        assertTrue(Levels.all.first { it.name == "THE GALAXY GRAND FINALE" }.rows.any { '}' in it }, "Galaxy Krag ends World 12")
+        assertTrue(Levels.all.last().rows.any { 'Q' in it } && Levels.all.last().rows.any { 'Y' in it }, "Wonder King Krag is the final boss")
         assertTrue(Levels.all.any { it.place == Place.WATER && it.shoreX > 0 }, "an underwater level")
         // Every level has Ring-Ding Frog and ore to mine.
         for (def in Levels.all) {
@@ -896,8 +897,9 @@ class TeamGameTest {
         // Walking away from every X: no meteor hits you.
         game.goToMap(-1); run(0.3f)
         assertFalse(Style.spaceSuit, "spacesuits off on the map")
-        // The last level is the big boss rush, still ending with Galaxy Krag.
-        assertTrue(Levels.all.last().rows.any { '}' in it } && Levels.all.last().rows.any { '!' in it })
+        // World 12's last level is a big boss rush, still ending with Galaxy Krag (World 13 comes after it).
+        val grand = Levels.all[Wonder.WORLD13 - 1]
+        assertTrue(grand.rows.any { '}' in it } && grand.rows.any { '!' in it })
     }
 
     @Test fun file1CantBeErasedAndGetsAWelcomeBackGiftOnce() {
@@ -1055,6 +1057,233 @@ class TeamGameTest {
             t += 0.4f
         }
         assertTrue(b.dying, "Rex Krag beaten")
+    }
+
+    @Test fun wonderWorldLevels() {
+        val w13 = Wonder.WORLD13
+        assertEquals(WORLD_SIZE * 12, w13)
+        val world = Levels.all.drop(w13)
+        assertEquals(WORLD_SIZE, world.size)
+        assertEquals("WONDER WELCOME", world.first().name)
+        assertEquals("THE WONDER FINALE", world.last().name)
+        assertEquals("13-21", game.levelLabel(Levels.all.lastIndex))
+        // Older levels never had the new letters, so nothing old turned into a flower.
+        for (d in Levels.all.take(w13)) assertTrue(d.rows.none { r -> '-' in r || '\\' in r }, d.name)
+        // New names don't clash with old ones (levels are found by name).
+        val oldNames = Levels.all.take(w13).map { it.name }.toSet()
+        for (d in world) assertTrue(d.name !in oldNames, d.name)
+        // Every normal level has a Wonder Flower; Talking Flowers chat all over the world.
+        for (d in world.filter { !it.isBossLevel }) assertTrue(d.rows.any { '-' in it }, "${d.name} has a Wonder Flower")
+        assertTrue(world.sumOf { d -> d.rows.sumOf { r -> r.count { it == '\\' } } } >= 20, "lots of Talking Flowers")
+        // A mix of places from the whole game, with the new flower kingdom the most.
+        assertTrue(world.map { it.place }.toSet().size >= 10, "lots of different places")
+        assertTrue(world.count { it.place == Place.WONDER } >= 5)
+        // Bosses: Wonder Krag Jr., Rock Star Krag, and the finale (Dry Bones King Krag, then Wonder King Krag).
+        assertEquals(listOf(6, 13, 20), world.indices.filter { world[it].isBossLevel })
+        assertTrue(world[6].rows.any { 'W' in it } && world[13].rows.any { '!' in it })
+        val finale = world.last().rows
+        val dryX = finale.maxOf { it.indexOf('Y') }
+        val wonderX = finale.maxOf { it.indexOf('Q') }
+        assertTrue(dryX in 0 until wonderX, "Dry Bones first, Wonder King Krag last")
+        // Its own music: the new BLOOM tune in the flower kingdom, and lots of others.
+        val tunes = (w13 until Levels.all.size).filter { !Levels.all[it].isBossLevel }.map { TeamGame.Tunes.levelMusic(it) }
+        assertTrue(Music.BLOOM in tunes, "World 13 plays BLOOM")
+        assertTrue(tunes.toSet().size >= 8, "lots of tunes in World 13: ${tunes.toSet()}")
+    }
+
+    @Test fun wonderFlowersStartWonderTime() {
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 240 * 3, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f))
+            ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        val w13 = Wonder.WORLD13
+        // The title card says what's special about Wonder World.
+        game.newGame(0, Mon.SPARKY)
+        game.startLevel(w13)
+        run(1f)
+        assertEquals(TeamGame.State.INTRO, game.state)
+        shot("wonder-intro")
+        run(2.5f)
+        assertEquals(TeamGame.State.PLAY, game.state)
+        // Walk up to the first Wonder Flower.
+        val flower = game.thingsForTest().filterIsInstance<WonderFlower>().minBy { it.x }
+        val l = game.leader
+        l.x = flower.x - 70f; l.y = flower.bottom - l.h - 2f
+        run(2f) { game.hurtProof() }   // (the camera catches up)
+        shot("wonder-world")
+        input.right = true
+        var t = 0f
+        while (game.wonderT <= 0f && t < 4f) { game.hurtProof(); game.update(dt); t += dt }
+        input.right = false
+        assertTrue(game.wonderT > 0f, "touched the Wonder Flower")
+        assertTrue(game.wonder, "the sky goes Wonder")
+        assertEquals(flower.effect, game.wonderEffect)
+        assertTrue(flower.removed, "the flower is used up")
+        run(0.5f) { game.hurtProof() }
+        assertEquals(if (flower.effect == WonderEffect.STAR) Music.STAR else Music.WONDER, ears.music)
+        shot("wonder-time")
+
+        // Every surprise does its thing, then Wonder Time ends with a Wonder Seed.
+        for (e in WonderEffect.entries) {
+            startPlaying(w13)
+            game.foes.clear()
+            val h = game.leader
+            val foe = Grumbler(h.x + 70f, h.bottom, false).also { it.active = true }
+            game.foes += foe
+            val coins0 = game.coins
+            game.spawnForTest(WonderFlower(h.x, h.bottom, e))
+            run(0.2f) { game.hurtProof() }
+            assertEquals(e, game.wonderEffect, "$e started")
+            when (e) {
+                WonderEffect.FLOATY -> {
+                    // Way higher jumps.
+                    run(0.5f) { game.hurtProof() }
+                    val ground = h.bottom
+                    var top = ground
+                    input.jump = true
+                    run(1.2f) { game.hurtProof(); top = minOf(top, h.bottom) }
+                    input.jump = false
+                    assertTrue(ground - top > 110f, "floaty jump: ${ground - top}")
+                }
+                WonderEffect.COIN_RAIN -> {
+                    var rain = 0
+                    run(2f) { game.hurtProof(); rain = maxOf(rain, game.thingsForTest().count { it is RainCoin }) }
+                    assertTrue(rain >= 5, "coins fall from the sky: $rain")
+                }
+                WonderEffect.DANCE -> {
+                    assertTrue(foe.danceT > 0f, "the bad guy dances")
+                    run(0.3f) { game.hurtProof() }
+                    val x0 = foe.x
+                    game.noInvulnForTest()
+                    val hearts = game.hearts
+                    h.x = foe.x; h.y = foe.y
+                    run(0.5f)
+                    assertEquals(x0, foe.x, 0.01f, "dancing on the spot")
+                    assertEquals(hearts, game.hearts, "dancing bad guys don't hurt")
+                    h.x = foe.x - 50f
+                    run(0.2f) { game.hurtProof() }
+                    val img = BufferedImage((game.viewW * 3).toInt(), 240 * 3, BufferedImage.TYPE_INT_ARGB)
+                    game.render(AwtGfx(img, 3f))
+                    ImageIO.write(img, "png", File(dir, "wonder-dance-party.png"))
+                }
+                WonderEffect.MEGA -> assertTrue(game.megaT > 0f, "Mega Rocco")
+                WonderEffect.STAR -> assertTrue(game.starT > 0f, "Super Star")
+                WonderEffect.COIN_POP -> assertTrue(foe !in game.foes, "the bad guy turned into coins")
+            }
+            run(e.seconds + 0.3f) { game.hurtProof() }
+            assertEquals(0f, game.wonderT, "$e is over")
+            assertFalse(game.wonder, "the sky is back to normal after $e")
+            assertEquals(null, game.wonderEffect)
+            assertTrue(game.foes.all { it.danceT <= 0f }, "nobody dances once it's over")
+            // The Wonder Seed floats over to the team.
+            run(4f) { game.hurtProof() }
+            assertTrue(game.thingsForTest().none { it is WonderSeed }, "seed collected after $e")
+            assertTrue(game.coins >= coins0 + 20, "the seed is worth coins: ${game.coins - coins0}")
+        }
+    }
+
+    @Test fun talkingFlowersChat() {
+        startPlaying(Levels.all.indexOfFirst { it.name == "TALKING FLOWER FIELDS" })
+        game.foes.clear()
+        val f = game.thingsForTest().filterIsInstance<TalkingFlower>().minBy { it.x }
+        val l = game.leader
+        l.x = f.x - 40f; l.y = f.bottom - l.h - 2f
+        ears.said.clear(); ears.voices.clear()
+        // (The camera catches up first: things far off the screen wait.)
+        run(2f) { game.hurtProof() }
+        assertTrue(ears.said.any { "Hi, Rocco!" in it }, "a Talking Flower says hi: ${ears.said}")
+        assertTrue(Voice.TOAD in ears.voices, "with its own little voice")
+        val img = BufferedImage((game.viewW * 3).toInt(), 240 * 3, BufferedImage.TYPE_INT_ARGB)
+        game.render(AwtGfx(img, 3f))
+        ImageIO.write(img, "png", File(File("build/screens").apply { mkdirs() }, "wonder-talking-flower.png"))
+        // It doesn't keep talking while you stand next to it.
+        val n = ears.voices.count { it == Voice.TOAD }
+        run(4f) { game.hurtProof() }
+        assertEquals(n, ears.voices.count { it == Voice.TOAD }, "quiet for a while")
+    }
+
+    @Test fun worldMapAndSavesForWonderWorld() {
+        val dir = File("build/screens").apply { mkdirs() }
+        val w13 = Wonder.WORLD13
+        startPlaying()
+        game.unlockForTest(Levels.all.size)
+        game.goToMap(w13 + 4); run(0.5f)
+        assertEquals(12, game.mapWorld)
+        val img = BufferedImage((game.viewW * 3).toInt(), 240 * 3, BufferedImage.TYPE_INT_ARGB)
+        game.render(AwtGfx(img, 3f))
+        ImageIO.write(img, "png", File(dir, "map-world13.png"))
+        // Beating World 13 levels is saved (World 13 has its own save number).
+        game.clearForTest(w13); game.clearForTest(Levels.all.lastIndex)
+        input.pause = true; game.update(dt); input.pause = false; game.update(dt)   // the map's back button saves
+        assertEquals(TeamGame.State.TITLE, game.state)
+        val g2 = TeamGame(TeamInput(), ears, storage)
+        g2.continueGame(0)
+        assertTrue(g2.isCleared(w13) && g2.isCleared(Levels.all.lastIndex), "World 13 progress is saved")
+        assertTrue(storage.load("slot0_${clearedKey(12)}") != 0)
+
+        // A game saved before World 13 existed, that had beaten the old last level (12-21): World 13 opens up.
+        val old = Storage.Memory().apply { save("gift1", 1); save("gift2", 1) }
+        for (w in 0 until 12) old.save("slot0_${clearedKey(w)}", (1 shl WORLD_SIZE) - 1)
+        old.save("slot0_unlocked", w13)
+        old.save("slot0_level", w13)
+        val g3 = TeamGame(TeamInput(), ears, old)
+        g3.continueGame(0)
+        assertEquals(w13 + 1, g3.unlocked, "13-1 is open")
+        assertFalse(g3.isCleared(w13))
+    }
+
+    @Test fun theGalaxyGrandFinaleNowLeadsToWonderWorld() {
+        val w13 = Wonder.WORLD13
+        startPlaying(w13 - 1)
+        assertEquals("THE GALAXY GRAND FINALE", game.level.def.name)
+        var t = 0
+        while (game.state == TeamGame.State.PLAY && t++ < 60 * 90) {
+            game.hurtProof()
+            for (f in game.foes.toList()) if (f.boss && f.hp > 0) f.hit(game, 50)
+            if (game.boss == null) game.leader.x += 3f
+            game.update(dt)
+        }
+        assertEquals(TeamGame.State.CLEAR, game.state, "not the end any more")
+        run(4f)
+        assertEquals(TeamGame.State.STICKER, game.state)
+        game.pickSticker(0)
+        run(3f)
+        if (game.state == TeamGame.State.SCENE) { run(1f); tap(game.viewW / 2, 120f) }
+        assertEquals(TeamGame.State.MAP, game.state)
+        assertEquals(w13, game.mapSel, "the map is ready for 13-1")
+        assertEquals(w13 + 1, game.unlocked)
+        // The very last level still ends the game (theEndingGoesBackToTheTitleWithoutCrashing plays it to the end).
+        assertEquals("THE WONDER FINALE", Levels.all.last().name)
+    }
+
+    @Test fun wonderWorldScreenshots() {
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 240 * 3, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f))
+            ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        // Wonder Flowers in the other places World 13 visits.
+        for (name in listOf("CANDY WONDERLAND", "DINO DISCO", "MOON BOUNCE", "PETAL PARADE")) {
+            startPlaying(Levels.all.indexOfFirst { it.name == name })
+            val f = game.thingsForTest().filterIsInstance<WonderFlower>().minBy { it.x }
+            val l = game.leader
+            l.x = f.x - 36f; l.y = f.bottom - l.h - 2f
+            run(4f) { game.hurtProof() }   // (the camera catches up)
+            shot("w13-" + name.lowercase().replace(" ", "-"))
+        }
+        startPlaying(Levels.all.lastIndex)
+        val dry = game.foes.filterIsInstance<KingKrag>().single { it.dry }
+        val q = game.foes.filterIsInstance<KingKrag>().single { it.wonderStyle }
+        game.foes.remove(dry)
+        val l = game.leader
+        l.x = q.homeX - 140f; l.y = 120f
+        run(4f) { game.hurtProof() }
+        assertTrue(game.boss === q, "Wonder King Krag woke up")
+        assertTrue(game.wonder, "and the sky went Wonder")
+        shot("boss-wonder-finale")
     }
 
     private fun spawnTestDino(c: Char, x: Float, bottom: Float): Foe = when (c) {
@@ -3499,8 +3728,8 @@ class TeamGameTest {
     }
 
     @Test fun fourWorldsAndNewEnemies() {
-        assertEquals(252, Levels.all.size)
-        assertEquals(12, worldCount())
+        assertEquals(273, Levels.all.size)
+        assertEquals(13, worldCount())
         val ultimate = Levels.all.first { it.name == "THE ULTIMATE BATTLE" }
         assertTrue(ultimate.rows.any { 'Z' in it } && ultimate.rows.any { 'Q' in it })
         for (c in "zqlj") assertTrue(Levels.all.count { d -> d.rows.any { c in it } } >= 3, "new monster $c is in levels")
