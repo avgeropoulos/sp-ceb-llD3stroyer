@@ -67,6 +67,35 @@ object Autotune {
     const val MIN_SHIFT = 0.79f
     const val MAX_SHIFT = 1.26f
 
+    /**
+     * How far the tuning may go when the gentle one would leave a note more than [CLOSE_ENOUGH]
+     * off: about 6 semitones down or up (as far as it used to). A wrong note sounds worse than a
+     * word that's a little cartoony.
+     */
+    const val WIDE_MIN_SHIFT = 0.7f
+    const val WIDE_MAX_SHIFT = 1.42f
+
+    /** Semitones a note may be off and still sound right (half a semitone off sounds like a wrong note). */
+    const val CLOSE_ENOUGH = 0.25f
+
+    /**
+     * How far the voice itself may be asked to move (its text-to-speech pitch) for one sung note: a
+     * fifth (7 semitones) down or up. Most notes only get the talking voices' small nudge
+     * ([VoiceCast.MIN_TWEAK]..[VoiceCast.MAX_TWEAK]); only the outer notes that the small nudge plus
+     * the gentle tuning can't reach go further (see [nudge]).
+     */
+    const val SING_MIN_NUDGE = 0.67f
+    const val SING_MAX_NUDGE = 1.5f
+
+    // A note (times the voice's own pitch) that a voice can sing in tune: with the biggest nudge
+    // and tuning, and with the gentle ones only. The theme spans 14 semitones and an octave is 12,
+    // so the full reach (about 26 semitones) has room for every note in one of the octaves, for
+    // any voice from about 80 Hz (a deep man) to 600 Hz (a child squeaking).
+    private const val REACH_LOW = SING_MIN_NUDGE * WIDE_MIN_SHIFT
+    private const val REACH_HIGH = SING_MAX_NUDGE * WIDE_MAX_SHIFT
+    private const val GENTLE_LOW = VoiceCast.MIN_TWEAK * MIN_SHIFT
+    private const val GENTLE_HIGH = VoiceCast.MAX_TWEAK * MAX_SHIFT
+
     /** A word may ring on a little into the next note (smoother than stopping dead on the beat). */
     const val LEGATO = 1.1f
 
@@ -74,18 +103,53 @@ object Autotune {
     const val MIN_SQUEEZE = 0.5f
 
     /**
+     * The pitch to ask a voice that speaks at [voiceHz] for (its text-to-speech pitch, 1 = normal)
+     * when it should sing [freq] Hz. Most notes get only the talking voices' small nudge
+     * ([VoiceCast.MIN_TWEAK]..[VoiceCast.MAX_TWEAK]; big ones sound robotic) and [fit] tunes the
+     * rest of the way gently. A note too far out for that (the top or bottom of the tune) is
+     * nudged just far enough for the gentle tuning to finish the job, at most
+     * [SING_MIN_NUDGE]..[SING_MAX_NUDGE], so it's still sung in tune.
+     */
+    fun nudge(freq: Float, voiceHz: Float): Float {
+        if (freq <= 0f || voiceHz <= 0f) return 1f
+        val want = freq / voiceHz
+        val small = want.coerceIn(VoiceCast.MIN_TWEAK, VoiceCast.MAX_TWEAK)
+        return when {
+            want > small * MAX_SHIFT -> (want / MAX_SHIFT).coerceAtMost(SING_MAX_NUDGE)
+            want < small * MIN_SHIFT -> (want / MIN_SHIFT).coerceAtLeast(SING_MIN_NUDGE)
+            else -> small
+        }
+    }
+
+    /**
+     * How much [fit] retunes a word it hears at [f0] Hz to sing it at [freq] Hz (more than 1 =
+     * higher). Gentle ([MIN_SHIFT]..[MAX_SHIFT]) when that gets within [CLOSE_ENOUGH] of the note;
+     * otherwise as far as it takes, up to [WIDE_MIN_SHIFT]..[WIDE_MAX_SHIFT], so no note is sung
+     * off-key just to keep the tuning small. 1 when the pitch is unknown.
+     */
+    fun shift(freq: Float, f0: Float): Float {
+        if (freq <= 0f || f0 <= 0f) return 1f
+        val exact = freq / f0
+        val gentle = exact.coerceIn(MIN_SHIFT, MAX_SHIFT)
+        return if (abs(semitones(exact / gentle)) <= CLOSE_ENOUGH) gentle else exact.coerceIn(WIDE_MIN_SHIFT, WIDE_MAX_SHIFT)
+    }
+
+    /** How many semitones apart two pitches [ratio] apart are (12 = an octave). */
+    private fun semitones(ratio: Float) = 12f * ln(ratio) / ln(2f)
+
+    /**
      * [pcm] (at [rate] Hz) retuned to [freq] Hz and fitted into [seconds] (plus a little [LEGATO]),
-     * at [Chiptune.RATE]. The retuning is kept gentle ([MIN_SHIFT]..[MAX_SHIFT]) so the words stay
-     * clear and human: the voice itself is asked to speak near the right pitch first. A word too
+     * at [Chiptune.RATE]. The retuning is kept gentle ([shift]) so the words stay clear and human:
+     * the voice itself is asked to speak near the right pitch first ([nudge]). A word too
      * long for its note is sped up without changing its pitch ([squeeze]) instead of having its
      * end chopped off, so "friends" doesn't come out as "frie".
      */
     fun fit(pcm: FloatArray, rate: Int, freq: Float, seconds: Float): FloatArray {
         val voice = trim(pcm)
         val f0 = pitch(voice, rate)
-        val shift = if (f0 > 0f) (freq / f0).coerceIn(MIN_SHIFT, MAX_SHIFT) else 1f
+        val by = shift(freq, f0)
         // Reading the voice faster raises its pitch; also convert to the music's sample rate.
-        val step = shift * rate / Chiptune.RATE
+        val step = by * rate / Chiptune.RATE
         var out = FloatArray((voice.size / step).toInt().coerceAtLeast(0))
         for (i in out.indices) {
             val p = i * step
@@ -97,7 +161,7 @@ object Autotune {
         }
         val room = (seconds * LEGATO * Chiptune.RATE).toInt()
         if (out.size > room) {
-            val sungHz = if (f0 > 0f) f0 * shift else freq
+            val sungHz = if (f0 > 0f) f0 * by else freq
             out = squeeze(out, maxOf(MIN_SQUEEZE, room.toFloat() / out.size), (Chiptune.RATE / sungHz).toInt())
             if (out.size > room) out = out.copyOf(room)
         }
@@ -151,15 +215,24 @@ object Autotune {
 
     /**
      * How many times lower than the tune ([notes], in Hz) a voice that speaks at [voiceHz] should
-     * sing: 2, 4 or 8 (whole octaves, so it's still the same tune). It's the one closest to the
-     * voice's own pitch (a man sings an octave below a woman), so the voice needs the least
-     * retuning and sounds the most like itself.
+     * sing: 2, 4 or 8 (whole octaves, so it's still the same tune; a man sings an octave below a
+     * woman). It's the one where the most notes can be sung in tune ([nudge] and [shift] at their
+     * furthest), then the one where the most need only the gentle nudge and tuning, then the one
+     * whose middle note is closest to the voice's own pitch, so it sounds the most like itself.
+     * (Just picking the octave nearest the middle note left the top or bottom notes out of reach.)
      */
     fun octavesDown(notes: List<Float>, voiceHz: Float): Float {
         val sung = notes.filter { it > 0f }.sorted()
         if (voiceHz <= 0f || sung.isEmpty()) return 4f
         val middle = sung[sung.size / 2]
-        return listOf(2f, 4f, 8f).minBy { abs(ln(middle / it / voiceHz)) }
+        fun within(down: Float, low: Float, high: Float) = sung.count { it / down / voiceHz in low..high }
+        return listOf(2f, 4f, 8f).maxWith(
+            compareBy<Float>(
+                { within(it, REACH_LOW, REACH_HIGH) },
+                { within(it, GENTLE_LOW, GENTLE_HIGH) },
+                { -abs(ln(middle / it / voiceHz)) },
+            )
+        )
     }
 
     /** A test tone (used by tests): a voice-like buzz at [freq] Hz. */
