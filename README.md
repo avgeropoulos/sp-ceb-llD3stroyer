@@ -527,7 +527,8 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
   boss arena locking (or letting go) glide over smoothly too. A level still starts with the camera right in place.
 * **It looks ahead**: running right, there's more room to see in front; run left for a moment and the view
   slides over to show what's coming. Turning around on the spot doesn't swing it about, and the hero never
-  leaves the screen (a far teleport just cuts straight there).
+  leaves the screen (a far teleport just cuts straight there). In a boss arena the picture stays put, even when
+  an Enderman-captured Rocco teleports right up to the arena's wall.
 * **No more tiny hitches**: the game counts screen refreshes instead of exact nanoseconds. A refresh that came
   a hair early used to get no update and the next one two (a little stutter while running). Now every refresh
   at 60 Hz is exactly one update (two every three at 90 Hz, every other one at 120 Hz). On a 120 Hz screen
@@ -622,12 +623,14 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
   **SUPER FLOATY** (jump sky high), **COIN RAIN** (coins fall from the sky), **DANCE PARTY** (the bad guys
   can't stop dancing, so they can't hurt you), **MEGA ROCCO**, **STAR RUN** or **POP POP POP** (the bad guys
   on the screen turn into coins). When it's over, a **WONDER SEED** floats over to you: 20 coins and a heart.
+  Touch a second flower while Wonder Time is still on and the first one finishes first, so you get both seeds.
 * **TALKING FLOWERS** say hi as you go by ("HI, ROCCO!", "WATCH OUT! BAD GUYS!", "I LIKE YOUR MUSTACHE!"), and
   tell you when a Wonder Flower is coming up.
 * Bosses: **Wonder Krag Jr.** (13-7), **Rock Star Krag** at THE WONDER CONCERT (13-14), and **THE WONDER FINALE**
   (13-21): **Dry Bones King Krag**, then **Wonder King Krag** and his Wonder magic. That's the new end of the game.
 * Beating THE GALAXY GRAND FINALE (12-21) now opens World 13 ("...but King Krag found a WONDER FLOWER!"). Saves
-  that had already beaten it get 13-1 opened automatically.
+  that had already beaten it get 13-1 opened automatically. Galaxy Krag's banner now says "The biggest battle in
+  space!" instead of "The final battle!".
 
 ### Dino World, Planet World, a house & planet picker, and twice as much of everything
 

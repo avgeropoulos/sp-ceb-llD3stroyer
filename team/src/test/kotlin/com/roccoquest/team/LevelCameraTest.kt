@@ -108,6 +108,23 @@ class LevelCameraTest {
         assertTrue(w.biggestJolt < 1f, "and glides back smoothly: ${w.biggestJolt}")
     }
 
+    @Test fun aOneFramePushIsACutNotAFling() {
+        val cam = LevelCamera()
+        val lock = 1100f
+        val wall = lock + viewW - heroW
+        cam.snap(wall - 50f, heroW, 1, viewW, maxX, lock)
+        repeat(60) { cam.update(dt, wall - 50f, heroW, viewW, maxX, lock) }
+        assertEquals(lock, cam.x, 0.01f)
+        // For one frame the hero pops 30 px out past the arena's right wall (a teleport), then he's back inside.
+        cam.update(dt, wall + 30f, heroW, viewW, maxX, lock)
+        assertEquals(lock + 30f, cam.x, 0.01f, "pushed just enough to keep him on the screen")
+        var furthest = cam.x
+        repeat(120) { cam.update(dt, wall, heroW, viewW, maxX, lock); furthest = maxOf(furthest, cam.x) }
+        // (Turned into speed, that push was 1800 px a second and flung the picture about 73 px out of the arena.)
+        assertTrue(furthest <= lock + 30.01f, "never flung further out of the arena: $furthest")
+        assertEquals(lock, cam.x, 0.5f, "and it glides back to the arena")
+    }
+
     @Test fun neverPastTheEndsOfTheLevel() {
         val cam = LevelCamera()
         var x = 30f

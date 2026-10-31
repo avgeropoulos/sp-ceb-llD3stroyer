@@ -29,7 +29,8 @@ nanoseconds, so vsync wobble can't turn into skip-then-double hitches; odd rates
 The level camera is `LevelCamera.kt` (`TeamGame.camera`, `camX` = `camera.x`): a critically damped `Spring`
 following the leader with a look-ahead (`lead`, shifts only while he moves), sudden target jumps (SWAP, pit
 respawns, `camLock` on/off) go into `jumpOffset` and glide away, far teleports cut, the leader is always fully
-on screen. Use `snapCamera()` (no glide) when a level starts or a bonus room is entered/left. On the ground,
+on screen (a push of more than `JUMP` in one frame is a cut too, never spring speed). Use `snapCamera()` (no
+glide) when a level starts or a bonus room is entered/left. On the ground,
 stopping/turning uses `GROUND_BRAKE` (not while crouching: the crouch slide makes the crouch long jump).
 `MainActivity.dispatchKeyEvent`/`dispatchGenericMotionEvent` hand controller input straight to
 `GameView` (no focus needed). The CONTROLS screen has a live tester (`padSaw`, `stickX/Y`, `fps`).
@@ -189,7 +190,7 @@ copy in `teamapp/` and `teamup3d/android/`, keep them the same) is the Android s
 * On a controller B is also ACTION, so modes that use ACTION (build mode) must not close on `nav.b`.
 * `Galaxy.kt`: Worlds 8-9 (`MoreWorlds.world8/world9`; places TOYS, FUNGI, MOON (hero gravity 0.6), STATION; `GalaxyArt`
   ground tiles + skies), foes `ToySoldier` (`;`), `JackBox` (`,`), `Ufo` (`/`) + `Beam`, `MoonHopper` (`<`), bosses
-  `MechaKrag` (`{`, `Missile`) and `GalaxyKrag` (`}`, the last level; `StarShot`). Also `Outline.of(sprite)` (cached
+  `MechaKrag` (`{`, `Missile`) and `GalaxyKrag` (`}`, ends 9-21, 10-21 and 12-21; `StarShot`). Also `Outline.of(sprite)` (cached
   outlined sprites for Rocco/Blocky/foes) and `SilhouetteGfx` (draw shapes through it first for a dark outline:
   `TeamArt.mon`, KingKrag, KragJr). Skies use `Gfx.gradient`/`gradientStops` (real gradients on Android, never bands).
 * `Spin.kt`: `BlastCannon` (`>`, added to every 4th level by `remix`; `inCannon`, `fireCannon`, `cannonFlight`/`cannonFlyT`),
