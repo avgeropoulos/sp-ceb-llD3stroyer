@@ -34,7 +34,8 @@ var got := {}                # star id -> true
 var stars := {}              # star id -> the spinning star (only while it's out)
 var beacons := {}            # star id -> floating name
 var flag: Node3D
-var painting: Painting       # the SECRET PAINTING (jump in for its star)
+var painting: Painting       # the first GIANT PAINTING (old code / tests)
+var paintings: Array = []     # all the GIANT PAINTINGS (jump in for their stars)
 var course: CoursePlay       # the cannon, the slide, quicksand (Mario 64-style course parts)
 var extras: Extras           # 100 COIN STAR, friends with quests, 1-UPs, ! blocks, DASH, critters (extras.gd)
 var t := 0.0
@@ -79,15 +80,30 @@ func setup(g, lv: Level) -> void:
 		lbl.position = Vector3(0, 1.6, 0) - Vector3(0, dennis.position.y - level.dog_spot.y, 0)
 		lbl.name = "help"
 		dennis.add_child(lbl)
-	if not level.painting.is_empty():
-		painting = Painting.new()
-		add_child(painting)
-		painting.setup(game, level)
+	for info in level.world_paintings:
+		var pt := Painting.new()
+		add_child(pt)
+		pt.setup(game, level, info)
+		paintings.append(pt)
+	if paintings.size() > 0:
+		painting = paintings[0]
 	extras = Extras.new()
 	add_child(extras)
 	extras.setup(game, level)
 	_make_beam()
 	pick(first_open(), false)
+
+
+## Old saves had one painting star called "painting": it's the first giant painting now.
+static func migrate(ids: Array) -> Array:
+	var out := []
+	for id in ids:
+		var s := String(id)
+		if s == "painting":
+			s = "painting1"
+		if not s in out:
+			out.append(s)
+	return out
 
 
 ## Called after loading a save: stars already found stay found.
@@ -214,8 +230,8 @@ func step(dt: float) -> void:
 	var l: Hero = game.leader()
 	if course:
 		course.step(dt)
-	if painting:
-		painting.step(dt)
+	for pt in paintings:
+		pt.step(dt)
 	if extras:
 		extras.step(dt)
 	for id in stars.keys():
@@ -443,8 +459,8 @@ func progress(id: String = current) -> String:
 			return "Beat the BIG GRUMBLER!   Health %d" % (f.hp if f else 0)
 		"dog":
 			return "Walk Dennis back to his doghouse!" if dog_following else "Dennis is lost! Find him!"
-		"painting":
-			return "JUMP into the painting on the castle wall!"
+		"painting1", "painting2", "painting3":
+			return objective(id).get("hint", "JUMP into the giant painting!")
 		"coins100", "npc":
 			if extras:
 				return extras.progress(id)

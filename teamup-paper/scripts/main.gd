@@ -153,7 +153,7 @@ func _ready() -> void:
 	elif Boot.place == "level":
 		level.generate(Boot.level)
 	elif Boot.place == "bonus":   # a painting's bonus course
-		level.generate_bonus(Boot.level)
+		level.generate_bonus(Boot.level, Level.paint_kinds(Boot.level)[clampi(Boot.painting - 1, 0, 2)])
 	else:
 		level.generate("meadow")
 	fx = Fx.new()
@@ -1201,7 +1201,7 @@ func _apply_save(d: Dictionary) -> void:
 	stars_w = {}
 	var sw: Dictionary = d.get("stars_w", {})
 	for k in sw:
-		stars_w[String(k)] = Array(sw[k]).map(func(x): return String(x))
+		stars_w[String(k)] = OpenPlay.migrate(Array(sw[k]).map(func(x): return String(x)))
 	if open_play:   # stars found on an earlier visit stay found
 		open_play.restore(stars_w.get(level.world, []))
 	if not d.get("in_level", false):
@@ -1223,11 +1223,13 @@ func _apply_save(d: Dictionary) -> void:
 			f.remove()
 	boss_done = bool(d.get("boss_done", false))
 	if open_play:
-		open_play.restore(d.get("stars", []))
+		open_play.restore(OpenPlay.migrate(Array(d.get("stars", []))))
 		if open_play.extras:
 			open_play.extras.started = true
 			open_play.extras.coins0 = coins - int(d.get("visit_coins", 0))
 		var q := String(d.get("quest", ""))
+		if q == "painting":
+			q = "painting1"
 		if q == "" or open_play.ids().has(q):
 			open_play.pick(q if q != "" and not open_play.got.has(q) else open_play.first_open(), false)
 	checkpoint_hit = bool(d.get("checkpoint_hit", false))
@@ -1839,9 +1841,11 @@ func _update_leader(h: Hero, dt: float) -> void:
 
 
 # ------------------------------------------------------------------ paintings (see bonus.gd)
-## Jumped into a world's SECRET PAINTING: save the world as it is, then into the bonus course.
-func enter_painting() -> void:
-	note("into the painting")
+## Jumped into one of a world's GIANT PAINTINGS (1-3): save the world as it is, then into
+## that painting's bonus course.
+func enter_painting(idx: int = 1) -> void:
+	note("into painting %d" % idx)
+	Boot.painting = idx
 	save_game(true)
 	Boot.level = level.world
 	go("bonus", slot)
@@ -1861,6 +1865,7 @@ func _enter_bonus() -> void:
 ## Out of the painting (star or not): back into the world, next to the painting.
 func leave_bonus(got_star: bool) -> void:
 	var w := level.world
+	var sid := "painting%d" % clampi(Boot.painting, 1, 3)
 	if slot > 0:
 		var d := Saves.read(slot)
 		d["coins"] = coins
@@ -1870,16 +1875,16 @@ func leave_bonus(got_star: bool) -> void:
 		if got_star:
 			var sw: Dictionary = d.get("stars_w", {})
 			var l: Array = sw.get(w, [])
-			if not "painting" in l:
-				l.append("painting")
+			if not sid in l:
+				l.append(sid)
 			sw[w] = l
 			d["stars_w"] = sw
 			if d.get("in_level", false):
 				var st: Array = d.get("stars", [])
-				if not "painting" in st:
-					st.append("painting")
+				if not sid in st:
+					st.append(sid)
 				d["stars"] = st
-				if String(d.get("quest", "")) == "painting":
+				if String(d.get("quest", "")) == sid:
 					d["quest"] = ""
 		Saves.write(slot, d)
 	Boot.level = w

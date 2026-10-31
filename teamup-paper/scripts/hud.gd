@@ -315,6 +315,11 @@ func _draw_hud() -> void:
 	draw_rect(Rect2(x + 70, py + 36, 170 * Mons.progress(xp), 12), Color("54c8ff"))
 	if game.open_play and game.state in ["play", "paused", "clear"]:
 		_draw_stars()
+	if game.bonus and game.state == "play":   # a painting's course: its goal and progress
+		var bx := (size.x - 620.0) * 0.5
+		draw_rect(Rect2(bx, 16, 620, 44), Color(0.08, 0.06, 0.2, 0.75))
+		draw_rect(Rect2(bx, 16, 620, 44), Color("ffd23a"), false, 2.0)
+		txt(game.bonus.progress(), Vector2(bx, 46), 22, Color("fff2a8"), HORIZONTAL_ALIGNMENT_CENTER, 620, 6)
 	if game.powers and game.state == "play":
 		game.powers.draw_hud(self)
 	# boss bar

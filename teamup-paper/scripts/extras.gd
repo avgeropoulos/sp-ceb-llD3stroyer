@@ -19,7 +19,7 @@ const RACER_SPEED := 5.0         # blocks a second up the path (Rocco runs 5.6, 
 const HINTS := {
 	"all": ["Hop in the CANNON and aim for the floating island!", "King Bombo hates being picked up from behind!",
 		"Collect 100 coins in one visit for a secret star!", "Green mushrooms give you all your hearts back!",
-		"Hit a ! block from below for a cap!", "Jump into the SECRET PAINTING on the castle wall!"],
+		"Hit a ! block from below for a cap!", "Jump into the GIANT PAINTINGS for more stars!"],
 	"meadow": ["Chompy is chained up... mostly!"],
 	"frost": ["The ice slide is super fast. Hold on!", "Mama Cluck's chicks love the snow."],
 	"dunes": ["Quicksand makes you slow. Keep jumping!", "There's treasure inside the pyramid!"],

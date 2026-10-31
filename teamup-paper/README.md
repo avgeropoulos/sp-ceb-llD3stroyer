@@ -155,25 +155,38 @@ Each world now has **8 stars** (5 still open the gate) and you go for **one ques
   save and continue); `open_check.gd` now also collects every red coin (and really jumps onto a pillar), beats
   the BIG GRUMBLER and walks Dennis home.
 
-### Secret paintings (Mario 64 style)
+### Giant paintings (Mario 64 style)
 
-Every open world has a **SECRET PAINTING** in a gold frame on the outside of Krag Jr.'s castle's
-**west wall** (behind the castle when you come from the start). It's a picture of the world (its sky, hills
-and a big star, drawn by `Painting.picture()` from the world's colours) and it **ripples like water** when you
-come close. It hangs a little too high to walk into: **JUMP into it** and you're pulled in (WHOOSH!) to its
-**BONUS COURSE**: 16 platforms floating in the painting's sky going up and away, with coins, two bad guys and a
-? block, and the **PAINTING STAR** on the gold platform at the top. Falling off puts you back on the last
-platform you stood on; fall **3 times** and the painting spits you back out. Getting the star (or falling out)
-takes you back into the world **next to the painting**, with the world just as you left it.
+Every open world has **3 GIANT PAINTINGS** (6 x 4.4 blocks, thick gold frames with corner knobs, the course's
+name on a plaque underneath): one on Krag Jr.'s castle's **west wall**, and two out in the world on their own
+stone walls with a gold top (on flat ground found by `_paint_ground_ok`, facing the start; if there's no good
+place they go on the castle's north / east walls). Each picture shows its course in the world's colours
+(`Painting.picture(world, kind)`) and **ripples like water** when you come close; once you have its star it
+**sparkles**. They hang a little too high to walk into: **JUMP into one** (WHOOSH!) to visit its course:
 
-* It's one more star on the STAR SELECT ("SECRET PAINTING", the last one) and counts like any star.
-* Code: `level.gd` `_painting_spot()` (place + objective) and `generate_bonus()` (`bonus_tops`, `bonus_star`),
-  `scripts/painting.gd` (picture, ripple shader, frame, `touching` / `jump_in`), `scripts/bonus.gd` (the star,
-  falls), `main.gd` `enter_painting()` (saves the world mid-level, `go("bonus")`), `_enter_bonus()`,
-  `leave_bonus()` (adds "painting" to the save's stars, back to the world). `Boot.place == "bonus"`.
-* Test: `tests/painting_check.gd [-- toy] [world ...]`: in every world Rocco really jumps into the painting,
-  falls out 3 times once, then really jumps every bonus platform, gets the star and is back by the painting
-  with the star saved; plus the FIRE FLOWER checks below.
+| Course | What you do | Star |
+|---|---|---|
+| SKY CLIMB | 16 platforms floating up into the painting's sky (coins, 2 Grumblers, a ? block) | on the gold platform at the top |
+| SECRET SLIDE | a long switchback ice slide that carries you down (steer a little with the stick); the clock starts when you leave the start pad | get to the gold pad at the bottom in **45 s** (too slow: back to the top) |
+| RED COIN MAZE | a hedge maze (8 x 8 rooms) on a floating island: find the **8 red coins** | appears back at the start |
+| BIG BRAWL | a round arena in the sky with the **BIG GRUMBLER** and two Grumblers (and a ? block) | appears in the middle when he's beaten |
+
+Each world gets 3 of the 4 kinds (`Level.paint_kinds`: they rotate through the worlds). Falling off puts you back
+on the last place you stood (the slide: back to the top); fall **3 times** and the painting spits you back out.
+The goal and progress (time, red coins, the Big Grumbler's health) show at the top of the screen. Getting the star
+(or falling out) takes you back into the world **next to that painting**, with the world as you left it.
+
+* Stars `painting1` .. `painting3` on the STAR SELECT (named after the course) and they count like any star.
+  Old saves' single `painting` star becomes `painting1` (`OpenPlay.migrate`, also the saved current quest).
+* Code: `level.gd` `_painting_spot(start)` / `_add_painting` (`world_paintings`: pos, normal, tangent, stand,
+  kind, id), `generate_bonus(world, kind)` + `_bonus_sky` / `_bonus_slide` (`slide_path`) / `_bonus_maze`
+  (`red_bonus`, `maze_open`) / `_bonus_boss`; `scripts/painting.gd` (any facing, picture per kind, ripple shader,
+  frame, `touching` / `jump_in`), `scripts/bonus.gd` (per kind: slide push + timer, red coins, the brawl,
+  `progress()`, falls); `main.gd` `enter_painting(idx)` (`Boot.painting`), `leave_bonus()` (adds `painting<idx>`).
+* Test: `tests/painting_check.gd [-- toy] [world ...]`: in every world, all 3 paintings: clear flat ground in front,
+  Rocco really jumps in, falls out 3 times once, then finishes the course (every sky jump really jumped, the slide
+  really slid in time, every red coin reachable through the maze and picked up, the Big Grumbler beaten), gets the
+  star and is back by that painting with the star saved; the old-save migration; plus the FIRE FLOWER checks.
 
 ### More bad guys (open worlds)
 
