@@ -569,7 +569,8 @@ class KingKrag(x: Float, y: Float, val wonderStyle: Boolean = false, val dry: Bo
     /** Wonder King Krag: time until his next Wonder blast changes the team. */
     private var wonderTimer = 6f
     private var jumpTimer = 5f
-    private var mouth = 0f
+    /** Mouth open (breathing fire) while this counts down; the funny scenes open it too. */
+    internal var mouth = 0f
     private var hurtFlash = 0f
     internal var facing = -1
     private var turnDelay = 0f

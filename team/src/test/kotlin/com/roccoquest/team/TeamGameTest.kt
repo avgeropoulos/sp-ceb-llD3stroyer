@@ -2801,9 +2801,10 @@ class TeamGameTest {
             val img = BufferedImage((game.viewW * 3).toInt(), 720, BufferedImage.TYPE_INT_ARGB)
             game.render(AwtGfx(img, 3f)); ImageIO.write(img, "png", File(dir, "$name.png"))
         }
-        assertEquals(26, Scenes.titles.size)
+        assertEquals(35, Scenes.titles.size)
         // Every long scene plays all the way through, then it's back home to the movies.
-        for (k in LongScenes.FIRST until Scenes.titles.size) {
+        // (The even newer SillyScenes have their own tests.)
+        for (k in LongScenes.FIRST until SillyScenes.FIRST) {
             game.playScene(k, -2)
             assertEquals(TeamGame.State.SCENE, game.state)
             var now = 0f
@@ -2817,10 +2818,10 @@ class TeamGameTest {
         }
         shot("movies")
         // Locked scenes can't be watched; seen ones can.
-        assertTrue(game.scenesSeen and 1 == 0)
+        assertTrue(game.scenesSeen and 1L == 0L)
         game.buyFurniture(Furniture.TV)
         game.playScene(0, -2); run(6f)
-        assertTrue(game.scenesSeen and 1 != 0)
+        assertTrue(game.scenesSeen and 1L != 0L)
     }
 
     @Test fun outfitsAndPokemonCostumes() {

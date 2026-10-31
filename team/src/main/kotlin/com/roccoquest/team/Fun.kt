@@ -1,6 +1,7 @@
 package com.roccoquest.team
 
 import com.roccoquest.game.Gfx
+import com.roccoquest.game.Music
 import com.roccoquest.game.Sound
 import com.roccoquest.game.Voice
 import com.roccoquest.game.argb
@@ -95,6 +96,7 @@ class Spotty(x: Float, private val groundY: Float, private val line: String) : T
 object Scenes {
     const val LENGTH = 5.5f
 
+    /** At time [at]: someone says [text] in [voice] (an empty text says nothing) and [sound] plays. */
     class Cue(val at: Float, val text: String, val voice: Voice = Voice.HERO, val sound: Sound? = null)
 
     val titles = listOf(
@@ -102,12 +104,19 @@ object Scenes {
         "THE GIANT BURP", "NAP TIME", "WHERE'S MY MUSTACHE?!", "TICKLE ATTACK!", "BUBBLE GUM TROUBLE",
         "SPAGHETTI SLURP", "THE HICCUPS", "BIRD ON MY HAT", "SKATEBOARD CRASH", "MAGIC TRICK",
         "ROCCO SINGS", "BALLOON RIDE", "SPOTTY SAYS BOO!", "WHOOPEE CUSHION", "PIZZA PARTY",
-    ) + LongScenes.titles
+    ) + LongScenes.titles + SillyScenes.titles
 
     /** How long scene [kind] lasts (the newer story scenes are longer). */
-    fun length(kind: Int) = if (kind >= LongScenes.FIRST) LongScenes.length(kind) else LENGTH
+    fun length(kind: Int) = when {
+        kind >= SillyScenes.FIRST -> SillyScenes.length(kind)
+        kind >= LongScenes.FIRST -> LongScenes.length(kind)
+        else -> LENGTH
+    }
 
-    fun cues(kind: Int, monName: String): List<Cue> = if (kind >= LongScenes.FIRST) LongScenes.cues(kind, monName) else when (kind) {
+    /** The song that plays during scene [kind]. */
+    fun music(kind: Int) = if (kind >= SillyScenes.FIRST) SillyScenes.music(kind) else Music.SILLY
+
+    fun cues(kind: Int, monName: String): List<Cue> = if (kind >= SillyScenes.FIRST) SillyScenes.cues(kind, monName) else if (kind >= LongScenes.FIRST) LongScenes.cues(kind, monName) else when (kind) {
         0 -> listOf(Cue(0.8f, "A donut!", sound = Sound.COIN), Cue(2.0f, "Nom nom nom...", sound = Sound.KICK), Cue(3.6f, "Mmmm... OH YA!", sound = Sound.ONEUP))
         1 -> listOf(Cue(0.6f, "La la la, what a nice day..."), Cue(2.0f, "WHOOOAAA!", sound = Sound.JUMP), Cue(3.8f, "Oof! My bottom!", sound = Sound.BUMP))
         2 -> listOf(Cue(0.6f, "Ah... ah..."), Cue(1.8f, "AAAH..."), Cue(2.8f, "AH-CHOOOOO!", sound = Sound.BREAK), Cue(4.2f, "Hey! Come back, hat!"))
@@ -141,6 +150,7 @@ object Scenes {
 
     /** Draws scene [kind] at time [t]. */
     fun draw(g: TeamGame, gfx: Gfx, kind: Int, t: Float, viewW: Float, viewH: Float, mon: Mon) {
+        if (kind >= SillyScenes.FIRST) { SillyScenes.draw(g, gfx, kind, t, viewW, viewH, mon); drawTitle(gfx, kind, t, viewW); return }
         if (kind >= LongScenes.FIRST) { LongScenes.draw(g, gfx, kind, t, viewW, viewH, mon); drawTitle(gfx, kind, t, viewW); return }
         // A sunny meadow stage
         gfx.gradient(0f, 0f, viewW, viewH, 0xFF4AA4F0.toInt(), 0xFFD0F0FF.toInt())

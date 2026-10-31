@@ -155,6 +155,13 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
 * `Style.kt`: `RoccoOutfit`, `BlockySkin`, `MonCostume` (current ones in the `Style` object; keys outfits/skins/costumes
   bits + outfit/skin/costume), `HatKind` drawing. `LongScenes.kt`: scenes 20-25 (10-12 s); MOVIES (TV / movie screen)
   replays seen scenes (`scenesSeen`, `playScene(kind, BACK_HOME)`, `theater`).
+* `SillyScenes.kt`: scenes 26-34 (`SillyScenes.FIRST`, 12-15 s: Wonder Oops, Spooky S'mores, The Wrong Mushroom,
+  Ring-Ding Concert, Say Cheese, Bath Time Dennis, Who Ate My Spaghetti, The Block Tower, Dash and the Butterfly).
+  New scenes go at the END (seen ones are saved by number). `scenesSeen` is a Long saved as `scenesSeen` (bits 0-31) +
+  `scenesSeen2` (bits 32-63), so up to 64 scenes. `startScene` uses `nextSceneKind`: never-seen scenes go first.
+  A `Scenes.Cue` with empty text is sound-only (speaking "" would cut off the line before). `Scenes.music(kind)` picks
+  the song. `TurnGfx` draws anything turned around a point (tipping towers, spinning Krag Jr., flopping fish);
+  `KingKrag.mouth` is internal so scenes can open his mouth.
 * Safety copies: ERASE and starting a new game over a file copy the whole file to `trash<s>_*` first (`eraseWithBackup`,
   needs `Storage.keys()`); RECOVER on the save screen swaps it back (`recoverSlot`, undoable). Never erase without it.
 * On a controller B is also ACTION, so modes that use ACTION (build mode) must not close on `nav.b`.
