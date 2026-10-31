@@ -235,10 +235,11 @@ func _process(_dt: float) -> bool:
 					if g.open_play.stars.has(id):
 						place_at(g.open_play.stars[id].position - Vector3(0, 0.8, 0))
 						g.open_play.step(1.0 / 60)
-				if g.open_play.ids().has("painting"):   # the PAINTING STAR (tests/painting_check.gd jumps in for it)
-					g.open_play.got["painting"] = true
-					if g.open_play.current == "painting":
-						g.open_play.pick(g.open_play.next_open("painting"), false)
+				for pid in ["painting1", "painting2", "painting3"]:   # the GIANT PAINTING stars (tests/painting_check.gd jumps in for them)
+					if g.open_play.ids().has(pid):
+						g.open_play.got[pid] = true
+						if g.open_play.current == pid:
+							g.open_play.pick(g.open_play.next_open(pid), false)
 				check(g.open_play.count() == g.level.objectives.size(), "every star should be found (%d / %d)" % [g.open_play.count(), g.level.objectives.size()])
 				check(g.open_play.current == "", "no quest left: the castle is next")
 				# into the castle
