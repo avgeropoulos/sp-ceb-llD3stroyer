@@ -24,7 +24,7 @@ var wall_t := 0.0       # > 0 just after touching a wall in the air (WALL KICK)
 var wall_n := Vector3.ZERO
 var lock_t := 0.0       # no steering for a moment after a wall kick
 var float_t := 0.0      # PETAL's float / LUCKY's flutter time used this jump
-var dash_t := 0.0       # SPOTTY's DASH / BRUTO's BASH
+var dash_t := 0.0       # SPOTTY's DASH / BRAWLO's BASH
 var line := "spark"     # partner only: water / grass / fire / spark
 var stage := 0          # partner only: 0, 1, 2 (evolutions)
 

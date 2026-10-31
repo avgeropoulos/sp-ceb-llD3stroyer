@@ -34,6 +34,7 @@ var got := {}                # star id -> true
 var stars := {}              # star id -> the spinning star (only while it's out)
 var beacons := {}            # star id -> floating name
 var flag: Node3D
+var painting: Painting       # the SECRET PAINTING (jump in for its star)
 var t := 0.0
 
 
@@ -72,6 +73,10 @@ func setup(g, lv: Level) -> void:
 		lbl.position = Vector3(0, 1.6, 0) - Vector3(0, dennis.position.y - level.dog_spot.y, 0)
 		lbl.name = "help"
 		dennis.add_child(lbl)
+	if not level.painting.is_empty():
+		painting = Painting.new()
+		add_child(painting)
+		painting.setup(game, level)
 	_make_beam()
 	pick(first_open(), false)
 
@@ -198,6 +203,8 @@ func _drop_star(id: String, why: String) -> void:
 func step(dt: float) -> void:
 	t += dt
 	var l: Hero = game.leader()
+	if painting:
+		painting.step(dt)
 	for id in stars.keys():
 		var s: Node3D = stars[id]
 		s.rotation.y = t * 2.5
@@ -408,6 +415,8 @@ func progress(id: String = current) -> String:
 			return "Beat the BIG GRUMBLER!   Health %d" % (f.hp if f else 0)
 		"dog":
 			return "Walk Dennis back to his doghouse!" if dog_following else "Dennis is lost! Find him!"
+		"painting":
+			return "JUMP into the painting on the castle wall!"
 	return objective(id).get("hint", "")
 
 

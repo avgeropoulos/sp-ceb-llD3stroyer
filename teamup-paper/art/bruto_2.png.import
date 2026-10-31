@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://fxto4mm3uq72"
-path="res://.godot/imported/bruto_act.png-5293a9781d861e426d3e4d106aba7a58.ctex"
+uid="uid://bgvxk644nrjf8"
+path="res://.godot/imported/bruto_2.png-d5fcc6cb91958aa708876c9517228081.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/bruto_act.png"
-dest_files=["res://.godot/imported/bruto_act.png-5293a9781d861e426d3e4d106aba7a58.ctex"]
+source_file="res://art/bruto_2.png"
+dest_files=["res://.godot/imported/bruto_2.png-d5fcc6cb91958aa708876c9517228081.ctex"]
 
 [params]
 

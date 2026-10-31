@@ -167,10 +167,14 @@ static func build(kind: String) -> Node3D:
 			_skelly(body, p)
 		"kragjr":
 			_kragjr(body, p)
+		"drykragjr":
+			_drykragjr(body, p)
 		"buzzer", "hopper", "boohoo", "bomber", "chompy", "spiky", "bat", "mummy", "roller", "cactusman", "biggrumbler":
 			_foe2(body, p, kind)
-		"lucky", "alix", "petal", "spotty", "bruto":
+		"lucky", "alix", "petal", "spotty", "brawlo":
 			_friend(body, p, kind)
+	if Bosses.is_boss(kind) and not Bosses.flies(kind):
+		_turtle_boss(body, p, kind)
 	if kind.begins_with("mon:"):
 		var bits := kind.split(":")
 		_critter(body, p, bits[1], int(bits[2]))
@@ -433,7 +437,7 @@ static func pose(a, dt: float) -> void:
 		if p.has(k):
 			p[k].rotation = Vector3.ZERO
 	match kind:
-		"rocco", "blocky", "skelly", "lucky", "alix", "petal", "spotty", "bruto":
+		"rocco", "blocky", "skelly", "lucky", "alix", "petal", "spotty", "brawlo":
 			_pose_person(p, kind, anim, t)
 		"sparky", "sparky:1":
 			_pose_sparky(p, anim, t)
@@ -467,7 +471,7 @@ static func pose(a, dt: float) -> void:
 				p.core.position.z = -0.05
 			elif anim == "flat":
 				b.scale = Vector3(1.5, 0.22, 1.5)
-		"kragjr":
+		"kragjr", "drykragjr":
 			p.prop.rotation.y += dt * 30
 			b.position.y = sin(t * 3) * 0.06
 			p.armL.rotation.x = -0.4 + sin(t * 6) * 0.4
@@ -478,6 +482,8 @@ static func pose(a, dt: float) -> void:
 				p.armR.rotation.x = -2.6
 	if kind in FOES2:
 		_pose_foe2(p, kind, anim, t)
+	if p.has("boss"):
+		_pose_boss(p, anim, t)
 	if a.spin_t > 0:   # flip around the middle of the body (not around the feet)
 		var mid := Vector3(0, a.height * 0.5, 0)
 		b.position += mid - b.basis * mid
@@ -1498,19 +1504,245 @@ static func _pose_foe2(p: Dictionary, kind: String, anim: String, t: float) -> v
 			p.inner.rotation.z = s * 0.12
 
 
+# ------------------------------------------------------------------ bosses: King Krag, the Kraglings, Dry Krag (Jr.)
+## Looks for every walking boss: skin, shell, belly, hair style + colour, size, extras.
+const BOSS_LOOK := {
+	"zippo": {"skin": "f2c95a", "shell": "3fae4a", "hair": "mohawk", "hc": "3fa0ff", "size": 1.0, "extra": ["bandana"]},
+	"rocko": {"skin": "e9b850", "shell": "2f8a3c", "hair": "none", "hc": "", "size": 1.15, "extra": ["spikes", "brows"]},
+	"maestro": {"skin": "f2c95a", "shell": "3fae4a", "hair": "wild", "hc": "a9e2ff", "size": 1.0, "extra": ["wand"]},
+	"glamma": {"skin": "f6cf6a", "shell": "ff6fb0", "hair": "bow", "hc": "ff3d8f", "size": 0.95, "extra": ["rings", "lashes"]},
+	"bruto": {"skin": "e0a84a", "shell": "4f7f3a", "hair": "none", "hc": "", "size": 1.25, "extra": ["brows", "jaw"]},
+	"specs": {"skin": "f2c95a", "shell": "3fae4a", "hair": "rainbow", "hc": "", "size": 1.0, "extra": ["glasses", "wand"]},
+	"tiny": {"skin": "f6d26c", "shell": "3fae4a", "hair": "tuft", "hc": "ff8c2a", "size": 0.8, "extra": ["tooth"]},
+	"kingkrag": {"skin": "efb24a", "shell": "2f8a3c", "hair": "mane", "hc": "e8413b", "size": 1.6, "extra": ["spikes", "horns", "brows", "cuffs"]},
+	"drykrag": {"skin": "ece6d2", "shell": "8a8e96", "hair": "mane", "hc": "9aa3ad", "size": 1.6, "extra": ["spikes", "horns", "bone"]},
+}
+
+
+## A Kragling / King Krag / Dry Krag: a turtle-dragon standing up, with a shell on the back.
+static func _turtle_boss(b: Node3D, p: Dictionary, kind: String) -> void:
+	var L: Dictionary = BOSS_LOOK[kind]
+	var bone: bool = "bone" in L.extra
+	var SK := Color(L.skin)
+	var SH := Color(L.shell)
+	var BELLY := Color("f7ecc8") if not bone else Color("d8d2bd")
+	var DARK := SK.darkened(0.25)
+	var root := piv(b, Vector3.ZERO)
+	root.scale = Vector3.ONE * float(L.size)
+	p["boss"] = true
+	p["core"] = root
+	# legs and big feet
+	for s in [-1, 1]:
+		var leg := piv(root, Vector3(s * 0.22, 0.46, 0))
+		part(leg, cap(0.13, 0.42), Vector3(0, -0.2, 0), SK)
+		part(leg, sph(0.17), Vector3(0, -0.4, 0.08), DARK, Vector3(1, 0.6, 1.4))
+		for c in [-1, 0, 1]:
+			part(leg, sph(0.045), Vector3(c * 0.07, -0.42, 0.29), Color.WHITE, Vector3.ONE, Vector3.ZERO, false)
+		p["legL" if s < 0 else "legR"] = leg
+	# body, belly and the shell on the back
+	part(root, sph(0.5), Vector3(0, 0.92, 0), SK, Vector3(1, 1.1, 0.95))
+	part(root, sph(0.4), Vector3(0, 0.88, 0.22), BELLY, Vector3(0.95, 1.1, 0.55))
+	if bone:   # ribs
+		for i in 3:
+			part(root, box(Vector3(0.5, 0.05, 0.05)), Vector3(0, 0.75 + i * 0.16, 0.44), Color("8a8170"), Vector3.ONE, Vector3.ZERO, false)
+	else:
+		for i in 3:
+			part(root, box(Vector3(0.48, 0.03, 0.04)), Vector3(0, 0.72 + i * 0.17, 0.43), BELLY.darkened(0.2), Vector3.ONE, Vector3.ZERO, false)
+	part(root, hemi(0.56), Vector3(0, 0.95, -0.24), SH, Vector3(1, 1.15, 0.9), Vector3(-PI / 2, 0, 0))
+	part(root, cyl(0.58, 0.58, 0.07, 24), Vector3(0, 0.95, -0.24), Color("f7ecc8") if not bone else Color("c9c3b0"), Vector3(1, 1, 1.1), Vector3(PI / 2, 0, 0))
+	if "spikes" in L.extra:
+		for i in 6:
+			var a := TAU * i / 6.0
+			var pos := Vector3(cos(a) * 0.3, 0.95 + sin(a) * 0.36, -0.62)
+			part(root, cyl(0.0, 0.1, 0.24, 8), pos, Color.WHITE if not bone else Color("ece6d2"), Vector3.ONE, Vector3(-PI / 2, 0, 0))
+		part(root, cyl(0.0, 0.12, 0.28, 8), Vector3(0, 0.95, -0.72), Color.WHITE, Vector3.ONE, Vector3(-PI / 2, 0, 0))
+	# a little tail
+	part(root, cyl(0.0, 0.12, 0.35, 8), Vector3(0, 0.45, -0.45), SK, Vector3.ONE, Vector3(-2.2, 0, 0))
+	# arms
+	for s in [-1, 1]:
+		var arm := piv(root, Vector3(s * 0.5, 1.2, 0.05))
+		part(arm, cap(0.1, 0.46), Vector3(0, -0.2, 0), SK)
+		part(arm, sph(0.12), Vector3(0, -0.44, 0.02), SK)
+		if "cuffs" in L.extra or "bone" in L.extra:
+			part(arm, cyl(0.15, 0.15, 0.12, 10), Vector3(0, -0.3, 0), Color("2b2b33"))
+			for k in 4:
+				var a2 := TAU * k / 4.0
+				part(arm, cyl(0.0, 0.04, 0.1, 6), Vector3(cos(a2) * 0.16, -0.3, sin(a2) * 0.16), Color.WHITE, Vector3.ONE, Vector3(0, a2, -PI / 2), false)
+		if "rings" in L.extra:
+			part(arm, cyl(0.13, 0.13, 0.06, 12), Vector3(0, -0.34, 0), Color("ffcf33"), Vector3.ONE, Vector3.ZERO, true, 0.4)
+		p["armL" if s < 0 else "armR"] = arm
+	if "wand" in L.extra:
+		var w := piv(p.armR, Vector3(0, -0.44, 0.06))
+		part(w, cyl(0.025, 0.025, 0.7, 8), Vector3(0, 0.0, 0.3), Color("ffcf33"), Vector3.ONE, Vector3(PI / 2, 0, 0))
+		part(w, sph(0.09), Vector3(0, 0, 0.66), Color("ff6fd0"), Vector3.ONE, Vector3.ZERO, false, 1.2)
+	# head
+	var head := piv(root, Vector3(0, 1.48, 0.06))
+	p["head"] = head
+	part(head, sph(0.38), Vector3.ZERO, SK)
+	part(head, sph(0.26), Vector3(0, -0.08, 0.3), SK.lightened(0.15), Vector3(1.25, 0.85, 1))
+	if bone:   # skull: dark eye holes with blue glowing eyes
+		for s in [-1, 1]:
+			part(head, sph(0.1), Vector3(s * 0.15, 0.1, 0.28), Color("1b1b24"), Vector3(1, 1.2, 0.5), Vector3.ZERO, false)
+			part(head, sph(0.045), Vector3(s * 0.15, 0.1, 0.33), Color("7fd8ff"), Vector3.ONE, Vector3.ZERO, false, 2.0)
+		for i in 5:
+			part(head, box(Vector3(0.05, 0.07, 0.03)), Vector3(-0.12 + i * 0.06, -0.24, 0.47), Color.WHITE, Vector3.ONE, Vector3.ZERO, false)
+	else:
+		eyes(head, 0.12, 0.27, 0.14, 0.095)
+		part(head, box(Vector3(0.26, 0.035, 0.03)), Vector3(0, -0.24, 0.5), INK, Vector3.ONE, Vector3.ZERO, false)
+		part(head, box(Vector3(0.05, 0.06, 0.03)), Vector3(0.07, -0.27, 0.5), Color.WHITE, Vector3.ONE, Vector3.ZERO, false)
+	for s in [-1, 1]:
+		part(head, sph(0.03), Vector3(s * 0.08, -0.04, 0.56), INK, Vector3.ONE, Vector3.ZERO, false)
+	if "brows" in L.extra:
+		for s in [-1, 1]:
+			part(head, box(Vector3(0.2, 0.06, 0.05)), Vector3(s * 0.15, 0.26, 0.3), INK if kind != "kingkrag" else Color(L.hc), Vector3.ONE, Vector3(0, 0, -s * 0.4), false)
+	if "lashes" in L.extra:
+		for s in [-1, 1]:
+			part(head, box(Vector3(0.12, 0.03, 0.03)), Vector3(s * 0.16, 0.25, 0.33), INK, Vector3.ONE, Vector3(0, 0, s * 0.3), false)
+	if "glasses" in L.extra:
+		for s in [-1, 1]:
+			part(head, cyl(0.1, 0.1, 0.03, 16), Vector3(s * 0.14, 0.12, 0.36), Color("1b1b24"), Vector3.ONE, Vector3(PI / 2, 0, 0), false)
+		part(head, box(Vector3(0.1, 0.025, 0.02)), Vector3(0, 0.14, 0.38), Color("1b1b24"), Vector3.ONE, Vector3.ZERO, false)
+	if "tooth" in L.extra:
+		part(head, box(Vector3(0.08, 0.1, 0.04)), Vector3(0, -0.3, 0.52), Color.WHITE)
+	if "jaw" in L.extra:
+		part(head, sph(0.2), Vector3(0, -0.28, 0.25), SK.darkened(0.1), Vector3(1.3, 0.7, 1))
+	if "bandana" in L.extra:
+		part(head, cyl(0.39, 0.39, 0.08, 18), Vector3(0, 0.12, 0), Color("e8413b"), Vector3(1, 1, 1))
+	if "horns" in L.extra:
+		for s in [-1, 1]:
+			part(head, cyl(0.0, 0.09, 0.35, 8), Vector3(s * 0.28, 0.32, -0.05), Color("f7ecc8"), Vector3.ONE, Vector3(0, 0, -s * 0.5))
+	# hair
+	var HC := Color(L.hc) if L.hc != "" else SK
+	match L.hair:
+		"mohawk":
+			for i in 5:
+				part(head, cyl(0.0, 0.09, 0.32, 8), Vector3(0, 0.38, 0.2 - i * 0.12), HC, Vector3.ONE, Vector3(-0.3 + i * 0.15, 0, 0))
+		"wild":
+			for i in 7:
+				var a := TAU * i / 7.0
+				part(head, sph(0.17), Vector3(cos(a) * 0.24, 0.36 + sin(a * 2) * 0.05, sin(a) * 0.2 - 0.06), HC)
+		"bow":
+			part(head, sph(0.13), Vector3(0, 0.4, 0.02), HC)
+			for s in [-1, 1]:
+				part(head, sph(0.16), Vector3(s * 0.17, 0.42, 0.0), HC, Vector3(1.3, 0.9, 0.5))
+			part(head, sph(0.33), Vector3(0, 0.12, -0.12), Color("ffcf33"), Vector3(1, 0.8, 1))   # blonde hair at the back
+		"rainbow":
+			var cols := ["e8413b", "ff8c2a", "ffd23a", "3fbf5a", "3f7fd9", "8a5bc4"]
+			for i in 6:
+				part(head, cyl(0.0, 0.08, 0.34, 8), Vector3(0, 0.38, 0.2 - i * 0.1), Color(cols[i]), Vector3.ONE, Vector3(-0.3 + i * 0.12, 0, 0))
+		"tuft":
+			for i in 3:
+				part(head, cyl(0.0, 0.06, 0.22, 8), Vector3(-0.06 + i * 0.06, 0.4, 0.05), HC, Vector3.ONE, Vector3(0, 0, -0.3 + i * 0.3))
+		"mane":
+			for i in 8:
+				var a := -0.9 + i * 0.26
+				part(head, cyl(0.0, 0.11, 0.42, 8), Vector3(sin(a) * 0.3, 0.32, -0.12 - cos(a) * 0.08), HC, Vector3.ONE, Vector3(-0.6, 0, -a * 0.6))
+			for i in 4:
+				part(head, cyl(0.0, 0.1, 0.36, 8), Vector3(-0.15 + i * 0.1, 0.38, 0.1), HC, Vector3.ONE, Vector3(0.3, 0, -0.3 + i * 0.2))
+
+
+## Dry Krag Jr.: Krag Jr.'s skeleton twin in a dark bony copter-cup with blue glowing eyes.
+static func _drykragjr(b: Node3D, p: Dictionary) -> void:
+	var BONE := Color("ece6d2")
+	var POT := Color("4f535e")
+	part(b, hemi(0.82), Vector3(0, 0.85, 0), POT, Vector3(1, 0.85, 1), Vector3(PI, 0, 0))
+	part(b, cyl(0.84, 0.84, 0.14, 24), Vector3(0, 0.84, 0), Color("7fd8ff"), Vector3.ONE, Vector3.ZERO, true, 0.6)
+	for i in 6:
+		var a := i * TAU / 6
+		part(b, cyl(0.0, 0.08, 0.2, 6), Vector3(sin(a) * 0.82, 0.84, cos(a) * 0.82), BONE, Vector3.ONE, Vector3(0, a, PI / 2))
+	part(b, cyl(0.05, 0.05, 0.2, 8), Vector3(0, 0.1, 0), Color("7c8794"))
+	var prop := piv(b, Vector3(0, 0.02, 0))
+	for s in [-1, 1]:
+		part(prop, box(Vector3(0.75, 0.04, 0.14)), Vector3(s * 0.38, 0, 0), BONE, Vector3.ONE, Vector3(0.25 * s, 0, 0))
+	p["prop"] = prop
+	var kid := piv(b, Vector3(0, 0.95, 0))
+	p["core"] = kid
+	part(kid, sph(0.3), Vector3(0, 0.2, 0), BONE)
+	for i in 3:
+		part(kid, box(Vector3(0.36, 0.035, 0.04)), Vector3(0, 0.1 + i * 0.09, 0.27), Color("8a8170"), Vector3.ONE, Vector3.ZERO, false)
+	for s in [-1, 1]:
+		var arm := piv(kid, Vector3(s * 0.3, 0.32, 0.05))
+		part(arm, cap(0.05, 0.3), Vector3(0, -0.1, 0.06), BONE, Vector3.ONE, Vector3(0.6, 0, 0))
+		p["armL" if s < 0 else "armR"] = arm
+	var head := piv(kid, Vector3(0, 0.62, 0))
+	p["head"] = head
+	part(head, sph(0.36), Vector3.ZERO, BONE)
+	part(head, sph(0.2), Vector3(0, -0.08, 0.3), BONE.darkened(0.08), Vector3(1.2, 0.8, 1))
+	for s in [-1, 1]:
+		part(head, sph(0.1), Vector3(s * 0.13, 0.1, 0.26), Color("1b1b24"), Vector3(1, 1.2, 0.5), Vector3.ZERO, false)
+		part(head, sph(0.045), Vector3(s * 0.13, 0.1, 0.31), Color("7fd8ff"), Vector3.ONE, Vector3.ZERO, false, 2.0)
+	for i in 4:
+		part(head, box(Vector3(0.05, 0.06, 0.03)), Vector3(-0.09 + i * 0.06, -0.2, 0.44), Color.WHITE, Vector3.ONE, Vector3.ZERO, false)
+	for i in 4:
+		var a := -0.5 + i * 0.4
+		part(head, cyl(0.0, 0.09, 0.26, 8), Vector3(0, 0.3 + cos(a) * 0.05, -0.05 + sin(a) * 0.3), Color("9aa3ad"), Vector3.ONE, Vector3(-a * 1.2 - 0.3, 0, 0))
+
+
+## Walking bosses: stomping walk, arms up to attack, hide in the shell to spin, puffing when
+## tired, a heap of bones (Dry Krag).
+static func _pose_boss(p: Dictionary, anim: String, t: float) -> void:
+	var core: Node3D = p.core
+	core.rotation = Vector3.ZERO
+	core.position = Vector3.ZERO
+	p.head.visible = true
+	p.head.position.y = 1.48
+	match anim:
+		"walk":
+			var s := sin(t * 7)
+			p.legL.rotation.x = s * 0.6
+			p.legR.rotation.x = -s * 0.6
+			p.armL.rotation.x = -s * 0.5
+			p.armR.rotation.x = s * 0.5
+			core.position.y = absf(s) * 0.05
+			core.rotation.z = s * 0.06
+		"attack", "angry":
+			p.armL.rotation.x = -2.4 + sin(t * 20) * 0.2
+			p.armR.rotation.x = -2.4 - sin(t * 20) * 0.2
+			p.armL.rotation.z = -0.4
+			p.armR.rotation.z = 0.4
+			p.head.rotation.x = -0.25
+			if anim == "angry":
+				core.position.x = sin(t * 50) * 0.04
+		"spin":   # tucked into the shell (shell on top), spinning like a top
+			p.head.visible = false
+			for k in ["legL", "legR", "armL", "armR"]:
+				p[k].rotation.x = 1.4
+			core.rotation = Vector3(PI / 2, t * 25.0, 0)
+			core.position = Vector3(0, 0.55, 0) - core.basis * Vector3(0, 0.9, 0)
+		"tired", "hurt":
+			p.head.rotation.x = 0.35 + sin(t * 3) * 0.1
+			p.head.rotation.z = sin(t * 2.4) * 0.25
+			p.armL.rotation.z = -0.2
+			p.armR.rotation.z = 0.2
+			core.rotation.x = 0.12
+			if anim == "hurt":
+				core.rotation.x = -0.3
+				p.armL.rotation.x = -1.4
+				p.armR.rotation.x = -1.4
+		"bones":   # in a heap on the floor
+			core.position.y = -0.55
+			p.head.position.y = 0.7
+			p.head.rotation.z = 0.9
+			p.legL.rotation.z = 1.4
+			p.legR.rotation.z = -1.4
+			p.armL.rotation.z = -1.6
+			p.armR.rotation.z = 1.6
+			core.rotation.x = 0.3
+
+
 # ------------------------------------------------------------------ friends you unlock (team.gd)
-const FRIENDS := ["lucky", "alix", "petal", "spotty", "bruto"]
+const FRIENDS := ["lucky", "alix", "petal", "spotty", "brawlo"]
 
 
-## LUCKY, ALIX, PETAL, SPOTTY and BRUTO: built like Rocco (legs, arms, head pieces), so
+## LUCKY, ALIX, PETAL, SPOTTY and BRAWLO: built like Rocco (legs, arms, head pieces), so
 ## `_pose_person` animates them the same way.
 static func _friend(b0: Node3D, p: Dictionary, kind: String) -> void:
 	var b := piv(b0, Vector3.ZERO)   # an inner piece for each hero's own size
-	b.scale = {"lucky": Vector3(0.95, 1.15, 0.95), "spotty": Vector3(0.9, 0.82, 0.9), "bruto": Vector3(1.28, 1.0, 1.15)}.get(kind, Vector3.ONE)
+	b.scale = {"lucky": Vector3(0.95, 1.15, 0.95), "spotty": Vector3(0.9, 0.82, 0.9), "brawlo": Vector3(1.28, 1.0, 1.15)}.get(kind, Vector3.ONE)
 	var SKIN := Color("f7c69c") if kind != "alix" else Color("f0c49a")
-	var shirt: Color = {"lucky": Color("3cb85a"), "alix": Color("5bbf6a"), "petal": Color("ff8fc0"), "spotty": Color("3f7fd9"), "bruto": Color("ffd23a")}[kind]
-	var pants: Color = {"lucky": Color("2c4fa8"), "alix": Color("8a5a35"), "petal": Color("ff8fc0"), "spotty": Color("ffffff"), "bruto": Color("8a4fc4")}[kind]
-	var shoe: Color = {"lucky": Color("7a4a2a"), "alix": Color("6e4527"), "petal": Color("ff5c9a"), "spotty": Color("6e4527"), "bruto": Color("4a3424")}[kind]
+	var shirt: Color = {"lucky": Color("3cb85a"), "alix": Color("5bbf6a"), "petal": Color("ff8fc0"), "spotty": Color("3f7fd9"), "brawlo": Color("ffd23a")}[kind]
+	var pants: Color = {"lucky": Color("2c4fa8"), "alix": Color("8a5a35"), "petal": Color("ff8fc0"), "spotty": Color("ffffff"), "brawlo": Color("8a4fc4")}[kind]
+	var shoe: Color = {"lucky": Color("7a4a2a"), "alix": Color("6e4527"), "petal": Color("ff5c9a"), "spotty": Color("6e4527"), "brawlo": Color("4a3424")}[kind]
 	var square := kind == "alix"
 	for s in [-1, 1]:
 		var leg := piv(b, Vector3(s * 0.12, 0.5, 0))
@@ -1531,7 +1763,7 @@ static func _friend(b0: Node3D, p: Dictionary, kind: String) -> void:
 	else:
 		part(b, cyl(0.2, 0.21, 0.16), Vector3(0, 0.56, 0), pants)
 		part(b, cap(0.22, 0.5), Vector3(0, 0.8, 0), shirt, Vector3(1, 1, 0.85))
-		if kind in ["lucky", "bruto"]:   # overall straps
+		if kind in ["lucky", "brawlo"]:   # overall straps
 			for s in [-1, 1]:
 				part(b, box(Vector3(0.06, 0.3, 0.04)), Vector3(s * 0.1, 0.78, 0.18), pants, Vector3.ONE, Vector3.ZERO, false)
 	for s in [-1, 1]:
@@ -1570,13 +1802,13 @@ static func _friend(b0: Node3D, p: Dictionary, kind: String) -> void:
 		return
 	part(head, sph(0.3), Vector3(0, 0.2, 0), SKIN)
 	eyes(head, 0.24, 0.27, 0.1, 0.08)
-	part(head, sph(0.055 if kind != "bruto" else 0.08), Vector3(0, 0.15, 0.31), Color("e09d74"))
+	part(head, sph(0.055 if kind != "brawlo" else 0.08), Vector3(0, 0.15, 0.31), Color("e09d74"))
 	if kind == "lucky":
 		part(head, box(Vector3(0.18, 0.04, 0.03)), Vector3(0, 0.08, 0.29), Color("3b2a20"), Vector3.ONE, Vector3.ZERO, false)
-	if kind == "bruto":   # a zig-zag moustache
+	if kind == "brawlo":   # a zig-zag moustache
 		for s in [-1, 1]:
 			part(head, box(Vector3(0.14, 0.05, 0.03)), Vector3(s * 0.08, 0.08, 0.29), Color("3b2a20"), Vector3.ONE, Vector3(0, 0, s * 0.35), false)
-	if kind in ["lucky", "bruto"]:   # a cap with a white badge
+	if kind in ["lucky", "brawlo"]:   # a cap with a white badge
 		var hc := Color("3cb85a") if kind == "lucky" else Color("ffd23a")
 		var hd := Color("26874a") if kind == "lucky" else Color("d9a91e")
 		part(head, sph(0.25), Vector3(0, 0.24, -0.13), Color("5a3a22") if kind == "lucky" else Color("3b2a20"), Vector3(1.12, 0.92, 0.8))

@@ -15,6 +15,7 @@ const BLOCKS := [
 	{"t": Level.STONE, "cost": {}},
 	{"t": Level.WINDOW, "cost": {}},
 	{"t": Level.ROAD, "cost": {}},
+	{"t": Level.LANTERN, "cost": {}},
 	{"t": Level.GRASS, "cost": {}},
 	{"t": Level.DIRT, "cost": {}},
 	{"t": Level.LEAVES, "cost": {}},
@@ -34,7 +35,11 @@ const BLOCKS := [
 ]
 const GROUND_Y := 5          # the top of the grass (old saves count from here)
 const REACH := 9.0           # how far from the hero you can build (blocks)
-const PAD := Vector3(Level.HOME_OX + Level.PORTAL_X, 5, Level.HOME_OZ + 6.5)   # the rocket pad
+const PAD := Vector3(Level.HOME_OX + Level.PORTAL_X, Level.HOME_GY, Level.HOME_OZ + 6.5)   # the rocket pad
+## Natural ore blocks give that ore when you dig them out at home (not blocks you placed).
+const ORE_OF := {Level.STONE: "stone", Level.IRON: "iron", Level.GOLD: "gold", Level.DIAMOND: "diamond"}
+const PAINT_W := 3.0         # castle paintings (blocks)
+const PAINT_H := 2.4
 
 var game
 var level: Level
@@ -53,6 +58,11 @@ var can_place := false
 var why := ""                # why you can't place (shown on screen)
 var portal: Node3D
 var spin := 0.0
+var frames: Array = []       # castle paintings: {id, node, canvas, lock_label, locked, slot}
+var entering := ""           # the world whose painting you just jumped into
+var enter_t := 0.0
+var paint_cool := 0.0
+var _paint_check := 0.0
 
 
 func setup(g, lv: Level) -> void:
@@ -80,6 +90,7 @@ func setup(g, lv: Level) -> void:
 	outline.visible = false
 	add_child(outline)
 	_make_portal()
+	_make_paintings()
 
 
 ## The black lines around the block you point at (like Minecraft).
@@ -139,12 +150,13 @@ func _process(dt: float) -> void:
 	if portal:
 		portal.get_child(1).scale = Vector3.ONE * (1.0 + sin(spin * 4) * 0.06)
 	if rocket_node:
-		rocket_node.position.y = 5.16 + absf(sin(spin * 2.0)) * 0.05
+		rocket_node.position.y = PAD.y + 0.16 + absf(sin(spin * 2.0)) * 0.05
+	_step_paintings(dt)
 
 
 ## True when the hero walks into the portal.
 func at_portal(p: Vector3) -> bool:
-	return absf(p.x - PAD.x) < 0.8 and absf(p.z - PAD.z) < 1.3 and p.y < 7.5
+	return absf(p.x - PAD.x) < 0.8 and absf(p.z - PAD.z) < 1.3 and p.y < PAD.y + 2.5
 
 
 # ------------------------------------------------------------------ where things go
@@ -314,6 +326,10 @@ func remove() -> bool:
 		game.sfx("bonk", -4)
 		game.fx.text(Vector3(under) + Vector3(0.5, 2.2, 0.6), "Pick up the decoration first", Color("ffb0a8"), 40, 1.0)
 		return false
+	if level.locked.has(under):
+		game.sfx("bonk", -4)
+		game.fx.text(Vector3(under) + Vector3(0.5, 1.6, 0.6), "The castle is too strong to dig!", Color("ffb0a8"), 40, 1.0)
+		return false
 	if decor.has(under):
 		var d: Dictionary = decor[under]
 		_pay({"coins": int(Decor.find(d.id).get("coins", 0))}, 1)
@@ -321,7 +337,12 @@ func remove() -> bool:
 		decor.erase(under)
 	else:
 		var t := level.get_cell(under.x, under.y, under.z)
-		_pay(block_cost(t), 1)
+		if ORE_OF.has(t) and not edits.has(under):   # dug out of the ground: you get the ore
+			var o: String = ORE_OF[t]
+			game.ores[o] += 1
+			game.fx.text(Vector3(under) + Vector3(0.5, 1.2, 0.6), "+1 " + o.to_upper(), Color(1, 1, 1) if o == "stone" else Level.COLORS[t].lightened(0.2), 48)
+		else:
+			_pay(block_cost(t), 1)
 		_change(under, Level.AIR)
 		game.fx.burst(Vector3(under) + Vector3(0.5, 0.5, 0.5), Level.COLORS[t], 10, 3.5)
 	has_under = false
@@ -452,25 +473,37 @@ func data() -> Dictionary:
 	var ds := []
 	for c in decor:
 		ds.append([decor[c].id, c.x, c.y, c.z, decor[c].r, int(decor[c].get("col", 0))])
-	return {"v": 2, "blocks": blocks, "decor": ds}
+	return {"v": 3, "blocks": blocks, "decor": ds}
 
 
-## Old saves (from the small 44 x 10 home) are moved into the middle of the big one.
+## Older homes are moved into the big one so everything stays where it was built:
+## v1 (the 44 x 10 plot) goes to the start spot, v2 (the 96 x 96 home) to the middle.
 func load_data(d: Dictionary) -> void:
-	var old := int(d.get("v", 1)) < 2
-	var off := Vector3i(Level.HOME_OX, 0, Level.HOME_OZ) if old else Vector3i.ZERO
-	for b in d.get("blocks", []):
+	var v := int(d.get("v", 1))
+	var dy := Level.HOME_GY - GROUND_Y
+	var off := Vector3i.ZERO
+	if v < 2:
+		off = Vector3i(Level.HOME_OX, dy, Level.HOME_OZ)
+	elif v == 2:
+		off = Level.HOME_OLD
+	var blocks: Array = d.get("blocks", [])
+	var one_by_one := level.built and blocks.size() < 4000   # a few changes: just redraw those blocks
+	for b in blocks:
 		if not (b is Array and b.size() == 4):
 			continue
 		var c := Vector3i(int(b[0]), int(b[1]), int(b[2])) + off
 		var t := int(b[3])
-		if old and c.y < GROUND_Y:
+		if v < 2 and int(b[1]) < GROUND_Y:
 			continue
-		if c.y <= 0 or not level.inside(c.x, c.y, c.z) or t < 0 or t >= Level.BLOCK_TYPES:
+		if c.y <= 0 or not level.inside(c.x, c.y, c.z) or t < 0 or t >= Level.BLOCK_TYPES or level.locked.has(c):
 			continue
-		level.cells[level.idx(c.x, c.y, c.z)] = t   # all at once, then one redraw
+		if one_by_one:
+			level.set_cell(c.x, c.y, c.z, t)
+		else:
+			level.cells[level.idx(c.x, c.y, c.z)] = t   # lots: all at once, then one redraw
+			level.touched[c] = true
 		edits[c] = t
-	if not edits.is_empty():
+	if not edits.is_empty() and not one_by_one:
 		level.rebuild()
 	for e in d.get("decor", []):
 		if e is Array and e.size() >= 5 and not Decor.find(String(e[0])).is_empty():   # 6th = paint colour (newer saves)
@@ -479,7 +512,189 @@ func load_data(d: Dictionary) -> void:
 
 ## A new home gets a mailbox and some flowers by the sign.
 func starter() -> void:
-	var o := Vector3i(Level.HOME_OX, 0, Level.HOME_OZ)
-	_put_decor(o + Vector3i(6, 5, 3), "mailbox", 0)
-	_put_decor(o + Vector3i(7, 5, 3), "flowers", 0)
-	_put_decor(o + Vector3i(9, 5, 3), "bush", 0)
+	var o := Vector3i(Level.HOME_OX, Level.HOME_GY, Level.HOME_OZ)
+	_put_decor(o + Vector3i(6, 0, 3), "mailbox", 0)
+	_put_decor(o + Vector3i(7, 0, 3), "flowers", 0)
+	_put_decor(o + Vector3i(9, 0, 3), "bush", 0)
+
+
+# ------------------------------------------------------------------ the painting castle
+## A framed painting on the castle wall for every world (Mario 64 style): jump into one
+## to go straight to that world. Locked worlds are grey with a padlock sign.
+func _make_paintings() -> void:
+	frames = []
+	if level.paintings.is_empty():
+		return
+	var gold := Toys.mat(Color("ffcf33"), false, 0.6)
+	for i in mini(Worlds.ORDER.size(), level.paintings.size()):
+		var id: String = Worlds.ORDER[i]
+		var slot: Dictionary = level.paintings[i]
+		var n := Node3D.new()
+		add_child(n)
+		n.position = slot.pos
+		var nrm: Vector3 = slot.normal
+		n.look_at_from_position(slot.pos, slot.pos - nrm, Vector3.UP)   # -z of the node points into the wall
+		var canvas := MeshInstance3D.new()
+		var q := QuadMesh.new()
+		q.size = Vector2(PAINT_W, PAINT_H)
+		canvas.mesh = q
+		# the quad faces +z: out of the wall
+		canvas.position.z = 0.03
+		n.add_child(canvas)
+		for side in [[Vector3(0, PAINT_H * 0.5 + 0.1, 0.06), Vector3(PAINT_W + 0.4, 0.2, 0.12)], [Vector3(0, -PAINT_H * 0.5 - 0.1, 0.06), Vector3(PAINT_W + 0.4, 0.2, 0.12)],
+				[Vector3(PAINT_W * 0.5 + 0.1, 0, 0.06), Vector3(0.2, PAINT_H + 0.4, 0.12)], [Vector3(-PAINT_W * 0.5 - 0.1, 0, 0.06), Vector3(0.2, PAINT_H + 0.4, 0.12)]]:
+			var b := MeshInstance3D.new()
+			var bm := BoxMesh.new()
+			bm.size = side[1]
+			b.mesh = bm
+			b.material_override = gold
+			b.position = side[0]
+			n.add_child(b)
+		var lbl := Label3D.new()
+		lbl.text = String(Worlds.info(id).get("short", id.to_upper()))
+		lbl.font_size = 40
+		lbl.outline_size = 10
+		lbl.pixel_size = 0.008
+		lbl.modulate = Color("ffe48a")
+		lbl.position = Vector3(0, -PAINT_H * 0.5 - 0.45, 0.08)
+
+		n.add_child(lbl)
+		var lock := Label3D.new()
+		lock.font_size = 46
+		lock.outline_size = 12
+		lock.pixel_size = 0.008
+		lock.modulate = Color("ffffff")
+		lock.position = Vector3(0, 0, 0.1)
+
+		n.add_child(lock)
+		frames.append({"id": id, "node": n, "canvas": canvas, "lock": lock, "locked": null, "slot": slot})
+	_refresh_paintings()
+
+
+## Updates which paintings are locked (worlds unlock as you beat them).
+func _refresh_paintings() -> void:
+	for f in frames:
+		var lk := not Worlds.unlocked(f.id, game.cleared_w)
+		if f.locked == lk:
+			continue
+		f.locked = lk
+		var m := StandardMaterial3D.new()
+		m.albedo_texture = painting_texture(f.id, lk)
+		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		m.roughness = 0.8
+		f.canvas.material_override = m
+		var after := String(Worlds.info(f.id).get("after", ""))
+		f.lock.text = ("LOCKED\nBeat %s first" % Worlds.info(after).get("short", after)) if lk else ""
+
+
+static var _paint_cache := {}
+
+
+## A little landscape for a world: its sky, a sun, hills and its ground colour.
+static func painting_texture(id: String, grey: bool) -> Texture2D:
+	var key := id + ("_grey" if grey else "")
+	if _paint_cache.has(key):
+		return _paint_cache[key]
+	var info := Worlds.info(id)
+	var sky: Array = info.get("sky", ["3f8fe6", "c5e6ff", "7fb2dd"])
+	var ground := Color("60be50")
+	var gt := load("res://art/t_%s.png" % String(info.get("top", "grass_top"))) as Texture2D
+	if gt:
+		var gi := gt.get_image()
+		if gi:
+			if gi.is_compressed():
+				gi.decompress()
+			gi.resize(1, 1, Image.INTERPOLATE_BILINEAR)
+			ground = gi.get_pixel(0, 0)
+	var w := 96
+	var h := 72
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	var top := Color(sky[0])
+	var hor := Color(sky[1])
+	var hill := Color(sky[2]).darkened(0.15)
+	for y in h:
+		img.fill_rect(Rect2i(0, y, w, 1), top.lerp(hor, float(y) / (h * 0.7)))
+	var sun := Color(String(info.get("sun", "fff1d6")))
+	for y in range(8, 26):
+		for x in range(64, 82):
+			if Vector2(x - 73, y - 17).length() < 8:
+				img.set_pixel(x, y, sun.lightened(0.3))
+	for x in w:
+		var hy := int(42 + sin(x * 0.11) * 6 + sin(x * 0.29 + 1.0) * 3)
+		for y in range(hy, h):
+			img.set_pixel(x, y, hill)
+		var gy := int(54 + sin(x * 0.07 + 2.0) * 3)
+		for y in range(gy, h):
+			img.set_pixel(x, y, ground.darkened(0.08 * (y - gy) / 6.0))
+	if grey:
+		for y in h:
+			for x in w:
+				var c := img.get_pixel(x, y)
+				var v := c.get_luminance() * 0.75
+				img.set_pixel(x, y, Color(v, v, v * 1.05))
+	var t := ImageTexture.create_from_image(img)
+	_paint_cache[key] = t
+	return t
+
+
+## Jumping into a painting: a wobble, then off to that world. Locked: bonk!
+func _step_paintings(dt: float) -> void:
+	if frames.is_empty() or game == null:
+		return
+	paint_cool = maxf(0.0, paint_cool - dt)
+	_paint_check -= dt
+	if _paint_check <= 0:
+		_paint_check = 1.0
+		_refresh_paintings()
+	if entering != "":
+		enter_t += dt
+		for f in frames:
+			if f.id == entering:
+				f.canvas.scale = Vector3.ONE * (1.0 + sin(enter_t * 30.0) * 0.06 * (1.0 - enter_t))
+		var h: Node3D = game.leader()
+		h.scale = Vector3.ONE * maxf(0.05, 1.0 - enter_t * 1.6)
+		if enter_t > 0.6:
+			var id := entering
+			entering = ""
+			h.scale = Vector3.ONE
+			game.land_on(id)
+		return
+	if game.state != "home" or mode != "" or paint_cool > 0:
+		return
+	var f = painting_at(game.leader().position)
+	if f == null:
+		return
+	if f.locked:
+		paint_cool = 1.2
+		game.sfx("bonk")
+		var after := String(Worlds.info(f.id).get("after", ""))
+		game.hud.say("LOCKED", "Beat %s first!" % Worlds.info(after).get("short", after), 1.8)
+		var nrm: Vector3 = f.slot.normal
+		game.leader().vel = nrm * 6.0 + Vector3(0, 3, 0)
+		return
+	enter_painting(f.id)
+
+
+## The painting the hero is jumping into (or null).
+func painting_at(p: Vector3):
+	var c := p + Vector3(0, 0.75, 0)
+	for f in frames:
+		var nrm: Vector3 = f.slot.normal
+		var v: Vector3 = c - f.slot.pos
+		var dn := v.dot(nrm)
+		if dn < -0.3 or dn > 0.85:
+			continue
+		var along := Vector3(-nrm.z, 0, nrm.x)
+		if absf(v.dot(along)) < PAINT_W * 0.5 and absf(v.y) < PAINT_H * 0.5:
+			return f
+	return null
+
+
+func enter_painting(id: String) -> void:
+	entering = id
+	enter_t = 0.0
+	game.sfx("item")
+	game.hud.say(String(Worlds.info(id).get("name", id)), "Into the painting!", 1.2)
+	for f in frames:
+		if f.id == id:
+			game.fx.burst(f.slot.pos, Color(1, 1, 1), 16, 4, 6)

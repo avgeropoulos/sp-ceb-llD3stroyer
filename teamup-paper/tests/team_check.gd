@@ -12,7 +12,7 @@ var hero_i := 0
 var hero_f := 0
 var start_p := Vector3.ZERO
 var top_y := 0.0
-const NEW := ["lucky", "alix", "petal", "spotty", "bruto"]
+const NEW := ["lucky", "alix", "petal", "spotty", "brawlo"]
 
 
 func _initialize() -> void:
@@ -196,7 +196,7 @@ func _try_action(id: String, h: Hero) -> void:
 			check(g.action_label() in ["BOW", "MINE"], "ALIX's button says BOW or MINE")
 		"petal":
 			check(dummy.hp < 50, "PETAL's TWIRL should bonk a bad guy next to her")
-		"spotty", "bruto":
+		"spotty", "brawlo":
 			check(h.dash_t > 0 and Vector2(h.vel.x, h.vel.z).length() > 10, "%s should dash" % id)
 			for i in 20:
 				g._update_leader(h, 1.0 / 60)

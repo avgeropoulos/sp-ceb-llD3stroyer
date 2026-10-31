@@ -11,7 +11,7 @@ concurrency:
 jobs:
   android:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     env:
       GODOT_VERSION: 4.5.1
       GODOT_ANDROID_KEYSTORE_RELEASE_PATH: ${{ github.workspace }}/keystore/games.keystore
@@ -89,9 +89,24 @@ jobs:
           timeout 300s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/scene_check.gd 2>&1 | tee test-scene.log
           grep -q 'TEST PASSED' test-scene.log
           for look in paper toy; do
+            timeout 600s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/boss_check.gd -- $look 2>&1 | tee test-boss-$look.log
+            grep -q 'TEST PASSED' test-boss-$look.log
+          done
+          for look in paper toy; do
             timeout 300s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/quest_check.gd -- $look 2>&1 | tee test-quest-$look.log
             grep -q 'TEST PASSED' test-quest-$look.log
           done
+          for look in paper toy; do
+            timeout 600s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/painting_check.gd -- $look 2>&1 | tee test-painting-$look.log
+            grep -q 'TEST PASSED' test-painting-$look.log
+            timeout 300s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/cave_check.gd -- $look 2>&1 | tee test-cave-$look.log
+            grep -q 'TEST PASSED' test-cave-$look.log
+          done
+      - name: Bake the home world (loads in a blink on the tablet)
+        run: |
+          timeout 300s godot --headless --path teamup-paper --script res://tools/bake_home.gd 2>&1 | tee bake.log
+          grep -q 'OK' bake.log
+          test -s teamup-paper/data/home_cache.bin
       - name: Build signed Android APK
         run: |
           godot --headless --path teamup-paper --export-release Android ../TeamUpPaper.apk

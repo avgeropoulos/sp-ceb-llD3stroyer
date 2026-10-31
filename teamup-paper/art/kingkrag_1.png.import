@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://ca3tmeptc1frr"
-path="res://.godot/imported/bruto_run1.png-9220e8fb3c84f06ef917ec033ee41fb8.ctex"
+uid="uid://cm58olvn6461d"
+path="res://.godot/imported/kingkrag_1.png-590a2db203d9b348aba6e62d37094008.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/bruto_run1.png"
-dest_files=["res://.godot/imported/bruto_run1.png-9220e8fb3c84f06ef917ec033ee41fb8.ctex"]
+source_file="res://art/kingkrag_1.png"
+dest_files=["res://.godot/imported/kingkrag_1.png-590a2db203d9b348aba6e62d37094008.ctex"]
 
 [params]
 

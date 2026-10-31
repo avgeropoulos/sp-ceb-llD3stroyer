@@ -230,13 +230,18 @@ plane); a world's fog/gravity/cloud tint come from `Worlds.INFO`. Block colours:
 `use_colors`; keep `_show/_hide/_grow/rebuild` setting colours; instance colours cap at 1, leaves use the grey `t_leaves_tint`).
 Cutscenes (`cutscene.gd`, state "scene", `play_scene(id, back)`, `_scene_done`, `scenes_seen` saved, MOVIES state
 "movies" by the TV at `MOVIE_SPOT`); tests that don't test scenes set `Cutscene.enabled = false`. Switching places reloads the scene via `main.go(place, slot)` + static `Boot` (tests follow `Boot.current`).
-Home = big world (`Level.HOME_SX/SY/SZ` 96x40x96; `level.sx/sy/sz` are per level, use them not LX/LY/LZ),
+Home = big world (`Level.HOME_SX/SY/SZ` 192x56x192, ground at `Level.HOME_GY` (22): never assume y 5 at home;
+the old 96x96 home sits at `HOME_OLD`; start plot `HOME_OX/OZ`; caves, mountains, lake, painting castle `CASTLE`
+(`HomeBase` paintings, `painting_at`, `land_on`), arcade spot `ARCADE_SPOT`). The home is drawn in chunks
+(`level.chunked`, `_key`: chunk x deep/surface band x top-only x type; `slot_of[c].x` is that key, not the type;
+`touched` = cells changed from the height map, needed by `_collect_fast`) and baked by CI (`tools/bake_home.gd`,
+`data/home_cache.bin`, `Level.cache_path`; bump `HOME_CACHE_V` if the cache format changes). `level.sx/sy/sz` are per level, use them not LX/LY/LZ),
 orbit camera (`cam_yaw/cam_pitch`, `_update_home_camera`, `Actor.view_right/view_back`), Minecraft aiming
 (`HomeBase.aim_ray` voxel walk; HUD `world_taps` = tap to place, `hold_pos` = hold to break, `look_delta` = drag),
 FLY (`flying`, `_fly`). TEAM (`scripts/team.gd`): 2 human heroes + 1 partner; the human SLOTS are still
 `heroes.rocco` / `heroes.blocky` (and `human` = "rocco"/"blocky" names the slot) while `Hero.who` is the character
-(rocco, blocky, lucky, alix, petal, spotty, bruto). Use `leader().who`, `Team.DOUBLE_JUMPERS`, `Team.MINERS`, never
-assume slot == character. Saved as `team` + `heroes_seen`; `tests/team_check.gd`. The save always carries `home` ({v:2, blocks = changes only, decor}); 1-1 keeps it in `home_saved`. New decor: add to `Decor.ITEMS` + `model()`,
+(rocco, blocky, lucky, alix, petal, spotty, brawlo; BRUTO is a Kragling boss, not a hero). Use `leader().who`,
+`Team.DOUBLE_JUMPERS`, `Team.MINERS`, never assume slot == character. Saved as `team` + `heroes_seen`; `tests/team_check.gd`. The save always carries `home` ({v:3, blocks = changes only, decor; v1/v2 are moved in by `load_data`}); 1-1 keeps it in `home_saved`. New decor: add to `Decor.ITEMS` + `model()`,
 then render paper pictures (`tools/render_decor.gd`, `tools/sticker.py`). Sprint = full-tilt stick (`tilt_t`), Shift, R1/R2.
 Performance rules learned the hard way (each one was a visible freeze on the tablet):
 * Never change a font size from frame to frame (pop-in text): draw at a fixed size and scale with `draw_set_transform`.

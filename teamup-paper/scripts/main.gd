@@ -72,6 +72,7 @@ var cleared := 0              # times this file finished the level
 
 # home base
 var home: HomeBase            # only at home
+var bonus: Bonus             # only in a painting's BONUS COURSE
 var open_play: OpenPlay       # only in the open worlds (stars, gate, flag)
 var gate_open := false        # Krag Jr.'s gold gate (5 stars)
 var stars_w := {}             # world id -> star ids found there (kept for good, like Mario 64)
@@ -91,7 +92,7 @@ var victory_t := -1.0         # counts down to the victory scene after Krag Jr. 
 var gate_scene_done := false
 var movie_sel := 0
 var grav := 1.0               # gravity for the heroes (the Moon is 0.6)
-const MOVIE_SPOT := Vector3(Level.HOME_OX + 1.5, 5, Level.HOME_OZ + 8.5)   # the MOVIES TV at home
+const MOVIE_SPOT := Vector3(Level.HOME_OX + 1.5, Level.HOME_GY, Level.HOME_OZ + 8.5)   # the MOVIES TV at home
 
 # partners
 var mon_line := "spark"       # one of Mons.ORDER
@@ -145,6 +146,8 @@ func _ready() -> void:
 		level.generate_empty()
 	elif Boot.place == "level":
 		level.generate(Boot.level)
+	elif Boot.place == "bonus":   # a painting's bonus course
+		level.generate_bonus(Boot.level)
 	else:
 		level.generate("meadow")
 	fx = Fx.new()
@@ -193,10 +196,10 @@ func _ready_common() -> void:
 
 
 func _ready_home() -> void:
-	var o := Vector3(Level.HOME_OX, 0, Level.HOME_OZ)
-	heroes.rocco.position = o + Vector3(10, 5, 6.8)
+	var o := Vector3(Level.HOME_OX, Level.HOME_GY, Level.HOME_OZ)
+	heroes.rocco.position = o + Vector3(10, 0, 6.8)
 	heroes.blocky.position = heroes.rocco.position
-	heroes.mon.position = o + Vector3(8.4, 5, 5.6)
+	heroes.mon.position = o + Vector3(8.4, 0, 5.6)
 	home = HomeBase.new()
 	level.add_child(home)
 	home.setup(self, level)
@@ -215,11 +218,14 @@ func _ready_level() -> void:
 		var s: Dictionary = level.spawns[si]
 		var f := Foe.new()
 		level.add_child(f)
-		f.init(level, s.kind, s.pos)
+		var kind: String = s.kind
+		if kind == "kragjr" and level.open:   # each world's castle has its own boss (bosses.gd)
+			kind = Bosses.for_world(level.world, Bosses.cleared_in_save(Boot.slot, level.world))
+		f.init(level, kind, s.pos)
 		f.set_meta("spawn", si)
 		f.set_meta("camp", s.get("camp", false))
 		foes.append(f)
-		if s.kind == "kragjr":
+		if Bosses.is_boss(kind):
 			boss = f
 			f.hp = int(world_info().boss_hp)
 			f.max_hp = f.hp
@@ -227,7 +233,12 @@ func _ready_level() -> void:
 		var c := level.prop("coin", level.coin_spots[ci] - Vector3(0, 0.35, 0), 0.7)
 		c.set_meta("i", ci)
 		coin_nodes.append(c)
-	if level.open:
+	if level.bonus:
+		bonus = Bonus.new()
+		level.add_child(bonus)
+		bonus.setup(self, level)
+		_setup_powers()
+	elif level.open:
 		open_play = OpenPlay.new()
 		level.add_child(open_play)
 		open_play.setup(self, level)
@@ -263,6 +274,8 @@ func _after_loading() -> void:
 					hud.say(world_info().name, world_info().hello, 2.6)
 			if open_play and not d.get("in_level", false):
 				open_play.open_select("start")   # Mario 64 style: pick a star first
+		"bonus":
+			_enter_bonus()
 		_:
 			state = "title"
 
@@ -336,7 +349,8 @@ func _scene_done(id: String) -> void:
 		play_music("cozy")
 	elif state == "play":
 		if id == "krag":
-			hud.say("KRAG JR.!", "Stomp him when he swoops down!", 2.8)
+			if is_instance_valid(boss):
+				hud.say(boss.boss_name() + "!", Bosses.INFO.get(boss.kind, {}).get("hint", "Stomp him!"), 2.8)
 			play_music("boss")
 		elif id == "victory":
 			hud.say("HOORAY!", "Touch the flag to finish the world!", 2.8)
@@ -606,7 +620,7 @@ func _setup_input() -> void:
 
 
 func _setup_world() -> void:
-	var wi: Dictionary = Worlds.info(Boot.level if Boot.place == "level" else "meadow")
+	var wi: Dictionary = Worlds.info(Boot.level if Boot.place in ["level", "bonus"] else "meadow")
 	var env := Environment.new()
 	env.background_mode = Environment.BG_SKY
 	var sky := Sky.new()
@@ -630,7 +644,7 @@ func _setup_world() -> void:
 	env.fog_depth_begin = 28.0
 	env.fog_depth_end = 140.0
 	env.fog_density = 0.55
-	if Boot.place == "level":
+	if Boot.place in ["level", "bonus"]:
 		env.fog_depth_begin = float(wi.get("fog_begin", 28.0))
 		env.fog_depth_end = float(wi.get("fog_end", 140.0))
 		env.fog_density = float(wi.get("fog_density", 0.55))
@@ -1683,6 +1697,70 @@ func _update_leader(h: Hero, dt: float) -> void:
 	h.update_shadow()
 
 
+# ------------------------------------------------------------------ paintings (see bonus.gd)
+## Jumped into a world's SECRET PAINTING: save the world as it is, then into the bonus course.
+func enter_painting() -> void:
+	note("into the painting")
+	save_game(true)
+	Boot.level = level.world
+	go("bonus", slot)
+
+
+func _enter_bonus() -> void:
+	var d := Saves.read(Boot.slot)
+	start_game(Boot.slot)
+	if not d.is_empty():
+		var d2 := d.duplicate()
+		d2["in_level"] = false   # the world's blocks / coins belong to the world, not the painting
+		_apply_save(d2)
+	hearts = maxi(hearts, 1)
+	bonus.begin()
+
+
+## Out of the painting (star or not): back into the world, next to the painting.
+func leave_bonus(got_star: bool) -> void:
+	var w := level.world
+	if slot > 0:
+		var d := Saves.read(slot)
+		d["coins"] = coins
+		d["hearts"] = maxi(hearts, 1)
+		d["ores"] = ores.duplicate()
+		d["mon_xp"] = mon_xp.duplicate()
+		if got_star:
+			var sw: Dictionary = d.get("stars_w", {})
+			var l: Array = sw.get(w, [])
+			if not "painting" in l:
+				l.append("painting")
+			sw[w] = l
+			d["stars_w"] = sw
+			if d.get("in_level", false):
+				var st: Array = d.get("stars", [])
+				if not "painting" in st:
+					st.append("painting")
+				d["stars"] = st
+				if String(d.get("quest", "")) == "painting":
+					d["quest"] = ""
+		Saves.write(slot, d)
+	Boot.level = w
+	go("level", slot)
+
+
+## How much a friendly shot hurts: a FIRE FLOWER fireball beats any normal bad guy in one hit.
+func _shot_damage(sh: Dictionary, f: Foe) -> int:
+	if sh.get("flower", false) and not f.is_boss:
+		return 99
+	return int(sh.dmg) + (1 if sh.owner == leader() else 0)
+
+
+## A FIRE FLOWER fireball sets leaves on fire (poof!).
+func _burn(c: Vector3i) -> void:
+	if level.is_home or level.locked.has(c):
+		return
+	if level.get_cell(c.x, c.y, c.z) == Level.LEAVES:
+		level.set_cell(c.x, c.y, c.z, Level.AIR)
+		fx.burst(Vector3(c) + Vector3(0.5, 0.5, 0.5), Color("ff7a2a"), 10, 3, 4)
+
+
 # ------------------------------------------------------------------ power-ups (see powers.gd)
 func _setup_powers() -> void:
 	powers = Powers.new()
@@ -1958,7 +2036,7 @@ func _action(h: Hero) -> void:
 				h.action_t = 0.3
 				h.anim_t = 0
 				_mine(h)
-		"lucky", "alix", "petal", "spotty", "bruto":
+		"lucky", "alix", "petal", "spotty", "brawlo":
 			_friend_action(h)
 		"mon":
 			if h.action_t <= 0:
@@ -2023,7 +2101,7 @@ func _friend_action(h: Hero) -> void:
 				if is_instance_valid(f) and f.dying < 0 and f.position.distance_to(h.position) < 2.4:
 					f.hurt(2, self)
 			sfx("swap")
-		"spotty", "bruto":   # DASH / BASH: a burst forward that knocks bad guys over (BRUTO also smashes blocks)
+		"spotty", "brawlo":   # DASH / BASH: a burst forward that knocks bad guys over (BRAWLO also smashes blocks)
 			h.action_t = 0.6 if h.who == "spotty" else 0.75
 			h.dash_t = 0.35 if h.who == "spotty" else 0.4
 			var fw := Vector3(h.facing.x, 0, h.facing.z).normalized()
@@ -2061,9 +2139,9 @@ func _friend_air(h: Hero, dt: float) -> void:
 			if is_instance_valid(f) and f.dying < 0 and not f.is_boss and h.overlaps(f, 0.35):
 				f.hurt(3, self)
 				sfx("stomp")
-			elif is_instance_valid(f) and f.dying < 0 and f.is_boss and h.overlaps(f, 0.2) and h.who == "bruto":
+			elif is_instance_valid(f) and f.dying < 0 and f.is_boss and h.overlaps(f, 0.2) and h.who == "brawlo":
 				f.hurt(1, self)
-		if h.who == "bruto" and fw.length() > 0.1:   # smash the block in front
+		if h.who == "brawlo" and fw.length() > 0.1:   # smash the block in front
 			var c := Vector3i(floori(h.position.x + fw.x * (h.hw + 0.4)), floori(h.position.y + 0.5), floori(h.position.z + fw.z * (h.hw + 0.4)))
 			if level.get_cell(c.x, c.y, c.z) != Level.AIR:
 				hit_block(c, 3, h)
@@ -2514,6 +2592,8 @@ func _update_foes(dt: float) -> void:
 
 
 const FRIENDLY_SHOTS := ["spark", "water", "fireball", "rock", "shadow", "orb", "ice", "sparkle", "harrow"]
+## Bosses' shots (they hurt you): fire breath, blue fire, magic and bones.
+const BOSS_SHOT_PICS := {"flame": "shot_fire", "blueflame": "shot_ice", "magic": "shot_orb", "bone": "shot_rock"}
 const NEW_SHOT_PICS := {"rock": "shot_rock", "shadow": "shot_shadow", "orb": "shot_orb", "ice": "shot_ice", "sparkle": "shot_sparkle"}
 
 
@@ -2529,9 +2609,16 @@ func _shot_node(pic: String, pos: Vector3, size: float) -> Node3D:
 
 func spawn_shot(kind: String, pos: Vector3, v: Vector3, owner: Node3D, dmg: int = 1) -> void:
 	var size := {"spark": 0.55, "arrow": 0.32, "spikeball": 0.8, "water": 0.5, "fireball": 0.55,
-		"rock": 0.6, "shadow": 0.55, "orb": 0.55, "ice": 0.5, "sparkle": 0.5, "harrow": 0.32}[kind] as float
+		"rock": 0.6, "shadow": 0.55, "orb": 0.55, "ice": 0.5, "sparkle": 0.5, "harrow": 0.32,
+		"flame": 0.7, "blueflame": 0.7, "magic": 0.6, "bone": 0.5}[kind] as float
 	var s: Node3D
-	if NEW_SHOT_PICS.has(kind):
+	if BOSS_SHOT_PICS.has(kind):
+		var pic: String = BOSS_SHOT_PICS[kind]
+		if pic == "shot_fire":
+			s = level.prop(pic, pos - Vector3(0, size * 0.5, 0), size)
+		else:
+			s = _shot_node(pic, pos - Vector3(0, size * 0.5, 0), size)
+	elif NEW_SHOT_PICS.has(kind):
 		s = _shot_node(NEW_SHOT_PICS[kind], pos - Vector3(0, size * 0.5, 0), size)
 	else:
 		var pic: String = {"spark": "spark", "arrow": "arrow", "spikeball": "spikeball", "water": "shot_water", "fireball": "shot_fire", "harrow": "arrow"}[kind]
@@ -2545,7 +2632,8 @@ func spawn_shot(kind: String, pos: Vector3, v: Vector3, owner: Node3D, dmg: int 
 			s.flip_h = v.x < 0
 		else:
 			s.look_at(s.global_position - v, Vector3.UP)
-	var life := {"spikeball": 5.0, "fireball": 2.4, "rock": 2.6, "shadow": 1.6, "orb": 2.6, "ice": 1.0, "sparkle": 1.2}.get(kind, 2.0) as float
+	var life := {"spikeball": 5.0, "fireball": 2.4, "rock": 2.6, "shadow": 1.6, "orb": 2.6, "ice": 1.0, "sparkle": 1.2,
+		"flame": 1.1, "blueflame": 1.1, "magic": 3.0, "bone": 2.4}.get(kind, 2.0) as float
 	shots.append({"node": s, "vel": v, "kind": kind, "owner": owner, "life": life,
 		"bounces": 0, "dmg": dmg, "hit": []})
 
@@ -2621,6 +2709,8 @@ func _update_shots(dt: float) -> void:
 			if level.solid(floori(nxt.x + signf(v.x) * 0.3), floori(nxt.y), floori(nxt.z)):
 				gone = true
 				fx.burst(nxt, Color("ffb02e"), 6, 3)
+				if sh.get("flower", false):
+					_burn(Vector3i(floori(nxt.x + signf(v.x) * 0.3), floori(nxt.y), floori(nxt.z)))
 			s.position = nxt
 			if nxt.y < -4:
 				gone = true
@@ -2644,7 +2734,7 @@ func _update_shots(dt: float) -> void:
 							f.hurt(int(sh.dmg) + (1 if sh.owner == leader() else 0), self)
 							fx.burst(f.position + Vector3(0, f.height * 0.5, 0), Color("bff4ff"), 8, 3)
 							continue
-						f.hurt(int(sh.dmg) + (1 if sh.owner == leader() else 0), self)
+						f.hurt(_shot_damage(sh, f), self)
 						gone = true
 						break
 			else:
@@ -2709,6 +2799,9 @@ func hurt_hero(from: Vector3) -> void:
 
 
 func _fell(h: Hero) -> void:
+	if level.bonus and h == leader():   # fell off a painting's course: it counts falls itself
+		bonus.fell()
+		return
 	if not invincible:
 		hearts -= 1
 	sfx("hurt")
@@ -2745,7 +2838,7 @@ func on_foe_beaten(f: Foe) -> void:
 	if f.is_boss:
 		boss_done = true
 		fx.shake = 1.2
-		hud.say("KRAG JR. BEATEN!", "Run to the flag!", 3.0)
+		hud.say(f.boss_name() + " BEATEN!", "Run to the flag!", 3.0)
 		victory_t = 1.8
 		play_music(world_info().song)
 		speak("We did it! Woo hoo!", "rocco")
@@ -2755,7 +2848,7 @@ func on_foe_beaten(f: Foe) -> void:
 
 
 func start_boss(f: Foe) -> void:
-	note("Krag Jr. arrives")
+	note(f.boss_name() + " arrives")
 	boss_on = true
 	checkpoint = Vector3(Level.BOSS_X0 + 2, 5, 6.5)
 	if level.open:   # just inside the castle gate
@@ -2763,12 +2856,15 @@ func start_boss(f: Foe) -> void:
 	play_music("boss")
 	sfx("alert")
 	if not play_scene("krag"):
-		hud.say("KRAG JR.!", "Stomp him when he swoops down!", 2.8)
+		hud.say(f.boss_name() + "!", Bosses.INFO.get(f.kind, {}).get("hint", "Stomp him!"), 2.8)
 
 
 # ------------------------------------------------------------------ checkpoint, flag, camera
 func _update_progress(dt: float) -> void:
 	var l := leader()
+	if level.bonus:
+		bonus.step(dt)
+		return
 	if level.open:
 		if victory_t > 0:
 			victory_t -= dt
@@ -2852,7 +2948,7 @@ func _update_camera(dt: float) -> void:
 # ------------------------------------------------------------------ test bot
 func _bot_input() -> void:
 	var l := leader()
-	if level.open:   # head for the nearest challenge, jumping over anything in the way
+	if level.open and not level.bonus:   # head for the nearest challenge, jumping over anything in the way
 		var to: Vector3 = level.objectives[int(play_t / 12) % 4].pos   # camp, tower, cave, sky in turn
 		var d := Vector3(to.x - l.position.x, 0, to.z - l.position.z)
 		cam_yaw = 0

@@ -124,6 +124,26 @@ Each world now has **8 stars** (5 still open the gate) and you go for **one ques
   save and continue); `open_check.gd` now also collects every red coin (and really jumps onto a pillar), beats
   the BIG GRUMBLER and walks Dennis home.
 
+### Secret paintings (Mario 64 style)
+
+Every open world has a **SECRET PAINTING** in a gold frame on the outside of Krag Jr.'s castle's
+**west wall** (behind the castle when you come from the start). It's a picture of the world (its sky, hills
+and a big star, drawn by `Painting.picture()` from the world's colours) and it **ripples like water** when you
+come close. It hangs a little too high to walk into: **JUMP into it** and you're pulled in (WHOOSH!) to its
+**BONUS COURSE**: 16 platforms floating in the painting's sky going up and away, with coins, two bad guys and a
+? block, and the **PAINTING STAR** on the gold platform at the top. Falling off puts you back on the last
+platform you stood on; fall **3 times** and the painting spits you back out. Getting the star (or falling out)
+takes you back into the world **next to the painting**, with the world just as you left it.
+
+* It's one more star on the STAR SELECT ("SECRET PAINTING", the last one) and counts like any star.
+* Code: `level.gd` `_painting_spot()` (place + objective) and `generate_bonus()` (`bonus_tops`, `bonus_star`),
+  `scripts/painting.gd` (picture, ripple shader, frame, `touching` / `jump_in`), `scripts/bonus.gd` (the star,
+  falls), `main.gd` `enter_painting()` (saves the world mid-level, `go("bonus")`), `_enter_bonus()`,
+  `leave_bonus()` (adds "painting" to the save's stars, back to the world). `Boot.place == "bonus"`.
+* Test: `tests/painting_check.gd [-- toy] [world ...]`: in every world Rocco really jumps into the painting,
+  falls out 3 times once, then really jumps every bonus platform, gets the star and is back by the painting
+  with the star saved; plus the FIRE FLOWER checks below.
+
 ### More bad guys (open worlds)
 
 | Bad guy | What it does | How to beat it | Where |
@@ -145,8 +165,33 @@ Code: `foes.gd` `FOES2` / `_tick_foe2`, models `toys.gd` `_foe2` / `_pose_foe2`,
 Test: `tests/foes_check.gd -- [toy]` (each one moves/attacks, is beaten the right way, the bomb breaks blocks,
 the ghost hides when looked at).
 
+## Castle bosses: Krag Jr., the Kraglings, King Krag and Dry Krag
+
+Every world's castle has its own boss (`scripts/bosses.gd`, `Bosses.BY_WORLD`). Our own look-alike designs with
+made-up names. The boss's name is on its health bar (under the star row) and in the castle / victory cutscenes.
+
+| World | Boss | What it does |
+|---|---|---|
+| 1-1 Meadow Mine | KRAG JR. (TINY KRAG on later visits) | flies, throws spike balls, dives |
+| 2-1 Frosty Peaks | ZIPPO KRAG (blue mohawk) | shell spin dashes + magic wand |
+| 3-1 Sunset Dunes | ROCKO KRAG (spiky shell) | double ground-pound jumps (shockwave: jump to dodge!) + spike balls |
+| 4-1 Spooky Swamp | DRY KRAG JR. (skeleton, bony copter) | like Krag Jr. plus blue fire puffs |
+| 5-1 Moon Base | MAESTRO KRAG (wild blue hair) | wand fans + a ring of 8 magic shots |
+| 6-1 Lava Land | DRY KRAG (skeleton King Krag) | blue fire, thrown bones, stomps; **falls apart and gets back up once** |
+| 7-1 Candy Kingdom | GLAMMA KRAG (pink bow) | magic rings, spike balls, shell spins |
+| 8-1 Beach Bay | BRUTO KRAG (big and bald) | fire breath + stomps |
+| 9-1 Jungle Jamboree | SPECS KRAG (glasses, rainbow mohawk) | teleports next to you, then wand shots |
+| 10-1 Cloud Castle | KING KRAG | fire breath, stomps, shell spin, spike balls |
+
+Walking bosses (`foes.gd` `_boss_open`) chase you, shout "!", do an attack, then are **tired** for a moment:
+that's the time to stomp them. They get faster below half health. Bosses' shots: `flame`, `blueflame`, `magic`,
+`bone` (`main.gd` `BOSS_SHOT_PICS`). Models: `toys.gd` `_turtle_boss` / `_drykragjr` (`BOSS_LOOK`); paper pictures:
+`tools/gen_art.py` `bosses()`. Test: `tests/boss_check.gd [-- toy]` fights every world's boss (attacks happen, it
+takes damage, Dry Krag falls apart and comes back once, the flag comes down).
+
 ## Power-ups
 
+A **FIRE FLOWER** always waits near the start of every world, and it's the most common thing in ? blocks.
 ? blocks often give a power-up (it rises out of the block; mushrooms slide off along the ground like the
 2D game), and about 8 lie around each open world (one near the start, one on the tower stairs, one in the
 secret cave). Whoever you steer gets it, and it moves to the next hero when you SWAP. The HUD (top right)
@@ -154,7 +199,7 @@ shows the power and a ring for the time left.
 
 | Power | What it does | How long |
 |---|---|---|
-| FIRE FLOWER | ACTION throws bouncing fireballs | until you're hit |
+| FIRE FLOWER | ACTION throws bouncing fireballs, two at a time (never more than 2 out, like Mario); a fireball beats any normal bad guy in one hit and burns leaves | until you're hit |
 | ICE FLOWER | ACTION throws ice balls: bad guys become ice blocks you can stand on (4.5 s) | until you're hit |
 | SUPER MUSHROOM | big, one free hit, head-bumps smash blocks | until you're hit |
 | MINI MUSHROOM | tiny (fits small gaps), jumps 30% higher | 15 s |
@@ -188,9 +233,28 @@ everyone is put back where they were when it ends. Tests switch scenes off with 
 
 ## Home base: build and decorate
 
-Picking a save file takes you **home**: a big **96 x 96** world (40 blocks tall) to build a whole city on, with
-block trees to chop. A new file picks a partner first and gets 30 coins. Walk onto the **rocket** pad to fly
-to the worlds.
+Picking a save file takes you **home**: a big **192 x 192** world (56 blocks tall). The flat build plot is in
+the middle (the old 96 x 96 home, so old builds stay put), with block trees to chop. Around it: rolling hills
+and forests, a lake, a ring of **mountains** (snowy tops; a stairway on the east mountain climbs to **THE
+SUMMIT** with a diamond and gold block), and **caves** underground. A new file picks a partner first and gets
+30 coins. Walk onto the **rocket** pad to fly to the worlds, or jump into a painting in the castle.
+
+* **Caves**: the **MINE** entrance west of the plot (log frame, sign) slopes down to a big cave room; tunnels wind
+  off from there and others come out in the hillsides. Lanterns light the walls, ores (iron, gold deeper,
+  diamonds near the bottom) are in the stone, and there's a lava pool deep down. Dig with BUILD: digging a
+  **natural** ore or stone block gives you that ore (blocks you placed just come back as before).
+* **PAINTING CASTLE** (north, door facing the plot): a hall with a framed painting for every world in
+  `Worlds.ORDER`. **Jump into** one to go straight to that world (the same as landing there with the rocket);
+  locked worlds are grey with a LOCKED sign and bonk you back. The castle can't be dug.
+* **Lantern** blocks (glowing) are in the BUILD palette too.
+* Room is kept flat and empty for an arcade at `Level.ARCADE_SPOT` (x 148-161, z 88-101, ground `HOME_GY`).
+* Old homes move in: v1 (the 44 x 10 plot) and v2 (the 96 x 96 home) edits are shifted into the middle and up to
+  the new ground height (`HomeBase.load_data`); the home now saves as v3.
+* **Speed**: the home is drawn in 32 x 32 chunks (one MultiMesh per chunk, block type and "only the top shows"),
+  the deep (cave) half of a chunk is only drawn near you or when you're underground, and flat ground is a
+  2-triangle quad instead of a 12-triangle cube. Making the home takes about a second, so CI bakes it before
+  export (`tools/bake_home.gd` -> `data/home_cache.bin`, not committed) and the game loads it in ~0.25 s.
+  Without the file (tests, editor runs) it's made as normal. Test: `tests/cave_check.gd`.
 
 * **Camera**: drag anywhere on the right side of the screen to turn it around (controller: right stick). The
   stick walks the way the camera looks.
@@ -269,7 +333,7 @@ hero 1 -> hero 2 -> partner. New friends are announced with a "NEW FRIEND UNLOCK
 | ALIX (Minecraft girl, orange hair) | 2 worlds | ACTION: shoots an arrow at a bad guy in front, otherwise MINES |
 | PETAL (princess) | 3 worlds | hold JUMP in the air to FLOAT; ACTION: TWIRL bonks bad guys around her |
 | SPOTTY (mushroom-cap kid) | 4 worlds | fastest runner; ACTION: DASH knocks bad guys over |
-| BRUTO (yellow-cap bruiser) | 5 worlds | ACTION: shoulder BASH smashes blocks and bad guys |
+| BRAWLO (yellow-cap bruiser) | 5 worlds | ACTION: shoulder BASH smashes blocks and bad guys |
 
 * Code: `scripts/team.gd` (the heroes: stats, unlocks, pictures), `Hero.become()`, `main.gd` `set_team` /
   `open_team` / `team_tap` / `team_go` / `_friend_action` / `_friend_air`, `hud.gd` `_draw_team`.

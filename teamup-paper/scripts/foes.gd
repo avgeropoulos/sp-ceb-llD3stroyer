@@ -19,6 +19,9 @@ var heading := Vector3.RIGHT  # open worlds: which way it's walking (any directi
 var chain_root: Node3D        # CHOMPY: its post and chain
 var grow := 1.0               # SNOWBALL ROLLER: gets bigger as it rolls
 var turn_t := 0.0
+var atk_i := 0                # walking bosses: which attack comes next
+var stomps := 0               # how many jumps left in this stomp attack
+var rebuilt := false          # DRY KRAG falls apart once, then gets back up
 
 
 func init(lv: Level, k: String, pos: Vector3) -> void:
@@ -73,6 +76,16 @@ func init(lv: Level, k: String, pos: Vector3) -> void:
 		"kragjr":
 			setup(lv, {"fly": ["kragjr_1", "kragjr_2"], "angry": ["kragjr_angry"], "hurt": ["kragjr_hurt"]}, 2.6, 46, k)
 			hw = 0.95; height = 1.7; hp = 18; is_boss = true; state = "sleep"
+		"drykragjr":
+			setup(lv, {"fly": ["drykragjr_1", "drykragjr_2"], "angry": ["drykragjr_angry"], "hurt": ["drykragjr_hurt"]}, 2.6, 46, k)
+			hw = 0.95; height = 1.7; hp = 18; is_boss = true; state = "sleep"
+		_:
+			if Bosses.is_boss(k):   # a walking boss: a Kragling, King Krag or Dry Krag
+				var big: bool = Bosses.INFO[k].get("big", false)
+				var frames := {"walk": [k + "_1", k + "_2"], "attack": [k + "_attack"], "hurt": [k + "_hurt"],
+					"spin": [k + "_spin"], "tired": [k + "_hurt"], "bones": [k + "_hurt"], "angry": [k + "_attack"]}
+				setup(lv, frames, 3.8 if big else 2.5, 10, k)
+				hw = 1.0 if big else 0.6; height = 2.6 if big else 1.7; hp = 18; is_boss = true; state = "sleep"
 	max_hp = hp
 	position = pos
 	play(sprite_anim_default())
@@ -96,7 +109,12 @@ func init(lv: Level, k: String, pos: Vector3) -> void:
 
 
 func sprite_anim_default() -> String:
-	return "fly" if kind == "kragjr" else "walk"
+	return "fly" if Bosses.flies(kind) else "walk"
+
+
+## The name shown on the boss health bar.
+func boss_name() -> String:
+	return Bosses.name_of(kind)
 
 
 func hurt(n: int, game) -> void:
@@ -106,8 +124,23 @@ func hurt(n: int, game) -> void:
 		_light(game)
 		return
 
+	if state == "heap":   # DRY KRAG in a heap of bones: can't be hurt
+		return
 	hp -= n
 	flash_t = 0.35
+	if kind == "drykrag" and hp <= 0 and not rebuilt:   # falls apart... and gets back up once!
+		rebuilt = true
+		hp = 0
+		state = "heap"
+		state_t = 0
+		vel = Vector3.ZERO
+		alert.visible = false
+		game.sfx("boss_down")
+		game.fx.shake = 0.8
+		game.fx.burst(position + Vector3(0, 1.0, 0), Color("e9e4d4"), 20, 5, 6)
+		game.hud.say("DRY KRAG FELL APART!", "...wait. The bones are moving!", 2.6)
+		show_health()
+		return
 	if is_boss:
 		safe_t = 0.55
 		game.sfx("boss_hit")
@@ -194,7 +227,7 @@ func _tick_open(dt: float, game, lead: Actor) -> void:
 	var to := lead.position - position
 	var flat := Vector3(to.x, 0, to.z)
 	var dist := flat.length()
-	if kind != "kragjr" and dist > 40:
+	if not is_boss and dist > 40:
 		return   # far away: sleep (saves time on the tablet)
 	state_t += dt
 	match kind:
@@ -253,10 +286,12 @@ func _tick_open(dt: float, game, lead: Actor) -> void:
 						game.sfx("arrow")
 						state = "idle"
 						state_t = -0.6
-		"kragjr":
+		"kragjr", "drykragjr":
 			_kragjr_open(dt, game, lead)
 		_:
-			if kind in FOES2:
+			if Bosses.is_boss(kind):
+				_boss_open(dt, game, lead)
+			elif kind in FOES2:
 				_tick_foe2(dt, game, lead, to, flat, dist)
 
 
@@ -312,6 +347,10 @@ func _kragjr_open(dt: float, game, lead: Actor) -> void:
 			if cool <= 0:
 				cool = 2.4 if hp > max_hp / 2 else 1.6
 				game.spawn_shot("spikeball", position + Vector3(0, 0.2, 0), facing * 3.0 + Vector3(0, 2, 0), self)
+				if kind == "drykragjr":   # and a puff of blue fire straight at you
+					var from := position + Vector3(0, 0.8, 0)
+					var aim := (lead.position + Vector3(0, 0.7, 0) - from).normalized()
+					game.spawn_shot("blueflame", from, aim * 7.0, self)
 			if state_t > (4.0 if hp > max_hp / 2 else 2.8):
 				state = "warn"
 				state_t = 0
@@ -871,3 +910,215 @@ func _big_grumbler(dt: float, game, flat: Vector3, dist: float) -> void:
 				state = "idle"; state_t = 0
 	if state != "ready":
 		squash = Vector2(1.0 + sin(t * 8) * 0.03, 1.0 - sin(t * 8) * 0.03)
+
+
+# ------------------------------------------------------------------ walking bosses (Kraglings, King Krag, Dry Krag)
+## Chases you, shouts "!", does one of its attacks (see bosses.gd), then is tired for a
+## moment (stomp it!). Stays inside the castle walls.
+func _boss_open(dt: float, game, lead: Actor) -> void:
+	var info: Dictionary = Bosses.INFO[kind]
+	var ar: Rect2 = level.arena
+	var to := Vector3(lead.position.x - position.x, 0, lead.position.z - position.z)
+	var dist := to.length()
+	var spd: float = float(info.get("speed", 2.4)) * (1.25 if hp <= max_hp / 2 else 1.0)
+	var grav := GRAVITY
+	match state:
+		"sleep":
+			play("walk")
+			anim_t = 0
+			if dist > 0.1:
+				facing = to.normalized()
+			if ar.grow(-1).has_point(Vector2(lead.position.x, lead.position.z)) and game.gate_open:
+				state = "walk"
+				state_t = 0
+				game.start_boss(self)
+			_boss_move(dt, Vector3.ZERO, grav)
+			return
+		"walk":
+			play("walk")
+			if dist > 0.1:
+				facing = to.normalized()
+			_boss_move(dt, facing * spd if dist > 1.2 else Vector3.ZERO, grav)
+			if state_t > (1.8 if hp > max_hp / 2 else 1.2):
+				var list: Array = info.attacks
+				var atk: String = list[atk_i % list.size()]
+				atk_i += 1
+				state = "warn"
+				state_t = 0
+				set_meta("next", atk)
+				alert.visible = true
+				game.sfx("alert")
+		"warn":
+			play("angry")
+			_boss_move(dt, Vector3.ZERO, grav)
+			if state_t > 0.6:
+				alert.visible = false
+				var atk: String = get_meta("next", "wand")
+				state = atk
+				state_t = 0
+				cool = 0
+				stomps = 2 if kind == "rocko" else 1
+				target = Vector3(lead.position.x, 0, lead.position.z)
+				if atk == "spin":
+					heading = (target - Vector3(position.x, 0, position.z)).normalized()
+					if heading.length() < 0.5:
+						heading = Vector3.RIGHT
+					game.sfx("swap")
+				elif atk == "stomp":
+					_boss_jump(lead)
+				elif atk == "teleport":
+					game.fx.burst(position + Vector3(0, 1.0, 0), Color("c58aff"), 16, 4, 4)
+					game.sfx("swap")
+		"spin":   # shell dash, bouncing off the castle walls
+			play("spin")
+			_boss_move(dt, heading * 11.0, grav)
+			if walls_hit:
+				heading = Vector3(-heading.x, 0, -heading.z).rotated(Vector3.UP, randf_range(-0.6, 0.6))
+				game.fx.shake = 0.3
+				game.sfx("bonk")
+			if (position.x <= ar.position.x + 1.45 and heading.x < 0) or (position.x >= ar.end.x - 0.45 and heading.x > 0):
+				heading.x = -heading.x
+			if (position.z <= ar.position.y + 1.45 and heading.z < 0) or (position.z >= ar.end.y - 0.45 and heading.z > 0):
+				heading.z = -heading.z
+			if state_t > 1.6:
+				_boss_tired()
+		"stomp":   # big jump; landing makes a shockwave
+			play("attack" if vel.y > 0 else "angry")
+			_boss_move(dt, Vector3(vel.x, 0, vel.z), grav * 1.1)
+			if on_floor and state_t > 0.2:
+				_shockwave(game, lead)
+				stomps -= 1
+				if stomps > 0:
+					state_t = 0
+					_boss_jump(lead)
+				else:
+					_boss_tired()
+			elif state_t > 3.0:
+				_boss_tired()
+		"wand", "ring", "balls", "fire", "bluefire", "bones":
+			play("attack")
+			if dist > 0.1:
+				facing = to.normalized()
+			_boss_move(dt, Vector3.ZERO, grav)
+			cool -= dt
+			if cool <= 0:
+				_boss_shoot(state, game, lead)
+			var long_ := 1.2 if state in ["fire", "bluefire"] else 0.9
+			if state_t > long_:
+				_boss_tired()
+		"teleport":   # gone for a moment, then pops up near you and zaps
+			scale = Vector3.ONE * maxf(0.05, 1.0 - state_t * 3.0)
+			if state_t > 0.5:
+				var side := Vector3.RIGHT.rotated(Vector3.UP, randf() * TAU) * 4.0
+				var p := lead.position + side
+				p.x = clampf(p.x, ar.position.x + 2.0, ar.end.x - 1.0)
+				p.z = clampf(p.z, ar.position.y + 2.0, ar.end.y - 1.0)
+				position = Vector3(p.x, level.arena_y + 0.05, p.z)
+				scale = Vector3.ONE
+				game.fx.burst(position + Vector3(0, 1.0, 0), Color("c58aff"), 16, 4, 4)
+				state = "wand"
+				state_t = 0
+				cool = 0.25
+		"tired":   # puffing: the best time to stomp!
+			play("tired")
+			_boss_move(dt, Vector3.ZERO, grav)
+			if state_t > 1.4:
+				state = "walk"
+				state_t = 0
+		"heap":   # DRY KRAG in a heap; after a bit he pulls himself together
+			play("bones")
+			squash = Vector2(1.5, 0.35)
+			_boss_move(dt, Vector3.ZERO, grav)
+			if state_t > 3.0:
+				hp = max_hp / 2
+				squash = Vector2.ONE
+				state = "walk"
+				state_t = 0
+				safe_t = 0.6
+				show_health()
+				game.sfx("alert")
+				game.fx.burst(position + Vector3(0, 1.0, 0), Color("7fd8ff"), 18, 5, 6)
+				game.hud.say("HE'S BACK TOGETHER!", "Stomp him one more time!", 2.4)
+	if flash_t > 0 and state != "heap":
+		play("hurt")
+	if state != "teleport" and scale != Vector3.ONE:
+		scale = Vector3.ONE
+
+
+func _boss_move(dt: float, v: Vector3, grav: float) -> void:
+	vel.x = v.x
+	vel.z = v.z
+	vel.y -= grav * dt
+	move(dt)
+	var ar: Rect2 = level.arena
+	position.x = clampf(position.x, ar.position.x + 1.4, ar.end.x - 0.4)
+	position.z = clampf(position.z, ar.position.y + 1.4, ar.end.y - 0.4)
+	if position.y < level.arena_y - 1.0:   # never fall out of the castle
+		position.y = level.arena_y + 0.05
+		vel.y = 0
+
+
+func _boss_jump(lead: Actor) -> void:
+	var d := Vector3(lead.position.x - position.x, 0, lead.position.z - position.z)
+	var air := 1.0
+	vel = Vector3(d.x / air, 15.0, d.z / air)
+	on_floor = false
+	position.y += 0.1
+
+
+func _boss_tired() -> void:
+	state = "tired"
+	state_t = 0
+	vel.x = 0
+	vel.z = 0
+
+
+## Landing from a big jump: a ring of dust and a shake. If you're standing on the ground
+## nearby, it knocks you (jump to dodge it!).
+func _shockwave(game, lead: Actor) -> void:
+	game.fx.shake = 0.7
+	game.sfx("stomp")
+	for i in 12:
+		var a := TAU * i / 12.0
+		game.fx.burst(position + Vector3(cos(a) * 2.2, 0.2, sin(a) * 2.2), Color(0.9, 0.85, 0.75), 3, 2.5, 2, 0.6)
+	var d := Vector2(lead.position.x - position.x, lead.position.z - position.z).length()
+	if lead.on_floor and d < 4.2:
+		game.hurt_hero(position)
+
+
+## Fires one burst of this attack's shots at the hero you steer.
+func _boss_shoot(atk: String, game, lead: Actor) -> void:
+	var from := position + Vector3(0, height * 0.7, 0) + facing * (hw + 0.3)
+	var aim := lead.position + Vector3(0, lead.height * 0.5, 0) - from
+	var flat := Vector3(aim.x, 0, aim.z).normalized()
+	if flat.length() < 0.5:
+		flat = facing
+	var up := aim.normalized().y
+	match atk:
+		"wand":   # three magic shots in a fan
+			for k in [-0.3, 0.0, 0.3]:
+				var v: Vector3 = flat.rotated(Vector3.UP, k) * 7.0
+				v.y = up * 7.0
+				game.spawn_shot("magic", from, v, self)
+			game.sfx("zap", -6)
+			cool = 99.0
+		"ring":   # eight shots all round
+			for i in 8:
+				game.spawn_shot("magic", position + Vector3(0, 1.0, 0), Vector3.RIGHT.rotated(Vector3.UP, TAU * i / 8.0) * 6.0, self)
+			game.sfx("zap", -6)
+			cool = 99.0
+		"balls":
+			for k in [-0.5, 0.5]:
+				game.spawn_shot("spikeball", from + Vector3(0, 0.4, 0), flat.rotated(Vector3.UP, k) * 3.5 + Vector3(0, 3, 0), self)
+			cool = 99.0
+		"fire", "bluefire":   # a stream of fire, a puff every little while
+			var v: Vector3 = flat.rotated(Vector3.UP, sin(state_t * 9) * 0.25) * 8.5
+			v.y = up * 8.5
+			game.spawn_shot("flame" if atk == "fire" else "blueflame", from, v, self)
+			cool = 0.16
+		"bones":
+			for k in [-0.45, -0.15, 0.15, 0.45]:
+				var v: Vector3 = flat.rotated(Vector3.UP, k) * 6.5
+				v.y = 1.0
+				game.spawn_shot("bone", from, v, self)
+			cool = 99.0

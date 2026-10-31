@@ -38,12 +38,13 @@ func ready_in(state: String) -> bool:
 	return is_instance_valid(g) and g.is_inside_tree() and g.state == state
 
 
-const O := Vector3(Level.HOME_OX, 0, Level.HOME_OZ)    # where the old home sits in the big one
-const O3 := Vector3i(Level.HOME_OX, 0, Level.HOME_OZ)
+## Where the old 44 x 10 home sits in the big one (y: the old ground was at 5, now HOME_GY).
+const O := Vector3(Level.HOME_OX, Level.HOME_GY - 5, Level.HOME_OZ)
+const O3 := Vector3i(Level.HOME_OX, Level.HOME_GY - 5, Level.HOME_OZ)
 
 
 func cell(x: int, y: int, z: int) -> int:
-	return g.level.get_cell(O3.x + x, y, O3.z + z)
+	return g.level.get_cell(O3.x + x, O3.y + y, O3.z + z)
 
 
 func _decor_index(id: String) -> int:
@@ -115,12 +116,14 @@ func _process(_dt: float) -> bool:
 				g.home.sel.build = 0
 				down_at(18, 7)
 				check(g.home.remove() and cell(18, 4, 7) == Level.AIR, "you can dig the grass")
-				g.home.aim_ray(O + Vector3(18.5, 3, 7.5), Vector3.DOWN, g.leader())
-				g.home.remove(); g.home.remove()
-				g.home.aim_ray(O + Vector3(18.5, 3, 7.5), Vector3.DOWN, g.leader())
-				g.home.remove(); g.home.aim_ray(O + Vector3(18.5, 3, 7.5), Vector3.DOWN, g.leader()); g.home.remove()
-				g.home.aim_ray(O + Vector3(18.5, 3, 7.5), Vector3.DOWN, g.leader())
-				check(g.home.under.y == 0 and not g.home.remove(), "the bedrock at the bottom stays")
+				var stone0: int = g.ores.stone
+				for i in 3:   # dirt, dirt, then stone (dug out of the ground: you get the stone)
+					down_at(18, 7)
+					g.home.remove()
+				check(cell(18, 2, 7) == Level.AIR and g.ores.stone == stone0 + 1, "digging down to the stone should give 1 stone (%d)" % (g.ores.stone - stone0))
+				g.home.under = Vector3i(O3.x + 18, 0, O3.z + 7)
+				g.home.has_under = true
+				check(not g.home.remove() and g.level.get_cell(O3.x + 18, 0, O3.z + 7) == Level.BEDROCK, "the bedrock at the bottom stays")
 				# too far away
 				g.leader().position = O + Vector3(40, 5, 30)
 				down_at(16, 6)
@@ -189,7 +192,7 @@ func _process(_dt: float) -> bool:
 					if e[0] == "bed_bunk":
 						saved_col = int(e[5])
 				check(saved_col == 1, "the save should keep the bunk bed's colour")
-				check(int(d.get("home", {}).get("v", 0)) == 2, "the home should be saved in the new way")
+				check(int(d.get("home", {}).get("v", 0)) == 3, "the home should be saved in the new way")
 				# the camera turns, and the stick follows the camera
 				g.cam_yaw = PI / 2
 				g.move_vec = Vector2(0, -1)
@@ -280,7 +283,7 @@ func _process(_dt: float) -> bool:
 				step = 6
 		6:
 			if ready_in("home"):
-				check(cell(16, 5, 6) == Level.PLANKS and cell(18, 4, 7) == Level.AIR, "the planks (and the hole) should still be there")
+				check(cell(16, 5, 6) == Level.PLANKS and cell(18, 4, 7) == Level.AIR and cell(18, 2, 7) == Level.AIR, "the planks (and the hole) should still be there")
 				check(g.home.decor.size() == 6 and int(g.home.decor[O3 + Vector3i(29, 5, 5)].col) == 1, "the decorations (and the red bunk bed) should still be there (%d)" % g.home.decor.size())
 				check(g.cleared == 1, "clearing should count")
 				g.home.mode = "decor"
@@ -299,7 +302,7 @@ func _process(_dt: float) -> bool:
 				check(cell(16, 5, 6) == Level.BRICK and cell(16, 6, 6) == Level.BRICK, "old blocks should move into the big home")
 				check(g.home.decor.has(O3 + Vector3i(20, 5, 5)), "old decorations should move too")
 				check(int(g.home.decor[O3 + Vector3i(20, 5, 5)].get("col", -1)) == 0, "an old decoration (no colour saved) keeps its own colours")
-				check(g.home.data().blocks.size() == 2, "only the changes are saved")
+				check(g.home.data().blocks.size() == 2 and int(g.home.data().v) == 3, "only the changes are saved (as v3)")
 				step = 8
 				wait = 3
 		8:

@@ -2,12 +2,12 @@ class_name Team
 ## Everyone you can play as. Pick 2 human-like heroes and 1 partner on the TEAM screen.
 ## Our own look-alikes with made-up names: LUCKY (tall green brother), ALIX (Minecraft girl
 ## with orange hair), PETAL (a princess who floats), SPOTTY (mushroom-cap kid, super fast)
-## and BRUTO (a big yellow-capped bruiser who shoulder-bashes).
+## and BRAWLO (a big yellow-capped bruiser who shoulder-bashes).
 ##
 ## The game keeps two human slots, heroes.rocco (slot 1) and heroes.blocky (slot 2); the
 ## hero in each slot is whoever `Hero.who` says (Rocco and Blocky by default).
 
-const ORDER := ["rocco", "blocky", "lucky", "alix", "petal", "spotty", "bruto"]
+const ORDER := ["rocco", "blocky", "lucky", "alix", "petal", "spotty", "brawlo"]
 
 const INFO := {
 	"rocco": {"name": "ROCCO", "speed": 5.6, "jump": 12.6, "hw": 0.3, "h": 1.45, "size": 1.8, "feet": 28.0,
@@ -34,10 +34,10 @@ const INFO := {
 		"action": "DASH", "need": 4, "pitch": 1.6,
 		"about": "The fastest runner! ACTION: a super-speed dash that knocks bad guys over.",
 		"go": "Zoom zoom!", "hi": "Hooray! I'm on the team!", "color": Color("e8413b")},
-	"bruto": {"name": "BRUTO", "speed": 4.8, "jump": 11.0, "hw": 0.38, "h": 1.5, "size": 2.0, "feet": 30.0,
+	"brawlo": {"name": "BRAWLO", "speed": 4.8, "jump": 11.0, "hw": 0.38, "h": 1.5, "size": 2.0, "feet": 30.0,
 		"action": "BASH", "need": 5, "pitch": 0.7,
 		"about": "Big and strong! ACTION: a shoulder bash that smashes blocks and bad guys.",
-		"go": "Wa ha ha!", "hi": "BRUTO is the BEST!", "color": Color("ffd23a")},
+		"go": "Wa ha ha!", "hi": "BRAWLO is the BEST!", "color": Color("ffd23a")},
 }
 
 ## Heroes with a mid-air double jump (Rocco's is special: see main.gd _rocco_*).

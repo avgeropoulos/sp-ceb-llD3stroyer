@@ -174,7 +174,7 @@ FRIENDS = {
                   hat="crown", tall=1.04, dress=True),
     "spotty": dict(shirt="#3f7fd9", dark="#2c5fae", pants="#ffffff", pants_d="#d8dce6", skin="#ffd9bd", hair="#ffffff",
                    hat="mushroom", tall=0.82),
-    "bruto": dict(shirt="#ffd23a", dark="#d9a91e", pants="#8a4fc4", pants_d="#6b3a9c", skin="#f2b48a", hair="#3b2a20",
+    "brawlo": dict(shirt="#ffd23a", dark="#d9a91e", pants="#8a4fc4", pants_d="#6b3a9c", skin="#f2b48a", hair="#3b2a20",
                   hat="cap", hatc="#ffd23a", hatd="#d9a91e", tall=1.0, wide=1.35, badge="#8a4fc4", stache=True),
 }
 
@@ -200,7 +200,7 @@ def friend(kind, name, legA=0.0, legB=0.0, armA=0.0, armB=0.0, squash=0.0, mouth
         if c.get("dress"):
             pc = col["skin"]
         p.limb(cx, hip - 2, fx, fy, 6.0 * wide, pc)
-        shoe = rgb("#7a4a2a") if kind in ("alix",) else (rgb("#ff5c9a") if kind == "petal" else rgb("#4a3424") if kind == "bruto" else rgb("#ffffff"))
+        shoe = rgb("#7a4a2a") if kind in ("alix",) else (rgb("#ff5c9a") if kind == "petal" else rgb("#4a3424") if kind == "brawlo" else rgb("#ffffff"))
         if kind == "lucky":
             shoe = rgb("#7a4a2a")
         p.oval(fx + 2.2, fy + 3, 5.2 * wide, 3.4, shoe)
@@ -233,7 +233,7 @@ def friend(kind, name, legA=0.0, legB=0.0, armA=0.0, armB=0.0, squash=0.0, mouth
             p.oval(cx - 8, hy + 6, 6, 11, col["hair"])
             p.oval(cx + 1, hy - 8, 13, 6, col["hair"])
         p.eye(cx + 7, hy + 2, 2.5, 3.6)
-        p.oval(cx + 13, hy + 5, 2.4 if kind != "bruto" else 3.4, 2.1 if kind != "bruto" else 3.0, rgb("#e09d74"))
+        p.oval(cx + 13, hy + 5, 2.4 if kind != "brawlo" else 3.4, 2.1 if kind != "brawlo" else 3.0, rgb("#e09d74"))
         if c.get("stache"):   # a zig-zag moustache
             p.poly([(cx + 6, hy + 8), (cx + 9, hy + 6.5), (cx + 12, hy + 8.5), (cx + 15, hy + 6.5), (cx + 18, hy + 8.5), (cx + 16, hy + 10), (cx + 8, hy + 10)], rgb("#3b2a20"))
         elif kind == "lucky":
@@ -1211,7 +1211,8 @@ ATLAS = ["grass_top", "grass_side", "dirt", "stone", "iron", "gold", "diamond", 
          "snow_top", "snow_side", "ice", "sand", "sandstone",
          "log_top", "log_side", "leaves_tint", "wool_green", "wool_black", "road",
          "swamp_top", "swamp_side", "mud", "moon_top", "moon_rock",
-         "lava", "basalt", "frosting_top", "frosting_side", "cake", "candy_cane", "water", "cloud"]
+         "lava", "basalt", "frosting_top", "frosting_side", "cake", "candy_cane", "water", "cloud",
+         "lantern"]
 
 
 def world_textures():
@@ -1444,6 +1445,26 @@ def banana():
     p.poly([(28, 26), (22, 12), (30, 22), (34, 10), (36, 24)], rgb("#ffe680"))
     p.oval(6, 31, 2.4, 2.4, rgb("#6a4a2e"), ink=False)
     p.done("banana", border=2)
+
+
+def home_textures():
+    """The home caves: a glowing lantern block (wooden frame, warm light)."""
+    im = Image.new("RGB", (16, 16), (255, 214, 120))
+    px = im.load()
+    for y in range(16):
+        for x in range(16):
+            d = max(abs(x - 7.5), abs(y - 7.5))
+            if d > 6.5:
+                px[x, y] = (96, 62, 30)                        # wooden frame
+            elif d > 5.5:
+                px[x, y] = (150, 104, 54)
+            else:
+                g = int(40 * (1 - d / 5.5))
+                px[x, y] = (255, min(255, 200 + g), min(255, 110 + g * 2))   # warm glow, brightest in the middle
+    for i in range(2, 14):                                        # little window bars
+        px[7, i] = (150, 104, 54)
+        px[i, 7] = (150, 104, 54)
+    im.resize((64, 64), Image.NEAREST).save(os.path.join(OUT, "t_lantern.png"))
 
 
 def build_textures():
@@ -1747,6 +1768,183 @@ def foes2():
     roller("roller_1", 0); roller("roller_2", 0.6)
     cactusman("cactusman_1"); cactusman("cactusman_throw", throw=True)
 
+# ---------------------------------------------------------------- bosses: Kraglings, King Krag, Dry Krag (Jr.)
+BOSS_LOOK = {
+    "zippo": dict(skin="#f2c95a", shell="#3fae4a", hair="mohawk", hc="#3fa0ff", extra=["bandana"]),
+    "rocko": dict(skin="#e9b850", shell="#2f8a3c", hair="none", hc="", extra=["spikes", "brows"]),
+    "maestro": dict(skin="#f2c95a", shell="#3fae4a", hair="wild", hc="#a9e2ff", extra=["wand"]),
+    "glamma": dict(skin="#f6cf6a", shell="#ff6fb0", hair="bow", hc="#ff3d8f", extra=["rings", "lashes"]),
+    "bruto": dict(skin="#e0a84a", shell="#4f7f3a", hair="none", hc="", extra=["brows", "jaw"]),
+    "specs": dict(skin="#f2c95a", shell="#3fae4a", hair="rainbow", hc="", extra=["glasses", "wand"]),
+    "tiny": dict(skin="#f6d26c", shell="#3fae4a", hair="tuft", hc="#ff8c2a", extra=["tooth"]),
+    "kingkrag": dict(skin="#efb24a", shell="#2f8a3c", hair="mane", hc="#e8413b", extra=["spikes", "horns", "brows", "cuffs"]),
+    "drykrag": dict(skin="#ece6d2", shell="#8a8e96", hair="mane", hc="#9aa3ad", extra=["spikes", "horns", "bone"]),
+}
+
+
+def _shade(h, k):
+    c = rgb(h)
+    return tuple(max(0, min(255, int(v * k))) for v in c[:3]) + (255,)
+
+
+def turtle_boss(name, kind, frame):
+    """A Kragling / King Krag / Dry Krag standing up, facing right (side view)."""
+    L = BOSS_LOOK[kind]
+    bone = "bone" in L["extra"]
+    SKc, SHc = rgb(L["skin"]), rgb(L["shell"])
+    DK = _shade(L["skin"], 0.75)
+    BELLY = rgb("#f7ecc8") if not bone else rgb("#d8d2bd")
+    p = Pen(90, 100)
+    cx = 42
+    if frame == "spin":   # tucked into the shell
+        p.oval(cx, 72, 26, 22, SHc)
+        p.oval(cx, 72, 18, 15, _shade(L["shell"], 1.18), ink=False)
+        p.oval(cx, 88, 24, 6, rgb("#f7ecc8") if not bone else rgb("#c9c3b0"))
+        if "spikes" in L["extra"]:
+            for i in range(5):
+                x = cx - 16 + i * 8
+                p.poly([(x - 3.5, 56 + abs(i - 2) * 3), (x, 44 + abs(i - 2) * 3), (x + 3.5, 56 + abs(i - 2) * 3)], rgb("#ffffff"))
+        for i in range(3):   # speed lines
+            p.line([(cx - 40, 62 + i * 9), (cx - 30, 62 + i * 9)], rgb("#ffffff"), 2)
+        p.done(name)
+        return
+    sw = {"1": 0.45, "2": -0.45}.get(frame, 0.0)
+    # back leg, shell, body, front leg
+    for a, col in ((-sw, DK), (sw, SKc)):
+        fx, fy = cx + math.sin(a) * 10, 84 + math.cos(a) * 6
+        p.limb(cx, 70, fx, fy, 9, col)
+        p.oval(fx + 3, fy + 5, 9, 5, col)
+        for t in range(3):
+            p.oval(fx + 8 + t * 0.5, fy + 2.5 + t * 2.2, 1.4, 1.3, rgb("#ffffff"), ink=False)
+        if col == DK:
+            p.oval(cx - 18, 60, 20, 24, SHc)   # shell on the back
+            p.oval(cx - 18, 60, 14, 18, _shade(L["shell"], 1.15), ink=False)
+            p.d.arc(p._b(cx - 38, 36, cx + 2, 84), 270, 90, fill=rgb("#f7ecc8") if not bone else rgb("#c9c3b0"), width=int(3.5 * SS))
+            if "spikes" in L["extra"]:
+                for i in range(4):
+                    a2 = math.pi * (0.75 + i * 0.17)
+                    x, y = cx - 18 + math.cos(a2) * 21, 60 + math.sin(a2) * 24
+                    p.poly([(x - 3, y + 2), (x + math.cos(a2) * 9, y + math.sin(a2) * 9), (x + 3, y - 2)], rgb("#ffffff"))
+            p.poly([(cx - 22, 76), (cx - 34, 86), (cx - 18, 82)], SKc)   # tail
+            p.oval(cx + 2, 60, 15, 20, SKc)   # body
+            p.oval(cx + 8, 62, 9, 15, BELLY)
+            for i in range(3):
+                p.line([(cx + 1, 54 + i * 7), (cx + 15, 54 + i * 7)], _shade("#f7ecc8", 0.75) if not bone else rgb("#8a8170"), 1.4)
+    # arm
+    up = frame == "attack"
+    hx, hy = (cx + 18, 30) if up else (cx + 20, 60)
+    p.limb(cx + 6, 48, hx, hy, 7, SKc)
+    p.oval(hx, hy, 5, 5, SKc)
+    if "cuffs" in L["extra"] or bone:
+        p.rect(hx - 6, hy - (8 if up else -3) - 2, hx + 2, hy - (8 if up else -3) + 4, rgb("#2b2b33"), r=1.5)
+    if "rings" in L["extra"]:
+        p.oval((cx + 6 + hx) / 2, (48 + hy) / 2, 4.5, 4.5, rgb("#ffcf33"))
+    if "wand" in L["extra"]:
+        p.line([(hx, hy), (hx + 10, hy - 14)], rgb("#ffcf33"), 2.6)
+        p.star(hx + 11, hy - 16, 5, rgb("#ff6fd0"))
+    # head
+    hy0 = 30 + (3 if frame == "hurt" else 0)
+    p.oval(cx + 8, hy0, 15, 14, SKc)
+    p.oval(cx + 20, hy0 + 4, 10, 8, _shade(L["skin"], 1.1))
+    p.oval(cx + 26, hy0 + 1, 1.2, 1.2, INK, ink=False)
+    if bone:
+        p.oval(cx + 12, hy0 - 3, 4.5, 5, rgb("#1b1b24"))
+        p.oval(cx + 12.5, hy0 - 3, 1.8, 1.8, rgb("#7fd8ff"), ink=False)
+        for i in range(4):
+            p.rect(cx + 15 + i * 3, hy0 + 9, cx + 17.5 + i * 3, hy0 + 12, rgb("#ffffff"), r=0.5)
+    elif frame == "hurt":
+        p.line([(cx + 9, hy0 - 6), (cx + 15, hy0)], INK, 2)
+        p.line([(cx + 15, hy0 - 6), (cx + 9, hy0)], INK, 2)
+    else:
+        p.eye(cx + 12, hy0 - 3, 3, 4, 1.0)
+    if frame == "attack" and not bone:
+        p.oval(cx + 22, hy0 + 9, 5, 3.5, rgb("#7a1f2b"))
+    else:
+        p.d.arc(p._b(cx + 14, hy0 + 4, cx + 28, hy0 + 11), 20, 140, fill=INK, width=int(1.6 * SS))
+    if "tooth" in L["extra"]:
+        p.rect(cx + 20, hy0 + 9, cx + 23, hy0 + 13, rgb("#ffffff"), r=0.5)
+    if "jaw" in L["extra"]:
+        p.oval(cx + 16, hy0 + 11, 10, 5, _shade(L["skin"], 0.9))
+    if "brows" in L["extra"]:
+        p.line([(cx + 7, hy0 - 10), (cx + 17, hy0 - 6)], INK if kind != "kingkrag" else rgb(L["hc"]), 3)
+    if "lashes" in L["extra"]:
+        p.line([(cx + 14, hy0 - 7), (cx + 17, hy0 - 10)], INK, 1.4)
+    if "glasses" in L["extra"]:
+        p.oval(cx + 12, hy0 - 3, 5.5, 5.5, (0, 0, 0, 0))
+        p.line([(cx + 17, hy0 - 3), (cx + 22, hy0 - 2)], INK, 1.6)
+    if "bandana" in L["extra"]:
+        p.rect(cx - 7, hy0 - 6, cx + 21, hy0 - 1, rgb("#e8413b"), r=1.5)
+    if "horns" in L["extra"]:
+        for dx in (-4, 4):
+            p.poly([(cx + 2 + dx, hy0 - 10), (cx - 2 + dx * 1.5, hy0 - 24), (cx + 6 + dx, hy0 - 12)], rgb("#f7ecc8"))
+    hc = rgb(L["hc"]) if L["hc"] else SKc
+    hair = L["hair"]
+    if hair == "mohawk":
+        for i in range(5):
+            x = cx - 4 + i * 4
+            p.poly([(x - 2.5, hy0 - 11), (x - 1, hy0 - 22 + abs(i - 2)), (x + 2.5, hy0 - 12)], hc)
+    elif hair == "wild":
+        for i in range(6):
+            a = math.pi * (1.0 + i * 0.2)
+            p.oval(cx + 6 + math.cos(a) * 13, hy0 - 6 + math.sin(a) * 11, 7, 6, hc)
+    elif hair == "bow":
+        p.oval(cx - 2, hy0 - 2, 9, 11, rgb("#ffcf33"))
+        p.poly([(cx + 6, hy0 - 13), (cx - 4, hy0 - 22), (cx - 4, hy0 - 8)], hc)
+        p.poly([(cx + 6, hy0 - 13), (cx + 16, hy0 - 22), (cx + 16, hy0 - 8)], hc)
+        p.oval(cx + 6, hy0 - 13, 3, 3, hc)
+    elif hair == "rainbow":
+        cols = ["#e8413b", "#ff8c2a", "#ffd23a", "#3fbf5a", "#3f7fd9", "#8a5bc4"]
+        for i, c in enumerate(cols):
+            x = cx - 6 + i * 3.6
+            p.poly([(x - 2.2, hy0 - 11), (x - 0.5, hy0 - 24 + abs(i - 2.5)), (x + 2.2, hy0 - 12)], rgb(c))
+    elif hair == "tuft":
+        for i in range(3):
+            x = cx + 3 + i * 3
+            p.poly([(x - 1.8, hy0 - 12), (x - 1, hy0 - 19), (x + 1.8, hy0 - 12)], hc)
+    elif hair == "mane":
+        for i in range(6):
+            y = hy0 - 10 + i * 4.5
+            p.poly([(cx - 2, y), (cx - 15 - (i % 2) * 3, y - 3), (cx - 4, y + 5)], hc)
+    p.done(name, rot=(-8 if frame == "hurt" else 0))
+
+
+def dry_krag_jr(name, bob=0.0, hurt=False, angry=False):
+    """Dry Krag Jr.: a skeleton dragon kid in a dark bony hover-cup."""
+    p = Pen(80, 90)
+    cx, cy = 40, 50 + bob
+    BONE = rgb("#ece6d2") if not hurt else rgb("#ffffff")
+    p.oval(cx + 3, cy - 18, 13, 12, BONE)
+    for i in range(4):
+        x = cx - 6 + i * 5
+        p.poly([(x - 3, cy - 28 + i * 0.5), (x, cy - 38 + abs(i - 1.5) * 2), (x + 3, cy - 28)], rgb("#9aa3ad"))
+    p.oval(cx + 13, cy - 14, 6, 4.5, rgb("#d8d2bd"))
+    p.oval(cx + 6, cy - 19, 4, 4.6, rgb("#1b1b24"))
+    p.oval(cx + 6.5, cy - 19, 1.6, 1.6, rgb("#7fd8ff"), ink=False)
+    if angry:
+        p.line([(cx + 1, cy - 25), (cx + 10, cy - 22)], INK, 2.4)
+    for i in range(3):
+        p.rect(cx + 9 + i * 3, cy - 10, cx + 11 + i * 3, cy - 7.5, rgb("#ffffff"), r=0.4)
+    p.limb(cx - 6, cy - 10, cx - 12, cy - 4, 3.5, BONE)
+    p.d.chord(p._b(cx - 24, cy - 22, cx + 24, cy + 20), 0, 180, fill=rgb("#4f535e"), outline=INK, width=int(LW * SS))
+    p.rect(cx - 24, cy - 4, cx + 24, cy + 1.5, rgb("#7fd8ff"), r=1.5)
+    for s in (-1, 1):
+        p.poly([(cx + s * 12 - 3, cy + 6), (cx + s * 12, cy + 12), (cx + s * 12 + 3, cy + 6)], rgb("#ece6d2"))
+    p.rect(cx - 2, cy + 18, cx + 2, cy + 25, rgb("#7c8794"), r=1)
+    p.oval(cx - 9, cy + 26, 9, 2.6, rgb("#ece6d2"))
+    p.oval(cx + 9, cy + 26, 9, 2.6, rgb("#ece6d2"))
+    p.done(name)
+
+
+def bosses():
+    for k in BOSS_LOOK:
+        for f in ["1", "2", "attack", "hurt", "spin"]:
+            turtle_boss("%s_%s" % (k, f), k, f)
+    dry_krag_jr("drykragjr_1", 0)
+    dry_krag_jr("drykragjr_2", 2)
+    dry_krag_jr("drykragjr_angry", 0, angry=True)
+    dry_krag_jr("drykragjr_hurt", 0, hurt=True)
+
+
 # ---------------------------------------------------------------- build everything
 def main():
     # Rocco
@@ -1791,6 +1989,7 @@ def main():
     krag_jr("kragjr_2", 2)
     krag_jr("kragjr_angry", 0, angry=True)
     krag_jr("kragjr_hurt", 0, hurt=True)
+    bosses()
     # bits
     shot_water(); shot_fire(); new_shots(); coin(); heart(); heart("heart_empty", "#5b4b63"); spark_shot(); arrow(); spikeball()
     tree("tree_a"); tree("tree_b", "#3b9d52", "#62c76a"); tree("tree_c", "#7fbf3f", "#a7dc5c")
@@ -1806,6 +2005,7 @@ def main():
     city_textures()
     spooky_moon_textures()
     world2_textures()
+    home_textures()
     banana()
     atlas()
     print("art written to", os.path.abspath(OUT))

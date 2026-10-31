@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dtfucqwfocwj6"
-path="res://.godot/imported/bruto_jump.png-8082c4099aacef210707feebd40c0ac7.ctex"
+uid="uid://bqvg0f6vs22ds"
+path="res://.godot/imported/rocko_attack.png-060eb73b4b4e79cc2704a99f6ad0d8e0.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/bruto_jump.png"
-dest_files=["res://.godot/imported/bruto_jump.png-8082c4099aacef210707feebd40c0ac7.ctex"]
+source_file="res://art/rocko_attack.png"
+dest_files=["res://.godot/imported/rocko_attack.png-060eb73b4b4e79cc2704a99f6ad0d8e0.ctex"]
 
 [params]
 

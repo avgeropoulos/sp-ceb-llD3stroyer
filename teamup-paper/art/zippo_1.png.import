@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cavfmy843gsbc"
-path="res://.godot/imported/bruto_run2.png-32fc1d9ba471494033ab399bf2f7ddfe.ctex"
+uid="uid://bdsgglv4vhp5"
+path="res://.godot/imported/zippo_1.png-1becaf9229654745786d7266bb52ca14.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/bruto_run2.png"
-dest_files=["res://.godot/imported/bruto_run2.png-32fc1d9ba471494033ab399bf2f7ddfe.ctex"]
+source_file="res://art/zippo_1.png"
+dest_files=["res://.godot/imported/zippo_1.png-1becaf9229654745786d7266bb52ca14.ctex"]
 
 [params]
 
