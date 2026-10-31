@@ -106,6 +106,10 @@ jobs:
             timeout 300s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/cave_check.gd -- $look 2>&1 | tee test-cave-$look.log
             grep -q 'TEST PASSED' test-cave-$look.log
           done
+          for world in meadow frost dunes swamp moon lava candy beach jungle cloud; do
+            timeout 300s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/course_check.gd -- $world 2>&1 | tee test-course-$world.log
+            grep -q 'TEST PASSED' test-course-$world.log
+          done
       - name: Bake the home world (loads in a blink on the tablet)
         run: |
           timeout 300s godot --headless --path teamup-paper --script res://tools/bake_home.gd 2>&1 | tee bake.log

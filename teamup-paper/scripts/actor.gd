@@ -31,6 +31,7 @@ var sprite_h := 1.6
 var walls_hit := false
 var ceiling_hit = null
 var landed := false
+var step_dy := 0.0          # stepping up a block: the picture catches up smoothly
 var land_v := 0.0          # how fast we were falling when we landed (for the landing squash)
 var sprite_base_y := 0.0   # paper look: where the picture sits when not bouncing
 var squash := Vector2.ONE   # stretch/squash of the cutout (x, y)
@@ -141,6 +142,8 @@ func animate(dt: float, fps: float = 8.0) -> void:
 		if flash_t > 0:
 			flash_t -= dt
 		Toys.pose(self, dt)
+		step_dy = move_toward(step_dy, 0.0, dt * 7.0)
+		model.position.y = -step_dy
 		return
 	if not frames.has(anim):
 		return
@@ -174,7 +177,8 @@ func animate(dt: float, fps: float = 8.0) -> void:
 		sq *= Vector2(0.92, 1.09)
 	elif anim == "win":
 		bob = absf(sin(anim_t * 6.0)) * 0.15 * sprite_h
-	sprite.position.y = sprite_base_y + bob * absf(sq.y)
+	step_dy = move_toward(step_dy, 0.0, dt * 7.0)
+	sprite.position.y = sprite_base_y + bob * absf(sq.y) - step_dy
 	sprite.scale = Vector3(tx * sq.x, sq.y, 1)
 	if flash_t > 0:
 		flash_t -= dt
@@ -189,8 +193,12 @@ func move(dt: float) -> void:
 	ceiling_hit = null
 	landed = false
 	var p := position
+	var can_step := level.open and on_floor and vel.y <= 0.1
 	p.x += vel.x * dt
 	var hit = level.box_hit(p, hw, height)
+	if hit != null and can_step and _step_up(p, hit):
+		p.y = floorf(p.y + 0.05) + 1.0
+		hit = null
 	if hit != null:
 		p.x = (hit.x - hw - 0.001) if vel.x > 0 else (hit.x + 1 + hw + 0.001)
 		vel.x = 0
@@ -199,6 +207,9 @@ func move(dt: float) -> void:
 	if not level.open:
 		p.z = clampf(p.z, Level.WALK_Z0, Level.WALK_Z1)
 	hit = level.box_hit(p, hw, height)
+	if hit != null and can_step and _step_up(p, hit):
+		p.y = floorf(p.y + 0.05) + 1.0
+		hit = null
 	if hit != null:
 		p.z = (hit.z - hw - 0.001) if vel.z > 0 else (hit.z + 1 + hw + 0.001)
 		vel.z = 0
@@ -216,6 +227,20 @@ func move(dt: float) -> void:
 		vel.y = 0
 	position = p
 	on_floor = landed or (vel.y <= 0 and level.box_hit(p - Vector3(0, 0.05, 0), hw * 0.9, 0.1) != null)
+
+
+## Open worlds: walking into a block only 1 high just steps up onto it (like the slopes
+## in Mario 64), as long as there's room for the body on top. The picture follows smoothly.
+func _step_up(p: Vector3, hit) -> bool:
+	var feet := floori(p.y + 0.05)
+	if hit.y != feet:
+		return false
+	var up := Vector3(p.x, feet + 1.0, p.z)
+	if level.box_hit(up, hw, height) != null:
+		return false
+	step_dy += up.y - p.y
+	step_dy = minf(step_dy, 1.0)
+	return true
 
 
 func update_shadow() -> void:

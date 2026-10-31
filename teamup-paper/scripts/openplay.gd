@@ -35,12 +35,16 @@ var stars := {}              # star id -> the spinning star (only while it's out
 var beacons := {}            # star id -> floating name
 var flag: Node3D
 var painting: Painting       # the SECRET PAINTING (jump in for its star)
+var course: CoursePlay       # the cannon, the slide, quicksand (Mario 64-style course parts)
 var t := 0.0
 
 
 func setup(g, lv: Level) -> void:
 	game = g
 	level = lv
+	course = CoursePlay.new()
+	add_child(course)
+	course.setup(g, lv)
 	for o in level.objectives:
 		var b := Label3D.new()
 		b.text = "★ " + o.name
@@ -203,6 +207,8 @@ func _drop_star(id: String, why: String) -> void:
 func step(dt: float) -> void:
 	t += dt
 	var l: Hero = game.leader()
+	if course:
+		course.step(dt)
 	if painting:
 		painting.step(dt)
 	for id in stars.keys():

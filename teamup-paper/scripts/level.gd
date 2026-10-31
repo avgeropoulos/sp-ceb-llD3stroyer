@@ -108,6 +108,19 @@ var painting := {}            # the secret painting in an open world: {pos, w, h
 var bonus_tops: Array = []    # BONUS COURSE: where you stand on each platform, start to star
 var bonus_star := Vector3.ZERO
 var keep_out: Array = []      # [center, radius]: the challenges' space
+# Mario 64-style course (see _course_heights / _course_build):
+var summit_spot := Vector3.ZERO  # standing spot in the middle of the flat 9x9 top of the big mountain
+var mountain := Vector2.ZERO     # its centre (x, z)
+var ramp_s := {}                 # Vector2i -> 0..1: cells of the spiral path (0 = bottom, 1 = top)
+var cannon_spot := Vector3.ZERO  # walk into the cannon to fly to the floating island
+var island_spot := Vector3.ZERO  # standing spot in the middle of the floating island
+var chomp_spot := Vector3.ZERO   # the Chompy's fenced corner
+var slide := false               # Frosty Peaks: the inside lane of the mountain path is an ice slide
+var landmark := Vector3.ZERO     # each world's own building (cabin, mansion, ship, pyramid room)
+var _c_mx := 1.0                 # -1 when the world is mirrored
+var _c_top := {}                 # Vector2i -> block: the top block of a column (paths, ponds, bridges)
+var _c_bridge := {}              # Vector2i -> y: wooden bridge plank at this height (air below)
+var _c_mount := {}               # Vector2i -> true: columns that belong to the mountain
 var step_tops: Array = []     # SKY STEPS: where you stand on each step (for the test robot)
 var tower_tops: Array = []    # TALL TOWER: the same for the stairs
 var top_block := GRASS        # what the ground is made of here
@@ -1051,9 +1064,12 @@ func _special_foes(start: Vector2i) -> void:
 		if i < step_tops.size():
 			var st: Vector3 = step_tops[i]
 			spawns.append({"kind": "bat", "pos": Vector3(st.x, st.y - 1.0 - 0.75, st.z)})
-	var c := _free_spot(8)
-	if c.x >= 0 and Vector2(c).distance_to(Vector2(start)) > 14:
-		spawns.append({"kind": "chompy", "pos": Vector3(c.x + 0.5, ground_at(c.x, c.y) + 0.01, c.y + 0.5)})
+	if chomp_spot != Vector3.ZERO:   # in its fenced corner (Mario 64's Chain Chomp)
+		spawns.append({"kind": "chompy", "pos": chomp_spot})
+	else:
+		var c := _free_spot(8)
+		if c.x >= 0 and Vector2(c).distance_to(Vector2(start)) > 14:
+			spawns.append({"kind": "chompy", "pos": Vector3(c.x + 0.5, ground_at(c.x, c.y) + 0.01, c.y + 0.5)})
 	var b := _free_spot(10)
 	if b.x >= 0 and Vector2(b).distance_to(Vector2(start)) > 16:
 		var g := ground_at(b.x, b.y)
@@ -1072,6 +1088,13 @@ func _more_quests(start: Vector2i) -> void:
 	if step_tops.size() > 4:
 		red_spots.append(step_tops[3] + Vector3(0, 0.6, 0))
 		red_spots.append(step_tops[step_tops.size() - 1] + Vector3(0, 0.6, 0))
+	if island_spot != Vector3.ZERO:   # on the floating island (take the cannon!)
+		red_spots.append(island_spot + Vector3(-1.5, 0.6, 1.5))
+	if not ramp_s.is_empty():   # half way up the mountain path
+		var rp := ramp_point(0.55)
+		red_spots.append(Vector3(floori(rp.x) + 0.5, ground_at(floori(rp.x), floori(rp.z)) + 0.6, floori(rp.z) + 0.5))
+	elif landmark != Vector3.ZERO:   # in the pyramid's treasure room
+		red_spots.append(landmark + Vector3(-2, 0.6, -2))
 	var tries := 0
 	while red_spots.size() < 8 and tries < 40:
 		tries += 1
@@ -1223,6 +1246,444 @@ func ground_at(x: int, z: int) -> int:
 	return hmap[x + z * sx]
 
 
+# ------------------------------------------------------------------ Mario 64-style courses
+## The shape of each world's course. H = height of the mountain's flat top, turns = how many
+## times the path winds round it, style = cone / pyramid, kc = how steep the cliffs are.
+const COURSE := {
+	"meadow": {"H": 24, "turns": 0.75, "path": DIRT, "bridges": true, "pond": true, "garden": true},
+	"frost": {"H": 27, "turns": 1.5, "path": SNOW, "slide": true, "kc": 2.0, "cabin": true},
+	"dunes": {"H": 22, "style": "pyramid", "quicksand": true},
+	"swamp": {"H": 18, "turns": 0.75, "path": STONE_BRICK, "mansion": true},
+	"moon": {"H": 22, "turns": 0.75, "path": MOON_ROCK, "bridges": true},
+	"lava": {"H": 22, "turns": 0.75, "path": STONE_BRICK, "moat": true, "bridges": true},
+	"candy": {"H": 22, "turns": 1.0, "path": WOOL_WHITE, "stripes": true},
+	"beach": {"H": 18, "turns": 0.75, "path": PLANKS, "ship": true},
+	"jungle": {"H": 28, "turns": 1.0, "path": DIRT, "kc": 3.0, "pond": true, "bridges": true},
+	"cloud": {"H": 22, "turns": 0.75, "path": PLANKS, "bridges": true},
+}
+const RAMP_R0 := 15.5   # the path starts this far from the middle of the mountain (south side) ...
+const RAMP_R1 := 5.5    # ... and winds in to the flat top
+const RAMP_W := 2.2     # half the path's width
+const RAMP_A0 := PI / 2.0   # it starts at the south (towards the start)
+
+
+func course() -> Dictionary:
+	return COURSE.get(world, COURSE["meadow"])
+
+
+## Where the middle of the spiral path is at s (0..1), at its walking height.
+func ramp_point(s: float) -> Vector3:
+	var c: Dictionary = course()
+	var th: float = RAMP_A0 + s * float(c.get("turns", 0.75)) * TAU
+	var r := lerpf(RAMP_R0, RAMP_R1, s)
+	var h := lerpf(7.0, float(c.H), s)
+	return Vector3(mountain.x + 0.5 + cos(th) * r * _c_mx, round(h), mountain.y + 0.5 + sin(th) * r)
+
+
+## Downhill along the path at s (flat, normalised): the way the slide pushes you.
+func ramp_down(s: float) -> Vector3:
+	var a := ramp_point(clampf(s - 0.01, 0, 1))
+	var b := ramp_point(clampf(s + 0.01, 0, 1))
+	var d := Vector3(a.x - b.x, 0, a.z - b.z)
+	return d.normalized() if d.length() > 0.001 else Vector3.ZERO
+
+
+## The height of the big mountain at (x, z), or -1 if it isn't part of the mountain.
+## The path winds round it (each path cell goes in `ramp_s`); between two turns of the path
+## there's a wall 2 high (a guard rail you can't just step over); outside the last turn the
+## side falls away as a cliff; the 9x9 top is flat.
+func _mountain_h(x: int, z: int) -> float:
+	var c: Dictionary = course()
+	var H := float(c.H)
+	var kc := float(c.get("kc", 2.2))
+	var dx := float(x) - mountain.x
+	var dz := float(z) - mountain.y
+	if absf(dx) <= 4.0 and absf(dz) <= 4.0:
+		return H
+	var d := Vector2(dx, dz).length()
+	if c.get("style", "cone") == "pyramid":   # Shifting Sand Land: steps all the way up
+		var ring := maxi(absi(int(dx)), absi(int(dz)))
+		var ph := H - (ring - 4)
+		return ph if ph > 6 else -1.0
+	if d > RAMP_R0 + RAMP_W + 10:
+		return -1.0
+	var turns := float(c.get("turns", 0.75))
+	var span := turns * TAU
+	var phi := fposmod(atan2(dz, dx * _c_mx) - RAMP_A0, TAU)
+	var p_in := Vector2(-1, 0)    # (r, h) of the path turn just inside this cell
+	var p_out := Vector2(-1, 0)   # ... and just outside
+	for k in 3:
+		var sk := (phi + TAU * k) / span
+		if sk > 1.0:
+			break
+		var r := lerpf(RAMP_R0, RAMP_R1, sk)
+		var h := lerpf(7.0, H, sk)
+		if absf(d - r) <= RAMP_W:
+			ramp_s[Vector2i(x, z)] = sk
+			return round(h)
+		if r < d and (p_in.x < 0 or r > p_in.x):
+			p_in = Vector2(r, h)
+		if r > d and (p_out.x < 0 or r < p_out.x):
+			p_out = Vector2(r, h)
+	var cone := H - (d - 5.5) * kc
+	if p_in.x >= 0 and p_out.x >= 0:
+		return round(p_in.y) + 2.0          # the wall between two turns of the path
+	if p_in.x >= 0:
+		return round(p_in.y) - (d - p_in.x - RAMP_W) * kc   # the cliff outside the last turn
+	if p_out.x >= 0:
+		return minf(H, maxf(round(p_out.y) + 2.0, cone))   # the core inside the first turn
+	return cone
+
+
+## Builds the Mario 64-style course into the height map: the big mountain with its spiral
+## path (bridges, a lava moat, a slide), a pond, flat pads for the cannon and the Chompy.
+## `P` maps a design spot to this world (mirrored worlds flip x).
+func _course_heights(w: String, P: Callable) -> void:
+	var c: Dictionary = course()
+	mountain = Vector2(P.call(48, 52))
+	_c_mx = -1.0 if P.call(10, 0).x != 10 else 1.0
+	slide = c.get("slide", false)
+	ramp_s = {}
+	_c_top = {}
+	_c_bridge = {}
+	_c_mount = {}
+	var reach := 22 if c.get("style", "cone") == "pyramid" else int(RAMP_R0 + RAMP_W + 10)
+	for z in range(int(mountain.y) - reach, int(mountain.y) + reach + 1):
+		for x in range(int(mountain.x) - reach, int(mountain.x) + reach + 1):
+			if x < 1 or z < 1 or x >= sx - 1 or z >= sz - 1:
+				continue
+			var mh := _mountain_h(x, z)
+			if mh < 0:
+				continue
+			var i := x + z * sx
+			var cell := Vector2i(x, z)
+			if ramp_s.has(cell):
+				hmap[i] = int(mh)
+				var off := Vector2(x - mountain.x, z - mountain.y).length() - lerpf(RAMP_R0, RAMP_R1, ramp_s[cell])
+				if slide and absf(off) <= 1.0:
+					_c_top[cell] = ICE   # the slide lane (the outer lane is snow, to walk up)
+				else:
+					_c_top[cell] = int(c.get("path", DIRT))
+			elif mh > hmap[i]:
+				hmap[i] = clampi(int(round(mh)), 3, sy - 6)
+			else:
+				continue
+			_c_mount[cell] = true
+	# bridges: two short pieces of the path become wooden bridges over a gap
+	if c.get("bridges", false):
+		for cell in ramp_s:
+			var sv: float = ramp_s[cell]
+			if (sv > 0.3 and sv < 0.36) or (sv > 0.62 and sv < 0.68):
+				var i: int = cell.x + cell.y * sx
+				_c_bridge[cell] = hmap[i] - 1
+				hmap[i] = maxi(hmap[i] - 5, 4)
+				_c_top.erase(cell)
+	# a lava moat round the mountain, with one stone bridge where the path starts
+	if c.get("moat", false):
+		for z in sz:
+			for x in sx:
+				var d := Vector2(x - mountain.x, z - mountain.y).length()
+				if d > RAMP_R0 + RAMP_W + 2.0 and d < RAMP_R0 + RAMP_W + 5.5:
+					var i := x + z * sx
+					if absf(x - mountain.x) < 2.2 and z > mountain.y:
+						hmap[i] = 6
+						_c_top[Vector2i(x, z)] = STONE_BRICK
+					elif hmap[i] <= 9:
+						hmap[i] = 4
+						_c_top[Vector2i(x, z)] = LAVA
+	# a pond with a sandy edge
+	if c.get("pond", false):
+		var pc: Vector2i = P.call(30, 76)
+		for z in range(pc.y - 7, pc.y + 8):
+			for x in range(pc.x - 7, pc.x + 8):
+				var d := Vector2(x - pc.x, z - pc.y).length()
+				if d < 5.0:
+					hmap[x + z * sx] = 5
+					_c_top[Vector2i(x, z)] = WATER
+				elif d < 6.5:
+					hmap[x + z * sx] = 6
+					_c_top[Vector2i(x, z)] = SAND
+		keep_out.append([Vector2(pc), 7.0])
+	# flat pads for the cannon and the Chompy's corner
+	for spot in [P.call(56, 82), P.call(80, 84)]:
+		for z in range(spot.y - 5, spot.y + 6):
+			for x in range(spot.x - 5, spot.x + 6):
+				hmap[x + z * sx] = 6
+				_c_top.erase(Vector2i(x, z))
+	keep_out.append([mountain, float(reach) + 1.0])
+
+
+## Puts up the course's buildings (after the ground is filled): rails on the mountain path,
+## bridges, the cannon and its floating island, the Chompy's fenced corner, and each world's
+## own landmark (cabin, haunted mansion, pyramid room, pirate ship, garden).
+func _course_build(w: String, P: Callable, theme: int) -> void:
+	var c: Dictionary = course()
+	var H := int(c.H)
+	summit_spot = Vector3(mountain.x + 0.5, H, mountain.y + 0.5)
+	# the paths' own top blocks (ponds, the slide, the moat bridge...)
+	for cell in _c_top:
+		var g := ground_at(cell.x, cell.y)
+		if g > 0:
+			cells[idx(cell.x, g - 1, cell.y)] = _c_top[cell]
+	for cell in _c_bridge:
+		var y: int = _c_bridge[cell]
+		cells[idx(cell.x, y, cell.y)] = PLANKS
+	# the mountain's own rock under its top (white snow cliffs, sandstone, basalt...)
+	var rock: int = {"frost": CLOUD, "dunes": SANDSTONE, "moon": MOON_ROCK, "lava": BASALT, "beach": SANDSTONE,
+		"cloud": CLOUD, "swamp": STONE_BRICK}.get(w, -1)
+	if rock >= 0:
+		for cell in _c_mount:
+			var g := ground_at(cell.x, cell.y)
+			for y in range(1, g - 1):
+				var t := cells[idx(cell.x, y, cell.y)]
+				if t != AIR and not t in [IRON, GOLD, DIAMOND]:
+					cells[idx(cell.x, y, cell.y)] = rock
+			if w == "frost" and not ramp_s.has(cell) and g > 1:   # snowy cliffs: white all the way
+				cells[idx(cell.x, g - 1, cell.y)] = CLOUD
+	if c.get("stripes", false):   # Candy Kingdom: the mountain is a big layer cake
+		for cell in _c_mount:
+			var g := ground_at(cell.x, cell.y)
+			for y in range(1, g - 1):
+				if cells[idx(cell.x, y, cell.y)] != AIR:
+					cells[idx(cell.x, y, cell.y)] = [CAKE, CAKE, WOOL_RED, CAKE, FROSTING][y % 5]
+	if c.get("style", "cone") != "pyramid":
+		# rail posts on the outside of the path, and coins all the way up
+		var arc := 0.0
+		var last := ramp_point(0)
+		var next_coin := 2.0
+		var next_post := 1.0
+		var steps := 240
+		for k in range(1, steps + 1):
+			var sv := float(k) / steps
+			var pt := ramp_point(sv)
+			arc += Vector2(pt.x - last.x, pt.z - last.z).length()
+			last = pt
+			if arc >= next_coin and sv < 0.97:
+				next_coin += 3.4
+				var gq := ground_at(floori(pt.x), floori(pt.z))
+				if get_cell(floori(pt.x), gq, floori(pt.z)) == AIR:
+					coin_spots.append(Vector3(floori(pt.x) + 0.5, gq + 1.0, floori(pt.z) + 0.5))
+			if arc >= next_post and not slide:
+				next_post += 3.5
+				var out := Vector2(pt.x - (mountain.x + 0.5), pt.z - (mountain.y + 0.5)).normalized() * (RAMP_W - 0.5)
+				var q := Vector2i(floori(pt.x + out.x), floori(pt.z + out.y))
+				if ramp_s.has(q) and not _c_bridge.has(q):
+					set_cell(q.x, ground_at(q.x, q.y), q.y, LOG)
+		var foot := ramp_point(0)
+		var sg := Vector2i(floori(foot.x + 3.0 * _c_mx), floori(foot.z + 2.0))
+		signs.append([Vector3(sg.x + 0.5, ground_at(sg.x, sg.y), sg.y + 0.5), "MOUNTAIN PATH\nUp to the\nSUMMIT!"])
+		# a few bad guys on the way up (like the bob-ombs on the battlefield)
+		var walkers: Array = FOES_BY_WORLD.get(w, FOES_BY_WORLD["default"])
+		for sv in [0.22, 0.5, 0.78]:
+			var pt := ramp_point(sv)
+			var g := ground_at(floori(pt.x), floori(pt.z))
+			spawns.append({"kind": walkers[int(sv * 10) % walkers.size()], "pos": Vector3(floori(pt.x) + 0.5, g + 0.01, floori(pt.z) + 0.5)})
+	else:
+		_pyramid_room(P)
+	for i in 6:   # coins ring the summit
+		var a := TAU * i / 6.0
+		coin_spots.append(summit_spot + Vector3(cos(a) * 3.0, 1.0, sin(a) * 3.0))
+	_cannon_and_island(P)
+	_chomp_pen(P)
+	if c.get("garden", false):
+		_garden(P)
+	if c.get("cabin", false):
+		_cabin(P)
+	if c.get("mansion", false):
+		_mansion(P)
+	if c.get("ship", false):
+		_ship(P)
+	if c.get("quicksand", false):
+		for i in 7:
+			var o := _free_spot(4)
+			if o.x < 0:
+				continue
+			for dz in range(-2, 3):
+				for dx in range(-2, 3):
+					if dx * dx + dz * dz <= 5:
+						var g := ground_at(o.x + dx, o.y + dz)
+						if g > 1 and get_cell(o.x + dx, g, o.y + dz) == AIR:
+							set_cell(o.x + dx, g - 1, o.y + dz, MUD)
+			keep_out.append([Vector2(o), 3.0])
+
+
+## The cannon by the start, and the floating island it shoots you to.
+func _cannon_and_island(P: Callable) -> void:
+	var cs: Vector2i = P.call(56, 82)
+	var g := ground_at(cs.x, cs.y)
+	for dz in range(-1, 2):   # a stone ring round the cannon
+		for dx in range(-1, 2):
+			if dx != 0 or dz != 0:
+				set_cell(cs.x + dx, g - 1, cs.y + dz, STONE_BRICK)
+	cannon_spot = Vector3(cs.x + 0.5, g, cs.y + 0.5)
+	keep_out.append([Vector2(cs), 3.0])
+	signs.append([cannon_spot + Vector3(2.5 * _c_mx, 0, 1.5), "CANNON!\nWalk in, aim,\nJUMP to fire!"])
+	var ic: Vector2i = P.call(22, 86)
+	var iy := 21
+	var top: int = top_block if top_block != LAVA else BASALT
+	for dz in range(-5, 6):
+		for dx in range(-5, 6):
+			var d := Vector2(dx, dz).length()
+			if d <= 4.6:
+				set_cell(ic.x + dx, iy - 1, ic.y + dz, top)
+			if d <= 3.6:
+				set_cell(ic.x + dx, iy - 2, ic.y + dz, sub_block if sub_block != top else STONE)
+			if d <= 2.4:
+				set_cell(ic.x + dx, iy - 3, ic.y + dz, STONE)
+			if d <= 1.2:
+				set_cell(ic.x + dx, iy - 4, ic.y + dz, STONE)
+	island_spot = Vector3(ic.x + 0.5, iy, ic.y + 0.5)
+	set_cell(ic.x + 2, iy + 2, ic.y - 2, MYSTERY)   # a power-up up there
+	for i in 8:
+		var a := TAU * i / 8.0
+		coin_spots.append(island_spot + Vector3(cos(a) * 3.2, 1.0, sin(a) * 3.2))
+	keep_out.append([Vector2(ic), 6.0])
+
+
+## The Chompy on its post in a fenced corner, guarding a ? block (like Mario 64's Chain Chomp).
+func _chomp_pen(P: Callable) -> void:
+	var c: Vector2i = P.call(80, 84)
+	var g := ground_at(c.x, c.y)
+	var gap_x := -4 if _c_mx > 0 else 4   # the opening faces the start
+	for k in range(-4, 5):
+		for edge in [Vector2i(k, -4), Vector2i(k, 4), Vector2i(-4, k), Vector2i(4, k)]:
+			if edge.x == gap_x and absi(edge.y) <= 1:
+				continue
+			set_cell(c.x + edge.x, g, c.y + edge.y, PLANKS)
+			if (edge.x + edge.y) % 2 == 0:
+				set_cell(c.x + edge.x, g + 1, c.y + edge.y, LOG)
+	chomp_spot = Vector3(c.x + 0.5, g + 0.01, c.y + 0.5)
+	var bx := c.x - gap_x / 2
+	set_cell(bx, g, c.y - 3, GOLD_BLOCK)
+	set_cell(bx, g + 3, c.y - 3, MYSTERY)
+	for i in 5:
+		coin_spots.append(Vector3(c.x + 0.5 + (i - 2) * 1.2, g + 1.0, c.y + 2.5))
+	keep_out.append([Vector2(c), 7.0])
+
+
+## A flower garden with a little fence by the start (Bob-omb Battlefield style).
+func _garden(P: Callable) -> void:
+	var a: Vector2i = P.call(29, 88)
+	var b: Vector2i = P.call(36, 94)
+	var x0 := mini(a.x, b.x)
+	var x1 := maxi(a.x, b.x)
+	for x in range(x0, x1 + 1):
+		for z in range(a.y, b.y + 1):
+			var edge := x == x0 or x == x1 or z == a.y or z == b.y
+			var g := ground_at(x, z)
+			if edge and not (z == a.y and absi(x - (x0 + x1) / 2) <= 0):
+				set_cell(x, g, z, PLANKS)
+			elif not edge and (x + z) % 2 == 0:
+				prop(["flower_pink", "flower_blue", "flower_white", "flower_pink"][(x * 3 + z) % 4], Vector3(x + 0.5, g, z + 0.5), 0.6)
+	keep_out.append([Vector2((x0 + x1) * 0.5, (a.y + b.y) * 0.5), 6.0])
+
+
+## Frosty Peaks: a log cabin with a snowy roof by the bottom of the slide.
+func _cabin(P: Callable) -> void:
+	var c: Vector2i = P.call(69, 77)
+	var g := ground_at(c.x, c.y)
+	_house(c, g, 7, 6, 3, LOG, SNOW, WINDOW)
+	landmark = Vector3(c.x + 0.5, g, c.y + 0.5)
+	coin_spots.append(landmark + Vector3(0, 1.0, 0))
+	keep_out.append([Vector2(c), 7.0])
+
+
+## A spooky two-floor mansion with ghosts inside.
+func _mansion(P: Callable) -> void:
+	var c: Vector2i = P.call(68, 76)
+	var g := ground_at(c.x, c.y)
+	_house(c, g, 11, 9, 7, LOG, STONE_BRICK, WINDOW)
+	for dx in range(-4, 5):   # the upstairs floor (with a hole for the stairs)
+		for dz in range(-3, 4):
+			if not (dx >= 2 and dz <= 0):
+				set_cell(c.x + dx, g + 3, c.y + dz, PLANKS)
+	for k in 3:   # stairs up
+		set_cell(c.x + 3, g + k, c.y - 3 + k, PLANKS)
+	landmark = Vector3(c.x + 0.5, g, c.y + 0.5)
+	spawns.append({"kind": "boohoo", "pos": landmark + Vector3(-2, 4.01, 0)})
+	spawns.append({"kind": "boohoo", "pos": landmark + Vector3(1.5, 0.01, 1.5)})
+	for i in 4:
+		coin_spots.append(landmark + Vector3(-3 + i * 1.5, 5.0, 1.5))
+	keep_out.append([Vector2(c), 9.0])
+
+
+## A box house: walls of `wall`, a stepped roof of `roof`, windows, a door at the front (+z).
+func _house(c: Vector2i, g: int, w: int, d: int, hgt: int, wall: int, roof: int, win: int) -> void:
+	var hx := w / 2
+	var hz := d / 2
+	for y in range(g, g + hgt):
+		for dx in range(-hx, hx + 1):
+			for dz in range(-hz, hz + 1):
+				if absi(dx) != hx and absi(dz) != hz:
+					continue
+				var t := wall
+				if y == g + 1 and dx % 3 == 0 and absi(dx) != hx:
+					t = win
+				if dz == hz and absi(dx) <= 1 and y < g + 2:
+					t = AIR   # the door
+				set_cell(c.x + dx, y, c.y + dz, t)
+	for k in hz + 2:   # the roof, in steps
+		var za := -hz - 1 + k
+		var zb := hz + 1 - k
+		if za > zb:
+			break
+		for dx in range(-hx - 1, hx + 2):
+			set_cell(c.x + dx, g + hgt + k, c.y + za, roof)
+			set_cell(c.x + dx, g + hgt + k, c.y + zb, roof)
+
+
+## Beach Bay: an old pirate ship sitting in the bay.
+func _ship(P: Callable) -> void:
+	var a: Vector2i = P.call(7, 46)
+	var b: Vector2i = P.call(22, 52)
+	var x0 := mini(a.x, b.x)
+	var x1 := maxi(a.x, b.x)
+	var zc := (a.y + b.y) / 2
+	var deck := 6
+	for x in range(x0, x1 + 1):
+		var t := float(x - x0) / float(x1 - x0)
+		var half := int(round(3.0 * sin(t * PI) + 0.4))
+		for dz in range(-half, half + 1):
+			for y in range(3, deck):
+				if absi(dz) == half or y == 3:
+					set_cell(x, y, zc + dz, PLANKS)
+			set_cell(x, deck - 1, zc + dz, PLANKS)
+			if absi(dz) == half:
+				set_cell(x, deck, zc + dz, PLANKS)   # the rail
+	for mxx in [x0 + (x1 - x0) / 3, x0 + 2 * (x1 - x0) / 3]:
+		for y in range(deck, deck + 7):
+			set_cell(mxx, y, zc, LOG)
+		for y in range(deck + 3, deck + 7):
+			for dz in range(-2, 3):
+				set_cell(mxx + 1, y, zc + dz, WOOL_WHITE)
+	landmark = Vector3((x0 + x1) / 2 + 0.5, deck, zc + 0.5)
+	for i in 5:
+		coin_spots.append(Vector3(x0 + 2.5 + i * 2.5, deck + 1.0, zc + 0.5))
+	spawns.append({"kind": "skelly", "pos": Vector3(x0 + 3.5, deck + 0.01, zc + 0.5)})
+	keep_out.append([Vector2((x0 + x1) * 0.5, zc), 10.0])
+
+
+## Shifting Sand Land: a tunnel into the pyramid and a treasure room inside.
+func _pyramid_room(P: Callable) -> void:
+	var mxz := Vector2i(int(mountain.x), int(mountain.y))
+	for dz in range(5, 23):   # the tunnel from the south side
+		for dx in range(-1, 2):
+			for y in range(6, 9):
+				set_cell(mxz.x + dx, y, mxz.y + dz, AIR)
+	for dz in range(-3, 6):   # the treasure room
+		for dx in range(-4, 5):
+			for y in range(6, 11):
+				set_cell(mxz.x + dx, y, mxz.y + dz, AIR)
+			set_cell(mxz.x + dx, 5, mxz.y + dz, GOLD_BLOCK if (dx + dz) % 2 == 0 else SANDSTONE)
+	set_cell(mxz.x, 9, mxz.y, MYSTERY)
+	landmark = Vector3(mxz.x + 0.5, 6, mxz.y + 0.5)
+	for i in 6:
+		coin_spots.append(landmark + Vector3(-3 + i * 1.2, 1.0, 3.0))
+	spawns.append({"kind": "mummy", "pos": landmark + Vector3(2, 0.01, -1)})
+	var sgz := mxz.y + 23
+	signs.append([Vector3(mxz.x + 2.5, ground_at(mxz.x + 2, sgz), sgz + 0.5), "PYRAMID\nClimb it, or\ngo inside!"])
+
+
 ## A big open world: rolling hills, trees, five star challenges and Krag Jr.'s castle.
 ## Frosty Peaks is a mirror image of the layout so it feels like a new place.
 func generate_open(w: String) -> void:
@@ -1251,6 +1712,12 @@ func generate_open(w: String) -> void:
 	var steps: Vector2i = P.call(78, 36)
 	arena = Rect2(30, 3, 36, 23)
 	arena_y = 6
+	var gate_front := Vector2i(int(arena.get_center().x), int(arena.end.y) + 3)
+	# the paths from the start: round the big mountain, not over it (coins show the way)
+	var trails := [[start, P.call(30, 72), camp], [start, tower], [start, P.call(28, 72), P.call(24, 44), cave],
+		[start, P.call(70, 70), steps], [start, P.call(28, 72), P.call(24, 42), P.call(34, 32), gate_front],
+		[start, P.call(48, 70)]]
+	var cloud_bridges := {}
 	cells.resize(sx * sy * sz)
 	cells.fill(AIR)
 	heights.resize(sx)
@@ -1271,19 +1738,20 @@ func generate_open(w: String) -> void:
 		keep_out.append([Vector2(fl[0]), float(fl[1]) + 3.0])
 	for z in sz:
 		for x in sx:
-			var h := 6.0 + n.get_noise_2d(x, z) * 6.0
+			# gentle rolling ground: the course's big shapes (mountain, pads, ponds) come after
+			var h := 6.0 + n.get_noise_2d(x, z) * 3.0
 			if w == "frost":
-				h += 1.0 + absf(n.get_noise_2d(x * 0.5 + 300, z * 0.5)) * 4.0   # taller, peaky
+				h += 0.5 + absf(n.get_noise_2d(x * 0.5 + 300, z * 0.5)) * 2.5   # snowdrifts
 			elif w == "swamp":
-				h = 5.0 + n.get_noise_2d(x, z) * 4.0   # low and boggy
+				h = 5.0 + n.get_noise_2d(x, z) * 3.0   # low and boggy
 			elif w == "lava":   # rough rocky ground with low lava pools
-				h = 6.0 + n.get_noise_2d(x, z) * 7.0
+				h = 6.0 + n.get_noise_2d(x, z) * 5.0
 			elif w == "candy":   # round cake hills
-				h = 6.0 + absf(n.get_noise_2d(x * 0.7, z * 0.7)) * 9.0 - 1.0
-			elif w == "beach":   # sloping down to the sea in the south-west
-				h = 6.0 + n.get_noise_2d(x, z) * 3.5 - clampf((x * 0.5 + (sz - z)) * 0.0 + (30 - x) * 0.12, 0, 3.5)
+				h = 6.0 + absf(n.get_noise_2d(x * 0.7, z * 0.7)) * 5.0 - 1.0
+			elif w == "beach":   # sloping down to the bay in the west
+				h = 6.0 + n.get_noise_2d(x, z) * 2.5 - clampf((30 - x) * 0.12, 0, 3.5)
 			elif w == "jungle":   # bumpy and lush
-				h = 6.5 + n.get_noise_2d(x * 1.3, z * 1.3) * 5.0
+				h = 6.5 + n.get_noise_2d(x * 1.3, z * 1.3) * 3.0
 			elif w == "moon":   # flat dusty plains with round craters
 				h = 7.0 + n.get_noise_2d(x * 0.6, z * 0.6) * 2.5
 				for cr in craters:
@@ -1310,10 +1778,22 @@ func generate_open(w: String) -> void:
 				for f in flats:
 					if Vector2(x - f[0].x, z - f[0].y).length() < f[1] + 2:
 						keep = true
-				for to in [camp, tower, cave, steps, Vector2i(int(arena.get_center().x), int(arena.end.y))]:
-					if _near_line(Vector2(x, z), Vector2(start), Vector2(to), 2.2):
-						keep = true   # cloud bridges from the start to every challenge
-				hmap[x + z * sx] = 6 if keep else 0
+				if Vector2(x, z).distance_to(Vector2(P.call(48, 52))) < RAMP_R0 + RAMP_W + 4:
+					keep = true
+				for pad in [P.call(56, 82), P.call(80, 84)]:
+					if Vector2(x, z).distance_to(Vector2(pad)) < 6.5:
+						keep = true
+				if not keep:
+					for ln in trails:
+						for k in ln.size() - 1:
+							if _near_line(Vector2(x, z), Vector2(ln[k]), Vector2(ln[k + 1]), 1.6):
+								cloud_bridges[Vector2i(x, z)] = true   # a wooden bridge between the cloud islands
+				hmap[x + z * sx] = 6 if keep or cloud_bridges.has(Vector2i(x, z)) else 0
+	# the Mario 64-style course: the big mountain with its spiral path, ponds, pads
+	_course_heights(w, P)
+	for cb in cloud_bridges:
+		if not _c_mount.has(cb):
+			_c_bridge[cb] = 5
 	# the secret cave is inside a big hill
 	for z in sz:
 		for x in sx:
@@ -1327,6 +1807,8 @@ func generate_open(w: String) -> void:
 			if h <= 0:
 				continue   # a hole in the clouds
 			if w == "cloud":   # thin fluffy islands floating in the sky
+				if _c_bridge.has(Vector2i(x, z)):
+					continue   # a plank bridge (put in by _course_build)
 				for y in range(3, h):
 					cells[idx(x, y, z)] = CLOUD
 				continue
@@ -1355,17 +1837,21 @@ func generate_open(w: String) -> void:
 	_tower(tower, theme)
 	_cave(cave)
 	_sky_steps(steps, theme)
-	# coins: trails from the start to every challenge, and the COIN HUNT star at the start
-	for to in [camp, tower, cave, steps, Vector2i(int(arena.get_center().x), int(arena.end.y) + 3)]:
-		var a := Vector2(start)
-		var b := Vector2(to)
-		var k := 3.0
-		while k < a.distance_to(b) - 4:
-			var q := a.lerp(b, k / a.distance_to(b))
-			var g := ground_at(int(q.x), int(q.y))
-			if get_cell(int(q.x), g, int(q.y)) == AIR and get_cell(int(q.x), g + 1, int(q.y)) == AIR:
-				coin_spots.append(Vector3(int(q.x) + 0.5, g + 1.0, int(q.y) + 0.5))
-			k += 3.2
+	_fortress(tower)
+	_course_build(w, P, theme)
+	# coins: trails from the start to every challenge (round the mountain), and the COIN HUNT star at the start
+	for ln in trails:
+		for seg in ln.size() - 1:
+			var a := Vector2(ln[seg])
+			var b := Vector2(ln[seg + 1])
+			var k := 3.0 if seg == 0 else 0.0
+			var last_seg: bool = seg == ln.size() - 2
+			while k < a.distance_to(b) - (4.0 if last_seg else 0.0):
+				var q := a.lerp(b, k / a.distance_to(b))
+				var g := ground_at(int(q.x), int(q.y))
+				if g > 0 and get_cell(int(q.x), g, int(q.y)) == AIR and get_cell(int(q.x), g + 1, int(q.y)) == AIR:
+					coin_spots.append(Vector3(int(q.x) + 0.5, g + 1.0, int(q.y) + 0.5))
+				k += 3.2
 	objectives.append({"id": "coins", "name": "COIN HUNT", "hint": "Collect %d coins in this world!" % STAR_COINS,
 		"pos": Vector3(start.x + 3.5, 7.0, start.y - 2.5)})
 	# ? blocks to bonk near the start
@@ -1641,7 +2127,8 @@ func _free_spot(keep: float) -> Vector2i:
 			if Vector2(x, z).distance_to(k[0]) < k[1] + keep * 0.3:
 				ok = false
 		var g := ground_at(x, z)
-		if ok and g > 0 and get_cell(x, g, z) == AIR and not get_cell(x, g - 1, z) in [LAVA, WATER]:
+		if ok and g > 0 and get_cell(x, g, z) == AIR and get_cell(x, g + 1, z) == AIR and get_cell(x, g + 2, z) == AIR \
+				and not get_cell(x, g - 1, z) in [LAVA, WATER]:
 			return Vector2i(x, z)
 	return Vector2i(-1, -1)
 
@@ -1712,6 +2199,19 @@ func _tower(c: Vector2i, theme: int) -> void:
 	set_cell(c.x, g + height + 3, c.y, MYSTERY)
 	objectives.append({"id": "tower", "name": "TALL TOWER", "hint": "Climb the stairs round the tower!",
 		"pos": Vector3(c.x + 0.5, g + height + 0.9, c.y + 0.5)})
+
+
+## The tower stands in a little fortress: a wall with battlements and a gateway facing the start.
+func _fortress(c: Vector2i) -> void:
+	var g := ground_at(c.x, c.y)
+	for k in range(-5, 6):
+		for e in [Vector2i(k, -5), Vector2i(k, 5), Vector2i(-5, k), Vector2i(5, k)]:
+			if e.y == 5 and absi(e.x) <= 1:
+				continue   # the gateway (south, towards the start)
+			for y in range(g, g + 3):
+				set_cell(c.x + e.x, y, c.y + e.y, STONE_BRICK)
+			if (e.x + e.y) % 2 == 0:
+				set_cell(c.x + e.x, g + 3, c.y + e.y, STONE_BRICK)
 
 
 ## A hill with a tunnel; the end is blocked with rock: dig through with Blocky!

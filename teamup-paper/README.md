@@ -76,6 +76,37 @@ Instance colours are capped at 1 (they can only darken / tint), so bright textur
 per world (`INFO.cloud`), lava glows (its own emissive material) and water is shiny. More flower patches and
 giant block mushrooms in Meadow and the Jungle.
 
+### Mario 64-style courses
+
+Every world is laid out like a Mario 64 course (`level.gd` `_course_heights` / `_course_build`, data in
+`Level.COURSE`; the moving parts are in `scripts/course.gd`):
+
+* **The big mountain** in the middle (like Bob-omb Battlefield): a path winds round and round it up to a flat 9x9
+  **summit** (`level.summit_spot`, where KING BOMBO waits). The path climbs one block at a time: heroes now
+  **step up** single blocks by walking (`Actor._step_up`), so slopes feel like Mario 64, not Minecraft. Wooden rail
+  posts, two **wooden bridges** over gaps, coins all the way up, and a few bad guys walking down it.
+* **The CANNON** by the start: walk into it, push the stick to aim (a dotted line shows where you'll land), JUMP or
+  ACTION to fire. It aims at the **floating island** high in the sky (coins, a ? block and a red coin up there).
+* **The Chompy's corner**: a fenced pen with the Chompy on its post, guarding a ? block on a gold step.
+* **The fortress** round the TALL TOWER, the **secret cave** hill, the **sky steps**, the castle at the back.
+* Each world's own shape and landmark:
+
+| World | Course |
+|---|---|
+| Meadow Mine | Bob-omb Battlefield: green mountain with a dirt path, pond, flower garden with a fence |
+| Frosty Peaks | Cool Cool Mountain: a white snow mountain whose path winds round 1.5 times; its inside lane is an **ice SLIDE** (let go of the stick and WHOOSH down); a log cabin |
+| Sunset Dunes | Shifting Sand Land: a stepped **pyramid** to climb, with a tunnel into a treasure room inside; **quicksand** (mud) slows you |
+| Spooky Swamp | a gloomy stone mountain and a two-floor **haunted mansion** with ghosts |
+| Moon Base | a moon-rock mountain among the craters (low gravity) |
+| Lava Land | a basalt volcano in a **lava moat** with one stone bridge |
+| Candy Kingdom | a giant striped **layer cake** to climb |
+| Beach Bay | a sandstone mountain with a boardwalk path, an old **pirate ship** in the bay |
+| Jungle Jamboree | a tall, steep green mountain, a pond, giant mushrooms |
+| Cloud Castle | a cloud mountain with a plank path; **plank bridges** join the floating cloud islands |
+
+Test: `tests/course_check.gd -- [toy] <world>` really walks Rocco up the path to the summit (no jumping), fires the
+cannon onto the island, rides the Frosty Peaks slide (must be fast) and checks the quicksand.
+
 ### Open worlds and stars
 
 Every world is a big **open 96 x 96 world** (like the home) with the turning camera: drag the right side of
