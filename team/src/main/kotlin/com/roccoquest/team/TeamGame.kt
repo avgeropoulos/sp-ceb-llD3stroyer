@@ -2382,6 +2382,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     /** A Wonder Flower was touched: WONDER TIME! The rainbow sky, wobbly ground, floaty jumps, and the flower's surprise. */
     private fun startWonderTime(f: WonderFlower) {
+        // A second flower while Wonder Time is still on: finish the first one properly first, so its
+        // Wonder Seed still pops out and its dancing bad guys stop (else they'd dance on by themselves).
+        if (wonderT > 0f) {
+            endWonderTime()
+            toast("ANOTHER Wonder Flower! Grab the WONDER SEED!")
+        }
         val e = f.effect
         wonderT = e.seconds
         wonderEffect = e
@@ -2500,8 +2506,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 releaseCapture()
             }
             CaptureKind.ENDERMAN -> {
-                val nx = h.x + h.facing * 80f
-                if (!level.solidAt(nx + h.w / 2, h.cy)) { puff(h.cx, h.cy); h.x = nx; sfx(Sound.PORTAL) } else sfx(Sound.BUMP)
+                // Never out of a locked boss arena (or the level): moveHero keeps him inside them, but this
+                // runs after it, so for a frame he'd be off the screen and yank the camera out of the arena.
+                val lo = camLock ?: 0f
+                val hi = max(lo, (camLock?.let { it + viewW } ?: (level.w * TILE).toFloat()) - h.w)
+                val nx = (h.x + h.facing * 80f).coerceIn(lo, hi)
+                if (abs(nx - h.x) >= 1f && !level.solidAt(nx + h.w / 2, h.cy)) { puff(h.cx, h.cy); h.x = nx; sfx(Sound.PORTAL) } else sfx(Sound.BUMP)
             }
             CaptureKind.WITCH -> {
                 val tx = h.cx + h.facing * 90f
@@ -3983,7 +3993,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
             f is GalaxyKrag -> {
                 bannerTitle = "GALAXY KRAG!"
-                bannerSub = "The final battle! Dodge the stars, and jump on him when he SWOOPS down!"
+                // (Not "the final battle" any more: World 13 comes after THE GALAXY GRAND FINALE.)
+                bannerSub = "The biggest battle in space! Dodge the stars, jump on him when he SWOOPS!"
                 sfx(Sound.BOSS_FIRE)
             }
             f is TailKrag -> {

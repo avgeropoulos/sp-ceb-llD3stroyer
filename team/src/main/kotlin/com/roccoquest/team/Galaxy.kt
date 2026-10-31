@@ -602,8 +602,9 @@ class MechaKrag(x: Float, private val ground: Float) : Foe(x - 10, ground - 40, 
 }
 
 /**
- * GALAXY KRAG (level char '}'), the very last boss: King Krag with the power of the stars. He floats over
- * the moon shooting rings of stars, and every so often SWOOPS down low: that's your chance to jump on him!
+ * GALAXY KRAG (level char '}'), the biggest boss in space (9-21, THE FINAL ERUPTION and THE GALAXY GRAND
+ * FINALE, which now leads on to World 13): King Krag with the power of the stars. He floats over the moon
+ * shooting rings of stars, and every so often SWOOPS down low: that's your chance to jump on him!
  */
 class GalaxyKrag(x: Float, private val ground: Float) : Foe(x - 10, ground - 40, 36f, 40f, 120) {
     var awake = false

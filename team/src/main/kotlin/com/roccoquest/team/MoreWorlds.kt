@@ -155,7 +155,7 @@ object MoreWorlds {
         Plan("SATURN RINGS", Place.RAINBOW, "Running around the rings of a giant planet!"),
         Plan("BLACK HOLE BRIDGE", Place.END, "Don't fall in!"),
         Plan("THE LAST STAR", Place.MOON, "Galaxy Krag is waiting at the edge of the galaxy..."),
-        Plan("GALAXY KRAG", Place.MOON, "GALAXY KRAG! The final battle! Jump on him when he swoops down!", boss = "}"),
+        Plan("GALAXY KRAG", Place.MOON, "GALAXY KRAG! The biggest battle in space! Jump on him when he swoops down!", boss = "}"),
     )
 
     private val world10Plans = listOf(
@@ -226,7 +226,7 @@ object MoreWorlds {
         Plan("ICE RINK PLANET", Place.ICE_PLANET, "A planet that's one big skating rink.", extra = 150),
         Plan("CANDY CRATERS", Place.CANDY_PLANET, "Craters full of sprinkles.", extra = 160),
         Plan("THE LAST RINGS", Place.RING_PLANET, "Almost at the edge of the galaxy...", extra = 170),
-        Plan("GALAXY ROAD", Place.CRYSTAL_PLANET, "The road to the final battle!", extra = 200),
+        Plan("GALAXY ROAD", Place.CRYSTAL_PLANET, "The road to the grand finale!", extra = 200),
         Plan("THE GALAXY GRAND FINALE", Place.CRYSTAL_PLANET, "THE GRAND FINALE! Rex Krag, Rock Star Krag and Galaxy Krag, one after another!", boss = "'!}"),
     )
 

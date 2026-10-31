@@ -81,7 +81,8 @@ class Dennis(x: Float, private val groundY: Float) :
         when (mode) {
             0 -> {
                 if (targetX == 0f) targetX = clearSpot(g, g.leader.cx + 110f)
-                x += 210f * dt
+                // Right onto his spot (running past it could put him in the wall just after it).
+                x = min(x + 210f * dt, targetX)
                 if (x >= targetX) {
                     mode = 1
                     bark(g)
@@ -110,15 +111,31 @@ class Dennis(x: Float, private val groundY: Float) :
      * Where to stop and point: the first spot from [from] on where he's out in the open with ground
      * under his paws. He runs straight through walls, but standing inside one he'd be hidden (in 3D the
      * blocks are solid), so he stops a little further on (or at [from] if there's nowhere close).
+     *
+     * He barks and points so the team sees him, so the spot is always on the screen with room for his
+     * arrow: with the look-ahead camera the leader can be well right of the middle, and then [from] (or a
+     * spot past a wall) could be off the right edge. If nothing further on fits, he looks a little back.
      */
     private fun clearSpot(g: TeamGame, from: Float): Float {
         val l = g.level
-        for (k in 0 until 12) {
-            val sx = from + k * 8f
+        val first = g.camX + EDGE
+        val last = max(first, g.camX + g.viewW - w - ARROW)
+        val start = from.coerceIn(first, last)
+        fun clear(sx: Float): Boolean {
             val inWall = listOf(2f, w / 2, w - 2).any { l.solidAt(sx + it, groundY - 2) || l.solidAt(sx + it, groundY - h + 2) }
-            if (!inWall && l.solidAt(sx + w / 2, groundY + 2)) return sx
+            return !inWall && l.solidAt(sx + w / 2, groundY + 2)
         }
-        return from
+        for (k in 0 until 12) {
+            val sx = start + k * 8f
+            if (sx > last) break
+            if (clear(sx)) return sx
+        }
+        for (k in 1 until 12) {
+            val sx = start - k * 8f
+            if (sx < first) break
+            if (clear(sx)) return sx
+        }
+        return start
     }
 
     // He always runs (and points) to the right in the levels: that's the way to go.
@@ -127,6 +144,10 @@ class Dennis(x: Float, private val groundY: Float) :
 
     companion object {
         private const val HOP = 0.35f
+        /** How far his pointing arrow reaches past his nose (it bobs up to 40 px out). */
+        private const val ARROW = 40f
+        /** He never stops closer than this to the left edge of the screen. */
+        private const val EDGE = 8f
 
         /**
          * Draws Dennis with his left side at [px] and his feet on [ground] (the scenes and his sticker use this

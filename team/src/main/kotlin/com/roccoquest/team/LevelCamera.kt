@@ -111,9 +111,12 @@ class LevelCamera {
         if (p > heroX) p = heroX
         p = p.coerceIn(0f, max(0f, maxX))
         if (p != follow.pos) {
-            // Pushed: carry on from where it really went, so the spring doesn't fight the push.
+            // Pushed: carry on from where it really went, so the spring doesn't fight the push. A big push in
+            // one frame (the leader teleported past the edge) is a cut, not a speed: turned into speed, 30 px
+            // would be 1800 px a second, and the spring would fling the camera far past (out of a boss arena).
+            val push = p - follow.pos
             follow.pos = p
-            follow.vel = if (dt > 0f) (p - before) / dt else 0f
+            follow.vel = if (dt > 0f && abs(push) <= JUMP) ((p - before) / dt).coerceIn(-MAX_SPEED, MAX_SPEED) else 0f
         }
     }
 
