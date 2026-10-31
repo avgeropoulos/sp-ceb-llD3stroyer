@@ -276,6 +276,32 @@ nearby bad guy every few seconds. Tap **ERASE** twice on a file to delete it.
   **Hopper**, a **Bonehead** or a **Peekaboo**, each with its own moves. Getting hit (or SWAP) turns
   you back. In both Team Up! and Team Up! 3D.
 
+### 9 new funny cutscenes (35 in all)
+
+The funny scenes after every other level have **9 brand-new, longer ones** (about 12 seconds each). If you've
+already seen all the old ones, the new ones come first:
+
+* **WONDER OOPS!**: Wonder King Krag zaps Rocco with Wonder magic... but Rocco holds up a mirror. BOING! King
+  Krag turns himself into a **floppy fish** ("Blub blub! This is NOT wonderful!"). Then Krag Jr. tries it too:
+  two floppy fish!
+* **SPOOKY S'MORES**: Dry Bones King Krag lights the campfire with his **blue fire** and everybody toasts
+  marshmallows. Then he sneezes: extra crispy! He falls into a pile of bones... and Dennis runs off with his leg.
+* **THE WRONG MUSHROOM**: Spotty gives Rocco a mushroom and he grows **GIANT** (with a big booming voice). Oops!
+  The next one makes him **teeny tiny** (with a squeaky voice).
+* **RING-DING CONCERT**: Ring-Ding Frog's big show. Krag Jr. yells STOP, so the frog sings his HIGHEST NOTE and
+  Krag Jr. goes spinning away.
+* **SAY CHEESE!**: the team photo. Sparky sneezes lightning (afros for everybody!), Blaze sets Blocky's bottom on
+  fire, Hydro soaks everyone... CLICK! Perfect!
+* **BATH TIME, DENNIS!**: a bubble beard, a big shake that soaks Rocco, and then... the mud.
+* **WHO ATE MY SPAGHETTI?**: Detective Rocco asks everybody. King Krag is "hiding" behind a teeny tiny tree:
+  "I am... a tree." SLURRRP. BUSTED!
+* **THE BLOCK TOWER**: Blocky builds the tallest tower ever, your Pokemon puts one tiny block on top... CRASH!
+* **DASH AND THE BUTTERFLY**: Dash sees a butterfly and zooms off, with Rocco flapping behind like a flag. SPLOOSH!
+
+Everybody talks in their own voice (King Krag deep, Spotty and Krag Jr. squeaky, Ring-Ding Frog singing, Dennis
+barking) with lots of sound effects, and three of them have their own song. Once you've seen one, it's in the
+**MOVIES** at home (now 4 pages; the new ones say "super silly!").
+
 ### Earthquakes
 
 Every other level (not boss, underwater or cloud levels) has **EARTHQUAKES**. The screen rumbles, the ground

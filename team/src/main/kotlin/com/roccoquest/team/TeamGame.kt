@@ -654,7 +654,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         storage.save(key("outfit"), Style.rocco.ordinal)
         storage.save(key("skin"), Style.blocky.ordinal)
         storage.save(key("costume"), (Style.monCostume?.ordinal ?: -1) + 1)
-        storage.save(key("scenesSeen"), scenesSeen)
+        saveScenesSeen()
         storage.save(key("decorN"), decor.size)
         decor.forEachIndexed { i, d -> storage.save(key("decor_$i"), Decor.pack(d)) }
         storage.save(key("decorV"), 3)
@@ -792,9 +792,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         garden.load()
         babyMode = storage.load(key("baby")) == 1
         hasElevator = storage.load(key("elevator")) == 1
-        scenesSeen = storage.load(key("scenesSeen"))
+        // Scenes 32 and up are in a second key (older saves don't have it: those scenes are new to them).
+        scenesSeen = (storage.load(key("scenesSeen")).toLong() and 0xFFFFFFFFL) or (storage.load(key("scenesSeen2")).toLong() shl 32)
         // Older saves: every scene played so far (they came in order) counts as seen.
-        if (scenesSeen == 0) for (k in 0 until minOf(20, storage.load(key("scenes")))) scenesSeen = scenesSeen or (1 shl k)
+        if (scenesSeen == 0L) for (k in 0 until minOf(20, storage.load(key("scenes")))) scenesSeen = scenesSeen or (1L shl k)
         outfitsOwned = storage.load(key("outfits")) or 1
         skinsOwned = storage.load(key("skins")) or 1
         costumesOwned = storage.load(key("costumes"))
@@ -862,6 +863,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         Power.entries.forEach { storage.save(key("flower_${it.name}", s), 0) }
         for (k in 0 until STICKER_KEYS) storage.save(key("stk$k", s), 0)
         for (k in 0 until PLUSH_KEYS) storage.save(key("plush$k", s), 0)
+        storage.save(key("scenesSeen2", s), 0)
         for (m in Mon.entries) storage.save(key("monXp${m.ordinal}", s), 0)
         for (f in Furniture.entries) storage.save(key("fpos${f.ordinal}", s), 0)
         // Old block entries are ignored once the per-floor count is cleared.
@@ -918,7 +920,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         blocks.forEach { it.clear() }
         building = false
         outfitsOwned = 1; skinsOwned = 1; costumesOwned = 0
-        scenesSeen = 0
+        scenesSeen = 0L
         theater = false
         Style.rocco = RoccoOutfit.CLASSIC; Style.blocky = BlockySkin.CLASSIC; Style.monCostume = null
         inGarden = false
@@ -3207,19 +3209,40 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         // They take turns, so each one is a surprise.
         val n = storage.load(key("scenes"))
         storage.save(key("scenes"), n + 1)
-        playScene(n % Scenes.titles.size, next)
+        playScene(nextSceneKind(n), next)
     }
 
-    /** Scenes you've seen (bits), so you can watch them again at the MOVIES. */
-    var scenesSeen = 0
+    /**
+     * The [n]th scene in turn. Ones you've never seen go first, so brand-new scenes (from an update) show up
+     * right away instead of after a long wait for their turn.
+     */
+    internal fun nextSceneKind(n: Int): Int {
+        val count = Scenes.titles.size
+        val turn = n % count
+        for (k in 0 until count) {
+            val kind = (turn + k) % count
+            if (!sceneSeen(kind)) return kind
+        }
+        return turn
+    }
+
+    /** Scenes you've seen (bits, saved in two keys: there are more than 32), so you can watch them again at the MOVIES. */
+    var scenesSeen = 0L
         private set
+
+    fun sceneSeen(kind: Int) = scenesSeen and (1L shl kind) != 0L
+
+    private fun saveScenesSeen() {
+        storage.save(key("scenesSeen"), scenesSeen.toInt())
+        storage.save(key("scenesSeen2"), (scenesSeen ushr 32).toInt())
+    }
 
     /** Plays scene [kind]; [next] is the level to go to after (or [BACK_HOME] for the movies). */
     fun playScene(kind: Int, next: Int) {
         sceneKind = kind
         sceneNext = next
         sceneCue = 0
-        if (scenesSeen and (1 shl kind) == 0) { scenesSeen = scenesSeen or (1 shl kind); storage.save(key("scenesSeen"), scenesSeen) }
+        if (!sceneSeen(kind)) { scenesSeen = scenesSeen or (1L shl kind); saveScenesSeen() }
         setState(State.SCENE)
     }
 
@@ -3249,26 +3272,27 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         theater = false
     }
 
-    private fun watch(kind: Int) {
+    internal fun watch(kind: Int) {
         if (kind !in Scenes.titles.indices) return
-        if (scenesSeen and (1 shl kind) == 0) { sfx(Sound.BUMP); toast("You haven't unlocked that one yet! Keep beating levels."); return }
+        if (!sceneSeen(kind)) { sfx(Sound.BUMP); toast("You haven't unlocked that one yet! Keep beating levels."); return }
         theater = false
         playScene(kind, BACK_HOME)
     }
 
     private fun renderTheater(gfx: Gfx) {
         gfx.rect(0f, 22f, viewW, VIEW_H - 22, 0xEE120A1A.toInt())
-        gfx.shadowText("MOVIES: YOUR FUNNY SCENES (${Integer.bitCount(scenesSeen)}/${Scenes.titles.size})", viewW / 2, 38f, 9f, 0xFFFFD21F.toInt(), 1)
+        gfx.shadowText("MOVIES: YOUR FUNNY SCENES (${scenesSeen.countOneBits()}/${Scenes.titles.size})", viewW / 2, 38f, 9f, 0xFFFFD21F.toInt(), 1)
         for (i in 0 until THEATER_PER_PAGE) {
             val k = theaterPage * THEATER_PER_PAGE + i
             if (k >= Scenes.titles.size) break
-            val seen = scenesSeen and (1 shl k) != 0
+            val seen = sceneSeen(k)
             val x = theaterX(i); val y = theaterY(i)
             gfx.rect(x, y, 152f, 28f, if (seen) 0xFFE84A4A.toInt() else 0xFF3A2A44.toInt())
             gfx.rect(x + 2, y + 2, 24f, 24f, if (seen) 0xFFF4F4F4.toInt() else 0xFF2A1A34.toInt())
             gfx.text(if (seen) "▶" else "?", x + 14, y + 19, 12f, if (seen) 0xFFE84A4A.toInt() else 0xFF8A7A9A.toInt(), 1)
             gfx.text(if (seen) Scenes.titles[k] else "???", x + 32, y + 13, 7f, white)
-            gfx.text(if (seen) (if (k >= LongScenes.FIRST) "a long one!" else "") else "beat more levels", x + 32, y + 23, 5f, 0xFFE0D0E8.toInt())
+            val note = when { k >= SillyScenes.FIRST -> "super silly!"; k >= LongScenes.FIRST -> "a long one!"; else -> "" }
+            gfx.text(if (seen) note else "beat more levels", x + 32, y + 23, 5f, 0xFFE0D0E8.toInt())
             if (padConnected && shopCursor == i) padFrame(gfx, x - 2, y - 2, 156f, 32f)
         }
         val pages = (Scenes.titles.size + THEATER_PER_PAGE - 1) / THEATER_PER_PAGE
@@ -3279,7 +3303,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val cues = Scenes.cues(sceneKind, mon.label)
         while (sceneCue < cues.size && stateT >= cues[sceneCue].at) {
             val c = cues[sceneCue++]
-            sound.sayAs(c.text, c.voice)
+            // (Sound-only cues say nothing: speaking "" would cut off whoever is talking.)
+            if (c.text.isNotEmpty()) sound.sayAs(c.text, c.voice)
             c.sound?.let { sfx(it) }
         }
         if (stateT > Scenes.length(sceneKind) || ((tapped || skip) && stateT > 0.6f)) {
@@ -4075,7 +4100,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             state == State.HOME -> Music.COZY
             state == State.PARK -> Music.PARK
             state == State.GAMES -> when (monGames.game) { MonGame.DANCE -> Music.FUNKY; MonGame.SING -> if (monGames.done) Music.PARK else Music.THEME; else -> Music.PARK }
-            state == State.SCENE -> Music.SILLY
+            state == State.SCENE -> Scenes.music(sceneKind)
             state == State.MAP -> Music.ADVENTURE
             state == State.OUCH || state == State.CLEAR || state == State.SLEEP -> Music.NONE
             starT > 0 -> Music.STAR
