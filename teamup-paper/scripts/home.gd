@@ -80,6 +80,88 @@ func setup(g, lv: Level) -> void:
 	outline.visible = false
 	add_child(outline)
 	_make_portal()
+	place_arcade()
+
+
+# ------------------------------------------------------------------ the ARCADE (mini games)
+const ARCADE_OFF := Vector3(-14, 0, -11)   # from the rocket pad
+var arcade_at := Vector3.ZERO               # the middle of the arcade's floor
+var arcade_armed := true                    # walk out and back in to open the menu again
+
+
+## A little striped building with a door and a glowing ARCADE sign. Its blocks are
+## locked (can't be broken) and aren't part of your saved building.
+func place_arcade() -> void:
+	var c := PAD + ARCADE_OFF
+	var cx := floori(c.x)
+	var cz := floori(c.z)
+	var g := level.ground_below(cx + 0.5, cz + 0.5, level.sy - 1)
+	if g < 1:
+		g = PAD.y
+	var gy := int(g)
+	arcade_at = Vector3(cx + 0.5, gy, cz + 0.5)
+	var wall := [Level.WOOL_RED, Level.WOOL_YELLOW, Level.WOOL_BLUE, Level.WOOL_GREEN]
+	for x in range(-3, 4):
+		for z in range(-2, 3):
+			for y in range(0, 6):
+				var p := Vector3i(cx + x, gy + y, cz + z)
+				var edge := absi(x) == 3 or absi(z) == 2
+				var t := Level.AIR
+				if y == 5:
+					t = Level.GOLD_BLOCK if (x + z) % 2 == 0 else Level.WOOL_WHITE
+				elif edge:
+					t = wall[(x + 3 + y) % wall.size()]
+					if z == 2 and x == 0 and y < 2:
+						t = Level.AIR   # the door
+					elif y == 2 and (x == -2 or x == 2) and z == 2:
+						t = Level.WINDOW
+				level.set_cell(p.x, p.y, p.z, t)
+				if t != Level.AIR or edge or y == 5:
+					level.locked[p] = true
+	# the floor inside, and room in front of the door
+	for x in range(-2, 3):
+		for z in range(-1, 2):
+			level.set_cell(cx + x, gy - 1, cz + z, Level.WOOL_BLACK)
+			level.locked[Vector3i(cx + x, gy - 1, cz + z)] = true
+	for z in range(3, 5):
+		for y in range(0, 3):
+			level.set_cell(cx, gy + y, cz + z, Level.AIR)
+	var sign := Label3D.new()
+	sign.text = "ARCADE"
+	sign.font_size = 72
+	sign.outline_size = 16
+	sign.pixel_size = 0.01
+	sign.modulate = Color("ff6fd8")
+	sign.outline_modulate = Color("2a0a3a")
+	sign.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	sign.position = Vector3(cx + 0.5, gy + 6.9, cz + 2.6)
+	level.add_child(sign)
+	var sub := Label3D.new()
+	sub.text = "MINI GAMES - walk in!"
+	sub.font_size = 40
+	sub.outline_size = 10
+	sub.pixel_size = 0.008
+	sub.modulate = Color("8ff0ff")
+	sub.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	sub.position = Vector3(cx + 0.5, gy + 6.15, cz + 2.6)
+	level.add_child(sub)
+
+
+## True once when the hero walks in through the door (walk out to arm it again).
+func at_arcade(p: Vector3) -> bool:
+	var inside := absf(p.x - arcade_at.x) < 2.2 and absf(p.z - arcade_at.z) < 1.3 and absf(p.y - arcade_at.y) < 1.5
+	if not inside:
+		arcade_armed = true
+		return false
+	if arcade_armed:
+		arcade_armed = false
+		return true
+	return false
+
+
+## Where you stand after a mini game: just outside the door, facing out.
+func arcade_door() -> Vector3:
+	return arcade_at + Vector3(0, 0.02, 3.6)
 
 
 ## The black lines around the block you point at (like Minecraft).
@@ -226,6 +308,9 @@ func _check(h: Actor) -> void:
 	elif absf(target.x + 0.5 - PAD.x) < 2.0 and absf(target.z + 0.5 - PAD.z) < 2.5 and target.y < PAD.y + 4:
 		can_place = false
 		why = "Keep the rocket pad clear"
+	elif level.locked.has(target) or (absf(target.x + 0.5 - arcade_at.x) < 0.6 and target.z + 0.5 > arcade_at.z and target.z + 0.5 < arcade_at.z + 5 and target.y < arcade_at.y + 3):
+		can_place = false
+		why = "Keep the arcade door clear"
 	if can_place and mode != "" and not _affordable():
 		can_place = false
 		why = "Not enough " + _missing()
@@ -309,6 +394,10 @@ func place() -> bool:
 func remove() -> bool:
 	if not has_under or under.y <= 0 or Vector3(under).distance_to(game.leader().position) > REACH + 1.0:
 		game.sfx("bonk", -4)
+		return false
+	if level.locked.has(under):
+		game.sfx("bonk", -4)
+		game.fx.text(Vector3(under) + Vector3(0.5, 1.6, 0.6), "That's the ARCADE!", Color("ffb0a8"), 40, 1.0)
 		return false
 	if not decor.has(under) and decor.has(under + Vector3i(0, 1, 0)):
 		game.sfx("bonk", -4)

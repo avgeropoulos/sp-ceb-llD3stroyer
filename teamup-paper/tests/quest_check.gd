@@ -86,7 +86,7 @@ func _process(_dt: float) -> bool:
 				check(g.state == "play", "the star moment should end by itself")
 				# STARS in the pause menu
 				g._pause("play")
-				check(g.pause_count() == 4, "the pause menu should have STARS in an open world")
+				check(g.pause_count() >= 4, "the pause menu should have STARS in an open world")
 				g.pause_choice(3)
 				check(g.state == "starselect" and op.select_from == "pause", "STARS should open the star select")
 				var cave: int = op.ids().find("cave")

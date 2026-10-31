@@ -69,7 +69,11 @@ func _layout() -> void:
 	var sw := [Vector2(s.x - 145 * u, s.y - 315 * u), 56 * u]
 	var sup := [Vector2(s.x - 300 * u, s.y - 255 * u), 56 * u]
 	var pz := [Vector2(s.x - 52 * u, 52 * u), 34 * u]
-	if game and game.state == "map":
+	if game and game.state == "minigame":
+		buttons = {"jump": jump, "pause": pz}
+	elif game and game.state == "arcade":
+		buttons = {}
+	elif game and game.state == "map":
 		buttons = {"land": [Vector2(s.x - 125 * u, s.y - 215 * u), 82 * u], "pause": pz}
 	elif game and game.state == "home" and game.home:
 		var fly := [Vector2(s.x - 52 * u, 252 * u), 42 * u]
@@ -114,7 +118,12 @@ func _input(event: InputEvent) -> void:
 					return
 				if button_at(e.position) == "" and game.sky.tap_screen(e.position, game.cam):
 					return
-			if game.state != "play" and game.state != "home" and game.state != "map":
+			if game.state == "minigame" and game.minigames and game.minigames.phase == "result" and button_at(e.position) == "":
+				game.jump_pressed = true   # tap anywhere for OK
+			if game.state != "play" and game.state != "home" and game.state != "map" and game.state != "minigame":
+				if game.state == "arcade":
+					_arcade_tap(e.position)
+					return
 				if game.state == "title" and update_showing() and update_rect().grow(20).has_point(e.position):
 					game.updater.download()
 					return
@@ -232,6 +241,14 @@ func _draw() -> void:
 		return
 	if game.state == "partner":
 		_draw_partner()
+		return
+	if game.state == "arcade":
+		_draw_arcade()
+		return
+	if game.state == "minigame":
+		if game.minigames:
+			game.minigames.draw(self)
+		_draw_controls()
 		return
 	_draw_hud()
 	if game.state == "play" or game.state == "home" or game.state == "map":
@@ -469,21 +486,36 @@ func _star_shape(c: Vector2, r: float, col: Color) -> void:
 
 
 func _draw_controls() -> void:
+	if game.state == "minigame" and game.minigames and not game.minigames.uses_stick():
+		_draw_buttons_only()
+		return
+	_draw_stick_and_buttons()
+
+
+func _draw_buttons_only() -> void:
+	_draw_stick_and_buttons(false)
+
+
+func _draw_stick_and_buttons(with_stick := true) -> void:
 	# thumb stick
 	var r := 70.0 * clampf(size.y / 720.0, 0.75, 1.6)
 	var base := stick_base if stick_id >= 0 else Vector2(r * 2.1, size.y - r * 2.1)
-	draw_circle(base, r * 1.2, Color(0.1, 0.15, 0.3, 0.28))
-	draw_arc(base, r * 1.2, 0, TAU, 48, Color(1, 1, 1, 0.5), 4, true)
-	if game.sprinting:   # the stick glows orange while sprinting
+	if with_stick:
+		draw_circle(base, r * 1.2, Color(0.1, 0.15, 0.3, 0.28))
+		draw_arc(base, r * 1.2, 0, TAU, 48, Color(1, 1, 1, 0.5), 4, true)
+	if game.sprinting and with_stick:   # the stick glows orange while sprinting
 		draw_arc(base, r * 1.2, 0, TAU, 48, Color("ff8a1f"), 8, true)
 		txt("SPRINT!", Vector2(base.x - r * 1.2, base.y - r * 1.35), 24, Color("ffb35a"), HORIZONTAL_ALIGNMENT_CENTER, r * 2.4, 6)
-	draw_circle(base + stick * r, r * 0.55, Color("ffd6a8") if game.sprinting else Color(1, 1, 1, 0.75))
+	if with_stick:
+		draw_circle(base + stick * r, r * 0.55, Color("ffd6a8") if game.sprinting else Color(1, 1, 1, 0.75))
 	# buttons
 	var labels := {"jump": "JUMP", "action": game.action_label(), "swap": "SWAP", "super": "SUPER", "pause": "II",
 		"build": "BUILD", "decor": "DECOR", "partner": "PARTNER", "place": "PLACE", "remove": "REMOVE", "done": "DONE", "rotate": "TURN", "land": "LAND", "paint": "PAINT",
 		"fly": "LAND" if game.flying else "FLY", "down": "DOWN", "movies": "MOVIES"}
 	if game.flying:
 		labels["jump"] = "UP"
+	if game.state == "minigame" and game.minigames:
+		labels["jump"] = game.minigames.button_label()
 	var colors := {"jump": Color("3fc06a"), "action": Color("ff8a1f"), "swap": Color("6a7cff"), "super": Color("ffcf33"), "pause": Color(0.2, 0.25, 0.4),
 		"build": Color("ff8a1f"), "decor": Color("ff6fa8"), "partner": Color("2cbec8"), "place": Color("3fc06a"), "remove": Color("e8413b"),
 		"done": Color("3f7fd9"), "rotate": Color("8a5bc4"), "land": Color("3fc06a"),
@@ -834,12 +866,12 @@ func _draw_clear() -> void:
 
 # ------------------------------------------------------------------ pause menu
 const PAUSE_LABELS := ["RESUME", "SAVE", "SAVE & QUIT", "STARS"]
-const PAUSE_COLORS := [Color("3fc06a"), Color("3f7fd9"), Color("ff8a1f"), Color("e0a800")]
+const PAUSE_COLORS := [Color("3fc06a"), Color("3f7fd9"), Color("ff8a1f"), Color("e0a800"), Color("1f6fb8")]
 
 
 func pause_rect(i: int) -> Rect2:
 	var w := minf(460.0, size.x * 0.6)
-	var step := 108.0 if game.pause_count() <= 3 else 92.0
+	var step := 108.0 if game.pause_count() <= 3 else (92.0 if game.pause_count() == 4 else 82.0)
 	return Rect2((size.x - w) * 0.5, size.y * 0.27 + i * step, w, step - 18)
 
 
@@ -853,7 +885,12 @@ func _draw_pause() -> void:
 		draw_rect(r.grow(6) if sel else r, Color.WHITE if sel else Color(1, 1, 1, 0.0))
 		draw_rect(r, PAUSE_COLORS[i])
 		draw_rect(r, Color.WHITE, false, 3.0)
-		txt(PAUSE_LABELS[i], Vector2(r.position.x, r.position.y + 60), 44, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 9)
+		if i == 4:   # POSEIDON FLOOD: a deep-sea button with a trident; red when armed, grey when used
+			var col: Color = Color(0.3, 0.32, 0.4) if game.flood_used else (Color("c0392b") if game.flood_armed_t > 0 else PAUSE_COLORS[4])
+			draw_rect(r, col)
+			draw_rect(r, Color.WHITE, false, 3.0)
+			_trident(Vector2(r.position.x + 34, r.position.y + r.size.y * 0.5), 20)
+		txt(game.pause_label(i), Vector2(r.position.x, r.position.y + (60 if r.size.y > 70 else 46)), 44 if i < 4 else 34, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 9)
 	# lag finder (bottom left): screenshot this if the game stutters
 	if game.slow_count > 0:
 		var ly: float = s.y - 24.0 - game.slow.size() * 24.0
@@ -1141,3 +1178,96 @@ func _draw_movies() -> void:
 			txt("?", Vector2(r.position.x, r.position.y + 70), 44, Color(1, 1, 1, 0.5), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
 			txt("NOT SEEN YET", Vector2(r.position.x, r.end.y - 18), 20, Color(1, 1, 1, 0.6), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
 	txt("Tap a movie to watch it again!", Vector2(0, size.y - 40), 26, Color(1, 1, 1, 0.8), HORIZONTAL_ALIGNMENT_CENTER, size.x, 6)
+
+
+# ------------------------------------------------------------------ the ARCADE menu
+func arcade_rect(i: int) -> Rect2:
+	var n := MiniGames.GAMES.size()
+	var gap := 30.0
+	var w := minf(330.0, (size.x - 80 - gap * (n - 1)) / n)
+	var h := minf(330.0, size.y * 0.5)
+	var x0 := (size.x - (w * n + gap * (n - 1))) * 0.5
+	return Rect2(x0 + i * (w + gap), size.y * 0.24, w, h)
+
+
+func arcade_back_rect() -> Rect2:
+	return Rect2(24, 24, 170, 70)
+
+
+func _arcade_tap(p: Vector2) -> void:
+	if arcade_back_rect().grow(10).has_point(p):
+		game.close_arcade()
+		return
+	for i in MiniGames.GAMES.size():
+		if arcade_rect(i).has_point(p):
+			if game.arcade_sel == i:   # second tap on the same card: play!
+				game.start_minigame(MiniGames.GAMES[i].id)
+			else:
+				game.arcade_sel = i
+				game.sfx("swap", -8)
+			return
+
+
+func _draw_arcade() -> void:
+	var s := size
+	draw_rect(Rect2(Vector2.ZERO, s), Color(0.1, 0.04, 0.18, 0.95))
+	for i in 14:   # flashing arcade lights along the top
+		var on := int(title_t * 4 + i) % 3 == 0
+		draw_circle(Vector2(s.x * (i + 0.5) / 14.0, 120), 8, Color.from_hsv(i / 14.0, 0.7, 1.0 if on else 0.4))
+	txt("ARCADE", Vector2(0, 92), 76, Color("ff6fd8"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 14)
+	var br := arcade_back_rect()
+	draw_rect(br, Color(0.13, 0.17, 0.33))
+	draw_rect(br, Color.WHITE, false, 3.0)
+	txt("BACK", Vector2(br.position.x, br.position.y + 48), 30, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, br.size.x, 6)
+	for i in MiniGames.GAMES.size():
+		var gm: Dictionary = MiniGames.GAMES[i]
+		var r := arcade_rect(i)
+		var sel: bool = game.arcade_sel == i
+		if sel:
+			draw_rect(r.grow(8), Color("ffd23a"))
+		draw_rect(r, Color(0.97, 0.94, 0.86))
+		draw_rect(Rect2(r.position, Vector2(r.size.x, 64)), gm.color)
+		txt(gm.name, Vector2(r.position.x, r.position.y + 44), 30, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 7)
+		_game_icon(gm.id, r.position + Vector2(r.size.x * 0.5, 150))
+		txt(gm.vs, Vector2(r.position.x, r.position.y + 236), 24, Color(0.35, 0.15, 0.2), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
+		txt("WIN: +%d coins" % MiniGames.PRIZE_WIN, Vector2(r.position.x, r.end.y - 22), 22, Color(0.55, 0.4, 0.05), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
+	var g: Dictionary = MiniGames.GAMES[game.arcade_sel]
+	txt(g.about, Vector2(0, arcade_rect(0).end.y + 56), 28, Color("fff2a8"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 7)
+	txt("Tap a game twice to play!", Vector2(0, arcade_rect(0).end.y + 98), 24, Color(1, 1, 1, 0.75), HORIZONTAL_ALIGNMENT_CENTER, s.x, 6)
+
+
+## A little picture for each game's card (drawn, no image files needed).
+func _game_icon(id: String, c: Vector2) -> void:
+	match id:
+		"bowling":
+			for r in 3:
+				for k in r + 1:
+					var p := c + Vector2((k - r * 0.5) * 30, -34 + r * 26)
+					draw_circle(p, 11, Color.WHITE)
+					draw_arc(p, 11, 0, TAU, 20, Color(0.2, 0.15, 0.25), 2.0, true)
+					draw_line(p + Vector2(-9, -2), p + Vector2(9, -2), Color("e8413b"), 3)
+			draw_circle(c + Vector2(-60, 46), 24, Color("3a5bd9"))
+			draw_circle(c + Vector2(-66, 38), 4, Color(0.1, 0.1, 0.15))
+			draw_circle(c + Vector2(-54, 38), 4, Color(0.1, 0.1, 0.15))
+		"coins":
+			for k in 5:
+				var p := c + Vector2(-60 + k * 30, sin(k * 1.7) * 20)
+				draw_circle(p, 18, Color("ffd23a"))
+				draw_arc(p, 18, 0, TAU, 24, Color("b8860b"), 3.0, true)
+				draw_circle(p, 7, Color("ffe98a"))
+		"race":
+			draw_rect(Rect2(c + Vector2(-90, 20), Vector2(180, 30)), Color("bfe6ff"))
+			for k in 6:
+				draw_rect(Rect2(c + Vector2(50 + (k % 2) * 10, 20 + (k / 2) * 10), Vector2(10, 10)), Color.BLACK if (k + k / 2) % 2 == 0 else Color.WHITE)
+			draw_circle(c + Vector2(-30, 0), 26, Color("1e2a44"))
+			draw_circle(c + Vector2(-30, 6), 17, Color.WHITE)
+			draw_colored_polygon(PackedVector2Array([c + Vector2(-8, -2), c + Vector2(6, 2), c + Vector2(-8, 6)]), Color("ff9a3c"))
+
+
+## Poseidon's trident (on the pause button).
+func _trident(c: Vector2, r: float) -> void:
+	var col := Color("ffd23a")
+	draw_line(c + Vector2(0, r), c + Vector2(0, -r), col, 4)
+	draw_line(c + Vector2(-r * 0.6, -r * 0.4), c + Vector2(r * 0.6, -r * 0.4), col, 4)
+	draw_line(c + Vector2(-r * 0.6, -r * 0.4), c + Vector2(-r * 0.6, -r), col, 4)
+	draw_line(c + Vector2(r * 0.6, -r * 0.4), c + Vector2(r * 0.6, -r), col, 4)

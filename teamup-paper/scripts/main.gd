@@ -86,6 +86,11 @@ var victory_t := -1.0         # counts down to the victory scene after Krag Jr. 
 var gate_scene_done := false
 var movie_sel := 0
 var grav := 1.0               # gravity for the heroes (the Moon is 0.6)
+var minigames: MiniGames      # while a mini game from the ARCADE is on (state "minigame")
+var arcade_sel := 0           # highlighted card in the ARCADE menu (state "arcade")
+var flood: Flood              # POSEIDON FLOOD while it's on
+var flood_used := false       # once per world visit
+var flood_armed_t := 0.0      # > 0 after the first tap on POSEIDON FLOOD (tap again to start)
 const MOVIE_SPOT := Vector3(Level.HOME_OX + 1.5, 5, Level.HOME_OZ + 8.5)   # the MOVIES TV at home
 
 # partners
@@ -413,6 +418,51 @@ func scene_tap() -> void:
 		cutscene.finish()
 
 
+# ------------------------------------------------------------------ the ARCADE (mini games)
+func open_arcade() -> void:
+	state = "arcade"
+	sfx("item", -4)
+	note("arcade")
+
+
+func close_arcade() -> void:
+	state = "home"
+	var l := leader()
+	l.position = home.arcade_door()
+	l.vel = Vector3.ZERO
+	follower().position = l.position + Vector3(-1.2, 0.3, 0.8)
+
+
+func start_minigame(id: String) -> void:
+	if MiniGames.info(id).is_empty():
+		return
+	note("mini game " + id)
+	follower().visible = false
+	follower().shadow.visible = false
+	minigames = MiniGames.new()
+	add_child(minigames)
+	state = "minigame"
+	minigames.start(self, id)
+	hud.say(minigames.title(), MiniGames.info(id).vs, 2.0)
+
+
+## A mini game is over: win the prize, back home outside the ARCADE door.
+func minigame_done(prize: int) -> void:
+	coins += prize
+	if minigames:
+		minigames.cleanup()
+		minigames = null
+	var f := follower()
+	f.visible = true
+	close_arcade()
+	cam_focus = leader().position + Vector3(0, 1.4, 0)
+	cam_yaw = 0.0
+	play_music("cozy")
+	if prize > 0:
+		hud.say("+%d COINS!" % prize, "Thanks for playing!", 2.0)
+	save_game(false)
+
+
 func _step_home(dt: float) -> void:
 	if pause_pressed:
 		_pause("home")
@@ -477,6 +527,9 @@ func _step_home(dt: float) -> void:
 	hud.world_taps.clear()
 	_update_leader(leader(), dt)
 	_update_follower(follower(), dt)
+	if home.mode == "" and not flying and home.at_arcade(leader().position) and play_t > 0.8:
+		open_arcade()
+		return
 	if home.mode == "" and not flying and home.at_portal(leader().position) and play_t > 0.8:
 		note("taking off")
 		sfx("item")
@@ -1052,12 +1105,50 @@ static func _a2v(a) -> Vector3:
 
 ## How many pause buttons: RESUME, SAVE, SAVE & QUIT (+ STARS in an open world).
 func pause_count() -> int:
-	return 4 if paused_from == "play" and open_play != null and not boss_on else 3
+	return 5 if paused_from == "play" and open_play != null and not boss_on else 3
+
+
+## The pause menu's 5th button (POSEIDON FLOOD) changes as you tap it.
+func pause_label(i: int) -> String:
+	if i == 4:
+		if flood_used or flood != null:
+			return "FLOOD USED"
+		return "TAP AGAIN: FLOOD!" if flood_armed_t > 0 else "POSEIDON FLOOD"
+	return ["RESUME", "SAVE", "SAVE & QUIT", "STARS"][i]
+
+
+## POSEIDON FLOOD from the pause menu: the first tap only asks "TAP AGAIN", so it can't
+## happen by accident. Once per world visit; not at home, not in Krag Jr.'s fight.
+func poseidon_tap() -> bool:
+	if paused_from != "play" or not level.open or level.is_home or boss_on or open_play == null:
+		sfx("bonk", -4)
+		return false
+	if flood_used or flood != null:
+		save_note = "Poseidon already flooded this world!"
+		save_note_t = 2.0
+		sfx("bonk", -4)
+		return false
+	if flood_armed_t <= 0:
+		flood_armed_t = 3.0
+		save_note = "Tap POSEIDON FLOOD again to flood the world!"
+		save_note_t = 3.0
+		sfx("alert", -6)
+		return false
+	flood_armed_t = 0
+	flood_used = true
+	state = "play"
+	flood = Flood.new()
+	level.add_child(flood)
+	flood.start(self)
+	return true
 
 
 ## Pause menu: 0 RESUME, 1 SAVE, 2 SAVE & QUIT, 3 STARS (pick another quest).
 func pause_choice(i: int) -> void:
 	match i:
+		4:
+			if pause_count() > 4:
+				poseidon_tap()
 		3:
 			if pause_count() > 3:
 				open_play.open_select("pause")
@@ -1089,6 +1180,14 @@ func _warm_up() -> void:
 		fx.beam(at, 1.0, 2.0)
 		fx.ring(at, 1.0)
 		fx.vine(at, Vector3.RIGHT, 1.0)
+		var sea := MeshInstance3D.new()   # the POSEIDON FLOOD sea (transparent)
+		var sq := QuadMesh.new()
+		sq.size = Vector2(0.2, 0.2)
+		sea.mesh = sq
+		sea.material_override = Flood.material()
+		sea.position = at
+		add_child(sea)
+		warm_nodes.append(sea)
 
 		if home:
 			for it in Decor.ITEMS:
@@ -1303,6 +1402,23 @@ func _step(dt: float) -> void:
 			else:
 				cutscene.step(dt)
 		return
+	if state == "arcade":
+		var na := MiniGames.GAMES.size()
+		if Input.is_action_just_pressed("left"):
+			arcade_sel = (arcade_sel + na - 1) % na
+		if Input.is_action_just_pressed("right"):
+			arcade_sel = (arcade_sel + 1) % na
+		if jump_pressed or action_pressed:
+			start_minigame(MiniGames.GAMES[arcade_sel].id)
+		elif pause_pressed:
+			close_arcade()
+		return
+	if state == "minigame":
+		if pause_pressed:
+			minigame_done(0)   # quit: back home, no prize
+		elif minigames:
+			minigames.step(dt)
+		return
 	if state == "movies":
 		var n := Cutscene.ORDER.size()
 		if Input.is_action_just_pressed("left"):
@@ -1379,6 +1495,7 @@ func _step(dt: float) -> void:
 	if pause_pressed:
 		_pause("play")
 		return
+	flood_armed_t = maxf(0, flood_armed_t - dt)
 	play_t += dt
 	hurt_t = maxf(0, hurt_t - dt)
 	if level.open:
@@ -1397,6 +1514,10 @@ func _step(dt: float) -> void:
 	_update_coins(dt)
 	if powers:
 		powers.step(dt)
+	if flood:
+		flood.step(dt)
+		if flood.done:
+			flood = null
 	_update_progress(dt)
 	_update_camera(dt)
 

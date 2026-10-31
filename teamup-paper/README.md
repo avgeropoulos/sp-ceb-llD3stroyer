@@ -288,6 +288,34 @@ under them). Each has its own level, saved in the file, and evolves (it takes a 
 * Test: `tests/partner_check.gd` (pick the dragon, evolve at Lv 7, every ACTION and SUPER of all 12 lines at every
   stage, saved levels).
 
+## ARCADE: mini games vs the bad guys
+
+At home there's a striped **ARCADE** building with a glowing sign (near the rocket pad). Walk in through the
+door to open the MINI GAMES menu (tap a card twice, or stick + JUMP). Win = +20 coins, a good try = +5.
+Pause (II) during a game quits back home. The arcade's blocks are locked: you can't break them or block the door.
+
+| Game | vs | How |
+|---|---|---|
+| KRAG BOWL | a Grumbler | Tap AIM! when the sweeping arrow points at the middle, tap ROLL! when the power bar is full. Straight at the head pin with nearly full power = STRIKE. 3 frames, 2 balls each; kid scoring: pins + 10 for a strike, + 5 for a spare. The Grumbler bowls its own frames. |
+| COIN SCRAMBLE | 3 Grumblers | 30 seconds in a round arena: grab the most coins. Jump on a Grumbler to stun it and steal a coin. |
+| PENGUIN RACE | 3 penguins | Push UP to race down the ice; JUMP the orange hurdles (hitting one trips you). The penguins belly-slide and jump most hurdles. |
+
+* Code: `scripts/minigames.gd` (`MiniGames`: each game is built far away at `ORIGIN` with its own floor and
+  simple movement, so it never touches the home's blocks or saves; `draw()` is the HUD for it), `home.gd`
+  `place_arcade` / `at_arcade` / `arcade_door`, `main.gd` states `"arcade"` and `"minigame"`
+  (`open_arcade`, `start_minigame`, `minigame_done`), `hud.gd` `_draw_arcade`.
+
+## POSEIDON FLOOD
+
+In an open world (not at home, not in Krag Jr.'s fight) the pause menu has a 5th button, **POSEIDON FLOOD**
+(blue with a trident). It can't happen by accident: the first tap only turns it red ("TAP AGAIN: FLOOD!"),
+a second tap within 3 seconds floods. The sea rises over the whole world, every bad guy on the ground is
+washed away (you get their coins), the team floats on top, then it drains (~11 s). Once per world visit
+("FLOOD USED"). Code: `scripts/flood.gd`, `main.gd` `poseidon_tap` / `pause_label`.
+
+* Test: `tests/minigame_check.gd` (arcade door, locked walls, a strike straight down the middle, all 3 games to
+  the end with prizes, the flood's double tap, floating, washing away, draining, once per visit).
+
 ## Save files and pause menu
 
 * **Three save files** (like Team Up!): TAP TO START opens PICK A SAVE FILE. An empty file starts a new game;
