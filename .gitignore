@@ -5,3 +5,6 @@ local.properties
 *.iml
 .DS_Store
 captures/
+
+# Temporary work copies made by Claude Code agents
+.claude/worktrees/
