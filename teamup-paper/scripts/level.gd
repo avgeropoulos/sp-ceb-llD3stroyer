@@ -14,34 +14,43 @@ const WALK_Z1 := 9.65
 enum { AIR, GRASS, DIRT, STONE, IRON, GOLD, DIAMOND, BEDROCK, BRICK, MYSTERY, USED,
 	PLANKS, WOOL_RED, WOOL_BLUE, WOOL_YELLOW, WOOL_WHITE, WINDOW, IRON_BLOCK, GOLD_BLOCK, DIAMOND_BLOCK, STONE_BRICK,
 	SNOW, ICE, SAND, SANDSTONE, LOG, LEAVES, WOOL_GREEN, WOOL_BLACK, ROAD, SWAMP_GRASS, MUD, MOON_DUST, MOON_ROCK,
-	LAVA, BASALT, FROSTING, CAKE, CANDY_CANE, WATER, CLOUD }
+	LAVA, BASALT, FROSTING, CAKE, CANDY_CANE, WATER, CLOUD, LANTERN }
 const NAMES := ["", "GRASS", "DIRT", "STONE", "IRON", "GOLD", "DIAMOND", "BEDROCK", "BRICK", "?", "BLOCK",
 	"PLANKS", "RED", "BLUE", "YELLOW", "WHITE", "WINDOW", "IRON", "GOLD", "DIAMOND", "STONE BRICK",
 	"SNOW", "ICE", "SAND", "SANDSTONE", "LOG", "LEAVES", "GREEN", "BLACK", "ROAD", "SWAMP GRASS", "MUD", "MOON DUST", "MOON ROCK",
-	"LAVA", "BASALT", "FROSTING", "CAKE", "CANDY CANE", "WATER", "CLOUD"]
+	"LAVA", "BASALT", "FROSTING", "CAKE", "CANDY CANE", "WATER", "CLOUD", "LANTERN"]
 ## How many pickaxe hits each block takes (999 = can't be mined).
-const HITS := [0, 1, 1, 2, 3, 3, 4, 999, 2, 999, 999, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 1, 2, 1, 2, 1, 1, 1, 1, 2, 1, 1, 1, 2, 999, 2, 1, 1, 2, 999, 1]
+const HITS := [0, 1, 1, 2, 3, 3, 4, 999, 2, 999, 999, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 1, 2, 1, 2, 1, 1, 1, 1, 2, 1, 1, 1, 2, 999, 2, 1, 1, 2, 999, 1, 1]
 ## Atlas tile for the top, sides and bottom of each block type.
 const FACES := [[0, 0, 0], [0, 1, 2], [2, 2, 2], [3, 3, 3], [4, 4, 4], [5, 5, 5], [6, 6, 6], [7, 7, 7], [8, 8, 8], [9, 9, 9], [10, 10, 10],
 	[11, 11, 11], [12, 12, 12], [13, 13, 13], [14, 14, 14], [15, 15, 15], [16, 16, 16], [17, 17, 17], [18, 18, 18], [19, 19, 19], [20, 20, 20],
 	[21, 22, 2], [23, 23, 23], [24, 24, 24], [25, 25, 25], [26, 27, 26], [28, 28, 28], [29, 29, 29], [30, 30, 30], [31, 31, 31],
 	[32, 33, 34], [34, 34, 34], [35, 36, 36], [36, 36, 36],
-	[37, 37, 37], [38, 38, 38], [39, 40, 41], [41, 41, 41], [42, 42, 42], [43, 43, 43], [44, 44, 44]]
+	[37, 37, 37], [38, 38, 38], [39, 40, 41], [41, 41, 41], [42, 42, 42], [43, 43, 43], [44, 44, 44], [45, 45, 45]]
 const COLORS := [Color.WHITE, Color("60be50"), Color("96663f"), Color("8a8e96"), Color("dfbaa0"), Color("ffd23c"), Color("5ae6e6"), Color("3c3c46"), Color("c45c3a"), Color("2cbec8"), Color("967860"),
 	Color("c4925a"), Color("de423c"), Color("3e6edc"), Color("face3c"), Color("ececf0"), Color("96d2f5"), Color("dcdce2"), Color("ffce3a"), Color("60e8e6"), Color("96989e"),
 	Color("eef4fc"), Color("96d2f0"), Color("ecce8c"), Color("d6aa6a"), Color("70502e"), Color("3e9a44"), Color("4cb048"), Color("34343e"), Color("4a4c52"),
 	Color("4a6046"), Color("543e3a"), Color("c4c6ce"), Color("96989e"),
-	Color("ff8a2a"), Color("4a424c"), Color("faa8ce"), Color("ecc48c"), Color("e83440"), Color("3a96de"), Color("f4f8ff")]
-const ATLAS_TILES := 45       # pictures in art/atlas.png
-const BLOCK_TYPES := 41       # block kinds (AIR .. CLOUD)
+	Color("ff8a2a"), Color("4a424c"), Color("faa8ce"), Color("ecc48c"), Color("e83440"), Color("3a96de"), Color("f4f8ff"), Color("ffd678")]
+const ATLAS_TILES := 46       # pictures in art/atlas.png
+const BLOCK_TYPES := 42       # block kinds (AIR .. LANTERN)
 const HOME_W := 44            # the OLD home plot was 44 x 10 (old saves are moved into the middle of the new one)
 const PORTAL_X := 40.5
-## The home world: a big square of land to build a whole city on.
-const HOME_SX := 96
-const HOME_SY := 40
-const HOME_SZ := 96
-const HOME_OX := 26           # where the old 44 x 10 plot sits inside the new one
-const HOME_OZ := 44
+## The home world: a big land with the flat build plot in the middle, rolling hills,
+## a lake, a ring of mountains, caves underground and the painting castle.
+const HOME_SX := 192
+const HOME_SY := 56
+const HOME_SZ := 192
+const HOME_GY := 22           # standing height on the home plot (the grass top is at HOME_GY - 1)
+## Where the 96 x 96 home (saves before v3, ground at y 5) sits inside this one.
+const HOME_OLD := Vector3i(48, HOME_GY - 5, 48)
+const HOME_OX := 74           # where the old 44 x 10 plot (the start) sits: HOME_OLD + (26, 44)
+const HOME_OZ := 92
+## A flat, empty spot kept clear for the ARCADE building (x, z, width, depth; ground at HOME_GY).
+const ARCADE_SPOT := Rect2i(148, 88, 14, 14)
+## The painting castle (x, z, width, depth) in the north hills, door facing the plot.
+const CASTLE := Rect2i(80, 14, 32, 26)
+const MINE := Vector3i(44, 0, 104)       # the mine entrance west of the plot (y = ground there)
 
 const CHECKPOINT_X := 91.0
 const BOSS_X0 := 156
@@ -73,10 +82,31 @@ var arena_y := 6              # its floor
 var flag_pos := Vector3.ZERO
 var gate: Array[Vector3i] = []   # the gold gate that 5 stars open
 var locked := {}              # Vector3i -> true: blocks that can't be mined (castle walls)
+var paintings: Array = []     # home castle: [{pos (centre on the wall), normal, w, h}] in painting order
+var summit := Vector3.ZERO    # home: the top of the mountain stairs
+var lake := Vector3.ZERO      # home: the middle of the lake
+var cave_rooms: Array = []    # home: centres of cave rooms (for tests / lanterns)
+# drawing in chunks (the big home): one MultiMesh per (chunk, top-only?, block type)
+var chunked := false
+const CH := 32                # chunk size (x and z)
+const SPARE_CHUNK := 128
+var ncx := 1
+var ncz := 1
+var band_y := 0               # blocks below this are the "deep" band (caves): only drawn when you're near
+var edge_solid := false       # outside the grid counts as solid (no faces on the world's sides)
+var touched := {}             # Vector3i -> true: cells that differ from the plain height-map ground
+var chunk_nodes := {}         # chunk index -> [nodes]
+var _meshes: Array = []       # per type: [cube, top-only quad]
+var _mats: Array = []         # per type: material
+var _vis_t := 0.0
 var objectives: Array = []    # the star challenges (Mario 64 style missions): {id, name, hint, pos}
 var red_spots: Array = []     # RED COINS: where the 8 red coins float
 var dog_spot := Vector3.ZERO  # LOST DOG: where Dennis is lost
 var dog_home := Vector3.ZERO  # ... and his doghouse
+var bonus := false            # a painting's BONUS COURSE (see generate_bonus)
+var painting := {}            # the secret painting in an open world: {pos, w, h, x, z, bottom}
+var bonus_tops: Array = []    # BONUS COURSE: where you stand on each platform, start to star
+var bonus_star := Vector3.ZERO
 var keep_out: Array = []      # [center, radius]: the challenges' space
 var step_tops: Array = []     # SKY STEPS: where you stand on each step (for the test robot)
 var tower_tops: Array = []    # TALL TOWER: the same for the stairs
@@ -102,6 +132,8 @@ func set_cell(x: int, y: int, z: int, t: int) -> void:
 	if inside(x, y, z):
 		cells[idx(x, y, z)] = t
 		damage.erase(Vector3i(x, y, z))
+		if chunked:
+			touched[Vector3i(x, y, z)] = true
 		if built:
 			# only this block and its 6 neighbours can change how they look
 			var c := Vector3i(x, y, z)
@@ -378,46 +410,509 @@ func generate_empty() -> void:
 	rebuild()
 
 
-## The home world: a big flat square of grass to build on, some block trees to
-## chop (or keep), and the rocket pad. The old 44 x 10 plot sits in the middle.
+## The home world: the flat build plot in the middle (the 96 x 96 home from before, so old
+## builds stay put), rolling hills, a lake, a ring of mountains with a stairway to a summit,
+## caves underground (a mine entrance by the plot and holes in the hillsides) full of ores,
+## lanterns and a lava pool, and the painting castle in the north hills.
+static var prof := {}   # timing of the home's parts (tests)
+
+
+func _lap(name: String, t0: int) -> int:
+	prof[name] = (Time.get_ticks_usec() - t0) / 1000.0
+	return Time.get_ticks_usec()
+
+
 func generate_home() -> void:
+	var t0 := Time.get_ticks_usec()
 	is_home = true
 	open = true
+	chunked = true
+	edge_solid = true
 	sx = HOME_SX
 	sy = HOME_SY
 	sz = HOME_SZ
 	width = HOME_SX
-	rng.seed = 77
-	cells.resize(sx * sy * sz)
-	cells.fill(AIR)
+	band_y = HOME_GY - 4
+	touched = {}
 	heights.resize(sx)
-	heights.fill(5)
+	heights.fill(HOME_GY)
+	if _load_home_cache(cache_path):
+		_lap("cache", t0)
+		return
+	var gy := HOME_GY
+	var n := FastNoiseLite.new()
+	n.seed = 77
+	n.frequency = 0.022
+	n.fractal_octaves = 3
+	var mn := FastNoiseLite.new()
+	mn.seed = 78
+	mn.frequency = 0.03
+	var old := Rect2(HOME_OLD.x, HOME_OLD.z, 96, 96)
+	var flats := [[old, 10.0], [Rect2(CASTLE.position.x - 3, CASTLE.position.y - 2, CASTLE.size.x + 6, CASTLE.size.y + 8), 7.0],
+		[Rect2(ARCADE_SPOT.position.x, ARCADE_SPOT.position.y, ARCADE_SPOT.size.x, ARCADE_SPOT.size.y), 6.0],
+		[Rect2(MINE.x - 6, MINE.z - 6, 10, 12), 5.0]]
+	lake = Vector3(64.5, gy - 1, 158.5)
+	var stair_z := 128
+	var stair_x0 := 146
+	# ---- the height of every column
+	hmap.resize(sx * sz)
+	var tops := PackedByteArray()
+	tops.resize(sx * sz)
 	for z in sz:
 		for x in sx:
-			cells[idx(x, 0, z)] = BEDROCK
-			cells[idx(x, 1, z)] = STONE
-			cells[idx(x, 2, z)] = STONE
-			cells[idx(x, 3, z)] = DIRT
-			cells[idx(x, 4, z)] = GRASS
-	# block trees, away from the middle where you start building
+			var h := gy + n.get_noise_2d(x, z) * 5.0
+			var d := mini(mini(x, z), mini(sx - 1 - x, sz - 1 - z))
+			h = lerpf(gy, h, clampf((d - 1) / 6.0, 0.0, 1.0))   # level with the land outside at the very edge
+			if d < 34:   # the mountain ring (low again right at the edge)
+				var tt := clampf((d - 3) / 31.0, 0.0, 1.0)
+				var amp := 30.0 * (0.4 + 0.6 * (mn.get_noise_2d(x, z) + 1.0) * 0.5)
+				h += amp * sin(tt * PI) * (1.0 if d >= 3 else 0.0)
+			for f in flats:
+				var r: Rect2 = f[0]
+				var dd := maxf(maxf(r.position.x - x, x - r.end.x + 1), maxf(r.position.y - z, z - r.end.y + 1))
+				if dd <= 0:
+					h = gy
+				elif dd < f[1]:
+					h = lerpf(gy, h, dd / f[1])
+			var ld := Vector2(x + 0.5 - lake.x, z + 0.5 - lake.z).length()
+			var top := GRASS
+			if ld < 9.0:
+				h = gy - 1
+				top = WATER
+			elif ld < 11.0:
+				h = gy
+				top = SAND
+			# the mountain stairs: a 3-wide stairway climbing east to the summit
+			if z >= stair_z and z < stair_z + 3 and x >= stair_x0 and x < stair_x0 + 36:
+				h = gy + (x - stair_x0) / 2
+			var hi := clampi(int(round(h)), 6, sy - 4)
+			if top == GRASS and hi - 1 >= 42:
+				top = SNOW
+			elif top == GRASS and hi - 1 >= 34:
+				top = STONE
+			hmap[x + z * sx] = hi
+			tops[x + z * sx] = top
+	t0 = _lap("heights", t0)
+	summit = Vector3(stair_x0 + 36.5, hmap[stair_x0 + 35 + (stair_z + 1) * sx], stair_z + 1.5)
+	# ---- fill the ground: an Image whose rows are the cell rows, filled with rectangles (fast)
+	var img := Image.create(sx, sy * sz, false, Image.FORMAT_R8)
+	img.fill(_lum(STONE))
+	for z in sz:
+		img.fill_rect(Rect2i(0, sy * z, sx, 1), _lum(BEDROCK))
+		for x in sx:
+			var h := hmap[x + z * sx]
+			var top: int = tops[x + z * sx]
+			img.fill_rect(Rect2i(x, sy * z + h, 1, sy - h), _lum(AIR))
+			img.set_pixel(x, sy * z + h - 1, _lum(top))
+			var sub := DIRT if top == GRASS else (SAND if top in [WATER, SAND] else STONE)
+			if top == SNOW:
+				sub = STONE
+			img.fill_rect(Rect2i(x, sy * z + h - 3, 1, 2), _lum(sub))
+	cells = img.get_data()
+	t0 = _lap("fill", t0)
+	rng.seed = 77
+	_home_old_trees()
+	_home_ores()
+	t0 = _lap("ores", t0)
+	_home_caves()
+	t0 = _lap("caves", t0)
+	_home_trees(n)
+	_castle_home()
+	t0 = _lap("trees+castle", t0)
+	# the summit: a little platform with a diamond prize
+	var sp := Vector3i(int(summit.x), int(summit.y), int(summit.z))
+	for dx in range(-2, 3):
+		for dz in range(-2, 3):
+			_put(sp.x + dx, sp.y - 1, sp.z + dz, STONE_BRICK)
+			for y in range(sp.y, sp.y + 4):
+				_put(sp.x + dx, y, sp.z + dz, AIR)
+	_put(sp.x + 2, sp.y, sp.z + 2, DIAMOND_BLOCK)
+	_put(sp.x + 2, sp.y, sp.z - 2, GOLD_BLOCK)
+	signs = [[Vector3(HOME_OX + 3.5, gy, HOME_OZ + 3.6), "HOME SWEET HOME\nBUILD and DECOR\nto make it yours!"],
+		[Vector3(HOME_OX + 37.5, gy, HOME_OZ + 3.6), "ROCKET\nFly to\nthe worlds!"],
+		[Vector3(MINE.x + 2.5, MINE_Y, MINE.z + 3.6), "THE MINE\nCaves and ores!\nDig with BUILD"],
+		[Vector3(CASTLE.position.x + CASTLE.size.x * 0.5 + 4.5, gy, CASTLE.end.y + 2.6), "PAINTING CASTLE\nJump into a painting\nto visit a world!"],
+		[Vector3(stair_x0 - 1.5, gy, stair_z - 0.6), "MOUNTAIN\nClimb the stairs\nto the summit!"],
+		[summit + Vector3(-1.5, 0, -1.5), "THE SUMMIT!\nYou made it!"]]
+	_build_mesh_nodes()
+	_home_scenery()
+	t0 = _lap("scenery", t0)
+	rebuild()
+	t0 = _lap("rebuild", t0)
+
+
+
+# ------------------------------------------------------------------ the baked home
+## The home's starting world is the same every time, so the app build bakes it once
+## (tools/bake_home.gd, run by CI before export) and the game loads it in a blink instead
+## of making it again. Without the file (tests, editor runs) the home is made as normal.
+const HOME_CACHE := "res://data/home_cache.bin"
+const HOME_CACHE_V := 1
+static var cache_path := HOME_CACHE   # tests point this somewhere else
+
+
+func save_home_cache(path: String) -> bool:
+	var lists := {}
+	var bufs := {}
+	for k in slots.size():
+		var arr: Array = slots[k]
+		if arr.is_empty() or mm_nodes[k] == null:
+			continue
+		var ids := PackedInt32Array()
+		ids.resize(arr.size())
+		for i in arr.size():
+			var c: Vector3i = arr[i]
+			ids[i] = c.x + sx * (c.y + sy * c.z)
+		lists[k] = ids
+		bufs[k] = mm_nodes[k].multimesh.buffer
+	var tch := PackedInt32Array()
+	for c in touched:
+		tch.append(c.x + sx * (c.y + sy * c.z))
+	var lck := PackedInt32Array()
+	for c in locked:
+		lck.append(c.x + sx * (c.y + sy * c.z))
+	var d := {"v": HOME_CACHE_V, "size": [sx, sy, sz], "cells": cells, "hmap": hmap, "touched": tch, "locked": lck,
+		"lists": lists, "buffers": bufs, "paintings": paintings, "summit": summit, "lake": lake,
+		"cave_rooms": cave_rooms, "signs": signs, "mine_y": MINE_Y}
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	var f := FileAccess.open_compressed(path, FileAccess.WRITE, FileAccess.COMPRESSION_ZSTD)
+	if f == null:
+		return false
+	f.store_var(d)
+	f.close()
+	return true
+
+
+## Loads the baked home (true) or says it can't (false: make it instead).
+func _load_home_cache(path: String) -> bool:
+	if not FileAccess.file_exists(path):
+		return false
+	var f := FileAccess.open_compressed(path, FileAccess.READ, FileAccess.COMPRESSION_ZSTD)
+	if f == null:
+		return false
+	var d = f.get_var()
+	f.close()
+	if not (d is Dictionary) or int(d.get("v", 0)) != HOME_CACHE_V or d.get("size", []) != [sx, sy, sz]:
+		return false
+	cells = d.cells
+	hmap = d.hmap
+	if cells.size() != sx * sy * sz or hmap.size() != sx * sz:
+		return false
+	var row := sx * sy
+	touched = {}
+	for i in (d.touched as PackedInt32Array):
+		touched[Vector3i(i % sx, (i / sx) % sy, i / row)] = true
+	locked = {}
+	for i in (d.locked as PackedInt32Array):
+		locked[Vector3i(i % sx, (i / sx) % sy, i / row)] = true
+	paintings = d.paintings
+	summit = d.summit
+	lake = d.lake
+	cave_rooms = d.cave_rooms
+	signs = d.signs
+	MINE_Y = d.mine_y
+	_build_mesh_nodes()
+	_home_scenery()
+	built = true
+	slot_of.clear()
+	slots.clear()
+	slots.resize(mm_nodes.size())
+	for k in slots.size():
+		slots[k] = []
+	var lists: Dictionary = d.lists
+	var bufs: Dictionary = d.buffers
+	for k in lists:
+		var ids: PackedInt32Array = lists[k]
+		var pts := []
+		pts.resize(ids.size())
+		for j in ids.size():
+			var i := ids[j]
+			var c := Vector3i(i % sx, (i / sx) % sy, i / row)
+			pts[j] = c
+			slot_of[c] = Vector2i(k, j)
+		var mm := _node(k).multimesh
+		var b: PackedFloat32Array = bufs[k]
+		mm.instance_count = b.size() / 16
+		mm.buffer = b
+		mm.visible_instance_count = pts.size()
+		slots[k] = pts
+	return true
+
+
+## A block type as a colour the Image can store exactly (see generate_home).
+static func _lum(t: int) -> Color:
+	return Color((t + 0.25) / 255.0, 0, 0)
+
+
+## Writes a cell during generation and remembers it differs from the plain ground.
+func _put(x: int, y: int, z: int, t: int) -> void:
+	if x < 0 or y < 1 or z < 0 or x >= sx or y >= sy or z >= sz:
+		return
+	cells[x + sx * (y + sy * z)] = t
+	touched[Vector3i(x, y, z)] = true
+
+
+## The trees of the old 96 x 96 home, in the same places (old saves chopped some of them).
+func _home_old_trees() -> void:
+	var o := HOME_OLD
 	var placed := 0
 	var tries := 0
 	while placed < 26 and tries < 400:
 		tries += 1
-		var tx := rng.randi_range(4, sx - 5)
-		var tz := rng.randi_range(4, sz - 5)
-		if tx > HOME_OX - 6 and tx < HOME_OX + HOME_W + 6 and tz > HOME_OZ - 8 and tz < HOME_OZ + 18:
+		var tx := rng.randi_range(4, 91)
+		var tz := rng.randi_range(4, 91)
+		if tx > 26 - 6 and tx < 26 + HOME_W + 6 and tz > 44 - 8 and tz < 44 + 18:
 			continue
-		if get_cell(tx, 5, tz) != AIR or get_cell(tx + 2, 6, tz) != AIR or get_cell(tx - 2, 6, tz) != AIR \
-				or get_cell(tx, 6, tz + 2) != AIR or get_cell(tx, 6, tz - 2) != AIR:
+		if get_cell(o.x + tx, HOME_GY, o.z + tz) != AIR or get_cell(o.x + tx + 2, HOME_GY + 1, o.z + tz) != AIR \
+				or get_cell(o.x + tx - 2, HOME_GY + 1, o.z + tz) != AIR or get_cell(o.x + tx, HOME_GY + 1, o.z + tz + 2) != AIR \
+				or get_cell(o.x + tx, HOME_GY + 1, o.z + tz - 2) != AIR:
 			continue
-		_block_tree(tx, tz)
+		_tree_at(o.x + tx, o.z + tz, HOME_GY)
 		placed += 1
-	signs = [[Vector3(HOME_OX + 3.5, 5, HOME_OZ + 3.6), "HOME SWEET HOME\nBUILD and DECOR\nto make it yours!"],
-		[Vector3(HOME_OX + 37.5, 5, HOME_OZ + 3.6), "ROCKET\nFly to\nthe worlds!"]]
-	_build_mesh_nodes()
-	_home_scenery()
-	rebuild()
+
+
+func _tree_at(x: int, z: int, base: int, extra := 0) -> void:
+	var h := rng.randi_range(4, 6) + extra
+	for y in range(base, base + h):
+		_put(x, y, z, LOG)
+	var top := base + h
+	for dy in range(-2, 2):
+		var r := 2 if dy < 0 else 1
+		for dx in range(-r, r + 1):
+			for dz in range(-r, r + 1):
+				if absi(dx) == r and absi(dz) == r and (dy == 1 or rng.randf() < 0.5):
+					continue
+				if inside(x + dx, top + dy, z + dz) and get_cell(x + dx, top + dy, z + dz) == AIR:
+					_put(x + dx, top + dy, z + dz, LEAVES)
+
+
+## Forests on the hills around the plot (none on the plot, the castle or the stairs).
+func _home_trees(n: FastNoiseLite) -> void:
+	var placed := 0
+	for i in 900:
+		if placed >= 110:
+			break
+		var x := rng.randi_range(4, sx - 5)
+		var z := rng.randi_range(4, sz - 5)
+		if _keep_clear(x, z, 3):
+			continue
+		if n.get_noise_2d(x * 2.0 + 500, z * 2.0) < 0.05:
+			continue   # forests grow in patches
+		var g := hmap[x + z * sx]
+		if g > 40 or get_cell(x, g - 1, z) != GRASS or get_cell(x, g, z) != AIR:
+			continue
+		var ok := true
+		for d in [Vector2i(2, 0), Vector2i(-2, 0), Vector2i(0, 2), Vector2i(0, -2)]:
+			if get_cell(x + d.x, g + 2, z + d.y) != AIR:
+				ok = false
+		if ok:
+			_tree_at(x, z, g, 1 if rng.randf() < 0.3 else 0)
+			placed += 1
+
+
+## Places that must stay as they are: the old plot, the castle, the arcade spot, the mine
+## entrance, the lake and the mountain stairs.
+func _keep_clear(x: int, z: int, m: int) -> bool:
+	for r in [Rect2i(HOME_OLD.x, HOME_OLD.z, 96, 96), Rect2i(CASTLE.position - Vector2i(3, 2), CASTLE.size + Vector2i(6, 8)),
+			ARCADE_SPOT, Rect2i(MINE.x - 8, MINE.z - 6, 14, 12), Rect2i(144, 125, 44, 9)]:
+		if x >= r.position.x - m and x < r.end.x + m and z >= r.position.y - m and z < r.end.y + m:
+			return true
+	return Vector2(x - lake.x, z - lake.z).length() < 12 + m
+
+
+## Ore veins in the stone: iron everywhere, gold deeper, diamonds near the bottom.
+func _home_ores() -> void:
+	for i in 1400:
+		var x := rng.randi_range(2, sx - 3)
+		var z := rng.randi_range(2, sz - 3)
+		var y := rng.randi_range(1, HOME_GY - 5)
+		var t := IRON
+		var r := rng.randf()
+		if y < 8 and r < 0.3:
+			t = DIAMOND
+		elif y < 14 and r < 0.45:
+			t = GOLD
+		var c := Vector3i(x, y, z)
+		for k in rng.randi_range(2, 5):
+			if get_cell(c.x, c.y, c.z) == STONE:
+				cells[idx(c.x, c.y, c.z)] = t   # same solidity: no need to remember it
+			c += [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0), Vector3i(0, 0, 1), Vector3i(0, 0, -1)][rng.randi() % 6]
+
+
+## Caves: a mine entrance by the plot sloping down to a big room, tunnels winding off
+## from it, more tunnels deep down, and a few that come out in the hillsides.
+func _home_caves() -> void:
+	cave_rooms = []
+	# the mine: a 3-wide tunnel going down to the west, framed with logs and planks
+	var mx := MINE.x
+	var mz := MINE.z
+	var g := hmap[mx + mz * sx]
+	MINE_Y = g
+	var y := g
+	var x := mx
+	var step := 0
+	while y > 8:
+		for dz in range(-1, 2):
+			for dy in range(0, 4):
+				_carve_cell(x, y + dy, mz + dz)
+			_put(x, y - 1, mz + dz, PLANKS)
+		if step % 6 == 0:
+			_put(x, y + 3, mz - 2, LANTERN)
+		x -= 1
+		step += 1
+		if step % 2 == 0:
+			y -= 1
+	# the entrance frame
+	for dy in range(0, 4):
+		_put(mx + 1, g + dy, mz - 2, LOG)
+		_put(mx + 1, g + dy, mz + 2, LOG)
+	for dz in range(-2, 3):
+		_put(mx + 1, g + 4, mz + dz, PLANKS)
+	var room := Vector3(x - 3, y + 2, mz)
+	_room(room, 5.0)
+	_put(int(room.x), int(room.y) + 4, int(room.z), LANTERN)
+	# tunnels winding off from the mine room, and others deep down
+	for i in 5:
+		_worm(room, Vector3.RIGHT.rotated(Vector3.UP, rng.randf() * TAU), 60, 1.4, 2.2, 4, HOME_GY - 7)
+	for i in 12:
+		var p := Vector3(rng.randf_range(12, sx - 12), rng.randf_range(5, HOME_GY - 8), rng.randf_range(12, sz - 12))
+		_worm(p, Vector3.RIGHT.rotated(Vector3.UP, rng.randf() * TAU), 55, 1.3, 2.3, 3, HOME_GY - 7)
+	# holes in the hillsides that lead down into the caves
+	var made := 0
+	for i in 300:
+		if made >= 5:
+			break
+		var hx := rng.randi_range(20, sx - 21)
+		var hz := rng.randi_range(20, sz - 21)
+		var hg := hmap[hx + hz * sx]
+		if hg < HOME_GY + 6 or hg > HOME_GY + 16 or _keep_clear(hx, hz, 6):
+			continue
+		var to := Vector3(sx * 0.5, 8, sz * 0.5) - Vector3(hx, hg, hz)
+		_worm(Vector3(hx, hg - 1, hz), to.normalized(), 40, 1.5, 2.1, 3, sy - 3, true)
+		made += 1
+	# a lava pool at the bottom of a deep cave room
+	var lava_room := Vector3(sx * 0.5 + 30, 6, sz * 0.5 - 40)
+	_room(lava_room, 4.0)
+	for dx in range(-2, 3):
+		for dz in range(-2, 3):
+			if get_cell(int(lava_room.x) + dx, int(lava_room.y) - 3, int(lava_room.z) + dz) == AIR:
+				_put(int(lava_room.x) + dx, int(lava_room.y) - 3, int(lava_room.z) + dz, LAVA)
+
+
+var MINE_Y := HOME_GY   # the ground height at the mine entrance (set when the home is made)
+
+
+func _carve_cell(x: int, y: int, z: int) -> void:
+	if x < 1 or z < 1 or x >= sx - 1 or z >= sz - 1 or y < 1 or y >= sy:
+		return
+	if get_cell(x, y, z) != AIR:
+		_put(x, y, z, AIR)
+
+
+func _room(c: Vector3, r: float) -> void:
+	cave_rooms.append(c)
+	for dx in range(-ceili(r), ceili(r) + 1):
+		for dy in range(-ceili(r * 0.6), ceili(r * 0.6) + 1):
+			for dz in range(-ceili(r), ceili(r) + 1):
+				if Vector3(dx, dy / 0.6, dz).length() <= r:
+					_carve_cell(int(c.x) + dx, int(c.y) + dy, int(c.z) + dz)
+
+
+## A wiggly tunnel. Under the build plot it stays well below the grass.
+func _worm(p: Vector3, dir: Vector3, steps: int, r0: float, r1: float, ymin: int, ymax: int, from_surface := false) -> void:
+	for s in steps:
+		var r := rng.randf_range(r0, r1)
+		var top := ymax
+		if not from_surface and _keep_clear(int(p.x), int(p.z), 2):
+			top = mini(ymax, HOME_GY - 7)
+		var ir := ceili(r)
+		for dx in range(-ir, ir + 1):
+			for dy in range(-ir, ir + 1):
+				for dz in range(-ir, ir + 1):
+					if dx * dx + dy * dy + dz * dz <= r * r:
+						var cy := int(p.y) + dy
+						if cy <= top + ir:
+							_carve_cell(int(p.x) + dx, cy, int(p.z) + dz)
+		if s % 9 == 4:   # a lantern on the wall now and then
+			var side := Vector3.RIGHT.rotated(Vector3.UP, rng.randf() * TAU)
+			for k in range(ir, ir + 4):
+				var q := p + side * k
+				if get_cell(int(q.x), int(p.y), int(q.z)) != AIR:
+					_put(int(q.x), int(p.y), int(q.z), LANTERN)
+					break
+		dir = (dir + Vector3(rng.randf_range(-0.5, 0.5), rng.randf_range(-0.25, 0.25), rng.randf_range(-0.5, 0.5))).normalized()
+		if from_surface and s < 12:
+			dir.y = -0.45   # go down into the hill first
+		p += dir * r * 0.8
+		p.x = clampf(p.x, 4, sx - 5)
+		p.z = clampf(p.z, 4, sz - 5)
+		if p.y < ymin or (p.y > ymax and not from_surface):
+			dir.y = -dir.y
+			p.y = clampf(p.y, ymin, ymax)
+
+
+## The painting castle: stone walls, red towers, a carpet down the middle and a painting
+## for every world on the walls inside (HomeBase dresses them; see `paintings`).
+func _castle_home() -> void:
+	var gy := HOME_GY
+	var x0 := CASTLE.position.x
+	var z0 := CASTLE.position.y
+	var x1 := CASTLE.end.x - 1
+	var z1 := CASTLE.end.y - 1
+	var hgt := 9
+	var door := (x0 + x1) / 2
+	for x in range(x0, x1 + 1):
+		for z in range(z0, z1 + 1):
+			var wall := x == x0 or x == x1 or z == z0 or z == z1
+			_lock(x, gy - 1, z, STONE_BRICK if not (x == door or x == door - 1 or x == door + 1) or z == z0 else WOOL_RED)
+			for y in range(gy, gy + hgt + 1):
+				if wall:
+					var t := STONE_BRICK
+					if z == z1 and absi(x - door) <= 2 and y < gy + 5:
+						t = AIR   # the door
+					elif z == z1 and absi(x - door) == 3 and y < gy + 6:
+						t = GOLD_BLOCK
+					elif y == gy + hgt and (x + z) % 2 == 1:
+						t = AIR   # battlements
+					elif (x == x0 or x == x1) and y == gy + 6 and (z - z0) % 4 == 2:
+						t = WINDOW
+					if t == AIR:
+						_put(x, y, z, AIR)
+					else:
+						_lock(x, y, z, t)
+				else:
+					_put(x, y, z, AIR)
+			if not (x == x0 or x == x1 or z == z0 or z == z1):
+				_lock(x, gy + hgt - 1, z, STONE_BRICK if (x + z) % 3 else WINDOW)   # the ceiling (with skylights)
+	# towers at the front corners with red pointy roofs
+	for cx in [x0, x1]:
+		for dx in range(-2, 3):
+			for dz in range(-2, 3):
+				for y in range(gy, gy + hgt + 4):
+					if absi(dx) == 2 or absi(dz) == 2:
+						_lock(cx + dx, y, z1 + dz, STONE_BRICK)
+				for k in 4:
+					if absi(dx) <= 2 - k / 2 and absi(dz) <= 2 - k / 2:
+						_lock(cx + dx, gy + hgt + 4 + k, z1 + dz, WOOL_RED)
+	# paintings: on the back wall and both side walls, facing in
+	paintings = []
+	var slots_b := []
+	var xs := x0 + 4
+	while xs <= x1 - 4:
+		slots_b.append(xs)
+		xs += 5
+	for xx in slots_b:
+		paintings.append({"pos": Vector3(xx + 0.5, gy + 3.2, z0 + 1.02), "normal": Vector3(0, 0, 1)})
+	var zz := z0 + 5
+	while zz <= z1 - 6:
+		paintings.append({"pos": Vector3(x0 + 1.02, gy + 3.2, zz + 0.5), "normal": Vector3(1, 0, 0)})
+		paintings.append({"pos": Vector3(x1 - 0.02, gy + 3.2, zz + 0.5), "normal": Vector3(-1, 0, 0)})
+		zz += 4
+
+
+func _lock(x: int, y: int, z: int, t: int) -> void:
+	_put(x, y, z, t)
+	locked[Vector3i(x, y, z)] = true
 
 
 ## A Minecraft-style tree: a log trunk with a blob of leaves.
@@ -490,7 +985,7 @@ func _home_scenery(ground_tex := "grass_top", trees: Array = ["tree_a", "tree_b"
 		pm.size = r.size
 		q.mesh = pm
 		q.material_override = m
-		q.position = Vector3(r.position.x + r.size.x * 0.5, 5.0, r.position.y + r.size.y * 0.5)
+		q.position = Vector3(r.position.x + r.size.x * 0.5, float(HOME_GY) if is_home else 5.0, r.position.y + r.size.y * 0.5)
 		add_child(q)
 	# a ring of trees just outside the edge, so the edge looks like a forest
 	var a := 0.0
@@ -499,22 +994,29 @@ func _home_scenery(ground_tex := "grass_top", trees: Array = ["tree_a", "tree_b"
 		while t < float(sx) + 2:
 			var p: Vector3
 			var out := rng.randf_range(1.6, 4.5)
+			var gy := HOME_GY if is_home else 5
 			match side:
-				0: p = Vector3(t, 5, -out)
-				1: p = Vector3(t, 5, sz + out)
-				2: p = Vector3(-out, 5, t)
-				_: p = Vector3(sx + out, 5, t)
+				0: p = Vector3(t, gy, -out)
+				1: p = Vector3(t, gy, sz + out)
+				2: p = Vector3(-out, gy, t)
+				_: p = Vector3(sx + out, gy, t)
 			prop(trees[rng.randi() % trees.size()], p, rng.randf_range(3.6, 5.0), false, rng.randf() < 0.5)
 			t += rng.randf_range(3.2, 5.5)
 	var c := Vector3(sx * 0.5, 0, sz * 0.5)
 	while a < TAU:
 		var d := rng.randf_range(100, 130)
-		var hs := prop(hills[rng.randi() % hills.size()], c + Vector3(cos(a) * d, 2.5, sin(a) * d), rng.randf_range(16, 26))
+		var hs: Node3D
+		if is_home:   # big snowy mountains far away all round
+			d = rng.randf_range(135, 175)
+			hs = prop(["hill_snow", "hill_c", "hill_snow", "hill_b"][rng.randi() % 4], c + Vector3(cos(a) * d, HOME_GY - 4, sin(a) * d), rng.randf_range(34, 52))
+		else:
+			hs = prop(hills[rng.randi() % hills.size()], c + Vector3(cos(a) * d, 2.5, sin(a) * d), rng.randf_range(16, 26))
 		if hs is Sprite3D:
 			hs.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
 		a += rng.randf_range(0.18, 0.3)
 	for i in 30:
-		var cl := prop("cloud", c + Vector3(rng.randf_range(-110, 110), rng.randf_range(24, 34), rng.randf_range(-110, 110)), rng.randf_range(4, 8))
+		var cy := rng.randf_range(24, 34) + (HOME_GY + 22 if is_home else 0)
+		var cl := prop("cloud", c + Vector3(rng.randf_range(-110, 110), cy, rng.randf_range(-110, 110)), rng.randf_range(4, 8))
 		if cl is Sprite3D:
 			cl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 		_tint_cloud(cl)
@@ -619,6 +1121,100 @@ func _more_quests(start: Vector2i) -> void:
 		dog_home = Vector3(hx + 1.0, g, hz + 0.3)
 		objectives.append({"id": "dog", "name": "LOST DOG", "hint": "Dennis is lost! Find him and bring him to his doghouse.",
 			"pos": dog_home + Vector3(0, 1.2, -0.6)})
+
+
+## The SECRET PAINTING: hung on the outside of the castle's west wall, a little too high
+## to walk into, so you have to JUMP in (like Mario 64). It's the last star of the world.
+func _painting_spot() -> void:
+	var x0 := int(arena.position.x)
+	var zc := float(int(arena.position.y + arena.size.y * 0.5)) + 0.5
+	var bottom := arena_y + 1.5
+	painting = {"x": float(x0), "z": zc, "w": 3.2, "h": 2.7, "bottom": bottom,
+		"pos": Vector3(x0 - 0.03, bottom + 1.35, zc)}
+	keep_out.append([Vector2(x0 - 3, zc), 4.0])
+	objectives.append({"id": "painting", "name": "SECRET PAINTING", "hint": "Find the painting on the castle wall and JUMP into it!",
+		"pos": Vector3(x0 - 1.2, arena_y + 0.9, zc)})
+
+
+## A painting's BONUS COURSE: platforms floating in the sky going up and away, coins on
+## them, a couple of bad guys, a ? block, and the PAINTING STAR on the last one. Every
+## jump is one Rocco can make (tests/painting_check.gd jumps them all for real).
+func generate_bonus(w: String) -> void:
+	world = w
+	open = true
+	bonus = true
+	sx = 40
+	sy = 48
+	sz = 84
+	width = sx
+	rng.seed = absi(hash(w)) % 100000 + 31
+	cells.resize(sx * sy * sz)
+	cells.fill(AIR)
+	heights.resize(sx)
+	heights.fill(0)
+	hmap.resize(sx * sz)
+	hmap.fill(0)
+	var top: int = {"meadow": GRASS, "frost": SNOW, "dunes": SAND, "swamp": LOG, "moon": IRON_BLOCK, "lava": STONE_BRICK,
+		"candy": FROSTING, "beach": SAND, "jungle": GRASS, "cloud": CLOUD}.get(w, GRASS)
+	var side: int = {"meadow": DIRT, "frost": ICE, "dunes": SANDSTONE, "swamp": PLANKS, "moon": STONE, "lava": BRICK,
+		"candy": CAKE, "beach": SANDSTONE, "jungle": DIRT, "cloud": CLOUD}.get(w, DIRT)
+	var colors := [WOOL_RED, WOOL_YELLOW, WOOL_BLUE, WOOL_GREEN, WOOL_WHITE]
+	var p := Vector3i(18, 10, 74)
+	_bonus_pad(p, 2, top, side)   # the start: a 5 x 5 landing pad
+	bonus_tops.append(Vector3(p.x + 0.5, p.y + 1, p.z + 0.5))
+	start_pos = Vector3(p.x + 0.5, p.y + 1.01, p.z + 0.5)
+	var hops := 15
+	var prev_r := 2
+	for i in hops:
+		# forward (-z) with a gap of one or two blocks; up 0, 1 or 2; a little to the side
+		var up: int = [1, 2, 0, 1, 2, 1, 0, 2][i % 8]
+		var r := 2 if i in [4, 9] else 1   # wider pads with a bad guy on them
+		var gap := 1 if up > 0 else 2
+		var fwd := mini(prev_r + r + 1 + gap, 5 if up == 0 else 4)   # never too far from the middle of a pad
+		var dx: int = [0, 2, -2, 1, -1, 2, -2, 0][rng.randi() % 8]
+		if fwd >= 4:
+			dx = clampi(dx, -1, 1)
+		var nx := clampi(p.x + dx, 6, sx - 7)
+		p = Vector3i(nx, p.y + up, p.z - fwd)
+		var t: int = colors[i % colors.size()] if i % 3 == 2 else top
+		_bonus_pad(p, r, t, side)
+		bonus_tops.append(Vector3(p.x + 0.5, p.y + 1, p.z + 0.5))
+		coin_spots.append(Vector3(p.x + 0.5, p.y + 2.0, p.z + 0.5))
+		if r == 2:
+			spawns.append({"kind": "grumbler", "pos": Vector3(p.x + 1.5, p.y + 1.01, p.z - 1.5)})
+			coin_spots.append(Vector3(p.x - 1.5, p.y + 2.0, p.z - 1.5))
+			coin_spots.append(Vector3(p.x + 1.5, p.y + 2.0, p.z + 1.5))
+		if i == 6:
+			set_cell(p.x - 1, p.y + 3, p.z + 1, MYSTERY)   # a power-up (over the back corner: not in the way of the next jump)
+		prev_r = r
+	# the end: a big gold pad with the star
+	p = Vector3i(p.x, p.y + 1, p.z - (prev_r + 2 + 2))
+	_bonus_pad(p, 2, GOLD_BLOCK, side)
+	bonus_tops.append(Vector3(p.x + 0.5, p.y + 1, p.z + 0.5))
+	bonus_star = Vector3(p.x + 0.5, p.y + 2.3, p.z - 0.5)
+	for i in 5:
+		coin_spots.append(Vector3(p.x - 1.5 + i * 0.75, p.y + 2.0, p.z + 1.5))
+	signs = [[start_pos + Vector3(-1.5, 0, 1.2), "PAINTING STAR!\nJump to the gold\nplatform at the top!"]]
+	_build_mesh_nodes()
+	for sg in signs:
+		_sign(sg)
+	# far clouds below and around (the course floats in the painting's sky)
+	for i in 36:   # kept out to the sides and below, so they never hide the jumps
+		var cx := rng.randf_range(-36, -10) if i % 2 == 0 else rng.randf_range(sx + 10, sx + 36)
+		var c := prop("cloud", Vector3(cx, rng.randf_range(-8, 30), rng.randf_range(-30, sz + 30)), rng.randf_range(4, 7))
+		if c is Sprite3D:
+			c.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	rebuild()
+
+
+## A square floating pad (radius r around c) with an under-layer, and a little point below.
+func _bonus_pad(c: Vector3i, r: int, top: int, side: int) -> void:
+	for dx in range(-r, r + 1):
+		for dz in range(-r, r + 1):
+			set_cell(c.x + dx, c.y, c.z + dz, top)
+			if absi(dx) < r and absi(dz) < r:
+				set_cell(c.x + dx, c.y - 1, c.z + dz, side)
+	set_cell(c.x, c.y - 2, c.z, side)
 
 
 func ground_at(x: int, z: int) -> int:
@@ -850,6 +1446,7 @@ func generate_open(w: String) -> void:
 	var kinds: Array = FOES_BY_WORLD.get(w, FOES_BY_WORLD["default"])
 	_special_foes(start)
 	_more_quests(start)
+	_painting_spot()
 	for i in 16:
 		var o := _free_spot(6)
 		if o.x < 0 or Vector2(o).distance_to(Vector2(start)) < 14:
@@ -1183,7 +1780,7 @@ func _ore(x: int, y: int) -> int:
 
 
 # ------------------------------------------------------------------ drawing the blocks
-func _cube_mesh(t: int) -> ArrayMesh:
+func _cube_mesh(t: int, top_only := false) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var aw := 72.0 * ATLAS_TILES
@@ -1197,6 +1794,8 @@ func _cube_mesh(t: int) -> ArrayMesh:
 		[Vector3.LEFT, [Vector3(0, 0, 0), Vector3(0, 0, 1), Vector3(0, 1, 1), Vector3(0, 1, 0)], 1],
 	]
 	for f in faces:
+		if top_only and f[0] != Vector3.UP:
+			continue   # flat ground only ever shows its top: 2 triangles instead of 12
 		var tile: int = FACES[t][f[2]]
 		var u0 := (tile * 72 + 4.5) / aw
 		var u1 := (tile * 72 + 67.5) / aw
@@ -1225,29 +1824,95 @@ func _build_mesh_nodes() -> void:
 	mat.vertex_color_use_as_albedo = true
 	mat.roughness = 1.0
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_meshes.clear()
+	_mats.clear()
 	for t in BLOCK_TYPES:
-		var mmi := MultiMeshInstance3D.new()
-		var mm := MultiMesh.new()
-		mm.transform_format = MultiMesh.TRANSFORM_3D
-		mm.use_colors = true   # every block gets its own gentle colour (see block_color)
-		if t != AIR:
-			mm.mesh = _cube_mesh(t)
-		mmi.multimesh = mm
-		mmi.material_override = mat
-		if t == LAVA:   # lava glows
-			var lm: StandardMaterial3D = mat.duplicate()
-			lm.emission_enabled = true
-			lm.emission_texture = mat.albedo_texture
-			lm.emission_energy_multiplier = 0.9
-			mmi.material_override = lm
-			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		_meshes.append([_cube_mesh(t), _cube_mesh(t, true)] if t != AIR else [null, null])
+		var m: StandardMaterial3D = mat
+		if t == LAVA or t == LANTERN:   # lava and lanterns glow
+			m = mat.duplicate()
+			m.emission_enabled = true
+			m.emission_texture = mat.albedo_texture
+			m.emission_energy_multiplier = 0.9 if t == LAVA else 1.3
 		elif t == WATER:   # water is shiny
-			var wm: StandardMaterial3D = mat.duplicate()
-			wm.roughness = 0.15
-			wm.metallic_specular = 0.9
-			mmi.material_override = wm
-		add_child(mmi)
+			m = mat.duplicate()
+			m.roughness = 0.15
+			m.metallic_specular = 0.9
+		_mats.append(m)
+	if chunked:   # nodes are made when a chunk first needs that block type
+		ncx = ceili(sx / float(CH))
+		ncz = ceili(sz / float(CH))
+		mm_nodes.resize(ncx * ncz * 2 * 2 * BLOCK_TYPES)
+		return
+	for t in BLOCK_TYPES:
+		_new_node(t, t, false, false)
+
+
+## One MultiMesh node for a key (see _key): its block type, top-only or full cubes.
+func _new_node(key: int, t: int, top_only: bool, deep: bool) -> MultiMeshInstance3D:
+	var mmi := MultiMeshInstance3D.new()
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true   # every block gets its own gentle colour (see block_color)
+	if t != AIR:
+		mm.mesh = _meshes[t][1 if top_only else 0]
+	mmi.multimesh = mm
+	mmi.material_override = _mats[t]
+	if t == LAVA or t == LANTERN or deep:
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mmi)
+	if chunked:
+		mm_nodes[key] = mmi
+		var ci := key / (BLOCK_TYPES * 2)
+		if not chunk_nodes.has(ci):
+			chunk_nodes[ci] = []
+		chunk_nodes[ci].append(mmi)
+	else:
 		mm_nodes.append(mmi)
+	return mmi
+
+
+## Which MultiMesh a block goes in. Plain levels: just its type. The big home: also which
+## chunk (32 x 32, deep band or not) and whether only its top shows.
+func _key(c: Vector3i, t: int, top_only: bool) -> int:
+	if not chunked:
+		return t
+	var ci := ((c.z / CH) * ncx + c.x / CH) * 2 + (0 if c.y < band_y else 1)
+	return (ci * 2 + (1 if top_only else 0)) * BLOCK_TYPES + t
+
+
+func _node(key: int) -> MultiMeshInstance3D:
+	var n: MultiMeshInstance3D = mm_nodes[key]
+	if n == null:
+		var ci := key / (BLOCK_TYPES * 2)
+		n = _new_node(key, key % BLOCK_TYPES, (key / BLOCK_TYPES) % 2 == 1, ci % 2 == 0)
+	return n
+
+
+## The big home: deep (cave) chunks are only drawn near you or when you're underground,
+## so the tablet doesn't draw every cave wall in the world all the time.
+func _process(dt: float) -> void:
+	if not chunked or not built:
+		return
+	_vis_t -= dt
+	if _vis_t > 0:
+		return
+	_vis_t = 0.25
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var p := cam.global_position
+	var under := p.y < band_y + 2
+	for ci in chunk_nodes:
+		if ci % 2 == 1:
+			continue   # the surface band is always drawn
+		var cc: int = ci / 2
+		var r := Rect2((cc % ncx) * CH, (cc / ncx) * CH, CH, CH)
+		var dx := maxf(maxf(r.position.x - p.x, p.x - r.end.x), 0.0)
+		var dz := maxf(maxf(r.position.y - p.z, p.z - r.end.y), 0.0)
+		var show := under or Vector2(dx, dz).length() < 26.0
+		for n in chunk_nodes[ci]:
+			n.visible = show
 
 
 # ------------------------------------------------------------------ colour variation
@@ -1312,32 +1977,90 @@ func block_color(c: Vector3i, t: int) -> Color:
 
 
 func _exposed(x: int, y: int, z: int) -> bool:
-	if y + 1 >= sy or get_cell(x, y + 1, z) == AIR:
-		return true
-	if z + 1 >= sz or get_cell(x, y, z + 1) == AIR:
-		return true
-	if x == 0 or x == sx - 1:
-		return true
-	if get_cell(x - 1, y, z) == AIR or get_cell(x + 1, y, z) == AIR:
-		return true
-	if y > 0 and get_cell(x, y - 1, z) == AIR:
-		return true
-	if z > 0 and get_cell(x, y, z - 1) == AIR:
-		return true
-	return false
+	return _classify(x, y, z) >= 0
+
+
+## The MultiMesh key for this cell, or -1 when nothing of it shows (air or buried).
+func _classify(x: int, y: int, z: int) -> int:
+	if not inside(x, y, z):
+		return -1
+	var i := idx(x, y, z)
+	var t: int = cells[i]
+	if t == AIR:
+		return -1
+	var up := sx
+	var back := sx * sy
+	var up_air := y + 1 >= sy or cells[i + up] == AIR
+	var side_air: bool
+	if edge_solid:   # outside the grid is solid
+		side_air = (x + 1 < sx and cells[i + 1] == AIR) or (x > 0 and cells[i - 1] == AIR) \
+			or (z + 1 < sz and cells[i + back] == AIR) or (z > 0 and cells[i - back] == AIR)
+	else:
+		side_air = x == 0 or x == sx - 1 or cells[i - 1] == AIR or cells[i + 1] == AIR \
+			or z + 1 >= sz or cells[i + back] == AIR or (z > 0 and cells[i - back] == AIR)
+	var down_air := y > 0 and cells[i - up] == AIR
+	if not (up_air or side_air or down_air):
+		return -1
+	return _key(Vector3i(x, y, z), t, up_air and not side_air and not down_air)
 
 
 ## Draws every visible block once (at the start). After that, set_cell() only
 ## touches the few blocks around a change, so mining never freezes the game.
-## Each block type's MultiMesh keeps spare room; slots[t] says which block is in each slot.
+## Each MultiMesh keeps spare room; slots[key] says which block is in each slot.
 func rebuild() -> void:
 	built = true
 	slot_of.clear()
 	slots.clear()
-	var lists := []
-	for t in BLOCK_TYPES:
-		lists.append([])
-		slots.append([])
+	slots.resize(mm_nodes.size())
+	for k in slots.size():
+		slots[k] = []
+	var lists := {}
+	if chunked and hmap.size() == sx * sz:
+		_collect_fast(lists)
+	else:
+		_collect_all(lists)
+	for k in mm_nodes.size():
+		var pts: Array = lists.get(k, [])
+		if k % BLOCK_TYPES == AIR or (pts.is_empty() and chunked):
+			if mm_nodes[k] != null:
+				mm_nodes[k].multimesh.visible_instance_count = 0
+			continue
+		var mm := _node(k).multimesh
+		var t := k % BLOCK_TYPES
+		mm.instance_count = pts.size() + (SPARE_CHUNK if chunked else SPARE)
+		mm.buffer = _buffer(pts, t, mm.instance_count)
+		for i in pts.size():
+			slot_of[pts[i]] = Vector2i(k, i)
+		slots[k] = pts
+		mm.visible_instance_count = pts.size()
+
+
+## All the transforms + colours of a MultiMesh at once (much faster than one by one).
+func _buffer(pts: Array, t: int, count: int) -> PackedFloat32Array:
+	var b := PackedFloat32Array()
+	b.resize(count * 16)
+	for i in count:
+		var o := i * 16
+		b[o] = 1.0
+		b[o + 5] = 1.0
+		b[o + 10] = 1.0
+		if i < pts.size():
+			var c: Vector3i = pts[i]
+			b[o + 3] = c.x
+			b[o + 7] = c.y
+			b[o + 11] = c.z
+			var col := block_color(c, t)
+			b[o + 12] = col.r
+			b[o + 13] = col.g
+			b[o + 14] = col.b
+			b[o + 15] = col.a
+		else:
+			b[o + 15] = 1.0
+	return b
+
+
+## Every cell, row by row (plain levels).
+func _collect_all(lists: Dictionary) -> void:
 	for z in sz:
 		for y in sy:
 			var base := idx(0, y, z)
@@ -1350,21 +2073,96 @@ func rebuild() -> void:
 				var t: int = cells[i]
 				if t == AIR:
 					continue
-				# same test as _exposed(), written out so the big home draws quickly
-				if y + 1 >= sy or cells[i + up] == AIR or z + 1 >= sz or cells[i + back] == AIR \
+				var k := -1
+				if chunked:
+					k = _classify(x, y, z)
+				# same test as _classify(), written out so plain levels draw quickly
+				elif y + 1 >= sy or cells[i + up] == AIR or z + 1 >= sz or cells[i + back] == AIR \
 						or x == 0 or x == sx - 1 or cells[i - 1] == AIR or cells[i + 1] == AIR \
 						or (y > 0 and cells[i - up] == AIR) or (z > 0 and cells[i - back] == AIR):
-					lists[t].append(Vector3i(x, y, z))
-	for t in range(1, BLOCK_TYPES):
-		var mm := mm_nodes[t].multimesh
-		var pts: Array = lists[t]
-		mm.instance_count = pts.size() + SPARE
-		for i in pts.size():
-			mm.set_instance_transform(i, Transform3D(Basis.IDENTITY, Vector3(pts[i])))
-			mm.set_instance_color(i, block_color(pts[i], t))
-			slot_of[pts[i]] = Vector2i(t, i)
-		slots[t] = pts
-		mm.visible_instance_count = pts.size()
+					k = t
+				if k >= 0:
+					if not lists.has(k):
+						lists[k] = []
+					lists[k].append(Vector3i(x, y, z))
+
+
+## The big home: only cells that can show. That's the top of each height-map column down
+## to its lowest neighbour, plus every cell that was changed (caves, trees, buildings) and
+## the cells next to it. Exact, but skips the millions of buried cells.
+func _collect_fast(lists: Dictionary) -> void:
+	var seen := PackedByteArray()
+	seen.resize(cells.size())
+	var cand := PackedInt32Array()
+	var row := sx * sy
+	# 1. the top of each height-map column down to its lowest neighbour
+	for z in sz:
+		for x in sx:
+			var h := hmap[x + z * sx]
+			var lo := h - 1
+			if x > 0:
+				lo = mini(lo, hmap[x - 1 + z * sx])
+			if x + 1 < sx:
+				lo = mini(lo, hmap[x + 1 + z * sx])
+			if z > 0:
+				lo = mini(lo, hmap[x + (z - 1) * sx])
+			if z + 1 < sz:
+				lo = mini(lo, hmap[x + (z + 1) * sx])
+			var i := x + sx * (maxi(lo, 0) + sy * z)
+			for y in range(maxi(lo, 0), mini(h, sy)):
+				if seen[i] == 0:
+					seen[i] = 1
+					cand.append(i)
+				i += sx
+	# 2. every changed cell and its 6 neighbours
+	for c in touched:
+		var x: int = c.x
+		var y: int = c.y
+		var z: int = c.z
+		var i := x + sx * (y + sy * z)
+		for d in 7:
+			var j := i
+			match d:
+				1:
+					if x + 1 >= sx: continue
+					j = i + 1
+				2:
+					if x < 1: continue
+					j = i - 1
+				3:
+					if y + 1 >= sy: continue
+					j = i + sx
+				4:
+					if y < 1: continue
+					j = i - sx
+				5:
+					if z + 1 >= sz: continue
+					j = i + row
+				6:
+					if z < 1: continue
+					j = i - row
+			if seen[j] == 0:
+				seen[j] = 1
+				cand.append(j)
+	# 3. which of those show, and in which MultiMesh (same test as _classify, written out)
+	for i in cand:
+		var t: int = cells[i]
+		if t == AIR:
+			continue
+		var x := i % sx
+		var y := (i / sx) % sy
+		var z := i / row
+		var up_air := y + 1 >= sy or cells[i + sx] == AIR
+		var side_air := (x + 1 < sx and cells[i + 1] == AIR) or (x > 0 and cells[i - 1] == AIR) \
+			or (z + 1 < sz and cells[i + row] == AIR) or (z > 0 and cells[i - row] == AIR)
+		var down_air := y > 0 and cells[i - sx] == AIR
+		if not (up_air or side_air or down_air):
+			continue
+		var ci := ((z / CH) * ncx + x / CH) * 2 + (0 if y < band_y else 1)
+		var k := (ci * 2 + (1 if up_air and not side_air and not down_air else 0)) * BLOCK_TYPES + t
+		if not lists.has(k):
+			lists[k] = []
+		lists[k].append(Vector3i(x, y, z))
 
 
 const SPARE := 2000
@@ -1373,47 +2171,44 @@ const SPARE := 2000
 func _refresh(c: Vector3i) -> void:
 	if not inside(c.x, c.y, c.z):
 		return
-	var t := get_cell(c.x, c.y, c.z)
-	var show := t != AIR and _exposed(c.x, c.y, c.z)
+	var k := _classify(c.x, c.y, c.z)
 	if slot_of.has(c):
 		var e: Vector2i = slot_of[c]
-		if show and e.x == t:
+		if e.x == k:
 			return
 		_hide(c, e)
-	if show:
-		_show(c, t)
+	if k >= 0:
+		_show(c, k)
 
 
-func _show(c: Vector3i, t: int) -> void:
-	var arr: Array = slots[t]
-	var mm := mm_nodes[t].multimesh
+func _show(c: Vector3i, key: int) -> void:
+	var arr: Array = slots[key]
+	var mm := _node(key).multimesh
 	if arr.size() >= mm.instance_count:
-		_grow(t)   # ran out of spare room (lots of building): make room for this block type only
+		_grow(key)   # ran out of spare room (lots of building): make room for this one only
 	mm.set_instance_transform(arr.size(), Transform3D(Basis.IDENTITY, Vector3(c)))
-	mm.set_instance_color(arr.size(), block_color(c, t))
-	slot_of[c] = Vector2i(t, arr.size())
+	mm.set_instance_color(arr.size(), block_color(c, key % BLOCK_TYPES))
+	slot_of[c] = Vector2i(key, arr.size())
 	arr.append(c)
 	mm.visible_instance_count = arr.size()
 
 
-func _grow(t: int) -> void:
-	var arr: Array = slots[t]
-	var mm := mm_nodes[t].multimesh
-	mm.instance_count = arr.size() + SPARE
-	for i in arr.size():
-		mm.set_instance_transform(i, Transform3D(Basis.IDENTITY, Vector3(arr[i])))
-		mm.set_instance_color(i, block_color(arr[i], t))
+func _grow(key: int) -> void:
+	var arr: Array = slots[key]
+	var mm := _node(key).multimesh
+	mm.instance_count = arr.size() + (SPARE_CHUNK * 4 if chunked else SPARE)
+	mm.buffer = _buffer(arr, key % BLOCK_TYPES, mm.instance_count)
 	mm.visible_instance_count = arr.size()
 
 
 func _hide(c: Vector3i, e: Vector2i) -> void:
 	var arr: Array = slots[e.x]
-	var mm := mm_nodes[e.x].multimesh
+	var mm: MultiMesh = mm_nodes[e.x].multimesh
 	var last: Vector3i = arr.back()
 	if last != c:   # move the last block into the freed slot
 		arr[e.y] = last
 		mm.set_instance_transform(e.y, Transform3D(Basis.IDENTITY, Vector3(last)))
-		mm.set_instance_color(e.y, block_color(last, e.x))
+		mm.set_instance_color(e.y, block_color(last, e.x % BLOCK_TYPES))
 		slot_of[last] = Vector2i(e.x, e.y)
 	arr.pop_back()
 	slot_of.erase(c)

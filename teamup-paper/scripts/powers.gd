@@ -3,7 +3,8 @@ extends Node3D
 ## Power-ups (like the 2D game's flowers, mushrooms and caps). They pop out of ? blocks
 ## and lie around the open worlds. Whoever you're steering gets the power; it moves to
 ## the next hero when you SWAP.
-##   FIRE FLOWER    ACTION throws bouncing fireballs          (until you get hurt)
+##   FIRE FLOWER    ACTION throws bouncing fireballs, two at a time like Mario; they beat any
+##                  normal bad guy in one hit and burn leaves      (until you get hurt)
 ##   ICE FLOWER     ACTION throws ice balls: bad guys turn into ice blocks you can stand on
 ##   SUPER MUSHROOM big! one free hit, head-bumps smash blocks  (until you get hurt)
 ##   MINI MUSHROOM  tiny, jumps much higher, fits small gaps    (15 s)
@@ -25,6 +26,7 @@ const COLORS := {"fire": Color("ff5a3a"), "ice": Color("7fd8ff"), "mushroom": Co
 ## Items that slide along the ground (like the mushrooms in the 2D game).
 const SLIDERS := ["mushroom", "mini", "life"]
 const FREEZE_TIME := 4.5
+const MAX_FIREBALLS := 2      # on screen at once (like Mario)
 
 var game
 var level: Level
@@ -149,9 +151,9 @@ func spawn_item(kind: String, pos: Vector3, pop := false) -> Dictionary:
 ## A few items lying around each open world: one near the start, one on the tower stairs,
 ## one in the secret cave and some in random places.
 func place_items() -> void:
-	if not level.open or level.is_home:
+	if not level.open or level.is_home or level.bonus:
 		return
-	var order := ["fire", "mushroom", "star", "wing", "ice", "propeller", "metal", "mini", "life"]
+	var order := ["mushroom", "star", "wing", "ice", "propeller", "metal", "mini", "life", "fire"]
 	var k := {"meadow": 0, "frost": 3, "dunes": 6}.get(level.world, 0) as int
 	var spots: Array[Vector3] = []
 	spots.append(level.start_pos + Vector3(4, 0.05, -4))
@@ -165,7 +167,7 @@ func place_items() -> void:
 		if p.x >= 0:
 			spots.append(Vector3(p.x + 0.5, level.ground_at(p.x, p.y) + 0.05, p.y + 0.5))
 	for i in spots.size():
-		var kind: String = order[(k + i) % order.size()]
+		var kind: String = "fire" if i == 0 else order[(k + i) % order.size()]   # a FIRE FLOWER always waits by the start
 		var it := spawn_item(kind, spots[i])
 		it.sliding = false   # the ones lying around wait for you
 		it.vel = Vector3.ZERO
@@ -175,7 +177,7 @@ func place_items() -> void:
 func from_block(top: Vector3) -> bool:
 	if randf() > 0.55:
 		return false
-	var pick := ["fire", "mushroom", "fire", "mushroom", "ice", "star", "wing", "propeller", "mini", "metal", "life"]
+	var pick := ["fire", "fire", "fire", "mushroom", "fire", "mushroom", "ice", "star", "wing", "propeller", "mini", "metal", "life"]
 	if game.hearts <= 2:
 		pick.append_array(["life", "life"])
 	spawn_item(pick.pick_random(), top - Vector3(0, 0.1, 0), true)
@@ -297,20 +299,37 @@ func is_frozen(f: Foe) -> bool:
 func on_action(h: Hero) -> bool:
 	if power not in ["fire", "ice"] or h.action_t > 0:
 		return false
-	h.action_t = 0.28
+	if power == "fire":
+		if fireballs_out() >= MAX_FIREBALLS:
+			return true   # wait for one to burn out (still no long jump while holding fire)
+		h.action_t = 0.12
+	else:
+		h.action_t = 0.28
 	var f := Vector3(h.facing.x, 0, h.facing.z)
 	if f.length() < 0.1:
 		f = Vector3.RIGHT
 	f = f.normalized()
 	var from := h.position + Vector3(0, h.height * 0.6, 0) + f * 0.4
 	if power == "fire":
-		game.spawn_shot("fireball", from, f * 9.0 + Vector3(0, 2, 0), h, 2)
+		game.spawn_shot("fireball", from, f * 10.0 + Vector3(0, 2, 0), h, 2)
+		game.shots.back()["flower"] = true
+		game.shots.back()["life"] = 1.8
 		game.sfx("zap", -4)
+		game.fx.burst(from, Color("ffb02e"), 5, 2.5, 2)
 	else:
 		var n: Node3D = game._shot_node("shot_ice", from, 0.5)
 		balls.append({"node": n, "vel": f * 9.0 + Vector3(0, 2, 0), "life": 2.0})
 		game.sfx("zap", -2)
 	return true
+
+
+## FIRE FLOWER fireballs still bouncing about.
+func fireballs_out() -> int:
+	var n := 0
+	for sh in game.shots:
+		if sh.get("flower", false):
+			n += 1
+	return n
 
 
 func _step_balls(dt: float) -> void:
@@ -440,7 +459,9 @@ func _show(h: Hero) -> void:
 	var tint := Color(1, 1, 1, 0)
 	match power:
 		"fire":
-			tint = Color(1.0, 0.85, 0.75, 0.22)
+			tint = Color(1.0, 0.55, 0.35, 0.36)
+			if int(t * 10) % 3 == 0 and h.visible:   # little embers floating up
+				game.fx.burst(h.position + Vector3(randf_range(-0.3, 0.3), h.height * 0.9, randf_range(-0.3, 0.3)), Color("ff9a3a"), 1, 0.8, 2.5, 0.4)
 		"ice":
 			tint = Color(0.55, 0.85, 1.0, 0.3)
 		"star":
