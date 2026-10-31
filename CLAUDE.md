@@ -68,7 +68,7 @@ scratch build to test it locally.
 | `TeamLevel.kt` | Tiles, ores, places, the 21 World 1 levels (character grids built with `Builder`), the `remix` pass that sprinkles new monsters/materials/portals into every level, and the bonus room |
 | `World2.kt` | The 21 World 2 levels (22-42) and `WORLD_SIZE`/`worldCount()`/`clearedKey()` |
 | `Sea.kt` | World 5 (levels 85-105: water, pirate ships, Rainbow Road), ship/mast/rainbow tiles (`I` `:` `%`), `Cannon` (`N`), `MetalItem` (`$`), Metal Rocco sprites, sea and space skies |
-| `MoreWorlds.kt` | Worlds 3 and 4 (levels 43-84) World 6 (Spooky World, levels 106-126, `world6`) and World 7 (Winter World, 127-147, `world7`), appended after World 5, built by a seeded level generator plus boss-arena templates. Last level: THE ULTIMATE BATTLE (Y, Q, Z boss rush) |
+| `MoreWorlds.kt` | Worlds 3 and 4 (levels 43-84) World 6 (Spooky World, levels 106-126, `world6`) and World 7 (Winter World, 127-147, `world7`), appended after World 5, then `world8`..`world13`, built by a seeded level generator plus boss-arena templates. World 4 ends with THE ULTIMATE BATTLE (Y, Q, Z boss rush); the last level of the game is World 13's THE WONDER FINALE (Y, Q rush) |
 | `Monsters.kt` | Newer monsters (Skelly Archer + arrows, Hopper, Gloop, Snapper + seeds, Crusher `z`, Peekaboo `q`, Puffcloud `l`, Spikestack `j`), bonus `Portal`, `Chest`, sunset sky, Dash |
 | `Homes.kt` | `HouseType` (46; the newer 23 are drawn in `MoreHouses.kt`), `Furniture` (46: `floor` 0-3, `unlock` = levels beaten; `furnitureBits` is a Long saved as `furniture`+`furniture2`), floors (`MAX_FLOORS`, stairs at `STAIRS_X`), `PAINTS` (house colors), the Pokemon mat (`MON_X`), `BedStyle`, house outside/inside drawing (the room is 900 wide and scrolls), `PlushieItem` |
 | `Plushies.kt` | The 350 `Plushie`s (new ones always go at the END: saved by index) (characters use sticker art, animals are drawn from a `Species` + color) |
@@ -127,7 +127,7 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
 * `score` is a Long; `particles` are capped at `MAX_PARTICLES` (too many floating texts made phones lag).
 * Performance: draw repeated tiles as cached `Sprite`s (see `SeaArt.plank`/`rainbowTile`), not many shapes per
   tile. Floating texts are capped at `MAX_FLOAT_TEXTS`. Poseidon/Black Flower buttons are top-right (`TeamControls.layout`).
-* Music: 39 songs in `Songs.kt`; the title song rotates (`titleSong`, global key `titleSong`) (`Music` enum in `Gfx.kt`); `Tunes.tunes(place)` lists 3-4 per place.
+* Music: 40 songs in `Songs.kt` (new ones go at the END of `Music`); the title song rotates (`titleSong`, global key `titleSong`) (`Music` enum in `Gfx.kt`); `Tunes.tunes(place)` lists 3-4 per place.
 * `Fun.kt`: `Spotty` (the Toad look-alike, `Voice.TOAD`; `planSpotty`/`updateSpotty`, 40% of non-boss levels) and
   `Scenes` (10 five-second funny scenes, `State.SCENE`, after the sticker on odd level indexes; `funnyScenes` flag).
 * `thinCrowds()` spreads out bunched-up bad guys at level start (32px gap in World 1, 48px later).
@@ -212,5 +212,11 @@ text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound
 * `Dinos.kt` (World 11, `MoreWorlds.world11`, Place PREHISTORIC): `DinoFoe`s Raptor `(`, Triceratops `)`, Pterodactyl `[`,
   Stegosaurus `]`, Ankylosaurus `_`, BabyRex `` ` ``, `CappyPickup` `"` (`giveCappy`), boss `RexKrag` `'` (implements
   `NamedBoss`: newer bosses give their own name/banner/home through that interface). CaptureKind has RAPTOR..REX.
-  World 12 is `MoreWorlds.world12`; the last level (THE GALAXY GRAND FINALE) still ends with Galaxy Krag `}`.
-
+  World 12 is `MoreWorlds.world12`; its last level (THE GALAXY GRAND FINALE) still ends with Galaxy Krag `}` and now opens World 13.
+* `Wonder.kt` (World 13 Wonder World, `MoreWorlds.world13`, levels 253-273, `Wonder.WORLD13` = first index, Place WONDER
+  drawn by `WonderArt`, song `Music.BLOOM`): `WonderFlower` `-` starts WONDER TIME (`TeamGame.wonderT`/`wonderEffect`,
+  `startWonderTime`: sets `wonder` for the rainbow sky, wobbly tiles and Wonder music; gravity `min(place, 0.75)`, FLOATY
+  0.5) plus a `WonderEffect` picked from the flower's column (`WonderEffect.at`); DANCE uses `Foe.danceT` (no update, no
+  touch damage), COIN_RAIN spawns `RainCoin`s, the end spawns a `WonderSeed`. `TalkingFlower` `\` talks through
+  `flowerTalk` (`Voice.TOAD`, rate-limited). The generator puts both only in World 13 (older levels never use `-`/`\`).
+  `loadSlot` opens the level after the last beaten one, so saves that beat the old last level (12-21) get 13-1.

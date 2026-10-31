@@ -142,7 +142,7 @@ class TeamSceneTest {
 
     @Test fun screenshots() {
         val scene = TeamScene().apply { voxelsPerFrame = Int.MAX_VALUE }
-        val picks = listOf(0, 3, 21, 43, 70, 85, 106, 127, 150, 170, 190, 211, 232)
+        val picks = listOf(0, 3, 21, 43, 70, 85, 106, 127, 150, 170, 190, 211, 232, 252, 263)
         for (i in picks) {
             if (i >= Levels.all.size) continue
             startPlaying(i)

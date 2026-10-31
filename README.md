@@ -552,6 +552,24 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
 * A new one joins your team every 3 levels you beat ("A wild EEVO joined your team!"). Switch to them at home
   on the POKEMON mat; the switch screen now has two pages (tap the arrows).
 
+### World 13: WONDER WORLD (levels 253-273)
+
+* **21 more levels** in a flower kingdom like Super Mario Bros. Wonder: round hills with big blinking eyes,
+  giant smiling flowers, smiling clouds and a rainbow, plus Wonder versions of places from the whole game
+  (Candy Land, the toy box, glowing mushrooms, a dino disco, the Moon, Rainbow Road, snow, the desert,
+  the northern lights and a rocket trip to the ringed planet). It has its own new song, **BLOOM**.
+* **WONDER FLOWERS**: every level has two. Touch one and it's **WONDER TIME**: the sky turns rainbow, the
+  ground wiggles, everyone gets floaty, and the flower does a surprise (each flower always does the same one):
+  **SUPER FLOATY** (jump sky high), **COIN RAIN** (coins fall from the sky), **DANCE PARTY** (the bad guys
+  can't stop dancing, so they can't hurt you), **MEGA ROCCO**, **STAR RUN** or **POP POP POP** (the bad guys
+  on the screen turn into coins). When it's over, a **WONDER SEED** floats over to you: 20 coins and a heart.
+* **TALKING FLOWERS** say hi as you go by ("HI, ROCCO!", "WATCH OUT! BAD GUYS!", "I LIKE YOUR MUSTACHE!"), and
+  tell you when a Wonder Flower is coming up.
+* Bosses: **Wonder Krag Jr.** (13-7), **Rock Star Krag** at THE WONDER CONCERT (13-14), and **THE WONDER FINALE**
+  (13-21): **Dry Bones King Krag**, then **Wonder King Krag** and his Wonder magic. That's the new end of the game.
+* Beating THE GALAXY GRAND FINALE (12-21) now opens World 13 ("...but King Krag found a WONDER FLOWER!"). Saves
+  that had already beaten it get 13-1 opened automatically.
+
 ### Dino World, Planet World, a house & planet picker, and twice as much of everything
 
 * **World 11: DINO WORLD** (levels 211-231): raptors, triceratops (they CHARGE), pterodactyls (they SWOOP),
@@ -561,8 +579,8 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
   ROARS. Dash the dino shows up too. Boss: **REX KRAG**, King Krag as a giant T-rex (roar waves and falling rocks).
 * **World 12: PLANET WORLD** (levels 232-252): a **rocket trip** to a different planet each level: Mars, an Ice
   Planet, a Candy Planet, an Alien Jungle, a Ringed Planet, a Lava Planet and a Crystal Planet, each with its own
-  gravity (super floaty on the ringed planet!). The last level is THE GALAXY GRAND FINALE (Rex Krag, Rock Star Krag
-  and Galaxy Krag).
+  gravity (super floaty on the ringed planet!). It ends with THE GALAXY GRAND FINALE (Rex Krag, Rock Star Krag
+  and Galaxy Krag), which now leads on to World 13.
 * **Coins are easier**: every coin is worth 2, and beating a level gives a coin bonus.
 * **Rocco talks like an Italian guy** (an Italian voice: "Mamma mia!", "Let's-a go!").
 * **HOUSE PICKER**: tap any house in the HOUSES tab to see it big, flip through them with the arrows, and BUY & MOVE
