@@ -36,7 +36,7 @@ internal fun Game.drawInset(g: Gfx) {
 }
 
 internal fun Game.drawHud(g: Gfx) {
-    g.rect(0f, 0f, viewW, 76f, 0x50000000)
+    g.rect(0f, -safeTop, viewW, 76f + safeTop, 0x50000000)
     g.shadowText("LEVEL $levelNum", 10f, 22f, 16f, Game.GOLD, serif = true)
     g.shadowText(spec.name.uppercase(), 10f, 37f, 9f, Game.WHITE)
     for (i in 0 until lives) wreath(g, 18f + i * 22f, 54f)
@@ -210,14 +210,14 @@ internal fun Game.drawGameOver(g: Gfx) {
 }
 
 internal fun Game.drawPause(g: Gfx) {
-    g.rect(0f, 0f, viewW, viewH, 0x90000000.toInt())
+    g.rect(0f, -safeTop, viewW, fullH(), 0x90000000.toInt())
     g.shadowText("PAUSED", viewW / 2f, viewH * 0.45f - 30f, 32f, Game.WHITE, 1, serif = true)
     button(g, resumeButton(), "RESUME", Game.GREEN)
     button(g, quitButton(), "QUIT TO MENU", CREAM)
 }
 
 internal fun Game.drawTitle(g: Gfx) {
-    g.rect(0f, 0f, viewW, viewH, 0x30000000)
+    g.rect(0f, -safeTop, viewW, fullH(), 0x30000000)
     val cx = viewW / 2f
     g.text("JAVELIN", cx + 3f, 93f, 50f, INK, 1, serif = true)
     g.text("JAVELIN", cx, 90f, 50f, Game.GOLD, 1, serif = true)
@@ -259,7 +259,7 @@ internal fun Game.drawTitle(g: Gfx) {
 
 /** The menu of events, each with its best result. */
 internal fun Game.drawEvents(g: Gfx) {
-    g.rect(0f, 0f, viewW, viewH, 0x60000000)
+    g.rect(0f, -safeTop, viewW, fullH(), 0x60000000)
     val cx = viewW / 2f
     g.shadowText("THE EVENTS", cx, 70f, 30f, Game.GOLD, 1, serif = true)
     meander(g, cx - 110f, 82f, 220f)
@@ -280,7 +280,7 @@ internal fun Game.drawEvents(g: Gfx) {
 }
 
 internal fun Game.drawHowTo(g: Gfx) {
-    g.rect(0f, 0f, viewW, viewH, 0xF0201510.toInt())
+    g.rect(0f, -safeTop, viewW, fullH(), 0xF0201510.toInt())
     meander(g, 12f, 12f, viewW - 24f)
     var y = 52f
     g.shadowText("HOW TO PLAY", viewW / 2f, y, 24f, Game.GOLD, 1, serif = true)

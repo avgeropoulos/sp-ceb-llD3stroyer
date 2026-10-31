@@ -36,6 +36,14 @@ class Game(
     /** Size of the view in virtual pixels. The width is fixed; the height follows the screen's shape. */
     var viewW = VIEW_W
     var viewH = 760f
+    /**
+     * Space at the top kept clear for the front camera (and at the bottom for rounded corners),
+     * in virtual pixels. [viewH] is the height between them, where the game lays everything out.
+     * The scenery still fills the whole screen. Touches arrive already moved into this area.
+     */
+    var safeTop = 0f
+    var safeBottom = 0f
+    private val offsetGfx = OffsetGfx()
     val detector = ThrowDetector()
     /** Steps and spins for the discus, sprint and long jump. */
     val motion = MotionTracker()
@@ -606,13 +614,14 @@ class Game(
 
     // ---------------------------------------------------------------- render
 
-    fun render(g: Gfx) {
+    fun render(screenGfx: Gfx) {
+        val g = offsetGfx.also { it.target = screenGfx; it.dy = safeTop }
         val ev = event
         if (screen == Screen.EVENT && ev != null) {
             ev.render(g)
             return
         }
-        drawWorld(g, cam, main = true, 0f, 0f, viewW, viewH)
+        drawWorld(g, cam, main = true, 0f, -safeTop, viewW, fullH())
         when (screen) {
             Screen.TITLE -> drawTitle(g)
             Screen.EVENTS -> drawEvents(g)
@@ -646,6 +655,9 @@ class Game(
     internal fun bestLevel() = store.load(KEY_BEST_LEVEL)
 
     internal fun hasTilt() = input.hasTilt
+
+    /** The whole screen's height, camera cut-out included. */
+    internal fun fullH() = viewH + safeTop + safeBottom
 
     companion object {
         const val START_LIVES = 3

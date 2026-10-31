@@ -106,7 +106,7 @@ internal abstract class OlympicEvent(val game: Game, val kind: OlympicEventKind)
     fun render(g: Gfx) {
         drawScene(g)
         val w = game.viewW
-        g.rect(0f, 0f, w, 50f, 0x50000000)
+        g.rect(0f, -game.safeTop, w, 50f + game.safeTop, 0x50000000)
         g.shadowText(kind.title, 10f, 20f, 12f, Game.GOLD, serif = true)
         if (best > 0) g.shadowText("BEST ${format(best)}", 10f, 38f, 10f, Game.WHITE)
         val q = quitButton()
@@ -333,7 +333,7 @@ internal class DiscusEvent(game: Game) : OlympicEvent(game, OlympicEventKind.DIS
     override fun resultLines() = marks.mapIndexed { i, m -> "Throw ${i + 1}:  ${if (m > 0) metres(m) else "foul"}" }
 
     override fun drawScene(g: Gfx) {
-        game.drawWorld(g, cam, main = true, 0f, 0f, game.viewW, game.viewH, javelinScene = false)
+        game.drawWorld(g, cam, main = true, 0f, -game.safeTop, game.viewW, game.fullH(), javelinScene = false)
         // The sector and the throwing circle
         groundLine(g, cam, 0f, 0f, sin(SECTOR) * 90f, cos(SECTOR) * 90f, 0.1f, 0xC0FFFFFF.toInt())
         groundLine(g, cam, 0f, 0f, -sin(SECTOR) * 90f, cos(SECTOR) * 90f, 0.1f, 0xC0FFFFFF.toInt())
@@ -545,7 +545,7 @@ internal class SprintEvent(game: Game) : OlympicEvent(game, OlympicEventKind.SPR
     private fun ordinal(n: Int) = "$n" + when (n) { 1 -> "st"; 2 -> "nd"; 3 -> "rd"; else -> "th" }
 
     override fun drawScene(g: Gfx) {
-        game.drawWorld(g, cam, main = true, 0f, 0f, game.viewW, game.viewH, javelinScene = false)
+        game.drawWorld(g, cam, main = true, 0f, -game.safeTop, game.viewW, game.fullH(), javelinScene = false)
         // Stone start and finish lines with a turning post for each runner
         for (lineZ in floatArrayOf(0f, DISTANCE)) {
             if (lineZ + 1f > cam.nearGroundZ()) groundQuad(g, cam, -4f, 7f, max(lineZ, cam.nearGroundZ()), lineZ + 0.6f, 0xFFF0EADB.toInt())
@@ -740,7 +740,7 @@ internal class LongJumpEvent(game: Game) : OlympicEvent(game, OlympicEventKind.L
     override fun resultLines() = marks.mapIndexed { i, m -> "Jump ${i + 1}:  ${if (m > 0) metres(m) else "foul"}" }
 
     override fun drawScene(g: Gfx) {
-        game.drawWorld(g, cam, main = true, 0f, 0f, game.viewW, game.viewH, javelinScene = false)
+        game.drawWorld(g, cam, main = true, 0f, -game.safeTop, game.viewW, game.fullH(), javelinScene = false)
         val near = cam.nearGroundZ()
         // Runway, board and the dug sand pit with a mark every metre
         if (BOARD_END > near) groundQuad(g, cam, -1f, 1f, max(RUNUP_START - 2f, near), BOARD_END - 0.2f, 0xFFC9A46A.toInt())

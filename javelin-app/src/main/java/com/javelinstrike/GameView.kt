@@ -13,6 +13,7 @@ import android.view.MotionEvent
 import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
+import android.view.WindowInsets
 import com.javelinstrike.game.Game
 import com.javelinstrike.game.Input
 import com.javelinstrike.game.Storage
@@ -49,6 +50,10 @@ class GameView(private val activity: Activity) : SurfaceView(activity), SurfaceH
     private var surfaceReady = false
     private var thread: Thread? = null
     private val startMs = SystemClock.uptimeMillis()
+
+    /** The front camera's cut-out at the top (and any at the bottom), in screen pixels. */
+    @Volatile private var cutTopPx = 0
+    @Volatile private var cutBottomPx = 0
 
     init {
         holder.addCallback(this)
@@ -113,8 +118,32 @@ class GameView(private val activity: Activity) : SurfaceView(activity), SurfaceH
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-        if (width > 0) game.viewH = height * VIEW_W / width
+        layoutGame(width, height)
         display?.let { displayRotation = it.rotation }
+    }
+
+    override fun onApplyWindowInsets(insets: WindowInsets): WindowInsets {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val cutout = insets.displayCutout
+            cutTopPx = cutout?.safeInsetTop ?: 0
+            cutBottomPx = cutout?.safeInsetBottom ?: 0
+            if (width > 0) layoutGame(width, height)
+        }
+        return super.onApplyWindowInsets(insets)
+    }
+
+    /**
+     * Tells the game its size, keeping the strip under the front camera clear: the scenery
+     * fills it, but the score, buttons and messages all sit below it.
+     */
+    private fun layoutGame(widthPx: Int, heightPx: Int) {
+        if (widthPx <= 0) return
+        val scale = widthPx / VIEW_W
+        val top = if (cutTopPx > 0) cutTopPx / scale + CAMERA_MARGIN else 0f
+        val bottom = cutBottomPx / scale
+        game.safeTop = top
+        game.safeBottom = bottom
+        game.viewH = heightPx / scale - top - bottom
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
@@ -143,7 +172,7 @@ class GameView(private val activity: Activity) : SurfaceView(activity), SurfaceH
             }
             try {
                 val scale = canvas.width / VIEW_W
-                game.viewH = canvas.height / scale
+                layoutGame(canvas.width, canvas.height)
                 gfx.begin(canvas, scale)
                 game.render(gfx)
             } finally {
@@ -160,13 +189,13 @@ class GameView(private val activity: Activity) : SurfaceView(activity), SurfaceH
         if (scale <= 0f) return true
         val t = (e.eventTime - startMs) / 1000f
         when (e.actionMasked) {
-            MotionEvent.ACTION_DOWN -> input.push(Input.DOWN, e.x / scale, e.y / scale, t)
+            MotionEvent.ACTION_DOWN -> input.push(Input.DOWN, e.x / scale, e.y / scale - game.safeTop, t)
             MotionEvent.ACTION_POINTER_DOWN -> {
                 val i = e.actionIndex
-                input.push(Input.TAP, e.getX(i) / scale, e.getY(i) / scale, t)
+                input.push(Input.TAP, e.getX(i) / scale, e.getY(i) / scale - game.safeTop, t)
             }
-            MotionEvent.ACTION_MOVE -> input.push(Input.MOVE, e.x / scale, e.y / scale, t)
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> input.push(Input.UP, e.x / scale, e.y / scale, t)
+            MotionEvent.ACTION_MOVE -> input.push(Input.MOVE, e.x / scale, e.y / scale - game.safeTop, t)
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> input.push(Input.UP, e.x / scale, e.y / scale - game.safeTop, t)
         }
         return true
     }
@@ -203,5 +232,7 @@ class GameView(private val activity: Activity) : SurfaceView(activity), SurfaceH
 
     private companion object {
         const val FAST_SENSOR_US = 5_000
+        /** A little extra room below the front camera, in virtual pixels. */
+        const val CAMERA_MARGIN = 4f
     }
 }

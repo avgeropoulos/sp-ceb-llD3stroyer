@@ -84,6 +84,29 @@ class EventsTest {
         assertEquals(Game.Screen.EVENTS, g.screen)
     }
 
+    @Test fun everythingSitsBelowTheFrontCamera() {
+        val (g, input) = newGame()
+        // A phone with a 40 px camera cut-out: the layout area starts below it.
+        g.safeTop = 40f
+        g.viewH = 780f - 40f
+        run(g, 0.5f)
+        shot(g, "c0_title_cutout")
+        g.startLevel(3)
+        run(g, 0.5f)
+        // Touches arrive already moved below the cut-out, so buttons still line up.
+        tap(g, input)
+        run(g, 0.5f)
+        assertEquals(Game.Screen.PLAY, g.screen)
+        shot(g, "c1_play_cutout")
+        val p = g.pauseButton()
+        input.push(Input.DOWN, p[0] + 5f, p[1] + 5f, time)
+        run(g, dt)
+        assertTrue(g.paused)
+        g.startEvent(OlympicEventKind.SPRINT)
+        run(g, 0.5f)
+        shot(g, "c2_sprint_cutout")
+    }
+
     @Test fun discusSpinAndReleaseFacingTheField() {
         val (g, input) = newGame()
         val ev = begin(g, input, OlympicEventKind.DISCUS)
