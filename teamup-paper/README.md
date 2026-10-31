@@ -188,9 +188,28 @@ everyone is put back where they were when it ends. Tests switch scenes off with 
 
 ## Home base: build and decorate
 
-Picking a save file takes you **home**: a big **96 x 96** world (40 blocks tall) to build a whole city on, with
-block trees to chop. A new file picks a partner first and gets 30 coins. Walk onto the **rocket** pad to fly
-to the worlds.
+Picking a save file takes you **home**: a big **192 x 192** world (56 blocks tall). The flat build plot is in
+the middle (the old 96 x 96 home, so old builds stay put), with block trees to chop. Around it: rolling hills
+and forests, a lake, a ring of **mountains** (snowy tops; a stairway on the east mountain climbs to **THE
+SUMMIT** with a diamond and gold block), and **caves** underground. A new file picks a partner first and gets
+30 coins. Walk onto the **rocket** pad to fly to the worlds, or jump into a painting in the castle.
+
+* **Caves**: the **MINE** entrance west of the plot (log frame, sign) slopes down to a big cave room; tunnels wind
+  off from there and others come out in the hillsides. Lanterns light the walls, ores (iron, gold deeper,
+  diamonds near the bottom) are in the stone, and there's a lava pool deep down. Dig with BUILD: digging a
+  **natural** ore or stone block gives you that ore (blocks you placed just come back as before).
+* **PAINTING CASTLE** (north, door facing the plot): a hall with a framed painting for every world in
+  `Worlds.ORDER`. **Jump into** one to go straight to that world (the same as landing there with the rocket);
+  locked worlds are grey with a LOCKED sign and bonk you back. The castle can't be dug.
+* **Lantern** blocks (glowing) are in the BUILD palette too.
+* Room is kept flat and empty for an arcade at `Level.ARCADE_SPOT` (x 148-161, z 88-101, ground `HOME_GY`).
+* Old homes move in: v1 (the 44 x 10 plot) and v2 (the 96 x 96 home) edits are shifted into the middle and up to
+  the new ground height (`HomeBase.load_data`); the home now saves as v3.
+* **Speed**: the home is drawn in 32 x 32 chunks (one MultiMesh per chunk, block type and "only the top shows"),
+  the deep (cave) half of a chunk is only drawn near you or when you're underground, and flat ground is a
+  2-triangle quad instead of a 12-triangle cube. Making the home takes about a second, so CI bakes it before
+  export (`tools/bake_home.gd` -> `data/home_cache.bin`, not committed) and the game loads it in ~0.25 s.
+  Without the file (tests, editor runs) it's made as normal. Test: `tests/cave_check.gd`.
 
 * **Camera**: drag anywhere on the right side of the screen to turn it around (controller: right stick). The
   stick walks the way the camera looks.

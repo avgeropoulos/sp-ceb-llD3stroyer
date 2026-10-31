@@ -5,3 +5,6 @@ local.properties
 *.iml
 .DS_Store
 captures/
+
+# the baked home (made by CI before export: teamup-paper/tools/bake_home.gd)
+teamup-paper/data/home_cache.bin

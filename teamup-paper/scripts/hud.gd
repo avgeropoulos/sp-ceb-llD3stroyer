@@ -552,7 +552,7 @@ static func _tex_name(t: int) -> String:
 		"planks", "wool_red", "wool_blue", "wool_yellow", "wool_white", "window", "iron_block", "gold_block", "diamond_block", "stone_brick",
 		"snow_top", "ice", "sand", "sandstone", "log_side", "leaves", "wool_green", "wool_black", "road",
 		"swamp_top", "mud", "moon_top", "moon_rock",
-		"lava", "basalt", "frosting_top", "cake", "candy_cane", "water", "cloud"][t]
+		"lava", "basalt", "frosting_top", "cake", "candy_cane", "water", "cloud", "lantern"][t]
 
 
 func _pal_rect(i: int, n: int) -> Rect2:
