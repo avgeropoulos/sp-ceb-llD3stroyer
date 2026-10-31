@@ -233,7 +233,10 @@ Cutscenes (`cutscene.gd`, state "scene", `play_scene(id, back)`, `_scene_done`, 
 Home = big world (`Level.HOME_SX/SY/SZ` 96x40x96; `level.sx/sy/sz` are per level, use them not LX/LY/LZ),
 orbit camera (`cam_yaw/cam_pitch`, `_update_home_camera`, `Actor.view_right/view_back`), Minecraft aiming
 (`HomeBase.aim_ray` voxel walk; HUD `world_taps` = tap to place, `hold_pos` = hold to break, `look_delta` = drag),
-FLY (`flying`, `_fly`). The save always carries `home` ({v:2, blocks = changes only, decor}); 1-1 keeps it in `home_saved`. New decor: add to `Decor.ITEMS` + `model()`,
+FLY (`flying`, `_fly`). TEAM (`scripts/team.gd`): 2 human heroes + 1 partner; the human SLOTS are still
+`heroes.rocco` / `heroes.blocky` (and `human` = "rocco"/"blocky" names the slot) while `Hero.who` is the character
+(rocco, blocky, lucky, alix, petal, spotty, bruto). Use `leader().who`, `Team.DOUBLE_JUMPERS`, `Team.MINERS`, never
+assume slot == character. Saved as `team` + `heroes_seen`; `tests/team_check.gd`. The save always carries `home` ({v:2, blocks = changes only, decor}); 1-1 keeps it in `home_saved`. New decor: add to `Decor.ITEMS` + `model()`,
 then render paper pictures (`tools/render_decor.gd`, `tools/sticker.py`). Sprint = full-tilt stick (`tilt_t`), Shift, R1/R2.
 Performance rules learned the hard way (each one was a visible freeze on the tablet):
 * Never change a font size from frame to frame (pop-in text): draw at a fixed size and scale with `draw_set_transform`.

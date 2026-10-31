@@ -162,6 +162,123 @@ def pickaxe(p, gx, gy, ang):
     p.poly(head, rgb("#b8c4cf"))
 
 
+
+# ---------------------------------------------------------------- friends you unlock (team.gd)
+FRIENDS = {
+    # shirt, sleeves/dark, pants, pants dark, skin, hair, hat
+    "lucky": dict(shirt="#3cb85a", dark="#26874a", pants="#2c4fa8", pants_d="#203b80", skin="#f7c69c", hair="#5a3a22",
+                  hat="cap", hatc="#3cb85a", hatd="#26874a", tall=1.18, badge="#ffffff"),
+    "alix": dict(shirt="#5bbf6a", dark="#3f9a50", pants="#8a5a35", pants_d="#6e4527", skin="#f0c49a", hair="#ff8a2a",
+                 hat="longhair", tall=1.0, square=True),
+    "petal": dict(shirt="#ff8fc0", dark="#e2669f", pants="#ff8fc0", pants_d="#e2669f", skin="#ffd9bd", hair="#ffd23a",
+                  hat="crown", tall=1.04, dress=True),
+    "spotty": dict(shirt="#3f7fd9", dark="#2c5fae", pants="#ffffff", pants_d="#d8dce6", skin="#ffd9bd", hair="#ffffff",
+                   hat="mushroom", tall=0.82),
+    "bruto": dict(shirt="#ffd23a", dark="#d9a91e", pants="#8a4fc4", pants_d="#6b3a9c", skin="#f2b48a", hair="#3b2a20",
+                  hat="cap", hatc="#ffd23a", hatd="#d9a91e", tall=1.0, wide=1.35, badge="#8a4fc4", stache=True),
+}
+
+
+def friend(kind, name, legA=0.0, legB=0.0, armA=0.0, armB=0.0, squash=0.0, mouth="smile", act=False):
+    c = FRIENDS[kind]
+    col = {k: rgb(v) for k, v in c.items() if isinstance(v, str) and v.startswith("#")}
+    tall = c.get("tall", 1.0)
+    wide = c.get("wide", 1.0)
+    p = Pen()
+    cx = 32
+    hip = 56
+    sy = 1 - squash
+    leg = 11 * tall
+    top = hip - 19 * tall          # shoulders
+    # back arm
+    ax, ay = cx - 2, top + 4
+    p.limb(ax, ay, ax + math.sin(armB) * 10 * tall, ay + math.cos(armB) * 10 * tall, 5.5 * wide, col["dark"])
+    p.oval(ax + math.sin(armB) * 11 * tall, ay + math.cos(armB) * 11 * tall, 3.2 * wide, 3.2 * wide, col["skin"])
+    # legs
+    for a, pc in ((legB, col["pants_d"]), (legA, col["pants"])):
+        fx, fy = cx + math.sin(a) * leg, hip + math.cos(a) * leg * sy
+        if c.get("dress"):
+            pc = col["skin"]
+        p.limb(cx, hip - 2, fx, fy, 6.0 * wide, pc)
+        shoe = rgb("#7a4a2a") if kind in ("alix",) else (rgb("#ff5c9a") if kind == "petal" else rgb("#4a3424") if kind == "bruto" else rgb("#ffffff"))
+        if kind == "lucky":
+            shoe = rgb("#7a4a2a")
+        p.oval(fx + 2.2, fy + 3, 5.2 * wide, 3.4, shoe)
+    # body
+    bw = 9 * wide
+    if c.get("dress"):   # a princess dress: a wide bell shape
+        p.poly([(cx - 6, top), (cx + 6, top), (cx + 14, hip + 4 - squash * 4), (cx - 14, hip + 4 - squash * 4)], col["shirt"])
+        p.rect(cx - 13, hip - squash * 4, cx + 13, hip + 5 - squash * 4, col["dark"], r=2)
+        p.oval(cx, top + 6, 3, 3, rgb("#5ae6e6"))
+    else:
+        p.rect(cx - bw, top, cx + bw, hip - squash * 4, col["shirt"], r=6 if not c.get("square") else 2)
+        p.rect(cx - bw, hip - 6 - squash * 4, cx + bw, hip + 2 - squash * 4, col["pants"], r=3)
+        if c.get("badge"):
+            p.oval(cx + 2, top + 8, 3.6, 3.6, col["badge"])
+    # head
+    hy = top - 13 + squash * 5
+    if c.get("square"):   # blocky Minecraft-style head with long orange hair
+        p.rect(cx - 12, hy - 22, cx + 13, hy + 2, col["hair"], r=3)
+        p.rect(cx - 13, hy - 6, cx - 3, hy + 16, col["hair"], r=3)
+        p.rect(cx - 9, hy - 11, cx + 13, hy + 12, col["skin"], r=4)
+        p.rect(cx - 9, hy - 12, cx + 13, hy - 6, col["hair"], r=2, ink=False)
+        p.eye(cx + 6, hy + 1, 2.3, 3.2)
+        p.d.arc(p._b(cx + 4, hy + 4, cx + 10, hy + 9), 30, 150, fill=INK, width=int(1.5 * SS))
+    else:
+        r = 12.5 if kind != "spotty" else 11
+        p.oval(cx + 1, hy, r + 1, r, col["skin"])
+        if kind not in ("spotty",):
+            p.oval(cx - 9, hy + 2, 4.5, 6.5, col["hair"])
+        if c.get("hat") == "crown":   # long blonde hair, crown
+            p.oval(cx - 8, hy + 6, 6, 11, col["hair"])
+            p.oval(cx + 1, hy - 8, 13, 6, col["hair"])
+        p.eye(cx + 7, hy + 2, 2.5, 3.6)
+        p.oval(cx + 13, hy + 5, 2.4 if kind != "bruto" else 3.4, 2.1 if kind != "bruto" else 3.0, rgb("#e09d74"))
+        if c.get("stache"):   # a zig-zag moustache
+            p.poly([(cx + 6, hy + 8), (cx + 9, hy + 6.5), (cx + 12, hy + 8.5), (cx + 15, hy + 6.5), (cx + 18, hy + 8.5), (cx + 16, hy + 10), (cx + 8, hy + 10)], rgb("#3b2a20"))
+        elif kind == "lucky":
+            p.rect(cx + 7, hy + 7.5, cx + 16, hy + 9.5, rgb("#3b2a20"), r=1, ink=False)
+        if mouth == "open":
+            p.oval(cx + 9, hy + 10, 2.2, 1.8, rgb("#7a1f2b"))
+        elif mouth == "ow":
+            p.oval(cx + 9, hy + 10, 1.8, 2.4, rgb("#7a1f2b"))
+        elif not c.get("stache") and kind != "lucky":
+            p.d.arc(p._b(cx + 5, hy + 6, cx + 12, hy + 11), 20, 150, fill=INK, width=int(1.6 * SS))
+        h = c.get("hat")
+        if h == "cap":
+            p.d.chord(p._b(cx - 13, hy - 15, cx + 15, hy + 8), 180, 360, fill=col["hatc"], outline=INK, width=int(LW * SS))
+            p.poly([(cx + 6, hy - 6), (cx + 22, hy - 5), (cx + 21, hy - 2), (cx + 4, hy - 1.5)], col["hatd"])
+            p.oval(cx - 1, hy - 8, 3.4, 3.4, rgb("#ffffff"))
+            p.d.text((int((cx - 2.8) * SS), int((hy - 12) * SS)), "L" if kind == "lucky" else "B", fill=col["hatc"],
+                     font=None)
+        elif h == "crown":
+            p.poly([(cx - 6, hy - 10), (cx - 4, hy - 18), (cx, hy - 12), (cx + 4, hy - 20), (cx + 7, hy - 12), (cx + 10, hy - 18), (cx + 11, hy - 10)], rgb("#ffcf33"))
+            p.oval(cx + 3, hy - 13, 1.6, 1.6, rgb("#e8413b"), ink=False)
+        elif h == "mushroom":   # big white mushroom cap with red spots
+            p.d.chord(p._b(cx - 18, hy - 22, cx + 20, hy + 8), 180, 360, fill=rgb("#ffffff"), outline=INK, width=int(LW * SS))
+            for (dx, dy, rr) in ((-9, -11, 4.5), (3, -15, 5), (13, -8, 3.6)):
+                p.oval(cx + dx, hy + dy, rr, rr * 0.9, rgb("#e8413b"), ink=False)
+    # front arm
+    ax, ay = cx + 3, top + 4
+    hx, hy2 = ax + math.sin(armA) * 10 * tall, ay + math.cos(armA) * 10 * tall
+    p.limb(ax, ay, hx, hy2, 5.5 * wide, col["shirt"] if not c.get("dress") else col["dark"])
+    if kind == "alix" and act:   # a bow
+        p.d.arc(p._b(hx - 4, hy2 - 10, hx + 8, hy2 + 10), 270, 90, fill=rgb("#8a5a35"), width=int(2.4 * SS))
+        p.line([(hx + 2, hy2 - 10), (hx + 2, hy2 + 10)], rgb("#e9e4d8"), 0.8)
+    p.oval(hx + math.sin(armA) * 1.5, hy2 + math.cos(armA) * 1.5, 3.4 * wide, 3.4 * wide, col["skin"] if kind != "petal" else rgb("#ffffff"))
+    p.done(name)
+
+
+def friends():
+    for k in FRIENDS:
+        friend(k, k + "_idle", 0.12, -0.12, 0.25, -0.25)
+        friend(k, k + "_run1", 0.75, -0.6, -0.9, 0.9, mouth="open")
+        friend(k, k + "_run2", -0.6, 0.75, 0.9, -0.9, mouth="open")
+        friend(k, k + "_jump", 0.5, -0.9, 2.6, -1.2, mouth="open")
+        friend(k, k + "_hurt", 0.4, -0.4, 2.8, -2.6, mouth="ow")
+        friend(k, k + "_act", 0.6, -0.5, 1.6, -0.4, mouth="open", act=True)
+
+
 def rocco_moves():
     """Rocco's Mario-64 moves for the paper look: long jump, dive, belly slide, wall kick and a
     tucked somersault turned 8 ways (the game shows them in order during a flip)."""
@@ -1643,6 +1760,7 @@ def main():
     rocco("rocco_hurt", 0.4, -0.4, 2.8, -2.6, mouth="ow")
     rocco("rocco_win", 0.15, -0.15, 3.0, -0.3, mouth="open")
     rocco_moves()
+    friends()
     # Blocky
     blocky("blocky_idle", 0.1, -0.1, 0.0, 1.25)
     blocky("blocky_run1", 0.7, -0.55, 0.4, 1.4)

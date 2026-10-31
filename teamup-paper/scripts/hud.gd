@@ -127,6 +127,9 @@ func _input(event: InputEvent) -> void:
 				if game.state == "partner":
 					_partner_tap(e.position)
 					return
+				if game.state == "team":
+					_team_tap(e.position)
+					return
 				if game.state == "scene":
 					game.scene_tap()
 					return
@@ -232,6 +235,9 @@ func _draw() -> void:
 		return
 	if game.state == "partner":
 		_draw_partner()
+		return
+	if game.state == "team":
+		_draw_team()
 		return
 	_draw_hud()
 	if game.state == "play" or game.state == "home" or game.state == "map":
@@ -480,7 +486,7 @@ func _draw_controls() -> void:
 	draw_circle(base + stick * r, r * 0.55, Color("ffd6a8") if game.sprinting else Color(1, 1, 1, 0.75))
 	# buttons
 	var labels := {"jump": "JUMP", "action": game.action_label(), "swap": "SWAP", "super": "SUPER", "pause": "II",
-		"build": "BUILD", "decor": "DECOR", "partner": "PARTNER", "place": "PLACE", "remove": "REMOVE", "done": "DONE", "rotate": "TURN", "land": "LAND", "paint": "PAINT",
+		"build": "BUILD", "decor": "DECOR", "partner": "TEAM", "place": "PLACE", "remove": "REMOVE", "done": "DONE", "rotate": "TURN", "land": "LAND", "paint": "PAINT",
 		"fly": "LAND" if game.flying else "FLY", "down": "DOWN", "movies": "MOVIES"}
 	if game.flying:
 		labels["jump"] = "UP"
@@ -773,8 +779,10 @@ func _draw_loading() -> void:
 	for l in Mons.ORDER:
 		for st in Mons.LINES[l].names.size():
 			draw_texture_rect(img(Mons.face(l, st)), Rect2(-500, -500, 40, 40), false)
-	for n in ["rocco_idle", "blocky_idle", "heart", "heart_empty", "coin", "kragjr_1"]:
+	for n in ["heart", "heart_empty", "coin", "kragjr_1"]:
 		draw_texture_rect(img(n), Rect2(-500, -500, 40, 40), false)
+	for id in Team.ORDER:   # every hero's face (TEAM screen, SWAP button, save cards)
+		draw_texture_rect(img(id + "_idle"), Rect2(-500, -500, 40, 40), false)
 	for it in Decor.ITEMS:
 		draw_texture_rect(img("decor_" + it.id), Rect2(-500, -500, 40, 40), false)
 	for k in Powers.KINDS:
@@ -942,7 +950,12 @@ func _draw_slots() -> void:
 			txt("NEW GAME", Vector2(r.position.x, r.end.y - 40), 38, Color(0.13, 0.09, 0.18), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
 		else:
 			var who: String = d.get("human", "rocco")
-			draw_texture_rect(tex[who + "_idle"], Rect2(r.position.x + 16, r.position.y + 78, 90, 112), false)
+			var tm: Array = d.get("team", ["rocco", "blocky"])
+			if tm.size() == 2:   # the human slots hold whoever is on the team
+				who = String(tm[0] if who == "rocco" else tm[1])
+			if not Team.INFO.has(who):
+				who = "rocco"
+			fit(img(who + "_idle"), Rect2(r.position.x + 16, r.position.y + 78, 90, 112))
 			var ml := String(d.get("mon", "spark"))
 			if not ml in Mons.ORDER:
 				ml = "spark"
@@ -1014,7 +1027,7 @@ func go_rect() -> Rect2:
 
 func _partner_tap(p: Vector2) -> void:
 	if back_rect().has_point(p):
-		game.state = "slots"
+		game.partner_back()
 		return
 	if go_rect().has_point(p):
 		game.choose_partner(Mons.ORDER[game.partner_sel])
@@ -1141,3 +1154,104 @@ func _draw_movies() -> void:
 			txt("?", Vector2(r.position.x, r.position.y + 70), 44, Color(1, 1, 1, 0.5), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
 			txt("NOT SEEN YET", Vector2(r.position.x, r.end.y - 18), 20, Color(1, 1, 1, 0.6), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
 	txt("Tap a movie to watch it again!", Vector2(0, size.y - 40), 26, Color(1, 1, 1, 0.8), HORIZONTAL_ALIGNMENT_CENTER, size.x, 6)
+
+
+# ------------------------------------------------------------------ TEAM: 2 heroes + 1 partner
+func _team_card() -> Vector2:
+	var n := Team.ORDER.size()
+	var w := minf(170.0, (size.x - 60 - 12.0 * (n - 1)) / n)
+	return Vector2(w, minf(250.0, size.y * 0.36))
+
+
+func team_rect(i: int) -> Rect2:
+	var c := _team_card()
+	var n := Team.ORDER.size()
+	var x0 := (size.x - (c.x * n + 12.0 * (n - 1))) * 0.5
+	return Rect2(x0 + i * (c.x + 12.0), size.y * 0.17, c.x, c.y)
+
+
+func team_partner_rect() -> Rect2:
+	var y := team_rect(0).end.y + 92
+	return Rect2(size.x * 0.5 - 330, y, 300, 110)
+
+
+func team_go_rect() -> Rect2:
+	var y := team_rect(0).end.y + 92
+	return Rect2(size.x * 0.5 + 30, y + 20, 300, 76)
+
+
+func _team_tap(p: Vector2) -> void:
+	if game.team_from == "home" and back_rect().has_point(p):
+		game.state = "home"
+		return
+	if team_go_rect().has_point(p):
+		game.team_go()
+		return
+	if team_partner_rect().has_point(p):
+		game.team_partner()
+		return
+	for i in Team.ORDER.size():
+		if team_rect(i).has_point(p):
+			game.team_cur = i
+			game.team_tap(Team.ORDER[i])
+			return
+
+
+func _draw_team() -> void:
+	var s := size
+	draw_rect(Rect2(Vector2.ZERO, s), Color(0.05, 0.08, 0.15, 0.55))
+	txt("PICK YOUR TEAM", Vector2(0, s.y * 0.12), 52, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 12)
+	if game.team_from == "home":
+		var b := back_rect()
+		draw_rect(b, Color(0.1, 0.15, 0.3, 0.85))
+		draw_rect(b, Color.WHITE, false, 3.0)
+		txt("BACK", Vector2(b.position.x, b.position.y + 48), 34, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, b.size.x, 7)
+	var open: Array = Team.unlocked(game.cleared_w)
+	for i in Team.ORDER.size():
+		var id: String = Team.ORDER[i]
+		var info: Dictionary = Team.info(id)
+		var r := team_rect(i)
+		var got := id in open
+		var pick: int = game.team_sel.find(id)
+		if game.team_cur == i:
+			draw_rect(r.grow(7), Color(1, 1, 1, 0.5))
+		if pick >= 0:
+			draw_rect(r.grow(5), Color(1, 0.9, 0.4, 0.95))
+		draw_rect(r, Color("fdf4e3"))
+		draw_rect(Rect2(r.position, Vector2(r.size.x, 30)), info.color if got else Color(0.4, 0.4, 0.46))
+		draw_rect(r, Color(0.13, 0.09, 0.18), false, 3.0)
+		txt(String(info.action) if got else "LOCKED", Vector2(r.position.x, r.position.y + 23), 17, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 5)
+		var fh := r.size.y - 30 - 60
+		var bob := sin(title_t * 4 + i) * 4 if pick >= 0 else 0.0
+		fit(img(id + "_idle"), Rect2(r.position.x + 10, r.position.y + 36 + bob, r.size.x - 20, fh))
+		if not got:
+			draw_rect(Rect2(r.position.x + 3, r.position.y + 33, r.size.x - 6, fh + 6), Color(0.08, 0.08, 0.14, 0.82))
+			txt("?", Vector2(r.position.x, r.position.y + 36 + fh * 0.6), 64, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 8)
+		txt(String(info.name) if got else "???", Vector2(r.position.x, r.end.y - 30), 22, Color(0.13, 0.09, 0.18), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
+		if pick >= 0:
+			draw_circle(Vector2(r.end.x - 18, r.position.y + 48), 17, Color("3fc06a"))
+			txt(str(pick + 1), Vector2(r.end.x - 35, r.position.y + 58), 26, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, 34, 5)
+		elif not got:
+			txt("Clear %d world%s" % [Team.need(id), "s" if Team.need(id) > 1 else ""], Vector2(r.position.x, r.end.y - 8), 15, Color("8a3a3a"), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
+	# what the highlighted hero does
+	var cid: String = Team.ORDER[clampi(game.team_cur, 0, Team.ORDER.size() - 1)]
+	var y := team_rect(0).end.y + 34
+	if cid in open:
+		txt("%s:  %s" % [Team.name_of(cid), Team.info(cid).about], Vector2(0, y), 22, Color("fff2a8"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 7)
+	else:
+		txt("Clear more worlds to unlock new friends!", Vector2(0, y), 22, Color("fff2a8"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 7)
+	txt("Tap 2 heroes, then pick your partner", Vector2(0, y + 28), 20, Color(1, 1, 1, 0.8), HORIZONTAL_ALIGNMENT_CENTER, s.x, 6)
+	# the partner
+	var pr := team_partner_rect()
+	draw_rect(pr, Color("fdf4e3"))
+	draw_rect(pr, Color(0.13, 0.09, 0.18), false, 3.0)
+	fit(img(game.face("mon")), Rect2(pr.position.x + 8, pr.position.y + 8, 100, pr.size.y - 16))
+	txt("PARTNER", Vector2(pr.position.x + 116, pr.position.y + 34), 20, Color("3f7fd9"), HORIZONTAL_ALIGNMENT_LEFT, -1, 0)
+	txt(game.display_name("mon"), Vector2(pr.position.x + 116, pr.position.y + 64), 26, Color(0.13, 0.09, 0.18), HORIZONTAL_ALIGNMENT_LEFT, -1, 0)
+	txt("tap to change", Vector2(pr.position.x + 116, pr.position.y + 92), 17, Color("8a5a35"), HORIZONTAL_ALIGNMENT_LEFT, -1, 0)
+	# GO
+	var g := team_go_rect()
+	var ok: bool = game.team_sel.size() == 2
+	draw_rect(g, Color("3fc06a") if ok else Color(0.4, 0.42, 0.48))
+	draw_rect(g, Color.WHITE, false, 3.0)
+	txt("LET'S GO!" if ok else "PICK 2 HEROES", Vector2(g.position.x, g.position.y + 51), 34, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, g.size.x, 8)

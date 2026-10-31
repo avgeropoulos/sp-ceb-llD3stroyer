@@ -255,6 +255,29 @@ roll out), `_wall_kick`, `_rocco_steer`, `_rocco_after_move` (wall touches, bonk
 paper pictures `rocco_long/dive/slide/kick/tuck0-7` (`gen_art.py` `rocco_moves()`; the tuck turns through 8 pictures
 during a flip). Test: `tests/moves_check.gd` (real physics: distances and heights for every move).
 
+## Your team: 2 heroes + 1 partner
+
+Clear worlds to unlock new friends (our own look-alikes with made-up names). The **TEAM** button at home
+(and the TEAM screen after you clear a world) lets you pick **2 heroes and 1 partner**; SWAP cycles
+hero 1 -> hero 2 -> partner. New friends are announced with a "NEW FRIEND UNLOCKED!" banner.
+
+| Hero | Unlock | Special |
+|---|---|---|
+| ROCCO | start | the Mario 64 moves (see below) |
+| BLOCKY | start | MINE any block |
+| LUCKY (tall green brother) | 1 world | jumps highest, floats down slowly; ACTION: SPIN JUMP (a flutter in the air) |
+| ALIX (Minecraft girl, orange hair) | 2 worlds | ACTION: shoots an arrow at a bad guy in front, otherwise MINES |
+| PETAL (princess) | 3 worlds | hold JUMP in the air to FLOAT; ACTION: TWIRL bonks bad guys around her |
+| SPOTTY (mushroom-cap kid) | 4 worlds | fastest runner; ACTION: DASH knocks bad guys over |
+| BRUTO (yellow-cap bruiser) | 5 worlds | ACTION: shoulder BASH smashes blocks and bad guys |
+
+* Code: `scripts/team.gd` (the heroes: stats, unlocks, pictures), `Hero.become()`, `main.gd` `set_team` /
+  `open_team` / `team_tap` / `team_go` / `_friend_action` / `_friend_air`, `hud.gd` `_draw_team`.
+  The two human slots stay `heroes.rocco` (slot 1) and `heroes.blocky` (slot 2); `Hero.who` says who's in them.
+* Saved: `team`, `heroes_seen`. Old saves get Rocco + Blocky.
+* Art: `tools/gen_art.py` `friends()` (paper), `toys.gd` `_friend()` (3D toys, posed by `_pose_person`).
+* Test: `tests/team_check.gd`.
+
 ## Partners: pick one, level up, evolve
 
 After picking a save file (and after every finished run) you **PICK YOUR PARTNER**: tap a card to look,
