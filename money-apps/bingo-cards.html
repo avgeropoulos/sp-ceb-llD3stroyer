@@ -1069,7 +1069,7 @@ function openCheck(){
   if(!gate(REASON.check))return;
   const e=eff(cur());if(!validity(e).ok)return;
   const m=openModal(`<h3>Check a card</h3><p class="muted small" style="margin-top:0">Pattern: <b>${esc(PNAME[e.pattern])}</b> · ${validCalls(e).length} calls so far</p>
-    <form class="ck-row" id="ckForm"><label for="ckNo" class="sr">Card number</label><input id="ckNo" type="number" inputmode="numeric" min="1" max="${e.count}" placeholder="Card number, e.g. 7" required><button>Check</button></form><div id="ckOut" aria-live="polite"></div>`);
+    <form class="ck-row" id="ckForm" novalidate><label for="ckNo" class="sr">Card number</label><input id="ckNo" type="number" inputmode="numeric" min="1" max="${e.count}" placeholder="Card number, e.g. 7" required><button>Check</button></form><div id="ckOut" aria-live="polite"></div>`);
   m.el.querySelector('#ckForm').addEventListener('submit',ev=>{
     ev.preventDefault();const ge=eff(cur()),r=check(ge,parseInt(m.el.querySelector('#ckNo').value,10),ge.pattern);
     m.el.querySelector('#ckOut').innerHTML=`<p class="verdict ${r.bingo?'good':r.inGame?'':'bad'}">${esc(r.label)}</p>`+
@@ -1151,7 +1151,8 @@ function wire(){
     $(id).addEventListener('click',e=>{if(!pro.isPro()){e.preventDefault();pro.upsell(REASON[r])}});
     $(id).addEventListener('change',e=>{if(!pro.isPro())return;g()[id]=e.target.checked;pvPage=0;commit()});
   });
-  $('footerText').addEventListener('focus',()=>gate(REASON.foot));
+  $('footerText').addEventListener('mousedown',e=>{if(!pro.isPro()){e.preventDefault();pro.upsell(REASON.foot)}});
+  $('footerText').addEventListener('focus',e=>{if(!pro.isPro()){e.target.blur();pro.upsell(REASON.foot)}});
   $('footerText').addEventListener('input',e=>{if(!pro.isPro())return;g().footerText=clean(e.target.value,80);save();renderPreview()});
   $('themes').addEventListener('click',e=>{const b=e.target.closest('[data-theme]');if(!b)return;if(THEMES[b.dataset.theme].pro&&!gate(REASON.theme))return;g().theme=b.dataset.theme;commit()});
   $('font').addEventListener('mousedown',e=>{if(!pro.isPro()){e.preventDefault();gate(REASON.theme)}});

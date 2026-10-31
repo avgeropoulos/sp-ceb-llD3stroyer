@@ -105,6 +105,7 @@
     opts = opts || {};
     const LICENSE_KEY = 'moneyapps.license.' + product;
     const PENDING_KEY = 'moneyapps.pending.' + product;
+    const CHECKED_KEY = 'moneyapps.checked.' + product; // when the server last confirmed the key
     const listeners = [];
     if (opts.onChange) listeners.push(opts.onChange);
     let busy = false;
@@ -134,7 +135,8 @@
       if (panel) renderPanel(panel.el, panel.opts, true);
       if (modal) renderPanel(modal.el, modal.opts, true);
     }
-    function setLicense(token) {
+    function setLicense(token, confirmed) {
+      write(CHECKED_KEY, token && confirmed ? String(Date.now()) : null);
       const saved = write(LICENSE_KEY, token);
       changed();
       if (token && !saved) toast('Your browser is blocking storage, so Pro will only last until you close this page. Use “Copy license key” to keep it.', 9000);
@@ -158,7 +160,7 @@
             const data = await call('/api/license', { session_id: pend.sid });
             if (!looksValid(data.license)) throw Object.assign(new Error('Unexpected reply from the payments server.'), { transient: true });
             clearPending();
-            setLicense(data.license);
+            setLicense(data.license, true);
             toast('Pro unlocked. Thanks for your purchase!', 6000);
             return;
           } catch (err) {
@@ -204,15 +206,19 @@
       } catch (err) { fail(err); }
     }
 
-    // Re-validates the stored license. Drops it only when our server says it's invalid or
-    // the subscription has ended, never because we're offline or the server is misconfigured.
+    // Re-validates the stored license with the server about once a day: subscriptions to see if
+    // they're still active, lifetime keys so a hand-made key doesn't unlock Pro. Drops a key only
+    // when our server says it's invalid or the subscription has ended, never because we're
+    // offline or the server is misconfigured.
     async function refresh(force) {
       const p = info();
-      if (!p || p.exp == null) return isPro();
-      if (!force && Date.now() - p.iat < REFRESH_AFTER) return isPro();
+      if (!p) return isPro();
+      const checked = Number(read(CHECKED_KEY)) || 0;
+      if (!force && checked <= Date.now() && Date.now() - checked < REFRESH_AFTER) return isPro();
       try {
         const data = await call('/api/license/refresh', { license: license() });
-        if (looksValid(data.license) && data.license !== license()) setLicense(data.license);
+        if (looksValid(data.license) && data.license !== license()) setLicense(data.license, true);
+        else write(CHECKED_KEY, String(Date.now()));
       } catch (err) {
         if (err.reason === 'invalid' || err.reason === 'inactive') {
           setLicense(null);
@@ -228,7 +234,7 @@
       try {
         const data = await call('/api/license/refresh', { license: key });
         if (!looksValid(data.license)) throw new Error('Unexpected reply from the payments server.');
-        setLicense(data.license);
+        setLicense(data.license, true);
         toast('Pro unlocked. Thanks for your support!');
         return true;
       } catch (err) { fail(err); return false; }

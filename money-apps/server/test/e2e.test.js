@@ -205,3 +205,17 @@ test('Quick Invoice: printing shows only the invoice', { skip: !chromium && 'pla
   const today = await page.evaluate(() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); });
   assert.match(await page.textContent('#inv'), new RegExp(today));
 });
+
+test('a hand-made lifetime key is checked with the server and removed', { skip: !chromium && 'playwright not installed' }, async () => {
+  const lifetime = Object.entries(require('../products.json')).find(([, p]) => p.mode === 'payment');
+  if (!lifetime) return;
+  const [key, p] = lifetime;
+  const page = await (await browser.newContext()).newPage();
+  await page.goto(`${base}/${p.page}`);
+  await page.evaluate(k => {
+    const body = btoa(JSON.stringify({ v: 1, p: k, m: 'test', c: 'cus_x', s: null, iat: Date.now(), exp: null })).replace(/=+$/, '');
+    localStorage.setItem('moneyapps.license.' + k, body + '.forged');
+  }, key);
+  await page.reload();
+  await page.waitForFunction(k => localStorage.getItem('moneyapps.license.' + k) === null, key);
+});
