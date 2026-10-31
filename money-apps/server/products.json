@@ -6,5 +6,19 @@
     "amount": 499,
     "currency": "usd",
     "interval": "month"
+  },
+  "bingo-pro": {
+    "name": "Bingo Card Studio Pro",
+    "page": "bingo-cards.html",
+    "mode": "payment",
+    "amount": 1499,
+    "currency": "usd"
+  },
+  "makermargin-pro": {
+    "name": "MakerMargin Pro",
+    "page": "maker-margin.html",
+    "mode": "payment",
+    "amount": 2400,
+    "currency": "usd"
   }
 }

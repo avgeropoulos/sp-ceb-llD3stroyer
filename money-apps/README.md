@@ -7,6 +7,8 @@ A small Node server sells "Pro" upgrades with **Stripe** and serves the pages.
 | App | File | Who pays | How it makes money | Payments |
 |---|---|---|---|---|
 | **Quick Invoice** | `invoice-maker.html` | Freelancers, small businesses | **Pro $4.99/mo:** removes the footer and adds a logo, brand colour, a "Pay online" button, saved clients and email drafts. The free footer also advertises the app to every client who gets an invoice. | ✅ Stripe |
+| **Bingo Card Studio** | `bingo-cards.html` | Teachers, party and shower hosts, office events, senior centres, bar hosts | **Pro $14.99 once:** up to 500 unique cards, a winner checker, a full-screen projector caller, clue mode, large print, pictures, 90-ball tickets and player links. Free cards carry a footer that reaches every player. Demand peaks in December. | ✅ Stripe |
+| **MakerMargin** | `maker-margin.html` | Etsy and handmade sellers, home bakers | **Pro $24 once:** unlimited products, profit for each sales channel after fees, the knock-on effect of material price changes, a batch planner, Etsy CSV import and a year-end summary. The closest competitor (Craftybase) charges about $24/month. | ✅ Stripe |
 | **Sub Tracker** | `subscription-tracker.html` | Anyone with too many subscriptions | Pro reminders, plus affiliate links to cheaper plans | Planned |
 | **Streaks** | `habit-streaks.html` | Self-improvement crowd | Free plan has 3 habits. Pro is unlimited (subscription or lifetime). | Planned |
 | **Split It** | `bill-splitter.html` | Groups on trips or sharing a house | $1.99 per trip for uneven splits and multiple currencies | Planned |
