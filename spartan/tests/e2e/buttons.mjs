@@ -71,9 +71,10 @@ try {
   const step = (n = 1) => ev((k) => window.__game.step(k, 1 / 60), n);
   await step(60);
   const cdp = await page.context().newCDPSession(page);
-  const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', {
+  // `at`: an explicit event time (epoch ms), so a timed swipe keeps its pace however slowly the page acks.
+  const touch = (type, pts, at) => cdp.send('Input.dispatchTouchEvent', Object.assign({
     type, touchPoints: pts.map((p) => ({ id: p.id ?? 1, x: p.x, y: p.y, radiusX: 4, radiusY: 4, force: 1 })),
-  });
+  }, at === undefined ? {} : { timestamp: at / 1000 }));
   const box = (sel) => ev((s) => {
     const el = document.querySelector(s);
     if (!el) return null;
@@ -213,9 +214,10 @@ try {
   await step(60);
   const tapped = await player();
   check('tapping a foe on screen locks onto him', !!at && tapped.lock === -3.5, `lock ${tapped.lock} (tapped ${at && at.x.toFixed(0)},${at && at.y.toFixed(0)})`);
-  await touch('touchStart', [{ id: 7, x: 330, y: 80 }]);
-  for (let i = 1; i <= 5; i++) await touch('touchMove', [{ id: 7, x: 330 + i * 24, y: 84 }]);
-  await touch('touchEnd', []);
+  const t0 = Date.now();
+  await touch('touchStart', [{ id: 7, x: 330, y: 80 }], t0);
+  for (let i = 1; i <= 5; i++) await touch('touchMove', [{ id: 7, x: 330 + i * 24, y: 84 }], t0 + i * 30);
+  await touch('touchEnd', [], t0 + 160);
   await step(60);
   const swiped = await player();
   check('swiping right on the open ground switches to the next foe on the right', swiped.lock === 0, `lock ${swiped.lock}`);

@@ -1282,10 +1282,10 @@ html, body {
 .ctl-rage-face { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
 .ctl-rage em {
   font-style: normal;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.14em;
-  padding-left: 0.14em;
+  letter-spacing: 0.1em;
+  padding-left: 0.1em;
   text-transform: uppercase;
   color: rgba(244, 226, 190, 0.7);
 }
