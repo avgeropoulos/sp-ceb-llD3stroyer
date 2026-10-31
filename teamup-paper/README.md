@@ -124,6 +124,26 @@ Each world now has **8 stars** (5 still open the gate) and you go for **one ques
   save and continue); `open_check.gd` now also collects every red coin (and really jumps onto a pillar), beats
   the BIG GRUMBLER and walks Dennis home.
 
+### Secret paintings (Mario 64 style)
+
+Every open world has a **SECRET PAINTING** in a gold frame on the outside of Krag Jr.'s castle's
+**west wall** (behind the castle when you come from the start). It's a picture of the world (its sky, hills
+and a big star, drawn by `Painting.picture()` from the world's colours) and it **ripples like water** when you
+come close. It hangs a little too high to walk into: **JUMP into it** and you're pulled in (WHOOSH!) to its
+**BONUS COURSE**: 16 platforms floating in the painting's sky going up and away, with coins, two bad guys and a
+? block, and the **PAINTING STAR** on the gold platform at the top. Falling off puts you back on the last
+platform you stood on; fall **3 times** and the painting spits you back out. Getting the star (or falling out)
+takes you back into the world **next to the painting**, with the world just as you left it.
+
+* It's one more star on the STAR SELECT ("SECRET PAINTING", the last one) and counts like any star.
+* Code: `level.gd` `_painting_spot()` (place + objective) and `generate_bonus()` (`bonus_tops`, `bonus_star`),
+  `scripts/painting.gd` (picture, ripple shader, frame, `touching` / `jump_in`), `scripts/bonus.gd` (the star,
+  falls), `main.gd` `enter_painting()` (saves the world mid-level, `go("bonus")`), `_enter_bonus()`,
+  `leave_bonus()` (adds "painting" to the save's stars, back to the world). `Boot.place == "bonus"`.
+* Test: `tests/painting_check.gd [-- toy] [world ...]`: in every world Rocco really jumps into the painting,
+  falls out 3 times once, then really jumps every bonus platform, gets the star and is back by the painting
+  with the star saved; plus the FIRE FLOWER checks below.
+
 ### More bad guys (open worlds)
 
 | Bad guy | What it does | How to beat it | Where |
@@ -147,6 +167,7 @@ the ghost hides when looked at).
 
 ## Power-ups
 
+A **FIRE FLOWER** always waits near the start of every world, and it's the most common thing in ? blocks.
 ? blocks often give a power-up (it rises out of the block; mushrooms slide off along the ground like the
 2D game), and about 8 lie around each open world (one near the start, one on the tower stairs, one in the
 secret cave). Whoever you steer gets it, and it moves to the next hero when you SWAP. The HUD (top right)
@@ -154,7 +175,7 @@ shows the power and a ring for the time left.
 
 | Power | What it does | How long |
 |---|---|---|
-| FIRE FLOWER | ACTION throws bouncing fireballs | until you're hit |
+| FIRE FLOWER | ACTION throws bouncing fireballs, two at a time (never more than 2 out, like Mario); a fireball beats any normal bad guy in one hit and burns leaves | until you're hit |
 | ICE FLOWER | ACTION throws ice balls: bad guys become ice blocks you can stand on (4.5 s) | until you're hit |
 | SUPER MUSHROOM | big, one free hit, head-bumps smash blocks | until you're hit |
 | MINI MUSHROOM | tiny (fits small gaps), jumps 30% higher | 15 s |

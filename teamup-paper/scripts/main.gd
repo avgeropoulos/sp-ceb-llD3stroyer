@@ -67,6 +67,7 @@ var cleared := 0              # times this file finished the level
 
 # home base
 var home: HomeBase            # only at home
+var bonus: Bonus             # only in a painting's BONUS COURSE
 var open_play: OpenPlay       # only in the open worlds (stars, gate, flag)
 var gate_open := false        # Krag Jr.'s gold gate (5 stars)
 var stars_w := {}             # world id -> star ids found there (kept for good, like Mario 64)
@@ -140,6 +141,8 @@ func _ready() -> void:
 		level.generate_empty()
 	elif Boot.place == "level":
 		level.generate(Boot.level)
+	elif Boot.place == "bonus":   # a painting's bonus course
+		level.generate_bonus(Boot.level)
 	else:
 		level.generate("meadow")
 	fx = Fx.new()
@@ -222,7 +225,12 @@ func _ready_level() -> void:
 		var c := level.prop("coin", level.coin_spots[ci] - Vector3(0, 0.35, 0), 0.7)
 		c.set_meta("i", ci)
 		coin_nodes.append(c)
-	if level.open:
+	if level.bonus:
+		bonus = Bonus.new()
+		level.add_child(bonus)
+		bonus.setup(self, level)
+		_setup_powers()
+	elif level.open:
 		open_play = OpenPlay.new()
 		level.add_child(open_play)
 		open_play.setup(self, level)
@@ -258,6 +266,8 @@ func _after_loading() -> void:
 					hud.say(world_info().name, world_info().hello, 2.6)
 			if open_play and not d.get("in_level", false):
 				open_play.open_select("start")   # Mario 64 style: pick a star first
+		"bonus":
+			_enter_bonus()
 		_:
 			state = "title"
 
@@ -601,7 +611,7 @@ func _setup_input() -> void:
 
 
 func _setup_world() -> void:
-	var wi: Dictionary = Worlds.info(Boot.level if Boot.place == "level" else "meadow")
+	var wi: Dictionary = Worlds.info(Boot.level if Boot.place in ["level", "bonus"] else "meadow")
 	var env := Environment.new()
 	env.background_mode = Environment.BG_SKY
 	var sky := Sky.new()
@@ -625,7 +635,7 @@ func _setup_world() -> void:
 	env.fog_depth_begin = 28.0
 	env.fog_depth_end = 140.0
 	env.fog_density = 0.55
-	if Boot.place == "level":
+	if Boot.place in ["level", "bonus"]:
 		env.fog_depth_begin = float(wi.get("fog_begin", 28.0))
 		env.fog_depth_end = float(wi.get("fog_end", 140.0))
 		env.fog_density = float(wi.get("fog_density", 0.55))
@@ -1545,6 +1555,70 @@ func _update_leader(h: Hero, dt: float) -> void:
 	h.update_shadow()
 
 
+# ------------------------------------------------------------------ paintings (see bonus.gd)
+## Jumped into a world's SECRET PAINTING: save the world as it is, then into the bonus course.
+func enter_painting() -> void:
+	note("into the painting")
+	save_game(true)
+	Boot.level = level.world
+	go("bonus", slot)
+
+
+func _enter_bonus() -> void:
+	var d := Saves.read(Boot.slot)
+	start_game(Boot.slot)
+	if not d.is_empty():
+		var d2 := d.duplicate()
+		d2["in_level"] = false   # the world's blocks / coins belong to the world, not the painting
+		_apply_save(d2)
+	hearts = maxi(hearts, 1)
+	bonus.begin()
+
+
+## Out of the painting (star or not): back into the world, next to the painting.
+func leave_bonus(got_star: bool) -> void:
+	var w := level.world
+	if slot > 0:
+		var d := Saves.read(slot)
+		d["coins"] = coins
+		d["hearts"] = maxi(hearts, 1)
+		d["ores"] = ores.duplicate()
+		d["mon_xp"] = mon_xp.duplicate()
+		if got_star:
+			var sw: Dictionary = d.get("stars_w", {})
+			var l: Array = sw.get(w, [])
+			if not "painting" in l:
+				l.append("painting")
+			sw[w] = l
+			d["stars_w"] = sw
+			if d.get("in_level", false):
+				var st: Array = d.get("stars", [])
+				if not "painting" in st:
+					st.append("painting")
+				d["stars"] = st
+				if String(d.get("quest", "")) == "painting":
+					d["quest"] = ""
+		Saves.write(slot, d)
+	Boot.level = w
+	go("level", slot)
+
+
+## How much a friendly shot hurts: a FIRE FLOWER fireball beats any normal bad guy in one hit.
+func _shot_damage(sh: Dictionary, f: Foe) -> int:
+	if sh.get("flower", false) and not f.is_boss:
+		return 99
+	return int(sh.dmg) + (1 if sh.owner == leader() else 0)
+
+
+## A FIRE FLOWER fireball sets leaves on fire (poof!).
+func _burn(c: Vector3i) -> void:
+	if level.is_home or level.locked.has(c):
+		return
+	if level.get_cell(c.x, c.y, c.z) == Level.LEAVES:
+		level.set_cell(c.x, c.y, c.z, Level.AIR)
+		fx.burst(Vector3(c) + Vector3(0.5, 0.5, 0.5), Color("ff7a2a"), 10, 3, 4)
+
+
 # ------------------------------------------------------------------ power-ups (see powers.gd)
 func _setup_powers() -> void:
 	powers = Powers.new()
@@ -2379,6 +2453,8 @@ func _update_shots(dt: float) -> void:
 			if level.solid(floori(nxt.x + signf(v.x) * 0.3), floori(nxt.y), floori(nxt.z)):
 				gone = true
 				fx.burst(nxt, Color("ffb02e"), 6, 3)
+				if sh.get("flower", false):
+					_burn(Vector3i(floori(nxt.x + signf(v.x) * 0.3), floori(nxt.y), floori(nxt.z)))
 			s.position = nxt
 			if nxt.y < -4:
 				gone = true
@@ -2402,7 +2478,7 @@ func _update_shots(dt: float) -> void:
 							f.hurt(int(sh.dmg) + (1 if sh.owner == leader() else 0), self)
 							fx.burst(f.position + Vector3(0, f.height * 0.5, 0), Color("bff4ff"), 8, 3)
 							continue
-						f.hurt(int(sh.dmg) + (1 if sh.owner == leader() else 0), self)
+						f.hurt(_shot_damage(sh, f), self)
 						gone = true
 						break
 			else:
@@ -2467,6 +2543,9 @@ func hurt_hero(from: Vector3) -> void:
 
 
 func _fell(h: Hero) -> void:
+	if level.bonus and h == leader():   # fell off a painting's course: it counts falls itself
+		bonus.fell()
+		return
 	if not invincible:
 		hearts -= 1
 	sfx("hurt")
@@ -2527,6 +2606,9 @@ func start_boss(f: Foe) -> void:
 # ------------------------------------------------------------------ checkpoint, flag, camera
 func _update_progress(dt: float) -> void:
 	var l := leader()
+	if level.bonus:
+		bonus.step(dt)
+		return
 	if level.open:
 		if victory_t > 0:
 			victory_t -= dt
@@ -2610,7 +2692,7 @@ func _update_camera(dt: float) -> void:
 # ------------------------------------------------------------------ test bot
 func _bot_input() -> void:
 	var l := leader()
-	if level.open:   # head for the nearest challenge, jumping over anything in the way
+	if level.open and not level.bonus:   # head for the nearest challenge, jumping over anything in the way
 		var to: Vector3 = level.objectives[int(play_t / 12) % 4].pos   # camp, tower, cave, sky in turn
 		var d := Vector3(to.x - l.position.x, 0, to.z - l.position.z)
 		cam_yaw = 0

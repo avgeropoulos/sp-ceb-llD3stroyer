@@ -77,6 +77,10 @@ var objectives: Array = []    # the star challenges (Mario 64 style missions): {
 var red_spots: Array = []     # RED COINS: where the 8 red coins float
 var dog_spot := Vector3.ZERO  # LOST DOG: where Dennis is lost
 var dog_home := Vector3.ZERO  # ... and his doghouse
+var bonus := false            # a painting's BONUS COURSE (see generate_bonus)
+var painting := {}            # the secret painting in an open world: {pos, w, h, x, z, bottom}
+var bonus_tops: Array = []    # BONUS COURSE: where you stand on each platform, start to star
+var bonus_star := Vector3.ZERO
 var keep_out: Array = []      # [center, radius]: the challenges' space
 var step_tops: Array = []     # SKY STEPS: where you stand on each step (for the test robot)
 var tower_tops: Array = []    # TALL TOWER: the same for the stairs
@@ -621,6 +625,100 @@ func _more_quests(start: Vector2i) -> void:
 			"pos": dog_home + Vector3(0, 1.2, -0.6)})
 
 
+## The SECRET PAINTING: hung on the outside of the castle's west wall, a little too high
+## to walk into, so you have to JUMP in (like Mario 64). It's the last star of the world.
+func _painting_spot() -> void:
+	var x0 := int(arena.position.x)
+	var zc := float(int(arena.position.y + arena.size.y * 0.5)) + 0.5
+	var bottom := arena_y + 1.5
+	painting = {"x": float(x0), "z": zc, "w": 3.2, "h": 2.7, "bottom": bottom,
+		"pos": Vector3(x0 - 0.03, bottom + 1.35, zc)}
+	keep_out.append([Vector2(x0 - 3, zc), 4.0])
+	objectives.append({"id": "painting", "name": "SECRET PAINTING", "hint": "Find the painting on the castle wall and JUMP into it!",
+		"pos": Vector3(x0 - 1.2, arena_y + 0.9, zc)})
+
+
+## A painting's BONUS COURSE: platforms floating in the sky going up and away, coins on
+## them, a couple of bad guys, a ? block, and the PAINTING STAR on the last one. Every
+## jump is one Rocco can make (tests/painting_check.gd jumps them all for real).
+func generate_bonus(w: String) -> void:
+	world = w
+	open = true
+	bonus = true
+	sx = 40
+	sy = 48
+	sz = 84
+	width = sx
+	rng.seed = absi(hash(w)) % 100000 + 31
+	cells.resize(sx * sy * sz)
+	cells.fill(AIR)
+	heights.resize(sx)
+	heights.fill(0)
+	hmap.resize(sx * sz)
+	hmap.fill(0)
+	var top: int = {"meadow": GRASS, "frost": SNOW, "dunes": SAND, "swamp": LOG, "moon": IRON_BLOCK, "lava": STONE_BRICK,
+		"candy": FROSTING, "beach": SAND, "jungle": GRASS, "cloud": CLOUD}.get(w, GRASS)
+	var side: int = {"meadow": DIRT, "frost": ICE, "dunes": SANDSTONE, "swamp": PLANKS, "moon": STONE, "lava": BRICK,
+		"candy": CAKE, "beach": SANDSTONE, "jungle": DIRT, "cloud": CLOUD}.get(w, DIRT)
+	var colors := [WOOL_RED, WOOL_YELLOW, WOOL_BLUE, WOOL_GREEN, WOOL_WHITE]
+	var p := Vector3i(18, 10, 74)
+	_bonus_pad(p, 2, top, side)   # the start: a 5 x 5 landing pad
+	bonus_tops.append(Vector3(p.x + 0.5, p.y + 1, p.z + 0.5))
+	start_pos = Vector3(p.x + 0.5, p.y + 1.01, p.z + 0.5)
+	var hops := 15
+	var prev_r := 2
+	for i in hops:
+		# forward (-z) with a gap of one or two blocks; up 0, 1 or 2; a little to the side
+		var up: int = [1, 2, 0, 1, 2, 1, 0, 2][i % 8]
+		var r := 2 if i in [4, 9] else 1   # wider pads with a bad guy on them
+		var gap := 1 if up > 0 else 2
+		var fwd := mini(prev_r + r + 1 + gap, 5 if up == 0 else 4)   # never too far from the middle of a pad
+		var dx: int = [0, 2, -2, 1, -1, 2, -2, 0][rng.randi() % 8]
+		if fwd >= 4:
+			dx = clampi(dx, -1, 1)
+		var nx := clampi(p.x + dx, 6, sx - 7)
+		p = Vector3i(nx, p.y + up, p.z - fwd)
+		var t: int = colors[i % colors.size()] if i % 3 == 2 else top
+		_bonus_pad(p, r, t, side)
+		bonus_tops.append(Vector3(p.x + 0.5, p.y + 1, p.z + 0.5))
+		coin_spots.append(Vector3(p.x + 0.5, p.y + 2.0, p.z + 0.5))
+		if r == 2:
+			spawns.append({"kind": "grumbler", "pos": Vector3(p.x + 1.5, p.y + 1.01, p.z - 1.5)})
+			coin_spots.append(Vector3(p.x - 1.5, p.y + 2.0, p.z - 1.5))
+			coin_spots.append(Vector3(p.x + 1.5, p.y + 2.0, p.z + 1.5))
+		if i == 6:
+			set_cell(p.x - 1, p.y + 3, p.z + 1, MYSTERY)   # a power-up (over the back corner: not in the way of the next jump)
+		prev_r = r
+	# the end: a big gold pad with the star
+	p = Vector3i(p.x, p.y + 1, p.z - (prev_r + 2 + 2))
+	_bonus_pad(p, 2, GOLD_BLOCK, side)
+	bonus_tops.append(Vector3(p.x + 0.5, p.y + 1, p.z + 0.5))
+	bonus_star = Vector3(p.x + 0.5, p.y + 2.3, p.z - 0.5)
+	for i in 5:
+		coin_spots.append(Vector3(p.x - 1.5 + i * 0.75, p.y + 2.0, p.z + 1.5))
+	signs = [[start_pos + Vector3(-1.5, 0, 1.2), "PAINTING STAR!\nJump to the gold\nplatform at the top!"]]
+	_build_mesh_nodes()
+	for sg in signs:
+		_sign(sg)
+	# far clouds below and around (the course floats in the painting's sky)
+	for i in 36:   # kept out to the sides and below, so they never hide the jumps
+		var cx := rng.randf_range(-36, -10) if i % 2 == 0 else rng.randf_range(sx + 10, sx + 36)
+		var c := prop("cloud", Vector3(cx, rng.randf_range(-8, 30), rng.randf_range(-30, sz + 30)), rng.randf_range(4, 7))
+		if c is Sprite3D:
+			c.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	rebuild()
+
+
+## A square floating pad (radius r around c) with an under-layer, and a little point below.
+func _bonus_pad(c: Vector3i, r: int, top: int, side: int) -> void:
+	for dx in range(-r, r + 1):
+		for dz in range(-r, r + 1):
+			set_cell(c.x + dx, c.y, c.z + dz, top)
+			if absi(dx) < r and absi(dz) < r:
+				set_cell(c.x + dx, c.y - 1, c.z + dz, side)
+	set_cell(c.x, c.y - 2, c.z, side)
+
+
 func ground_at(x: int, z: int) -> int:
 	if x < 0 or z < 0 or x >= sx or z >= sz:
 		return 0
@@ -850,6 +948,7 @@ func generate_open(w: String) -> void:
 	var kinds: Array = FOES_BY_WORLD.get(w, FOES_BY_WORLD["default"])
 	_special_foes(start)
 	_more_quests(start)
+	_painting_spot()
 	for i in 16:
 		var o := _free_spot(6)
 		if o.x < 0 or Vector2(o).distance_to(Vector2(start)) < 14:
