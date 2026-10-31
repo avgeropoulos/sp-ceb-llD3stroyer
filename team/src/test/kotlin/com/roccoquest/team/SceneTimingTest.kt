@@ -72,10 +72,7 @@ class SceneTimingTest {
 
     @Test fun everyShortSceneLineIsFinishedBeforeTheNextOne() = assertTimed(shortKinds)
 
-    /**
-     * The longer story scenes (LongScenes.kt). They were written for the old fast voices and are being re-timed
-     * separately: until that fix is merged, this one is expected to fail (and its message lists every line to fix).
-     */
+    /** The longer story scenes (LongScenes.kt), re-timed for the natural voices like the short ones. */
     @Test fun everyLongSceneLineIsFinishedBeforeTheNextOne() = assertTimed(longKinds)
 
     @Test fun everySillySceneLineIsFinishedBeforeTheNextOne() = assertTimed(sillyKinds)
