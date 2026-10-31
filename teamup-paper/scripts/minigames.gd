@@ -617,7 +617,7 @@ func _next_ball() -> void:
 		if a > b:
 			_finish(1, "YOU WIN!", "%d to %d" % [a, b])
 		elif a == b:
-			_finish(2, "A TIE!", "%d to %d" % [a, b])
+			_finish(1, "A TIE! YOU BOTH WIN!", "%d to %d" % [a, b])
 		else:
 			_finish(2, "THE GRUMBLER WINS!", "%d to %d - so close!" % [a, b])
 		return
@@ -786,9 +786,8 @@ func _coins_end() -> void:
 		best_rival = maxi(best_rival, counts[i])
 		if counts[i] > mine:
 			place += 1
-	if place == 1 and best_rival == mine:
-		place = 2   # a tie isn't a win
-		_finish(place, "A TIE!", "You %d - Grumbler %d" % [mine, best_rival])
+	if place == 1 and best_rival == mine:   # a tie counts as a win (it's for fun!)
+		_finish(1, "A TIE! YOU BOTH WIN!", "You %d - Grumbler %d" % [mine, best_rival])
 	elif place == 1:
 		_finish(1, "YOU WIN!", "You got %d coins!" % mine)
 	else:
