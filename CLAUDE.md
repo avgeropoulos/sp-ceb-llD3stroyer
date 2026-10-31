@@ -66,9 +66,10 @@ time and only requests a render when there are updates (`pendingSteps`, run on t
 at most 3), so a 120 Hz screen doesn't draw every picture twice; on any 3D error it draws plain 2D for half a second. Lighting keeps camera-facing surfaces at their
 exact 2D colour (`lit` in the shader / `SoftRaster`). File 1's head start is `TeamGame.HeadStart` (World 9-1,
 key `start3d_world9`). Sung theme: `ThemeSinger` (3D app) has the most lifelike English voice
-(`VoiceCast.mostNatural`) say each `Songs.themeSpoken` syllable into a WAV (TTS pitch only nudged 0.85-1.2),
-`Autotune.fit` (core) retunes it (at most 4 semitones, `MIN_SHIFT`/`MAX_SHIFT`) to `Chiptune.sungNotes` in the
-octave nearest the voice (`Autotune.octavesDown`: 2, 4 or 8 times lower), squeezes long words to fit (`squeeze`,
+(`VoiceCast.mostNatural`) say each `Songs.themeSpoken` syllable into a WAV (TTS pitch `Autotune.nudge`: 0.85-1.2,
+up to 0.67-1.5 only for outer notes), `Autotune.fit` (core) retunes it (`Autotune.shift`: 4 semitones, up to 6 only
+when that'd leave it off-key) to `Chiptune.sungNotes` in the octave where every note is in reach
+(`Autotune.octavesDown`: 2, 4 or 8 times lower), squeezes long words to fit (`squeeze`,
 same pitch) instead of chopping them, and `Chiptune.render(song, words)` mixes them in; `TeamGame.titleMusic` = THEME makes the 3D title play it. Add `:teamup3d:engine` to the
 scratch build to test it locally.
 

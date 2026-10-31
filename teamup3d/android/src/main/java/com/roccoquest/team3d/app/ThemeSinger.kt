@@ -21,8 +21,9 @@ import kotlin.concurrent.thread
  * once (near its note) into a little sound file, then [Autotune] tunes it to the exact note and
  * fits it to the beat. When all the words are ready, [onReady] gets them, one per sung note.
  * The singer is the phone's most lifelike English voice (the same pick as the talking voices,
- * [VoiceCast.mostNatural]), only ever nudged a little in pitch, and it sings in the octave nearest
- * its own voice, so it sounds like a person singing instead of a chipmunk.
+ * [VoiceCast.mostNatural]), nudged only a little in pitch (a bit more just for the few notes at the
+ * edge of its range, so they're in tune too), and it sings in the octave that suits its own voice,
+ * so it sounds like a person singing instead of a chipmunk.
  * If the phone has no voice, nothing happens and the song keeps its built-in "ooh-aah" singer.
  */
 class ThemeSinger(context: Context, private val onReady: (List<FloatArray?>) -> Unit) {
@@ -64,14 +65,16 @@ class ThemeSinger(context: Context, private val onReady: (List<FloatArray?>) -> 
         val base = Autotune.pitch(heard.first, heard.second).takeIf { it > 0f } ?: 160f
 
         val notes = Chiptune.sungNotes(Songs.theme)
-        // Whole octaves below the tune, whichever is nearest this voice (a man sings lower than a woman).
+        // Whole octaves below the tune, whichever lets this voice sing every note in tune (a man
+        // sings lower than a woman).
         val down = Autotune.octavesDown(notes.map { it.first }, base)
         val words = ArrayList<FloatArray?>()
         for ((i, spoken) in Songs.themeSpoken.withIndex()) {
             val (freq, seconds) = notes.getOrNull(i) ?: break
             val target = freq / down
-            // Only a gentle nudge (big ones sound robotic); Autotune tunes the rest of the way.
-            t.setPitch((target / base).coerceIn(VoiceCast.MIN_TWEAK, VoiceCast.MAX_TWEAK))
+            // Mostly a gentle nudge (big ones sound robotic) and Autotune tunes the rest of the way;
+            // only a top or bottom note out of reach of that is nudged further, so it's not off-key.
+            t.setPitch(Autotune.nudge(target, base))
             val rec = say(spoken, "w$i")
             words += rec?.let { Autotune.fit(it.first, it.second, target, seconds) }
         }
