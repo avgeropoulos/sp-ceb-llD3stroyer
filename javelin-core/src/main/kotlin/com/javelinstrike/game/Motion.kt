@@ -69,8 +69,8 @@ class MotionTracker {
 }
 
 /**
- * Turns a stream of steps (from arm pumping or alternate taps) into running speed.
- * Speed follows your step rate: about 4.3 steps a second is top speed.
+ * Turns a stream of steps (taps with alternate thumbs) into running speed.
+ * Speed follows your step rate: 5 steps a second is top speed.
  */
 class Stride(private val topSpeed: Float = 10f) {
     private val times = ArrayDeque<Float>()
@@ -99,7 +99,7 @@ class Stride(private val topSpeed: Float = 10f) {
         /** Steps are counted over this many seconds. */
         const val WINDOW = 1.2f
         /** Metres per step. */
-        const val STRIDE = 2.3f
+        const val STRIDE = 2.0f
         const val ACCEL = 2.2f
         const val DECEL = 1.2f
     }

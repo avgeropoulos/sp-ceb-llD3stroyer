@@ -11,8 +11,11 @@ import kotlin.math.sqrt
  */
 
 const val GRAVITY = 9.81f
-/** Javelins leave the hand at about 36° above level. */
+/** The usual throwing angle, about 36° above level. Leaning the phone changes it. */
 const val RELEASE_ANGLE = 0.63f
+/** The flattest and steepest throws you can aim: 20° and 55°. */
+const val MIN_ELEVATION = 0.35f
+const val MAX_ELEVATION = 0.96f
 /** Even the gentlest throw goes about 30 m, so the whole swing range is spent on far targets. */
 const val MIN_SPEED = 17.5f
 const val MAX_SPEED = 38f
@@ -59,19 +62,21 @@ class Javelin(
     val speed get() = sqrt(vx * vx + vy * vy + vz * vz)
 
     companion object {
-        fun launch(power: Float, yaw: Float): Javelin {
+        /** A throw at [power] (0 to 1), [yaw] radians to the right and [elevation] radians up. */
+        fun launch(power: Float, yaw: Float, elevation: Float = RELEASE_ANGLE): Javelin {
             val v = speedForPower(power)
-            val flat = v * cos(RELEASE_ANGLE)
+            val el = elevation.coerceIn(MIN_ELEVATION, MAX_ELEVATION)
+            val flat = v * cos(el)
             return Javelin(
                 RELEASE_X, RELEASE_Y, RELEASE_Z,
-                flat * sin(yaw), v * sin(RELEASE_ANGLE), flat * cos(yaw),
+                flat * sin(yaw), v * sin(el), flat * cos(yaw),
             )
         }
 
-        /** Where a throw would land, as (x, z). Used by tests and for tuning levels. */
-        fun landing(power: Float, yaw: Float = 0f, wind: Float = 0f): Pair<Float, Float> {
-            val j = launch(power, yaw)
-            while (!j.step(1f / 240f, wind)) { /* fly */ }
+        /** Where a throw would land, as (x, z). Used for the power markers, tests and tuning levels. */
+        fun landing(power: Float, yaw: Float = 0f, wind: Float = 0f, elevation: Float = RELEASE_ANGLE): Pair<Float, Float> {
+            val j = launch(power, yaw, elevation)
+            while (!j.step(1f / 120f, wind)) { /* fly */ }
             return j.x to j.z
         }
     }

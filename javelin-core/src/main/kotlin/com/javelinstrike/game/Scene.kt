@@ -146,6 +146,7 @@ internal fun Game.drawWorld(
 
     if (javelinScene) {
         drawTarget(g, c, main)
+        if (screen == Game.Screen.PLAY && throwState == Game.ThrowState.READY) drawPowerMarkers(g, c, main)
         for (s in stuck.sortedByDescending { it.z }) drawStuck(g, c, s)
     }
 
@@ -447,7 +448,7 @@ private fun Game.drawAthlete(g: Gfx, c: Camera) {
     seg(g, c, ex, ey, ez, hand[0], hand[1], hand[2], 0.09f, SKIN, 1.5f)
 
     if (holdingJavelin()) {
-        val el = 0.3f + 0.25f * draw
+        val el = aimElev - 0.15f + 0.15f * draw
         val dx = sin(aimYaw) * cos(el)
         val dy = sin(el)
         val dz = cos(aimYaw) * cos(el)
@@ -461,13 +462,35 @@ private fun Game.drawAthlete(g: Gfx, c: Camera) {
             val r = 0.07f * c.ppm
             g.oval(c.sx - r, c.sy - r, r * 2f, r * 2f, SKIN)
         }
-        // Aim guide on the sand
+        // Aim guide on the sand, out to where a full-power throw would land
         if (screen == Game.Screen.PLAY) {
+            val far = max(14f, ruler[9])
             var k = 2f
-            while (k < 14f) {
-                groundLine(g, c, sin(aimYaw) * k, cos(aimYaw) * k, sin(aimYaw) * (k + 0.6f), cos(aimYaw) * (k + 0.6f), 0.12f, 0xA0FFFFFF.toInt())
-                k += 1.5f
+            while (k < far) {
+                groundLine(g, c, sin(aimYaw) * k, cos(aimYaw) * k, sin(aimYaw) * (k + 0.6f), cos(aimYaw) * (k + 0.6f), 0.12f, 0x80FFFFFF.toInt())
+                k += if (k < 14f) 1.5f else 4f
             }
+        }
+    }
+}
+
+/**
+ * Markers on the sand showing where 25%, 50%, 75% and 100% power would land at the current
+ * aim and angle, and (in gold) where the last throw's power would. Wind still pushes it sideways.
+ */
+private fun Game.drawPowerMarkers(g: Gfx, c: Camera, main: Boolean) {
+    for (i in 5 downTo 1) {
+        val x = ruler[i * 2]
+        val z = ruler[i * 2 + 1]
+        if (z <= 0f) continue
+        val last = i == 5
+        val color = if (last) Game.GOLD else 0xE0FFFFFF.toInt()
+        groundCircle(g, c, x, z, if (last) 1.2f else 0.9f, OUTLINE)
+        groundCircle(g, c, x, z, if (last) 0.95f else 0.7f, color)
+        seg(g, c, x, 0f, z, x, 1.6f, z, 0.08f, color, 1f)
+        if (c.project(x, 2.1f, z)) {
+            val label = if (last) "LAST" else "${i * 25}%"
+            g.shadowText(label, c.sx, c.sy, if (main) (c.ppm * 1.4f).coerceIn(7f, 11f) else 8f, color, 1)
         }
     }
 }

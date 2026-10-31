@@ -158,8 +158,8 @@ switch CONTROLS to TOUCH), and your best result in each is saved.
 |---|---|
 | **Javelin** | Hold the screen, pull your arm back and throw at targets, level by level (below). |
 | **Discus** | Hold the screen and spin round on the spot with the phone, then let go when you're facing the field. A faster spin throws further; facing the wrong way is a foul. Best of 3. *Touch:* circle your finger fast, lift it when the arrow points up the field. |
-| **Stadion race** | The oldest Olympic event: one length of the stadium, 192 m, against a Spartan, an Athenian and a Corinthian. Pump your arms like a sprinter, phone in hand, and every swing is a step. Moving before **APITE!** ("go!") is a false start. *Touch:* tap left and right in turn. |
-| **Long jump** | Pump your arms to sprint down the runway, then tap the screen to jump just before the white board. A faster run-up jumps further; past the board is a foul. Best of 3. *Touch:* tap left and right to run, and the JUMP button. |
+| **Stadion race** | The oldest Olympic event: one length of the stadium, 192 m, against a Spartan, an Athenian and a Corinthian. Hold the phone in both hands and tap with your left and right thumbs in turn; every tap is a step. Tapping before **APITE!** ("go!") is a false start. |
+| **Long jump** | Tap left and right thumbs in turn to sprint down the runway, then hit **JUMP** just before the white board. A faster run-up jumps further; past the board is a foul. Best of 3. |
 
 ARM on the title screen (GENTLE / NORMAL / STRONG) sets how hard you need to move in every event.
 
@@ -175,8 +175,13 @@ ARM on the title screen (GENTLE / NORMAL / STRONG) sets how hard you need to mov
   the target moves to a new spot after each one.
 * **Most targets move.** From level 2 they slide side to side, and later ones also drift
   nearer and further away. Aim where the target *will be* when your javelin lands.
-* **Aim** by tilting the phone like a steering wheel. The javelin in the athlete's hand and
-  the dotted line on the sand show where you're aiming.
+* **Aim** in two directions: tilt the phone like a steering wheel for left and right, and lean
+  the top of the phone back to throw higher or forward to throw flatter (20° to 55°). The
+  screen shows the angle and aim in numbers, and the aim locks when you grip.
+* **See where it will go**: markers on the sand (and in the TARGET view) show where 25%, 50%,
+  75% and 100% power land at your current aim, plus your last throw's power. The **POWER** bar
+  at the bottom shows the distance each power reaches and roughly how hard to throw to hit the
+  target. Wind and a moving target still change where it ends up.
 * **Throw**: press and hold the screen with your thumb to grip the javelin, pull your arm back
   until the DRAW bar turns green, then throw your arm forward. The javelin leaves your hand at
   the end of the swing (or when you lift your thumb).
@@ -260,8 +265,8 @@ from the link above; updates work from then on.
 * `javelin-core/.../World.kt`: javelin physics (release angle, speeds, how much wind pushes)
   and how targets move.
 * `javelin-core/.../Game.kt`: game rules. `Scene.kt` draws Olympia and `Hud.kt` the screens.
-* `javelin-core/.../Events.kt`: the discus, stadion race and long jump. `Motion.kt` turns arm
-  pumping into running steps and measures spinning.
+* `javelin-core/.../Events.kt`: the discus, stadion race and long jump. `Motion.kt` measures
+  the discus spin and turns thumb taps into running speed (`Stride`).
 * `javelin-app/`: the Android layer, covering sensors, touch, the `Canvas` renderer, sounds
   and vibration. `src/github/` holds the self-updater, which only the GitHub version has.
 

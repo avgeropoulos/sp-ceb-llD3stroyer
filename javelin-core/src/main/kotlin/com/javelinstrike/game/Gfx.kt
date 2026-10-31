@@ -144,6 +144,8 @@ class Input {
 
     /** Steering-wheel tilt of the phone in radians; positive when the right side is lower. */
     @Volatile var tilt = 0f
+    /** How far the top of the phone leans back (positive) or forward, in radians. */
+    @Volatile var lean = 0f
     @Volatile var hasTilt = false
 
     /** Set by the Android back button. */

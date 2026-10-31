@@ -175,6 +175,27 @@ class GameTest {
         assertTrue(Javelin.landing(0.5f, yaw = -0.3f).first < -5f, "aiming left goes left")
     }
 
+    @Test fun throwAngleChangesTheFlight() {
+        val (_, flat) = Javelin.landing(0.5f, elevation = MIN_ELEVATION)
+        val (_, normal) = Javelin.landing(0.5f)
+        val (_, best) = Javelin.landing(0.5f, elevation = 0.76f)
+        assertTrue(flat < normal && normal < best, "flat $flat, normal $normal, 44° $best")
+        // Leaning the phone back throws higher; the angle locks when you grip.
+        val (g, input) = newGame()
+        startPlaying(g, input)
+        input.hasTilt = true
+        input.lean = 0.5f
+        run(g, 1f)
+        assertTrue(g.aimElev > 0.85f, "angle ${g.aimElev}")
+        assertTrue(g.ruler[9] > g.ruler[7] && g.ruler[7] > g.ruler[3] && g.ruler[3] > g.ruler[1], "markers should go further with more power")
+        assertTrue(g.powerForTarget() in 0.05f..0.95f, "power for target ${g.powerForTarget()}")
+        input.push(Input.DOWN, 180f, 450f, g.clock)
+        run(g, 0.1f)
+        input.lean = -0.5f
+        run(g, 0.5f)
+        assertTrue(g.aimElev > 0.85f, "angle should stay locked while gripping")
+    }
+
     @Test fun everyLevelCanBeReached() {
         val maxRange = Javelin.landing(1f).second
         for (n in 1..40) {

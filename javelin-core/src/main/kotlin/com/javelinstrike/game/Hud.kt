@@ -116,7 +116,7 @@ internal fun Game.drawPrompts(g: Gfx) {
 
     val (line, sub) = if (controls == ControlMode.MOTION) {
         when (detector.phase) {
-            ThrowDetector.Phase.IDLE -> "HOLD THE SCREEN" to (if (hasTilt()) "Tilt the phone to aim" else "")
+            ThrowDetector.Phase.IDLE -> "HOLD THE SCREEN" to (if (hasTilt()) "Tilt to aim, lean back to throw higher" else "")
             ThrowDetector.Phase.GRIP -> "PULL YOUR ARM BACK" to "Keep holding the screen"
             ThrowDetector.Phase.DRAWN -> "NOW THROW!" to "Whip it forward"
             ThrowDetector.Phase.SWING -> "!!!" to ""
@@ -126,6 +126,14 @@ internal fun Game.drawPrompts(g: Gfx) {
     } else {
         "PRESS, PULL DOWN, FLICK UP" to "Faster flick = longer throw"
     }
+    drawPowerScale(g)
+    // The aim, in numbers
+    val side = if (aimYaw > 0.009f) "R" else if (aimYaw < -0.009f) "L" else ""
+    val aimDeg = abs(aimYaw * 57.3f).roundToInt()
+    g.shadowText(
+        "ANGLE ${(aimElev * 57.3f).roundToInt()}°   AIM ${if (aimDeg == 0) "STRAIGHT" else "$aimDeg° $side"}",
+        viewW / 2f, viewH - 80f, 11f, Game.CYAN, 1,
+    )
     if (msgT <= 0f) {
         val color = if (armed) Game.GREEN else Game.WHITE
         g.shadowText(line, viewW / 2f, viewH - 40f, 18f, color, 1)
@@ -133,6 +141,33 @@ internal fun Game.drawPrompts(g: Gfx) {
     }
     if (target.moving && msgT <= 0f && lastDistance == 0f) {
         g.shadowText("It moves! Aim where it will be.", viewW / 2f, viewH - 62f, 10f, Game.ORANGE, 1)
+    }
+}
+
+/**
+ * How hard to throw: a 0-100% scale with the distance each power reaches at the current aim
+ * and angle, a gold mark for the power that reaches the target, and a white one for your last throw.
+ */
+private fun Game.drawPowerScale(g: Gfx) {
+    val x0 = 46f
+    val x1 = viewW - 20f
+    val y = viewH - 122f
+    g.rect(x0 - 6f, y - 22f, x1 - x0 + 12f, 40f, 0x90000000.toInt())
+    g.shadowText("POWER", x0, y - 10f, 8f, Game.WHITE)
+    g.rect(x0, y - 3f, x1 - x0, 6f, 0x60FFFFFF)
+    for (i in 0..4) {
+        val x = x0 + (x1 - x0) * i / 4f
+        g.rect(x - 1f, y - 6f, 2f, 12f, Game.WHITE)
+        val d = kotlin.math.hypot(ruler[i * 2], ruler[i * 2 + 1])
+        g.shadowText("${d.roundToInt()}m", x, y + 15f, 8f, 0xFFDDDDDD.toInt(), 1)
+    }
+    val need = powerForTarget()
+    val nx = x0 + (x1 - x0) * need
+    g.poly(floatArrayOf(nx - 6f, nx + 6f, nx), floatArrayOf(y - 14f, y - 14f, y - 4f), Game.GOLD, 3)
+    g.shadowText("TARGET ~${(need * 100).roundToInt()}%", nx.coerceIn(x0 + 70f, x1 - 40f), y - 16f, 9f, Game.GOLD, 1)
+    if (lastPower >= 0f) {
+        val lx = x0 + (x1 - x0) * lastPower
+        g.rect(lx - 1.5f, y - 7f, 3f, 14f, Game.CYAN)
     }
 }
 
@@ -287,10 +322,11 @@ internal fun Game.drawHowTo(g: Gfx) {
     y += 30f
     val steps = if (controls == ControlMode.MOTION) listOf(
         "1. Hold the phone upright in your throwing hand, screen facing you.",
-        "2. Tilt it like a steering wheel to aim left or right.",
+        "2. Tilt it like a steering wheel to aim left or right. Lean the top back to throw higher, forward to throw flatter.",
         "3. Press and HOLD the screen with your thumb to grip the javelin.",
         "4. Pull your arm back. The DRAW bar turns green when you're ready.",
         "5. Throw your arm forward! The faster the swing, the further it flies. It lets go at the end of your swing.",
+        "The POWER bar shows how far each power goes and how hard to throw to reach the target.",
     ) else listOf(
         "1. Press anywhere on the screen to grip the javelin.",
         "2. Pull your finger down to draw back.",

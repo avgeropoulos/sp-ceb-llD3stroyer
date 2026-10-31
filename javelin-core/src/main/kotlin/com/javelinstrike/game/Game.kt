@@ -88,6 +88,14 @@ class Game(
     internal var screenT = 0f
     internal var clock = 0f
     internal var aimYaw = 0f
+    /** The throwing angle, from leaning the phone back or forward. */
+    internal var aimElev = RELEASE_ANGLE
+    /**
+     * Where 0%, 25%, 50%, 75% and 100% power land at the current aim and angle (x, z pairs),
+     * then the last throw's power (z is -1 before the first throw). Drawn as markers on the
+     * field and as the power scale.
+     */
+    internal val ruler = FloatArray(12)
     internal var lastPower = -1f
     internal var lastDistance = 0f
     internal var sinceRelease = 99f
@@ -161,14 +169,21 @@ class Game(
             sound.play(Sound.DRAWN)
             sound.vibrate(15)
         }
-        detector.takeThrow()?.let { if (ready) throwJavelin(it, aimYaw) }
+        detector.takeThrow()?.let { if (ready) throwJavelin(it, aimYaw, aimElev) }
         if (detector.takeCancel()) showMessage("HOLD ON!", "Keep your thumb down until you throw", ORANGE, 2f)
 
-        if (ready && controls == ControlMode.MOTION && detector.phase == ThrowDetector.Phase.IDLE) {
+        // Aim locks when you grip the javelin, so swinging your arm doesn't move it.
+        val aiming = ready && detector.phase == ThrowDetector.Phase.IDLE && !flick.active
+        if (aiming && controls == ControlMode.MOTION) {
             val want = if (input.hasTilt) (input.tilt * 0.7f).coerceIn(-MAX_AIM, MAX_AIM) else 0f
             aimYaw += (want - aimYaw) * min(1f, dt * 8f)
         }
+        if (aiming && input.hasTilt) {
+            val want = (RELEASE_ANGLE + input.lean * 0.6f).coerceIn(MIN_ELEVATION, MAX_ELEVATION)
+            aimElev += (want - aimElev) * min(1f, dt * 8f)
+        }
         if (flick.active) aimYaw = flick.previewYaw.coerceIn(-MAX_AIM, MAX_AIM)
+        if (screen == Screen.PLAY && throwState == ThrowState.READY) updateRuler()
 
         if (screen == Screen.PLAY && !paused) updatePlay(dt)
         if (screen == Screen.TITLE) target.update(dt)
@@ -200,10 +215,21 @@ class Game(
         }
     }
 
-    internal fun throwJavelin(power: Float, yaw: Float) {
+    private fun updateRuler() {
+        for (i in 0 until 6) {
+            val p = if (i < 5) i / 4f else lastPower
+            if (p < 0f) { ruler[i * 2 + 1] = -1f; continue }
+            val (x, z) = Javelin.landing(p, aimYaw, 0f, aimElev)
+            ruler[i * 2] = x
+            ruler[i * 2 + 1] = z
+        }
+    }
+
+    internal fun throwJavelin(power: Float, yaw: Float, elevation: Float = aimElev) {
         val p = power.coerceIn(0f, 1f)
         lastPower = p
-        javelin = Javelin.launch(p, yaw.coerceIn(-MAX_AIM, MAX_AIM))
+        aimElev = elevation.coerceIn(MIN_ELEVATION, MAX_ELEVATION)
+        javelin = Javelin.launch(p, yaw.coerceIn(-MAX_AIM, MAX_AIM), aimElev)
         throwWind = wind * (0.85f + rng.nextFloat() * 0.3f)
         throwState = ThrowState.FLIGHT
         sinceRelease = 0f
@@ -655,6 +681,17 @@ class Game(
     internal fun bestLevel() = store.load(KEY_BEST_LEVEL)
 
     internal fun hasTilt() = input.hasTilt
+
+    /** Roughly the power that lands on the target at the current aim and angle, ignoring wind. */
+    internal fun powerForTarget(): Float {
+        val want = hypot(target.x, target.z)
+        for (i in 0 until 4) {
+            val a = hypot(ruler[i * 2], ruler[i * 2 + 1])
+            val b = hypot(ruler[i * 2 + 2], ruler[i * 2 + 3])
+            if (want <= b || i == 3) return ((i + ((want - a) / (b - a)).coerceIn(0f, 1f)) / 4f).coerceIn(0f, 1f)
+        }
+        return 1f
+    }
 
     /** The whole screen's height, camera cut-out included. */
     internal fun fullH() = viewH + safeTop + safeBottom

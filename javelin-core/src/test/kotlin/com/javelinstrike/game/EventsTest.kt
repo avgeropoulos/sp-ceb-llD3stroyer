@@ -40,10 +40,18 @@ class EventsTest {
         }
     }
 
-    /** Arm pumping: a hard shake every 1/[hz] seconds. */
-    private fun pump(g: Game, hz: Float): (Float) -> Unit = { t ->
-        val cycle = (t * hz) % 1f
-        g.onAccel(if (cycle < 0.3f) 14f else 0.5f, 0f, 0f)
+    /** Thumb taps, left and right in turn, [hz] taps a second. */
+    private fun thumbs(input: Input, hz: Float): (Float) -> Unit {
+        var next = time
+        var left = true
+        return { t ->
+            if (t >= next) {
+                input.push(Input.DOWN, if (left) 60f else 300f, 500f, t)
+                input.push(Input.UP, if (left) 60f else 300f, 500f, t)
+                left = !left
+                next += 1f / hz
+            }
+        }
     }
 
     private fun tap(g: Game, input: Input, x: Float = 180f, y: Float = 400f) {
@@ -135,16 +143,17 @@ class EventsTest {
     @Test fun sprintRaceAndFalseStart() {
         val (g, input) = newGame()
         val ev = begin(g, input, OlympicEventKind.SPRINT) as SprintEvent
-        // Moving after "SET" is a false start: the countdown begins again.
+        // Tapping after "SET" is a false start: the countdown begins again.
         run(g, 2f)
-        run(g, 0.3f, pump(g, 4.5f))
+        run(g, 0.3f, thumbs(input, 5f))
         run(g, 0.5f)
         assertEquals(0f, ev.player.z)
         run(g, 3.3f)
         shot(g, "e4_sprint_start")
-        run(g, 6f, pump(g, 4.5f))
+        val tapping = thumbs(input, 5.5f)
+        run(g, 6f, tapping)
         shot(g, "e5_sprint_race")
-        run(g, 22f, pump(g, 4.5f))
+        run(g, 22f, tapping)
         assertTrue(ev.player.finished)
         assertTrue(ev.result in 19000..24000, "time ${ev.result} ms")
         assertEquals(1, ev.place())
@@ -169,11 +178,12 @@ class EventsTest {
     @Test fun longJumpRunAndJump() {
         val (g, input) = newGame()
         val ev = begin(g, input, OlympicEventKind.LONG_JUMP) as LongJumpEvent
-        val pumping = pump(g, 4.5f)
+        var tapping = thumbs(input, 5.5f)
         var frames = 0
-        while (ev.z < -0.6f && frames < 60 * 15) { pumping(time); g.update(dt); time += dt; frames++ }
+        while (ev.z < -0.6f && frames < 60 * 15) { tapping(time); g.update(dt); time += dt; frames++ }
         shot(g, "e7_longjump_run")
-        tap(g, input)
+        val jump = floatArrayOf(g.viewW / 2f, g.viewH - 110f)
+        tap(g, input, jump[0], jump[1])
         run(g, 0.4f)
         shot(g, "e8_longjump_air")
         run(g, 2f)
@@ -182,7 +192,8 @@ class EventsTest {
         val first = ev.result
         run(g, 1f)
         frames = 0
-        while (ev.z < 1f && frames < 60 * 15) { pumping(time); g.update(dt); time += dt; frames++ }
+        tapping = thumbs(input, 5.5f)
+        while (ev.z < 1f && frames < 60 * 15) { tapping(time); g.update(dt); time += dt; frames++ }
         run(g, 2.5f)
         assertEquals(first, ev.result)
     }

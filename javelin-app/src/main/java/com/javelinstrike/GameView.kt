@@ -205,19 +205,22 @@ class GameView(private val activity: Activity) : SurfaceView(activity), SurfaceH
         when (e.sensor.type) {
             Sensor.TYPE_GYROSCOPE -> game.onGyro(e.timestamp, v[0], v[1], v[2])
             Sensor.TYPE_LINEAR_ACCELERATION -> game.onAccel(v[0], v[1], v[2])
-            Sensor.TYPE_GRAVITY -> updateTilt(v[0], v[1])
+            Sensor.TYPE_GRAVITY -> updateTilt(v[0], v[1], v[2])
             Sensor.TYPE_ACCELEROMETER -> {
                 // No gravity sensor: smooth the raw accelerometer to find which way is down.
                 for (i in 0..2) gx[i] += (v[i] - gx[i]) * 0.1f
-                updateTilt(gx[0], gx[1])
+                updateTilt(gx[0], gx[1], gx[2])
             }
         }
     }
 
     override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) {}
 
-    /** Works out the steering-wheel tilt from gravity, in screen coordinates. */
-    private fun updateTilt(dx: Float, dy: Float) {
+    /**
+     * Works out the steering-wheel tilt (aim left/right) and how far the top of the phone
+     * leans back (throw higher) from gravity, in screen coordinates.
+     */
+    private fun updateTilt(dx: Float, dy: Float, dz: Float) {
         val (sx, sy) = when (displayRotation) {
             Surface.ROTATION_0 -> dx to dy
             Surface.ROTATION_90 -> -dy to dx
@@ -227,6 +230,7 @@ class GameView(private val activity: Activity) : SurfaceView(activity), SurfaceH
         // Lying flat there is no clear "down" on the screen, so keep the last aim.
         if (hypot(sx, sy) < 3f) return
         input.tilt = atan2(-sx, sy)
+        input.lean = atan2(dz, hypot(sx, sy))
         input.hasTilt = true
     }
 

@@ -429,8 +429,8 @@ internal class Runner(val name: String, val x: Float, val look: Look, val topSpe
 }
 
 /**
- * The stadion: one length of the stadium, 192 m, the oldest event of the Games. Pump your
- * arms like a sprinter (or tap left and right in turn) to run. Don't move before "APITE!"
+ * The stadion: one length of the stadium, 192 m, the oldest event of the Games. Tap with your
+ * left and right thumbs in turn to run; every tap is a step. Don't tap before "APITE!"
  * (the ancient "go!") or it's a false start.
  */
 internal class SprintEvent(game: Game) : OlympicEvent(game, OlympicEventKind.SPRINT) {
@@ -450,9 +450,8 @@ internal class SprintEvent(game: Game) : OlympicEvent(game, OlympicEventKind.SPR
     )
 
     override val instructions get() = listOf(
-        if (motionMode) "Pump your arms hard like a sprinter, phone in hand. Every swing is a step."
-        else "Tap the left and right halves of the screen in turn, as fast as you can.",
-        "Race 192 m against three rivals. Faster steps, faster running.",
+        "Hold the phone in both hands and tap with your left and right thumbs in turn. Every tap is a step.",
+        "Race 192 m against three rivals. Faster taps, faster running.",
         "Wait for APITE! (GO!) or it's a false start.",
     )
 
@@ -476,10 +475,10 @@ internal class SprintEvent(game: Game) : OlympicEvent(game, OlympicEventKind.SPR
         game.motion.takeSteps()
     }
 
-    /** Steps since last frame, from arm pumping or alternating taps. */
+    /** Steps since last frame: taps on alternate halves of the screen. */
     private fun steps(touches: List<Input.Touch>): Int {
-        var n = if (motionMode) game.motion.takeSteps() else 0
-        if (!motionMode) for (t in touches) {
+        var n = 0
+        for (t in touches) {
             if (t.type != Input.DOWN && t.type != Input.TAP) continue
             val side = if (t.x < game.viewW / 2f) 1 else 2
             if (side != lastSide) { n++; lastSide = side }
@@ -572,7 +571,7 @@ internal class SprintEvent(game: Game) : OlympicEvent(game, OlympicEventKind.SPR
                 else -> "SET..."
             }
             g.shadowText(word, w / 2f, game.viewH * 0.3f, 26f, Game.GOLD, 1, serif = true)
-            prompt(g, "WAIT FOR APITE!", if (motionMode) "Then pump your arms!" else "Then tap left, right, left...")
+            prompt(g, "WAIT FOR APITE!", "Then tap left, right, left...")
             return
         }
         g.shadowText("${oneDecimal(raceT)} s", w / 2f, 30f, 22f, Game.WHITE, 1)
@@ -587,8 +586,9 @@ internal class SprintEvent(game: Game) : OlympicEvent(game, OlympicEventKind.SPR
         g.rect(12f, by + bh * (1f - f), 14f, bh * f, if (f > 0.85f) Game.GREEN else Game.GOLD)
         g.shadowText("SPEED", 19f, by + bh + 14f, 8f, Game.WHITE, 1)
         if (state == State.RACE && player.speed < 3f) {
-            prompt(g, if (motionMode) "PUMP YOUR ARMS!" else "TAP LEFT, RIGHT, LEFT...", "Faster steps, faster running")
+            prompt(g, "TAP LEFT, RIGHT, LEFT...", "Faster taps, faster running")
         }
+        drawThumbPads(g, game)
     }
 
     companion object {
@@ -601,9 +601,9 @@ internal class SprintEvent(game: Game) : OlympicEvent(game, OlympicEventKind.SPR
 // ==================================================================== long jump
 
 /**
- * The long jump, done with stone weights (halteres) as at Olympia. Pump your arms (or tap
- * left and right) to sprint down the runway, then tap the screen to jump just before the
- * board. Faster run-up, longer jump; past the board is a foul.
+ * The long jump, done with stone weights (halteres) as at Olympia. Tap with your left and
+ * right thumbs in turn to sprint down the runway, then hit JUMP just before the board.
+ * Faster run-up, longer jump; past the board is a foul.
  */
 internal class LongJumpEvent(game: Game) : OlympicEvent(game, OlympicEventKind.LONG_JUMP) {
     private enum class State { READY, RUN, AIR, LANDED }
@@ -627,10 +627,8 @@ internal class LongJumpEvent(game: Game) : OlympicEvent(game, OlympicEventKind.L
     private val prints = ArrayList<Float>()
 
     override val instructions get() = listOf(
-        if (motionMode) "Pump your arms like a sprinter to run down the runway."
-        else "Tap the left and right halves of the screen in turn to run.",
-        if (motionMode) "Tap the screen to jump, just before the white board."
-        else "Hit the JUMP button just before the white board.",
+        "Tap with your left and right thumbs in turn to run down the runway.",
+        "Hit the JUMP button just before the white board.",
         "Faster run-up, longer jump. Past the board is a foul. Best of 3 jumps.",
     )
 
@@ -655,11 +653,10 @@ internal class LongJumpEvent(game: Game) : OlympicEvent(game, OlympicEventKind.L
     private fun jumpButton() = floatArrayOf(game.viewW / 2f - 70f, game.viewH - 140f, 140f, 56f)
 
     override fun play(dt: Float, touches: List<Input.Touch>) {
-        var steps = if (motionMode) game.motion.takeSteps() else 0
+        var steps = 0
         var jump = false
         for (t in touches) {
             if (t.type != Input.DOWN && t.type != Input.TAP) continue
-            if (motionMode) { jump = true; continue }
             if (inside(jumpButton(), t.x, t.y)) { jump = true; continue }
             val side = if (t.x < game.viewW / 2f) 1 else 2
             if (side != lastSide) { steps++; lastSide = side }
@@ -788,14 +785,15 @@ internal class LongJumpEvent(game: Game) : OlympicEvent(game, OlympicEventKind.L
             val toBoard = BOARD_END - z
             g.shadowText("${toBoard.roundToInt()} m TO THE BOARD", w / 2f, 46f, 10f, if (toBoard < 3f) Game.GREEN else Game.GOLD, 1)
         }
-        if (!motionMode && (state == State.RUN || state == State.READY)) {
+        if (state == State.RUN || state == State.READY) {
+            drawThumbPads(g, game)
             val b = jumpButton()
             g.rect(b[0], b[1], b[2], b[3], 0xFF1A120B.toInt())
             g.rect(b[0] + 2f, b[1] + 2f, b[2] - 4f, b[3] - 4f, 0xFFB5482E.toInt())
             g.shadowText("JUMP", b[0] + b[2] / 2f, b[1] + b[3] / 2f + 7f, 20f, Game.WHITE, 1, serif = true)
         }
         when (state) {
-            State.READY -> prompt(g, if (motionMode) "PUMP YOUR ARMS TO RUN" else "TAP LEFT, RIGHT TO RUN", if (motionMode) "Tap the screen to jump" else "JUMP before the board")
+            State.READY -> prompt(g, "TAP LEFT, RIGHT TO RUN", "JUMP before the board")
             State.RUN -> if (BOARD_END - z < 4f) prompt(g, "JUMP!", "", Game.GREEN)
             else -> {}
         }
@@ -807,5 +805,14 @@ internal class LongJumpEvent(game: Game) : OlympicEvent(game, OlympicEventKind.L
         /** The front edge of the take-off board. Jumps are measured from here. */
         const val BOARD_END = 0f
         const val PIT_END = 11f
+    }
+}
+
+/** Faint L and R marks showing where to tap with each thumb when running. */
+internal fun drawThumbPads(g: Gfx, game: Game) {
+    val y = game.viewH * 0.62f
+    for ((x, label) in listOf(game.viewW * 0.22f to "L", game.viewW * 0.78f to "R")) {
+        g.oval(x - 28f, y - 28f, 56f, 56f, 0x30FFFFFF)
+        g.shadowText(label, x, y + 7f, 20f, 0x90FFFFFF.toInt(), 1, serif = true)
     }
 }
