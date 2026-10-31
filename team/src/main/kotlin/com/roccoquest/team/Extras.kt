@@ -6,6 +6,7 @@ import com.roccoquest.game.TILE
 import com.roccoquest.game.argb
 import com.roccoquest.game.shadowText
 import com.roccoquest.game.tileOf
+import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.hypot
@@ -60,29 +61,36 @@ class Villager(x: Float, bottom: Float, val seed: Int) : Thing(x + 1, bottom - 2
     }
 }
 
-/** Dennis the dog runs up every now and then, barks, and points the way to go. */
-class Dennis(x: Float, private val groundY: Float) : Thing(x, groundY - 14, 20f, 14f) {
+/**
+ * Dennis the dog runs up every now and then, barks, and points the way to go. He's drawn as
+ * HERCULES from the Hercules and Apollo game ([HerculesArt]).
+ */
+class Dennis(x: Float, private val groundY: Float) :
+    Thing(x, groundY - HerculesArt.H, HerculesArt.W.toFloat(), HerculesArt.H.toFloat()) {
     private var t = 0f
     private var mode = 0
     private var pointT = 0f
     private var targetX = 0f
+    /** A happy little leap each time he barks (only drawn: he never leaves his spot on the ground). */
+    private var hopT = 0f
     init { active = true }
 
     override fun update(g: TeamGame, dt: Float) {
         t += dt
+        hopT = max(0f, hopT - dt)
         when (mode) {
             0 -> {
-                if (targetX == 0f) targetX = g.leader.cx + 110f
+                if (targetX == 0f) targetX = clearSpot(g, g.leader.cx + 110f)
                 x += 210f * dt
                 if (x >= targetX) {
                     mode = 1
-                    g.sfx(Sound.BARK)
+                    bark(g)
                     g.say(cx, y - 6, "WOOF WOOF! This way!", 2f)
                 }
             }
             1 -> {
                 pointT += dt
-                if (pointT > 0.9f && pointT - dt <= 0.9f) g.sfx(Sound.BARK)
+                if (pointT > 0.9f && pointT - dt <= 0.9f) bark(g)
                 if (pointT > 3f) mode = 2
             }
             else -> {
@@ -90,37 +98,68 @@ class Dennis(x: Float, private val groundY: Float) : Thing(x, groundY - 14, 20f,
                 if (x > g.camX + g.viewW + 40) removed = true
             }
         }
-        y = groundY - 14
+        y = groundY - h
     }
 
-    override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
-        val px = x + ox
-        val brown = 0xFFB07840.toInt()
-        val dark = 0xFF6A4420.toInt()
-        val run = mode != 1
-        val leg = if (run && (t * 14).toInt() % 2 == 0) 2f else 0f
-        // Wagging tail
-        val wag = sin(t * (if (run) 20 else 14)) * 3f
-        gfx.poly(floatArrayOf(px + 1, px - 4, px + 2), floatArrayOf(y + 5, y + 1 + wag, y + 7), brown)
-        gfx.rect(px + 3, y + 10 - leg, 3f, 4f + leg, dark)
-        gfx.rect(px + 13, y + 10 + leg - 2, 3f, 4f - leg + 2, dark)
-        gfx.oval(px + 1, y + 3, 17f, 9f, brown)
-        gfx.oval(px + 12, y - 3, 10f, 9f, brown)
-        gfx.oval(px + 18, y + 1, 5f, 4f, 0xFFD8A870.toInt())
-        gfx.oval(px + 21, y + 1, 2.5f, 2f, 0xFF101010.toInt())
-        gfx.oval(px + 16, y - 1, 2.5f, 2.5f, 0xFF101010.toInt())
-        gfx.oval(px + 11, y - 3, 4f, 8f, dark)
-        gfx.rect(px + 12, y + 4, 7f, 1.5f, 0xFFE52521.toInt())
-        if (mode == 1) {
-            // Tongue out and a big arrow pointing the way
-            gfx.rect(px + 20, y + 4, 2f, 3f, 0xFFFF7AA8.toInt())
-            val bob = sin(t * 8) * 3f
-            val ax = px + 34 + bob
-            val ay = y - 4
-            gfx.rect(ax, ay - 3, 16f, 6f, 0xFFFFD21F.toInt())
-            gfx.poly(floatArrayOf(ax + 16, ax + 26, ax + 16), floatArrayOf(ay - 8, ay, ay + 8), 0xFFFFD21F.toInt())
+    private fun bark(g: TeamGame) {
+        g.sfx(Sound.BARK)
+        hopT = HOP
+    }
+
+    /**
+     * Where to stop and point: the first spot from [from] on where he's out in the open with ground
+     * under his paws. He runs straight through walls, but standing inside one he'd be hidden (in 3D the
+     * blocks are solid), so he stops a little further on (or at [from] if there's nowhere close).
+     */
+    private fun clearSpot(g: TeamGame, from: Float): Float {
+        val l = g.level
+        for (k in 0 until 12) {
+            val sx = from + k * 8f
+            val inWall = listOf(2f, w / 2, w - 2).any { l.solidAt(sx + it, groundY - 2) || l.solidAt(sx + it, groundY - h + 2) }
+            if (!inWall && l.solidAt(sx + w / 2, groundY + 2)) return sx
         }
-        gfx.shadowText("DENNIS", px + 10, y - 9, 6f, 0xFFFFE8A0.toInt(), 1)
+        return from
+    }
+
+    // He always runs (and points) to the right in the levels: that's the way to go.
+    override fun draw(g: TeamGame, gfx: Gfx, ox: Float) =
+        draw(gfx, x + ox, groundY, t, running = mode != 1, pointing = mode == 1, lift = sin(hopT / HOP * PI.toFloat()) * 5f)
+
+    companion object {
+        private const val HOP = 0.35f
+
+        /**
+         * Draws Dennis with his left side at [px] and his feet on [ground] (the scenes and his sticker use this
+         * too). Running swaps his legs as [t] ticks on; standing still he wags his tail; [lift] makes him leap.
+         */
+        fun draw(
+            gfx: Gfx, px: Float, ground: Float, t: Float, running: Boolean = false, facing: Int = 1,
+            pointing: Boolean = false, lift: Float = 0f, name: Boolean = true, shadow: Boolean = true,
+        ) {
+            val w = HerculesArt.W.toFloat()
+            val y = ground - HerculesArt.H - lift
+            // Art x (as if facing right) to screen x, so the bits drawn on top turn around with him.
+            fun ax(v: Float) = if (facing < 0) px + w - v else px + v
+            if (shadow) gfx.oval(px + 2, ground - 2, w - 4, 4f, 0x33000000)
+            val pose = when {
+                lift > 1f -> HerculesArt.leap
+                running -> if ((t * 12).toInt() % 2 == 0) HerculesArt.walk else HerculesArt.stand
+                (t * 8).toInt() % 2 == 0 -> HerculesArt.wag
+                else -> HerculesArt.stand
+            }
+            HerculesArt.draw(gfx, pose, px, y, facing)
+            if (pointing) {
+                // Tongue out (he's so happy to help) and a big arrow pointing the way
+                gfx.rect(min(ax(HerculesArt.MOUTH_X), ax(HerculesArt.MOUTH_X + 2)), y + HerculesArt.MOUTH_Y, 2f, 2.5f, 0xFFFF7AA8.toInt())
+                val bob = sin(t * 8) * 3f
+                val tail = ax(w + 11 + bob)
+                val tip = ax(w + 37 + bob)
+                val body = ax(w + 27 + bob)
+                gfx.rect(min(tail, body), y - 3, 16f, 6f, 0xFFFFD21F.toInt())
+                gfx.poly(floatArrayOf(body, tip, body), floatArrayOf(y - 8, y, y + 8), 0xFFFFD21F.toInt())
+            }
+            if (name) gfx.shadowText("DENNIS", ax(17f), y - 5, 6f, 0xFFFFE8A0.toInt(), 1)
+        }
     }
 }
 

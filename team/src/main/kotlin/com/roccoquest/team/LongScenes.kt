@@ -161,7 +161,9 @@ object LongScenes {
                 }
                 blocky(gfx, cx + 60, ground, flip = true, upside = t > 2.4f, lift = if (t > 2.4f) -8f else 0f)
                 val dx = if (t < 3.5f) cx + 130 else cx + 130 + (t - 3.5f) * 120f
-                Dennis(0f, 14f).draw(g, ScaledGfx(gfx, 2.4f, dx, ground - 14 * 2.4f), 0f)
+                // Dennis watches the others, then runs away from the smell.
+                val run = t >= 3.5f
+                Dennis.draw(ScaledGfx(gfx, 2.4f, dx, ground), 0f, 0f, t, running = run, facing = if (run) 1 else -1)
                 mon(gfx, mon, cx + 10, ground, t, -1, t > 5f)
                 if (t > 5f) gfx.shadowText("*holds nose*", cx + 10, ground - 60, 7f, 0xFFFFFFFF.toInt(), 1)
                 if (t in 2f..3f) gfx.shadowText("PEE-YEW!", cx, 50f, 22f, 0xFF6AC84A.toInt(), 1)
