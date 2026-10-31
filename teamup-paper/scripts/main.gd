@@ -1098,8 +1098,11 @@ func set_partner(l: String) -> void:
 
 
 ## ERASE needs two taps; the file goes to a backup so UNDO ERASE can bring it back.
+const PROTECTED_SLOT := 1     # file 1 can never be erased
+
+
 func slot_erase(n: int) -> void:
-	if not Saves.exists(n):
+	if not Saves.exists(n) or n == PROTECTED_SLOT:
 		return
 	if erase_armed == n:
 		Saves.erase(n)

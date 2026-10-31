@@ -1028,7 +1028,11 @@ func _draw_slots() -> void:
 			txt("TAP TO PLAY", Vector2(r.position.x, r.end.y - 18), 26, Color("3f7fd9"), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
 		# ERASE (two taps) or UNDO ERASE
 		var er := slot_erase_rect(i)
-		if not d.is_empty():
+		if n == game.PROTECTED_SLOT and not d.is_empty():   # file 1 is safe: no ERASE
+			draw_rect(er, Color(0.15, 0.25, 0.4, 0.85))
+			draw_rect(er, Color.WHITE, false, 2.0)
+			txt("SAFE FILE", Vector2(er.position.x, er.position.y + 40), 26, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, er.size.x, 6)
+		elif not d.is_empty():
 			var armed: bool = game.erase_armed == n
 			draw_rect(er, Color("e8413b") if armed else Color(0.35, 0.12, 0.15, 0.85))
 			draw_rect(er, Color.WHITE, false, 2.0)

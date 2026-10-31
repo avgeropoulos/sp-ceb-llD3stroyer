@@ -78,13 +78,18 @@ func _process(_dt: float) -> bool:
 				if is_instance_valid(foe) and foe.alive and int(foe.get_meta("spawn")) == 0:
 					gone = false
 			check(gone, "the beaten bad guy came back")
-			# ERASE needs two taps, UNDO brings it back
+			# file 1 can never be erased
 			b.slot_erase(1)
-			check(Saves.exists(1), "one ERASE tap shouldn't erase")
 			b.slot_erase(1)
-			check(not Saves.exists(1) and Saves.can_undo(1), "two ERASE taps should erase (with undo)")
-			b.slot_undo(1)
-			check(Saves.exists(1), "UNDO ERASE didn't bring the file back")
+			check(Saves.exists(1), "file 1 must never be erased")
+			# other files: ERASE needs two taps, UNDO brings it back
+			Saves.write(2, Saves.read(1))
+			b.slot_erase(2)
+			check(Saves.exists(2), "one ERASE tap shouldn't erase")
+			b.slot_erase(2)
+			check(not Saves.exists(2) and Saves.can_undo(2), "two ERASE taps should erase (with undo)")
+			b.slot_undo(2)
+			check(Saves.exists(2), "UNDO ERASE didn't bring the file back")
 			# finishing the level saves a fresh level but keeps coins and ores
 			b.boss_done = true
 			b.leader().position = b.level.flag_pos + Vector3(0, 0.1, 0)
@@ -94,9 +99,10 @@ func _process(_dt: float) -> bool:
 			check(int(d.get("cleared", 0)) == 1 and not d.get("in_level", true), "clear should save cleared=1 with a fresh level")
 			check(int(d.get("coins", 0)) == b.coins, "clear should keep the coins")
 		26:
-			for ext in ["", ".bak", ".tmp"]:
-				if FileAccess.file_exists(Saves.path(1) + ext):
-					DirAccess.remove_absolute(ProjectSettings.globalize_path(Saves.path(1) + ext))
+			for sl in [1, 2]:
+				for ext in ["", ".bak", ".tmp"]:
+					if FileAccess.file_exists(Saves.path(sl) + ext):
+						DirAccess.remove_absolute(ProjectSettings.globalize_path(Saves.path(sl) + ext))
 			print("TEST FAILED: " + failed if failed != "" else "TEST PASSED")
 			quit(1 if failed != "" else 0)
 			return true
