@@ -2,6 +2,7 @@ package com.roccoquest.team
 
 import com.roccoquest.game.Body
 import com.roccoquest.game.Gfx
+import com.roccoquest.game.Sprite
 import com.roccoquest.game.argb
 import com.roccoquest.game.rainbow
 import kotlin.math.abs
@@ -32,6 +33,14 @@ enum class Power(val label: String, val ore: Ore?, val damage: Int) {
     CAPPY("CAPPY", Ore.SAPPHIRE, 2),
     /** Gold Flower: golden fireballs that turn hits into coins. */
     GOLD("GOLD FLOWER", Ore.GOLD, 3),
+    // Wonder power-ups (PowerUps.kt): from power blocks or the crafting table's WONDER tab. Saved by
+    // name and number like the flowers, so new ones always go at the END.
+    /** Elephant Rocco: his trunk whacks bad guys and smashes blocks. */
+    ELEPHANT("ELEPHANT FRUIT", Ore.RUBY, 3),
+    /** Drill Rocco: drills up through blocks, stomps spiky bad guys and spins. */
+    DRILL("DRILL HAT", Ore.IRON, 2),
+    /** Bubble Rocco: blows bubbles that pop bad guys, and he can bounce on them. */
+    BUBBLE("BUBBLE FLOWER", Ore.SAPPHIRE, 2),
 }
 
 /**
@@ -296,6 +305,8 @@ class Hero(val who: Who, x: Float, y: Float) :
     var anim = 0f
     /** Counts down while the pickaxe or an attack animation is playing. */
     var swing = 0f
+    /** Counts down while Drill Rocco's drill spin is whirring (nothing small can touch him meanwhile). */
+    var drillSpin = 0f
     var cooldown = 0f
     var jumpCooldown = 0f
     var stuck = 0f
@@ -381,14 +392,23 @@ class Hero(val who: Who, x: Float, y: Float) :
         Style.hat(gfx, outfitHat, cx + ox, py, 12f, facing, g.time, behind = true)
         when (who) {
             Who.ROCCO -> {
+                // Drill Rocco's drill always turns, and whirs round fast while he spins.
+                val drillPhase = (g.time * (if (drillSpin > 0f) 40f else 8f)).toInt()
                 // Metal Rocco is all shiny silver.
-                fun rs(f: Int) = if (g.metal) Metal.of(TeamArt.rocco(g.power, f)) else TeamArt.rocco(g.power, f)
+                fun rs(f: Int): Sprite {
+                    val s = if (g.power == Power.DRILL) Outline.of(PowerArt.drillRocco(f, drillPhase)) else TeamArt.rocco(g.power, f)
+                    return if (g.metal) Metal.of(s) else s
+                }
+                // The Wonder power-up pictures are bigger than Rocco (a wide elephant, a drill on top): [PowerArt.box]
+                // keeps his body in the usual spot and lets the extra spill over.
+                fun put(s: Sprite, x: Float, y: Float, w: Float, h: Float, flipX: Boolean, flipY: Boolean = false) =
+                    PowerArt.box(gfx, s, x, y, w, h, flipX, flipY)
                 val frame = if (!onGround) 2 else if (walking) 1 else 0
                 if (g.capture != null) { g.drawCapture(gfx, this, ox); return }
                 if (g.megaT > 0f) {
                     // MEGA: twice as big, growing up from the feet.
                     val flash = g.megaT < 2f && (g.megaT * 8).toInt() % 2 == 0
-                    gfx.sprite(rs(frame), px - 8, bottom - 48, flipX = facing < 0, w = 32f, h = 48f)
+                    put(rs(frame), px - 8, bottom - 48, 32f, 48f, facing < 0)
                     if (flash) gfx.rect(px - 8, bottom - 48, 32f, 48f, 0x55FFFFFF)
                     return
                 }
@@ -396,9 +416,12 @@ class Hero(val who: Who, x: Float, y: Float) :
                 if (g.dino != null) {
                     // Riding Dash: Dash runs along below, Rocco sits in the saddle.
                     Dino.drawBody(gfx, cx + ox, bottom, facing, anim, walking || !onGround)
-                    gfx.sprite(rs(if (onGround) 0 else 2), px + 1 - facing * 3, bottom - 42, flipX = facing < 0)
+                    put(rs(if (onGround) 0 else 2), px + 1 - facing * 3, bottom - 42, 16f, 24f, facing < 0)
                     return
                 }
+                // Spinning the drill: he whirls round and round.
+                val spinFlip = drillSpin > 0f && g.power == Power.DRILL && (drillSpin * 30f).toInt() % 2 == 0
+                val flip = (facing < 0) != spinFlip
                 when {
                     mini -> {
                         val s = if (!onGround) com.roccoquest.game.Sprites.smallJump else if (walking) com.roccoquest.game.Sprites.smallWalk else com.roccoquest.game.Sprites.smallStand
@@ -411,35 +434,45 @@ class Hero(val who: Who, x: Float, y: Float) :
                         gfx.rect(px - facing * 8 + 4, bottom - 9, 7f, 1.5f, 0x99FFFFFF.toInt())
                     }
                     // Squatting: squash the sprite down.
-                    crouching -> gfx.sprite(rs(0), px, bottom - 15, flipX = facing < 0, h = 15f)
+                    crouching -> put(rs(0), px, bottom - 15, 16f, 15f, flip)
                     // Butt slam: tucked in, spinning, with speed lines.
                     slamming -> {
-                        gfx.sprite(rs(2), px, py + 4, flipX = (anim * 20).toInt() % 2 == 0, h = 20f)
+                        put(rs(2), px, py + 4, 16f, 20f, (anim * 20).toInt() % 2 == 0)
                         if (slamPause <= 0) for (i in 0 until 3) gfx.rect(px + 2 + i * 5, py - 10, 1.5f, 10f, 0xAAFFFFFF.toInt())
                     }
                     // Double jump: a quick spinning flip.
                     flipT > 0 && !onGround -> {
                         val spin = (flipT * 24).toInt() % 4
-                        gfx.sprite(rs(2), px, py, flipX = spin >= 2, flipY = spin == 1 || spin == 2)
+                        put(rs(2), px, py, 16f, 24f, spin >= 2, spin == 1 || spin == 2)
                     }
                     // Long jump: stretched out flat like a superhero.
                     longJumping && !onGround -> {
-                        gfx.sprite(rs(2), px - 3, py + 6, flipX = facing < 0, w = 22f, h = 18f)
+                        put(rs(2), px - 3, py + 6, 22f, 18f, facing < 0)
                         gfx.rect(px - facing * 10 + 4, py + 14, 8f, 1.5f, 0x99FFFFFF.toInt())
                     }
                     else -> {
                         // Squash when landing, stretch when jumping up fast (like the newer games).
                         val k = if (squash > 0f) squash * 1.6f else if (!onGround && vy < -150f) -minOf(0.12f, -vy / 3000f) else 0f
-                        gfx.sprite(rs(frame), px - 8f * k, py + 24f * k, flipX = facing < 0, w = 16f * (1 + k), h = 24f * (1 - k))
+                        put(rs(frame), px - 8f * k, py + 24f * k, 16f * (1 + k), 24f * (1 - k), flip)
                     }
                 }
                 if (!mini && !shellSpin) {
                     if (g.tanookiT > 0) TeamArt.tanooki(gfx, cx + ox, py, bottom, facing, anim, swing > 0, crouching)
                     if (g.wingT > 0) TeamArt.wingCap(gfx, cx + ox, if (crouching) bottom - 16 else py, anim, !onGround)
                 }
+                if (drillSpin > 0f && g.power == Power.DRILL && !mini) PowerArt.spin(gfx, cx + ox, if (crouching) bottom - 8f else py + 14f, g.time)
                 if (swing > 0 && g.tanookiT <= 0) {
-                    val hx = cx + facing * 8 + ox
-                    gfx.oval(hx - 2, y + 11, 4f, 4f, 0xFFFFC08A.toInt())
+                    when {
+                        // Elephant Rocco's trunk swings out: WHAM!
+                        g.power == Power.ELEPHANT && !mini -> PowerArt.trunk(gfx, cx + ox, py, facing, (1f - swing / PowerUps.TRUNK_TIME).coerceIn(0f, 1f))
+                        // Bubble Rocco: a little bubble at his lips as he blows.
+                        g.power == Power.BUBBLE && !mini -> PowerArt.bubble(gfx, cx + facing * 8f + ox - 3f, py + 6f, 6f)
+                        g.power == Power.DRILL && !mini -> {}
+                        else -> {
+                            val hx = cx + facing * 8 + ox
+                            gfx.oval(hx - 2, y + 11, 4f, 4f, 0xFFFFC08A.toInt())
+                        }
+                    }
                 }
             }
             Who.BLOCKY -> {

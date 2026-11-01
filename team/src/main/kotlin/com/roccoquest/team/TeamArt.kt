@@ -72,6 +72,9 @@ object TeamArt {
         Power.SHELL -> 0xFF2E6BE6.toInt() to 0xFF1A3A9A.toInt()
         Power.CAPPY -> 0xFFE52521.toInt() to 0xFFB01A1A.toInt()
         Power.GOLD -> 0xFFFFD21F.toInt() to 0xFFC89A10.toInt()
+        Power.ELEPHANT -> 0xFF9EA8BE.toInt() to 0xFF6C7690.toInt()
+        Power.DRILL -> 0xFF6A8AC8.toInt() to 0xFF3E5A98.toInt()
+        Power.BUBBLE -> PowerArt.BUBBLE_SHIRT to 0xFF2E9AC0.toInt()
     }
 
     private val blockyCache = HashMap<Power, Pair<Sprite, Sprite>>()
@@ -122,7 +125,12 @@ object TeamArt {
         listOf(Sprites.bigStand, Sprites.bigWalk, Sprites.bigJump).map { it.recolor(m) }
     }[frame]
 
-    private fun roccoPlain(p: Power, frame: Int): Sprite = if (p == Power.THUNDER) thunder[frame] else if (p == Power.CRYSTAL) crystal[frame] else if (p == Power.GOLD) goldSuit[frame] else when (p) {
+    /**
+     * The Wonder power-ups have their own pictures: the elephant is wider and the drill sticks up over
+     * Rocco's head, so draw those with [PowerArt.box] when the size matters.
+     */
+    private fun roccoPlain(p: Power, frame: Int): Sprite = if (PowerUps.isWonder(p)) PowerArt.rocco(p, frame) else
+        if (p == Power.THUNDER) thunder[frame] else if (p == Power.CRYSTAL) crystal[frame] else if (p == Power.GOLD) goldSuit[frame] else when (p) {
         Power.NONE -> arrayOf(Sprites.bigStand, Sprites.bigWalk, Sprites.bigJump)
         Power.FIRE -> arrayOf(Sprites.fireStand, Sprites.fireWalk, Sprites.fireJump)
         Power.ICE -> arrayOf(Sprites.iceStand, Sprites.iceWalk, Sprites.iceJump)
@@ -198,6 +206,7 @@ object TeamArt {
         Power.SHELL -> Sprites.blueShell
         Power.CAPPY -> CappyHat.icon
         Power.GOLD -> goldFlower
+        Power.ELEPHANT, Power.DRILL, Power.BUBBLE -> PowerArt.icon(p)
         Power.GRASS, Power.NONE -> grassFlower
     }
 

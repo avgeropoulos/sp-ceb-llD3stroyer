@@ -71,7 +71,7 @@ class TileGfx(private val list: DrawList, private val paper: PaperGfx) : Gfx {
             else -> {
                 val r = Atlas.region(s)
                 m.identity().translate(cx, cy, 0f)
-                val shiny = t == Tile.QCOIN || t == Tile.QHEART || t == Tile.QSTAR || t == Tile.QMYSTERY
+                val shiny = t == Tile.QCOIN || t == Tile.QHEART || t == Tile.QSTAR || t == Tile.QMYSTERY || t == Tile.QPOWER
                 list.add(cubes.getOrPut(r) { cube(r) }, m, emissive = if (shiny) 0.15f else 0f, shine = if (shiny) 0.5f else 0.12f).cutout = true
             }
         }
