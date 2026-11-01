@@ -17,7 +17,8 @@ class SceneryTest {
 
     @Test fun everyPlaceButTheSpaceStationHasScenery() {
         for (p in Place.entries) {
-            if (p == Place.STATION) assertNull(Scenery.build(p, 1), "the station's painted windows are its view")
+            // (The space station's painted windows are its view; World 14's city and food skylines are painted for now.)
+            if (p == Place.STATION || p == Place.CITY || p == Place.FOOD) assertNull(Scenery.build(p, 1), "$p keeps its painted view")
             else assertNotNull(Scenery.build(p, 1), "$p has 3D scenery").release()
         }
     }
