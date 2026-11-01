@@ -637,11 +637,13 @@ object CityArt {
         for (i in first..last) draw(i and 0xFFFF, i * spacing - off)
     }
 
-    fun drawSky(gfx: Gfx, viewW: Float, viewH: Float, cam: Float, t: Float) {
+    /** The night sky; with [scenery] false only the sky, stars and moon (Team Up! 3D builds the buildings in 3D). */
+    fun drawSky(gfx: Gfx, viewW: Float, viewH: Float, cam: Float, t: Float, scenery: Boolean = true) {
         gfx.gradientStops(0f, 0f, viewW, viewH, 0xFF080A24.toInt(), 0xFF241A54.toInt(), 0xFF6A2A72.toInt(), 0xFFC8507A.toInt())
         for (i in 0 until 28) gfx.rect((i * 97f - cam * 0.03f).mod(viewW), (i * 53f) % 110f, 1.5f, 1.5f, if (i % 5 == 0) 0xFFFFE8B0.toInt() else 0xCCFFFFFF.toInt())
         gfx.oval(viewW * 0.78f - cam * 0.01f, 18f, 26f, 26f, 0xFFF4ECD0.toInt())
         gfx.oval(viewW * 0.78f - cam * 0.01f + 5f, 24f, 6f, 5f, 0xFFDCD4B8.toInt())
+        if (!scenery) return
         // A construction crane far away, with a steel beam swinging on its hook
         layer(viewW, cam, 0.1f, 560f) { i, x ->
             val cx = x + 120f + (i % 3) * 60f
@@ -847,11 +849,13 @@ object FoodArt {
         tomatoTop(gfx, cx, cy - r * 0.85f, r * 0.9f)
     }
 
-    fun drawSky(gfx: Gfx, viewW: Float, viewH: Float, cam: Float, t: Float) {
+    /** The sunny sky; with [scenery] false only the sky and sun (Team Up! 3D builds the clouds and the food in 3D). */
+    fun drawSky(gfx: Gfx, viewW: Float, viewH: Float, cam: Float, t: Float, scenery: Boolean = true) {
         gfx.gradientStops(0f, 0f, viewW, viewH, 0xFF4AB0F0.toInt(), 0xFF9ADCF8.toInt(), 0xFFFFF0C8.toInt())
         val sunX = viewW * 0.72f - cam * 0.01f
         gfx.oval(sunX - 6f, 8f, 48f, 48f, 0x55FFF4A0)
         gfx.oval(sunX, 14f, 36f, 36f, 0xFFFFE85A.toInt())
+        if (!scenery) return
         layer(viewW, cam, 0.06f, 220f) { i, x ->
             val cy = 24f + (i % 3) * 20f
             gfx.oval(x + 20f, cy, 54f, 18f, 0xFFFFFFFF.toInt())

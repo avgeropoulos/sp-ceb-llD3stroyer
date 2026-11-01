@@ -208,6 +208,7 @@ class GameGLView(context: Context) : GLSurfaceView(context), GLSurfaceView.Rende
             // Map, house, menus, sticker book...: the crisp normal Team Up! picture (fast).
             // Also used for a moment if 3D ever has a problem.
             if (failed3d > 0) failed3d--
+            getReady()
             draw2d(scale)
             return
         }
@@ -244,6 +245,20 @@ class GameGLView(context: Context) : GLSurfaceView(context), GLSurfaceView.Rende
 
     /** Frames left to draw in plain 2D after the 3D scene had a problem. */
     private var failed3d = 0
+
+    /**
+     * A level's INTRO card is drawn in 2D: meanwhile the 3D scene builds the level's scenery and a couple of its
+     * meshes go to the GPU each frame, so the level's first 3D frame has nothing new to make (no stutter).
+     */
+    private fun getReady() {
+        try {
+            scene.prepare(game)
+            glScene.preload(scene.scenery?.meshes)
+        } catch (t: Throwable) {
+            // Not ready yet is fine: the first 3D frame builds whatever is missing.
+            android.util.Log.e("TeamUp3D", "Getting the 3D scenery ready failed", t)
+        }
+    }
 
     private fun draw2d(scale: Float) {
         front.paint { c ->

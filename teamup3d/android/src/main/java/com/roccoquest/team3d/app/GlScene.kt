@@ -152,19 +152,39 @@ class GlScene {
     private fun rgb(loc: Int, c: Int) =
         GLES20.glUniform3f(loc, (c shr 16 and 255) / 255f, (c shr 8 and 255) / 255f, (c and 255) / 255f)
 
-    private fun bind(mesh: Mesh) {
-        if (mesh.handle == 0) {
-            val ids = IntArray(1)
-            GLES20.glGenBuffers(1, ids, 0)
-            mesh.handle = ids[0]
-            val buf = ByteBuffer.allocateDirect(mesh.data.size * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
-            buf.put(mesh.data).position(0)
-            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, mesh.handle)
-            GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, mesh.data.size * 4, buf, GLES20.GL_STATIC_DRAW)
-            uploaded += mesh
-        } else {
-            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, mesh.handle)
+    /**
+     * Copies up to [max] of [meshes] that aren't on the GPU yet to it. The app calls this on the frames a level's
+     * INTRO card shows, so the level's scenery is there before its first 3D frame (instead of a dozen copies at once
+     * in that frame, a stutter). Anything not copied yet is still copied when it's first drawn.
+     */
+    fun preload(meshes: List<Mesh>?, max: Int = 2) {
+        if (meshes == null) return
+        freeReleased()
+        var n = 0
+        for (i in 0 until meshes.size) {
+            val m = meshes[i]
+            if (m.handle != 0 || m.released || m.vertexCount == 0) continue
+            upload(m)
+            if (++n >= max) break
         }
+        // The 2D layers draw from plain arrays, which only works with no buffer bound.
+        if (n > 0) GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0)
+    }
+
+    /** Copies [mesh] to a new GL buffer (left bound). */
+    private fun upload(mesh: Mesh) {
+        val ids = IntArray(1)
+        GLES20.glGenBuffers(1, ids, 0)
+        mesh.handle = ids[0]
+        val buf = ByteBuffer.allocateDirect(mesh.data.size * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
+        buf.put(mesh.data).position(0)
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, mesh.handle)
+        GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, mesh.data.size * 4, buf, GLES20.GL_STATIC_DRAW)
+        uploaded += mesh
+    }
+
+    private fun bind(mesh: Mesh) {
+        if (mesh.handle == 0) upload(mesh) else GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, mesh.handle)
         val stride = Mesh.STRIDE * 4
         GLES20.glVertexAttribPointer(aPos, 3, GLES20.GL_FLOAT, false, stride, 0)
         GLES20.glVertexAttribPointer(aNormal, 3, GLES20.GL_FLOAT, false, stride, 12)
