@@ -243,6 +243,24 @@ class JuiceTest {
         assertEquals(TeamGame.State.PLAY, game.state)
     }
 
+    /** Team Up! 3D gets a level's scenery ready while its title card shows: a still picture, not the map closing. */
+    @Test fun theTitleCardShowsOnceTheMapHasClosed() {
+        game.newGame(0, Mon.SPARKY)
+        game.goToMap(0)
+        run(0.7f)
+        game.playMapLevelForTest(0)
+        assertEquals(TeamGame.State.INTRO, game.state)
+        assertTrue(!game.showsIntroCard, "the map is still closing")
+        run(Iris.CLOSE + 0.05f)
+        assertTrue(game.showsIntroCard && !game.showsLevel, "now the card")
+        run(3f)
+        assertEquals(TeamGame.State.PLAY, game.state)
+        assertTrue(!game.showsIntroCard)
+        // Starting straight from a level (like after a checkpoint) shows the card at once.
+        game.startLevel(1)
+        assertTrue(game.showsIntroCard)
+    }
+
     @Test fun portalsCloseOnTheTeamAndOpenInTheBonusRoom() {
         startPlaying(1)
         game.foes.clear()

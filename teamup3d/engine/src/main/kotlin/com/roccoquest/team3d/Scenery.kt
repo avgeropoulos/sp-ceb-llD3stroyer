@@ -286,8 +286,31 @@ object Scenery {
         }
         // Inside the space station: its big painted windows are the view.
         Place.STATION -> null
-        // The Big City and the Food Kingdom (World 14) keep their painted skylines for now.
-        Place.CITY, Place.FOOD -> null
+        // The Big City at night: low buildings with water tanks just behind the level, tall skyscrapers with neon
+        // signs, antennas and cranes with blinking lights behind them, and a moonlit skyline in the haze far away.
+        // All darker than the level's own buildings, so its rooftops stand out in front.
+        Place.CITY -> Look(c(0xFF3A2C6A), cloudGlow = 0f) {
+            when (band) {
+                Scenery.Band.NEAR -> skyscrapers(6, -262f, -190f, ints(0xFF1C1A3C, 0xFF201C46, 0xFF1A2244), 0.22f, tanks = true)
+                Scenery.Band.MID -> { skyscrapers(6, -330f, -110f, ints(0xFF282452, 0xFF2C2858, 0xFF222A54), 0.2f, signs = true); if (rnd.nextInt(3) != 0) crane() }
+                Scenery.Band.FAR -> skyscrapers(8, -470f, -170f, ints(0xFF3A3268, 0xFF34306A, 0xFF40366E), 0.24f)
+                Scenery.Band.SKY -> {}
+            }
+        }
+        // The Food Kingdom: toast and lettuce hills (melted cheese on the middle ones) with giant food on them, broccoli
+        // trees, carrots, tomatoes, cheese wedges, forks stuck in the ground and steaming bowls of soup, then tomatoes as
+        // big as hills and cheese mountains far away. No red near the level: its hot soup has to stand out.
+        Place.FOOD -> Look(c(0xFFD2EAEE)) {
+            when (band) {
+                Scenery.Band.NEAR -> { hills(4, -240f, -198f, ints(0xFFE0A860, 0xFF8AD86A, 0xFFD89A52)); broccoli(1, 44f, 62f); carrots(3, 30f, 42f) }
+                Scenery.Band.MID -> {
+                    hills(4, -296f, -218f, ints(0xFFF0C888, 0xFF7ACC62, 0xFFE8B070), cheesy = true)
+                    broccoli(1, 74f, 98f); forks(1, 130f, 170f); soupBowls(1); carrots(1, 30f, 40f); cheeseWedges(1, 26f, 34f); tomatoes(1, 14f, 20f)
+                }
+                Scenery.Band.FAR -> { hills(2, -390f, -300f, ints(0xFF8AD86A, 0xFF6AC85A)); tomatoHills(2, -330f, -250f); cheeseMountains(2, -330f, -230f) }
+                Scenery.Band.SKY -> clouds(2)
+            }
+        }
     }
 
     private fun meadow(haze: Long, near: IntArray, mid: IntArray, leaves: IntArray, trunk: Int, far: Int) = Look(c(haze)) {
@@ -344,9 +367,12 @@ object Scenery {
     private fun c(v: Long) = v.toInt()
 }
 
-/** One ready-made strip of scenery: the [mesh], and the parts that glow ([glow], or null). */
-class SceneryStrip(val mesh: Mesh, val glow: Mesh?) {
-    val triangles get() = (mesh.vertexCount + (glow?.vertexCount ?: 0)) / 3
+/**
+ * One ready-made strip of scenery: the [mesh], the parts that glow ([glow], or null) and little lights that
+ * blink on and off ([blink], or null: the tips of the city's antennas and cranes).
+ */
+class SceneryStrip(val mesh: Mesh, val glow: Mesh?, val blink: Mesh? = null) {
+    val triangles get() = (mesh.vertexCount + (glow?.vertexCount ?: 0) + (blink?.vertexCount ?: 0)) / 3
 }
 
 /** A level's scenery, ready to draw: built once by [Scenery.build], then [draw]n every frame. */
@@ -364,7 +390,7 @@ class SceneryLevel internal constructor(
     val fogFar: Float,
 ) {
     /** Every mesh this level's scenery uses. */
-    val meshes: List<Mesh> = strips.flatMap { s -> s.flatMap { listOfNotNull(it.mesh, it.glow) } } + listOfNotNull(floor)
+    val meshes: List<Mesh> = strips.flatMap { s -> s.flatMap { listOfNotNull(it.mesh, it.glow, it.blink) } } + listOfNotNull(floor)
     /** All of its triangles. */
     val triangles = meshes.sumOf { it.vertexCount } / 3
     /** Triangles sent by the last [draw]. */
@@ -378,7 +404,7 @@ class SceneryLevel internal constructor(
     init {
         for (b in bands.indices) {
             var minX = 0f; var maxX = bands[b].width; var minZ = 0f
-            for (s in strips[b]) for (mesh in listOfNotNull(s.mesh, s.glow)) {
+            for (s in strips[b]) for (mesh in listOfNotNull(s.mesh, s.glow, s.blink)) {
                 val d = mesh.data
                 var i = 0
                 while (i < d.size) {
@@ -395,9 +421,9 @@ class SceneryLevel internal constructor(
 
     /**
      * Adds the strips that can be seen with the level scrolled to [cam]. [sway] is how far (radians) the
-     * camera may turn sideways, like on the title screen.
+     * camera may turn sideways, like on the title screen. [time] makes the blinking lights blink.
      */
-    fun draw(list: DrawList, cam: Float, sway: Float = 0f) {
+    fun draw(list: DrawList, cam: Float, sway: Float = 0f, time: Float = 0f) {
         drawn = 0
         val centre = cam + list.viewW / 2
         for (b in bands.indices) {
@@ -416,6 +442,8 @@ class SceneryLevel internal constructor(
                 if (flip) m.scale(-1f, 1f, 1f)
                 list.add(strip.mesh, m, -1, if (bands[b] == Scenery.Band.SKY) cloudGlow else 0f)
                 strip.glow?.let { list.add(it, m, -1, Scenery.GLOW) }
+                // Each copy of a strip blinks in its own rhythm; while off, its lights are dim (not gone).
+                strip.blink?.let { list.add(it, m, if ((time * 1.4f + (k and 7) * 0.37f) % 2f < 1.2f) -1 else BLINK_OFF, 1f) }
                 drawn += strip.triangles
             }
         }
@@ -440,6 +468,11 @@ class SceneryLevel internal constructor(
 
     /** Frees the meshes (the level is over). */
     fun release() = meshes.forEach { it.release() }
+
+    private companion object {
+        /** A blinking light while it's off. */
+        val BLINK_OFF = 0xFF3A3040.toInt()
+    }
 }
 
 /**
@@ -449,6 +482,8 @@ class SceneryLevel internal constructor(
 private class Kit(val band: Scenery.Band, val rnd: Random, private val haze: Int) {
     val b = MeshBuilder()
     val glow = MeshBuilder()
+    /** Little lights that blink (full bright, even through the fog). */
+    val blink = MeshBuilder()
     val w get() = band.width
     /** The hills made so far: x, foot y, z, rx, ry, rz (for standing things on them). */
     private val hillList = ArrayList<FloatArray>()
@@ -456,7 +491,7 @@ private class Kit(val band: Scenery.Band, val rnd: Random, private val haze: Int
     var floorY = Float.NEGATIVE_INFINITY
     var floorColor = 0
 
-    fun strip() = SceneryStrip(b.build(), if (glow.isEmpty) null else glow.build())
+    fun strip() = SceneryStrip(b.build(), if (glow.isEmpty) null else glow.build(), if (blink.isEmpty) null else blink.build())
 
     fun col(color: Int) = if (band.haze > 0f) Atlas.mix(color, haze, band.haze) else color or 0xFF000000.toInt()
     fun r(lo: Float, hi: Float) = lo + rnd.nextFloat() * (hi - lo)
@@ -556,7 +591,7 @@ private class Kit(val band: Scenery.Band, val rnd: Random, private val haze: Int
     // ---------------------------------------------------------------- props
 
     /** A row of [n] rolling hills with their tops between [lo] and [hi] (world y, up is +). */
-    fun hills(n: Int, lo: Float, hi: Float, colors: IntArray, wide: Float = 1f, eyes: Boolean = false, gumdrops: Boolean = false, craters: Boolean = false) {
+    fun hills(n: Int, lo: Float, hi: Float, colors: IntArray, wide: Float = 1f, eyes: Boolean = false, gumdrops: Boolean = false, craters: Boolean = false, cheesy: Boolean = false) {
         val spacing = w / n
         val depth = when (band) { Scenery.Band.NEAR -> 64f; Scenery.Band.MID -> 150f; else -> 320f }
         val slices = if (band == Scenery.Band.NEAR) 11 else 10
@@ -585,6 +620,21 @@ private class Kit(val band: Scenery.Band, val rnd: Random, private val haze: Int
                 val sy = groundAt(sx, sz)
                 val cr = 12f * size
                 ball(sx, sy - cr * 0.15f, sz, cr, cr * 0.25f, cr * 0.6f, col(Atlas.shade(color, 0.75f)), slices = 8, lats = DOME)
+            }
+            if (cheesy && rnd.nextInt(3) != 0) {
+                // Melted cheese over the top (a little bigger than the hill, so it sits on it), dripping down the front.
+                val k = 1.025f
+                val ry = (top - foot) * k
+                val edge = col(Atlas.shade(MELTED, 0.9f))
+                ball(x, foot, cz, rx * k, ry, rz * k, col(MELTED), edge, slices, CHEESE_CAP)
+                for (d in -1..1 step 2) {
+                    // Each drip hangs from the edge of the cheese, on the side facing the camera.
+                    val lon = -HALF_PI + d * r(0.2f, 0.5f)
+                    val dh = r(10f, 16f) * size
+                    val lat = kotlin.math.asin(((sin(CHEESE_CAP[0]) * ry - dh * 0.55f) / ry).coerceIn(-1f, 1f))
+                    val dx = cos(lat) * cos(lon); val dz = -cos(lat) * sin(lon)
+                    ball(x + dx * rx * k, foot + sin(lat) * ry, cz + dz * rz * k + 2f * size, 5f * size, dh, 4f * size, edge, slices = 5, lats = BALL6)
+                }
             }
             if (eyes && top > lo + (hi - lo) * 0.3f && rnd.nextInt(4) != 0) {
                 // The taller Wonder hills look at you, like in Wonder World. The eyes sit just under the
@@ -1210,6 +1260,345 @@ private class Kit(val band: Scenery.Band, val rnd: Random, private val haze: Int
         ball(x, y + 44f * s, z + 15.5f * s, 2f * s, 1.5f * s, 1f * s, col(0xFF1A1008.toInt()), slices = 4, lats = SMALL)
     }
 
+    // ---------------------------------------------------------------- the Big City (World 14)
+
+    /**
+     * How far in front of a wall its windows and signs sit. More far away, where the phone's depth buffer is coarse
+     * (a window right on its wall would flicker).
+     */
+    private val lift get() = 0.6f * size * size
+
+    /**
+     * The lowest point of this band the level doesn't hide (behind the back edge of its ground, with some room):
+     * windows further down would never be seen.
+     */
+    private val seenY get() = when (band) { Scenery.Band.NEAR -> -300f; Scenery.Band.MID -> -440f; else -> -790f }
+
+    /** The highest point of this band that shows under the HUD bar (antennas and spires stop there). */
+    private val ceilingY get() = when (band) { Scenery.Band.NEAR -> -45f; Scenery.Band.MID -> -40f; else -> -20f }
+
+    /** A box seen from the front: only its front, top and sides (the camera never sees the back or the bottom). */
+    fun block(x0: Float, y0: Float, z0: Float, x1: Float, y1: Float, z1: Float, color: Int, into: MeshBuilder = b) {
+        into.quad(x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1, color)
+        into.quad(x0, y1, z1, x1, y1, z1, x1, y1, z0, x0, y1, z0, color)
+        into.quad(x1, y0, z1, x1, y0, z0, x1, y1, z0, x1, y1, z1, color)
+        into.quad(x0, y0, z0, x0, y0, z1, x0, y1, z1, x0, y1, z0, color)
+    }
+
+    /** A flat rectangle facing the camera at depth [z]. */
+    private fun rect(x0: Float, y0: Float, x1: Float, y1: Float, z: Float, color: Int, into: MeshBuilder = b) =
+        into.quad(x0, y0, z, x1, y0, z, x1, y1, z, x0, y1, z, color)
+
+    /** A wall facing the camera, [low] at the bottom fading up to [high] at the top. */
+    private fun upright(x0: Float, y0: Float, x1: Float, y1: Float, z: Float, low: Int, high: Int) {
+        b.vertex(x0, y0, z, 0f, 0f, 1f, low, U, V); b.vertex(x1, y0, z, 0f, 0f, 1f, low, U, V); b.vertex(x1, y1, z, 0f, 0f, 1f, high, U, V)
+        b.vertex(x0, y0, z, 0f, 0f, 1f, low, U, V); b.vertex(x1, y1, z, 0f, 0f, 1f, high, U, V); b.vertex(x0, y1, z, 0f, 0f, 1f, high, U, V)
+    }
+
+    /**
+     * A row of [n] skyscrapers with their roofs between [lo] and [hi] (world y), about [lit] of their windows lit.
+     * Neighbours stand in two rows, one further back, so they can overlap without their walls meeting; and none
+     * reaches past the strip's ends, so strips side by side never overlap either. On the roofs: water tanks
+     * ([tanks]), or stepped tops, antennas with blinking lights and spires; now and then a neon sign ([signs]).
+     */
+    fun skyscrapers(n: Int, lo: Float, hi: Float, bodies: IntArray, lit: Float, tanks: Boolean = false, signs: Boolean = false) {
+        val spacing = w / n
+        var i = 0
+        along(n, 0.2f) { x ->
+            val row = i++ % 2
+            val hw = min(spacing * r(0.34f, 0.56f), min(x, w - x) - 2f)
+            if (hw < 5f * size) return@along
+            val hd = hw * r(0.6f, 0.9f)
+            val zf = min(band.z + band.spread * (0.6f - row * 0.9f + r(-0.1f, 0.1f)), Scenery.FRONT_Z - 3f * lift)
+            val top = r(lo, hi)
+            val body = pick(bodies)
+            val glass = if (rnd.nextInt(4) == 0) COOL else WARM
+            tower(x, zf, hw, hd, top, body, lit * r(0.6f, 1.4f), glass)
+            if (signs && rnd.nextInt(3) == 0) {
+                val sw = hw * r(0.5f, 0.72f)
+                val sh = sw * r(0.24f, 0.32f)
+                neonSign(x + (hw - sw) * r(-0.6f, 0.6f), top - sh - r(8f, 30f) * size, zf, sw, sh)
+            }
+            var roof = top; var rhw = hw; var rhd = hd; var rzf = zf
+            if (!tanks && rnd.nextInt(3) == 0) {
+                // A narrower top, stepped back.
+                val sh = r(12f, 26f) * size
+                rhw = hw * r(0.5f, 0.72f); rhd = hd * 0.6f; rzf = zf - hd * 0.3f
+                tower(x, rzf, rhw, rhd, top + sh, body, lit, glass, foot = top - 1f, shadeLow = 1.05f)
+                roof = top + sh
+            }
+            val room = ceilingY - roof - 3f * size
+            when {
+                tanks -> if (rnd.nextInt(3) != 0) waterTank(x + hw * r(-0.45f, 0.45f), roof, zf - hd, r(9f, 13f))
+                rnd.nextInt(5) < 2 -> antenna(x + rhw * r(-0.4f, 0.4f), roof, rzf - rhd, min(r(16f, 30f) * size, room))
+                rnd.nextInt(3) == 0 -> spire(x, roof, rzf - rhd, min(rhw, rhd) * 1.35f, room, body)
+            }
+        }
+    }
+
+    /**
+     * A skyscraper with its front at depth [zf], from [foot] up to [top]: a box [hw] half wide and [hd] half deep,
+     * moonlit at the top and darker down in the street, with rows of windows of which about [lit] glow in [glass]
+     * colours. Only the lit windows are built (two triangles each), and only where they can be seen.
+     */
+    fun tower(
+        x: Float, zf: Float, hw: Float, hd: Float, top: Float, body: Int, lit: Float, glass: IntArray,
+        foot: Float = band.foot, shadeLow: Float = 0.55f,
+    ) {
+        val back = zf - 2f * hd
+        val c = col(body)
+        val seen = max(seenY, foot)
+        val low = col(Atlas.shade(body, shadeLow))
+        if (seen > foot) rect(x - hw, foot, x + hw, seen, zf, low)
+        upright(x - hw, seen, x + hw, top, zf, low, col(Atlas.shade(body, 1.3f)))
+        b.quad(x + hw, foot, zf, x + hw, foot, back, x + hw, top, back, x + hw, top, zf, c)
+        b.quad(x - hw, foot, back, x - hw, foot, zf, x - hw, top, zf, x - hw, top, back, c)
+        b.quad(x - hw, top, zf, x + hw, top, zf, x + hw, top, back, x - hw, top, back, col(ROOF))
+        // The windows: rows of them across the front, some floors busier than others.
+        val ww = 4f * size; val wh = 5f * size
+        val px = 7f * size; val py = 9f * size
+        val cols = ((2f * hw - px * 0.5f) / px).toInt()
+        if (cols <= 0) return
+        val left = x - cols * px / 2f + (px - ww) / 2f
+        val z = zf + lift
+        var y = top - py * 0.6f
+        while (y - wh > seen) {
+            val floorLit = lit * r(0.2f, 1.8f)
+            for (k in 0 until cols) if (rnd.nextFloat() < floorLit) {
+                val wx = left + k * px
+                rect(wx, y - wh, wx + ww, y, z, col(pick(glass)), glow)
+            }
+            y -= py
+        }
+    }
+
+    /** A glowing neon sign on a wall (at depth [z]): a dark board with a bright frame and a row of glowing letters. */
+    fun neonSign(cx: Float, cy: Float, z: Float, sw: Float, sh: Float) {
+        val neon = col(pick(NEON))
+        val z1 = z + lift
+        val z2 = z + 2f * lift
+        rect(cx - sw, cy - sh, cx + sw, cy + sh, z1, col(0xFF140E28.toInt()))
+        val t = sh * 0.14f
+        rect(cx - sw, cy + sh - t, cx + sw, cy + sh, z2, neon, glow)
+        rect(cx - sw, cy - sh, cx + sw, cy - sh + t, z2, neon, glow)
+        rect(cx - sw, cy - sh + t, cx - sw + t, cy + sh - t, z2, neon, glow)
+        rect(cx + sw - t, cy - sh + t, cx + sw, cy + sh - t, z2, neon, glow)
+        // Letters too small to read, but shaped like letters: some like an H, some like an E.
+        val n = (sw / sh * 1.4f).toInt().coerceIn(3, 6)
+        val lw = (2f * sw - 5f * t) / n
+        val ly = sh * 0.5f
+        for (k in 0 until n) {
+            val l0 = cx - sw + 2.5f * t + k * lw + lw * 0.15f
+            val l1 = l0 + lw * 0.7f
+            val s = lw * 0.2f
+            rect(l0, cy - ly, l0 + s, cy + ly, z2, neon, glow)
+            if (rnd.nextBoolean()) {
+                rect(l1 - s, cy - ly, l1, cy + ly, z2, neon, glow)
+                rect(l0 + s, cy - s * 0.5f, l1 - s, cy + s * 0.5f, z2, neon, glow)
+            } else {
+                rect(l0 + s, cy + ly - s, l1, cy + ly, z2, neon, glow)
+                rect(l0 + s, cy - ly, l1, cy - ly + s, z2, neon, glow)
+            }
+        }
+    }
+
+    /** A little light that blinks (red, like on real antennas and cranes; now and then a white one). */
+    fun light(x: Float, y: Float, z: Float) {
+        val r = 3f * size
+        ball(x, y, z, r, r, r, col(pick(BLINKS)), slices = 5, lats = SMALL, into = blink)
+    }
+
+    /** A thin antenna on a roof, with a little crossbar and a blinking light on its tip. */
+    fun antenna(x: Float, roof: Float, z: Float, h: Float) {
+        if (h < 6f * size) return
+        val t = 0.8f * size
+        val c = col(0xFF4A4468.toInt())
+        block(x - t, roof - 1f, z - t, x + t, roof + h, z + t, c)
+        block(x - t * 4f, roof + h * 0.5f, z - t * 0.6f, x + t * 4f, roof + h * 0.5f + t * 1.2f, z + t * 0.6f, c)
+        light(x, roof + h + t, z)
+    }
+
+    /** A pointy four-sided spire on a roof (a face turned to the camera), at most [room] tall, with a blinking light on top. */
+    fun spire(x: Float, roof: Float, z: Float, r: Float, room: Float, body: Int) {
+        val h = min(r * r(1.4f, 2.4f), room)
+        if (h < r * 0.8f) return
+        b.place { translate(x, roof - 1f, z); rotateY(PI.toFloat() / 4) }
+        cone(0f, 0f, 0f, h, r, col(body), slices = 4, flat = true, tip = col(Atlas.shade(body, 1.6f)))
+        b.resetPlace()
+        light(x, roof + h, z)
+    }
+
+    /** A wooden water tank on legs, on top of a low building. */
+    fun waterTank(x: Float, roof: Float, z: Float, s: Float) {
+        val wood = col(0xFF5A4038.toInt())
+        val dark = col(0xFF2E2430.toInt())
+        for (e in -1..1 step 2) {
+            val lx = x + e * s * 0.55f
+            block(lx - s * 0.07f, roof - 1f, z - s * 0.07f, lx + s * 0.07f, roof + s * 0.6f, z + s * 0.07f, dark)
+        }
+        frustum(x, roof + s * 0.55f, z, roof + s * 1.6f, s * 0.7f, s * 0.7f, wood, slices = 7)
+        cone(x, roof + s * 1.6f, z, roof + s * 2.15f, s * 0.82f, dark, slices = 7, flat = true)
+    }
+
+    /** A construction crane among the skyscrapers: a steel beam hangs from its hook, and its top light blinks. */
+    fun crane() {
+        val s = size
+        val x = r(w * 0.3f, w * 0.6f)
+        val z = band.z - band.spread * 0.95f
+        val top = r(-110f, -70f)
+        val c = col(0xFF4A3E7A.toInt())
+        val t = 3f * s
+        // The mast, with crossbars so it looks like a lattice tower.
+        block(x - t, band.foot, z - t, x + t, top, z + t, c)
+        var y = top - 14f * s
+        while (y > seenY) { rect(x - t * 1.5f, y, x + t * 1.5f, y + 1.6f * s, z + t + lift, c); y -= 18f * s }
+        // The long arm, its counterweight, the driver's cab (lit) and the peak.
+        block(x - 26f * s, top, z - 2f * s, x + 78f * s, top + 4f * s, z + 2f * s, c)
+        block(x - 26f * s, top - 7f * s, z - 3f * s, x - 15f * s, top, z + 3f * s, col(0xFF3A3060.toInt()))
+        block(x - 4f * s, top - 9f * s, z - 3f * s, x + 5f * s, top, z + 3f * s, col(0xFF5A4A88.toInt()))
+        rect(x - 2.5f * s, top - 6.5f * s, x + 3.5f * s, top - 2f * s, z + 3f * s + lift, col(0xFFFFD86A.toInt()), glow)
+        b.place { translate(x, top + 4f * s, z); rotateY(PI.toFloat() / 4) }
+        cone(0f, 0f, 0f, 14f * s, 4.2f * s, c, slices = 4, flat = true)
+        b.resetPlace()
+        light(x, top + 19f * s, z)
+        light(x + 77f * s, top + 6f * s, z)
+        // The hook's cable and the beam it's lifting.
+        val hook = x + r(40f, 66f) * s
+        val beamY = top - r(36f, 64f) * s
+        block(hook - 0.5f * s, beamY, z - 0.5f * s, hook + 0.5f * s, top, z + 0.5f * s, c)
+        block(hook - 15f * s, beamY - 3f * s, z - 2f * s, hook + 15f * s, beamY, z + 2f * s, col(0xFF6A5A9A.toInt()))
+    }
+
+    // ---------------------------------------------------------------- the Food Kingdom (World 14)
+
+    /** A tomato sitting at ([x], [y], [z]), [r] round: shiny, with a star of leaves on top. */
+    fun tomato(x: Float, y: Float, z: Float, r: Float, slices: Int = 8) {
+        val red = 0xFFE8382A.toInt()
+        val cy = y + r * 0.7f
+        ball(x, cy, z, r, r * 0.86f, r, col(red), col(Atlas.shade(red, 0.68f)), slices, FULL)
+        lens(x - r * 0.36f, cy + r * 0.34f, z + r * 0.9f, r * 0.2f, r * 0.13f, r * 0.04f, col(0xFFFF9A8A.toInt()), 6)
+        leafStar(x, cy + r * 0.84f, z, r * 0.7f)
+    }
+
+    /** A star of five green leaves and a little stem, lying on top of a tomato. */
+    fun leafStar(x: Float, y: Float, z: Float, r: Float) {
+        val g = col(0xFF3A9A3A.toInt())
+        for (i in 0 until 5) {
+            b.place { translate(x, y, z); rotateY(i * TAU / 5 - 0.3f); rotateZ(-0.18f); translate(r * 0.4f, 0f, 0f) }
+            ball(0f, 0f, 0f, r * 0.46f, r * 0.08f, r * 0.17f, g, slices = 4, lats = SMALL)
+            b.resetPlace()
+        }
+        frustum(x, y - r * 0.05f, z, y + r * 0.2f, r * 0.05f, r * 0.04f, col(0xFF2A7A2A.toInt()), slices = 4)
+    }
+
+    fun tomatoes(n: Int, lo: Float, hi: Float) = repeat(n) {
+        val r = r(lo, hi) * size
+        onGround(r) { x, y, z -> tomato(x, y - r * 0.2f, z, r) }
+    }
+
+    /** Tomatoes as big as hills far away (mostly sunk in the ground, like a hill). */
+    fun tomatoHills(n: Int, lo: Float, hi: Float) = along(n, 0.4f) { x ->
+        val r = r(260f, 320f)
+        tomato(x, r(lo, hi) - r * 1.56f, z(r), r, slices = 10)
+    }
+
+    /** Giant carrots stuck in the ground, leaves up (only their tops show, thinner toward the ground). */
+    fun carrots(n: Int, lo: Float, hi: Float) = repeat(n) {
+        val h = r(lo, hi) * size
+        onGround(h * 0.25f) { x, y, z ->
+            val r = h * 0.2f
+            val top = y + h * 0.6f
+            val orange = 0xFFFF8A2A.toInt()
+            cone(x, top, z, y - h * 0.45f, r, col(orange), slices = 7, tip = col(0xFFD8681A.toInt()))
+            b.disc(x, top, z, r, r, col(Atlas.shade(orange, 1.08f)), 7)
+            val g = col(0xFF4AB84A.toInt())
+            for (k in -1..1) {
+                b.place { translate(x, top, z); rotateY(k * 0.9f); rotateZ(-k * 0.45f); translate(0f, h * 0.2f, 0f) }
+                ball(0f, 0f, 0f, h * 0.05f, h * 0.22f, h * 0.025f, g, slices = 4, lats = SMALL)
+                b.resetPlace()
+            }
+        }
+    }
+
+    /** Broccoli trees: a thick pale stalk under a bumpy green top. */
+    fun broccoli(n: Int, lo: Float, hi: Float) = repeat(n) {
+        val h = r(lo, hi)
+        onGround(h * 0.3f) { x, y, z ->
+            frustum(x, y - 6f, z, y + h * 0.58f, h * 0.13f, h * 0.08f, col(0xFF9AD86A.toInt()), slices = 6)
+            val r = h * 0.2f
+            val cy = y + h * 0.66f
+            val dark = 0xFF3A9A3A.toInt()
+            val shade = col(Atlas.shade(dark, 0.78f))
+            for (s in -1..1 step 2) ball(x + s * r * 0.95f, cy, z + r * 0.15f, r * 0.85f, r * 0.8f, r * 0.85f, col(dark), shade, slices = 6, lats = FLORET)
+            ball(x, cy + r * 0.45f, z, r * 1.15f, r, r * 1.05f, col(0xFF4AAA4A.toInt()), col(dark), slices = 7, lats = FLORET)
+        }
+    }
+
+    /** A cheese wedge: a triangle [s] half wide and [h] tall facing the camera, [d] half deep, with holes in it. */
+    fun wedge(x: Float, y: Float, z: Float, s: Float, h: Float, d: Float) {
+        val dir = if (rnd.nextBoolean()) 1f else -1f
+        b.prism(floatArrayOf(x - s * dir, x + s * dir, x - s * dir), floatArrayOf(y, y, y + h), z - d, z + d, col(CHEESE))
+        val hole = col(0xFFE0A020.toInt())
+        // Spots on the triangle (u across from the tall side, v up; inside while u + v < 1) and how big.
+        for (k in HOLES.indices step 3) {
+            val hx = x - s * dir + dir * HOLES[k] * 2f * s
+            val hy = y + HOLES[k + 1] * h
+            lens(hx, hy, z + d + lift, HOLES[k + 2] * s, HOLES[k + 2] * s * 0.85f, lift, hole, 7)
+        }
+    }
+
+    fun cheeseWedges(n: Int, lo: Float, hi: Float) = repeat(n) {
+        val s = r(lo, hi) * size
+        onGround(s * 0.8f) { x, y, z -> wedge(x, y - 4f, z, s, s * 1.1f, s * 0.7f) }
+    }
+
+    /** Cheese wedges as big as mountains, far away. */
+    fun cheeseMountains(n: Int, lo: Float, hi: Float) = along(n, 0.35f) { x ->
+        val h = r(lo, hi) - band.foot
+        val s = h * r(0.5f, 0.62f)
+        val d = s * 0.4f
+        wedge(x, band.foot, z(d + 2f * lift), s, h, d)
+    }
+
+    /** Giant forks stuck in the ground, prongs up. */
+    fun forks(n: Int, lo: Float, hi: Float) = repeat(n) {
+        val h = r(lo, hi)
+        onGround(h * 0.06f) { x, y, z ->
+            val s = h / 100f
+            val c = col(0xFFD8DCE8.toInt())
+            val dk = col(0xFFA8B0C4.toInt())
+            val t = 2f * s
+            block(x - 3f * s, y - 6f, z - t, x + 3f * s, y + h * 0.58f, z + t, c)
+            // The neck, widening into the head, and four prongs.
+            ball(x, y + h * 0.63f, z, 10f * s, 8f * s, t * 1.1f, c, slices = 8, lats = BALL6)
+            for (k in 0 until 4) {
+                val px = x - 9f * s + k * 5.2f * s
+                block(px, y + h * 0.63f, z - t * 0.8f, px + 2.6f * s, y + h, z + t * 0.8f, if (k % 2 == 0) c else dk)
+            }
+        }
+    }
+
+    /** Big bowls of hot tomato soup, steaming away. */
+    fun soupBowls(n: Int) = repeat(n) {
+        val s = r(16f, 22f) * size
+        onGround(s) { x, y, z ->
+            val y0 = y - 4f
+            val y1 = y + s * 0.75f
+            fun rad(at: Float) = s * (0.6f + 0.4f * (at - y0) / (y1 - y0))
+            frustum(x, y0, z, y1, s * 0.6f, s, col(0xFFF4F4FA.toInt()), slices = 10)
+            // A blue stripe around it, and the soup a little under the rim.
+            val b0 = y + s * 0.42f
+            val b1 = y + s * 0.54f
+            frustum(x, b0, z, b1, rad(b0) * 1.02f, rad(b1) * 1.02f, col(0xFF4A8AE8.toInt()), slices = 10)
+            b.disc(x, y1 - s * 0.06f, z, s * 0.95f, s * 0.95f, col(SOUP), 10)
+            val steam = col(0xFFFFFFFF.toInt())
+            for (k in 0 until 3) {
+                val ps = s * (0.2f + k * 0.05f)
+                ball(x + (k - 1) * s * 0.32f, y1 + s * (0.28f + k * 0.3f), z, ps, ps * 0.8f, ps * 0.8f, steam, slices = 6, lats = PUFF_SMALL)
+            }
+        }
+    }
+
     companion object {
         const val TAU = (2 * PI).toFloat()
         const val HALF_PI = (PI / 2).toFloat()
@@ -1232,5 +1621,22 @@ private class Kit(val band: Scenery.Band, val rnd: Random, private val haze: Int
         val PLANETS = intArrayOf(0xFFE8A84A.toInt(), 0xFF6AA8E8.toInt(), 0xFFE86A6A.toInt(), 0xFF8AD86A.toInt(), 0xFFC88AE8.toInt())
         val ROCKS = intArrayOf(0xFF6A6470.toInt(), 0xFF7A7068.toInt(), 0xFF5A5A66.toInt())
         val TOY = intArrayOf(0xFFE84A4A.toInt(), 0xFF3A7AE8.toInt(), 0xFFF4C83A.toInt(), 0xFF4AB85A.toInt())
+        /** The Big City's roofs, lit windows (warm lamps, or the cool light of offices and TVs), neon and blinking lights. */
+        const val ROOF = 0xFF4A4672.toInt()
+        val WARM = intArrayOf(0xFFFFD86A.toInt(), 0xFFFFF0B0.toInt(), 0xFFFFD86A.toInt(), 0xFFFFB04A.toInt())
+        val COOL = intArrayOf(0xFFBFE4FF.toInt(), 0xFFFFF0B0.toInt(), 0xFF8AD0FF.toInt())
+        val NEON = intArrayOf(0xFFFF4AA8.toInt(), 0xFF4AE8FF.toInt(), 0xFFFFE14D.toInt(), 0xFF7AFF6A.toInt(), 0xFFFF8A3A.toInt())
+        val BLINKS = intArrayOf(0xFFFF3A3A.toInt(), 0xFFFF3A3A.toInt(), 0xFFFFF4E0.toInt())
+        /** The Food Kingdom's cheese and tomato soup (the same as the level's), and the creamier cheese melted on hills. */
+        const val CHEESE = 0xFFFFC21A.toInt()
+        const val SOUP = 0xFFE24E24.toInt()
+        const val MELTED = 0xFFFFD866.toInt()
+        /** Latitudes for the melted cheese on top of a hill. */
+        val CHEESE_CAP = floatArrayOf(0.95f, 1.25f, HALF_PI)
+        /** A light round puff (broccoli florets, steam): a flat bottom and fewer rings. */
+        val FLORET = floatArrayOf(-0.6f, 0.3f, 1.0f, HALF_PI)
+        val PUFF_SMALL = floatArrayOf(-0.6f, 0.5f, HALF_PI)
+        /** The holes in a cheese wedge: across, up and size, for each hole. */
+        val HOLES = floatArrayOf(0.2f, 0.2f, 0.13f, 0.44f, 0.13f, 0.08f, 0.14f, 0.52f, 0.1f, 0.3f, 0.36f, 0.06f, 0.1f, 0.76f, 0.06f)
     }
 }

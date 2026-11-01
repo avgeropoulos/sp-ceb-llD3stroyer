@@ -4900,6 +4900,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     val showsLevel get() = state in IN_LEVEL && state != State.INTRO || state == State.VICTORY
 
     /**
+     * True while a level's INTRO card shows (after the circle closing on the map): a still picture, so Team Up! 3D
+     * gets the level's 3D scenery ready then.
+     */
+    val showsIntroCard get() = state == State.INTRO && !(irisFromMap && stateT < Iris.CLOSE)
+
+    /**
      * The sky behind a level. With [scenery] false only the sky itself is painted (its colours, sun, moon,
      * stars, aurora, snow...), without the flat hills, trees and mountains: Team Up! 3D builds those in 3D.
      */
@@ -7571,9 +7577,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             Place.RAINBOW -> SeaArt.space(gfx, viewW, VIEW_H, cam, time)
             Place.PREHISTORIC -> DinoArt.drawSky(gfx, viewW, VIEW_H, cam, time, scenery)
             Place.WONDER -> WonderArt.drawSky(gfx, viewW, VIEW_H, cam, time, scenery)
-            // (The Big City and the Food Kingdom have no 3D scenery yet: their painted skylines stay in 3D too.)
-            Place.CITY -> CityArt.drawSky(gfx, viewW, VIEW_H, cam, time)
-            Place.FOOD -> FoodArt.drawSky(gfx, viewW, VIEW_H, cam, time)
+            Place.CITY -> CityArt.drawSky(gfx, viewW, VIEW_H, cam, time, scenery)
+            Place.FOOD -> FoodArt.drawSky(gfx, viewW, VIEW_H, cam, time, scenery)
             Place.MARS, Place.ICE_PLANET, Place.CANDY_PLANET, Place.JUNGLE_PLANET, Place.RING_PLANET, Place.LAVA_PLANET, Place.CRYSTAL_PLANET ->
                 PlanetArt.drawSky(gfx, level.def.place, viewW, VIEW_H, cam, time, scenery)
             Place.END -> {

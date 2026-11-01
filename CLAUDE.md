@@ -76,14 +76,24 @@ scratch build to test it locally.
 
 3D scenery (`teamup3d/engine/.../Scenery.kt`): real 3D hills/trees/mountains/clouds behind every level, a `Look` per
 `Place` (STATION has none: its painted windows are the view). `Scenery.build(place, seed)` makes a `SceneryLevel` once
-per level (`TeamScene.scenery`, keyed on the `LevelDef`, seed = level index, bonus room 1000+): 4 `Band`s (NEAR -190,
-MID -500, FAR -1300, SKY clouds) of `STRIPS` ready-made strip meshes (+ a `glow` mesh drawn at `GLOW`) repeated along
+per level (`TeamScene.scenery`, seed = level index, bonus room 1000+). `TeamScene` keeps the last `KEEP_SCENERY` (2: a
+level and its bonus room, keyed on the `LevelDef`, the oldest released when a third comes; `sceneryBuilt` counts builds)
+and builds a level's during its INTRO card (`TeamGame.showsIntroCard`: after the circle closing on the map): the app
+calls `TeamScene.prepare` on every frame it draws in 2D, then `GlScene.preload` sends 2 of its meshes to the GPU per
+frame, so a level's first 3D frame makes nothing new.
+4 `Band`s (NEAR -190,
+MID -500, FAR -1300, SKY clouds) of `STRIPS` ready-made strip meshes (+ a `glow` mesh drawn at `GLOW`, and a `blink`
+mesh of little lights that blink with `time`) repeated along
 the level in a hash-picked, sometimes mirrored order, plus an optional flat `floor` (sea, lava lake, toy-room floor).
+World 14: THE BIG CITY is `skyscrapers` in two depth rows (`tower`: only lit windows are built, as quads `lift`ed off the
+wall so the phone's 16-bit depth buffer doesn't make them flicker; `seenY`/`ceilingY` = what the level and HUD leave
+visible), neon signs, water tanks, antennas, spires, a `crane`; THE FOOD KINGDOM is toast/lettuce `hills` (`cheesy`
+caps), broccoli, carrots, tomatoes, forks, cheese wedges, soup bowls, giant `tomatoHills` and `cheeseMountains`.
 Nothing comes closer than `FRONT_Z` (-80; the level's ground ends at -56). Budget: `MAX_TRIANGLES` per level,
 `MAX_DRAWN` per frame on a 600-wide screen (`SceneryTest` checks every level; report in `screens3d/scenery-budget.txt`).
 Fog (`FOG_NEAR` = 520, just past the level's farthest corner) fades it into the sky colour (`haze`). With scenery,
 `TeamScene.drawsScenery` is true and the app paints `renderLevelBackdrop(gfx, scenery = false)`: only the sky, sun,
-stars... (`Sunset`, `SeaArt.seaSky`, `GalaxyArt`, `DinoArt`, `WonderArt`, `PlanetArt.drawSky` take the same flag; the
+stars... (`Sunset`, `SeaArt.seaSky`, `GalaxyArt`, `DinoArt`, `WonderArt`, `PlanetArt`, `CityArt`, `FoodArt.drawSky` take the same flag; the
 2D game always passes true). Floating things stay below the HUD bar (`skyY`). Cloud Skies' `cloudSea` is sky blue on a
 blue `floor` (never white: the level's cloud platforms are white puffs; `TeamSceneTest.cloudPlatformsStandOutFromTheCloudSea`
 checks every SKY level against `MIN_CLOUD_CONTRAST`, report in `screens3d/sky-platforms.txt`). Camera-facing flat shapes (eyes, petals,

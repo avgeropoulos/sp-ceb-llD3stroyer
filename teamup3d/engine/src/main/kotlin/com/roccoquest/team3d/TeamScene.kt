@@ -21,7 +21,8 @@ import kotlin.math.sin
  * slides past it, which keeps everything lined up with the touch buttons and HUD.
  *
  * Behind the level stands real 3D [Scenery] (hills, trees, mountains, clouds...), built once per
- * level; when there is some, the painted backdrop leaves out its own flat hills ([drawsScenery]).
+ * level (while its INTRO card shows: [prepare]); when there is some, the painted backdrop leaves out its
+ * own flat hills ([drawsScenery]).
  */
 class TeamScene {
     val list = DrawList()
@@ -37,7 +38,15 @@ class TeamScene {
     /** Where a point of the 2D level picture shows in this 3D one (so the circle wipe closes right on the hero). */
     private val toScreen: (FloatArray) -> Unit = { p -> list.project(p[0], -p[1], 0f, p) }
 
-    private var sceneryFor: LevelDef? = null
+    /**
+     * The scenery built so far, most recently used last: the level and the room before it (a level and its bonus
+     * room), so going into a bonus room and back builds (and uploads) nothing again. What falls out is freed.
+     */
+    private val built = ArrayList<Built>(KEEP_SCENERY)
+    private class Built(val def: LevelDef, val scenery: SceneryLevel?)
+    /** How many times scenery has been built (each one is a moment's work, then a dozen meshes to upload). */
+    var sceneryBuilt = 0
+        private set
     /** The current level's 3D scenery (null where the place has none). */
     var scenery: SceneryLevel? = null
         private set
@@ -76,17 +85,38 @@ class TeamScene {
     }
 
     /**
-     * Builds the level's scenery the first time it's needed (the same for a level every time), then draws it.
+     * Gets the scenery of a level that's starting ready ahead of time. The app calls this on the frames it draws in
+     * 2D: while a level's INTRO card shows (a still picture, so a moment's work there can't be seen) it builds the
+     * level's scenery, so the level's first 3D frame has nothing new to make (and the app has time to send it to
+     * the GPU bit by bit). Costs nothing once it's ready.
+     */
+    fun prepare(g: TeamGame) {
+        if (g.showsIntroCard || g.showsLevel) scenery = sceneryOf(g.level.def)
+    }
+
+    /** The scenery of [def]: kept from before, or built now (the same for a level every time). */
+    private fun sceneryOf(def: LevelDef): SceneryLevel? {
+        val last = built.lastIndex
+        for (i in last downTo 0) {
+            val b = built[i]
+            if (b.def !== def) continue
+            if (i != last) { built.removeAt(i); built.add(b) }
+            return b.scenery
+        }
+        if (built.size >= KEEP_SCENERY) built.removeAt(0).scenery?.release()
+        val index = Levels.all.indexOf(def)
+        val s = Scenery.build(def.place, if (index >= 0) index else BONUS_SEED + def.place.ordinal)
+        built += Built(def, s)
+        sceneryBuilt++
+        return s
+    }
+
+    /**
+     * Draws the level's scenery (building it first if [prepare] didn't get the chance).
      * [sway] is how far the camera turns sideways (the title screen's camera sways).
      */
     private fun scenery(g: TeamGame, sway: Float = 0f) {
-        val def = g.level.def
-        if (def !== sceneryFor) {
-            scenery?.release()
-            sceneryFor = def
-            val index = Levels.all.indexOf(def)
-            scenery = Scenery.build(def.place, if (index >= 0) index else BONUS_SEED + def.place.ordinal)
-        }
+        scenery = sceneryOf(g.level.def)
         val s = scenery ?: return
         drawsScenery = true
         val e = list.env
@@ -94,7 +124,7 @@ class TeamScene {
         e.fog = if (g.wonder || g.state == TeamGame.State.VICTORY) RAINBOW_HAZE else s.haze
         e.fogNear = Scenery.FOG_NEAR
         e.fogFar = s.fogFar
-        s.draw(list, g.worldCam, sway)
+        s.draw(list, g.worldCam, sway, g.time)
     }
 
     /**
@@ -170,6 +200,8 @@ class TeamScene {
         const val TITLE_SWAY = 0.07f
         /** Scenery seeds for rooms that aren't one of the levels (the bonus rooms). */
         const val BONUS_SEED = 1000
+        /** How many rooms' scenery is kept: a level and its bonus room. */
+        const val KEEP_SCENERY = 2
         val RAINBOW_HAZE = 0xFFFFE8F4.toInt()
 
         val DARK = setOf(

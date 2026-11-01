@@ -30,6 +30,8 @@ import javax.imageio.ImageIO
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class TeamSceneTest {
@@ -200,14 +202,21 @@ class TeamSceneTest {
     /** With 3D scenery the painted backdrop is only the sky (no flat hills or trees), while the 2D game still paints them. */
     @Test fun backdropIsJustTheSkyBehind3DScenery() {
         startPlaying(0)
-        fun rowsWithShapes(scenery: Boolean): Int {
-            val img = BufferedImage(game.viewW.toInt(), VIEW_H.toInt(), BufferedImage.TYPE_INT_ARGB)
-            game.renderLevelBackdrop(AwtGfx(img, 1f), scenery)
-            // A plain sky gradient has one colour across each row.
-            return (0 until img.height).count { y -> (0 until img.width).any { x -> img.getRGB(x, y) != img.getRGB(0, y) } }
-        }
         assertEquals(0, rowsWithShapes(scenery = false), "only the sky")
         assertTrue(rowsWithShapes(scenery = true) > 100, "the 2D game still paints its hills, trees and clouds")
+        // World 14 too: below the stars, moon and sun, the Big City and the Food Kingdom paint only their sky.
+        for (p in listOf(Place.CITY, Place.FOOD)) {
+            startPlaying(Levels.all.indexOfFirst { it.place == p })
+            assertEquals(0, rowsWithShapes(scenery = false, from = 112), "$p: only the sky")
+            assertTrue(rowsWithShapes(scenery = true, from = 112) > 80, "$p: the 2D game still paints its skyline or food")
+        }
+    }
+
+    /** How many rows of the painted backdrop (from row [from] down) have something on the sky (a plain sky gradient has one colour across each row). */
+    private fun rowsWithShapes(scenery: Boolean, from: Int = 0): Int {
+        val img = BufferedImage(game.viewW.toInt(), VIEW_H.toInt(), BufferedImage.TYPE_INT_ARGB)
+        game.renderLevelBackdrop(AwtGfx(img, 1f), scenery)
+        return (from until img.height).count { y -> (0 until img.width).any { x -> img.getRGB(x, y) != img.getRGB(0, y) } }
     }
 
     /** The 3D scenery of every place (hills and trees, snowy pines, dunes, lava spires, space rocks...): screens3d/scenery-*.png. */
@@ -220,7 +229,7 @@ class TeamSceneTest {
             game.leader.x += 60f
             run(1.2f)
             shot(scene, "scenery-%02d-%s".format(p.ordinal, p.name.lowercase()))
-            assertEquals(p !in setOf(Place.STATION, Place.CITY, Place.FOOD), scene.drawsScenery, "$p")
+            assertEquals(p != Place.STATION, scene.drawsScenery, "$p")
         }
         // The bonus room behind a portal (its sunset place isn't used by any level).
         startPlaying(0)
@@ -230,6 +239,70 @@ class TeamSceneTest {
         assertEquals(Levels.bonusRoom, game.level.def)
         shot(scene, "scenery-%02d-bonus-room".format(Place.SUNSET.ordinal))
         assertTrue(scene.drawsScenery)
+    }
+
+    /**
+     * A level's scenery is built while its INTRO card shows (the app draws the card in 2D and calls [TeamScene.prepare]
+     * meanwhile), so the level's first 3D frame has nothing to build. It used to build it right then, and send all
+     * of it to the GPU at once: a stutter at the start of every level.
+     */
+    @Test fun sceneryIsReadyBeforeTheLevelShows() {
+        val scene = TeamScene().apply { voxelsPerFrame = Int.MAX_VALUE }
+        game.newGame(0, Mon.SPARKY)
+        for (i in listOf(5, Kingdoms.WORLD14 + 1)) {
+            game.startLevel(i)
+            assertEquals(TeamGame.State.INTRO, game.state)
+            assertTrue(game.showsIntroCard && !game.showsLevel, "the card isn't a 3D frame")
+            scene.prepare(game)
+            val ready = assertNotNull(scene.scenery, "level $i: built during its INTRO card")
+            assertEquals(Levels.all[i].place, ready.place)
+            val builds = scene.sceneryBuilt
+            var n = 0
+            while (game.state == TeamGame.State.INTRO && n++ < 400) { game.update(dt); scene.prepare(game) }
+            assertEquals(TeamGame.State.PLAY, game.state)
+            // The first 3D frame of the level.
+            scene.build(game)
+            assertTrue(scene.drawsScenery)
+            assertSame(ready, scene.scenery, "level $i: the first frame draws the scenery made during the card")
+            assertEquals(builds, scene.sceneryBuilt, "level $i: and builds nothing new")
+        }
+    }
+
+    /** Into a bonus room and back keeps the level's scenery (nothing built or sent to the GPU again); only what falls out is freed. */
+    @Test fun aBonusRoomRoundTripKeepsTheLevelsScenery() {
+        val scene = TeamScene().apply { voxelsPerFrame = Int.MAX_VALUE }
+        startPlaying(0)
+        scene.build(game)
+        val level = assertNotNull(scene.scenery)
+        val builds = scene.sceneryBuilt
+        fun portal(exit: Boolean) {
+            val l = game.leader
+            game.spawn(Portal(l.x + 2f, l.bottom, exit))
+            repeat(90) { game.update(dt); scene.build(game) }
+        }
+        portal(exit = false)
+        assertEquals(Levels.bonusRoom, game.level.def)
+        val bonus = assertNotNull(scene.scenery)
+        assertEquals(builds + 1, scene.sceneryBuilt, "the bonus room's scenery is built once")
+        portal(exit = true)
+        assertSame(Levels.all[0], game.level.def, "back in the level")
+        assertSame(level, scene.scenery, "the level's scenery was kept")
+        assertTrue(level.meshes.none { it.released })
+        // Round and round: nothing new.
+        portal(exit = false)
+        assertSame(bonus, scene.scenery)
+        portal(exit = true)
+        assertSame(level, scene.scenery)
+        assertEquals(builds + 1, scene.sceneryBuilt)
+        // The next levels push the oldest scenery out (and free it), one at a time.
+        startPlaying(1)
+        scene.build(game)
+        assertTrue(bonus.meshes.all { it.released }, "the bonus room's scenery is freed")
+        assertTrue(level.meshes.none { it.released }, "level 1-1's is still kept")
+        startPlaying(2)
+        scene.build(game)
+        assertTrue(level.meshes.all { it.released }, "then level 1-1's too")
+        assertTrue(scene.scenery!!.meshes.none { it.released })
     }
 
     /**
