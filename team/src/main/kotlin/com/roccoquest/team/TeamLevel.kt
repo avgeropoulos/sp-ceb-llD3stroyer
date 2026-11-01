@@ -132,6 +132,10 @@ enum class Place(val music: Music) {
     CRYSTAL_PLANET(Music.CRYSTAL),
     /** World 13: Wonder World, a flower kingdom with round hills that have eyes, and Talking Flowers. */
     WONDER(Music.BLOOM),
+    /** World 14: the Big City at night: skyscraper rooftops, neon signs and honking taxis. */
+    CITY(Music.METRO),
+    /** World 14: the Food Kingdom: cheese and bread to walk on, and hot soup pools (they work like lava). */
+    FOOD(Music.FEAST),
 }
 
 /**
@@ -154,6 +158,7 @@ enum class Place(val music: Music) {
  *  '>' cannon you can ride   '&' tail-spin King Krag   '+' spike bomb
  *  ';' toy soldier   ',' jack-in-the-box   '/' UFO   '<' moon hopper   '{' Mecha Krag   '}' Galaxy Krag
  *  '-' Wonder Flower   '\\' Talking Flower (World 13)
+ *  '¥' taxi   'ø' meatball   'ç' chili pepper   '§' Chef Krag (World 14: every plain letter was already taken)
  */
 class LevelDef(val name: String, val place: Place, val rows: List<String>, val tip: String) {
     val w get() = rows[0].length
@@ -192,8 +197,9 @@ class Builder(private val w: Int) {
 }
 
 /** Level characters that are bosses: Krag Jr. (J, W), King Krag (K, Q, Y), the Warden (G, and the twins 5),
- * the Ender Dragon (Z), King Boo-Hoo (3), Witch Wanda (4) and Rock Star Krag (!). */
-const val BOSS_CHARS = "JWKQGYZ345!&{}'"
+ * the Ender Dragon (Z), King Boo-Hoo (3), Witch Wanda (4), Rock Star Krag (!), the tail spin (&), Mecha Krag ({),
+ * Galaxy Krag (}), Rex Krag (') and Chef Krag (§). */
+const val BOSS_CHARS = "JWKQGYZ345!&{}'§"
 
 object Levels {
     val all: List<LevelDef> by lazy {
@@ -203,7 +209,7 @@ object Levels {
             mushroomJungle(), lavaLake(), wonderCastle(),
             villagerValley(), coralReef(), minecartMine(), enderPlains(), deepDark(),
             treasureLagoon(), spikeTemple(), fireFortress(), boneCastle(), theEnd(),
-        ).plus(World2.all).plus(MoreWorlds.all).plus(World5.all).plus(MoreWorlds.world6).plus(MoreWorlds.world7).plus(MoreWorlds.world8).plus(MoreWorlds.world9).plus(MoreWorlds.world10).plus(MoreWorlds.world11).plus(MoreWorlds.world12).plus(MoreWorlds.world13).mapIndexed { i, d -> remix(d, i) }
+        ).plus(World2.all).plus(MoreWorlds.all).plus(World5.all).plus(MoreWorlds.world6).plus(MoreWorlds.world7).plus(MoreWorlds.world8).plus(MoreWorlds.world9).plus(MoreWorlds.world10).plus(MoreWorlds.world11).plus(MoreWorlds.world12).plus(MoreWorlds.world13).plus(MoreWorlds.world14).mapIndexed { i, d -> remix(d, i) }
     }
 
     /**

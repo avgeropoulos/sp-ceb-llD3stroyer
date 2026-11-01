@@ -165,7 +165,9 @@ class TeamGameTest {
         assertTrue(Levels.all.any { d -> d.rows.any { 'G' in it } }, "the Warden")
         assertTrue(Levels.all.any { d -> d.rows.any { 'Y' in it } }, "Dry Bones King Krag")
         assertTrue(Levels.all.first { it.name == "THE GALAXY GRAND FINALE" }.rows.any { '}' in it }, "Galaxy Krag ends World 12")
-        assertTrue(Levels.all.last().rows.any { 'Q' in it } && Levels.all.last().rows.any { 'Y' in it }, "Wonder King Krag is the final boss")
+        val wonderFinale = Levels.all.first { it.name == "THE WONDER FINALE" }
+        assertTrue(wonderFinale.rows.any { 'Q' in it } && wonderFinale.rows.any { 'Y' in it }, "Wonder King Krag ends World 13")
+        assertTrue(Levels.all.last().rows.any { '§' in it }, "Chef Krag is the final boss")
         assertTrue(Levels.all.any { it.place == Place.WATER && it.shoreX > 0 }, "an underwater level")
         // Every level has Ring-Ding Frog and ore to mine.
         for (def in Levels.all) {
@@ -1062,11 +1064,11 @@ class TeamGameTest {
     @Test fun wonderWorldLevels() {
         val w13 = Wonder.WORLD13
         assertEquals(WORLD_SIZE * 12, w13)
-        val world = Levels.all.drop(w13)
+        val world = Levels.all.drop(w13).take(WORLD_SIZE)
         assertEquals(WORLD_SIZE, world.size)
         assertEquals("WONDER WELCOME", world.first().name)
         assertEquals("THE WONDER FINALE", world.last().name)
-        assertEquals("13-21", game.levelLabel(Levels.all.lastIndex))
+        assertEquals("13-21", game.levelLabel(w13 + WORLD_SIZE - 1))
         // Older levels never had the new letters, so nothing old turned into a flower.
         for (d in Levels.all.take(w13)) assertTrue(d.rows.none { r -> '-' in r || '\\' in r }, d.name)
         // New names don't clash with old ones (levels are found by name).
@@ -1086,7 +1088,7 @@ class TeamGameTest {
         val wonderX = finale.maxOf { it.indexOf('Q') }
         assertTrue(dryX in 0 until wonderX, "Dry Bones first, Wonder King Krag last")
         // Its own music: the new BLOOM tune in the flower kingdom, and lots of others.
-        val tunes = (w13 until Levels.all.size).filter { !Levels.all[it].isBossLevel }.map { TeamGame.Tunes.levelMusic(it) }
+        val tunes = (w13 until w13 + WORLD_SIZE).filter { !Levels.all[it].isBossLevel }.map { TeamGame.Tunes.levelMusic(it) }
         assertTrue(Music.BLOOM in tunes, "World 13 plays BLOOM")
         assertTrue(tunes.toSet().size >= 8, "lots of tunes in World 13: ${tunes.toSet()}")
     }
@@ -1215,12 +1217,12 @@ class TeamGameTest {
         game.render(AwtGfx(img, 3f))
         ImageIO.write(img, "png", File(dir, "map-world13.png"))
         // Beating World 13 levels is saved (World 13 has its own save number).
-        game.clearForTest(w13); game.clearForTest(Levels.all.lastIndex)
+        game.clearForTest(w13); game.clearForTest(w13 + WORLD_SIZE - 1)
         input.pause = true; game.update(dt); input.pause = false; game.update(dt)   // the map's back button saves
         assertEquals(TeamGame.State.TITLE, game.state)
         val g2 = TeamGame(TeamInput(), ears, storage)
         g2.continueGame(0)
-        assertTrue(g2.isCleared(w13) && g2.isCleared(Levels.all.lastIndex), "World 13 progress is saved")
+        assertTrue(g2.isCleared(w13) && g2.isCleared(w13 + WORLD_SIZE - 1), "World 13 progress is saved")
         assertTrue(storage.load("slot0_${clearedKey(12)}") != 0)
 
         // A game saved before World 13 existed, that had beaten the old last level (12-21): World 13 opens up.
@@ -1254,8 +1256,8 @@ class TeamGameTest {
         assertEquals(TeamGame.State.MAP, game.state)
         assertEquals(w13, game.mapSel, "the map is ready for 13-1")
         assertEquals(w13 + 1, game.unlocked)
-        // The very last level still ends the game (theEndingGoesBackToTheTitleWithoutCrashing plays it to the end).
-        assertEquals("THE WONDER FINALE", Levels.all.last().name)
+        // World 13 still ends with THE WONDER FINALE (which now leads on to World 14: see theWonderFinaleNowLeadsToTheKingdomTour).
+        assertEquals("THE WONDER FINALE", Levels.all[w13 + WORLD_SIZE - 1].name)
     }
 
     @Test fun wonderWorldScreenshots() {
@@ -1274,7 +1276,7 @@ class TeamGameTest {
             run(4f) { game.hurtProof() }   // (the camera catches up)
             shot("w13-" + name.lowercase().replace(" ", "-"))
         }
-        startPlaying(Levels.all.lastIndex)
+        startPlaying(Wonder.WORLD13 + WORLD_SIZE - 1)
         val dry = game.foes.filterIsInstance<KingKrag>().single { it.dry }
         val q = game.foes.filterIsInstance<KingKrag>().single { it.wonderStyle }
         game.foes.remove(dry)
@@ -1284,6 +1286,270 @@ class TeamGameTest {
         assertTrue(game.boss === q, "Wonder King Krag woke up")
         assertTrue(game.wonder, "and the sky went Wonder")
         shot("boss-wonder-finale")
+    }
+
+    // ======================================================================== World 14: the Kingdom Tour
+
+    private val w14 get() = Kingdoms.WORLD14
+
+    @Test fun kingdomTourLevels() {
+        assertEquals(WORLD_SIZE * 13, w14)
+        val world = Levels.all.drop(w14)
+        assertEquals(WORLD_SIZE, world.size)
+        assertEquals("NEON CITY", world.first().name)
+        assertEquals("CHEF KRAG", world.last().name)
+        assertEquals("14-1", game.levelLabel(w14))
+        assertEquals("14-21", game.levelLabel(Levels.all.lastIndex))
+        // The new letters are only used in World 14, so nothing older changed.
+        for (d in Levels.all.take(w14)) assertTrue(d.rows.none { r -> r.any { it in "¥øç§" } }, d.name)
+        val oldNames = Levels.all.take(w14).map { it.name }.toSet()
+        for (d in world) assertTrue(d.name !in oldNames, d.name)
+        // Two brand-new places (the most), mixed with older ones.
+        assertTrue(world.count { it.place == Place.CITY } >= 6, "lots of Big City")
+        assertTrue(world.count { it.place == Place.FOOD } >= 6, "lots of Food Kingdom")
+        assertTrue(world.map { it.place }.toSet().size >= 8, "lots of different kingdoms")
+        for (d in Levels.all.take(w14)) assertTrue(d.place != Place.CITY && d.place != Place.FOOD, d.name)
+        // Taxis in the city, meatballs and soup pools in the Food Kingdom, chili peppers all over.
+        fun has(d: LevelDef, c: Char) = d.rows.any { c in it }
+        for (d in world.filter { !it.isBossLevel }) {
+            if (d.place == Place.CITY) assertTrue(has(d, '¥'), "${d.name} has taxis")
+            if (d.place == Place.FOOD) assertTrue(has(d, 'ø') && has(d, 'L'), "${d.name} has meatballs and hot soup")
+        }
+        assertTrue(world.count { has(it, 'ç') } >= 8, "chili peppers in lots of levels")
+        // Bosses: Krag Jr. over the city, Mecha Krag downtown, and CHEF KRAG at the very end.
+        assertEquals(listOf(6, 13, 20), world.indices.filter { world[it].isBossLevel })
+        assertTrue(has(world[6], 'J') && has(world[13], '{') && has(world[20], '§'))
+        assertTrue('§' in BOSS_CHARS)
+        // Its own songs: METRO in the city and FEAST in the Food Kingdom, and lots of others.
+        val tunes = (w14 until Levels.all.size).filter { !Levels.all[it].isBossLevel }.map { TeamGame.Tunes.levelMusic(it) }
+        assertTrue(Music.METRO in tunes && Music.FEAST in tunes, "World 14 plays its new songs: ${tunes.toSet()}")
+        assertTrue(tunes.toSet().size >= 8, "lots of tunes in World 14: ${tunes.toSet()}")
+        assertEquals(Music.METRO, Place.CITY.music)
+        assertEquals(Music.FEAST, Place.FOOD.music)
+    }
+
+    /** Puts the leader at the start of a flat, open stretch of ground (16 tiles long) in this level. */
+    private fun standOnFlatGround() {
+        val lv = game.level
+        val x0 = (4 until lv.w - 16).first { x ->
+            (x until x + 16).all { c -> lv[c, 13] == Tile.GROUND && (2..12).all { r -> lv[c, r] == Tile.EMPTY } }
+        }
+        val l = game.leader
+        l.x = x0 * TILE + 2f; l.y = 12f * TILE + TILE - l.h; l.vx = 0f; l.vy = 0f
+        run(1f) { game.hurtProof() }
+    }
+
+    @Test fun kingdomTourBadGuysBehaveAndCanBeCaptured() {
+        val city = Levels.all.indexOfFirst { it.name == "NEON CITY" }
+        // TAXI: sees you in front of it, honks, then ZOOMS.
+        startPlaying(city)
+        standOnFlatGround()
+        game.foes.clear()
+        val l = game.leader
+        val taxi = Taxi(l.x + 110f, l.bottom).also { it.active = true; it.vx = -40f }
+        game.foes += taxi
+        var fastest = 0f
+        run(2.5f) { game.hurtProof(); fastest = maxOf(fastest, abs(taxi.vx)) }
+        assertTrue(fastest > 120f, "the taxi zoomed: $fastest")
+        assertTrue(taxi.showBar, "it has a health bar")
+        // MEATBALL: rolls faster and faster at you.
+        game.foes.clear()
+        val ball = Meatball(l.x + 120f, l.bottom).also { it.active = true; it.vx = 30f }
+        game.foes += ball
+        run(1.5f) { game.hurtProof() }
+        assertTrue(ball.vx < -60f, "the meatball rolls at you: ${ball.vx}")
+        // CHILI: spits little fireballs.
+        game.foes.clear()
+        val chili = Chili(l.x + 100f, l.bottom).also { it.active = true }
+        game.foes += chili
+        var flames = 0
+        run(3f) { game.hurtProof(); flames = maxOf(flames, game.foes.count { it is ChiliFlame }) }
+        assertTrue(flames > 0, "the chili spat fire")
+        // Cappy can capture all three, and each gives its own power.
+        assertEquals(CaptureKind.TAXI, CaptureKind.of(Taxi(0f, 0f)))
+        assertEquals(CaptureKind.MEATBALL, CaptureKind.of(Meatball(0f, 0f)))
+        assertEquals(CaptureKind.CHILI, CaptureKind.of(Chili(0f, 0f)))
+        assertNull(CaptureKind.of(ChefKrag(0f, 0f)), "bosses can't be captured")
+        for (f in listOf(Taxi(l.x + 30f, l.bottom), Meatball(l.x + 30f, l.bottom), Chili(l.x + 30f, l.bottom))) {
+            startPlaying(city)
+            standOnFlatGround()
+            game.foes.clear()
+            game.foes += f
+            game.capture(f)
+            val kind = CaptureKind.of(f)
+            assertEquals(kind, game.captureKind)
+            run(0.3f) { game.hurtProof() }
+            val shots = game.thingsForTest().count { it is Shot }
+            input.action = true; run(0.1f) { game.hurtProof() }; input.action = false
+            run(0.1f) { game.hurtProof() }
+            if (kind == CaptureKind.CHILI) assertTrue(game.thingsForTest().count { it is Shot } > shots, "a captured chili breathes fire")
+            val img = BufferedImage((game.viewW * 2).toInt(), 480, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 2f))
+            game.releaseCapture()
+        }
+        // Stomping them works like any bad guy.
+        startPlaying(city)
+        standOnFlatGround()
+        game.foes.clear()
+        val t2 = Taxi(l.x + 40f, l.bottom).also { it.active = true }
+        game.foes += t2
+        l.x = t2.cx - l.w / 2; l.y = t2.y - l.h - 6f; l.vy = 200f
+        run(0.3f) { game.hurtProof() }
+        assertTrue(t2.dying || t2.removed, "stomped the taxi")
+    }
+
+    @Test fun hotSoupWorksLikeLava() {
+        val food = Levels.all.indexOfFirst { it.name == "SOUP SPRINGS" }
+        startPlaying(food)
+        assertEquals(Place.FOOD, game.level.def.place)
+        game.foes.clear()
+        // Find a soup pool and drop Rocco in it.
+        val tx = (0 until game.level.w).first { game.level[it, 13] == Tile.LAVA }
+        val l = game.leader
+        game.noInvulnForTest()
+        val hearts = game.hearts
+        l.x = tx * TILE.toFloat(); l.y = 11f * TILE
+        run(1.5f)
+        assertTrue(game.hearts < hearts || game.state == TeamGame.State.OUCH, "the soup is HOT")
+    }
+
+    @Test fun chefKragIsBeatenByTheBot() {
+        val dir = File("build/screens").apply { mkdirs() }
+        startPlaying(Levels.all.lastIndex)
+        assertEquals("CHEF KRAG", game.level.def.name)
+        val chef = game.foes.filterIsInstance<ChefKrag>().single()
+        game.foes.retainAll(setOf(chef))
+        val l = game.leader
+        // (On the kitchen floor, not up on a toast ledge: the flowers fly straight at him from down here.)
+        l.x = chef.homeX - 100f; l.y = chef.bottom - l.h - 1f
+        run(8f) { game.hurtProof() }
+        assertTrue(game.boss === chef, "Chef Krag noticed us")
+        assertTrue(chef.awake)
+        assertTrue(game.thingsForTest().any { it is SoupPot }, "his soup pot is in the kitchen")
+        // He throws pies and bowls meatballs.
+        var pies = 0; var balls = 0
+        run(7f) { game.hurtProof(); pies = maxOf(pies, game.foes.count { it is Pie }); balls = maxOf(balls, game.foes.count { it is BigMeatball }) }
+        assertTrue(pies > 0, "pies!")
+        assertTrue(balls > 0, "meatball bowling!")
+        val img = BufferedImage((game.viewW * 3).toInt(), 240 * 3, BufferedImage.TYPE_INT_ARGB)
+        game.render(AwtGfx(img, 3f))
+        ImageIO.write(img, "png", File(dir, "boss-chef-krag.png"))
+        // The bot: Ice Flowers, facing him and throwing until he's beaten (he stirs his soup when he's angry).
+        game.inventory[Ore.DIAMOND.ordinal] = 9
+        repeat(3) { game.craft(game.recipes(0).indexOfFirst { it.icon == Power.ICE }, tab = 0) }
+        var t = 0f
+        var stirred = false
+        while (chef.hp > 0 && t < 120f) {
+            game.hurtProof()
+            l.facing = if (chef.cx > l.cx) 1 else -1
+            // Keep a little way from him, on his level.
+            if (abs(chef.cx - l.cx) < 50f) l.x += if (chef.cx > l.cx) -2f else 2f
+            input.action = (t * 10).toInt() % 2 == 0
+            game.update(dt)
+            t += dt
+            if (game.foes.count { it is Pie } >= 3) stirred = true
+        }
+        input.action = false
+        assertEquals(0, chef.hp, "beat Chef Krag in ${t}s")
+        assertTrue(stirred, "he stirred his soup pot when he got angry")
+        // It's the end of the game: stickers, then the victory dance.
+        var n = 0
+        while (game.state != TeamGame.State.STICKER && n++ < 60 * 10) { game.hurtProof(); game.update(dt) }
+        assertEquals(TeamGame.State.STICKER, game.state)
+        game.pickSticker(0)
+        run(4f)
+        assertEquals(TeamGame.State.VICTORY, game.state)
+        val img2 = BufferedImage((game.viewW * 3).toInt(), 240 * 3, BufferedImage.TYPE_INT_ARGB)
+        game.render(AwtGfx(img2, 3f))
+        ImageIO.write(img2, "png", File(dir, "w14-victory.png"))
+    }
+
+    @Test fun theWonderFinaleNowLeadsToTheKingdomTour() {
+        startPlaying(w14 - 1)
+        assertEquals("THE WONDER FINALE", game.level.def.name)
+        var t = 0
+        while (game.state == TeamGame.State.PLAY && t++ < 60 * 90) {
+            game.hurtProof()
+            for (f in game.foes.toList()) if (f.boss && f.hp > 0) f.hit(game, 50)
+            if (game.boss == null) game.leader.x += 3f
+            game.update(dt)
+        }
+        assertEquals(TeamGame.State.CLEAR, game.state, "not the end any more")
+        assertTrue("WORLD 14 IS NEXT" in game.clearNoteForTest(), game.clearNoteForTest())
+        run(4f)
+        assertEquals(TeamGame.State.STICKER, game.state)
+        game.pickSticker(0)
+        run(3f)
+        if (game.state == TeamGame.State.SCENE) { run(1f); tap(game.viewW / 2, 120f) }
+        assertEquals(TeamGame.State.MAP, game.state)
+        assertEquals(w14, game.mapSel, "the map is ready for 14-1")
+        assertEquals(w14 + 1, game.unlocked)
+        assertEquals("CHEF KRAG", Levels.all.last().name, "Chef Krag is the end of the game now")
+    }
+
+    @Test fun worldMapAndSavesForTheKingdomTour() {
+        val dir = File("build/screens").apply { mkdirs() }
+        startPlaying()
+        game.unlockForTest(Levels.all.size)
+        game.goToMap(w14 + 9); run(0.5f)
+        assertEquals(13, game.mapWorld)
+        val img = BufferedImage((game.viewW * 3).toInt(), 240 * 3, BufferedImage.TYPE_INT_ARGB)
+        game.render(AwtGfx(img, 3f))
+        ImageIO.write(img, "png", File(dir, "map-world14.png"))
+        // Beating World 14 levels is saved (in its own save number).
+        game.clearForTest(w14); game.clearForTest(Levels.all.lastIndex)
+        input.pause = true; game.update(dt); input.pause = false; game.update(dt)
+        assertEquals(TeamGame.State.TITLE, game.state)
+        val g2 = TeamGame(TeamInput(), ears, storage)
+        g2.continueGame(0)
+        assertTrue(g2.isCleared(w14) && g2.isCleared(Levels.all.lastIndex), "World 14 progress is saved")
+        assertTrue(storage.load("slot0_${clearedKey(13)}") != 0)
+        // A game saved before World 14 existed, that had beaten the old last level (13-21): World 14 opens up.
+        val old = Storage.Memory().apply { save("gift1", 1); save("gift2", 1) }
+        for (w in 0 until 13) old.save("slot0_${clearedKey(w)}", (1 shl WORLD_SIZE) - 1)
+        old.save("slot0_unlocked", w14)
+        old.save("slot0_level", w14)
+        val g3 = TeamGame(TeamInput(), ears, old)
+        g3.continueGame(0)
+        assertEquals(w14 + 1, g3.unlocked, "14-1 is open")
+        assertFalse(g3.isCleared(w14))
+    }
+
+    @Test fun kingdomTourScreenshots() {
+        val dir = File("build/screens").apply { mkdirs() }
+        fun shot(name: String) {
+            val img = BufferedImage((game.viewW * 3).toInt(), 240 * 3, BufferedImage.TYPE_INT_ARGB)
+            game.render(AwtGfx(img, 3f))
+            ImageIO.write(img, "png", File(dir, "$name.png"))
+        }
+        // The title card names the kingdom (with a little picture of it).
+        for ((name, file) in listOf("ROOFTOP RUN" to "w14-intro-city", "FOOD KINGDOM" to "w14-intro-food")) {
+            game.newGame(0, Mon.SPARKY)
+            game.startLevel(Levels.all.indexOfFirst { it.name == name })
+            run(1f)
+            assertEquals(TeamGame.State.INTRO, game.state)
+            shot(file)
+        }
+        // The Big City: rooftops, a taxi about to honk, and a chili pepper.
+        startPlaying(w14)
+        val taxi = game.foes.filterIsInstance<Taxi>().minBy { it.x }
+        val l = game.leader
+        l.x = taxi.x - 110f; l.y = 100f
+        run(1.6f) { game.hurtProof() }
+        shot("w14-big-city")
+        // The Food Kingdom: cheese, bread, soup pools, meatballs.
+        startPlaying(Levels.all.indexOfFirst { it.name == "SOUP SPRINGS" })
+        val pool = (0 until game.level.w).first { game.level[it, 13] == Tile.LAVA }
+        l.x = (pool - 9) * TILE.toFloat(); l.y = 100f
+        run(1.6f) { game.hurtProof() }
+        shot("w14-food-kingdom")
+        // Every level of the tour, a little way in.
+        for (i in w14 until Levels.all.size) {
+            startPlaying(i)
+            l.x += 30f * TILE; l.y = 40f
+            run(1.6f) { game.hurtProof() }
+            shot("w14-level-%02d".format(i - w14 + 1))
+        }
     }
 
     private fun spawnTestDino(c: Char, x: Float, bottom: Float): Foe = when (c) {
@@ -2873,7 +3139,8 @@ class TeamGameTest {
         game.newGame(0, Mon.SPARKY)
         game.startLevel(Levels.all.lastIndex)
         repeat(200) { frame() }
-        // Beat both bosses.
+        // Start near the first boss (the road to Chef Krag's kitchen has hot soup pools), then beat every boss.
+        game.foes.filter { it.boss }.minByOrNull { it.x }?.let { game.leader.x = it.x - 200f }
         var t = 0
         while (game.state != TeamGame.State.STICKER && t++ < 60 * 60) {
             game.hurtProof()
@@ -3842,8 +4109,8 @@ class TeamGameTest {
     }
 
     @Test fun fourWorldsAndNewEnemies() {
-        assertEquals(273, Levels.all.size)
-        assertEquals(13, worldCount())
+        assertEquals(294, Levels.all.size)
+        assertEquals(14, worldCount())
         val ultimate = Levels.all.first { it.name == "THE ULTIMATE BATTLE" }
         assertTrue(ultimate.rows.any { 'Z' in it } && ultimate.rows.any { 'Q' in it })
         for (c in "zqlj") assertTrue(Levels.all.count { d -> d.rows.any { c in it } } >= 3, "new monster $c is in levels")

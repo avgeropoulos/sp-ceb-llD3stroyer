@@ -1007,6 +1007,53 @@ object Songs {
         leadDuty = 0.25f,
     )
 
+    // ------------------------------------------------------------------ World 14, the Big City: a jazzy swing tune in C
+    private val metroChords = listOf(
+        "C3 G3 E4 A4", "A2 E3 G4 C5", "D3 A3 F4 C5", "G2 D3 F4 B4",
+        "E2 B2 G#4 D5", "A2 E3 G4 C5", "D3 A3 F4 C5", "G2 D3 F4 B4",
+    )
+    val metro = Song(
+        bpm = 160,
+        lead = """
+            E5/2 G5/2 A5/2 C6/3 A5/1 G5/2 E5/4
+            -/2 E5/2 G5/2 A5/2 C6/4 B5/2 A5/2
+            D5/2 F5/2 A5/2 C6/2 D6/3 C6/1 A5/4
+            B5/2 A5/2 G5/2 F5/2 D5/4 G5/4
+            G#5/2 B5/2 D6/2 E6/2 -/2 D6/2 B5/4
+            C6/2 A5/2 E5/2 A5/2 G5/3 A5/1 C6/4
+            F5/2 A5/2 D6/2 F6/2 E6/2 D6/2 C6/2 A5/2
+            B5/4 D6/2 B5/2 G5/8
+        """,
+        harmony = offbeats(metroChords),
+        // A walking bass, like a big band.
+        bass = """
+            C3/4 E3/4 G3/4 A3/4  A2/4 C3/4 E3/4 G3/4  D3/4 F3/4 A3/4 C3/4  G2/4 B2/4 D3/4 F3/4
+            E2/4 G#2/4 B2/4 D3/4  A2/4 G2/4 E2/4 G2/4  D3/4 E3/4 F3/4 A3/4  G2/4 A2/4 B2/4 D3/4
+        """,
+        drums = "k..hs.hhk.h.s.hh",
+        leadDuty = 0.5f,
+    )
+
+    // ------------------------------------------------------------------ World 14, the Food Kingdom: a happy, spinning dance in A minor
+    private val feastChords = listOf(Am, Dm, G, C, F, Dm, "E2 B2 G#4 B4", Am)
+    val feast = Song(
+        bpm = 176,
+        lead = """
+            E5/2 A5/2 C6/2 A5/2 E5/2 A5/2 C6/4
+            D6/2 C6/2 A5/2 F5/2 D5/4 F5/4
+            G5/2 B5/2 D6/2 B5/2 G5/2 F5/2 D5/4
+            E5/2 G5/2 C6/2 E6/2 C6/8
+            A5/2 C6/2 F6/2 C6/2 A5/2 C6/2 F6/4
+            F6/2 E6/2 D6/2 A5/2 F5/2 A5/2 D6/4
+            E6/2 D6/2 B5/2 G#5/2 E5/2 G#5/2 B5/4
+            A5/4 E5/2 C5/2 A4/8
+        """,
+        harmony = offbeats(feastChords),
+        bass = oomPahBass(feastChords),
+        drums = "k.hhs.hhk.hhs.hs",
+        leadDuty = 0.25f,
+    )
+
     // ------------------------------------------------------------------ TEAM UP! The theme song (sung!)
     private val themeChords = listOf("D3 A3 F#4 A4", "A2 E3 C#4 E4", "D3 A3 F#4 A4", "A2 E3 C#4 E4", "B2 F#3 D4 F#4", "G2 D3 B3 D4", "D3 A3 F#4 A4", "A2 E3 C#4 E4", "G2 D3 B3 D4", "A2 E3 C#4 E4", "G2 D3 B3 D4", "A2 E3 C#4 E4", "D3 A3 F#4 A4", "B2 F#3 D4 F#4", "G2 D3 B3 D4", "A2 E3 C#4 E4", "D3 A3 F#4 A4", "D3 A3 F#4 A4")
     val theme = Song(
@@ -1088,5 +1135,7 @@ object Songs {
         Music.PARADE -> parade
         Music.THEME -> theme
         Music.BLOOM -> bloom
+        Music.METRO -> metro
+        Music.FEAST -> feast
     }
 }

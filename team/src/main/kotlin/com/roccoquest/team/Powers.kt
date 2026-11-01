@@ -31,6 +31,10 @@ enum class CaptureKind(val label: String, val speed: Float, val jump: Float, val
     REX("BABY REX", 1.15f, 1.1f, "THROW: a big ROAR!"),
     /** A fish out of water (Wonder King Krag's magic): slow, and it can't stop flopping! */
     FLOPPY("FLOPPY FISH", 0.6f, 0.75f, "Flop flop flop! You can still stomp him!"),
+    // The Kingdom Tour (World 14)
+    TAXI("TAXI", 1.9f, 1f, "Beep beep! Super fast! THROW: HONK and zoom!"),
+    MEATBALL("MEATBALL", 1.3f, 1.1f, "THROW: a rolling meatball dash!"),
+    CHILI("CHILI PEPPER", 1.1f, 1.2f, "THROW: spicy fire breath!"),
     ;
 
     companion object {
@@ -53,6 +57,9 @@ enum class CaptureKind(val label: String, val speed: Float, val jump: Float, val
             f is Stegosaurus -> STEGO
             f is Ankylosaurus -> ANKYLO
             f is BabyRex -> REX
+            f is Taxi -> TAXI
+            f is Meatball -> MEATBALL
+            f is Chili -> CHILI
             f.maxHp > 20 -> null
             else -> OTHER
         }

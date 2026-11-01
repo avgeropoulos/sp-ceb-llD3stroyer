@@ -8,6 +8,9 @@ import com.roccoquest.game.VIEW_H
 import com.roccoquest.team.Dennis
 import com.roccoquest.team.HerculesArt
 import com.roccoquest.team.Levels
+import com.roccoquest.team.ChefKrag
+import com.roccoquest.team.Kingdoms
+import com.roccoquest.team.Tile
 import com.roccoquest.team.Armor
 import com.roccoquest.team.Shield
 import com.roccoquest.team.Sword
@@ -146,7 +149,7 @@ class TeamSceneTest {
 
     @Test fun screenshots() {
         val scene = TeamScene().apply { voxelsPerFrame = Int.MAX_VALUE }
-        val picks = listOf(0, 3, 21, 43, 70, 85, 106, 127, 150, 170, 190, 211, 232, 252, 263)
+        val picks = listOf(0, 3, 21, 43, 70, 85, 106, 127, 150, 170, 190, 211, 232, 252, 263, 274, 285)
         for (i in picks) {
             if (i >= Levels.all.size) continue
             startPlaying(i)
@@ -155,6 +158,29 @@ class TeamSceneTest {
             val name = Levels.all[i].name.lowercase().replace(Regex("[^a-z0-9]+"), "-")
             shot(scene, "level-%03d-%s".format(i, name))
         }
+    }
+
+    /** World 14 in 3D: the Big City's rooftops, the Food Kingdom's hot soup, and Chef Krag in his kitchen. */
+    @Test fun kingdomTourIn3D() {
+        val scene = TeamScene().apply { voxelsPerFrame = Int.MAX_VALUE }
+        val soupy = Levels.all.indexOfFirst { it.name == "SOUP SPRINGS" }
+        startPlaying(soupy)
+        val pool = (0 until game.level.w).first { game.level[it, 13] == Tile.LAVA }
+        game.leader.x = (pool - 8) * 16f
+        run(1.5f)
+        shot(scene, "kingdom-food-soup")
+        startPlaying(Kingdoms.WORLD14 + 1)
+        game.leader.x += 40 * 16f; game.leader.y = 40f
+        run(1.5f)
+        shot(scene, "kingdom-big-city")
+        startPlaying(Levels.all.lastIndex)
+        val chef = game.foes.filterIsInstance<ChefKrag>().single()
+        game.leader.x = chef.homeX - 110f
+        run(3.2f)
+        assertTrue(game.boss === chef, "Chef Krag woke up")
+        val list = scene.build(game)
+        assertTrue(list.showWorld && list.count > 10)
+        shot(scene, "kingdom-chef-krag")
     }
 
     /** Dennis (Hercules from the Hercules and Apollo game) turns into a puffy 3D dog like everyone else. */
