@@ -3347,7 +3347,7 @@ class TeamGameTest {
             game.hurtProof()
             if (k.mode == 0 || k.mode == 3) {
                 // Sneak behind him (any side works while he's dizzy).
-                val side = if (k.mode == 3) 1 else if (k.vx >= 0f) -1 else 1
+                val side = if (k.mode == 3) 1 else -k.facing
                 l.x = k.cx + side * 22f - l.w / 2; l.y = k.bottom - l.h; l.vx = 0f
                 input.action = true; game.update(dt); input.action = false
                 game.update(dt)
@@ -3363,6 +3363,29 @@ class TeamGameTest {
         assertTrue(k.dying, "thrown into the spike bombs 3 times (${k.hp} left after $tries tries)")
         run(6f) { game.hurtProof() }
         assertTrue(game.state == TeamGame.State.CLEAR || game.state == TeamGame.State.STICKER, "level clear (${game.state})")
+    }
+
+    @Test fun kragsTailIsEasyToGrabFromBehind() {
+        startPlaying(Levels.all.indexOfFirst { it.name == "KRAG'S TAIL SPIN" })
+        val l = game.leader
+        val k = game.foes.filterIsInstance<TailKrag>().single()
+        game.foes.retainAll(setOf(k))
+        l.x = k.x - 120f; l.y = 120f
+        run(4f) { game.hurtProof() }
+        assertTrue(game.boss === k, "he noticed us")
+        // Stand right at his back for 2 seconds: he doesn't turn round, and bumping his back doesn't hurt.
+        val hearts = game.hearts
+        l.x = k.cx - k.facing * 18f - l.w / 2; l.y = k.bottom - l.h; l.vx = 0f
+        val facing = k.facing
+        run(2f)
+        assertEquals(facing, k.facing, "he hasn't turned round yet")
+        assertEquals(hearts, game.hearts, "his back doesn't hurt")
+        // A tap a moment before getting close enough still grabs his tail.
+        l.x = k.cx - k.facing * 60f - l.w / 2; l.vx = 0f
+        input.action = true; game.update(dt); input.action = false
+        l.x = k.cx - k.facing * 40f - l.w / 2
+        run(0.1f)
+        assertEquals(1, k.mode, "got his tail")
     }
 
     @Test fun erasedSavesCanBeRecovered() {

@@ -116,7 +116,8 @@ class TailKrag(x: Float, private val ground: Float) : Foe(x - 10, ground - 40, 3
     override val boss = true
     override val showBar = true
     private var t = 0f
-    private var facing = -1
+    var facing = -1
+        private set
     private var fireTimer = 3f
     /** 0 walking, 1 grabbed and spinning, 2 thrown through the air, 3 dizzy. */
     var mode = 0
@@ -125,6 +126,10 @@ class TailKrag(x: Float, private val ground: Float) : Foe(x - 10, ground - 40, 3
     var spin = 0f
         private set
     private var grabT = 0f
+    /** How long the leader has been behind him (he only turns round after a while, so you have time to grab). */
+    private var behindT = 0f
+    /** ACTION was pressed a moment ago (a tap a little early or a little far still grabs). */
+    private var grabBuf = 0f
     private var dizzyT = 0f
     private var tipT = 0f
     private val look = KingKrag(x, ground)
@@ -146,9 +151,12 @@ class TailKrag(x: Float, private val ground: Float) : Foe(x - 10, ground - 40, 3
             0, 3 -> {
                 if (mode == 3) { dizzyT -= dt; vx = 0f; if (dizzyT <= 0f) mode = 0 }
                 else {
+                    // He's slow to notice someone sneaking up behind him: about 2.5 s before he turns round.
                     val want = if (l.cx < cx) -1 else 1
-                    if (want != facing && (t % 1.2f) < dt * 2) facing = want
-                    if (onGround) vx = facing * 26f
+                    if (want != facing) behindT += dt else behindT = 0f
+                    if (behindT > TURN_AFTER) { facing = want; behindT = 0f }
+                    // He stomps along slowly, and stands still while someone is right at his back.
+                    if (onGround) vx = if (want != facing && abs(l.cx - cx) < 60f) 0f else facing * 22f
                     fireTimer -= dt
                     if (fireTimer <= 0f) {
                         fireTimer = 3.2f
@@ -158,8 +166,12 @@ class TailKrag(x: Float, private val ground: Float) : Foe(x - 10, ground - 40, 3
                 }
                 walk(g, dt)
                 // Grab the tail: from behind (or any side while he's dizzy).
-                val behind = (l.cx - cx) * facing < 0 || mode == 3
-                if (g.actionTap && behind && abs(l.cx - cx) < 34f && abs(l.bottom - bottom) < 22f && g.grabbing == null && g.cannonFlyT <= 0f) {
+                // (Standing right on top of him counts as behind too, and a tap is remembered for a moment.)
+                if (g.actionTap) grabBuf = 0.3f else if (grabBuf > 0f) grabBuf -= dt
+                val behind = (l.cx - cx) * facing < 6f || mode == 3
+                if (grabBuf > 0f && behind && abs(l.cx - cx) < 50f && abs(l.bottom - bottom) < 34f && g.grabbing == null && g.cannonFlyT <= 0f) {
+                    grabBuf = 0f
+                    behindT = 0f
                     mode = 1
                     grabT = 0f
                     spin = 3f
@@ -245,7 +257,13 @@ class TailKrag(x: Float, private val ground: Float) : Foe(x - 10, ground - 40, 3
         if (tipT <= 0f) { tipT = 4f; g.say(cx, y - 8, "Ow, my head! Try my TAIL!", 1.6f) }
     }
 
-    override fun touch(g: TeamGame) { if (mode == 0) g.hurt(this) }
+    /** Bumping into his back (where his tail is) doesn't hurt: only his front does. */
+    private companion object {
+        /** Seconds someone can stand behind him before he turns round. */
+        const val TURN_AFTER = 2.5f
+    }
+
+    override fun touch(g: TeamGame) { if (mode == 0 && (g.leader.cx - cx) * facing > 6f) g.hurt(this) }
 
     override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
         look.x = x; look.y = y; look.vx = vx; look.facing = facing
