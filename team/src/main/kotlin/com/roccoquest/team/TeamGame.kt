@@ -271,6 +271,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     val flowerLevel = IntArray(Power.entries.size)
     /** The flower Rocco had before a Wonder power-up: a hit knocks the power-up off and he goes back to it. */
     private var powerBefore = Power.NONE
+    /**
+     * Wonder power-ups a hit knocked off (POOF!): they cost ore to make again (or come back from a power block).
+     * A free EQUIP would be a shield that never runs out. Saved as `poofed_<NAME>`.
+     */
+    private val poofed = BooleanArray(Power.entries.size)
     /** Drill Rocco squatting on a breakable block: counts up to [PowerUps.DRILL_DOWN_TIME], then he drills down. */
     private var drillDownT = 0f
 
@@ -635,6 +640,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         storage.save(key("mon"), mon.ordinal + 1)
         Ore.entries.forEach { storage.save(key("ore_${it.name}"), inventory[it.ordinal]) }
         Power.entries.forEach { storage.save(key("flower_${it.name}"), flowerLevel[it.ordinal]) }
+        PowerUps.ALL.forEach { storage.save(key("poofed_${it.name}"), if (poofed[it.ordinal]) 1 else 0) }
         storage.save(key("pick"), pickTier)
         storage.save(key("power"), power.ordinal)
         storage.save(key("coins"), coins)
@@ -734,6 +740,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun loadSlot() {
         Ore.entries.forEach { inventory[it.ordinal] = storage.load(key("ore_${it.name}")) }
         Power.entries.forEach { flowerLevel[it.ordinal] = storage.load(key("flower_${it.name}")) }
+        PowerUps.ALL.forEach { poofed[it.ordinal] = storage.load(key("poofed_${it.name}")) > 0 }
         pickTier = storage.load(key("pick")).coerceIn(1, 5)
         power = Power.entries.getOrElse(storage.load(key("power"))) { Power.NONE }
         if (flowerLevel[power.ordinal] == 0) power = Power.NONE
@@ -888,6 +895,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         this.mon = mon
         inventory.fill(0)
         flowerLevel.fill(0)
+        poofed.fill(false)
         pickTier = 1
         power = Power.NONE
         powerBefore = Power.NONE
@@ -2599,6 +2607,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         // Once found, it's on the crafting table's WONDER tab too (like Cappy).
         flowerLevel[p.ordinal] = maxOf(1, flowerLevel[p.ordinal])
         power = p
+        poofed[p.ordinal] = false
         if (riding == null && dino == null) switchTo(Who.ROCCO)
         val r = rocco
         for (i in 0 until 10) particles += Sparkle(r.cx, r.cy, kotlin.math.cos(i * 0.63f) * 90f, sin(i * 0.63f) * 90f, solidRainbow(i / 10f))
@@ -2612,11 +2621,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val r = rocco
         val lost = power
         power = if (flowerLevel[powerBefore.ordinal] > 0 && !PowerUps.isWonder(powerBefore)) powerBefore else Power.NONE
+        // Gone for real: putting it back on costs ore again (a free EQUIP would undo every hit).
+        poofed[lost.ordinal] = true
         r.drillSpin = 0f
         drillDownT = 0f
         puff(r.cx, r.y + 4f); puff(r.cx - 6f, r.cy); puff(r.cx + 6f, r.cy)
         particles += FloatText(r.cx, r.y - 6f, "POOF!", 0xFFFFFFFF.toInt())
-        toast("POOF! No more ${lost.label}. CRAFT > WONDER puts it back on!")
+        toast("POOF! No more ${lost.label}. Make a new one at CRAFT > WONDER!")
     }
 
     /** True for blocks a drill or a trunk breaks right through: bricks, stone and ore (never ground, hard blocks or bedrock). */
@@ -2674,12 +2685,26 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun drillDown(h: Hero) {
         val ty = tileOf(h.bottom + 2f)
         val tx = tileOf(h.cx)
-        if (!drillable(tx, ty)) return
+        if (!drillable(tx, ty) || !floorBelow(tx, ty + 1)) return
         // Line him up over the hole, so he drops right in.
         h.x = tx * TILE + (TILE - h.w) / 2f
         drillBlock(tx, ty)
         h.drillSpin = 0.25f
         h.crouching = false
+    }
+
+    /**
+     * True when the column under row [from] reaches a floor the drill can't go through (ground, hard blocks, bedrock)
+     * before any lava or spikes. A ship's planks or a ledge over a pit have nothing under them: drilling there
+     * would drop Rocco right out of the bottom of the level.
+     */
+    private fun floorBelow(tx: Int, from: Int): Boolean {
+        for (y in from until level.h) {
+            val t = level[tx, y]
+            if (t == Tile.LAVA || t == Tile.SPIKES) return false
+            if (Tile.solid(t) && !drillable(tx, y)) return true
+        }
+        return false
     }
 
     /** Bubble Rocco blows a bubble: two can be out at once (more as the Bubble Flower levels up). */
@@ -2962,7 +2987,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun has(costs: List<Pair<Ore, Int>>, coinCost: Int) =
         costs.all { (o, n) -> inventory[o.ordinal] >= n } && coins >= coinCost
 
-    /** A flower (or Wonder power-up) on the crafting table: make it, level it up, or put it back on for free. */
+    /**
+     * A flower (or Wonder power-up) on the crafting table: make it, level it up, or put it back on for free.
+     * A Wonder power-up that a hit knocked off ([poofed]) isn't free: MAKE costs the ore again (and levels it up).
+     */
     private fun flowerRecipe(p: Power): Recipe {
         val lvl = flowerLevel[p.ordinal]
         val ore = p.ore!!
@@ -2983,7 +3011,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val cappyLocked = p == Power.CAPPY && lvl == 0 && clearedCount() < CAPPY_LEVELS
         val (button, enabled) = when {
             cappyLocked -> "LOCKED" to false
-            lvl == 0 -> "MAKE" to has(costs, 0)
+            lvl == 0 || poofed[p.ordinal] -> "MAKE" to has(costs, 0)
             power != p -> "EQUIP" to true
             lvl >= MAX_FLOWER_LV -> "MAX" to false
             else -> "Lv${lvl + 1}" to has(costs, 0)
@@ -3101,6 +3129,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 } else {
                     flowerLevel[p.ordinal] = min(MAX_FLOWER_LV, flowerLevel[p.ordinal] + 1)
                     power = p
+                    poofed[p.ordinal] = false
                     if (p == Power.GRASS) armor = min(MAX_ARMOR, flowerLevel[p.ordinal] + 2)
                     toast(if (PowerUps.isWonder(p) && flowerLevel[p.ordinal] == 1) PowerUps.hint(p) else "${p.label} Lv${flowerLevel[p.ordinal]}!")
                 }
@@ -4058,9 +4087,23 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             sfx(Sound.HURT)
             if (hearts <= 0) { knockedOut(); return }
             toast(if (level.inLava(h)) "Hot hot hot! Watch out for lava!" else "Whoops! Mind the gap!")
-            placeTeam(safeX - leader.facing * 8f, safeY)
+            // The safe spot can be gone by now (drilled, mined or caved in): never put him back over a hole,
+            // or he'd fall again and again. With no ground anywhere near, back to the checkpoint.
+            val x = standX(safeX, safeY)
+            if (x != null) placeTeam(x - leader.facing * 8f, safeY) else placeTeam(respawnX, respawnY)
             invuln = HURT_SAFE_TIME
         }
+    }
+
+    /** [x] if there's still ground to stand on at [bottom], else the nearest spot in that row that has some (null if none is close). */
+    private fun standX(x: Float, bottom: Float): Float? {
+        val row = tileOf(bottom + 2)
+        val c = tileOf(x + 6)
+        if (Tile.solid(level[c, row]) || level[c, row] == Tile.CLOUD) return x
+        for (d in 1..30) for (cc in listOf(c - d, c + d)) {
+            if (cc in 1 until level.w - 1 && Tile.solid(level[cc, row]) && !Tile.solid(level[cc, row - 1])) return cc * TILE + 2f
+        }
+        return null
     }
 
     // ======================================================================== Partner, frog and bosses
@@ -6917,17 +6960,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         sfx(Sound.BREAK)
         shake = 0.8f
         // Don't respawn anyone over a brand new pit.
-        fun solidX(x: Float, bottom: Float): Float {
-            val row = tileOf(bottom + 2)
-            val c = tileOf(x + 6)
-            if (Tile.solid(level[c, row])) return x
-            for (d in 1..30) for (cc in listOf(c - d, c + d)) {
-                if (cc in 1 until level.w - 1 && Tile.solid(level[cc, row]) && !Tile.solid(level[cc, row - 1])) return cc * TILE + 2f
-            }
-            return x
-        }
-        safeX = solidX(safeX, safeY)
-        respawnX = solidX(respawnX, respawnY)
+        safeX = standX(safeX, safeY) ?: safeX
+        respawnX = standX(respawnX, respawnY) ?: respawnX
         quakeCols.clear()
     }
 

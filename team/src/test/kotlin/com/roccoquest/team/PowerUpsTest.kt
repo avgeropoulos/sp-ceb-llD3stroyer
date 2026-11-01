@@ -109,12 +109,33 @@ class PowerUpsTest {
             game.noInvulnForTest()
             game.hurt()
             assertEquals(hearts - 1, game.hearts)
-            // It's free to put back on at the crafting table.
+            // Knocked off means gone: it isn't a free EQUIP at the crafting table (or every hit could be undone),
+            // it costs the ore again.
             val tab = TeamGame.TABS.indexOf("WONDER")
             val row = game.recipes(tab).indexOfFirst { it.icon == p }
-            assertEquals("EQUIP", game.recipes(tab)[row].button)
+            val recipe = game.recipes(tab)[row]
+            assertEquals("MAKE", recipe.button)
+            assertEquals(listOf(p.ore!! to TeamGame.COST), recipe.costs)
+            game.inventory[p.ore!!.ordinal] = 0
+            game.craft(row, tab)
+            assertEquals(Power.FIRE, game.power, "no ore, no $p")
+            game.inventory[p.ore!!.ordinal] = TeamGame.COST
             game.craft(row, tab)
             assertEquals(p, game.power)
+            assertEquals(0, game.inventory[p.ore!!.ordinal], "paid for")
+            assertEquals(2, game.flowerLevel[p.ordinal], "a new one levels it up")
+            // Once paid for, switching away and back is free again (only a hit takes it away).
+            game.craft(game.recipes(0).indexOfFirst { it.icon == Power.FIRE }, 0)
+            assertEquals("EQUIP", game.recipes(tab)[row].button)
+            // A power block's power-up puts it back on for free, too.
+            game.noInvulnForTest()
+            game.craft(row, tab)
+            game.hurt()
+            assertEquals("MAKE", game.recipes(tab)[row].button)
+            game.spawnForTest(PowerItem(r.x, r.y + 4f, p))
+            run(0.3f)
+            assertEquals(p, game.power)
+            assertEquals("Lv3", game.recipes(tab)[row].button)
         }
     }
 
@@ -230,6 +251,48 @@ class PowerUpsTest {
         assertEquals(Tile.EMPTY, game.level[gx, gy], "drilled down through the stone")
     }
 
+    @Test fun drillNeverDrillsOutOfTheBottomOfTheLevel() {
+        // The pirate ship's hull is planks with open sky under it: squatting on the deck must not drill a way out.
+        val i = Levels.all.indexOfFirst { it.name == "PIRATE SHIP" }
+        startPlaying(i)
+        val lv = game.level
+        fun floorUnder(x: Int, from: Int) = (from until lv.h).any { y -> Tile.solid(lv[x, y]) && lv.toughness(x, y) == 0 }
+        // A deck column whose planks go all the way down with nothing under them (the bow or the stern).
+        val tx = (1 until lv.w - 1).first { x ->
+            val top = (2 until lv.h).firstOrNull { Tile.solid(lv[x, it]) } ?: return@first false
+            lv[x, top] == Tile.PLANK && !Tile.solid(lv[x, top - 1]) && !Tile.solid(lv[x, top - 2]) && !floorUnder(x, top)
+        }
+        val top = (2 until lv.h).first { Tile.solid(lv[tx, it]) }
+        game.givePowerUp(Power.DRILL)
+        val r = game.rocco
+        r.x = tx * TILE + 2f; r.y = top * TILE - r.h; r.vx = 0f; r.vy = 0f
+        game.update(dt)
+        assertTrue(r.onGround, "on the deck at column $tx")
+        val hearts = game.hearts
+        run(5f) { input.down = true; game.foes.clear(); game.noInvulnForTest() }
+        input.down = false
+        run(2f) { game.foes.clear() }
+        assertEquals(TeamGame.State.PLAY, game.state)
+        assertEquals(hearts, game.hearts, "never fell out")
+        assertTrue(r.onGround && r.bottom <= lv.h * TILE, "still standing in the level")
+    }
+
+    @Test fun aFallNeverPutsRoccoBackOverAHole() {
+        // If the safe spot got dug away (by a drill, a pickaxe or an earthquake), he comes back on solid ground.
+        startPlaying()
+        val r = game.rocco
+        r.x = 16 * TILE + 2f; r.y = 13 * TILE - r.h
+        run(0.5f) { game.hurtProof() }
+        assertTrue(r.onGround)
+        val sx = tileOf(game.safeXForTest() + 6f)
+        for (x in sx - 1..sx + 1) for (y in 13 until ROWS) game.level[x, y] = Tile.EMPTY
+        game.noInvulnForTest()
+        val hearts = game.hearts
+        run(3f) { game.foes.clear() }
+        assertEquals(hearts - 1, game.hearts, "one fall, one heart")
+        assertTrue(r.onGround, "and back on solid ground")
+    }
+
     @Test fun bubblesPopBadGuysAndRoccoBouncesOnThem() {
         startPlaying()
         game.givePowerUp(Power.BUBBLE)
@@ -274,6 +337,17 @@ class PowerUpsTest {
         again.continueGame(0)
         assertEquals(Power.BUBBLE, again.power)
         assertEquals(1, again.flowerLevel[Power.BUBBLE.ordinal])
+        // One knocked off by a hit still has to be made again after the game is closed and opened.
+        startPlaying()
+        game.givePowerUp(Power.BUBBLE)
+        game.noInvulnForTest()
+        game.hurt()
+        assertEquals(Power.NONE, game.power, "POOF")
+        game.startLevel(0)
+        val later = TeamGame(TeamInput(), SoundSink {}, storage)
+        later.continueGame(0)
+        val tab = TeamGame.TABS.indexOf("WONDER")
+        assertEquals("MAKE", later.recipes(tab).first { it.icon == Power.BUBBLE }.button)
     }
 
     /** The three powered-up Roccos, Blocky's shirts and the items (build/screens/power-ups.png), plus each one in action. */
@@ -350,5 +424,15 @@ class PowerUpsTest {
         press()
         run(0.1f) { game.hurtProof() }
         shot("power-bubble")
+        // The WONDER tab after a hit knocked the Bubble Flower off: the drill (found, still fine) is a free EQUIP,
+        // the bubble has to be made again with sapphires.
+        game.givePowerUp(Power.DRILL)
+        game.givePowerUp(Power.BUBBLE)
+        game.noInvulnForTest()
+        game.hurt()
+        game.inventory[Ore.SAPPHIRE.ordinal] = 7
+        game.openCraftForTest(TeamGame.TABS.indexOf("WONDER"))
+        shot("power-craft-poofed")
+        game.closeCraftForTest()
     }
 }

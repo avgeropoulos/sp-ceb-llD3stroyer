@@ -374,8 +374,8 @@ Walking out of the house puts you on the next level to play (not back on the hou
 
 Three new power-ups, like in Super Mario Bros. Wonder. Every other level has a **power block** (it looks
 like a ? block) with one of them inside: bonk it, grab what pops out, and Rocco changes. They're also on the
-crafting table's new **WONDER** tab (and once you've found one, putting it back on there is free). They level
-up to Lv5 like the flowers.
+crafting table's new **WONDER** tab (once you've found one, switching back to it there is free, unless a hit
+knocked it off). They level up to Lv5 like the flowers.
 
 * **ELEPHANT FRUIT** (ruby): Rocco turns into a chubby grey elephant in his red cap (he keeps his mustache!).
   **TRUNK** swings his trunk: WHAM! It whacks the bad guys in front of him and smashes bricks, ? blocks,
@@ -383,13 +383,18 @@ up to Lv5 like the flowers.
 * **DRILL HAT** (iron): a shiny drill on his cap that's always turning. Jump up into stone, ore or bricks and
   he **drills right through**, ore and all. He can **stomp spiky bad guys** (Spikestacks, spike balls,
   Snappers, Chompies...) without getting hurt. **DRILL** spins him round and hits every bad guy close by.
-  Squat on stone or bricks to drill down through them (never plain ground, and never in a boss arena).
+  Squat on stone or bricks to drill down through them (never plain ground, never in a boss arena, and only
+  where there's solid ground further down: no drilling through a ship's hull and out of the level).
 * **BUBBLE FLOWER** (sapphire): Rocco in bubble blue and pink. **BUBBLE** blows shiny bubbles that float
   forward, then drift up. A bubble **pops** any ordinary bad guy it touches, and they turn into coins (bosses
   just take a hit). Land on your own bubble to **bounce** off it (once each: then it pops). Two bubbles at a
   time, more as it levels up.
 * **Getting hit** knocks the power-up off (POOF!) instead of costing a heart, and Rocco goes back to the
-  flower he had on before. Blocky's shirt turns grey, steel blue or bubble blue to match, like with the flowers.
+  flower he had on before. It's gone for real: grab another from a power block, or **MAKE** a new one on the
+  WONDER tab with the ore again (that levels it up too). Blocky's shirt turns grey, steel blue or bubble blue to
+  match, like with the flowers.
+* **Falling** never drops anyone back over a hole: if the spot they last stood on got dug or caved away, they
+  come back on the nearest solid ground (or at the checkpoint).
 * In **Team Up! 3D** they're puffy models too: the spinning drill flips through a few pictures that are each
   made into a model just once, so it never slows down.
 
