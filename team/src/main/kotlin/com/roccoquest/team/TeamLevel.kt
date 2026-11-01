@@ -43,6 +43,8 @@ object Tile {
     const val PLANK = 25
     const val MAST = 26
     const val RAINBOW = 27
+    /** A power block: a ? block with a Wonder power-up inside (Elephant, Drill or Bubble, see [PowerUps]). */
+    const val QPOWER = 28
 
     fun solid(t: Int) = t != EMPTY && t != LAVA && t != CLOUD && t != RAIL && t != SPIKES && t != MAST
 
@@ -154,6 +156,7 @@ enum class Place(val music: Music) {
  *  '>' cannon you can ride   '&' tail-spin King Krag   '+' spike bomb
  *  ';' toy soldier   ',' jack-in-the-box   '/' UFO   '<' moon hopper   '{' Mecha Krag   '}' Galaxy Krag
  *  '-' Wonder Flower   '\\' Talking Flower (World 13)
+ *  '¿' power block (a Wonder power-up: every printable ASCII character is taken, so this one isn't ASCII)
  */
 class LevelDef(val name: String, val place: Place, val rows: List<String>, val tip: String) {
     val w get() = rows[0].length
@@ -285,6 +288,14 @@ object Levels {
                 y?.let { x to it }
             }
             if (spot != null) g[spot.second][spot.first] = '>'
+        }
+        // A power block (Elephant, Drill or Bubble Rocco) in every other level: the first coin block a little
+        // way in, with room under it to jump up and bonk it. It's always the same block, so a level never changes.
+        if (PowerUps.hasBlock(index)) {
+            val spot = (12 until d.w).firstNotNullOfOrNull { x ->
+                (2 until ROWS - 3).firstOrNull { y -> g[y][x] == '?' && (y + 1..y + 2).all { g[it][x] == '.' || g[it][x] == 'c' } }?.let { x to it }
+            }
+            if (spot != null) g[spot.second][spot.first] = PowerUps.CHAR
         }
         return LevelDef(d.name, d.place, g.map { String(it) }, d.tip)
     }
@@ -832,6 +843,7 @@ class Level(val def: LevelDef) {
                 'I' -> Tile.PLANK
                 ':' -> Tile.MAST
                 '%' -> Tile.RAINBOW
+                PowerUps.CHAR -> Tile.QPOWER
                 else -> Tile.EMPTY
             }
         }

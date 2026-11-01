@@ -207,6 +207,16 @@ copy in `teamapp/` and `teamup3d/android/`, keep them the same) is the Android s
   furniture (12 each, `drawFurnitureAt`).
 * `Powers.kt`: `CaptureKind` + `CappyHat` (Power.CAPPY; `capture`/`releaseCapture`/`captureAction`, the captured foe is
   drawn at Rocco by `drawCapture`), `MegaItem` (`megaT`), `PropellerItem` (`propT`), `HeroPotion`. Power.GOLD shots make coins.
+* `PowerUps.kt`: Wonder power-ups Power.ELEPHANT/DRILL/BUBBLE (appended to `Power`, saved like flowers; `PowerUps.isWonder`).
+  Power blocks: level char `'¿'` (`PowerUps.CHAR`, every printable ASCII char is taken) = `Tile.QPOWER`, put on the first
+  `?` block of every other level by `remix` (`hasBlock`); `PowerUps.at(tx, index)` picks the power (deterministic).
+  `PowerItem` -> `givePowerUp`; crafting tab WONDER (`flowerRecipe`). Only Rocco uses them (`throwPower` ->
+  `trunkWhack`/`drillSpin`/`blowBubble`; `HeroBubble` + `bubbleHit`, bounced on in `interact`); drill: `bump` ->
+  `drillBlock` (`drillable`: never GROUND/DIRT/bedrock) and keeps rising in `moveHero`, drill-stomps non-stompable
+  foes, `drillDown` while squatting (not with `camLock`/`boss`). `hurt` -> `losePowerUp` (back to `powerBefore`, no
+  heart lost). Art in `PowerArt`: the elephant is 20 wide and Drill Rocco 9 rows taller, so draw Rocco's power
+  pictures with `PowerArt.box` (keeps his 16x24 body in place); the drill spin uses `PHASES` fixed sprites (3D models
+  each once); bubble rims are fixed-shape polys (cached in 3D). Tests: `PowerUpsTest`, `TeamSceneTest.powerUpsIn3D`.
 * `Winter.kt`: World 7 foes `Snowman` (6), `Penguin` (7), `HammerHank` (8), `Chompy` (9), `ZoomerLauncher` (0) + `Zoomer`,
   `Gummy` (1), projectiles `Lob`/`NoteShot`/`ChordWave`, and the final boss `RockStarKrag` (S, drawn as a `KingKrag` plus
   sunglasses and guitar). New places BLIZZARD, AURORA, CANDY (backgrounds in `renderBackground`).

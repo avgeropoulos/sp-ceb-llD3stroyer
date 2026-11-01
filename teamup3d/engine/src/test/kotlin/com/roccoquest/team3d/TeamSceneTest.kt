@@ -13,6 +13,9 @@ import com.roccoquest.team.Shield
 import com.roccoquest.team.Sword
 import com.roccoquest.team.WORLD_SIZE
 import com.roccoquest.team.Mon
+import com.roccoquest.team.Power
+import com.roccoquest.team.PowerUps
+import com.roccoquest.team.TeamArt
 import com.roccoquest.team.TeamGame
 import com.roccoquest.team.TeamInput
 import java.awt.image.BufferedImage
@@ -186,6 +189,43 @@ class TeamSceneTest {
         val dog = (0 until list.count).count { k -> models.any { it === list.cmd(k).mesh } }
         assertEquals(1, dog, "drawn as one puffy model")
         shot(scene, "dennis-3d")
+    }
+
+    /**
+     * The Wonder power-ups in 3D: Elephant, Drill and Bubble Rocco are puffy models like everyone else, the
+     * spinning drill flips through a few fixed pictures (each modelled once), and bubbles are shiny see-through balls.
+     */
+    @Test fun powerUpsIn3D() {
+        val scene = TeamScene().apply { voxelsPerFrame = Int.MAX_VALUE }
+        for (p in PowerUps.ALL) {
+            startPlaying(0)
+            game.foes.clear()
+            game.givePowerUp(p)
+            val r = game.rocco
+            r.x = 16 * 16f
+            r.y = 13 * 16f - r.h
+            run(1.2f)
+            r.facing = 1
+            if (p == Power.ELEPHANT) {
+                // He's one puffy model (his picture is the body; the trunk swing is drawn on top of it).
+                val frames = (0 until 3).map { Voxels.mesh(TeamArt.rocco(p, it)) }
+                val list = scene.build(game)
+                assertEquals(1, (0 until list.count).count { k -> frames.any { it === list.cmd(k).mesh } }, "Elephant Rocco is one model")
+            }
+            input.action = true; game.update(dt); input.action = false
+            run(if (p == Power.BUBBLE) 0.45f else 0.1f)
+            if (p == Power.BUBBLE) { input.action = true; game.update(dt); input.action = false; run(0.1f) }
+            shot(scene, "power-${p.name.lowercase()}-3d")
+        }
+        // Walking and spinning the drill for a while doesn't keep making new models.
+        input.right = true
+        repeat(120) { f -> input.action = f % 30 < 2; game.update(dt); scene.build(game) }
+        game.givePowerUp(Power.DRILL)
+        repeat(120) { f -> input.action = f % 30 < 2; game.update(dt); scene.build(game) }
+        val before = Voxels.built
+        repeat(240) { f -> input.action = f % 30 < 2; game.update(dt); scene.build(game) }
+        input.right = false; input.action = false
+        assertTrue(Voxels.built - before < 30, "made ${Voxels.built - before} new models while drilling along")
     }
 
     @Test fun everyLevelBuilds() {
