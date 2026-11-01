@@ -475,6 +475,52 @@ class PowerUpsTest {
         }
     }
 
+    @Test fun megaTrunkSmashesTheBrickInFrontButNotThroughWalls() {
+        // The giant trunk sweeps from right in front of him out to its tip: the brick flush in front gets smashed
+        // (not just one further out), and it never reaches through ground to bonk a ? block behind it.
+        startPlaying()
+        game.givePowerUp(Power.ELEPHANT)
+        game.startMega()
+        val r = game.rocco
+        val tx = tileOf(r.x) + 3
+        standBefore(tx)
+        val ty = tileOf(r.cy)
+        for (i in 0..2) game.level[tx + i, ty] = Tile.BRICK
+        press()
+        assertEquals(Tile.EMPTY, game.level[tx, ty], "the brick right in front is smashed")
+        assertEquals(Tile.BRICK, game.level[tx + 2, ty], "past the trunk's tip")
+        run(0.6f) { game.hurtProof() }
+        game.level[tx, ty] = Tile.GROUND
+        game.level[tx + 1, ty] = Tile.QCOIN
+        game.level[tx + 2, ty] = Tile.EMPTY
+        r.x = tx * TILE - r.w - 1f
+        press()
+        assertEquals(Tile.GROUND, game.level[tx, ty])
+        assertEquals(Tile.QCOIN, game.level[tx + 1, ty], "no bonking through a wall")
+    }
+
+    @Test fun babyTrunkStillSmashesAHeadHighBrick() {
+        // A baby is drawn little but his box is the usual size, so a brick at head height still stops him: his
+        // trunk has to be able to smash it.
+        startPlaying()
+        game.babyMode = true
+        game.givePowerUp(Power.ELEPHANT)
+        val r = game.rocco
+        val tx = tileOf(r.x) + 3
+        standBefore(tx)
+        val ty = tileOf(r.y + 3f)
+        assertTrue(ty < tileOf(r.bottom - 3f), "the brick is above his feet")
+        game.level[tx, ty] = Tile.BRICK
+        press()
+        assertEquals(Tile.EMPTY, game.level[tx, ty], "smashed")
+        run(0.6f) { game.hurtProof() }
+        val x0 = r.x
+        input.right = true
+        run(0.5f) { game.hurtProof() }
+        input.right = false
+        assertTrue(r.x - x0 > TILE, "and he walks on through")
+    }
+
     @Test fun babyRoccosWonderMovesAreBabySized() {
         // At the BABY MACHINE everybody is drawn little (their boxes stay the same): the trunk is a baby trunk,
         // so it only whacks what it's drawn reaching.

@@ -2820,13 +2820,28 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         var whacked = false
         for (f in foes) if (!f.dying && f.active && f.overlaps(reach) && f.hit(this, dmg)) whacked = true
         if (whacked) particles += FloatText(h.cx + h.facing * 18f * k, h.bottom - 25f * k, "WHAM!", 0xFFFFE14D.toInt())
-        // Bricks, prize blocks, stone and ore right in front get smashed (plain ground just goes BUMP).
-        val tx = tileOf(h.cx + h.facing * 14f * k)
-        for (ty in tileOf(h.bottom - 20f * k)..tileOf(h.bottom - 3f)) {
-            when (level[tx, ty]) {
-                Tile.BRICK, Tile.QCOIN, Tile.QHEART, Tile.QSTAR, Tile.QMYSTERY, Tile.QPOWER -> { bump(tx, ty); shake = max(shake, 0.12f) }
-                else -> if (drillable(tx, ty)) { drillBlock(tx, ty); shake = max(shake, 0.12f) }
+        // Bricks, prize blocks, stone and ore right in front get smashed (plain ground just goes BUMP). Blocks bump
+        // into his box, which never shrinks, so a baby trunk still reaches every block he can walk into (kb is never
+        // under 1). A giant trunk sweeps every column from the one in front out to its tip, but stops at a wall:
+        // it never reaches through ground or hard blocks to smash (or bonk a ? block) on the other side.
+        val kb = max(k, 1f)
+        val top = tileOf(h.bottom - 20f * kb)
+        val bottom = tileOf(h.bottom - 3f)
+        val last = tileOf(h.cx + h.facing * 14f * kb)
+        var tx = tileOf(h.cx + h.facing * 14f)
+        while (true) {
+            var wall = false
+            for (ty in top..bottom) {
+                when (level[tx, ty]) {
+                    Tile.BRICK, Tile.QCOIN, Tile.QHEART, Tile.QSTAR, Tile.QMYSTERY, Tile.QPOWER -> { bump(tx, ty); shake = max(shake, 0.12f) }
+                    else -> when {
+                        drillable(tx, ty) -> { drillBlock(tx, ty); shake = max(shake, 0.12f) }
+                        Tile.solid(level[tx, ty]) -> wall = true
+                    }
+                }
             }
+            if (wall || tx == last) break
+            tx += h.facing
         }
         sfx(if (whacked) Sound.BOSS_HIT else Sound.KICK)
     }
