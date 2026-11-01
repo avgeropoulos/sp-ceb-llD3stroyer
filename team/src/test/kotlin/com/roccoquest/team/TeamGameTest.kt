@@ -3365,6 +3365,46 @@ class TeamGameTest {
         assertTrue(game.state == TeamGame.State.CLEAR || game.state == TeamGame.State.STICKER, "level clear (${game.state})")
     }
 
+    @Test fun holdingDownKeepsButtSlammingAndHoldingActionKeepsMining() {
+        startPlaying(0)
+        game.foes.clear()
+        val r = game.rocco
+        run(0.5f)
+        // Three stones under Rocco's feet.
+        val tx = tileOf(r.cx)
+        val gy = tileOf(r.bottom + 2)
+        for (ty in gy until gy + 3) game.level[tx, ty] = Tile.STONE
+        r.y -= 40f; r.vy = 0f; r.onGround = false
+        // Hold DOWN: slam, hop, slam, hop... until the stones are dug away.
+        var slams = 0
+        var was = false
+        input.down = true
+        repeat((4f / dt).toInt()) {
+            game.hurtProof()
+            game.update(dt)
+            if (r.slamming && !was) slams++
+            was = r.slamming
+        }
+        assertTrue(slams >= 3, "kept slamming while DOWN was held ($slams slams)")
+        assertTrue((gy until gy + 3).count { game.level[tx, it] == Tile.STONE } < 3, "the slams dug into the stone")
+        // Let go: no more slams.
+        input.down = false
+        run(1.5f) { game.hurtProof() }
+        assertTrue(r.onGround && !r.slamming, "stopped when DOWN was let go")
+        // Blocky: holding ACTION (and DOWN) keeps mining without tapping again.
+        input.swap = true; game.update(dt); input.swap = false
+        val b = game.leader
+        assertEquals(Who.BLOCKY, b.who)
+        run(0.6f) { game.hurtProof() }
+        val bx = tileOf(b.cx)
+        val by = tileOf(b.bottom + 2)
+        for (ty in by until by + 4) game.level[bx, ty] = Tile.DIRT
+        input.down = true; input.action = true
+        run(4f) { game.hurtProof() }
+        input.down = false; input.action = false
+        assertTrue((by until by + 4).count { game.level[bx, it] == Tile.DIRT } <= 1, "kept digging down while ACTION was held")
+    }
+
     @Test fun kragsTailIsEasyToGrabFromBehind() {
         startPlaying(Levels.all.indexOfFirst { it.name == "KRAG'S TAIL SPIN" })
         val l = game.leader

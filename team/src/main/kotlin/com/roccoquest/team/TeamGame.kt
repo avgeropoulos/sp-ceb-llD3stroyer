@@ -366,6 +366,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private val waveHit = HashSet<Foe>()
 
     var digDown = false
+    /** A butt slam just landed with DOWN still held: the next one starts by itself. */
+    private var poundAgain = false
         private set
     private var toast = ""
     private var toastT = 0f
@@ -1117,7 +1119,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         puffs.clear()
         hopX.fill(-1); hops = 0
         for (h in allHeroes) { h.resetStretch(); h.againstWall = false }
-        jumpBufT = 0f; coyoteT = 0f; actionBufT = 0f; jumpHoldT = 0f
+        jumpBufT = 0f; coyoteT = 0f; actionBufT = 0f; jumpHoldT = 0f; poundAgain = false
         val keepX = respawnX
         val keepY = respawnY
         val keepHouse = if (index == levelIndex) house else null
@@ -2014,7 +2016,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 drillDownT += dt
                 if (drillDownT >= PowerUps.DRILL_DOWN_TIME) { drillDownT = 0f; drillDown(h) }
             } else drillDownT = 0f
-            if (downE && !h.onGround && !h.slamming) {
+            // Holding DOWN after a butt slam keeps pounding: hop, slam, hop, slam... (digging down through blocks).
+            if (!input.down) poundAgain = false
+            if ((downE || (poundAgain && h.vy > -60f)) && !h.onGround && !h.slamming) {
+                poundAgain = false
                 h.slamming = true
                 h.slamPause = 0.18f
                 h.longJumping = false
@@ -2120,6 +2125,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     /** Rocco lands a butt slam: breaks the blocks under him and knocks out bad guys nearby. */
     private fun slamImpact(h: Hero) {
         h.slamming = false
+        if (h === leader && input.down && state == State.PLAY) {
+            // Still holding DOWN: bounce up a little, ready to pound again.
+            h.vy = -250f
+            h.onGround = false
+            poundAgain = true
+        }
         shake = 0.25f
         sfx(Sound.STOMP)
         val ty = tileOf(h.bottom + 2)

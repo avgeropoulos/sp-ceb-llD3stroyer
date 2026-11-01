@@ -34,7 +34,8 @@ glide) when a level starts or a bonus room is entered/left. On the ground,
 stopping/turning uses `GROUND_BRAKE` (not while crouching: the crouch slide makes the crouch long jump).
 `MainActivity.dispatchKeyEvent`/`dispatchGenericMotionEvent` hand controller input straight to
 `GameView` (no focus needed). The CONTROLS screen has a live tester (`padSaw`, `stickX/Y`, `fps`).
-Every jump has a minimum height (`jumpHoldT`).
+Every jump has a minimum height (`jumpHoldT`). Holding DOWN after a butt slam keeps pounding (`poundAgain`: hop, slam,
+hop...); holding ACTION repeats it whenever `cooldown` runs out (Blocky keeps mining).
 Each level has its own tune (`TeamGame.Tunes`); boss levels alternate scary songs.
 
 Gear wears out (swords, pickaxes, armor, shields) and crafting never lets a weaker item replace a
