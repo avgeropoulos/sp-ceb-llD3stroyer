@@ -73,6 +73,22 @@ when that'd leave it off-key) to `Chiptune.sungNotes` in the octave where every 
 same pitch) instead of chopping them, and `Chiptune.render(song, words)` mixes them in; `TeamGame.titleMusic` = THEME makes the 3D title play it. Add `:teamup3d:engine` to the
 scratch build to test it locally.
 
+3D scenery (`teamup3d/engine/.../Scenery.kt`): real 3D hills/trees/mountains/clouds behind every level, a `Look` per
+`Place` (STATION has none: its painted windows are the view). `Scenery.build(place, seed)` makes a `SceneryLevel` once
+per level (`TeamScene.scenery`, keyed on the `LevelDef`, seed = level index, bonus room 1000+): 4 `Band`s (NEAR -190,
+MID -500, FAR -1300, SKY clouds) of `STRIPS` ready-made strip meshes (+ a `glow` mesh drawn at `GLOW`) repeated along
+the level in a hash-picked, sometimes mirrored order, plus an optional flat `floor` (sea, lava lake, toy-room floor).
+Nothing comes closer than `FRONT_Z` (-80; the level's ground ends at -56). Budget: `MAX_TRIANGLES` per level,
+`MAX_DRAWN` per frame on a 600-wide screen (`SceneryTest` checks every level; report in `screens3d/scenery-budget.txt`).
+Fog (`FOG_NEAR` = 520, just past the level's farthest corner) fades it into the sky colour (`haze`). With scenery,
+`TeamScene.drawsScenery` is true and the app paints `renderLevelBackdrop(gfx, scenery = false)`: only the sky, sun,
+stars... (`Sunset`, `SeaArt.seaSky`, `GalaxyArt`, `DinoArt`, `WonderArt`, `PlanetArt.drawSky` take the same flag; the
+2D game always passes true). Floating things stay below the HUD bar (`skyY`). Cloud Skies' `cloudSea` is sky blue on a
+blue `floor` (never white: the level's cloud platforms are white puffs; `TeamSceneTest.cloudPlatformsStandOutFromTheCloudSea`
+checks every SKY level against `MIN_CLOUD_CONTRAST`, report in `screens3d/sky-platforms.txt`). Camera-facing flat shapes (eyes, petals,
+candy) use `Kit.lens` (cheap). Screenshots: `TeamSceneTest.sceneryScreenshots` → `screens3d/scenery-*.png`.
+`Mesh.release()` only queues meshes the backend uploaded (nothing else drains the queue in tests).
+
 ## Where things are in Team Up! (`team/src/main/kotlin/com/roccoquest/team/`)
 
 | File | What's in it |

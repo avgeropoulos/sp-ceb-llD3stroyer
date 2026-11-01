@@ -108,10 +108,12 @@ object GalaxyArt {
         for (i in first..last) draw(i and 0xFFFF, i * spacing - off)
     }
 
-    fun drawSky(gfx: Gfx, place: Place, viewW: Float, viewH: Float, cam: Float, t: Float) {
+    /** [scenery] false paints only the sky, without the toys, mushrooms, hills or space station (Team Up! 3D builds those in 3D). */
+    fun drawSky(gfx: Gfx, place: Place, viewW: Float, viewH: Float, cam: Float, t: Float, scenery: Boolean = true) {
         when (place) {
             Place.TOYS -> {
                 gfx.gradient(0f, 0f, viewW, viewH, 0xFF6AC8FF.toInt(), 0xFFFFF0C8.toInt())
+                if (!scenery) return
                 // Giant toys far away: stacked blocks, a teddy bear and a spinning top.
                 layer(viewW, cam, 0.2f, 230f) { i, x ->
                     val c = listOf(0xFFE84A4A, 0xFF3A7AE8, 0xFFF4C83A, 0xFF4AB85A)
@@ -146,7 +148,7 @@ object GalaxyArt {
                 gfx.gradientStops(0f, 0f, viewW, viewH, 0xFF1E0E3A.toInt(), 0xFF4A1E6A.toInt(), 0xFF8A3A8A.toInt())
                 for (i in 0 until 26) gfx.rect((i * 97f - cam * 0.04f).mod(viewW), (i * 53f) % 110f, 1.5f, 1.5f, 0xCCFFFFFF.toInt())
                 // Giant glowing mushrooms
-                layer(viewW, cam, 0.25f, 150f) { i, x ->
+                if (scenery) layer(viewW, cam, 0.25f, 150f) { i, x ->
                     val h = 70f + (i % 3) * 22f
                     val cap = listOf(0xFF5AF0C8, 0xFFFF6AC8, 0xFF6AA8FF)[i % 3].toInt()
                     gfx.rect(x + 50, 220f - h, 14f, h, 0xFFE8D8F0.toInt())
@@ -175,7 +177,7 @@ object GalaxyArt {
                 gfx.oval(ex + 2, 50f, 16f, 18f, 0xFF3AA84A.toInt())
                 gfx.oval(ex - 10, 30f, 30f, 6f, 0xAAFFFFFF.toInt())
                 // Grey hills with craters
-                layer(viewW, cam, 0.25f, 210f) { i, x ->
+                if (scenery) layer(viewW, cam, 0.25f, 210f) { i, x ->
                     gfx.oval(x - 20, 160f - (i % 3) * 14f, 250f, 120f, 0xFF6A6A7A.toInt())
                     gfx.oval(x + 50, 176f - (i % 3) * 14f, 40f, 10f, 0xFF4A4A5A.toInt())
                 }
@@ -195,7 +197,7 @@ object GalaxyArt {
                     gfx.oval(x + 60, 132f + (i % 2) * 10f, 80f, 10f, 0xCCFFFFFF.toInt())
                 }
                 // Space station modules and solar panels floating behind
-                layer(viewW, cam, 0.2f, 260f) { i, x ->
+                if (scenery) layer(viewW, cam, 0.2f, 260f) { i, x ->
                     if (i % 2 == 0) {
                         gfx.rect(x + 40, 60f, 90f, 22f, 0xFFB8C0CC.toInt())
                         gfx.rect(x + 10, 52f, 26f, 38f, 0xFF2A4A9A.toInt()); gfx.rect(x + 134, 52f, 26f, 38f, 0xFF2A4A9A.toInt())

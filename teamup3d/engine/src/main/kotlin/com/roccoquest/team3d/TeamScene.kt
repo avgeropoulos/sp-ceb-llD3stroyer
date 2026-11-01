@@ -5,6 +5,8 @@ import com.roccoquest.game.Sprite
 import com.roccoquest.game.Sprites
 import com.roccoquest.game.TILE
 import com.roccoquest.game.rainbow
+import com.roccoquest.team.LevelDef
+import com.roccoquest.team.Levels
 import com.roccoquest.team.Tile
 import com.roccoquest.team.Place
 import com.roccoquest.team.TeamGame
@@ -17,6 +19,9 @@ import kotlin.math.sin
  *
  * The 3D world uses the 2D game's screen coordinates, so the camera never moves: the level
  * slides past it, which keeps everything lined up with the touch buttons and HUD.
+ *
+ * Behind the level stands real 3D [Scenery] (hills, trees, mountains, clouds...), built once per
+ * level; when there is some, the painted backdrop leaves out its own flat hills ([drawsScenery]).
  */
 class TeamScene {
     val list = DrawList()
@@ -32,8 +37,20 @@ class TeamScene {
     /** Where a point of the 2D level picture shows in this 3D one (so the circle wipe closes right on the hero). */
     private val toScreen: (FloatArray) -> Unit = { p -> list.project(p[0], -p[1], 0f, p) }
 
+    private var sceneryFor: LevelDef? = null
+    /** The current level's 3D scenery (null where the place has none). */
+    var scenery: SceneryLevel? = null
+        private set
+    /**
+     * True when the last frame built has 3D scenery, so the painted backdrop behind should only be the
+     * sky (`renderLevelBackdrop(gfx, scenery = false)`), not its own flat hills.
+     */
+    var drawsScenery = false
+        private set
+
     fun build(g: TeamGame): DrawList {
         g.levelToScreen = toScreen
+        drawsScenery = false
         list.clear()
         Voxels.newFrame(voxelsPerFrame)
         if (g.state == TeamGame.State.TITLE) {
@@ -52,8 +69,32 @@ class TeamScene {
         g.renderLevelTiles(tiles)
         paper.begin(0f)
         g.renderLevelActors(paper, mark)
+        // After the level, so the parts of the scenery hidden behind it are skipped quickly.
+        scenery(g)
         list.finish()
         return list
+    }
+
+    /**
+     * Builds the level's scenery the first time it's needed (the same for a level every time), then draws it.
+     * [sway] is how far the camera turns sideways (the title screen's camera sways).
+     */
+    private fun scenery(g: TeamGame, sway: Float = 0f) {
+        val def = g.level.def
+        if (def !== sceneryFor) {
+            scenery?.release()
+            sceneryFor = def
+            val index = Levels.all.indexOf(def)
+            scenery = Scenery.build(def.place, if (index >= 0) index else BONUS_SEED + def.place.ordinal)
+        }
+        val s = scenery ?: return
+        drawsScenery = true
+        val e = list.env
+        // The fog fades the far scenery into the sky (a rainbow sky during WONDER TIME and the victory dance).
+        e.fog = if (g.wonder || g.state == TeamGame.State.VICTORY) RAINBOW_HAZE else s.haze
+        e.fogNear = Scenery.FOG_NEAR
+        e.fogFar = s.fogFar
+        s.draw(list, g.worldCam, sway)
     }
 
     /**
@@ -64,7 +105,7 @@ class TeamScene {
         list.showWorld = true
         g.prepareTitle()
         val t = g.time
-        list.setCamera(0f, g.viewW, yaw = sin(t * 0.4f) * 0.07f, pitch = 0.2f + sin(t * 0.3f) * 0.03f)
+        list.setCamera(0f, g.viewW, yaw = sin(t * 0.4f) * TITLE_SWAY, pitch = 0.2f + sin(t * 0.3f) * 0.03f)
         lighting(Place.HILLS)
         tiles.begin(g)
         tiles.titleMode = true
@@ -86,6 +127,8 @@ class TeamScene {
         g.renderTitleCast(castGfx, castMark)
         word("ROCCO & BLOCKY", g.viewW / 2, -48f, 2.8f, t, 0) { 0xFFFFC81A.toInt() }
         word("TEAM UP!", g.viewW / 2, -74f, 2.5f, t, 14) { i -> rainbow(t * 0.3f, i / 8f) or 0xFF000000.toInt() }
+        // Level 1's hills and trees behind it all (with room for the swaying camera).
+        scenery(g, sway = TITLE_SWAY + 0.03f)
     }
 
     private val m = Mat4()
@@ -109,7 +152,7 @@ class TeamScene {
     private fun lighting(place: Place) {
         val e = list.env
         e.setLight(-0.45f, 0.85f, 0.6f)
-        // No fog: the painted sky behind already gives the distance.
+        // No fog unless there's scenery (it turns the fog on for itself, starting past the level).
         e.fogNear = 1e6f
         e.fogFar = 2e6f
         // A touch cooler and dimmer in dark places, plain white light everywhere else.
@@ -123,6 +166,11 @@ class TeamScene {
         const val LEVEL_PITCH = 0.22f
         const val GROUND_ROW = 13
         const val TITLE_DROP = GROUND_ROW * 16f - 190f
+        /** How far the title screen's camera turns from side to side (radians). */
+        const val TITLE_SWAY = 0.07f
+        /** Scenery seeds for rooms that aren't one of the levels (the bonus rooms). */
+        const val BONUS_SEED = 1000
+        val RAINBOW_HAZE = 0xFFFFE8F4.toInt()
 
         val DARK = setOf(
             Place.CAVE, Place.CASTLE, Place.VOLCANO, Place.NIGHT, Place.DEEP, Place.END,

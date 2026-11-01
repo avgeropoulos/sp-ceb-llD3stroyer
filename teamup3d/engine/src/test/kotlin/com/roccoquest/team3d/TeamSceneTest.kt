@@ -4,6 +4,7 @@ import com.roccoquest.game.Gfx
 import com.roccoquest.game.SoundSink
 import com.roccoquest.game.Sprite
 import com.roccoquest.game.Storage
+import com.roccoquest.game.TILE
 import com.roccoquest.game.VIEW_H
 import com.roccoquest.team.Dennis
 import com.roccoquest.team.HerculesArt
@@ -16,11 +17,14 @@ import com.roccoquest.team.Shield
 import com.roccoquest.team.Sword
 import com.roccoquest.team.WORLD_SIZE
 import com.roccoquest.team.Mon
+import com.roccoquest.team.Place
+import com.roccoquest.team.Portal
 import com.roccoquest.team.Power
 import com.roccoquest.team.PowerUps
 import com.roccoquest.team.TeamArt
 import com.roccoquest.team.TeamGame
 import com.roccoquest.team.TeamInput
+import com.roccoquest.team.Tile
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
@@ -45,15 +49,21 @@ class TeamSceneTest {
         assertEquals(TeamGame.State.PLAY, game.state)
     }
 
+    /** The painted sky and the 3D level, as the phone draws them under the HUD. */
+    private fun frame(scene: TeamScene, scale: Float): Pair<DrawList, BufferedImage> {
+        val w = (game.viewW * scale).toInt()
+        val h = (VIEW_H * scale).toInt()
+        val list = scene.build(game)
+        val sky = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
+        // Like the phone: with 3D scenery the painted backdrop is only the sky.
+        game.renderLevelBackdrop(AwtGfx(sky, scale), scenery = !scene.drawsScenery)
+        return list to SoftRaster(w, h).render(list, sky)
+    }
+
     /** Draws a frame the way the phone does: painted sky, 3D level, then the HUD and buttons. */
     private fun shot(scene: TeamScene, name: String): BufferedImage {
         val scale = 2f
-        val w = (game.viewW * scale).toInt()
-        val h = (VIEW_H * scale).toInt()
-        val sky = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
-        game.renderLevelBackdrop(AwtGfx(sky, scale))
-        val list = scene.build(game)
-        val img = SoftRaster(w, h).render(list, sky)
+        val (list, img) = frame(scene, scale)
         val overlay = AwtGfx(img, scale)
         for (i in 0 until list.labelCount) list.label(i).let { overlay.text(it.text, it.x, it.y, it.size, it.color, it.align) }
         game.render(overlay, drawWorld = false)
@@ -186,6 +196,93 @@ class TeamSceneTest {
         val list = scene.build(game)
         assertTrue(list.showWorld && list.count > 10)
         shot(scene, "kingdom-chef-krag")
+    }
+
+    /** With 3D scenery the painted backdrop is only the sky (no flat hills or trees), while the 2D game still paints them. */
+    @Test fun backdropIsJustTheSkyBehind3DScenery() {
+        startPlaying(0)
+        fun rowsWithShapes(scenery: Boolean): Int {
+            val img = BufferedImage(game.viewW.toInt(), VIEW_H.toInt(), BufferedImage.TYPE_INT_ARGB)
+            game.renderLevelBackdrop(AwtGfx(img, 1f), scenery)
+            // A plain sky gradient has one colour across each row.
+            return (0 until img.height).count { y -> (0 until img.width).any { x -> img.getRGB(x, y) != img.getRGB(0, y) } }
+        }
+        assertEquals(0, rowsWithShapes(scenery = false), "only the sky")
+        assertTrue(rowsWithShapes(scenery = true) > 100, "the 2D game still paints its hills, trees and clouds")
+    }
+
+    /** The 3D scenery of every place (hills and trees, snowy pines, dunes, lava spires, space rocks...): screens3d/scenery-*.png. */
+    @Test fun sceneryScreenshots() {
+        val scene = TeamScene().apply { voxelsPerFrame = Int.MAX_VALUE }
+        for (p in Place.entries) {
+            val i = Levels.all.indexOfFirst { it.place == p }
+            if (i < 0) continue
+            startPlaying(i)
+            game.leader.x += 60f
+            run(1.2f)
+            shot(scene, "scenery-%02d-%s".format(p.ordinal, p.name.lowercase()))
+            assertEquals(p !in setOf(Place.STATION, Place.CITY, Place.FOOD), scene.drawsScenery, "$p")
+        }
+        // The bonus room behind a portal (its sunset place isn't used by any level).
+        startPlaying(0)
+        val l = game.leader
+        game.spawn(Portal(l.x + 2f, l.bottom))
+        run(1.5f)
+        assertEquals(Levels.bonusRoom, game.level.def)
+        shot(scene, "scenery-%02d-bonus-room".format(Place.SUNSET.ordinal))
+        assertTrue(scene.drawsScenery)
+    }
+
+    /**
+     * Cloud Skies: the level's white cloud platforms must stand out from the 3D cloud sea behind them (white
+     * on white hid where the platforms were, and made the pits look like more cloud to stand on). Each puff
+     * on screen is compared with the backdrop two tiles above and below it, in every Cloud Skies level.
+     */
+    @Test fun cloudPlatformsStandOutFromTheCloudSea() {
+        val scene = TeamScene().apply { voxelsPerFrame = Int.MAX_VALUE }
+        val scale = 2f
+        val at = FloatArray(2)
+        fun diff(a: Int, b: Int) = (0..16 step 8).sumOf { abs((a shr it and 255) - (b shr it and 255)) }
+        val report = StringBuilder()
+        var samples = 0
+        var worst = Int.MAX_VALUE
+        for ((i, def) in Levels.all.withIndex()) {
+            if (def.place != Place.SKY) continue
+            startPlaying(i)
+            game.leader.x += 60f
+            run(1.2f)
+            val (list, img) = frame(scene, scale)
+            val lv = game.level
+            val cam = game.worldCam
+            // The colour on screen at a point of the 3D world (the camera looks down a little, so it isn't the 2D spot).
+            fun rgb(x: Float, y: Float, z: Float): Int {
+                list.project(x, y, z, at)
+                return img.getRGB((at[0] * scale).toInt(), (at[1] * scale).toInt()) and 0xFFFFFF
+            }
+            // Nobody (hero or bad guy) in the empty tile the backdrop is seen through.
+            fun clear(tx: Int, ty: Int) = (game.foes + game.team).none {
+                it.x + it.w > tx * TILE - 4f && it.x < (tx + 1) * TILE + 4f && it.y + it.h > ty * TILE - 4f && it.y < (ty + 1) * TILE + 4f
+            }
+            for (tx in (cam / TILE).toInt() + 1 until ((cam + game.viewW) / TILE).toInt()) for (ty in 2 until lv.h - 2) {
+                if (lv[tx, ty] != Tile.CLOUD) continue
+                // The middle of the tile's puffs, at their front (TileGfx.cloud).
+                val x = tx * TILE + TILE / 2f - cam
+                val puff = rgb(x, -(ty * TILE + TILE / 2f) + 1f, 8f)
+                for (dir in intArrayOf(-1, 1)) {
+                    // Two empty tiles, so only the sky and the scenery show there.
+                    val by = ty + 2 * dir
+                    if (by < 3 || lv[tx, ty + dir] != Tile.EMPTY || lv[tx, by] != Tile.EMPTY || !clear(tx, by)) continue
+                    val back = rgb(x, -(by * TILE + TILE / 2f), 0f)
+                    val d = diff(puff, back)
+                    report.append("level $i: puff at ($tx, $ty) %06X vs %06X %s: $d\n".format(puff, back, if (dir < 0) "above" else "below"))
+                    samples++
+                    worst = minOf(worst, d)
+                }
+            }
+        }
+        File(dir, "sky-platforms.txt").writeText(report.toString())
+        assertTrue(samples >= 10, "only $samples cloud puffs were on screen\n$report")
+        assertTrue(worst >= MIN_CLOUD_CONTRAST, "a cloud platform blends into the sky behind it\n$report")
     }
 
     /** Dennis (Hercules from the Hercules and Apollo game) turns into a puffy 3D dog like everyone else. */
@@ -348,5 +445,10 @@ class TeamSceneTest {
         input.right = false
         assertTrue(ms < 6.0, "a frame took $ms ms")
         assertTrue(Voxels.built - builtBefore < 60, "made ${Voxels.built - builtBefore} new models while just walking")
+    }
+
+    companion object {
+        /** How different (red + green + blue steps) a cloud platform must look from the sky right behind it. */
+        const val MIN_CLOUD_CONTRAST = 60
     }
 }

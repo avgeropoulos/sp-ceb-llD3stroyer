@@ -219,7 +219,9 @@ class GameGLView(context: Context) : GLSurfaceView(context), GLSurfaceView.Rende
             draw2d(scale)
             return
         }
-        sky.paint { c -> gfx.begin(c, scale); game.renderLevelBackdrop(gfx) }
+        // With 3D scenery (hills, trees, mountains) behind the level, the painted backdrop is only the sky.
+        val paintedScenery = !scene.drawsScenery
+        sky.paint { c -> gfx.begin(c, scale); game.renderLevelBackdrop(gfx, paintedScenery) }
         front.paint { c ->
             gfx.begin(c, scale)
             // Words floating in the level (scores, names) were placed by the 3D scene.

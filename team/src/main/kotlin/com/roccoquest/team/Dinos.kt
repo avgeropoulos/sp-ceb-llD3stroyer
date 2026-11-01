@@ -374,9 +374,11 @@ class RexKrag(x: Float, private val ground: Float) : Foe(x - 14, ground - 44, 44
 
 /** Dino World's own backdrop: a warm prehistoric sky, smoking volcanoes, giant ferns and long-necked dinos far away. */
 object DinoArt {
-    fun drawSky(gfx: Gfx, viewW: Float, viewH: Float, cam: Float, t: Float) {
+    /** [scenery] false paints only the sky and sun (Team Up! 3D builds the volcanoes, dinos and ferns in 3D). */
+    fun drawSky(gfx: Gfx, viewW: Float, viewH: Float, cam: Float, t: Float, scenery: Boolean = true) {
         gfx.gradient(0f, 0f, viewW, viewH, 0xFFF0A860.toInt(), 0xFFFCE8B8.toInt())
         gfx.oval(viewW * 0.7f - cam * 0.01f, 26f, 40f, 40f, 0xFFFFF0A0.toInt())
+        if (!scenery) return
         // Volcanoes far away
         layer(viewW, cam, 0.12f, 300f) { i, x ->
             gfx.poly(floatArrayOf(x, x + 90f, x + 120f, x + 210f), floatArrayOf(190f, 80f + (i % 2) * 14f, 80f + (i % 2) * 14f, 190f), 0xFFA8705A.toInt())

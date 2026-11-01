@@ -450,20 +450,23 @@ class Chest(x: Float, bottom: Float) : Thing(x, bottom - 13, 16f, 13f) {
 
 /** Bonus room sky: a big orange sun sinking behind purple hills. */
 object Sunset {
-    fun drawSky(gfx: Gfx, viewW: Float, viewH: Float, cam: Float, time: Float) {
+    /** [scenery] false leaves out the hills (Team Up! 3D builds them in 3D). */
+    fun drawSky(gfx: Gfx, viewW: Float, viewH: Float, cam: Float, time: Float, scenery: Boolean = true) {
         val bands = listOf(0xFF2A1450, 0xFF4A1E6A, 0xFF7A2A7A, 0xFFB8406A, 0xFFE8605A, 0xFFFF8A4A, 0xFFFFB04A)
         gfx.gradientStops(0f, 0f, viewW, viewH * 0.75f, *IntArray(bands.size) { bands[it].toInt() })
         gfx.gradient(0f, viewH * 0.75f, viewW, viewH * 0.25f, 0xFFFFB04A.toInt(), 0xFFFFD87A.toInt())
-        // The sun, half behind the hills, with a shimmer.
+        // The sun, half behind the hills, with a shimmer. (Team Up! 3D's hills stand taller, so its sun is higher.)
         val sx = viewW * 0.62f - cam * 0.05f
-        gfx.oval(sx - 54, viewH * 0.52f, 108f, 108f, 0x55FFE08A)
-        gfx.oval(sx - 40, viewH * 0.56f, 80f, 80f, 0xFFFFE87A.toInt())
-        for (i in 0 until 4) gfx.rect(sx - 40 + i * 4, viewH * 0.66f + i * 7f, 80f - i * 8, 2f, 0x66FF8A3A)
+        val sy = if (scenery) 0f else -viewH * 0.2f
+        gfx.oval(sx - 54, viewH * 0.52f + sy, 108f, 108f, 0x55FFE08A)
+        gfx.oval(sx - 40, viewH * 0.56f + sy, 80f, 80f, 0xFFFFE87A.toInt())
+        for (i in 0 until 4) gfx.rect(sx - 40 + i * 4, viewH * 0.66f + sy + i * 7f, 80f - i * 8, 2f, 0x66FF8A3A)
         // Little stars coming out up high.
         for (i in 0 until 14) {
             val tw = if (((time * 2 + i) % 3) < 1.5f) 0xFFFFFFFF.toInt() else 0x88FFFFFF.toInt()
             gfx.rect(((i * 97 + 30) % viewW.toInt()).toFloat(), (i * 23 % 60).toFloat() + 6, 1.5f, 1.5f, tw)
         }
+        if (!scenery) return
         // Purple hills in front of the sun.
         var x = -((cam * 0.3f) % 160f) - 160f
         while (x < viewW + 160f) {

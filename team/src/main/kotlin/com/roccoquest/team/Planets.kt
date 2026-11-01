@@ -113,11 +113,12 @@ object PlanetArt {
         }
     }
 
-    /** The planet's sky and hills behind a level. */
-    fun drawSky(gfx: Gfx, p: Place, viewW: Float, viewH: Float, cam: Float, t: Float) {
+    /** The planet's sky and hills behind a level. [scenery] false paints only the sky (Team Up! 3D builds the hills in 3D). */
+    fun drawSky(gfx: Gfx, p: Place, viewW: Float, viewH: Float, cam: Float, t: Float, scenery: Boolean = true) {
         val pl = planetOf(p) ?: return
         gfx.gradient(0f, 0f, viewW, viewH, pl.skyTop, pl.skyBottom)
         pl.drawSky(gfx, viewW, 150f, t, viewW - 80f - cam * 0.01f)
+        if (!scenery) return
         val off1 = cam * 0.15f
         var i = (off1 / 260f).toInt() - 1
         while (i * 260f - off1 < viewW) { gfx.oval(i * 260f - off1 - 40f, 150f + (i and 1) * 10f, 340f, 120f, pl.hill1); i++ }
