@@ -88,8 +88,14 @@ class Game(
     internal var screenT = 0f
     internal var clock = 0f
     internal var aimYaw = 0f
-    /** The throwing angle, from leaning the phone back or forward. */
+    /**
+     * The expected throwing angle. Before the throw it follows how far the phone leans back
+     * (a guide); the throw itself uses the angle the hand is moving at when it lets go.
+     */
     internal var aimElev = RELEASE_ANGLE
+    /** The last throw's angle and whether it was measured from the hand's movement. */
+    internal var lastElev = -1f
+    internal var releaseMeasured = false
     /**
      * Where 0%, 25%, 50%, 75% and 100% power land at the current aim and angle (x, z pairs),
      * then the last throw's power (z is -1 before the first throw). Drawn as markers on the
@@ -169,7 +175,11 @@ class Game(
             sound.play(Sound.DRAWN)
             sound.vibrate(15)
         }
-        detector.takeThrow()?.let { if (ready) throwJavelin(it, aimYaw, aimElev) }
+        detector.takeThrow()?.let { r ->
+            if (!ready) return@let
+            // The angle comes from the hand's movement at release when the phone can measure it.
+            throwJavelin(r.power, aimYaw, r.elevation ?: aimElev, measured = r.elevation != null)
+        }
         if (detector.takeCancel()) showMessage("HOLD ON!", "Keep your thumb down until you throw", ORANGE, 2f)
 
         // Aim locks when you grip the javelin, so swinging your arm doesn't move it.
@@ -225,10 +235,12 @@ class Game(
         }
     }
 
-    internal fun throwJavelin(power: Float, yaw: Float, elevation: Float = aimElev) {
+    internal fun throwJavelin(power: Float, yaw: Float, elevation: Float = aimElev, measured: Boolean = false) {
+        releaseMeasured = measured
         val p = power.coerceIn(0f, 1f)
         lastPower = p
         aimElev = elevation.coerceIn(MIN_ELEVATION, MAX_ELEVATION)
+        lastElev = aimElev
         javelin = Javelin.launch(p, yaw.coerceIn(-MAX_AIM, MAX_AIM), aimElev)
         throwWind = wind * (0.85f + rng.nextFloat() * 0.3f)
         throwState = ThrowState.FLIGHT
@@ -413,11 +425,14 @@ class Game(
         motion.gyro(nanos, wx, wy, wz)
     }
 
-    /** Linear acceleration (gravity removed), m/s². */
-    fun onAccel(ax: Float, ay: Float, az: Float) {
-        detector.push(ax, ay, az)
+    /** Linear acceleration (gravity removed), m/s², with the sensor's timestamp. */
+    fun onAccel(nanos: Long, ax: Float, ay: Float, az: Float) {
+        detector.push(nanos, ax, ay, az)
         motion.accel(ax, ay, az)
     }
+
+    /** Gravity as the phone measures it (pointing up, m/s²), in the phone's axes. */
+    fun onGravity(gx: Float, gy: Float, gz: Float) = detector.gravity(gx, gy, gz)
 
     internal fun startEvent(kind: OlympicEventKind) {
         sound.play(Sound.CLICK)

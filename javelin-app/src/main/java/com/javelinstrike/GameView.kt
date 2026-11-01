@@ -204,11 +204,15 @@ class GameView(private val activity: Activity) : SurfaceView(activity), SurfaceH
         val v = e.values
         when (e.sensor.type) {
             Sensor.TYPE_GYROSCOPE -> game.onGyro(e.timestamp, v[0], v[1], v[2])
-            Sensor.TYPE_LINEAR_ACCELERATION -> game.onAccel(v[0], v[1], v[2])
-            Sensor.TYPE_GRAVITY -> updateTilt(v[0], v[1], v[2])
+            Sensor.TYPE_LINEAR_ACCELERATION -> game.onAccel(e.timestamp, v[0], v[1], v[2])
+            Sensor.TYPE_GRAVITY -> {
+                game.onGravity(v[0], v[1], v[2])
+                updateTilt(v[0], v[1], v[2])
+            }
             Sensor.TYPE_ACCELEROMETER -> {
                 // No gravity sensor: smooth the raw accelerometer to find which way is down.
                 for (i in 0..2) gx[i] += (v[i] - gx[i]) * 0.1f
+                game.onGravity(gx[0], gx[1], gx[2])
                 updateTilt(gx[0], gx[1], gx[2])
             }
         }

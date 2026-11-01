@@ -86,7 +86,10 @@ class GameTest {
         return t
     }
 
-    private fun throwWithGyro(d: ThrowDetector, peak: Float, axis: FloatArray = floatArrayOf(0.6f, 0f, 0.8f)): Float? {
+    private fun throwWithGyro(d: ThrowDetector, peak: Float, axis: FloatArray = floatArrayOf(0.6f, 0f, 0.8f)): Float? =
+        throwRelease(d, peak, axis)?.power
+
+    private fun throwRelease(d: ThrowDetector, peak: Float, axis: FloatArray = floatArrayOf(0.6f, 0f, 0.8f)): Release? {
         d.enabled = true
         d.grip(true)
         var t = spin(d, 0L, 0.1f, axis) { 0f }
@@ -94,6 +97,44 @@ class GameTest {
         t = spin(d, t, 0.15f, axis) { 0f }                      // pause
         spin(d, t, 0.25f, axis) { s -> peak * sin(s / 0.25f * Math.PI.toFloat()) } // whip forward
         return d.takeThrow()
+    }
+
+    /**
+     * A throw with the phone upright, turning about the vertical, while the hand accelerates
+     * at [angleDeg] above level in a fixed real-world direction. Returns the release.
+     */
+    private fun throwAtAngle(angleDeg: Float, accel: Float = 25f): Release? {
+        val d = ThrowDetector().apply { enabled = true }
+        d.gravity(0f, 9.81f, 0f)
+        d.grip(true)
+        val a = Math.toRadians(angleDeg.toDouble()).toFloat()
+        var t = 0L
+        var turned = 0f
+        fun sample(spin: Float, push: Boolean) {
+            d.gyro(t, 0f, spin, 0f)
+            turned += spin * 0.005f
+            // The same world direction, seen from the phone as it turns.
+            val h = accel * kotlin.math.cos(a)
+            if (push) d.push(t, h * kotlin.math.cos(turned), accel * sin(a), h * sin(turned)) else d.push(t, 0f, 0f, 0f)
+            t += 5_000_000L
+        }
+        repeat(60) { sample(-4f, false) }                     // pull back
+        repeat(30) { sample(0f, false) }                      // pause
+        repeat(50) { i -> sample(15f * sin(i / 50f * Math.PI.toFloat()), true) }   // whip forward
+        return d.takeThrow()
+    }
+
+    @Test fun releaseAngleFollowsTheHand() {
+        val high = assertNotNull(throwAtAngle(40f))
+        assertEquals(40f, Math.toDegrees(high.elevation!!.toDouble()).toFloat(), 3f)
+        val flat = assertNotNull(throwAtAngle(10f))
+        assertEquals(10f, Math.toDegrees(flat.elevation!!.toDouble()).toFloat(), 3f)
+        // A faster hand throws harder.
+        val soft = assertNotNull(throwAtAngle(30f, accel = 10f))
+        val hard = assertNotNull(throwAtAngle(30f, accel = 40f))
+        assertTrue(hard.power > soft.power, "hard ${hard.power} vs soft ${soft.power}")
+        // Without an accelerometer there's no measured angle; the game uses its guide instead.
+        assertNull(assertNotNull(throwRelease(ThrowDetector(), 15f)).elevation)
     }
 
     @Test fun pullingBackThenWhippingForwardThrows() {

@@ -175,13 +175,21 @@ ARM on the title screen (GENTLE / NORMAL / STRONG) sets how hard you need to mov
   the target moves to a new spot after each one.
 * **Most targets move.** From level 2 they slide side to side, and later ones also drift
   nearer and further away. Aim where the target *will be* when your javelin lands.
-* **Aim** in two directions: tilt the phone like a steering wheel for left and right, and lean
-  the top of the phone back to throw higher or forward to throw flatter (20° to 55°). The
-  screen shows the angle and aim in numbers, and the aim locks when you grip.
-* **See where it will go**: markers on the sand (and in the TARGET view) show where 25%, 50%,
-  75% and 100% power land at your current aim, plus your last throw's power. The **POWER** bar
-  at the bottom shows the distance each power reaches and roughly how hard to throw to hit the
-  target. Wind and a moving target still change where it ends up.
+* **Aim** left and right by tilting the phone like a steering wheel. It locks when you grip.
+* **Your release decides the throw.** The game follows your hand through the swing (the
+  gyroscope tracks how the phone turns, the accelerometer how it moves, and gravity which way
+  is up). How **fast** your hand is moving when the javelin leaves it sets the power, together
+  with how fast your arm whips round. **Which way** it's moving sets the angle: swing upward
+  through the release to throw high, level to throw flat (20° to 55°).
+* **See it live**: the **POWER** bar fills as you swing and freezes at the power you let go
+  with. It also shows the distance each power reaches at your aim, roughly the power that
+  reaches the target (gold) and your last throw (blue). The **ANGLE** dial's needle follows
+  your arm during the swing, then shows the angle you actually threw at. Before the throw it
+  shows a guide from how far the phone leans back, and the gold tick is your last angle.
+* Markers on the sand (and in the TARGET view) show where 25%, 50%, 75% and 100% power land
+  at the guide angle. Wind and a moving target still change where it ends up.
+* Phones without a linear accelerometer can't measure the release direction, so they throw
+  at the guide angle (lean the phone back to throw higher).
 * **Throw**: press and hold the screen with your thumb to grip the javelin, pull your arm back
   until the DRAW bar turns green, then throw your arm forward. The javelin leaves your hand at
   the end of the swing (or when you lift your thumb).
