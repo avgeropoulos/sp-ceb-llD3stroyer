@@ -524,6 +524,8 @@ class TeamGameTest {
             ImageIO.write(img, "png", File(dir, "$name.png"))
         }
         startPlaying()
+        // (Wait for the level's circle wipe to finish opening, so the pictures show everything.)
+        run(0.3f) { game.hurtProof() }
         Ore.entries.forEach { game.inventory[it.ordinal] = 50 }
         game.coins = 500
         game.openCraftForTest(TeamGame.TABS.indexOf("BOWS"))

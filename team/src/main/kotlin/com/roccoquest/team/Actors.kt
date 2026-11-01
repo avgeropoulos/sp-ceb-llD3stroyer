@@ -321,9 +321,16 @@ class Hero(val who: Who, x: Float, y: Float) :
     var combo = 0
     /** Counts down while the double-jump flip is showing. */
     var flipT = 0f
-    /** Squash-and-stretch: counts down after landing. */
-    var squash = 0f
+    /**
+     * Squash and stretch (only how he's drawn, never his box): > 0 taller and thinner, < 0 shorter
+     * and wider. Landing squashes him and it springs back with a little wobble; jumping stretches him.
+     */
+    var stretch = 0f
+    private var stretchV = 0f
+    /** Time until the next dust puff (sprinting, skidding), so they come a few at a time. */
     var dustT = 0f
+    /** Was running into a wall last frame (a puff only on the bump, not every frame pushing on it). */
+    var againstWall = false
     var sprinting = false
     /** Rocco's blue shell spin dash. */
     var shellSpin = false
@@ -359,8 +366,51 @@ class Hero(val who: Who, x: Float, y: Float) :
         Who.MON -> when (mon.base) { Mon.SPARKY, Mon.EMBER, Mon.MYSTIC -> -340f; Mon.BLAZE, Mon.PUNCHO, Mon.LUGIA -> -310f; else -> -295f }
     }
 
+    /** Springs [stretch] toward how he's moving: stretched going up fast, normal on the ground. */
+    fun updateStretch(dt: Float, swimming: Boolean) {
+        val target = when {
+            onGround || swimming -> 0f
+            vy < 0f -> min(Squash.MAX_STRETCH, -vy / 2600f)
+            else -> min(0.05f, vy / 7000f)
+        }
+        // A springy pull (a little bouncy, like a rubber toy). Small steps keep it steady.
+        val step = min(dt, 1f / 30f)
+        stretchV += ((target - stretch) * STRETCH_PULL - stretchV * STRETCH_DAMP) * step
+        stretch = (stretch + stretchV * step).coerceIn(-Squash.MAX_SQUASH, Squash.MAX_STRETCH)
+    }
+
+    /** Lands from a fall at speed [fall]: a quick squash (bigger for bigger falls). */
+    fun land(fall: Float) {
+        stretch = -min(Squash.MAX_SQUASH, 0.07f + fall / 3200f)
+        stretchV = 0f
+    }
+
+    /** No squashing for a moment (teleported, swapped in, a new level). */
+    fun resetStretch() { stretch = 0f; stretchV = 0f }
+
+    /** The stretch to draw with: none for poses that already have their own shape (or when it's too small to see). */
+    fun drawStretch(g: TeamGame): Float {
+        if (who == Who.ROCCO && (crouching || slamming || shellSpin || (flipT > 0 && !onGround) || (longJumping && !onGround) ||
+                g.dino != null || g.megaT > 0f || g.capture != null)) return 0f
+        return if (abs(stretch) < 0.005f) 0f else stretch
+    }
+
+    private val stretchGfx = StretchGfx()
+
     fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
         if (this === g.leader && g.inCannon != null) return
+        // Squash and stretch, around his feet. Team Up! 3D scales its 3D shapes itself ([StretchingGfx]);
+        // anything else draws through this hero's [StretchGfx].
+        val st = drawStretch(g)
+        if (st == 0f) { drawSized(g, gfx, ox); return }
+        val sx = Squash.widthFor(st)
+        val native = gfx as? StretchingGfx
+        if (native == null) { drawSized(g, stretchGfx.aim(gfx, sx, 1f + st, cx + ox, bottom), ox); return }
+        native.stretch(sx, 1f + st, cx + ox, bottom)
+        try { drawSized(g, gfx, ox) } finally { native.unstretch() }
+    }
+
+    private fun drawSized(g: TeamGame, gfx: Gfx, ox: Float) {
         // Rocco is drawn a little shorter than his box, so he isn't taller than everybody else.
         val small = who == Who.ROCCO && !mini && g.megaT <= 0f && g.capture == null && g.dino == null
         val base = if (small) ScaledGfx(gfx, ROCCO_SCALE, (cx + ox) * (1 - ROCCO_SCALE), bottom * (1 - ROCCO_SCALE)) else gfx
@@ -450,11 +500,8 @@ class Hero(val who: Who, x: Float, y: Float) :
                         put(rs(2), px - 3, py + 6, 22f, 18f, facing < 0)
                         gfx.rect(px - facing * 10 + 4, py + 14, 8f, 1.5f, 0x99FFFFFF.toInt())
                     }
-                    else -> {
-                        // Squash when landing, stretch when jumping up fast (like the newer games).
-                        val k = if (squash > 0f) squash * 1.6f else if (!onGround && vy < -150f) -minOf(0.12f, -vy / 3000f) else 0f
-                        put(rs(frame), px - 8f * k, py + 24f * k, 16f * (1 + k), 24f * (1 - k), flip)
-                    }
+                    // (Squash and stretch is done for the whole of him in [draw].)
+                    else -> put(rs(frame), px, py, 16f, 24f, flip)
                 }
                 if (!mini && !shellSpin) {
                     if (g.tanookiT > 0) TeamArt.tanooki(gfx, cx + ox, py, bottom, facing, anim, swing > 0, crouching)
@@ -504,5 +551,11 @@ class Hero(val who: Who, x: Float, y: Float) :
         if (g.armor > 0 && who != Who.MON && (g.time * 4).toInt() % 2 == 0) {
             gfx.oval(px - 1, py - 1, 18f, 26f, argb(40, 0x2EB84A))
         }
+    }
+
+    private companion object {
+        /** How hard a squash springs back, and how fast the wobble after it dies down. */
+        const val STRETCH_PULL = 380f
+        const val STRETCH_DAMP = 17f
     }
 }

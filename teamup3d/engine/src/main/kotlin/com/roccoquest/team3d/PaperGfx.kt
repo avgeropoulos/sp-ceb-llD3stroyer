@@ -3,6 +3,7 @@ package com.roccoquest.team3d
 import com.roccoquest.game.Gfx
 import com.roccoquest.game.Sprite
 import com.roccoquest.game.mixColor
+import com.roccoquest.team.StretchingGfx
 import kotlin.math.min
 
 /**
@@ -13,9 +14,32 @@ import kotlin.math.min
  *
  * Coordinates are the 2D game's screen pixels (y down); they are flipped to world y.
  */
-class PaperGfx(private val list: DrawList) : Gfx {
+class PaperGfx(private val list: DrawList) : StretchingGfx {
     private val m = Mat4()
     private val pt = FloatArray(2)
+    /**
+     * Squash and stretch (a hero landing or jumping): the finished 3D shapes are scaled, so the meshes
+     * (puffy models, polygon prisms) stay the very same ones instead of new ones being built every frame.
+     */
+    private var stretching = false
+    private val stretchM = Mat4()
+    private val stretched = Mat4()
+    private var ssx = 1f
+    private var ssy = 1f
+    private var spx = 0f
+    private var spy = 0f
+
+    override fun stretch(sx: Float, sy: Float, px: Float, py: Float) {
+        // 2D y goes down, world y up: the pivot is at world (px, -py).
+        stretchM.identity().translate(px, -py, 0f).scale(sx, sy, 1f).translate(-px, py, 0f)
+        ssx = sx; ssy = sy; spx = px; spy = py
+        stretching = true
+    }
+
+    override fun unstretch() { stretching = false }
+
+    /** The model matrix to draw with: [m], stretched when a stretch is on. */
+    private fun model(): Mat4 = if (stretching) stretched.set(stretchM).mul(m) else m
     private var base = 0f
     private var front = 0f
     private var hasBody = false
@@ -40,7 +64,7 @@ class PaperGfx(private val list: DrawList) : Gfx {
         val big = isBody(color) && w * h > 40f
         val (z, d) = if (big) bodyDepth(min(w, h) * 0.5f) else nextDecal() to DECAL * 2
         m.identity().translate(x + w / 2, -(y + h / 2), z).scale(w, h, d)
-        list.add(Prims.cube, m, color, glow(color))
+        list.add(Prims.cube, model(), color, glow(color))
     }
 
     override fun oval(x: Float, y: Float, w: Float, h: Float, color: Int) {
@@ -49,13 +73,13 @@ class PaperGfx(private val list: DrawList) : Gfx {
             // A soft shadow under someone's feet: lay it flat on the ground, like in the Mario games.
             m.identity().translate(x + w / 2, -(y + h / 2) + 0.35f, 0f).scale(w / 2, 1f, w * 0.4f)
             // A little darker than the 2D one, so it reads on bright 3D ground.
-            list.add(Prims.disc, m, (maxOf(color ushr 24, 0x60) shl 24) or (color and 0xFFFFFF))
+            list.add(Prims.disc, model(), (maxOf(color ushr 24, 0x60) shl 24) or (color and 0xFFFFFF))
             return
         }
         val big = isBody(color) && w * h > 40f
         val (z, d) = if (big) bodyDepth(min(w, h) * 0.5f) else nextDecal() to DECAL * 2
         m.identity().translate(x + w / 2, -(y + h / 2), z).scale(w / 2, h / 2, d / 2)
-        list.add(Prims.ballFor(maxOf(w, h)), m, color, glow(color))
+        list.add(Prims.ballFor(maxOf(w, h)), model(), color, glow(color))
     }
 
     override fun poly(xs: FloatArray, ys: FloatArray, color: Int) {
@@ -63,7 +87,7 @@ class PaperGfx(private val list: DrawList) : Gfx {
         val ox = xs[0]; val oy = ys[0]
         val mesh = polyMesh(xs, ys, ox, oy)
         m.identity().translate(ox, -oy, nextDecal())
-        list.add(mesh, m, color, glow(color))
+        list.add(mesh, model(), color, glow(color))
     }
 
     override fun sprite(s: Sprite, x: Float, y: Float, flipX: Boolean, flipY: Boolean, w: Float, h: Float) {
@@ -88,16 +112,18 @@ class PaperGfx(private val list: DrawList) : Gfx {
             .scale(if (flipX) -sx else sx, if (flipY) -sy else sy, zScale)
         val mesh = Voxels.meshOrNull(s)
         if (mesh != null) {
-            list.add(mesh, m, -1, emissive)
+            list.add(mesh, model(), -1, emissive)
         } else {
             m.scale(1f, 1f, 0f)
-            val c = list.add(Voxels.card(s), m, -1, emissive)
+            val c = list.add(Voxels.card(s), model(), -1, emissive)
             c.cutout = true
         }
     }
 
     override fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Int) {
-        if (list.project(x, -y, front + 2f, pt)) {
+        val tx = if (stretching) spx + (x - spx) * ssx else x
+        val ty = if (stretching) spy + (y - spy) * ssy else y
+        if (list.project(tx, -ty, front + 2f, pt)) {
             // Keep the size the 2D game asked for, scaled by how close the text is.
             list.addLabel(s, pt[0], pt[1], size, color, align)
         }
@@ -133,6 +159,10 @@ class PaperGfx(private val list: DrawList) : Gfx {
     // Polygons change shape as things animate, so cache them by their (rounded) outline.
     private val polys = LinkedHashMap<Long, Mesh>(64, 0.75f, true)
 
+    /** How many polygon shapes were built so far (tests use it to spot new shapes made every frame). */
+    var polysBuilt = 0
+        private set
+
     private fun polyMesh(xs: FloatArray, ys: FloatArray, ox: Float, oy: Float): Mesh {
         // A hash of the rounded outline (no strings, so nothing is thrown away every frame).
         var k = 1469598103934665603L
@@ -141,6 +171,7 @@ class PaperGfx(private val list: DrawList) : Gfx {
             k = (k xor ((ys[i] - oy) * 2).toInt().toLong()) * 1099511628211L
         }
         polys[k]?.let { return it }
+        polysBuilt++
         val px = FloatArray(xs.size) { xs[it] - ox }
         val py = FloatArray(ys.size) { -(ys[it] - oy) }
         val mesh = MeshBuilder().apply { prism(px, py, -DECAL, DECAL, -1) }.build()
