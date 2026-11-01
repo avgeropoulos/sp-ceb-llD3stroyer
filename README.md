@@ -683,7 +683,7 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
     broccoli trees, forks and steaming soup bowls. Its pits are full of **hot tomato soup**: it burns like lava!
   * Plus the Sand, Jungle, Dino (Cappy is back!), Snow, Moon and Cloud kingdoms.
 * **Two new songs**: **METRO** (a jazzy big-band swing for the city) and **FEAST** (a happy, spinning dance for
-  the Food Kingdom).
+  the Food Kingdom). Every kingdom's first level plays its own song, and so does every other level there after it.
 * **3 new bad guys** (only in World 14), all with health bars, and Cappy can capture every one:
   * **TAXI**: drives along, and when it sees you it goes **HONK HONK!** and zooms. Captured: super fast, and THROW
     honks and zooms through bad guys.
@@ -692,11 +692,13 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
     breathes fire.
 * Bosses: **Krag Jr.** over the city (14-7), **Mecha Krag** stomping downtown (14-14), and the new last boss of
   the game, **CHEF KRAG** (14-21): King Krag in a chef's hat and apron, in his giant kitchen. He throws **PIES**,
-  bowls **giant meatballs** along the floor (jump over them!), and when he's angry he stirs his soup pot so hot
-  soup splashes out. Toast ledges help you jump on his head. Beat him and you've beaten all 14 worlds!
+  bowls **giant meatballs** along the floor (jump over them!), and when he's angry he walks over to his soup pot
+  (no pies on the way: a little break!) and stirs it so hot soup splashes out. Toast ledges help you jump on his
+  head. Beat him and you've beaten all 14 worlds!
 * Beating THE WONDER FINALE (13-21) now opens World 14 ("...but Krag ran off on a KINGDOM TOUR! WORLD 14 IS
   NEXT!"). Saves that had already beaten it get 14-1 opened automatically. The World 14 map has little
-  skylines, tomatoes and forks, and the title card says which kingdom you're visiting.
+  skylines, tomatoes and forks, and the title card says which kingdom you're visiting (on top, so earthquake
+  warnings never hide it).
 * Everything works in **Team Up! 3D** too: the rooftops, cheese, toast and glowing soup are 3D blocks.
 
 ### World 13: WONDER WORLD (levels 253-273)

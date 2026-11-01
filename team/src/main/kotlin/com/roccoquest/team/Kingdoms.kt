@@ -403,12 +403,21 @@ class ChefKrag(x: Float, private val ground: Float) : Foe(x - 10, ground - 40, 3
     private var bowlT = 6f
     private var stirT = 9f
     private var stirring = 0f
+    /** Walking over to his soup pot to stir it (counts down: if he can't get there in time, he doesn't stir). */
+    private var toPotT = 0f
+    /** Off to stir his soup pot (no pies or meatballs on the way). */
+    val goingToPot get() = toPotT > 0f
     private var throwT = 0f
     private var hurtT = 0f
     private var facing = -1
     private var pot: SoupPot? = null
     /** He looks just like King Krag (plus the chef things drawn on top). */
     private val look = KingKrag(x, ground)
+
+    private companion object {
+        /** He stirs standing this far from the middle of his pot: his big spoon reaches into the soup from there. */
+        const val STIR_REACH = 30f
+    }
 
     override fun update(g: TeamGame, dt: Float) {
         t += dt
@@ -428,21 +437,45 @@ class ChefKrag(x: Float, private val ground: Float) : Foe(x - 10, ground - 40, 3
         }
         val angry = hp < maxHp / 2
         facing = if (l.cx < cx) -1 else 1
+        val p = pot
         if (stirring > 0f) {
             // Stirring the pot: soup splashes out all over the kitchen.
             stirring -= dt
             vx = 0f
+            if (p != null) facing = if (p.cx < cx) -1 else 1
             if ((stirring * 4f).toInt() != ((stirring + dt) * 4f).toInt() && stirring > 0.2f) {
-                val p = pot
                 val sx = p?.cx ?: cx
                 g.spawn(Pie(sx - 5f, (p?.y ?: y) - 6f, l.cx + (Random.nextFloat() - 0.5f) * 120f, soup = true))
+            }
+        } else if (toPotT > 0f && p != null) {
+            // Off to his pot first, so his spoon really goes in the soup (not in the air across the kitchen).
+            toPotT -= dt
+            val dx = (if (cx < p.cx) p.cx - STIR_REACH else p.cx + STIR_REACH) - cx
+            if (abs(dx) < 4f) {
+                toPotT = 0f
+                vx = 0f
+                stirring = 1.5f
+                p.boil = 1.6f
+                g.say(cx, y - 8, "SOUP'S ON!", 1.4f)
+                g.sfx(Sound.SPLASH)
+            } else {
+                // (If something keeps him from getting there, he gives up when the time runs out: no stirring.)
+                facing = if (dx < 0f) -1 else 1
+                if (onGround) vx = facing * 60f
             }
         } else if (onGround) {
             // Waddle about the kitchen, staying near his pot.
             vx = if (abs(cx - homeX) > 70f) (if (cx > homeX) -30f else 30f) else facing * (if (angry) 32f else 22f)
         }
+        // (Decided first, so he doesn't throw a pie on the very moment he sets off for his pot.)
+        stirT -= dt
+        if (stirT <= 0f && angry && onGround && stirring <= 0f && toPotT <= 0f) {
+            stirT = 9f
+            toPotT = 3f
+        }
+        val busy = stirring > 0f || toPotT > 0f
         pieT -= dt
-        if (pieT <= 0f && stirring <= 0f) {
+        if (pieT <= 0f && !busy) {
             pieT = if (angry) 1.6f else 2.3f
             throwT = 0.35f
             val hx = if (facing > 0) x + w else x - 12f
@@ -451,19 +484,11 @@ class ChefKrag(x: Float, private val ground: Float) : Foe(x - 10, ground - 40, 3
             g.sfx(Sound.KICK)
         }
         bowlT -= dt
-        if (bowlT <= 0f && onGround && stirring <= 0f) {
+        if (bowlT <= 0f && onGround && !busy) {
             bowlT = if (angry) 5f else 6.5f
             g.say(cx, y - 8, "MEATBALL BOWLING!", 1.2f)
             g.sfx(Sound.STOMP)
             g.spawn(BigMeatball(if (facing > 0) x + w else x - 16f, bottom, facing))
-        }
-        stirT -= dt
-        if (stirT <= 0f && angry && onGround) {
-            stirT = 9f
-            stirring = 1.5f
-            pot?.boil = 1.6f
-            g.say(cx, y - 8, "SOUP'S ON!", 1.4f)
-            g.sfx(Sound.SPLASH)
         }
         walk(g, dt)
     }

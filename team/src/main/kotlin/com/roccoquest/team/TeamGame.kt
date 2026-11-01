@@ -4232,6 +4232,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     internal fun quakeNowForTest() { quakeT = 0f }
     internal fun safeXForTest() = safeX
     internal fun safeYForTest() = safeY
+    internal fun toastForTest() = toast
 
     private fun knockedOut() {
         hearts = 0
@@ -4251,7 +4252,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (starT <= 0 && !metal) hearts--
             sfx(Sound.HURT)
             if (hearts <= 0) { knockedOut(); return }
-            toast(if (level.inLava(h)) "Hot hot hot! Watch out for lava!" else "Whoops! Mind the gap!")
+            toast(when {
+                !level.inLava(h) -> "Whoops! Mind the gap!"
+                // (The Food Kingdom's "lava" is hot soup.)
+                level.def.place == Place.FOOD -> "Hot hot hot! Watch out for the soup!"
+                else -> "Hot hot hot! Watch out for lava!"
+            })
             // The safe spot can be gone by now (drilled, mined or caved in): never put him back over a hole,
             // or he'd fall again and again. With no ground anywhere near, back to the checkpoint.
             val x = standX(safeX, safeY)
@@ -4579,11 +4585,24 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         /** Every level's tune, worked out once in order so it's never the same as the level before. */
         private val levelTunes: List<Music> by lazy {
             val out = ArrayList<Music>()
+            // On the Kingdom Tour each kingdom's first level plays its own song (the first in its list), and so does
+            // every other level there after that. Taking turns by level number left the Big City's METRO for just one
+            // city level, since the city levels are spread out between the other kingdoms.
+            val stops = IntArray(Place.entries.size)
             for (i in Levels.all.indices) {
-                val opts = tunes(Levels.all[i].place)
-                val pick = opts[i % opts.size]
+                val d = Levels.all[i]
+                val opts = tunes(d.place)
+                val k = when {
+                    i < Kingdoms.WORLD14 -> i
+                    d.isBossLevel -> 0 // (boss levels play the boss songs)
+                    else -> {
+                        val n = stops[d.place.ordinal]++
+                        if (n % 2 == 0) 0 else 1 + (n / 2) % (opts.size - 1)
+                    }
+                }
+                val pick = opts[k % opts.size]
                 val prev = if (i == 0 || Levels.all[i - 1].isBossLevel) null else out[i - 1]
-                out += if (pick == prev) opts[(i + 1) % opts.size] else pick
+                out += if (pick == prev) opts[(k + 1) % opts.size] else pick
             }
             out
         }
@@ -7929,6 +7948,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     private fun renderIntro(gfx: Gfx) {
         gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF101018.toInt())
+        // The Kingdom Tour names its stop on a row of its own at the top, so an EARTHQUAKE warning never hides it.
+        val tour = Kingdoms.isTourLevel(levelIndex)
+        if (tour && !level.def.isBossLevel) gfx.shadowText("KINGDOM TOUR: ${Kingdoms.kingdomName(level.def.place)}!", viewW / 2, 32f, 9f, 0xFFFFC86A.toInt(), 1)
         if (levelIndex >= WORLD_SIZE) gfx.shadowText("WORLD ${levelIndex / WORLD_SIZE + 1}", viewW / 2, 52f, 12f, solidRainbow(time * 0.5f), 1)
         gfx.shadowText("LEVEL ${levelIndex + 1} of ${Levels.all.size}", viewW / 2, 70f, 12f, 0xFFDDDDDD.toInt(), 1)
         gfx.shadowText(level.def.name, viewW / 2, 96f, 20f, 0xFFFFD21F.toInt(), 1)
@@ -7939,9 +7961,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (isQuakeLevel(levelIndex)) gfx.shadowText("EARTHQUAKE LEVEL! When the ground cracks red, MOVE!", viewW / 2, 196f, 8f, 0xFFFF6A4A.toInt(), 1)
         else if (Hazards.eruptionLevel(levelIndex, level.def)) gfx.shadowText("VOLCANO LEVEL! When it ERUPTS, jump over the lava!", viewW / 2, 196f, 8f, 0xFFFF6A4A.toInt(), 1)
         else if (level.def.place == Place.ORBIT) gfx.shadowText("SPACE WALK! Spacesuits on. Super floaty jumps!", viewW / 2, 196f, 8f, 0xFF8AD8FF.toInt(), 1)
-        else if (level.def.place == Place.PREHISTORIC || levelIndex in WORLD_SIZE * 10 until WORLD_SIZE * 11) gfx.shadowText("DINO WORLD! Grab CAPPY and capture a dinosaur!", viewW / 2, 196f, 8f, 0xFF8AE86A.toInt(), 1)
+        // (The tour's Dino Kingdom is just one stop, not Dino World: its card says KINGDOM TOUR instead.)
+        else if ((level.def.place == Place.PREHISTORIC && !tour) || levelIndex in WORLD_SIZE * 10 until WORLD_SIZE * 11) gfx.shadowText("DINO WORLD! Grab CAPPY and capture a dinosaur!", viewW / 2, 196f, 8f, 0xFF8AE86A.toInt(), 1)
         else if (Wonder.isWonderLevel(levelIndex) && !level.def.isBossLevel) gfx.shadowText("WONDER FLOWERS: touch them for a surprise!", viewW / 2, 196f, 8f, solidRainbow(time * 0.5f), 1)
-        else if (Kingdoms.isTourLevel(levelIndex) && !level.def.isBossLevel) gfx.shadowText("KINGDOM TOUR: ${Kingdoms.kingdomName(level.def.place)}!", viewW / 2, 196f, 8f, 0xFFFFC86A.toInt(), 1)
         if (level.def.place == Place.WONDER) WonderArt.wonderFlower(gfx, viewW / 2 + 52f, 150f, time, 1.6f)
         // The Kingdom Tour: a little skyline for the Big City, a fork and a tomato for the Food Kingdom.
         if (level.def.place == Place.CITY) CityArt.miniSkyline(gfx, viewW / 2 + 40f, 150f, time)
