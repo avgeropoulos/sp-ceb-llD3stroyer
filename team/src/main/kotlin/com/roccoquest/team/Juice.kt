@@ -106,6 +106,13 @@ class Puffs(val size: Int = 28) {
     /** How many of them are dust. */
     val dustLive: Int get() { var n = 0; for (i in 0 until size) if (life[i] > 0f && kind[i] == DUST) n++; return n }
 
+    /** How many dust puffs are within [r] of ([px], [py]) (tests check whose feet the dust came from). */
+    fun dustNear(px: Float, py: Float, r: Float): Int {
+        var n = 0
+        for (i in 0 until size) if (life[i] > 0f && kind[i] == DUST && hypot(x[i] - px, y[i] - py) <= r) n++
+        return n
+    }
+
     fun clear() = life.fill(0f)
 
     private fun add(px: Float, py: Float, pvx: Float, pvy: Float, radius: Float, c: Int, time: Float, k: Int) {
@@ -144,9 +151,15 @@ class Puffs(val size: Int = 28) {
         }
     }
 
-    fun draw(gfx: Gfx, ox: Float, mark: (Any) -> Unit) {
+    /** Dust and bubbles: drawn behind the heroes, so a puff at their feet never hides their legs. */
+    fun drawBehind(gfx: Gfx, ox: Float, mark: (Any) -> Unit) = draw(gfx, ox, mark, glints = false)
+
+    /** Coin twinkles: drawn on top of everything. */
+    fun drawFront(gfx: Gfx, ox: Float, mark: (Any) -> Unit) = draw(gfx, ox, mark, glints = true)
+
+    private fun draw(gfx: Gfx, ox: Float, mark: (Any) -> Unit, glints: Boolean) {
         for (i in 0 until size) {
-            if (life[i] <= 0f) continue
+            if (life[i] <= 0f || (kind[i] == GLINT) != glints) continue
             mark(this)
             val k = 1f - life[i] / dur[i]
             val px = x[i] + ox

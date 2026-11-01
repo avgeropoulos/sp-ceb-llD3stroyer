@@ -46,6 +46,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         /** Speeding up on the ground, and stopping or turning around on it (a firmer grip, so it's snappy). */
         const val GROUND_ACCEL = 800f
         const val GROUND_BRAKE = 1300f
+        /** Skid dust only above this much of the walking speed (sprinting is 1.5 times it). */
+        const val SKID_SPEED = 1.2f
         const val MAX_ARMOR = 5
         const val COST = 5
         /** How many blocks each pickaxe can mine before it breaks (the wooden one never breaks). */
@@ -595,6 +597,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private var irisFromMap = false
     /** Who was standing on the map then (starting the level always puts Rocco out). */
     private var mapBlocky = false
+    /**
+     * How long the level's title card has been showing. After PLAY on the map the card only appears once the
+     * map's circle has closed, so a tap can't skip it at once and the rocket trip starts from the beginning.
+     */
+    private val cardT get() = if (irisFromMap) stateT - Iris.CLOSE else stateT
     private enum class IrisFocus { HERO, MAP, CENTER }
 
     /**
@@ -1297,7 +1304,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (edge(4, input.musicToggle)) musicOn = !musicOn
         val superE = edge(5, input.superMove)
         val actionE = edge(6, input.action)
-        actionTap = actionE
+        // (No grabbing King Krag's tail while a portal is closing: he'd come along into the bonus room.)
+        actionTap = actionE && portalPending == null
         val tntE = edge(7, input.tnt)
         val poseidonE = edge(8, input.poseidon)
         val blackE = edge(11, input.blackFlower)
@@ -1331,7 +1339,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             State.CONTROLS -> updateControls(tapped)
             State.SLOTS -> updateSlots(tapped, num)
             State.PICK -> updatePick(tapped, num)
-            State.INTRO -> if (stateT > 3f || (tapped && stateT > 0.6f)) { setState(State.PLAY); irisOpen(IrisFocus.HERO) }
+            State.INTRO -> if (stateT > 3f || (tapped && cardT > 0.6f)) { setState(State.PLAY); irisOpen(IrisFocus.HERO) }
             State.PLAY -> {
                 if (pauseE) { paused = !paused; pauseCursor = 0 }
                 // Controller on the pause screen: up/down picks a button, A presses it, B resumes.
@@ -1761,7 +1769,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         } else updateLeader(leader, dt, jumpE, grav)
         for ((i, f) in followers.withIndex()) updateFollower(f, dt, grav, i)
         val l = leader
-        if (actionE && riding == null && cannonFlyT <= 0f && !busy) {
+        // While a portal closes on the team, ACTION doesn't climb into anything (or open a menu): the room
+        // is about to change, and a cart or cannon taken along would leave the hero stuck in the bonus room.
+        val portalClosing = portalPending != null
+        if (actionE && riding == null && cannonFlyT <= 0f && !busy && !portalClosing) {
             val v = things.firstOrNull { it is Villager && abs(it.cx - l.cx) < 22f && abs(it.bottom - l.bottom) < 20f } as Villager?
             val bc = things.firstOrNull { it is BlastCannon && abs(it.cx - l.cx) < 22f && abs(it.bottom - l.bottom) < 20f } as BlastCannon?
             val mc = things.firstOrNull { it is Minecart && it.rider == null && abs(it.cx - l.cx) < 24f && abs(it.bottom - l.bottom) < 20f } as Minecart?
@@ -1774,7 +1785,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
         }
         // Hop onto Dash: land on his back, or press ACTION next to him.
-        if (l === rocco && dino == null && riding == null && !rocco.mini && !busy) {
+        if (l === rocco && dino == null && riding == null && !rocco.mini && !busy && !portalClosing) {
             val d = things.firstOrNull { it is Dino && it.rider == null && it.mountCooldown <= 0f && it.scaredT <= 0f } as Dino?
             if (d != null) {
                 val landed = l.vy > 0f && l.overlaps(d) && l.bottom < d.cy
@@ -1829,8 +1840,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             portalCloseT += dt
             if (portalCloseT >= Iris.PORTAL_CLOSE) {
                 portalPending = null
-                if (p.exit) exitBonus() else enterPortal(p)
-                return
+                // Only if nothing else happened meanwhile: LEVEL CLEAR! (or OH NO!) on this very frame keeps the
+                // level (so it still counts as beaten), and nobody goes through while sitting in something.
+                if (state == State.PLAY && riding == null && inCannon == null && grabbing == null) {
+                    if (p.exit) exitBonus() else enterPortal(p)
+                    return
+                }
+                // Called off: the circle opens again instead of the picture popping back.
+                if (state == State.PLAY || state == State.CLEAR || state == State.OUCH) irisOpen(IrisFocus.HERO)
             }
         }
         updatePartnerZap(dt)
@@ -2067,15 +2084,22 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (h.onGround) h.longJumping = false
             return
         }
-        val top = h.speed * (if (sprint) 1.5f else 1f) * (if (rocco) (captureKind?.speed ?: 1f) * (if (megaT > 0f) 1.2f else 1f) else 1f) *
-            (if (rocco && captureDashT > 0f) 2.2f else 1f)
+        // How fast he walks (a capture or Mega Rocco changes that; sprinting and a capture dash go faster still).
+        val roccoSpeed = if (rocco) (captureKind?.speed ?: 1f) * (if (megaT > 0f) 1.2f else 1f) else 1f
+        val walk = h.speed * roccoSpeed
+        val top = h.speed * (if (sprint) 1.5f else 1f) * roccoSpeed * (if (rocco && captureDashT > 0f) 2.2f else 1f)
         val want = if (h.crouching) 0f else dir * top
         // Stopping and turning around on the ground grip harder than speeding up, so the hero stops
         // where you let go instead of sliding. (Not while squatting: that slide is the crouch long jump.
         // In the air nothing changes, so every jump still goes just as far.)
         val braking = h.onGround && !h.crouching && (want == 0f || want * h.vx < 0f)
-        // Skidding to a stop or turning around at speed: dust flies up in front of his feet.
-        if (braking && abs(h.vx) > 100f && !inWater(h)) {
+        // Skidding to a stop or turning around at speed: dust flies up in front of his feet. Only when going
+        // faster than walking (letting go while just walking is no skid), and every new skid puffs right away
+        // (the running trail's countdown may still be going).
+        val skid = braking && abs(h.vx) > walk * SKID_SPEED && !inWater(h)
+        if (skid && !h.skidding) h.dustT = 0f
+        h.skidding = skid
+        if (skid) {
             h.dustT -= dt
             if (h.dustT <= 0f) {
                 h.dustT = 0.05f
@@ -4103,7 +4127,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     t.removed = true
                     t.collect(this)
                 }
-                is Portal -> if (!t.used && t.overlaps(leader) && riding == null && portalHit == null && portalPending == null) portalHit = t
+                is Portal -> if (!t.used && t.overlaps(leader) && riding == null && inCannon == null && grabbing == null &&
+                    portalHit == null && portalPending == null) portalHit = t
                 is Chest -> if (hit && !t.open) openChest(t)
                 is Checkpoint -> if (!t.reached && t.overlaps(leader)) {
                     t.reached = true
@@ -4269,6 +4294,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     internal val particleCountForTest get() = particles.size
     internal fun hopForTest(tx: Int, ty: Int) = hopLift(tx, ty)
     internal fun playMapLevelForTest(i: Int) { mapSel = i; playSelected() }
+    /** How long a portal has been closing on the team (-1 when none is). */
+    internal val portalWaitForTest get() = if (portalPending != null) portalCloseT else -1f
     internal fun dogForTest() { dogT = 0f }
     internal fun spawnForTest(t: Thing) = spawn(t)
     internal fun pickStickerScreenForTest() = offerStickers(levelIndex + 1)
@@ -4902,6 +4929,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             f.drawHealth(gfx, ox)
         }
         for (h in team) if (h.onGround) { mark(h); softShadow(gfx, h.cx + ox, h.bottom, if (h === rocco && megaT > 0f) h.w * 2 else h.w) }
+        // Dust and bubbles go behind the team, so a landing puff never covers their legs.
+        puffs.drawBehind(gfx, ox, mark)
         for (h in followers) { mark(h); h.draw(this, gfx, ox) }
         mark(leader)
         leader.draw(this, gfx, ox)
@@ -4910,7 +4939,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (!hh.mini) TeamArt.shieldIcon(gfx, hh.cx + ox + hh.facing * 6f - 4f, hh.y + hh.h * 0.3f, 11f, shieldType)
         }
         for (t in things) if ((t is Shot || t is MonShot || t is Frog) && visibleThing(t, cam)) { mark(t); t.draw(this, gfx, ox) }
-        puffs.draw(gfx, ox, mark)
+        puffs.drawFront(gfx, ox, mark)
         for (p in particles) { mark(p); p.draw(gfx, ox) }
         mark(this)
         // Underwater tint up to the shore, with a wavy surface line.
@@ -7310,6 +7339,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     private fun enterPortal(p: Portal) {
         if (dino != null) dismount()
+        // A minecart or cannon stays behind in the level: sitting in one in the bonus room, nobody could move.
+        riding?.let { leaveCart(it, false) }
+        inCannon?.let { it.loaded = false; inCannon = null }
         p.used = true
         away = Away(
             level, ArrayList(foes), ArrayList(things), ArrayList(frogSpots), goal, house, bed,
@@ -8027,7 +8059,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (level.def.place == Place.CITY) CityArt.miniSkyline(gfx, viewW / 2 + 40f, 150f, time)
         if (level.def.place == Place.FOOD) { FoodArt.fork(gfx, viewW / 2 + 46f, 118f, 150f, 0.55f); FoodArt.tomato(gfx, viewW / 2 + 60f, 144f, 6f) }
         PlanetArt.planetOf(level.def.place)?.let { pl ->
-            PlanetArt.drawTrip(gfx, level.def.place, viewW, stateT)
+            PlanetArt.drawTrip(gfx, level.def.place, viewW, cardT)
             gfx.shadowText("ROCKET TRIP TO ${pl.label}!", viewW / 2, 208f, 8f, 0xFF8AD8FF.toInt(), 1)
         }
         gfx.shadowText("FILE ${slot + 1}   Hearts: $MAX_HEARTS   Pickaxe: ${TeamArt.pickName(pickTier)}", viewW / 2, 180f, 8f, 0xFFAADDFF.toInt(), 1)
