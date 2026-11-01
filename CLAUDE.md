@@ -289,9 +289,12 @@ copy in `teamapp/` and `teamup3d/android/`, keep them the same) is the Android s
   `toast` = HARD, `cheese` = BRICK, `soupTop`/`soupDeep` = LAVA tiles, i.e. the soup works like lava; song
   `Music.FEAST`). Every plain ASCII level char was taken, so World 14 uses Latin-1 ones: `TourFoe`s Taxi '¥'
   (honks, then zooms), Meatball 'ø' (rolls at you), Chili 'ç' (spits `ChiliFlame`s) and boss `ChefKrag` '§'
-  (`NamedBoss`, KingKrag look + chef hat/apron; `Pie`s, `BigMeatball`s to jump over, stirs his `SoupPot` when angry).
+  (`NamedBoss`, KingKrag look + chef hat/apron; `Pie`s, `BigMeatball`s to jump over; when angry he walks to his `SoupPot`,
+  no pies or meatballs on the way (`goingToPot`), then stirs it). Falling in the soup says soup, not lava (`checkFalls`).
   CaptureKind TAXI/MEATBALL/CHILI. The generator gives the city more gaps (alleys) and FOOD little soup pools;
-  `KingdomMap` decorates the map, `Kingdoms.kingdomName` is on the title card. 13-21 now says "WORLD 14 IS NEXT!".
+  `KingdomMap` decorates the map, `Kingdoms.kingdomName` is on the title card (its own top row, so hazard lines never
+  hide it). On the tour `Tunes` counts each place's levels: its own song (first in its list) plays on the 1st, 3rd, 5th...
+  (levels before `WORLD14` keep taking turns by level number). 13-21 now says "WORLD 14 IS NEXT!".
 
 * Juice (`Juice.kt`): `game.puffs` is a fixed pool (dust, underwater bubbles, coin twinkles; never more than its size,
   no allocation), fed by `dust(h, ...)` in `moveHero`/`updateLeader` (landing, sprint start, skid, wall bump via

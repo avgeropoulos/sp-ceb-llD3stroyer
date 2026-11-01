@@ -259,7 +259,7 @@ object MoreWorlds {
     // World 14: the Kingdom Tour. A different kingdom in every level: the new Big City and Food Kingdom the most,
     // with a few older places (and their bad guys) mixed in. Taxis, meatballs and chili peppers only live here.
     private val world14Plans = listOf(
-        Plan("NEON CITY", Place.CITY, "WORLD 14: THE KINGDOM TOUR! First stop: the BIG CITY. Watch out for honking taxis!", extra = 40),
+        Plan("NEON CITY", Place.CITY, "First stop: the BIG CITY! Watch out for honking taxis!", extra = 40),
         Plan("ROOFTOP RUN", Place.CITY, "Jump from rooftop to rooftop. Don't look down!", extra = 60),
         Plan("SAND KINGDOM", Place.DESERT, "A hot, hot desert. Even the chili peppers are sweating!", extra = 60),
         Plan("FOOD KINGDOM", Place.FOOD, "The FOOD KINGDOM! The soup is HOT: don't fall in!", extra = 70),

@@ -1,8 +1,10 @@
 package com.roccoquest.team
 
+import com.roccoquest.game.Gfx
 import com.roccoquest.game.Music
 import com.roccoquest.game.Sound
 import com.roccoquest.game.SoundSink
+import com.roccoquest.game.Sprite
 import com.roccoquest.game.Storage
 import com.roccoquest.game.Voice
 import com.roccoquest.game.TILE
@@ -1330,6 +1332,66 @@ class TeamGameTest {
         assertEquals(Music.FEAST, Place.FOOD.music)
     }
 
+    @Test fun eachNewKingdomPlaysItsOwnSongALot() {
+        assertEquals(Music.METRO, TeamGame.Tunes.levelMusic(Levels.all.indexOfFirst { it.name == "NEON CITY" }))
+        for ((place, song) in listOf(Place.CITY to Music.METRO, Place.FOOD to Music.FEAST)) {
+            val tunes = (w14 until Levels.all.size).filter { Levels.all[it].place == place && !Levels.all[it].isBossLevel }
+                .map { TeamGame.Tunes.levelMusic(it) }
+            assertEquals(song, tunes.first(), "the first $place level plays $song")
+            assertTrue(tunes.count { it == song } * 2 >= tunes.size, "$song in at least half of the $place levels: $tunes")
+            assertTrue(tunes.toSet().size >= 3, "and some other songs too: $tunes")
+        }
+    }
+
+    /** Writes down every text the game draws (not the black shadows under them). */
+    private class TextSpy : Gfx {
+        class Line(val s: String, val x: Float, val y: Float, val size: Float, val align: Int) {
+            // (Monospace letters are about 0.6 as wide as they're tall; a little extra for safety, and the shadow.)
+            private val w = s.length * size * 0.62f
+            val left get() = x - when (align) { 1 -> w / 2; 2 -> w; else -> 0f }
+            val right get() = left + w + 1f
+            val top get() = y - size * 0.85f
+            val bottom get() = y + size * 0.25f + 1f
+            fun overlaps(o: Line) = left < o.right && o.left < right && top < o.bottom && o.top < bottom
+        }
+        val lines = ArrayList<Line>()
+        override fun rect(x: Float, y: Float, w: Float, h: Float, color: Int) {}
+        override fun oval(x: Float, y: Float, w: Float, h: Float, color: Int) {}
+        override fun poly(xs: FloatArray, ys: FloatArray, color: Int) {}
+        override fun sprite(s: Sprite, x: Float, y: Float, flipX: Boolean, flipY: Boolean, w: Float, h: Float) {}
+        override fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Int) {
+            if (color != 0xFF000000.toInt()) lines += Line(s, x, y, size, align)
+        }
+    }
+
+    @Test fun kingdomTourTitleCardsShowTheTourOnARowOfItsOwn() {
+        val dir = File("build/screens").apply { mkdirs() }
+        for (w in listOf(320f, 427f, 540f)) for (i in w14 until Levels.all.size) {
+            if (Levels.all[i].isBossLevel) continue
+            game.viewW = w
+            game.newGame(0, Mon.SPARKY)
+            game.startLevel(i)
+            run(1f)
+            assertEquals(TeamGame.State.INTRO, game.state)
+            val spy = TextSpy()
+            game.render(spy)
+            val what = "${game.levelLabel(i)} at width $w"
+            val tour = spy.lines.single { it.s.startsWith("KINGDOM TOUR: ") }
+            assertEquals("KINGDOM TOUR: ${Kingdoms.kingdomName(Levels.all[i].place)}!", tour.s)
+            for (o in spy.lines) assertTrue(o.left >= 0f && o.right <= w, "$what: \"${o.s}\" fits on the screen")
+            for (o in spy.lines) if (o !== tour) assertFalse(tour.overlaps(o), "$what: the tour line is clear of \"${o.s}\"")
+            // The Dino Kingdom is just a stop on the tour, not Dino World.
+            assertTrue(spy.lines.none { "DINO WORLD" in it.s }, what)
+            if (game.isQuakeLevelForTest(i)) assertTrue(spy.lines.any { it.s.startsWith("EARTHQUAKE") }, "$what: the quake warning shows too")
+            if (i == w14) {
+                assertTrue(game.isQuakeLevelForTest(i), "14-1 has an earthquake (and still says KINGDOM TOUR)")
+                val img = BufferedImage((w * 3).toInt(), 240 * 3, BufferedImage.TYPE_INT_ARGB)
+                game.render(AwtGfx(img, 3f))
+                ImageIO.write(img, "png", File(dir, "w14-intro-neon-city-${w.toInt()}.png"))
+            }
+        }
+    }
+
     /** Puts the leader at the start of a flat, open stretch of ground (16 tiles long) in this level. */
     private fun standOnFlatGround() {
         val lv = game.level
@@ -1411,8 +1473,11 @@ class TeamGameTest {
         game.noInvulnForTest()
         val hearts = game.hearts
         l.x = tx * TILE.toFloat(); l.y = 11f * TILE
-        run(1.5f)
+        var n = 0
+        while (game.hearts == hearts && game.state == TeamGame.State.PLAY && n++ < 90) game.update(dt)
         assertTrue(game.hearts < hearts || game.state == TeamGame.State.OUCH, "the soup is HOT")
+        // It says it's the soup (there's no lava in the Food Kingdom).
+        assertEquals("Hot hot hot! Watch out for the soup!", game.toastForTest())
     }
 
     @Test fun chefKragIsBeatenByTheBot() {
@@ -1464,6 +1529,48 @@ class TeamGameTest {
         val img2 = BufferedImage((game.viewW * 3).toInt(), 240 * 3, BufferedImage.TYPE_INT_ARGB)
         game.render(AwtGfx(img2, 3f))
         ImageIO.write(img2, "png", File(dir, "w14-victory.png"))
+    }
+
+    @Test fun chefKragWalksToHisPotBeforeHeStirs() {
+        startPlaying(Levels.all.lastIndex)
+        val chef = game.foes.filterIsInstance<ChefKrag>().single()
+        game.foes.retainAll(setOf(chef))
+        val l = game.leader
+        // We stay over on the left, so he waddles away from his pot (it's on his right) to come at us.
+        l.x = chef.homeX - 170f; l.y = chef.bottom - l.h - 1f
+        run(1f) { game.hurtProof() }
+        assertTrue(chef.awake)
+        val pot = game.thingsForTest().filterIsInstance<SoupPot>().single()
+        while (chef.hp >= chef.maxHp / 2) chef.hit(game, 5) // angry: now he stirs his soup now and then
+        val seen = HashSet<Foe>(game.foes)
+        var walkedFrom = -1f
+        var stirredAt = -1f
+        var walkT = 0f
+        var thrownOnTheWay = 0
+        var t = 0f
+        while (stirredAt < 0f && t < 14f) {
+            game.hurtProof()
+            l.x = chef.homeX - 170f; l.vx = 0f
+            val going = chef.goingToPot
+            game.update(dt)
+            t += dt
+            if (chef.goingToPot && !going) walkedFrom = abs(chef.cx - pot.cx)
+            if (chef.goingToPot) walkT += dt
+            for (f in game.foes) if (seen.add(f) && (going || chef.goingToPot) && (f is Pie || f is BigMeatball)) thrownOnTheWay++
+            if (pot.boil > 0f) stirredAt = abs(chef.cx - pot.cx)
+        }
+        assertTrue(walkedFrom > 70f, "he was far from his pot when it was time to stir: $walkedFrom")
+        assertTrue(stirredAt in 0f..40f, "he walked over to it first: stirred $stirredAt from it")
+        assertTrue(walkT > 0.5f, "it took him a little while to walk over: $walkT")
+        assertEquals(0, thrownOnTheWay, "no pies or meatballs while he walks over")
+        // Then the soup splashes out of the pot.
+        var soup = 0
+        run(0.6f) { game.hurtProof(); soup = maxOf(soup, game.foes.count { it is Pie }) }
+        val img = BufferedImage((game.viewW * 3).toInt(), 240 * 3, BufferedImage.TYPE_INT_ARGB)
+        game.render(AwtGfx(img, 3f))
+        ImageIO.write(img, "png", File(File("build/screens").apply { mkdirs() }, "boss-chef-krag-stirring.png"))
+        run(0.9f) { game.hurtProof(); soup = maxOf(soup, game.foes.count { it is Pie }) }
+        assertTrue(soup >= 3, "soup splashes out: $soup")
     }
 
     @Test fun theWonderFinaleNowLeadsToTheKingdomTour() {
