@@ -83,7 +83,9 @@ Nothing comes closer than `FRONT_Z` (-80; the level's ground ends at -56). Budge
 Fog (`FOG_NEAR` = 520, just past the level's farthest corner) fades it into the sky colour (`haze`). With scenery,
 `TeamScene.drawsScenery` is true and the app paints `renderLevelBackdrop(gfx, scenery = false)`: only the sky, sun,
 stars... (`Sunset`, `SeaArt.seaSky`, `GalaxyArt`, `DinoArt`, `WonderArt`, `PlanetArt.drawSky` take the same flag; the
-2D game always passes true). Floating things stay below the HUD bar (`skyY`). Camera-facing flat shapes (eyes, petals,
+2D game always passes true). Floating things stay below the HUD bar (`skyY`). Cloud Skies' `cloudSea` is sky blue on a
+blue `floor` (never white: the level's cloud platforms are white puffs; `TeamSceneTest.cloudPlatformsStandOutFromTheCloudSea`
+checks every SKY level against `MIN_CLOUD_CONTRAST`, report in `screens3d/sky-platforms.txt`). Camera-facing flat shapes (eyes, petals,
 candy) use `Kit.lens` (cheap). Screenshots: `TeamSceneTest.sceneryScreenshots` → `screens3d/scenery-*.png`.
 `Mesh.release()` only queues meshes the backend uploaded (nothing else drains the queue in tests).
 

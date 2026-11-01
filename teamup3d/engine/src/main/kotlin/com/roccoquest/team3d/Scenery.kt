@@ -230,11 +230,15 @@ object Scenery {
                 Scenery.Band.SKY -> floaters(2, endStone = true)
             }
         }
-        Place.SKY -> Look(c(0xFFD0ECFF), cloudGlow = 0.35f) {
+        // The level's cloud platforms are white puffs, so the cloud sea under them is sky blue and sits low
+        // (white on white hid where the platforms were, and made the pits look like more cloud to stand on).
+        // Its flat floor reaches down past the bottom of the screen, so the puffs never look cut off, and the haze
+        // is the painted sky's blue at the horizon, so the far edge of the floor fades into it.
+        Place.SKY -> Look(c(0xFF7CBEFF), cloudGlow = 0.35f, floor = c(0xFF94BCEA), floorY = -322f) {
             when (band) {
-                Scenery.Band.NEAR -> cloudSea(-232f, -200f)
-                Scenery.Band.MID -> { cloudSea(-286f, -232f); floaters(1, grass = true) }
-                Scenery.Band.FAR -> cloudSea(-350f, -270f)
+                Scenery.Band.NEAR -> cloudSea(-262f, -240f)
+                Scenery.Band.MID -> { cloudSea(-296f, -256f); floaters(1, grass = true) }
+                Scenery.Band.FAR -> cloudSea(-300f, -230f)
                 Scenery.Band.SKY -> clouds(3)
             }
         }
@@ -1027,13 +1031,18 @@ private class Kit(val band: Scenery.Band, val rnd: Random, private val haze: Int
         glow.resetPlace()
     }
 
-    /** A sea of clouds (the Cloud Skies levels have no ground). */
+    /**
+     * A sea of clouds (the Cloud Skies levels have no ground). Sky blue, not white: the level's own cloud
+     * platforms are white, and they have to stand out from it.
+     */
     fun cloudSea(lo: Float, hi: Float) = along(if (band == Scenery.Band.NEAR) 5 else 6) { x ->
         val top = r(lo, hi)
         val r = w / 6f * r(0.8f, 1.1f)
         val z = z(r * 0.5f)
-        ball(x, top - r * 0.7f, z, r, r * 0.7f, r * 0.5f, col(0xFFFFFFFF.toInt()), col(0xFFDCEBFA.toInt()), slices = 10, lats = DOME)
-        hillList += floatArrayOf(x, top - r * 0.7f, z, r, r * 0.7f, r * 0.5f)
+        // Each puff rises out of the floor (no gap under it).
+        val foot = min(top - r * 0.7f, floorY)
+        ball(x, foot, z, r, top - foot, r * 0.5f, col(0xFFB0D2F2.toInt()), col(0xFF84AEE0.toInt()), slices = 10, lats = DOME)
+        hillList += floatArrayOf(x, foot, z, r, top - foot, r * 0.5f)
     }
 
     /** Big soft clouds floating high up. */

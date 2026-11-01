@@ -131,7 +131,8 @@ are exactly like Team Up!.
   trees and snowmen, sand dunes with cacti and pyramids, gumdrop hills with lollipops, dark spires and
   volcanoes in a glowing lava lake, palm-tree islands out on the sea, coral and seaweed under the water,
   glowing crystals in the caves, spooky trees and jack-o'-lanterns at night, toys as big as hills, giant
-  glowing mushrooms, Wonder hills with big eyes, dinosaurs far away, and floating rocks, satellites and
+  glowing mushrooms, Wonder hills with big eyes, dinosaurs far away, a soft blue sea of clouds far below
+  the sky levels (so the white cloud platforms always stand out), and floating rocks, satellites and
   little ringed planets in space. It's real 3D, so the far-off things slide by slower as you run, and a
   soft mist fades them into the sky so the level in front is always easy to see. A level always has the
   same scenery, it's always behind the level (it never hides a block or a bad guy), and it's built once
