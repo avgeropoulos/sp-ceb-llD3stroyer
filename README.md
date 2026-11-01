@@ -400,8 +400,12 @@ knocked it off). They level up to Lv5 like the flowers.
   where there's solid ground further down: no drilling through a ship's hull and out of the level).
 * **BUBBLE FLOWER** (sapphire): Rocco in bubble blue and pink. **BUBBLE** blows shiny bubbles that float
   forward, then drift up. A bubble **pops** any ordinary bad guy it touches, and they turn into coins (bosses
-  just take a hit). Land on your own bubble to **bounce** off it (once each: then it pops). Two bubbles at a
-  time, more as it levels up.
+  just take a hit; spike balls and bombs pop without coins, so they can't be farmed). Land on your own bubble to
+  **bounce** off it (once each: then it pops). Two bubbles at a time, more as it levels up.
+* **Mini Rocco** and a **captured** bad guy have no trunk or drill to show, so they can't use the moves either
+  (Mini Rocco just punches; the power-up is still there when he grows back). **MEGA** Rocco swings a giant
+  trunk, whirls a giant drill and blows bubbles from way up high, and a **baby** (BABY MACHINE) has baby-sized
+  moves and no bonnet over the drill. Riding **Dash**, it's Dash's feet that land on spiky bad guys, not the drill.
 * **Getting hit** knocks the power-up off (POOF!) instead of costing a heart, and Rocco goes back to the
   flower he had on before. It's gone for real: grab another from a power block, or **MAKE** a new one on the
   WONDER tab with the ore again (that levels it up too). Blocky's shirt turns grey, steel blue or bubble blue to

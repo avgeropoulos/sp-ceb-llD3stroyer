@@ -350,6 +350,26 @@ class TeamSceneTest {
         repeat(240) { f -> input.action = f % 30 < 2; game.update(dt); scene.build(game) }
         input.right = false; input.action = false
         assertTrue(Voxels.built - before < 30, "made ${Voxels.built - before} new models while drilling along")
+
+        // MEGA Rocco's trunk, drill whirl and bubbles are giant too (and swinging away makes no new shapes).
+        for (p in PowerUps.ALL) {
+            startPlaying(0)
+            game.foes.clear()
+            game.givePowerUp(p)
+            game.startMega()
+            val r = game.rocco
+            r.x = 16 * 16f
+            r.y = 13 * 16f - r.h
+            run(1.2f)
+            r.facing = 1
+            repeat(80) { f -> input.action = f % 40 < 2; game.update(dt); scene.build(game) }
+            val shapes = scene.paper.polysBuilt
+            repeat(160) { f -> input.action = f % 40 < 2; game.update(dt); scene.build(game) }
+            assertTrue(scene.paper.polysBuilt - shapes < 10, "made ${scene.paper.polysBuilt - shapes} new shapes as MEGA ${p.label}")
+            input.action = true; game.update(dt); input.action = false
+            run(0.1f)
+            shot(scene, "power-mega-${p.name.lowercase()}-3d")
+        }
     }
 
     /** A big close-up around ([cx], [cy]) (game pixels) of the 3D picture, to see small things. */

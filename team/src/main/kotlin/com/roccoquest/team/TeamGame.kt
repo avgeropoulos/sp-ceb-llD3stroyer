@@ -627,9 +627,15 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
     private fun points(n: Int) { score += n * SCORE_MULT }
 
+    /**
+     * False for spike balls, fire, bombs and the like: bosses and Puffclouds make them over and over, so if
+     * knocking them out (or popping them in a bubble) dropped coins, it would be an endless coin farm.
+     */
+    private fun dropsCoins(f: Foe) = !(f is SpikeBall || f is Flame || f is SonicBoom || f is DragonBall || f is BombBomb)
+
     /** A bad guy was knocked out: it drops coins (tough ones drop more). */
     fun onFoeDefeated(f: Foe) {
-        if (f is SpikeBall || f is Flame || f is SonicBoom || f is DragonBall || f is BombBomb) return
+        if (!dropsCoins(f)) return
         val n = when {
             f.maxHp >= 10 -> 5
             f.maxHp >= 4 -> 3
@@ -2010,7 +2016,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
             h.crouching = input.down && h.onGround && !h.slamming
             // Drill Rocco: squat on a breakable block to drill down through it (never in a boss arena).
-            if (h.crouching && power == Power.DRILL && !h.mini && camLock == null && boss == null) {
+            if (h.crouching && powerShows(h, Power.DRILL) && camLock == null && boss == null) {
                 drillDownT += dt
                 if (drillDownT >= PowerUps.DRILL_DOWN_TIME) { drillDownT = 0f; drillDown(h) }
             } else drillDownT = 0f
@@ -2192,7 +2198,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             val by = level.bumpY
             bump(bx, by, h)
             // Drill Rocco keeps going up through the block he just drilled.
-            if (h === rocco && power == Power.DRILL && level[bx, by] == Tile.EMPTY) h.vy = fall * 0.85f
+            if (powerShows(h, Power.DRILL) && level[bx, by] == Tile.EMPTY) h.vy = fall * 0.85f
         }
         val swimming = inWater(h)
         // Running smack into a wall: a little puff where he bumped it (just once, not all the time he pushes on it).
@@ -2307,7 +2313,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 points(50)
             }
             // Drill Rocco drills straight through (plain ground and dirt stay put, so he can't dig out the top of a cave).
-            else -> if (by === rocco && power == Power.DRILL && drillable(tx, ty)) drillBlock(tx, ty)
+            else -> if (by != null && powerShows(by, Power.DRILL) && drillable(tx, ty)) drillBlock(tx, ty)
             // Rocco can bonk blocks from below to mine them.
             else if (by?.who == Who.ROCCO && level.toughness(tx, ty) > 0) mine(tx, ty, pickTier, rocco = true) else sfx(Sound.BUMP)
         }
@@ -2775,6 +2781,20 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         toast("POOF! No more ${lost.label}. Make a new one at CRAFT > WONDER!")
     }
 
+    /**
+     * True when [h] is Rocco wearing the Wonder power-up [p] where it shows, so he can use its moves. Mini Rocco
+     * and a captured bad guy (Cappy's, or Wonder King Krag's magic) have no trunk or drill to show, so nothing
+     * invisible gets whacked or drilled: they do their usual moves instead.
+     */
+    private fun powerShows(h: Hero, p: Power) = h === rocco && power == p && !h.mini && capture == null
+
+    /**
+     * How big Rocco's Wonder moves are next to usual. His box never changes, but MEGA Rocco is drawn twice as
+     * big and a baby smaller, so the trunk, the drill whirl and the bubbles grow and shrink with his picture
+     * and hit just what they're drawn touching.
+     */
+    private val moveSize get() = if (megaT > 0f) 2f else if (babyMode) Baby.SCALE else 1f
+
     /** True for blocks a drill or a trunk breaks right through: bricks, stone and ore (never ground, hard blocks or bedrock). */
     private fun drillable(tx: Int, ty: Int): Boolean {
         val t = level[tx, ty]
@@ -2794,13 +2814,15 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         h.cooldown = 0.4f
         val lvl = flowerLevel[Power.ELEPHANT.ordinal].coerceAtLeast(1)
         val dmg = Power.ELEPHANT.damage + lvl - 1
-        val reach = Body(if (h.facing > 0) h.x + h.w - 2f else h.x - 24f, h.y + 2f, 26f, h.h - 2f)
+        // Where the trunk swings: out in front of his face, measured from his feet (it's as big as he's drawn).
+        val k = moveSize
+        val reach = Body(if (h.facing > 0) h.cx + 4f * k else h.cx - 30f * k, h.bottom - 21f * k, 26f * k, 21f * k)
         var whacked = false
         for (f in foes) if (!f.dying && f.active && f.overlaps(reach) && f.hit(this, dmg)) whacked = true
-        if (whacked) particles += FloatText(h.cx + h.facing * 18f, h.y - 2f, "WHAM!", 0xFFFFE14D.toInt())
+        if (whacked) particles += FloatText(h.cx + h.facing * 18f * k, h.bottom - 25f * k, "WHAM!", 0xFFFFE14D.toInt())
         // Bricks, prize blocks, stone and ore right in front get smashed (plain ground just goes BUMP).
-        val tx = tileOf(if (h.facing > 0) h.x + h.w + 8f else h.x - 8f)
-        for (ty in tileOf(h.y + 3f)..tileOf(h.bottom - 3f)) {
+        val tx = tileOf(h.cx + h.facing * 14f * k)
+        for (ty in tileOf(h.bottom - 20f * k)..tileOf(h.bottom - 3f)) {
             when (level[tx, ty]) {
                 Tile.BRICK, Tile.QCOIN, Tile.QHEART, Tile.QSTAR, Tile.QMYSTERY, Tile.QPOWER -> { bump(tx, ty); shake = max(shake, 0.12f) }
                 else -> if (drillable(tx, ty)) { drillBlock(tx, ty); shake = max(shake, 0.12f) }
@@ -2816,13 +2838,16 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (!h.onGround) h.vy = min(h.vy, 40f)
         val lvl = flowerLevel[Power.DRILL.ordinal].coerceAtLeast(1)
         val dmg = Power.DRILL.damage + lvl - 1
+        // The whirl goes round his middle, as big as he's drawn.
+        val k = moveSize
+        val cy = h.bottom - (h.bottom - h.cy) * k
         var hit = false
         for (f in foes) {
             if (f.dying || !f.active) continue
-            val reach = PowerUps.SPIN_REACH + minOf(f.w, f.h) / 2f
-            if (hypot(f.cx - h.cx, f.cy - h.cy) < reach && f.hit(this, dmg)) hit = true
+            val reach = PowerUps.SPIN_REACH * k + minOf(f.w, f.h) / 2f
+            if (hypot(f.cx - h.cx, f.cy - cy) < reach && f.hit(this, dmg)) hit = true
         }
-        if (hit) particles += FloatText(h.cx, h.y - 8f, "WHIRR!", 0xFFE8F0FF.toInt())
+        if (hit) particles += FloatText(h.cx, h.bottom - 31f * k, "WHIRR!", 0xFFE8F0FF.toInt())
         sfx(Sound.ZAP)
     }
 
@@ -2858,15 +2883,20 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         h.cooldown = 0.35f
         val lvl = flowerLevel[Power.BUBBLE.ordinal].coerceAtLeast(1)
         if (things.count { it is HeroBubble } >= 2 + lvl / 2) return
-        spawn(HeroBubble(if (h.facing > 0) h.x + h.w - 2f else h.x - 12f, h.y + 3f, h.facing, Power.BUBBLE.damage + lvl - 1))
+        // It comes out at his lips (up high on MEGA Rocco, low on a baby).
+        val k = moveSize
+        spawn(HeroBubble(h.cx + h.facing * 11f * k - 7f, h.bottom - 13f * k - 7f, h.facing, Power.BUBBLE.damage + lvl - 1))
         sfx(Sound.ARROW)
     }
 
-    /** A bubble touched a bad guy: ordinary ones pop (and turn into coins), bosses and big ones just take a hit. */
+    /**
+     * A bubble touched a bad guy: ordinary ones pop (and turn into coins, unless they're the kind that never drops
+     * any, see [dropsCoins]), bosses and big ones just take a hit.
+     */
     fun bubbleHit(b: HeroBubble, f: Foe, damage: Int) {
         val pops = !f.boss && f.maxHp <= PowerUps.POP_HP && f !is Projectile
         if (f.hit(this, if (pops) 99 else damage) && pops && f.dying) {
-            spawn(Coin(f.cx - 4f, f.y - 6f, popping = true))
+            if (dropsCoins(f)) spawn(Coin(f.cx - 4f, f.y - 6f, popping = true))
             particles += FloatText(f.cx, f.y - 4f, "POP!", 0xFFBFF4FF.toInt())
             sfx(Sound.SPLASH)
         } else if (f.boss) particles += Boom(b.cx, b.cy, 18f)
@@ -2901,16 +2931,18 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             return
         }
         if (tanookiT > 0 && !h.mini) { tailSpin(h); return }
-        when (power) {
-            Power.ELEPHANT -> { trunkWhack(h); return }
-            Power.DRILL -> { drillSpin(h); return }
-            Power.BUBBLE -> { blowBubble(h); return }
-            else -> {}
+        if (PowerUps.isWonder(power)) {
+            // Mini Rocco has no trunk or drill (and the Wonder power-ups have nothing to throw): he punches.
+            if (!powerShows(h, power)) { punch(h); return }
+            when (power) {
+                Power.ELEPHANT -> trunkWhack(h)
+                Power.DRILL -> drillSpin(h)
+                else -> blowBubble(h)
+            }
+            return
         }
         if (power == Power.NONE) {
-            val reach = Body(if (h.facing > 0) h.x + h.w - 2 else h.x - 10, h.y + 4, 12f, 12f)
-            for (f in foes) if (!f.dying && f.active && f.overlaps(reach)) f.hit(this, 1)
-            sfx(Sound.KICK)
+            punch(h)
             if (toastT <= 0) toast("Mine ore with Blocky, then tap CRAFT!")
             return
         }
@@ -2941,6 +2973,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (lvl >= 5) spawn(Shot(sx, h.y + 16, h.facing, power, dmg, h, pierce))
         }
         sfx(if (power == Power.THUNDER) Sound.ZAP else Sound.FIRE)
+    }
+
+    /** Rocco's plain punch, right in front of him. */
+    private fun punch(h: Hero) {
+        val reach = Body(if (h.facing > 0) h.x + h.w - 2 else h.x - 10, h.y + 4, 12f, 12f)
+        for (f in foes) if (!f.dying && f.active && f.overlaps(reach)) f.hit(this, 1)
+        sfx(Sound.KICK)
     }
 
     private fun monAttack(h: Hero) {
@@ -3969,8 +4008,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     h.vy = if (h === leader && input.jump) -340f else -240f
                     break
                 }
-                // Drill Rocco lands drill-first on spiky bad guys: it doesn't hurt him, it drills THEM.
-                if (falling && h === rocco && power == Power.DRILL && !h.mini && capture == null && megaT <= 0f && !f.boss && f !is Projectile) {
+                // Drill Rocco lands drill-first on spiky bad guys: it doesn't hurt him, it drills THEM. (Not
+                // riding Dash: it's Dash's feet that land on them.)
+                if (falling && powerShows(h, Power.DRILL) && megaT <= 0f && dino == null && !f.boss && f !is Projectile) {
                     f.hit(this, Power.DRILL.damage + flowerLevel[Power.DRILL.ordinal].coerceAtLeast(1))
                     h.vy = if (h === leader && input.jump) -340f else -240f
                     h.drillSpin = 0.25f
@@ -3982,7 +4022,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     when {
                         starT > 0 -> f.hit(this, 3)
                         // Nothing gets through a spinning drill (its hit already landed when the spin started).
-                        h === rocco && h.drillSpin > 0f && power == Power.DRILL && !f.boss -> {}
+                        h.drillSpin > 0f && powerShows(h, Power.DRILL) && !f.boss -> {}
                         h === rocco && megaT > 0f -> { f.hit(this, if (f.boss) 3 else 99); shake = 0.15f }
                         h === rocco && captureDashT > 0f -> f.hit(this, if (f.boss) 2 else 6)
                         h === rocco && (captureKind == CaptureKind.BONEHEAD || captureKind == CaptureKind.STEGO) && !f.boss -> {}
@@ -4644,6 +4684,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                             crazyFireT > 0f -> "FIRE!"
                             crazyIceT > 0f -> "ICE!"
                             power == Power.NONE -> "PUNCH"
+                            // Mini Rocco (or a captured bad guy) can't use the trunk, the drill or bubbles.
+                            PowerUps.isWonder(power) && !powerShows(l, power) -> "PUNCH"
                             PowerUps.isWonder(power) && tanookiT <= 0f -> PowerUps.button(power)
                             else -> "THROW"
                         }
@@ -6881,7 +6923,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val hg = if (babyMode) Baby.shrink(gfx, hx, feet + hop) else gfx
         val sc = if (heroOut == Who.BLOCKY) 1f else ROCCO_SCALE
         PowerArt.box(hg, hero, hx - 8 * sc, feet + hop - 24 * sc, 16f * sc, 24f * sc, flipX = homeFacing < 0)
-        if (babyMode) Baby.dress(gfx, hx, feet + hop, homeFacing, false)
+        // (Drill Rocco's drill is his hat: a bonnet would hide it.)
+        if (babyMode) Baby.dress(gfx, hx, feet + hop, homeFacing, false, bonnet = heroOut == Who.BLOCKY || power != Power.DRILL)
         // Construction Rocco wears a hard hat.
         if (building) Build.hardHat(gfx, hx, feet + hop - 24f * sc - (if (babyMode) -7f else 0f))
         val heroHat = if (power != Power.NONE) HatKind.NONE else if (heroOut == Who.BLOCKY) Style.blocky.hat else Style.rocco.hat

@@ -396,6 +396,8 @@ class Hero(val who: Who, x: Float, y: Float) :
     }
 
     private val stretchGfx = StretchGfx()
+    /** Draws MEGA Rocco's trunk swing, drill whirl and bubble twice as big, like him. */
+    private val megaGfx = StretchGfx()
 
     fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
         if (this === g.leader && g.inCannon != null) return
@@ -418,7 +420,8 @@ class Hero(val who: Who, x: Float, y: Float) :
         // Baby time (the BABY MACHINE at home): little, with a bonnet and a pacifier.
         drawBody(g, Baby.shrink(base, cx + ox, bottom), ox)
         if (!shellSpin && !crouching && !(who == Who.ROCCO && g.dino != null) && !(this === g.leader && g.invuln > 0 && g.starT <= 0 && (g.invuln * 20).toInt() % 2 == 0)) {
-            Baby.dress(gfx, cx + ox, bottom, facing, who == Who.MON)
+            // Drill Rocco's drill is his hat: a bonnet would hide it.
+            Baby.dress(gfx, cx + ox, bottom, facing, who == Who.MON, bonnet = who == Who.BLOCKY || (who == Who.ROCCO && g.power != Power.DRILL))
         }
     }
 
@@ -453,6 +456,18 @@ class Hero(val who: Who, x: Float, y: Float) :
                 // keeps his body in the usual spot and lets the extra spill over.
                 fun put(s: Sprite, x: Float, y: Float, w: Float, h: Float, flipX: Boolean, flipY: Boolean = false) =
                     PowerArt.box(gfx, s, x, y, w, h, flipX, flipY)
+                // Drill Rocco's whirl, and Elephant Rocco's trunk or Bubble Rocco's bubble while he swings.
+                fun wonderMove(pen: Gfx) {
+                    if (drillSpin > 0f && g.power == Power.DRILL) PowerArt.spin(pen, cx + ox, if (crouching) bottom - 8f else py + 14f, g.time)
+                    if (swing <= 0 || g.tanookiT > 0) return
+                    when (g.power) {
+                        // Elephant Rocco's trunk swings out: WHAM!
+                        Power.ELEPHANT -> PowerArt.trunk(pen, cx + ox, py, facing, (1f - swing / PowerUps.TRUNK_TIME).coerceIn(0f, 1f))
+                        // Bubble Rocco: a little bubble at his lips as he blows.
+                        Power.BUBBLE -> PowerArt.bubble(pen, cx + facing * 8f + ox - 3f, py + 6f, 6f)
+                        else -> {}
+                    }
+                }
                 val frame = if (!onGround) 2 else if (walking) 1 else 0
                 if (g.capture != null) { g.drawCapture(gfx, this, ox); return }
                 if (g.megaT > 0f) {
@@ -460,6 +475,8 @@ class Hero(val who: Who, x: Float, y: Float) :
                     val flash = g.megaT < 2f && (g.megaT * 8).toInt() % 2 == 0
                     put(rs(frame), px - 8, bottom - 48, 32f, 48f, facing < 0)
                     if (flash) gfx.rect(px - 8, bottom - 48, 32f, 48f, 0x55FFFFFF)
+                    // His trunk, drill and bubbles are giant too (they hit as far as they're drawn).
+                    if (!mini && PowerUps.isWonder(g.power) && (swing > 0f || drillSpin > 0f)) wonderMove(megaGfx.aim(gfx, 2f, 2f, cx + ox, bottom))
                     return
                 }
                 if (g.propT > 0f && !mini) PropellerItem.drawPropeller(gfx, cx + ox, bottom - 24, g.time)
@@ -507,19 +524,12 @@ class Hero(val who: Who, x: Float, y: Float) :
                     if (g.tanookiT > 0) TeamArt.tanooki(gfx, cx + ox, py, bottom, facing, anim, swing > 0, crouching)
                     if (g.wingT > 0) TeamArt.wingCap(gfx, cx + ox, if (crouching) bottom - 16 else py, anim, !onGround)
                 }
-                if (drillSpin > 0f && g.power == Power.DRILL && !mini) PowerArt.spin(gfx, cx + ox, if (crouching) bottom - 8f else py + 14f, g.time)
-                if (swing > 0 && g.tanookiT <= 0) {
-                    when {
-                        // Elephant Rocco's trunk swings out: WHAM!
-                        g.power == Power.ELEPHANT && !mini -> PowerArt.trunk(gfx, cx + ox, py, facing, (1f - swing / PowerUps.TRUNK_TIME).coerceIn(0f, 1f))
-                        // Bubble Rocco: a little bubble at his lips as he blows.
-                        g.power == Power.BUBBLE && !mini -> PowerArt.bubble(gfx, cx + facing * 8f + ox - 3f, py + 6f, 6f)
-                        g.power == Power.DRILL && !mini -> {}
-                        else -> {
-                            val hx = cx + facing * 8 + ox
-                            gfx.oval(hx - 2, y + 11, 4f, 4f, 0xFFFFC08A.toInt())
-                        }
-                    }
+                // (Mini Rocco has no trunk or drill: he just punches.)
+                if (!mini) wonderMove(gfx)
+                if (swing > 0 && g.tanookiT <= 0 && (mini || !PowerUps.isWonder(g.power))) {
+                    // His fist (Mini Rocco's little one is down by his middle).
+                    if (mini) gfx.oval(cx + facing * 5f + ox - 1.5f, bottom - 6.5f, 3f, 3f, 0xFFFFC08A.toInt())
+                    else gfx.oval(cx + facing * 8 + ox - 2, y + 11, 4f, 4f, 0xFFFFC08A.toInt())
                 }
             }
             Who.BLOCKY -> {

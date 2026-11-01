@@ -190,9 +190,10 @@ object Baby {
     /** Draws through this to shrink something standing at ([cx], [bottom]) down to baby size. */
     fun shrink(gfx: Gfx, cx: Float, bottom: Float): Gfx = ScaledGfx(gfx, SCALE, cx * (1 - SCALE), bottom * (1 - SCALE))
 
-    fun dress(gfx: Gfx, cx: Float, bottom: Float, facing: Int, mon: Boolean) {
+    /** [bonnet]: false when something already sits on the head (Drill Rocco's drill would hide under it). */
+    fun dress(gfx: Gfx, cx: Float, bottom: Float, facing: Int, mon: Boolean, bonnet: Boolean = !mon) {
         val f = facing.toFloat()
-        if (!mon) {
+        if (bonnet) {
             // A frilly bonnet
             gfx.oval(cx - 7f, bottom - 20f, 14f, 8f, 0xFFBFE4FF.toInt())
             gfx.rect(cx - 7f, bottom - 16f, 14f, 2f, 0xFFFFFFFF.toInt())
