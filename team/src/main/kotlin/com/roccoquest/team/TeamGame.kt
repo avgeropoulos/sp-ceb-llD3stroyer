@@ -67,6 +67,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         const val POSEIDON_COST = 50
         const val WAVE_TIME = 2.4f
         const val BONUS_TIME = 30f
+        /** How long LEVEL CLEAR! shows, and OH NO! (the circle wipe closes in their last moment). */
+        const val CLEAR_TIME = 3.4f
+        const val OUCH_TIME = 2.2f
+        /** A ? block that's hit hops up this high (less than half a block: Team Up! 3D finds blocks by their spot). */
+        const val HOP_HEIGHT = 5f
+        const val HOP_TIME = 0.2f
         const val QUAKE_WARN = 2.2f
         const val CLAW_COST = 30
         const val POSEIDON_LINE = "Είμαι ο Ποσειδώνας! Είμαι ο πιο δυνατός της θάλασσας!"
@@ -325,6 +331,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     var bonusT = 0f
         private set
     private var portalHit: Portal? = null
+    /** A portal the team walked into: the circle closes first (you can still move), then the room changes. */
+    private var portalPending: Portal? = null
+    private var portalCloseT = 0f
 
     /** Dash the dino, while Rocco is riding him. */
     var dino: Dino? = null
@@ -562,6 +571,40 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     fun sfx(s: Sound) = sound.play(s)
     fun spawn(t: Thing) { pending += t }
     fun puff(x: Float, y: Float) { particles += Puff(x, y) }
+    /** Dust at the feet, bubbles and coin twinkles (a fixed pool: see [Puffs]). */
+    internal val puffs = Puffs()
+
+    // ---------------------------------------------------------------- circle wipes ([Iris])
+    private val iris = Iris()
+    /** The circle opening on a new picture: seconds so far (-1 = none) and the screen it opens on. */
+    private var irisOpenT = -1f
+    private var irisOpenIn = State.PLAY
+    private var irisFocus = IrisFocus.HERO
+    /** PLAY was just tapped on the map: the title card's first moment still shows the map, closing. */
+    private var irisFromMap = false
+    /** Who was standing on the map then (starting the level always puts Rocco out). */
+    private var mapBlocky = false
+    private enum class IrisFocus { HERO, MAP, CENTER }
+
+    /**
+     * Team Up! 3D sets this: it moves a point of the 2D level picture (screen pixels) to where the 3D
+     * picture shows it, so the circle wipe closes right on the hero there too.
+     */
+    var levelToScreen: ((FloatArray) -> Unit)? = null
+    private val irisPt = FloatArray(2)
+
+    /** Starts the circle opening on the screen that's showing now. */
+    private fun irisOpen(focus: IrisFocus) {
+        irisOpenT = 0f
+        irisOpenIn = state
+        irisFocus = focus
+    }
+
+    /** ? blocks that were just hit hop up for a moment: where (x, y) and how long ago. */
+    private val hopX = IntArray(4) { -1 }
+    private val hopY = IntArray(4)
+    private val hopT = FloatArray(4)
+    private var hops = 0
     /** Meteor showers and volcano eruptions. */
     val hazards = Hazards()
     /** "Eruption! Jump!" is said right away (not queued behind other talk): a late warning is no warning. */
@@ -1034,6 +1077,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (s != State.HOME && home3d) { home3d = false; TeamControls.mode3d = false }
         state = s
         stateT = 0f
+        irisFromMap = false
     }
 
     /** The title songs take turns (remembered between games). */
@@ -1055,6 +1099,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         away = null
         bonusT = 0f
         portalHit = null
+        portalPending = null
+        puffs.clear()
+        hopX.fill(-1); hops = 0
+        for (h in allHeroes) { h.resetStretch(); h.againstWall = false }
         jumpBufT = 0f; coyoteT = 0f; actionBufT = 0f; jumpHoldT = 0f
         val keepX = respawnX
         val keepY = respawnY
@@ -1183,8 +1231,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             h.x = (x + 2 - i * 18f).coerceAtLeast(2f)
             h.y = bottom - h.h
             h.vx = 0f; h.vy = 0f; h.facing = 1; h.stuck = 0f
+            h.resetStretch(); h.againstWall = false
         }
         safeX = x; safeY = bottom
+        // Puffs from where the team was don't follow them somewhere new.
+        puffs.clear()
     }
 
     // ======================================================================== Update
@@ -1207,6 +1258,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     fun update(dt: Float) {
         time += dt
         stateT += dt
+        if (irisOpenT >= 0f) { irisOpenT += dt; if (irisOpenT >= Iris.OPEN || state != irisOpenIn) irisOpenT = -1f }
         // Spacesuits on during a space walk (and only then).
         Style.spaceSuit = level.def.place == Place.ORBIT && state in IN_LEVEL
         garden.grow(dt)
@@ -1252,7 +1304,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             State.CONTROLS -> updateControls(tapped)
             State.SLOTS -> updateSlots(tapped, num)
             State.PICK -> updatePick(tapped, num)
-            State.INTRO -> if (stateT > 3f || (tapped && stateT > 0.6f)) setState(State.PLAY)
+            State.INTRO -> if (stateT > 3f || (tapped && stateT > 0.6f)) { setState(State.PLAY); irisOpen(IrisFocus.HERO) }
             State.PLAY -> {
                 if (pauseE) { paused = !paused; pauseCursor = 0 }
                 // Controller on the pause screen: up/down picks a button, A presses it, B resumes.
@@ -1321,12 +1373,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
             State.OUCH -> {
                 updateParticles(dt)
-                if (stateT > 2.2f) startLevel(levelIndex, fromCheckpoint = true)
+                if (stateT > OUCH_TIME) startLevel(levelIndex, fromCheckpoint = true)
             }
             State.CLEAR -> {
                 updateParticles(dt)
                 goal?.let { it.flagY = min(it.h - 30f, it.flagY + 120f * dt) }
-                if (stateT > 3.4f) {
+                if (stateT > CLEAR_TIME) {
                     clearNote = ""
                     offerStickers(if (levelIndex + 1 < Levels.all.size) levelIndex + 1 else -1)
                 }
@@ -1384,6 +1436,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (away == null) gainXp(if (bossChar != null) 12 else 4)
         monEnergy = 5
         setState(State.STICKER)
+        irisOpen(IrisFocus.CENTER)
         sfx(Sound.ONEUP)
     }
 
@@ -1718,7 +1771,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (h.onGround) h.combo = 0
             h.anim += dt
             if (h.swing > 0) h.swing -= dt
-            if (h.squash > 0) h.squash -= dt
+            h.updateStretch(dt, inWater(h))
             if (h.cooldown > 0) h.cooldown -= dt
             if (h.jumpCooldown > 0) h.jumpCooldown -= dt
         }
@@ -1741,8 +1794,16 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         interact()
         portalHit?.let { p ->
             portalHit = null
-            if (p.exit) exitBonus() else enterPortal(p)
-            return
+            // The circle closes on the team first (they can still move), then the room changes.
+            if (portalPending == null) { portalPending = p; portalCloseT = 0f }
+        }
+        portalPending?.let { p ->
+            portalCloseT += dt
+            if (portalCloseT >= Iris.PORTAL_CLOSE) {
+                portalPending = null
+                if (p.exit) exitBonus() else enterPortal(p)
+                return
+            }
         }
         updatePartnerZap(dt)
         updateFrog()
@@ -1837,6 +1898,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         h.vx = 0f
         h.vy = 0f
         h.stuck = 0f
+        h.resetStretch()
         puff(h.cx, h.cy)
     }
 
@@ -1852,7 +1914,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             // Swimming: slow sinking, and every tap of JUMP is a swim stroke.
             // (Metal Rocco is too heavy to swim: he walks along the bottom instead.)
             h.vx = approach(h.vx, dir * h.speed * 0.85f, 500f * dt)
-            if (jumpE) { h.vy = -170f; jumpBufT = 0f; sfx(Sound.SPLASH) }
+            if (jumpE) { h.vy = -170f; jumpBufT = 0f; sfx(Sound.SPLASH); bubbles(h) }
             if (input.down) h.vy = approach(h.vy, 120f, 400f * dt)
             h.vy = min(h.vy + GRAVITY * 0.3f * dt, 80f)
             moveHero(h, dt)
@@ -1860,6 +1922,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (h.onGround) { safeX = h.x; safeY = h.bottom }
             return
         }
+        val wasSprinting = h.sprinting
         // Double-tap a direction (and keep holding it) to sprint.
         if (dir != 0 && dir != prevDir) {
             h.sprinting = dir == lastTapDir && time - lastTapTime < 0.35f
@@ -1870,6 +1933,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         prevDir = dir
         val sprint = (h.sprinting || input.run) && dir != 0
         h.sprinting = sprint
+        // Bursting into a sprint: a puff of dust behind him.
+        if (sprint && !wasSprinting && h.onGround && !inWater(h)) {
+            for (i in 0 until 3) dust(h, h.cx - dir * (4f + i * 3f), h.bottom, -dir * (40f + i * 25f), -10f - i * 6f, 4f - i * 0.4f)
+        }
 
         val rocco = h.who == Who.ROCCO
         val d = dino
@@ -1971,6 +2038,15 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         // where you let go instead of sliding. (Not while squatting: that slide is the crouch long jump.
         // In the air nothing changes, so every jump still goes just as far.)
         val braking = h.onGround && !h.crouching && (want == 0f || want * h.vx < 0f)
+        // Skidding to a stop or turning around at speed: dust flies up in front of his feet.
+        if (braking && abs(h.vx) > 100f && !inWater(h)) {
+            h.dustT -= dt
+            if (h.dustT <= 0f) {
+                h.dustT = 0.05f
+                val ahead = if (h.vx > 0f) 1f else -1f
+                dust(h, h.cx + ahead * 4f, h.bottom, ahead * 30f, -18f, 3.3f)
+            }
+        }
         h.vx = approach(h.vx, want, (if (braking) GROUND_BRAKE else if (h.onGround) GROUND_ACCEL else 520f) * dt)
         // Blue Shell: sprinting on the ground turns Rocco into a spinning shell.
         h.shellSpin = rocco && power == Power.SHELL && sprint && h.onGround && !h.mini && abs(h.vx) > 120f
@@ -2081,28 +2157,74 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     private fun moveHero(h: Hero, dt: Float) {
-        level.moveX(h, h.vx * dt)
+        val wall = level.moveX(h, h.vx * dt)
         camLock?.let { lock -> h.x = h.x.coerceIn(lock, lock + viewW - h.w) }
         h.x = h.x.coerceIn(0f, level.w * TILE - h.w)
         val wasGround = h.onGround
         val fall = h.vy
         if (level.moveY(h, h.vy * dt) == -1) bump(level.bumpX, level.bumpY, h)
-        // Landing: a little squash and a puff of dust.
+        val swimming = inWater(h)
+        // Running smack into a wall: a little puff where he bumped it (just once, not all the time he pushes on it).
+        if (wall && !h.againstWall && abs(h.vx) > 90f && !swimming) {
+            val wx = if (h.vx > 0f) h.x + h.w else h.x
+            val back = if (h.vx > 0f) -1f else 1f
+            dust(h, wx, h.cy + 2f, back * 30f, -10f, 3f)
+            dust(h, wx, h.bottom - 1f, back * 45f, -6f, 3.6f)
+        }
+        h.againstWall = wall
+        // Landing from a real fall: a quick squash, and dust puffing out to both sides (more for a big fall).
+        // (Underwater only heavy Metal Rocco falls that fast: he stirs up bubbles instead.)
         if (!wasGround && h.onGround && fall > 180f) {
-            h.squash = 0.14f
-            particles += Dust(h.cx - 6, h.bottom, -1)
-            particles += Dust(h.cx + 6, h.bottom, 1)
+            h.land(fall)
+            val hard = fall > 380f
+            if (swimming) {
+                puffs.bubble(h.cx - 5f, h.bottom - 3f, 2f)
+                puffs.bubble(h.cx + 5f, h.bottom - 4f, 1.6f)
+            } else for (side in intArrayOf(-1, 1)) {
+                dust(h, h.cx + side * 5f, h.bottom, side * 55f, -12f, if (hard) 4.6f else 3.9f)
+                if (hard) dust(h, h.cx + side * 9f, h.bottom, side * 100f, -24f, 3.2f)
+            }
         }
-        // Running fast kicks up dust now and then.
-        if (h.onGround && abs(h.vx) > 150f && h === leader) {
+        // Running fast kicks up a little trail of dust.
+        if (h.onGround && abs(h.vx) > 150f && !swimming) {
             h.dustT -= dt
-            if (h.dustT <= 0f) { h.dustT = 0.15f; particles += Dust(h.cx - (if (h.vx > 0) 6 else -6), h.bottom, if (h.vx > 0) -1 else 1) }
+            if (h.dustT <= 0f) {
+                h.dustT = 0.1f
+                val back = if (h.vx > 0) -1f else 1f
+                dust(h, h.cx + back * 5f, h.bottom, back * 35f, -14f, 3.3f)
+            }
         }
+    }
+
+    /** A dust puff at [h]'s feet, in the ground's color. None in space: there's nothing there to kick up. */
+    private fun dust(h: Hero, x: Float, y: Float, vx: Float, vy: Float, r: Float) {
+        if (level.def.place == Place.ORBIT) return
+        val size = if (h.mini) 0.6f else if (h === rocco && megaT > 0f) 1.8f else 1f
+        puffs.dust(x, y, vx * size, vy, r * size, dustColor)
+    }
+
+    /** Dust looks like the ground it comes from: snow, sand, ash, candy... */
+    private val dustColor get() = when (level.def.place) {
+        Place.SNOW, Place.BLIZZARD, Place.AURORA, Place.ICE_PLANET, Place.SKY -> 0xFFFFFF
+        Place.DESERT, Place.WATER, Place.SHIP -> 0xEAD29A
+        Place.MARS -> 0xE8A070
+        Place.CASTLE, Place.VOLCANO, Place.LAVA_PLANET, Place.CAVE, Place.DEEP -> 0xC0B4AC
+        Place.CANDY, Place.CANDY_PLANET -> 0xFFD6EC
+        Place.MOON, Place.STATION -> 0xDCDCE6
+        else -> 0xF4ECDC
+    }
+
+    /** A swim stroke lets out a couple of air bubbles. */
+    private fun bubbles(h: Hero) {
+        puffs.bubble(h.cx + h.facing * 3f, h.y + 3f, 2.2f)
+        puffs.bubble(h.cx - h.facing * 2f, h.y + 7f, 1.5f)
     }
 
     private fun bump(tx: Int, ty: Int, by: Hero? = null) {
         val px = tx * TILE.toFloat()
         val above = ty * TILE - 14f
+        val q = level[tx, ty]
+        if (q == Tile.QCOIN || q == Tile.QHEART || q == Tile.QSTAR || q == Tile.QMYSTERY) hop(tx, ty)
         when (level[tx, ty]) {
             Tile.QCOIN -> {
                 level[tx, ty] = Tile.USED
@@ -2153,6 +2275,18 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         for (f in foes) {
             if (!f.dying && !f.boss && abs(f.bottom - ty * TILE) < 2 && f.cx > tx * TILE - 4 && f.cx < tx * TILE + TILE + 4) f.hit(this, 99)
         }
+    }
+
+    /** Makes the block at ([tx], [ty]) hop up for a moment (it was just hit from below). */
+    private fun hop(tx: Int, ty: Int) {
+        val i = hops++ % hopX.size
+        hopX[i] = tx; hopY[i] = ty; hopT[i] = 0f
+    }
+
+    /** How far up block ([tx], [ty]) is hopping right now (nearly always 0). */
+    private fun hopLift(tx: Int, ty: Int): Float {
+        for (i in hopX.indices) if (hopX[i] == tx && hopY[i] == ty) return -sin(hopT[i] / HOP_TIME * Math.PI.toFloat()) * HOP_HEIGHT
+        return 0f
     }
 
     // ======================================================================== Mining, throwing and Pokemon moves
@@ -3661,11 +3795,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             when (t) {
                 is Coin -> if (hit) {
                     t.removed = true
-                    collectCoin()
+                    collectCoin(t.cx, t.cy)
                 }
                 is RainCoin -> if (hit) {
                     t.removed = true
-                    collectCoin()
+                    collectCoin(t.cx, t.cy)
                 }
                 is WonderFlower -> if (hit && state == State.PLAY) {
                     t.removed = true
@@ -3685,7 +3819,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     t.removed = true
                     t.collect(this)
                 }
-                is Portal -> if (!t.used && t.overlaps(leader) && riding == null && portalHit == null) portalHit = t
+                is Portal -> if (!t.used && t.overlaps(leader) && riding == null && portalHit == null && portalPending == null) portalHit = t
                 is Chest -> if (hit && !t.open) openChest(t)
                 is Checkpoint -> if (!t.reached && t.overlaps(leader)) {
                     t.reached = true
@@ -3712,7 +3846,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         score += lastBonus
     }
 
-    private fun collectCoin() {
+    private fun collectCoin(x: Float, y: Float) {
+        // A little twinkle flies out of every coin.
+        for (i in 0 until 3) {
+            val a = i * 2.1f + time * 5f
+            puffs.glint(x, y, kotlin.math.cos(a) * 55f, sin(a) * 55f - 20f)
+        }
         val before = coins
         // Coins are worth 2 now (they were too slow to save up).
         coins += COIN_VALUE
@@ -3833,6 +3972,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     internal fun pickCardXForTest(i: Int) = pickCardX(i)
     internal fun pickCardYForTest(i: Int) = pickCardY(i)
     internal fun thingsForTest(): List<Thing> = things + pending
+    internal val particleCountForTest get() = particles.size
+    internal fun hopForTest(tx: Int, ty: Int) = hopLift(tx, ty)
+    internal fun playMapLevelForTest(i: Int) { mapSel = i; playSelected() }
     internal fun dogForTest() { dogT = 0f }
     internal fun spawnForTest(t: Thing) = spawn(t)
     internal fun pickStickerScreenForTest() = offerStickers(levelIndex + 1)
@@ -4100,6 +4242,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     private fun updateParticles(dt: Float) {
+        puffs.update(dt, waterTop = 34f)
+        for (i in hopX.indices) if (hopX[i] >= 0) { hopT[i] += dt; if (hopT[i] >= HOP_TIME) hopX[i] = -1 }
         for (p in particles) p.update(dt)
         particles.removeAll { it.life <= 0 }
         // Too many floating numbers and sparkles slow the phone down: the oldest ones go first.
@@ -4214,11 +4358,18 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
      * buttons and messages are drawn), so Team Up! 3D can draw the level itself underneath.
      */
     fun render(gfx: Gfx, drawWorld: Boolean = true) {
+        renderScreen(gfx, drawWorld)
+        // The circle wipe goes over everything (in Team Up! 3D too: it's drawn with the HUD, on top of the 3D level).
+        renderIris(gfx, drawWorld)
+    }
+
+    private fun renderScreen(gfx: Gfx, drawWorld: Boolean) {
         when (state) {
             State.TITLE -> renderTitle(gfx, drawWorld)
             State.SLOTS -> renderSlots(gfx)
             State.PICK -> renderPick(gfx)
-            State.INTRO -> renderIntro(gfx)
+            // Just picked a level: the map closes in a circle on the team, then the title card shows.
+            State.INTRO -> if (irisFromMap && stateT < Iris.CLOSE) renderMap(gfx) else renderIntro(gfx)
             State.STICKER -> renderStickers(gfx)
             State.BOOK -> renderBook(gfx)
             State.HOME -> renderHome(gfx)
@@ -4319,6 +4470,55 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
     }
 
+    /**
+     * The Mario-style circle wipe ([Iris]). It closes on the hero as LEVEL CLEAR! and OH NO! end,
+     * walking into a portal and as the bonus room's sun goes down, and on the team on the map when a
+     * level is picked; it opens on the hero when a level (or bonus room) starts, on the map, and on
+     * the sticker screen. All of them happen during time the game already took, so nobody waits longer.
+     */
+    private fun renderIris(gfx: Gfx, drawWorld: Boolean) {
+        var p = -1f
+        var closing = true
+        var focus = IrisFocus.HERO
+        when {
+            state == State.INTRO && irisFromMap && stateT < Iris.CLOSE -> { p = stateT / Iris.CLOSE; focus = IrisFocus.MAP }
+            state == State.INTRO -> return
+            state == State.CLEAR -> p = (stateT - (CLEAR_TIME - Iris.CLOSE)) / Iris.CLOSE
+            state == State.OUCH -> p = (stateT - (OUCH_TIME - Iris.CLOSE)) / Iris.CLOSE
+            // The pause screen's buttons always show.
+            state == State.PLAY && paused -> return
+            state == State.PLAY -> {
+                if (portalPending != null) p = portalCloseT / Iris.PORTAL_CLOSE
+                if (away != null && bonusT < Iris.CLOSE) p = max(p, 1f - bonusT / Iris.CLOSE)
+            }
+        }
+        if (p < 0f && irisOpenT >= 0f && state == irisOpenIn) {
+            p = irisOpenT / Iris.OPEN
+            closing = false
+            focus = irisFocus
+        }
+        if (p < 0f) return
+        when (focus) {
+            IrisFocus.MAP -> {
+                val (mx, my) = mapSpot(mapSel)
+                irisPt[0] = mx; irisPt[1] = my - 24f
+            }
+            IrisFocus.CENTER -> { irisPt[0] = viewW / 2; irisPt[1] = VIEW_H / 2 }
+            IrisFocus.HERO -> {
+                val l = leader
+                irisPt[0] = l.cx - worldCam
+                irisPt[1] = l.cy
+                // In Team Up! 3D the level is a 3D picture: close on where the hero shows there.
+                if (!drawWorld) levelToScreen?.invoke(irisPt)
+            }
+        }
+        // Keep the middle on the screen (a hero who fell in a pit is below it).
+        val cx = irisPt[0].coerceIn(16f, viewW - 16f)
+        val cy = irisPt[1].coerceIn(16f, VIEW_H - 16f)
+        val full = Iris.fullRadius(viewW, VIEW_H, cx, cy)
+        iris.draw(gfx, viewW, VIEW_H, cx, cy, Iris.radius(p, closing, full))
+    }
+
     // Generous margin includes glows, flags, roofs and projectile trails beyond collision bounds.
     private fun visibleThing(t: Thing, cam: Float) = !t.removed && t.x + t.w >= cam - 128f && t.x <= cam + viewW + 128f
 
@@ -4373,6 +4573,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (!hh.mini) TeamArt.shieldIcon(gfx, hh.cx + ox + hh.facing * 6f - 4f, hh.y + hh.h * 0.3f, 11f, shieldType)
         }
         for (t in things) if ((t is Shot || t is MonShot || t is Frog) && visibleThing(t, cam)) { mark(t); t.draw(this, gfx, ox) }
+        puffs.draw(gfx, ox, mark)
         for (p in particles) { mark(p); p.draw(gfx, ox) }
         mark(this)
         // Underwater tint up to the shore, with a wavy surface line.
@@ -4440,6 +4641,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         mapSel = sel.coerceIn(-1, unlocked - 1)
         if (mapSel >= 0) mapWorld = mapSel / WORLD_SIZE
         setState(State.MAP)
+        irisOpen(IrisFocus.MAP)
     }
 
     /** Pause menu: save and go back to the map. */
@@ -4519,7 +4721,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun playSelected() {
         if (mapSel < 0) { enterHome(); return }
         sfx(Sound.COIN)
+        val blocky = heroOut == Who.BLOCKY
         startLevel(mapSel, restoreHome = true)
+        // The title card waits a moment anyway: let the map close in a circle on the team first.
+        irisFromMap = true
+        mapBlocky = blocky
     }
 
     private fun renderMap(gfx: Gfx) {
@@ -4596,7 +4802,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val (px, py) = mapSpot(mapSel)
         if (mapSel < 0 || mapSel in levels) {
             val bob = abs(sin(time * 5)) * 3f
-            val hero = if (heroOut == Who.BLOCKY) TeamArt.blocky(power, false) else TeamArt.rocco(power, 0)
+            val blockyOut = if (state == State.INTRO) mapBlocky else heroOut == Who.BLOCKY
+            val hero = if (blockyOut) TeamArt.blocky(power, false) else TeamArt.rocco(power, 0)
             gfx.sprite(hero, px - 6, py - 34 - bob, w = 12f, h = 18f)
         }
         // Top bar
@@ -6790,6 +6997,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
         placeTeam(respawnX, respawnY)
         snapCamera()
+        portalPending = null
+        irisOpen(IrisFocus.HERO)
         bonusT = BONUS_TIME
         sfx(Sound.PORTAL)
         bannerTitle = "SUNSET BONUS!"
@@ -6811,6 +7020,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         respawnX = a.respawnX; respawnY = a.respawnY
         placeTeam(a.backX, a.backY)
         snapCamera()
+        portalPending = null
+        irisOpen(IrisFocus.HERO)
         sfx(Sound.PORTAL)
         toast("Back to ${level.def.name}!")
     }
@@ -7036,6 +7247,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val first = (cam / TILE).toInt() - 1
         val last = ((cam + viewW) / TILE).toInt() + 1
         val place = level.def.place
+        val hopping = hopX[0] >= 0 || hopX[1] >= 0 || hopX[2] >= 0 || hopX[3] >= 0
         for (ty in 0 until ROWS) for (tx in first..last) {
             if (tx < 0 || tx >= level.w) continue
             val t = level[tx, ty]
@@ -7083,7 +7295,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             } ?: continue
             val wob = if (wonder) sin(time * 4 + tx * 0.6f) * 2f else 0f
             val px = tx * TILE - cam
-            val py = ty * TILE + wob
+            val py = ty * TILE + wob + if (hopping) hopLift(tx, ty) else 0f
             gfx.sprite(s, px, py)
             // Mystery blocks shimmer in rainbow colors.
             if (t == Tile.QMYSTERY) gfx.rect(px, py, 16f, 16f, argb(110, com.roccoquest.game.rainbow(time, tx * 0.1f)))

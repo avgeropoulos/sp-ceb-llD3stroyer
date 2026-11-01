@@ -18,6 +18,7 @@ import com.roccoquest.team.TeamInput
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
+import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -39,7 +40,7 @@ class TeamSceneTest {
     }
 
     /** Draws a frame the way the phone does: painted sky, 3D level, then the HUD and buttons. */
-    private fun shot(scene: TeamScene, name: String) {
+    private fun shot(scene: TeamScene, name: String): BufferedImage {
         val scale = 2f
         val w = (game.viewW * scale).toInt()
         val h = (VIEW_H * scale).toInt()
@@ -51,6 +52,7 @@ class TeamSceneTest {
         for (i in 0 until list.labelCount) list.label(i).let { overlay.text(it.text, it.x, it.y, it.size, it.color, it.align) }
         game.render(overlay, drawWorld = false)
         ImageIO.write(img, "png", File(dir, "$name.png"))
+        return img
     }
 
     @Test fun file1GetsTheHeadStartOnce() {
@@ -186,6 +188,76 @@ class TeamSceneTest {
         val dog = (0 until list.count).count { k -> models.any { it === list.cmd(k).mesh } }
         assertEquals(1, dog, "drawn as one puffy model")
         shot(scene, "dennis-3d")
+    }
+
+    /** A big close-up around ([cx], [cy]) (game pixels) of the 3D picture, to see small things. */
+    private fun closeUp(scene: TeamScene, name: String, cx: Float, cy: Float, w: Float = 110f, h: Float = 70f) {
+        val scale = 6f
+        val iw = (game.viewW * scale).toInt()
+        val ih = (VIEW_H * scale).toInt()
+        val sky = BufferedImage(iw, ih, BufferedImage.TYPE_INT_ARGB)
+        game.renderLevelBackdrop(AwtGfx(sky, scale))
+        val img = SoftRaster(iw, ih).render(scene.build(game), sky)
+        val x0 = ((cx - w / 2) * scale).toInt().coerceIn(0, iw - (w * scale).toInt())
+        val y0 = ((cy - h / 2) * scale).toInt().coerceIn(0, ih - (h * scale).toInt())
+        ImageIO.write(img.getSubimage(x0, y0, (w * scale).toInt(), (h * scale).toInt()), "png", File(dir, "$name.png"))
+    }
+
+    /** The circle wipe is drawn with the HUD over the 3D level, with its middle where the hero shows in 3D. */
+    @Test fun circleWipeOpensOnTheHeroIn3D() {
+        val scene = TeamScene().apply { voxelsPerFrame = Int.MAX_VALUE }
+        game.newGame(0, Mon.SPARKY)
+        var n = 0
+        while (game.state != TeamGame.State.PLAY && n++ < 400) game.update(dt)
+        run(0.2f)
+        scene.build(game)
+        val l = game.leader
+        val p = floatArrayOf(l.cx - game.worldCam, l.cy)
+        game.levelToScreen!!(p)
+        assertTrue(abs(p[0] - (l.cx - game.worldCam)) < 30f && abs(p[1] - l.cy) < 30f, "the 3D hero is near his 2D spot: ${p.toList()}")
+        val img = shot(scene, "wipe-3d")
+        val black = 0xFF000000.toInt()
+        assertEquals(black, img.getRGB(img.width - 3, 3), "black far from the hero")
+        val seen = (-4..4).any { dy -> (-4..4).any { dx -> img.getRGB((p[0] * 2).toInt() + dx, (p[1] * 2).toInt() + dy) != black } }
+        assertTrue(seen, "the hero shows through the hole")
+        run(0.5f)
+        val open = shot(scene, "wipe-3d-open")
+        assertTrue(open.getRGB(open.width - 3, 3) != black, "then the whole level shows")
+    }
+
+    /** Landing squashes the heroes in 3D too, without making new 3D models for every size. */
+    @Test fun squashAndDustIn3D() {
+        val scene = TeamScene().apply { voxelsPerFrame = Int.MAX_VALUE }
+        startPlaying(0)
+        game.foes.clear()
+        run(1f)
+        val r = game.rocco
+        r.y -= 100f; r.vy = 0f; r.onGround = false
+        game.partner.y -= 70f; game.partner.vy = 0f; game.partner.onGround = false
+        var n = 0
+        while (!r.onGround && n++ < 120) { game.update(dt); scene.build(game) }
+        game.update(dt); game.update(dt)
+        assertTrue(r.stretch < -0.05f, "squashed: ${r.stretch}")
+        shot(scene, "squash-3d")
+        closeUp(scene, "squash-3d-zoom", r.cx - game.worldCam, r.bottom - 16f)
+        // Lots of jumping and landing: squashing scales the 3D shapes, it doesn't make new ones.
+        fun jumpAround() {
+            for (f in 0 until 360) {
+                input.jump = f % 40 < 10
+                input.right = f % 120 < 60
+                input.left = !input.right
+                game.foes.clear()
+                game.update(dt)
+                scene.build(game)
+            }
+            input.jump = false; input.right = false; input.left = false
+        }
+        jumpAround()
+        val models = Voxels.built
+        val shapes = scene.paper.polysBuilt
+        jumpAround()
+        assertTrue(Voxels.built - models < 6, "made ${Voxels.built - models} new models while jumping")
+        assertTrue(scene.paper.polysBuilt - shapes < 10, "made ${scene.paper.polysBuilt - shapes} new shapes while jumping")
     }
 
     @Test fun everyLevelBuilds() {

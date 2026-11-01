@@ -20,7 +20,7 @@ import kotlin.math.sin
  */
 class TeamScene {
     val list = DrawList()
-    private val paper = PaperGfx(list)
+    internal val paper = PaperGfx(list)
     private val tiles = TileGfx(list, paper)
     private val mark: (Any) -> Unit = { paper.begin(0f) }
     /** New 3D models built per frame at most (each new picture costs a moment to build). */
@@ -29,7 +29,11 @@ class TeamScene {
     /** The 2D title draws the team a bit above the ground; in 3D they stand right on it. */
     private val castGfx = ShiftGfx(paper, TITLE_DROP)
 
+    /** Where a point of the 2D level picture shows in this 3D one (so the circle wipe closes right on the hero). */
+    private val toScreen: (FloatArray) -> Unit = { p -> list.project(p[0], -p[1], 0f, p) }
+
     fun build(g: TeamGame): DrawList {
+        g.levelToScreen = toScreen
         list.clear()
         Voxels.newFrame(voxelsPerFrame)
         if (g.state == TeamGame.State.TITLE) {

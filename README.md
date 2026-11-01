@@ -538,6 +538,22 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
 * **Snappier stops**: on the ground, Rocco, Blocky and the Pokemon stop and turn around quicker. Speeding up,
   the crouch slide and every jump are just like before.
 
+### Bouncy moves and circle wipes (like the newest Mario games)
+
+* **Dust puffs**: little puffs fly up at the feet when you land from a jump, skid to a stop or turn around at
+  full speed, burst into a sprint or run smack into a wall, plus a small trail while you sprint. The dust is the
+  color of the ground (white snow, sandy beaches, grey ash, pink candy). Underwater every swim stroke lets out
+  **air bubbles** instead, and on a space walk there's no dust at all.
+* **Squash and stretch**: Rocco, Blocky and the Pokemon stretch a little taller when they jump and squash wide for
+  a moment when they land, then wobble back like a rubber toy. It's only how they look: every jump and every bump
+  works exactly like before.
+* **Circle wipes**: tap PLAY on the map and the map closes in a circle on the team; after the level's title card
+  the level opens in a circle around the hero. LEVEL CLEAR!, OH NO!, bonus portals and the bonus room's sunset
+  close in a circle too, and the map and the sticker screen open with one. They only use time the game already
+  took, so you never wait longer. Team Up! 3D has them too, right around the hero in the 3D picture.
+* **Sparkles**: coins twinkle now and then, every coin you grab sends out a few twinkles, and a **?** block hops
+  up when you hit it.
+
 ### Other changes
 
 * **Music changes every level** (seven new songs: meadow, jungle, snow, desert, night, beach and a scary

@@ -245,6 +245,15 @@ class Coin(x: Float, y: Float, private val popping: Boolean = false) : Thing(x +
         val squish = abs(sin(t * 4 + x * 0.05f))
         val w = 4f + 8f * squish
         gfx.sprite(Sprites.coin, cx - w / 2 + ox, y, w = w, h = 12f)
+        // Every so often a little twinkle (each coin at its own moment, so a row of them glitters).
+        val tw = (t * 0.7f + x * 0.031f) % 1f
+        if (!popping && tw < 0.12f) {
+            val s = sin(tw / 0.12f * Math.PI.toFloat()) * 3f
+            val gx = cx + ox + 2f
+            val gy = y + 3f
+            gfx.rect(gx - s, gy - 0.5f, s * 2, 1f, 0xFFFFFFFF.toInt())
+            gfx.rect(gx - 0.5f, gy - s, 1f, s * 2, 0xFFFFFFFF.toInt())
+        }
     }
 }
 
@@ -446,17 +455,6 @@ class Puff(x: Float, y: Float) : Particle(x, y) {
     override fun draw(gfx: Gfx, ox: Float) {
         val r = 4f + (1f - life) * 8f
         gfx.oval(x + ox - r, y - r, r * 2, r * 2, argb((life * 200).toInt().coerceIn(0, 255), 0xFFFFFF))
-    }
-}
-
-/** A little puff of dust from running or landing. */
-class Dust(x: Float, y: Float, private val dir: Int) : Particle(x, y) {
-    init { life = 0.35f }
-    override fun update(dt: Float) { life -= dt; x += dir * 25f * dt; y -= 10f * dt }
-    override fun draw(gfx: Gfx, ox: Float) {
-        val k = 1f - life / 0.35f
-        val r = 2f + k * 4f
-        gfx.oval(x + ox - r, y - r * 1.2f, r * 2, r * 1.6f, argb(((1 - k) * 150).toInt().coerceIn(0, 255), 0xF4ECDC))
     }
 }
 

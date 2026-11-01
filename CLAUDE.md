@@ -93,6 +93,7 @@ scratch build to test it locally.
 | `TeamArt.kt` | Pixel art and hand-drawn pictures |
 | `Stickers.kt` | 300 stickers = 60 base pictures x 5 `StickerStyle`s. Add new base pictures only at the end of `base` (index = style*60+base is saved; changing BASE reshuffles saves) |
 | `TeamControls.kt` | Touch buttons and `TeamInput` |
+| `Juice.kt` | Dust puffs (`Puffs`), squash and stretch (`StretchGfx`, `Squash`) and the circle wipe (`Iris`) |
 
 `teamapp/` is the Android wrapper (`GameView.kt` maps keys, `SoundFx.kt` does sounds, `Speaker.kt` the
 text-to-speech voices). Shared sounds and songs live in `core/` (`Gfx.kt` `Sound`/`Music`/`Voice`,
@@ -253,6 +254,18 @@ copy in `teamapp/` and `teamup3d/android/`, keep them the same) is the Android s
   `flowerTalk` (`Voice.TOAD`, rate-limited). The generator puts both only in World 13 (older levels never use `-`/`\`).
   `loadSlot` opens the level after the last beaten one, so saves that beat the old last level (12-21) get 13-1.
 
+* Juice (`Juice.kt`): `game.puffs` is a fixed pool (dust, underwater bubbles, coin twinkles; never more than its size,
+  no allocation), fed by `dust(h, ...)` in `moveHero`/`updateLeader` (landing, sprint start, skid, wall bump via
+  `Hero.againstWall`, sprint trail; none in `Place.ORBIT`, bubbles underwater). Squash and stretch is drawing only:
+  `Hero.stretch` springs (`updateStretch`, `land`), `Hero.draw` scales everything around the feet through the hero's own
+  `StretchGfx`; a `StretchingGfx` (Team Up! 3D's `PaperGfx`) scales its finished 3D shapes by matrix instead, because it
+  caches a mesh per polygon outline (`polysBuilt`) and stretched outlines would build new ones every frame. The circle wipe (`Iris`: bands + 4 corner polygons) is drawn last in `render`
+  (`renderIris`), so the 3D app shows it with the HUD; `levelToScreen` (set by `TeamScene`) moves the hero's spot to
+  the 3D picture. It closes in the last `Iris.CLOSE` s of CLEAR/OUCH (`CLEAR_TIME`/`OUCH_TIME`), the bonus sunset,
+  portals (`portalPending`, the team can still move) and the first moment of INTRO after PLAY on the map
+  (`irisFromMap`: the map is drawn then); `irisOpen` opens it (INTRO->PLAY, portals, `goToMap`, stickers). Wipes never
+  add waiting. ? blocks hop when hit (`hop`, `HOP_HEIGHT` < 8 so `TileGfx` keeps them in their cell). Tests: `JuiceTest`
+  (`build/screens/juice-*.png`), `TeamSceneTest.circleWipeOpensOnTheHeroIn3D`/`squashAndDustIn3D`.
 * Dennis = Hercules (`Hercules.kt`, `HerculesArt`): `stand`/`walk`/`leap`/`wag` sprites (25x18 art + outline pixels on top
   and sides, paws on the bottom row). `Dennis.draw(gfx, px, ground, t, running, facing, ...)` (companion) is used by the
   level, the scenes (`ScaledGfx(gfx, 2.4f, x, ground)`, feet at local y 0) and the sticker (shrunk to fit 26x30).
