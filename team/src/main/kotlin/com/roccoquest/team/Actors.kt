@@ -329,6 +329,8 @@ class Hero(val who: Who, x: Float, y: Float) :
     private var stretchV = 0f
     /** Time until the next dust puff (sprinting, skidding), so they come a few at a time. */
     var dustT = 0f
+    /** Was skidding (braking faster than walking) last frame, so a new skid puffs right away. */
+    var skidding = false
     /** Was running into a wall last frame (a puff only on the bump, not every frame pushing on it). */
     var againstWall = false
     var sprinting = false

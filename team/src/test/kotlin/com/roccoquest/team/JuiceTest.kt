@@ -264,6 +264,141 @@ class JuiceTest {
         assertTrue(blackShare(picture()) < 0.05f)
     }
 
+    /** Walks Rocco into level 2's portal, until its circle starts closing on him. */
+    private fun walkIntoPortal(portal: Portal) {
+        val r = game.rocco
+        r.x = portal.x - 30f; r.y = portal.bottom - r.h; r.vx = 0f; r.vy = 0f
+        var n = 0
+        while (game.portalWaitForTest < 0f && n++ < 240) { game.hurtProof(); input.right = true; game.update(dt) }
+        input.right = false
+        assertTrue(game.portalWaitForTest >= 0f, "walked into the portal")
+    }
+
+    @Test fun noClimbingIntoACannonWhileAPortalCloses() {
+        startPlaying(1)
+        game.quakesOn = false
+        game.foes.clear()
+        val portal = game.thingsForTest().filterIsInstance<Portal>().single()
+        // A Blast Cannon right next to the portal.
+        val cannon = BlastCannon(portal.x - 4f, portal.bottom)
+        game.spawnForTest(cannon)
+        walkIntoPortal(portal)
+        val r = game.rocco
+        assertTrue(abs(cannon.cx - r.cx) < 22f && r.onGround, "close enough to climb in (${cannon.cx} vs ${r.cx})")
+        // ACTION while the circle closes doesn't climb in (the cannon would come along into the bonus room).
+        input.action = true; game.hurtProof(); game.update(dt); input.action = false
+        assertEquals(null, game.inCannon, "not in the cannon")
+        var n = 0
+        while (!game.inBonus && n++ < 60) { game.hurtProof(); game.update(dt) }
+        assertTrue(game.inBonus, "still goes through the portal")
+        assertEquals(null, game.inCannon)
+        assertEquals(null, game.riding)
+        // And Rocco can walk around in the bonus room (he was stuck there for 30 seconds).
+        run(0.6f) { game.hurtProof() }
+        val x0 = r.x
+        input.right = true
+        run(0.5f) { game.hurtProof() }
+        input.right = false
+        assertTrue(r.x > x0 + 20f, "walks in the bonus room: $x0 -> ${r.x}")
+    }
+
+    @Test fun sittingInACannonOnAPortalDoesntGoThrough() {
+        startPlaying(1)
+        game.quakesOn = false
+        game.foes.clear()
+        run(0.3f) { game.hurtProof() }
+        val r = game.rocco
+        val cannon = BlastCannon(r.cx, r.bottom)
+        game.spawnForTest(cannon)
+        game.update(dt)
+        input.action = true; game.hurtProof(); game.update(dt); input.action = false
+        assertEquals(cannon, game.inCannon, "climbed in")
+        // The portal under him doesn't start closing while he sits in the cannon.
+        val portal = game.thingsForTest().filterIsInstance<Portal>().single()
+        portal.x = r.cx - portal.w / 2; portal.y = r.bottom - portal.h
+        run(0.6f) { game.hurtProof() }
+        assertEquals(-1f, game.portalWaitForTest, "no portal wait")
+        assertTrue(!game.inBonus, "didn't go through")
+        assertEquals(cannon, game.inCannon, "still in the cannon")
+    }
+
+    @Test fun reachingTheGoalJustAsAPortalClosesStillBeatsTheLevel() {
+        startPlaying(1)
+        game.quakesOn = false
+        game.foes.clear()
+        val goal = game.thingsForTest().filterIsInstance<Goal>().single()
+        walkIntoPortal(game.thingsForTest().filterIsInstance<Portal>().single())
+        // Wait for the very last frame of the portal's circle...
+        var n = 0
+        while (game.portalWaitForTest + dt < Iris.PORTAL_CLOSE && n++ < 60) { game.hurtProof(); game.update(dt) }
+        assertTrue(game.portalWaitForTest >= 0f, "the portal is still closing")
+        // ...and touch the goal on that same frame.
+        val l = game.leader
+        l.x = goal.x - l.w + 2f; l.y = goal.bottom - l.h - 1f; l.vx = 0f; l.vy = 0f
+        game.hurtProof(); game.update(dt)
+        assertEquals(TeamGame.State.CLEAR, game.state)
+        assertTrue(!game.inBonus, "LEVEL CLEAR! stays in the level (not the bonus room)")
+        n = 0
+        while (game.state == TeamGame.State.CLEAR && n++ < 400) game.update(dt)
+        assertEquals(TeamGame.State.STICKER, game.state)
+        assertTrue(game.isCleared(1), "and the level counts as beaten")
+    }
+
+    /** Taps the middle of the screen for one frame. */
+    private fun tap() {
+        input.tap = true; input.tapX = game.viewW / 2; input.tapY = 120f
+        game.update(dt)
+    }
+
+    /** Remembers the rectangles drawn (the rest is left out). */
+    private class Rects : Gfx {
+        val all = ArrayList<FloatArray>()
+        val colors = ArrayList<Int>()
+        override fun rect(x: Float, y: Float, w: Float, h: Float, color: Int) { all += floatArrayOf(x, y, w, h); colors += color }
+        override fun oval(x: Float, y: Float, w: Float, h: Float, color: Int) {}
+        override fun poly(xs: FloatArray, ys: FloatArray, color: Int) {}
+        override fun sprite(s: Sprite, x: Float, y: Float, flipX: Boolean, flipY: Boolean, w: Float, h: Float) {}
+        override fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Int) {}
+        fun find(w: Float, h: Float, color: Int) = all.indices.firstOrNull { all[it][2] == w && all[it][3] == h && colors[it] == color }?.let { all[it] }
+    }
+
+    @Test fun theTitleCardGetsItsOwnTimeAfterTheMap() {
+        // Starting a level straight away: a tap skips the card after 0.6 seconds, like always.
+        game.newGame(0, Mon.SPARKY)
+        assertEquals(TeamGame.State.INTRO, game.state)
+        run(0.65f)
+        tap()
+        assertEquals(TeamGame.State.PLAY, game.state)
+        // From the map, the card only shows once the map's circle has closed: a tap just after it shows waits.
+        game.goToMap(0)
+        run(0.8f)
+        game.playMapLevelForTest(0)
+        run(Iris.CLOSE + 0.2f)
+        tap()
+        assertEquals(TeamGame.State.INTRO, game.state, "the card had only just shown up")
+        run(0.45f)
+        tap()
+        assertEquals(TeamGame.State.PLAY, game.state, "then a tap skips it")
+        // A rocket trip to a planet starts from the beginning when the card shows (not partway there).
+        val planet = Levels.all.indexOfFirst { PlanetArt.planetOf(it.place) != null }
+        assertTrue(planet > 0)
+        game.goToMap(0)
+        run(0.8f)
+        game.playMapLevelForTest(planet)
+        var rocket: FloatArray? = null
+        var n = 0
+        while (rocket == null && n++ < 60) {
+            game.update(dt)
+            val g = Rects()
+            game.render(g)
+            // The first picture of the card itself (its dark blue background), not the map closing.
+            if (g.find(game.viewW, VIEW_H, 0xFF101018.toInt()) != null) rocket = g.find(22f, 10f, 0xFFF4F4F4.toInt()) ?: error("no rocket")
+        }
+        assertEquals(game.viewW - 70f - 150f - 12f, rocket!![0], 1.5f, "the rocket is at the start of its trip")
+        run(3f)
+        assertEquals(TeamGame.State.PLAY, game.state, "and the level starts when it always did")
+    }
+
     // ---------------------------------------------------------------- squash and stretch
 
     @Test fun landingSquashesAndSpringsBackToNormal() {
@@ -336,6 +471,73 @@ class JuiceTest {
         assertTrue(most >= 4, "dust was kicked up: $most")
         assertTrue(most <= game.puffs.size, "never more puffs than the pool: $most")
         assertTrue(mostParticles <= TeamGame.MAX_PARTICLES, "particles stay under the cap: $mostParticles")
+    }
+
+    @Test fun skidDustOnlyWhenStoppingFasterThanAWalk() {
+        startPlaying(0)
+        game.foes.clear()
+        run(0.5f) { game.hurtProof() }
+        // A long flat stretch with nothing on it.
+        val r = game.rocco
+        val lv = game.level
+        val gy = (r.bottom / TILE).toInt()
+        val mid = 40
+        for (tx in mid - 30..mid + 30) {
+            for (ty in 0 until gy) lv[tx, ty] = Tile.EMPTY
+            lv[tx, gy] = Tile.GROUND
+        }
+        for (t in game.thingsForTest()) if (t.cx < (mid + 32) * TILE) t.removed = true
+        r.x = mid * TILE.toFloat(); r.y = gy * TILE - r.h; r.vx = 0f; r.vy = 0f
+        run(0.5f) { game.hurtProof() }
+        assertTrue(r.onGround)
+        // Dust at Rocco's own feet (not his partner's), the most there was during the next [seconds].
+        fun dustAtFeet(seconds: Float): Int {
+            var most = 0
+            run(seconds) { game.hurtProof(); most = max(most, game.puffs.dustNear(r.cx, r.bottom, 14f)) }
+            return most
+        }
+        // Letting go while just walking: no skid, no dust.
+        for (i in 0 until 6) {
+            val right = i % 2 == 0
+            input.right = right; input.left = !right
+            run(0.5f + i * 0.04f) { game.hurtProof() }
+            assertEquals(r.speed, abs(r.vx), 0.5f, "walking")
+            game.puffs.clear()
+            input.right = false; input.left = false
+            assertEquals(0, dustAtFeet(0.25f), "letting go of a walk (stop $i) is no skid")
+        }
+        // Stopping from a sprint always skids and puffs, wherever the running trail's puffs were at.
+        input.run = true
+        for (i in 0 until 6) {
+            val right = i % 2 == 0
+            input.right = right; input.left = !right
+            run(0.45f + i * 0.023f) { game.hurtProof() }
+            assertTrue(abs(r.vx) > r.speed * 1.4f, "sprinting: ${r.vx}")
+            game.puffs.clear()
+            input.right = false; input.left = false
+            assertTrue(dustAtFeet(0.1f) >= 1, "stopping a sprint (stop $i) skids and puffs")
+        }
+        input.run = false
+    }
+
+    @Test fun dustIsDrawnBehindTheTeamAndTwinklesInFront() {
+        startPlaying(0)
+        game.foes.clear()
+        run(0.5f) { game.hurtProof() }
+        val l = game.leader
+        game.puffs.clear()
+        game.puffs.dust(l.cx, l.bottom, 0f, 0f, 4f, 0xFFFFFF)
+        game.puffs.glint(l.cx, l.cy, 0f, 0f)
+        // The order things are drawn in (Team Up! 3D builds its picture in this same order).
+        val order = ArrayList<Any>()
+        game.renderLevelActors(Rects()) { order += it }
+        val puffs = order.indices.filter { order[it] === game.puffs }
+        assertEquals(2, puffs.size, "one dust puff and one twinkle")
+        for (h in game.team) {
+            val drawn = order.indexOfLast { it === h }
+            assertTrue(puffs[0] < drawn, "dust is drawn before ${h.label} (behind him)")
+            assertTrue(puffs[1] > drawn, "the twinkle after ${h.label} (on top)")
+        }
     }
 
     @Test fun noDustInSpaceAndBubblesUnderwater() {
