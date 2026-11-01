@@ -7,8 +7,8 @@ import kotlin.random.Random
  * (flat ground, gaps, lava pits, raised ledges, stairs, ore rocks, prize blocks) with a fixed seed,
  * so every level is always the same. Every world ends with a boss, and there are bosses halfway.
  * World 4 ends with THE ULTIMATE BATTLE: Dry Bones King Krag, Wonder King Krag and the Ender Dragon.
- * The later worlds (6 to 13) are made the same way; the very last level of the game is World 13's
- * THE WONDER FINALE (Dry Bones King Krag, then Wonder King Krag).
+ * The later worlds (6 to 14) are made the same way; the very last level of the game is World 14's
+ * CHEF KRAG (in his giant kitchen). World 13's THE WONDER FINALE leads on to World 14.
  */
 object MoreWorlds {
     /** [extra] makes a level longer (in tiles): World 10's levels are long, and some are REALLY long. */
@@ -256,6 +256,35 @@ object MoreWorlds {
         Plan("THE WONDER FINALE", Place.WONDER, "THE WONDER FINALE! Dry Bones King Krag, then WONDER KING KRAG and his Wonder magic!", boss = "YQ"),
     )
 
+    // World 14: the Kingdom Tour. A different kingdom in every level: the new Big City and Food Kingdom the most,
+    // with a few older places (and their bad guys) mixed in. Taxis, meatballs and chili peppers only live here.
+    private val world14Plans = listOf(
+        Plan("NEON CITY", Place.CITY, "WORLD 14: THE KINGDOM TOUR! First stop: the BIG CITY. Watch out for honking taxis!", extra = 40),
+        Plan("ROOFTOP RUN", Place.CITY, "Jump from rooftop to rooftop. Don't look down!", extra = 60),
+        Plan("SAND KINGDOM", Place.DESERT, "A hot, hot desert. Even the chili peppers are sweating!", extra = 60),
+        Plan("FOOD KINGDOM", Place.FOOD, "The FOOD KINGDOM! The soup is HOT: don't fall in!", extra = 70),
+        Plan("MEATBALL MOUNTAIN", Place.FOOD, "Meatballs come rolling at you. Stomp them flat!", extra = 70),
+        Plan("JUNGLE KINGDOM", Place.JUNGLE, "Giant leaves, snappers and spicy peppers.", extra = 80),
+        Plan("SKYSCRAPER SHOWDOWN", Place.CITY, "KRAG JR. flew his clown car over the BIG CITY!", boss = "J"),
+        Plan("DINO KINGDOM", Place.PREHISTORIC, "Dinosaurs! Grab CAPPY and capture one!", extra = 80),
+        Plan("HOT DOG ALLEY", Place.CITY, "Hot dogs, neon signs and LOTS of taxis!", extra = 90),
+        Plan("CHEESE CLIFFS", Place.FOOD, "Cheesy cliffs over bubbling soup.", extra = 90),
+        Plan("SNOW KINGDOM", Place.SNOW, "A cold, snowy kingdom. Brrr!", extra = 90),
+        Plan("TRAFFIC JAM", Place.CITY, "So many taxis! Beep beep! Jump on their roofs!", extra = 100),
+        Plan("NOODLE NOOK", Place.FOOD, "Bread hills and soup pools. Yum!", extra = 100),
+        Plan("MECHA KRAG DOWNTOWN", Place.CITY, "MECHA KRAG is stomping through the city! Dodge the missiles!", boss = "{"),
+        Plan("MOON KINGDOM", Place.MOON, "A trip to the Moon! Floaty jumps.", extra = 100),
+        Plan("SOUP SPRINGS", Place.FOOD, "Hot soup pools everywhere. Hop across!", extra = 110),
+        Plan("CLOUD KINGDOM", Place.SKY, "Way up in the clouds.", extra = 110),
+        Plan("CITY LIGHTS", Place.CITY, "The city at night. So many neon signs!", extra = 120),
+        Plan("PEPPER PEAK", Place.FOOD, "The spiciest mountain in the world!", extra = 130),
+        Plan("THE BIG KITCHEN", Place.FOOD, "Something smells yummy... Chef Krag is cooking up trouble!", extra = 140),
+        Plan("CHEF KRAG", Place.FOOD, "CHEF KRAG! Dodge his PIES and JUMP over the rolling meatballs!", boss = "§"),
+    )
+
+    /** World 14, the Kingdom Tour: the Big City, the Food Kingdom and more, and CHEF KRAG at the very end. */
+    val world14: List<LevelDef> by lazy { world14Plans.mapIndexed { i, p -> make(p, world = 14, seed = 14000 + i * 61) } }
+
     /** World 11, Dino World: dinosaurs to capture with Cappy, Dash to ride, and REX KRAG. */
     val world11: List<LevelDef> by lazy { world11Plans.mapIndexed { i, p -> make(p, world = 11, seed = 11000 + i * 47) } }
 
@@ -295,6 +324,7 @@ object MoreWorlds {
         "{" -> mechaStage(p)
         "}" -> galaxyArena(p)
         "'" -> rexArena(p)
+        "§" -> chefArena(p)
         "55" -> twinBoss(p)
         else -> rush(p, p.boss)
     }
@@ -315,6 +345,21 @@ object MoreWorlds {
                 Place.CAVE -> "(`_gk"
                 Place.DESERT -> "()_`b"
                 else -> "()`]_(("
+            })
+            return@buildString
+        }
+        if (world == 14) {
+            // The tour's new bad guys (taxis in the city, meatballs in the Food Kingdom, chili peppers in both),
+            // plus the bad guys that already live in the older places it visits.
+            append(when (place) {
+                Place.CITY -> "¥g¥ç¥kH¥A"
+                Place.FOOD -> "øçøgHøkç"
+                Place.DESERT -> "çjgbAHç"
+                Place.JUNGLE -> "gkHUTç"
+                Place.PREHISTORIC -> "()`]_(("
+                Place.MOON -> "<<gk<"
+                Place.SNOW -> "67g8k"
+                else -> "gkHAç"
             })
             return@buildString
         }
@@ -379,6 +424,7 @@ object MoreWorlds {
     }
 
     private fun airFoes(place: Place, world: Int = 0) = if (world == 6) "qqv" else if (world == 7) "vll" else if (world == 8) "llv"
+        else if (world == 14) (if (place == Place.MOON) "//l" else if (place == Place.CITY) "vvl" else "llw")
         else if (world == 13) (if (place == Place.MOON || place == Place.RING_PLANET) "//l" else "llv")
         else if (world == 9 || world == 12 || (world == 10 && place in setOf(Place.ORBIT, Place.MOON))) "//l" else if (world == 11) "[[l" else when (place) {
         Place.CAVE, Place.DEEP -> "vvq"
@@ -398,12 +444,13 @@ object MoreWorlds {
         val b = Builder(w)
         val place = p.place
         if (place == Place.CAVE || place == Place.CASTLE || place == Place.STATION) b.fill(0, w - 1, 0, 1, if (place == Place.CAVE) 's' else 'X')
-        val lava = place == Place.VOLCANO || place == Place.CASTLE || place == Place.LAVA_PLANET
+        // (The Food Kingdom's pits are full of hot soup, which works just like lava.)
+        val lava = place == Place.VOLCANO || place == Place.CASTLE || place == Place.LAVA_PLANET || place == Place.FOOD
         val ground = groundFoes(world, place)
         val air = airFoes(place, world)
         b.ground(0, 16).at(3, 12, '@')
-        // Dino World (and Wonder World's dino party): a free Cappy hat right at the start (and sometimes Dash to ride).
-        if (world == 11 || (world == 13 && place == Place.PREHISTORIC)) { b.at(13, 12, '"'); if (r.nextInt(3) == 0) b.at(15, 12, 'y') }
+        // Dino World (and the dino levels in Worlds 13 and 14): a free Cappy hat right at the start (and sometimes Dash to ride).
+        if (world == 11 || (world >= 13 && place == Place.PREHISTORIC)) { b.at(13, 12, '"'); if (r.nextInt(3) == 0) b.at(15, 12, 'y') }
         // The first rock always has iron, gold, diamond or emerald in it.
         b.rock(8, 12, *rocks[listOf(0, 1, 2, 6)[r.nextInt(4)]])
         var x = 17
@@ -419,7 +466,8 @@ object MoreWorlds {
             val kind = r.nextInt(7)
             when {
                 // (World 10: never a gap right after a hill: floaty space jumps would land in it.)
-                kind == 0 && !lastGap && x > 24 && !(world >= 10 && lastHill) -> {
+                // (The Big City has twice as many gaps: the alleys between the rooftops.)
+                (kind == 0 || (place == Place.CITY && kind >= 5)) && !lastGap && x > 24 && !(world >= 10 && lastHill) -> {
                     // A gap (or a lava pit) to jump over.
                     val gw = 2 + r.nextInt(2)
                     if (lava) b.fill(x, x + gw - 1, 13, 14, 'L')
@@ -452,9 +500,13 @@ object MoreWorlds {
                     if (r.nextInt(3) == 0) b.rock(x + 1, 12, *rocks[r.nextInt(rocks.size)])
                     val blocks = r.nextInt(3) == 0
                     if (blocks) b.row(x + len / 2 - 1, 9, listOf("?B?", "B?B", "?mB", "BhB", "B*B")[r.nextInt(5)])
+                    // The Food Kingdom: a little pool of hot soup to hop over (instead of a crusher). It's dug before
+                    // the bad guys are placed, so none of them stands over the soup. (Other places never roll for it.)
+                    val pool = place == Place.FOOD && !blocks && len >= 14 && r.nextInt(2) == 0
+                    if (pool) b.fill(x + len - 6, x + len - 5, 13, 14, 'L')
                     repeat(busy + r.nextInt(2)) { k -> b.onGround(ground[r.nextInt(ground.length)], x + 5 + k * 3) }
                     if (r.nextInt(3) == 0) b.at(x + 6, if (air[0] == 'l') 3 else 8, air[r.nextInt(air.length)])
-                    if (!blocks && len >= 13 && r.nextInt(3) == 0) b.at(x + len - 4, 8, 'z')
+                    if (!pool && !blocks && len >= 13 && r.nextInt(3) == 0) b.at(x + len - 4, 8, 'z')
                     if (!frog && x > 40) { b.at(x + 2, 12, 'r'); frog = true }
                     if (world == 13) {
                         // Wonder World: a Wonder Flower a third of the way in and another two thirds in, and
@@ -556,7 +608,8 @@ object MoreWorlds {
 
     /** MECHA KRAG's workshop: a long factory floor, then a big flat arena. */
     private fun mechaStage(p: Plan) = Builder(170)
-        .ground(0, 169).fill(0, 169, 0, 1, 'X')
+        // (A factory roof, except downtown in the Big City, where it's open sky.)
+        .ground(0, 169).apply { if (p.place != Place.CITY) fill(0, 169, 0, 1, 'X') }
         .at(3, 12, '@').rock(7, 12, "DoxD", "ssss").row(14, 9, "?h?")
         .at(22, 12, ';').at(28, 12, ',').at(33, 8, 'l').at(38, 12, ';')
         .rock(44, 12, "aRe", "sss").at(50, 12, 'r').at(54, 12, '|')
@@ -592,6 +645,23 @@ object MoreWorlds {
         .row(116, 8, "h").row(150, 8, "h")
         .fill(170, 170, 2, 12, 'X')
         .at(136, 12, '\'')
+        .build(p.name, p.place, p.tip)
+
+    /**
+     * CHEF KRAG's giant kitchen (the very last level): a run past meatballs, chili peppers and soup pools, then a
+     * big flat kitchen floor with toast ledges to jump on him from (inside what the boss camera shows), and his
+     * soup pot. (No soup pools in the arena: room to dodge!)
+     */
+    private fun chefArena(p: Plan) = Builder(190)
+        .ground(0, 189)
+        .at(3, 12, '@').rock(7, 12, "DoxD", "ssss").row(14, 9, "?h?")
+        .at(22, 12, 'ø').at(30, 12, 'ç').fill(36, 38, 13, 14, 'L').at(44, 12, 'ø')
+        .rock(48, 12, "aRe", "sss").at(54, 12, 'r').at(58, 12, '|')
+        .at(64, 12, 'ç').fill(70, 72, 13, 14, 'L').row(76, 9, "BhB").at(82, 12, 'ø')
+        .rock(88, 12, "eDo", "sss").at(96, 12, '|').row(100, 9, "m*m")
+        .row(125, 10, "XXX").row(146, 10, "XXX").row(126, 7, "h").row(147, 7, "h")
+        .fill(170, 170, 2, 12, 'X')
+        .at(136, 12, '§')
         .build(p.name, p.place, p.tip)
 
     /** The Warden Twins: two Wardens in one dark cave (each one has less health than the big Warden). */

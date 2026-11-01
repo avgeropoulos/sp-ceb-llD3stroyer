@@ -122,7 +122,7 @@ class TeamScene {
 
         val DARK = setOf(
             Place.CAVE, Place.CASTLE, Place.VOLCANO, Place.NIGHT, Place.DEEP, Place.END,
-            Place.AURORA, Place.FUNGI, Place.ORBIT,
+            Place.AURORA, Place.FUNGI, Place.ORBIT, Place.CITY,
         )
     }
 }

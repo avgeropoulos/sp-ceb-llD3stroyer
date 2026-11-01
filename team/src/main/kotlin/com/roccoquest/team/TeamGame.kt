@@ -1122,6 +1122,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 '\\' -> things += TalkingFlower(px, bottom, tx + index)
                 '\'' -> foes += RexKrag(px, bottom)
                 '}' -> foes += GalaxyKrag(px, bottom)
+                '¥' -> foes += Taxi(px, bottom)
+                'ø' -> foes += Meatball(px, bottom)
+                'ç' -> foes += Chili(px, bottom)
+                '§' -> foes += ChefKrag(px, bottom)
                 '+' -> things += SpikeBomb(px, bottom)
                 '>' -> things += BlastCannon(px, bottom)
                 'Z' -> foes += EnderDragon(px, ty * TILE.toFloat())
@@ -2484,6 +2488,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         when (captureKind) {
             CaptureKind.SHELLBACK -> { captureDashT = 0.8f; sfx(Sound.KICK) }
             CaptureKind.TRICERA -> { captureDashT = 1f; sfx(Sound.STOMP); say(h.cx, h.y - 8, "CHARGE!", 0.8f) }
+            CaptureKind.TAXI -> { captureDashT = 0.8f; sfx(Sound.BUMP); say(h.cx, h.y - 8, "HONK HONK!", 0.8f) }
+            CaptureKind.MEATBALL -> { captureDashT = 0.9f; sfx(Sound.KICK); say(h.cx, h.y - 8, "ROLL!", 0.8f) }
+            CaptureKind.CHILI -> {
+                // Fire breath: a fireball, like a Fire Flower.
+                spawn(Shot(if (h.facing > 0) h.x + h.w else h.x - 9, h.y + 8, h.facing, Power.FIRE, 3, h))
+                sfx(Sound.FIRE)
+            }
             CaptureKind.ANKYLO -> {
                 // Tail club SMASH: everything close by.
                 shake = 0.3f
@@ -3833,6 +3844,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     internal fun pickCardXForTest(i: Int) = pickCardX(i)
     internal fun pickCardYForTest(i: Int) = pickCardY(i)
     internal fun thingsForTest(): List<Thing> = things + pending
+    internal fun clearNoteForTest() = clearNote
     internal fun dogForTest() { dogT = 0f }
     internal fun spawnForTest(t: Thing) = spawn(t)
     internal fun pickStickerScreenForTest() = offerStickers(levelIndex + 1)
@@ -4070,6 +4082,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     val nextName = Levels.all[levelIndex + 1].name
                     clearNote = when {
                         levelIndex + 1 == Wonder.WORLD13 -> "...but King Krag found a WONDER FLOWER! WORLD 13!"
+                        levelIndex + 1 == Kingdoms.WORLD14 -> "...but Krag ran off on a KINGDOM TOUR! WORLD 14 IS NEXT!"
                         (levelIndex + 1) % WORLD_SIZE == 0 -> "World ${levelIndex / WORLD_SIZE + 1} is beaten... WORLD ${levelIndex / WORLD_SIZE + 2} is waiting!"
                         levelIndex >= WORLD_SIZE -> "Boss beaten! Next up: $nextName!"
                         b is KingKrag && b.dry -> "Only one enemy left... THE ENDER DRAGON!"
@@ -4174,6 +4187,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             Place.LAVA_PLANET -> listOf(Music.HEROIC, Music.CASTLE, Music.DOOM)
             Place.CRYSTAL_PLANET -> listOf(Music.CRYSTAL, Music.WONDER, Music.STAR)
             Place.WONDER -> listOf(Music.BLOOM, Music.PARADE, Music.MEADOW, Music.FUNKY)
+            Place.CITY -> listOf(Music.METRO, Music.FUNKY, Music.RACE, Music.NIGHT)
+            Place.FOOD -> listOf(Music.FEAST, Music.SILLY, Music.PARADE, Music.TROPICAL)
         }
 
         /** Every level's tune, worked out once in order so it's never the same as the level before. */
@@ -4538,6 +4553,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             8 -> Triple(0xFF060418, 0xFF8A8A9A, 0xFFB8B8C8)
             // Wonder World: a violet sea around bright flower meadows.
             Wonder.WORLD13 / WORLD_SIZE -> Triple(0xFF7A4AE8, 0xFF5AC86A, 0xFF8AE07A)
+            // The Kingdom Tour: an evening-blue sea around warm, toasty lands.
+            Kingdoms.WORLD14 / WORLD_SIZE -> Triple(0xFF3A4AA8, 0xFFE8B86A, 0xFFF4CC84)
             else -> Triple(0xFF1A2A4A, 0xFF8AB8D8, 0xFFA8D0E8)
         }
         gfx.gradient(0f, 0f, viewW, VIEW_H, mixColor(sea.toInt(), 0xFFFFFFFF.toInt(), 0.15f), mixColor(sea.toInt(), 0xFF000000.toInt(), 0.3f))
@@ -4553,6 +4570,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             val step = (viewW - 82f - 36f) / 6f
             for (c in 0 until 6) WonderArt.wonderFlower(gfx, 82f + (c + 0.5f) * step, if (c % 2 == 0) 106f else 164f, time + c, 0.7f)
         }
+        // The Kingdom Tour: little skylines and giant food between the rows of levels.
+        if (mapWorld == Kingdoms.WORLD14 / WORLD_SIZE) KingdomMap.draw(gfx, viewW, time)
         // The path between levels
         val levels = mapLevels().toList()
         var prev = if (mapWorld == 0) mapSpot(-1) else null
@@ -6991,6 +7010,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             Place.RAINBOW -> SeaArt.space(gfx, viewW, VIEW_H, cam, time)
             Place.PREHISTORIC -> DinoArt.drawSky(gfx, viewW, VIEW_H, cam, time)
             Place.WONDER -> WonderArt.drawSky(gfx, viewW, VIEW_H, cam, time)
+            Place.CITY -> CityArt.drawSky(gfx, viewW, VIEW_H, cam, time)
+            Place.FOOD -> FoodArt.drawSky(gfx, viewW, VIEW_H, cam, time)
             Place.MARS, Place.ICE_PLANET, Place.CANDY_PLANET, Place.JUNGLE_PLANET, Place.RING_PLANET, Place.LAVA_PLANET, Place.CRYSTAL_PLANET ->
                 PlanetArt.drawSky(gfx, level.def.place, viewW, VIEW_H, cam, time)
             Place.END -> {
@@ -7054,16 +7075,19 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     Place.TOYS, Place.FUNGI, Place.MOON, Place.STATION, Place.ORBIT -> GalaxyArt.ground(place, under)
                     Place.MARS, Place.ICE_PLANET, Place.CANDY_PLANET, Place.JUNGLE_PLANET, Place.RING_PLANET, Place.LAVA_PLANET, Place.CRYSTAL_PLANET -> PlanetArt.ground(place, under)
                     Place.WONDER -> WonderArt.ground(under)
+                    Place.CITY -> CityArt.ground(under, tx, ty)
+                    Place.FOOD -> if (under) FoodArt.groundUnder else FoodArt.groundTop
                     else -> if (under) Sprites.dirt else Sprites.grassTop
                 }
                 Tile.DIRT -> Sprites.dirt
-                Tile.BRICK -> if (place == Place.CAVE) Sprites.brickBlue else Sprites.brick
+                Tile.BRICK -> if (place == Place.CAVE) Sprites.brickBlue else if (place == Place.FOOD) FoodArt.cheese else Sprites.brick
                 Tile.QCOIN, Tile.QHEART, Tile.QSTAR -> if ((time * 3).toInt() % 3 == 0) Sprites.question2 else Sprites.question1
                 Tile.QMYSTERY -> Sprites.question1
                 Tile.USED -> Sprites.used
                 Tile.HARD -> when (place) {
-                    Place.CASTLE, Place.VOLCANO, Place.STATION -> Sprites.hardGrey
+                    Place.CASTLE, Place.VOLCANO, Place.STATION, Place.CITY -> Sprites.hardGrey
                     Place.END, Place.DEEP -> TeamArt.obsidian
+                    Place.FOOD -> FoodArt.toast
                     else -> Sprites.hard
                 }
                 Tile.RAIL -> { TeamArt.rail(gfx, tx * TILE - cam, (ty + 1) * TILE.toFloat()); null }
@@ -7077,7 +7101,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     null
                 }
                 Tile.RAINBOW -> { SeaArt.rainbowTile(gfx, tx * TILE - cam, ty * TILE.toFloat(), time, tx); null }
-                Tile.LAVA -> if (level[tx, ty - 1] == Tile.LAVA) Sprites.lava else Sprites.lavaTop
+                // (In the Food Kingdom the "lava" is hot tomato soup.)
+                Tile.LAVA -> if (place == Place.FOOD) (if (level[tx, ty - 1] == Tile.LAVA) FoodArt.soupDeep else FoodArt.soupTop)
+                    else if (level[tx, ty - 1] == Tile.LAVA) Sprites.lava else Sprites.lavaTop
                 Tile.CLOUD -> Sprites.cloud
                 else -> Tile.ore(t)?.let { TeamArt.ores[it] }
             } ?: continue
@@ -7460,7 +7486,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         else if (level.def.place == Place.ORBIT) gfx.shadowText("SPACE WALK! Spacesuits on. Super floaty jumps!", viewW / 2, 196f, 8f, 0xFF8AD8FF.toInt(), 1)
         else if (level.def.place == Place.PREHISTORIC || levelIndex in WORLD_SIZE * 10 until WORLD_SIZE * 11) gfx.shadowText("DINO WORLD! Grab CAPPY and capture a dinosaur!", viewW / 2, 196f, 8f, 0xFF8AE86A.toInt(), 1)
         else if (Wonder.isWonderLevel(levelIndex) && !level.def.isBossLevel) gfx.shadowText("WONDER FLOWERS: touch them for a surprise!", viewW / 2, 196f, 8f, solidRainbow(time * 0.5f), 1)
+        else if (Kingdoms.isTourLevel(levelIndex) && !level.def.isBossLevel) gfx.shadowText("KINGDOM TOUR: ${Kingdoms.kingdomName(level.def.place)}!", viewW / 2, 196f, 8f, 0xFFFFC86A.toInt(), 1)
         if (level.def.place == Place.WONDER) WonderArt.wonderFlower(gfx, viewW / 2 + 52f, 150f, time, 1.6f)
+        // The Kingdom Tour: a little skyline for the Big City, a fork and a tomato for the Food Kingdom.
+        if (level.def.place == Place.CITY) CityArt.miniSkyline(gfx, viewW / 2 + 40f, 150f, time)
+        if (level.def.place == Place.FOOD) { FoodArt.fork(gfx, viewW / 2 + 46f, 118f, 150f, 0.55f); FoodArt.tomato(gfx, viewW / 2 + 60f, 144f, 6f) }
         PlanetArt.planetOf(level.def.place)?.let { pl ->
             PlanetArt.drawTrip(gfx, level.def.place, viewW, stateT)
             gfx.shadowText("ROCKET TRIP TO ${pl.label}!", viewW / 2, 208f, 8f, 0xFF8AD8FF.toInt(), 1)

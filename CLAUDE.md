@@ -81,7 +81,8 @@ scratch build to test it locally.
 | `TeamLevel.kt` | Tiles, ores, places, the 21 World 1 levels (character grids built with `Builder`), the `remix` pass that sprinkles new monsters/materials/portals into every level, and the bonus room |
 | `World2.kt` | The 21 World 2 levels (22-42) and `WORLD_SIZE`/`worldCount()`/`clearedKey()` |
 | `Sea.kt` | World 5 (levels 85-105: water, pirate ships, Rainbow Road), ship/mast/rainbow tiles (`I` `:` `%`), `Cannon` (`N`), `MetalItem` (`$`), Metal Rocco sprites, sea and space skies |
-| `MoreWorlds.kt` | Worlds 3 and 4 (levels 43-84) World 6 (Spooky World, levels 106-126, `world6`) and World 7 (Winter World, 127-147, `world7`), appended after World 5, then `world8`..`world13`, built by a seeded level generator plus boss-arena templates. World 4 ends with THE ULTIMATE BATTLE (Y, Q, Z boss rush); the last level of the game is World 13's THE WONDER FINALE (Y, Q rush) |
+| `MoreWorlds.kt` | Worlds 3 and 4 (levels 43-84) World 6 (Spooky World, levels 106-126, `world6`) and World 7 (Winter World, 127-147, `world7`), appended after World 5, then `world8`..`world14`, built by a seeded level generator plus boss-arena templates. World 4 ends with THE ULTIMATE BATTLE (Y, Q, Z boss rush); World 13 ends with THE WONDER FINALE (Y, Q rush); the last level of the game is World 14's CHEF KRAG (`chefArena`) |
+| `Kingdoms.kt` | World 14, the Kingdom Tour: the Big City and Food Kingdom art (`CityArt`, `FoodArt`, `KingdomMap`), Taxi, Meatball, Chili and the last boss CHEF KRAG |
 | `Monsters.kt` | Newer monsters (Skelly Archer + arrows, Hopper, Gloop, Snapper + seeds, Crusher `z`, Peekaboo `q`, Puffcloud `l`, Spikestack `j`), bonus `Portal`, `Chest`, sunset sky, Dash |
 | `Homes.kt` | `HouseType` (46; the newer 23 are drawn in `MoreHouses.kt`), `Furniture` (46: `floor` 0-3, `unlock` = levels beaten; `furnitureBits` is a Long saved as `furniture`+`furniture2`), floors (`MAX_FLOORS`, stairs at `STAIRS_X`), `PAINTS` (house colors), the Pokemon mat (`MON_X`), `BedStyle`, house outside/inside drawing (the room is 900 wide and scrolls), `PlushieItem` |
 | `Plushies.kt` | The 350 `Plushie`s (new ones always go at the END: saved by index) (characters use sticker art, animals are drawn from a `Species` + color) |
@@ -152,7 +153,7 @@ copy in `teamapp/` and `teamup3d/android/`, keep them the same) is the Android s
 * `score` is a Long; `particles` are capped at `MAX_PARTICLES` (too many floating texts made phones lag).
 * Performance: draw repeated tiles as cached `Sprite`s (see `SeaArt.plank`/`rainbowTile`), not many shapes per
   tile. Floating texts are capped at `MAX_FLOAT_TEXTS`. Poseidon/Black Flower buttons are top-right (`TeamControls.layout`).
-* Music: 40 songs in `Songs.kt` (new ones go at the END of `Music`); the title song rotates (`titleSong`, global key `titleSong`) (`Music` enum in `Gfx.kt`); `Tunes.tunes(place)` lists 3-4 per place.
+* Music: 42 songs in `Songs.kt` (new ones go at the END of `Music`; World 14 added METRO and FEAST); the title song rotates (`titleSong`, global key `titleSong`) (`Music` enum in `Gfx.kt`); `Tunes.tunes(place)` lists 3-4 per place.
 * `Fun.kt`: `Spotty` (the Toad look-alike, `Voice.TOAD`; `planSpotty`/`updateSpotty`, 40% of non-boss levels) and
   `Scenes` (10 five-second funny scenes, `State.SCENE`, after the sticker on odd level indexes; `funnyScenes` flag).
 * `thinCrowds()` spreads out bunched-up bad guys at level start (32px gap in World 1, 48px later).
@@ -252,6 +253,15 @@ copy in `teamapp/` and `teamup3d/android/`, keep them the same) is the Android s
   touch damage), COIN_RAIN spawns `RainCoin`s, the end spawns a `WonderSeed`. `TalkingFlower` `\` talks through
   `flowerTalk` (`Voice.TOAD`, rate-limited). The generator puts both only in World 13 (older levels never use `-`/`\`).
   `loadSlot` opens the level after the last beaten one, so saves that beat the old last level (12-21) get 13-1.
+* `Kingdoms.kt` (World 14 the Kingdom Tour, `MoreWorlds.world14`, levels 274-294, `Kingdoms.WORLD14` = first index): new
+  Places CITY (`CityArt`: rooftop tiles with window variants `ground(under, tx, ty)`, night skyline from cached tower
+  sprites, neon signs, cranes, taxis on a highway; song `Music.METRO`) and FOOD (`FoodArt`: cheese-on-bread ground,
+  `toast` = HARD, `cheese` = BRICK, `soupTop`/`soupDeep` = LAVA tiles, i.e. the soup works like lava; song
+  `Music.FEAST`). Every plain ASCII level char was taken, so World 14 uses Latin-1 ones: `TourFoe`s Taxi '¥'
+  (honks, then zooms), Meatball 'ø' (rolls at you), Chili 'ç' (spits `ChiliFlame`s) and boss `ChefKrag` '§'
+  (`NamedBoss`, KingKrag look + chef hat/apron; `Pie`s, `BigMeatball`s to jump over, stirs his `SoupPot` when angry).
+  CaptureKind TAXI/MEATBALL/CHILI. The generator gives the city more gaps (alleys) and FOOD little soup pools;
+  `KingdomMap` decorates the map, `Kingdoms.kingdomName` is on the title card. 13-21 now says "WORLD 14 IS NEXT!".
 
 * Dennis = Hercules (`Hercules.kt`, `HerculesArt`): `stand`/`walk`/`leap`/`wag` sprites (25x18 art + outline pixels on top
   and sides, paws on the bottom row). `Dennis.draw(gfx, px, ground, t, running, facing, ...)` (companion) is used by the

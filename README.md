@@ -614,6 +614,32 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
 * A new one joins your team every 3 levels you beat ("A wild EEVO joined your team!"). Switch to them at home
   on the POKEMON mat; the switch screen now has two pages (tap the arrows).
 
+### World 14: THE KINGDOM TOUR (levels 274-294)
+
+* **21 more levels**, a trip through lots of kingdoms like in Super Mario Odyssey. Two are brand new:
+  * **THE BIG CITY**: skyscraper rooftops at night (the buildings under you have lit-up windows), a skyline with
+    blinking neon signs (PIZZA, HOTEL, TAXI...), construction cranes and yellow taxis zooming along a highway.
+    The gaps between the rooftops are alleys: jump!
+  * **THE FOOD KINGDOM**: melty cheese on soft bread to walk on, toast and cheese blocks, giant tomatoes, carrots,
+    broccoli trees, forks and steaming soup bowls. Its pits are full of **hot tomato soup**: it burns like lava!
+  * Plus the Sand, Jungle, Dino (Cappy is back!), Snow, Moon and Cloud kingdoms.
+* **Two new songs**: **METRO** (a jazzy big-band swing for the city) and **FEAST** (a happy, spinning dance for
+  the Food Kingdom).
+* **3 new bad guys** (only in World 14), all with health bars, and Cappy can capture every one:
+  * **TAXI**: drives along, and when it sees you it goes **HONK HONK!** and zooms. Captured: super fast, and THROW
+    honks and zooms through bad guys.
+  * **MEATBALL**: rolls faster and faster at you. Captured: THROW is a rolling meatball dash.
+  * **CHILI PEPPER**: hops about and spits little fireballs ("HOT HOT HOT!" when you stomp it). Captured: THROW
+    breathes fire.
+* Bosses: **Krag Jr.** over the city (14-7), **Mecha Krag** stomping downtown (14-14), and the new last boss of
+  the game, **CHEF KRAG** (14-21): King Krag in a chef's hat and apron, in his giant kitchen. He throws **PIES**,
+  bowls **giant meatballs** along the floor (jump over them!), and when he's angry he stirs his soup pot so hot
+  soup splashes out. Toast ledges help you jump on his head. Beat him and you've beaten all 14 worlds!
+* Beating THE WONDER FINALE (13-21) now opens World 14 ("...but Krag ran off on a KINGDOM TOUR! WORLD 14 IS
+  NEXT!"). Saves that had already beaten it get 14-1 opened automatically. The World 14 map has little
+  skylines, tomatoes and forks, and the title card says which kingdom you're visiting.
+* Everything works in **Team Up! 3D** too: the rooftops, cheese, toast and glowing soup are 3D blocks.
+
 ### World 13: WONDER WORLD (levels 253-273)
 
 * **21 more levels** in a flower kingdom like Super Mario Bros. Wonder: round hills with big blinking eyes,
@@ -629,7 +655,8 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
 * **TALKING FLOWERS** say hi as you go by ("HI, ROCCO!", "WATCH OUT! BAD GUYS!", "I LIKE YOUR MUSTACHE!"), and
   tell you when a Wonder Flower is coming up.
 * Bosses: **Wonder Krag Jr.** (13-7), **Rock Star Krag** at THE WONDER CONCERT (13-14), and **THE WONDER FINALE**
-  (13-21): **Dry Bones King Krag**, then **Wonder King Krag** and his Wonder magic. That's the new end of the game.
+  (13-21): **Dry Bones King Krag**, then **Wonder King Krag** and his Wonder magic. (It was the end of the game
+  until World 14 came along.)
 * Beating THE GALAXY GRAND FINALE (12-21) now opens World 13 ("...but King Krag found a WONDER FLOWER!"). Saves
   that had already beaten it get 13-1 opened automatically. Galaxy Krag's banner now says "The biggest battle in
   space!" instead of "The final battle!".
