@@ -21,7 +21,9 @@ class Mesh(val data: FloatArray, val vertexCount: Int) {
     fun release() {
         if (released) return
         released = true
-        synchronized(releasedQueue) { releasedQueue += this }
+        // A mesh that never reached the backend has nothing to free there (and with no backend
+        // to empty the queue, as in tests, queueing it anyway would only keep it in memory).
+        if (handle != 0) synchronized(releasedQueue) { releasedQueue += this }
     }
 
     companion object {

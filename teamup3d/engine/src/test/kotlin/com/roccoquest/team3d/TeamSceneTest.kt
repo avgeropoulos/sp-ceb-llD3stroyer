@@ -13,6 +13,8 @@ import com.roccoquest.team.Shield
 import com.roccoquest.team.Sword
 import com.roccoquest.team.WORLD_SIZE
 import com.roccoquest.team.Mon
+import com.roccoquest.team.Place
+import com.roccoquest.team.Portal
 import com.roccoquest.team.TeamGame
 import com.roccoquest.team.TeamInput
 import java.awt.image.BufferedImage
@@ -43,9 +45,10 @@ class TeamSceneTest {
         val scale = 2f
         val w = (game.viewW * scale).toInt()
         val h = (VIEW_H * scale).toInt()
-        val sky = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
-        game.renderLevelBackdrop(AwtGfx(sky, scale))
         val list = scene.build(game)
+        val sky = BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB)
+        // Like the phone: with 3D scenery the painted backdrop is only the sky.
+        game.renderLevelBackdrop(AwtGfx(sky, scale), scenery = !scene.drawsScenery)
         val img = SoftRaster(w, h).render(list, sky)
         val overlay = AwtGfx(img, scale)
         for (i in 0 until list.labelCount) list.label(i).let { overlay.text(it.text, it.x, it.y, it.size, it.color, it.align) }
@@ -155,6 +158,41 @@ class TeamSceneTest {
             val name = Levels.all[i].name.lowercase().replace(Regex("[^a-z0-9]+"), "-")
             shot(scene, "level-%03d-%s".format(i, name))
         }
+    }
+
+    /** With 3D scenery the painted backdrop is only the sky (no flat hills or trees), while the 2D game still paints them. */
+    @Test fun backdropIsJustTheSkyBehind3DScenery() {
+        startPlaying(0)
+        fun rowsWithShapes(scenery: Boolean): Int {
+            val img = BufferedImage(game.viewW.toInt(), VIEW_H.toInt(), BufferedImage.TYPE_INT_ARGB)
+            game.renderLevelBackdrop(AwtGfx(img, 1f), scenery)
+            // A plain sky gradient has one colour across each row.
+            return (0 until img.height).count { y -> (0 until img.width).any { x -> img.getRGB(x, y) != img.getRGB(0, y) } }
+        }
+        assertEquals(0, rowsWithShapes(scenery = false), "only the sky")
+        assertTrue(rowsWithShapes(scenery = true) > 100, "the 2D game still paints its hills, trees and clouds")
+    }
+
+    /** The 3D scenery of every place (hills and trees, snowy pines, dunes, lava spires, space rocks...): screens3d/scenery-*.png. */
+    @Test fun sceneryScreenshots() {
+        val scene = TeamScene().apply { voxelsPerFrame = Int.MAX_VALUE }
+        for (p in Place.entries) {
+            val i = Levels.all.indexOfFirst { it.place == p }
+            if (i < 0) continue
+            startPlaying(i)
+            game.leader.x += 60f
+            run(1.2f)
+            shot(scene, "scenery-%02d-%s".format(p.ordinal, p.name.lowercase()))
+            assertEquals(p != Place.STATION, scene.drawsScenery, "$p")
+        }
+        // The bonus room behind a portal (its sunset place isn't used by any level).
+        startPlaying(0)
+        val l = game.leader
+        game.spawn(Portal(l.x + 2f, l.bottom))
+        run(1.5f)
+        assertEquals(Levels.bonusRoom, game.level.def)
+        shot(scene, "scenery-%02d-bonus-room".format(Place.SUNSET.ordinal))
+        assertTrue(scene.drawsScenery)
     }
 
     /** Dennis (Hercules from the Hercules and Apollo game) turns into a puffy 3D dog like everyone else. */

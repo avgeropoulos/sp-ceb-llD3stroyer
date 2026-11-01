@@ -214,10 +214,24 @@ object WonderArt {
         }
     }
 
-    /** Cute round hills with eyes (they blink!), giant flowers and smiling clouds. */
-    fun drawSky(gfx: Gfx, viewW: Float, viewH: Float, cam: Float, t: Float) {
+    /**
+     * Cute round hills with eyes (they blink!), giant flowers and smiling clouds. [scenery] false keeps the sky,
+     * rainbow and petals but leaves out the clouds, hills and flowers (Team Up! 3D builds them in 3D).
+     */
+    fun drawSky(gfx: Gfx, viewW: Float, viewH: Float, cam: Float, t: Float, scenery: Boolean = true) {
         gfx.gradientStops(0f, 0f, viewW, viewH, 0xFF3AA8FF.toInt(), 0xFF8ADCFF.toInt(), 0xFFFFE4F4.toInt())
         rainbowArc(gfx, viewW * 0.62f - cam * 0.02f, 190f, 150f, 7f, 120)
+        if (scenery) drawScenery(gfx, viewW, cam, t)
+        // Rainbow petals drifting by
+        for (i in 0 until 14) {
+            val px = (i * 71f - cam * 0.5f + sin(t + i) * 12f).mod(viewW)
+            val py = (i * 37f + t * 18f) % 200f
+            gfx.oval(px, py, 3.5f, 2.5f, argb(200, rainbow(i / 14f)))
+        }
+    }
+
+    /** The smiling clouds, hills with eyes and giant flowers of the 2D backdrop. */
+    private fun drawScenery(gfx: Gfx, viewW: Float, cam: Float, t: Float) {
         // Smiling clouds
         layer(viewW, cam, 0.08f, 210f) { i, x ->
             val cy = 26f + (i % 3) * 18f
@@ -257,12 +271,6 @@ object WonderArt {
             }
             gfx.oval(fx - 8f, fy - 8f, 16f, 16f, 0xFFFFC83A.toInt())
             gfx.oval(fx - 4f, fy - 3f, 2.5f, 4f, OUT); gfx.oval(fx + 2f, fy - 3f, 2.5f, 4f, OUT)
-        }
-        // Rainbow petals drifting by
-        for (i in 0 until 14) {
-            val px = (i * 71f - cam * 0.5f + sin(t + i) * 12f).mod(viewW)
-            val py = (i * 37f + t * 18f) % 200f
-            gfx.oval(px, py, 3.5f, 2.5f, argb(200, rainbow(i / 14f)))
         }
     }
 

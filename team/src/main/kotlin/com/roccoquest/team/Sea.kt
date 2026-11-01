@@ -172,11 +172,12 @@ object SeaArt {
     }
 
     /** A sunny sky over the sea, with islands far away and waves along the bottom. */
-    fun seaSky(gfx: Gfx, viewW: Float, viewH: Float, cam: Float, t: Float) {
+    fun seaSky(gfx: Gfx, viewW: Float, viewH: Float, cam: Float, t: Float, scenery: Boolean = true) {
         gfx.gradient(0f, 0f, viewW, viewH * 0.7f, 0xFF4AA4F0.toInt(), 0xFFC8ECFF.toInt())
         gfx.oval(viewW * 0.75f - cam * 0.02f, 30f, 40f, 40f, 0xFFFFE87A.toInt())
+        // (Without [scenery], Team Up! 3D puts real 3D islands on a 3D sea instead.)
         var x = -((cam * 0.15f) % 300f)
-        while (x < viewW + 300f) {
+        while (scenery && x < viewW + 300f) {
             gfx.oval(x + 40, viewH * 0.6f, 120f, 40f, 0xFF5AA85A.toInt())
             gfx.rect(x + 95, viewH * 0.6f - 18, 3f, 20f, 0xFF7A4A20.toInt())
             gfx.oval(x + 86, viewH * 0.6f - 24, 20f, 8f, 0xFF3C9A3A.toInt())
