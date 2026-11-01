@@ -1,7 +1,9 @@
 package com.roccoquest.team
 
+import com.roccoquest.game.Gfx
 import com.roccoquest.game.Sound
 import com.roccoquest.game.SoundSink
+import com.roccoquest.game.Sprite
 import com.roccoquest.game.Storage
 import com.roccoquest.game.TILE
 import com.roccoquest.game.tileOf
@@ -319,6 +321,308 @@ class PowerUpsTest {
         assertTrue(b.removed, "popped")
         assertTrue(r.vy < 0f, "BOING")
         assertTrue(game.thingsForTest().none { it === b })
+    }
+
+    @Test fun bubblesOnlyMakeCoinsWhereKnockingABadGuyOutWould() {
+        // Krag Jr. and Puffclouds drop spike balls over and over: popping them must not be an endless coin farm.
+        startPlaying()
+        game.givePowerUp(Power.BUBBLE)
+        val r = game.rocco
+        r.facing = 1
+        run(0.3f) { game.hurtProof() }
+        // (The level's own coins are about too.)
+        fun coinsOut() = game.thingsForTest().count { it is Coin }
+        val placed = coinsOut()
+        val coins = game.coins
+        val ball = SpikeBall(r.x + 40f, r.bottom - 12f)
+        game.foes += ball
+        press()
+        run(1f) { game.hurtProof() }
+        assertTrue(ball.dying || ball.removed, "POP!")
+        assertEquals(coins, game.coins, "no coins from a spike ball")
+        assertEquals(placed, coinsOut())
+        // A bubble makes coins just when knocking the bad guy out would: never for spike balls or bombs...
+        val b = HeroBubble(r.x, r.y, 1, 2)
+        for (f in listOf(SpikeBall(r.x + 60f, r.bottom - 12f), BombBomb(r.x + 90f, r.bottom))) {
+            game.foes += f
+            game.bubbleHit(b, f, 2)
+        }
+        assertEquals(placed, coinsOut(), "spike balls and bombs never drop a coin")
+        // ...but an ordinary bad guy drops its coin, plus the bubble's.
+        val g = Grumbler(r.x + 140f, r.bottom, false)
+        game.foes += g
+        game.bubbleHit(b, g, 2)
+        assertTrue(g.dying)
+        assertEquals(placed + 2, coinsOut())
+    }
+
+    /** Puts Rocco on flat ground out in the open in level 1 (past the steps at the start), facing right. */
+    private fun standInTheOpen() {
+        val r = game.rocco
+        r.x = 16 * TILE.toFloat(); r.y = 13 * TILE - r.h; r.vx = 0f; r.vy = 0f
+        run(0.4f) { game.hurtProof() }
+        r.facing = 1
+        assertTrue(r.onGround)
+    }
+
+    /** Rocco jumps up into block ([tx], [ty]) from right under it (JUMP held, so he goes up hard). */
+    private fun bonk(tx: Int, ty: Int) {
+        val r = game.rocco
+        r.x = tx * TILE + (TILE - r.w) / 2f
+        r.y = (ty + 1) * TILE + 1f
+        r.vy = -300f
+        run(0.25f) { input.jump = true; game.hurtProof() }
+        input.jump = false
+        run(0.4f) { game.hurtProof() }
+    }
+
+    @Test fun miniRoccoAndCapturedRoccoDontUseTheWonderMoves() {
+        // Mini Rocco and a captured bad guy (Cappy's, or Wonder King Krag's magic) don't show the trunk, the drill
+        // or the bubbles, so they can't use them either: nothing invisible gets whacked, drilled or blown.
+        for (p in PowerUps.ALL) for (form in listOf("MINI", "CAPPY", "WONDER MAGIC")) {
+            startPlaying()
+            game.givePowerUp(p)
+            val r = game.rocco
+            val tx = tileOf(r.x) + 3
+            standBefore(tx)
+            when (form) {
+                "MINI" -> game.startMini()
+                "CAPPY" -> game.capture(Grumbler(r.x, r.bottom, false))
+                else -> game.wonderTransform(r)
+            }
+            assertTrue(r.mini || game.capture != null, "$form")
+            run(0.3f) { game.hurtProof() }
+            r.facing = 1
+            r.vx = 0f
+            // A bad guy too far for a punch, but right where the trunk or the drill would get him.
+            val g = Grumbler(r.cx + 19f, r.bottom, false).also { it.active = true; it.vx = 0f }
+            game.foes += g
+            press()
+            assertEquals(g.maxHp, g.hp, "$p as $form: nothing invisible hit it")
+            assertEquals(0f, r.drillSpin, "$p as $form: no drill spin")
+            assertTrue(game.thingsForTest().none { it is HeroBubble }, "$p as $form: no bubbles")
+            assertEquals(p, game.power, "the power-up is still on for later")
+            game.foes.clear()
+            if (p != Power.DRILL) continue
+            // No drilling up through blocks...
+            val ty = tileOf(r.bottom) - 4
+            game.level[tx, ty] = Tile.STONE
+            bonk(tx, ty)
+            assertEquals(Tile.STONE, game.level[tx, ty], "$form: a bonk doesn't drill stone")
+            // ...or on up after breaking a brick (Drill Rocco would go right on and bonk the ? block over it).
+            game.level[tx, ty] = Tile.BRICK
+            game.level[tx, ty - 1] = Tile.QCOIN
+            bonk(tx, ty)
+            assertEquals(Tile.EMPTY, game.level[tx, ty], "$form: bricks still break")
+            assertEquals(Tile.QCOIN, game.level[tx, ty - 1], "$form: and that's as far as he goes")
+            // ...or down: squatting on stone does nothing special.
+            run(1.5f) { game.hurtProof() }
+            val gx = tileOf(r.cx)
+            val gy = tileOf(r.bottom + 2f)
+            game.level[gx, gy] = Tile.STONE
+            run(1f) { input.down = true; game.hurtProof() }
+            input.down = false
+            assertEquals(Tile.STONE, game.level[gx, gy], "$form: no drilling down")
+            assertEquals(TeamGame.State.PLAY, game.state)
+        }
+    }
+
+    /** Records what's drawn, to check a picture is (or isn't) there. */
+    private class Drawn : Gfx {
+        val ovals = ArrayList<FloatArray>()
+        val colors = ArrayList<Int>()
+        override fun oval(x: Float, y: Float, w: Float, h: Float, color: Int) { ovals += floatArrayOf(x, y, w, h); colors += color }
+        override fun rect(x: Float, y: Float, w: Float, h: Float, color: Int) {}
+        override fun poly(xs: FloatArray, ys: FloatArray, color: Int) {}
+        override fun sprite(s: Sprite, x: Float, y: Float, flipX: Boolean, flipY: Boolean, w: Float, h: Float) {}
+        override fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Int) {}
+        /** How far right the ovals of [color] reach (or NaN if there are none). */
+        fun right(color: Int) = ovals.indices.filter { colors[it] == color }.maxOfOrNull { ovals[it][0] + ovals[it][2] } ?: Float.NaN
+    }
+
+    @Test fun megaRoccosWonderMovesAreGiantToo() {
+        // MEGA Rocco is drawn twice as big: his trunk swing, drill whirl and bubbles are drawn (and hit) giant-sized too.
+        for (p in PowerUps.ALL) {
+            startPlaying()
+            game.givePowerUp(p)
+            val r = game.rocco
+            game.startMega()
+            standInTheOpen()
+            // Further away than an ordinary trunk or drill reaches.
+            val g = Grumbler(r.cx + 39f, r.bottom, false).also { it.active = true; it.vx = 0f }
+            game.foes += g
+            press()
+            run(0.1f) { game.hurtProof() }
+            // (Not flickering, so he's drawn.)
+            game.noInvulnForTest()
+            val drawn = Drawn()
+            r.draw(game, drawn, 0f)
+            when (p) {
+                Power.ELEPHANT -> {
+                    assertTrue(g.dying, "giant WHAM")
+                    assertTrue(drawn.right(PowerArt.GREY) > r.cx + 40f, "and there's a giant trunk to see")
+                }
+                Power.DRILL -> {
+                    assertTrue(g.hp < g.maxHp, "giant WHIRR")
+                    assertTrue(drawn.right(0x55E8F0FF) > r.cx + 30f, "and a giant whirl to see")
+                }
+                else -> {
+                    val b = game.thingsForTest().filterIsInstance<HeroBubble>().single()
+                    assertTrue(b.cy < r.y, "the bubble comes out of his mouth, way up high")
+                    assertTrue(drawn.colors.any { it == 0x40DFF8FF }, "with one at his lips")
+                }
+            }
+        }
+    }
+
+    @Test fun megaTrunkSmashesTheBrickInFrontButNotThroughWalls() {
+        // The giant trunk sweeps from right in front of him out to its tip: the brick flush in front gets smashed
+        // (not just one further out), and it never reaches through ground to bonk a ? block behind it.
+        startPlaying()
+        game.givePowerUp(Power.ELEPHANT)
+        game.startMega()
+        val r = game.rocco
+        val tx = tileOf(r.x) + 3
+        standBefore(tx)
+        val ty = tileOf(r.cy)
+        for (i in 0..2) game.level[tx + i, ty] = Tile.BRICK
+        press()
+        assertEquals(Tile.EMPTY, game.level[tx, ty], "the brick right in front is smashed")
+        assertEquals(Tile.BRICK, game.level[tx + 2, ty], "past the trunk's tip")
+        run(0.6f) { game.hurtProof() }
+        game.level[tx, ty] = Tile.GROUND
+        game.level[tx + 1, ty] = Tile.QCOIN
+        game.level[tx + 2, ty] = Tile.EMPTY
+        r.x = tx * TILE - r.w - 1f
+        press()
+        assertEquals(Tile.GROUND, game.level[tx, ty])
+        assertEquals(Tile.QCOIN, game.level[tx + 1, ty], "no bonking through a wall")
+    }
+
+    @Test fun babyTrunkStillSmashesAHeadHighBrick() {
+        // A baby is drawn little but his box is the usual size, so a brick at head height still stops him: his
+        // trunk has to be able to smash it.
+        startPlaying()
+        game.babyMode = true
+        game.givePowerUp(Power.ELEPHANT)
+        val r = game.rocco
+        val tx = tileOf(r.x) + 3
+        standBefore(tx)
+        val ty = tileOf(r.y + 3f)
+        assertTrue(ty < tileOf(r.bottom - 3f), "the brick is above his feet")
+        game.level[tx, ty] = Tile.BRICK
+        press()
+        assertEquals(Tile.EMPTY, game.level[tx, ty], "smashed")
+        run(0.6f) { game.hurtProof() }
+        val x0 = r.x
+        input.right = true
+        run(0.5f) { game.hurtProof() }
+        input.right = false
+        assertTrue(r.x - x0 > TILE, "and he walks on through")
+    }
+
+    @Test fun babyRoccosWonderMovesAreBabySized() {
+        // At the BABY MACHINE everybody is drawn little (their boxes stay the same): the trunk is a baby trunk,
+        // so it only whacks what it's drawn reaching.
+        startPlaying()
+        game.babyMode = true
+        game.givePowerUp(Power.ELEPHANT)
+        val r = game.rocco
+        standInTheOpen()
+        val far = Grumbler(r.cx + 23f, r.bottom, false).also { it.active = true; it.vx = 0f }
+        game.foes += far
+        press()
+        assertEquals(far.maxHp, far.hp, "out of a baby trunk's reach")
+        game.foes.clear()
+        run(0.6f) { game.hurtProof() }
+        val near = Grumbler(r.cx + 9f, r.bottom, false).also { it.active = true; it.vx = 0f }
+        game.foes += near
+        press()
+        assertTrue(near.dying, "baby WHAM")
+        game.foes.clear()
+        // Bubbles come out of a baby's mouth, low down.
+        game.givePowerUp(Power.BUBBLE)
+        run(0.6f) { game.hurtProof() }
+        press()
+        val b = game.thingsForTest().filterIsInstance<HeroBubble>().single()
+        assertTrue(b.cy > r.bottom - 12f, "low down")
+        // A baby wears a bonnet, but Drill Rocco's drill is his hat: the bonnet would hide it.
+        val bonnet = 0xFFBFE4FF.toInt()
+        game.noInvulnForTest()
+        val bubbly = Drawn()
+        r.draw(game, bubbly, 0f)
+        assertTrue(bonnet in bubbly.colors)
+        game.givePowerUp(Power.DRILL)
+        val drilly = Drawn()
+        r.draw(game, drilly, 0f)
+        assertFalse(bonnet in drilly.colors, "no bonnet over the drill")
+        game.babyMode = false
+    }
+
+    @Test fun ridingDashDrillRoccoDoesntDrillWithDashsFeet() {
+        // Riding Dash, it's Dash's feet that land on a spiky bad guy, not the drill on Rocco's head.
+        val lv = Levels.all.indexOfFirst { d -> d.rows.any { 'y' in it } }
+        startPlaying(lv)
+        val d = game.thingsForTest().filterIsInstance<Dino>().single()
+        val r = game.rocco
+        r.x = d.cx - 6f; r.y = d.y - 40f; r.vy = 50f
+        run(0.6f) { game.hurtProof() }
+        assertTrue(game.dino === d, "riding Dash")
+        game.givePowerUp(Power.DRILL)
+        game.foes.clear()
+        run(0.5f) { game.hurtProof() }
+        val spikes = Spikestack(r.cx - 8f, r.bottom).also { it.active = true; it.vx = 0f }
+        game.foes += spikes
+        r.y = spikes.y - r.h - 6f; r.vy = 150f
+        run(0.15f) { game.hurtProof() }
+        assertEquals(spikes.maxHp, spikes.hp, "not drilled")
+        assertEquals(0f, r.drillSpin)
+    }
+
+    /**
+     * Each power-up with Rocco's other looks, mid-move (build/screens/power-up-combos.png): Mini Rocco just punches,
+     * MEGA swings a giant trunk, a baby's drill isn't hidden under a bonnet, and a captured Rocco is all bad guy.
+     */
+    @Test fun powerUpCombosScreenshot() {
+        startPlaying()
+        val s = 4f
+        val img = BufferedImage((360 * s).toInt(), (230 * s).toInt(), BufferedImage.TYPE_INT_ARGB)
+        val g = AwtGfx(img, s)
+        g.rect(0f, 0f, 360f, 230f, 0xFF8FD0FF.toInt())
+        val r = game.rocco
+        val looks = listOf("NORMAL", "MINI", "MEGA", "BABY", "METAL", "SPACE", "CAPTURED")
+        try {
+            for ((row, p) in PowerUps.ALL.withIndex()) for ((col, look) in looks.withIndex()) {
+                game.givePowerUp(p)
+                val cx = 26f + col * 50f
+                val bottom = 72f + row * 72f
+                g.rect(cx - 25f, bottom, 50f, 2f, 0xFF5AB848.toInt())
+                if (row == 0) g.text(look, cx, 10f, 6f, 0xFF1A1A3A.toInt(), 1)
+                when (look) {
+                    "MINI" -> game.startMini()
+                    "MEGA" -> game.startMega()
+                    "BABY" -> game.babyMode = true
+                    "METAL" -> game.startMetal()
+                    "SPACE" -> Style.spaceSuit = true
+                    "CAPTURED" -> game.capture(Grumbler(r.x, r.bottom, false))
+                }
+                r.x = cx - r.w / 2; r.y = bottom - r.h; r.vx = 0f; r.vy = 0f; r.onGround = true; r.facing = 1
+                r.swing = if (p == Power.ELEPHANT) PowerUps.TRUNK_TIME * 0.5f else 0.12f
+                r.drillSpin = if (p == Power.DRILL) 0.2f else 0f
+                game.noInvulnForTest()
+                r.draw(game, g, 0f)
+                // Back to plain Rocco for the next one.
+                game.babyMode = false
+                Style.spaceSuit = false
+                game.megaT = 0f; game.metalT = 0f
+                if (game.capture != null) game.releaseCapture()
+                if (r.mini) { r.mini = false; r.w = 12f; r.h = 23f }
+                r.swing = 0f; r.drillSpin = 0f
+            }
+        } finally {
+            Style.spaceSuit = false
+        }
+        ImageIO.write(img, "png", File(File("build/screens").apply { mkdirs() }, "power-up-combos.png"))
     }
 
     @Test fun oldAndNewSavesKeepTheirPower() {

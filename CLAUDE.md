@@ -238,7 +238,10 @@ copy in `teamapp/` and `teamup3d/android/`, keep them the same) is the Android s
   free EQUIP until it's paid for or found again (else every hit could be undone). `checkFalls` respawns through
   `standX` (also used by the quake): nearest ground if the safe spot was dug away, else the checkpoint. Art in `PowerArt`: the elephant is 20 wide and Drill Rocco 9 rows taller, so draw Rocco's power
   pictures with `PowerArt.box` (keeps his 16x24 body in place); the drill spin uses `PHASES` fixed sprites (3D models
-  each once); bubble rims are fixed-shape polys (cached in 3D). Tests: `PowerUpsTest`, `TeamSceneTest.powerUpsIn3D`.
+  each once); bubble rims are fixed-shape polys (cached in 3D). The moves only work while `powerShows` (not Mini, not
+  captured: those punch / do their capture move; no drill stomp riding Dash), and `moveSize` scales them with the picture
+  (MEGA 2x, drawn through `Hero.megaGfx`; baby `Baby.SCALE`). `dropsCoins` is the one rule for which knocked-out foes
+  drop coins (`onFoeDefeated` and `bubbleHit`). Tests: `PowerUpsTest`, `TeamSceneTest.powerUpsIn3D`.
 * `Winter.kt`: World 7 foes `Snowman` (6), `Penguin` (7), `HammerHank` (8), `Chompy` (9), `ZoomerLauncher` (0) + `Zoomer`,
   `Gummy` (1), projectiles `Lob`/`NoteShot`/`ChordWave`, and the final boss `RockStarKrag` (S, drawn as a `KingKrag` plus
   sunglasses and guitar). New places BLIZZARD, AURORA, CANDY (backgrounds in `renderBackground`).
