@@ -4679,7 +4679,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     d.isBossLevel -> 0 // (boss levels play the boss songs)
                     else -> {
                         val n = stops[d.place.ordinal]++
-                        if (n % 2 == 0) 0 else 1 + (n / 2) % (opts.size - 1)
+                        if (n % 2 == 0 || opts.size < 2) 0 else 1 + (n / 2) % (opts.size - 1)
                     }
                 }
                 val pick = opts[k % opts.size]

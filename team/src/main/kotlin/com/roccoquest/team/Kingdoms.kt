@@ -474,7 +474,8 @@ class ChefKrag(x: Float, private val ground: Float) : Foe(x - 10, ground - 40, 3
             toPotT = 3f
         }
         val busy = stirring > 0f || toPotT > 0f
-        pieT -= dt
+        // (The timers wait while he walks to his pot and stirs, so pies and meatballs don't all come at once after.)
+        if (!busy) pieT -= dt
         if (pieT <= 0f && !busy) {
             pieT = if (angry) 1.6f else 2.3f
             throwT = 0.35f
@@ -483,7 +484,7 @@ class ChefKrag(x: Float, private val ground: Float) : Foe(x - 10, ground - 40, 3
             if (angry) g.spawn(Pie(hx, y + 4f, l.cx + facing * 46f))
             g.sfx(Sound.KICK)
         }
-        bowlT -= dt
+        if (!busy) bowlT -= dt
         if (bowlT <= 0f && onGround && !busy) {
             bowlT = if (angry) 5f else 6.5f
             g.say(cx, y - 8, "MEATBALL BOWLING!", 1.2f)
