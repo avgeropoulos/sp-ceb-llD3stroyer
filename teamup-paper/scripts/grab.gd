@@ -305,12 +305,12 @@ func _step_holding(h: Hero) -> void:
 
 
 func _step_tail(h: Hero, dt: float) -> void:
-	var b := tail
-	if not is_instance_valid(b) or b.dying >= 0:
+	if not is_instance_valid(tail) or tail.dying >= 0:   # (check before copying: he may have been freed)
 		tail = null
 		h.swing = false
 		arrow.visible = false
 		return
+	var b := tail
 	swing_t += dt
 	# turning the stick round and round spins him faster (either way round)
 	var mv: Vector2 = game.move_vec
@@ -346,11 +346,11 @@ func _step_tail(h: Hero, dt: float) -> void:
 
 func _step_thrown(dt: float) -> void:
 	for e in thrown.duplicate():
-		var f: Foe = e.foe
 		e.t += dt
-		if not is_instance_valid(f) or f.dying >= 0:
+		if not is_instance_valid(e.foe) or e.foe.dying >= 0:   # (check before typing: it may have been freed)
 			thrown.erase(e)
 			continue
+		var f: Foe = e.foe
 		f.vel.y -= Actor.GRAVITY * dt
 		f.move(dt)
 		f.spin_t = maxf(f.spin_t, 0.2)
@@ -376,6 +376,8 @@ func _step_thrown(dt: float) -> void:
 
 func _land(e: Dictionary, hit_something: bool) -> void:
 	thrown.erase(e)
+	if not is_instance_valid(e.foe):
+		return
 	var f: Foe = e.foe
 	f.grabbed = false
 	f.vel = Vector3.ZERO

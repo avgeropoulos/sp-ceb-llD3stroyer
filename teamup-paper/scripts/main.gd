@@ -1423,13 +1423,27 @@ func save_data(in_level := true) -> Dictionary:
 func save_game(in_level := true) -> bool:
 	if slot <= 0:
 		return false
+	if level and level.bonus:
+		# Inside a painting: the file keeps the WORLD (saved when you jumped in: its blocks, coins,
+		# stars and your spot by the painting); only coins, hearts and the like are updated here.
+		var d := Saves.read(slot)
+		if not d.is_empty():
+			var now := save_data(false)
+			for k in ["coins", "hearts", "ores", "mon_xp", "mon", "team", "heroes_seen", "scenes_seen", "beaten", "super"]:
+				d[k] = now[k]
+			return Saves.write(slot, d)
 	return Saves.write(slot, save_data(in_level))
+
+
+## A save value that should be a Dictionary (a damaged file can have anything there).
+static func _dict(v) -> Dictionary:
+	return v if v is Dictionary else {}
 
 
 func _apply_save(d: Dictionary) -> void:
 	hearts = clampi(int(d.get("hearts", MAX_HEARTS)), 1, MAX_HEARTS)
 	coins = int(d.get("coins", 0))
-	var o: Dictionary = d.get("ores", {})
+	var o: Dictionary = _dict(d.get("ores", {}))
 	for k in ores:
 		ores[k] = int(o.get(k, 0))
 	beaten = int(d.get("beaten", 0))
@@ -1440,11 +1454,11 @@ func _apply_save(d: Dictionary) -> void:
 	super_charge = clampf(float(d.get("super", 0)), 0, 1)
 	cleared = int(d.get("cleared", 0))
 	cleared_w = {}
-	var cw: Dictionary = d.get("cleared_w", {"meadow": cleared} if cleared > 0 else {})
+	var cw: Dictionary = _dict(d.get("cleared_w", {"meadow": cleared} if cleared > 0 else {}))
 	for k in cw:
 		cleared_w[k] = int(cw[k])
-	home_saved = d.get("home", {})
-	var mx: Dictionary = d.get("mon_xp", {})
+	home_saved = _dict(d.get("home", {}))
+	var mx: Dictionary = _dict(d.get("mon_xp", {}))
 	for k in mon_xp:
 		mon_xp[k] = int(mx.get(k, 0))
 	scenes_seen = []
@@ -1473,7 +1487,8 @@ func _apply_save(d: Dictionary) -> void:
 	if not d.get("in_level", false):
 		return
 	for c in d.get("cells", []):
-		level.set_cell(int(c[0]), int(c[1]), int(c[2]), int(c[3]))
+		if c is Array and c.size() == 4:
+			level.set_cell(int(c[0]), int(c[1]), int(c[2]), int(c[3]))
 	coins_taken = []
 	for i in d.get("coins_taken", []):
 		coins_taken.append(int(i))
@@ -1535,6 +1550,8 @@ static func _a2v(a) -> Vector3:
 
 ## How many pause buttons: RESUME, SAVE, SAVE & QUIT (+ STARS in an open world).
 func pause_count() -> int:
+	if paused_from in ["kart", "minigame"]:
+		return 2   # RESUME / QUIT
 	if paused_from == "play" and open_play != null and world_rocket != null:
 		return 6   # + STARS, POSEIDON FLOOD and ROCKET: LEAVE
 	return 3
@@ -1550,6 +1567,8 @@ func leave_by_rocket() -> void:
 
 ## The pause menu's 5th button (POSEIDON FLOOD) changes as you tap it.
 func pause_label(i: int) -> String:
+	if paused_from in ["kart", "minigame"]:
+		return ["RESUME", "QUIT RACE" if paused_from == "kart" else "QUIT GAME"][clampi(i, 0, 1)]
 	if i == 4:
 		if flood_used or flood != null:
 			return "FLOOD USED"
@@ -1585,6 +1604,14 @@ func poseidon_tap() -> bool:
 
 ## Pause menu: 0 RESUME, 1 SAVE, 2 SAVE & QUIT, 3 STARS (pick another quest).
 func pause_choice(i: int) -> void:
+	if paused_from in ["kart", "minigame"]:   # the race / mini game: RESUME or QUIT (no prize)
+		state = paused_from
+		if i == 1:
+			if paused_from == "kart":
+				kart_done(true)
+			else:
+				minigame_done(0)
+		return
 	match i:
 		5:
 			if pause_count() > 5:
@@ -1881,7 +1908,7 @@ func _step(dt: float) -> void:
 		return
 	if state == "kart":
 		if pause_pressed:
-			kart_done(true)   # quit: no prize
+			_pause("kart")   # a real pause (RESUME / QUIT RACE): one stray tap never throws the race away
 		elif kart:
 			kart.step(dt)
 			if kart and kart.can_leave() and (jump_pressed or action_pressed):
@@ -1889,7 +1916,7 @@ func _step(dt: float) -> void:
 		return
 	if state == "minigame":
 		if pause_pressed:
-			minigame_done(0)   # quit: back home, no prize
+			_pause("minigame")   # RESUME / QUIT GAME
 		elif minigames:
 			minigames.step(dt)
 		return
