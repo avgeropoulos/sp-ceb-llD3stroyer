@@ -201,12 +201,9 @@ class Game(
             val want = elevationForLean(input.lean)
             aimElev += (want - aimElev) * min(1f, dt * 8f)
         }
-        // Touch: only your finger moves the throw, never the phone. Where you press aims left
-        // and right; the pull sets the power and height.
-        if (flick.active) {
-            aimElev = flick.elevation
-            aimYaw = ((flick.anchorX - viewW / 2f) / (viewW * 0.4f)).coerceIn(-1f, 1f) * MAX_AIM
-        }
+        // Touch: only your finger moves the throw, never the phone. Dragging on the field aims
+        // left and right; the slingshot pull sets the power and height.
+        if (flick.active) aimElev = flick.elevation
         // Aiming keeps working while you run: tilt and lean follow you until you let go.
         if (ready && runUp && gripping() && controls == ControlMode.MOTION && input.hasTilt) {
             aimYaw += ((input.tilt * 0.7f).coerceIn(-MAX_AIM, MAX_AIM) - aimYaw) * min(1f, dt * 6f)
@@ -584,8 +581,9 @@ class Game(
         }
         when (t.type) {
             Input.DOWN -> startGrip(t.x, t.y, t.time)
-            Input.MOVE -> flick.move(t.x, t.y, t.time)
+            Input.MOVE -> if (aimDragging) aimAt(t.x) else flick.move(t.x, t.y, t.time)
             Input.UP -> {
+                aimDragging = false
                 detector.grip(false)
                 val f = flick.up(t.x, t.y, t.time)
                 if (f != null && throwState == ThrowState.READY && controls == ControlMode.TOUCH) {
@@ -600,9 +598,25 @@ class Game(
         if (controls == ControlMode.MOTION) {
             detector.grip(true)
             sound.play(Sound.GRIP)
+        } else if (y < touchAimLine()) {
+            // Touch: the top half of the screen is for aiming, the bottom half for the slingshot.
+            aimDragging = true
+            aimAt(x)
         } else {
             flick.down(x, y, time)
         }
+    }
+
+    /** True while a finger is aiming on the field (touch controls). */
+    internal var aimDragging = false
+        private set
+
+    /** Touches above this line aim; below it they pull the slingshot. */
+    internal fun touchAimLine() = viewH * 0.5f
+
+    /** Aims towards the finger: the middle of the screen is straight ahead. */
+    private fun aimAt(x: Float) {
+        aimYaw = ((x - viewW / 2f) / (viewW * 0.42f)).coerceIn(-1f, 1f) * MAX_AIM
     }
 
     private fun titleTap(x: Float, y: Float) {

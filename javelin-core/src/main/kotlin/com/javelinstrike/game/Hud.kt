@@ -126,8 +126,16 @@ internal fun Game.drawPrompts(g: Gfx) {
         }
     } else if (flickActive()) {
         (if (armed) "LET GO TO THROW" else "PULL BACK") to "Further = harder. Down = higher"
+    } else if (aimDragging) {
+        "AIMING" to "Slide left or right, then pull back down here"
     } else {
-        "PRESS AND PULL BACK" to "Press left/middle/right to aim. Down = higher"
+        "PRESS HERE AND PULL BACK" to "Drag on the field above to aim"
+    }
+    // Touch: show where to drag to aim
+    if (controls == ControlMode.TOUCH && !flickActive()) {
+        val y = touchAimLine()
+        g.rect(40f, y, viewW - 80f, 1f, 0x40FFFFFF)
+        g.shadowText("<  DRAG HERE TO AIM  >", viewW / 2f, y - 8f, 9f, if (aimDragging) Game.GREEN else 0xB0FFFFFF.toInt(), 1)
     }
     // The run-up: speed and how far to the foul line
     if (runUp) {
@@ -500,7 +508,7 @@ internal fun Game.drawHowTo(g: Gfx) {
     ) else listOf(
         "1. Press anywhere on the screen to grip the javelin.",
         "2. Drag back like a slingshot (Angry Birds style). The further you pull, the harder the throw. Pull sideways for a flat throw, down-and-sideways for 45°, straight down for a high lob.",
-        "3. Where you press aims left and right: press in the middle to throw straight, further left or right to aim that way. The window above the POWER bar shows the flight from the side with a dotted arc.",
+        "3. To aim left and right, drag your finger on the top half of the screen, over the field. Start the slingshot pull on the bottom half. The window above the POWER bar shows the flight from the side with a dotted arc.",
         "4. Let go to throw. Drag back to where you started to cancel.",
         "Guides fade as you go: from level 4 they stop showing the target power, from level 7 the distances, and from level 10 your last throw.",
     )
