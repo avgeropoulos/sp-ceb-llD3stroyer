@@ -453,65 +453,55 @@ class GameTest {
         run(g, 0.5f)
         g.toggleRunUp()   // stand at the line for this test
         tapMiddle(g, input)
-        // Pull back 200 px to the side and 200 px down: about 45°, and a good chunk of power.
-        input.push(Input.DOWN, 250f, 500f, g.clock)
-        input.push(Input.MOVE, 150f, 600f, g.clock)
-        input.push(Input.MOVE, 50f, 700f, g.clock)
+        // Press anywhere (even high up) and pull straight down: power, straight ahead.
+        input.push(Input.DOWN, 180f, 250f, g.clock)
+        input.push(Input.MOVE, 180f, 400f, g.clock)
+        input.push(Input.MOVE, 180f, 510f, g.clock)
         g.update(dt)
         val live = g.flickPower()
-        assertTrue(live in 0.75f..0.95f, "live power $live")
-        assertEquals(45.0, Math.toDegrees(g.aimElev.toDouble()), 2.0)
+        assertTrue(live in 0.65f..0.8f, "live power $live")
+        assertEquals(0f, g.aimYaw, 0.01f)
+        assertEquals(RELEASE_ANGLE, g.aimElev, 0.01f)
         val img = BufferedImage(720, 1560, BufferedImage.TYPE_INT_ARGB)
         g.render(AwtGfx(img, 2f))
         ImageIO.write(img, "png", File(File("build/screens").apply { mkdirs() }, "t_slingshot.png"))
+        // Pull to the left: it aims right, like a slingshot.
+        input.push(Input.MOVE, 90f, 510f, g.clock)
+        g.update(dt)
+        assertTrue(g.aimYaw > 0.2f, "aims right: ${g.aimYaw}")
         // The arc ends where the throw will land.
         val xs = FloatArray(80); val ys = FloatArray(80); val zs = FloatArray(80)
-        val n = g.flightPath(live, xs, ys, zs)
-        val expected = Javelin.landing(live, g.aimYaw, 0f, g.aimElev).second
-        assertEquals(expected, zs[n - 1], 1.5f)
-        input.push(Input.UP, 50f, 700f, g.clock)
+        val n = g.flightPath(g.flickPower(), xs, ys, zs)
+        assertEquals(Javelin.landing(g.flickPower(), g.aimYaw, 0f, g.aimElev).first, xs[n - 1], 1.5f)
+        // Moving the phone changes nothing.
+        input.hasTilt = true
+        input.tilt = -0.5f
+        input.lean = 0.5f
+        val yaw = g.aimYaw
+        run(g, 0.3f)
+        assertEquals(yaw, g.aimYaw)
+        assertEquals(RELEASE_ANGLE, g.aimElev, 0.01f)
+        input.push(Input.UP, 90f, 510f, g.clock)
         g.update(dt)
         assertEquals(Game.ThrowState.FLIGHT, g.throwState)
-        assertEquals(live, g.lastPower, 0.01f)
-        assertEquals(45.0, Math.toDegrees(g.lastElev.toDouble()), 2.0)
+        assertEquals(yaw, g.aimYaw, 0.01f)
         run(g, 8f)
-        // Pulling mostly sideways throws flat; mostly down throws high.
-        input.push(Input.DOWN, 250f, 500f, g.clock)
-        input.push(Input.MOVE, 100f, 520f, g.clock)
+        // The height slider: top is the highest throw, and it's remembered.
+        val h = g.heightSlider()
+        input.push(Input.DOWN, h[0] + h[2] / 2f, h[1] + h[3] / 2f, g.clock)
+        input.push(Input.MOVE, h[0] + h[2] / 2f, h[1], g.clock)
         g.update(dt)
-        assertTrue(g.aimElev < 0.3f, "flat ${g.aimElev}")
-        input.push(Input.MOVE, 240f, 650f, g.clock)
+        assertTrue(g.heightDragging)
+        assertEquals(MAX_ELEVATION, g.aimElev, 0.01f)
+        input.push(Input.MOVE, h[0] + h[2] / 2f, h[1] + h[3], g.clock)
+        input.push(Input.UP, h[0] + h[2] / 2f, h[1] + h[3], g.clock)
         g.update(dt)
-        assertTrue(g.aimElev > 1.1f, "high ${g.aimElev}")
-        // Moving the phone doesn't change a touch throw.
-        input.hasTilt = true
-        input.tilt = 0.5f
-        input.lean = 0.5f
-        val elev = g.aimElev
-        val yaw = g.aimYaw
-        run(g, 0.5f)
-        assertEquals(elev, g.aimElev)
-        assertEquals(yaw, g.aimYaw)
-        // Dragging on the field (top half) aims left and right, without starting a throw.
-        input.push(Input.UP, 250f, 502f, g.clock)
-        g.update(dt)
-        input.push(Input.DOWN, 180f, 200f, g.clock)
-        input.push(Input.MOVE, 300f, 210f, g.clock)
-        g.update(dt)
-        assertTrue(g.aimDragging)
-        assertTrue(g.aimYaw > 0.3f, "aims right: ${g.aimYaw}")
-        input.push(Input.MOVE, 40f, 210f, g.clock)
-        g.update(dt)
-        assertTrue(g.aimYaw < -0.3f, "aims left: ${g.aimYaw}")
-        input.push(Input.UP, 40f, 210f, g.clock)
-        g.update(dt)
-        assertEquals(Game.ThrowState.READY, g.throwState)
-        assertTrue(g.aimYaw < -0.3f, "the aim stays where you left it")
-        input.push(Input.DOWN, 250f, 500f, g.clock)
-        input.push(Input.MOVE, 240f, 650f, g.clock)
-        g.update(dt)
-        // Dragging back to where you started cancels.
-        input.push(Input.UP, 250f, 502f, g.clock)
+        assertEquals(MIN_ELEVATION, g.aimElev, 0.01f)
+        assertEquals(Game.ThrowState.READY, g.throwState, "the slider doesn't throw")
+        // Pulling back to where you started cancels.
+        input.push(Input.DOWN, 180f, 400f, g.clock)
+        input.push(Input.MOVE, 180f, 520f, g.clock)
+        input.push(Input.UP, 180f, 399f, g.clock)
         g.update(dt)
         assertEquals(Game.ThrowState.READY, g.throwState)
     }

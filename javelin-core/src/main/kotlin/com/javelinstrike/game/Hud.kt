@@ -125,17 +125,11 @@ internal fun Game.drawPrompts(g: Gfx) {
             ThrowDetector.Phase.SWING -> "!!!" to ""
         }
     } else if (flickActive()) {
-        (if (armed) "LET GO TO THROW" else "PULL BACK") to "Further = harder. Down = higher"
-    } else if (aimDragging) {
-        "AIMING" to "Slide left or right, then pull back down here"
+        (if (armed) "LET GO TO THROW" else "PULL BACK") to "Pull to one side to aim the other way"
+    } else if (heightDragging) {
+        "HEIGHT" to "Slide up to throw higher, down to throw flatter"
     } else {
-        "PRESS HERE AND PULL BACK" to "Drag on the field above to aim"
-    }
-    // Touch: show where to drag to aim
-    if (controls == ControlMode.TOUCH && !flickActive()) {
-        val y = touchAimLine()
-        g.rect(40f, y, viewW - 80f, 1f, 0x40FFFFFF)
-        g.shadowText("<  DRAG HERE TO AIM  >", viewW / 2f, y - 8f, 9f, if (aimDragging) Game.GREEN else 0xB0FFFFFF.toInt(), 1)
+        "PRESS ANYWHERE AND PULL BACK" to "Further = harder. Height: slider on the right"
     }
     // The run-up: speed and how far to the foul line
     if (runUp) {
@@ -165,6 +159,7 @@ internal fun Game.drawThrowGauges(g: Gfx) {
     drawPowerScale(g)
     if (controls == ControlMode.TOUCH) {
         if (throwState == Game.ThrowState.READY) drawFlightWindow(g)
+        if (throwState == Game.ThrowState.READY) drawHeightSlider(g)
         if (flickActive()) drawRubberBand(g)
     } else {
         drawAngleDial(g)
@@ -229,7 +224,28 @@ private fun Game.drawFlightWindow(g: Gfx) {
     g.unclip()
     val deg = (aimElev * 57.3f).roundToInt()
     g.shadowText("ANGLE $deg°", left + 4f, top + 11f, 9f, if (flickActive()) Game.GREEN else Game.WHITE)
-    g.shadowText("PULL BACK & DOWN", right - 4f, top + 11f, 8f, CREAM, 2)
+    g.shadowText("SIDE VIEW", right - 4f, top + 11f, 8f, CREAM, 2)
+}
+
+/** The touch height slider: drag the bronze handle up for a higher throw, down for a flatter one. */
+private fun Game.drawHeightSlider(g: Gfx) {
+    val r = heightSlider()
+    val cx = r[0] + r[2] / 2f
+    g.rect(r[0] - 3f, r[1] - 16f, r[2] + 6f, r[3] + 32f, 0xA0000000.toInt())
+    g.rect(cx - 2f, r[1], 4f, r[3], 0x80FFFFFF.toInt())
+    for (deg in intArrayOf(15, 30, 45, 60, 70)) {
+        val f = (deg * 0.017453f - MIN_ELEVATION) / (MAX_ELEVATION - MIN_ELEVATION)
+        val y = r[1] + r[3] * (1f - f)
+        g.rect(cx - 7f, y - 0.5f, 14f, 1f, 0xB0FFFFFF.toInt())
+    }
+    val f = (touchElev - MIN_ELEVATION) / (MAX_ELEVATION - MIN_ELEVATION)
+    val hy = r[1] + r[3] * (1f - f)
+    val color = if (heightDragging) Game.GREEN else Game.GOLD
+    g.oval(cx - 11f, hy - 11f, 22f, 22f, 0xFF2A1A0E.toInt())
+    g.oval(cx - 9f, hy - 9f, 18f, 18f, color)
+    g.text("${(touchElev * 57.3f).roundToInt()}°", cx, hy + 3.5f, 9f, 0xFF2A1A0E.toInt(), 1)
+    g.shadowText("HIGH", cx, r[1] - 5f, 7f, Game.WHITE, 1)
+    g.shadowText("FLAT", cx, r[1] + r[3] + 12f, 7f, Game.WHITE, 1)
 }
 
 /** The slingshot's rubber band from where you pressed to your finger. */
@@ -507,9 +523,9 @@ internal fun Game.drawHowTo(g: Gfx) {
         "The POWER bar also shows how far each power goes and roughly how hard to throw to reach the target.",
     ) else listOf(
         "1. Press anywhere on the screen to grip the javelin.",
-        "2. Drag back like a slingshot (Angry Birds style). The further you pull, the harder the throw. Pull sideways for a flat throw, down-and-sideways for 45°, straight down for a high lob.",
-        "3. To aim left and right, drag your finger on the top half of the screen, over the field. Start the slingshot pull on the bottom half. The window above the POWER bar shows the flight from the side with a dotted arc.",
-        "4. Let go to throw. Drag back to where you started to cancel.",
+        "2. Press anywhere and pull back like a slingshot. The further you pull, the harder the throw. Pull to one side to aim the other way, like a real slingshot.",
+        "3. Set the height on the slider on the right edge: slide up for a high throw, down for a flat one. The window above the POWER bar shows the flight from the side with a dotted arc.",
+        "4. Let go to throw. Pull back to where you started to cancel.",
         "Guides fade as you go: from level 4 they stop showing the target power, from level 7 the distances, and from level 10 your last throw.",
     )
     fun para(text: String, color: Int) {

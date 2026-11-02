@@ -201,9 +201,10 @@ class Game(
             val want = elevationForLean(input.lean)
             aimElev += (want - aimElev) * min(1f, dt * 8f)
         }
-        // Touch: only your finger moves the throw, never the phone. Dragging on the field aims
-        // left and right; the slingshot pull sets the power and height.
-        if (flick.active) aimElev = flick.elevation
+        // Touch: only your finger moves the throw, never the phone. The slingshot pull sets the
+        // power and aim; the height slider sets the angle.
+        if (controls == ControlMode.TOUCH && ready) aimElev = touchElev
+        if (flick.active) aimYaw = flick.yaw
         // Aiming keeps working while you run: tilt and lean follow you until you let go.
         if (ready && runUp && gripping() && controls == ControlMode.MOTION && input.hasTilt) {
             aimYaw += ((input.tilt * 0.7f).coerceIn(-MAX_AIM, MAX_AIM) - aimYaw) * min(1f, dt * 6f)
@@ -581,13 +582,13 @@ class Game(
         }
         when (t.type) {
             Input.DOWN -> startGrip(t.x, t.y, t.time)
-            Input.MOVE -> if (aimDragging) aimAt(t.x) else flick.move(t.x, t.y, t.time)
+            Input.MOVE -> if (heightDragging) setHeight(t.y) else flick.move(t.x, t.y, t.time)
             Input.UP -> {
-                aimDragging = false
+                heightDragging = false
                 detector.grip(false)
                 val f = flick.up(t.x, t.y, t.time)
                 if (f != null && throwState == ThrowState.READY && controls == ControlMode.TOUCH) {
-                    throwJavelin(f.power, aimYaw, f.elevation)
+                    throwJavelin(f.power, f.yaw, touchElev)
                 }
             }
         }
@@ -598,25 +599,34 @@ class Game(
         if (controls == ControlMode.MOTION) {
             detector.grip(true)
             sound.play(Sound.GRIP)
-        } else if (y < touchAimLine()) {
-            // Touch: the top half of the screen is for aiming, the bottom half for the slingshot.
-            aimDragging = true
-            aimAt(x)
+        } else if (inside(heightSlider(), x, y, slop = 14f)) {
+            heightDragging = true
+            setHeight(y)
         } else {
+            // Touch: press anywhere else and pull back like a slingshot.
             flick.down(x, y, time)
         }
     }
 
-    /** True while a finger is aiming on the field (touch controls). */
-    internal var aimDragging = false
+    /** The touch throwing angle, set on the height slider. */
+    internal var touchElev = store.load(KEY_TOUCH_HEIGHT).let { if (it == 0) RELEASE_ANGLE else it / 1000f }
+        private set
+    internal var heightDragging = false
         private set
 
-    /** Touches above this line aim; below it they pull the slingshot. */
-    internal fun touchAimLine() = viewH * 0.5f
+    /** The height slider on the right edge (touch controls): top is the highest throw. */
+    internal fun heightSlider(): FloatArray {
+        val top = 214f
+        val bottom = max(top + 90f, viewH - 330f)
+        return floatArrayOf(viewW - 38f, top, 30f, bottom - top)
+    }
 
-    /** Aims towards the finger: the middle of the screen is straight ahead. */
-    private fun aimAt(x: Float) {
-        aimYaw = ((x - viewW / 2f) / (viewW * 0.42f)).coerceIn(-1f, 1f) * MAX_AIM
+    private fun setHeight(y: Float) {
+        val r = heightSlider()
+        val f = 1f - ((y - r[1]) / r[3]).coerceIn(0f, 1f)
+        touchElev = MIN_ELEVATION + (MAX_ELEVATION - MIN_ELEVATION) * f
+        aimElev = touchElev
+        store.save(KEY_TOUCH_HEIGHT, (touchElev * 1000f).toInt())
     }
 
     private fun titleTap(x: Float, y: Float) {
@@ -737,7 +747,8 @@ class Game(
     internal fun quitButton() = floatArrayOf(viewW / 2f - 110f, viewH * 0.45f + 58f, 220f, 44f)
     internal fun insetBox() = floatArrayOf(viewW - 150f, 84f, 142f, 112f)
 
-    private fun inside(r: FloatArray, x: Float, y: Float) = x >= r[0] && x <= r[0] + r[2] && y >= r[1] && y <= r[1] + r[3]
+    private fun inside(r: FloatArray, x: Float, y: Float, slop: Float = 0f) =
+        x >= r[0] - slop && x <= r[0] + r[2] + slop && y >= r[1] - slop && y <= r[1] + r[3] + slop
 
     // ---------------------------------------------------------------- render
 
@@ -864,6 +875,7 @@ class Game(
         const val KEY_SEEN_HOWTO = "howto"
         const val KEY_BEST_LEVEL = "bestLevel"
         const val KEY_RUNUP = "runup"
+        const val KEY_TOUCH_HEIGHT = "touchHeight"
 
         const val WHITE = 0xFFFFFFFF.toInt()
         const val GOLD = 0xFFF2C14E.toInt()

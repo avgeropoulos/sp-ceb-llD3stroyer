@@ -233,17 +233,17 @@ ARM on the title screen (GENTLE / NORMAL / STRONG) sets how hard you need to mov
 On the title screen:
 
 * **CONTROLS: MOTION / TOUCH**. Touch mode is for phones without a gyroscope or for playing
-  sitting down. It works like Angry Birds: press anywhere and drag back, and a rubber band
-  shows your pull. **How far** you pull sets the power, over almost half the screen's height.
-  **Which way** sets the height: pull sideways for a flat throw, down-and-sideways for about
-  45°, straight down for a high lob (15° to 70°). A side-view window above the POWER bar shows
-  the flight from the thrower to the target with a dotted arc, and the same dotted arc shows
-  out in the stadium; both update as you drag. To **aim** left and right, drag your finger on the top half
-  of the screen, over the field; start the slingshot pull on the bottom half. Moving the phone
-  never changes a touch throw. Let go to throw, or drag back to where you started to cancel. The guides fade as
-  you get better: from level 4 the target power arrow goes, from level 7 the distances and
-  landing markers (and the arc shows only its first half), and from level 10 your last
-  throw's mark (and only the first quarter of the arc). Motion controls keep every guide.
+  sitting down, and moving the phone never changes a touch throw. It works like a slingshot
+  seen from behind: press anywhere and pull back, and a rubber band shows your pull. **How
+  far** you pull sets the power, over almost half the screen's height. **Pulling to one side
+  aims the other way**, like a real slingshot. The **height** is set on the slider on the right
+  edge: slide the bronze handle up for a high throw, down for a flat one (15° to 70°; it's
+  remembered). A side-view window above the POWER bar shows the flight from the thrower to the
+  target with a dotted arc, and the same dotted arc shows out in the stadium; both update as you
+  pull. Let go to throw, or pull back to where you started to cancel. The guides fade as you
+  get better: from level 4 the target power arrow goes, from level 7 the distances and landing
+  markers (and the arc shows only its first half), and from level 10 your last throw's mark
+  (and only the first quarter of the arc). Motion controls keep every guide.
 * **ARM: NORMAL / GENTLE / STRONG** sets how hard you need to swing for full power. Use GENTLE
   for small, wrist-flick throws indoors, and STRONG if you keep overthrowing.
 
