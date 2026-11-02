@@ -2720,6 +2720,11 @@ func _build_mesh_nodes() -> void:
 			m.emission_enabled = true
 			m.emission_texture = mat.albedo_texture
 			m.emission_energy_multiplier = 0.9 if t == LAVA else 1.3
+		elif t == WINDOW:   # windows light up at night (sky.gd turns the glow up)
+			m = mat.duplicate()
+			m.emission_enabled = true
+			m.emission = Color(1.0, 0.85, 0.5)
+			m.emission_energy_multiplier = 0.0
 		elif t == WATER:   # water is shiny
 			m = mat.duplicate()
 			m.roughness = 0.15

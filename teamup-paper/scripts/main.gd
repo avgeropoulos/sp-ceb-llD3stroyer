@@ -75,6 +75,10 @@ var home: HomeBase            # only at home
 var bonus: Bonus             # only in a painting's BONUS COURSE
 var open_play: OpenPlay       # only in the open worlds (stars, gate, flag)
 var grab: Grab                # open worlds: GRAB / THROW / TAIL SWING (grab.gd)
+var daynight: DayNight        # sky.gd: sun, moon, stars, sunsets, glowing lanterns (home + worlds)
+var weather: Weather          # weather.gd: rain, snow, sand, embers, sparkles, star dust
+var fireworks: Fireworks      # fireworks.gd: shows for stars, the gate, bosses and the home launcher
+const LAUNCHER_SPOT := Vector3(Level.HOME_OX + 4.5, Level.HOME_GY, Level.HOME_OZ + 8.5)   # the FIREWORKS launcher at home
 var gate_open := false        # Krag Jr.'s gold gate (5 stars)
 var stars_w := {}             # world id -> star ids found there (kept for good, like Mario 64)
 var powers: Powers            # power-ups (open worlds)
@@ -209,6 +213,7 @@ func _ready_home() -> void:
 	home = HomeBase.new()
 	level.add_child(home)
 	home.setup(self, level)
+	_make_launcher()
 	_ready_common()
 	play_music("cozy")
 
@@ -510,6 +515,10 @@ func _step_home(dt: float) -> void:
 	if taps.has("movies"):
 		open_movies()
 		return
+	if taps.has("fireworks"):
+		launch_fireworks()
+	if taps.has("sleep"):
+		sleep_till_morning()
 	if taps.has("partner"):   # the TEAM button (2 heroes + 1 partner)
 		open_team("home")
 		return
@@ -730,6 +739,89 @@ func _setup_world() -> void:
 	cam.far = 200
 	add_child(cam)
 	cam.current = true
+	_setup_sky(env, sun, sm, wi)
+
+
+## Day and night, weather and fireworks (sky.gd, weather.gd, fireworks.gd).
+func _setup_sky(env: Environment, sun: DirectionalLight3D, sm: ProceduralSkyMaterial, wi: Dictionary) -> void:
+	fireworks = Fireworks.new()
+	add_child(fireworks)
+	fireworks.setup(self)
+	if not Boot.place in ["home", "level", "bonus"]:
+		return
+	daynight = DayNight.new()
+	add_child(daynight)
+	daynight.setup(self, env, sun, sm, wi, Boot.place)
+	weather = Weather.new()
+	add_child(weather)
+	weather.setup(self, daynight, Boot.place)
+
+
+func _step_sky(dt: float) -> void:
+	if daynight:
+		daynight.step(dt)
+	if weather:
+		weather.step(dt)
+	if fireworks:
+		fireworks.step(dt)
+
+
+## Standing by the fireworks launcher at home.
+func near_launcher() -> bool:
+	if home == null or home.mode != "" or state != "home":
+		return false
+	var p := leader().position
+	return Vector2(p.x - LAUNCHER_SPOT.x, p.z - LAUNCHER_SPOT.z).length() < 2.4
+
+
+func launch_fireworks() -> void:
+	if fireworks.busy():
+		return
+	fireworks.play_show_ahead("home")
+	hud.say("FIREWORKS!", "Ooooh! Aaaah!", 2.0)
+
+
+## SLEEP (home, at night): good morning!
+func sleep_till_morning() -> void:
+	if daynight == null:
+		return
+	daynight.sleep()
+	sfx("heart", -4)
+	hud.say("GOOD MORNING!", "Zzz... the sun is up!", 2.4)
+
+
+## A little toy cannon for the fireworks, by the MOVIES TV.
+func _make_launcher() -> void:
+	var n := Node3D.new()
+	level.add_child(n)
+	n.position = LAUNCHER_SPOT
+	var base := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(1.0, 0.5, 1.0)
+	base.mesh = bm
+	base.material_override = Toys.mat(Color("8a5a35"))
+	base.position.y = 0.25
+	n.add_child(base)
+	for i in 3:
+		var tube := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.13
+		cm.bottom_radius = 0.15
+		cm.height = 0.8
+		tube.mesh = cm
+		tube.material_override = Toys.mat([Color("ff4f6d"), Color("54c8ff"), Color("ffd23a")][i])
+		tube.position = Vector3(-0.28 + i * 0.28, 0.85, 0)
+		tube.rotation.z = (i - 1) * -0.25
+		n.add_child(tube)
+	var label := Label3D.new()
+	label.text = "FIREWORKS"
+	label.font_size = 40
+	label.outline_size = 10
+	label.pixel_size = 0.008
+	label.modulate = Color("ffd23a")
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.position.y = 1.9
+	n.add_child(label)
 
 
 func _setup_audio() -> void:
@@ -1344,6 +1436,8 @@ func _warm_up() -> void:
 		fx.beam(at, 1.0, 2.0)
 		fx.ring(at, 1.0)
 		fx.vine(at, Vector3.RIGHT, 1.0)
+		if fireworks:   # the fireworks / weather particle shaders, once
+			fireworks.play_show("test", at)
 		var sea := MeshInstance3D.new()   # the POSEIDON FLOOD sea (transparent)
 		var sq := QuadMesh.new()
 		sq.size = Vector2(0.2, 0.2)
@@ -1517,6 +1611,7 @@ func _process(delta: float) -> void:
 		swap_pressed = false
 		super_pressed = false
 		pause_pressed = false
+	_step_sky(dt)
 	if warm_t >= 0:
 		_warm_up()
 
@@ -3001,6 +3096,8 @@ func on_foe_beaten(f: Foe) -> void:
 		fx.shake = 1.2
 		hud.say(f.boss_name() + " BEATEN!", "Run to the flag!", 3.0)
 		victory_t = 1.8
+		if fireworks:   # a HUGE fireworks show
+			fireworks.play_show_ahead("boss")
 		play_music(world_info().song)
 		speak("We did it! Woo hoo!", "rocco")
 		save_game()

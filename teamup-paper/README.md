@@ -233,6 +233,23 @@ that's the time to stomp them. They get faster below half health. Bosses' shots:
 `tools/gen_art.py` `bosses()`. Test: `tests/boss_check.gd [-- toy]` fights every world's boss (attacks happen, it
 takes damage, Dry Krag falls apart and comes back once, the flag comes down).
 
+## Day and night, weather and fireworks (`sky.gd`, `weather.gd`, `fireworks.gd`)
+
+* **Day and night**: at home a whole day takes 6 minutes. The sun crosses the sky, sunrise and sunset paint it
+  orange and pink, and at night a big moon rises, stars twinkle, shooting stars zip past, LANTERN blocks glow
+  brighter, WINDOW blocks light up and fireflies come out. Moonlight keeps it bright enough to play. At night a
+  **SLEEP** button (top right) skips to morning. In the worlds time moves slowly and only tints the world's own
+  sky (never really dark). There is a soft glow round the sun and faint sun shafts in the afternoon.
+* **Weather** (changes every minute or so): rain with splashes, grey skies and thunder flashes (meadow, jungle,
+  swamp, beach, home) and a **rainbow** when it stops; snowfall (frosty peaks, sometimes home); blowing sand
+  (dunes); floating embers (lava); candy sparkles; star dust (cloud castle, moon).
+* **Fireworks**: a little show for every star, a bigger one when the gold gate opens and a huge one when a castle
+  boss is beaten. At home, stand by the **FIREWORKS** launcher next to the MOVIES TV and tap **BOOM!**.
+  Every rocket and burst frees itself afterwards (checked by the test).
+* Cheap on the tablet: GPU particles that follow the camera, colours updated a few times a second, no extra lights.
+* Code: `DayNight` (`tod` 0..1, `night`, `dusk`, `sleep()`), `Weather` (`set_weather`, `KINDS`), `Fireworks`
+  (`play_show(kind, at)`, `play_show_ahead(kind)`), set up in `main._setup_sky`. Test: `tests/sky_check.gd`.
+
 ## Power-ups
 
 A **FIRE FLOWER** always waits near the start of every world, and it's the most common thing in ? blocks.

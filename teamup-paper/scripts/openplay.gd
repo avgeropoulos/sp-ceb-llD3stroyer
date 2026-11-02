@@ -299,6 +299,8 @@ func _collect(id: String) -> void:
 	game.sfx("clear")
 	game.fx.burst(o.pos, Color("ffe14a"), 24, 6, 8)
 	game.fx.text(o.pos + Vector3(0, 1.2, 0), "+10", Color("ffd23a"), 48)
+	if game.fireworks:   # a little fireworks show for every star
+		game.fireworks.play_show_ahead("star")
 	game.speak("We got a star!", game.leader().who if game.leader().who != "mon" else game.heroes.rocco.who)
 	gate_msg = false
 	if count() >= STARS_NEEDED and not game.gate_open:
@@ -328,6 +330,8 @@ func _after_star(id: String) -> void:
 
 func open_gate() -> void:
 	game.gate_open = true
+	if game.fireworks and level.gate.size() > 0:   # a bigger show over the castle
+		game.fireworks.play_show("gate", Vector3(level.gate[0]) + Vector3(0, 2, -6))
 	for c in level.gate:
 		level.set_cell(c.x, c.y, c.z, Level.AIR)
 		game.fx.burst(Vector3(c) + Vector3(0.5, 0.5, 0.5), Color("ffd23a"), 6, 3)

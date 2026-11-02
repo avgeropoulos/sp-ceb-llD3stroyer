@@ -82,6 +82,10 @@ func _layout() -> void:
 				"partner": [Vector2(s.x - 52 * u, 150 * u), 46 * u], "fly": fly}
 			if game.near_tv():   # standing by a TV: watch the MOVIES
 				buttons["movies"] = [Vector2(s.x - 445 * u, s.y - 175 * u), 52 * u]
+			elif game.near_launcher():   # the FIREWORKS launcher
+				buttons["fireworks"] = [Vector2(s.x - 445 * u, s.y - 175 * u), 52 * u]
+			if game.daynight and game.daynight.is_night():   # SLEEP till morning
+				buttons["sleep"] = [Vector2(s.x - 52 * u, 350 * u), 42 * u]
 		else:                      # building: PLACE, REMOVE, DONE (and TURN for decorations)
 			buttons = {"jump": jump, "place": act, "done": sw, "remove": sup, "pause": pz, "fly": fly}
 			if game.home.mode == "decor":
@@ -284,6 +288,8 @@ func _draw() -> void:
 		_draw_stargot()
 	if game.state == "clear":
 		_draw_clear()
+	if game.weather and game.weather.flash > 0.01:   # lightning!
+		draw_rect(Rect2(Vector2.ZERO, s), Color(1, 1, 1, game.weather.flash * 0.45))
 
 
 func _draw_hud() -> void:
@@ -550,7 +556,7 @@ func _draw_stick_and_buttons(with_stick := true) -> void:
 	# buttons
 	var labels := {"jump": "JUMP", "action": game.action_label(), "swap": "SWAP", "super": "SUPER", "pause": "II",
 		"build": "BUILD", "decor": "DECOR", "partner": "TEAM", "place": "PLACE", "remove": "REMOVE", "done": "DONE", "rotate": "TURN", "land": "LAND", "paint": "PAINT",
-		"fly": "LAND" if game.flying else "FLY", "down": "DOWN", "movies": "MOVIES"}
+		"fly": "LAND" if game.flying else "FLY", "down": "DOWN", "movies": "MOVIES", "fireworks": "BOOM!", "sleep": "SLEEP"}
 	if game.flying:
 		labels["jump"] = "UP"
 	if game.state == "minigame" and game.minigames:
@@ -559,7 +565,7 @@ func _draw_stick_and_buttons(with_stick := true) -> void:
 		"build": Color("ff8a1f"), "decor": Color("ff6fa8"), "partner": Color("2cbec8"), "place": Color("3fc06a"), "remove": Color("e8413b"),
 		"done": Color("3f7fd9"), "rotate": Color("8a5bc4"), "land": Color("3fc06a"),
 		"paint": Decor.PAINTS[game.home.paint] if game.home and game.home.paint > 0 else Color("ff6fa8"),
-		"fly": Color("ffb020") if game.flying else Color("54c8ff"), "down": Color("3f7fd9"), "movies": Color("e8413b")}
+		"fly": Color("ffb020") if game.flying else Color("54c8ff"), "down": Color("3f7fd9"), "movies": Color("e8413b"), "fireworks": Color("ff6fd8"), "sleep": Color("3b4fa0")}
 	for k in buttons:
 		var c: Vector2 = buttons[k][0]
 		var rad: float = buttons[k][1]

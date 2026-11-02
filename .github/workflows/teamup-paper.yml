@@ -107,6 +107,10 @@ jobs:
             done
           done
           for look in paper toy; do
+            timeout 300s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/sky_check.gd -- $look 2>&1 | tee test-sky-$look.log
+            grep -q 'TEST PASSED' test-sky-$look.log
+          done
+          for look in paper toy; do
             timeout 300s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/minigame_check.gd -- $look 2>&1 | tee test-minigame-$look.log
             grep -q 'TEST PASSED' test-minigame-$look.log
           done
