@@ -1519,6 +1519,8 @@ static func _a2v(a) -> Vector3:
 
 ## How many pause buttons: RESUME, SAVE, SAVE & QUIT (+ STARS in an open world).
 func pause_count() -> int:
+	if paused_from in ["kart", "minigame"]:
+		return 2   # RESUME / QUIT
 	if paused_from == "play" and open_play != null and world_rocket != null:
 		return 6   # + STARS, POSEIDON FLOOD and ROCKET: LEAVE
 	return 3
@@ -1534,6 +1536,8 @@ func leave_by_rocket() -> void:
 
 ## The pause menu's 5th button (POSEIDON FLOOD) changes as you tap it.
 func pause_label(i: int) -> String:
+	if paused_from in ["kart", "minigame"]:
+		return ["RESUME", "QUIT RACE" if paused_from == "kart" else "QUIT GAME"][clampi(i, 0, 1)]
 	if i == 4:
 		if flood_used or flood != null:
 			return "FLOOD USED"
@@ -1569,6 +1573,14 @@ func poseidon_tap() -> bool:
 
 ## Pause menu: 0 RESUME, 1 SAVE, 2 SAVE & QUIT, 3 STARS (pick another quest).
 func pause_choice(i: int) -> void:
+	if paused_from in ["kart", "minigame"]:   # the race / mini game: RESUME or QUIT (no prize)
+		state = paused_from
+		if i == 1:
+			if paused_from == "kart":
+				kart_done(true)
+			else:
+				minigame_done(0)
+		return
 	match i:
 		5:
 			if pause_count() > 5:
@@ -1860,7 +1872,7 @@ func _step(dt: float) -> void:
 		return
 	if state == "kart":
 		if pause_pressed:
-			kart_done(true)   # quit: no prize
+			_pause("kart")   # a real pause (RESUME / QUIT RACE): one stray tap never throws the race away
 		elif kart:
 			kart.step(dt)
 			if kart and kart.can_leave() and (jump_pressed or action_pressed):
@@ -1868,7 +1880,7 @@ func _step(dt: float) -> void:
 		return
 	if state == "minigame":
 		if pause_pressed:
-			minigame_done(0)   # quit: back home, no prize
+			_pause("minigame")   # RESUME / QUIT GAME
 		elif minigames:
 			minigames.step(dt)
 		return
