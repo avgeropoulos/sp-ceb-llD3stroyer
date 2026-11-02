@@ -95,6 +95,8 @@ func _layout() -> void:
 			buttons["down"] = [Vector2(s.x - 445 * u, s.y - 70 * u), 52 * u]
 	else:
 		buttons = {"jump": jump, "action": act, "swap": sw, "super": sup, "pause": pz}
+		if game and game.mega and game.mega.ready():   # MEGA EVOLUTION is ready
+			buttons["mega"] = [Vector2(s.x - 445 * u, s.y - 255 * u), 54 * u]
 
 
 func button_at(p: Vector2) -> String:
@@ -319,6 +321,10 @@ func _draw_hud() -> void:
 	var xp: int = game.mon_xp[game.mon_line]
 	draw_rect(Rect2(x + 70, py + 36, 170, 12), Color(0.1, 0.1, 0.15))
 	draw_rect(Rect2(x + 70, py + 36, 170 * Mons.progress(xp), 12), Color("54c8ff"))
+	if game.mega and game.mega.active():   # MEGA time left (a gold bar under the XP)
+		draw_rect(Rect2(x + 70, py + 50, 170, 6), Color(0.1, 0.1, 0.15))
+		draw_rect(Rect2(x + 70, py + 50, 170 * clampf(game.mega.left / Mega.TIME, 0, 1), 6), Color("ffd23a"))
+		txt("MEGA", Vector2(x + 4, py + 74), 20, Color("ffd23a"), HORIZONTAL_ALIGNMENT_LEFT, -1, 5)
 	if game.open_play and game.state in ["play", "paused", "clear"]:
 		_draw_stars()
 	if game.bonus and game.state == "play":   # a painting's course: its goal and progress
@@ -556,7 +562,8 @@ func _draw_stick_and_buttons(with_stick := true) -> void:
 	# buttons
 	var labels := {"jump": "JUMP", "action": game.action_label(), "swap": "SWAP", "super": "SUPER", "pause": "II",
 		"build": "BUILD", "decor": "DECOR", "partner": "TEAM", "place": "PLACE", "remove": "REMOVE", "done": "DONE", "rotate": "TURN", "land": "LAND", "paint": "PAINT",
-		"fly": "LAND" if game.flying else "FLY", "down": "DOWN", "movies": "MOVIES", "fireworks": "BOOM!", "sleep": "SLEEP"}
+		"fly": "LAND" if game.flying else "FLY", "down": "DOWN", "movies": "MOVIES", "mega": "MEGA!",
+		"fireworks": "BOOM!", "sleep": "SLEEP"}
 	if game.flying:
 		labels["jump"] = "UP"
 	if game.state == "minigame" and game.minigames:
@@ -565,7 +572,8 @@ func _draw_stick_and_buttons(with_stick := true) -> void:
 		"build": Color("ff8a1f"), "decor": Color("ff6fa8"), "partner": Color("2cbec8"), "place": Color("3fc06a"), "remove": Color("e8413b"),
 		"done": Color("3f7fd9"), "rotate": Color("8a5bc4"), "land": Color("3fc06a"),
 		"paint": Decor.PAINTS[game.home.paint] if game.home and game.home.paint > 0 else Color("ff6fa8"),
-		"fly": Color("ffb020") if game.flying else Color("54c8ff"), "down": Color("3f7fd9"), "movies": Color("e8413b"), "fireworks": Color("ff6fd8"), "sleep": Color("3b4fa0")}
+		"fly": Color("ffb020") if game.flying else Color("54c8ff"), "down": Color("3f7fd9"), "movies": Color("e8413b"),
+		"mega": Color.from_hsv(fmod(title_t * 0.5, 1.0), 0.65, 1.0), "fireworks": Color("ff6fd8"), "sleep": Color("3b4fa0")}
 	for k in buttons:
 		var c: Vector2 = buttons[k][0]
 		var rad: float = buttons[k][1]
@@ -573,6 +581,8 @@ func _draw_stick_and_buttons(with_stick := true) -> void:
 		if k == "land" and (game.sky == null or game.sky.near_info().is_empty() or not game.sky.near_info().ok):
 			col = Color(0.35, 0.38, 0.45)   # nothing to land on here
 		var down := is_held(k)
+		if k == "mega":   # a rainbow glow round the MEGA button
+			draw_circle(c, rad + 8 + sin(title_t * 8) * 4, Color(1, 0.95, 0.5, 0.35))
 		if k == "super" and game.state == "play":
 			var f: float = game.super_charge
 			draw_circle(c, rad, Color(0.15, 0.15, 0.25, 0.55))
