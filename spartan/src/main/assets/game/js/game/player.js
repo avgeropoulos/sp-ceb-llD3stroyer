@@ -120,6 +120,7 @@ export function createPlayer(ctx) {
   let threatSlot = 0;
   let lockTarget = null;
   let rageLeft = 0; // s of rage left (player time); > 0 while raging
+  let spearsBroken = false; // dropSpears (Day 3): no gift brings spears back until a refill
   let rageDur = RAGE.duration; // s this rage was unleashed for (the meter drains over it)
   let tierRow = RAGE_TIERS[0];
   const boons = [];
@@ -1126,6 +1127,7 @@ export function createPlayer(ctx) {
     tierRow = RAGE_TIERS[0];
     boons.length = 0;
     boonOffer = null;
+    spearsBroken = false;
     perks = applyBoons(tierRow, boons);
     lastHitAt = -Infinity;
     player.combos.reset();
@@ -1346,6 +1348,7 @@ export function createPlayer(ctx) {
    * A refill never takes spears away: with more than `total` left it only puts one in hand.
    */
   function refillSpears(total = MAX_SPARES + 1) {
+    spearsBroken = false;
     const want = Number.isFinite(total) ? clamp(Math.round(total), 0, MAX_SPARES + 1) : MAX_SPARES + 1;
     const n = Math.max(want, player.spearsLeft);
     if (n <= 0) return;
@@ -1363,6 +1366,7 @@ export function createPlayer(ctx) {
    */
   function dropSpears({ keepInHand = false } = {}) {
     player.spares = 0;
+    spearsBroken = true;
     if (keepInHand) return;
     player.hasSpearInHand = false;
     redrawAt = Infinity;
@@ -1396,7 +1400,7 @@ export function createPlayer(ctx) {
   // ---- events ----------------------------------------------------------------------------
 
   ev.on('hit', (e) => {
-    if (!e || !e.byPlayer || e.kind === 'bleed') return;
+    if (!e || !e.byPlayer || e.kind === 'bleed' || e.stun) return;
     fillRage('hit');
     lastHitAt = gnow();
     player.chain = Math.min(CHAIN_MAX, Math.round((player.chain + CHAIN_STEP) * 10) / 10);
@@ -1407,6 +1411,10 @@ export function createPlayer(ctx) {
   ev.on('combo', () => {
     if (rageLeft > 0 && perks.comboExtend > 0) rageLeft = Math.min(rageDur, rageLeft + perks.comboExtend);
     fillRage('combo');
+  });
+  // A wave never starts with gifts still on offer: the gods choose the first.
+  ev.on('waveStart', () => {
+    if (boonOffer) pickBoon(0);
   });
   // Every respite offers gifts of the gods (game/boons.js); the respite waits for the pick (waves.js).
   ev.on('respite', () => {
@@ -1433,10 +1441,9 @@ export function createPlayer(ctx) {
     if (rageLeft > 0) {
       heal(perks.healPerKill);
       if (perks.killExtend > 0) rageLeft = Math.min(rageDur, rageLeft + perks.killExtend);
-      if (perks.spearOnKill && player.spearsLeft < MAX_SPARES + 1) {
-        if (!player.hasSpearInHand && player.weapon === 'spear') player.hasSpearInHand = true;
-        else player.spares++;
-      }
+      // Dory of Leonidas: a spear back into the bundle (the redraw puts it in hand), never past a
+      // full bundle and never once Day 3 has broken the spears.
+      if (perks.spearOnKill && !spearsBroken && player.spares < MAX_SPARES) player.spares++;
     }
     fillRage('kill');
     player.kills++;

@@ -562,6 +562,42 @@ export const CHECKS = {
     ok(P.weapon === 'spear' && P.hasSpearInHand && P.spearsLeft === 7, `training redraws forever (${P.spearsLeft})`);
   },
 
+  // Gifts of the gods (game/boons.js) in the real player: Dory of Leonidas returns one spear per
+  // raging kill into the bundle (never past it, never once the spears are broken), and the rage's
+  // stuns (the war cry, the Gorgon's Gaze) feed neither the chain nor the rage.
+  doryAndRageStuns(h) {
+    h.reset();
+    const P = h.player;
+    const ev = h.ctx.events;
+    ev.emit('respite', {});
+    ok(P.boonOffer && P.boonOffer.length === 3, 'a respite offers three gifts');
+    // Force the offer to Dory, the Gaze and the war cry, and take Dory.
+    P.boonOffer.splice(0, 3, 'dory', 'gorgon', 'alalai');
+    ok(P.pickBoon('dory') && P.boons[0] === 'dory' && !P.boonOffer && P.ragePerks.spearOnKill, 'Dory taken');
+    getSpear(h);
+    const spares0 = P.spares;
+    P.rage = 1;
+    h.action({ type: 'rage' });
+    h.step(2);
+    ok(P.raging, 'raging');
+    // A throw, then a kill before the redraw: the spear comes back into the bundle (not lost).
+    h.action({ type: 'throw', power: 0.5, src: 'touch' });
+    h.stepTime(0.2);
+    ok(!P.hasSpearInHand, 'thrown');
+    ev.emit('kill', { byPlayer: true, target: null });
+    h.stepTime(0.8);
+    ok(P.spearsLeft === spares0 + 1, `the spear given back stays (${P.spearsLeft}, was ${spares0 + 1} before the throw)`);
+    for (let i = 0; i < 10; i++) ev.emit('kill', { byPlayer: true, target: null });
+    ok(P.spares <= 6, `never past a full bundle (${P.spares})`);
+    P.dropSpears({ keepInHand: false });
+    ev.emit('kill', { byPlayer: true, target: null });
+    ok(P.spares === 0, 'no spear back once the spears are broken');
+    // Stuns: the chain stays put.
+    const chain = P.chain;
+    ev.emit('hit', { byPlayer: true, kind: 'bash', damage: 0, stun: true });
+    ok(P.chain === chain, `a stun does not raise the chain (${P.chain})`);
+  },
+
   scoreAndChain(h) {
     h.reset();
     const P = h.player;

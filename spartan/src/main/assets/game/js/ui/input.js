@@ -1131,7 +1131,8 @@ export function createInput(ctx) {
           rageShown = rf;
           btnRage.style.setProperty('--p', String(rf / 100));
         }
-        const rs = p.raging ? 'on' : rf >= 100 && p.alive !== false ? 'ready' : '';
+        // Ready exactly when the rage can be unleashed (canUnleash), not when the ring rounds to full.
+        const rs = p.raging ? 'on' : (Number(p.rage) || 0) >= 1 - 1e-9 && p.alive !== false ? 'ready' : '';
         if (rs !== rageState) {
           rageState = rs;
           btnRage.classList.toggle('is-ready', rs === 'ready');

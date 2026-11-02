@@ -86,7 +86,9 @@ test('a respite waits for the pick, short of the next wave setting out; after 45
   for (let i = 0; i < 40000 && !log.some((e) => e.n === 'respite'); i++) step();
   const r = log.find((e) => e.n === 'respite');
   assert.ok(r, 'a respite');
-  // No pick: the respite outlasts its seconds and the next wave has not set out.
+  // No pick, and READY pressed early (before readyAfter): the respite still outlasts its seconds
+  // and the next wave has not set out.
+  assert.equal(waves.ready(), true);
   for (let i = 0; i < (RESPITE.touch + 10) / 0.05; i++) step();
   assert.equal(log.filter((e) => e.n === 'waveStart').length, 1, 'the second wave waits');
   assert.ok(waves.respiteLeft > SPAWN.respiteLead, `held above the set-out lead (${waves.respiteLeft})`);

@@ -350,6 +350,7 @@ export function createCombat(ctx) {
       killed: !!res.killed,
       byPlayer: !!hit.byPlayer,
       combo: comboId || null,
+      stun: !!hit.stun, // a rage stun (no blow): it neither feeds the chain nor the rage
     });
   }
 
@@ -1322,23 +1323,12 @@ export function createCombat(ctx) {
 
   // Spartan rage at the last stand (game/rage.js tier 4): the war cry hurls back every foe within
   // shockRadius, no damage, a knockdown and a long stagger.
-  // Gorgon's Gaze (game/boons.js): unleashing stuns every foe in front within GAZE.range.
-  ev.on('rage', (e) => {
+  // Unleashing the rage: Gorgon's Gaze (game/boons.js) stuns every foe in front within GAZE.range;
+  // the war cry (rage tier 4, or the Alalai! gift) knocks down every foe within RAGE.shockRadius.
+  // Both are stuns, not blows: no damage, and flagged so they feed neither the chain nor the rage.
+  function rageStun(radius, halfAngle, build) {
     const pl = ctx.player;
-    if (!e || !e.on || !e.gaze || !pl || !pl.pos) return;
-    const list = hostilesInSector(pl.pos, pl.yaw || 0, GAZE.range, GAZE.halfAngle).slice();
-    for (const target of list) {
-      if (!target.alive) continue;
-      const hit = makeHit('parry', 0, 0, 0, 0, true, 'player', chestOf(target, new THREE.Vector3()));
-      hit.ignoreGuard = true;
-      hit.stagger = GAZE.stagger;
-      deliver(target, hit, null, false);
-    }
-  });
-  ev.on('rage', (e) => {
-    const pl = ctx.player;
-    if (!e || !e.on || !e.shockwave || !pl || !pl.pos) return;
-    const list = hostilesInSector(pl.pos, pl.yaw || 0, RAGE.shockRadius, Math.PI).slice();
+    const list = hostilesInSector(pl.pos, pl.yaw || 0, radius, halfAngle).slice();
     for (const target of list) {
       if (!target.alive) continue;
       let dx = target.pos.x - pl.pos.x;
@@ -1348,11 +1338,16 @@ export function createCombat(ctx) {
       dz /= d;
       const hit = makeHit('bash', 0, dx, dz, 1, true, 'player', chestOf(target, new THREE.Vector3()));
       hit.ignoreGuard = true;
-      hit.knockback = 3;
-      hit.stagger = 1.6;
-      hit.knockdown = true;
+      hit.stun = true;
+      build(hit);
       deliver(target, hit, null, false);
     }
+  }
+  ev.on('rage', (e) => {
+    const pl = ctx.player;
+    if (!e || !e.on || !pl || !pl.pos) return;
+    if (e.gaze) rageStun(GAZE.range, GAZE.halfAngle, (h) => { h.stagger = GAZE.stagger; });
+    if (e.shockwave) rageStun(RAGE.shockRadius, Math.PI, (h) => { h.knockback = 3; h.stagger = 1.6; h.knockdown = true; });
   });
 
   return {

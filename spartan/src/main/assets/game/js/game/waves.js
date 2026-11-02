@@ -72,8 +72,8 @@ export function createWaves(ctx) {
   for (const k in T) T[k] = k === 'deathT' ? -1 : k === 'shieldsUpAt' ? -1e9 : 0;
   let lull = false;
   let readyRequested = false;
-  let afterTimer = null;
-  const BOON_WAIT = 45;     // s into a respite a gift waits for the player's pick before the gods choose    // what the timer leads to: 'wave' | 'phase' | 'entry' | 'endless'
+  let afterTimer = null;    // what the timer leads to: 'wave' | 'phase' | 'entry' | 'endless'
+  const BOON_WAIT = 45;     // s into a respite a gift waits for the player's pick before the gods choose
   let refillAllowed = true;
   let leonidasFallen = false;
 
@@ -669,13 +669,13 @@ export function createWaves(ctx) {
     } else if (state === 'intro' || state === 'respite' || state === 'dayEnd') {
       // A gift of the gods on offer (player.boonOffer, game/boons.js) holds the respite for the
       // pick, short of the next wave setting out; after BOON_WAIT the gods choose.
+      T.timer -= gdt;
+      if (state === 'respite' && readyRequested && T.stateT >= RESPITE.readyAfter) T.timer = 0;
       if (state === 'respite' && !lull && ctx.player && ctx.player.boonOffer) {
         boonWait += gdt;
         if (boonWait >= BOON_WAIT) ctx.player.pickBoon?.(0);
-        else if (T.timer < SPAWN.respiteLead + 0.5) T.timer = SPAWN.respiteLead + 0.5 + gdt;
+        else T.timer = Math.max(T.timer, SPAWN.respiteLead + 0.5); // READY too waits for the pick
       }
-      T.timer -= gdt;
-      if (state === 'respite' && readyRequested && T.stateT >= RESPITE.readyAfter) T.timer = 0;
       if (T.timer <= 0) timerDone();
       else if (state === 'respite' && !lull && afterTimer === 'wave' && T.timer <= SPAWN.respiteLead) prespawn(gdt);
     }

@@ -207,7 +207,7 @@ export const TAP = Object.freeze({
   pad: 24,        // px added above the head and below the feet
   minHalfW: 34,   // px: a far foe is still this wide either side of his centre
   widthRatio: 0.3, // half-width as a share of his drawn height
-  range: 45,      // m: no farther than a spear flies (LOCK.spearRange)
+  range: LOCK.spearRange, // m: no farther than a spear flies (tapLock's limit too)
 });
 
 const tapHead = { x: 0, y: 0, front: false };
