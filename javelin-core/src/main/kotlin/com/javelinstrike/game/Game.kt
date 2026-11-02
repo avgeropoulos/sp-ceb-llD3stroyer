@@ -197,17 +197,18 @@ class Game(
             val want = if (input.hasTilt) (input.tilt * 0.7f).coerceIn(-MAX_AIM, MAX_AIM) else 0f
             aimYaw += (want - aimYaw) * min(1f, dt * 8f)
         }
-        if (aiming && input.hasTilt) {
+        if (aiming && input.hasTilt && controls == ControlMode.MOTION) {
             val want = elevationForLean(input.lean)
             aimElev += (want - aimElev) * min(1f, dt * 8f)
         }
-        if (flick.active) aimYaw = flick.previewYaw.coerceIn(-MAX_AIM, MAX_AIM)
+        // Touch: the slingshot pull sets the angle, and tilting the phone aims left and right.
+        if (flick.active) aimElev = flick.elevation
+        if (ready && controls == ControlMode.TOUCH && input.hasTilt) {
+            aimYaw += ((input.tilt * 0.7f).coerceIn(-MAX_AIM, MAX_AIM) - aimYaw) * min(1f, dt * 6f)
+        }
         // Aiming keeps working while you run: tilt and lean follow you until you let go.
         if (ready && runUp && gripping() && controls == ControlMode.MOTION && input.hasTilt) {
             aimYaw += ((input.tilt * 0.7f).coerceIn(-MAX_AIM, MAX_AIM) - aimYaw) * min(1f, dt * 6f)
-        }
-        if (ready && runUp && flick.active && input.hasTilt) {
-            aimElev += (elevationForLean(input.lean) - aimElev) * min(1f, dt * 6f)
         }
         if (screen == Screen.PLAY && !paused) updateRun(dt, ready)
         if (screen == Screen.PLAY && throwState == ThrowState.READY) updateRuler()
@@ -587,7 +588,7 @@ class Game(
                 detector.grip(false)
                 val f = flick.up(t.x, t.y, t.time)
                 if (f != null && throwState == ThrowState.READY && controls == ControlMode.TOUCH) {
-                    throwJavelin(f.first, f.second)
+                    throwJavelin(f.power, aimYaw, f.elevation)
                 }
             }
         }
@@ -763,6 +764,40 @@ class Game(
 
     /** The power a slingshot pull would throw with right now (touch controls). */
     internal fun flickPower() = flick.power
+
+    /** The touch drag, for drawing the rubber band: anchor x, y, finger x, y. */
+    internal fun flickBand() = floatArrayOf(flick.anchorX, flick.anchorY, flick.fingerX, flick.fingerY)
+
+    /**
+     * Fills [xs]/[ys]/[zs] with points along the flight a throw at [power] would take right now
+     * (aim, angle, run-up and all, no wind), every [step] seconds. Returns how many there are.
+     */
+    internal fun flightPath(power: Float, xs: FloatArray, ys: FloatArray, zs: FloatArray, step: Float = 0.1f): Int {
+        val j = Javelin.launch(power, aimYaw, aimElev, runSpeed, runnerZ)
+        var n = 0
+        var t = 0f
+        while (n < xs.size) {
+            xs[n] = j.x; ys[n] = j.y; zs[n] = j.z
+            n++
+            var landed = false
+            while (t < step * n) {
+                if (j.step(1f / 60f, 0f)) { landed = true; break }
+                t += 1f / 60f
+            }
+            if (landed) {
+                if (n < xs.size) { xs[n] = j.x; ys[n] = 0f; zs[n] = j.z; n++ }
+                break
+            }
+        }
+        return n
+    }
+
+    /** How much of the touch flight arc to show: all of it early on, just the start later. */
+    internal fun arcShown(): Float = when (hintLevel()) {
+        0, 1 -> 1f
+        2 -> 0.45f
+        else -> 0.25f
+    }
 
     /**
      * How much help the touch controls give on this level: 0 shows everything; 1 hides the

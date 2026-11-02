@@ -125,9 +125,9 @@ internal fun Game.drawPrompts(g: Gfx) {
             ThrowDetector.Phase.SWING -> "!!!" to ""
         }
     } else if (flickActive()) {
-        (if (armed) "LET GO TO THROW" else "PULL DOWN") to "Further = harder. Sideways to aim"
+        (if (armed) "LET GO TO THROW" else "PULL BACK") to "Further = harder. Down = higher. Tilt to aim"
     } else {
-        "PRESS AND PULL DOWN" to "Like a slingshot: pull further, throw harder"
+        "PRESS AND PULL BACK" to "Like a slingshot: sideways = flat, down = high"
     }
     // The run-up: speed and how far to the foul line
     if (runUp) {
@@ -155,7 +155,85 @@ internal fun Game.drawPrompts(g: Gfx) {
 /** The power bar and the angle dial, shown all through a javelin level. */
 internal fun Game.drawThrowGauges(g: Gfx) {
     drawPowerScale(g)
-    drawAngleDial(g)
+    if (controls == ControlMode.TOUCH) {
+        if (throwState == Game.ThrowState.READY) drawFlightWindow(g)
+        if (flickActive()) drawRubberBand(g)
+    } else {
+        drawAngleDial(g)
+    }
+}
+
+private val pathX = FloatArray(80)
+private val pathY = FloatArray(80)
+private val pathZ = FloatArray(80)
+
+/**
+ * The Angry Birds view: the flight seen from the side, from the thrower on the left to the
+ * target on the right, with the dotted arc of the throw you're pulling back. On later levels
+ * only the start of the arc shows.
+ */
+private fun Game.drawFlightWindow(g: Gfx) {
+    val left = 40f
+    val right = viewW - 12f
+    val top = viewH - 300f
+    val bottom = viewH - 190f
+    val w = right - left
+    g.rect(left - 2f, top - 2f, w + 4f, bottom - top + 4f, 0xC0201510.toInt())
+    g.clip(left, top, w, bottom - top)
+    g.rect(left, top, w, bottom - top, 0x803F86C8.toInt())
+    g.rect(left, bottom - 8f, w, 8f, 0xFFD3AF73.toInt())
+    val zMax = 150f
+    val scale = (w - 16f) / (zMax - RUN_START)
+    fun sx(z: Float) = left + 8f + (z - RUN_START) * scale
+    fun sy(y: Float) = bottom - 8f - y * scale
+    // Distance ticks
+    if (hintLevel() < 2) {
+        var d = 0
+        while (d <= 150) {
+            g.rect(sx(d.toFloat()) - 0.5f, bottom - 8f, 1f, 4f, 0xFF4A3420.toInt())
+            if (d % 50 == 0) g.text("$d", sx(d.toFloat()), bottom - 1f, 7f, 0xFF4A3420.toInt(), 1)
+            d += 10
+        }
+    }
+    // Foul line, target and thrower
+    g.rect(sx(0f) - 1f, bottom - 10f, 2f, 6f, 0xFFF0EADB.toInt())
+    val tz = kotlin.math.hypot(target.x, target.z)
+    g.rect(sx(tz - target.radius), bottom - 9f, target.radius * 2f * scale, 3f, 0xFFC1502E.toInt())
+    g.line(sx(tz), bottom - 8f, sx(tz), sy(3.6f), 1.5f, 0xFF7A5230.toInt())
+    g.oval(sx(tz) - 3.5f, sy(3.6f) - 3.5f, 7f, 7f, 0xFFCC8F35.toInt())
+    val ax = sx(runnerZ)
+    g.line(ax, bottom - 8f, ax, sy(1.8f), 3f, 0xFFC98B5B.toInt())
+    g.oval(ax - 2.5f, sy(1.9f) - 2.5f, 5f, 5f, 0xFF2B1A10.toInt())
+    // The arc for the pull you're making now
+    if (flickActive()) {
+        val p = flickPower()
+        val n = flightPath(p, pathX, pathY, pathZ, 0.08f)
+        val shown = kotlin.math.max(2, (n * arcShown()).toInt())
+        for (i in 0 until kotlin.math.min(n, shown)) {
+            val r = if (i % 3 == 0) 2.2f else 1.6f
+            g.oval(sx(pathZ[i]) - r, sy(pathY[i]) - r, r * 2f, r * 2f, 0xF0FFFFFF.toInt())
+        }
+        if (shown >= n && hintLevel() < 2) {
+            val lz = pathZ[n - 1]
+            g.shadowText("${lz.roundToInt()} m", sx(lz), bottom - 12f, 8f, Game.GOLD, 1)
+        }
+    }
+    g.unclip()
+    val deg = (aimElev * 57.3f).roundToInt()
+    g.shadowText("ANGLE $deg°", left + 4f, top + 11f, 9f, if (flickActive()) Game.GREEN else Game.WHITE)
+    g.shadowText("PULL BACK & DOWN", right - 4f, top + 11f, 8f, CREAM, 2)
+}
+
+/** The slingshot's rubber band from where you pressed to your finger. */
+private fun Game.drawRubberBand(g: Gfx) {
+    val b = flickBand()
+    val color = if (flickPower() > 0f) 0xE06B3A1C.toInt() else 0x906B3A1C.toInt()
+    g.line(b[0] - 10f, b[1], b[2], b[3], 3f, color)
+    g.line(b[0] + 10f, b[1], b[2], b[3], 3f, color)
+    g.oval(b[0] - 13f, b[1] - 3f, 6f, 6f, 0xFF4A3420.toInt())
+    g.oval(b[0] + 7f, b[1] - 3f, 6f, 6f, 0xFF4A3420.toInt())
+    g.oval(b[2] - 7f, b[3] - 7f, 14f, 14f, 0xFF2A1A0E.toInt())
+    g.oval(b[2] - 5f, b[3] - 5f, 10f, 10f, 0xFFCC8F35.toInt())
 }
 
 /**
@@ -421,9 +499,9 @@ internal fun Game.drawHowTo(g: Gfx) {
         "The POWER bar also shows how far each power goes and roughly how hard to throw to reach the target.",
     ) else listOf(
         "1. Press anywhere on the screen to grip the javelin.",
-        "2. Pull your finger down like a slingshot. The further you pull, the harder the throw; the POWER bar fills as you pull.",
-        "3. Move your finger left or right to aim, and lean the phone back to throw higher.",
-        "4. Let go to throw. Push back up to where you started to cancel.",
+        "2. Drag back like a slingshot (Angry Birds style). The further you pull, the harder the throw. Pull sideways for a flat throw, down-and-sideways for 45°, straight down for a high lob.",
+        "3. The window above the POWER bar shows the flight from the side with a dotted arc. Tilt the phone like a steering wheel to aim left and right.",
+        "4. Let go to throw. Drag back to where you started to cancel.",
         "Guides fade as you go: from level 4 they stop showing the target power, from level 7 the distances, and from level 10 your last throw.",
     )
     fun para(text: String, color: Int) {

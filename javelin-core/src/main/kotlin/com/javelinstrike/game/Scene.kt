@@ -175,6 +175,7 @@ internal fun Game.drawWorld(
         g.oval(c.sx - s / 2f, c.sy - s / 3f, s, s * 0.66f, argb((a * 255).toInt(), p.color))
     }
 
+    if (main && javelinScene && screen == Game.Screen.PLAY && flickActive()) drawFlightDots(g, c)
     if (main && javelinScene) drawAthlete(g, c)
 }
 
@@ -575,6 +576,21 @@ private fun Game.drawPowerMarkers(g: Gfx, c: Camera, main: Boolean) {
             val label = if (last) "LAST" else "${i * 25}%"
             g.shadowText(label, c.sx, c.sy, if (main) (c.ppm * 1.4f).coerceIn(7f, 11f) else 8f, color, 1)
         }
+    }
+}
+
+private val dotX = FloatArray(80)
+private val dotY = FloatArray(80)
+private val dotZ = FloatArray(80)
+
+/** The dotted arc of the throw being pulled back (touch controls), out in the stadium. */
+private fun Game.drawFlightDots(g: Gfx, c: Camera) {
+    val n = flightPath(flickPower(), dotX, dotY, dotZ, 0.1f)
+    val shown = max(2, (n * arcShown()).toInt())
+    for (i in 1 until min(n, shown)) {
+        if (!c.project(dotX[i], dotY[i], dotZ[i])) continue
+        val r = (0.18f * c.ppm).coerceIn(1.2f, 5f)
+        g.oval(c.sx - r, c.sy - r, r * 2f, r * 2f, 0xE0FFFFFF.toInt())
     }
 }
 

@@ -1,6 +1,8 @@
 package com.javelinstrike.game
 
+import kotlin.math.abs
 import kotlin.math.asin
+import kotlin.math.atan2
 import kotlin.math.sqrt
 
 /** A throw: [power] from 0 to 1, and the [elevation] (radians) it leaves at, if the phone could tell. */
@@ -310,25 +312,42 @@ class ThrowDetector {
     }
 }
 
+/** A touch throw: [power] from 0 to 1 and the [elevation] (radians) to throw at. */
+class Shot(val power: Float, val elevation: Float)
+
 /**
- * Touch-screen throwing, like a slingshot, for phones without a gyroscope (or playing sitting
- * down): press anywhere and pull your finger down. The further you pull, the harder the throw,
- * over most of the screen's height, so there's plenty of room to be precise. Pull sideways to
- * aim, and let go to throw. Push back up to where you started to cancel.
+ * Touch-screen throwing, Angry Birds style, for phones without a gyroscope (or playing sitting
+ * down): press anywhere and drag back. Like a slingshot, the javelin flies the opposite way to
+ * your pull. How far you pull sets the power, over almost half the screen's height. The
+ * direction sets the height: pull sideways for a flat throw, diagonally for about 45°, and
+ * mostly downward for a high lob. Let go to throw; drag back to where you started to cancel.
  */
 class FlickThrow {
     private var startX = 0f
     private var startY = 0f
     private var pull = 0f
-    private var side = 0f
 
-    /** How far down (virtual pixels) a full-power pull is; the game sets it from the screen size. */
+    /** How far (virtual pixels) a full-power pull is; the game sets it from the screen size. */
     var fullPull = 300f
 
     /** Scales the pull: above 1 reaches full power with a shorter pull (the ARM setting). */
     var sensitivity = 1f
 
     var active = false
+        private set
+
+    /** Where the drag started and where the finger is now, for drawing the rubber band. */
+    var anchorX = 0f
+        private set
+    var anchorY = 0f
+        private set
+    var fingerX = 0f
+        private set
+    var fingerY = 0f
+        private set
+
+    /** The angle the javelin would fly at if you let go now. */
+    var elevation = RELEASE_ANGLE
         private set
 
     /** 0 to 1: the power you'd throw with if you let go now. */
@@ -339,34 +358,36 @@ class FlickThrow {
     /** How far back the athlete's arm is drawn, 0 to 1. */
     val drawAmount get() = if (active) (pull / (fullPull / sensitivity)).coerceIn(0f, 1f) else 0f
 
-    /** Aim (radians) from how far sideways the finger has moved. */
-    var previewYaw = 0f
-        private set
-
     fun down(x: Float, y: Float, @Suppress("UNUSED_PARAMETER") t: Float) {
         active = true
         startX = x
         startY = y
+        anchorX = x; anchorY = y
+        fingerX = x; fingerY = y
         pull = 0f
-        side = 0f
-        previewYaw = 0f
     }
 
     fun move(x: Float, y: Float, @Suppress("UNUSED_PARAMETER") t: Float) {
         if (!active) return
-        pull = maxOf(0f, y - startY)
-        side = x - startX
-        previewYaw = (side / SIDE_FULL).coerceIn(-1f, 1f) * MAX_YAW
+        fingerX = x
+        fingerY = y
+        val back = abs(x - startX)
+        val down = y - startY
+        pull = sqrt(back * back + down * down)
+        // The launch goes opposite to the pull: down-and-sideways throws up-and-forward.
+        if (pull >= PULL_MIN) {
+            elevation = atan2(maxOf(0f, down), back).coerceIn(MIN_ELEVATION, MAX_ELEVATION)
+        }
     }
 
-    /** Lets go: returns (power, yaw) for a throw, or null if it wasn't pulled back. */
-    fun up(x: Float, y: Float, t: Float): Pair<Float, Float>? {
+    /** Lets go: returns the throw, or null if it wasn't pulled back. */
+    fun up(x: Float, y: Float, t: Float): Shot? {
         if (!active) return null
         move(x, y, t)
         val p = power
-        val pulled = pull >= PULL_MIN
+        val pulled = pull >= PULL_MIN && y >= startY - PULL_MIN
         active = false
-        return if (pulled) p to previewYaw else null
+        return if (pulled) Shot(p, elevation) else null
     }
 
     fun cancel() { active = false }
@@ -374,8 +395,5 @@ class FlickThrow {
     companion object {
         /** A pull shorter than this (virtual pixels) isn't a throw. */
         const val PULL_MIN = 18f
-        /** Sideways drag for the widest aim. */
-        const val SIDE_FULL = 140f
-        const val MAX_YAW = 0.45f
     }
 }
