@@ -203,20 +203,131 @@ class Game3DTest {
         assertTrue(abs(wrapAngle(g.camYaw - g.dog.yaw)) < 0.15f, "camera behind the dog")
     }
 
-    @Test fun swipeTheTopRightToLookAround() {
+    @Test fun dragTheRightSideToLookAround() {
         val g = start(herc = true)
         clearCritters(g)
-        val yaw0 = g.camYaw
         val ids = intArrayOf(7)
-        val xs = floatArrayOf(300f)
-        val ys = floatArrayOf(80f)
-        Controls3D.apply(g.input, ids, xs, ys, 1, g.viewW)
-        xs[0] = 360f
-        Controls3D.apply(g.input, ids, xs, ys, 1, g.viewW)
-        assertTrue(!g.input.jump, "the look area isn't the JUMP button")
+        // Up high or down low, anywhere on the right away from the buttons.
+        for (y in listOf(80f, 210f)) {
+            val yaw0 = g.camYaw
+            val xs = floatArrayOf(240f)
+            val ys = floatArrayOf(y)
+            Controls3D.apply(g.input, ids, xs, ys, 1, g.viewW)
+            xs[0] = 270f
+            Controls3D.apply(g.input, ids, xs, ys, 1, g.viewW)
+            assertTrue(!g.input.jump && !g.input.action, "the look area isn't a button")
+            assertTrue(g.input.looking)
+            g.update(dt)
+            assertTrue(abs(wrapAngle(g.camYaw - (yaw0 - 30f * Game3D.LOOK_SPEED))) < 0.01f, "dragged right, looked right")
+            Controls3D.apply(g.input, ids, xs, ys, 0, g.viewW)
+            assertTrue(!g.input.recenter, "a drag isn't a tap")
+        }
+        // The buttons still work, with room to spare round them.
+        Controls3D.apply(g.input, ids, floatArrayOf(g.viewW - 30f), floatArrayOf(170f), 1, g.viewW)
+        assertTrue(g.input.jump && !g.input.looking)
+        Controls3D.apply(g.input, ids, floatArrayOf(g.viewW - 120f), floatArrayOf(225f), 1, g.viewW)
+        assertTrue(g.input.action && !g.input.looking)
+        Controls3D.apply(g.input, ids, floatArrayOf(), floatArrayOf(), 0, g.viewW)
+    }
+
+    @Test fun tapTheRightSideToLookStraightAhead() {
+        val g = start(herc = false)
+        clearCritters(g)
+        g.bikes.clear()
+        place(g, 0f, 0f, 0.4f)
+        g.camYaw = 2f
+        val ids = intArrayOf(3)
+        Controls3D.apply(g.input, ids, floatArrayOf(300f), floatArrayOf(100f), 1, g.viewW)
         g.update(dt)
-        assertTrue(abs(wrapAngle(g.camYaw - (yaw0 - 60f * Game3D.LOOK_SPEED))) < 0.01f, "swiped right, looked right")
-        Controls3D.apply(g.input, ids, xs, ys, 0, g.viewW)
+        Controls3D.apply(g.input, ids, floatArrayOf(302f), floatArrayOf(101f), 0, g.viewW)
+        var biggestStep = 0f
+        repeat(60) {
+            val before = g.camYaw
+            g.update(dt)
+            biggestStep = maxOf(biggestStep, abs(wrapAngle(g.camYaw - before)))
+        }
+        assertTrue(abs(wrapAngle(g.camYaw - 0.4f)) < 0.05f, "camera came round behind: ${g.camYaw}")
+        assertTrue(biggestStep < 0.15f, "it swung round, it didn't snap ($biggestStep)")
+    }
+
+    /**
+     * The camera swings round smoothly as you run: it eases in and out instead of turning at
+     * one fixed speed, a slight push to one side makes a gentle curve and a bigger one a
+     * tighter curve, and it doesn't stop dead when you let go.
+     */
+    @Test fun theCameraSwingsRoundSmoothly() {
+        fun turnRate(angle: Float): Float {
+            val g = start(herc = true)
+            clearCritters(g)
+            g.bikes.clear()
+            g.level.solids.clear()
+            place(g, 0f, -10f, 0f)
+            g.input.stickX = sin(angle)
+            g.input.stickY = cos(angle)
+            var lastVel = 0f
+            var biggestJerk = 0f
+            repeat(90) {
+                g.update(dt)
+                biggestJerk = maxOf(biggestJerk, abs(g.camYawVel - lastVel))
+                lastVel = g.camYawVel
+            }
+            assertTrue(biggestJerk < 0.08f, "camera speed changes smoothly ($biggestJerk a frame)")
+            val rate = abs(g.camYawVel)
+            stop(g)
+            g.update(dt)
+            assertTrue(abs(g.camYawVel) > rate * 0.5f, "eases to a stop rather than stopping dead")
+            repeat(60) { g.update(dt) }
+            assertTrue(abs(g.camYawVel) < 0.05f, "and then does stop")
+            return rate
+        }
+        val gentle = turnRate(0.1f)
+        val tight = turnRate(0.45f)
+        assertTrue(gentle in 0.05f..0.4f, "a slight push curves gently: $gentle")
+        assertTrue(tight > gentle * 2f, "a bigger push curves more: $tight vs $gentle")
+    }
+
+    @Test fun theStickFollowsYourThumb() {
+        val g = start(herc = true)
+        val ids = intArrayOf(1)
+        Controls3D.apply(g.input, ids, floatArrayOf(60f), floatArrayOf(180f), 1, g.viewW)
+        assertEquals(0f, g.input.stickX)
+        Controls3D.apply(g.input, ids, floatArrayOf(160f), floatArrayOf(180f), 1, g.viewW)
+        assertTrue(g.input.stickX > 0.99f, "full right")
+        // Slid way past the edge; coming back a little way already steers left.
+        Controls3D.apply(g.input, ids, floatArrayOf(160f - Controls3D.STICK_R * 1.3f), floatArrayOf(180f), 1, g.viewW)
+        assertTrue(g.input.stickX < 0f, "turned back without a long reach: ${g.input.stickX}")
+        // A small push is a slow walk, not a sudden jolt.
+        Controls3D.apply(g.input, ids, floatArrayOf(), floatArrayOf(), 0, g.viewW)
+        Controls3D.apply(g.input, ids, floatArrayOf(60f), floatArrayOf(180f), 1, g.viewW)
+        Controls3D.apply(g.input, ids, floatArrayOf(60f), floatArrayOf(180f - Controls3D.STICK_R * 0.15f), 1, g.viewW)
+        assertTrue(g.input.stickY in 0.01f..0.1f, "a small push: ${g.input.stickY}")
+        Controls3D.apply(g.input, ids, floatArrayOf(), floatArrayOf(), 0, g.viewW)
+    }
+
+    /** Running past a tree or a lamp post doesn't make the camera zoom in and out. */
+    @Test fun theCameraDoesNotZoomPastTrees() {
+        val g = start(herc = true)
+        clearCritters(g)
+        g.bikes.clear()
+        g.level.solids.clear()
+        g.level.solids += Solid(-0.32f, 0.32f, -0.32f, 0.32f, 40f)
+        place(g, 0f, 1f, 0f)
+        run(g, 0.5f)
+        g.input.stickY = 1f
+        var nearest = 99f
+        var last = Game3D.CAM_DIST
+        var biggestStep = 0f
+        repeat(60) {
+            g.update(dt)
+            val dist = hypot(g.camX - g.lookX, g.camZ - g.lookZ)
+            nearest = minOf(nearest, dist)
+            biggestStep = maxOf(biggestStep, abs(dist - last))
+            last = dist
+        }
+        stop(g)
+        // It only eases in a little, so it never ends up inside the trunk.
+        assertTrue(nearest > Game3D.CAM_DIST - 1.2f, "camera stayed back: $nearest")
+        assertTrue(biggestStep < 0.1f, "and moved smoothly: $biggestStep a frame")
     }
 
     @Test fun theCameraDoesNotBobWhenYouJump() {

@@ -25,8 +25,12 @@ class Input3D {
     /** The virtual stick: x is right, y is forward (away from the camera), each -1..1. */
     @Volatile var stickX = 0f
     @Volatile var stickY = 0f
-    /** Sideways swipe (virtual pixels) across the look area since the game last read it. */
+    /** Sideways drag (virtual pixels) across the look area since the game last read it. */
     @Volatile var lookDelta = 0f
+    /** A finger is on the look area. */
+    @Volatile var looking = false
+    /** A quick tap on the look area: swing the camera round behind the dog. */
+    @Volatile var recenter = false
     @Volatile var keyLeft = false
     @Volatile var keyRight = false
     @Volatile var keyUp = false
@@ -152,6 +156,15 @@ class Game3D(
     val popups = ArrayList<Popup3>()
 
     var camYaw = 0f
+    /** How fast the camera is swinging round (radians a second); it eases in and out. */
+    var camYawVel = 0f
+        private set
+    /** After you look around yourself, the camera waits a moment before following again. */
+    private var lookHold = 0f
+    /** Counts down while the camera swings round behind the dog after a tap. */
+    private var recenterT = 0f
+    /** How far behind the dog the camera sits right now (closer when a house is in the way). */
+    private var camDist = CAM_DIST
     /** The stick as last read: x is right, y is forward (away from the camera). */
     private var stickNowX = 0f
     private var stickNowY = 0f
@@ -163,6 +176,15 @@ class Game3D(
     var camX = 0f
     var camY = 3f
     var camZ = 0f
+    /**
+     * The point the camera looks at: it trails the dog a little, so the camera glides after
+     * it instead of being bolted on. The camera always looks along [camYaw] at this point,
+     * so the stick and the screen agree even while it moves.
+     */
+    var lookX = 0f
+        private set
+    var lookZ = 0f
+        private set
 
     var score = 0
     private var levelStartScore = 0
@@ -273,6 +295,12 @@ class Game3D(
         toyCarried = false
         toyHome = false
         camYaw = dog.yaw
+        camYawVel = 0f
+        lookHold = 0f
+        recenterT = 0f
+        camDist = CAM_DIST
+        lookX = dog.x
+        lookZ = dog.z
         camX = dog.x - sin(camYaw) * CAM_DIST
         camZ = dog.z - cos(camYaw) * CAM_DIST
         camY = CAM_HEIGHT
@@ -312,9 +340,11 @@ class Game3D(
         input.tap = false
         val backP = input.back
         input.back = false
-        // Read the look swipe every frame, so swipes on menus or while paused don't pile up.
+        // Read the look drag every frame, so drags on menus or while paused don't pile up.
         val look = input.lookDelta
         input.lookDelta = 0f
+        val recenterP = input.recenter
+        input.recenter = false
         val jumpP = input.jump && !prevJump
         val actionP = input.action && !prevAction
         val pauseP = input.pause && !prevPause
@@ -355,7 +385,7 @@ class Game3D(
                     if (level.def.look == Look.BEACH) showTip("Beach umbrellas are bouncy!")
                 }
             }
-            State.PLAYING -> play(dt, jumpP, actionP, look)
+            State.PLAYING -> play(dt, jumpP, actionP, look, recenterP)
             State.HOME -> {
                 dog.vx = 0f; dog.vz = 0f
                 dog.yaw = turnToward(dog.yaw, 0f, dt * 6f)
@@ -441,16 +471,24 @@ class Game3D(
 
     // ------------------------------------------------------------------ Playing
 
-    private fun play(dt: Float, jumpP: Boolean, actionP: Boolean, look: Float) {
+    private fun play(dt: Float, jumpP: Boolean, actionP: Boolean, look: Float, recenterP: Boolean) {
         levelTime += dt
         if (tipT > 0f) { tipT -= dt; if (tipT <= 0f) tip = null }
         if (levelIndex == 0 && stateTime > 4.5f) {
             showTip(if (dog.herc) "Tap DASH to pounce!" else "Tap BARK to freeze critters in their tracks!")
         }
-        if (levelIndex == 0 && stateTime > 10f) showTip("Swipe across the top right of the screen to look around.")
+        if (levelIndex == 0 && stateTime > 10f) showTip(LOOK_TIP)
         if (levelIndex == 0 && stateTime > 16f) showTip("${buddy.name} came along too, and helps you chase!")
-        // Swiping across the top right of the screen turns the camera.
-        camYaw = wrapAngle(camYaw - look * LOOK_SPEED)
+        // Dragging on the right of the screen turns the camera, and it holds still for a
+        // moment afterwards rather than fight your thumb. A tap there swings it round
+        // behind the dog.
+        if (look != 0f) {
+            camYaw = wrapAngle(camYaw - look * LOOK_SPEED)
+            camYawVel = 0f
+            recenterT = 0f
+        }
+        if (input.looking || look != 0f) lookHold = LOOK_HOLD else lookHold -= dt
+        if (recenterP) recenterT = RECENTER_TIME
         moveDog(dt, jumpP, actionP)
         if (buddyAlong) updateBuddy(dt) else { buddy.x = 999f; buddy.z = 999f }
         followCamera(dt)
@@ -723,34 +761,70 @@ class Game3D(
         }
     }
 
-    /** Swings the camera round behind the dog as it runs (but not when running toward the camera). */
+    /**
+     * Swings the camera round behind the dog as it runs, gently: the further the dog heads
+     * off to one side, the faster the camera follows, easing in and out rather than jerking.
+     * It only follows while you push more or less forward, so running sideways or back toward
+     * the camera leaves it where it is and the stick keeps matching the screen.
+     */
     private fun followCamera(dt: Float) {
         val d = dog
-        // Ease round behind the dog only while you run more or less straight ahead. Steering
-        // sideways or back toward the camera leaves the camera where it is, so the stick
-        // always matches what's on the screen.
-        val ahead = stickNowY > 0.3f && abs(stickNowX) < stickNowY * 0.6f
-        if (state == State.PLAYING && d.speed > 1f && ahead) {
-            camYaw = turnToward(camYaw, d.yaw, CAM_TURN * dt * min(1f, d.speed / d.maxSpeed))
+        if (state == State.PLAYING && recenterT > 0f) {
+            recenterT -= dt
+            // A tap on the look area: come round behind the dog, quickly but smoothly, and
+            // settle there without overshooting (a critically damped spring).
+            val off = wrapAngle(d.yaw - camYaw)
+            camYawVel += (RECENTER_K * RECENTER_K * off - 2f * RECENTER_K * camYawVel) * dt
+            if (abs(off) < 0.01f && abs(camYawVel) < 0.05f) recenterT = 0f
+        } else {
+            var rate = 0f
+            if (state == State.PLAYING && lookHold <= 0f && d.speed > 0.5f) {
+                val sl = hypot(stickNowX, stickNowY)
+                val forward = if (sl > 0.05f) stickNowY / sl else 0f
+                val w = smooth01((forward - 0.5f) / 0.45f) * smooth01(sl / 0.5f)
+                val off = wrapAngle(atan2(d.vx, d.vz) - camYaw)
+                rate = off * CAM_FOLLOW * w * min(1f, d.speed / d.maxSpeed)
+            }
+            camYawVel += (rate - camYawVel) * (1f - exp(-dt * CAM_EASE))
         }
+        camYaw = wrapAngle(camYaw + camYawVel * dt)
+
+        // Glide after the dog (but jump straight there if it was moved far, like a new level).
+        if (hypot(d.x - lookX, d.z - lookZ) > 4f) { lookX = d.x; lookZ = d.z }
+        val kl = 1f - exp(-dt * 10f)
+        lookX += (d.x - lookX) * kl
+        lookZ += (d.z - lookZ) * kl
         // Follow the ground the dog stands on, not every jump.
         if (d.onGround) camFloor += (d.y - camFloor) * min(1f, dt * 5f)
+        // Pull in quickly when a house gets in the way (gently for a tree trunk), and drift
+        // back out slowly.
+        val room = cameraRoom(lookX, lookZ, camYaw)
+        val rate = when {
+            room >= camDist -> 2.5f
+            roomThin -> 5f
+            else -> 12f
+        }
+        camDist += (room - camDist) * (1f - exp(-dt * rate))
+        camX = lookX - sin(camYaw) * camDist
+        camZ = lookZ - cos(camYaw) * camDist
         val k = 1f - exp(-dt * 7f)
-        val dist = cameraRoom(d.x, d.z, camYaw)
-        val tx = d.x - sin(camYaw) * dist
-        val tz = d.z - cos(camYaw) * dist
-        val ty = camFloor + CAM_HEIGHT + (d.y - camFloor) * 0.12f
-        camX += (tx - camX) * k
-        camZ += (tz - camZ) * k
-        camY += (ty - camY) * k
+        camY += (camFloor + CAM_HEIGHT + (d.y - camFloor) * 0.12f - camY) * k
         lookY += (camFloor + 0.8f + (d.y - camFloor) * 0.35f - lookY) * k
     }
 
+    /** Whether the last [cameraRoom] was cut short by something thin, like a tree trunk. */
+    private var roomThin = false
+
+    private fun smooth01(t: Float) = t.coerceIn(0f, 1f).let { it * it * (3 - 2 * it) }
+
     /**
      * How far back the camera can sit behind ([x], [z]) looking along [yaw] before it would
-     * end up inside a house or a tree: it pulls in closer rather than show the inside of a wall.
+     * end up inside a house: it pulls in closer rather than show the inside of a wall. Thin
+     * things like tree trunks and lamp posts only count right where the camera is, so running
+     * past a tree doesn't zoom the camera in and out.
      */
     private fun cameraRoom(x: Float, z: Float, yaw: Float): Float {
+        roomThin = false
         val sx = -sin(yaw)
         val sz = -cos(yaw)
         var d = 0.8f
@@ -759,7 +833,10 @@ class Game3D(
             val pz = z + sz * d
             for (s in level.solids) {
                 if (s.top < 2.5f) continue
+                val thin = s.x1 - s.x0 < 1.2f && s.z1 - s.z0 < 1.2f
+                if (thin && d < CAM_DIST - 0.9f) continue
                 if (px > s.x0 - 0.35f && px < s.x1 + 0.35f && pz > s.z0 - 0.35f && pz < s.z1 + 0.35f) {
+                    roomThin = thin
                     return (d - 0.4f).coerceAtLeast(1.2f)
                 }
             }
@@ -1028,11 +1105,20 @@ class Game3D(
         const val DASH_SPEED = 15f
         const val BOUNCE_V = 13f
         const val BIKE_SPEED = 6f
-        const val CAM_DIST = 5.6f
-        const val CAM_HEIGHT = 2.7f
-        const val CAM_TURN = 1.3f
-        /** Radians the camera turns per pixel of swipe. */
+        const val CAM_DIST = 6f
+        const val CAM_HEIGHT = 3f
+        /** How quickly the camera swings round behind the dog: radians a second per radian off. */
+        const val CAM_FOLLOW = 1.8f
+        /** How quickly the camera's swing eases in and out. */
+        const val CAM_EASE = 5f
+        /** How stiffly the camera springs round behind the dog when you tap the look area. */
+        const val RECENTER_K = 7f
+        const val RECENTER_TIME = 1.2f
+        /** Seconds the camera holds still after you look around yourself. */
+        const val LOOK_HOLD = 0.7f
+        /** Radians the camera turns per pixel of drag. */
         const val LOOK_SPEED = 0.012f
+        const val LOOK_TIP = "Drag on the right of the screen to look around. Tap there to look straight ahead."
         const val SPRINKLER_REACH = 4.5f
         const val SPRINKLER_SPIN = 1.4f
         const val TEAM_BONUS = 150

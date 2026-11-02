@@ -83,13 +83,12 @@ object Models {
         f.fogNear = if (look.night) 12f else 20f
         f.fogFar = if (look.night) 38f else 52f
 
-        val d = g.dog
         if (g.state == Game3D.State.TITLE) {
             val cx = g.level.startX
             val cz = g.level.startZ - 2f
             f.setCamera(cx + sin(g.camYaw) * 5.5f, 2.2f, cz + cos(g.camYaw) * 5.5f, cx, 0.7f, cz, aspect)
         } else {
-            f.setCamera(g.camX, g.camY, g.camZ, d.x, g.lookY, d.z, aspect)
+            f.setCamera(g.camX, g.camY, g.camZ, g.lookX, g.lookY, g.lookZ, aspect)
         }
 
         // The ground and all the scenery that never moves, each baked into a single mesh.

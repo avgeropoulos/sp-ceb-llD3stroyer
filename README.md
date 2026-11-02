@@ -115,9 +115,11 @@ out on five walks, and they chase down everything they see.
 * **Hercules** (black curls, white beard, red collar) is the quick one, and the only dog fast
   enough to catch a bunny. Hercules barks a deep, gruff **"GAV!"**
 * **Apollo** (tan curls, silvery-grey head) jumps high enough to reach cats on fences and
-  raccoons on bins. Apollo barks a high, bright **"ARP!"** (The barks are synthesized the way a
-  speech synthesizer makes vowels: a gravelly voice at about 135 Hz for Hercules and a yappy one
-  at about 565 Hz for Apollo, shaped into "gahv" and "arp". See `BarkSynth.kt`.)
+  raccoons on bins. Apollo barks a high, bright **"ARP!"** (The barks are synthesized like real
+  ones: a sudden puff of air and a rough, noisy voice that jumps up in pitch and falls away, with
+  a harsh edge and a little echo. Each is shaped into its word the way a speech synthesizer makes
+  vowels: a gruff "gav" at about 155 Hz, with a thump from the chest, for Hercules, and a yappy
+  "arp" at about 650 Hz for Apollo. See `BarkSynth.kt`.)
 * When you play as one of them, each dog has its own music: a fast, pumped-up tune for
   Hercules and a calm stroll for Apollo.
 * Tap **HERC** or **APOLLO** and that dog barks and runs after the nearest critter. Pull too hard
@@ -213,13 +215,18 @@ levels with the camera following behind the dog.
 * Stars for how fast you get home. Three save slots on the title screen, each keeping both
   dogs' progress; saved at the start of every level, and with **SAVE & QUIT** and **SWITCH DOG**
   (save this dog's game and carry on as the other) on the pause screen. Back pauses the game.
-* The dog always runs the way you push the stick on the screen. The camera only eases round
-  behind the dog while you run more or less straight ahead; steering sideways or back toward
-  the camera leaves it still. Swipe across the top right of the screen to look around.
+* The dog always runs the way you push the stick on the screen. The camera glides after the
+  dog and eases round behind it as you run forward: a slight push to one side makes a gentle
+  curve, a bigger one a tighter curve. Steering sideways or back toward the camera leaves it
+  still. Running past trees and lamp posts doesn't make it zoom in and out.
+* Drag anywhere on the right of the screen (away from the buttons) to look around; the camera
+  holds still for a moment afterwards. Tap there to swing the camera round behind the dog.
 
 Controls: put your thumb anywhere on the left half of the screen and drag to run (the stick
-appears where your thumb lands). **JUMP** (hold it to jump higher) and **BARK**/**DASH** are on
-the right. Keyboard: arrows or WASD, Space to jump, K, Z or Shift for BARK/DASH.
+appears where your thumb lands, and slides along if your thumb goes past its edge, so turning
+back is never a long reach). A small push walks, a full push runs. **JUMP** (hold it to jump
+higher) and **BARK**/**DASH** are at the bottom right. Keyboard: arrows or WASD, Space to jump,
+K, Z or Shift for BARK/DASH.
 
 ## Installing on your phone
 

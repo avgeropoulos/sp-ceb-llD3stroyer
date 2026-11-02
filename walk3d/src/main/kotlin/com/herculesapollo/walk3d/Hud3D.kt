@@ -5,6 +5,7 @@ import com.herculesapollo.walk.PauseMenu
 import com.herculesapollo.walk.SaveSlots
 import com.roccoquest.game.Gfx
 import com.roccoquest.game.shadowText
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
@@ -13,7 +14,8 @@ import kotlin.math.sin
 
 /**
  * On-screen controls: a floating thumbstick on the left half of the screen (it centers
- * wherever your thumb lands), and JUMP plus the dog's special move on the right.
+ * wherever your thumb lands, and follows your thumb if it slides too far), JUMP plus the
+ * dog's special move at the bottom right, and the rest of the right side for looking around.
  */
 object Controls3D {
     class Button(val label: String, var cx: Float, var cy: Float, val r: Float)
@@ -22,7 +24,9 @@ object Controls3D {
     val action = Button("ACTION", 0f, 214f, 21f)
     val pause = Button("II", 0f, 14f, 10f)
     val music = Button("M", 0f, 14f, 10f)
-    const val STICK_R = 30f
+    const val STICK_R = 36f
+    /** How far you push before the dog moves, as a fraction of [STICK_R]. */
+    const val DEADZONE = 0.1f
 
     /** Where the stick is drawn when nobody's touching it. */
     var restX = 64f
@@ -32,11 +36,20 @@ object Controls3D {
     var knobX = restX
     var knobY = restY
     private var stickId = -1
-    /** A finger swiping across the look area (the top right, above the buttons) turns the camera. */
+    /** A finger dragging across the look area (the right half, away from the buttons) turns the camera. */
     private var lookId = -1
     private var lookLastX = 0f
-    /** Touches on the right half higher up than this are for looking around, not the buttons. */
+    private var lookLastY = 0f
+    /** How far the look finger has moved since it touched down: barely at all makes it a tap. */
+    private var lookMoved = 0f
+    /** The buttons take touches on the right below this height, from just left of BARK/DASH. */
     const val LOOK_BOTTOM = 158f
+
+    /** Whether a touch at ([x], [y]) is for JUMP or the special move rather than looking. */
+    fun onButtons(x: Float, y: Float, viewW: Float): Boolean {
+        layout(viewW)
+        return y >= LOOK_BOTTOM && x >= action.cx - action.r * 1.6f
+    }
 
     fun layout(viewW: Float) {
         jump.cx = viewW - 40f
@@ -60,12 +73,22 @@ object Controls3D {
             if (ids[i] == stickId) {
                 stickFound = true
                 knobX = x; knobY = y
+                // Slide too far and the stick comes along behind your thumb, so turning back
+                // the other way is never a long reach.
+                val l = hypot(knobX - stickX, knobY - stickY)
+                if (l > STICK_R) {
+                    val k = (l - STICK_R) / l
+                    stickX += (knobX - stickX) * k
+                    stickY += (knobY - stickY) * k
+                }
                 continue
             }
             if (ids[i] == lookId) {
                 lookFound = true
                 input.lookDelta += x - lookLastX
+                lookMoved += abs(x - lookLastX) + abs(y - lookLastY)
                 lookLastX = x
+                lookLastY = y
                 continue
             }
             if (hypot(x - pause.cx, y - pause.cy) < pause.r * 1.3f) { p = true; continue }
@@ -77,30 +100,38 @@ object Controls3D {
                 stickX = x; stickY = y; knobX = x; knobY = y
                 continue
             }
-            if (x >= viewW / 2 && y < LOOK_BOTTOM && lookId == -1) {
+            val buttons = onButtons(x, y, viewW)
+            if (x >= viewW / 2 && !buttons && lookId == -1) {
                 lookId = ids[i]
                 lookFound = true
                 lookLastX = x
+                lookLastY = y
+                lookMoved = 0f
                 continue
             }
-            if (x >= viewW / 2 && y >= LOOK_BOTTOM) {
+            if (buttons) {
                 val dj = hypot(x - jump.cx, y - jump.cy) / jump.r
                 val da = hypot(x - action.cx, y - action.cy) / action.r
                 if (dj <= da) j = true else a = true
             }
         }
-        if (!lookFound) lookId = -1
+        if (!lookFound && lookId != -1) {
+            // Let go without dragging: a tap, which swings the camera round behind the dog.
+            if (lookMoved < 8f) input.recenter = true
+            lookId = -1
+        }
+        input.looking = lookId != -1
         if (!stickFound) {
             stickId = -1
             stickX = restX; stickY = restY; knobX = restX; knobY = restY
         }
-        var dx = (knobX - stickX) / STICK_R
-        var dy = (knobY - stickY) / STICK_R
+        val dx = (knobX - stickX) / STICK_R
+        val dy = (knobY - stickY) / STICK_R
         val l = hypot(dx, dy)
-        if (l > 1f) { dx /= l; dy /= l }
-        if (l < 0.15f) { dx = 0f; dy = 0f }
-        input.stickX = dx
-        input.stickY = -dy
+        // Past the dead zone, the push goes smoothly from a slow walk up to a full run.
+        val push = ((min(l, 1f) - DEADZONE) / (1f - DEADZONE)).coerceAtLeast(0f)
+        input.stickX = if (l > 0f) dx / l * push else 0f
+        input.stickY = if (l > 0f) -dy / l * push else 0f
         input.jump = j
         input.action = a
         input.pause = p
@@ -116,7 +147,7 @@ object Controls3D {
         var ky = knobY - stickY
         val kl = hypot(kx, ky)
         if (kl > STICK_R) { kx *= STICK_R / kl; ky *= STICK_R / kl }
-        gfx.oval(stickX + kx - 13, stickY + ky - 13, 26f, 26f, 0x99FFFFFF.toInt())
+        gfx.oval(stickX + kx - 15, stickY + ky - 15, 30f, 30f, 0x99FFFFFF.toInt())
         button(gfx, jump, input.jump, 0)
         button(gfx, action, input.action, if (ready) ring else 0xFF666666.toInt())
         gfx.text("JUMP", jump.cx, jump.cy + 3, 8f, c, 1)
