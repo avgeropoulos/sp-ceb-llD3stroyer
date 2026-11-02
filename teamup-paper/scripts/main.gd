@@ -1410,10 +1410,15 @@ func save_game(in_level := true) -> bool:
 	return Saves.write(slot, save_data(in_level))
 
 
+## A save value that should be a Dictionary (a damaged file can have anything there).
+static func _dict(v) -> Dictionary:
+	return v if v is Dictionary else {}
+
+
 func _apply_save(d: Dictionary) -> void:
 	hearts = clampi(int(d.get("hearts", MAX_HEARTS)), 1, MAX_HEARTS)
 	coins = int(d.get("coins", 0))
-	var o: Dictionary = d.get("ores", {})
+	var o: Dictionary = _dict(d.get("ores", {}))
 	for k in ores:
 		ores[k] = int(o.get(k, 0))
 	beaten = int(d.get("beaten", 0))
@@ -1424,11 +1429,11 @@ func _apply_save(d: Dictionary) -> void:
 	super_charge = clampf(float(d.get("super", 0)), 0, 1)
 	cleared = int(d.get("cleared", 0))
 	cleared_w = {}
-	var cw: Dictionary = d.get("cleared_w", {"meadow": cleared} if cleared > 0 else {})
+	var cw: Dictionary = _dict(d.get("cleared_w", {"meadow": cleared} if cleared > 0 else {}))
 	for k in cw:
 		cleared_w[k] = int(cw[k])
-	home_saved = d.get("home", {})
-	var mx: Dictionary = d.get("mon_xp", {})
+	home_saved = _dict(d.get("home", {}))
+	var mx: Dictionary = _dict(d.get("mon_xp", {}))
 	for k in mon_xp:
 		mon_xp[k] = int(mx.get(k, 0))
 	scenes_seen = []
@@ -1457,7 +1462,8 @@ func _apply_save(d: Dictionary) -> void:
 	if not d.get("in_level", false):
 		return
 	for c in d.get("cells", []):
-		level.set_cell(int(c[0]), int(c[1]), int(c[2]), int(c[3]))
+		if c is Array and c.size() == 4:
+			level.set_cell(int(c[0]), int(c[1]), int(c[2]), int(c[3]))
 	coins_taken = []
 	for i in d.get("coins_taken", []):
 		coins_taken.append(int(i))

@@ -17,7 +17,14 @@ static func exists(slot: int) -> bool:
 static func read(slot: int) -> Dictionary:
 	if not exists(slot):
 		return {}
-	var f := FileAccess.open(path(slot), FileAccess.READ)
+	var d := _parse(path(slot))
+	if d.is_empty() and FileAccess.file_exists(path(slot) + ".prev"):
+		d = _parse(path(slot) + ".prev")   # the file got damaged: use the copy from the save before
+	return d
+
+
+static func _parse(p: String) -> Dictionary:
+	var f := FileAccess.open(p, FileAccess.READ)
 	if f == null:
 		return {}
 	var d = JSON.parse_string(f.get_as_text())
@@ -32,6 +39,8 @@ static func write(slot: int, d: Dictionary) -> bool:
 		return false
 	f.store_string(JSON.stringify(d))
 	f.close()
+	if exists(slot) and not _parse(path(slot)).is_empty():   # keep the last good file, just in case
+		DirAccess.copy_absolute(ProjectSettings.globalize_path(path(slot)), ProjectSettings.globalize_path(path(slot) + ".prev"))
 	return DirAccess.rename_absolute(ProjectSettings.globalize_path(tmp), ProjectSettings.globalize_path(path(slot))) == OK
 
 
