@@ -1312,6 +1312,13 @@ nothing (HUD buttons are still forwarded; a mouse click never takes the pointer 
   `dayStart`/`phase` and announced with `rageTier`): Day 2 lasts 10 s and kills add 1 s; Day 3 fills
   1.5× faster and kills heal 10; the Kolonos lasts 12 s at ×2.5 damage and ×0.35 harm, arrows do no
   harm, and the war cry knocks down every foe within 4 m (combat.js).
+* **Gifts of the gods** (game/boons.js): every `respite` the player offers three gifts not taken
+  and not already granted (`offerBoons`, seeded by ctx.rng; event `boonOffer`); the HUD shows
+  three cards (`#hud .hud-boon[data-hit]`, forwarded taps; keys 1–3) that push `{ type:'boon',
+  index }`. waves.js holds the respite above `SPAWN.respiteLead` while an offer stands and after
+  45 s picks the first. `applyBoons(tierRow, taken)` folds the gifts into `player.ragePerks`
+  (reach, ×damage, ×harm, ×speed, heal on unleash, combo and kill extensions, spear on kill, the
+  hurt gain, arrow-proofing, the shockwave and the Gorgon's stun).
 * With a spear in hand, **THROW** appears left of the sword pad and works as in the touch layout.
 * The Agoge panel sits between the two clusters (`#training.is-buttons`), and the Agoge uses the
   lock step and each step's `buttons` text (falling back to `touch`).

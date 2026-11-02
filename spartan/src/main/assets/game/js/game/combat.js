@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/BufferGeometryUtils.js';
 import { WEAPONS, slashProfile, sectorHit, segmentCapsule, computeDamage, ballisticPitch } from './rules.js';
 import { RAGE } from './rage.js';
+import { GAZE } from './boons.js';
 import { clamp, facingToYaw, angleDiff, yawTo } from '../core/math.js';
 import { createArrowStreaks, STREAK_STRIDE } from '../gfx/fx/streaks.js';
 
@@ -460,7 +461,9 @@ export function createCombat(ctx) {
     const wall = effect === 'stagger_all';
     // Spartan rage (game/rage.js): double damage, every cut catches each foe in its arc, every hit staggers.
     const raging = !!(pl && pl.raging);
+    const perks = raging ? pl.ragePerks || null : null;
     if (raging) stagger = Math.max(stagger, RAGE.stagger);
+    if (perks && perks.reachBonus > 0) reach += perks.reachBonus;
 
     let targets;
     if (effect === 'sweep') {
@@ -503,7 +506,7 @@ export function createCombat(ctx) {
       point.x -= dx * r * 0.9;
       point.z -= dz * r * 0.9;
       let damage = computeDamage({ base, power, comboMul, crit });
-      if (raging) damage *= (pl.ragePerks && pl.ragePerks.damageMul) || RAGE.damageMul;
+      if (raging) damage *= ((perks && perks.damageMul) || RAGE.damageMul) * ((perks && perks.critMul) || 1);
       let hitIgnore = ignoreGuard;
       let hitKb = knockback;
       let hitStagger = stagger;
@@ -1319,6 +1322,19 @@ export function createCombat(ctx) {
 
   // Spartan rage at the last stand (game/rage.js tier 4): the war cry hurls back every foe within
   // shockRadius, no damage, a knockdown and a long stagger.
+  // Gorgon's Gaze (game/boons.js): unleashing stuns every foe in front within GAZE.range.
+  ev.on('rage', (e) => {
+    const pl = ctx.player;
+    if (!e || !e.on || !e.gaze || !pl || !pl.pos) return;
+    const list = hostilesInSector(pl.pos, pl.yaw || 0, GAZE.range, GAZE.halfAngle).slice();
+    for (const target of list) {
+      if (!target.alive) continue;
+      const hit = makeHit('parry', 0, 0, 0, 0, true, 'player', chestOf(target, new THREE.Vector3()));
+      hit.ignoreGuard = true;
+      hit.stagger = GAZE.stagger;
+      deliver(target, hit, null, false);
+    }
+  });
   ev.on('rage', (e) => {
     const pl = ctx.player;
     if (!e || !e.on || !e.shockwave || !pl || !pl.pos) return;

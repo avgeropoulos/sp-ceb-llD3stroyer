@@ -156,6 +156,14 @@ a foe and turns with him, and your strikes and spears go at him.
   | Day 2 | Fury of Lakedaimon | 10 s, and every kill adds a second |
   | Day 3 | Wrath of the Three Hundred | fills 1.5× faster, +10 health a kill |
   | The Kolonos | The last stand | 12 s, 2.5× damage, a third of the harm, +12 a kill, arrows cannot touch you, and the war cry hurls back every foe within 4 m |
+* **Gifts of the gods.** At every respite you are offered three gifts for your rage; tap one (or
+  press 1, 2 or 3) and keep it for the battle. The respite waits for your choice. There are fourteen:
+  Blood of Herakles (raging kills heal more), Bolt of Zeus (rage lasts longer), Ares' Reach,
+  Bronze Skin, Wrath of Achilles (harder blows), Shield of Apollo (arrow-proof), Alalai! (the war
+  cry hurls foes back), Sandals of Hermes (faster), Fire of Sparta (the meter fills faster), Second
+  Wind (unleashing heals), Laconic Fury (combos lengthen the rage), Dory of Leonidas (raging kills
+  give back spears), Vengeance (blows taken fill the meter) and the Gorgon's Gaze (unleashing stuns
+  every foe before you).
 * **Spears.** You start each day with seven (one in hand) and every respite tops you up to five.
   On the third day the spears break, as Herodotus tells: the fight over Leonidas' body and the last
   stand are fought with the sword.

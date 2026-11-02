@@ -24,6 +24,7 @@ import { ComboTracker, COMBO_WINDOWS } from './combos.js';
 import { clamp, lerp, smoothstep, angleDiff, wrapAngle, yawTo, TAU } from '../core/math.js';
 import { LOCK, YawSpring, isLockable, inActors, acquire, nextInDirection } from './lockon.js';
 import { RAGE, RAGE_TIERS, rageTier, gainRage, canUnleash } from './rage.js';
+import { applyBoons, offerBoons, boonById } from './boons.js';
 
 const EYE = 1.66;
 const BUFFER_LIFE = 0.4;
@@ -120,7 +121,10 @@ export function createPlayer(ctx) {
   let lockTarget = null;
   let rageLeft = 0; // s of rage left (player time); > 0 while raging
   let rageDur = RAGE.duration; // s this rage was unleashed for (the meter drains over it)
-  let perks = RAGE_TIERS[0];
+  let tierRow = RAGE_TIERS[0];
+  const boons = [];
+  let boonOffer = null;
+  let perks = applyBoons(tierRow, boons);
   let lockMode = 'off';
   let lockDesired = 0; // the spring's goal
   let lockBearing = 0; // the target's low-passed bearing
@@ -172,9 +176,17 @@ export function createPlayer(ctx) {
     get raging() {
       return rageLeft > 0;
     },
-    /** The rage tier's row (game/rage.js RAGE_TIERS): it grows as the campaign nears its end. */
+    /** The rage's perks in effect: the campaign tier (game/rage.js) with the gifts taken (game/boons.js). */
     get ragePerks() {
       return perks;
+    },
+    /** The gifts of the gods taken this battle (ids, in order). */
+    get boons() {
+      return boons;
+    },
+    /** The gifts on offer this respite (ids), or null. */
+    get boonOffer() {
+      return boonOffer;
     },
     focusTarget: null,
     attackYaw: 0,
@@ -209,6 +221,7 @@ export function createPlayer(ctx) {
     setLock,
     tapLock,
     unleashRage,
+    pickBoon,
   };
   strikeAttack.origin = player.pos;
 
@@ -456,7 +469,8 @@ export function createPlayer(ctx) {
     if (!player.alive || cameraOverridden() || !canUnleash(player.rage, rageLeft > 0)) return false;
     rageLeft = rageDur = perks.duration;
     player.rage = 1;
-    ev.emit('rage', { on: true, duration: rageDur, tier: perks.tier, name: perks.name, shockwave: perks.shockwave });
+    if (perks.unleashHeal > 0) heal(perks.unleashHeal);
+    ev.emit('rage', { on: true, duration: rageDur, tier: perks.tier, name: perks.name, shockwave: perks.shockwave, gaze: perks.gaze });
     return true;
   }
 
@@ -473,10 +487,26 @@ export function createPlayer(ctx) {
     else player.rage = rageLeft / rageDur;
   }
 
+  /**
+   * Takes a gift on offer (its id, or its index in the offer): it joins the perks for the rest of
+   * the battle (boon { id, name, desc }). Anything not on offer is ignored.
+   */
+  function pickBoon(which) {
+    if (!boonOffer) return false;
+    const id = typeof which === 'number' ? boonOffer[which] : which;
+    if (!id || !boonOffer.includes(id)) return false;
+    boonOffer = null;
+    boons.push(id);
+    perks = applyBoons(tierRow, boons);
+    const b = boonById(id);
+    ev.emit('boon', { id, name: b.name, desc: b.desc });
+    return true;
+  }
+
   function fillRage(kind) {
     if (rageLeft > 0 || !player.alive) return;
     const was = player.rage;
-    player.rage = gainRage(was, kind, perks.gainMul);
+    player.rage = gainRage(was, kind, perks.gainMul * (kind === 'hurt' ? perks.hurtGainMul : 1));
     if (was < 1 && player.rage >= 1) ev.emit('rageReady', {});
   }
 
@@ -881,6 +911,10 @@ export function createPlayer(ctx) {
         unleashRage();
         continue;
       }
+      if (a.type === 'boon') {
+        pickBoon(a.id !== undefined ? a.id : a.index);
+        continue;
+      }
       if (!ATTACK_ACTIONS[a.type] || !player.alive || overridden) continue;
       if (canStartNow() && startAttack(a)) continue;
       if (canStartNow()) continue; // dropped (no spear, bash cooldown)
@@ -1004,6 +1038,7 @@ export function createPlayer(ctx) {
     if (player.state === 'attack' || player.state === 'throw') mul = 0.45;
     else if (player.state === 'stagger') mul = 0.3;
     if (player.shieldRaise >= 0.7) mul *= 0.7;
+    if (rageLeft > 0) mul *= perks.moveMul;
     const sy = Math.sin(player.yaw);
     const cy = Math.cos(player.yaw);
     const fwd = mz * (mz > 0 ? SPEED_FWD : SPEED_BACK) * mul;
@@ -1088,7 +1123,10 @@ export function createPlayer(ctx) {
     player.chain = 1;
     player.rage = 0;
     rageLeft = 0;
-    perks = RAGE_TIERS[0];
+    tierRow = RAGE_TIERS[0];
+    boons.length = 0;
+    boonOffer = null;
+    perks = applyBoons(tierRow, boons);
     lastHitAt = -Infinity;
     player.combos.reset();
     player.focusTarget = null;
@@ -1366,13 +1404,24 @@ export function createPlayer(ctx) {
   });
 
   ev.on('waveCleared', resetChain);
-  ev.on('combo', () => fillRage('combo'));
+  ev.on('combo', () => {
+    if (rageLeft > 0 && perks.comboExtend > 0) rageLeft = Math.min(rageDur, rageLeft + perks.comboExtend);
+    fillRage('combo');
+  });
+  // Every respite offers gifts of the gods (game/boons.js); the respite waits for the pick (waves.js).
+  ev.on('respite', () => {
+    if (mode !== 'battle' || !player.alive) return;
+    const ids = offerBoons(boons, perks, ctx.rng && ctx.rng.next ? ctx.rng.next : Math.random);
+    boonOffer = ids.length > 0 ? ids : null;
+    if (boonOffer) ev.emit('boonOffer', { ids: boonOffer.slice() });
+  });
   // The rage grows with the campaign: a new day or Day 3's phases may raise its tier (rageTier).
   const raiseTier = (e) => {
     if (!e || !Number.isFinite(e.day)) return;
     const next = rageTier(e.day, e.phase);
-    if (next.tier <= perks.tier) return;
-    perks = next;
+    if (next.tier <= tierRow.tier) return;
+    tierRow = next;
+    perks = applyBoons(tierRow, boons);
     ev.emit('rageTier', { tier: next.tier, name: next.name, perk: next.perk });
   };
   ev.on('dayStart', raiseTier);
@@ -1384,6 +1433,10 @@ export function createPlayer(ctx) {
     if (rageLeft > 0) {
       heal(perks.healPerKill);
       if (perks.killExtend > 0) rageLeft = Math.min(rageDur, rageLeft + perks.killExtend);
+      if (perks.spearOnKill && player.spearsLeft < MAX_SPARES + 1) {
+        if (!player.hasSpearInHand && player.weapon === 'spear') player.hasSpearInHand = true;
+        else player.spares++;
+      }
     }
     fillRage('kill');
     player.kills++;

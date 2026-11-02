@@ -472,6 +472,7 @@ export function createMenus(ctx) {
                 <li><b>Right thumb</b>: the sword pad. Each arrow cuts the way it points: ← → slash, ↓ chops overhead, ↑ cuts upward, the corners cut diagonally. <b>Stab</b> is in the middle.</li>
                 <li><b>Change foe</b>: tap a foe to face him, or swipe sideways on the open ground, or tap <b>‹ FOE</b> / <b>FOE ›</b> above the sword pad.</li>
                 <li><b>Spartan rage</b>: fighting fills the ring around <b>RAGE</b>. When it glows, tap it: for 8 seconds you strike twice as hard, every cut catches each foe before you and staggers him, blows hurt you half as much, and each kill heals you. It grows each day: longer on Day 2 (kills feed it), faster to fill on Day 3, and at the last stand arrows cannot touch you and your war cry hurls back every foe around you.</li>
+                <li><b>Gifts of the gods</b>: at every respite, pick one of three gifts for your rage (tap it, or press 1, 2 or 3). You keep it for the battle.</li>
                 <li><b>Throw</b>: with a spear in hand, hold Throw to wind up, then release. It flies at the foe you face.</li>
                 <li><b>Combos</b>: tap → then ← for Twin Fangs, ↑ then ↓ for Leonidas’ Cleave, the two lower corners for the Cross of Ares.</li>
               </ul>

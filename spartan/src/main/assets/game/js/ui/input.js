@@ -1024,6 +1024,7 @@ export function createInput(ctx) {
         else if (c === 'KeyR') push({ type: 'throw', power: INPUT.keyPower, src: 'key' });
         else if (c === 'KeyC') push({ type: 'recenter', src: 'key' });
         else if (c === 'KeyV') push({ type: 'rage', src: 'key' });
+        else if (c === 'Digit1' || c === 'Digit2' || c === 'Digit3') push({ type: 'boon', index: c.charCodeAt(5) - 49, src: 'key' });
         else if (c === 'KeyZ' || c === 'KeyX') push({ type: 'switchTarget', dir: c === 'KeyX' ? 1 : -1, src: 'key' }); // the player ignores it outside the hilt grip
         else if (c === 'Escape' || c === 'KeyP') ctx.setMode('paused');
         else handled = false;

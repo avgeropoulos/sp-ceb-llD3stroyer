@@ -72,7 +72,8 @@ export function createWaves(ctx) {
   for (const k in T) T[k] = k === 'deathT' ? -1 : k === 'shieldsUpAt' ? -1e9 : 0;
   let lull = false;
   let readyRequested = false;
-  let afterTimer = null;    // what the timer leads to: 'wave' | 'phase' | 'entry' | 'endless'
+  let afterTimer = null;
+  const BOON_WAIT = 45;     // s into a respite a gift waits for the player's pick before the gods choose    // what the timer leads to: 'wave' | 'phase' | 'entry' | 'endless'
   let refillAllowed = true;
   let leonidasFallen = false;
 
@@ -88,6 +89,7 @@ export function createWaves(ctx) {
   let campaignVolleys = 0;
   let holdLineSaid = false;
   let tegeansSaid = false;
+  let boonWait = 0;         // s a gift has been on offer this respite
   let respitesSeen = 0;     // respites and lulls between surges; every other one gets a word of praise
   const voiceUses = new Map(); // key → times said this run (picks the next variant)
 
@@ -585,6 +587,7 @@ export function createWaves(ctx) {
     T.stateT = 0;
     lull = false;
     readyRequested = false;
+    boonWait = 0;
     T.timer = cfg.seconds;
     afterTimer = 'wave';
     heal(cfg.heal);
@@ -664,6 +667,13 @@ export function createWaves(ctx) {
     if (state === 'fighting') {
       updateFighting(gdt);
     } else if (state === 'intro' || state === 'respite' || state === 'dayEnd') {
+      // A gift of the gods on offer (player.boonOffer, game/boons.js) holds the respite for the
+      // pick, short of the next wave setting out; after BOON_WAIT the gods choose.
+      if (state === 'respite' && !lull && ctx.player && ctx.player.boonOffer) {
+        boonWait += gdt;
+        if (boonWait >= BOON_WAIT) ctx.player.pickBoon?.(0);
+        else if (T.timer < SPAWN.respiteLead + 0.5) T.timer = SPAWN.respiteLead + 0.5 + gdt;
+      }
       T.timer -= gdt;
       if (state === 'respite' && readyRequested && T.stateT >= RESPITE.readyAfter) T.timer = 0;
       if (T.timer <= 0) timerDone();

@@ -408,6 +408,34 @@ try {
   await shoot('04-left');
   await ev(() => { window.__game.ctx.settings.leftHanded = false; });
 
+  // ---- gifts of the gods ----
+  await ev(() => window.__game.ctx.events.emit('respite', { day: 1, title: 'Respite', seconds: 10 }));
+  await step(20);
+  const offer = await ev(() => ({ ids: window.__game.ctx.player.boonOffer, cards: [...document.querySelectorAll('#hud .hud-boon.is-shown')].map((b) => b.querySelector('b').textContent) }));
+  const panel = await box('#hud .hud-boons');
+  const overB = ['.ctl-pad', '.ctl-tgt-l', '.ctl-tgt-r', '.ctl-shield', '.ctl-bash', '.ctl-stick', '.ctl-rage'].filter((sel) => {
+    const b = boxes[sel] || null;
+    if (sel === '.ctl-rage') return false; // checked below: it steps aside
+    return b && panel.l < b.r - 1 && b.l < panel.r - 1 && panel.t < b.b - 1 && b.t < panel.b - 1;
+  });
+  check('a respite offers three gifts of the gods, clear of the buttons', offer.ids && offer.ids.length === 3 && offer.cards.length === 3 && panel.shown && overB.length === 0, JSON.stringify({ offer, overB }));
+  check('the RAGE button steps aside while the gifts are offered', await ev(() => getComputedStyle(document.querySelector('.ctl-rage')).visibility === 'hidden'));
+  await shoot('10-gifts');
+  const second = await box('#hud .hud-boon[data-i="1"]');
+  await touch('touchStart', [{ id: 9, x: second.x, y: second.y }]);
+  await touch('touchEnd', []);
+  await step(10);
+  const took = await ev(() => ({ boons: window.__game.ctx.player.boons.slice(), offer: window.__game.ctx.player.boonOffer, shown: document.querySelector('#hud .hud-boons').classList.contains('is-shown') }));
+  check('the RAGE button is back once the gift is taken', await ev(() => getComputedStyle(document.querySelector('.ctl-rage')).visibility === 'visible'));
+  check('tapping a card takes that gift, and the cards go', took.boons.length === 1 && took.boons[0] === offer.ids[1] && !took.offer && !took.shown, JSON.stringify(took));
+  await ev(() => window.__game.ctx.events.emit('respite', { day: 1, title: 'Respite', seconds: 10 }));
+  await step(5);
+  const again = await ev(() => window.__game.ctx.player.boonOffer);
+  check('the next offer never repeats a gift taken', again && !again.includes(took.boons[0]), JSON.stringify(again));
+  await page.keyboard.press('Digit3');
+  await step(5);
+  check('the 3 key takes the third card', (await ev(() => window.__game.ctx.player.boons.slice()))[1] === again[2]);
+
   // ---- the rage grows with the campaign ----
   await ev(() => {
     const g = window.__game;

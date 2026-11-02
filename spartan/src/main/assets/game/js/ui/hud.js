@@ -5,6 +5,7 @@
 // side arrows, the closing ring on the head, the portrait column and the coach toasts.
 import { clamp, smoothstep } from '../core/math.js';
 import { sensitivityKey } from '../core/grip.js';
+import { boonById } from '../game/boons.js';
 import { GESTURE_DEFAULTS, GRIPS, SENSITIVITY_MIN, SENSITIVITY_MAX, slashThreshold } from '../motion/gestures.js';
 // Namespace import: a renamed export degrades to "no fade" instead of breaking the module graph.
 import * as campaign from '../game/campaign.js';
@@ -192,6 +193,8 @@ export function createHud(ctx) {
     <div class="hud-subs"><div class="hud-sub"><span class="hud-sub-g"></span><span class="hud-sub-l"><b></b><span></span></span></div><div class="hud-sub"><span class="hud-sub-g"></span><span class="hud-sub-l"><b></b><span></span></span></div></div>
     <div class="hud-respite"><div class="hud-respite-l"><span>Respite</span><b class="hud-respite-t">0:15</b></div>
       <button class="hud-ready" data-hit type="button"><span>Ready</span><i class="hud-ready-lock"></i></button></div>
+    <div class="hud-boons" role="dialog" aria-label="A gift of the gods"><div class="hud-boons-h"><b>A gift of the gods</b><span>Choose one for this battle</span></div>
+      <div class="hud-boons-row">${[0, 1, 2].map((i) => `<button class="hud-boon" data-hit data-i="${i}" type="button"><b></b><span></span><em>${i + 1}</em></button>`).join('')}</div></div>
     <div class="hud-debug"><div class="hud-dbg-row"><span>rate</span><i><b class="hud-dbg-m"></b><em class="hud-dbg-m1"></em><em class="hud-dbg-m2"></em></i></div>
       <div class="hud-dbg-row"><span>push</span><i><b class="hud-dbg-f"></b><em class="hud-dbg-f1"></em></i></div>
       <div class="hud-dbg-row"><span>β</span><i><b class="hud-dbg-b"></b><em class="hud-dbg-b1"></em></i></div>
@@ -230,6 +233,8 @@ export function createHud(ctx) {
   const respiteEl = q('.hud-respite');
   const respiteT = q('.hud-respite-t');
   const readyBtn = q('.hud-ready');
+  const boonsEl = q('.hud-boons');
+  const boonBtns = [...boonsEl.querySelectorAll('.hud-boon')];
   const readyLock = q('.hud-ready-lock');
   const curtainEl = q('.hud-curtain');
   const focusEl = q('.hud-focus');
@@ -657,6 +662,40 @@ export function createHud(ctx) {
     }
     if (ctx.audio && ctx.audio.play) ctx.audio.play('uiConfirm');
   });
+  // Gifts of the gods (game/boons.js): the respite's three cards; a tap (input.js forwards it) or
+  // 1/2/3 picks one through the 'boon' action.
+  for (const b of boonBtns) {
+    b.addEventListener('click', () => {
+      if (!b.classList.contains('is-shown')) return;
+      ctx.actions.push({ type: 'boon', index: Number(b.dataset.i), src: 'touch' });
+      if (ctx.audio && ctx.audio.play) ctx.audio.play('uiConfirm');
+    });
+  }
+  function hideBoons() {
+    boonsEl.classList.remove('is-shown');
+    root.classList.remove('has-boons');
+    for (const b of boonBtns) b.classList.remove('is-shown');
+  }
+  ev.on('boonOffer', (e) => {
+    const ids = (e && e.ids) || [];
+    boonBtns.forEach((b, i) => {
+      const g = ids[i] ? boonById(ids[i]) : null;
+      b.classList.toggle('is-shown', !!g);
+      b.style.display = g ? '' : 'none';
+      if (g) {
+        b.querySelector('b').textContent = g.name;
+        b.querySelector('span').textContent = g.desc;
+      }
+    });
+    boonsEl.classList.add('is-shown');
+    root.classList.add('has-boons'); // the RAGE button steps aside (style.css)
+  });
+  ev.on('boon', (e) => {
+    hideBoons();
+    if (e && e.name) toast(`${e.name}: ${e.desc}`, 'is-coach', 4);
+  });
+  ev.on('playerDeath', hideBoons);
+
   function callReady() {
     respite.armed = false;
     if (ctx.waves && typeof ctx.waves.ready === 'function') ctx.waves.ready();
@@ -1255,6 +1294,7 @@ export function createHud(ctx) {
   }
 
   function reset() {
+    hideBoons();
     rageToasted = false;
     hideTransients();
     root.classList.remove('is-fallen');
