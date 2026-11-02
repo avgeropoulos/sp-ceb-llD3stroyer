@@ -1386,6 +1386,8 @@ func _draw_pause() -> void:
 		var r := pause_rect(i)
 		var sel: bool = game.pause_sel == i
 		var col: Color = PAUSE_COLORS[i]
+		if game.pause_count() == 2 and i == 1:   # QUIT RACE / QUIT GAME: red like every "leave" button
+			col = PAUSE_COLORS[5]
 		if i == 4:   # POSEIDON FLOOD: a deep-sea button with a trident; red when armed, grey when used
 			col = Color(0.3, 0.32, 0.4) if game.flood_used else (Color("c0392b") if game.flood_armed_t > 0 else PAUSE_COLORS[4])
 		card(r, col, sel)
