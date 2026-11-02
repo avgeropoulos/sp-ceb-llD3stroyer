@@ -34,7 +34,7 @@ class GameTest {
         g.update(dt)
     }
 
-    private fun tapMiddle(g: Game, input: Input) = tap(g, input, floatArrayOf(180f, 400f, 0f, 0f))
+    private fun tapMiddle(g: Game, input: Input) = tap(g, input, floatArrayOf(180f, 680f, 0f, 0f))
 
     private fun startPlaying(g: Game, input: Input) {
         tap(g, input, g.titleButton(0))
@@ -47,28 +47,33 @@ class GameTest {
         assertEquals(Game.Screen.PLAY, g.screen)
     }
 
-    /** Finds the power and aim that land on the target, leading a moving one, the way a perfect player would. */
+    /**
+     * Finds the power and aim that land on the target from where the athlete is now (leading a
+     * moving one), the way a perfect player would.
+     */
     private fun perfectThrow(g: Game): Pair<Float, Float> {
         var (tx, tz) = g.target.x to g.target.z
         var power = 0f
         var yaw = 0f
+        val from = g.runnerZ
+        val run = g.runSpeed
         repeat(4) {
-            yaw = atan2(tx - RELEASE_X, tz)
+            yaw = atan2(tx - RELEASE_X, tz - from)
             var lo = 0f
             var hi = 1f
             repeat(30) {
                 val mid = (lo + hi) / 2
-                if (Javelin.landing(mid, yaw).second < tz) lo = mid else hi = mid
+                if (Javelin.landing(mid, yaw, 0f, RELEASE_ANGLE, run, from).second < tz) lo = mid else hi = mid
             }
             power = lo
-            val (ax, az) = g.target.positionAt(flightTime(power, yaw) / Game.FLIGHT_SPEED)
+            val (ax, az) = g.target.positionAt(flightTime(power, yaw, run, from) / Game.FLIGHT_SPEED)
             tx = ax; tz = az
         }
         return power to yaw
     }
 
-    private fun flightTime(power: Float, yaw: Float): Float {
-        val j = Javelin.launch(power, yaw)
+    private fun flightTime(power: Float, yaw: Float, run: Float = 0f, from: Float = 0f): Float {
+        val j = Javelin.launch(power, yaw, RELEASE_ANGLE, run, from)
         var t = 0f
         while (!j.step(1f / 240f, 0f)) t += 1f / 240f
         return t
@@ -265,6 +270,63 @@ class GameTest {
         input.lean = -0.5f
         run(g, 0.5f)
         assertTrue(g.aimElev > 0.85f, "angle should stay locked while gripping")
+    }
+
+    @Test fun runningThrowGoesFurther() {
+        val standing = Javelin.landing(0.5f).second
+        val running = Javelin.landing(0.5f, runSpeed = RUN_TOP).second
+        val tooEarly = Javelin.landing(0.5f, runSpeed = RUN_TOP, fromZ = -6f).second
+        assertTrue(running > standing + 10f, "running $running vs standing $standing")
+        assertEquals(running - 6f, tooEarly, 0.5f)
+    }
+
+    @Test fun runUpWhileGrippingThenThrowOrFoul() {
+        val (g, input) = newGame()
+        startPlaying(g, input)
+        assertTrue(g.runUp)
+        assertEquals(RUN_START, g.runnerZ)
+        val markerAtStart = g.ruler[5]
+        // Hold the screen: the athlete runs and speeds up, and the markers move with them.
+        input.push(Input.DOWN, 180f, 450f, g.clock)
+        run(g, 2f)
+        assertTrue(g.runSpeed > 4f, "speed ${g.runSpeed}")
+        assertTrue(g.runnerZ > RUN_START + 4f && g.runnerZ < 0f, "at ${g.runnerZ}")
+        assertTrue(g.ruler[5] > markerAtStart + 8f, "50% marker should move out as you run")
+        // Keep holding past the line: foul, back to the start.
+        run(g, 4f)
+        assertEquals(RUN_START, g.runnerZ)
+        assertEquals("FOUL!", g.msg)
+        input.push(Input.UP, 180f, 450f, g.clock)
+        run(g, 0.1f)
+        // Run, then throw before the line: it flies further than the same throw standing.
+        input.push(Input.DOWN, 180f, 450f, g.clock)
+        run(g, 2.5f)
+        val z = g.runnerZ
+        val speed = g.runSpeed
+        g.throwJavelin(0.5f, 0f, RELEASE_ANGLE)
+        assertTrue(g.javelin!!.z > z, "released from the runner's spot")
+        val expected = Javelin.landing(0.5f, 0f, 0f, RELEASE_ANGLE, speed, z).second
+        input.push(Input.UP, 180f, 450f, g.clock)
+        run(g, 6f)
+        assertEquals(expected, g.stuck.last().z, 2f)
+        // After the throw the athlete walks back to the start.
+        assertEquals(RUN_START, g.runnerZ)
+    }
+
+    @Test fun runUpCanBeTurnedOff() {
+        val (g, input) = newGame()
+        g.startLevel(1)
+        run(g, 0.5f)
+        val b = g.runUpButton()
+        input.push(Input.DOWN, b[0] + 5f, b[1] + 5f, g.clock)
+        run(g, 0.1f)
+        assertEquals(Game.Screen.INTRO, g.screen)
+        assertTrue(!g.runUp)
+        assertEquals(0f, g.runnerZ)
+        tapMiddle(g, input)
+        input.push(Input.DOWN, 180f, 450f, g.clock)
+        run(g, 1f)
+        assertEquals(0f, g.runnerZ, "standing throws stay at the line")
     }
 
     @Test fun everyLevelCanBeReached() {

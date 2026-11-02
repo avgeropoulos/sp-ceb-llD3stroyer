@@ -175,7 +175,16 @@ ARM on the title screen (GENTLE / NORMAL / STRONG) sets how hard you need to mov
   the target moves to a new spot after each one.
 * **Most targets move.** From level 2 they slide side to side, and later ones also drift
   nearer and further away. Aim where the target *will be* when your javelin lands.
-* **Aim** left and right by tilting the phone like a steering wheel. It locks when you grip.
+* **Run-up** (switch it on or off on each level's card; it's on to start with): hold the screen
+  and the athlete runs down the runway, getting faster the longer you hold, up to 7 m/s.
+  While running you do everything at once: pull your arm back, aim left/right by tilting,
+  set the angle by how far the phone leans back, and pick *where* you let go. The run carries
+  the javelin further, but you must throw before the stone foul line: cross it still holding
+  and it's a foul. Letting go further back loses that distance. Lift your thumb without
+  throwing and the athlete slows to a stop where they are. The landing markers update live
+  for your speed and position, and the screen shows your speed and the distance to the line.
+* **Aim** left and right by tilting the phone like a steering wheel. Standing, it locks when
+  you grip; on a run-up it keeps following the phone until you let go.
 * **Your release decides the throw.** The game follows the phone through the swing (the
   gyroscope tracks how it turns, gravity which way is up, and the accelerometer how fast it
   moves).

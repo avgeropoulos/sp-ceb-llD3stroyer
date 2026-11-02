@@ -35,6 +35,13 @@ const val RELEASE_Z = 0.4f
 const val JAVELIN_LEN = 2.6f
 /** Targets stay within this far of the middle of the field (metres). */
 const val FIELD_EDGE = 34f
+/** The run-up starts this far behind the foul line (metres). */
+const val RUN_START = -16f
+/** Top running speed (m/s) and how quickly the athlete gets there (m/s²). */
+const val RUN_TOP = 7f
+const val RUN_ACCEL = 2.6f
+/** How much of the running speed goes into the javelin. */
+const val RUN_CARRY = 0.85f
 /** Furthest left or right the player can aim, in radians. */
 const val MAX_AIM = 0.42f
 
@@ -70,20 +77,27 @@ class Javelin(
     val speed get() = sqrt(vx * vx + vy * vy + vz * vz)
 
     companion object {
-        /** A throw at [power] (0 to 1), [yaw] radians to the right and [elevation] radians up. */
-        fun launch(power: Float, yaw: Float, elevation: Float = RELEASE_ANGLE): Javelin {
+        /**
+         * A throw at [power] (0 to 1), [yaw] radians to the right and [elevation] radians up,
+         * by an athlete standing at [fromZ] (0 is the foul line) and running at [runSpeed] m/s.
+         * The run carries the javelin forward; letting go further back loses that distance.
+         */
+        fun launch(power: Float, yaw: Float, elevation: Float = RELEASE_ANGLE, runSpeed: Float = 0f, fromZ: Float = 0f): Javelin {
             val v = speedForPower(power)
             val el = elevation.coerceIn(MIN_ELEVATION, MAX_ELEVATION)
             val flat = v * cos(el)
             return Javelin(
-                RELEASE_X, RELEASE_Y, RELEASE_Z,
-                flat * sin(yaw), v * sin(el), flat * cos(yaw),
+                RELEASE_X, RELEASE_Y, RELEASE_Z + fromZ,
+                flat * sin(yaw), v * sin(el), flat * cos(yaw) + runSpeed * RUN_CARRY,
             )
         }
 
         /** Where a throw would land, as (x, z). Used for the power markers, tests and tuning levels. */
-        fun landing(power: Float, yaw: Float = 0f, wind: Float = 0f, elevation: Float = RELEASE_ANGLE): Pair<Float, Float> {
-            val j = launch(power, yaw, elevation)
+        fun landing(
+            power: Float, yaw: Float = 0f, wind: Float = 0f, elevation: Float = RELEASE_ANGLE,
+            runSpeed: Float = 0f, fromZ: Float = 0f,
+        ): Pair<Float, Float> {
+            val j = launch(power, yaw, elevation, runSpeed, fromZ)
             while (!j.step(1f / 120f, wind)) { /* fly */ }
             return j.x to j.z
         }

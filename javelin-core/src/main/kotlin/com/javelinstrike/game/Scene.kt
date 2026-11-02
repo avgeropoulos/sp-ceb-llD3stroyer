@@ -439,7 +439,15 @@ private fun drawShaft(g: Gfx, c: Camera, x1: Float, y1: Float, z1: Float, x2: Fl
 }
 
 /** A Greek athlete seen from behind: bare back, white loincloth, sandals and a laurel wreath. */
-private fun Game.drawAthlete(g: Gfx, c: Camera) {
+private val athleteCam = Camera()
+
+/** The athlete at their spot on the runway. */
+private fun Game.drawAthlete(g: Gfx, world: Camera) {
+    // Draw in the athlete's own frame: move the camera instead of every point.
+    val c = athleteCam.also { it.set(world); it.z = world.z - runnerZ }
+    val run = (runSpeed / RUN_TOP).coerceIn(0f, 1f)
+    val stride = sin(runPhase) * run
+    val bob = kotlin.math.abs(sin(runPhase)) * 0.06f * run
     val draw = drawPose()
     val throwT = sinceRelease
     // Right (throwing) hand: ready by the shoulder, pulled back, or following through.
@@ -456,7 +464,7 @@ private fun Game.drawAthlete(g: Gfx, c: Camera) {
 
     // Aim guide on the sand, out to where a full-power throw would land
     if (screen == Game.Screen.PLAY && holdingJavelin()) {
-        val far = max(14f, ruler[9])
+        val far = max(14f, ruler[9] - runnerZ)
         var k = 2f
         while (k < far) {
             groundLine(g, c, sin(aimYaw) * k, cos(aimYaw) * k, sin(aimYaw) * (k + 0.6f), cos(aimYaw) * (k + 0.6f), 0.12f, 0x80FFFFFF.toInt())
@@ -465,17 +473,24 @@ private fun Game.drawAthlete(g: Gfx, c: Camera) {
     }
     // Shadow on the sand
     groundShadow(g, c, 0f, 0f, 0.55f)
-    // Legs: thighs, calves and sandals with their straps
-    body(g, c, -0.12f, 0.95f, lean * 0.3f, -0.2f, 0.52f, 0.2f, 0.18f, SKIN, 2f)
-    body(g, c, -0.2f, 0.52f, 0.2f, -0.22f, 0.08f, 0.3f, 0.13f, SKIN, 2f)
-    body(g, c, 0.12f, 0.95f, lean * 0.3f, 0.2f, 0.52f, -0.2f, 0.18f, SKIN, 2f)
-    body(g, c, 0.2f, 0.52f, -0.2f, 0.24f, 0.08f, -0.35f, 0.13f, SKIN, 2f)
-    body(g, c, -0.22f, 0.04f, 0.24f, -0.22f, 0.04f, 0.44f, 0.12f, SANDAL, 2f)
-    body(g, c, 0.24f, 0.04f, -0.41f, 0.24f, 0.04f, -0.22f, 0.12f, SANDAL, 2f)
-    for (h in floatArrayOf(0.14f, 0.24f)) {
-        seg(g, c, -0.29f, h, 0.3f, -0.15f, h, 0.3f, 0.025f, SANDAL, 1f)
-        seg(g, c, 0.17f, h, -0.34f, 0.31f, h, -0.34f, 0.025f, SANDAL, 1f)
+    // Legs: thighs, calves and sandals. Standing they're in a throwing stride; running they swing.
+    val lf = 0.3f + stride * 0.45f
+    val rf = -0.35f - stride * 0.45f
+    val ll = max(0f, -stride) * 0.3f
+    val rl = max(0f, stride) * 0.3f
+    body(g, c, -0.12f, 0.95f, lean * 0.3f, -0.2f, 0.52f, lf * 0.6f, 0.18f, SKIN, 2f)
+    body(g, c, -0.2f, 0.52f, lf * 0.6f, -0.22f, 0.08f + ll, lf, 0.13f, SKIN, 2f)
+    body(g, c, 0.12f, 0.95f, lean * 0.3f, 0.2f, 0.52f, rf * 0.6f, 0.18f, SKIN, 2f)
+    body(g, c, 0.2f, 0.52f, rf * 0.6f, 0.24f, 0.08f + rl, rf, 0.13f, SKIN, 2f)
+    body(g, c, -0.22f, 0.04f + ll, lf - 0.06f, -0.22f, 0.04f + ll, lf + 0.14f, 0.12f, SANDAL, 2f)
+    body(g, c, 0.24f, 0.04f + rl, rf - 0.06f, 0.24f, 0.04f + rl, rf + 0.13f, 0.12f, SANDAL, 2f)
+    if (run < 0.1f) {
+        for (h in floatArrayOf(0.14f, 0.24f)) {
+            seg(g, c, -0.29f, h, 0.3f, -0.15f, h, 0.3f, 0.025f, SANDAL, 1f)
+            seg(g, c, 0.17f, h, -0.34f, 0.31f, h, -0.34f, 0.025f, SANDAL, 1f)
+        }
     }
+    if (bob > 0f) c.y -= bob
     // A broad, tapering back with shoulder blades and the line of the spine
     val bx = floatArrayOf(-0.15f, 0.15f, 0.25f, -0.25f)
     val by = floatArrayOf(1.0f, 1.0f, 1.47f, 1.47f)

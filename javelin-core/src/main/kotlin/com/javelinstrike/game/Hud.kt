@@ -118,7 +118,8 @@ internal fun Game.drawPrompts(g: Gfx) {
 
     val (line, sub) = if (controls == ControlMode.MOTION) {
         when (detector.phase) {
-            ThrowDetector.Phase.IDLE -> "HOLD THE SCREEN" to (if (hasTilt()) "Tilt to aim left and right" else "")
+            ThrowDetector.Phase.IDLE -> "HOLD THE SCREEN" to
+                (if (runUp) "Hold to run, then throw before the line" else if (hasTilt()) "Tilt to aim left and right" else "")
             ThrowDetector.Phase.GRIP -> "PULL YOUR ARM BACK" to "Keep holding the screen"
             ThrowDetector.Phase.DRAWN -> "NOW THROW!" to "Let go early, leaning back, to throw high"
             ThrowDetector.Phase.SWING -> "!!!" to ""
@@ -127,6 +128,15 @@ internal fun Game.drawPrompts(g: Gfx) {
         (if (armed) "LET GO TO THROW" else "PULL DOWN") to "Further = harder. Sideways to aim"
     } else {
         "PRESS AND PULL DOWN" to "Like a slingshot: pull further, throw harder"
+    }
+    // The run-up: speed and how far to the foul line
+    if (runUp) {
+        val toLine = -runnerZ
+        val near = toLine < 3f
+        g.shadowText(
+            "RUN ${oneDecimal(runSpeed)} m/s   LINE ${oneDecimal(toLine)} m",
+            46f, viewH - 176f, 10f, if (near) Game.RED else Game.WHITE,
+        )
     }
     // The left/right aim, in numbers
     val side = if (aimYaw > 0.009f) "R" else if (aimYaw < -0.009f) "L" else ""
@@ -271,7 +281,7 @@ internal fun meander(g: Gfx, x: Float, y: Float, w: Float) {
 }
 
 internal fun Game.drawIntro(g: Gfx) {
-    val y = panel(g, 222f)
+    val y = panel(g, 270f)
     g.shadowText("LEVEL $levelNum", viewW / 2f, y + 46f, 28f, Game.GOLD, 1, serif = true)
     g.shadowText(spec.name.uppercase(), viewW / 2f, y + 68f, 14f, Game.WHITE, 1)
     val needs = if (spec.hits == 1) "Hit the target" else "Hit the target ${spec.hits} times"
@@ -282,7 +292,7 @@ internal fun Game.drawIntro(g: Gfx) {
             2 -> "Guides: no distances or markers"
             else -> "Guides: off. Trust your pull!"
         }
-        g.shadowText(guide, viewW / 2f, y + 172f, 10f, CREAM, 1)
+        g.shadowText(guide, viewW / 2f, y + 170f, 10f, CREAM, 1)
     }
     g.shadowText(needs, viewW / 2f, y + 96f, 13f, Game.WHITE, 1)
     g.shadowText("in ${spec.time.roundToInt()} seconds", viewW / 2f, y + 113f, 13f, Game.WHITE, 1)
@@ -292,7 +302,8 @@ internal fun Game.drawIntro(g: Gfx) {
     }.joinToString("  ·  ")
     g.shadowText(extras, viewW / 2f, y + 136f, 11f, Game.CYAN, 1)
     if (target.moving) g.shadowText("MOVING TARGET", viewW / 2f, y + 152f, 11f, Game.ORANGE, 1)
-    if (screenT > 0.4f) g.shadowText("TAP TO START", viewW / 2f, y + 200f, 12f, blink(), 1)
+    button(g, runUpButton(), if (runUp) "RUN-UP: ON" else "RUN-UP: OFF", if (runUp) Game.GREEN else CREAM)
+    if (screenT > 0.4f) g.shadowText("TAP ANYWHERE ELSE TO START", viewW / 2f, y + 246f, 11f, blink(), 1)
 }
 
 internal fun Game.drawClear(g: Gfx) {
@@ -403,7 +414,7 @@ internal fun Game.drawHowTo(g: Gfx) {
     val steps = if (controls == ControlMode.MOTION) listOf(
         "1. Hold the phone upright in your throwing hand, screen facing you.",
         "2. Tilt it like a steering wheel to aim left or right.",
-        "3. Press and HOLD the screen with your thumb to grip the javelin.",
+        "3. Press and HOLD the screen with your thumb to grip the javelin. With RUN-UP on, the athlete runs while you hold, faster and faster. Throw before the stone line or it's a foul; the run adds to the throw.",
         "4. Pull your arm back. The DRAW bar turns green when you're ready.",
         "5. Throw your arm forward! It lets go at the end of your swing.",
         "HOW FAST you move the phone sets the power: the POWER bar fills as you swing. HOW FAR IT LEANS BACK when you let go sets the angle: lean back more, or let go earlier in the swing, for a high, shorter throw. The ANGLE dial shows the angle you'd throw at right now.",

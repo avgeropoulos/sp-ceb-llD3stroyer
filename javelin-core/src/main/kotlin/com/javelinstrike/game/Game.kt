@@ -88,6 +88,13 @@ class Game(
     internal var screenT = 0f
     internal var clock = 0f
     internal var aimYaw = 0f
+    /** Run-up: on by default; the athlete runs while you grip the javelin. */
+    var runUp = store.load(KEY_RUNUP) == 0
+        private set
+    /** Where the athlete is on the runway (0 is the foul line) and how fast they're running. */
+    internal var runnerZ = 0f
+    internal var runSpeed = 0f
+    internal var runPhase = 0f
     /**
      * The expected throwing angle. Before the throw it follows how far the phone leans back
      * (a guide); the throw itself uses the angle the hand is moving at when it lets go.
@@ -195,6 +202,14 @@ class Game(
             aimElev += (want - aimElev) * min(1f, dt * 8f)
         }
         if (flick.active) aimYaw = flick.previewYaw.coerceIn(-MAX_AIM, MAX_AIM)
+        // Aiming keeps working while you run: tilt and lean follow you until you let go.
+        if (ready && runUp && gripping() && controls == ControlMode.MOTION && input.hasTilt) {
+            aimYaw += ((input.tilt * 0.7f).coerceIn(-MAX_AIM, MAX_AIM) - aimYaw) * min(1f, dt * 6f)
+        }
+        if (ready && runUp && flick.active && input.hasTilt) {
+            aimElev += (elevationForLean(input.lean) - aimElev) * min(1f, dt * 6f)
+        }
+        if (screen == Screen.PLAY && !paused) updateRun(dt, ready)
         if (screen == Screen.PLAY && throwState == ThrowState.READY) updateRuler()
 
         if (screen == Screen.PLAY && !paused) updatePlay(dt)
@@ -227,11 +242,51 @@ class Game(
         }
     }
 
+    /** True while the thumb holds the javelin (either control mode). */
+    private fun gripping() = (controls == ControlMode.MOTION && detector.phase != ThrowDetector.Phase.IDLE) || flick.active
+
+    /**
+     * The run-up: while you grip the javelin the athlete runs towards the foul line, faster and
+     * faster. Let go of the screen and they slow to a stop where they are. Crossing the line
+     * still holding the javelin is a foul.
+     */
+    private fun updateRun(dt: Float, ready: Boolean) {
+        if (!runUp) {
+            runnerZ = 0f
+            runSpeed = 0f
+            return
+        }
+        val running = ready && gripping()
+        runSpeed = if (running) min(RUN_TOP, runSpeed + RUN_ACCEL * dt) else max(0f, runSpeed - 6f * dt)
+        runnerZ += runSpeed * dt
+        runPhase += runSpeed * dt * 1.7f
+        if (running && runnerZ > 0f) {
+            detector.enabled = false
+            flick.cancel()
+            showMessage("FOUL!", "You ran over the line", RED, 1.8f)
+            sound.play(Sound.FAIL)
+            resetRun()
+        }
+        if (throwState != ThrowState.READY) runnerZ = min(runnerZ, 0f)
+    }
+
+    internal fun resetRun() {
+        runnerZ = if (runUp) RUN_START else 0f
+        runSpeed = 0f
+    }
+
+    internal fun toggleRunUp() {
+        runUp = !runUp
+        store.save(KEY_RUNUP, if (runUp) 0 else 1)
+        resetRun()
+    }
+
     private fun updateRuler() {
         for (i in 0 until 6) {
             val p = if (i < 5) i / 4f else lastPower
             if (p < 0f) { ruler[i * 2 + 1] = -1f; continue }
-            val (x, z) = Javelin.landing(p, aimYaw, 0f, aimElev)
+            // Where it would land if you let go right here, at this speed.
+            val (x, z) = Javelin.landing(p, aimYaw, 0f, aimElev, runSpeed, runnerZ)
             ruler[i * 2] = x
             ruler[i * 2 + 1] = z
         }
@@ -243,7 +298,7 @@ class Game(
         lastPower = p
         aimElev = elevation.coerceIn(MIN_ELEVATION, MAX_ELEVATION)
         lastElev = aimElev
-        javelin = Javelin.launch(p, yaw.coerceIn(-MAX_AIM, MAX_AIM), aimElev)
+        javelin = Javelin.launch(p, yaw.coerceIn(-MAX_AIM, MAX_AIM), aimElev, runSpeed, runnerZ)
         throwWind = wind * (0.85f + rng.nextFloat() * 0.3f)
         throwState = ThrowState.FLIGHT
         sinceRelease = 0f
@@ -297,6 +352,7 @@ class Game(
             placeTarget(first = false)
         }
         throwState = ThrowState.READY
+        resetRun()
         if (timeLeft <= 0f) timeUp()
     }
 
@@ -356,6 +412,7 @@ class Game(
         particles.clear()
         javelin = null
         throwState = ThrowState.READY
+        resetRun()
         lastPower = -1f
         lastDistance = 0f
         msgT = 0f
@@ -484,7 +541,14 @@ class Game(
                 sound.play(Sound.CLICK)
                 if (playAfterHowTo) startGame() else go(Screen.TITLE)
             }
-            Screen.INTRO -> if (press && screenT > 0.4f) go(Screen.PLAY)
+            Screen.INTRO -> if (press && screenT > 0.4f) {
+                if (inside(runUpButton(), t.x, t.y)) {
+                    sound.play(Sound.CLICK)
+                    toggleRunUp()
+                } else {
+                    go(Screen.PLAY)
+                }
+            }
             Screen.PLAY -> playTouch(t)
             Screen.CLEAR -> if (press && screenT > 1f) {
                 sound.play(Sound.CLICK)
@@ -613,6 +677,8 @@ class Game(
 
     private fun updateCamera(dt: Float) {
         restCam.cx = viewW / 2f
+        // The camera runs along behind the athlete.
+        restCam.z = -4.5f + if (screen == Screen.PLAY || screen == Screen.INTRO) runnerZ else 0f
         val j = javelin
         val follow: Pair<Float, Float>? = when {
             j != null && throwState == ThrowState.FLIGHT -> j.x to j.z
@@ -648,6 +714,8 @@ class Game(
     internal fun titleButton(i: Int) = floatArrayOf(viewW / 2f - 130f, max(200f, viewH * 0.3f) + i * 48f, 260f, 40f)
     internal fun eventButton(i: Int) = floatArrayOf(viewW / 2f - 130f, max(150f, viewH * 0.22f) + i * 74f, 260f, 46f)
     internal fun backButton() = floatArrayOf(viewW / 2f - 80f, eventButton(OlympicEventKind.entries.size)[1] + 10f, 160f, 40f)
+    /** On the level card (a 270 px panel centred at 42% of the height), below the guides line. */
+    internal fun runUpButton() = floatArrayOf(viewW / 2f - 90f, viewH * 0.42f - 135f + 182f, 180f, 34f)
     internal fun pauseButton() = floatArrayOf(viewW - 44f, 8f, 36f, 32f)
     internal fun resumeButton() = floatArrayOf(viewW / 2f - 110f, viewH * 0.45f, 220f, 44f)
     internal fun quitButton() = floatArrayOf(viewW / 2f - 110f, viewH * 0.45f + 58f, 220f, 44f)
@@ -745,6 +813,7 @@ class Game(
         const val KEY_ARM = "arm"
         const val KEY_SEEN_HOWTO = "howto"
         const val KEY_BEST_LEVEL = "bestLevel"
+        const val KEY_RUNUP = "runup"
 
         const val WHITE = 0xFFFFFFFF.toInt()
         const val GOLD = 0xFFF2C14E.toInt()
