@@ -120,7 +120,7 @@ grip keeps its own). If your slashes come out mirrored, turn on **Swap swing lef
 Every move is a button: nothing to swipe, drag or swing. As in the hilt grip, the view locks onto
 a foe and turns with him, and your strikes and spears go at him.
 
-* **Left thumb:** the arrows step you forward, back and to the sides. **SHIELD** (hold) blocks, and
+* **Left thumb:** the stick in the corner moves you (push further to go faster). **SHIELD** (hold) blocks, and
   **BASH** bashes.
 * **Right thumb:** the sword pad. Each arrow cuts the way it points: ← and → slash, ↓ chops
   overhead (over a wicker shield), ↑ cuts upward, and the corners cut diagonally. **STAB** is in

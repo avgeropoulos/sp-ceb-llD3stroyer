@@ -1156,28 +1156,20 @@ html, body {
 .ctl-ring-l i { left: 0; border-bottom-color: #ffcf6a; border-left-color: #ffcf6a; }
 .ctl-throw:not(.is-held) .ctl-ring { opacity: 0; }
 
-/* Buttons layout: every move is a button. Left thumb: the move pad, with SHIELD and BASH above
-   it (as in the touch layout). Right thumb: the sword pad (eight cuts, each arrow the way the blade cuts, around STAB), the
+/* Buttons layout. Left thumb: a fixed stick in the corner (the touch layout's, held at its home),
+   with SHIELD and BASH above it. Right thumb: the sword pad (eight cuts, each arrow the way the blade cuts, around STAB), the
    target arrows above it and THROW beside it. Mirrored for a left hand; the lock-on owns the view. */
-.ctl-dpad, .ctl-pad { display: none; }
-#controls.ctl-buttons .ctl-dpad,
+.ctl-pad { display: none; }
 #controls.ctl-buttons .ctl-pad { display: grid; }
+#controls.ctl-buttons .ctl-stick { display: block; }
 #controls.ctl-buttons .ctl-shield,
 #controls.ctl-buttons .ctl-bash { display: block; }
 #controls.ctl-buttons.ctl-spear .ctl-throw { display: block; }
 #controls.ctl-buttons .ctl-recenter { display: none; }
-.ctl-dpad, .ctl-pad {
+.ctl-pad {
   position: absolute;
   bottom: calc(var(--safe-b) + 14px);
   gap: 5px;
-}
-.ctl-dpad {
-  left: calc(var(--safe-l) + 14px);
-  grid-template: repeat(3, 46px) / repeat(3, 46px);
-  gap: 4px;
-  grid-template-areas: ". f ." "l . r" ". b .";
-}
-.ctl-pad {
   right: calc(var(--safe-r) + 14px);
   grid-template: repeat(3, 56px) / repeat(3, 56px);
 }
@@ -1197,11 +1189,6 @@ html, body {
   color: var(--figure);
   background: radial-gradient(circle at 40% 35%, #f3d892, #b98c3c 45%, #6a4718 85%);
 }
-.ctl-mv { border-radius: 50%; }
-.ctl-mv-f { grid-area: f; --a: -90deg; }
-.ctl-mv-b { grid-area: b; --a: 90deg; }
-.ctl-mv-l { grid-area: l; --a: 180deg; }
-.ctl-mv-r { grid-area: r; }
 .ctl-cut-stab {
   border-radius: 50%;
   border-color: var(--bronze);
@@ -1237,7 +1224,6 @@ html, body {
 #controls.ctl-buttons .ctl-shield { left: calc(var(--safe-l) + 40px); bottom: calc(var(--safe-b) + 170px); width: 88px; height: 88px; }
 #controls.ctl-buttons .ctl-bash { left: calc(var(--safe-l) + 140px); bottom: calc(var(--safe-b) + 176px); width: 58px; height: 58px; }
 #controls.ctl-buttons .ctl-throw { right: calc(var(--safe-r) + 208px); bottom: calc(var(--safe-b) + 18px); }
-#controls.ctl-buttons.ctl-left .ctl-dpad { left: auto; right: calc(var(--safe-r) + 14px); }
 #controls.ctl-buttons.ctl-left .ctl-pad { right: auto; left: calc(var(--safe-l) + 14px); }
 #controls.ctl-buttons.ctl-left .ctl-tgt-r { right: auto; left: calc(var(--safe-l) + 14px + 3 * 56px + 2 * 5px - 64px); }
 #controls.ctl-buttons.ctl-left .ctl-tgt-l { right: auto; left: calc(var(--safe-l) + 14px); }

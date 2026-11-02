@@ -1,7 +1,7 @@
 // The buttons control on the real game (ui/input.js 'buttons' layout): every move is an on-screen
 // button, with the lock-on camera. Checks the layout fits a landscape phone without overlaps, that
 // each sword-pad button cuts the way its arrow points (and lands on the dummy), STAB, SHIELD (held),
-// BASH, the move pad, the target buttons, a combo, the spear's THROW at the locked foe, a mouse
+// BASH, the stick, the target buttons, a combo, the spear's THROW at the locked foe, a mouse
 // click (no pointer lock), the left-handed mirror and the Agoge's button wording.
 // Touches go through CDP Input.dispatchTouchEvent at 800×360 (mobile, landscape).
 // Usage: node spartan/tests/e2e/buttons.mjs [outDir]
@@ -105,7 +105,7 @@ try {
   // ---- the layout ----
   const root = await ev(() => document.getElementById('controls').className);
   check('the controls root takes the buttons layout', /ctl-buttons/.test(root) && !/ctl-touch|ctl-motion/.test(root), root);
-  const SELS = ['.ctl-pause', '.ctl-swap', '.ctl-dpad', '.ctl-pad', '.ctl-tgt-l', '.ctl-tgt-r', '.ctl-shield', '.ctl-bash'];
+  const SELS = ['.ctl-pause', '.ctl-swap', '.ctl-stick', '.ctl-pad', '.ctl-tgt-l', '.ctl-tgt-r', '.ctl-shield', '.ctl-bash'];
   const boxes = {};
   for (const s of SELS) boxes[s] = await box(s);
   const shown = SELS.filter((s) => boxes[s] && boxes[s].shown);
@@ -121,8 +121,8 @@ try {
   }
   check('no two button groups overlap', overlaps.length === 0, overlaps.join(', '));
   const pad = boxes['.ctl-pad'];
-  const dpad = boxes['.ctl-dpad'];
-  check('right hand: the sword pad sits bottom right, the move pad bottom left', pad.l > W / 2 && dpad.r < W / 2 && pad.b > H - 30 && dpad.b > H - 30);
+  const dpad = boxes['.ctl-stick'];
+  check('right hand: the sword pad sits bottom right, the stick bottom left', pad.l > W / 2 && dpad.r < W / 2 && pad.b > H - 30 && dpad.b > H - 30);
   const cells = await ev(() => [...document.querySelectorAll('.ctl-cut')].map((e) => { const r = e.getBoundingClientRect(); return Math.min(r.width, r.height); }));
   check('the sword pad has 9 buttons, each at least 48 px', cells.length === 9 && Math.min(...cells) >= 48, cells.join(','));
   const lockShown = await ev(() => document.querySelector('#hud .hud-lock').classList.contains('is-shown'));
@@ -307,26 +307,44 @@ try {
   });
   await step(30);
 
-  // ---- the move pad ----
+  // ---- the stick ----
   await tap('.ctl-tgt-r'); // face ahead again
   await step(60);
+  const home = await box('.ctl-stick');
   const p0 = await player();
-  const fwd = await box('.ctl-mv-f');
-  await touch('touchStart', [{ id: 3, x: fwd.x, y: fwd.y }]);
+  await touch('touchStart', [{ id: 3, x: home.x, y: home.y }]);
+  await touch('touchMove', [{ id: 3, x: home.x, y: home.y - 60 }]);
   await step(40);
   const p1 = await player();
+  const knob = await ev(() => document.querySelector('.ctl-knob, .ctl-stick-knob').style.transform);
   await touch('touchEnd', []);
   await step(20);
   const p2 = await player();
   const moved = Math.hypot(p1.x - p0.x, p1.z - p0.z);
-  check('holding ▲ walks forward, letting go stops', moved > 0.3 && Math.hypot(p2.x - p1.x, p2.z - p1.z) < 0.25, `moved ${moved.toFixed(2)} m`);
-  const bk = await box('.ctl-mv-b');
-  await touch('touchStart', [{ id: 3, x: bk.x, y: bk.y }]);
+  check('pushing the stick up walks forward (the knob follows), letting go stops', moved > 0.3 && /-\d/.test(knob) && Math.hypot(p2.x - p1.x, p2.z - p1.z) < 0.25, `moved ${moved.toFixed(2)} m, knob ${knob}`);
+  await touch('touchStart', [{ id: 3, x: home.x, y: home.y }]);
+  await touch('touchMove', [{ id: 3, x: home.x, y: home.y + 18 }]);
   await step(40);
+  const pSlow = await player();
+  await touch('touchMove', [{ id: 3, x: home.x, y: home.y + 60 }]);
+  await step(40);
+  const pFast = await player();
   await touch('touchEnd', []);
   await step(20);
-  const p3 = await player();
-  check('holding ▼ walks back', Math.hypot(p3.x - p2.x, p3.z - p2.z) > 0.3);
+  const slow = Math.hypot(pSlow.x - p2.x, pSlow.z - p2.z);
+  const fast = Math.hypot(pFast.x - pSlow.x, pFast.z - pSlow.z);
+  check('pulling it back walks back, slowly near the centre and faster at the rim', slow > 0.02 && fast > slow * 1.8, `${slow.toFixed(2)} m then ${fast.toFixed(2)} m`);
+  await touch('touchStart', [{ id: 3, x: home.x, y: home.y }]);
+  await touch('touchMove', [{ id: 3, x: home.x + 45, y: home.y - 45 }]);
+  await step(30);
+  const pd = await player();
+  await touch('touchEnd', []);
+  await step(10);
+  // In the view's frame (the lock-on turns the view): forward = (−sin yaw, −cos yaw), right = (cos yaw, −sin yaw).
+  const ddx = pd.x - pFast.x, ddz = pd.z - pFast.z;
+  const fwdM = -Math.sin(pd.yaw) * ddx - Math.cos(pd.yaw) * ddz;
+  const rightM = Math.cos(pd.yaw) * ddx - Math.sin(pd.yaw) * ddz;
+  check('a diagonal push walks diagonally (forward and right at once)', fwdM > 0.1 && rightM > 0.1, `forward ${fwdM.toFixed(2)} right ${rightM.toFixed(2)}`);
 
   // ---- the spear: swap, THROW at the lock ----
   await untilIdle();
@@ -341,7 +359,7 @@ try {
   await step(60);
   const thr = await box('.ctl-throw');
   check('taking the spear shows THROW', (await player()).weapon === 'spear' && thr.shown, JSON.stringify(thr));
-  const overlapThrow = ['.ctl-pad', '.ctl-tgt-l', '.ctl-tgt-r', '.ctl-shield', '.ctl-bash', '.ctl-dpad'].filter((s) => {
+  const overlapThrow = ['.ctl-pad', '.ctl-tgt-l', '.ctl-tgt-r', '.ctl-shield', '.ctl-bash', '.ctl-stick'].filter((s) => {
     const a = thr, b = boxes[s];
     return a.l < b.r - 1 && b.l < a.r - 1 && a.t < b.b - 1 && b.t < a.b - 1;
   });
@@ -383,10 +401,10 @@ try {
   await ev(() => { window.__game.ctx.settings.leftHanded = true; });
   await step(2);
   const lp = await box('.ctl-pad');
-  const ld = await box('.ctl-dpad');
+  const ld = await box('.ctl-stick');
   const lt = await box('.ctl-tgt-l');
   const lr = await box('.ctl-tgt-r');
-  check('left-handed: the sword pad goes bottom left, the move pad bottom right, ‹ stays left of ›', lp.r < W / 2 && ld.l > W / 2 && lt.x < lr.x && lt.l >= 0);
+  check('left-handed: the sword pad goes bottom left, the stick bottom right, ‹ stays left of ›', lp.r < W / 2 && ld.l > W / 2 && lt.x < lr.x && lt.l >= 0);
   await shoot('04-left');
   await ev(() => { window.__game.ctx.settings.leftHanded = false; });
 
@@ -450,7 +468,7 @@ try {
       await step(60);
     }
     const panel = await box('#training .tr-panel');
-    for (const s of ['.ctl-pad', '.ctl-dpad', '.ctl-tgt-l', '.ctl-tgt-r', '.ctl-shield', '.ctl-bash', '.ctl-throw']) {
+    for (const s of ['.ctl-pad', '.ctl-stick', '.ctl-tgt-l', '.ctl-tgt-r', '.ctl-shield', '.ctl-bash', '.ctl-throw']) {
       const b = await box(s);
       if (b && b.shown && panel.l < b.r - 1 && b.l < panel.r - 1 && panel.t < b.b - 1 && b.t < panel.b - 1) covered.push(`${st.num} ${st.title}: ${s}`);
     }

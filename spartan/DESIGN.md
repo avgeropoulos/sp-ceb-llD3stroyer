@@ -1294,7 +1294,7 @@ nothing (HUD buttons are still forwarded; a mouse click never takes the pointer 
   for buttons, and the player, the volley rule (combat.js), the rear-attack grace (ai.js), the HUD's
   lock marker and the Agoge's lock step all follow `lockOn`. What is specific to holding a phone
   (the hilt viewmodel, the swing haptics and sounds, portrait) stays with the hilt grip.
-* Bottom-left: a move pad (four 46 px buttons, each walks while held). Above it, **SHIELD** (hold)
+* Bottom-left: a fixed stick (the touch stick held at its home; a touch within `stickGrabPx` of its ring takes it). Above it, **SHIELD** (hold)
   and **BASH**.
 * Bottom-right: the sword pad, 3×3 buttons of 56 px (`PAD` in ui/input.js). Each arrow cuts the
   way it points and pushes `slash` with that direction (0 right, π/2 up, the corners at the
