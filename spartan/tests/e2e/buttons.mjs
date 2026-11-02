@@ -201,7 +201,10 @@ try {
       const p = { x: (v.x + 1) / 2 * innerWidth, y: (1 - v.y) / 2 * innerHeight };
       if (p.x < 0 || p.y < 0 || p.x > innerWidth || p.y > innerHeight) continue;
       const el = document.elementFromPoint(p.x, p.y);
-      if (el && el.classList.contains('ctl-surface')) return p;
+      // Not under a button, and clear of the stick's grab circle (it takes touches beyond its ring).
+      const st = document.querySelector('.ctl-stick-home').getBoundingClientRect();
+      const nearStick = Math.hypot(p.x - (st.left + st.width / 2), p.y - (st.top + st.height / 2)) < 110;
+      if (el && el.classList.contains('ctl-surface') && !nearStick) return p;
     }
     return null;
   }, fx);
@@ -209,8 +212,9 @@ try {
   await ev(() => window.__game.ctx.player.setLock(window.__game.ctx.actors.find((a) => Math.abs(a.pos.x) < 0.1)));
   await step(60);
   const at = await screenOf(-3.5);
-  await touch('touchStart', [{ id: 6, x: at.x, y: at.y }]);
-  await touch('touchEnd', []);
+  const tt = Date.now(); // explicit times: a loaded machine must not stretch the tap past aimTapMs
+  await touch('touchStart', [{ id: 6, x: at.x, y: at.y }], tt);
+  await touch('touchEnd', [], tt + 80);
   await step(60);
   const tapped = await player();
   check('tapping a foe on screen locks onto him', !!at && tapped.lock === -3.5, `lock ${tapped.lock} (tapped ${at && at.x.toFixed(0)},${at && at.y.toFixed(0)})`);
@@ -221,8 +225,9 @@ try {
   await step(60);
   const swiped = await player();
   check('swiping right on the open ground switches to the next foe on the right', swiped.lock === 0, `lock ${swiped.lock}`);
-  await touch('touchStart', [{ id: 8, x: 380, y: 60 }]);
-  await touch('touchEnd', []);
+  const ts = Date.now();
+  await touch('touchStart', [{ id: 8, x: 380, y: 60 }], ts);
+  await touch('touchEnd', [], ts + 80);
   await step(10);
   check('tapping the empty sky keeps the lock', (await player()).lock === 0);
 
