@@ -29,12 +29,13 @@ var carry := false      # holding something over your head (grab.gd)
 var swing := false      # swinging a boss by the tail (grab.gd)
 var line := "spark"     # partner only: water / grass / fire / spark
 var stage := 0          # partner only: 0, 1, 2 (evolutions)
+var mega := false       # partner only: the MEGA form is out (mega.gd)
 
 
 func init(lv: Level, w: String, stats: Dictionary) -> void:
 	who = w
 	if w == "mon":
-		setup(lv, _mon_frames("spark", 0), 1.95, 48.0, "sparky")
+		setup(lv, _mon_frames("spark", 0), 1.95, 40.0, "sparky")
 		set_form("spark", 0)
 		return
 	var f := Team.frames(w)
@@ -60,26 +61,24 @@ func become(w: String) -> void:
 	play("idle")
 
 
-static func _mon_frames(l: String, st: int) -> Dictionary:
-	if l == "spark" and st == 0:
-		return {"idle": ["sparky_idle"], "run": ["sparky_run1", "sparky_run2"], "jump": ["sparky_jump"], "fall": ["sparky_jump"],
-			"zap": ["sparky_zap"], "hurt": ["sparky_zap"], "win": ["sparky_jump"]}
-	var b := "mon_%s%d_" % [l, st]
+## The partner's paper pictures (rendered from its 3D model by tools/render_mons.gd).
+static func _mon_frames(l: String, st: int, is_mega := false) -> Dictionary:
+	var b := "mon_%s%s_" % [l, "M" if is_mega else str(st)]
 	return {"idle": [b + "idle"], "run": [b + "run1", b + "run2"], "jump": [b + "jump"], "fall": [b + "jump"],
 		"zap": [b + "act"], "hurt": [b + "act"], "win": [b + "jump"]}
 
 
 ## Turns the partner into this line and stage (new look, size and speed).
-func set_form(l: String, st: int) -> void:
+func set_form(l: String, st: int, is_mega := false) -> void:
 	line = l
 	stage = st
+	mega = is_mega
 	var dims: Array = Mons.STAGE_SIZE[st]
-	var feet := 48.0 if l == "spark" else 40.0
-	var size: float = dims[0] * (1.3 if l == "spark" and st == 1 else 1.0)
-	if l == "spark":
-		size = 1.95 * (1.3 if st == 1 else 1.0)
+	var size := Mega.picture_size(l, st, is_mega)
 	var kind := ("sparky" if st == 0 else "sparky:1") if l == "spark" else "mon:%s:%d" % [l, st]
-	reskin(_mon_frames(l, st), size, feet, kind)
+	if is_mega:
+		kind = "sparky:2" if l == "spark" else kind + ":mega"
+	reskin(_mon_frames(l, st, is_mega), size, 40.0, kind)
 	var info: Dictionary = Mons.LINES[l]
 	speed = info.speed[st]
 	jump_v = info.jump[st]

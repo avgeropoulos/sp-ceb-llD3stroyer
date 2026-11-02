@@ -2071,8 +2071,9 @@ def main():
     sparky("sparky_run2", 0, -0.7)
     sparky("sparky_jump", 8, 0.4)
     sparky("sparky_zap", 2, 0.3, zap=True)
-    partners()
-    new_partners()
+    # partner pictures (mon_*) are rendered from their 3D models now:
+    #   xvfb-run godot --path . --script res://tools/render_mons.gd ; python3 tools/sticker_mons.py
+    # (partners() / new_partners() below are the old hand-drawn versions, kept for reference)
     # foes
     grumbler("grumbler_1", 1)
     grumbler("grumbler_2", -1)

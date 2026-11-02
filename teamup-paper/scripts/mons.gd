@@ -109,6 +109,4 @@ static func form(line: String, stage: int) -> String:
 
 ## The paper picture used for faces on menus.
 static func face(line: String, stage: int) -> String:
-	if line == "spark" and stage == 0:
-		return "sparky_idle"
-	return "mon_%s_idle" % form(line, stage)
+	return "mon_%s_face" % form(line, stage)
