@@ -41,13 +41,19 @@ class Session(
     val listen: Boolean = false,
 ) {
     enum class State { LOADING, PLAYING, PAUSED, FINISHED, ERROR }
-    enum class Action { NONE, PAUSE, RESUME, RESTART, QUIT, OPA, DONE, PLAY_CHART }
+    enum class Action { NONE, PAUSE, RESUME, RESTART, QUIT, OPA, DONE, PLAY_CHART, SYNC_EARLIER, SYNC_LATER }
 
     class RecNote(val time: Double, val lane: Int) {
         var end = -1.0
     }
 
     val lanes = if (record) 5 else difficulty.lanes
+
+    /** How the notes are shifted against the sound, shown in the pause menu ("" hides it). */
+    @Volatile var syncText = ""
+
+    /** How smoothly frames are coming, shown in the pause menu ("" hides it). */
+    @Volatile var perfText = ""
 
     /** A short line under the HUD, e.g. which way the app is listening. */
     @Volatile var banner = ""
@@ -418,7 +424,7 @@ class Session(
 
     private fun background(g: Gfx, l: Layout) {
         g.rect(0f, 0f, VIEW_W, viewH, 0xFF0A1530.toInt())
-        val bands = 24
+        val bands = 12
         val h = (viewH - l.top) / bands
         for (i in 0 until bands) {
             g.rect(0f, l.top + i * h, VIEW_W, h + 1, mix(0xFF0B1D45.toInt(), 0xFF22103A.toInt(), i / (bands - 1f)))
@@ -582,7 +588,9 @@ class Session(
             gem.holding -> mix(laneColor(gem.lane), 0xFFFFFFFF.toInt(), 0.35f)
             else -> laneColor(gem.lane)
         }
-        val steps = max(1, ((t1 - t0) / 0.05).toInt())
+        // A plain tail is one straight shape (perspective keeps it straight); only a tremolo's
+        // wavy tail needs pieces.
+        val steps = if (gem.tremolo) max(1, ((t1 - t0) / 0.08).toInt()) else 1
         for (s in 0 until steps) {
             val a = t0 + (t1 - t0) * s / steps
             val b = t0 + (t1 - t0) * (s + 1) / steps
@@ -742,6 +750,13 @@ class Session(
         button(g, 90f, cy - 40, 180f, 40f, "RESUME", 0xFF2E9B57.toInt(), Action.RESUME)
         button(g, 90f, cy + 12, 180f, 40f, "RESTART", 0xFF2F6FD6.toInt(), Action.RESTART)
         button(g, 90f, cy + 64, 180f, 40f, "QUIT", 0xFF8A2F3A.toInt(), Action.QUIT)
+        if (syncText.isNotEmpty()) {
+            // Notes a little late or early against the bouzouki? Shift them for this song.
+            g.text("Notes vs. the bouzouki: $syncText", VIEW_W / 2, cy + 136, 12f, 0xFFB9C6EE.toInt(), 1)
+            button(g, 30f, cy + 146, 145f, 36f, "\u25B2 Earlier", 0xFF39406A.toInt(), Action.SYNC_EARLIER)
+            button(g, 185f, cy + 146, 145f, 36f, "\u25BC Later", 0xFF39406A.toInt(), Action.SYNC_LATER)
+        }
+        if (perfText.isNotEmpty()) g.text(perfText, VIEW_W / 2, cy + 206, 10f, 0x99B9C6EE.toInt(), 1)
     }
 
     private fun notice(g: Gfx, l: Layout, text: String, error: Boolean) {

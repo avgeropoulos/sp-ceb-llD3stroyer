@@ -13,6 +13,15 @@ interface Gfx {
 
     /** [y] is the text baseline. [align]: 0 = left, 1 = center, 2 = right. */
     fun text(s: String, x: Float, y: Float, size: Float, color: Int, align: Int = 0)
+
+    /** A straight line; platforms with a fast line primitive draw it with that. */
+    fun line(x1: Float, y1: Float, x2: Float, y2: Float, width: Float, color: Int) {
+        val len = hypot(x2 - x1, y2 - y1)
+        if (len < 0.01f) return
+        val nx = -(y2 - y1) / len * width / 2
+        val ny = (x2 - x1) / len * width / 2
+        quad(x1 + nx, x2 + nx, x2 - nx, x1 - nx, y1 + ny, y2 + ny, y2 - ny, y1 - ny, color)
+    }
 }
 
 const val VIEW_W = 360f
@@ -41,14 +50,6 @@ fun Gfx.tri(x1: Float, x2: Float, x3: Float, y1: Float, y2: Float, y3: Float, co
     tx[0] = x1; tx[1] = x2; tx[2] = x3
     ty[0] = y1; ty[1] = y2; ty[2] = y3
     poly(tx, ty, color)
-}
-
-fun Gfx.line(x1: Float, y1: Float, x2: Float, y2: Float, width: Float, color: Int) {
-    val len = hypot(x2 - x1, y2 - y1)
-    if (len < 0.01f) return
-    val nx = -(y2 - y1) / len * width / 2
-    val ny = (x2 - x1) / len * width / 2
-    quad(x1 + nx, x2 + nx, x2 - nx, x1 - nx, y1 + ny, y2 + ny, y2 - ny, y1 - ny, color)
 }
 
 fun Gfx.circle(cx: Float, cy: Float, r: Float, color: Int) = oval(cx - r, cy - r, 2 * r, 2 * r, color)

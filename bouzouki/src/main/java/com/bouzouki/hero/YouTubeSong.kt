@@ -144,7 +144,7 @@ class YouTubeSong(
             }
           });
         }
-        setInterval(report, 50);
+        setInterval(report, 20); // as often as Μπουζούκι's song screen: a fresher clock
         </script></body></html>
     """.trimIndent()
 

@@ -43,7 +43,34 @@ class CanvasGfx : Gfx {
         canvas.drawOval(rectF, paint)
     }
 
+    private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+    private val verts = FloatArray(8)
+    private val vertColors = IntArray(4)
+
+    /** A real line: much cheaper for the GPU than a shape outlined as a path. */
+    override fun line(x1: Float, y1: Float, x2: Float, y2: Float, width: Float, color: Int) {
+        linePaint.color = color
+        linePaint.strokeWidth = width * s
+        canvas.drawLine(x1 * s, y1 * s, x2 * s, y2 * s, linePaint)
+    }
+
     override fun poly(xs: FloatArray, ys: FloatArray, color: Int) {
+        if (xs.size in 3..4 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // Triangles and quads (nearly every shape in the game) as vertices: a path is
+            // rasterized again every frame, which made the game stutter. (The GPU canvas
+            // draws vertices from Android 10; older phones keep using paths.)
+            for (i in xs.indices) {
+                verts[2 * i] = xs[i] * s
+                verts[2 * i + 1] = ys[i] * s
+                vertColors[i] = color
+            }
+            paint.color = color
+            canvas.drawVertices(
+                Canvas.VertexMode.TRIANGLE_FAN, xs.size * 2, verts, 0, null, 0,
+                vertColors, 0, null, 0, 0, paint,
+            )
+            return
+        }
         path.reset()
         path.moveTo(xs[0] * s, ys[0] * s)
         for (i in 1 until xs.size) path.lineTo(xs[i] * s, ys[i] * s)
@@ -84,6 +111,9 @@ class HeroView(context: Context, private val host: Host) : SurfaceView(context),
     private var resumed = false
     private var thread: Thread? = null
     private val pointerLane = HashMap<Int, Int>()
+    private var frames = 0
+    private var worst = 0f
+    private var perfSince = System.nanoTime()
 
     init {
         holder.addCallback(this)
@@ -139,7 +169,8 @@ class HeroView(context: Context, private val host: Host) : SurfaceView(context),
             val s = host.session
             val clock = host.clock
             if (s.state == Session.State.PLAYING && clock != null) {
-                s.update(songTime(), dt)
+                // What's drawn now is on screen a frame or two later: draw that moment.
+                s.update(songTime() + DISPLAY_LEAD, dt)
                 if (clock.ended) s.finish()
             } else {
                 s.update(s.time, dt)
@@ -158,6 +189,15 @@ class HeroView(context: Context, private val host: Host) : SurfaceView(context),
                 s.render(gfx)
             } finally {
                 holder.unlockCanvasAndPost(canvas)
+            }
+            // Smoothness: frames per second and the slowest frame, shown in the pause menu.
+            frames++
+            worst = maxOf(worst, dt)
+            if (now - perfSince > 1_000_000_000L) {
+                s.perfText = "Smoothness: ${frames} fps, slowest frame ${(worst * 1000).toInt()} ms"
+                frames = 0
+                worst = 0f
+                perfSince = now
             }
             val elapsed = (System.nanoTime() - now) / 1_000_000L
             if (elapsed < 6) Thread.sleep(6 - elapsed)
@@ -235,5 +275,10 @@ class HeroView(context: Context, private val host: Host) : SurfaceView(context),
         KeyEvent.KEYCODE_4, KeyEvent.KEYCODE_F, KeyEvent.KEYCODE_F4 -> 3
         KeyEvent.KEYCODE_5, KeyEvent.KEYCODE_G, KeyEvent.KEYCODE_F5 -> 4
         else -> -1
+    }
+
+    private companion object {
+        /** Seconds between drawing a frame and seeing it (as Μπουζούκι's song screen assumes). */
+        const val DISPLAY_LEAD = 0.025
     }
 }

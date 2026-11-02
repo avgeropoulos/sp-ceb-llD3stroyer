@@ -36,7 +36,9 @@ import kotlin.concurrent.thread
 class HeroActivity : Activity(), HeroView.Host, SessionListener {
     override lateinit var session: Session
     @Volatile override var clock: SongClock? = null
-    override val latency = 0.0
+    /** Song seconds the notes are shifted by: minus the song's sync (sync > 0 shows notes earlier). */
+    override var latency = 0.0
+    private var syncKey = ""
 
     private lateinit var view: HeroView
     private lateinit var scoreKey: String
@@ -64,6 +66,7 @@ class HeroActivity : Activity(), HeroView.Host, SessionListener {
             )
             session.state = Session.State.LOADING
             session.message = "Tuning the bouzouki…"
+            loadSync("hero_sync_b:$id")
             view = HeroView(this, this)
             root.addView(view)
             thread(name = "synth") {
@@ -94,6 +97,7 @@ class HeroActivity : Activity(), HeroView.Host, SessionListener {
             session.message = if (gems.isEmpty()) "This song has no bouzouki notes to play." else "Loading the video…"
             if (gems.isEmpty()) session.state = Session.State.ERROR
             session.topInset = VIEW_W * 9 / 16
+            loadSync("song_sync_$id") // Μπουζούκι's song screen keeps each song's sync under this key
             view = HeroView(this, this)
             root.addView(view)
             val web = WebView(this)
@@ -124,7 +128,39 @@ class HeroActivity : Activity(), HeroView.Host, SessionListener {
             // SCORE: the results now; the song plays on underneath until you leave.
             Session.Action.DONE -> session.finish()
             Session.Action.QUIT, Session.Action.PLAY_CHART -> finish()
+            Session.Action.SYNC_EARLIER -> nudgeSync(+SYNC_STEP)
+            Session.Action.SYNC_LATER -> nudgeSync(-SYNC_STEP)
             Session.Action.OPA, Session.Action.NONE -> {}
+        }
+    }
+
+    /**
+     * The sync between the notes and the sound. For a YouTube song it's the same setting as the
+     * −/+ on Μπουζούκι's song screen, so tuning it in either place fixes both. A song not tuned
+     * yet starts from the last sync chosen (most of the delay is the phone's own).
+     */
+    private fun loadSync(key: String) {
+        syncKey = key
+        val p = getSharedPreferences("bouzouki", MODE_PRIVATE)
+        val sync = if (p.contains(key)) p.getFloat(key, 0f).toDouble() else p.getFloat(PREF_LAST_SYNC, 0f).toDouble()
+        latency = -sync
+        showSync()
+    }
+
+    private fun nudgeSync(by: Double) {
+        val sync = (Math.round((-latency + by) * 1000) / 1000.0).coerceIn(-1.0, 1.0)
+        latency = -sync
+        getSharedPreferences("bouzouki", MODE_PRIVATE).edit()
+            .putFloat(syncKey, sync.toFloat()).putFloat(PREF_LAST_SYNC, sync.toFloat()).apply()
+        showSync()
+    }
+
+    private fun showSync() {
+        val ms = Math.round(-latency * 1000)
+        session.syncText = when {
+            ms > 0 -> "$ms ms earlier"
+            ms < 0 -> "${-ms} ms later"
+            else -> "in step"
         }
     }
 
@@ -208,6 +244,8 @@ class HeroActivity : Activity(), HeroView.Host, SessionListener {
         const val EXTRA_DIFFICULTY = "difficulty"
         const val KIND_BUILTIN = "builtin"
         const val KIND_SONG = "song"
+        private const val SYNC_STEP = 0.025
+        private const val PREF_LAST_SYNC = "hero_sync_last"
         private val TETRA = listOf(48, 53, 57, 62)
 
         fun intent(ctx: Context, kind: String, id: String, d: Difficulty): Intent =
