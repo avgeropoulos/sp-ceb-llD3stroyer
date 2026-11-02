@@ -100,41 +100,71 @@ class GameTest {
     }
 
     /**
-     * A throw with the phone upright, turning about the vertical, while the hand accelerates
-     * at [angleDeg] above level in a fixed real-world direction. Returns the release.
+     * An overhand throw with the phone upright at the grip: leaning back as the arm draws, then
+     * whipping forward. The thumb lets go after [releaseAfter] of the 50 swing samples (or the
+     * swing finishes on its own), while the hand accelerates at [accel] m/s².
      */
-    private fun throwAtAngle(angleDeg: Float, accel: Float = 25f): Release? {
+    private fun overhand(releaseAfter: Int = 99, accel: Float = 25f, peak: Float = 15f): Release? {
         val d = ThrowDetector().apply { enabled = true }
         d.gravity(0f, 9.81f, 0f)
         d.grip(true)
-        val a = Math.toRadians(angleDeg.toDouble()).toFloat()
         var t = 0L
-        var turned = 0f
-        fun sample(spin: Float, push: Boolean) {
-            d.gyro(t, 0f, spin, 0f)
-            turned += spin * 0.005f
-            // The same world direction, seen from the phone as it turns.
-            val h = accel * kotlin.math.cos(a)
-            if (push) d.push(t, h * kotlin.math.cos(turned), accel * sin(a), h * sin(turned)) else d.push(t, 0f, 0f, 0f)
+        fun sample(spin: Float, push: Float) {
+            d.gyro(t, spin, 0f, 0f)
+            d.push(t, 0f, 0f, -push)
             t += 5_000_000L
         }
-        repeat(60) { sample(-4f, false) }                     // pull back
-        repeat(30) { sample(0f, false) }                      // pause
-        repeat(50) { i -> sample(15f * sin(i / 50f * Math.PI.toFloat()), true) }   // whip forward
+        repeat(50) { sample(-4f, 0f) }                        // draw: the top leans back about 57°
+        repeat(20) { sample(0f, 0f) }                         // pause
+        for (i in 0 until 50) {                               // whip forward
+            if (i == releaseAfter) d.grip(false)
+            if (d.phase == ThrowDetector.Phase.IDLE) break
+            sample(peak * sin(i / 50f * Math.PI.toFloat()), accel)
+        }
         return d.takeThrow()
     }
 
-    @Test fun releaseAngleFollowsTheHand() {
-        val high = assertNotNull(throwAtAngle(40f))
-        assertEquals(40f, Math.toDegrees(high.elevation!!.toDouble()).toFloat(), 3f)
-        val flat = assertNotNull(throwAtAngle(10f))
-        assertEquals(10f, Math.toDegrees(flat.elevation!!.toDouble()).toFloat(), 3f)
+    @Test fun leaningBackAndLettingGoEarlyThrowsHigher() {
+        val early = assertNotNull(overhand(releaseAfter = 15))
+        val late = assertNotNull(overhand())
+        val e = Math.toDegrees(early.elevation!!.toDouble())
+        val l = Math.toDegrees(late.elevation!!.toDouble())
+        assertTrue(e > l + 20, "early release $e° should be well above late release $l°")
+        assertTrue(e in 45.0..70.0, "early $e°")
         // A faster hand throws harder.
-        val soft = assertNotNull(throwAtAngle(30f, accel = 10f))
-        val hard = assertNotNull(throwAtAngle(30f, accel = 40f))
+        val soft = assertNotNull(overhand(accel = 10f))
+        val hard = assertNotNull(overhand(accel = 40f))
         assertTrue(hard.power > soft.power, "hard ${hard.power} vs soft ${soft.power}")
-        // Without an accelerometer there's no measured angle; the game uses its guide instead.
+        // A higher throw at the same power lands shorter once it's steep.
+        assertTrue(Javelin.landing(0.6f, elevation = MAX_ELEVATION).second < Javelin.landing(0.6f).second)
+        // Without knowing gravity the phone can't tell its lean; the game uses its guide instead.
         assertNull(assertNotNull(throwRelease(ThrowDetector(), 15f)).elevation)
+    }
+
+    @Test fun bringingThePhoneForwardWithoutThrowingResets() {
+        val d = ThrowDetector().apply { enabled = true }
+        d.gravity(0f, 9.81f, 0f)
+        d.grip(true)
+        var t = 0L
+        fun spin(rate: Float, n: Int) = repeat(n) { d.gyro(t, rate, 0f, 0f); t += 5_000_000L }
+        spin(-4f, 60)
+        assertEquals(ThrowDetector.Phase.DRAWN, d.phase)
+        assertTrue(d.drawAmount > 0.9f)
+        // Slowly forward again: the draw bar drops as it comes forward...
+        spin(2f, 60)
+        assertTrue(d.drawAmount in 0.4f..0.6f, "half way: draw ${d.drawAmount}")
+        // ...and once it's back where it started it's no longer drawn.
+        spin(2f, 60)
+        assertTrue(d.drawAmount < 0.1f, "draw ${d.drawAmount}")
+        assertEquals(ThrowDetector.Phase.GRIP, d.phase)
+        assertNull(d.takeThrow())
+        // Pull back again, then a quick but gentle push forward: still not a throw.
+        spin(-4f, 60)
+        assertEquals(ThrowDetector.Phase.DRAWN, d.phase)
+        for (i in 0 until 40) { d.gyro(t, 4.5f * sin(i / 40f * Math.PI.toFloat()), 0f, 0f); t += 5_000_000L }
+        assertNull(d.takeThrow())
+        assertEquals(0f, d.livePower)
+        assertTrue(d.phase == ThrowDetector.Phase.GRIP || d.phase == ThrowDetector.Phase.DRAWN)
     }
 
     @Test fun pullingBackThenWhippingForwardThrows() {

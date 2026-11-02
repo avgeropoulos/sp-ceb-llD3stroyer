@@ -118,9 +118,9 @@ internal fun Game.drawPrompts(g: Gfx) {
 
     val (line, sub) = if (controls == ControlMode.MOTION) {
         when (detector.phase) {
-            ThrowDetector.Phase.IDLE -> "HOLD THE SCREEN" to (if (hasTilt()) "Tilt to aim. Your swing sets the angle" else "")
+            ThrowDetector.Phase.IDLE -> "HOLD THE SCREEN" to (if (hasTilt()) "Tilt to aim left and right" else "")
             ThrowDetector.Phase.GRIP -> "PULL YOUR ARM BACK" to "Keep holding the screen"
-            ThrowDetector.Phase.DRAWN -> "NOW THROW!" to "Swing upward to throw higher"
+            ThrowDetector.Phase.DRAWN -> "NOW THROW!" to "Let go early, leaning back, to throw high"
             ThrowDetector.Phase.SWING -> "!!!" to ""
         }
     } else if (flickActive()) {
@@ -190,9 +190,9 @@ private fun Game.drawPowerScale(g: Gfx) {
 
 /**
  * The throwing angle as a quarter-circle dial, from level (0°) to straight up (90°), with the
- * usable 20-55° shaded. Before the throw the needle is a guide (how far the phone leans back);
- * during the swing it follows the direction your hand is moving; after release it shows the
- * angle you actually threw at.
+ * usable 15-70° shaded. The needle shows the angle you'd throw at if you let go now, from how
+ * far the phone leans back: white before you grip, green while gripping and swinging (it drops
+ * as the phone comes forward), and gold for the angle you actually threw at.
  */
 private fun Game.drawAngleDial(g: Gfx) {
     val r = 48f
@@ -217,16 +217,16 @@ private fun Game.drawAngleDial(g: Gfx) {
         val a = d * deg
         g.line(cx + cos(a) * (r - 6f), cy - sin(a) * (r - 6f), cx + cos(a) * r, cy - sin(a) * r, 1.5f, 0xB0FFFFFF.toInt())
     }
-    val swinging = detector.phase == ThrowDetector.Phase.SWING
-    val live = if (swinging) detector.liveAngle else null
+    val gripping = detector.phase != ThrowDetector.Phase.IDLE
+    val live = if (gripping) detector.liveAngle else null
     val (angle, color, label) = when {
-        live != null -> Triple(live, Game.GREEN, "SWING")
+        live != null -> Triple(live, Game.GREEN, "NOW")
         throwState != Game.ThrowState.READY && lastElev >= 0f ->
             Triple(lastElev, Game.GOLD, if (releaseMeasured) "THROWN" else "GUIDE")
         else -> Triple(aimElev, Game.WHITE, "GUIDE")
     }
     // Last throw's angle as a gold tick while you line up the next one
-    if (throwState == Game.ThrowState.READY && lastElev >= 0f && !swinging) {
+    if (throwState == Game.ThrowState.READY && lastElev >= 0f) {
         val a = lastElev
         g.line(cx + cos(a) * (r - 12f), cy - sin(a) * (r - 12f), cx + cos(a) * (r + 3f), cy - sin(a) * (r + 3f), 3f, Game.GOLD)
     }
@@ -392,7 +392,7 @@ internal fun Game.drawHowTo(g: Gfx) {
         "3. Press and HOLD the screen with your thumb to grip the javelin.",
         "4. Pull your arm back. The DRAW bar turns green when you're ready.",
         "5. Throw your arm forward! It lets go at the end of your swing.",
-        "HOW FAST your hand moves sets the power: the POWER bar fills as you swing. WHICH WAY it moves sets the angle: swing upward through the release to throw high, level to throw flat. The ANGLE dial follows your arm.",
+        "HOW FAST you move the phone sets the power: the POWER bar fills as you swing. HOW FAR IT LEANS BACK when you let go sets the angle: lean back more, or let go earlier in the swing, for a high, shorter throw. The ANGLE dial shows the angle you'd throw at right now.",
         "The POWER bar also shows how far each power goes and roughly how hard to throw to reach the target.",
     ) else listOf(
         "1. Press anywhere on the screen to grip the javelin.",

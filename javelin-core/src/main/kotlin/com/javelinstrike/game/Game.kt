@@ -189,7 +189,7 @@ class Game(
             aimYaw += (want - aimYaw) * min(1f, dt * 8f)
         }
         if (aiming && input.hasTilt) {
-            val want = (RELEASE_ANGLE + input.lean * 0.6f).coerceIn(MIN_ELEVATION, MAX_ELEVATION)
+            val want = elevationForLean(input.lean)
             aimElev += (want - aimElev) * min(1f, dt * 8f)
         }
         if (flick.active) aimYaw = flick.previewYaw.coerceIn(-MAX_AIM, MAX_AIM)

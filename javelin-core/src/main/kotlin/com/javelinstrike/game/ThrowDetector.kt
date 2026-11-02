@@ -1,9 +1,9 @@
 package com.javelinstrike.game
 
-import kotlin.math.atan2
+import kotlin.math.asin
 import kotlin.math.sqrt
 
-/** A throw: [power] from 0 to 1, and the [elevation] (radians) the hand was moving at, if known. */
+/** A throw: [power] from 0 to 1, and the [elevation] (radians) it leaves at, if the phone could tell. */
 class Release(val power: Float, val elevation: Float?)
 
 /**
@@ -14,11 +14,12 @@ class Release(val power: Float, val elevation: Float?)
  * javelin is drawn. Whipping the arm forward then spins the phone hard the other way.
  * The javelin leaves the hand when the swing finishes or the thumb lets go.
  *
- * The release is measured from the hand's velocity: during the swing the phone's
- * acceleration is turned into world directions (using the gyroscope to follow how the
- * phone turns, and gravity to know which way is up) and added up into a velocity.
- * Its direction at release is the throwing angle: moving up through the release throws
- * high, moving level throws flat. Its speed, with the arm's spin, sets the power.
+ * The gyroscope follows how the phone turns from the moment of the grip, and gravity says
+ * which way was up then, so the phone's lean is known all through the throw. How far it
+ * leans back when the javelin leaves the hand sets the angle: lean back more, or let go
+ * earlier while it's still tilted back, and it flies high. How fast the hand is moving
+ * (the phone's acceleration added up into a velocity) and how hard the arm whips round
+ * set the power. A slow forward move that isn't a throw doesn't count.
  *
  * Only the direction of the draw matters, not how the phone is held, so it works in
  * either hand and in any grip. Sensor callbacks and the game loop run on different
@@ -55,6 +56,7 @@ class ThrowDetector {
     private var maxDraw = 0f
     private var peakSpin = 0f
     private var swingTime = 0f
+    private var peakSpeed = 0f
     private var lastGyroNanos = -1L
 
     // Which way is up, in the phone's axes when the grip started.
@@ -81,21 +83,20 @@ class ThrowDetector {
     private var pendingCancel = false
     private var pendingDrawn = false
 
-    /** How far back the arm is, 0 to 1, for the on-screen meter. */
+    /** How far back the arm is right now, 0 to 1, for the on-screen meter. It drops as you come forward. */
     val drawAmount: Float
         @Synchronized get() = when (phase) {
-            Phase.IDLE -> 0f
-            Phase.SWING -> 1f
-            else -> (maxDraw / DRAW_FULL).coerceIn(0f, 1f)
+            Phase.IDLE, Phase.SWING -> 0f
+            else -> (currentDraw() / DRAW_FULL).coerceIn(0f, 1f)
         }
 
-    /** The power the javelin would have if it left the hand right now (0 during the draw). */
+    /** The power the javelin would have if it left the hand right now (0 until the swing). */
     val livePower: Float
         @Synchronized get() = if (phase == Phase.SWING) currentPower() else 0f
 
-    /** The angle the hand is moving at right now, during the swing; null when unknown. */
+    /** The angle the javelin would leave at if it were let go right now; null when unknown. */
     val liveAngle: Float?
-        @Synchronized get() = if (phase == Phase.SWING) currentAngle() else null
+        @Synchronized get() = if (phase == Phase.IDLE) null else currentAngle()
 
     /** The thumb pressed ([down] = true) or let go of the screen. */
     @Synchronized fun grip(down: Boolean) {
@@ -131,13 +132,15 @@ class ThrowDetector {
     @Synchronized fun gyro(nanos: Long, wx: Float, wy: Float, wz: Float) {
         val dt = if (lastGyroNanos < 0) 0f else ((nanos - lastGyroNanos) / 1e9f).coerceIn(0f, 0.05f)
         lastGyroNanos = nanos
-        if (phase != Phase.IDLE) turn(wx * dt, wy * dt, wz * dt)
+        if (phase != Phase.IDLE) {
+            turn(wx * dt, wy * dt, wz * dt)
+            rx += wx * dt
+            ry += wy * dt
+            rz += wz * dt
+        }
         when (phase) {
             Phase.IDLE -> {}
             Phase.GRIP, Phase.DRAWN -> {
-                rx += wx * dt
-                ry += wy * dt
-                rz += wz * dt
                 val mag = sqrt(rx * rx + ry * ry + rz * rz)
                 if (mag > maxDraw) {
                     maxDraw = mag
@@ -149,9 +152,14 @@ class ThrowDetector {
                     phase = Phase.DRAWN
                     pendingDrawn = true
                 }
+                // Brought back forward without throwing: no longer drawn.
+                if (phase == Phase.DRAWN && currentDraw() < DRAW_MIN * 0.4f && forwardSpin(wx, wy, wz) < SWING_START) {
+                    disarm()
+                }
                 if (phase == Phase.DRAWN && forwardSpin(wx, wy, wz) > SWING_START) {
                     phase = Phase.SWING
                     peakSpin = 0f
+                    peakSpeed = 0f
                     swingTime = 0f
                     // The hand starts its forward swing from (nearly) still.
                     vx = 0f; vy = 0f; vz = 0f
@@ -161,7 +169,10 @@ class ThrowDetector {
                 val f = forwardSpin(wx, wy, wz)
                 swingTime += dt
                 if (f > peakSpin) peakSpin = f
-                if ((swingTime > 0.04f && f < peakSpin * 0.35f) || swingTime > 0.6f) release()
+                if ((swingTime > 0.04f && f < peakSpin * 0.35f) || swingTime > 0.6f) {
+                    // Too gentle to be a throw: just moving the phone forward.
+                    if (peakSpin < SWING_MIN / kotlin.math.sqrt(sensitivity)) disarm() else release()
+                }
             }
         }
     }
@@ -177,6 +188,8 @@ class ThrowDetector {
         vx += wx * dt
         vy += wy * dt
         vz += wz * dt
+        val s = handSpeed()
+        if (s > peakSpeed) peakSpeed = s
     }
 
     /** The throw that just happened, or null. Each throw is returned once. */
@@ -190,6 +203,19 @@ class ThrowDetector {
 
     /** How fast the phone is spinning against the draw direction, i.e. forward. */
     private fun forwardSpin(wx: Float, wy: Float, wz: Float) = -(wx * dx + wy * dy + wz * dz)
+
+    /** How far back the arm is now: the turn since the grip, along the draw direction. */
+    private fun currentDraw() = if (maxDraw <= 0f) 0f else maxOf(0f, rx * dx + ry * dy + rz * dz)
+
+    /** Back to just gripping, so the arm has to be pulled back again. */
+    private fun disarm() {
+        phase = Phase.GRIP
+        maxDraw = currentDraw()
+        peakSpin = 0f
+        peakSpeed = 0f
+        sawAccel = false
+        vx = 0f; vy = 0f; vz = 0f
+    }
 
     private fun startTracking() {
         qw = 1f; qx = 0f; qy = 0f; qz = 0f
@@ -230,15 +256,18 @@ class ThrowDetector {
 
     private fun handSpeed() = sqrt(vx * vx + vy * vy + vz * vz)
 
-    /** The angle above level the hand is moving at, or null if it can't be measured. */
+    /**
+     * The throwing angle for the phone's lean right now: how far its screen faces up (the top
+     * leaning back) compared with when it was gripped. Null if gravity wasn't known.
+     */
     private fun currentAngle(): Float? {
-        if (!sawAccel || !hasUp || handSpeed() < MIN_HAND_SPEED) return null
-        val up = vx * ux + vy * uy + vz * uz
-        val level = sqrt(maxOf(0f, handSpeed() * handSpeed() - up * up))
-        return atan2(up, level)
+        if (!hasUp) return null
+        val (nx, ny, nz) = rotate(0f, 0f, 1f)
+        val lean = asin((nx * ux + ny * uy + nz * uz).coerceIn(-1f, 1f))
+        return elevationForLean(lean)
     }
 
-    private fun currentPower() = powerFor(peakSpin, if (sawAccel) handSpeed() else -1f, sensitivity)
+    private fun currentPower() = powerFor(peakSpin, if (sawAccel) peakSpeed else -1f, sensitivity)
 
     private fun release() {
         lastPeakSpin = peakSpin
@@ -252,6 +281,7 @@ class ThrowDetector {
         dx = 0f; dy = 0f; dz = 0f
         maxDraw = 0f
         peakSpin = 0f
+        peakSpeed = 0f
         sawAccel = false
         vx = 0f; vy = 0f; vz = 0f
     }
@@ -267,8 +297,8 @@ class ThrowDetector {
         const val SPIN_FULL = 24f
         /** Hand speed at release (m/s) for full power at normal sensitivity. */
         const val SPEED_FULL = 9f
-        /** Below this hand speed (m/s) the direction is too uncertain to set the angle. */
-        const val MIN_HAND_SPEED = 1f
+        /** A swing whose spin never gets this fast (rad/s, normal ARM) isn't a throw. */
+        const val SWING_MIN = 6f
 
         /** Power from the arm's peak spin and the hand's speed at release ([handSpeed] < 0 if unknown). */
         fun powerFor(peakSpin: Float, handSpeed: Float, sensitivity: Float): Float {

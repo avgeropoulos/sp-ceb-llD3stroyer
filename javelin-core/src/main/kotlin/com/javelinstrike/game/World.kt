@@ -13,9 +13,17 @@ import kotlin.math.sqrt
 const val GRAVITY = 9.81f
 /** The usual throwing angle, about 36° above level. Leaning the phone changes it. */
 const val RELEASE_ANGLE = 0.63f
-/** The flattest and steepest throws you can aim: 20° and 55°. */
-const val MIN_ELEVATION = 0.35f
-const val MAX_ELEVATION = 0.96f
+/** The flattest and steepest throws: 15° (low and short) to 70° (high and short). */
+const val MIN_ELEVATION = 0.26f
+const val MAX_ELEVATION = 1.22f
+/** How much the throwing angle follows the phone's lean: leaning back 55° throws at 70°. */
+const val LEAN_GAIN = 0.62f
+
+/**
+ * The throwing angle for a phone leaning back by [lean] radians (forward is negative) when
+ * the javelin leaves the hand. Upright throws at the usual 36°.
+ */
+fun elevationForLean(lean: Float) = (RELEASE_ANGLE + lean * LEAN_GAIN).coerceIn(MIN_ELEVATION, MAX_ELEVATION)
 /** Even the gentlest throw goes about 30 m, so the whole swing range is spent on far targets. */
 const val MIN_SPEED = 17.5f
 const val MAX_SPEED = 38f
