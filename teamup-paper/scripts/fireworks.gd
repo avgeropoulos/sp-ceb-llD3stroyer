@@ -16,6 +16,7 @@ var bursts: Array = []         # [node, life]
 static var _rocket_mat: StandardMaterial3D
 static var _spark_mesh: QuadMesh
 static var _trail_pm: ParticleProcessMaterial
+static var _burst_mesh: QuadMesh   # bright solid sparks (show up in daylight too)
 
 
 func setup(g) -> void:
@@ -30,6 +31,16 @@ func setup(g) -> void:
 		_spark_mesh = QuadMesh.new()
 		_spark_mesh.size = Vector2(0.38, 0.38)
 		_spark_mesh.material = sm
+		var bm := StandardMaterial3D.new()
+		bm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		bm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		bm.vertex_color_use_as_albedo = true
+		bm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+		bm.albedo_texture = _star_spark()
+		bm.disable_fog = true
+		_burst_mesh = QuadMesh.new()
+		_burst_mesh.size = Vector2(0.6, 0.6)
+		_burst_mesh.material = bm
 		_trail_pm = ParticleProcessMaterial.new()
 		_trail_pm.direction = Vector3(0, -1, 0)
 		_trail_pm.spread = 15
@@ -45,6 +56,20 @@ func setup(g) -> void:
 		var rt := GradientTexture1D.new()
 		rt.gradient = ramp
 		_trail_pm.color_ramp = rt
+
+
+## A little 4-point sparkle picture with a bright middle.
+static func _star_spark() -> Texture2D:
+	var img := Image.create(32, 32, false, Image.FORMAT_RGBA8)
+	for y in 32:
+		for x in 32:
+			var d := Vector2(x - 15.5, y - 15.5)
+			var r := d.length() / 15.5
+			var a := clampf(1.0 - r * 1.6, 0, 1)
+			a = maxf(a, clampf(1.0 - absf(d.x) / 2.5, 0, 1) * clampf(1.0 - absf(d.y) / 15.5, 0, 1))
+			a = maxf(a, clampf(1.0 - absf(d.y) / 2.5, 0, 1) * clampf(1.0 - absf(d.x) / 15.5, 0, 1))
+			img.set_pixel(x, y, Color(1, 1, 1, a))
+	return ImageTexture.create_from_image(img)
 
 
 ## Starts a show of this kind around `at` (the rockets go up nearby).
@@ -63,7 +88,7 @@ func play_show_ahead(kind: String) -> void:
 	var fwd := -c.global_transform.basis.z
 	fwd.y = 0
 	fwd = fwd.normalized() if fwd.length() > 0.01 else Vector3(0, 0, -1)
-	play_show(kind, l + fwd * 14.0)
+	play_show(kind, l + fwd * 18.0)
 
 
 func busy() -> bool:
@@ -119,9 +144,9 @@ func _launch(from: Vector3, kind: String) -> void:
 	trail.visibility_aabb = AABB(Vector3(-20, -30, -20), Vector3(40, 40, 40))
 	add_child(trail)
 	trail.global_position = n.global_position
-	var up := randf_range(13, 16) if kind != "test" else 12.0
+	var up := randf_range(11, 13) if kind != "test" else 12.0
 	rockets.append({"node": n, "trail": trail, "vel": Vector3(randf_range(-1.5, 1.5), up, randf_range(-1.5, 1.5)),
-		"life": 0.0, "burst_at": randf_range(1.0, 1.35) if kind != "test" else 0.2, "kind": kind})
+		"life": 0.0, "burst_at": randf_range(0.85, 1.1) if kind != "test" else 0.2, "kind": kind})
 	game.sfx("jump2", -14)
 
 
@@ -149,21 +174,19 @@ func _burst(at: Vector3, kind: String) -> void:
 	var c: Color = COLORS[randi() % COLORS.size()] if style != 1 else Color("ffcf55")
 	var c2: Color = COLORS[randi() % COLORS.size()]
 	var ramp := Gradient.new()
-	ramp.set_color(0, Color(1, 1, 1, 1))
-	ramp.add_point(0.15, c)
-	ramp.add_point(0.7, c2.lerp(c, 0.5))
-	ramp.set_color(1, Color(c2.r, c2.g, c2.b, 0))
+	ramp.offsets = PackedFloat32Array([0.0, 0.15, 0.7, 1.0])
+	ramp.colors = PackedColorArray([Color(1, 1, 1, 1), c, c2.lerp(c, 0.5), Color(c2.r, c2.g, c2.b, 0)])
 	var rt := GradientTexture1D.new()
 	rt.gradient = ramp
 	pm.color_ramp = rt
 	pm.scale_min = 0.7
 	pm.scale_max = 1.3
 	p.process_material = pm
-	p.draw_pass_1 = _spark_mesh
+	p.draw_pass_1 = _burst_mesh
 	add_child(p)
 	p.global_position = at
 	if style == 2:
 		p.rotation = Vector3(randf_range(-0.6, 0.6), randf() * TAU, randf_range(-0.6, 0.6))
-	p.emitting = true
+	p.restart()   # one-shot particles must be (re)started once they're in the tree
 	bursts.append([p, p.lifetime + 0.3])
 	game.sfx("boss_hit" if big else "break", -6 if big else -9)

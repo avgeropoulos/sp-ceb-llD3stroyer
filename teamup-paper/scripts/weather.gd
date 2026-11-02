@@ -84,8 +84,8 @@ func set_weather(kind: String) -> void:
 			pm.initial_velocity_min = 22
 			pm.initial_velocity_max = 26
 			pm.gravity = Vector3(0, -10, 0)
-			pm.color = Color(0.8, 0.88, 1.0, 0.75)
-			q.size = Vector2(0.07, 1.3)
+			pm.color = Color(0.8, 0.88, 1.0, 0.6)
+			q.size = Vector2(0.035, 0.8)
 			m.albedo_texture = null
 			m.billboard_mode = BaseMaterial3D.BILLBOARD_FIXED_Y
 			m.billboard_keep_scale = true
@@ -100,8 +100,8 @@ func set_weather(kind: String) -> void:
 			pm.gravity = Vector3(0, -0.4, 0)
 			pm.turbulence_enabled = true
 			pm.turbulence_noise_strength = 1.2
-			pm.color = Color(1, 1, 1, 1)
-			q.size = Vector2(0.26, 0.26)
+			pm.color = Color(0.9, 0.95, 1, 1)
+			q.size = Vector2(0.28, 0.28)
 		"sand":
 			fall.amount = 260
 			fall.lifetime = 2.2
@@ -126,7 +126,7 @@ func set_weather(kind: String) -> void:
 			pm.turbulence_noise_strength = 1.0
 			pm.color = Color(1.0, 0.55, 0.15, 1.0)
 			q.size = Vector2(0.24, 0.24)
-			m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+			m.albedo_texture = Fireworks._star_spark()   # solid sparks show on bright ground too
 		"sparkles":
 			fall.amount = 120
 			fall.lifetime = 3.0
@@ -140,7 +140,7 @@ func set_weather(kind: String) -> void:
 			pm.hue_variation_max = 1.0
 			pm.color = Color(1, 0.6, 0.85, 1)
 			q.size = Vector2(0.24, 0.24)
-			m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+			m.albedo_texture = Fireworks._star_spark()   # solid sparks show on bright ground too
 		"stardust":
 			fall.amount = 120
 			fall.lifetime = 5.0
@@ -152,19 +152,18 @@ func set_weather(kind: String) -> void:
 			pm.gravity = Vector3.ZERO
 			pm.color = Color(0.85, 0.9, 1, 1)
 			q.size = Vector2(0.2, 0.2)
-			m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+			m.albedo_texture = Fireworks._star_spark()   # solid sparks show on bright ground too
 	if kind != "rain":
 		var ramp := Gradient.new()
-		ramp.set_color(0, Color(1, 1, 1, 0))
-		ramp.add_point(0.15, Color(1, 1, 1, 1))
-		ramp.add_point(0.8, Color(1, 1, 1, 1))
-		ramp.set_color(1, Color(1, 1, 1, 0))
+		ramp.offsets = PackedFloat32Array([0.0, 0.15, 0.8, 1.0])
+		ramp.colors = PackedColorArray([Color(1, 1, 1, 0), Color(1, 1, 1, 1), Color(1, 1, 1, 1), Color(1, 1, 1, 0)])
 		var rt := GradientTexture1D.new()
 		rt.gradient = ramp
 		pm.color_ramp = rt
 	q.material = m
 	fall.process_material = pm
 	fall.draw_pass_1 = q
+	fall.preprocess = fall.lifetime   # the sky is already full of it, no waiting
 	add_child(fall)
 	if kind == "rain":   # little splashes where the drops land
 		splash = GPUParticles3D.new()

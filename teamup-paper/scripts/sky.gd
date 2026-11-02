@@ -187,9 +187,9 @@ func _make_glow() -> void:
 	add_child(glow)
 	# sun shafts: a few long soft cards fanning down from the sun
 	var g := Gradient.new()
-	g.set_color(0, Color(1, 1, 1, 0.0))
-	g.add_point(0.25, Color(1, 1, 1, 1))
-	g.set_color(1, Color(1, 1, 1, 0.0))
+	# (set offsets/colours in one go: add_point re-sorts, so set_color(1) would hit the wrong point)
+	g.offsets = PackedFloat32Array([0.0, 0.25, 1.0])
+	g.colors = PackedColorArray([Color(1, 1, 1, 0), Color(1, 1, 1, 1), Color(1, 1, 1, 0)])
 	var gt := GradientTexture2D.new()
 	gt.gradient = g
 	gt.fill_from = Vector2(0, 0.5)
@@ -260,11 +260,8 @@ func _make_fireflies(place: String) -> void:
 	pm.turbulence_enabled = true
 	pm.turbulence_noise_strength = 0.6
 	var ramp := Gradient.new()
-	ramp.set_color(0, Color(1, 1, 1, 0))
-	ramp.add_point(0.2, Color(1, 1, 1, 1))
-	ramp.add_point(0.5, Color(1, 1, 1, 0.3))
-	ramp.add_point(0.8, Color(1, 1, 1, 1))
-	ramp.set_color(1, Color(1, 1, 1, 0))
+	ramp.offsets = PackedFloat32Array([0.0, 0.2, 0.5, 0.8, 1.0])
+	ramp.colors = PackedColorArray([Color(1, 1, 1, 0), Color(1, 1, 1, 1), Color(1, 1, 1, 0.3), Color(1, 1, 1, 1), Color(1, 1, 1, 0)])
 	var rt := GradientTexture1D.new()
 	rt.gradient = ramp
 	pm.color_ramp = rt
@@ -313,7 +310,7 @@ func step(dt: float) -> void:
 	_shooting_stars(dt)
 	if rainbow_t > 0:
 		rainbow_t -= dt
-		var a := clampf(minf(rainbow_t / 4.0, (30.0 - rainbow_t) / 3.0), 0, 1) * (1.0 - night)
+		var a := clampf(minf(rainbow_t / 4.0, (30.0 - rainbow_t) / 1.5), 0, 1) * (1.0 - night)
 		rainbow_mat.albedo_color.a = a
 		rainbow.visible = a > 0.01
 	elif rainbow.visible:
