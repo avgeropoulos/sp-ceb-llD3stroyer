@@ -145,7 +145,7 @@ func _process(_dt: float) -> bool:
 			if ready_in("play"):
 				g.invincible = true
 				g._pause("play")
-				check(g.pause_count() == 5, "POSEIDON FLOOD should be in the pause menu (%d)" % g.pause_count())
+				check(g.pause_count() >= 5 and g.pause_label(4).contains("FLOOD"), "POSEIDON FLOOD should be in the pause menu (%d)" % g.pause_count())
 				check(g.pause_label(4) == "POSEIDON FLOOD", "label should be POSEIDON FLOOD")
 				g.pause_choice(4)
 				check(g.flood == null and g.state == "paused", "one tap must NOT flood (it asks again)")

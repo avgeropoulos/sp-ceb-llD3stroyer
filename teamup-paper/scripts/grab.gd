@@ -114,10 +114,10 @@ func _grab_target(h: Hero) -> Foe:
 			continue
 		var reach: float = REACH + f.hw
 		if f.kind == "kingbombo":
-			if dd.length() > reach + 0.4 or f.state == "hold":
+			if dd.length() > reach + 0.8 or f.state == "hold":
 				continue
-			# only from BEHIND him (you're on his back side), unless he's dizzy
-			var back := Vector2(f.facing.x, f.facing.z).normalized().dot(-dd.normalized()) < -0.25
+			# only from BEHIND him (you're on his back side, or round to the side-back), unless he's dizzy
+			var back := Vector2(f.facing.x, f.facing.z).normalized().dot(-dd.normalized()) < -0.05
 			if not back and f.state != "dizzy":
 				continue
 		elif f.kind in GRABBABLE:
@@ -126,7 +126,7 @@ func _grab_target(h: Hero) -> Foe:
 				continue
 		else:
 			continue
-		if dd.length() > 0.3 and dd.normalized().dot(f2) < 0.3:
+		if dd.length() > 0.3 and dd.normalized().dot(f2) < (0.0 if f.kind == "kingbombo" else 0.3):
 			continue
 		if dd.length() < bd:
 			bd = dd.length()

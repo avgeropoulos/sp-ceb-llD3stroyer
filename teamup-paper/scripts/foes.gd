@@ -1144,6 +1144,7 @@ func _boss_shoot(atk: String, game, lead: Actor) -> void:
 ## dizzy) and throw him down onto the summit 3 times. Thrown off the summit, he
 ## jumps back up. He only takes damage from throws (`bombo_hit`).
 const BOMBO_SPEED := 1.5
+const BOMBO_TURN := 1.3       # radians a second: slow, so you can run round behind him (like Mario 64)
 
 
 func _kingbombo(dt: float, game, lead: Actor, flat: Vector3, dist: float) -> void:
@@ -1165,11 +1166,19 @@ func _kingbombo(dt: float, game, lead: Actor, flat: Vector3, dist: float) -> voi
 				game.sfx("alert")
 		"walk":
 			play("walk")
-			if dist > 0.1:
-				heading = flat.normalized()
-				facing = heading
-			_walk(dt, BOMBO_SPEED if dist > 1.6 else 0.0)
+			if dist > 0.1:   # turn toward you slowly: run round him to get behind!
+				var want := atan2(flat.x, flat.z)
+				var now_a := atan2(facing.x, facing.z)
+				var a := now_a + clampf(wrapf(want - now_a, -PI, PI), -BOMBO_TURN * dt, BOMBO_TURN * dt)
+				facing = Vector3(sin(a), 0, cos(a))
+				heading = facing
+			# only walks when you're roughly in front of him (he waddles after you)
+			var ahead: bool = dist > 0.1 and flat.normalized().dot(facing) > 0.6
+			_walk(dt, BOMBO_SPEED if dist > 1.6 and ahead else 0.0)
 			_bombo_stay(top)
+			if state_t > 7.0 and not has_meta("hinted"):   # once: how to beat him
+				set_meta("hinted", true)
+				game.hud.say("RUN ROUND HIM!", "He turns slowly. GRAB him from BEHIND!", 2.4)
 			cool -= dt
 			if cool <= 0 and dist > 3.0 and dist < 12:
 				cool = 3.5 if hp > 1 else 2.2

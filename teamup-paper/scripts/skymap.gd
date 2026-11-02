@@ -38,7 +38,7 @@ func setup(g, lv: Level) -> void:
 		order.append(w)
 	_island("rainbow", RAINBOW_MAP)   # the kart race (not a world: always open)
 	order.append("rainbow")
-	rocket = level.prop("rocket", Vector3.ZERO, 3.0)
+	rocket = level.prop("rocket", Vector3.ZERO, 5.0)   # a BIG rocket
 	var start: Vector3 = Worlds.HOME_MAP
 	for isl in islands:
 		if isl.id == Boot.from_level:

@@ -103,6 +103,8 @@ func _layout() -> void:
 		buttons = {"jump": jump, "action": act, "swap": sw, "super": sup, "pause": pz}
 		if game and game.mega and game.mega.ready():   # MEGA EVOLUTION is ready
 			buttons["mega"] = [Vector2(s.x - 445 * u, s.y - 255 * u), 54 * u]
+		if game and game.world_rocket and game.world_rocket.near:   # standing on the rocket pad
+			buttons["blastoff"] = [Vector2(s.x * 0.5, s.y - 120 * u), 78 * u]
 
 
 func button_at(p: Vector2) -> String:
@@ -614,7 +616,7 @@ func _draw_stick_and_buttons(with_stick := true) -> void:
 		draw_circle(base + stick * r, r * 0.55, Color("ffd6a8") if game.sprinting else Color(1, 1, 1, 0.75))
 	# buttons
 	var labels := {"jump": "JUMP", "action": game.action_label(), "swap": "SWAP", "super": "SUPER", "pause": "II",
-		"build": "BUILD", "decor": "DECOR", "partner": "TEAM", "place": "PLACE", "remove": "REMOVE", "done": "DONE", "rotate": "TURN", "land": "LAND", "paint": "PAINT",
+		"build": "BUILD", "decor": "DECOR", "partner": "TEAM", "place": "PLACE", "remove": "REMOVE", "done": "DONE", "rotate": "TURN", "land": "LAND", "blastoff": "BLAST OFF!", "paint": "PAINT",
 		"fly": "LAND" if game.flying else "FLY", "down": "DOWN", "movies": "MOVIES", "mega": "MEGA!",
 		"fireworks": "BOOM!", "sleep": "SLEEP"}
 	if game.flying:
@@ -625,7 +627,7 @@ func _draw_stick_and_buttons(with_stick := true) -> void:
 		labels["jump"] = "HOP"
 	var colors := {"jump": Color("3fc06a"), "action": Color("ff8a1f"), "swap": Color("6a7cff"), "super": Color("ffcf33"), "pause": Color(0.2, 0.25, 0.4),
 		"build": Color("ff8a1f"), "decor": Color("ff6fa8"), "partner": Color("2cbec8"), "place": Color("3fc06a"), "remove": Color("e8413b"),
-		"done": Color("3f7fd9"), "rotate": Color("8a5bc4"), "land": Color("3fc06a"),
+		"done": Color("3f7fd9"), "rotate": Color("8a5bc4"), "land": Color("3fc06a"), "blastoff": Color("e8413b"),
 		"paint": Decor.PAINTS[game.home.paint] if game.home and game.home.paint > 0 else Color("ff6fa8"),
 		"fly": Color("ffb020") if game.flying else Color("54c8ff"), "down": Color("3f7fd9"), "movies": Color("e8413b"),
 		"mega": Color.from_hsv(fmod(title_t * 0.5, 1.0), 0.65, 1.0), "fireworks": Color("ff6fd8"), "sleep": Color("3b4fa0")}
@@ -978,12 +980,12 @@ func _draw_clear() -> void:
 
 # ------------------------------------------------------------------ pause menu
 const PAUSE_LABELS := ["RESUME", "SAVE", "SAVE & QUIT", "STARS"]
-const PAUSE_COLORS := [Color("3fc06a"), Color("3f7fd9"), Color("ff8a1f"), Color("e0a800"), Color("1f6fb8")]
+const PAUSE_COLORS := [Color("3fc06a"), Color("3f7fd9"), Color("ff8a1f"), Color("e0a800"), Color("1f6fb8"), Color("e8413b")]
 
 
 func pause_rect(i: int) -> Rect2:
 	var w := minf(460.0, size.x * 0.6)
-	var step := 108.0 if game.pause_count() <= 3 else (92.0 if game.pause_count() == 4 else 82.0)
+	var step := 108.0 if game.pause_count() <= 3 else (92.0 if game.pause_count() == 4 else (82.0 if game.pause_count() == 5 else 72.0))
 	return Rect2((size.x - w) * 0.5, size.y * 0.27 + i * step, w, step - 18)
 
 
@@ -1002,7 +1004,7 @@ func _draw_pause() -> void:
 			draw_rect(r, col)
 			draw_rect(r, Color.WHITE, false, 3.0)
 			_trident(Vector2(r.position.x + 34, r.position.y + r.size.y * 0.5), 20)
-		txt(game.pause_label(i), Vector2(r.position.x, r.position.y + (60 if r.size.y > 70 else 46)), 44 if i < 4 else 34, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 9)
+		txt(game.pause_label(i), Vector2(r.position.x, r.position.y + (60 if r.size.y > 70 else 42)), 44 if i < 4 and r.size.y > 60 else 34, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 9)
 	# lag finder (bottom left): screenshot this if the game stutters
 	if game.slow_count > 0:
 		var ly: float = s.y - 24.0 - game.slow.size() * 24.0

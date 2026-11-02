@@ -188,6 +188,25 @@ func _king_bombo() -> void:
 	check(grabbed_you, "KING BOMBO should grab Rocco when Rocco is in front of him (state %s)" % kb.state)
 	frames(90)
 	check(g.grab.held_by == null and kb.state == "walk", "then he throws you")
+	# REAL PLAY: he turns toward you by himself; running round him (faster than he turns) gets you behind
+	g.hurt_t = 5.0   # (so he doesn't grab us while we circle in front)
+	kb.position = top + Vector3(0, 0.05, 0)
+	kb.vel = Vector3.ZERO
+	kb.state = "walk"
+	kb.state_t = 0
+	kb.facing = Vector3(0, 0, 1)
+	var got_behind := false
+	for k in 70:   # half a circle in about 1.2 s, radius 2.2 (a running hero)
+		var a := PI * 0.5 + PI * k / 70.0
+		var at := top + Vector3(cos(a) * 2.2, 0.05, sin(a) * 2.2)
+		var to_him := (top - at).normalized()
+		place(at, Vector3(to_him.x, 0, to_him.z))
+		frames(1)
+		if g.grab._grab_target(L()) == kb:
+			got_behind = true
+			break
+	check(got_behind, "running round KING BOMBO should get you behind him (he turns slowly)")
+	g.hurt_t = 0
 	# from BEHIND: 3 throws onto the summit
 	for n in 3:
 		step = 21 + n

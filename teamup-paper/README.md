@@ -622,3 +622,11 @@ The app icon, Android's round/squircle adaptive icon layers and the loading spla
 star, then `python3 tools/make_cover.py <dir>` writes `cover/icon.png`, `cover/icon_fg.png`, `cover/icon_bg.png` and
 `cover/splash.png` (title in Poppins Bold, `tools/fonts/`, SIL Open Font License). They're set in `project.godot`
 (`config/icon`, `boot_splash/*`) and `export_presets.cfg` (`launcher_icons/*`).
+
+## Leave a world any time (by rocket)
+
+Every open world has a BIG rocket on a launch pad near the start (`scripts/world_rocket.gd`): stand on the pad and tap
+**BLAST OFF!** (a button, so you never leave by accident). Or pick **ROCKET: LEAVE** in the pause menu and the rocket
+swoops down to wherever you are. Either way you're back on the sky map over that world; stars found are kept.
+The sky map and home rockets are bigger too. KING BOMBO turns slowly (`BOMBO_TURN`), so you can run round behind him
+and GRAB him, like in Mario 64. Tests: `tests/rocket_check.gd`, `tests/grab_check.gd` (runs round him).

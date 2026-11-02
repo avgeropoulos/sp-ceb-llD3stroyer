@@ -210,7 +210,7 @@ func _make_portal() -> void:
 	ring.material_override = Toys.mat(Color("ffcf33"), false, 0.8)
 	ring.position.y = 0.18
 	portal.add_child(ring)
-	var r := level.prop("rocket", PAD + Vector3(0, 0.16, 0), 3.0)
+	var r := level.prop("rocket", PAD + Vector3(0, 0.16, 0), 5.0)
 	r.set_meta("rocket", true)
 	rocket_node = r
 	var label := Label3D.new()
@@ -220,7 +220,7 @@ func _make_portal() -> void:
 	label.pixel_size = 0.008
 	label.modulate = Color("ffd23a")
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	label.position.y = 4.0
+	label.position.y = 6.2
 	portal.add_child(label)
 
 

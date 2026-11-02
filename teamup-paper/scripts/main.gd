@@ -75,6 +75,7 @@ var home: HomeBase            # only at home
 var bonus: Bonus             # only in a painting's BONUS COURSE
 var open_play: OpenPlay       # only in the open worlds (stars, gate, flag)
 var grab: Grab                # open worlds: GRAB / THROW / TAIL SWING (grab.gd)
+var world_rocket: WorldRocket # open worlds: leave any time by rocket (world_rocket.gd)
 var daynight: DayNight        # sky.gd: sun, moon, stars, sunsets, glowing lanterns (home + worlds)
 var weather: Weather          # weather.gd: rain, snow, sand, embers, sparkles, star dust
 var fireworks: Fireworks      # fireworks.gd: shows for stars, the gate, bosses and the home launcher
@@ -267,6 +268,9 @@ func _ready_level() -> void:
 		grab = Grab.new()
 		level.add_child(grab)
 		grab.setup(self, level)
+		world_rocket = WorldRocket.new()
+		level.add_child(world_rocket)
+		world_rocket.setup(self, level)
 	else:
 		level.prop("flag", Vector3(Level.CHECKPOINT_X, 5, 3.9), 3.2)
 		level.prop("flag", Vector3(Level.FLAG_X, 5, 3.9), 4.6)
@@ -1506,7 +1510,17 @@ static func _a2v(a) -> Vector3:
 
 ## How many pause buttons: RESUME, SAVE, SAVE & QUIT (+ STARS in an open world).
 func pause_count() -> int:
-	return 5 if paused_from == "play" and open_play != null and not boss_on else 3
+	if paused_from == "play" and open_play != null and world_rocket != null:
+		return 6   # + STARS, POSEIDON FLOOD and ROCKET: LEAVE
+	return 3
+
+
+## Back to the sky map by rocket (from the launch pad or the pause menu). Stars found are kept.
+func leave_by_rocket() -> void:
+	note("leaving by rocket")
+	save_game(false)
+	Boot.from_level = level.world
+	go("map", slot)
 
 
 ## The pause menu's 5th button (POSEIDON FLOOD) changes as you tap it.
@@ -1515,7 +1529,7 @@ func pause_label(i: int) -> String:
 		if flood_used or flood != null:
 			return "FLOOD USED"
 		return "TAP AGAIN: FLOOD!" if flood_armed_t > 0 else "POSEIDON FLOOD"
-	return ["RESUME", "SAVE", "SAVE & QUIT", "STARS"][i]
+	return ["RESUME", "SAVE", "SAVE & QUIT", "STARS", "", "ROCKET: LEAVE"][i]
 
 
 ## POSEIDON FLOOD from the pause menu: the first tap only asks "TAP AGAIN", so it can't
@@ -1547,12 +1561,21 @@ func poseidon_tap() -> bool:
 ## Pause menu: 0 RESUME, 1 SAVE, 2 SAVE & QUIT, 3 STARS (pick another quest).
 func pause_choice(i: int) -> void:
 	match i:
+		5:
+			if pause_count() > 5:
+				state = "play"
+				world_rocket.call_down()
 		4:
 			if pause_count() > 4:
 				poseidon_tap()
 		3:
 			if pause_count() > 3:
-				open_play.open_select("pause")
+				if boss_on and not boss_done:
+					save_note = "Not during the boss fight!"
+					save_note_t = 2.0
+					sfx("bonk", -4)
+				else:
+					open_play.open_select("pause")
 		0:
 			state = paused_from
 		1:
@@ -1919,9 +1942,21 @@ func _step(dt: float) -> void:
 	if state == "map":
 		_step_map(dt)
 		return
+	if world_rocket and world_rocket.busy():   # blasting off: nothing else happens
+		world_rocket.step(dt)
+		_update_camera(dt)
+		return
 	if pause_pressed:
 		_pause("play")
 		return
+	if world_rocket:
+		world_rocket.step(dt)
+		var l := leader()
+		# on the pad: a big BLAST OFF! button shows (so you never leave by accident)
+		world_rocket.near = l.on_floor and world_rocket.at_pad(l.position) and not (grab and grab.holding)
+		if world_rocket.near and taps.has("blastoff"):
+			world_rocket.take_off()
+			return
 	flood_armed_t = maxf(0, flood_armed_t - dt)
 	play_t += dt
 	hurt_t = maxf(0, hurt_t - dt)
