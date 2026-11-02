@@ -309,6 +309,7 @@ func _collect(id: String) -> void:
 	if current == id or got.has(current):
 		pick(next_open(id), false)
 	game.stars_w[level.world] = got.keys()
+	game.identity.on_star(level.world, id)   # quests, TEAM HEART shards (identity.gd)
 	game.save_game()
 	if select_enabled and Cutscene.enabled and not game.bot:
 		celebrate(id)

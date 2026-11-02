@@ -103,6 +103,10 @@ jobs:
             grep -q 'TEST PASSED' test-quest-$look.log
           done
           for look in paper toy; do
+            timeout 300s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/identity_check.gd -- $look 2>&1 | tee test-identity-$look.log
+            grep -q 'TEST PASSED' test-identity-$look.log
+          done
+          for look in paper toy; do
             timeout 300s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/grab_check.gd -- $look 2>&1 | tee test-grab-$look.log
             grep -q 'TEST PASSED' test-grab-$look.log
           done

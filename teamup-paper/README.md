@@ -403,6 +403,41 @@ during a flip). Test: `tests/moves_check.gd` (real physics: distances and height
   `bombo_foe`, poses `toys.gd` `_pose_grab` / `_king_bombo`, art `gen_art.py` `kings()`.
   Test: `tests/grab_check.gd` (grab + throw, bomb, moves still work, King Bombo, King Krag's tail).
 
+## TEAMWORK: what makes Team Up! its own game
+
+The signature of Team Up!: **you need the whole team**. And a reason to come back every day.
+
+* **TEAM POWER spots** (4-5 per open world, `scripts/teampower.gd`): a glowing pillar shows the face of
+  who you need (SWAP to them), or says "Bring a FIRE partner! (TEAM at home)" if nobody in your team can.
+  ACTION next to it uses the power:
+  * MELT THE ICE: a FIRE or DRAGON partner melts an ice door.
+  * POWER THE DOOR: an ELECTRIC, MIND or GHOST partner zaps an iron door open.
+  * GROW A BEANSTALK: a WATER, GRASS, FAIRY or BUG partner grows a leafy staircase up a tall rock.
+  * SMASH THE ROCK: BLOCKY, ALIX, BRAWLO or a ROCK partner breaks a cracked stone door.
+  * WALL KICK UP: only ROCCO can wall-kick up the shaft.
+  Behind each one: a treasure chest (coins, **TEAM CRYSTALS** and often a power-up). Opened spots stay open.
+* **TEAM SHRINE** (one per world, a star mission): 3 gold pedestals; light them in turn with hero 1,
+  hero 2, then your partner (the next face bounces). Its star is a **TEAM HEART shard**.
+* **TEAM UP!** (`scripts/teamup_attack.gd`): the pink TEAM meter (under the partner box) fills from SWAPs
+  (1.5 s cool-down), **SWAP COMBOS** (beat a bad guy within 3 s of a swap), team spots and pedestals.
+  Full: a rainbow TEAM UP! button. All three heroes jump out, the camera swings round, a comic-book
+  poster freezes the screen with their faces and the combo's name (ROCCO + BLOCKY + fire =
+  BLOCK-BUSTER BLAZE, otherwise e.g. JUMP-BLOCK THUNDER), then a shockwave beats every bad guy within
+  16 blocks and takes a quarter of a castle boss's health.
+* **TEAM PLAZA** at home (south of the start plot, `scripts/identity.gd`): walk up to a thing and tap its button.
+  * **QUEST BOARD**: 3 quests (beat bad guys, find stars, coins, team spots, swaps, TEAM UP!, daily chest),
+    new ones every real day and whenever you CLAIM one (coins + crystals).
+  * **DAILY CHEST**: once per real day; coming back on following days builds a streak (up to 7) for a bigger chest.
+  * **HOME LEVEL** (stars, quests, chests, buddies and spots): each level adds to the plaza: a golden
+    team statue, fountain, TEAM HQ, rainbow arch, crystal tree, golden flags. "HOME Lv 3: 69/80 to Lv 4".
+  * **BUDDY BOOK**: every kind of bad guy you beat (and every partner kind you team up with) becomes a
+    buddy with a funny fact; every 5 buddies +5 crystals, the full book +30. Your newest buddies wander the plaza.
+  * **THE TEAM HEART**: the story. King Krag cracked the TEAM HEART into shards (said in the intro);
+    each world's TEAM SHRINE holds one. All 10 home: the "heart" cutscene and a golden team aura.
+* Saved as `identity` in the save file (old saves start at zero). Dates come from the device
+  (`Identity.today_override` in tests).
+* Test: `tests/identity_check.gd`.
+
 ## Your team: 2 heroes + 1 partner
 
 Clear worlds to unlock new friends (our own look-alikes with made-up names). The **TEAM** button at home

@@ -235,7 +235,7 @@ func _process(_dt: float) -> bool:
 					if g.open_play.stars.has(id):
 						place_at(g.open_play.stars[id].position - Vector3(0, 0.8, 0))
 						g.open_play.step(1.0 / 60)
-				for xid in ["coins100", "npc"]:   # 100 COINS and the friend's quest (tests/extras_check.gd does those)
+				for xid in ["coins100", "npc", "team"]:   # 100 COINS, the friend's quest, the TEAM SHRINE (extras_check / identity_check do those)
 					if g.open_play.ids().has(xid):
 						g.open_play.got[xid] = true
 						if g.open_play.current == xid:

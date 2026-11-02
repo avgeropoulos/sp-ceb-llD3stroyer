@@ -12,8 +12,8 @@ static var last_funny := ""
 
 const TITLES := {"intro": "KRAG JR. STEALS THE STARS", "gate": "BONK!", "krag": "KRAG JR.'S CASTLE",
 	"victory": "HOORAY, DENNIS!", "banana": "BANANA PEEL", "pickaxe": "STUCK PICKAXE", "sneeze": "ACHOO!",
-	"zoomies": "DENNIS ZOOMIES"}
-const ORDER := ["intro", "gate", "krag", "victory", "banana", "pickaxe", "sneeze", "zoomies"]
+	"zoomies": "DENNIS ZOOMIES", "heart": "THE TEAM HEART"}
+const ORDER := ["intro", "gate", "krag", "victory", "banana", "pickaxe", "sneeze", "zoomies", "heart"]
 const FUNNY := ["banana", "pickaxe", "sneeze", "zoomies"]
 
 var game
@@ -330,6 +330,7 @@ func _scene_intro() -> void:
 	var orbit_at := cursor
 	say(kj, "", "KRAG JR.", "Hee hee hee! I took ALL the stars from every world!", 3.2)
 	say(kj, "", "KRAG JR.", "No stars, no way into my castles! Ha!", 3.0)
+	say(kj, "", "KRAG JR.", "And Papa Krag CRACKED your TEAM HEART! No more teamwork! Ha ha!", 3.4)
 	say(B(), "blocky", "BLOCKY", "Hey! Give those back!", 2.0)
 	walk(dog, gp(2.2, -2.6), 0.8)
 	sfx("woof")
@@ -350,6 +351,7 @@ func _scene_intro() -> void:
 	say(M(), "mon", mon_name(), mon_name() + "!!", 1.6)
 	say(B(), "blocky", "BLOCKY", "Let's take the ROCKET, find the stars and save Dennis!", 3.4)
 	tell("Find 5 STARS in every world to open Krag Jr.'s castle!", 3.0)
+	tell("Each world's TEAM SHRINE hides a shard of the TEAM HEART. Work together to bring them home!", 3.4)
 	# the stars circle round Krag Jr. from when he arrives to the end
 	var end := length
 	cursor = orbit_at
@@ -594,3 +596,57 @@ func _scene_zoomies() -> void:
 	walk(dog, gp(-12, -8), 1.2, true)
 	sfx("woof")
 	say(B(), "blocky", "BLOCKY", "Silly Dennis!", 1.6)
+
+
+## Every TEAM HEART shard is home (identity.gd): they fly together, the heart is whole again,
+## the team glows gold, and Krag Jr. can't believe it.
+func _scene_heart() -> void:
+	line_up()
+	var hc := P + Vector3(0, 3.0, -2.5)
+	var heart := Identity.heart_model(Color("ff4f9a"), 1.2)
+	heart.position = hc
+	heart.scale = Vector3.ONE * 0.05
+	add_child(heart)
+	var shards := []
+	for i in Worlds.ORDER.size():
+		var s := OpenPlay.star_model()
+		s.visible = false
+		add_child(s)
+		shards.append(s)
+	once(func():
+		game.cam.position = P + Vector3(0, 2.6, 9.0)
+		look_now = P + Vector3(0, 2.0, -1)
+		game.cam.look_at(look_now, Vector3.UP)
+		game.play_music("cozy"))
+	say(R(), "rocco", "ROCCO", "We found every TEAM HEART shard!", 2.6)
+	say(B(), "blocky", "BLOCKY", "Let's put it back together. All together now!", 2.6)
+	sfx("alert")
+	cam(P + Vector3(0, 3.6, 7.0), hc, 2.6)
+	_add(2.6, func(k):
+		for i in shards.size():
+			var s: Node3D = shards[i]
+			s.visible = k < 1.0
+			var a: float = TAU * i / shards.size() + k * 5.0
+			var r: float = 7.0 * (1.0 - k * k)
+			s.position = hc + Vector3(cos(a) * r, sin(k * PI) * 1.5, sin(a) * r)
+			s.rotation.y = t * 4.0
+		heart.scale = Vector3.ONE * maxf(0.05, k * k)
+		heart.rotation.y = t * 1.5)
+	once(func():
+		Identity.color_heart(heart, Color("ffd23a"))
+		game.sfx("boss_down")
+		game.sfx("clear")
+		game.fx.shake = 0.8
+		for i in 8:
+			game.fx.burst(hc + Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)), Color.from_hsv(randf(), 0.5, 1), 14, 6, 4))
+	_add(9.0, func(_k): heart.rotation.y = t * 1.5, true)
+	hop(R(), 0.8, 0.6, true, true)
+	hop(B(), 0.8, 0.6, true)
+	hop(M(), 0.8, 0.6)
+	say(M(), "mon", mon_name(), mon_name() + "!!!", 1.4)
+	var kj := krag(P + Vector3(12, 8, -10))
+	walk(kj, P + Vector3(4, 3.8, -3.5), 1.6, false, "fly")
+	say(kj, "", "KRAG JR.", "WHAT?! You FIXED it?! Teamwork is SO unfair!", 2.8)
+	walk(kj, P + Vector3(-20, 14, -30), 2.0, true, "fly")
+	say(R(), "rocco", "ROCCO", "Nothing beats a TEAM! Wahoo!", 2.4)
+	tell("THE TEAM HEART IS WHOLE! Your team glows GOLD now.", 3.0)

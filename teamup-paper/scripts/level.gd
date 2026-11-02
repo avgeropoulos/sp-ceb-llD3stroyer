@@ -114,6 +114,8 @@ var slide_path: Array = []    # SECRET SLIDE: the middle of the slide, top to bo
 var red_bonus: Array = []     # RED COIN MAZE: where the 8 red coins are
 var maze_open: Dictionary = {}   # RED COIN MAZE: floor cells you can walk on (Vector2i -> true), for the test
 var summit_spot := Vector3.ZERO   # the flat 9x9 top of the big mountain (set by _course_build), where KING BOMBO waits
+var team_spots: Array = []    # TEAM POWER spots (TeamPower.build): {id, kind, base, use, chest, barrier, stairs}
+var team_shrine := {}         # the TEAM SHRINE: {pos, pedestals}
 var keep_out: Array = []      # [center, radius]: the challenges' space
 # Mario 64-style course (see _course_heights / _course_build):
 var mountain := Vector2.ZERO     # its centre (x, z)
@@ -2319,6 +2321,7 @@ func generate_open(w: String) -> void:
 	_more_quests(start)
 	_painting_spot(start)
 	_summit_quest()
+	TeamPower.build(self, start)   # TEAM POWER spots + the TEAM SHRINE (teampower.gd)
 	for i in 16:
 		var o := _free_spot(6)
 		if o.x < 0 or Vector2(o).distance_to(Vector2(start)) < 14:

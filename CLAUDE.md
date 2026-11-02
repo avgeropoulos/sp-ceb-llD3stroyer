@@ -252,6 +252,13 @@ Performance rules learned the hard way (each one was a visible freeze on the tab
 * Block changes only touch neighbours (`level.gd` `_refresh`), never `rebuild()` in play.
 * Lag finder: frames over 50 ms are listed with `note()` labels in the pause menu (bottom left).
 * Measure with the real renderer: `Performance.PIPELINE_COMPILATIONS_*` per frame and timing `Hud._draw`.
+TEAMWORK identity (README "TEAMWORK"): `identity.gd` (`main.identity`, always there: TEAM CRYSTALS, TEAM meter,
+quests, daily chest + streak, home level, buddy book, TEAM HEART shards = the "team" star of each world; saved as
+`identity`, `save_into` keeps a file's old data if it was never loaded; `Identity.today_override` fakes the date;
+TEAM PLAZA at home `build_plaza`, screens in state "teampanel"), `teampower.gd` (`main.team_power`, open worlds:
+`TeamPower.build` runs in `generate_open` with its own RNG and adds `level.team_spots`/`team_shrine` + the "team"
+objective; `sync()` after the save loads), `teamup_attack.gd` (state "teamup"). New quest kinds go in
+`Identity.QUEST_KINDS` + `quest_text` + a `progress(kind)` call. Tests that finish every star must mark "team" found.
 Characters are original designs (drawn by `tools/gen_art.py`), not copies of the real-game characters.
 Builds with `.github/workflows/teamup-paper.yml` to the `teamup-paper-latest` release (`TeamUpPaper.apk`,
 package `com.roccoquest.teamup.paper`). Run the robot test before pushing:

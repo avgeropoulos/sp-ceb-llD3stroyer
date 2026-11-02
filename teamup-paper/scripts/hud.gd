@@ -105,6 +105,8 @@ func _layout() -> void:
 			buttons["mega"] = [Vector2(s.x - 445 * u, s.y - 255 * u), 54 * u]
 		if game and game.world_rocket and game.world_rocket.near:   # standing on the rocket pad
 			buttons["blastoff"] = [Vector2(s.x * 0.5, s.y - 120 * u), 78 * u]
+	if game and game.identity:   # TEAM UP! (play) and the TEAM PLAZA button (home)
+		game.identity.layout_buttons(self, s, u)
 
 
 func button_at(p: Vector2) -> String:
@@ -161,6 +163,11 @@ func _input(event: InputEvent) -> void:
 					return
 				if game.state == "scene":
 					game.scene_tap()
+					return
+				if game.state == "teampanel":
+					game.identity.panel_tap(e.position, size)
+					return
+				if game.state == "teamup":
 					return
 				if game.state == "movies":
 					_movies_tap(e.position)
@@ -286,6 +293,7 @@ func _draw() -> void:
 		_draw_mecha_ask()
 		return
 	_draw_hud()
+	game.identity.draw_hud(self)
 	if game.mecha and game.mecha.active and game.state == "home":
 		game.mecha.draw(self)
 	if game.state == "play" or game.state == "home" or game.state == "map":
@@ -307,6 +315,10 @@ func _draw() -> void:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		if sub_message != "":
 			txt(sub_message, Vector2(0, s.y * 0.36 + 52), 30, Color(1, 1, 1, a), HORIZONTAL_ALIGNMENT_CENTER, s.x, 8)
+	if game.state == "teamup":
+		game.identity.teamup.draw(self)
+	if game.state == "teampanel":
+		game.identity.draw_panel(self)
 	if game.state == "paused":
 		_draw_pause()
 	if game.state == "starselect":
@@ -621,6 +633,7 @@ func _draw_stick_and_buttons(with_stick := true) -> void:
 		"fireworks": "BOOM!", "sleep": "SLEEP"}
 	if game.flying:
 		labels["jump"] = "UP"
+	labels.merge(game.identity.button_labels(), true)
 	if game.state == "minigame" and game.minigames:
 		labels["jump"] = game.minigames.button_label()
 	if game.state == "kart":
@@ -631,6 +644,7 @@ func _draw_stick_and_buttons(with_stick := true) -> void:
 		"paint": Decor.PAINTS[game.home.paint] if game.home and game.home.paint > 0 else Color("ff6fa8"),
 		"fly": Color("ffb020") if game.flying else Color("54c8ff"), "down": Color("3f7fd9"), "movies": Color("e8413b"),
 		"mega": Color.from_hsv(fmod(title_t * 0.5, 1.0), 0.65, 1.0), "fireworks": Color("ff6fd8"), "sleep": Color("3b4fa0")}
+	colors.merge(game.identity.button_colors(), true)
 	for k in buttons:
 		var c: Vector2 = buttons[k][0]
 		var rad: float = buttons[k][1]
@@ -921,6 +935,8 @@ func _draw_loading() -> void:
 		draw_texture_rect(img(n), Rect2(-500, -500, 40, 40), false)
 	for id in Team.ORDER:   # every hero's face (TEAM screen, SWAP button, save cards)
 		draw_texture_rect(img(id + "_idle"), Rect2(-500, -500, 40, 40), false)
+	for k in Identity.BOOK_FOES:   # the BUDDY BOOK's pictures
+		draw_texture_rect(img(Identity.buddy_pic(k)), Rect2(-500, -500, 40, 40), false)
 	for it in Decor.ITEMS:
 		draw_texture_rect(img("decor_" + it.id), Rect2(-500, -500, 40, 40), false)
 	for k in Powers.KINDS:

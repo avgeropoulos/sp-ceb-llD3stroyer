@@ -83,6 +83,8 @@ const LAUNCHER_SPOT := Vector3(Level.HOME_OX + 4.5, Level.HOME_GY, Level.HOME_OZ
 var gate_open := false        # Krag Jr.'s gold gate (5 stars)
 var stars_w := {}             # world id -> star ids found there (kept for good, like Mario 64)
 var powers: Powers            # power-ups (open worlds)
+var identity: Identity        # TEAM CRYSTALS, TEAM meter, quests, daily chest, buddy book, TEAM HEART (identity.gd)
+var team_power: TeamPower     # open worlds: TEAM POWER spots + TEAM SHRINE (teampower.gd)
 var mega: Mega                # MEGA EVOLUTION (mega.gd)
 var sky: SkyMap               # only on the sky map
 var cleared_w := {}           # world id -> times cleared
@@ -170,6 +172,9 @@ func _ready() -> void:
 		level.generate("meadow")
 	fx = Fx.new()
 	add_child(fx)
+	identity = Identity.new()
+	add_child(identity)
+	identity.setup(self)
 	for w in ["rocco", "blocky", "mon"]:
 		var h := Hero.new()
 		level.add_child(h)
@@ -225,6 +230,7 @@ func _ready_home() -> void:
 	level.add_child(home)
 	home.setup(self, level)
 	_make_launcher()
+	identity.build_plaza(level)   # the TEAM PLAZA: quest board, daily chest, TEAM HEART, buddy book
 	_ready_common()
 	play_music("cozy")
 
@@ -271,6 +277,9 @@ func _ready_level() -> void:
 		world_rocket = WorldRocket.new()
 		level.add_child(world_rocket)
 		world_rocket.setup(self, level)
+		team_power = TeamPower.new()
+		level.add_child(team_power)
+		team_power.setup(self, level)
 	else:
 		level.prop("flag", Vector3(Level.CHECKPOINT_X, 5, 3.9), 3.2)
 		level.prop("flag", Vector3(Level.FLAG_X, 5, 3.9), 4.6)
@@ -370,6 +379,8 @@ func _scene_done(id: String) -> void:
 		cutscene.queue_free()
 		cutscene = null
 	state = scene_back
+	if id == "heart" and identity.heart_complete() and not identity.golden:   # the TEAM HEART finale
+		identity.finish_heart()
 	if state == "movies":
 		return
 	if level.open:
@@ -641,6 +652,8 @@ func _step_home(dt: float) -> void:
 		sleep_till_morning()
 	if taps.has("partner"):   # the TEAM button (2 heroes + 1 partner)
 		open_team("home")
+		return
+	if identity.home_taps(taps):   # the TEAM PLAZA: QUESTS / CHEST / HEART / BUDDIES
 		return
 	if swap_pressed:
 		do_swap()
@@ -1093,6 +1106,7 @@ func do_swap() -> void:
 	sfx("swap")
 	fx.burst(leader().position + Vector3(0, 0.8, 0), Color.WHITE, 14, 4, 4)
 	hud.say(display_name(leader_name()) + "!", "", 0.8)
+	identity.on_swap()
 
 
 func _pop_in(h: Hero, p: Vector3, f: Vector3) -> void:
@@ -1338,6 +1352,8 @@ static func _new_mon_xp() -> Dictionary:
 func set_partner(l: String) -> void:
 	mon_line = l
 	heroes.mon.set_form(l, Mons.stage_of(l, mon_level()))
+	if identity:
+		identity.befriend("mon_" + l, false)
 
 
 ## ERASE needs two taps; the file goes to a backup so UNDO ERASE can bring it back.
@@ -1379,6 +1395,7 @@ func save_data(in_level := true) -> Dictionary:
 	d["kart_best"] = kart_best
 	d["mecha_beaten"] = mecha_beaten
 	d["mecha_cool"] = mecha_cool
+	identity.save_into(d, slot)
 	if in_level:
 		var cells := []
 		var lc := level.cells
@@ -1445,6 +1462,7 @@ func _apply_save(d: Dictionary) -> void:
 		stars_w[String(k)] = OpenPlay.migrate(Array(sw[k]).map(func(x): return String(x)))
 	if open_play:   # stars found on an earlier visit stay found
 		open_play.restore(stars_w.get(level.world, []))
+	identity.load_data(d.get("identity", {}))
 	if not d.get("in_level", false):
 		return
 	for c in d.get("cells", []):
@@ -1788,6 +1806,13 @@ func _step(dt: float) -> void:
 	if state == "loading":
 		_update_camera(dt)
 		return
+	identity.step(dt)
+	if state == "teamup":   # the TEAM UP! attack (teamup_attack.gd)
+		identity.teamup.step(dt)
+		return
+	if state == "teampanel":   # a TEAM PLAZA screen (identity.gd)
+		identity.panel_step(dt, jump_pressed, action_pressed, pause_pressed)
+		return
 	if state == "title":
 		for h in heroes.values():
 			h.vel = Vector3.ZERO
@@ -1968,6 +1993,10 @@ func _step(dt: float) -> void:
 		do_swap()
 	if (taps.has("mega") or Input.is_action_just_pressed("mega")) and mega.start():
 		return
+	if taps.has("teamup") and identity.teamup.start():
+		return
+	if team_power:
+		team_power.step(dt)
 	mega.step(dt)
 	if super_pressed and super_charge >= 1.0:
 		_thunderbolt()
@@ -2474,6 +2503,8 @@ func _rocco_after_move(h: Hero, pre: Vector3) -> void:
 
 
 func _action(h: Hero) -> void:
+	if team_power and team_power.try_use(h):   # a TEAM POWER spot / the TEAM SHRINE
+		return
 	if open_play and open_play.extras and open_play.extras.on_action(h):   # riding DASH: the tongue
 		return
 	if grab and grab.on_action(h):   # GRAB / THROW / tail swing first (only when something's there)
@@ -3215,6 +3246,7 @@ func _update_coins(dt: float) -> void:
 			if cc.distance_to(p.position + Vector3(0, p.height * 0.5, 0)) < 0.9:
 				coins += 1
 				coins_taken.append(int(c.get_meta("i")))
+				identity.on_coin()
 				sfx("coin", -3)
 				fx.burst(c.position, Color("ffd23a"), 5, 2.5, 6)
 				c.queue_free()
@@ -3290,6 +3322,7 @@ func on_foe_beaten(f: Foe) -> void:
 	foes_gone.append(int(f.get_meta("spawn")))
 	coins += 2
 	super_charge = minf(1.0, super_charge + 0.06)
+	identity.on_foe_beaten(f)
 	fx.text(f.position + Vector3(0, f.height + 0.4, 0.4), "+2", Color("ffd23a"), 48)
 	if f.is_boss:
 		boss_done = true
