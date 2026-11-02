@@ -43,7 +43,7 @@ func _process(_dt: float) -> bool:
 		0:
 			if g.state == "map":
 				var sky: SkyMap = g.sky
-				check(sky.order[0] == "home" and sky.order.size() == 1 + Worlds.ORDER.size(), "a button for home and every world")
+				check(sky.order[0] == "home" and sky.order.size() == 2 + Worlds.ORDER.size() and sky.order.back() == "rainbow", "a button for home, every world and RAINBOW ROAD")
 				# a locked world refuses
 				check(not sky.fly_to("frost") and sky.auto_to == "", "Frosty Peaks should be locked")
 				# the island buttons on screen

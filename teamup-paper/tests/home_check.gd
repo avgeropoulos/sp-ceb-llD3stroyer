@@ -239,7 +239,7 @@ func _process(_dt: float) -> bool:
 		2:
 			if ready_in("map"):
 				check(g.sky != null, "the rocket pad should open the sky map")
-				check(g.sky.islands.size() == 1 + Worlds.ORDER.size(), "home + every world should be an island")
+				check(g.sky.islands.size() == 2 + Worlds.ORDER.size(), "home + every world + RAINBOW ROAD should be islands")
 				# fly over Frosty Peaks: it's locked
 				g.sky.rocket.position = Worlds.info("frost").map + Vector3(0, 7, 0)
 				g.sky.step(1.0 / 60, Vector2.ZERO, false)
