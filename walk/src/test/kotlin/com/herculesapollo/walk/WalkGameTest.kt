@@ -232,7 +232,7 @@ class WalkGameTest {
     /** Pitch of the loudest 80 ms of [y], by summing the first four harmonics of each candidate. */
     /**
      * The pitch of the loudest 40 ms, by autocorrelation: the shortest repeat that matches
-     * nearly as well as the best one (so it doesn't hear half the real pitch).
+     * nearly as well as the best one (so it doesn't hear a half or a third of the real pitch).
      */
     private fun pitch(y: FloatArray, lo: Int, hi: Int): Int {
         val sr = Chiptune.RATE
@@ -252,11 +252,18 @@ class WalkGameTest {
             }
             return ab / kotlin.math.sqrt(aa * bb + 1e-12)
         }
-        val lags = (sr / hi)..maxLag
-        val rs = lags.map { r(it) }
-        val top = rs.max()
-        val i = (1 until rs.size - 1).first { rs[it] >= rs[it - 1] && rs[it] >= rs[it + 1] && rs[it] >= 0.85 * top }
-        return sr / lags.elementAt(i)
+        val minLag = sr / hi
+        var period = (minLag..maxLag).maxBy { r(it) }
+        val top = r(period)
+        // A rough voice also repeats every 2nd or 3rd period; prefer the shortest repeat that
+        // still matches well, which is the pitch you hear.
+        for (k in 5 downTo 2) {
+            val guess = period / k
+            if (guess - 2 < minLag) continue
+            val lag = (guess - 2..guess + 2).maxBy { r(it) }
+            if (r(lag) >= 0.6 * top) { period = lag; break }
+        }
+        return sr / period
     }
 
     /** Hercules' GAV is deep, Apollo's ARP is high. Also writes them to build/sounds to listen to. */
@@ -275,7 +282,8 @@ class WalkGameTest {
         val gp = pitch(WalkSynth.render(WalkSound.GAV), 60, 900)
         val ap = pitch(WalkSynth.render(WalkSound.ARP), 60, 900)
         println("GAV pitch $gp Hz, ARP pitch $ap Hz")
-        assertTrue(gp in 100..170, "GAV is deep: $gp Hz")
+        assertTrue(gp in 240..380, "GAV is lower than ARP: $gp Hz")
+        assertTrue(ap > gp * 1.6f, "ARP is well above GAV")
         assertTrue(ap in 420..700, "ARP is high: $ap Hz")
     }
 

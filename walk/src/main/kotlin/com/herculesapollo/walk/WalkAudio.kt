@@ -22,8 +22,8 @@ fun interface WalkAudio {
 /** Synthesizes the walk's sound effects as mono float samples at Chiptune.RATE. */
 object WalkSynth {
     fun render(s: WalkSound): FloatArray = when (s) {
-        // Hercules says a deep, gruff "GAV!"; Apollo a high, bright "ARP!" (see BarkSynth).
-        WalkSound.GAV -> BarkSynth.render(BarkSynth.gav)
+        // Hercules barks a gruff "GAV GAV!"; Apollo a high, bright "ARP!" (see BarkSynth).
+        WalkSound.GAV -> BarkSynth.twice(BarkSynth.gav, gapSeconds = 0.09f, pitch = 0.96f)
         WalkSound.ARP -> BarkSynth.render(BarkSynth.arp)
         WalkSound.ARP_ARP -> BarkSynth.twice(BarkSynth.arp)
         else -> effect(s)

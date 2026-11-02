@@ -113,12 +113,12 @@ out on five walks, and they chase down everything they see.
 ![Hercules and Apollo chasing a squirrel](docs/walk.png)
 
 * **Hercules** (black curls, white beard, red collar) is the quick one, and the only dog fast
-  enough to catch a bunny. Hercules barks a deep, gruff **"GAV!"**
+  enough to catch a bunny. Hercules barks a gruff **"GAV GAV!"**
 * **Apollo** (tan curls, silvery-grey head) jumps high enough to reach cats on fences and
   raccoons on bins. Apollo barks a high, bright **"ARP!"** (The barks are synthesized like real
   ones: a sudden puff of air and a rough, noisy voice that jumps up in pitch and falls away, with
   a harsh edge and a little echo. Each is shaped into its word the way a speech synthesizer makes
-  vowels: a gruff "gav" at about 155 Hz, with a thump from the chest, for Hercules, and a yappy
+  vowels: a gruff "gav" at about 300 Hz, with a thump from the chest, for Hercules, and a yappy
   "arp" at about 650 Hz for Apollo. See `BarkSynth.kt`.)
 * When you play as one of them, each dog has its own music: a fast, pumped-up tune for
   Hercules and a calm stroll for Apollo.

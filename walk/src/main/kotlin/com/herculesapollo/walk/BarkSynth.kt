@@ -63,18 +63,18 @@ object BarkSynth {
         )
     }
 
-    /** Hercules: a deep, gruff "GAV!" (about 150 Hz), with a thump from the chest. */
+    /** Hercules: a gruff "GAV!" (about 300 Hz, well below Apollo), with a thump from the chest. */
     val gav = Voice(
         0.25f,
-        f0 = Curve(0f, 110f, 0.02f, 158f, 0.05f, 150f, 0.15f, 112f, 0.25f, 80f),
-        f1 = Curve(0f, 380f, 0.02f, 600f, 0.05f, 680f, 0.15f, 620f, 0.19f, 360f, 0.25f, 280f),
-        f2 = Curve(0f, 1250f, 0.04f, 1150f, 0.15f, 1080f, 0.25f, 950f),
+        f0 = Curve(0f, 220f, 0.02f, 310f, 0.05f, 300f, 0.15f, 240f, 0.25f, 180f),
+        f1 = Curve(0f, 450f, 0.02f, 700f, 0.05f, 780f, 0.15f, 700f, 0.19f, 420f, 0.25f, 340f),
+        f2 = Curve(0f, 1400f, 0.04f, 1300f, 0.15f, 1200f, 0.25f, 1050f),
         f3 = Curve(0f, 2300f, 0.25f, 2150f),
         amp = Curve(0f, 0f, 0.004f, 1f, 0.05f, 0.95f, 0.14f, 0.7f, 0.19f, 0.35f, 0.25f, 0f),
         breath = Curve(0f, 1f, 0.02f, 0.45f, 0.12f, 0.4f, 0.25f, 0.55f),
-        rough = 0.08f, sub = 0.45f, drive = 2.6f,
+        rough = 0.07f, sub = 0.12f, drive = 2.6f,
         bursts = listOf(Burst(0f, 0.025f, 0.55f, 900f)),
-        chestHz = 140f, chestSeconds = 0.09f, chestLevel = 0.45f,
+        chestHz = 230f, chestSeconds = 0.07f, chestLevel = 0.3f,
         fric = Curve(0f, 0f, 0.17f, 0f, 0.2f, 1f, 0.24f, 0.5f, 0.25f, 0f), fricLevel = 0.08f, fricHz = 2400f,
     )
 
@@ -192,7 +192,7 @@ object BarkSynth {
         for (i in y.indices) y[i] *= k
     }
 
-    /** Two barks in a row, the second a touch higher: "ARP ARP!" */
-    fun twice(v: Voice, gapSeconds: Float = 0.07f): FloatArray =
-        render(v) + FloatArray((gapSeconds * SR).toInt()) + render(v.withPitch(1.07f, v.seed + 1))
+    /** Two barks in a row, the second a touch higher (or lower, with [pitch] under 1): "ARP ARP!" */
+    fun twice(v: Voice, gapSeconds: Float = 0.07f, pitch: Float = 1.07f): FloatArray =
+        render(v) + FloatArray((gapSeconds * SR).toInt()) + render(v.withPitch(pitch, v.seed + 1))
 }
