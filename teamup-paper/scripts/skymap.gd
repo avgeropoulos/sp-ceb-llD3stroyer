@@ -22,6 +22,8 @@ var landing_t := -1.0
 var landing_to := ""
 var t := 0.0
 var auto_to := ""            # autopilot: flying to this island, then landing
+const RAINBOW_MAP := Vector3(-38, 0, 40)
+
 ## The islands in button order: home first, then every world (new worlds show up by themselves).
 var order: Array = []
 
@@ -34,6 +36,8 @@ func setup(g, lv: Level) -> void:
 	for w in Worlds.ORDER:
 		_island(w, Worlds.info(w).map)
 		order.append(w)
+	_island("rainbow", RAINBOW_MAP)   # the kart race (not a world: always open)
+	order.append("rainbow")
 	rocket = level.prop("rocket", Vector3.ZERO, 3.0)
 	var start: Vector3 = Worlds.HOME_MAP
 	for isl in islands:
@@ -62,7 +66,11 @@ func _island(id: String, pos: Vector3) -> void:
 	var n := Node3D.new()
 	n.position = pos
 	add_child(n)
-	var info: Dictionary = Worlds.info(id) if id != "home" else {"top": "grass_top", "side": "grass_side", "short": "HOME"}
+	var info: Dictionary = {"top": "grass_top", "side": "grass_side", "short": "HOME"}
+	if id == "rainbow":
+		info = {"top": "cloud", "side": "cloud", "short": "RAINBOW"}
+	elif id != "home":
+		info = Worlds.info(id)
 	var size := 8.0 if id == "home" else 9.0
 	var top := MeshInstance3D.new()
 	var tb := BoxMesh.new()
@@ -102,6 +110,27 @@ func _island(id: String, pos: Vector3) -> void:
 		"cloud": [["cloud", -2.2, -2.2, 2.4], ["cloud", 2.2, -1.6, 2.0], ["coin", -1.2, 2.4, 0.9], ["flag", 2.6, 2.6, 2.2]]}.get(id, [])
 	for th in things:
 		level.prop(th[0], pos + Vector3(th[1], 0, th[2]), th[3], true)
+	if id == "rainbow":   # a rainbow arch and a little kart
+		for k in 7:
+			var col := Color.from_hsv(k / 7.0, 0.75, 1.0)
+			for a in 9:
+				var ang := PI * a / 8.0
+				var r := 3.4 - k * 0.22
+				var seg := MeshInstance3D.new()
+				var bm := BoxMesh.new()
+				bm.size = Vector3(0.5, 0.22, 0.4)
+				seg.mesh = bm
+				var m := StandardMaterial3D.new()
+				m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+				m.albedo_color = col
+				seg.material_override = m
+				seg.position = Vector3(cos(ang) * r, sin(ang) * r, -1.5)
+				seg.rotation.z = ang + PI / 2
+				n.add_child(seg)
+		Toys.part(n, Toys.box(Vector3(1.2, 0.4, 1.8)), Vector3(0.6, 0.4, 1.8), Color("e8413b"))
+		for wx in [-0.0, 1.2]:
+			for wz in [1.2, 2.4]:
+				Toys.part(n, Toys.cyl(0.28, 0.28, 0.25, 12), Vector3(wx, 0.28, wz), Color("1e1e26"), Vector3.ONE, Vector3(0, 0, PI / 2))
 	if id == "home":   # a little house
 		var house := MeshInstance3D.new()
 		var hb := BoxMesh.new()
@@ -136,6 +165,10 @@ func _refresh_label(isl: Dictionary) -> void:
 		l.text = "HOME"
 		l.modulate = Color("8ff0a0")
 		return
+	if id == "rainbow":
+		l.text = "RAINBOW ROAD\n" + ("CUP WON!" if game.kart_star else "KART RACE")
+		l.modulate = Color("ff9ae8")
+		return
 	var info: Dictionary = Worlds.info(id)
 	if not Worlds.unlocked(id, game.cleared_w):
 		l.text = info.short + "\nLOCKED"
@@ -159,6 +192,8 @@ func near_info() -> Dictionary:
 		return {}
 	if near_id == "home":
 		return {"id": "home", "name": "HOME", "ok": true, "why": ""}
+	if near_id == "rainbow":
+		return {"id": "rainbow", "name": "RAINBOW ROAD", "ok": true, "why": ""}
 	var info: Dictionary = Worlds.info(near_id)
 	var ok := Worlds.unlocked(near_id, game.cleared_w)
 	var why := "" if ok else "Beat %s first!" % Worlds.info(info.after).short
@@ -167,10 +202,12 @@ func near_info() -> Dictionary:
 
 ## Is this island open to land on? (home always is)
 func can_land(id: String) -> bool:
-	return id == "home" or Worlds.unlocked(id, game.cleared_w)
+	return id == "home" or id == "rainbow" or Worlds.unlocked(id, game.cleared_w)
 
 
 func short_name(id: String) -> String:
+	if id == "rainbow":
+		return "RAINBOW"
 	return "HOME" if id == "home" else String(Worlds.info(id).short)
 
 

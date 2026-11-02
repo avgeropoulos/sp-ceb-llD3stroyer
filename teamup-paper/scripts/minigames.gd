@@ -13,6 +13,7 @@ const GAMES := [
 	{"id": "bowling", "name": "KRAG BOWL", "vs": "vs a GRUMBLER", "about": "Tap to aim, tap for power. 3 frames: most pins wins!", "color": Color("e8413b")},
 	{"id": "coins", "name": "COIN SCRAMBLE", "vs": "vs 3 GRUMBLERS", "about": "Grab the most coins in 30 seconds! Stomp a Grumbler to steal one.", "color": Color("e0a800")},
 	{"id": "race", "name": "PENGUIN RACE", "vs": "vs 3 PENGUINS", "about": "Race down the ice! JUMP over the hurdles.", "color": Color("2c9ad8")},
+	{"id": "kart", "name": "RAINBOW ROAD", "vs": "vs 5 KARTS", "about": "A kart race in space! Steer, drift with JUMP, ACTION for items.", "color": Color("ff4fa8")},
 ]
 const PRIZE_WIN := 20
 const PRIZE_TRY := 5

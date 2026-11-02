@@ -45,7 +45,31 @@ const ITEMS := [
 	{"id": "wardrobe", "name": "WARDROBE", "coins": 18, "paint": true, "h": 1.9},
 	{"id": "plant", "name": "PLANT POT", "coins": 5, "paint": true, "h": 1.3},
 	{"id": "toybox", "name": "TOY BOX", "coins": 10, "paint": true, "h": 0.9},
+	{"id": "rainbow_cup", "name": "RAINBOW CUP", "coins": 0, "need": "kart", "h": 1.5},
+	{"id": "mecha_trophy", "name": "MECHA KRAG TROPHY", "coins": 0, "need": "mecha", "h": 1.8},
 ]
+
+
+## Trophies you have to earn first (KRAG JR. TROPHY: beat a castle; RAINBOW CUP: win the
+## kart race; MECHA KRAG TROPHY: beat Mecha Krag).
+static func locked(it: Dictionary, g) -> bool:
+	if it.get("need_clear", false) and g.cleared <= 0:
+		return true
+	match String(it.get("need", "")):
+		"kart":
+			return not g.kart_star
+		"mecha":
+			return g.mecha_beaten <= 0
+	return false
+
+
+static func why_locked(it: Dictionary) -> String:
+	match String(it.get("need", "")):
+		"kart":
+			return "trophies: win the RAINBOW ROAD race!"
+		"mecha":
+			return "trophies: beat MECHA KRAG!"
+	return "trophies: beat Krag Jr.!"
 
 
 static func find(id: String) -> Dictionary:
@@ -208,6 +232,26 @@ static func model(id: String) -> Node3D:
 			# a tiny Krag Jr. hover-pot on top
 			P.call(r, Toys.hemi(0.13), Vector3(0, 0.98, 0), Color("8a5bc4"), Vector3.ONE, Vector3(PI, 0, 0))
 			P.call(r, Toys.sph(0.08), Vector3(0, 1.04, 0), Color("59c25a"))
+		"rainbow_cup":   # a big gold cup with a rainbow ring and a star
+			P.call(r, Toys.box(Vector3(0.6, 0.2, 0.6)), Vector3(0, 0.1, 0), Color("4a2c6e"))
+			P.call(r, Toys.cyl(0.1, 0.16, 0.3, 10), Vector3(0, 0.35, 0), Color("ffcf33"))
+			P.call(r, Toys.cyl(0.36, 0.14, 0.46, 16), Vector3(0, 0.73, 0), Color("ffcf33"))
+			for sx in [-1, 1]:
+				P.call(r, Toys.cyl(0.035, 0.035, 0.26, 6), Vector3(sx * 0.4, 0.76, 0), Color("ffcf33"), Vector3.ONE, Vector3(0, 0, PI / 2))
+			for k in 6:
+				P.call(r, Toys.cyl(0.37, 0.37, 0.035, 18), Vector3(0, 0.56 + k * 0.045, 0), Color.from_hsv(k / 6.0, 0.7, 1.0), Vector3.ONE, Vector3.ZERO, false, 0.6)
+			Toys.star_badge(r, Vector3(0, 1.2, 0), 0.2)
+		"mecha_trophy":   # a little statue of Mecha Krag
+			P.call(r, Toys.box(Vector3(0.7, 0.2, 0.7)), Vector3(0, 0.1, 0), Color("34343e"))
+			for sx in [-1, 1]:
+				P.call(r, Toys.box(Vector3(0.16, 0.5, 0.18)), Vector3(sx * 0.14, 0.45, 0), Color("8a8e96"))
+				P.call(r, Toys.box(Vector3(0.12, 0.34, 0.12)), Vector3(sx * 0.32, 0.92, 0), Color("8a8e96"))
+			P.call(r, Toys.box(Vector3(0.5, 0.5, 0.36)), Vector3(0, 0.95, 0), Color("4cb048"))
+			P.call(r, Toys.hemi(0.28), Vector3(0, 1.12, -0.12), Color("2f7a3a"), Vector3(1, 0.8, 1), Vector3(-PI / 2, 0, 0))
+			P.call(r, Toys.box(Vector3(0.34, 0.28, 0.3)), Vector3(0, 1.36, 0.04), Color("8a8e96"))
+			for sx in [-1, 1]:
+				P.call(r, Toys.sph(0.05), Vector3(sx * 0.08, 1.4, 0.2), Color("ff3b3b"), Vector3.ONE, Vector3.ZERO, false, 2.0)
+				P.call(r, Toys.cyl(0.0, 0.05, 0.16, 6), Vector3(sx * 0.12, 1.56, 0), Color("fff2dc"))
 		_:
 			_furniture(r, id)
 	for mi in Toys._all_meshes(r):

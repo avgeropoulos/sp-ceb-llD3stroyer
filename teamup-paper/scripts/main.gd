@@ -100,6 +100,12 @@ var movie_sel := 0
 var grav := 1.0               # gravity for the heroes (the Moon is 0.6)
 var minigames: MiniGames      # while a mini game from the ARCADE is on (state "minigame")
 var arcade_sel := 0           # highlighted card in the ARCADE menu (state "arcade")
+var kart: KartRace            # while the RAINBOW ROAD race is on (state "kart")
+var kart_star := false        # won the RAINBOW CUP (1st place) at least once
+var kart_best := 0            # best place in the race (0 = never raced)
+var mecha: MechaKrag          # while MECHA KRAG attacks the home
+var mecha_beaten := 0         # times Mecha Krag was beaten (unlocks the MECHA TROPHY)
+var mecha_cool := 0           # home visits to wait before he can come again
 var flood: Flood              # POSEIDON FLOOD while it's on
 var flood_used := false       # once per world visit
 var flood_armed_t := 0.0      # > 0 after the first tap on POSEIDON FLOOD (tap again to start)
@@ -332,6 +338,8 @@ func enter_home() -> void:
 		play_scene("intro")
 	elif not new_friends().is_empty():
 		announce_friends()
+	elif mecha_ready():
+		ask_mecha()
 	else:
 		maybe_funny()
 
@@ -468,6 +476,9 @@ func close_arcade() -> void:
 
 
 func start_minigame(id: String) -> void:
+	if id == "kart":
+		start_kart("home")
+		return
 	if MiniGames.info(id).is_empty():
 		return
 	note("mini game " + id)
@@ -478,6 +489,96 @@ func start_minigame(id: String) -> void:
 	state = "minigame"
 	minigames.start(self, id)
 	hud.say(minigames.title(), MiniGames.info(id).vs, 2.0)
+
+
+# ------------------------------------------------------------------ MECHA KRAG ATTACKS (home)
+## He can come once 3 worlds are cleared: the first time for sure, then now and then.
+func mecha_ready() -> bool:
+	if bot or not Cutscene.enabled or slot <= 0 or cleared_w.size() < 3:
+		return false
+	if mecha_beaten == 0:
+		return true
+	if mecha_cool > 0:
+		mecha_cool -= 1
+		return false
+	return randf() < 0.35
+
+
+## "MECHA KRAG IS COMING!" - FIGHT! or NOT NOW.
+func ask_mecha() -> void:
+	state = "mecha_ask"
+	sfx("alert")
+	note("mecha krag?")
+
+
+func decline_mecha() -> void:
+	state = "home"
+	mecha_cool = 3
+	hud.say("PHEW!", "Mecha Krag flew away... for now.", 2.0)
+	save_game(false)
+
+
+func start_mecha() -> void:
+	note("mecha krag")
+	state = "home"
+	home.mode = ""
+	flying = false
+	mecha = MechaKrag.new()
+	level.add_child(mecha)
+	mecha.setup(self, level, leader().position)
+	cam_yaw = atan2(leader().position.x - mecha.stop.x, leader().position.z - mecha.stop.z)
+	cam_pitch = 0.3
+
+
+## He's beaten: trophy unlocked, coins already paid; tidy up and save.
+func mecha_done() -> void:
+	mecha_cool = 4
+	save_game(false)
+	var m := mecha
+	mecha = null
+	if m:
+		m.cleanup()
+
+
+# ------------------------------------------------------------------ RAINBOW ROAD (kart race)
+## Starts the kart race. It's built far away, so it works from the sky map or the home.
+func start_kart(from: String) -> void:
+	note("rainbow road")
+	kart = KartRace.new()
+	add_child(kart)
+	state = "kart"
+	kart.start(self, from)
+
+
+## The race is over (or you quit with pause): prize, then back where you came from.
+func kart_done(quit := false) -> void:
+	if kart == null:
+		return
+	var from: String = kart.back
+	var got := 0
+	if not quit:
+		got = kart.prize
+		coins += got
+		if kart.star_won:
+			kart_star = true
+		if kart.place > 0 and (kart_best == 0 or kart.place < kart_best):
+			kart_best = kart.place
+	kart.cleanup()
+	kart = null
+	if from == "home":
+		close_arcade()
+		cam_focus = leader().position + Vector3(0, 1.4, 0)
+		play_music("cozy")
+	elif from == "map":
+		state = "map"
+		if sky:
+			sky.refresh()
+		play_music("theme")
+	else:
+		state = from
+	if got > 0:
+		hud.say("+%d COINS!" % got, "RAINBOW CUP won! It's in DECOR now." if kart_star and not quit and got >= KartRace.PRIZES[0] else "Great race!", 2.4)
+	save_game(false)
 
 
 ## A mini game is over: win the prize, back home outside the ARCADE door.
@@ -504,6 +605,17 @@ func _step_home(dt: float) -> void:
 	play_t += dt
 	hurt_t = maxf(0, hurt_t - dt)
 	_turn_camera(dt)
+	var attacked: bool = mecha != null and mecha.active
+	if attacked:   # MECHA KRAG: no building now, ACTION grabs / throws his dud missiles
+		taps.erase("build")
+		taps.erase("decor")
+		taps.erase("partner")
+		home.mode = ""
+		mecha.step(dt)
+		if (action_pressed or taps.has("action")) and mecha.on_action():
+			action_pressed = false
+		elif taps.has("action"):
+			action_pressed = true   # ACTION does the hero's own move (ground pound...)
 	if taps.has("build"):
 		home.mode = "" if home.mode == "build" else "build"
 		sfx("swap", -6)
@@ -558,12 +670,12 @@ func _step_home(dt: float) -> void:
 	else:
 		home.ghost.visible = false
 		home.outline.visible = false
-		if Input.is_action_just_pressed("action"):
+		if Input.is_action_just_pressed("action") and not attacked:
 			home.mode = "build"
 	hud.world_taps.clear()
 	_update_leader(leader(), dt)
 	_update_follower(follower(), dt)
-	if home.mode == "" and not flying and home.at_arcade(leader().position) and play_t > 0.8:
+	if home.mode == "" and not flying and not attacked and home.at_arcade(leader().position) and play_t > 0.8:
 		open_arcade()
 		return
 	if home.mode == "" and not flying and home.at_portal(leader().position) and play_t > 0.8:
@@ -622,6 +734,12 @@ func _update_home_camera(dt: float) -> void:
 		dist = 10.0
 		var b := boss.position if is_instance_valid(boss) else want
 		want = want.lerp(Vector3(b.x, want.y, b.z), 0.3)
+	if mecha and mecha.active and state == "home":   # pull back and look up so the giant robot fits
+		var fr: Array = mecha.framing()
+		dist = fr[0]
+		want = want.lerp(mecha.focus(), fr[1])
+		if hud.look_delta == Vector2.ZERO:
+			cam_pitch = lerpf(cam_pitch, fr[2], 1 - exp(-dt * 2.0))
 	cam_focus = cam_focus.lerp(want, 1 - exp(-dt * 10))
 	var back := Vector3(sin(cam_yaw) * cos(cam_pitch), sin(cam_pitch), cos(cam_yaw) * cos(cam_pitch))
 	var d := dist
@@ -640,6 +758,9 @@ func _update_home_camera(dt: float) -> void:
 ## The rocket landed on an island.
 func land_on(id: String) -> void:
 	save_game(false)
+	if id == "rainbow":
+		start_kart("map")
+		return
 	if id == "home":
 		go("home", slot)
 	else:
@@ -893,6 +1014,12 @@ func next_swap_name() -> String:
 
 
 func action_label() -> String:
+	if state == "kart":
+		return "ITEM"
+	if mecha and mecha.active and state == "home":
+		var ml: String = mecha.label()
+		if ml != "":
+			return ml
 	if open_play and open_play.extras and open_play.extras.riding and state == "play":
 		return "TONGUE"
 	if grab and state == "play":
@@ -1238,6 +1365,10 @@ func save_data(in_level := true) -> Dictionary:
 		if open_play.extras:
 			d["visit_coins"] = open_play.extras.visit_coins()   # the 100 COIN STAR counts this visit
 	d["stars_w"] = stars_w.duplicate(true)
+	d["kart_star"] = kart_star
+	d["kart_best"] = kart_best
+	d["mecha_beaten"] = mecha_beaten
+	d["mecha_cool"] = mecha_cool
 	if in_level:
 		var cells := []
 		var lc := level.cells
@@ -1267,6 +1398,10 @@ func _apply_save(d: Dictionary) -> void:
 	for k in ores:
 		ores[k] = int(o.get(k, 0))
 	beaten = int(d.get("beaten", 0))
+	kart_star = bool(d.get("kart_star", false))
+	kart_best = int(d.get("kart_best", 0))
+	mecha_beaten = int(d.get("mecha_beaten", 0))
+	mecha_cool = int(d.get("mecha_cool", 0))
 	super_charge = clampf(float(d.get("super", 0)), 0, 1)
 	cleared = int(d.get("cleared", 0))
 	cleared_w = {}
@@ -1678,6 +1813,20 @@ func _step(dt: float) -> void:
 			start_minigame(MiniGames.GAMES[arcade_sel].id)
 		elif pause_pressed:
 			close_arcade()
+		return
+	if state == "mecha_ask":
+		if jump_pressed or action_pressed:
+			start_mecha()
+		elif pause_pressed:
+			decline_mecha()
+		return
+	if state == "kart":
+		if pause_pressed:
+			kart_done(true)   # quit: no prize
+		elif kart:
+			kart.step(dt)
+			if kart and kart.can_leave() and (jump_pressed or action_pressed):
+				kart_done()
 		return
 	if state == "minigame":
 		if pause_pressed:
