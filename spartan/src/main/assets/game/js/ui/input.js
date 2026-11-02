@@ -418,6 +418,24 @@ export function createInput(ctx) {
     for (const el of root.querySelectorAll('.is-down, .is-held')) el.classList.remove('is-down', 'is-held');
   }
 
+  /** Lets go of every touch pointer still tracked (the stick, shields, THROW); keys and the mouse stay. */
+  function releaseTouches() {
+    for (const t of trackers.values()) {
+      if (t.el) t.el.classList.remove('is-down');
+      pool.push(t);
+    }
+    trackers.clear();
+    stickPtr = null;
+    stickX = stickZ = 0;
+    drawStick(homeX, homeY, 0, 0, false);
+    shieldBtnPtr = null;
+    throwPtr = null;
+    drawThrow(-1);
+    motionShieldCount = 0;
+    holdStart = -1;
+    refreshShield();
+  }
+
   // ---- layout ----
   function measure() {
     vw = window.innerWidth;
@@ -912,6 +930,14 @@ export function createInput(ctx) {
   root.addEventListener('touchstart', (e) => {
     if (e.cancelable) e.preventDefault();
   }, { passive: false });
+  // A lost pointerup (a thumb sliding off the glass into the system's edge gestures) must never
+  // leave the stick, a shield or THROW held: once no finger is on the glass, every touch is let go.
+  const onTouchGone = (e) => {
+    if (e.touches && e.touches.length > 0) return;
+    if (trackers.size > 0 || stickPtr !== null) releaseTouches();
+  };
+  window.addEventListener('touchend', onTouchGone, { capture: true });
+  window.addEventListener('touchcancel', onTouchGone, { capture: true });
 
   // ---- mouse ----
   surface.addEventListener('mousedown', (e) => {

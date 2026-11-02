@@ -122,7 +122,7 @@ try {
   check('no two button groups overlap', overlaps.length === 0, overlaps.join(', '));
   const pad = boxes['.ctl-pad'];
   const dpad = boxes['.ctl-stick'];
-  check('right hand: the sword pad sits bottom right, the stick bottom left', pad.l > W / 2 && dpad.r < W / 2 && pad.b > H - 30 && dpad.b > H - 30);
+  check('right hand: the sword pad sits bottom right, the stick bottom left', pad.l > W / 2 && dpad.r < W / 2 && pad.b > H - 30 && dpad.b > H - 50 && dpad.b < H - 30); // the stick sits clear of the bottom edge
   const cells = await ev(() => [...document.querySelectorAll('.ctl-cut')].map((e) => { const r = e.getBoundingClientRect(); return Math.min(r.width, r.height); }));
   check('the sword pad has 9 buttons, each at least 48 px', cells.length === 9 && Math.min(...cells) >= 48, cells.join(','));
   const lockShown = await ev(() => document.querySelector('#hud .hud-lock').classList.contains('is-shown'));
@@ -203,7 +203,7 @@ try {
       const el = document.elementFromPoint(p.x, p.y);
       // Not under a button, and clear of the stick's grab circle (it takes touches beyond its ring).
       const st = document.querySelector('.ctl-stick-home').getBoundingClientRect();
-      const nearStick = Math.hypot(p.x - (st.left + st.width / 2), p.y - (st.top + st.height / 2)) < 110;
+      const nearStick = Math.hypot(p.x - (st.left + st.width / 2), p.y - (st.top + st.height / 2)) < 96; // stickRadius + stickGrabPx, and a little
       if (el && el.classList.contains('ctl-surface') && !nearStick) return p;
     }
     return null;
@@ -350,6 +350,40 @@ try {
   const fwdM = -Math.sin(pd.yaw) * ddx - Math.cos(pd.yaw) * ddz;
   const rightM = Math.cos(pd.yaw) * ddx - Math.sin(pd.yaw) * ddz;
   check('a diagonal push walks diagonally (forward and right at once)', fwdM > 0.1 && rightM > 0.1, `forward ${fwdM.toFixed(2)} right ${rightM.toFixed(2)}`);
+  // Falling retreat: the stick heldZ full retreat walks well past the old 3 m limit, up to 2 m short of the wall.
+  await ev(() => { const c = window.__game.ctx; c.player.pos.set(0, 0, 0); c.player.setLock(null); });
+  await step(30);
+  await touch('touchStart', [{ id: 3, x: home.x, y: home.y }]);
+  await touch('touchMove', [{ id: 3, x: home.x, y: home.y + 60 }]);
+  await step(60 * 7);
+  const retreat = await player();
+  await touch('touchEnd', []);
+  await step(10);
+  check('holding the stick back retreats past 3 m, stopping short of the Phocian Wall', retreat.z > 5 && retreat.z <= 9 + 1e-6, `z ${retreat.z.toFixed(2)}`);
+  // A lost pointerup (the thumb sliding off into the system's edge gestures): once no finger is
+  // on the glass the stick lets go and the walk stops.
+  await touch('touchStart', [{ id: 4, x: home.x, y: home.y }]);
+  await touch('touchMove', [{ id: 4, x: home.x, y: home.y - 60 }]);
+  await step(10);
+  const heldZ = await ev(() => window.__game.ctx.input.moveZ);
+  await ev(() => window.dispatchEvent(new TouchEvent('touchend', { touches: [], changedTouches: [] })));
+  await step(20);
+  const p5 = await player();
+  await step(30);
+  const p6 = await player();
+  const after = await ev(() => window.__game.ctx.input.moveZ);
+  check('a lost touch never leaves the stick heldZ: no finger on the glass, no walking', heldZ > 0.5 && after === 0 && Math.hypot(p6.x - p5.x, p6.z - p5.z) < 0.05, `moveZ ${heldZ} → ${after}`);
+  await touch('touchEnd', []);
+  await step(5);
+  await touch('touchStart', [{ id: 5, x: home.x, y: home.y }]);
+  await touch('touchMove', [{ id: 5, x: home.x, y: home.y - 60 }]);
+  await step(5);
+  const again2 = await ev(() => window.__game.ctx.input.moveZ);
+  await touch('touchEnd', []);
+  await step(5);
+  check('…and the stick takes the next touch at once', again2 > 0.5, String(again2));
+  await ev(() => { const c = window.__game.ctx; c.player.pos.set(0, 0, 0); });
+  await step(5);
 
   // ---- the spear: swap, THROW at the lock ----
   await untilIdle();

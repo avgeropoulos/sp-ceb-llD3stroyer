@@ -1055,6 +1055,9 @@ html, body {
   pointer-events: none;
 }
 #controls.ctl-left .ctl-stick-home { left: auto; right: calc(var(--safe-r) + 26px); }
+/* Buttons: the fixed stick sits clear of the bottom edge, so pulling back never runs the thumb
+   into the system's edge gestures. */
+#controls.ctl-buttons .ctl-stick-home { bottom: calc(var(--safe-b) + 36px); }
 .ctl-stick, .ctl-shield, .ctl-bash, .ctl-throw { display: none; }
 #controls.ctl-touch.ctl-hastouch .ctl-stick,
 #controls.ctl-touch.ctl-hastouch .ctl-shield,

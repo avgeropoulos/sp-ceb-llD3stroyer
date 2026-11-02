@@ -300,7 +300,8 @@ export function createWorld(ctx) {
     groundHeight: layout.groundHeight,
     /** groundHeight's near-field grid (see layout.heightGrid), for inline lookups in hot loops. */
     groundGrid: layout.heightGrid,
-    bounds: { minX: -7, maxX: 8.4, minZ: -6, maxZ: 3 },
+    // The player may fall back to 2 m short of the Phocian Wall's face (layout.js WALL: z 12 ± 0.9).
+    bounds: { minX: -7, maxX: 8.4, minZ: -6, maxZ: 9 },
     colliders,
     sunDirection,
     get envMap() {
