@@ -135,7 +135,7 @@ static func bubble(text: String, y: float) -> Label3D:
 	b.text = text
 	b.font_size = 40
 	b.outline_size = 14
-	b.pixel_size = 0.011
+	b.pixel_size = 0.0065   # (was huge when you stood right next to a friend)
 	b.width = 460
 	b.autowrap_mode = TextServer.AUTOWRAP_WORD
 	b.billboard = BaseMaterial3D.BILLBOARD_ENABLED

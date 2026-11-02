@@ -63,6 +63,9 @@ jobs:
             grep -q 'TEST PASSED' test-power-$look.log
             timeout 300s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/moves_check.gd -- $look 2>&1 | tee test-moves-$look.log
             grep -q 'TEST PASSED' test-moves-$look.log
+            timeout 180s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/fuzz_check.gd -- $look 2>&1 | tee test-fuzz-$look.log
+            grep -q 'TEST PASSED' test-fuzz-$look.log
+            ! grep -q 'SCRIPT ERROR' test-fuzz-$look.log
           done
           for look in paper toy; do
             timeout 300s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/smoke.gd -- $look 2>&1 | tee test-$look.log
@@ -93,6 +96,10 @@ jobs:
           for look in paper toy; do
             timeout 300s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/rocket_check.gd -- $look 2>&1 | tee test-rocket-$look.log
             grep -q 'TEST PASSED' test-rocket-$look.log
+          done
+          for look in paper toy; do
+            timeout 300s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/ui_check.gd -- $look 2>&1 | tee test-ui-$look.log
+            grep -q 'TEST PASSED' test-ui-$look.log
           done
           for look in paper toy; do
             timeout 600s godot --headless --fixed-fps 60 --path teamup-paper --script res://tests/boss_check.gd -- $look 2>&1 | tee test-boss-$look.log

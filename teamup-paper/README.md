@@ -595,6 +595,26 @@ The game opens with a short LOADING screen that prepares every text size, pictur
 has to be prepared mid-game. If it still stutters, the pause menu lists the slow moments (bottom left:
 how long the frame took and what was happening) - take a screenshot of it.
 
+## Buttons and juice (`hud.gd`)
+
+* Round, shiny 3D buttons with a drawn icon and a small label. They sink and squash when pressed, with a
+  ripple ring. A button that just appeared (or now does something new, like GRAB or THROW) glows for a moment.
+  Colours mean the same thing everywhere: green = jump / place / land, orange = action / build,
+  blue = swap / team, gold = SUPER (its rim fills up as it charges), red = remove / blast off.
+  SWAP shows the face of the hero you'll swap to. Hit areas are a bit bigger than the buttons.
+* The thumb stick glows on the side you push (orange when sprinting).
+* Menus (pause, save files, partners, team, star select, arcade, movies, sky map islands) are rounded cards;
+  the picked one has a gold frame and bounces.
+* Juice: a tiny hit-stop when a stomp or boss hit lands (`main.hit_stop`), damage numbers pop out of bad guys,
+  coins fly to the coin counter which rolls up and bounces, hearts shake when you're hurt and bounce when
+  they refill, banners slide in and out, a star wipe closes and opens the screen when you change places,
+  and the camera looks a little ahead of where you run and zooms out gently for bosses.
+* Title: the logo bounces in and waves, the heroes hop across the bottom, and BUZZ: ON/OFF switches the
+  little phone buzzes on taps and hits (saved in `user://ui.cfg`).
+* Heroes skid when they stop from a run, bend their knees after a big fall and stretch now and then when idle.
+* `tests/ui_check.gd` checks no buttons overlap or leave the screen in every state, on 1280x720, 1920x1080,
+  2560x1600 and 2340x1080 screens.
+
 ## Controls
 
 Touch: thumb stick on the left (anywhere on the left half), JUMP / ACTION / SWAP / SUPER on the right, II pauses.
@@ -665,3 +685,24 @@ Every open world has a BIG rocket on a launch pad near the start (`scripts/world
 swoops down to wherever you are. Either way you're back on the sky map over that world; stars found are kept.
 The sky map and home rockets are bigger too. KING BOMBO turns slowly (`BOMBO_TURN`), so you can run round behind him
 and GRAB him, like in Mario 64. Tests: `tests/rocket_check.gd`, `tests/grab_check.gd` (runs round him).
+
+## Known fixes (bug hunt)
+
+Found by letting a robot press random buttons everywhere and by trying odd combinations
+(`tests/fuzz_check.gd` keeps them fixed, in both looks, in CI):
+
+* **Saving inside a painting** (SAVE or SAVE & QUIT in a bonus course) used to save the painting as if it
+  were the world, so CONTINUE could drop you somewhere odd and forget the world's stars. Now the save keeps
+  the world (where you went into the painting, stars, blocks) and only updates coins, hearts and the like
+  (`main.gd` `save_game`).
+* **Pause in Rainbow Road and the ARCADE mini games** used to quit the game at once with no prize. Now it
+  really pauses: RESUME, or QUIT RACE / QUIT GAME (`pause_count`, `pause_label`, `pause_choice`).
+* **Bad guys that vanish mid-throw or mid-tail-swing** (lava, a cutscene, leaving the world) could cause
+  errors. Thrown and swung bad guys are now checked every frame (`grab.gd`), and the Krag Jr. scene no longer
+  trips over a boss that's already gone (`cutscene.gd`).
+* **A damaged save file** (the tablet switched off while saving) looked like an empty file, so you could
+  start a new game over it. Every save now keeps the save before as `saveN.json.prev`, and a damaged file
+  loads that instead (`saves.gd` `read`/`write`). Odd values in a save no longer stop it loading.
+
+Speed (measured headless): making a world takes 125-152 ms and the big home 440 ms. A busy moment in the cloud
+world (Poseidon flood + fireworks, or the boss fight) uses about 13-14 ms of script time per frame.

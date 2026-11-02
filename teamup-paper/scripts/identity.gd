@@ -774,7 +774,7 @@ func _step_plaza(dt: float) -> void:
 
 ## Home buttons (from hud._layout): the plaza thing you're standing by. Play: TEAM UP!
 func layout_buttons(hud, s: Vector2, u: float) -> void:
-	if game.state == "home" and near != "" and hud.buttons.has("build"):
+	if game.state == "home" and near != "" and hud.buttons.has("build") and not hud.buttons.has("movies") and not hud.buttons.has("fireworks"):
 		hud.buttons["plaza"] = [Vector2(s.x - 445 * u, s.y - 175 * u), 56 * u]
 	elif game.state == "play" and meter >= 1.0 and teamup.can_start():
 		hud.buttons["teamup"] = [Vector2(s.x - 470 * u, s.y - 105 * u), 62 * u]
@@ -782,6 +782,14 @@ func layout_buttons(hud, s: Vector2, u: float) -> void:
 
 func button_labels() -> Dictionary:
 	return {"plaza": BUTTON_LABEL.get(near, "LOOK"), "teamup": "TEAM UP!"}
+
+
+func button_icon(k: String) -> String:
+	if k == "teamup":
+		return "team"
+	if k == "plaza":
+		return {"board": "check", "chest": "box", "heart": "star", "book": "team"}.get(near, "check")
+	return ""
 
 
 func button_colors() -> Dictionary:
@@ -907,9 +915,7 @@ func panel_tap(p: Vector2, s: Vector2) -> void:
 
 
 func _button(hud, r: Rect2, text: String, col: Color, fs := 30) -> void:
-	hud.draw_rect(Rect2(r.position + Vector2(0, 6), r.size), Color(0, 0, 0, 0.3))
-	hud.draw_rect(r, col)
-	hud.draw_rect(r, Color(1, 1, 1, 0.85), false, 3.0)
+	hud.card(r, col)
 	hud.txt(text, Vector2(r.position.x, r.position.y + r.size.y * 0.5 + fs * 0.36), fs, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 6)
 
 
@@ -922,17 +928,13 @@ func draw_panel(hud) -> void:
 	var mid := r.get_center()
 	hud.draw_set_transform(mid * (1.0 - k), 0.0, Vector2(k, k))
 	var col: Color = BUTTON_COLOR.get(panel, Color("c47a2c"))
-	hud.draw_rect(Rect2(r.position + Vector2(8, 10), r.size), Color(0, 0, 0, 0.35))
-	hud.draw_rect(r, Color("fff6e0"))
-	hud.draw_rect(Rect2(r.position, Vector2(r.size.x, 84)), col)
-	hud.draw_rect(r, Color(0.13, 0.09, 0.18), false, 5.0)
+	hud.paper_card(r, col, 84)
 	var title: String = {"board": "QUEST BOARD", "chest": "DAILY CHEST", "heart": "THE TEAM HEART", "book": "BUDDY BOOK"}.get(panel, "")
 	hud.txt(title, Vector2(r.position.x, r.position.y + 60), 46, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 10)
 	_crystal(hud, Vector2(r.position.x + 38, r.position.y + 42), 16)
 	hud.txt("%d" % crystals, Vector2(r.position.x + 62, r.position.y + 54), 30, Color("bff6ff"))
 	var cr := _close_rect(s)
-	hud.draw_rect(cr, Color("e8413b"))
-	hud.draw_rect(cr, Color.WHITE, false, 3.0)
+	hud.card(cr, Color("e8413b"))
 	hud.txt("X", Vector2(cr.position.x, cr.position.y + 44), 40, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, cr.size.x)
 	match panel:
 		"board": _draw_board(hud, s, r)
