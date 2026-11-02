@@ -38,8 +38,10 @@ func setup(g) -> void:
 		bm.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
 		bm.albedo_texture = _star_spark()
 		bm.disable_fog = true
+		bm.no_depth_test = true   # fireworks are up in the sky: always show over hills and walls
+		bm.render_priority = 2
 		_burst_mesh = QuadMesh.new()
-		_burst_mesh.size = Vector2(0.6, 0.6)
+		_burst_mesh.size = Vector2(0.75, 0.75)
 		_burst_mesh.material = bm
 		_trail_pm = ParticleProcessMaterial.new()
 		_trail_pm.direction = Vector3(0, -1, 0)

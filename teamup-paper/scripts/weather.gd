@@ -92,7 +92,7 @@ func set_weather(kind: String) -> void:
 		"snow":
 			fall.amount = 320
 			fall.lifetime = 6.0
-			pm.emission_box_extents = Vector3(18, 1, 18)
+			pm.emission_box_extents = Vector3(18, 9, 18)   # fills the whole view straight away
 			pm.direction = Vector3(0, -1, 0)
 			pm.spread = 25
 			pm.initial_velocity_min = 1.2
@@ -116,7 +116,7 @@ func set_weather(kind: String) -> void:
 		"embers":
 			fall.amount = 200
 			fall.lifetime = 4.0
-			pm.emission_box_extents = Vector3(18, 1, 18)
+			pm.emission_box_extents = Vector3(18, 6, 18)
 			pm.direction = Vector3(0, 1, 0)
 			pm.spread = 30
 			pm.initial_velocity_min = 1.0
@@ -222,7 +222,7 @@ func step(dt: float) -> void:
 	if game.cam:
 		var c: Vector3 = game.cam.global_position
 		if fall:
-			var up := 14.0 if now in ["rain", "snow"] else (0.0 if now in ["sand", "sparkles", "stardust"] else -8.0)
+			var up := {"rain": 14.0, "snow": 4.0, "embers": -3.0}.get(now, 0.0) as float
 			fall.global_position = c + Vector3(0, up, 0) - game.cam.global_transform.basis.z * 6.0
 		if splash and game.leader():
 			var l: Vector3 = game.leader().global_position
