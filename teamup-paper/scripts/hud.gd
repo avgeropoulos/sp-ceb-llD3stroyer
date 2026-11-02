@@ -528,7 +528,7 @@ func _draw_quest_arrow() -> void:
 	var p := cam.unproject_position(tp + Vector3(0, 1.4, 0))
 	var behind := cam.is_position_behind(tp + Vector3(0, 1.4, 0))
 	var margin := 70.0
-	var area := Rect2(Vector2(margin, 210), size - Vector2(margin * 2, 210 + margin))
+	var area := Rect2(Vector2(margin, 300), size - Vector2(margin * 2, 300 + margin))   # below the hero/partner panels
 	var col := Color("ffe14a")
 	if not behind and area.has_point(p):
 		if dist < 2.5:

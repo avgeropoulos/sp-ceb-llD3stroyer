@@ -268,9 +268,10 @@ func _ready_level() -> void:
 		grab = Grab.new()
 		level.add_child(grab)
 		grab.setup(self, level)
-		world_rocket = WorldRocket.new()
-		level.add_child(world_rocket)
-		world_rocket.setup(self, level)
+		if Boot.place != "title":   # (the title screen is 1-1 in the background: no rocket there)
+			world_rocket = WorldRocket.new()
+			level.add_child(world_rocket)
+			world_rocket.setup(self, level)
 	else:
 		level.prop("flag", Vector3(Level.CHECKPOINT_X, 5, 3.9), 3.2)
 		level.prop("flag", Vector3(Level.FLAG_X, 5, 3.9), 4.6)
