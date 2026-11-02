@@ -1398,6 +1398,15 @@ func save_data(in_level := true) -> Dictionary:
 func save_game(in_level := true) -> bool:
 	if slot <= 0:
 		return false
+	if level and level.bonus:
+		# Inside a painting: the file keeps the WORLD (saved when you jumped in: its blocks, coins,
+		# stars and your spot by the painting); only coins, hearts and the like are updated here.
+		var d := Saves.read(slot)
+		if not d.is_empty():
+			var now := save_data(false)
+			for k in ["coins", "hearts", "ores", "mon_xp", "mon", "team", "heroes_seen", "scenes_seen", "beaten", "super"]:
+				d[k] = now[k]
+			return Saves.write(slot, d)
 	return Saves.write(slot, save_data(in_level))
 
 
