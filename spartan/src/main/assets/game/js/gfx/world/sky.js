@@ -29,6 +29,8 @@ export const PRESETS = {
   noon: { elev: 58, az: [0.5, 0.35], turbidity: 3.6, rayleigh: 1.2, mie: 0.0042, mieG: 0.8, exposure: 0.92, fog: 0.00068, sun: 3.6, hemi: 0.2, env: 0.55, clouds: 0, cloudDensity: 0.35, haze: 0.7 },
   afternoon: { elev: 30, az: [0.66, -0.75], turbidity: 4.6, rayleigh: 1.45, mie: 0.0052, mieG: 0.83, exposure: 1.02, fog: 0.00075, sun: 3.4, hemi: 0.2, env: 0.52, clouds: 0, cloudDensity: 0.38, haze: 0.8 },
   dusk: { elev: 4, az: [0.42, -0.91], turbidity: 5, rayleigh: 3.4, mie: 0.004, mieG: 0.9, exposure: 1.2, fog: 0.00095, sun: 4.4, hemi: 0.5, env: 1.1, clouds: 0.12, cloudDensity: 0.45, haze: 1, tint: [1.0, 0.74, 0.84] },
+  // Nightfall (the Night Raid): the sun just under the ridge, a cold blue sky, a dim warm horizon.
+  nightfall: { elev: 0.6, az: [0.42, -0.91], turbidity: 5, rayleigh: 3.8, mie: 0.004, mieG: 0.9, exposure: 0.56, fog: 0.0014, sun: 0.9, hemi: 0.3, env: 0.55, clouds: 0.15, cloudDensity: 0.5, haze: 1, tint: [0.55, 0.6, 1.0] },
 };
 
 // Constants of three's Sky shader.

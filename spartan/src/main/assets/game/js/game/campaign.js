@@ -79,6 +79,28 @@ export const DAYS = [
     ],
   },
   {
+    // Herodotus 7.211: the Lakedaimonians' ruse, the turn and the slaughter of the pursuers.
+    day: 2, time: 'afternoon', title: 'The Feigned Retreat', subtitle: 'They turn their backs, as if in flight',
+    intro: [],
+    waves: [
+      { levy: 16, alive: 10, subtitle: 'The Persians pursue with a great shout' },
+      { levy: 6, immortal: 10, archer: 3, volleyEvery: 22, alive: 10, subtitle: 'Then the Spartans wheel about' },
+    ],
+    endCard: 'They turned their backs as if in flight, and when the barbarians pursued with shouting and clatter, they wheeled about and slew them past counting.',
+    endSource: 'Herodotus 7.211',
+  },
+  {
+    // Diodorus 11.10: on the last night Leonidas led the Greeks against the Persian camp.
+    day: 2, time: 'nightfall', title: 'The Night Raid', subtitle: 'Leonidas leads a sally into the dark',
+    intro: ['warcry'],
+    waves: [
+      { levy: 14, alive: 10, subtitle: 'The camp wakes in terror' },
+      { levy: 4, immortal: 10, captain: 1, alive: 9, subtitle: "The King's own guard" },
+    ],
+    endCard: 'In the dark the Persians ran together and slew one another, taking their own men for Greeks.',
+    endSource: 'Diodorus 11.10',
+  },
+  {
     day: 3, time: 'dawn', battleTime: 'morning', title: 'The Third Day', subtitle: 'The Anopaia path',
     intro: ['anopaia', 'breakfast'],
     phases: [

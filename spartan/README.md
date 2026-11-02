@@ -186,7 +186,7 @@ a foe and turns with him, and your strikes and spears go at him.
 | Day | What happens |
 |---|---|
 | The First Day | The Medes and Kissians attack. At dusk the Immortals come, led by Hydarnes. |
-| The Second Day | Mixed assaults, sparabara shield walls and heavier volleys. |
+| The Second Day | Mixed assaults, sparabara shield walls and heavier volleys. In the afternoon, **the Feigned Retreat** (Herodotus 7.211): the Persians pursue a line that seems to flee, until it wheels about. At nightfall, **the Night Raid** (Diodorus 11.10): Leonidas leads a sally into the dark against the King's camp. |
 | The Third Day | Ephialtes has shown the Persians the Anopaia path. Three phases: the advance into the wider pass, the fight over Leonidas' body, and the last stand on the Kolonos, where the spears are broken and the Immortals come from behind. |
 
 There is no victory at Thermopylae. When you fall, Simonides' epitaph is shown, along with your

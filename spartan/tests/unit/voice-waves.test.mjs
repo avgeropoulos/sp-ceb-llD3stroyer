@@ -172,7 +172,7 @@ test('phase C: Dienekes calls them to the Kolonos as the fade ends, before the l
   assert.ok(kol, 'kolonos said');
   assert.equal(kol.speaker, 'Dienekes');
   assertFromBank(kol);
-  assert.ok(Math.abs(kol.t - (cAt + DAYS[3].phases[2].fade + 0.6)) < DT + 1e-6, `kolonos at +${kol.t - cAt}`);
+  assert.ok(Math.abs(kol.t - (cAt + DAYS.find((d) => d.day === 3).phases[2].fade + 0.6)) < DT + 1e-6, `kolonos at +${kol.t - cAt}`);
   const cry = vs.find((v) => v.key === 'warcry' && v.t > kol.t);
   assert.ok(cry && cry.speaker === 'Dienekes', 'the last-stand war cry follows');
   assert.ok(cry.t >= kol.t + kol.clip.dur + GAP - DT - 1e-6);

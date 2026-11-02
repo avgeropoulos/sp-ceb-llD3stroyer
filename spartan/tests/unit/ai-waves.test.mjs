@@ -9,8 +9,12 @@ import { createRng } from '../../src/main/assets/game/js/core/math.js';
 
 test('campaign data matches §13', () => {
   assert.deepEqual(DAYS.map((d) => [d.day, d.time, d.title]), [
-    [1, 'morning', 'The First Day'], [1, 'dusk', 'The Immortals'], [2, 'noon', 'The Second Day'], [3, 'dawn', 'The Third Day'],
+    [1, 'morning', 'The First Day'], [1, 'dusk', 'The Immortals'], [2, 'noon', 'The Second Day'],
+    [2, 'afternoon', 'The Feigned Retreat'], [2, 'nightfall', 'The Night Raid'], [3, 'dawn', 'The Third Day'],
   ]);
+  // The new Day 2 battles end on their sources' words.
+  assert.deepEqual([DAYS[3].endSource, DAYS[4].endSource], ['Herodotus 7.211', 'Diodorus 11.10']);
+  assert.ok(DAYS[3].waves.every((w) => meleeCount(w) > 0) && DAYS[4].waves.every((w) => meleeCount(w) > 0));
   const pick = (w) => Object.fromEntries(Object.entries(w).filter(([k]) => k !== 'subtitle'));
   assert.deepEqual(DAYS[0].waves.map(pick), [{ levy: 8, alive: 4 }, { levy: 12, alive: 5 }, { levy: 12, archer: 2, alive: 6, volleyEvery: 0 }, { levy: 6, sparabara: 6, alive: 6 }]);
   assert.deepEqual(DAYS[1].waves.map(pick), [{ immortal: 8, archer: 3, volleyEvery: 30, alive: 6 }, { immortal: 10, captain: 1, archer: 3, volleyEvery: 24, alive: 7 }]);
@@ -20,7 +24,7 @@ test('campaign data matches §13', () => {
     { levy: 6, immortal: 8, captain: 1, archer: 4, volleyEvery: 20, alive: 9 },
   ]);
   assert.equal(DAYS[1].endCard, 'Three times, it is said, the King leapt from his throne in fear for his army.');
-  const [A, B, C] = DAYS[3].phases;
+  const [A, B, C] = DAYS.find((d) => d.day === 3).phases;
   assert.deepEqual(A.waves.map(meleeCount), [14, 16, 18]);
   assert.deepEqual(A.waves.map((w) => w.alive), [10, 10, 10]);
   assert.deepEqual(A.waves.map((w) => w.volleyEvery), [18, 16, 14]);
@@ -45,7 +49,7 @@ test('campaign data matches §13', () => {
   assert.deepEqual(SPAWN.behind.z, [30, 40]);
   assert.deepEqual([...ALLY_SLOTS], [-4.2, -2.8, -1.4, 1.4, 2.8, 4.2, 5.6]);
   assert.equal(LEONIDAS_X, -1.4);
-  assert.deepEqual([firstEntryOfDay(1), firstEntryOfDay(2), firstEntryOfDay(3)], [0, 2, 3]);
+  assert.deepEqual([firstEntryOfDay(1), firstEntryOfDay(2), firstEntryOfDay(3)], [0, 2, 5]);
 });
 
 test('voice lines and speakers are exactly §13', () => {
@@ -125,17 +129,17 @@ test('the campaign runs from Day 1 to the end of phase C and gameOver 3.2 s afte
     }
   }
   const seq = h.log.filter((e) => e.n !== 'voice').map((e) => `${e.n}:${e.day}${e.phase || ''}${e.wave ? '#' + e.wave : ''}`);
-  assert.deepEqual(seq.filter((s) => s.startsWith('dayStart')), ['dayStart:1', 'dayStart:1', 'dayStart:2', 'dayStart:3']);
+  assert.deepEqual(seq.filter((s) => s.startsWith('dayStart')), ['dayStart:1', 'dayStart:1', 'dayStart:2', 'dayStart:2', 'dayStart:2', 'dayStart:3']);
   assert.deepEqual(seq.filter((s) => s.startsWith('phase')), ['phase:3A', 'phase:3B', 'phase:3C']);
-  assert.equal(seq.filter((s) => s.startsWith('waveStart')).length, 6 + 3 + 3 + 4 + 1);
-  assert.equal(seq.filter((s) => s.startsWith('respite')).length, 3 + 1 + 2 + 2);
+  assert.equal(seq.filter((s) => s.startsWith('waveStart')).length, 6 + 3 + 2 + 2 + 3 + 4 + 1);
+  assert.equal(seq.filter((s) => s.startsWith('respite')).length, 3 + 1 + 2 + 1 + 1 + 2);
   const over = h.log.find((e) => e.n === 'gameOver');
   assert.ok(over, 'gameOver');
   assert.ok(Math.abs(over.t - h.dead - 3.2) < 0.051, `gameOver at +${over.t - h.dead}`);
   assert.deepEqual({ day: over.day, wave: over.wave, kills: over.kills, score: over.score }, { day: 3, wave: 1, kills: 3, score: 1234 });
   assert.equal(h.log[h.log.length - 1].n, 'gameOver');
   // Time of day and Leonidas.
-  assert.deepEqual(h.calls.time, ['morning', 'dusk', 'noon', 'dawn', 'morning']);
+  assert.deepEqual(h.calls.time, ['morning', 'dusk', 'noon', 'afternoon', 'nightfall', 'dawn', 'morning']);
   assert.equal(h.calls.kill.length, 1);
   assert.equal(h.calls.kill[0][1], 'Leonidas');
   const bAt = h.log.find((e) => e.n === 'phase' && e.phase === 'B').t;

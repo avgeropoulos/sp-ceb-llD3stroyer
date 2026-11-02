@@ -33,6 +33,8 @@ export function pauseKicker(w) {
   if (!w || !w.day) return '';
   let k = `Day ${roman(w.day)}`;
   if (w.timeOfDay === 'dusk') k += ' · Dusk';
+  else if (w.timeOfDay === 'afternoon') k += ' · Afternoon';
+  else if (w.timeOfDay === 'nightfall') k += ' · Nightfall';
   if (w.phase === 'C') k += ' · The Kolonos';
   else if (w.phase === 'B' && w.wave) k += w.waveCount > 0 ? ` · Surge ${roman(w.wave)} of ${roman(w.waveCount)}` : ` · Surge ${roman(w.wave)}`;
   else if (w.wave) k += ` · Wave ${roman(w.wave)}`;
