@@ -153,10 +153,11 @@ static func build(kind: String) -> Node3D:
 			_blocky(body, p)
 		"sparky":
 			_sparky(body, p)
-		"sparky:1":
+		"sparky:1", "sparky:2":   # ZAPPER (and MEGA ZAPPER)
 			var inner := piv(body, Vector3.ZERO)
-			inner.scale = Vector3.ONE * 1.3
-			_sparky(inner, p, 1)
+			inner.scale = Vector3.ONE * (1.3 if kind == "sparky:1" else 1.5)
+			_sparky(inner, p, 1 if kind == "sparky:1" else 2)
+			kind = "sparky:1"
 		"grumbler":
 			_grumbler(body, p)
 		"penguin":
@@ -180,7 +181,7 @@ static func build(kind: String) -> Node3D:
 		_turtle_boss(body, p, kind)
 	if kind.begins_with("mon:"):
 		var bits := kind.split(":")
-		_critter(body, p, bits[1], int(bits[2]))
+		_critter(body, p, bits[1], int(bits[2]), bits.size() > 3 and bits[3] == "mega")
 		kind = "mon"
 	p["eyes"] = _eye_sink
 	_eye_sink = null
@@ -272,8 +273,12 @@ static func _blocky(b: Node3D, p: Dictionary) -> void:
 	part(head, box(Vector3(0.47, 0.06, 0.06)), Vector3(0, 0.39, 0.2), Color("3b2a20"), Vector3.ONE, Vector3.ZERO, false)
 
 
+## SPARKY (stage 0), ZAPPER (1) and MEGA ZAPPER (2): an electric puffball that grows a
+## crest of lightning, glowing cheeks and a crackling bolt tail.
 static func _sparky(b: Node3D, p: Dictionary, stage := 0) -> void:
-	var Y := Color("ffd83b") if stage == 0 else Color("f5c518")
+	p["glow"] = []
+	p["orbit"] = []
+	var Y := Color(["ffd83b", "f5c518", "ffcf1f"][stage])
 	var BLUE := Color("54c8ff")
 	for s in [-1, 1]:
 		var foot := piv(b, Vector3(s * 0.15, 0.06, 0.06))
@@ -285,20 +290,58 @@ static func _sparky(b: Node3D, p: Dictionary, stage := 0) -> void:
 	part(core, sph(0.24), Vector3(0, -0.07, 0.2), Color("fff1a8"), Vector3(1, 1, 0.6), Vector3.ZERO, false)
 	for i in 4:
 		part(core, box(Vector3(0.1, 0.035, 0.03)), Vector3(-0.15 + i * 0.1, -0.07, 0.355), BLUE, Vector3.ONE, Vector3(0, 0, 0.7 if i % 2 == 0 else -0.7), false)
-	eyes(core, 0.08, 0.3, 0.13, 0.1)
+	eyes(core, 0.08, 0.3, 0.13, 0.1, stage >= 1)
+	for s in [-1, 1]:   # cheeks (they glow once it evolves)
+		var ch := part(core, sph(0.06), Vector3(s * 0.25, -0.04, 0.27), BLUE if stage >= 1 else Color("ff9a9a"), Vector3(1, 0.8, 0.4), Vector3.ZERO, false, 1.3 if stage >= 1 else 0.0)
+		if stage >= 1:
+			ch.set_meta("base", ch.scale)
+			p.glow.append(ch)
 	for s in [-1, 1]:
 		var ant := piv(core, Vector3(s * 0.12, 0.32, 0))
 		part(ant, cyl(0.02, 0.02, 0.3, 6), Vector3(s * 0.04, 0.14, 0), INK, Vector3.ONE, Vector3(0, 0, -s * 0.3), false)
 		if stage == 0:
 			part(ant, sph(0.075), Vector3(s * 0.09, 0.3, 0), BLUE, Vector3.ONE, Vector3.ZERO, true, 0.8)
 		else:   # lightning-bolt tips
-			part(ant, box(Vector3(0.05, 0.16, 0.05)), Vector3(s * 0.08, 0.3, 0), BLUE, Vector3.ONE, Vector3(0, 0, 0.5), true, 0.8)
-			part(ant, box(Vector3(0.05, 0.16, 0.05)), Vector3(s * 0.11, 0.42, 0), BLUE, Vector3.ONE, Vector3(0, 0, -0.5), true, 0.8)
+			for k in 2:
+				var bolt := part(ant, box(Vector3(0.06, 0.18, 0.05)), Vector3(s * (0.08 + k * 0.04), 0.3 + k * 0.13, 0), BLUE, Vector3.ONE, Vector3(0, 0, 0.5 - k), true, 1.2)
+				bolt.set_meta("base", bolt.scale)
+				p.glow.append(bolt)
 		p["antL" if s < 0 else "antR"] = ant
+	if stage >= 1:   # a crest of yellow spikes with blue lightning tips
+		for k in 5:
+			var a := (k - 2) * 0.32
+			part(core, cyl(0.0, 0.07, 0.24 + (2 - absi(k - 2)) * 0.06, 6), Vector3(sin(a) * 0.2, 0.3, -0.1 - absi(k - 2) * 0.03), Color("f5b800"), Vector3.ONE, Vector3(-0.35, 0, -a))
 	var tail := piv(core, Vector3(0, 0, -0.36))
-	part(tail, box(Vector3(0.08, 0.22, 0.06)), Vector3(0, 0.06, -0.05), Color("e8aa1c"), Vector3.ONE, Vector3(0.6, 0, 0))
-	part(tail, box(Vector3(0.08, 0.2, 0.06)), Vector3(0, 0.18, -0.14), Color("e8aa1c"), Vector3.ONE, Vector3(-0.6, 0, 0))
+	if stage == 0:
+		part(tail, box(Vector3(0.08, 0.22, 0.06)), Vector3(0, 0.06, -0.05), Color("e8aa1c"), Vector3.ONE, Vector3(0.6, 0, 0))
+		part(tail, box(Vector3(0.08, 0.2, 0.06)), Vector3(0, 0.18, -0.14), Color("e8aa1c"), Vector3.ONE, Vector3(-0.6, 0, 0))
+	else:   # a big zig-zag bolt tail that crackles
+		var segs := [[0.06, -0.05, 0.6], [0.2, -0.16, -0.6], [0.34, -0.26, 0.6], [0.48, -0.36, -0.5]]
+		for k in segs.size():
+			var sg: Array = segs[k]
+			var tb := part(tail, box(Vector3(0.1 + stage * 0.02, 0.2, 0.07)), Vector3(0, sg[0], sg[1]), Y.darkened(0.08) if k % 2 == 0 else BLUE, Vector3.ONE, Vector3(sg[2], 0, 0), true, 0.0 if k % 2 == 0 else 1.0)
+			if k % 2 == 1:
+				tb.set_meta("base", tb.scale)
+				p.glow.append(tb)
 	p["tail"] = tail
+	if stage >= 1:   # crackling sparks round it
+		var o := piv(b, Vector3(0, 0.5, 0))
+		p.orbit.append(o)
+		for k in 4 + stage * 2:
+			var a := k * TAU / (4 + stage * 2)
+			var sp := part(o, box(Vector3(0.03, 0.12, 0.03)), Vector3(cos(a) * (0.5 + stage * 0.1), sin(a * 3) * 0.1, sin(a) * (0.5 + stage * 0.1)), BLUE, Vector3.ONE, Vector3(0, 0, 0.6), false, 1.6)
+			sp.set_meta("base", sp.scale)
+			p.glow.append(sp)
+	if stage == 2:   # MEGA: a crown of bolts and gold armour
+		var crown := piv(core, Vector3(0, 0.62, 0))
+		p.orbit.append(crown)
+		for k in 6:
+			var a := k * TAU / 6
+			var cb := part(crown, cyl(0.0, 0.05, 0.18, 4), Vector3(cos(a) * 0.18, 0, sin(a) * 0.18), Color("ffd23a"), Vector3.ONE, Vector3.ZERO, false, 1.6)
+			cb.set_meta("base", cb.scale)
+			p.glow.append(cb)
+		for s in [-1, 1]:
+			part(core, sph(0.13), Vector3(s * 0.33, 0.1, 0.05), Color("ffd23a"), Vector3(0.5, 0.8, 1.1), Vector3(0, 0, s * 0.4))
 
 
 static func _grumbler(b: Node3D, p: Dictionary) -> void:
@@ -434,6 +477,16 @@ static func pose(a, dt: float) -> void:
 	var shut := fmod(clock, 3.3 + fmod(p.seed, 1.0)) < 0.12 or anim == "hurt"
 	for e in p.eyes:
 		e.scale.y = 0.15 if shut else 1.0
+	if p.has("glow"):   # partner effects: glowing parts pulse, auras circle
+		var pulse := 1.0 + sin(clock * 5.0) * 0.12
+		for g in p.glow:
+			if is_instance_valid(g):
+				g.scale = (g.get_meta("base") as Vector3) * pulse
+		for k in p.orbit.size():
+			var o: Node3D = p.orbit[k]
+			o.rotation.y = clock * (1.6 if k % 2 == 0 else -1.1)
+		if p.has("flower"):
+			p.flower.rotation.y = sin(clock * 0.8) * 0.3
 	toy.position.x = a.sprite.position.x   # the shake Krag Jr. does before a dive
 	toy.visible = not (a.flash_t > 0 and int(a.flash_t * 20) % 2 == 1)
 	for k in ["legL", "legR", "armL", "armR", "head"]:
@@ -854,307 +907,9 @@ static func prop(kind: String, size: float) -> Node3D:
 # ------------------------------------------------------------------ partner creatures
 ## A four-legged partner (water turtle, grass dino, fire lizard), stage 0-2.
 ## Built facing +Z; each stage is bigger and adds features.
-static func _critter(b: Node3D, p: Dictionary, line: String, stage: int) -> void:
-	if not line in ["water", "grass", "fire"]:
-		_beast(b, p, line, stage)
-		return
-	var BODIES := {"water": ["8fd3ff", "5fb8f5", "3d7fd9"], "grass": ["8fdc6a", "5cc05a", "3a9d5d"], "fire": ["ff8a4a", "e85a3a", "b83a3a"]}
-	var BELLY := {"water": "e6f6ff", "grass": "e6f5b0", "fire": "ffd9a0"}
-	var C := Color(BODIES[line][stage])
-	var BL := Color(BELLY[line])
-	var inner := piv(b, Vector3.ZERO)
-	inner.scale = Vector3.ONE * [1.0, 1.22, 1.5][stage]
-	p["inner"] = inner
-	var core := piv(inner, Vector3(0, 0.36, 0))
-	p["core"] = core
-	part(core, sph(0.3), Vector3.ZERO, C, Vector3(1.0, 0.82, 1.3))
-	part(core, sph(0.22), Vector3(0, -0.1, 0.06), BL, Vector3(1.0, 0.6, 1.3), Vector3.ZERO, false)
-	# legs: front pair is legL/legR, back pair backL/backR
-	for leg in [["legL", -1, 1], ["legR", 1, 1], ["backL", -1, -1], ["backR", 1, -1]]:
-		var lp := piv(inner, Vector3(leg[1] * 0.17, 0.26, leg[2] * 0.2))
-		part(lp, cap(0.085, 0.24), Vector3(0, -0.13, 0), C)
-		p[leg[0]] = lp
-	# tail
-	var tail := piv(core, Vector3(0, 0.0, -0.36))
-	p["tail"] = tail
-	if line == "fire":
-		part(tail, cyl(0.03, 0.08, 0.4, 8), Vector3(0, 0.12, -0.12), C, Vector3.ONE, Vector3(-0.9, 0, 0))
-		if stage >= 1:
-			_flame(tail, Vector3(0, 0.3, -0.28), 0.14 + stage * 0.05)
-	else:
-		part(tail, cyl(0.0, 0.08, 0.22, 8), Vector3(0, 0, -0.08), C, Vector3.ONE, Vector3(-PI / 2 - 0.3, 0, 0))
-	# back features
-	match line:
-		"water":
-			var SH := Color(["2fb5a8", "1f8f9c", "1d5f8a"][stage])
-			part(core, hemi(0.33), Vector3(0, 0.05, -0.02), SH, Vector3(1.05, 0.95, 1.35))
-			for k in 3:
-				part(core, sph(0.07), Vector3((k - 1) * 0.14, 0.27, -0.02 + (k % 2) * 0.1), Color("7fe0d0"), Vector3(1, 0.4, 1), Vector3.ZERO, false)
-			if stage == 2:
-				for sx in [-0.12, 0.12]:
-					part(core, cyl(0.05, 0.06, 0.16, 10), Vector3(sx, 0.34, -0.05), Color("9aa6b2"))
-					part(core, sph(0.05), Vector3(sx, 0.48, -0.05), Color("7fd0ff"), Vector3.ONE, Vector3.ZERO, false, 0.6)
-					part(core, sph(0.035), Vector3(sx, 0.58, -0.07), Color("7fd0ff"), Vector3.ONE, Vector3.ZERO, false, 0.6)
-		"grass":
-			for k in [0, 3, 5][stage]:
-				_leaf(core, Vector3(0, 0.22, -0.2 + k * 0.1), 0.12 + stage * 0.04, -0.3 + k * 0.12)
-			for sp in [Vector3(-0.15, 0.12, 0.05), Vector3(0.18, 0.08, -0.1), Vector3(0.05, 0.2, 0.2)]:
-				part(core, sph(0.04), sp, Color("4f9d3e"), Vector3(1, 0.5, 1), Vector3.ZERO, false)
-		"fire":
-			if stage >= 1:
-				for k in 1 + stage * 2:
-					_flame(core, Vector3(0, 0.25, -0.22 + k * (0.44 / maxi(1, stage * 2))), 0.08 + stage * 0.03)
-			if stage == 2:
-				for sx in [-1, 1]:
-					var pm := PrismMesh.new()
-					pm.size = Vector3(0.36, 0.3, 0.03)
-					part(core, pm, Vector3(sx * 0.3, 0.05, -0.05), Color("ff9a3c"), Vector3.ONE, Vector3(0, PI / 2, sx * 1.1))
-	# head
-	var head := piv(inner, Vector3(0, 0.6, 0.34))
-	p["head"] = head
-	part(head, sph(0.24), Vector3.ZERO, C)
-	part(head, sph(0.13), Vector3(0, -0.08, 0.17), BL, Vector3(1.2, 0.8, 0.8), Vector3.ZERO, false)
-	eyes(head, 0.04, 0.19, 0.1, 0.07)
-	match line:
-		"water":
-			if stage == 0:
-				part(head, cyl(0.0, 0.06, 0.16, 10), Vector3(0, 0.29, 0), Color("5ac8ff"))
-			elif stage == 1:
-				var pm := PrismMesh.new()
-				pm.size = Vector3(0.05, 0.22, 0.28)
-				part(head, pm, Vector3(0, 0.3, -0.05), Color("e6f6ff"), Vector3.ONE, Vector3(-0.3, 0, 0))
-		"grass":
-			if stage == 0:
-				part(head, cyl(0.012, 0.012, 0.12, 5), Vector3(0, 0.28, 0), Color("2f7a3a"), Vector3.ONE, Vector3.ZERO, false)
-				_leaf(head, Vector3(0, 0.34, 0), 0.12, 0.6)
-			elif stage == 1:
-				_leaf(head, Vector3(-0.04, 0.24, 0), 0.13, -0.6)
-				_leaf(head, Vector3(0.04, 0.24, 0), 0.13, 0.6)
-				part(head, sph(0.05), Vector3(0, 0.29, 0), Color("ff8fc0"))
-			else:
-				for k in 5:
-					var a := k * TAU / 5
-					part(head, sph(0.075), Vector3(cos(a) * 0.1, 0.3, sin(a) * 0.1), Color("ff7fb5"), Vector3(1, 0.5, 1))
-				part(head, sph(0.05), Vector3(0, 0.33, 0), Color("ffd23a"))
-		"fire":
-			if stage < 2:
-				for k in 3:
-					_flame(head, Vector3((k - 1) * 0.08, 0.2, -0.02), 0.07 + stage * 0.03 + (0.02 if k == 1 else 0.0))
-			else:
-				for k in 7:
-					var a := PI * (0.0 + k / 6.0)
-					_flame(head, Vector3(cos(a) * 0.22, 0.05 + sin(a) * 0.2, -0.08), 0.1)
-
-
-## Colours of the newer partner lines: body per stage, belly, and an accent.
-const BEAST := {
-	"rock": [["b59a74", "9a7b5a", "7d6248"], "e8d8b8", "6b5a48"],
-	"ghost": [["e8e4ff", "c8b8f5", "a890f0"], "ffffff", "5a3f9e"],
-	"bird": [["8cc8f0", "5ab0e8", "3a7fc8"], "fff4d6", "ffb02e"],
-	"mind": [["f7b0d8", "e88ac4", "c45fa8"], "fff0f8", "7a3fd0"],
-	"ice": [["d6f2fc", "a8e2f4", "7fc8e8"], "ffffff", "4aa8d8"],
-	"bug": [["a6d65c", "7cb342", "4f8a2a"], "e6f5b0", "3a3a48"],
-	"dragon": [["8a9cf0", "5a6fd6", "3a48b0"], "ffe0a0", "ffcf33"],
-	"fairy": [["ffd0e8", "ffaad6", "ff8fc8"], "ffffff", "ffd23a"],
-}
-
-
-## The newer partners (rock armadillo, sheet ghost, bird, psychic fox, ice seal, beetle,
-## dragon, fairy bunny). They have the same moving parts as _critter so _pose_critter
-## animates them; ghosts and birds get empty stand-in back legs.
-static func _beast(b: Node3D, p: Dictionary, line: String, stage: int) -> void:
-	var info: Array = BEAST[line]
-	var C := Color(info[0][stage])
-	var BL := Color(info[1])
-	var AC := Color(info[2])
-	var inner := piv(b, Vector3.ZERO)
-	inner.scale = Vector3.ONE * [1.0, 1.22, 1.5][stage]
-	p["inner"] = inner
-	var core := piv(inner, Vector3(0, 0.36, 0))
-	p["core"] = core
-	var legged := not line in ["ghost", "bird"]
-	# body
-	match line:
-		"ghost":
-			core.position.y = 0.5
-			p["floaty"] = true
-			part(core, sph(0.3), Vector3(0, 0.1, 0), C, Vector3(1.0, 1.0, 1.0))
-			part(core, cyl(0.3, 0.33, 0.3, 18), Vector3(0, -0.1, 0), C)
-			for k in 8:   # the wavy bottom edge of the sheet
-				var a := k * TAU / 8
-				part(core, cyl(0.07, 0.0, 0.14, 6), Vector3(cos(a) * 0.26, -0.31, sin(a) * 0.26), C)
-		"bird":
-			part(core, sph(0.27), Vector3(0, 0.02, 0), C, Vector3(1.0, 0.95, 1.15))
-			part(core, sph(0.2), Vector3(0, -0.05, 0.1), BL, Vector3(1.0, 0.85, 0.9), Vector3.ZERO, false)
-		"ice":
-			part(core, sph(0.3), Vector3(0, -0.04, -0.05), C, Vector3(0.95, 0.75, 1.5))
-			part(core, sph(0.22), Vector3(0, -0.12, 0.02), BL, Vector3(1.0, 0.55, 1.4), Vector3.ZERO, false)
-		"bug":
-			part(core, sph(0.3), Vector3(0, 0.02, -0.02), AC, Vector3(1.0, 0.75, 1.25))
-			part(core, hemi(0.32), Vector3(0, 0.02, -0.04), C, Vector3(1.02, 0.8, 1.28))
-			part(core, box(Vector3(0.025, 0.04, 0.6)), Vector3(0, 0.27, -0.04), AC, Vector3.ONE, Vector3.ZERO, false)
-		_:
-			part(core, sph(0.3), Vector3.ZERO, C, Vector3(1.0, 0.82, 1.3))
-			part(core, sph(0.22), Vector3(0, -0.1, 0.06), BL, Vector3(1.0, 0.6, 1.3), Vector3.ZERO, false)
-	# legs (front pair legL/legR, back pair backL/backR)
-	for leg in [["legL", -1, 1], ["legR", 1, 1], ["backL", -1, -1], ["backR", 1, -1]]:
-		var lp := piv(inner, Vector3(leg[1] * 0.17, 0.26, leg[2] * 0.2))
-		p[leg[0]] = lp
-		if line == "bird":
-			if leg[2] > 0:   # two thin legs
-				lp.position = Vector3(leg[1] * 0.1, 0.26, 0.0)
-				part(lp, cyl(0.025, 0.025, 0.2, 6), Vector3(0, -0.12, 0), AC)
-				part(lp, sph(0.06), Vector3(0, -0.22, 0.04), AC, Vector3(1, 0.4, 1.6))
-		elif line == "ice":
-			part(lp, sph(0.1), Vector3(0, -0.16, leg[2] * 0.04), C, Vector3(1.3, 0.4, 1.6))   # flippers
-		elif legged:
-			part(lp, cap(0.085, 0.24), Vector3(0, -0.13, 0), C if line != "bug" else AC)
-	if line == "ghost":   # little floaty arms
-		for sx in [-1, 1]:
-			part(core, sph(0.08), Vector3(sx * 0.3, 0.0, 0.05), C, Vector3(0.8, 1.2, 0.8))
-	# tail
-	var tail := piv(core, Vector3(0, 0.0, -0.36))
-	p["tail"] = tail
-	match line:
-		"rock":
-			part(tail, cyl(0.03, 0.09, 0.3, 8), Vector3(0, 0, -0.08), AC, Vector3.ONE, Vector3(-PI / 2 - 0.4, 0, 0))
-		"bird":
-			for k in 3:
-				part(tail, sph(0.08), Vector3((k - 1) * 0.07, 0.05, -0.04), [C, AC, C][k], Vector3(0.5, 0.25, 1.8), Vector3(0.3, (k - 1) * 0.3, 0))
-		"mind":
-			for k in stage + 1:   # one fluffy tail per stage
-				var a := (k - stage * 0.5) * 0.5
-				part(tail, sph(0.12), Vector3(sin(a) * 0.12, 0.12, -0.12), C, Vector3(0.8, 0.8, 2.0), Vector3(-0.7, a, 0))
-				part(tail, sph(0.07), Vector3(sin(a) * 0.18, 0.24, -0.3), BL, Vector3.ONE, Vector3.ZERO, false)
-		"ice":
-			part(tail, sph(0.1), Vector3(0, -0.05, -0.08), C, Vector3(1.6, 0.35, 0.9))
-		"dragon":
-			part(tail, cyl(0.03, 0.09, 0.45, 8), Vector3(0, 0.1, -0.14), C, Vector3.ONE, Vector3(-1.0, 0, 0))
-			part(tail, cyl(0.0, 0.08, 0.12, 4), Vector3(0, 0.27, -0.33), AC, Vector3.ONE, Vector3(-1.0, 0, 0))
-		"fairy":
-			part(tail, sph(0.1), Vector3(0, 0.02, 0), Color.WHITE)
-		"ghost":
-			if stage >= 1:   # a curly wisp tail
-				part(tail, cyl(0.0, 0.08, 0.3, 8), Vector3(0, -0.15, -0.05), C, Vector3.ONE, Vector3(-2.2, 0, 0))
-			if stage == 2:
-				_flame_col(tail, Vector3(0, -0.2, -0.2), 0.16, Color("b98cff"))
-		_:
-			part(tail, cyl(0.0, 0.07, 0.18, 8), Vector3(0, 0, -0.06), C, Vector3.ONE, Vector3(-PI / 2 - 0.3, 0, 0))
-	# back features
-	match line:
-		"rock":
-			for k in 3:
-				part(core, hemi(0.3 - absf(k - 1) * 0.04), Vector3(0, 0.02, -0.18 + k * 0.18), AC, Vector3(1.08, 0.95, 0.42))
-			if stage >= 1:
-				for k in 2 + stage * 2:
-					part(core, cyl(0.0, 0.05, 0.14, 6), Vector3(((k % 2) * 2 - 1) * 0.12, 0.29, -0.2 + k * (0.4 / (1 + stage * 2))), Color("e8d8b8"))
-		"bird", "dragon", "fairy", "bug":
-			var big := line == "bird" or (line == "dragon" and stage >= 1) or (line == "fairy" and stage == 2) or (line == "bug" and stage == 2)
-			if big:
-				for sx in [-1, 1]:
-					var wp := piv(core, Vector3(sx * 0.22, 0.12, -0.02))
-					p["wingL" if sx < 0 else "wingR"] = wp
-					var wc := C.darkened(0.15)
-					if line == "fairy":
-						wc = Color.WHITE
-					elif line == "bug":
-						wc = Color("cfe8ff")
-					elif line == "dragon":
-						wc = AC.darkened(0.1) if stage == 2 else C.lightened(0.2)
-					var ws := 0.15 + stage * 0.035
-					part(wp, sph(ws), Vector3(sx * ws * 0.55, ws * 0.45, -0.06), wc, Vector3(1.0, 0.2, 0.8), Vector3(0, 0, sx * 0.75))
-			if line == "dragon":
-				for k in 2 + stage:
-					part(core, cyl(0.0, 0.05, 0.13, 4), Vector3(0, 0.24, -0.22 + k * 0.42 / (2 + stage)), AC)
-			if line == "fairy" and stage >= 1:   # a ribbon bow
-				for sx in [-1, 1]:
-					part(core, sph(0.07), Vector3(sx * 0.08, 0.22, 0.2), Color("ff4f8a"), Vector3(1.4, 0.8, 0.5))
-				part(core, sph(0.04), Vector3(0, 0.22, 0.21), Color("ff4f8a"))
-		"ice":
-			if stage == 2:
-				for k in 4:
-					part(core, cyl(0.0, 0.05, 0.2, 5), Vector3((k - 1.5) * 0.08, 0.2, -0.05), Color("bff4ff"), Vector3.ONE, Vector3.ZERO, true, 0.5)
-		"mind":
-			if stage >= 1:   # a fluffy collar
-				for k in 6:
-					var a := k * TAU / 6
-					part(core, sph(0.07), Vector3(cos(a) * 0.2, 0.15, 0.18 + sin(a) * 0.05), BL, Vector3.ONE, Vector3.ZERO, false)
-		"ghost":
-			if stage == 2:
-				for sx in [-1, 1]:
-					part(core, cyl(0.0, 0.07, 0.22, 6), Vector3(sx * 0.18, 0.3, -0.05), AC, Vector3.ONE, Vector3(0, 0, -sx * 0.4))
-	# head
-	var head_pos := Vector3(0, 0.6, 0.34)
-	match line:
-		"ghost":
-			head_pos = Vector3(0, 0.82, 0.12)
-		"bird":
-			head_pos = Vector3(0, 0.7, 0.22)
-		"ice":
-			head_pos = Vector3(0, 0.5, 0.42)
-	var head := piv(inner, head_pos)
-	p["head"] = head
-	p["head_z"] = head_pos.z
-	if line != "ghost":
-		part(head, sph(0.24 if line != "bird" else 0.2), Vector3.ZERO, C)
-	if line in ["rock", "mind", "dragon", "fairy", "ice"]:
-		part(head, sph(0.13), Vector3(0, -0.08, 0.17), BL, Vector3(1.2, 0.8, 0.8), Vector3.ZERO, false)
-	if line == "ghost":
-		eyes(head, -0.02, 0.27, 0.1, 0.08)
-	else:
-		eyes(head, 0.04, 0.19, 0.1, 0.07)
-	match line:
-		"rock":
-			part(head, sph(0.08), Vector3(0, -0.04, 0.24), AC, Vector3(1, 0.8, 1.2))
-			for sx in [-1, 1]:
-				part(head, sph(0.07), Vector3(sx * 0.15, 0.2, -0.04), C.darkened(0.15), Vector3(0.7, 1.2, 0.5))
-			if stage == 2:
-				part(head, cyl(0.0, 0.07, 0.24, 8), Vector3(0, 0.02, 0.32), Color("e8d8b8"), Vector3.ONE, Vector3(1.1, 0, 0))
-			if stage >= 1:
-				part(head, hemi(0.2), Vector3(0, 0.12, -0.04), AC, Vector3(1.1, 0.8, 1.1))
-		"ghost":
-			part(head, box(Vector3(0.12, 0.03, 0.02)), Vector3(0, -0.13, 0.28), Color("5a3f9e"), Vector3.ONE, Vector3.ZERO, false)
-			if stage >= 1:
-				for k in 3:
-					part(head, cyl(0.0, 0.05, 0.15, 6), Vector3((k - 1) * 0.1, 0.18, 0.0), C.lightened(0.2), Vector3.ONE, Vector3(0, 0, (1 - k) * 0.4))
-		"bird":
-			part(head, cyl(0.0, 0.06, 0.14, 6), Vector3(0, -0.02, 0.22), AC, Vector3.ONE, Vector3(PI / 2, 0, 0))
-			for k in 1 + stage:
-				part(head, sph(0.06), Vector3(0, 0.2 + k * 0.03, -0.04 - k * 0.06), [AC, Color("e8413b"), Color("ffd23a")][k % 3], Vector3(0.4, 1.2, 0.7), Vector3(-0.5, 0, 0))
-		"mind":
-			for sx in [-1, 1]:   # big ears
-				var pm := PrismMesh.new()
-				pm.size = Vector3(0.16 + stage * 0.03, 0.22 + stage * 0.04, 0.06)
-				part(head, pm, Vector3(sx * 0.13, 0.27, -0.02), C, Vector3.ONE, Vector3(0, 0, -sx * 0.25))
-			part(head, sph(0.05), Vector3(0, 0.15, 0.2), AC, Vector3(1, 1.2, 0.6), Vector3.ZERO, true, 0.8)   # the gem
-		"ice":
-			for sx in [-1, 1]:
-				for k in 2:
-					part(head, box(Vector3(0.12, 0.012, 0.012)), Vector3(sx * 0.14, -0.06 - k * 0.04, 0.22), Color("9aa6b2"), Vector3.ONE, Vector3(0, 0, sx * (0.2 - k * 0.3)), false)
-			if stage >= 1:
-				for sx in [-1, 1]:
-					part(head, cyl(0.0, 0.025, 0.14, 6), Vector3(sx * 0.05, -0.2, 0.24), Color.WHITE, Vector3.ONE, Vector3(PI, 0, 0))
-			if stage == 2:
-				for k in 3:
-					part(head, cyl(0.0, 0.05, 0.18, 5), Vector3((k - 1) * 0.09, 0.25, 0), Color("bff4ff"), Vector3.ONE, Vector3(0, 0, (1 - k) * 0.3), true, 0.5)
-		"bug":
-			for sx in [-1, 1]:
-				part(head, cyl(0.01, 0.01, 0.22, 5), Vector3(sx * 0.08, 0.26, 0.05), AC, Vector3.ONE, Vector3(0.4, 0, -sx * 0.3), false)
-				part(head, sph(0.035), Vector3(sx * 0.12, 0.36, 0.1), AC)
-			if stage >= 1:
-				var hl := 0.16 + stage * 0.1
-				part(head, cyl(0.0, 0.06 + stage * 0.015, hl, 8), Vector3(0, 0.1 + hl * 0.3, 0.2), AC, Vector3.ONE, Vector3(0.6, 0, 0))
-		"dragon":
-			for sx in [-1, 1]:
-				part(head, cyl(0.0, 0.04 + stage * 0.01, 0.16 + stage * 0.05, 6), Vector3(sx * 0.12, 0.22, -0.06), Color("fff2d0"), Vector3.ONE, Vector3(-0.5, 0, -sx * 0.3))
-			part(head, sph(0.12), Vector3(0, -0.06, 0.2), C, Vector3(1.0, 0.7, 1.2))
-		"fairy":
-			for sx in [-1, 1]:   # long bunny ears
-				var el := 0.28 + stage * 0.05
-				part(head, cap(0.06, el), Vector3(sx * 0.1, 0.22 + el * 0.4, -0.02), C, Vector3(1, 1, 0.6), Vector3(0, 0, -sx * 0.18))
-				part(head, cap(0.03, el * 0.8), Vector3(sx * 0.1, 0.22 + el * 0.4, 0.02), Color("ff8fc8"), Vector3(1, 1, 0.5), Vector3(0, 0, -sx * 0.18), false)
-			if stage == 2:
-				part(head, cyl(0.07, 0.07, 0.025, 5), Vector3(0, 0.12, 0.22), AC, Vector3.ONE, Vector3(PI / 2, 0, 0), true, 0.8)
+## The partners' bodies live in partner_looks.gd (every line has its own shape).
+static func _critter(b: Node3D, p: Dictionary, line: String, stage: int, mega := false) -> void:
+	PartnerLooks.build(b, p, line, stage, mega)
 
 
 static func _flame_col(parent: Node3D, pos: Vector3, h: float, c: Color) -> void:

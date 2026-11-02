@@ -78,6 +78,7 @@ var grab: Grab                # open worlds: GRAB / THROW / TAIL SWING (grab.gd)
 var gate_open := false        # Krag Jr.'s gold gate (5 stars)
 var stars_w := {}             # world id -> star ids found there (kept for good, like Mario 64)
 var powers: Powers            # power-ups (open worlds)
+var mega: Mega                # MEGA EVOLUTION (mega.gd)
 var sky: SkyMap               # only on the sky map
 var cleared_w := {}           # world id -> times cleared
 var home_saved := {}          # the home from the save file (kept while you're in 1-1)
@@ -197,6 +198,9 @@ func _ready_common() -> void:
 	_setup_audio()
 	updater = Updater.new()
 	add_child(updater)
+	mega = Mega.new()
+	add_child(mega)
+	mega.setup(self)
 	cam_focus = heroes.rocco.position
 	_update_camera(1.0)
 
@@ -659,10 +663,10 @@ func _pause(from: String) -> void:
 func _setup_input() -> void:
 	var keys := {"left": [KEY_LEFT, KEY_A], "right": [KEY_RIGHT, KEY_D], "up": [KEY_UP, KEY_W], "down": [KEY_DOWN, KEY_S],
 		"jump": [KEY_SPACE, KEY_K], "action": [KEY_X, KEY_J], "swap": [KEY_C, KEY_L], "super": [KEY_V, KEY_I], "pause": [KEY_ESCAPE, KEY_P],
-		"sprint": [KEY_SHIFT, KEY_SEMICOLON], "fly": [KEY_F], "sink": [KEY_Q]}
+		"sprint": [KEY_SHIFT, KEY_SEMICOLON], "fly": [KEY_F], "sink": [KEY_Q], "mega": [KEY_M]}
 	var pads := {"jump": JOY_BUTTON_A, "action": JOY_BUTTON_B, "swap": JOY_BUTTON_X, "super": JOY_BUTTON_Y, "pause": JOY_BUTTON_START,
 		"left": JOY_BUTTON_DPAD_LEFT, "right": JOY_BUTTON_DPAD_RIGHT, "up": JOY_BUTTON_DPAD_UP, "down": JOY_BUTTON_DPAD_DOWN,
-		"sprint": JOY_BUTTON_RIGHT_SHOULDER, "fly": JOY_BUTTON_LEFT_SHOULDER}
+		"sprint": JOY_BUTTON_RIGHT_SHOULDER, "fly": JOY_BUTTON_LEFT_SHOULDER, "mega": JOY_BUTTON_LEFT_SHOULDER}
 	for a in keys:
 		if not InputMap.has_action(a):
 			InputMap.add_action(a)
@@ -1542,6 +1546,9 @@ func _step(dt: float) -> void:
 	if state == "evolve":
 		_step_evolve(dt)
 		return
+	if state == "mega":   # the MEGA EVOLUTION scene (everything else waits)
+		mega.scene_step(dt)
+		return
 	if state == "starselect":
 		var n: int = open_play.ids().size()
 		if Input.is_action_just_pressed("left"):
@@ -1674,6 +1681,9 @@ func _step(dt: float) -> void:
 	super_charge = minf(1.0, super_charge + dt / SUPER_TIME)
 	if swap_pressed and not (open_play and open_play.extras and open_play.extras.on_swap()):   # SWAP gets off DASH first
 		do_swap()
+	if (taps.has("mega") or Input.is_action_just_pressed("mega")) and mega.start():
+		return
+	mega.step(dt)
 	if super_pressed and super_charge >= 1.0:
 		_thunderbolt()
 	_update_leader(leader(), dt)
@@ -2306,7 +2316,7 @@ func _friend_air(h: Hero, dt: float) -> void:
 
 ## The partner's attack: as the hero you steer (target = null: aim in front) or as the helper.
 func _mon_attack(h: Hero, target: Foe) -> void:
-	var dmg := 1 + h.stage
+	var dmg := 1 + h.stage + mega.bonus()
 	var from := h.position + Vector3(0, h.height * 0.6, 0)
 	var aim := Vector3(h.facing.x, 0, h.facing.z).normalized()
 	if aim.length() < 0.1:
@@ -2538,7 +2548,7 @@ func _thunderbolt() -> void:
 	var m: Hero = heroes.mon
 	note("SUPER " + Mons.LINES[m.line].super)
 	var info: Dictionary = Mons.LINES[m.line]
-	var power := 4 + m.stage
+	var power := 4 + m.stage + mega.bonus() * 2
 	fx.shake = 0.9
 	hud.say(info.super + "!", display_name("mon") + "'s SUPER", 1.6)
 	speak(display_name("mon").capitalize() + "!", "mon")

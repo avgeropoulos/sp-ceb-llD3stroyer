@@ -437,8 +437,30 @@ under them). Each has its own level, saved in the file, and evolves (it takes a 
 * Code: `scripts/mons.gd` (lines, XP, evolve levels), `Hero.set_form()`, `main.gd` `_mon_attack` (+ `_gust`,
   `_string_shot`, `_dragon_breath`) / `_thunderbolt` + `_new_super` / new shots in `spawn_shot` + `_update_shots`
   (rock, shadow, orb, ice, sparkle) / `gain_xp` / `start_evolve`, `hud.gd` `_draw_partner` (`PARTNER_COLS`).
-  Art: `gen_art.py` `critter()` + `beast()` + `new_shots()` (paper) and `toys.gd` `_critter()` + `_beast()` (3D).
   Our own designs with made-up names.
+* **Looks** (`scripts/partner_looks.gd`): every line has its own body plan and every evolution is clearly cooler:
+  HYDRO's spiked fortress shell with two glowing water cannons, BLOOM's giant glowing flower and vine cape,
+  SCORCH stands up and BLAZE becomes a winged fire dragon, TERRADON a stone golem growing glowing crystals,
+  PHANTOMA a crowned phantom with a torn cape, SKYHAWK a war-painted hawk, ASTRAFOX a floating five-tailed fox with a
+  crystal halo, BLIZZARC an ice-crowned walrus, TITANBUG a rhino beetle, DRAGOROAR a towering two-legged dragon,
+  STARABBIT a star-tiara fairy bunny, ZAPPER a crest of lightning with a crackling bolt tail. Glowing parts pulse
+  and final forms have a little aura (`p.glow`, `p.orbit`, animated in `Toys.pose`). Two-legged forms set `p.biped`
+  (`legL/legR` are their arms).
+* **Paper pictures are rendered from the 3D models** (3/4 view, feet 40 px above the bottom):
+  `xvfb-run godot --path . --script res://tools/render_mons.gd` then `python3 tools/sticker_mons.py`
+  (writes `art/mon_<line><stage>_{idle,run1,run2,jump,act}.png`, `mon_<line>M_*` for MEGA, and trimmed
+  `mon_<form>_face.png` for the menus). `-- preview <dir>` renders a 3/4 check of every form instead.
+  The old hand-drawn `gen_art.py` `critter()` / `beast()` are no longer called.
+
+### MEGA EVOLUTION
+
+When the partner is at its **final form** and the **SUPER bar is full**, a rainbow **MEGA!** button appears
+(keyboard M, controller L1). Tapping it plays a short scene: everything freezes, the camera circles the partner, a
+shell of light grows round it and bursts, and the MEGA form comes out (bigger, gold shoulder guards, a forehead gem,
+a crown of light and a big aura). For 20 s (30 s at Lv 16+, gold bar under the XP) its attacks hit +2 harder and its
+SUPER +4, then it turns back. Every line has a MEGA form (both looks; MEGA ZAPPER is `sparky:2`).
+Code: `scripts/mega.gd` (`ready`, `start`, `scene_step` in state "mega", `step`, `end`, `bonus`), `Hero.set_form(line,
+stage, mega)`, MEGA models `PartnerLooks._mega_extras`. Test: `tests/mega_check.gd` (both looks).
 * Test: `tests/partner_check.gd` (pick the dragon, evolve at Lv 7, every ACTION and SUPER of all 12 lines at every
   stage, saved levels).
 
