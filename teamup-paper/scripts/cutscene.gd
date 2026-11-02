@@ -393,7 +393,7 @@ func _scene_gate() -> void:
 
 ## All 5 stars: inside the castle, Krag Jr. is NOT happy.
 func _scene_krag() -> void:
-	var kj: Foe = game.boss
+	var kj = game.boss   # (untyped: the boss may already be freed)
 	var nm: String = kj.boss_name() if is_instance_valid(kj) else "KRAG JR."
 	var short: String = nm.capitalize()
 	var kp: Vector3 = kj.position if is_instance_valid(kj) else P + Vector3(0, 4.5, -6)
