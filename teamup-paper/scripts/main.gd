@@ -883,10 +883,16 @@ func _setup_sky(env: Environment, sun: DirectionalLight3D, sm: ProceduralSkyMate
 
 
 func _step_sky(dt: float) -> void:
+	# the kart race (out in space) and the arcade games have their own look: no rain or moon there
+	var away := state in ["kart", "minigame", "arcade"]
 	if daynight:
-		daynight.step(dt)
+		daynight.set_away(away)
+		if not away:
+			daynight.step(dt)
 	if weather:
-		weather.step(dt)
+		weather.set_away(away)
+		if not away:
+			weather.step(dt)
 	if fireworks:
 		fireworks.step(dt)
 

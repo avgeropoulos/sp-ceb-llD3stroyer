@@ -107,6 +107,16 @@ func _process(_dt: float) -> bool:
 				check(w.fall == null and dn.rainbow_t > 0, "a rainbow after the rain")
 				dn.step(5.0)
 				check(dn.rainbow.visible, "the rainbow should show")
+				# away (kart race / arcade): no rain or moon showing, full daylight
+				w.set_weather("rain")
+				g.state = "kart"
+				g._step_sky(0.1)
+				check(not w.fall.visible and not dn.moon.visible and g.daynight.sun.light_energy >= 1.0, "the kart race should hide the weather and sky bits")
+				g.state = "home"
+				g._step_sky(0.1)
+				check(w.fall.visible, "weather comes back after the race")
+				w.set_weather("clear")
+				dn.rainbow_t = 0.0
 				# the home fireworks launcher
 				g.leader().position = g.LAUNCHER_SPOT + Vector3(1, 0.05, 0)
 				g.hud._layout()

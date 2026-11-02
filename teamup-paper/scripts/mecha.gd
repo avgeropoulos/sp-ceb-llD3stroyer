@@ -640,6 +640,8 @@ func _start_rain() -> void:
 		c.position = p.position + Vector3(randf_range(-8, 8), randf_range(8, 22), randf_range(-8, 8))
 		rain.append({"node": c, "vy": 0.0, "landed": false})
 	game.hud.say("MECHA KRAG DEFEATED!", "It's raining coins! Grab them!", 3.0)
+	if game.fireworks:   # a big fireworks show for beating him
+		game.fireworks.play_show_ahead("boss")
 	game.play_music("fanfare", false)
 	game.speak("We did it! Wahoo!", "rocco")
 

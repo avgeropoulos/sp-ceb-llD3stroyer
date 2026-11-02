@@ -283,6 +283,30 @@ func is_night() -> bool:
 	return night > 0.5
 
 
+var away := false
+
+
+## Hides the sky bits (stars, moon, glow, rainbow, fireflies) and gives full daylight while
+## the game is somewhere else (the kart race in space, the arcade games).
+func set_away(on: bool) -> void:
+	if on == away:
+		return
+	away = on
+	for n in [stars, moon, glow, rainbow]:
+		if n:
+			n.visible = false
+	for r in rays:
+		r.visible = false
+	if fireflies:
+		fireflies.emitting = false
+	if on:
+		sun.light_energy = 1.0
+		sun.light_color = base.sun
+		sun.shadow_enabled = true
+	else:
+		_update_sky(true)
+
+
 ## SLEEP at home: skip to morning.
 func sleep() -> void:
 	tod = MORNING

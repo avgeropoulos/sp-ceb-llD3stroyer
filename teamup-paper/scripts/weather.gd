@@ -194,6 +194,24 @@ func set_weather(kind: String) -> void:
 		thunder_t = randf_range(6, 14)
 
 
+var away := false
+
+
+## Hides the weather while the game is somewhere else (kart race, arcade games).
+func set_away(on: bool) -> void:
+	if on == away:
+		return
+	away = on
+	for n in [fall, splash]:
+		if n and is_instance_valid(n):
+			n.visible = not on
+			n.emitting = not on
+	if on:
+		flash = 0.0
+		if daynight:
+			daynight.cloudy = 0.0
+
+
 func step(dt: float) -> void:
 	if where == "none" or not enabled:
 		return
