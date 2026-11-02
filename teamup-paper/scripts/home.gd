@@ -350,7 +350,7 @@ func _have(k: String) -> int:
 
 
 func _affordable() -> bool:
-	if mode == "decor" and Decor.ITEMS[sel.decor].get("need_clear", false) and game.cleared <= 0:
+	if mode == "decor" and Decor.locked(Decor.ITEMS[sel.decor], game):
 		return false
 	for k in cost_of_sel():
 		if _have(k) < int(cost_of_sel()[k]):
@@ -359,8 +359,8 @@ func _affordable() -> bool:
 
 
 func _missing() -> String:
-	if mode == "decor" and Decor.ITEMS[sel.decor].get("need_clear", false) and game.cleared <= 0:
-		return "trophies: beat Krag Jr.!"
+	if mode == "decor" and Decor.locked(Decor.ITEMS[sel.decor], game):
+		return Decor.why_locked(Decor.ITEMS[sel.decor])
 	for k in cost_of_sel():
 		if _have(k) < int(cost_of_sel()[k]):
 			return k

@@ -69,7 +69,11 @@ func _layout() -> void:
 	var sw := [Vector2(s.x - 145 * u, s.y - 315 * u), 56 * u]
 	var sup := [Vector2(s.x - 300 * u, s.y - 255 * u), 56 * u]
 	var pz := [Vector2(s.x - 52 * u, 52 * u), 34 * u]
-	if game and game.state == "minigame":
+	if game and game.state == "kart":
+		buttons = {"jump": jump, "action": act, "pause": pz}
+		if game.kart and game.kart.phase == "podium":
+			buttons = {"pause": pz}
+	elif game and game.state == "minigame":
 		buttons = {"jump": jump, "pause": pz}
 	elif game and game.state == "arcade":
 		buttons = {}
@@ -77,7 +81,9 @@ func _layout() -> void:
 		buttons = {"land": [Vector2(s.x - 125 * u, s.y - 215 * u), 82 * u], "pause": pz}
 	elif game and game.state == "home" and game.home:
 		var fly := [Vector2(s.x - 52 * u, 252 * u), 42 * u]
-		if game.home.mode == "":   # walking around the home: BUILD, DECOR, PARTNER, FLY
+		if game.mecha and game.mecha.active:   # MECHA KRAG attacks: JUMP, ACTION (grab/throw), SWAP
+			buttons = {"jump": jump, "action": act, "swap": sw, "pause": pz, "fly": fly}
+		elif game.home.mode == "":   # walking around the home: BUILD, DECOR, PARTNER, FLY
 			buttons = {"jump": jump, "build": act, "swap": sw, "decor": sup, "pause": pz,
 				"partner": [Vector2(s.x - 52 * u, 150 * u), 46 * u], "fly": fly}
 			if game.near_tv():   # standing by a TV: watch the MOVIES
@@ -120,7 +126,13 @@ func _input(event: InputEvent) -> void:
 					return
 			if game.state == "minigame" and game.minigames and game.minigames.phase == "result" and button_at(e.position) == "":
 				game.jump_pressed = true   # tap anywhere for OK
-			if game.state != "play" and game.state != "home" and game.state != "map" and game.state != "minigame":
+			if game.state == "kart" and game.kart and game.kart.can_leave() and button_at(e.position) == "":
+				game.kart_done()   # tap anywhere after the podium
+				return
+			if game.state == "mecha_ask":
+				_mecha_ask_tap(e.position)
+				return
+			if game.state != "play" and game.state != "home" and game.state != "map" and game.state != "minigame" and game.state != "kart":
 				if game.state == "arcade":
 					_arcade_tap(e.position)
 					return
@@ -256,7 +268,18 @@ func _draw() -> void:
 			game.minigames.draw(self)
 		_draw_controls()
 		return
+	if game.state == "kart":
+		if game.kart:
+			game.kart.draw(self)
+			if game.kart.phase != "podium":
+				_draw_controls()
+		return
+	if game.state == "mecha_ask":
+		_draw_mecha_ask()
+		return
 	_draw_hud()
+	if game.mecha and game.mecha.active and game.state == "home":
+		game.mecha.draw(self)
 	if game.state == "play" or game.state == "home" or game.state == "map":
 		_draw_controls()
 	if game.state == "map" and game.sky:
@@ -284,6 +307,36 @@ func _draw() -> void:
 		_draw_stargot()
 	if game.state == "clear":
 		_draw_clear()
+
+
+# ------------------------------------------------------------------ MECHA KRAG: fight or not now?
+func mecha_ask_rect(i: int) -> Rect2:
+	var w := 300.0
+	var gap := 40.0
+	return Rect2(size.x * 0.5 - w - gap * 0.5 + i * (w + gap), size.y * 0.62, w, 110)
+
+
+func _mecha_ask_tap(p: Vector2) -> void:
+	if mecha_ask_rect(0).has_point(p):
+		game.start_mecha()
+	elif mecha_ask_rect(1).has_point(p):
+		game.decline_mecha()
+
+
+func _draw_mecha_ask() -> void:
+	var s := size
+	draw_rect(Rect2(Vector2.ZERO, s), Color(0.12, 0.02, 0.04, 0.72))
+	var flash := 0.5 + 0.5 * sin(title_t * 8)
+	txt("WARNING!", Vector2(0, s.y * 0.2), 44, Color(1, 0.3, 0.3, 0.6 + 0.4 * flash), HORIZONTAL_ALIGNMENT_CENTER, s.x, 10)
+	txt("MECHA KRAG IS COMING!", Vector2(0, s.y * 0.33), 76, Color("ffe14a"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 16)
+	txt("A giant robot King Krag wants to stomp your home!", Vector2(0, s.y * 0.33 + 52), 28, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, s.x, 8)
+	var labels := ["FIGHT!", "NOT NOW"]
+	var cols := [Color("e8413b"), Color(0.25, 0.3, 0.45)]
+	for i in 2:
+		var r := mecha_ask_rect(i)
+		draw_rect(r, cols[i])
+		draw_rect(r, Color.WHITE, false, 4.0)
+		txt(labels[i], Vector2(r.position.x, r.position.y + 72), 48, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 10)
 
 
 func _draw_hud() -> void:
@@ -555,6 +608,8 @@ func _draw_stick_and_buttons(with_stick := true) -> void:
 		labels["jump"] = "UP"
 	if game.state == "minigame" and game.minigames:
 		labels["jump"] = game.minigames.button_label()
+	if game.state == "kart":
+		labels["jump"] = "HOP"
 	var colors := {"jump": Color("3fc06a"), "action": Color("ff8a1f"), "swap": Color("6a7cff"), "super": Color("ffcf33"), "pause": Color(0.2, 0.25, 0.4),
 		"build": Color("ff8a1f"), "decor": Color("ff6fa8"), "partner": Color("2cbec8"), "place": Color("3fc06a"), "remove": Color("e8413b"),
 		"done": Color("3f7fd9"), "rotate": Color("8a5bc4"), "land": Color("3fc06a"),
@@ -613,7 +668,7 @@ func _pal_items() -> Array:
 			out.append({"icon": img("t_" + _tex_name(t)), "name": Level.NAMES[t], "cost": b.cost})
 	elif h.mode == "decor":
 		for it in Decor.ITEMS:
-			var locked: bool = it.get("need_clear", false) and game.cleared <= 0
+			var locked: bool = Decor.locked(it, game)
 			out.append({"icon": img("decor_" + it.id), "name": it.name, "cost": {"coins": it.coins}, "locked": locked})
 	return out
 
@@ -1312,6 +1367,15 @@ func _game_icon(id: String, c: Vector2) -> void:
 			draw_circle(c + Vector2(-30, 0), 26, Color("1e2a44"))
 			draw_circle(c + Vector2(-30, 6), 17, Color.WHITE)
 			draw_colored_polygon(PackedVector2Array([c + Vector2(-8, -2), c + Vector2(6, 2), c + Vector2(-8, 6)]), Color("ff9a3c"))
+		"kart":
+			for k in 7:   # a little rainbow road
+				var col := Color.from_hsv(k / 7.0, 0.75, 1.0)
+				draw_line(c + Vector2(-90, 50 - k * 6), c + Vector2(90, 20 - k * 6), col, 6)
+			draw_rect(Rect2(c + Vector2(-34, -40), Vector2(68, 30)), Color("e8413b"))
+			draw_rect(Rect2(c + Vector2(-20, -62), Vector2(40, 24)), Color("e8413b").lightened(0.2))
+			for wx in [-30, 30]:
+				draw_circle(c + Vector2(wx, -8), 12, Color(0.1, 0.1, 0.15))
+				draw_circle(c + Vector2(wx, -8), 5, Color("ffd23a"))
 
 
 ## Poseidon's trident (on the pause button).

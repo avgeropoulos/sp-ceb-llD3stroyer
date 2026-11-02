@@ -459,6 +459,40 @@ Pause (II) during a game quits back home. The arcade's blocks are locked: you ca
   `place_arcade` / `at_arcade` / `arcade_door`, `main.gd` states `"arcade"` and `"minigame"`
   (`open_arcade`, `start_minigame`, `minigame_done`), `hud.gd` `_draw_arcade`.
 
+## RAINBOW ROAD (kart race, `scripts/kart.gd`)
+
+A kart race on a glowing rainbow road floating in space (planets, stars, a ringed planet). Fly the rocket to
+the **RAINBOW** island on the sky map (always open), or pick **RAINBOW ROAD** in the home ARCADE.
+You (the team leader) race GRUMBLER, PENGUIN, KRAG JR., SPOTTY and ZOOMY for **3 laps**.
+
+* The kart drives by itself: the **stick steers**. **JUMP = hop**; hold JUMP while steering to **drift** (blue
+  sparks), let go for a TURBO (longer drift = SUPER TURBO).
+* Rainbow **? boxes** give an item; **ACTION** uses it: MUSHROOM (boost), BANANA (drop behind you), GREEN SHELL
+  (fires ahead along the road). Orange arrows are **boost pads**, pink **ramps** launch you (JUMP in the air =
+  TRICK = boost on landing).
+* Turns push you outwards: fall off the edge and **FLUFFY** the cloud (who also holds the start lights) fishes you
+  back onto the road.
+* Lap counter, your place, item box and a minimap on screen. At the end: a **podium** with the top 3 and
+  fireworks. Prizes 50 / 20 / 10 / 5 coins; **1st place = the RAINBOW STAR** and the **RAINBOW CUP** decoration.
+  Saved as `kart_star` / `kart_best`.
+* How it works: everything is in track space (`s` along the road, `lat` across, `y` up) on a `Curve3D` sampled
+  every 1 unit; turns push by the curvature `K`. The road is one mesh with a scrolling rainbow shader; the camera
+  gets its own space `Environment` while racing. Test: `tests/kart_check.gd`.
+
+## MECHA KRAG ATTACKS (`scripts/mecha.gd`)
+
+Once 3 worlds are cleared, a **giant robot King Krag** (about 20 blocks tall) can come to the home: the first
+time for sure, then now and then (`mecha_cool`). A warning screen asks **FIGHT!** or **NOT NOW**.
+
+* He flies down on jet packs, stomps closer (the ground shakes) and fires **missiles**: a flashing red **X** shows
+  where each lands. Some are **duds**: they land blinking "GRAB ME!": **GRAB** them (ACTION) and **THROW** them
+  back; they fly to his **back weak spots** by themselves. **Jump into the glowing weak spots on his feet**
+  (or ground pound them). Partner shots and fireballs hit weak spots too. He stomps every few seconds: jump!
+* 4 weak spots and he shakes, explodes, tips over backwards... and it **rains 60 coins** (+50 bonus). The
+  **MECHA KRAG TROPHY** unlocks in DECOR (`mecha_beaten`).
+* Kid-friendly: he never touches your home's blocks (every boom is just an effect); out of hearts = back to where
+  you started the fight. Test: `tests/mecha_check.gd` (checks the home's blocks are unchanged).
+
 ## POSEIDON FLOOD
 
 In an open world (not at home, not in Krag Jr.'s fight) the pause menu has a 5th button, **POSEIDON FLOOD**
