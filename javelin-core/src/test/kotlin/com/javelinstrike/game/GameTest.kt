@@ -483,6 +483,14 @@ class GameTest {
         input.push(Input.MOVE, 240f, 450f, g.clock)
         g.update(dt)
         assertTrue(g.aimElev > 1.1f, "high ${g.aimElev}")
+        // Moving the phone doesn't change a touch throw; where you press aims.
+        input.hasTilt = true
+        input.tilt = 0.5f
+        input.lean = 0.5f
+        val before = g.aimElev
+        run(g, 0.5f)
+        assertEquals(before, g.aimElev)
+        assertTrue(g.aimYaw > 0.05f, "pressed right of centre (x=250) aims right: ${g.aimYaw}")
         // Dragging back to where you started cancels.
         input.push(Input.UP, 250f, 302f, g.clock)
         g.update(dt)

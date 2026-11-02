@@ -125,9 +125,9 @@ internal fun Game.drawPrompts(g: Gfx) {
             ThrowDetector.Phase.SWING -> "!!!" to ""
         }
     } else if (flickActive()) {
-        (if (armed) "LET GO TO THROW" else "PULL BACK") to "Further = harder. Down = higher. Tilt to aim"
+        (if (armed) "LET GO TO THROW" else "PULL BACK") to "Further = harder. Down = higher"
     } else {
-        "PRESS AND PULL BACK" to "Like a slingshot: sideways = flat, down = high"
+        "PRESS AND PULL BACK" to "Press left/middle/right to aim. Down = higher"
     }
     // The run-up: speed and how far to the foul line
     if (runUp) {
@@ -500,7 +500,7 @@ internal fun Game.drawHowTo(g: Gfx) {
     ) else listOf(
         "1. Press anywhere on the screen to grip the javelin.",
         "2. Drag back like a slingshot (Angry Birds style). The further you pull, the harder the throw. Pull sideways for a flat throw, down-and-sideways for 45°, straight down for a high lob.",
-        "3. The window above the POWER bar shows the flight from the side with a dotted arc. Tilt the phone like a steering wheel to aim left and right.",
+        "3. Where you press aims left and right: press in the middle to throw straight, further left or right to aim that way. The window above the POWER bar shows the flight from the side with a dotted arc.",
         "4. Let go to throw. Drag back to where you started to cancel.",
         "Guides fade as you go: from level 4 they stop showing the target power, from level 7 the distances, and from level 10 your last throw.",
     )

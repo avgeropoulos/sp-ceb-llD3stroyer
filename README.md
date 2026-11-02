@@ -238,8 +238,9 @@ On the title screen:
   **Which way** sets the height: pull sideways for a flat throw, down-and-sideways for about
   45°, straight down for a high lob (15° to 70°). A side-view window above the POWER bar shows
   the flight from the thrower to the target with a dotted arc, and the same dotted arc shows
-  out in the stadium; both update as you drag. Tilt the phone like a steering wheel to aim left
-  and right. Let go to throw, or drag back to where you started to cancel. The guides fade as
+  out in the stadium; both update as you drag. **Where you press** aims left and right: the middle of the
+  screen throws straight, further left or right aims that way. Moving the phone never changes
+  a touch throw. Let go to throw, or drag back to where you started to cancel. The guides fade as
   you get better: from level 4 the target power arrow goes, from level 7 the distances and
   landing markers (and the arc shows only its first half), and from level 10 your last
   throw's mark (and only the first quarter of the arc). Motion controls keep every guide.

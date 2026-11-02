@@ -201,10 +201,11 @@ class Game(
             val want = elevationForLean(input.lean)
             aimElev += (want - aimElev) * min(1f, dt * 8f)
         }
-        // Touch: the slingshot pull sets the angle, and tilting the phone aims left and right.
-        if (flick.active) aimElev = flick.elevation
-        if (ready && controls == ControlMode.TOUCH && input.hasTilt) {
-            aimYaw += ((input.tilt * 0.7f).coerceIn(-MAX_AIM, MAX_AIM) - aimYaw) * min(1f, dt * 6f)
+        // Touch: only your finger moves the throw, never the phone. Where you press aims left
+        // and right; the pull sets the power and height.
+        if (flick.active) {
+            aimElev = flick.elevation
+            aimYaw = ((flick.anchorX - viewW / 2f) / (viewW * 0.4f)).coerceIn(-1f, 1f) * MAX_AIM
         }
         // Aiming keeps working while you run: tilt and lean follow you until you let go.
         if (ready && runUp && gripping() && controls == ControlMode.MOTION && input.hasTilt) {
