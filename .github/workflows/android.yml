@@ -32,6 +32,8 @@ jobs:
           cp app/build/outputs/apk/debug/app-debug.apk RoccosQuest.apk
           cp walkapp/build/outputs/apk/debug/walkapp-debug.apk HerculesApolloWalk.apk
           cp walk3dapp/build/outputs/apk/debug/walk3dapp-debug.apk HerculesApollo3D.apk
+          # The apps compare this build number with their own to offer in-app updates.
+          echo "${{ github.run_number }}" > version.txt
 
       - uses: actions/upload-artifact@v4
         with:
@@ -67,3 +69,4 @@ jobs:
             RoccosQuest.apk
             HerculesApolloWalk.apk
             HerculesApollo3D.apk
+            version.txt

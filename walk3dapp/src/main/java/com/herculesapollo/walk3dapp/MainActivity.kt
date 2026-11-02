@@ -13,10 +13,12 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import com.herculesapollo.walk3d.Game3D
 import com.herculesapollo.walk3d.Input3D
+import com.herculesapollo.walkshared.Updater
 import com.herculesapollo.walkshared.WalkSoundFx
 import com.roccoquest.game.Storage
 
 class MainActivity : Activity() {
+    private val updater by lazy { Updater(this, "HerculesApollo3D.apk") }
     private lateinit var glView: GLSurfaceView
     private lateinit var sound: WalkSoundFx
     private lateinit var game: Game3D
@@ -47,6 +49,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        updater.check()
         hideSystemUi()
         glView.onResume()
         sound.setForeground(true)

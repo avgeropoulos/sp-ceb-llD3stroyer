@@ -7,8 +7,10 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
+import com.herculesapollo.walkshared.Updater
 
 class MainActivity : Activity() {
+    private val updater by lazy { Updater(this, "HerculesApolloWalk.apk") }
     private lateinit var gameView: WalkView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -24,6 +26,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        updater.check()
         hideSystemUi()
         gameView.resume()
     }

@@ -245,6 +245,11 @@ The games install side by side.
 Updates install over the top and keep your progress. (If you installed Hercules & Apollo before
 it got its own signing key, uninstall that copy once first.)
 
+The Hercules & Apollo games also update themselves: when one opens, it checks the release it
+came from for a newer build (`version.txt` holds the build number) and offers to download it.
+Tap **UPDATE**, and the first time allow the game to install apps when Android asks. Builds
+made on a computer rather than by GitHub never ask. See `walkshared/.../Updater.kt`.
+
 ## Building it yourself
 
 You need JDK 17 and the Android SDK (Android Studio installs both).

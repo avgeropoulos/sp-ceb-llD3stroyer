@@ -16,6 +16,8 @@ android {
         // Each CI build gets a higher version number so phones see it as an update.
         versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
         versionName = "1.0"
+        // Which GitHub release this build updates itself from (none for a local build).
+        manifestPlaceholders["updateTag"] = System.getenv("GITHUB_REF_NAME")?.let { "latest-$it" } ?: ""
     }
 
     // Every build is signed with this one key (kept in the repo, it's not a secret). Android
