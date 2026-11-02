@@ -308,11 +308,29 @@ func _after_loading() -> void:
 			state = "title"
 
 
+var _going := false
+var _look_ahead := Vector3.ZERO
+var _cam_dist := -1.0
+var hitstop := 0.0   # a tiny freeze when a hit lands (stomps, boss hits): it makes hits feel heavy
+
+
+## Freezes the action for a moment (seconds, a few frames). Time runs at 5% meanwhile,
+## so taps still get through.
+func hit_stop(t: float) -> void:
+	hitstop = maxf(hitstop, t)
+
+
 ## Switches to the home base, 1-1 or the title (a fresh scene, with a short LOADING screen).
 func go(place: String, n: int = 0) -> void:
 	Boot.place = place
 	Boot.slot = n
 	if get_tree().current_scene == self:
+		if _going:
+			return
+		_going = true
+		if hud and state != "loading":   # a star wipe closes the screen first, then the LOADING screen
+			hud.closing = 0.0
+			await get_tree().create_timer(Hud.WIPE_OUT + 0.02).timeout
 		get_tree().reload_current_scene()
 	else:   # tests run the game without a current scene
 		var nm: Node = load("res://main.tscn").instantiate()
@@ -744,7 +762,14 @@ func _update_home_camera(dt: float) -> void:
 		want = want.lerp(mecha.focus(), fr[1])
 		if hud.look_delta == Vector2.ZERO:
 			cam_pitch = lerpf(cam_pitch, fr[2], 1 - exp(-dt * 2.0))
+	if not building and state in ["play", "home"]:   # look a little ahead of where you run
+		var hv := Vector3(l.vel.x, 0, l.vel.z) * 0.16
+		_look_ahead = _look_ahead.lerp(hv.limit_length(1.6), 1 - exp(-dt * 2.5))
+		want += _look_ahead
 	cam_focus = cam_focus.lerp(want, 1 - exp(-dt * 10))
+	# the distance eases in and out (a gentle zoom out when a boss shows up)
+	_cam_dist = dist if _cam_dist < 0 or state in ["title", "loading", "slots", "partner"] else lerpf(_cam_dist, dist, 1 - exp(-dt * 2.5))
+	dist = _cam_dist
 	var back := Vector3(sin(cam_yaw) * cos(cam_pitch), sin(cam_pitch), cos(cam_yaw) * cos(cam_pitch))
 	var d := dist
 	var step := 0.25
@@ -1771,6 +1796,9 @@ func _process(delta: float) -> void:
 	_watch_lag(delta)
 	_gather_input()
 	var dt := minf(delta, 0.1)
+	if hitstop > 0:
+		hitstop -= dt
+		dt *= 0.05
 	var steps := maxi(1, ceili(dt * 60.0 - 0.01))
 	for i in steps:
 		_step(dt / steps)
@@ -1788,6 +1816,8 @@ func _step(dt: float) -> void:
 	if state == "loading":
 		_update_camera(dt)
 		return
+	if open_play and open_play.visible != (state != "title"):   # a clean title screen (no star beacons)
+		open_play.visible = state != "title"
 	if state == "title":
 		for h in heroes.values():
 			h.vel = Vector3.ZERO
@@ -3024,6 +3054,7 @@ func _update_foes(dt: float) -> void:
 			continue
 		if l.overlaps(f) and l.who == "rocco" and l.trick in ["dive", "slide"] and Vector2(l.vel.x, l.vel.z).length() > 4.0 and not f.is_boss:
 			f.hurt(2, self)   # a DIVE / belly slide knocks bad guys over
+			hit_stop(0.04)
 			sfx("stomp")
 			continue
 		if l.overlaps(f):
@@ -3035,6 +3066,8 @@ func _update_foes(dt: float) -> void:
 				if not f.is_boss:
 					dmg = 3 if f.kind == "grumbler" else dmg
 				f.hurt(dmg, self)
+				hit_stop(0.07 if f.is_boss else 0.045)
+				hud.buzz(25)
 				l.vel.y = 12.0 if jump_held else 8.5
 				l.slam = ""
 				l.jumps_left = 1 if l.who in Team.DOUBLE_JUMPERS else 0

@@ -36,6 +36,9 @@ func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	font = ThemeDB.fallback_font
+	var cf := ConfigFile.new()
+	if cf.load("user://ui.cfg") == OK:
+		haptics = cf.get_value("ui", "haptics", true)
 	for n in ["heart", "heart_empty", "coin", "rocco_idle", "blocky_idle", "sparky_idle", "t_stone", "t_iron", "t_gold", "t_diamond", "kragjr_1"]:
 		tex[n] = load("res://art/" + n + ".png")
 
@@ -58,6 +61,7 @@ func say(text: String, sub: String = "", time: float = 2.2) -> void:
 	message = text
 	sub_message = sub
 	message_t = time
+	message_total = maxf(time, 0.01)
 
 
 func _layout() -> void:
@@ -98,7 +102,7 @@ func _layout() -> void:
 				buttons["rotate"] = [Vector2(s.x - 445 * u, s.y - 175 * u), 46 * u]
 				buttons["paint"] = [Vector2(s.x - 445 * u, s.y - 290 * u), 46 * u]
 		if game.flying:
-			buttons["down"] = [Vector2(s.x - 445 * u, s.y - 70 * u), 52 * u]
+			buttons["down"] = [Vector2(s.x - 445 * u, s.y - 60 * u), 50 * u]   # clear of MOVIES / TURN above it
 	else:
 		buttons = {"jump": jump, "action": act, "swap": sw, "super": sup, "pause": pz}
 		if game and game.mega and game.mega.ready():   # MEGA EVOLUTION is ready
@@ -110,7 +114,7 @@ func _layout() -> void:
 func button_at(p: Vector2) -> String:
 	for k in buttons:
 		var b: Array = buttons[k]
-		if p.distance_to(b[0]) < b[1] * 1.12:
+		if p.distance_to(b[0]) < b[1] * 1.2:
 			return k
 	return ""
 
@@ -150,6 +154,9 @@ func _input(event: InputEvent) -> void:
 				if game.state == "title" and look_rect().grow(16).has_point(e.position):
 					game.toggle_look()
 					return
+				if game.state == "title" and buzz_rect().grow(12).has_point(e.position):
+					set_haptics(not haptics)
+					return
 				if game.state == "slots":
 					_slots_tap(e.position)
 					return
@@ -183,6 +190,8 @@ func _input(event: InputEvent) -> void:
 			if b != "":
 				held[e.index] = b
 				pressed_now[b] = true
+				press_t[b] = 0.0
+				buzz(15)
 			elif e.position.x < size.x * 0.5 and stick_id == -1:
 				stick_id = e.index
 				stick_base = e.position
@@ -234,6 +243,22 @@ func _process(dt: float) -> void:
 	title_t += dt
 	size = get_viewport_rect().size
 	_layout()
+	for k in press_t.keys():
+		press_t[k] += dt
+	var alab := ""
+	if game and game.state in ["play", "home", "kart"] and buttons.has("action"):
+		alab = game.action_label()
+	for k in buttons:   # buttons that just appeared (or changed what they do) pulse for a moment
+		var lab := alab if k == "action" else ""
+		if not seen_t.has(k) or _btn_last.get(k, "") != lab:
+			seen_t[k] = 0.0 if (seen_t.has(k) or title_t > 1.5) else 9.0
+			_btn_last[k] = lab
+		seen_t[k] += dt
+	for k in seen_t.keys():
+		if not buttons.has(k):
+			seen_t.erase(k)
+			_btn_last.erase(k)
+	_juice_step(dt)
 	queue_redraw()
 
 
@@ -244,6 +269,16 @@ func txt(s: String, pos: Vector2, fs: int, color: Color = Color.WHITE, align := 
 
 
 func _draw() -> void:
+	_draw_screen()
+	if game != null and (closing >= 0 or wipe >= 0) and not _wiped:
+		_draw_wipe()
+
+
+var _wiped := false
+
+
+func _draw_screen() -> void:
+	_wiped = false
 	var s := size
 	if game == null:
 		return
@@ -299,14 +334,24 @@ func _draw() -> void:
 		var a := clampf(message_t * 3, 0, 1)
 		# The pop-in grows the picture, never the font size: a new font size every frame makes
 		# the tablet redraw every letter from scratch (that was the lag at the start, on SUPERs
-		# and when Krag Jr. shows up).
-		var pop := 1.0 + maxf(0, (message_t - 1.9)) * 1.5
-		var mid := Vector2(s.x * 0.5, s.y * 0.36 - 22)
-		draw_set_transform(mid * (1.0 - pop), 0.0, Vector2(pop, pop))
+		# and when Krag Jr. shows up). The banner slides in from the right and out to the left.
+		var age := message_total - message_t
+		var pop := 1.0 + maxf(0, (0.3 - age)) * 1.5
+		var slide := 0.0
+		if age < 0.22:
+			var e := 1.0 - age / 0.22
+			slide = s.x * 0.6 * e * e
+		elif message_t < 0.28:
+			var e := 1.0 - message_t / 0.28
+			slide = -s.x * 0.5 * e * e
+		var mid := Vector2(s.x * 0.5 + slide, s.y * 0.36 - 22)
+		draw_set_transform(Vector2(slide, 0) + (mid - Vector2(slide, 0)) * (1.0 - pop), 0.0, Vector2(pop, pop))
 		txt(message, Vector2(0, s.y * 0.36), 64, Color(1, 0.86, 0.3, a), HORIZONTAL_ALIGNMENT_CENTER, s.x, 14)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		if sub_message != "":
+			draw_set_transform(Vector2(slide * 1.15, 0), 0.0, Vector2.ONE)
 			txt(sub_message, Vector2(0, s.y * 0.36 + 52), 30, Color(1, 1, 1, a), HORIZONTAL_ALIGNMENT_CENTER, s.x, 8)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	if game.state == "paused":
 		_draw_pause()
 	if game.state == "starselect":
@@ -317,6 +362,9 @@ func _draw() -> void:
 		_draw_clear()
 	if game.weather and game.weather.flash > 0.01:   # lightning!
 		draw_rect(Rect2(Vector2.ZERO, s), Color(1, 1, 1, game.weather.flash * 0.45))
+	_draw_coin_fliers()
+	_draw_wipe()
+	_wiped = true
 
 
 # ------------------------------------------------------------------ MECHA KRAG: fight or not now?
@@ -344,17 +392,27 @@ func _draw_mecha_ask() -> void:
 	var cols := [Color("e8413b"), Color(0.25, 0.3, 0.45)]
 	for i in 2:
 		var r := mecha_ask_rect(i)
-		draw_rect(r, cols[i])
-		draw_rect(r, Color.WHITE, false, 4.0)
+		card(r, cols[i])
 		txt(labels[i], Vector2(r.position.x, r.position.y + 72), 48, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 10)
 
 
 func _draw_hud() -> void:
 	var x := 22.0
 	for i in game.MAX_HEARTS:
-		draw_texture_rect(tex["heart" if i < game.hearts else "heart_empty"], Rect2(x + i * 46, 14, 50, 50), false)
-	draw_texture_rect(tex["coin"], Rect2(x, 66, 42, 42), false)
-	txt("x %d" % game.coins, Vector2(x + 46, 100), 30)
+		var hr := Rect2(x + i * 46, 14, 50, 50)
+		if heart_shake > 0:   # ouch: the hearts wobble
+			hr.position.x += sin(heart_shake * 60.0 + i) * 5.0 * heart_shake * 2.0
+		if heart_pop > 0 and i < game.hearts:   # refilled: they bounce, one after another
+			var b := maxf(0.0, sin(clampf(0.5 - heart_pop - i * 0.05, 0, 0.3) / 0.3 * PI))
+			hr = hr.grow(b * 7.0)
+		draw_texture_rect(tex["heart" if i < game.hearts else "heart_empty"], hr, false)
+	var cp := coin_pop * coin_pop
+	draw_texture_rect(tex["coin"], Rect2(x, 66, 42, 42).grow(cp * 6.0), false)
+	var cs := 1.0 + cp * 0.25
+	var cpos := Vector2(x + 46, 100)
+	draw_set_transform((cpos + Vector2(0, -10)) * (1.0 - cs), 0.0, Vector2(cs, cs))
+	txt("x %d" % int(shown_coins if shown_coins >= 0 else game.coins), cpos, 30, Color.WHITE if cp < 0.05 else Color(1, 0.92, 0.5))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	var ox := x + 150
 	for o in ["stone", "iron", "gold", "diamond"]:
 		draw_texture_rect(tex["t_" + o], Rect2(ox, 74, 30, 30), false)
@@ -548,10 +606,7 @@ func _draw_select() -> void:
 		var o: Dictionary = op.objective(all[i])
 		var mine: bool = op.got.has(all[i])
 		var sel: bool = op.sel == i
-		if sel:
-			draw_rect(r.grow(7), Color("ffd23a"))
-		draw_rect(r, Color(0.98, 0.95, 0.86) if not mine else Color(1.0, 0.93, 0.6))
-		draw_rect(r, Color(0.15, 0.1, 0.2), false, 3.0)
+		paper_card(r, Color.WHITE, 0, sel, Color(0.98, 0.95, 0.86) if not mine else Color(1.0, 0.93, 0.6))
 		_star_shape(r.position + Vector2(r.size.x * 0.5, 44), 30, Color(0.15, 0.1, 0.2))
 		_star_shape(r.position + Vector2(r.size.x * 0.5, 44), 24, Color("ffd23a") if mine else Color(0.82, 0.82, 0.86))
 		txt("STAR %d" % (i + 1), Vector2(r.position.x, r.position.y + 98), 20, Color(0.35, 0.3, 0.45), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
@@ -603,19 +658,9 @@ func _draw_buttons_only() -> void:
 
 
 func _draw_stick_and_buttons(with_stick := true) -> void:
-	# thumb stick
-	var r := 70.0 * clampf(size.y / 720.0, 0.75, 1.6)
-	var base := stick_base if stick_id >= 0 else Vector2(r * 2.1, size.y - r * 2.1)
 	if with_stick:
-		draw_circle(base, r * 1.2, Color(0.1, 0.15, 0.3, 0.28))
-		draw_arc(base, r * 1.2, 0, TAU, 48, Color(1, 1, 1, 0.5), 4, true)
-	if game.sprinting and with_stick:   # the stick glows orange while sprinting
-		draw_arc(base, r * 1.2, 0, TAU, 48, Color("ff8a1f"), 8, true)
-		txt("SPRINT!", Vector2(base.x - r * 1.2, base.y - r * 1.35), 24, Color("ffb35a"), HORIZONTAL_ALIGNMENT_CENTER, r * 2.4, 6)
-	if with_stick:
-		draw_circle(base + stick * r, r * 0.55, Color("ffd6a8") if game.sprinting else Color(1, 1, 1, 0.75))
-	# buttons
-	var labels := {"jump": "JUMP", "action": game.action_label(), "swap": "SWAP", "super": "SUPER", "pause": "II",
+		_draw_stick()
+	var labels := {"jump": "JUMP", "action": game.action_label(), "swap": "SWAP", "super": "SUPER", "pause": "",
 		"build": "BUILD", "decor": "DECOR", "partner": "TEAM", "place": "PLACE", "remove": "REMOVE", "done": "DONE", "rotate": "TURN", "land": "LAND", "blastoff": "BLAST OFF!", "paint": "PAINT",
 		"fly": "LAND" if game.flying else "FLY", "down": "DOWN", "movies": "MOVIES", "mega": "MEGA!",
 		"fireworks": "BOOM!", "sleep": "SLEEP"}
@@ -625,42 +670,324 @@ func _draw_stick_and_buttons(with_stick := true) -> void:
 		labels["jump"] = game.minigames.button_label()
 	if game.state == "kart":
 		labels["jump"] = "HOP"
-	var colors := {"jump": Color("3fc06a"), "action": Color("ff8a1f"), "swap": Color("6a7cff"), "super": Color("ffcf33"), "pause": Color(0.2, 0.25, 0.4),
-		"build": Color("ff8a1f"), "decor": Color("ff6fa8"), "partner": Color("2cbec8"), "place": Color("3fc06a"), "remove": Color("e8413b"),
-		"done": Color("3f7fd9"), "rotate": Color("8a5bc4"), "land": Color("3fc06a"), "blastoff": Color("e8413b"),
-		"paint": Decor.PAINTS[game.home.paint] if game.home and game.home.paint > 0 else Color("ff6fa8"),
-		"fly": Color("ffb020") if game.flying else Color("54c8ff"), "down": Color("3f7fd9"), "movies": Color("e8413b"),
-		"mega": Color.from_hsv(fmod(title_t * 0.5, 1.0), 0.65, 1.0), "fireworks": Color("ff6fd8"), "sleep": Color("3b4fa0")}
 	for k in buttons:
 		var c: Vector2 = buttons[k][0]
 		var rad: float = buttons[k][1]
-		var col: Color = colors[k]
+		var col: Color = button_color(k)
 		if k == "land" and (game.sky == null or game.sky.near_info().is_empty() or not game.sky.near_info().ok):
-			col = Color(0.35, 0.38, 0.45)   # nothing to land on here
-		var down := is_held(k)
-		if k == "mega":   # a rainbow glow round the MEGA button
-			draw_circle(c, rad + 8 + sin(title_t * 8) * 4, Color(1, 0.95, 0.5, 0.35))
-		if k == "super" and game.state == "play":
-			var f: float = game.super_charge
-			draw_circle(c, rad, Color(0.15, 0.15, 0.25, 0.55))
-			if f < 1.0:
-				draw_arc(c, rad - 5, -PI / 2, -PI / 2 + TAU * f, 48, col, 8, true)
-			else:
-				var glow := 0.5 + 0.5 * sin(title_t * 8)
-				draw_circle(c, rad + 6 * glow, Color(1, 0.9, 0.3, 0.35))
-				draw_circle(c, rad, col)
+			col = Color(0.42, 0.45, 0.52)   # nothing to land on here
+		var lab: String = String(labels.get(k, k.to_upper()))
+		_draw_button(k, c, rad, col, lab, _icon_for(k, lab), is_held(k))
+
+
+# ------------------------------------------------------------------ the touch buttons (look)
+var press_t := {}            # button -> seconds since it was pressed (squash + ripple)
+var seen_t := {}             # button -> seconds since it appeared (a glow pulse for new actions)
+var _btn_last := {}          # button -> its last label (a changed label pulses too)
+const GLOW_NEW := ["action", "blastoff", "mega", "land", "movies", "fireworks", "sleep", "paint", "down", "rotate"]
+
+
+## The colour language: green = move (jump, land, place), orange = action, blue = team / swap,
+## gold = super, red = big / danger (blast off, remove), pink = decorate.
+func button_color(k: String) -> Color:
+	match k:
+		"jump", "place", "land":
+			return Color("33b860")
+		"action", "build":
+			return Color("ff8a1f")
+		"swap", "partner":
+			return Color("5d6cf2")
+		"super":
+			return Color("ffc21a")
+		"pause":
+			return Color(0.2, 0.25, 0.42)
+		"decor":
+			return Color("ff5fa2")
+		"remove", "blastoff", "movies":
+			return Color("e8413b")
+		"done", "down":
+			return Color("3f7fd9")
+		"rotate":
+			return Color("8a5bc4")
+		"paint":
+			return Decor.PAINTS[game.home.paint] if game.home and game.home.paint > 0 else Color("ff6fa8")
+		"fly":
+			return Color("ffb020") if game.flying else Color("3cc4f0")
+		"mega":
+			return Color.from_hsv(fmod(title_t * 0.5, 1.0), 0.65, 1.0)
+		"fireworks":
+			return Color("ff6fd8")
+		"sleep":
+			return Color("3b4fa0")
+	return Color("8a8e96")
+
+
+## Which little picture goes on a button.
+func _icon_for(k: String, lab: String) -> String:
+	match k:
+		"jump":
+			return "down" if lab == "WAIT" else ("check" if lab == "OK" else "up")
+		"action":
+			match lab:
+				"LONG JUMP":
+					return "long"
+				"BACKFLIP":
+					return "backflip"
+				"POUND":
+					return "pound"
+				"DIVE":
+					return "dive"
+				"GRAB", "GRAB TAIL", "WIGGLE":
+					return "hand"
+				"THROW":
+					return "throw"
+				"SPIN!":
+					return "rotate"
+				"MINE":
+					return "pick"
+				"ITEM":
+					return "box"
+				"TONGUE":
+					return "tongue"
+			return "burst"
+		"super":
+			return "star"
+		"mega":
+			return "gem"
+		"pause":
+			return "pause"
+		"build":
+			return "hammer"
+		"decor":
+			return "flower"
+		"partner":
+			return "team"
+		"fly":
+			return "down" if game.flying else "wing"
+		"land", "blastoff":
+			return "rocket"
+		"place":
+			return "plus"
+		"remove":
+			return "minus"
+		"done":
+			return "check"
+		"rotate":
+			return "rotate"
+		"paint":
+			return "drop"
+		"down":
+			return "down"
+		"movies":
+			return "tv"
+		"fireworks":
+			return "burst"
+		"sleep":
+			return "moon"
+	return ""
+
+
+## A glossy, chunky toy button: a dark side under it (it sinks when pressed), a shine on top,
+## a picture and a small label. New actions pulse; a tap sends a ripple out.
+func _draw_button(k: String, c: Vector2, rad: float, col: Color, lab: String, icon: String, down: bool) -> void:
+	var pt: float = press_t.get(k, 9.0)
+	var st: float = seen_t.get(k, 9.0)
+	var depth := rad * 0.11
+	var sink := depth * (0.85 if down else (0.6 if pt < 0.08 else 0.0))
+	var sq := 0.93 if down else 1.0 + maxf(0.0, 0.12 - pt) * 0.6   # squash in, then a tiny bounce out
+	# glow for an action that just appeared (or whose label just changed)
+	if k in GLOW_NEW and st < 1.6:
+		var g := 1.0 - st / 1.6
+		draw_circle(c, rad * (1.12 + 0.12 * sin(st * 12.0)), Color(1, 0.95, 0.6, 0.35 * g))
+	if k == "mega":
+		draw_circle(c, rad + 8 + sin(title_t * 8) * 4, Color(1, 0.95, 0.5, 0.35))
+	# shadow + the button's side
+	draw_circle(c + Vector2(0, depth + rad * 0.08), rad * 1.02, Color(0, 0, 0, 0.25))
+	draw_circle(c + Vector2(0, depth), rad, col.darkened(0.45))
+	var f := c + Vector2(0, sink)
+	draw_set_transform(f * (1.0 - sq), 0.0, Vector2(sq, sq))
+	var face := col.darkened(0.18) if down else col
+	if k == "super" and game.state == "play" and game.super_charge < 1.0:
+		face = Color(0.16, 0.17, 0.28)
+	draw_circle(f, rad, face)
+	draw_circle(f + Vector2(0, -rad * 0.1), rad * 0.84, face.lightened(0.12))
+	_ellipse(f + Vector2(0, -rad * 0.48), rad * 0.6, rad * 0.26, Color(1, 1, 1, 0.3))
+	draw_arc(f, rad - 1.5, 0, TAU, 48, Color(1, 1, 1, 0.9), 3.0, true)
+	# SUPER charges round its rim
+	if k == "super" and game.state == "play":
+		var fc: float = game.super_charge
+		if fc < 1.0:
+			draw_arc(f, rad - 6, -PI / 2, -PI / 2 + TAU * fc, 48, Color("ffc21a"), 7, true)
 		else:
-			draw_circle(c + Vector2(0, 5), rad, Color(0, 0, 0, 0.25))
-			draw_circle(c + (Vector2(0, 4) if down else Vector2.ZERO), rad, col.darkened(0.2) if down else Color(col, 0.88))
-		draw_arc(c, rad, 0, TAU, 48, Color(1, 1, 1, 0.8), 3, true)
+			draw_arc(f, rad + 5 + 3 * sin(title_t * 8), 0, TAU, 48, Color(1, 0.92, 0.4, 0.8), 4, true)
+	var has_label := lab != "" and k != "pause"
+	if k == "swap":   # the face of who you'll swap to, with little swap arrows
+		var nxt: String = game.next_swap_name()
+		fit(img(game.face(nxt)), Rect2(f - Vector2(rad * 0.62, rad * 0.78), Vector2(rad * 1.24, rad * 1.2)))
+		_icon("swap", f, rad * 0.95, Color.WHITE)
+	elif icon != "":
+		_icon(icon, f + Vector2(0, -rad * (0.17 if has_label else 0.0)), rad * (0.38 if has_label else 0.48), Color.WHITE)
+	if has_label:
+		var fs := clampi(int(rad * (0.27 if lab.length() <= 6 else 0.21)), 12, 26)
+		var y := f.y + rad * 0.55
 		if k == "swap":
-			var nxt: String = game.next_swap_name()
-			fit(img(game.face(nxt)), Rect2(c - Vector2(rad * 0.8, rad * 0.95), Vector2(rad * 1.6, rad * 1.55)))
-			txt("SWAP", Vector2(c.x - rad, c.y + rad + 26), 22, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, rad * 2)
-		else:
-			var n := String(labels[k]).length()
-			var fs := int(rad * (0.44 if n <= 4 else (0.36 if n <= 6 else 0.27)))
-			txt(labels[k], Vector2(c.x - rad, c.y + fs * 0.36), fs, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, rad * 2, 6)
+			y = c.y + rad + 26
+			fs = 22
+		txt(lab, Vector2(f.x - rad, y), fs, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, rad * 2, 5)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	# tap ripple
+	if pt < 0.4:
+		var a := 1.0 - pt / 0.4
+		draw_arc(c, rad * (1.0 + pt * 1.3), 0, TAU, 40, Color(1, 1, 1, 0.7 * a), 4.0 * a + 1.0, true)
+
+
+func _ellipse(c: Vector2, rx: float, ry: float, col: Color) -> void:
+	var pts := PackedVector2Array()
+	for i in 20:
+		var a := TAU * i / 20.0
+		pts.append(c + Vector2(cos(a) * rx, sin(a) * ry))
+	draw_colored_polygon(pts, col)
+
+
+## Little white pictures for the buttons, drawn with lines (a dark edge first so they read on any colour).
+func _icon(id: String, c: Vector2, r: float, col: Color) -> void:
+	var dark := Color(0.1, 0.07, 0.16, 0.55)
+	for pass_i in 2:
+		var cc := dark if pass_i == 0 else col
+		var w := r * (0.34 if pass_i == 0 else 0.2)
+		var o := Vector2(0, r * 0.06) if pass_i == 0 else Vector2.ZERO
+		var p := c + o
+		match id:
+			"up":
+				_arrow(p, Vector2(0, -1), r, w, cc)
+			"down":
+				_arrow(p, Vector2(0, 1), r, w, cc)
+			"long":
+				_arrow(p + Vector2(r * 0.1, 0), Vector2(1, 0), r, w, cc)
+				draw_line(p + Vector2(-r * 0.95, -r * 0.45), p + Vector2(-r * 0.45, -r * 0.45), cc, w * 0.6, true)
+				draw_line(p + Vector2(-r * 0.95, r * 0.45), p + Vector2(-r * 0.45, r * 0.45), cc, w * 0.6, true)
+			"backflip":
+				draw_arc(p + Vector2(0, r * 0.1), r * 0.7, PI * 0.15, PI * 1.6, 20, cc, w, true)
+				_head(p + Vector2(cos(PI * 0.15), sin(PI * 0.15)) * r * 0.7 + Vector2(0, r * 0.1), Vector2(-0.3, 1).normalized(), r * 0.45, cc)
+			"pound":
+				_arrow(p + Vector2(0, -r * 0.15), Vector2(0, 1), r * 0.85, w, cc)
+				draw_line(p + Vector2(-r, r * 0.85), p + Vector2(r, r * 0.85), cc, w * 0.8, true)
+			"dive":
+				_arrow(p, Vector2(1, 0.75).normalized(), r, w, cc)
+			"hand", "throw":
+				draw_circle(p + Vector2(0, r * 0.25), r * 0.48, cc)
+				for i in 4:
+					var fx := -r * 0.42 + i * r * 0.28
+					draw_line(p + Vector2(fx, r * 0.05), p + Vector2(fx, -r * 0.6 + absf(i - 1.5) * r * 0.12), cc, w * 0.75, true)
+				draw_line(p + Vector2(-r * 0.45, r * 0.3), p + Vector2(-r * 0.8, -r * 0.05), cc, w * 0.75, true)
+				if id == "throw":
+					draw_arc(p + Vector2(r * 0.3, -r * 0.1), r * 0.85, -PI * 0.9, -PI * 0.25, 12, cc, w * 0.6, true)
+			"pick":
+				draw_line(p + Vector2(-r * 0.6, r * 0.8), p + Vector2(r * 0.3, -r * 0.3), cc, w, true)
+				draw_arc(p + Vector2(r * 0.55, r * 0.05), r * 0.75, -PI * 0.95, -PI * 0.25, 14, cc, w * 1.1, true)
+			"burst":
+				for i in 8:
+					var a := TAU * i / 8.0 + 0.2
+					draw_line(p + Vector2(cos(a), sin(a)) * r * 0.3, p + Vector2(cos(a), sin(a)) * r * (0.95 if i % 2 == 0 else 0.7), cc, w * 0.8, true)
+				draw_circle(p, r * 0.28, cc)
+			"star":
+				_star_shape(p, r * 1.0, cc)
+			"gem":
+				draw_colored_polygon(PackedVector2Array([p + Vector2(0, -r), p + Vector2(r * 0.8, -r * 0.2), p + Vector2(0, r), p + Vector2(-r * 0.8, -r * 0.2)]), cc)
+			"pause":
+				draw_line(p + Vector2(-r * 0.32, -r * 0.6), p + Vector2(-r * 0.32, r * 0.6), cc, w * 1.2, true)
+				draw_line(p + Vector2(r * 0.32, -r * 0.6), p + Vector2(r * 0.32, r * 0.6), cc, w * 1.2, true)
+			"hammer":
+				draw_line(p + Vector2(-r * 0.55, r * 0.85), p + Vector2(r * 0.25, -r * 0.2), cc, w, true)
+				var hp := PackedVector2Array()
+				for v in [Vector2(-0.1, -0.95), Vector2(0.95, 0.1), Vector2(0.6, 0.45), Vector2(-0.45, -0.6)]:
+					hp.append(p + v * r)
+				draw_colored_polygon(hp, cc)
+			"flower":
+				for i in 5:
+					var a := TAU * i / 5.0
+					draw_circle(p + Vector2(cos(a), sin(a)) * r * 0.48, r * 0.34, cc)
+				draw_circle(p, r * 0.28, Color("ffd23a") if pass_i == 1 else cc)
+			"team":
+				draw_circle(p + Vector2(-r * 0.4, -r * 0.35), r * 0.3, cc)
+				draw_circle(p + Vector2(r * 0.4, -r * 0.35), r * 0.3, cc)
+				_ellipse(p + Vector2(-r * 0.4, r * 0.45), r * 0.42, r * 0.38, cc)
+				_ellipse(p + Vector2(r * 0.4, r * 0.45), r * 0.42, r * 0.38, cc)
+			"wing":
+				for i in 3:
+					draw_arc(p + Vector2(r * 0.4, r * 0.2), r * (0.45 + i * 0.28), PI * 0.95, PI * 1.5, 10, cc, w * 0.8, true)
+			"rocket":
+				draw_colored_polygon(PackedVector2Array([p + Vector2(0, -r), p + Vector2(r * 0.38, -r * 0.35), p + Vector2(r * 0.38, r * 0.5),
+					p + Vector2(-r * 0.38, r * 0.5), p + Vector2(-r * 0.38, -r * 0.35)]), cc)
+				draw_colored_polygon(PackedVector2Array([p + Vector2(r * 0.38, r * 0.1), p + Vector2(r * 0.72, r * 0.7), p + Vector2(r * 0.38, r * 0.5)]), cc)
+				draw_colored_polygon(PackedVector2Array([p + Vector2(-r * 0.38, r * 0.1), p + Vector2(-r * 0.72, r * 0.7), p + Vector2(-r * 0.38, r * 0.5)]), cc)
+				if pass_i == 1:
+					draw_circle(p + Vector2(0, -r * 0.2), r * 0.16, Color(0.3, 0.6, 0.95))
+					draw_colored_polygon(PackedVector2Array([p + Vector2(-r * 0.22, r * 0.55), p + Vector2(r * 0.22, r * 0.55), p + Vector2(0, r * (0.95 + 0.1 * sin(title_t * 30)))]), Color("ffb020"))
+			"plus":
+				draw_line(p + Vector2(-r * 0.7, 0), p + Vector2(r * 0.7, 0), cc, w * 1.2, true)
+				draw_line(p + Vector2(0, -r * 0.7), p + Vector2(0, r * 0.7), cc, w * 1.2, true)
+			"minus":
+				draw_line(p + Vector2(-r * 0.7, 0), p + Vector2(r * 0.7, 0), cc, w * 1.2, true)
+			"check":
+				draw_polyline(PackedVector2Array([p + Vector2(-r * 0.7, 0), p + Vector2(-r * 0.15, r * 0.55), p + Vector2(r * 0.75, -r * 0.55)]), cc, w * 1.1, true)
+			"rotate":
+				draw_arc(p, r * 0.7, -PI * 0.3, PI * 1.3, 20, cc, w, true)
+				_head(p + Vector2(cos(-PI * 0.3), sin(-PI * 0.3)) * r * 0.7, Vector2(0.5, 1).normalized(), r * 0.45, cc)
+			"swap":
+				draw_arc(c, r, -PI * 0.85, -PI * 0.55, 8, cc, w * 0.6, true)
+				draw_arc(c, r, PI * 0.15, PI * 0.45, 8, cc, w * 0.6, true)
+			"drop":
+				draw_circle(p + Vector2(0, r * 0.25), r * 0.55, cc)
+				draw_colored_polygon(PackedVector2Array([p + Vector2(0, -r), p + Vector2(r * 0.5, r * 0.05), p + Vector2(-r * 0.5, r * 0.05)]), cc)
+			"tv":
+				draw_rect(Rect2(p - Vector2(r * 0.85, r * 0.6), Vector2(r * 1.7, r * 1.15)), cc, false, w * 0.8)
+				draw_line(p + Vector2(-r * 0.35, -r * 0.6), p + Vector2(-r * 0.6, -r), cc, w * 0.6, true)
+				draw_line(p + Vector2(r * 0.35, -r * 0.6), p + Vector2(r * 0.6, -r), cc, w * 0.6, true)
+			"moon":
+				draw_arc(p, r * 0.7, PI * 0.35, PI * 1.65, 18, cc, w * 1.4, true)
+			"box":
+				draw_rect(Rect2(p - Vector2(r * 0.7, r * 0.7), Vector2(r * 1.4, r * 1.4)), cc, false, w)
+				draw_circle(p + Vector2(0, r * 0.35), r * 0.1, cc)
+				draw_arc(p + Vector2(0, -r * 0.15), r * 0.25, PI, TAU + 0.6, 10, cc, w * 0.5, true)
+			"tongue":
+				draw_circle(p + Vector2(-r * 0.45, 0), r * 0.42, cc)
+				draw_line(p + Vector2(-r * 0.1, 0), p + Vector2(r * 0.8, 0), cc, w, true)
+				draw_circle(p + Vector2(r * 0.85, 0), r * 0.2, cc)
+
+
+func _arrow(c: Vector2, d: Vector2, r: float, w: float, col: Color) -> void:
+	draw_line(c - d * r * 0.75, c + d * r * 0.2, col, w, true)
+	_head(c + d * r * 0.85, d, r * 0.7, col)
+
+
+func _head(tip: Vector2, d: Vector2, s: float, col: Color) -> void:
+	var n := Vector2(-d.y, d.x)
+	draw_colored_polygon(PackedVector2Array([tip, tip - d * s + n * s * 0.6, tip - d * s - n * s * 0.6]), col)
+
+
+## The thumb stick: a soft ring with a glow on the side you push, and a shiny knob.
+func _draw_stick() -> void:
+	var r := 70.0 * clampf(size.y / 720.0, 0.75, 1.6)
+	var base := stick_base if stick_id >= 0 else Vector2(r * 2.1, size.y - r * 2.1)
+	var on := stick_id >= 0
+	draw_circle(base + Vector2(0, 6), r * 1.22, Color(0, 0, 0, 0.18))
+	draw_circle(base, r * 1.22, Color(0.08, 0.12, 0.28, 0.32 if on else 0.22))
+	draw_arc(base, r * 1.22, 0, TAU, 56, Color(1, 1, 1, 0.55 if on else 0.35), 4, true)
+	draw_arc(base, r * 0.7, 0, TAU, 40, Color(1, 1, 1, 0.12), 2, true)
+	if stick.length() > 0.15:   # a glowing arc on the side you're pushing
+		var a := stick.angle()
+		var glow := Color("ff8a1f") if game.sprinting else Color("8fe3ff")
+		draw_arc(base, r * 1.22, a - 0.6, a + 0.6, 16, Color(glow, 0.9), 8, true)
+	if game.sprinting:
+		txt("SPRINT!", Vector2(base.x - r * 1.2, base.y - r * 1.4), 24, Color("ffb35a"), HORIZONTAL_ALIGNMENT_CENTER, r * 2.4, 6)
+	var k := base + stick * r
+	draw_circle(k + Vector2(0, 5), r * 0.56, Color(0, 0, 0, 0.25))
+	var kc := Color("ffd6a8") if game.sprinting else Color(0.95, 0.96, 1.0, 0.92)
+	draw_circle(k, r * 0.55, kc)
+	draw_circle(k + Vector2(0, -r * 0.06), r * 0.44, kc.lightened(0.15))
+	_ellipse(k + Vector2(0, -r * 0.26), r * 0.3, r * 0.13, Color(1, 1, 1, 0.6))
+	draw_arc(k, r * 0.55, 0, TAU, 32, Color(0.2, 0.25, 0.45, 0.5), 2.5, true)
 
 
 func _draw_crosshair() -> void:
@@ -815,10 +1142,10 @@ func _draw_map_info() -> void:
 		var r := island_button_rect(i, n)
 		var ok: bool = sky.can_land(id)
 		var col := Color("3fc06a") if id == "home" else (Color("3f7fd9") if ok else Color(0.35, 0.38, 0.45))
-		if sky.auto_to == id or sky.near_id == id:
-			draw_rect(r.grow(5), Color("ffd23a"))
-		draw_rect(r, Color(col, 0.92))
-		draw_rect(r, Color(1, 1, 1, 0.8), false, 3.0)
+		var picked: bool = sky.auto_to == id or sky.near_id == id
+		if picked:
+			card(r.grow(5), Color("ffd23a"))
+		card(r, col, picked)
 		var label: String = sky.short_name(id) if ok else "LOCKED"
 		txt(label, Vector2(r.position.x, r.position.y + r.size.y * 0.5 + 8), 22, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 6)
 
@@ -867,8 +1194,7 @@ func _draw_look() -> void:
 	for i in 2:
 		var on: bool = (i == 1) == Look.toy
 		var box := Rect2(r.position + Vector2(i * r.size.x * 0.5, 0), half.size)
-		draw_rect(box, Color("ff8a1f") if on else Color(0.1, 0.15, 0.3, 0.6))
-		draw_rect(box, Color.WHITE, false, 3.0 if on else 1.5)
+		card(box.grow(-3), Color("ff8a1f") if on else Color(0.1, 0.15, 0.3, 0.75), on)
 		txt("PAPER" if i == 0 else "3D TOYS", Vector2(box.position.x, box.position.y + 60), 30 if on else 26,
 			Color.WHITE if on else Color(1, 1, 1, 0.7), HORIZONTAL_ALIGNMENT_CENTER, box.size.x, 7)
 
@@ -892,8 +1218,7 @@ func _draw_update() -> void:
 	var col := Color("3fc06a") if u.status != "downloading" else Color("6a7cff")
 	if u.status == "available":
 		draw_rect(r.grow(6 + glow * 6), Color(1, 0.95, 0.4, 0.35))
-	draw_rect(r, col)
-	draw_rect(r, Color.WHITE, false, 4.0)
+	card(r, col, u.status == "available")
 	if u.status == "downloading":
 		draw_rect(Rect2(r.position + Vector2(10, r.size.y - 26), Vector2((r.size.x - 20) * u.progress, 14)), Color("ffd23a"))
 		txt("%d%%" % int(u.progress * 100), Vector2(r.position.x, r.position.y + 58), 40, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 8)
@@ -935,6 +1260,12 @@ func _draw_loading() -> void:
 	draw_set_transform(Vector2(-6000, -6000), 0.0, Vector2.ONE)
 	_draw_hud()
 	_draw_controls()
+	card(Rect2(0, 0, 200, 80), Color("3fc06a"), true)       # the rounded menu cards
+	paper_card(Rect2(0, 100, 200, 160), Color("3f7fd9"), 40, true)
+	var keep_w := closing
+	closing = 0.1
+	_draw_wipe()                                             # and the star wipe
+	closing = keep_w
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	for i in 7:
 		if warm_sizes.is_empty():
@@ -948,14 +1279,72 @@ func _draw_loading() -> void:
 
 func _draw_title() -> void:
 	var s := size
-	var bob := sin(title_t * 2.5) * 6
-	txt("ROCCO & BLOCKY", Vector2(0, s.y * 0.24 + bob), 92, Color("ffd23a"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 18)
-	txt("TEAM UP!", Vector2(0, s.y * 0.24 + 92 + bob), 84, Color("ff4a3a"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 18)
+	# the logo drops in and bounces, then every letter rides a little wave
+	var drop := 0.0
+	if title_t < 1.1:
+		var k := title_t / 1.1
+		drop = -s.y * 0.5 * (1.0 - k) * absf(cos(k * PI * 2.5))
+	_wave_text("ROCCO & BLOCKY", s.y * 0.24 + drop, 92, Color("ffd23a"), 0.0)
+	var team_s := 1.0 + 0.06 * maxf(0.0, sin(title_t * 3.0)) if title_t > 1.1 else clampf((title_t - 0.5) * 2.0, 0.01, 1.0)
+	var tc := Vector2(s.x * 0.5, s.y * 0.24 + 92 - 30)
+	draw_set_transform(tc * (1.0 - team_s), sin(title_t * 2.0) * 0.03, Vector2(team_s, team_s))
+	txt("TEAM UP!", Vector2(0, s.y * 0.24 + 92), 84, Color("ff4a3a"), HORIZONTAL_ALIGNMENT_CENTER, s.x, 18)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	txt("3D TOYS" if Look.toy else "PAPER 3D", Vector2(0, s.y * 0.24 + 150), 40, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, s.x, 10)
+	_draw_title_parade()
 	_draw_update()
 	_draw_look()
-	if int(title_t * 2) % 2 == 0:
-		txt("TAP TO START", Vector2(0, s.y * 0.9), 46, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, s.x, 12)
+	_draw_buzz()
+	# TAP TO START breathes instead of blinking
+	var ps := 1.0 + 0.07 * sin(title_t * 4.0)
+	var pc := Vector2(s.x * 0.5, s.y * 0.9 - 16)
+	draw_set_transform(pc * (1.0 - ps), 0.0, Vector2(ps, ps))
+	txt("TAP TO START", Vector2(0, s.y * 0.9), 46, Color(1, 1, 1, 0.75 + 0.25 * sin(title_t * 4.0)), HORIZONTAL_ALIGNMENT_CENTER, s.x, 12)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+## A line of text whose letters bob up and down one after another (fixed font size).
+func _wave_text(t: String, y: float, fs: int, col: Color, phase: float) -> void:
+	var w := font.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var x := (size.x - w) * 0.5
+	for i in t.length():
+		var ch := t[i]
+		var cw := font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		var dy := sin(title_t * 3.2 - i * 0.45 + phase) * 7.0
+		txt(ch, Vector2(x, y + dy), fs, col, HORIZONTAL_ALIGNMENT_LEFT, -1, 18)
+		x += cw
+
+
+## The heroes hop across the bottom of the title screen, one after another.
+func _draw_title_parade() -> void:
+	var ids: Array = Team.ORDER
+	var s := size
+	var span := s.x + 400.0
+	for i in ids.size():
+		var x := fposmod(title_t * 150.0 - i * 95.0, span) - 200.0
+		var hop := absf(sin(title_t * 9.0 + i * 1.3)) * 22.0
+		var r := Rect2(x - 32, s.y * 0.78 - 64 - hop, 64, 64)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		_ellipse(Vector2(x, s.y * 0.78 + 2), 26.0 - hop * 0.4, 7.0, Color(0, 0, 0, 0.25))
+		draw_texture_rect(img(ids[i] + "_idle"), r, false)
+
+
+func buzz_rect() -> Rect2:
+	return Rect2(size.x - 196, 22, 172, 58)
+
+
+func _draw_buzz() -> void:
+	var r := buzz_rect()
+	card(r, Color("33b860") if haptics else Color(0.25, 0.27, 0.35, 0.85))
+	txt("BUZZ: " + ("ON" if haptics else "OFF"), Vector2(r.position.x, r.position.y + 40), 28, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 7)
+
+
+func set_haptics(on: bool) -> void:
+	haptics = on
+	var cf := ConfigFile.new()
+	cf.set_value("ui", "haptics", on)
+	cf.save("user://ui.cfg")
+	buzz(30)
 
 
 func _draw_clear() -> void:
@@ -996,13 +1385,11 @@ func _draw_pause() -> void:
 	for i in game.pause_count():
 		var r := pause_rect(i)
 		var sel: bool = game.pause_sel == i
-		draw_rect(r.grow(6) if sel else r, Color.WHITE if sel else Color(1, 1, 1, 0.0))
-		draw_rect(r, PAUSE_COLORS[i])
-		draw_rect(r, Color.WHITE, false, 3.0)
+		var col: Color = PAUSE_COLORS[i]
 		if i == 4:   # POSEIDON FLOOD: a deep-sea button with a trident; red when armed, grey when used
-			var col: Color = Color(0.3, 0.32, 0.4) if game.flood_used else (Color("c0392b") if game.flood_armed_t > 0 else PAUSE_COLORS[4])
-			draw_rect(r, col)
-			draw_rect(r, Color.WHITE, false, 3.0)
+			col = Color(0.3, 0.32, 0.4) if game.flood_used else (Color("c0392b") if game.flood_armed_t > 0 else PAUSE_COLORS[4])
+		card(r, col, sel)
+		if i == 4:
 			_trident(Vector2(r.position.x + 34, r.position.y + r.size.y * 0.5), 20)
 		txt(game.pause_label(i), Vector2(r.position.x, r.position.y + (60 if r.size.y > 70 else 42)), 44 if i < 4 and r.size.y > 60 else 34, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 9)
 	# lag finder (bottom left): screenshot this if the game stutters
@@ -1079,11 +1466,7 @@ func _draw_slots() -> void:
 		var r := slot_rect(i)
 		var d: Dictionary = _slot_cache[i]
 		var sel: bool = game.slot_sel == i
-		if sel:
-			draw_rect(r.grow(8), Color(1, 0.9, 0.4, 0.9))
-		draw_rect(r, Color("fdf4e3") if not d.is_empty() else Color(1, 1, 1, 0.75))
-		draw_rect(r, Color(0.13, 0.09, 0.18), false, 4.0)
-		draw_rect(Rect2(r.position, Vector2(r.size.x, 64)), Color("3f7fd9"))
+		paper_card(r, Color("3f7fd9"), 64, sel, Color("fdf4e3") if not d.is_empty() else Color(1, 1, 1, 0.75))
 		txt("FILE %d" % n, Vector2(r.position.x, r.position.y + 47), 40, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 8)
 		var cx := r.position.x + r.size.x * 0.5
 		if d.is_empty():
@@ -1201,11 +1584,7 @@ func _draw_partner() -> void:
 		var st := Mons.stage_of(l, lv)
 		var r := partner_rect(i)
 		var sel: bool = game.partner_sel == i
-		if sel:
-			draw_rect(r.grow(7), Color(1, 0.9, 0.4, 0.95))
-		draw_rect(r, Color("fdf4e3"))
-		draw_rect(Rect2(r.position, Vector2(r.size.x, 34)), info.color)
-		draw_rect(r, Color(0.13, 0.09, 0.18), false, 3.0)
+		paper_card(r, info.color, 34, sel)
 		txt(info.type, Vector2(r.position.x, r.position.y + 26), 20, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 6)
 		var bob := sin(title_t * 4 + i) * 4 if sel else 0.0
 		var fh := r.size.y - 34 - 74
@@ -1290,9 +1669,7 @@ func _draw_movies() -> void:
 		var id: String = Cutscene.ORDER[i]
 		var r := movie_rect(i)
 		var seen: bool = id in game.scenes_seen
-		if game.movie_sel == i:
-			draw_rect(r.grow(6), Color("ffd23a"))
-		draw_rect(r, Color(0.92, 0.88, 0.8) if seen else Color(0.3, 0.3, 0.38))
+		paper_card(r, Color.WHITE, 0, game.movie_sel == i, Color(0.92, 0.88, 0.8) if seen else Color(0.3, 0.3, 0.38))
 		draw_rect(Rect2(r.position + Vector2(10, 10), Vector2(r.size.x - 20, r.size.y - 60)), Color(0.12, 0.12, 0.2))
 		if seen:
 			_star_shape(r.position + Vector2(r.size.x * 0.5, 50), 24, Color("ffd23a"))
@@ -1346,10 +1723,7 @@ func _draw_arcade() -> void:
 		var gm: Dictionary = MiniGames.GAMES[i]
 		var r := arcade_rect(i)
 		var sel: bool = game.arcade_sel == i
-		if sel:
-			draw_rect(r.grow(8), Color("ffd23a"))
-		draw_rect(r, Color(0.97, 0.94, 0.86))
-		draw_rect(Rect2(r.position, Vector2(r.size.x, 64)), gm.color)
+		paper_card(r, gm.color, 64, sel, Color(0.97, 0.94, 0.86))
 		txt(gm.name, Vector2(r.position.x, r.position.y + 44), 30, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 7)
 		_game_icon(gm.id, r.position + Vector2(r.size.x * 0.5, 140))
 		txt(gm.vs, Vector2(r.position.x, r.position.y + 254), 24, Color(0.35, 0.15, 0.2), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 0)
@@ -1463,12 +1837,8 @@ func _draw_team() -> void:
 		var got := id in open
 		var pick: int = game.team_sel.find(id)
 		if game.team_cur == i:
-			draw_rect(r.grow(7), Color(1, 1, 1, 0.5))
-		if pick >= 0:
-			draw_rect(r.grow(5), Color(1, 0.9, 0.4, 0.95))
-		draw_rect(r, Color("fdf4e3"))
-		draw_rect(Rect2(r.position, Vector2(r.size.x, 30)), info.color if got else Color(0.4, 0.4, 0.46))
-		draw_rect(r, Color(0.13, 0.09, 0.18), false, 3.0)
+			card(r.grow(9), Color(1, 1, 1, 0.5))
+		paper_card(r, info.color if got else Color(0.4, 0.4, 0.46), 30, pick >= 0)
 		txt(String(info.action) if got else "LOCKED", Vector2(r.position.x, r.position.y + 23), 17, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 5)
 		var fh := r.size.y - 30 - 60
 		var bob := sin(title_t * 4 + i) * 4 if pick >= 0 else 0.0
@@ -1504,3 +1874,214 @@ func _draw_team() -> void:
 	draw_rect(g, Color("3fc06a") if ok else Color(0.4, 0.42, 0.48))
 	draw_rect(g, Color.WHITE, false, 3.0)
 	txt("LET'S GO!" if ok else "PICK 2 HEROES", Vector2(g.position.x, g.position.y + 51), 34, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, g.size.x, 8)
+
+
+# ------------------------------------------------------------------ juice: coins, hearts, wipes, buzz
+static var haptics := true    # little buzzes on button taps / hits (Android); BUZZ on the title switches it
+var shown_coins := -1.0       # the coin counter rolls up to game.coins
+var coin_pop := 0.0           # the counter bounces when a coin arrives
+var coin_fliers: Array = []   # [start screen pos, age] coins flying to the counter
+var _last_coins := -1
+var _last_hearts := -1
+var heart_shake := 0.0        # hearts wobble when you get hurt
+var heart_pop := 0.0          # and bounce when they refill
+var wipe := -1.0              # >= 0 while the star wipe opens a new screen
+var closing := -1.0           # >= 0 while the star wipe closes (main.go waits for it)
+var _last_state := ""
+var message_total := 2.2      # how long the current banner lasts (for its slide in / out)
+const WIPE_IN := 0.55
+const WIPE_OUT := 0.32
+const COIN_AT := Vector2(43, 87)   # the coin icon on the HUD
+
+
+func buzz(ms: int) -> void:
+	if haptics and OS.has_feature("mobile"):
+		Input.vibrate_handheld(ms)
+
+
+func _juice_step(dt: float) -> void:
+	if game == null:
+		return
+	# the star wipe opens when the LOADING screen ends
+	if _last_state == "loading" and game.state != "loading":
+		wipe = 0.0
+	_last_state = game.state
+	if wipe >= 0:
+		wipe += dt
+		if wipe > WIPE_IN:
+			wipe = -1.0
+	if closing >= 0:
+		closing += dt
+	# coins: new ones fly from the hero to the counter, which rolls up and bounces
+	var c: int = game.coins
+	if _last_coins < 0 or game.state in ["loading", "title", "slots"]:
+		_last_coins = c
+		shown_coins = c
+	elif c > _last_coins:
+		var from := _hero_on_screen()
+		for i in mini(c - _last_coins, 6):
+			coin_fliers.append([from + Vector2(randf_range(-18, 18), randf_range(-18, 18)), -i * 0.05])
+		_last_coins = c
+	elif c < _last_coins:   # spent: the counter just follows
+		_last_coins = c
+		shown_coins = c
+	for pp in pops:
+		pp[2] += dt
+	pops = pops.filter(func(pp): return pp[2] < 0.8)
+	for fl in coin_fliers:
+		fl[1] += dt
+	coin_fliers = coin_fliers.filter(func(fl): return fl[1] < 0.55)
+	if shown_coins < c:
+		var before := int(shown_coins)
+		shown_coins = minf(float(c), shown_coins + maxf(12.0, (c - shown_coins) * 5.0) * dt)
+		if int(shown_coins) != before:
+			coin_pop = 1.0
+	coin_pop = maxf(0.0, coin_pop - dt * 5.0)
+	# hearts
+	var h: int = game.hearts
+	if _last_hearts >= 0 and h < _last_hearts:
+		heart_shake = 0.5
+		buzz(40)
+	elif _last_hearts >= 0 and h > _last_hearts:
+		heart_pop = 0.5
+	_last_hearts = h
+	heart_shake = maxf(0.0, heart_shake - dt)
+	heart_pop = maxf(0.0, heart_pop - dt)
+
+
+## Where the hero you steer is on the screen (coins fly from there).
+func _hero_on_screen() -> Vector2:
+	if game.cam and game.leader():
+		var p: Vector3 = game.leader().global_position + Vector3(0, 1.0, 0)
+		if not game.cam.is_position_behind(p):
+			return game.cam.unproject_position(p) * (size / get_viewport_rect().size)
+	return size * 0.5
+
+
+var pops: Array = []   # [world pos, amount, age]: damage numbers that pop out of hit bad guys
+
+
+func pop_number(n: int, wpos: Vector3) -> void:
+	if pops.size() < 8:
+		pops.append([wpos, n, 0.0])
+
+
+func _draw_pops() -> void:
+	if pops.is_empty() or game.cam == null:
+		return
+	var k := size / get_viewport_rect().size
+	for pp in pops:
+		var t: float = pp[2]
+		var wp: Vector3 = pp[0] + Vector3(0, t * 1.6, 0)
+		if game.cam.is_position_behind(wp):
+			continue
+		var p: Vector2 = game.cam.unproject_position(wp) * k
+		var sc := 0.6 + minf(t * 8.0, 1.0) * 0.6 - maxf(0.0, t - 0.5) * 0.8
+		var a := clampf((0.8 - t) * 4.0, 0, 1)
+		draw_set_transform(p, sin(t * 20.0) * 0.08 * (1.0 - t), Vector2(sc, sc))
+		txt("-%d" % pp[1], Vector2(-60, 14), 40, Color(1, 0.85, 0.25, a), HORIZONTAL_ALIGNMENT_CENTER, 120, 10)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _draw_coin_fliers() -> void:
+	_draw_pops()
+	for fl in coin_fliers:
+		var t: float = fl[1]
+		if t < 0:
+			continue
+		var k := clampf(t / 0.55, 0, 1)
+		var e := k * k * (3.0 - 2.0 * k)
+		var from: Vector2 = fl[0]
+		var p := from.lerp(COIN_AT, e) + Vector2(0, -sin(k * PI) * 90.0)
+		var sz := lerpf(34.0, 22.0, k)
+		draw_texture_rect(tex["coin"], Rect2(p - Vector2(sz, sz) * 0.5, Vector2(sz, sz)), false)
+
+
+## The star wipe: a star-shaped hole that grows (new screen) or shrinks (leaving).
+func _draw_wipe() -> void:
+	var k := -1.0
+	if closing >= 0:
+		k = 1.0 - clampf(closing / WIPE_OUT, 0, 1)
+	elif wipe >= 0:
+		var t := clampf(wipe / WIPE_IN, 0, 1)
+		k = t * t * (3.0 - 2.0 * t)
+	if k < 0 or k >= 1.0:
+		return
+	var s := size
+	var c := s * 0.5
+	var big := s.length() * 1.6
+	var r := big * k
+	var col := Color("2a6fb8")   # the LOADING screen's blue, so close -> LOADING -> open is one smooth move
+	var inner := PackedVector2Array()
+	var outer := PackedVector2Array()
+	for i in 10:
+		var a := -PI / 2 + TAU * i / 10.0 + k * 0.6
+		inner.append(c + Vector2(cos(a), sin(a)) * (r if i % 2 == 0 else r * 0.45))
+		outer.append(c + Vector2(cos(a), sin(a)) * big * 2.2)
+	for i in 10:
+		var j := (i + 1) % 10
+		draw_colored_polygon(PackedVector2Array([inner[i], inner[j], outer[j], outer[i]]), col)
+	if r < 4:
+		draw_rect(Rect2(Vector2.ZERO, s), col)
+
+
+## Rounded, shiny cards for menus (pause, star select ...). Cached by colour.
+var _card_boxes := {}
+
+
+## A cream "paper" card with a coloured header strip (save files, partners, star select ...).
+## The picked one gets a gold frame and bounces.
+func paper_card(r: Rect2, header: Color, header_h: float, sel := false, bg := Color("fdf4e3")) -> Rect2:
+	var rr := r.grow(3 + 3 * sin(title_t * 7.0)) if sel else r
+	var key := "p" + bg.to_html() + ("s" if sel else "")
+	if not _card_boxes.has(key):
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = bg
+		sb.set_corner_radius_all(16)
+		sb.border_color = Color("ffd23a") if sel else Color(0.13, 0.09, 0.18)
+		sb.set_border_width_all(6 if sel else 3)
+		sb.shadow_color = Color(0, 0, 0, 0.35)
+		sb.shadow_size = 10 if sel else 6
+		sb.shadow_offset = Vector2(0, 6)
+		sb.anti_aliasing = true
+		_card_boxes[key] = sb
+	var hk := "h" + header.to_html()
+	if header_h > 0 and not _card_boxes.has(hk):
+		var hb := StyleBoxFlat.new()
+		hb.bg_color = header
+		hb.corner_radius_top_left = 13
+		hb.corner_radius_top_right = 13
+		hb.anti_aliasing = true
+		_card_boxes[hk] = hb
+	draw_style_box(_card_boxes[key], rr)
+	if header_h > 0:
+		var inset := 6.0 if sel else 3.0
+		draw_style_box(_card_boxes[hk], Rect2(rr.position + Vector2(inset, inset), Vector2(rr.size.x - inset * 2, header_h - inset)))
+	return rr
+
+
+func card(r: Rect2, col: Color, sel := false) -> void:
+	var key := col.to_html() + ("s" if sel else "")
+	if not _card_boxes.has(key):
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = col
+		sb.set_corner_radius_all(18)
+		sb.border_color = Color.WHITE if sel else col.lightened(0.35)
+		sb.set_border_width_all(5 if sel else 3)
+		sb.shadow_color = Color(0, 0, 0, 0.35)
+		sb.shadow_size = 8
+		sb.shadow_offset = Vector2(0, 6)
+		sb.anti_aliasing = true
+		_card_boxes[key] = sb
+		var gloss := StyleBoxFlat.new()
+		gloss.bg_color = Color(1, 1, 1, 0.18)
+		gloss.corner_radius_top_left = 14
+		gloss.corner_radius_top_right = 14
+		gloss.corner_radius_bottom_left = 40
+		gloss.corner_radius_bottom_right = 40
+		_card_boxes["gloss"] = gloss
+	var rr := r
+	if sel:   # the picked card bounces a little
+		rr = r.grow(4 + 3 * sin(title_t * 7.0))
+	draw_style_box(_card_boxes[key], rr)
+	draw_style_box(_card_boxes["gloss"], Rect2(rr.position + Vector2(6, 5), Vector2(rr.size.x - 12, rr.size.y * 0.42)))

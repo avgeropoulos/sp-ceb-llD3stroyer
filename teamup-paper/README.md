@@ -560,6 +560,26 @@ The game opens with a short LOADING screen that prepares every text size, pictur
 has to be prepared mid-game. If it still stutters, the pause menu lists the slow moments (bottom left:
 how long the frame took and what was happening) - take a screenshot of it.
 
+## Buttons and juice (`hud.gd`)
+
+* Round, shiny 3D buttons with a drawn icon and a small label. They sink and squash when pressed, with a
+  ripple ring. A button that just appeared (or now does something new, like GRAB or THROW) glows for a moment.
+  Colours mean the same thing everywhere: green = jump / place / land, orange = action / build,
+  blue = swap / team, gold = SUPER (its rim fills up as it charges), red = remove / blast off.
+  SWAP shows the face of the hero you'll swap to. Hit areas are a bit bigger than the buttons.
+* The thumb stick glows on the side you push (orange when sprinting).
+* Menus (pause, save files, partners, team, star select, arcade, movies, sky map islands) are rounded cards;
+  the picked one has a gold frame and bounces.
+* Juice: a tiny hit-stop when a stomp or boss hit lands (`main.hit_stop`), damage numbers pop out of bad guys,
+  coins fly to the coin counter which rolls up and bounces, hearts shake when you're hurt and bounce when
+  they refill, banners slide in and out, a star wipe closes and opens the screen when you change places,
+  and the camera looks a little ahead of where you run and zooms out gently for bosses.
+* Title: the logo bounces in and waves, the heroes hop across the bottom, and BUZZ: ON/OFF switches the
+  little phone buzzes on taps and hits (saved in `user://ui.cfg`).
+* Heroes skid when they stop from a run, bend their knees after a big fall and stretch now and then when idle.
+* `tests/ui_check.gd` checks no buttons overlap or leave the screen in every state, on 1280x720, 1920x1080,
+  2560x1600 and 2340x1080 screens.
+
 ## Controls
 
 Touch: thumb stick on the left (anywhere on the left half), JUMP / ACTION / SWAP / SUPER on the right, II pauses.

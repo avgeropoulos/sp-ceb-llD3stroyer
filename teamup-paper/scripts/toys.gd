@@ -451,6 +451,15 @@ static func pose(a, dt: float) -> void:
 	var ease_k := 1 - exp(-dt * 10)
 	p["lean"] = lerpf(p.get("lean", 0.0), lean_to, ease_k)
 	p["roll"] = lerpf(p.get("roll", 0.0), roll_to, ease_k)
+	# landing recovery (knees give a little after a big fall) and skids (a sharp stop from a run)
+	var was_vy: float = p.get("vy", 0.0)
+	var was_spd: float = p.get("spd", 0.0)
+	if was_vy < -6.0 and absf(a.vel.y) < 1.0 and anim not in ["jump", "fall", "slam", "long", "dive"]:
+		p["land_t"] = 0.2
+	if was_spd > 5.5 and spd < 1.5 and anim not in ["run", "walk", "jump", "fall"]:
+		p["skid_t"] = 0.28
+	p["land_t"] = maxf(0.0, p.get("land_t", 0.0) - dt)
+	p["skid_t"] = maxf(0.0, p.get("skid_t", 0.0) - dt)
 	p["vy"] = a.vel.y
 	p["spd"] = spd
 	# somersault for double jumps / slams, and squash & stretch
@@ -689,6 +698,34 @@ static func _pose_person(p: Dictionary, kind: String, anim: String, t: float) ->
 			p.head.rotation.y = lerpf(p.get("head_y", 0.0), hy, 0.08)
 			p["head_y"] = p.head.rotation.y
 			p.head.rotation.x = br * 0.03
+			# now and then a big stretch (arms up, up on the toes), so standing still looks alive
+			var st := fmod(t + p.get("seed", 0.0) * 3.0, 11.0)
+			if st > 8.6 and st < 10.0:
+				var k := sin((st - 8.6) / 1.4 * PI)
+				p.armL.rotation.x = -2.8 * k
+				p.armR.rotation.x = -2.8 * k
+				p.armL.rotation.z = -0.12 - 0.35 * k
+				p.armR.rotation.z = 0.12 + 0.35 * k
+				b.position.y += 0.05 * k
+				b.scale.y *= 1.0 + 0.04 * k
+				p.head.rotation.x = -0.25 * k
+	var sk: float = p.get("skid_t", 0.0)
+	if sk > 0 and anim not in ["run", "walk", "jump", "fall"]:   # skidding to a stop: lean back, arms out
+		var k := sk / 0.28
+		b.rotation.x -= 0.32 * k
+		p.armL.rotation.z = -1.1 * k
+		p.armR.rotation.z = 1.1 * k
+		p.legL.rotation.x = -0.5 * k
+		p.legR.rotation.x = 0.3 * k
+	var ld: float = p.get("land_t", 0.0)
+	if ld > 0 and anim not in ["jump", "fall"]:   # landed hard: knees bend, arms swing down
+		var k := sin(ld / 0.2 * PI)
+		b.position.y -= 0.09 * k
+		b.scale.y *= 1.0 - 0.07 * k
+		p.legL.rotation.x -= 0.45 * k
+		p.legR.rotation.x -= 0.45 * k
+		p.armL.rotation.z -= 0.4 * k
+		p.armR.rotation.z += 0.4 * k
 	if kind in ["blocky", "alix"] and anim != "mine":
 		p.armR.rotation.x -= 0.5   # holds the pickaxe up a bit
 

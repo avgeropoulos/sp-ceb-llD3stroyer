@@ -138,6 +138,10 @@ func hurt(n: int, game) -> void:
 		return
 	hp -= n
 	flash_t = 0.35
+	if game.has_method("hit_stop"):   # a boss hit lands with a little freeze
+		game.hit_stop(0.07 if is_boss else 0.03)
+		if game.hud and game.cam:
+			game.hud.pop_number(n, global_position + Vector3(0, height, 0))
 	if kind == "drykrag" and hp <= 0 and not rebuilt:   # falls apart... and gets back up once!
 		rebuilt = true
 		hp = 0
