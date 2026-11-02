@@ -614,3 +614,11 @@ Builds made on a computer (version 0) never check. Test: `godot --headless --pat
 * Test: `tests/extras_check.gd -- [toy] meadow|frost` (Rocco really races ZOOMY up the path with real physics;
   the chicks; the 100-coin star; 1-UP; ! block; Dash's ride, tongue, SWAP and getting hit; the birds).
 
+
+## App icon and splash
+
+The app icon, Android's round/squircle adaptive icon layers and the loading splash are made from the real 3D toys:
+`xvfb-run godot --path . --script res://tools/render_cover.gd -- <dir>` renders the team scene and Rocco jumping for a
+star, then `python3 tools/make_cover.py <dir>` writes `cover/icon.png`, `cover/icon_fg.png`, `cover/icon_bg.png` and
+`cover/splash.png` (title in Poppins Bold, `tools/fonts/`, SIL Open Font License). They're set in `project.godot`
+(`config/icon`, `boot_splash/*`) and `export_presets.cfg` (`launcher_icons/*`).
