@@ -111,7 +111,7 @@ internal fun Game.drawPrompts(g: Gfx) {
     val my = viewH - 70f - mh
     g.rect(mx - 2f, my - 2f, 18f, mh + 4f, 0xA0000000.toInt())
     val armed = controls == ControlMode.MOTION && detector.phase >= ThrowDetector.Phase.DRAWN ||
-        controls == ControlMode.TOUCH && draw >= FlickThrow.PULL_MIN / FlickThrow.PULL_FULL
+        controls == ControlMode.TOUCH && flickPower() > 0f
     val fill = mh * draw
     g.rect(mx, my + mh - fill, 14f, fill, if (armed) Game.GREEN else Game.GOLD)
     g.shadowText("DRAW", mx + 7f, my + mh + 14f, 8f, Game.WHITE, 1)
@@ -124,9 +124,9 @@ internal fun Game.drawPrompts(g: Gfx) {
             ThrowDetector.Phase.SWING -> "!!!" to ""
         }
     } else if (flickActive()) {
-        (if (armed) "FLICK UP!" else "PULL DOWN") to "Flick sideways to aim"
+        (if (armed) "LET GO TO THROW" else "PULL DOWN") to "Further = harder. Sideways to aim"
     } else {
-        "PRESS, PULL DOWN, FLICK UP" to "Faster flick = longer throw"
+        "PRESS AND PULL DOWN" to "Like a slingshot: pull further, throw harder"
     }
     // The left/right aim, in numbers
     val side = if (aimYaw > 0.009f) "R" else if (aimYaw < -0.009f) "L" else ""
@@ -161,12 +161,14 @@ private fun Game.drawPowerScale(g: Gfx) {
     g.shadowText("POWER", x0, y - 10f, 8f, Game.WHITE)
     g.rect(x0, y - 3f, x1 - x0, 6f, 0x60FFFFFF)
     // Live fill: how hard you're throwing right now, then the power you let go with.
-    val swinging = detector.phase == ThrowDetector.Phase.SWING
+    val swinging = detector.phase == ThrowDetector.Phase.SWING || flickActive()
     val fill = when {
+        flickActive() -> flickPower()
         swinging -> detector.livePower
         throwState != Game.ThrowState.READY -> lastPower
         else -> -1f
     }
+    val hints = hintLevel()
     if (fill >= 0f) {
         g.rect(x0, y - 4f, (x1 - x0) * fill, 8f, if (swinging) Game.GREEN else Game.GOLD)
         val label = "${if (swinging) "NOW" else "THROWN"} ${(fill * 100).roundToInt()}%"
@@ -175,14 +177,17 @@ private fun Game.drawPowerScale(g: Gfx) {
     for (i in 0..4) {
         val x = x0 + (x1 - x0) * i / 4f
         g.rect(x - 1f, y - 6f, 2f, 12f, Game.WHITE)
-        val d = kotlin.math.hypot(ruler[i * 2], ruler[i * 2 + 1])
-        g.shadowText("${d.roundToInt()}m", x, y + 15f, 8f, 0xFFDDDDDD.toInt(), 1)
+        // Later touch levels hide how far each power goes.
+        val label = if (hints >= 2) "${i * 25}%" else "${kotlin.math.hypot(ruler[i * 2], ruler[i * 2 + 1]).roundToInt()}m"
+        g.shadowText(label, x, y + 15f, 8f, 0xFFDDDDDD.toInt(), 1)
     }
-    val need = powerForTarget()
-    val nx = x0 + (x1 - x0) * need
-    g.poly(floatArrayOf(nx - 6f, nx + 6f, nx), floatArrayOf(y - 14f, y - 14f, y - 4f), Game.GOLD, 3)
-    g.shadowText("TARGET ~${(need * 100).roundToInt()}%", nx.coerceIn(x0 + 70f, x1 - 40f), y - 16f, 9f, Game.GOLD, 1)
-    if (lastPower >= 0f && fill < 0f) {
+    if (hints == 0) {
+        val need = powerForTarget()
+        val nx = x0 + (x1 - x0) * need
+        g.poly(floatArrayOf(nx - 6f, nx + 6f, nx), floatArrayOf(y - 14f, y - 14f, y - 4f), Game.GOLD, 3)
+        g.shadowText("TARGET ~${(need * 100).roundToInt()}%", nx.coerceIn(x0 + 70f, x1 - 40f), y - 16f, 9f, Game.GOLD, 1)
+    }
+    if (lastPower >= 0f && fill < 0f && hints < 3) {
         val lx = x0 + (x1 - x0) * lastPower
         g.rect(lx - 1.5f, y - 7f, 3f, 14f, Game.CYAN)
     }
@@ -266,10 +271,19 @@ internal fun meander(g: Gfx, x: Float, y: Float, w: Float) {
 }
 
 internal fun Game.drawIntro(g: Gfx) {
-    val y = panel(g, 200f)
+    val y = panel(g, 222f)
     g.shadowText("LEVEL $levelNum", viewW / 2f, y + 46f, 28f, Game.GOLD, 1, serif = true)
     g.shadowText(spec.name.uppercase(), viewW / 2f, y + 68f, 14f, Game.WHITE, 1)
     val needs = if (spec.hits == 1) "Hit the target" else "Hit the target ${spec.hits} times"
+    if (controls == ControlMode.TOUCH) {
+        val guide = when (hintLevel()) {
+            0 -> "Guides: all on"
+            1 -> "Guides: no target power"
+            2 -> "Guides: no distances or markers"
+            else -> "Guides: off. Trust your pull!"
+        }
+        g.shadowText(guide, viewW / 2f, y + 172f, 10f, CREAM, 1)
+    }
     g.shadowText(needs, viewW / 2f, y + 96f, 13f, Game.WHITE, 1)
     g.shadowText("in ${spec.time.roundToInt()} seconds", viewW / 2f, y + 113f, 13f, Game.WHITE, 1)
     val extras = buildList {
@@ -278,7 +292,7 @@ internal fun Game.drawIntro(g: Gfx) {
     }.joinToString("  ·  ")
     g.shadowText(extras, viewW / 2f, y + 136f, 11f, Game.CYAN, 1)
     if (target.moving) g.shadowText("MOVING TARGET", viewW / 2f, y + 152f, 11f, Game.ORANGE, 1)
-    if (screenT > 0.4f) g.shadowText("TAP TO START", viewW / 2f, y + 180f, 12f, blink(), 1)
+    if (screenT > 0.4f) g.shadowText("TAP TO START", viewW / 2f, y + 200f, 12f, blink(), 1)
 }
 
 internal fun Game.drawClear(g: Gfx) {
@@ -396,9 +410,10 @@ internal fun Game.drawHowTo(g: Gfx) {
         "The POWER bar also shows how far each power goes and roughly how hard to throw to reach the target.",
     ) else listOf(
         "1. Press anywhere on the screen to grip the javelin.",
-        "2. Pull your finger down to draw back.",
-        "3. Flick up to throw. A faster flick throws further.",
-        "4. Flick a little left or right to aim.",
+        "2. Pull your finger down like a slingshot. The further you pull, the harder the throw; the POWER bar fills as you pull.",
+        "3. Move your finger left or right to aim, and lean the phone back to throw higher.",
+        "4. Let go to throw. Push back up to where you started to cancel.",
+        "Guides fade as you go: from level 4 they stop showing the target power, from level 7 the distances, and from level 10 your last throw.",
     )
     fun para(text: String, color: Int) {
         for ((i, l) in wrap(text, 44).withIndex()) {

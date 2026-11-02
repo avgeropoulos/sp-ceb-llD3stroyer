@@ -149,6 +149,8 @@ class Game(
         if (cheerT > 0f) cheerT -= dt
         sinceRelease += dt
         detector.sensitivity = arm.sensitivity
+        flick.sensitivity = arm.sensitivity
+        flick.fullPull = viewH * 0.45f
         motion.sensitivity = arm.sensitivity
 
         if (input.back) {
@@ -519,7 +521,7 @@ class Game(
             Input.MOVE -> flick.move(t.x, t.y, t.time)
             Input.UP -> {
                 detector.grip(false)
-                val f = flick.up(t.x, t.y, t.time, arm.sensitivity)
+                val f = flick.up(t.x, t.y, t.time)
                 if (f != null && throwState == ThrowState.READY && controls == ControlMode.TOUCH) {
                     throwJavelin(f.first, f.second)
                 }
@@ -690,6 +692,22 @@ class Game(
     }
 
     internal fun flickActive() = flick.active
+
+    /** The power a slingshot pull would throw with right now (touch controls). */
+    internal fun flickPower() = flick.power
+
+    /**
+     * How much help the touch controls give on this level: 0 shows everything; 1 hides the
+     * power that reaches the target; 2 also hides the landing markers and distances; 3 also
+     * hides your last throw's power. Motion controls always show everything.
+     */
+    internal fun hintLevel(): Int = when {
+        controls != ControlMode.TOUCH -> 0
+        levelNum <= 3 -> 0
+        levelNum <= 6 -> 1
+        levelNum <= 9 -> 2
+        else -> 3
+    }
 
     internal fun holdingJavelin() = throwState == ThrowState.READY && sinceRelease > 0.5f
 

@@ -311,84 +311,71 @@ class ThrowDetector {
 }
 
 /**
- * Touch-screen throwing for phones without a gyroscope (or players who prefer it):
- * press, drag down to pull back, then flick up. The flick speed sets the power and its
- * direction sets the aim.
+ * Touch-screen throwing, like a slingshot, for phones without a gyroscope (or playing sitting
+ * down): press anywhere and pull your finger down. The further you pull, the harder the throw,
+ * over most of the screen's height, so there's plenty of room to be precise. Pull sideways to
+ * aim, and let go to throw. Push back up to where you started to cancel.
  */
 class FlickThrow {
-    private val xs = FloatArray(16)
-    private val ys = FloatArray(16)
-    private val ts = FloatArray(16)
-    private var n = 0
     private var startX = 0f
     private var startY = 0f
-    private var maxPull = 0f
+    private var pull = 0f
+    private var side = 0f
+
+    /** How far down (virtual pixels) a full-power pull is; the game sets it from the screen size. */
+    var fullPull = 300f
+
+    /** Scales the pull: above 1 reaches full power with a shorter pull (the ARM setting). */
+    var sensitivity = 1f
 
     var active = false
         private set
 
-    /** 0 to 1: how far the finger has been pulled back. */
-    val drawAmount get() = if (active) (maxPull / PULL_FULL).coerceIn(0f, 1f) else 0f
+    /** 0 to 1: the power you'd throw with if you let go now. */
+    val power: Float
+        get() = if (!active || pull < PULL_MIN) 0f
+        else ((pull - PULL_MIN) / (fullPull / sensitivity - PULL_MIN)).coerceIn(0f, 1f)
 
-    /** Aim (radians) while dragging, from how far sideways the finger has moved. */
+    /** How far back the athlete's arm is drawn, 0 to 1. */
+    val drawAmount get() = if (active) (pull / (fullPull / sensitivity)).coerceIn(0f, 1f) else 0f
+
+    /** Aim (radians) from how far sideways the finger has moved. */
     var previewYaw = 0f
         private set
 
-    fun down(x: Float, y: Float, t: Float) {
+    fun down(x: Float, y: Float, @Suppress("UNUSED_PARAMETER") t: Float) {
         active = true
         startX = x
         startY = y
-        maxPull = 0f
-        n = 0
+        pull = 0f
+        side = 0f
         previewYaw = 0f
-        add(x, y, t)
     }
 
-    fun move(x: Float, y: Float, t: Float) {
+    fun move(x: Float, y: Float, @Suppress("UNUSED_PARAMETER") t: Float) {
         if (!active) return
-        add(x, y, t)
-        if (y - startY > maxPull) maxPull = y - startY
-        previewYaw = ((x - startX) / 160f).coerceIn(-1f, 1f) * MAX_YAW
+        pull = maxOf(0f, y - startY)
+        side = x - startX
+        previewYaw = (side / SIDE_FULL).coerceIn(-1f, 1f) * MAX_YAW
     }
 
-    /** Returns (power, yaw) for a good flick, or null if it wasn't a throw. */
-    fun up(x: Float, y: Float, t: Float, sensitivity: Float): Pair<Float, Float>? {
+    /** Lets go: returns (power, yaw) for a throw, or null if it wasn't pulled back. */
+    fun up(x: Float, y: Float, t: Float): Pair<Float, Float>? {
         if (!active) return null
-        add(x, y, t)
+        move(x, y, t)
+        val p = power
+        val pulled = pull >= PULL_MIN
         active = false
-        if (maxPull < PULL_MIN) return null
-        // Velocity over the last tenth of a second of the gesture.
-        val last = (n - 1) % xs.size
-        var first = last
-        for (k in 1 until minOf(n, xs.size)) {
-            val i = ((last - k) % xs.size + xs.size) % xs.size
-            first = i
-            if (ts[last] - ts[i] >= 0.1f) break
-        }
-        val dt = ts[last] - ts[first]
-        if (dt <= 0.001f) return null
-        val vx = (xs[last] - xs[first]) / dt
-        val vy = (ys[first] - ys[last]) / dt
-        if (vy < FLICK_MIN) return null
-        val power = ((vy - FLICK_MIN) / (FLICK_FULL / sensitivity - FLICK_MIN)).coerceIn(0f, 1f)
-        val yaw = (kotlin.math.atan2(vx, vy) * 1.2f).coerceIn(-MAX_YAW, MAX_YAW)
-        return power to yaw
+        return if (pulled) p to previewYaw else null
     }
 
     fun cancel() { active = false }
 
-    private fun add(x: Float, y: Float, t: Float) {
-        val i = n % xs.size
-        xs[i] = x; ys[i] = y; ts[i] = t
-        n++
-    }
-
     companion object {
+        /** A pull shorter than this (virtual pixels) isn't a throw. */
         const val PULL_MIN = 18f
-        const val PULL_FULL = 60f
-        /** Upward flick speeds in virtual pixels per second. */
-        const val FLICK_MIN = 150f
-        const val FLICK_FULL = 1500f
+        /** Sideways drag for the widest aim. */
+        const val SIDE_FULL = 140f
         const val MAX_YAW = 0.45f
     }
 }

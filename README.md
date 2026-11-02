@@ -224,8 +224,12 @@ ARM on the title screen (GENTLE / NORMAL / STRONG) sets how hard you need to mov
 On the title screen:
 
 * **CONTROLS: MOTION / TOUCH**. Touch mode is for phones without a gyroscope or for playing
-  sitting down: press, pull your finger down, then flick up. A faster flick throws further, and
-  flicking a little sideways aims.
+  sitting down. It works like a slingshot: press anywhere and pull your finger down. The further
+  you pull, the harder the throw, over almost half the screen's height, so there's lots of room
+  to be precise; the POWER bar fills as you pull. Move your finger sideways to aim and let go to
+  throw (push back up to where you started to cancel). The guides fade as you get better:
+  from level 4 the target power arrow goes, from level 7 the distances and landing markers,
+  and from level 10 your last throw's mark. Motion controls keep every guide.
 * **ARM: NORMAL / GENTLE / STRONG** sets how hard you need to swing for full power. Use GENTLE
   for small, wrist-flick throws indoors, and STRONG if you keep overthrowing.
 

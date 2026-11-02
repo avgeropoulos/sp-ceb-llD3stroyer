@@ -21,6 +21,7 @@ private const val SAND_HALF_W = 40f
 private const val BANK_TOP_X = 66f
 private const val BANK_H = 9f
 private const val STUCK_ANGLE = 1.2f
+private const val PI_F = 3.1415927f
 
 private const val SKY_TOP = 0xFF3F86C8.toInt()
 private const val SKY_LOW = 0xFFF6DFAE.toInt()
@@ -41,6 +42,11 @@ private const val THONG = 0xFF6B3A1C.toInt()
 private const val SKIN = 0xFFC98B5B.toInt()
 private const val SKIN_SHADE = 0xFFB0754A.toInt()
 private const val HAIR = 0xFF2B1A10.toInt()
+private const val HAIR_LIGHT = 0xFF3E2818.toInt()
+private const val SKIN_LIGHT = 0xFFD9A276.toInt()
+private const val LAUREL_LIGHT = 0xFF8DB042.toInt()
+private const val CLOTH_FOLD = 0xFFD8CDB2.toInt()
+private const val OUTLINE_SOFT = 0x902A1A0E.toInt()
 private const val LAUREL = 0xFF6E8F2E.toInt()
 private const val CLOTH = 0xFFF3EBD6.toInt()
 private const val SANDAL = 0xFF6B3E1E.toInt()
@@ -108,7 +114,7 @@ internal fun Game.drawWorld(
     val horizon = c.horizon()
     // Sky, warm and hazy near the horizon
     if (horizon > y0) {
-        val bands = 10
+        val bands = 18
         val skyH = horizon - y0
         for (i in 0 until bands) {
             g.rect(x0, y0 + skyH * i / bands, w, skyH / bands + 1f, mixColor(SKY_TOP, SKY_LOW, i / (bands - 1f)))
@@ -146,7 +152,7 @@ internal fun Game.drawWorld(
 
     if (javelinScene) {
         drawTarget(g, c, main)
-        if (screen == Game.Screen.PLAY && throwState == Game.ThrowState.READY) drawPowerMarkers(g, c, main)
+        if (screen == Game.Screen.PLAY && throwState == Game.ThrowState.READY && hintLevel() < 2) drawPowerMarkers(g, c, main)
         for (s in stuck.sortedByDescending { it.z }) drawStuck(g, c, s)
     }
 
@@ -182,8 +188,12 @@ private fun Game.drawBackdrop(g: Gfx, c: Camera) {
         val cx = ((i * 230f + clock * 3f) % 1300f) - 650f
         if (c.project(cx, 120f + (i % 3) * 40f, 1100f)) {
             val s = c.ppm
-            g.oval(c.sx - 70f * s, c.sy - 12f * s, 140f * s, 24f * s, 0xB0FFFFFF.toInt())
-            g.oval(c.sx - 35f * s, c.sy - 22f * s, 80f * s, 30f * s, 0xB0FFFFFF.toInt())
+            // Soft layered puffs: a shaded base, then brighter tops
+            g.oval(c.sx - 75f * s, c.sy - 8f * s, 150f * s, 20f * s, 0x60E8E4F0)
+            g.oval(c.sx - 70f * s, c.sy - 14f * s, 140f * s, 24f * s, 0x90FFFFFF.toInt())
+            g.oval(c.sx - 45f * s, c.sy - 26f * s, 70f * s, 30f * s, 0xA0FFFFFF.toInt())
+            g.oval(c.sx - 5f * s, c.sy - 22f * s, 55f * s, 24f * s, 0xA0FFFFFF.toInt())
+            g.oval(c.sx - 30f * s, c.sy - 24f * s, 40f * s, 12f * s, 0x60FFFFFF)
         }
     }
     // Distant mountains in the haze
@@ -227,7 +237,9 @@ private fun Game.drawBackdrop(g: Gfx, c: Camera) {
         val by = c.sy
         val th = (11f + (i % 3) * 3f) * c.ppm
         val tw = 2.4f * c.ppm
-        g.oval(bx - tw / 2f, by - th, tw, th, 0xFF2F4A26.toInt())
+        g.rect(bx - tw * 0.08f, by - th * 0.15f, tw * 0.16f, th * 0.15f, 0xFF4A3420.toInt())
+        g.oval(bx - tw / 2f, by - th, tw, th * 0.95f, 0xFF253D1F.toInt())
+        g.oval(bx - tw * 0.4f, by - th * 0.96f, tw * 0.55f, th * 0.85f, 0xFF35552B.toInt())
     }
 }
 
@@ -342,15 +354,11 @@ private fun Game.drawTarget(g: Gfx, c: Camera, main: Boolean) {
 
     // A wooden post with a bronze shield on top, and a ribbon showing the wind
     val postH = 3.6f
-    seg(g, c, t.x, 0f, t.z, t.x, postH, t.z, 0.18f, 0xFF7A5230.toInt(), 1.5f)
+    groundShadow(g, c, t.x + 0.6f, t.z, 1.2f)
+    body(g, c, t.x, 0f, t.z, t.x, postH, t.z, 0.18f, 0xFF7A5230.toInt(), 1.5f)
     if (c.project(t.x, postH, t.z)) {
         val r = max(3f, 1.1f * c.ppm)
-        val sx = c.sx
-        val sy = c.sy
-        g.oval(sx - r, sy - r, r * 2f, r * 2f, 0xFF4A2E10.toInt())
-        g.oval(sx - r * 0.86f, sy - r * 0.86f, r * 1.72f, r * 1.72f, BRONZE)
-        g.oval(sx - r * 0.6f, sy - r * 0.6f, r * 1.2f, r * 1.2f, 0xFFE2AE52.toInt())
-        g.oval(sx - r * 0.32f, sy - r * 0.32f, r * 0.64f, r * 0.64f, OUTLINE)
+        drawShield(g, c.sx, c.sy, r)
         // Ribbon
         val flap = sin(clock * 7f) * 0.25f
         val len = 1.4f + min(2f, abs(wind) * 0.3f)
@@ -365,6 +373,38 @@ private fun Game.drawTarget(g: Gfx, c: Camera, main: Boolean) {
         val size = (c.ppm * 2.5f).coerceIn(10f, 16f)
         g.shadowText("${t.z.toInt()} m", c.sx, c.sy, size, Game.GOLD, 1)
     }
+}
+
+/**
+ * A round hoplite shield (aspis) facing the thrower: a thick bronze rim with rivets, a
+ * painted black-figure emblem on a terracotta face, and a shine across the metal.
+ */
+private fun drawShield(g: Gfx, sx: Float, sy: Float, r: Float) {
+    g.oval(sx - r - 1f, sy - r - 1f, r * 2f + 2f, r * 2f + 2f, OUTLINE)
+    g.oval(sx - r, sy - r, r * 2f, r * 2f, 0xFF8A5A1E.toInt())
+    g.oval(sx - r * 0.95f, sy - r * 0.95f, r * 1.9f, r * 1.9f, BRONZE)
+    g.oval(sx - r * 0.78f, sy - r * 0.78f, r * 1.56f, r * 1.56f, 0xFF7A3A1A.toInt())
+    g.oval(sx - r * 0.72f, sy - r * 0.72f, r * 1.44f, r * 1.44f, 0xFFC1502E.toInt())
+    if (r > 6f) {
+        // Rivets around the rim
+        for (k in 0 until 12) {
+            val a = k * PI_F / 6f
+            val rx = sx + cos(a) * r * 0.86f
+            val ry = sy + sin(a) * r * 0.86f
+            g.oval(rx - r * 0.05f, ry - r * 0.05f, r * 0.1f, r * 0.1f, 0xFF5C3A12.toInt())
+        }
+        // A black-figure emblem: a horse's head and neck, simply drawn
+        g.poly(
+            floatArrayOf(sx - r * 0.35f, sx + r * 0.05f, sx + r * 0.42f, sx + r * 0.3f, sx + r * 0.02f, sx - r * 0.2f),
+            floatArrayOf(sy + r * 0.45f, sy - r * 0.25f, sy - r * 0.35f, sy - r * 0.12f, sy + r * 0.05f, sy + r * 0.48f),
+            0xFF1E140C.toInt(), 6,
+        )
+        g.oval(sx + r * 0.12f, sy - r * 0.45f, r * 0.12f, r * 0.2f, 0xFF1E140C.toInt())
+    } else {
+        g.oval(sx - r * 0.3f, sy - r * 0.3f, r * 0.6f, r * 0.6f, OUTLINE)
+    }
+    // Shine
+    g.oval(sx - r * 0.75f, sy - r * 0.8f, r * 0.7f, r * 0.35f, 0x50FFFFFF)
 }
 
 private fun drawStuck(g: Gfx, c: Camera, s: Stuck) {
@@ -414,38 +454,75 @@ private fun Game.drawAthlete(g: Gfx, c: Camera) {
     }
     val lean = -0.12f * draw + 0.15f * followK
 
-    // Legs and sandals
-    seg(g, c, -0.12f, 0.95f, lean * 0.3f, -0.2f, 0.5f, 0.2f, 0.17f, SKIN, 2f)
-    seg(g, c, -0.2f, 0.5f, 0.2f, -0.22f, 0.06f, 0.3f, 0.14f, SKIN, 2f)
-    seg(g, c, 0.12f, 0.95f, lean * 0.3f, 0.2f, 0.5f, -0.2f, 0.17f, SKIN, 2f)
-    seg(g, c, 0.2f, 0.5f, -0.2f, 0.24f, 0.06f, -0.35f, 0.14f, SKIN, 2f)
-    seg(g, c, -0.22f, 0.04f, 0.26f, -0.22f, 0.04f, 0.44f, 0.13f, SANDAL, 2f)
-    seg(g, c, 0.24f, 0.04f, -0.39f, 0.24f, 0.04f, -0.22f, 0.13f, SANDAL, 2f)
-    seg(g, c, -0.21f, 0.2f, 0.29f, -0.23f, 0.2f, 0.33f, 0.15f, SANDAL, 1.5f)
-    seg(g, c, 0.23f, 0.2f, -0.3f, 0.25f, 0.2f, -0.34f, 0.15f, SANDAL, 1.5f)
-    // Bare back, then the loincloth
-    seg(g, c, 0f, 1.0f, lean * 0.4f, 0f, 1.42f, lean, 0.38f, SKIN, 3f)
-    seg(g, c, 0.05f, 1.05f, lean * 0.4f, 0.03f, 1.38f, lean, 0.08f, SKIN_SHADE, 1f)
-    seg(g, c, -0.13f, 0.92f, lean * 0.3f, 0.13f, 0.92f, lean * 0.3f, 0.26f, CLOTH, 2f)
-    seg(g, c, -0.14f, 1.02f, lean * 0.35f, 0.14f, 1.02f, lean * 0.35f, 0.06f, 0xFFB5482E.toInt(), 1f)
-    // Left arm points at the target
-    seg(g, c, -0.2f, 1.45f, lean, -0.34f, 1.42f, 0.3f + lean, 0.1f, SKIN, 1.5f)
-    seg(g, c, -0.34f, 1.42f, 0.3f + lean, -0.28f, 1.5f, 0.6f + lean, 0.09f, SKIN, 1.5f)
-    // Shoulders, neck and head with its laurel wreath
-    seg(g, c, -0.21f, 1.45f, lean, 0.21f, 1.45f, lean, 0.14f, SKIN, 2f)
-    seg(g, c, 0f, 1.48f, lean, 0f, 1.58f, lean, 0.1f, SKIN, 1.5f)
-    if (c.project(0f, 1.68f, lean)) {
-        val r = 0.12f * c.ppm
-        g.oval(c.sx - r, c.sy - r * 1.1f, r * 2f, r * 2.2f, HAIR)
-        g.oval(c.sx - r * 1.05f, c.sy - r * 0.55f, r * 2.1f, r * 0.45f, LAUREL)
-        for (k in -2..2) g.oval(c.sx + k * r * 0.4f - r * 0.18f, c.sy - r * 0.75f, r * 0.36f, r * 0.3f, 0xFF86A93A.toInt())
+    // Aim guide on the sand, out to where a full-power throw would land
+    if (screen == Game.Screen.PLAY && holdingJavelin()) {
+        val far = max(14f, ruler[9])
+        var k = 2f
+        while (k < far) {
+            groundLine(g, c, sin(aimYaw) * k, cos(aimYaw) * k, sin(aimYaw) * (k + 0.6f), cos(aimYaw) * (k + 0.6f), 0.12f, 0x80FFFFFF.toInt())
+            k += if (k < 14f) 1.5f else 4f
+        }
     }
+    // Shadow on the sand
+    groundShadow(g, c, 0f, 0f, 0.55f)
+    // Legs: thighs, calves and sandals with their straps
+    body(g, c, -0.12f, 0.95f, lean * 0.3f, -0.2f, 0.52f, 0.2f, 0.18f, SKIN, 2f)
+    body(g, c, -0.2f, 0.52f, 0.2f, -0.22f, 0.08f, 0.3f, 0.13f, SKIN, 2f)
+    body(g, c, 0.12f, 0.95f, lean * 0.3f, 0.2f, 0.52f, -0.2f, 0.18f, SKIN, 2f)
+    body(g, c, 0.2f, 0.52f, -0.2f, 0.24f, 0.08f, -0.35f, 0.13f, SKIN, 2f)
+    body(g, c, -0.22f, 0.04f, 0.24f, -0.22f, 0.04f, 0.44f, 0.12f, SANDAL, 2f)
+    body(g, c, 0.24f, 0.04f, -0.41f, 0.24f, 0.04f, -0.22f, 0.12f, SANDAL, 2f)
+    for (h in floatArrayOf(0.14f, 0.24f)) {
+        seg(g, c, -0.29f, h, 0.3f, -0.15f, h, 0.3f, 0.025f, SANDAL, 1f)
+        seg(g, c, 0.17f, h, -0.34f, 0.31f, h, -0.34f, 0.025f, SANDAL, 1f)
+    }
+    // A broad, tapering back with shoulder blades and the line of the spine
+    val bx = floatArrayOf(-0.15f, 0.15f, 0.25f, -0.25f)
+    val by = floatArrayOf(1.0f, 1.0f, 1.47f, 1.47f)
+    val bz = floatArrayOf(lean * 0.4f, lean * 0.4f, lean, lean)
+    if (projectPoly(c, bx, by, bz, 4)) {
+        g.poly(projXs, projYs, SKIN, 4)
+        outlinePoly(g, 4, OUTLINE_SOFT)
+    }
+    seg(g, c, 0f, 1.05f, lean * 0.4f, 0f, 1.42f, lean, 0.035f, SKIN_SHADE, 1f)
+    for (side in intArrayOf(-1, 1)) {
+        if (c.project(side * 0.11f, 1.33f, lean)) {
+            val r = 0.07f * c.ppm
+            g.oval(c.sx - r, c.sy - r * 0.8f, r * 2f, r * 1.6f, SKIN_SHADE)
+            g.oval(c.sx - r * 0.75f, c.sy - r * 0.75f, r * 1.4f, r * 1.2f, SKIN_LIGHT)
+        }
+    }
+    // The loincloth, tied with a red band, with a couple of folds
+    val lx = floatArrayOf(-0.16f, 0.16f, 0.13f, -0.13f)
+    val ly = floatArrayOf(1.03f, 1.03f, 0.78f, 0.8f)
+    val lz = floatArrayOf(lean * 0.35f, lean * 0.35f, lean * 0.2f, lean * 0.2f)
+    if (projectPoly(c, lx, ly, lz, 4)) {
+        g.poly(projXs, projYs, CLOTH, 4)
+        outlinePoly(g, 4, OUTLINE_SOFT)
+    }
+    seg(g, c, -0.05f, 0.98f, lean * 0.3f, -0.07f, 0.82f, lean * 0.2f, 0.015f, CLOTH_FOLD, 1f)
+    seg(g, c, 0.06f, 0.98f, lean * 0.3f, 0.05f, 0.81f, lean * 0.2f, 0.015f, CLOTH_FOLD, 1f)
+    seg(g, c, -0.16f, 1.02f, lean * 0.35f, 0.16f, 1.02f, lean * 0.35f, 0.05f, 0xFFB5482E.toInt(), 1.2f)
+    // Left arm points at the target
+    body(g, c, -0.22f, 1.45f, lean, -0.34f, 1.42f, 0.3f + lean, 0.11f, SKIN, 1.6f)
+    body(g, c, -0.34f, 1.42f, 0.3f + lean, -0.28f, 1.5f, 0.6f + lean, 0.09f, SKIN, 1.5f)
+    // Shoulders and neck
+    for (side in intArrayOf(-1, 1)) {
+        if (c.project(side * 0.22f, 1.45f, lean)) {
+            val r = 0.085f * c.ppm
+            g.oval(c.sx - r - 0.6f, c.sy - r - 0.6f, r * 2f + 1.2f, r * 2f + 1.2f, OUTLINE_SOFT)
+            g.oval(c.sx - r, c.sy - r, r * 2f, r * 2f, SKIN)
+            g.oval(c.sx - r * 0.7f, c.sy - r * 0.8f, r * 1.1f, r * 0.9f, SKIN_LIGHT)
+        }
+    }
+    body(g, c, 0f, 1.47f, lean, 0f, 1.6f, lean, 0.11f, SKIN, 1.5f)
+    drawHead(g, c, 0f, 1.7f, lean, wreath = true)
     // Throwing arm
     val ex = (0.21f + hand[0]) / 2f + 0.1f
     val ey = (1.45f + hand[1]) / 2f - 0.1f
     val ez = (lean + hand[2]) / 2f
-    seg(g, c, 0.21f, 1.45f, lean, ex, ey, ez, 0.1f, SKIN, 1.5f)
-    seg(g, c, ex, ey, ez, hand[0], hand[1], hand[2], 0.09f, SKIN, 1.5f)
+    body(g, c, 0.22f, 1.45f, lean, ex, ey, ez, 0.11f, SKIN, 1.6f)
+    body(g, c, ex, ey, ez, hand[0], hand[1], hand[2], 0.09f, SKIN, 1.5f)
 
     if (holdingJavelin()) {
         val el = aimElev - 0.15f + 0.15f * draw
@@ -461,15 +538,6 @@ private fun Game.drawAthlete(g: Gfx, c: Camera) {
         if (c.project(hand[0], hand[1], hand[2])) {
             val r = 0.07f * c.ppm
             g.oval(c.sx - r, c.sy - r, r * 2f, r * 2f, SKIN)
-        }
-        // Aim guide on the sand, out to where a full-power throw would land
-        if (screen == Game.Screen.PLAY) {
-            val far = max(14f, ruler[9])
-            var k = 2f
-            while (k < far) {
-                groundLine(g, c, sin(aimYaw) * k, cos(aimYaw) * k, sin(aimYaw) * (k + 0.6f), cos(aimYaw) * (k + 0.6f), 0.12f, 0x80FFFFFF.toInt())
-                k += if (k < 14f) 1.5f else 4f
-            }
         }
     }
 }
@@ -492,6 +560,75 @@ private fun Game.drawPowerMarkers(g: Gfx, c: Camera, main: Boolean) {
             val label = if (last) "LAST" else "${i * 25}%"
             g.shadowText(label, c.sx, c.sy, if (main) (c.ppm * 1.4f).coerceIn(7f, 11f) else 8f, color, 1)
         }
+    }
+}
+
+/** The back of a head with curly hair, ears and (for the player) a laurel wreath. */
+internal fun drawHead(g: Gfx, c: Camera, x: Float, y: Float, z: Float, wreath: Boolean, hair: Int = HAIR, skin: Int = SKIN) {
+    if (!c.project(x, y, z)) return
+    val r = 0.12f * c.ppm
+    val cx = c.sx
+    val cy = c.sy
+    // Ears
+    for (side in intArrayOf(-1, 1)) {
+        g.oval(cx + side * r * 0.95f - r * 0.22f, cy - r * 0.15f, r * 0.44f, r * 0.6f, skin)
+    }
+    g.oval(cx - r - 0.8f, cy - r * 1.1f - 0.8f, r * 2f + 1.6f, r * 2.2f + 1.6f, OUTLINE)
+    g.oval(cx - r, cy - r * 1.1f, r * 2f, r * 2.2f, hair)
+    // Curls
+    if (r > 3f) {
+        for (k in 0 until 7) {
+            val a = 0.3f + k * 0.42f
+            val px = cx + cos(a) * r * 0.62f
+            val py = cy - sin(a) * r * 0.7f - r * 0.1f
+            g.oval(px - r * 0.2f, py - r * 0.2f, r * 0.4f, r * 0.4f, HAIR_LIGHT)
+        }
+    }
+    if (wreath) {
+        g.oval(cx - r * 1.08f, cy - r * 0.6f, r * 2.16f, r * 0.42f, LAUREL)
+        for (k in -3..3) {
+            val lx = cx + k * r * 0.3f
+            g.oval(lx - r * 0.17f, cy - r * 0.78f + abs(k) * r * 0.05f, r * 0.34f, r * 0.24f, LAUREL_LIGHT)
+        }
+    }
+}
+
+/** A soft shadow on the ground under a figure. */
+internal fun groundShadow(g: Gfx, c: Camera, x: Float, z: Float, r: Float) {
+    if (!c.project(x, 0.01f, z)) return
+    val w = r * c.ppm
+    g.oval(c.sx - w, c.sy - w * 0.28f, w * 2f, w * 0.56f, 0x38000000)
+    g.oval(c.sx - w * 0.7f, c.sy - w * 0.2f, w * 1.4f, w * 0.4f, 0x30000000)
+}
+
+/**
+ * A rounded limb: a dark outline, the limb itself, and a soft highlight along one side, so
+ * bodies look solid instead of flat.
+ */
+internal fun body(
+    g: Gfx, c: Camera,
+    x1: Float, y1: Float, z1: Float, x2: Float, y2: Float, z2: Float,
+    widthM: Float, color: Int, minPx: Float,
+) {
+    if (!c.project(x1, y1, z1)) return
+    val ax = c.sx
+    val ay = c.sy
+    val p1 = c.ppm
+    if (!c.project(x2, y2, z2)) return
+    val w = max(minPx, widthM * (p1 + c.ppm) / 2f)
+    g.line(ax, ay, c.sx, c.sy, w + 1.6f, mixColor(color, 0xFF000000.toInt(), 0.55f))
+    g.line(ax, ay, c.sx, c.sy, w, color)
+    if (w > 3f) {
+        val o = w * 0.2f
+        g.line(ax - o, ay - o * 0.3f, c.sx - o, c.sy - o * 0.3f, w * 0.32f, mixColor(color, 0xFFFFFFFF.toInt(), 0.22f))
+    }
+}
+
+/** Traces the edge of the last projected polygon. */
+private fun outlinePoly(g: Gfx, n: Int, color: Int) {
+    for (i in 0 until n) {
+        val j = (i + 1) % n
+        g.line(projXs[i], projYs[i], projXs[j], projYs[j], 1.2f, color)
     }
 }
 
@@ -579,13 +716,14 @@ internal fun drawFigure(
     val cy = cos(yaw)
     val sy = sin(yaw)
     fun limb(x1: Float, y1: Float, z1: Float, x2: Float, y2: Float, z2: Float, w: Float, color: Int, minPx: Float) {
-        seg(
+        body(
             g, c,
             ox + x1 * cy + z1 * sy, oy + y1, oz - x1 * sy + z1 * cy,
             ox + x2 * cy + z2 * sy, oy + y2, oz - x2 * sy + z2 * cy,
             w, color, minPx,
         )
     }
+    groundShadow(g, c, ox, oz, 0.5f)
     val drop = crouch * 0.25f
     val hipY = 0.95f - drop
     for (side in intArrayOf(-1, 1)) {
@@ -599,6 +737,7 @@ internal fun drawFigure(
     }
     val tz = lean
     limb(0f, hipY + 0.05f, 0f, 0f, hipY + 0.47f, tz, 0.36f, look.skin, 3f)
+    limb(-0.1f, hipY + 0.42f, tz, 0.1f, hipY + 0.42f, tz, 0.16f, look.skin, 2f)
     limb(-0.13f, hipY - 0.03f, 0f, 0.13f, hipY - 0.03f, 0f, 0.25f, look.cloth, 2f)
     limb(-0.14f, hipY + 0.07f, 0f, 0.14f, hipY + 0.07f, 0f, 0.06f, look.band, 1f)
     val shY = hipY + 0.5f
@@ -621,9 +760,5 @@ internal fun drawFigure(
     limb(0f, shY + 0.03f, tz, 0f, shY + 0.13f, tz, 0.1f, look.skin, 1.5f)
     val hx = ox + tz * sy
     val hz = oz + tz * cy
-    if (c.project(hx, oy + shY + 0.23f, hz)) {
-        val r = 0.12f * c.ppm
-        g.oval(c.sx - r, c.sy - r * 1.1f, r * 2f, r * 2.2f, HAIR)
-        if (look.wreath) g.oval(c.sx - r * 1.05f, c.sy - r * 0.55f, r * 2.1f, r * 0.45f, LAUREL)
-    }
+    drawHead(g, c, hx, oy + shY + 0.23f, hz, look.wreath, skin = look.skin)
 }

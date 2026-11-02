@@ -383,24 +383,53 @@ class GameTest {
         assertTrue(g.lastPower > 0.3f)
     }
 
-    @Test fun touchFlickThrows() {
+    @Test fun touchSlingshotThrows() {
         val (g, input) = newGame()
+        tap(g, input, g.titleButton(1))
+        assertEquals(ControlMode.TOUCH, g.controls)
         startPlaying(g, input)
-        // Switch to touch controls the way a player would: through the title screen.
-        val (g2, input2) = newGame()
-        tap(g2, input2, g2.titleButton(1))
-        assertEquals(ControlMode.TOUCH, g2.controls)
-        startPlaying(g2, input2)
-        input2.push(Input.DOWN, 180f, 400f, 0f)
-        input2.push(Input.MOVE, 100f, 440f, 0.1f)
-        input2.push(Input.MOVE, 100f, 460f, 0.2f)
-        input2.push(Input.MOVE, 105f, 400f, 0.25f)
-        input2.push(Input.MOVE, 110f, 320f, 0.3f)
-        input2.push(Input.UP, 112f, 300f, 0.32f)
-        g2.update(dt)
-        assertEquals(Game.ThrowState.FLIGHT, g2.throwState)
-        assertTrue(g2.lastPower > 0.5f, "power ${g2.lastPower}")
+        // Pull down 260 px and a little right, then let go.
+        input.push(Input.DOWN, 180f, 300f, 0f)
+        input.push(Input.MOVE, 190f, 420f, 0.1f)
+        input.push(Input.MOVE, 200f, 560f, 0.2f)
+        g.update(dt)
+        val live = g.flickPower()
+        assertTrue(live in 0.6f..0.8f, "live power $live")
+        input.push(Input.UP, 200f, 560f, 0.3f)
+        g.update(dt)
+        assertEquals(Game.ThrowState.FLIGHT, g.throwState)
+        assertEquals(live, g.lastPower, 0.01f)
+        assertTrue(g.aimYaw > 0.02f, "aims right")
+        // A shorter pull throws softer; the scale has a lot of room.
+        run(g, 8f)
+        input.push(Input.DOWN, 180f, 300f, g.clock)
+        input.push(Input.MOVE, 180f, 400f, g.clock)
+        input.push(Input.UP, 180f, 400f, g.clock)
+        g.update(dt)
+        assertTrue(g.lastPower in 0.15f..0.35f, "short pull ${g.lastPower}")
+        // Pushing back up to the start cancels.
+        run(g, 8f)
+        input.push(Input.DOWN, 180f, 300f, g.clock)
+        input.push(Input.MOVE, 180f, 450f, g.clock)
+        input.push(Input.UP, 180f, 305f, g.clock)
+        g.update(dt)
         assertEquals(Game.ThrowState.READY, g.throwState)
+    }
+
+    @Test fun touchGuidesFadeInLaterLevels() {
+        val (g, input) = newGame()
+        tap(g, input, g.titleButton(1))
+        g.startLevel(2)
+        assertEquals(0, g.hintLevel())
+        g.startLevel(5)
+        assertEquals(1, g.hintLevel())
+        g.startLevel(8)
+        assertEquals(2, g.hintLevel())
+        g.startLevel(12)
+        assertEquals(3, g.hintLevel())
+        val (m, _) = newGame()
+        m.startLevel(12)
+        assertEquals(0, m.hintLevel(), "motion controls keep every guide")
     }
 
     @Test fun rendersScreenshots() {
