@@ -247,8 +247,8 @@ func _change() -> void:
 	if kinds.is_empty():
 		return
 	var k: String = kinds[randi() % kinds.size()]
-	if k in AMBIENT:
-		set_weather(k if randf() < 0.8 else "clear")
+	if k in AMBIENT:   # ambient sparkle / embers: mostly on, with a short clear break now and then
+		set_weather("clear" if now == k and randf() < 0.35 else k)
 	elif now == "clear":
 		set_weather(k if randf() < 0.55 else "clear")
 	else:

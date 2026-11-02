@@ -156,7 +156,7 @@ func _process(_dt: float) -> bool:
 					check(w.now == want and w.fall != null, "%s should have %s" % [g.level.world, want])
 				# weather changes now and then
 				var seen := {w.now: true}
-				for i in 12:
+				for i in 60:
 					w.timer = 0
 					w.step(0.1)
 					seen[w.now] = true
