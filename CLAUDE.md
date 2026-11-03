@@ -45,6 +45,24 @@ after a hit you're safe for `HURT_SAFE_TIME`.
 Only one of Rocco or Blocky is out at a time, with the Pokemon (`TeamGame.team` is the live pair,
 `allHeroes` is everybody; `switchTo` swaps them).
 
+## Two players (`Coop.kt`)
+
+A second controller plays **LUGO** (Luigi look-alike, `Who.LUGO`, appended; `TeamGame.lugo`, not in `allHeroes`).
+`PadSlots` (`game.padSlots`) maps `InputDevice` ids to players (first used = player 1, a second = player 2, unplugging
+frees the slot); both `GameView`s route a controller's keys/stick to `input` or `game.input2` and its directions through
+`PadSticks` (keep both Android files the same). Any button on input2 joins (`joinPlayer2`, `TeamInput.takeJoinPress`;
+after a leave only START), holding SELECT `LEAVE_HOLD` s or the pause screen's PLAYER 2: LEAVE leaves. Not saved.
+`PlayerPad` (`p2`) is LUGO's own edges + jump buffer/coyote/hold; player 1's code paths are untouched (single player must
+stay identical). In levels `team` includes LUGO when `lugoIn` (not `followers`); `updateLugo`/`moveLugo` are his moves,
+`lugoThrow` (shots with `thrower === lugo` don't count against Rocco's), `hurtBy` routes `Foe.touch` to `hurtLugo`
+(shared hearts via `takeHit`), `checkLugoFalls`, `keepLugoNear` (spread ≤ `viewW - SPREAD_MARGIN`: behind pops, ahead
+pulls player 1 when LUGO stands on ground, else the screen edge holds him), `lugoHidden` while player 1 rides a cart/cannon.
+The camera follows the pair's box. Goal/checkpoint/portal count either player. `nav` merges both controllers' edges
+(`nav.a1` = player 1's own A, used where player 2's A acts at LUGO's spot); `p2.jumpE`/`actionE` at home run
+`lugoAtHome` (targets via `hereTarget(x)`). Home has a crafting table (`Homes.CRAFT_X`, `homeCraft`, `closeCraft`,
+`NOT_AT_HOME` kinds). Art: `LugoArt.lugo(power, frame)` (cached recolor + `lanky`: 15x27). Tests: `TwoPlayerTest`
+(`build/screens/two-player-*.png`), `TeamSceneTest.twoPlayersIn3D`.
+
 ## UPDATE button
 
 Both Android apps set `TeamGame.onUpdate` (title screen UPDATE button, top left; status in `updateStatus`).

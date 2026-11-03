@@ -89,6 +89,16 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val TABS = listOf("FLOWERS", "SUPPLIES", "WEAPONS", "BOWS", "ARMOR", "SHIELDS", "WONDER")
         /** How close bad guys have to be for the Black Flower to get them. */
         const val BLACK_RANGE = 170f
+        /** Seconds player 2 holds SELECT to send LUGO home. */
+        const val LEAVE_HOLD = 1.5f
+        /** Where the pause screen's PLAYER 2: LEAVE button is (at the top, above PAUSED). */
+        private const val PAUSE_LEAVE_Y = 50f
+        /** The two players can be this much less than a screen apart before the one behind is pulled along. */
+        const val SPREAD_MARGIN = 40f
+        /** LUGO holding JUMP falls no faster than this (he's floatier than Rocco). */
+        const val LUGO_FLUTTER_FALL = 300f
+        /** What can't be made at the crafting table at home (they're used right there in a level). */
+        private val NOT_AT_HOME = setOf(Kind.TRAP, Kind.STAR, Kind.MINI, Kind.HOUSE, Kind.BED, Kind.HEART)
     }
 
     var viewW = 427f
@@ -113,15 +123,50 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     /** Only one of Rocco or Blocky is out at a time, together with the Pokemon. */
     var heroOut = Who.ROCCO
         private set
-    /** The team that's actually out in the world: Rocco OR Blocky, plus the Pokemon. */
-    val team get() = listOf(if (heroOut == Who.BLOCKY) blocky else rocco, partner)
+    /** The team that's actually out in the world: Rocco OR Blocky, plus the Pokemon (and LUGO, when player 2 plays). */
+    val team get() = if (lugoIn) listOf(if (heroOut == Who.BLOCKY) blocky else rocco, partner, lugo)
+        else listOf(if (heroOut == Who.BLOCKY) blocky else rocco, partner)
     var mon: Mon
         get() = partner.mon
         private set(value) { partner.mon = value }
     var leaderWho = Who.ROCCO
         private set
     val leader get() = allHeroes.first { it.who == leaderWho }
-    val followers get() = team.filter { it.who != leaderWho }
+    val followers get() = team.filter { it.who != leaderWho && it !== lugo }
+
+    // ---------------------------------------------------------------- Player 2 (see Coop.kt)
+
+    /** Player 2's controller (the Android app fills it in; touch is always player 1). */
+    val input2 = TeamInput()
+    /** Which controller is which player. */
+    val padSlots = PadSlots()
+    private val p2 = PlayerPad(input2)
+    /** LUGO, player 2's hero: Rocco's taller brother. He's not one of [allHeroes] (those are player 1's team). */
+    val lugo = Hero(Who.LUGO, 0f, 0f)
+    /** Player 2 is playing (pressed a button on a second controller). Not saved: a new start is just player 1. */
+    var p2Joined = false
+        private set
+    /** Player 2 left on purpose: only START brings LUGO back (so a controller put down doesn't rejoin by itself). */
+    private var p2Left = false
+    /** LUGO's own safe time after a hit (the hearts are shared). */
+    var lugoInvuln = 0f
+        private set
+    /** LUGO is riding along with player 1 (in a minecart or a cannon): not out in the level for now. */
+    private var lugoHidden = false
+    /** Set while a bad guy touches LUGO, so [hurt] knows it's him that got hit. */
+    private var hurtBy: Hero? = null
+    /** "PLAYER 2: LUGO JOINED!" and friends, shown on every screen. */
+    private var p2Note = ""
+    private var p2NoteT = 0f
+    /** LUGO is out in the level with the team. */
+    val lugoIn get() = p2Joined && !lugoHidden
+    /** LUGO at home: where he stands in the room, which way he faces, his walk. */
+    private var lugoHomeX = 0f
+    private var lugoHomeFacing = 1
+    private var lugoHomeAnim = 0f
+    /** The crafting table at home is open. */
+    var homeCraft = false
+        private set
 
     val foes = ArrayList<Foe>()
     private val things = ArrayList<Thing>()
@@ -384,7 +429,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private val prev = BooleanArray(16)
 
     /** Menu moves from a controller (or keyboard) this frame. */
-    private class Nav { var left = false; var right = false; var up = false; var down = false; var a = false; var b = false; var lb = false; var rb = false }
+    private class Nav {
+        var left = false; var right = false; var up = false; var down = false; var a = false; var b = false; var lb = false; var rb = false
+        /** Player 1's own A (in the house, player 2's A uses whatever LUGO stands at instead). */
+        var a1 = false
+    }
     private val nav = Nav()
     private var slotCursor = 0
     private var stickerCursor = 0
@@ -1133,6 +1182,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         hopX.fill(-1); hops = 0
         for (h in allHeroes) { h.resetStretch(); h.againstWall = false }
         jumpBufT = 0f; coyoteT = 0f; actionBufT = 0f; jumpHoldT = 0f; poundAgain = false
+        lugoHidden = false; lugoInvuln = 0f
         val keepX = respawnX
         val keepY = respawnY
         val keepHouse = if (index == levelIndex) house else null
@@ -1262,12 +1312,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     private fun placeTeam(x: Float, bottom: Float) {
         for ((i, h) in team.withIndex()) {
-            h.x = (x + 2 - i * 18f).coerceAtLeast(2f)
+            // (LUGO starts right on player 1's spot: that one is always safe to stand on.)
+            h.x = (if (h === lugo) x + 2 else x + 2 - i * 18f).coerceAtLeast(2f)
             h.y = bottom - h.h
             h.vx = 0f; h.vy = 0f; h.facing = 1; h.stuck = 0f
             h.resetStretch(); h.againstWall = false
         }
         safeX = x; safeY = bottom
+        if (lugoIn) { lugo.crouching = false; lugo.slamming = false; lugo.longJumping = false; p2.reset() }
         // Puffs from where the team was don't follow them somewhere new.
         puffs.clear()
     }
@@ -1297,10 +1349,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         Style.spaceSuit = level.def.place == Place.ORBIT && state in IN_LEVEL
         garden.grow(dt)
         if (babyZapT > 0f) babyZapT -= dt
+        // Player 2: joining, leaving, and LUGO's buttons for this frame.
+        updatePlayer2(dt)
         val jumpE = edge(0, input.jump)
         val swapE = edge(1, input.swap)
         val craftE = edge(2, input.craft)
-        val pauseE = edge(3, input.pause)
+        val pauseE = edge(3, input.pause) || (p2Joined && p2.pauseE)
         if (edge(4, input.musicToggle)) musicOn = !musicOn
         val superE = edge(5, input.superMove)
         val actionE = edge(6, input.action)
@@ -1311,7 +1365,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val blackE = edge(11, input.blackFlower)
         downE = edge(9, input.down)
         longE = edge(10, input.longJump)
-        val tapped = input.tap
+        // Player 2's buttons count as taps at no particular spot in menus too (like player 1's controller).
+        val p2Tap = input2.tap && p2Joined
+        input2.tap = false
+        if (p2Tap && !input.tap) { input.tapX = -1f; input.tapY = -1f }
+        val tapped = input.tap || p2Tap
         input.tap = false
         val num = input.numberKey
         input.numberKey = 0
@@ -1326,6 +1384,18 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         nav.b = actionE && pad
         nav.lb = tntE && pad
         nav.rb = longE && pad
+        nav.a1 = nav.a
+        // Player 2 can move around every menu and pick things too (never with a finger, so no [pad] check).
+        if (p2Joined) {
+            nav.left = nav.left || p2.leftE
+            nav.right = nav.right || p2.rightE
+            nav.up = nav.up || p2.upE
+            nav.down = nav.down || p2.downE
+            nav.a = nav.a || p2.jumpE
+            nav.b = nav.b || p2.actionE
+            nav.lb = nav.lb || p2.tntE
+            nav.rb = nav.rb || p2.longE
+        }
         if (toastT > 0) toastT -= dt
         if (eraseT > 0) eraseT -= dt else { eraseArmed = -1; recoverArmed = -1 }
 
@@ -1344,13 +1414,20 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 if (pauseE) { paused = !paused; pauseCursor = 0 }
                 // Controller on the pause screen: up/down picks a button, A presses it, B resumes.
                 if (paused) {
-                    if (nav.up) pauseCursor = (pauseCursor + 2) % 3
-                    if (nav.down) pauseCursor = (pauseCursor + 1) % 3
+                    // (With player 2 there's a 4th button at the top: PLAYER 2: LEAVE.)
+                    val items = if (p2Joined) 4 else 3
+                    if (nav.up) pauseCursor = (pauseCursor + items - 1) % items
+                    if (nav.down) pauseCursor = (pauseCursor + 1) % items
                     if (nav.b) paused = false
                     if (nav.a) when (pauseCursor) {
                         0 -> { setState(State.BOOK); return }
                         1 -> saveHere()
+                        3 -> { if (p2Joined) leavePlayer2(); pauseCursor = 0 }
                         else -> if (away == null) { saveAndExitToMap(); return } else toast("Finish the bonus room first!")
+                    }
+                    if (p2Joined && tapped && input.tapY in PAUSE_LEAVE_Y..(PAUSE_LEAVE_Y + 24f) && abs(input.tapX - viewW / 2) < 80f) {
+                        leavePlayer2()
+                        pauseCursor = 0
                     }
                 }
                 // The STICKER BOOK button on the pause screen...
@@ -1372,13 +1449,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 }
             }
             State.CRAFT -> {
-                val rows = recipes().size
-                if (nav.up) craftCursor = (craftCursor + rows - 1) % maxOf(1, rows)
-                if (nav.down) craftCursor = (craftCursor + 1) % maxOf(1, rows)
-                if (nav.left || nav.lb) { craftTab = (craftTab + TABS.size - 1) % TABS.size; craftCursor = 0 }
-                if (nav.right || nav.rb) { craftTab = (craftTab + 1) % TABS.size; craftCursor = 0 }
-                craftCursor = craftCursor.coerceIn(0, maxOf(0, recipes().size - 1))
-                if (nav.a && stateT > 0.2f) craft(craftCursor)
+                padCraft()
                 updateCraft(tapped, craftE || pauseE || nav.b, num)
             }
             State.TRADE -> {
@@ -1768,6 +1839,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (jumpE) { leaveCart(cart, false); l.vy = l.jumpV; sfx(Sound.JUMP) }
         } else updateLeader(leader, dt, jumpE, grav)
         for ((i, f) in followers.withIndex()) updateFollower(f, dt, grav, i)
+        if (p2Joined) updateLugo(dt, grav)
         val l = leader
         // While a portal closes on the team, ACTION doesn't climb into anything (or open a menu): the room
         // is about to change, and a cart or cannon taken along would leave the hero stuck in the bonus room.
@@ -1853,8 +1925,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         updatePartnerZap(dt)
         updateFrog()
         updateBoss(dt)
+        if (lugoIn && state == State.PLAY) keepLugoNear()
         updateCamera(dt)
         if (state == State.PLAY) checkFalls()
+        if (lugoIn && state == State.PLAY) checkLugoFalls()
     }
 
     private fun swap() = switchTo(nextWho())
@@ -1934,7 +2008,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     /** Who SWAP goes to next: Rocco, then Blocky, then the Pokemon, then back to Rocco. */
-    private fun nextWho() = when (leaderWho) { Who.ROCCO -> Who.BLOCKY; Who.BLOCKY -> Who.MON; Who.MON -> Who.ROCCO }
+    private fun nextWho() = when (leaderWho) { Who.ROCCO -> Who.BLOCKY; Who.BLOCKY -> Who.MON; Who.MON, Who.LUGO -> Who.ROCCO }
 
     private fun teleport(h: Hero, to: Hero) {
         puff(h.cx, h.cy)
@@ -2160,6 +2234,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             h.vy = -250f
             h.onGround = false
             poundAgain = true
+        } else if (h === lugo && input2.down && state == State.PLAY) {
+            // (LUGO keeps pounding too, with his own controller.)
+            h.vy = -250f
+            h.onGround = false
+            p2.poundAgain = true
         }
         shake = 0.25f
         sfx(Sound.STOMP)
@@ -2350,7 +2429,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             // Drill Rocco drills straight through (plain ground and dirt stay put, so he can't dig out the top of a cave).
             else -> if (by != null && powerShows(by, Power.DRILL) && drillable(tx, ty)) drillBlock(tx, ty)
             // Rocco can bonk blocks from below to mine them.
-            else if (by?.who == Who.ROCCO && level.toughness(tx, ty) > 0) mine(tx, ty, pickTier, rocco = true) else sfx(Sound.BUMP)
+            else if ((by?.who == Who.ROCCO || by?.who == Who.LUGO) && level.toughness(tx, ty) > 0) mine(tx, ty, pickTier, rocco = true) else sfx(Sound.BUMP)
         }
         for (f in foes) {
             if (!f.dying && !f.boss && abs(f.bottom - ty * TILE) < 2 && f.cx > tx * TILE - 4 && f.cx < tx * TILE + TILE + 4) f.hit(this, 99)
@@ -2378,6 +2457,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             Who.BLOCKY -> swingPick(h)
             Who.ROCCO -> throwPower(h)
             Who.MON -> monAttack(h)
+            Who.LUGO -> lugoThrow(h)
         }
     }
 
@@ -2997,7 +3077,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             return
         }
         val lvl = flowerLevel[power.ordinal].coerceAtLeast(1)
-        val mine = things.count { it is Shot }
+        val mine = things.count { it is Shot && it.thrower !== lugo }
         if (mine >= 1 + lvl) return
         // Every level adds 1 damage. Lv3+ throws two, Lv5 throws three, Lv4+ go through bad guys.
         val dmg = power.damage + lvl - 1
@@ -3349,6 +3429,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             )
             return
         }
+        // The crafting table at home: things that are used right away in a level are made there instead.
+        if (homeCraft && r.kind in NOT_AT_HOME) {
+            sfx(Sound.BUMP)
+            toast("Make that one in a level!")
+            return
+        }
         for ((o, n) in r.costs) inventory[o.ordinal] -= n
         coins -= r.coinCost
         val p = r.icon
@@ -3437,7 +3523,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
         }
         sfx(Sound.POWERUP)
-        for (h in team) repeat(6) {
+        if (!homeCraft) for (h in team) repeat(6) {
             particles += Sparkle(h.cx, h.cy, Random.nextFloat() * 120 - 60, -Random.nextFloat() * 90, color)
         }
     }
@@ -3590,6 +3676,15 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (level[tileOf(l.x + 2), ty] == Tile.SPIKES || level[tileOf(l.x + l.w - 2), ty] == Tile.SPIKES) {
             hurt()
             l.vy = -260f
+        }
+        if (lugoIn) {
+            // (Spikes hurt LUGO too.)
+            val h = lugo
+            val hy = tileOf(h.bottom - 2)
+            if (level[tileOf(h.x + 2), hy] == Tile.SPIKES || level[tileOf(h.x + h.w - 2), hy] == Tile.SPIKES) {
+                hurtLugo(null)
+                h.vy = -260f
+            }
         }
         // Spike traps hurt bad guys too.
         if (spikeT <= 0) {
@@ -3997,6 +4092,22 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     /** Rows squeeze together a little when a tab has more than six recipes. */
     private fun craftRowH() = min(rowH, (VIEW_H - 4f - rowsTop) / recipes().size)
 
+    /** The crafting table with a controller (either player): up/down picks, left/right or L/R change tabs, A makes. */
+    private fun padCraft() {
+        val rows = recipes().size
+        if (nav.up) craftCursor = (craftCursor + rows - 1) % maxOf(1, rows)
+        if (nav.down) craftCursor = (craftCursor + 1) % maxOf(1, rows)
+        if (nav.left || nav.lb) { craftTab = (craftTab + TABS.size - 1) % TABS.size; craftCursor = 0 }
+        if (nav.right || nav.rb) { craftTab = (craftTab + 1) % TABS.size; craftCursor = 0 }
+        craftCursor = craftCursor.coerceIn(0, maxOf(0, recipes().size - 1))
+        if (nav.a && stateT > 0.2f) craft(craftCursor)
+    }
+
+    /** Closes the crafting table: back to the level, or (the one at home) back to the room. */
+    private fun closeCraft() {
+        if (homeCraft) { homeCraft = false; sfx(Sound.KICK) } else setState(State.PLAY)
+    }
+
     private fun updateCraft(tapped: Boolean, close: Boolean, num: Int) {
         when (num) {
             in 1..6 -> craft(num - 1)
@@ -4004,15 +4115,15 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             8, 9 -> craftTab = (craftTab + 1) % TABS.size
             10 -> craft(6)
         }
-        if (close) { setState(State.PLAY); return }
-        if (!tapped || stateT < 0.15f || state != State.CRAFT || input.tapX < 0f) return
+        if (close) { closeCraft(); return }
+        if (!tapped || stateT < 0.15f || !(state == State.CRAFT || homeCraft) || input.tapX < 0f) return
         val x = input.tapX
         val y = input.tapY
         val px = panelX()
         val pw = panelW()
         val closeX = px + pw - 14
         if (hypot(x - closeX, y - (panelTop + 10)) < 14f || x < px || x > px + pw || y < panelTop) {
-            setState(State.PLAY)
+            closeCraft()
             return
         }
         if (y in tabTop..(tabTop + 18f)) {
@@ -4055,14 +4166,14 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     if (h.who == Who.MON && mon.base == Mon.HYDRO && f.boss) f.hit(this, 2)
                     // A butt slam lands extra hard.
                     if (h.slamming && f.boss) f.hit(this, 3)
-                    h.vy = if (h === leader && input.jump) -340f else -240f
+                    h.vy = if (jumpHeld(h)) -340f else -240f
                     break
                 }
                 // Drill Rocco lands drill-first on spiky bad guys: it doesn't hurt him, it drills THEM. (Not
                 // riding Dash: it's Dash's feet that land on them.)
                 if (falling && powerShows(h, Power.DRILL) && megaT <= 0f && dino == null && !f.boss && f !is Projectile) {
                     f.hit(this, Power.DRILL.damage + flowerLevel[Power.DRILL.ordinal].coerceAtLeast(1))
-                    h.vy = if (h === leader && input.jump) -340f else -240f
+                    h.vy = if (jumpHeld(h)) -340f else -240f
                     h.drillSpin = 0.25f
                     sfx(Sound.STOMP)
                     for (i in 0 until 4) particles += Sparkle(h.cx, h.bottom, (i - 1.5f) * 40f, -50f, 0xFFF4F8FF.toInt())
@@ -4080,6 +4191,16 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                         h.shellSpin && !f.boss -> { f.hit(this, 1 + flowerLevel[Power.SHELL.ordinal] / 2); h.vx = -h.vx * 0.5f }
                         f.frozenT > 0f || f.danceT > 0f -> {}
                         else -> f.touch(this)
+                    }
+                } else if (h === lugo) {
+                    // LUGO gets hurt by bad guys too (it costs one of the team's hearts).
+                    when {
+                        starT > 0 -> f.hit(this, 3)
+                        f.frozenT > 0f || f.danceT > 0f -> {}
+                        else -> {
+                            hurtBy = h
+                            try { f.touch(this) } finally { hurtBy = null }
+                        }
                     }
                 }
             }
@@ -4127,17 +4248,18 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     t.removed = true
                     t.collect(this)
                 }
-                is Portal -> if (!t.used && t.overlaps(leader) && riding == null && inCannon == null && grabbing == null &&
+                is Portal -> if (!t.used && (t.overlaps(leader) || (lugoIn && t.overlaps(lugo))) && riding == null && inCannon == null && grabbing == null &&
                     portalHit == null && portalPending == null) portalHit = t
                 is Chest -> if (hit && !t.open) openChest(t)
-                is Checkpoint -> if (!t.reached && t.overlaps(leader)) {
+                is Checkpoint -> if (!t.reached && (t.overlaps(leader) || (lugoIn && t.overlaps(lugo)))) {
                     t.reached = true
                     respawnX = t.x
                     respawnY = t.bottom
                     toast("CHECKPOINT!")
                     sfx(Sound.POWERUP)
                 }
-                is Goal -> if (leader.x + leader.w >= t.x && state == State.PLAY) {
+                // Either player reaching the flag clears the level.
+                is Goal -> if ((leader.x + leader.w >= t.x || (lugoIn && lugo.x + lugo.w >= t.x)) && state == State.PLAY) {
                     setState(State.CLEAR)
                     heartBonus()
                     points(2000)
@@ -4184,6 +4306,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     fun hurt(from: Body? = null) {
+        if (hurtBy === lugo) { hurtLugo(from); return }
         if (invuln > 0 || starT > 0 || state != State.PLAY) return
         val l = leader
         if (metal && l === rocco) { invuln = 0.5f; sfx(Sound.BUMP); return }
@@ -4233,29 +4356,34 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             rocco.vx = -rocco.facing * 90f
             return
         }
-        when {
-            armor > 0 -> {
-                armor--
-                particles += FloatText(leader.cx, leader.y - 4, "SHIELD!", 0xFF3CE070.toInt())
-            }
-            armorHp > 0 -> {
-                // Armor takes the hit and wears down.
-                armorHp--
-                if (armorHp <= 0) {
-                    particles += FloatText(leader.cx, leader.y - 4, "ARMOR BROKE!", 0xFFFF6060.toInt())
-                    toast("Your ${armorType.label} broke! Craft a new one.")
-                    armorType = Armor.NONE
-                    sfx(Sound.BREAK)
-                } else particles += FloatText(leader.cx, leader.y - 4, "ARMOR $armorHp", armorType.color)
-            }
-            else -> hearts--
-        }
+        takeHit(leader)
         invuln = HURT_SAFE_TIME
         sfx(Sound.HURT)
         if (leader.who == Who.ROCCO && time - lastOuchSaid > 6f) { lastOuchSaid = time; sound.sayAs(OUCH_LINES.random(), Voice.HERO) }
         leader.vy = -180f
         leader.vx = -leader.facing * 90f
         if (hearts <= 0) knockedOut()
+    }
+
+    /** A hit on [h]: the armor takes it if there's any, else it costs a heart. */
+    private fun takeHit(h: Hero) {
+        when {
+            armor > 0 -> {
+                armor--
+                particles += FloatText(h.cx, h.y - 4, "SHIELD!", 0xFF3CE070.toInt())
+            }
+            armorHp > 0 -> {
+                // Armor takes the hit and wears down.
+                armorHp--
+                if (armorHp <= 0) {
+                    particles += FloatText(h.cx, h.y - 4, "ARMOR BROKE!", 0xFFFF6060.toInt())
+                    toast("Your ${armorType.label} broke! Craft a new one.")
+                    armorType = Armor.NONE
+                    sfx(Sound.BREAK)
+                } else particles += FloatText(h.cx, h.y - 4, "ARMOR $armorHp", armorType.color)
+            }
+            else -> hearts--
+        }
     }
 
     private var lastOuchSaid = -99f
@@ -4268,6 +4396,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         paused = false
         away = null
         homeShop = false
+        homeCraft = false
         plushBook = false
         riding = null
         particles.clear()
@@ -4358,6 +4487,379 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         }
         return null
     }
+
+    // ======================================================================== Player 2: LUGO
+
+    /** Every frame: player 2 joins with any button on the second controller, holds SELECT to leave, and plays. */
+    private fun updatePlayer2(dt: Float) {
+        if (p2NoteT > 0f) p2NoteT -= dt
+        if (padSlots.takeLost() && p2Joined) {
+            leavePlayer2("PLAYER 2'S CONTROLLER IS GONE")
+            // (Plugging one back in and pressing any button brings LUGO back.)
+            p2Left = false
+        }
+        if (!p2Joined) {
+            if (input2.takeJoinPress(startOnly = p2Left)) joinPlayer2()
+            return
+        }
+        p2.read()
+        if (input2.craft) {
+            p2.selectT += dt
+            if (p2.selectT >= LEAVE_HOLD) leavePlayer2()
+        } else p2.selectT = 0f
+    }
+
+    /** "PLAYER 2: LUGO JOINED!": LUGO comes along wherever the game is (title, map, house or a level). */
+    fun joinPlayer2() {
+        if (p2Joined) return
+        p2Joined = true
+        p2Left = false
+        p2.sync()
+        input2.tap = false
+        lugoInvuln = 0f
+        lugoHidden = false
+        lugo.facing = 1
+        lugo.resetStretch()
+        if (state in IN_LEVEL) popLugo()
+        lugoHomeX = homeX + 26f
+        lugoHomeFacing = homeFacing
+        p2Message("PLAYER 2: LUGO JOINED!")
+        sfx(Sound.ONEUP)
+        sound.sayAs("It's-a me, Lugo! Let's-a go!", Voice.HERO)
+    }
+
+    /** LUGO goes home (the pause screen's PLAYER 2: LEAVE, or holding SELECT). START brings him back. */
+    fun leavePlayer2(note: String = "LUGO WENT HOME. P2: PRESS START TO COME BACK!") {
+        if (!p2Joined) return
+        if (lugoIn && state in IN_LEVEL) puff(lugo.cx, lugo.cy)
+        p2Joined = false
+        p2Left = true
+        p2.selectT = 0f
+        lugoHidden = false
+        input2.forgetPresses()
+        p2Message(note)
+        sfx(Sound.KICK)
+    }
+
+    private fun p2Message(s: String) { p2Note = s; p2NoteT = 2.6f }
+
+    /** True if [h] is holding JUMP (stomping off a bad guy then bounces higher). */
+    private fun jumpHeld(h: Hero) = (h === leader && input.jump) || (h === lugo && input2.jump)
+
+    /** LUGO in a level: player 2's controller moves him; ACTION throws the team's flower power (or punches). */
+    private fun updateLugo(dt: Float, grav: Float) {
+        val p = p2
+        if (lugoInvuln > 0f) lugoInvuln -= dt
+        if (p.jumpE) p.jumpBufT = 0.13f else if (p.jumpBufT > 0f) p.jumpBufT -= dt
+        if (p.actionE) p.actionBufT = 0.2f else if (p.actionBufT > 0f) p.actionBufT -= dt
+        if (p.jumpHoldT > 0f) p.jumpHoldT -= dt
+        // In player 1's minecart or cannon he rides along (out of sight), and hops back out once player 1 is on
+        // his feet again.
+        if (riding != null || inCannon != null || cannonFlyT > 0f) { lugoHidden = true; return }
+        if (lugoHidden) {
+            if (!leader.onGround) return
+            lugoHidden = false
+            popLugo()
+        }
+        moveLugo(lugo, dt, grav)
+        if ((input2.action || p.actionBufT > 0f) && lugo.cooldown <= 0f) {
+            p.actionBufT = 0f
+            lugoThrow(lugo)
+        }
+    }
+
+    /**
+     * LUGO runs, jumps (higher and floatier than Rocco), double jumps, squats, butt slams and long jumps: Rocco's
+     * own moves ([updateLeader]), without the ones only player 1 has (Dash, captures, the propeller...).
+     */
+    private fun moveLugo(h: Hero, dt: Float, grav: Float) {
+        val p = p2
+        val inp = input2
+        val dir = (if (inp.right) 1 else 0) - (if (inp.left) 1 else 0)
+        if (dir != 0) h.facing = dir
+        if (h.onGround) p.coyoteT = 0.1f else if (p.coyoteT > 0f) p.coyoteT -= dt
+        if (inWater(h)) {
+            h.crouching = false; h.slamming = false; h.longJumping = false
+            h.vx = approach(h.vx, dir * h.speed * 0.85f, 500f * dt)
+            if (p.jumpE) { h.vy = -170f; p.jumpBufT = 0f; sfx(Sound.SPLASH); bubbles(h) }
+            if (inp.down) h.vy = approach(h.vy, 120f, 400f * dt)
+            h.vy = min(h.vy + GRAVITY * 0.3f * dt, 80f)
+            moveHero(h, dt)
+            if (h.y < 34f) { h.y = 34f; h.vy = max(h.vy, 0f) }
+            return
+        }
+        val wasSprinting = h.sprinting
+        // Double-tap a direction (and keep holding it), or hold the run button, to sprint.
+        if (dir != 0 && dir != p.prevDir) {
+            h.sprinting = dir == p.lastTapDir && time - p.lastTapTime < 0.35f
+            p.lastTapDir = dir
+            p.lastTapTime = time
+        }
+        if (dir == 0) h.sprinting = false
+        p.prevDir = dir
+        val sprint = (h.sprinting || inp.run) && dir != 0
+        h.sprinting = sprint
+        if (sprint && !wasSprinting && h.onGround) {
+            for (i in 0 until 3) dust(h, h.cx - dir * (4f + i * 3f), h.bottom, -dir * (40f + i * 25f), -10f - i * 6f, 4f - i * 0.4f)
+        }
+        if (h.onGround) h.doubleJumped = false
+        if (h.flipT > 0) h.flipT -= dt
+        // Double jump: JUMP again in mid-air.
+        if (p.jumpE && !h.onGround && p.coyoteT <= 0f && !h.doubleJumped && !h.slamming) {
+            p.jumpBufT = 0f
+            h.doubleJumped = true
+            h.longJumping = false
+            h.vy = h.jumpV * 0.9f
+            h.flipT = 0.35f
+            p.jumpHoldT = 0.1f
+            sfx(Sound.JUMP)
+            for (i in 0 until 6) particles += Sparkle(h.cx, h.bottom, (i - 2.5f) * 30f, 40f, 0xFFB8FFB8.toInt())
+            moveHero(h, dt)
+            return
+        }
+        h.crouching = inp.down && h.onGround && !h.slamming
+        // Butt slam (and holding DOWN keeps pounding).
+        if (!inp.down) p.poundAgain = false
+        if ((p.downE || (p.poundAgain && h.vy > -60f)) && !h.onGround && !h.slamming) {
+            p.poundAgain = false
+            h.slamming = true
+            h.slamPause = 0.18f
+            h.longJumping = false
+            h.vx = 0f
+            h.vy = 0f
+            sfx(Sound.KICK)
+        }
+        if (h.onGround && !h.slamming && (p.longE || (p.jumpE && h.crouching && abs(h.vx) > 40f))) {
+            p.jumpBufT = 0f
+            h.longJumping = true
+            h.crouching = false
+            h.vx = h.facing * 270f
+            h.vy = -250f
+            sfx(Sound.JUMP)
+            particles += FloatText(h.cx, h.y - 4, "LONG JUMP!", LugoArt.GREEN)
+            moveHero(h, dt)
+            return
+        }
+        if (h.slamming) {
+            if (h.slamPause > 0) {
+                h.slamPause -= dt
+                h.vx = 0f
+                h.vy = 0f
+            } else h.vy = 560f
+            moveHero(h, dt)
+            if (h.onGround) slamImpact(h)
+            return
+        }
+        if (h.longJumping) {
+            h.vy = min(h.vy + GRAVITY * grav * 0.85f * dt, MAX_FALL)
+            moveHero(h, dt)
+            if (h.onGround) h.longJumping = false
+            return
+        }
+        val walk = h.speed
+        val top = h.speed * (if (sprint) 1.5f else 1f)
+        val want = if (h.crouching) 0f else dir * top
+        val braking = h.onGround && !h.crouching && (want == 0f || want * h.vx < 0f)
+        val skid = braking && abs(h.vx) > walk * SKID_SPEED
+        if (skid && !h.skidding) h.dustT = 0f
+        h.skidding = skid
+        if (skid) {
+            h.dustT -= dt
+            if (h.dustT <= 0f) {
+                h.dustT = 0.05f
+                val ahead = if (h.vx > 0f) 1f else -1f
+                dust(h, h.cx + ahead * 4f, h.bottom, ahead * 30f, -18f, 3.3f)
+            }
+        }
+        h.vx = approach(h.vx, want, (if (braking) GROUND_BRAKE else if (h.onGround) GROUND_ACCEL else 520f) * dt)
+        if (p.jumpBufT > 0f && (h.onGround || (p.coyoteT > 0f && h.vy >= 0f))) {
+            p.jumpBufT = 0f
+            p.coyoteT = 0f
+            p.jumpHoldT = 0.14f
+            h.vy = h.jumpV * (if (sprint) 1.06f else 1f)
+            sfx(Sound.JUMP)
+        }
+        if (!inp.jump && p.jumpHoldT <= 0f && h.vy < -130f) h.vy = -130f
+        // Floatier than his brother: holding JUMP, he rises a little longer and drifts down slower.
+        val g2 = if (inp.jump) grav * 0.85f else grav
+        h.vy = min(h.vy + GRAVITY * g2 * dt, if (inp.jump) LUGO_FLUTTER_FALL else MAX_FALL)
+        moveHero(h, dt)
+    }
+
+    /** LUGO's ACTION: he throws the team's flower power like Rocco does (or punches when there's nothing to throw). */
+    private fun lugoThrow(h: Hero) {
+        h.cooldown = 0.3f
+        h.swing = 0.15f
+        val p = power
+        // The Wonder power-ups, Cappy and the blue shell are Rocco's own: LUGO punches.
+        if (p == Power.NONE || PowerUps.isWonder(p) || p == Power.CAPPY || p == Power.SHELL) { punch(h); return }
+        val lvl = flowerLevel[p.ordinal].coerceAtLeast(1)
+        if (things.count { it is Shot && it.thrower === h } >= 1 + lvl) return
+        val dmg = p.damage + lvl - 1
+        val pierce = if (lvl >= 4) 2 else 0
+        val sx = if (h.facing > 0) h.x + h.w else h.x - 9
+        spawn(Shot(sx, h.y + 8, h.facing, p, dmg, h, pierce))
+        if (p == Power.CRYSTAL) {
+            spawn(Shot(sx, h.y + 8, h.facing, p, dmg, h, pierce, -70f))
+            spawn(Shot(sx, h.y + 8, h.facing, p, dmg, h, pierce, 70f))
+        } else if (lvl >= 3) spawn(Shot(sx, h.y - 1, h.facing, p, dmg, h, pierce))
+        sfx(if (p == Power.THUNDER) Sound.ZAP else Sound.FIRE)
+    }
+
+    /** LUGO pops back in next to player 1, on solid ground (Mario style: nobody gets left behind). */
+    private fun popLugo() {
+        val h = lugo
+        val l = leader
+        val sx = standX(safeX, safeY)
+        when {
+            l.onGround -> { h.x = l.x + (l.w - h.w) / 2; h.y = l.bottom - h.h }
+            sx != null -> { h.x = sx; h.y = safeY - h.h }
+            else -> { h.x = respawnX; h.y = respawnY - h.h }
+        }
+        h.vx = 0f; h.vy = 0f; h.stuck = 0f
+        h.crouching = false; h.slamming = false; h.longJumping = false; h.sprinting = false
+        h.facing = l.facing
+        h.resetStretch()
+        p2.reset()
+        // A moment to get going before anything can hurt him.
+        lugoInvuln = max(lugoInvuln, 1f)
+        puff(h.cx, h.cy)
+    }
+
+    /**
+     * The two players always fit on one screen. When they get too far apart, the one behind is pulled up to the
+     * one in front: LUGO pops back next to player 1, or player 1 is pulled up to LUGO once LUGO stands on solid
+     * ground (until then, and whenever player 1 is busy, the edge of the screen holds LUGO back).
+     */
+    private fun keepLugoNear() {
+        val h = lugo
+        val l = leader
+        val lock = camLock
+        // A boss arena locked the screen: LUGO comes inside too.
+        if (lock != null && (h.x < lock - 1f || h.x + h.w > lock + viewW + 1f)) { popLugo(); return }
+        val most = viewW - SPREAD_MARGIN
+        if (abs(h.cx - l.cx) <= most) return
+        if (h.cx < l.cx) { popLugo(); return }
+        val leaderFree = lock == null && riding == null && inCannon == null && cannonFlyT <= 0f && grabbing == null && portalPending == null
+        if (leaderFree && h.onGround && !inWater(h)) {
+            // Right where LUGO stands (that spot surely holds him).
+            puff(l.cx, l.cy)
+            l.x = h.x + (h.w - l.w) / 2
+            l.y = h.bottom - l.h
+            l.vx = 0f; l.vy = 0f; l.stuck = 0f
+            l.facing = h.facing
+            l.resetStretch()
+            puff(l.cx, l.cy)
+            safeX = l.x; safeY = l.bottom
+        } else {
+            h.x = l.cx + most - h.w / 2
+            if (h.vx > 0f) h.vx = 0f
+        }
+    }
+
+    /** LUGO fell in a pit (or lava): it costs one of the team's hearts, and he pops back next to player 1. */
+    private fun checkLugoFalls() {
+        val h = lugo
+        if (h.y > level.h * TILE + 8 || level.inLava(h)) {
+            if (starT <= 0) hearts--
+            sfx(Sound.HURT)
+            if (hearts <= 0) { knockedOut(); return }
+            toast(if (level.inLava(h)) "LUGO! Hot hot hot!" else "LUGO! Mind the gap!")
+            popLugo()
+            lugoInvuln = HURT_SAFE_TIME
+        }
+    }
+
+    /** A bad guy got LUGO: one of the team's hearts (or the armor), and he's safe for a moment. */
+    private fun hurtLugo(from: Body?) {
+        val h = lugo
+        if (lugoInvuln > 0 || starT > 0 || state != State.PLAY) return
+        takeHit(h)
+        lugoInvuln = HURT_SAFE_TIME
+        sfx(Sound.HURT)
+        h.vy = -180f
+        h.vx = if (from != null && from.cx > h.cx) -90f else if (from != null) 90f else -h.facing * 90f
+        if (hearts <= 0) knockedOut()
+    }
+
+    /**
+     * Player 2 walks LUGO around the house (a room, the garden or the roof) and uses whatever he stands at with
+     * A or B, just like player 1 (the SHOP, the crafting table, the Pokemon mat...). Returns true when he used something.
+     */
+    private fun lugoAtHome(dt: Float, minX: Float, maxX: Float): Boolean {
+        if (!p2Joined) return false
+        val speed = 110f
+        if (input2.left) { lugoHomeX -= speed * dt; lugoHomeFacing = -1; lugoHomeAnim += dt }
+        if (input2.right) { lugoHomeX += speed * dt; lugoHomeFacing = 1; lugoHomeAnim += dt }
+        lugoHomeX = lugoOnScreen(minX, maxX)
+        // (Decorating is player 1's job: there's only one thing being carried.)
+        if (!(p2.jumpE || p2.actionE) || decorating) return false
+        val t = hereTarget(lugoHomeX) ?: return false
+        // Whatever it is happens where LUGO stands.
+        val keep = homeX
+        homeX = lugoHomeX
+        when {
+            inGarden -> gardenAction(t)
+            onRoof -> roofAction(t)
+            else -> homeAction(t)
+        }
+        // Stairs, a door or the ladder took him somewhere new: player 1 comes along (the view goes with them).
+        if (homeX == lugoHomeX) homeX = keep else lugoHomeX = homeX + 26f
+        return true
+    }
+
+    /** Where LUGO stands at home: inside [minX]..[maxX] and on the screen (the view follows player 1). */
+    private fun lugoOnScreen(minX: Float, maxX: Float): Float {
+        val cam = homeCam()
+        val lo = max(minX, cam + 12f)
+        val hi = min(maxX, cam + viewW - 12f)
+        return if (lo <= hi) lugoHomeX.coerceIn(lo, hi) else lugoHomeX.coerceIn(minX, maxX)
+    }
+
+    /** LUGO at home (Team Up!'s house is 2D only). */
+    private fun drawHomeLugo(gfx: Gfx, ox: Float) {
+        val feet = Homes.FLOOR_Y + 54
+        val walking = input2.left || input2.right
+        val step = if ((lugoHomeAnim * 8).toInt() % 2 == 0) 0 else 1
+        val lx = lugoHomeX + ox
+        val g = if (babyMode) Baby.shrink(gfx, lx, feet) else gfx
+        val sc = ROCCO_SCALE
+        PowerArt.box(g, LugoArt.lugo(power, if (walking) 1 + step else 0), lx - 8 * sc, feet - 24 * sc, 16f * sc, 24f * sc, flipX = lugoHomeFacing < 0)
+        if (babyMode) Baby.dress(gfx, lx, feet, lugoHomeFacing, false, bonnet = true)
+        // "P2" over his head, or what his button does where he stands ("P2: CRAFT?").
+        val t = if (homeShop || plushBook || monMenu || homeCraft || decorating) null else hereTarget(lugoHomeX)
+        if (t == null) gfx.shadowText("P2", lx, feet - 31f + (if (babyMode) 9f else 0f), 7f, LugoArt.GREEN, 1)
+        else gfx.shadowText("P2: $t?", lx, Homes.FLOOR_Y + 22 + sin(time * 5 + 1f) * 1.5f, 8f, 0xFF9CF0A8.toInt(), 1)
+    }
+
+    /** Player 2's news ("LUGO JOINED!"), and the bar while SELECT is held to leave: on every screen. */
+    private fun renderP2Note(gfx: Gfx) {
+        if (p2NoteT > 0f) {
+            val w = p2Note.length * 5.6f + 20f
+            val a = (min(1f, p2NoteT / 0.4f) * 255).toInt()
+            gfx.rect(viewW / 2 - w / 2, 58f, w, 18f, argb(a * 13 / 16, 0x0E3A16))
+            gfx.rect(viewW / 2 - w / 2, 58f, w, 2f, argb(a, LugoArt.GREEN))
+            gfx.text(p2Note, viewW / 2, 71f, 9f, argb(a, 0xFFFFFF), 1)
+        }
+        if (p2Joined && p2.selectT > 0.15f) {
+            val k = (p2.selectT / LEAVE_HOLD).coerceIn(0f, 1f)
+            gfx.rect(viewW / 2 - 50f, 80f, 100f, 14f, 0xCC0E3A16.toInt())
+            gfx.rect(viewW / 2 - 48f, 90f, 96f * k, 2f, LugoArt.GREEN)
+            gfx.text("LUGO IS LEAVING...", viewW / 2, 89f, 7f, white, 1)
+        }
+    }
+
+    internal fun p2NoteForTest() = if (p2NoteT > 0f) p2Note else ""
+    internal fun craftCursorForTest() = craftCursor
+    internal fun craftTabForTest() = craftTab
+    internal fun lugoHomeXForTest() = lugoHomeX
+    internal fun setLugoHomeXForTest(x: Float) { lugoHomeX = x }
+    internal fun homeXForTest() = homeX
+    internal fun setHomeXForTest(x: Float) { homeX = x }
+    internal fun camLockForTest(x: Float?) { camLock = x }
+    internal fun powerForTest(p: Power) { power = p; flowerLevel[p.ordinal] = maxOf(1, flowerLevel[p.ordinal]) }
+    internal fun starForTest(t: Float) { starT = t }
+    internal fun fullHeartsForTest() { hearts = MAX_HEARTS }
 
     // ======================================================================== Partner, frog and bosses
 
@@ -4572,14 +5074,21 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     /** The camera glides after the leader (see [LevelCamera]); boss arenas hold it still while they're locked. */
     private fun updateCamera(dt: Float) {
         val l = leader
-        camera.update(dt, l.x, l.w, viewW, level.w * TILE - viewW, camLock)
+        if (lugoIn) {
+            // Two players: the camera keeps both on the screen (it follows the middle of the pair).
+            val left = min(l.x, lugo.x)
+            camera.update(dt, left, max(l.x + l.w, lugo.x + lugo.w) - left, viewW, level.w * TILE - viewW, camLock)
+        } else camera.update(dt, l.x, l.w, viewW, level.w * TILE - viewW, camLock)
         camX = camera.x
     }
 
     /** Puts the camera right on the leader with no glide (a level starting, going in or out of a bonus room). */
     private fun snapCamera() {
         val l = leader
-        camera.snap(l.x, l.w, l.facing, viewW, level.w * TILE - viewW, camLock)
+        if (lugoIn) {
+            val left = min(l.x, lugo.x)
+            camera.snap(left, max(l.x + l.w, lugo.x + lugo.w) - left, l.facing, viewW, level.w * TILE - viewW, camLock)
+        } else camera.snap(l.x, l.w, l.facing, viewW, level.w * TILE - viewW, camLock)
         camX = camera.x
     }
 
@@ -4718,6 +5227,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         renderScreen(gfx, drawWorld)
         // The circle wipe goes over everything (in Team Up! 3D too: it's drawn with the HUD, on top of the 3D level).
         renderIris(gfx, drawWorld)
+        renderP2Note(gfx)
     }
 
     private fun renderScreen(gfx: Gfx, drawWorld: Boolean) {
@@ -4819,8 +5329,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     gfx.rect(viewW / 2 - 80, 200f, 160f, 26f, 0xFF1A2A6A.toInt())
                     gfx.rect(viewW / 2 - 78, 202f, 156f, 22f, 0xFF2E6BE6.toInt())
                     gfx.text("SAVE & EXIT TO MAP", viewW / 2, 217f, 9f, white, 1)
+                    if (p2Joined) {
+                        gfx.rect(viewW / 2 - 80, PAUSE_LEAVE_Y, 160f, 24f, 0xFF0E5A1E.toInt())
+                        gfx.rect(viewW / 2 - 78, PAUSE_LEAVE_Y + 2, 156f, 20f, LugoArt.GREEN)
+                        gfx.text("PLAYER 2: LEAVE", viewW / 2, PAUSE_LEAVE_Y + 15, 9f, white, 1)
+                    }
                     if (padConnected) {
-                        val cy = 136f + pauseCursor * 32f
+                        val cy = if (pauseCursor == 3) PAUSE_LEAVE_Y + 1f else 136f + pauseCursor * 32f
                         gfx.rect(viewW / 2 - 84, cy - 3, 4f, 32f, 0xFFFFD21F.toInt())
                         gfx.rect(viewW / 2 + 80, cy - 3, 4f, 32f, 0xFFFFD21F.toInt())
                     }
@@ -4938,6 +5453,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         // Dust and bubbles go behind the team, so a landing puff never covers their legs.
         puffs.drawBehind(gfx, ox, mark)
         for (h in followers) { mark(h); h.draw(this, gfx, ox) }
+        if (lugoIn) { mark(lugo); lugo.draw(this, gfx, ox) }
         mark(leader)
         leader.draw(this, gfx, ox)
         if (shieldType != Shield.NONE) {
@@ -4966,6 +5482,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (state == State.PLAY) {
             val ay = l.y - 10 + sin(time * 6) * 1.5f
             gfx.poly(floatArrayOf(l.cx + ox - 4, l.cx + ox + 4, l.cx + ox), floatArrayOf(ay, ay, ay + 5), white)
+            // LUGO's arrow is green (he's a little taller, so it's a little higher).
+            if (lugoIn) {
+                val gy = lugo.y - 13 + sin(time * 6 + 1.5f) * 1.5f
+                gfx.poly(floatArrayOf(lugo.cx + ox - 4, lugo.cx + ox + 4, lugo.cx + ox), floatArrayOf(gy, gy, gy + 5), LugoArt.GREEN)
+            }
         }
     }
 
@@ -5180,7 +5701,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             val bob = abs(sin(time * 5)) * 3f
             val blockyOut = if (state == State.INTRO) mapBlocky else heroOut == Who.BLOCKY
             val hero = if (blockyOut) TeamArt.blocky(power, false) else TeamArt.rocco(power, 0)
-            PowerArt.box(gfx, hero, px - 6, py - 34 - bob, 12f, 18f)
+            // With player 2, LUGO stands next to him.
+            PowerArt.box(gfx, hero, if (p2Joined) px - 12 else px - 6, py - 34 - bob, 12f, 18f)
+            if (p2Joined) PowerArt.box(gfx, LugoArt.lugo(power, 0), px + 1, py - 34 - abs(sin(time * 5 + 0.8f)) * 3f, 12f, 18f, flipX = true)
         }
         // Top bar
         gfx.rect(0f, 0f, viewW, 24f, 0xCC1A1008.toInt())
@@ -5237,8 +5760,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         homeShop = false
         monMenu = false
         plushBook = false
+        homeCraft = false
         homeX = Homes.DOOR_X + 40f
         homeFacing = 1
+        lugoHomeX = homeX + 26f
+        lugoHomeFacing = 1
         mapSel = -1
         setState(State.HOME)
         sfx(Sound.PORTAL)
@@ -5247,6 +5773,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     private fun leaveHome() {
         homeShop = false
+        homeCraft = false
         monMenu = false
         plushBook = false
         particles.removeAll { it is FloatText }
@@ -5255,9 +5782,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         goToMap(unlocked - 1)
     }
 
-    /** What's in front of you in the house, for the action button. */
-    private fun homeTarget(): String? {
-        val x = homeX
+    /** What's in front of you in the house (standing at [x]), for the action button. */
+    private fun homeTarget(x: Float = homeX): String? {
         val upstairs = houseFloors > homeFloor + 1 && x >= Homes.STAIRS_X + 2f
         fun near(f: Furniture) = hasFurniture(f) && furnFloor(f) == homeFloor && x in (furnX(f) - 8f)..(furnX(f) + Homes.width(f) + 8f)
         if (x < Homes.DOOR_X + 36f) return if (homeFloor == 0) (if (carrying != null) null else "EXIT") else "DOWNSTAIRS"
@@ -5279,6 +5805,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             near(Furniture.TV) || near(Furniture.MOVIE_SCREEN) -> "MOVIES"
             near(Furniture.DRUM_SET) -> "DRUMS"
             near(Furniture.CANDY_MACHINE) -> "CANDY"
+            // The crafting table (furniture put down in front of it comes first).
+            homeFloor == 0 && x in (Homes.CRAFT_X - 6f)..(Homes.CRAFT_X + 32f) -> "CRAFT"
             x in Homes.SHELF_X..(Homes.SHELF_X + 210f) && !near(Furniture.TV) -> "LOOK"
             else -> null
         }
@@ -5633,6 +6161,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         when (what) {
             "EXIT" -> leaveHome()
             "SHOP" -> { homeShop = true; sfx(Sound.KICK) }
+            "CRAFT" -> { homeCraft = true; craftCursor = 0; pendingPick = null; sfx(Sound.BUMP) }
             "SLEEP" -> sleepAtHome()
             "LOOK" -> { plushBook = true; sfx(Sound.KICK) }
             "PLAY" -> playClaw()
@@ -6514,10 +7043,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun updateHome(dt: Float, tapped: Boolean, close: Boolean, actionE: Boolean) {
         if (carver != null) { updateCarving(dt, tapped, close); return }
         if (close) {
-            when { home3d -> exit3d(); housePicker -> housePicker = false; theater -> theater = false; elevatorMenu -> elevatorMenu = false; building -> toggleBuild(); inGarden -> leaveGarden(); onRoof && !homeShop -> leaveRoof(); monMenu && gamePick -> gamePick = false; monMenu && monSwitch -> monSwitch = false; monMenu -> monMenu = false; homeShop -> homeShop = false; plushBook -> plushBook = false; else -> leaveHome() }
+            when { homeCraft -> closeCraft(); home3d -> exit3d(); housePicker -> housePicker = false; theater -> theater = false; elevatorMenu -> elevatorMenu = false; building -> toggleBuild(); inGarden -> leaveGarden(); onRoof && !homeShop -> leaveRoof(); monMenu && gamePick -> gamePick = false; monMenu && monSwitch -> monSwitch = false; monMenu -> monMenu = false; homeShop -> homeShop = false; plushBook -> plushBook = false; else -> leaveHome() }
             return
         }
         if (homeHopT > 0f) homeHopT -= dt
+        // The crafting table at home (either player can pick and make things).
+        if (homeCraft) { padCraft(); updateCraft(tapped, nav.b, 0); return }
         if (monMenu) { updateMonMenu(dt, tapped); return }
         if (elevatorMenu) { updateElevator(tapped); return }
         if (theater) { updateTheater(tapped); return }
@@ -6547,7 +7078,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (input.tapX in (viewW - 254f)..(viewW - 216f)) { toggleBuild(); return }
         }
         if (building) { updateBuild(dt, tapped, actionE); return }
-        if (nav.a) { homeAction(homeTarget()); return }
+        if (lugoAtHome(dt, Homes.DOOR_X + 4f, Homes.ROOM_W - 20f)) return
+        if (nav.a1) { homeAction(homeTarget()); return }
         // Walk around the room.
         val speed = 110f
         if (input.left) { homeX -= speed * dt; homeFacing = -1; homeAnim += dt }
@@ -6601,12 +7133,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         sfx(Sound.KICK)
     }
 
-    private fun roofTarget(): String? = when {
-        decorating -> if (carryingDecor != null) "PLACE" else if (decorAt(homeX) != null) "MOVE" else null
-        homeX >= Homes.STAIRS_X - 10f -> "DOWNSTAIRS"
-        houseFloors < Homes.MAX_FLOORS && homeX in (Roof.SIGN_X - 30f)..(Roof.SIGN_X + 30f) -> "BUILD STAIRS"
-        homeX < Roof.SCOPE_X + 34f -> "TELESCOPE"
-        else -> yardTarget(homeX, Decor.ROOF)
+    private fun roofTarget(x: Float = homeX): String? = when {
+        decorating -> if (carryingDecor != null) "PLACE" else if (decorAt(x) != null) "MOVE" else null
+        x >= Homes.STAIRS_X - 10f -> "DOWNSTAIRS"
+        houseFloors < Homes.MAX_FLOORS && x in (Roof.SIGN_X - 30f)..(Roof.SIGN_X + 30f) -> "BUILD STAIRS"
+        x < Roof.SCOPE_X + 34f -> "TELESCOPE"
+        else -> yardTarget(x, Decor.ROOF)
     }
 
     private fun roofAction(t: String?) {
@@ -6637,7 +7169,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (input.tapX in (viewW - 122f)..(viewW - 88f)) { enter3d(); return }
             if (input.tapX in (viewW - 214f)..(viewW - 180f)) { homeShop = true; shopTab = SHOP_TABS.indexOf("YARD"); shopPage = 0; sfx(Sound.KICK); return }
         }
-        if (nav.a) { roofAction(roofTarget()); return }
+        if (lugoAtHome(dt, Homes.DOOR_X + 14f, Homes.ROOM_W - 20f)) return
+        if (nav.a1) { roofAction(roofTarget()); return }
         val speed = 110f
         if (input.left) { homeX -= speed * dt; homeFacing = -1; homeAnim += dt }
         if (input.right) { homeX += speed * dt; homeFacing = 1; homeAnim += dt }
@@ -6660,15 +7193,15 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     }
 
     /** What the action button does where you're standing (in the house or the garden). */
-    private fun hereTarget(): String? = if (inGarden) gardenTarget() else if (onRoof) roofTarget() else homeTarget()
+    private fun hereTarget(x: Float = homeX): String? = if (inGarden) gardenTarget(x) else if (onRoof) roofTarget(x) else homeTarget(x)
 
     /** What the action button does in the garden or backyard. */
-    private fun gardenTarget(): String? = when {
-        decorating -> if (carryingDecor != null) "PLACE" else if (decorAt(homeX) != null) "MOVE" else null
-        homeX in Pumpkins.TABLE_X..(Pumpkins.TABLE_X + Pumpkins.TABLE_W) -> "CARVE"
-        lanternAt(homeX) != null -> if (removeArmT > 0f && removeArm === lanternAt(homeX)) "REMOVE!" else "PUMPKIN"
-        homeX >= Garden.YARD_X -> yardTarget(homeX)
-        else -> garden.target(homeX)
+    private fun gardenTarget(x: Float = homeX): String? = when {
+        decorating -> if (carryingDecor != null) "PLACE" else if (decorAt(x) != null) "MOVE" else null
+        x in Pumpkins.TABLE_X..(Pumpkins.TABLE_X + Pumpkins.TABLE_W) -> "CARVE"
+        lanternAt(x) != null -> if (removeArmT > 0f && removeArm === lanternAt(x)) "REMOVE!" else "PUMPKIN"
+        x >= Garden.YARD_X -> yardTarget(x)
+        else -> garden.target(x)
     }
 
     private fun gardenAction(t: String?) {
@@ -6766,7 +7299,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             if (input.tapX > viewW - 84f) { toggleDecorate(); return }
             if (input.tapX in (viewW - 214f)..(viewW - 180f)) { homeShop = true; shopTab = SHOP_TABS.indexOf("YARD"); shopPage = 0; sfx(Sound.KICK); return }
         }
-        if (nav.a) { gardenAction(gardenTarget()); return }
+        if (lugoAtHome(dt, Garden.DOOR_X + 4f, Garden.WIDTH - 20f)) return
+        if (nav.a1) { gardenAction(gardenTarget()); return }
         val speed = 110f
         if (input.left) { homeX -= speed * dt; homeFacing = -1; homeAnim += dt }
         if (input.right) { homeX += speed * dt; homeFacing = 1; homeAnim += dt }
@@ -6908,8 +7442,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
             else -> drawRoomInside(gfx, ox)
         }
-        // You (and your Pokemon) walking around.
+        // You (and your Pokemon) walking around, and LUGO when player 2 plays.
         drawHomeHero(gfx, ox)
+        if (p2Joined) drawHomeLugo(gfx, ox)
         val target = hereTarget()
         if (target != null && !homeShop && !plushBook && !monMenu) {
             val what = if (inGarden && target == "PLANT") "PLANT ${garden.seed.label}" else target
@@ -6947,9 +7482,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         // Controls: walk left/right, and the action button.
         TeamControls.layout(viewW)
         carver?.let { it.draw(gfx, viewW, VIEW_H, time, padConnected && !input.touching); renderHomeToast(gfx); return }
-        if (!homeShop && !plushBook && !monMenu && !elevatorMenu && !theater) TeamControls.drawHome(gfx, input, if (building) "BUILD" else target ?: "", time)
+        if (!homeShop && !plushBook && !monMenu && !elevatorMenu && !theater && !homeCraft) TeamControls.drawHome(gfx, input, if (building) "BUILD" else target ?: "", time)
         if (building && !homeShop) renderBuildPalette(gfx)
         if (homeShop) renderShop(gfx)
+        if (homeCraft) renderCraft(gfx)
         if (housePicker) renderHousePicker(gfx)
         if (monMenu) renderMonMenu(gfx)
         if (plushBook) renderPlushBook(gfx, true)
@@ -6967,6 +7503,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         else if (houseFloors > homeFloor + 1) Homes.drawStairs(gfx, ox + Homes.STAIRS_X - 4f, true)
         else Roof.drawLadderUp(gfx, ox + Homes.STAIRS_X - 4f, Homes.FLOOR_Y)
         if (homeFloor == 0) Homes.drawShop(this, gfx, ox + Homes.SHOP_X, time)
+        if (homeFloor == 0) Homes.drawCraftTable(gfx, ox + Homes.CRAFT_X)
         // Rugs first, then everything else, each wherever it was put.
         for (layerPass in listOf(2, 1, 0)) for (f in Furniture.entries) {
             if (Homes.layer(f) != layerPass || !hasFurniture(f) || furnFloor(f) != homeFloor || f == carrying) continue
@@ -7753,6 +8290,13 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
             gfx.shadowText("AIR", 8f + n * 10f + 2, 41f, 7f, if (air < 8f && (time * 4).toInt() % 2 == 0) 0xFFFF6060.toInt() else white)
         }
+        if (p2Joined) {
+            // Player 2's tag: a little LUGO and P2.
+            val tx = viewW - 128f
+            gfx.rect(tx, 32f, 50f, 12f, 0x88000000.toInt())
+            gfx.sprite(LugoArt.lugo(Power.NONE, 0), tx + 2f, 32.5f, w = 6f, h = 10.8f)
+            gfx.shadowText("P2 LUGO", tx + 10f, 41.5f, 7f, LugoArt.GREEN)
+        }
         val b = boss
         if (b != null && !bossDone && (b !is KragJr || b.engaged)) {
             if (b is KingKrag && b.inBones) {
@@ -7852,14 +8396,17 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 gfx.text("$n", cx + 12, y + 17, 7f, if (inventory[o.ordinal] >= n) 0xFF1E5A1E.toInt() else 0xFF8A1010.toInt())
             }
             val bx = px + pw - 52
+            // (At home, what's used right away in a level says so.)
+            val levelOnly = homeCraft && r.kind in NOT_AT_HOME
             val color = when {
-                !r.enabled -> 0xFF8A7A6A.toInt()
+                !r.enabled || levelOnly -> 0xFF8A7A6A.toInt()
                 r.button == "EQUIP" -> 0xFF2E6BE6.toInt()
                 else -> 0xFF2EB84A.toInt()
             }
             gfx.rect(bx, y + 4, 46f, 19f, 0xFF2A1808.toInt())
             gfx.rect(bx + 1.5f, y + 5.5f, 43f, 16f, color)
-            gfx.text(r.button, bx + 23, y + 17, 8f, white, 1)
+            if (levelOnly) gfx.text("IN A LEVEL", bx + 23, y + 16.5f, 5.5f, white, 1)
+            else gfx.text(r.button, bx + 23, y + 17, 8f, white, 1)
             gfx.text("${i + 1}", px + 2, y + 9, 5f, 0x88000000.toInt())
         }
     }

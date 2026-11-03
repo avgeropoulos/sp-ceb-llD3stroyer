@@ -277,7 +277,8 @@ enum class Shield(val label: String, val costs: List<Pair<Ore, Int>>, val durabi
     OBSIDIAN("OBSIDIAN SHIELD", listOf(Ore.OBSIDIAN to 7, Ore.DIAMOND to 3), 6, 0xFF3A2460.toInt(), 0xFFC890FF.toInt()),
 }
 
-enum class Who { ROCCO, BLOCKY, MON }
+/** LUGO (player 2) comes last: new ones always go at the end. */
+enum class Who { ROCCO, BLOCKY, MON, LUGO }
 
 abstract class Thing(x: Float, y: Float, w: Float, h: Float) : Body(x, y, w, h) {
     var removed = false
@@ -347,25 +348,29 @@ class Hero(val who: Who, x: Float, y: Float) :
         Who.ROCCO -> "ROCCO"
         Who.BLOCKY -> "BLOCKY"
         Who.MON -> mon.label
+        Who.LUGO -> "LUGO"
     }
 
     val color get() = when (who) {
         Who.ROCCO -> 0xFFE52521.toInt()
         Who.BLOCKY -> 0xFF2AA7A7.toInt()
         Who.MON -> mon.color
+        Who.LUGO -> LugoArt.GREEN
     }
 
     val speed get() = when (who) {
         Who.ROCCO -> 120f
         Who.BLOCKY -> 108f
         Who.MON -> when (mon.base) { Mon.SPARKY, Mon.EMBER -> 128f; Mon.BLAZE, Mon.MYSTIC, Mon.SPOOKY, Mon.LUGIA -> 115f; else -> 100f }
+        Who.LUGO -> 116f
     }
 
-    /** Rocco jumps higher; Blocky is the strong one. */
+    /** Rocco jumps higher; Blocky is the strong one; LUGO jumps highest of all (like his look-alike). */
     val jumpV get() = when (who) {
         Who.ROCCO -> -335f
         Who.BLOCKY -> -305f
         Who.MON -> when (mon.base) { Mon.SPARKY, Mon.EMBER, Mon.MYSTIC -> -340f; Mon.BLAZE, Mon.PUNCHO, Mon.LUGIA -> -310f; else -> -295f }
+        Who.LUGO -> -352f
     }
 
     /** Springs [stretch] toward how he's moving: stretched going up fast, normal on the ground. */
@@ -394,6 +399,7 @@ class Hero(val who: Who, x: Float, y: Float) :
     fun drawStretch(g: TeamGame): Float {
         if (who == Who.ROCCO && (crouching || slamming || shellSpin || (flipT > 0 && !onGround) || (longJumping && !onGround) ||
                 g.dino != null || g.megaT > 0f || g.capture != null)) return 0f
+        if (who == Who.LUGO && (crouching || slamming || (flipT > 0 && !onGround) || (longJumping && !onGround))) return 0f
         return if (abs(stretch) < 0.005f) 0f else stretch
     }
 
@@ -416,20 +422,25 @@ class Hero(val who: Who, x: Float, y: Float) :
 
     private fun drawSized(g: TeamGame, gfx: Gfx, ox: Float) {
         // Rocco is drawn a little shorter than his box, so he isn't taller than everybody else.
-        val small = who == Who.ROCCO && !mini && g.megaT <= 0f && g.capture == null && g.dino == null
+        val small = (who == Who.ROCCO && !mini && g.megaT <= 0f && g.capture == null && g.dino == null) || who == Who.LUGO
         val base = if (small) ScaledGfx(gfx, ROCCO_SCALE, (cx + ox) * (1 - ROCCO_SCALE), bottom * (1 - ROCCO_SCALE)) else gfx
         if (!g.babyMode || mini || (who == Who.ROCCO && (g.megaT > 0f || g.capture != null))) { drawBody(g, base, ox); return }
         // Baby time (the BABY MACHINE at home): little, with a bonnet and a pacifier.
         drawBody(g, Baby.shrink(base, cx + ox, bottom), ox)
-        if (!shellSpin && !crouching && !(who == Who.ROCCO && g.dino != null) && !(this === g.leader && g.invuln > 0 && g.starT <= 0 && (g.invuln * 20).toInt() % 2 == 0)) {
+        if (!shellSpin && !crouching && !(who == Who.ROCCO && g.dino != null) && !flickers(g)) {
             // Drill Rocco's drill is his hat: a bonnet would hide it.
-            Baby.dress(gfx, cx + ox, bottom, facing, who == Who.MON, bonnet = who == Who.BLOCKY || (who == Who.ROCCO && g.power != Power.DRILL))
+            Baby.dress(gfx, cx + ox, bottom, facing, who == Who.MON, bonnet = who == Who.BLOCKY || who == Who.LUGO || (who == Who.ROCCO && g.power != Power.DRILL))
         }
     }
 
+    /** Blinking for a moment after a hit (the leader, or LUGO after his own hit). */
+    private fun flickers(g: TeamGame): Boolean {
+        val t = if (this === g.leader) g.invuln else if (this === g.lugo) g.lugoInvuln else 0f
+        return t > 0 && g.starT <= 0 && (t * 20).toInt() % 2 == 0
+    }
+
     private fun drawBody(g: TeamGame, gfx: Gfx, ox: Float) {
-        val flicker = this === g.leader && g.invuln > 0 && g.starT <= 0 && (g.invuln * 20).toInt() % 2 == 0
-        if (flicker) return
+        if (flickers(g)) return
         val walking = onGround && abs(vx) > 10 && (anim * 10).toInt() % 2 == 0
         val px = x - 2 + ox
         val py = bottom - 24
@@ -549,6 +560,29 @@ class Hero(val who: Who, x: Float, y: Float) :
                 }
             }
             Who.MON -> TeamArt.mon(gfx, mon, cx + ox, bottom, g.time + x * 0.01f, facing, swing > 0 || g.superFlash > 0, walking)
+            Who.LUGO -> {
+                // Rocco's poses with LUGO's (taller) pictures: [PowerArt.box] lets the extra height go up.
+                fun put(s: Sprite, x: Float, y: Float, w: Float, h: Float, flipX: Boolean, flipY: Boolean = false) =
+                    PowerArt.box(gfx, s, x, y, w, h, flipX, flipY)
+                val flip = facing < 0
+                when {
+                    crouching -> put(LugoArt.lugo(g.power, 0), px, bottom - 15, 16f, 15f, flip)
+                    slamming -> {
+                        put(LugoArt.lugo(g.power, 2), px, py + 4, 16f, 20f, (anim * 20).toInt() % 2 == 0)
+                        if (slamPause <= 0) for (i in 0 until 3) gfx.rect(px + 2 + i * 5, py - 10, 1.5f, 10f, 0xAAFFFFFF.toInt())
+                    }
+                    flipT > 0 && !onGround -> {
+                        val spin = (flipT * 24).toInt() % 4
+                        put(LugoArt.lugo(g.power, 2), px, py, 16f, 24f, spin >= 2, spin == 1 || spin == 2)
+                    }
+                    longJumping && !onGround -> {
+                        put(LugoArt.lugo(g.power, 2), px - 3, py + 6, 22f, 18f, flip)
+                        gfx.rect(px - facing * 10 + 4, py + 14, 8f, 1.5f, 0x99FFFFFF.toInt())
+                    }
+                    else -> put(LugoArt.lugo(g.power, if (!onGround) 2 else if (walking) 1 else 0), px, py, 16f, 24f, flip)
+                }
+                if (swing > 0) gfx.oval(cx + facing * 8 + ox - 2, y + 11, 4f, 4f, 0xFFFFC08A.toInt())
+            }
         }
         Style.hat(gfx, outfitHat, cx + ox, py, 12f, facing, g.time)
         if (who == Who.MON) Style.drawCostume(gfx, mon, cx + ox, bottom, facing, g.time)

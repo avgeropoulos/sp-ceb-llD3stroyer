@@ -540,6 +540,33 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
 
 ![Controller setup](docs/teamup-controller.png)
 
+### Two players: LUGO joins in
+
+Got two controllers (like two PlayStation controllers on a tablet)? The first controller you use is
+**player 1** (Rocco or Blocky, with the Pokemon, just like before). Press **any button on a second
+controller** and **LUGO**, Rocco's taller brother (green cap and shirt, blue overalls, a moustache), jumps
+in: **"PLAYER 2: LUGO JOINED!"** It works anywhere: the title, the map, the house or in a level.
+
+* **In a level** LUGO runs, sprints, jumps (higher and floatier than Rocco: hold A to drift down
+  slowly), double jumps, squats, butt slams, long jumps (R) and throws the team's flower power with B (or
+  punches). He stomps bad guys, hits ? blocks, grabs coins, reaches checkpoints and can touch the flag to
+  clear the level. A green arrow and a **P2 LUGO** tag show which one he is.
+* **The hearts are shared.** A bad guy touching LUGO or LUGO falling in a pit costs one of the team's
+  hearts (pits pop him back next to player 1).
+* **One screen for both**: the camera follows the middle of the two players. If they get too far apart,
+  the one behind is pulled to the front (LUGO pops back next to player 1, or player 1 is pulled up to LUGO).
+  In a minecart or a cannon LUGO rides along, and hops back out when player 1 lands.
+* **At home** LUGO walks around too, and his button uses whatever he's standing at: the **SHOP**, the new
+  **CRAFTING TABLE** (next to the shop: make flowers, weapons, armor and more together), the Pokemon mat,
+  the stairs... Both controllers can move around every menu and pick things (crafting, the shop, the
+  sticker book, the map...).
+* **Leaving**: hold **SELECT** (or pick **PLAYER 2: LEAVE** on the pause screen). Press **START** on the
+  second controller to come back. Unplugging player 2's controller sends LUGO home too.
+
+![Two players: Rocco and LUGO](docs/teamup-two-players.png)
+
+![LUGO at home, next to the crafting table](docs/teamup-two-players-home.png)
+
 ### Snappy controls
 
 * The game draws exactly one picture per screen refresh, right after reading the buttons, so presses

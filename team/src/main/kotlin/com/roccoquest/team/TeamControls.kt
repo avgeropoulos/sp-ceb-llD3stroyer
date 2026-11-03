@@ -26,6 +26,29 @@ class TeamInput {
         hit
     }
 
+    /** Forgets every remembered press. */
+    fun forgetPresses() = synchronized(this) { pressed = 0 }
+
+    /**
+     * True if a button (not a direction: a stick nudge doesn't count) went down since the last check, and
+     * forgets every remembered press. [startOnly]: only START counts. Player 2 joins this way.
+     */
+    fun takeJoinPress(startOnly: Boolean): Boolean = synchronized(this) {
+        val mask = if (startOnly) 1 shl B_PAUSE else ((1 shl 16) - 1) and DIRECTIONS.inv()
+        val hit = pressed and mask != 0
+        pressed = 0
+        hit
+    }
+
+    /** The controller went away: let go of everything it was holding. */
+    fun releaseAll() {
+        left = false; right = false; jump = false; action = false; down = false; up = false
+        swap = false; superMove = false; run = false; longJump = false; tnt = false; blackFlower = false
+        poseidon = false; craft = false; pause = false; musicToggle = false
+        tap = false
+        forgetPresses()
+    }
+
     @Volatile var left = false; set(v) { field = hold(B_LEFT, field, v) }
     @Volatile var right = false; set(v) { field = hold(B_RIGHT, field, v) }
     @Volatile var jump = false; set(v) { field = hold(B_JUMP, field, v) }
@@ -82,6 +105,7 @@ class TeamInput {
         const val B_LEFT = 12
         const val B_RIGHT = 13
         const val B_UP = 14
+        private const val DIRECTIONS = (1 shl B_LEFT) or (1 shl B_RIGHT) or (1 shl B_UP) or (1 shl B_DOWN)
     }
 }
 

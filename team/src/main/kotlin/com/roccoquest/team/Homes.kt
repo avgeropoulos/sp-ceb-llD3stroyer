@@ -570,6 +570,29 @@ object Homes {
     const val SHOP_X = 52f
     const val BED_X = 250f
     const val SHELF_X = 400f
+    /** The crafting table downstairs, between the shop and the Pokemon mat (both players can craft there). */
+    const val CRAFT_X = 134f
+
+    /** A crafting table like Blocky's: a wooden block with a grid on top and tools on the side. */
+    fun drawCraftTable(gfx: Gfx, x: Float) {
+        val fy = FLOOR_Y
+        val dark = 0xFF5A3A1A.toInt()
+        gfx.rect(x, fy - 24, 26f, 24f, dark)
+        gfx.rect(x + 1.5f, fy - 22.5f, 23f, 21f, 0xFFA8763E.toInt())
+        // Planks
+        for (i in 1..2) gfx.rect(x + 1.5f, fy - 22.5f + i * 7f, 23f, 1f, 0xFF8A5A2A.toInt())
+        // The top, with its 3 x 3 grid
+        gfx.rect(x - 1.5f, fy - 28, 29f, 5f, dark)
+        gfx.rect(x - 0.5f, fy - 27, 27f, 3f, 0xFFC8955A.toInt())
+        for (i in 1..2) gfx.rect(x - 0.5f + i * 9f, fy - 27, 1f, 3f, dark)
+        // A saw and a hammer hanging on the front
+        gfx.rect(x + 4, fy - 18, 2f, 6f, dark)
+        gfx.rect(x + 6, fy - 17, 7f, 3.5f, 0xFFC8CCD4.toInt())
+        for (i in 0 until 3) gfx.rect(x + 7 + i * 2f, fy - 13.5f, 1f, 1f, 0xFF8A8E96.toInt())
+        gfx.rect(x + 18, fy - 19, 2f, 12f, dark)
+        gfx.rect(x + 15, fy - 20, 8f, 4f, 0xFF8A8E96.toInt())
+        gfx.shadowText("CRAFT", x + 13, fy - 32, 7f, 0xFFFFD21F.toInt(), 1)
+    }
 
     fun drawDoor(gfx: Gfx, x: Float) {
         gfx.rect(x, FLOOR_Y - 56, 30f, 56f, 0xFF5A3A1A.toInt())

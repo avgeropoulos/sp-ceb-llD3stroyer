@@ -129,7 +129,7 @@ object TeamArt {
      * The Wonder power-ups have their own pictures: the elephant is wider and the drill sticks up over
      * Rocco's head, so draw those with [PowerArt.box] when the size matters.
      */
-    private fun roccoPlain(p: Power, frame: Int): Sprite = if (PowerUps.isWonder(p)) PowerArt.rocco(p, frame) else
+    internal fun roccoPlain(p: Power, frame: Int): Sprite = if (PowerUps.isWonder(p)) PowerArt.rocco(p, frame) else
         if (p == Power.THUNDER) thunder[frame] else if (p == Power.CRYSTAL) crystal[frame] else if (p == Power.GOLD) goldSuit[frame] else when (p) {
         Power.NONE -> arrayOf(Sprites.bigStand, Sprites.bigWalk, Sprites.bigJump)
         Power.FIRE -> arrayOf(Sprites.fireStand, Sprites.fireWalk, Sprites.fireJump)

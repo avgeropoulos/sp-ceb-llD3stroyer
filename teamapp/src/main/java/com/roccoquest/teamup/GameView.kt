@@ -2,6 +2,7 @@ package com.roccoquest.teamup
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.hardware.input.InputManager
 import android.os.Build
 import android.view.InputDevice
 import android.view.KeyEvent
@@ -11,6 +12,7 @@ import android.view.SurfaceView
 import com.roccoquest.game.Storage
 import com.roccoquest.game.VIEW_H
 import com.roccoquest.team.FrameClock
+import com.roccoquest.team.PadSticks
 import com.roccoquest.team.TeamControls
 import com.roccoquest.team.TeamGame
 import com.roccoquest.team.TeamInput
@@ -78,6 +80,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     fun release() {
         sound.release()
         updater.release()
+        try { inputManager?.unregisterInputDeviceListener(deviceListener) } catch (_: Exception) {}
     }
 
     private fun startLoop() {
@@ -227,19 +230,36 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
 
     /** Controller buttons for JUMP, THROW, SWITCH and SUPER (changeable on the CONTROLLER screen). */
     private val padKeys = IntArray(4)
-    private companion object {
-        const val STICK_ON = 0.35f
-        const val STICK_OFF = 0.25f
-    }
     private val defaultPadKeys = intArrayOf(
         KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BUTTON_X, KeyEvent.KEYCODE_BUTTON_Y,
     )
 
-    // Every way of pressing a direction: keyboard, D-pad buttons, the D-pad "hat", and the analog stick.
-    private var keyL = false; private var keyR = false; private var keyD = false; private var keyU = false
-    private var padL = false; private var padR = false; private var padD = false; private var padU = false
-    private var hatL = false; private var hatR = false; private var hatD = false; private var hatU = false
-    private var stickL = false; private var stickR = false; private var stickD = false; private var stickU = false
+    /**
+     * Every way of pressing a direction (keyboard, D-pad buttons, the D-pad "hat", the analog stick), for
+     * player 1 and player 2. Which controller is which player is [TeamGame.padSlots]' job (plain Kotlin).
+     */
+    private val sticks = arrayOf(PadSticks(input), PadSticks(game.input2))
+
+    /** Player 1's or player 2's buttons. */
+    private fun inputOf(player: Int): TeamInput = if (player == 0) input else game.input2
+
+    /** An unplugged controller frees its player's place and lets go of everything it held. */
+    private val inputManager = context.getSystemService(Context.INPUT_SERVICE) as? InputManager
+    private val deviceListener = object : InputManager.InputDeviceListener {
+        override fun onInputDeviceAdded(deviceId: Int) {}
+        override fun onInputDeviceChanged(deviceId: Int) {}
+        override fun onInputDeviceRemoved(deviceId: Int) {
+            val p = game.padSlots.removed(deviceId)
+            if (p >= 0) {
+                sticks[p].clear()
+                inputOf(p).releaseAll()
+            }
+        }
+    }
+
+    init {
+        try { inputManager?.registerInputDeviceListener(deviceListener, null) } catch (_: Exception) {}
+    }
 
     init {
         for (k in 0 until 4) padKeys[k] = prefs.getInt("pad$k", defaultPadKeys[k]).takeIf { it != 0 } ?: defaultPadKeys[k]
@@ -270,13 +290,6 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             (src and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK
     }
 
-    private fun refreshDirections() {
-        input.left = keyL || padL || hatL || stickL
-        input.right = keyR || padR || hatR || stickR
-        input.down = keyD || padD || hatD || stickD
-        input.up = keyU || padU || hatU || stickU
-    }
-
     /**
      * The activity hands every key straight to us (so the controller works even if Android thinks
      * something else has "focus"). Returns true if the game used the key.
@@ -290,9 +303,12 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         if (isController(event)) {
             game.padConnected = true
+            // The first controller used is player 1, a second one is player 2 (LUGO).
+            val player = game.padSlots.playerFor(event.deviceId)
+            val pin = inputOf(player)
             if (event.repeatCount == 0) game.padSaw(buttonName(keyCode))
             // The CONTROLLER screen is waiting for a button: remember it.
-            if (game.state == TeamGame.State.CONTROLS && game.padStep >= 0 && KeyEvent.isGamepadButton(keyCode) &&
+            if (player == 0 && game.state == TeamGame.State.CONTROLS && game.padStep >= 0 && KeyEvent.isGamepadButton(keyCode) &&
                 keyCode != KeyEvent.KEYCODE_BUTTON_START && keyCode != KeyEvent.KEYCODE_BUTTON_SELECT
             ) {
                 if (event.repeatCount == 0) {
@@ -303,11 +319,11 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
                 return true
             }
             if (event.repeatCount > 0) return true
-            if (!setPad(keyCode, true)) return super.onKeyDown(keyCode, event)
+            if (!setPad(keyCode, true, player)) return super.onKeyDown(keyCode, event)
             // Menus treat any button like a tap (at no particular spot).
-            input.tapX = -1f
-            input.tapY = -1f
-            input.tap = true
+            pin.tapX = -1f
+            pin.tapY = -1f
+            pin.tap = true
             return true
         }
         if (keyCode == KeyEvent.KEYCODE_0) {
@@ -326,7 +342,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
-        if (isController(event)) return setPad(keyCode, false) || super.onKeyUp(keyCode, event)
+        if (isController(event)) return setPad(keyCode, false, game.padSlots.playerFor(event.deviceId)) || super.onKeyUp(keyCode, event)
         return setKey(keyCode, false) || super.onKeyUp(keyCode, event)
     }
 
@@ -335,16 +351,18 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
      * was set on the CONTROLLER screen), + pause, - craft, L TNT, R long jump, ZL Black Flower,
      * ZR Poseidon, and pressing the left stick in to sprint.
      */
-    private fun setPad(keyCode: Int, down: Boolean): Boolean {
+    private fun setPad(keyCode: Int, down: Boolean, player: Int): Boolean {
+        val input = inputOf(player)
+        val s = sticks[player]
         when (keyCode) {
             padKeys[0] -> input.jump = down
             padKeys[1] -> input.action = down
             padKeys[2] -> input.swap = down
             padKeys[3] -> input.superMove = down
-            KeyEvent.KEYCODE_DPAD_LEFT -> { padL = down; refreshDirections() }
-            KeyEvent.KEYCODE_DPAD_RIGHT -> { padR = down; refreshDirections() }
-            KeyEvent.KEYCODE_DPAD_DOWN -> { padD = down; refreshDirections() }
-            KeyEvent.KEYCODE_DPAD_UP -> { padU = down; refreshDirections() }
+            KeyEvent.KEYCODE_DPAD_LEFT -> { s.padL = down; s.refresh() }
+            KeyEvent.KEYCODE_DPAD_RIGHT -> { s.padR = down; s.refresh() }
+            KeyEvent.KEYCODE_DPAD_DOWN -> { s.padD = down; s.refresh() }
+            KeyEvent.KEYCODE_DPAD_UP -> { s.padU = down; s.refresh() }
             KeyEvent.KEYCODE_BUTTON_START -> input.pause = down
             KeyEvent.KEYCODE_BUTTON_SELECT -> input.craft = down
             KeyEvent.KEYCODE_BUTTON_L1 -> input.tnt = down
@@ -359,9 +377,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     }
 
     /**
-     * The analog stick and the D-pad "hat" on controllers that send it that way. A direction turns on
-     * past [STICK_ON] and only turns off again below [STICK_OFF], so a stick resting near the edge
-     * doesn't flicker on and off.
+     * The analog stick and the D-pad "hat" on controllers that send it that way (see [PadSticks.stick]),
+     * for whichever player that controller belongs to.
      */
     override fun onGenericMotionEvent(event: MotionEvent): Boolean {
         if (event.isFromSource(InputDevice.SOURCE_CLASS_JOYSTICK) && event.actionMasked == MotionEvent.ACTION_MOVE) {
@@ -372,14 +389,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             val hy = event.getAxisValue(MotionEvent.AXIS_HAT_Y)
             game.stickX = if (kotlin.math.abs(hx) > 0.5f) hx else x
             game.stickY = if (kotlin.math.abs(hy) > 0.5f) hy else y
-            stickL = if (stickL) x < -STICK_OFF else x < -STICK_ON
-            stickR = if (stickR) x > STICK_OFF else x > STICK_ON
-            // Up and down need a firmer push, so running doesn't make Rocco duck by accident.
-            stickU = if (stickU) y < -STICK_OFF - 0.2f else y < -STICK_ON - 0.2f
-            stickD = if (stickD) y > STICK_OFF + 0.2f else y > STICK_ON + 0.2f
-            hatL = hx < -0.5f; hatR = hx > 0.5f
-            hatU = hy < -0.5f; hatD = hy > 0.5f
-            refreshDirections()
+            sticks[game.padSlots.playerFor(event.deviceId)].stick(x, y, hx, hy)
             return true
         }
         return super.onGenericMotionEvent(event)
@@ -388,9 +398,9 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     /** Keyboard support. */
     private fun setKey(keyCode: Int, down: Boolean): Boolean {
         when (keyCode) {
-            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_A -> { keyL = down; refreshDirections() }
-            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_D -> { keyR = down; refreshDirections() }
-            KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_S -> { keyD = down; refreshDirections() }
+            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_A -> { sticks[0].keyL = down; sticks[0].refresh() }
+            KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_D -> { sticks[0].keyR = down; sticks[0].refresh() }
+            KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_S -> { sticks[0].keyD = down; sticks[0].refresh() }
             KeyEvent.KEYCODE_Q, KeyEvent.KEYCODE_TAB -> input.swap = down
             KeyEvent.KEYCODE_C -> input.craft = down
             KeyEvent.KEYCODE_T -> input.tnt = down
@@ -400,7 +410,7 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             KeyEvent.KEYCODE_B -> input.blackFlower = down
             KeyEvent.KEYCODE_E, KeyEvent.KEYCODE_V -> input.superMove = down
             KeyEvent.KEYCODE_SPACE, KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_W,
-            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> { input.jump = down; keyU = down; refreshDirections() }
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> { input.jump = down; sticks[0].keyU = down; sticks[0].refresh() }
             KeyEvent.KEYCODE_X, KeyEvent.KEYCODE_J, KeyEvent.KEYCODE_CTRL_LEFT -> input.action = down
             KeyEvent.KEYCODE_P, KeyEvent.KEYCODE_ESCAPE -> input.pause = down
             KeyEvent.KEYCODE_M -> input.musicToggle = down

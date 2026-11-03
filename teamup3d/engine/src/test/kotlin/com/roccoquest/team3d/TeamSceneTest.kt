@@ -9,6 +9,7 @@ import com.roccoquest.game.VIEW_H
 import com.roccoquest.team.Dennis
 import com.roccoquest.team.HerculesArt
 import com.roccoquest.team.Levels
+import com.roccoquest.team.LugoArt
 import com.roccoquest.team.ChefKrag
 import com.roccoquest.team.Kingdoms
 import com.roccoquest.team.Tile
@@ -443,6 +444,34 @@ class TeamSceneTest {
             run(0.1f)
             shot(scene, "power-mega-${p.name.lowercase()}-3d")
         }
+    }
+
+    /**
+     * Two players in 3D: LUGO (player 2) is a puffy model like his brother, made once per picture (running about
+     * doesn't keep making new ones).
+     */
+    @Test fun twoPlayersIn3D() {
+        val scene = TeamScene().apply { voxelsPerFrame = Int.MAX_VALUE }
+        startPlaying(0)
+        game.foes.clear()
+        game.joinPlayer2()
+        run(1.2f)
+        val lugo = game.lugo
+        lugo.x = game.leader.x + 26f
+        lugo.facing = -1
+        run(0.3f)
+        val list = scene.build(game)
+        val frames = (0 until 3).map { Voxels.mesh(LugoArt.lugo(Power.NONE, it)) }
+        assertEquals(1, (0 until list.count).count { k -> frames.any { it === list.cmd(k).mesh } }, "LUGO is one model")
+        shot(scene, "two-player-3d")
+        closeUp(scene, "two-player-3d-closeup", game.leader.cx + 13f - game.worldCam, game.leader.cy, 90f, 60f)
+        // Running and jumping about for a while makes no new models.
+        val p2 = game.input2
+        repeat(120) { f -> p2.right = f % 60 < 40; p2.jump = f % 40 < 8; game.update(dt); scene.build(game) }
+        val before = Voxels.built
+        repeat(240) { f -> p2.right = f % 60 < 40; p2.left = f % 60 >= 40; p2.jump = f % 40 < 8; game.update(dt); scene.build(game) }
+        p2.right = false; p2.left = false; p2.jump = false
+        assertTrue(Voxels.built - before < 10, "made ${Voxels.built - before} new models while LUGO ran about")
     }
 
     /** A big close-up around ([cx], [cy]) (game pixels) of the 3D picture, to see small things. */

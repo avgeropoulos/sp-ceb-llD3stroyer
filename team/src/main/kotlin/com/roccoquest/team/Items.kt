@@ -23,7 +23,7 @@ import kotlin.random.Random
  */
 class Shot(
     x: Float, y: Float, private val dir: Int, val kind: Power, val damage: Int,
-    private val thrower: Hero, private var pierce: Int = 0, spread: Float = 0f,
+    val thrower: Hero, private var pierce: Int = 0, spread: Float = 0f,
 ) : Thing(x, y, 9f, 9f) {
     private var t = 0f
     private val hitAlready = HashSet<Foe>()
