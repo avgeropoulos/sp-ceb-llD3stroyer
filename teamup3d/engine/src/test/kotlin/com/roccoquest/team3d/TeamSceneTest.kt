@@ -106,7 +106,7 @@ class TeamSceneTest {
         input.tapX = 200f; input.tapY = 150f; input.tap = true
         game.update(dt)
         assertEquals(1, asked)
-        assertEquals(TeamGame.State.SLOTS, game.state, "tapping anywhere else still starts")
+        assertEquals(TeamGame.State.PLAYERS, game.state, "tapping anywhere else still starts (1 PLAYER or 2 PLAYERS first)")
         game.onUpdate = null
     }
 
@@ -454,6 +454,7 @@ class TeamSceneTest {
         val scene = TeamScene().apply { voxelsPerFrame = Int.MAX_VALUE }
         startPlaying(0)
         game.foes.clear()
+        game.setPlayers(true, byPad = true)
         game.joinPlayer2()
         run(1.2f)
         val lugo = game.lugo

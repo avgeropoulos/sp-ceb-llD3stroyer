@@ -570,8 +570,13 @@ object Homes {
     const val SHOP_X = 52f
     const val BED_X = 250f
     const val SHELF_X = 400f
-    /** The crafting table downstairs, between the shop and the Pokemon mat (both players can craft there). */
+    /**
+     * The crafting table downstairs (2 PLAYERS only), between the shop and the Pokemon mat if nothing stands
+     * there (see [TeamGame.craftX]); both players can craft there.
+     */
     const val CRAFT_X = 134f
+    /** How wide the crafting table is. */
+    const val CRAFT_W = 29f
 
     /** A crafting table like Blocky's: a wooden block with a grid on top and tools on the side. */
     fun drawCraftTable(gfx: Gfx, x: Float) {

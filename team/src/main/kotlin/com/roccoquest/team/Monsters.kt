@@ -532,7 +532,7 @@ class Crusher(x: Float, bottom: Float) : Foe(x - 4, bottom - 24, 24f, 24f, 1) {
     // It's solid stone: hitting it does nothing, and standing on it is safe.
     override fun hit(g: TeamGame, dmg: Int): Boolean { g.sfx(Sound.BUMP); return false }
     override fun stomp(g: TeamGame, stomper: Hero) { g.sfx(Sound.BUMP) }
-    override fun touch(g: TeamGame) { if (mode == 2 || g.leader.bottom > y + 6) g.hurt(this) }
+    override fun touch(g: TeamGame) { if (mode == 2 || g.toucher.bottom > y + 6) g.hurt(this) }
 
     override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
         val shake = if (mode == 1) sin(t * 80) * 1.5f else 0f

@@ -31,7 +31,7 @@ import kotlin.random.Random
  * and sleeping in the bed saves the game into one of three save slots.
  */
 class TeamGame(private val input: TeamInput, private val sound: SoundSink, private val storage: Storage = Storage.Memory()) {
-    enum class State { TITLE, SLOTS, PICK, INTRO, PLAY, CRAFT, TRADE, SLEEP, OUCH, CLEAR, STICKER, BOOK, VICTORY, HOME, MAP, CONTROLS, PARK, SCENE, GAMES }
+    enum class State { TITLE, SLOTS, PICK, INTRO, PLAY, CRAFT, TRADE, SLEEP, OUCH, CLEAR, STICKER, BOOK, VICTORY, HOME, MAP, CONTROLS, PARK, SCENE, GAMES, PLAYERS }
 
     companion object {
         const val MAX_HEARTS = 5
@@ -91,8 +91,12 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         const val BLACK_RANGE = 170f
         /** Seconds player 2 holds SELECT to send LUGO home. */
         const val LEAVE_HOLD = 1.5f
-        /** Where the pause screen's PLAYER 2: LEAVE button is (at the top, above PAUSED). */
+        /** Where the pause screen's 2 PLAYERS: ON/OFF button is (at the top, above PAUSED). */
         private const val PAUSE_LEAVE_Y = 50f
+        /** Global save key: the last 1 PLAYER (1) / 2 PLAYERS (2) choice (that card is picked first next time). */
+        const val PLAYERS_KEY = "players"
+        /** Where "PLAYER 2: PRESS A BUTTON" waits (under the HUD's top rows). */
+        private const val P2_WAIT_Y = 62f
         /** The two players can be this much less than a screen apart before the one behind is pulled along. */
         const val SPREAD_MARGIN = 40f
         /** LUGO holding JUMP falls no faster than this (he's floatier than Rocco). */
@@ -143,18 +147,28 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private val p2 = PlayerPad(input2)
     /** LUGO, player 2's hero: Rocco's taller brother. He's not one of [allHeroes] (those are player 1's team). */
     val lugo = Hero(Who.LUGO, 0f, 0f)
-    /** Player 2 is playing (pressed a button on a second controller). Not saved: a new start is just player 1. */
+    /**
+     * 2 PLAYERS was picked (on the 1 PLAYER / 2 PLAYERS screen or the pause screen). Off, it's exactly the
+     * one-player game: every controller is player 1 and LUGO never comes.
+     */
+    val twoPlayers get() = padSlots.twoPlayers
+    /** Player 2 is playing (2 PLAYERS is on and the second controller pressed a button). Not saved. */
     var p2Joined = false
         private set
-    /** Player 2 left on purpose: only START brings LUGO back (so a controller put down doesn't rejoin by itself). */
-    private var p2Left = false
     /** LUGO's own safe time after a hit (the hearts are shared). */
     var lugoInvuln = 0f
         private set
     /** LUGO is riding along with player 1 (in a minecart or a cannon): not out in the level for now. */
     private var lugoHidden = false
+    /** How long player 1 has been out of the cart or cannon while LUGO still waits to hop out. */
+    private var lugoHideT = 0f
     /** Set while a bad guy touches LUGO, so [hurt] knows it's him that got hit. */
     private var hurtBy: Hero? = null
+    /**
+     * Who a bad guy's [Foe.touch] is touching: LUGO while he's the one, else the leader (so a shell is kicked
+     * away from LUGO, and LUGO standing on a Crusher isn't hurt because of where player 1 is).
+     */
+    val toucher: Hero get() = hurtBy ?: leader
     /** "PLAYER 2: LUGO JOINED!" and friends, shown on every screen. */
     private var p2Note = ""
     private var p2NoteT = 0f
@@ -1404,8 +1418,9 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 stateT < 0.4f -> {}
                 craftE || (tapped && input.tapX > viewW - 112f && input.tapY < 28f) -> openControllerSetup()
                 tapped && onUpdate != null && input.tapX in 0f..UPDATE_W + 12f && input.tapY in 0f..28f -> onUpdate?.invoke()
-                tapped || num > 0 -> setState(State.SLOTS)
+                tapped || num > 0 -> openPlayersMenu()
             }
+            State.PLAYERS -> updatePlayersMenu(tapped, num)
             State.CONTROLS -> updateControls(tapped)
             State.SLOTS -> updateSlots(tapped, num)
             State.PICK -> updatePick(tapped, num)
@@ -1414,20 +1429,19 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                 if (pauseE) { paused = !paused; pauseCursor = 0 }
                 // Controller on the pause screen: up/down picks a button, A presses it, B resumes.
                 if (paused) {
-                    // (With player 2 there's a 4th button at the top: PLAYER 2: LEAVE.)
-                    val items = if (p2Joined) 4 else 3
+                    // (A 4th button at the top turns 2 PLAYERS on or off.)
+                    val items = 4
                     if (nav.up) pauseCursor = (pauseCursor + items - 1) % items
                     if (nav.down) pauseCursor = (pauseCursor + 1) % items
                     if (nav.b) paused = false
                     if (nav.a) when (pauseCursor) {
                         0 -> { setState(State.BOOK); return }
                         1 -> saveHere()
-                        3 -> { if (p2Joined) leavePlayer2(); pauseCursor = 0 }
+                        3 -> setPlayers(!twoPlayers, byPad = true)
                         else -> if (away == null) { saveAndExitToMap(); return } else toast("Finish the bonus room first!")
                     }
-                    if (p2Joined && tapped && input.tapY in PAUSE_LEAVE_Y..(PAUSE_LEAVE_Y + 24f) && abs(input.tapX - viewW / 2) < 80f) {
-                        leavePlayer2()
-                        pauseCursor = 0
+                    if (tapped && input.tapX >= 0f && input.tapY in PAUSE_LEAVE_Y..(PAUSE_LEAVE_Y + 24f) && abs(input.tapX - viewW / 2) < 80f) {
+                        setPlayers(!twoPlayers, byPad = false)
                     }
                 }
                 // The STICKER BOOK button on the pause screen...
@@ -1644,7 +1658,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (nav.left) { slotCursor = (slotCursor + SLOTS - 1) % SLOTS; sfx(Sound.KICK) }
         if (nav.right) { slotCursor = (slotCursor + 1) % SLOTS; sfx(Sound.KICK) }
         if (nav.a && stateT > 0.3f) { chooseSlot(slotCursor); return }
-        if (nav.b && stateT > 0.3f) { setState(State.TITLE); return }
+        if (nav.b && stateT > 0.3f) { openPlayersMenu(); return }
         if (!tapped || stateT < 0.3f) return
         val x = input.tapX
         val y = input.tapY
@@ -1682,6 +1696,73 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             }
             if (y in 60f..176f) chooseSlot(i)
         }
+    }
+
+    // ---------------------------------------------------------------- 1 PLAYER / 2 PLAYERS
+
+    /** 0: the 1 PLAYER card, 1: 2 PLAYERS. */
+    private var playersCursor = 0
+
+    /** After the title: 1 PLAYER or 2 PLAYERS (the last choice is picked to start with). */
+    private fun openPlayersMenu() {
+        playersCursor = if (storage.load(PLAYERS_KEY) == 2) 1 else 0
+        setState(State.PLAYERS)
+    }
+
+    private fun playersCardW() = min(150f, (viewW - 36f) / 2f)
+    internal fun playersCardX(i: Int) = viewW / 2 - playersCardW() - 6f + i * (playersCardW() + 12f)
+    private val playersCardY = 54f
+    private val playersCardH = 150f
+
+    private fun updatePlayersMenu(tapped: Boolean, num: Int) {
+        if (num == 1 || num == 2) { pickPlayers(num == 2, byPad = true); return }
+        if (nav.left || nav.right) { playersCursor = 1 - playersCursor; sfx(Sound.KICK) }
+        if (nav.a && stateT > 0.3f) { pickPlayers(playersCursor == 1, byPad = true); return }
+        if (nav.b && stateT > 0.3f) { setState(State.TITLE); return }
+        // (A controller's button is a tap at no particular spot: only a real finger picks a card here.)
+        if (!tapped || stateT < 0.3f || input.tapX < 0f) return
+        for (i in 0..1) {
+            val x = playersCardX(i)
+            if (input.tapX in x..(x + playersCardW()) && input.tapY in playersCardY..(playersCardY + playersCardH)) {
+                pickPlayers(i == 1, byPad = false)
+                return
+            }
+        }
+    }
+
+    private fun pickPlayers(two: Boolean, byPad: Boolean) {
+        playersCursor = if (two) 1 else 0
+        setPlayers(two, byPad)
+        // (No "2 PLAYERS!" banner over the save files: the map says what player 2 has to do.)
+        p2NoteT = 0f
+        sfx(Sound.COIN)
+        setState(State.SLOTS)
+    }
+
+    private fun renderPlayersMenu(gfx: Gfx) {
+        gfx.rect(0f, 0f, viewW, VIEW_H, 0xFF1A2A4A.toInt())
+        gfx.shadowText("HOW MANY PLAYERS?", viewW / 2, 38f, 14f, 0xFFFFD21F.toInt(), 1)
+        val w = playersCardW()
+        val y = playersCardY
+        val h = playersCardH
+        for (i in 0..1) {
+            val x = playersCardX(i)
+            val sel = i == playersCursor
+            gfx.rect(x - 3, y - 3, w + 6, h + 6, if (sel) 0xFFFFD21F.toInt() else 0xFF0A1428.toInt())
+            gfx.rect(x, y, w, h, if (i == 0) 0xFF2E6BE6.toInt() else 0xFF1E9A3A.toInt())
+            gfx.rect(x + 4, y + 4, w - 8, 84f, 0x33FFFFFF)
+            val bob = abs(sin(time * 4 + i)) * 3f
+            val feet = y + 80f
+            if (i == 0) {
+                PowerArt.box(gfx, TeamArt.rocco(Power.NONE, 0), x + w / 2 - 16f, feet - 48f - bob, 32f, 48f)
+            } else {
+                PowerArt.box(gfx, TeamArt.rocco(Power.NONE, 0), x + w / 2 - 36f, feet - 48f - bob, 32f, 48f)
+                PowerArt.box(gfx, LugoArt.lugo(Power.NONE, 0), x + w / 2 + 4f, feet - 48f - abs(sin(time * 4 + 2.2f)) * 3f, 32f, 48f, flipX = true)
+            }
+            gfx.shadowText(if (i == 0) "1 PLAYER" else "2 PLAYERS", x + w / 2, y + 112f, 15f, white, 1)
+            gfx.shadowText(if (i == 0) "ROCCO & BLOCKY" else "+ LUGO ON CONTROLLER 2", x + w / 2, y + 132f, if (i == 0) 7f else 6f, 0xFFDDEEFF.toInt(), 1)
+        }
+        gfx.shadowText(if (padConnected) "PICK ONE AND PRESS A" else "TAP ONE TO PLAY", viewW / 2, 226f, 9f, 0xFFDDDDDD.toInt(), 1)
     }
 
     private fun chooseSlot(i: Int) {
@@ -4490,16 +4571,22 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     // ======================================================================== Player 2: LUGO
 
-    /** Every frame: player 2 joins with any button on the second controller, holds SELECT to leave, and plays. */
+    /**
+     * Every frame: with 2 PLAYERS on, player 2 joins with a button on the second controller, holds SELECT to
+     * leave, and plays. With 1 PLAYER nothing here ever happens.
+     */
     private fun updatePlayer2(dt: Float) {
         if (p2NoteT > 0f) p2NoteT -= dt
+        if (!twoPlayers) {
+            if (p2Joined) dropPlayer2()
+            return
+        }
         if (padSlots.takeLost() && p2Joined) {
-            leavePlayer2("PLAYER 2'S CONTROLLER IS GONE")
-            // (Plugging one back in and pressing any button brings LUGO back.)
-            p2Left = false
+            // (Plugging one back in and pressing a button brings LUGO back.)
+            dropPlayer2("PLAYER 2'S CONTROLLER IS GONE")
         }
         if (!p2Joined) {
-            if (input2.takeJoinPress(startOnly = p2Left)) joinPlayer2()
+            if (input2.takeJoinPress(startOnly = false)) joinPlayer2()
             return
         }
         p2.read()
@@ -4511,9 +4598,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
 
     /** "PLAYER 2: LUGO JOINED!": LUGO comes along wherever the game is (title, map, house or a level). */
     fun joinPlayer2() {
-        if (p2Joined) return
+        if (p2Joined || !twoPlayers) return
         p2Joined = true
-        p2Left = false
         p2.sync()
         input2.tap = false
         lugoInvuln = 0f
@@ -4528,18 +4614,40 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         sound.sayAs("It's-a me, Lugo! Let's-a go!", Voice.HERO)
     }
 
-    /** LUGO goes home (the pause screen's PLAYER 2: LEAVE, or holding SELECT). START brings him back. */
-    fun leavePlayer2(note: String = "LUGO WENT HOME. P2: PRESS START TO COME BACK!") {
+    /**
+     * LUGO goes home and the game is 1 PLAYER again (holding SELECT, or the pause screen's 2 PLAYERS button).
+     * The pause screen turns 2 PLAYERS back on.
+     */
+    fun leavePlayer2() = setPlayers(false, byPad = true)
+
+    /** LUGO leaves the level/house (2 PLAYERS may still be on: then a button brings him back). */
+    private fun dropPlayer2(note: String? = null) {
         if (!p2Joined) return
         if (lugoIn && state in IN_LEVEL) puff(lugo.cx, lugo.cy)
         p2Joined = false
-        p2Left = true
         p2.selectT = 0f
         lugoHidden = false
-        input2.forgetPresses()
-        p2Message(note)
-        sfx(Sound.KICK)
+        input2.releaseAll()
+        homeCraft = false
+        if (note != null) { p2Message(note); sfx(Sound.KICK) }
     }
+
+    /**
+     * 1 PLAYER or 2 PLAYERS (remembered for next time). [byPad]: picked with a controller, which is then
+     * player 1's; with a finger, player 1 plays by touch and the first controller to press a button is player 2.
+     */
+    fun setPlayers(two: Boolean, byPad: Boolean) {
+        storage.save(PLAYERS_KEY, if (two) 2 else 1)
+        if (two == twoPlayers) return
+        if (!two) dropPlayer2(if (p2Joined) "LUGO WENT HOME: 1 PLAYER" else null)
+        padSlots.setTwoPlayers(two, byPad)
+        input2.releaseAll()
+        homeCraft = false
+        if (two) { p2Message("2 PLAYERS! PLAYER 2: PRESS A BUTTON"); sfx(Sound.ONEUP) }
+    }
+
+    /** Player 2's controller hasn't pressed a button yet (LUGO isn't out until it does). */
+    val p2Waiting get() = twoPlayers && !p2Joined
 
     private fun p2Message(s: String) { p2Note = s; p2NoteT = 2.6f }
 
@@ -4555,9 +4663,11 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (p.jumpHoldT > 0f) p.jumpHoldT -= dt
         // In player 1's minecart or cannon he rides along (out of sight), and hops back out once player 1 is on
         // his feet again.
-        if (riding != null || inCannon != null || cannonFlyT > 0f) { lugoHidden = true; return }
+        if (riding != null || inCannon != null || cannonFlyT > 0f) { lugoHidden = true; lugoHideT = 0f; return }
         if (lugoHidden) {
-            if (!leader.onGround) return
+            // (Landing in the sea, a swimmer is never "on the ground": he comes out there too, or after a moment.)
+            lugoHideT += dt
+            if (!leader.onGround && !inWater(leader) && lugoHideT < 1f) return
             lugoHidden = false
             popLugo()
         }
@@ -4711,12 +4821,17 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         val h = lugo
         val l = leader
         val sx = standX(safeX, safeY)
+        var vy = 0f
         when {
-            l.onGround -> { h.x = l.x + (l.w - h.w) / 2; h.y = l.bottom - h.h }
-            sx != null -> { h.x = sx; h.y = safeY - h.h }
-            else -> { h.x = respawnX; h.y = respawnY - h.h }
+            // Standing, or swimming (the water holds him up too): right there with player 1.
+            l.onGround || inWater(l) -> { h.x = l.x + (l.w - h.w) / 2; h.y = l.bottom - h.h }
+            // In the air: the last safe spot player 1 stood on, if it's on the same screen...
+            sx != null && abs(sx - l.cx) < viewW - SPREAD_MARGIN - 40f -> { h.x = sx; h.y = safeY - h.h }
+            // ...else right beside him, going the same way (a far-away spot would only pop him again and
+            // drag the camera away from player 1, like after a cannon shot or deep in the sea).
+            else -> { h.x = l.x + (l.w - h.w) / 2; h.y = l.bottom - h.h; vy = l.vy }
         }
-        h.vx = 0f; h.vy = 0f; h.stuck = 0f
+        h.vx = 0f; h.vy = vy; h.stuck = 0f
         h.crouching = false; h.slamming = false; h.longJumping = false; h.sprinting = false
         h.facing = l.facing
         h.resetStretch()
@@ -4837,9 +4952,22 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (p2NoteT > 0f) {
             val w = p2Note.length * 5.6f + 20f
             val a = (min(1f, p2NoteT / 0.4f) * 255).toInt()
-            gfx.rect(viewW / 2 - w / 2, 58f, w, 18f, argb(a * 13 / 16, 0x0E3A16))
-            gfx.rect(viewW / 2 - w / 2, 58f, w, 2f, argb(a, LugoArt.GREEN))
-            gfx.text(p2Note, viewW / 2, 71f, 9f, argb(a, 0xFFFFFF), 1)
+            // (Over the top edge on menus, where the middle of the screen is full of cards and buttons.)
+            val y = if (state in IN_LEVEL || state == State.MAP || state == State.HOME) 58f else 2f
+            gfx.rect(viewW / 2 - w / 2, y, w, 18f, argb(a * 13 / 16, 0x0E3A16))
+            gfx.rect(viewW / 2 - w / 2, y, w, 2f, argb(a, LugoArt.GREEN))
+            gfx.text(p2Note, viewW / 2, y + 13f, 9f, argb(a, 0xFFFFFF), 1)
+        }
+        else if (p2Waiting && (state == State.MAP || state == State.HOME || (state == State.PLAY && !paused))) {
+            // 2 PLAYERS is on but player 2's controller hasn't said hello yet: LUGO waits off screen.
+            val msg = "PLAYER 2: PRESS A BUTTON ON YOUR CONTROLLER"
+            val w = msg.length * 4.4f + 16f
+            // (On the map it goes under the level dots, above the bottom bar.)
+            val y = if (state == State.MAP) VIEW_H - 42f else P2_WAIT_Y
+            val a = 150 + (sin(time * 3f) * 60f).toInt()
+            gfx.rect(viewW / 2 - w / 2, y, w, 14f, 0xAA0E3A16.toInt())
+            gfx.rect(viewW / 2 - w / 2, y, w, 1.5f, LugoArt.GREEN)
+            gfx.text(msg, viewW / 2, y + 10f, 7f, argb(a + 45, 0xFFFFFF), 1)
         }
         if (p2Joined && p2.selectT > 0.15f) {
             val k = (p2.selectT / LEAVE_HOLD).coerceIn(0f, 1f)
@@ -4855,6 +4983,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     internal fun lugoHomeXForTest() = lugoHomeX
     internal fun setLugoHomeXForTest(x: Float) { lugoHomeX = x }
     internal fun homeXForTest() = homeX
+    internal fun homeTargetForTest() = hereTarget()
+    internal fun camLockValueForTest() = camLock
+    internal fun playersCursorForTest() = playersCursor
+    internal fun playersCardXForTest(i: Int) = playersCardX(i)
     internal fun setHomeXForTest(x: Float) { homeX = x }
     internal fun camLockForTest(x: Float?) { camLock = x }
     internal fun powerForTest(p: Power) { power = p; flowerLevel[p.ordinal] = maxOf(1, flowerLevel[p.ordinal]) }
@@ -5107,7 +5239,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
     private fun updateMusic() {
         val m = when {
             !musicOn -> Music.NONE
-            state == State.TITLE || state == State.SLOTS || state == State.PICK -> titleMusic ?: titleSong
+            state == State.TITLE || state == State.SLOTS || state == State.PICK || state == State.PLAYERS -> titleMusic ?: titleSong
             state == State.VICTORY -> Music.FROG
             state == State.STICKER -> Music.STAR
             state == State.HOME -> Music.COZY
@@ -5234,6 +5366,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         when (state) {
             State.TITLE -> renderTitle(gfx, drawWorld)
             State.SLOTS -> renderSlots(gfx)
+            State.PLAYERS -> renderPlayersMenu(gfx)
             State.PICK -> renderPick(gfx)
             // Just picked a level: the map closes in a circle on the team, then the title card shows.
             State.INTRO -> if (irisFromMap && stateT < Iris.CLOSE) renderMap(gfx) else renderIntro(gfx)
@@ -5329,11 +5462,10 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
                     gfx.rect(viewW / 2 - 80, 200f, 160f, 26f, 0xFF1A2A6A.toInt())
                     gfx.rect(viewW / 2 - 78, 202f, 156f, 22f, 0xFF2E6BE6.toInt())
                     gfx.text("SAVE & EXIT TO MAP", viewW / 2, 217f, 9f, white, 1)
-                    if (p2Joined) {
-                        gfx.rect(viewW / 2 - 80, PAUSE_LEAVE_Y, 160f, 24f, 0xFF0E5A1E.toInt())
-                        gfx.rect(viewW / 2 - 78, PAUSE_LEAVE_Y + 2, 156f, 20f, LugoArt.GREEN)
-                        gfx.text("PLAYER 2: LEAVE", viewW / 2, PAUSE_LEAVE_Y + 15, 9f, white, 1)
-                    }
+                    // 2 PLAYERS: ON (green) or OFF (grey): pressing it switches.
+                    gfx.rect(viewW / 2 - 80, PAUSE_LEAVE_Y, 160f, 24f, if (twoPlayers) 0xFF0E5A1E.toInt() else 0xFF2A2A3A.toInt())
+                    gfx.rect(viewW / 2 - 78, PAUSE_LEAVE_Y + 2, 156f, 20f, if (twoPlayers) LugoArt.GREEN else 0xFF5A5A70.toInt())
+                    gfx.text(if (twoPlayers) "2 PLAYERS: ON" else "2 PLAYERS: OFF", viewW / 2, PAUSE_LEAVE_Y + 15, 9f, white, 1)
                     if (padConnected) {
                         val cy = if (pauseCursor == 3) PAUSE_LEAVE_Y + 1f else 136f + pauseCursor * 32f
                         gfx.rect(viewW / 2 - 84, cy - 3, 4f, 32f, 0xFFFFD21F.toInt())
@@ -5782,6 +5914,30 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         goToMap(unlocked - 1)
     }
 
+    private var craftXAt = -1f
+    private var craftXTime = -1f
+
+    /**
+     * Where the crafting table stands (2 PLAYERS only): at [Homes.CRAFT_X], or the next free spot to the right
+     * if furniture or decorations stand there (a bookshelf at its usual spot would cover it).
+     */
+    internal fun craftX(): Float {
+        if (craftXTime == time) return craftXAt
+        val w = Homes.CRAFT_W
+        val blocked = Homes.blocked(0, 0, hasBed(), true)
+        fun free(x: Float) = blocked.none { x + w > it.start && x < it.endInclusive } &&
+            Furniture.entries.none { f ->
+                hasFurniture(f) && f != carrying && furnFloor(f) == 0 && Homes.layer(f) == 0 &&
+                    x + w > furnX(f) && x < furnX(f) + Homes.width(f)
+            } &&
+            decor.none { it !== carryingDecor && it.floor == 0 && it.item.layer == 0 && x + w > it.x && x < it.x + it.item.w }
+        var x = Homes.CRAFT_X
+        while (x + w < Homes.STAIRS_X - 8f && !free(x)) x += 6f
+        craftXAt = if (x + w < Homes.STAIRS_X - 8f) x else Homes.CRAFT_X
+        craftXTime = time
+        return craftXAt
+    }
+
     /** What's in front of you in the house (standing at [x]), for the action button. */
     private fun homeTarget(x: Float = homeX): String? {
         val upstairs = houseFloors > homeFloor + 1 && x >= Homes.STAIRS_X + 2f
@@ -5806,7 +5962,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
             near(Furniture.DRUM_SET) -> "DRUMS"
             near(Furniture.CANDY_MACHINE) -> "CANDY"
             // The crafting table (furniture put down in front of it comes first).
-            homeFloor == 0 && x in (Homes.CRAFT_X - 6f)..(Homes.CRAFT_X + 32f) -> "CRAFT"
+            twoPlayers && homeFloor == 0 && x in (craftX() - 6f)..(craftX() + 32f) -> "CRAFT"
             x in Homes.SHELF_X..(Homes.SHELF_X + 210f) && !near(Furniture.TV) -> "LOOK"
             else -> null
         }
@@ -5999,7 +6155,8 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         if (input.left) { homeX -= speed * dt; homeFacing = -1; homeAnim += dt }
         if (input.right) { homeX += speed * dt; homeFacing = 1; homeAnim += dt }
         homeX = homeX.coerceIn(Homes.DOOR_X + 4f, Homes.ROOM_W - 20f)
-        if (actionE || nav.a) { if (placeBlock(frontCell())) save(); return }
+        // (Player 2's A doesn't build: it's player 1's hammer.)
+        if (actionE || nav.a1) { if (placeBlock(frontCell())) save(); return }
         if (!tapped || stateT < 0.2f || input.tapX < 0f) return
         val x = input.tapX
         val y = input.tapY
@@ -7503,7 +7660,7 @@ class TeamGame(private val input: TeamInput, private val sound: SoundSink, priva
         else if (houseFloors > homeFloor + 1) Homes.drawStairs(gfx, ox + Homes.STAIRS_X - 4f, true)
         else Roof.drawLadderUp(gfx, ox + Homes.STAIRS_X - 4f, Homes.FLOOR_Y)
         if (homeFloor == 0) Homes.drawShop(this, gfx, ox + Homes.SHOP_X, time)
-        if (homeFloor == 0) Homes.drawCraftTable(gfx, ox + Homes.CRAFT_X)
+        if (homeFloor == 0 && twoPlayers) Homes.drawCraftTable(gfx, ox + craftX())
         // Rugs first, then everything else, each wherever it was put.
         for (layerPass in listOf(2, 1, 0)) for (f in Furniture.entries) {
             if (Homes.layer(f) != layerPass || !hasFurniture(f) || furnFloor(f) != homeFloor || f == carrying) continue

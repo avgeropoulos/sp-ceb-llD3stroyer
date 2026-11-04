@@ -542,10 +542,18 @@ tap **CONTROLLER**) and choose **SET MY BUTTONS**, then press the button you wan
 
 ### Two players: LUGO joins in
 
-Got two controllers (like two PlayStation controllers on a tablet)? The first controller you use is
-**player 1** (Rocco or Blocky, with the Pokemon, just like before). Press **any button on a second
-controller** and **LUGO**, Rocco's taller brother (green cap and shirt, blue overalls, a moustache), jumps
-in: **"PLAYER 2: LUGO JOINED!"** It works anywhere: the title, the map, the house or in a level.
+After the title the game asks **HOW MANY PLAYERS?** Pick **1 PLAYER** for the usual game (every
+controller and the touch screen play Rocco, Blocky and the Pokemon, exactly like before), or **2 PLAYERS**
+if you've got two controllers (like two PlayStation controllers on a tablet). The game remembers what you
+picked last time, and the pause screen has a **2 PLAYERS: ON / OFF** button to switch in the middle of a level.
+
+With 2 PLAYERS on, whoever picked it is **player 1** (with that controller, or by touch). The screen says
+**"PLAYER 2: PRESS A BUTTON ON YOUR CONTROLLER"** until a second real controller presses a button, and then
+**LUGO**, Rocco's taller brother (green cap and shirt, blue overalls, a moustache), jumps in: **"PLAYER 2:
+LUGO JOINED!"** A PlayStation controller's touchpad and motion sensor, the tablet's volume keys and keyboards
+never count as a second controller, so in 1 PLAYER LUGO never pops in by himself.
+
+![1 PLAYER or 2 PLAYERS](docs/teamup-players.png)
 
 * **In a level** LUGO runs, sprints, jumps (higher and floatier than Rocco: hold A to drift down
   slowly), double jumps, squats, butt slams, long jumps (R) and throws the team's flower power with B (or
@@ -556,12 +564,14 @@ in: **"PLAYER 2: LUGO JOINED!"** It works anywhere: the title, the map, the hous
 * **One screen for both**: the camera follows the middle of the two players. If they get too far apart,
   the one behind is pulled to the front (LUGO pops back next to player 1, or player 1 is pulled up to LUGO).
   In a minecart or a cannon LUGO rides along, and hops back out when player 1 lands.
-* **At home** LUGO walks around too, and his button uses whatever he's standing at: the **SHOP**, the new
-  **CRAFTING TABLE** (next to the shop: make flowers, weapons, armor and more together), the Pokemon mat,
+* **At home** LUGO walks around too, and his button uses whatever he's standing at: the **SHOP**, the
+  **CRAFTING TABLE** (only with 2 PLAYERS, next to the shop or at the next free spot if furniture stands
+  there: make flowers, weapons, armor and more together), the Pokemon mat,
   the stairs... Both controllers can move around every menu and pick things (crafting, the shop, the
   sticker book, the map...).
-* **Leaving**: hold **SELECT** (or pick **PLAYER 2: LEAVE** on the pause screen). Press **START** on the
-  second controller to come back. Unplugging player 2's controller sends LUGO home too.
+* **Leaving**: hold **SELECT** on player 2's controller (or pick **2 PLAYERS: OFF** on the pause screen):
+  LUGO goes home and it's 1 PLAYER again. Unplugging player 2's controller sends LUGO home too, and any
+  button on a controller plugged back in brings him back.
 
 ![Two players: Rocco and LUGO](docs/teamup-two-players.png)
 

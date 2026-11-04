@@ -2765,7 +2765,9 @@ class TeamGameTest {
 
     @Test fun pickYourPokemonFromTheMenus() {
         run(0.5f)
-        tap(); assertEquals(TeamGame.State.SLOTS, game.state)
+        tap(); assertEquals(TeamGame.State.PLAYERS, game.state)
+        run(0.4f)
+        tap(game.playersCardXForTest(0) + 20f, 120f); assertEquals(TeamGame.State.SLOTS, game.state)
         run(0.4f)
         tap(game.slotCardXForTest(1) + 10f, 120f)
         assertEquals(TeamGame.State.PICK, game.state)
@@ -3547,6 +3549,8 @@ class TeamGameTest {
         assertEquals(777, game.coins)
         val menu = TeamGame(input, ears, storage)
         menu.update(0.5f); input.tapX = 10f; input.tapY = 10f; input.tap = true; menu.update(dt)
+        assertEquals(TeamGame.State.PLAYERS, menu.state)
+        menu.update(0.5f); input.tapX = menu.playersCardXForTest(0) + 20f; input.tapY = 120f; input.tap = true; menu.update(dt)
         assertEquals(TeamGame.State.SLOTS, menu.state)
         menu.update(0.5f)
         val x = menu.slotCardXForTest(1) + 20f
@@ -4204,7 +4208,11 @@ class TeamGameTest {
     @Test fun playTheWholeGameWithAController() {
         run(0.6f)
         pad { input.jump = it }                       // A on the title
+        assertEquals(TeamGame.State.PLAYERS, game.state)
+        run(0.4f)
+        pad { input.jump = it }                       // 1 PLAYER
         assertEquals(TeamGame.State.SLOTS, game.state)
+        assertFalse(game.twoPlayers)
         run(0.4f)
         pad { input.right = it }; pad { input.right = it } // over to FILE 3
         pad { input.jump = it }

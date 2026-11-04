@@ -812,7 +812,7 @@ class BombBomb(x: Float, bottom: Float) : Foe(x + 2, bottom - 13, 12f, 13f, 1) {
     override fun touch(g: TeamGame) {
         if (stunned && !kicked) {
             kicked = true
-            vx = if (g.leader.cx < cx) 200f else -200f
+            vx = if (g.toucher.cx < cx) 200f else -200f
             g.sfx(Sound.KICK)
         } else if (!stunned) g.hurt(this)
     }

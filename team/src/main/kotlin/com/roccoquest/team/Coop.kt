@@ -11,27 +11,92 @@ import kotlin.concurrent.Volatile
  */
 
 /**
- * Which game controller is which player. The first controller that's used is player 1 (everything works
- * as it always did), a second, different one is player 2. Unplugging one frees its place.
+ * Which game controller is which player.
+ *
+ * 1 PLAYER (the usual game): every controller (and the touch screen) is player 1, exactly as before there
+ * was a player 2. A tablet often has more than one "device" for one controller (a PlayStation controller
+ * is a gamepad, a touchpad and a motion sensor) and some built-in ones (volume keys), so telling them apart
+ * only happens when 2 PLAYERS was picked on purpose.
+ *
+ * 2 PLAYERS: whoever picked it is player 1 (that controller, or the touch screen). Player 2 is the first
+ * OTHER real controller that presses a button: not a part of player 1's controller (same [descriptor]),
+ * not a keyboard, touchpad, sensor or volume key. Unplugging one frees its place.
  */
 class PadSlots {
     private val ids = IntArray(2) { NONE }
+    private val descriptors = arrayOf("", "")
 
-    /** Set when player 2's controller goes away (the game then sends LUGO home). */
+    /** Set when player 2's controller goes away (the game then waits for a new one). */
     @Volatile var lost = false
 
-    /** The player (0 or 1) that controller [deviceId] belongs to; a new one takes the first free place. */
-    @Synchronized fun playerFor(deviceId: Int): Int {
-        for (p in ids.indices) if (ids[p] == deviceId) return p
-        for (p in ids.indices) if (ids[p] == NONE) { ids[p] = deviceId; return p }
+    /** 2 PLAYERS is on (picked on the 1 PLAYER / 2 PLAYERS screen or on the pause screen). */
+    @Volatile var twoPlayers = false
+        private set
+
+    /**
+     * Goes up every time who-is-who starts over: the Android side then lets go of every direction it was
+     * holding (a stick held by a controller that just changed player mustn't stay pushed).
+     */
+    @Volatile var generation = 0
+        private set
+
+    /** The last real controller that pressed a button (in 1 PLAYER): it's player 1 if 2 PLAYERS is picked with it. */
+    private var lastId = NONE
+    private var lastDescriptor = ""
+
+    /**
+     * The player (0 or 1) that a button or stick from controller [deviceId] is for, or [IGNORE] (a second
+     * controller that hasn't pressed a button yet: its stick doesn't move anybody).
+     * [descriptor]: Android's name for the whole physical controller (the same for all of its parts).
+     * [gamepad]: it really is a game controller (gamepad or joystick buttons, not virtual).
+     * [button]: a button went down (only that makes a new controller player 2).
+     */
+    @Synchronized fun playerFor(deviceId: Int, descriptor: String = "", gamepad: Boolean = true, button: Boolean = true): Int {
+        if (!twoPlayers) {
+            if (gamepad && button) { lastId = deviceId; lastDescriptor = descriptor }
+            return 0
+        }
+        for (p in ids.indices) if (ids[p] == deviceId || sameController(p, descriptor)) return p
+        // Keyboards, touchpads, volume keys...: they help player 1 and never take anybody's place.
+        if (!gamepad) return 0
+        if (ids[0] == NONE) { take(0, deviceId, descriptor); return 0 }
+        if (ids[1] == NONE) {
+            if (!button) return IGNORE
+            take(1, deviceId, descriptor)
+            return 1
+        }
         // A third controller helps player 1 (it never takes anybody's place).
         return 0
     }
 
+    private fun sameController(p: Int, descriptor: String) = descriptor.isNotEmpty() && descriptors[p] == descriptor
+
+    private fun take(p: Int, deviceId: Int, descriptor: String) {
+        ids[p] = deviceId
+        descriptors[p] = descriptor
+    }
+
+    /**
+     * 1 PLAYER or 2 PLAYERS. [byPad]: it was picked with a controller (that one is player 1); else with a
+     * finger, so player 1 plays by touch and the first controller to press a button is player 2.
+     */
+    @Synchronized fun setTwoPlayers(on: Boolean, byPad: Boolean) {
+        ids.fill(NONE)
+        descriptors.fill("")
+        lost = false
+        if (on) {
+            if (byPad && lastId != NONE) take(0, lastId, lastDescriptor) else take(0, TOUCH, "")
+        }
+        twoPlayers = on
+        generation++
+    }
+
     /** Controller [deviceId] was unplugged: its place is free again. Returns the player it was (-1 if none). */
     @Synchronized fun removed(deviceId: Int): Int {
+        if (lastId == deviceId) { lastId = NONE; lastDescriptor = "" }
         for (p in ids.indices) if (ids[p] == deviceId) {
             ids[p] = NONE
+            descriptors[p] = ""
             if (p == 1) lost = true
             return p
         }
@@ -45,11 +110,15 @@ class PadSlots {
         return true
     }
 
-    /** The controller playing as [player], or [NONE]. */
+    /** The controller playing as [player], or [NONE] ([TOUCH]: player 1 plays on the screen). */
     @Synchronized fun deviceOf(player: Int): Int = ids[player]
 
     companion object {
         const val NONE = Int.MIN_VALUE
+        /** Player 1 picked 2 PLAYERS with a finger: no controller is theirs. */
+        const val TOUCH = Int.MIN_VALUE + 1
+        /** [playerFor]: nobody (a second controller that hasn't joined yet). */
+        const val IGNORE = -1
     }
 }
 

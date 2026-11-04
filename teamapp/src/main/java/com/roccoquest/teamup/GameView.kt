@@ -243,6 +243,31 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     /** Player 1's or player 2's buttons. */
     private fun inputOf(player: Int): TeamInput = if (player == 0) input else game.input2
 
+    /** [com.roccoquest.team.PadSlots.generation] last seen: when who-is-who starts over, held directions are let go. */
+    private var padGeneration = -1
+
+    /**
+     * Which player a controller's button or stick is for: 0, 1, or -1 (nobody: a second controller that hasn't
+     * pressed a button yet). With 1 PLAYER it's always 0, just like before there was a player 2. [button]: a
+     * button went down (only that can make a controller player 2). A PlayStation controller's touchpad and
+     * motion sensor, the volume keys and on-screen keyboards are never "real" controllers, and every part of
+     * one controller has the same descriptor (so it's never mistaken for a second one).
+     */
+    private fun playerOf(event: android.view.InputEvent, button: Boolean): Int {
+        val slots = game.padSlots
+        val generation = slots.generation
+        if (generation != padGeneration) {
+            padGeneration = generation
+            for (s in sticks) s.clear()
+        }
+        val dev = event.device
+        val src = dev?.sources ?: 0
+        val real = dev != null && !dev.isVirtual && ((src and InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD ||
+            (src and InputDevice.SOURCE_JOYSTICK) == InputDevice.SOURCE_JOYSTICK)
+        val descriptor = try { dev?.descriptor ?: "" } catch (_: Exception) { "" }
+        return slots.playerFor(event.deviceId, descriptor, real, button)
+    }
+
     /** An unplugged controller frees its player's place and lets go of everything it held. */
     private val inputManager = context.getSystemService(Context.INPUT_SERVICE) as? InputManager
     private val deviceListener = object : InputManager.InputDeviceListener {
@@ -303,10 +328,11 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         if (isController(event)) {
             game.padConnected = true
-            // The first controller used is player 1, a second one is player 2 (LUGO).
-            val player = game.padSlots.playerFor(event.deviceId)
-            val pin = inputOf(player)
             if (event.repeatCount == 0) game.padSaw(buttonName(keyCode))
+            // 1 PLAYER: every controller is player 1. 2 PLAYERS: a second controller is player 2 (LUGO).
+            val player = playerOf(event, KeyEvent.isGamepadButton(keyCode) && event.repeatCount == 0)
+            if (player < 0) return true
+            val pin = inputOf(player)
             // The CONTROLLER screen is waiting for a button: remember it.
             if (player == 0 && game.state == TeamGame.State.CONTROLS && game.padStep >= 0 && KeyEvent.isGamepadButton(keyCode) &&
                 keyCode != KeyEvent.KEYCODE_BUTTON_START && keyCode != KeyEvent.KEYCODE_BUTTON_SELECT
@@ -342,7 +368,11 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
-        if (isController(event)) return setPad(keyCode, false, game.padSlots.playerFor(event.deviceId)) || super.onKeyUp(keyCode, event)
+        if (isController(event)) {
+            val player = playerOf(event, false)
+            if (player < 0) return true
+            return setPad(keyCode, false, player) || super.onKeyUp(keyCode, event)
+        }
         return setKey(keyCode, false) || super.onKeyUp(keyCode, event)
     }
 
@@ -389,7 +419,8 @@ class GameView(context: Context) : SurfaceView(context), SurfaceHolder.Callback,
             val hy = event.getAxisValue(MotionEvent.AXIS_HAT_Y)
             game.stickX = if (kotlin.math.abs(hx) > 0.5f) hx else x
             game.stickY = if (kotlin.math.abs(hy) > 0.5f) hy else y
-            sticks[game.padSlots.playerFor(event.deviceId)].stick(x, y, hx, hy)
+            val player = playerOf(event, false)
+            if (player >= 0) sticks[player].stick(x, y, hx, hy)
             return true
         }
         return super.onGenericMotionEvent(event)

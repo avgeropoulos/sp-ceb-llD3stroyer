@@ -263,7 +263,7 @@ class TailKrag(x: Float, private val ground: Float) : Foe(x - 10, ground - 40, 3
         const val TURN_AFTER = 2.5f
     }
 
-    override fun touch(g: TeamGame) { if (mode == 0 && (g.leader.cx - cx) * facing > 6f) g.hurt(this) }
+    override fun touch(g: TeamGame) { if (mode == 0 && (g.toucher.cx - cx) * facing > 6f) g.hurt(this) }
 
     override fun draw(g: TeamGame, gfx: Gfx, ox: Float) {
         look.x = x; look.y = y; look.vx = vx; look.facing = facing

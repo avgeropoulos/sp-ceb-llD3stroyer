@@ -11,7 +11,7 @@ Characters from real games get made-up names that look like them: Rocco (Mario),
 King Krag / Krag Jr. (Bowser / Bowser Jr.), Ring-Ding Frog (Crazy Frog), and the Pokemon partners
 Sparky, Blaze, Hydro, Bloom, Ember, Splashy, Mystic, Puncho and Spooky.
 
-Flow: title → save file → world map (`State.MAP`, levels "1-1"...) → level → sticker → back to the map.
+Flow: title → 1 PLAYER / 2 PLAYERS → save file → world map (`State.MAP`, levels "1-1"...) → level → sticker → back to the map.
 The house lives on the map (`State.HOME`: walk around, SHOP / SLEEP / plushie book / claw machine).
 Dash the dino (`Dino` in `Monsters.kt`, level char `y`) can be ridden by Rocco (`TeamGame.dino`).
 `GameView` catches any error and calls `game.recover()` (back to the title) instead of crashing.
@@ -48,20 +48,31 @@ Only one of Rocco or Blocky is out at a time, with the Pokemon (`TeamGame.team` 
 ## Two players (`Coop.kt`)
 
 A second controller plays **LUGO** (Luigi look-alike, `Who.LUGO`, appended; `TeamGame.lugo`, not in `allHeroes`).
-`PadSlots` (`game.padSlots`) maps `InputDevice` ids to players (first used = player 1, a second = player 2, unplugging
-frees the slot); both `GameView`s route a controller's keys/stick to `input` or `game.input2` and its directions through
-`PadSticks` (keep both Android files the same). Any button on input2 joins (`joinPlayer2`, `TeamInput.takeJoinPress`;
-after a leave only START), holding SELECT `LEAVE_HOLD` s or the pause screen's PLAYER 2: LEAVE leaves. Not saved.
-`PlayerPad` (`p2`) is LUGO's own edges + jump buffer/coyote/hold; player 1's code paths are untouched (single player must
-stay identical). In levels `team` includes LUGO when `lugoIn` (not `followers`); `updateLugo`/`moveLugo` are his moves,
+After the title comes `State.PLAYERS` (1 PLAYER / 2 PLAYERS cards, `openPlayersMenu`, `pickPlayers`; global key
+`PLAYERS_KEY` = "players" remembers the last pick; B on SLOTS goes back to it). `setPlayers(two, byPad)` switches
+(also the pause screen's top button 2 PLAYERS: ON/OFF, `PAUSE_LEAVE_Y`). **1 PLAYER must stay exactly the old game**:
+`PadSlots.playerFor` returns 0 for every device, `updatePlayer2` does nothing, no crafting table, no P2 UI (only the
+pause button). `PadSlots` (`game.padSlots`): with `twoPlayers`, player 1 is whoever picked it (`lastId` = the last
+real controller that pressed a button in 1 PLAYER, else `TOUCH`); player 2 is the first OTHER real gamepad
+(`gamepad`: SOURCE_GAMEPAD/JOYSTICK and not virtual) to press a button (`button`; sticks before that are `IGNORE`);
+parts of one controller (PlayStation touchpad/motion sensor) share the InputDevice `descriptor` and stay with that
+player; non-gamepads always help player 1. `generation` bumps on every switch so the apps clear their `PadSticks`.
+Both `GameView`s route through `playerOf(event, button)` (keep both Android files the same). Until player 2 presses
+a button, `p2Waiting` shows "PLAYER 2: PRESS A BUTTON ON YOUR CONTROLLER" (map: above the bottom bar) and LUGO isn't
+out. Holding SELECT `LEAVE_HOLD` s (`leavePlayer2`) = 1 PLAYER again; a lost controller (`dropPlayer2`) keeps 2 PLAYERS
+on and waits. Not saved. `PlayerPad` (`p2`) is LUGO's own edges + jump buffer/coyote/hold; player 1's code paths are
+untouched. In levels `team` includes LUGO when `lugoIn` (not `followers`); `updateLugo`/`moveLugo` are his moves,
 `lugoThrow` (shots with `thrower === lugo` don't count against Rocco's), `hurtBy` routes `Foe.touch` to `hurtLugo`
-(shared hearts via `takeHit`), `checkLugoFalls`, `keepLugoNear` (spread ≤ `viewW - SPREAD_MARGIN`: behind pops, ahead
-pulls player 1 when LUGO stands on ground, else the screen edge holds him), `lugoHidden` while player 1 rides a cart/cannon.
-The camera follows the pair's box. Goal/checkpoint/portal count either player. `nav` merges both controllers' edges
-(`nav.a1` = player 1's own A, used where player 2's A acts at LUGO's spot); `p2.jumpE`/`actionE` at home run
-`lugoAtHome` (targets via `hereTarget(x)`). Home has a crafting table (`Homes.CRAFT_X`, `homeCraft`, `closeCraft`,
-`NOT_AT_HOME` kinds). Art: `LugoArt.lugo(power, frame)` (cached recolor + `lanky`: 15x27). Tests: `TwoPlayerTest`
-(`build/screens/two-player-*.png`), `TeamSceneTest.twoPlayersIn3D`.
+(shared hearts via `takeHit`; foes' `touch` read `g.toucher`, not `g.leader`), `checkLugoFalls`, `keepLugoNear`
+(spread ≤ `viewW - SPREAD_MARGIN`: behind pops, ahead pulls player 1 when LUGO stands on ground, else the screen
+edge holds him), `popLugo` (at player 1 when he stands or swims, else the safe spot if it's on the same screen, else
+beside him in the air), `lugoHidden` while player 1 rides a cart/cannon (out again on landing, in water or after
+1 s). The camera follows the pair's box. Goal/checkpoint/portal count either player. `nav` merges both controllers'
+edges (`nav.a1` = player 1's own A, used where player 2's A acts at LUGO's spot, and in build mode); `p2.jumpE`/`actionE`
+at home run `lugoAtHome` (targets via `hereTarget(x)`). Home has a crafting table in 2 PLAYERS (`craftX()`: `Homes.CRAFT_X`
+or the next spot no furniture/decor covers, `homeCraft`, `closeCraft`, `NOT_AT_HOME` kinds). Art: `LugoArt.lugo(power,
+frame)` (cached recolor + `lanky`: 15x27). Tests: `TwoPlayerTest` (device filtering, the choice, a soak through every
+4th level and every boss; `build/screens/two-player-*.png`, `players-menu-<w>.png`), `TeamSceneTest.twoPlayersIn3D`.
 
 ## UPDATE button
 

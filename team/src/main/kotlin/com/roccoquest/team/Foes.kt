@@ -200,7 +200,7 @@ class Shellback(x: Float, y: Float) : Foe(x + 1, y - 22, 14f, 22f, 4) {
     override fun touch(g: TeamGame) {
         when {
             !shell -> g.hurt(this)
-            !sliding -> kick(g, g.leader)
+            !sliding -> kick(g, g.toucher)
             kickGrace <= 0 -> g.hurt(this)
         }
     }
