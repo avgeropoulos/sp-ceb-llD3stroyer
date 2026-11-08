@@ -12,7 +12,9 @@ record your set. The app also **updates itself**.
    **https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/download/mixdeck-latest/MixDeck.apk**
 2. Open the downloaded file. If Android asks, allow your browser to install unknown apps.
 
-That's the only time you install it by hand. Every push to this repo that changes `dj/`
+That's the only time you install it by hand. (Until this branch is merged into the main branch,
+GitHub doesn't show a "Run workflow" button for MixDeck; any push that changes `dj/` publishes
+a new build.) Every push to this repo that changes `dj/`
 builds a new version, and the app asks **"Update available"** the next time you open it
 (or use ☰ → *Check for updates*). The first time, Android asks you to allow MixDeck to
 install updates; after that it's one tap.
