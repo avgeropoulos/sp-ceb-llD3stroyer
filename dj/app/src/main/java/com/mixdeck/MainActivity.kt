@@ -117,6 +117,7 @@ class MainActivity : Activity(), DjView.Host {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQ_LIBRARY && resultCode == RESULT_OK && data != null) handleLoadIntent(data)
         if (requestCode == REQ_HELP && resultCode == HelpActivity.RESULT_SHOW_KEY) dj.helpMode = true
+        if (requestCode == REQ_HELP && resultCode == HelpActivity.RESULT_TUTORIAL) startTutorial()
     }
 
     private fun handleLoadIntent(i: Intent?) {
@@ -185,6 +186,7 @@ class MainActivity : Activity(), DjView.Host {
 
     override fun mainMenu() {
         val items = arrayOf(
+            "▶ Tutorial: mix Nelly – Air Force Ones → Grillz",
             "My mixes",
             "How it works (guide)",
             "Show the key on screen",
@@ -198,14 +200,15 @@ class MainActivity : Activity(), DjView.Host {
         AlertDialog.Builder(this).setTitle("MixDeck ${BuildConfig.VERSION_NAME}")
             .setItems(items) { _, which ->
                 when (which) {
-                    0 -> startActivity(Intent(this, MixesActivity::class.java))
-                    1 -> startActivityForResult(Intent(this, HelpActivity::class.java), REQ_HELP)
-                    2 -> dj.helpMode = true
-                    3 -> slider("Master volume", mixer.master) { v -> mixer.master = v }
-                    4 -> slider("Sampler volume", mixer.sampler.volume) { v -> mixer.sampler.volume = v }
-                    5 -> synchronized(mixer.lock) { mixer.curve = if (mixer.curve == XfadeCurve.SMOOTH) XfadeCurve.SCRATCH else XfadeCurve.SMOOTH }
-                    6 -> synchronized(mixer.lock) { mixer.quantize = !mixer.quantize }
-                    7 -> {
+                    0 -> startTutorial()
+                    1 -> startActivity(Intent(this, MixesActivity::class.java))
+                    2 -> startActivityForResult(Intent(this, HelpActivity::class.java), REQ_HELP)
+                    3 -> dj.helpMode = true
+                    4 -> slider("Master volume", mixer.master) { v -> mixer.master = v }
+                    5 -> slider("Sampler volume", mixer.sampler.volume) { v -> mixer.sampler.volume = v }
+                    6 -> synchronized(mixer.lock) { mixer.curve = if (mixer.curve == XfadeCurve.SMOOTH) XfadeCurve.SCRATCH else XfadeCurve.SMOOTH }
+                    7 -> synchronized(mixer.lock) { mixer.quantize = !mixer.quantize }
+                    8 -> {
                         synchronized(mixer.lock) { mixer.splitCue = !mixer.splitCue }
                         if (mixer.splitCue) AlertDialog.Builder(this).setTitle("Split cue is on")
                             .setMessage("Plug in headphones. Your LEFT ear hears the mix and your RIGHT ear hears the decks " +
@@ -213,10 +216,51 @@ class MainActivity : Activity(), DjView.Host {
                                 "Don't use this through a speaker: the speaker would play the cue too.")
                             .setPositiveButton("OK", null).show()
                     }
-                    8 -> updater.check(manual = true)
+                    9 -> updater.check(manual = true)
                 }
                 saveSettings()
             }.show()
+    }
+
+    // ---------------------------------------------------------------- tutorial
+
+    private fun startTutorial() {
+        if (mixer.decks.any { it.playing }) {
+            AlertDialog.Builder(this).setTitle("Start the tutorial?")
+                .setMessage("This stops both decks and loads Nelly's \"Air Force Ones\" and \"Grillz\".")
+                .setPositiveButton("Start") { _, _ -> beginTutorial() }
+                .setNegativeButton("Cancel", null).show()
+        } else beginTutorial()
+    }
+
+    private fun beginTutorial() {
+        // A clean console: stopped decks, flat EQs, crossfader centred, effects off, vinyl on.
+        synchronized(mixer.lock) {
+            for (d in mixer.decks) {
+                d.pause(); d.eqLow = 0f; d.eqMid = 0f; d.eqHigh = 0f; d.filter = 0f; d.trimDb = 0.0
+                d.volume = 1f; d.pitch = 0.0; d.fx.on = false; d.fx.type = com.mixdeck.engine.FxType.ECHO
+                d.fx.amount = 0.5f; d.vinylMode = true; d.headphone = false
+                if (d.loopOn) d.loopToggle()
+                for (h in 0..3) d.clearHotCue(h)
+            }
+            mixer.crossfader = 0f
+        }
+        val t = Tutorials.nelly()
+        dj.tutorial = t
+        Thread({
+            val songs = listOf(0 to Tutorials.NELLY_A, 1 to Tutorials.NELLY_B)
+            try {
+                for ((deck, song) in songs) {
+                    val id = SongFetcher.findOrDownload(store, song) { msg -> t.status = msg }
+                    t.status = "Loading onto deck ${deckName(deck)}…"
+                    main.post { loadTrack(deck, id) }
+                }
+                t.status = null
+            } catch (e: Throwable) {
+                t.status = "Couldn't get the songs (${e.message}). Check your internet and try again, " +
+                    "or load them yourself with LOAD (search \"Nelly Air Force Ones\" and \"Nelly Grillz\")."
+            }
+        }, "tutorial songs").start()
     }
 
     private fun slider(title: String, value: Float, set: (Float) -> Unit) {

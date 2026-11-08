@@ -106,6 +106,12 @@ class HelpActivity : Activity() {
             text = "How MixDeck works"; setTextColor(yellow); textSize = 22f; typeface = Typeface.DEFAULT_BOLD
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         header.addView(Button(this).apply {
+            text = "▶ Nelly tutorial"; isAllCaps = false; textSize = 14f; setTextColor(Color.BLACK)
+            background = GradientDrawable().apply { cornerRadius = dp(8).toFloat(); setColor(0xFF00E676.toInt()) }
+            setPadding(dp(12), 0, dp(12), 0)
+            setOnClickListener { setResult(RESULT_TUTORIAL); finish() }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { marginEnd = dp(8) })
+        header.addView(Button(this).apply {
             text = "Show the key"; isAllCaps = false; textSize = 14f; setTextColor(Color.BLACK)
             background = GradientDrawable().apply { cornerRadius = dp(8).toFloat(); setColor(yellow) }
             setPadding(dp(12), 0, dp(12), 0)
@@ -117,6 +123,12 @@ class HelpActivity : Activity() {
             setOnClickListener { finish() }
         }, LinearLayout.LayoutParams(dp(48), dp(40)))
         col.addView(header)
+
+        // Interactive tutorial.
+        col.addView(heading("Try it hands-on", green))
+        col.addView(row("▶", green, "Tap \"▶ Nelly tutorial\" (top right, or ☰ → Tutorial) for a guided mix of Nelly's " +
+            "\"Air Force Ones\" into \"Grillz\". It loads both songs, lights up each button you need, " +
+            "and moves on when you've done each step.", round = true))
 
         // Your first mix.
         col.addView(heading("Your first mix in 8 steps", green))
@@ -167,5 +179,6 @@ class HelpActivity : Activity() {
 
     companion object {
         const val RESULT_SHOW_KEY = 7
+        const val RESULT_TUTORIAL = 8
     }
 }

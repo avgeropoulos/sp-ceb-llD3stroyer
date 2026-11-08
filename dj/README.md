@@ -62,6 +62,11 @@ Knobs: drag up/down, double-tap to reset.
 * **?** (top middle) lays a key over the DJ screen that labels every control. It also shows
   the first time you open the app.
 * **☰ → How it works** is the full guide, starting with "Your first mix in 8 steps".
+* **☰ → Tutorial** is a hands-on lesson: it loads Nelly's "Air Force Ones" on deck A and
+  "Grillz" on deck B, dims the screen except the button you need next, tells you what to do,
+  and moves on by itself once you've done it. It covers play, the crossfader, the waveform,
+  scratching, hot cues, loops, SYNC, cutting and swapping the bass, echo-out and the sampler.
+  Exit, Back and Skip are always there.
 
 ## Saving mixes
 
