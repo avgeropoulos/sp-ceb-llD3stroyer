@@ -1,0 +1,104 @@
+name: Build MixDeck (DJ app)
+
+# Every push that touches the DJ app builds a new APK and publishes it to the
+# "mixdeck-latest" release. The app checks that release's version.json and offers
+# to update itself when the build number is higher than its own.
+on:
+  push:
+    paths:
+      - "dj/**"
+      - ".github/workflows/mixdeck.yml"
+  pull_request:
+    paths:
+      - "dj/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Publish one build at a time, in order, so an older build never replaces a newer one.
+concurrency:
+  group: mixdeck-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dj
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Test the audio engine
+        run: ./gradlew :core:test --console=plain
+
+      - name: Get the signing key
+        env:
+          MIXDECK_KEYSTORE: ${{ secrets.MIXDECK_KEYSTORE }}
+        run: |
+          if [ -z "$MIXDECK_KEYSTORE" ]; then
+            echo "::warning::The MIXDECK_KEYSTORE secret isn't set, so this build can't be published as an update."
+          else
+            echo "$MIXDECK_KEYSTORE" | base64 -d > "$RUNNER_TEMP/mixdeck.jks"
+            echo "MIXDECK_KEYSTORE_FILE=$RUNNER_TEMP/mixdeck.jks" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build APK
+        env:
+          MIXDECK_KEYSTORE_PASSWORD: ${{ secrets.MIXDECK_KEYSTORE_PASSWORD }}
+        run: ./gradlew :app:assembleRelease -PversionCode=${{ github.run_number }} --console=plain
+
+      - name: Prepare release files
+        run: |
+          mkdir -p out
+          cp app/build/outputs/apk/release/app-release.apk out/MixDeck.apk
+          python3 - <<'PY'
+          import json, subprocess
+          msg = subprocess.check_output(["git", "log", "-1", "--format=%s"]).decode().strip()
+          json.dump({
+              "versionCode": ${{ github.run_number }},
+              "versionName": "1.${{ github.run_number }}",
+              "notes": "What's new: " + msg,
+          }, open("out/version.json", "w"))
+          PY
+          cat out/version.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MixDeck-apk
+          path: dj/out/MixDeck.apk
+
+      - name: Move the release tag to this commit
+        if: github.event_name != 'pull_request' && env.MIXDECK_KEYSTORE_FILE != ''
+        working-directory: .
+        run: |
+          git tag -f mixdeck-latest
+          git push -f origin mixdeck-latest
+
+      - name: Publish the update
+        if: github.event_name != 'pull_request' && env.MIXDECK_KEYSTORE_FILE != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: mixdeck-latest
+          name: "MixDeck DJ - Download for Android"
+          prerelease: false
+          make_latest: false
+          body: |
+            **MixDeck**, a two-deck DJ app for Android. Build 1.${{ github.run_number }}.
+
+            First install: open this page on your phone, download **MixDeck.apk**, open it and
+            allow "install unknown apps" for your browser if Android asks.
+            After that the app updates itself (it asks when a new build is out).
+
+            Built from ${{ github.sha }}.
+          files: |
+            dj/out/MixDeck.apk
+            dj/out/version.json

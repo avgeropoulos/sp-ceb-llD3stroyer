@@ -2,7 +2,12 @@ name: Build Android APK
 
 on:
   push:
+    paths-ignore:
+      - "dj/**"
+      - ".github/workflows/mixdeck.yml"
   pull_request:
+    paths-ignore:
+      - "dj/**"
   workflow_dispatch:
 
 permissions:

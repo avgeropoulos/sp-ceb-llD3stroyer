@@ -5,3 +5,6 @@ local.properties
 *.iml
 .DS_Store
 captures/
+
+# Release signing key: kept out of git, provided by a GitHub secret in CI.
+*.jks

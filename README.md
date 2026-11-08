@@ -1,5 +1,9 @@
 # Rocco's Quest
 
+> **Also in this repo: [MixDeck](dj/README.md)**, a two-deck DJ app for Android with YouTube,
+> Spotify-link and file loading, and in-app updates.
+> [Download MixDeck.apk](https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/download/mixdeck-latest/MixDeck.apk)
+
 A retro side-scrolling platformer for Android.
 
 Rocco, a plumber in a red cap, has to rescue **Princess Rosalie** (she wears pink) from
