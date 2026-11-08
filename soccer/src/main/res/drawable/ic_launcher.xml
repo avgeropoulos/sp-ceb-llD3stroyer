@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- App icon: a football flying into the top corner of a goal. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:fillColor="#2F7BD6" android:pathData="M0,0h108v108h-108z" />
+    <path android:fillColor="#2E8B3A" android:pathData="M0,74h108v34h-108z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M14,26h80v6h-80z M14,26h6v52h-6z M88,26h6v52h-6z" />
+    <path android:strokeColor="#CCFFFFFF" android:strokeWidth="1.5"
+        android:pathData="M30,32v46 M40,32v46 M50,32v46 M60,32v46 M70,32v46 M80,32v46 M20,42h68 M20,52h68 M20,62h68 M20,72h68" />
+    <path android:fillColor="#FFFFFF" android:pathData="M72,48a14,14 0,1 1,-0.1,0z" />
+    <path android:fillColor="#1C1C1C" android:pathData="M72,56l5,3.5l-2,6h-6l-2,-6z M60,58l3,-1l2,5l-3,4l-3,-2z M84,58l-3,-1l-2,5l3,4l3,-2z M66,73l3,-3h6l3,3l-6,2z M72,48.5l4,1l-1,3h-6l-1,-3z" />
+</vector>

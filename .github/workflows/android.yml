@@ -22,30 +22,54 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Run game logic tests
-        run: ./gradlew :core:test --console=plain
+        run: ./gradlew :core:test :soccer-core:test --console=plain
 
-      - name: Build APK
-        run: ./gradlew :app:assembleDebug --console=plain
+      - name: Build APKs
+        run: ./gradlew :app:assembleDebug :soccer:assembleDebug --console=plain
 
-      - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk RoccosQuest.apk
+      - name: Rename APKs
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk RoccosQuest.apk
+          cp soccer/build/outputs/apk/debug/soccer-debug.apk GoalRush.apk
+
+      # Goal Rush reads this file to find out whether a newer build is out (in-game updates).
+      - name: Write Goal Rush version file
+        run: |
+          cat > GoalRush-version.json <<EOF
+          {
+            "versionCode": ${{ github.run_number }},
+            "versionName": "1.0.${{ github.run_number }}",
+            "apk": "https://github.com/${{ github.repository }}/releases/download/latest-${{ github.ref_name }}/GoalRush.apk",
+            "size": $(stat -c %s GoalRush.apk)
+          }
+          EOF
+          cat GoalRush-version.json
 
       - uses: actions/upload-artifact@v4
         with:
           name: RoccosQuest-apk
           path: RoccosQuest.apk
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GoalRush-apk
+          path: GoalRush.apk
+
       - name: Publish downloadable build
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-${{ github.ref_name }}
-          name: "Rocco's Quest - Download for Android"
+          name: "Rocco's Quest & Goal Rush - Download for Android"
           prerelease: false
           make_latest: true
           body: |
-            Install on Android: download **RoccosQuest.apk** on your phone, open it,
-            and allow "install unknown apps" for your browser if asked.
+            Install on Android: download **RoccosQuest.apk** (platformer) or **GoalRush.apk**
+            (3D football) on your phone, open it, and allow "install unknown apps" for your
+            browser if asked. Goal Rush updates itself from inside the game after that.
 
             Built from ${{ github.sha }}.
-          files: RoccosQuest.apk
+          files: |
+            RoccosQuest.apk
+            GoalRush.apk
+            GoalRush-version.json

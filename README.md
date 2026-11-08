@@ -1,6 +1,10 @@
-# Rocco's Quest
+# Rocco's Quest & Goal Rush
 
-A retro side-scrolling platformer for Android.
+Two Android games live in this repository:
+
+* **Rocco's Quest**: a retro side-scrolling platformer (below).
+* **Goal Rush**: a 3D football shooting game. Swipe to shoot past the goalkeeper
+  (see [Goal Rush](#goal-rush)).
 
 Rocco, a plumber in a red cap, has to rescue **Princess Rosalie** (she wears pink) from
 **King Krag**, a giant spiky-shelled turtle dragon. Grab the **Blaze Blossom** to
@@ -105,14 +109,55 @@ waves, a triangle bass and noise drums, so there are no audio files. Tap the **â
 * Keyboards and game controllers also work: arrow keys or WASD, Shift to run,
   Down or S to crouch/slam, Space to jump, X to fire, M for music.
 
+## Goal Rush
+
+<img src="docs/goalrush-aim.png" width="240" alt="Penalty kick"> <img src="docs/goalrush-freekick.png" width="240" alt="Free kick with a wall">
+
+A 3D football game in portrait. Put your finger on the ball and drag it to where you want
+the shot to go:
+
+* **Where your swipe ends** is where the ball crosses the goal line. Stop short of the goal
+  for a low shot along the line of your swipe.
+* **How fast you swipe** sets the power. A slow swipe makes a soft lob that the keeper can
+  get to. A fast flick makes a rocket.
+* **Bend your swipe** to curl the ball. It follows the same curve as your finger and still
+  lands where your swipe ended, so you can bend it around the wall.
+
+The goalkeeper reads your shot after a short reaction time and dives for it. Sometimes he
+guesses a side early. Better keepers react faster, move quicker and read the shot better.
+Shots can also hit the post, get blocked by the wall or fly over the bar.
+
+**Levels**: 10 levels, each unlocked by passing the one before: Penalty Spot, Shootout,
+Edge of the Box, The Wall, Target Practice (only shots through the rings count), Tight
+Angle, Windy Day (aim into the wind), Long Range, Night Derby (the wall jumps) and the
+Cup Final. Score the number of goals shown to pass. You get 1 to 3 stars for each level.
+
+**Points**: 100 per goal, plus bonuses for placement (corners), curlers, rockets, rings,
+in off the post, and goal streaks.
+
+**Saving**: there are three save slots. Progress saves automatically after every shot.
+If you leave in the middle of a level, **RESUME** on the level list picks up from the same
+shot. The pause menu also has **SAVE & QUIT**.
+
+**High scores**: each level keeps your best score, and **HIGH SCORES** on the title screen
+shows the top 10 across all slots.
+
+**Updating the game in the game**: tap **UPDATE GAME** on the title screen. The game checks the
+latest GitHub release (and shows a **NEW!** badge on the title screen when there is one),
+downloads the new APK and asks Android to install it over the old one. Saves and high
+scores are kept. The first time, Android asks you to allow Goal Rush to install apps.
+Every build is signed with the same key (`soccer/goalrush.keystore`), so updates install
+over each other.
+
 ## Installing on your phone
 
 Every push builds an APK with GitHub Actions (see `.github/workflows/android.yml`):
 
 1. On your phone, open
    **https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/RoccosQuest.apk**
-   in Chrome. It's also the latest release on the repository page.
-2. Download `RoccosQuest.apk` and open it. If Android asks, allow your browser to install unknown apps.
+   or **https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/latest/download/GoalRush.apk**
+   in Chrome. They're also in the latest release on the repository page.
+2. Open the downloaded APK. If Android asks, allow your browser to install unknown apps.
 
 ## Building it yourself
 
@@ -122,6 +167,8 @@ You need JDK 17 and the Android SDK (Android Studio installs both).
 ./gradlew :app:assembleDebug     # APK at app/build/outputs/apk/debug/app-debug.apk
 ./gradlew :core:test             # game-logic tests; also renders screenshots to core/build/screens
                                  # and the music to core/build/music/*.wav
+./gradlew :soccer:assembleDebug  # Goal Rush APK at soccer/build/outputs/apk/debug/soccer-debug.apk
+./gradlew :soccer-core:test      # Goal Rush tests; screenshots go to soccer-core/build/screens
 ```
 
 You can also open the folder in Android Studio and press Run.
@@ -136,3 +183,12 @@ You can also open the folder in Android Studio and press Run.
   renderer, sound effects that are synthesized at startup, and a streaming music player.
 
 Levels are built in `core/.../Level.kt` with a small builder, so adding a new one is a few lines.
+
+Goal Rush follows the same split:
+
+* `soccer-core/`: plain Kotlin. `Engine.kt` has the camera and 3D projection, `Physics.kt` the
+  ball, goalkeeper, wall and the swipe-to-kick solver, `Match.kt` a level in play, `Render.kt`
+  the stadium, players and ball, `Game.kt` the menus, `Save.kt` the save slots and high scores,
+  and `Levels.kt` the levels (one entry per level).
+* `soccer/`: the Android app. It has the game loop, touch input, `Canvas` drawing, sounds and
+  `AppUpdater.kt` for in-game updates.
