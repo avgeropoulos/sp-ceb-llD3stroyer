@@ -1,21 +1,14 @@
 package com.mixdeck
 
-import android.content.ContentValues
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
-import android.os.Build
-import android.os.Environment
 import android.os.Process
-import android.provider.MediaStore
 import com.mixdeck.engine.Mixer
 import com.mixdeck.engine.WavWriter
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import java.util.concurrent.ArrayBlockingQueue
 
 /** Runs the mixer on a high-priority thread and plays it through a low-latency AudioTrack. */
@@ -74,22 +67,23 @@ class AudioOut(private val mixer: Mixer) {
 
 /**
  * Records the master output to a WAV file. The audio thread only copies samples into a queue;
- * a separate thread writes them to storage so recording never causes glitches.
+ * a separate thread writes them to storage so recording never causes glitches. When it stops,
+ * [MixStore] turns the WAV into a named, compact M4A in Music/MixDeck.
  */
 class Recorder(private val ctx: Context, private val mixer: Mixer) {
     private var writer: WavWriter? = null
     private var file: File? = null
     private var thread: Thread? = null
-    private val queue = ArrayBlockingQueue<FloatArray>(2048)
+    private val queue = ArrayBlockingQueue<FloatArray>(4096)
     @Volatile var recording = false; private set
+    var startedAt = 0L; private set
     val seconds get() = writer?.seconds ?: 0.0
 
     fun start() {
         if (recording) return
-        val stamp = SimpleDateFormat("yyyy-MM-dd HH.mm", Locale.US).format(Date())
-        val f = File(ctx.getExternalFilesDir(Environment.DIRECTORY_MUSIC), "MixDeck $stamp.wav")
+        val f = File(ctx.cacheDir, "recording-${System.currentTimeMillis()}.wav")
         val w = WavWriter(f, mixer.sampleRate)
-        file = f; writer = w
+        file = f; writer = w; startedAt = System.currentTimeMillis()
         recording = true
         thread = Thread({
             while (recording || queue.isNotEmpty()) {
@@ -102,28 +96,15 @@ class Recorder(private val ctx: Context, private val mixer: Mixer) {
         }
     }
 
-    /** Stops and saves the recording where music apps can see it. Returns a description of where. */
-    fun stop(): String? {
+    /** Stops recording and returns the finished WAV (in the cache, to be saved or discarded). */
+    fun stop(): File? {
         if (!recording) return null
         synchronized(mixer.lock) { mixer.tap = null }
         recording = false
         thread?.join(3000)
         writer?.close()
-        val f = file ?: return null
+        val f = file
         writer = null; file = null
-        if (Build.VERSION.SDK_INT >= 29) {
-            val values = ContentValues().apply {
-                put(MediaStore.Audio.Media.DISPLAY_NAME, f.name)
-                put(MediaStore.Audio.Media.MIME_TYPE, "audio/wav")
-                put(MediaStore.Audio.Media.RELATIVE_PATH, Environment.DIRECTORY_MUSIC + "/MixDeck")
-            }
-            val uri = ctx.contentResolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values)
-            if (uri != null) {
-                ctx.contentResolver.openOutputStream(uri)?.use { out -> f.inputStream().use { it.copyTo(out) } }
-                f.delete()
-                return "Music/MixDeck/${f.name}"
-            }
-        }
-        return f.path
+        return f
     }
 }

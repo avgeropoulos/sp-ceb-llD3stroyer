@@ -51,21 +51,25 @@ jobs:
             echo "MIXDECK_KEYSTORE_FILE=$RUNNER_TEMP/mixdeck.jks" >> "$GITHUB_ENV"
           fi
 
+      - name: Work out the build number
+        # CI builds start at 101 so they're always newer than any build installed by hand.
+        run: echo "BUILD_NUMBER=$((100 + ${{ github.run_number }}))" >> "$GITHUB_ENV"
+
       - name: Build APK
         env:
           MIXDECK_KEYSTORE_PASSWORD: ${{ secrets.MIXDECK_KEYSTORE_PASSWORD }}
-        run: ./gradlew :app:assembleRelease -PversionCode=${{ github.run_number }} --console=plain
+        run: ./gradlew :app:assembleRelease -PversionCode=$BUILD_NUMBER --console=plain
 
       - name: Prepare release files
         run: |
           mkdir -p out
           cp app/build/outputs/apk/release/app-release.apk out/MixDeck.apk
           python3 - <<'PY'
-          import json, subprocess
+          import json, os, subprocess
           msg = subprocess.check_output(["git", "log", "-1", "--format=%s"]).decode().strip()
           json.dump({
-              "versionCode": ${{ github.run_number }},
-              "versionName": "1.${{ github.run_number }}",
+              "versionCode": int(os.environ["BUILD_NUMBER"]),
+              "versionName": "1." + os.environ["BUILD_NUMBER"],
               "notes": "What's new: " + msg,
           }, open("out/version.json", "w"))
           PY
@@ -92,7 +96,7 @@ jobs:
           prerelease: false
           make_latest: false
           body: |
-            **MixDeck**, a two-deck DJ app for Android. Build 1.${{ github.run_number }}.
+            **MixDeck**, a two-deck DJ app for Android. Build 1.${{ env.BUILD_NUMBER }}.
 
             First install: open this page on your phone, download **MixDeck.apk**, open it and
             allow "install unknown apps" for your browser if Android asks.

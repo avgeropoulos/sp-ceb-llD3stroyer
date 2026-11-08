@@ -11,6 +11,7 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
@@ -37,6 +38,8 @@ class MainActivity : Activity(), DjView.Host {
     private lateinit var store: TrackStore
     private lateinit var recorder: Recorder
     private lateinit var updater: Updater
+    private lateinit var dj: DjView
+    @Volatile private var saving: String? = null
     private val loading = arrayOfNulls<String>(2)
     private val loader = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
@@ -50,8 +53,14 @@ class MainActivity : Activity(), DjView.Host {
         recorder = Recorder(this, mixer)
         updater = Updater(this)
         restoreSettings()
-        setContentView(DjView(this, mixer, this))
+        dj = DjView(this, mixer, this)
+        setContentView(dj)
         hideSystemBars()
+        // First launch: show the key so every control is explained.
+        if (!prefs.getBoolean("seenKey", false)) {
+            dj.helpMode = true
+            prefs.edit().putBoolean("seenKey", true).apply()
+        }
         handleLoadIntent(intent)
         updater.check(manual = false)
     }
@@ -69,7 +78,7 @@ class MainActivity : Activity(), DjView.Host {
     override fun onDestroy() {
         super.onDestroy()
         if (isFinishing) {
-            recorder.stop()
+            recorder.stop()?.let { wav -> runCatching { MixStore(this).save(wav, "Unsaved mix ${stamp()}") {} } }
             Engine.audio?.stop(); Engine.audio = null; Engine.mixer = null
         }
     }
@@ -107,6 +116,7 @@ class MainActivity : Activity(), DjView.Host {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == REQ_LIBRARY && resultCode == RESULT_OK && data != null) handleLoadIntent(data)
+        if (requestCode == REQ_HELP && resultCode == HelpActivity.RESULT_SHOW_KEY) dj.helpMode = true
     }
 
     private fun handleLoadIntent(i: Intent?) {
@@ -175,22 +185,27 @@ class MainActivity : Activity(), DjView.Host {
 
     override fun mainMenu() {
         val items = arrayOf(
+            "My mixes",
+            "How it works (guide)",
+            "Show the key on screen",
             "Master volume…",
             "Sampler volume…",
             "Crossfader curve: ${if (mixer.curve == XfadeCurve.SMOOTH) "smooth (mixing)" else "sharp (scratching)"}",
             "Quantize (snap cues & loops to the beat): ${onOff(mixer.quantize)}",
             "Headphone pre-listen (split cue): ${onOff(mixer.splitCue)}",
             "Check for updates",
-            "About MixDeck",
         )
         AlertDialog.Builder(this).setTitle("MixDeck ${BuildConfig.VERSION_NAME}")
             .setItems(items) { _, which ->
                 when (which) {
-                    0 -> slider("Master volume", mixer.master) { v -> mixer.master = v }
-                    1 -> slider("Sampler volume", mixer.sampler.volume) { v -> mixer.sampler.volume = v }
-                    2 -> synchronized(mixer.lock) { mixer.curve = if (mixer.curve == XfadeCurve.SMOOTH) XfadeCurve.SCRATCH else XfadeCurve.SMOOTH }
-                    3 -> synchronized(mixer.lock) { mixer.quantize = !mixer.quantize }
-                    4 -> {
+                    0 -> startActivity(Intent(this, MixesActivity::class.java))
+                    1 -> startActivityForResult(Intent(this, HelpActivity::class.java), REQ_HELP)
+                    2 -> dj.helpMode = true
+                    3 -> slider("Master volume", mixer.master) { v -> mixer.master = v }
+                    4 -> slider("Sampler volume", mixer.sampler.volume) { v -> mixer.sampler.volume = v }
+                    5 -> synchronized(mixer.lock) { mixer.curve = if (mixer.curve == XfadeCurve.SMOOTH) XfadeCurve.SCRATCH else XfadeCurve.SMOOTH }
+                    6 -> synchronized(mixer.lock) { mixer.quantize = !mixer.quantize }
+                    7 -> {
                         synchronized(mixer.lock) { mixer.splitCue = !mixer.splitCue }
                         if (mixer.splitCue) AlertDialog.Builder(this).setTitle("Split cue is on")
                             .setMessage("Plug in headphones. Your LEFT ear hears the mix and your RIGHT ear hears the decks " +
@@ -198,31 +213,10 @@ class MainActivity : Activity(), DjView.Host {
                                 "Don't use this through a speaker: the speaker would play the cue too.")
                             .setPositiveButton("OK", null).show()
                     }
-                    5 -> updater.check(manual = true)
-                    6 -> about()
+                    8 -> updater.check(manual = true)
                 }
                 saveSettings()
             }.show()
-    }
-
-    private fun about() {
-        AlertDialog.Builder(this).setTitle("MixDeck ${BuildConfig.VERSION_NAME}")
-            .setMessage("""
-                Load: tap LOAD and search YouTube, paste a Spotify link, or pick a file on your phone.
-                Jog wheel: touch the middle to scratch (VINYL on), turn the edge to nudge the tempo.
-                Drag the waveform to scratch or move through the track. Tap the overview to jump.
-                CUE: set the cue point when stopped, hold to preview, tap while playing to go back.
-                Hot cues 1-4: tap to set, tap again to jump, hold to delete.
-                Loops 1/2/4/8 beats, ½ and ×2 to resize, IN/OUT for your own loop.
-                SYNC matches the tempo and beat of the other deck.
-                Knobs: drag up/down, double-tap to reset. Faders: double-tap to reset.
-                Tap a deck's title for BPM fixes and more.
-                REC records your mix to Music/MixDeck.
-
-                Updates install from inside the app (☰ → Check for updates).
-                YouTube downloads are for personal use only.
-            """.trimIndent())
-            .setPositiveButton("OK", null).show()
     }
 
     private fun slider(title: String, value: Float, set: (Float) -> Unit) {
@@ -257,18 +251,52 @@ class MainActivity : Activity(), DjView.Host {
     // ---------------------------------------------------------------- recording
 
     override fun toggleRecord() {
-        if (recorder.recording) {
-            loader.execute {
-                val where = runCatching { recorder.stop() }
-                main.post {
-                    where.onSuccess { toast("Mix saved to $it") }.onFailure { toast("Couldn't save the mix: ${it.message}") }
-                }
-            }
-        } else {
+        if (saving != null) return
+        if (!recorder.recording) {
             runCatching { recorder.start() }.onFailure { toast("Couldn't start recording: ${it.message}") }
+            return
         }
+        val wav = recorder.stop() ?: return
+        val secs = (wav.length() - 44) / 4.0 / mixer.sampleRate
+        val input = EditText(this).apply {
+            setText("Mix ${stamp()}"); setSelectAllOnFocus(true); setSingleLine()
+        }
+        val box = LinearLayout(this).apply {
+            setPadding(60, 20, 60, 0)
+            addView(input, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Save your mix (${DjView.fmtTime(secs)})")
+            .setView(box)
+            .setCancelable(false)
+            .setPositiveButton("Save") { _, _ -> saveMix(wav, input.text.toString()) }
+            .setNegativeButton("Discard") { _, _ ->
+                AlertDialog.Builder(this).setMessage("Throw this recording away?")
+                    .setPositiveButton("Discard") { _, _ -> wav.delete() }
+                    .setNegativeButton("Keep it") { _, _ -> saveMix(wav, input.text.toString()) }
+                    .setCancelable(false).show()
+            }.show()
     }
 
+    private fun saveMix(wav: java.io.File, name: String) {
+        saving = "SAVING"
+        Thread({
+            val r = runCatching { MixStore(this).save(wav, name) { p -> saving = "${(p * 100).toInt()}%" } }
+            saving = null
+            main.post {
+                r.onSuccess { m ->
+                    AlertDialog.Builder(this).setTitle("Mix saved")
+                        .setMessage("\"${m.name}\" is in My mixes and in Music/MixDeck on your phone.")
+                        .setPositiveButton("Open My mixes") { _, _ -> startActivity(Intent(this, MixesActivity::class.java)) }
+                        .setNegativeButton("OK", null).show()
+                }.onFailure { toast("Couldn't save the mix: ${it.message}") }
+            }
+        }, "save mix").start()
+    }
+
+    private fun stamp() = java.text.SimpleDateFormat("d MMM yyyy HH.mm", java.util.Locale.getDefault()).format(java.util.Date())
+
+    override fun savingText() = saving
     override fun recording() = recorder.recording
     override fun recordSeconds() = recorder.seconds
     override fun loadingText(deck: Int) = loading[deck]
@@ -279,5 +307,6 @@ class MainActivity : Activity(), DjView.Host {
 
     companion object {
         const val REQ_LIBRARY = 1
+        const val REQ_HELP = 3
     }
 }

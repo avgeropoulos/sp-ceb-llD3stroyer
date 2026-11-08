@@ -39,6 +39,8 @@ class DjView(context: Context, private val mixer: Mixer, private val host: Host)
         fun recording(): Boolean
         fun recordSeconds(): Double
         fun loadingText(deck: Int): String?
+        /** Text shown on the REC button while a finished mix is being saved, or null. */
+        fun savingText(): String?
     }
 
     private val colA = 0xFF29B6F6.toInt()
@@ -71,7 +73,15 @@ class DjView(context: Context, private val mixer: Mixer, private val host: Host)
 
     // ------------------------------------------------------------------ controls
 
+    private fun <T : Ctl> T.h(s: String): T { help = s; return this }
+
+    /** When true, every control is labelled with what it does (the "key"). */
+    var helpMode = false
+    private val keyBanner = RectF()
+
     abstract inner class Ctl(val r: RectF) {
+        /** Short label shown on this control in the help key. */
+        var help: String? = null
         open fun down(x: Float, y: Float) {}
         open fun move(x: Float, y: Float) {}
         open fun up() {}
@@ -449,31 +459,37 @@ class DjView(context: Context, private val mixer: Mixer, private val host: Host)
 
         // Top bar: [LOAD A][info A]  [REC][meter][MENU]  [info B][LOAD B]
         val loadW = W * 0.065f
-        val centerW = W * 0.16f
+        val centerW = W * 0.2f
         val infoW = (W - centerW - 2 * loadW - 6 * pad) / 2
         var x = pad
-        ctls += Btn(RectF(x, pad, x + loadW, topH), { "LOAD" }, colA) { host.openLibrary(0) }
+        ctls += Btn(RectF(x, pad, x + loadW, topH), { "LOAD" }, colA) { host.openLibrary(0) }.h("Pick a song for deck A")
         x += loadW + pad
-        ctls += Info(RectF(x, pad, x + infoW, topH), 0)
+        ctls += Info(RectF(x, pad, x + infoW, topH), 0).h("Song, time left, BPM · tap for BPM fixes")
         x += infoW + pad
-        val cw = (centerW - 2 * pad) / 3
-        ctls += Btn(RectF(x, pad, x + cw * 1.2f, topH), {
-            if (host.recording()) fmtTime(host.recordSeconds()) else "REC"
-        }, 0xFFFF1744.toInt(), lit = { host.recording() }) { host.toggleRecord() }
-        ctls += Meter(RectF(x + cw * 1.2f + pad, pad, x + cw * 1.2f + pad + cw * 0.5f, topH)) { mixer.masterLevel }
-        ctls += Btn(RectF(x + cw * 1.7f + 2 * pad, pad, x + centerW, topH), { "☰" }, dim) { host.mainMenu() }
+        // REC (1.4 parts) | meter (0.4) | ? (1) | ☰ (1)
+        val cw = (centerW - 3 * pad) / 3.8f
+        ctls += Btn(RectF(x, pad, x + cw * 1.4f, topH), {
+            host.savingText() ?: if (host.recording()) fmtTime(host.recordSeconds()) else "REC"
+        }, 0xFFFF1744.toInt(), lit = { host.recording() }) { host.toggleRecord() }.h("Record your mix")
+        var cx = x + cw * 1.4f + pad
+        ctls += Meter(RectF(cx, pad, cx + cw * 0.4f, topH)) { mixer.masterLevel }
+        cx += cw * 0.4f + pad
+        ctls += Btn(RectF(cx, pad, cx + cw, topH), { "?" }, 0xFFFFEB3B.toInt(), lit = { helpMode }) { helpMode = !helpMode }
+        cx += cw + pad
+        keyBanner.set(x, pad, cx - pad, topH)
+        ctls += Btn(RectF(cx, pad, x + centerW, topH), { "☰" }, dim) { host.mainMenu() }.h("Menu: mixes, guide, settings")
         x += centerW + pad
-        ctls += Info(RectF(x, pad, x + infoW, topH), 1)
+        ctls += Info(RectF(x, pad, x + infoW, topH), 1).h("Song, time left, BPM · tap for BPM fixes")
         x += infoW + pad
-        ctls += Btn(RectF(x, pad, W - pad, topH), { "LOAD" }, colB) { host.openLibrary(1) }
+        ctls += Btn(RectF(x, pad, W - pad, topH), { "LOAD" }, colB) { host.openLibrary(1) }.h("Pick a song for deck B")
 
         var y = topH + pad
-        ctls += Overview(RectF(pad, y, W / 2 - pad / 2, y + ovH), 0)
-        ctls += Overview(RectF(W / 2 + pad / 2, y, W - pad, y + ovH), 1)
+        ctls += Overview(RectF(pad, y, W / 2 - pad / 2, y + ovH), 0).h("Whole song A · tap to jump there")
+        ctls += Overview(RectF(W / 2 + pad / 2, y, W - pad, y + ovH), 1).h("Whole song B · tap to jump there")
         y += ovH + pad
-        ctls += Lane(RectF(pad, y, W - pad, y + laneH), 0)
+        ctls += Lane(RectF(pad, y, W - pad, y + laneH), 0).h("Deck A close-up · beat lines on top · drag to scratch")
         y += laneH + pad * 0.5f
-        ctls += Lane(RectF(pad, y, W - pad, y + laneH), 1)
+        ctls += Lane(RectF(pad, y, W - pad, y + laneH), 1).h("Deck B close-up · line the beats up with A")
         y += laneH + pad
 
         val mainTop = y
@@ -508,22 +524,23 @@ class DjView(context: Context, private val mixer: Mixer, private val host: Host)
         ctls += Btn(RectF(pitchR.left, pitchR.top, pitchR.right, pitchR.top + rangeH),
             { "±${(d().pitchRange * 100).toInt()}" }, col, textScale = 0.8f) {
             act { val dk = decks[i]; dk.pitchRange = when (dk.pitchRange) { 0.08 -> 0.16; 0.16 -> 0.5; else -> 0.08 } }
-        }
+        }.h("Tempo range")
         ctls += Fader(RectF(pitchR.left, pitchR.top + rangeH + pad, pitchR.right, pitchR.bottom - unit * 1.6f), col,
             { (d().pitch / d().pitchRange).toFloat() }, { v -> mixer.decks[i].pitch = v * mixer.decks[i].pitchRange },
-            -1f, 1f, 0f, invert = true, caption = { "%+.1f%%".format(d().pitch * 100) })
+            -1f, 1f, 0f, invert = true, caption = { "%+.1f%%".format(d().pitch * 100) }).h("Tempo (down = faster)")
 
         // Jog wheel above CUE / PLAY.
         val transportH = jogR.height() * 0.24f
         val jogArea = RectF(jogR.left, jogR.top, jogR.right, jogR.bottom - transportH - pad)
         val side = min(jogArea.width(), jogArea.height())
         ctls += Jog(RectF(jogArea.centerX() - side / 2, jogArea.centerY() - side / 2, jogArea.centerX() + side / 2, jogArea.centerY() + side / 2), i)
+            .h("Jog wheel · middle: scratch · edge: speed up / slow down")
         val ty = jogR.bottom - transportH
         val half = (jogR.width() - pad) / 2
         ctls += Btn(RectF(jogR.left, ty, jogR.left + half, jogR.bottom), { "CUE" }, 0xFFFFA000.toInt(),
-            onUp = { act { decks[i].cueUp() } }) { act { decks[i].cueDown(quantize) } }
+            onUp = { act { decks[i].cueUp() } }) { act { decks[i].cueDown(quantize) } }.h("Cue: back to start point")
         ctls += Btn(RectF(jogR.left + half + pad, ty, jogR.right, jogR.bottom), { if (d().playing) "❚❚" else "▶" }, 0xFF00E676.toInt(),
-            lit = { d().playing }) { act { decks[i].playPause() } }
+            lit = { d().playing }) { act { decks[i].playPause() } }.h("Play / pause")
 
         // Button grid: 6 rows.
         val rows = 6
@@ -537,8 +554,8 @@ class DjView(context: Context, private val mixer: Mixer, private val host: Host)
         ctls += Btn(cell(0, 0, 2), { "SYNC" }, col, lit = {
             val o = mixer.decks[1 - i]
             d().bpm > 0 && o.bpm > 0 && abs(d().effectiveBpm - o.effectiveBpm) < 0.02
-        }) { act { sync(i) } }
-        ctls += Btn(cell(0, 1, 2), { "VINYL" }, col, lit = { d().vinylMode }) { act { decks[i].vinylMode = !decks[i].vinylMode } }
+        }) { act { sync(i) } }.h("Match the other deck's tempo")
+        ctls += Btn(cell(0, 1, 2), { "VINYL" }, col, lit = { d().vinylMode }) { act { decks[i].vinylMode = !decks[i].vinylMode } }.h("Jog scratches")
         for (h in 0..3) {
             var wasSet = false
             ctls += Btn(cell(1 + h / 2, h % 2, 2), { if (d().hotCues[h].isNaN()) "${h + 1}" else "● ${h + 1}" }, hotCueColors[h],
@@ -546,34 +563,34 @@ class DjView(context: Context, private val mixer: Mixer, private val host: Host)
                 onLong = { if (wasSet) act { decks[i].clearHotCue(h) } }) {
                 wasSet = !d().hotCues[h].isNaN()
                 act { decks[i].hotCue(h, quantize) }
-            }
+            }.h("Hot cue · hold to clear")
         }
         val loopCol = 0xFF32CD32.toInt()
         listOf(1.0, 2.0, 4.0, 8.0).forEachIndexed { k, beats ->
             ctls += Btn(cell(3, k, 4), { beats.toInt().toString() }, loopCol,
-                lit = { d().loopOn && d().loopBeats == beats }) { act { decks[i].autoLoop(beats, quantize) } }
+                lit = { d().loopOn && d().loopBeats == beats }) { act { decks[i].autoLoop(beats, quantize) } }.h("Loop ${beats.toInt()} beat${if (beats > 1) "s" else ""}")
         }
-        ctls += Btn(cell(4, 0, 4), { "½" }, loopCol) { act { decks[i].loopResize(0.5) } }
-        ctls += Btn(cell(4, 1, 4), { "×2" }, loopCol) { act { decks[i].loopResize(2.0) } }
-        ctls += Btn(cell(4, 2, 4), { "IN" }, loopCol, textScale = 0.85f) { act { decks[i].loopInHere(quantize) } }
+        ctls += Btn(cell(4, 0, 4), { "½" }, loopCol) { act { decks[i].loopResize(0.5) } }.h("Halve loop")
+        ctls += Btn(cell(4, 1, 4), { "×2" }, loopCol) { act { decks[i].loopResize(2.0) } }.h("Double loop")
+        ctls += Btn(cell(4, 2, 4), { "IN" }, loopCol, textScale = 0.85f) { act { decks[i].loopInHere(quantize) } }.h("Loop start")
         ctls += Btn(cell(4, 3, 4), { "OUT" }, loopCol, lit = { d().loopOn }, textScale = 0.85f) {
             act {
                 val dk = decks[i]
                 if (dk.loopOn || (dk.loopIn >= 0 && dk.loopOut > dk.loopIn)) dk.loopToggle() else dk.loopOutHere(quantize)
             }
-        }
+        }.h("Loop end / exit")
         val fxCol = 0xFFB388FF.toInt()
         val fxType = cell(5, 0, 3)
         ctls += Btn(RectF(fxType.left, fxType.top, fxType.right + (fxType.width() + pad) * 0.35f, fxType.bottom),
             { d().fx.type.label }, fxCol, textScale = 0.7f) {
             act { val fx = decks[i].fx; fx.type = FxType.values()[(fx.type.ordinal + 1) % FxType.values().size] }
-        }
+        }.h("Choose effect")
         val fxOn = cell(5, 1, 3)
         ctls += Btn(RectF(fxOn.left + (fxOn.width() + pad) * 0.35f, fxOn.top, fxOn.right + (fxOn.width() + pad) * 0.35f, fxOn.bottom),
-            { "FX" }, fxCol, lit = { d().fx.on }) { act { decks[i].fx.on = !decks[i].fx.on } }
+            { "FX" }, fxCol, lit = { d().fx.on }) { act { decks[i].fx.on = !decks[i].fx.on } }.h("Effect on/off")
         val fxAmt = cell(5, 2, 3)
         ctls += Knob(RectF(fxAmt.left + (fxAmt.width() + pad) * 0.35f, fxAmt.top, fxAmt.right, fxAmt.bottom), "AMT", fxCol,
-            { d().fx.amount }, { v -> mixer.decks[i].fx.amount = v }, 0f, 1f, 0.5f)
+            { d().fx.amount }, { v -> mixer.decks[i].fx.amount = v }, 0f, 1f, 0.5f).h("Amount")
     }
 
     private fun layoutMixer(r: RectF) {
@@ -601,13 +618,15 @@ class DjView(context: Context, private val mixer: Mixer, private val host: Host)
             )
             knobs.forEachIndexed { k, (label, get, set) ->
                 ctls += Knob(RectF(knobX, r.top + k * kh, knobX + knobW, r.top + (k + 1) * kh), label,
-                    if (label == "FILTER") 0xFFB388FF.toInt() else col, get, set)
+                    if (label == "FILTER") 0xFFB388FF.toInt() else col, get, set).h(when (label) {
+                        "TRIM" -> "Loudness"; "HI" -> "Treble"; "MID" -> "Mids"; "LOW" -> "Bass"; else -> "Filter sweep"
+                    })
             }
             val cueH = unit * 3f
             ctls += Btn(RectF(faderX, r.top, faderX + faderW, r.top + cueH), { "🎧" }, 0xFFFFA000.toInt(),
-                lit = { d().headphone }, textScale = 0.9f) { act { decks[i].headphone = !decks[i].headphone } }
+                lit = { d().headphone }, textScale = 0.9f) { act { decks[i].headphone = !decks[i].headphone } }.h("Pre-listen")
             ctls += Fader(RectF(faderX, r.top + cueH + pad, faderX + faderW, r.top + topH - pad), col,
-                { d().volume }, { v -> mixer.decks[i].volume = v }, 0f, 1f, 1f)
+                { d().volume }, { v -> mixer.decks[i].volume = v }, 0f, 1f, 1f).h("Volume ${if (i == 0) "A" else "B"}")
             ctls += Meter(RectF(meterX, r.top + cueH + pad, meterX + meterW, r.top + topH - pad)) { mixer.decks[i].level * mixer.decks[i].volume }
         }
         // Sampler pads.
@@ -618,11 +637,11 @@ class DjView(context: Context, private val mixer: Mixer, private val host: Host)
             ctls += Btn(RectF(r.left + k * (pw + pad), padY, r.left + k * (pw + pad) + pw, padY + padH),
                 { mixer.sampler.names[k] }, 0xFFFF4081.toInt(), lit = { mixer.sampler.isPlaying(k) }, textScale = 0.62f) {
                 act { if (sampler.isPlaying(k)) sampler.stop(k) else sampler.trigger(k) }
-            }
+            }.h("Sound effect")
         }
         // Crossfader.
         ctls += Fader(RectF(r.left, padY + padH + pad * 3, r.right, r.bottom), Color.WHITE,
-            { mixer.crossfader }, { v -> mixer.crossfader = v }, -1f, 1f, 0f, horizontal = true)
+            { mixer.crossfader }, { v -> mixer.crossfader = v }, -1f, 1f, 0f, horizontal = true).h("Crossfader: A ◀ blend ▶ B")
     }
 
     // ------------------------------------------------------------------ touch & draw
@@ -631,6 +650,7 @@ class DjView(context: Context, private val mixer: Mixer, private val host: Host)
     override fun onTouchEvent(e: MotionEvent): Boolean {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
+                if (helpMode) { if (e.actionMasked == MotionEvent.ACTION_DOWN) helpMode = false; return true }
                 val idx = e.actionIndex
                 val x = e.getX(idx); val y = e.getY(idx)
                 val hit = ctls.lastOrNull { grow(it.r).contains(x, y) }
@@ -658,7 +678,60 @@ class DjView(context: Context, private val mixer: Mixer, private val host: Host)
     override fun onDraw(c: Canvas) {
         c.drawColor(bg)
         for (ctl in ctls) ctl.draw(c)
+        if (helpMode) drawKey(c)
         postInvalidateOnAnimation()
+    }
+
+    /** The help key: dims the console and labels each control with what it does. */
+    private fun drawKey(c: Canvas) {
+        c.drawColor(0xC8000000.toInt())
+        val bubble = RectF()
+        for (ctl in ctls) {
+            val h = ctl.help ?: continue
+            val r = ctl.r
+            bubble.set(r); bubble.inset(unit * 0.15f, unit * 0.15f)
+            fill.color = 0xF2FFF59D.toInt()
+            stroke.color = 0xFF000000.toInt(); stroke.strokeWidth = 1f
+            text.color = Color.BLACK
+            // Fit the label in one, two or three lines.
+            val maxSize = min(unit * 1.25f, bubble.height() * 0.42f)
+            val lines = wrap(h, bubble.width() * 0.9f, bubble.height() * 0.9f, maxSize)
+            val lh = text.textSize * 1.15f
+            val boxH = lh * lines.size + text.textSize * 0.5f
+            val widest = lines.maxOf { text.measureText(it) } + text.textSize
+            val box = RectF(r.centerX() - widest / 2, r.centerY() - boxH / 2, r.centerX() + widest / 2, r.centerY() + boxH / 2)
+            c.drawRoundRect(box, radius, radius, fill)
+            var y = box.top + text.textSize * 0.25f - text.ascent()
+            for (line in lines) { c.drawText(line, box.centerX(), y, text); y += lh }
+        }
+        // Banner across the centre of the top bar.
+        val banner = keyBanner
+        fill.color = 0xFFFFEB3B.toInt(); c.drawRoundRect(banner, radius, radius, fill)
+        text.color = Color.BLACK; text.textSize = banner.height() * 0.3f
+        fitText("KEY · tap to close", banner.width() * 0.92f)
+        c.drawText("KEY · tap to close", banner.centerX(), banner.centerY() - text.textSize * 0.15f, text)
+        text.textSize = banner.height() * 0.22f
+        fitText("Full guide: ☰ → How it works", banner.width() * 0.92f)
+        c.drawText("Full guide: ☰ → How it works", banner.centerX(), banner.centerY() + text.textSize * 1.2f, text)
+    }
+
+    private fun wrap(s: String, maxW: Float, maxH: Float, maxSize: Float): List<String> {
+        var size = maxSize
+        while (size > unit * 0.45f) {
+            text.textSize = size
+            val words = s.split(' ')
+            val lines = ArrayList<String>()
+            var cur = ""
+            for (w in words) {
+                val t = if (cur.isEmpty()) w else "$cur $w"
+                if (text.measureText(t) <= maxW || cur.isEmpty()) cur = t else { lines += cur; cur = w }
+            }
+            if (cur.isNotEmpty()) lines += cur
+            val fits = lines.all { text.measureText(it) <= maxW } && lines.size * size * 1.15f + size * 0.5f <= maxH
+            if (fits) return lines
+            size *= 0.9f
+        }
+        return listOf(s)
     }
 
     private fun drawEmpty(c: Canvas, i: Int) {

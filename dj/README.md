@@ -50,10 +50,23 @@ can't go on the Play Store or App Store.
 | **Effects** | Per deck: Echo, Flanger, Reverb, Bitcrusher, beat-synced, with an amount knob. Echo and reverb ring out after you switch them off. |
 | **Sampler** | Air horn, siren, laser, bass drop. |
 | **Headphones** | Split cue: left ear = mix, right ear = decks with 🎧 lit, so you can pre-listen. |
-| **REC** | Records the master mix to `Music/MixDeck` as a WAV. |
+| **REC** | Records the master mix; name it and it's saved to My mixes. |
 | **Safety** | A master limiter so stacked decks never distort. |
 
 Knobs: drag up/down, double-tap to reset.
+
+## Help inside the app
+
+* **?** (top middle) lays a key over the DJ screen that labels every control. It also shows
+  the first time you open the app.
+* **☰ → How it works** is the full guide, starting with "Your first mix in 8 steps".
+
+## Saving mixes
+
+Tap **REC**, play your set, tap **REC** again and give the mix a name. It's saved as an M4A
+(AAC, about 1.4 MB a minute) in **Music/MixDeck**, where music players and file apps can see
+it, and it stays there if you uninstall the app. **☰ → My mixes** plays your mixes back and
+lets you share, rename or delete them.
 
 ## iPhone
 
