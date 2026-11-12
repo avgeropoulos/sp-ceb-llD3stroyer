@@ -78,10 +78,13 @@ class Path {
     sealed class Part {
         class Rect(val r: RectF) : Part()
         class Round(val r: RectF, val rx: Float, val ry: Float) : Part()
+        /** A closed polygon: x0, y0, x1, y1, ... */
+        class Poly(val pts: FloatArray) : Part()
     }
     val parts = ArrayList<Part>()
     fun addRect(l: Float, t: Float, r: Float, b: Float) { parts += Part.Rect(RectF(l, t, r, b)) }
     fun addRoundRect(r: RectF, rx: Float, ry: Float) { parts += Part.Round(RectF(r), rx, ry) }
+    fun addPoly(vararg xy: Float) { parts += Part.Poly(xy) }
 }
 
 interface Canvas {

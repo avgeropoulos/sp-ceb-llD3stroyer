@@ -1,8 +1,8 @@
 name: Build MixDeck (DJ app)
 
-# Every push that touches the DJ app builds a new APK and publishes it to the
-# "mixdeck-latest" release. The app checks that release's version.json and offers
-# to update itself when the build number is higher than its own.
+# Every push that touches the DJ app builds the phone app and the desktop apps (Windows, Mac,
+# Linux) and publishes them to the "mixdeck-latest" release. The apps read that release's
+# version.json and offer the update when its build number is higher than their own.
 on:
   push:
     paths:
@@ -21,9 +21,14 @@ concurrency:
   group: mixdeck-release
   cancel-in-progress: false
 
+# Build numbers are 100 + the run number, so CI builds are always newer than any build
+# installed by hand.
+
 jobs:
-  build:
+  android:
     runs-on: ubuntu-latest
+    outputs:
+      signed: ${{ steps.key.outputs.signed }}
     defaults:
       run:
         working-directory: dj
@@ -37,72 +42,158 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Work out the build number
+        run: echo "BUILD_NUMBER=$((100 + ${{ github.run_number }}))" >> "$GITHUB_ENV"
+
       - name: Test the audio engine
-        run: ./gradlew :core:test --console=plain
+        run: ./gradlew :core:test :media:test --console=plain
 
       - name: Get the signing key
+        id: key
         env:
           MIXDECK_KEYSTORE: ${{ secrets.MIXDECK_KEYSTORE }}
         run: |
           if [ -z "$MIXDECK_KEYSTORE" ]; then
             echo "::warning::The MIXDECK_KEYSTORE secret isn't set, so this build can't be published as an update."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
           else
             echo "$MIXDECK_KEYSTORE" | base64 -d > "$RUNNER_TEMP/mixdeck.jks"
             echo "MIXDECK_KEYSTORE_FILE=$RUNNER_TEMP/mixdeck.jks" >> "$GITHUB_ENV"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
           fi
-
-      - name: Work out the build number
-        # CI builds start at 101 so they're always newer than any build installed by hand.
-        run: echo "BUILD_NUMBER=$((100 + ${{ github.run_number }}))" >> "$GITHUB_ENV"
 
       - name: Build APK
         env:
           MIXDECK_KEYSTORE_PASSWORD: ${{ secrets.MIXDECK_KEYSTORE_PASSWORD }}
-        run: ./gradlew :app:assembleRelease -PversionCode=$BUILD_NUMBER --console=plain
-
-      - name: Prepare release files
         run: |
-          mkdir -p out
-          cp app/build/outputs/apk/release/app-release.apk out/MixDeck.apk
-          python3 - <<'PY'
-          import json, os, subprocess
-          msg = subprocess.check_output(["git", "log", "-1", "--format=%s"]).decode().strip()
-          json.dump({
-              "versionCode": int(os.environ["BUILD_NUMBER"]),
-              "versionName": "1." + os.environ["BUILD_NUMBER"],
-              "notes": "What's new: " + msg,
-          }, open("out/version.json", "w"))
-          PY
-          cat out/version.json
+          ./gradlew :app:assembleRelease -PversionCode=$BUILD_NUMBER --console=plain
+          mkdir -p out && cp app/build/outputs/apk/release/app-release.apk out/MixDeck.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: MixDeck-apk
+          name: MixDeck-android
           path: dj/out/MixDeck.apk
 
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: MixDeck-linux.tar.gz
+          - os: windows-latest
+            asset: MixDeck-windows.zip
+          - os: macos-14
+            asset: MixDeck-mac-apple-silicon.dmg
+          - os: macos-15-intel
+            asset: MixDeck-mac-intel.dmg
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: dj
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Work out the build number
+        run: echo "BUILD_NUMBER=$((100 + ${{ github.run_number }}))" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: ./gradlew :desktop:installDist :desktop:icons -PversionCode=$BUILD_NUMBER -PdesktopOnly=true --console=plain
+
+      - name: Self-test on this OS (FFmpeg, engine, drawing, YouTube)
+        env:
+          MIXDECK_SELFTEST_NET: "1"
+        run: ./gradlew :desktop:selftest -PversionCode=$BUILD_NUMBER -PdesktopOnly=true --console=plain
+
+      - name: Package
+        run: |
+          MODS=java.base,java.desktop,java.logging,java.prefs,java.scripting,java.xml,java.naming,java.net.http,java.sql,java.management,jdk.unsupported,jdk.crypto.ec,jdk.localedata,jdk.charsets,jdk.zipfs,jdk.accessibility
+          ICONS=desktop/build/icons
+          COMMON=(--name MixDeck --input desktop/build/install/desktop/lib --main-jar desktop.jar
+                  --main-class com.mixdeck.desktop.MainKt --app-version "1.$BUILD_NUMBER"
+                  --java-options -Xmx3g --add-modules "$MODS"
+                  --jlink-options "--strip-debug --no-man-pages --no-header-files --compress=zip-6"
+                  --vendor MixDeck --dest pkg)
+          case "$RUNNER_OS" in
+            Linux)
+              jpackage --type app-image --icon "$ICONS/icon.png" "${COMMON[@]}"
+              tar -C pkg -czf "pkg/${{ matrix.asset }}" MixDeck ;;
+            Windows)
+              jpackage --type app-image --icon "$ICONS/icon.ico" "${COMMON[@]}"
+              (cd pkg && 7z a -tzip "${{ matrix.asset }}" MixDeck > /dev/null) ;;
+            macOS)
+              iconutil -c icns "$ICONS/MixDeck.iconset" -o "$ICONS/icon.icns"
+              jpackage --type dmg --icon "$ICONS/icon.icns" --mac-package-identifier com.mixdeck.desktop "${COMMON[@]}"
+              mv pkg/*.dmg "pkg/${{ matrix.asset }}" ;;
+          esac
+          ls -la pkg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dj/pkg/${{ matrix.asset }}
+
+  publish:
+    needs: [android, desktop]
+    # Publish when the phone app built and was signed, even if one desktop build failed.
+    if: always() && github.event_name != 'pull_request' && needs.android.result == 'success' && needs.android.outputs.signed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Work out the build number
+        run: echo "BUILD_NUMBER=$((100 + ${{ github.run_number }}))" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+
+      - name: Write version.json
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess
+          msg = subprocess.check_output(["git", "log", "-1", "--format=%s"]).decode().strip()
+          n = int(os.environ["BUILD_NUMBER"])
+          json.dump({"versionCode": n, "versionName": f"1.{n}", "notes": "What's new: " + msg},
+                    open("out/version.json", "w"))
+          PY
+          ls -la out
+
       - name: Move the release tag to this commit
-        if: github.event_name != 'pull_request' && env.MIXDECK_KEYSTORE_FILE != ''
-        working-directory: .
         run: |
           git tag -f mixdeck-latest
           git push -f origin mixdeck-latest
 
       - name: Publish the update
-        if: github.event_name != 'pull_request' && env.MIXDECK_KEYSTORE_FILE != ''
         uses: softprops/action-gh-release@v2
         with:
           tag_name: mixdeck-latest
-          name: "MixDeck DJ - Download for Android"
+          name: "MixDeck DJ - Downloads (Android, Mac, Windows, Linux)"
           prerelease: false
           make_latest: false
           body: |
-            **MixDeck**, a two-deck DJ app for Android. Build 1.${{ env.BUILD_NUMBER }}.
+            **MixDeck**, a two-deck DJ app. Build 1.${{ env.BUILD_NUMBER }}.
 
-            First install: open this page on your phone, download **MixDeck.apk**, open it and
-            allow "install unknown apps" for your browser if Android asks.
-            After that the app updates itself (it asks when a new build is out).
+            | Device | Download |
+            |---|---|
+            | Android phone | **MixDeck.apk** (open it on the phone; it updates itself after that) |
+            | Mac with Apple Silicon (M1–M4…) | **MixDeck-mac-apple-silicon.dmg** |
+            | Mac with Intel | **MixDeck-mac-intel.dmg** |
+            | Windows | **MixDeck-windows.zip**: unzip, then run MixDeck\MixDeck.exe |
+            | Linux | **MixDeck-linux.tar.gz**: extract, then run MixDeck/bin/MixDeck |
+
+            On a Mac: open the .dmg and drag MixDeck to Applications. The first time, right-click
+            MixDeck → Open (or System Settings → Privacy & Security → Open Anyway), because it isn't
+            from the App Store. On Windows, if SmartScreen warns you, click More info → Run anyway.
 
             Built from ${{ github.sha }}.
-          files: |
-            dj/out/MixDeck.apk
-            dj/out/version.json
+          files: out/*

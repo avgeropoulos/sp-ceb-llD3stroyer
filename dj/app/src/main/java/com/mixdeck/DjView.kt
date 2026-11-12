@@ -92,6 +92,11 @@ class AndroidCanvas : Canvas {
         for (part in path.parts) when (part) {
             is Path.Part.Rect -> this.path.addRect(rect(part.r), APath.Direction.CW)
             is Path.Part.Round -> this.path.addRoundRect(rect(part.r), part.rx, part.ry, APath.Direction.CW)
+            is Path.Part.Poly -> {
+                this.path.moveTo(part.pts[0], part.pts[1])
+                for (k in 2 until part.pts.size step 2) this.path.lineTo(part.pts[k], part.pts[k + 1])
+                this.path.close()
+            }
         }
         c.drawPath(this.path, paint(p))
     }

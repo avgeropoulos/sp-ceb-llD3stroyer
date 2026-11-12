@@ -19,4 +19,6 @@ dependencyResolutionManagement {
 rootProject.name = "MixDeck"
 include(":core")
 include(":media")
-include(":app")
+// Desktop-only builds (-PdesktopOnly=true) skip the Android app, so they don't need the Android SDK.
+if (providers.gradleProperty("desktopOnly").orNull != "true") include(":app")
+include(":desktop")

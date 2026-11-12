@@ -80,6 +80,8 @@ class Console(private val mixer: Mixer, private val host: Host) {
         open fun down(x: Float, y: Float) {}
         open fun move(x: Float, y: Float) {}
         open fun up() {}
+        /** Mouse wheel over the control ([notches] > 0 = up). */
+        open fun wheel(notches: Float) {}
         abstract fun draw(c: Canvas)
     }
 
@@ -102,6 +104,7 @@ class Console(private val mixer: Mixer, private val host: Host) {
             text.color = if (on) Color.BLACK else Color.WHITE
             text.textSize = min(r.height() * 0.42f, unit * 1.35f) * textScale
             val s = label()
+            if (drawIcon(c, s, r, text.color)) return
             fitText(s, r.width() * 0.9f)
             c.drawText(s, r.centerX(), r.centerY() - (text.descent() + text.ascent()) / 2, text)
         }
@@ -116,6 +119,12 @@ class Console(private val mixer: Mixer, private val host: Host) {
         override fun down(x: Float, y: Float) {
             if (now() - lastTap < 300) act { set(def) }
             lastTap = now(); lastY = y
+        }
+        override fun wheel(notches: Float) {
+            val old = get()
+            var v = old + notches * 0.05f * (max - min)
+            if ((old - def) * (v - def) < 0) v = def
+            act { set(v.coerceIn(min, max)) }
         }
         override fun move(x: Float, y: Float) {
             val dy = lastY - y; lastY = y
@@ -159,6 +168,12 @@ class Console(private val mixer: Mixer, private val host: Host) {
         override fun down(x: Float, y: Float) {
             if (now() - lastTap < 300) act { set(def) }
             lastTap = now(); last = if (horizontal) x else y
+        }
+        override fun wheel(notches: Float) {
+            var d = notches * 0.04f * (max - min)
+            if (horizontal) d = -d
+            if (invert) d = -d
+            act { set((get() + d).coerceIn(min, max)) }
         }
         override fun move(x: Float, y: Float) {
             val p = if (horizontal) x else y
@@ -209,6 +224,7 @@ class Console(private val mixer: Mixer, private val host: Host) {
             ring = hypot(x - r.centerX(), y - r.centerY()) > rad * 0.8f
             if (!ring) act { decks[i].jogTouch(true) }
         }
+        override fun wheel(notches: Float) { act { decks[i].jogMove(notches * 0.02) } }
         override fun move(x: Float, y: Float) {
             val a = atan2((y - r.centerY()).toDouble(), (x - r.centerX()).toDouble())
             var da = a - lastA
@@ -663,6 +679,12 @@ class Console(private val mixer: Mixer, private val host: Host) {
 
     fun pointerMove(id: Int, x: Float, y: Float) { active[id]?.move(x, y) }
 
+    /** Mouse wheel: turns knobs, moves faders, nudges the jog wheel. */
+    fun wheel(x: Float, y: Float, notches: Float) {
+        if (helpMode || tutorial?.let { tutHoles.none { h -> h.contains(x, y) } } == true) return
+        ctls.lastOrNull { grow(it.r).contains(x, y) }?.wheel(notches)
+    }
+
     fun pointerUp(id: Int) { active.remove(id)?.up() }
 
     fun cancelPointers() {
@@ -846,6 +868,30 @@ class Console(private val mixer: Mixer, private val host: Host) {
     }
 
     // ------------------------------------------------------------------ helpers
+
+    /** Icons drawn as shapes, so they look the same with any font. Returns false if [s] isn't one. */
+    private fun drawIcon(c: Canvas, s: String, r: RectF, color: Int): Boolean {
+        val sz = min(r.width(), r.height()) * 0.32f
+        val cx = r.centerX(); val cy = r.centerY()
+        fill.color = color
+        when (s) {
+            "▶" -> c.drawPath(Path().apply { addPoly(cx - sz * 0.45f, cy - sz * 0.55f, cx + sz * 0.6f, cy, cx - sz * 0.45f, cy + sz * 0.55f) }, fill)
+            "❚❚" -> {
+                c.drawRect(cx - sz * 0.5f, cy - sz * 0.55f, cx - sz * 0.15f, cy + sz * 0.55f, fill)
+                c.drawRect(cx + sz * 0.15f, cy - sz * 0.55f, cx + sz * 0.5f, cy + sz * 0.55f, fill)
+            }
+            "☰" -> for (k in -1..1) c.drawRect(cx - sz * 0.6f, cy + k * sz * 0.4f - sz * 0.08f, cx + sz * 0.6f, cy + k * sz * 0.4f + sz * 0.08f, fill)
+            "🎧" -> {
+                stroke.color = color; stroke.strokeWidth = sz * 0.16f
+                val o = RectF(cx - sz * 0.6f, cy - sz * 0.6f, cx + sz * 0.6f, cy + sz * 0.6f)
+                c.drawArc(o, 180f, 180f, false, stroke)
+                c.drawRoundRect(RectF(cx - sz * 0.72f, cy - sz * 0.05f, cx - sz * 0.38f, cy + sz * 0.6f), sz * 0.1f, sz * 0.1f, fill)
+                c.drawRoundRect(RectF(cx + sz * 0.38f, cy - sz * 0.05f, cx + sz * 0.72f, cy + sz * 0.6f), sz * 0.1f, sz * 0.1f, fill)
+            }
+            else -> return false
+        }
+        return true
+    }
 
     private fun fitText(s: String, maxW: Float) {
         val w = text.measureText(s)

@@ -1,4 +1,4 @@
-# MixDeck: a DJ app for Android
+# MixDeck: a DJ app for Android, Mac, Windows and Linux
 
 Two decks, a mixer and a sampler on your phone. Load songs from **YouTube**, from a
 **Spotify** playlist link, or from **audio files** on the phone, then mix, scratch, loop and
@@ -18,6 +18,36 @@ a new build.) Every push to this repo that changes `dj/`
 builds a new version, and the app asks **"Update available"** the next time you open it
 (or use ☰ → *Check for updates*). The first time, Android asks you to allow MixDeck to
 install updates; after that it's one tap.
+
+## On your computer (Mac, Windows, Linux)
+
+MixDeck also runs on a computer, with the same decks, mixer, effects, key and Nelly tutorial.
+Download yours from the
+[MixDeck release page](https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/tag/mixdeck-latest):
+
+| Computer | Download | How to open it |
+|---|---|---|
+| Mac with Apple Silicon (M1, M2, M3, M4…) | `MixDeck-mac-apple-silicon.dmg` | Open it, drag MixDeck to Applications. The first time, right-click MixDeck → **Open** (or System Settings → Privacy & Security → **Open Anyway**). |
+| Mac with Intel | `MixDeck-mac-intel.dmg` | Same as above. |
+| Windows | `MixDeck-windows.zip` | Unzip it, then run `MixDeck\MixDeck.exe`. If SmartScreen warns you: **More info → Run anyway**. |
+| Linux | `MixDeck-linux.tar.gz` | Extract it, then run `MixDeck/bin/MixDeck`. |
+
+(Not sure which Mac you have? Apple menu → About This Mac: "Chip: Apple M…" means Apple Silicon.)
+
+On a computer you use the mouse instead of touch: drag knobs and faders up/down or use the
+scroll wheel over them, drag the jog wheel to scratch, and double-click to reset. There are
+keyboard shortcuts too:
+
+| Keys | Deck A | Keys | Deck B |
+|---|---|---|---|
+| Q / W / E | CUE / Play / SYNC | O / P / I | CUE / Play / SYNC |
+| 1 2 3 4 | Hot cues | 7 8 9 0 | Hot cues |
+| R / T | 4-beat loop / effect | U / Y | 4-beat loop / effect |
+
+← → move the crossfader (↓ centres it), Z X C V fire the sampler, H shows the key, Esc closes it.
+
+The computer version checks for updates too (☰ → Check for updates) and opens the new download.
+Songs are kept in MixDeck's own folder and mixes in `Music/MixDeck`.
 
 ## Getting songs
 
@@ -77,9 +107,9 @@ lets you share, rename or delete them.
 
 ## iPhone
 
-MixDeck is Android-only for now. An iPhone version would need a Mac with Xcode and an Apple
-developer account ($99/year) to build and install. Apple also doesn't allow apps to update
-themselves or download from YouTube, so updates and song downloads would work differently there.
+There's no iPhone version yet (the Mac version above runs on Apple computers). An iPhone app would
+need a Mac with Xcode and an Apple developer account ($99/year) to build and install, and Apple
+doesn't allow apps to update themselves or download from YouTube.
 
 ## Building
 
@@ -94,6 +124,12 @@ cd dj
 * `core/`: the audio engine in plain Kotlin: decks with vinyl-style varispeed and scratching,
   cue/hot cues/loops, sync, EQ, filter, effects, crossfader, limiter, sampler, BPM and beat
   detection, waveform analysis, WAV recording.
+* `core/…/ui/`: the DJ console itself (decks, mixer, key, tutorial), drawn through a small
+  Canvas/Paint API so the phone and the computer share it.
+* `media/`: YouTube search and download, Spotify link import and the song library, shared by both apps.
+* `desktop/`: the computer app: a Swing window, Java Sound output, FFmpeg (via JavaCV) to decode
+  any audio file and encode mixes, keyboard shortcuts. `./gradlew :desktop:run` starts it and
+  `./gradlew :desktop:selftest` checks it works on this computer.
 * `app/`: the Android app: low-latency `AudioTrack` output, `MediaCodec` decoding, the
   Canvas-drawn console (`DjView`), the song library (YouTube via
   [NewPipe Extractor](https://github.com/TeamNewPipe/NewPipeExtractor), Spotify link import,
