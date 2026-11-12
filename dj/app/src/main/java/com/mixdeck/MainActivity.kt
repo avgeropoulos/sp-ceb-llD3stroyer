@@ -19,6 +19,8 @@ import android.widget.Toast
 import com.mixdeck.engine.Analyzer
 import com.mixdeck.engine.Mixer
 import com.mixdeck.engine.XfadeCurve
+import com.mixdeck.ui.Console
+import com.mixdeck.ui.Tutorials
 import java.util.concurrent.Executors
 
 /** The app's audio engine lives here so it survives the activity being recreated. */
@@ -33,7 +35,7 @@ object Engine {
     }
 }
 
-class MainActivity : Activity(), DjView.Host {
+class MainActivity : Activity(), Console.Host {
     private lateinit var mixer: Mixer
     private lateinit var store: TrackStore
     private lateinit var recorder: Recorder
@@ -49,7 +51,7 @@ class MainActivity : Activity(), DjView.Host {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         mixer = Engine.get(this)
-        store = TrackStore(this)
+        store = TrackStore(filesDir)
         recorder = Recorder(this, mixer)
         updater = Updater(this)
         restoreSettings()
@@ -310,7 +312,7 @@ class MainActivity : Activity(), DjView.Host {
             addView(input, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         }
         AlertDialog.Builder(this)
-            .setTitle("Save your mix (${DjView.fmtTime(secs)})")
+            .setTitle("Save your mix (${Console.fmtTime(secs)})")
             .setView(box)
             .setCancelable(false)
             .setPositiveButton("Save") { _, _ -> saveMix(wav, input.text.toString()) }

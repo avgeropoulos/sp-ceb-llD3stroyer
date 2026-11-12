@@ -1,6 +1,5 @@
 package com.mixdeck
 
-import android.content.Context
 import com.mixdeck.engine.TrackAnalysis
 import org.json.JSONArray
 import org.json.JSONObject
@@ -36,10 +35,13 @@ data class Track(
     }
 }
 
-/** Downloaded songs, their analysis (BPM, beat grid, waveform), and imported Spotify lists. */
-class TrackStore(context: Context) {
-    private val dir = File(context.filesDir, "tracks").apply { mkdirs() }
-    private val spotifyFile = File(context.filesDir, "spotify.json")
+/**
+ * Downloaded songs, their analysis (BPM, beat grid, waveform), and imported Spotify lists, kept
+ * under [baseDir] (the app's files folder on the phone, a MixDeck folder on the computer).
+ */
+class TrackStore(baseDir: File) {
+    private val dir = File(baseDir, "tracks").apply { mkdirs() }
+    private val spotifyFile = File(baseDir, "spotify.json")
 
     fun audioFile(id: String) = File(dir, "$id.audio")
     private fun metaFile(id: String) = File(dir, "$id.json")

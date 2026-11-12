@@ -61,7 +61,7 @@ class LibraryActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        store = TrackStore(this)
+        store = TrackStore(filesDir)
         deck = intent.getIntExtra(EXTRA_DECK, 0)
         shared = intent.action == Intent.ACTION_SEND
         window.decorView.setBackgroundColor(bg)

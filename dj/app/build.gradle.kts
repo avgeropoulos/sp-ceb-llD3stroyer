@@ -64,7 +64,6 @@ kotlin {
 }
 
 dependencies {
-    implementation(project(":core"))
-    implementation("com.github.TeamNewPipe:NewPipeExtractor:v0.27.0")
+    implementation(project(":media"))
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.5")
 }

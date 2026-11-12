@@ -18,4 +18,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "MixDeck"
 include(":core")
+include(":media")
 include(":app")
