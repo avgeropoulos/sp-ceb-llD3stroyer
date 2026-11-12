@@ -83,7 +83,7 @@ jobs:
             asset: MixDeck-linux.tar.gz
           - os: windows-latest
             asset: MixDeck-windows.zip
-          - os: macos-14
+          - os: macos-latest
             asset: MixDeck-mac-apple-silicon.dmg
           - os: macos-15-intel
             asset: MixDeck-mac-intel.dmg
