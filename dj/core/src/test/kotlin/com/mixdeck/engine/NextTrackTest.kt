@@ -20,6 +20,33 @@ class NextTrackTest {
 
     private fun ids(list: List<Suggestion>) = list.map { it.track.id }
 
+    private fun tuned(t: TrackProfile, cents: Float) = t.copy(tuningCents = cents)
+
+    @Test fun tuningOfTheRecordingsCounts() {
+        // Same key and tempo, but one recording sits 40 cents sharp: held notes clash a little.
+        val sharp = NextTrack.score(playing, tuned(track("sharp", 124.0, "8A"), 40f), Direction.KEEP)
+        val clean = NextTrack.score(playing, track("clean", 124.0, "8A"), Direction.KEEP)
+        assertTrue(clean.keyInTune && !sharp.keyInTune)
+        assertTrue(clean.score > sharp.score + 5, "in tune beats 40 cents out (${clean.score} vs ${sharp.score})")
+        // 3A is a semitone above 8A, but a song 45 cents sharp next to one 45 cents flat is only 10 cents apart.
+        val now = NowPlaying(tuned(now124, 45f), 0.0)
+        val s = NextTrack.score(now, tuned(track("low", 124.0, "3A"), -45f), Direction.KEEP)
+        assertTrue(s.keyInTune)
+        assertEquals("same key", s.camelotMove)
+        assertEquals(key("8A"), s.keyFrom); assertEquals(key("8A"), s.keyTo)
+    }
+
+    @Test fun keyChipShowsBothSongsInOneFrame() {
+        val after6 = NextTrack.score(playing, track("x", bpmFor(124.0, 0.06), "1A"), Direction.KEEP)
+        assertEquals("8A→8A", com.mixdeck.ui.KeyDisplay.moveLabel(after6, showFrom = true), "1A raised a semitone by SYNC")
+        assertEquals("8A", com.mixdeck.ui.KeyDisplay.moveLabel(after6, showFrom = false))
+        val sour = NextTrack.score(playing, track("y", bpmFor(124.0, 0.03), "9A"), Direction.KEEP)
+        assertTrue(com.mixdeck.ui.KeyDisplay.moveLabel(sour, showFrom = true).contains("→~"), "between keys is marked ~")
+        assertEquals(null, com.mixdeck.ui.KeyDisplay.moveColor(sour), "out-of-tune chips are grey")
+        val unknown = NextTrack.score(playing, track("z", 124.0, null), Direction.KEEP)
+        assertEquals("key ?", com.mixdeck.ui.KeyDisplay.moveLabel(unknown, showFrom = true))
+    }
+
     private val now124 = track("now", 124.0, "8A")
     private val playing = NowPlaying(now124, 0.0)
 

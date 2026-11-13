@@ -84,6 +84,7 @@ class MainActivity : Activity(), Console.Host {
         if (isFinishing) {
             recorder.stop()?.let { wav -> runCatching { MixStore(this).save(wav, "Unsaved mix ${stamp()}") {} } }
             Engine.audio?.stop(); Engine.audio = null; Engine.mixer = null
+            Engine.deckTrackIds.fill(null)
         }
     }
 
@@ -164,11 +165,13 @@ class MainActivity : Activity(), Console.Host {
                 var synced: Double? = null
                 synchronized(mixer.lock) {
                     val d = mixer.decks[deck]
+                    val replacedBpm = if (d.loaded && d.bpm > 0) d.bpm * (1 + d.pitch) else 0.0
                     d.load(pcm, analysis, track.title, track.artist, track.loudnessDb)
-                    if (sync && d.bpm > 0 && mixer.decks[1 - deck].bpm > 0) { mixer.sync(deck); synced = d.pitch }
+                    if (sync) synced = syncLoaded(deck, replacedBpm)
                 }
                 synced?.let { p ->
-                    main.post { toast("\"${track.title}\" is on deck ${deckName(deck)}, synced (%+.1f%%). Press ▶ when the moment's right.".format(p * 100)) }
+                    val pct = "%+.1f".format(p * 100)
+                    main.post { toast("\"${track.title}\" is on deck ${deckName(deck)}, synced ($pct%). Press ▶ when the moment's right.") }
                 }
                 Engine.deckTrackIds[deck] = id
             } catch (e: Throwable) {
@@ -177,6 +180,20 @@ class MainActivity : Activity(), Console.Host {
                 loading[deck] = null
             }
         }
+    }
+
+    /**
+     * "SYNC it for me" after a suggestion is loaded (call inside the mixer lock): match the other
+     * deck's song, or the song this one replaced when the other deck is empty (the suggestions
+     * followed that one). With no beat to match, play at normal speed, as the advice assumed.
+     * Returns the new tempo change, or null if it couldn't sync.
+     */
+    private fun syncLoaded(deck: Int, replacedBpm: Double): Double? {
+        val d = mixer.decks[deck]; val other = mixer.decks[1 - deck]
+        val target = if (other.loaded) (if (other.bpm > 0) other.bpm * (1 + other.pitch) else 0.0) else replacedBpm
+        if (d.bpm <= 0 || target <= 0) { d.pitch = 0.0; return null }
+        if (other.loaded) mixer.sync(deck) else d.matchTempo(target)
+        return d.pitch
     }
 
     // ---------------------------------------------------------------- menus

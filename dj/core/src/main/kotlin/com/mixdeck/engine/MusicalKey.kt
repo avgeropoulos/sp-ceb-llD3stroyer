@@ -87,6 +87,8 @@ data class TrackProfile(
     /** A small feature vector describing the sound (for "sounds similar"), or null. */
     val timbre: FloatArray?,
     val durationSec: Double,
+    /** How far the recording sits from standard A = 440 Hz tuning, in cents (−50..+50). */
+    val tuningCents: Float = 0f,
 ) {
     override fun equals(other: Any?) = other is TrackProfile && other.id == id
     override fun hashCode() = id.hashCode()

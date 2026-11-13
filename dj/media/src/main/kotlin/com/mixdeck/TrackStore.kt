@@ -37,7 +37,8 @@ data class Track(
     val key: MusicalKey? get() = if (keyIndex in 0..23) MusicalKey.fromIndex(keyIndex) else null
 
     /** What the next-song suggester needs to know about this song. */
-    fun profile() = TrackProfile(id, title, artist, bpm, key, keyConfidence, energy, timbre, durationSec)
+    fun profile() = TrackProfile(id, title, artist, bpm, key, keyConfidence, energy, timbre, durationSec,
+        if (tuningCents.isFinite()) tuningCents else 0f)
 
     fun toJson(): JSONObject = JSONObject()
         .put("id", id).put("title", title).put("artist", artist).put("source", source)
@@ -152,7 +153,9 @@ class TrackStore(private val baseDir: File) {
     /** Remembers a beat grid the user fixed by hand (e.g. doubled the BPM). */
     fun updateGrid(id: String, bpm: Double, firstBeatSec: Double) {
         val t = get(id) ?: return
-        save(t.copy(bpm = bpm, firstBeatSec = firstBeatSec))
+        // Energy is measured against the beat, so a corrected tempo means checking the song again.
+        val tempoChanged = kotlin.math.abs(bpm - t.bpm) > 0.5
+        save(t.copy(bpm = bpm, firstBeatSec = firstBeatSec, featuresVersion = if (tempoChanged) 0 else t.featuresVersion))
     }
 
     fun spotifyLists(): List<SpotifyList> = runCatching {

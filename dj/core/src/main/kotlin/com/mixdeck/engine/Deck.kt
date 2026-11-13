@@ -37,6 +37,8 @@ class Deck(val index: Int, private val sr: Int) {
 
     var cuePoint = 0.0; private set
     private var cuePreview = false
+    /** Playing only while CUE is held (a pre-listen, not a real start). */
+    val previewing: Boolean get() = cuePreview
     val hotCues = DoubleArray(4) { Double.NaN }
 
     var loopIn = -1.0; private set
@@ -270,15 +272,23 @@ class Deck(val index: Int, private val sr: Int) {
     }
 
     /** Matches this deck's tempo and beat phase to [master]. */
-    fun syncTo(master: Deck) {
-        if (bpm <= 0 || master.bpm <= 0) return
-        var target = master.bpm * (1 + master.pitch)
-        // Match to double or half time if that's closer (e.g. 87 against 174).
+    /**
+     * Sets the tempo slider so this deck plays at [targetBpm] (or half/double it if that's closer,
+     * e.g. 87 against 174), widening the slider's range if needed. Does nothing without a BPM.
+     */
+    fun matchTempo(targetBpm: Double) {
+        if (bpm <= 0 || !(targetBpm > 0) || targetBpm.isInfinite()) return
+        var target = targetBpm
         while (target / bpm > 1.5) target /= 2
         while (target / bpm < 0.67) target *= 2
         val needed = target / bpm - 1
         if (abs(needed) > pitchRange) pitchRange = if (abs(needed) <= 0.16) 0.16 else 0.5
         pitch = needed
+    }
+
+    fun syncTo(master: Deck) {
+        if (bpm <= 0 || master.bpm <= 0) return
+        matchTempo(master.bpm * (1 + master.pitch))
         if (playing && master.playing) {
             var d = master.beatPhase() - beatPhase()
             if (d > 0.5) d -= 1 else if (d < -0.5) d += 1

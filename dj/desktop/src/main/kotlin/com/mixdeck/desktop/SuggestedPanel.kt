@@ -233,22 +233,14 @@ class SuggestedPanel(
             }
             text.text = "<html>$badge<b>${LibraryDialog.esc(s.track.title)}</b> &nbsp;<span style='color:#9a9aa8'>" +
                 "${LibraryDialog.esc(s.track.artist)}</span><br><span style='color:#c8c8d0'>${LibraryDialog.esc(s.summary)}</span></html>"
-            val to = s.keyAfterSync
-            keyChip.text = keyMove(s)
-            keyChip.background = Color(to?.let(KeyDisplay::color) ?: 0xFF5A5A66.toInt())
+            keyChip.text = KeyDisplay.moveLabel(s, showFrom = songs?.seedKeyLabel() != null)
+            keyChip.background = Color(KeyDisplay.moveColor(s) ?: 0xFF5A5A66.toInt())
             val pct = s.pitchToSync * 100
             tempo.text = if (s.track.bpm > 0) "%+.1f%%".format(pct).replace('-', '−') else "no beat"
             tempo.foreground = when { abs(pct) >= 10 -> Color(0xFF, 0x52, 0x52); abs(pct) >= 6 -> Color(0xFF, 0xB3, 0x00); else -> Color(0xE6, 0xE6, 0xEC) }
             energy.text = energyText(songs?.seedTrack?.energy ?: Float.NaN, s.track.energy)
             return this
         }
-    }
-
-    /** "8A→9A": the playing song's key as heard, to this song's key once synced. */
-    private fun keyMove(s: Suggestion): String {
-        val from = songs?.seedKeyLabel()
-        val to = s.keyAfterSync?.camelot ?: s.track.key?.let { "~" + it.camelot } ?: return "key ?"
-        return if (from != null) "${from.filter { it.isLetterOrDigit() }}→$to" else to
     }
 
     companion object {

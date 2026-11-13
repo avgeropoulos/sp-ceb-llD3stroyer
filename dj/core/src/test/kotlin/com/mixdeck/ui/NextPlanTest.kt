@@ -86,6 +86,20 @@ class NextPlanTest {
         assertEquals(listOf(0), started, "deckStarted fires once per song")
     }
 
+    @Test fun holdingCueToPreListenIsNotAStart() {
+        val (m, c) = setup()
+        m.load(0, 10); m.load(1, 10); m.decks[0].play(); c.draw(NoCanvas)
+        started.clear()
+        m.decks[1].cueDown(false)                 // pre-listen the waiting song
+        assertTrue(m.decks[1].previewing)
+        c.draw(NoCanvas)
+        assertEquals(emptyList(), started, "a CUE preview doesn't count as played")
+        assertTrue(c.nextPlan().waiting, "the previewed song is still waiting")
+        m.decks[1].playPause()                    // PLAY while holding CUE: now it's really playing
+        c.draw(NoCanvas)
+        assertEquals(listOf(1), started)
+    }
+
     @Test fun midMixTheDeckEndingFirstIsReplaced() {
         val (m, c) = setup()
         m.load(0, 10); m.load(1, 30); m.decks[0].play(); m.decks[1].play()

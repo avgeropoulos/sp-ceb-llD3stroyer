@@ -37,6 +37,11 @@ data class Suggestion(
     val reasons: List<Reason>,
     /** One short line, e.g. "Perfect key match · +2.1% tempo · a little more energy". */
     val summary: String,
+    /** The playing song's key as heard, and this song's key as it will sound next to it (null if unknown). */
+    val keyFrom: MusicalKey? = null,
+    val keyTo: MusicalKey? = null,
+    /** True when the two will be in tune with each other (not between keys). */
+    val keyInTune: Boolean = false,
 )
 
 /**
@@ -199,6 +204,9 @@ object NextTrack {
             camelotMove = key.label,
             reasons = glossSemitone(reasons),
             summary = summary,
+            keyFrom = key.from,
+            keyTo = key.to,
+            keyInTune = key.inTune,
         )
     }
 
@@ -381,7 +389,16 @@ object NextTrack {
         return best!!
     }
 
-    private class KeyResult(val fit: Double, val label: String?, val phrase: String)
+    private class KeyResult(
+        val fit: Double, val label: String?, val phrase: String,
+        val from: MusicalKey? = null, val to: MusicalKey? = null, val inTune: Boolean = false,
+    )
+
+    /** The difference in tuning between two recordings, in semitones (e.g. one tuned 30 cents sharp). */
+    private fun tuningGap(now: TrackProfile, cand: TrackProfile): Double {
+        val g = (cand.tuningCents - now.tuningCents).toDouble() / 100
+        return if (g.isFinite()) g.coerceIn(-1.0, 1.0) else 0.0
+    }
 
     private fun keyPart(
         nowTrack: TrackProfile, cand: TrackProfile, nowPitch: Double, nowShift: Double, candShift: Double,
@@ -399,8 +416,10 @@ object NextTrack {
             return KeyResult(0.5, null, "Key unknown")
         }
 
-        // Pitch gap between the two songs as they will sound together, in semitones.
-        val after = read(nk, ck, candShift - nowShift, dir)
+        // Pitch gap between the two songs as they will sound together, in semitones. Recordings
+        // tuned away from A = 440 Hz count too: two "8A" songs 40 cents apart are not in tune.
+        val tune = tuningGap(nowTrack, cand)
+        val after = read(nk, ck, candShift - nowShift + tune, dir)
         val t = min(trust(nowTrack.keyConfidence), trust(cand.keyConfidence))
         val fit = 0.5 + (after.fit - 0.5) * t
         val detuned = after.detune > IN_TUNE && after.rel.move != Move.CLASH
@@ -451,7 +470,7 @@ object NextTrack {
         // Compared with the new song at its normal speed: did SYNC rescue or spoil the key?
         var fixedBySync = false
         if (sync.known) {
-            val natural = read(nk, ck, -nowShift, dir)
+            val natural = read(nk, ck, -nowShift + tune, dir)
             if (natural.n != after.n) {
                 val natCode = ck.transpose(natural.n + b).camelot
                 val steps = after.n - natural.n
@@ -512,7 +531,7 @@ object NextTrack {
             }
         }
         if (t < KEY_TRUST_WARN) phrase += " (key unsure)"
-        return KeyResult(fit, label, phrase)
+        return KeyResult(fit, label, phrase, from, to, after.detune <= IN_TUNE)
     }
 
     private fun moveText(r: Relation, a: MusicalKey, b: MusicalKey): String {

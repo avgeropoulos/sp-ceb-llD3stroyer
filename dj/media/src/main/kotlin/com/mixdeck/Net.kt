@@ -44,6 +44,16 @@ object Net {
     ) {
         val tmp = File(dest.path + ".part")
         tmp.delete()
+        try {
+            downloadTo(tmp, url, headers, chunk, progress)
+        } catch (e: Throwable) {
+            tmp.delete() // don't leave half a song behind
+            throw e
+        }
+        if (!tmp.renameTo(dest)) { tmp.delete(); throw IOException("Could not save the download") }
+    }
+
+    private fun downloadTo(tmp: File, url: String, headers: Map<String, String>, chunk: Long, progress: (Float) -> Unit) {
         var total = -1L
         var done = 0L
         tmp.outputStream().buffered(1 shl 16).use { out ->
@@ -66,7 +76,6 @@ object Net {
             }
         }
         if (done == 0L) throw IOException("Download was empty")
-        if (!tmp.renameTo(dest)) throw IOException("Could not save the download")
     }
 
     private fun copy(input: InputStream, out: java.io.OutputStream): Long {

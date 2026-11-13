@@ -9,7 +9,7 @@ import com.mixdeck.engine.Pcm
 import com.mixdeck.engine.Suggestion
 import com.mixdeck.engine.TrackAnalysis
 import java.io.File
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.CancellationException
 
 /**
  * "What should I play next?" for both apps: makes sure songs have a key, energy and timbre,
@@ -22,11 +22,8 @@ class Suggester(
     private val store: TrackStore,
     private val decode: (File, (Float) -> Unit) -> Pcm,
 ) {
-    private val cancelled = AtomicBoolean(false)
-
-    /** Stops whatever long job is running (checked between songs). */
-    fun cancel() = cancelled.set(true)
-    val isCancelled get() = cancelled.get()
+    /** One "find new songs" at a time, so two jobs never download the same song into the same file. */
+    private val discoverLock = Any()
 
     /**
      * Fills in everything a decoded song is missing (beat grid, waveform, key, energy, timbre) and
@@ -55,26 +52,6 @@ class Suggester(
     }
 
     /**
-     * All songs on this device with their key and energy, analysing the ones that need it first.
-     * [onProgress] gets (songs done, songs to analyse, title). Stops early if cancelled.
-     */
-    fun library(onProgress: (Int, Int, String) -> Unit = { _, _, _ -> }): List<Track> {
-        cancelled.set(false)
-        val all = store.all()
-        val todo = all.filter { !it.hasFeatures }
-        var done = 0
-        val updated = HashMap<String, Track>()
-        for (t in todo) {
-            if (cancelled.get()) break
-            onProgress(done, todo.size, t.title)
-            runCatching { ensureFeatures(t) }.onSuccess { updated[t.id] = it }
-            done++
-        }
-        onProgress(done, todo.size, "")
-        return all.map { updated[it.id] ?: it }
-    }
-
-    /**
      * Ranks [candidates] as the next song after [now]. Songs played in the last few hours and the
      * songs on the decks ([exclude]) are left out.
      */
@@ -86,10 +63,15 @@ class Suggester(
     /**
      * Finds songs YouTube thinks go with [seed], then downloads and analyses up to [max] new ones,
      * handing each to [onTrack] as soon as it's ready. [onStatus] gets short progress messages.
+     * Songs already on the device are skipped (they're ranked anyway). [isCancelled] belongs to the
+     * caller's job: once it says yes, the song being downloaded is dropped and nothing more is fetched.
      * Returns how many songs were added.
      */
-    fun discover(seed: Track, max: Int, onStatus: (String) -> Unit, onTrack: (Track) -> Unit): Int {
-        cancelled.set(false)
+    fun discover(seed: Track, max: Int, isCancelled: () -> Boolean, onStatus: (String) -> Unit, onTrack: (Track) -> Unit): Int =
+        synchronized(discoverLock) { discoverLocked(seed, max, isCancelled, onStatus, onTrack) }
+
+    private fun discoverLocked(seed: Track, max: Int, isCancelled: () -> Boolean, onStatus: (String) -> Unit, onTrack: (Track) -> Unit): Int {
+        if (isCancelled()) return 0
         onStatus("Asking YouTube for songs like ${seed.title}…")
         val related = runCatching {
             if (YouTube.isYouTubeUrl(seed.source)) Discovery.related(seed.source, limit = max * 3)
@@ -97,34 +79,31 @@ class Suggester(
         }.getOrElse { throw it }
         var added = 0
         for (r in related) {
-            if (added >= max || cancelled.get()) break
+            if (added >= max || isCancelled()) break
             val id = "yt_" + r.id
-            val existing = store.get(id)
-            if (existing != null && store.has(id)) {
-                // Already on the device: just make sure it's analysed and offer it.
-                runCatching { ensureFeatures(existing) }.onSuccess { onTrack(it); added++ }
-                continue
-            }
+            if (store.has(id)) continue // already on the device, so it's in the list already
             val n = added + 1
             try {
                 onStatus("Downloading $n of $max: ${r.title}…")
                 val info = YouTube.downloadAudio(r.url, store.audioFile(id)) { p ->
+                    if (isCancelled()) throw CancellationException("Stopped")
                     onStatus("Downloading $n of $max: ${r.title}… ${(p * 100).toInt()}%")
                 }
-                if (cancelled.get()) { store.delete(id); break }
+                if (isCancelled()) { store.delete(id); break }
                 var t = Track(id, info.title.ifEmpty { r.title }, info.artist.ifEmpty { r.artist }, r.url,
                     info.durationSec.toDouble(), discovered = true)
                 store.save(t)
                 onStatus("Listening to $n of $max: ${t.title}…")
-                t = ensureFeatures(t)
+                t = ensureFeatures(t) { if (isCancelled()) throw CancellationException("Stopped") }
                 onTrack(t)
                 added++
             } catch (e: Throwable) {
                 store.delete(id)
+                if (isCancelled()) break
                 onStatus("Skipped ${r.title}: ${e.message ?: e.javaClass.simpleName}")
             }
         }
-        onStatus(if (cancelled.get()) "Stopped." else "Found $added new song${if (added == 1) "" else "s"}.")
+        onStatus(if (isCancelled()) "Stopped." else "Found $added new song${if (added == 1) "" else "s"}.")
         return added
     }
 }

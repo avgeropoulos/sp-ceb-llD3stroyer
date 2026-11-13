@@ -24,6 +24,7 @@ import javax.swing.JFileChooser
 import javax.swing.JLabel
 import javax.swing.JList
 import javax.swing.JOptionPane
+import com.mixdeck.ui.Console
 import javax.swing.JPanel
 import javax.swing.JScrollPane
 import javax.swing.JTabbedPane
@@ -274,14 +275,27 @@ class LibraryDialog(
     }
 
     private fun finishWith(id: String, sync: Boolean = false) {
+        if (!isDisplayable) return // closed while a download was finishing
+        // LOAD already asked before opening this window; NEXT asks now, whichever tab the song came from.
+        val d = app.mixer.decks[deck]
+        if (suggest && d.playing) {
+            val name = if (deck == 0) "A" else "B"
+            val title = store.get(id)?.title ?: "this song"
+            if (JOptionPane.showConfirmDialog(this,
+                    "Deck $name is still playing (${Console.fmtTime((d.durationSec - d.positionSec) / (1 + d.pitch))} left).\n" +
+                        "Stop it and load \"$title\" now?", "Load on Deck $name",
+                    JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return
+        }
         dispose()
         onPick(id, sync)
     }
 
     private lateinit var suggested: SuggestedPanel
 
+    /** Runs however the window closes (a pick, the close button, Esc): stops the Suggested tab's work. */
     override fun dispose() {
         if (::suggested.isInitialized) suggested.close()
+        worker.shutdown()
         super.dispose()
     }
 
@@ -307,7 +321,7 @@ class LibraryDialog(
     // Runs after all the properties above exist (Kotlin initialises in source order).
     init {
         val tabs = JTabbedPane()
-        suggested = SuggestedPanel(app, deck, after, waiting, confirmPlaying = suggest, setStatus = { setStatus(it) }) { id, sync -> finishWith(id, sync) }
+        suggested = SuggestedPanel(app, deck, after, waiting, confirmPlaying = false, setStatus = { setStatus(it) }) { id, sync -> finishWith(id, sync) }
         tabs.addTab("Suggested", suggested)
         tabs.addTab("YouTube", youTubeTab())
         tabs.addTab("Spotify", spotifyTab())
@@ -324,6 +338,9 @@ class LibraryDialog(
         contentPane.add(status, BorderLayout.SOUTH)
         size = Dimension(900, 620)
         setLocationRelativeTo(app.frame)
+        // The close button must dispose (not just hide) the window, or its background work keeps running.
+        defaultCloseOperation = DISPOSE_ON_CLOSE
+        rootPane.registerKeyboardAction({ dispose() }, javax.swing.KeyStroke.getKeyStroke("ESCAPE"), javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW)
         if (!suggest) setStatus("Pick a song for deck ${if (deck == 0) "A" else "B"}. Double-click a song to load it.")
     }
 

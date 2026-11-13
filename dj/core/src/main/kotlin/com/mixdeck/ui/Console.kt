@@ -501,11 +501,15 @@ class Console(private val mixer: Mixer, private val host: Host) {
         for (k in 0..1) {
             val d = mixer.decks[k]
             if (d.pcm !== seenPcm[k]) { seenPcm[k] = d.pcm; played[k] = false }
-            if (d.playing && !played[k]) { played[k] = true; host.deckStarted(k) }
+            // Holding CUE to pre-listen isn't a start; pressing PLAY during the preview is.
+            if (d.playing && !d.previewing && !played[k]) { played[k] = true; host.deckStarted(k) }
         }
-        val a = mixer.decks[0].playing; val b = mixer.decks[1].playing
+        val a = live(0); val b = live(1)
         if (a != b) lastLive = if (a) 0 else 1
     }
+
+    /** Deck [k] is really playing (holding CUE to pre-listen doesn't count). */
+    private fun live(k: Int) = mixer.decks[k].let { it.playing && !it.previewing }
 
     /** Real seconds left on deck [k] at its current tempo. */
     private fun secondsLeft(k: Int): Double {
@@ -521,10 +525,11 @@ class Console(private val mixer: Mixer, private val host: Host) {
      */
     fun nextPlan(): NextPlan {
         val d = mixer.decks
+        val a = live(0); val b = live(1)
         val (target, after) = when {
-            d[0].playing && d[1].playing -> if (secondsLeft(0) <= secondsLeft(1)) 0 to 1 else 1 to 0
-            d[0].playing -> 1 to 0
-            d[1].playing -> 0 to 1
+            a && b -> if (secondsLeft(0) <= secondsLeft(1)) 0 to 1 else 1 to 0
+            a -> 1 to 0
+            b -> 0 to 1
             d[0].loaded && d[1].loaded -> {
                 val ref = when { lastLive >= 0 -> lastLive; played[1] && !played[0] -> 1; else -> 0 }
                 1 - ref to ref
@@ -539,8 +544,8 @@ class Console(private val mixer: Mixer, private val host: Host) {
     /** NEXT blinks in the last minute of the only playing song if no new song waits on the other deck. */
     private fun nextDue(): Boolean {
         val d = mixer.decks
-        if (d[0].playing == d[1].playing) return false
-        val live = if (d[0].playing) 0 else 1
+        if (live(0) == live(1)) return false
+        val live = if (live(0)) 0 else 1
         val other = 1 - live
         if (d[other].loaded && !played[other]) return false
         return secondsLeft(live) < 60 && (now() / 600) % 2 == 0L

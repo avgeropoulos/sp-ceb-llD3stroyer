@@ -5,6 +5,7 @@ import com.mixdeck.engine.MusicalKey
 import com.mixdeck.engine.NextTrack
 import com.mixdeck.engine.NowPlaying
 import com.mixdeck.engine.Suggestion
+import java.util.concurrent.CancellationException
 import java.util.concurrent.Executors
 import kotlin.math.abs
 
@@ -51,8 +52,11 @@ class NextSongs(
     )
 
     private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "next songs").apply { isDaemon = true } }
-    @Volatile private var stopping = false
+    /** Counts Stop presses: a job stops when this differs from the value it started with. */
+    @Volatile private var stops = 0
     @Volatile private var closed = false
+    /** The chosen direction. Set at once, so the very next ranking (even mid-check) uses it. */
+    @Volatile private var direction: Direction = direction
     @Volatile private var findQueued = false
     private var seed: Track? = seed
     private var waiting: Track? = waiting
@@ -79,9 +83,9 @@ class NextSongs(
         checkLibrary()
     }
 
-    fun setDirection(d: Direction) = worker.execute {
-        state = state.copy(direction = d)
-        publish(rank())
+    fun setDirection(d: Direction) {
+        direction = d
+        worker.execute { publish(rank()) }
     }
 
     /** Asks YouTube for songs like the playing one and adds up to [max] of them, one by one. */
@@ -89,21 +93,23 @@ class NextSongs(
         val s = seed ?: return
         if (state.finding != null || findQueued) return
         findQueued = true
+        val asked = stops // a Stop pressed after this click cancels it, even while it waits its turn
+        val cancelled = { closed || stops != asked }
         // Shown at once; the worker may still be checking songs.
         if (!closed) onChange(state.copy(finding = "I'll look for new songs when the check is done…", note = null))
         worker.execute {
             findQueued = false
             if (closed) return@execute
-            if (stopping) { stopping = false; publish(state.copy(finding = null)); return@execute }
+            if (cancelled()) { publish(state.copy(finding = null)); return@execute }
             publish(state.copy(finding = "Asking YouTube for songs like ${s.title}…", note = null))
             val r = runCatching {
-                suggester.discover(s, max, onStatus = { msg -> if (!closed) publish(state.copy(finding = msg)) }) { t ->
+                suggester.discover(s, max, cancelled, onStatus = { msg -> if (!closed) publish(state.copy(finding = msg)) }) { t ->
                     found += t.id
                     tracks = listOf(t) + tracks.filter { it.id != t.id }
                     publish(rank())
                 }
             }
-            stopping = false
+            if (cancelled()) { publish(state.copy(finding = null, note = "Stopped.")); return@execute }
             publish(state.copy(finding = null, note = r.fold(
                 { n -> if (n == 0) "No new songs found this time." else "Found $n new song${if (n == 1) "" else "s"}: they're marked NEW and saved in My songs." },
                 { e -> "Couldn't reach YouTube (${e.message ?: e.javaClass.simpleName}). Check your internet and try again." },
@@ -111,10 +117,9 @@ class NextSongs(
         }
     }
 
-    /** Stops checking and finding (after the song being worked on). */
+    /** Stops checking (after the song being checked) and finding (drops the song downloading). */
     fun stop() {
-        stopping = true
-        suggester.cancel()
+        stops++
     }
 
     /** Call when the screen closes. */
@@ -127,17 +132,20 @@ class NextSongs(
     // ------------------------------------------------------------------ inside the worker
 
     private fun publish(s: State) {
-        state = s
-        if (!closed) onChange(s)
+        // A direction picked since the last ranking re-ranks at once (ranking is quick; checking isn't).
+        val fresh = if (s.direction != direction) rank(s) else s
+        state = fresh
+        if (!closed) onChange(fresh)
     }
 
-    private fun rank(): State {
-        val sd = seed ?: return state.copy(list = emptyList(), waiting = null, librarySize = tracks.size)
+    private fun rank(base: State = state): State {
+        val dir = direction
+        val sd = seed ?: return base.copy(direction = dir, list = emptyList(), waiting = null, librarySize = tracks.size)
         val now = NowPlaying(sd.profile(), seedPitch)
         val exclude = onDecks + sd.id
-        val list = suggester.rank(now, tracks, state.direction, exclude).take(MAX_SHOWN)
-        val w = waiting?.takeIf { it.analyzed }?.let { NextTrack.score(now, it.profile(), state.direction) }
-        return state.copy(list = list, waiting = w, found = found.toSet(),
+        val list = suggester.rank(now, tracks, dir, exclude).take(MAX_SHOWN)
+        val w = waiting?.takeIf { it.analyzed }?.let { NextTrack.score(now, it.profile(), dir) }
+        return base.copy(direction = dir, list = list, waiting = w, found = found.toSet(),
             librarySize = tracks.count { it.id !in exclude })
     }
 
@@ -159,11 +167,15 @@ class NextSongs(
                 .sortedBy { tempoChange(playingBpm, it.bpm) })
         }
         if (queue.isEmpty()) return
-        stopping = false
+        val asked = stops
         for ((n, t) in queue.withIndex()) {
-            if (stopping || closed) break
+            if (stops != asked || closed) break
             publish(state.copy(checking = Progress(n, queue.size, t.title)))
-            val updated = runCatching { suggester.ensureFeatures(t) }.getOrNull() ?: continue
+            // Closing the screen (e.g. after picking a song) drops the song being checked at once,
+            // so it doesn't decode alongside the deck load. Stop finishes the current song first.
+            val updated = runCatching {
+                suggester.ensureFeatures(t) { if (closed) throw CancellationException("closed") }
+            }.getOrNull() ?: continue
             when (t.id) {
                 sd.id -> seed = updated
                 waiting?.id -> waiting = updated
@@ -171,8 +183,7 @@ class NextSongs(
             }
             publish(rank())
         }
-        val stopped = stopping
-        stopping = false
+        val stopped = stops != asked
         publish(state.copy(checking = null, note = if (stopped) "Stopped. Songs not checked yet show \"key ?\"." else state.note))
     }
 

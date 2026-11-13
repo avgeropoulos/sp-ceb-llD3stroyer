@@ -2,6 +2,7 @@ package com.mixdeck.ui
 
 import com.mixdeck.engine.Deck
 import com.mixdeck.engine.MusicalKey
+import com.mixdeck.engine.Suggestion
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -25,6 +26,24 @@ object KeyDisplay {
     fun label(d: Deck): String? = sounding(d.key, d.analysis?.keyConfidence ?: 0f, d.pitch)?.let { (k, shift, between) ->
         (if (between) "~" else "") + k.camelot + when { shift > 0 -> "↑"; shift < 0 -> "↓"; else -> "" }
     }
+
+    /**
+     * The key chip on a suggestion: "8A→9A" (playing song as heard → this song as it will sound
+     * next to it), "8A→~9A" when the two would sit between keys, just "9A" when the playing song's
+     * key isn't shown ([showFrom] false), "key ?" when this song's key is unknown.
+     */
+    fun moveLabel(s: Suggestion, showFrom: Boolean): String {
+        val from = s.keyFrom; val to = s.keyTo
+        if (from != null && to != null) {
+            val t = (if (s.keyInTune) "" else "~") + to.camelot
+            return if (showFrom) "${from.camelot}→$t" else t
+        }
+        return s.keyAfterSync?.camelot ?: s.track.key?.let { "~" + it.camelot } ?: "key ?"
+    }
+
+    /** The chip's colour: the new key's wheel colour when the two will be in tune, else null (grey). */
+    fun moveColor(s: Suggestion): Int? =
+        if (s.keyInTune) s.keyTo?.let(::color) else if (s.keyFrom == null) s.keyAfterSync?.let(::color) else null
 
     /** The colour for [label]'s key, or [fallback]. */
     fun labelColor(d: Deck, fallback: Int): Int =

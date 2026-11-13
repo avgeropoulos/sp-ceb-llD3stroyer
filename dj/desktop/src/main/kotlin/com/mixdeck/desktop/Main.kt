@@ -280,8 +280,20 @@ class App : Console.Host {
                 // Beat grid, waveform, key and energy (only what this song is still missing).
                 val (track, analysis) = suggester.analyze(t, pcm) { p -> loading[deck] = "Listening ${(p * 100).toInt()}%" }
                 synchronized(mixer.lock) {
-                    mixer.decks[deck].load(pcm, analysis, track.title, track.artist, track.loudnessDb)
-                    if (sync) mixer.sync(deck)
+                    val d = mixer.decks[deck]; val other = mixer.decks[1 - deck]
+                    val replacedBpm = if (d.loaded && d.bpm > 0) d.bpm * (1 + d.pitch) else 0.0
+                    d.load(pcm, analysis, track.title, track.artist, track.loudnessDb)
+                    if (sync) {
+                        // Match the other deck's song, or the song this one replaced when the other deck is
+                        // empty (the suggestions followed that one). No beat to match: normal speed, as the
+                        // advice assumed.
+                        val target = if (other.loaded) (if (other.bpm > 0) other.bpm * (1 + other.pitch) else 0.0) else replacedBpm
+                        when {
+                            d.bpm <= 0 || target <= 0 -> d.pitch = 0.0
+                            other.loaded -> mixer.sync(deck)
+                            else -> d.matchTempo(target)
+                        }
+                    }
                 }
                 deckTrackIds[deck] = id
             } catch (e: Throwable) {

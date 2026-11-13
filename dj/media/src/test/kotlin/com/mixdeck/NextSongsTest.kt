@@ -48,6 +48,68 @@ class NextSongsTest {
         assertEquals(listOf("never", "old_close"), decoded.toList())
     }
 
+    /** A Suggester whose decoding takes a while and then fails, so checks are slow but harmless. */
+    private fun slowSuggester() = Suggester(store) { f, _ -> decoded += f.nameWithoutExtension; Thread.sleep(150); throw IOException("no audio in tests") }
+
+    private fun waitUntil(ms: Long = 10_000, done: () -> Boolean) {
+        val until = System.currentTimeMillis() + ms
+        while (System.currentTimeMillis() < until && !done()) Thread.sleep(20)
+    }
+
+    @Test fun stopCancelsAFindThatIsWaitingForTheCheck() {
+        val seed = add("seed", 93.0, "8A", 6f)
+        for (i in 1..4) add("old$i", 94.0, null, Float.NaN, features = false)
+        val states = Collections.synchronizedList(ArrayList<NextSongs.State>())
+        val n = NextSongs(store, slowSuggester(), seed, 0.0, onDecks = setOf("seed"), waiting = null,
+            direction = Direction.KEEP) { states += it }
+        n.start()
+        waitUntil { states.any { it.checking != null } }
+        n.findNew()          // queued behind the check
+        n.stop()             // ...and stopped before it starts
+        waitUntil { states.lastOrNull()?.let { it.checking == null && it.finding == null } == true && decoded.isNotEmpty() }
+        Thread.sleep(300)
+        n.close()
+        assertTrue(states.none { it.finding?.startsWith("Asking YouTube") == true }, "the stopped find never asked YouTube")
+        assertEquals(null, states.last().finding)
+        assertTrue(decoded.size < 4, "the check stopped early")
+    }
+
+    @Test fun directionChangesApplyWhileSongsAreBeingChecked() {
+        val seed = add("seed", 93.0, "8A", 6f)
+        add("calm", 93.0, "8A", 4f)
+        add("lift", 93.0, "8A", 7f)
+        for (i in 1..4) add("old$i", 94.0, null, Float.NaN, features = false)
+        val states = Collections.synchronizedList(ArrayList<NextSongs.State>())
+        val n = NextSongs(store, slowSuggester(), seed, 0.0, onDecks = setOf("seed"), waiting = null,
+            direction = Direction.KEEP) { states += it }
+        n.start()
+        waitUntil { states.any { it.checking != null } }
+        n.setDirection(Direction.UP)
+        waitUntil(3_000) { states.any { it.checking != null && it.direction == Direction.UP } }
+        n.close()
+        val mid = states.firstOrNull { it.checking != null && it.direction == Direction.UP }
+        assertTrue(mid != null, "a ranking during the check already uses Build up")
+        val during = states.last { it.direction == Direction.UP && it.list.isNotEmpty() }
+        assertEquals("lift", during.list.first().track.id, "Build up puts the higher-energy song first")
+    }
+
+    @Test fun aFailedDownloadLeavesNoPartFile() {
+        val dest = File(dir, "x.audio")
+        val port = java.net.ServerSocket(0).use { it.localPort }  // nothing listens here any more
+        runCatching { Net.download("http://127.0.0.1:$port/song", dest) }
+        assertTrue(!File(dest.path + ".part").exists(), "no .part file left behind")
+        assertTrue(!dest.exists())
+    }
+
+    @Test fun fixingTheTempoMeansCheckingEnergyAgain() {
+        add("t", 87.0, "8A", 6f)
+        store.updateGrid("t", 87.0, 0.25)            // first beat moved: still checked
+        assertTrue(store.get("t")!!.hasFeatures)
+        store.updateGrid("t", 174.0, 0.25)           // doubled: energy needs a new look
+        assertTrue(!store.get("t")!!.hasFeatures)
+        assertEquals(MusicalKey.fromCamelot("8A"), store.get("t")!!.key, "the key is kept meanwhile")
+    }
+
     @Test fun tempoChangeUsesHalfAndDoubleTime() {
         assertEquals(0.0, NextSongs.tempoChange(93.0, 93.0), 1e-9)
         assertEquals(93.0 * 2 / 174 - 1, NextSongs.tempoChange(93.0, 174.0), 1e-9)

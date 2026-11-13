@@ -288,9 +288,8 @@ class LibraryActivity : Activity() {
             setTextColor(0xFF9A9AA8.toInt()); textSize = 13f; setSingleLine(); ellipsize = android.text.TextUtils.TruncateAt.END
         })
         line.addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        val to = s.keyAfterSync?.camelot ?: s.track.key?.let { "~" + it.camelot }
-        line.addView(chip(if (to == null) "key ?" else if (seedKey != null) "$seedKey→$to" else to,
-            s.keyAfterSync?.let(KeyDisplay::color) ?: 0xFF5A5A66.toInt(), Color.BLACK))
+        line.addView(chip(KeyDisplay.moveLabel(s, showFrom = seedKey != null),
+            KeyDisplay.moveColor(s) ?: 0xFF5A5A66.toInt(), Color.BLACK))
         val pct = s.pitchToSync * 100
         line.addView(chip(if (s.track.bpm > 0) "%+.1f%%".format(pct).replace('-', '−') else "no beat", 0xFF2A2A31.toInt(),
             when { kotlin.math.abs(pct) >= 10 -> 0xFFFF5252.toInt(); kotlin.math.abs(pct) >= 6 -> 0xFFFFB300.toInt(); else -> Color.WHITE }))
@@ -324,15 +323,7 @@ class LibraryActivity : Activity() {
 
     private fun pickSuggestion(s: Suggestion) {
         val d = Engine.mixer?.decks?.get(deck)
-        val sync = prefs.getBoolean("nextSync", true)
-        // LOAD already asked before opening this screen; NEXT asks now.
-        if (d != null && d.playing && intent.getBooleanExtra(EXTRA_SUGGEST, false)) {
-            val left = (d.durationSec - d.positionSec) / (1 + d.pitch)
-            AlertDialog.Builder(this)
-                .setMessage("Deck ${deckName()} is still playing (${Console.fmtTime(left)} left). Stop it and load \"${s.track.title}\" now?")
-                .setPositiveButton("Load now") { _, _ -> finishWith(s.track.id, sync) }
-                .setNegativeButton("Cancel", null).show()
-        } else finishWith(s.track.id, sync)
+        finishWith(s.track.id, prefs.getBoolean("nextSync", true))
     }
 
     private fun chip(label: String, bgColor: Int, fg: Int) = TextView(this).apply {
@@ -600,7 +591,19 @@ class LibraryActivity : Activity() {
         }
     }
 
-    private fun finishWith(trackId: String, sync: Boolean = false) {
+    private fun finishWith(trackId: String, sync: Boolean = false, asked: Boolean = false) {
+        if (isFinishing || isDestroyed) return
+        // LOAD already asked before opening this screen; NEXT asks now, whichever tab the song came from.
+        val d = Engine.mixer?.decks?.get(deck)
+        if (!shared && !asked && d != null && d.playing && intent.getBooleanExtra(EXTRA_SUGGEST, false)) {
+            val left = (d.durationSec - d.positionSec) / (1 + d.pitch)
+            val title = store.get(trackId)?.title ?: "this song"
+            AlertDialog.Builder(this)
+                .setMessage("Deck ${deckName()} is still playing (${Console.fmtTime(left)} left). Stop it and load \"$title\" now?")
+                .setPositiveButton("Load now") { _, _ -> finishWith(trackId, sync, asked = true) }
+                .setNegativeButton("Cancel", null).show()
+            return
+        }
         if (shared) {
             // Opened from the share menu: ask which deck to load into.
             AlertDialog.Builder(this).setTitle(store.get(trackId)?.title ?: "Load")
