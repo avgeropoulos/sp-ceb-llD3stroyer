@@ -72,6 +72,8 @@ class LibraryActivity : Activity() {
     private var next: NextSongs? = null
     private var nextState: NextSongs.State? = null
     private var expanded: String? = null
+    /** Set when a tap opens a row, so its reasons are scrolled into view once it's laid out. */
+    private var scrollToOpen = false
     private var suggestRows: LinearLayout? = null
     private var suggestBusy: LinearLayout? = null
     private var suggestBar: ProgressBar? = null
@@ -146,7 +148,7 @@ class LibraryActivity : Activity() {
             Tab.FILES -> phoneTab()
         })
         if (!busy) status.text = when (t) {
-            Tab.SUGGESTED -> nextState?.let(::suggestStatus) ?: SUGGEST_HINT
+            Tab.SUGGESTED -> nextState?.let(::suggestStatus) ?: if (next != null) SUGGEST_HINT else ""
             Tab.YOUTUBE -> "Search YouTube Music for songs, or switch to Videos for remixes, live sets and mashups."
             Tab.SPOTIFY -> "Paste a Spotify playlist, album or song link. Each song is matched to its audio on YouTube."
             Tab.MINE -> "Songs already on your phone load instantly. Hold one to delete it."
@@ -300,6 +302,10 @@ class LibraryActivity : Activity() {
             LinearLayout.LayoutParams(dp(72), dp(40)).apply { marginStart = dp(8) })
         else line.addView(View(this), LinearLayout.LayoutParams(dp(80), dp(40)))
         row.addView(line)
+        if (open && scrollToOpen) {
+            scrollToOpen = false
+            row.post { row.requestRectangleOnScreen(android.graphics.Rect(0, 0, row.width, row.height), false) }
+        }
         if (open) {
             for (r in s.reasons) row.addView(TextView(this).apply {
                 val t = SpannableStringBuilder(if (r.good) "✓  " else "✗  ")
@@ -312,7 +318,7 @@ class LibraryActivity : Activity() {
                 setTextColor(0xFF77778A.toInt()); textSize = 12f; setPadding(dp(84), dp(4), 0, 0)
             })
         }
-        row.setOnClickListener { expanded = if (open) null else id; nextState?.let(::showSuggestions) }
+        row.setOnClickListener { expanded = if (open) null else id; scrollToOpen = !open; nextState?.let(::showSuggestions) }
         return row
     }
 
