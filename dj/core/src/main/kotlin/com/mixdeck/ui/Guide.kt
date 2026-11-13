@@ -12,6 +12,7 @@ object Guide {
     val red = 0xFFFF1744.toInt()
     val grey = 0xFF8A8A96.toInt()
     val yellow = 0xFFFFEB3B.toInt()
+    val teal = 0xFF1DE9B6.toInt()
 
     class Item(val chip: String, val color: Int, val text: String)
     class Section(val title: String, val color: Int, val items: List<Item>)
@@ -19,6 +20,7 @@ object Guide {
     val sections = listOf(
         Section("Getting songs", blue, listOf(
             Item("LOAD", blue, "Pick a song for that deck. Left LOAD is deck A (blue), right LOAD is deck B (orange)."),
+            Item("Suggested", teal, "Songs on your phone that fit after the one on the other deck, best first. NEXT opens this list for the free deck."),
             Item("YouTube", blue, "Search for songs. \"Songs\" searches YouTube Music; switch to \"Videos\" for remixes, live sets and mashups. You can paste a YouTube link too."),
             Item("Spotify", blue, "Paste a Spotify playlist, album or song link (in Spotify: Share → Copy link). Tap a song and MixDeck finds its audio on YouTube Music."),
             Item("Share", blue, "In the YouTube or Spotify app, tap Share → MixDeck to send a song straight here."),
@@ -26,15 +28,23 @@ object Guide {
             Item("Phone files", blue, "Load an MP3, M4A, FLAC, WAV or other audio file from your phone."),
         )),
         Section("The screen, top to bottom", grey, listOf(
-            Item("Title", grey, "Song, artist, time left (flashes red in the last 30 seconds), BPM and tempo change. Tap it for BPM fixes and Eject."),
+            Item("Title", grey, "Song, artist, time left (flashes red in the last 30 seconds), BPM, key and tempo change. Tap it for BPM fixes and Eject."),
             Item("Overview", grey, "The whole song as a strip. The white line is where you are. Tap anywhere to jump there."),
             Item("Waveform", grey, "A close-up that scrolls past the white centre line. Tall coloured parts are bass (kick drums), white is mids, light blue is treble. The tick marks are beats; long ticks are every 4th beat. When two songs are in time, their ticks line up."),
             Item("Markers", amber, "Orange C = your cue point. Coloured 1-4 = hot cues. A green band = the active loop."),
         )),
+        Section("What to play next", teal, listOf(
+            Item("NEXT", teal, "Suggests songs that fit after the one that's playing, best first, and loads your pick onto the free deck, already synced. Then just press ▶ when the moment's right. It blinks in the last minute of a song if nothing new is waiting."),
+            Item("8A", teal, "A song's key on the key wheel (DJs call it the Camelot wheel). Keys mix smoothly when they have the same number, a number next door (8A → 9A), or the same number with the other letter (8A → 8B). Next-door keys also get similar colours."),
+            Item("↑ ↓ ~", teal, "These decks work like vinyl: speeding a song up by 6% also raises it by a semitone (one piano key), so its key changes. The key shown is the one you hear: ↑ or ↓ means the tempo slider moved it, ~ means it's between two keys."),
+            Item("★★★★★", yellow, "How well a song fits: key, tempo change, energy and sound. Tap it to see the reasons. Big tempo changes cost stars, because on vinyl-style decks voices start to sound too high or too low."),
+            Item("Direction", teal, "Keep the vibe (same energy), Build up (a bit more) or Cool down (a bit less). Energy goes from 1 (chilled) to 10 (peak time)."),
+            Item("Find new", teal, "\"Find new songs like this\" asks YouTube for songs that go with the playing one, downloads a few (about 5 MB each) and checks which fit. They're marked NEW and saved in My songs."),
+        )),
         Section("Each deck", blue, listOf(
             Item("▶ / ❚❚", green, "Play and pause."),
             Item("CUE", amber, "Your starting point. Stopped: tap to set it here. Hold to listen from it, let go to jump back. Playing: tap to jump back and stop."),
-            Item("Jog wheel", blue, "With VINYL on, touch the middle and move your finger to scratch like a record. Turn the outer edge to speed up or slow down for a moment and line up the beats by ear. The middle shows the BPM and the four dots count the beats."),
+            Item("Jog wheel", blue, "With VINYL on, touch the middle and move your finger to scratch like a record. Turn the outer edge to speed up or slow down for a moment and line up the beats by ear. The middle shows the BPM and key, and the four dots count the beats."),
             Item("VINYL", blue, "On: the middle of the jog wheel scratches. Off: the whole wheel nudges the tempo."),
             Item("SYNC", blue, "Matches this deck's tempo and beat to the other deck in one tap. It lights up while the two are in sync."),
             Item("Tempo", blue, "The slider next to the jog wheel. Down = faster, up = slower (like club decks). ±8 changes the range to ±16 or ±50%. Double-tap the slider to go back to 0%."),
@@ -66,7 +76,7 @@ object Guide {
             Item("My mixes", red, "☰ → My mixes: play your mixes back, share them, rename or delete them. They're saved in Music/MixDeck as M4A files."),
         )),
         Section("Menu & help", yellow, listOf(
-            Item("?", yellow, "Shows a key on the DJ screen that labels every control. Tap anywhere to close it."),
+            Item("?", yellow, "Labels every control on the DJ screen. Tap anywhere to close the labels."),
             Item("☰", grey, "My mixes, this guide, master and sampler volume, crossfader curve, Quantize (cues and loops snap to the beat), split cue, and Check for updates."),
             Item("Title tap", grey, "If the BPM looks wrong (half or double), fix it from the deck menu. \"Put the first beat here\" re-aligns the beat ticks."),
             Item("Knobs", grey, "Drag up or down. Double-tap any knob or slider to reset it."),
@@ -75,7 +85,7 @@ object Guide {
 
     val firstMix = listOf(
         "Tap the left LOAD and pick a song for deck A. Press ▶. Push the crossfader all the way left.",
-        "Tap the right LOAD and pick a song for deck B. Don't play it yet.",
+        "Tap the right LOAD and pick a song for deck B, or tap NEXT for songs that fit after deck A's. Don't play it yet.",
         "On deck B, tap SYNC so it matches deck A's tempo.",
         "Turn deck B's LOW knob all the way left (no bass), so the two kick drums don't clash.",
         "Wait for a new section to start on deck A (the long beat ticks help), then press ▶ on deck B. Tap SYNC again if the beats drift.",

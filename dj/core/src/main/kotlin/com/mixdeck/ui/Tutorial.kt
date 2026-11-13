@@ -85,6 +85,10 @@ object Tutorials {
                 done = { m -> if (m.da().loopOn) loopWasOn = true; loopWasOn && !m.da().loopOn }),
             TutorialStep(listOf("info1", "jog1"), "Deck B: Grillz",
                 "\"Grillz\" is waiting on deck B. Don't press play yet. First we get it ready so it blends in smoothly."),
+            TutorialStep(listOf("next", "info0", "info1"), "Do they fit?",
+                "Next to each BPM is the song's key, like 8A. DJs use a key wheel (the Camelot wheel): keys with the same " +
+                    "or a next-door number blend smoothly. Tap NEXT to see how well \"Grillz\" fits after \"Air Force Ones\", " +
+                    "and why, then close the list to carry on."),
             TutorialStep(listOf("sync1"), "Match the tempo",
                 "The two songs have different tempos. Tap SYNC on deck B and it speeds up or slows down \"Grillz\" " +
                     "to match \"Air Force Ones\". SYNC lights up when they match.",
@@ -126,9 +130,9 @@ object Tutorials {
             TutorialStep(listOf("pad0", "pad1", "pad2", "pad3"), "Celebrate",
                 "Hit the HORN! The sampler pads play sound effects over the mix. Tap one again to stop it.",
                 done = { m -> if ((0..3).any { m.sampler.isPlaying(it) }) hornFired = true; hornFired }),
-            TutorialStep(listOf("rec", "load0"), "You did it!",
+            TutorialStep(listOf("rec", "next"), "You did it!",
                 "That's a full mix: sync, cut the bass, blend, swap, echo out. Next time tap REC first and your set is saved in My mixes. " +
-                    "Load another song on deck A and keep going! (Tap ? any time to see what every button does.)"),
+                    "Tap NEXT for a song that fits after \"Grillz\" and keep going! (Tap ? any time to see what every button does.)"),
         )
         return Tutorial("Nelly: Air Force Ones → Grillz", steps)
     }

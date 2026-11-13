@@ -35,9 +35,16 @@ import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
 import javax.swing.filechooser.FileNameExtensionFilter
 
-/** Picks a song for a deck: YouTube search, Spotify link, songs on this computer, or an audio file. */
-class LibraryDialog(private val app: App, private val deck: Int, private val onPick: (String) -> Unit) :
-    JDialog(app.frame, "Load into Deck ${if (deck == 0) "A" else "B"}", true) {
+/**
+ * Picks a song for a deck: suggestions that fit after deck [after]'s song, YouTube search, Spotify
+ * link, songs on this computer, or an audio file. Opens on "Suggested" when [suggest] is set.
+ * [onPick] gets the song id and whether to SYNC it once loaded.
+ */
+class LibraryDialog(
+    private val app: App, private val deck: Int,
+    private val after: Int? = null, private val waiting: Boolean = false, private val suggest: Boolean = false,
+    private val onPick: (String, Boolean) -> Unit,
+) : JDialog(app.frame, "Load into Deck ${if (deck == 0) "A" else "B"}", true) {
 
     private val store = app.store
     private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "library").apply { isDaemon = true } }
@@ -266,9 +273,16 @@ class LibraryDialog(private val app: App, private val deck: Int, private val onP
         }
     }
 
-    private fun finishWith(id: String) {
+    private fun finishWith(id: String, sync: Boolean = false) {
         dispose()
-        onPick(id)
+        onPick(id, sync)
+    }
+
+    private lateinit var suggested: SuggestedPanel
+
+    override fun dispose() {
+        if (::suggested.isInitialized) suggested.close()
+        super.dispose()
     }
 
     private fun rowList(model: DefaultListModel<Row>) = JList(model).apply {
@@ -293,18 +307,24 @@ class LibraryDialog(private val app: App, private val deck: Int, private val onP
     // Runs after all the properties above exist (Kotlin initialises in source order).
     init {
         val tabs = JTabbedPane()
+        suggested = SuggestedPanel(app, deck, after, waiting, confirmPlaying = suggest, setStatus = { setStatus(it) }) { id, sync -> finishWith(id, sync) }
+        tabs.addTab("Suggested", suggested)
         tabs.addTab("YouTube", youTubeTab())
         tabs.addTab("Spotify", spotifyTab())
         tabs.addTab("My songs", mySongsTab())
         tabs.addTab("Files", filesTab())
-        if (store.all().isNotEmpty()) tabs.selectedIndex = 2
+        tabs.selectedIndex = when {
+            suggest -> 0
+            store.all().isNotEmpty() -> 3
+            else -> 1
+        }
         status.border = BorderFactory.createEmptyBorder(6, 10, 6, 10)
         status.foreground = Color(0xB0, 0xB0, 0xBC)
         contentPane.add(tabs, BorderLayout.CENTER)
         contentPane.add(status, BorderLayout.SOUTH)
         size = Dimension(900, 620)
         setLocationRelativeTo(app.frame)
-        setStatus("Pick a song for deck ${if (deck == 0) "A" else "B"}. Double-click a song to load it.")
+        if (!suggest) setStatus("Pick a song for deck ${if (deck == 0) "A" else "B"}. Double-click a song to load it.")
     }
 
     companion object {

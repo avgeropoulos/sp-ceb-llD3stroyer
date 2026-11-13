@@ -29,6 +29,10 @@ class Console(private val mixer: Mixer, private val host: Host) {
         fun loadingText(deck: Int): String?
         /** Text shown on the REC button while a finished mix is being saved, or null. */
         fun savingText(): String?
+        /** NEXT was tapped: show songs that fit after [next].after's song; load the pick onto [next].target. */
+        fun suggestNext(next: NextPlan) = openLibrary(next.target)
+        /** A newly loaded song on [deck] has started playing (e.g. remember it as played). */
+        fun deckStarted(deck: Int) {}
     }
 
     private val colA = 0xFF29B6F6.toInt()
@@ -89,6 +93,8 @@ class Console(private val mixer: Mixer, private val host: Host) {
         r: RectF, private val label: () -> String, private val color: Int,
         private val lit: () -> Boolean = { false }, private val onUp: (() -> Unit)? = null,
         private val onLong: (() -> Unit)? = null, private val textScale: Float = 1f,
+        /** Overrides [color] while drawing, e.g. NEXT takes the colour of the deck it loads. */
+        private val colorOf: (() -> Int)? = null,
         private val onDown: () -> Unit,
     ) : Ctl(r) {
         private var pressed = false; private var downAt = 0L; private var longDone = false
@@ -97,6 +103,7 @@ class Console(private val mixer: Mixer, private val host: Host) {
         override fun draw(c: Canvas) {
             if (pressed && !longDone && onLong != null && now() - downAt > 650) { longDone = true; onLong.invoke() }
             val on = lit()
+            val color = colorOf?.invoke() ?: color
             fill.color = if (on) color else btnBg
             if (pressed) fill.color = blend(fill.color, Color.WHITE, 0.25f)
             c.drawRoundRect(r, radius, radius, fill)
@@ -256,10 +263,14 @@ class Console(private val mixer: Mixer, private val host: Host) {
             fill.color = col; c.drawCircle(cx, cy, rr * 0.3f, fill)
             text.color = Color.BLACK
             if (d.bpm > 0) {
+                // BPM, and under it the key you hear (moved by the tempo slider: no key lock).
+                val key = KeyDisplay.label(d)
+                val up = if (key != null) rr * 0.045f else 0f
                 text.textSize = rr * 0.17f
-                c.drawText("%.1f".format(d.effectiveBpm), cx, cy + rr * 0.02f, text)
+                c.drawText("%.1f".format(d.effectiveBpm), cx, cy + rr * 0.02f - up, text)
                 text.textSize = rr * 0.09f
-                c.drawText("BPM", cx, cy + rr * 0.15f, text)
+                c.drawText("BPM", cx, cy + rr * 0.15f - up, text)
+                if (key != null) { text.textSize = rr * 0.085f; c.drawText(key, cx, cy + rr * 0.215f, text) }
             } else {
                 text.textSize = rr * 0.11f
                 c.drawText(if (d.loaded) "NO BEAT" else "EMPTY", cx, cy + rr * 0.04f, text)
@@ -404,36 +415,50 @@ class Console(private val mixer: Mixer, private val host: Host) {
         }
     }
 
-    /** Title, artist, time and tempo of a deck. Tap for the deck menu. */
+    /** Title, artist, time, tempo and key of a deck. Tap for the deck menu. */
     inner class Info(r: RectF, private val i: Int) : Ctl(r) {
         private val d: Deck get() = mixer.decks[i]
         override fun down(x: Float, y: Float) = host.deckMenu(i)
         override fun draw(c: Canvas) {
             fill.color = panel; c.drawRoundRect(r, radius, radius, fill)
             val pad = unit * 0.6f
+            val gap = unit * 0.8f
+            val line1 = r.top + r.height() * 0.42f
+            val line2 = r.top + r.height() * 0.82f
             val loading = host.loadingText(i)
+            // Right-hand side first (time left; BPM, key and tempo change) so the title and
+            // artist can use all the room that's left.
+            var right1 = 0f; var right2 = 0f
+            if (d.loaded) {
+                mono.textAlign = Paint.Align.RIGHT
+                mono.textSize = r.height() * 0.32f
+                val remain = (d.durationSec - d.positionSec).coerceAtLeast(0.0)
+                val warn = remain < 30 && d.playing && (now() / 400) % 2 == 0L
+                mono.color = if (warn) 0xFFFF5252.toInt() else Color.WHITE
+                val time = "-" + fmtTime(remain)
+                c.drawText(time, r.right - pad, line1, mono)
+                right1 = mono.measureText(time)
+                // "93.00 BPM · 8A  +0.0%", drawn right to left; the key in its key-wheel colour.
+                mono.textSize = r.height() * 0.25f
+                var x = r.right - pad
+                fun part(s: String, color: Int) { mono.color = color; c.drawText(s, x, line2, mono); x -= mono.measureText(s) }
+                part("  %+.1f%%".format(d.pitch * 100), deckColor(i))
+                KeyDisplay.label(d)?.let { k -> part(k, KeyDisplay.labelColor(d, Color.WHITE)); part(" · ", dim) }
+                part((if (d.bpm > 0) "%.2f".format(d.effectiveBpm) else "--") + " BPM", deckColor(i))
+                right2 = r.right - pad - x
+            }
             text.textAlign = Paint.Align.LEFT
             text.color = Color.WHITE; text.textSize = r.height() * 0.32f
             val title = when {
                 loading != null -> loading
                 d.loaded -> d.title
+                mixer.decks[1 - i].loaded -> "Tap NEXT for a song that fits"
                 else -> "Tap LOAD to pick a song"
             }
-            c.drawText(ellipsize(title, r.width() * 0.62f), r.left + pad, r.top + r.height() * 0.42f, text)
+            c.drawText(ellipsize(title, r.width() - 2 * pad - right1 - (if (right1 > 0) gap else 0f)), r.left + pad, line1, text)
             text.color = dim; text.textSize = r.height() * 0.25f
-            if (d.loaded && loading == null) c.drawText(ellipsize(d.artist, r.width() * 0.62f), r.left + pad, r.top + r.height() * 0.82f, text)
+            if (d.loaded && loading == null) c.drawText(ellipsize(d.artist, r.width() - 2 * pad - right2 - gap), r.left + pad, line2, text)
             text.textAlign = Paint.Align.CENTER
-            if (!d.loaded) return
-            mono.textAlign = Paint.Align.RIGHT
-            mono.color = Color.WHITE; mono.textSize = r.height() * 0.32f
-            val remain = (d.durationSec - d.positionSec).coerceAtLeast(0.0)
-            val warn = remain < 30 && d.playing && (now() / 400) % 2 == 0L
-            mono.color = if (warn) 0xFFFF5252.toInt() else Color.WHITE
-            c.drawText("-" + fmtTime(remain), r.right - pad, r.top + r.height() * 0.42f, mono)
-            mono.color = deckColor(i); mono.textSize = r.height() * 0.25f
-            val pct = d.pitch * 100
-            val bpmTxt = if (d.bpm > 0) "%.2f".format(d.effectiveBpm) else "--"
-            c.drawText("$bpmTxt BPM  %+.1f%%".format(pct), r.right - pad, r.top + r.height() * 0.82f, mono)
         }
     }
 
@@ -456,6 +481,71 @@ class Console(private val mixer: Mixer, private val host: Host) {
         }
     }
 
+    // ------------------------------------------------------------------ NEXT
+
+    private val nextTeal = 0xFF1DE9B6.toInt()
+
+    /**
+     * NEXT's plan: load onto deck [target] a song that fits after deck [after]'s (null = both
+     * decks empty). [waiting]: [target] already holds a song that hasn't been played yet.
+     */
+    class NextPlan(val target: Int, val after: Int?, val waiting: Boolean = false)
+
+    private val seenPcm = arrayOfNulls<Any>(2)
+    private val played = BooleanArray(2)
+    /** The deck that was last playing on its own, or -1. */
+    private var lastLive = -1
+
+    /** Notices new songs and which deck is live (called every frame). */
+    private fun watchDecks() {
+        for (k in 0..1) {
+            val d = mixer.decks[k]
+            if (d.pcm !== seenPcm[k]) { seenPcm[k] = d.pcm; played[k] = false }
+            if (d.playing && !played[k]) { played[k] = true; host.deckStarted(k) }
+        }
+        val a = mixer.decks[0].playing; val b = mixer.decks[1].playing
+        if (a != b) lastLive = if (a) 0 else 1
+    }
+
+    /** Real seconds left on deck [k] at its current tempo. */
+    private fun secondsLeft(k: Int): Double {
+        val d = mixer.decks[k]
+        return (d.durationSec - d.positionSec).coerceAtLeast(0.0) / (1 + d.pitch)
+    }
+
+    /**
+     * Which deck NEXT loads, and which song the suggestions follow. One deck playing: the other
+     * deck, after the playing song. Both playing (mid-mix): the deck that ends first, after the
+     * other. None playing: after the song that played last (else deck A's). Reads the decks
+     * without the lock (like drawing does): a stale value only lasts one frame.
+     */
+    fun nextPlan(): NextPlan {
+        val d = mixer.decks
+        val (target, after) = when {
+            d[0].playing && d[1].playing -> if (secondsLeft(0) <= secondsLeft(1)) 0 to 1 else 1 to 0
+            d[0].playing -> 1 to 0
+            d[1].playing -> 0 to 1
+            d[0].loaded && d[1].loaded -> {
+                val ref = when { lastLive >= 0 -> lastLive; played[1] && !played[0] -> 1; else -> 0 }
+                1 - ref to ref
+            }
+            d[0].loaded -> 1 to 0
+            d[1].loaded -> 0 to 1
+            else -> return NextPlan(0, null)
+        }
+        return NextPlan(target, after, waiting = d[target].loaded && !played[target])
+    }
+
+    /** NEXT blinks in the last minute of the only playing song if no new song waits on the other deck. */
+    private fun nextDue(): Boolean {
+        val d = mixer.decks
+        if (d[0].playing == d[1].playing) return false
+        val live = if (d[0].playing) 0 else 1
+        val other = 1 - live
+        if (d[other].loaded && !played[other]) return false
+        return secondsLeft(live) < 60 && (now() / 600) % 2 == 0L
+    }
+
     // ------------------------------------------------------------------ layout
 
     /** Lays the console out for a [w] × [h] pixel area. */
@@ -472,31 +562,38 @@ class Console(private val mixer: Mixer, private val host: Host) {
         val ovH = H * 0.05f
         val laneH = H * 0.095f
 
-        // Top bar: [LOAD A][info A]  [REC][meter][MENU]  [info B][LOAD B]
+        // Top bar: [LOAD A][info A]  [REC][meter][NEXT][?][☰]  [info B][LOAD B]
         val loadW = W * 0.065f
-        val centerW = W * 0.2f
+        val centerW = W * 0.25f
         val infoW = (W - centerW - 2 * loadW - 6 * pad) / 2
         var x = pad
         ctls += Btn(RectF(x, pad, x + loadW, topH), { "LOAD" }, colA) { host.openLibrary(0) }.h("Pick a song for deck A").k("load0")
         x += loadW + pad
-        ctls += Info(RectF(x, pad, x + infoW, topH), 0).h("Song, time left, BPM · tap for BPM fixes").k("info0")
+        ctls += Info(RectF(x, pad, x + infoW, topH), 0).h("Song, time left, BPM, key · tap for BPM fixes").k("info0")
         x += infoW + pad
-        // REC (1.4 parts) | meter (0.4) | ? (1) | ☰ (1)
-        val cw = (centerW - 3 * pad) / 3.8f
-        ctls += Btn(RectF(x, pad, x + cw * 1.4f, topH), {
+        // REC (1.4 parts) | meter (0.4) | NEXT (1.5) | ? (0.9) | ☰ (0.9)
+        val cw = (centerW - 4 * pad) / 5.1f
+        var cx = x
+        ctls += Btn(RectF(cx, pad, cx + cw * 1.4f, topH), {
             host.savingText() ?: if (host.recording()) fmtTime(host.recordSeconds()) else "REC"
         }, 0xFFFF1744.toInt(), lit = { host.recording() }) { host.toggleRecord() }.h("Record your mix").k("rec")
-        var cx = x + cw * 1.4f + pad
+        cx += cw * 1.4f + pad
         ctls += Meter(RectF(cx, pad, cx + cw * 0.4f, topH)) { mixer.masterLevel }
         cx += cw * 0.4f + pad
-        ctls += Btn(RectF(cx, pad, cx + cw, topH), { "?" }, 0xFFFFEB3B.toInt(), lit = { helpMode }) { helpMode = !helpMode }
-        cx += cw + pad
-        keyBanner.set(x, pad, cx - pad, topH)
+        ctls += Btn(RectF(cx, pad, cx + cw * 1.5f, topH), { "NEXT" }, nextTeal, lit = { nextDue() },
+            colorOf = { nextPlan().let { if (it.after == null) nextTeal else deckColor(it.target) } }) {
+            host.suggestNext(nextPlan())
+        }.h("Suggest the next song").k("next")
+        cx += cw * 1.5f + pad
+        ctls += Btn(RectF(cx, pad, cx + cw * 0.9f, topH), { "?" }, 0xFFFFEB3B.toInt(), lit = { helpMode }) { helpMode = !helpMode }
+        cx += cw * 0.9f + pad
         ctls += Btn(RectF(cx, pad, x + centerW, topH), { "☰" }, dim) { host.mainMenu() }.h("Menu: mixes, guide, settings").k("menu")
         x += centerW + pad
-        ctls += Info(RectF(x, pad, x + infoW, topH), 1).h("Song, time left, BPM · tap for BPM fixes").k("info1")
+        ctls += Info(RectF(x, pad, x + infoW, topH), 1).h("Song, time left, BPM, key · tap for BPM fixes").k("info1")
         x += infoW + pad
         ctls += Btn(RectF(x, pad, W - pad, topH), { "LOAD" }, colB) { host.openLibrary(1) }.h("Pick a song for deck B").k("load1")
+        // The help key's banner goes between the two song strips, where it covers no label.
+        keyBanner.set(W * 0.35f, topH + pad * 0.25f, W * 0.65f, topH + pad * 1.75f + ovH)
 
         var y = topH + pad
         ctls += Overview(RectF(pad, y, W / 2 - pad / 2, y + ovH), 0).h("Whole song A · tap to jump there").k("ov0")
@@ -697,6 +794,7 @@ class Console(private val mixer: Mixer, private val host: Host) {
 
     /** Draws one frame. Call it continuously (every display refresh) while the console is visible. */
     fun draw(c: Canvas) {
+        watchDecks()
         c.drawColor(bg)
         for (ctl in ctls) ctl.draw(c)
         if (helpMode) drawKey(c)
@@ -725,13 +823,13 @@ class Console(private val mixer: Mixer, private val host: Host) {
             var y = box.top + text.textSize * 0.25f - text.ascent()
             for (line in lines) { c.drawText(line, box.centerX(), y, text); y += lh }
         }
-        // Banner across the centre of the top bar.
+        // Banner between the two song strips.
         val banner = keyBanner
         fill.color = 0xFFFFEB3B.toInt(); c.drawRoundRect(banner, radius, radius, fill)
-        text.color = Color.BLACK; text.textSize = banner.height() * 0.3f
-        fitText("KEY · tap to close", banner.width() * 0.92f)
-        c.drawText("KEY · tap to close", banner.centerX(), banner.centerY() - text.textSize * 0.15f, text)
-        text.textSize = banner.height() * 0.22f
+        text.color = Color.BLACK; text.textSize = banner.height() * 0.36f
+        fitText("HELP · tap to close", banner.width() * 0.92f)
+        c.drawText("HELP · tap to close", banner.centerX(), banner.centerY() - text.textSize * 0.15f, text)
+        text.textSize = banner.height() * 0.25f
         fitText("Full guide: ☰ → How it works", banner.width() * 0.92f)
         c.drawText("Full guide: ☰ → How it works", banner.centerX(), banner.centerY() + text.textSize * 1.2f, text)
     }

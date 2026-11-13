@@ -85,10 +85,13 @@ class App : Console.Host {
     val mixer = Mixer(DesktopAudioOut.pickSampleRate())
     private val audio = DesktopAudioOut(mixer)
     val store = TrackStore(Places.data)
+    val suggester = com.mixdeck.Suggester(store) { f, p -> Ffmpeg.decode(f, p) }
     private val recorder = DesktopRecorder(mixer, Places.temp)
     private val prefs = Preferences.userRoot().node("mixdeck")
     private val loading = arrayOfNulls<String>(2)
     private val deckTrackIds = arrayOfNulls<String>(2)
+    /** The id of the song on [deck], or null. */
+    fun trackOn(deck: Int): String? = deckTrackIds[deck]
     @Volatile private var saving: String? = null
     private val loader = Executors.newSingleThreadExecutor { r -> Thread(r, "MixDeck loader").apply { isDaemon = true } }
 
@@ -177,6 +180,10 @@ class App : Console.Host {
     private val held = HashSet<Int>()
 
     private fun installKeys() {
+        // A dialog opened from a key (N) takes the key-up: forget held keys when the window loses focus.
+        frame.addWindowFocusListener(object : WindowAdapter() {
+            override fun windowLostFocus(e: WindowEvent) { held.clear() }
+        })
         KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher { e ->
             if (!frame.isFocused) return@addKeyEventDispatcher false
             when (e.id) {
@@ -214,6 +221,8 @@ class App : Console.Host {
             KeyEvent.VK_C -> act { sampler.trigger(2) }
             KeyEvent.VK_V -> act { sampler.trigger(3) }
             KeyEvent.VK_H, KeyEvent.VK_F1 -> console.helpMode = !console.helpMode
+            // After the key event, so the dialog doesn't open inside the key dispatcher.
+            KeyEvent.VK_N -> SwingUtilities.invokeLater { suggestNext(console.nextPlan()) }
             KeyEvent.VK_ESCAPE -> { console.helpMode = false; console.tutorial = null }
             else -> return false
         }
@@ -235,22 +244,45 @@ class App : Console.Host {
         if (mixer.decks[deck].playing && JOptionPane.showConfirmDialog(frame,
                 "Deck ${deckName(deck)} is playing. Load a new song onto it anyway?", "MixDeck",
                 JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return
-        LibraryDialog(this, deck) { id -> loadTrack(deck, id) }.isVisible = true
+        // Suggestions follow the other deck's song, else the song being replaced.
+        val after = listOf(1 - deck, deck).firstOrNull { mixer.decks[it].loaded }
+        LibraryDialog(this, deck, after = after) { id, sync -> loadTrack(deck, id, sync) }.isVisible = true
     }
 
-    fun loadTrack(deck: Int, id: String) {
+    override fun suggestNext(next: Console.NextPlan) {
+        val after = next.after
+        if (after == null) {
+            val r = JOptionPane.showOptionDialog(frame,
+                "Load a song on a deck first. Then NEXT suggests songs that fit after it:\n" +
+                    "a key that blends, a tempo close enough to sync, and the energy you want.",
+                "What to play next", JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE, null,
+                arrayOf("Pick a song for deck A", "OK"), "Pick a song for deck A")
+            if (r == 0) openLibrary(0)
+            return
+        }
+        LibraryDialog(this, next.target, after = after, waiting = next.waiting, suggest = true) { id, sync ->
+            loadTrack(next.target, id, sync)
+        }.isVisible = true
+    }
+
+    override fun deckStarted(deck: Int) {
+        val id = deckTrackIds[deck] ?: return
+        loader.execute { store.markPlayed(id) }
+    }
+
+    /** Loads song [id] onto [deck]; with [sync], matches its tempo to the other deck once loaded. */
+    fun loadTrack(deck: Int, id: String, sync: Boolean = false) {
         val t = store.get(id) ?: return error("That song isn't on this computer any more")
         loading[deck] = "Loading ${t.title}…"
         loader.execute {
             try {
                 val pcm = Ffmpeg.decode(store.audioFile(id)) { p -> loading[deck] = "Decoding ${(p * 100).toInt()}%" }
-                var track = t
-                var analysis = store.loadAnalysis(t)
-                if (analysis == null) {
-                    analysis = Analyzer.analyze(pcm) { p -> loading[deck] = "Finding the beat ${(p * 100).toInt()}%" }
-                    track = store.saveAnalysis(t, analysis, Analyzer.loudnessDb(pcm), pcm.frames / pcm.sampleRate.toDouble())
+                // Beat grid, waveform, key and energy (only what this song is still missing).
+                val (track, analysis) = suggester.analyze(t, pcm) { p -> loading[deck] = "Listening ${(p * 100).toInt()}%" }
+                synchronized(mixer.lock) {
+                    mixer.decks[deck].load(pcm, analysis, track.title, track.artist, track.loudnessDb)
+                    if (sync) mixer.sync(deck)
                 }
-                synchronized(mixer.lock) { mixer.decks[deck].load(pcm, analysis, track.title, track.artist, track.loudnessDb) }
                 deckTrackIds[deck] = id
             } catch (e: Throwable) {
                 SwingUtilities.invokeLater { error("Couldn't load ${t.title}: ${e.message}") }
@@ -289,7 +321,7 @@ class App : Console.Host {
             "▶ Tutorial: mix Nelly – Air Force Ones → Grillz" to { startTutorial() },
             "My mixes" to { MixesDialog(this).isVisible = true },
             "How it works (guide and keyboard shortcuts)" to { HelpDialog(this).isVisible = true },
-            "Show the key on screen  (H)" to { console.helpMode = true },
+            "Show button labels  (H)" to { console.helpMode = true },
             "Master volume…" to { slider("Master volume", mixer.master) { mixer.master = it } },
             "Sampler volume…" to { slider("Sampler volume", mixer.sampler.volume) { mixer.sampler.volume = it } },
             "Crossfader curve: ${if (mixer.curve == XfadeCurve.SMOOTH) "smooth (mixing)" else "sharp (scratching)"}" to {

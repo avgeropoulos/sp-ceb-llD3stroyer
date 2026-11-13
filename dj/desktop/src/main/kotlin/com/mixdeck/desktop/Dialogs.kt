@@ -169,7 +169,7 @@ class HelpDialog(private val app: App) : JDialog(app.frame, "How MixDeck works",
         val pane = JEditorPane("text/html", html.toString()).apply { isEditable = false; caretPosition = 0 }
         val buttons = JPanel(FlowLayout(FlowLayout.RIGHT))
         buttons.add(JButton("▶ Start the Nelly tutorial").apply { addActionListener { dispose(); app.startTutorial() } })
-        buttons.add(JButton("Show the key").apply { addActionListener { dispose(); app.console.helpMode = true } })
+        buttons.add(JButton("Show labels").apply { addActionListener { dispose(); app.console.helpMode = true } })
         buttons.add(JButton("Close").apply { addActionListener { dispose() } })
         contentPane.add(JScrollPane(pane), BorderLayout.CENTER)
         contentPane.add(buttons, BorderLayout.SOUTH)
@@ -188,8 +188,9 @@ class HelpDialog(private val app: App) : JDialog(app.frame, "How MixDeck works",
             "U  Y" to "Deck B: 4-beat loop on/off, effect on/off",
             "← →  ↓" to "Crossfader left / right, ↓ = centre",
             "Z X C V" to "Sampler: horn, siren, laser, drop",
-            "H  or  F1" to "Show / hide the key",
-            "Esc" to "Close the key or the tutorial",
+            "N" to "Suggest the next song (what fits after the playing one)",
+            "H  or  F1" to "Show / hide the button labels",
+            "Esc" to "Close the labels or the tutorial",
         )
     }
 }

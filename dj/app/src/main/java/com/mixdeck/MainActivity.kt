@@ -38,6 +38,7 @@ object Engine {
 class MainActivity : Activity(), Console.Host {
     private lateinit var mixer: Mixer
     private lateinit var store: TrackStore
+    lateinit var suggester: Suggester
     private lateinit var recorder: Recorder
     private lateinit var updater: Updater
     private lateinit var dj: DjView
@@ -52,6 +53,7 @@ class MainActivity : Activity(), Console.Host {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         mixer = Engine.get(this)
         store = TrackStore(filesDir)
+        suggester = Suggester(store) { f, p -> Decoder.decode(f, p) }
         recorder = Recorder(this, mixer)
         updater = Updater(this)
         restoreSettings()
@@ -114,6 +116,27 @@ class MainActivity : Activity(), Console.Host {
         startActivityForResult(Intent(this, LibraryActivity::class.java).putExtra(LibraryActivity.EXTRA_DECK, deck), REQ_LIBRARY)
     }
 
+    override fun suggestNext(next: Console.NextPlan) {
+        val after = next.after
+        if (after == null) {
+            AlertDialog.Builder(this).setTitle("What to play next")
+                .setMessage("Load a song on a deck first. Then NEXT suggests songs that fit after it: a key that blends, " +
+                    "a tempo close enough to sync, and the energy you want.")
+                .setPositiveButton("Pick a song") { _, _ -> openLibrary(0) }
+                .setNegativeButton("OK", null).show()
+            return
+        }
+        // No "deck is playing" question here: browsing is harmless; LibraryActivity asks when you pick.
+        startActivityForResult(Intent(this, LibraryActivity::class.java)
+            .putExtra(LibraryActivity.EXTRA_DECK, next.target).putExtra(LibraryActivity.EXTRA_AFTER, after)
+            .putExtra(LibraryActivity.EXTRA_WAITING, next.waiting).putExtra(LibraryActivity.EXTRA_SUGGEST, true), REQ_LIBRARY)
+    }
+
+    override fun deckStarted(deck: Int) {
+        val id = Engine.deckTrackIds[deck] ?: return
+        loader.execute { store.markPlayed(id) }
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
@@ -126,22 +149,27 @@ class MainActivity : Activity(), Console.Host {
         val id = i?.getStringExtra(LibraryActivity.EXTRA_TRACK) ?: return
         val deck = i.getIntExtra(LibraryActivity.EXTRA_DECK, 0)
         i.removeExtra(LibraryActivity.EXTRA_TRACK)
-        loadTrack(deck, id)
+        loadTrack(deck, id, sync = i.getBooleanExtra(LibraryActivity.EXTRA_SYNC, false))
     }
 
-    private fun loadTrack(deck: Int, id: String) {
+    /** Loads song [id] onto [deck]; with [sync], matches its tempo to the other deck once loaded. */
+    private fun loadTrack(deck: Int, id: String, sync: Boolean = false) {
         val t = store.get(id) ?: return toast("That song isn't on the phone any more")
         loading[deck] = "Loading ${t.title}…"
         loader.execute {
             try {
                 val pcm = Decoder.decode(store.audioFile(id)) { p -> loading[deck] = "Decoding ${(p * 100).toInt()}%" }
-                var track = t
-                var analysis = store.loadAnalysis(t)
-                if (analysis == null) {
-                    analysis = Analyzer.analyze(pcm) { p -> loading[deck] = "Finding the beat ${(p * 100).toInt()}%" }
-                    track = store.saveAnalysis(t, analysis, Analyzer.loudnessDb(pcm), pcm.frames / pcm.sampleRate.toDouble())
+                // Beat grid, waveform, key and energy (only what this song is still missing).
+                val (track, analysis) = suggester.analyze(t, pcm) { p -> loading[deck] = "Listening ${(p * 100).toInt()}%" }
+                var synced: Double? = null
+                synchronized(mixer.lock) {
+                    val d = mixer.decks[deck]
+                    d.load(pcm, analysis, track.title, track.artist, track.loudnessDb)
+                    if (sync && d.bpm > 0 && mixer.decks[1 - deck].bpm > 0) { mixer.sync(deck); synced = d.pitch }
                 }
-                synchronized(mixer.lock) { mixer.decks[deck].load(pcm, analysis, track.title, track.artist, track.loudnessDb) }
+                synced?.let { p ->
+                    main.post { toast("\"${track.title}\" is on deck ${deckName(deck)}, synced (%+.1f%%). Press ▶ when the moment's right.".format(p * 100)) }
+                }
                 Engine.deckTrackIds[deck] = id
             } catch (e: Throwable) {
                 main.post { toast("Couldn't load ${t.title}: ${e.message}") }
@@ -191,7 +219,7 @@ class MainActivity : Activity(), Console.Host {
             "▶ Tutorial: mix Nelly – Air Force Ones → Grillz",
             "My mixes",
             "How it works (guide)",
-            "Show the key on screen",
+            "Show button labels",
             "Master volume…",
             "Sampler volume…",
             "Crossfader curve: ${if (mixer.curve == XfadeCurve.SMOOTH) "smooth (mixing)" else "sharp (scratching)"}",

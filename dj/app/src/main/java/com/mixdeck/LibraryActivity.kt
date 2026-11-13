@@ -23,12 +23,23 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.AbsListView
 import android.widget.BaseAdapter
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ListView
+import android.widget.ProgressBar
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import android.content.res.ColorStateList
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
+import com.mixdeck.engine.Direction
+import com.mixdeck.engine.Suggestion
+import com.mixdeck.ui.Console
+import com.mixdeck.ui.KeyDisplay
 import java.io.File
 import java.util.concurrent.Executors
 
@@ -50,7 +61,23 @@ class LibraryActivity : Activity() {
 
     private lateinit var content: FrameLayout
     private lateinit var status: TextView
-    private val tabButtons = ArrayList<Button>()
+    private enum class Tab(val label: String) { SUGGESTED("Suggested"), YOUTUBE("YouTube"), SPOTIFY("Spotify"), MINE("My songs"), FILES("Phone files") }
+    private val tabButtons = LinkedHashMap<Tab, Button>()
+
+    // Suggested tab
+    /** The deck whose song the suggestions follow, or -1. */
+    private var after = -1
+    /** The target deck already holds a song that hasn't been played yet. */
+    private var waiting = false
+    private var next: NextSongs? = null
+    private var nextState: NextSongs.State? = null
+    private var expanded: String? = null
+    private var suggestRows: LinearLayout? = null
+    private var suggestBusy: LinearLayout? = null
+    private var suggestBar: ProgressBar? = null
+    private var findButton: Button? = null
+    private val dirButtons = ArrayList<Button>()
+    private val prefs by lazy { getSharedPreferences("mixdeck", MODE_PRIVATE) }
 
     // YouTube tab
     private var ytSearch: YouTube.Search? = null
@@ -64,6 +91,11 @@ class LibraryActivity : Activity() {
         store = TrackStore(filesDir)
         deck = intent.getIntExtra(EXTRA_DECK, 0)
         shared = intent.action == Intent.ACTION_SEND
+        // NEXT says which deck to follow. LOAD follows the other deck's song, else the one being replaced.
+        val decks = Engine.mixer?.decks
+        after = intent.getIntExtra(EXTRA_AFTER, -1).takeIf { it in 0..1 }
+            ?: listOf(1 - deck, deck).firstOrNull { decks?.get(it)?.loaded == true } ?: -1
+        waiting = intent.getBooleanExtra(EXTRA_WAITING, false)
         window.decorView.setBackgroundColor(bg)
 
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(10), dp(6), dp(10), dp(4)) }
@@ -73,9 +105,10 @@ class LibraryActivity : Activity() {
             setTextColor(accent); textSize = 18f; typeface = Typeface.DEFAULT_BOLD
             setPadding(0, 0, dp(16), 0)
         })
-        listOf("YouTube", "Spotify", "My songs", "Phone files").forEachIndexed { i, name ->
-            val b = button(name) { showTab(i) }
-            tabButtons += b
+        for (t in Tab.entries) {
+            if (t == Tab.SUGGESTED && shared) continue
+            val b = button(t.label) { showTab(t) }
+            tabButtons[t] = b
             header.addView(b, LinearLayout.LayoutParams(0, dp(40), 1f).apply { marginEnd = dp(6) })
         }
         header.addView(button("✕") { finish() }, LinearLayout.LayoutParams(dp(48), dp(40)))
@@ -88,28 +121,233 @@ class LibraryActivity : Activity() {
 
         val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
         when {
-            sharedText != null && Spotify.isSpotifyUrl(sharedText) -> { showTab(1); importSpotify(sharedText) }
-            sharedText != null && YouTube.isYouTubeUrl(sharedText) -> { showTab(0); YouTube.videoId(sharedText)?.let { pickYouTube(YtResult(sharedText, it, "Shared video", "", 0)) } }
-            store.all().isNotEmpty() && !shared -> showTab(2)
-            else -> showTab(0)
+            sharedText != null && Spotify.isSpotifyUrl(sharedText) -> { showTab(Tab.SPOTIFY); importSpotify(sharedText) }
+            sharedText != null && YouTube.isYouTubeUrl(sharedText) -> { showTab(Tab.YOUTUBE); YouTube.videoId(sharedText)?.let { pickYouTube(YtResult(sharedText, it, "Shared video", "", 0)) } }
+            intent.getBooleanExtra(EXTRA_SUGGEST, false) && !shared -> showTab(Tab.SUGGESTED)
+            store.all().isNotEmpty() && !shared -> showTab(Tab.MINE)
+            else -> showTab(Tab.YOUTUBE)
         }
     }
 
-    private fun showTab(i: Int) {
-        tabButtons.forEachIndexed { k, b -> styleButton(b, k == i) }
+    override fun onDestroy() {
+        super.onDestroy()
+        next?.close()
+    }
+
+    private fun showTab(t: Tab) {
+        tabButtons.forEach { (k, b) -> styleButton(b, k == t) }
         content.removeAllViews()
-        content.addView(when (i) {
-            0 -> youTubeTab()
-            1 -> spotifyTab()
-            2 -> mySongsTab()
-            else -> phoneTab()
+        suggestRows = null
+        content.addView(when (t) {
+            Tab.SUGGESTED -> suggestedTab()
+            Tab.YOUTUBE -> youTubeTab()
+            Tab.SPOTIFY -> spotifyTab()
+            Tab.MINE -> mySongsTab()
+            Tab.FILES -> phoneTab()
         })
-        if (!busy) status.text = when (i) {
-            0 -> "Search YouTube Music for songs, or switch to Videos for remixes, live sets and mashups."
-            1 -> "Paste a Spotify playlist, album or song link. Each song is matched to its audio on YouTube."
-            2 -> "Songs already on your phone load instantly. Hold one to delete it."
-            else -> ""
+        if (!busy) status.text = when (t) {
+            Tab.SUGGESTED -> nextState?.let(::suggestStatus) ?: SUGGEST_HINT
+            Tab.YOUTUBE -> "Search YouTube Music for songs, or switch to Videos for remixes, live sets and mashups."
+            Tab.SPOTIFY -> "Paste a Spotify playlist, album or song link. Each song is matched to its audio on YouTube."
+            Tab.MINE -> "Songs already on your phone load instantly. Hold one to delete it."
+            Tab.FILES -> ""
         }
+    }
+
+    // ---------------------------------------------------------------- Suggested
+
+    private fun suggestedTab(): View {
+        val box = vbox()
+        val mixer = Engine.mixer
+        val seed = if (after >= 0) Engine.deckTrackIds[after]?.let(store::get) else null
+        if (seed == null || mixer == null) return emptyState(
+            "Load a song first",
+            "Suggestions are songs that fit after the one that's playing: a key that blends, a tempo close enough to sync, " +
+                "and the energy you want. Pick a song for this deck from YouTube or My songs to get started.")
+        val n = next ?: NextSongs(store, Suggester(store) { f, p -> Decoder.decode(f, p) }, seed, mixer.decks[after].pitch,
+            onDecks = Engine.deckTrackIds.filterNotNull().toSet(),
+            waiting = if (waiting) Engine.deckTrackIds[deck]?.let(store::get) else null,
+            direction = Direction.entries[prefs.getInt("nextDirection", 0).coerceIn(0, 2)],
+        ) { st -> main.post { showSuggestions(st) } }.also { next = it; it.start() }
+
+        // "After: Air Force Ones · 93 BPM · 8A"   [Keep the vibe] [Build up ↑] [Cool down ↓]
+        val head = hbox()
+        val bpm = if (seed.bpm > 0) "%.0f BPM".format(seed.bpm * (1 + mixer.decks[after].pitch)) else null
+        head.addView(TextView(this).apply {
+            text = (listOf("After: ${seed.title}") + listOfNotNull(bpm, n.seedKeyLabel())).joinToString("  ·  ")
+            setTextColor(Color.WHITE); textSize = 15f; setSingleLine(); ellipsize = android.text.TextUtils.TruncateAt.END
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        dirButtons.clear()
+        listOf("Keep the vibe", "Build up ↑", "Cool down ↓").forEachIndexed { i, label ->
+            val b = button(label) {
+                prefs.edit().putInt("nextDirection", i).apply()
+                dirButtons.forEachIndexed { k, x -> styleButton(x, k == i) }
+                n.setDirection(Direction.entries[i])
+            }
+            styleButton(b, i == n.state.direction.ordinal)
+            dirButtons += b
+            head.addView(b, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { marginStart = dp(6) })
+        }
+        box.addView(head)
+
+        // Progress while checking songs or finding new ones: [=====-----] [Stop]
+        val busyRow = hbox().apply { visibility = View.GONE; setPadding(0, dp(4), 0, 0) }
+        val bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            progressTintList = ColorStateList.valueOf(accent)
+        }
+        busyRow.addView(bar, LinearLayout.LayoutParams(0, dp(8), 1f))
+        busyRow.addView(button("Stop") { n.stop(); setStatus("Stopping after this song…") },
+            LinearLayout.LayoutParams(dp(80), dp(36)).apply { marginStart = dp(8) })
+        box.addView(busyRow)
+        suggestBusy = busyRow; suggestBar = bar
+
+        val rows = vbox()
+        box.addView(ScrollView(this).apply { addView(rows) },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { topMargin = dp(6) })
+        suggestRows = rows
+
+        // [x] SYNC it for me                                   [Find new songs like this]
+        val foot = hbox().apply { setPadding(0, dp(4), 0, 0) }
+        foot.addView(CheckBox(this).apply {
+            text = "SYNC it for me"; setTextColor(Color.WHITE); textSize = 14f
+            buttonTintList = ColorStateList.valueOf(accent)
+            isChecked = prefs.getBoolean("nextSync", true)
+            setOnCheckedChangeListener { _, on -> prefs.edit().putBoolean("nextSync", on).apply() }
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        findButton = button("Find new songs like this") { findNew(n, seed) }
+        foot.addView(findButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(42)))
+        box.addView(foot)
+
+        nextState?.let(::showSuggestions)
+        return box
+    }
+
+    /** First time: say what it downloads. */
+    private fun findNew(n: NextSongs, seed: Track) {
+        if (prefs.getBoolean("findOk", false)) return n.findNew()
+        AlertDialog.Builder(this).setTitle("Find new songs like this?")
+            .setMessage("MixDeck asks YouTube for songs that go with \"${seed.title}\", downloads up to 6 of them " +
+                "(about 30 MB, so Wi-Fi is best) and checks which ones fit. They're saved in My songs.")
+            .setPositiveButton("Find songs") { _, _ -> prefs.edit().putBoolean("findOk", true).apply(); n.findNew() }
+            .setNegativeButton("Cancel", null).show()
+    }
+
+    private fun showSuggestions(st: NextSongs.State) {
+        nextState = st
+        val rows = suggestRows ?: return
+        rows.removeAllViews()
+        val seedKey = next?.seedKeyLabel()?.filter { it.isLetterOrDigit() }
+        val seedEnergy = next?.seedTrack?.energy ?: Float.NaN
+        st.waiting?.let { rows.addView(suggestionRow(it, onDeck = true, isNew = false, seedKey, seedEnergy)) }
+        for (s in st.list) rows.addView(suggestionRow(s, onDeck = false, isNew = s.track.id in st.found, seedKey, seedEnergy))
+        if (st.list.isEmpty() && st.checking == null) rows.addView(emptyState(
+            if (st.librarySize == 0) "No other songs yet" else "You've played them all",
+            if (st.librarySize == 0) "Tap \"Find new songs like this\" and MixDeck fetches a few songs that go with the one that's playing."
+            else "Every song on your phone was played in the last few hours. Tap \"Find new songs like this\" for fresh ones."))
+        val c = st.checking
+        suggestBusy?.visibility = if (c != null || st.finding != null) View.VISIBLE else View.GONE
+        suggestBar?.apply {
+            isIndeterminate = c == null
+            if (c != null) { max = c.total; progress = c.done }
+        }
+        findButton?.isEnabled = st.finding == null
+        if (!busy) status.text = suggestStatus(st)
+    }
+
+    private fun suggestStatus(st: NextSongs.State): String = st.finding
+        ?: st.checking?.let { "Checking your songs for key and energy… ${it.done + 1} of ${it.total}" }
+        ?: st.note ?: SUGGEST_HINT
+
+    /** stars · title + artist/summary · key move · tempo · energy · [Load]; tap to see why. */
+    private fun suggestionRow(s: Suggestion, onDeck: Boolean, isNew: Boolean, seedKey: String?, seedEnergy: Float): View {
+        val id = s.track.id
+        val open = expanded == id
+        val row = vbox().apply {
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            background = GradientDrawable().apply { cornerRadius = dp(8).toFloat(); setColor(if (open) card else bg) }
+        }
+        val line = hbox()
+        line.addView(TextView(this).apply {
+            text = "★".repeat(s.stars) + "☆".repeat(5 - s.stars); setTextColor(0xFFFFD54F.toInt()); textSize = 15f
+        }, LinearLayout.LayoutParams(dp(84), ViewGroup.LayoutParams.WRAP_CONTENT))
+        val texts = vbox()
+        texts.addView(TextView(this).apply {
+            val t = SpannableStringBuilder()
+            val badge = when { onDeck -> "ON DECK ${deckName()} NOW  "; isNew -> "NEW  "; else -> null }
+            if (badge != null) {
+                t.append(badge)
+                t.setSpan(ForegroundColorSpan(if (onDeck) 0xFF1DE9B6.toInt() else 0xFF00E676.toInt()), 0, badge.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            t.append(s.track.title)
+            text = t; setTextColor(Color.WHITE); textSize = 16f; setSingleLine(); ellipsize = android.text.TextUtils.TruncateAt.END
+        })
+        texts.addView(TextView(this).apply {
+            text = listOf(s.track.artist, s.summary).filter { it.isNotEmpty() }.joinToString("  ·  ")
+            setTextColor(0xFF9A9AA8.toInt()); textSize = 13f; setSingleLine(); ellipsize = android.text.TextUtils.TruncateAt.END
+        })
+        line.addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        val to = s.keyAfterSync?.camelot ?: s.track.key?.let { "~" + it.camelot }
+        line.addView(chip(if (to == null) "key ?" else if (seedKey != null) "$seedKey→$to" else to,
+            s.keyAfterSync?.let(KeyDisplay::color) ?: 0xFF5A5A66.toInt(), Color.BLACK))
+        val pct = s.pitchToSync * 100
+        line.addView(chip(if (s.track.bpm > 0) "%+.1f%%".format(pct).replace('-', '−') else "no beat", 0xFF2A2A31.toInt(),
+            when { kotlin.math.abs(pct) >= 10 -> 0xFFFF5252.toInt(); kotlin.math.abs(pct) >= 6 -> 0xFFFFB300.toInt(); else -> Color.WHITE }))
+        line.addView(TextView(this).apply {
+            text = energyText(seedEnergy, s.track.energy); setTextColor(0xFFB0B0BC.toInt()); textSize = 13f
+            gravity = Gravity.END
+        }, LinearLayout.LayoutParams(dp(78), ViewGroup.LayoutParams.WRAP_CONTENT))
+        if (!onDeck) line.addView(button("Load") { pickSuggestion(s) }.also { styleButton(it, true) },
+            LinearLayout.LayoutParams(dp(72), dp(40)).apply { marginStart = dp(8) })
+        else line.addView(View(this), LinearLayout.LayoutParams(dp(80), dp(40)))
+        row.addView(line)
+        if (open) {
+            for (r in s.reasons) row.addView(TextView(this).apply {
+                val t = SpannableStringBuilder(if (r.good) "✓  " else "✗  ")
+                t.setSpan(ForegroundColorSpan(if (r.good) 0xFF00E676.toInt() else 0xFFFF8A65.toInt()), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                t.append(r.text)
+                text = t; setTextColor(0xFFE6E6EC.toInt()); textSize = 14f; setPadding(dp(84), dp(4), dp(8), 0)
+            })
+            row.addView(TextView(this).apply {
+                text = "Fits ${s.score.toInt()} out of 100" + if (onDeck) " · already on deck ${deckName()}" else ""
+                setTextColor(0xFF77778A.toInt()); textSize = 12f; setPadding(dp(84), dp(4), 0, 0)
+            })
+        }
+        row.setOnClickListener { expanded = if (open) null else id; nextState?.let(::showSuggestions) }
+        return row
+    }
+
+    private fun pickSuggestion(s: Suggestion) {
+        val d = Engine.mixer?.decks?.get(deck)
+        val sync = prefs.getBoolean("nextSync", true)
+        // LOAD already asked before opening this screen; NEXT asks now.
+        if (d != null && d.playing && intent.getBooleanExtra(EXTRA_SUGGEST, false)) {
+            val left = (d.durationSec - d.positionSec) / (1 + d.pitch)
+            AlertDialog.Builder(this)
+                .setMessage("Deck ${deckName()} is still playing (${Console.fmtTime(left)} left). Stop it and load \"${s.track.title}\" now?")
+                .setPositiveButton("Load now") { _, _ -> finishWith(s.track.id, sync) }
+                .setNegativeButton("Cancel", null).show()
+        } else finishWith(s.track.id, sync)
+    }
+
+    private fun chip(label: String, bgColor: Int, fg: Int) = TextView(this).apply {
+        text = label; setTextColor(fg); textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+        setPadding(dp(8), dp(4), dp(8), dp(4))
+        background = GradientDrawable().apply { cornerRadius = dp(6).toFloat(); setColor(bgColor) }
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(8) }
+    }
+
+    private fun emptyState(title: String, body: String) = vbox().apply {
+        gravity = Gravity.CENTER; setPadding(dp(24), dp(32), dp(24), dp(32))
+        addView(TextView(context).apply { text = title; setTextColor(Color.WHITE); textSize = 18f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER })
+        addView(TextView(context).apply { text = body; setTextColor(0xFFB0B0BC.toInt()); textSize = 15f; gravity = Gravity.CENTER; setPadding(0, dp(8), 0, 0) })
+    }
+
+    private fun deckName() = if (deck == 0) "A" else "B"
+
+    private fun energyText(now: Float, e: Float): String {
+        if (e.isNaN()) return "energy ?"
+        val arrow = when { now.isNaN() -> ""; e - now >= 0.5f -> " ↑"; now - e >= 0.5f -> " ↓"; else -> " →" }
+        return "energy ${Math.round(e)}$arrow"
     }
 
     // ---------------------------------------------------------------- YouTube
@@ -147,7 +385,7 @@ class LibraryActivity : Activity() {
         if (query.isEmpty()) return
         hideKeyboard()
         if (YouTube.isYouTubeUrl(query)) { YouTube.videoId(query)?.let { pickYouTube(YtResult(query, it, "YouTube video", "", 0)) }; return }
-        if (Spotify.isSpotifyUrl(query)) { showTab(1); importSpotify(query); return }
+        if (Spotify.isSpotifyUrl(query)) { showTab(Tab.SPOTIFY); importSpotify(query); return }
         val s = runCatching { YouTube.Search(query, songsOnly) }.getOrElse { return setStatus("Search failed: ${it.message}") }
         ytSearch = s
         ytResults.clear(); searchAdapter?.notifyDataSetChanged()
@@ -280,7 +518,7 @@ class LibraryActivity : Activity() {
         list.setOnItemLongClickListener { _, _, pos, _ ->
             val t = shown[pos]
             AlertDialog.Builder(this).setMessage("Delete \"${t.title}\" from the phone?")
-                .setPositiveButton("Delete") { _, _ -> store.delete(t.id); showTab(2) }
+                .setPositiveButton("Delete") { _, _ -> store.delete(t.id); showTab(Tab.MINE) }
                 .setNegativeButton("Cancel", null).show()
             true
         }
@@ -356,7 +594,7 @@ class LibraryActivity : Activity() {
         }
     }
 
-    private fun finishWith(trackId: String) {
+    private fun finishWith(trackId: String, sync: Boolean = false) {
         if (shared) {
             // Opened from the share menu: ask which deck to load into.
             AlertDialog.Builder(this).setTitle(store.get(trackId)?.title ?: "Load")
@@ -369,7 +607,7 @@ class LibraryActivity : Activity() {
                 }.show()
             return
         }
-        setResult(RESULT_OK, Intent().putExtra(EXTRA_TRACK, trackId).putExtra(EXTRA_DECK, deck))
+        setResult(RESULT_OK, Intent().putExtra(EXTRA_TRACK, trackId).putExtra(EXTRA_DECK, deck).putExtra(EXTRA_SYNC, sync))
         finish()
     }
 
@@ -442,6 +680,15 @@ class LibraryActivity : Activity() {
     companion object {
         const val EXTRA_DECK = "deck"
         const val EXTRA_TRACK = "track"
+        /** Open on the Suggested tab (NEXT). */
+        const val EXTRA_SUGGEST = "suggest"
+        /** The deck whose song the suggestions follow. */
+        const val EXTRA_AFTER = "after"
+        /** The target deck already holds an unplayed song (shown as "On deck B now"). */
+        const val EXTRA_WAITING = "waiting"
+        /** In the result: SYNC the song to the other deck once it's loaded. */
+        const val EXTRA_SYNC = "sync"
+        const val SUGGEST_HINT = "Best first. Tap a song to see why it fits. Keys are on the key wheel (Camelot): next-door keys mix smoothly."
         private const val REQ_FILE = 2
     }
 }

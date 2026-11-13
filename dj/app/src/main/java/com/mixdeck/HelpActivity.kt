@@ -32,7 +32,7 @@ class HelpActivity : Activity() {
             setOnClickListener { setResult(RESULT_TUTORIAL); finish() }
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { marginEnd = dp(8) })
         header.addView(Button(this).apply {
-            text = "Show the key"; isAllCaps = false; textSize = 14f; setTextColor(Color.BLACK)
+            text = "Show labels"; isAllCaps = false; textSize = 14f; setTextColor(Color.BLACK)
             background = GradientDrawable().apply { cornerRadius = dp(8).toFloat(); setColor(yellow) }
             setPadding(dp(12), 0, dp(12), 0)
             setOnClickListener { setResult(RESULT_SHOW_KEY); finish() }
