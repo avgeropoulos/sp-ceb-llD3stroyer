@@ -22,8 +22,13 @@ class Suggester(
     private val store: TrackStore,
     private val decode: (File, (Float) -> Unit) -> Pcm,
 ) {
-    /** One "find new songs" at a time, so two jobs never download the same song into the same file. */
-    private val discoverLock = Any()
+    private companion object {
+        /**
+         * One "find new songs" at a time in the whole app (every screen makes its own Suggester on
+         * the phone), so two jobs never download the same song into the same file.
+         */
+        val discoverLock = Any()
+    }
 
     /**
      * Fills in everything a decoded song is missing (beat grid, waveform, key, energy, timbre) and

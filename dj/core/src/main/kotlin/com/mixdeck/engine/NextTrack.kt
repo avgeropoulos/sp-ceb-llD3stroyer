@@ -443,10 +443,13 @@ object NextTrack {
         if (nowWhole == null) {
             val lo = floor(nowShift).toInt()
             val between = "Your deck's ${fmtPct(nowPitch)} puts the playing song between ${nk.transpose(lo).camelot} and ${nk.transpose(lo + 1).camelot}"
-            reasons += if (sync.known && !detuned) {
-                Reason("$between — but SYNC shifts this song the same way, so the two stay in tune.", true)
-            } else {
-                Reason("$between.", false)
+            // Credit SYNC only if its shift alone keeps the two in tune; otherwise the recordings' tuning did.
+            val syncAlone = candShift - nowShift
+            val syncKeepsTune = sync.known && abs(syncAlone - Math.rint(syncAlone)) <= IN_TUNE
+            reasons += when {
+                detuned -> Reason("$between.", false)
+                syncKeepsTune -> Reason("$between — but SYNC shifts this song the same way, so the two stay in tune.", true)
+                else -> Reason("$between — but this recording is tuned a little differently, which makes up the difference, so the two stay in tune.", true)
             }
         }
 

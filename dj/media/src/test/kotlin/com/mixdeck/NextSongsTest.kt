@@ -49,7 +49,7 @@ class NextSongsTest {
     }
 
     /** A Suggester whose decoding takes a while and then fails, so checks are slow but harmless. */
-    private fun slowSuggester() = Suggester(store) { f, _ -> decoded += f.nameWithoutExtension; Thread.sleep(150); throw IOException("no audio in tests") }
+    private fun slowSuggester() = Suggester(store) { f, _ -> decoded += f.nameWithoutExtension; Thread.sleep(250); throw IOException("no audio in tests") }
 
     private fun waitUntil(ms: Long = 10_000, done: () -> Boolean) {
         val until = System.currentTimeMillis() + ms
@@ -59,7 +59,7 @@ class NextSongsTest {
     @Test fun stopCancelsAFindThatIsWaitingForTheCheck() {
         val seed = add("seed", 93.0, "8A", 6f)
         for (i in 1..4) add("old$i", 94.0, null, Float.NaN, features = false)
-        val states = Collections.synchronizedList(ArrayList<NextSongs.State>())
+        val states = java.util.concurrent.CopyOnWriteArrayList<NextSongs.State>()
         val n = NextSongs(store, slowSuggester(), seed, 0.0, onDecks = setOf("seed"), waiting = null,
             direction = Direction.KEEP) { states += it }
         n.start()
@@ -78,8 +78,8 @@ class NextSongsTest {
         val seed = add("seed", 93.0, "8A", 6f)
         add("calm", 93.0, "8A", 4f)
         add("lift", 93.0, "8A", 7f)
-        for (i in 1..4) add("old$i", 94.0, null, Float.NaN, features = false)
-        val states = Collections.synchronizedList(ArrayList<NextSongs.State>())
+        for (i in 1..10) add("old$i", 94.0, null, Float.NaN, features = false) // a check long enough to change direction during
+        val states = java.util.concurrent.CopyOnWriteArrayList<NextSongs.State>()
         val n = NextSongs(store, slowSuggester(), seed, 0.0, onDecks = setOf("seed"), waiting = null,
             direction = Direction.KEEP) { states += it }
         n.start()

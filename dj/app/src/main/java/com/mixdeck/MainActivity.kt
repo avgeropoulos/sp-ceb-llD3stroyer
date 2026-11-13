@@ -83,8 +83,9 @@ class MainActivity : Activity(), Console.Host {
         super.onDestroy()
         if (isFinishing) {
             recorder.stop()?.let { wav -> runCatching { MixStore(this).save(wav, "Unsaved mix ${stamp()}") {} } }
-            Engine.audio?.stop(); Engine.audio = null; Engine.mixer = null
-            Engine.deckTrackIds.fill(null)
+            Engine.audio?.stop(); Engine.audio = null
+            // Under the mixer lock, so a song still loading can't put its id back afterwards.
+            synchronized(mixer.lock) { Engine.mixer = null; Engine.deckTrackIds.fill(null) }
         }
     }
 
@@ -164,16 +165,17 @@ class MainActivity : Activity(), Console.Host {
                 val (track, analysis) = suggester.analyze(t, pcm) { p -> loading[deck] = "Listening ${(p * 100).toInt()}%" }
                 var synced: Double? = null
                 synchronized(mixer.lock) {
+                    if (Engine.mixer !== mixer) return@execute // the app was closed while this loaded
                     val d = mixer.decks[deck]
                     val replacedBpm = if (d.loaded && d.bpm > 0) d.bpm * (1 + d.pitch) else 0.0
                     d.load(pcm, analysis, track.title, track.artist, track.loudnessDb)
                     if (sync) synced = syncLoaded(deck, replacedBpm)
+                    Engine.deckTrackIds[deck] = id
                 }
                 synced?.let { p ->
                     val pct = "%+.1f".format(p * 100)
                     main.post { toast("\"${track.title}\" is on deck ${deckName(deck)}, synced ($pct%). Press ▶ when the moment's right.") }
                 }
-                Engine.deckTrackIds[deck] = id
             } catch (e: Throwable) {
                 main.post { toast("Couldn't load ${t.title}: ${e.message}") }
             } finally {

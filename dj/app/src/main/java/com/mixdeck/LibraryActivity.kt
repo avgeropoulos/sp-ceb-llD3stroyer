@@ -186,7 +186,8 @@ class LibraryActivity : Activity() {
                 dirButtons.forEachIndexed { k, x -> styleButton(x, k == i) }
                 n.setDirection(Direction.entries[i])
             }
-            styleButton(b, i == n.state.direction.ordinal)
+            // The stored choice: NextSongs only reports a new direction once it has re-ranked.
+            styleButton(b, i == prefs.getInt("nextDirection", 0).coerceIn(0, 2))
             dirButtons += b
             head.addView(b, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { marginStart = dp(6) })
         }
