@@ -70,6 +70,22 @@ class Deck(val index: Int, private val sr: Int) {
     /** The tempo the deck is playing at right now. */
     val effectiveBpm get() = bpm * (1 + pitch) * (1 + bend)
     val framesPerBeat get() = if (bpm > 0) trackRate * 60.0 / bpm else 0.0
+
+    /** The song's key at normal speed, if known. */
+    val key: MusicalKey? get() = analysis?.key
+
+    /** How far the tempo slider has moved the pitch, in semitones (no key lock, like vinyl). */
+    val pitchSemitones: Double get() = MusicalKey.semitonesForSpeed(1 + pitch)
+
+    /**
+     * The key you hear right now: the song's key moved by the tempo slider. Null when unknown, or
+     * when the pitch sits between two keys (then it's out of tune with songs at standard pitch).
+     */
+    val soundingKey: MusicalKey? get() {
+        val k = key ?: return null
+        val shift = MusicalKey.wholeSemitones(pitchSemitones) ?: return null
+        return k.transpose(shift)
+    }
     private val firstBeatFrames get() = (analysis?.firstBeatSec ?: 0.0) * trackRate
 
     fun load(track: Pcm, info: TrackAnalysis, title: String, artist: String, loudnessDb: Double) {

@@ -24,9 +24,15 @@ class TrackAnalysis(
     val bass: FloatArray,
     /** Share of the bin's energy that is treble, 0..1. */
     val treble: FloatArray,
+    /** The song's key at normal speed, if known. */
+    val key: MusicalKey? = null,
+    val keyConfidence: Float = 0f,
 ) {
     fun withBpm(newBpm: Double, newFirstBeatSec: Double = firstBeatSec) =
-        TrackAnalysis(newBpm, newFirstBeatSec, binsPerSecond, peak, bass, treble)
+        TrackAnalysis(newBpm, newFirstBeatSec, binsPerSecond, peak, bass, treble, key, keyConfidence)
+
+    fun withKey(newKey: MusicalKey?, confidence: Float) =
+        TrackAnalysis(bpm, firstBeatSec, binsPerSecond, peak, bass, treble, newKey, confidence)
 }
 
 object Analyzer {
