@@ -10,6 +10,11 @@ Open `game/index.html` in a browser to play (no build step).
 - Hercules has the fastest paws and the quickest turns, and his **Zoom** power is a burst of speed so fast he stays dry and blasts through mud. Apollo is slower on the ground, and his **Leap** power sails over mud, sprinklers and bathtubs. Both powers reach critters from a little further away. Use them with Space, the on-screen button, or a quick tap. In team mode Hercules zooms with Space and Apollo leaps with Enter. Both dogs score the same points.
 - Each dog barks when he sets off running: a deep "gav!" for Hercules and a higher "arp!" for Apollo.
 - Treats fall from the sky every 10 to 15 seconds. Grabbing one gives that dog a 7-second boost: Hercules gets zoomies (even faster, even snappier turns) and Apollo gets super leaps (longer, higher, quicker to recharge).
+- **Combos:** boop another critter within 2.5 seconds and the points multiply: x2, x3, up to x5.
+- **Chipmunks** (25 points) pop out of burrows from level 3. They only stay a few seconds before diving back in.
+- Besides treats, two more things fall from the sky: a **squeaky toy** makes every critter (and the goose) freeze for a few seconds, and a **towel** dries off one splash.
+- **Sticker book:** 12 stickers to collect for things like a x5 combo, a level with no splashes, or reaching level 10. They are saved on your device and shown on the main menu.
+- **Game controllers** work in a browser and in the Android app. A stick or the D-pad runs, any button uses the power, Start pauses, and the menus work too. In team mode one controller can drive both dogs (left stick and left buttons for Hercules, right stick and right buttons for Apollo), or use two controllers, one dog each.
 - Play solo as either dog, or as a team on one keyboard: WASD moves Hercules and the arrow keys move Apollo. On phones and tablets, put a thumb down anywhere and slide it like a joystick. In team mode the left half of the screen steers Hercules and the right half steers Apollo.
 
 ## 3D chase cam

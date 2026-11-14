@@ -96,7 +96,16 @@ p { margin: 0; line-height: 1.45; max-width: 60ch; }
 .dogbtn img { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; border: 4px solid var(--c); flex: none; }
 .dogbtn b { font-family: var(--display); font-weight: 400; font-size: 22px; display: block; }
 .dogbtn span { font-size: 13px; color: var(--muted); }
+.dogbtn.sel { border-color: var(--leash-yellow); box-shadow: 0 0 0 4px rgba(247,197,49,.45); transform: translateY(-2px); }
 .dogbtn.both .faces { display: flex; flex: none; }
+.stickers { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+.sticker { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 2px; padding: 8px 4px; border-radius: 12px; background: #f1f5ef; opacity: .45; filter: grayscale(1); }
+.sticker.got { opacity: 1; filter: none; background: #fff4c7; }
+.sticker i { font-style: normal; font-size: 26px; line-height: 1.1; }
+.sticker b { font-family: var(--display); font-weight: 400; font-size: 14px; }
+.sticker span { font-size: 11px; color: var(--muted); line-height: 1.2; }
+.newstick { font-family: var(--display); font-size: 18px; color: #b07a00; }
+#combo { color: var(--leash-yellow); }
 .dogbtn.both img { width: 48px; height: 48px; }
 .dogbtn.both img + img { margin-left: -14px; }
 
@@ -166,6 +175,7 @@ kbd { font-family: var(--body); font-weight: 800; background: #eef2ec; border-ra
     <div class="stat"><span class="lab">Time</span><span id="time">60</span></div>
     <div class="stat" title="Catch 3 critters to call the Giant Bird"><span class="lab">Bird</span><span class="pips" id="birdpips"></span></div>
     <div class="stat" id="boostStat" hidden><span class="lab">Boost</span><span id="boost">7</span></div>
+    <div class="stat" id="comboStat" hidden><span class="lab">Combo</span><span id="combo">x2</span></div>
     <div class="stat" title="Three splashes and it's bath time"><span class="lab">Splash</span><span class="pips" id="splashpips"></span></div>
     <span class="grow"></span>
     <span class="btns"><button class="hudbtn" id="musicBtn" type="button">Music on</button><button class="hudbtn" id="soundBtn" type="button">Sounds on</button><button class="hudbtn" id="pauseBtn" type="button">Pause</button></span>
@@ -196,13 +206,19 @@ kbd { font-family: var(--body); font-weight: 800; background: #eef2ec; border-ra
         <div class="rules">
           <div><i>🐿️</i><span><b>Squirrel</b> 10 pts. Fast and zig-zaggy.</span></div>
           <div><i>🐰</i><span><b>Bunny</b> 15 pts. Hops in big bursts.</span></div>
+          <div><i>🐹</i><span><b>Chipmunk</b> 25 pts. Pops out of a burrow from level 3, but not for long!</span></div>
           <div><i>🪿</i><span><b>Giant Goose</b> 100+ pts. Appears after 3 boops.</span></div>
+          <div><i>🔥</i><span><b>Combos</b> Boop again within 2.5 seconds for x2, x3, up to x5 points.</span></div>
           <div><i>💦</i><span><b>Sprinklers &amp; Mr. Bubbles</b> the rolling bathtub. 3 splashes means bath time!</span></div>
           <div><i>🟤</i><span><b>Mud</b> slows you down.</span></div>
           <div><i>🦴</i><span><b>Treats</b> fall from the sky. Grab one for a 7-second boost.</span></div>
+          <div><i>🧸</i><span><b>Squeaky toy</b> Every critter freezes to listen.</span></div>
+          <div><i>🧺</i><span><b>Towel</b> Dries off one splash.</span></div>
           <div><i>⏱️</i><span>Reach the goal before the clock runs out, or it's nap time.</span></div>
         </div>
         <p class="keys">Move with <kbd>WASD</kbd> or arrow keys. On a phone or tablet, put your thumb down anywhere and slide it like a joystick. Each dog has a power: press <kbd>Space</kbd>, tap its button, or give the screen a quick tap. Hercules <b>zooms</b> so fast he stays dry, and Apollo <b>leaps</b> over mud, spray and bathtubs. In team mode Hercules uses <kbd>WASD</kbd> and <kbd>Space</kbd>, Apollo uses the arrows and <kbd>Enter</kbd>. On a tablet the left half of the screen steers Hercules and the right half steers Apollo. <kbd>P</kbd> pauses.</p>
+        <p class="keys" id="padNote" hidden>🎮 <b>Controller ready!</b> Stick or D-pad: run. Any button: your power. <b>Start</b>: pause. In team mode with one controller, the left stick and left buttons are Hercules and the right stick and right buttons are Apollo. With two controllers, each player gets a dog. Press left or right to pick here, then <b>A</b>.</p>
+        <div class="scorebox"><h3>Sticker book <span class="muted stickCount"></span></h3><div class="stickers"></div></div>
         <div class="scorebox"><h3 class="sbTitle">High scores</h3><div class="sbBody"></div></div>
       </div>
     </div>
@@ -211,6 +227,7 @@ kbd { font-family: var(--body); font-weight: 800; background: #eef2ec; border-ra
       <div class="card">
         <h2 id="lsTitle">Level 1</h2>
         <p id="lsText"></p>
+        <p class="newstick" id="lsStick" hidden></p>
         <p class="nowplaying" id="lsMusic"></p>
         <div class="tally" id="lsTally"></div>
         <div class="row"><button class="btn" id="lsGo" type="button">Let's go!</button><span class="keys">or press <kbd>Space</kbd></span></div>
@@ -230,6 +247,7 @@ kbd { font-family: var(--body); font-weight: 800; background: #eef2ec; border-ra
         <div id="goArt"></div>
         <h2 id="goTitle">Bath time!</h2>
         <p id="goText"></p>
+        <p class="newstick" id="goStick" hidden></p>
         <div class="tally" id="goTally"></div>
         <form id="saveForm" class="row">
           <div style="display:flex;flex-direction:column;gap:4px">
@@ -256,7 +274,8 @@ const DOGS = {
   hercules: { name: "Hercules", fur: "#1b1a1f", curl: "#3b3842", head: "#1b1a1f", ear: "#121115", muzzle: "#2a282e", chin: "#f2f0ea", collar: "#e3402d", photo: "hercules.jpg" },
   apollo:   { name: "Apollo",   fur: "#b27b47", curl: "#d29c64", head: "#6f6258", ear: "#3a302b", muzzle: "#c58b52", chin: "#e9dccb", collar: "#2f86d6", photo: "apollo.jpg" },
 };
-const PTS = { squirrel: 10, bunny: 15 };   // the same for both dogs
+const PTS = { squirrel: 10, bunny: 15, chipmunk: 25 };   // the same for both dogs
+const COMBO_TIME = 2.5, MAX_COMBO = 5;
 // Hercules has the fastest paws and snappiest turns. Apollo is slower on the
 // ground but leaps, and while airborne he sails over mud, spray and bathtubs.
 const STATS = {
@@ -299,7 +318,10 @@ function splashSound() {
   s.buffer = b; s.connect(f).connect(g).connect(a.destination); s.start();
 }
 const sfx = {
-  boop: () => { tone(520, 1040, 0.12, "sine", 0.18); tone(780, 1560, 0.1, "triangle", 0.08, 0.05); },
+  boop: (m = 1) => { const k = 1 + (m - 1) * 0.12; tone(520 * k, 1040 * k, 0.12, "sine", 0.18); tone(780 * k, 1560 * k, 0.1, "triangle", 0.08, 0.05); },   // higher with each combo step
+  squeak: () => { tone(900, 1700, 0.09, "square", 0.07); tone(1700, 800, 0.16, "square", 0.06, 0.09); },
+  towel: () => { tone(500, 800, 0.12, "triangle", 0.12); tone(800, 1200, 0.16, "triangle", 0.1, 0.1); },
+  sticker: () => [784, 988, 1175, 1568].forEach((f, i) => tone(f, f, 0.12, "triangle", 0.1, 0.25 + i * 0.06)),
   bird: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, f, 0.14, "triangle", 0.12, i * 0.07)),
   birdArrive: () => { tone(300, 600, 0.2, "square", 0.05); tone(600, 300, 0.2, "square", 0.05, 0.2); },
   splash: () => { splashSound(); tone(400, 150, 0.3, "sine", 0.1); },
@@ -533,6 +555,7 @@ function levelCfg(n) {
     tubSpeed: Math.min(60 + n * 9, 150),
     mud: n >= 2 ? Math.min(1 + Math.floor(n / 2), 4) : 0,
     bunnyShare: Math.min(0.3 + n * 0.04, 0.55),
+    chipmunks: n >= 3,
   };
 }
 
@@ -546,7 +569,7 @@ function makeDog(id, x, y) {
   return { id, x, y, r: 22, vx: 0, vy: 0, face: 1, speed: STATS[id].speed, inv: 0, step: 0, caught: 0, ptr: null, leap: null, leapCd: 0, dash: null, dashCd: 0, boost: 0, z: 0, lastDir: [1, 0], idleT: 1, runT: 0, barkEvery: 3.5 };
 }
 function newGame() {
-  G = { level: 1, score: 0, splashes: 0, birdMeter: 0, birdsCaught: 0, totals: { squirrel: 0, bunny: 0 }, dogs: [] };
+  G = { level: 1, score: 0, splashes: 0, birdMeter: 0, birdsCaught: 0, totals: { squirrel: 0, bunny: 0, chipmunk: 0 }, bestCombo: 0, dogs: [] };
   const ids = mode === "both" ? ["hercules", "apollo"] : [mode];
   ids.forEach((id, i) => G.dogs.push(makeDog(id, 0, 0)));
   setupLevel();
@@ -556,6 +579,7 @@ function setupLevel() {
   G.caught = 0; G.time = c.time; G.critters = []; G.particles = []; G.floaters = []; G.tubs = []; G.sprinklers = []; G.muds = []; G.bird = null; G.spawnT = 0; G.shake = 0;
   G.dogs.forEach((d, i) => { d.x = W / 2 + (G.dogs.length > 1 ? (i ? 50 : -50) : 0); d.y = H / 2; d.vx = d.vy = 0; d.inv = 1.5; d.ptr = null; d.leap = null; d.leapCd = 0; d.dash = null; d.dashCd = 0; d.boost = 0; d.z = 0; d.stick = null; d.idleT = 1; d.runT = 0; });
   G.treats = []; G.treatT = rnd(5, 8);
+  G.combo = 0; G.comboT = 0; G.freeze = 0; G.chipT = rnd(5, 9); G.levelSplashes = 0;
   // decorations (flowers) and hazards placed away from the start spot
   G.flowers = Array.from({ length: 26 }, () => ({ x: rnd(0, 1), y: rnd(0, 1), c: ["#fff", "#ffd84a", "#ff8fb1", "#c9a7ff"][Math.floor(rnd(0, 4))], s: rnd(0.7, 1.2) }));
   const farFromCenter = (minD) => { for (let t = 0; t < 40; t++) { const p = { x: rnd(70, W - 70), y: rnd(70, H - 70) }; if (Math.hypot(p.x - W / 2, p.y - H / 2) > minD) return p; } return { x: rnd(70, W - 70), y: rnd(70, H - 70) }; };
@@ -578,6 +602,17 @@ function spawnCritter(inside) {
   const a = Math.atan2(H / 2 - y, W / 2 - x) + rnd(-0.6, 0.6);
   G.critters.push({ type, x, y, r: type === "bunny" ? 14 : 12, dir: a, vx: 0, vy: 0, state: inside ? "wander" : "enter", t: 0, turnT: 0, stamina: 2.2, tired: 0, hop: 0, hopPhase: 0, face: 1, bob: 0, enterT: 1.2, fur: type === "bunny" ? (Math.random() < 0.5 ? "#c9a07a" : "#a9a4a0") : (Math.random() < 0.6 ? "#8b6a52" : "#7d7d82") });
 }
+
+// A chipmunk pops out of a burrow, scurries about for a few seconds, then dives back in.
+function spawnChipmunk() {
+  let p;
+  for (let t = 0; t < 30; t++) { p = { x: rnd(100, W - 100), y: rnd(100, H - 100) }; if (G.dogs.every((d) => dist(d, p) > 200)) break; }
+  G.critters.push({ type: "chipmunk", x: p.x, y: p.y, home: { x: p.x, y: p.y }, r: 10, dir: rnd(0, 6.28), vx: 0, vy: 0, state: "enter", t: 0, turnT: 0, stamina: 2.2, tired: 0, hop: 0, hopPhase: 0, face: 1, bob: 0, enterT: 0.5, life: 8, fur: "#b5793f" });
+  dirtPuff(p.x, p.y);
+  G.floaters.push({ x: p.x, y: p.y - 26, text: "Chip chip!", life: 1, col: "#ffe2b8" });
+  tone(1500, 2100, 0.06, "square", 0.05); tone(1500, 2100, 0.06, "square", 0.05, 0.1);
+}
+function dirtPuff(x, y) { for (let k = 0; k < 8; k++) G.particles.push({ x, y, vx: rnd(-60, 60), vy: rnd(-90, -20), life: 0.5, max: 0.5, col: "#6b4a2b", s: rnd(2, 4), g: 220 }); }
 
 function nearestDog(e, skipInv) {
   let best = null, bd = 1e9;
@@ -659,12 +694,103 @@ const endPtr = (e) => {
 };
 cv.addEventListener("pointerup", endPtr); cv.addEventListener("pointercancel", endPtr);
 
+// ----- Controllers -----
+// In the Android app the activity hands controllers over through window.BBPad
+// (a WebView can't see analog sticks); in a browser we use the Gamepad API.
+// Up to two controllers: in team mode each one gets a dog. With just one, the
+// left stick and left buttons are Hercules and the right side is Apollo.
+const PAD = { A: 1, B: 2, X: 4, Y: 8, START: 16, SELECT: 32, L1: 64, R1: 128, UP: 256, DOWN: 512, LEFT: 1024, RIGHT: 2048, L2: 4096, R2: 8192 };
+const POWER_L = PAD.L1 | PAD.L2 | PAD.X | PAD.Y, POWER_R = PAD.R1 | PAD.R2 | PAD.A | PAD.B;
+const newPad = () => ({ l: [0, 0], r: [0, 0], pressed: 0, prev: 0, moved: false });
+const pads = [newPad(), newPad()], liveGamepads = new Set();
+let padSeen = false, padFlick = 0, padLastDir = 0, titleSel = 0;
+function deadzone(x, y, dz) {
+  const m = Math.hypot(x, y);
+  if (m < dz) return [0, 0];
+  const s = Math.min(1, (m - dz) / (1 - dz - 0.1)) / m;
+  return [x * s, y * s];
+}
+function readPad() {
+  const raw = [];
+  if (window.BBPad && window.BBPad.poll) {
+    try {
+      for (const part of String(window.BBPad.poll()).split(";")) {
+        const v = part.split(",").map(Number);
+        if (v.length < 9 || !(v[8] > 0)) continue;
+        let held = v[6];
+        if (v[4] < -0.5) held |= PAD.LEFT; if (v[4] > 0.5) held |= PAD.RIGHT;
+        if (v[5] < -0.5) held |= PAD.UP; if (v[5] > 0.5) held |= PAD.DOWN;
+        raw.push({ lx: v[0], ly: v[1], rx: v[2], ry: v[3], held, taps: v[7] });   // taps: pressed since the last frame, even if already let go
+      }
+    } catch (e) {}
+  }
+  if (navigator.getGamepads) {
+    let list = []; try { list = navigator.getGamepads() || []; } catch (e) {}
+    for (const gp of list) {
+      if (!gp || !gp.connected) continue;
+      const b = (i) => !!(gp.buttons[i] && (gp.buttons[i].pressed || gp.buttons[i].value > 0.5));
+      const ax = (i) => gp.axes[i] || 0;
+      let held = 0;
+      [PAD.A, PAD.B, PAD.X, PAD.Y, PAD.L1, PAD.R1, PAD.L2, PAD.R2, PAD.SELECT, PAD.START].forEach((bit, i) => { if (b(i)) held |= bit; });
+      if (b(12)) held |= PAD.UP; if (b(13)) held |= PAD.DOWN; if (b(14)) held |= PAD.LEFT; if (b(15)) held |= PAD.RIGHT;
+      if (held || Math.hypot(ax(0), ax(1)) > 0.3) liveGamepads.add(gp.index);
+      if (liveGamepads.has(gp.index)) raw.push({ lx: ax(0), ly: ax(1), rx: ax(2), ry: ax(3), held, taps: 0 });
+    }
+  }
+  if (raw.length && !padSeen) { padSeen = true; $("padNote").hidden = false; markTitle(); }
+  let flickX = 0;
+  pads.forEach((p, i) => {
+    const r = raw[i];
+    if (!r) { p.l = [0, 0]; p.r = [0, 0]; p.pressed = 0; p.prev = 0; return; }
+    const held = r.held | (r.taps & (PAD.UP | PAD.DOWN | PAD.LEFT | PAD.RIGHT));
+    let [x, y] = deadzone(r.lx, r.ly, 0.2);
+    if (!x && !y) { x = (held & PAD.RIGHT ? 1 : 0) - (held & PAD.LEFT ? 1 : 0); y = (held & PAD.DOWN ? 1 : 0) - (held & PAD.UP ? 1 : 0); const m = Math.hypot(x, y) || 1; x /= m; y /= m; }
+    p.l = [x, y]; p.r = deadzone(r.rx, r.ry, 0.2);
+    if (x || y) p.moved = true;
+    p.pressed = (r.held & ~p.prev) | r.taps; p.prev = r.held;
+    if (Math.abs(x) > Math.abs(flickX)) flickX = x;
+  });
+  // the stick flicked left or right, for menus
+  const dir = flickX < -0.6 ? -1 : flickX > 0.6 ? 1 : 0;
+  padFlick = dir !== padLastDir ? dir : 0; padLastDir = dir;
+}
+const twoPads = () => pads[0].moved && pads[1].moved;
+function padMenus() {
+  const p = pads[0].pressed | pads[1].pressed;
+  if (!p && !padFlick) return;
+  if (screen === "play") {
+    if (p & (PAD.START | PAD.SELECT)) pause();
+    else if (G.dogs.length === 1) { if (p & (POWER_L | POWER_R)) power(G.dogs[0]); }
+    else if (twoPads()) pads.forEach((pd, i) => { if (pd.pressed & (POWER_L | POWER_R)) power(G.dogs[i]); });
+    else { if (p & POWER_L) power(G.dogs[0]); if (p & POWER_R) power(G.dogs[1]); }
+  } else if (screen === "title") {
+    const picks = [...document.querySelectorAll("[data-pick]")];
+    if (padFlick || p & (PAD.LEFT | PAD.RIGHT)) { titleSel = (titleSel + (padFlick < 0 || p & PAD.LEFT ? picks.length - 1 : 1)) % picks.length; markTitle(); }
+    if (p & (PAD.A | PAD.START)) picks[titleSel].click();
+  } else if (screen === "intro") { if (p & (PAD.A | PAD.START | PAD.B)) startLevel(); }
+  else if (screen === "pause") { if (p & (PAD.A | PAD.START)) resume(); else if (p & PAD.SELECT) $("quitBtn").click(); }
+  else if (screen === "over") {
+    if ((p & PAD.X) && !$("saveForm").hidden && !$("saveBtn").disabled) $("saveForm").requestSubmit();
+    else if (p & (PAD.A | PAD.START)) $("againBtn").click();
+    else if (p & PAD.B) $("menuBtn").click();
+  }
+}
+function markTitle() { document.querySelectorAll("[data-pick]").forEach((b, i) => b.classList.toggle("sel", padSeen && i === titleSel)); }
+function padMove(idx) {
+  const first = (list) => list.find((s) => s[0] || s[1]) || [0, 0];
+  if (G.dogs.length === 1) return first([pads[0].l, pads[1].l, pads[0].r, pads[1].r]);
+  if (twoPads()) return pads[idx].l;
+  return idx === 0 ? first([pads[0].l, pads[1].l]) : first([pads[0].r, pads[1].r]);
+}
+
 function dogInput(d, idx) {
   let set = [];
   if (G.dogs.length === 1) set = ["1", "2"]; else set = [idx === 0 ? "1" : "2"];
   let x = 0, y = 0;
   for (const s of set) { if (keys.has("l" + s)) x -= 1; if (keys.has("r" + s)) x += 1; if (keys.has("u" + s)) y -= 1; if (keys.has("d" + s)) y += 1; }
   if (x || y) { const m = Math.hypot(x, y); return [x / m, y / m]; }
+  const pm = padMove(idx);
+  if (pm[0] || pm[1]) return pm;
   if (d.stick) {
     const dx = d.stick.x - d.stick.ox, dy = d.stick.y - d.stick.oy, m = Math.hypot(dx, dy);
     if (m < 8) return [0, 0];
@@ -681,6 +807,9 @@ function update(dt) {
   G.time -= dt;
   if (G.time <= 0) { G.time = 0; return gameOver("nap"); }
   G.shake = Math.max(0, G.shake - dt * 3);
+  G.freeze = Math.max(0, G.freeze - dt);
+  if (G.comboT > 0) { G.comboT -= dt; if (G.comboT <= 0) G.combo = 0; }
+  if (G.score >= 1000) award("rich");
 
   // dogs
   G.dogs.forEach((d, i) => {
@@ -728,8 +857,9 @@ function update(dt) {
 
   // critters
   G.spawnT -= dt;
-  const live = G.critters.filter((q) => q.state !== "boop").length;
+  const live = G.critters.filter((q) => q.state !== "boop" && q.type !== "chipmunk").length;
   if (live < c.pop && G.spawnT <= 0) { spawnCritter(false); G.spawnT = rnd(0.6, 1.4); }
+  if (c.chipmunks) { G.chipT -= dt; if (G.chipT <= 0) { if (!G.critters.some((q) => q.type === "chipmunk")) spawnChipmunk(); G.chipT = rnd(9, 14); } }
   for (const q of G.critters) updateCritter(q, dt, c);
   G.critters = G.critters.filter((q) => !q.gone);
 
@@ -794,9 +924,20 @@ function updateCritter(q, dt, c) {
     if (q.enterT <= 0 && q.x > q.r && q.x < W - q.r && q.y > q.r && q.y < H - q.r) q.state = "wander";
     return;
   }
+  if (G.freeze > 0) { q.vx = q.vy = 0; q.hop = 0; return; }   // listening to the squeaky toy
+  if (q.type === "chipmunk") {
+    q.life -= dt;
+    if (q.life <= 0) {   // time's up: dash back down the burrow
+      const dx = q.home.x - q.x, dy = q.home.y - q.y, m = Math.hypot(dx, dy);
+      if (m < 10) { q.gone = true; dirtPuff(q.x, q.y); return; }
+      q.vx = dx / m * 250; q.vy = dy / m * 250; q.x += q.vx * dt; q.y += q.vy * dt;
+      if (Math.abs(q.vx) > 5) q.face = q.vx > 0 ? 1 : -1;
+      return;
+    }
+  }
   const [d, dd] = nearestDog(q, false);
   const fleeing = d && dd < c.fleeR;
-  const base = (q.type === "bunny" ? 200 : 185) * c.speed;
+  const base = (q.type === "bunny" ? 200 : q.type === "chipmunk" ? 215 : 185) * c.speed;
   // stamina: critters tire after a long chase, so a persistent pup always wins
   if (fleeing) { q.stamina -= dt; if (q.stamina <= 0) { q.tired = 1.6; q.stamina = 2.2; } }
   else q.stamina = Math.min(2.2, q.stamina + dt * 0.7);
@@ -810,7 +951,7 @@ function updateCritter(q, dt, c) {
     if (q.x < edge) tx += (edge - q.x) / edge * 1.4; if (q.x > W - edge) tx -= (q.x - (W - edge)) / edge * 1.4;
     if (q.y < edge) ty += (edge - q.y) / edge * 1.4; if (q.y > H - edge) ty -= (q.y - (H - edge)) / edge * 1.4;
     let a = Math.atan2(ty, tx);
-    if (q.type === "squirrel") { q.turnT -= dt; if (q.turnT <= 0) { q.jit = rnd(-0.7, 0.7); q.turnT = rnd(0.2, 0.45); } a += q.jit || 0; }
+    if (q.type !== "bunny") { q.turnT -= dt; if (q.turnT <= 0) { q.jit = rnd(-0.7, 0.7); q.turnT = rnd(0.2, 0.45); } a += q.jit || 0; }
     q.dir = a; speed = base;
   } else {
     q.turnT -= dt; if (q.turnT <= 0) { q.dir += rnd(-1.2, 1.2); q.turnT = rnd(0.8, 2); }
@@ -861,7 +1002,9 @@ function leap(d) {
 function updateTreats(dt) {
   G.treatT -= dt;
   if (G.treatT <= 0) {
-    if (G.treats.length < 2) G.treats.push({ x: rnd(60, W - 60), y: rnd(70, H - 50), z: 420, state: "fall", life: 9, spin: rnd(0, 6) });
+    // mostly treats; sometimes a towel when a dog is soggy, or a squeaky toy
+    const kind = G.splashes > 0 && Math.random() < 0.35 ? "towel" : G.level >= 2 && Math.random() < 0.3 ? "squeaky" : "treat";
+    if (G.treats.length < 2) G.treats.push({ kind, x: rnd(60, W - 60), y: rnd(70, H - 50), z: 420, state: "fall", life: 9, spin: rnd(0, 6) });
     G.treatT = rnd(10, 15);
   }
   for (const tr of G.treats) {
@@ -872,10 +1015,14 @@ function updateTreats(dt) {
     if (tr.z > 24) continue;
     for (const d of G.dogs) {
       if (d.z > 30 || dist(d, tr) > d.r + 16) continue;
-      d.boost = BOOST_TIME; tr.gone = true;
-      G.floaters.push({ x: d.x, y: d.y - 48, text: d.id === "hercules" ? "Treat! ZOOMIES!" : "Treat! SUPER LEAPS!", life: 1.4, col: "#ffe680", big: true });
+      tr.gone = true;
+      let text;
+      if (tr.kind === "squeaky") { G.freeze = 3.5; text = "Squeak! Everybody freeze!"; sfx.squeak(); award("toy"); }
+      else if (tr.kind === "towel") { G.splashes = Math.max(0, G.splashes - 1); text = "Towel! One splash dried off"; sfx.towel(); }
+      else { d.boost = BOOST_TIME; text = d.id === "hercules" ? "Treat! ZOOMIES!" : "Treat! SUPER LEAPS!"; sfx.treat(); }
+      G.floaters.push({ x: d.x, y: d.y - 48, text, life: 1.4, col: "#ffe680", big: true });
       for (let k = 0; k < 14; k++) G.particles.push({ x: d.x, y: d.y - 10, vx: rnd(-120, 120), vy: rnd(-150, -20), life: 0.8, max: 0.8, kind: "star", s: rnd(4, 7), g: 80 });
-      sfx.treat(); break;
+      break;
     }
   }
   G.treats = G.treats.filter((tr) => !tr.gone && tr.life > 0);
@@ -884,12 +1031,16 @@ function updateTreats(dt) {
 function boop(q, d) {
   q.state = "boop"; q.boopT = 0.45;
   q.dir = [0, Math.PI, Math.PI / 2, -Math.PI / 2].reduce((best, a) => { const ex = (a === 0 ? W - q.x : a === Math.PI ? q.x : a > 0 ? H - q.y : q.y); return ex < best[1] ? [a, ex] : best; }, [0, 1e9])[0];
-  const pts = PTS[q.type];
+  // boop again quickly and the combo climbs: x2, x3 ... up to x5
+  G.combo = G.comboT > 0 ? G.combo + 1 : 1; G.comboT = COMBO_TIME;
+  G.bestCombo = Math.max(G.bestCombo, G.combo);
+  const mult = Math.min(G.combo, MAX_COMBO), pts = PTS[q.type] * mult;
   G.score += pts; G.caught++; G.totals[q.type]++; d.caught++;
   if (!G.bird) G.birdMeter = Math.min(3, G.birdMeter + 1);
-  G.floaters.push({ x: q.x, y: q.y - 20, text: `Boop! +${pts}`, life: 1, col: "#fff" });
-  for (let i = 0; i < 8; i++) G.particles.push({ x: q.x, y: q.y - 10, vx: rnd(-70, 70), vy: rnd(-110, -30), life: 0.8, max: 0.8, kind: "heart", s: rnd(6, 10), g: 60 });
-  sfx.boop();
+  G.floaters.push({ x: q.x, y: q.y - 20, text: mult > 1 ? `Boop x${mult}! +${pts}` : `Boop! +${pts}`, life: 1, col: mult > 1 ? "#ffe680" : "#fff", big: mult >= 3 });
+  for (let i = 0; i < 6 + mult * 2; i++) G.particles.push({ x: q.x, y: q.y - 10, vx: rnd(-70, 70), vy: rnd(-110, -30), life: 0.8, max: 0.8, kind: "heart", s: rnd(6, 10), g: 60 });
+  sfx.boop(mult);
+  award("first"); if (mult >= 3) award("combo3"); if (mult >= 5) award("combo5"); if (q.type === "chipmunk") award("chip");
 }
 
 function spawnBird() {
@@ -913,6 +1064,7 @@ function updateBird(b, dt) {
   let a, sp;
   if (d && dd < 170) { a = Math.atan2(b.y - d.y, b.x - d.x); sp = 120 + G.level * 4; }
   else { b.turnT -= dt; if (b.turnT <= 0) { b.dir = rnd(0, 6.28); b.turnT = rnd(1, 2); } a = b.dir; sp = 50; }
+  if (G.freeze > 0) sp = 0;
   b.x += Math.cos(a) * sp * dt; b.y += Math.sin(a) * sp * dt;
   if (b.x < b.r + 20 || b.x > W - b.r - 20) b.dir = Math.PI - b.dir; if (b.y < b.r + 20 || b.y > H - b.r - 20) b.dir = -b.dir;
   b.x = clamp(b.x, b.r, W - b.r); b.y = clamp(b.y, b.r, H - b.r);
@@ -922,12 +1074,12 @@ function updateBird(b, dt) {
     G.score += bonus; G.birdsCaught++; dg.caught++;
     G.floaters.push({ x: b.x, y: b.y - 50, text: `GIANT BOOP! +${bonus}`, life: 1.6, col: "#ffe680", big: true });
     for (let i = 0; i < 26; i++) G.particles.push({ x: b.x, y: b.y - 10, vx: rnd(-160, 160), vy: rnd(-200, -40), life: 1.2, max: 1.2, kind: "feather", s: rnd(6, 11), g: 140, rot: rnd(0, 6) });
-    b.state = "flyout"; sfx.bird(); break;
+    b.state = "flyout"; sfx.bird(); award("goose"); break;
   }
 }
 
 function splash(d, msg) {
-  d.inv = 1.8; G.splashes++; G.shake = 1;
+  d.inv = 1.8; G.splashes++; G.levelSplashes++; G.shake = 1;
   G.floaters.push({ x: d.x, y: d.y - 34, text: msg, life: 1.3, col: "#d6efff" });
   for (let i = 0; i < 22; i++) G.particles.push({ x: d.x, y: d.y - 6, vx: rnd(-150, 150), vy: rnd(-180, 20), life: 0.7, max: 0.7, col: "#7cc4ff", s: rnd(3, 6), g: 300 });
   sfx.splash();
@@ -1025,6 +1177,22 @@ function drawSquirrel(q, t) {
   ctx.restore();
   tiredMark(q);
 }
+function drawChipmunk(q) {
+  const run = Math.hypot(q.vx, q.vy) > 30, hop = run ? Math.abs(Math.sin(q.t * 22)) * 3 : 0;
+  shadow(q.x, q.y + 8, 10, 3);
+  ctx.save(); ctx.translate(q.x, q.y - hop); ctx.scale(q.face, 1);
+  ctx.fillStyle = q.fur; ctx.beginPath(); ctx.ellipse(-10, -7, 4, 10, -0.7, 0, 7); ctx.fill();   // tail
+  ctx.beginPath(); ctx.ellipse(0, 0, 9, 6.5, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = "#4a2f1c"; ctx.beginPath(); ctx.ellipse(-1, -4.2, 7, 1.6, 0, 0, 7); ctx.fill();   // stripes
+  ctx.fillStyle = "#f3e3c8"; ctx.beginPath(); ctx.ellipse(-1, -1.8, 7, 1.2, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(2, 3, 5, 3, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = q.fur; ctx.beginPath(); ctx.arc(8, -4, 5.5, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(6, -9, 2.2, 0, 7); ctx.fill();
+  ctx.fillStyle = "#f3e3c8"; ctx.beginPath(); ctx.arc(10.5, -2, 2.8, 0, 7); ctx.fill();   // stuffed cheek
+  ctx.fillStyle = "#1a1210"; ctx.beginPath(); ctx.arc(9.5, -5.5, 1.4, 0, 7); ctx.fill(); ctx.beginPath(); ctx.arc(13.3, -3.6, 1, 0, 7); ctx.fill();
+  ctx.restore();
+  tiredMark(q);
+}
 function drawBunny(q) {
   const hy = q.hop * 10;
   shadow(q.x, q.y + 10, 13 - q.hop * 3, 4);
@@ -1041,6 +1209,7 @@ function drawBunny(q) {
 }
 function tiredMark(q) {
   if (q.state === "boop") { ctx.font = "16px sans-serif"; ctx.textAlign = "center"; ctx.fillText("💕", q.x, q.y - 22); return; }
+  if (G.freeze > 0 && q.state !== "enter") { ctx.font = "15px sans-serif"; ctx.textAlign = "center"; ctx.fillStyle = "#fff"; ctx.fillText("♪", q.x + 9, q.y - 20 + Math.sin(q.t * 8) * 2); return; }
   if (q.tired > 0) { ctx.fillStyle = "#bfe6ff"; ctx.beginPath(); ctx.ellipse(q.x + 10, q.y - 20 + Math.sin(q.t * 8) * 1.5, 2.5, 4, 0, 0, 7); ctx.fill(); }
 }
 function drawBird(b, t) {
@@ -1103,11 +1272,21 @@ function drawTreat(tr, t) {
   ctx.save(); ctx.translate(tr.x, tr.y - tr.z - hop); ctx.rotate(tr.state === "fall" ? tr.spin : -0.3);
   const g = ctx.createRadialGradient(0, 0, 4, 0, 0, 26); g.addColorStop(0, "rgba(255,230,120,.55)"); g.addColorStop(1, "rgba(255,230,120,0)");
   ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 26, 0, 7); ctx.fill();
-  ctx.fillStyle = "#d99a4e";
-  for (const [x, y] of [[-10, -4], [-10, 4], [10, -4], [10, 4]]) { ctx.beginPath(); ctx.arc(x, y, 5.5, 0, 7); ctx.fill(); }
-  ctx.fillRect(-10, -4.5, 20, 9);
-  ctx.fillStyle = "#b8783a"; for (const x of [-4, 1, 6]) { ctx.beginPath(); ctx.arc(x, 0, 1.2, 0, 7); ctx.fill(); }
-  ctx.fillStyle = "rgba(255,255,255,.35)"; ctx.fillRect(-8, -4, 14, 2);
+  if (tr.kind === "squeaky") {   // a pink ball with a star
+    ctx.fillStyle = "#ff5d8f"; ctx.beginPath(); ctx.arc(0, 0, 10, 0, 7); ctx.fill();
+    ctx.fillStyle = "#ffd23f"; drawStar(0, 0, 5.5);
+    ctx.fillStyle = "rgba(255,255,255,.5)"; ctx.beginPath(); ctx.arc(-3.5, -4, 2.5, 0, 7); ctx.fill();
+  } else if (tr.kind === "towel") {   // a folded stripy towel
+    ctx.fillStyle = "#fff"; roundRect(-13, -8, 26, 16, 4); ctx.fill();
+    ctx.fillStyle = "#4aa6e8"; ctx.fillRect(-13, -4.5, 26, 3); ctx.fillRect(-13, 1.5, 26, 3);
+    ctx.strokeStyle = "#c9d6e0"; ctx.lineWidth = 1.5; roundRect(-13, -8, 26, 16, 4); ctx.stroke();
+  } else {
+    ctx.fillStyle = "#d99a4e";
+    for (const [x, y] of [[-10, -4], [-10, 4], [10, -4], [10, 4]]) { ctx.beginPath(); ctx.arc(x, y, 5.5, 0, 7); ctx.fill(); }
+    ctx.fillRect(-10, -4.5, 20, 9);
+    ctx.fillStyle = "#b8783a"; for (const x of [-4, 1, 6]) { ctx.beginPath(); ctx.arc(x, 0, 1.2, 0, 7); ctx.fill(); }
+    ctx.fillStyle = "rgba(255,255,255,.35)"; ctx.fillRect(-8, -4, 14, 2);
+  }
   ctx.restore();
 }
 function drawStar(x, y, s) { ctx.beginPath(); for (let i = 0; i < 10; i++) { const r = i % 2 ? s * 0.45 : s, a = i * Math.PI / 5 - Math.PI / 2; ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); } ctx.closePath(); ctx.fill(); }
@@ -1119,7 +1298,11 @@ function draw(t) {
   drawLawn(t);
   if (!G) return;
   for (const s of G.sprinklers) drawSprinkler(s);
-  const list = [...G.critters.map((q) => ({ y: q.y, f: () => (q.type === "bunny" ? drawBunny(q) : drawSquirrel(q, t)) })), ...G.dogs.map((d) => ({ y: d.y, f: () => drawDog(d, t) })), ...G.tubs.map((tb) => ({ y: tb.y, f: () => drawTub(tb, t) }))];
+  for (const q of G.critters) if (q.home) {   // chipmunk burrows
+    ctx.fillStyle = "#6b4a2b"; ctx.beginPath(); ctx.ellipse(q.home.x, q.home.y + 6, 15, 8, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = "#2b1a0e"; ctx.beginPath(); ctx.ellipse(q.home.x, q.home.y + 6, 10, 5, 0, 0, 7); ctx.fill();
+  }
+  const list = [...G.critters.map((q) => ({ y: q.y, f: () => (q.type === "bunny" ? drawBunny(q) : q.type === "chipmunk" ? drawChipmunk(q) : drawSquirrel(q, t)) })), ...G.dogs.map((d) => ({ y: d.y, f: () => drawDog(d, t) })), ...G.tubs.map((tb) => ({ y: tb.y, f: () => drawTub(tb, t) }))];
   for (const tr of G.treats) if (tr.state === "ground") list.push({ y: tr.y, f: () => drawTreat(tr, t) });
   if (G.bird && G.bird.state === "ground") list.push({ y: G.bird.y, f: () => drawBird(G.bird, t) });
   list.sort((a, b) => a.y - b.y).forEach((o) => o.f());
@@ -1185,6 +1368,7 @@ function hud() {
   if (hudCache.bp !== bp) { hudCache.bp = bp; $("birdpips").innerHTML = [0, 1, 2].map((i) => `<span class="pip ${G.bird || i < G.birdMeter ? "on" : ""}">🪶</span>`).join(""); }
   const boostLeft = Math.ceil(Math.max(...G.dogs.map((d) => d.boost)));
   $("boostStat").hidden = boostLeft <= 0; setText("boost", boostLeft + "s");
+  $("comboStat").hidden = G.combo < 2; setText("combo", "x" + Math.min(G.combo, MAX_COMBO));
   const apollo = G.dogs.find((d) => d.id === "apollo");
   $("leapBtn").hidden = !(isTouch && apollo && screen === "play");
   if (apollo) $("leapBtn").classList.toggle("cool", !!apollo.leap || apollo.leapCd > 0);
@@ -1212,6 +1396,9 @@ function intro(cleared) {
     ? (isTouch ? "Each dog has a power: tap Zoom! or Leap!, or give your side a quick tap." : "Hercules zooms with Space and Apollo leaps with Enter. Both dodge sprinklers and bathtubs.")
     : mode === "hercules" ? `Zoom with ${isTouch ? "the Zoom! button or a quick tap" : "Space"}. Hercules goes so fast he stays dry!`
     : `Leap with ${isTouch ? "the Leap! button or a quick tap" : "Space"} to jump right over hazards.`);
+  if (n === 1) notes.push("Boop critters one after another for combo points!");
+  if (n === 2) notes.push("New: squeaky toys make every critter freeze, and a towel dries off a splash.");
+  if (n === 3) notes.push("New: chipmunks pop out of burrows. They're worth 25 points, but they don't stay long!");
   if (c.mud && n === 2) notes.push("New: mud puddles slow your paws.");
   if (c.sprinklers && levelCfg(n - 1).sprinklers < c.sprinklers) notes.push(c.sprinklers === 1 ? "New: a sprinkler! Stay out of the spray." : "One more sprinkler joins the yard.");
   if (c.tubs && levelCfg(n - 1).tubs < c.tubs) notes.push(c.tubs === 1 ? "New: Mr. Bubbles the bathtub rolls after you. Don't let it catch you!" : "Another bathtub is on the loose!");
@@ -1220,6 +1407,7 @@ function intro(cleared) {
   if (cleared) notes.unshift(`Next up, level ${n}: ${LEVEL_NAMES[(n - 1) % LEVEL_NAMES.length]}.`);
   notes.push(`Boop ${c.goal} critters in ${c.time} seconds.`);
   $("lsText").textContent = notes.join(" ");
+  showFresh("lsStick");
   $("lsMusic").innerHTML = "Now playing: <b></b>"; $("lsMusic").querySelector("b").textContent = trackName(n);
   Music.start(styleFor(n), n, true, cleared ? 1.0 : 0.1);
   $("lsTally").innerHTML = cleared ? tally([["Score", G.score], ["Time bonus", "+" + G.lastBonus], ["Splash meter", G.splashes + " / " + MAX_SPLASH]]) : tally([["Goal", c.goal], ["Seconds", c.time], ["Score", G.score]]);
@@ -1240,7 +1428,13 @@ function levelClear() {
   G.score += bonus; G.lastBonus = bonus;
   G.splashes = Math.max(0, G.splashes - 1);
   Music.stop(); sfx.level();
-  G.level++; setupLevel(); hud();
+  if (G.levelSplashes === 0) award("dry");
+  if (G.time >= 20) award("speedy");
+  if (mode === "both") award("team");
+  G.level++;
+  if (G.level >= 5) award("lvl5");
+  if (G.level >= 10) award("lvl10");
+  setupLevel(); hud();
   intro(true);
 }
 
@@ -1258,7 +1452,8 @@ function gameOver(reason) {
     $("goText").textContent = `The clock ran out and ${who} ${plural ? "are" : "is"} all tuckered out. Time for a snooze on the couch. The squirrels will be back tomorrow.`;
     $("goArt").innerHTML = `<div class="portrait ${plural ? "pair" : ""}">${imgs}<div class="blanket"></div><span class="zzz">Zzz</span></div>`;
   }
-  const rows = [["Final score", G.score], ["Level reached", G.level], ["Squirrels", G.totals.squirrel], ["Bunnies", G.totals.bunny], ["Giant geese", G.birdsCaught]];
+  const rows = [["Final score", G.score], ["Level reached", G.level], ["Squirrels", G.totals.squirrel], ["Bunnies", G.totals.bunny], ["Chipmunks", G.totals.chipmunk], ["Giant geese", G.birdsCaught], ["Best combo", "x" + Math.min(G.bestCombo, MAX_COMBO)]];
+  showFresh("goStick");
   if (plural) G.dogs.forEach((d) => rows.push([DOGS[d.id].name + " boops", d.caught]));
   $("goTally").innerHTML = tally(rows);
   $("saveForm").hidden = G.score <= 0;
@@ -1269,10 +1464,50 @@ function gameOver(reason) {
   setTimeout(() => { (G.score > 0 ? $("nameIn") : $("againBtn")).focus(); }, 50);
 }
 function toTitle() { Music.stop(); screen = "title"; G = null; hudCache = {}; resetHud(); renderScores(); show("titleScreen"); }
-function resetHud() { ["lvl", "score", "caught", "time"].forEach((id) => ($(id).textContent = id === "lvl" ? "1" : id === "caught" ? "0/5" : id === "time" ? levelCfg(1).time : "0")); $("goalfill").style.width = "0"; $("boostStat").hidden = true; $("birdpips").innerHTML = "<span class='pip'>🪶</span>".repeat(3); $("splashpips").innerHTML = "<span class='pip'>💧</span>".repeat(3); }
+function resetHud() { $("comboStat").hidden = true; ["lvl", "score", "caught", "time"].forEach((id) => ($(id).textContent = id === "lvl" ? "1" : id === "caught" ? "0/5" : id === "time" ? levelCfg(1).time : "0")); $("goalfill").style.width = "0"; $("boostStat").hidden = true; $("birdpips").innerHTML = "<span class='pip'>🪶</span>".repeat(3); $("splashpips").innerHTML = "<span class='pip'>💧</span>".repeat(3); }
 $("againBtn").onclick = () => { newGame(); intro(false); };
 $("menuBtn").onclick = toTitle;
 document.querySelectorAll("[data-pick]").forEach((b) => (b.onclick = () => { ac(); mode = b.dataset.pick; newGame(); intro(false); }));
+
+// ---------- Sticker book ----------
+// Little goals to collect. They are kept on this device.
+const BADGES = [
+  { id: "first", icon: "🐾", name: "First Boop", how: "Boop a critter" },
+  { id: "combo3", icon: "🔥", name: "Triple Boop", how: "Get a x3 combo" },
+  { id: "combo5", icon: "🌪️", name: "Boop Storm", how: "Get a x5 combo" },
+  { id: "goose", icon: "🪿", name: "Goose Chaser", how: "Boop the Giant Goose" },
+  { id: "chip", icon: "🐹", name: "Chipmunk Champ", how: "Boop a chipmunk" },
+  { id: "toy", icon: "🧸", name: "Squeak Squeak", how: "Grab a squeaky toy" },
+  { id: "dry", icon: "☀️", name: "Dry Dog", how: "Clear a level with no splashes" },
+  { id: "speedy", icon: "⚡", name: "Speedy Paws", how: "Clear a level with 20 seconds left" },
+  { id: "team", icon: "🤝", name: "Best Buddies", how: "Clear a level in team walk" },
+  { id: "rich", icon: "💎", name: "High Roller", how: "Score 1,000 points" },
+  { id: "lvl5", icon: "🌳", name: "Park Pup", how: "Reach level 5" },
+  { id: "lvl10", icon: "👑", name: "Top Dog", how: "Reach level 10" },
+];
+let badges = {}, fresh = [];
+try { badges = JSON.parse(localStorage.getItem("bb_badges") || "{}") || {}; } catch (e) { badges = {}; }
+function award(id) {
+  if (badges[id]) return;
+  const b = BADGES.find((x) => x.id === id); if (!b) return;
+  badges[id] = 1; fresh.push(b);
+  try { localStorage.setItem("bb_badges", JSON.stringify(badges)); } catch (e) {}
+  if (G && screen === "play") G.floaters.push({ x: W / 2, y: 110 + 34 * G.floaters.filter((f) => f.sticker).length, text: `New sticker: ${b.icon} ${b.name}!`, life: 2.6, col: "#ffe680", big: true, sticker: true });
+  sfx.sticker(); renderBadges();
+}
+// the stickers earned since the last card was shown
+function showFresh(id) {
+  $(id).hidden = !fresh.length;
+  $(id).textContent = fresh.length ? "New sticker" + (fresh.length > 1 ? "s" : "") + ": " + fresh.map((b) => `${b.icon} ${b.name}`).join(", ") + "!" : "";
+  fresh = [];
+}
+function renderBadges() {
+  const got = BADGES.filter((b) => badges[b.id]).length;
+  document.querySelectorAll(".stickCount").forEach((e) => (e.textContent = `${got} of ${BADGES.length}`));
+  document.querySelectorAll(".stickers").forEach((box) => {
+    box.innerHTML = BADGES.map((b) => `<div class="sticker ${badges[b.id] ? "got" : ""}"><i>${b.icon}</i><b>${b.name}</b><span>${b.how}</span></div>`).join("");
+  });
+}
 
 // ---------- High scores ----------
 let db = null, remote = null;
@@ -1339,11 +1574,12 @@ let last = performance.now();
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   const t = now / 1000;
+  readPad(); padMenus();
   if (screen === "play" && G) { update(dt); hud(); }
   draw(t);
   requestAnimationFrame(frame);
 }
-resize(); resetHud(); renderScores(); show("titleScreen");
+resize(); resetHud(); renderScores(); renderBadges(); show("titleScreen");
 requestAnimationFrame(frame);
 })();
 </script>

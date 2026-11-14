@@ -2,6 +2,7 @@ package com.backyardboop.game;
 
 import android.app.Activity;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.view.InputDevice;
 import android.view.InputEvent;
 import android.view.KeyEvent;
@@ -18,7 +19,7 @@ import android.webkit.WebViewClient;
 /** Full-screen WebView that runs the game bundled in assets/game (2D or 3D, per flavor). */
 public class MainActivity extends Activity {
     private WebView web;
-    /** Only the 3D game reads the controller this way; the classic game keeps WebView's own keys. */
+    /** Hands game controllers to the page, which reads them as window.BBPad. */
     private PadBridge pad;
 
     @Override
@@ -40,10 +41,8 @@ public class MainActivity extends Activity {
         setContentView(web);
         hideSystemBars();
 
-        if ("3d.html".equals(getString(R.string.start_page))) {
-            pad = new PadBridge();
-            web.addJavascriptInterface(pad, "BBPad");
-        }
+        pad = new PadBridge();
+        web.addJavascriptInterface(pad, "BBPad");
         if (savedInstanceState != null) web.restoreState(savedInstanceState);
         else web.loadUrl("file:///android_asset/game/" + getString(R.string.start_page));
     }
@@ -70,8 +69,8 @@ public class MainActivity extends Activity {
         if (pad != null && fromController(e)) {
             int bit = PadBridge.bitFor(e.getKeyCode());
             if (bit != 0) {
-                if (e.getAction() == KeyEvent.ACTION_DOWN) pad.key(bit, true);
-                else if (e.getAction() == KeyEvent.ACTION_UP) pad.key(bit, false);
+                if (e.getAction() == KeyEvent.ACTION_DOWN) pad.key(e.getDeviceId(), bit, true);
+                else if (e.getAction() == KeyEvent.ACTION_UP) pad.key(e.getDeviceId(), bit, false);
                 return true;
             }
         }
@@ -85,7 +84,7 @@ public class MainActivity extends Activity {
             if (rx == 0f && ry == 0f) { rx = e.getAxisValue(MotionEvent.AXIS_RX); ry = e.getAxisValue(MotionEvent.AXIS_RY); }
             float lt = Math.max(e.getAxisValue(MotionEvent.AXIS_LTRIGGER), e.getAxisValue(MotionEvent.AXIS_BRAKE));
             float rt = Math.max(e.getAxisValue(MotionEvent.AXIS_RTRIGGER), e.getAxisValue(MotionEvent.AXIS_GAS));
-            pad.axes(e.getAxisValue(MotionEvent.AXIS_X), e.getAxisValue(MotionEvent.AXIS_Y), rx, ry,
+            pad.axes(e.getDeviceId(), e.getAxisValue(MotionEvent.AXIS_X), e.getAxisValue(MotionEvent.AXIS_Y), rx, ry,
                     e.getAxisValue(MotionEvent.AXIS_HAT_X), e.getAxisValue(MotionEvent.AXIS_HAT_Y), lt > 0.5f, rt > 0.5f);
             return true;
         }
@@ -100,16 +99,23 @@ public class MainActivity extends Activity {
     }
 
     /**
-     * Controller state for the page. Android delivers buttons and sticks here and the
-     * game reads them once a frame with poll(): "lx,ly,rx,ry,hatX,hatY,held,tapped,seen".
+     * Controller state for the page, for up to two controllers. Android delivers buttons
+     * and sticks here and the game reads them once a frame with poll(), which gives one
+     * "lx,ly,rx,ry,hatX,hatY,held,tapped,seen" part per controller, joined with ";".
      * "tapped" remembers presses between polls so a very quick tap still counts.
      */
     static final class PadBridge {
         static final int A = 1, B = 2, X = 4, Y = 8, START = 16, SELECT = 32, L1 = 64, R1 = 128,
                 UP = 256, DOWN = 512, LEFT = 1024, RIGHT = 2048, L2 = 4096, R2 = 8192;
-        private float lx, ly, rx, ry, hx, hy;
-        private int held, tapped, triggers;
-        private boolean seen;
+
+        private static final class Slot {
+            int device = -1;
+            float lx, ly, rx, ry, hx, hy;
+            int held, tapped, triggers;
+            long used;
+        }
+
+        private final Slot[] slots = { new Slot(), new Slot() };
 
         static int bitFor(int code) {
             switch (code) {
@@ -131,24 +137,46 @@ public class MainActivity extends Activity {
             }
         }
 
-        synchronized void key(int bit, boolean down) {
-            seen = true;
-            if (down) { held |= bit; tapped |= bit; } else held &= ~bit;
+        /** The slot for a controller: its own, a free one, or the one unused for longest. */
+        private Slot slot(int device) {
+            long now = SystemClock.uptimeMillis();
+            Slot pick = null;
+            for (Slot s : slots) if (s.device == device) pick = s;
+            if (pick == null) {
+                for (Slot s : slots) if (s.device == -1 && pick == null) pick = s;
+                if (pick == null) pick = slots[0].used <= slots[1].used ? slots[0] : slots[1];
+                pick.lx = pick.ly = pick.rx = pick.ry = pick.hx = pick.hy = 0f;
+                pick.held = pick.tapped = pick.triggers = 0;
+                pick.device = device;
+            }
+            pick.used = now;
+            return pick;
         }
 
-        synchronized void axes(float lx, float ly, float rx, float ry, float hx, float hy, boolean l2, boolean r2) {
-            seen = true;
-            this.lx = lx; this.ly = ly; this.rx = rx; this.ry = ry; this.hx = hx; this.hy = hy;
+        synchronized void key(int device, int bit, boolean down) {
+            Slot s = slot(device);
+            if (down) { s.held |= bit; s.tapped |= bit; } else s.held &= ~bit;
+        }
+
+        synchronized void axes(int device, float lx, float ly, float rx, float ry, float hx, float hy, boolean l2, boolean r2) {
+            Slot s = slot(device);
+            s.lx = lx; s.ly = ly; s.rx = rx; s.ry = ry; s.hx = hx; s.hy = hy;
             int t = (l2 ? L2 : 0) | (r2 ? R2 : 0);
-            tapped |= t & ~triggers;
-            triggers = t;
+            s.tapped |= t & ~s.triggers;
+            s.triggers = t;
         }
 
         @JavascriptInterface
         public synchronized String poll() {
-            String s = lx + "," + ly + "," + rx + "," + ry + "," + hx + "," + hy + "," + (held | triggers) + "," + tapped + "," + (seen ? 1 : 0);
-            tapped = 0;
-            return s;
+            StringBuilder out = new StringBuilder();
+            for (Slot s : slots) {
+                if (out.length() > 0) out.append(';');
+                out.append(s.lx).append(',').append(s.ly).append(',').append(s.rx).append(',').append(s.ry).append(',')
+                        .append(s.hx).append(',').append(s.hy).append(',').append(s.held | s.triggers).append(',')
+                        .append(s.tapped).append(',').append(s.device == -1 ? 0 : 1);
+                s.tapped = 0;
+            }
+            return out.toString();
         }
     }
 
