@@ -37,6 +37,15 @@ class Deck(val index: Int, private val sr: Int) {
 
     var cuePoint = 0.0; private set
     private var cuePreview = false
+    /**
+     * ▶ was pressed with quantize on: the deck waits for the other deck's next beat and then
+     * starts in phase with it ([Mixer.playPressed]). Cleared by load, eject, CUE and pause.
+     */
+    var pendingStart = false; internal set
+    /** Set by [startAt]: the next render starts at full speed instead of spinning up. */
+    private var jumpStart = false
+    /** Samples left in the short fade-in after [startAt] (no click at a hard start). */
+    private var fadeIn = 0
     /** Playing only while CUE is held (a pre-listen, not a real start). */
     val previewing: Boolean get() = cuePreview
     val hotCues = DoubleArray(4) { Double.NaN }
@@ -90,13 +99,25 @@ class Deck(val index: Int, private val sr: Int) {
     }
     private val firstBeatFrames get() = (analysis?.firstBeatSec ?: 0.0) * trackRate
 
+    /**
+     * Puts a new song on the deck, stopped, on a clean channel: tempo 0%, EQ and filter flat,
+     * trim 0 dB, volume up and the effect off (its type, amount and timing stay), so nothing the
+     * last song needed (like a cut bass) carries over. The headphone button and tempo range stay.
+     */
     fun load(track: Pcm, info: TrackAnalysis, title: String, artist: String, loudnessDb: Double) {
         pcm = track; analysis = info; this.title = title; this.artist = artist
         playing = false; cuePreview = false; scratching = false; step = 0.0; bend = 0.0
+        pendingStart = false; jumpStart = false; fadeIn = 0
         loopOn = false; loopIn = -1.0; loopOut = -1.0; loopBeats = 0.0
         hotCues.fill(Double.NaN)
-        // Start at the first beat so the first press of PLAY lands on the downbeat.
-        cuePoint = if (info.bpm > 0) firstBeatFrames % framesPerBeat else 0.0
+        pitch = 0.0
+        eqLow = 0f; eqMid = 0f; eqHigh = 0f
+        filter = 0f
+        trimDb = 0.0
+        volume = 1f
+        fx.on = false
+        // Cue on the bar where the music starts, so the first press of PLAY lands on a downbeat.
+        cuePoint = info.startCueSec() * trackRate
         position = cuePoint
         autoGainDb = (-14.0 - loudnessDb).coerceIn(-12.0, 12.0)
         fx.clear()
@@ -104,6 +125,7 @@ class Deck(val index: Int, private val sr: Int) {
 
     fun eject() {
         pcm = null; analysis = null; title = ""; artist = ""; playing = false; position = 0.0
+        pendingStart = false
     }
 
     /** Replaces the beat grid, e.g. after the user doubles or halves a detected tempo. */
@@ -111,16 +133,30 @@ class Deck(val index: Int, private val sr: Int) {
 
     fun playPause() {
         if (!loaded) return
+        pendingStart = false
         if (cuePreview) { cuePreview = false; return } // keep playing from the cue preview
         playing = !playing
     }
 
-    fun play() { if (loaded) { playing = true; cuePreview = false } }
-    fun pause() { playing = false; cuePreview = false }
+    fun play() { if (loaded) { playing = true; cuePreview = false; pendingStart = false } }
+    fun pause() { playing = false; cuePreview = false; pendingStart = false }
+
+    /**
+     * Starts playing from [frame] at full speed straight away, with no spin-up, so a start timed
+     * to the other deck's beat lands exactly on it.
+     */
+    fun startAt(frame: Double) {
+        val p = pcm ?: return
+        position = frame.coerceIn(0.0, p.frames.toDouble())
+        playing = true; cuePreview = false; pendingStart = false
+        jumpStart = true
+        fadeIn = (sr * 0.002).toInt()
+    }
 
     /** The classic CDJ cue button, pressed. */
     fun cueDown(quantize: Boolean) {
         if (!loaded) return
+        pendingStart = false
         if (playing) {
             playing = false; position = cuePoint
         } else if (abs(position - cuePoint) < 1) {
@@ -264,6 +300,16 @@ class Deck(val index: Int, private val sr: Int) {
         return floorMod(position - firstBeatFrames, fpb) / fpb
     }
 
+    /**
+     * Where the play head is on the beat grid, in beats from the grid anchor (2.5 = halfway
+     * through beat 2; bars start at multiples of 4). 0 without a beat.
+     */
+    fun beatPosition(): Double {
+        val fpb = framesPerBeat
+        if (fpb <= 0) return 0.0
+        return (position - firstBeatFrames) / fpb
+    }
+
     /** Index of the beat under the play head (beat 0 is the grid anchor). */
     fun beatIndex(): Long {
         val fpb = framesPerBeat
@@ -313,6 +359,11 @@ class Deck(val index: Int, private val sr: Int) {
         val bpmNow = effectiveBpm
         fx.beatSeconds = if (bpmNow > 0) 60.0 / bpmNow else 0.5
         var peak = 0f
+        if (jumpStart) {
+            jumpStart = false
+            if (playing && !scratching) step = (1 + pitch) * (1 + bend) * ratio
+        }
+        val fadeLen = (sr * 0.002).toInt().coerceAtLeast(1)
 
         for (i in 0 until frames) {
             val target = when {
@@ -326,7 +377,8 @@ class Deck(val index: Int, private val sr: Int) {
             val speed = abs(step) / ratio
             var l = 0.0; var r = 0.0
             if (speed > 1e-4) {
-                val amp = (speed * 25).coerceAtMost(1.0)
+                var amp = (speed * 25).coerceAtMost(1.0)
+                if (fadeIn > 0) { amp *= 1 - fadeIn.toDouble() / fadeLen; fadeIn-- }
                 l = cubic(p, position, 0) * amp * gain
                 r = cubic(p, position, 1) * amp * gain
                 l = djFilter.process(eq.process(l, 0), 0)

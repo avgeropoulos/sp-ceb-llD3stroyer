@@ -1,6 +1,7 @@
 package com.mixdeck.desktop
 
 import com.mixdeck.engine.Mixer
+import com.mixdeck.engine.Recordings
 import com.mixdeck.engine.ShortArrayPcm
 import com.mixdeck.engine.WavWriter
 import org.bytedeco.ffmpeg.global.avcodec
@@ -67,7 +68,10 @@ class DesktopAudioOut(private val mixer: Mixer) {
     }
 }
 
-/** Records the master output to a WAV in the background, like the phone app. */
+/**
+ * Records the master output to a WAV in the background, like the phone app. The WAV stays in
+ * [tempDir] until it's saved, so one left by a crash is found and saved at the next start.
+ */
 class DesktopRecorder(private val mixer: Mixer, private val tempDir: File) {
     private var writer: WavWriter? = null
     private var file: File? = null
@@ -75,16 +79,28 @@ class DesktopRecorder(private val mixer: Mixer, private val tempDir: File) {
     private val queue = ArrayBlockingQueue<FloatArray>(4096)
     @Volatile var recording = false; private set
     val seconds get() = writer?.seconds ?: 0.0
+    /**
+     * Called on the recorder's thread when the WAV can't be written (disk full). Recording has
+     * stopped taking audio by then: call [stop] to finish the file and save what was recorded.
+     */
+    @Volatile var onFailed: ((IOException) -> Unit)? = null
 
     fun start() {
         if (recording) return
-        val f = File(tempDir, "recording-${System.currentTimeMillis()}.wav")
+        val f = Recordings.newFile(tempDir)
         val w = WavWriter(f, mixer.sampleRate)
         file = f; writer = w; recording = true
         thread = Thread({
-            while (recording || queue.isNotEmpty()) {
-                val b = queue.poll(100, TimeUnit.MILLISECONDS) ?: continue
-                w.write(b, b.size / 2)
+            try {
+                while (recording || queue.isNotEmpty()) {
+                    val b = queue.poll(100, TimeUnit.MILLISECONDS) ?: continue
+                    w.write(b, b.size / 2)
+                }
+            } catch (e: IOException) {
+                // Disk full: stop taking audio (the music plays on); the app saves what was recorded.
+                synchronized(mixer.lock) { mixer.tap = null }
+                queue.clear()
+                onFailed?.invoke(e)
             }
         }, "MixDeck recorder").apply { start() }
         synchronized(mixer.lock) { mixer.tap = { buf, n -> queue.offer(buf.copyOf(n * 2)) } }
@@ -95,7 +111,8 @@ class DesktopRecorder(private val mixer: Mixer, private val tempDir: File) {
         synchronized(mixer.lock) { mixer.tap = null }
         recording = false
         thread?.join(3000)
-        writer?.close()
+        // If its last part can't be written (disk full), the file still holds the rest.
+        runCatching { writer?.close() }
         val f = file
         writer = null; file = null
         return f

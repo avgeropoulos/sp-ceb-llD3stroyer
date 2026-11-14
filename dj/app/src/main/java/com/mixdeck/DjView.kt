@@ -21,7 +21,7 @@ import com.mixdeck.ui.Typeface
 /** The phone's DJ screen: hosts the shared [Console] in an Android View, with multi-touch. */
 @SuppressLint("ViewConstructor")
 class DjView(context: Context, mixer: Mixer, host: Console.Host) : View(context) {
-    val console = Console(mixer, host)
+    val console = Console(mixer, host, computer = false)
     private val canvas = AndroidCanvas()
 
     var helpMode by console::helpMode

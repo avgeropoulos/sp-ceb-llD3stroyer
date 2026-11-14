@@ -8,6 +8,8 @@ import org.json.JSONObject
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
 
 /** A song saved on the phone, ready to load onto a deck. */
 data class Track(
@@ -31,10 +33,18 @@ data class Track(
     val featuresVersion: Int = 0,
     /** Downloaded by "Find new songs like this" rather than picked by the user. */
     val discovered: Boolean = false,
+    /**
+     * Saved for a Spotify song: Spotify's length for it (0 otherwise). The YouTube upload matched
+     * to it may be longer or shorter, so a Spotify list recognises the song by this length.
+     */
+    val listedSec: Double = 0.0,
 ) {
     val analyzed get() = !loudnessDb.isNaN()
     val hasFeatures get() = analyzed && featuresVersion >= FEATURES_VERSION
     val key: MusicalKey? get() = if (keyIndex in 0..23) MusicalKey.fromIndex(keyIndex) else null
+
+    /** The length to compare with a Spotify song's: Spotify's own when it was saved for one. */
+    val listedLength get() = if (listedSec > 0) listedSec else durationSec
 
     /** What the next-song suggester needs to know about this song. */
     fun profile() = TrackProfile(id, title, artist, bpm, key, keyConfidence, energy, timbre, durationSec,
@@ -47,7 +57,7 @@ data class Track(
         .put("keyIndex", keyIndex).put("keyConfidence", keyConfidence.toDouble()).put("tuningCents", tuningCents.toDouble())
         .put("energy", if (energy.isNaN()) JSONObject.NULL else energy.toDouble())
         .put("timbre", timbre?.let { t -> JSONArray().apply { t.forEach { put(it.toDouble()) } } } ?: JSONObject.NULL)
-        .put("featuresVersion", featuresVersion).put("discovered", discovered)
+        .put("featuresVersion", featuresVersion).put("discovered", discovered).put("listedSec", listedSec)
 
     companion object {
         /** Bump when key/energy/timbre analysis changes so older songs get re-analysed. */
@@ -64,6 +74,7 @@ data class Track(
             timbre = o.optJSONArray("timbre")?.let { a -> FloatArray(a.length()) { a.optDouble(it, 0.0).toFloat() } },
             featuresVersion = o.optInt("featuresVersion", 0),
             discovered = o.optBoolean("discovered", false),
+            listedSec = o.optDouble("listedSec", 0.0),
         )
     }
 }
@@ -73,7 +84,31 @@ data class Track(
  * under [baseDir] (the app's files folder on the phone, a MixDeck folder on the computer).
  */
 class TrackStore(private val baseDir: File) {
-    private val dir = File(baseDir, "tracks").apply { mkdirs() }
+    companion object {
+        /** What [findByName] compares: title and artist, trimmed and in lower case. */
+        fun nameKey(title: String, artist: String) = title.trim().lowercase() + "\u0000" + artist.trim().lowercase()
+
+        /** Lengths this close (seconds) are the same recording; 0 means unknown, which always matches. */
+        const val SAME_LENGTH_SEC = 8.0
+
+        /** Whether a song [a] seconds long can be the one [b] seconds long (see [SAME_LENGTH_SEC]). */
+        fun sameLength(a: Double, b: Double) = a <= 0 || b <= 0 || kotlin.math.abs(a - b) <= SAME_LENGTH_SEC
+
+        /** One lock per song file, shared by every TrackStore (the phone makes one per screen). */
+        private val locks = java.util.concurrent.ConcurrentHashMap<String, ReentrantLock>()
+
+        /** The song folders whose leftover downloads were cleared since the app started. */
+        private val swept = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+        /** A temporary download nobody has written to for this long was cut off (the app quit or was killed). */
+        const val LEFTOVER_MS = 60 * 60_000L
+    }
+
+    private val dir = File(baseDir, "tracks").apply {
+        mkdirs()
+        // Once per run: half downloads left by a run that was cut off (a download still running isn't that old).
+        if (swept.add(absolutePath)) Net.deleteLeftovers(this, LEFTOVER_MS)
+    }
     private val spotifyFile = File(baseDir, "spotify.json")
 
     fun audioFile(id: String) = File(dir, "$id.audio")
@@ -81,6 +116,22 @@ class TrackStore(private val baseDir: File) {
     private fun waveFile(id: String) = File(dir, "$id.wave")
 
     fun has(id: String) = audioFile(id).exists() && metaFile(id).exists()
+
+    /**
+     * Hold this while checking [has], downloading and saving song [id] (see [withLock]), so the same
+     * song picked twice (two decks, a re-pick, the tutorial, "Find new songs") is downloaded once.
+     */
+    fun lockFor(id: String): ReentrantLock = locks.computeIfAbsent(audioFile(id).absolutePath) { ReentrantLock() }
+
+    /**
+     * Runs [block] holding song [id]'s lock ([lockFor]). While another download of the same song
+     * holds it, [poll] runs every quarter second: throw from it to stop waiting (the pick changed).
+     */
+    fun <T> withLock(id: String, poll: () -> Unit = {}, block: () -> T): T {
+        val l = lockFor(id)
+        while (!l.tryLock(250, TimeUnit.MILLISECONDS)) poll()
+        try { return block() } finally { l.unlock() }
+    }
 
     fun get(id: String): Track? = runCatching { Track.fromJson(JSONObject(metaFile(id).readText())) }.getOrNull()
 
@@ -92,6 +143,17 @@ class TrackStore(private val baseDir: File) {
         .sortedByDescending { it.added }
 
     fun delete(id: String) { audioFile(id).delete(); metaFile(id).delete(); waveFile(id).delete() }
+
+    /**
+     * A saved song with this title and artist (ignoring case and spaces around them) and, when both
+     * are known, about [durationSec] long (see [Track.listedLength]), e.g. a Spotify song saved
+     * before: it loads offline instead of being matched and downloaded again. Another version with
+     * the same names (a live take, an edit) doesn't count.
+     */
+    fun findByName(title: String, artist: String, durationSec: Double = 0.0): Track? {
+        val key = nameKey(title, artist)
+        return all().firstOrNull { nameKey(it.title, it.artist) == key && sameLength(it.listedLength, durationSec) }
+    }
 
     fun saveAnalysis(t: Track, a: TrackAnalysis, loudnessDb: Double, durationSec: Double): Track {
         val updated = (get(t.id) ?: t).copy(bpm = a.bpm, firstBeatSec = a.firstBeatSec, loudnessDb = loudnessDb, durationSec = durationSec)

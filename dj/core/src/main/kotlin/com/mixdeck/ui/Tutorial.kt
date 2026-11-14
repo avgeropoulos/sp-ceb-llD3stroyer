@@ -20,6 +20,8 @@ class Tutorial(val name: String, val steps: List<TutorialStep>) {
     var doneAt = 0L
     /** Extra line under the step text, e.g. download progress or an error. */
     @Volatile var status: String? = null
+    /** The songs couldn't be fetched: step 1 offers "Try again" and lights the LOAD buttons. */
+    @Volatile var failed = false
 
     val step get() = steps[index]
 }
@@ -105,11 +107,11 @@ object Tutorials {
                     "Knobs turn when you drag up or down.",
                 done = { m -> m.db().eqLow < -0.9f }),
             TutorialStep(listOf("phones1"), "Pre-listen (optional)",
-                "With headphones in and split cue on (☰ menu), 🎧 lets you hear deck B in your right ear before the crowd does. " +
-                    "No headphones? Just tap Next."),
+                "Plug in headphones and tap 🎧 on deck B. MixDeck offers to turn on split cue; then your right ear hears " +
+                    "\"Grillz\" before the crowd does. No headphones? Just tap Next."),
             TutorialStep(listOf("play1", "lane0", "lane1"), "Drop it in",
                 "Watch deck A's waveform. When a long tick (the start of a bar) reaches the white line, press ▶ on deck B. " +
-                    "If the beats drift apart later, tap SYNC on B again.",
+                    "MixDeck starts it exactly on the beat.",
                 done = { m -> m.db().playing }),
             TutorialStep(listOf("xfader"), "Blend",
                 "Slowly slide the crossfader to the MIDDLE. Now the crowd hears both songs together, in time.",
@@ -130,9 +132,10 @@ object Tutorials {
             TutorialStep(listOf("pad0", "pad1", "pad2", "pad3"), "Celebrate",
                 "Hit the HORN! The sampler pads play sound effects over the mix. Tap one again to stop it.",
                 done = { m -> if ((0..3).any { m.sampler.isPlaying(it) }) hornFired = true; hornFired }),
-            TutorialStep(listOf("rec", "next"), "You did it!",
+            TutorialStep(listOf("rec", "next", "mix"), "You did it!",
                 "That's a full mix: sync, cut the bass, blend, swap, echo out. Next time tap REC first and your set is saved in My mixes. " +
-                    "Tap NEXT for a song that fits after \"Grillz\" and keep going! (Tap ? any time to see what every button does.)"),
+                    "Tap NEXT for a song that fits after \"Grillz\" and keep going! (Tap ? any time to see what every button does.) " +
+                    "Next time, tap NEXT, pick a song and tap MIX: MixDeck does this whole blend for you."),
         )
         return Tutorial("Nelly: Air Force Ones → Grillz", steps)
     }

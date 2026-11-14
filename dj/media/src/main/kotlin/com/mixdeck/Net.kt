@@ -36,21 +36,31 @@ object Net {
 
     /**
      * Downloads [url] to [dest] in ranged chunks (YouTube throttles or refuses big single
-     * requests). Reports progress 0..1.
+     * requests). Reports progress 0..1. Each call writes its own temporary file, so two downloads
+     * of the same file (or a cancelled one and its retry) never touch each other's half.
      */
     fun download(
         url: String, dest: File, headers: Map<String, String> = emptyMap(),
         chunk: Long = 2L * 1024 * 1024, progress: (Float) -> Unit = {},
     ) {
-        val tmp = File(dest.path + ".part")
-        tmp.delete()
+        val tmp = File.createTempFile(dest.name + ".", ".part", dest.absoluteFile.parentFile)
         try {
             downloadTo(tmp, url, headers, chunk, progress)
         } catch (e: Throwable) {
             tmp.delete() // don't leave half a song behind
             throw e
         }
-        if (!tmp.renameTo(dest)) { tmp.delete(); throw IOException("Could not save the download") }
+        // dest only ever appears complete: if another download got there first (and a rename
+        // can't replace it, as on Windows), keep that copy.
+        if (!tmp.renameTo(dest)) { tmp.delete(); if (!dest.isFile) throw IOException("Could not save the download") }
+    }
+
+    /**
+     * Deletes the temporary files [download] left in [dir] when it was cut off (the app quit or was
+     * killed mid-download): those nobody wrote to for [idleMs], so a download still running is kept.
+     */
+    fun deleteLeftovers(dir: File, idleMs: Long, now: Long = System.currentTimeMillis()) {
+        dir.listFiles { f -> f.isFile && f.name.endsWith(".part") && now - f.lastModified() >= idleMs }?.forEach { it.delete() }
     }
 
     private fun downloadTo(tmp: File, url: String, headers: Map<String, String>, chunk: Long, progress: (Float) -> Unit) {
@@ -105,7 +115,7 @@ object NewPipeDownloader : Downloader() {
                 c.outputStream.use { it.write(body) }
             }
             val code = c.responseCode
-            if (code == 429) throw ReCaptchaException("YouTube is rate limiting this phone, try again later", request.url())
+            if (code == 429) throw ReCaptchaException("YouTube is rate limiting downloads, try again later", request.url())
             val stream = if (code >= 400) c.errorStream else c.inputStream
             val text = stream?.use { it.readBytes().toString(Charsets.UTF_8) } ?: ""
             val headers = c.headerFields.filterKeys { it != null }

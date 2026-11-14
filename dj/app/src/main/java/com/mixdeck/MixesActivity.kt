@@ -73,7 +73,7 @@ class MixesActivity : Activity() {
         })
 
         empty = TextView(this).apply {
-            text = "No mixes yet.\n\nOn the DJ screen, tap REC to start recording, play your set, then tap REC again to save it."
+            text = "No mixes yet.\n\nOn the DJ screen, tap REC to start recording and play your set. Hold REC to stop: the mix is saved here straight away."
             setTextColor(Color.WHITE); textSize = 16f; gravity = Gravity.CENTER; setPadding(dp(20), dp(30), dp(20), dp(30))
         }
         root.addView(empty)

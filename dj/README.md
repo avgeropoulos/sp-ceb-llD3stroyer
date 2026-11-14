@@ -16,8 +16,10 @@ That's the only time you install it by hand. (Until this branch is merged into t
 GitHub doesn't show a "Run workflow" button for MixDeck; any push that changes `dj/` publishes
 a new build.) Every push to this repo that changes `dj/`
 builds a new version, and the app asks **"Update available"** the next time you open it
-(or use ☰ → *Check for updates*). The first time, Android asks you to allow MixDeck to
-install updates; after that it's one tap.
+(or use ☰ → *Check for updates*). It downloads in the background while you keep mixing;
+then choose **Install** (or ☰ → ⬆ Install) when the music stops. The first time, Android asks
+you to allow MixDeck to install updates. MixDeck closes while Android installs it; open it again
+when it's done (with notifications on, a notification brings you back).
 
 ## On your computer (Mac, Windows, Linux)
 
@@ -40,13 +42,23 @@ keyboard shortcuts too:
 
 | Keys | Deck A | Keys | Deck B |
 |---|---|---|---|
+| A | Pick a song | B | Pick a song |
 | Q / W / E | CUE / Play / SYNC | O / P / I | CUE / Play / SYNC |
 | 1 2 3 4 | Hot cues | 7 8 9 0 | Hot cues |
 | R / T | 4-beat loop / effect | U / Y | 4-beat loop / effect |
 
-← → move the crossfader (↓ centres it), Z X C V fire the sampler, H shows the key, Esc closes it.
+| Keys | |
+|---|---|
+| ← → ↓ | Crossfader left / right, ↓ centres it |
+| Z X C V | Sampler: horn, siren, laser, drop (press again to stop) |
+| N | Suggest the next song |
+| M | MIX: blend into the waiting song (press again to take over) |
+| Ctrl+R (⌘R on a Mac) | Start / stop recording |
+| F1 | Help & guide |
+| H | Show / hide the button labels, each with its key |
+| Esc | Close the labels, or else the tutorial |
 
-The computer version checks for updates too (☰ → Check for updates) and opens the new download.
+The computer version updates itself too: when ☰ shows a green dot, choose ⬆ Update, keep mixing while it downloads, then Restart now or When I quit.
 Songs are kept in MixDeck's own folder and mixes in `Music/MixDeck`.
 
 ## Getting songs
@@ -81,18 +93,20 @@ can't go on the Play Store or App Store.
 | **Mixer** | Trim, 3-band kill EQ, filter (left = low-pass, right = high-pass), channel faders, meters, crossfader (smooth or sharp scratch curve). |
 | **Effects** | Per deck: Echo, Flanger, Reverb, Bitcrusher, beat-synced, with an amount knob. Echo and reverb ring out after you switch them off. |
 | **Sampler** | Air horn, siren, laser, bass drop. |
-| **Headphones** | Split cue: left ear = mix, right ear = decks with 🎧 lit, so you can pre-listen. |
-| **REC** | Records the master mix; name it and it's saved to My mixes. |
+| **Headphones** | Split cue: left ear = mix, right ear = decks with 🎧 lit, so you can pre-listen. 🎧 offers to turn it on. |
+| **REC** | Records the master mix. Hold REC to stop: it's saved straight away to My mixes. |
 | **Safety** | A master limiter so stacked decks never distort. |
 
 Knobs: drag up/down, double-tap to reset.
 
 ## Help inside the app
 
-* **?** (top middle) lays a key over the DJ screen that labels every control. It also shows
-  the first time you open the app.
-* **☰ → How it works** is the full guide, starting with "Your first mix in 8 steps".
-* **☰ → Tutorial** is a hands-on lesson: it loads Nelly's "Air Force Ones" on deck A and
+* When both decks are empty, a **Start card** offers the ways in: a guided mix, loading a song,
+  or labels on every control. An empty deck's ▶, jog wheel or waveform opens the library too.
+* **?** (top middle) lays labels over the DJ screen, one on every control (on a computer, with its
+  keyboard key). Tap the yellow banner for the full guide.
+* **☰ → Help & guide** is the full guide, starting with "Your first mix in 8 steps".
+* **☰ → Learn to mix** is a hands-on lesson: it loads Nelly's "Air Force Ones" on deck A and
   "Grillz" on deck B, dims the screen except the button you need next, tells you what to do,
   and moves on by itself once you've done it. It covers play, the crossfader, the waveform,
   scratching, hot cues, loops, SYNC, cutting and swapping the bass, echo-out and the sampler.
@@ -100,7 +114,9 @@ Knobs: drag up/down, double-tap to reset.
 
 ## Saving mixes
 
-Tap **REC**, play your set, tap **REC** again and give the mix a name. It's saved as an M4A
+Tap **REC** and play your set. To stop, **hold REC** (a quick tap just shows how long you've been
+recording, so a stray tap can't end your set). The mix is saved straight away as "Mix 14 Nov 2026
+21.30"; rename it in ☰ → My mixes. It's saved as an M4A
 (AAC, about 1.4 MB a minute) in **Music/MixDeck**, where music players and file apps can see
 it, and it stays there if you uninstall the app. **☰ → My mixes** plays your mixes back and
 lets you share, rename or delete them.

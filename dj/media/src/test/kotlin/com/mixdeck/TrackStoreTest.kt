@@ -36,6 +36,22 @@ class TrackStoreTest {
         assertFalse(o.hasFeatures)
     }
 
+    /**
+     * A download cut off by quitting (or the phone killing the app) leaves a .part file: the first
+     * TrackStore of the next run deletes it. One still being written to stays.
+     */
+    @Test fun leftoverDownloadsAreClearedAtStart() {
+        val base = tmp()
+        val tracks = File(base, "tracks").apply { mkdirs() }
+        val old = File(tracks, "yt_a.audio.123.part").apply { writeBytes(ByteArray(10)); setLastModified(System.currentTimeMillis() - 2 * TrackStore.LEFTOVER_MS) }
+        val fresh = File(tracks, "yt_b.audio.456.part").apply { writeBytes(ByteArray(10)) }
+        val song = File(tracks, "yt_c.audio").apply { writeBytes(ByteArray(10)); setLastModified(System.currentTimeMillis() - 2 * TrackStore.LEFTOVER_MS) }
+        TrackStore(base)
+        assertFalse(old.exists(), "a download nobody wrote to for an hour is gone")
+        assertTrue(fresh.exists(), "a download still running stays")
+        assertTrue(song.exists(), "saved songs stay")
+    }
+
     @Test fun historyRemembersRecentSongs() {
         val store = TrackStore(tmp())
         store.markPlayed("a", now = 1_000)

@@ -1,6 +1,7 @@
 package com.mixdeck.desktop
 
 import com.mixdeck.ui.Guide
+import com.mixdeck.ui.Menus
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.FlowLayout
@@ -51,18 +52,23 @@ object MixFiles {
     fun list(): List<File> = Places.mixes.listFiles { f -> f.isFile && f.extension.lowercase() in setOf("m4a", "wav", "mp3") }
         .orEmpty().sortedByDescending { it.lastModified() }
 
-    /** Saves a recorded WAV as "[name].m4a" (falls back to WAV if encoding fails). Deletes [wav]. */
+    /**
+     * Saves a recorded WAV as "[name].m4a" (falls back to WAV if encoding fails). Deletes [wav] once
+     * it's saved; if saving fails, [wav] stays (it's saved at the next start), so the mix is never lost.
+     */
     fun save(wav: File, name: String, progress: (Float) -> Unit): File {
         val clean = clean(name)
-        try {
-            val out = unique(clean, "m4a")
-            return try {
-                Ffmpeg.wavToM4a(wav, out, progress); out
-            } catch (e: Throwable) {
-                out.delete()
-                unique(clean, "wav").also { wav.copyTo(it) }
-            }
-        } finally { wav.delete() }
+        val out = unique(clean, "m4a")
+        val saved = try {
+            Ffmpeg.wavToM4a(wav, out, progress); out
+        } catch (e: Throwable) {
+            out.delete()
+            val copy = unique(clean, "wav")
+            try { wav.copyTo(copy) } catch (e2: Throwable) { copy.delete(); throw e2 }
+            copy
+        }
+        wav.delete()
+        return saved
     }
 
     fun rename(f: File, name: String): Boolean = f.renameTo(unique(clean(name), f.extension))
@@ -134,8 +140,8 @@ class MixesDialog(private val app: App) : JDialog(app.frame, "My mixes", true) {
     }
 }
 
-/** The full guide (same content as the phone), plus the keyboard shortcuts. */
-class HelpDialog(private val app: App) : JDialog(app.frame, "How MixDeck works", true) {
+/** The full guide (the phone's, written for a computer), plus the keyboard shortcuts. */
+class HelpDialog(private val app: App) : JDialog(app.frame, "Help & guide", true) {
     init {
         val html = StringBuilder("<html><body style='font-family:sans-serif;font-size:13px;color:#e6e6ec;background:#0e0e11;margin:12px'>")
         fun hex(c: Int) = "#%06x".format(c and 0xFFFFFF)
@@ -145,7 +151,7 @@ class HelpDialog(private val app: App) : JDialog(app.frame, "How MixDeck works",
                 "${LibraryDialog.esc(chip)}</div></td><td style='padding-left:12px'>${LibraryDialog.esc(text)}</td></tr>")
 
         heading("Try it hands-on", Guide.green)
-        html.append("<p>Click <b>Start the Nelly tutorial</b> below (or ☰ → Tutorial) for a guided mix of Nelly's " +
+        html.append("<p>Click <b>Start the Nelly tutorial</b> below (or ☰ → Learn to mix) for a guided mix of Nelly's " +
             "\"Air Force Ones\" into \"Grillz\". It loads both songs, lights up each control you need, and moves on when you've done each step.</p>")
         heading("Keyboard shortcuts", Guide.yellow)
         html.append("<table cellpadding='4'>")
@@ -153,15 +159,15 @@ class HelpDialog(private val app: App) : JDialog(app.frame, "How MixDeck works",
         html.append("</table><p>Mouse: drag knobs and faders up/down, or use the scroll wheel over them. Double-click a knob or fader to reset it.</p>")
         heading("Your first mix in 8 steps", Guide.green)
         html.append("<ol>")
-        Guide.firstMix.filter { !it.startsWith("Tip") }.forEach { html.append("<li style='margin-bottom:4px'>${LibraryDialog.esc(it)}</li>") }
+        Guide.firstMix(computer = true).filter { !it.startsWith("Tip") }.forEach { html.append("<li style='margin-bottom:4px'>${LibraryDialog.esc(it)}</li>") }
         html.append("</ol>")
-        for (s in Guide.sections) {
+        for (s in Guide.sections(computer = true)) {
             heading(s.title, s.color)
             html.append("<table cellpadding='4'>")
             for (it in s.items) row(it.chip, it.color, it.text)
             html.append("</table>")
         }
-        html.append("<p style='color:#77778a'>MixDeck ${Version.name}. YouTube downloads are for personal use only.</p></body></html>")
+        html.append("<p style='color:#77778a'>${LibraryDialog.esc(Menus.guideFooter(Version.name))}</p></body></html>")
 
         val pane = JEditorPane("text/html", html.toString()).apply { isEditable = false; caretPosition = 0 }
         val buttons = JPanel(FlowLayout(FlowLayout.RIGHT))
@@ -177,6 +183,7 @@ class HelpDialog(private val app: App) : JDialog(app.frame, "How MixDeck works",
 
     companion object {
         val shortcuts = listOf(
+            "A  B" to "Pick a song for deck A / deck B",
             "Q  W  E" to "Deck A: CUE (hold to preview), Play/Pause, SYNC",
             "1  2  3  4" to "Deck A hot cues",
             "R  T" to "Deck A: 4-beat loop on/off, effect on/off",
@@ -184,10 +191,13 @@ class HelpDialog(private val app: App) : JDialog(app.frame, "How MixDeck works",
             "7  8  9  0" to "Deck B hot cues",
             "U  Y" to "Deck B: 4-beat loop on/off, effect on/off",
             "← →  ↓" to "Crossfader left / right, ↓ = centre",
-            "Z X C V" to "Sampler: horn, siren, laser, drop",
+            "Z X C V" to "Sampler: horn, siren, laser, drop (press again to stop)",
             "N" to "Suggest the next song (what fits after the playing one)",
-            "H  or  F1" to "Show / hide the button labels",
-            "Esc" to "Close the labels or the tutorial",
+            "M" to "MIX: blend into the waiting song (press again to take over)",
+            "Ctrl+R (⌘R)" to "Start / stop recording",
+            "F1" to "This guide",
+            "H" to "Show / hide the button labels",
+            "Esc" to "Close the labels, or else the tutorial",
         )
     }
 }

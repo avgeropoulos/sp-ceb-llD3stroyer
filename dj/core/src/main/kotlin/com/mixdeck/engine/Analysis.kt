@@ -2,6 +2,7 @@ package com.mixdeck.engine
 
 import kotlin.math.abs
 import kotlin.math.exp
+import kotlin.math.floor
 import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -33,6 +34,46 @@ class TrackAnalysis(
 
     fun withKey(newKey: MusicalKey?, confidence: Float) =
         TrackAnalysis(bpm, firstBeatSec, binsPerSecond, peak, bass, treble, newKey, confidence)
+
+    /**
+     * Where a freshly loaded song is cued, in seconds: the last bar line (every 4th beat from the
+     * grid anchor, the waveform's long ticks) at or just before the first real sound, so ▶ starts
+     * on a downbeat without a long silent intro. "Real sound" is the first waveform bin at 15% of
+     * the song's loud level (its 90th-percentile peak). With no such bar, the first beat of the
+     * grid; with no beat, the very start.
+     */
+    fun startCueSec(): Double {
+        if (bpm <= 0) return 0.0
+        val beat = 60.0 / bpm
+        val firstBeat = ((firstBeatSec % beat) + beat) % beat
+        if (peak.isEmpty() || binsPerSecond <= 0) return firstBeat
+        val p90 = percentile(peak, 0.9)
+        if (p90 <= 0f) return firstBeat
+        val threshold = 0.15f * p90
+        val first = peak.indexOfFirst { it >= threshold }
+        if (first < 0) return firstBeat
+        // A bin starts a few ms before the sound in it, and the grid can sit a little late: a bar
+        // line up to 50 ms after the first sound still counts as "where the sound starts".
+        val s = first.toDouble() / binsPerSecond + 0.05
+        val bar = 4 * beat
+        val cue = firstBeatSec + floor((s - firstBeatSec) / bar) * bar
+        return if (cue >= 0) cue else firstBeat
+    }
+
+    private companion object {
+        /** The [q] quantile of values in 0..1, from a histogram (fast enough to run under the mixer lock). */
+        fun percentile(v: FloatArray, q: Double): Float {
+            val buckets = IntArray(1024)
+            for (x in v) buckets[(x.coerceIn(0f, 1f) * 1023).toInt()]++
+            val want = (v.size * q).toLong()
+            var seen = 0L
+            for (k in buckets.indices) {
+                seen += buckets[k]
+                if (seen > want) return k / 1023f
+            }
+            return 1f
+        }
+    }
 }
 
 object Analyzer {

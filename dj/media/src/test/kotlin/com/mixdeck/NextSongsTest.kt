@@ -97,7 +97,7 @@ class NextSongsTest {
         val dest = File(dir, "x.audio")
         val port = java.net.ServerSocket(0).use { it.localPort }  // nothing listens here any more
         runCatching { Net.download("http://127.0.0.1:$port/song", dest) }
-        assertTrue(!File(dest.path + ".part").exists(), "no .part file left behind")
+        assertTrue(dir.listFiles().orEmpty().none { it.name.endsWith(".part") }, "no .part file left behind")
         assertTrue(!dest.exists())
     }
 

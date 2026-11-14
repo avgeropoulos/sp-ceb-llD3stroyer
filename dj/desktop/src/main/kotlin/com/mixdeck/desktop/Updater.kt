@@ -1,6 +1,8 @@
 package com.mixdeck.desktop
 
 import com.mixdeck.Net
+import com.mixdeck.Problems
+import com.mixdeck.UpdatePolicy
 import org.json.JSONObject
 import java.awt.BorderLayout
 import java.awt.FlowLayout
@@ -213,7 +215,11 @@ object Install {
  * newer build, downloads it in the background while you keep mixing, unpacks it next to this one,
  * and when you say so, closes, swaps in the new version and opens it again.
  */
-class DesktopUpdater(private val app: App) {
+class DesktopUpdater(
+    private val app: App,
+    /** The tutorial or the newcomer Start card is showing: no automatic popups, the ☰ badge only. */
+    private val quiet: () -> Boolean = { false },
+) {
     data class Release(val code: Int, val name: String, val notes: String)
 
     private val base = System.getenv("MIXDECK_UPDATE_URL")?.trimEnd('/')?.plus("/")
@@ -229,27 +235,52 @@ class DesktopUpdater(private val app: App) {
     /** True when there's something for the ☰ badge to point at. */
     val hasNews get() = available != null || ready != null
 
+    @Volatile private var checking = false
+    private var checkedThisRun = false
+    private var lastTry = 0L
+
+    /**
+     * Checks at launch, then again whenever 6 hours have passed while MixDeck stays open. Called when
+     * the window is activated and from a timer (on the Swing thread).
+     */
+    fun checkIfDue() {
+        val now = System.currentTimeMillis()
+        if (!checkedThisRun || UpdatePolicy.checkDue(now, prefs.getLong("lastUpdateCheck", 0L), lastTry)) check(manual = false)
+    }
+
     fun check(manual: Boolean) {
+        if (checking && !manual) return
+        checking = true
+        checkedThisRun = true
+        lastTry = System.currentTimeMillis()
         thread(isDaemon = true, name = "update check") {
             val r = runCatching {
                 val o = JSONObject(Net.getText(base + "version.json?t=" + System.currentTimeMillis()))
                 Release(o.optInt("versionCode"), o.optString("versionName"), o.optString("notes"))
             }
             SwingUtilities.invokeLater {
+                checking = false
                 val rel = r.getOrNull()
+                if (rel != null) { prefs.putLong("lastUpdateCheck", System.currentTimeMillis()); runCatching { prefs.flush() } }
                 when {
-                    rel == null -> if (manual) app.error("Couldn't check for updates: ${r.exceptionOrNull()?.message}")
+                    rel == null -> if (manual) app.error("Couldn't check for updates: ${Problems.explainUpdate(r.exceptionOrNull()!!)}")
+                    // Already downloading or downloaded: the user's own check shows where it is.
+                    ready != null || downloading -> if (manual) menuPick()
                     rel.code > Version.code -> {
                         available = rel
                         app.repaint()
-                        // Never interrupt the music with a popup: the ☰ badge says it's there.
-                        if (manual || !app.musicPlaying()) offer()
+                        // Never interrupt the music, the tutorial or the Start card with a popup, nor
+                        // repeat one the user said "Later" to: the ☰ badge says it's there.
+                        if (UpdatePolicy.shouldOffer(manual, rel.code, prefs.getInt("laterVersion", 0), app.musicPlaying(), quiet())) offer()
                     }
                     manual -> app.info("Up to date", "MixDeck is up to date (version ${Version.name}).")
                 }
             }
         }
     }
+
+    /** "Later": automatic checks don't pop up for this version again (the ☰ badge and row stay). */
+    private fun later(rel: Release) { prefs.putInt("laterVersion", rel.code); runCatching { prefs.flush() } }
 
     /** What the ☰ menu's update item says, or null when there's no update. */
     fun menuLabel(): String? = when {
@@ -276,14 +307,14 @@ class DesktopUpdater(private val app: App) {
         if (problem != null) {
             val c = JOptionPane.showOptionDialog(app.frame, "$msg\n\n$problem", "Update available", JOptionPane.DEFAULT_OPTION,
                 JOptionPane.INFORMATION_MESSAGE, null, arrayOf("Download it in my browser", "Later"), "Later")
-            if (c == 0) browse(base + assetFor(Version.platform))
+            if (c == 0) browse(base + assetFor(Version.platform)) else if (c == 1) later(rel)
             return
         }
         val c = JOptionPane.showOptionDialog(app.frame,
             "$msg\n\nIt downloads in the background while you keep mixing (about 80 MB), then you choose when to restart.",
             "Update available", JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE, null,
             arrayOf("Update", "Later"), "Update")
-        if (c == 0) download(rel)
+        if (c == 0) download(rel) else if (c == 1) later(rel)
     }
 
     private var progress: JDialog? = null
@@ -304,6 +335,8 @@ class DesktopUpdater(private val app: App) {
             p.add(buttons, BorderLayout.SOUTH)
             contentPane.add(p); setSize(440, 150); setLocationRelativeTo(app.frame)
             defaultCloseOperation = JDialog.HIDE_ON_CLOSE
+            // The keys stay with the console: you keep mixing while it downloads.
+            isAutoRequestFocus = false
         }
         progress = dlg
         dlg.isVisible = true
@@ -314,6 +347,10 @@ class DesktopUpdater(private val app: App) {
             val pkg = File(dir, asset)
             val stage = File(root.parentFile, Install.stageName(root))
             val r = runCatching {
+                // Left by a run that quit mid-download or mid-unpack: an older package under the same
+                // name (Windows couldn't replace it, so it would be unpacked as this one) and half
+                // downloads. Only one update downloads at a time, so none of these is in use.
+                pkg.delete(); Net.deleteLeftovers(dir, idleMs = 0)
                 Net.download(base + asset, pkg) { p ->
                     if (cancelled.get()) throw CancellationException()
                     SwingUtilities.invokeLater { bar.value = (p * 100).toInt() }
@@ -330,11 +367,19 @@ class DesktopUpdater(private val app: App) {
                     prefs.putInt("updatedFrom", Version.code); prefs.put("updateNotes", rel.notes)
                     runCatching { prefs.flush() }
                     app.repaint()
-                    askRestart()
+                    // Over the music, the tutorial or the Start card, the notice line, the ☰ badge and the
+                    // row say it's ready (no popup steals the keys mid-mix); it also goes in when MixDeck quits.
+                    if (!quiet() && !app.musicPlaying()) askRestart()
+                    else app.console.say("MixDeck ${rel.name} is downloaded · restart from ☰ " +
+                        UpdatePolicy.readyWhen(app.mixer.decks.any { it.playing }, app.recording(), app.savingText() != null), ms = 6000)
                 }.onFailure { e ->
                     stage.deleteRecursively()
                     app.repaint()
-                    if (e !is CancellationException) app.error("The update didn't download: ${e.message ?: e.javaClass.simpleName}\n" +
+                    if (e is CancellationException) return@onFailure
+                    // Over the music no popup steals the keys: the notice line says it instead.
+                    if (quiet() || app.musicPlaying()) {
+                        app.console.say("The update didn't download: ${Problems.explainUpdate(e).trimEnd('.')}. Try again from ☰.", error = true)
+                    } else app.error("The update didn't download: ${Problems.explainUpdate(e)}\n" +
                         "Try again from ☰ → Update, or download it in your browser.")
                 }
             }
@@ -343,12 +388,14 @@ class DesktopUpdater(private val app: App) {
 
     private fun askRestart() {
         val (rel, _) = ready ?: return
-        val playing = app.musicPlaying()
+        val playing = app.audible()
+        val saving = app.savingText() != null
         val c = JOptionPane.showOptionDialog(app.frame,
             "MixDeck ${rel.name} is ready.\nMixDeck will close, update and open again (about 10 seconds)." +
-                (if (playing) "\n\nThis stops the music." else ""),
+                (if (playing) "\n\nThis stops the music." else "") +
+                (if (saving) "\n\nIt restarts once your mix is saved." else ""),
             "Restart to update", JOptionPane.DEFAULT_OPTION, JOptionPane.QUESTION_MESSAGE, null,
-            arrayOf("Restart now", "When I quit"), if (playing) "When I quit" else "Restart now")
+            arrayOf("Restart now", "When I quit"), if (playing || saving) "When I quit" else "Restart now")
         if (c == 0) app.quit(restart = true)
     }
 

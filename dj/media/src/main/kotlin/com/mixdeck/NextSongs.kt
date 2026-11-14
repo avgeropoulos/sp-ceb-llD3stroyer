@@ -112,7 +112,7 @@ class NextSongs(
             if (cancelled()) { publish(state.copy(finding = null, note = "Stopped.")); return@execute }
             publish(state.copy(finding = null, note = r.fold(
                 { n -> if (n == 0) "No new songs found this time." else "Found $n new song${if (n == 1) "" else "s"}: they're marked NEW and saved in My songs." },
-                { e -> "Couldn't reach YouTube (${e.message ?: e.javaClass.simpleName}). Check your internet and try again." },
+                { e -> "Couldn't find new songs: ${Problems.explain(e)}" },
             )))
         }
     }

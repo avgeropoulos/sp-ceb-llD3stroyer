@@ -7,8 +7,10 @@ import android.media.AudioManager
 import android.media.AudioTrack
 import android.os.Process
 import com.mixdeck.engine.Mixer
+import com.mixdeck.engine.Recordings
 import com.mixdeck.engine.WavWriter
 import java.io.File
+import java.io.IOException
 import java.util.concurrent.ArrayBlockingQueue
 
 /** Runs the mixer on a high-priority thread and plays it through a low-latency AudioTrack. */
@@ -69,6 +71,10 @@ class AudioOut(private val mixer: Mixer) {
  * Records the master output to a WAV file. The audio thread only copies samples into a queue;
  * a separate thread writes them to storage so recording never causes glitches. When it stops,
  * [MixStore] turns the WAV into a named, compact M4A in Music/MixDeck.
+ *
+ * The WAV is kept in the app's own files (not the cache, which Android may empty when storage runs
+ * low) until it's saved, so one left by a run that was cut off is found and saved next time.
+ * Lives in [Engine], so a recording carries on when the console is recreated.
  */
 class Recorder(private val ctx: Context, private val mixer: Mixer) {
     private var writer: WavWriter? = null
@@ -78,17 +84,29 @@ class Recorder(private val ctx: Context, private val mixer: Mixer) {
     @Volatile var recording = false; private set
     var startedAt = 0L; private set
     val seconds get() = writer?.seconds ?: 0.0
+    /**
+     * Called on the recorder's thread when the WAV can't be written (storage full). Recording has
+     * stopped taking audio by then: call [stop] to finish the file and save what was recorded.
+     */
+    @Volatile var onFailed: ((IOException) -> Unit)? = null
 
     fun start() {
         if (recording) return
-        val f = File(ctx.cacheDir, "recording-${System.currentTimeMillis()}.wav")
+        val f = Recordings.newFile(dir(ctx))
         val w = WavWriter(f, mixer.sampleRate)
         file = f; writer = w; startedAt = System.currentTimeMillis()
         recording = true
         thread = Thread({
-            while (recording || queue.isNotEmpty()) {
-                val b = queue.poll(100, java.util.concurrent.TimeUnit.MILLISECONDS) ?: continue
-                w.write(b, b.size / 2)
+            try {
+                while (recording || queue.isNotEmpty()) {
+                    val b = queue.poll(100, java.util.concurrent.TimeUnit.MILLISECONDS) ?: continue
+                    w.write(b, b.size / 2)
+                }
+            } catch (e: IOException) {
+                // Out of space: stop taking audio (the music plays on); the host saves what was recorded.
+                synchronized(mixer.lock) { mixer.tap = null }
+                queue.clear()
+                onFailed?.invoke(e)
             }
         }, "MixDeck recorder").apply { start() }
         synchronized(mixer.lock) {
@@ -96,15 +114,21 @@ class Recorder(private val ctx: Context, private val mixer: Mixer) {
         }
     }
 
-    /** Stops recording and returns the finished WAV (in the cache, to be saved or discarded). */
+    /** Stops recording and returns the finished WAV (to be saved or discarded). */
     fun stop(): File? {
         if (!recording) return null
         synchronized(mixer.lock) { mixer.tap = null }
         recording = false
         thread?.join(3000)
-        writer?.close()
+        // If its last part can't be written (storage full), the file still holds the rest.
+        runCatching { writer?.close() }
         val f = file
         writer = null; file = null
         return f
+    }
+
+    companion object {
+        /** Where recordings are written. Older versions wrote them to the cache. */
+        fun dir(ctx: Context): File = ctx.noBackupFilesDir
     }
 }

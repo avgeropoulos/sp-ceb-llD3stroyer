@@ -1,6 +1,7 @@
 package com.mixdeck.ui
 
 import com.mixdeck.engine.Analyzer
+import com.mixdeck.engine.AutoMix
 import com.mixdeck.engine.Mixer
 import com.mixdeck.engine.MusicalKey
 import com.mixdeck.engine.ShortArrayPcm
@@ -114,6 +115,26 @@ class NextPlanTest {
         val p = c.nextPlan()
         assertEquals(0, p.target); assertEquals(1, p.after)
         assertTrue(p.waiting, "deck A's song was never played")
+    }
+
+    @Test fun duringAMixNextReplacesTheSongGoingOut() {
+        val (m, c) = setup()
+        m.load(0, 60); m.load(1, 20)
+        m.decks[0].play(); c.draw(NoCanvas)
+        val buf = FloatArray(512)
+        repeat(8000 / 256) { m.render(buf, 256) }
+        m.mixPressed()
+        assertEquals(AutoMix.State.ARMED, m.autoMix.state)
+        var p = c.nextPlan()
+        assertEquals(0, p.target, "waiting for the bar: still the deck being mixed out")
+        assertEquals(1, p.after); assertFalse(p.waiting)
+        while (m.autoMix.state != AutoMix.State.RUNNING) m.render(buf, 256)
+        // Both decks play now and B ends first, but A is the one going out: NEXT loads there.
+        p = c.nextPlan()
+        assertEquals(0, p.target); assertEquals(1, p.after); assertFalse(p.waiting)
+        m.crossfader = 0.5f; m.render(buf, 256)   // take over: back to the usual rule
+        assertEquals(AutoMix.State.IDLE, m.autoMix.state)
+        assertEquals(1, c.nextPlan().target, "the deck that ends first")
     }
 
     @Test fun keyLabelShowsTheKeyYouHear() {

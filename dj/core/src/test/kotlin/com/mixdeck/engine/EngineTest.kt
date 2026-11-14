@@ -8,6 +8,7 @@ import kotlin.math.sin
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /** Synthesises a simple dance loop: kick on every beat, hi-hat off-beats, snare on 2 and 4, bass line. */
@@ -194,6 +195,184 @@ class DeckTest {
         }
         assertTrue(levelWith(-1f) < levelWith(0f) * 0.1f)
     }
+
+    @Test fun loadResetsChannel() {
+        val d = loaded()
+        d.pitch = 0.05; d.eqLow = -1f; d.eqMid = 0.4f; d.eqHigh = -0.3f; d.filter = 0.5f; d.trimDb = 3.0
+        d.volume = 0.2f; d.fx.type = FxType.REVERB; d.fx.amount = 0.9f; d.fx.on = true
+        d.headphone = true; d.pitchRange = 0.16
+        val pcm = synthBeat(100.0, 10.0)
+        d.load(pcm, Analyzer.analyze(pcm), "next", "b", -14.0)
+        assertEquals(0.0, d.pitch); assertEquals(0f, d.eqLow); assertEquals(0f, d.eqMid); assertEquals(0f, d.eqHigh)
+        assertEquals(0f, d.filter); assertEquals(0.0, d.trimDb); assertEquals(1f, d.volume)
+        assertFalse(d.fx.on, "effect off")
+        assertEquals(FxType.REVERB, d.fx.type, "effect type kept"); assertEquals(0.9f, d.fx.amount, "amount kept")
+        assertTrue(d.headphone, "🎧 kept"); assertEquals(0.16, d.pitchRange, "tempo range kept")
+        assertFalse(d.playing); assertFalse(d.pendingStart)
+    }
+
+    @Test fun cueSkipsSilenceOnABar() {
+        val bpm = 120.0
+        val pcm = synthBeat(bpm, 30.0, offsetSec = 4.0)
+        val a = Analyzer.analyze(pcm)
+        assertEquals(bpm, a.bpm, 0.15)
+        val d = Deck(0, sr)
+        d.load(pcm, a, "t", "a", Analyzer.loudnessDb(pcm))
+        val cue = d.cuePoint / sr
+        assertTrue(cue in 2.0..4.05, "cue at $cue s")
+        val beat = 60.0 / a.bpm
+        val beats = (cue - a.firstBeatSec) / beat
+        val offBar = abs(beats / 4 - Math.round(beats / 4)) * 4
+        assertTrue(offBar < 0.01, "cue is $beats beats from the grid anchor, not on a bar")
+        assertEquals(d.cuePoint, d.position, "the play head starts on the cue")
+    }
+
+    @Test fun noSilenceKeepsTheOldCue() {
+        val pcm = synthBeat(120.0, 30.0)
+        val a = Analyzer.analyze(pcm)
+        val beat = 60.0 / a.bpm
+        val old = ((a.firstBeatSec % beat) + beat) % beat
+        assertEquals(old, a.startCueSec(), 1e-9)
+        val d = Deck(0, sr)
+        d.load(pcm, a, "t", "a", -14.0)
+        assertEquals(old * sr, d.cuePoint, 1e-6)
+    }
+
+    @Test fun noBeatCuesAtTheStart() {
+        val a = TrackAnalysis(0.0, 0.3, 150, FloatArray(1500) { if (it > 600) 0.5f else 0f }, FloatArray(1500), FloatArray(1500))
+        assertEquals(0.0, a.startCueSec())
+    }
+
+    @Test fun startAtHasNoSpinUpLag() {
+        val d = loaded()
+        val from = d.cuePoint + 1000
+        d.startAt(from)
+        assertTrue(d.playing)
+        val buf = FloatArray(512)
+        val blocks = sr / 256
+        repeat(blocks) { d.render(buf, 256) }
+        val expected = from + blocks * 256.0
+        assertTrue(abs(d.position - expected) < sr * 0.001, "${(d.position - expected) / sr * 1000} ms off after 1 s")
+    }
+
+    @Test fun beatPositionCountsBeatsFromTheGrid() {
+        val d = loaded(120.0)
+        val a = d.analysis!!
+        d.startAt(a.firstBeatSec * sr + 10.5 * d.framesPerBeat)
+        assertEquals(10.5, d.beatPosition(), 1e-9)
+        assertEquals(10L, d.beatIndex())
+    }
+}
+
+/** ▶ with quantize: the deck waits for the other deck's beat and starts in phase with it. */
+class QuantizedPlayTest {
+    private val sr = 44100
+
+    private companion object {
+        val pcmA = synthBeat(124.0, 60.0)
+        val pcmB = synthBeat(120.0, 60.0, seed = 2)
+        val anA = Analyzer.analyze(pcmA)
+        val anB = Analyzer.analyze(pcmB)
+    }
+
+    private val buf = FloatArray(512)
+    private fun Mixer.run(blocks: Int) = repeat(blocks) { render(buf, 256) }
+
+    /** Deck A plays; deck B is cued and SYNCed (tempo only, as it isn't playing). */
+    private fun setup(quantize: Boolean = true): Mixer {
+        val m = Mixer(sr)
+        m.decks[0].load(pcmA, anA, "A", "", -14.0)
+        m.decks[1].load(pcmB, anB, "B", "", -14.0)
+        m.quantize = quantize
+        m.decks[0].play()
+        m.run(sr / 2 / 256) // past A's spin-up
+        m.sync(1)
+        return m
+    }
+
+    /** Distance between the two decks' beats, in seconds. */
+    private fun phaseError(m: Mixer): Double {
+        val a = m.decks[0]; val b = m.decks[1]
+        val d = abs(a.beatPhase() - b.beatPhase()).let { minOf(it, 1 - it) }
+        return d * 60 / a.effectiveBpm
+    }
+
+    @Test fun quantizedPlayLandsOnTheBeat() {
+        val rnd = Random(7)
+        var waited = 0; var immediate = 0
+        repeat(20) {
+            val m = setup()
+            m.run(rnd.nextInt(1, 400))
+            val b = m.decks[1]
+            m.playPressed(1)
+            if (b.pendingStart) waited++ else immediate++
+            var blocks = 0
+            while (!b.playing && blocks < 1000) { m.run(1); blocks++ }
+            assertTrue(b.playing, "B started")
+            val beatSec = 60 / m.decks[0].effectiveBpm
+            assertTrue(blocks * 256.0 / sr <= beatSec + 256.0 / sr, "started ${blocks * 256.0 / sr} s after the press")
+            m.run(2 * sr / 256)
+            val err = phaseError(m)
+            assertTrue(err < 0.001, "beats ${err * 1000} ms apart")
+        }
+        assertTrue(waited > 0 && immediate > 0, "both cases tried ($waited waited, $immediate at once)")
+    }
+
+    @Test fun quantizeOffStartsAtOnce() {
+        val m = setup(quantize = false)
+        m.run(37)
+        m.playPressed(1)
+        assertTrue(m.decks[1].playing)
+        assertFalse(m.decks[1].pendingStart)
+    }
+
+    @Test fun secondTapCancels() {
+        val m = setup()
+        while (m.decks[0].beatPhase() !in 0.3..0.8) m.run(1)
+        m.playPressed(1)
+        assertTrue(m.decks[1].pendingStart, "waits for A's next beat")
+        assertFalse(m.decks[1].playing)
+        m.playPressed(1)
+        assertFalse(m.decks[1].pendingStart, "second tap cancels")
+        m.run(3 * sr / 256)
+        assertFalse(m.decks[1].playing, "and it stays stopped")
+    }
+
+    @Test fun waitingDeckStartsWhenTheOtherStops() {
+        val m = setup()
+        while (m.decks[0].beatPhase() !in 0.3..0.8) m.run(1)
+        m.playPressed(1)
+        assertTrue(m.decks[1].pendingStart)
+        m.decks[0].pause()
+        m.run(1)
+        assertTrue(m.decks[1].playing)
+    }
+
+    /** In a loop of a beat or less A's beat never changes: B starts when A's beat comes round again. */
+    @Test fun waitingDeckStartsInsideAShortLoop() {
+        for (beats in listOf(1.0, 0.5)) {
+            val m = setup()
+            m.decks[0].autoLoop(beats, true)
+            while (m.decks[0].beatPhase() !in 0.3..0.45) m.run(1)
+            m.playPressed(1)
+            assertTrue(m.decks[1].pendingStart, "waits for A's beat ($beats-beat loop)")
+            var blocks = 0
+            while (!m.decks[1].playing && blocks < 2 * sr / 256) { m.run(1); blocks++ }
+            assertTrue(m.decks[1].playing, "B started inside A's $beats-beat loop")
+            assertTrue(blocks * 256.0 / sr <= 60 / m.decks[0].effectiveBpm + 256.0 / sr, "within a beat")
+            m.run(1)
+            assertTrue(phaseError(m) < 0.001, "in phase")
+        }
+    }
+
+    @Test fun notInTimeJustPlays() {
+        val m = setup()
+        m.decks[1].pitch = 0.0 // B at its own 120 BPM against A's 124: no quantized start
+        while (m.decks[0].beatPhase() !in 0.3..0.8) m.run(1)
+        m.playPressed(1)
+        assertTrue(m.decks[1].playing)
+        assertFalse(m.decks[1].pendingStart)
+    }
 }
 
 class MixerTest {
@@ -258,5 +437,40 @@ class MixerTest {
         assertEquals("RIFF", String(bytes, 0, 4))
         assertEquals(44 + 172 * 256 * 4, bytes.size)
         f.delete()
+    }
+
+    /**
+     * A recording cut off before it was closed (MixDeck killed, storage full) has 0 sizes in its
+     * header and maybe half a frame at the end: repair makes it a WAV of what was written.
+     */
+    @Test fun aRecordingCutOffIsRepaired() {
+        val f = File.createTempFile("recording-", ".wav")
+        val w = WavWriter(f, 48000)
+        w.write(FloatArray(48000 * 2) { 0.25f }, 48000)
+        w.close()
+        java.io.RandomAccessFile(f, "rw").use { raf ->
+            raf.seek(4); raf.write(ByteArray(4)); raf.seek(40); raf.write(ByteArray(4))
+            raf.seek(raf.length()); raf.write(byteArrayOf(1, 2)) // half a frame
+        }
+        assertEquals(1.0, WavWriter.repair(f), 1e-9)
+        val h = java.nio.ByteBuffer.wrap(f.readBytes(), 0, 44).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        assertEquals(48000 * 4, h.getInt(40), "data size")
+        assertEquals(36 + 48000 * 4, h.getInt(4), "RIFF size")
+        assertEquals(48000, h.getInt(24), "sample rate kept")
+        f.delete()
+    }
+
+    /** Recordings left behind are found by name, oldest first; one still being written isn't. */
+    @Test fun leftoverRecordingsAreFound() {
+        val dir = java.nio.file.Files.createTempDirectory("mixdeck").toFile()
+        val now = System.currentTimeMillis()
+        val older = Recordings.newFile(dir, 1_000).apply { writeBytes(ByteArray(44)); setLastModified(now - 600_000) }
+        val newer = Recordings.newFile(dir, 2_000).apply { writeBytes(ByteArray(44)); setLastModified(now - 600_000) }
+        Recordings.newFile(dir, 3_000).apply { writeBytes(ByteArray(44)); setLastModified(now) }
+        File(dir, "mix-encode.m4a").writeBytes(ByteArray(4))
+        assertEquals(2_000L, Recordings.startedAt(newer))
+        assertEquals(null, Recordings.startedAt(File(dir, "mix-encode.m4a")))
+        assertEquals(listOf(older, newer), Recordings.leftovers(listOf(dir), idleMs = 60_000, now = now))
+        assertEquals(3, Recordings.leftovers(listOf(dir), idleMs = 0, now = now).size)
     }
 }

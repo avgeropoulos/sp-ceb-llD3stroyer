@@ -3,7 +3,6 @@ package com.mixdeck.desktop
 import com.mixdeck.NextSongs
 import com.mixdeck.engine.Direction
 import com.mixdeck.engine.Suggestion
-import com.mixdeck.ui.Console
 import com.mixdeck.ui.KeyDisplay
 import java.awt.BorderLayout
 import java.awt.CardLayout
@@ -18,15 +17,14 @@ import java.util.prefs.Preferences
 import javax.swing.BorderFactory
 import javax.swing.DefaultListModel
 import javax.swing.JButton
-import javax.swing.JCheckBox
 import javax.swing.JComboBox
 import javax.swing.JEditorPane
 import javax.swing.JLabel
 import javax.swing.JList
-import javax.swing.JOptionPane
 import javax.swing.JPanel
 import javax.swing.JProgressBar
 import javax.swing.JScrollPane
+import javax.swing.JTabbedPane
 import javax.swing.ListCellRenderer
 import javax.swing.ListSelectionModel
 import javax.swing.SwingUtilities
@@ -34,17 +32,18 @@ import kotlin.math.abs
 
 /**
  * The library's "Suggested" tab: songs on this computer that fit after the one on deck [after],
- * best first, with the reasons. [pick] gets the song id and whether to SYNC it after loading.
+ * best first, with the reasons. [pick] gets the song's id and title (the library asks where it
+ * goes if the deck is playing, and adds SYNC). It starts checking songs the first time it's shown
+ * ([start]). [searchYouTube] switches to the YouTube tab (from the empty card).
  */
 class SuggestedPanel(
     private val app: App,
     private val deck: Int,
     private val after: Int?,
     waiting: Boolean,
-    /** Ask before replacing a playing song (NEXT; LOAD has already asked). */
-    private val confirmPlaying: Boolean,
     private val setStatus: (String) -> Unit,
-    private val pick: (id: String, sync: Boolean) -> Unit,
+    private val searchYouTube: () -> Unit,
+    private val pick: (id: String, title: String) -> Unit,
 ) : JPanel(BorderLayout(6, 6)) {
 
     /** One row: a suggestion, or the song already waiting on the deck. */
@@ -57,16 +56,22 @@ class SuggestedPanel(
     private val details = JEditorPane("text/html", "").apply { isEditable = false; isOpaque = false }
     private val cards = CardLayout()
     private val center = JPanel(cards)
-    private val empty = JLabel("", JLabel.CENTER)
+    private val emptyText = JLabel("", JLabel.CENTER)
+    private val emptySearch = JButton("Search YouTube").apply { addActionListener { searchYouTube() } }
+    /** The empty card: what's wrong and, when there's nothing to suggest, a way on. */
+    private val empty = JPanel(java.awt.GridBagLayout()).apply {
+        val c = java.awt.GridBagConstraints().apply { gridx = 0; insets = java.awt.Insets(6, 6, 6, 6) }
+        add(emptyText, c); add(emptySearch, c)
+    }
     private val direction = JComboBox(arrayOf("Keep the vibe", "Build up ↑", "Cool down ↓"))
     private val progress = JProgressBar().apply { isVisible = false; isStringPainted = false }
     private val stop = JButton("Stop").apply { isVisible = false }
     private val find = JButton("Find new songs like this")
-    private val sync = JCheckBox("SYNC it for me", prefs.getBoolean("nextSync", true))
     private val load = JButton("Load on Deck $deckName").apply { isEnabled = false }
     private val songs: NextSongs?
     /** This tab's status line, shown whenever the tab is. */
-    private var status = HINT
+    var status = HINT; private set
+    private var started = false
 
     init {
         border = BorderFactory.createEmptyBorder(10, 10, 10, 10)
@@ -101,7 +106,7 @@ class SuggestedPanel(
         list.selectionMode = ListSelectionModel.SINGLE_SELECTION
         list.fixedCellHeight = 54
         list.cellRenderer = Cell()
-        empty.foreground = Color(0xB0, 0xB0, 0xBC)
+        emptyText.foreground = Color(0xB0, 0xB0, 0xBC)
         center.add(JScrollPane(list), "list")
         center.add(empty, "empty")
         add(JPanel(BorderLayout(6, 6)).apply {
@@ -109,16 +114,13 @@ class SuggestedPanel(
             add(JScrollPane(details).apply { preferredSize = Dimension(100, 130); border = BorderFactory.createEmptyBorder() }, BorderLayout.SOUTH)
         }, BorderLayout.CENTER)
 
-        // Bottom: SYNC option, find new songs, load.
+        // Bottom: find new songs, load. (SYNC is in the library's status row, on every tab.)
         add(JPanel(BorderLayout()).apply {
-            add(JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply { add(sync); add(find) }, BorderLayout.WEST)
+            add(JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply { add(find) }, BorderLayout.WEST)
             add(JPanel(FlowLayout(FlowLayout.RIGHT, 6, 0)).apply { add(load) }, BorderLayout.EAST)
         }, BorderLayout.SOUTH)
 
         list.addListSelectionListener { showDetails(list.selectedValue) }
-        addComponentListener(object : java.awt.event.ComponentAdapter() {
-            override fun componentShown(e: java.awt.event.ComponentEvent) = setStatus(status)
-        })
         list.addMouseListener(object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) { if (e.clickCount == 2) loadSelected() }
         })
@@ -131,21 +133,30 @@ class SuggestedPanel(
             prefs.putInt("nextDirection", direction.selectedIndex)
             songs?.setDirection(Direction.entries[direction.selectedIndex])
         }
-        sync.addActionListener { prefs.putBoolean("nextSync", sync.isSelected) }
         stop.addActionListener { songs?.stop(); setStatus("Stopping after this song…") }
         find.isEnabled = songs != null
         find.addActionListener { songs?.findNew() }
 
         if (songs == null) {
-            empty.text = "<html><div style='text-align:center;width:420px'>Load a song on a deck first.<br><br>" +
+            emptyText.text = "<html><div style='text-align:center;width:420px'>Load a song on a deck first.<br><br>" +
                 "Then this tab suggests what to play after it: songs whose key, tempo and energy fit.</div></html>"
+            emptySearch.isVisible = false
             cards.show(center, "empty")
             direction.isEnabled = false
-        } else songs.start()
+        }
+    }
+
+    /** Starts checking songs: the first time the tab is shown, not when the library opens. */
+    fun start() {
+        if (started) return
+        started = true
+        songs?.start()
     }
 
     /** Call when the dialog closes. */
     fun close() = songs?.close()
+
+    private val selected get() = (parent as? JTabbedPane)?.selectedComponent === this
 
     private fun show(s: NextSongs.State) {
         val keep = list.selectedValue?.s?.track?.id
@@ -154,7 +165,8 @@ class SuggestedPanel(
         s.list.forEach { model.addElement(Item(it, onDeck = false, isNew = it.track.id in s.found)) }
         (0 until model.size()).firstOrNull { model[it].s.track.id == keep }?.let { list.selectedIndex = it }
         if (model.isEmpty) {
-            empty.text = "<html><div style='text-align:center;width:420px'>" + when {
+            emptySearch.isVisible = s.checking == null
+            emptyText.text = "<html><div style='text-align:center;width:420px'>" + when {
                 s.checking != null -> "Checking your songs…"
                 s.librarySize == 0 -> "No other songs on this computer yet.<br><br>Click <b>Find new songs like this</b> and MixDeck " +
                     "fetches a few that go with the playing song."
@@ -173,7 +185,7 @@ class SuggestedPanel(
         status = s.finding
             ?: c?.let { "Checking your songs for key and energy… ${it.done + 1} of ${it.total}: ${it.title}" }
             ?: s.note ?: HINT
-        if (isVisible) setStatus(status)  // JTabbedPane hides the tabs that aren't selected
+        if (selected) setStatus(status)
     }
 
     private fun showDetails(item: Item?) {
@@ -196,12 +208,7 @@ class SuggestedPanel(
     private fun loadSelected() {
         val item = list.selectedValue ?: return
         if (item.onDeck) return
-        val d = app.mixer.decks[deck]
-        if (confirmPlaying && d.playing && JOptionPane.showConfirmDialog(this,
-                "Deck $deckName is still playing (${Console.fmtTime((d.durationSec - d.positionSec) / (1 + d.pitch))} left).\n" +
-                    "Stop it and load \"${item.s.track.title}\" now?", "Load on Deck $deckName",
-                JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return
-        pick(item.s.track.id, sync.isSelected)
+        pick(item.s.track.id, item.s.track.title)
     }
 
     /** One suggestion: stars · title, artist, summary · key move, tempo change, energy. */

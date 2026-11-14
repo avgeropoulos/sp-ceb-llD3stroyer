@@ -49,11 +49,13 @@ class MixStore(private val ctx: Context) {
 
     /**
      * Saves a recorded WAV as "[name].m4a" (AAC, 192 kbps: about 1.4 MB a minute). Falls back to
-     * keeping the WAV if this phone can't encode AAC. Deletes [wav] afterwards.
+     * keeping the WAV if this phone can't encode AAC. Deletes [wav] once it's saved; if saving
+     * fails, [wav] stays (it's saved next time MixDeck opens), so the mix is never lost.
      */
     fun save(wav: File, name: String, progress: (Float) -> Unit): Mix {
         val clean = name.trim().replace(Regex("""[\\/:*?"<>|]"""), "-").ifEmpty { "Mix" }
         val m4a = File(ctx.cacheDir, "mix-encode.m4a")
+        var saved = false
         val encoded = runCatching { AacEncoder.encode(wav, m4a, progress) }.isSuccess
         val src = if (encoded) m4a else wav
         val ext = if (encoded) "m4a" else "wav"
@@ -61,7 +63,8 @@ class MixStore(private val ctx: Context) {
         try {
             if (Build.VERSION.SDK_INT < 29) {
                 val dest = uniqueFile(legacyDir, clean, ext)
-                src.copyTo(dest)
+                try { src.copyTo(dest) } catch (e: Exception) { dest.delete(); throw e }
+                saved = true
                 return Mix(Uri.fromFile(dest), dest.nameWithoutExtension, durationOf(dest), dest.length(), dest.lastModified() / 1000, dest)
             }
             val values = ContentValues().apply {
@@ -81,9 +84,11 @@ class MixStore(private val ctx: Context) {
             } catch (e: Exception) {
                 r.delete(uri, null, null); throw e
             }
+            saved = true
             return Mix(uri, clean, durationOf(src), src.length(), System.currentTimeMillis() / 1000)
         } finally {
-            m4a.delete(); wav.delete()
+            m4a.delete()
+            if (saved) wav.delete()
         }
     }
 
@@ -155,7 +160,8 @@ object AacEncoder {
                     if (idx >= 0) {
                         val buf = codec.getInputBuffer(idx)!!
                         buf.clear()
-                        val want = minOf(buf.capacity(), chunk.size, (dataLen - fed).toInt()).coerceAtLeast(0) and 3.inv()
+                        // In Long: past 2 GB (over 3 hours) an Int would wrap and end the input at once.
+                        val want = minOf(buf.capacity().toLong(), chunk.size.toLong(), dataLen - fed).coerceAtLeast(0L).toInt() and 3.inv()
                         val n = if (want > 0) input.read(chunk, 0, want) else -1
                         val ptsUs = fed / 4 * 1_000_000L / sampleRate
                         if (n <= 0) {

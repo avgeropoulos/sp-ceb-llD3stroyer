@@ -86,29 +86,38 @@ class Suggester(
         for (r in related) {
             if (added >= max || isCancelled()) break
             val id = "yt_" + r.id
-            if (store.has(id)) continue // already on the device, so it's in the list already
-            val n = added + 1
-            try {
-                onStatus("Downloading $n of $max: ${r.title}…")
-                val info = YouTube.downloadAudio(r.url, store.audioFile(id)) { p ->
-                    if (isCancelled()) throw CancellationException("Stopped")
-                    onStatus("Downloading $n of $max: ${r.title}… ${(p * 100).toInt()}%")
-                }
-                if (isCancelled()) { store.delete(id); break }
-                var t = Track(id, info.title.ifEmpty { r.title }, info.artist.ifEmpty { r.artist }, r.url,
-                    info.durationSec.toDouble(), discovered = true)
-                store.save(t)
-                onStatus("Listening to $n of $max: ${t.title}…")
-                t = ensureFeatures(t) { if (isCancelled()) throw CancellationException("Stopped") }
-                onTrack(t)
-                added++
-            } catch (e: Throwable) {
-                store.delete(id)
-                if (isCancelled()) break
-                onStatus("Skipped ${r.title}: ${e.message ?: e.javaClass.simpleName}")
-            }
+            // The deck may be downloading the same song: wait for it (Stop still works), then it's simply saved already.
+            val t = store.withLock(id, poll = { if (isCancelled()) throw CancellationException("Stopped") }) {
+                if (store.has(id)) null // already on the device, so it's in the list already
+                else fetchNew(r, id, "${added + 1} of $max", isCancelled, onStatus)
+            } ?: continue
+            onTrack(t)
+            added++
         }
         onStatus(if (isCancelled()) "Stopped." else "Found $added new song${if (added == 1) "" else "s"}.")
         return added
+    }
+
+    /**
+     * Downloads and analyses one new song ([which]: "2 of 5"), or returns null when it failed or
+     * was stopped. Call it holding [TrackStore.withLock] [id], having found it isn't saved: whatever
+     * it leaves behind on failure is its own, so it's deleted.
+     */
+    private fun fetchNew(r: YtResult, id: String, which: String, isCancelled: () -> Boolean, onStatus: (String) -> Unit): Track? = try {
+        onStatus("Downloading $which: ${r.title}…")
+        val info = YouTube.downloadAudio(r.url, store.audioFile(id)) { p ->
+            if (isCancelled()) throw CancellationException("Stopped")
+            onStatus("Downloading $which: ${r.title}… ${(p * 100).toInt()}%")
+        }
+        if (isCancelled()) throw CancellationException("Stopped")
+        val t = Track(id, info.title.ifEmpty { r.title }, info.artist.ifEmpty { r.artist }, r.url,
+            info.durationSec.toDouble(), discovered = true)
+        store.save(t)
+        onStatus("Listening to $which: ${t.title}…")
+        ensureFeatures(t) { if (isCancelled()) throw CancellationException("Stopped") }
+    } catch (e: Throwable) {
+        store.delete(id)
+        if (!isCancelled()) onStatus("Skipped ${r.title}: ${Problems.explain(e)}")
+        null
     }
 }

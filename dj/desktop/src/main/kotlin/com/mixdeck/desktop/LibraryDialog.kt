@@ -1,56 +1,81 @@
 package com.mixdeck.desktop
 
+import com.mixdeck.LibraryMemory
+import com.mixdeck.LibraryRules
+import com.mixdeck.LibraryTab
+import com.mixdeck.Placement
+import com.mixdeck.Problems
+import com.mixdeck.SongPick
 import com.mixdeck.Spotify
 import com.mixdeck.SpotifyList
 import com.mixdeck.SpotifyTrack
 import com.mixdeck.Track
 import com.mixdeck.YouTube
 import com.mixdeck.YtResult
+import com.mixdeck.ui.Console
+import com.mixdeck.ui.PickCheck
 import java.awt.BorderLayout
+import java.awt.CardLayout
 import java.awt.Color
 import java.awt.Dimension
 import java.awt.FlowLayout
 import java.awt.Font
+import java.awt.GridBagConstraints
+import java.awt.GridBagLayout
+import java.awt.Insets
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
+import java.awt.event.WindowAdapter
+import java.awt.event.WindowEvent
 import java.io.File
 import java.util.concurrent.Executors
+import java.util.prefs.Preferences
 import javax.swing.BorderFactory
 import javax.swing.DefaultListModel
 import javax.swing.JButton
+import javax.swing.JCheckBox
 import javax.swing.JComboBox
+import javax.swing.JComponent
 import javax.swing.JDialog
 import javax.swing.JFileChooser
 import javax.swing.JLabel
 import javax.swing.JList
 import javax.swing.JOptionPane
-import com.mixdeck.ui.Console
 import javax.swing.JPanel
 import javax.swing.JScrollPane
 import javax.swing.JTabbedPane
 import javax.swing.JTextField
-import javax.swing.JToggleButton
 import javax.swing.ListSelectionModel
 import javax.swing.SwingUtilities
+import javax.swing.Timer
+import javax.swing.UIManager
 import javax.swing.event.DocumentEvent
 import javax.swing.event.DocumentListener
 import javax.swing.filechooser.FileNameExtensionFilter
 
 /**
- * Picks a song for a deck: suggestions that fit after deck [after]'s song, YouTube search, Spotify
- * link, songs on this computer, or an audio file. Opens on "Suggested" when [suggest] is set.
- * [onPick] gets the song id and whether to SYNC it once loaded.
+ * Picks a song for a deck: suggestions that fit after deck [after]'s song, songs on this
+ * computer, YouTube search, a Spotify link, or an audio file. Opens on "Suggested" when [suggest]
+ * is set. A pick closes the window at once: [onPick] gets the song (one that still needs
+ * downloading downloads on the deck) and where it goes, after asking if the deck is playing.
  */
 class LibraryDialog(
     private val app: App, private val deck: Int,
     private val after: Int? = null, private val waiting: Boolean = false, private val suggest: Boolean = false,
-    private val onPick: (String, Boolean) -> Unit,
-) : JDialog(app.frame, "Load into Deck ${if (deck == 0) "A" else "B"}", true) {
+    private val onPick: (SongPick, Placement) -> Unit,
+) : JDialog(app.frame, "Load into Deck ${Console.deckName(deck)}", true) {
 
     private val store = app.store
+    private val prefs = Preferences.userRoot().node("mixdeck")
     private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "library").apply { isDaemon = true } }
-    private val status = JLabel(" ")
+    /** The status line; it wraps to a second line rather than cutting a hint short. */
+    private val status = javax.swing.JTextArea(" ").apply {
+        isEditable = false; isFocusable = false; lineWrap = true; wrapStyleWord = true; isOpaque = false
+        font = UIManager.getFont("Label.font")
+    }
+    /** Copying a file (the only work done in this window). */
     @Volatile private var busy = false
+    private val accent = Color(if (deck == 0) 0x29B6F6 else 0xFF7043)
 
     private class Row(val title: String, val sub: String, val data: Any) {
         override fun toString() = "<html><b>${esc(title)}</b><br><span style='color:#9a9aa8'>${esc(sub)}</span></html>"
@@ -58,72 +83,104 @@ class LibraryDialog(
 
     // ---------------------------------------------------------------- YouTube
 
+    private val ytField = JTextField(LibraryMemory.query).apply {
+        putClientProperty("JTextField.placeholderText", "Search songs, or paste a YouTube or Spotify link")
+    }
+
     private fun youTubeTab(): JPanel {
         val p = JPanel(BorderLayout(6, 6)).apply { border = BorderFactory.createEmptyBorder(10, 10, 10, 10) }
-        val field = JTextField().apply { putClientProperty("JTextField.placeholderText", "Search songs, or paste a YouTube or Spotify link") }
-        val songs = JToggleButton("Songs only", true)
+        val field = ytField
+        // [Songs | Videos]: the active half is filled. Switching runs the search again.
+        val songs = JButton("Songs"); val videos = JButton("Videos")
+        fun styleMode() { segment(songs, LibraryMemory.songsOnly); segment(videos, !LibraryMemory.songsOnly) }
         val go = JButton("Search")
         val model = DefaultListModel<Row>()
         val list = rowList(model)
-        var search: YouTube.Search? = null
-        var loadingMore = false
-        val more = JButton("More results").apply { isEnabled = false }
-
-        fun run() {
-            val q = field.text.trim()
-            if (q.isEmpty()) return
-            if (Spotify.isSpotifyUrl(q)) { importSpotify(q); return }
-            if (YouTube.isYouTubeUrl(q)) { YouTube.videoId(q)?.let { pickYouTube(YtResult(q, it, "YouTube video", "", 0)) }; return }
-            val s = YouTube.Search(q, songs.isSelected)
-            search = s; model.clear(); more.isEnabled = false
-            setStatus("Searching YouTube for \"$q\"…")
-            worker.execute {
-                val r = runCatching { s.nextPage() }
-                SwingUtilities.invokeLater {
-                    if (search !== s) return@invokeLater
-                    r.onSuccess { items -> items.forEach { model.addElement(ytRow(it)) }; more.isEnabled = s.hasMore
-                        setStatus(if (items.isEmpty()) "Nothing found." else "Double-click a song to load it.") }
-                        .onFailure { setStatus("Search failed: ${it.message}") }
-                }
-            }
+        val more = JButton("More results")
+        // The list shows LibraryMemory's results, also a page that arrives after the window that
+        // asked for it closed. More asks for one page at a time, whichever window asked.
+        fun redraw() {
+            val r = LibraryMemory.results
+            // A page was added: only it is added to the list (a selected row stays). A new search: start over.
+            if (model.size() > r.size || (0 until model.size()).any { model[it].data !== r[it] }) model.clear()
+            for (i in model.size() until r.size) model.addElement(ytRow(r[i]))
+            more.isEnabled = LibraryMemory.search?.hasMore == true && r.isNotEmpty()
         }
+        redraw()
+        redrawResults = ::redraw
+        LibraryMemory.watch(redrawResults)
+        // Before the first search: what to type, and two songs to start with.
+        val cards = CardLayout()
+        val center = JPanel(cards)
+        center.add(JScrollPane(list), "list")
+        center.add(emptyCard(LibraryRules.SEARCH_TITLE, LibraryRules.SEARCH_BODY,
+            LibraryRules.STARTERS.map { (label, q) -> label to { field.text = q; runSearch(q) { cards.show(center, "list") } } }), "empty")
+        if (LibraryMemory.search == null && LibraryMemory.results.isEmpty()) cards.show(center, "empty")
+
+        fun run() = runSearch(field.text) { cards.show(center, "list") }
         more.addActionListener {
-            val s = search ?: return@addActionListener
-            if (loadingMore) return@addActionListener
-            loadingMore = true
+            val s = LibraryMemory.search ?: return@addActionListener
+            if (LibraryMemory.fetching) return@addActionListener
+            LibraryMemory.fetching = true
             worker.execute {
                 val r = runCatching { s.nextPage() }
                 SwingUtilities.invokeLater {
-                    loadingMore = false
-                    r.onSuccess { items -> items.forEach { model.addElement(ytRow(it)) }; more.isEnabled = s.hasMore }
+                    if (!LibraryMemory.pageArrived(s, r.getOrDefault(emptyList())) || !isDisplayable) return@invokeLater
+                    more.isEnabled = s.hasMore
+                    r.onFailure { setStatus("Couldn't load more results: ${Problems.explain(it)}") }
                 }
             }
         }
         field.addActionListener { run() }
         go.addActionListener { run() }
-        songs.addActionListener { songs.text = if (songs.isSelected) "Songs only" else "All videos"; run() }
+        songs.addActionListener { if (!LibraryMemory.songsOnly) { LibraryMemory.songsOnly = true; styleMode(); run() } }
+        videos.addActionListener { if (LibraryMemory.songsOnly) { LibraryMemory.songsOnly = false; styleMode(); run() } }
+        styleMode()
         onPick(list) { row -> pickYouTube(row.data as YtResult) }
 
         val top = JPanel(BorderLayout(6, 0))
         top.add(field, BorderLayout.CENTER)
-        top.add(JPanel(FlowLayout(FlowLayout.RIGHT, 6, 0)).apply { add(songs); add(go) }, BorderLayout.EAST)
+        top.add(JPanel(FlowLayout(FlowLayout.RIGHT, 0, 0)).apply {
+            add(songs); add(videos); add(javax.swing.Box.createHorizontalStrut(6)); add(go)
+        }, BorderLayout.EAST)
         p.add(top, BorderLayout.NORTH)
-        p.add(JScrollPane(list), BorderLayout.CENTER)
+        p.add(center, BorderLayout.CENTER)
         p.add(JPanel(FlowLayout(FlowLayout.RIGHT)).apply { add(more) }, BorderLayout.SOUTH)
         return p
+    }
+
+    /** LibraryMemory's results changed: the YouTube tab redraws its list (see [youTubeTab]). */
+    private var redrawResults: () -> Unit = {}
+
+    /** Searches YouTube for [text] (or follows a pasted link); every search is remembered in LibraryMemory. */
+    private fun runSearch(text: String, showList: () -> Unit) {
+        val q = text.trim()
+        if (q.isEmpty()) return
+        // A Spotify link pasted here: the Spotify tab imports it.
+        if (Spotify.isSpotifyUrl(q)) { tabs.selectedComponent = spotifyPanel; importSpotify(q); return }
+        if (YouTube.isYouTubeUrl(q)) { YouTube.videoId(q)?.let { pickYouTube(YtResult(q, it, "YouTube video", "", 0)) }; return }
+        val s = runCatching { YouTube.Search(q, LibraryMemory.songsOnly) }.getOrElse { setStatus("Search failed: ${Problems.explain(it)}"); return }
+        LibraryMemory.newSearch(q, s)
+        showList()
+        setStatus("Searching YouTube for \"$q\"…")
+        worker.execute {
+            val r = runCatching { s.nextPage() }
+            SwingUtilities.invokeLater {
+                if (!LibraryMemory.pageArrived(s, r.getOrDefault(emptyList())) || !isDisplayable) return@invokeLater
+                r.onSuccess { items -> setStatus(if (items.isEmpty()) "Nothing found." else "Double-click a song to load it.") }
+                    .onFailure { setStatus("Search failed: ${Problems.explain(it)}") }
+            }
+        }
     }
 
     private fun ytRow(r: YtResult) = Row(r.title, listOf(r.artist, fmt(r.durationSec), if (store.has("yt_" + r.id)) "on this computer" else "")
         .filter { it.isNotEmpty() }.joinToString("  ·  "), r)
 
+    /** Saved already: load it. Otherwise the console downloads it on the deck. */
     private fun pickYouTube(r: YtResult) {
         val id = "yt_" + r.id
-        if (store.has(id)) return finishWith(id)
-        background("Downloading ${r.title}…") {
-            val info = YouTube.downloadAudio(r.url, store.audioFile(id)) { p -> setStatus("Downloading ${r.title}… ${(p * 100).toInt()}%") }
-            store.save(Track(id, info.title.ifEmpty { r.title }, info.artist.ifEmpty { r.artist }, r.url, info.durationSec.toDouble()))
-            id
-        }
+        if (store.has(id)) return finishWith(SongPick.Saved(id, store.get(id)?.title ?: r.title))
+        finishWith(SongPick.YouTube(r.url, r.id, r.title, r.artist, r.durationSec))
     }
 
     // ---------------------------------------------------------------- Spotify
@@ -131,6 +188,8 @@ class LibraryDialog(
     private val spotifyModel = DefaultListModel<Row>()
     private val spotifyTitle = JLabel(" ").apply { font = font.deriveFont(Font.BOLD, 15f) }
     private val savedLists = JComboBox<String>()
+    /** Saved songs by name, worked out once per list ("on this computer" rows load offline). */
+    private var spotifyHave: Map<String, List<Track>> = emptyMap()
 
     private fun spotifyTab(): JPanel {
         val p = JPanel(BorderLayout(6, 6)).apply { border = BorderFactory.createEmptyBorder(10, 10, 10, 10) }
@@ -154,7 +213,12 @@ class LibraryDialog(
         p.add(top, BorderLayout.NORTH)
         p.add(JScrollPane(list), BorderLayout.CENTER)
         p.add(JLabel("<html><span style='color:#9a9aa8'>Spotify doesn't let apps mix its audio, so each song is matched to its audio on YouTube Music.</span></html>"), BorderLayout.SOUTH)
-        store.spotifyLists().firstOrNull()?.let { showSpotify(it) }
+        val first = store.spotifyLists().firstOrNull()
+        if (first != null) showSpotify(first) else {
+            // No list yet: how to get a link out of Spotify.
+            spotifyTitle.font = spotifyTitle.font.deriveFont(Font.PLAIN, 13f)
+            spotifyTitle.text = "<html><span style='color:#b0b0bc'>${esc(SPOTIFY_EMPTY)}</span></html>"
+        }
         return p
     }
 
@@ -164,9 +228,14 @@ class LibraryDialog(
     }
 
     private fun showSpotify(l: SpotifyList) {
+        spotifyHave = LibraryRules.savedNames(store)
+        spotifyTitle.font = spotifyTitle.font.deriveFont(Font.BOLD, 15f)
         spotifyTitle.text = "${l.name}  (${l.tracks.size} songs)"
         spotifyModel.clear()
-        l.tracks.forEach { spotifyModel.addElement(Row(it.title, "${it.artist}  ·  ${fmt(it.durationSec)}", it)) }
+        l.tracks.forEach {
+            val have = LibraryRules.savedId(spotifyHave, it) != null
+            spotifyModel.addElement(Row(it.title, "${it.artist}  ·  ${fmt(it.durationSec)}" + if (have) "  ·  on this computer" else "", it))
+        }
     }
 
     private fun importSpotify(link: String) {
@@ -181,31 +250,27 @@ class LibraryDialog(
         }
     }
 
+    /** Saved already ("on this computer"): load it, offline. Otherwise the console finds and downloads it on the deck. */
     private fun pickSpotify(t: SpotifyTrack) {
-        background("Finding ${t.title} on YouTube…") {
-            val match = Spotify.matchOnYouTube(t)
-            val id = "yt_" + match.id
-            if (!store.has(id)) {
-                YouTube.downloadAudio(match.url, store.audioFile(id)) { p -> setStatus("Downloading ${t.title}… ${(p * 100).toInt()}%") }
-                store.save(Track(id, t.title, t.artist, match.url, match.durationSec.toDouble()))
-            }
-            id
-        }
+        val id = LibraryRules.savedId(spotifyHave, t)
+        finishWith(if (id != null) SongPick.Saved(id, t.title) else SongPick.Spotify(t))
     }
 
     // ---------------------------------------------------------------- My songs
 
     private fun mySongsTab(): JPanel {
         val p = JPanel(BorderLayout(6, 6)).apply { border = BorderFactory.createEmptyBorder(10, 10, 10, 10) }
-        val filter = JTextField().apply { putClientProperty("JTextField.placeholderText", "Filter my songs") }
+        val filter = JTextField(LibraryMemory.mySongsFilter)
         val model = DefaultListModel<Row>()
         val list = rowList(model)
         fun refresh() {
-            val q = filter.text.lowercase()
+            LibraryMemory.mySongsFilter = filter.text
+            val all = store.all()
+            filter.putClientProperty("JTextField.placeholderText", LibraryRules.filterHint(all.size))
             model.clear()
-            store.all().filter { q.isEmpty() || it.title.lowercase().contains(q) || it.artist.lowercase().contains(q) }.forEach {
-                model.addElement(Row(it.title, listOf(it.artist, if (it.bpm > 0) "%.1f BPM".format(it.bpm) else "",
-                    if (it.durationSec > 0) fmt(it.durationSec.toLong()) else "").filter { s -> s.isNotEmpty() }.joinToString("  ·  "), it))
+            // Songs on a deck last, marked "on deck A"; the filter also takes a key like 8A.
+            LibraryRules.mySongs(all, (0..1).map(app::trackOn), filter.text).forEach { (t, onDeck) ->
+                model.addElement(Row(t.title, LibraryRules.songSubtitle(t, onDeck), t))
             }
         }
         filter.document.addDocumentListener(object : DocumentListener {
@@ -214,7 +279,8 @@ class LibraryDialog(
             override fun changedUpdate(e: DocumentEvent) = refresh()
         })
         refresh()
-        onPick(list) { row -> finishWith((row.data as Track).id) }
+        fun load(t: Track) = finishWith(SongPick.Saved(t.id, t.title))
+        onPick(list) { row -> load(row.data as Track) }
         val delete = JButton("Delete").apply {
             addActionListener {
                 val row = list.selectedValue ?: return@addActionListener
@@ -223,10 +289,10 @@ class LibraryDialog(
                         JOptionPane.OK_CANCEL_OPTION) == JOptionPane.OK_OPTION) { store.delete(t.id); refresh() }
             }
         }
-        val load = JButton("Load").apply { addActionListener { list.selectedValue?.let { finishWith((it.data as Track).id) } } }
+        val loadB = JButton("Load").apply { addActionListener { list.selectedValue?.let { load(it.data as Track) } } }
         p.add(filter, BorderLayout.NORTH)
         p.add(JScrollPane(list), BorderLayout.CENTER)
-        p.add(JPanel(FlowLayout(FlowLayout.RIGHT)).apply { add(delete); add(load) }, BorderLayout.SOUTH)
+        p.add(JPanel(FlowLayout(FlowLayout.RIGHT)).apply { add(delete); add(loadB) }, BorderLayout.SOUTH)
         return p
     }
 
@@ -249,51 +315,93 @@ class LibraryDialog(
     }
 
     private fun importFile(f: File) {
-        background("Copying ${f.name}…") {
-            val id = "file_" + Integer.toHexString((f.name + f.length()).hashCode())
-            if (!store.has(id)) {
-                f.copyTo(store.audioFile(id), overwrite = true)
-                store.save(Track(id, f.nameWithoutExtension, "", f.path))
+        if (busy) { setStatus("Still working on the last one…"); return }
+        busy = true
+        setStatus("Copying ${f.name}…")
+        worker.execute {
+            val r = runCatching {
+                val id = "file_" + Integer.toHexString((f.name + f.length()).hashCode())
+                if (!store.has(id)) {
+                    f.copyTo(store.audioFile(id), overwrite = true)
+                    store.save(Track(id, f.nameWithoutExtension, "", f.path))
+                }
+                id
             }
-            id
+            SwingUtilities.invokeLater {
+                busy = false
+                r.onSuccess { finishWith(SongPick.Saved(it, store.get(it)?.title ?: f.nameWithoutExtension)) }
+                    .onFailure { setStatus("Couldn't copy it: ${Problems.explain(it)}") }
+            }
         }
+    }
+
+    // ---------------------------------------------------------------- picking
+
+    /** The deck other than [target] holds a song with a beat (so there's a tempo to SYNC to). */
+    private fun otherHasTempo(target: Int) = app.mixer.decks[1 - target].let { it.loaded && it.bpm > 0 }
+
+    /**
+     * SYNC for a song loaded onto [target]: the box when it shows; while it's hidden, Suggested
+     * picks keep the choice (they match the song they replace) and other tabs don't sync.
+     */
+    private fun syncFor(target: Int, fromSuggested: Boolean) =
+        prefs.getBoolean("nextSync", true) && (otherHasTempo(target) || fromSuggested)
+
+    /**
+     * A song was picked: if its deck is playing, ask where it should go (PickCheck), then hand it
+     * over and close at once. [fromSuggested]: picked on the Suggested tab (SYNC rule).
+     */
+    private fun finishWith(pick: SongPick, fromSuggested: Boolean = false) {
+        if (!isDisplayable) return
+        val sync = syncFor(deck, fromSuggested)
+        val q = synchronized(app.mixer.lock) { PickCheck.question(app.mixer, deck, pick.title, needsDownload = pick !is SongPick.Saved) }
+        var placement = Placement(deck, sync)
+        if (q != null) {
+            val labels = q.labelList.toTypedArray()
+            val r = JOptionPane.showOptionDialog(this, q.message, q.title, JOptionPane.DEFAULT_OPTION,
+                JOptionPane.QUESTION_MESSAGE, null, labels, labels[0])
+            placement = q.options.getOrNull(r)?.let { Placement.of(it, deck, sync, syncFor(1 - deck, fromSuggested)) } ?: return
+        }
+        dispose()
+        onPick(pick, placement)
     }
 
     // ---------------------------------------------------------------- helpers
 
-    private fun background(what: String, job: () -> String) {
-        if (busy) { setStatus("Still working on the last one…"); return }
-        busy = true
-        setStatus(what)
-        worker.execute {
-            val r = runCatching(job)
-            SwingUtilities.invokeLater {
-                busy = false
-                r.onSuccess { finishWith(it) }.onFailure { setStatus("Failed: ${it.message ?: it.javaClass.simpleName}") }
-            }
-        }
-    }
-
-    private fun finishWith(id: String, sync: Boolean = false) {
-        if (!isDisplayable) return // closed while a download was finishing
-        // LOAD already asked before opening this window; NEXT asks now, whichever tab the song came from.
-        val d = app.mixer.decks[deck]
-        if (suggest && d.playing) {
-            val name = if (deck == 0) "A" else "B"
-            val title = store.get(id)?.title ?: "this song"
-            if (JOptionPane.showConfirmDialog(this,
-                    "Deck $name is still playing (${Console.fmtTime((d.durationSec - d.positionSec) / (1 + d.pitch))} left).\n" +
-                        "Stop it and load \"$title\" now?", "Load on Deck $name",
-                    JOptionPane.OK_CANCEL_OPTION) != JOptionPane.OK_OPTION) return
-        }
-        dispose()
-        onPick(id, sync)
-    }
-
+    private val tabs = JTabbedPane()
     private lateinit var suggested: SuggestedPanel
+    private lateinit var minePanel: JPanel
+    private lateinit var youTubePanel: JPanel
+    private lateinit var spotifyPanel: JPanel
+    private lateinit var filesPanel: JPanel
+    /** "SYNC to deck A's tempo", in the status row on every tab. */
+    private val syncBox = JCheckBox("SYNC to deck ${Console.deckName(1 - deck)}'s tempo", prefs.getBoolean("nextSync", true)).apply {
+        addActionListener { prefs.putBoolean("nextSync", isSelected) }
+    }
+    private val ticker = Timer(1000) { refreshLive() }
+
+    /** The title's countdown ("Load into Deck B — Deck A ends in 0:43") and whether SYNC applies. */
+    private fun refreshLive() {
+        val cd = PickCheck.countdown(app.mixer, deck)
+        title = "Load into Deck ${Console.deckName(deck)}" + (cd?.let { " — ${it.text}" } ?: "")
+        syncBox.isVisible = otherHasTempo(deck)
+    }
+
+    /** Each tab's hint in the status line. */
+    private fun tabChanged() {
+        when (tabs.selectedComponent) {
+            suggested -> { suggested.start(); setStatus(suggested.status) }
+            minePanel -> setStatus("Songs on this computer load instantly. Double-click one to load it.")
+            youTubePanel -> setStatus(LibraryRules.YOUTUBE_HINT)
+            spotifyPanel -> setStatus("Paste a Spotify playlist, album or song link. Each song is matched to its audio on YouTube.")
+            filesPanel -> setStatus("Pick an audio file from this computer.")
+        }
+    }
 
     /** Runs however the window closes (a pick, the close button, Esc): stops the Suggested tab's work. */
     override fun dispose() {
+        LibraryMemory.unwatch(redrawResults)
+        ticker.stop()
         if (::suggested.isInitialized) suggested.close()
         worker.shutdown()
         super.dispose()
@@ -316,36 +424,78 @@ class LibraryDialog(
         })
     }
 
-    private fun setStatus(s: String) = SwingUtilities.invokeLater { status.text = s }
+    /** One half of [Songs | Videos]: the active half is filled with the deck's colour. */
+    private fun segment(b: JButton, on: Boolean) {
+        b.background = if (on) accent else UIManager.getColor("Button.background")
+        b.foreground = if (on) Color.BLACK else UIManager.getColor("Button.foreground")
+        b.font = b.font.deriveFont(if (on) Font.BOLD else Font.PLAIN)
+    }
+
+    /** A title, a line of advice and buttons that lead somewhere (label to action), centred. */
+    private fun emptyCard(title: String, body: String, buttons: List<Pair<String, () -> Unit>>): JComponent {
+        val p = JPanel(GridBagLayout())
+        val c = GridBagConstraints().apply { gridx = 0; insets = Insets(6, 6, 6, 6) }
+        p.add(JLabel(title).apply { font = font.deriveFont(Font.BOLD, 18f) }, c)
+        c.gridy = 1
+        p.add(JLabel("<html><div style='text-align:center;width:460px;color:#b0b0bc'>${esc(body)}</div></html>", JLabel.CENTER), c)
+        c.gridy = 2
+        p.add(JPanel(FlowLayout(FlowLayout.CENTER, 10, 0)).apply {
+            for ((label, action) in buttons) add(JButton(label).apply { addActionListener { action() } })
+        }, c)
+        return p
+    }
+
+    private fun setStatus(s: String) = SwingUtilities.invokeLater { status.text = s; status.revalidate() }
 
     // Runs after all the properties above exist (Kotlin initialises in source order).
     init {
-        val tabs = JTabbedPane()
-        suggested = SuggestedPanel(app, deck, after, waiting, confirmPlaying = false, setStatus = { setStatus(it) }) { id, sync -> finishWith(id, sync) }
-        tabs.addTab("Suggested", suggested)
-        tabs.addTab("YouTube", youTubeTab())
-        tabs.addTab("Spotify", spotifyTab())
-        tabs.addTab("My songs", mySongsTab())
-        tabs.addTab("Files", filesTab())
-        tabs.selectedIndex = when {
-            suggest -> 0
-            store.all().isNotEmpty() -> 3
-            else -> 1
+        suggested = SuggestedPanel(app, deck, after, waiting, setStatus = { setStatus(it) },
+            searchYouTube = { tabs.selectedComponent = youTubePanel; ytField.requestFocusInWindow() }) { id, title ->
+            finishWith(SongPick.Saved(id, title), fromSuggested = true)
         }
+        minePanel = mySongsTab(); youTubePanel = youTubeTab(); spotifyPanel = spotifyTab(); filesPanel = filesTab()
+        // Suggested | My songs | YouTube | Spotify | Files
+        tabs.addTab("Suggested", suggested)
+        tabs.addTab("My songs", minePanel)
+        tabs.addTab("YouTube", youTubePanel)
+        tabs.addTab("Spotify", spotifyPanel)
+        tabs.addTab("Files", filesPanel)
+        val first = LibraryRules.defaultTab(suggest, LibraryRules.hasSavedNotOnDeck(store.all(), (0..1).map(app::trackOn)))
+        tabs.selectedComponent = when (first) {
+            LibraryTab.SUGGESTED -> suggested
+            LibraryTab.MINE -> minePanel
+            LibraryTab.SPOTIFY -> spotifyPanel
+            LibraryTab.FILES -> filesPanel
+            LibraryTab.YOUTUBE -> youTubePanel
+        }
+        tabs.addChangeListener { tabChanged() }
+        tabChanged()
+        // YouTube first (no saved songs): type straight away.
+        if (first == LibraryTab.YOUTUBE) addWindowListener(object : WindowAdapter() {
+            override fun windowOpened(e: WindowEvent) { ytField.requestFocusInWindow(); ytField.selectAll() }
+        })
         status.border = BorderFactory.createEmptyBorder(6, 10, 6, 10)
         status.foreground = Color(0xB0, 0xB0, 0xBC)
         contentPane.add(tabs, BorderLayout.CENTER)
-        contentPane.add(status, BorderLayout.SOUTH)
+        // Bottom row: the status line, and on the right "SYNC to deck A's tempo" (every tab).
+        contentPane.add(JPanel(BorderLayout()).apply {
+            add(status, BorderLayout.CENTER)
+            add(JPanel(FlowLayout(FlowLayout.RIGHT, 10, 2)).apply { add(syncBox) }, BorderLayout.EAST)
+        }, BorderLayout.SOUTH)
+        refreshLive()
+        ticker.start()
         size = Dimension(900, 620)
         setLocationRelativeTo(app.frame)
         // The close button must dispose (not just hide) the window, or its background work keeps running.
         defaultCloseOperation = DISPOSE_ON_CLOSE
         rootPane.registerKeyboardAction({ dispose() }, javax.swing.KeyStroke.getKeyStroke("ESCAPE"), javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW)
-        if (!suggest) setStatus("Pick a song for deck ${if (deck == 0) "A" else "B"}. Double-click a song to load it.")
     }
 
     companion object {
         fun fmt(sec: Long) = if (sec <= 0) "" else "%d:%02d".format(sec / 60, sec % 60)
         fun esc(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+        /** The Spotify tab before any list was imported (computer wording: "double-click"). */
+        val SPOTIFY_EMPTY = LibraryRules.SPOTIFY_EMPTY.replace("when you tap it", "when you double-click it")
     }
 }

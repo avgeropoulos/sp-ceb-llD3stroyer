@@ -12,10 +12,11 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import com.mixdeck.ui.Guide
+import com.mixdeck.ui.Menus
 import com.mixdeck.ui.Guide.green
 import com.mixdeck.ui.Guide.yellow
 
-/** The full guide: a "your first mix" walkthrough and a key for every control. */
+/** Help & guide: a "your first mix" walkthrough and a key for every control. */
 class HelpActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -23,7 +24,7 @@ class HelpActivity : Activity() {
 
         val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         header.addView(TextView(this).apply {
-            text = "How MixDeck works"; setTextColor(yellow); textSize = 22f; typeface = Typeface.DEFAULT_BOLD
+            text = "Help & guide"; setTextColor(yellow); textSize = 22f; typeface = Typeface.DEFAULT_BOLD
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         header.addView(Button(this).apply {
             text = "▶ Nelly tutorial"; isAllCaps = false; textSize = 14f; setTextColor(Color.BLACK)
@@ -46,25 +47,24 @@ class HelpActivity : Activity() {
 
         // Interactive tutorial.
         col.addView(heading("Try it hands-on", green))
-        col.addView(row("▶", green, "Tap \"▶ Nelly tutorial\" (top right, or ☰ → Tutorial) for a guided mix of Nelly's " +
+        col.addView(row("▶", green, "Tap \"▶ Nelly tutorial\" (top right, or ☰ → Learn to mix) for a guided mix of Nelly's " +
             "\"Air Force Ones\" into \"Grillz\". It loads both songs, lights up each button you need, " +
             "and moves on when you've done each step.", round = true))
 
         // Your first mix.
         col.addView(heading("Your first mix in 8 steps", green))
-        Guide.firstMix.forEachIndexed { i, step ->
+        Guide.firstMix(computer = false).forEachIndexed { i, step ->
             val tip = step.startsWith("Tip")
             col.addView(row(if (tip) "★" else "${i + 1}", if (tip) yellow else green, step, round = true))
         }
 
-        for (s in Guide.sections) {
+        for (s in Guide.sections(computer = false)) {
             col.addView(heading(s.title, s.color))
             for (it in s.items) col.addView(row(it.chip, it.color, it.text))
         }
 
         col.addView(TextView(this).apply {
-            text = "MixDeck ${BuildConfig.VERSION_NAME} · updates install from inside the app (☰ → Check for updates). " +
-                "YouTube downloads are for personal use only."
+            text = Menus.guideFooter(BuildConfig.VERSION_NAME)
             setTextColor(0xFF77778A.toInt()); textSize = 12f; setPadding(0, dp(20), 0, 0)
         })
 
