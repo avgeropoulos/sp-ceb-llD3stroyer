@@ -71,6 +71,8 @@ class Dog3(val herc: Boolean) {
     var cooldown = 0f
     /** Distance run, for the leg animation. */
     var stride = 0f
+    /** Seconds of zoomies left: after grabbing a tennis ball, the dog tears around at top speed. */
+    var zoomT = 0f
 
     /** Both doodles are about the same size. */
     val radius = 0.38f
@@ -95,12 +97,24 @@ class Treat3(val x: Float, val y: Float, val z: Float) {
     var taken = false
 }
 
+/** A dirt mound with a bone buried under it. [t] counts up from when it's dug, for the flying dirt. */
+class Dig3(val x: Float, val z: Float) {
+    var dug = false
+    var t = 0f
+}
+
+/** A tennis ball lying about. Once grabbed it's gone for a while, then another turns up. */
+class Ball3(val x: Float, val z: Float) {
+    var awayT = 0f
+    val here get() = awayT <= 0f
+}
+
 class Popup3(val text: String, val x: Float, val y: Float, val z: Float, val color: Int, val size: Float) {
     var t = 0f
 }
 
 /**
- * Hercules & Apollo 3D: run around four open 3D levels as one of the dogs, chasing
+ * Hercules & Apollo 3D: run around six open 3D levels as one of the dogs, chasing
  * critters, then head home. The camera follows from behind; the controls are snappy.
  */
 class Game3D(
@@ -154,6 +168,11 @@ class Game3D(
     val bikes = ArrayList<Bike3>()
     val treats = ArrayList<Treat3>()
     val popups = ArrayList<Popup3>()
+    val digs = ArrayList<Dig3>()
+    val balls = ArrayList<Ball3>()
+    /** Bones dug up on this level. */
+    var dugUp = 0
+        private set
 
     var camYaw = 0f
     /** How fast the camera is swinging round (radians a second); it eases in and out. */
@@ -273,13 +292,18 @@ class Game3D(
         level.spawns.mapTo(critters) { Critter3(it) }
         treats.clear()
         level.treats.mapTo(treats) { Treat3(it[0], it[1], it[2]) }
+        digs.clear()
+        level.digs.mapTo(digs) { Dig3(it[0], it[1]) }
+        balls.clear()
+        level.balls.mapTo(balls) { Ball3(it[0], it[1]) }
+        dugUp = 0
         bikes.clear()
         val loopLen = loopLength()
         for (b in 0 until level.bikes) bikes += Bike3(loopLen * b / level.bikes).also { placeBike(it) }
         with(dog) {
             x = level.startX; z = level.startZ; y = 0f; yaw = level.startYaw
             vx = 0f; vy = 0f; vz = 0f; onGround = true
-            stinkT = 0f; hurtT = 0f; dashT = 0f; barkT = 0f; cooldown = 0f; jumpBuffer = 0f
+            stinkT = 0f; hurtT = 0f; dashT = 0f; barkT = 0f; cooldown = 0f; jumpBuffer = 0f; zoomT = 0f; wetT = 0f
         }
         with(buddy) {
             // Starts beside you.
@@ -500,6 +524,8 @@ class Game3D(
         }
         checkCatches()
         checkToy()
+        checkDigs(dt)
+        checkBalls(dt)
         checkSprinklers()
         updateBikes(dt)
         if (state != State.PLAYING) return
@@ -514,6 +540,7 @@ class Game3D(
         if (d.cooldown > 0f) d.cooldown -= dt
         if (d.stinkT > 0f) d.stinkT -= dt
         if (d.wetT > 0f) d.wetT -= dt
+        if (d.zoomT > 0f) d.zoomT -= dt
         if (d.hurtT > 0f) d.hurtT -= dt
         if (d.barkT > 0f) d.barkT -= dt
         if (actionP && d.cooldown <= 0f) if (d.herc) dash() else bark()
@@ -529,7 +556,8 @@ class Game3D(
         val fx = sin(camYaw); val fz = cos(camYaw)
         val wx = fx * sy - fz * sx
         val wz = fz * sy + fx * sx
-        val top = d.maxSpeed * (if (d.stinkT > 0f) 0.6f else 1f) * (if (d.wetT > 0f) 0.75f else 1f)
+        val top = d.maxSpeed * (if (d.stinkT > 0f) 0.6f else 1f) * (if (d.wetT > 0f) 0.75f else 1f) *
+            (if (d.zoomT > 0f) ZOOM_SPEED else 1f)
 
         if (d.dashT > 0f) {
             d.dashT -= dt
@@ -747,6 +775,44 @@ class Game3D(
     // ------------------------------------------------------------------ The squeaky toy
 
     val hasToy get() = !toyX.isNaN()
+
+    /** Run over a dirt mound and the dog digs up the bone buried there, and a few treats with it. */
+    private fun checkDigs(dt: Float) {
+        val d = dog
+        for (g in digs) {
+            if (g.dug) { g.t += dt; continue }
+            val dist = hypot(g.x - d.x, g.z - d.z)
+            if (dist < 7f) showTip(DIG_TIP)
+            if (dist > d.radius + 0.55f || d.y > 0.5f) continue
+            g.dug = true
+            dugUp++
+            score += DIG_BONUS
+            audio.play(WalkSound.DIG)
+            popup("DUG UP A BONE! +$DIG_BONUS", g.x, 1.6f, g.z, YELLOW, 10f)
+            // Treats fly out and land in a ring around the hole.
+            for (i in 0 until 3) {
+                val a = clock * 3f + i * 2.094f
+                val lim = level.half - 1f
+                treats += Treat3((g.x + sin(a) * 1.7f).coerceIn(-lim, lim), 0.6f, (g.z + cos(a) * 1.7f).coerceIn(-lim, lim))
+            }
+        }
+    }
+
+    /** Grab a tennis ball and get the zoomies: a burst of top speed, fast enough for Apollo to catch a bunny. */
+    private fun checkBalls(dt: Float) {
+        val d = dog
+        for (b in balls) {
+            if (!b.here) { b.awayT -= dt; continue }
+            val dist = hypot(b.x - d.x, b.z - d.z)
+            if (dist < 7f) showTip(BALL_TIP)
+            if (dist > d.radius + 0.5f || d.y > 0.9f) continue
+            b.awayT = BALL_AWAY
+            d.zoomT = ZOOM_TIME
+            score += 50
+            audio.play(WalkSound.ZOOM)
+            popup("ZOOMIES!", d.x, d.y + 1.6f, d.z, CYAN, 12f)
+        }
+    }
 
     private fun checkToy() {
         if (!hasToy || toyCarried) return
@@ -1123,6 +1189,14 @@ class Game3D(
         const val SPRINKLER_SPIN = 1.4f
         const val TEAM_BONUS = 150
         const val TOY_BONUS = 500
+        const val DIG_BONUS = 150
+        /** Seconds the zoomies last, and how much faster the dog runs with them. */
+        const val ZOOM_TIME = 6f
+        const val ZOOM_SPEED = 1.5f
+        /** Seconds before another tennis ball turns up where one was grabbed. */
+        const val BALL_AWAY = 25f
+        const val DIG_TIP = "See that dirt mound? Run over it to dig up a bone!"
+        const val BALL_TIP = "Grab the tennis ball for the ZOOMIES!"
         const val HOME_TIP = "That's plenty! Follow the arrow HOME!"
         private const val WHITE = 0xFFFFFFFF.toInt()
         private const val YELLOW = 0xFFFFE14D.toInt()

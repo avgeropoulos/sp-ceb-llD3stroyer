@@ -272,6 +272,14 @@ object Hud3D {
         for (i in 0 until 3) heart(gfx, 12f + i * 11f, 34f, i < g.hearts)
         gfx.shadowText("CHASED ${g.chased}/${g.level.target}", 46f, 38f, 7f, if (g.goalReached) 0xFF7DF9FF.toInt() else WHITE)
         if (g.toyCarried && !g.toyHome) gfx.shadowText("+ SQUEAKY TOY", 46f, 48f, 6.5f, 0xFF9BE15D.toInt())
+        if (g.dog.zoomT > 0f) {
+            // How much zoomies is left.
+            val cx = g.viewW / 2
+            val full = 70f
+            gfx.shadowText("ZOOMIES!", cx, 90f, 8f, 0xFF7DF9FF.toInt(), 1)
+            gfx.rect(cx - full / 2 - 1f, 93f, full + 2f, 6f, 0xAA000000.toInt())
+            gfx.rect(cx - full / 2, 94f, full * g.dog.zoomT / Game3D.ZOOM_TIME, 4f, 0xFFD8F23A.toInt())
+        }
         val secs = g.levelTime.toInt()
         gfx.shadowText("%d:%02d".format(secs / 60, secs % 60), g.viewW - 60f, 14f, 8f, WHITE, 2)
     }
@@ -358,7 +366,7 @@ object Hud3D {
         val secs = g.levelTime.toInt()
         gfx.shadowText("Time %d:%02d   (par %d:%02d)".format(secs / 60, secs % 60, g.level.def.par.toInt() / 60, g.level.def.par.toInt() % 60), cx, 124f, 8f, WHITE, 1)
         gfx.shadowText("Critters chased: ${g.chased} / ${g.level.total}", cx, 138f, 8f, WHITE, 1)
-        gfx.shadowText("Treats: ${g.treatsGot}    Team chases: ${g.teamChases}    Bonus: +${g.bonus}", cx, 150f, 7f, WHITE, 1)
+        gfx.shadowText("Treats: ${g.treatsGot}   Bones dug up: ${g.dugUp}/${g.digs.size}   Team chases: ${g.teamChases}   Bonus: +${g.bonus}", cx, 150f, 7f, WHITE, 1)
         if (g.hasToy) {
             gfx.shadowText(
                 if (g.toyHome) "Squeaky toy brought home! +${Game3D.TOY_BONUS}" else "The squeaky toy is still out there...",

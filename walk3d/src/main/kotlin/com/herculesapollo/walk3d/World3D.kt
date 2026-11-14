@@ -13,12 +13,15 @@ enum class Look(
     BEACH(0xFF4FC0FF.toInt(), 0xFFD2F4FF.toInt(), 0xFFF2D49B.toInt(), 0xFFB98A5A.toInt(), 0.66f, 0.45f, false, WalkTune.DAY),
     NIGHT(0xFF0A1530.toInt(), 0xFF1B2850.toInt(), 0xFF2A5A38.toInt(), 0xFF5A5664.toInt(), 0.5f, 0.3f, true, WalkTune.NIGHT),
     BACKYARD(0xFF7EC3F2.toInt(), 0xFFE3F1F8.toInt(), 0xFF6DB33F.toInt(), 0xFFC9C6C0.toInt(), 0.64f, 0.48f, false, WalkTune.DAY),
+    /** Golden afternoon light in the woods, with the leaves turning. */
+    AUTUMN(0xFF7FB2E8.toInt(), 0xFFFFE8C8.toInt(), 0xFF9DAA48.toInt(), 0xFF9A7448.toInt(), 0.64f, 0.5f, false, WalkTune.DAY),
 }
 
 enum class PropType {
     TREE, BUSH, BENCH, FENCE, BIN, HOUSE, HOME, LAMP, UMBRELLA, SANDCASTLE, HYDRANT, FLOWERS, ROCK, HOLE, HEDGE, WATER, PATH,
     /** The backyard: the pool behind its mesh fence, the dog cot, the wicker loveseat, the toy car, palms, sprinklers and the white vinyl fence. */
     POOL, COT, COUCH, TOYCAR, PALM, SPRINKLER, VINYL,
+    LOG,
 }
 
 /**
@@ -39,6 +42,10 @@ class Level(val def: LevelDef) {
     val solids = ArrayList<Solid>()
     val spawns = ArrayList<Spawn>()
     val treats = ArrayList<FloatArray>()
+    /** Dirt mounds (x, z) with a bone buried under each: run over one to dig it up. */
+    val digs = ArrayList<FloatArray>()
+    /** Tennis balls (x, z): grab one for the zoomies. */
+    val balls = ArrayList<FloatArray>()
     /** Lawn sprinklers (x, z). */
     val sprinklers = ArrayList<FloatArray>()
     /** The loop the bikes ride around. */
@@ -126,6 +133,16 @@ class Level(val def: LevelDef) {
     }
 
     fun flowers(x: Float, z: Float) { props += Prop(PropType.FLOWERS, x, z) }
+
+    fun dig(x: Float, z: Float) { digs += floatArrayOf(x, z) }
+
+    fun ball(x: Float, z: Float) { balls += floatArrayOf(x, z) }
+
+    /** A fallen log to hop over or stand on. */
+    fun log(x: Float, z: Float) {
+        props += Prop(PropType.LOG, x, z)
+        solids += Solid(x - 1.3f, x + 1.3f, z - 0.3f, z + 0.3f, 0.55f)
+    }
 
     /** A pool [w] x [d] behind a mesh safety fence that goes all the way round. */
     fun pool(x: Float, z: Float, w: Float, d: Float) {
@@ -258,6 +275,8 @@ object Levels {
             treats(0f, 12f, 0f, 3f, 5); treats(-14f, 0f, -4f, 0f, 5); treats(4f, -1f, 16f, -1f, 5)
             bikeLoop(-18f, -14f, 18f, -14f, 18f, 18f, -18f, 18f, count = 2)
             toy(-18.5f, 18.5f)
+            dig(-16f, 10f); dig(7f, -16f); dig(12f, -6f)
+            ball(8f, 12f)
         },
         LevelDef("Maple Street", Look.STREET, 22f, 60f) {
             startX = -16f; startZ = 0f; startYaw = (Math.PI / 2).toFloat()
@@ -279,6 +298,8 @@ object Levels {
             bikeLoop(-20f, -1.2f, 20f, -1.2f, 20f, 1.2f, -20f, 1.2f, count = 3)
             // Up on a fence: jump for it.
             toy(-8.3f, 10f, Level.FENCE_TOP)
+            dig(-8f, -12f); dig(0f, 12f); dig(17f, -8f)
+            ball(-18f, -5f)
         },
         LevelDef("Sunny Beach", Look.BEACH, 22f, 80f) {
             startX = 0f; startZ = -16f; startYaw = 0f
@@ -295,6 +316,8 @@ object Levels {
             bikeLoop(-20f, -8.6f, 20f, -8.6f, 20f, -7.4f, -20f, -7.4f, count = 2)
             // On top of an umbrella: bounce up to it.
             toy(14f, 4f, Level.UMBRELLA_TOP)
+            dig(-10f, -3f); dig(7f, 12f); dig(17f, 8f)
+            ball(-17f, 13f); ball(5f, -13f)
         },
         LevelDef("Moonlight Walk", Look.NIGHT, 22f, 60f) {
             startX = 0f; startZ = 16f; startYaw = Math.PI.toFloat()
@@ -311,6 +334,8 @@ object Levels {
             bikeLoop(-19f, 4f, 19f, 4f, count = 1)
             // Tucked behind a house.
             toy(-20f, -16f)
+            dig(-9f, -12f); dig(15f, 8f); dig(-17f, 12f)
+            ball(8f, -12f)
         },
         LevelDef("Our Backyard", Look.BACKYARD, 20f, 70f) {
             startX = 0f; startZ = 14f; startYaw = Math.PI.toFloat()
@@ -335,10 +360,37 @@ object Levels {
             treats(-10f, 7f, -2f, 7f, 5); treats(14f, -6f, 14f, 10f, 5); treats(-4f, -9f, 4f, -9f, 4)
             // Behind the loveseat on the patio.
             toy(-9.2f, -12.6f)
+            dig(-14f, -3f); dig(16.5f, 11f); dig(-6f, 13f)
+            ball(-13f, -10f)
             // The neighbours' houses, over the fence.
             house(-12f, -27f, 10f, 7f, 0xFFEFEAE0.toInt()); house(4f, -28f, 12f, 7f, 0xFFDCD8D0.toInt())
             house(18f, -27f, 9f, 7f, 0xFFE8E2D4.toInt()); house(-6f, 28f, 12f, 7f, 0xFFE5E0D6.toInt())
             house(12f, 28f, 10f, 7f, 0xFFEFEAE0.toInt())
+        },
+        LevelDef("Autumn Woods", Look.AUTUMN, 24f, 95f) {
+            startX = 0f; startZ = 18f; startYaw = Math.PI.toFloat()
+            home(0f, -21f)
+            path(0f, 0f, 3f, 44f); path(0f, 0f, 44f, 3f)
+            tree(-9f, -10f); tree(10f, -14f); tree(-14f, 6f); tree(12f, 8f); tree(17f, -4f); tree(-19f, -13f)
+            tree(5f, 14f); tree(-6f, -17f)
+            tree(-20f, 17f, squirrel = false); tree(20f, 18f, squirrel = false); tree(21f, -19f, squirrel = false)
+            tree(-21f, 2.5f, squirrel = false); tree(8f, -4f, squirrel = false); tree(-5f, 10f, squirrel = false)
+            rabbit(-16f, -2.5f); rabbit(12f, 19f); rabbit(5f, -7f)
+            // A picnic spot the raccoons have found.
+            bin(-6f, 3.5f); bin(7f, 3f)
+            bench(-9f, 4f); bench(4f, 5.5f)
+            frog(15f, -9f); frog(-13f, 13f)
+            birds(3f, 9f, 4); birds(-7f, -4f, 3)
+            skunk(-3f, -9f); skunk(9f, 13f)
+            log(-12f, -6f); log(14f, 3f); log(-3f, 16f); log(16f, 13f)
+            rock(-17f, 9f); rock(3.5f, -12f); rock(19f, -12f)
+            flowers(-11f, 17f); flowers(18f, 6f); flowers(-17f, -18f)
+            treats(0f, 16f, 0f, 4f, 5); treats(-18f, 0f, -4f, 0f, 6); treats(4f, 0f, 18f, 0f, 6); treats(-12f, -5f, -12f, -5f, 1)
+            bikeLoop(-22f, -1f, 22f, -1f, 22f, 1f, -22f, 1f, count = 1)
+            // Up on a rock at the far side.
+            toy(19f, -12f, 0.6f)
+            dig(-18f, 13f); dig(13f, -18f); dig(-8f, -14f); dig(19f, 9f)
+            ball(-15f, -16f); ball(10f, 16f)
         },
     )
 }

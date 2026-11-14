@@ -32,6 +32,13 @@ object Decor {
         return abs(x - level.homeX) < 2f && abs(z - level.homeZ) < 2f
     }
 
+    private val autumn = intArrayOf(
+        0xFFE8892B.toInt(), 0xFFD9542B.toInt(), 0xFFF2B632.toInt(), 0xFFC23B22.toInt(), 0xFFE0A030.toInt(), 0xFFB5651D.toInt(),
+    )
+
+    /** One of the colors the leaves turn in autumn, picked by [i]. */
+    fun autumnLeaf(i: Int) = autumn[Math.floorMod(i, autumn.size)]
+
     fun scatter(level: Level, out: Emit) {
         val look = level.def.look
         val rnd = Random(level.def.title.hashCode())
@@ -65,6 +72,13 @@ object Decor {
             val c = if (beach && rnd.nextInt(3) == 0) 0xFFFFE6EE.toInt() else Models.shade(0xFF9A948C.toInt(), 0.8f + rnd.nextFloat() * 0.4f)
             out.emit(Kind.PEBBLE, x, 0f, z, 0.6f + rnd.nextFloat() * 0.9f, rnd.nextFloat() * 6.3f, c)
         }
+        // Fallen leaves all over the ground in autumn.
+        if (look == Look.AUTUMN) repeat(420) {
+            val x = rnd.nextFloat() * 2 * h - h
+            val z = rnd.nextFloat() * 2 * h - h
+            if (blocked(level, x, z)) return@repeat
+            out.emit(Kind.PEBBLE, x, 0f, z, 0.7f + rnd.nextFloat() * 0.6f, rnd.nextFloat() * 6.3f, Models.shade(autumnLeaf(rnd.nextInt(6)), 0.9f + rnd.nextFloat() * 0.2f))
+        }
         // Trees on the hills beyond the edge.
         val treeGreen = if (look.night) 0xFF234A2E.toInt() else 0xFF3E8F3A.toInt()
         val pineGreen = if (look.night) 0xFF1C3D28.toInt() else 0xFF2F6E38.toInt()
@@ -81,7 +95,8 @@ object Decor {
             if (level.solids.any { x > it.x0 - 2.5f && x < it.x1 + 2.5f && z > it.z0 - 2.5f && z < it.z1 + 2.5f }) return@repeat
             val y = Terrain.height(level, x, z)
             val pine = rnd.nextInt(3) == 0
-            val c = Models.shade(if (pine) pineGreen else treeGreen, 0.8f + rnd.nextFloat() * 0.35f)
+            val leaf = if (look == Look.AUTUMN && !pine) autumnLeaf(rnd.nextInt(6)) else if (pine) pineGreen else treeGreen
+            val c = Models.shade(leaf, 0.8f + rnd.nextFloat() * 0.35f)
             out.emit(if (pine) Kind.PINE else Kind.TREE, x, y, z, 0.8f + rnd.nextFloat() * 0.7f, 0f, c)
         }
     }

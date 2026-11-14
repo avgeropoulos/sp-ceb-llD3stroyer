@@ -181,7 +181,7 @@ Keyboard: arrows or A/D to run, Space to jump, and K, Z or Shift (or H/J) for BA
 
 ## Third game: Hercules & Apollo 3D
 
-A separate app with real 3D graphics. Pick Hercules or Apollo and run around four open 3D
+A separate app with real 3D graphics. Pick Hercules or Apollo and run around six open 3D
 levels with the camera following behind the dog.
 
 ![Hercules and Apollo in the park](docs/walk3d.png)
@@ -195,6 +195,15 @@ levels with the camera following behind the dog.
 | 3 | Sunny Beach | Seagulls, crabs that hide in holes, bunnies, and bouncy beach umbrellas. |
 | 4 | Moonlight Walk | Raccoons, cats and skunks at night, under the street lamps. |
 | 5 | Our Backyard | Home: the pool behind its mesh safety fence, the bouncy dog cot, the wicker loveseat on the patio, the purple toy car, palms, lawn sprinklers and the white vinyl fence. Lizards and frogs! |
+| 6 | Autumn Woods | The biggest level: trees turned orange, red and gold, fallen logs to hop over, squirrels everywhere, bunnies, frogs and raccoons round a picnic spot. |
+
+![Apollo in the autumn woods, next to a dirt mound with a bone in it](docs/walk3d-woods.png)
+
+* **Dig up buried bones.** Every level has dirt mounds with the end of a bone poking out. Run
+  over one and the dog digs it up for 150 points, and treats fly out around the hole.
+* **Zoomies!** Grab a bouncing tennis ball and the dog tears around half as fast again for six
+  seconds, trailing sparkles. With the zoomies even Apollo can run down a bunny. Another ball
+  turns up in the same place a little later.
 
 * **The other dog comes too.** Whichever dog you're not playing trots along beside you, and
   when a critter comes near it barks and gives chase. Its catches count, and if you both catch

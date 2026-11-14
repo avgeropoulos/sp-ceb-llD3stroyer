@@ -110,6 +110,8 @@ object Models {
             box(GOLD, place(g.level.homeX, 3.4f + bob, g.level.homeZ), 0f, 0f, 0f, 0.4f, 1f, 0.4f)
         }
         for (t in g.treats) if (!t.taken) bone(t.x, t.y + sin(g.clock * 3f + t.x) * 0.1f, t.z, g.clock * 2f + t.z)
+        for (dg in g.digs) digSpot(dg, g.clock, look)
+        for (b in g.balls) if (b.here) tennisBall(b, g.clock)
         for (c in g.critters) critter(g, c)
         for (b in g.bikes) bike(b, g.clock)
         // Sprinkler spray: a stream of drops arcing out the way it's pointing.
@@ -182,6 +184,18 @@ object Models {
         if (d.dashT > 0f) {
             for (i in 1..3) {
                 box(WHITE, place(d.x - sin(d.yaw) * i * 0.5f, d.y + 0.2f + i * 0.12f, d.z - cos(d.yaw) * i * 0.5f, d.yaw), 0f, 0f, 0f, 0.05f, 0.05f, 0.4f)
+            }
+        }
+        if (d.zoomT > 0f && moving) {
+            // Zoomies: a streak of sparkles behind.
+            for (i in 1..5) {
+                val back = i * 0.38f
+                val wob = sin(g.clock * 18f + i * 1.3f) * 0.18f
+                ball(
+                    if (i % 2 == 0) 0xFFFFF59A.toInt() else 0xFF7DF9FF.toInt(),
+                    place(d.x - sin(d.yaw) * back + cos(d.yaw) * wob, d.y + 0.35f + abs(wob), d.z - cos(d.yaw) * back - sin(d.yaw) * wob),
+                    0f, 0f, 0f, 0.2f - i * 0.025f,
+                )
             }
         }
         if (d.wetT > 0f) {
@@ -415,6 +429,46 @@ object Models {
         }
     }
 
+    /** A dirt mound with the end of a bone poking out; once dug, a hole with the dirt thrown about. */
+    private fun digSpot(d: Dig3, clock: Float, look: Look) {
+        val dirt = if (look == Look.BEACH) 0xFFC9A268.toInt() else 0xFF7A5230.toInt()
+        val dark = shade(dirt, 0.6f)
+        val o = place(d.x, 0f, d.z).copyOf()
+        if (!d.dug) {
+            ball(dirt, o, 0f, 0.02f, 0f, 1.3f, 0.5f, 1.3f)
+            ball(shade(dirt, 1.15f), o, 0.25f, 0.1f, 0.15f, 0.6f, 0.3f, 0.6f)
+            // The end of the bone, wiggling a bit so it catches your eye.
+            val wig = sin(clock * 4f + d.x) * 0.15f
+            val c = 0xFFFFF3D6.toInt()
+            box(c, o, 0f, 0.2f, 0f, 0.09f, 0.3f, 0.09f, rz = 0.3f + wig)
+            ball(c, o, -0.12f - wig * 0.2f, 0.5f, 0.05f, 0.13f)
+            ball(c, o, -0.1f - wig * 0.2f, 0.5f, -0.06f, 0.13f)
+            return
+        }
+        part(Meshes.disc, dark, o, 0f, 0.04f, 0f, 1.1f, 1f, 1.1f)
+        for (i in 0 until 5) {
+            val a = i * 1.257f + d.z
+            ball(dirt, o, cos(a) * 0.75f, 0.05f, sin(a) * 0.75f, 0.45f, 0.25f, 0.45f)
+        }
+        // Dirt flying for a moment after the dig.
+        if (d.t < 0.7f) for (i in 0 until 8) {
+            val a = i * 0.785f + d.x
+            val r = 0.3f + d.t * 2.4f
+            val y = 0.2f + d.t * 5f - d.t * d.t * 8f
+            if (y > 0f) ball(dirt, o, cos(a) * r, y, sin(a) * r, 0.16f)
+        }
+    }
+
+    private fun tennisBall(b: Ball3, clock: Float) {
+        val bounce = abs(sin(clock * 3.5f + b.x)) * 0.5f
+        val pulse = 1.1f + sin(clock * 4f) * 0.15f
+        part(Meshes.disc, 0xFFE9FF8A.toInt(), place(b.x, 0.04f, b.z), 0f, 0f, 0f, pulse, 1f, pulse)
+        val p = place(b.x, 0.22f + bounce, b.z, clock * 2f).copyOf()
+        ball(0xFFD8F23A.toInt(), p, 0f, 0f, 0f, 0.42f)
+        // The white seam.
+        box(0xFFFFFFFF.toInt(), p, 0f, -0.02f, 0f, 0.44f, 0.04f, 0.1f, ry = 0.5f)
+    }
+
     private fun bone(x: Float, y: Float, z: Float, spin: Float) {
         val p = place(x, y, z, spin).copyOf()
         val c = 0xFFFFF3D6.toInt()
@@ -490,9 +544,11 @@ object Models {
             PropType.TREE -> {
                 part(Meshes.cylinder, dim(0xFF7A5230.toInt()), o, 0f, 0f, 0f, 0.62f, 3.6f, 0.62f)
                 box(dim(0xFF7A5230.toInt()), o, 0.55f, 2.95f, 0f, 0.9f, 0.14f, 0.14f)
-                ball(dim(0xFF3E9B3A.toInt()), o, 0f, 4.6f, 0f, 3.2f, 2.3f, 3.2f)
-                ball(dim(0xFF56B84A.toInt()), o, 0.7f, 5.3f, 0.5f, 2f)
-                ball(dim(0xFF4AAA42.toInt()), o, -0.9f, 4.4f, -0.6f, 2f)
+                // In autumn each tree has turned its own color.
+                val leaf = if (level.def.look == Look.AUTUMN) Decor.autumnLeaf((p.x * 3f + p.z * 7f).toInt()) else 0xFF4AAA42.toInt()
+                ball(dim(shade(leaf, 0.84f)), o, 0f, 4.6f, 0f, 3.2f, 2.3f, 3.2f)
+                ball(dim(shade(leaf, 1.12f)), o, 0.7f, 5.3f, 0.5f, 2f)
+                ball(dim(leaf), o, -0.9f, 4.4f, -0.6f, 2f)
             }
             PropType.BUSH -> {
                 ball(dim(0xFF2F8A3A.toInt()), o, 0f, 0.45f, 0f, 1.7f, 1.1f, 1.6f)
@@ -655,6 +711,14 @@ object Models {
                         0.36f + sin(a) * 1.1f, top - 0.35f, cos(a) * 1.1f, 0.5f, 0.06f, 2.6f, rx = 0.45f, ry = a)
                 }
                 for (i in 0 until 3) ball(0xFF6B4A2A.toInt(), o, 0.36f + sin(i * 2.1f) * 0.25f, top - 0.3f, cos(i * 2.1f) * 0.25f, 0.24f)
+            }
+            PropType.LOG -> {
+                val bark = dim(0xFF6B4A2A.toInt())
+                // Two halves laid end to end along x, with pale cut ends.
+                part(Meshes.cylinder, bark, o, 0f, 0.28f, 0f, 0.56f, 1.3f, 0.56f, rz = HALF_PI)
+                part(Meshes.cylinder, bark, o, 0f, 0.28f, 0f, 0.56f, 1.3f, 0.56f, rz = -HALF_PI)
+                for (s in floatArrayOf(-1f, 1f)) ball(dim(0xFFD9B98A.toInt()), o, s * 1.3f, 0.28f, 0f, 0.06f, 0.44f, 0.44f)
+                box(bark, o, 0.5f, 0.45f, 0f, 0.1f, 0.3f, 0.1f, rz = -0.5f)
             }
             PropType.SPRINKLER -> {
                 part(Meshes.cylinder, 0xFF6B7078.toInt(), o, 0f, 0f, 0f, 0.22f, 0.18f, 0.22f)

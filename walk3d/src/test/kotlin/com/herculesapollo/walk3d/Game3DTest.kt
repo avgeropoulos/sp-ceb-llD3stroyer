@@ -110,7 +110,7 @@ class Game3DTest {
     }
 
     @Test fun levelsLoad() {
-        assertEquals(5, Levels.all.size)
+        assertEquals(6, Levels.all.size)
         for (def in Levels.all) {
             val l = Level(def)
             assertTrue(l.total >= 8, "${def.title}: ${l.total} critters")
@@ -627,6 +627,64 @@ class Game3DTest {
         assertTrue(g.bonus >= Game3D.TOY_BONUS)
     }
 
+    @Test fun digUpBuriedBones() {
+        val g = start(herc = true)
+        clearCritters(g)
+        g.bikes.clear()
+        val spot = g.digs.first()
+        val score0 = g.score
+        val treats0 = g.treats.size
+        place(g, spot.x, spot.z)
+        assertTrue(spot.dug, "ran over the mound and dug it up")
+        assertEquals(1, g.dugUp)
+        assertEquals(score0 + Game3D.DIG_BONUS, g.score)
+        assertEquals(treats0 + 3, g.treats.size, "treats flew out")
+        // It's only there once.
+        run(g, 0.5f)
+        assertEquals(1, g.dugUp)
+        // The treats that flew out can be picked up.
+        val t = g.treats.last()
+        place(g, t.x, t.z)
+        assertTrue(t.taken)
+    }
+
+    @Test fun tennisBallsGiveTheZoomies() {
+        val g = start(herc = false)
+        clearCritters(g)
+        g.bikes.clear()
+        g.level.solids.clear()
+        val ball = g.balls.first()
+        place(g, ball.x, ball.z)
+        assertTrue(!ball.here && g.dog.zoomT > 0f, "grabbed it")
+        g.input.stickY = 1f
+        run(g, 0.5f)
+        assertTrue(abs(g.dog.speed - g.dog.maxSpeed * Game3D.ZOOM_SPEED) < 0.01f, "zooming: ${g.dog.speed}")
+        // Fast enough now for Apollo to keep up with a bunny (which runs at 7).
+        assertTrue(g.dog.speed > 7f)
+        stop(g)
+        run(g, Game3D.ZOOM_TIME)
+        g.input.stickY = 1f
+        run(g, 0.5f)
+        assertTrue(abs(g.dog.speed - g.dog.maxSpeed) < 0.01f, "and then it wears off")
+        stop(g)
+        run(g, Game3D.BALL_AWAY)
+        assertTrue(ball.here, "another ball turns up later")
+    }
+
+    /** Mounds and tennis balls are out in the open on every level, not inside something. */
+    @Test fun thingsToFindAreReachable() {
+        for (def in Levels.all) {
+            val l = Level(def)
+            assertTrue(l.digs.size >= 3 && l.balls.isNotEmpty(), "${def.title} has mounds and a ball")
+            for ((what, pts) in listOf("mound" to l.digs, "ball" to l.balls)) for (pt in pts) {
+                val x = pt[0]; val z = pt[1]
+                assertTrue(abs(x) < l.half - 1f && abs(z) < l.half - 1f, "${def.title}: $what at ($x, $z) is in bounds")
+                val hit = l.solids.any { x > it.x0 - 0.5f && x < it.x1 + 0.5f && z > it.z0 - 0.5f && z < it.z1 + 0.5f }
+                assertTrue(!hit, "${def.title}: $what at ($x, $z) is clear of everything solid")
+            }
+        }
+    }
+
     /** A simple bot plays each level as each dog, to check they can all be finished. */
     @Test fun everyLevelCanBeFinished() {
         for (herc in listOf(true, false)) for (i in Levels.all.indices) {
@@ -760,6 +818,22 @@ class Game3DTest {
         place(yard, -4f, -6f, -2.3f)
         run(yard, 0.5f)
         shot(yard, "10-backyard-patio")
+
+        val woods = start(herc = false, level = Levels.all.indexOfFirst { it.look == Look.AUTUMN }, buddy = true)
+        run(woods, 0.3f)
+        shot(woods, "11-woods-start")
+        place(woods, -15f, 10f, 0.9f)
+        run(woods, 0.4f)
+        shot(woods, "11-woods-mound")
+        val wb = woods.balls.first()
+        place(woods, wb.x + 4f, wb.z + 3f, -2.2f)
+        run(woods, 0.4f)
+        shot(woods, "11-woods-ball")
+        place(woods, wb.x, wb.z, 1.2f)
+        woods.input.stickY = 1f
+        run(woods, 0.6f)
+        woods.input.stickY = 0f
+        shot(woods, "11-woods-zoomies")
 
         val b = start(herc = false, level = 2)
         place(b, 2f, 0f, 0.4f)

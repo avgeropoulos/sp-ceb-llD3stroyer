@@ -3,7 +3,7 @@ package com.herculesapollo.walk
 import com.roccoquest.game.SfxBuilder
 import com.roccoquest.game.Song
 
-enum class WalkSound { GAV, ARP, ARP_ARP, SQUEAK, SPLASH, CATCH, TREAT, JUMP, BELL, OUCH, HISS, SKUNK, WHOA, TEAM, HOME }
+enum class WalkSound { GAV, ARP, ARP_ARP, SQUEAK, SPLASH, CATCH, TREAT, JUMP, BELL, OUCH, HISS, SKUNK, WHOA, TEAM, HOME, DIG, ZOOM }
 
 /** DAY is the walk with both dogs; HERC (lively) and APOLLO (calm) are each dog's own tune when you play as them. */
 enum class WalkTune { NONE, DAY, NIGHT, HERC, APOLLO }
@@ -37,6 +37,16 @@ object WalkSynth {
             WalkSound.SQUEAK -> {
                 tone(1500f, 2600f, 0.06f, 0.25f, square = false); tone(0f, 0f, 0.03f)
                 tone(2200f, 1500f, 0.09f, 0.25f, square = false)
+            }
+            // Digging: three quick scrabbles of dirt, then the prize.
+            WalkSound.DIG -> {
+                repeat(3) { noise(0.05f, 0.4f, 0.5f); tone(0f, 0f, 0.03f) }
+                tone(880f, 1320f, 0.12f, 0.25f)
+            }
+            // The zoomies kicking in: a swoop up and a happy trill.
+            WalkSound.ZOOM -> {
+                tone(300f, 1500f, 0.22f, 0.28f, square = false)
+                notes(floatArrayOf(1320f, 1568f, 1760f, 2093f), 0.045f, 0.25f, lastHold = 0.12f)
             }
             WalkSound.CATCH -> notes(floatArrayOf(660f, 880f, 1320f), 0.05f, 0.28f, lastHold = 0.12f)
             WalkSound.TREAT -> { tone(1175f, 1175f, 0.05f, decay = false); tone(1568f, 1568f, 0.18f) }

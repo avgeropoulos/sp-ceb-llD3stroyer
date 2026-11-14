@@ -66,6 +66,12 @@ object Terrain {
                 c = mix(c, 0xFF35683F.toInt(), smooth((big - 0.6f) * 4f) * 0.6f)
                 c = mix(c, 0xFF1C3A26.toInt(), smooth((0.35f - fine) * 4f) * 0.5f)
             }
+            Look.AUTUMN -> {
+                // Dry gold grass with patches of fallen leaves.
+                c = mix(c, 0xFFC9A63C.toInt(), smooth((big - 0.55f) * 4f) * 0.55f)
+                c = mix(c, 0xFFB5651D.toInt(), smooth((0.33f - fine) * 4f) * 0.45f)
+                if (h > 3f) c = mix(c, 0xFFB98A3A.toInt(), smooth((h - 3f) / 5f) * 0.5f)
+            }
             else -> {
                 c = mix(c, 0xFF9CCF52.toInt(), smooth((big - 0.6f) * 4f) * 0.55f)
                 c = mix(c, 0xFF3F8C38.toInt(), smooth((0.35f - fine) * 4f) * 0.45f)
