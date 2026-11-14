@@ -15,6 +15,8 @@ Open `game/index.html` in a browser to play (no build step).
 - Besides treats, two more things fall from the sky: a **squeaky toy** makes every critter (and the goose) freeze for a few seconds, and a **towel** dries off one splash.
 - **Sticker book:** 12 stickers to collect for things like a x5 combo, a level with no splashes, or reaching level 10. They are saved on your device and shown on the main menu.
 - **Game controllers** work in a browser and in the Android app. A stick or the D-pad runs, any button uses the power, Start pauses, and the menus work too. In team mode one controller can drive both dogs (left stick and left buttons for Hercules, right stick and right buttons for Apollo), or use two controllers, one dog each.
+- **Bonus rounds:** after every third level there is a 20-second Critter Stampede: a yard full of slow critters and no hazards.
+- **Yard themes:** the yard changes every two levels: sunny morning, golden sunset, a night with fireflies, autumn leaves and snow.
 - Play solo as either dog, or as a team on one keyboard: WASD moves Hercules and the arrow keys move Apollo. On phones and tablets, put a thumb down anywhere and slide it like a joystick. In team mode the left half of the screen steers Hercules and the right half steers Apollo.
 
 ## 3D chase cam
@@ -33,6 +35,16 @@ Open `game/index.html` in a browser to play (no build step).
 ## Music
 
 Each dog has a theme song, made live in the browser with no audio files. Hercules gets ridiculous heavy metal: chugging guitars, double kick drums, shredding solos and pinch squeals. Apollo gets fluffy, bouncy pop with marimba, ukulele strums and boings. Each level plays a different variation, the key goes up every 4 levels, and the music speeds up when time is running low. Extra layers kick in while the Giant Goose is out. In team mode the dogs take turns: Hercules plays on odd levels and Apollo on even ones. The **Music** and **Sounds** buttons switch each one off separately.
+
+## On the computer
+
+`desktop/` is a desktop app for Windows, Mac and Linux, built with [Electron](https://www.electronjs.org). Download it once from the [Backyard Boop for the computer](../../releases/tag/backyard-boop-desktop) release, plug in a controller (or two for team walk) and play. Controllers rumble when you get splashed.
+
+The app updates the game from inside the game: the main menu shows which build you have and a **Check for updates** button. **Update now** downloads the newest game files, checks them, and restarts the game with them. Scores and stickers are kept. Every push publishes the new game files (and a `version.json` that lists them) to that same release, which is where the app looks. Only the game is updated this way; a change to the app itself (`desktop/main.js`) needs a fresh download.
+
+The apps are not code-signed, so the first time you open one Windows shows "Windows protected your PC" (choose **More info**, then **Run anyway**) and macOS asks you to allow it under **System Settings > Privacy & Security > Open Anyway**.
+
+To run it from source: `cd desktop && npm install && node make-manifest.js ../game game 1 && npm start`. `npm test` tests the updater.
 
 ## Android
 

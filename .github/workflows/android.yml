@@ -5,6 +5,7 @@ on:
     paths:
       - "game/**"
       - "android/**"
+      - "desktop/**"
       - ".github/workflows/android.yml"
   workflow_dispatch:
 
@@ -73,4 +74,80 @@ jobs:
             It installs as its own app next to Backyard Boop.
             Android will ask you to allow installing apps from your browser the first time.
           files: BackyardBoop3D.apk
+          make_latest: false
+
+  # Backyard Boop for the computer (Windows, Mac and Linux).
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Put this build of the game inside the app
+        run: node desktop/make-manifest.js game desktop/game ${{ github.run_number }}
+
+      - name: Install
+        working-directory: desktop
+        run: npm ci
+
+      - name: Test the updater
+        working-directory: desktop
+        run: npm test
+
+      - name: Build the app
+        working-directory: desktop
+        run: npm run dist
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BackyardBoop-desktop-${{ matrix.os }}
+          path: desktop/dist/BackyardBoop-*
+          if-no-files-found: error
+
+  # One release that always holds the newest desktop apps and the newest game
+  # files. The apps look here when you press "Check for updates".
+  desktop-release:
+    needs: desktop
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: BackyardBoop-desktop-*
+          path: apps
+          merge-multiple: true
+
+      - name: Make the game files the apps download
+        run: node desktop/make-manifest.js game update ${{ github.run_number }}
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: backyard-boop-desktop
+          name: Backyard Boop for the computer
+          body: |
+            Download the one for your computer and open it:
+
+            - **Windows:** `BackyardBoop-Windows.exe` (no install needed)
+            - **Mac:** `BackyardBoop-Mac.dmg`
+            - **Linux:** `BackyardBoop-Linux.AppImage`
+
+            You only need to download it once. To get new versions of the game, press
+            **Check for updates** on the game's main menu.
+
+            Game build ${{ github.run_number }}.
+          files: |
+            apps/BackyardBoop-*
+            update/*
           make_latest: false

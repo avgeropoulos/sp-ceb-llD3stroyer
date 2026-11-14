@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <title>Backyard Boop</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@600;800&display=swap">
@@ -214,10 +215,12 @@ kbd { font-family: var(--body); font-weight: 800; background: #eef2ec; border-ra
           <div><i>🦴</i><span><b>Treats</b> fall from the sky. Grab one for a 7-second boost.</span></div>
           <div><i>🧸</i><span><b>Squeaky toy</b> Every critter freezes to listen.</span></div>
           <div><i>🧺</i><span><b>Towel</b> Dries off one splash.</span></div>
+          <div><i>🎉</i><span><b>Bonus round</b> after every 3rd level: a yard full of critters and no hazards.</span></div>
           <div><i>⏱️</i><span>Reach the goal before the clock runs out, or it's nap time.</span></div>
         </div>
-        <p class="keys">Move with <kbd>WASD</kbd> or arrow keys. On a phone or tablet, put your thumb down anywhere and slide it like a joystick. Each dog has a power: press <kbd>Space</kbd>, tap its button, or give the screen a quick tap. Hercules <b>zooms</b> so fast he stays dry, and Apollo <b>leaps</b> over mud, spray and bathtubs. In team mode Hercules uses <kbd>WASD</kbd> and <kbd>Space</kbd>, Apollo uses the arrows and <kbd>Enter</kbd>. On a tablet the left half of the screen steers Hercules and the right half steers Apollo. <kbd>P</kbd> pauses.</p>
+        <p class="keys">Move with <kbd>WASD</kbd> or arrow keys. On a phone or tablet, put your thumb down anywhere and slide it like a joystick. Each dog has a power: press <kbd>Space</kbd>, tap its button, or give the screen a quick tap. Hercules <b>zooms</b> so fast he stays dry, and Apollo <b>leaps</b> over mud, spray and bathtubs. In team mode Hercules uses <kbd>WASD</kbd> and <kbd>Space</kbd>, Apollo uses the arrows and <kbd>Enter</kbd>. On a tablet the left half of the screen steers Hercules and the right half steers Apollo. <kbd>P</kbd> pauses and <kbd>F</kbd> goes full screen.</p>
         <p class="keys" id="padNote" hidden>🎮 <b>Controller ready!</b> Stick or D-pad: run. Any button: your power. <b>Start</b>: pause. In team mode with one controller, the left stick and left buttons are Hercules and the right stick and right buttons are Apollo. With two controllers, each player gets a dog. Press left or right to pick here, then <b>A</b>.</p>
+        <p class="keys" id="updateRow" hidden><span id="updateText"></span> <button class="btn alt" id="updateBtn" type="button" style="font-size:15px;padding:6px 12px;margin-left:6px" hidden>Check for updates</button></p>
         <div class="scorebox"><h3>Sticker book <span class="muted stickCount"></span></h3><div class="stickers"></div></div>
         <div class="scorebox"><h3 class="sbTitle">High scores</h3><div class="sbBody"></div></div>
       </div>
@@ -559,6 +562,20 @@ function levelCfg(n) {
   };
 }
 
+// Every third level is followed by a bonus round: lots of slow critters, no hazards, no goal.
+function bonusCfg() {
+  return { bonus: true, goal: Infinity, time: 20, speed: 0.9, fleeR: 90, pop: 12, sprinklers: 0, sprinkSpin: 0, doubleArm: false, tubs: 0, tubSpeed: 0, mud: 0, bunnyShare: 0.5, chipmunks: false };
+}
+// The yard changes its look every two levels.
+const THEMES = [
+  { name: "a sunny morning", lawn: "#5fa843", stripe: "rgba(255,255,255,0.06)", tint: null, amb: null },
+  { name: "a golden sunset", lawn: "#6fa23f", stripe: "rgba(255,255,255,0.06)", tint: "rgba(255,130,50,.17)", amb: null },
+  { name: "a starry night", lawn: "#3f7a45", stripe: "rgba(255,255,255,0.05)", tint: "rgba(15,25,90,.24)", amb: "fireflies" },
+  { name: "a breezy autumn day", lawn: "#93a23d", stripe: "rgba(255,255,255,0.07)", tint: "rgba(200,110,30,.08)", amb: "leaves" },
+  { name: "a snowy day", lawn: "#e3efe8", stripe: "rgba(110,150,190,0.10)", tint: null, amb: "snow" },
+];
+const themeFor = (level) => THEMES[Math.floor((level - 1) / 2) % THEMES.length];
+
 // ---------- Game state ----------
 let G = null;
 let mode = "hercules"; // hercules | apollo | both
@@ -575,7 +592,8 @@ function newGame() {
   setupLevel();
 }
 function setupLevel() {
-  const c = G.cfg = levelCfg(G.level);
+  const c = G.cfg = G.bonus ? bonusCfg() : levelCfg(G.level);
+  G.bonusStart = G.score;
   G.caught = 0; G.time = c.time; G.critters = []; G.particles = []; G.floaters = []; G.tubs = []; G.sprinklers = []; G.muds = []; G.bird = null; G.spawnT = 0; G.shake = 0;
   G.dogs.forEach((d, i) => { d.x = W / 2 + (G.dogs.length > 1 ? (i ? 50 : -50) : 0); d.y = H / 2; d.vx = d.vy = 0; d.inv = 1.5; d.ptr = null; d.leap = null; d.leapCd = 0; d.dash = null; d.dashCd = 0; d.boost = 0; d.z = 0; d.stick = null; d.idleT = 1; d.runT = 0; });
   G.treats = []; G.treatT = rnd(5, 8);
@@ -590,7 +608,7 @@ function setupLevel() {
     G.sprinklers.push({ x: p.x, y: p.y, ang: rnd(0, 6.28), spin: c.sprinkSpin * (Math.random() < 0.5 ? 1 : -1), len: 130, width: 0.32, arms: c.doubleArm ? 2 : 1 });
   }
   for (let i = 0; i < c.tubs; i++) { const corner = [[60, 60], [W - 60, H - 60], [W - 60, 60]][i]; G.tubs.push({ x: corner[0], y: corner[1], r: 28, vx: 0, vy: 0, pause: 2 + i, wob: Math.random() * 6 }); }
-  for (let i = 0; i < Math.min(c.pop, 4); i++) spawnCritter(true);
+  for (let i = 0; i < Math.min(c.pop, G.bonus ? 10 : 4); i++) spawnCritter(true);
 }
 
 function spawnCritter(inside) {
@@ -626,6 +644,7 @@ const KEYMAP = { KeyW: "u1", KeyA: "l1", KeyS: "d1", KeyD: "r1", ArrowUp: "u2", 
 window.addEventListener("keydown", (e) => {
   if (e.target && e.target.tagName === "INPUT") return;
   if (KEYMAP[e.code]) { keys.add(KEYMAP[e.code]); e.preventDefault(); }
+  if (e.code === "KeyF" && !e.repeat) { try { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => {}); } catch (err) {} }
   if (e.code === "KeyP" || e.code === "Escape") { if (screen === "play") pause(); else if (screen === "pause") resume(); }
   if ((e.code === "Space" || e.code === "Enter") && screen === "intro") { e.preventDefault(); startLevel(); }
   else if (screen === "play" && !e.repeat) {
@@ -702,7 +721,7 @@ cv.addEventListener("pointerup", endPtr); cv.addEventListener("pointercancel", e
 const PAD = { A: 1, B: 2, X: 4, Y: 8, START: 16, SELECT: 32, L1: 64, R1: 128, UP: 256, DOWN: 512, LEFT: 1024, RIGHT: 2048, L2: 4096, R2: 8192 };
 const POWER_L = PAD.L1 | PAD.L2 | PAD.X | PAD.Y, POWER_R = PAD.R1 | PAD.R2 | PAD.A | PAD.B;
 const newPad = () => ({ l: [0, 0], r: [0, 0], pressed: 0, prev: 0, moved: false });
-const pads = [newPad(), newPad()], liveGamepads = new Set();
+const pads = [newPad(), newPad()], liveGamepads = new Set(), gpRest = new Map();
 let padSeen = false, padFlick = 0, padLastDir = 0, titleSel = 0;
 function deadzone(x, y, dz) {
   const m = Math.hypot(x, y);
@@ -733,7 +752,11 @@ function readPad() {
       let held = 0;
       [PAD.A, PAD.B, PAD.X, PAD.Y, PAD.L1, PAD.R1, PAD.L2, PAD.R2, PAD.SELECT, PAD.START].forEach((bit, i) => { if (b(i)) held |= bit; });
       if (b(12)) held |= PAD.UP; if (b(13)) held |= PAD.DOWN; if (b(14)) held |= PAD.LEFT; if (b(15)) held |= PAD.RIGHT;
-      if (held || Math.hypot(ax(0), ax(1)) > 0.3) liveGamepads.add(gp.index);
+      // A controller joins in once a button is pressed or its stick is moved, so a
+      // device that just reports a stuck axis can't steer the dog.
+      if (!gpRest.has(gp.index)) gpRest.set(gp.index, [ax(0), ax(1)]);
+      const rest = gpRest.get(gp.index);
+      if (held || Math.hypot(ax(0) - rest[0], ax(1) - rest[1]) > 0.3) liveGamepads.add(gp.index);
       if (liveGamepads.has(gp.index)) raw.push({ lx: ax(0), ly: ax(1), rx: ax(2), ry: ax(3), held, taps: 0 });
     }
   }
@@ -754,6 +777,15 @@ function readPad() {
   const dir = flickX < -0.6 ? -1 : flickX > 0.6 ? 1 : 0;
   padFlick = dir !== padLastDir ? dir : 0; padLastDir = dir;
 }
+// Shake the controllers that can rumble (browser and desktop app).
+function rumble(ms, strength) {
+  try {
+    for (const gp of (navigator.getGamepads && navigator.getGamepads()) || []) {
+      const v = gp && gp.vibrationActuator;
+      if (v && v.playEffect) v.playEffect("dual-rumble", { duration: ms, strongMagnitude: strength, weakMagnitude: strength * 0.6 }).catch(() => {});
+    }
+  } catch (e) {}
+}
 const twoPads = () => pads[0].moved && pads[1].moved;
 function padMenus() {
   const p = pads[0].pressed | pads[1].pressed;
@@ -767,6 +799,7 @@ function padMenus() {
     const picks = [...document.querySelectorAll("[data-pick]")];
     if (padFlick || p & (PAD.LEFT | PAD.RIGHT)) { titleSel = (titleSel + (padFlick < 0 || p & PAD.LEFT ? picks.length - 1 : 1)) % picks.length; markTitle(); }
     if (p & (PAD.A | PAD.START)) picks[titleSel].click();
+    else if ((p & PAD.Y) && updateReady) applyUpdate();
   } else if (screen === "intro") { if (p & (PAD.A | PAD.START | PAD.B)) startLevel(); }
   else if (screen === "pause") { if (p & (PAD.A | PAD.START)) resume(); else if (p & PAD.SELECT) $("quitBtn").click(); }
   else if (screen === "over") {
@@ -805,7 +838,7 @@ function dogInput(d, idx) {
 function update(dt) {
   const c = G.cfg;
   G.time -= dt;
-  if (G.time <= 0) { G.time = 0; return gameOver("nap"); }
+  if (G.time <= 0) { G.time = 0; return G.bonus ? bonusEnd() : gameOver("nap"); }
   G.shake = Math.max(0, G.shake - dt * 3);
   G.freeze = Math.max(0, G.freeze - dt);
   if (G.comboT > 0) { G.comboT -= dt; if (G.comboT <= 0) G.combo = 0; }
@@ -858,7 +891,7 @@ function update(dt) {
   // critters
   G.spawnT -= dt;
   const live = G.critters.filter((q) => q.state !== "boop" && q.type !== "chipmunk").length;
-  if (live < c.pop && G.spawnT <= 0) { spawnCritter(false); G.spawnT = rnd(0.6, 1.4); }
+  if (live < c.pop && G.spawnT <= 0) { spawnCritter(false); G.spawnT = G.bonus ? 0.25 : rnd(0.6, 1.4); }
   if (c.chipmunks) { G.chipT -= dt; if (G.chipT <= 0) { if (!G.critters.some((q) => q.type === "chipmunk")) spawnChipmunk(); G.chipT = rnd(9, 14); } }
   for (const q of G.critters) updateCritter(q, dt, c);
   G.critters = G.critters.filter((q) => !q.gone);
@@ -1040,7 +1073,8 @@ function boop(q, d) {
   G.floaters.push({ x: q.x, y: q.y - 20, text: mult > 1 ? `Boop x${mult}! +${pts}` : `Boop! +${pts}`, life: 1, col: mult > 1 ? "#ffe680" : "#fff", big: mult >= 3 });
   for (let i = 0; i < 6 + mult * 2; i++) G.particles.push({ x: q.x, y: q.y - 10, vx: rnd(-70, 70), vy: rnd(-110, -30), life: 0.8, max: 0.8, kind: "heart", s: rnd(6, 10), g: 60 });
   sfx.boop(mult);
-  award("first"); if (mult >= 3) award("combo3"); if (mult >= 5) award("combo5"); if (q.type === "chipmunk") award("chip");
+  award("first"); if (mult >= 3) award("combo3"); if (mult >= 5) award("combo5"); if (q.type === "chipmunk") award("chip"); if (G.bonus && G.caught >= 15) award("stampede");
+  if (mult >= 3) rumble(90, 0.35);
 }
 
 function spawnBird() {
@@ -1074,7 +1108,7 @@ function updateBird(b, dt) {
     G.score += bonus; G.birdsCaught++; dg.caught++;
     G.floaters.push({ x: b.x, y: b.y - 50, text: `GIANT BOOP! +${bonus}`, life: 1.6, col: "#ffe680", big: true });
     for (let i = 0; i < 26; i++) G.particles.push({ x: b.x, y: b.y - 10, vx: rnd(-160, 160), vy: rnd(-200, -40), life: 1.2, max: 1.2, kind: "feather", s: rnd(6, 11), g: 140, rot: rnd(0, 6) });
-    b.state = "flyout"; sfx.bird(); award("goose"); break;
+    b.state = "flyout"; sfx.bird(); award("goose"); rumble(220, 0.6); break;
   }
 }
 
@@ -1082,14 +1116,15 @@ function splash(d, msg) {
   d.inv = 1.8; G.splashes++; G.levelSplashes++; G.shake = 1;
   G.floaters.push({ x: d.x, y: d.y - 34, text: msg, life: 1.3, col: "#d6efff" });
   for (let i = 0; i < 22; i++) G.particles.push({ x: d.x, y: d.y - 6, vx: rnd(-150, 150), vy: rnd(-180, 20), life: 0.7, max: 0.7, col: "#7cc4ff", s: rnd(3, 6), g: 300 });
-  sfx.splash();
+  sfx.splash(); rumble(280, 1);
   if (G.splashes >= MAX_SPLASH) setTimeout(() => { if (screen === "play") gameOver("bath"); }, 450);
 }
 
 // ---------- Drawing ----------
 function drawLawn(t) {
-  ctx.fillStyle = "#5fa843"; ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = "rgba(255,255,255,0.06)";
+  const th = G ? themeFor(G.level) : THEMES[0];
+  ctx.fillStyle = th.lawn; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = th.stripe;
   const band = 70; for (let x = 0; x < W + band; x += band * 2) ctx.fillRect(x, 0, band, H);
   if (!G) return;
   for (const f of G.flowers) {
@@ -1316,6 +1351,9 @@ function draw(t) {
     else { ctx.fillStyle = p.col; ctx.beginPath(); ctx.arc(p.x, p.y, p.s, 0, 7); ctx.fill(); }
   }
   ctx.globalAlpha = 1;
+  const th = themeFor(G.level);
+  if (th.tint) { ctx.fillStyle = th.tint; ctx.fillRect(-20, -20, W + 40, H + 40); }
+  drawAmbient(th, t);
   ctx.textAlign = "center";
   for (const f of G.floaters) {
     ctx.globalAlpha = Math.min(1, f.life * 2);
@@ -1325,6 +1363,26 @@ function draw(t) {
   }
   ctx.globalAlpha = 1;
   drawSticks();
+}
+
+// Fireflies, falling leaves or snow, worked out from the clock so there is nothing to keep track of.
+function drawAmbient(th, t) {
+  if (!th.amb) return;
+  for (let i = 0; i < 28; i++) {
+    const a = Math.abs(Math.sin(i * 127.1) * 43758.5453) % 1, b = Math.abs(Math.sin(i * 311.7) * 24634.633) % 1;
+    if (th.amb === "fireflies") {
+      const x = a * W + Math.sin(t * 0.7 + i) * 30, y = b * H + Math.cos(t * 0.9 + i * 2) * 20, glow = 0.35 + 0.65 * Math.abs(Math.sin(t * 2 + i));
+      ctx.globalAlpha = glow * 0.25; ctx.fillStyle = "#fff7a8"; ctx.beginPath(); ctx.arc(x, y, 7, 0, 7); ctx.fill();
+      ctx.globalAlpha = glow; ctx.beginPath(); ctx.arc(x, y, 2.2, 0, 7); ctx.fill();
+    } else {
+      const snow = th.amb === "snow", y = (b * H + t * (snow ? 40 + a * 30 : 60 + a * 40)) % (H + 20) - 10;
+      const x = (a * W + Math.sin(t * 1.2 + i) * 25 + (snow ? 0 : t * 30)) % W;
+      ctx.globalAlpha = 0.85;
+      if (snow) { ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(x, y, 2 + b * 2, 0, 7); ctx.fill(); }
+      else { ctx.save(); ctx.translate(x, y); ctx.rotate(t * 2 + i); ctx.fillStyle = ["#d9822b", "#c0492b", "#e0b13a"][i % 3]; ctx.beginPath(); ctx.ellipse(0, 0, 6, 3, 0, 0, 7); ctx.fill(); ctx.restore(); }
+    }
+  }
+  ctx.globalAlpha = 1;
 }
 
 // joysticks are drawn in screen pixels, on top of everything
@@ -1360,10 +1418,10 @@ let hudCache = {};
 function setText(id, v) { if (hudCache[id] !== v) { hudCache[id] = v; $(id).textContent = v; } }
 function hud() {
   if (!G) return;
-  setText("lvl", String(G.level)); setText("score", String(G.score));
-  setText("caught", `${Math.min(G.caught, G.cfg.goal)}/${G.cfg.goal}`);
+  setText("lvl", G.bonus ? "Bonus" : String(G.level)); setText("score", String(G.score));
+  setText("caught", G.bonus ? String(G.caught) : `${Math.min(G.caught, G.cfg.goal)}/${G.cfg.goal}`);
   const tm = Math.ceil(G.time); setText("time", String(tm)); $("time").classList.toggle("low", tm <= 10);
-  $("goalfill").style.width = Math.min(100, G.caught / G.cfg.goal * 100) + "%";
+  $("goalfill").style.width = (G.bonus ? 100 : Math.min(100, G.caught / G.cfg.goal * 100)) + "%";
   const bp = G.bird ? "bird" : "m" + G.birdMeter;
   if (hudCache.bp !== bp) { hudCache.bp = bp; $("birdpips").innerHTML = [0, 1, 2].map((i) => `<span class="pip ${G.bird || i < G.birdMeter ? "on" : ""}">🪶</span>`).join(""); }
   const boostLeft = Math.ceil(Math.max(...G.dogs.map((d) => d.boost)));
@@ -1388,8 +1446,21 @@ function dogLabel() { return mode === "both" ? "Hercules & Apollo" : DOGS[mode].
 function intro(cleared) {
   screen = "intro";
   const c = G.cfg, n = G.level;
-  $("lsTitle").textContent = cleared ? `Level ${n - 1} cleared!` : `Level ${n}: ${LEVEL_NAMES[(n - 1) % LEVEL_NAMES.length]}`;
+  if (G.bonus) {
+    $("lsTitle").textContent = `Level ${n - 1} cleared!`;
+    $("lsText").textContent = `Bonus round: Critter Stampede! The yard is full of critters and there are no sprinklers, mud or bathtubs. Boop as many as you can in ${c.time} seconds, and keep that combo going!`;
+    showFresh("lsStick");
+    $("lsMusic").innerHTML = "Now playing: <b></b>"; $("lsMusic").querySelector("b").textContent = trackName(n);
+    Music.start(styleFor(n), n, true, 1.0);
+    $("lsTally").innerHTML = tally([["Score", G.score], ["Time bonus", "+" + G.lastBonus], ["Splash meter", G.splashes + " / " + MAX_SPLASH]]);
+    $("lsGo").textContent = "Start bonus round";
+    show("levelScreen"); $("lsGo").focus();
+    return;
+  }
+  const done = G.bonusDone; G.bonusDone = null;
+  $("lsTitle").textContent = done ? "Bonus round over!" : cleared ? `Level ${n - 1} cleared!` : `Level ${n}: ${LEVEL_NAMES[(n - 1) % LEVEL_NAMES.length]}`;
   const notes = [];
+  if (n === 1 || (n % 2 === 1 && themeFor(n) !== themeFor(n - 1))) notes.push(`It's ${themeFor(n).name} in the yard.`);
   if (n === 1) notes.push("Chase squirrels and bunnies around the yard. Get close and they get a boop.");
   if (n <= 2) notes.push(`Treats fall from the sky. Grab one for a ${BOOST_TIME}-second boost${mode === "both" ? "" : mode === "hercules" ? ": ZOOMIES" : ": SUPER LEAPS"}!`);
   if (n <= 2) notes.push(mode === "both"
@@ -1405,12 +1476,13 @@ function intro(cleared) {
   if (c.doubleArm && n === 6) notes.push("Sprinklers now spray both ways.");
   if (n > 1) notes.push("The critters are a little quicker now. Chase them into corners, they get tired!");
   if (cleared) notes.unshift(`Next up, level ${n}: ${LEVEL_NAMES[(n - 1) % LEVEL_NAMES.length]}.`);
+  if (done) notes.unshift(`You booped ${done.n} critters for ${done.pts} points!`);
   notes.push(`Boop ${c.goal} critters in ${c.time} seconds.`);
   $("lsText").textContent = notes.join(" ");
   showFresh("lsStick");
   $("lsMusic").innerHTML = "Now playing: <b></b>"; $("lsMusic").querySelector("b").textContent = trackName(n);
   Music.start(styleFor(n), n, true, cleared ? 1.0 : 0.1);
-  $("lsTally").innerHTML = cleared ? tally([["Score", G.score], ["Time bonus", "+" + G.lastBonus], ["Splash meter", G.splashes + " / " + MAX_SPLASH]]) : tally([["Goal", c.goal], ["Seconds", c.time], ["Score", G.score]]);
+  $("lsTally").innerHTML = done ? tally([["Score", G.score], ["Bonus boops", done.n], ["Bonus points", "+" + done.pts]]) : cleared ? tally([["Score", G.score], ["Time bonus", "+" + G.lastBonus], ["Splash meter", G.splashes + " / " + MAX_SPLASH]]) : tally([["Goal", c.goal], ["Seconds", c.time], ["Score", G.score]]);
   $("lsGo").textContent = cleared ? "Next level" : "Let's go!";
   show("levelScreen"); $("lsGo").focus();
 }
@@ -1434,6 +1506,15 @@ function levelClear() {
   G.level++;
   if (G.level >= 5) award("lvl5");
   if (G.level >= 10) award("lvl10");
+  G.bonus = (G.level - 1) % 3 === 0;
+  setupLevel(); hud();
+  intro(true);
+}
+
+function bonusEnd() {
+  G.bonusDone = { n: G.caught, pts: G.score - G.bonusStart };
+  G.bonus = false;
+  Music.stop(); sfx.level();
   setupLevel(); hud();
   intro(true);
 }
@@ -1481,6 +1562,7 @@ const BADGES = [
   { id: "dry", icon: "☀️", name: "Dry Dog", how: "Clear a level with no splashes" },
   { id: "speedy", icon: "⚡", name: "Speedy Paws", how: "Clear a level with 20 seconds left" },
   { id: "team", icon: "🤝", name: "Best Buddies", how: "Clear a level in team walk" },
+  { id: "stampede", icon: "🎉", name: "Stampede Star", how: "Boop 15 critters in a bonus round" },
   { id: "rich", icon: "💎", name: "High Roller", how: "Score 1,000 points" },
   { id: "lvl5", icon: "🌳", name: "Park Pup", how: "Reach level 5" },
   { id: "lvl10", icon: "👑", name: "Top Dog", how: "Reach level 10" },
@@ -1558,6 +1640,27 @@ $("saveForm").addEventListener("submit", async (e) => {
     );
   } catch (e) { db = null; }
 })();
+
+// ---------- Desktop app: update from inside the game ----------
+// The desktop app gives the page window.bbDesktop. "Update now" downloads the
+// newest game files and the app reloads itself with them.
+const desk = window.bbDesktop;
+let updateReady = false;
+function setUpdate(text, btn, ready) { $("updateText").textContent = text; $("updateBtn").hidden = !btn; if (btn) $("updateBtn").textContent = btn; updateReady = !!ready; }
+async function checkUpdate() {
+  setUpdate(`Build ${desk.build}. Checking for updates…`, null);
+  try {
+    const r = await desk.check();
+    if (r.available) setUpdate(`Build ${r.build} is out (you have build ${desk.build}).`, "Update now", true);
+    else setUpdate(`Build ${desk.build}. You have the latest version.`, "Check again");
+  } catch (e) { setUpdate(`Build ${desk.build}. Couldn't check for updates. Are you online?`, "Try again"); }
+}
+async function applyUpdate() {
+  setUpdate("Downloading the update…", null);
+  try { const r = await desk.apply(); if (!r.updated) checkUpdate(); }
+  catch (e) { setUpdate("The update didn't download, so nothing was changed.", "Try again"); }
+}
+if (desk) { $("updateRow").hidden = false; $("updateBtn").onclick = () => (updateReady ? applyUpdate() : checkUpdate()); checkUpdate(); }
 
 // ---------- Android app hooks ----------
 window.bbBack = () => {

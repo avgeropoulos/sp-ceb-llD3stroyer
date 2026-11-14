@@ -1,0 +1,26 @@
+{
+  "name": "backyard-boop",
+  "version": "1.0.0",
+  "description": "Backyard Boop for the computer, with game updates from inside the app",
+  "author": "Backyard Boop",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test",
+    "dist": "electron-builder --publish never"
+  },
+  "devDependencies": {
+    "electron": "33.4.11",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "com.backyardboop.desktop",
+    "productName": "Backyard Boop",
+    "files": ["main.js", "preload.js", "updater.js"],
+    "extraResources": [{ "from": "game", "to": "game" }],
+    "win": { "target": "portable", "artifactName": "BackyardBoop-Windows.exe" },
+    "mac": { "target": [{ "target": "dmg", "arch": "universal" }], "artifactName": "BackyardBoop-Mac.dmg", "category": "public.app-category.games" },
+    "linux": { "target": "AppImage", "artifactName": "BackyardBoop-Linux.AppImage", "category": "Game" }
+  }
+}
