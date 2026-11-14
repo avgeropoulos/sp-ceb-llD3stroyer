@@ -1,8 +1,6 @@
 package com.mixdeck.desktop
 
-import com.mixdeck.Net
 import com.mixdeck.ui.Guide
-import org.json.JSONObject
 import java.awt.BorderLayout
 import java.awt.Dimension
 import java.awt.FlowLayout
@@ -20,7 +18,6 @@ import javax.swing.JOptionPane
 import javax.swing.JPanel
 import javax.swing.JScrollPane
 import javax.swing.SwingUtilities
-import kotlin.concurrent.thread
 
 /** A list of choices, like the phone's menus. Click one (or press Enter) to pick it; Esc closes. */
 class MenuDialog(owner: java.awt.Frame, title: String, items: List<Pair<String, () -> Unit>>) : JDialog(owner, title, true) {
@@ -192,43 +189,5 @@ class HelpDialog(private val app: App) : JDialog(app.frame, "How MixDeck works",
             "H  or  F1" to "Show / hide the button labels",
             "Esc" to "Close the labels or the tutorial",
         )
-    }
-}
-
-/**
- * Checks GitHub for a newer build, like the phone app. On the computer it opens the download for
- * this kind of computer in the browser; install it over the old one.
- */
-class DesktopUpdater(private val app: App) {
-    private val base = "https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/download/mixdeck-latest/"
-
-    private fun assetFor(platform: String) = when {
-        platform.startsWith("macosx-arm64") -> "MixDeck-mac-apple-silicon.dmg"
-        platform.startsWith("macosx") -> "MixDeck-mac-intel.dmg"
-        platform.startsWith("windows") -> "MixDeck-windows.zip"
-        else -> "MixDeck-linux.tar.gz"
-    }
-
-    fun check(manual: Boolean) {
-        thread(isDaemon = true, name = "update check") {
-            val r = runCatching { JSONObject(Net.getText(base + "version.json?t=" + System.currentTimeMillis())) }
-            SwingUtilities.invokeLater {
-                val o = r.getOrNull()
-                when {
-                    o == null -> if (manual) app.error("Couldn't check for updates: ${r.exceptionOrNull()?.message}")
-                    o.optInt("versionCode") > Version.code -> offer(o.optString("versionName"), o.optString("notes"))
-                    manual -> app.info("Up to date", "MixDeck is up to date (version ${Version.name}).")
-                }
-            }
-        }
-    }
-
-    private fun offer(name: String, notes: String) {
-        val choice = JOptionPane.showOptionDialog(app.frame,
-            "MixDeck $name is out (you have ${Version.name}).\n$notes\n\nDownload it now? Then quit MixDeck and install it over this one.\n" +
-                "Your songs, mixes and settings are kept.",
-            "Update available", JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE, null,
-            arrayOf("Download update", "Later"), "Download update")
-        if (choice == 0) browse(base + assetFor(Version.platform))
     }
 }

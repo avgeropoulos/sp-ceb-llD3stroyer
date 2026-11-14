@@ -136,6 +136,29 @@ jobs:
           esac
           ls -la pkg
 
+      # Installs the package it just built, updates it in place from the same package (the way the
+      # app updates itself: unpack next to the install, quit, swap, reopen) and checks the result.
+      - name: Self-test the in-app update on this OS
+        run: |
+          W="$PWD/update-test"
+          rm -rf "$W"
+          case "$RUNNER_OS" in
+            Linux)   APP="$PWD/pkg/MixDeck/bin/MixDeck" ;;
+            Windows) APP="$PWD/pkg/MixDeck/MixDeck.exe" ;;
+            macOS)
+              M="$(mktemp -d)"
+              hdiutil attach -nobrowse -readonly -noautoopen -mountpoint "$M" "pkg/${{ matrix.asset }}"
+              ditto "$M/MixDeck.app" "$PWD/selftest-app/MixDeck.app"
+              hdiutil detach "$M" -force
+              APP="$PWD/selftest-app/MixDeck.app/Contents/MacOS/MixDeck" ;;
+          esac
+          "$APP" --selftest-update "$PWD/pkg/${{ matrix.asset }}" "$W" || true
+          for i in $(seq 1 180); do [ -f "$W/result.txt" ] && break; sleep 1; done
+          echo "--- installed copy:"; cat "$W/phase2.log" 2>/dev/null || true
+          echo "--- swap helper:"; cat "$W/swap.log" 2>/dev/null || true
+          echo "--- result:"; cat "$W/result.txt"
+          grep -q '^OK' "$W/result.txt"
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset }}

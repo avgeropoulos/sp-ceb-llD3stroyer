@@ -33,6 +33,8 @@ class Console(private val mixer: Mixer, private val host: Host) {
         fun suggestNext(next: NextPlan) = openLibrary(next.target)
         /** A newly loaded song on [deck] has started playing (e.g. remember it as played). */
         fun deckStarted(deck: Int) {}
+        /** A new version of MixDeck is ready: the ☰ button shows a badge (the menu offers it). */
+        fun updateReady(): Boolean = false
     }
 
     private val colA = 0xFF29B6F6.toInt()
@@ -95,6 +97,8 @@ class Console(private val mixer: Mixer, private val host: Host) {
         private val onLong: (() -> Unit)? = null, private val textScale: Float = 1f,
         /** Overrides [color] while drawing, e.g. NEXT takes the colour of the deck it loads. */
         private val colorOf: (() -> Int)? = null,
+        /** Shows a small dot in the corner, e.g. ☰ when an update is ready. */
+        private val badge: (() -> Boolean)? = null,
         private val onDown: () -> Unit,
     ) : Ctl(r) {
         private var pressed = false; private var downAt = 0L; private var longDone = false
@@ -111,9 +115,15 @@ class Console(private val mixer: Mixer, private val host: Host) {
             text.color = if (on) Color.BLACK else Color.WHITE
             text.textSize = min(r.height() * 0.42f, unit * 1.35f) * textScale
             val s = label()
-            if (drawIcon(c, s, r, text.color)) return
-            fitText(s, r.width() * 0.9f)
-            c.drawText(s, r.centerX(), r.centerY() - (text.descent() + text.ascent()) / 2, text)
+            if (!drawIcon(c, s, r, text.color)) {
+                fitText(s, r.width() * 0.9f)
+                c.drawText(s, r.centerX(), r.centerY() - (text.descent() + text.ascent()) / 2, text)
+            }
+            if (badge?.invoke() == true) {
+                val d = min(r.width(), r.height()) * 0.13f
+                fill.color = 0xFF00E676.toInt()
+                c.drawCircle(r.right - d * 1.6f, r.top + d * 1.6f, d, fill)
+            }
         }
     }
 
@@ -592,7 +602,8 @@ class Console(private val mixer: Mixer, private val host: Host) {
         cx += cw * 1.5f + pad
         ctls += Btn(RectF(cx, pad, cx + cw * 0.9f, topH), { "?" }, 0xFFFFEB3B.toInt(), lit = { helpMode }) { helpMode = !helpMode }
         cx += cw * 0.9f + pad
-        ctls += Btn(RectF(cx, pad, x + centerW, topH), { "☰" }, dim) { host.mainMenu() }.h("Menu: mixes, guide, settings").k("menu")
+        ctls += Btn(RectF(cx, pad, x + centerW, topH), { "☰" }, dim, badge = { host.updateReady() }) { host.mainMenu() }
+            .h("Menu: mixes, guide, settings, updates").k("menu")
         x += centerW + pad
         ctls += Info(RectF(x, pad, x + infoW, topH), 1).h("Song, time left, BPM, key · tap for BPM fixes").k("info1")
         x += infoW + pad

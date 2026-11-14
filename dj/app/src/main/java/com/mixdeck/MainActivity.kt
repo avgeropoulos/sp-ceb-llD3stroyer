@@ -55,7 +55,7 @@ class MainActivity : Activity(), Console.Host {
         store = TrackStore(filesDir)
         suggester = Suggester(store) { f, p -> Decoder.decode(f, p) }
         recorder = Recorder(this, mixer)
-        updater = Updater(this)
+        updater = Updater(this, busy = { mixer.decks.any { it.playing } || recorder.recording }, recording = { recorder.recording })
         restoreSettings()
         dj = DjView(this, mixer, this)
         setContentView(dj)
@@ -66,8 +66,11 @@ class MainActivity : Activity(), Console.Host {
             prefs.edit().putBoolean("seenKey", true).apply()
         }
         handleLoadIntent(intent)
+        updater.welcomeBack()
         updater.check(manual = false)
     }
+
+    override fun updateReady() = updater.available != null
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -234,39 +237,31 @@ class MainActivity : Activity(), Console.Host {
     private fun beatsLabel(b: Double) = when (b) { 0.25 -> "¼"; 0.5 -> "½"; 0.75 -> "¾"; else -> "1" }
 
     override fun mainMenu() {
-        val items = arrayOf(
-            "▶ Tutorial: mix Nelly – Air Force Ones → Grillz",
-            "My mixes",
-            "How it works (guide)",
-            "Show button labels",
-            "Master volume…",
-            "Sampler volume…",
-            "Crossfader curve: ${if (mixer.curve == XfadeCurve.SMOOTH) "smooth (mixing)" else "sharp (scratching)"}",
-            "Quantize (snap cues & loops to the beat): ${onOff(mixer.quantize)}",
-            "Headphone pre-listen (split cue): ${onOff(mixer.splitCue)}",
-            "Check for updates",
+        val items = listOfNotNull<Pair<String, () -> Unit>>(
+            updater.menuLabel()?.let { it to { updater.menuPick() } },
+            "▶ Tutorial: mix Nelly – Air Force Ones → Grillz" to { startTutorial() },
+            "My mixes" to { startActivity(Intent(this, MixesActivity::class.java)) },
+            "How it works (guide)" to { startActivityForResult(Intent(this, HelpActivity::class.java), REQ_HELP) },
+            "Show button labels" to { dj.helpMode = true },
+            "Master volume…" to { slider("Master volume", mixer.master) { v -> mixer.master = v } },
+            "Sampler volume…" to { slider("Sampler volume", mixer.sampler.volume) { v -> mixer.sampler.volume = v } },
+            "Crossfader curve: ${if (mixer.curve == XfadeCurve.SMOOTH) "smooth (mixing)" else "sharp (scratching)"}" to {
+                synchronized(mixer.lock) { mixer.curve = if (mixer.curve == XfadeCurve.SMOOTH) XfadeCurve.SCRATCH else XfadeCurve.SMOOTH }
+            },
+            "Quantize (snap cues & loops to the beat): ${onOff(mixer.quantize)}" to { synchronized(mixer.lock) { mixer.quantize = !mixer.quantize } },
+            "Headphone pre-listen (split cue): ${onOff(mixer.splitCue)}" to {
+                synchronized(mixer.lock) { mixer.splitCue = !mixer.splitCue }
+                if (mixer.splitCue) AlertDialog.Builder(this).setTitle("Split cue is on")
+                    .setMessage("Plug in headphones. Your LEFT ear hears the mix and your RIGHT ear hears the decks " +
+                        "with 🎧 lit, so you can line up the next song before the crowd hears it.\n\n" +
+                        "Don't use this through a speaker: the speaker would play the cue too.")
+                    .setPositiveButton("OK", null).show()
+            },
+            "Check for updates" to { updater.check(manual = true) },
         )
         AlertDialog.Builder(this).setTitle("MixDeck ${BuildConfig.VERSION_NAME}")
-            .setItems(items) { _, which ->
-                when (which) {
-                    0 -> startTutorial()
-                    1 -> startActivity(Intent(this, MixesActivity::class.java))
-                    2 -> startActivityForResult(Intent(this, HelpActivity::class.java), REQ_HELP)
-                    3 -> dj.helpMode = true
-                    4 -> slider("Master volume", mixer.master) { v -> mixer.master = v }
-                    5 -> slider("Sampler volume", mixer.sampler.volume) { v -> mixer.sampler.volume = v }
-                    6 -> synchronized(mixer.lock) { mixer.curve = if (mixer.curve == XfadeCurve.SMOOTH) XfadeCurve.SCRATCH else XfadeCurve.SMOOTH }
-                    7 -> synchronized(mixer.lock) { mixer.quantize = !mixer.quantize }
-                    8 -> {
-                        synchronized(mixer.lock) { mixer.splitCue = !mixer.splitCue }
-                        if (mixer.splitCue) AlertDialog.Builder(this).setTitle("Split cue is on")
-                            .setMessage("Plug in headphones. Your LEFT ear hears the mix and your RIGHT ear hears the decks " +
-                                "with 🎧 lit, so you can line up the next song before the crowd hears it.\n\n" +
-                                "Don't use this through a speaker: the speaker would play the cue too.")
-                            .setPositiveButton("OK", null).show()
-                    }
-                    9 -> updater.check(manual = true)
-                }
+            .setItems(items.map { it.first }.toTypedArray()) { _, which ->
+                items[which].second()
                 saveSettings()
             }.show()
     }

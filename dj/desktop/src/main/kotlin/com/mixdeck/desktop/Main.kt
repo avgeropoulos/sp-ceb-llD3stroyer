@@ -43,6 +43,20 @@ fun main(args: Array<String>) {
         AppIcon.writeAll(File(args.getOrElse(1) { "icons" }))
         exitProcess(0)
     }
+    // In-app update self-test (CI runs it on every OS): see UpdateSelfTest.
+    when (args.firstOrNull()) {
+        "--selftest-update", "--selftest-update-apply", "--selftest-updated" -> {
+            System.setProperty("java.awt.headless", "true")
+            val code = runCatching {
+                when (args[0]) {
+                    "--selftest-update" -> UpdateSelfTest.phase1(File(args[1]), File(args[2]))
+                    "--selftest-update-apply" -> UpdateSelfTest.phase2(File(args[1]), File(args[2]))
+                    else -> UpdateSelfTest.phase3(File(args[1]))
+                }
+            }.onFailure { it.printStackTrace() }.getOrDefault(1)
+            exitProcess(code)
+        }
+    }
     if (args.firstOrNull() == "--selftest") {
         System.setProperty("java.awt.headless", "true")
         val ok = runCatching { SelfTest.run(File(args.getOrNull(1) ?: "selftest")) }.onFailure { it.printStackTrace() }.getOrDefault(false)
@@ -95,6 +109,7 @@ class App : Console.Host {
     @Volatile private var saving: String? = null
     private val loader = Executors.newSingleThreadExecutor { r -> Thread(r, "MixDeck loader").apply { isDaemon = true } }
 
+    val updater = DesktopUpdater(this)
     val frame = JFrame("MixDeck")
     private val panel = ConsolePanel()
     val console get() = panel.console
@@ -119,11 +134,20 @@ class App : Console.Host {
             prefs.putBoolean("seenKey", true)
             runCatching { prefs.flush() }
         }
-        DesktopUpdater(this).check(manual = false)
         audio.error?.let { error(it) }
+        runCatching { Install.cleanUp() }
+        SwingUtilities.invokeLater { updater.welcomeBack(); updater.check(manual = false) }
     }
 
-    private fun quit() {
+    /** True while music is playing or a mix is being recorded (no popups then). */
+    fun musicPlaying() = mixer.decks.any { it.playing } || recorder.recording
+
+    fun repaint() = panel.repaint()
+
+    override fun updateReady() = updater.hasNews
+
+    /** Quits MixDeck (asking about an unsaved recording). [restart]: open again, e.g. to finish an update. */
+    fun quit(restart: Boolean = false) {
         if (recorder.recording) {
             val r = JOptionPane.showConfirmDialog(frame, "You're recording. Save the mix before quitting?", "MixDeck",
                 JOptionPane.YES_NO_CANCEL_OPTION)
@@ -135,6 +159,7 @@ class App : Console.Host {
         }
         saveSettings()
         audio.stop()
+        updater.applyOnQuit(relaunch = restart)
         exitProcess(0)
     }
 
@@ -329,7 +354,8 @@ class App : Console.Host {
 
     override fun mainMenu() {
         fun onOff(b: Boolean) = if (b) "on" else "off"
-        val items = listOf<Pair<String, () -> Unit>>(
+        val items = listOfNotNull<Pair<String, () -> Unit>>(
+            updater.menuLabel()?.let { it to { updater.menuPick() } },
             "▶ Tutorial: mix Nelly – Air Force Ones → Grillz" to { startTutorial() },
             "My mixes" to { MixesDialog(this).isVisible = true },
             "How it works (guide and keyboard shortcuts)" to { HelpDialog(this).isVisible = true },
@@ -347,7 +373,7 @@ class App : Console.Host {
                         "Don't use this through speakers: they'd play the cue too.")
             },
             "Open the Music/MixDeck folder" to { openFile(Places.mixes) },
-            "Check for updates" to { DesktopUpdater(this).check(manual = true) },
+            "Check for updates" to { updater.check(manual = true) },
             "About MixDeck" to { info("MixDeck ${Version.name}", "A two-deck DJ app. Your songs are kept in\n${Places.data}\nand your mixes in\n${Places.mixes}\n\nYouTube downloads are for personal use only.") },
         )
         MenuDialog(frame, "MixDeck ${Version.name}", items).isVisible = true
