@@ -13,7 +13,7 @@ import java.nio.FloatBuffer
  * The STFT matches torch.stft(center=True, periodic Hann) as the model was trained with.
  * Both channels go through one complex FFT (left as the real part, right as the imaginary).
  */
-class MdxSeparator(private val env: OrtEnvironment, private val session: OrtSession) {
+class MdxSeparator(private val env: OrtEnvironment, private val session: OrtSession) : Separator {
     private val fft = Fft(N_FFT)
     private val window = hann(N_FFT)
     private val re = DoubleArray(N_FFT)
@@ -23,7 +23,7 @@ class MdxSeparator(private val env: OrtEnvironment, private val session: OrtSess
      * The instrumental part of a 44.1 kHz stereo song, mixed down to mono.
      * [progress] gets 0..1; [cancelled] is polled between chunks.
      */
-    fun instrumentalMono(left: FloatArray, right: FloatArray, progress: (Float) -> Unit = {}, cancelled: () -> Boolean = { false }): FloatArray {
+    override fun instrumentalMono(left: FloatArray, right: FloatArray, progress: (Float) -> Unit, cancelled: () -> Boolean): FloatArray {
         val n = left.size
         val trim = N_FFT / 2
         val chunk = HOP * (DIM_T - 1)

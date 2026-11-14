@@ -58,10 +58,13 @@ object Tuning {
      * between them), 8 or 25 cents sharp 2 to 4 cents, reeds either side of the middle one less than 1. Spectra are
      * 186 ms (zero-padded twice), every 93 ms, at most [MAX_SPECTRA] of them spread over the song.
      */
-    fun estimate(audio: FloatArray): Double {
+    fun estimate(audio: FloatArray): Double = estimateOrNull(audio) ?: 0.0
+
+    /** [estimate], or null when it can't tell (too few steady tones), rather than 0. */
+    fun estimateOrNull(audio: FloatArray): Double? {
         val sr = BasicPitch.SAMPLE_RATE.toDouble()
         val count = if (audio.size >= WINDOW) (audio.size - WINDOW) / HOP + 1 else 0
-        if (count == 0) return 0.0
+        if (count == 0) return null
         val used = min(count, MAX_SPECTRA)
         val fft = Fft(FFT_SIZE)
         val window = hann(WINDOW)
@@ -102,7 +105,7 @@ object Tuning {
                 dev.add(1200 * ln(hz / 440.0) / ln(2.0))
             }
         }
-        return dev.tuning(MIN_PEAKS, MIN_AGREEMENT) ?: 0.0
+        return dev.tuning(MIN_PEAKS, MIN_AGREEMENT)
     }
 
     /**

@@ -50,7 +50,8 @@ jobs:
           path: Bouzouki.apk
 
       - name: Publish downloadable build
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        # A push whose commit message says [no-release] is built and tested but not published.
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !contains(github.event.head_commit.message, '[no-release]')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest-${{ github.ref_name }}
@@ -75,7 +76,7 @@ jobs:
       # The Μπουζούκι app updates itself from this release (see bouzouki/.../Updater.kt), so only
       # this branch's builds go here, never another branch's.
       - name: Publish to the app's update channel
-        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_name == 'ccr-a8580b25-oh80s5'
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_name == 'ccr-a8580b25-oh80s5' && !contains(github.event.head_commit.message, '[no-release]')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: bouzouki-hero
