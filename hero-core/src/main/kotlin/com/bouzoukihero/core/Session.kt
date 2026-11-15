@@ -25,8 +25,8 @@ interface SessionListener {
  * along to the video and the taps become the song's chart.
  *
  * Times are song seconds (the audio's or the video's own clock). The host calls
- * [update] every frame with the current song time, and [press]/[release] when a
- * finger goes down or comes up, with the song time of that moment.
+ * [update] every frame with the song time to draw and the song time right now, and
+ * [press]/[release] when a finger goes down or comes up, with the song time of that moment.
  */
 class Session(
     val title: String,
@@ -41,7 +41,12 @@ class Session(
     val listen: Boolean = false,
 ) {
     enum class State { LOADING, PLAYING, PAUSED, FINISHED, ERROR }
-    enum class Action { NONE, PAUSE, RESUME, RESTART, QUIT, OPA, DONE, PLAY_CHART, SYNC_EARLIER, SYNC_LATER }
+    enum class Action {
+        NONE, PAUSE, RESUME, RESTART, QUIT, OPA, DONE, PLAY_CHART, SYNC_EARLIER, SYNC_LATER,
+
+        /** Move the song's sync by [syncFix], so the notes land where the player taps. */
+        SYNC_FIT,
+    }
 
     class RecNote(val time: Double, val lane: Int) {
         var end = -1.0
@@ -73,7 +78,12 @@ class Session(
     @Volatile var state = State.PLAYING
     @Volatile var message = ""
 
+    /** The song time being drawn: the moment the frame is seen, a little ahead of [judgedTime]. */
     var time = 0.0
+        private set
+
+    /** The song time right now: what misses and holds are counted against. */
+    var judgedTime = 0.0
         private set
     var score = 0
         private set
@@ -147,7 +157,8 @@ class Session(
         }
         score = 0; combo = 0; maxCombo = 0; counts.fill(0); opaMeter = 0f; opaUntil = -1.0
         holdPoints = 0.0; leadAudible = true; recorded.clear(); particles.clear()
-        lastJudgement = null; nextMiss = 0; time = 0.0; partDone = false
+        lastJudgement = null; nextMiss = 0; time = 0.0; judgedTime = 0.0; partDone = false
+        tapN = 0; tapsChanged()
         state = State.PLAYING
     }
 
@@ -186,6 +197,7 @@ class Session(
             else -> Judgement.GOOD
         }
         judge(g, j)
+        noteTap(t - g.time)
         if (g.isHold) {
             g.holding = true
             g.holdTo = t
@@ -277,9 +289,101 @@ class Session(
         sparks(g.lane, 0xFFFFFFFF.toInt(), 10)
     }
 
+    // ---- How early or late the player taps ----
+
+    private var tapOffsets = DoubleArray(256)
+    private var tapN = 0
+    private var tapMedian = Double.NaN // NaN: not worked out since the taps last changed
+    private var tapWordsShown = ""
+    private var fixLabelShown = ""
+
+    /** Keeps how far from its note a tap landed, in seconds (late is positive). */
+    private fun noteTap(offset: Double) {
+        if (tapN == tapOffsets.size) tapOffsets = tapOffsets.copyOf(tapN * 2)
+        tapOffsets[tapN++] = offset
+        tapsChanged()
+    }
+
+    private fun tapsChanged() {
+        tapMedian = Double.NaN
+        tapWordsShown = ""
+        fixLabelShown = ""
+    }
+
+    /** How many taps have hit a note since the song (re)started. */
+    val tapCount: Int
+        @Synchronized get() = tapN
+
+    /**
+     * How late (positive) or early (negative) the player's taps are against their notes, in
+     * seconds: the middle one of all the taps that hit, so a few wild ones don't count. Null
+     * until there are [MIN_TAPS] of them. A steady offset is rarely the player: it's the sound
+     * reaching the ear later (or earlier) than the phone's clock says, which the sync corrects.
+     */
+    @Synchronized fun tapOffset(): Double? {
+        if (tapN < MIN_TAPS) return null
+        if (tapMedian.isNaN()) {
+            val sorted = tapOffsets.copyOf(tapN).also { it.sort() }
+            tapMedian = if (tapN % 2 == 1) sorted[tapN / 2] else (sorted[tapN / 2 - 1] + sorted[tapN / 2]) / 2
+        }
+        return tapMedian
+    }
+
+    /**
+     * Seconds to add to the song's sync so the notes land where the player taps: taps late by x
+     * means the sync goes down by x (the notes show later). Rounded to 5 ms; 0.0 when there are
+     * too few taps to tell or they are less than [MIN_FIX] off.
+     */
+    @Synchronized fun syncFix(): Double {
+        val m = tapOffset() ?: return 0.0
+        if (abs(m) < MIN_FIX) return 0.0
+        val steps = floor(abs(m) / FIX_STEP + 0.5)
+        return -(if (m < 0) -steps else steps) * FIX_STEP
+    }
+
+    /**
+     * The host moved the song's sync by [by] seconds (positive shows the notes earlier). Every
+     * tap so far would have been that much later against its note, so the taps are restated:
+     * what's shown stays true, and a fix that was applied isn't offered again.
+     */
+    @Synchronized fun syncMoved(by: Double) {
+        if (by == 0.0 || by.isNaN()) return
+        for (i in 0 until tapN) tapOffsets[i] += by
+        tapsChanged()
+    }
+
+    /** "32 ms late", "8 ms early" or "on time"; "" until there are enough taps to tell. */
+    @Synchronized fun tapWords(): String {
+        val m = tapOffset() ?: return ""
+        if (tapWordsShown.isEmpty()) {
+            val ms = Math.round(abs(m) * 1000)
+            tapWordsShown = if (ms == 0L) "on time" else if (m > 0) "$ms ms late" else "$ms ms early"
+        }
+        return tapWordsShown
+    }
+
+    /** What the button that applies [syncFix] says; "" when there's nothing to fix. */
+    @Synchronized fun fixLabel(): String {
+        val fix = syncFix()
+        if (fix == 0.0) return ""
+        if (fixLabelShown.isEmpty()) {
+            val ms = Math.round(abs(fix) * 1000)
+            fixLabelShown = "Move the notes $ms ms " + if (fix < 0) "later" else "earlier"
+        }
+        return fixLabelShown
+    }
+
     // ---- Simulation ----
 
-    @Synchronized fun update(t: Double, dt: Float) {
+    /** One frame of a host that draws nothing ahead: [t] is both the time shown and the time now. */
+    fun update(t: Double, dt: Float) = update(t, t, dt)
+
+    /**
+     * One frame. [shown] is the song time to draw: the moment this frame reaches the eye, a
+     * little ahead of now. [judged] is the song time right now, which misses and holds are
+     * counted against, so drawing ahead takes nothing from the time there is to hit a note.
+     */
+    @Synchronized fun update(shown: Double, judged: Double, dt: Float) {
         anim += dt
         judgementAge += dt
         streakAge += dt
@@ -303,16 +407,22 @@ class Session(
         }
         particles.addAll(shards)
         if (state != State.PLAYING) return
-        val dtSong = (t - time).coerceIn(0.0, 0.25)
-        time = t
+        val dtSong = (judged - judgedTime).coerceIn(0.0, 0.25)
+        time = shown
+        judgedTime = judged
 
-        if (opaActive) opaMeter = ((opaUntil - t) / OPA_SECONDS).toFloat().coerceIn(0f, 1f)
+        if (opaActive) opaMeter = ((opaUntil - shown) / OPA_SECONDS).toFloat().coerceIn(0f, 1f)
         else if (opaUntil > 0) { opaUntil = -1.0; opaMeter = 0f }
 
         if (record) return
 
-        val w = difficulty.window
-        while (nextMiss < gems.size && (gems[nextMiss].judged != null || gems[nextMiss].time < t - w)) {
+        // From here on it's the song as it is now, not as it's drawn.
+        val t = judged
+        // A tap counts from when the finger went down, which the game hears of a moment later:
+        // a note isn't called missed until such a tap can no longer turn up. (press() itself
+        // keeps to the window, so this only delays the bad news.)
+        val gone = t - difficulty.window - TAP_GRACE
+        while (nextMiss < gems.size && (gems[nextMiss].judged != null || gems[nextMiss].time < gone)) {
             val g = gems[nextMiss]
             if (g.judged == null) judge(g, Judgement.MISS)
             nextMiss++
@@ -339,9 +449,9 @@ class Session(
     @Synchronized fun finish() {
         if (state == State.FINISHED) return
         if (record) {
-            for (r in recorded) if (r.end < 0) r.end = time
+            for (r in recorded) if (r.end < 0) r.end = judgedTime
         }
-        releaseAll(time)
+        releaseAll(judgedTime)
         state = State.FINISHED
         listener.finished(this)
     }
@@ -576,7 +686,10 @@ class Session(
     private fun tail(g: Gfx, l: Layout, gem: Gem) {
         val la = difficulty.lookahead
         val from = when {
-            gem.holding || gem.holdBroken || gem.holdDone -> gem.holdTo
+            // While it's held the tail is used up to the hit line (the time drawn, not the time
+            // judged, which runs a little behind it).
+            gem.holding -> max(gem.time, time)
+            gem.holdBroken || gem.holdDone -> gem.holdTo
             else -> gem.time
         }
         if (gem.holdDone) return
@@ -745,18 +858,42 @@ class Session(
 
     private fun pauseScreen(g: Gfx, l: Layout) {
         dim(g, l)
-        val cy = (l.top + viewH) / 2
+        val sync = syncText.isNotEmpty()
+        val taps = if (sync) tapWords() else ""
+        val fix = if (sync) fixLabel() else ""
+        val perf = if (perfText.isEmpty()) emptyList() else perfText.split('\n')
+        // How far the menu reaches below its middle; on a short screen it moves up to fit.
+        var below = if (sync) 182f else 104f
+        if (taps.isNotEmpty()) below += 22f
+        if (fix.isNotEmpty()) below += 40f
+        if (perf.isNotEmpty()) below += 14f + 13f * perf.size
+        var cy = (l.top + viewH) / 2
+        cy = max(l.top + 100, min(cy, viewH - 6 - below))
         g.shadowText("PAUSED", VIEW_W / 2, cy - 70, 30f, 0xFFFFFFFF.toInt(), 1)
         button(g, 90f, cy - 40, 180f, 40f, "RESUME", 0xFF2E9B57.toInt(), Action.RESUME)
         button(g, 90f, cy + 12, 180f, 40f, "RESTART", 0xFF2F6FD6.toInt(), Action.RESTART)
         button(g, 90f, cy + 64, 180f, 40f, "QUIT", 0xFF8A2F3A.toInt(), Action.QUIT)
-        if (syncText.isNotEmpty()) {
+        var y = cy + 104
+        if (sync) {
             // Notes a little late or early against the bouzouki? Shift them for this song.
             g.text("Notes vs. the bouzouki: $syncText", VIEW_W / 2, cy + 136, 12f, 0xFFB9C6EE.toInt(), 1)
             button(g, 30f, cy + 146, 145f, 36f, "\u25B2 Earlier", 0xFF39406A.toInt(), Action.SYNC_EARLIER)
             button(g, 185f, cy + 146, 145f, 36f, "\u25BC Later", 0xFF39406A.toInt(), Action.SYNC_LATER)
+            y = cy + 182
         }
-        if (perfText.isNotEmpty()) g.text(perfText, VIEW_W / 2, cy + 206, 10f, 0x99B9C6EE.toInt(), 1)
+        if (taps.isNotEmpty()) {
+            // Or let the taps say: how far off they were so far, and one button to take that out.
+            g.text("Your taps: $taps", VIEW_W / 2, y + 20, 12f, 0xFFB9C6EE.toInt(), 1)
+            y += 22
+        }
+        if (fix.isNotEmpty()) {
+            button(g, 30f, y + 8, 300f, 32f, fix, 0xFF2E6F8A.toInt(), Action.SYNC_FIT)
+            y += 40
+        }
+        for (line in perf) {
+            g.text(line, VIEW_W / 2, y + 24, 10f, 0x99B9C6EE.toInt(), 1)
+            y += 13
+        }
     }
 
     private fun notice(g: Gfx, l: Layout, text: String, error: Boolean) {
@@ -788,7 +925,7 @@ class Session(
         } else if (bestScore > 0) {
             g.text("Best: %,d".format(bestScore), VIEW_W / 2, y0 + 170, 12f, 0xFF9FB0E0.toInt(), 1)
         }
-        val rows = listOf(
+        val rows = arrayListOf(
             "Accuracy" to "${(accuracy * 100).toInt()}%",
             "Best streak" to "$maxCombo",
             "Perfect" to "${counts[Judgement.PERFECT.ordinal]}",
@@ -796,12 +933,19 @@ class Session(
             "Good" to "${counts[Judgement.GOOD.ordinal]}",
             "Missed" to "${counts[Judgement.MISS.ordinal]}",
         )
+        // How far off the taps were, and (when the host keeps a sync for the song) one button
+        // to take that out for next time. The rows close up a little to make room.
+        val taps = tapWords()
+        val fix = if (syncText.isNotEmpty()) fixLabel() else ""
+        if (taps.isNotEmpty()) rows.add("Your taps" to taps)
+        val gap = if (taps.isNotEmpty()) 21f else 24f
         var yy = y0 + 202
         for ((k, v) in rows) {
             g.text(k, x + 30, yy, 14f, 0xFFB9C6EE.toInt())
             g.text(v, x + w - 30, yy, 14f, 0xFFFFFFFF.toInt(), 2)
-            yy += 24
+            yy += gap
         }
+        if (fix.isNotEmpty()) button(g, x + 20, y0 + 338, w - 40, 32f, fix, 0xFF2E6F8A.toInt(), Action.SYNC_FIT)
         button(g, x + 20, y0 + 380, w / 2 - 30, 42f, "AGAIN", 0xFF2F6FD6.toInt(), Action.RESTART)
         button(g, x + w / 2 + 10, y0 + 380, w / 2 - 30, 42f, "SONGS", 0xFF2E9B57.toInt(), Action.QUIT)
     }
@@ -859,6 +1003,19 @@ class Session(
     companion object {
         /** How long a full OPA! meter lasts. */
         const val OPA_SECONDS = 14.0
+
+        /**
+         * Seconds a note waits past its window before it's called missed: longer than a tap takes
+         * to get from the finger to the game, so a tap made in time still finds its note.
+         */
+        const val TAP_GRACE = 0.06
+
+        /** Taps needed before [tapOffset] says how early or late they are. */
+        const val MIN_TAPS = 20
+
+        /** Taps less than this far off (seconds) aren't worth a change of sync. */
+        const val MIN_FIX = 0.015
+        private const val FIX_STEP = 0.005
         private const val P_FAR = 0.26f
 
         private val LANE_COLORS = intArrayOf(

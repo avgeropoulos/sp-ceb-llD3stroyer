@@ -8,10 +8,17 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.os.Build
+import android.os.Handler
+import android.os.HandlerThread
+import android.os.Looper
+import android.os.SystemClock
+import android.view.Choreographer
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
+import com.bouzouki.ScreenTiming
+import com.bouzoukihero.core.DisplayLead
 import com.bouzoukihero.core.Gfx
 import com.bouzoukihero.core.Session
 import com.bouzoukihero.core.VIEW_W
@@ -96,7 +103,7 @@ class CanvasGfx : Gfx {
  * Each finger is tracked separately, so chords and sliding between buttons work.
  */
 @SuppressLint("ViewConstructor")
-class HeroView(context: Context, private val host: Host) : SurfaceView(context), SurfaceHolder.Callback, Runnable {
+class HeroView(context: Context, private val host: Host) : SurfaceView(context), SurfaceHolder.Callback {
     interface Host {
         val session: Session
         val clock: SongClock?
@@ -106,14 +113,13 @@ class HeroView(context: Context, private val host: Host) : SurfaceView(context),
     }
 
     private val gfx = CanvasGfx()
-    @Volatile private var running = false
     private var surfaceReady = false
     private var resumed = false
-    private var thread: Thread? = null
+    private var loop: Loop? = null
     private val pointerLane = HashMap<Int, Int>()
-    private var frames = 0
-    private var worst = 0f
-    private var perfSince = System.nanoTime()
+
+    /** How many times a second the screen refreshes: how far ahead the notes are drawn follows from it. */
+    @Volatile private var refreshHz = DisplayLead.DEFAULT_HZ
 
     init {
         holder.addCallback(this)
@@ -132,15 +138,15 @@ class HeroView(context: Context, private val host: Host) : SurfaceView(context),
     }
 
     private fun startLoop() {
-        if (!resumed || !surfaceReady || running) return
-        running = true
-        thread = Thread(this, "hero-loop").also { it.start() }
+        if (!resumed || !surfaceReady || loop != null) return
+        readRefreshRate()
+        loop = Loop().also { it.start() }
     }
 
     private fun stopLoop() {
-        running = false
-        thread?.let { try { it.join(500) } catch (_: InterruptedException) {} }
-        thread = null
+        val l = loop ?: return
+        loop = null
+        l.end()
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
@@ -148,40 +154,110 @@ class HeroView(context: Context, private val host: Host) : SurfaceView(context),
         startLoop()
     }
 
-    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
+    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+        readRefreshRate()
+    }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         surfaceReady = false
         stopLoop()
     }
 
+    /** Asks the screen how fast it refreshes (60 if it won't say). Safe from either thread. */
+    private fun readRefreshRate(): Float {
+        val hz = ScreenTiming.refreshRate(try { display } catch (_: Exception) { null })
+        refreshHz = hz
+        return hz
+    }
+
+    /** The song time right now. */
     fun songTime(): Double {
-        val c = host.clock ?: return host.session.time
+        val c = host.clock ?: return host.session.judgedTime
         return c.now() - host.latency
     }
 
-    override fun run() {
-        var last = System.nanoTime()
-        while (running) {
+    /**
+     * The song time when a touch or key happened, not when it got here: events wait their turn
+     * behind whatever the app is doing, and a tap is judged by when the finger went down.
+     * [eventMillis] is the event's own time stamp; [inputDelay] is what its device takes to
+     * notice it before stamping it.
+     */
+    private fun songTimeOf(eventMillis: Long, inputDelay: Double): Double {
+        val age = (SystemClock.uptimeMillis() - eventMillis) / 1000.0
+        // A stamp that can't be right (made-up events carry none) is left out: judged on arrival, as before.
+        return songTime() - (if (age in 0.0..MAX_EVENT_AGE) age else 0.0) - inputDelay
+    }
+
+    /**
+     * The game loop's thread. It draws exactly one frame for every frame the screen shows, woken
+     * by the screen's own tick (vsync) through a Choreographer of its own. Drawing as fast as it
+     * can, as it used to, made frames queue up behind the screen, each one seen a refresh later.
+     */
+    private inner class Loop : HandlerThread("hero-loop"), Choreographer.FrameCallback {
+        /** False once the loop is told to end: nothing is drawn or asked for after that. */
+        @Volatile private var live = true
+        private var choreographer: Choreographer? = null
+        private var timer: Handler? = null
+        private var lastVsync = 0L
+        private var frames = 0
+        private var worst = 0f
+        private var perfSince = 0L
+
+        /** Runs on this thread once it can take callbacks; the Choreographer is this thread's own. */
+        override fun onLooperPrepared() {
+            choreographer = try { Choreographer.getInstance() } catch (_: Exception) { null }
+            // No vsync to be had (never seen, but the game must still draw): a plain timer instead.
+            if (choreographer == null) timer = Looper.myLooper()?.let { Handler(it) }
+            perfSince = System.nanoTime()
+            next()
+        }
+
+        private val tick = Runnable { doFrame(System.nanoTime()) }
+
+        /** Asks for the next frame; only ever one at a time, so frames can't pile up. */
+        private fun next() {
+            if (!live) return
+            val c = choreographer
+            if (c != null) c.postFrameCallback(this)
+            else timer?.postDelayed(tick, (1000f / refreshHz).toLong().coerceIn(4L, 50L))
+        }
+
+        /** [frameTimeNanos] is the vsync this frame is drawn on, on System.nanoTime()'s clock. */
+        override fun doFrame(frameTimeNanos: Long) {
+            if (!live) return
+            draw(frameTimeNanos)
+            next()
+        }
+
+        /** Stops the loop and waits for the frame in hand, so nothing touches the surface afterwards. */
+        fun end() {
+            live = false
+            quit() // drops the callbacks still waiting; the thread then ends by itself
+            try { join(500) } catch (_: InterruptedException) {}
+        }
+
+        private fun draw(vsync: Long) {
             val now = System.nanoTime()
-            val dt = ((now - last) / 1e9f).coerceAtMost(0.1f)
-            last = now
+            val dt = if (lastVsync == 0L) 0f else ((vsync - lastVsync) / 1e9f).coerceIn(0f, 0.1f)
+            lastVsync = vsync
             val s = host.session
             val clock = host.clock
             if (s.state == Session.State.PLAYING && clock != null) {
-                // What's drawn now is on screen a frame or two later: draw that moment.
-                s.update(songTime() + DISPLAY_LEAD, dt)
+                // This frame reaches the eye a fixed time after its vsync (the lead), and some of
+                // that has gone by already. Draw the song as it will be at that moment: the
+                // clock's reading now, plus what's left. Misses and holds go by the song as it is now.
+                val lead = DisplayLead.seconds(refreshHz)
+                val ahead = (lead - (now - vsync) / 1e9).coerceIn(0.0, lead)
+                val t = songTime()
+                s.update(t + ahead, t, dt)
                 if (clock.ended) s.finish()
             } else {
-                s.update(s.time, dt)
+                s.update(s.time, s.judgedTime, dt)
             }
             val canvas = try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) holder.lockHardwareCanvas() else holder.lockCanvas()
             } catch (_: Exception) { null }
-            if (canvas == null) {
-                Thread.sleep(16)
-                continue
-            }
+            if (canvas == null) return // nothing to draw on just now: skip this frame
             try {
                 val scale = canvas.width / VIEW_W
                 s.viewH = canvas.height / scale
@@ -190,17 +266,19 @@ class HeroView(context: Context, private val host: Host) : SurfaceView(context),
             } finally {
                 holder.unlockCanvasAndPost(canvas)
             }
-            // Smoothness: frames per second and the slowest frame, shown in the pause menu.
+            // Smoothness: frames per second and the slowest frame, shown in the pause menu with
+            // the screen's rate and how far ahead the notes are drawn for it.
             frames++
             worst = maxOf(worst, dt)
             if (now - perfSince > 1_000_000_000L) {
-                s.perfText = "Smoothness: ${frames} fps, slowest frame ${(worst * 1000).toInt()} ms"
+                val fps = Math.round(frames * 1e9 / (now - perfSince))
+                val hz = readRefreshRate() // the screen can change its rate while the game is up
+                s.perfText = "Smoothness: $fps fps, slowest frame ${(worst * 1000).toInt()} ms\n" +
+                    "Screen ${Math.round(hz)} Hz, notes drawn ${Math.round(DisplayLead.seconds(hz) * 1000)} ms ahead"
                 frames = 0
                 worst = 0f
                 perfSince = now
             }
-            val elapsed = (System.nanoTime() - now) / 1_000_000L
-            if (elapsed < 6) Thread.sleep(6 - elapsed)
         }
     }
 
@@ -209,7 +287,7 @@ class HeroView(context: Context, private val host: Host) : SurfaceView(context),
         val scale = width / VIEW_W
         if (scale <= 0f) return true
         val s = host.session
-        val t = songTime()
+        val t = songTimeOf(e.eventTime, TOUCH_DELAY)
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                 val i = e.actionIndex
@@ -257,14 +335,14 @@ class HeroView(context: Context, private val host: Host) : SurfaceView(context),
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         val lane = laneForKey(keyCode)
         if (lane < 0) return super.onKeyDown(keyCode, event)
-        if (event.repeatCount == 0) host.session.press(lane, songTime())
+        if (event.repeatCount == 0) host.session.press(lane, songTimeOf(event.eventTime, 0.0))
         return true
     }
 
     override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
         val lane = laneForKey(keyCode)
         if (lane < 0) return super.onKeyUp(keyCode, event)
-        host.session.release(lane, songTime())
+        host.session.release(lane, songTimeOf(event.eventTime, 0.0))
         return true
     }
 
@@ -278,7 +356,14 @@ class HeroView(context: Context, private val host: Host) : SurfaceView(context),
     }
 
     private companion object {
-        /** Seconds between drawing a frame and seeing it (as Μπουζούκι's song screen assumes). */
-        const val DISPLAY_LEAD = 0.025
+        /**
+         * Seconds a touch panel takes to notice a finger (it scans for touches a hundred or so
+         * times a second) before the touch gets its time stamp. Taken off the time a tap is
+         * judged at; nothing to do with drawing.
+         */
+        const val TOUCH_DELAY = 0.010
+
+        /** No event waits this long (seconds) to be handled: an older time stamp isn't believed. */
+        const val MAX_EVENT_AGE = 0.25
     }
 }

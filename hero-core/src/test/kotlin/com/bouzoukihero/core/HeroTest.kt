@@ -290,6 +290,7 @@ class HeroTest {
         }
         done.update(done.gems.last().end + 3, 0.016f)
         shot("part_done", done)
+        done.syncText = "in step" // as the app sets it: the results then offer to fit the sync to the taps
         done.finish()
         shot("results", done)
 
@@ -301,7 +302,21 @@ class HeroTest {
 
         val paused = Session(tune.title, Difficulty.MEDIUM, Charts.build(tune.sourceNotes(), Difficulty.MEDIUM))
         paused.update(5.0, 0.016f)
+        paused.syncText = "in step"
+        paused.perfText = "Smoothness: 60 fps, slowest frame 17 ms\nScreen 60 Hz, notes drawn 43 ms ahead"
         paused.state = Session.State.PAUSED
         shot("paused", paused)
+        // Paused after some playing, on a short screen with the video on top: the taps' line and its button.
+        val tuned = Session("Some YouTube Song", Difficulty.MEDIUM, Charts.build(tune.sourceNotes(), Difficulty.MEDIUM), hasVideo = true)
+        tuned.topInset = 202.5f
+        for (g in tuned.gems.take(30)) {
+            tuned.update(g.time, 0.016f)
+            tuned.press(g.lane, g.time + 0.04)
+            tuned.release(g.lane, g.time + 0.1)
+        }
+        tuned.syncText = "25 ms earlier"
+        tuned.perfText = paused.perfText
+        tuned.state = Session.State.PAUSED
+        shot("paused_taps", tuned, 640)
     }
 }

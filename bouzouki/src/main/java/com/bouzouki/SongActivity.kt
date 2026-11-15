@@ -50,6 +50,7 @@ import com.bouzouki.core.song.ParsedTab
 import com.bouzouki.core.song.PdfTab
 import com.bouzouki.core.song.SongAnalysis
 import com.bouzouki.core.song.TabParser
+import com.bouzoukihero.core.DisplayLead
 import java.io.File
 import java.io.IOException
 import java.lang.ref.WeakReference
@@ -162,6 +163,15 @@ class SongActivity : Activity() {
     private var lastFrameMedia = Double.NaN
     /** Seconds added to the playback time when looking up notes (per song, see [nudgeSync]). */
     private var syncOffset = 0.0
+
+    /**
+     * Seconds between drawing a frame and seeing it, on this phone's screen. The same figure as
+     * Bouzouki Hero draws by, since both show a song under the same sync.
+     */
+    private var displayLead = DisplayLead.OLD
+    /** While a frame is being drawn: seconds since its vsync, already used up of [displayLead]. */
+    private var frameAge = 0.0
+    private var leadReadNanos = 0L
     /** After a seek the player still reports the old time for a moment: ignore it until then. */
     private var pendingSeek = Double.NaN
     private var pendingSeekNanos = 0L
@@ -182,6 +192,8 @@ class SongActivity : Activity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        ScreenTiming.restateSyncs(this) // before any song's sync is read
+        displayLead = ScreenTiming.lead(this)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.statusBarColor = GREEK_BLUE
         window.navigationBarColor = NAVY
@@ -1767,11 +1779,18 @@ class SongActivity : Activity() {
         if (clock.playing && song != null) scheduleFrame() else render(clock.now(nanos))
     }
 
-    private val frameCallback = Choreographer.FrameCallback {
+    private val frameCallback = Choreographer.FrameCallback { vsyncNanos ->
         frameScheduled = false
         if (clock.playing && song != null) {
+            if (vsyncNanos - leadReadNanos > 1_000_000_000L) {
+                leadReadNanos = vsyncNanos
+                displayLead = ScreenTiming.lead(this) // the screen can change its refresh rate as it goes
+            }
+            // The lead counts from the frame's vsync; what has gone by since is no longer ahead.
+            frameAge = ((System.nanoTime() - vsyncNanos) / 1e9).coerceIn(0.0, displayLead)
             val t = clock.now(SystemClock.elapsedRealtimeNanos())
             if (t != lastFrameMedia) render(t) // the clock stands still while a seek lands or the player stalls
+            frameAge = 0.0
             scheduleFrame()
         }
     }
@@ -1792,7 +1811,7 @@ class SongActivity : Activity() {
         }
         // What's drawn now is on screen a frame or two later.
         val s = song ?: return whole.status(null, media, false)
-        val t = media + syncOffset + if (clock.playing) DISPLAY_LEAD * clock.rate else 0.0
+        val t = media + syncOffset + if (clock.playing) (displayLead - frameAge) * clock.rate else 0.0
         tab.time = t
         sheet.time = t
         pluck(s, media + syncOffset)
@@ -1980,6 +1999,12 @@ class SongActivity : Activity() {
     override fun onStart() {
         super.onStart()
         visible = true
+        // Bouzouki Hero keeps this song's sync under the same key and may have moved it meanwhile.
+        currentId?.let { id ->
+            val was = syncOffset
+            loadSync(id)
+            if (syncOffset != was) pluckReset = true
+        }
         if (clock.playing) scheduleFrame()
     }
 
@@ -2090,8 +2115,6 @@ class SongActivity : Activity() {
         private const val STATE_OFFER_TEXT = "tab_offer_text"
         private const val SYNC_STEP = 0.025
         private const val MAX_SYNC = 1.0
-        /** Seconds between drawing a frame and seeing it. */
-        private const val DISPLAY_LEAD = 0.025
         /** Seconds between plucking the synth and hearing it. */
         private const val PLUCK_LEAD = 0.06
         /** Strokes per second of the bouzouki sound's tremolo. */
