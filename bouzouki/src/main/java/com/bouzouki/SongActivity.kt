@@ -1581,7 +1581,8 @@ class SongActivity : Activity() {
     // --- sync between the notes and the sound ---
 
     private fun loadSync(id: String) {
-        syncOffset = prefs.getFloat(PREF_SYNC + id, 0f).toDouble()
+        // A song not tuned yet starts from how late its notes are stored, if that is known (as in Bouzouki Hero).
+        syncOffset = if (prefs.contains(PREF_SYNC + id)) prefs.getFloat(PREF_SYNC + id, 0f).toDouble() else SongJobs.storedLate(this, id)
         showSync()
     }
 

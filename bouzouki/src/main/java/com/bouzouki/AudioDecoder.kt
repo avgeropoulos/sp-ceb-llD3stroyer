@@ -23,9 +23,10 @@ object AudioDecoder {
     /**
      * [start] says in a few words what was done about the file's lead-in (kept with the song, for its data export).
      * [lateBefore] is how many seconds late this phone's decoding used to leave such a file before the lead-in was
-     * dealt with here: the lead-in dropped now, when the phone knew of none (so its decoder never dropped it).
+     * dealt with here: the lead-in dropped now, when the phone knew of none (so its decoder never dropped it); 0
+     * when the phone knew of it. Null when this file says nothing about that (no lead-in declared, or not AAC).
      */
-    class Stereo(val left: FloatArray, val right: FloatArray, val start: String = "", val lateBefore: Double = 0.0)
+    class Stereo(val left: FloatArray, val right: FloatArray, val start: String = "", val lateBefore: Double? = null)
 
     /** Longest stretch analysed, to keep memory in check (12 minutes). */
     private const val MAX_SECONDS = 12 * 60
@@ -58,7 +59,8 @@ object AudioDecoder {
             var channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
             var pcmFloat = false
             // The lead-in is dealt with here, the same on every phone: the decoder is asked to leave it alone
-            // (some drop it, some don't, some older ones drop a wrong amount), and what it really did is checked below.
+            // (some drop it, some don't, some older ones drop a wrong amount), so it is in the audio and is dropped
+            // below; the first pieces are still checked for anything already gone.
             val aac = mime == MediaFormat.MIMETYPE_AUDIO_AAC
             val trackRate = rate
             val phoneDelay = if (aac) declaredDelay(format) else 0
@@ -140,18 +142,18 @@ object AudioDecoder {
                 codec.release()
             }
             if (n == 0) throw IOException("Couldn't decode the audio")
-            // Drop the lead-in if the decoder handed it over; any doubt leaves the audio as it came.
-            // The file's own word on its lead-in comes first; failing that, what the phone read from it.
+            // Drop the lead-in. The file's own word on it comes first; failing that, what the phone read from it.
             val fromFile = if (aac) edit?.samples(rate) ?: 0 else 0
+            val delay = if (fromFile > 0) fromFile
+                else if (phoneDelay in 1..AudioStart.MAX_SAMPLES && trackRate > 0) (phoneDelay.toLong() * rate / trackRate).toInt() else 0
             val start = try {
-                val delay = if (fromFile > 0) fromFile
-                    else if (phoneDelay in 1..AudioStart.MAX_SAMPLES && trackRate > 0) (phoneDelay.toLong() * rate / trackRate).toInt() else 0
                 if (aac) AudioStart.drop(delay, rate, firstPtsUs, firstSizes.copyOf(pieces)) else AudioStart.Drop(0, "not AAC, left to the decoder")
             } catch (_: Exception) { AudioStart.Drop(0, "not checked") }
             val from = if (start.samples in 1 until n) start.samples else 0
             left = left.copyOfRange(from, n); right = right.copyOfRange(from, n)
             val note = start.why + (if (fromFile > 0) " (read from the file)" else if (phoneDelay != 0) " (the phone read $phoneDelay)" else "")
-            val lateBefore = if (from > 0 && phoneDelay == 0) from.toDouble() / rate else 0.0
+            // What this says of the songs this phone prepared before: late by what goes now, if the phone knew of no lead-in.
+            val lateBefore = if (!aac || delay !in 1..AudioStart.MAX_SAMPLES) null else if (phoneDelay == 0) from.toDouble() / rate else 0.0
             val target = MdxSeparator.SAMPLE_RATE
             return if (rate == target) Stereo(left, right, note, lateBefore)
             else Stereo(resample(left, rate, target, 8), resample(right, rate, target, 8), note, lateBefore)

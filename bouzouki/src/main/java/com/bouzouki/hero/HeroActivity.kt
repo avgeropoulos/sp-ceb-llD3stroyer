@@ -47,6 +47,8 @@ class HeroActivity : Activity(), HeroView.Host, SessionListener {
     @Volatile override var latency = 0.0
     private var syncKey = ""
     private var syncDefaultKey = ""
+    /** Seconds this song's notes are stored late (see [SongJobs.storedLate]): part of its sync until it has its own, never of the default. */
+    private var songLate = 0.0
 
     private lateinit var view: HeroView
     private lateinit var scoreKey: String
@@ -159,7 +161,8 @@ class HeroActivity : Activity(), HeroView.Host, SessionListener {
         if (gems.isEmpty()) s.state = Session.State.ERROR
         s.topInset = VIEW_W * 9 / 16
         session = s
-        loadSync(SyncStore.SONG + id, SyncStore.DEFAULT_SONG) // Μπουζούκι's song screen keeps each song's sync under this key
+        // Μπουζούκι's song screen keeps each song's sync under this key.
+        loadSync(SyncStore.SONG + id, SyncStore.DEFAULT_SONG, SongJobs.storedLate(this, id))
         val web = WebView(this)
         root.addView(web, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, resources.displayMetrics.widthPixels * 9 / 16, Gravity.TOP))
         // Start a few seconds before the first note, so it has time to come down the neck.
@@ -207,13 +210,15 @@ class HeroActivity : Activity(), HeroView.Host, SessionListener {
      * yet starts from the sync last chosen for a song of its kind, kept under [defaultKey] (most
      * of the delay is the phone's own). Built-in tunes and YouTube songs each have their own:
      * they run on different clocks, and a "later" chosen for one used to make the other late.
+     * A song whose notes are stored [late] starts that much earlier than the default.
      */
-    private fun loadSync(key: String, defaultKey: String) {
+    private fun loadSync(key: String, defaultKey: String, late: Double = 0.0) {
         syncKey = key
         syncDefaultKey = defaultKey
+        songLate = late
         val sync = try {
             val p = getSharedPreferences("bouzouki", MODE_PRIVATE)
-            (if (p.contains(key)) p.getFloat(key, 0f) else p.getFloat(defaultKey, 0f)).toDouble()
+            if (p.contains(key)) p.getFloat(key, 0f).toDouble() else p.getFloat(defaultKey, 0f) + late
         } catch (_: Exception) {
             0.0
         }
@@ -232,7 +237,7 @@ class HeroActivity : Activity(), HeroView.Host, SessionListener {
         latency = -sync
         try {
             getSharedPreferences("bouzouki", MODE_PRIVATE).edit()
-                .putFloat(syncKey, sync.toFloat()).putFloat(syncDefaultKey, sync.toFloat()).apply()
+                .putFloat(syncKey, sync.toFloat()).putFloat(syncDefaultKey, (sync - songLate).toFloat()).apply()
         } catch (_: Exception) {
         }
         // The taps so far were judged under the old sync: restate them, so what the menu says

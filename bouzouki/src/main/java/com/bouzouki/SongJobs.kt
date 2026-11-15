@@ -96,10 +96,10 @@ object SongJobs {
      * Keeps what the decoder found about the start of song [id]'s audio, and, from a YouTube song, what that says
      * about this phone: whether the songs it prepared before the start was looked at have all their notes late.
      */
-    private fun rememberStart(context: Context, id: String, audio: AudioDecoder.Stereo, youTube: Boolean) {
+    private fun rememberStart(context: Context, id: String, start: String, lateBefore: Double?, youTube: Boolean) {
         try {
-            val e = startPrefs(context).edit().putString(id, audio.start)
-            if (youTube) e.putFloat(PHONE_LATE, audio.lateBefore.toFloat())
+            val e = startPrefs(context).edit().putString(id, start)
+            if (youTube && lateBefore != null) e.putFloat(PHONE_LATE, lateBefore.toFloat())
             e.apply()
         } catch (_: Exception) {}
     }
@@ -115,7 +115,8 @@ object SongJobs {
      */
     fun storedLate(context: Context, id: String): Double = try {
         val p = startPrefs(context)
-        if (id.startsWith("file-") || p.contains(id)) 0.0 else p.getFloat(PHONE_LATE, 0f).toDouble().coerceIn(0.0, 0.2)
+        val late = if (id.startsWith("file-") || p.contains(id)) 0.0 else p.getFloat(PHONE_LATE, 0f).toDouble()
+        if (late.isNaN()) 0.0 else Math.round(late.coerceIn(0.0, 0.2) * 1000) / 1000.0 // to the millisecond, as syncs are kept
     } catch (_: Exception) { 0.0 }
 
     /** Key that can't be a song's id. */
@@ -304,9 +305,10 @@ object SongJobs {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) app.startForegroundService(service) else app.startService(service)
         worker = thread(name = "song-prep") {
             try {
-                val (song, data) = prepare(app, id, source, instrument) { step, f -> publish(State.Working(id, step, f)) }
+                val (song, data, audio) = prepare(app, id, source, instrument) { step, f -> publish(State.Working(id, step, f)) }
                 publish(State.Working(id, "Saving", 1f))
                 save(app, song, data)
+                rememberStart(app, id, audio.first, audio.second, youTube = source is Source.YouTube) // once the song kept is this one
                 publish(State.Done(song))
             } catch (_: InterruptedException) {
                 publish(State.Idle)
@@ -331,7 +333,7 @@ object SongJobs {
 
     private fun prepare(
         context: Context, id: String, source: Source, instrument: Instrument, report: (String, Float) -> Unit,
-    ): Pair<SongAnalysis, AnalysisData> {
+    ): Triple<SongAnalysis, AnalysisData, Pair<String, Double?>> {
         val cancelled = { cancel }
         val mdxFile = ensureModel(context) { report("Getting the voice-removal model (once, 67 MB)", it) }
 
@@ -363,12 +365,13 @@ object SongJobs {
         val bpBytes = context.assets.open("basic_pitch.onnx").use { it.readBytes() }
         return env.createSession(mdxFile.path, options).use { mdx ->
             env.createSession(bpBytes, options).use { bp ->
-                rememberStart(context, id, audio, youTube = source is Source.YouTube)
-                SongAnalyzer(MdxSeparator(env, mdx), BasicPitch(env, bp)).analyzeWithData(
+                val start = audio.start to audio.lateBefore // what the decoder found about where the audio starts
+                val (song, data) = SongAnalyzer(MdxSeparator(env, mdx), BasicPitch(env, bp)).analyzeWithData(
                     id, title, audio.left, audio.right, instrument,
                     progress = { stage, f -> report(stage.label, f) },
                     cancelled = cancelled,
                 )
+                Triple(song, data, start)
             }
         }
     }

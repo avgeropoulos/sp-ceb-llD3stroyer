@@ -10,9 +10,10 @@ import kotlin.math.roundToLong
  *
  * An AAC file begins with a little audio that is not part of the song (the encoder's "priming", 20 to 50 ms), and
  * says so in its edit list: "play from this sample". A video player obeys it, so its clock's zero is that sample.
- * A decoder may or may not: some phones drop the priming, some hand it over. A song decoded with it has every note
- * that much late against the player, on those phones only. So the app looks for itself: [mp4Edit] reads what the file
- * says, and [drop] tells from the first decoded pieces whether the decoder already dropped it.
+ * A decoder may or may not: some phones drop the priming, some hand it over, some older ones drop a wrong amount. A
+ * song decoded with it has every note that much late against the player, on those phones only. So the app does it
+ * itself, the same on every phone: [mp4Edit] reads what the file says, the decoder is asked to leave the start
+ * alone, and [drop] says how much to take off (checking the first decoded pieces for anything already gone).
  */
 object AudioStart {
     /** No real priming is longer than this many samples; anything beyond is not believed. */
@@ -39,27 +40,31 @@ object AudioStart {
     data class Drop(val samples: Int, val why: String)
 
     /**
-     * How many samples to drop from the start of the decoded audio, given the priming the file declares ([delay]
+     * How many samples to drop from the start of the decoded audio, given the lead-in the file declares ([delay]
      * samples at the decoded [rate]), the time stamp of the first decoded piece ([firstPtsUs], microseconds; negative
      * if unknown) and the sizes in samples of the first decoded pieces in order ([sizes], up to [PIECES]).
      *
-     * A decoder that hands the priming over gives full pieces from time zero: then all of [delay] goes. One that
-     * dropped it shows it: its first piece is short, or starts later, by just that much: then nothing goes. Anything
-     * else is unclear, and nothing goes either (the audio stays as decoders always gave it).
+     * The decoder is not told of the lead-in (the app takes that out of what it is asked to do), and an AAC stream
+     * carries no word of it, so the lead-in is in the audio and goes here: all of [delay]. Only when the first pieces
+     * show samples already gone (an even run of pieces whose first is short, or starts late) is that much taken off:
+     * nothing goes if about all of the lead-in is missing, and nothing either if more than it is (a stream that just
+     * starts late).
      */
     fun drop(delay: Int, rate: Int, firstPtsUs: Long, sizes: IntArray): Drop {
         if (delay !in 1..MAX_SAMPLES) return Drop(0, "the file declares no lead-in")
-        if (rate <= 0 || sizes.size < NEEDED) return Drop(0, "lead-in $delay, too little audio to tell")
-        if (firstPtsUs < 0) return Drop(0, "lead-in $delay, no time stamps")
-        val late = (firstPtsUs.toDouble() * rate / 1e6).roundToLong()
-        if (late > MAX_SAMPLES) return Drop(0, "lead-in $delay, audio starts late")
-        val full = sizes.max()
-        val missing = (0 until NEEDED).sumOf { full - sizes[it] }
-        val gone = late.toInt() + missing
+        val all = Drop(delay, "lead-in $delay, dropped here")
+        if (rate <= 0 || sizes.size < NEEDED) return all
+        val full = sizes[1]
+        // Pieces of uneven size say nothing about the start.
+        if (full <= 0 || sizes[0] > full || (2 until NEEDED).any { sizes[it] != full }) return all
+        val late = if (firstPtsUs > 0) (firstPtsUs.toDouble() * rate / 1e6).roundToLong() else 0L
+        if (late > MAX_SAMPLES) return Drop(0, "lead-in $delay, the audio starts late, left alone")
+        val gone = late.toInt() + (full - sizes[0])
         return when {
-            gone == 0 -> Drop(delay, "lead-in $delay, the decoder kept it, dropped here")
+            gone == 0 -> all
             abs(gone - delay) <= CLOSE -> Drop(0, "lead-in $delay, the decoder dropped it")
-            else -> Drop(0, "lead-in $delay, unclear ($gone missing), left alone")
+            gone < delay -> Drop(delay - gone, "lead-in $delay, the decoder dropped $gone, the rest dropped here")
+            else -> Drop(0, "lead-in $delay, $gone missing at the start, left alone")
         }
     }
 

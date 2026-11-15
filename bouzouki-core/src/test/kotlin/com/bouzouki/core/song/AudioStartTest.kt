@@ -93,25 +93,33 @@ class AudioStartTest {
     }
 
     @Test
-    fun theLeadInGoesOnlyWhenTheDecoderKeptIt() {
+    fun theLeadInGoesUnlessTheDecoderAlreadyDroppedIt() {
         val full = IntArray(16) { 1024 }
-        // Full pieces from time zero: the decoder kept the lead-in, so all of it goes.
+        // Full pieces from time zero: the lead-in is in the audio, so all of it goes.
         assertEquals(1600, AudioStart.drop(1600, 44100, 0, full).samples)
-        // The decoder dropped it: the first piece left is the 448 samples that end the second frame, stamped with that frame's time.
+        // The same whatever the time stamps say when they are of no use (none, or shifted before zero by the edit).
+        assertEquals(1600, AudioStart.drop(1600, 44100, -1, full).samples)
+        assertEquals(1600, AudioStart.drop(1600, 44100, -36_281, full).samples)
+        // A decoder that dropped it all the same: the first piece left is the 448 samples that end the second frame,
+        // stamped with that frame's time. Nothing more goes.
         val cut = intArrayOf(448) + IntArray(15) { 1024 }
         assertEquals(0, AudioStart.drop(1600, 44100, 23_220, cut).samples)
         // The same when it re-stamps what is left from zero, and when the lead-in is under a frame.
         assertEquals(0, AudioStart.drop(576, 44100, 0, cut).samples)
         // A whole frame dropped shows only in the time stamp.
         assertEquals(0, AudioStart.drop(1024, 44100, 23_220, full).samples)
-        // Anything that fits neither is left alone: pieces of uneven size, a stream that starts late, no time stamps.
-        assertEquals(0, AudioStart.drop(1600, 44100, 0, intArrayOf(2048) + IntArray(15) { 4096 }).samples)
+        // A decoder that swallowed just its first frame: the rest of the lead-in goes.
+        assertEquals(576, AudioStart.drop(1600, 44100, 23_220, full).samples)
+        // More missing than the lead-in, or a stream that starts late: left alone.
+        assertEquals(0, AudioStart.drop(576, 44100, 46_440, full).samples)
         assertEquals(0, AudioStart.drop(1600, 44100, 5_000_000, full).samples)
-        assertEquals(0, AudioStart.drop(1600, 44100, -1, full).samples)
-        // No lead-in declared, an unbelievable one, or too little audio to tell: nothing goes.
+        // Pieces of uneven size, or too few of them, say nothing about the start: the lead-in goes.
+        assertEquals(1600, AudioStart.drop(1600, 44100, 0, intArrayOf(2048, 4096, 1024, 4096, 4096, 4096, 4096, 4096)).samples)
+        assertEquals(1600, AudioStart.drop(1600, 44100, 0, intArrayOf(4096) + IntArray(15) { 1024 }).samples)
+        assertEquals(1600, AudioStart.drop(1600, 44100, 0, IntArray(3) { 1024 }).samples)
+        // No lead-in declared, or an unbelievable one: nothing goes.
         assertEquals(0, AudioStart.drop(0, 44100, 0, full).samples)
         assertEquals(0, AudioStart.drop(100_000, 44100, 0, full).samples)
-        assertEquals(0, AudioStart.drop(1600, 44100, 0, IntArray(3) { 1024 }).samples)
         // Bigger pieces of even size (a decoder handing over several frames at once) are full pieces too.
         assertEquals(2112, AudioStart.drop(2112, 48000, 0, IntArray(8) { 4096 }).samples)
     }
