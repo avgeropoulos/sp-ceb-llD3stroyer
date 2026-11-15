@@ -24,6 +24,11 @@ data class SongNote(
     val course: Int,
     val fret: Int,
     val articulation: Articulation = Articulation.PICK,
+    /**
+     * How sure the analysis is that the bouzouki plays this note, 0..1: 1 for a note it has no doubt about, and for
+     * every note set by hand or taken from a tab. A game or a simpler view can leave out the notes it is least sure of.
+     */
+    val confidence: Float = 1f,
 )
 
 /**
@@ -121,7 +126,11 @@ data class SongAnalysis(
         "instrument" to quote(instrument.name),
         "dromos" to (dromos?.let { quote(it.name) } ?: "null"),
         "root" to rootPc.toString(),
-        "notes" to notes.joinToString(",", "[", "]") { n -> "[${fmt(n.start)},${fmt(n.end)},${n.midi},${n.course},${n.fret},${n.articulation.ordinal}]" },
+        // A note's confidence is written only when it is in doubt, so a line of sure notes reads as it always did.
+        "notes" to notes.joinToString(",", "[", "]") { n ->
+            "[${fmt(n.start)},${fmt(n.end)},${n.midi},${n.course},${n.fret},${n.articulation.ordinal}" +
+                (if (n.confidence < 0.995f) "," + String.format(java.util.Locale.US, "%.2f", n.confidence) else "") + "]"
+        },
         "beats" to beats.joinToString(",", "[", "]") { fmt(it) },
         "tuning" to fmt(tuningCents),
         "line" to line.toString(),
@@ -187,7 +196,8 @@ data class SongAnalysis(
                 notes = (p["notes"] as List<*>).map {
                     val a = (it as List<*>).map { v -> v as Number }
                     SongNote(a[0].toDouble(), a[1].toDouble(), a[2].toInt(), a[3].toInt(), a[4].toInt(),
-                        a.getOrNull(5)?.toInt()?.let { Articulation.entries.getOrNull(it) } ?: Articulation.PICK)
+                        a.getOrNull(5)?.toInt()?.let { Articulation.entries.getOrNull(it) } ?: Articulation.PICK,
+                        a.getOrNull(6)?.toFloat()?.coerceIn(0f, 1f) ?: 1f)
                 },
                 dromos = (p["dromos"] as String?)?.let { Dromos.valueOf(it) },
                 rootPc = num("root").toInt(),
@@ -350,7 +360,7 @@ class SongAnalyzer(private val separator: Separator, private val pitch: BasicPit
             val line = bouzoukiLine(all, instrument, act, attacks, detail, post)
             val cells = fingering(line.map { it.midi }, line.map { it.start }, instrument,
                 line.map { it.articulation.isLegato }, line.map { it.articulation == Articulation.SLIDE })
-            val notes = line.mapIndexed { i, n -> SongNote(n.start, n.end, n.midi, cells[i].first, cells[i].second, n.articulation) }
+            val notes = line.mapIndexed { i, n -> SongNote(n.start, n.end, n.midi, cells[i].first, cells[i].second, n.articulation, n.confidence) }
             val tally = DoubleArray(12)
             for (n in line) tally[Math.floorMod(n.midi, 12)] += (n.end - n.start) * n.amplitude
             val guess = DromosGuess.rank(tally).firstOrNull()

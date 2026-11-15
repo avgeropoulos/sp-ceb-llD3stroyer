@@ -27,6 +27,8 @@ data class NoteEvent(
     val frame: Int = -1,
     val endFrame: Int = -1,
     val articulation: Articulation = Articulation.PICK,
+    /** How sure the line is that the bouzouki plays this note, 0..1 ([SongNote.confidence]); 1 until the line says otherwise. */
+    val confidence: Float = 1f,
 )
 
 /**
