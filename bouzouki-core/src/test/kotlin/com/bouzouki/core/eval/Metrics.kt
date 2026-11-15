@@ -16,7 +16,9 @@ import kotlin.math.sqrt
  * - [offset]: same pitch and the end within 20% of the note's length (at least 50 ms), as mir_eval's onset-offset F;
  * - [course] and [fret]: of the notes matched by pitch whose reference says where they're played, how many the
  *   fingering put on the same course, and on the same course and fret;
- * - [tremolo]: precision and recall of the notes marked tremolo, among matched notes.
+ * - [tremolo]: precision and recall of the notes marked tremolo, among matched notes;
+ * - [timing]: how early or late the notes found are ([Timed]), matched within the wider [Metrics.TIMING_TOL] so that
+ *   a bias isn't hidden by the notes it pushes out of the scoring window.
  */
 class Score {
     var ref = 0; var est = 0
@@ -24,6 +26,7 @@ class Score {
     var placed = 0; var sameCourse = 0; var sameFret = 0
     var refTremolo = 0; var estTremolo = 0; var tremoloRight = 0
     val onsetErrors = ArrayList<Double>()
+    val timing = ArrayList<Timed>()
 
     fun f(hit: Int) = if (ref + est == 0) 1.0 else 2.0 * hit / (ref + est)
     val note get() = f(tp)
@@ -39,6 +42,7 @@ class Score {
         placed += o.placed; sameCourse += o.sameCourse; sameFret += o.sameFret
         refTremolo += o.refTremolo; estTremolo += o.estTremolo; tremoloRight += o.tremoloRight
         onsetErrors += o.onsetErrors
+        timing += o.timing
     }
 
     fun summary(): String {
@@ -54,8 +58,46 @@ class Score {
     }
 }
 
+/**
+ * A note found at the pitch played, within [Metrics.TIMING_TOL]: [error] is its start minus the played one's (seconds:
+ * + late, - early), with the pitch and how it was played ([played]) and marked by the transcription ([found]).
+ */
+class Timed(val error: Double, val midi: Int, val played: Articulation, val found: Articulation)
+
+/** Signed onset errors summed up, in milliseconds (found minus played: + is late). */
+class TimingStats(errors: List<Double>) {
+    private val ms = errors.map { it * 1000 }.sorted()
+    val n = ms.size
+    val mean = if (n == 0) Double.NaN else ms.average()
+    val std = if (n == 0) Double.NaN else sqrt(ms.sumOf { (it - mean) * (it - mean) } / n)
+    val median = percentile(0.5)
+    val p10 = percentile(0.1)
+    val p90 = percentile(0.9)
+    /** The share of the notes more than [limit] ms early or late. */
+    fun beyond(limit: Double) = if (n == 0) Double.NaN else ms.count { abs(it) > limit }.toDouble() / n
+
+    /** The [q] quantile, linear between the sorted errors. */
+    fun percentile(q: Double): Double {
+        if (n == 0) return Double.NaN
+        val x = q * (n - 1)
+        val i = x.toInt().coerceIn(0, n - 1)
+        val j = (i + 1).coerceAtMost(n - 1)
+        return ms[i] + (ms[j] - ms[i]) * (x - i)
+    }
+
+    /** A Markdown table row: `| name | n | mean | median | std | p10 | p90 | beyond 50 ms |`. */
+    fun row(name: String): String = if (n == 0) "| $name | 0 | – | – | – | – | – | – |\n" else
+        String.format(Locale.US, "| %s | %d | %+.1f | %+.1f | %.1f | %+.1f | %+.1f | %.1f%% |\n", name, n, mean, median, std, p10, p90, 100 * beyond(50.0))
+
+    companion object {
+        const val HEAD = "| | matched | mean ms | median ms | std ms | 10th pct ms | 90th pct ms | over 50 ms off |\n|---|---|---|---|---|---|---|---|\n"
+    }
+}
+
 object Metrics {
     const val ONSET_TOL = 0.05
+    /** The onset window of the timing statistics ([Score.timing]) only: wider than the scoring one. */
+    const val TIMING_TOL = 0.1
 
     /** One-to-one matching of [est] to [ref] by onset (closest first) among pairs [same] accepts: (ref, est) indices. */
     fun match(ref: List<RefNote>, est: List<SongNote>, tol: Double = ONSET_TOL, same: (RefNote, SongNote) -> Boolean): List<Pair<Int, Int>> {
@@ -100,6 +142,8 @@ object Metrics {
             if (et) s.estTremolo++
             if (rt && et) s.tremoloRight++
         }
+        for ((i, j) in match(ref, est, TIMING_TOL) { r, e -> r.midi == e.midi })
+            s.timing += Timed(est[j].start - ref[i].start, ref[i].midi, ref[i].articulation, est[j].articulation)
         return s
     }
 

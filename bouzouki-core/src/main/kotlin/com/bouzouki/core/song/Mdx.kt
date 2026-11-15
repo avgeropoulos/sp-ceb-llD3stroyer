@@ -24,12 +24,34 @@ class MdxSeparator(private val env: OrtEnvironment, private val session: OrtSess
      * [progress] gets 0..1; [cancelled] is polled between chunks.
      */
     override fun instrumentalMono(left: FloatArray, right: FloatArray, progress: (Float) -> Unit, cancelled: () -> Boolean): FloatArray {
+        val out = FloatArray(left.size)
+        instrumental(left, right, progress, cancelled) { dst, l, r, w -> out[dst] = (((l + r) / 2) / w).toFloat() }
+        return out
+    }
+
+    /**
+     * The instrumental part of a 44.1 kHz stereo song in stereo (left, right): what [instrumentalMono] mixes down,
+     * for another separator to work on (the voice removed here, then the bouzouki's stems taken from the rest).
+     */
+    fun instrumentalStereo(
+        left: FloatArray, right: FloatArray, progress: (Float) -> Unit = {}, cancelled: () -> Boolean = { false },
+    ): Pair<FloatArray, FloatArray> {
+        val outL = FloatArray(left.size)
+        val outR = FloatArray(left.size)
+        instrumental(left, right, progress, cancelled) { dst, l, r, w -> outL[dst] = (l / w).toFloat(); outR[dst] = (r / w).toFloat() }
+        return outL to outR
+    }
+
+    /** The instrumental part, sample by sample: [put] gets the sample's index, its left and right sums and their window weight. */
+    private inline fun instrumental(
+        left: FloatArray, right: FloatArray, progress: (Float) -> Unit, cancelled: () -> Boolean,
+        put: (dst: Int, l: Double, r: Double, w: Double) -> Unit,
+    ) {
         val n = left.size
         val trim = N_FFT / 2
         val chunk = HOP * (DIM_T - 1)
         val gen = chunk - 2 * trim
         val chunks = (n + gen - 1) / gen
-        val out = FloatArray(n)
         val input = FloatArray(4 * DIM_F * DIM_T)
         val segL = FloatArray(chunk)
         val segR = FloatArray(chunk)
@@ -60,11 +82,10 @@ class MdxSeparator(private val env: OrtEnvironment, private val session: OrtSess
                 if (dst >= n) break
                 val src = pad + trim + j
                 val w = if (norm[src] > 1e-8) norm[src] else 1.0
-                out[dst] = (((outL[src] + outR[src]) / 2) / w).toFloat()
+                put(dst, outL[src], outR[src], w)
             }
             progress((c + 1).toFloat() / chunks)
         }
-        return out
     }
 
     /** Fills [dst] (4 × DIM_F × DIM_T: left re, left im, right re, right im) from one chunk. */
