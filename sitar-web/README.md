@@ -1,4 +1,7 @@
-# Sitar Sitara · सितार सितारा
+# Sitar Sitara on the web · सितार सितारा
+
+The first version of Sitar Sitara: a Python web app you run on a computer. The Android app, which prepares songs
+on the phone and has the Sitar Superstar game, is in `../sitar` (see the repository's README).
 
 Paste a YouTube link to a song and get the sitar line as **sargam**, laid out on the
 **taal**, in Latin letters or Devanagari. (*Sitara* is Hindi for star.)

@@ -1,10 +1,55 @@
-# Rocco's Quest and Μπουζούκι
+# Rocco's Quest, Μπουζούκι and Sitar Sitara
 
-This repository has two Android apps:
+This repository has three Android apps:
 
 * **[Μπουζούκι](#μπουζούκι-the-greek-bouzouki-app)**: a playable Greek bouzouki that prepares the
   bouzouki tab of YouTube songs on the phone, with the **Bouzouki Hero** game inside.
+* **[Sitar Sitara](#sitar-sitara-सितार-सितारा)**: the same for the sitar. It writes any song's sitar line as
+  sargam on the taal, with the **Sitar Superstar** game inside.
 * **[Rocco's Quest](#roccos-quest)**: a retro side-scrolling platformer.
+
+## Sitar Sitara (सितार सितारा)
+
+<img src="docs/sitar-superstar.png" width="300" alt="Sitar Superstar gameplay">
+
+*Sitara* is Hindi for star. Search YouTube (or share a video from the YouTube app, or pick an audio file), and
+the app prepares the song on the phone: it downloads the audio, removes the singer, listens for the sitar, and
+writes the line the way a sitar player reads it:
+
+* **Sargam, not fret numbers**: S R G m P D N, komal as small letters (r g d n), tivra Ma as M, a dot above or
+  below for the upper or lower octave. One tap switches to Devanagari (सा रे ग म प ध नि, komal with a line
+  below, tivra Ma with a stroke above).
+* **Sa is worked out from the notes**, or you set it (most sitars are tuned to C# or D).
+* **The scale**: the thaat it fits (Kalyan, Bhairavi, Kafi...) and ragas that use it, or a five-note raga
+  (Bhupali, Malkauns...). A best guess: ragas sharing a scale differ in their phrases, which the app doesn't judge.
+* **On the taal**: Teentaal, Keherwa, Dadra, Rupak, Jhaptaal, Ektaal or Deepchandi, one box per matra, with
+  vibhags marked X, 2, 0, 3. The beat tracker can't hear where sam is, so the count starts at the first note.
+* **Meend**: a note reached by pulling the string, without a new stroke, is marked ~, and the pitches the glide
+  passes through aren't written as notes. Fast repeated strokes (diri) are marked *.
+* The video plays above the notation, the matra being played lit; tap a matra to play from there. Share the
+  sargam as text.
+
+**Sitar Superstar** is Bouzouki Hero played on a song's sitar line: the notes come down a teak neck named as
+sargam, lower swaras on the left, and the boost meter shouts *Wah!* instead of *Opa!*
+
+**Install**: download **SitarSitara.apk** from the
+[Sitar Sitara release](https://github.com/avgeropoulos/sp-ceb-llD3stroyer/releases/tag/sitar-sitara) on your
+phone. After that the app updates itself: **⬆ Update** on its first screen installs the newest build. It is its
+own app (`com.sitarsitara`, its own signing key and update channel), so it installs next to Μπουζούκι and
+never touches its updates.
+
+**How the notes are found**: Μπουζούκι's song analysis (the voice-removal model, Spotify's Basic Pitch, and
+Μπουζούκι's line following), asked for a line in a sitar's range. `sitar-core` then folds a meend's passing
+pitches into one note and reads the line as sargam. Its tests run the real pitch model on a synthesised sitar
+(a Yaman run, and meends between strokes). **It has not been tried on real sitar recordings yet**: a real
+sitar's sympathetic strings and chikari will be harder than the synthesiser, so treat the sargam as a first
+draft to correct by ear.
+
+| Module | Does |
+|---|---|
+| `sitar-core` | Sargam (both scripts), Sa and thaat detection, the taal grid, meend folding. Plain Kotlin, tested on the JVM |
+| `sitar` | The Android app: song screen, Sitar Superstar, background song preparation, in-app updates |
+| `sitar-web` | The first version: a Python web app that does the same on a computer (see its README) |
 
 ## Bouzouki Hero (in Μπουζούκι)
 

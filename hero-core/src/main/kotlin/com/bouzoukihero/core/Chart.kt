@@ -84,7 +84,11 @@ object Charts {
      * pitches onto lanes (higher notes to the right) and marks long or tremolo notes
      * as hold notes. [labels] puts the note name on each note.
      */
-    fun build(notes: List<SourceNote>, difficulty: Difficulty, labels: Boolean = true, buttons: Buttons = Buttons.NOTES): List<Gem> {
+    fun build(
+        notes: List<SourceNote>, difficulty: Difficulty, labels: Boolean = true, buttons: Buttons = Buttons.NOTES,
+        /** The name on a note of this pitch (an app that names notes otherwise, e.g. as sargam, passes its own). */
+        label: (Int) -> String = ::noteName,
+    ): List<Gem> {
         val sorted = notes.filter { it.duration >= 0 && it.time >= 0 }.sortedBy { it.time }
         if (sorted.isEmpty()) return emptyList()
         // Charts tapped in by hand have no real pitches, so no tab.
@@ -109,7 +113,7 @@ object Charts {
             val next = kept.getOrNull(i + 1)?.time ?: Double.MAX_VALUE
             val longEnough = n.duration >= difficulty.holdMin || (n.tremolo && n.duration >= 0.45)
             val end = if (longEnough) min(n.time + n.duration, next - 0.12) else n.time
-            gems.add(Gem(n.time, if (end - n.time >= 0.25) end else n.time, lane, if (labels) noteName(n.pitch) else "", n.tremolo))
+            gems.add(Gem(n.time, if (end - n.time >= 0.25) end else n.time, lane, if (labels) label(n.pitch) else "", n.tremolo))
             prevLane = lane
             prevPitch = n.pitch
         }

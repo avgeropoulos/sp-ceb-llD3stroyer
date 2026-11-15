@@ -39,6 +39,8 @@ class Session(
     var listener: SessionListener = object : SessionListener {},
     /** Record mode where the app listens to the song and finds the notes itself. */
     val listen: Boolean = false,
+    /** The instrument the game is dressed as. */
+    val theme: Theme = Theme.BOUZOUKI,
 ) {
     enum class State { LOADING, PLAYING, PAUSED, FINISHED, ERROR }
     enum class Action {
@@ -575,12 +577,12 @@ class Session(
         g.quad(
                 l.edgeX(-1f, P_FAR) - 3, l.edgeX(1f, P_FAR) + 3, l.edgeX(1f, pNear) + 6, l.edgeX(-1f, pNear) - 6,
                 l.farY, l.farY, yNear, yNear,
-                0xFFE9DFC6.toInt(),
+                theme.binding,
             )
         g.quad(
                 l.edgeX(-1f, P_FAR), l.edgeX(1f, P_FAR), l.edgeX(1f, pNear), l.edgeX(-1f, pNear),
                 l.farY, l.farY, yNear, yNear,
-                0xFF3A2216.toInt(),
+                theme.board,
             )
         // Frets, one per beat, sliding toward you.
         val beat = if (tempo in 50.0..240.0) 60.0 / tempo else 0.5
@@ -603,7 +605,7 @@ class Session(
         for (lane in 0 until lanes) {
             val lit = pressed[lane] || pressFlash[lane] > 0
             val c = if (lit) laneColor(lane) else 0xFFCFCFD4.toInt()
-            for (s in -1..1 step 2) {
+            for (s in if (theme.pairedStrings) -1..1 step 2 else 0..0) {
                 val off = s * 2.6f
                 g.line(l.laneX(lane, P_FAR) + off * P_FAR, l.farY, l.laneX(lane, pNear) + off * pNear, yNear,
                     if (lit) 1.8f else 1.1f, argb(if (lit) 230 else 130, c))
@@ -779,7 +781,7 @@ class Session(
         if (opaAge < 1.4f) {
             val s = 40f + opaAge * 30
             val a = (255 * min(1f, (1.4f - opaAge) * 2)).toInt()
-            g.shadowText("OPA!", VIEW_W / 2, l.top + 170, s, argb(a, 0xFFFFFF), 1)
+            g.shadowText(theme.boost, VIEW_W / 2, l.top + 170, s, argb(a, 0xFFFFFF), 1)
         }
     }
 
@@ -825,7 +827,7 @@ class Session(
             g.text("x$m", 150f, y + 20, 13f, 0xFF10101A.toInt(), 1)
             if (partDone && state == State.PLAYING) {
                 button(g, 176f, y, 98f, 30f, "SCORE \u25B8", 0xFF2E9B57.toInt(), Action.DONE)
-                g.shadowText("That's the whole bouzouki part!", VIEW_W / 2, l.top + 64, 11f, 0xFFFFD23F.toInt(), 1)
+                g.shadowText(theme.wholePart, VIEW_W / 2, l.top + 64, 11f, 0xFFFFD23F.toInt(), 1)
                 button(g, VIEW_W - 46, y, 38f, 30f, "II", 0xFF39406A.toInt(), Action.PAUSE)
                 return
             }
@@ -838,7 +840,7 @@ class Session(
                 val fill = if (opaActive) 0xFF56A8FF.toInt() else if (ready) mix(0xFF56A8FF.toInt(), 0xFFFFFFFF.toInt(), 0.5f + 0.5f * sin(anim * 8)) else 0xFF2F6FD6.toInt()
                 g.panel(mx + 2, y + 6, max(16f, (mw - 4) * opaMeter), 20f, fill, 7f)
             }
-            g.text(if (ready) "TAP: OPA!" else "OPA", mx + mw / 2, y + 21, 12f, 0xFFFFFFFF.toInt(), 1)
+            g.text(if (ready) theme.tapBoost else theme.boostShort, mx + mw / 2, y + 21, 12f, 0xFFFFFFFF.toInt(), 1)
             buttons.add(Button(mx, y, mw, 32f, Action.OPA))
         }
         button(g, VIEW_W - 46, y, 38f, 30f, "II", 0xFF39406A.toInt(), Action.PAUSE)
@@ -876,7 +878,7 @@ class Session(
         var y = cy + 104
         if (sync) {
             // Notes a little late or early against the bouzouki? Shift them for this song.
-            g.text("Notes vs. the bouzouki: $syncText", VIEW_W / 2, cy + 136, 12f, 0xFFB9C6EE.toInt(), 1)
+            g.text(theme.notesVs + syncText, VIEW_W / 2, cy + 136, 12f, 0xFFB9C6EE.toInt(), 1)
             button(g, 30f, cy + 146, 145f, 36f, "\u25B2 Earlier", 0xFF39406A.toInt(), Action.SYNC_EARLIER)
             button(g, 185f, cy + 146, 145f, 36f, "\u25BC Later", 0xFF39406A.toInt(), Action.SYNC_LATER)
             y = cy + 182
@@ -958,8 +960,8 @@ class Session(
         g.text(
             when {
                 doneNote.isNotEmpty() -> doneNote
-                recorded.size < 4 && listen -> "Couldn't hear the bouzouki."
-                listen -> "Heard ${recorded.size} bouzouki notes."
+                recorded.size < 4 && listen -> theme.couldntHear
+                listen -> "Heard ${recorded.size} ${theme.instrument} notes."
                 else -> "You tapped ${recorded.size} notes."
             }, VIEW_W / 2, y0 + 80, 13f, 0xFFB9C6EE.toInt(), 1,
         )

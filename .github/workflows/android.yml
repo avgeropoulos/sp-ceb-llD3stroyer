@@ -27,17 +27,25 @@ jobs:
       - name: Run bouzouki and Bouzouki Hero tests
         run: ./gradlew :bouzouki-core:test --console=plain
 
+      - name: Run Sitar Sitara tests
+        run: ./gradlew :sitar-core:test --console=plain
+
       - name: Build APK
         run: ./gradlew :app:assembleDebug --console=plain
 
       - name: Build bouzouki APK
         run: ./gradlew :bouzouki:assembleDebug --console=plain
 
+      - name: Build Sitar Sitara APK
+        run: ./gradlew :sitar:assembleDebug --console=plain
+
       - name: Rename APKs
         run: |
           cp app/build/outputs/apk/debug/app-debug.apk RoccosQuest.apk
           cp bouzouki/build/outputs/apk/debug/bouzouki-debug.apk Bouzouki.apk
           echo "$GITHUB_RUN_NUMBER" > bouzouki-version.txt
+          cp sitar/build/outputs/apk/debug/sitar-debug.apk SitarSitara.apk
+          echo "$GITHUB_RUN_NUMBER" > sitar-version.txt
 
       - uses: actions/upload-artifact@v4
         with:
@@ -48,6 +56,11 @@ jobs:
         with:
           name: Bouzouki-apk
           path: Bouzouki.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SitarSitara-apk
+          path: SitarSitara.apk
 
       - name: Publish downloadable build
         # A push whose commit message says [no-release] is built and tested but not published.
@@ -72,6 +85,7 @@ jobs:
             RoccosQuest.apk
             Bouzouki.apk
             bouzouki-version.txt
+            SitarSitara.apk
 
       # The Μπουζούκι app updates itself from this release (see bouzouki/.../Updater.kt), so only
       # this branch's builds go here, never another branch's.
@@ -91,3 +105,23 @@ jobs:
           files: |
             Bouzouki.apk
             bouzouki-version.txt
+
+      # Sitar Sitara updates itself from this release (see sitar/.../Updater.kt), so only this branch's builds go
+      # here. Never GitHub's "latest" release: older copies of Μπουζούκι update from that.
+      - name: Publish to Sitar Sitara's update channel
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref_name == 'ccr-5c0bcabf-sfawx0' && !contains(github.event.head_commit.message, '[no-release]')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: sitar-sitara
+          name: "Sitar Sitara - in-app updates"
+          prerelease: false
+          make_latest: false
+          body: |
+            The update channel for Sitar Sitara (sargam for any song, with the Sitar Superstar game). The app's
+            ⬆ Update button installs the newest build from here. To install by hand, download
+            **SitarSitara.apk** on your phone, open it, and allow "install unknown apps" for your browser if asked.
+
+            Built from ${{ github.sha }}.
+          files: |
+            SitarSitara.apk
+            sitar-version.txt
