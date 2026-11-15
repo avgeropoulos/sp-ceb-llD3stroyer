@@ -63,7 +63,7 @@ object YouTubeAudio {
             nextPage = if (page.hasNextPage()) page.nextPage else null
             return page.items.mapNotNull { item ->
                 val v = item as? StreamInfoItem ?: return@mapNotNull null
-                val id = SongActivity.youTubeId(v.url) ?: return@mapNotNull null
+                val id = com.bouzoukihero.core.YouTube.videoId(v.url) ?: return@mapNotNull null
                 if (v.duration <= 0) return@mapNotNull null // live streams and upcoming premieres have no song to prepare
                 Hit(id, v.name, v.uploaderName ?: "", v.duration, v.thumbnails.minByOrNull { kotlin.math.abs(it.width - 320) }?.url)
             }
