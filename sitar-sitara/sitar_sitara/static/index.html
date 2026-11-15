@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sitar Sitara</title>
+<style>
+  :root {
+    --bg: #fbf5ea; --panel: #fffdf8; --ink: #2b1a1c; --muted: #7b6a60;
+    --line: #ecdcc6; --accent: #e58a00; --accent-ink: #2a1600; --link: #0f6b68;
+    --hl: #ffe2a3; --error: #a12a2a;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --deva: "Noto Sans Devanagari", "Kohinoor Devanagari", "Mangal", "Nirmala UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17110f; --panel: #211815; --ink: #f3e9dc; --muted: #b5a495;
+      --line: #3b2c25; --accent: #f2a23a; --accent-ink: #231405; --link: #62c9c2;
+      --hl: #523a12; --error: #f08a8a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { margin: 0; font-size: 1.9rem; letter-spacing: -0.01em; display: flex; gap: 14px;
+       align-items: baseline; flex-wrap: wrap; }
+  h1 span { font: 500 1.35rem var(--deva); color: var(--accent); }
+  .sub { color: var(--muted); margin: 4px 0 0; }
+  /* A string of marigolds. */
+  .toran { height: 10px; margin: 16px 0 24px;
+           background: radial-gradient(circle at 7px 5px, var(--accent) 4px, transparent 4.5px) 0 0 / 14px 10px repeat-x; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+  form { display: grid; gap: 14px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+  label { display: grid; gap: 4px; font-size: 0.85rem; color: var(--muted); }
+  input, select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+                  border-radius: 8px; padding: 9px 11px; max-width: 100%; }
+  input[type=url] { width: 100%; }
+  form > *, .row > * { min-width: 0; }
+  .grow { flex: 1 1 240px; }
+  .small input { width: 90px; }
+  button, .button { font: inherit; font-weight: 600; border: 0; border-radius: 8px; padding: 10px 18px;
+           background: var(--accent); color: var(--accent-ink); cursor: pointer; text-decoration: none;
+           display: inline-block; }
+  button.secondary, .button.secondary { background: transparent; color: var(--link); border: 1px solid var(--line); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  label.check { display: flex; gap: 8px; align-items: center; color: var(--ink); font-size: 0.95rem; }
+  .or { color: var(--muted); font-size: 0.85rem; }
+  #status { margin-top: 20px; display: none; }
+  .bar { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; margin-top: 8px; }
+  .bar > div { height: 100%; width: 0; background: var(--accent); transition: width 0.4s; }
+  .error { color: var(--error); }
+  #result { display: none; margin-top: 24px; }
+  .top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
+  .top.no-video { grid-template-columns: 1fr; }
+  @media (max-width: 800px) { .top { grid-template-columns: 1fr; } }
+  .video { aspect-ratio: 16 / 9; background: #000; border-radius: 10px; overflow: hidden; }
+  .video iframe, .video > div { width: 100%; height: 100%; border: 0; }
+  audio { width: 100%; margin-top: 14px; display: none; }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0; }
+  dt { color: var(--muted); }
+  dd { margin: 0; }
+  .alts { color: var(--muted); font-size: 0.9rem; }
+  .warn { margin: 12px 0 0; padding-left: 18px; color: var(--muted); font-size: 0.9rem; }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+  .hint { color: var(--muted); font-size: 0.85rem; }
+  .tab { margin-top: 20px; }
+  .tabhead { display: flex; gap: 12px; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+  .tabhead .hint { margin: 0; flex: 1 1 280px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button { background: transparent; color: var(--muted); border-radius: 0; padding: 6px 14px; font-weight: 500; }
+  .seg button[aria-pressed=true] { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+
+  /* Notation: one row per line, scrolling sideways on its own if it has to. */
+  .system { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 8px; padding: 10px 8px;
+            border-top: 1px solid var(--line); }
+  .system:first-child { border-top: 0; }
+  .system .t { font: 600 0.85rem var(--mono); color: var(--link); padding-top: 22px; }
+  .cycle { display: flex; flex-wrap: wrap; row-gap: 10px; overflow-x: auto; padding-bottom: 4px; }
+  .vibhag { padding: 0 8px; border-left: 1px solid var(--muted); }
+  .vibhag.sam { border-left: 3px double var(--muted); }
+  .vibhag:first-child { border-left: 0; padding-left: 0; }
+  .mark { font: 600 0.75rem var(--mono); color: var(--accent); height: 18px; }
+  .matras { display: flex; gap: 2px; }
+  .matra { display: flex; gap: 3px; justify-content: center; align-items: center; min-width: 2.6em;
+           padding: 2px 5px; border-radius: 6px; cursor: pointer; font-size: 1.15rem; white-space: nowrap; }
+  .matra:hover { background: color-mix(in srgb, var(--hl) 55%, transparent); }
+  .matra.now { background: var(--hl); }
+  .sw { display: inline-flex; flex-direction: column; align-items: center; line-height: 1; }
+  .sw i { font-style: normal; font-size: 0.5em; height: 0.9em; line-height: 0.9em; letter-spacing: 1px; }
+  .sw b { font-weight: 500; position: relative; }
+  .deva .sw b { font-family: var(--deva); }
+  .deva .sw.komal b { text-decoration: underline; text-underline-offset: 0.22em; }
+  .deva .sw.tivra b::before { content: ""; position: absolute; left: 50%; top: -0.2em; width: 1.5px;
+                               height: 0.32em; background: currentColor; }
+  .orn { color: var(--link); font: 600 0.9em var(--mono); }
+  .hold { color: var(--muted); }
+  .legend { margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Sitar Sitara <span lang="hi">सितार सितारा</span></h1>
+  <p class="sub">Paste a YouTube link to a song and get the sitar line as sargam, laid out on the taal.</p>
+  <div class="toran" aria-hidden="true"></div>
+
+  <section class="panel">
+    <form id="form">
+      <div class="row">
+        <label class="grow">YouTube link
+          <input type="url" id="url" placeholder="https://www.youtube.com/watch?v=…">
+        </label>
+      </div>
+      <div class="row">
+        <span class="or">or upload an audio file</span>
+        <input type="file" id="file" accept="audio/*,video/*">
+      </div>
+      <div class="row small">
+        <label>Start (m:ss)<input id="start" placeholder="0:00"></label>
+        <label>End (m:ss)<input id="end" placeholder="end"></label>
+        <label>Taal
+          <select id="taal">
+            <option value="teentaal" selected>Teentaal (16)</option>
+            <option value="keherwa">Keherwa (8), most film songs</option>
+            <option value="dadra">Dadra (6)</option>
+            <option value="rupak">Rupak (7)</option>
+            <option value="jhaptaal">Jhaptaal (10)</option>
+            <option value="ektaal">Ektaal (12)</option>
+            <option value="deepchandi">Deepchandi (14)</option>
+          </select>
+        </label>
+        <label>Sa is tuned to
+          <select id="sa">
+            <option value="">Work it out</option>
+            <option value="0">C</option>
+            <option value="1">C# (most sitars)</option>
+            <option value="2">D</option>
+            <option value="3">D#</option>
+            <option value="4">E</option>
+            <option value="5">F</option>
+            <option value="6">F#</option>
+            <option value="7">G</option>
+            <option value="8">G#</option>
+            <option value="9">A</option>
+            <option value="10">A#</option>
+            <option value="11">B</option>
+          </select>
+        </label>
+        <button id="go" type="submit">Get sargam</button>
+      </div>
+      <label class="check"><input type="checkbox" id="separate" checked>
+        Remove singing, drums, bass and piano first (recommended; adds a minute or two)</label>
+      <p class="hint">Tip: a sarod, santoor or guitar playing along can still leak into the notation, so
+        setting the start and end around a sitar solo or the alaap gives the cleanest result.</p>
+    </form>
+    <div id="status">
+      <div id="stage">Starting…</div>
+      <div class="bar"><div id="fill"></div></div>
+    </div>
+  </section>
+
+  <section id="result">
+    <div class="top" id="top">
+      <div class="video" id="videoBox"><div id="player"></div></div>
+      <div class="panel">
+        <h2 id="title" style="margin:0 0 12px;font-size:1.2rem"></h2>
+        <dl>
+          <dt>Sa</dt><dd id="saOut"></dd>
+          <dt>Scale</dt><dd><span id="scale"></span><div class="alts" id="alts"></div></dd>
+          <dt>Taal</dt><dd id="taalOut"></dd>
+          <dt>Tempo</dt><dd id="tempo"></dd>
+          <dt>Notes</dt><dd id="count"></dd>
+        </dl>
+        <ul class="warn" id="warnings"></ul>
+        <audio id="audio" controls></audio>
+        <div class="actions">
+          <a class="button" id="dlText">Download sargam</a>
+          <a class="button secondary" id="dlMidi">MIDI</a>
+          <button class="secondary" id="copy" type="button">Copy</button>
+        </div>
+      </div>
+    </div>
+    <div class="panel tab">
+      <div class="tabhead">
+        <p class="hint">Click a matra to jump there. The matra being played is highlighted.</p>
+        <div class="seg" role="group" aria-label="Script">
+          <button type="button" data-script="latin">S R G</button>
+          <button type="button" data-script="devanagari" lang="hi">सा रे ग</button>
+        </div>
+      </div>
+      <div id="systems"></div>
+      <p class="hint legend" id="legend"></p>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const LATIN = ["S", "r", "R", "g", "G", "m", "M", "P", "d", "D", "n", "N"];
+const DEVA = ["सा", "रे", "रे", "ग", "ग", "म", "म", "प", "ध", "ध", "नि", "नि"];
+const KOMAL = [1, 3, 8, 10], TIVRA = 6;
+const LEGEND = {
+  latin: "Capitals are shuddha, small letters komal, M is tivra Ma.",
+  devanagari: "A line below is komal; a stroke above is tivra Ma.",
+};
+// Whatever is playing the music: the YouTube player or the uploaded file.
+let media = null;
+let job = null, player = null, systems = [], ytReady = null, fileUrl = null;
+let script = "latin";
+try { script = localStorage.getItem("script") === "devanagari" ? "devanagari" : "latin"; } catch {}
+
+function parseTime(text) {
+  text = text.trim();
+  if (!text) return null;
+  let s = 0;
+  for (const part of text.split(":")) {
+    const n = Number(part);
+    if (!Number.isFinite(n)) throw new Error(`"${text}" isn't a time. Use m:ss, like 1:05.`);
+    s = s * 60 + n;
+  }
+  return s;
+}
+const fmt = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+const el = (tag, props, ...children) => {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children);
+  return node;
+};
+
+function showStatus(text, frac, isError) {
+  $("status").style.display = "block";
+  $("stage").textContent = text;
+  $("stage").className = isError ? "error" : "";
+  $("fill").style.width = `${Math.round((frac || 0) * 100)}%`;
+}
+
+$("form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  let start, end;
+  try { start = parseTime($("start").value); end = parseTime($("end").value); }
+  catch (err) { return showStatus(err.message, 0, true); }
+  const file = $("file").files[0];
+  const url = $("url").value.trim();
+  if (!file && !url) return showStatus("Paste a YouTube link or choose a file.", 0, true);
+  const sa = $("sa").value === "" ? null : +$("sa").value;
+
+  $("go").disabled = true;
+  $("result").style.display = "none";
+  showStatus("Starting…", 0);
+  if (fileUrl) URL.revokeObjectURL(fileUrl);
+  fileUrl = file ? URL.createObjectURL(file) : null;
+  try {
+    let res;
+    if (file) {
+      const body = new FormData();
+      body.append("file", file);
+      if (start != null) body.append("start", start);
+      if (end != null) body.append("end", end);
+      body.append("taal", $("taal").value);
+      if (sa != null) body.append("sa", sa);
+      body.append("separate", $("separate").checked);
+      res = await fetch("/api/upload", { method: "POST", body });
+    } else {
+      res = await fetch("/api/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, start, end, taal: $("taal").value, sa, separate: $("separate").checked }),
+      });
+    }
+    const data = await res.json();
+    if (!res.ok) throw new Error(errorText(data));
+    poll(data.id);
+  } catch (err) {
+    showStatus(err.message, 0, true);
+    $("go").disabled = false;
+  }
+});
+
+function errorText(data) {
+  if (typeof data.detail === "string") return data.detail;
+  if (Array.isArray(data.detail)) return data.detail.map((d) => d.msg).join("; ");
+  return "Something went wrong.";
+}
+
+async function poll(id) {
+  try {
+    const res = await fetch(`/api/jobs/${id}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(errorText(data));
+    if (data.status === "error") throw new Error(data.error);
+    if (data.status === "done") {
+      showStatus("Done", 1);
+      $("go").disabled = false;
+      return show(data);
+    }
+    showStatus(data.stage, data.progress);
+    setTimeout(() => poll(id), 1000);
+  } catch (err) {
+    showStatus(err.message, 0, true);
+    $("go").disabled = false;
+  }
+}
+
+const scaleText = (r) => `${r.scale} with Sa on ${r.sa}`;
+
+function show(data) {
+  job = data;
+  const r = data.result;
+  systems = r.systems;
+  $("result").style.display = "block";
+  $("title").textContent = data.title || "Your sargam";
+  const cents = Math.round(r.tuning_cents);
+  $("saOut").textContent = `${r.sa.name}${cents ? ` (${cents > 0 ? "+" : ""}${cents} cents)` : ""}`
+    + (r.sa.chosen ? "" : ", worked out from the notes");
+  const best = r.raga[0];
+  $("scale").textContent = best ? best.scale : "—";
+  const family = best && best.scale.includes("thaat") ? `Ragas in it: ${best.ragas.join(", ")}. ` : "";
+  const others = r.raga.slice(1).map((x) => (x.sa === r.sa.name ? x.scale : scaleText(x))).join(" · ");
+  $("alts").textContent = family + (others ? `Or maybe ${others}` : "");
+  $("taalOut").textContent = r.taal.label;
+  $("tempo").textContent = `~${Math.round(r.tempo)} BPM`;
+  const meends = r.notes.filter((n) => n.meend).length;
+  $("count").textContent = `${r.notes.length} (${meends} by meend)`;
+  $("warnings").replaceChildren(...r.warnings.map((w) => el("li", { textContent: w })));
+  $("dlMidi").href = `/api/jobs/${data.id}/sargam.mid`;
+  draw();
+
+  const audio = $("audio");
+  $("videoBox").style.display = data.video_id ? "" : "none";
+  $("top").classList.toggle("no-video", !data.video_id);
+  audio.style.display = !data.video_id && fileUrl ? "block" : "none";
+  if (data.video_id) {
+    audio.pause();
+    loadPlayer(data.video_id);
+    media = {
+      time: () => (player && player.getCurrentTime ? player.getCurrentTime() : null),
+      seek: (t) => player && player.seekTo && (player.seekTo(t, true), player.playVideo()),
+    };
+  } else if (fileUrl) {
+    if (player && player.pauseVideo) player.pauseVideo();
+    audio.src = fileUrl;
+    media = { time: () => audio.currentTime, seek: (t) => { audio.currentTime = t; audio.play(); } };
+  } else {
+    media = null;
+  }
+}
+
+function swara(note) {
+  const dots = "•".repeat(Math.abs(note.octave));
+  const kind = KOMAL.includes(note.degree) ? " komal" : note.degree === TIVRA ? " tivra" : "";
+  const parts = [];
+  if (note.meend) parts.push(el("span", { className: "orn", textContent: "~" }));
+  parts.push(el("span", { className: "sw" + kind, title: `${note.name}, ${note.string} tar` },
+    el("i", { textContent: note.octave > 0 ? dots : "" }),
+    el("b", { textContent: (script === "latin" ? LATIN : DEVA)[note.degree] }),
+    el("i", { textContent: note.octave < 0 ? dots : "" })));
+  if (note.fast) parts.push(el("span", { className: "orn", textContent: "*" }));
+  return parts;
+}
+
+function draw() {
+  if (!job) return;
+  document.querySelectorAll(".seg button").forEach((b) => b.setAttribute("aria-pressed", b.dataset.script === script));
+  $("systems").className = script === "devanagari" ? "deva" : "";
+  $("dlText").href = `/api/jobs/${job.id}/sargam.txt?script=${script}`;
+  $("legend").textContent = LEGEND[script] + " A dot above is the taar (upper) saptak, a dot below the mandra (lower)."
+    + " Notes sharing a box share one matra; – holds. ~ is meend: glide into the note without a new stroke."
+    + " * is fast repeated strokes (diri). X is sam, numbers are tali, 0 is khali.";
+  $("systems").replaceChildren(...systems.map((s) => {
+    const cycle = el("div", { className: "cycle" }, ...s.vibhags.map((v) =>
+      el("div", { className: "vibhag" + (v.sam ? " sam" : "") },
+        el("div", { className: "mark", textContent: v.mark }),
+        el("div", { className: "matras" }, ...v.matras.map((m) => {
+          const box = el("div", { className: "matra" }, ...m.parts.flatMap((p) =>
+            p ? swara(p) : [el("span", { className: "hold", textContent: "–" })]));
+          box.dataset.t = m.t;
+          box.dataset.end = s.end;
+          box.addEventListener("click", () => media && media.seek(m.t));
+          return box;
+        })))));
+    return el("div", { className: "system" }, el("div", { className: "t", textContent: fmt(s.start) }), cycle);
+  }));
+  if (!systems.length) $("systems").textContent = "No sitar notes were found in this part of the audio.";
+}
+
+document.querySelectorAll(".seg button").forEach((b) => b.addEventListener("click", () => {
+  script = b.dataset.script;
+  try { localStorage.setItem("script", script); } catch {}
+  draw();
+}));
+
+function loadPlayer(videoId) {
+  if (!ytReady) {
+    ytReady = new Promise((resolve) => { window.onYouTubeIframeAPIReady = resolve; });
+    const s = document.createElement("script");
+    s.src = "https://www.youtube.com/iframe_api";
+    document.head.append(s);
+  }
+  ytReady.then(() => {
+    if (player) return player.loadVideoById(videoId);
+    player = new YT.Player("player", { videoId, playerVars: { rel: 0 } });
+  });
+}
+
+// Light up the matra being played: the last one that has started, unless
+// its line is already over (a gap between sections).
+setInterval(() => {
+  const now = media && media.time();
+  if (now == null) return;
+  let current = null;
+  for (const box of document.querySelectorAll(".matra")) {
+    if (+box.dataset.t <= now && now < +box.dataset.end) current = box;
+  }
+  const lit = document.querySelector(".matra.now");
+  if (lit === current) return;
+  if (lit) lit.classList.remove("now");
+  if (current) current.classList.add("now");
+}, 100);
+
+$("copy").addEventListener("click", async () => {
+  if (!job) return;
+  await navigator.clipboard.writeText(script === "latin" ? job.result.text : job.result.text_devanagari);
+  $("copy").textContent = "Copied";
+  setTimeout(() => ($("copy").textContent = "Copy"), 1500);
+});
+</script>
+</body>
+</html>

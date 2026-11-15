@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sitar-sitara"
+version = "0.1.0"
+description = "Transcribe the sitar in a YouTube song into sargam notation on a taal grid."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "librosa>=0.10",
+    "numpy",
+    "scipy",
+    "soundfile",
+    "mido",
+    "yt-dlp",
+    "fastapi",
+    "uvicorn",
+    "python-multipart",
+    "demucs>=4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "httpx"]
+
+[project.scripts]
+sitar-sitara = "sitar_sitara.cli:main"
+sitar-sitara-web = "sitar_sitara.server:main"
+
+[tool.setuptools]
+packages = ["sitar_sitara"]
+
+[tool.setuptools.package-data]
+sitar_sitara = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
