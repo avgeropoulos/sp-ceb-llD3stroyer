@@ -33,11 +33,13 @@ enum class Difficulty(
     /**
      * A prepared song's notes that its analysis is less sure of than this (0..1) are left out ([Charts.sure]). The
      * easier levels play few notes, so each one that isn't the bouzouki's spoils more of the tune: they ask for more.
+     * (Chosen on made-up band recordings: there, up to these values, a floor takes out several of the band's notes
+     * for each of the bouzouki's; a little higher it is one for one, and on recordings with no rests it only costs.)
      */
     val confidenceFloor: Float,
 ) {
-    EASY("Easy", 3, 0.42, 0.165, 2.3, 0.95, 0.4f),
-    MEDIUM("Medium", 4, 0.25, 0.135, 1.85, 0.8, 0.3f),
+    EASY("Easy", 3, 0.42, 0.165, 2.3, 0.95, 0.3f),
+    MEDIUM("Medium", 4, 0.25, 0.135, 1.85, 0.8, 0.25f),
     HARD("Hard", 5, 0.145, 0.11, 1.5, 0.7, 0.2f),
     EXPERT("Expert", 5, 0.075, 0.085, 1.2, 0.6, 0.1f),
 }
