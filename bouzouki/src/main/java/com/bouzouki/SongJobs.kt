@@ -85,7 +85,41 @@ object SongJobs {
         }
         Settings(context).forgetSong(id)
         File(context.filesDir, "hero-lines/$id.json").delete() // the line Bouzouki Hero plays
+        startPrefs(context).edit().remove(id).apply()
     }
+
+    // --- where a song's audio starts ---
+
+    private fun startPrefs(context: Context) = context.getSharedPreferences("song_start", Context.MODE_PRIVATE)
+
+    /**
+     * Keeps what the decoder found about the start of song [id]'s audio, and, from a YouTube song, what that says
+     * about this phone: whether the songs it prepared before the start was looked at have all their notes late.
+     */
+    private fun rememberStart(context: Context, id: String, audio: AudioDecoder.Stereo, youTube: Boolean) {
+        try {
+            val e = startPrefs(context).edit().putString(id, audio.start)
+            if (youTube) e.putFloat(PHONE_LATE, audio.lateBefore.toFloat())
+            e.apply()
+        } catch (_: Exception) {}
+    }
+
+    /** What was found about the start of song [id]'s audio when it was prepared; null for a song prepared before that was looked at. */
+    fun audioStart(context: Context, id: String): String? = startPrefs(context).getString(id, null)
+
+    /**
+     * How many seconds late the notes of song [id] are stored: 0 for a song whose audio start was looked at when it
+     * was prepared (and for one read from a file). A YouTube song prepared before that, on a phone whose decoder is
+     * since known to hand over the lead-in of YouTube's audio, has every note that lead-in late; showing its notes
+     * that much earlier puts them right without preparing the song again.
+     */
+    fun storedLate(context: Context, id: String): Double = try {
+        val p = startPrefs(context)
+        if (id.startsWith("file-") || p.contains(id)) 0.0 else p.getFloat(PHONE_LATE, 0f).toDouble().coerceIn(0.0, 0.2)
+    } catch (_: Exception) { 0.0 }
+
+    /** Key that can't be a song's id. */
+    private const val PHONE_LATE = " phone late"
 
     /**
      * Saves a prepared song: what its line was derived from first, so a song file never comes
@@ -329,6 +363,7 @@ object SongJobs {
         val bpBytes = context.assets.open("basic_pitch.onnx").use { it.readBytes() }
         return env.createSession(mdxFile.path, options).use { mdx ->
             env.createSession(bpBytes, options).use { bp ->
+                rememberStart(context, id, audio, youTube = source is Source.YouTube)
                 SongAnalyzer(MdxSeparator(env, mdx), BasicPitch(env, bp)).analyzeWithData(
                     id, title, audio.left, audio.right, instrument,
                     progress = { stage, f -> report(stage.label, f) },

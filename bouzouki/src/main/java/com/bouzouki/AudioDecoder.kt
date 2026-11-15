@@ -6,26 +6,46 @@ import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
+import com.bouzouki.core.song.AudioStart
 import com.bouzouki.core.song.MdxSeparator
 import com.bouzouki.core.song.resample
 import java.io.File
 import java.io.IOException
 import java.nio.ByteOrder
 
-/** Decodes a song (m4a, webm/opus, mp3, …) into 44.1 kHz stereo floats for the analysis. */
+/**
+ * Decodes a song (m4a, webm/opus, mp3, …) into 44.1 kHz stereo floats for the analysis. AAC audio (YouTube's m4a)
+ * starts where the song does for a player: the short lead-in the file declares is dropped here if the phone's decoder
+ * did not drop it ([AudioStart]), so a note's time means the same on every phone and matches the video's clock.
+ * Other kinds of audio are decoded as the phone always did (their decoders trim in ways of their own).
+ */
 object AudioDecoder {
-    class Stereo(val left: FloatArray, val right: FloatArray)
+    /**
+     * [start] says in a few words what was done about the file's lead-in (kept with the song, for its data export).
+     * [lateBefore] is how many seconds late this phone's decoding used to leave such a file before the lead-in was
+     * dealt with here: the lead-in dropped now, when the phone knew of none (so its decoder never dropped it).
+     */
+    class Stereo(val left: FloatArray, val right: FloatArray, val start: String = "", val lateBefore: Double = 0.0)
 
     /** Longest stretch analysed, to keep memory in check (12 minutes). */
     private const val MAX_SECONDS = 12 * 60
 
     fun decode(file: File, progress: (Float) -> Unit, cancelled: () -> Boolean): Stereo =
-        decode(MediaExtractor().apply { setDataSource(file.path) }, progress, cancelled)
+        decode(MediaExtractor().apply { setDataSource(file.path) }, AudioStart.mp4Edit(file), progress, cancelled)
 
     fun decode(context: Context, uri: Uri, progress: (Float) -> Unit, cancelled: () -> Boolean): Stereo =
-        decode(MediaExtractor().apply { setDataSource(context, uri, null) }, progress, cancelled)
+        decode(MediaExtractor().apply { setDataSource(context, uri, null) }, null, progress, cancelled)
 
-    private fun decode(extractor: MediaExtractor, progress: (Float) -> Unit, cancelled: () -> Boolean): Stereo {
+    /** The lead-in the phone read from the file itself, in samples at the track's rate; 0 if it gave none. */
+    private fun declaredDelay(format: MediaFormat): Int = try {
+        if (format.containsKey(KEY_DELAY)) format.getInteger(KEY_DELAY) else 0
+    } catch (_: Exception) { 0 }
+
+    /**
+     * [edit] is what the file itself says about its start, when it could be read ([AudioStart.mp4Edit]); otherwise
+     * what the phone read from it is used.
+     */
+    private fun decode(extractor: MediaExtractor, edit: AudioStart.Edit?, progress: (Float) -> Unit, cancelled: () -> Boolean): Stereo {
         try {
             val track = (0 until extractor.trackCount).firstOrNull {
                 extractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true
@@ -37,6 +57,18 @@ object AudioDecoder {
             var rate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
             var channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
             var pcmFloat = false
+            // The lead-in is dealt with here, the same on every phone: the decoder is asked to leave it alone
+            // (some drop it, some don't, some older ones drop a wrong amount), and what it really did is checked below.
+            val aac = mime == MediaFormat.MIMETYPE_AUDIO_AAC
+            val trackRate = rate
+            val phoneDelay = if (aac) declaredDelay(format) else 0
+            if (aac) try {
+                if (format.containsKey(KEY_DELAY)) format.setInteger(KEY_DELAY, 0)
+                if (format.containsKey(KEY_PADDING)) format.setInteger(KEY_PADDING, 0)
+            } catch (_: Exception) {}
+            val firstSizes = IntArray(AudioStart.PIECES)
+            var pieces = 0
+            var firstPtsUs = -1L
 
             val codec = MediaCodec.createDecoderByType(mime)
             codec.configure(format, null, null, 0)
@@ -78,6 +110,8 @@ object AudioDecoder {
                             buf.position(info.offset)
                             buf.limit(info.offset + info.size)
                             val frames = info.size / (channels * if (pcmFloat) 4 else 2)
+                            if (pieces == 0) firstPtsUs = info.presentationTimeUs
+                            if (pieces < firstSizes.size) firstSizes[pieces++] = frames
                             if (n + frames > left.size) {
                                 val grow = maxOf(left.size * 2, n + frames)
                                 left = left.copyOf(grow); right = right.copyOf(grow)
@@ -106,12 +140,27 @@ object AudioDecoder {
                 codec.release()
             }
             if (n == 0) throw IOException("Couldn't decode the audio")
-            left = left.copyOf(n); right = right.copyOf(n)
+            // Drop the lead-in if the decoder handed it over; any doubt leaves the audio as it came.
+            // The file's own word on its lead-in comes first; failing that, what the phone read from it.
+            val fromFile = if (aac) edit?.samples(rate) ?: 0 else 0
+            val start = try {
+                val delay = if (fromFile > 0) fromFile
+                    else if (phoneDelay in 1..AudioStart.MAX_SAMPLES && trackRate > 0) (phoneDelay.toLong() * rate / trackRate).toInt() else 0
+                if (aac) AudioStart.drop(delay, rate, firstPtsUs, firstSizes.copyOf(pieces)) else AudioStart.Drop(0, "not AAC, left to the decoder")
+            } catch (_: Exception) { AudioStart.Drop(0, "not checked") }
+            val from = if (start.samples in 1 until n) start.samples else 0
+            left = left.copyOfRange(from, n); right = right.copyOfRange(from, n)
+            val note = start.why + (if (fromFile > 0) " (read from the file)" else if (phoneDelay != 0) " (the phone read $phoneDelay)" else "")
+            val lateBefore = if (from > 0 && phoneDelay == 0) from.toDouble() / rate else 0.0
             val target = MdxSeparator.SAMPLE_RATE
-            return if (rate == target) Stereo(left, right)
-            else Stereo(resample(left, rate, target, 8), resample(right, rate, target, 8))
+            return if (rate == target) Stereo(left, right, note, lateBefore)
+            else Stereo(resample(left, rate, target, 8), resample(right, rate, target, 8), note, lateBefore)
         } finally {
             extractor.release()
         }
     }
+
+    // MediaFormat's keys for the lead-in and the tail an encoder adds (the constants are newer than the keys).
+    private const val KEY_DELAY = "encoder-delay"
+    private const val KEY_PADDING = "encoder-padding"
 }

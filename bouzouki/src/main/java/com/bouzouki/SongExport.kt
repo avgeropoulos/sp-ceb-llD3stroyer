@@ -129,6 +129,7 @@ object SongExport {
             appendLine("line from: ${info.lineFrom}")
             appendLine("sync: %.3f s".format(java.util.Locale.ROOT, info.sync))
             appendLine("playback time: ${clock(info.time)} (%.2f s)".format(java.util.Locale.ROOT, info.time))
+            SongJobs.audioStart(context, info.id)?.let { appendLine("audio start: $it") }
             if (info.note.isNotBlank()) { appendLine(); appendLine("note:"); appendLine(info.note.trim()) }
         }
     }
