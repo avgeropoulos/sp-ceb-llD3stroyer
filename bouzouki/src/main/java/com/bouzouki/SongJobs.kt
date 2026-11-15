@@ -18,6 +18,7 @@ import ai.onnxruntime.OrtSession
 import com.bouzouki.core.Instrument
 import com.bouzouki.core.song.AnalysisData
 import com.bouzouki.core.song.BasicPitch
+import com.bouzouki.core.song.Detail
 import com.bouzouki.core.song.MdxSeparator
 import com.bouzouki.core.song.SongAnalysis
 import com.bouzouki.core.song.SongAnalyzer
@@ -125,6 +126,11 @@ object SongJobs {
     fun withCurrentLine(context: Context, song: SongAnalysis): SongAnalysis? {
         if (!SongAnalysis.isLineOld(song)) return null
         val data = data(context, song.id) ?: return null
+        return synchronized(lineLock) { derivedAgain(context, song, data) }
+    }
+
+    /** [song]'s line derived again from [data] and saved in its place (see [withCurrentLine]); null if that fails. Under [lineLock]. */
+    private fun derivedAgain(context: Context, song: SongAnalysis, data: AnalysisData): SongAnalysis? {
         val fresh = try { SongAnalyzer.rebuild(song, data) } catch (_: Exception) { return null }
         try {
             writeAtomically(File(songsDir(context), "${song.id}.json")) { it.write(fresh.toJson().toByteArray(Charsets.UTF_8)) }
@@ -132,6 +138,33 @@ object SongJobs {
             // shown all the same; derived again next time
         }
         return fresh
+    }
+
+    /**
+     * One at a time for the songs whose line is derived again: the song screen and Bouzouki Hero may both ask for the
+     * same song's, and two at once would write its file over each other.
+     */
+    private val lineLock = Any()
+
+    /**
+     * The line found in song [id]'s recording as the analysis derives it now, with [detail] notes: what the song
+     * screen shows for it when it isn't its tab's line. The saved song's line is derived again first if an older
+     * analysis derived it (and saved in its place, as [withCurrentLine] does), then [detail]'s line from the same data.
+     * Null when there is nothing newer to have: the song isn't saved, was changed by hand, or has no data to derive
+     * its line from. Reads the data and follows the line again (a second or so), and may throw what that throws:
+     * call it off the main thread.
+     */
+    fun currentLine(context: Context, id: String, detail: Detail): SongAnalysis? {
+        synchronized(lineLock) {
+            // (Read under the lock: the song screen may just have derived and saved it.)
+            val saved = cached(context, id) ?: return null
+            if (saved.edited) return null
+            val old = SongAnalysis.isLineOld(saved)
+            if (!old && detail == Detail.NORMAL) return saved
+            val data = data(context, id) ?: return null
+            val base = if (old) derivedAgain(context, saved, data) ?: return null else saved
+            return if (detail == Detail.NORMAL) base else SongAnalyzer.rebuild(base, data, detail)
+        }
     }
 
     /** Whether song [id] has its [data] file: songs prepared before it was kept need preparing again for tabs and detail levels. */

@@ -73,6 +73,102 @@ class TabTest {
         }
     }
 
+    private val tetra = Charts.courseLabels(listOf(48, 53, 57, 62))
+
+    /** A note on the top course, [sure] (0..1) of it. */
+    private fun note(time: Double, sure: Float, fret: Int = 0, tremolo: Boolean = false) =
+        Charts.TabNote(time, 0.2, 62 + fret, 3, fret, tremolo, sure)
+
+    @Test fun leavesOutTheNotesAPreparedSongIsNotSureOf() {
+        // A note a second, slow enough for every level: only the confidence can leave one out.
+        val sure = listOf(1f, 0.05f, 0.15f, 0.25f, 0.35f, 0.45f, 0.9f, 0.8f, 0.7f, 0.6f, 0.5f, 1f, 0.4f, 0.3f, 0.2f, 0.1f, 1f, 1f)
+        val notes = sure.mapIndexed { i, c -> note(1.0 + i, c, i % 5) }
+        for (d in Difficulty.entries) {
+            val floor = d.confidenceFloor
+            assertTrue(floor > 0f && floor < 1f, "$d: $floor")
+            val times = Charts.fromTab(notes, d, tetra).map { it.time }
+            // A note just as sure as the level asks stays.
+            assertEquals(notes.filter { it.confidence >= floor }.map { it.time }, times, "$d")
+            assertEquals(notes.size, Charts.fromTab(notes, d, tetra, floor = 0f).size, "$d without a floor")
+        }
+        // The fewer the buttons, the surer the notes: Easy asks for the most, Expert takes nearly everything.
+        val floors = Difficulty.entries.map { it.confidenceFloor }
+        assertEquals(floors.sortedDescending(), floors)
+        assertTrue(Difficulty.EASY.confidenceFloor > Difficulty.HARD.confidenceFloor && Difficulty.EXPERT.confidenceFloor <= 0.15f, "$floors")
+        // A tremolo note stays whatever its confidence, and so does every note without doubt.
+        val held = notes + note(30.0, 0f, 3, tremolo = true)
+        for (d in Difficulty.entries) assertEquals(30.0, Charts.fromTab(held, d, tetra).last().time, "$d")
+        // (Whatever floor is asked for: no floor is above "no doubt".)
+        val mostlySure = (0 until 16).map { note(1.0 + it, if (it < 10) 1f else 0.99f) }
+        assertEquals(10, Charts.sure(mostlySure, 1f).size)
+        assertEquals(10, Charts.sure(mostlySure, 5f).size)
+        // A song from before notes said how sure they are (every note 1) plays as it always did.
+        val before = notes.map { it.copy(confidence = 1f) }
+        for (d in Difficulty.entries) assertEquals(before.map { it.time }, Charts.fromTab(before, d, tetra).map { it.time }, "$d")
+    }
+
+    @Test fun aSongInDoubtEverywhereKeepsAllItsNotes() {
+        // More than half of the notes under the floor: the floor would leave too little of the song to play.
+        val weak = (0 until 20).map { note(1.0 + it, if (it % 5 == 0) 0.9f else 0.05f, it % 4) }
+        for (d in Difficulty.entries) assertEquals(20, Charts.fromTab(weak, d, tetra).size, "$d")
+        assertEquals(weak, Charts.sure(weak, 0.4f))
+        // Just half of them sure: those stay, the others go.
+        val half = (0 until 20).map { note(1.0 + it, if (it % 2 == 0) 0.9f else 0.05f, it % 4) }
+        assertEquals(10, Charts.sure(half, 0.4f).size)
+        // A hard recording, most of its notes under what the level asks: it is asked for half as much, which
+        // still leaves out the notes it is least sure of.
+        val hard = (0 until 20).map { note(1.0 + it, if (it % 5 == 0) 0.9f else if (it % 5 == 1) 0.05f else 0.25f, it % 4) }
+        assertEquals(hard.filter { it.confidence >= 0.2f }, Charts.sure(hard, 0.4f))
+        assertEquals(16, Charts.fromTab(hard, Difficulty.EASY, tetra).size)
+        // ...or a quarter.
+        val harder = hard.map { if (it.confidence == 0.25f) it.copy(confidence = 0.12f) else it }
+        assertEquals(16, Charts.sure(harder, 0.4f).size)
+        // A short song that would keep fewer than eight notes keeps them all.
+        val short = (0 until 10).map { note(1.0 + it, if (it < 7) 0.9f else 0.05f, it % 4) }
+        assertEquals(10, Charts.sure(short, 0.4f).size)
+        assertEquals(8, Charts.sure(short + note(20.0, 1f), 0.4f).size)
+        assertEquals(emptyList(), Charts.sure(emptyList(), 0.4f))
+    }
+
+    @Test fun ofTwoNotesTooCloseToPlayBothKeepsTheOneItIsSureOf() {
+        // On Easy two notes 0.2 s apart can't both be played. (No floor here: only the thinning chooses.)
+        fun kept(vararg notes: Charts.TabNote) = Charts.fromTab(notes.toList(), Difficulty.EASY, tetra, floor = 0f).map { it.label }
+        // In a phrase that goes on, the first of two is kept, as always, when they are about as sure...
+        assertEquals(listOf("D1", "D3"), kept(note(1.0, 1f, 1), note(1.2, 1f, 2), note(1.7, 1f, 3)))
+        assertEquals(listOf("D1", "D3"), kept(note(1.0, 0.5f, 1), note(1.2, 0.5f, 2), note(1.7, 0.5f, 3)))
+        assertEquals(listOf("D1", "D3"), kept(note(1.0, 0.6f, 1), note(1.2, 0.9f, 2), note(1.7, 0.9f, 3)))
+        // ...and the second when the first is in doubt and the second is not.
+        assertEquals(listOf("D2", "D3"), kept(note(1.0, 0.3f, 1), note(1.2, 0.9f, 2), note(1.7, 0.9f, 3)))
+        assertEquals(listOf("D2", "D3"), kept(note(1.0, 0.4f, 1), note(1.2, 0.9f, 2), note(1.7, 0.9f, 3)))
+        // The note that ends a phrase wins over the one before, unless it is the one in doubt
+        // (the band's, found just after the bouzouki's phrase).
+        assertEquals(listOf("D2"), kept(note(1.0, 0.9f, 1), note(1.2, 0.9f, 2)))
+        assertEquals(listOf("D2"), kept(note(1.0, 0.9f, 1), note(1.2, 0.6f, 2)))
+        assertEquals(listOf("D1"), kept(note(1.0, 0.9f, 1), note(1.2, 0.2f, 2)))
+        // Of a chord's notes the higher one, unless that is the one in doubt (an octave heard over the note).
+        assertEquals(listOf("D12", "D3"), kept(note(1.0, 0.8f, 0), note(1.0, 0.8f, 12), note(2.0, 1f, 3)))
+        assertEquals(listOf("D12", "D3"), kept(note(1.0, 0.8f, 0), note(1.0, 0.5f, 12), note(2.0, 1f, 3)))
+        assertEquals(listOf("D0", "D3"), kept(note(1.0, 0.8f, 0), note(1.0, 0.2f, 12), note(2.0, 1f, 3)))
+        // The notes kept are still never closer than the level allows.
+        val run = (0 until 40).map { note(1.0 + it * 0.11, if (it % 3 == 0) 0.2f else 0.9f, it % 5) }
+        for (d in Difficulty.entries) {
+            val times = Charts.fromTab(run, d, tetra, floor = 0f).map { it.time }
+            times.zipWithNext().forEach { (a, b) -> assertTrue(b - a >= d.minGap - 1e-9, "$d: $times") }
+        }
+    }
+
+    @Test fun notesAboutAsSureThinAsTheyAlwaysDid() {
+        // A tune with fast runs, chords and phrase endings: the same buttons whether every note is without doubt
+        // or all are in the same doubt, at every level.
+        val tune = Tunes.all[1].sourceNotes().mapIndexed { i, n -> Charts.TabNote(n.time, n.duration, 62 + i % 12, 3, i % 12, n.tremolo) }
+        for (d in Difficulty.entries) {
+            val sure = Charts.fromTab(tune, d, tetra)
+            val unsure = Charts.fromTab(tune.map { it.copy(confidence = 0.6f) }, d, tetra, floor = 0f)
+            assertTrue(sure.size >= 8, "$d: ${sure.size}")
+            assertEquals(sure.map { it.time to it.label }, unsure.map { it.time to it.label }, "$d")
+        }
+    }
+
     @Test fun recordedChartsKeepTheirLanes() {
         val notes = listOf(0, 4, 2).mapIndexed { i, p -> SourceNote(i.toDouble(), 0.1, p) }
         val g = Charts.build(notes, Difficulty.EXPERT, labels = false, buttons = Buttons.TAB)

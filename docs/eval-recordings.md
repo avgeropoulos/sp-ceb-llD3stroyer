@@ -23,6 +23,25 @@ Course and fret only mean something where a recording's reference says where the
 where a player would play them: in "every fret of every course" the same pitch is played on several courses on
 purpose, so its course score is low by design.
 
+The report also says how the line plays in Bouzouki Hero, for each difficulty (the CSV has the counts, `game_*`).
+The game's chart of the line found is set against the chart it would make of the notes really played:
+
+| score | what it counts |
+|---|---|
+| **gem P** | the chart's gems with a played note starting within the difficulty's hit window, at any pitch |
+| **gem R** | the gems of the played notes' chart that have a gem of the found chart within the window |
+| **phantom gems** | gems where the bouzouki is silent (none of its notes within 1 s), and how many a minute of silence |
+
+Each difficulty is shown with its confidence floor (the game leaves out the notes the analysis is least sure of,
+more of them on the easier levels: `Difficulty.confidenceFloor`) and without. To try other floors on a run made with
+`-PevalDump=true`, or to score an older run:
+
+```sh
+./gradlew :bouzouki-core:gameScore -PgameNotes=<folder>/<name>.notes.csv -PgameFloors=-1,0,0.1,0.2,0.3,0.4
+```
+
+(-1 is the game as it was before it used the confidence at all.)
+
 ## Recording your own set
 
 Real recordings are what the numbers should come from; the synthetic set (the app's own synth) only stands in until

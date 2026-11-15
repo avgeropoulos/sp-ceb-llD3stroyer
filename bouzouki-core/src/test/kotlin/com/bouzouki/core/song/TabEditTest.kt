@@ -29,4 +29,20 @@ class TabEditTest {
         assertEquals(moved, SongAnalysis.fromJson(moved.toJson()))
         assertEquals(listOf(0 to 14, 1 to 9, 2 to 5, 3 to 0), TabEdit.places(inst, 62))
     }
+
+    @Test
+    fun aNoteSetByHandIsWithoutDoubt() {
+        // A line the analysis is not sure of: the notes the player sets are sure from then on, the others as they were.
+        val doubted = song.copy(notes = song.notes.map { it.copy(confidence = 0.3f) })
+        assertEquals(listOf(0.3f, 1f, 0.3f), TabEdit.place(doubted, 1, 2, 7).notes.map { it.confidence })
+        assertEquals(listOf(0.3f, 0.3f, 1f), TabEdit.transpose(doubted, 2, 1).notes.map { it.confidence })
+        assertEquals(listOf(1f, 0.3f, 0.3f), TabEdit.articulate(doubted, 0, Articulation.HAMMER).notes.map { it.confidence })
+        assertEquals(listOf(0.3f, 1f, 0.3f, 0.3f), TabEdit.insertAfter(doubted, 0).notes.map { it.confidence })
+        assertEquals(listOf(0.3f, 0.3f), TabEdit.delete(doubted, 1).notes.map { it.confidence })
+        // Saved and read back, and fingered for the other bouzouki, every note is as sure as it was.
+        val edited = TabEdit.place(doubted, 1, 2, 7)
+        assertEquals(edited, SongAnalysis.fromJson(edited.toJson()))
+        assertEquals(listOf(0.3f, 1f, 0.3f), edited.forInstrument(Instrument.TRICHORDO).notes.map { it.confidence })
+        assertEquals(listOf(0.3f, 0.3f, 0.3f), SongAnalysis.fromJson(doubted.forInstrument(inst).toJson())!!.notes.map { it.confidence })
+    }
 }

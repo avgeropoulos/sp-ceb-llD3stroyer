@@ -162,6 +162,11 @@ class TabAlignerTest {
             assertTrue(song.all { has(a.song.notes, it) }, "$drop: ${song.filter { !has(a.song.notes, it) }}")
             for (i in drop) assertEquals(-1, a.sources[a.song.notes.indexOfFirst { it.midi == song[i].midi && abs(it.start - heardAt(song[i].time)) < 0.012 }])
             assertEquals(song.size, a.song.notes.size, "$drop: no other line notes come in")
+            // A tab's notes are without doubt, however unsure the line was of them; the line's own notes kept between
+            // them stay as sure as they were.
+            val doubted = TabAligner.align(tab, AnalysisData(act, null), b.copy(notes = b.notes.map { it.copy(confidence = 0.3f) }))
+            assertEquals(a.sources, doubted.sources)
+            for ((k, n) in doubted.song.notes.withIndex()) assertEquals(if (doubted.sources[k] >= 0) 1f else 0.3f, n.confidence, "$drop: $n")
         }
     }
 

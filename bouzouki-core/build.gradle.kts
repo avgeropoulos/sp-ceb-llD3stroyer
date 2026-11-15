@@ -18,6 +18,8 @@ dependencies {
     compileOnly("com.microsoft.onnxruntime:onnxruntime:1.31.0")
     testImplementation("com.microsoft.onnxruntime:onnxruntime:1.31.0")
     testImplementation(kotlin("test"))
+    // The accuracy harness also scores the line as Bouzouki Hero plays it (eval/GameScore.kt).
+    testImplementation(project(":hero-core"))
 }
 
 tasks.test { useJUnitPlatform() }
@@ -38,4 +40,12 @@ tasks.register<JavaExec>("evalSet") {
     mainClass.set("com.bouzouki.core.eval.EvaluatorKt")
     maxHeapSize = "6g"
     args = listOf("evalSet", "evalOut", "evalLabel", "evalOnly", "evalDump").map { (findProperty(it) ?: "").toString() }
+}
+
+// Developer tool: how a run already made plays in Bouzouki Hero, with other confidence floors (see eval/GameScore.kt).
+tasks.register<JavaExec>("gameScore") {
+    description = "The game score of -PgameNotes=<label>.notes.csv (a run's dump) with -PgameFloors=<0,0.1,...> for -PgameOnly=<regex>"
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.bouzouki.core.eval.GameScoreTool")
+    args = listOf("gameNotes", "gameFloors", "gameOnly").map { (findProperty(it) ?: "").toString() }
 }

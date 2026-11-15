@@ -31,6 +31,10 @@ fingers 1 to 4 at the hand's current position, and each button shows which fret 
 | Hard | 5 | Fast runs included |
 | Expert | 5 | Every note, falling fast, with tight timing |
 
+In a prepared song the analysis says how sure it is of each note. The easier the level, the surer a note
+must be to become a button, so that Easy and Medium rarely ask for a note the bouzouki doesn't play;
+Expert leaves out only the most doubtful ones.
+
 Long notes and tremolo are hold notes. Hitting notes in a row raises a multiplier up to x4, and the
 **OPA!** meter, once half full, gives double points for a while. Each song and difficulty keeps a best
 score and a 1 to 5 star rating.

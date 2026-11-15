@@ -775,16 +775,11 @@ class SongActivity : Activity() {
     /**
      * The line chosen for song [id]: a tab just pasted or opened for it while it's tried ([pendingTab]); else
      * its tab's if one is kept and chosen (lined up for the bouzouki played now; a PDF is only read then, in
-     * the background); else the detected one with its detail (null for normal: the prepared line).
+     * the background); else the detected one with its detail (null for normal: the prepared line). What is
+     * kept for the song decides the same for Bouzouki Hero ([SongLines.chosen]).
      */
-    private fun lineSpecFor(id: String): SongLines.Spec? {
-        pendingTab?.takeIf { it.id == id }?.let { return it }
-        if (settings.usesTab(id)) {
-            SongJobs.tab(this, id)?.let { return SongLines.Spec.FromTab(id, it, settings.instrument) }
-        }
-        val d = settings.detail(id)
-        return if (d == Detail.NORMAL) null else SongLines.Spec.Detected(id, d)
-    }
+    private fun lineSpecFor(id: String): SongLines.Spec? =
+        pendingTab?.takeIf { it.id == id } ?: SongLines.chosen(this, settings, id)
 
     /** Shows the line chosen for the song open (see [showSpec]). */
     private fun chooseLine(announce: Boolean) {

@@ -194,6 +194,7 @@ object ErrorAnalysis {
             append(String.format(Locale.US, "| register %s | %d | %d | %.1f%% |\n", k, fs.size, fs.count { !it.right }, 100.0 * fs.count { !it.right } / fs.size))
         for ((k, fs) in found.groupBy { it.note.articulation }.toSortedMap())
             append(String.format(Locale.US, "| marked %s | %d | %d | %.1f%% |\n", k.name.lowercase(Locale.ROOT), fs.size, fs.count { !it.right }, 100.0 * fs.count { !it.right } / fs.size))
+        append(confidence(found))
         append("\n### Notes found right: how they were played and how they were marked\n\n| played | found | marked pick | hammer | pull | slide | tremolo |\n|---|---|---|---|---|---|---|\n")
         for ((p, fs) in found.filter { it.right }.groupBy { it.played!! }.toSortedMap()) {
             append("| ${p.name.lowercase(Locale.ROOT)} | ${fs.size} |")
@@ -202,16 +203,70 @@ object ErrorAnalysis {
         }
     }
 
+    /**
+     * How well the line's confidence in its notes ([SongNote.confidence]) tells the right ones from the wrong ones: the
+     * notes under each floor a game might set, and the area under the precision-recall curve of "right" with the notes
+     * ranked by confidence ([averagePrecision]).
+     */
+    fun confidence(found: List<Found>): String = buildString {
+        val right = found.count { it.right }
+        val wrong = found.size - right
+        append("\n### How sure the line was of the notes it found\n\n")
+        append(String.format(Locale.US, "%d notes found, %d right and %d wrong. Ranked by confidence, the area under the precision-recall curve is %.4f (%.4f if every note were as sure: the share that is right); a wrong note has less confidence than a right one %.1f%% of the time (ties count half).\n\n",
+            found.size, right, wrong, averagePrecision(found), right.toDouble() / found.size.coerceAtLeast(1), 100 * ranksAbove(found)))
+        append("| confidence under | right notes | of the right | wrong notes | of the wrong | right and wrong at or over it | precision then |\n|---|---|---|---|---|---|---|\n")
+        for (floor in listOf(0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0)) {
+            val r = found.count { it.right && it.note.confidence < floor }
+            val w = found.count { !it.right && it.note.confidence < floor }
+            append(String.format(Locale.US, "| %.2f | %d | %.1f%% | %d | %.1f%% | %d + %d | %.3f |\n", floor, r, 100.0 * r / right.coerceAtLeast(1), w, 100.0 * w / wrong.coerceAtLeast(1),
+                right - r, wrong - w, (right - r).toDouble() / (found.size - r - w).coerceAtLeast(1)))
+        }
+    }
+
+    /**
+     * The area under the precision-recall curve of "right", the notes taken from the surest down (average precision:
+     * the mean, over the right notes, of the precision down to each). Notes of equal confidence come in together, the
+     * right and the wrong among them evenly mixed, so a line that is equally sure of everything scores about the share
+     * of its notes that is right.
+     */
+    fun averagePrecision(found: List<Found>): Double {
+        var tp = 0.0
+        var seen = 0.0
+        var sum = 0.0
+        for ((_, group) in found.groupBy { it.note.confidence }.toSortedMap(reverseOrder())) {
+            val right = group.count { it.right }
+            // The j-th right note of the group comes after its share of the group's wrong ones.
+            for (j in 1..right) sum += (tp + j) / (seen + j * group.size.toDouble() / right)
+            tp += right
+            seen += group.size
+        }
+        return if (tp == 0.0) 0.0 else sum / tp
+    }
+
+    /** The chance that a wrong note has less confidence than a right one (ties count half): the area under the ROC curve. */
+    fun ranksAbove(found: List<Found>): Double {
+        val right = found.filter { it.right }.map { it.note.confidence }.sorted()
+        val wrong = found.filter { !it.right }.map { it.note.confidence }
+        if (right.isEmpty() || wrong.isEmpty()) return 1.0
+        var sum = 0.0
+        for (w in wrong) {
+            val above = right.size - right.indexOfFirst { it > w }.let { if (it < 0) right.size else it }
+            val equal = right.count { it == w }
+            sum += above + 0.5 * equal
+        }
+        return sum / (right.size.toDouble() * wrong.size)
+    }
+
     /** Every note played and found, one per line, for other tools. */
     fun csv(all: List<Notes>): String = buildString {
-        append("item,side,start,end,midi,course,fret,articulation,ok,onset_error_ms,what,where_or_traits\n")
+        append("item,side,start,end,midi,course,fret,articulation,ok,onset_error_ms,what,where_or_traits,confidence\n")
         fun q(s: String) = "\"" + s.replace("\"", "'") + "\""
         for (n in all) {
-            for (p in n.played) append(String.format(Locale.US, "%s,played,%.4f,%.4f,%d,%d,%d,%s,%d,%s,%s,%s\n", p.item.name, p.note.start, p.note.end, p.note.midi,
+            for (p in n.played) append(String.format(Locale.US, "%s,played,%.4f,%.4f,%d,%d,%d,%s,%d,%s,%s,%s,\n", p.item.name, p.note.start, p.note.end, p.note.midi,
                 p.note.course, p.note.fret, p.note.articulation, if (p.found) 1 else 0, p.error?.let { String.format(Locale.US, "%.1f", it * 1000) } ?: "",
                 q(p.why), q(p.traits.entries.joinToString("; ") { "${it.key}=${it.value}" })))
-            for (f in n.found) append(String.format(Locale.US, "%s,found,%.4f,%.4f,%d,%d,%d,%s,%d,,%s,%s\n", f.item.name, f.note.start, f.note.end, f.note.midi,
-                f.note.course, f.note.fret, f.note.articulation, if (f.right) 1 else 0, q(f.flags.joinToString(" + ")), q(f.where)))
+            for (f in n.found) append(String.format(Locale.US, "%s,found,%.4f,%.4f,%d,%d,%d,%s,%d,,%s,%s,%.2f\n", f.item.name, f.note.start, f.note.end, f.note.midi,
+                f.note.course, f.note.fret, f.note.articulation, if (f.right) 1 else 0, q(f.flags.joinToString(" + ")), q(f.where), f.note.confidence))
         }
     }
 }

@@ -27,9 +27,10 @@ class Timings : LinkedHashMap<String, Double>() {
 
 /**
  * A recording transcribed: its placed notes, how far it was found to be tuned from A = 440 Hz (cents), and what the
- * note model was given ([separated]: the separator's output, mono at 44.1 kHz) when the pipeline keeps it.
+ * note model was given ([separated]: the separator's output, mono at 44.1 kHz) when the pipeline keeps it. [solo]:
+ * prepared as the bouzouki alone ([com.bouzouki.core.song.SongAnalysis.solo]).
  */
-class Transcript(val notes: List<SongNote>, val cents: Double = Double.NaN, val separated: FloatArray? = null)
+class Transcript(val notes: List<SongNote>, val cents: Double = Double.NaN, val separated: FloatArray? = null, val solo: Boolean = false)
 
 /** A way to transcribe a recording into placed notes, and how long each of its stages took. */
 fun interface Pipeline {
@@ -72,7 +73,7 @@ class AppPipeline(
             song = SongAnalyzer.rebuild(prepared, data, detail, post(item))
         }
         lap(null)
-        return Transcript(song.notes, song.tuningCents, heard)
+        return Transcript(song.notes, song.tuningCents, heard, song.solo)
     }
 
     companion object {
@@ -97,6 +98,8 @@ class ItemResult(
     val notes: ErrorAnalysis.Notes? = null,
     /** What the separator let through of each part of the mix, for a synthetic mix with its parts kept ([SeparationCheck]). */
     val passed: SeparationCheck.Passed? = null,
+    /** How the line plays in Bouzouki Hero, at each difficulty ([GameScore]). */
+    val game: GameScore.Result? = null,
 )
 
 /** Runs a [Pipeline] over an evaluation set and reports how it did, overall, by group and kind, and per recording. */
@@ -137,7 +140,7 @@ object Evaluator {
         log(String.format(Locale.US, "%-28s %s · %d a semitone off%s · %.2f s for %.1f s", item.name, score.summary(),
             score.tpSemitone - score.tp, tuning, timings.total, seconds))
         val passed = if (item.kind == "mix") transcript.separated?.let { SeparationCheck.of(item, it) } else null
-        ItemResult(item, score, timings, seconds, offset, transcript.cents, notes, passed)
+        ItemResult(item, score, timings, seconds, offset, transcript.cents, notes, passed, GameScore.of(ref, est, item.instrument, seconds, transcript.solo))
     }
 
     /** The report as Markdown: the totals (and by kind and group), then each recording. */
@@ -166,6 +169,7 @@ object Evaluator {
             append(String.format(Locale.US, "\nTuning found: mean error %.1f cents, worst %.1f cents, over %d recordings; %d notes a semitone off in all.\n",
                 err.average(), err.max(), tuned.size, results.sumOf { it.score.tpSemitone - it.score.tp }))
         }
+        append(GameScore.markdown(results.mapNotNull { r -> r.game?.let { r.item to it } }))
         append(timing(results))
         append("\n## Time by stage\n\n| stage | seconds | per audio second |\n|---|---|---|\n")
         val audio = results.sumOf { it.seconds }
@@ -206,14 +210,14 @@ object Evaluator {
 
     /** One CSV line per recording (and "all"), to compare runs. */
     fun csv(label: String, results: List<ItemResult>): String = buildString {
-        append("label,item,kind,group,instrument,ref,est,tp,tp_octave,tp_offset,tp_semitone,placed,same_course,same_fret,ref_tremolo,est_tremolo,tremolo_right,cents,true_cents,seconds,processing,timed,onset_mean_ms,onset_median_ms,onset_std_ms,onset_p10_ms,onset_p90_ms\n")
+        append("label,item,kind,group,instrument,ref,est,tp,tp_octave,tp_offset,tp_semitone,placed,same_course,same_fret,ref_tremolo,est_tremolo,tremolo_right,cents,true_cents,seconds,processing,timed,onset_mean_ms,onset_median_ms,onset_std_ms,onset_p10_ms,onset_p90_ms,${GameScore.csvHead}\n")
         for (r in results) {
             val s = r.score
             val t = TimingStats(s.timing.map { it.error })
-            append(String.format(Locale.US, "%s,%s,%s,%s,%s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%.1f,%s,%.3f,%.3f,%d,%.2f,%.2f,%.2f,%.2f,%.2f\n", label, r.item.name, r.item.kind, r.item.group,
+            append(String.format(Locale.US, "%s,%s,%s,%s,%s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%.1f,%s,%.3f,%.3f,%d,%.2f,%.2f,%.2f,%.2f,%.2f,%s\n", label, r.item.name, r.item.kind, r.item.group,
                 r.item.instrument.name, s.ref, s.est, s.tp, s.tpOctave, s.tpOffset, s.tpSemitone, s.placed, s.sameCourse, s.sameFret,
                 s.refTremolo, s.estTremolo, s.tremoloRight, r.cents, r.item.cents?.toString() ?: "", r.seconds, r.timings.total,
-                t.n, t.mean, t.median, t.std, t.p10, t.p90))
+                t.n, t.mean, t.median, t.std, t.p10, t.p90, r.game?.let(GameScore::csv) ?: ""))
         }
     }
 }
@@ -228,7 +232,8 @@ object Evaluator {
  * `-PevalOnly=<regex>` runs only the recordings whose names match, and `-PevalDump=true` prints the notes missed and
  * the extra ones with what each most likely is, adds the error analysis to the report ([ErrorAnalysis]) and writes
  * every note to <label>.notes.csv. For the synthetic mixes the report also says how much of each part of the band
- * the separator lets through ([SeparationCheck]).
+ * the separator lets through ([SeparationCheck]). Every report also says how the line plays in Bouzouki Hero at
+ * each difficulty ([GameScore]: the game's chart of the line against its chart of the notes played).
  *
  * Environment: EVAL_SEPARATOR (what the mixes go through: [withMixSeparator]), EVAL_STEM_CACHE (a folder that keeps
  * what the separator gives for each recording, so that later runs skip it: [CachedSeparator]), EVAL_DETAIL (fewer,

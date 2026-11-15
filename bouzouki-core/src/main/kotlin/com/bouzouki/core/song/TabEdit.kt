@@ -6,7 +6,8 @@ import kotlin.math.abs
 /**
  * The tab editor's changes to a song's line, each giving the song changed and marked [SongAnalysis.edited] (its frets
  * then stay as the player left them, see the song screen). Notes stay in time order; a note's pitch always is its
- * course's and fret's.
+ * course's and fret's. A note the player sets (placed, its articulation chosen, or added) is without doubt from then
+ * on ([SongNote.confidence] 1), whatever the analysis made of it; the notes not touched keep theirs.
  */
 object TabEdit {
     /** Every place [midi] can be played on [inst]: (course, fret), bass course first. */
@@ -19,7 +20,7 @@ object TabEdit {
     fun place(song: SongAnalysis, i: Int, course: Int, fret: Int): SongAnalysis {
         val inst = song.instrument
         require(course in inst.courses.indices && fret in 0..inst.frets)
-        return song.with(song.notes.mapIndexed { k, n -> if (k == i) n.copy(course = course, fret = fret, midi = inst.midiAt(course, fret)) else n })
+        return song.with(song.notes.mapIndexed { k, n -> if (k == i) n.copy(course = course, fret = fret, midi = inst.midiAt(course, fret), confidence = 1f) else n })
     }
 
     /** Note [i] [semitones] higher (lower if negative), on its course if it reaches, else the nearest course that does. */
@@ -32,7 +33,7 @@ object TabEdit {
     }
 
     fun articulate(song: SongAnalysis, i: Int, a: Articulation): SongAnalysis =
-        song.with(song.notes.mapIndexed { k, n -> if (k == i) n.copy(articulation = a) else n })
+        song.with(song.notes.mapIndexed { k, n -> if (k == i) n.copy(articulation = a, confidence = 1f) else n })
 
     fun delete(song: SongAnalysis, i: Int): SongAnalysis = song.with(song.notes.filterIndexed { k, _ -> k != i })
 
@@ -54,6 +55,6 @@ object TabEdit {
         val like = prev ?: next ?: SongNote(0.0, 0.0, song.instrument.midiAt(song.instrument.courses.lastIndex, 0), song.instrument.courses.lastIndex, 0)
         // The note before now ends where the new one starts.
         val trimmed = if (prev != null && prev.end > start) notes.mapIndexed { k, n -> if (k == i) n.copy(end = start) else n } else notes
-        return song.with(trimmed + like.copy(start = start, end = end, articulation = Articulation.PICK))
+        return song.with(trimmed + like.copy(start = start, end = end, articulation = Articulation.PICK, confidence = 1f))
     }
 }

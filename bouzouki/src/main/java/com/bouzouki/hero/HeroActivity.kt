@@ -16,7 +16,10 @@ import android.webkit.WebView
 import android.widget.FrameLayout
 import com.bouzouki.Settings
 import com.bouzouki.SongJobs
+import com.bouzouki.SongLines
 import com.bouzouki.core.song.Articulation
+import com.bouzouki.core.song.Detail
+import com.bouzouki.core.song.SongAnalysis
 import com.bouzoukihero.core.Charts
 import com.bouzoukihero.core.Difficulty
 import com.bouzoukihero.core.Samples
@@ -34,7 +37,8 @@ import kotlin.concurrent.thread
  * YouTube video at the top, and the notes are the tab Μπουζούκι worked out for it.
  */
 class HeroActivity : Activity(), HeroView.Host, SessionListener {
-    override lateinit var session: Session
+    /** (Replaced once, on the main thread, when a song's notes had to be found again first; the game's thread reads it.) */
+    @Volatile override lateinit var session: Session
     @Volatile override var clock: SongClock? = null
     /** Song seconds the notes are shifted by: minus the song's sync (sync > 0 shows notes earlier). */
     override var latency = 0.0
@@ -46,6 +50,9 @@ class HeroActivity : Activity(), HeroView.Host, SessionListener {
     private var pool: SoundPool? = null
     @Volatile private var missId = 0
     @Volatile private var destroyed = false
+    private var inFront = false
+    /** What starts the song once the game is on screen again (its notes came while it wasn't): see [whenInFront]. */
+    private var waiting: (() -> Unit)? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -79,44 +86,97 @@ class HeroActivity : Activity(), HeroView.Host, SessionListener {
             }
         } else {
             // A song prepared in Μπουζούκι, fingered for the bouzouki chosen there.
-            val inst = Settings(this).instrument
+            val settings = Settings(this)
+            val inst = settings.instrument
             // The notes the song screen last showed (its chosen line, or the tab attached to the
             // song), so the game plays exactly what you saw there; else the analysis itself.
             val song = shownLine(this, id)
                 ?: SongJobs.cached(this, id)?.forInstrument(inst) ?: return finish()
             scoreKey = "s:$id"
-            val notes = song.notes.map {
-                Charts.TabNote(it.start, it.end - it.start, it.midi, it.course, it.fret, it.articulation == Articulation.TREMOLO)
-            }
-            val gems = Charts.fromTab(notes, difficulty, Charts.courseLabels(song.instrument.courses.map { it.openMidi }))
+            view = HeroView(this, this) // (it draws nothing before the screen is up, and the game is set by then)
+            root.addView(view)
+            if (!foundByAnOlderAnalysis(song, settings)) return playSong(root, id, song)
+            // A song not opened on its screen since the app learned to find its notes better: they are
+            // found again from what the song keeps, as its screen does when it opens (a second or so),
+            // while the game says so. Should that fail in any way, the notes as they were are played.
             session = Session(
-                song.title.ifBlank { "YouTube song" }, difficulty, gems, hasVideo = true,
-                tempo = beatTempo(song.beats), bestScore = best(this, scoreKey, difficulty), listener = this,
+                song.title.ifBlank { "YouTube song" }, difficulty, emptyList(), hasVideo = true,
+                bestScore = best(this, scoreKey, difficulty), listener = this,
             )
             session.state = Session.State.LOADING
-            session.message = if (gems.isEmpty()) "This song has no bouzouki notes to play." else "Loading the video…"
-            if (gems.isEmpty()) session.state = Session.State.ERROR
+            session.message = "Finding the notes again…"
             session.topInset = VIEW_W * 9 / 16
-            loadSync("song_sync_$id") // Μπουζούκι's song screen keeps each song's sync under this key
-            view = HeroView(this, this)
-            root.addView(view)
-            val web = WebView(this)
-            root.addView(web, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, resources.displayMetrics.widthPixels * 9 / 16, Gravity.TOP))
-            // Start a few seconds before the first note, so it has time to come down the neck.
-            val start = maxOf(0.0, (gems.firstOrNull()?.time ?: 0.0) - 4.0)
-            clock = YouTubeSong(web, id, start, null, object : YouTubeSong.Events {
-                override fun onPlaying() {
-                    if (session.state == Session.State.LOADING) session.state = Session.State.PLAYING
+            val app = applicationContext
+            val detail = try { settings.detail(id) } catch (_: Exception) { Detail.NORMAL }
+            thread(name = "hero-notes") {
+                val fresh = try {
+                    // (A line found again without a note is no line to play: the old one stays.)
+                    SongJobs.currentLine(app, id, detail)?.forInstrument(inst)?.takeIf { it.notes.isNotEmpty() }
+                } catch (_: Throwable) {
+                    null // a damaged file, too little memory...
                 }
-
-                override fun onVideoError(message: String) {
-                    if (session.state == Session.State.FINISHED) return
-                    clock?.pause()
-                    session.message = message
-                    session.state = Session.State.ERROR
-                }
-            })
+                // Kept as the line shown, so the next game needn't find it again (the song's screen shows the same).
+                if (fresh != null) saveShownLine(app, fresh)
+                runOnUiThread { whenInFront { playSong(root, id, fresh ?: song) } }
+            }
         }
+    }
+
+    /**
+     * Whether [song] (the line the game is about to play) was found by an older analysis than the app's now and can
+     * be found again from what the song keeps: not a line changed by hand, nor the song's tab's (those are the
+     * player's own notes, whatever the analysis is). False if that can't be told.
+     */
+    private fun foundByAnOlderAnalysis(song: SongAnalysis, settings: Settings): Boolean = try {
+        SongAnalysis.isLineOld(song) && SongJobs.hasData(this, song.id) &&
+            SongLines.chosen(this, settings, song.id) !is SongLines.Spec.FromTab
+    } catch (_: Exception) {
+        false
+    }
+
+    /** Starts the game on [song] (YouTube video [id]): its notes for the difficulty, and its video at the top. */
+    private fun playSong(root: FrameLayout, id: String, song: SongAnalysis) {
+        // Each note with how sure the analysis is of it: the easier levels leave out the ones in doubt. A song
+        // prepared as the bouzouki alone has no band whose notes could be taken for its own: all of it is played.
+        val notes = song.notes.map {
+            Charts.TabNote(
+                it.start, it.end - it.start, it.midi, it.course, it.fret, it.articulation == Articulation.TREMOLO,
+                if (song.solo) 1f else it.confidence,
+            )
+        }
+        val gems = Charts.fromTab(notes, difficulty, Charts.courseLabels(song.instrument.courses.map { it.openMidi }))
+        val s = Session(
+            song.title.ifBlank { "YouTube song" }, difficulty, gems, hasVideo = true,
+            tempo = beatTempo(song.beats), bestScore = best(this, scoreKey, difficulty), listener = this,
+        )
+        s.state = Session.State.LOADING
+        s.message = if (gems.isEmpty()) "This song has no bouzouki notes to play." else "Loading the video…"
+        if (gems.isEmpty()) s.state = Session.State.ERROR
+        s.topInset = VIEW_W * 9 / 16
+        session = s
+        loadSync("song_sync_$id") // Μπουζούκι's song screen keeps each song's sync under this key
+        val web = WebView(this)
+        root.addView(web, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, resources.displayMetrics.widthPixels * 9 / 16, Gravity.TOP))
+        // Start a few seconds before the first note, so it has time to come down the neck.
+        val start = maxOf(0.0, (gems.firstOrNull()?.time ?: 0.0) - 4.0)
+        clock = YouTubeSong(web, id, start, null, object : YouTubeSong.Events {
+            override fun onPlaying() {
+                if (session.state == Session.State.LOADING) session.state = Session.State.PLAYING
+            }
+
+            override fun onVideoError(message: String) {
+                if (session.state == Session.State.FINISHED) return
+                clock?.pause()
+                session.message = message
+                session.state = Session.State.ERROR
+            }
+        })
+    }
+
+    /** Runs [start] now if the game is on screen, else when it next is; never once it's closed. */
+    private fun whenInFront(start: () -> Unit) {
+        if (destroyed) return
+        if (inFront) start() else waiting = start
     }
 
     override fun onAction(action: Session.Action) {
@@ -198,11 +258,14 @@ class HeroActivity : Activity(), HeroView.Host, SessionListener {
 
     override fun onResume() {
         super.onResume()
+        inFront = true
         hideSystemUi()
         view.resume()
+        waiting?.let { waiting = null; it() }
     }
 
     override fun onPause() {
+        inFront = false
         pauseGame()
         view.pause()
         super.onPause()
@@ -269,22 +332,30 @@ class HeroActivity : Activity(), HeroView.Host, SessionListener {
 
         private fun linesDir(ctx: Context) = File(ctx.filesDir, "hero-lines").apply { mkdirs() }
 
-        /** Keeps the line the song screen is showing for [song], for the game to play the same notes. */
-        fun saveShownLine(ctx: Context, song: com.bouzouki.core.song.SongAnalysis) {
+        /**
+         * Keeps the line the song screen is showing for [song], for the game to play the same notes (each with how
+         * sure the analysis is of it: the song's file format carries that).
+         */
+        fun saveShownLine(ctx: Context, song: SongAnalysis) {
             val app = ctx.applicationContext
             thread(name = "hero-line") {
                 try {
-                    val f = File(linesDir(app), "${song.id}.json")
-                    val tmp = File(linesDir(app), "${song.id}.tmp")
-                    tmp.writeText(song.toJson())
-                    tmp.renameTo(f)
+                    // One at a time: the song screen and the game may both keep a song's line at the same moment.
+                    synchronized(lineFiles) {
+                        val f = File(linesDir(app), "${song.id}.json")
+                        val tmp = File(linesDir(app), "${song.id}.tmp")
+                        tmp.writeText(song.toJson())
+                        tmp.renameTo(f)
+                    }
                 } catch (_: Exception) {
                 }
             }
         }
 
-        private fun shownLine(ctx: Context, id: String): com.bouzouki.core.song.SongAnalysis? = try {
-            File(linesDir(ctx), "$id.json").takeIf { it.exists() }?.readText()?.let { com.bouzouki.core.song.SongAnalysis.fromJson(it) }
+        private val lineFiles = Any()
+
+        private fun shownLine(ctx: Context, id: String): SongAnalysis? = try {
+            File(linesDir(ctx), "$id.json").takeIf { it.exists() }?.readText()?.let { SongAnalysis.fromJson(it) }
         } catch (_: Exception) {
             null
         }

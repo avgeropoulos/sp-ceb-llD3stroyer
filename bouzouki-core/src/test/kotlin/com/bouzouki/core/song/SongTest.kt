@@ -199,20 +199,24 @@ class BouzoukiLineTest {
         val act = BasicPitch.Activations(Array(n) { FloatArray(BasicPitch.N_KEYS) { 0.1f } }, Array(n) { FloatArray(BasicPitch.N_KEYS) { 0.05f } })
         fun note(midi: Int, from: Int, to: Int, salience: Double, onset: Double) =
             NoteEvent(BasicPitch.frameTime(from), BasicPitch.frameTime(to), midi, 0.5, onset = onset, salience = salience, frame = from, endFrame = to)
-        // The line of these notes where the plectrum strikes the notes [picked] (indices) and nothing else rises.
-        fun line(notes: List<NoteEvent>, picked: List<Int>): List<Int> {
+        // The line of these notes where the plectrum strikes the notes [picked] (indices) and nothing else rises: of the
+        // bouzouki alone, unless [post] says otherwise (in a band a faint note far from any other is left out, below).
+        fun line(notes: List<NoteEvent>, picked: List<Int>, post: PostConfig = PostConfig(solo = true)): List<Int> {
             val rises = FloatArray(1300) { 1f }
             for (k in picked) {
                 val i = ((notes[k].start * Attacks.SAMPLE_RATE - Attacks.FFT / 2) / Attacks.HOP).roundToInt()
                 for (j in i - 1..i + 1) rises[j] = 100f
             }
-            return SongAnalyzer.bouzoukiLine(notes, tetra, act, Attacks(rises, FloatArray(rises.size))).map { it.midi }
+            return SongAnalyzer.bouzoukiLine(notes, tetra, act, Attacks(rises, FloatArray(rises.size)), post = post).map { it.midi }
         }
         val clear = note(62, 20, 60, 0.6, 0.8)
         val faint = note(64, 150, 200, 0.3, 0.2) // a little short of the evidence a note needs
         assertEquals(listOf(62), line(listOf(clear, faint), picked = listOf(0)))
         // A sharp pick makes up for it.
         assertEquals(listOf(62, 64), line(listOf(clear, faint), picked = listOf(0, 1)))
+        // In a band's recording that is not enough for a note with none of the bouzouki's around it: it is more likely
+        // the band's (a strum's string has a pick too), and the line leaves it out.
+        assertEquals(listOf(62), line(listOf(clear, faint), picked = listOf(0, 1), post = PostConfig.DEFAULT))
         // A clear note without a pick (a hammer-on, a slide, or a pick the recording blurred) loses nothing for that.
         assertEquals(listOf(62, 64), line(listOf(clear, note(64, 150, 200, 0.6, 0.8)), picked = listOf(0)))
     }

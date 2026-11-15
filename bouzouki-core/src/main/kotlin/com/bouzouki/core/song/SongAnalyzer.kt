@@ -156,8 +156,10 @@ data class SongAnalysis(
          * [isLineOld]); 0 is the line of songs saved before it was recorded. 1: tremolo from the picks, repeated
          * notes, quick turns, and the accompaniment (bass, baglamas, strums) kept out of the line. 2: no notes where the
          * bouzouki doesn't play (an intro, a verse without it), and the melody's register over a louder accompaniment's.
+         * 3: in a band's recording, fewer notes that are the band's (a strum's strings, what the line followed while the
+         * bouzouki rested a few seconds), and every note says how sure the line is of it ([SongNote.confidence]).
          */
-        const val LINE = 2
+        const val LINE = 3
 
         /** Whether [song]'s line is older than what [SongAnalyzer.rebuild] derives now from its data. */
         fun isLineOld(song: SongAnalysis): Boolean = song.line < LINE && !song.edited
@@ -399,7 +401,15 @@ class SongAnalyzer(private val separator: Separator, private val pitch: BasicPit
          * it sits out) the line has no notes, rather than following the loudest instrument; and a candidate under D4 costs
          * more the lower it lies and the less it sounds like the bouzouki ([registerCue]), so a quieter picked note in the
          * melody's register wins over a louder accompaniment on the C and F courses' register (both need [attacks]).
-         * Notes without onset evidence (made by hand, e.g. a saved line) are always kept.
+         * In a band's recording ([PostConfig.solo] off, with [act] and [attacks]) the band is kept out further: a candidate
+         * with another string struck above it at the same moment costs ([chordCue]: one string of a strum), and the
+         * line leaves out the notes it is not sure of where the bouzouki doesn't clearly play around them
+         * ([Support.sureness]: while it rests, the tracker would follow the band). A solo recording's line has every
+         * note the tracker takes, as before.
+         * Every note says how sure the line is of it ([NoteEvent.confidence], 0..1: from what it brought and the notes
+         * that clearly are the bouzouki's around it, the same at every detail; a tremolo is not in doubt), so a game or
+         * a simpler view can leave out the least sure ones.
+         * Notes without onset evidence (made by hand, e.g. a saved line) are always kept, with no doubt about them.
          */
         fun bouzoukiLine(
             notes: List<NoteEvent>,
@@ -426,6 +436,8 @@ class SongAnalyzer(private val separator: Separator, private val pitch: BasicPit
             fun gated(list: List<NoteEvent>) = if (presence == null) list else list.filter { it.onset.isNaN() || presence.plays(it.start) }
             // The band's register cue weighs only in a band's recording.
             val register = if (post.solo) null else presence
+            // And only there is a note left out for want of evidence that it is the bouzouki's ([Support.sureness]).
+            val band = !post.solo && act != null && attacks != null
             c = joined(gated(c))
             if (c.isEmpty()) return emptyList()
             // Tremolo becomes one note, and quick turns hidden in held notes come out.
@@ -437,20 +449,42 @@ class SongAnalyzer(private val separator: Separator, private val pitch: BasicPit
             }
             var forced: Set<Long>? = null
             var normalLine: List<NoteEvent>? = null
+            // Where the normal line clearly is the bouzouki's: the fuller line is judged by that too (so the lines nest).
+            var support: Support? = null
+            // A tracked path with how sure the line is of each note ([NoteEvent.confidence]) and, in a band, whether it stays.
+            fun rated(path: List<NoteEvent>, worth: DoubleArray, around: Support, needed: Double): Pair<List<NoteEvent>, BooleanArray> {
+                val keep = BooleanArray(path.size) { true }
+                val notes = path.mapIndexed { i, n ->
+                    if (n.onset.isNaN()) return@mapIndexed n
+                    if (band) keep[i] = around.sureness(n, worth[i]) >= 0
+                    // Counted as for the normal line at every detail, and with the string struck above it in a solo take too.
+                    val brought = worth[i] - (EVIDENCE_NEEDED - needed) + if (band) 0.0 else chordCue(n, act)
+                    n.copy(confidence = confidence(around.sureness(n, brought)))
+                }
+                return notes to keep
+            }
             if (detail == Detail.MORE && act != null) {
                 // The normal line's notes stay (one missing from these candidates joins them); weaker ones fill in.
-                val normal = trimEnds(track(joined(gated(inRange(candidates(act, Detail.NORMAL)))), act, attacks, EVIDENCE_NEEDED, null, register).first)
+                val (tracked, normalWorth) = track(joined(gated(inRange(candidates(act, Detail.NORMAL)))), act, attacks, EVIDENCE_NEEDED, null, register, band)
+                val around = Support(tracked, normalWorth, presence).also { support = it }
+                val (normalPath, keep) = rated(tracked, normalWorth, around, EVIDENCE_NEEDED)
+                val normal = trimEnds(normalPath.filterIndexed { i, _ -> keep[i] })
                 val have = c.mapTo(HashSet()) { key(it) }
                 c = (c + normal.filter { key(it) !in have }).sortedBy { it.start }
                 forced = normal.mapTo(HashSet()) { key(it) }
-                normalLine = finished(normal)
+                normalLine = without(finished(normalPath), normalPath, keep, act, attacks)
             }
-            val (path, worth) = track(c, act, attacks, if (detail == Detail.MORE) EVIDENCE_NEEDED_MORE else EVIDENCE_NEEDED, forced, register)
-            var line = finished(path)
+            val needed = if (detail == Detail.MORE) EVIDENCE_NEEDED_MORE else EVIDENCE_NEEDED
+            val (tracked, worth) = track(c, act, attacks, needed, forced, register, band)
+            val (path, keep) = rated(tracked, worth, support ?: Support(tracked, worth, presence), needed)
+            forced?.let { f -> for (i in path.indices) if (key(path[i]) in f) keep[i] = true }
+            var line = without(finished(path), path, keep, act, attacks)
             if (normalLine != null) line = withNormal(line, normalLine)
             if (detail == Detail.FEWER) line = fewer(line, path.indices.associate { path[it].start to worth[it] }, act, attacks)
             if (act?.contours != null) line = repitch(line, act)
-            return if (act?.contours != null && attacks != null) articulate(line, act, attacks) else line
+            if (act?.contours != null && attacks != null) line = articulate(line, act, attacks)
+            // A tremolo is many picks heard, and a note without onset evidence was chosen before: neither is in doubt.
+            return line.map { if (it.confidence < 1f && (it.articulation == Articulation.TREMOLO || it.onset.isNaN())) it.copy(confidence = 1f) else it }
         }
 
         /**
@@ -756,7 +790,7 @@ class SongAnalyzer(private val separator: Separator, private val pitch: BasicPit
         /**
          * The Viterbi pass of [bouzoukiLine] over [c] (in range, in time order): the chosen notes and the evidence each
          * brought, not counting [registerCue] ([needed] is what a note must reach; a note in [forced] gets [GIVEN_NOTE]
-         * more, so it stays; [presence] weighs the register).
+         * more, so it stays; [presence] weighs the register; [band]: a band's recording, where [chordCue] weighs too).
          */
         private fun track(
             c: List<NoteEvent>,
@@ -765,6 +799,7 @@ class SongAnalyzer(private val separator: Separator, private val pitch: BasicPit
             needed: Double,
             forced: Set<Long>?,
             presence: Presence? = null,
+            band: Boolean = false,
         ): Pair<List<NoteEvent>, DoubleArray> {
             if (c.isEmpty()) return emptyList<NoteEvent>() to DoubleArray(0)
             // The energy a typical candidate's attack adds (the bouzouki's picks add more than the accompaniment's).
@@ -774,7 +809,7 @@ class SongAnalyzer(private val separator: Separator, private val pitch: BasicPit
                 val attack = if (attacks == null || c[i].onset.isNaN()) 0.0
                     else ATTACK_WEIGHT * max(0.0, min(ATTACK_CAP, ln(1 + attacks.rise(c[i].start)) - ln(1 + PICK_ATTACK)))
                 evidence(c[i], needed) + attack + harmonic(c[i], act) + energyCue(c[i], attacks, energyRef) + strumCue(c, i) +
-                    registerCue(c[i], presence)
+                    (if (band) chordCue(c[i], act) else 0.0) + registerCue(c[i], presence)
             }
             // What a legato note (sounded from the line's note before, still sounding: [legatoFrom]) gets back of the
             // accompaniment cues: it brings no pick, so it adds little energy, and it starts as the note before ends.
@@ -822,6 +857,113 @@ class SongAnalyzer(private val separator: Separator, private val pitch: BasicPit
             path.reverse()
             brought.reverse()
             return path to brought.toDoubleArray()
+        }
+
+        /**
+         * What a candidate in a band's recording loses for a string struck above it at the same moment: a strum sounds
+         * several strings at once, and the melody is the top note of what is struck together. The strongest onset
+         * activation within 2 frames of its start among the higher keys of the bouzouki's range, the keys of its own
+         * harmonics apart ([isHarmonic]: a plucked string shows there too), costs [CHORD_COST] per unit it comes
+         * within [CHORD_MARGIN] of the candidate's own onset evidence, or passes it. Unlike [strumCue] it needs no
+         * second candidate (one string of a strum is often the only one clear enough to be a candidate), and the
+         * melody's note pays nothing for the strings struck under it.
+         */
+        private fun chordCue(n: NoteEvent, act: BasicPitch.Activations?): Double {
+            if (act == null || n.onset.isNaN() || n.frame < 0) return 0.0
+            val k = n.midi - BasicPitch.MIDI_OFFSET
+            if (k < 0 || k >= BasicPitch.N_KEYS) return 0.0
+            var above = 0f
+            for (f in max(0, n.frame - 2)..min(act.onsets.size - 1, n.frame + 2)) {
+                val row = act.onsets[f]
+                for (j in k + 2..IN_RANGE_KEYS.last) if (!isHarmonic(j - k)) above = max(above, row[j])
+            }
+            return -CHORD_COST * (above - n.onset + CHORD_MARGIN).coerceIn(0.0, 1.0)
+        }
+
+        /** Whether a key [semitones] above a string's pitch is one of its harmonics' (the 2nd to the 6th): its own sound, not another string's. */
+        private fun isHarmonic(semitones: Int) = semitones == 12 || semitones == 19 || semitones == 24 || semitones == 28 || semitones == 31
+
+        /**
+         * Where a tracked path clearly is the bouzouki's: its notes that bring [level] or more ([SURE], or what the path's
+         * median note brings if that is less, since in a blurred recording every note brings little; never under a tenth
+         * of [SURE]), and those that sound like its picked notes however little they bring ([Presence.like] of [LIKED]
+         * or more: a passage it plays quietly). [worth] is what each note of [path] brought.
+         */
+        private class Support(path: List<NoteEvent>, worth: DoubleArray, presence: Presence?) {
+            val level: Double = median(worth.filter { it < GIVEN_NOTE }).coerceIn(SURE / 10, SURE)
+            private val notes = path.filterIndexed { i, n -> worth[i] >= level || (presence != null && !n.onset.isNaN() && presence.like(n) >= LIKED) }
+            private val starts = DoubleArray(notes.size) { notes[it].start }
+
+            /** How many of them start within [SURE_REACH] seconds of [n], not counting [n] itself. */
+            fun around(n: NoteEvent): Int {
+                var a = 0
+                var b = starts.size
+                while (a < b) { val m = (a + b) ushr 1; if (starts[m] < n.start - SURE_REACH) a = m + 1 else b = m }
+                var count = 0
+                while (a < starts.size && starts[a] <= n.start + SURE_REACH) {
+                    if (!(notes[a].midi == n.midi && notes[a].frame == n.frame)) count++
+                    a++
+                }
+                return count
+            }
+
+            /**
+             * How sure the line is of note [n] that brings [brought]: that against what a note that clearly is the
+             * bouzouki's brings ([level]), less [SURE_ASK] for each such note short of [SURE_AROUND] around it, at most
+             * 1. The tracker takes whatever is there, so while the bouzouki rests it follows the band (a strum's
+             * string, what is left of the voice); where the bouzouki plays, the line is full of notes that clearly
+             * are its own. So a note among [SURE_AROUND] or more of them counts for what it brings, and one with
+             * few around it only for what it brings over [level]: under 0, a band's line leaves it out. A phrase's
+             * first and last notes have the phrase on one side, a short fill its own few notes, and a slow melody's
+             * notes are clear ones.
+             */
+            fun sureness(n: NoteEvent, brought: Double): Double = brought / level - min(1.0, SURE_ASK * max(0, SURE_AROUND - around(n)))
+        }
+
+        /**
+         * [NoteEvent.confidence] from a note's [Support.sureness]: 0 for a note a band's line would leave out, 1 from
+         * [CONFIDENT] on (hundredths, as a saved song keeps them).
+         */
+        private fun confidence(sureness: Double): Float = Math.round((sureness / CONFIDENT).coerceIn(0.0, 1.0) * 100) / 100f
+
+        /**
+         * [line] (made of [path]: tremolo joined, turns cut out) without the path's notes that [keep] leaves out. Tremolo
+         * stays, and so does a hammer-on, pull-off or slide whose note before it stays (the two are played as one). A
+         * note that was cut short where a note now left out started sounds on to its own end again.
+         */
+        private fun without(line: List<NoteEvent>, path: List<NoteEvent>, keep: BooleanArray, act: BasicPitch.Activations?, attacks: Attacks?): List<NoteEvent> {
+            if (keep.all { it }) return line
+            val starts = DoubleArray(path.size) { path[it].start }
+            // The path note a line note is, or was cut from: the last one starting no later.
+            fun of(n: NoteEvent): Int {
+                var a = 0
+                var b = starts.size
+                while (a < b) { val m = (a + b) ushr 1; if (starts[m] <= n.start + 1e-9) a = m + 1 else b = m }
+                return a - 1
+            }
+            val marked = if (act != null && attacks != null && act.contours != null) articulate(line, act, attacks) else line
+            val out = ArrayList<NoteEvent>(line.size)
+            var kept = false
+            var cut = -1.0 // where the last note left out started, while no kept note has followed it
+            for ((k, n) in line.withIndex()) {
+                val p = of(n)
+                kept = n.articulation == Articulation.TREMOLO || p < 0 || keep[p] || (kept && marked[k].articulation.isLegato)
+                if (!kept) { if (cut < 0) cut = n.start; continue }
+                if (cut >= 0 && out.isNotEmpty()) {
+                    val before = out.last()
+                    val own = of(before).takeIf { it >= 0 && path[it].start == before.start && path[it].midi == before.midi }
+                    if (own != null && before.end == cut && before.articulation != Articulation.TREMOLO)
+                        out[out.size - 1] = before.copy(end = min(path[own].end, n.start))
+                }
+                cut = -1.0
+                out += n
+            }
+            if (cut >= 0 && out.isNotEmpty()) {
+                val before = out.last()
+                val own = of(before).takeIf { it >= 0 && path[it].start == before.start && path[it].midi == before.midi }
+                if (own != null && before.end == cut && before.articulation != Articulation.TREMOLO) out[out.size - 1] = before.copy(end = path[own].end)
+            }
+            return out
         }
 
         /**
@@ -1191,6 +1333,21 @@ class SongAnalyzer(private val separator: Separator, private val pitch: BasicPit
          * melody's note, the loudest of a strum it is played with, pays nothing. */
         private const val STRUM_COST = 0.08
         private const val STRUM_LOUDER = 0.1
+        /** In a band, a string struck above a candidate at the same moment costs this per unit of onset activation ([chordCue]) ... */
+        private const val CHORD_COST = 1.0
+        /** ... counted from this far under the candidate's own: the melody's note stands out by more, a strum's strings are alike. */
+        private const val CHORD_MARGIN = 0.3
+        /** A note that brings this much clearly is the bouzouki's ([Support]: nine in ten of its notes in a band's mix bring more, one in five of those the line takes from the band) ... */
+        private const val SURE = 0.5
+        /** ... the bouzouki plays where this many of them start within [SURE_REACH] seconds of a note (a slow melody in quarter notes has as many) ... */
+        private const val SURE_AROUND = 4
+        private const val SURE_REACH = 1.5
+        /** ... and each one short of that takes this much off a note's sureness, counted in what such a note brings ([Support.sureness]). */
+        private const val SURE_ASK = 0.4
+        /** A note that sounds this much like the bouzouki's picked notes ([Presence.like]: more likely one than not) counts among them too. */
+        private const val LIKED = 0.5
+        /** The sureness of a note beyond doubt ([confidence]): among the bouzouki's notes, it brings twice what the clear ones do. */
+        private const val CONFIDENT = 2.0
         /** A legato note's note before must reach this close (seconds) to it ([legatoFrom]). */
         private const val LEGATO_FROM_GAP = 0.03
         /** Picking a pitch again with a clear pick of its own costs this ([REPEAT_COST] otherwise). */

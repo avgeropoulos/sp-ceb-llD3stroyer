@@ -14,6 +14,8 @@ data class SourceNote(
     val duration: Double,
     val pitch: Int,
     val tremolo: Boolean = false,
+    /** How sure a prepared song's analysis is that this note is played, 0..1; 1 for a note written or tapped by hand. */
+    val confidence: Float = 1f,
 )
 
 enum class Difficulty(
@@ -28,11 +30,16 @@ enum class Difficulty(
     val lookahead: Double,
     /** Notes held at least this long become hold notes. */
     val holdMin: Double,
+    /**
+     * A prepared song's notes that its analysis is less sure of than this (0..1) are left out ([Charts.sure]). The
+     * easier levels play few notes, so each one that isn't the bouzouki's spoils more of the tune: they ask for more.
+     */
+    val confidenceFloor: Float,
 ) {
-    EASY("Easy", 3, 0.42, 0.165, 2.3, 0.95),
-    MEDIUM("Medium", 4, 0.25, 0.135, 1.85, 0.8),
-    HARD("Hard", 5, 0.145, 0.11, 1.5, 0.7),
-    EXPERT("Expert", 5, 0.075, 0.085, 1.2, 0.6),
+    EASY("Easy", 3, 0.42, 0.165, 2.3, 0.95, 0.4f),
+    MEDIUM("Medium", 4, 0.25, 0.135, 1.85, 0.8, 0.3f),
+    HARD("Hard", 5, 0.145, 0.11, 1.5, 0.7, 0.2f),
+    EXPERT("Expert", 5, 0.075, 0.085, 1.2, 0.6, 0.1f),
 }
 
 /**
@@ -120,19 +127,51 @@ object Charts {
 
     /**
      * A note that already has its place on the neck, from a tab (e.g. a song prepared by the
-     * Μπουζούκι app): [course] counts from the lowest course.
+     * Μπουζούκι app): [course] counts from the lowest course. [confidence] is how sure the app is
+     * that the bouzouki plays it, 0..1 (1: no doubt, or a note set by hand or from a written tab).
      */
-    data class TabNote(val time: Double, val duration: Double, val midi: Int, val course: Int, val fret: Int, val tremolo: Boolean = false)
+    data class TabNote(
+        val time: Double, val duration: Double, val midi: Int, val course: Int, val fret: Int, val tremolo: Boolean = false,
+        val confidence: Float = 1f,
+    )
 
-    /** Notes for [difficulty] from a ready-made tab, keeping its frets; [courseLabels] lowest first. */
-    fun fromTab(notes: List<TabNote>, difficulty: Difficulty, courseLabels: List<String>): List<Gem> {
-        val sorted = notes.filter { it.duration >= 0 && it.time >= 0 && it.fret >= 0 }.sortedBy { it.time }
+    /**
+     * Notes for [difficulty] from a ready-made tab, keeping its frets; [courseLabels] lowest first.
+     * The notes the tab's maker is less sure of than [floor] are left out first ([sure]).
+     */
+    fun fromTab(
+        notes: List<TabNote>, difficulty: Difficulty, courseLabels: List<String>, floor: Float = difficulty.confidenceFloor,
+    ): List<Gem> {
+        val sorted = sure(notes.filter { it.duration >= 0 && it.time >= 0 && it.fret >= 0 }.sortedBy { it.time }, floor)
         if (sorted.isEmpty()) return emptyList()
         return tabGems(
-            sorted.map { SourceNote(it.time, it.duration, it.midi, it.tremolo) },
+            sorted.map { SourceNote(it.time, it.duration, it.midi, it.tremolo, it.confidence) },
             sorted.map { Fretboard.Position(it.course, it.fret) }, difficulty, courseLabels,
         )
     }
+
+    /**
+     * [notes] without those less sure than [floor]: a note that isn't the bouzouki's (the band's, found
+     * while the bouzouki rests) is a button to press where nothing is heard. A tremolo note and a note
+     * without doubt (confidence 1: also every note set by hand or from a written tab) always stay.
+     * A song must still be playable: one that would lose more than half of its notes, or keep fewer
+     * than [MIN_SURE], is in doubt everywhere (a hard recording), and is asked for half as much, then
+     * a quarter (its least sure notes are still the likeliest to be the band's), then nothing at all.
+     */
+    fun sure(notes: List<TabNote>, floor: Float): List<TabNote> {
+        var least = min(floor, 1f)
+        repeat(3) {
+            if (!(least > 0f)) return notes
+            // (A confidence that isn't a number counts as no doubt, as a missing one does.)
+            val kept = notes.filter { it.tremolo || !(it.confidence < least) }
+            if (kept.size >= MIN_SURE && kept.size * 2 >= notes.size) return kept
+            least /= 2
+        }
+        return notes
+    }
+
+    /** The fewest notes a confidence floor may leave of a song ([sure]). */
+    const val MIN_SURE = 8
 
     /** Course names from their open notes, lowest first; a repeated name is lowercase on the lower course (d A D). */
     fun courseLabels(openMidi: List<Int>): List<String> {
@@ -183,6 +222,9 @@ object Charts {
      * the last kept one. Within a run of close notes the one that ends a phrase (a pause after
      * it, or the end of the song) wins over the one before, so a run's landing note, and the
      * song's last notes, are always there.
+     * Where a prepared song's analysis is much surer of one of two such notes ([SURER]) that one
+     * is kept, whichever comes first, is higher or ends the phrase: the other is likely the band's.
+     * Notes it is about as sure of (and every tune written by hand) are thinned by the rules above alone.
      */
     private fun thin(sorted: List<SourceNote>, difficulty: Difficulty): List<Int> {
         fun endsPhrase(i: Int) = i == sorted.size - 1 || sorted[i + 1].time - sorted[i].time >= PHRASE_GAP
@@ -192,6 +234,9 @@ object Charts {
             val last = lastIdx?.let { sorted[it] }
             when {
                 last == null || n.time - last.time >= difficulty.minGap -> kept.add(i)
+                // Too close to play both, and one of them in doubt: the sure one.
+                muchSurer(n, last) -> kept[kept.size - 1] = i
+                muchSurer(last, n) -> {}
                 // A chord or a double-detected onset: keep the higher (melody) note.
                 n.time - last.time < 0.02 && n.pitch > last.pitch -> kept[kept.size - 1] = i
                 endsPhrase(i) && !endsPhrase(lastIdx) -> kept[kept.size - 1] = i
@@ -199,6 +244,16 @@ object Charts {
         }
         return kept
     }
+
+    /**
+     * How much surer (of 0..1) the analysis must be of one of two notes too close to play both for
+     * that one to be kept. Wide on purpose: most notes are the bouzouki's whatever their confidence,
+     * and choosing between two of them by a small difference only moves the buttons off the beat.
+     */
+    private const val SURER = 0.5f
+
+    // (Confidences come in hundredths: half of one is left for the rounding.)
+    private fun muchSurer(a: SourceNote, b: SourceNote) = a.confidence - b.confidence > SURER - 0.005f
 
     /** A pause at least this long after a note ends its phrase. */
     private const val PHRASE_GAP = 0.6

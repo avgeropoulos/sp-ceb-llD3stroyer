@@ -174,6 +174,19 @@ object SongLines {
         return null
     }
 
+    /**
+     * The line chosen for song [id], by what is kept for it: its tab's if one is kept and chosen (lined up for the
+     * bouzouki played now; a PDF is only read when its line is worked out, in the background), else the detected one
+     * with its detail (null for normal: the prepared line).
+     */
+    fun chosen(context: Context, settings: Settings, id: String): Spec? {
+        if (settings.usesTab(id)) {
+            SongJobs.tab(context, id)?.let { return Spec.FromTab(id, it, settings.instrument) }
+        }
+        val d = settings.detail(id)
+        return if (d == Detail.NORMAL) null else Spec.Detected(id, d)
+    }
+
     /** The song [id] shows its prepared line now: work on any other line of it is no longer wanted. */
     fun settle(id: String) { latest.remove(id) }
 
