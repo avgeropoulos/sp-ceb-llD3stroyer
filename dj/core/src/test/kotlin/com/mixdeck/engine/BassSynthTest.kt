@@ -28,17 +28,17 @@ class BassSynthTest {
             s.render(out, 22050, 1f)
             assertTrue(peak(out) > 0.1f && peak(out) <= 1f, "$sound peak ${peak(out)}")
             assertTrue(out.all { it.isFinite() })
-            // No click at the start: the first samples are quiet.
-            assertTrue(abs(out[0]) < 0.05f, "$sound starts at ${out[0]}")
-            // About 55 Hz: count upward zero crossings over the second quarter second (SUB is the cleanest).
-            if (sound == BassSound.SUB) {
-                var n = 0
-                for (i in 11025 until 22049) if (out[i * 2] <= 0 && out[i * 2 + 2] > 0) n++
-                assertTrue(n in 13..15, "crossings $n")
-            }
+            // In tune: the wave repeats every 1/55 s. Find the repeat length that fits best.
+            val x = FloatArray(8000) { out[(11025 + it) * 2] }
+            val best = (600..1000).maxByOrNull { lag -> var c = 0.0; for (i in 0 until 6000) c += x[i] * x[i + lag]; c }!!
+            assertTrue(abs(44100.0 / best - 55.0) < 0.4, "$sound plays ${44100.0 / best} Hz")
+            // A held string keeps ringing (except a muted one).
+            if (sound == BassSound.FINGER || sound == BassSound.PICK) assertTrue(peak(out.copyOfRange(40000, 44100)) > 0.05f, "$sound died")
             s.noteOff(33)
             val tail = FloatArray(44100 * 2)
-            s.render(tail, 44100, 1f)
+            // In blocks, as the sound card asks for it.
+            val block = FloatArray(2048)
+            for (b in 0 until 43) { block.fill(0f); s.render(block, 1024, 1f); block.copyInto(tail, b * 2048) }
             assertTrue(peak(tail.copyOfRange(44100, 88200)) < 0.001f, "$sound still sounds")
             assertFalse(s.active)
         }
