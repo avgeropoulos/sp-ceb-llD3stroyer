@@ -16,6 +16,8 @@ class Mixer(val sampleRate: Int) {
     val lock = Any()
     val decks = arrayOf(Deck(0, sampleRate), Deck(1, sampleRate))
     val sampler = Sampler(sampleRate)
+    /** The bass keyboard: played over the mix, heard and recorded like the sampler. */
+    val bass = BassSynth(sampleRate)
 
     /** -1 = all deck A, +1 = all deck B. */
     var crossfader = 0f
@@ -144,6 +146,7 @@ class Mixer(val sampleRate: Int) {
             }
         }
         sampler.render(out, frames, m)
+        bass.render(out, frames, m)
         limiter.process(out, frames)
         for (i in 0 until frames * 2) { val v = abs(out[i]); if (v > peak) peak = v }
         masterLevel = maxOf(peak, masterLevel * 0.85f)

@@ -104,7 +104,7 @@ object SelfTest {
         // "key": the button labels with their key caps. "tutorial-wait" / "tutorial-failed": step 1 getting its songs, or failing to.
         // Every mode is drawn at the window's usual size (mode.png) and at its smallest (mode-small.png).
         val modes = listOf("console", "key", "tutorial", "notice", "notice-long", "mix", "upnext", "mix-upnext",
-            "start", "start-returning", "start-notice", "tutorial-wait", "tutorial-failed")
+            "start", "start-returning", "start-notice", "tutorial-wait", "tutorial-failed", "bass")
             .flatMap { listOf(Triple(it, it, 1600 to 820), Triple(it, "$it-small", 1100 to 560)) }
         val empty = Mixer(48000)
         for ((mode, file, size) in modes) {
@@ -132,6 +132,8 @@ object SelfTest {
             if (mode.contains("upnext")) c.say("Up next: \"Hot in Herre\" loads on deck A when \"Self test\" ends", 0)
             else if (mixing) c.say(mm.autoMix.message ?: "", 1)
             if (mode.startsWith("key")) c.helpMode = true
+            // The bass keys over the song strips, one key held.
+            if (mode == "bass") { c.bassOpen = true; c.bassDown(2) }
             if (mode == "tutorial") c.tutorial = Tutorials.nelly().also { it.index = 14 }
             // The notice line: a load notice edged in deck B's colour, and a long error that wraps to two lines.
             if (mode == "notice") c.say(Console.loadedNotice(m, 1, null, computer = true), 1)
@@ -146,6 +148,7 @@ object SelfTest {
             Java2DCanvas().apply { begin(g); c.draw(this) }
             g.dispose()
             ImageIO.write(img, "png", File(dir, "$file.png"))
+            if (mode == "bass") c.bassOpen = false
         }
         println("drew console to ${dir.path}")
         // 4b. The Settings panel (☰ → Settings…), as the computer shows it.

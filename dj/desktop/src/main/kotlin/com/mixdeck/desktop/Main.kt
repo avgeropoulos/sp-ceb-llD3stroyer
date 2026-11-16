@@ -284,6 +284,8 @@ class App : Console.Host {
 
     private inline fun act(crossinline f: Mixer.() -> Unit) = synchronized(mixer.lock) { mixer.f() }
 
+    private val BASS_KEYS = listOf(KeyEvent.VK_S, KeyEvent.VK_D, KeyEvent.VK_F, KeyEvent.VK_G, KeyEvent.VK_J, KeyEvent.VK_K, KeyEvent.VK_L, KeyEvent.VK_SEMICOLON)
+
     /** Keyboard shortcuts (the labels show them, see [shortcut]). Returns true if the key did something. */
     private fun keyDown(e: KeyEvent): Boolean {
         val k = e.keyCode
@@ -320,6 +322,8 @@ class App : Console.Host {
                 val n = listOf(KeyEvent.VK_Z, KeyEvent.VK_X, KeyEvent.VK_C, KeyEvent.VK_V).indexOf(k)
                 if (ok("pad$n")) act { if (sampler.isPlaying(n)) sampler.stop(n) else sampler.trigger(n) }
             }
+            // The bass keys: the home row plays the eight notes of the song's key (and opens the keys).
+            in BASS_KEYS -> if (console.tutorial == null) { console.bassOpen = true; console.bassDown(BASS_KEYS.indexOf(k)) }
             KeyEvent.VK_H -> console.helpMode = !console.helpMode
             // After the key event, so a dialog doesn't open inside the key dispatcher.
             KeyEvent.VK_F1 -> SwingUtilities.invokeLater { openGuide() }
@@ -345,6 +349,7 @@ class App : Console.Host {
         when (k) {
             KeyEvent.VK_Q -> act { decks[0].cueUp() }
             KeyEvent.VK_O -> act { decks[1].cueUp() }
+            in BASS_KEYS -> console.bassUp(BASS_KEYS.indexOf(k))
             else -> return false
         }
         return true

@@ -1,6 +1,8 @@
 package com.mixdeck.ui
 
 import com.mixdeck.engine.AutoMix
+import com.mixdeck.engine.BassSound
+import com.mixdeck.engine.BassSynth
 import com.mixdeck.engine.Deck
 import com.mixdeck.engine.FxType
 import com.mixdeck.engine.Mixer
@@ -888,6 +890,7 @@ class Console(private val mixer: Mixer, private val host: Host, val computer: Bo
         // The Start card covers the song overviews and close-ups while both decks are empty.
         startArea.set(pad, topH + pad, W - pad, y - pad)
         layoutStart()
+        layoutBass()
 
         val mainTop = y
         val mainBottom = H - pad
@@ -1032,13 +1035,17 @@ class Console(private val mixer: Mixer, private val host: Host, val computer: Bo
         // Sampler pads.
         val padY = r.top + topH + pad
         val padH = (r.bottom - padY) * 0.42f
-        val pw = (r.width() - pad * 3) / 4
+        val pw = (r.width() - pad * 4) / 5
         for (k in 0..3) {
             ctls += Btn(RectF(r.left + k * (pw + pad), padY, r.left + k * (pw + pad) + pw, padY + padH),
                 { mixer.sampler.names[k] }, 0xFFFF4081.toInt(), lit = { mixer.sampler.isPlaying(k) }, textScale = 0.62f) {
                 act { if (sampler.isPlaying(k)) sampler.stop(k) else sampler.trigger(k) }
             }.h("Sound effect").k("pad$k")
         }
+        // BASS: opens the bass keys over the song strips.
+        ctls += Btn(RectF(r.right - pw, padY, r.right, padY + padH), { "BASS" }, bassCol, lit = { bassOpen }, textScale = 0.62f) {
+            bassOpen = !bassOpen
+        }.h("Bass keys: play along").k("bass")
         // Crossfader.
         ctls += Fader(RectF(r.left, padY + padH + pad * 3, r.right, r.bottom), Color.WHITE,
             { mixer.crossfader }, { v -> mixer.crossfader = v }, -1f, 1f, 0f, horizontal = true).h("Crossfader: A ◀ blend ▶ B").k("xfader")
@@ -1129,6 +1136,114 @@ class Console(private val mixer: Mixer, private val host: Host, val computer: Bo
         }
     }
 
+    // ------------------------------------------------------------------ bass keys
+
+    private val bassCol = 0xFF7C4DFF.toInt()
+
+    /** The bass keys show over the song strips (the BASS pad). A MIDI keyboard plays the bass while they do. */
+    var bassOpen = false
+        set(v) { field = v; if (!v) { act { bass.allOff() }; bassHeld.fill(-1) } }
+
+    /** 0 = low, 1 = an octave up. */
+    private var bassOctave = 0
+    private val bassKeys = Array(8) { RectF() }
+    private val bassSoundBtn = RectF(); private val bassOctBtn = RectF(); private val bassClose = RectF()
+    /** The note each key is sounding now (-1 = not held): it stops that note even if the song's key changed meanwhile. */
+    private val bassHeld = IntArray(8) { -1 }
+
+    /** The song the bass follows: the deck the room hears most, else any song with a known key. */
+    private fun bassDeck(): Int? {
+        val (ga, gb) = mixer.crossfaderGains()
+        val loud = floatArrayOf(ga * mixer.decks[0].volume, gb * mixer.decks[1].volume)
+        val withKey = (0..1).filter { mixer.decks[it].soundingKey != null }
+        return withKey.filter { mixer.decks[it].playing }.maxByOrNull { loud[it] } ?: withKey.firstOrNull()
+    }
+
+    /** The eight notes the keys play now: the scale of the song you hear. */
+    fun bassNotes(): IntArray = BassSynth.scale(bassDeck()?.let { mixer.decks[it].soundingKey }, bassOctave)
+
+    /** Bass key [k] (0..7) went down: from the screen or, on a computer, its key. */
+    fun bassDown(k: Int) {
+        if (k !in 0..7 || bassHeld[k] >= 0) return
+        val note = bassNotes()[k]
+        bassHeld[k] = note
+        act { bass.noteOn(note) }
+    }
+
+    fun bassUp(k: Int) {
+        if (k !in 0..7 || bassHeld[k] < 0) return
+        val note = bassHeld[k]; bassHeld[k] = -1
+        if (note !in bassHeld) act { bass.noteOff(note) }
+    }
+
+    private inner class BassKey(val k: Int) : Ctl(bassKeys[k]) {
+        override fun down(x: Float, y: Float) = bassDown(k)
+        override fun up() = bassUp(k)
+        override fun draw(c: Canvas) {}
+    }
+    private val bassCtls = Array(8) { BassKey(it) }
+
+    private fun layoutBass() {
+        val a = startArea
+        val gap = unit * 0.6f
+        val side = min(a.width() * 0.11f, unit * 9f)
+        val bh = (a.height() - gap * 4) / 3
+        val sx = a.right - gap - side
+        bassSoundBtn.set(sx, a.top + gap, sx + side, a.top + gap + bh)
+        bassOctBtn.set(sx, bassSoundBtn.bottom + gap, sx + side, bassSoundBtn.bottom + gap + bh)
+        bassClose.set(sx, bassOctBtn.bottom + gap, sx + side, bassOctBtn.bottom + gap + bh)
+        val kw = (sx - gap - (a.left + gap) - 7 * gap) / 8
+        val top = a.top + a.height() * 0.2f
+        for (k in 0..7) bassKeys[k].set(a.left + gap + k * (kw + gap), top, a.left + gap + k * (kw + gap) + kw, a.bottom - gap)
+    }
+
+    /** A touch on the bass panel: its keys and buttons act; anywhere else on it does nothing. */
+    private fun bassTap(id: Int, x: Float, y: Float): Boolean {
+        if (!bassOpen || !startArea.contains(x, y)) return false
+        when {
+            bassSoundBtn.contains(x, y) -> act { bass.sound = BassSound.values()[(bass.sound.ordinal + 1) % BassSound.values().size] }
+            bassOctBtn.contains(x, y) -> bassOctave = 1 - bassOctave
+            bassClose.contains(x, y) -> bassOpen = false
+            else -> bassKeys.indexOfFirst { it.contains(x, y) }.let { if (it >= 0) { active[id] = bassCtls[it]; bassDown(it) } }
+        }
+        return true
+    }
+
+    private fun drawBass(c: Canvas) {
+        val a = startArea
+        fill.color = bg; c.drawRoundRect(a, radius, radius, fill)
+        stroke.color = bassCol; stroke.strokeWidth = unit * 0.12f; c.drawRoundRect(a, radius, radius, stroke)
+        val deck = bassDeck()
+        val key = deck?.let { mixer.decks[it].soundingKey }
+        val title = if (key != null) "Bass keys · in ${key.name}, the key of deck ${deckName(deck)}" else "Bass keys · load a song and they follow its key"
+        text.color = Color.WHITE; text.textSize = a.height() * 0.11f; fitText(title, (bassSoundBtn.left - a.left) * 0.94f)
+        c.drawText(title, (a.left + bassSoundBtn.left) / 2, a.top + a.height() * 0.145f, text)
+        val notes = bassNotes()
+        for (k in 0..7) {
+            val r = bassKeys[k]
+            val down = bassHeld[k] >= 0
+            val root = k == 0 || k == 7
+            fill.color = if (down) bassCol else btnBg; c.drawRoundRect(r, radius * 1.5f, radius * 1.5f, fill)
+            stroke.color = if (root) bassCol else blend(bassCol, btnBg, 0.55f); stroke.strokeWidth = unit * (if (root) 0.2f else 0.12f)
+            c.drawRoundRect(inset(r, unit * 0.08f), radius * 1.5f, radius * 1.5f, stroke)
+            text.color = Color.WHITE; text.textSize = min(r.height() * 0.34f, r.width() * 0.4f)
+            c.drawText(BassSynth.noteName(notes[k]), r.centerX(), r.centerY() + text.textSize * 0.1f, text)
+            host.shortcut("bass$k")?.let {
+                text.color = dim; text.textSize = min(r.height() * 0.17f, unit * 1.1f)
+                c.drawText(it, r.centerX(), r.bottom - r.height() * 0.1f, text)
+            }
+        }
+        fun small(r: RectF, label: String, color: Int) {
+            fill.color = btnBg; c.drawRoundRect(r, radius, radius, fill)
+            stroke.color = color; stroke.strokeWidth = unit * 0.12f; c.drawRoundRect(inset(r, unit * 0.06f), radius, radius, stroke)
+            text.color = Color.WHITE; text.textSize = min(r.height() * 0.5f, unit * 1.2f); fitText(label, r.width() * 0.86f)
+            c.drawText(label, r.centerX(), r.centerY() + text.textSize * 0.35f, text)
+        }
+        small(bassSoundBtn, mixer.bass.sound.label, bassCol)
+        small(bassOctBtn, if (bassOctave == 0) "LOW" else "HIGH", bassCol)
+        small(bassClose, "✕ Close", dim)
+    }
+
     // ------------------------------------------------------------------ touch & draw
 
     /** A finger (or the mouse) went down. [id] tells fingers apart for multi-touch. */
@@ -1138,6 +1253,7 @@ class Console(private val mixer: Mixer, private val host: Host, val computer: Bo
             if (first) { helpMode = false; if (keyBanner.contains(x, y)) host.openGuide() }
             return
         }
+        if (tutorial == null && bassTap(id, x, y)) return
         if (startTap(x, y)) return
         // A tap on the notice dismisses it: the strips under it can't be seen, so it never seeks them.
         if (tutorial == null && noticeAlpha() > 0f && keyBanner.contains(x, y)) { notice = null; return }
@@ -1160,7 +1276,7 @@ class Console(private val mixer: Mixer, private val host: Host, val computer: Bo
     /** Mouse wheel: turns knobs, moves faders, nudges the jog wheel. */
     fun wheel(x: Float, y: Float, notches: Float) {
         if (helpMode || tutorial?.let { tutHoles.none { h -> h.contains(x, y) } } == true) return
-        if (showStart() && startArea.contains(x, y)) return
+        if ((showStart() || bassOpen) && startArea.contains(x, y)) return
         ctls.lastOrNull { grow(it.r).contains(x, y) }?.wheel(notches)
     }
 
@@ -1198,7 +1314,7 @@ class Console(private val mixer: Mixer, private val host: Host, val computer: Bo
         watchMix()
         c.drawColor(bg)
         for (ctl in ctls) ctl.draw(c)
-        if (showStart()) drawStart(c)
+        if (bassOpen && tutorial == null) drawBass(c) else if (showStart()) drawStart(c)
         if (!helpMode && tutorial == null) drawNotice(c)
         if (helpMode) drawKey(c)
         tutorial?.let { drawTutorial(c, it) }

@@ -16,6 +16,8 @@ object Shortcuts {
         "next" to "N", "mix" to "M", "help" to "H",
         // Mixer
         "xfader" to "← ↓ →", "pad0" to "Z", "pad1" to "X", "pad2" to "C", "pad3" to "V",
+        // Bass keys (BASS pad): the home row plays the eight notes
+        "bass0" to "S", "bass1" to "D", "bass2" to "F", "bass3" to "G", "bass4" to "J", "bass5" to "K", "bass6" to "L", "bass7" to ";",
     )
 
     /** "Ctrl+R", or "⌘R" on a Mac: start or stop recording. */

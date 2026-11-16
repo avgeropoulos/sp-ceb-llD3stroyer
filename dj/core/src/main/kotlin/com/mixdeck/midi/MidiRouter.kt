@@ -43,7 +43,11 @@ class MidiRouter(
             onLearned?.invoke(b)
             return
         }
-        val b = map[e.control] ?: return
+        val b = map[e.control] ?: run {
+            // A key that isn't linked to anything plays the bass while the bass keys are open (a MIDI keyboard).
+            if (e.control.kind == MidiControl.Kind.NOTE) playBass(e)
+            return
+        }
         val a = b.action
         if (a.key != null && !console.allows(a.key)) return
         when (a.type) {
@@ -61,6 +65,21 @@ class MidiRouter(
                 if (steps != 0) act { decks[a.deck].jogMove(steps / STEPS_PER_TURN) }
             }
         }
+    }
+
+    /** Notes sounding from a MIDI keyboard: control → the bass note it started. */
+    private val bassNotes = HashMap<MidiControl, Int>()
+
+    private fun playBass(e: MidiEvent) {
+        if (e.on) {
+            if (!console.bassOpen || console.tutorial != null) return
+            // Keep it a bass: fold high keys down into the low octaves.
+            var n = e.control.number
+            while (n > 55) n -= 12
+            while (n < 24) n += 12
+            bassNotes[e.control] = n
+            act { bass.noteOn(n) }
+        } else bassNotes.remove(e.control)?.let { n -> if (n !in bassNotes.values) act { bass.noteOff(n) } }
     }
 
     /** The binding [e] makes for [a], or null when that control doesn't suit it (e.g. a pad for a fader). */
@@ -127,6 +146,8 @@ class MidiRouter(
     @Synchronized fun releaseAll() {
         for (c in held) map[c]?.action?.let { if (it.type == MidiType.HOLD) release(it) }
         held.clear()
+        bassNotes.clear()
+        act { bass.allOff() }
     }
 
     companion object {
