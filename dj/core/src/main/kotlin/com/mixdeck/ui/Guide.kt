@@ -70,6 +70,7 @@ object Guide {
             Item("★★★★★", yellow, "How well a song fits: key, tempo change, energy and sound. Tap it to see the reasons. Big tempo changes cost stars, because on vinyl-style decks voices start to sound too high or too low."),
             Item("Direction", teal, "Keep the vibe (same energy), Build up (a bit more) or Cool down (a bit less). Energy goes from 1 (chilled) to 10 (peak time)."),
             Item("Find new", teal, "\"Find new songs like this\" asks YouTube for songs that go with the playing one, downloads a few (about 5 MB each) and checks which fit. They're marked NEW and saved in My songs."),
+            Item("TWIST", pink, "\"Find twists\" looks for songs from another style or era that still mix with the playing one: the same tempo (or half or double), a key next door and similar energy, like a 2000s hip-hop song into a funk or Afrobeats record. The ones that fit are marked TWIST, with why; the others are deleted again."),
         )),
         Section("Each deck", blue, listOf(
             Item("▶ / ❚❚", green, "Play and pause. While the other deck plays in time (after SYNC), ▶ waits for its next beat so the two start together (Quantize, in Settings)."),
