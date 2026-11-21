@@ -74,7 +74,7 @@ object SelfTest {
         m.decks[1].pitch = 0.06 // one semitone up, so the key readout shows the arrow
         val buf = FloatArray(512)
         repeat(500) { m.render(buf, 256) }
-        // 3c. MIX: deck A plays, MIX blends into deck B; drawn halfway (bar 5 of 8, just after the bass swap).
+        // 3c. MIX: deck A plays, MIX blends into deck B; drawn halfway (bar 5 of 8, as the basses swap).
         val mm = Mixer(48000)
         mm.decks[0].load(pcm, a, "Self test", "MixDeck", Analyzer.loudnessDb(pcm))
         mm.decks[1].load(kp, Analyzer.analyze(kp).withKey(f.key, f.keyConfidence), "Second deck", "MixDeck", -14.0)

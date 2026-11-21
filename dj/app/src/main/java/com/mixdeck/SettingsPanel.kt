@@ -22,7 +22,7 @@ import com.mixdeck.engine.XfadeCurve
 import com.mixdeck.ui.Menus.Settings
 
 /**
- * ☰ → Settings…: volumes, crossfader curve, Quantize, MIX length and split cue in one place, in
+ * ☰ → Settings…: volumes, crossfader curve, Quantize, MIX length and style, and split cue in one place, in
  * two columns. Every change applies at once (under the mixer lock) and is [saved]; Done closes it.
  */
 object SettingsPanel {
@@ -88,7 +88,7 @@ object SettingsPanel {
                 setOnCheckedChangeListener { _, on -> change { quantize = on } }
             })
             addView(label(Settings.MIX_LENGTH))
-            val caption = small(Settings.mixCaption(mixer.autoMix.bars))
+            val caption = small(Settings.mixCaption(mixer.autoMix.bars, mixer.autoMix.style))
             // 4 / 8 / 16 / 32 as a segmented row (just the numbers: the caption says "bars"), so it fits the column.
             val chips = ArrayList<Pair<Int, TextView>>()
             fun paint() = chips.forEach { (bars, v) ->
@@ -103,7 +103,7 @@ object SettingsPanel {
                 for (bars in AutoMix.LENGTHS) {
                     val v = TextView(a).apply {
                         text = "$bars"; textSize = 15f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-                        setOnClickListener { change { autoMix.bars = bars }; caption.text = Settings.mixCaption(bars); paint() }
+                        setOnClickListener { change { autoMix.bars = bars }; caption.text = Settings.mixCaption(bars, mixer.autoMix.style); paint() }
                     }
                     chips += bars to v
                     addView(v, LinearLayout.LayoutParams(0, dp(40), 1f).apply { if (bars != AutoMix.LENGTHS.last()) marginEnd = dp(6) })
@@ -111,6 +111,36 @@ object SettingsPanel {
             })
             paint()
             addView(caption)
+
+            // Smooth / Echo out / Filter / Quick, two by two so the words fit the column.
+            addView(label(Settings.MIX_STYLE))
+            val styleCaption = small(Settings.styleCaption(mixer.autoMix.style))
+            val styleChips = ArrayList<Pair<AutoMix.Style, TextView>>()
+            fun paintStyles() = styleChips.forEach { (style, v) ->
+                val on = style == mixer.autoMix.style
+                v.setTextColor(if (on) Color.BLACK else Color.WHITE)
+                v.background = GradientDrawable().apply {
+                    cornerRadius = dp(8).toFloat(); setColor(if (on) teal else 0xFF2A2A31.toInt()); setStroke(dp(1), if (on) teal else grey)
+                }
+            }
+            for (row in AutoMix.STYLES.chunked(2)) addView(LinearLayout(a).apply {
+                setPadding(0, dp(6), 0, 0)
+                for (style in row) {
+                    val v = TextView(a).apply {
+                        text = Settings.styleLabel(style); textSize = 14f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+                        setOnClickListener {
+                            change { autoMix.style = style }
+                            styleCaption.text = Settings.styleCaption(style)
+                            caption.text = Settings.mixCaption(mixer.autoMix.bars, style)
+                            paintStyles()
+                        }
+                    }
+                    styleChips += style to v
+                    addView(v, LinearLayout.LayoutParams(0, dp(40), 1f).apply { if (style != row.last()) marginEnd = dp(6) })
+                }
+            })
+            paintStyles()
+            addView(styleCaption.apply { setPadding(0, dp(4), 0, 0) })
             addView(Switch(a).apply {
                 text = Settings.SPLIT_CUE; textSize = 14f; isChecked = mixer.splitCue; setPadding(0, dp(14), 0, 0)
                 setOnCheckedChangeListener { _, on -> change { splitCue = on } }

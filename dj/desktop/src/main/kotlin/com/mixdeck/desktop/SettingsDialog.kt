@@ -41,7 +41,7 @@ class SettingsDialog(app: App) : JDialog(app.frame, Settings.TITLE, true) {
 }
 
 /**
- * Volumes, crossfader curve, Quantize, MIX length and split cue in one place. Every change applies
+ * Volumes, crossfader curve, Quantize, MIX length and style, and split cue in one place. Every change applies
  * at once (under the mixer lock) and is [saved]; Done just closes it.
  */
 class SettingsPanel(
@@ -92,15 +92,31 @@ class SettingsPanel(
             addActionListener { val on = isSelected; change { quantize = on } }
         }
 
-        val caption = small(Settings.mixCaption(mixer.autoMix.bars))
+        val caption = small(Settings.mixCaption(mixer.autoMix.bars, mixer.autoMix.style))
         val group = ButtonGroup()
         val lengths = JPanel(FlowLayout(FlowLayout.LEFT, 6, 0))
         for (bars in AutoMix.LENGTHS) {
             val b = JToggleButton(Settings.barsLabel(bars), mixer.autoMix.bars == bars)
             group.add(b)
-            b.addActionListener { change { autoMix.bars = bars }; caption.text = Settings.mixCaption(bars) }
+            b.addActionListener { change { autoMix.bars = bars }; caption.text = Settings.mixCaption(bars, mixer.autoMix.style) }
             lengths.add(b)
         }
+
+        // Smooth / Echo out / Filter / Quick, two by two so they fit the column.
+        val styleCaption = small(wrapped(Settings.styleCaption(mixer.autoMix.style)))
+        val styleGroup = ButtonGroup()
+        val styles = JPanel(GridLayout(2, 2, 6, 6)).apply { border = BorderFactory.createEmptyBorder(0, 6, 4, 0) }
+        for (style in AutoMix.STYLES) {
+            val b = JToggleButton(Settings.styleLabel(style), mixer.autoMix.style == style)
+            styleGroup.add(b)
+            b.addActionListener {
+                change { autoMix.style = style }
+                styleCaption.text = wrapped(Settings.styleCaption(style))
+                caption.text = Settings.mixCaption(mixer.autoMix.bars, style)
+            }
+            styles.add(b)
+        }
+        val styleRow = JPanel(FlowLayout(FlowLayout.LEFT, 0, 0)).apply { add(styles); maximumSize = Dimension(Int.MAX_VALUE, preferredSize.height) }
 
         val split = JCheckBox(wrapped(Settings.SPLIT_CUE), mixer.splitCue).apply {
             addActionListener { val on = isSelected; change { splitCue = on } }
@@ -109,6 +125,7 @@ class SettingsPanel(
             label(Settings.CROSSFADER), indent(smooth), indent(sharp), gap(),
             quantize, gap(),
             label(Settings.MIX_LENGTH), lengths, indent(caption), gap(),
+            label(Settings.MIX_STYLE), styleRow, indent(styleCaption), gap(),
             split, indent(small(Settings.SPLIT_CUE_NOTE).apply { text = wrapped(text) }),
         )
     }

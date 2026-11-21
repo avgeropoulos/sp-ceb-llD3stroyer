@@ -55,6 +55,13 @@ class MenusTest {
     @Test fun settingsWords() {
         assertEquals("85%", Menus.Settings.percent(0.85f))
         assertEquals("MIX blends over 8 bars", Menus.Settings.mixCaption(8))
+        assertEquals("MIX blends over 16 bars", Menus.Settings.mixCaption(16, com.mixdeck.engine.AutoMix.Style.ECHO))
+        assertEquals("Quick takes 4 beats; the other styles blend over 8 bars", Menus.Settings.mixCaption(8, com.mixdeck.engine.AutoMix.Style.QUICK))
+        assertEquals(listOf("Smooth", "Echo out", "Filter", "Quick"), com.mixdeck.engine.AutoMix.STYLES.map { Menus.Settings.styleLabel(it) })
+        assertEquals("MIX style", Menus.Settings.MIX_STYLE)
+        // Hosts save the style by name; anything unknown is the default.
+        assertEquals(com.mixdeck.engine.AutoMix.Style.ECHO, com.mixdeck.engine.AutoMix.Style.of("ECHO"))
+        assertEquals(com.mixdeck.engine.AutoMix.Style.SMOOTH, com.mixdeck.engine.AutoMix.Style.of(null))
         assertEquals("MixDeck 1.123 · YouTube downloads are for personal use only.", Menus.guideFooter("1.123"))
     }
 

@@ -132,13 +132,13 @@ class PickCheckTest {
         val armed = PickCheck.question(m, 0, "Hot in Herre")!!
         assertEquals("Both decks are playing", armed.title)
         assertEquals(listOf("Load when A ends", "Stop A and load now", "Cancel"), armed.labelList)
-        // 8 bars at 120 BPM is 16 s, plus up to a bar's wait: under 30 s, so the countdown is red.
+        // 8 bars at 120 BPM is 16 s, plus up to 4 bars' wait (MIX ends the blend on A's phrase): under 30 s, so the countdown is red.
         val left = PickCheck.secondsLeft(m, 0)
-        assertTrue(left in 16.0..18.1, "A ends in $left s")
+        assertTrue(left in 16.0..24.1, "A ends in $left s")
         val cd = PickCheck.countdown(m, 0)!!
         assertEquals("it ends in ${Console.fmtTime(left)}", cd.text); assertTrue(cd.urgent)
         var guard = 0
-        while (m.autoMix.state != AutoMix.State.RUNNING && guard++ < 100) m.render(buf, 256)
+        while (m.autoMix.state != AutoMix.State.RUNNING && guard++ < 400) m.render(buf, 256)
         repeat(4 * 8000 / 256) { m.render(buf, 256) }
         val running = PickCheck.question(m, 0, "Hot in Herre")!!
         val now = PickCheck.secondsLeft(m, 0)

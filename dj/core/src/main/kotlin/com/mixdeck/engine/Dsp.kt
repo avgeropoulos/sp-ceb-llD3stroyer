@@ -19,6 +19,12 @@ class Biquad {
 
     fun reset() { x1.fill(0.0); x2.fill(0.0); y1.fill(0.0); y2.fill(0.0) }
 
+    /**
+     * Fills channel [ch]'s history as if it had been passing [last] and [before] straight through,
+     * so a filter switched on close to flat starts where the dry sound is (no click).
+     */
+    fun prime(ch: Int, last: Double, before: Double) { x1[ch] = last; y1[ch] = last; x2[ch] = before; y2[ch] = before }
+
     fun process(x: Double, ch: Int): Double {
         val y = b0 * x + b1 * x1[ch] + b2 * x2[ch] - a1 * y1[ch] - a2 * y2[ch]
         x2[ch] = x1[ch]; x1[ch] = x
@@ -69,6 +75,8 @@ class ThreeBandEq(private val sr: Int) {
     private val low = Biquad(); private val mid = Biquad(); private val high = Biquad()
     private var lowK = 0f; private var midK = 0f; private var highK = 0f
     private var flat = true
+    /** The last two inputs while flat, to prime the filters when a knob leaves the centre. */
+    private val last1 = DoubleArray(2); private val last2 = DoubleArray(2)
 
     init { update() }
 
@@ -79,14 +87,16 @@ class ThreeBandEq(private val sr: Int) {
     }
 
     private fun update() {
+        val wasFlat = flat
         low.lowShelf(sr, 220.0, knobToDb(lowK))
         mid.peaking(sr, 1100.0, 0.7, knobToDb(midK))
         high.highShelf(sr, 4500.0, knobToDb(highK))
         flat = lowK == 0f && midK == 0f && highK == 0f
+        if (wasFlat && !flat) for (ch in 0..1) for (b in arrayOf(low, mid, high)) b.prime(ch, last1[ch], last2[ch])
     }
 
     fun process(x: Double, ch: Int): Double {
-        if (flat) return x
+        if (flat) { last2[ch] = last1[ch]; last1[ch] = x; return x }
         return high.process(mid.process(low.process(x, ch), ch), ch)
     }
 
@@ -103,6 +113,7 @@ class DjFilter(private val sr: Int) {
     private val f = Biquad()
     private var knob = 0f
     var active = false; private set
+    private val last1 = DoubleArray(2); private val last2 = DoubleArray(2)
 
     fun set(k: Float) {
         if (k == knob) return
@@ -110,13 +121,17 @@ class DjFilter(private val sr: Int) {
         knob = k
         active = abs(k) > 0.02f
         if (!active) return
-        if (!wasActive) f.reset()
+        if (!wasActive) for (ch in 0..1) f.prime(ch, last1[ch], last2[ch])
         val amt = (abs(k) - 0.02) / 0.98
         if (k < 0) f.lowPass(sr, 18000.0 * (70.0 / 18000.0).pow(amt), 1.2)
         else f.highPass(sr, 25.0 * (9000.0 / 25.0).pow(amt), 1.2)
     }
 
-    fun process(x: Double, ch: Int): Double = if (active) f.process(x, ch) else x
+    fun process(x: Double, ch: Int): Double {
+        if (active) return f.process(x, ch)
+        last2[ch] = last1[ch]; last1[ch] = x
+        return x
+    }
 }
 
 enum class FxType(val label: String) { ECHO("ECHO"), FLANGER("FLANGER"), REVERB("REVERB"), CRUSH("CRUSH") }
@@ -141,6 +156,9 @@ class EffectUnit(private val sr: Int) {
     private val echoBuf = Array(2) { FloatArray(echoLen) }
     private var echoPos = 0
     private var echoDelay = sr / 2.0
+    /** How far the echo's input is on, 0..1: it eases in and out over 20 ms (an S-curve), so the repeats never click. */
+    private var echoRamp = 0f
+    private val echoRampStep = 1f / (sr * 0.02f)
     // Flanger
     private val flBuf = Array(2) { FloatArray(2048) }
     private var flPos = 0
@@ -182,6 +200,8 @@ class EffectUnit(private val sr: Int) {
         val wet = 0.4f + 0.6f * amount
         val input = if (on) 1f else 0f
         for (i in 0 until frames) {
+            echoRamp = if (echoRamp < input) minOf(input, echoRamp + echoRampStep) else maxOf(input, echoRamp - echoRampStep)
+            val echoIn = echoRamp * echoRamp * (3 - 2 * echoRamp)
             echoDelay += (target - echoDelay) * 0.0005
             var rp = echoPos - echoDelay
             if (rp < 0) rp += echoLen
@@ -190,7 +210,7 @@ class EffectUnit(private val sr: Int) {
                 val b = echoBuf[ch]
                 val d = b[r0] + (b[r1] - b[r0]) * fr
                 val x = buf[i * 2 + ch]
-                b[echoPos] = x * input + d * feedback
+                b[echoPos] = x * echoIn + d * feedback
                 buf[i * 2 + ch] = x + d * wet
             }
             echoPos = (echoPos + 1) % echoLen

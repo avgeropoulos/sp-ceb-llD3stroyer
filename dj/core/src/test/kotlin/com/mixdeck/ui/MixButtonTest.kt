@@ -147,7 +147,7 @@ class MixButtonTest {
             upNext[0] = if (coming) "Hot in Herre" else null
             m.mixPressed()
             var guard = 0
-            while (m.autoMix.state != AutoMix.State.IDLE && guard++ < 20 * sr / 256) { m.render(buf, 256); c.drawn() }
+            while (m.autoMix.state != AutoMix.State.IDLE && guard++ < 45 * sr / 256) { m.render(buf, 256); c.drawn() }
             assertEquals(AutoMix.State.IDLE, m.autoMix.state)
             assertEquals(if (coming) "Now playing Grillz" else "Now playing Grillz · tap NEXT for what fits after it", c.noticeText)
         }
@@ -167,7 +167,7 @@ class MixButtonTest {
             c.drawn()
             m.mixPressed()
             var guard = 0
-            while (m.autoMix.state != AutoMix.State.RUNNING && guard++ < 20 * sr / 256) { m.render(buf, 256); c.drawn() }
+            while (m.autoMix.state != AutoMix.State.RUNNING && guard++ < 45 * sr / 256) { m.render(buf, 256); c.drawn() }
             synchronized(m.lock) { m.load(0, "Hot in Herre", 96.0) }
             if (noticeFirst) c.say("\"Hot in Herre\" is on deck A", 0)
             m.render(buf, 256)
@@ -205,7 +205,7 @@ class MixButtonTest {
         c.drawn()
         c.tap("mix")
         var guard = 0
-        while (m.autoMix.state != AutoMix.State.IDLE && guard++ < 20 * sr / 256) { m.render(buf, 256); c.drawn() }
+        while (m.autoMix.state != AutoMix.State.IDLE && guard++ < 45 * sr / 256) { m.render(buf, 256); c.drawn() }
         assertTrue("MIX" in c.drawn(), "grey: nothing new waits on A")
         c.tap("mix")
         assertEquals(AutoMix.State.IDLE, m.autoMix.state, "Air Force Ones doesn't come back")
@@ -249,6 +249,29 @@ class MixButtonTest {
         while (m.autoMix.state != AutoMix.State.RUNNING) m.render(buf, 256)
         c.drawn()
         assertEquals("Mixing into Grillz over 8 bars · move the crossfader to take over", c.noticeText)
+    }
+
+    /** The Quick style: MIX counts its 4 beats, and says it's a quick mix; holding MIX still changes the length. */
+    @Test fun quickMixCountsBeats() {
+        val (m, c) = setup()
+        m.autoMix.style = AutoMix.Style.QUICK
+        m.load(0, "Air Force Ones", 93.0); m.load(1, "Grillz", 95.0)
+        m.decks[0].play()
+        c.tap("mix")
+        assertTrue(m.autoMix.beatsToStart() <= 4, "on the next bar")
+        while (m.autoMix.state != AutoMix.State.RUNNING) m.render(buf, 256)
+        assertTrue("BEAT 1/4" in c.drawn())
+        assertEquals("Quick mix into Grillz · touch the crossfader to take over", c.noticeText)
+        var guard = 0
+        while (m.autoMix.state != AutoMix.State.IDLE && guard++ < 10 * sr / 256) m.render(buf, 256)
+        assertEquals(AutoMix.State.IDLE, m.autoMix.state)
+        val r = c.rectOf("mix")!!
+        c.pointerDown(0, r.centerX(), r.centerY(), first = true)
+        Thread.sleep(700)
+        c.drawn()
+        c.pointerUp(0)
+        assertEquals(16, m.autoMix.bars)
+        assertEquals(AutoMix.Style.QUICK, m.autoMix.style, "the style stays")
     }
 
     /** NEXT draws a black label when lit. */

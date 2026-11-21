@@ -63,8 +63,8 @@ object Guide {
         )),
         Section("What to play next", teal, listOf(
             Item("NEXT", teal, "Suggests songs that fit after the one that's playing, best first, and loads your pick onto the free deck, already synced. Then tap MIX, or press ▶ when the moment's right. It blinks when a song is near its end (about a minute plus the MIX time) if nothing new is waiting."),
-            Item("MIX", teal, "Blends the playing song into the one waiting on the other deck: starts it on the next bar in time, brings it in with the crossfader over 8 bars, swaps the basses halfway and stops the old deck. Touch the crossfader, a LOW knob or a volume fader to take over. Hold MIX to change the length (4, 8, 16 or 32 bars).",
-                computerText = "Blends the playing song into the one waiting on the other deck: starts it on the next bar in time, brings it in with the crossfader over 8 bars, swaps the basses halfway and stops the old deck. Move the crossfader, a LOW knob or a volume fader to take over. Hold MIX to change the length (4, 8, 16 or 32 bars)."),
+            Item("MIX", teal, "Blends the playing song into the one waiting on the other deck, like a DJ: starts it in time and at the same loudness, timed so the blend ends with the old song's phrase, eases it in over 8 bars, swaps the basses gently, glides to the new song's own tempo and stops the old deck. Touch the crossfader or a knob MIX is turning to take over. Hold MIX to change the length (4, 8, 16 or 32 bars); pick Smooth, Echo out, Filter or Quick in ☰ → Settings.",
+                computerText = "Blends the playing song into the one waiting on the other deck, like a DJ: starts it in time and at the same loudness, timed so the blend ends with the old song's phrase, eases it in over 8 bars, swaps the basses gently, glides to the new song's own tempo and stops the old deck. Move the crossfader or a knob MIX is turning to take over. Hold MIX to change the length (4, 8, 16 or 32 bars); pick Smooth, Echo out, Filter or Quick in ☰ → Settings."),
             Item("8A", teal, "A song's key on the key wheel (DJs call it the Camelot wheel). Keys mix smoothly when they have the same number, a number next door (8A → 9A), or the same number with the other letter (8A → 8B). Next-door keys also get similar colours."),
             Item("↑ ↓ ~", teal, "These decks work like vinyl: speeding a song up by 6% also raises it by a semitone (one piano key), so its key changes. The key shown is the one you hear: ↑ or ↓ means the tempo slider moved it, ~ means it's between two keys."),
             Item("★★★★★", yellow, "How well a song fits: key, tempo change, energy and sound. Tap it to see the reasons. Big tempo changes cost stars, because on vinyl-style decks voices start to sound too high or too low."),
@@ -110,7 +110,7 @@ object Guide {
         Section("Menu & help", yellow, listOf(
             Item("?", yellow, "Labels every control on the DJ screen. Tap anywhere to close the labels.",
                 computerText = "Labels every control and shows its keyboard key. Press H or Esc, or click anywhere, to close."),
-            Item("☰", grey, "My mixes, Settings (volumes, crossfader curve, Quantize, MIX length, split cue), MIDI controller setup, this guide, the tutorial, and updates."),
+            Item("☰", grey, "My mixes, Settings (volumes, crossfader curve, Quantize, MIX length and style, split cue), MIDI controller setup, this guide, the tutorial, and updates."),
             Item("BASS", 0xFF7C4DFF.toInt(), "Opens eight bass keys over the song strips. They play the notes of the song you hear, so whatever you tap fits. " +
                 "Hold a key for a long note. FINGER / PICK / MUTED / SUB changes the sound (a bass guitar played three ways, or a plain deep tone), LOW / HIGH the octave. It's recorded with your mix. " +
                 "A MIDI keyboard plays the bass too while the keys are open.",

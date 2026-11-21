@@ -1,5 +1,7 @@
 package com.mixdeck.ui
 
+import com.mixdeck.engine.AutoMix
+
 /** The rows of the ☰ menu, the same on the phone and the computer. */
 enum class MenuItem { UPDATE, LEARN, HELP, MIXES, SETTINGS, MIDI, CHECK }
 
@@ -36,6 +38,7 @@ object Menus {
         const val SHARP = "Sharp (scratching)"
         const val QUANTIZE = "Quantize: ▶, cues and loops snap to the beat"
         const val MIX_LENGTH = "MIX length"
+        const val MIX_STYLE = "MIX style"
         const val SPLIT_CUE = "Split cue (headphones): left ear = mix, right ear = 🎧 decks"
         const val SPLIT_CUE_NOTE = "Headphones only: a speaker would play the cue too."
         const val CHECK = "Check for updates"
@@ -48,8 +51,26 @@ object Menus {
         /** The choices for MIX's length, e.g. "8 bars". */
         fun barsLabel(bars: Int) = "$bars bars"
 
-        /** The caption under the MIX length choices. */
-        fun mixCaption(bars: Int) = "MIX blends over $bars bars"
+        /** The caption under the MIX length choices (Quick has its own length). */
+        fun mixCaption(bars: Int, style: AutoMix.Style = AutoMix.Style.SMOOTH) =
+            if (style == AutoMix.Style.QUICK) "Quick takes 4 beats; the other styles blend over $bars bars"
+            else "MIX blends over $bars bars"
+
+        /** A MIX style's name on its button. */
+        fun styleLabel(style: AutoMix.Style) = when (style) {
+            AutoMix.Style.SMOOTH -> "Smooth"
+            AutoMix.Style.ECHO -> "Echo out"
+            AutoMix.Style.FILTER -> "Filter"
+            AutoMix.Style.QUICK -> "Quick"
+        }
+
+        /** What the chosen MIX style does, under its buttons. */
+        fun styleCaption(style: AutoMix.Style) = when (style) {
+            AutoMix.Style.SMOOTH -> "Eases the new song in at the same loudness, swaps the basses gently and ends with the old song's phrase"
+            AutoMix.Style.ECHO -> "Blends in, then the old song leaves on an echo at the end of its phrase"
+            AutoMix.Style.FILTER -> "The old song sweeps out through a rising filter as the new one comes in"
+            AutoMix.Style.QUICK -> "A short swap over 4 beats, on the next bar, for when time is short"
+        }
 
         fun songsFolder(path: String) = "Songs: $path"
         fun mixesFolder(path: String) = "Mixes: $path"
