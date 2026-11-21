@@ -37,7 +37,7 @@ class GuideTest {
         assertTrue(item(true, "⬆ Update").contains("Restart now or When I quit"))
         assertTrue(item(true, "⬆ Update").endsWith("When I quit puts the update in as MixDeck closes."), "only Restart now opens it again")
         assertTrue(item(false, "NEXT").contains("about a minute plus the MIX time"), "NEXT blinks a minute plus the MIX early")
-        assertEquals("My mixes, Settings (volumes, crossfader curve, Quantize, MIX length, split cue), MIDI controller setup, this guide, the tutorial, and updates.",
+        assertEquals("My mixes, Settings (volumes, crossfader curve, Quantize, MIX length and style, split cue), MIDI controller setup, this guide, the tutorial, and updates.",
             item(true, "☰"))
         assertEquals(item(true, "☰"), item(false, "☰"))
         assertEquals("Labels every control and shows its keyboard key. Press H or Esc, or click anywhere, to close.", item(true, "?"))

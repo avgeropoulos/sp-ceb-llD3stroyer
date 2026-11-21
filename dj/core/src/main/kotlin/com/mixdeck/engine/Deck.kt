@@ -59,6 +59,13 @@ class Deck(val index: Int, private val sr: Int) {
     /** Trim in dB, on top of the automatic gain that evens out loud and quiet tracks. */
     var trimDb = 0.0
     var autoGainDb = 0.0; private set
+    /** The song's measured loudness in dB (as given to [load]): MIX uses it to bring the next song in at the same level. */
+    var loudnessDb = -14.0; private set
+    /**
+     * How much of the deck's own sound is heard, 0..1, before the effect. MIX's echo out lowers
+     * it so only the echoes ring on; it isn't a control on screen and every load puts it back to 1.
+     */
+    internal var dryLevel = 1f
     /** Channel fader, 0..1. */
     var volume = 1f
     var eqLow = 0f; var eqMid = 0f; var eqHigh = 0f
@@ -72,6 +79,10 @@ class Deck(val index: Int, private val sr: Int) {
 
     /** Recent peak level after the EQ, 0..1, for the meters. */
     var level = 0f; private set
+
+    // What the last block ended on, so gain, EQ and filter glide across the next block instead of stepping.
+    private var lastGain = Double.NaN
+    private var lastLow = 0f; private var lastMid = 0f; private var lastHigh = 0f; private var lastFilter = 0f
 
     val loaded get() = pcm != null
     val bpm get() = analysis?.bpm ?: 0.0
@@ -119,7 +130,10 @@ class Deck(val index: Int, private val sr: Int) {
         // Cue on the bar where the music starts, so the first press of PLAY lands on a downbeat.
         cuePoint = info.startCueSec() * trackRate
         position = cuePoint
+        this.loudnessDb = loudnessDb
         autoGainDb = (-14.0 - loudnessDb).coerceIn(-12.0, 12.0)
+        dryLevel = 1f
+        lastGain = Double.NaN
         fx.clear()
     }
 
@@ -353,9 +367,16 @@ class Deck(val index: Int, private val sr: Int) {
         val follow = 1 - exp(-1.0 / (0.012 * sr))
         val glide = 1 - exp(-1.0 / (0.02 * sr))
         val bendDecay = exp(-1.0 / (0.15 * sr))
-        val gain = dbToGain(autoGainDb + trimDb)
-        eq.set(eqLow, eqMid, eqHigh)
-        djFilter.set(filter)
+        // Trim, auto gain and MIX's dry level glide sample by sample from where the last block ended;
+        // the EQ and filter knobs move in 16-sample steps. Turning a knob fast never clicks.
+        val gain = dbToGain(autoGainDb + trimDb) * dryLevel
+        val gain0 = if (lastGain.isNaN()) gain else lastGain
+        val gainStep = (gain - gain0) / frames.coerceAtLeast(1)
+        lastGain = gain
+        val low0 = lastLow; val mid0 = lastMid; val high0 = lastHigh; val filter0 = lastFilter
+        val knobsMove = low0 != eqLow || mid0 != eqMid || high0 != eqHigh || filter0 != filter
+        lastLow = eqLow; lastMid = eqMid; lastHigh = eqHigh; lastFilter = filter
+        if (!knobsMove) { eq.set(eqLow, eqMid, eqHigh); djFilter.set(filter) }
         val bpmNow = effectiveBpm
         fx.beatSeconds = if (bpmNow > 0) 60.0 / bpmNow else 0.5
         var peak = 0f
@@ -366,6 +387,12 @@ class Deck(val index: Int, private val sr: Int) {
         val fadeLen = (sr * 0.002).toInt().coerceAtLeast(1)
 
         for (i in 0 until frames) {
+            if (knobsMove && i % KNOB_STEP == 0) {
+                val f = ((i + KNOB_STEP).toFloat() / frames).coerceAtMost(1f)
+                eq.set(low0 + (eqLow - low0) * f, mid0 + (eqMid - mid0) * f, high0 + (eqHigh - high0) * f)
+                djFilter.set(filter0 + (filter - filter0) * f)
+            }
+            val g = gain0 + gainStep * (i + 1)
             val target = when {
                 scratching -> ((scratchTarget - position) / (0.015 * sr)).coerceIn(-8 * ratio, 8 * ratio)
                 playing -> (1 + pitch) * (1 + bend) * ratio
@@ -379,8 +406,8 @@ class Deck(val index: Int, private val sr: Int) {
             if (speed > 1e-4) {
                 var amp = (speed * 25).coerceAtMost(1.0)
                 if (fadeIn > 0) { amp *= 1 - fadeIn.toDouble() / fadeLen; fadeIn-- }
-                l = cubic(p, position, 0) * amp * gain
-                r = cubic(p, position, 1) * amp * gain
+                l = cubic(p, position, 0) * amp * g
+                r = cubic(p, position, 1) * amp * g
                 l = djFilter.process(eq.process(l, 0), 0)
                 r = djFilter.process(eq.process(r, 1), 1)
             }
@@ -412,6 +439,11 @@ class Deck(val index: Int, private val sr: Int) {
     private fun sample(p: Pcm, i: Int, ch: Int): Double {
         if (i < 0 || i >= p.frames) return 0.0
         return (if (ch == 0) p.left(i) else p.right(i)).toDouble()
+    }
+
+    private companion object {
+        /** EQ and filter knobs move in steps of this many samples within a block. */
+        const val KNOB_STEP = 16
     }
 
     private fun floorMod(a: Double, m: Double): Double {

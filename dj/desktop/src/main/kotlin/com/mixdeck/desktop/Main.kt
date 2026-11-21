@@ -600,6 +600,7 @@ class App : Console.Host {
         prefs.putBoolean("scratchCurve", mixer.curve == XfadeCurve.SCRATCH); prefs.putBoolean("quantize", mixer.quantize)
         prefs.putBoolean("splitCue", mixer.splitCue)
         prefs.putInt("mixBars", mixer.autoMix.bars)
+        prefs.put("mixStyle", mixer.autoMix.style.name)
         runCatching { prefs.flush() }
     }
 
@@ -634,6 +635,7 @@ class App : Console.Host {
         mixer.quantize = prefs.getBoolean("quantize", true)
         mixer.splitCue = prefs.getBoolean("splitCue", false)
         mixer.autoMix.bars = prefs.getInt("mixBars", 8)
+        mixer.autoMix.style = com.mixdeck.engine.AutoMix.Style.of(prefs.get("mixStyle", null))
     }
 
     // ------------------------------------------------------------------ tutorial

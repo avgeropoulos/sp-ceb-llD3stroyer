@@ -559,7 +559,8 @@ class MainActivity : Activity(), Console.Host {
         prefs.edit().putFloat("master", mixer.master).putFloat("sampler", mixer.sampler.volume)
             .putFloat("bassVol", mixer.bass.volume).putString("bassSound", mixer.bass.sound.name).putString("pads", mixer.sampler.encode())
             .putBoolean("scratchCurve", mixer.curve == XfadeCurve.SCRATCH).putBoolean("quantize", mixer.quantize)
-            .putBoolean("splitCue", mixer.splitCue).putInt("mixBars", mixer.autoMix.bars).apply()
+            .putBoolean("splitCue", mixer.splitCue).putInt("mixBars", mixer.autoMix.bars)
+            .putString("mixStyle", mixer.autoMix.style.name).apply()
     }
 
     override fun settingsChanged() = saveSettings()
@@ -574,6 +575,7 @@ class MainActivity : Activity(), Console.Host {
         mixer.quantize = prefs.getBoolean("quantize", true)
         mixer.splitCue = prefs.getBoolean("splitCue", false)
         mixer.autoMix.bars = prefs.getInt("mixBars", 8)
+        mixer.autoMix.style = com.mixdeck.engine.AutoMix.Style.of(prefs.getString("mixStyle", null))
     }
 
     // ---------------------------------------------------------------- recording

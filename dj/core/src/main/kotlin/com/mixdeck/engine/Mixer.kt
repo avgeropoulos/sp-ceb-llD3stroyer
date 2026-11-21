@@ -42,6 +42,14 @@ class Mixer(val sampleRate: Int) {
     private var bufCue = FloatArray(0)
     private var smoothXa = 1f
     private var smoothXb = 1f
+    // Where the last block's channel gains and faders ended, to glide from there across the next block.
+    private var lastXa = 1f
+    private var lastXb = 1f
+    private var lastVa = Float.NaN
+    private var lastVb = Float.NaN
+
+    /** The channel gains (crossfader and MIX, before the volume faders) the last block ended on, for deck A and B. */
+    val channelGains: Pair<Float, Float> get() = lastXa to lastXb
 
     /** Gains for decks A and B for a crossfader position. */
     fun crossfaderGains(x: Float = crossfader, c: XfadeCurve = curve): Pair<Float, Float> {
@@ -125,19 +133,30 @@ class Mixer(val sampleRate: Int) {
         val a = decks[0]; val b = decks[1]
         a.render(bufA, frames)
         b.render(bufB, frames)
-        // MIX blends with the smooth curve even when the sharp one (for scratching) is chosen.
-        val (xa, xb) = crossfaderGains(c = if (autoMix.state == AutoMix.State.RUNNING) XfadeCurve.SMOOTH else curve)
+        // The crossfader's curve, with MIX's own gains on top while it blends (and for a moment after it hands over).
+        val (xa, xb) = autoMix.channelGains(crossfaderGains())
         val va = a.volume * a.volume; val vb = b.volume * b.volume
+        val va0 = if (lastVa.isNaN()) va else lastVa
+        val vb0 = if (lastVb.isNaN()) vb else lastVb
+        // Small moves (MIX, a fader) glide in a straight line across the block; a big jump (a scratch cut)
+        // goes straight to the new gain and only the 1 ms smoothing below softens it.
+        val xa0 = if (abs(xa - lastXa) < 0.05f) lastXa else xa
+        val xb0 = if (abs(xb - lastXb) < 0.05f) lastXb else xb
+        lastXa = xa; lastXb = xb; lastVa = va; lastVb = vb
+        val inv = 1f / frames.coerceAtLeast(1)
         val anyCue = a.headphone || b.headphone
         val m = master
         var peak = 0f
         for (i in 0 until frames) {
+            val f = (i + 1) * inv
             // De-zipper the crossfader so fast cuts don't click.
-            smoothXa += (xa - smoothXa) * 0.02f
-            smoothXb += (xb - smoothXb) * 0.02f
+            smoothXa += (xa0 + (xa - xa0) * f - smoothXa) * 0.02f
+            smoothXb += (xb0 + (xb - xb0) * f - smoothXb) * 0.02f
+            val ga = (va0 + (va - va0) * f) * smoothXa
+            val gb = (vb0 + (vb - vb0) * f) * smoothXb
             for (ch in 0..1) {
                 val k = i * 2 + ch
-                out[k] = (bufA[k] * va * smoothXa + bufB[k] * vb * smoothXb) * m
+                out[k] = (bufA[k] * ga + bufB[k] * gb) * m
                 if (splitCue) {
                     bufCue[k] = if (anyCue) {
                         (if (a.headphone) bufA[k] else 0f) + (if (b.headphone) bufB[k] else 0f)
