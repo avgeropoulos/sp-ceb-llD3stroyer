@@ -5,6 +5,8 @@ import com.mixdeck.engine.MusicalKey
 import com.mixdeck.engine.NextTrack
 import com.mixdeck.engine.NowPlaying
 import com.mixdeck.engine.Suggestion
+import com.mixdeck.engine.TwistBucket
+import com.mixdeck.engine.Twists
 import java.util.concurrent.CancellationException
 import java.util.concurrent.Executors
 import kotlin.math.abs
@@ -12,7 +14,8 @@ import kotlin.math.abs
 /**
  * What the "Suggested" tab shows, the same on the phone and the computer: songs on this device
  * ranked as the next song after [seed], plus the slow jobs behind it — checking songs that have no
- * key yet (the ones that could fit first) and finding new songs like [seed] on YouTube.
+ * key yet (the ones that could fit first), finding new songs like [seed] on YouTube, and finding
+ * "twists": songs from another style that still mix in ([Twists]).
  *
  * All slow work runs on one background thread. [onChange] gets a fresh [State] (on that thread)
  * every time something changes: post it to the UI thread and redraw from it.
@@ -33,17 +36,22 @@ class NextSongs(
 ) {
     class Progress(val done: Int, val total: Int, val title: String)
 
+    /** A twist found by "Find twists": how it fits, and the line saying why it's a twist ("Twist: 70s disco at the same 107 BPM, 8A → 9A"). */
+    data class Twist(val s: Suggestion, val reason: String)
+
     data class State(
         val direction: Direction,
-        /** Best first. */
+        /** Best first. Twists are not in it: they're in [twists]. */
         val list: List<Suggestion> = emptyList(),
+        /** Songs found by "Find twists", best first: shown first, with a TWIST badge and their reason. */
+        val twists: List<Twist> = emptyList(),
         /** How well the song already on the target deck fits, if there is one. */
         val waiting: Suggestion? = null,
         /** Songs added by "Find new songs like this" (shown with a NEW badge). */
         val found: Set<String> = emptySet(),
         /** "Checking your songs… 3 of 12", or null. */
         val checking: Progress? = null,
-        /** What "Find new songs like this" is doing now, or null when it isn't running. */
+        /** What "Find new songs like this" or "Find twists" is doing now, or null when neither is running. */
         val finding: String? = null,
         /** The last thing that happened, e.g. "Found 5 new songs." or an error. */
         val note: String? = null,
@@ -62,6 +70,10 @@ class NextSongs(
     private var waiting: Track? = waiting
     private var tracks: List<Track> = emptyList()
     private var found = LinkedHashSet<String>()
+    /** Twists found: song id → its style. */
+    private val twistStyles = LinkedHashMap<String, TwistBucket>()
+    /** Styles already searched for twists, so the next press tries others. */
+    private val triedStyles = HashSet<String>()
     @Volatile var state = State(direction); private set
 
     val seedTrack: Track? get() = seed
@@ -89,31 +101,69 @@ class NextSongs(
     }
 
     /** Asks YouTube for songs like the playing one and adds up to [max] of them, one by one. */
-    fun findNew(max: Int = 6) {
+    fun findNew(max: Int = 6) = runFind(
+        waitText = "I'll look for new songs when the check is done…",
+        startText = { "Asking YouTube for songs like ${it.title}…" },
+        error = "Couldn't find new songs",
+    ) { s, cancelled, status ->
+        val n = suggester.discover(s, max, cancelled, onStatus = status) { t ->
+            found += t.id
+            tracks = listOf(t) + tracks.filter { it.id != t.id }
+            publish(rank())
+        }
+        if (n == 0) "No new songs found this time." else "Found $n new song${if (n == 1) "" else "s"}: they're marked NEW and saved in My songs."
+    }
+
+    /**
+     * Looks for up to [max] "twists": songs from another style or era that still mix in after the
+     * playing song (same tempo or half/double, a key next door, similar energy). Downloads and checks
+     * at most [maxTries] songs. Each press tries other styles.
+     */
+    fun findTwists(max: Int = MAX_TWISTS, maxTries: Int = TWIST_TRIES) = runFind(
+        waitText = "I'll look for twists when the check is done…",
+        startText = { "Looking for twists…" },
+        error = "Couldn't find twists",
+    ) { s, cancelled, status ->
+        if (!(s.bpm > 0)) return@runFind "Twists match the playing song's tempo, but it has no steady beat."
+        val run = suggester.findTwists(s, seedPitch, max, maxTries, triedStyles, cancelled, onStatus = status, onTwist = { t, b ->
+            twistStyles[t.id] = b
+            found += t.id
+            tracks = listOf(t) + tracks.filter { it.id != t.id }
+            publish(rank())
+        })
+        triedStyles += run.styles
+        when {
+            run.found > 0 -> "Found ${run.found} twist${if (run.found == 1) "" else "s"}: another style that still mixes in. " +
+                "They're at the top, marked TWIST, and saved in My songs."
+            run.tried == 0 -> "No twists to try for this tempo. Try again later."
+            else -> "None of the ${run.tried} songs tried fit well enough. Try again for other styles."
+        }
+    }
+
+    /**
+     * Runs a "find" job on the worker: one at a time, cancelled by Stop. [job] gets the seed, the
+     * cancel check and a status callback, and returns the note shown when it's done.
+     */
+    private fun runFind(
+        waitText: String, startText: (Track) -> String, error: String,
+        job: (Track, () -> Boolean, (String) -> Unit) -> String,
+    ) {
         val s = seed ?: return
         if (state.finding != null || findQueued) return
         findQueued = true
         val asked = stops // a Stop pressed after this click cancels it, even while it waits its turn
         val cancelled = { closed || stops != asked }
         // Shown at once; the worker may still be checking songs.
-        if (!closed) onChange(state.copy(finding = "I'll look for new songs when the check is done…", note = null))
+        if (!closed) onChange(state.copy(finding = waitText, note = null))
         worker.execute {
             findQueued = false
             if (closed) return@execute
             if (cancelled()) { publish(state.copy(finding = null)); return@execute }
-            publish(state.copy(finding = "Asking YouTube for songs like ${s.title}…", note = null))
-            val r = runCatching {
-                suggester.discover(s, max, cancelled, onStatus = { msg -> if (!closed) publish(state.copy(finding = msg)) }) { t ->
-                    found += t.id
-                    tracks = listOf(t) + tracks.filter { it.id != t.id }
-                    publish(rank())
-                }
-            }
+            val sd = seed ?: s // the check may have given it a key meanwhile
+            publish(state.copy(finding = startText(sd), note = null))
+            val r = runCatching { job(sd, cancelled) { msg -> if (!closed) publish(state.copy(finding = msg)) } }
             if (cancelled()) { publish(state.copy(finding = null, note = "Stopped.")); return@execute }
-            publish(state.copy(finding = null, note = r.fold(
-                { n -> if (n == 0) "No new songs found this time." else "Found $n new song${if (n == 1) "" else "s"}: they're marked NEW and saved in My songs." },
-                { e -> "Couldn't find new songs: ${Problems.explain(e)}" },
-            )))
+            publish(state.copy(finding = null, note = r.fold({ it }, { e -> "$error: ${Problems.explain(e)}" })))
         }
     }
 
@@ -143,9 +193,14 @@ class NextSongs(
         val sd = seed ?: return base.copy(direction = dir, list = emptyList(), waiting = null, librarySize = tracks.size)
         val now = NowPlaying(sd.profile(), seedPitch)
         val exclude = onDecks + sd.id
-        val list = suggester.rank(now, tracks, dir, exclude).take(MAX_SHOWN)
+        val list = suggester.rank(now, tracks.filter { it.id !in twistStyles }, dir, exclude).take(MAX_SHOWN)
         val w = waiting?.takeIf { it.analyzed }?.let { NextTrack.score(now, it.profile(), dir) }
-        return base.copy(direction = dir, list = list, waiting = w, found = found.toSet(),
+        val playingBpm = sd.bpm * (1 + seedPitch)
+        val twists = tracks.filter { it.id in twistStyles && it.analyzed && it.id !in exclude }.map { t ->
+            val s = NextTrack.score(now, t.profile(), dir)
+            Twist(s, Twists.reason(twistStyles.getValue(t.id), s, playingBpm))
+        }.sortedByDescending { it.s.score }
+        return base.copy(direction = dir, list = list, twists = twists, waiting = w, found = found.toSet(),
             librarySize = tracks.count { it.id !in exclude })
     }
 
@@ -189,6 +244,10 @@ class NextSongs(
 
     companion object {
         const val MAX_SHOWN = 30
+        /** Twists one "Find twists" press looks for … */
+        const val MAX_TWISTS = 3
+        /** … and the most songs it downloads to check. */
+        const val TWIST_TRIES = 8
         /** Songs needing more tempo change than this (after half/double time) aren't checked. */
         const val CHECK_TEMPO = 0.12
 

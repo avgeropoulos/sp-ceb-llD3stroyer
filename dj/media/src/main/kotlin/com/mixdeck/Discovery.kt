@@ -6,6 +6,7 @@ import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException
 import org.schabi.newpipe.extractor.playlist.PlaylistInfo
+import org.schabi.newpipe.extractor.playlist.PlaylistInfoItem
 import org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper
 import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
@@ -28,6 +29,8 @@ import java.util.concurrent.TimeoutException
  *  - The YouTube "Mix" for the video (playlist RD<id>, NewPipe's mix extractor). Good, a bit more
  *    same-artist, and drifts towards kids' hits for big pop songs. It only exists for videos that
  *    play here, so its failure is the first hint that the video is blocked or removed.
+ *  - YouTube Music's "Related" tab for the song ("You might also like"), asked as soon as the radio
+ *    answers: mostly other artists. Only songs YouTube Music knows as songs have one.
  *  - Only when the mix failed or both lists are short: the watch page (NewPipe stream extractor).
  *    Its failure confirms the video can't be played here, in which case the radio for it is junk
  *    too (YouTube Music then serves whatever is popular locally); its related videos are noisy
@@ -35,8 +38,12 @@ import java.util.concurrent.TimeoutException
  * Results are merged by weighted reciprocal-rank fusion (songs several sources agree on rise),
  * junk is dropped (shorts, mixes over 10 min, live, karaoke, covers, nightcore/slowed/8D, ...),
  * every upload of the same song is collapsed into its best upload, the seed song (and covers of
- * it) is removed, and no artist appears more than [maxPerArtist] times unless the list would
- * otherwise be short.
+ * it) is removed, the seed's artist gets at most [maxSeedArtist] songs and no other artist more
+ * than [maxPerArtist], unless the list would otherwise be short ([varietyPick]).
+ *
+ * One hop further: once a round worked, the radios of the best [hops] songs by other artists are
+ * asked too (in parallel, at most [extraTimeoutMs]), so "like this" reaches past the seed's artist
+ * and its closest scene.
  *
  * Fallbacks: if the video can't be played here (blocked label video, removed upload) or gives too
  * few songs, another upload of the same song is found by search and used instead; as a last resort
@@ -54,8 +61,23 @@ object Discovery {
     @Volatile var minSec = 90L
     @Volatile var maxSec = 600L
 
-    /** At most this many songs by one artist (counting the seed's artist), unless the list would be short. */
+    /** At most this many songs by one artist, unless the list would be short. */
     @Volatile var maxPerArtist = 2
+
+    /**
+     * At most this many songs by the seed's own artist (the seed not counted): "like this" should
+     * reach other artists. More only when the list would otherwise be very short.
+     */
+    @Volatile var maxSeedArtist = 1
+
+    /**
+     * How many of the best songs by other artists get their own radio asked too ("one hop"), so the
+     * list reaches artists the seed's radio alone doesn't. 0 turns it off.
+     */
+    @Volatile var hops = 2
+
+    /** The hop and the "Related" tab get at most this long on top of the first round. */
+    @Volatile var extraTimeoutMs = 3_000L
 
     /** Give up on a round of sources after this long. */
     @Volatile var timeoutMs = 12_000L
@@ -90,6 +112,30 @@ object Discovery {
         return cached("t:${key(hint.artist)}|${key(hint.title)}:$limit") { relatedToUncached(hint, limit) }
     }
 
+    /**
+     * Songs in a style, for twists (see [TwistSearch]): YouTube Music's songs for [query] ("70s disco
+     * classics"), topped up from the first playlist the same search finds, best known first. Junk is
+     * not filtered here. Cached like suggestions.
+     */
+    fun styleSongs(query: String): List<YtResult> {
+        YouTube.init()
+        return cached("s:$query") {
+            val songs = runCatching { search(query, YoutubeSearchQueryHandlerFactory.MUSIC_SONGS) }.getOrDefault(emptyList())
+                .mapIndexedNotNull { i, it -> streamCand(it, Src.ARTIST, i + 1)?.r }
+            val all = if (songs.size >= 15) songs else songs + runCatching { playlistSongs(query) }
+                .onFailure { trace("style '$query': playlist failed (${it.javaClass.simpleName}: ${it.message?.take(80)})") }.getOrDefault(emptyList())
+            trace("style '$query': ${songs.size} songs + ${all.size - songs.size} from a playlist")
+            all
+        }
+    }
+
+    /** Runs [tasks] at once on discovery's threads and waits at most [timeoutMs] for all of them; slow ones fail with a timeout. */
+    fun <T> inParallel(tasks: List<() -> T>, timeoutMs: Long): List<Result<T>> {
+        val deadline = System.nanoTime() + timeoutMs * 1_000_000
+        val fs = tasks.map { t -> pool.submit(Callable { t() }) }
+        return fs.map { await(it, deadline) }
+    }
+
     /** Forgets cached suggestions (e.g. after the user asks for fresh ones). */
     fun clearCache() = synchronized(resultCache) { resultCache.clear() }
 
@@ -105,6 +151,45 @@ object Discovery {
 
     /** Comparison key for song or artist names: lower case, no accents or punctuation, Greek transliterated. */
     fun key(s: String): String = skeleton(normalize(s))
+
+    /**
+     * Variety, as indices into [artists] (comparison keys of the songs' artists, best song first):
+     * the seed's artist ([seedArtist]) keeps at most [maxSeed] songs and every other artist
+     * [maxOther]. "Καζαντζίδης" and "Στέλιος Καζαντζίδης" count as one artist. When that leaves fewer
+     * than [limit] songs, skipped songs by other artists come back first (in order), then the seed
+     * artist's, but only while the list is still under half of [limit].
+     */
+    fun varietyPick(artists: List<String>, seedArtist: String, limit: Int, maxSeed: Int, maxOther: Int): List<Int> {
+        val canon = ArrayList<Set<String>>()
+        fun artistOf(k: String): String {
+            if (k.isEmpty()) return k
+            val w = k.split(' ').filter { it.length >= 2 }.toSet()
+            if (w.isEmpty()) return k
+            val i = canon.indexOfFirst { c -> c.containsAll(w) || w.containsAll(c) }
+            if (i >= 0) return "#$i"
+            canon += w
+            return "#${canon.size - 1}"
+        }
+        val seed = artistOf(seedArtist)
+        val perArtist = HashMap<String, Int>()
+        val picked = ArrayList<Int>()
+        val skippedOther = ArrayList<Int>()
+        val skippedSeed = ArrayList<Int>()
+        for ((i, k) in artists.withIndex()) {
+            if (picked.size >= limit) break
+            val a = artistOf(k)
+            val n = perArtist[a] ?: 0
+            val isSeed = a.isNotEmpty() && a == seed
+            if (a.isNotEmpty() && n >= (if (isSeed) maxSeed else maxOther)) {
+                (if (isSeed) skippedSeed else skippedOther) += i; continue
+            }
+            perArtist[a] = n + 1
+            picked += i
+        }
+        for (i in skippedOther) { if (picked.size >= limit) break; picked += i }
+        for (i in skippedSeed) { if (picked.size >= (limit + 1) / 2) break; picked += i }
+        return picked
+    }
 
     /** Why a result is not a usable song (short, compilation, live, karaoke, cover, slowed, ...), or null if it is fine. */
     fun junkReason(r: YtResult): String? = junkReason(r.title, r.durationSec, false, null)
@@ -140,7 +225,15 @@ object Discovery {
 
     // ---------------------------------------------------------------- the search
 
-    private enum class Src(val weight: Double) { RADIO(1.0), MIX(0.7), RELATED(0.35), ARTIST(0.15) }
+    /**
+     * Where a song came from and how much that source counts. TAB = YouTube Music's "Related" tab
+     * for the song ("You might also like": mostly other artists); HOP = the radio of one of the best
+     * songs by another artist, which reaches further from the seed's own scene.
+     */
+    private enum class Src(val weight: Double) { RADIO(1.0), MIX(0.7), TAB(0.6), HOP(0.45), RELATED(0.35), ARTIST(0.15) }
+
+    /** YouTube Music's answer for one video: the seed as it describes it, its radio, and its "Related" tab's id (if it has one). */
+    private class Radio(val seed: YtResult?, val cands: List<Cand>, val relatedTab: String?)
 
     /** A song offered by one source, at a rank (1 = first) in that source's list; [w] scales the source's weight. */
     private data class Cand(
@@ -187,6 +280,10 @@ object Discovery {
                 if (r.strong && result.size >= enough) break
             }
         }
+        if (hops > 0 && rounds.any { it.strong } && elapsedMs(t0) < timeoutMs) {
+            val hopCands = hop(result, seedIds, seed)
+            if (hopCands.isNotEmpty()) { extra += hopCands; result = rank(candidates(), seedIds, seed, limit) }
+        }
         if (result.size < limit && seed.artist.isNotBlank()) {
             asked++
             runCatching { artistSongs(seed.artist) }.onSuccess { extra += it }.onFailure { failures += it }
@@ -204,11 +301,13 @@ object Discovery {
         val t0 = System.nanoTime()
         val deadline = t0 + timeoutMs * 1_000_000
         val radioF = pool.submit(Callable { ytmRadio(id) })
+        // The "Related" tab needs the radio's answer: asked as soon as it's in, alongside the mix.
+        val tabF = pool.submit(Callable { radioF.get().relatedTab?.let { ytmRelated(it) } ?: emptyList() })
         val mixF = pool.submit(Callable { mix(id) })
         var relF = if (alwaysUseWatchPage) pool.submit(Callable { watchRelated(id) }) else null
         val radio = await(radioF, deadline)
         val mix = await(mixF, deadline)
-        val radioN = radio.getOrNull()?.second?.size ?: 0
+        val radioN = radio.getOrNull()?.cands?.size ?: 0
         val mixN = mix.getOrNull()?.size ?: 0
         // A mix exists only for videos that play here. Without one, the watch page tells us whether
         // the video is playable at all (if not, its radio is junk) and adds its related videos.
@@ -216,14 +315,37 @@ object Discovery {
         if (relF == null && needWatchPage) relF = pool.submit(Callable { watchRelated(id) })
         val rel = relF?.let { await(it, if (needWatchPage) deadline else minOf(deadline, System.nanoTime() + 1_500_000_000L)) }
         val unavailable = rel?.exceptionOrNull() is ContentNotAvailableException
+        // The tab has had the mix's time already; it gets a little more, never the whole deadline.
+        val tab = await(tabF, minOf(deadline, System.nanoTime() + minOf(extraTimeoutMs, 1_500L) * 1_000_000))
         val asked = listOfNotNull(radio, mix, rel)
         val failures = asked.mapNotNull { it.exceptionOrNull() }.filter { it !is ContentNotAvailableException && it !is TimeoutException }
-        trace("round $id in ${elapsedMs(t0)} ms: radio ${desc(radio)}, mix ${desc(mix)}, watch page ${rel?.let { desc(it) } ?: "not needed"}" +
+        trace("round $id in ${elapsedMs(t0)} ms: radio ${desc(radio)}, related tab ${desc(tab)}, mix ${desc(mix)}, watch page ${rel?.let { desc(it) } ?: "not needed"}" +
             if (unavailable) " -> not playable here" else "")
-        val seed = rel?.getOrNull()?.first ?: radio.getOrNull()?.first ?: mix.getOrNull()?.firstOrNull { it.r.id == id }?.r
+        val seed = rel?.getOrNull()?.first ?: radio.getOrNull()?.seed ?: mix.getOrNull()?.firstOrNull { it.r.id == id }?.r
         val strong = !unavailable && (radioN >= 15 || mixN >= 10)
-        val cands = radio.getOrNull()?.second.orEmpty() + mix.getOrNull().orEmpty() + rel?.getOrNull()?.second.orEmpty()
+        val cands = radio.getOrNull()?.cands.orEmpty() + tab.getOrNull().orEmpty() + mix.getOrNull().orEmpty() + rel?.getOrNull()?.second.orEmpty()
         return Round(cands, seed, unavailable, strong, failures, asked.size)
+    }
+
+    /**
+     * One hop: the radios of the best [hops] songs by other artists than the seed's, in parallel,
+     * for at most [extraTimeoutMs]. Their songs count for less than the seed's own radio, but songs
+     * both radios offer rise, and they bring artists the seed's radio didn't. Failures are ignored.
+     */
+    private fun hop(result: List<YtResult>, seedIds: Set<String>, seed: Parsed): List<Cand> {
+        val t0 = System.nanoTime()
+        val seedArtist = seed.artistKey
+        val seen = HashSet<String>()
+        val via = result.filter { r ->
+            val a = key(songOf(r).artist)
+            a.isNotEmpty() && (seedArtist.isEmpty() || !containsWords(a, seedArtist)) && seen.add(a)
+        }.take(hops)
+        if (via.isEmpty()) return emptyList()
+        val deadline = t0 + extraTimeoutMs * 1_000_000
+        val fs = via.map { r -> pool.submit(Callable { ytmRadio(r.id, Src.HOP).cands.filter { it.r.id !in seedIds } }) }
+        val got = fs.map { await(it, deadline) }
+        trace("hop via ${via.joinToString { it.title }} in ${elapsedMs(t0)} ms: ${got.joinToString { desc(it) }}")
+        return got.flatMap { it.getOrNull().orEmpty() }
     }
 
     private fun <T> await(f: Future<T>, deadlineNanos: Long): Result<T> = try {
@@ -237,19 +359,18 @@ object Discovery {
     }
 
     private fun desc(r: Result<*>): String = r.fold(
-        { v -> val n = when (v) { is Pair<*, *> -> (v.second as? List<*>)?.size; is List<*> -> v.size; else -> null }; "${n ?: "?"} items" },
+        { v -> val n = when (v) { is Radio -> v.cands.size; is Pair<*, *> -> (v.second as? List<*>)?.size; is List<*> -> v.size; else -> null }; "${n ?: "?"} items" },
         { e -> "failed (${e.javaClass.simpleName}: ${e.message?.take(80)})" })
 
     // ---------------------------------------------------------------- sources
 
-    /** YouTube Music's radio for a video: (the seed as YouTube Music describes it, the queue after it). */
-    private fun ytmRadio(id: String): Pair<YtResult?, List<Cand>> {
+    /** Asks YouTube Music's web API ([endpoint] "next" or "browse") with [fields] added to the request. */
+    private fun ytm(endpoint: String, what: String, fields: JSONObject.() -> Unit): JSONObject {
         val body = JSONObject()
             .put("context", JSONObject().put("client", JSONObject()
                 .put("clientName", "WEB_REMIX").put("clientVersion", ytmVersion())
                 .put("hl", "en").put("gl", runCatching { NewPipe.getPreferredContentCountry().countryCode }.getOrNull() ?: "US")))
-            .put("videoId", id).put("playlistId", "RDAMVM$id")
-            .put("isAudioOnly", true).put("enablePersistentPlaylistPanel", true)
+            .apply(fields)
         val headers = mapOf(
             "Content-Type" to listOf("application/json"),
             "Origin" to listOf("https://music.youtube.com"),
@@ -257,12 +378,24 @@ object Discovery {
             "X-YouTube-Client-Name" to listOf("67"),
             "X-YouTube-Client-Version" to listOf(ytmVersion()),
         )
-        val resp = NewPipe.getDownloader().post("https://music.youtube.com/youtubei/v1/next?prettyPrint=false", headers, body.toString().toByteArray(Charsets.UTF_8))
-        if (resp.responseCode() !in 200..299) throw IOException("YouTube Music radio: HTTP ${resp.responseCode()}")
-        val root = JSONObject(resp.responseBody())
+        val resp = NewPipe.getDownloader().post("https://music.youtube.com/youtubei/v1/$endpoint?prettyPrint=false", headers, body.toString().toByteArray(Charsets.UTF_8))
+        if (resp.responseCode() !in 200..299) throw IOException("YouTube Music $what: HTTP ${resp.responseCode()}")
+        return JSONObject(resp.responseBody())
+    }
+
+    /** YouTube Music's radio for a video: the seed as YouTube Music describes it, the queue after it, and its "Related" tab. */
+    private fun ytmRadio(id: String, src: Src = Src.RADIO): Radio {
+        val root = ytm("next", "radio") {
+            put("videoId", id).put("playlistId", "RDAMVM$id").put("isAudioOnly", true).put("enablePersistentPlaylistPanel", true)
+        }
+        val tabs = mutableListOf<JSONObject>()
+        collect(root, "tabRenderer", tabs)
+        val relatedTab = tabs.firstOrNull { !it.optBoolean("unselectable") && it.optJSONObject("endpoint")?.optJSONObject("browseEndpoint")
+            ?.optString("browseId").orEmpty().startsWith("MPTR") }
+            ?.optJSONObject("endpoint")?.optJSONObject("browseEndpoint")?.optString("browseId")
         val panels = mutableListOf<JSONObject>()
         collect(root, "playlistPanelRenderer", panels)
-        val contents = panels.firstOrNull()?.optJSONArray("contents") ?: return null to emptyList()
+        val contents = panels.firstOrNull()?.optJSONArray("contents") ?: return Radio(null, emptyList(), relatedTab)
         var seed: YtResult? = null
         val out = mutableListOf<Cand>()
         var rank = 0
@@ -284,10 +417,42 @@ object Discovery {
                 val r = YtResult("https://www.youtube.com/watch?v=$vid", vid, title, artist, dur)
                 if (vid == id) { if (seed == null) seed = r; continue }
                 if (!counted) { rank++; counted = true }
-                out += Cand(r, Src.RADIO, rank, artist, ytmArtist = if (type == "ATV" || type == "OMV") artist else null, videoType = type)
+                out += Cand(r, src, rank, artist, ytmArtist = if (type == "ATV" || type == "OMV") artist else null, videoType = type)
             }
         }
-        return seed to out
+        return Radio(seed, out, relatedTab)
+    }
+
+    /**
+     * YouTube Music's "Related" tab for a song: its "You might also like" songs, mostly by other
+     * artists. (The tab's other shelves are playlists, artists and "More from" the same artist.)
+     */
+    private fun ytmRelated(browseId: String): List<Cand> {
+        val root = ytm("browse", "related") { put("browseId", browseId) }
+        val shelves = mutableListOf<JSONObject>()
+        collect(root, "musicCarouselShelfRenderer", shelves)
+        val out = ArrayList<Cand>()
+        for (shelf in shelves) {
+            val head = mutableListOf<JSONObject>()
+            collect(shelf.opt("header"), "title", head)
+            val title = head.firstOrNull()?.let { runs(it) }.orEmpty().lowercase(Locale.ROOT)
+            if (title.startsWith("more from")) continue
+            val items = mutableListOf<JSONObject>()
+            collect(shelf.opt("contents"), "musicResponsiveListItemRenderer", items)
+            for (it in items) {
+                val vid = it.optJSONObject("playlistItemData")?.optString("videoId").orEmpty()
+                if (vid.length != 11) continue
+                val cols = it.optJSONArray("flexColumns") ?: continue
+                fun col(i: Int) = cols.optJSONObject(i)?.optJSONObject("musicResponsiveListItemFlexColumnRenderer")?.optJSONObject("text")
+                val name = runs(col(0))
+                val artist = bylineArtist(col(1))
+                if (name.isBlank()) continue
+                // No length here: a typical song length passes the junk filter, the download checks the real one.
+                val r = YtResult("https://www.youtube.com/watch?v=$vid", vid, name, artist, 200)
+                out += Cand(r, Src.TAB, out.size + 1, artist, ytmArtist = artist.ifBlank { null }, videoType = "ATV")
+            }
+        }
+        return out
     }
 
     /** YouTube's "Mix" for a video (first page, ~25 videos). */
@@ -304,6 +469,18 @@ object Discovery {
         val items = runCatching { ex.relatedItems?.items.orEmpty() }.getOrDefault(emptyList())
         var rank = 0
         return seed to items.mapNotNull { if (it is StreamInfoItem) streamCand(it, Src.RELATED, ++rank) else null }
+    }
+
+    /** The songs of the first playlist YouTube Music (else YouTube) finds for [query] (first page, about 100). */
+    private fun playlistSongs(query: String): List<YtResult> {
+        val list = listOf(YoutubeSearchQueryHandlerFactory.MUSIC_PLAYLISTS, YoutubeSearchQueryHandlerFactory.PLAYLISTS).firstNotNullOfOrNull { f ->
+            val ex = ServiceList.YouTube.getSearchExtractor(query, listOf(f), "")
+            ex.fetchPage()
+            ex.initialPage.items.filterIsInstance<PlaylistInfoItem>().firstOrNull { it.streamCount < 0 || it.streamCount >= 10 }
+        } ?: return emptyList()
+        val url = list.url.replace("://music.youtube.com/", "://www.youtube.com/")
+        val info = PlaylistInfo.getInfo(ServiceList.YouTube, url)
+        return info.relatedItems.mapIndexedNotNull { i, it -> streamCand(it, Src.ARTIST, i + 1)?.r }
     }
 
     /** Other songs by the artist, a weak last resort. */
@@ -423,31 +600,9 @@ object Discovery {
             if (g.lyricOnly) s *= 0.85
             g to s
         }.sortedByDescending { it.second }
-        // 5. variety: not too many songs by one artist (the seed's artist counts as already played once).
-        // "Καζαντζίδης", "Στέλιος Καζαντζίδης" and "ΚΑΖΑΝΤΖΙΔΗΣ ΣΤΕΛΙΟΣ" are one artist.
-        val canon = ArrayList<Set<String>>()
-        fun artistOf(k: String): String {
-            if (k.isEmpty()) return k
-            val w = k.split(' ').filter { it.length >= 2 }.toSet()
-            if (w.isEmpty()) return k
-            val i = canon.indexOfFirst { c -> c.containsAll(w) || w.containsAll(c) }
-            if (i >= 0) return "#$i"
-            canon += w
-            return "#${canon.size - 1}"
-        }
-        val perArtist = HashMap<String, Int>()
-        artistOf(seedP.artistKey).takeIf { it.isNotEmpty() }?.let { perArtist[it] = 1 }
-        val picked = ArrayList<Group>()
-        val skipped = ArrayList<Group>()
-        for ((g, _) in scored) {
-            val a = artistOf(g.shown.artistKey)
-            val n = perArtist[a] ?: 0
-            if (a.isNotEmpty() && n >= maxPerArtist) { skipped += g; continue }
-            perArtist[a] = n + 1
-            picked += g
-            if (picked.size >= limit) break
-        }
-        if (picked.size < limit) picked += skipped.take(limit - picked.size)
+        // 5. variety: few songs by the seed's artist, not too many by any other.
+        val idx = varietyPick(scored.map { it.first.shown.artistKey }, seedP.artistKey, limit, maxSeedArtist, maxPerArtist)
+        val picked = idx.map { scored[it].first }
         val out = picked.take(limit)
         for (g in out) rememberParse(g.best.r.id, g.shown)
         if (dropped.isNotEmpty() || strict + loose > 0) trace("rank: ${cands.size} candidates, dropped $dropped, seed song x${strict + loose}, ${groups.size} distinct songs")
@@ -501,11 +656,13 @@ object Discovery {
 
     // ---------------------------------------------------------------- junk
 
-    private val ALTERED = rx("""\b(nightcore|daycore|slowed|reverb|sped\s*up|speed\s*up|spedup|8d|8\s*d\s*audio|16d|bass\s*boost(ed)?|pitched|chipmunk|tiktok\s+version|chopped|screwed)\b""")
+    private val ALTERED = rx("""[(\[]\s*reversed?\s*[)\]]|\breversed\b|\b(nightcore|daycore|slowed|reverb|sped\s*up|speed\s*up|spedup|8d|8\s*d\s*audio|16d|bass\s*boost(ed)?|pitched|chipmunk|tiktok\s+version|chopped|screwed)\b""")
     private val KARAOKE = rx("""\b(karaoke|instrumental|backing\s+track|minus\s+one|acapella|a\s*cappella|type\s+beat|no\s+vocals|vocals\s+only|ringtone)\b""")
     private val COVER = rx("""[(\[【][^)\]】]*\bcover\b|\bcover\s+(by|version|de|από)\b|\b(guitar|piano|acoustic|female|male|violin|sax|cello|ukulele|vocal|band|metal|rock|punk|jazz|lofi|kids?|ai)\s+cover\b|[-|–—:]\s*cover\s*([)\]]|$)|\bcover\s*$|\bcover\s*[|/]|\b(video|music)\s+cover\b|\bcovered\s+by\b""")
-    private val NOT_A_SONG = rx("""\b(reaction|reacts|reacting|first\s+time\s+hearing|review|tutorial|how\s+to\s+(play|sing|dance|make)|chords|tabs|explained|analysis|interview|documentary|behind\s+the\s+scenes|making\s+of|trailer|teaser|snippet|preview|episode|challenge|parody|meme|dance\s+(video|practice|cover|tutorial)|choreograph(y|ed)|choreo|fancam|amv|fmv|fan\s*made|sing\s*-?\s*along|movie\s+clip|scene|anime\s+music\s+video|(special|dance|stage|band|choir)\s+performance|performance\s+video|gameplay|just\s+dance)\b""")
+    private val NOT_A_SONG = rx("""\b(performs|full\s+performance|reaction|reacts|reacting|first\s+time\s+hearing|review|tutorial|how\s+to\s+(play|sing|dance|make)|chords|tabs|explained|analysis|interview|documentary|behind\s+the\s+scenes|making\s+of|trailer|teaser|snippet|preview|episode|challenge|parody|meme|dance\s+(video|practice|cover|tutorial)|choreograph(y|ed)|choreo|fancam|amv|fmv|fan\s*made|sing\s*-?\s*along|movie\s+clip|scene|anime\s+music\s+video|(special|dance|stage|band|choir)\s+performance|performance\s+video|gameplay|just\s+dance)\b""")
     private val MASHUP_X = Regex("""\s[xX×]\s""")
+    /** "Nelly vs Warren G - Hot In Herre vs Regulate", "DJ Hero 2 - Informer vs. ABC": two songs blended. */
+    private val MASHUP_VS = rx("""\bvs\b\.?.*\bvs\b|\bdj\s+hero\b""")
     private val COMPILATION = rx("""\b(full\s+album|album\s+completo|full\s+ep|megamix|mash\s*-?\s*up|medley|non\s*-?\s*stop|playlist|compilation|greatest\s+hits|top\s+\d+|\d+\s+hours?|hour\s+loop|mix\s+\d{4}|mixtape)\b""")
     private val KIDS = rx("""\b(nursery\s+rhymes?|kids\s+songs?|songs?\s+for\s+kids|for\s+toddlers|baby\s+songs?|cocomelon|pinkfong|baby\s+shark|bebefinn|minions?|cartoons?|animated\s+music\s+video|chicken\s+banana|peppa|paw\s+patrol|kids\s+version|for\s+children)\b""")
     private val LIVE = rx("""[(\[]\s*live\b|[-–—|:,]\s*live\s*([)\]]|$)|\blive\s+(at|from|performance|session|version|concert|stream|recording)\b|\blive\s*[)\]]|\blive$|\b(en\s+vivo|ao\s+vivo|en\s+directo|in\s+concert|concierto|unplugged|ζωντανα|ζωντανη\s+ηχογραφηση)\b""")
@@ -527,6 +684,7 @@ object Discovery {
             COMPILATION.containsMatchIn(low) -> "compilation"
             KIDS.containsMatchIn(low) -> "kids"
             MASHUP_X.containsMatchIn(title) && splitParts(cleanTitle(title)).size < 2 -> "mashup"
+            MASHUP_VS.containsMatchIn(low) -> "mashup"
             NOT_A_SONG.containsMatchIn(low) -> "not a song"
             else -> null
         }

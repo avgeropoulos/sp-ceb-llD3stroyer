@@ -8,8 +8,11 @@ import com.mixdeck.engine.NowPlaying
 import com.mixdeck.engine.Pcm
 import com.mixdeck.engine.Suggestion
 import com.mixdeck.engine.TrackAnalysis
+import com.mixdeck.engine.TwistBucket
+import com.mixdeck.engine.Twists
 import java.io.File
 import java.util.concurrent.CancellationException
+import kotlin.random.Random
 
 /**
  * "What should I play next?" for both apps: makes sure songs have a key, energy and timbre,
@@ -96,6 +99,69 @@ class Suggester(
         }
         onStatus(if (isCancelled()) "Stopped." else "Found $added new song${if (added == 1) "" else "s"}.")
         return added
+    }
+
+    /** What a "Find twists" run did: twists found, songs tried, and the styles it looked in (ids). */
+    class TwistRun(val found: Int, val tried: Int, val styles: Set<String>)
+
+    /**
+     * Finds "twists" for [seed] playing at [seedPitch]: songs from other styles that still mix in
+     * (see [Twists]). Picks a few styles that suit its tempo and energy (not [triedStyles], unless
+     * none are left), searches them, then downloads and checks candidates one by one until [max]
+     * fit or [maxTries] were tried. Each one that fits goes to [onTwist] with its style. Songs
+     * downloaded here that don't fit are deleted again; songs already on the device are checked
+     * without downloading. Same threading and cancelling as [discover].
+     */
+    fun findTwists(
+        seed: Track, seedPitch: Double, max: Int, maxTries: Int, triedStyles: Set<String>,
+        isCancelled: () -> Boolean, onStatus: (String) -> Unit, onTwist: (Track, TwistBucket) -> Unit,
+        random: Random = Random.Default,
+    ): TwistRun = synchronized(discoverLock) {
+        if (isCancelled()) return TwistRun(0, 0, emptySet())
+        val sd = runCatching { ensureFeatures(seed) }.getOrDefault(seed)
+        val playingBpm = sd.bpm * (1 + seedPitch)
+        if (!(sd.bpm > 0)) throw IllegalStateException("the playing song has no steady beat to match")
+        val own = Twists.sceneOf("${sd.title} ${sd.artist}")
+        var plans = Twists.plan(playingBpm, sd.energy, own + triedStyles, count = 4, random = random)
+        if (plans.size < 2) plans = Twists.plan(playingBpm, sd.energy, own, count = 4, random = random)
+        if (plans.isEmpty()) return TwistRun(0, 0, emptySet())
+        onStatus("Looking for twists: " + plans.joinToString(", ") { it.bucket.name } + "…")
+        val skip = setOf(sd.id.removePrefix("yt_")) + store.recentlyPlayed().map { it.removePrefix("yt_") }
+        val cands = TwistSearch.find(sd, plans, skip, random)
+        val now = NowPlaying(sd.profile(), seedPitch)
+        var found = 0
+        var tried = 0
+        val perStyle = HashMap<String, Int>()
+        for (c in cands) {
+            if (found >= max || tried >= maxTries || isCancelled()) break
+            if ((perStyle[c.bucket.id] ?: 0) >= 2) continue // keep them varied
+            val id = "yt_" + c.r.id
+            tried++
+            val t = store.withLock(id, poll = { if (isCancelled()) throw CancellationException("Stopped") }) {
+                val saved = store.get(id)?.takeIf { store.has(id) }
+                val track = if (saved != null) runCatching { ensureFeatures(saved) }.getOrNull()
+                    else fetchNew(c.r, id, "$tried of up to $maxTries (${c.bucket.name})", isCancelled, onStatus)
+                if (track == null) return@withLock null
+                val s = NextTrack.score(now, track.profile())
+                val why = Twists.misfit(s, now.track)
+                if (why == null) track else {
+                    if (saved == null) store.delete(id) // fetched only to check it: don't keep a song that doesn't fit
+                    if (!isCancelled()) onStatus("${track.title} doesn't fit (${misfitWords(why)}), trying another…")
+                    null
+                }
+            } ?: continue
+            perStyle[c.bucket.id] = (perStyle[c.bucket.id] ?: 0) + 1
+            onTwist(t, c.bucket)
+            found++
+        }
+        TwistRun(found, tried, plans.map { it.bucket.id }.toSet())
+    }
+
+    private fun misfitWords(why: String) = when (why) {
+        "tempo" -> "tempo too far"
+        "key" -> "key clashes"
+        "energy" -> "energy too different"
+        else -> "weak match"
     }
 
     /**

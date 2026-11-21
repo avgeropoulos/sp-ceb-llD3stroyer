@@ -88,6 +88,7 @@ class LibraryActivity : Activity() {
     private var suggestBusy: LinearLayout? = null
     private var suggestBar: ProgressBar? = null
     private var findButton: Button? = null
+    private var twistButton: Button? = null
     private val dirButtons = ArrayList<Button>()
     private val prefs by lazy { getSharedPreferences("mixdeck", MODE_PRIVATE) }
 
@@ -279,9 +280,11 @@ class LibraryActivity : Activity() {
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { topMargin = dp(6) })
         suggestRows = rows
 
-        //                                                      [Find new songs like this]
+        //                                       [Find twists] [Find new songs like this]
         // (SYNC is in the status row below, on every tab.)
         val foot = hbox().apply { setPadding(0, dp(4), 0, 0); gravity = Gravity.END or Gravity.CENTER_VERTICAL }
+        twistButton = button("Find twists") { findTwists(n, seed) }
+        foot.addView(twistButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(42)).apply { marginEnd = dp(8) })
         findButton = button("Find new songs like this") { findNew(n, seed) }
         foot.addView(findButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(42)))
         box.addView(foot)
@@ -300,6 +303,17 @@ class LibraryActivity : Activity() {
             .setNegativeButton("Cancel", null).show()
     }
 
+    /** First time: say what twists are and what they download. */
+    private fun findTwists(n: NextSongs, seed: Track) {
+        if (prefs.getBoolean("twistOk", false)) return n.findTwists()
+        AlertDialog.Builder(this).setTitle("Find twists?")
+            .setMessage("Twists are songs from another style or era that still mix with \"${seed.title}\": the same tempo " +
+                "(or half/double), a key next door and similar energy. MixDeck downloads up to ${NextSongs.TWIST_TRIES} songs " +
+                "(about 40 MB, so Wi-Fi is best), keeps the ones that fit and deletes the rest.")
+            .setPositiveButton("Find twists") { _, _ -> prefs.edit().putBoolean("twistOk", true).apply(); n.findTwists() }
+            .setNegativeButton("Cancel", null).show()
+    }
+
     private fun showSuggestions(st: NextSongs.State) {
         nextState = st
         val rows = suggestRows ?: return
@@ -307,10 +321,12 @@ class LibraryActivity : Activity() {
         val seedKey = next?.seedKeyLabel()?.filter { it.isLetterOrDigit() }
         val seedEnergy = next?.seedTrack?.energy ?: Float.NaN
         st.waiting?.let { rows.addView(suggestionRow(it, onDeck = true, isNew = false, seedKey, seedEnergy)) }
+        for (t in st.twists) rows.addView(suggestionRow(t.s, onDeck = false, isNew = false, seedKey, seedEnergy, twist = t.reason))
         for (s in st.list) rows.addView(suggestionRow(s, onDeck = false, isNew = s.track.id in st.found, seedKey, seedEnergy))
-        if (st.list.isEmpty() && st.checking == null) rows.addView(emptyState(
+        if (st.list.isEmpty() && st.twists.isEmpty() && st.checking == null) rows.addView(emptyState(
             if (st.librarySize == 0) "No other songs yet" else "You've played them all",
-            if (st.librarySize == 0) "Tap \"Find new songs like this\" and MixDeck fetches a few songs that go with the one that's playing."
+            if (st.librarySize == 0) "Tap \"Find new songs like this\" and MixDeck fetches a few songs that go with the one that's playing. " +
+                "Tap \"Find twists\" for songs from another style that still mix in."
             else "Every song on your phone was played in the last few hours. Tap \"Find new songs like this\" for fresh ones.",
             "Search YouTube" to { showTab(Tab.YOUTUBE, focus = true) }))
         val c = st.checking
@@ -320,6 +336,7 @@ class LibraryActivity : Activity() {
             if (c != null) { max = c.total; progress = c.done }
         }
         findButton?.isEnabled = st.finding == null
+        twistButton?.isEnabled = st.finding == null
         if (!busy) status.text = suggestStatus(st)
     }
 
@@ -328,7 +345,7 @@ class LibraryActivity : Activity() {
         ?: st.note ?: SUGGEST_HINT
 
     /** stars · title + artist/summary · key move · tempo · energy · [Load]; tap to see why. */
-    private fun suggestionRow(s: Suggestion, onDeck: Boolean, isNew: Boolean, seedKey: String?, seedEnergy: Float): View {
+    private fun suggestionRow(s: Suggestion, onDeck: Boolean, isNew: Boolean, seedKey: String?, seedEnergy: Float, twist: String? = null): View {
         val id = s.track.id
         val open = expanded == id
         val row = vbox().apply {
@@ -342,17 +359,18 @@ class LibraryActivity : Activity() {
         val texts = vbox()
         texts.addView(TextView(this).apply {
             val t = SpannableStringBuilder()
-            val badge = when { onDeck -> "ON DECK ${deckName()} NOW  "; isNew -> "NEW  "; else -> null }
+            val badge = when { onDeck -> "ON DECK ${deckName()} NOW  "; twist != null -> "TWIST  "; isNew -> "NEW  "; else -> null }
             if (badge != null) {
                 t.append(badge)
-                t.setSpan(ForegroundColorSpan(if (onDeck) 0xFF1DE9B6.toInt() else 0xFF00E676.toInt()), 0, badge.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                val c = when { onDeck -> 0xFF1DE9B6.toInt(); twist != null -> TWIST_COLOR; else -> 0xFF00E676.toInt() }
+                t.setSpan(ForegroundColorSpan(c), 0, badge.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
             t.append(s.track.title)
             text = t; setTextColor(Color.WHITE); textSize = 16f; setSingleLine(); ellipsize = android.text.TextUtils.TruncateAt.END
         })
         texts.addView(TextView(this).apply {
-            text = listOf(s.track.artist, s.summary).filter { it.isNotEmpty() }.joinToString("  ·  ")
-            setTextColor(0xFF9A9AA8.toInt()); textSize = 13f; setSingleLine(); ellipsize = android.text.TextUtils.TruncateAt.END
+            text = if (twist != null) twist else listOf(s.track.artist, s.summary).filter { it.isNotEmpty() }.joinToString("  ·  ")
+            setTextColor(if (twist != null) TWIST_COLOR else 0xFF9A9AA8.toInt()); textSize = 13f; setSingleLine(); ellipsize = android.text.TextUtils.TruncateAt.END
         })
         line.addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         line.addView(chip(KeyDisplay.moveLabel(s, showFrom = seedKey != null),
@@ -373,6 +391,10 @@ class LibraryActivity : Activity() {
             row.post { row.requestRectangleOnScreen(android.graphics.Rect(0, 0, row.width, row.height), false) }
         }
         if (open) {
+            if (twist != null) row.addView(TextView(this).apply {
+                text = "A different style that still mixes in. Try it for a surprise."
+                setTextColor(0xFFE6E6EC.toInt()); textSize = 14f; setPadding(dp(84), dp(4), dp(8), 0)
+            })
             for (r in s.reasons) row.addView(TextView(this).apply {
                 val t = SpannableStringBuilder(if (r.good) "✓  " else "✗  ")
                 t.setSpan(ForegroundColorSpan(if (r.good) 0xFF00E676.toInt() else 0xFFFF8A65.toInt()), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -843,6 +865,8 @@ class LibraryActivity : Activity() {
         const val EXTRA_WAITING = "waiting"
         /** In the result: SYNC the song to the other deck once it's loaded. */
         const val EXTRA_SYNC = "sync"
+        /** The twist badge's colour (the same pink as on the computer). */
+        const val TWIST_COLOR = 0xFFFF80AB.toInt()
         const val SUGGEST_HINT = "Best first. Tap a song to see why it fits. Keys are on the key wheel (Camelot): next-door keys mix smoothly."
         private const val REQ_FILE = 2
     }

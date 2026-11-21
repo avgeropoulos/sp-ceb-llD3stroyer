@@ -46,8 +46,8 @@ class SuggestedPanel(
     private val pick: (id: String, title: String) -> Unit,
 ) : JPanel(BorderLayout(6, 6)) {
 
-    /** One row: a suggestion, or the song already waiting on the deck. */
-    private class Item(val s: Suggestion, val onDeck: Boolean, val isNew: Boolean)
+    /** One row: a suggestion, the song already waiting on the deck, or a twist ([twist] = why it's one). */
+    private class Item(val s: Suggestion, val onDeck: Boolean, val isNew: Boolean, val twist: String? = null)
 
     private val prefs = Preferences.userRoot().node("mixdeck")
     private val deckName = if (deck == 0) "A" else "B"
@@ -67,6 +67,9 @@ class SuggestedPanel(
     private val progress = JProgressBar().apply { isVisible = false; isStringPainted = false }
     private val stop = JButton("Stop").apply { isVisible = false }
     private val find = JButton("Find new songs like this")
+    private val twists = JButton("Find twists").apply {
+        toolTipText = "Songs from another style or era that still mix in: same tempo (or half/double), a key next door, similar energy."
+    }
     private val load = JButton("Load on Deck $deckName").apply { isEnabled = false }
     private val songs: NextSongs?
     /** This tab's status line, shown whenever the tab is. */
@@ -116,7 +119,7 @@ class SuggestedPanel(
 
         // Bottom: find new songs, load. (SYNC is in the library's status row, on every tab.)
         add(JPanel(BorderLayout()).apply {
-            add(JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply { add(find) }, BorderLayout.WEST)
+            add(JPanel(FlowLayout(FlowLayout.LEFT, 6, 0)).apply { add(find); add(twists) }, BorderLayout.WEST)
             add(JPanel(FlowLayout(FlowLayout.RIGHT, 6, 0)).apply { add(load) }, BorderLayout.EAST)
         }, BorderLayout.SOUTH)
 
@@ -136,6 +139,8 @@ class SuggestedPanel(
         stop.addActionListener { songs?.stop(); setStatus("Stopping after this song…") }
         find.isEnabled = songs != null
         find.addActionListener { songs?.findNew() }
+        twists.isEnabled = songs != null
+        twists.addActionListener { songs?.findTwists() }
 
         if (songs == null) {
             emptyText.text = "<html><div style='text-align:center;width:420px'>Load a song on a deck first.<br><br>" +
@@ -162,6 +167,7 @@ class SuggestedPanel(
         val keep = list.selectedValue?.s?.track?.id
         model.clear()
         s.waiting?.let { model.addElement(Item(it, onDeck = true, isNew = false)) }
+        s.twists.forEach { model.addElement(Item(it.s, onDeck = false, isNew = false, twist = it.reason)) }
         s.list.forEach { model.addElement(Item(it, onDeck = false, isNew = it.track.id in s.found)) }
         (0 until model.size()).firstOrNull { model[it].s.track.id == keep }?.let { list.selectedIndex = it }
         if (model.isEmpty) {
@@ -169,7 +175,7 @@ class SuggestedPanel(
             emptyText.text = "<html><div style='text-align:center;width:420px'>" + when {
                 s.checking != null -> "Checking your songs…"
                 s.librarySize == 0 -> "No other songs on this computer yet.<br><br>Click <b>Find new songs like this</b> and MixDeck " +
-                    "fetches a few that go with the playing song."
+                    "fetches a few that go with the playing song.<br>Click <b>Find twists</b> for songs from another style that still mix in."
                 else -> "You've played all your songs in the last few hours.<br><br>Click <b>Find new songs like this</b> for fresh ones."
             } + "</div></html>"
             cards.show(center, "empty")
@@ -182,6 +188,7 @@ class SuggestedPanel(
         if (c != null) { progress.isIndeterminate = false; progress.maximum = c.total; progress.value = c.done }
         else progress.isIndeterminate = s.finding != null
         find.isEnabled = s.finding == null
+        twists.isEnabled = s.finding == null
         status = s.finding
             ?: c?.let { "Checking your songs for key and energy… ${it.done + 1} of ${it.total}: ${it.title}" }
             ?: s.note ?: HINT
@@ -197,6 +204,8 @@ class SuggestedPanel(
         html.append("<b>${LibraryDialog.esc(s.track.title)}</b> &nbsp;<span style='color:#ffd54f'>${stars(s.stars)}</span>" +
             " &nbsp;<span style='color:#9a9aa8'>fits ${s.score.toInt()}/100</span>")
         if (item.onDeck) html.append(" &nbsp;<span style='color:#9a9aa8'>(already on deck $deckName)</span>")
+        item.twist?.let { html.append("<br><span style='color:$TWIST_HTML'><b>${LibraryDialog.esc(it)}</b></span>" +
+            " <span style='color:#9a9aa8'>A different style that still mixes in: try it for a surprise.</span>") }
         for (r in s.reasons) {
             val c = if (r.good) 0x00E676 else 0xFF8A65
             html.append("<br><span style='color:${hex(c)}'>${if (r.good) "✓" else "✗"}</span> ${LibraryDialog.esc(r.text)}")
@@ -235,11 +244,14 @@ class SuggestedPanel(
             starsL.text = stars(s.stars)
             val badge = when {
                 item.onDeck -> "<span style='color:#1de9b6'>ON DECK $deckName NOW</span> &nbsp;"
+                item.twist != null -> "<span style='color:$TWIST_HTML'>TWIST</span> &nbsp;"
                 item.isNew -> "<span style='color:#00e676'>NEW</span> &nbsp;"
                 else -> ""
             }
+            val line2 = item.twist?.let { "<span style='color:$TWIST_HTML'>${LibraryDialog.esc(it)}</span>" }
+                ?: "<span style='color:#c8c8d0'>${LibraryDialog.esc(s.summary)}</span>"
             text.text = "<html>$badge<b>${LibraryDialog.esc(s.track.title)}</b> &nbsp;<span style='color:#9a9aa8'>" +
-                "${LibraryDialog.esc(s.track.artist)}</span><br><span style='color:#c8c8d0'>${LibraryDialog.esc(s.summary)}</span></html>"
+                "${LibraryDialog.esc(s.track.artist)}</span><br>$line2</html>"
             keyChip.text = KeyDisplay.moveLabel(s, showFrom = songs?.seedKeyLabel() != null)
             keyChip.background = Color(KeyDisplay.moveColor(s) ?: 0xFF5A5A66.toInt())
             val pct = s.pitchToSync * 100
@@ -252,6 +264,9 @@ class SuggestedPanel(
 
     companion object {
         const val HINT = "Best first. Double-click a song to load it. Keys are on the key wheel (Camelot): next-door keys mix smoothly."
+
+        /** The twist badge's colour. */
+        const val TWIST_HTML = "#ff80ab"
 
         fun stars(n: Int) = "★".repeat(n.coerceIn(0, 5)) + "☆".repeat(5 - n.coerceIn(0, 5))
 
