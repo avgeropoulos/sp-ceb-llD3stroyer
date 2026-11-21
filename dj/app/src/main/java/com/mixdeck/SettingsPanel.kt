@@ -71,6 +71,7 @@ object SettingsPanel {
             addView(heading(Settings.SOUND))
             addView(slider(Settings.MASTER, mixer.master) { v -> change { master = v } })
             addView(slider(Settings.SAMPLER, mixer.sampler.volume) { v -> change { sampler.volume = v } })
+            addView(slider(Settings.BASS, mixer.bass.volume) { v -> change { bass.volume = v } })
         }
 
         val mixing = column().apply {

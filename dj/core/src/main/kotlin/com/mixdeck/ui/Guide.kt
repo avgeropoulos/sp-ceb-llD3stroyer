@@ -100,7 +100,7 @@ object Guide {
             Item("Fader", orange, "The tall sliders are each deck's volume. The bars next to them show its level; keep them out of the red."),
             Item("🎧", amber, "Pre-listen. With headphones in, tap 🎧 and say yes to split cue: your right ear hears the decks marked 🎧, your left ear hears the mix."),
             Item("Crossfader", grey, "The bottom slider blends from deck A (left) to deck B (right). In ☰ → Settings choose Sharp for scratching."),
-            Item("Sampler", pink, "HORN, SIREN, LASER, DROP: tap to fire a sound effect over the mix, tap again to stop it."),
+            Item("Sampler", pink, "Four pads: tap to fire a sound effect over the mix, tap again to stop it. Hold a pad to pick its sound from 12: horn, siren, laser, drop, kick, clap, snare roll, riser, impact, scratch, rewind, cowbell."),
         )),
         Section("Recording & mixes", red, listOf(
             Item("REC", red, "Starts recording everything you hear. Hold REC to stop: the mix is saved straight away in My mixes, where you can rename it."),
@@ -112,10 +112,10 @@ object Guide {
                 computerText = "Labels every control and shows its keyboard key. Press H or Esc, or click anywhere, to close."),
             Item("☰", grey, "My mixes, Settings (volumes, crossfader curve, Quantize, MIX length, split cue), MIDI controller setup, this guide, the tutorial, and updates."),
             Item("BASS", 0xFF7C4DFF.toInt(), "Opens eight bass keys over the song strips. They play the notes of the song you hear, so whatever you tap fits. " +
-                "Hold a key for a long note. FINGER / PICK / MUTED / SUB changes the sound (a bass guitar played three ways, or a plain deep tone), LOW / HIGH the octave. It's recorded with your mix. " +
+                "Hold a key for a long note. The sound button picks from eight: finger, pick, slap, muted, upright and fretless bass, a deep 808 or a pure sub; Settings has its volume, LOW / HIGH the octave. It's recorded with your mix. " +
                 "A MIDI keyboard plays the bass too while the keys are open.",
                 computerText = "Opens eight bass keys over the song strips: play them with S D F G J K L ; or click them. They play the notes of the song " +
-                    "you hear, so whatever you play fits. FINGER / PICK / MUTED / SUB changes the sound (a bass guitar played three ways, or a plain deep tone), LOW / HIGH the octave. It's recorded with your mix. " +
+                    "you hear, so whatever you play fits. The sound button picks from eight: finger, pick, slap, muted, upright and fretless bass, a deep 808 or a pure sub; Settings has its volume, LOW / HIGH the octave. It's recorded with your mix. " +
                     "A MIDI keyboard plays the bass too while the keys are open."),
             Item("MIDI controller", grey, "Plug a DJ controller or MIDI keyboard into the phone with USB (most phones need a USB-C adapter). " +
                 "In ☰ → MIDI controller, tap a row, then move that knob, fader or button on the controller. After that it drives MixDeck.",

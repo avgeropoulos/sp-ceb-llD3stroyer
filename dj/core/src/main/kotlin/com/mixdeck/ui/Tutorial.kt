@@ -130,7 +130,7 @@ object Tutorials {
                 "Stop deck A with ❚❚ and tap FX to switch the echo off. Deck A is now free for the next song.",
                 done = { m -> !m.da().playing && !m.da().fx.on }),
             TutorialStep(listOf("pad0", "pad1", "pad2", "pad3"), "Celebrate",
-                "Hit the HORN! The sampler pads play sound effects over the mix. Tap one again to stop it.",
+                "Hit a sampler pad! They play sound effects over the mix. Tap one again to stop it.",
                 done = { m -> if ((0..3).any { m.sampler.isPlaying(it) }) hornFired = true; hornFired }),
             TutorialStep(listOf("rec", "next", "mix"), "You did it!",
                 "That's a full mix: sync, cut the bass, blend, swap, echo out. Next time tap REC first and your set is saved in My mixes. " +

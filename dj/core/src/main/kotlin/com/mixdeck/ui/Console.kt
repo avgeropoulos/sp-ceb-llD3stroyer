@@ -6,6 +6,7 @@ import com.mixdeck.engine.BassSynth
 import com.mixdeck.engine.Deck
 import com.mixdeck.engine.FxType
 import com.mixdeck.engine.Mixer
+import com.mixdeck.engine.Sampler
 import com.mixdeck.engine.TrackAnalysis
 import kotlin.math.PI
 import kotlin.math.abs
@@ -59,6 +60,12 @@ class Console(private val mixer: Mixer, private val host: Host, val computer: Bo
         fun stopRecord() { toggleRecord() }
         /** The keyboard key that does the same as the control named [key] (computer only), or null. */
         fun shortcut(key: String): String? = null
+        /**
+         * Lets the user pick one of [items] (a short name and a one-line description each) in a
+         * list titled [title], with [current] marked; calls [pick] with the index chosen. The
+         * default just moves on to the next one.
+         */
+        fun choose(title: String, items: List<Pair<String, String>>, current: Int, pick: (Int) -> Unit) = pick((current + 1) % items.size)
     }
 
     private val colA = 0xFF29B6F6.toInt()
@@ -1038,9 +1045,11 @@ class Console(private val mixer: Mixer, private val host: Host, val computer: Bo
         val pw = (r.width() - pad * 4) / 5
         for (k in 0..3) {
             ctls += Btn(RectF(r.left + k * (pw + pad), padY, r.left + k * (pw + pad) + pw, padY + padH),
-                { mixer.sampler.names[k] }, 0xFFFF4081.toInt(), lit = { mixer.sampler.isPlaying(k) }, textScale = 0.62f) {
+                { mixer.sampler.name(k) }, 0xFFFF4081.toInt(), lit = { mixer.sampler.isPlaying(k) }, textScale = 0.62f,
+                // Hold a pad to pick its sound (the press already played it: stop it).
+                onLong = { act { sampler.stop(k) }; choosePadSound(k) }) {
                 act { if (sampler.isPlaying(k)) sampler.stop(k) else sampler.trigger(k) }
-            }.h("Sound effect").k("pad$k")
+            }.h("Sound effect · hold to change").k("pad$k")
         }
         // BASS: opens the bass keys over the song strips.
         ctls += Btn(RectF(r.right - pw, padY, r.right, padY + padH), { "BASS" }, bassCol, lit = { bassOpen }, textScale = 0.62f) {
@@ -1140,6 +1149,14 @@ class Console(private val mixer: Mixer, private val host: Host, val computer: Bo
 
     private val bassCol = 0xFF7C4DFF.toInt()
 
+    /** Hold a sampler pad: pick its sound from the bank. */
+    private fun choosePadSound(k: Int) {
+        host.choose("Sound for pad ${k + 1}", Sampler.BANK.zip(Sampler.ABOUT), mixer.sampler.soundOf(k)) { n ->
+            act { sampler.assign(k, n) }
+            host.settingsChanged()
+        }
+    }
+
     /** The bass keys show over the song strips (the BASS pad). A MIDI keyboard plays the bass while they do. */
     var bassOpen = false
         set(v) { field = v; if (!v) { act { bass.allOff() }; bassHeld.fill(-1) } }
@@ -1201,7 +1218,9 @@ class Console(private val mixer: Mixer, private val host: Host, val computer: Bo
     private fun bassTap(id: Int, x: Float, y: Float): Boolean {
         if (!bassOpen || !startArea.contains(x, y)) return false
         when {
-            bassSoundBtn.contains(x, y) -> act { bass.sound = BassSound.values()[(bass.sound.ordinal + 1) % BassSound.values().size] }
+            bassSoundBtn.contains(x, y) -> host.choose(BASS_PICK, BassSound.values().map { it.label to it.about }, mixer.bass.sound.ordinal) { n ->
+                act { bass.allOff(); bass.sound = BassSound.values()[n] }; bassHeld.fill(-1); host.settingsChanged()
+            }
             bassOctBtn.contains(x, y) -> bassOctave = 1 - bassOctave
             bassClose.contains(x, y) -> bassOpen = false
             else -> bassKeys.indexOfFirst { it.contains(x, y) }.let { if (it >= 0) { active[id] = bassCtls[it]; bassDown(it) } }
@@ -1239,7 +1258,7 @@ class Console(private val mixer: Mixer, private val host: Host, val computer: Bo
             text.color = Color.WHITE; text.textSize = min(r.height() * 0.5f, unit * 1.2f); fitText(label, r.width() * 0.86f)
             c.drawText(label, r.centerX(), r.centerY() + text.textSize * 0.35f, text)
         }
-        small(bassSoundBtn, mixer.bass.sound.label, bassCol)
+        small(bassSoundBtn, mixer.bass.sound.label + " ▾", bassCol)
         small(bassOctBtn, if (bassOctave == 0) "LOW" else "HIGH", bassCol)
         small(bassClose, "✕ Close", dim)
     }
@@ -1605,6 +1624,7 @@ class Console(private val mixer: Mixer, private val host: Host, val computer: Bo
         }
 
         fun deckName(i: Int) = if (i == 0) "A" else "B"
+        const val BASS_PICK = "Bass sound"
 
         /**
          * What the notice line says after a song was loaded onto [deck]: call it under the mixer

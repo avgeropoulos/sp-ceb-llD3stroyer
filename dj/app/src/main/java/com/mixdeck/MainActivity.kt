@@ -432,6 +432,17 @@ class MainActivity : Activity(), Console.Host {
 
     private fun beatsLabel(b: Double) = when (b) { 0.25 -> "¼"; 0.5 -> "½"; 0.75 -> "¾"; else -> "1" }
 
+    /** Pick from a list (a pad's sound, the bass sound): tap one. */
+    override fun choose(title: String, items: List<Pair<String, String>>, current: Int, pick: (Int) -> Unit) {
+        main.post {
+            if (destroyed) return@post
+            val labels = items.map { (name, about) -> "$name · $about" }.toTypedArray()
+            AlertDialog.Builder(this).setTitle(title)
+                .setSingleChoiceItems(labels, current) { d, which -> d.dismiss(); pick(which) }
+                .setNegativeButton("Cancel", null).show()
+        }
+    }
+
     /** ☰: the same short menu as the computer's (Menus.mainMenu); it fits in landscape. */
     override fun mainMenu() {
         val items = Menus.mainMenu(updater.menuLabel(), BuildConfig.VERSION_NAME, computer = false)
@@ -546,6 +557,7 @@ class MainActivity : Activity(), Console.Host {
 
     private fun saveSettings() {
         prefs.edit().putFloat("master", mixer.master).putFloat("sampler", mixer.sampler.volume)
+            .putFloat("bassVol", mixer.bass.volume).putString("bassSound", mixer.bass.sound.name).putString("pads", mixer.sampler.encode())
             .putBoolean("scratchCurve", mixer.curve == XfadeCurve.SCRATCH).putBoolean("quantize", mixer.quantize)
             .putBoolean("splitCue", mixer.splitCue).putInt("mixBars", mixer.autoMix.bars).apply()
     }
@@ -555,6 +567,9 @@ class MainActivity : Activity(), Console.Host {
     private fun restoreSettings() = synchronized(mixer.lock) {
         mixer.master = prefs.getFloat("master", 0.85f)
         mixer.sampler.volume = prefs.getFloat("sampler", 0.7f)
+        mixer.bass.volume = prefs.getFloat("bassVol", 0.85f)
+        mixer.bass.sound = com.mixdeck.engine.BassSound.values().firstOrNull { it.name == prefs.getString("bassSound", "") } ?: com.mixdeck.engine.BassSound.FINGER
+        mixer.sampler.assignAll(com.mixdeck.engine.Sampler.decode(prefs.getString("pads", null)))
         mixer.curve = if (prefs.getBoolean("scratchCurve", false)) XfadeCurve.SCRATCH else XfadeCurve.SMOOTH
         mixer.quantize = prefs.getBoolean("quantize", true)
         mixer.splitCue = prefs.getBoolean("splitCue", false)

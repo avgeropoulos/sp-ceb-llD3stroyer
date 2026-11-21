@@ -61,6 +61,7 @@ class SettingsPanel(
         cols.add(column(Settings.SOUND,
             slider(Settings.MASTER, mixer.master) { v -> change { master = v } },
             slider(Settings.SAMPLER, mixer.sampler.volume) { v -> change { sampler.volume = v } },
+            slider(Settings.BASS, mixer.bass.volume) { v -> change { bass.volume = v } },
         ))
         cols.add(column(Settings.MIXING, *mixing().toTypedArray()))
 

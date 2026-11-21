@@ -30,6 +30,7 @@ object Menus {
         const val SOUND = "Sound"
         const val MASTER = "Master volume"
         const val SAMPLER = "Sampler volume"
+        const val BASS = "Bass keys volume"
         const val MIXING = "Mixing"
         const val CROSSFADER = "Crossfader"
         const val SMOOTH = "Smooth (mixing)"

@@ -569,6 +569,14 @@ class App : Console.Host {
         MenuDialog(frame, Menus.title(Version.name), items).isVisible = true
     }
 
+    /** Pick from a list (a pad's sound, the bass sound): click one or use the arrows and Enter. */
+    override fun choose(title: String, items: List<Pair<String, String>>, current: Int, pick: (Int) -> Unit) {
+        SwingUtilities.invokeLater {
+            val rows = items.mapIndexed { i, (name, about) -> (if (i == current) "● " else "   ") + "$name  ·  $about" to { pick(i) } }
+            MenuDialog(frame, title, rows).isVisible = true
+        }
+    }
+
     /** Help & guide (☰, F1, or the labels banner). */
     override fun openGuide() = SwingUtilities.invokeLater { HelpDialog(this).isVisible = true }
 
@@ -588,6 +596,7 @@ class App : Console.Host {
 
     internal fun saveSettings() {
         prefs.putFloat("master", mixer.master); prefs.putFloat("sampler", mixer.sampler.volume)
+        prefs.putFloat("bassVol", mixer.bass.volume); prefs.put("bassSound", mixer.bass.sound.name); prefs.put("pads", mixer.sampler.encode())
         prefs.putBoolean("scratchCurve", mixer.curve == XfadeCurve.SCRATCH); prefs.putBoolean("quantize", mixer.quantize)
         prefs.putBoolean("splitCue", mixer.splitCue)
         prefs.putInt("mixBars", mixer.autoMix.bars)
@@ -618,6 +627,9 @@ class App : Console.Host {
     private fun restoreSettings() = synchronized(mixer.lock) {
         mixer.master = prefs.getFloat("master", 0.85f)
         mixer.sampler.volume = prefs.getFloat("sampler", 0.7f)
+        mixer.bass.volume = prefs.getFloat("bassVol", 0.85f)
+        mixer.bass.sound = com.mixdeck.engine.BassSound.values().firstOrNull { it.name == prefs.get("bassSound", "") } ?: com.mixdeck.engine.BassSound.FINGER
+        mixer.sampler.assignAll(com.mixdeck.engine.Sampler.decode(prefs.get("pads", null)))
         mixer.curve = if (prefs.getBoolean("scratchCurve", false)) XfadeCurve.SCRATCH else XfadeCurve.SMOOTH
         mixer.quantize = prefs.getBoolean("quantize", true)
         mixer.splitCue = prefs.getBoolean("splitCue", false)
